@@ -47265,6 +47265,31 @@
         "id": "reader-regex-document-before-20261018-host-73768a710d18eee443bb",
         "source": "development/history/reader-regex-document-before-20261018/host/src/core/tavern-mvu-schema-runner-v4.ts",
         "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-20261018/host/src/core/tavern-mvu-schema-runner-v4.ts"
+      },
+      {
+        "id": "c20-rfc-members-before-20261023-server-dist-tavern-mvu-schema-worker-mjs",
+        "source": "development/history/c20-rfc-members-before-20261023/server/dist/tavern-mvu-schema-worker.mjs",
+        "canonicalSource": "runtime/alpha3/history/c20-rfc-members-before-20261023/server/dist/tavern-mvu-schema-worker.mjs"
+      },
+      {
+        "id": "c20-rfc-members-before-20261023-server-package-json",
+        "source": "development/mvu-schema-runtime-v4-update-batch-v1/package.json",
+        "canonicalSource": "runtime/alpha3/compat/mvu-schema-runtime-v4-update-batch-v1/package.json"
+      },
+      {
+        "id": "c20-rfc-members-before-20261023-host-assets-source-inputs-json",
+        "source": "development/history/c20-rfc-members-before-20261023/host/assets/source-inputs.json",
+        "canonicalSource": "runtime/alpha3/history/c20-rfc-members-before-20261023/host/assets/source-inputs.json"
+      },
+      {
+        "id": "c20-rfc-members-before-20261023-host-src-core-roleplay-mvu-update-v2-ts",
+        "source": "development/history/c20-rfc-members-before-20261023/host/src/core/roleplay-mvu-update-v2.ts",
+        "canonicalSource": "runtime/alpha3/history/c20-rfc-members-before-20261023/host/src/core/roleplay-mvu-update-v2.ts"
+      },
+      {
+        "id": "c20-rfc-members-before-20261023-host-package-json",
+        "source": "development/author-host-runtime-v5-update-batch-v1/package.json",
+        "canonicalSource": "runtime/alpha3/compat/author-host-runtime-v5-update-batch-v1/package.json"
       }
     ],
     "publicRelease": {
@@ -190542,7 +190567,7 @@
               "path": "src/core/roleplay-mvu-schema-replay.ts"
             },
             {
-              "artifact": "roleplay-mvu-update-v2-typescript",
+              "artifact": "c20-rfc-members-before-20261023-host-src-core-roleplay-mvu-update-v2-ts",
               "path": "src/core/roleplay-mvu-update-v2.ts"
             },
             {

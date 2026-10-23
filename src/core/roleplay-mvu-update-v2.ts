@@ -24,6 +24,7 @@ export interface PreparedMvuUpdateV2 extends VersionV2 {
 }
 export type MvuUpdateCandidateV2=ParsedMvuUpdateV2|MvuUpdateRejectionV2|({kind:'no-update'}&VersionV2)
 export type MvuUpdatePreparationV2=PreparedMvuUpdateV2|MvuUpdateRejectionV2|({kind:'no-update'}&VersionV2)
+export interface MvuUpdateParseOptionsV2 {jsonPatchMembers?:'rfc6902'}
 const version={schemaVersion:2 as const,protocol:'native-mvu-update-v2' as const}
 const policy={...version,errorPolicy:'atomic-refusal' as const}
 const forbidden=new Set(['__proto__','constructor','prototype'])
@@ -279,7 +280,7 @@ function bodyOf(narrative:string,region?:{outside?:string;openingText?:true}):st
   }
   return body
 }
-function jsonOperation(raw:unknown):MvuUpdateOperationV2 {
+function jsonOperation(raw:unknown,options?:MvuUpdateParseOptionsV2):MvuUpdateOperationV2 {
   const value=clone(raw,B.dataDepth+1)
   if(!object(value)||typeof value.op!=='string')reject('OPERATION_SHAPE')
   if(value.op==='delta'||value.op==='insert') {
@@ -294,7 +295,12 @@ function jsonOperation(raw:unknown):MvuUpdateOperationV2 {
   if(!['test','replace','add','remove','copy','move'].includes(value.op))reject('OPERATION_UNSUPPORTED')
   const fields=value.op==='copy'||value.op==='move'?['op','path','from']:
     value.op==='remove'?['op','path']:['op','path','value']
-  exact(value,fields);jsonPointer(value.path)
+  // RFC6902 ignores members outside this operation's execution fields. Only
+  // an explicit parser policy opts in; normalized guest operations stay strict.
+  if(options?.jsonPatchMembers==='rfc6902') {
+    if(fields.some(key=>!own(value,key)))reject('OPERATION_SHAPE')
+  }else exact(value,fields)
+  jsonPointer(value.path)
   let operation:MvuPatchOperation
   if(value.op==='copy'||value.op==='move') {
     jsonPointer(value.from)
@@ -306,7 +312,7 @@ function jsonOperation(raw:unknown):MvuUpdateOperationV2 {
   // execution remains the unchanged old pure reducer, including all failures.
   return {kind:'jsonpatch',operation}
 }
-function operationsOf(body:string):MvuUpdateOperationV2[] {
+function operationsOf(body:string,options?:MvuUpdateParseOptionsV2):MvuUpdateOperationV2[] {
   if(body.startsWith('<JSONPatch>')) {
     if(!body.endsWith('</JSONPatch>'))reject('UPDATE_CONTENT_UNSUPPORTED')
     const text=body.slice(11,-12)
@@ -318,7 +324,7 @@ function operationsOf(body:string):MvuUpdateOperationV2[] {
     if(!raw.length)reject('EMPTY_PATCH')
     if(raw.length>B.operations)reject('OPERATION_LIMIT')
     return raw.map((value,index)=>{
-      try{return jsonOperation(value)}catch(error){throw error instanceof Refusal?
+      try{return jsonOperation(value,options)}catch(error){throw error instanceof Refusal?
         new Refusal(error.code,error.pointer,index):error}
     })
   }
@@ -505,17 +511,17 @@ function applyLegacy(root:MvuJsonObject,cmd:MvuLegacyCommandV2):MvuJsonObject {
 }
 /** The Source classifier consumes only the remainder of this same parsed
  * container. It cannot exempt unrelated state syntax elsewhere in the card. */
-export function parseMvuUpdateRegionV2(narrative:string,options?:{openingText:true}):
+export function parseMvuUpdateRegionV2(narrative:string,options?:MvuUpdateParseOptionsV2&{openingText?:true}):
   {candidate:MvuUpdateCandidateV2;outside:string} {
   try {
     const region:{outside?:string;openingText?:true}={...options},body=bodyOf(narrative,region)
     if(body===undefined)return {candidate:{kind:'no-update',...version},outside:narrative}
-    const operations=operationPackage(operationsOf(body)),descriptor={...policy,operations}
+    const operations=operationPackage(operationsOf(body,options)),descriptor={...policy,operations}
     return {candidate:{kind:'parsed',...descriptor,candidateSha256:recordSha256(descriptor)},outside:region.outside!}
   } catch(error){return {candidate:rejected(error),outside:narrative}}
 }
-export function parseMvuUpdateV2(narrative:string):MvuUpdateCandidateV2 {
-  return parseMvuUpdateRegionV2(narrative).candidate
+export function parseMvuUpdateV2(narrative:string,options?:MvuUpdateParseOptionsV2):MvuUpdateCandidateV2 {
+  return parseMvuUpdateRegionV2(narrative,options).candidate
 }
 export function reduceMvuUpdateOperationsV2(baseValues:MvuJsonObject,
   rawOperations:readonly unknown[]):PreparedMvuUpdateV2|MvuUpdateRejectionV2 {

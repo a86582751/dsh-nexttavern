@@ -365,7 +365,7 @@ function bodyOf(narrative, region) {
     }
     return body;
 }
-function jsonOperation(raw) {
+function jsonOperation(raw, options) {
     const value = clone(raw, B.dataDepth + 1);
     if (!object(value) || typeof value.op !== 'string')
         reject('OPERATION_SHAPE');
@@ -384,7 +384,14 @@ function jsonOperation(raw) {
         reject('OPERATION_UNSUPPORTED');
     const fields = value.op === 'copy' || value.op === 'move' ? ['op', 'path', 'from'] :
         value.op === 'remove' ? ['op', 'path'] : ['op', 'path', 'value'];
-    exact(value, fields);
+    // RFC6902 ignores members outside this operation's execution fields. Only
+    // an explicit parser policy opts in; normalized guest operations stay strict.
+    if (options?.jsonPatchMembers === 'rfc6902') {
+        if (fields.some(key => !own(value, key)))
+            reject('OPERATION_SHAPE');
+    }
+    else
+        exact(value, fields);
     jsonPointer(value.path);
     let operation;
     if (value.op === 'copy' || value.op === 'move') {
@@ -400,7 +407,7 @@ function jsonOperation(raw) {
     // execution remains the unchanged old pure reducer, including all failures.
     return { kind: 'jsonpatch', operation };
 }
-function operationsOf(body) {
+function operationsOf(body, options) {
     if (body.startsWith('<JSONPatch>')) {
         if (!body.endsWith('</JSONPatch>'))
             reject('UPDATE_CONTENT_UNSUPPORTED');
@@ -421,7 +428,7 @@ function operationsOf(body) {
             reject('OPERATION_LIMIT');
         return raw.map((value, index) => {
             try {
-                return jsonOperation(value);
+                return jsonOperation(value, options);
             }
             catch (error) {
                 throw error instanceof Refusal ?
@@ -692,15 +699,15 @@ export function parseMvuUpdateRegionV2(narrative, options) {
         const region = { ...options }, body = bodyOf(narrative, region);
         if (body === undefined)
             return { candidate: { kind: 'no-update', ...version }, outside: narrative };
-        const operations = operationPackage(operationsOf(body)), descriptor = { ...policy, operations };
+        const operations = operationPackage(operationsOf(body, options)), descriptor = { ...policy, operations };
         return { candidate: { kind: 'parsed', ...descriptor, candidateSha256: recordSha256(descriptor) }, outside: region.outside };
     }
     catch (error) {
         return { candidate: rejected(error), outside: narrative };
     }
 }
-export function parseMvuUpdateV2(narrative) {
-    return parseMvuUpdateRegionV2(narrative).candidate;
+export function parseMvuUpdateV2(narrative, options) {
+    return parseMvuUpdateRegionV2(narrative, options).candidate;
 }
 export function reduceMvuUpdateOperationsV2(baseValues, rawOperations) {
     let operationIndex;

@@ -150,12 +150,13 @@ export interface MvuSchemaStoryPlanV5 extends Omit<MvuSchemaStoryPlanV4,'schemaV
   errorPolicy?:Exclude<MvuSchemaPhaseErrorPolicyV4,'atomic-refusal'>
 }
 /** Host5 keeps Combined as the root identity; phase execution remains ABI4. */
+export type MvuSchemaStoryParserPolicy='analysis-alias-v1'|'analysis-alias-rfc6902-members-v1'
 export interface MvuSchemaStoryPlanV6 extends Omit<MvuSchemaStoryPlanV5,'schemaVersion'|'encoding'> {
   schemaVersion:6
   encoding:'native-mvu-schema-story-plan-v6'
   epoch:SchemaJournalRef
   serverProgramSha256:string
-  parserPolicy?:'analysis-alias-v1'
+  parserPolicy?:MvuSchemaStoryParserPolicy
 }
 /** The original scope is immutable completed Story DATA, never a new closing
  * lease or InputCompletion. An accepted Native edit owns this execution. */
@@ -337,14 +338,14 @@ export const mvuSchemaStoryRevisionCompletionKey=(sid:string,descriptorSha:strin
   `${sid}__mvu-state-schema-revision-completion-${descriptorSha}`
 export const schemaStoryCode=(value:unknown):string=>typeof value==='string'&&/^[A-Z][A-Z0-9_]{0,95}$/.test(value)
   ?value:'SCHEMA_STORY_UNKNOWN'
-export function parseMvuSchemaStoryCandidateV2(narrative:string,parserPolicy?:'analysis-alias-v1'):MvuUpdateCandidateV2 {
+export function parseMvuSchemaStoryCandidateV2(narrative:string,parserPolicy?:MvuSchemaStoryParserPolicy):MvuUpdateCandidateV2 {
   // The sealed policy preserves the writer's parsing semantics. Equal-length
   // tag replacements keep shared parser byte bounds and raw canonical DATA.
-  const text=parserPolicy==='analysis-alias-v1'
+  const text=parserPolicy==='analysis-alias-v1'||parserPolicy==='analysis-alias-rfc6902-members-v1'
     ?narrative.replace(/(<UpdateVariable>\s*)<(analysis|Analysis)>([\s\S]*?)<\/\2>/,
       (_match,prefix:string,_tag:string,content:string)=>`${prefix}<Analyze> ${content} </Analyze>`)
     :narrative
-  return parseMvuUpdateV2(text)
+  return parseMvuUpdateV2(text,parserPolicy==='analysis-alias-rfc6902-members-v1'?{jsonPatchMembers:'rfc6902'}:undefined)
 }
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 const hash=(value:unknown)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
@@ -469,7 +470,8 @@ export function validateMvuSchemaStoryPlan<T extends MvuSchemaStoryPlan>(input:T
       ...(value.schemaVersion===6||value.schemaVersion===7?['parserPolicy']:[])])
   if('errorPolicy' in value&&value.errorPolicy!=='registered-command-policy-v1'
     &&value.errorPolicy!=='update-batch-atomic-v1')fail()
-  if('parserPolicy' in value&&value.parserPolicy!=='analysis-alias-v1')fail()
+  if('parserPolicy' in value&&value.parserPolicy!=='analysis-alias-v1'
+    &&value.parserPolicy!=='analysis-alias-rfc6902-members-v1')fail()
   fact(value,'planSha256');validateMvuSchemaNumericalSnapshot(value.base)
   validateSchemaStorySourceFrame(value.currentFrame)
   const scope=value.scope,currency=scope.currency,receipt=scope.receipt,canonical=value.canonical,frame=value.currentFrame
@@ -544,7 +546,8 @@ function validateStoryRevisionPlanV2(value:MvuSchemaStoryRevisionPlanV2):MvuSche
     'scopeReadFrame','epoch','serverProgramSha256','revision','execution','logicalNativeCut'],['errorPolicy','parserPolicy'])
   if('errorPolicy' in value&&value.errorPolicy!=='registered-command-policy-v1'
     &&value.errorPolicy!=='update-batch-atomic-v1')fail()
-  if('parserPolicy' in value&&value.parserPolicy!=='analysis-alias-v1')fail()
+  if('parserPolicy' in value&&value.parserPolicy!=='analysis-alias-v1'
+    &&value.parserPolicy!=='analysis-alias-rfc6902-members-v1')fail()
   fact(value,'planSha256')
   validateMvuSchemaNumericalSnapshot(value.base)
   validateSchemaStorySourceFrame(value.currentFrame)

@@ -68,11 +68,11 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
       freezeMvuSchemaStoryData({
         ...(hostEpoch?{schemaVersion:6 as const,encoding:'native-mvu-schema-story-plan-v6' as const,
           epoch:hostEpoch.epoch,serverProgramSha256:hostEpoch.serverProgramSha256,
-          parserPolicy:'analysis-alias-v1' as const,
+          parserPolicy:'analysis-alias-rfc6902-members-v1' as const,
           ...(hostEpoch.errorPolicy?{errorPolicy:hostEpoch.errorPolicy}:{})}:
           {schemaVersion:5 as const,encoding:'native-mvu-schema-story-plan-v5' as const}),
         executorVersion:4 as const,scope,canonical,base:validateMvuSchemaNumericalSnapshot(base),
-        candidate:parseMvuSchemaStoryCandidateV2(canonical.narrative,hostEpoch?'analysis-alias-v1':undefined),
+        candidate:parseMvuSchemaStoryCandidateV2(canonical.narrative,hostEpoch?'analysis-alias-rfc6902-members-v1':undefined),
         scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame),...suffix}):
       freezeMvuSchemaStoryData({schemaVersion:4 as const,encoding:'native-mvu-schema-story-plan-v4' as const,
         executorVersion:3 as const,scope,canonical,base:validateMvuSchemaNumericalSnapshot(base),

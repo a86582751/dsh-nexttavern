@@ -32351,6 +32351,26 @@
       "source": "development/history/author-host-runtime-v5-update-batch-v1-build/package-lock.json"
     },
     {
+      "id": "c20-rfc-members-before-20261023-server-dist-tavern-mvu-schema-worker-mjs",
+      "source": "development/history/c20-rfc-members-before-20261023/server/dist/tavern-mvu-schema-worker.mjs"
+    },
+    {
+      "id": "c20-rfc-members-before-20261023-server-package-json",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/package.json"
+    },
+    {
+      "id": "c20-rfc-members-before-20261023-host-assets-source-inputs-json",
+      "source": "development/history/c20-rfc-members-before-20261023/host/assets/source-inputs.json"
+    },
+    {
+      "id": "c20-rfc-members-before-20261023-host-src-core-roleplay-mvu-update-v2-ts",
+      "source": "development/history/c20-rfc-members-before-20261023/host/src/core/roleplay-mvu-update-v2.ts"
+    },
+    {
+      "id": "c20-rfc-members-before-20261023-host-package-json",
+      "source": "development/author-host-runtime-v5-update-batch-v1/package.json"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },

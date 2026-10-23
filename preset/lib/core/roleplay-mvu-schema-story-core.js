@@ -1572,7 +1572,22 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             const message = projection.projectedMessageAt(target.seq) ?? target.data.message, narrative = textOf(message.content);
             return { seq: target.seq, messageId: original.plan.canonical.messageId, versionSha256: recordSha256(message), narrative, narrativeSha256: sha256(narrative) };
         });
-        const candidates = canonical.map(body => body && parseMvuSchemaStoryCandidateV2(body.narrative, 'analysis-alias-v1'));
+        // Recovery consumes the saved candidate before preflight, including its
+        // historical parser policy. A new edit inherits its original Story policy.
+        const storedRef = stored ? { key: descriptorKey, sha256: recordSha256(stored) } : undefined;
+        const savedPlans = originals.map((_original, index) => {
+            const raw = storedRef && prefixInputs.status.get(mvuSchemaStoryRevisionPlanKey(sid, recordSha256({ descriptor: storedRef, index })));
+            if (!raw)
+                return;
+            const plan = raw;
+            return plan.schemaVersion === 9 ? validateMvuSchemaPlayerRevisionPlan(plan) : validateMvuSchemaStoryPlan(plan);
+        });
+        const candidates = canonical.map((body, index) => {
+            if (!body)
+                return null;
+            const saved = savedPlans[index], original = originals[index].plan;
+            return saved?.schemaVersion === 8 ? saved.candidate : parseMvuSchemaStoryCandidateV2(body.narrative, 'parserPolicy' in original ? original.parserPolicy : undefined);
+        });
         if (candidates.some(candidate => candidate?.kind === 'rejected'))
             return true;
         let captured, basisRecord;
@@ -1667,12 +1682,9 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             try {
                 for (const [index, original] of originals.entries()) {
                     const planKey = mvuSchemaStoryRevisionPlanKey(sid, recordSha256({ descriptor: ref, index }));
-                    const planRaw = prefixInputs.status.get(planKey);
                     let plan;
-                    if (planRaw) {
-                        const supplied = planRaw;
-                        plan = supplied.schemaVersion === 9 ? validateMvuSchemaPlayerRevisionPlan(supplied) : validateMvuSchemaStoryPlan(supplied);
-                    }
+                    if (savedPlans[index])
+                        plan = savedPlans[index];
                     else {
                         const selectors = original.encoding === 'native-mvu-schema-player-event-v1'
                             ? deriveMvuSchemaPlayerRevisionSelectors(original.plan.operation, entries[index].event, ref, index, sid)
@@ -1699,7 +1711,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                             const { planSha256: _old, ...originalPlan } = original.plan;
                             plan = validateMvuSchemaStoryPlan(sealMvuSchemaStoryFact({ ...originalPlan, schemaVersion: 8,
                                 encoding: 'native-mvu-schema-story-revision-plan-v2', canonical: canonical[index],
-                                candidate: candidates[index], parserPolicy: 'analysis-alias-v1', executorVersion: 4,
+                                candidate: candidates[index], executorVersion: 4,
                                 base, currentFrame: frame, initialCut: cut, selectors,
                                 randomSeed: recordSha256({ scope: original.plan.scope, canonical: canonical[index], revision: ref, index }),
                                 epoch: priorReady.epochRef, serverProgramSha256: priorReady.epoch.program.serverProgram.programSha256,
@@ -1811,11 +1823,13 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         // Only an accepted mutation may start work; GET recovers durable revision artifacts.
         if (!descriptor && requestedSeq === undefined)
             return;
+        let savedPlan;
         if (descriptor) {
             const planKey = mvuSchemaStoryRevisionPlanKey(sid, recordSha256(descriptor));
             const planRaw = prefixInputs.status.get(planKey);
             if (planRaw) {
                 const plan = validateMvuSchemaStoryPlan(planRaw);
+                savedPlan = plan;
                 const eventRaw = prefixInputs.status.get(mvuSchemaStoryRevisionEventKey(sid, revisionPlanEventId(plan)));
                 if (eventRaw) {
                     const event = validateMvuSchemaStoryRevisionEvent(eventRaw), head = prefixInputs.status.get(mvuStateCurrentHeadKey(sid));
@@ -1843,7 +1857,9 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         const message = deps.editProtocol.editMessageText(target.data.message, edit.data);
         const canonical = { seq: target.seq, messageId: message.id, versionSha256: recordSha256(message),
             narrative: textOf(message.content), narrativeSha256: sha256(textOf(message.content)) };
-        const parserPolicy = 'analysis-alias-v1', candidate = parseMvuSchemaStoryCandidateV2(canonical.narrative, parserPolicy);
+        const parserPolicy = savedPlan ? savedPlan.parserPolicy :
+            'parserPolicy' in originalEvent.plan ? originalEvent.plan.parserPolicy : undefined;
+        const candidate = savedPlan?.candidate ?? parseMvuSchemaStoryCandidateV2(canonical.narrative, parserPolicy);
         // A rejected text remains saved and denied. It cannot produce an event,
         // so do not spend a Native rewind or any author phase on it.
         if (candidate.kind === 'rejected')
@@ -1903,7 +1919,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                 const { planSha256: _oldPlanHash, ...originalPlan } = originalEvent.plan;
                 plan = validateMvuSchemaStoryPlan(sealMvuSchemaStoryFact({ ...originalPlan,
                     schemaVersion: 7, encoding: 'native-mvu-schema-story-revision-plan-v1',
-                    canonical, candidate, parserPolicy, base: basis.snapshot, currentFrame: frame, initialCut, selectors,
+                    canonical, candidate, base: basis.snapshot, currentFrame: frame, initialCut, selectors,
                     randomSeed: recordSha256({ scope: originalEvent.plan.scope, canonical, revision: ref }),
                     executorVersion: 4, epoch: priorHistory.ready.epochRef,
                     serverProgramSha256: priorReady.epoch.program.serverProgram.programSha256,

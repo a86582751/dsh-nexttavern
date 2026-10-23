@@ -40,7 +40,7 @@
       {
         "artifact": "roleplay-mvu-update-v2-typescript",
         "path": "src/core/roleplay-mvu-update-v2.ts",
-        "sha256": "436adb17a4752b11386dcc9218d3990d686b561d6f40c126490c5df45970508c"
+        "sha256": "a2aad26c6559287869b5bb2bfae6a4792fc82914bd63daa60d2eaafdf99577cb"
       },
       {
         "artifact": "roleplay-mvu-update-typescript",
