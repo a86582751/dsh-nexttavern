@@ -20,7 +20,7 @@
 
 [在线文档](https://a86582751.github.io/dsh-nexttavern/) · [一键安装](#一键安装) · [开始体验](#开始体验) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md) · [核心能力](#核心能力) · [记忆系统](#记忆系统) · [架构设计](#架构设计) · [手机电脑公网访问指南](PUBLIC-ACCESS.md) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose) · [0.3开发日志](DEVELOPMENT-0.3.md)
 
-**角色卡作者与社区开发者：** 下面四篇介绍运行机制、格式字段和创作示例。内容对应 **0.3 开发线，尚未随正式 0.3 发布**；Native 1.0／1.1 是卡文件格式版本。
+**角色卡作者与社区开发者：** 下面四篇介绍运行机制、格式字段和创作示例。内容对应 **0.3 开发线，尚未随正式 0.3 发布**；Native 1.0／1.1 是卡文件格式版本。随包 Native 参考卡也属于 0.3 开发线，当前正式版 **0.2.9 不含本批卡片**。
 
 | 从哪里开始 | 能学到什么 |
 | --- | --- |
@@ -28,6 +28,8 @@
 | [原生卡格式与创作教程](NATIVE-CARD-FORMAT.md) | 从完整 JSON 示例创作，编写 EJS 动态模板，理解人物、规则、开场和 1.0／1.1 的区别 |
 | [原生状态系统、MVU 与 Ruby](NATIVE-STATE.md) | 理解原生数值与分析任务机制，为作品加入初值、回合更新及社区兼容能力 |
 | [社区预设与正则](COMMUNITY-PRESETS.md) | 编写预设、组织提示词，区分请求变换与阅读显示 |
+
+完整 Native 1.0 参考卡：[索引与字段导览](preset/reference/README.md)；[龙女皇：查看 JSON](preset/reference/dragon-empress.native.json) · [下载 JSON](https://raw.githubusercontent.com/a86582751/dsh-nexttavern/main/preset/reference/dragon-empress.native.json)；[Steam Tide：查看 JSON](preset/reference/steam-tide.native.json) · [下载 JSON](https://raw.githubusercontent.com/a86582751/dsh-nexttavern/main/preset/reference/steam-tide.native.json)。Steam Tide 索引也指向值班简报 Prompt hook、市场闲谈互斥、临时告示持续／冷却及累计 `author.log` 的作者路径。该卡的整卡 Core 路径已通过受控 fixture 测试；测试未使用真实模型，也未在 Harness／正式产品宿主或完整浏览器 DOM 中运行，不代表 0.3 整体验收或发行完成。
 
 ![沉浸式游玩](screenshots/play.png)
 

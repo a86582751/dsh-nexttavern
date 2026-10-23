@@ -4,11 +4,31 @@
 
 本文描述 0.3 开发线；**0.3 尚未正式发布**，发行信息见[开发日志](DEVELOPMENT-0.3.md)。
 
-快速查阅：[完整示例](#1-从一份能继续创作的卡开始) · [字段参考](#2-文档结构与校验边界) · [世界书控制](COMMUNITY-CARDS.md#4-世界书怎样进入本轮剧情) · [开场](#5-开场正文模板和目录) · [Native 1.1](#7-native-11保留执行原文另建高级视图) · [EJS 模板与 API](#8-ejs-作者模板动态文本与世界书联动) · [导入与导出](#10-导入互动写卡转换与导出)
+快速查阅：[完整示例](#1-从一份能继续创作的卡开始) · [完整 Native 1.0 参考卡](preset/reference/README.md) · [字段参考](#2-文档结构与校验边界) · [世界书控制](COMMUNITY-CARDS.md#4-世界书怎样进入本轮剧情) · [开场](#5-开场正文模板和目录) · [Native 1.1](#7-native-11保留执行原文另建高级视图) · [EJS 模板与 API](#8-ejs-作者模板动态文本与世界书联动) · [导入与导出](#10-导入互动写卡转换与导出)
+
+完整卡例属于 **0.3 开发线作者参考**，不包含在当前正式版 0.2.9 中：[龙女皇：查看 JSON](preset/reference/dragon-empress.native.json) · [下载 JSON](https://raw.githubusercontent.com/a86582751/dsh-nexttavern/main/preset/reference/dragon-empress.native.json)；[Steam Tide：查看 JSON](preset/reference/steam-tide.native.json) · [下载 JSON](https://raw.githubusercontent.com/a86582751/dsh-nexttavern/main/preset/reference/steam-tide.native.json)。
 
 ## 1. 从一份能继续创作的卡开始
 
 把下面的完整 JSON 保存成 UTF-8 文件，例如 `雾港灯塔.json`，通过角色卡导入入口载入。它包含玩家身份、一位主要人物、常驻背景、按需查阅的地点、剧情与文风规则，以及两个可选择的开场。没有数值系统或前端脚本，适合先检查人物与故事能否独立成立。
+
+先用这份精简卡熟悉人物、规则、世界书和开场；再按要学习的功能打开[龙女皇](preset/reference/dragon-empress.native.json)或[Steam Tide](preset/reference/steam-tide.native.json)。龙女皇展示原稿归档、分段映射和只读 EJS 展示；Steam Tide 展示玩家与 NPC 资料、Native 数值、社区世界书、港口界面、值班简报 Prompt hook、互斥闲谈条目、限时告示与可选 Ruby 任务。具体字段路径如下：
+
+| 学习点 | 完整卡中的位置 |
+| --- | --- |
+| 原文归档与范围映射 | 龙女皇 `/archive/referenceSource`、`/archive/referenceSource/ranges` |
+| 数值初值与规则 | 两张卡的 `/data/character_book/entries/0` `[InitVar]`；Steam Tide 的 `/data/extensions/tavern_helper/scripts/1` 是 schema |
+| 世界书条目 | Steam Tide `/data/character_book/entries`；龙女皇 `/data/worldbook/9/content` 展示已提交数值 |
+| 命名 outlet | Steam Tide `/data/rules/core` 中的 `{{outlet::steam_tide_watch}}`，由简报 Prompt hook 注入 |
+| 前端展示 | Steam Tide `/data/extensions/tavern_helper/scripts/2/data/html` |
+| 值班简报 Prompt hook | Steam Tide `/data/extensions/tavern_helper/scripts/3` |
+| 互斥与限时条目 | Steam Tide `/data/character_book/entries/19`（条目 ID 60）、`/20`（ID 61，同组互斥）；`/21`（ID 62，持续与冷却） |
+| 累计结构化日志 | Steam Tide `scripts[2].data.html` 使用 `getVariables` 与 `insertOrAssignVariables` 维护聊天变量 `author.log` |
+| Ruby 任务 | Steam Tide `/data/extensions/RubyAnalyzer/presets/0/tasks/0`，默认关闭 |
+
+完整卡、单独下载和字段导览都在[随包参考卡索引](preset/reference/README.md)。先从简例掌握栏目，再按表中路径查看完整卡的数值、世界书与前端如何组合。
+
+Steam Tide 的整卡 Core 路径已通过受控 fixture 测试，覆盖四个 Story、简报注入与清理、互斥条目、递归、命名 outlet、临时告示计时和累计日志。验证没有使用真实模型，也没有在 Harness／正式产品宿主或完整浏览器 DOM 中运行；这项结果不代表 0.3 整体验收或发行完成。世界书扫描深度、预算及递归策略由会话 owner 提供，卡片不在世界书根部声明这些全局策略。
 
 ```json
 {
