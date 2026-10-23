@@ -220,7 +220,9 @@ export function verifyInheritedCompletedFact(input: MvuInheritedCompletedFactReq
         }
       } else if (event.type === 'turn/end') {
         const row = data(event)
-        if (!open || row.turn !== open.turn || open.openStep !== undefined || !open.firstStepStartSeq || open.lastStep < 1) return false
+        // Native permits an aborted historical turn before its first step.
+        // The selected receipt below owns first-step and completed-end proof.
+        if (!open || row.turn !== open.turn || open.openStep !== undefined) return false
         open.end = event
         if (event.seq === receipt.turnEndSeq) completedEntries = [...entries.values()].map(entry => ({...entry}))
         open = undefined
