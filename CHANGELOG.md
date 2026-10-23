@@ -1,5 +1,13 @@
 # Changelog
 
+## 开发记录 — Native 参考卡与创作流程对齐 — 2026-10-24
+
+- 新增两张完整 Native 1.0 参考卡：龙女皇保留原 Markdown 全文归档；《雾港第十三声钟》组合四个作者脚本与 22 条世界书，展示值班简报 Prompt hook、互斥闲谈、持续／冷却告示及累计日志。作者教程新增完整卡片下载入口与字段导览。
+- 默认 Native JSON 写卡与完成研究后的小说改编共用定稿入口；对齐 DOCX 原生导入、原始来源与当前设定导出的说明。修复新卡归档路径，以及启用作者脚本的 Native 卡未进入相应开场执行链的问题。
+- 本批通过限定卡片与 Core 测试，未完成正式宿主的整卡玩法验收；0.3 尚未发布，也未部署运行服务。参见 [Native 卡格式手册](NATIVE-CARD-FORMAT.md)和[完整参考卡索引](preset/reference/README.md)。
+
+English: Add complete Dragon Empress and Steam Tide Native reference cards, including four author scripts, 22 worldbook entries, briefing hooks, timed notices, and cumulative logs. Align authoring and novel adaptation, fix archived draft paths and Native script opening dispatch, and publish the card index. Scoped checks do not constitute full host acceptance; 0.3 remains unreleased with no runtime deployment.
+
 ## 文档 — 0.3 作者手册与官网同步 — 2026-10-24
 
 - 将[社区卡与世界书](COMMUNITY-CARDS.md)、[原生卡创作](NATIVE-CARD-FORMAT.md)、[原生状态与分析](NATIVE-STATE.md)、[社区预设与正则](COMMUNITY-PRESETS.md)扩展为技术手册，加入完整卡片示例、字段参考、执行顺序、排错与源码入口。
