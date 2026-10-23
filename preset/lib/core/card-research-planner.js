@@ -20,8 +20,8 @@ async function lock(key, work) {
 }
 /** Original evidence is shared; protagonist, opening choice and unknowns remain owner-local. */
 export function createResearchPlanner(table, loadSource, assessLongitudinal) {
-    function load(owner, id) {
-        const source = loadSource(owner, id), stored = table.get(planKey(owner, id));
+    function loadPlan(source, owner, id) {
+        const stored = table.get(planKey(owner, id));
         if (stored == null)
             return null;
         // Reject a swapped record before validating owner-derived packet IDs, so a corrupted
@@ -29,8 +29,12 @@ export function createResearchPlanner(table, loadSource, assessLongitudinal) {
         const identity = object(stored);
         if (identity.owner !== owner || identity.sourceId !== id)
             throw Error('研究计划归属与当前原著不匹配');
-        const plan = validatePlan(source, stored);
-        return structuredClone(plan);
+        return validatePlan(source, stored);
+    }
+    function load(owner, id) {
+        // Decoding constructs an owned plan graph, so callers can edit it without
+        // another clone of the already independent result.
+        return loadPlan(loadSource(owner, id), owner, id);
     }
     function baseRecord(source) {
         const stored = table.get(baseKey(source));
@@ -64,21 +68,24 @@ export function createResearchPlanner(table, loadSource, assessLongitudinal) {
         };
         unique(base.entries, f => f.id, '共享原著事实 ID');
         return {
-            exists: true, base: structuredClone(base)
+            exists: true, base
         };
     }
-    const base = (source) => baseRecord(source).base;
-    function entries(owner, id) {
-        const source = loadSource(owner, id), shared = base(source).entries, privateEntries = load(owner, id)?.entries ?? [], ids = new Set(shared.map(f => f.id));
+    function entriesOf(shared, privateEntries) {
+        const ids = new Set(shared.map(f => f.id));
         for (const fact of privateEntries) {
             if (ids.has(fact.id))
                 throw Error('私有研究条目与共享原著事实 ID 冲突');
             ids.add(fact.id);
         }
-        return [...shared, ...privateEntries].map(f => structuredClone(f));
+        return [...shared, ...privateEntries];
     }
-    function assess(owner, id) {
-        const source = loadSource(owner, id), plan = load(owner, id), facts = entries(owner, id), verified = facts.filter(f => f.certainty === 'verified-original'), count = Math.min(10, source.segments.length);
+    function entries(owner, id) {
+        const source = loadSource(owner, id), plan = loadPlan(source, owner, id);
+        return entriesOf(baseRecord(source).base.entries, plan?.entries ?? []);
+    }
+    function assessFrom(source, plan, facts) {
+        const verified = facts.filter(f => f.certainty === 'verified-original'), count = Math.min(10, source.segments.length);
         const bins = Array.from({
             length: count
         }, (_, i) => {
@@ -124,11 +131,17 @@ export function createResearchPlanner(table, loadSource, assessLongitudinal) {
             caveat: '区间抽查、专题和因果证据达标不等于完整通读或无遗漏；原著未来事件不能覆盖当前世界线，读者获知章节不等于角色知情。'
         };
     }
+    function assess(owner, id) {
+        const source = loadSource(owner, id), plan = loadPlan(source, owner, id);
+        return assessFrom(source, plan, entriesOf(baseRecord(source).base.entries, plan?.entries ?? []));
+    }
     function view(owner, id) {
-        const plan = load(owner, id);
+        // One synchronous projection owns one source/plan/base read. Public entry
+        // points still decode independently when called outside this projection.
+        const source = loadSource(owner, id), plan = loadPlan(source, owner, id);
         if (!plan)
             return undefined;
-        const all = entries(owner, id), pending = plan.frontier.filter(item => item.state === 'pending').sort((a, b) => b.priority - a.priority
+        const all = entriesOf(baseRecord(source).base.entries, plan.entries), pending = plan.frontier.filter(item => item.state === 'pending').sort((a, b) => b.priority - a.priority
             || a.query.localeCompare(b.query));
         return {
             schemaVersion: 2,
@@ -137,13 +150,13 @@ export function createResearchPlanner(table, loadSource, assessLongitudinal) {
             status: plan.status,
             target: structuredClone(plan.target),
             budget: structuredClone(plan.budget),
-            coverage: assess(owner, id),
+            coverage: assessFrom(source, plan, all),
             frontier: {
                 pending: pending.length,
                 queried: plan.frontier.filter(item => item.state === 'queried').length,
                 deferred: plan.frontier.filter(item => item.state === 'deferred').length,
                 next: structuredClone(pending.slice(0, 4)),
-                sampleSegments: sampleSegments(loadSource(owner, id))
+                sampleSegments: sampleSegments(source)
             },
             entries: all.slice(0, 10).map(f => ({
                 id: f.id, category: f.category, statement: f.statement.slice(0, 400), certainty: f.certainty

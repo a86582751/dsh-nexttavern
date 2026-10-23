@@ -300,17 +300,6 @@ export function calculatePromptOpeningRawInitV1(input) {
 function inspectPromptOpeningWholeSourceV1(input) {
     const { source, decoded, record, program, context, bindings } = input, initByPointer = new Map(bindings.rawEntries.filter(entry => entry.isInitVar).map(entry => [entry.sourcePointer, entry]));
     const native = program.importTuple.format === 'json-nexttavern-v1';
-    // Scoped regex metadata belongs to the bounded Transform owner. Keeping
-    // it in the old NoBook extension check strands generated plain openings
-    // without the program's absence domain for their next actual Story.
-    const extensions = decoded.data.extensions, literalExtensions = openingSourceObject(extensions)
-        ? Object.fromEntries(Object.entries(extensions).filter(([key]) => key !== 'regex_scripts')) : extensions;
-    try {
-        assertMvuNonSchemaSourceExtensionsV1(literalExtensions, '/data/extensions');
-    }
-    catch {
-        return openingSourceFail('OPENING_SOURCE_STATE_SYNTAX_UNSUPPORTED', '/data/extensions');
-    }
     const rawSpecial = new Set(program.authorFields.map(field => field.originalPointer));
     for (const entry of bindings.rawEntries)
         rawSpecial.add(entry.sourcePointer + '/content');
@@ -341,8 +330,27 @@ function inspectPromptOpeningWholeSourceV1(input) {
     };
     // The native format enumerates all executable author fields below. Its
     // archive and open metadata are portable values, never interpreter input.
-    if (!native)
+    if (native) {
+        const extensions = decoded.data.extensions, helper = openingSourceObject(extensions) ? extensions.tavern_helper : undefined, scripts = openingSourceObject(helper) ? helper.scripts : undefined;
+        // Enabled author scripts belong to the existing combined opening owner.
+        // Claiming their card here would initialize a raw root without running them.
+        if (Array.isArray(scripts) && scripts.some(script => openingSourceObject(script) && script.enabled === true))
+            openingSourceFail('OPENING_SOURCE_STATE_SYNTAX_UNSUPPORTED', '/data/extensions/tavern_helper/scripts');
+    }
+    if (!native) {
+        // Scoped regex metadata belongs to the bounded Transform owner. Keeping
+        // it in the old NoBook extension check strands generated plain openings
+        // without the program's absence domain for their next actual Story.
+        const extensions = decoded.data.extensions, literalExtensions = openingSourceObject(extensions)
+            ? Object.fromEntries(Object.entries(extensions).filter(([key]) => key !== 'regex_scripts')) : extensions;
+        try {
+            assertMvuNonSchemaSourceExtensionsV1(literalExtensions, '/data/extensions');
+        }
+        catch {
+            return openingSourceFail('OPENING_SOURCE_STATE_SYNTAX_UNSUPPORTED', '/data/extensions');
+        }
         walk(decoded.document, '', rawSpecial);
+    }
     for (const field of program.authorFields) {
         if (field.raw)
             programText(field.raw, field.originalPointer);

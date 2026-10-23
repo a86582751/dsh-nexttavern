@@ -148,8 +148,8 @@ export function createCommunityPresetExecution(input:CommunityExecutionInput) {
     const results:CommunityExecutionRecord['prompts']=[]
     const sections=layout.sections.map(section=>({...section}))
     const requiredSections=[...layout.requiredSections]
-    const insertions:Insertion[]=[...layout.insertions]
-    const anchoredInsertions=[...layout.anchoredInsertions]
+    let insertions:Insertion[]=[...layout.insertions]
+    let anchoredInsertions=[...layout.anchoredInsertions]
     const sectionByName=new Map(sections.map(section=>[section.name,section]))
     const consumed=new Set<string>()
     const consumeSection=(name:string)=>{
@@ -167,10 +167,15 @@ export function createCommunityPresetExecution(input:CommunityExecutionInput) {
     const dream=preset.profile.id==='dream'&&processing.enabled!==false
     if(dream&&object(processing.entry_processing).mode==='worldbook'){
       const metadata=new Map((input.loreEntries??[]).map(entry=>[entry.entryId,entry]))
+      const placementById=new Map<string,typeof finish.evaluation.placements[number]>()
+      for(const placement of finish.evaluation.placements) {
+        // Evaluation order owns the first placement, just as the former find.
+        if(!placementById.has(placement.entryId))placementById.set(placement.entryId,placement)
+      }
       const staticTexts:string[]=[],dynamicTexts:string[]=[]
       const movedIds=new Set<string>()
       for(const row of finish.finalLore){
-        const placement=finish.evaluation.placements.find(placement=>placement.entryId===row.entryId)
+        const placement=placementById.get(row.entryId)
         if(!placement||placement.position==='named-outlet')continue
         const entry=metadata.get(row.entryId)
         ;(entry?.constant&&!entry.dynamic?staticTexts:dynamicTexts).push(row.text);movedIds.add(row.entryId)
@@ -179,12 +184,9 @@ export function createCommunityPresetExecution(input:CommunityExecutionInput) {
       outlets.lora_key=dynamicTexts.filter(Boolean).join('\n\n')
       for(const name of ['roleplay:lore-before-character','roleplay:lore-after-character',
         'roleplay:lore-before-examples','roleplay:lore-after-examples'])consumeSection(name)
-      for(let index=insertions.length-1;index>=0;index--){
-        if([...movedIds].some(id=>insertions[index]!.contributionRef===`lore-${id}`))insertions.splice(index,1)
-      }
-      for(let index=anchoredInsertions.length-1;index>=0;index--){
-        if([...movedIds].some(id=>anchoredInsertions[index]!.contributionRef===`lore-${id}`))anchoredInsertions.splice(index,1)
-      }
+      const movedRefs=new Set([...movedIds].map(id=>`lore-${id}`))
+      insertions=insertions.filter(row=>!movedRefs.has(row.contributionRef))
+      anchoredInsertions=anchoredInsertions.filter(row=>!movedRefs.has(row.contributionRef))
       if(movedIds.size&&!metadata.size)adaptations.push({code:'dream-lore-without-static-metadata',identifiers:[...movedIds]})
     }
     const transport={...preset.profile.transport,...object(configuration.transport)}

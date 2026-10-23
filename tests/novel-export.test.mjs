@@ -236,4 +236,59 @@ const legacy=JSON.parse(readFileSync(new URL('./fixtures/novel-export-legacy-v1.
   assert.equal(organized.mode,'organized');assert.equal(organized.execution,'inline')
   await assert.rejects(api.begin(session,undefined,{mode:'organized'}),/模型选择/)
 }
-console.log('novel-export=ok (original bytes/order, zero model requests, organized coverage, legacy checkpoints, frozen cutoff, retry, cancellation, inline admission)')
+for (const boundary of ['edit-request', 'draft-write', 'verified-write', 'append-request']) {
+  let source = structuredClone(entries), archives = 0, changed = false
+  const session = {id: `novel-boundary-${boundary}`}
+  const change = () => {
+    changed = true
+    source = boundary === 'draft-write' ? source.filter(entry => entry.seq !== 2)
+      : boundary === 'append-request' ? [...source, {seq: 3, role: 'assistant', text: '等待期间追加，不属于冻结稿。'}]
+      : source.map(entry => entry.seq === 2 ? {...entry, text: '等待期间编辑原文。'} : entry)
+  }
+  class BoundaryTable extends Table {
+    async put(key, value) {
+      await super.put(key, value)
+      const results = Object.values(value.results)
+      if (!changed && results.length && ((boundary === 'draft-write' && results.some(result => !result.verified))
+        || (boundary === 'verified-write' && results.every(result => result.verified)))) change()
+    }
+  }
+  const table = new BoundaryTable(), api = createNovelExports({table, history: () => source,
+    request: async spec => {
+      const input = JSON.parse(spec.user)
+      if (input.phase === 'plan') return spec.validate({title: '边界', chapters: [{title: '正文', chunk_ids: input.chunks.map(chunk => chunk.id)}]})
+      if (boundary === 'edit-request' || boundary === 'append-request') change()
+      return spec.validate({paragraphs: input.units.map(unit => ({source_ids: [unit.id]}))})
+    }, archive: async (_session, _job, text) => {
+      archives++; assert.doesNotMatch(text, /等待期间/); return {id: 'boundary-resource', path: 'boundary.md'}
+    }})
+  const job = await api.begin(session, {execution: 'inline'}, {mode: 'organized'})
+  const result = await api.drive(session, job.id, {})
+  assert.equal(changed, true)
+  assert.equal(result.status, boundary === 'append-request' ? 'completed' : 'stale', `${boundary} keeps the source fence after an actual await`)
+  assert.equal(archives, boundary === 'append-request' ? 1 : 0)
+}
+{
+  const table = new Table(), session = {id: 'novel-cancel-archive'}
+  let archives = 0
+  const api = createNovelExports({table, history: () => entries,
+    request: async () => assert.fail('original mode has no model work'),
+    archive: async () => {archives++; await api.cancel(session, job.id); return {id: 'late-resource', path: 'late.md'}}})
+  const job = await api.begin(session)
+  assert.equal((await api.drive(session, job.id, {})).status, 'cancelled')
+  assert.equal(archives, 1)
+  assert.equal(api.get(session, job.id).resourceId, undefined, 'an archive result cannot publish after cancellation')
+}
+console.log('novel-export=ok (original bytes/order, zero model requests, organized coverage, legacy checkpoints, frozen cutoff, retry, cancellation, inline admission, await source fences)')
+
+{
+  const table = new Table(), session = {id: 'novel-missing-optional-text'}
+  let source = Object.freeze([{seq: 1, role: 'assistant', text: '正文'}, {seq: 2, role: 'user'}])
+  const api = createNovelExports({table, history: () => source,
+    request: async () => assert.fail('current reads do not request a model'), archive: async () => assert.fail('no drive')})
+  const job = await api.begin(session)
+  assert.equal(api.current(session, job), true)
+  assert.equal(api.current(session, job), true, 'the same owned snapshot retains identical source semantics')
+  source = Object.freeze(source.filter(entry => entry.seq !== 2))
+  assert.equal(api.current(session, job), false, 'missing seq differs from a present source whose optional text is undefined')
+}

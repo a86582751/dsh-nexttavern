@@ -51,17 +51,22 @@ export function splitAdaptation(text, cap = 24000) {
         throw Error('分段大小无效');
     const chapters = [...text.matchAll(/^[\t \u3000]*(?:第[零〇一二三四五六七八九十百千万两\d]+[章节卷回部篇][^\r\n]{0,90}|chapter\s+\d+[^\r\n]{0,90})[\t ]*$/gim)];
     const result = [];
-    let start = 0, chapterIndex = -1;
+    let start = 0, chapterIndex = -1, boundaryIndex = -1;
     while (start < text.length) {
         while (chapterIndex + 1 < chapters.length && chapters[chapterIndex + 1].index <= start)
             chapterIndex++;
         let end = Math.min(text.length, start + cap);
         // Prefer a chapter boundary near the budget; combine short chapters into useful reading batches.
-        const boundary = chapters.findLast(c => c.index > start + cap / 2 && c.index <= end);
+        while (boundaryIndex + 1 < chapters.length && chapters[boundaryIndex + 1].index <= end)
+            boundaryIndex++;
+        const candidate = chapters[boundaryIndex];
+        const boundary = candidate && candidate.index > start + cap / 2 ? candidate : undefined;
         if (end < text.length && boundary)
             end = boundary.index;
         else if (end < text.length) {
-            const newline = text.lastIndexOf('\n', end - 1);
+            let newline = end - 1;
+            while (newline > start + cap / 2 && text[newline] !== '\n')
+                newline--;
             if (newline > start + cap / 2)
                 end = newline + 1;
             else if (/[\uD800-\uDBFF]/.test(text[end - 1]))
@@ -87,6 +92,39 @@ export function splitAdaptation(text, cap = 24000) {
     return result;
 }
 export function createAdaptationStore(table) {
+    // Domain DATA is immutable and put replaces its identity. Static decoding is
+    // owned here; cold rows and external replacements cannot reuse these facts.
+    const sourceFacts = new WeakMap();
+    function sourceIntegrity(source) {
+        let facts = sourceFacts.get(source);
+        if (!facts) {
+            if (source.textSha256 !== hash(source.text))
+                throw Error('写卡资料不可用或来源完整性检查失败；不能读取其他会话资料');
+            facts = {};
+            sourceFacts.set(source, facts);
+        }
+        return facts;
+    }
+    function sourceSnapshot(source) {
+        const facts = sourceIntegrity(source);
+        if (!facts.segmentsChecked) {
+            if (source.schemaVersion !== 1)
+                throw Error('写卡资料不可用或来源完整性检查失败；不能读取其他会话资料');
+            if (!Array.isArray(source.segments) || !source.segments.length
+                || source.segments.some((part, index) => part.id !== index
+                    || part.start !== (index ? source.segments[index - 1].end : 0)
+                    || !Number.isSafeInteger(part.end) || part.end <= part.start || part.end - part.start > 24000)
+                || source.segments.at(-1).end !== source.text.length)
+                throw Error('写卡原文分段记录损坏');
+            facts.segmentsChecked = true;
+        }
+        return source;
+    }
+    function requiresReregister(source) {
+        const facts = sourceFacts.get(source);
+        const calculate = () => source.segments.some(part => !sourceFitsBudget(source.text.slice(part.start, part.end)));
+        return facts ? facts.requiresReregister ??= calculate() : calculate();
+    }
     async function select(owner, id) {
         load(owner, id);
         const current = table.get(selectedKey(owner));
@@ -162,10 +200,10 @@ export function createAdaptationStore(table) {
             || asset.kind !== 'original-asset'
             || asset.assetId !== assetId
             || asset.source.id !== metadata.sourceId
-            || asset.source.textSha256 !== hash(asset.source.text)
             || asset.source.rawSha256 !== metadata.rawSha256
             || asset.source.textSha256 !== metadata.textSha256)
             throw Error('共享原著不存在或完整性校验失败');
+        sourceIntegrity(asset.source);
         return { metadata, source: asset.source };
     }
     function library(owner) {
@@ -195,7 +233,7 @@ export function createAdaptationStore(table) {
         return value;
     }
     async function shareNotebook(owner, source, state) {
-        if (!source.assetId || source.segments.some(p => !sourceFitsBudget(source.text.slice(p.start, p.end))))
+        if (!source.assetId || requiresReregister(source))
             return;
         await locked(notebookKey(source.assetId), async () => {
             const before = notebook(source), next = before ? structuredClone(before) : { schemaVersion: 1,
@@ -386,18 +424,20 @@ export function createAdaptationStore(table) {
         if (!catalog(owner).includes(id))
             throw Error('资料不可用：当前对话未关联此原著，不能读取其他会话资料');
         const reference = shared(owner, id);
-        const source = reference ? { ...original(reference.assetId).source,
-            owner,
-            assetId: reference.assetId } : table.get(sourceKey(owner, id));
+        const storedSource = reference ? original(reference.assetId).source : table.get(sourceKey(owner, id));
+        if (storedSource)
+            sourceSnapshot(storedSource);
+        const source = reference && storedSource ? { ...storedSource, owner, assetId: reference.assetId } : storedSource;
+        if (source && storedSource)
+            sourceFacts.set(source, sourceFacts.get(storedSource));
         const persisted = table.get(stateKey(owner, id));
-        const value = persisted ? structuredClone(persisted) : undefined;
+        let value = persisted;
         if (source && value && value.inheritNotebook !== false) {
             const base = notebook(source), own = new Set(value.notes.map(n => n.segment)), hidden = new Set(value.hiddenNotes ?? []);
             const inherited = base?.notes.filter(n => !own.has(n.segment) && !hidden.has(n.segment)) ?? [];
-            value.notes = [...value.notes.map(n => ({ ...n, sessionId: n.sessionId ?? owner })), ...inherited];
-            value.reads = [...new Set([...value.reads, ...inherited.map(n => n.segment)])];
-            if (base?.status === 'finished' && value.notes.length === source.segments.length)
-                value.status = 'finished';
+            const notes = [...value.notes.map(n => ({ ...n, sessionId: n.sessionId ?? owner })), ...inherited];
+            value = { ...value, notes, reads: [...new Set([...value.reads, ...inherited.map(n => n.segment)])],
+                status: base?.status === 'finished' && notes.length === source.segments.length ? 'finished' : value.status };
         }
         if (!source
             || !value
@@ -406,29 +446,20 @@ export function createAdaptationStore(table) {
             || source.owner !== owner
             || value.owner !== owner
             || source.id !== id
-            || value.sourceId !== id
-            || source.textSha256 !== hash(source.text))
+            || value.sourceId !== id)
             throw Error('写卡资料不可用或来源完整性检查失败；不能读取其他会话资料');
-        if (!Array.isArray(source.segments)
-            || !source.segments.length
-            || source.segments.some((p, i) => p.id !== i
-                || p.start !== (i ? source.segments[i - 1].end : 0)
-                || !Number.isSafeInteger(p.end)
-                || p.end <= p.start
-                || p.end - p.start > 24000)
-            || source.segments.at(-1).end !== source.text.length)
-            throw Error('写卡原文分段记录损坏');
+        const reads = new Set(value.reads);
         if (!['reading',
             'finished'].includes(value.status)
             || !Number.isSafeInteger(value.revision)
             || !Number.isSafeInteger(value.checkpointSeq)
             || !Array.isArray(value.reads)
             || !Array.isArray(value.notes)
-            || new Set(value.reads).size !== value.reads.length
+            || reads.size !== value.reads.length
             || new Set(value.notes.map(n => n.segment)).size !== value.notes.length
             || value.reads.some(i => !Number.isSafeInteger(i)
                 || !source.segments[i])
-            || value.notes.some(n => !value.reads.includes(n.segment)
+            || value.notes.some(n => !reads.has(n.segment)
                 || typeof n.evidence !== 'string'
                 || !source.text.slice(source.segments[n.segment].start, source.segments[n.segment].end).includes(n.evidence)))
             throw Error('写卡进度或笔记记录损坏');
@@ -446,7 +477,7 @@ export function createAdaptationStore(table) {
     }
     function summary(source, state) {
         const checked = new Set(state.notes.map(n => n.segment));
-        const requiresReregister = source.segments.some(p => !sourceFitsBudget(source.text.slice(p.start, p.end)));
+        const needsReregister = requiresReregister(source);
         return { sourceId: source.id,
             ...(source.assetId ? { assetId: source.assetId } : {}),
             name: source.name,
@@ -468,8 +499,8 @@ export function createAdaptationStore(table) {
             indexPreparationError: state.indexPreparationError
                 ?? null,
             reusable: checked.size > 0,
-            requiresReregister,
-            coverageMeaning: requiresReregister ? '旧分段超过当前安全输出预算，历史已读标记不能证明完整送达。请重新 begin 原路径生成安全分段；旧笔记保留供核对，新资料须完整重读。' : '已返回原文并保存带证据笔记；程序不能证明模型理解正确。全文与笔记不自动注入剧情。' };
+            requiresReregister: needsReregister,
+            coverageMeaning: needsReregister ? '旧分段超过当前安全输出预算，历史已读标记不能证明完整送达。请重新 begin 原路径生成安全分段；旧笔记保留供核对，新资料须完整重读。' : '已返回原文并保存带证据笔记；程序不能证明模型理解正确。全文与笔记不自动注入剧情。' };
     }
     async function begin(owner, cwd, path, encoding) {
         const file = readCardSource(cwd, path, 64_000_000);

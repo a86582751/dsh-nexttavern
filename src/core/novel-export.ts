@@ -29,7 +29,7 @@ interface RequestSpec<T, S extends Session, A> {
 }
 interface Dependencies<S extends Session, A> {
   table: { get(key: string): unknown; entries(): Iterable<[string, unknown]>; put(key: string, value: NovelExportJob): unknown | Promise<unknown> }
-  history(session: S): StoryEntry[]
+  history(session: S): readonly Readonly<StoryEntry>[]
   request<T>(spec: RequestSpec<T, S, A>): Promise<T>
   archive(session: S, job: NovelExportJob, markdown: string): Promise<{ id: string; path: string }>
 }
@@ -77,6 +77,7 @@ function chunksOf(units: NovelUnit[]): SourceChunk[] {
 
 export function createNovelExports<S extends Session = Session, A = unknown>({ table, history, request, archive }: Dependencies<S, A>) {
   const active = new Map<string, { generation: string; promise: Promise<NovelExportJob> }>()
+  const historyIndices = new WeakMap<readonly Readonly<StoryEntry>[], Map<number, string | undefined>>()
   const get = (session: S, id: string): NovelExportJob => {
     const value = table.get(key(id))
     if (!record(value) || value.sessionId !== session.id) fail('小说任务不属于当前会话')
@@ -86,20 +87,26 @@ export function createNovelExports<S extends Session = Session, A = unknown>({ t
     .filter(([k, value]) => k.startsWith('tavern_novel__') && record(value) && value.sessionId === session.id)
     .map(([, value]) => clone(decodeJob(value)))
   const current = (session: S, job: NovelExportJob): boolean => {
-    const live = new Map(history(session).map(entry => [entry.seq, taskHash(entry.text)]))
-    return job.source.entries.every(entry => live.get(entry.seq) === taskHash(entry.text))
+    const snapshot = history(session)
+    let live = historyIndices.get(snapshot)
+    if (!live) {
+      live = new Map(snapshot.map(entry => [entry.seq, entry.text]))
+      historyIndices.set(snapshot, live)
+    }
+    return job.source.entries.every(entry => live.has(entry.seq) && live.get(entry.seq) === entry.text)
   }
   async function begin(session: S, selection?: Selection, options: { mode?: NovelExportMode } = {}): Promise<NovelExportJob> {
     const mode = options.mode ?? 'original'
     if (mode === 'organized' && !selection) fail('整理导出需要模型选择')
-    const entries = clone(history(session))
+    const entries = clone([...history(session)])
     if (!entries.some(entry => (entry.role ?? entry.kind) === 'assistant')) fail('当前分支没有可导出的完整剧情')
     const source = { entries, cutoff: entries.at(-1)?.seq ?? -1 }
     const units = mode === 'organized' ? novelUnits(entries) : []
-    const existing = list(session).find(job => ['queued', 'running', 'waiting-main'].includes(job.status) && (job.mode ?? 'organized') === mode && job.sourceHash === taskHash(source))
+    const sourceHash = taskHash(source)
+    const existing = list(session).find(job => ['queued', 'running', 'waiting-main'].includes(job.status) && (job.mode ?? 'organized') === mode && job.sourceHash === sourceHash)
     if (existing) return existing
     const id = randomUUID(), job: NovelExportJob = {
-      schemaVersion: 1, id, kind: 'novel-export', sessionId: session.id, branchId: session.id, source, sourceHash: taskHash(source), mode,
+      schemaVersion: 1, id, kind: 'novel-export', sessionId: session.id, branchId: session.id, source, sourceHash, mode,
       ...(mode === 'organized' ? { selection: clone(selection!), actualRoute: selection!.actualRoute } : {}),
       execution: mode === 'original' ? 'deterministic' : selection!.execution,
       chunks: chunksOf(units), results: {}, ...(mode === 'original' ? { plan: { title: '当前世界线原文', chapters: [] } } : {}),
@@ -118,16 +125,20 @@ export function createNovelExports<S extends Session = Session, A = unknown>({ t
         if (!current(session, job)) throw Object.assign(new Error('小说来源已编辑或删除，需要新快照'), { code: 'NOVEL_STALE' })
         return job
       }
-      const save = async (patch: Partial<NovelExportJob>): Promise<void> => { const job = check(); await table.put(key(id), { ...job, ...patch, updatedAt: Date.now() }) }
+      // Callers supply the job checked in this synchronous segment, avoiding
+      // another full source read while composing the same persistence patch.
+      const save = async (job: NovelExportJob, patch: Partial<NovelExportJob>): Promise<void> => {
+        await table.put(key(id), { ...job, ...patch, updatedAt: Date.now() })
+      }
       try {
         let job = check(); if (job.status === 'completed') return job
-        await save({ status: 'running' })
+        await save(job, { status: 'running' })
         if (job.mode === 'original') {
           // The selected history already owns ordering and text extraction. Preserve
           // each frozen string, including whitespace, and only add a fixed separator.
           const markdown = `# ${job.plan!.title}\n\n` + job.source.entries.map(entry => entry.text ?? '').join('\n\n')
           const resource = await archive(session, job, markdown)
-          await save({ status: 'completed', progress: { done: job.source.entries.length, total: job.source.entries.length }, resourceId: resource.id, file: resource.path, resultHash: taskHash(markdown), completedAt: Date.now(), error: null })
+          await save(check(), { status: 'completed', progress: { done: job.source.entries.length, total: job.source.entries.length }, resourceId: resource.id, file: resource.path, resultHash: taskHash(markdown), completedAt: Date.now(), error: null })
           return get(session, id)
         }
         const ask = <T>(phase: 'plan' | 'edit', input: Record<string, unknown>, validate: (value: unknown) => T) => request({ session, agent, kind: 'novel-export', format: 'json', signal, selection: job.selection!,
@@ -143,19 +154,21 @@ export function createNovelExports<S extends Session = Session, A = unknown>({ t
             if (!planShape(value)) fail('章节计划无效')
             return value
           })
-          await save({ plan }); job = check()
+          await save(check(), { plan }); job = check()
         }
         for (const chunk of job.chunks) {
           job = check(); if (job.results[chunk.id]?.verified) continue
           let draft = job.results[chunk.id]?.draft
           if (!draft) {
             draft = await ask('edit', { units: chunk.units, chapter: job.plan?.chapters.find(chapter => chapter.chunk_ids.includes(chunk.id))?.title }, value => validateNovelChunk(chunk.units, value))
-            await save({ results: { ...check().results, [chunk.id]: { draft, verified: false } } })
+            job = check()
+            await save(job, { results: { ...job.results, [chunk.id]: { draft, verified: false } } })
+            job = check()
           }
           const verified = validateNovelChunk(chunk.units, draft)
-          const results: Record<string, ChunkResult> = { ...check().results, [chunk.id]: { draft: verified, verified: true, sourceHash: taskHash(chunk.units), checkedAt: Date.now() } }
+          const results: Record<string, ChunkResult> = { ...job.results, [chunk.id]: { draft: verified, verified: true, sourceHash: taskHash(chunk.units), checkedAt: Date.now() } }
           const done = Object.values(results).reduce((sum, result) => result.verified ? sum + result.draft.paragraphs.flatMap(paragraph => paragraph.source_ids).length : sum, 0)
-          await save({ results, progress: { done, total: job.progress.total } })
+          await save(job, { results, progress: { done, total: job.progress.total } })
         }
         job = check()
         if (job.progress.done !== job.progress.total) fail('来源覆盖没有全部完成')
@@ -170,7 +183,7 @@ export function createNovelExports<S extends Session = Session, A = unknown>({ t
           return checked.paragraphs.map(paragraph => paragraph.text.trim()).join('\n\n')
         }).join('\n\n')).join('\n\n') + '\n'
         const resource = await archive(session, job, markdown)
-        await save({ status: 'completed', resourceId: resource.id, file: resource.path, resultHash: taskHash(markdown), completedAt: Date.now(), error: null })
+        await save(check(), { status: 'completed', resourceId: resource.id, file: resource.path, resultHash: taskHash(markdown), completedAt: Date.now(), error: null })
         return get(session, id)
       } catch (error) {
         const live = get(session, id), details = error as { code?: unknown; message?: unknown }

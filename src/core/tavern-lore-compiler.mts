@@ -534,6 +534,22 @@ function declarationValue(kind:FieldKind|'role-token',value:unknown):unknown {
   return typeof value==='number'&&Number.isFinite(value)?value:undefined
 }
 type EntryBody=Omit<TavernLoreEntryPlanV1,'entryPlanSha256'>
+interface ContentIndex {
+  entries:Map<string,TavernLoreEntryPlanV1|null>
+  overlays:Map<string,NonNullable<TavernLorePlanV1['currentNativeOverlay']>['entries'][number]|null>
+}
+const compiledPlans=new WeakMap<TavernLorePlanV1,{content?:ContentIndex}>()
+function indexContent(plan:TavernLorePlanV1):ContentIndex {
+  const entries:ContentIndex['entries']=new Map(),overlays:ContentIndex['overlays']=new Map()
+  for(const entry of plan.entries) {
+    const pointer=append(entry.sourcePointer,'content')
+    entries.set(pointer,entries.has(pointer)?null:entry)
+  }
+  for(const row of plan.currentNativeOverlay?.entries??[]) {
+    overlays.set(row.rawEntryPointer,overlays.has(row.rawEntryPointer)?null:row)
+  }
+  return {entries,overlays}
+}
 function importedUid(rawUid:unknown,ordinal:number):TavernLoreEntryPlanV1['upstreamUid'] {
   if(rawUid===undefined)return {origin:'ordinal-fallback',value:ordinal}
   if(typeof rawUid==='string'||typeof rawUid==='number'&&Number.isSafeInteger(rawUid)) {
@@ -542,7 +558,11 @@ function importedUid(rawUid:unknown,ordinal:number):TavernLoreEntryPlanV1['upstr
   return {origin:'invalid',value:null}
 }
 function compiledOutput(value:Extract<TavernLoreCompilationV1,{kind:'compiled'}>,profile:CompilerProfile) {
-  return freeze(profile.outputCap?cloneSchemaData(value,OUTPUT_BYTES,outputBounds):value)
+  const result=freeze(profile.outputCap?cloneSchemaData(value,OUTPUT_BYTES,outputBounds):value)
+  // Only compiler-owned frozen plans retain an index. An external mutable
+  // plan cannot make a later content read reuse obsolete pointers or overlays.
+  compiledPlans.set(result.plan,{})
+  return result
 }
 function compileAbsentBook(input:TavernLoreCompilationInputV1,profile:CompilerProfile):Extract<TavernLoreCompilationV1,{kind:'compiled'}> {
   const reference=input.source
@@ -904,10 +924,11 @@ export interface TavernLoreResolvedContentTextV1 {
 /** Resolve content in an already recomputed plan. This helper does not confer
  * authority; external callers should prefer readTavernLoreContentTextV1. */
 export function resolveTavernLoreContentTextV1(plan:TavernLorePlanV1,at:string):TavernLoreResolvedContentTextV1 {
-  const matches=plan.entries.filter(row=>append(row.sourcePointer,'content')===at)
-  if(matches.length!==1)fail('LORE_CONTENT_POINTER_MISSING',at)
-  const entry=matches[0]!,
-    semantic={...ST_LORE_ENTRY_DEFAULTS_V1,displayIndex:entry.ordinal,...entry.semanticOverrides} as TavernLoreSemanticEntryV1
+  const owner=compiledPlans.get(plan),index=owner?.content??indexContent(plan)
+  if(owner)owner.content=index
+  const entry=index.entries.get(at)
+  if(!entry)fail('LORE_CONTENT_POINTER_MISSING',at)
+  const semantic={...ST_LORE_ENTRY_DEFAULTS_V1,displayIndex:entry.ordinal,...entry.semanticOverrides} as TavernLoreSemanticEntryV1
   const content=semantic.content
   if(!content||content.pointer!==at)fail('LORE_CONTENT_POINTER_INVALID',at)
   if(entry.currentNativeMember) {
@@ -931,9 +952,9 @@ export function resolveTavernLoreContentTextV1(plan:TavernLorePlanV1,at:string):
     fail('LORE_CONTENT_SOURCE_HASH',at)
   }
   if(current) {
-    const rows=plan.currentNativeOverlay?.entries.filter(row=>row.rawEntryPointer===entry.sourcePointer)??[]
-    if(rows.length!==1||rows[0]!.rawEntrySha256!==entry.rawEntrySha256||rows[0]!.fields.content!==text
-      ||recordSha256(rows[0]!.origin)!==recordSha256(current.origin))fail('LORE_CONTENT_OVERLAY_LINK',at)
+    const row=index.overlays.get(entry.sourcePointer)
+    if(!row||row.rawEntrySha256!==entry.rawEntrySha256||row.fields.content!==text
+      ||recordSha256(row.origin)!==recordSha256(current.origin))fail('LORE_CONTENT_OVERLAY_LINK',at)
   }
   return freeze({pointer:at,text,contentSha256,rawEntryPointer:entry.sourcePointer,
     rawEntrySha256:entry.rawEntrySha256,origin:current?'current-native-origin':'original-character-book',

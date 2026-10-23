@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createTestDirectory } from '../lib/operations/test-temp.mjs'
 import { join } from 'node:path'
 import { createTavernLibrary } from '../lib/core/tavern-library.js'
@@ -54,12 +54,29 @@ try {
   const collision = await library.archive({ name: '港口设定.md', type: 'text/plain', bytes: Buffer.from('different bytes'), source })
   assert.notEqual(collision.id, first.id, 'same name and different hash must be preserved')
   assert.equal(library.list().length, 2)
+  assert.deepEqual(library.listWithPending(), {resources: library.list(), pending: library.pending()},
+    'one resource response preserves the independent ready and pending projections')
   const meta = library.metadata(first.id); assert.equal(meta.sha256, first.fullSha256); assert.equal(meta.createdAt, first.createdAt); assert.equal(meta.path, join(workspace, 'tavern-library', 'objects', first.objectName))
   assert.equal(library.read(first.id).text, '# 港口\n潮水')
   const download = library.openDownload(first.id)
   assert.equal(download.headers.get('cache-control'), 'private, no-store'); assert.equal(download.headers.get('x-content-type-options'), 'nosniff')
   assert.match(download.headers.get('content-disposition'), /filename\*=UTF-8''/)
   assert.equal(await download.text(), '# 港口\n潮水')
+
+  const frozen = await library.archive({name:'download-snapshot.bin',type:'application/octet-stream',
+    bytes:Buffer.alloc(1_000_000,17),source})
+  const frozenPath = join(workspace, 'tavern-library', 'objects', frozen.objectName)
+  const frozenDownload = library.openDownload(frozen.id)
+  writeFileSync(frozenPath, Buffer.alloc(1_000_000,18))
+  assert.deepEqual(Buffer.from(await frozenDownload.arrayBuffer()), Buffer.alloc(1_000_000,17),
+    'download sends the bytes verified before returning, even if the file is replaced before consumption')
+  assert.throws(() => library.openDownload(frozen.id), /资源文件已损坏/,
+    'the next request independently detects the replaced content')
+  writeFileSync(frozenPath, Buffer.alloc(1_000_000,17))
+  const cancelledDownload = library.openDownload(frozen.id)
+  await cancelledDownload.body.cancel()
+  unlinkSync(frozenPath)
+  table.values.delete([...table.values].find(([,record])=>record.id===frozen.id)[0])
 
   const binary = await library.archive({ name: '头像.png', type: 'image/png', bytes: Buffer.from([1, 2, 3]), source })
   assert.throws(() => library.read(binary.id), /安全文本类型/)
@@ -72,6 +89,15 @@ try {
   assert.throws(() => library.openDownload(first.id), /损坏|不安全/)
   assert.equal(library.list().length,2,'one damaged resource cannot hide other verified resources')
   assert.ok(library.pending().some(p=>p.resourceId===first.id&&p.state==='pending'))
+  assert.deepEqual(library.listWithPending(), {resources: library.list(), pending: library.pending()})
+  writeFileSync(join(workspace, 'tavern-library', 'objects', binary.objectName), Buffer.from([1, 2, 4]))
+  assert.throws(() => library.openDownload(binary.id), /资源文件已损坏/, 'download verifies same-size corruption on its open descriptor')
+  unlinkSync(join(workspace, 'tavern-library', 'objects', collision.objectName))
+  const brokenListing = library.listWithPending()
+  assert.deepEqual(brokenListing, {resources: library.list(), pending: library.pending()},
+    'same-size corruption and missing files retain their existing pending reasons')
+  assert.equal(brokenListing.resources.length, 0)
+  assert.equal(brokenListing.pending.filter(row => row.resourceId).length, 3)
 
   const many = makeTable()
   for (let index = 0; index < 2000; index++) many.values.set(`noise-${index}`, { schemaVersion: 1, id: `noise-${index}` })
@@ -85,10 +111,14 @@ try {
   const outside = createTestDirectory('tavern-library-outside-')
   try {
     const linked = createTavernLibrary({ workspace: symlinkWorkspace, table: makeTable() })
+    const linkedResource = await linked.archive({name: 'linked.txt', type: 'text/plain', bytes: Buffer.from('original'), source})
     const objects = join(symlinkWorkspace, 'tavern-library', 'objects')
     rmSync(objects, { recursive: true, force: true })
     try {
       symlinkSync(outside, objects, 'junction')
+      assert.throws(() => linked.openDownload(linkedResource.id), /符号链接|目录链接|不安全/)
+      assert.deepEqual(linked.listWithPending(), {resources: linked.list(), pending: linked.pending()},
+        'resource listing and download retain the directory-link boundary')
       await assert.rejects(linked.archive({ name: 'symlink.txt', type: 'text/plain', bytes: Buffer.from('new'), source }), /符号链接|目录链接|不安全/)
     } catch (error) {
       if (!/operation not permitted|EPERM|privilege/i.test(String(error))) throw error
@@ -108,6 +138,7 @@ try {
   assert.equal(missing.ok, false); assert.equal(migration.pending()[0].schemaVersion, 1); assert.equal(migration.pending()[0].state, 'pending')
   const completed = await migration.migrate({ id: 'legacy-missing', name: 'lost.txt', type: 'text/plain', source: { sessionId: 's' }, bytes: Buffer.from('recovered') })
   assert.equal(completed.ok, true); assert.equal(migration.pending().length,0,'completed migrations disappear from pending resources')
+  assert.deepEqual(migration.listWithPending(), {resources: migration.list(), pending: migration.pending()})
 
   const saved = [...migrationTable.values.entries()].find(([, value]) => value.id === completed.resource.id && value.objectName)
   saved[1].extension = { author: 'legacy', flags: [1, 2] }
@@ -144,9 +175,10 @@ for(const hasValues of [false,true]) {
   store.set('other-import',{...record,importId:'other',workspaceRoot:other,rawSource:'other-workspace'})
   store.set('broken-import',{...record,importId:'broken',rawSha256:'incorrect'})
   const first=await bridge.archiveImported(session,record)
-  assert.equal(first.name,'chosen-title.md')
-  assert.equal(first.type,'text/markdown')
-  assert.equal(first.source.sessionId,'original-owner')
+  const firstMetadata=bridge.libraryFor(session).metadata(first.id)
+  assert.equal(firstMetadata.name,'source.MD')
+  assert.equal(firstMetadata.type,'text/markdown')
+  assert.equal(firstMetadata.source.sessionId,'original-owner')
   assert.equal(bridge.libraryFor({...session,id:'same-workspace'}),bridge.libraryFor(session))
   assert.notEqual(bridge.libraryFor({id:'elsewhere',header:{cwd:other}}),bridge.libraryFor(session))
   await assert.rejects(bridge.archiveImported(session,{...record,rawSha256:'incorrect'}),/哈希不匹配/)

@@ -3,7 +3,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { constants,
      closeSync,
-     createReadStream,
      fsyncSync,
      fstatSync,
      lstatSync,
@@ -15,7 +14,6 @@ import { constants,
      statSync,
      unlinkSync,
      writeSync } from 'node:fs'
-import { Readable } from 'node:stream'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { safeLibraryName as safeName,
      safeLibraryType as safeType,
@@ -134,23 +132,23 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
     result.sort((left, right) => left.id.localeCompare(right.id, 'en'))
     return result
   }
-  const pending = () => {
+  const pendingRecords = () => {
     const result: PendingResource[] = []
     for (const [key, raw] of table.entries()) {
       const value = raw as PendingResource | null | undefined
       if (typeof key === 'string' && key.startsWith(pendingPrefix) && value?.schemaVersion === 1 && value.state === 'pending') result.push(copy(value))
     }
+    return result
+  }
+  const failedResource = (record: TavernResource, error: unknown): PendingResource => ({
+    schemaVersion: 1, id: `resource-${record.id}`, resourceId: record.id,
+    state: 'pending', name: record.name, type: record.type,
+    source: record.source, reason: String((error as Error).message),
+  })
+  const pending = () => {
+    const result = pendingRecords()
     for (const record of records()) {
-      try { verify(record) } catch (error) {
-        result.push({ schemaVersion: 1,
-             id: `resource-${record.id}`,
-             resourceId: record.id,
-             state: 'pending',
-             name: record.name,
-             type: record.type,
-             source: record.source,
-             reason: String((error as Error).message) })
-      }
+      try { verify(record) } catch (error) { result.push(failedResource(record, error)) }
     }
     result.sort((left, right) => left.id.localeCompare(right.id, 'en'))
     return result
@@ -168,7 +166,7 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
     if (!within(objectDir, path)) fail('资源对象路径越界')
     return path
   }
-  const verify = (record: TavernResource) => {
+  const verifyPath = (record: TavernResource) => {
     ensureDirectories()
     const path = objectPath(record)
     const node = lstatSync(path)
@@ -180,6 +178,10 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
         || realpathSync(path) !== path
         || !within(objectDir,
          realpathSync(path))) fail('资源文件缺失或不安全')
+    return {path, node}
+  }
+  const verify = (record: TavernResource) => {
+    const {path, node} = verifyPath(record)
     const bytes = readFileSync(path)
     if (bytes.length !== record.bytes || digest(bytes) !== record.fullSha256) fail('资源文件已损坏')
     return { path, bytes, modifiedAt: node.mtime.toISOString() }
@@ -280,6 +282,15 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
       sources:copy(record.sources ?? [record.source])}
   }
   function list() { return records().flatMap(record=>{try{return [metadata(record.id)]}catch{return []}}) }
+  function listWithPending() {
+    const resources: ReturnType<typeof metadata>[] = [], pending = pendingRecords()
+    for (const record of records()) {
+      try { resources.push(metadata(record.id)) }
+      catch (error) { pending.push(failedResource(record, error)) }
+    }
+    pending.sort((left, right) => left.id.localeCompare(right.id, 'en'))
+    return {resources, pending}
+  }
   function read(id: unknown) {
     const record = recordFor(id)
     if (!TEXT_TYPES.has(record.type.split(';', 1)[0] ?? '')) fail('该资源不是安全文本类型')
@@ -290,7 +301,7 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
   }
   function openDownload(id: unknown): Response {
     const record = recordFor(id)
-    const { path } = verify(record)
+    const { path } = verifyPath(record)
     let fd: number | undefined
     try {
       fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
@@ -298,13 +309,18 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
       if (!opened.isFile()
           || opened.size !== record.bytes
           || opened.dev !== node.dev
-          || opened.ino !== node.ino
-          || digest(readFileSync(fd)) !== record.fullSha256) fail('资源文件在下载前改变')
-      const stream = Readable.toWeb(createReadStream(path, { fd, autoClose: true, start: 0 }))
-      fd = undefined
-      // Node's web-stream declaration differs from DOM's; the runtime object is
-      // the same WHATWG byte stream consumed by Response (covered by download tests).
-      return new Response(stream as unknown as ReadableStream<Uint8Array>, { headers: {
+          || opened.ino !== node.ino) fail('资源文件在下载前改变')
+      // The opened descriptor owns content verification; the path check above
+      // still rejects links, unsafe sizes and replaced directories before open.
+      const bytes = readFileSync(fd)
+      if (digest(bytes) !== record.fullSha256) fail('资源文件已损坏')
+      // The bounded buffer already owns the verified download. Re-reading the
+      // file would duplicate I/O and could send later, unverified file contents.
+      const stream = new ReadableStream<Uint8Array>({start(controller) {
+        controller.enqueue(bytes)
+        controller.close()
+      }})
+      return new Response(stream, { headers: {
       'content-type': record.type, 'content-length': String(record.bytes), 'content-disposition': contentDisposition(record.name),
       'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'etag': `"${record.fullSha256}"`,
       } })
@@ -344,5 +360,5 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
       return { ok: false, pending: pendingRecord }
     }
   }
-  return Object.freeze({ archive, list, metadata, archivalIdentity, read, openDownload, migrate, pending })
+  return Object.freeze({ archive, list, listWithPending, metadata, archivalIdentity, read, openDownload, migrate, pending })
 }

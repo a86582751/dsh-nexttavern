@@ -212,4 +212,23 @@ database.set(planStorageKey,savedPlan)
 assert.throws(()=>planner.load('owner-c',sourceId),/归属与当前原著不匹配/)
 database.set(planStorageKey,savedPlan)
 
+const projected=planner.view('owner-b',sourceId)!
+assert.deepEqual(projected.coverage,planner.assess('owner-b',sourceId),'one projection preserves the independently requested coverage result')
+assert.equal(projected.totalEntries,planner.entries('owner-b',sourceId).length)
+const expectedTarget=projected.target.protagonist,expectedNext=projected.frontier.next[0]?.query
+projected.target.protagonist='caller edit'
+if(projected.frontier.next[0])projected.frontier.next[0].query='caller frontier edit'
+const loadedCopy=planner.load('owner-b',sourceId)!,entryCopies=planner.entries('owner-b',sourceId)
+loadedCopy.target.protagonist='caller plan edit'
+if(entryCopies[0])entryCopies[0].statement='caller fact edit'
+assert.equal(planner.view('owner-b',sourceId)!.target.protagonist,expectedTarget)
+assert.equal(planner.view('owner-b',sourceId)!.frontier.next[0]?.query,expectedNext)
+assert(!planner.entries('owner-b',sourceId).some(entry=>entry.statement==='caller fact edit'),'public views and editable plans cannot mutate shared stored facts')
+
+const baseStorageKey=[...database.keys()].find(key=>key.startsWith('adaptation-research-base-'))!,savedBase=structuredClone(database.get(baseStorageKey) as Record<string,unknown>)
+const damagedBase={...savedBase,textSha256:'f'.repeat(64)};database.set(baseStorageKey,damagedBase)
+for(const read of [()=>planner.view('owner-b',sourceId),()=>planner.entries('owner-b',sourceId),()=>planner.assess('owner-b',sourceId)])assert.throws(read,/共享原著底稿损坏/)
+assert.equal(database.get(baseStorageKey),damagedBase,'independent cold entry points preserve a damaged source base for recovery')
+database.set(baseStorageKey,savedBase)
+
 console.log('card-research-planner=ok (shared facts, private targets, atomic append, frontier, CAS, durability, partial-reading boundaries)')

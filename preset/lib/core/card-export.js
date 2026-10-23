@@ -68,19 +68,52 @@ function writeExport(cwd, id, markdown) {
 export function registerCardExport(ctx, options) {
     const { simpleTool, sessionOf, table, collect, lock, onCompleted, workflowOf, workflowGeneration, beforeBegin, assertWorkflow, classificationGuide = '' } = options;
     const key = (session, id) => `${session.id}__export-${id}`;
+    const snapshotKey = (session, id) => `${session.id}__export-source-${id}`;
+    // Domain's KvTable returns shared immutable DATA, including through InputState's
+    // facade. It does not clone or Object.freeze rows. Only the exact decoded or
+    // owner-produced object can reuse its static materialization; a cold instance
+    // or an external put supplies an unknown identity and must be decoded below.
+    const materialized = new WeakSet();
+    const put = async (session, id, value) => {
+        const { material, units, text, schemaVersion: _version, snapshotKey: existingKey, ...control } = value;
+        const sourceKey = existingKey ?? snapshotKey(session, id);
+        if (!existingKey) {
+            const source = { schemaVersion: 1, encoding: 'card-export-static-v1', branchId: value.branchId, sourceHash: value.sourceHash, material, units, text };
+            // Publish the immutable body before its small control row. A failed second
+            // write leaves a legacy row readable and its cursor unacknowledged.
+            await table.put(sourceKey, source);
+            materialized.add(source);
+        }
+        await table.put(key(session, id), { ...control, schemaVersion: 2, snapshotKey: sourceKey });
+        return sourceKey;
+    };
+    const decode = (record) => {
+        if (!materialized.has(record)) {
+            const expected = exportSnapshot(record.branchId, record.material);
+            if (record.sourceHash !== expected.sourceHash)
+                throw new Error('导出快照损坏');
+            if (record.text !== expected.text || JSON.stringify(record.units) !== JSON.stringify(expected.units))
+                throw new Error('导出正文或来源映射损坏');
+            materialized.add(record);
+        }
+        return record;
+    };
     const get = (session, id) => {
         if (typeof id !== 'string' || !/^[a-f0-9-]{36}$/.test(id))
             throw new Error('export_id 无效');
-        const value = table.get(key(session, id)), record = value;
+        const record = table.get(key(session, id));
         assertWorkflow?.(session, record);
-        if (record?.schemaVersion !== 1 || record.branchId !== session.id)
+        if (!record || record.branchId !== session.id)
             throw new Error('当前分支没有该导出');
-        if (record.sourceHash !== hash(stableJson(record.material)))
+        if (record.schemaVersion === 1)
+            return decode(record);
+        if (record.schemaVersion !== 2 || record.snapshotKey !== snapshotKey(session, id))
+            throw new Error('当前分支没有该导出');
+        const source = table.get(record.snapshotKey);
+        if (source?.schemaVersion !== 1 || source.encoding !== 'card-export-static-v1' || source.branchId !== session.id || source.sourceHash !== record.sourceHash)
             throw new Error('导出快照损坏');
-        const expected = exportSnapshot(session.id, record.material);
-        if (record.text !== expected.text || JSON.stringify(record.units) !== JSON.stringify(expected.units))
-            throw new Error('导出正文或来源映射损坏');
-        return record;
+        const { encoding: _encoding, ...snapshot } = decode(source);
+        return { ...record, ...snapshot, schemaVersion: 1 };
     };
     const tool = (name, description, properties, required, run) => {
         ctx.effect(() => ctx.tools.register(simpleTool(name, description, { type: 'object', properties, required, additionalProperties: false }, async (args, exec) => {
@@ -106,7 +139,7 @@ export function registerCardExport(ctx, options) {
             for (const [, value] of table.entries()) {
                 const candidate = value;
                 if (candidate?.workflowId === workflowId && candidate.exportId) {
-                    prior = candidate;
+                    prior = get(session, candidate.exportId);
                     break;
                 }
             }
@@ -114,7 +147,7 @@ export function registerCardExport(ctx, options) {
             return { ok: true, exportId: prior.exportId, sourceHash: prior.sourceHash, totalChars: prior.text.length, nextCursor: prior.nextCursor, reviewComplete: prior.reviewComplete, sources: prior.units.map(({ id, label, text, sha256 }) => ({ id, label, chars: text.length, sha256 })), resumed: true };
         const material = await collect(session), snapshot = exportSnapshot(session.id, material), id = randomUUID();
         const value = { ...snapshot, exportId: id, workflowId, workflowGeneration: workflowGeneration?.(session), material, nextCursor: 0, reviewComplete: false, status: 'reviewing', createdAt: Date.now() };
-        await table.put(key(session, id), value);
+        await put(session, id, value);
         return { ok: true, exportId: id, sourceHash: snapshot.sourceHash, totalChars: snapshot.text.length, nextCursor: 0, sources: snapshot.units.map(({ id: sourceId, label, text, sha256 }) => ({ id: sourceId, label, chars: text.length, sha256 })) };
     });
     tool('rp_card_export_chunk', '连续审阅导出快照；按 nextCursor 读到 null。全文读完后，可传 source_id/start_line/max_lines 回看单个来源的带行号原文，用于按创作语义拆分混合内容。', { export_id: { type: 'string' }, cursor: { type: 'integer' }, source_id: { type: 'string' }, start_line: { type: 'integer', minimum: 1 }, max_lines: { type: 'integer', minimum: 1, maximum: 200 } }, ['export_id'], async (session, args) => {
@@ -143,7 +176,7 @@ export function registerCardExport(ctx, options) {
             throw new Error('导出审阅不能跳页');
         const end = Math.min(value.text.length, cursor + 16000), text = value.text.slice(cursor, end), next = { ...value, lastCursor: cursor, nextCursor: end === value.text.length ? null : end, reviewComplete: end === value.text.length || value.reviewComplete };
         if (cursor === value.nextCursor)
-            await table.put(key(session, args.export_id), next);
+            await put(session, args.export_id, next);
         return { ok: true, text: fenceCardContent(text, 'source'), nextCursor: cursor === value.nextCursor ? next.nextCursor : value.nextCursor, sourceHash: value.sourceHash, reviewComplete: next.reviewComplete };
     });
     tool('rp_card_export_finalize', '提交 LLM 完整审阅后的章节结构。按内容语义重组，用户新增镜头语言归入叙事规则，不照搬存储栏目。完整来源用 source_ids；混合来源先 chunk(source_id) 读行号，再用 source_parts 按行拆到不同章节。每项每行必须恰好覆盖一次；后端原样物化，不接受摘要替换。\n' + classificationGuide, {
@@ -153,7 +186,7 @@ export function registerCardExport(ctx, options) {
                     source_parts: { type: 'array', items: { type: 'object', properties: { source_id: { type: 'string' }, start_line: { type: 'integer' }, end_line: { type: 'integer' } }, required: ['source_id', 'start_line', 'end_line'], additionalProperties: false } },
                 }, required: ['heading'], additionalProperties: false } },
     }, ['export_id', 'expected_sha256', 'title', 'sections'], async (session, args) => {
-        const value = get(session, args.export_id);
+        let value = get(session, args.export_id);
         if (!value.reviewComplete || value.nextCursor !== null)
             throw new Error('导出前必须完整审阅');
         if (args.expected_sha256 !== value.sourceHash)
@@ -163,11 +196,13 @@ export function registerCardExport(ctx, options) {
         const markdown = renderOrganizedExport(value, args.title, args.sections), resultHash = hash(markdown);
         if (value.resultHash && value.resultHash !== resultHash)
             throw new Error('已完成导出不能被不同章节方案覆盖，请重新开始');
-        if (value.status !== 'completed')
-            await table.put(key(session, value.exportId), { ...value, status: 'committing', resultHash, sections: args.sections, title: args.title, preparedAt: value.preparedAt ?? Date.now() });
+        if (value.status !== 'completed') {
+            const sourceKey = await put(session, value.exportId, { ...value, status: 'committing', resultHash, sections: args.sections, title: args.title, preparedAt: value.preparedAt ?? Date.now() });
+            value = { ...value, snapshotKey: sourceKey };
+        }
         assertWorkflow?.(session, value);
         const file = writeExport(session.header.cwd, value.exportId, markdown);
-        await table.put(key(session, value.exportId), { ...value, status: 'completed', resultHash, file, title: args.title, sections: args.sections, completedAt: value.completedAt ?? Date.now() });
+        await put(session, value.exportId, { ...value, status: 'completed', resultHash, file, title: args.title, sections: args.sections, completedAt: value.completedAt ?? Date.now() });
         assertWorkflow?.(session, value);
         const resource = await onCompleted?.(session, { ...value, title: args.title, file, resultHash }, markdown), filename = resource?.name ?? `${safeHeading(args.title).replace(/[\x00-\x1f<>:"/\\|?*]/g, '-').slice(0, 90)}.md`;
         return { ok: true, exportId: value.exportId, file, filename, resourceId: resource?.id, ...(resource?.id ? { downloadUrl: `/api/roleplay/download?sessionId=${encodeURIComponent(session.id)}&resourceId=${encodeURIComponent(resource.id)}` } : {}), displayInstruction: '向玩家展示 filename 和下载链接；内部 file/UUID 仅用于归档，不作为文件名回复。文件已存入酒馆资源库，可按名称查找。', sha256: resultHash, sourceHash: value.sourceHash, coverage: 1, bytes: Buffer.byteLength(markdown), sourceCount: value.units.length };
