@@ -20,7 +20,14 @@
 
 [在线文档](https://a86582751.github.io/dsh-nexttavern/) · [一键安装](#一键安装) · [开始体验](#开始体验) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md) · [核心能力](#核心能力) · [记忆系统](#记忆系统) · [架构设计](#架构设计) · [手机电脑公网访问指南](PUBLIC-ACCESS.md) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose) · [0.3开发日志](DEVELOPMENT-0.3.md)
 
-0.3 开发专题：[社区卡兼容与转换](COMMUNITY-CARDS.md) · [原生卡格式](NATIVE-CARD-FORMAT.md) · [数值、MVU 与 Ruby](NATIVE-STATE.md) · [社区预设与正则](COMMUNITY-PRESETS.md)。均为开发线说明，尚未随正式 0.3 发布。
+**角色卡作者与社区开发者：** 下面四篇介绍运行机制、格式字段和创作示例。内容对应 **0.3 开发线，尚未随正式 0.3 发布**；Native 1.0／1.1 是卡文件格式版本。
+
+| 从哪里开始 | 能学到什么 |
+| --- | --- |
+| [社区卡兼容与转换](COMMUNITY-CARDS.md) | 理解世界书触发、递归、预算与插入，以及导入、剧情生成、转换和导出的完整过程 |
+| [原生卡格式与创作教程](NATIVE-CARD-FORMAT.md) | 从完整 JSON 示例创作，编写 EJS 动态模板，理解人物、规则、开场和 1.0／1.1 的区别 |
+| [原生状态系统、MVU 与 Ruby](NATIVE-STATE.md) | 理解原生数值与分析任务机制，为作品加入初值、回合更新及社区兼容能力 |
+| [社区预设与正则](COMMUNITY-PRESETS.md) | 编写预设、组织提示词，区分请求变换与阅读显示 |
 
 ![沉浸式游玩](screenshots/play.png)
 
