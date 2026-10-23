@@ -8,6 +8,13 @@
 
 English: Expand the four 0.3 author guides with complete card examples, EJS APIs, worldbook controls, native state and analysis behavior, preset/regex references, troubleshooting and source links. Update the website's content and navigation. 0.3 remains in development; targeted example checks do not establish full gameplay compatibility.
 
+## 开发记录 — 琥珀酒馆暖纸与 NT 徽记改版 — 2026-10-24
+
+- 开发中的琥珀酒馆视觉恢复暖木与纸页、NT 徽记和日夜场景图；本地 TypeScript 构建与限定 Harness 检查已通过。Reader 作者样式和真实剧情生成未重验。
+- 当前公开发行版仍不含这次改版；本文仅记录开发状态，没有发布产品包或部署生产服务。
+
+English: The in-development Amber Tavern refresh restores warm wood and paper, an NT emblem and day/night scene art. The selected TypeScript build and scoped Harness checks passed; Reader author styles and real story generation were not rerun. This development note does not update the current release or deploy a service.
+
 ## 文档 — Native 原生卡与高级人物功能边界 — 2026-10-21
 
 - 更新 [0.3 开发日志](DEVELOPMENT-0.3.md)，说明显式转换、原生作者卡、原件／当前设定两种导出、DOCX 来源和高级人物资料的开发进展。
