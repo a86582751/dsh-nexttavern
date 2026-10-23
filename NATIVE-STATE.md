@@ -189,6 +189,8 @@ _.insert('角色.背包', '绳索');
 
 纯数据初值负责存值，不运行作者程序。**EJS 与纯数据 InitVar 可以在同一张 Native 卡内使用，无需增加 Schema**：普通人物／规则等作者内容由模板链处理，初值仍由程序按原始 JSON／YAML 计算。整卡会使用相应的 prompt-program 来源路径，不能把它仍描述成仅走旧纯数据来源。初值数据载荷自身不接受 EJS 或 `registerMvuSchema(...)`；也不要把上面的模型回复更新块原样贴到 `rules.core`，将协议输出混成作者规则。
 
+如果卡还启用了 `data.extensions.tavern_helper.scripts`，开场由作者程序的组合执行链处理 server、Prompt 与 Browser 分区；纯 InitVar／模板路径不会先完成初始化后略过脚本。组合编译可以保留只有 Browser 分区的程序，但当前数值初始化仍要求实际 server 结果，缺少时返回 `AUTHOR_HOST_BROWSER_ONLY_INITIALIZATION_UNSUPPORTED`。编译成功、数值已就绪与界面实际挂载是不同结果。
+
 Schema 卡由受维护的作者脚本来源、编译器、固定依赖映射和隔离执行器共同处理。初值之后可应用作者 Schema 的默认值、转换和校验；Story 更新经过 `command-parsed`、`commands-parsed`、`update-ended` 阶段，手动改值有 `manual-replacement` 阶段。模型输出仍是数据候选，Schema 不把模型正文当任意程序执行。
 
 下面是**Schema 作者脚本正文片段**，用于解释体力约束，不是可独立上传的卡；需由实际卡的作者脚本来源接入，且执行环境提供 `z` 与 `registerMvuSchema`：

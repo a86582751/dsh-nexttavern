@@ -23,6 +23,8 @@
 
 卡 1 用来演示保留既有文本和清晰区分新旧内容。
 
+验证边界：龙女皇已有编译与独立 InitVar 组件证据；其 browser-only 作者程序目前仍不能通过实际数值开场初始化，会返回 `AUTHOR_HOST_BROWSER_ONLY_INITIALIZATION_UNSUPPORTED`。下文 Steam Tide 的实际 Core fixture 证据不适用于这张卡，不能据格式示例推定两卡都已完整可玩。
+
 ## Steam Tide：功能组合示例
 
 这张卡把港口设定、角色边界、状态、世界书和前端展示组合成教学用样例：
