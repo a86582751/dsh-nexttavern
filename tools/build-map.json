@@ -47267,6 +47267,41 @@
         "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-20261018/host/src/core/tavern-mvu-schema-runner-v4.ts"
       },
       {
+        "id": "roleplay-reference-dragon-empress-native",
+        "source": "preset/reference/dragon-empress.native.json",
+        "canonicalSource": "runtime/alpha3/preset/reference/dragon-empress.native.json"
+      },
+      {
+        "id": "roleplay-reference-steam-tide-native",
+        "source": "preset/reference/steam-tide.native.json",
+        "canonicalSource": "runtime/alpha3/preset/reference/steam-tide.native.json"
+      },
+      {
+        "id": "roleplay-reference-native-readme",
+        "source": "preset/reference/README.md",
+        "canonicalSource": "runtime/alpha3/preset/reference/README.md"
+      },
+      {
+        "id": "c20-rfc-members-before-20261023-host-package-json",
+        "source": "development/author-host-runtime-v5-update-batch-v1/package.json",
+        "canonicalSource": "runtime/alpha3/compat/author-host-runtime-v5-update-batch-v1/package.json"
+      },
+      {
+        "id": "c20-rfc-members-before-20261023-host-assets-source-inputs-json",
+        "source": "development/history/c20-rfc-members-before-20261023/host/assets/source-inputs.json",
+        "canonicalSource": "runtime/alpha3/history/c20-rfc-members-before-20261023/host/assets/source-inputs.json"
+      },
+      {
+        "id": "performance-before-20261024-host-dist-index-mjs",
+        "source": "development/history/performance-before-20261024/host/dist/index.mjs",
+        "canonicalSource": "runtime/alpha3/history/performance-before-20261024/host/dist/index.mjs"
+      },
+      {
+        "id": "c20-rfc-members-before-20261023-host-src-core-roleplay-mvu-update-v2-ts",
+        "source": "development/history/c20-rfc-members-before-20261023/host/src/core/roleplay-mvu-update-v2.ts",
+        "canonicalSource": "runtime/alpha3/history/c20-rfc-members-before-20261023/host/src/core/roleplay-mvu-update-v2.ts"
+      },
+      {
         "id": "c20-rfc-members-before-20261023-server-dist-tavern-mvu-schema-worker-mjs",
         "source": "development/history/c20-rfc-members-before-20261023/server/dist/tavern-mvu-schema-worker.mjs",
         "canonicalSource": "runtime/alpha3/history/c20-rfc-members-before-20261023/server/dist/tavern-mvu-schema-worker.mjs"
@@ -47277,19 +47312,29 @@
         "canonicalSource": "runtime/alpha3/compat/mvu-schema-runtime-v4-update-batch-v1/package.json"
       },
       {
-        "id": "c20-rfc-members-before-20261023-host-assets-source-inputs-json",
-        "source": "development/history/c20-rfc-members-before-20261023/host/assets/source-inputs.json",
-        "canonicalSource": "runtime/alpha3/history/c20-rfc-members-before-20261023/host/assets/source-inputs.json"
+        "id": "performance-before-20261024-host-assets-source-inputs-json",
+        "source": "development/history/performance-before-20261024/host/assets/source-inputs.json",
+        "canonicalSource": "runtime/alpha3/history/performance-before-20261024/host/assets/source-inputs.json"
       },
       {
-        "id": "c20-rfc-members-before-20261023-host-src-core-roleplay-mvu-update-v2-ts",
-        "source": "development/history/c20-rfc-members-before-20261023/host/src/core/roleplay-mvu-update-v2.ts",
-        "canonicalSource": "runtime/alpha3/history/c20-rfc-members-before-20261023/host/src/core/roleplay-mvu-update-v2.ts"
-      },
-      {
-        "id": "c20-rfc-members-before-20261023-host-package-json",
+        "id": "performance-before-20261024-host-package-json",
         "source": "development/author-host-runtime-v5-update-batch-v1/package.json",
         "canonicalSource": "runtime/alpha3/compat/author-host-runtime-v5-update-batch-v1/package.json"
+      },
+      {
+        "id": "performance-before-20261024-server-dist-runner-mjs",
+        "source": "development/history/performance-before-20261024/server/dist/runner.mjs",
+        "canonicalSource": "runtime/alpha3/history/performance-before-20261024/server/dist/runner.mjs"
+      },
+      {
+        "id": "performance-before-20261024-server-package-json",
+        "source": "development/mvu-schema-runtime-v4-update-batch-v1/package.json",
+        "canonicalSource": "runtime/alpha3/compat/mvu-schema-runtime-v4-update-batch-v1/package.json"
+      },
+      {
+        "id": "performance-before-20261024-server-dist-tavern-mvu-schema-worker-mjs",
+        "source": "development/history/performance-before-20261024/server/dist/tavern-mvu-schema-worker.mjs",
+        "canonicalSource": "runtime/alpha3/history/performance-before-20261024/server/dist/tavern-mvu-schema-worker.mjs"
       }
     ],
     "publicRelease": {
@@ -175980,7 +176025,7 @@
               "path": "src/core/tavern-mvu-scope-read-types.ts"
             },
             {
-              "artifact": "tavern-mvu-scope-read-typescript",
+              "artifact": "update-batch-predecessor-a2e31b4c99dfc7349d87",
               "path": "src/core/tavern-mvu-scope-read.ts"
             },
             {
@@ -190679,7 +190724,7 @@
               "path": "src/core/tavern-mvu-scope-read-types.ts"
             },
             {
-              "artifact": "tavern-mvu-scope-read-typescript",
+              "artifact": "update-batch-predecessor-a2e31b4c99dfc7349d87",
               "path": "src/core/tavern-mvu-scope-read.ts"
             },
             {

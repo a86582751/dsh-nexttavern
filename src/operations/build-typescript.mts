@@ -89,11 +89,15 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entri
   // compiler beside that plan's config, never through a maintenance checkout.
   const plan = suppliedPlan ?? readJson<CompilePlan>(path.join(repo, 'release/source-manifest.json'))
   validateArtifactIds(plan)
+  const artifactsById=new Map(plan.artifacts.map(artifact=>[artifact.id,artifact]))
+  const artifactSources=new Set(plan.artifacts.map(artifact=>artifact.source))
   const compilerPackage = path.posix.dirname(plan.typeScript.config)
   if (!plan.typeScript.declarationPackages.includes(compilerPackage)) throw Error('Compiler package must be lock-audited')
   const require = createRequire(inside(repo, compilerPackage + '/package.json'))
   const ts = require('typescript') as typeof CompilerAPI
   const recipes = plan.builds.filter(build => build.kind === 'typescript-module')
+  const recipeEntries=new Set(recipes.map(recipe=>recipe.entry))
+  const recipeSources=new Set(recipes.flatMap(recipe=>[recipe.entry,...recipe.inputs]))
   const immutableOutputs = immutablePackageOutputArtifacts(plan)
   // Entry selection limits Program roots. The complete recipe table still
   // owns every dependency and destination reached by that actual Program.
@@ -104,7 +108,7 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entri
   const declarationRoots = plan.typeScript.declarationPackages.map(directory => {
     inside(repo,directory)
     for (const file of ['package.json','package-lock.json']) {
-      if (!plan.artifacts.some(artifact => artifact.source === directory + '/' + file)) throw Error('Unregistered declaration package: ' + directory)
+      if (!artifactSources.has(directory + '/' + file)) throw Error('Unregistered declaration package: ' + directory)
     }
     return {prefix:directory+'/',lock:readJson<PackageLock>(path.join(repo,directory,'package-lock.json'))}
   })
@@ -119,12 +123,12 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entri
   const declarationOutputs = new Map<string, string>()
   const destinations = new Set<string>()
   for (const recipe of recipes) {
-    const output = plan.artifacts.find(artifact => artifact.id === recipe.artifact)?.source
+    const output = artifactsById.get(recipe.artifact)?.source
     if (!output || destinations.has(output)) throw Error('Duplicate or missing TypeScript output: ' + recipe.id)
     inside(repo, output)
     destinations.add(output)
     if (recipe.declarationArtifact === undefined) continue
-    const declaration = plan.artifacts.find(artifact => artifact.id === recipe.declarationArtifact)?.source
+    const declaration = artifactsById.get(recipe.declarationArtifact)?.source
     const expected = output.replace(/\.(mjs|cjs|js)$/, recipe.entry.endsWith('.mts') ? '.d.mts' : '.d.ts')
     if (!declaration || declaration !== expected || destinations.has(declaration)) {
       throw Error('Invalid TypeScript declaration mapping: ' + recipe.id)
@@ -241,8 +245,8 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entri
     for (const source of sources) {
       sourceSet.add(source)
       inside(repo, source)
-      if (!plan.artifacts.some(artifact => artifact.source === source) || !recipes.some(recipe => recipe.entry === source || recipe.inputs.includes(source))) throw Error('Unregistered TypeScript dependency: ' + source)
-      if (/\.(tsx?|mts)$/.test(source) && !/\.d\.(ts|mts)$/.test(source) && !recipes.some(recipe => recipe.entry === source)) throw Error('TypeScript dependency has no output mapping: ' + source)
+      if (!artifactSources.has(source) || !recipeSources.has(source)) throw Error('Unregistered TypeScript dependency: ' + source)
+      if (/\.(tsx?|mts)$/.test(source) && !/\.d\.(ts|mts)$/.test(source) && !recipeEntries.has(source)) throw Error('TypeScript dependency has no output mapping: ' + source)
     }
     if (!diagnostics.length) {
       // Capture compiler output by its actual source file, then route it through
@@ -265,7 +269,7 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entri
     getCanonicalFileName: file => file, getCurrentDirectory: () => repo, getNewLine: () => '\n',
   }))
   for (const recipe of requestedRecipes) {
-    const source = plan.artifacts.find(artifact => artifact.id === recipe.artifact)?.source
+    const source = artifactsById.get(recipe.artifact)?.source
     let emitted = outputs.get(path.resolve(repo, recipe.entry))
     if (!source || emitted === undefined) throw Error('Missing TypeScript output: ' + recipe.id)
     if(recipe.bundledDependencies) {
@@ -313,6 +317,7 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entri
 export function checkTypeScriptOwnership(repo = root, plan?: CompilePlan) {
   const source = plan ?? readJson<CompilePlan>(path.join(repo, 'release/source-manifest.json'))
   validateArtifactIds(source)
+  const artifactsById=new Map(source.artifacts.map(artifact=>[artifact.id,artifact]))
   const registered = source.builds.filter(build => build.kind === 'typescript-module')
   const treeRoot = (file: string, name: string) => {
     const marker = '/' + name + '/'
@@ -322,14 +327,14 @@ export function checkTypeScriptOwnership(repo = root, plan?: CompilePlan) {
   }
   const sourceRoots = [...new Set(registered.map(build => treeRoot(build.entry, 'src')))]
   const outputFor = (build: Recipe) => {
-    const output = source.artifacts.find(artifact => artifact.id === build.artifact)?.source
+    const output = artifactsById.get(build.artifact)?.source
     if (!output) throw Error('Missing build output artifact: ' + build.artifact)
     return output
   }
   const outputs = new Map(registered.map(build => [outputFor(build), build.entry] as const))
   if (outputs.size !== registered.length) throw Error('Duplicate TypeScript output mapping')
   const declarations = new Map(registered.filter(build => build.declarationArtifact !== undefined).map(build => {
-    const declaration = source.artifacts.find(artifact => artifact.id === build.declarationArtifact)?.source
+    const declaration = artifactsById.get(build.declarationArtifact!)?.source
     const expected = outputFor(build).replace(/\.(mjs|cjs|js)$/, build.entry.endsWith('.mts') ? '.d.mts' : '.d.ts')
     if (!declaration || declaration !== expected) throw Error('Invalid TypeScript declaration mapping: ' + build.id)
     return [declaration, build.entry] as const

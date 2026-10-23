@@ -160,8 +160,7 @@ export function materializeBundledLibraries(options) {
     const validate = (source, name, range) => {
         const row = validateLock(lockKey(source), name, range);
         const metadata = read(contained(source, 'package.json'));
-        if (metadata.name !== name || metadata.version !== row.version || !semver.valid(metadata.version)
-            || !semver.validRange(range) || !semver.satisfies(metadata.version, range)) {
+        if (metadata.name !== name || metadata.version !== row.version) {
             throw Error('Bundled library version differs from manifest, lock or requirement: ' + name);
         }
         for (const key of ['dependencies', 'optionalDependencies', 'peerDependencies', 'peerDependenciesMeta', 'os', 'cpu']) {
@@ -189,10 +188,17 @@ export function materializeBundledLibraries(options) {
     };
     const visit = (source, name, range) => {
         dependencyName(name);
-        const metadata = validate(source, name, range);
         // Validate every incoming constraint even for an already-seen cycle node.
-        if (planned.has(source))
+        // Its metadata/lock identity was admitted on the first incoming edge.
+        const previous = planned.get(source);
+        if (previous) {
+            if (previous.metadata.name !== name || !semver.validRange(range)
+                || !semver.satisfies(previous.metadata.version, range)) {
+                throw Error('Bundled library version differs from lock or requirement: ' + name);
+            }
             return;
+        }
+        const metadata = validate(source, name, range);
         const relative = slash(path.relative(libraryRoot, source));
         planned.set(source, { source, relative, metadata, files: [] });
         const follow = (dependency, requirement, kind) => {

@@ -32363,12 +32363,36 @@
       "source": "development/history/c20-rfc-members-before-20261023/host/assets/source-inputs.json"
     },
     {
+      "id": "performance-before-20261024-host-dist-index-mjs",
+      "source": "development/history/performance-before-20261024/host/dist/index.mjs"
+    },
+    {
       "id": "c20-rfc-members-before-20261023-host-src-core-roleplay-mvu-update-v2-ts",
       "source": "development/history/c20-rfc-members-before-20261023/host/src/core/roleplay-mvu-update-v2.ts"
     },
     {
       "id": "c20-rfc-members-before-20261023-host-package-json",
       "source": "development/author-host-runtime-v5-update-batch-v1/package.json"
+    },
+    {
+      "id": "performance-before-20261024-host-assets-source-inputs-json",
+      "source": "development/history/performance-before-20261024/host/assets/source-inputs.json"
+    },
+    {
+      "id": "performance-before-20261024-host-package-json",
+      "source": "development/author-host-runtime-v5-update-batch-v1/package.json"
+    },
+    {
+      "id": "performance-before-20261024-server-dist-runner-mjs",
+      "source": "development/history/performance-before-20261024/server/dist/runner.mjs"
+    },
+    {
+      "id": "performance-before-20261024-server-package-json",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/package.json"
+    },
+    {
+      "id": "performance-before-20261024-server-dist-tavern-mvu-schema-worker-mjs",
+      "source": "development/history/performance-before-20261024/server/dist/tavern-mvu-schema-worker.mjs"
     },
     {
       "id": "quality-registry",
