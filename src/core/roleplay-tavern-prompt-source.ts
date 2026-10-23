@@ -51,7 +51,6 @@ function sourceAuthorTables(source:TavernLoreSourceDataV1):AuthorTables&{status:
 function assemblePromptSourceData(captured:TavernLoreEditSourceDataCaptureV1,edited:TavernLoreEditsDataV1,
   sessionId:string,includeCardStyle:boolean,tables:AuthorTables&{status:AuthorTable}) {
   const {source,currentIdentitySha256,contributionInput}=captured
-  if(!same(source,edited.source))fail('INPUT_MATERIAL_EDIT_SOURCE_CHANGED')
   const legacy=produceRoleplayTavernCurrentLegacyOverlayV1(contributionInput),first=legacy.contributions,
     linkedRows=new Set(legacy.linkedRowKeys),overlay=composeRoleplayTavernCurrentOverlayV1(legacy.overlay,edited.overlay)
   const compilation=compileTavernLoreBookV1({schemaVersion:1,encoding:'st-character-book-compilation-input-v1',
@@ -116,6 +115,7 @@ export function captureRoleplayTavernPromptSourceV1(deps:SourceDependencies,sess
   const {source}=captured,liveEdits=deps.edits.observeCurrent?.(sessionId),
     edited=liveEdits?.observed??deps.edits.observe(sessionId)
   if(edited.kind!=='captured-data')fail(edited.diagnostics[0]?.code??'INPUT_MATERIAL_EDIT_UNAVAILABLE')
+  if(!same(source,edited.data.source))fail('INPUT_MATERIAL_EDIT_SOURCE_CHANGED')
   const data=assemblePromptSourceData(captured,edited.data,sessionId,includeCardStyle,deps.tables),original=data.original
   const assertCurrent=()=>{
     assertOwnerCurrent()
