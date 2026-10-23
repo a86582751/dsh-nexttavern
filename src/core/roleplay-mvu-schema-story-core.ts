@@ -30,8 +30,8 @@ import {validateMvuSchemaStoryPlan,validateMvuSchemaStoryRevisionDescriptor,vali
   mvuSchemaStoryRevisionEvent,mvuSchemaStoryRevisionHead,mvuSchemaStoryPhaseInput,mvuSchemaStoryReducerBridge,
   deriveMvuSchemaStoryRevisionSelectors,deriveMvuSchemaStoryRevisionSelectorsV2,
   mvuSchemaStoryRevisionCompletionKey,validateMvuSchemaStoryRevisionCompletion,
-  validateMvuSchemaStoryRevisionBasis,mvuSchemaStoryRevisionBasisKey} from './roleplay-mvu-schema-story-types.js'
-import {parseMvuUpdateV2} from './roleplay-mvu-update-v2.js'
+  validateMvuSchemaStoryRevisionBasis,mvuSchemaStoryRevisionBasisKey,
+  parseMvuSchemaStoryCandidateV2} from './roleplay-mvu-schema-story-types.js'
 import {validateMvuSchemaPlayerEvent,joinMvuSchemaPlayerCompletedEvent,mvuSchemaPlayerEventKey,
   mvuSchemaPlayerHead,mvuSchemaPlayerOperationKey,mvuSchemaPlayerCompletionKey,
   MVU_SCHEMA_PLAYER_PHASES,mvuSchemaPlayerPhaseInput,mvuSchemaPlayerReducerBridge,
@@ -1569,7 +1569,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       const message=projection.projectedMessageAt(target.seq)??target.data.message,narrative=textOf(message.content)
       return {seq:target.seq,messageId:original.plan.canonical.messageId,versionSha256:recordSha256(message),narrative,narrativeSha256:sha256(narrative)}
     })
-    const candidates=canonical.map(body=>body&&parseMvuUpdateV2(body.narrative))
+    const candidates=canonical.map(body=>body&&parseMvuSchemaStoryCandidateV2(body.narrative,'analysis-alias-v1'))
     if(candidates.some(candidate=>candidate?.kind==='rejected'))return true
     let captured:MvuSchemaForkCapture,basisRecord:ReturnType<typeof validateMvuSchemaStoryRevisionBasis>
     if(stored) {
@@ -1687,7 +1687,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
               const {planSha256:_old,...originalPlan}=original.plan
               plan=validateMvuSchemaStoryPlan(sealMvuSchemaStoryFact({...originalPlan,schemaVersion:8 as const,
                 encoding:'native-mvu-schema-story-revision-plan-v2' as const,canonical:canonical[index]!,
-                candidate:candidates[index]!,executorVersion:4 as const,
+                candidate:candidates[index]!,parserPolicy:'analysis-alias-v1' as const,executorVersion:4 as const,
                 base,currentFrame:frame,initialCut:cut,selectors,
                 randomSeed:recordSha256({scope:original.plan.scope,canonical:canonical[index]!,revision:ref,index}),
                 epoch:priorReady.epochRef,serverProgramSha256:priorReady.epoch.program.serverProgram!.programSha256,
@@ -1807,7 +1807,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     const message=deps.editProtocol.editMessageText(target.data.message,edit.data)
     const canonical={seq:target.seq,messageId:message.id,versionSha256:recordSha256(message),
       narrative:textOf(message.content),narrativeSha256:sha256(textOf(message.content))}
-    const candidate=parseMvuUpdateV2(canonical.narrative)
+    const parserPolicy='analysis-alias-v1' as const,candidate=parseMvuSchemaStoryCandidateV2(canonical.narrative,parserPolicy)
     // A rejected text remains saved and denied. It cannot produce an event,
     // so do not spend a Native rewind or any author phase on it.
     if(candidate.kind==='rejected')return
@@ -1861,7 +1861,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         const {planSha256:_oldPlanHash,...originalPlan}=originalEvent.plan
         plan=validateMvuSchemaStoryPlan(sealMvuSchemaStoryFact({...originalPlan,
           schemaVersion:7 as const,encoding:'native-mvu-schema-story-revision-plan-v1' as const,
-          canonical,candidate,base:basis.snapshot,currentFrame:frame,initialCut,selectors,
+          canonical,candidate,parserPolicy,base:basis.snapshot,currentFrame:frame,initialCut,selectors,
           randomSeed:recordSha256({scope:originalEvent.plan.scope,canonical,revision:ref}),
           executorVersion:4 as const,epoch:priorHistory.ready.epochRef,
           serverProgramSha256:priorReady.epoch.program.serverProgram!.programSha256,

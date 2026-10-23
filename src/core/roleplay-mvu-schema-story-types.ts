@@ -155,6 +155,7 @@ export interface MvuSchemaStoryPlanV6 extends Omit<MvuSchemaStoryPlanV5,'schemaV
   encoding:'native-mvu-schema-story-plan-v6'
   epoch:SchemaJournalRef
   serverProgramSha256:string
+  parserPolicy?:'analysis-alias-v1'
 }
 /** The original scope is immutable completed Story DATA, never a new closing
  * lease or InputCompletion. An accepted Native edit owns this execution. */
@@ -336,6 +337,15 @@ export const mvuSchemaStoryRevisionCompletionKey=(sid:string,descriptorSha:strin
   `${sid}__mvu-state-schema-revision-completion-${descriptorSha}`
 export const schemaStoryCode=(value:unknown):string=>typeof value==='string'&&/^[A-Z][A-Z0-9_]{0,95}$/.test(value)
   ?value:'SCHEMA_STORY_UNKNOWN'
+export function parseMvuSchemaStoryCandidateV2(narrative:string,parserPolicy?:'analysis-alias-v1'):MvuUpdateCandidateV2 {
+  // The sealed policy preserves the writer's parsing semantics. Equal-length
+  // tag replacements keep shared parser byte bounds and raw canonical DATA.
+  const text=parserPolicy==='analysis-alias-v1'
+    ?narrative.replace(/(<UpdateVariable>\s*)<(analysis|Analysis)>([\s\S]*?)<\/\2>/,
+      (_match,prefix:string,_tag:string,content:string)=>`${prefix}<Analyze> ${content} </Analyze>`)
+    :narrative
+  return parseMvuUpdateV2(text)
+}
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 const hash=(value:unknown)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
 const id=(value:unknown,max=128)=>typeof value==='string'&&new RegExp(`^[A-Za-z0-9_-]{1,${max}}$`).test(value)
@@ -454,9 +464,12 @@ export function validateMvuSchemaStoryPlan<T extends MvuSchemaStoryPlan>(input:T
     ...(value.schemaVersion>=3?['executorVersion']:[]),
     ...(value.schemaVersion>=4?['scopeReadFrame']:[]),
     ...(value.schemaVersion>=6?['epoch','serverProgramSha256']:[]),
-    ...(value.schemaVersion===7?['revision']:[])],value.schemaVersion>=5?['errorPolicy']:[])
+    ...(value.schemaVersion===7?['revision']:[])],[
+      ...(value.schemaVersion>=5?['errorPolicy']:[]),
+      ...(value.schemaVersion===6||value.schemaVersion===7?['parserPolicy']:[])])
   if('errorPolicy' in value&&value.errorPolicy!=='registered-command-policy-v1'
     &&value.errorPolicy!=='update-batch-atomic-v1')fail()
+  if('parserPolicy' in value&&value.parserPolicy!=='analysis-alias-v1')fail()
   fact(value,'planSha256');validateMvuSchemaNumericalSnapshot(value.base)
   validateSchemaStorySourceFrame(value.currentFrame)
   const scope=value.scope,currency=scope.currency,receipt=scope.receipt,canonical=value.canonical,frame=value.currentFrame
@@ -505,7 +518,8 @@ export function validateMvuSchemaStoryPlan<T extends MvuSchemaStoryPlan>(input:T
       :deriveMvuSchemaStorySelectors(scope,canonical,value.realmEpoch))
     ||!same(value.initialCut.anchor,value.selectors[0]!.anchor)
     ||!same(value.candidate,value.schemaVersion>=3
-      ?parseMvuUpdateV2(canonical.narrative):parseMvuUpdate(canonical.narrative)))fail()
+      ?parseMvuSchemaStoryCandidateV2(canonical.narrative,value.schemaVersion===6||value.schemaVersion===7?value.parserPolicy:undefined)
+      :parseMvuUpdate(canonical.narrative)))fail()
   if(value.schemaVersion===6||value.schemaVersion===7) {
     exact(value.epoch,['key','sha256'])
     if(!id(value.epoch.key,512)||!hash(value.epoch.sha256)||!hash(value.serverProgramSha256))fail()
@@ -527,9 +541,10 @@ export function validateMvuSchemaStoryPlan<T extends MvuSchemaStoryPlan>(input:T
 function validateStoryRevisionPlanV2(value:MvuSchemaStoryRevisionPlanV2):MvuSchemaStoryRevisionPlanV2 {
   exact(value,['schemaVersion','encoding','scope','canonical','base','candidate','currentFrame','realmEpoch',
     'programSha256','initialCut','clockEpochMs','randomSeed','selectors','planSha256','executorVersion',
-    'scopeReadFrame','epoch','serverProgramSha256','revision','execution','logicalNativeCut'],['errorPolicy'])
+    'scopeReadFrame','epoch','serverProgramSha256','revision','execution','logicalNativeCut'],['errorPolicy','parserPolicy'])
   if('errorPolicy' in value&&value.errorPolicy!=='registered-command-policy-v1'
     &&value.errorPolicy!=='update-batch-atomic-v1')fail()
+  if('parserPolicy' in value&&value.parserPolicy!=='analysis-alias-v1')fail()
   fact(value,'planSha256')
   validateMvuSchemaNumericalSnapshot(value.base)
   validateSchemaStorySourceFrame(value.currentFrame)
@@ -572,7 +587,7 @@ function validateStoryRevisionPlanV2(value:MvuSchemaStoryRevisionPlanV2):MvuSche
     ||!same(value.selectors,deriveMvuSchemaStoryRevisionSelectorsV2(scope,canonical,value.realmEpoch,
       revision.descriptor,revision.index,execution.sessionId))
     ||!same(value.initialCut.anchor,value.selectors[0]!.anchor)
-    ||!same(value.candidate,parseMvuUpdateV2(canonical.narrative)))fail()
+    ||!same(value.candidate,parseMvuSchemaStoryCandidateV2(canonical.narrative,value.parserPolicy)))fail()
   const read=validateMvuScopeReadFrameV1(value.scopeReadFrame),source=frame.snapshot.source
   if(read.source.sessionId!==execution.sessionId||read.source.sourceRecordSessionId!==source.sourceRecordSessionId
     ||read.source.importId!==source.importId||read.source.rawSha256!==source.rawSha256

@@ -8,7 +8,7 @@ import {validateSchemaEvaluationInputV3} from './tavern-mvu-schema-runner-v3.js'
 import {validateSchemaEvaluationInputV4} from './tavern-mvu-schema-runner-v4.js'
 import {validateMvuScopeReadFrameV1} from './tavern-mvu-scope-read.js'
 import {schemaScopeReadFactsEqual} from './roleplay-mvu-schema-scope-facts.js'
-import {freezeMvuSchemaStoryData,sealMvuSchemaStoryFact,validateMvuSchemaStoryPlan,
+import {freezeMvuSchemaStoryData,sealMvuSchemaStoryFact,validateMvuSchemaStoryPlan,parseMvuSchemaStoryCandidateV2,
   validateMvuSchemaNumericalSnapshot,validateMvuSchemaStoryEvent,validateMvuSchemaStorySettlement,
   deriveMvuSchemaStorySelectors,mvuSchemaStoryPhaseInput,mvuSchemaStoryReducerBridge,mvuSchemaStoryEvent,
   mvuSchemaStoryHead,mvuSchemaStorySettlement,mvuSchemaStoryEventKey,mvuSchemaStorySettlementKey,
@@ -68,10 +68,12 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
       freezeMvuSchemaStoryData({
         ...(hostEpoch?{schemaVersion:6 as const,encoding:'native-mvu-schema-story-plan-v6' as const,
           epoch:hostEpoch.epoch,serverProgramSha256:hostEpoch.serverProgramSha256,
+          parserPolicy:'analysis-alias-v1' as const,
           ...(hostEpoch.errorPolicy?{errorPolicy:hostEpoch.errorPolicy}:{})}:
           {schemaVersion:5 as const,encoding:'native-mvu-schema-story-plan-v5' as const}),
         executorVersion:4 as const,scope,canonical,base:validateMvuSchemaNumericalSnapshot(base),
-        candidate:parseMvuUpdateV2(canonical.narrative),scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame),...suffix}):
+        candidate:parseMvuSchemaStoryCandidateV2(canonical.narrative,hostEpoch?'analysis-alias-v1':undefined),
+        scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame),...suffix}):
       freezeMvuSchemaStoryData({schemaVersion:4 as const,encoding:'native-mvu-schema-story-plan-v4' as const,
         executorVersion:3 as const,scope,canonical,base:validateMvuSchemaNumericalSnapshot(base),
         candidate:parseMvuUpdateV2(canonical.narrative),scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame),...suffix})
