@@ -1,6 +1,6 @@
 {
   "name": "dsh-nexttavern-amber",
-  "description": "NextTavern amber tavern skin for the dsh web GUI: amber lamplight, dark oak, warm glass panels and a whale-girl tavern keeper",
+  "description": "NextTavern warm tavern skin for the DSH web GUI with wood-and-paper surfaces, day/night whale-girl artwork, and copper details",
   "version": "0.1.0",
   "private": true,
   "type": "module",
