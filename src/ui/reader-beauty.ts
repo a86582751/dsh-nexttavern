@@ -139,13 +139,16 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
                 if (stale()) break;
                 const source = projection ? projection.displayText : raw;
                 const text = projection ? source : projectReaderNarrativeDisplay(raw, displayScope);
+                // A successful read after paging can replace a cached fallback.
+                // Reuse rendered output only while its display input is unchanged.
+                const previousDisplay = cached?.text === text ? cached : undefined;
                 let value;
                 try {
-                    value = { text, html: cached?.html ?? await renderAsync(source, rules, runBeautyRegex, displayScope) };
+                    value = { text, html: previousDisplay?.html ?? await renderAsync(source, rules, runBeautyRegex, displayScope) };
                     if (projection?.fragments) {
                         const fragments: AuthorFrameFragment[] = [];
                         const readerFragments: ReaderRegexDocumentRenderFragmentV1[] = [];
-                        const previousFragments = cached?.readerFragments ?? cached?.fragments;
+                        const previousFragments = previousDisplay?.readerFragments ?? previousDisplay?.fragments;
                         let documents = 0, readerDocuments = 0;
                         for (const [index, fragment] of projection.fragments.entries()) {
                             const previous = previousFragments?.[index];
