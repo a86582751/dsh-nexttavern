@@ -45,7 +45,7 @@ function freeze<T>(value:T):T {
 }
 interface MaterialReadBudgetV1 {
   bytes:number
-  rows:Map<string,{readonly row:TavernBoundCoreMaterialRowV1;readonly bytes:number}>
+  rows:Map<string,TavernBoundCoreMaterialRowV1>
   inputs:Map<string,{readonly sha256:string;readonly value:unknown;readonly bytes:number}>
   decodedInputs?:ReadonlyMap<string,{readonly sha256:string;readonly value:unknown;readonly bytes:number}>
   invocations:Map<number,ReturnType<typeof validateNativeOpeningInvocationV1>>
@@ -240,7 +240,7 @@ function readPublication(deps:TavernMaterialHistoryDependenciesV1,
     if(recordSha256(raw)!==ref.sha256)fail('INPUT_MATERIAL_HISTORY_CORE_ROW_CHANGED')
     // Native binds this published derived record by its full digest. Source
     // budgets belong to its producer, not to the repeated explanatory layout.
-    const priorRow=budget.rows.get(ref.key),row=priorRow?.row??raw
+    const priorRow=budget.rows.get(ref.key),row=priorRow??raw
     if(!object(row)||row.schemaVersion!==1||row.authority!=='consumer-data-only'||row.sessionId!==ownerSessionId
       ||row.kind!==kind||row.turn!==event.data.turn||row.step!==event.data.step
       ||!object(row.payload))
@@ -255,11 +255,7 @@ function readPublication(deps:TavernMaterialHistoryDependenciesV1,
       ||!object(row.currency)||row.currency.schemaVersion!==2)fail('INPUT_MATERIAL_HISTORY_CORE_SCHEMA_INVALID')
     rememberReference(references,ref)
     const result=row as unknown as TavernBoundCoreMaterialRowV1
-    if(!priorRow) {
-      const bytes=charge(budget,result)
-      if(budget.rows.size>=8192)fail('INPUT_MATERIAL_HISTORY_CORE_BUDGET')
-      budget.rows.set(ref.key,{row:result,bytes})
-    }
+    if(!priorRow)budget.rows.set(ref.key,result)
     return result
   }
   const snapshot=read(event.data.snapshot,'snapshot'),plan=read(event.data.plan,'plan')
@@ -276,7 +272,7 @@ const ownsCoreKey=(key:string,sid:string)=>key.startsWith(`${sid}__tavern-prompt
 interface PublicationFacts {
   readonly publication:ReturnType<typeof readPublication>
   readonly references:readonly (readonly [string,string])[]
-  readonly rows:readonly {readonly key:string;readonly value:TavernBoundCoreMaterialRowV1;readonly bytes:number}[]
+  readonly rows:readonly {readonly key:string;readonly value:TavernBoundCoreMaterialRowV1}[]
   readonly inputs:readonly {readonly key:string;readonly value:unknown;readonly sha256:string;readonly bytes:number}[]
 }
 function capturePublication(deps:TavernMaterialHistoryDependenciesV1,event:NativeRequestMaterialEventV1,owner:string,
@@ -291,16 +287,16 @@ function capturePublication(deps:TavernMaterialHistoryDependenciesV1,event:Nativ
       // stays shared across the same complete catalog as before segmentation.
       const local=budgetV1(budget),refs=new Map<string,string>(),publication=readPublication(deps,event,owner,refs,local,events)
       return Object.freeze({publication:Object.freeze(publication),references:Object.freeze([...refs]),
-        rows:Object.freeze([...local.rows].map(([key,{row,bytes}])=>Object.freeze({key,value:row,bytes}))),
+        rows:Object.freeze([...local.rows].map(([key,row])=>Object.freeze({key,value:row}))),
         inputs:Object.freeze([...local.inputs].map(([key,input])=>Object.freeze({key,...input})))})
     })
   reads.push(read)
   const facts=read.data
   for(const [key,sha256] of facts.references)rememberReference(references,{key,sha256})
-  // The original budget is for the complete catalog's unique rows and input
-  // bodies. Cached publications contribute the same bytes once per exact key.
+  // Published derived rows already passed their producer's input limits.
+  // Historical captures reuse them without charging growing metadata as new input.
   for(const row of facts.rows)if(!budget.rows.has(row.key)){
-    budget.rows.set(row.key,{row:row.value,bytes:row.bytes});budget.bytes+=row.bytes
+    budget.rows.set(row.key,row.value)
   }
   for(const input of facts.inputs){
     const previous=budget.inputs.get(input.key)
@@ -309,8 +305,7 @@ function capturePublication(deps:TavernMaterialHistoryDependenciesV1,event:Nativ
       budget.inputs.set(input.key,{sha256:input.sha256,value:input.value,bytes:input.bytes});budget.bytes+=input.bytes
     }
   }
-  if(budget.bytes>67_108_864||budget.rows.size>8192||budget.inputs.size>8192)
-    fail('INPUT_MATERIAL_HISTORY_CORE_BUDGET')
+  if(budget.bytes>67_108_864)fail('INPUT_MATERIAL_HISTORY_CORE_BUDGET')
   return facts.publication
 }
 function assertOpeningCatalog(deps:TavernMaterialHistoryDependenciesV1,

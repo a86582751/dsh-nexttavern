@@ -191,7 +191,9 @@
         "native-story-*",
         "native-request-material-fixture*",
         "roleplay-opening-material*",
-        "roleplay-tavern-injection-definitions*"
+        "roleplay-tavern-injection-definitions*",
+        "roleplay-tavern-material-history*",
+        "tavern-history-owner*"
       ]
     },
     {
