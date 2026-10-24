@@ -50,7 +50,9 @@
         "http-proxy-native-fetch-compat*",
         "development/llm-deepseek/*",
         "deepseek-request-material*",
-        "development/tool-skill/*"
+        "development/tool-skill/*",
+        "development/client-modules/*",
+        "client-modules-artifact-revision*"
       ]
     },
     {

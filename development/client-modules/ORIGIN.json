@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "package": "@deepseek-ai/dsh-client-modules",
+  "version": "0.1.7-rc.2",
+  "license": "MIT",
+  "upstream": {
+    "repository": "https://github.com/deepseek-ai/deepseek-harness",
+    "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+    "packagePath": "packages/client/modules",
+    "packageJsonSha256": "455e33f477548d3189ef84fc4cdb9c574d21cc1f4ff5c9ce7a641d361520aee8",
+    "licensePath": "LICENSE",
+    "licenseSha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
+    "sourceFiles": [
+      {
+        "path": "src/index.ts",
+        "upstream": "packages/client/modules/src/index.ts",
+        "sha256": "683dace2553c67226cb5b0603cd235e65cd1f521dec31f69d972391eb6688f69"
+      },
+      {
+        "path": "src/invariant.ts",
+        "upstream": "packages/client/modules/src/invariant.ts",
+        "sha256": "9ef71b179a93799496edb59ae5e1758ab7f7caad41d0c86bb8a861e09ffa808b"
+      },
+      {
+        "path": "src/client/entries.ts",
+        "upstream": "packages/client/modules/src/client/entries.ts",
+        "sha256": "52b438c9541a470b63e41b8880fd608909117168bfcd76cbe65be6dbff651edc"
+      },
+      {
+        "path": "src/client/entry-lifecycle.ts",
+        "upstream": "packages/client/modules/src/client/entry-lifecycle.ts",
+        "sha256": "1b6f54b4fbebf5c440e753b9c104d4741e632b744b496a6a23af6f8fc20cc198"
+      },
+      {
+        "path": "src/client/index.ts",
+        "upstream": "packages/client/modules/src/client/index.ts",
+        "sha256": "2a19de1156ad5dd7de1a5c5ccc8a77b3311217e8e301031dd07d244e04fff7e4"
+      },
+      {
+        "path": "src/client/manifest.ts",
+        "upstream": "packages/client/modules/src/client/manifest.ts",
+        "sha256": "2e44bce01dc004fcb6a21b68445dfd3a8cb05fb2b715b1df8e75ed642609686e"
+      },
+      {
+        "path": "src/client/system.ts",
+        "upstream": "packages/client/modules/src/client/system.ts",
+        "sha256": "01ae8f4cac487eecfd5133aaaa045fd531cb21616638f3c694f1ab43c7fba8bf"
+      }
+    ]
+  },
+  "maintenance": {
+    "scope": "Node ClientModuleRegistry.rebuilt executable publication",
+    "transformations": [
+      "Relative maintained TypeScript import specifiers use .js for generated modules.",
+      "Reuse the accepted artifact when filesystem metadata changes but executable bytes do not."
+    ],
+    "browserBehavior": "Unchanged upstream implementation; canonical generated ModuleLoader bundle retains the official module identity.",
+    "addedModelRequests": {
+      "normal": 0,
+      "retry": 0,
+      "fallback": 0
+    }
+  }
+}

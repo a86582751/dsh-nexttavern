@@ -1,0 +1,6 @@
+This package contains code from DeepSeek Harness, copyright (c) 2026 DeepSeek,
+licensed under the MIT License. See LICENSE.upstream and ORIGIN.json.
+
+The maintained Node publication change belongs to the NextTavern project.
+The original package name and version identify compatibility with upstream;
+this is a maintained fork, not a new upstream release.

@@ -8857,6 +8857,69 @@
       "outputs": [
         "development/mvu-schema-runtime-v4-update-batch-v1/lib/index.js"
       ]
+    },
+    {
+      "artifact": "compat-client-modules-index-js",
+      "source": "development/client-modules/src/index.ts",
+      "banner": "runtime/alpha3/compat/client-modules/src/index.ts",
+      "primaryOutput": "development/client-modules/lib/index.js",
+      "outputs": [
+        "development/client-modules/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-client-modules-invariant-js",
+      "source": "development/client-modules/src/invariant.ts",
+      "banner": "runtime/alpha3/compat/client-modules/src/invariant.ts",
+      "primaryOutput": "development/client-modules/lib/invariant.js",
+      "outputs": [
+        "development/client-modules/lib/invariant.js"
+      ]
+    },
+    {
+      "artifact": "compat-client-modules-client-entries-js",
+      "source": "development/client-modules/src/client/entries.ts",
+      "banner": "runtime/alpha3/compat/client-modules/src/client/entries.ts",
+      "primaryOutput": "development/client-modules/lib/client/entries.js",
+      "outputs": [
+        "development/client-modules/lib/client/entries.js"
+      ]
+    },
+    {
+      "artifact": "compat-client-modules-client-entry-lifecycle-js",
+      "source": "development/client-modules/src/client/entry-lifecycle.ts",
+      "banner": "runtime/alpha3/compat/client-modules/src/client/entry-lifecycle.ts",
+      "primaryOutput": "development/client-modules/lib/client/entry-lifecycle.js",
+      "outputs": [
+        "development/client-modules/lib/client/entry-lifecycle.js"
+      ]
+    },
+    {
+      "artifact": "compat-client-modules-client-index-js",
+      "source": "development/client-modules/src/client/index.ts",
+      "banner": "runtime/alpha3/compat/client-modules/src/client/index.ts",
+      "primaryOutput": "development/client-modules/lib/client/index.js",
+      "outputs": [
+        "development/client-modules/lib/client/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-client-modules-client-manifest-js",
+      "source": "development/client-modules/src/client/manifest.ts",
+      "banner": "runtime/alpha3/compat/client-modules/src/client/manifest.ts",
+      "primaryOutput": "development/client-modules/lib/client/manifest.js",
+      "outputs": [
+        "development/client-modules/lib/client/manifest.js"
+      ]
+    },
+    {
+      "artifact": "compat-client-modules-client-system-js",
+      "source": "development/client-modules/src/client/system.ts",
+      "banner": "runtime/alpha3/compat/client-modules/src/client/system.ts",
+      "primaryOutput": "development/client-modules/lib/client/system.js",
+      "outputs": [
+        "development/client-modules/lib/client/system.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -47555,6 +47618,111 @@
         "id": "reader-regex-document-before-coexistence-20261018-browser-ce3406448c3c33216940",
         "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-html-compiler-v1.mts",
         "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-html-compiler-v1.mts"
+      },
+      {
+        "id": "compat-client-modules-index-ts",
+        "source": "development/client-modules/src/index.ts",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/src/index.ts"
+      },
+      {
+        "id": "compat-client-modules-index-js",
+        "source": "development/client-modules/lib/index.js",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/lib/index.js"
+      },
+      {
+        "id": "compat-client-modules-invariant-ts",
+        "source": "development/client-modules/src/invariant.ts",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/src/invariant.ts"
+      },
+      {
+        "id": "compat-client-modules-invariant-js",
+        "source": "development/client-modules/lib/invariant.js",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/lib/invariant.js"
+      },
+      {
+        "id": "compat-client-modules-client-entries-ts",
+        "source": "development/client-modules/src/client/entries.ts",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/src/client/entries.ts"
+      },
+      {
+        "id": "compat-client-modules-client-entries-js",
+        "source": "development/client-modules/lib/client/entries.js",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/lib/client/entries.js"
+      },
+      {
+        "id": "compat-client-modules-client-entry-lifecycle-ts",
+        "source": "development/client-modules/src/client/entry-lifecycle.ts",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/src/client/entry-lifecycle.ts"
+      },
+      {
+        "id": "compat-client-modules-client-entry-lifecycle-js",
+        "source": "development/client-modules/lib/client/entry-lifecycle.js",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/lib/client/entry-lifecycle.js"
+      },
+      {
+        "id": "compat-client-modules-client-index-ts",
+        "source": "development/client-modules/src/client/index.ts",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/src/client/index.ts"
+      },
+      {
+        "id": "compat-client-modules-client-index-js",
+        "source": "development/client-modules/lib/client/index.js",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/lib/client/index.js"
+      },
+      {
+        "id": "compat-client-modules-client-manifest-ts",
+        "source": "development/client-modules/src/client/manifest.ts",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/src/client/manifest.ts"
+      },
+      {
+        "id": "compat-client-modules-client-manifest-js",
+        "source": "development/client-modules/lib/client/manifest.js",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/lib/client/manifest.js"
+      },
+      {
+        "id": "compat-client-modules-client-system-ts",
+        "source": "development/client-modules/src/client/system.ts",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/src/client/system.ts"
+      },
+      {
+        "id": "compat-client-modules-client-system-js",
+        "source": "development/client-modules/lib/client/system.js",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/lib/client/system.js"
+      },
+      {
+        "id": "compat-client-modules-browser",
+        "source": "development/client-modules/lib/client.js",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/lib/client.js"
+      },
+      {
+        "id": "compat-client-modules-package-json",
+        "source": "development/client-modules/package.json",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/package.json"
+      },
+      {
+        "id": "compat-client-modules-readme-md",
+        "source": "development/client-modules/README.md",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/README.md"
+      },
+      {
+        "id": "compat-client-modules-license",
+        "source": "development/client-modules/LICENSE",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/LICENSE"
+      },
+      {
+        "id": "compat-client-modules-license-upstream",
+        "source": "development/client-modules/LICENSE.upstream",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/LICENSE.upstream"
+      },
+      {
+        "id": "compat-client-modules-notice",
+        "source": "development/client-modules/NOTICE",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/NOTICE"
+      },
+      {
+        "id": "compat-client-modules-origin-json",
+        "source": "development/client-modules/ORIGIN.json",
+        "canonicalSource": "runtime/alpha3/compat/client-modules/ORIGIN.json"
       }
     ],
     "publicRelease": {
@@ -171151,6 +171319,167 @@
           "development/mvu-schema-runtime-v4-update-batch-v1/src/descriptor.ts"
         ],
         "banner": "runtime/alpha3/compat/mvu-schema-runtime-v4-update-batch-v1/src/index.ts"
+      },
+      {
+        "id": "compat-client-modules-index-build",
+        "kind": "typescript-module",
+        "artifact": "compat-client-modules-index-js",
+        "entry": "development/client-modules/src/index.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "typeContext": "client-modules-host",
+        "inputs": [
+          "development/client-modules/src/index.ts",
+          "development/client-modules/src/invariant.ts",
+          "development/client-modules/src/client/entries.ts",
+          "development/client-modules/src/client/entry-lifecycle.ts",
+          "development/client-modules/src/client/index.ts",
+          "development/client-modules/src/client/manifest.ts",
+          "development/client-modules/src/client/system.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/client-modules/src/index.ts"
+      },
+      {
+        "id": "compat-client-modules-invariant-build",
+        "kind": "typescript-module",
+        "artifact": "compat-client-modules-invariant-js",
+        "entry": "development/client-modules/src/invariant.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "typeContext": "client-modules-host",
+        "inputs": [
+          "development/client-modules/src/index.ts",
+          "development/client-modules/src/invariant.ts",
+          "development/client-modules/src/client/entries.ts",
+          "development/client-modules/src/client/entry-lifecycle.ts",
+          "development/client-modules/src/client/index.ts",
+          "development/client-modules/src/client/manifest.ts",
+          "development/client-modules/src/client/system.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/client-modules/src/invariant.ts"
+      },
+      {
+        "id": "compat-client-modules-client-entries-build",
+        "kind": "typescript-module",
+        "artifact": "compat-client-modules-client-entries-js",
+        "entry": "development/client-modules/src/client/entries.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "typeContext": "client-modules-browser",
+        "inputs": [
+          "development/client-modules/src/index.ts",
+          "development/client-modules/src/invariant.ts",
+          "development/client-modules/src/client/entries.ts",
+          "development/client-modules/src/client/entry-lifecycle.ts",
+          "development/client-modules/src/client/index.ts",
+          "development/client-modules/src/client/manifest.ts",
+          "development/client-modules/src/client/system.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/client-modules/src/client/entries.ts"
+      },
+      {
+        "id": "compat-client-modules-client-entry-lifecycle-build",
+        "kind": "typescript-module",
+        "artifact": "compat-client-modules-client-entry-lifecycle-js",
+        "entry": "development/client-modules/src/client/entry-lifecycle.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "typeContext": "client-modules-browser",
+        "inputs": [
+          "development/client-modules/src/index.ts",
+          "development/client-modules/src/invariant.ts",
+          "development/client-modules/src/client/entries.ts",
+          "development/client-modules/src/client/entry-lifecycle.ts",
+          "development/client-modules/src/client/index.ts",
+          "development/client-modules/src/client/manifest.ts",
+          "development/client-modules/src/client/system.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/client-modules/src/client/entry-lifecycle.ts"
+      },
+      {
+        "id": "compat-client-modules-client-index-build",
+        "kind": "typescript-module",
+        "artifact": "compat-client-modules-client-index-js",
+        "entry": "development/client-modules/src/client/index.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "typeContext": "client-modules-browser",
+        "inputs": [
+          "development/client-modules/src/index.ts",
+          "development/client-modules/src/invariant.ts",
+          "development/client-modules/src/client/entries.ts",
+          "development/client-modules/src/client/entry-lifecycle.ts",
+          "development/client-modules/src/client/index.ts",
+          "development/client-modules/src/client/manifest.ts",
+          "development/client-modules/src/client/system.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/client-modules/src/client/index.ts"
+      },
+      {
+        "id": "compat-client-modules-client-manifest-build",
+        "kind": "typescript-module",
+        "artifact": "compat-client-modules-client-manifest-js",
+        "entry": "development/client-modules/src/client/manifest.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "typeContext": "client-modules-browser",
+        "inputs": [
+          "development/client-modules/src/index.ts",
+          "development/client-modules/src/invariant.ts",
+          "development/client-modules/src/client/entries.ts",
+          "development/client-modules/src/client/entry-lifecycle.ts",
+          "development/client-modules/src/client/index.ts",
+          "development/client-modules/src/client/manifest.ts",
+          "development/client-modules/src/client/system.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/client-modules/src/client/manifest.ts"
+      },
+      {
+        "id": "compat-client-modules-client-system-build",
+        "kind": "typescript-module",
+        "artifact": "compat-client-modules-client-system-js",
+        "entry": "development/client-modules/src/client/system.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "typeContext": "client-modules-browser",
+        "inputs": [
+          "development/client-modules/src/index.ts",
+          "development/client-modules/src/invariant.ts",
+          "development/client-modules/src/client/entries.ts",
+          "development/client-modules/src/client/entry-lifecycle.ts",
+          "development/client-modules/src/client/index.ts",
+          "development/client-modules/src/client/manifest.ts",
+          "development/client-modules/src/client/system.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/client-modules/src/client/system.ts"
       }
     ],
     "typeScript": {
@@ -171660,6 +171989,12 @@
           "ambientDeclarations": [
             "build-tools/node_modules/@deepseek-ai/dsh-agent/lib/types/types.d.ts"
           ]
+        },
+        "client-modules-host": {
+          "rewriteRelativeImportExtensions": true
+        },
+        "client-modules-browser": {
+          "rewriteRelativeImportExtensions": true
         }
       }
     },
@@ -193259,6 +193594,7 @@
     "development/mvu-schema-runtime-v4-server-candidates-v1/lib/index.js",
     "development/mvu-schema-runtime-v4-server-candidates-v2/lib/descriptor.js",
     "development/mvu-schema-runtime-v4-server-candidates-v2/lib/index.js",
+    "development/client-modules/lib/client.js",
     "development/mvu-schema-runtime/dist/index.mjs",
     "development/mvu-schema-runtime/dist/compiler.mjs",
     "development/mvu-schema-runtime/dist/tavern-mvu-schema-compiler-worker.mjs",

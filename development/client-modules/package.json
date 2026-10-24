@@ -1,0 +1,33 @@
+{
+  "name": "@deepseek-ai/dsh-client-modules",
+  "description": "NextTavern maintained rc.2 client module registry; metadata-only changes retain the accepted executable generation",
+  "version": "0.1.7-rc.2",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/client/modules"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "src/index.ts",
+  "exports": {
+    ".": { "types": "./src/index.ts", "default": "./lib/index.js" },
+    "./client": { "types": "./src/client/index.ts", "default": "./lib/client.js" },
+    "./invariant": { "types": "./src/invariant.ts", "default": "./lib/invariant.js" },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "dsh": { "client": { "platform": "web", "inject": [], "immediately": true } },
+  "files": ["src", "lib", "README.md", "LICENSE", "LICENSE.upstream", "NOTICE", "ORIGIN.json"],
+  "license": "MIT",
+  "peerDependencies": { "@deepseek-ai/cordis": "4.0.4" },
+  "devDependencies": {
+    "@deepseek-ai/cordis-plugin-loader": "1.0.5",
+    "@deepseek-ai/dsh-host-webserver": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-invariants": "0.1.7-rc.2",
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-package-manifest": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-client-store": "0.1.7-rc.2"
+  }
+}
