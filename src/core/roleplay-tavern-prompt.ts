@@ -386,7 +386,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       const macrosFor=(scopes:readonly TavernTemplateScopeBindingV1[],outlets:readonly {name:string;text:string;versionSha256:string}[]=[])=>
         produceRoleplayTavernMacroSnapshotV1({source,cardData:captured.cardData,includeCardStyle,
           inputText:playerSnapshot?playerSnapshot.userText:null,scopes:community?.scopes(scopes)??scopes,outlets,declaredOutlets,
-          ...preparedRoute?{preparedRoute}:{},currentCardFields}).snapshot
+          messageVariables:scopeData.messageVariables,...preparedRoute?{preparedRoute}:{},currentCardFields}).snapshot
       const macros=macrosFor(initialBindings),rules=community?.rules??captureRoleplayTavernScopedRegexV1(captured.cardData,source.sourceSha256,true)
       const component=await deps.loadTemplate(scope.signal)
       assertCurrent()

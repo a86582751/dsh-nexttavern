@@ -16,6 +16,9 @@ export const TAVERN_PROMPT_TRANSFORM_POLICY_V1=frozen({schemaVersion:1,
   unit:'utf16-code-units',limits:LIMITS,macroEngine:'legacy-frozen-read-only',
   scriptOrder:['global','preset','scoped'],capture:'st-callback-full-numeric-and-named-trim-macro',
   unknown:'selected-refusal-catalog-deferred',outlet:'explicit-read-only-macro-consumption',
+  messageHelpers:{upstreamCommit:'519599bc68247d8e759cc844a983f8f5252941a8',
+    macros:['get_message_variable','format_message_variable'],values:'owned-latest-message; path-read; omit-private-subtree',
+    format:'literal-block-YAML; expanded-inline-prefix-indentation'},
   pipelines:['macro-only','regex-only','macro-then-regex','regex-then-macro'],
   authority:'consumer-data-only',additionalModelRequests:{normal:0,retry:0,fallback:0},
 })
@@ -77,21 +80,25 @@ function validateNames(x:unknown):asserts x is TavernPromptNamesV1 {
     if(value.key!==key||value.value===null&&key!=='model')fail('PROMPT_TRANSFORM_NAMES')}
 }
 function macroSnapshot(x:unknown):asserts x is TavernPromptMacroSnapshotV1 {
-  const deferred=object(x)&&Object.hasOwn(x,'deferredMacros')
+  const deferred=object(x)&&Object.hasOwn(x,'deferredMacros'),messageVariables=object(x)&&Object.hasOwn(x,'messageVariables')
   exact(x,['schemaVersion','engine','authority','sourceSnapshotSha256','names','card','input','instruct','dynamic','registered',
-    'localVariables','globalVariables','outlets','post','characterOverrides',...deferred?['deferredMacros']:[]])
+    'localVariables','globalVariables','outlets','post','characterOverrides',...deferred?['deferredMacros']:[],
+    ...messageVariables?['messageVariables']:[]])
   if(x.schemaVersion!==1||!member(x.engine,['legacy','experimental'])
     ||x.authority!=='consumer-data-only'||!hash(x.sourceSnapshotSha256))fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
   validateNames(x.names);binding(x.input)
   // A Native generated opening has no player input. The binding/read checks
   // above retain that explicit negative fact, including its null hashes.
   if(x.input.key!=='input')fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
-  if(deferred) {
-    list(x.deferredMacros)
-    for(const name of x.deferredMacros)text(name,256)
-  }
   for(const key of ['instruct','dynamic','registered','localVariables','globalVariables','outlets','post'])bindings(x[key])
   if(deferred){list(x.deferredMacros);for(const name of x.deferredMacros)text(name,256)}
+  if(messageVariables&&x.messageVariables!==null) {
+    const scope=x.messageVariables
+    exact(scope,['scope','ownerId','versionSha256','values','valuesSha256'])
+    if(scope.scope!=='message'||!hash(scope.versionSha256)||!hash(scope.valuesSha256)||!object(scope.values))
+      fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
+    text(scope.ownerId)
+  }
   if(x.card!==null) {
     bindings(x.card)
     if(x.card.length!==TAVERN_PROMPT_CARD_ORDER_V1.length

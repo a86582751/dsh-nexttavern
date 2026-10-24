@@ -583,6 +583,8 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
     const matches=versions.get(item.canonical.versionSha256)
     if(matches)matches.push(item);else versions.set(item.canonical.versionSha256,[item])
   }
+  const latestVariables:{message:TavernPromptMessageVariablesFactV1|null;absence:TavernPromptVariableRefV1[]}=
+    {message:null,absence:[]}
   const messages:TavernPromptMessageVariablesFactV1[]=storyRows.map((row,index)=>{
     if(nativeInputSha256(row.message)!==row.messageSha256)fail('INPUT_MATERIAL_SCOPE_MESSAGE_HASH_CHANGED')
     const messageRef=ref(`${owner}:message:${row.id}`,row.messageSha256,{schemaVersion:1,
@@ -676,9 +678,13 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
             rawSha256:source.original.rawSha256}})
       active={kind:'absent',provenance};initializedRef=provenance
     }else active={kind:'unavailable',missingEvidence:['actual published or absent message-variable fact for this exact version']}
-    return {index,messageId:row.id,activeSwipe:0,active,selectedSwipe:index===storyRows.length-1?0:null,
+    const message:TavernPromptMessageVariablesFactV1={index,messageId:row.id,activeSwipe:0,active,
+      selectedSwipe:index===storyRows.length-1?0:null,
       selected:index===storyRows.length-1?active:null,selectedInitialized:index===storyRows.length-1?initialized:null,
       initializedRef:index===storyRows.length-1?initializedRef:null,messageRef}
+    if(active.kind==='absent')latestVariables.absence.push(active.provenance)
+    else {latestVariables.message=message;latestVariables.absence=[]}
+    return message
   })
   const history:TavernPromptMessageHistoryV1={kind:'complete-prefix',messageCount:messages.length,
     selectedIndex:messages.length?messages.length-1:null,selectedSwipe:messages.length?0:null,messages,
@@ -686,6 +692,16 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
       encoding:'actual-native-selected-story-variable-membership-v1',selectedBaseSha256:selected.sha256,
       policySha256:policySha256,
       messages:storyRows.map(row=>({id:row.id,messageSha256:row.messageSha256,origin:row.origin,eventSeq:row.eventSeq}))})}
+  // Known absence is skipped, but an unavailable later message cannot grant
+  // permission to read an older publication. Reuse the owner's values/hash.
+  const latest=latestVariables.message,active=latest?.active
+  const messageVariables:TavernTemplateScopeBindingV1|null=!messages.length||active?.kind==='unavailable'?null:{
+    scope:'message',ownerId:active?.kind==='values'?active.provenance.ownerId:history.membershipRef.ownerId,
+    versionSha256:recordSha256({schemaVersion:1,encoding:'native-latest-message-variables-v1',
+      membershipRef:history.membershipRef,messageRef:latest?.messageRef??null,
+      publication:active?.kind==='values'?active.provenance:null,laterAbsence:latestVariables.absence}),
+    values:active?.kind==='values'?active.values:{},
+    valuesSha256:active?.kind==='values'?active.valuesSha256:recordSha256({})}
   const selectedFact=messages.at(-1)?.selected
   if(selectedFact)scopes.push({scope:'message',fact:selectedFact})
   else missing('message','no actual selected message-variable fact')
@@ -694,7 +710,8 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
   // Each supplier was consumed synchronously above. The parent InputState
   // completes the capture and owns later DATA checks.
   input.assertOwnerCurrent()
-  return {scopes:freeze(scopes),bindings:freeze(bindings),history:freeze(history),stateSnapshotSha256,
+  return {scopes:freeze(scopes),bindings:freeze(bindings),history:freeze(history),
+    messageVariables:freeze(messageVariables),stateSnapshotSha256,
     evidence:freeze({schemaVersion:1,encoding:'native-prompt-variable-scope-capture-v1',authority:'consumer-data-only',
       policy,sourceSha256:source.sourceSha256,selectedBaseSha256:selected.sha256,evidence})}
 }

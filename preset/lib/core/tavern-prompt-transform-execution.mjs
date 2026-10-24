@@ -1,5 +1,6 @@
 // Generated from runtime/alpha3/src/core/tavern-prompt-transform-execution.mts; edit the TypeScript source.
 import { createHash } from 'node:crypto';
+import { stringify as stringifyYaml } from 'yaml';
 import { recordSha256, sha256, stableJson } from './roleplay-data.js';
 import { schemaTextSha256 } from './tavern-mvu-schema-data.js';
 import { createTavernPromptTransformOutputV1 } from './tavern-prompt-transform-output.mjs';
@@ -158,15 +159,60 @@ function run(data) {
             diagnostics.push(value);
         }
     };
+    const recordRead = (read) => {
+        const key = recordSha256(read);
+        if (!reads.has(key)) {
+            receipt(read);
+            reads.set(key, read);
+        }
+    };
     const collect = (binding) => {
         if (binding.key === 'model' && binding.value === null)
             issue('PROMPT_TRANSFORM_BINDING_MISSING', 'model');
-        const key = recordSha256(binding.read);
-        if (!reads.has(key)) {
-            receipt(binding.read);
-            reads.set(key, binding.read);
-        }
+        recordRead(binding.read);
         return binding.value ?? '';
+    };
+    const messageVariable = (path, token) => {
+        const scope = macro.messageVariables;
+        if (!scope) {
+            issue('PROMPT_TRANSFORM_BINDING_MISSING', token);
+            return null;
+        }
+        const entities = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" };
+        const key = path.replace(/&(?:amp|lt|gt|quot|#39);/g, entity => entities[entity]);
+        const parts = [];
+        if (Object.hasOwn(scope.values, key))
+            parts.push(key);
+        else {
+            if (key.startsWith('.'))
+                parts.push('');
+            key.replace(/[^.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|$))/g, (part, number, quote, quoted) => {
+                parts.push(quote ? quoted.replace(/\\(\\)?/g, '$1') : number ?? part);
+                return part;
+            });
+        }
+        let value = parts.length ? scope.values : null, present = parts.length > 0;
+        for (const part of parts) {
+            if (value === null || !Object.hasOwn(Object(value), part)) {
+                present = false;
+                value = null;
+                break;
+            }
+            value = Object(value)[part];
+        }
+        recordRead({ kind: 'variable', purpose: 'read', scope: 'message', ownerId: scope.ownerId, key, present,
+            versionSha256: scope.versionSha256, valueSha256: present ? recordSha256(value) : null, entryId: null, sourcePointer: null });
+        // JS-Slash-Runner removes private keys only within the selected subtree;
+        // arrays (including [value, description]) remain ordinary authored data.
+        const withoutPrivate = (item) => {
+            if (Array.isArray(item))
+                return item.map(withoutPrivate);
+            if (item && typeof item === 'object')
+                return Object.fromEntries(Object.entries(item)
+                    .filter(([name]) => !name.startsWith('$')).map(([name, child]) => [name, withoutPrivate(child)]));
+            return item;
+        };
+        return withoutPrivate(value);
     };
     const env = (override) => {
         const values = [];
@@ -253,7 +299,8 @@ function run(data) {
         return environment.some(b => b.key.toLowerCase() === name) || TAVERN_PROMPT_POST_ORDER_V1.some(n => n.toLowerCase() === name)
             || TAVERN_PROMPT_INSTRUCT_ORDER_V1.some(n => n.toLowerCase().split('|').includes(name))
             || ['newline', 'trim', 'noop', 'input'].includes(name)
-            || /^(getvar|getglobalvar|outlet)::.+$/.test(name) || /^reverse:.+$/.test(name) || name.startsWith('//');
+            || /^(getvar|getglobalvar|outlet)::.+$/.test(name) || /^reverse:.+$/.test(name) || name.startsWith('//')
+            || /^(get|format)_message_variable::/.test(name);
     };
     const macros = (text, override = null, post = value => value) => {
         if (!text)
@@ -354,6 +401,30 @@ function run(data) {
                 }
                 return post(collect(binding));
             });
+        // These helper macros run after ordinary ST substitution. Paths may be
+        // introduced by an alias or regex, so the Worker reads the frozen owner
+        // directly rather than requiring a pre-enumerated list of macro tokens.
+        if (result.includes('{{'))
+            result = replace(result, /{{get_message_variable::(.*?)}}/gi, m => {
+                const value = messageVariable(m[1], m[0]);
+                return post(typeof value === 'string' ? value : JSON.stringify(value));
+            });
+        if (result.includes('{{')) {
+            const before = result;
+            let previousEnd = 0, prefix = '';
+            result = replace(before, /{{format_message_variable::(.*?)}}/gi, m => {
+                const gap = before.slice(previousEnd, m.index), lineStart = Math.max(gap.lastIndexOf('\n'), gap.lastIndexOf('\r'), gap.lastIndexOf('\u2028'), gap.lastIndexOf('\u2029')) + 1;
+                prefix = lineStart ? gap.slice(lineStart) : prefix + gap;
+                const value = messageVariable(m[1], m[0]), formatted = typeof value === 'string' ? value :
+                    stringifyYaml(value, { blockQuote: 'literal' }).trimEnd();
+                const replacement = formatted.replaceAll('\n', '\n' + ' '.repeat(prefix.length));
+                // Upstream's recursive prefix retains earlier formatted newlines on
+                // the same original line; the next macro counts that complete prefix.
+                prefix += replacement;
+                previousEnd = m.index + m[0].length;
+                return post(replacement);
+            });
+        }
         if (result.includes('{{'))
             replace(result, /{{([\s\S]*?)}}/g, m => {
                 if (!recognized(m[1], environment) && !deferredMacros.has(m[1]))

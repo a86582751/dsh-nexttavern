@@ -1,4 +1,4 @@
-import type {TavernTemplateReadV1} from './tavern-template-types.mjs'
+import type {TavernTemplateReadV1,TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
 
 export const TAVERN_PROMPT_TRANSFORM_LIMITS_V1=Object.freeze({
   entries:4096,rules:256,bindings:4096,inputChars:8_000_000,outputChars:2_000_000,
@@ -58,6 +58,9 @@ export interface TavernPromptMacroSnapshotV1 {
   /** Exact caller-owned placeholders for a later deterministic substitution.
    * ST aliases still run first. Ordinary ST snapshots omit this field. */
   readonly deferredMacros?:readonly string[]
+  /** Latest published message variables in this captured prefix, independently
+   * of the pending input's uninitialized message scope. */
+  readonly messageVariables?:TavernTemplateScopeBindingV1|null
   readonly localVariables:readonly TavernPromptBindingV1[]
   readonly globalVariables:readonly TavernPromptBindingV1[]
   readonly outlets:readonly TavernPromptBindingV1[]

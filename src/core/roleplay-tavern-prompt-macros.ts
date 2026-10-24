@@ -16,6 +16,7 @@ export const TAVERN_NATIVE_MACRO_POLICY_V1=Object.freeze({schemaVersion:1,
   variables:'explicit-read-only-captured-scopes',model:'unresolved-route-refuses-only-on-read',
   regex:'owned-scoped-raw-card-rules; imported-allow-decision; no-global-or-preset-registry',
   outlets:'phase-captured-values-or-catalog-proven-negative-read',
+  messageVariables:'nearest-published-active-message-in-actual-prefix; unavailable-blocks; pending-absence-skipped',
   userGender:'existing-native-author-interpolation; actual-opening-context-binding'})
 export const TAVERN_NATIVE_MACRO_POLICY_SHA256=recordSha256(TAVERN_NATIVE_MACRO_POLICY_V1)
 function fail(code:string):never {throw Error(code)}
@@ -29,6 +30,7 @@ export function produceRoleplayTavernMacroSnapshotV1(input:{
   source:TavernLoreSourceDataV1;cardData:Readonly<Record<string,unknown>>;includeCardStyle:boolean;
   /** Null means this actual Native opening has no current player input. */
   inputText:string|null;scopes:readonly TavernTemplateScopeBindingV1[];
+  messageVariables?:TavernTemplateScopeBindingV1|null;
   outlets:readonly {name:string;text:string;versionSha256:string}[];
   /** Every declared outlet, including inactive entries, is retained. */
   declaredOutlets:readonly string[];
@@ -88,7 +90,8 @@ export function produceRoleplayTavernMacroSnapshotV1(input:{
     input:binding('input',input.inputText),instruct:[],
     dynamic:[binding('user_gender',context.user_gender??null,
       context.user_gender??null,source.current.openingContext.bindingSha256)],registered:[],
-    localVariables:variableBindings('chat'),globalVariables:variableBindings('global'),outlets,post:[],characterOverrides:[]}
+    localVariables:variableBindings('chat'),globalVariables:variableBindings('global'),outlets,post:[],characterOverrides:[],
+    ...input.messageVariables!==undefined?{messageVariables:input.messageVariables}:{}}
   return frozen({snapshot,policySha256:TAVERN_NATIVE_MACRO_POLICY_SHA256})
 }
 
