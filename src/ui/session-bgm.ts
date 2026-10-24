@@ -32,6 +32,7 @@ export function createSessionBgm(createAudio: () => AudioPort = () => new Audio(
   let state: SessionBgmState = {sessionId: null, opened: false, panelPosition: {left: 16, top: 96},
     resource: null, playback: 'idle', volume: 0.5, error: ''}
   let sourceIdentity: string | undefined
+  let sourceCatalogHash: string | null | undefined
   let audio: AudioPort | null = null
   let removeAudioListeners: (() => void) | null = null
   let attempt = 0
@@ -55,6 +56,7 @@ export function createSessionBgm(createAudio: () => AudioPort = () => new Audio(
   }
   const stop = () => {
     selectionEpoch++
+    sourceCatalogHash = undefined
     release()
     publish({resource: null, playback: 'idle', error: ''})
   }
@@ -69,6 +71,7 @@ export function createSessionBgm(createAudio: () => AudioPort = () => new Audio(
       selectionEpoch++
       release()
       sourceIdentity = undefined
+      sourceCatalogHash = undefined
       publish({sessionId, opened: false, resource: null, playback: 'idle', error: ''})
     },
     open(opened: boolean, panelPosition = state.panelPosition) {publish({opened, panelPosition})},
@@ -79,9 +82,16 @@ export function createSessionBgm(createAudio: () => AudioPort = () => new Audio(
       if (sourceIdentity !== undefined && sourceIdentity !== next) stop()
       sourceIdentity = next
     },
+    acceptSourceCatalog(sessionId: string, sourceHash: string | null): boolean {
+      // Main selection changes before the old Controls effect is cleaned up.
+      if (sessionId !== state.sessionId) return false
+      if (sourceCatalogHash !== undefined && sourceCatalogHash !== sourceHash) selectionEpoch++
+      sourceCatalogHash = sourceHash
+      return true
+    },
     beginSourceSelection() {
       const ticket = ++selectionEpoch
-      // Only the playback owner can admit a reply after an import or session change.
+      // Only the playback owner can admit a reply after a Source or session change.
       return (resource: SessionAudioResource): boolean => {
         if (ticket !== selectionEpoch) return false
         player.select(resource)
@@ -147,6 +157,7 @@ export function createSessionBgm(createAudio: () => AudioPort = () => new Audio(
       selectionEpoch++
       release()
       sourceIdentity = undefined
+      sourceCatalogHash = undefined
       publish({sessionId: null, opened: false, resource: null, playback: 'idle', error: ''})
       listeners.clear()
     },
@@ -190,7 +201,9 @@ export function createSessionBgmControls({React, player, jsonFetch, uploadFile}:
       try {
         const value = await jsonFetch<{sourceHash: string | null; candidates: {candidateId: string; name: string; storage:'embedded'|'remote'}[]}>(
           '/api/roleplay/source-music?sessionId=' + encodeURIComponent(sessionId))
-        if (ticket === sourceRequest.current) setSourceCatalog(value)
+        if (ticket === sourceRequest.current && player.acceptSourceCatalog(sessionId, value.sourceHash)) {
+          setSourceCatalog(value)
+        }
       } catch (failure) {
         if (ticket === sourceRequest.current) setSourceError('无法读取角色卡音乐：' + messageOf(failure))
       } finally {
