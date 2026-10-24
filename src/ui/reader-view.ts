@@ -580,8 +580,10 @@ React,
             return html;
         };
         const renderedParts=projectedParts.map((part,index)=>{
-            const display=communityOptionsRef.current!(part.kind==='narrator'?applyBeauty(visibleTasks[index]!):userHtml(part.text));
-            return {...visibleParts[index]!,displayText:part.kind==='narrator'?beautyCache.textFor(visibleTasks[index]!):part.text,
+            const display=communityOptionsRef.current!(part.kind==='narrator'
+                ?applyBeauty(visibleTasks[index]!,displayEnabled):userHtml(part.text));
+            return {...visibleParts[index]!,displayText:part.kind==='narrator'
+                ?beautyCache.textFor(visibleTasks[index]!,displayEnabled):part.text,
                 html:display.html,frameHtml:display.frameHtml,communityOptions:display.options,
                 fragments:part.kind==='narrator'?beautyCache.fragmentsFor(visibleTasks[index]!)?.map(fragment=>
                     fragment.kind==='text'?{...fragment,html:communityOptionsRef.current!(fragment.html).html}:fragment):undefined,
