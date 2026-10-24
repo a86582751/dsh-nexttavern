@@ -84,11 +84,12 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
     return lookupDepth(b)-lookupDepth(a)||a.order-b.order||bUid-aUid||left.ordinal-right.ordinal
   })
   const raw=entries.map(entry=>resolveTavernLoreContentTextV1(plan,`${entry.sourcePointer}/content`))
-  const transform=async(rows:readonly TavernPromptTransformEntryV1[],macros=deps.macros)=>{
+  const transform=async(rows:readonly TavernPromptTransformEntryV1[],macros=deps.macros,
+    rules:readonly TavernPromptRegexRuleV1[]=deps.rules)=>{
     ownerCheckpoint()
     const result=await applyTavernPromptTransformsV1({schemaVersion:1,encoding:'owned-tavern-prompt-transform-v1',
       authority:'consumer-data-only',sourceSnapshotSha256:source.sourceSha256,regexDisabled:false,
-      macros,rules:deps.rules,entries:rows,...deps.scriptOrder?{scriptOrder:deps.scriptOrder}:{}},{assertCurrent:checkpoint,signal})
+      macros,rules,entries:rows,...deps.scriptOrder?{scriptOrder:deps.scriptOrder}:{}},{assertCurrent:checkpoint,signal})
     ownerCheckpoint()
     if(result.kind!=='transformed')fail(result.diagnostics[0]?.code??'INPUT_MATERIAL_PROMPT_TRANSFORM_REFUSED')
     const {entries:fullEntries,...metadata}=result.output
@@ -139,7 +140,7 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
     macros?:TavernPromptMacroSnapshotV1;scopes?:readonly TavernTemplateScopeBindingV1[];
     phase?:'initial'|'lore-selected'|'late-author'}={})=>{
     const projection=(await transform([row(`render-${executions.length}`,pointer,text,'macro-only','source',true,
-      options.entryId??null,options.placement??5)],options.macros)).entries[0]!
+      options.entryId??null,options.placement??5)],options.macros,[])).entries[0]!
     assertTavernPromptProjectionReadyV1(projection)
     let actualSnapshot=snapshot
     if(options.scopes){const {snapshotSha256:_sha,...body}=snapshot,
@@ -209,7 +210,7 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
     async transformInjectionContent(rows:readonly {key:string;content:string;depth:number;role:'system'|'user'|'assistant'}[],
       macros=deps.macros) {
       const output=await transform(rows.map(item=>row(item.key,`/native/injection/${item.key}`,item.content,
-        'macro-only','source',true,null,item.role==='user'?1:2,item.depth)),macros)
+        'macro-only','source',true,null,item.role==='user'?1:2,item.depth)),macros,[])
       return output.entries.map(item=>{assertTavernPromptProjectionReadyV1(item);return {key:item.key,
         text:item.outputText,textSha256:item.outputSha256,projectionSha256:item.projectionSha256}})
     },
