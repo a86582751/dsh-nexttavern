@@ -40,7 +40,7 @@ import {validateMvuSchemaPlayerEvent,joinMvuSchemaPlayerCompletedEvent,mvuSchema
   mvuSchemaPlayerRevisionHead} from './roleplay-mvu-schema-player-types.js'
 import {validateMvuSchemaFrozenPrefix,validateMvuSchemaDerivedBasis,sealMvuSchemaInheritanceFact}
   from './roleplay-mvu-schema-derived-types.js'
-import {buildSchemaScopeReadFrame,schemaScopeSource,schemaScopeInitialChat,schemaScopeConfiguration,
+import {buildSchemaScopeReadFrame,schemaScopeSource,schemaScopeConfiguration,
   schemaScopeOwner,schemaScopePublished,schemaScopeMessageKey,schemaScopeVisibleMessages,
   schemaScopeReadFactsEqual,schemaScopeEmpty,schemaScopeReowner} from './roleplay-mvu-schema-scope-facts.js'
 import type {BrowserSnapshotV1,BrowserChatMessageSnapshotV1} from './tavern-author-browser-types.mjs'
@@ -55,6 +55,8 @@ import type {AuthorPromptPreparationFactsV1} from './roleplay-author-prompt-capt
 import type {AuthorBrowserPreparationFactsV2,AuthorBrowserPreparationFactsV3} from './roleplay-author-browser-generation-types.js'
 import type {PromptProgramV1,PromptCaptureV1,PromptCapturedMessageV1} from './tavern-author-prompt-types.mjs'
 import type {MvuScopeVariablesV1,MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
+import type {MvuSchemaRealmLoadFrameV3} from './tavern-mvu-schema-types-v3.js'
+import type {MvuSchemaRealmLoadFrameV4} from './tavern-mvu-schema-types-v4.js'
 import {readMvuSchemaInheritedStoryFacts,verifyMvuSchemaInheritedOpeningFacts}
   from './roleplay-mvu-schema-prefix-facts.js'
 import {verifyMvuSchemaUnpublishedTail} from './roleplay-mvu-schema-history-tail.js'
@@ -297,8 +299,10 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       valuesSha256:opening.valuesSha256,revision:1}
     const values=schemaScopePublished(owner,stateRef,opening.plan.values,output.context)
     const messages=new Map([[schemaScopeMessageKey(seed.intent.sessionId,seq,opening.native.messageId,versionSha256),values]])
-    return {chat:schemaScopeInitialChat(original.preparation,material,
-      ready.steps[0]!.dispatch.sourceNativeCut),messages,
+    // Original recovery already bound this checked epoch to the preparation.
+    // Its executed chat baseline survives changes to fresh initialization.
+    const load=schemaEpochExecution(ready.epoch).loadFrame as MvuSchemaRealmLoadFrameV3|MvuSchemaRealmLoadFrameV4
+    return {chat:load.scopeReadFrame.scopes.chat,messages,
       owners:[{sessionId:seed.intent.sessionId,fromSeq:0,throughSeq:null}],
       updateChat:schemaScopeConfiguration(snapshot,material).updateChat}
   }

@@ -9,11 +9,10 @@ import {createRoleplayMvuSource,readMvuSchemaCurrentAuthorMaterial} from './role
 import {freezeSchemaJournalData,createRoleplayMvuSchemaJournal,isAuthorHostJournalReadyV5}
   from './roleplay-mvu-schema-journal.js'
 import {validateMvuSchemaOpeningPreparation} from './roleplay-mvu-schema-opening-types.js'
-import {compileSchemaMvuInitData} from './tavern-mvu-initvar.js'
 import {cloneSchemaEnvelopeV4,captureSchemaMaterialV4} from './tavern-mvu-schema-data.js'
 import {validateSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
 import {combinedCompilationInputForProgram} from './tavern-author-combined-data.mjs'
-import {buildSchemaScopeReadFrame,schemaScopeSource,schemaScopeInitialChat,schemaScopeVisibleMessages}
+import {buildSchemaScopeReadFrame,schemaScopeSource,schemaScopeVisibleMessages}
   from './roleplay-mvu-schema-scope-facts.js'
 import type {WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {mvuSchemaMarkers} from 'dsh-nexttavern-session-format/mvu-schema-marker'
@@ -228,14 +227,13 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
   function reconstruct(preparation:MvuSchemaOpeningPreparation,material:MvuJsonObject):MvuSchemaAuthorSource {
     const snapshot=preparation.sourceSnapshot,sid=preparation.identity.sessionId
     const historical=historicalDeps(snapshot,material)
-    const found=createRoleplayMvuSource(historical).readSchemaOpeningData(sid,preparation.identity.index,preparation.initSource)
-    if(found.kind!=='schema-opening-data'||!same(found.authorSource.snapshot,snapshot)
-      ||!same(found.authorSource.material,material)
-      ||found.authorSource.authorSourceSha256!==preparation.authorSourceSha256)fail('SCHEMA_ORIGINAL_SOURCE_UNPROVEN')
-    // Equal parsed values cannot prove the original raw entry identity, source
-    // pointer, rendering bytes or grammar. Compare the complete real descriptor.
-    if(!same(found.initSource,preparation.initSource))fail('SCHEMA_ORIGINAL_INIT_SOURCE_UNPROVEN')
-    return found.authorSource
+    // Recover the original DATA without applying today's opening admission to
+    // an already executed initialization. Journal owns its actual load inputs.
+    const found=createRoleplayMvuSource(historical).readAuthorSource(sid,preparation.identity.index)
+    if(found.kind!=='author-source'||!same(found.source.snapshot,snapshot)
+      ||!same(found.source.material,material)
+      ||found.source.authorSourceSha256!==preparation.authorSourceSha256)fail('SCHEMA_ORIGINAL_SOURCE_UNPROVEN')
+    return found.source
   }
   function readFrozenJournal(preparation:MvuSchemaOpeningPreparation,frozen:SchemaJournalFrozenCut,
     actualEvents:readonly SessionEvent[]):SchemaJournalReady {
@@ -300,11 +298,10 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
       ||binding.sourceSnapshotSha256!==author.snapshot.snapshotSha256||binding.materialSha256!==author.materialSha256
       ||!same(epoch.program.scripts.map(({imports:_imports,javascript:_js,javascriptSha256:_hash,...script})=>script),
         author.scripts))fail('SCHEMA_ORIGINAL_PROGRAM_UNPROVEN')
-    const parsed=compileSchemaMvuInitData(preparation.initSource),load=epoch.loadFrame,frame=first.step.frame
-    if(parsed.kind!=='parsed'||load.ownerSessionId!==sid||frame.ownerSessionId!==sid
+    const load=epoch.loadFrame,frame=first.step.frame
+    if(load.ownerSessionId!==sid||frame.ownerSessionId!==sid
       ||!same(load.material,author.material)||!same(frame.material,author.material)
-      ||!same(load.values,parsed.values)||!same(load.context,parsed.context)
-      ||!same(frame.input.values,parsed.values)||!same(frame.input.context,parsed.context)
+      ||!same(load.values,frame.input.values)||!same(load.context,frame.input.context)
       ||frame.input.phase!=='initialization'||frame.input.base!==null||frame.input.commands.length!==0
       ||load.sourceNativeCutSha256!==recordSha256(first.dispatch.sourceNativeCut)
       ||frame.sourceNativeCutSha256!==load.sourceNativeCutSha256
@@ -330,7 +327,7 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
       const originalCut=first.dispatch.sourceNativeCut,scopeSource=schemaScopeSource(preparation.sourceSnapshot)
       const originalEvents=actualEvents.slice(0,originalCut.nativeCut)
       const expected=buildSchemaScopeReadFrame(scopeSource,recordSha256(originalCut),authorInput.scripts,
-        schemaScopeInitialChat(preparation,author.material,originalCut),
+        load.scopeReadFrame.scopes.chat,
         schemaScopeVisibleMessages(originalEvents,projectPrefix,scopeSource,()=>sid,new Map()))
       if(!same(load.scopeReadFrame,expected)||!same(frame.input.scopeReadFrame,expected)) {
         fail('SCHEMA_ORIGINAL_SCOPE_UNPROVEN')
@@ -368,11 +365,9 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
       ||!same(combined.original.scripts.map(({imports:_imports,...script})=>script),author.scripts)) {
       fail('SCHEMA_ORIGINAL_PROGRAM_UNPROVEN')
     }
-    const parsed=compileSchemaMvuInitData(preparation.initSource)
-    if(parsed.kind!=='parsed'||load.ownerSessionId!==sid||frame.ownerSessionId!==sid
+    if(load.ownerSessionId!==sid||frame.ownerSessionId!==sid
       ||!same(load.material,author.material)||!same(frame.material,author.material)
-      ||!same(load.values,parsed.values)||!same(load.context,parsed.context)
-      ||!same(frame.input.values,parsed.values)||!same(frame.input.context,parsed.context)
+      ||!same(load.values,frame.input.values)||!same(load.context,frame.input.context)
       ||frame.input.phase!=='initialization'||frame.input.base!==null||frame.input.commands.length!==0
       ||load.sourceNativeCutSha256!==recordSha256(first.dispatch.sourceNativeCut)
       ||frame.sourceNativeCutSha256!==load.sourceNativeCutSha256
@@ -387,7 +382,7 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
     const original=freezeSchemaJournalData({...body,originalSha256:recordSha256(body)})
     const originalCut=first.dispatch.sourceNativeCut,scopeSource=schemaScopeSource(preparation.sourceSnapshot)
     const expected=buildSchemaScopeReadFrame(scopeSource,recordSha256(originalCut),schemaOriginalServerScripts(original),
-      schemaScopeInitialChat(preparation,author.material,originalCut),
+      load.scopeReadFrame.scopes.chat,
       schemaScopeVisibleMessages(actualEvents.slice(0,originalCut.nativeCut),projectPrefix,scopeSource,()=>sid,new Map()))
     if(!same(load.scopeReadFrame,expected)||!same(frame.input.scopeReadFrame,expected)) {
       fail('SCHEMA_ORIGINAL_SCOPE_UNPROVEN')
