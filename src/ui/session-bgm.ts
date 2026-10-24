@@ -35,6 +35,7 @@ export function createSessionBgm(createAudio: () => AudioPort = () => new Audio(
   let audio: AudioPort | null = null
   let removeAudioListeners: (() => void) | null = null
   let attempt = 0
+  let selectionEpoch = 0
   const listeners = new Set<() => void>()
   const publish = (patch: Partial<SessionBgmState>) => {
     state = {...state, ...patch}
@@ -53,10 +54,11 @@ export function createSessionBgm(createAudio: () => AudioPort = () => new Audio(
     }
   }
   const stop = () => {
+    selectionEpoch++
     release()
     publish({resource: null, playback: 'idle', error: ''})
   }
-  return {
+  const player = {
     getSnapshot: () => state,
     subscribe(listener: () => void) {
       listeners.add(listener)
@@ -64,6 +66,7 @@ export function createSessionBgm(createAudio: () => AudioPort = () => new Audio(
     },
     setSession(sessionId: string | null) {
       if (sessionId === state.sessionId) return
+      selectionEpoch++
       release()
       sourceIdentity = undefined
       publish({sessionId, opened: false, resource: null, playback: 'idle', error: ''})
@@ -76,7 +79,17 @@ export function createSessionBgm(createAudio: () => AudioPort = () => new Audio(
       if (sourceIdentity !== undefined && sourceIdentity !== next) stop()
       sourceIdentity = next
     },
+    beginSourceSelection() {
+      const ticket = ++selectionEpoch
+      // Only the playback owner can admit a reply after an import or session change.
+      return (resource: SessionAudioResource): boolean => {
+        if (ticket !== selectionEpoch) return false
+        player.select(resource)
+        return true
+      }
+    },
     select(resource: SessionAudioResource | null) {
+      selectionEpoch++
       if (resource?.id === state.resource?.id) return
       release()
       if (resource && state.sessionId) {
@@ -131,12 +144,14 @@ export function createSessionBgm(createAudio: () => AudioPort = () => new Audio(
       publish({volume})
     },
     dispose() {
+      selectionEpoch++
       release()
       sourceIdentity = undefined
       publish({sessionId: null, opened: false, resource: null, playback: 'idle', error: ''})
       listeners.clear()
     },
   }
+  return player
 }
 export type SessionBgm = ReturnType<typeof createSessionBgm>
 
@@ -185,6 +200,7 @@ export function createSessionBgmControls({React, player, jsonFetch, uploadFile}:
     const archiveSource = async (candidateId: string) => {
       if (!sourceCatalog?.sourceHash) return
       const ticket = ++sourceSelectionRequest.current
+      const commitSelection = player.beginSourceSelection()
       setSourceArchiving(true)
       setSourceError('')
       try {
@@ -192,8 +208,7 @@ export function createSessionBgmControls({React, player, jsonFetch, uploadFile}:
           method: 'POST', headers: {'content-type': 'application/json'}, signal: AbortSignal.timeout(15000),
           body: JSON.stringify({sessionId, sourceHash: sourceCatalog.sourceHash, candidateId}),
         })
-        if (ticket === sourceSelectionRequest.current) {
-          player.select(value.resource)
+        if (ticket === sourceSelectionRequest.current && commitSelection(value.resource)) {
           setUploadMessage(value.resource.url?'已选择角色卡网链音乐，请点击播放。':'角色卡音乐已入库，请点击播放。')
           if(!value.resource.url)await refresh()
         }
