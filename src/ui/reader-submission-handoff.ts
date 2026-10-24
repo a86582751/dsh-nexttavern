@@ -11,7 +11,6 @@ export interface ReaderSubmissionClaim {
 export interface ReaderSubmissionTicket {
   arm(childSessionId: string): void
   assertActive(): void
-  opening(): void
   wait(): Promise<void>
   consume<T>(dispatch: () => T): T
   close(): void
@@ -53,13 +52,10 @@ export function createReaderSubmissionHandoff(selection: Selection) {
       let childSessionId: string | undefined, child: MountedReader | undefined
       let enteredChild = false, ready = false, forwarded = false, closed = false
       let failure: Error | undefined
-      let mountTimer: ReturnType<typeof setTimeout> | undefined
       const waiters = new Set<{resolve(): void; reject(error: Error): void}>()
-      const clearMountTimer = () => { clearTimeout(mountTimer); mountTimer = undefined }
       const cancel = (message: string) => {
         if (failure || closed || forwarded) return
         failure = Error(message)
-        clearMountTimer()
         for (const waiter of waiters) waiter.reject(failure)
         waiters.clear()
       }
@@ -83,7 +79,6 @@ export function createReaderSubmissionHandoff(selection: Selection) {
       const mounted = (reader: MountedReader) => {
         if (reader.sessionId !== childSessionId || failure || closed || forwarded) return
         child = reader
-        clearMountTimer()
         changed(reader)
       }
       const selectedChanged = () => {
@@ -109,14 +104,6 @@ export function createReaderSubmissionHandoff(selection: Selection) {
           selectedChanged()
         },
         assertActive,
-        opening() {
-          assertActive()
-          // Registration can take much longer than a render. This watchdog
-          // begins only at navigation, and stops at the actual Reader mount.
-          if (!child && mountTimer === undefined) {
-            mountTimer = setTimeout(() => cancel('子会话的酒馆阅读视图未能打开。'), 15000)
-          }
-        },
         wait() {
           if (failure) return Promise.reject(failure)
           if (ready) return Promise.resolve()
@@ -130,14 +117,12 @@ export function createReaderSubmissionHandoff(selection: Selection) {
             || selected() !== childSessionId) throw Error('子会话阅读视图已离开，未发送消息。')
           forwarded = true
           tickets.delete(observer)
-          clearMountTimer()
           return dispatch()
         },
         close() {
           cancel('这次发送已取消。')
           closed = true
           tickets.delete(observer)
-          clearMountTimer()
         },
       }
     },

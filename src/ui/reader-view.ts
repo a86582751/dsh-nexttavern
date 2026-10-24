@@ -254,7 +254,6 @@ React,
                 }).catch(error => {
                     if (!alive || request !== stateRequestRef.current) return;
                     const message = error && typeof error === 'object' && 'message' in error ? error.message : error;
-                    readerSubmission?.publish({kind:'failed',code:String(message)});
                     setLoadError(String(message));
                 });
             };

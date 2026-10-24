@@ -450,7 +450,7 @@ export function createRoleplayActions({sessionsService,
             invalidateState(childId)
             if(readerTicket) {
               readerTicket.assertActive()
-              await selectAndOpenSession(childId,readerTicket.opening)
+              await selectAndOpenSession(childId,readerTicket.assertActive)
               await readerTicket.wait()
             } else await openSessionPreservingView(childId, sourceSessionId)
           } catch(error) {
