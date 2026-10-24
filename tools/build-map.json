@@ -47465,6 +47465,96 @@
         "id": "author-dialog-v1-r18-predecessor-server-a2a171449d862fe29692",
         "source": "development/history/author-dialog-v1-r18-predecessor/server/src/index.ts",
         "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/server/src/index.ts"
+      },
+      {
+        "id": "reader-c24-dependencies-before-20261018-browser-1d883dc2a940f192df34",
+        "source": "development/history/reader-c24-dependencies-before-20261018/browser/assets/source-inputs.json",
+        "canonicalSource": "runtime/alpha3/history/reader-c24-dependencies-before-20261018/browser/assets/source-inputs.json"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-0923388de66bc3cb4e42",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/dist/browser-ast-worker.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/dist/browser-ast-worker.mjs"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-db9ae72e3eb3f1c5fddf",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/dist/browser-execution-worker.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/dist/browser-execution-worker.js"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-a3bd973030e214f5711a",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/dist/index.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/dist/index.mjs"
+      },
+      {
+        "id": "reader-c24-dependencies-before-20261018-browser-package-json",
+        "source": "development/history/reader-c24-dependencies-before-20261018/browser/package.json",
+        "canonicalSource": "runtime/alpha3/history/reader-c24-dependencies-before-20261018/browser/package.json"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-90266876c95314280623",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/src/core/reader-regex-document-compiler.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/src/core/reader-regex-document-compiler.mts"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-b3e53e10f55618842113",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/src/core/reader-regex-document-profile-v1.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/src/core/reader-regex-document-profile-v1.mts"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-94f967863e35dfe2cce0",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/src/core/reader-regex-document-types.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/src/core/reader-regex-document-types.mts"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-9f0dc956d33d3aae69e2",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-ast-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-ast-v3.mts"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-fbb3ba104cac5c43870e",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-ast-worker-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-ast-worker-v3.mts"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-9584d87383330ed24aad",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-attachment-worker-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-attachment-worker-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-aecba8f71f2e894de67b",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-compiler-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-compiler-v3.mts"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-fa060bc8b6de14a641d9",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-execution-worker-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-execution-worker-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-73202bf493ba8c60ba2c",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-page-worker-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-page-worker-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-460acbc068559edeee9f",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-partition-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-partition-v3.mts"
+      },
+      {
+        "id": "reader-c24-dependencies-before-20261018-browser-501f19ae4832b0c32725",
+        "source": "development/history/reader-c24-dependencies-before-20261018/browser/src/core/tavern-author-browser-renderer-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-c24-dependencies-before-20261018/browser/src/core/tavern-author-browser-renderer-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-7aba6b0cfd3cc0ab63ea",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-source-guest-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-browser-source-guest-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-before-coexistence-20261018-browser-ce3406448c3c33216940",
+        "source": "development/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-html-compiler-v1.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-coexistence-20261018/browser/src/core/tavern-author-html-compiler-v1.mts"
       }
     ],
     "publicRelease": {
