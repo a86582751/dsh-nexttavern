@@ -325,12 +325,17 @@ export function checkTypeScriptOwnership(repo = root, plan?: CompilePlan) {
     if (offset < 0) throw Error('TypeScript mapping must use ' + name + '/: ' + file)
     return file.slice(0, offset + marker.length - 1)
   }
-  const sourceRoots = [...new Set(registered.map(build => treeRoot(build.entry, 'src')))]
   const outputFor = (build: Recipe) => {
     const output = artifactsById.get(build.artifact)?.source
     if (!output) throw Error('Missing build output artifact: ' + build.artifact)
     return output
   }
+  // A manifest-owned maintenance entry may retain its same-stem JS path
+  // beside its TS source without claiming the surrounding legacy directory.
+  const sourceRoots = [...new Set(registered.filter(build => !(build.compatibilityEntry
+    && !build.entry.includes('/src/') && build.entry.endsWith('.mts')
+    && outputFor(build) === build.entry.slice(0, -4) + '.mjs'))
+    .map(build => treeRoot(build.entry, 'src')))]
   const outputs = new Map(registered.map(build => [outputFor(build), build.entry] as const))
   if (outputs.size !== registered.length) throw Error('Duplicate TypeScript output mapping')
   const declarations = new Map(registered.filter(build => build.declarationArtifact !== undefined).map(build => {
