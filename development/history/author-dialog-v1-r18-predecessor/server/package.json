@@ -1,0 +1,33 @@
+{
+  "name": "dsh-nexttavern-mvu-schema-runtime-v4-server-candidates-v2",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "Owned ABI4 executor with server candidate routing and compiled subset reuse",
+  "license": "GPL-3.0-only",
+  "main": "./dist/index.mjs",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "lib",
+    "src",
+    "assets",
+    "LICENSE",
+    "NOTICE.md"
+  ],
+  "dependencies": {
+    "typescript": "5.9.3",
+    "quickjs-emscripten-core": "0.32.0",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
+    "@jitl/quickjs-ffi-types": "0.32.0"
+  },
+  "bundleDependencies": [
+    "typescript",
+    "quickjs-emscripten-core",
+    "@jitl/quickjs-wasmfile-release-sync",
+    "@jitl/quickjs-ffi-types"
+  ]
+}

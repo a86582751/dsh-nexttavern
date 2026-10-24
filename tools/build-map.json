@@ -47335,6 +47335,136 @@
         "id": "performance-before-20261024-server-dist-tavern-mvu-schema-worker-mjs",
         "source": "development/history/performance-before-20261024/server/dist/tavern-mvu-schema-worker.mjs",
         "canonicalSource": "runtime/alpha3/history/performance-before-20261024/server/dist/tavern-mvu-schema-worker.mjs"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-host-package-json",
+        "source": "development/history/author-dialog-v1-r18-predecessor/host/package.json",
+        "canonicalSource": "runtime/alpha3/history/schema-edit-predecessor-v5-dialog/host/package.json"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-host-c1399fa3f0647f003493",
+        "source": "development/history/author-dialog-v1-r18-predecessor/host/assets/source-inputs.json",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/host/assets/source-inputs.json"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-host-2bf70ead4f52d013ec9f",
+        "source": "development/history/author-dialog-v1-r18-predecessor/host/dist/index.mjs",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/host/dist/index.mjs"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-host-ce1ad63033a8892ab86d",
+        "source": "development/history/author-dialog-v1-r18-predecessor/host/src/core/roleplay-mvu-schema-journal.ts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/host/src/core/roleplay-mvu-schema-journal.ts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-host-e88420ea43ec09ed8f71",
+        "source": "development/history/author-dialog-v1-r18-predecessor/host/src/core/roleplay-mvu-schema-replay.ts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/host/src/core/roleplay-mvu-schema-replay.ts"
+      },
+      {
+        "id": "schema-edit-predecessor-v5-dialog-host-5da7d7fc263d38f94fdf",
+        "source": "development/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-author-combined-data-v6.mts",
+        "canonicalSource": "runtime/alpha3/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-author-combined-data-v6.mts"
+      },
+      {
+        "id": "schema-edit-predecessor-v5-dialog-host-ff7a6e2e78b1a32ef16a",
+        "source": "development/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-author-host-provider.mts",
+        "canonicalSource": "runtime/alpha3/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-author-host-provider.mts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-host-b98e99c357c2a1ab68a7",
+        "source": "development/history/author-dialog-v1-r18-predecessor/host/src/core/tavern-mvu-schema-runner-v4.ts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/host/src/core/tavern-mvu-schema-runner-v4.ts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-package-json",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/package.json",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/package.json"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-c1399fa3f0647f003493",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/assets/source-inputs.json",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/assets/source-inputs.json"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-2f7e8cbbeed3b55af446",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/dist/browser-ast-worker.mjs",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/dist/browser-ast-worker.mjs"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-2bf70ead4f52d013ec9f",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/dist/index.mjs",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/dist/index.mjs"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-prompt-package-json",
+        "source": "development/history/author-dialog-v1-r18-predecessor/prompt/package.json",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/prompt/package.json"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-prompt-c1399fa3f0647f003493",
+        "source": "development/history/author-dialog-v1-r18-predecessor/prompt/assets/source-inputs.json",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/prompt/assets/source-inputs.json"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-prompt-a290047c7b007321ece7",
+        "source": "development/history/author-dialog-v1-r18-predecessor/prompt/dist/prompt-worker.mjs",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/prompt/dist/prompt-worker.mjs"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-prompt-6b93f68171ebd62f7606",
+        "source": "development/history/author-dialog-v1-r18-predecessor/prompt/src/core/tavern-author-prompt-types.mts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/prompt/src/core/tavern-author-prompt-types.mts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-prompt-98529e8d8a92b817f038",
+        "source": "development/history/author-dialog-v1-r18-predecessor/prompt/src/core/tavern-author-prompt-worker.mts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/prompt/src/core/tavern-author-prompt-worker.mts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-server-package-json",
+        "source": "development/history/author-dialog-v1-r18-predecessor/server/package.json",
+        "canonicalSource": "runtime/alpha3/compat/server-candidates-v2-trace64-predecessor/server/package.json"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-server-8304f28009f74edb89c3",
+        "source": "development/history/author-dialog-v1-r18-predecessor/server/assets/runtime.json",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/server/assets/runtime.json"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-server-a8c6077fed588905f65e",
+        "source": "development/history/author-dialog-v1-r18-predecessor/server/dist/compiler.mjs",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/server/dist/compiler.mjs"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-server-6315e3b25637dd77ad38",
+        "source": "development/history/author-dialog-v1-r18-predecessor/server/dist/runner.mjs",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/server/dist/runner.mjs"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-server-84cca2535a36cd71c7f0",
+        "source": "development/history/author-dialog-v1-r18-predecessor/server/dist/tavern-mvu-schema-worker.mjs",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/server/dist/tavern-mvu-schema-worker.mjs"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-server-3bd8e4505cec4fde7458",
+        "source": "development/history/author-dialog-v1-r18-predecessor/server/lib/descriptor.js",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/server/lib/descriptor.js"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-server-92bbac9a308cd5fcf9db",
+        "source": "development/history/author-dialog-v1-r18-predecessor/server/lib/index.js",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/server/lib/index.js"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-server-2e9d4ce74d3beeb55252",
+        "source": "development/history/author-dialog-v1-r18-predecessor/server/src/descriptor.ts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/server/src/descriptor.ts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-server-a2a171449d862fe29692",
+        "source": "development/history/author-dialog-v1-r18-predecessor/server/src/index.ts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/server/src/index.ts"
       }
     ],
     "publicRelease": {
