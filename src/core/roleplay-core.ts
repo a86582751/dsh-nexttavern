@@ -1490,7 +1490,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     forkPendingKey,
     replaceAssistantText,
     readOwnedEditCompletionRows,
-    replaceUserText
+    replaceUserText,
+    recoverPlayerSave,
   } = createRoleplayWorldlines({
     sourceInheritance:tavernSourceInheritance,
     messageEdits: ctx.nexttavernMessageEdits,
@@ -1505,11 +1506,17 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     appendNumericalTextEdit:(session,intent,append)=>schemaTaskEdits.append(session,intent,append),
     persistNumericalTextEditIntent:(session,intent)=>schemaTaskEdits.persistIntent(session,intent),
     recoverNumericalTextEdit:session=>schemaTaskEdits.recover(session),
+    recoverExistingNumericalUserEdit:async(session,request,authorize)=>{
+      await ensureBranch(session)
+      if(!schemaStory)throw Error('SCHEMA_USER_EDIT_RECOVERY_UNAVAILABLE')
+      const prepared=await schemaTaskEdits.prepareExistingUserEditRecovery(session,request,authorize)
+      return schemaStory.reconcileExistingUserEditRecovery(session.id,prepared)
+    },
     beginNumericalEdit:id=>{inputState.invalidateSession(id);mvuEdits.begin(id);mvuOpening.invalidateSchemaSession(id)},
     persistNumericalEdit:persistNumericalMessageEdit,
     reconcileNumericalEdit:async(id,editSeq)=>{
       await mvuOpening.reconcileSchemaStoryEdit(id,editSeq)
-      if(schemaStory?.taskEditResolved(id,editSeq))await schemaTaskEdits.complete(id,editSeq)
+      await schemaTaskEdits.complete(id,editSeq,schemaStory?.taskEditResolved(id,editSeq)===true)
     },
     confirmUnchangedNumericalEdit:id=>mvuEdits.confirmNoEdit(id),
     flushEdits: async session => {
@@ -3886,6 +3893,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     failPendingNativeFork,
     replaceAssistantText,
     replaceUserText,
+    recoverPlayerSave,
   })
 
   registerPanelRoutes({

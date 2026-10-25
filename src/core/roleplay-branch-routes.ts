@@ -13,6 +13,7 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
     assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget,
     locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey,
     requestUserEvent, forkPendingKey, reconcileNativeFork, failPendingNativeFork, replaceAssistantText, replaceUserText,
+    recoverPlayerSave,
     prepareWorldlineInheritance,releaseWorldlineInheritance,numericalForkBlockCode} = deps
   const readOperation=(key: string)=>cloneBranchRecord(T.branch.get(key)) as StoredBranchOperation | undefined
   const updateOperation=(key: string,work: (current: StoredBranchOperation | undefined) => object)=>T.branch.update(key,current=>work(current as StoredBranchOperation | undefined)) as PromiseLike<StoredBranchOperation>
@@ -847,6 +848,15 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
               })
             }
 
+            if(action==='recover-player-save') {
+              const session=await resolveRoleplaySession(body.sessionId)
+              if(!session)return jsonResponse(404,{ok:false,error:'角色扮演会话不存在或无法恢复'})
+              assertStoryBranchActive(session)
+              return jsonResponse(200,{ok:true,...await recoverPlayerSave(session,{
+                recoveryOperationId:body.recoveryOperationId,oldSaveRef:body.oldSaveRef,editRef:body.editRef,
+                ...(body.requestOrigin===undefined?{}:{requestOrigin:body.requestOrigin}),
+              })})
+            }
             if (action === 'replace-message') {
               const session = await resolveRoleplaySession(body?.sessionId)
               if (!session) return jsonResponse(404, { ok: false, error: '角色扮演会话不存在或无法恢复' })
@@ -881,6 +891,7 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
               case 'SCHEMA_TASK_EDIT_REPLACE_REQUIRED':
               case 'SCHEMA_TASK_EDIT_UPDATE_REQUIRED':
               case 'SCHEMA_TASK_EDIT_MALFORMED_UPDATE':
+              case 'SCHEMA_USER_EDIT_RECOVERY_INVALID':
                 status = 400
                 break
               case 'SCHEMA_TASK_EDIT_ARTIFACT_CHANGED':
@@ -889,9 +900,17 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
               case 'SCHEMA_TASK_EDIT_NOT_APPLIED':
               case 'SCHEMA_TASK_EDIT_PENDING':
               case 'SCHEMA_MAINTENANCE_REVISION_REQUIRED':
+              case 'SCHEMA_SUFFIX_EDIT_REFUSED':
               case 'SCHEMA_TASK_EDIT_FANOUT_BASIS_UNAVAILABLE':
               case 'SCHEMA_TASK_EDIT_FANOUT_TARGET_UNPROVEN':
               case 'SCHEMA_TASK_EDIT_FANOUT_PENDING':
+              case 'SCHEMA_USER_EDIT_RECOVERY_SAVE_UNPROVEN':
+              case 'SCHEMA_USER_EDIT_RECOVERY_REQUEST_UNPROVEN':
+              case 'SCHEMA_USER_EDIT_RECOVERY_TARGET_UNPROVEN':
+              case 'SCHEMA_USER_EDIT_RECOVERY_OPERATION_CONFLICT':
+              case 'SCHEMA_USER_EDIT_RECOVERY_SAVE_CHANGED':
+              case 'SCHEMA_USER_EDIT_RECOVERY_UNAVAILABLE':
+              case 'SCHEMA_USER_EDIT_RECOVERY_FENCE_CHANGED':
                 status = 409
                 break
             }

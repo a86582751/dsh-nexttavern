@@ -10,7 +10,7 @@ import { mvuStateCurrentHeadKey } from './roleplay-mvu-state.js';
 import { readInputCompletion } from './roleplay-input-completion.js';
 import { inputSnapshotReferenceCurrent } from './roleplay-preparation.js';
 import { createRoleplayMvuSchemaJournal, freezeSchemaJournalData, schemaJournalFrontierSha256, schemaEpochExecution, schemaEpochAuthorIdentity, isAuthorHostJournalReadyV5, schemaJournalServerTailSha256, schemaJournalHostFrontierSha256 } from './roleplay-mvu-schema-journal.js';
-import { createRoleplayMvuSchemaReplay, schemaExecutionHostFrontierSha256 } from './roleplay-mvu-schema-replay.js';
+import { createRoleplayMvuSchemaReplay, schemaExecutionHostFrontierSha256, schemaExecutionServerTailSha256 } from './roleplay-mvu-schema-replay.js';
 import { schemaOriginalSnapshot, schemaOriginalCompilationInput, schemaOriginalServerScripts, schemaOriginalProgramSha256, schemaOriginalReplayCompilationInput } from './roleplay-mvu-schema-source.js';
 import { schemaTraceRequestedStep } from './roleplay-mvu-schema-executor-types.js';
 import { createRoleplayMvuSchemaStory } from './roleplay-mvu-schema-story.js';
@@ -18,20 +18,21 @@ import { createRoleplayMvuSchemaPrefixInputs } from './roleplay-mvu-schema-froze
 import { validateMvuSchemaOpeningIntent, validateMvuSchemaOpeningEvent, validateMvuSchemaOpeningHead, verifyMvuSchemaOpeningFacts, mvuSchemaOpeningHead } from './roleplay-mvu-schema-opening-types.js';
 import { sealMvuSchemaStoryFact, validateMvuSchemaNumericalSnapshot, validateMvuSchemaStoryEvent, validateMvuSchemaStorySettlement, mvuSchemaStoryHead, mvuSchemaStoryEventKey, mvuSchemaStorySettlementKey, MVU_SCHEMA_STORY_PHASES, isMvuSchemaGenesisHead } from './roleplay-mvu-schema-story-types.js';
 import { validateMvuSchemaStoryPlan, validateMvuSchemaStoryRevisionDescriptor, validateMvuSchemaStoryRevisionEvent, mvuSchemaStoryRevisionDescriptorKey, mvuSchemaStoryRevisionPlanKey, mvuSchemaStoryRevisionEventKey, mvuSchemaStoryRevisionEvent, mvuSchemaStoryRevisionHead, mvuSchemaStoryPhaseInput, mvuSchemaStoryReducerBridge, deriveMvuSchemaStoryRevisionSelectors, deriveMvuSchemaStoryRevisionSelectorsV2, mvuSchemaStoryRevisionCompletionKey, validateMvuSchemaStoryRevisionCompletion, validateMvuSchemaStoryRevisionBasis, mvuSchemaStoryRevisionBasisKey, parseMvuSchemaStoryCandidateV2 } from './roleplay-mvu-schema-story-types.js';
-import { validateMvuSchemaPlayerEvent, joinMvuSchemaPlayerCompletedEvent, mvuSchemaPlayerEventKey, mvuSchemaPlayerHead, mvuSchemaPlayerOperationKey, mvuSchemaPlayerCompletionKey, MVU_SCHEMA_PLAYER_PHASES, mvuSchemaPlayerPhaseInput, mvuSchemaPlayerReducerBridge, deriveMvuSchemaPlayerRevisionSelectors, validateMvuSchemaPlayerRevisionPlan, mvuSchemaPlayerRevisionEventId, mvuSchemaPlayerRevisionEvent, validateMvuSchemaPlayerRevisionEvent, mvuSchemaPlayerRevisionHead } from './roleplay-mvu-schema-player-types.js';
+import { validateMvuSchemaPlayerEvent, joinMvuSchemaPlayerCompletedEvent, mvuSchemaPlayerEventKey, mvuSchemaPlayerHead, mvuSchemaPlayerOperationKey, mvuSchemaPlayerPlanKey, mvuSchemaPlayerRefusalKey, mvuSchemaPlayerSettlementKey, mvuSchemaPlayerCompletionKey, MVU_SCHEMA_PLAYER_PHASES, mvuSchemaPlayerPhaseInput, mvuSchemaPlayerReducerBridge, deriveMvuSchemaPlayerRevisionSelectors, validateMvuSchemaPlayerRevisionPlan, mvuSchemaPlayerRevisionEventId, mvuSchemaPlayerRevisionEvent, validateMvuSchemaPlayerRevisionEvent, mvuSchemaPlayerRevisionHead } from './roleplay-mvu-schema-player-types.js';
 import { validateMvuSchemaFrozenPrefix, validateMvuSchemaDerivedBasis, sealMvuSchemaInheritanceFact } from './roleplay-mvu-schema-derived-types.js';
 import { buildSchemaScopeReadFrame, schemaScopeSource, schemaScopeConfiguration, schemaScopeOwner, schemaScopePublished, schemaScopeMessageKey, schemaScopeVisibleMessages, schemaScopeReadFactsEqual, schemaScopeEmpty, schemaScopeReowner } from './roleplay-mvu-schema-scope-facts.js';
 import { deriveAuthorChatBindingV1, deriveAuthorChatBindingV2 } from './roleplay-author-chat-state.js';
 import { produceAuthorPromptScopeFrameV1 } from './roleplay-author-prompt-capture.js';
-import { readMvuSchemaInheritedStoryFacts, verifyMvuSchemaInheritedOpeningFacts } from './roleplay-mvu-schema-prefix-facts.js';
+import { readMvuSchemaInheritedStoryFacts, verifyMvuSchemaInheritedOpeningFacts, schemaInheritedStoryInputKeys } from './roleplay-mvu-schema-prefix-facts.js';
 import { verifyMvuSchemaUnpublishedTail } from './roleplay-mvu-schema-history-tail.js';
-import { validateSchemaTaskEditIntentV1, validateSchemaTaskEditBindingV1, schemaTaskEditActiveKey, schemaTaskEditBindingKey } from './roleplay-mvu-schema-task-edit-types.js';
+import { validateSchemaTaskEditIntent, validateSchemaTaskEditIntentV1, validateSchemaTaskEditBindingV1, schemaTaskEditActiveKey, schemaTaskEditIntentKey, schemaTaskEditBindingKey, validateSchemaExistingUserEditRecoveryIntentV1, schemaExistingUserEditRecoveryIntentKey } from './roleplay-mvu-schema-task-edit-types.js';
+import { readWorldlinePlayerSaveIntent, assertWorldlinePlayerSaveRequest } from './roleplay-worldline-player-save.js';
 import { acceptedMvuDisplayUpdate, formatMvuDisplayUpdates } from './roleplay-mvu-display-facts.js';
 const isManualRevision = (event) => event.encoding === 'native-mvu-schema-player-revision-event-v1';
 const isSuffixEvent = (event) => event.encoding === 'native-mvu-schema-story-revision-event-v2' || isManualRevision(event);
 const isManualEvent = (event) => event.encoding === 'native-mvu-schema-player-event-v1' || isManualRevision(event);
 function suffixOriginals(descriptor) {
-    return descriptor.schemaVersion === 3 || descriptor.schemaVersion === 4 ? descriptor.originals : descriptor.originals.map(event => ({ kind: 'story', event }));
+    return descriptor.schemaVersion !== 2 ? descriptor.originals : descriptor.originals.map(event => ({ kind: 'story', event }));
 }
 function readRevisionEvent(input) {
     return input.encoding === 'native-mvu-schema-player-revision-event-v1'
@@ -56,6 +57,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
     const views = new Map(), owners = new Map(), scopes = new WeakMap();
     const sourceLeases = new Map();
     const revisionOwners = new Map(), revisionScopes = new WeakMap();
+    const editReconciliations = new Map();
     let disposed = false;
     // Only the synchronous capture's edit-invalidation reader may see this
     // already verified opening basis. It is DATA, never a live execution lease.
@@ -89,16 +91,6 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         if (!owner)
             fail('SCHEMA_SCOPE_MESSAGE_OWNER_UNPROVEN');
         return owner.sessionId;
-    }
-    function scopeFactsCurrent(facts) {
-        for (const variables of [facts.chat, ...facts.messages.values()])
-            if (variables.kind === 'available'
-                && variables.provenance.kind === 'published-state') {
-                const ref = variables.provenance.state;
-                if (recordSha256(prefixInputs.status.get(ref.recordKey)) !== ref.recordSha256)
-                    return false;
-            }
-        return true;
     }
     function scopeFrameAt(facts, original, current, cut, events, logicalCut = cut.nativeCut, projection) {
         if (cut.nativeCut > events.length || cut.sessionId !== current.sessionId
@@ -224,9 +216,19 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             completionMarker: step.completionMarker, tailSha256: step.step.stepSha256, frontierSha256,
             outputSha256: recordSha256(step.step.output) };
     }
-    function eventRows(sid, nativeCut, ledger) {
+    function eventRows(sid, nativeCut, ledger, afterNativeCut) {
         const prefix = `${sid}__mvu-state-schema-`;
-        const rows = [...prefixInputs.status.entries(prefix)]
+        const include = (key, row) => {
+            if (!key.startsWith(`${prefix}story-event-`) && !key.startsWith(`${prefix}player-event-`)
+                && !key.startsWith(`${prefix}revision-event-`))
+                return false;
+            const cut = row?.frontier?.nativeCut;
+            // Select the existing Native interval before frozen recording detaches
+            // a row. Malformed selected DATA still reaches its original parser.
+            return cut === undefined || !Number.isSafeInteger(cut) || cut < 0
+                || cut <= nativeCut && (afterNativeCut === undefined || cut > afterNativeCut);
+        };
+        const rows = [...prefixInputs.status.entries(prefix, include)]
             .filter(([key]) => key.startsWith(`${sid}__mvu-state-schema-story-event-`)
             || key.startsWith(`${sid}__mvu-state-schema-player-event-`)
             || key.startsWith(`${sid}__mvu-state-schema-revision-event-`))
@@ -244,7 +246,8 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                 fail('SCHEMA_PLAYER_HISTORY_UNPROVEN');
             return { key, event: playerFacts.event, playerFacts };
         })
-            .filter(item => item.event.frontier.nativeCut <= nativeCut)
+            .filter(item => item.event.frontier.nativeCut <= nativeCut
+            && (afterNativeCut === undefined || item.event.frontier.nativeCut > afterNativeCut))
             .sort((a, b) => a.event.phases[0].association.dispatchMarker.seq - b.event.phases[0].association.dispatchMarker.seq);
         return rows;
     }
@@ -275,7 +278,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             fail('SCHEMA_STORY_CANONICAL_UNPROVEN');
         return { terminal, event, settlement };
     }
-    function prepareRevisionBases(ownerSid, events, table = prefixInputs.status, subjectSid = ownerSid) {
+    function prepareRevisionBases(ownerSid, events, table = prefixInputs.status, subjectSid = ownerSid, readContext = prefixInputs.createReadContext(subjectSid)) {
         const bases = new Map();
         // Native rewind leaves one suffix at this level. Its baseline already
         // folds any retained earlier revision, so recovering older bases here
@@ -297,7 +300,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                 || !same(basis.closedRevision, descriptor.basis.closedRevision))
                 fail('SCHEMA_REVISION_BASE_UNPROVEN');
             const recovered = deps.recoverRevisionPrefix?.({ subjectSessionId: subjectSid,
-                events: events.slice(0, basis.prefix.journal.nativeCut), ...basis });
+                events: events.slice(0, basis.prefix.journal.nativeCut), ...basis, readContext });
             if (!recovered)
                 fail('SCHEMA_REVISION_BASE_UNPROVEN');
             bases.set(marker.data.descriptor.sha256, { descriptor, ...recovered });
@@ -305,7 +308,43 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         }
         return bases;
     }
-    function revisionClosureV2(event, events, ready, bases, owners) {
+    function suffixAuthorization(authorization, sessionId, events, beforeMarkerSeq, completedV4) {
+        const edit = events[authorization.edit.seq], { proof } = authorization;
+        if (edit?.type !== 'roleplay/message-edit' || edit.data.role !== 'user')
+            fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+        if (proof.kind === 'intent') {
+            const intent = validateSchemaTaskEditIntent(prefixInputs.status.get(proof.intent.key)), binding = validateSchemaTaskEditBindingV1(prefixInputs.status.get(proof.binding.key));
+            if (intent.sessionId !== sessionId || binding.sessionId !== sessionId || intent.target.role !== 'user'
+                || proof.intent.key !== schemaTaskEditIntentKey(sessionId, intent.operationId)
+                || proof.binding.key !== schemaTaskEditBindingKey(sessionId, intent.operationId)
+                || recordSha256(intent) !== proof.intent.sha256 || recordSha256(binding) !== proof.binding.sha256
+                || !same(binding.intent, proof.intent) || binding.edit.seq !== intent.basis.nativeCut
+                || !same(binding.edit, authorization.edit) || binding.edit.seq >= beforeMarkerSeq
+                || edit.data.targetSeq !== intent.target.seq || edit.data.messageId !== intent.target.messageId
+                || edit.data.text !== intent.target.text)
+                fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+        }
+        else if (proof.kind === 'post-commit-recovery') {
+            const intent = validateSchemaExistingUserEditRecoveryIntentV1(prefixInputs.status.get(proof.intent.key));
+            if (intent.sessionId !== sessionId || proof.intent.key !== schemaExistingUserEditRecoveryIntentKey(sessionId, intent.operationId)
+                || recordSha256(intent) !== proof.intent.sha256 || !same(intent.edit, authorization.edit)
+                || recordSha256(edit) !== intent.edit.sha256 || intent.edit.seq >= intent.fence.nativeCut
+                || intent.fence.nativeCut > beforeMarkerSeq)
+                fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+            // Source is fenced by the live recovery publisher. The retained proof
+            // authorizes this exact Native edit across later completed revisions.
+            const save = readWorldlinePlayerSaveIntent(prefixInputs.branch, intent.save);
+            assertWorldlinePlayerSaveRequest(save, sessionId, intent.requestOrigin, edit.data.text);
+        }
+        else {
+            const receipt = completedV4(proof), prior = receipt.userEdits.get(authorization.edit.seq);
+            if (receipt.descriptor.sessionId !== sessionId || receipt.markerSeq >= beforeMarkerSeq || receipt.lastCompletionSeq >= beforeMarkerSeq
+                || !prior || prior.role !== 'user' || prior.sha256 !== authorization.edit.sha256
+                || prior.targetSeq !== edit.data.targetSeq || prior.messageId !== edit.data.messageId)
+                fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+        }
+    }
+    function revisionClosureV2(event, events, ready, bases, owners, completedV4) {
         const ref = event.plan.revision.descriptor, selected = bases.get(ref.sha256);
         if (!selected)
             fail('SCHEMA_REVISION_BASE_UNPROVEN');
@@ -326,6 +365,17 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                 ? target?.type !== 'assistant/message' || target.data.message.id !== edit.messageId
                 : target?.type !== 'user/message' || target.data.id !== edit.messageId))
                 fail('SCHEMA_REVISION_HISTORY_UNPROVEN');
+        }
+        if (descriptor.schemaVersion === 5) {
+            const users = new Map(descriptor.edits.filter(edit => edit.role === 'user').map(edit => [edit.seq, edit.sha256]));
+            if (users.size !== descriptor.authorizations.length)
+                fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+            for (const authorization of descriptor.authorizations) {
+                if (users.get(authorization.edit.seq) !== authorization.edit.sha256)
+                    fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+                suffixAuthorization(authorization, descriptor.sessionId, events, marker.marker.seq, completedV4);
+                users.delete(authorization.edit.seq);
+            }
         }
         const originalEntries = suffixOriginals(descriptor);
         const originals = originalEntries.map(entry => {
@@ -425,7 +475,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             fail('SCHEMA_REVISION_HISTORY_UNPROVEN');
         return { descriptor, completion, originals, events: revised, projection };
     }
-    function consume(sid, inheritedEventCount, events, ready, initial, ordinal, frozen = false, scopeSeed, original, readOnlyTail = false, includeDisplay = false, displaySeed, ledger, reconcileOriginalPlanSha256, revisionBases = new Map(), resolvedSeed, lastTaskResultSeed, artifactSeed) {
+    function consume(sid, inheritedEventCount, events, ready, initial, ordinal, frozen = false, scopeSeed, original, readOnlyTail = false, includeDisplay = false, displaySeed, ledger, reconcileOriginalPlanSha256, revisionBases = new Map(), resolvedSeed, lastTaskResultSeed, artifactSeed, lastSettledStorySeed, authorizationSeed, authorizationCandidates) {
         const reset = [...revisionBases.values()].at(-1);
         const restored = reset && recoveredPrefixes.get(reset.ready);
         if (reset && !restored)
@@ -438,14 +488,15 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             if (restored.scopes)
                 scopeSeed = { ...restored.scopes, owners: scopeSeed?.owners ?? restored.scopes.owners };
         }
-        const inventory = eventRows(sid, events.length, ledger)
-            .filter(row => !reset || row.event.frontier.nativeCut > reset.prefix.journal.nativeCut);
+        const inventory = eventRows(sid, events.length, ledger, reset?.prefix.journal.nativeCut);
         let root = reset?.prefix.snapshot.root ?? initial.root;
         const consumed = new Map(reset?.prefix.consumed.map(row => [row.planSha256, row.closureSha256]));
         // A frozen prefix indexes every consumed closure, including an original
         // Story whose immutable terminal remains required after revision rewind.
         const eventKeys = [...reset?.prefix.eventKeys ?? []];
         let lastTaskResultCanonicalSeq = restored?.lastTaskResultCanonicalSeq ?? lastTaskResultSeed;
+        let lastSettledStoryCanonicalSeq = restored?.lastSettledStoryCanonicalSeq ?? lastSettledStorySeed;
+        const userEditAuthorizations = new Map(restored?.userEditAuthorizations ?? authorizationSeed);
         const taskArtifacts = new Map(restored?.taskArtifacts ?? artifactSeed);
         const effectiveBatches = new Set(ready.steps.map(step => step.dispatch.batchId));
         const resolvedEdits = new Set(reset ? restored?.resolvedEdits : resolvedSeed);
@@ -453,16 +504,108 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             ? new Set(ready.frozen.revisions.flatMap(revision => revision.superseded.map(pair => pair.batchId))) : undefined;
         const closedStories = new Map();
         const revisionClosures = new Map();
+        let receiptIndexes;
+        const receiptInputs = () => {
+            if (receiptIndexes)
+                return receiptIndexes;
+            const revisions = ready.frozen.schemaVersion === 2 ? ready.frozen.revisions : [], markers = new Map(revisions.map(row => [row.descriptor.key, row])), pairs = new Map();
+            for (const active of ready.steps)
+                pairs.set(active.dispatchRef.key, { batchId: active.dispatch.batchId,
+                    dispatch: active.dispatchRef, completion: active.completionRef, dispatchMarker: active.dispatchMarker,
+                    completionMarker: active.completionMarker, active });
+            for (const revision of revisions)
+                for (const pair of revision.superseded)
+                    if (!pairs.has(pair.dispatch.key))
+                        pairs.set(pair.dispatch.key, pair);
+            return receiptIndexes = { markers, pairs, records: new Map(ready.frozen.records.map(row => [row.key, row.record])) };
+        };
+        const completedV4 = (proof) => {
+            const existing = revisionClosures.get(proof.descriptor.sha256);
+            if (existing?.receipt) {
+                if (!same(existing.receipt.descriptorRef, proof.descriptor) || !same(existing.receipt.completionRef, proof.completion))
+                    fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+                return existing.receipt;
+            }
+            const index = receiptInputs(), marker = index.markers.get(proof.descriptor.key);
+            if (!marker || marker.descriptor.sha256 !== proof.descriptor.sha256)
+                fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+            const descriptor = validateMvuSchemaStoryRevisionDescriptor(marker.descriptor.value), completion = validateMvuSchemaStoryRevisionCompletion(prefixInputs.status.get(proof.completion.key));
+            if (descriptor.schemaVersion !== 4 || completion.schemaVersion !== 4
+                || proof.descriptor.key !== mvuSchemaStoryRevisionDescriptorKey(descriptor.sessionId, recordSha256({
+                    encoding: 'native-mvu-schema-story-revision-request-v2', edits: descriptor.edits
+                }))
+                || proof.completion.key !== mvuSchemaStoryRevisionCompletionKey(descriptor.sessionId, proof.descriptor.sha256)
+                || recordSha256(completion) !== proof.completion.sha256 || !same(completion.descriptor, proof.descriptor)
+                || completion.sessionId !== descriptor.sessionId || completion.events.length !== descriptor.originals.length
+                || !completion.events.length || marker.editSeq !== descriptor.edits.at(-1).seq
+                || marker.completionSeq !== descriptor.completionSeq)
+                fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+            let lastCompletionSeq = marker.marker.seq;
+            for (const [eventIndex, ref] of completion.events.entries()) {
+                const item = readRevisionEvent(prefixInputs.status.get(ref.key));
+                if (!isSuffixEvent(item) || recordSha256(item) !== ref.sha256
+                    || ref.key !== mvuSchemaStoryRevisionEventKey(item.sessionId, item.eventId)
+                    || !same(item.plan.revision.descriptor, proof.descriptor) || item.plan.revision.index !== eventIndex
+                    || item.plan.revision.publicationRevision !== descriptor.publicationRevision + eventIndex
+                    || item.sessionId !== descriptor.sessionId || item.sourceSha256 !== descriptor.sourceSha256
+                    || !isManualRevision(item) && item.outcome === 'refused')
+                    fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+                for (const phase of item.phases) {
+                    const association = phase.association, pair = index.pairs.get(association.dispatch.key);
+                    if (!pair || pair.batchId !== association.batchId || !same(pair.dispatch, association.dispatch)
+                        || !same(pair.completion, association.completion) || !same(pair.dispatchMarker, association.dispatchMarker)
+                        || !same(pair.completionMarker, association.completionMarker)
+                        || pair.dispatchMarker.seq <= marker.marker.seq)
+                        fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+                    if (pair.active) {
+                        if (!same(pair.active.step.frame.input, phase.input) || !same(pair.active.step.output, phase.output)
+                            || !same(pair.active.dispatch.sourceNativeCut.anchor, association.anchor)
+                            || recordSha256(pair.active.dispatch.sourceNativeCut) !== association.sourceNativeCutSha256)
+                            fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+                    }
+                    else {
+                        // These rows were parsed by Journal. A superseded pair still needs
+                        // its finite receipt cross-bindings, not an old Source/VM replay.
+                        const dispatch = index.records.get(pair.dispatch.key), completion = index.records.get(pair.completion.key), native = events[pair.completionMarker.seq];
+                        if (!dispatch || !('requestedStep' in dispatch) || !completion || !('step' in completion)
+                            || dispatch.recordSha256 !== pair.dispatch.sha256 || completion.recordSha256 !== pair.completion.sha256
+                            || dispatch.sessionId !== descriptor.sessionId || completion.sessionId !== descriptor.sessionId
+                            || dispatch.realmEpoch !== association.realmEpoch || completion.realmEpoch !== association.realmEpoch
+                            || dispatch.batchId !== pair.batchId || completion.batchId !== pair.batchId
+                            || !same(completion.dispatch, pair.dispatch) || !same(completion.dispatchMarker, pair.dispatchMarker)
+                            || dispatch.sourceNativeCut.nativeCut !== pair.dispatchMarker.seq
+                            || !same(dispatch.sourceNativeCut.anchor, association.anchor)
+                            || recordSha256(dispatch.sourceNativeCut) !== association.sourceNativeCutSha256
+                            || !same(dispatch.requestedStep.frame.input, phase.input) || !same(completion.step.output, phase.output)
+                            || completion.step.eventId !== dispatch.requestedStep.eventId
+                            || completion.step.stepSha256 !== schemaExecutionServerTailSha256(association)
+                            || native?.type !== deps.markers.completionEventType
+                            || native.data.completedTailSha256 !== completion.step.stepSha256)
+                            fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+                    }
+                    lastCompletionSeq = Math.max(lastCompletionSeq, pair.completionMarker.seq);
+                }
+            }
+            const userEdits = new Map();
+            for (const edit of descriptor.edits)
+                if (edit.role === 'user')
+                    userEdits.set(edit.seq, edit);
+            const receipt = { descriptor, completion, descriptorRef: proof.descriptor, completionRef: proof.completion,
+                markerSeq: marker.marker.seq, lastCompletionSeq, userEdits };
+            revisionClosures.set(proof.descriptor.sha256, { ...existing, receipt, joinedEvents: existing?.joinedEvents ?? 0 });
+            return receipt;
+        };
         const revisionClosure = (event) => {
             const id = event.plan.revision.descriptor.sha256;
-            let closure = revisionClosures.get(id);
-            if (!closure) {
+            let entry = revisionClosures.get(id);
+            if (!entry?.closure) {
                 if (!scopeSeed)
                     fail('SCHEMA_SCOPE_HISTORY_UNPROVEN');
-                closure = revisionClosureV2(event, events, ready, revisionBases, scopeSeed.owners);
-                revisionClosures.set(id, closure);
+                const closure = revisionClosureV2(event, events, ready, revisionBases, scopeSeed.owners, completedV4);
+                entry = { ...entry, closure, joinedEvents: entry?.joinedEvents ?? 0 };
+                revisionClosures.set(id, entry);
             }
-            return closure;
+            return entry.closure;
         };
         const closedStory = (event) => {
             let facts = closedStories.get(event.plan.planSha256);
@@ -639,10 +782,37 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                     messageStates.set(schemaScopeMessageKey(messageOwner, canonical.seq, canonical.messageId, canonical.versionSha256), variables);
                 }
             }
+            if (isSuffixEvent(event)) {
+                const entry = revisionClosures.get(event.plan.revision.descriptor.sha256), facts = entry.closure;
+                entry.joinedEvents++;
+                if (facts.descriptor.schemaVersion === 4 && facts.completion.schemaVersion === 4
+                    && entry.joinedEvents === facts.events.length) {
+                    const descriptorRef = event.plan.revision.descriptor, completionRef = { key: mvuSchemaStoryRevisionCompletionKey(event.sessionId, descriptorRef.sha256),
+                        sha256: recordSha256(facts.completion) }, marker = ready.frozen.schemaVersion === 2 ? ready.frozen.revisions.find(row => row.descriptor.key === descriptorRef.key && row.descriptor.sha256 === descriptorRef.sha256) : undefined;
+                    // The last member reached this point only after every phase joined
+                    // its actual Journal pair. A parsed closure alone is not a receipt.
+                    const userEdits = new Map();
+                    entry.receipt = { descriptor: facts.descriptor, completion: facts.completion, descriptorRef, completionRef,
+                        markerSeq: marker.marker.seq, lastCompletionSeq: event.frontier.nativeCut - 1, userEdits };
+                    for (const edit of facts.descriptor.edits)
+                        if (edit.role === 'user') {
+                            userEdits.set(edit.seq, edit);
+                            if (userEditAuthorizations.get(edit.seq)?.edit.sha256 !== edit.sha256)
+                                userEditAuthorizations.set(edit.seq, {
+                                    edit: { seq: edit.seq, sha256: edit.sha256 }, proof: { kind: 'completed-v4', descriptor: descriptorRef, completion: completionRef }
+                                });
+                        }
+                }
+                else if (facts.descriptor.schemaVersion === 5 && entry.joinedEvents === 1) {
+                    for (const authorization of facts.descriptor.authorizations)
+                        userEditAuthorizations.set(authorization.edit.seq, authorization);
+                }
+            }
             consumed.set(plan.planSha256, recordSha256(closure));
             eventKeys.push(key);
             if (!isManualEvent(event) && event.outcome !== 'refused') {
                 const p = event.plan, ref = { key, sha256: recordSha256(event) };
+                lastSettledStoryCanonicalSeq = Math.max(lastSettledStoryCanonicalSeq ?? -1, p.canonical.seq);
                 if (p.schemaVersion === 10 && p.maintenance.kind === 'task-result') {
                     taskArtifacts.set(p.canonical.seq, { canonicalSeq: p.canonical.seq, originEventRef: ref, sourceEventRef: ref,
                         effectiveKind: p.candidate.kind === 'parsed' ? 'patch' : 'unchanged' });
@@ -660,13 +830,23 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                     displayUpdates.push(item);
             }
         }
+        if (authorizationCandidates)
+            for (const [seq, candidate] of authorizationCandidates) {
+                if (userEditAuthorizations.get(seq)?.edit.sha256 === candidate.edit.sha256)
+                    continue;
+                // The edit identity came from this owner's current Native edit list.
+                // Only its already-published V4 receipt can fill missing legacy metadata.
+                suffixAuthorization(candidate, sid, events, events.length, completedV4);
+                userEditAuthorizations.set(seq, candidate);
+            }
         if (!readOnlyTail && (ordinal !== ready.steps.length || !same(state.schemaFrontier, frontier(ready)))) {
             fail('SCHEMA_STORY_HISTORY_UNSETTLED');
         }
         if (readOnlyTail && partial.length && ordinal === ready.steps.length)
             fail('SCHEMA_HISTORICAL_TAIL_UNPROVEN');
         const readScopes = scopeSeed && chat && messageStates ? { ...scopeSeed, chat, messages: messageStates } : undefined;
-        return { state, consumed, eventKeys, readScopes, ordinal, resolvedEdits, lastTaskResultCanonicalSeq, taskArtifacts,
+        return { state, consumed, eventKeys, readScopes, ordinal, resolvedEdits, lastTaskResultCanonicalSeq,
+            lastSettledStoryCanonicalSeq, userEditAuthorizations, taskArtifacts,
             displayUpdates: displayUpdates ? formatMvuDisplayUpdates([...(restored?.displayUpdates ?? displaySeed ?? []), ...displayUpdates]) : undefined };
     }
     function readyFor(sid, realmEpoch, events, inherited, historical = false) {
@@ -714,9 +894,9 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             context: final.step.output.context, schemaFrontier: { nativeCut: final.completionMarker.seq + 1,
                 tailSha256: final.step.stepSha256, frontierSha256: schemaExecutionHostFrontierSha256(opening.plan.execution) } });
     }
-    function factual(session, nativeCut = all(session).length, historical = false, includeDisplay = false, captureBasis = false, reconcileOriginalPlanSha256, revisionBases) {
+    function factual(session, nativeCut = all(session).length, historical = false, includeDisplay = false, captureBasis = false, reconcileOriginalPlanSha256, revisionBases, readContext, authorizationCandidates) {
         const sid = session.id, events = all(session).slice(0, nativeCut), sourceSha256 = deps.sourceSha256(sid);
-        revisionBases ??= prepareRevisionBases(sid, events);
+        revisionBases ??= prepareRevisionBases(sid, events, undefined, sid, readContext);
         const ledger = historical ? undefined : deps.captureManualLedger?.(sid);
         const manualBlock = historical ? undefined : ledger ? ledger.code : deps.manualPendingCode?.(sid);
         if (manualBlock && !historical)
@@ -757,17 +937,12 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             const opening = validateMvuSchemaOpeningEvent(prefixInputs.status.get(mvuInitializationEventKey(sid, head.eventId)));
             if (!verifyMvuSchemaInheritedOpeningFacts({ intent, event: opening, head, events }, { projectPrefix: deps.projectPrefix }))
                 fail('SCHEMA_OPENING_RECORD_INVALID');
-            if (historical) {
-                // Frozen caller/history selection retains its existing merge, full
-                // validation and failure contract; it is not owned current capture.
-                ready = readyFor(sid, intent.preparation.realmEpoch, events, null, true);
-                original = deps.source.readFrozenOriginal(intent.preparation, ready, events);
-            }
-            else {
-                const captured = deps.source.captureCurrentOriginal(intent.preparation, { sessionId: sid, table: prefixInputs.status, events });
-                ready = captured.ready;
-                original = captured.original;
-            }
+            // This factual read owns the active parent. Historical ancestors in
+            // derivedOriginal still consume frozen DATA without a live parent owner.
+            const selected = readyFor(sid, intent.preparation.realmEpoch, events, null, historical);
+            const captured = deps.source.captureCurrentOriginal(intent.preparation, { sessionId: sid, table: prefixInputs.status, events, ready: selected }, historical);
+            ready = captured.ready;
+            original = captured.original;
             if (original.schemaVersion === 5)
                 sourceOriginals.set(original.originalSha256, original);
             seed = { kind: 'opening', intent, event: opening, head };
@@ -789,7 +964,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         }
         if (edited && edited.kind === 'unknown')
             fail(edited.code);
-        const result = consume(sid, session.inheritedEventCount, events, ready, initial, ordinal, historical, scopeSeed, original, false, includeDisplay, displaySeed, ledger, reconcileOriginalPlanSha256, revisionBases, inheritedReady ? recoveredPrefixes.get(inheritedReady)?.resolvedEdits : undefined, inheritedReady ? recoveredPrefixes.get(inheritedReady)?.lastTaskResultCanonicalSeq : undefined, inheritedReady ? recoveredPrefixes.get(inheritedReady)?.taskArtifacts : undefined);
+        const result = consume(sid, session.inheritedEventCount, events, ready, initial, ordinal, historical, scopeSeed, original, false, includeDisplay, displaySeed, ledger, reconcileOriginalPlanSha256, revisionBases, inheritedReady ? recoveredPrefixes.get(inheritedReady)?.resolvedEdits : undefined, inheritedReady ? recoveredPrefixes.get(inheritedReady)?.lastTaskResultCanonicalSeq : undefined, inheritedReady ? recoveredPrefixes.get(inheritedReady)?.taskArtifacts : undefined, inheritedReady ? recoveredPrefixes.get(inheritedReady)?.lastSettledStoryCanonicalSeq : undefined, inheritedReady ? recoveredPrefixes.get(inheritedReady)?.userEditAuthorizations : undefined, authorizationCandidates);
         if (edited && edited.kind === 'invalidated' && deps.currentEdits(session)
             .some(edit => edit.seq >= editBasis.editFloorSeq && !result.resolvedEdits.has(edit.seq)))
             fail(edited.code);
@@ -813,6 +988,8 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         const history = { original, ready, snapshot: state, consumed: result.consumed, initial, seed, inheritedCut, eventKeys: result.eventKeys,
             readScopes: result.readScopes,
             lastTaskResultCanonicalSeq: result.lastTaskResultCanonicalSeq,
+            lastSettledStoryCanonicalSeq: result.lastSettledStoryCanonicalSeq,
+            userEditAuthorizations: result.userEditAuthorizations,
             taskArtifacts: result.taskArtifacts,
             displayUpdates: result.displayUpdates, commandDiagnostics, resolvedEdits: result.resolvedEdits, editBasis };
         if (inheritedReady)
@@ -840,6 +1017,8 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             let displaySeed;
             let resolvedSeed;
             let lastTaskResultSeed;
+            let lastSettledStorySeed;
+            let authorizationSeed;
             if (prefix.seed.kind === 'opening') {
                 const seed = prefix.seed;
                 if (!same(prefixInputs.branch.get(openingIntentKey(sid, seed.intent.source.importId)), seed.intent)
@@ -872,15 +1051,19 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                     return undefined;
                 resolvedSeed = recoveredPrefixes.get(prior)?.resolvedEdits;
                 lastTaskResultSeed = recoveredPrefixes.get(prior)?.lastTaskResultCanonicalSeq;
+                lastSettledStorySeed = recoveredPrefixes.get(prior)?.lastSettledStoryCanonicalSeq;
+                authorizationSeed = recoveredPrefixes.get(prior)?.userEditAuthorizations;
                 checkedOriginal = derivedOriginal(genesis.original, prior, events.slice(0, prefix.inheritedEventCount));
                 ordinal = prior.steps.length;
                 initial = snapshot({ ...genesis.snapshot, sourceSha256: prefix.sourceSha256 });
                 scopeSeed = scopesForDerived(genesis, events);
                 displaySeed = displayForDerived(genesis, events);
+                if (!deps.source.originalFactsCurrent(checkedOriginal))
+                    return undefined;
             }
-            if (!deps.source.originalFactsCurrent(checkedOriginal) || !same(initial, prefix.initial))
+            if (!same(initial, prefix.initial))
                 return undefined;
-            const result = consume(sid, prefix.inheritedEventCount, events, ready, initial, ordinal, true, scopeSeed, checkedOriginal, false, true, displaySeed, undefined, undefined, revisionBases, resolvedSeed, lastTaskResultSeed, prefix.seed.kind === 'derived' && genesis?.inheritedReady ? recoveredPrefixes.get(genesis.inheritedReady)?.taskArtifacts : undefined);
+            const result = consume(sid, prefix.inheritedEventCount, events, ready, initial, ordinal, true, scopeSeed, checkedOriginal, false, true, displaySeed, undefined, undefined, revisionBases, resolvedSeed, lastTaskResultSeed, prefix.seed.kind === 'derived' && genesis?.inheritedReady ? recoveredPrefixes.get(genesis.inheritedReady)?.taskArtifacts : undefined, lastSettledStorySeed, authorizationSeed);
             const state = snapshot({ ...result.state, sourceSha256: prefix.sourceSha256 });
             if (recut) {
                 const { prefixSha256: _oldHash, ...body } = prefix;
@@ -893,20 +1076,29 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                 return undefined;
             // A completed Native story without its settled numerical result is not a
             // forkable baseline, even when author dispatch has not started yet.
-            for (const [key, row] of prefixInputs.branch.entries())
-                if (key.startsWith(`${sid}__native-input-v2-work-`)) {
-                    const work = row;
-                    if (work.source?.kind !== 'story' || work.source.headRef?.kind !== 'schema-head' || !work.checkpoint)
-                        continue;
-                    const completed = events.find(event => event.type === 'turn/end' && event.data.turn === work.checkpoint.actualTurn
-                        && event.data.reason.kind === 'completed');
-                    if (!completed || completed.seq < prefix.inheritedEventCount)
-                        continue;
-                    const terminal = work.preparationId && readInputCompletion(prefixInputs.branch, sid, work.preparationId);
-                    if (work.terminalRequired !== true || !terminal || terminal.status !== 'settled' || terminal.plan.kind !== 'schema-numerical'
-                        || !result.consumed.has(terminal.plan.plan.planSha256))
-                        return undefined;
-                }
+            const workPrefix = `${sid}__native-input-v2-work-`;
+            const completedTurns = new Set();
+            for (const event of events)
+                if (event.type === 'turn/end' && event.data.reason.kind === 'completed'
+                    && event.seq >= prefix.inheritedEventCount)
+                    completedTurns.add(event.data.turn);
+            const includeWork = (key, row) => {
+                if (!key.startsWith(workPrefix))
+                    return false;
+                const work = row;
+                const turn = work.checkpoint?.actualTurn;
+                return work.source?.kind === 'story' && work.source.headRef?.kind === 'schema-head'
+                    && turn !== undefined && completedTurns.has(turn);
+            };
+            for (const [key, row] of prefixInputs.branch.entries(undefined, includeWork)) {
+                if (!includeWork(key, row))
+                    continue;
+                const work = row;
+                const terminal = work.preparationId && readInputCompletion(prefixInputs.branch, sid, work.preparationId);
+                if (work.terminalRequired !== true || !terminal || terminal.status !== 'settled' || terminal.plan.kind !== 'schema-numerical'
+                    || !result.consumed.has(terminal.plan.plan.planSha256))
+                    return undefined;
+            }
             if (result.readScopes) {
                 scopePrefixes.delete(prefix.prefixSha256);
                 scopePrefixes.set(prefix.prefixSha256, { nativePrefixSha256: prefix.journal.nativePrefixSha256, facts: result.readScopes });
@@ -924,7 +1116,9 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                 sourceOriginals.set(checkedOriginal.originalSha256, checkedOriginal);
             recoveredPrefixes.set(ready, { original: checkedOriginal, scopes: result.readScopes,
                 displayUpdates: result.displayUpdates ?? [], resolvedEdits: result.resolvedEdits,
-                lastTaskResultCanonicalSeq: result.lastTaskResultCanonicalSeq, taskArtifacts: result.taskArtifacts });
+                lastTaskResultCanonicalSeq: result.lastTaskResultCanonicalSeq,
+                lastSettledStoryCanonicalSeq: result.lastSettledStoryCanonicalSeq,
+                userEditAuthorizations: result.userEditAuthorizations, taskArtifacts: result.taskArtifacts });
             return { prefix, ready };
         }
         catch {
@@ -941,39 +1135,133 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         inheritedEventCount: prefix.inheritedEventCount, nativeCut: prefix.journal.nativeCut,
         nativePrefixSha256: prefix.journal.nativePrefixSha256, sourceSha256: prefix.sourceSha256,
         prefixSha256: prefix.prefixSha256 });
+    function retainDeclaredRevisionInputs(prefix, capture) {
+        if (prefix.journal.schemaVersion !== 2)
+            return;
+        const seen = new Set();
+        const read = (table, key, member = false) => {
+            const value = capture.read(table, key);
+            if (member)
+                capture.declareMember(table, key);
+            return value;
+        };
+        const original = (ref) => {
+            const event = read('status', ref.key, true), id = 'original:' + ref.key + ':' + ref.sha256;
+            if (!event || seen.has(id))
+                return;
+            seen.add(id);
+            if (event.encoding === 'native-mvu-schema-player-event-v1') {
+                const { operation } = event.plan, sid = event.sessionId, opid = operation.operationId;
+                read('branch', mvuSchemaPlayerOperationKey(sid, opid));
+                read('branch', mvuSchemaPlayerPlanKey(sid, opid));
+                read('branch', mvuSchemaPlayerRefusalKey(sid, opid));
+                read('branch', mvuSchemaPlayerCompletionKey(sid, opid));
+                read('status', mvuSchemaPlayerSettlementKey(sid, event.plan.planSha256));
+            }
+            else {
+                const keys = schemaInheritedStoryInputKeys(event.plan);
+                read('branch', keys.terminal);
+                read('branch', keys.work, true);
+                read('branch', keys.snapshot);
+                read('branch', keys.phaseB);
+                read('status', mvuSchemaStorySettlementKey(event.sessionId, event.plan.planSha256));
+            }
+        };
+        const completion = (key) => {
+            const value = read('status', key), id = 'completion:' + key;
+            if (!value || seen.has(id))
+                return;
+            seen.add(id);
+            for (const ref of value.events)
+                read('status', ref.key, true);
+        };
+        // Two revisions of the earliest message can share an opening basis. The
+        // foreign fork therefore retains each declared revision's own facts; a
+        // basis is a recomputation input, not a predecessor in Native chronology.
+        // Journal already owns marker/pair evidence. This only records typed DATA
+        // edges, without rerunning historical Source, Native joins or author VMs.
+        for (const marker of prefix.journal.revisions) {
+            const descriptor = marker.descriptor.value;
+            if (descriptor.sessionId !== prefix.sessionId)
+                continue;
+            read('status', marker.descriptor.key);
+            if (descriptor.schemaVersion === 1) {
+                original(descriptor.original);
+                const plan = read('status', mvuSchemaStoryRevisionPlanKey(prefix.sessionId, marker.descriptor.sha256));
+                if (plan)
+                    read('status', mvuSchemaStoryRevisionEventKey(prefix.sessionId, revisionPlanEventId(plan)), true);
+                continue;
+            }
+            read('status', descriptor.basis.record.key);
+            completion(mvuSchemaStoryRevisionCompletionKey(prefix.sessionId, marker.descriptor.sha256));
+            for (const entry of suffixOriginals(descriptor))
+                original(entry.event);
+            if (descriptor.schemaVersion === 4)
+                for (const { selection } of descriptor.taskEdits) {
+                    read('status', selection.intent.key);
+                    read('status', selection.binding.key);
+                    original(selection.originEventRef);
+                    read('status', selection.sourceEventRef.key);
+                }
+            if (descriptor.schemaVersion === 5)
+                for (const { proof } of descriptor.authorizations) {
+                    if (proof.kind === 'intent') {
+                        read('status', proof.intent.key);
+                        read('status', proof.binding.key);
+                    }
+                    else if (proof.kind === 'post-commit-recovery') {
+                        const intent = read('status', proof.intent.key);
+                        read('branch', intent.save.key);
+                    }
+                    else {
+                        read('status', proof.descriptor.key);
+                        completion(proof.completion.key);
+                    }
+                }
+        }
+    }
     function captureFrozenForkPrefix(prefix, events, genesis) {
-        const revisionBases = prepareRevisionBases(prefix.sessionId, events);
-        const captured = prefixInputs.capture(prefixInputBinding(prefix), () => recoverForkPrefix(prefix, events, genesis, revisionBases));
+        const readContext = prefixInputs.createReadContext(prefix.sessionId), revisionBases = prepareRevisionBases(prefix.sessionId, events, undefined, prefix.sessionId, readContext);
+        const captured = prefixInputs.capture(prefixInputBinding(prefix), capture => {
+            const ready = recoverForkPrefix(prefix, events, genesis, revisionBases);
+            if (ready)
+                retainDeclaredRevisionInputs({ ...prefix, journal: ready.frozen }, capture);
+            return ready;
+        });
         if (!captured.result)
             fail('SCHEMA_DERIVED_HISTORY_UNPROVEN');
-        return { closure: captured.closure, assertCurrent: captured.assertCurrent, ready: captured.result };
+        return { closure: captured.closure, assertCurrent: captured.assertCurrent, ready: captured.result,
+            retainInputs: captured.retainInputs };
     }
-    function captureAncestorForkPrefix(prefix, events, genesis, closure, subjectSessionId = prefix.sessionId) {
-        const inputs = prefixInputs.prepareClosed(closure, prefixInputBinding(prefix));
-        const revisionBases = prepareRevisionBases(prefix.sessionId, events, inputs.status, subjectSessionId);
-        const captured = prefixInputs.derive(closure, prefixInputBinding(prefix), () => {
+    function captureAncestorForkPrefix(prefix, events, genesis, closure, subjectSessionId = prefix.sessionId, storageScope = subjectSessionId) {
+        const readContext = prefixInputs.createReadContext(storageScope), inputs = prefixInputs.prepareClosed(closure, prefixInputBinding(prefix), readContext);
+        const revisionBases = prepareRevisionBases(prefix.sessionId, events, inputs.status, subjectSessionId, readContext);
+        const captured = prefixInputs.derive(closure, prefixInputBinding(prefix), capture => {
             const selected = foldForkPrefix(prefix, events, genesis, true, revisionBases);
             if (!selected)
                 fail('SCHEMA_DERIVED_HISTORY_UNPROVEN');
+            retainDeclaredRevisionInputs(selected.prefix, capture);
             return selected;
-        }, selected => prefixInputBinding(selected.prefix));
+        }, selected => prefixInputBinding(selected.prefix), readContext);
         const ready = captured.result.ready;
         const browserProgram = isAuthorHostJournalReadyV5(ready) && ready.epoch.program.browserProgram?.schemaVersion === 3
             ? { program: ready.epoch.program.browserProgram, epochRef: ready.epochRef } : undefined;
-        return { prefix: captured.result.prefix, ready, closure: captured.closure, assertCurrent: captured.assertCurrent, browserProgram };
+        return { prefix: captured.result.prefix, ready, closure: captured.closure, assertCurrent: captured.assertCurrent,
+            retainInputs: captured.retainInputs, browserProgram };
     }
-    function recoverFrozenForkPrefix(prefix, events, genesis, closure, subjectSessionId = prefix.sessionId) {
+    function recoverFrozenForkPrefix(prefix, events, genesis, closure, subjectSessionId = prefix.sessionId, readContext, storageScope = subjectSessionId) {
         try {
-            const inputs = prefixInputs.prepareClosed(closure, prefixInputBinding(prefix));
-            const revisionBases = prepareRevisionBases(prefix.sessionId, events, inputs.status, subjectSessionId);
+            readContext ??= prefixInputs.createReadContext(storageScope);
+            const inputs = prefixInputs.prepareClosed(closure, prefixInputBinding(prefix), readContext);
+            const revisionBases = prepareRevisionBases(prefix.sessionId, events, inputs.status, subjectSessionId, readContext);
             return inputs.read(() => recoverForkPrefix(prefix, events, genesis, revisionBases));
         }
         catch {
             return undefined;
         }
     }
-    function verifyFrozenForkPrefix(prefix, events, genesis, closure, subjectSessionId = prefix.sessionId) {
-        return recoverFrozenForkPrefix(prefix, events, genesis, closure, subjectSessionId) !== undefined;
+    function verifyFrozenForkPrefix(prefix, events, genesis, closure, subjectSessionId = prefix.sessionId, readContext) {
+        return recoverFrozenForkPrefix(prefix, events, genesis, closure, subjectSessionId, readContext) !== undefined;
     }
     function captureForkPrefix(sid, nativeCut, revisionBases) {
         const session = deps.session(sid);
@@ -991,7 +1279,9 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         const ready = history.ready;
         recoveredPrefixes.set(ready, { original: history.original, scopes: history.readScopes,
             displayUpdates: history.displayUpdates ?? [], resolvedEdits: history.resolvedEdits,
-            lastTaskResultCanonicalSeq: history.lastTaskResultCanonicalSeq, taskArtifacts: history.taskArtifacts });
+            lastTaskResultCanonicalSeq: history.lastTaskResultCanonicalSeq,
+            lastSettledStoryCanonicalSeq: history.lastSettledStoryCanonicalSeq,
+            userEditAuthorizations: history.userEditAuthorizations, taskArtifacts: history.taskArtifacts });
         if (isAuthorHostJournalReadyV5(ready) && ready.epoch.program.browserProgram?.schemaVersion === 3) {
             return { prefix, ready, browserProgram: { program: ready.epoch.program.browserProgram, epochRef: ready.epochRef } };
         }
@@ -1001,9 +1291,9 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         const session = deps.session(sid);
         if (!session)
             fail('SCHEMA_SESSION_INACTIVE');
-        const revisionBases = prepareRevisionBases(sid, all(session).slice(0, nativeCut));
+        const readContext = prefixInputs.createReadContext(sid), revisionBases = prepareRevisionBases(sid, all(session).slice(0, nativeCut), undefined, sid, readContext);
         const captured = prefixInputs.captureComputed(sid, () => captureForkPrefix(sid, nativeCut, revisionBases), result => prefixInputBinding(result.prefix));
-        return { ...captured.result, closure: captured.closure };
+        return { ...captured.result, closure: captured.closure, retainInputs: captured.retainInputs };
     }
     function readDataCurrent(view) {
         return !disposed && deps.session(view.session.id) === view.session && deps.agent(view.session) === view.agent;
@@ -1027,13 +1317,18 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                     return plan.base.sourceSha256;
             }
         const matches = [];
-        for (const [key, row] of prefixInputs.branch.entries()) {
+        const includeSource = (key, row) => {
             if (!key.startsWith(`${sid}__native-input-v2-terminal-`) && !key.startsWith(`${sid}__mvu-schema-player-plan-`))
+                return false;
+            const plan = (key.startsWith(`${sid}__native-input-v2-terminal-`)
+                ? row?.plan?.plan : row);
+            return plan?.realmEpoch === ready.epoch.realmEpoch && plan.selectors?.[0]?.batchId === first.dispatch.batchId;
+        };
+        for (const [key, row] of prefixInputs.branch.entries(undefined, includeSource)) {
+            if (!includeSource(key, row))
                 continue;
             const plan = (key.startsWith(`${sid}__native-input-v2-terminal-`)
                 ? row?.plan?.plan : row);
-            if (plan?.realmEpoch !== ready.epoch.realmEpoch || plan.selectors?.[0]?.batchId !== first.dispatch.batchId)
-                continue;
             const base = 'operation' in plan ? plan.operation.base : plan.base;
             if (!base || base.sessionId !== sid || !/^[a-f0-9]{64}$/.test(base.sourceSha256))
                 fail('SCHEMA_HISTORICAL_TAIL_UNPROVEN');
@@ -1070,15 +1365,17 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             scopeSeed = scopesForDerived(derived, prefix);
         }
         else {
-            const matches = [...prefixInputs.branch.entries()].filter(([key, row]) => key.startsWith(`${sid}__opening-choice-`)
+            const includeOpening = (key, row) => key.startsWith(`${sid}__opening-choice-`)
                 && row.schemaVersion === 5
-                && row.preparation?.realmEpoch === selector.realmEpoch);
+                && row.preparation?.realmEpoch === selector.realmEpoch;
+            const matches = [...prefixInputs.branch.entries(undefined, includeOpening)].filter(([key, row]) => includeOpening(key, row));
             if (matches.length !== 1)
                 fail('SCHEMA_ORIGINAL_LOAD_UNPROVEN');
             const intent = validateMvuSchemaOpeningIntent(matches[0][1]);
             if (intent.status !== 'completed' || !intent.initializationReceipt)
                 fail('SCHEMA_OPENING_RECORD_INVALID');
-            const captured = deps.source.captureCurrentOriginal(intent.preparation, { sessionId: sid, table: prefixInputs.status, events: prefix }, true);
+            const selected = readyFor(sid, selector.realmEpoch, prefix, null, true);
+            const captured = deps.source.captureCurrentOriginal(intent.preparation, { sessionId: sid, table: prefixInputs.status, events: prefix, ready: selected }, true);
             ready = captured.ready;
             original = captured.original;
             if (original.schemaVersion === 5)
@@ -1098,7 +1395,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                 fail('SCHEMA_HISTORICAL_TAIL_UNPROVEN');
         }
         if (initial) {
-            const folded = consume(sid, session.inheritedEventCount, prefix, ready, initial, ordinal, true, scopeSeed, original, true, false, undefined, undefined, undefined, revisionBases, derived?.inheritedReady ? recoveredPrefixes.get(derived.inheritedReady)?.resolvedEdits : undefined, derived?.inheritedReady ? recoveredPrefixes.get(derived.inheritedReady)?.lastTaskResultCanonicalSeq : undefined, derived?.inheritedReady ? recoveredPrefixes.get(derived.inheritedReady)?.taskArtifacts : undefined);
+            const folded = consume(sid, session.inheritedEventCount, prefix, ready, initial, ordinal, true, scopeSeed, original, true, false, undefined, undefined, undefined, revisionBases, derived?.inheritedReady ? recoveredPrefixes.get(derived.inheritedReady)?.resolvedEdits : undefined, derived?.inheritedReady ? recoveredPrefixes.get(derived.inheritedReady)?.lastTaskResultCanonicalSeq : undefined, derived?.inheritedReady ? recoveredPrefixes.get(derived.inheritedReady)?.taskArtifacts : undefined, derived?.inheritedReady ? recoveredPrefixes.get(derived.inheritedReady)?.lastSettledStoryCanonicalSeq : undefined, derived?.inheritedReady ? recoveredPrefixes.get(derived.inheritedReady)?.userEditAuthorizations : undefined);
             verifyMvuSchemaUnpublishedTail({ sessionId: sid, inheritedEventCount: session.inheritedEventCount,
                 events: prefix, ready, ordinal: folded.ordinal, snapshot: folded.state, original }, {
                 branch: prefixInputs.branch, status: prefixInputs.status, projectPrefix: deps.projectPrefix, editProtocol: deps.editProtocol,
@@ -1147,38 +1444,15 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             throw error;
         }
     }
-    function rowsCurrent(owner) {
-        const sid = owner.view.session.id, boundary = owner.publication, proposed = new Map();
-        if (boundary) {
-            proposed.set(mvuSchemaStoryEventKey(sid, boundary.event.eventId), boundary.event);
-            if (boundary.event.outcome === 'accepted')
-                proposed.set(mvuStateCurrentHeadKey(sid), boundary.head);
-            proposed.set(mvuSchemaStorySettlementKey(sid, boundary.plan.planSha256), boundary.settlement);
-        }
-        const actual = new Map([...prefixInputs.status.entries()].filter(([key]) => key.startsWith(`${sid}__mvu-`)
-            && !key.startsWith(`${sid}__mvu-schema-epoch-`) && !key.startsWith(`${sid}__mvu-schema-dispatch-`)
-            && !key.startsWith(`${sid}__mvu-schema-completion-`) && !key.startsWith(`${sid}__mvu-schema-unavailable-`)
-            && !key.startsWith(`${sid}__mvu-state-schema-task-edit-intent-`)
-            && !key.startsWith(`${sid}__mvu-state-schema-task-edit-binding-`)));
-        for (const [key, hash] of owner.baseline) {
-            if (proposed.has(key) && same(actual.get(key), proposed.get(key)))
-                continue;
-            if (recordSha256(actual.get(key)) !== hash)
-                return false;
-        }
-        for (const [key, row] of actual)
-            if (!owner.baseline.has(key) && (!proposed.has(key) || !same(row, proposed.get(key))))
-                return false;
-        return true;
-    }
     function ownerCurrent(owner) {
+        // Publication writers hold the Source lease; edits and stops revoke this
+        // closing owner. Earlier publication events remain immutable.
         const sid = owner.view.session.id, view = deps.closingView(owner.lease, owner.plan.scope);
         if (!view || disposed || owner.abort.signal.aborted || owners.get(sid) !== owner
             || view.agent !== owner.view.agent || view.session !== owner.view.session || !currentSession(owner.view.session)
             || deps.agent(owner.view.session) !== view.agent
             || deps.sourceSha256(sid) !== owner.plan.scope.currency.source.sourceSha256
-            || !deps.source.frameCurrent(owner.original, owner.frame) || !rowsCurrent(owner)
-            || owner.readScopes && !scopeFactsCurrent(owner.readScopes))
+            || !deps.source.frameCurrent(owner.original, owner.frame))
             return false;
         const body = deps.readCanonical(sid, owner.plan.scope.receipt.checkpoint.actualTurn);
         return !!body && same(owner.plan.canonical, { ...body, narrativeSha256: sha256(body.narrative) });
@@ -1342,13 +1616,15 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             ordinal = history.inheritedReady.steps.length;
             projections = { scopes: scopesForDerived(genesis, events), displayUpdates: displayForDerived(genesis, events) };
         }
-        const folded = consume(session.id, session.inheritedEventCount, events, ready, history.initial, ordinal, true, projections.scopes, history.original, false, true, projections.displayUpdates);
+        const folded = consume(session.id, session.inheritedEventCount, events, ready, history.initial, ordinal, true, projections.scopes, history.original, false, true, projections.displayUpdates, undefined, undefined, undefined, undefined, undefined, undefined, history.inheritedReady ? recoveredPrefixes.get(history.inheritedReady)?.lastSettledStoryCanonicalSeq : undefined, history.inheritedReady ? recoveredPrefixes.get(history.inheritedReady)?.userEditAuthorizations : undefined);
         const state = snapshot({ ...folded.state, sourceSha256: event.plan.base.sourceSha256 });
         if (!same(state, event.plan.base))
             fail('SCHEMA_REVISION_BASE_UNPROVEN');
         const basis = { ...history, ready, snapshot: state, consumed: folded.consumed, eventKeys: folded.eventKeys,
             readScopes: folded.readScopes, displayUpdates: folded.displayUpdates, resolvedEdits: folded.resolvedEdits,
-            lastTaskResultCanonicalSeq: folded.lastTaskResultCanonicalSeq, taskArtifacts: folded.taskArtifacts };
+            lastTaskResultCanonicalSeq: folded.lastTaskResultCanonicalSeq,
+            lastSettledStoryCanonicalSeq: folded.lastSettledStoryCanonicalSeq,
+            userEditAuthorizations: folded.userEditAuthorizations, taskArtifacts: folded.taskArtifacts };
         if (history.inheritedReady)
             Object.defineProperty(basis, 'inheritedReady', { value: history.inheritedReady });
         return basis;
@@ -1460,10 +1736,48 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
     }
     /** Only this owner interprets durable edit resolution. Native owns its
      * maintenance reservation and marker rewind; old completion facts stay intact. */
-    async function reconcileAcceptedEdit(sid, requestedSeq) {
-        if (await reconcileStorySuffix(sid, requestedSeq))
+    async function reconcileAcceptedEdit(sid, requestedSeq, recovery) {
+        const session = deps.session(sid);
+        if (!session || !currentSession(session))
             return;
-        await reconcileAcceptedEditV1(sid, requestedSeq);
+        const agent = deps.agent(session), prior = editReconciliations.get(sid);
+        if (prior?.session === session && prior.agent === agent) {
+            await prior.work;
+            // A read can consume this live publication. A different accepted edit,
+            // or a write following a read-only no-op, still owns its requested seq.
+            if (requestedSeq !== undefined && (prior.requestedSeq !== requestedSeq || prior.recoveryKey !== recovery?.ref.key))
+                await reconcileAcceptedEdit(sid, requestedSeq, recovery);
+            else if (recovery)
+                recovery.replayed = true;
+            return;
+        }
+        const settled = Promise.withResolvers(), pending = { session, agent, requestedSeq, recoveryKey: recovery?.ref.key, work: settled.promise };
+        // Register before entering Native: the Source lock lives inside its
+        // maintenance reservation, so a second caller must join before reserving.
+        editReconciliations.set(sid, pending);
+        void (async () => {
+            try {
+                if (await reconcileStorySuffix(sid, requestedSeq, recovery))
+                    return;
+                if (recovery)
+                    fail('SCHEMA_SUFFIX_EDIT_UNAVAILABLE');
+                if (!currentSession(session) || deps.agent(session) !== agent)
+                    fail('SCHEMA_REVISION_PERMISSION_REVOKED');
+                await reconcileAcceptedEditV1(sid, requestedSeq);
+            }
+            finally {
+                if (editReconciliations.get(sid) === pending)
+                    editReconciliations.delete(sid);
+            }
+        })().then(settled.resolve, settled.reject);
+        await pending.work;
+    }
+    async function reconcileExistingUserEditRecovery(sid, prepared) {
+        const recovery = { ...prepared };
+        await reconcileAcceptedEdit(sid, prepared.intent.edit.seq, recovery);
+        if (!taskEditResolved(sid, prepared.intent.edit.seq))
+            fail('SCHEMA_SUFFIX_EDIT_UNRESOLVED');
+        return { replayed: recovery.replayed === true };
     }
     function revisionResultBasis(history, event) {
         const head = suffixHead(event), state = snapshot({ schemaVersion: 2,
@@ -1516,45 +1830,106 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         }
         return undefined;
     }
-    async function reconcileStorySuffix(sid, requestedSeq) {
+    async function reconcileStorySuffix(sid, requestedSeq, recovery) {
         const session = deps.session(sid);
         if (!session || !currentSession(session))
             return false;
         // Ancestor edits are already closed by the inherited seed. A new child
         // edit remains local even when its target belongs to that inherited prefix.
-        const events = all(session), current = deps.currentEdits(session).filter(edit => edit.seq >= session.inheritedEventCount);
-        if (requestedSeq !== undefined && !current.some(row => row.seq === requestedSeq))
+        const events = all(session), currentUserHashes = new Map(), current = deps.currentEdits(session).filter(edit => {
+            if (edit.seq < session.inheritedEventCount)
+                return false;
+            if (edit.type === 'roleplay/message-edit' && edit.data.role === 'user')
+                currentUserHashes.set(edit.seq, recordSha256(edit));
+            return true;
+        }), requested = requestedSeq === undefined ? undefined : current.find(row => row.seq === requestedSeq);
+        if (requestedSeq !== undefined && !requested)
             return false;
         const invalidation = deps.readEditInvalidation?.(sid);
-        if (invalidation?.kind !== 'invalidated')
+        if (invalidation?.kind !== 'invalidated' && !recovery)
             return false;
+        const denialCode = invalidation?.kind === 'invalidated' ? invalidation.code : 'SCHEMA_SUFFIX_EDIT_UNRESOLVED';
         const taskPointer = prefixInputs.branch.get(schemaTaskEditActiveKey(sid));
-        const taskIntent = taskPointer ? validateSchemaTaskEditIntentV1(prefixInputs.status.get(taskPointer.key)) : undefined;
+        const taskIntent = taskPointer ? validateSchemaTaskEditIntent(prefixInputs.status.get(taskPointer.key)) : undefined;
+        if (recovery && taskIntent)
+            fail('SCHEMA_TASK_EDIT_PENDING');
         if (taskIntent && recordSha256(taskIntent) !== taskPointer.sha256)
             fail('SCHEMA_TASK_EDIT_INTENT_UNPROVEN');
         const taskBinding = taskIntent ? validateSchemaTaskEditBindingV1(prefixInputs.status.get(schemaTaskEditBindingKey(sid, taskIntent.operationId))) : undefined;
-        const taskRevision = !!taskIntent;
-        const edits = current.filter((row) => row.type === 'roleplay/message-edit' && (row.data.role === 'assistant' || taskRevision && row.data.role === 'user')).map(row => {
+        const taskBindingRef = taskBinding && { key: schemaTaskEditBindingKey(sid, taskIntent.operationId), sha256: recordSha256(taskBinding) };
+        const markers = events.filter((row) => row.type === deps.markers.revisionEventType);
+        const completedUsers = new Map(), legacyAuthorizations = new Map();
+        let closedEdits = [];
+        let refused;
+        for (const row of markers) {
+            const descriptor = validateMvuSchemaStoryRevisionDescriptor(prefixInputs.status.get(row.data.descriptor.key));
+            if (descriptor.schemaVersion === 1)
+                continue;
+            const raw = prefixInputs.status.get(mvuSchemaStoryRevisionCompletionKey(sid, row.data.descriptor.sha256));
+            if (raw !== undefined) {
+                const completion = validateMvuSchemaStoryRevisionCompletion(raw);
+                refused = undefined;
+                closedEdits = descriptor.edits;
+                let completedProof;
+                for (const edit of descriptor.edits)
+                    if ('role' in edit && edit.role === 'user') {
+                        completedUsers.set(edit.seq, edit.sha256);
+                        if (taskIntent?.schemaVersion === 2 && descriptor.schemaVersion === 4 && completion.schemaVersion === 4
+                            && currentUserHashes.get(edit.seq) === edit.sha256 && !legacyAuthorizations.has(edit.seq)) {
+                            completedProof ??= { kind: 'completed-v4', descriptor: row.data.descriptor,
+                                completion: { key: mvuSchemaStoryRevisionCompletionKey(sid, row.data.descriptor.sha256), sha256: recordSha256(completion) } };
+                            legacyAuthorizations.set(edit.seq, { edit: { seq: edit.seq, sha256: edit.sha256 }, proof: completedProof });
+                        }
+                    }
+            }
+            else if (descriptor.sessionId === sid) {
+                const result = savedSuffixRefusal(descriptor, { key: row.data.descriptor.key, sha256: row.data.descriptor.sha256 });
+                refused = result ? { priorCut: refused?.priorCut ?? row.seq, descriptor, result } : undefined;
+            }
+        }
+        const boundEdit = taskBinding && events[taskBinding.edit.seq], boundUser = taskIntent?.target.role === 'user' && taskBinding && boundEdit?.type === 'roleplay/message-edit'
+            && taskBinding.edit.seq === taskIntent.basis.nativeCut && currentUserHashes.get(boundEdit.seq) === taskBinding.edit.sha256
+            && boundEdit.data.role === 'user' && boundEdit.data.targetSeq === taskIntent.target.seq
+            && boundEdit.data.messageId === taskIntent.target.messageId && boundEdit.data.text === taskIntent.target.text
+            && taskBinding.intent.key === taskPointer.key && taskBinding.intent.sha256 === taskPointer.sha256
+            ? taskBinding.edit : undefined, recoveredUser = recovery && currentUserHashes.get(recovery.intent.edit.seq) === recovery.intent.edit.sha256
+            ? recovery.intent.edit : undefined, authorizedUser = boundUser ?? recoveredUser, suffixRevision = taskIntent?.schemaVersion === 2 || !!recovery, includeClosedUsers = !!taskIntent || !!recovery || requested?.type === 'roleplay/message-edit' && requested.data.role === 'user';
+        if (suffixRevision && !authorizedUser)
+            fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+        const selectedEdits = current.flatMap(row => {
+            if (row.type !== 'roleplay/message-edit')
+                return [];
+            const hash = row.data.role === 'user' ? currentUserHashes.get(row.seq) : recordSha256(row);
+            if (row.data.role === 'user' && !(authorizedUser && row.seq === authorizedUser.seq)
+                && (!includeClosedUsers || completedUsers.get(row.seq) !== hash))
+                return [];
             const target = events[row.data.targetSeq];
             if (target?.type !== 'assistant/message' && target?.type !== 'user/message')
                 fail('SCHEMA_REVISION_TARGET_UNPROVEN');
             const originalMessage = target.type === 'assistant/message' ? target.data.message : target.data;
             const message = deps.editProtocol.editMessageText(originalMessage, row.data), narrative = textOf(message.content);
-            return { seq: row.seq, sha256: recordSha256(row), targetSeq: target.seq, messageId: message.id,
-                messageVersionSha256: recordSha256(message), narrativeSha256: sha256(narrative),
-                ...(taskRevision ? { role: row.data.role } : {}) };
+            return [{ seq: row.seq, sha256: hash, targetSeq: target.seq, messageId: message.id,
+                    messageVersionSha256: recordSha256(message), narrativeSha256: sha256(narrative),
+                    role: row.data.role }];
         }).sort((a, b) => a.seq - b.seq);
-        if (!edits.length)
+        const roleEdits = !!taskIntent || selectedEdits.some(edit => edit.role === 'user'), edits = roleEdits ? selectedEdits : selectedEdits.map(({ role: _role, ...edit }) => edit);
+        if (!edits.length) {
+            if (suffixRevision)
+                fail('SCHEMA_SUFFIX_EDIT_UNRESOLVED');
             return false;
+        }
         const descriptorKey = mvuSchemaStoryRevisionDescriptorKey(sid, recordSha256({
             encoding: 'native-mvu-schema-story-revision-request-v2', edits
         }));
         const saved = prefixInputs.status.get(descriptorKey);
         const stored = saved === undefined ? undefined : validateMvuSchemaStoryRevisionDescriptor(saved);
+        if (recovery && stored && (stored.schemaVersion !== 5 || !stored.authorizations.some(authorization => authorization.edit.seq === recovery.intent.edit.seq && authorization.proof.kind === 'post-commit-recovery'
+            && same(authorization.proof.intent, recovery.ref))))
+            fail('SCHEMA_USER_EDIT_RECOVERY_OPERATION_CONFLICT');
         if (stored) {
             if (savedSuffixRefusal(stored, { key: descriptorKey, sha256: recordSha256(stored) })) {
-                if (requestedSeq === undefined)
-                    fail(invalidation.code);
+                if (requestedSeq === undefined || stored.schemaVersion === 5)
+                    fail(denialCode);
                 return true;
             }
             const completed = prefixInputs.status.get(mvuSchemaStoryRevisionCompletionKey(sid, recordSha256(stored)));
@@ -1564,40 +1939,36 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                 if (!isSuffixEvent(event) || recordSha256(event) !== last.sha256)
                     fail('SCHEMA_REVISION_HISTORY_UNPROVEN');
                 const head = prefixInputs.status.get(mvuStateCurrentHeadKey(sid));
-                if (same(head, suffixHead(event))
-                    || Number(head?.revision) > event.plan.revision.publicationRevision)
+                if (same(head, suffixHead(event)) || Number(head?.revision) > event.plan.revision.publicationRevision) {
+                    if (stored.schemaVersion === 5)
+                        publishSchemaRead(captureSchemaRead(sid));
+                    if (recovery)
+                        recovery.replayed = true;
                     return true;
+                }
             }
         }
-        const markers = events.filter((row) => row.type === deps.markers.revisionEventType);
         const marker = stored && markers.find(row => row.data.descriptor.key === descriptorKey);
-        let resolved = new Set();
-        let refused;
-        for (const row of markers) {
-            const descriptor = validateMvuSchemaStoryRevisionDescriptor(prefixInputs.status.get(row.data.descriptor.key));
-            if (descriptor.schemaVersion === 1)
-                continue;
-            const raw = prefixInputs.status.get(mvuSchemaStoryRevisionCompletionKey(sid, row.data.descriptor.sha256));
-            if (raw !== undefined) {
-                validateMvuSchemaStoryRevisionCompletion(raw);
-                refused = undefined;
-                resolved = new Set(descriptor.edits.filter(edit => edits.some(actual => actual.seq === edit.seq && actual.sha256 === edit.sha256)).map(edit => edit.seq));
-            }
-            else if (descriptor.sessionId === sid) {
-                const result = savedSuffixRefusal(descriptor, { key: row.data.descriptor.key, sha256: row.data.descriptor.sha256 });
-                refused = result ? { priorCut: refused?.priorCut ?? row.seq, descriptor, result } : undefined;
-            }
-        }
+        const currentEditHashes = new Map(edits.map(edit => [edit.seq, edit.sha256])), resolved = new Set(closedEdits.filter(edit => currentEditHashes.get(edit.seq) === edit.sha256).map(edit => edit.seq));
+        // A legacy assistant descriptor retains earlier user edits in its closed
+        // basis rather than its edit list. Keep their exact completed identities
+        // when selecting the rewind cut, so their receipts remain inside it.
+        for (const [seq, sha256] of completedUsers)
+            if (currentEditHashes.get(seq) === sha256)
+                resolved.add(seq);
         // A newer malformed save has no descriptor, but a prior known refusal
         // still owns the denial. A GET may repair saved work, never start it.
         if (saved === undefined && requestedSeq === undefined) {
             if (refused)
-                fail(invalidation.code);
+                fail(denialCode);
             return false;
         }
         let unresolved = edits.filter(edit => !resolved.has(edit.seq));
-        if (!stored && !unresolved.length)
+        if (!stored && !unresolved.length) {
+            if (suffixRevision)
+                fail('SCHEMA_SUFFIX_EDIT_UNRESOLVED');
             return true;
+        }
         // A known refusal never publishes its partial suffix. A corrected save
         // starts from the complete chain that preceded that failed rewind.
         const priorCut = marker?.seq ?? refused?.priorCut ?? Math.min(...unresolved.map(edit => edit.seq));
@@ -1609,9 +1980,14 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         const allRows = [...ownerIds].flatMap(owner => eventRows(owner, priorCut));
         const originalPlans = new Set(allRows.filter(row => row.event.encoding === 'native-mvu-schema-story-event-v2')
             .map(row => row.event.plan.planSha256));
-        const prior = factual(session, priorCut, true, true, false, originalPlans);
-        if (!isAuthorHostJournalReadyV5(prior.ready))
+        const authorizationCandidates = suffixRevision && !stored
+            ? new Map(selectedEdits.filter(edit => edit.role === 'user' && legacyAuthorizations.has(edit.seq))
+                .map(edit => [edit.seq, legacyAuthorizations.get(edit.seq)])) : undefined, readContext = prefixInputs.createReadContext(sid), prior = factual(session, priorCut, true, true, false, originalPlans, undefined, readContext, authorizationCandidates);
+        if (!isAuthorHostJournalReadyV5(prior.ready)) {
+            if (suffixRevision)
+                fail('SCHEMA_SUFFIX_EDIT_UNAVAILABLE');
             return false;
+        }
         const priorReady = prior.ready;
         unresolved = edits.filter(edit => !prior.resolvedEdits.has(edit.seq));
         const batches = new Set([...native.epochs.values()].flatMap(epoch => epoch.pairs.map(pair => pair.dispatch.data.batchId)));
@@ -1620,8 +1996,11 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         const earliest = Math.min(...unresolved.map(edit => edit.targetSeq));
         const first = activeRows.findIndex(row => !isManualEvent(row.event)
             && row.event.plan.canonical.seq >= earliest);
-        if (!stored && first < 0)
+        if (!stored && first < 0) {
+            if (suffixRevision)
+                fail('SCHEMA_SUFFIX_EDIT_UNAVAILABLE');
             return true;
+        }
         const originalFor = (row) => {
             const item = row.event;
             if (item.encoding === 'native-mvu-schema-player-event-v1' || item.encoding === 'native-mvu-schema-story-event-v2')
@@ -1649,7 +2028,8 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                 if (event.encoding !== 'native-mvu-schema-story-event-v2' || event.plan.schemaVersion !== 10
                     || event.outcome === 'refused' || event.plan.maintenance.kind !== 'task-result')
                     return [];
-                const selected = taskIntent?.artifacts.find(row => row.canonicalSeq === event.plan.canonical.seq);
+                const selected = taskIntent?.schemaVersion === 1
+                    ? taskIntent.artifacts.find(row => row.canonicalSeq === event.plan.canonical.seq) : undefined;
                 if (!selected || !taskBinding)
                     fail('SCHEMA_MAINTENANCE_REVISION_REQUIRED');
                 if (taskBinding.edit.seq !== taskIntent.basis.nativeCut || taskBinding.edit.sha256 !== recordSha256(events[taskBinding.edit.seq])
@@ -1657,11 +2037,31 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                     fail('SCHEMA_TASK_EDIT_BINDING_UNPROVEN');
                 return [{ index, selection: { ...selected.artifact, mode: selected.mode,
                             intent: { key: taskPointer.key, sha256: taskPointer.sha256 },
-                            binding: { key: schemaTaskEditBindingKey(sid, taskIntent.operationId), sha256: recordSha256(taskBinding) } } }];
+                            binding: taskBindingRef } }];
             });
         if (!firstOriginal || firstOriginal.encoding === 'native-mvu-schema-player-event-v1'
-            || !stored && !taskEdits.length && !unresolved.some(edit => edit.targetSeq === firstOriginal.plan.canonical.seq))
+            || !stored && !suffixRevision && !taskEdits.length
+                && !unresolved.some(edit => edit.targetSeq === firstOriginal.plan.canonical.seq)) {
+            if (suffixRevision || stored?.schemaVersion === 5)
+                fail('SCHEMA_SUFFIX_EDIT_UNAVAILABLE');
             return true;
+        }
+        const authorizations = stored?.schemaVersion === 5 ? stored.authorizations :
+            taskEdits.length ? [] : selectedEdits.filter(edit => edit.role === 'user').map(edit => {
+                if (recovery && recoveredUser?.seq === edit.seq && recoveredUser.sha256 === edit.sha256)
+                    return {
+                        edit: { seq: edit.seq, sha256: edit.sha256 }, proof: { kind: 'post-commit-recovery', intent: recovery.ref }
+                    };
+                if (suffixRevision && boundUser && boundUser.seq === edit.seq && boundUser.sha256 === edit.sha256)
+                    return {
+                        edit: { seq: edit.seq, sha256: edit.sha256 }, proof: { kind: 'intent',
+                            intent: { key: taskPointer.key, sha256: taskPointer.sha256 }, binding: taskBindingRef }
+                    };
+                const priorAuthorization = prior.userEditAuthorizations.get(edit.seq);
+                if (!priorAuthorization || priorAuthorization.edit.sha256 !== edit.sha256)
+                    fail('SCHEMA_SUFFIX_EDIT_AUTHORIZATION_UNPROVEN');
+                return priorAuthorization;
+            });
         const projection = deps.projectPrefix(events.slice(0, edits.at(-1).seq + 1));
         const canonical = originals.map(original => {
             if (original.encoding === 'native-mvu-schema-player-event-v1')
@@ -1693,13 +2093,16 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             return selected?.mode === 'retain' ? prefixInputs.status.get(selected.sourceEventRef.key).plan.candidate : selected?.mode === 'clear'
                 ? parseMvuSchemaStoryCandidateV2('', policy) : parseMvuSchemaStoryCandidateV2(body.narrative, policy);
         });
-        if (candidates.some(candidate => candidate?.kind === 'rejected'))
+        if (candidates.some(candidate => candidate?.kind === 'rejected')) {
+            if (suffixRevision || stored?.schemaVersion === 5)
+                fail('SCHEMA_SUFFIX_EDIT_REJECTED');
             return true;
+        }
         let captured, basisRecord;
         if (stored) {
             basisRecord = validateMvuSchemaStoryRevisionBasis(prefixInputs.status.get(stored.basis.record.key));
             const recovered = deps.recoverRevisionPrefix?.({ subjectSessionId: sid,
-                events: events.slice(0, basisRecord.prefix.journal.nativeCut), ...basisRecord });
+                events: events.slice(0, basisRecord.prefix.journal.nativeCut), ...basisRecord, readContext });
             if (!recovered)
                 fail('SCHEMA_REVISION_BASE_UNPROVEN');
             captured = recovered;
@@ -1747,13 +2150,16 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         const next = stored ?? (taskEdits.length
             ? validateMvuSchemaStoryRevisionDescriptor(sealMvuSchemaStoryFact({ schemaVersion: 4,
                 encoding: 'native-mvu-schema-story-revision-descriptor-v4', ...descriptorBase,
-                edits: edits, originals: entries, taskEdits, ...descriptorTail }, 'descriptorSha256')) : mixed
-            ? validateMvuSchemaStoryRevisionDescriptor(sealMvuSchemaStoryFact({ schemaVersion: 3,
-                encoding: 'native-mvu-schema-story-revision-descriptor-v3', ...descriptorBase,
-                originals: entries, ...descriptorTail }, 'descriptorSha256'))
-            : validateMvuSchemaStoryRevisionDescriptor(sealMvuSchemaStoryFact({ schemaVersion: 2,
-                encoding: 'native-mvu-schema-story-revision-descriptor-v2', ...descriptorBase,
-                originals: entries.map(entry => entry.event), ...descriptorTail }, 'descriptorSha256')));
+                edits: selectedEdits, originals: entries, taskEdits, ...descriptorTail }, 'descriptorSha256'))
+            : authorizations.length ? validateMvuSchemaStoryRevisionDescriptor(sealMvuSchemaStoryFact({ schemaVersion: 5,
+                encoding: 'native-mvu-schema-story-revision-descriptor-v5', ...descriptorBase,
+                edits: selectedEdits, originals: entries, authorizations, ...descriptorTail }, 'descriptorSha256')) : mixed
+                ? validateMvuSchemaStoryRevisionDescriptor(sealMvuSchemaStoryFact({ schemaVersion: 3,
+                    encoding: 'native-mvu-schema-story-revision-descriptor-v3', ...descriptorBase,
+                    originals: entries, ...descriptorTail }, 'descriptorSha256'))
+                : validateMvuSchemaStoryRevisionDescriptor(sealMvuSchemaStoryFact({ schemaVersion: 2,
+                    encoding: 'native-mvu-schema-story-revision-descriptor-v2', ...descriptorBase,
+                    originals: entries.map(entry => entry.event), ...descriptorTail }, 'descriptorSha256')));
         const ref = { key: descriptorKey, sha256: recordSha256(next) }, agent = deps.agent(session);
         const restored = captured.ready && recoveredPrefixes.get(captured.ready);
         if (!agent || !captured.ready || !restored?.scopes || !prior.readScopes)
@@ -1768,7 +2174,23 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             signal.throwIfAborted();
             if (!currentSession(session) || deps.agent(session) !== agent)
                 fail('SCHEMA_REVISION_PERMISSION_REVOKED');
+            if (recovery) {
+                if (deps.sourceSha256(sid) !== recovery.intent.fence.sourceSha256)
+                    fail('SCHEMA_USER_EDIT_RECOVERY_FENCE_CHANGED');
+                const ownBatches = new Set(savedPlans.flatMap(plan => plan?.selectors.map(selector => selector.batchId) ?? [])), currentEvents = all(session), liveBoundary = currentEvents[session.firstLiveSeq];
+                for (const row of currentEvents.slice(recovery.intent.fence.nativeCut)) {
+                    if (row.type === 'session/end-seed' && row === liveBoundary && Object.keys(row.data).length === 0)
+                        continue;
+                    if (row.type === deps.markers.revisionEventType && same(row.data.descriptor, ref))
+                        continue;
+                    if ((row.type === deps.markers.dispatchEventType || row.type === deps.markers.completionEventType)
+                        && row.data.sessionId === sid && ownBatches.has(row.data.batchId))
+                        continue;
+                    fail('SCHEMA_USER_EDIT_RECOVERY_FENCE_CHANGED');
+                }
+            }
             const headKey = mvuStateCurrentHeadKey(sid), materializedHead = prefixInputs.status.get(headKey);
+            await captured.retainInputs?.(sid);
             await putRevisionFact(basisRef.key, basisRecord);
             await putRevisionFact(descriptorKey, next);
             let actualMarker = all(session).find(row => row.type === deps.markers.revisionEventType && row.data.descriptor.key === ref.key);
@@ -1864,15 +2286,18 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                     await putRevisionFact(eventKey, event);
                     if (!isManualRevision(event) && event.outcome === 'refused') {
                         deps.inputState.invalidateSession(sid);
+                        if (next.schemaVersion === 5)
+                            fail('SCHEMA_SUFFIX_EDIT_REFUSED');
                         return;
                     }
                     completedRefs.push({ key: eventKey, sha256: recordSha256(event) });
                     owner.basis = revisionResultBasis(owner.basis, event);
                 }
                 const completion = validateMvuSchemaStoryRevisionCompletion(sealMvuSchemaStoryFact({
-                    ...(next.schemaVersion === 4 ? { schemaVersion: 4, encoding: 'native-mvu-schema-story-revision-completion-v4' }
-                        : next.schemaVersion === 3 ? { schemaVersion: 3, encoding: 'native-mvu-schema-story-revision-completion-v3' }
-                            : { schemaVersion: 2, encoding: 'native-mvu-schema-story-revision-completion-v2' }), sessionId: sid, descriptor: ref,
+                    ...(next.schemaVersion === 5 ? { schemaVersion: 5, encoding: 'native-mvu-schema-story-revision-completion-v5' }
+                        : next.schemaVersion === 4 ? { schemaVersion: 4, encoding: 'native-mvu-schema-story-revision-completion-v4' }
+                            : next.schemaVersion === 3 ? { schemaVersion: 3, encoding: 'native-mvu-schema-story-revision-completion-v3' }
+                                : { schemaVersion: 2, encoding: 'native-mvu-schema-story-revision-completion-v2' }), sessionId: sid, descriptor: ref,
                     events: completedRefs
                 }, 'completionSha256'));
                 await putRevisionFact(mvuSchemaStoryRevisionCompletionKey(sid, ref.sha256), completion);
@@ -2167,6 +2592,8 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         if (!view || !viewCurrent(view))
             fail('SCHEMA_TASK_EDIT_BASIS_UNAVAILABLE');
         return { artifacts: [...view.history.taskArtifacts].filter(([seq]) => seq >= targetSeq).map(([, artifact]) => artifact),
+            canReviseSettledCanonicalSuffix: isAuthorHostJournalReadyV5(view.history.ready) && view.history.lastSettledStoryCanonicalSeq !== undefined
+                && view.history.lastSettledStoryCanonicalSeq >= targetSeq,
             sourceSha256: view.history.snapshot.sourceSha256, headSha256: view.history.snapshot.headSha256, nativeCut: view.session.seq };
     }
     function taskArtifact(sid, canonicalSeq) {
@@ -2330,12 +2757,12 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         const basis = { session: view.session, agent: view.agent, original: view.history.original,
             ready: view.history.ready, base: view.history.snapshot, frame: view.frame, inheritedCut: view.history.inheritedCut,
             scopeReadFrame: (cut) => {
-                if (!view.history.readScopes || !scopeFactsCurrent(view.history.readScopes)
+                if (!view.history.readScopes
                     || !currentSession(view.session) || deps.agent(view.session) !== view.agent
                     || !deps.source.frameCurrent(view.history.original, view.frame))
                     fail('SCHEMA_SCOPE_BASIS_UNPROVEN');
-                // The maintenance owner invokes this synchronous reader under its
-                // Source lease after verifying its exact numerical row baseline.
+                // The actual maintenance owner holds the Source lease while consuming
+                // these immutable publication facts.
                 return scopeFrameAt(view.history.readScopes, view.history.original, view.frame, cut, all(view.session));
             } };
         if (view.history.inheritedReady)
@@ -2577,7 +3004,6 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             const owner = ownerFor(closing, boundary.plan);
             if (!owner || owner.lastLive !== lastLive || !owner.inSource || sourceLeases.get(owner.view.session.id) !== owner)
                 return false;
-            owner.publication = boundary;
             if (!ownerCurrent(owner) || !same(boundary.event.phases.map(phase => phase.association), owner.associations))
                 return false;
             const ready = owner.inheritedReady
@@ -2644,14 +3070,10 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                 ...(errorPolicy && errorPolicy !== 'atomic-refusal' ? { errorPolicy } : {}) } : undefined, maintenance);
             if (owners.has(sid))
                 fail('SCHEMA_STORY_OWNER_EXISTS');
-            const baseline = new Map([...prefixInputs.status.entries()].filter(([key]) => key.startsWith(`${sid}__mvu-`)
-                && !key.startsWith(`${sid}__mvu-schema-`)
-                && !key.startsWith(`${sid}__mvu-state-schema-task-edit-intent-`)
-                && !key.startsWith(`${sid}__mvu-state-schema-task-edit-binding-`)).map(([key, value]) => [key, recordSha256(value)]));
-            return { history, frame, base, plan, baseline, events };
+            return { history, frame, base, plan, events };
         });
         try {
-            const { history, frame, base, plan, baseline, events } = basis.data;
+            const { history, frame, base, plan, events } = basis.data;
             const { driver } = await engine(history.ready);
             const currentEvents = all(session);
             // Native snapshots contain deeply frozen events and only grow by append.
@@ -2666,7 +3088,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             const owner = { lease: closing, view, original: history.original, frame, base, plan, driver,
                 readScopes: history.readScopes, inheritedCut: history.inheritedCut, inheritedReady: history.inheritedReady,
                 abort: new AbortController(),
-                token: Object.freeze({}), inSource: false, baseline, associations: [] };
+                token: Object.freeze({}), inSource: false, associations: [] };
             owners.set(sid, owner);
             scopes.set(owner.token, owner);
             return plan;
@@ -2707,6 +3129,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         recoverFrozenForkPrefix, verifyFrozenForkPrefix,
         prepareCompletion, releaseClosing, verifyConsumed,
         reconcileAcceptedEdit,
+        reconcileExistingUserEditRecovery,
         publishCompletion: (scope, plan, closing) => closing
             ? transaction.publish(scope, plan, closing) : Promise.resolve({ kind: 'blocked', code: 'SCHEMA_OWNER_UNPROVEN' }),
         verifySettlement: transaction.verifySettlement,
@@ -2745,6 +3168,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             for (const owner of owners.values())
                 releaseClosing(owner.lease);
             views.clear();
+            editReconciliations.clear();
             scopePrefixes.clear();
             displayPrefixes.clear();
             for (const driver of drivers.values())

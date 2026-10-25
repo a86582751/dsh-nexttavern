@@ -10958,6 +10958,10 @@
       "source": "src/core/roleplay-worldline-player-save.ts"
     },
     {
+      "id": "task-edit-prefix-v1-predecessor-host-package-json",
+      "source": "development/author-host-runtime-v5-update-batch-v1/package.json"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },

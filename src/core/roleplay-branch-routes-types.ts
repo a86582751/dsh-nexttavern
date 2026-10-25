@@ -81,6 +81,10 @@ export interface BranchRouteBody {
   role?: unknown
   expectedRevision?:unknown
   schemaTaskEdit?:unknown
+  recoveryOperationId?:unknown
+  oldSaveRef?:unknown
+  editRef?:unknown
+  requestOrigin?:unknown
 }
 export interface ForkReservation {
   sourceSessionId: string
@@ -97,7 +101,7 @@ export interface BranchRoutesDependencies extends Pick<Worldlines,
   'hydrateForkGroup' | 'forkGroupKey' | 'groupMemberForSession' | 'locateForkTarget' |
   'bootstrapChildBranch' | 'registerRecoveryFork' | 'registerNativeFork' | 'locateProgrammaticOpeningTarget' |
   'forkAnchorLockKey' | 'requestUserEvent' | 'forkPendingKey' | 'reconcileNativeFork' | 'failPendingNativeFork' |
-  'replaceAssistantText' | 'replaceUserText'> {
+  'replaceAssistantText' | 'replaceUserText' | 'recoverPlayerSave'> {
   sourceInheritance?:TavernSourceInheritanceOwnerV1
   ctx: {
     effect(work: () => unknown, label: string): unknown
@@ -128,7 +132,7 @@ export interface BranchRoutesDependencies extends Pick<Worldlines,
    * Historical replay remains outside Source's FIFO and Native forkPrepared. */
   prepareWorldlineInheritance?(operation: StoredBranchOperation, reservation: ForkReservation)
     :Promise<TavernSourceInheritancePreparationV1>
-  /** Release the reservation material when its operation fails or is aborted. */
+  /** Release the reservation's material when its operation fails or is aborted. */
   releaseWorldlineInheritance?(childSessionId:string):void
   /** Refuse before any Native child/reservation or plain-branch fallback. */
   numericalForkBlockCode?(sessionId:string):string|undefined

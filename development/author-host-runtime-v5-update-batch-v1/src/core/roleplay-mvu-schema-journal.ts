@@ -127,7 +127,7 @@ function isUnavailable(row:SchemaJournalRecord):row is SchemaUnavailableRecord {
 export interface SchemaJournalRow {key:string;record:SchemaJournalRecord}
 export interface SchemaJournalTable {
   get(key:string):unknown
-  entries():Iterable<[string,unknown]>
+  entries(prefix?:string,include?:(key:string,value:unknown)=>boolean):Iterable<[string,unknown]>
   put(key:string,value:SchemaJournalRecord):Promise<unknown>
 }
 export interface SchemaJournalFrozenCutV1 {
@@ -708,23 +708,42 @@ export interface SchemaJournalRecordOwner {
 }
 export function createRoleplayMvuSchemaJournal(deps:{table:SchemaJournalTable;markers:typeof mvuSchemaMarkers;
   recordOwner?:SchemaJournalRecordOwner}) {
-  function read(key:string):SchemaJournalRecord|undefined {
-    // Every consumer must read its own table first. That read registers actual
-    // Domain dependencies and can reject a missing address in a closed prefix.
-    const row=deps.table.get(key)
+  function decode(key:string,row:unknown):SchemaJournalRecord|undefined {
     if(deps.recordOwner)return deps.recordOwner.read(key,row)
     if(row===undefined)return
     const record=validateSchemaJournalRecord(row as SchemaJournalRecord)
     if(schemaJournalKey(record)!==key)fail('SCHEMA_JOURNAL_MEMBERSHIP_INVALID')
     return record
   }
-  function inventory(sessionId:string):readonly SchemaJournalRow[] {
+  function read(key:string):SchemaJournalRecord|undefined {
+    // Every consumer reads its own table. Closed scopes must reject an
+    // unrecorded address even when the DATA owner already knows that row.
+    return decode(key,deps.table.get(key))
+  }
+  function inventory(sessionId:string,selection?:{realmEpoch:string;nativeCut:number}):readonly SchemaJournalRow[] {
     if(!id(sessionId))fail('SCHEMA_JOURNAL_OWNER_INVALID')
-    const rows:SchemaJournalRow[]=[]
-    for(const [key] of deps.table.entries())if(key.startsWith(`${sessionId}__mvu-schema-`)) {
+    const rows:SchemaJournalRow[]=[],prefix=`${sessionId}__mvu-schema-`
+    const selected=new Map<string,{raw:unknown;record:SchemaJournalRecord}>()
+    const withinCut=(record:SchemaJournalRecord)=>!selection||record.realmEpoch===selection.realmEpoch
+      &&!(isDispatch(record)&&record.sourceNativeCut.nativeCut>=selection.nativeCut)
+      &&!(isCompletion(record)&&record.dispatchMarker.seq>=selection.nativeCut)
+      &&!(isUnavailable(record)&&record.sourceNativeCut.nativeCut>=selection.nativeCut)
+    const include=selection?((key:string,raw:unknown)=>{
+      // Frozen capture selects the Journal owner's historical footprint before
+      // retaining row bodies. Ordinary table iterators may supply keys alone;
+      // their actual get below still owns the record and all validation.
+      if(raw===undefined)return true
+      const record=decode(key,raw)
+      if(!record||!withinCut(record))return false
+      selected.set(key,{raw,record})
+      return true
+    }):undefined
+    for(const [key] of deps.table.entries(prefix,include))if(key.startsWith(prefix)) {
       if(rows.length>=SCHEMA_JOURNAL_BOUNDS.records)fail('SCHEMA_JOURNAL_LIMIT')
-      const record=read(key)
+      const raw=deps.table.get(key),checked=selected.get(key)
+      const record=checked&&checked.raw===raw?checked.record:decode(key,raw)
       if(!record||record.sessionId!==sessionId)fail('SCHEMA_JOURNAL_MEMBERSHIP_INVALID')
+      if(!withinCut(record))continue
       rows.push(Object.freeze({key,record}))
     }
     // read owns each immutable record. Enumeration freezes only its new
@@ -759,12 +778,12 @@ export function createRoleplayMvuSchemaJournal(deps:{table:SchemaJournalTable;ma
   function captureChecked(sessionId:string,realmEpoch:string,events:readonly SessionEvent[],
     inherited:SchemaJournalReady|null=null,historical=false):SchemaJournalCapture {
     try {
-      // Historical Source selection consumes this owner's checked inventory.
-      // Keep duplicate/future local rows for the actual historical Native fold.
+      // Select the historical footprint before a frozen-input owner retains
+      // bodies. Duplicate selected rows still reach the Native fold unchanged.
       if(historical&&inherited===null)return captured(deps.markers,sessionId,realmEpoch,events,
-        new CheckedRows(inventory(sessionId)),true,deps.recordOwner,undefined,ref=>deps.table.get(ref.key))
+        new CheckedRows(inventory(sessionId,{realmEpoch,nativeCut:events.length})),true,deps.recordOwner,undefined,ref=>deps.table.get(ref.key))
       const rows=[...(inherited?rowsForReady(inherited).records:[])]
-      for(const row of inventory(sessionId)) {
+      for(const row of inventory(sessionId,historical?{realmEpoch,nativeCut:events.length}:undefined)) {
         const previous=rows.find(item=>item.key===row.key)
         if(previous&&previous.record.recordSha256!==row.record.recordSha256)fail('SCHEMA_JOURNAL_WRITE_CONFLICT')
         if(!previous)rows.push(row)

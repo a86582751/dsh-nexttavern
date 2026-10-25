@@ -1159,7 +1159,7 @@ export function createRoleplayWorldlines(deps) {
         }
         return inherited;
     }
-    const { nativePlayerGroupsFor, readOwnedEditCompletionRows, replaceAssistantText, reconcileCanonicalPlayerVariants, userForkContext, locatePlayerRecoveryTarget, replaceUserText, } = createWorldlineSurface(deps, {
+    const { nativePlayerGroupsFor, readOwnedEditCompletionRows, replaceAssistantText, reconcileCanonicalPlayerVariants, userForkContext, locatePlayerRecoveryTarget, replaceUserText, recoverPlayerSave, } = createWorldlineSurface(deps, {
         forkGroupKey, forkAnchorKey, forkAnchorLockKey, withForkMutationLock,
         hydrateForkGroup, buildForkLookupIndex, forkPointerFor, groupMemberForSession,
         assistantMessageId, requestUserEvent, currentSurfaceUserBefore, turnForEvent,
@@ -1198,5 +1198,6 @@ export function createRoleplayWorldlines(deps) {
         forkPendingKey,
         replaceAssistantText,
         replaceUserText,
+        recoverPlayerSave,
     };
 }

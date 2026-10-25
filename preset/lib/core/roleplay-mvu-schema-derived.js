@@ -108,7 +108,7 @@ export function createRoleplayMvuSchemaDerived(deps) {
             if (!closure || recordSha256(closure) !== prepared.prefixClosureRef.sha256
                 || closure.closureSha256 !== prepared.prefixClosureRef.closureSha256)
                 fail('SCHEMA_DERIVED_HISTORY_UNPROVEN');
-            ready = deps.history.recoverFrozenForkPrefix?.(prepared.prefix, events, initial, closure, subjectSessionId);
+            ready = deps.history.recoverFrozenForkPrefix?.(prepared.prefix, events, initial, closure, subjectSessionId, undefined, prepared.childSessionId);
         }
         else
             ready = deps.history.recoverForkPrefix(prepared.prefix, events, initial);
@@ -134,8 +134,8 @@ export function createRoleplayMvuSchemaDerived(deps) {
     }
     function closedRows(basis, ready, genesis = mvuSchemaDerivedGenesis(basis, ready)) {
         const sid = genesis.sessionId;
-        // The committed basis owns its complete prepared DATA. Event and head
-        // are the independent publication rows still requiring confirmation.
+        // The committed basis already owns its decoded prepared record. Event and
+        // head publication are the remaining independent rows to confirm here.
         if (!same(deps.status.get(mvuSchemaDerivedEventKey(sid)), genesis.event)
             || !same(deps.status.get(mvuSchemaDerivedHeadKey(sid)), genesis.head))
             fail('SCHEMA_DERIVED_GENESIS_UNPROVEN');
@@ -159,8 +159,8 @@ export function createRoleplayMvuSchemaDerived(deps) {
             fail('SCHEMA_DERIVED_FROZEN_SOURCE_CHANGED');
         if (!child)
             fail('SCHEMA_DERIVED_BASIS_UNPROVEN');
-        // Source has not committed this child yet; its active parent owns the
-        // historical Source admission needed by an ownerless precommit recovery.
+        // Source has not committed this child yet. Its actual active parent owns
+        // historical Source admission while the child supplies the Native prefix.
         const events = prefix(child, prepared.seedLength), { ready } = owner
             ? verifyReservation(owner, events)
             : verifyPrepared(prepared, events, prepared.sourcePreparedRef, new Set([childId]), prepared.parentSessionId);
@@ -180,8 +180,8 @@ export function createRoleplayMvuSchemaDerived(deps) {
             if (basis.prepared.childSessionId !== sid || basis.prepared.seedLength > events.length
                 || !historicalSource(basis.source, successor, subjectSessionId, closedSources))
                 return;
-            // The comparison already closed both Source transactions in this subject's
-            // lineage. Keep that DATA for the recursive numerical joins.
+            // The comparison retains both sides of this already closed Source lineage;
+            // its DATA stays inside the same synchronous historical capture.
             const checked = verifyPrepared(basis.prepared, events.slice(0, basis.prepared.seedLength), basis.source, seen, subjectSessionId, closedSources.prior);
             return closedRows(basis, checked.ready);
         }
@@ -269,12 +269,13 @@ export function createRoleplayMvuSchemaDerived(deps) {
             if (!closure || recordSha256(closure) !== prepared.prefixClosureRef.sha256
                 || closure.closureSha256 !== prepared.prefixClosureRef.closureSha256)
                 fail('SCHEMA_DERIVED_HISTORY_UNPROVEN');
-            const captured = deps.history.captureAncestorForkPrefix?.(selected, events, initial, closure, subjectSessionId);
+            const captured = deps.history.captureAncestorForkPrefix?.(selected, events, initial, closure, subjectSessionId, prepared.childSessionId);
             if (!captured)
                 fail('SCHEMA_DERIVED_FROZEN_HISTORY_UNAVAILABLE');
             return { prefix: captured.prefix, ready: captured.ready, closure: captured.closure,
-                browserProgram: captured.browserProgram, historical: { historyBasis,
-                    parentSourceSha256: deps.readSourceSha256(parent.id), closure: captured.closure, assertCurrent: captured.assertCurrent } };
+                browserProgram: captured.browserProgram, retainInputs: captured.retainInputs, historical: { historyBasis,
+                    parentSourceSha256: deps.readSourceSha256(parent.id), closure: captured.closure,
+                    assertCurrent: captured.assertCurrent, retainInputs: captured.retainInputs } };
         }
         if (revision) {
             const captured = deps.history.captureRevisionForkPrefix?.(subjectSessionId, nativeCut);
@@ -325,7 +326,7 @@ export function createRoleplayMvuSchemaDerived(deps) {
             initial = capturedPrefix.sessionId === subjectSessionId ? readGenesis(subjectSessionId)
                 : readAncestorGenesis(capturedPrefix.sessionId, events, new Set(), subjectSessionId);
         }
-        const ready = deps.history.recoverFrozenForkPrefix?.(capturedPrefix, events, initial, closure, subjectSessionId);
+        const ready = deps.history.recoverFrozenForkPrefix?.(capturedPrefix, events, initial, closure, subjectSessionId, input.readContext);
         if (!ready)
             fail('SCHEMA_DERIVED_HISTORY_UNPROVEN');
         return { prefix: capturedPrefix, ready };
@@ -337,8 +338,8 @@ export function createRoleplayMvuSchemaDerived(deps) {
             return;
         const existing = deps.branch.get(mvuSchemaDerivedPreparedKey(reservation.childSessionId));
         if (existing !== undefined) {
-            // A retry retains only the actual live owner. A persisted row cannot
-            // recreate publication authority after teardown or partial publication.
+            // A retry can retain the actual unspent owner. A persisted prepared row
+            // cannot recreate that owner after teardown or a partial publication.
             await deps.withSourceLock(reservation.sourceSessionId, async () => {
                 const owner = reservations.get(reservation.childSessionId), parent = deps.session(reservation.sourceSessionId);
                 if (disposed || !owner || !parent || owner.prepared.schemaVersion === 1
@@ -383,6 +384,9 @@ export function createRoleplayMvuSchemaDerived(deps) {
                 if (!ready)
                     fail('SCHEMA_DERIVED_HISTORY_UNPROVEN');
                 const closure = captured.closure, closureKey = mvuSchemaPrefixClosureKey(reservation.childSessionId, closure.closureSha256);
+                // The child must own every referenced frozen value before prepared can
+                // make this closure reachable. Logical ancestor identities stay intact.
+                await captured.retainInputs?.(reservation.childSessionId);
                 await putExact(deps.branch, closureKey, closure);
                 captured.assertCurrent();
                 const bindingBody = { operationId: operation.operationId,

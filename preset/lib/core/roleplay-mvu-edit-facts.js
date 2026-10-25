@@ -154,7 +154,9 @@ export function createRoleplayMvuEditFacts(deps) {
     }
     function inventory(sid, events, basis) {
         const rows = new Map();
-        for (const [key, value] of deps.table.entries())
+        // Only denial receipts belong to this inventory's change footprint.
+        // Completing a task edit must not revoke its published numerical view.
+        for (const [key, value] of deps.table.entries(prefix(sid)))
             if (key.startsWith(prefix(sid))) {
                 if (rows.size >= 4096 || rows.has(key))
                     fail('NUMERICAL_EDIT_RECORD_LIMIT');
@@ -202,7 +204,7 @@ export function createRoleplayMvuEditFacts(deps) {
                 return false;
             const current = observed.current.filter(edit => basis.kind === 'none' || edit.seq >= basis.editFloorSeq);
             if (variantPending(sid) || current.length
-                || [...deps.table.entries()].some(([key]) => key.startsWith(prefix(sid)))
+                || [...deps.table.entries(prefix(sid))].some(([key]) => key.startsWith(prefix(sid)))
                 || pending.get(sid) !== started)
                 return false;
             pending.delete(sid);
@@ -218,7 +220,7 @@ export function createRoleplayMvuEditFacts(deps) {
             if (basis.kind === 'unknown')
                 fail('NUMERICAL_EDIT_BASIS_UNKNOWN');
             if (basis.kind === 'none') {
-                if ([...deps.table.entries()].some(([key]) => key.startsWith(prefix(sid))))
+                if ([...deps.table.entries(prefix(sid))].some(([key]) => key.startsWith(prefix(sid))))
                     fail('NUMERICAL_EDIT_BASIS_UNKNOWN');
                 return { kind: 'clear' };
             }
@@ -262,7 +264,7 @@ export function createRoleplayMvuEditFacts(deps) {
                     fail('NUMERICAL_EDIT_NOT_CURRENT');
                 const identity = editIdentity(edit, events);
                 if (basis.kind === 'none') {
-                    if ([...deps.table.entries()].some(([key]) => key.startsWith(prefix(sid))))
+                    if ([...deps.table.entries(prefix(sid))].some(([key]) => key.startsWith(prefix(sid))))
                         fail('NUMERICAL_EDIT_BASIS_UNKNOWN');
                     if (pending.get(sid) === started)
                         pending.delete(sid);

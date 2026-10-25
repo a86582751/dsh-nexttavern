@@ -33,7 +33,7 @@ import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 import type {SchemaJournalRef} from './roleplay-mvu-schema-journal.js'
 import type {MvuSchemaPhaseErrorPolicyV4} from './tavern-mvu-schema-types-v4.js'
 import type {MvuSchemaHistoryBasisRef,MvuSchemaFrozenPrefixV1} from './roleplay-mvu-schema-derived-types.js'
-import type {MvuSchemaPrefixInputClosureV1} from './roleplay-mvu-schema-frozen-prefix-input.js'
+import type {MvuSchemaPrefixInputClosure} from './roleplay-mvu-schema-frozen-prefix-input.js'
 
 export const MVU_SCHEMA_STORY_PHASES=Object.freeze(['command-parsed','commands-parsed','update-ended'] as const)
 export type MvuSchemaStoryPhase=typeof MVU_SCHEMA_STORY_PHASES[number]
@@ -212,7 +212,7 @@ export interface MvuSchemaStoryRevisionBasisV1 {
   historyBasis:MvuSchemaHistoryBasisRef|null
   closedRevision:SchemaJournalRef|null
   prefix:MvuSchemaFrozenPrefixV1
-  closure:MvuSchemaPrefixInputClosureV1
+  closure:MvuSchemaPrefixInputClosure
   basisSha256:string
 }
 export interface MvuSchemaStoryRevisionDescriptorV2 {
@@ -242,8 +242,21 @@ export interface MvuSchemaStoryRevisionDescriptorV4 extends Omit<MvuSchemaStoryR
   edits:readonly (MvuSchemaStoryRevisionDescriptorV1['edit']&{role:'user'|'assistant'})[]
   taskEdits:readonly {index:number;selection:SchemaTaskRevisionSelectionV1}[]
 }
+export interface MvuSchemaStoryUserEditAuthorization {
+  edit:{seq:number;sha256:string}
+  proof:{kind:'intent';intent:SchemaJournalRef;binding:SchemaJournalRef}
+    |{kind:'completed-v4';descriptor:SchemaJournalRef;completion:SchemaJournalRef}
+    |{kind:'post-commit-recovery';intent:SchemaJournalRef}
+}
+export interface MvuSchemaStoryRevisionDescriptorV5 extends Omit<MvuSchemaStoryRevisionDescriptorV3,
+  'schemaVersion'|'encoding'|'edits'> {
+  schemaVersion:5
+  encoding:'native-mvu-schema-story-revision-descriptor-v5'
+  edits:readonly (MvuSchemaStoryRevisionDescriptorV1['edit']&{role:'user'|'assistant'})[]
+  authorizations:readonly MvuSchemaStoryUserEditAuthorization[]
+}
 export type MvuSchemaStoryRevisionDescriptor=MvuSchemaStoryRevisionDescriptorV1|MvuSchemaStoryRevisionDescriptorV2
-  |MvuSchemaStoryRevisionDescriptorV3|MvuSchemaStoryRevisionDescriptorV4
+  |MvuSchemaStoryRevisionDescriptorV3|MvuSchemaStoryRevisionDescriptorV4|MvuSchemaStoryRevisionDescriptorV5
 export interface MvuSchemaStoryRevisionCompletionV2 {
   schemaVersion:2
   encoding:'native-mvu-schema-story-revision-completion-v2'
@@ -261,8 +274,12 @@ export interface MvuSchemaStoryRevisionCompletionV4 extends Omit<MvuSchemaStoryR
   schemaVersion:4
   encoding:'native-mvu-schema-story-revision-completion-v4'
 }
+export interface MvuSchemaStoryRevisionCompletionV5 extends Omit<MvuSchemaStoryRevisionCompletionV2,'schemaVersion'|'encoding'> {
+  schemaVersion:5
+  encoding:'native-mvu-schema-story-revision-completion-v5'
+}
 export type MvuSchemaStoryRevisionCompletion=MvuSchemaStoryRevisionCompletionV2|MvuSchemaStoryRevisionCompletionV3
-  |MvuSchemaStoryRevisionCompletionV4
+  |MvuSchemaStoryRevisionCompletionV4|MvuSchemaStoryRevisionCompletionV5
 export type MvuSchemaStoryPlan=MvuSchemaStoryPlanV2|MvuSchemaStoryPlanV3|MvuSchemaStoryPlanV4|MvuSchemaStoryPlanV5
   |MvuSchemaStoryPlanV6|MvuSchemaStoryRevisionPlan|MvuSchemaStoryPlanV10
 export interface MvuSchemaStoryPhaseFact {
@@ -368,8 +385,8 @@ export const mvuSchemaStoryRevisionCompletionKey=(sid:string,descriptorSha:strin
 export const schemaStoryCode=(value:unknown):string=>typeof value==='string'&&/^[A-Z][A-Z0-9_]{0,95}$/.test(value)
   ?value:'SCHEMA_STORY_UNKNOWN'
 export function parseMvuSchemaStoryCandidateV2(narrative:string,parserPolicy?:MvuSchemaStoryParserPolicy):MvuUpdateCandidateV2 {
-  // The sealed policy preserves the writer's parsing semantics. Equal-length
-  // tag replacements keep shared parser byte bounds and raw canonical DATA.
+  // Keep the frozen shared parser and its byte bounds. Both replacement tags
+  // retain their original ASCII byte lengths; the canonical text stays raw.
   const text=parserPolicy==='analysis-alias-v1'||parserPolicy==='analysis-alias-rfc6902-members-v1'
     ?narrative.replace(/(<UpdateVariable>\s*)<(analysis|Analysis)>([\s\S]*?)<\/\2>/,
       (_match,prefix:string,_tag:string,content:string)=>`${prefix}<Analyze> ${content} </Analyze>`)
@@ -926,15 +943,18 @@ export function validateMvuSchemaStoryRevisionBasis(input:MvuSchemaStoryRevision
   if(value.closedRevision!==null)revisionReference(value.closedRevision)
   return value
 }
-function validateRevisionDescriptorV2<T extends MvuSchemaStoryRevisionDescriptorV2|MvuSchemaStoryRevisionDescriptorV3|MvuSchemaStoryRevisionDescriptorV4>(value:T):T {
+function validateRevisionDescriptorV2<T extends MvuSchemaStoryRevisionDescriptorV2|MvuSchemaStoryRevisionDescriptorV3
+  |MvuSchemaStoryRevisionDescriptorV4|MvuSchemaStoryRevisionDescriptorV5>(value:T):T {
   exact(value,['schemaVersion','encoding','sessionId','edits','basis','originals','previous',
-    'completionSeq','publicationRevision','sourceSha256','descriptorSha256',...(value.schemaVersion===4?['taskEdits']:[])])
+    'completionSeq','publicationRevision','sourceSha256','descriptorSha256',
+    ...(value.schemaVersion===4?['taskEdits']:value.schemaVersion===5?['authorizations']:[])])
   exact(value.basis,['record','nativeCut','historyBasis','closedRevision','prefixSha256','stateSnapshotSha256'])
   revisionReference(value.basis.record)
   fact(value,'descriptorSha256')
   if((value.schemaVersion===2?value.encoding!=='native-mvu-schema-story-revision-descriptor-v2'
       :value.schemaVersion===3?value.encoding!=='native-mvu-schema-story-revision-descriptor-v3'
-      :value.encoding!=='native-mvu-schema-story-revision-descriptor-v4')
+      :value.schemaVersion===4?value.encoding!=='native-mvu-schema-story-revision-descriptor-v4'
+      :value.encoding!=='native-mvu-schema-story-revision-descriptor-v5')
     ||!id(value.sessionId,64)||!Array.isArray(value.edits)||!Array.isArray(value.originals)
     ||!integer(value.basis.nativeCut)||!integer(value.completionSeq)||!integer(value.publicationRevision,2)
     ||![value.basis.prefixSha256,value.basis.stateSnapshotSha256,value.sourceSha256].every(hash))fail()
@@ -942,11 +962,11 @@ function validateRevisionDescriptorV2<T extends MvuSchemaStoryRevisionDescriptor
   if(value.basis.closedRevision!==null)revisionReference(value.basis.closedRevision)
   for(const edit of value.edits) {
     exact(edit,['seq','sha256','targetSeq','messageId','messageVersionSha256','narrativeSha256',
-      ...(value.schemaVersion===4?['role']:[])])
+      ...(value.schemaVersion===4||value.schemaVersion===5?['role']:[])])
     if(!integer(edit.seq)||!integer(edit.targetSeq)||edit.targetSeq>=edit.seq||!id(edit.messageId)
       ||![edit.sha256,edit.messageVersionSha256,edit.narrativeSha256].every(hash))fail()
   }
-  if(value.schemaVersion===3||value.schemaVersion===4)for(const original of value.originals) {
+  if(value.schemaVersion!==2)for(const original of value.originals) {
     exact(original,['kind','event'])
     if(original.kind!=='story'&&original.kind!=='manual')fail()
     revisionReference(original.event)
@@ -962,12 +982,30 @@ function validateRevisionDescriptorV2<T extends MvuSchemaStoryRevisionDescriptor
       revisionReference(item.selection.intent);revisionReference(item.selection.binding)
     }
   }
+  if(value.schemaVersion===5) {
+    if(!Array.isArray(value.authorizations)||!value.authorizations.length)fail()
+    for(const authorization of value.authorizations) {
+      exact(authorization,['edit','proof']);exact(authorization.edit,['seq','sha256'])
+      if(!integer(authorization.edit.seq)||!hash(authorization.edit.sha256))fail()
+      if(authorization.proof.kind==='intent') {
+        exact(authorization.proof,['kind','intent','binding'])
+        revisionReference(authorization.proof.intent);revisionReference(authorization.proof.binding)
+      }else if(authorization.proof.kind==='completed-v4') {
+        exact(authorization.proof,['kind','descriptor','completion'])
+        revisionReference(authorization.proof.descriptor);revisionReference(authorization.proof.completion)
+      }else if(authorization.proof.kind==='post-commit-recovery') {
+        exact(authorization.proof,['kind','intent']);revisionReference(authorization.proof.intent)
+      }else fail()
+    }
+    for(const edit of value.edits)if(edit.role!=='assistant'&&edit.role!=='user')fail()
+  }
   if(value.previous!==null)revisionReference(value.previous)
   return value
 }
 const validateRevisionDescriptor=createImmutableDescriptorValidator((input:MvuSchemaStoryRevisionDescriptor)=>{
   const value=freezeMvuSchemaStoryData(input)
-  if(value.schemaVersion===2||value.schemaVersion===3||value.schemaVersion===4)return validateRevisionDescriptorV2(value)
+  if(value.schemaVersion===2||value.schemaVersion===3||value.schemaVersion===4||value.schemaVersion===5)
+    return validateRevisionDescriptorV2(value)
   exact(value,['schemaVersion','encoding','sessionId','edit','original','previous','baseStateSnapshotSha256',
     'completionSeq','publicationRevision','sourceSha256','descriptorSha256'])
   exact(value.edit,['seq','sha256','targetSeq','messageId','messageVersionSha256','narrativeSha256'])
@@ -987,8 +1025,10 @@ export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRev
 export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptorV2):MvuSchemaStoryRevisionDescriptorV2
 export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptorV3):MvuSchemaStoryRevisionDescriptorV3
 export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptorV4):MvuSchemaStoryRevisionDescriptorV4
-export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptorV2|MvuSchemaStoryRevisionDescriptorV3|MvuSchemaStoryRevisionDescriptorV4)
-  :MvuSchemaStoryRevisionDescriptorV2|MvuSchemaStoryRevisionDescriptorV3|MvuSchemaStoryRevisionDescriptorV4
+export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptorV5):MvuSchemaStoryRevisionDescriptorV5
+export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptorV2|MvuSchemaStoryRevisionDescriptorV3
+  |MvuSchemaStoryRevisionDescriptorV4|MvuSchemaStoryRevisionDescriptorV5)
+  :MvuSchemaStoryRevisionDescriptorV2|MvuSchemaStoryRevisionDescriptorV3|MvuSchemaStoryRevisionDescriptorV4|MvuSchemaStoryRevisionDescriptorV5
 export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptor):MvuSchemaStoryRevisionDescriptor
 export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptor):MvuSchemaStoryRevisionDescriptor {
   return validateRevisionDescriptor(input)
@@ -1001,7 +1041,8 @@ export function validateMvuSchemaStoryRevisionCompletion<T extends MvuSchemaStor
   fact(value,'completionSha256')
   if(!(value.schemaVersion===2&&value.encoding==='native-mvu-schema-story-revision-completion-v2'
       ||value.schemaVersion===3&&value.encoding==='native-mvu-schema-story-revision-completion-v3'
-      ||value.schemaVersion===4&&value.encoding==='native-mvu-schema-story-revision-completion-v4')
+      ||value.schemaVersion===4&&value.encoding==='native-mvu-schema-story-revision-completion-v4'
+      ||value.schemaVersion===5&&value.encoding==='native-mvu-schema-story-revision-completion-v5')
     ||!id(value.sessionId,64)||!Array.isArray(value.events))fail()
   revisionReference(value.descriptor)
   for(const event of value.events)revisionReference(event)

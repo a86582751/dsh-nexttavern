@@ -115,9 +115,8 @@ function marker(value, owner) {
 const refIdentity = (ref) => `${ref.insertSeq}:${ref.messageId}:${ref.messageSha256}`;
 export function verifyInheritedCompletedFact(input, deps) {
     try {
-        // Validate every original descriptor before any read/hash, including the
-        // events after this old completion that can contain durable message edits.
-        nativeEncoding(input);
+        // Native owns the event data. Replay the actual queues and receipt links;
+        // later headers do not impose a new aggregate budget on an old completion.
         exact(input, ['ownerSessionId', 'ownerInheritedEventCount', 'events', 'receipt', 'canonical']);
         if (typeof input.ownerSessionId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(input.ownerSessionId)
             || !integer(input.ownerInheritedEventCount) || !Array.isArray(input.events) || input.events.length > 100_000

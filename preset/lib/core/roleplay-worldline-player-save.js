@@ -2,6 +2,23 @@
 /** Shared player choice identity is independent of Native edit completion. */
 import { recordSha256 } from './roleplay-data.js';
 export const worldlinePlayerSaveIntentKey = (groupId, playerVariantId, operationId) => `fork-player-save-${recordSha256({ groupId, playerVariantId, operationId })}`;
+export function readWorldlinePlayerSaveIntent(branch, ref) {
+    const save = branch.get(ref.key);
+    if (save?.schemaVersion !== 1 || save.encoding !== 'nexttavern-worldline-player-save-intent-v1'
+        || typeof save.groupId !== 'string' || typeof save.playerVariantId !== 'string' || typeof save.operationId !== 'string'
+        || !Array.isArray(save.targetSessionIds) || save.targetSessionIds.some(id => typeof id !== 'string')
+        || ref.key !== worldlinePlayerSaveIntentKey(save.groupId, save.playerVariantId, save.operationId)
+        || recordSha256(save) !== ref.sha256)
+        throw Error('SCHEMA_USER_EDIT_RECOVERY_SAVE_UNPROVEN');
+    return save;
+}
+export function assertWorldlinePlayerSaveRequest(save, sessionId, origin, text) {
+    const request = { senderSessionId: origin.sessionId, target: origin, text,
+        options: { schemaVersion: 1, operationId: save.operationId, suffix: 'retain' } };
+    if (!save.targetSessionIds.includes(sessionId) || !save.targetSessionIds.includes(origin.sessionId)
+        || recordSha256(request) !== save.requestSha256)
+        throw Error('SCHEMA_USER_EDIT_RECOVERY_REQUEST_UNPROVEN');
+}
 const sameRef = (a, b) => a?.key === b.key && a.sha256 === b.sha256;
 function baseline(variant) {
     return variant.currentSaveRef ? { currentSaveRef: variant.currentSaveRef } : { legacy: {

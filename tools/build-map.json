@@ -20385,6 +20385,11 @@
         "id": "roleplay-worldline-player-save-typescript",
         "source": "src/core/roleplay-worldline-player-save.ts",
         "canonicalSource": "runtime/alpha3/src/core/roleplay-worldline-player-save.ts"
+      },
+      {
+        "id": "task-edit-prefix-v1-predecessor-host-package-json",
+        "source": "development/author-host-runtime-v5-update-batch-v1/package.json",
+        "canonicalSource": "runtime/alpha3/compat/author-host-runtime-v5-update-batch-v1/package.json"
       }
     ],
     "publicRelease": {

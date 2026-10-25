@@ -1334,7 +1334,7 @@ export async function apply(ctx, config = {}) {
     // 每个候选回复都是一个独立 Session；分支分页只保存很小的导航元数据，
     // 不复制兄弟分支正文。Harness 因而仍按当前 Session 尾页懒加载，模型、
     // 世界书检索和记忆也天然只看到当前选择的正史。
-    const { storyBranchIsActive, assertStoryBranchActive, reconcileCanonicalPlayerVariants, buildForkLookupIndex, reconcileNativeFork, failPendingNativeFork, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, withForkMutationLock, forkOperationKey, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, replaceAssistantText, readOwnedEditCompletionRows, replaceUserText } = createRoleplayWorldlines({
+    const { storyBranchIsActive, assertStoryBranchActive, reconcileCanonicalPlayerVariants, buildForkLookupIndex, reconcileNativeFork, failPendingNativeFork, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, withForkMutationLock, forkOperationKey, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, replaceAssistantText, readOwnedEditCompletionRows, replaceUserText, recoverPlayerSave, } = createRoleplayWorldlines({
         sourceInheritance: tavernSourceInheritance,
         messageEdits: ctx.nexttavernMessageEdits,
         checkNumericalTextEdit: (id, seq) => mvuOpening.checkSchemaTextEdit(id, seq),
@@ -1348,12 +1348,18 @@ export async function apply(ctx, config = {}) {
         appendNumericalTextEdit: (session, intent, append) => schemaTaskEdits.append(session, intent, append),
         persistNumericalTextEditIntent: (session, intent) => schemaTaskEdits.persistIntent(session, intent),
         recoverNumericalTextEdit: session => schemaTaskEdits.recover(session),
+        recoverExistingNumericalUserEdit: async (session, request, authorize) => {
+            await ensureBranch(session);
+            if (!schemaStory)
+                throw Error('SCHEMA_USER_EDIT_RECOVERY_UNAVAILABLE');
+            const prepared = await schemaTaskEdits.prepareExistingUserEditRecovery(session, request, authorize);
+            return schemaStory.reconcileExistingUserEditRecovery(session.id, prepared);
+        },
         beginNumericalEdit: id => { inputState.invalidateSession(id); mvuEdits.begin(id); mvuOpening.invalidateSchemaSession(id); },
         persistNumericalEdit: persistNumericalMessageEdit,
         reconcileNumericalEdit: async (id, editSeq) => {
             await mvuOpening.reconcileSchemaStoryEdit(id, editSeq);
-            if (schemaStory?.taskEditResolved(id, editSeq))
-                await schemaTaskEdits.complete(id, editSeq);
+            await schemaTaskEdits.complete(id, editSeq, schemaStory?.taskEditResolved(id, editSeq) === true);
         },
         confirmUnchangedNumericalEdit: id => mvuEdits.confirmNoEdit(id),
         flushEdits: async (session) => {
@@ -3782,6 +3788,7 @@ export async function apply(ctx, config = {}) {
         failPendingNativeFork,
         replaceAssistantText,
         replaceUserText,
+        recoverPlayerSave,
     });
     registerPanelRoutes({
         ctx,

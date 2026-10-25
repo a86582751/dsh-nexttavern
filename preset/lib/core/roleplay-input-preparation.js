@@ -1525,7 +1525,7 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
                     return false;
                 if (liveRevocations.get(sid)?.has(work.preparationId))
                     return false;
-                for (const [recordKey, value] of table.entries())
+                for (const [recordKey, value] of table.entries(`${prefix(sid)}stop-`))
                     if (recordKey.startsWith(`${prefix(sid)}stop-`)) {
                         const tombstone = value;
                         if (!Array.isArray(tombstone.refs) || tombstone.notice?.refsCode && !tombstone.refs.length

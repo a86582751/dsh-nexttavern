@@ -32,7 +32,7 @@ export interface MvuEditInvalidationRecord {
   recordSha256:string
 }
 export interface MvuEditFactsDeps {
-  table:{get(key:string):unknown;entries():Iterable<[string,unknown]>;
+  table:{get(key:string):unknown;entries(exactPrefix?:string):Iterable<[string,unknown]>;
     put(key:string,value:MvuEditInvalidationRecord):Promise<unknown>}
   readSession(sessionId:string):ReadBranchSession|undefined
   /** Actual maintained history feed and edit interpreter, owned by Core. */
@@ -158,7 +158,9 @@ export function createRoleplayMvuEditFacts(deps:MvuEditFactsDeps) {
   }
   function inventory(sid:string,events:readonly StoryEvent[],basis:Extract<MvuEditBasisFacts,{kind:'verified'}>) {
     const rows=new Map<string,MvuEditInvalidationRecord>()
-    for(const [key,value] of deps.table.entries())if(key.startsWith(prefix(sid))) {
+    // Only denial receipts belong to this inventory's change footprint.
+    // Completing a task edit must not revoke its published numerical view.
+    for(const [key,value] of deps.table.entries(prefix(sid)))if(key.startsWith(prefix(sid))) {
       if(rows.size>=4096||rows.has(key))fail('NUMERICAL_EDIT_RECORD_LIMIT')
       const row=clone(value) as MvuEditInvalidationRecord
       const actual=clone(deps.table.get(key))
@@ -197,7 +199,7 @@ export function createRoleplayMvuEditFacts(deps:MvuEditFactsDeps) {
       if(basis.kind==='verified'&&basis.editFloorSeq>observed.events.length)return false
       const current=observed.current.filter(edit=>basis.kind==='none'||edit.seq>=basis.editFloorSeq)
       if(variantPending(sid)||current.length
-        ||[...deps.table.entries()].some(([key])=>key.startsWith(prefix(sid)))
+        ||[...deps.table.entries(prefix(sid))].some(([key])=>key.startsWith(prefix(sid)))
         ||pending.get(sid)!==started)return false
       pending.delete(sid)
       return true
@@ -208,7 +210,7 @@ export function createRoleplayMvuEditFacts(deps:MvuEditFactsDeps) {
       const basis=basisValid(deps.readNumericalBasisFacts(sid))
       if(basis.kind==='unknown')fail('NUMERICAL_EDIT_BASIS_UNKNOWN')
       if(basis.kind==='none') {
-        if([...deps.table.entries()].some(([key])=>key.startsWith(prefix(sid))))fail('NUMERICAL_EDIT_BASIS_UNKNOWN')
+        if([...deps.table.entries(prefix(sid))].some(([key])=>key.startsWith(prefix(sid))))fail('NUMERICAL_EDIT_BASIS_UNKNOWN')
         return {kind:'clear'}
       }
       if(variantPending(sid)||pending.has(sid))return {kind:'unknown',code:'NUMERICAL_EDIT_PENDING'}
@@ -240,7 +242,7 @@ export function createRoleplayMvuEditFacts(deps:MvuEditFactsDeps) {
         if(!edit)fail('NUMERICAL_EDIT_NOT_CURRENT')
         const identity=editIdentity(edit,events)
         if(basis.kind==='none') {
-          if([...deps.table.entries()].some(([key])=>key.startsWith(prefix(sid))))fail('NUMERICAL_EDIT_BASIS_UNKNOWN')
+          if([...deps.table.entries(prefix(sid))].some(([key])=>key.startsWith(prefix(sid))))fail('NUMERICAL_EDIT_BASIS_UNKNOWN')
           if(pending.get(sid)===started)pending.delete(sid)
           return {kind:'unaffected'}
         }

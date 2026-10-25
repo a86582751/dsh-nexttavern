@@ -27,7 +27,14 @@ const sessionOf = (key) => {
 /** Current input/control outputs and lifecycle metadata are not additions to
  * consumed numerical history. A reader that consumes their content uses an
  * exact get; that row stays watched and later replacement invalidates it. */
-function explanatorySuffix(suffix) {
+function explanatorySuffix(suffix, table = 'branch') {
+    // Frozen row copies do not add execution history. Their consumers watch
+    // the exact object address; publishing another copy cannot revoke a lease.
+    if (table === 'branch' || table === 'status')
+        if (suffix.startsWith('mvu-prefix-input-object-v2-'))
+            return true;
+    if (table !== 'branch')
+        return false;
     return suffix === 'meta' || suffix.startsWith('native-input-v2-work-')
         || suffix === 'native-input-v2-current'
         || suffix.startsWith('native-input-v2-blocked-')
@@ -56,7 +63,7 @@ function membershipChange(frame, table, key) {
     if (!sid || !frame.namespaces.has(namespace(table, sid)))
         return false;
     const suffix = key.slice(sid.length + 2);
-    if (table === 'branch' && explanatorySuffix(suffix))
+    if (explanatorySuffix(suffix, table))
         return false;
     // Staged schema work belongs to the actual closing transaction. Its new
     // journal entries do not change the published state consumed by this input.
@@ -707,7 +714,7 @@ export function createRoleplayInputStateOwner(deps) {
                                     dependSession(frame, sid);
                             }
                             else if (!variant && frame && exactPrefix === undefined && !activeProjection && sessionOf(key) === frame.session.id
-                                && !(name === 'branch' && explanatorySuffix(suffix))
+                                && !explanatorySuffix(suffix, name)
                                 && !(name === 'status' && (suffix === 'panel' || /^turn-[0-9]+-[0-9]+$/.test(suffix)))) {
                                 dependRow(frame, name, key);
                             }

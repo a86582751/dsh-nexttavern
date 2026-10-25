@@ -156,12 +156,16 @@ export interface WorldlineDependencies {
   checkNumericalTextEdit?(sessionId:string,targetSeq:number):Promise<void>
   prepareNumericalTextEdit?(session:BranchSession,event:StoryEvent,text:string,
     options:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditOptionsV1)
-    :Promise<import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditIntentV1|undefined>
+    :Promise<import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditIntent|undefined>
   persistNumericalTextEditIntent?(session:BranchSession,
-    intent:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditIntentV1):Promise<void>
-  appendNumericalTextEdit?(session:BranchSession,intent:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditIntentV1,
+    intent:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditIntent):Promise<void>
+  appendNumericalTextEdit?(session:BranchSession,intent:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditIntent,
     append:()=>StoryEvent):Promise<StoryEvent>
   recoverNumericalTextEdit?(session:ReadBranchSession):Promise<import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditRecovery|undefined>
+  recoverExistingNumericalUserEdit?(session:BranchSession,
+    request:import('./roleplay-mvu-schema-task-edit-types.js').SchemaExistingUserEditRecoveryRequest,
+    authorize:(edit:StoryEvent,storedOrigin?:import('./roleplay-mvu-schema-task-edit-types.js').SchemaExistingUserEditRequestOrigin)
+      =>import('./roleplay-mvu-schema-task-edit-types.js').SchemaExistingUserEditRequestOrigin):Promise<{replayed:boolean}>
   beginNumericalEdit?(sessionId:string):void
   persistNumericalEdit?(sessionId:string,editSeq:number):Promise<void>
   reconcileNumericalEdit?(sessionId:string,editSeq:number):Promise<void>

@@ -46,7 +46,7 @@ export interface RoleplayInputRecoveryDiagnosticV1 {
 export interface InputPreparationTable {
   get(key: string): unknown
   put(key: string, value: Record<string, unknown>): Promise<unknown>
-  entries(): Iterable<[string, unknown]>
+  entries(exactPrefix?:string): Iterable<[string, unknown]>
 }
 /** Exact explanatory output of this process's real input writer. These rows
  * grant no claim, dispatch, readiness, Source currency or execution right. */
@@ -1533,7 +1533,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         if(!row||row.status!=='settled'||!equal(row.scope,scope)||!isWork(work,sid)
           ||work.preparationId!==scope.currency.preparationId||!equal(work.refs,refs))return false
         if(liveRevocations.get(sid)?.has(work.preparationId))return false
-        for(const [recordKey,value] of table.entries())if(recordKey.startsWith(`${prefix(sid)}stop-`)) {
+        for(const [recordKey,value] of table.entries(`${prefix(sid)}stop-`))if(recordKey.startsWith(`${prefix(sid)}stop-`)) {
           const tombstone=value as {refs?:NativeInputRef[];notice?:NativeInputStopNoticeV1}
           if(!Array.isArray(tombstone.refs)||tombstone.notice?.refsCode&&!tombstone.refs.length
             ||tombstone.refs.some(ref=>work.refs.some(owned=>equal(ref,owned))))return false

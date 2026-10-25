@@ -1165,6 +1165,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     userForkContext,
     locatePlayerRecoveryTarget,
     replaceUserText,
+    recoverPlayerSave,
   } = createWorldlineSurface(deps, {
     forkGroupKey, forkAnchorKey, forkAnchorLockKey, withForkMutationLock,
     hydrateForkGroup, buildForkLookupIndex, forkPointerFor, groupMemberForSession,
@@ -1205,5 +1206,6 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     forkPendingKey,
     replaceAssistantText,
     replaceUserText,
+    recoverPlayerSave,
   }
 }

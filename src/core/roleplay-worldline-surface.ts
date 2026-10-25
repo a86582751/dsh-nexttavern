@@ -16,9 +16,12 @@ import type {
 } from './roleplay-worldline-types.js'
 import { projectStoryEvent } from './roleplay-message-view.js'
 import {recordSha256} from './roleplay-data.js'
-import {createWorldlinePlayerSaves} from './roleplay-worldline-player-save.js'
+import {createWorldlinePlayerSaves,readWorldlinePlayerSaveIntent,assertWorldlinePlayerSaveRequest}
+  from './roleplay-worldline-player-save.js'
 import {validateSchemaTaskEditOptionsV1,schemaTaskEditIntentKey,SchemaTaskEditNotAppliedError} from './roleplay-mvu-schema-task-edit-types.js'
-import type {SchemaTaskEditOptionsV1,SchemaTaskEditIntentV1} from './roleplay-mvu-schema-task-edit-types.js'
+import {validateSchemaExistingUserEditRecoveryRequest} from './roleplay-mvu-schema-task-edit-types.js'
+import type {SchemaTaskEditOptionsV1,SchemaTaskEditIntent,SchemaExistingUserEditRecoveryResult}
+  from './roleplay-mvu-schema-task-edit-types.js'
 
 // Internal seam: the owner supplies its existing ledger lookup and mutation
 // lock. Surface edits must serialize with fork registration, not create a
@@ -51,7 +54,8 @@ type SurfaceDependencies = Pick<WorldlineDependencies,
   'withDecisionMutationLock' | 'normalizeDecisionRecord' | 'cloneRecord' | 'provenanceSeq' |
   'messageEdits' | 'flushEdits' | 'beginNumericalEdit' | 'checkNumericalTextEdit' | 'persistNumericalEdit' | 'reconcileNumericalEdit'
   | 'confirmUnchangedNumericalEdit' | 'prepareNumericalTextEdit' | 'appendNumericalTextEdit'
-  | 'recoverNumericalTextEdit' | 'resolveRoleplaySession' | 'persistNumericalTextEditIntent'>
+  | 'recoverNumericalTextEdit' | 'resolveRoleplaySession' | 'persistNumericalTextEditIntent'
+  | 'recoverExistingNumericalUserEdit'>
 
 export function assertBranchSession(session: ReadBranchSession): asserts session is BranchSession {
   if (!('append' in session) || typeof session.append !== 'function') throw new Error('会话暂不可写入分支历史')
@@ -221,7 +225,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
 
   /** Caller holds the fork lock. Receipts distinguish a durable edit from completed derived effects. */
   async function applyTextEdit(session: BranchSession, event: StoryEvent, text: string, reason: string,
-    options:{repair?:boolean;schemaTaskEdit?:SchemaTaskEditOptionsV1;preparedTaskEdit?:SchemaTaskEditIntentV1|null}={}) {
+    options:{repair?:boolean;schemaTaskEdit?:SchemaTaskEditOptionsV1;preparedTaskEdit?:SchemaTaskEditIntent|null}={}) {
     const targetSeq = Number(event.seq)
     const role = event.type === 'assistant/message' ? 'assistant' : 'user'
     const messageId = String(role === 'assistant' ? event.data?.message?.id ?? '' : event.data?.id ?? '')
@@ -639,7 +643,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
         })
       }
       let canonicalRevision: number | null = null
-      const prepared=new Map<string,SchemaTaskEditIntentV1|null>()
+      const prepared=new Map<string,SchemaTaskEditIntent|null>()
       const targetSessions=new Map<string,BranchSession>()
       const targetEvents=new Map<string,StoryEvent>()
       const completed=(member:PlayerTarget)=>!!selected&&variant&&(
@@ -773,6 +777,49 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     return result
   }
 
+  async function recoverPlayerSave(session:BranchSession,input:unknown):Promise<SchemaExistingUserEditRecoveryResult> {
+    const request=validateSchemaExistingUserEditRecoveryRequest(input),
+      save=readWorldlinePlayerSaveIntent(T.branch,request.oldSaveRef),groupKey=forkGroupKey(save.groupId),
+      initial=hydrateForkGroup(T.branch.get(groupKey))
+    if(!initial)throw Error('SCHEMA_USER_EDIT_RECOVERY_SAVE_CHANGED')
+    return withForkMutationLock(forkAnchorLockKey(initial.anchor),async()=>{
+      const group=hydrateForkGroup(T.branch.get(groupKey)),variant=group?.playerVariants[save.playerVariantId],
+        member=group?.members.find(candidate=>candidate.sessionId===session.id
+          &&candidate.playerVariantId===save.playerVariantId&&!candidate.deleted)
+      if(!group||!variant||!member||variant.currentSaveRef?.key!==request.oldSaveRef.key
+        ||variant.currentSaveRef.sha256!==request.oldSaveRef.sha256
+        ||variant.schemaTaskEdit?.options.operationId!==save.operationId
+        ||variant.schemaTaskEdit.targets[session.id]!==null)throw Error('SCHEMA_USER_EDIT_RECOVERY_SAVE_CHANGED')
+      if(!deps.recoverExistingNumericalUserEdit)throw Error('SCHEMA_USER_EDIT_RECOVERY_UNAVAILABLE')
+      const result=await deps.recoverExistingNumericalUserEdit(session,request,(edit,storedOrigin)=>{
+        const data=edit.data!
+        if(member.userSeq!==data.targetSeq||member.userMessageId!==data.messageId||variant.text!==data.text)
+          throw Error('SCHEMA_USER_EDIT_RECOVERY_TARGET_UNPROVEN')
+        const sender=group.members.find(candidate=>candidate.sessionId===variant.updatedBySessionId
+          &&candidate.playerVariantId===save.playerVariantId),
+          origin=request.requestOrigin??storedOrigin??(sender?.userSeq!=null&&sender.userMessageId
+            ?{sessionId:sender.sessionId,seq:sender.userSeq,messageId:sender.userMessageId}:undefined)
+        if(!origin)throw Error('SCHEMA_USER_EDIT_RECOVERY_REQUEST_UNPROVEN')
+        assertWorldlinePlayerSaveRequest(save,session.id,origin,data.text)
+        return origin
+      })
+      // The numerical owner proved Completion5 before this old shared choice
+      // can acknowledge its member. Neither the choice revision nor null target
+      // is rewritten, including when a previous legacy writer already ACKed it.
+      if(member.playerAppliedRevision!==variant.revision||member.playerTextRevision!==variant.revision
+        ||member.playerEditSeq!==request.editRef.seq||member.promptText!==variant.text) {
+        member.playerAppliedRevision=variant.revision
+        member.playerTextRevision=variant.revision
+        member.playerEditSeq=request.editRef.seq
+        member.promptText=variant.text
+        member.editedAt=Date.now()
+        group.updatedAt=member.editedAt
+        await T.branch.put(groupKey,group)
+      }
+      return {recoveredSessionId:session.id,recoveryOperationId:request.recoveryOperationId,replayed:result.replayed}
+    })
+  }
+
   return {
     nativePlayerGroupsFor,
     readOwnedEditCompletionRows,
@@ -781,5 +828,6 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     userForkContext,
     locatePlayerRecoveryTarget,
     replaceUserText,
+    recoverPlayerSave,
   }
 }

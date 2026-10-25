@@ -30,7 +30,7 @@
       {
         "artifact": "roleplay-mvu-schema-journal-typescript",
         "path": "src/core/roleplay-mvu-schema-journal.ts",
-        "sha256": "058f444f1c1b889774be9b97b2f8fd4d530bbd39e686eaf6e27a3891f01871de"
+        "sha256": "6058260861d75cd01df303a519d5562defa0c5015ba5c63ffe9bcb4922268707"
       },
       {
         "artifact": "roleplay-mvu-schema-replay-typescript",
