@@ -31,7 +31,7 @@ const isVersion = (value) => value === 'missing' || isHash(value);
 const same = (a, b) => recordSha256(a) === recordSha256(b);
 const pointerPart = (value) => value.replace(/~/g, '~0').replace(/\//g, '~1');
 const numericalChannel = (key) => /^(?:stat_data|statData|mvu_data|mvu|state|opaqueState|variables|schema|scripts?|callbacks?)$/i.test(key)
-    || /^(?:card_agent|chaoshen_jixieshi)$/.test(key) || key.startsWith('$');
+    || key === 'card_agent' || key.startsWith('$');
 const plainEmpty = (value) => isObject(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value))
     && Object.keys(value).length === 0;
 function requireKeys(value, keys, pointer, code) {

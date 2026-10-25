@@ -190,7 +190,7 @@ const isVersion = (value: unknown): value is string => value === 'missing' || is
 const same = (a: unknown, b: unknown) => recordSha256(a) === recordSha256(b)
 const pointerPart = (value: string) => value.replace(/~/g,'~0').replace(/\//g,'~1')
 const numericalChannel=(key:string)=>/^(?:stat_data|statData|mvu_data|mvu|state|opaqueState|variables|schema|scripts?|callbacks?)$/i.test(key)
-  ||/^(?:card_agent|chaoshen_jixieshi)$/.test(key)||key.startsWith('$')
+  ||key==='card_agent'||key.startsWith('$')
 const plainEmpty = (value: unknown) => isObject(value) && [Object.prototype,null].includes(Object.getPrototypeOf(value))
   && Object.keys(value).length === 0
 function requireKeys(value: JsonObject, keys: readonly string[], pointer: string, code: MvuSourceCode) {
