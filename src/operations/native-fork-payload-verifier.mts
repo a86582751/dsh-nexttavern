@@ -13,10 +13,8 @@ type HostForkRow={
   files:{path:string,sha256:string}[]
 }
 
-/** Three-argument callers retain the membership supplied by their historical recipes. */
-export function verifyHostForkPayload(packageRoot:string,hostForks:unknown,
-  recipes:HostForkRecipe[],profileDescriptor?:HostForkProfileDescriptorV1,
-  inventoryProfile?:unknown):{packages:number,files:number}{
+function hostForkInventoryRows(hostForks:unknown,recipes:HostForkRecipe[],
+  profileDescriptor?:HostForkProfileDescriptorV1,inventoryProfile?:unknown):HostForkRow[]{
   if(profileDescriptor){
     const expected=makeHostForkProfile(profileDescriptor,recipes)
     const supplied=readHostForkProfile(inventoryProfile)
@@ -31,12 +29,39 @@ export function verifyHostForkPayload(packageRoot:string,hostForks:unknown,
     if(!row||row.name!==recipe.name||row.version!==recipe.version||row.path!==recipe.target||
       row.status!=='unapplied-host-override'||!Array.isArray(row.files)||!row.files.length)
       throw Error('Invalid unapplied host override inventory: '+recipe.name)
-    const directory=contained(packageRoot,recipe.target)
-    const actual=regularPackageFiles(directory).sort().map(file=>({
+  }
+  return hostForks as HostForkRow[]
+}
+
+function assertHostForkMembers(rows:readonly HostForkRow[],
+  actualRowsByPackage:ReadonlyMap<string,readonly {path:string,sha256:string}[]>){
+  for(const row of rows){
+    const actual=actualRowsByPackage.get(row.path)
+    if(JSON.stringify(actual)!==JSON.stringify(row.files))
+      throw Error('Host override payload drift: '+row.name)
+  }
+  return {packages:rows.length,files:rows.reduce((count,row)=>count+row.files.length,0)}
+}
+
+/** Associate this verification's actual member facts with the registered host profile. */
+export function assertHostForkInventory(hostForks:unknown,recipes:HostForkRecipe[],
+  actualRowsByPackage:ReadonlyMap<string,readonly {path:string,sha256:string}[]>,
+  profileDescriptor?:HostForkProfileDescriptorV1,inventoryProfile?:unknown):{packages:number,files:number}{
+  return assertHostForkMembers(hostForkInventoryRows(hostForks,recipes,profileDescriptor,inventoryProfile),actualRowsByPackage)
+}
+
+/** Independently read actual host payload bytes when no complete-package owner supplies them. */
+export function verifyHostForkPayload(packageRoot:string,hostForks:unknown,
+  recipes:HostForkRecipe[],profileDescriptor?:HostForkProfileDescriptorV1,
+  inventoryProfile?:unknown):{packages:number,files:number}{
+  // Reject a changed recipe/profile before touching any payload, as the standalone contract requires.
+  const rows=hostForkInventoryRows(hostForks,recipes,profileDescriptor,inventoryProfile)
+  const actualRowsByPackage=new Map(rows.map(row=>{
+    const directory=contained(packageRoot,row.path)
+    const files=regularPackageFiles(directory).sort().map(file=>({
       path:file,sha256:digest(fs.readFileSync(contained(directory,file))),
     }))
-    if(JSON.stringify(actual)!==JSON.stringify(row.files))
-      throw Error('Host override payload drift: '+recipe.name)
-  }
-  return {packages:hostForks.length,files:(hostForks as HostForkRow[]).reduce((count,row)=>count+row.files.length,0)}
+    return [row.path,files] as const
+  }))
+  return assertHostForkMembers(rows,actualRowsByPackage)
 }

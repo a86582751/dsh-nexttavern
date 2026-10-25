@@ -6,7 +6,7 @@ import {execFileSync} from 'node:child_process'
 import {resolveTar} from './tool-resolution.mjs'
 import {createTestDirectory, cleanupTestDirectory} from './test-temp.mjs'
 
-interface Assembly {
+export interface OwnedDependencyAssembly {
   upstreamPackage: string
   upstreamVersion: string
   lockArtifact: string
@@ -18,7 +18,7 @@ interface Assembly {
 }
 interface Manifest {
   artifacts: {id: string; source: string}[]
-  dependencyAssemblies: Record<string, Assembly>
+  dependencyAssemblies?: Record<string, OwnedDependencyAssembly>
 }
 
 function child(root: string, relative: string): string {
@@ -46,6 +46,36 @@ export function regularPackageFiles(root: string): string[] {
   return result
 }
 
+/** Full collection and development overlays share this source/destination owner. */
+export function planOwnedDependencyOverlays(options:{repo:string;id:string;plan?:Manifest}) {
+  const repo=fs.realpathSync(options.repo)
+  const manifest=options.plan??JSON.parse(fs.readFileSync(path.join(repo,'release/source-manifest.json'),'utf8')) as Manifest
+  const assembly=manifest.dependencyAssemblies?.[options.id]
+  if(!assembly)throw Error('Unknown owned dependency: '+options.id)
+  const artifact=(id:string)=>{
+    const found=manifest.artifacts.find(item=>item.id===id)
+    if(!found)throw Error('Unregistered dependency artifact: '+id)
+    child(repo,found.source)
+    return found.source
+  }
+  const metadata=JSON.parse(fs.readFileSync(child(repo,artifact(assembly.packageArtifact)),'utf8'))
+  if(!metadata.name?.startsWith('dsh-nexttavern-')||metadata.name===assembly.upstreamPackage) {
+    throw Error('Owned dependency must have an explicit owned package identity')
+  }
+  const ownedRoot=child(repo,assembly.ownedRoot)
+  const files=assembly.overlays.map(id=>{
+    const source=artifact(id),absolute=child(repo,source)
+    const target=path.relative(ownedRoot,absolute).replaceAll('\\','/')
+    child(ownedRoot,target)
+    if(!fs.lstatSync(absolute).isFile())throw Error('Overlay must be a regular file: '+id)
+    return {source,target}
+  })
+  if(!assembly.overlays.includes(assembly.packageArtifact))throw Error('Missing owned package metadata overlay')
+  if(new Set(files.map(file=>file.target)).size!==files.length)throw Error('Duplicate owned dependency output')
+  return {assembly,metadata,files,lockSource:artifact(assembly.lockArtifact),
+    removed:files.filter(file=>/\.[cm]?js$/.test(file.target)).map(file=>file.target+'.map')}
+}
+
 /**
  * The output must be absent. All extraction and overlay work happens in a fresh
  * owned staging directory before claiming and filling a fresh output directory.
@@ -55,18 +85,12 @@ export function assembleOwnedDependency(options: {
   repo: string; id: string; archive: string; output: string
 }) {
   const repo = fs.realpathSync(options.repo)
-  const manifest = JSON.parse(fs.readFileSync(path.join(repo, 'release/source-manifest.json'), 'utf8')) as Manifest
-  const assembly = manifest.dependencyAssemblies?.[options.id]
-  if (!assembly) throw Error('Unknown owned dependency: ' + options.id)
-  const artifact = (id: string) => {
-    const found = manifest.artifacts.find(item => item.id === id)
-    if (!found) throw Error('Unregistered dependency artifact: ' + id)
-    return child(repo, found.source)
-  }
+  const overlayPlan=planOwnedDependencyOverlays({repo,id:options.id})
+  const {assembly,metadata}=overlayPlan
   const output = path.resolve(options.output)
   if (fs.existsSync(output)) throw Error('Owned dependency output already exists')
   if (!fs.statSync(path.dirname(output)).isDirectory()) throw Error('Output parent is not a directory')
-  const lock = JSON.parse(fs.readFileSync(artifact(assembly.lockArtifact), 'utf8'))
+  const lock = JSON.parse(fs.readFileSync(child(repo,overlayPlan.lockSource), 'utf8'))
   const pin = lock.packages?.['node_modules/' + assembly.upstreamPackage]
   if (pin?.version !== assembly.upstreamVersion || !pin.integrity?.startsWith('sha512-')) {
     throw Error('Owned dependency upstream differs from lock')
@@ -74,22 +98,6 @@ export function assembleOwnedDependency(options: {
   const archiveBytes = fs.readFileSync(options.archive)
   const integrity = 'sha512-' + createHash('sha512').update(archiveBytes).digest('base64')
   if (integrity !== pin.integrity) throw Error('Owned dependency archive integrity mismatch')
-  const metadata = JSON.parse(fs.readFileSync(artifact(assembly.packageArtifact), 'utf8'))
-  if (!metadata.name?.startsWith('dsh-nexttavern-') || metadata.name === assembly.upstreamPackage) {
-    throw Error('Owned dependency must have an explicit owned package identity')
-  }
-  const ownedRoot = child(repo, assembly.ownedRoot)
-  // Validate all overlay identities and destinations before creating output.
-  const overlays = assembly.overlays.map(id => {
-    const source = artifact(id)
-    const relative = path.relative(ownedRoot, source).replaceAll('\\', '/')
-    child(ownedRoot, relative)
-    if (!fs.lstatSync(source).isFile()) throw Error('Overlay must be a regular file: ' + id)
-    return {id, source, relative}
-  })
-  if (!overlays.some(item => item.id === assembly.packageArtifact)) throw Error('Missing owned package metadata overlay')
-  if (new Set(overlays.map(item => item.relative)).size !== overlays.length) throw Error('Duplicate owned dependency output')
-
   const staging = createTestDirectory('owned-dependency-')
   try {
     // Extract the exact bytes we verified, not a path that could be replaced
@@ -121,14 +129,13 @@ export function assembleOwnedDependency(options: {
     const prepared = path.join(staging, 'owned')
     fs.mkdirSync(prepared)
     fs.cpSync(child(upstream, assembly.upstreamTree), child(prepared, assembly.targetTree), {recursive: true})
-    for (const overlay of overlays) {
-      const target = child(prepared, overlay.relative)
+    for (const overlay of overlayPlan.files) {
+      const target = child(prepared, overlay.target)
       fs.mkdirSync(path.dirname(target), {recursive: true})
-      fs.copyFileSync(overlay.source, target)
-      // The old map would falsely attribute our implementation to unmodified
-      // upstream sources. Generated overlays do not advertise a source map.
-      if (/\.[cm]?js$/.test(target)) fs.rmSync(target + '.map', {force: true})
+      fs.copyFileSync(child(repo,overlay.source), target)
     }
+    // An overlaid implementation must not retain an upstream source map.
+    for(const file of overlayPlan.removed)fs.rmSync(child(prepared,file),{force:true})
     const files = regularPackageFiles(prepared).map(file => ({
       path: file,
       sha256: createHash('sha256').update(fs.readFileSync(child(prepared, file))).digest('hex'),

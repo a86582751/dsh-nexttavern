@@ -144,7 +144,9 @@
         "roleplay-author-host*",
         "tavern-author-combined*",
         "development/author-host-runtime*",
-        "roleplay-author-browser*"
+        "roleplay-author-browser*",
+        "mvu-schema-runtime*-fixture*",
+        "tavern-core-timing-schema-caller-fixture*"
       ]
     },
     {
@@ -571,10 +573,19 @@
         ".gitignore",
         "bundled-library-assembly*",
         "tavern-template-runtime-assets*",
-        "development/template-runtime-v1/*",
+        "development/author-prompt-runtime-v1/*",
+        "development/mvu-schema-runtime-v4-update-batch-v1/*",
         "author-browser-runtime-assets*",
         "author-host-runtime-assets*",
-        "*-test-dependencies-fixture"
+        "author-prompt-runtime-assets*",
+        "mvu-schema-runtime-assets*",
+        "native-fork-payload-verifier*",
+        "*-test-dependencies-fixture",
+        "development/typescript-runtime/*",
+        "typescript-runtime-*",
+        "tavern-typescript-runtime-descriptor*",
+        "roleplay-typescript-assets*",
+        "shared-typescript-runtime*"
       ]
     },
     {

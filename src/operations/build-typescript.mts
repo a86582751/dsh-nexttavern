@@ -19,6 +19,7 @@ interface Recipe {
   declarationArtifact?: string; declarationOutputSource?: string; declarationText?: string
   compatibilityEntry?:true
   bundledDependencies?:readonly string[]
+  externalDependencies?:readonly string[]
 }
 interface CompiledRecipe extends Recipe { outputSource: string; text: string }
 export interface CompilePlan {
@@ -294,6 +295,7 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entri
         stdin:{contents:emitted,resolveDir:path.dirname(inside(repo,recipe.entry)),sourcefile:path.basename(recipe.entry),loader:'js'},
         bundle:true,platform:'node',format:'esm',target:'es2023',write:false,minify:true,legalComments:'none',
         nodePaths:[inside(repo,compilerPackage+'/node_modules')],
+        external:[...recipe.externalDependencies??[]],
         banner:{js:runtimeBanner}})
       emitted=bundled.outputFiles![0]!.text
     }

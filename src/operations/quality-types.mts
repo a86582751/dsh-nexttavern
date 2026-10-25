@@ -1,9 +1,10 @@
 export interface CheckTask {
   id: string
   action: 'test' | 'types' | 'generated' | 'syntax' | 'docs' | 'inventory' | 'bundle'
-    | 'candidate' | 'archive' | 'install' | 'installer' | 'harness'
+    | 'development' | 'candidate' | 'archive' | 'install' | 'installer' | 'harness'
   artifact?: string
   args?: string[]
+  nodeArgs?: string[]
   modules: string[]
   inputs?: string[]
   requires?: string[]
@@ -45,6 +46,7 @@ export interface CheckRequest {
   bundle?: string
   output?: string
   inputs?: string
+  refreshFrom?: string
   foundation?: string
   upgradeFrom?: string
   upgradeSha256?: string
@@ -61,7 +63,18 @@ export interface CheckPlan {
   notice: string[]
 }
 export type TaskStatus = 'passed' | 'reused' | 'failed' | 'blocked' | 'unsupported' | 'running' | 'interrupted' | 'timed-out'
-export interface TaskResult {id: string; status: TaskStatus; reason?: string; ms: number; fingerprint?: string}
+export interface DevelopmentSummary {
+  mode: 'initial' | 'incremental' | 'noop'
+  packageRoot: string
+  updated: number
+  removed: number
+  reused: string[]
+  inputKey?: string
+}
+export interface TaskResult {
+  id: string; status: TaskStatus; reason?: string; ms: number; fingerprint?: string
+  development?: DevelopmentSummary
+}
 export interface CheckRun {
   schemaVersion: 1
   root: string

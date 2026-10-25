@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {createTestDirectory, cleanupTestDirectory} from '../lib/operations/test-temp.mjs';
 import {changedFiles} from '../lib/operations/quality-context.mjs';
 import {makePlan} from '../lib/operations/quality-plan.mjs';
@@ -41,6 +42,8 @@ const registry = {
     {id: 'install', action: 'install', modules: [], heavy: true, depends: ['archive']},
     {id: 'installer:windows', action: 'installer', modules: [], heavy: true, depends: ['archive', 'windows-contract']},
     {id: 'candidate', action: 'candidate', modules: [], heavy: true},
+    {id: 'development', action: 'development', modules: ['cards'], requires: ['maintenance', 'compiler'], heavy: true, cache: false,
+      effects: {build: true, network: false, service: false}},
     {id: 'harness', action: 'harness', modules: [], heavy: true},
   ],
 };
@@ -79,6 +82,7 @@ try {
       {id: 'loop-test', action: 'test', artifact: 'test', modules: ['loop']},
       {id: 'tools-test', action: 'test', artifact: 'test', modules: ['operations']},
       {id: 'private', action: 'candidate', modules: [], requires: ['maintenance']},
+      {id: 'development', action: 'development', modules: ['operations'], requires: ['maintenance', 'compiler'], heavy: true, cache: false},
       {id: 'private-dependent', action: 'test', artifact: 'test', modules: [], depends: ['private']},
       {id: 'private-transitive', action: 'test', artifact: 'test', modules: [], depends: ['private-dependent']},
       {id: 'not-shipped', action: 'test', artifact: 'missing-test', modules: []},
@@ -194,6 +198,12 @@ try {
   assert.deepEqual(interrupted.results.map(result => result.id), ['shared'], 'interrupt stops before unrelated remaining work');
 
   const maintenance = {...context, audience: 'maintenance'};
+  const development = makePlan(maintenance, request('dev', [], {output: 'development-output', inputs: 'pins'}));
+  assert.deepEqual(ids(development), ['development'], 'development has no verification, candidate or installer prerequisites');
+  assert.throws(() => makePlan(maintenance, request('dev')), /dev requires --out/);
+  assert.throws(() => makePlan(maintenance, request('task', ['development'])), /dev requires --out/);
+  assert.deepEqual(ids(makePlan(maintenance, request('dev', [], {output: 'development-output'}))), ['development'],
+    'the builder admits saved inputs for an existing development output');
   const release = makePlan(maintenance, request('release', [], {bundle: 'candidate'}));
   assert(release.tasks.some(item => item.id === 'archive'));
   assert(release.tasks.some(item => item.id === 'install'));
@@ -225,6 +235,21 @@ try {
   assert.equal(calls[3].args[0], path.join(root, 'installer-output'), 'Linux builder uses its documented positional output');
   assert(!calls.some(call => call.script.includes('harness')));
 
+  write('tests/selected.test.mjs', [
+    "import test from 'node:test'; import fs from 'node:fs';",
+    "test('small selected case',()=>fs.writeFileSync('selected-small','ran'));",
+    "test('full assembly case',()=>fs.writeFileSync('unexpected-assembly','ran'));",
+  ].join('\n'));
+  const selectedContext={...context,
+    artifactPaths:new Map([...context.artifactPaths,['selected-test','tests/selected.test.mjs']])};
+  const selectedResult=await executeTask(selectedContext,release,{id:'selected',action:'test',modules:[],
+    artifact:'selected-test',nodeArgs:['--test','--test-name-pattern=^small selected case$']},
+    {temporary:root,signal:new AbortController().signal});
+  assert.equal(selectedResult.status,0);
+  assert.equal(fs.existsSync(path.join(root,'selected-small')),true);
+  assert.equal(fs.existsSync(path.join(root,'unexpected-assembly')),false,
+    'a lightweight task must not execute the full assembly case in the same test file');
+
   // A second maintained browser output must not hide behind the first one.
   // Explicit artifact selection should still avoid rebuilding unrelated clients.
   write('bundle-builder.mjs', [
@@ -255,10 +280,70 @@ try {
   await assert.rejects(executeTask(browserContext, release, browserTask, browserOptions), /Stale browser bundle second/);
   assert.equal((await executeTask(browserContext, release, {...browserTask, artifact: 'first'}, browserOptions)).status, 0);
 
+  // Execute the shipped CLI against a tiny development producer. It updates a
+  // canonical input, as real generation does, and owns whether the next call is
+  // a noop. The standard check record must retain that result without treating
+  // it as reusable verification or rejecting generated changes mid-invocation.
+  for (const module of ['quality-cli', 'quality-context', 'quality-plan', 'quality-run',
+    'quality-inputs', 'quality-process', 'quality-actions', 'tool-resolution']) {
+    write('tools/' + module + '.mjs', fs.readFileSync(new URL('../lib/operations/' + module + '.mjs', import.meta.url), 'utf8'));
+  }
+  const developmentArtifact = {id: 'development-package', source: 'tools/development-package.mjs'};
+  write(developmentArtifact.source, [
+    "import fs from 'node:fs'; import path from 'node:path';",
+    'export async function buildDevelopmentPackage({root, out, inputs}) {',
+    "  const state = path.join(out, 'development-state.json');",
+    "  if (!fs.existsSync(state) && !inputs) throw Error('initial development requires pinned inputs');",
+    "  if (fs.existsSync(path.join(root, 'fail-development'))) throw Error('fixture generation failure');",
+    '  const initial = !fs.existsSync(state);',
+    '  fs.mkdirSync(out, {recursive: true});',
+    '  fs.writeFileSync(state, JSON.stringify({inputs: inputs ?? JSON.parse(fs.readFileSync(state)).inputs}));',
+    "  fs.appendFileSync(path.join(root, 'development-calls.log'), JSON.stringify({root, out, inputs}) + '\\n');",
+    "  fs.writeFileSync(path.join(root, 'src/core/cards.ts'), 'export const generated = ' + Date.now() + ';\\n');",
+    "  return {mode: initial ? 'initial' : 'noop', packageRoot: out, updated: initial ? ['package.json'] : [],",
+    "    removed: [], reused: initial ? [] : ['product'], inputKey: 'builder-owned-input-key'};",
+    '}',
+  ].join('\n'));
+  write('release/source-manifest.json', JSON.stringify({...context.mapping, artifacts: [...artifacts, developmentArtifact]}));
+  write('checks/registry.json', JSON.stringify(registry));
+  const cli = args => spawnSync(process.execPath, [path.join(root, 'tools/quality-cli.mjs'), ...args],
+    {cwd: root, encoding: 'utf8', windowsHide: true});
+  const initialMissing = cli(['dev', '--out', 'missing-input-output']);
+  assert.equal(initialMissing.status, 1, initialMissing.stderr + initialMissing.stdout);
+  assert.match(initialMissing.stdout, /initial development requires pinned inputs/);
+  const initialDevelopment = cli(['dev', '--out', 'development-output', '--inputs', 'pins']);
+  assert.equal(initialDevelopment.status, 0, initialDevelopment.stderr + initialDevelopment.stdout);
+  assert.match(initialDevelopment.stdout, /"mode":"initial"/);
+  const initialRecord = JSON.parse(fs.readFileSync(path.join(root, 'artifacts/checks/latest.json')));
+  assert.deepEqual(initialRecord.results.map(result => [result.id, result.status]), [['development', 'passed']]);
+  assert.deepEqual(initialRecord.results[0].development, {mode: 'initial', packageRoot: path.join(root, 'development-output'),
+    updated: 1, removed: 0, reused: [], inputKey: 'builder-owned-input-key'});
+  assert.equal(initialRecord.results[0].fingerprint, 'builder-owned-input-key');
+  assert.equal(Object.hasOwn(initialRecord.successes, 'development'), false);
+  const noopDevelopment = cli(['dev', '--out', 'development-output']);
+  assert.equal(noopDevelopment.status, 0, noopDevelopment.stderr + noopDevelopment.stdout);
+  assert.match(noopDevelopment.stdout, /"mode":"noop"/);
+  const noopRecord = JSON.parse(fs.readFileSync(path.join(root, 'artifacts/checks/latest.json')));
+  assert.equal(noopRecord.results[0].status, 'passed', 'the builder executes even when it reports a noop');
+  assert.equal(noopRecord.results[0].development.mode, 'noop');
+  assert.equal(noopRecord.results[0].development.updated, 0);
+  assert.equal(Object.hasOwn(noopRecord.successes, 'development'), false);
+  const developmentCalls = fs.readFileSync(path.join(root, 'development-calls.log'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(developmentCalls.length, 2);
+  assert.equal(developmentCalls[0].inputs, path.join(root, 'pins'));
+  assert.equal(Object.hasOwn(developmentCalls[1], 'inputs'), false);
+  write('fail-development', 'fail');
+  const failedDevelopment = cli(['dev', '--out', 'development-output']);
+  assert.equal(failedDevelopment.status, 1);
+  assert.match(failedDevelopment.stdout, /fixture generation failure/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'artifacts/checks/latest.json'))).results[0].status, 'failed');
+  assert.equal(fs.existsSync(path.join(root, 'summary.json')), false);
+  assert.equal(fs.existsSync(path.join(root, 'release.json')), false);
+
   // The fixture is nested in this repository's Git worktree. Its public context
   // must refuse to borrow the parent repository's changes as an archive default.
   assert.throws(() => changedFiles(context), /no own Git metadata|No Git metadata/);
-  console.log('quality-runner=ok; selection, prerequisites, cache, interruption, candidate boundaries and archive guidance');
+  console.log('quality-runner=ok; selection, prerequisites, cache, interruption, development and candidate boundaries, archive guidance');
 } finally {
   cleanupTestDirectory(root);
 }

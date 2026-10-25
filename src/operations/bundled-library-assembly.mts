@@ -4,7 +4,7 @@ import path from 'node:path'
 import {createHash} from 'node:crypto'
 import {createRequire} from 'node:module'
 import {execFileSync} from 'node:child_process'
-import {createTestDirectory, cleanupTestDirectory} from './test-temp.mjs'
+import {fileURLToPath} from 'node:url'
 
 type Versions = Record<string, string>
 interface Metadata {
@@ -17,11 +17,29 @@ interface Metadata {
 interface LockEntry extends Partial<Metadata> {
   link?: boolean; optional?: boolean; resolved?: string; integrity?: string
 }
+export interface BundledLibraryLock {
+  lockfileVersion?:number
+  packages?:Record<string,LockEntry>
+}
 interface PackageReceipt {
   name: string; version: string
   /** POSIX directory relative to moduleRoot, retaining nested npm placement. */
   path: string
   files: {path: string; sha256: string}[]
+}
+
+/** Actual materialized roots, including installed optional peers. Nested
+ * placements remain owned by their root package and are not promoted. */
+export function topLevelBundledLibraryVersions(packages:readonly {name:string;version:string;path:string}[]):Versions {
+  return Object.fromEntries(packages.filter(row=>row.path===row.name).map(row=>[row.name,row.version]))
+}
+
+/** Directory installers follow dependency metadata when collecting nested
+ * bundles. The owned carrier must explicitly retain every delivered root. */
+export function normalizeBundledLibraryMetadata<T extends {dependencies?:Versions;bundleDependencies?:string[]}>(
+  metadata:T,modules:Versions):T&{dependencies:Versions;bundleDependencies:string[]} {
+  return {...metadata,dependencies:{...metadata.dependencies,...modules},
+    bundleDependencies:[...new Set([...(metadata.bundleDependencies??[]),...Object.keys(modules)])]}
 }
 interface PlannedPackage {
   source: string; relative: string; metadata: Metadata
@@ -92,6 +110,42 @@ function dependencyName(name: string) {
   }
 }
 
+/** Node placement, shared by lock planning and actual source admission. */
+function dependencyLocations(owner:string,name:string):string[] {
+  const found:string[]=[]
+  let directory=owner
+  while(directory&&directory!=='.') {
+    if(path.posix.basename(directory)!=='node_modules')found.push(path.posix.join(directory,'node_modules',name))
+    directory=path.posix.dirname(directory)
+  }
+  found.push(name)
+  return [...new Set(found)]
+}
+
+/** Only rows reachable from these pins affect this closure's development key.
+ * This consumes the lock, never package directories or SDK file contents. */
+export function bundledLibraryLockFingerprint(options:{lock:BundledLibraryLock;libraries:Versions}):string {
+  const locked=options.lock.packages
+  if(options.lock.lockfileVersion!==3||!locked)throw Error('Bundled libraries require an npm v3 package lock')
+  const rows=new Map<string,LockEntry|null>()
+  const visit=(relative:string)=>{
+    const key='node_modules/'+relative
+    if(rows.has(key))return
+    const row=locked[key]
+    rows.set(key,row??null)
+    if(!row)return
+    const dependencies={...row.dependencies,...row.optionalDependencies,...row.peerDependencies}
+    for(const name of Object.keys(dependencies).sort()) {
+      dependencyName(name)
+      const candidates=dependencyLocations(relative,name)
+      visit(candidates.find(candidate=>Object.hasOwn(locked,'node_modules/'+candidate))??candidates[0]!)
+    }
+  }
+  for(const name of Object.keys(options.libraries).sort()){dependencyName(name);visit(name)}
+  return createHash('sha256').update(stable({libraries:options.libraries,
+    rows:[...rows].sort(([a],[b])=>a.localeCompare(b))})).digest('hex')
+}
+
 function npmCli(): string {
   const configured = process.env.NEXTTAVERN_NPM_CLI
   const adjacent = path.dirname(process.execPath)
@@ -104,18 +158,19 @@ function npmCli(): string {
   return selected
 }
 
-function publishedFiles(source: string, temporary: string): string[] {
-  const userconfig = path.join(temporary, 'empty.npmrc')
-  const output = execFileSync(process.execPath, [npmCli(), 'pack', '--dry-run', '--json',
-    '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', path.join(temporary, 'cache')], {
-    cwd: source, encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024,
-    env: {...process.env, npm_config_userconfig: userconfig, npm_config_update_notifier: 'false'},
-    stdio: ['ignore', 'pipe', 'pipe'],
+interface PublishedPackageFiles {files:string[];normalizedBin?:unknown}
+function publishedFiles(sources: string[]): PublishedPackageFiles[] {
+  if (!sources.length) return []
+  // npm pack --dry-run still creates, compresses and inspects every tarball.
+  // One worker runs its official file-list step while this API stays synchronous.
+  const output = execFileSync(process.execPath, [fileURLToPath(import.meta.url), '--npm-published-files', npmCli()], {
+    input: JSON.stringify(sources), encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024,
+    stdio: ['pipe', 'pipe', 'pipe'],
   })
-  const rows = JSON.parse(output) as {files?: {path: string}[]}[]
-  if (rows.length !== 1 || !rows[0]?.files?.length) throw Error('Invalid npm published-file receipt: ' + source)
-  return [...new Set(rows[0].files.map(row => relativeFile(slash(row.path))))]
-    .sort()
+  // packlist can retain a root ./ on explicit files, while npm's tar receipt
+  // removes it. Normalize that prefix before applying the contained-path gate.
+  return (JSON.parse(output) as PublishedPackageFiles[]).map(row=>({...row,
+    files:[...new Set(row.files.map(file=>relativeFile(slash(file).replace(/^\.\//,''))))].sort()}))
 }
 
 function excludesPlatform(entry: LockEntry): boolean {
@@ -151,7 +206,7 @@ export function materializeBundledLibraries(options: {
   const moduleRoot = outputRoot(options.moduleRoot)
   if (moduleRoot === libraryRoot || moduleRoot.startsWith(libraryRoot + path.sep)
     || libraryRoot.startsWith(moduleRoot + path.sep)) throw Error('Bundled source and output must not overlap')
-  const lock = read<{lockfileVersion?: number; packages?: Record<string, LockEntry>}>(options.lockFile)
+  const lock = read<BundledLibraryLock>(options.lockFile)
   if (lock.lockfileVersion !== 3 || !lock.packages) throw Error('Bundled libraries require an npm v3 package lock')
   const locked = lock.packages
   // npm already depends on semver. Use that CLI's own resolver, matching the
@@ -191,21 +246,7 @@ export function materializeBundledLibraries(options: {
     return metadata
   }
 
-  const locations = (owner: string, name: string): string[] => {
-    const found: string[] = []
-    let directory = owner
-    while (directory !== libraryRoot) {
-      if (path.basename(directory) !== 'node_modules') {
-        found.push(slash(path.relative(libraryRoot, path.join(directory, 'node_modules', name))))
-      }
-      directory = path.dirname(directory)
-      if (directory !== libraryRoot && !directory.startsWith(libraryRoot + path.sep)) {
-        throw Error('Bundled dependency resolution escaped source root')
-      }
-    }
-    found.push(name)
-    return [...new Set(found)]
-  }
+  const locations=(owner:string,name:string)=>dependencyLocations(slash(path.relative(libraryRoot,owner)),name)
   const visit = (source: string, name: string, range: string): void => {
     dependencyName(name)
     // Validate every incoming constraint even for an already-seen cycle node.
@@ -280,42 +321,63 @@ export function materializeBundledLibraries(options: {
     // receipt. Never count the same nested bytes in the parent's file list.
   }
 
-  const temporary = createTestDirectory('bundled-library-pack-')
-  try {
-    fs.writeFileSync(path.join(temporary, 'empty.npmrc'), '')
-    for (const item of planned.values()) {
-      for (const file of publishedFiles(item.source, temporary)) {
-        if (file.startsWith('node_modules/')) { bundledChild(item, file); continue }
-        const from = contained(item.source, file)
-        if (!fs.lstatSync(from).isFile()) throw Error('Bundled published file is not regular: ' + item.relative + '/' + file)
-        const bytes = fs.readFileSync(from)
-        if (!options.admit(file, bytes)) {
-          if (file === 'package.json' || LICENSE.test(path.posix.basename(file)) || declaredEntry(item.metadata, file)) {
-            throw Error('Bundled mandatory file rejected: ' + item.relative + '/' + file)
-          }
-          continue
+  const packages = [...planned.values()]
+  const fileLists = publishedFiles(packages.map(item => item.source))
+  for (const [index, item] of packages.entries()) {
+    const published=fileLists[index]!
+    for (const file of published.files) {
+      if (file.startsWith('node_modules/')) { bundledChild(item, file); continue }
+      const from = contained(item.source, file)
+      if (!fs.lstatSync(from).isFile()) throw Error('Bundled published file is not regular: ' + item.relative + '/' + file)
+      let bytes = fs.readFileSync(from)
+      if(file==='package.json'&&typeof item.metadata.bin==='string') {
+        // Reuse npm's already-normalized bin semantics. pnpm's nested directory
+        // collector otherwise iterates a scalar bin as character properties.
+        bytes=Buffer.from(JSON.stringify({...JSON.parse(bytes.toString('utf8')),bin:published.normalizedBin},null,2)+'\n')
+      }
+      if (!options.admit(file, bytes)) {
+        if (file === 'package.json' || LICENSE.test(path.posix.basename(file)) || declaredEntry(item.metadata, file)) {
+          throw Error('Bundled mandatory file rejected: ' + item.relative + '/' + file)
         }
-        item.files.push({path: file, bytes, sha256: digest(bytes)})
+        continue
       }
-      if (!item.files.some(file => file.path === 'package.json')) throw Error('Bundled package metadata was not published: ' + item.relative)
-      const target = contained(moduleRoot, item.relative)
-      for (const file of item.files) {
-        const destination = contained(target, file.path)
-        if (fs.existsSync(destination) && (!fs.lstatSync(destination).isFile()
-          || !fs.readFileSync(destination).equals(file.bytes))) throw Error('Bundled library output conflict: ' + item.relative + '/' + file.path)
-      }
+      item.files.push({path: file, bytes, sha256: digest(bytes)})
     }
-    for (const item of planned.values()) {
-      const target = contained(moduleRoot, item.relative)
-      for (const file of item.files) {
-        const destination = contained(target, file.path)
-        fs.mkdirSync(path.dirname(destination), {recursive: true})
-        fs.writeFileSync(destination, file.bytes)
-      }
+    if (!item.files.some(file => file.path === 'package.json')) throw Error('Bundled package metadata was not published: ' + item.relative)
+    const target = contained(moduleRoot, item.relative)
+    for (const file of item.files) {
+      const destination = contained(target, file.path)
+      if (fs.existsSync(destination) && (!fs.lstatSync(destination).isFile()
+        || !fs.readFileSync(destination).equals(file.bytes))) throw Error('Bundled library output conflict: ' + item.relative + '/' + file.path)
     }
-    return {packages: [...planned.values()].sort((a, b) => a.relative.localeCompare(b.relative)).map(item => ({
-      name: item.metadata.name, version: item.metadata.version, path: item.relative,
-      files: item.files.map(({path: file, sha256}) => ({path: file, sha256})),
-    }))}
-  } finally { cleanupTestDirectory(temporary) }
+  }
+  for (const item of planned.values()) {
+    const target = contained(moduleRoot, item.relative)
+    for (const file of item.files) {
+      const destination = contained(target, file.path)
+      fs.mkdirSync(path.dirname(destination), {recursive: true})
+      fs.writeFileSync(destination, file.bytes)
+    }
+  }
+  return {packages: [...planned.values()].sort((a, b) => a.relative.localeCompare(b.relative)).map(item => ({
+    name: item.metadata.name, version: item.metadata.version, path: item.relative,
+    files: item.files.map(({path: file, sha256}) => ({path: file, sha256})),
+  }))}
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  && process.argv[2] === '--npm-published-files') {
+  const requireNpm = createRequire(process.argv[3]!)
+  const Arborist = requireNpm('@npmcli/arborist')
+  const packlist = requireNpm('npm-packlist')
+  const sources = JSON.parse(fs.readFileSync(0, 'utf8')) as string[]
+  const files:PublishedPackageFiles[]=[]
+  for (const source of sources) {
+    // Match pacote's directory fetcher before tar creation. A direct package
+    // pack has no workspace selection, so prefix has no ignore-rule effect.
+    const tree = await new Arborist({path: source}).loadActual()
+    files.push({files:await packlist(tree,{path:source}),
+      ...(tree.package.bin===undefined?{}:{normalizedBin:tree.package.bin})})
+  }
+  process.stdout.write(JSON.stringify(files))
 }

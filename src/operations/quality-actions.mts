@@ -1,18 +1,24 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import {pathToFileURL} from 'node:url'
 import {createRequire} from 'node:module'
 import {artifactFile} from './quality-context.mjs'
 import {runProcess} from './quality-process.mjs'
 import {resolvePython, requirePwsh} from './tool-resolution.mjs'
 import type {ProcessResult} from './quality-process.mjs'
-import type {CheckContext, CheckPlan, CheckTask} from './quality-types.mjs'
+import type {CheckContext, CheckPlan, CheckTask, DevelopmentSummary} from './quality-types.mjs'
 import type * as CompilerAPI from '../../build-tools/node_modules/typescript/lib/typescript.js'
 
 export interface ActionOptions {temporary: string; signal: AbortSignal}
+export interface ActionResult extends ProcessResult {development?: DevelopmentSummary}
+interface DevelopmentResult extends Omit<DevelopmentSummary, 'updated' | 'removed'> {
+  updated: string[]
+  removed: string[]
+}
 const passed = (): ProcessResult => ({status: 0, timedOut: false, interrupted: false})
 
 export async function executeTask(context: CheckContext, plan: CheckPlan, task: CheckTask,
-  options: ActionOptions): Promise<ProcessResult> {
+  options: ActionOptions): Promise<ActionResult> {
   const env: NodeJS.ProcessEnv = {...process.env, TEMP: options.temporary, TMP: options.temporary,
     TMPDIR: options.temporary, DSH_TEST_TMPDIR: options.temporary, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8'}
   const run = (command: string, args: string[]) => runProcess(command, args, {
@@ -28,12 +34,23 @@ export async function executeTask(context: CheckContext, plan: CheckPlan, task: 
   if (task.action === 'test' || task.action === 'inventory') {
     const file = artifactFile(context, task.artifact!)
     return file.endsWith('.py') ? run(resolvePython(), [file, ...(task.args ?? [])])
-      : node(file, task.args)
+      : run(process.execPath, [...task.nodeArgs??[], file, ...task.args??[]])
   }
   if (task.action === 'types' || task.action === 'generated') {
     const file = context.audience === 'public' ? path.join(context.root, 'tools/build-modules.mjs')
       : path.join(context.root, context.mapping.typeScript!.checker)
     return node(file, [task.action === 'types' ? '--types' : '--check'])
+  }
+  if (task.action === 'development') {
+    const producer = await import(pathToFileURL(artifactFile(context, 'development-package')).href) as {
+      buildDevelopmentPackage(options: {root: string; out: string; inputs?: string}): Promise<DevelopmentResult>
+    }
+    const built = await producer.buildDevelopmentPackage({root: context.root,
+      out: path.resolve(context.root, request.output!),
+      ...(request.inputs ? {inputs: path.resolve(context.root, request.inputs)} : {})})
+    const development: DevelopmentSummary = {...built, updated: built.updated.length, removed: built.removed.length}
+    console.log(JSON.stringify(development))
+    return {...passed(), development}
   }
   const buildTools = context.audience === 'maintenance' ? 'runtime/alpha3/build-tools' : 'build-tools'
   const require = createRequire(path.join(context.root, buildTools, 'package.json'))
@@ -103,6 +120,7 @@ export async function executeTask(context: CheckContext, plan: CheckPlan, task: 
   }
   if (task.action === 'candidate') {
     const args = ['--out', path.resolve(context.root, request.output!), '--skip-installers']
+    if (request.refreshFrom) args.push('--refresh-from', path.resolve(context.root, request.refreshFrom))
     if (request.inputs) args.push('--inputs', path.resolve(context.root, request.inputs))
     // `private` is the maintainer's own deployment build: it keeps the first
     // preset section's content policy text that a published package must not

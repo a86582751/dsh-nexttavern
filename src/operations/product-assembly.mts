@@ -5,9 +5,11 @@ import {createHash} from 'node:crypto'
 import {execFileSync} from 'node:child_process'
 import {createRequire} from 'node:module'
 import type {AuthorHostIdentityV5,AuthorServerExecutorV4} from '../core/roleplay-author-host-types-v5.js'
-import {assembleOwnedDependency, regularPackageFiles} from './owned-dependency.mjs'
+import {assembleOwnedDependency,planOwnedDependencyOverlays,regularPackageFiles,
+  type OwnedDependencyAssembly} from './owned-dependency.mjs'
 import {contained as inside} from './public-transaction.mjs'
-import {materializeBundledLibraries} from './bundled-library-assembly.mjs'
+import {materializeBundledLibraries,bundledLibraryLockFingerprint,topLevelBundledLibraryVersions,
+  normalizeBundledLibraryMetadata,type BundledLibraryLock} from './bundled-library-assembly.mjs'
 import {templateRuntimeRecipeV1,materializeTavernTemplateRuntimeDependenciesV1,
   assertTavernTemplateRuntimePackageV1,type TavernTemplateRuntimeAssetRecipeV1} from './tavern-template-runtime-assets.mjs'
 import {authorBrowserRuntimeRecipeV1,materializeAuthorBrowserRuntimeDependenciesV1,
@@ -74,10 +76,118 @@ interface ProductRecipe {
   hostForks?: {name: string; version: string; source: string; target: string}[]
 }
 export interface ProductAssemblyPlan {
-  artifacts: {id: string; source: string; public?: {path?: string}}[]
+  artifacts: {id: string; source: string; public?: {path?: string;execution?:string}}[]
   builds:{artifact:string;entry:string;kind:string}[]
+  deliveries?:readonly {artifact:string;layout:string;path:string}[]
   product: ProductRecipe
+  dependencyAssemblies?:Record<string,OwnedDependencyAssembly>
   publicRelease: {packageName: string; candidateVersion: string; layoutPaths?: Record<string, string>}
+}
+
+export interface DevelopmentAssemblyFile {source:string;target:string}
+export interface DevelopmentAssemblyUnit {
+  id:string
+  kind:'root-libraries'|'owned-package'|'historical-component'|'host-fork'|'bundle'
+  name:string
+  version:string
+  target:string
+  dependencyKey:string
+  files:DevelopmentAssemblyFile[]
+  packageArtifact?:string
+  immutableGeneration?:string
+  removed?:string[]
+  normalizeBundleMetadata?:true
+}
+export type DevelopmentAssemblyKeys=Record<string,{dependencyKey:string;files:DevelopmentAssemblyFile[]}>
+export type DevelopmentAssemblyInventory=Omit<ReturnType<typeof assembleProduct>,'excludedVendoredFiles'>
+export interface DevelopmentAssemblyWrite {path:string;sha256:string;bytes:number}
+export type DevelopmentProjectedFiles=Readonly<Record<string,{sha256:string;bytes?:number}>>
+
+/** Plan only canonical inputs. Installed/vendor entities are deliberately absent. */
+export function planDevelopmentAssembly(options:{repo:string;plan:ProductAssemblyPlan;
+  archives:Record<string,string>;sourceHash(file:string):string}):DevelopmentAssemblyUnit[] {
+  const {repo,plan,sourceHash}=options
+  const artifact=(id:string)=>{
+    const found=plan.artifacts.find(row=>row.id===id)
+    if(!found)throw Error('Unregistered product artifact: '+id)
+    return found.source
+  }
+  const key=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
+  const ordered=(value:Record<string,string>)=>Object.entries(value).sort(([a],[b])=>a.localeCompare(b))
+  const implementation=(...names:string[])=>names.map(name=>[name,sourceHash('runtime/alpha3/src/operations/'+name+'.mts')])
+  const locks=new Map<string,BundledLibraryLock>()
+  const readLock=(source:string)=>{
+    let value=locks.get(source)
+    if(!value){value=json<BundledLibraryLock>(inside(repo,source));locks.set(source,value)}
+    return value
+  }
+  const lock=(id:string,libraries:Record<string,string>)=>bundledLibraryLockFingerprint({lock:readLock(artifact(id)),libraries})
+  const units:DevelopmentAssemblyUnit[]=[]
+  const rootLibraries=plan.product.rootBundledLibraries
+  if(rootLibraries&&Object.keys(rootLibraries.libraries).length)units.push({id:'root-libraries',kind:'root-libraries',
+    name:'root-libraries',version:'',target:'node_modules',files:[],dependencyKey:key({
+      libraries:ordered(rootLibraries.libraries),lock:lock(rootLibraries.lockArtifact,rootLibraries.libraries),
+      implementation:implementation('bundled-library-assembly')})})
+  for(const row of plan.product.packages) {
+    const metadata=json<Metadata>(inside(repo,artifact(row.packageArtifact))),target='node_modules/'+metadata.name
+    if(row.immutableGeneration) {
+      units.push({id:'package:'+metadata.name,kind:'owned-package',name:metadata.name,version:metadata.version,target,
+        packageArtifact:row.packageArtifact,immutableGeneration:row.immutableGeneration,
+        dependencyKey:row.immutableGeneration,files:[]})
+      continue
+    }
+    const files=new Map(packageSourceFiles(plan,row).map(file=>[file.target,file.source]))
+    const overlay=row.assembly?planOwnedDependencyOverlays({repo,id:row.assembly,plan}):undefined
+    if(overlay)for(const file of overlay.files)if(!files.has(file.target))files.set(file.target,file.source)
+    const rootOwned=Object.fromEntries(Object.entries(rootLibraries?.libraries??{})
+      .filter(([name])=>metadata.bundleDependencies?.includes(name)))
+    const special=[
+      {recipe:plan.product.templateRuntime,module:'tavern-template-runtime-assets'},
+      {recipe:plan.product.authorBrowserRuntime,module:'author-browser-runtime-assets'},
+      {recipe:plan.product.authorBrowserRuntimeV2,module:'author-browser-runtime-assets'},
+      {recipe:plan.product.authorBrowserRuntimeV3,module:'author-browser-runtime-assets-v3'},
+      {recipe:plan.product.authorPromptRuntime,module:'author-prompt-runtime-assets'},
+    ].find(item=>item.recipe?.packageArtifact===row.packageArtifact)
+    const dependencies=ordered(metadata.dependencies??{}).filter(([name])=>!name.startsWith('dsh-nexttavern-'))
+    const hasLibraries=dependencies.length>0||Object.keys(rootOwned).length>0
+    const dependencyKey=key({dependencies,rootOwned:ordered(rootOwned),platforms:hasLibraries?plan.product.bundlePlatforms:undefined,
+      pins:hasLibraries?dependencies.map(([name])=>[name,plan.product.bundleLibraries?.[name]]):undefined,
+      lock:hasLibraries&&rootLibraries?lock(rootLibraries.lockArtifact,Object.fromEntries(dependencies)):undefined,
+      special:special?{dependencies:ordered(special.recipe!.dependencies),lock:lock(special.recipe!.lockArtifact,special.recipe!.dependencies),
+        implementation:implementation(special.module,'bundled-library-assembly')}:undefined,
+      assembly:overlay?{recipe:overlay.assembly,lock:readLock(overlay.lockSource).packages?.['node_modules/'+overlay.assembly.upstreamPackage],
+        archive:sourceHash(options.archives[row.assembly!]??(()=>{throw Error('Missing pinned archive: '+row.assembly)})()),
+        implementation:implementation('owned-dependency')}:undefined,
+      implementation:hasLibraries?implementation('product-assembly',
+        ...(Object.keys(rootOwned).length?['bundled-library-assembly']:[])):undefined})
+    units.push({id:'package:'+metadata.name,kind:'owned-package',name:metadata.name,version:metadata.version,target,
+      packageArtifact:row.packageArtifact,dependencyKey,
+      files:[...files].map(([relative,source])=>({source,target:target+'/'+relative})).sort((a,b)=>a.target.localeCompare(b.target)),
+      ...(Object.keys(rootOwned).length?{normalizeBundleMetadata:true as const}:{}),
+      ...(overlay?{removed:overlay.removed.map(file=>target+'/'+file)}:{})})
+  }
+  for(const row of plan.product.historicalComponents??[]) {
+    const metadata=json<Metadata>(inside(repo,artifact(row.packageArtifact)))
+    units.push({id:'historical:'+row.path,kind:'historical-component',name:metadata.name,version:metadata.version,
+      target:row.path,packageArtifact:row.packageArtifact,immutableGeneration:row.immutableGeneration,
+      dependencyKey:row.immutableGeneration,files:[]})
+  }
+  for(const row of plan.product.hostForks??[])units.push({id:'host-fork:'+row.name,kind:'host-fork',
+    name:row.name,version:row.version,target:row.target,dependencyKey:key({name:row.name,version:row.version}),
+    files:plan.artifacts.filter(file=>file.source.startsWith(row.source+'/')).map(file=>({source:file.source,
+      target:row.target+'/'+file.source.slice(row.source.length+1)})).sort((a,b)=>a.target.localeCompare(b.target))})
+  for(const row of plan.product.bundles??[]) {
+    const target=plan.publicRelease.layoutPaths?.[row.layout]
+    if(!target)throw Error('Bundle recipe names an unregistered delivery layout: '+row.layout)
+    const files=(plan.deliveries??[]).filter(file=>file.layout===row.layout)
+      .map(file=>({source:artifact(file.artifact),target:path.posix.join(target,file.path)}))
+    const metadataFile=files.find(file=>file.target===target+'/package.json')
+    if(!metadataFile)throw Error('Bundle metadata has no registered delivery: '+row.layout)
+    const metadata=json<Metadata>(inside(repo,metadataFile.source))
+    units.push({id:'bundle:'+row.layout,kind:'bundle',name:metadata.name,version:metadata.version,target,
+      dependencyKey:key({layout:row.layout}),files})
+  }
+  return units
 }
 type Plan=ProductAssemblyPlan
 interface Metadata {
@@ -100,10 +210,27 @@ const safeRelative = (value: string) => typeof value === 'string' && value !== '
   && !value.includes('\\') && !value.includes(':') && !value.startsWith('/')
   && value.split('/').every(part => part !== '' && part !== '.' && part !== '..')
 
+function packageSourceFiles(plan:Plan,row:ProductPackageRecipe,maintained=true):{source:string;target:string}[] {
+  const artifact=(id:string)=>{
+    const found=plan.artifacts.find(item=>item.id===id)
+    if(!found)throw Error('Unregistered product artifact: '+id)
+    return found
+  }
+  const files=new Map<string,string>()
+  if(!row.assembly&&maintained) {
+    const prefix=path.posix.dirname(artifact(row.packageArtifact).source)+'/'
+    for(const file of plan.artifacts)if(file.source.startsWith(prefix)&&file.public?.execution!=='build-scaffold') {
+      files.set(file.source.slice(prefix.length),file.source)
+    }
+  }
+  for(const resource of row.resources??[])files.set(resource.path,artifact(resource.artifact).source)
+  return [...files].map(([target,source])=>({source,target})).sort((a,b)=>a.target.localeCompare(b.target))
+}
+
 /** Runtime lookup names come from the same package mapping as assembly.
  * Historical tuples select an exact admitted component, never a latest ABI. */
-export function productAuthorRuntimeHistory(repo:string) {
-  const plan=json<Plan>(path.join(repo,'release/source-manifest.json'))
+export function productAuthorRuntimeHistory(repo:string,suppliedPlan?:ProductAssemblyPlan) {
+  const plan=suppliedPlan??json<Plan>(path.join(repo,'release/source-manifest.json'))
   const name=(id:string)=>{
     const row=plan.artifacts.find(artifact=>artifact.id===id)
     if(!row)throw Error('Unregistered historical runtime package: '+id)
@@ -391,25 +518,15 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
     if (!archive) throw Error('Missing pinned archive: ' + row.assembly)
     const result = assembleOwnedDependency({repo, id: row.assembly, archive, output})
     if (result.name !== pkg.name || result.version !== pkg.version) throw Error('Assembly identity differs from recipe')
-  } else if(!historical) {
-    const prefix = path.posix.dirname(source) + '/'
-    const files = new Set(plan.artifacts.filter(item => item.source.startsWith(prefix)).map(item => item.source))
-    for (const file of files) {
-      const relative=file.slice(prefix.length),target = inside(output,relative)
-      fs.mkdirSync(path.dirname(target), {recursive: true})
-      const generated=rebuilt?.outputs.get(relative)
-      if(generated)fs.writeFileSync(target,generated)
-      else fs.copyFileSync(inside(repo, file), target)
-    }
   }
   // Historical resources are a complete output map. In particular, maintained
   // vendor/ storage maps to node_modules/ and must not create a second copy.
-  for (const resource of row.resources ?? []) {
-    const target = inside(output, resource.path)
+  for (const file of packageSourceFiles(plan,row,!historical)) {
+    const target = inside(output,file.target)
     fs.mkdirSync(path.dirname(target), {recursive: true})
-    const generated=rebuilt?.outputs.get(resource.path)
+    const generated=rebuilt?.outputs.get(file.target)
     if(generated)fs.writeFileSync(target,generated)
-    else fs.copyFileSync(inside(repo, artifact(resource.artifact).source), target)
+    else fs.copyFileSync(inside(repo,file.source),target)
   }
   const rootRecipe = plan.product.rootBundledLibraries
   const ownedRootLibraries = Object.fromEntries(Object.entries(rootRecipe?.libraries ?? {})
@@ -461,9 +578,10 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
     // These packages move to protected file pins outside the product tree.
     // Their own bundle must retain the locked closure before its inventory is
     // taken, so a later relink cannot borrow an ancestor or run SDK hooks.
-    materializeBundledLibraries({libraryRoot: options.libraryRoot ?? '', moduleRoot: inside(output, 'node_modules'),
+    const closure=materializeBundledLibraries({libraryRoot: options.libraryRoot ?? '', moduleRoot: inside(output, 'node_modules'),
       lockFile: inside(repo, artifact(rootRecipe!.lockArtifact).source), libraries: ownedRootLibraries,
       admit: options.admitVendoredFile ?? (() => {throw Error('Owned SDKs require public vendor admission')})})
+    save(path.join(output,'package.json'),normalizeBundledLibraryMetadata(pkg,topLevelBundledLibraryVersions(closure.packages)))
   }
   const files = regularPackageFiles(output).sort().map(file => ({path: file,
     sha256: createHash('sha256').update(fs.readFileSync(inside(output, file))).digest('hex')}))
@@ -493,7 +611,8 @@ export function assembleHistoricalProductComponents(options:Omit<ProductPackageA
  */
 export function assembleProduct(options: {
   repo: string; packageRoot: string; archives: Record<string, string>; libraryRoot?: string
-  admitVendoredFile?: VendorAdmission
+  admitVendoredFile?: VendorAdmission; includeDevelopmentCopies?: boolean
+  projectedFiles?:DevelopmentProjectedFiles
 }) {
   const repo = fs.realpathSync(options.repo)
   const plan = json<Plan>(path.join(repo, 'release/source-manifest.json'))
@@ -571,7 +690,7 @@ export function assembleProduct(options: {
     const result = assembleProductPackage({repo, output, packageArtifact, archives: options.archives,
       ...(options.libraryRoot === undefined ? {} : {libraryRoot: options.libraryRoot}),
       ...(options.admitVendoredFile === undefined ? {} : {admitVendoredFile: options.admitVendoredFile})})
-    if (assembly) {
+    if (assembly && options.includeDevelopmentCopies !== false) {
       // The public compiler keeps the maintained SDK overlays at their source
       // package location. Complete that developer copy with the SAME admitted
       // upstream files, otherwise its emitted overlays import absent modules.
@@ -612,9 +731,12 @@ export function assembleProduct(options: {
     if (!fs.existsSync(inside(directory, patch.replace(/^\.\//, '')))) {
       throw Error('Bundle patch file is missing: ' + base)
     }
-    return {name: bundle.name, version: bundle.version, path: base,
-      files: regularPackageFiles(directory).map(file => ({path: file,
-        sha256: createHash('sha256').update(fs.readFileSync(path.join(directory, file))).digest('hex')}))}
+    const projected=options.projectedFiles
+    const files=projected?Object.keys(projected).filter(file=>file.startsWith(base+'/')).sort()
+      .map(file=>({path:file.slice(base.length+1),sha256:projected[file]!.sha256}))
+      :regularPackageFiles(directory).map(file=>({path:file,
+        sha256:createHash('sha256').update(fs.readFileSync(path.join(directory,file))).digest('hex')}))
+    return {name:bundle.name,version:bundle.version,path:base,files}
   })
   const hostForks = stageHostForks(repo, packageRoot, plan)
   const hostForkProfile=plan.product.hostForkProfile
@@ -623,7 +745,7 @@ export function assembleProduct(options: {
   const inventory = {schemaVersion: 1, productVersion: metadata.version,
     packages: packages.map(({excludedVendoredFiles, ...row}) => row), bundles, hostForks,
     historicalComponents:assembleHistoricalProductComponents(options),
-    authorRuntimeHistory:productAuthorRuntimeHistory(repo),
+    authorRuntimeHistory:productAuthorRuntimeHistory(repo,plan),
     ...(hostForkProfile?{hostForkProfile}:{}),
     ...(rawBrowserCompilerLibraries?{rawBrowserCompilerLibraries}:{}),
     rootBundledLibraries: rootLibraries, bundledLibraries}
@@ -633,8 +755,187 @@ export function assembleProduct(options: {
     metadata.files=[...new Set([...metadata.files??[],
       ...plan.product.historicalComponents.map(row=>row.path.split('/')[0]!)])]
   }
-  save(path.join(packageRoot, 'package.json'), metadata)
+  save(path.join(packageRoot,'package.json'),normalizeBundledLibraryMetadata(metadata,
+    topLevelBundledLibraryVersions(bundledLibraries)))
   save(path.join(packageRoot, 'nexttavern.dependencies.json'), inventory)
   fs.copyFileSync(inside(repo, artifact(plan.product.patchArtifact).source), path.join(packageRoot, 'cordis.patch.json'))
   return {...inventory, excludedVendoredFiles}
+}
+
+/** The caller owns one building/ready transaction and atomic filesystem sinks.
+ * Hot application consumes prior inventories; it never enumerates SDK trees. */
+export function applyDevelopmentAssembly(options:{
+  repo:string;plan:ProductAssemblyPlan;packageRoot:string;archives:Record<string,string>
+  units:readonly DevelopmentAssemblyUnit[];stageRoot:string
+  previousInventory?:DevelopmentAssemblyInventory;previousKeys?:DevelopmentAssemblyKeys
+  projectedFiles?:DevelopmentProjectedFiles
+  changedSources:ReadonlySet<string>;libraryRoot?:string;admitVendoredFile?:VendorAdmission
+  write(target:string,bytes:Buffer):void
+  remove(target:string):void
+  replaceOwner(target:string,stagedRoot:string):void
+}) {
+  const {repo,plan,units}=options
+  const keys:DevelopmentAssemblyKeys=Object.fromEntries(units.map(unit=>[unit.id,
+    {dependencyKey:unit.dependencyKey,files:unit.files}]))
+  const written:DevelopmentAssemblyWrite[]=[],removed:string[]=[],reusedOwners:string[]=[]
+  const fact=(root:string,prefix:string,files:readonly {path:string;sha256:string}[],projected=false,missingOnly=false)=>{
+    for(const file of files) {
+      const target=path.posix.join(prefix,file.path)
+      if(missingOnly&&options.projectedFiles?.[target]?.bytes!==undefined)continue
+      written.push({path:target,sha256:file.sha256,bytes:(projected?options.projectedFiles?.[target]?.bytes:undefined)
+        ??fs.statSync(inside(root,file.path)).size})
+    }
+  }
+  if(!options.previousInventory) {
+    const {excludedVendoredFiles:_diagnostics,...inventory}=assembleProduct({repo,packageRoot:options.packageRoot,archives:options.archives,
+      libraryRoot:options.libraryRoot,admitVendoredFile:options.admitVendoredFile,includeDevelopmentCopies:false,
+      projectedFiles:options.projectedFiles})
+    for(const row of inventory.packages)fact(inside(options.packageRoot,'node_modules/'+row.name),'node_modules/'+row.name,row.files)
+    for(const row of inventory.bundledLibraries)fact(inside(options.packageRoot,'node_modules/'+row.path),'node_modules/'+row.path,row.files)
+    for(const row of inventory.bundles)fact(inside(options.packageRoot,row.path),row.path,row.files,true)
+    for(const row of inventory.hostForks)fact(inside(options.packageRoot,row.path),row.path,row.files)
+    for(const row of inventory.historicalComponents)fact(inside(options.packageRoot,row.path),row.path,row.files)
+    return {inventory,keys,written,removed,reusedOwners}
+  }
+  const {excludedVendoredFiles:_diagnostics,...previous}=options.previousInventory as DevelopmentAssemblyInventory
+    &{excludedVendoredFiles?:unknown}
+  const inventory:DevelopmentAssemblyInventory={...previous,packages:[...previous.packages],
+    bundles:[...previous.bundles],hostForks:[...previous.hostForks],historicalComponents:[...previous.historicalComponents??[]],
+    productVersion:json<Metadata>(inside(repo,plan.artifacts.find(row=>row.id===plan.product.packageArtifact)!.source)).version,
+    rootBundledLibraries:plan.product.rootBundledLibraries?.libraries??{},
+    authorRuntimeHistory:productAuthorRuntimeHistory(repo,plan),
+    ...(plan.product.hostForkProfile?{hostForkProfile:makeHostForkProfile(plan.product.hostForkProfile,plan.product.hostForks??[])}:{})}
+  const priorKeys=options.previousKeys??{}
+  const remove=(target:string)=>{options.remove(target);removed.push(target)}
+  const changed=(source:string)=>options.changedSources.has(source)||options.changedSources.has(path.resolve(repo,source))
+  const patch=(unit:DevelopmentAssemblyUnit,files:readonly {path:string;sha256:string}[],previousTarget=unit.target)=>{
+    const previousFiles=new Map((priorKeys[unit.id]?.files??[]).map(file=>[file.target,file.source]))
+    const targets=new Set(unit.files.map(file=>file.target))
+    const updates=new Map<string,{path:string;sha256:string}>(),deleted=new Set<string>()
+    for(const target of previousFiles.keys())if(!targets.has(target)) {
+      remove(target);deleted.add(target.slice(previousTarget.length+1))
+    }
+    for(const file of unit.files)if(unit.kind==='bundle'||changed(file.source)||previousFiles.get(file.target)!==file.source) {
+      const relative=file.target.slice(unit.target.length+1)
+      if(unit.kind==='bundle') {
+        // Projection alone owns normalization and publication. Reuse its byte
+        // facts instead of copying canonical raw sources over its output.
+        const projected=options.projectedFiles?.[file.target]
+        const bytes=projected?undefined:fs.readFileSync(inside(options.packageRoot,file.target))
+        const sha256=projected?.sha256??createHash('sha256').update(bytes!).digest('hex')
+        if(files.find(row=>row.path===relative)?.sha256===sha256)continue
+        written.push({path:file.target,sha256,
+          bytes:projected?.bytes??bytes?.length??fs.statSync(inside(options.packageRoot,file.target)).size})
+        updates.set(relative,{path:relative,sha256})
+        continue
+      }
+      let bytes=fs.readFileSync(inside(repo,file.source))
+      if(unit.normalizeBundleMetadata&&file.target===unit.target+'/package.json') {
+        // A stable dependency key reuses the actual prior closure. Reading its
+        // one owned metadata file cannot traverse or re-admit SDK entities.
+        const delivered=json<Metadata>(inside(options.packageRoot,file.target))
+        bytes=Buffer.from(JSON.stringify(normalizeBundledLibraryMetadata(JSON.parse(bytes.toString('utf8')) as Metadata,
+          delivered.dependencies??{}),null,2)+'\n')
+      }
+      const sha256=createHash('sha256').update(bytes).digest('hex')
+      options.write(file.target,bytes)
+      written.push({path:file.target,sha256,bytes:bytes.length})
+      updates.set(relative,{path:relative,sha256})
+    }
+    // Archive collection already removed maps for this exact overlay layout.
+    // A layout change rebuilds its owner; leaf updates cannot reintroduce maps.
+    if(!updates.size&&!deleted.size)return files as {path:string;sha256:string}[]
+    const result=files.filter(file=>!deleted.has(file.path)&&!updates.has(file.path))
+    result.push(...updates.values())
+    return result.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0)
+  }
+  const topRoots=(rows:readonly {path:string}[])=>[...new Set(rows.map(row=>row.path.split('/node_modules/')[0]!))]
+  const activeIds=new Set(units.map(unit=>unit.id))
+  const previousOwners=new Map(Object.entries(priorKeys))
+  // Older schema-1 inventories already admitted these paths, before history
+  // owners had keys. Their removal still belongs to the whole directory.
+  for(const row of previous.historicalComponents??[])if(!previousOwners.has('historical:'+row.path))
+    previousOwners.set('historical:'+row.path,{dependencyKey:'',files:[]})
+  for(const [id,key] of previousOwners)if(!activeIds.has(id)) {
+    if(id==='root-libraries') {
+      for(const root of topRoots(previous.bundledLibraries))remove('node_modules/'+root)
+      inventory.bundledLibraries=[]
+    }else if(id.startsWith('package:')) {
+      const name=id.slice('package:'.length)
+      remove('node_modules/'+name);inventory.packages=inventory.packages.filter(row=>row.name!==name)
+    }else if(id.startsWith('historical:')) {
+      const target=id.slice('historical:'.length)
+      remove(target);inventory.historicalComponents=inventory.historicalComponents.filter(row=>row.path!==target)
+    }else {
+      for(const file of key.files)remove(file.target)
+      if(id.startsWith('host-fork:'))inventory.hostForks=inventory.hostForks.filter(row=>row.name!==id.slice('host-fork:'.length))
+      else inventory.bundles=inventory.bundles.filter(row=>key.files.every(file=>!file.target.startsWith(row.path+'/')))
+    }
+  }
+  for(const [index,unit] of units.entries()) {
+    const oldKey=priorKeys[unit.id],sameDependencies=oldKey?.dependencyKey===unit.dependencyKey
+    if(unit.kind==='root-libraries') {
+      if(sameDependencies){reusedOwners.push(unit.id);continue}
+      const stage=path.join(options.stageRoot,'root-libraries-'+index)
+      fs.mkdirSync(stage,{recursive:true})
+      const recipe=plan.product.rootBundledLibraries!
+      const lock=plan.artifacts.find(row=>row.id===recipe.lockArtifact)!
+      const result=materializeBundledLibraries({libraryRoot:options.libraryRoot??'',moduleRoot:stage,
+        lockFile:inside(repo,lock.source),libraries:recipe.libraries,
+        admit:options.admitVendoredFile??(()=>{throw Error('Root SDKs require public vendor admission')})})
+      for(const row of result.packages)fact(inside(stage,row.path),'node_modules/'+row.path,row.files)
+      const roots=topRoots(result.packages)
+      for(const root of roots)options.replaceOwner('node_modules/'+root,inside(stage,root))
+      for(const root of topRoots(previous.bundledLibraries))if(!roots.includes(root))remove('node_modules/'+root)
+      inventory.bundledLibraries=result.packages
+      continue
+    }
+    if(unit.kind==='owned-package'||unit.kind==='historical-component') {
+      const historical=unit.kind==='historical-component'
+      const old=historical?inventory.historicalComponents.find(row=>row.path===unit.target)
+        :inventory.packages.find(row=>row.name===unit.name)
+      if(unit.immutableGeneration&&sameDependencies&&old) {
+        reusedOwners.push(unit.id)
+      }else if(historical&&!oldKey&&old&&createHash('sha256')
+        .update(JSON.stringify({name:old.name,version:old.version,files:old.files})).digest('hex')===unit.immutableGeneration) {
+        // One metadata-only adoption of an old ready inventory establishes its
+        // new key. Existing byte receipts win; absent lengths need only stat.
+        fact(inside(options.packageRoot,unit.target),unit.target,old.files,false,true)
+        reusedOwners.push(unit.id)
+      }else if(!historical&&sameDependencies&&old) {
+        const files=patch(unit,old.files)
+        inventory.packages=inventory.packages.map(row=>row===old?{...old,version:unit.version,files}:row)
+        reusedOwners.push(unit.id)
+      }else {
+        const stage=path.join(options.stageRoot,'owned-'+index)
+        fs.mkdirSync(path.dirname(stage),{recursive:true})
+        const row=assembleProductPackage({repo,plan,output:stage,packageArtifact:unit.packageArtifact!,
+          archives:options.archives,libraryRoot:options.libraryRoot,admitVendoredFile:options.admitVendoredFile})
+        fact(stage,unit.target,row.files)
+        options.replaceOwner(unit.target,stage)
+        const {excludedVendoredFiles:_excluded,...entry}=row
+        if(historical) {
+          const component={...entry,path:unit.target}
+          inventory.historicalComponents=old?inventory.historicalComponents.map(item=>item===old?component:item)
+            :[...inventory.historicalComponents,component]
+        }else inventory.packages=old?inventory.packages.map(item=>item===old?entry:item):[...inventory.packages,entry]
+      }
+      continue
+    }
+    const old=unit.kind==='host-fork'?inventory.hostForks.find(row=>row.name===unit.name)
+      :inventory.bundles.find(row=>oldKey
+        ?oldKey.files.some(file=>file.target===row.path+'/package.json'):row.path===unit.target)
+    // A layout keeps its owner ID when its directory or package name changes.
+    // Old keys identify its prior row; only the new projection owns new facts.
+    const files=patch(unit,unit.kind==='bundle'&&old?.path!==unit.target?[]:old?.files??[],old?.path)
+    if(unit.kind==='host-fork') {
+      const row={name:unit.name,version:unit.version,path:unit.target,status:'unapplied-host-override' as const,files}
+      inventory.hostForks=old?inventory.hostForks.map(item=>item===old?row:item):[...inventory.hostForks,row]
+    }else {
+      const row={name:unit.name,version:unit.version,path:unit.target,files}
+      inventory.bundles=old?inventory.bundles.map(item=>item===old?row:item):[...inventory.bundles,row]
+    }
+    if(sameDependencies)reusedOwners.push(unit.id)
+  }
+  return {inventory,keys,written,removed,reusedOwners}
 }

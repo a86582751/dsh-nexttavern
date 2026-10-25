@@ -70,8 +70,11 @@ export function makePlan(context: CheckContext, request: CheckRequest): CheckPla
     const mechanisms = [...tasks.values()].filter(task => task.id.startsWith('mechanics:'))
     if (!mechanisms.length) throw Error('No mechanism checks are available in this package')
     for (const task of mechanisms) add(task.id, 'explicit build/install mechanism properties')
+  } else if (command === 'dev') {
+    add('development', 'explicit development package update; builder owns incremental state')
   } else if (command === 'build') {
     if (!request.output) throw Error('build requires --out NEW_DIRECTORY; it is separate from verification')
+    if (request.refreshFrom && request.inputs) throw Error('build refresh cannot fetch or replace pinned inputs')
     add('candidate', 'explicit candidate build; never selected by file/module')
   } else if (command === 'installer') {
     if (!['windows', 'linux'].includes(request.targets[0] ?? '')) throw Error('installer windows|linux --bundle DIR --out NEW_DIRECTORY')
@@ -108,7 +111,13 @@ export function makePlan(context: CheckContext, request: CheckRequest): CheckPla
     visiting.delete(id); complete.add(id); result.tasks.push(task)
   }
   for (const id of selected) visit(id)
+  if (request.refreshFrom) {
+    result.tasks = result.tasks.map(task => task.action === 'candidate'
+      ? {...task, effects: {...task.effects, network: false}} : task)
+    result.notice.push('Candidate refresh reuses local pinned inputs; its full payload audit still runs.')
+  }
   const actions = new Set(result.tasks.map(task => task.action))
+  if (actions.has('development') && !request.output) throw Error('dev requires --out DIRECTORY')
   if (['archive', 'install', 'installer', 'harness'].some(action => actions.has(action as CheckTask['action'])) && !request.bundle) {
     throw Error('Selected delivery tasks require --bundle EXISTING_CANDIDATE')
   }

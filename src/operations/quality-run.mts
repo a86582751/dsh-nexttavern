@@ -5,9 +5,8 @@ import {readJson} from './quality-context.mjs'
 import {fingerprint} from './quality-inputs.mjs'
 import {capabilityProblem} from './quality-process.mjs'
 import {executeTask} from './quality-actions.mjs'
-import type {ActionOptions} from './quality-actions.mjs'
+import type {ActionOptions, ActionResult} from './quality-actions.mjs'
 import type {CheckContext, CheckPlan, CheckRun, CheckTask, TaskResult} from './quality-types.mjs'
-import type {ProcessResult} from './quality-process.mjs'
 
 export function loadPrevious(context: CheckContext, requested?: string): CheckRun | null {
   const file = requested ? path.resolve(context.root, requested) : path.join(context.stateDirectory, 'latest.json')
@@ -37,7 +36,7 @@ export function printPlan(context: CheckContext, plan: CheckPlan): void {
 
 export async function executePlan(context: CheckContext, plan: CheckPlan, options: {
   previous?: CheckRun | null
-  execute?: (context: CheckContext, plan: CheckPlan, task: CheckTask, options: ActionOptions) => Promise<ProcessResult>
+  execute?: (context: CheckContext, plan: CheckPlan, task: CheckTask, options: ActionOptions) => Promise<ActionResult>
   capability?: (context: CheckContext, task: CheckTask) => string | null
   signal?: AbortSignal
 } = {}): Promise<CheckRun> {
@@ -86,9 +85,12 @@ export async function executePlan(context: CheckContext, plan: CheckPlan, option
           return createHash('sha256').update(fingerprint(context, plan, task))
             .update(JSON.stringify(prerequisites)).digest('hex')
         }
-        const key = taskKey()
+        // Development generation may update canonical outputs. Its builder
+        // owns input identity and reuse, so verification fingerprints do not apply.
+        const development = task.action === 'development'
+        const key = development ? undefined : taskKey()
         result.fingerprint = key
-        if (!plan.request.force && task.cache !== false && run.successes[task.id]?.fingerprint === key) {
+        if (!development && !plan.request.force && task.cache !== false && run.successes[task.id]?.fingerprint === key) {
           result.status = 'reused'; result.ms = 0; console.log('reused ' + task.id); checkpoint(); continue
         }
         // Persist before starting a child. Abrupt parent termination leaves a
@@ -98,9 +100,12 @@ export async function executePlan(context: CheckContext, plan: CheckPlan, option
         const executed = await (options.execute ?? executeTask)(context, plan, task, {temporary, signal: controller.signal})
         result.status = executed.interrupted ? 'interrupted' : executed.timedOut ? 'timed-out' : executed.status ? 'failed' : 'passed'
         result.ms = Date.now() - started
-        if (result.status === 'passed') {
+        if (development) {
+          result.development = executed.development
+          result.fingerprint = executed.development?.inputKey
+        } else if (result.status === 'passed') {
           if (taskKey() !== key) throw Error('Task inputs changed during execution; no success reused')
-          if (task.cache !== false) run.successes[task.id] = {fingerprint: key, ms: result.ms}
+          if (task.cache !== false) run.successes[task.id] = {fingerprint: key!, ms: result.ms}
         }
       } catch (error) {
         result.status = 'failed'; result.reason = error instanceof Error ? error.message : String(error)

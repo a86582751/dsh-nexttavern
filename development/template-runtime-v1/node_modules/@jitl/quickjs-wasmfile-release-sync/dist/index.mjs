@@ -1,2 +1,0 @@
-var variant={type:"sync",importFFI:()=>import("./ffi.mjs").then(mod=>mod.QuickJSFFI),importModuleLoader:()=>import("@jitl/quickjs-wasmfile-release-sync/emscripten-module").then(mod=>mod.default)},src_default=variant;export{src_default as default};
-//# sourceMappingURL=index.mjs.map
