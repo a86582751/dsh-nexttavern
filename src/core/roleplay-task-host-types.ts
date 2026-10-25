@@ -85,6 +85,10 @@ export interface NativeTaskInput<Result = unknown> extends Omit<TaskSpec<HostSes
   generationKey?: unknown
   taskStage?: string
 }
+export interface TaskHostCompaction {
+  storyEvidence?(session: HostSession): {seq: number; text: string}[]
+  resumeTask?(agent: HostAgent, signal: AbortSignal | undefined, stage?: string): PromiseLike<unknown>
+}
 export interface TaskHostDependencies {
   advancedCard?(session:HostSession):{state:string;characters:{id:string;name:unknown;content:string}[]}
   assertCardWorkflow(session:import('./roleplay-import-types.js').ImportSession,
@@ -105,10 +109,7 @@ export interface TaskHostDependencies {
     sessions: {get(id: string): HostSession | null | undefined}
     sessionController: {resolveAgent?(id: string): PromiseLike<{agent?: HostAgent} | null | undefined>}
     subagents: NonNullable<TaskOptions<HostSession, HostAgent>['subagents']> & Parameters<typeof createCharacterCluster<HostSession, HostAgent>>[0]['subagents']
-    get(name: 'compaction'): {
-      storyEvidence?(session: HostSession): {seq: number; text: string}[]
-      resumeTask?(agent: HostAgent, signal: AbortSignal | undefined, stage?: string): PromiseLike<unknown>
-    } | null | undefined
+    get(name: 'compaction'): TaskHostCompaction | null | undefined
     get(name: 'tavernConversations'): Pick<ReturnType<typeof import('./tavern-conversations.js').createConversationCatalog>,
       'rootOf'|'snapshot'|'selectionOf'> & {ready?:PromiseLike<unknown>} | null | undefined
   }

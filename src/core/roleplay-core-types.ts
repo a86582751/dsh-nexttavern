@@ -1,11 +1,19 @@
 import type { ContextEvent } from './roleplay-context.js'
 import type { BranchSession, WorldlineMessageEdits } from './roleplay-worldline-types.js'
-import type { LoopSession, LoopAgent, LoopState } from './roleplay-loop-types.js'
-import type { InheritanceState } from './roleplay-inheritance-types.js'
+import type { LoopSession, LoopAgent, LoopState, LoopCompaction, LoopPtcRuntime } from './roleplay-loop-types.js'
+import type { InheritanceState, InheritanceDependencies } from './roleplay-inheritance-types.js'
 import type { createTelemetry } from './tavern-telemetry.js'
 import type { createRoleplayTaskHost } from './roleplay-task-host.js'
 import type { AuthorTables } from './roleplay-author-context-types.js'
 import type { StoryObservationServices } from './roleplay-message-view.js'
+import type { PreparationCompaction } from './roleplay-preparation-types.js'
+import type { CompletionCompaction } from './roleplay-completion-types.js'
+import type { DecisionContext } from './roleplay-decision-types.js'
+import type { JobRoutesDependencies, MaintenanceEngine } from './roleplay-job-routes-types.js'
+import type { PanelRoutesDependencies } from './roleplay-panel-routes-types.js'
+import type { TaskToolsDependencies } from './roleplay-task-tools-types.js'
+import type { TaskHostCompaction } from './roleplay-task-host-types.js'
+import type { StateContext } from './roleplay-state-types.js'
 
 export const CORE_TYPESCRIPT = true
 
@@ -42,6 +50,8 @@ type ModuleDependencies = Parameters<typeof import('./roleplay-import.js').regis
 type ContextOf<D> = D extends {ctx: infer C} ? C : never
 type TablesOf<D> = D extends {T: infer T} ? T : never
 type Intersection<U> = (U extends unknown ? (value: U) => void : never) extends ((value: infer I) => void) ? I : never
+type ModuleContext = Intersection<ContextOf<ModuleDependencies>>
+type SharedCoreContext = Omit<ModuleContext & StoryObservationServices<ContextEvent>, 'get'>
 export type CoreTables = Intersection<TablesOf<ModuleDependencies>> & AuthorTables & {
   userinfo: import('./roleplay-service-types.js').ServiceTable
 }
@@ -57,6 +67,23 @@ export interface CoreState extends LoopState, InheritanceState {
 }
 type Telemetry = ReturnType<typeof createTelemetry>
 type NativeTask = ReturnType<typeof createRoleplayTaskHost>['nativeTask']
+
+// These contexts each declare one non-overloaded compaction getter.
+type DecisionCompaction = NonNullable<ReturnType<DecisionContext['get']>>
+type InheritanceCompaction = NonNullable<ReturnType<InheritanceDependencies['ctx']['get']>>
+type JobCompaction = NonNullable<ReturnType<JobRoutesDependencies['ctx']['get']>>
+type PanelCompaction = NonNullable<ReturnType<PanelRoutesDependencies['ctx']['get']>>
+type TaskToolsCompaction = NonNullable<ReturnType<TaskToolsDependencies['ctx']['get']>>
+type StateCompaction = NonNullable<ReturnType<StateContext['get']>>
+
+// Core joins the consumer capabilities into one service instead of competing
+// same-argument getter overloads whose selected return depends on the Program.
+type CoreCompaction = PreparationCompaction & CompletionCompaction
+  & DecisionCompaction & InheritanceCompaction & JobCompaction & MaintenanceEngine
+  & LoopCompaction & PanelCompaction & TaskToolsCompaction & TaskHostCompaction & StateCompaction
+type CoreConversationCatalog = ReturnType<typeof import('./tavern-conversations.js').createConversationCatalog>
+  & {ready?: PromiseLike<unknown>}
+
 export type CoreContext = {
   nexttavernMessageEdits: WorldlineMessageEdits
   nexttavernMvuPlayerMarkers:typeof import('dsh-nexttavern-session-format/mvu-player-marker').mvuPlayerMarkers
@@ -84,4 +111,8 @@ export type CoreContext = {
   on(name:'agent/disposed',hook:(payload:{agent:CoreAgent})=>void,options:{global:boolean}):unknown
   on(name:'agent-preset/selected',hook:(sessionId:string,presetId:string)=>void,
     options:{global:boolean;prepend?:boolean}):unknown
-} & StoryObservationServices<ContextEvent> & Intersection<ContextOf<ModuleDependencies>>
+  get(name: 'compaction'): CoreCompaction | null | undefined
+  get(name: 'ptcRuntime'): LoopPtcRuntime | null | undefined
+  get(name: 'tavernConversations'): CoreConversationCatalog | null | undefined
+  get(name: string): unknown
+} & SharedCoreContext

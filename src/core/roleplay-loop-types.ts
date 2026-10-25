@@ -63,6 +63,10 @@ export type LoopAssistantStreamFrame =
   | {type:'start';attemptId:string;turn:number;step:number}
   | {type:'chunk';attemptId:string;chunk:{type:string}}
   | {type:'end';attemptId:string}
+export interface LoopCompaction {
+  finishTurn?(agent: LoopAgent, signal?: AbortSignal): PromiseLike<unknown>
+}
+export interface LoopPtcRuntime { readonly language: string }
 export interface LoopContext {
   on(name:'llm/stream',hook:(options:GenerateOptions,next:()=>AsyncIterable<StreamChunk>)=>AsyncIterable<StreamChunk>,options:{global:boolean}):unknown
   on(name:'agent/request',hook:(payload:{agent:LoopAgent;turn:number;step:number;signal:AbortSignal},next:()=>Promise<unknown>)=>Promise<unknown>):unknown
@@ -76,8 +80,8 @@ export interface LoopContext {
     guard?(hook: (execution: {agent?: LoopAgent; name: string; arguments?:unknown}) => string | undefined): unknown
   }
   logger?: {warn?(message: string): void; info?(message:string):void}
-  get(name: 'compaction'): {finishTurn?(agent: LoopAgent, signal?: AbortSignal): PromiseLike<unknown>} | null | undefined
-  get(name: 'ptcRuntime'): {readonly language: string} | null | undefined
+  get(name: 'compaction'): LoopCompaction | null | undefined
+  get(name: 'ptcRuntime'): LoopPtcRuntime | null | undefined
 }
 type TaskHost = ReturnType<typeof createRoleplayTaskHost>
 export interface LoopDependencies {
