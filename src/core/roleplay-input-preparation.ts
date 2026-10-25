@@ -19,7 +19,7 @@ import type {MvuStateTerminalIntent} from './roleplay-mvu-state.js'
 import type {OwnedContinuationResult} from './roleplay-input-continuation.js'
 import type {taskPhaseMessage} from './tavern-task-context.js'
 import type {NativeInputAdmissionAgentV2, NativeInputAdmissionHookV2, NativeInputAdmissionCheckV2,
-  NativeDurableInputWorkReceiptV1, NativeInputRef, NativePreparationReceiptV1,
+  NativeDurableInputWorkReceiptV1, NativeInputRefusalBeforeFirstStepV1, NativeInputRef, NativePreparationReceiptV1,
   NativeInputStopNoticeV1, NativeInputBlocked, NativeInputLinkV1} from '@deepseek-ai/dsh-agent-loop'
 
 export interface InputClosingView {
@@ -215,6 +215,11 @@ interface UnclaimedInputRefusal {
   historyPrefixSha256:string
   proofSha256:string
 }
+interface ClaimedInputRefusal {
+  schemaVersion:1
+  kind:'claimed-native-refusal'
+  native:NativeInputRefusalBeforeFirstStepV1
+}
 interface Work extends Record<string, unknown> {
   schemaVersion: 2
   namespace: typeof ROLEPLAY_INPUT_NAMESPACE
@@ -237,6 +242,7 @@ interface Work extends Record<string, unknown> {
   /** A live admission refused before any Native claim. Missing checkpoint
    * alone is never evidence of this disposition. */
   unclaimedRefusal?:UnclaimedInputRefusal
+  claimedRefusal?:ClaimedInputRefusal
   transition?: Transition
   stop?: {status: 'terminal' | 'unknown'; notice?: NativeInputStopNoticeV1; code?: string}
 }
@@ -326,6 +332,8 @@ const isWork = (value: unknown, sessionId: string): value is Work => {
     && row.refs.length > 0 && row.refs.every(ref => ref.sessionId === sessionId && sha(ref.messageSha256))
     && (row.terminalRequired===undefined||row.terminalRequired===true)
     && (row.unclaimedRefusal===undefined||validRefusal(row))
+    && (row.claimedRefusal===undefined||row.claimedRefusal.schemaVersion===1
+      &&row.claimedRefusal.kind==='claimed-native-refusal')
     && row.credentialSha256 === digest(identityOf(row))
     && equal(row.preparation, {schemaVersion: 1, namespace: ROLEPLAY_INPUT_NAMESPACE,
       preparationKeySha256: digest({sessionId, preparationId: row.preparationId}), credentialSha256: row.credentialSha256})
@@ -514,6 +522,10 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       }
       for(const work of known??scanned!.works)if(work.terminalRequired) {
         if(verifyUnclaimedRefusal(sid,work))continue
+        // The sole writer already archived the exact Native refusal. Later
+        // gates consume its terminal disposition, without reopening history.
+        if(work.claimedRefusal&&work.status==='stopped'&&work.stop?.status==='terminal'
+          &&!work.checkpoint&&!work.transition)continue
         const closed=readCompletion(sid,work.preparationId)
         if(!closed||closed.status!=='settled'||work.stop||work.status!=='active'
           ||!equal(closed.scope.currency,currencyOfStored(work))||!equal(closed.scope.receipt.checkpoint,work.checkpoint)
@@ -841,7 +853,18 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       hot.status = 'unknown'
       hot.stop ??= {status: 'unknown', code: notice.code}
       const target = hot
-      void enqueue(() => save(target)).catch(report)
+      void enqueue(async()=>{
+        if(notice.refusal)archiveClaimedRefusal(target,notice.refusal)
+        await save(target)
+      }).catch(report)
+    }
+    function archiveClaimedRefusal(work:Work,facts:NativeInputRefusalBeforeFirstStepV1):boolean {
+      if(!work.terminalRequired||work.status!=='unknown'||work.checkpoint||work.transition
+        ||facts.sessionId!==sid||!equal(facts.preparation,work.preparation)||!equal(facts.refs,work.refs))return false
+      work.claimedRefusal={schemaVersion:1,kind:'claimed-native-refusal',native:clone(facts)}
+      work.status='stopped'
+      work.stop={...work.stop,status:'terminal'}
+      return true
     }
     type MaterialInput=RoleplayInputMaterialScopeInputV1
     const phaseACandidates=new WeakMap<RoleplayInputStep,RoleplayPhaseAStageV1>()
@@ -951,6 +974,16 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
           if (stopped) return blocked('INPUT_STOPPED_REFS')
           if (table.get(workKey(sid, proposal.refs)) || previous.some(work => work.refs.some(ref => proposal.refs.some(item => equal(ref, item))))) {
             return blocked('INPUT_EXISTING_WORK_UNKNOWN')
+          }
+          // Only explicit fresh insertions reach this FIFO. An interrupted
+          // before-first-step work may now have a durable Native refusal, even
+          // when Core Phase A already saved its prepared attempt/snapshot.
+          for(const work of previous)if(work.terminalRequired&&work.status==='unknown'
+            &&!work.checkpoint&&!work.transition) {
+            const lookup=agent.lookupDurableInputWork({preparation:work.preparation,refs:work.refs})
+            if(lookup.status==='refused-before-first-step'&&archiveClaimedRefusal(work,lookup.refusal)) {
+              await save(work)
+            }
           }
           const terminalGate=readTerminalAdmissionGate(sid,previous)
           if(terminalGate.kind==='blocked')return terminalGate

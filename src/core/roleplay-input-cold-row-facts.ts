@@ -291,7 +291,7 @@ export function readColdNonNumericalInputBranchRowFactsV1(session:Session,deps:C
       prefixes.set(end,folded)
     }
     const lookup=folded.durableWork({preparation:value.preparation as NativePreparationReceiptV1,refs:originalRefs})
-    if(lookup.status==='unknown'||!same(lookup.receipt,checkpoint)
+    if(lookup.status==='unknown'||lookup.status==='refused-before-first-step'||!same(lookup.receipt,checkpoint)
       ||originalRefs.some(ref=>{
         const status=folded.ownership(ref).status
         return status==='unknown'||status==='pending'

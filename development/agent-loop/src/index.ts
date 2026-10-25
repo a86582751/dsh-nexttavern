@@ -277,6 +277,7 @@ export type {NativeMessageProjectionV1} from '@deepseek-ai/dsh-session'
 export type {NativeInputRef, NativePreparationReceiptV1, NativeInputLinkV1} from '@deepseek-ai/dsh-session'
 export type {NativeInputAdmissionAgentV2, NativeInputAdmissionCapabilityV2, NativeInputAdmissionHookV2, NativeInputAdmissionHook,
   NativeInputAdmissionCheckV2, NativeDurableInputWorkReceiptV1, NativeDurableInputWorkSelector,
+  NativeInputRefusalBeforeFirstStepV1,
   NativeDurableInputWorkLookup, NativeExistingInputWorkV2, NativeExistingInputWork, NativeInputProposal,
   NativeInputClaim, NativeInputOwnership, NativeInputBlocked, NativeInputWakeResult} from './input-admission.js'
 export type {NativeInputStopCapabilityV1, NativeInputStopNoticeV1, NativeInputStopAcknowledgementV1,

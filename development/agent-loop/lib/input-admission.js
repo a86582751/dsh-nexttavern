@@ -186,6 +186,8 @@ export function createNativeInboxHistoryOwner(sessionId, events, inheritedBounda
             const startSeq = turnStarts.get(event.data.turn), linked = startSeq === undefined ? undefined : linkedTurns.get(startSeq);
             if (linked?.openStep !== undefined)
                 linked.badStep = true;
+            if (linked)
+                linked.endSeq = event.seq;
             const reason = event.data.reason;
             turns.set(event.data.turn, { kind: reason.kind,
                 ...(reason.kind === 'aborted' ? { cancelKind: reason.reason.kind,
@@ -308,6 +310,26 @@ export function createNativeInboxHistoryOwner(sessionId, events, inheritedBounda
         if (!preparation || !refs)
             return { status: 'unknown', code: 'INPUT_LINK_SELECTOR_INVALID' };
         const workSha256 = nativeInputWorkSha256(sessionId, preparation, refs);
+        // Refused root claims remain terminal after later explicit inputs. Unlike
+        // recoverable work below, these facts grant no latest-turn resume rights.
+        for (const linked of linkedTurns.values()) {
+            const marker = linked.marker;
+            if (invalid || !marker || marker.mode !== 'claim' || !linked.proposalMatches
+                || linked.startSeq < inheritedBoundary || linked.badStep || linked.firstStepStartSeq !== undefined
+                || linked.endSeq === undefined || !turns.get(linked.turn)?.preAdmission
+                || marker.workSha256 !== workSha256 || !sameRefs(marker.refs, refs))
+                continue;
+            const claimed = [...entries.values()].filter(entry => entry.turn === linked.turn
+                && entry.claimSeq !== undefined && entry.claimSeq > linked.startSeq && entry.claimSeq < linked.endSeq)
+                .sort((left, right) => left.claimSeq - right.claimSeq || left.claimIndex - right.claimIndex);
+            if (!sameRefs(claimed.map(entry => entry.ref), refs) || claimed.some(entry => entry.inherited || entry.conflict
+                || entry.cancelledSeq !== undefined || entry.userSeq !== undefined))
+                continue;
+            return { status: 'refused-before-first-step', refusal: { schemaVersion: 1, kind: 'refused-before-first-step',
+                    sessionId, workSha256, preparation: marker.preparation, refs: marker.refs, actualTurn: linked.turn,
+                    startSeq: linked.startSeq, endSeq: linked.endSeq,
+                    claimSpliceSeqs: [...new Set(claimed.map(entry => entry.claimSeq))] } };
+        }
         const proof = lastStartSeq === undefined ? undefined : proofAt(lastStartSeq);
         if (!proof || proof.receipt.workSha256 !== workSha256 || !sameRefs(proof.receipt.refs, refs)) {
             return { status: 'unknown', code: 'INPUT_LINK_HISTORY_UNKNOWN' };

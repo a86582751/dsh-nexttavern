@@ -220,9 +220,18 @@ export function verifyInheritedCompletedFact(input: MvuInheritedCompletedFactReq
         }
       } else if (event.type === 'turn/end') {
         const row = data(event)
-        // Native permits an aborted historical turn before its first step.
-        // The selected receipt below owns first-step and completed-end proof.
         if (!open || row.turn !== open.turn || open.openStep !== undefined) return false
+        if (open.firstStepStartSeq === undefined || open.lastStep < 1) {
+          // Core may append preparation context before a refused first step.
+          // Its later no-step abort cannot revoke this older completed fact.
+          const reason = row.reason
+          const noStepAdmissionAbort = open.startSeq !== checkpoint.startSeq
+            && open.firstStepStartSeq === undefined && open.lastStep === 0
+            && object(reason) && reason.kind === 'aborted'
+            && object(reason.reason) && reason.reason.kind === 'hook'
+            && reason.reason.reason === 'native-input-admission-before-message'
+          if (!noStepAdmissionAbort) return false
+        }
         open.end = event
         if (event.seq === receipt.turnEndSeq) completedEntries = [...entries.values()].map(entry => ({...entry}))
         open = undefined

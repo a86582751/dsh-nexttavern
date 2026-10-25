@@ -44,6 +44,8 @@ export interface NativeInputBlocked {
   readonly stage: 'proposal' | 'claim' | 'final'
   readonly refs: readonly NativeInputRef[]
   readonly partialClaim?: Pick<NativeInputClaim, 'turn' | 'refs' | 'spliceSeqs' | 'resumed'>
+  /** Supplied only after this exact no-step refusal's end was flushed. */
+  readonly refusal?: NativeInputRefusalBeforeFirstStepV1
 }
 export interface NativeExistingInputWork {
   /** Opaque owner-provided durable Preparation identity; never input text. */
@@ -88,9 +90,24 @@ export interface NativeDurableInputWorkSelector {
   readonly preparation: NativePreparationReceiptV1
   readonly refs: readonly NativeInputRef[]
 }
+/** A closed root claim that never reached step/start or admitted a User.
+ * These are terminal history facts, never a checkpoint or resume capability. */
+export interface NativeInputRefusalBeforeFirstStepV1 {
+  readonly schemaVersion: 1
+  readonly kind: 'refused-before-first-step'
+  readonly sessionId: string
+  readonly workSha256: string
+  readonly preparation: NativePreparationReceiptV1
+  readonly refs: readonly NativeInputRef[]
+  readonly actualTurn: number
+  readonly startSeq: number
+  readonly endSeq: number
+  readonly claimSpliceSeqs: readonly number[]
+}
 export type NativeDurableInputWorkLookup =
   | {status: 'recoverable' | 'admitted' | 'cancelled'; receipt: NativeDurableInputWorkReceiptV1;
       closedReason: NativeClosedInputReason}
+  | {status: 'refused-before-first-step'; refusal: NativeInputRefusalBeforeFirstStepV1}
   | {status: 'unknown'; code: string}
 export interface NativeExistingInputWorkV2 extends NativeDurableInputWorkSelector {
   /** Selector only: native rechecks the actual latest start and full history. */
@@ -338,7 +355,7 @@ type Entry = {ref: NativeInputRef; message: UserMessage; claimSeq?: number; clai
   cancelledSeq?: number; userSeq?: number; userTurn?: number; conflict?: boolean; inherited?: boolean}
 type LinkedTurn = {turn: number; startSeq: number; present: boolean; marker?: NativeInputLinkV1;
   previousActualStartSeq?: number; proposalMatches: boolean; firstStepStartSeq?: number;
-  lastStep: number; openStep?: number; badStep?: true}
+  lastStep: number; openStep?: number; badStep?: true; endSeq?: number}
 type LinkProof = {receipt: NativeDurableInputWorkReceiptV1; entries: readonly Entry[]}
 export interface NativeInboxHistory {
   readonly revision: number
@@ -411,6 +428,7 @@ export function createNativeInboxHistoryOwner(
       if (openTurn !== event.data.turn || turns.has(event.data.turn)) invalid = true
       const startSeq = turnStarts.get(event.data.turn), linked = startSeq === undefined ? undefined : linkedTurns.get(startSeq)
       if (linked?.openStep !== undefined) linked.badStep = true
+      if (linked) linked.endSeq = event.seq
       const reason = event.data.reason
       turns.set(event.data.turn, {kind: reason.kind,
         ...(reason.kind === 'aborted' ? {cancelKind: reason.reason.kind,
@@ -495,6 +513,24 @@ export function createNativeInboxHistoryOwner(
     try {preparation = nativePreparationReceipt(selector?.preparation); refs = linkRefs(selector?.refs, sessionId)} catch {}
     if (!preparation || !refs) return {status: 'unknown', code: 'INPUT_LINK_SELECTOR_INVALID'}
     const workSha256 = nativeInputWorkSha256(sessionId, preparation, refs)
+    // Refused root claims remain terminal after later explicit inputs. Unlike
+    // recoverable work below, these facts grant no latest-turn resume rights.
+    for (const linked of linkedTurns.values()) {
+      const marker = linked.marker
+      if (invalid || !marker || marker.mode !== 'claim' || !linked.proposalMatches
+        || linked.startSeq < inheritedBoundary || linked.badStep || linked.firstStepStartSeq !== undefined
+        || linked.endSeq === undefined || !turns.get(linked.turn)?.preAdmission
+        || marker.workSha256 !== workSha256 || !sameRefs(marker.refs, refs)) continue
+      const claimed = [...entries.values()].filter(entry => entry.turn === linked.turn
+        && entry.claimSeq !== undefined && entry.claimSeq > linked.startSeq && entry.claimSeq < linked.endSeq!)
+        .sort((left, right) => left.claimSeq! - right.claimSeq! || left.claimIndex! - right.claimIndex!)
+      if (!sameRefs(claimed.map(entry => entry.ref), refs) || claimed.some(entry => entry.inherited || entry.conflict
+        || entry.cancelledSeq !== undefined || entry.userSeq !== undefined)) continue
+      return {status: 'refused-before-first-step', refusal: {schemaVersion: 1, kind: 'refused-before-first-step',
+        sessionId, workSha256, preparation: marker.preparation, refs: marker.refs, actualTurn: linked.turn,
+        startSeq: linked.startSeq, endSeq: linked.endSeq,
+        claimSpliceSeqs: [...new Set(claimed.map(entry => entry.claimSeq!))]}}
+    }
     const proof = lastStartSeq === undefined ? undefined : proofAt(lastStartSeq)
     if (!proof || proof.receipt.workSha256 !== workSha256 || !sameRefs(proof.receipt.refs, refs)) {
       return {status: 'unknown', code: 'INPUT_LINK_HISTORY_UNKNOWN'}

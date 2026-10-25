@@ -126,7 +126,7 @@ function validateRefs(value, sid) {
 }
 function validateWork(value, sid) {
     exact(value, ['schemaVersion', 'namespace', 'sessionId', 'branchId', 'preparationId', 'receiptGeneration', 'refs',
-        'credentialSha256', 'preparation', 'status', 'source', 'attemptGeneration'], ['attempt', 'checkpoint', 'terminalRequired', 'stop', 'transition', 'unclaimedRefusal']);
+        'credentialSha256', 'preparation', 'status', 'source', 'attemptGeneration'], ['attempt', 'checkpoint', 'terminalRequired', 'stop', 'transition', 'unclaimedRefusal', 'claimedRefusal']);
     validateRefs(value.refs, sid);
     if (value.schemaVersion !== 2 || value.namespace !== NAMESPACE || value.sessionId !== sid || value.branchId !== sid
         || !id(value.preparationId) || !integer(value.receiptGeneration, 1) || !integer(value.attemptGeneration)
@@ -152,7 +152,16 @@ function validateWork(value, sid) {
     }
     return value;
 }
-function numerical(work) {
+function numerical(work, cut) {
+    const refusal = work.claimedRefusal;
+    // The Core writer already archived the Native no-step disposition. It has
+    // no numerical effect only after that actual terminal falls inside this cut.
+    if (work.status === 'stopped' && object(work.stop) && work.stop.status === 'terminal'
+        && work.checkpoint === undefined && work.transition === undefined
+        && object(refusal) && refusal.schemaVersion === 1 && refusal.kind === 'claimed-native-refusal'
+        && object(refusal.native) && refusal.native.schemaVersion === 1 && refusal.native.kind === 'refused-before-first-step'
+        && integer(refusal.native.endSeq) && refusal.native.endSeq < cut)
+        return false;
     return work.terminalRequired === true || work.source?.kind === 'story' && !!work.source.headRef;
 }
 function currency(work) {
@@ -402,7 +411,7 @@ export function createRoleplayMvuPrefixLedger(deps) {
                 if (matches !== 1)
                     fail('PREFIX_OWNER_WORK_ORPHAN');
             }
-            const selected = allWorks.filter(({ work, inside }) => inside && numerical(work));
+            const selected = allWorks.filter(({ work, inside }) => inside && numerical(work, cut));
             const preparations = new Set(), selectedRefs = new Set(), seenGenerations = new Set();
             for (const { work } of allWorks.filter(item => item.inside)) {
                 if (preparations.has(work.preparationId) || seenGenerations.has(work.receiptGeneration))

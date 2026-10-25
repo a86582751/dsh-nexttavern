@@ -189,6 +189,7 @@ interface Work {
   stop?: unknown
   transition?: unknown
   unclaimedRefusal?: unknown
+  claimedRefusal?: unknown
 }
 class LedgerRefusal extends Error {constructor(readonly code: string) {super(code)}}
 function fail(code: string): never {throw new LedgerRefusal(code)}
@@ -280,7 +281,7 @@ function validateRefs(value: unknown, sid: string): asserts value is readonly Na
 function validateWork(value: unknown, sid: string): Work {
   exact(value, ['schemaVersion', 'namespace', 'sessionId', 'branchId', 'preparationId', 'receiptGeneration', 'refs',
     'credentialSha256', 'preparation', 'status', 'source', 'attemptGeneration'],
-  ['attempt', 'checkpoint', 'terminalRequired', 'stop', 'transition', 'unclaimedRefusal'])
+  ['attempt', 'checkpoint', 'terminalRequired', 'stop', 'transition', 'unclaimedRefusal', 'claimedRefusal'])
   validateRefs(value.refs, sid)
   if (value.schemaVersion !== 2 || value.namespace !== NAMESPACE || value.sessionId !== sid || value.branchId !== sid
     || !id(value.preparationId) || !integer(value.receiptGeneration, 1) || !integer(value.attemptGeneration)
@@ -303,7 +304,15 @@ function validateWork(value: unknown, sid: string): Work {
   }
   return value as unknown as Work
 }
-function numerical(work: Work): boolean {
+function numerical(work: Work,cut:number): boolean {
+  const refusal=work.claimedRefusal
+  // The Core writer already archived the Native no-step disposition. It has
+  // no numerical effect only after that actual terminal falls inside this cut.
+  if(work.status==='stopped'&&object(work.stop)&&work.stop.status==='terminal'
+    &&work.checkpoint===undefined&&work.transition===undefined
+    &&object(refusal)&&refusal.schemaVersion===1&&refusal.kind==='claimed-native-refusal'
+    &&object(refusal.native)&&refusal.native.schemaVersion===1&&refusal.native.kind==='refused-before-first-step'
+    &&integer(refusal.native.endSeq)&&refusal.native.endSeq<cut)return false
   return work.terminalRequired === true || work.source?.kind === 'story' && !!work.source.headRef
 }
 function currency(work: Work): InputPreparationCurrency {
@@ -529,7 +538,7 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         const matches=worksByPreparation.get(recordSha256(start.link.preparation))?.get(recordSha256(start.link.refs))
         if (matches !== 1) fail('PREFIX_OWNER_WORK_ORPHAN')
       }
-      const selected = allWorks.filter(({work, inside}) => inside && numerical(work))
+      const selected = allWorks.filter(({work, inside}) => inside && numerical(work,cut))
       const preparations = new Set<string>(), selectedRefs = new Set<string>(), seenGenerations = new Set<number>()
       for (const {work} of allWorks.filter(item => item.inside)) {
         if (preparations.has(work.preparationId) || seenGenerations.has(work.receiptGeneration)) fail('PREFIX_WORK_COLLISION')

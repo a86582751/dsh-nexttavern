@@ -2144,24 +2144,49 @@ export class ReactLoopAgent implements Agent {
           result: Object.freeze({status: turnEnds?.kind === 'completed' ? 'pending' : 'blocked',
             checkpoint: currentAdmission.receipt,
             ...(turnEnds?.kind === 'completed' ? {} : {code: 'INPUT_COMPLETION_TURN_NOT_COMPLETED'})})}
-        if (turnEnds?.kind !== 'completed') this.blockInput(currentAdmission.registration,
+        // Preserve the actual admission refusal for the owner's failure anchor.
+        // This terminal code only explains exits without a more specific notice.
+        if (turnEnds?.kind !== 'completed' && !this.inputAdmissionBlocked) this.blockInput(currentAdmission.registration,
           'INPUT_COMPLETION_TURN_NOT_COMPLETED', 'final', currentAdmission.proposal, currentAdmission.claim)
       } else {
-        if (requiresCompletion) {
-          // No first checkpoint cannot be repaired by replaying a new turn.
-          this.programmaticTurnPoisoned = true
-        }
         currentAdmission?.registration.nominations?.clear()
       }
       try {
         // oxlint-disable-next-line typescript/no-non-null-assertion -- every exit assigns a turn ending
         capturedEnd = this.session.append('turn/end', { turn, reason: turnEnds! })
       } catch (error: unknown) {
+        if (requiresCompletion && !currentAdmission?.receipt) this.programmaticTurnPoisoned = true
         if (this.inputCompletionBlocked && this.inputCompletion) this.inputCompletion.result = Object.freeze({
           status: 'unknown', checkpoint: this.inputCompletion.result.checkpoint, code: 'INPUT_COMPLETION_END_UNKNOWN'})
         if (requiresCompletion && currentAdmission) this.blockInput(currentAdmission.registration,
           'INPUT_COMPLETION_END_UNKNOWN', 'final', currentAdmission.proposal, currentAdmission.claim)
         this.throwError(error)
+      }
+      if (requiresCompletion && currentAdmission && !currentAdmission.receipt) {
+        let refused = false
+        try {
+          // Admission-hook cancellation must not skip the durable end. No
+          // aborted-signal race may turn an in-memory refusal into permission.
+          if (currentAdmission.preparation && await this.ctx.sessions.flush(this.session)) {
+            const lookup = this.lookupDurableInputWork({preparation: currentAdmission.preparation,
+              refs: currentAdmission.claim?.refs ?? currentAdmission.proposal.refs})
+            if (lookup.status === 'refused-before-first-step' && lookup.refusal.startSeq === currentAdmission.startSeq
+              && lookup.refusal.endSeq === capturedEnd!.seq) {
+              refused = true
+              // Its terminal history is retained; a later idle stop must not
+              // notify this already-closed work as a fresh cancellation.
+              this.inputStopWork = undefined
+              const blocked = this.inputAdmissionBlocked
+              if (blocked?.registration === currentAdmission.registration
+                && nativeInputSha256(blocked.notice.refs) === nativeInputSha256(lookup.refusal.refs)) {
+                this.inputAdmissionBlocked = {...blocked, notice: {...blocked.notice, refusal: lookup.refusal}}
+              }
+            }
+          }
+        } catch { /* Unconfirmed end or history keeps this work blocked. */ }
+        // This exception covers only the current no-step refusal. Never clear
+        // poison established by another failed programmatic/terminal operation.
+        if (!refused) this.programmaticTurnPoisoned = true
       }
     }
     // Outside the turn's try/finally: a failed terminal operation must never
