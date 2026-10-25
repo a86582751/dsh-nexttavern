@@ -43,6 +43,7 @@ interface Lease {
   intent?:MvuPlayerStateIntent
   released:Promise<void>
   release():void
+  callerCurrent?:()=>boolean
 }
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 const codeOf=(error:unknown)=>error instanceof Error&&/^[A-Z0-9_]+$/.test(error.message)?error.message:'MVU_PLAYER_WRITE_UNKNOWN'
@@ -138,6 +139,7 @@ export function createRoleplayMvuPlayer(deps:MvuPlayerDeps) {
         ||deps.session(intent.sessionId)!==lease.session||deps.agent(lease.session)!==lease.agent
         ||!deps.active(lease.session)||deps.sourceSha256(intent.sessionId)!==intent.sourceSha256
         ||recordSha256(lease.agent.lookupInputStop())!==lease.stopSha256)return false
+      if(lease.callerCurrent&&!lease.callerCurrent())return false
       if(!verifyStoredManualIntent(intent))return false
       // Inbox insertion may be latched behind maintenance. No turn, edit or
       // competing log mutation may appear after this operation's marker.
@@ -175,7 +177,7 @@ export function createRoleplayMvuPlayer(deps:MvuPlayerDeps) {
     }
     return base
   }
-  async function submit(input:unknown):Promise<MvuPlayerEditResponse> {
+  async function submit(input:unknown,callerCurrent?:()=>boolean):Promise<MvuPlayerEditResponse> {
     let request:MvuPlayerEditRequest
     try {request=readMvuPlayerRequest(input)} catch(error) {const code=codeOf(error);return {ok:false,code,error:code}}
     const writeBlock=deps.writeBlockCode?.(request.sessionId)
@@ -200,7 +202,8 @@ export function createRoleplayMvuPlayer(deps:MvuPlayerDeps) {
       const agent=deps.agent(session)!
       const done=Promise.withResolvers<void>()
       const token={},lease:Lease={session,agent,token,request,stopSha256:recordSha256(agent.lookupInputStop()),
-        inSourceLock:false,markerFlushed:false,revoked:false,released:done.promise,release:()=>done.resolve()}
+        inSourceLock:false,markerFlushed:false,revoked:false,released:done.promise,release:()=>done.resolve(),
+        ...(callerCurrent?{callerCurrent}:{})}
       leases.set(session.id,lease);tokens.set(token,lease)
       try {
         // runMaintenance synchronously rejects both running and another
@@ -226,6 +229,7 @@ export function createRoleplayMvuPlayer(deps:MvuPlayerDeps) {
                 fullFacts(op,session)
                 return response(request,(settlement as MvuPlayerStatePublisherSettlement).outcome,true)
               }
+              if(callerCurrent&&!callerCurrent())throw Error('MVU_PLAYER_CALLER_CHANGED')
               const base=currentBase(request)
               if(events(session).at(-1)?.seq!==request.expected.observedNativeSeq)throw Error('MVU_PLAYER_STALE_NATIVE')
               const body={schemaVersion:1 as const,encoding:'native-mvu-player-operation-v1' as const,sessionId:session.id,
@@ -234,6 +238,7 @@ export function createRoleplayMvuPlayer(deps:MvuPlayerDeps) {
               await putExact(opKey,op)
               signal.throwIfAborted()
               if(deps.sourceSha256(session.id)!==base.sourceSha256)throw Error('SOURCE_CHANGED')
+              if(callerCurrent&&!callerCurrent())throw Error('MVU_PLAYER_CALLER_CHANGED')
               marker=deps.markers.append(session,{schemaVersion:1,encoding:'native-mvu-player-edit-marker-v1',
                 sessionId:session.id,operationId:request.operationId,requestSha256:op.requestSha256,
                 operationSha256:op.operationSha256,sourceSha256:base.sourceSha256,rootSha256:recordSha256(base.root),

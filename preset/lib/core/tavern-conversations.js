@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/src/core/tavern-conversations.ts; edit the TypeScript source.
 import { createHash } from 'node:crypto';
-const kinds = new Set(['regenerate', 'player-edit', 'player-edit-send', 'edit', 'delete-user']);
+const kinds = new Set(['regenerate', 'player-edit', 'player-edit-send', 'edit', 'delete-user', 'prepare-clean-branch']);
 const copy = (value) => structuredClone(value);
 const id = (value) => {
     if (typeof value !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/.test(value) || ['__proto__', 'constructor', 'prototype'].includes(value))
@@ -20,10 +20,11 @@ export function createConversationCatalog({ read, write }) {
             throw Error('世界线选择版本损坏，未覆盖原记录');
     let chain = Promise.resolve();
     const rootOf = (sessionId, snapshot = state) => snapshot.worldlines[id(sessionId)]?.conversationId ?? sessionId;
-    const mutate = (work) => {
+    const mutate = (work, callerCurrent) => {
         const job = chain.catch(() => { }).then(async () => {
             const next = copy(state), changed = await work(next);
             if (changed !== false) {
+                callerCurrent?.();
                 next.revision = state.revision + 1;
                 next.updatedAt = Date.now();
                 await write(next);
@@ -59,8 +60,8 @@ export function createConversationCatalog({ read, write }) {
             const root = rootOf(sessionId), book = state.conversations[root];
             return { root, activeSessionId: book?.activeSessionId ?? root, revision: book?.selectionRevision ?? 0 };
         },
-        reserve: (reservation) => mutate(next => reserve(next, reservation)),
-        markReady: (sessionId) => mutate(next => {
+        reserve: (reservation, callerCurrent) => mutate(next => reserve(next, reservation), callerCurrent),
+        markReady: (sessionId, callerCurrent) => mutate(next => {
             const member = next.worldlines[id(sessionId)];
             if (!member)
                 throw new Error('世界线尚未登记');
@@ -69,7 +70,7 @@ export function createConversationCatalog({ read, write }) {
             if (member.status === 'ready')
                 return false;
             member.status = 'ready';
-        }),
+        }, callerCurrent),
         fail: (sessionId, operationId) => mutate(next => {
             const member = next.worldlines[id(sessionId)];
             if (!member)

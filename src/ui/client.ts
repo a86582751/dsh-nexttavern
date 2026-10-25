@@ -3,12 +3,14 @@ import { createConversationPresentation, type SessionSelector } from './conversa
 import type * as ReactAPI from 'react'
 import type { SessionList, SessionSummary } from './conversation-projection.js'
 import type { PanelDraft } from './panel-state.js'
+import {createSideChat, type SideChatSessions, type SideChatRenderScope, type SideChatMenu} from './side-chat.js'
 
 type Root = { render(node: ReactAPI.ReactNode): void; unmount(): void }
 type CreateRoot = (element: HTMLElement) => Root
 declare function require(name: 'react'): typeof ReactAPI
 declare function require(name: 'react-dom/client'): { createRoot: CreateRoot }
 declare function require(name: '@deepseek-ai/dsh-client-ui-primitives'): {
+  Menu: SideChatMenu
   Tooltip: ReactAPI.ComponentType<{
     label: string;
     side: string;
@@ -17,7 +19,7 @@ declare function require(name: '@deepseek-ai/dsh-client-ui-primitives'): {
   }>
 }
 type ActionDependencies = Parameters<typeof createRoleplayActions>[0]
-interface SessionService extends Omit<ActionDependencies['sessionsService'], 'list'> {
+interface SessionService extends Omit<ActionDependencies['sessionsService'], 'list'>, SideChatSessions {
   list?: {
     getSnapshot?(): SessionList & {
       byId?: Record<string, SessionSummary & {
@@ -58,6 +60,7 @@ interface Slots {
       id: string;
       order?: number;
       label?: string;
+      children?: Record<string, {kind: 'single'; scope: 'session'}>;
       inject?: (sessionId: string) => Partial<P>
     },
     component: ReactAPI.ComponentType<P>): unknown
@@ -189,6 +192,7 @@ export function apply(ctx: ClientContext) {
   const isRoleplaySession = (sessionId: string | null | undefined) => sessionPresetOf(sessionId) === 'roleplay'
 
   const style = document.createElement('style')
+  style.setAttribute('data-plugin', 'dsh-nexttavern')
   style.setAttribute('data-plugin-css', 'dsh-roleplay-ui')
   style.textContent = ROLEPLAY_UI_CSS + MEMORY_RETRIEVAL_CSS + CARD_ADAPTATION_CSS
   document.head.appendChild(style)
@@ -359,6 +363,31 @@ export function apply(ctx: ClientContext) {
       return data
     }
     const sessionImages = createSessionImages(jsonFetch)
+    const sideChat = createSideChat({
+      React, Menu: require('@deepseek-ai/dsh-client-ui-primitives').Menu, sessions: sessionsService, jsonFetch,
+      confirm: message => confirmWithDialog(document, message, {title: '重置侧聊', confirmLabel: '重置', cancelLabel: '保留侧聊'}),
+    })
+    function SideChatHost(props: {
+      SessionProvider: SideChatRenderScope['SessionProvider'];
+      renderSlot(name: string, owner: {binding: Parameters<SideChatRenderScope['renderSession']>[0]; controls: ReactAPI.ReactNode}): ReactAPI.ReactNode
+    }) {
+      const sessionId = useMainSessionId()
+      const opened = sideChat.useOpen()
+      return opened && sessionId && isRoleplaySession(sessionId)
+        ? React.createElement(sideChat.Panel, {key: sessionId, sessionId, scope: {
+          SessionProvider: props.SessionProvider,
+          renderSession: (binding, controls) => props.renderSlot('roleplay.side-chat.session', {binding, controls}),
+        }}) : null
+    }
+    if (slots !== undefined) {
+      slots.inject('shell.overlay', () => slots.register({
+        name: 'shell.overlay', id: 'roleplay-side-chat-overlay', order: 35,
+        children: {'roleplay.side-chat.session': {kind: 'single', scope: 'session'}},
+      }, SideChatHost))
+      slots.inject('roleplay.side-chat.session', () => slots.register({
+        name: 'roleplay.side-chat.session', id: 'roleplay-side-chat-session',
+      }, sideChat.Session))
+    }
     ctx.effect(() => () => sessionImages.dispose(), 'roleplay-ui: session image resources')
     const {
       btn,
@@ -645,6 +674,8 @@ export function apply(ctx: ClientContext) {
     }, 'roleplay-ui: panel manager')
     const sidebarIconPaths = {
       tavern: 'M2 7 8 2l6 5M3.5 6v7.5h9V6M6.5 13.5V9h3v4.5',
+      chat: 'M13.75 7.5A5.75 5.75 0 1 0 8 13.25h5.75l-1.42-2.13A5.72 5.72 0 0 0 13.75 7.5Z'
+        + 'M8 4.75v5.5M5.25 7.5h5.5',
       decision: 'M2 2.5h12v9H8l-3.5 3v-3H2zM4.5 5.5h7M4.5 8h5',
       status: 'M2 2.5h12v11H2zM10 2.5v11M4 5h3M4 8h3',
       music: 'M6 11.5V4l7-1.5V10M6 6.5l7-1.5M6 11.5a2 1.5 0 1 1-4 0 2 1.5 0 0 1 4 0Z'
@@ -678,13 +709,25 @@ export function apply(ctx: ClientContext) {
           'button',
           {
             type: 'button',
-            className: 'dsh-rp-nav-entry',
+            className: 'dsh-rp-nav-entry' + (props.wide === false ? ' dsh-rp-nav-rail' : ''),
+            'data-dsh-part': 'sidebar-entry',
             disabled: !isRoleplaySession(sessionId),
             'aria-label': '酒馆管理',
             onClick: () => openManager(sessionId, props.useSessions)
           },
           React.createElement('span', { className: 'dsh-rp-nav-icon' }, sidebarIcon('tavern')),
           props?.wide === false ? null : React.createElement('span', { className: 'dsh-rp-nav-label' }, '酒馆管理')))
+    }
+    const SideChatButton = (props: SidebarProps) => {
+      const sessionId = useMainSessionId()
+      const opened = sideChat.useOpen()
+      return sidebarTooltip(props, '酒馆侧聊', React.createElement('button', {
+        type: 'button', className: 'dsh-rp-nav-entry' + (props.wide === false ? ' dsh-rp-nav-rail' : ''),
+        'data-dsh-part': 'sidebar-entry', 'aria-label': '酒馆侧聊',
+        'aria-expanded': opened && !!sessionId && isRoleplaySession(sessionId), 'aria-controls': 'dsh-rp-side-chat',
+        disabled: !isRoleplaySession(sessionId), onClick: sideChat.toggle,
+      }, React.createElement('span', {className: 'dsh-rp-nav-icon'}, sidebarIcon('chat')),
+      props.wide === false ? null : React.createElement('span', {className: 'dsh-rp-nav-label'}, '酒馆侧聊')))
     }
     const mediaPanelPosition = (button: HTMLButtonElement, width: number) => {
       const anchor = button.getBoundingClientRect()
@@ -770,7 +813,10 @@ export function apply(ctx: ClientContext) {
         () => slots.register({ name: 'sidebar.workspaces.before', id: 'roleplay-panel-entry', order: 20, inject: () => ({}) }, managerButton))
       slots.inject(
         'sidebar.workspaces.before',
-        () => slots.register({ name: 'sidebar.workspaces.before', id: 'roleplay-tools', order: 21, inject: () => ({}) }, RoleplayTools))
+        () => slots.register({ name: 'sidebar.workspaces.before', id: 'roleplay-side-chat-entry', order: 21, inject: () => ({}) }, SideChatButton))
+      slots.inject(
+        'sidebar.workspaces.before',
+        () => slots.register({ name: 'sidebar.workspaces.before', id: 'roleplay-tools', order: 22, inject: () => ({}) }, RoleplayTools))
     }
 
     // 沉浸开关：随当前会话 preset 自动应用（roleplay 默认开）

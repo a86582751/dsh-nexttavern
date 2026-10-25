@@ -58,14 +58,105 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync } from 
 import { randomUUID } from 'node:crypto';
 import { createConversationCatalog } from './tavern-conversations.js';
 import { readUserInfo as readUserInfoFile, writeUserInfo } from './roleplay-userinfo.js';
+import { receiveSideChatBridge } from './roleplay-side-chat-bridge.js';
 // HTTP clients expect an object even before a user profile exists.
 const readUserInfo = () => readUserInfoFile() ?? {};
 const jsonResponse = (status, value) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
 const requestBody = (value) => value && typeof value === 'object' ? value : {};
 const errorText = (error) => String(error !== null && typeof error === 'object' && 'message' in error ? error.message ?? error : error);
+/** The host manager owns profile persistence and reports whether a live change applied. */
+export function createSkinRoute(managerOf) {
+    const findSkin = async (manager) => (await manager.listPlugins())
+        .find(row => row.patchId === 'ui-skin-nexttavern' || row.moduleName === 'dsh-nexttavern-amber');
+    const snapshot = (row) => ({
+        available: row !== undefined && row.readOnlyReason === undefined,
+        enabled: row?.enabled ?? null,
+        phase: row?.fiberPhase ?? null,
+        reason: !row ? '此 profile 尚未安装内置皮肤'
+            : row.readOnlyReason ? `宿主不允许修改此皮肤：${row.readOnlyReason}` : undefined,
+    });
+    return { requestBody: 'buffered', path: '/api/roleplay/skin', methods: ['GET', 'POST'], fetch: async (request) => {
+            try {
+                const manager = managerOf();
+                if (!manager)
+                    return jsonResponse(503, {
+                        ok: false, skin: { available: false, enabled: null, reason: '当前宿主不提供插件管理' },
+                    });
+                const row = await findSkin(manager);
+                if (request.method === 'GET')
+                    return jsonResponse(200, { ok: true, skin: snapshot(row) });
+                const body = requestBody(await request.json().catch(() => null));
+                if (typeof body.enabled !== 'boolean')
+                    return jsonResponse(400, { ok: false, error: 'enabled 必须是布尔值' });
+                if (!row || row.readOnlyReason)
+                    return jsonResponse(409, { ok: false, skin: snapshot(row) });
+                const result = await manager.setPluginEnabled(row.entryId, body.enabled);
+                // Re-read after the mutation: a higher-priority layer can keep the opposite selection.
+                const skin = snapshot(await findSkin(manager));
+                const ok = result.application === 'applied' || result.application === 'restart-required';
+                return jsonResponse(ok ? 200 : 409, { ok, skin, result });
+            }
+            catch (error) {
+                return jsonResponse(500, { ok: false, error: errorText(error) });
+            }
+        } };
+}
 export const name = 'dsh-roleplay-ui';
-export const inject = ['connection', 'sessionController', 'sessionQuery', 'sessions'];
+export const inject = ['connection', 'sessionController', 'sessionQuery', 'sessions', 'agents', 'systemPrompt'];
 export function apply(ctx) {
+    ctx.effect(() => receiveSideChatBridge(bridge => {
+        const registrations = new Map();
+        const detach = (agent) => {
+            for (const dispose of registrations.get(agent) ?? [])
+                dispose();
+            registrations.delete(agent);
+        };
+        const attach = (agent) => {
+            if (!bridge.owns(agent.session.id) || registrations.has(agent))
+                return;
+            registrations.set(agent, bridge.toolsFor(agent.session.id).map(tool => agent.ctx.tools.register(tool)));
+        };
+        for (const agent of ctx.agents.list())
+            attach(agent);
+        const disposeCreated = ctx.on('agent/created', ({ agent }) => attach(agent), { global: true });
+        const disposeDisposed = ctx.on('agent/disposed', ({ agent }) => detach(agent), { global: true });
+        const disposeTools = bridge.onToolsChanged(id => {
+            const agent = ctx.agents.get(id);
+            if (agent) {
+                detach(agent);
+                attach(agent);
+            }
+        });
+        // Native idle follows the complete inbox drain, so capabilities remain
+        // available across every tool continuation of the current task.
+        const disposeIdle = ctx.on('agent/status', ({ agent, status }) => {
+            if (status === 'idle' && bridge.owns(agent.session.id))
+                bridge.finishTools(agent.session.id);
+        }, { global: true });
+        // Session creation announces the Agent before Core can publish its durable
+        // side binding. This single-target notification closes that ordering gap.
+        const disposeBinding = bridge.onBinding(({ oldSideSessionId, newSideSessionId }) => {
+            for (const agent of registrations.keys())
+                if (agent.session.id === oldSideSessionId)
+                    detach(agent);
+            const agent = ctx.agents.get(newSideSessionId);
+            if (agent)
+                attach(agent);
+        });
+        const disposePrompt = ctx.systemPrompt.section({ name: 'roleplay:side-chat-host', order: 149,
+            text: ({ agent }) => bridge.prompt(agent) });
+        return () => {
+            disposeBinding();
+            disposeCreated();
+            disposeDisposed();
+            disposePrompt();
+            disposeTools();
+            disposeIdle();
+            for (const agent of registrations.keys())
+                detach(agent);
+        };
+    }), 'roleplay-ui: side chat native host tools');
+    ctx.effect(() => ctx.connection.fetch.register(createSkinRoute(() => ctx.get?.('pluginManager'))), 'roleplay-ui: built-in skin control');
     const home = process.env.DSH_HOME ?? join(process.env.HOME ?? '.', '.dsh');
     const catalogPath = process.env.DSH_ROLEPLAY_CONVERSATIONS_PATH ?? join(home, 'roleplay-conversations.json');
     const catalog = createConversationCatalog({

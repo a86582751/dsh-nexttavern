@@ -1,7 +1,8 @@
 /** Inert HTML and JavaScript parsing; bundled with its locked parser libraries. */
 import {parseFragment,defaultTreeAdapter} from 'parse5'
 import type {DefaultTreeAdapterTypes} from 'parse5'
-import ts from 'typescript'
+import ts from 'dsh-nexttavern-typescript-runtime'
+import type * as TypeScript from 'typescript'
 
 export interface EmbeddedSourceLiteralV1 {
   value:string
@@ -13,7 +14,7 @@ export interface EmbeddedSourceLiteralV1 {
 export function scriptLiteralsV1(source:string,position:string):EmbeddedSourceLiteralV1[] {
   const found:EmbeddedSourceLiteralV1[]=[]
   const file=ts.createSourceFile('source-music.js',source,ts.ScriptTarget.ES2023,true,ts.ScriptKind.JS)
-  const stack:ts.Node[]=[file]
+  const stack:TypeScript.Node[]=[file]
   while(stack.length) {
     const node=stack.pop()!
     // Concatenation/interpolation cannot identify a complete URI without
@@ -25,7 +26,7 @@ export function scriptLiteralsV1(source:string,position:string):EmbeddedSourceLi
       if(ts.isPropertyAssignment(parent)&&ts.isObjectLiteralExpression(parent.parent)) {
         const named=parent.parent.properties.find(property=>ts.isPropertyAssignment(property)
           &&property.name.getText(file)==='name'&&ts.isStringLiteralLike(property.initializer))
-        if(named&&ts.isPropertyAssignment(named))name=(named.initializer as ts.StringLiteralLike).text
+        if(named&&ts.isPropertyAssignment(named))name=(named.initializer as TypeScript.StringLiteralLike).text
       }
       found.push({value:node.text,carrier:'script',position:position+'@'+node.getStart(file),...(name?{name}:{})})
     }

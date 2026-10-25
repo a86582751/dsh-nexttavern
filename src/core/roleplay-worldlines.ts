@@ -498,7 +498,8 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       deps.sourceInheritance?.assertSourceInheritanceReady(child.id)
       ensureState(child.id).branchReady = true
     } else {
-      await ensureBranch(child, { cadenceAnchorSeq: operation.anchor.sourceUserSeq!, cadenceTurn: operation.anchor.sourceTurn })
+      await ensureBranch(child, operation.kind==='prepare-clean-branch'?undefined:
+        { cadenceAnchorSeq: operation.anchor.sourceUserSeq!, cadenceTurn: operation.anchor.sourceTurn })
     }
     await deps.commitDerivedBasis?.(operation, child)
     return source

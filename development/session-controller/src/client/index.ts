@@ -87,6 +87,7 @@ export interface SessionReferenceSourceMap {
   nexttavernAction: unknown
   nexttavernState: unknown
   nexttavernReader: unknown
+  nexttavernSideChat: unknown
 }
 
 /** Declaration-merge-extensible labels carried by independent Client references. */

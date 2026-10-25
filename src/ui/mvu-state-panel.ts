@@ -1,7 +1,8 @@
 import type * as ReactAPI from 'react'
 import type {MvuJsonObject,MvuJsonValue} from '../core/tavern-mvu-initvar.js'
-import type {MvuPlayerEditExpected,MvuPlayerEditRequest,MvuPlayerEditResponse,MvuStateObservation}
+import type {MvuPlayerEditRequest,MvuPlayerEditResponse,MvuStateObservation}
   from '../core/roleplay-mvu-player-types.js'
+import {mvuPlayerEditExpectedV1 as expected} from '../core/roleplay-mvu-player-expected.js'
 
 type Ready=Extract<MvuStateObservation,{kind:'ready'|'schema-ready'}>
 const isReady=(state:MvuStateObservation|undefined):state is Ready=>
@@ -28,11 +29,6 @@ interface Dependencies {
   fetch?:typeof globalThis.fetch
 }
 const copy=<T,>(value:T):T=>JSON.parse(JSON.stringify(value))
-const expected=(state:Ready):MvuPlayerEditExpected=>({
-  sourceSha256:state.snapshot.sourceSha256,root:copy(state.snapshot.root),revision:state.snapshot.revision,
-  headSha256:state.snapshot.headSha256,valuesSha256:state.snapshot.valuesSha256,
-  stateSnapshotSha256:state.snapshot.stateSnapshotSha256,observedNativeSeq:state.observedNativeSeq,
-})
 const baseKey=(state:Ready)=>JSON.stringify(expected(state))
 const observationKey=(state:MvuStateObservation|undefined)=>isReady(state)
   ? JSON.stringify([state.sessionId,baseKey(state),state.canEdit,state.editBlockCode])

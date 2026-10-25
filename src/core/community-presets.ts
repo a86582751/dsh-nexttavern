@@ -140,7 +140,9 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
     if(!pack)throw Error('请先导入方案包')
     return {effective,applied:applyCommunityIzumiPlans(effective,pack.plans.filter(plan=>ids.includes(plan.id)))}
   }
-  async function mutate(sessionId:string,value:unknown) {
+  // Callers with cancellable ownership recheck synchronously at publication,
+  // after the shared FIFO has released every preceding mutation.
+  async function mutate(sessionId:string,value:unknown,callerCurrent?:()=>void) {
     const body=object(value)
     return withTavernLock(table,COMMUNITY_PRESETS_KEY,async()=>{
       const state=read()
@@ -283,11 +285,12 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
         }
         default:throw Error('未知社区预设操作')
       }
+      callerCurrent?.()
       state.revision++;await table.put(COMMUNITY_PRESETS_KEY,state)
       return {...policy(sessionId),...result}
     })
   }
-  async function mutateRegex(sessionId:string,value:unknown) {
+  async function mutateRegex(sessionId:string,value:unknown,callerCurrent?:()=>void) {
     const body=object(value)
     return withTavernLock(table,COMMUNITY_PRESETS_KEY,async()=>{
       const state=read()
@@ -313,6 +316,7 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
           }
         } else throw Error('未知正则操作')
       }
+      callerCurrent?.()
       state.revision++;await table.put(COMMUNITY_PRESETS_KEY,state)
       return policy(sessionId)
     })

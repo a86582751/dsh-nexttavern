@@ -28,19 +28,21 @@ export interface TaskSession {id: string}
 export interface TaskAgent {session?: TaskSession; options?: {subagentDepth?: unknown; provider?: string; model?: string; reasoningEffort?: unknown}}
 export interface TaskRoute {provider: string; model: string; reasoningEffort?: unknown}
 export type TaskStatus = 'queued' | 'running' | 'waiting-main' | 'completed' | 'failed' | 'cancelled' | 'stale'
+export type TaskExecutionPolicy = 'independent'
 export interface StoredTask {
   authorDialogCompletion?:AuthorDialogNativeCompletionV1
   rubyTaskCompletion?:RubyTaskNativeCompletionV1
   rubyNativeCompletedWork?:{readonly generation:string;readonly receipt:NativeCompletedInputWorkReceiptV1}
   rubyNativeCheckpoint?:{readonly generation:string;readonly receipt:NativeDurableInputWorkReceiptV1}
   rubyNativeStop?:{readonly generation:string;readonly notice:NativeInputStopNoticeV1}
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   id: string
   sessionId: string
   kind: string
   status: TaskStatus
   branchId?: string
   execution?: 'inline' | 'spawn'
+  executionPolicy?: TaskExecutionPolicy
   generation?: string
   main?: TaskRoute
   actualRoute?: TaskRoute
@@ -73,6 +75,7 @@ export interface TaskSelection {
   policyRevision?: unknown
 }
 export interface TaskSpec<S, A> {
+  executionPolicy?: TaskExecutionPolicy
   authorDialog?:AuthorDialogPromptV1
   rubyTask?:RubyTaskSpecV1
   session: S

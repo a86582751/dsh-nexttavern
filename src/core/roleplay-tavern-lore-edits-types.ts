@@ -152,6 +152,11 @@ export interface TavernLoreEditEditorDataV1 {
   readonly revision:number
   readonly entries:readonly TavernLoreEditEditorEntryV1[]
 }
+export type TavernLoreEditorSelectionV1={readonly kind:'page';readonly cursor:number;readonly limit:number}
+  |{readonly kind:'entry';readonly entryId:string}
+export type TavernLoreEditPageObservationV1={readonly schemaVersion:1;readonly kind:'captured-data';
+  readonly data:TavernLoreEditsDataV1;readonly editor:TavernLoreEditEditorDataV1;
+  readonly page:{readonly total:number;readonly nextCursor:number|null}}|TavernLoreEditRefusalV1
 export interface TavernLoreEditRecoveryAnchorV1 {
   readonly phase:'intent-write'|'head-publication'|'readback'
   readonly identitySha256:string

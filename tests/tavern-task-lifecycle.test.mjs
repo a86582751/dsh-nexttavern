@@ -431,7 +431,7 @@ for(const background of [false,true]) {
 
 // This adapter fixture keeps the actual TaskStore/scheduler and executes the
 // host's effect initializer/cleanup. A denial is data, never Native permission.
-async function recoveryHost(branch=new Table(),status='idle') {
+async function recoveryHost(branch=new Table(),status='idle',options={}) {
  const session={id:'host-idle-recovery',events:[],surface:{nodes:[]}},route={provider:'fixture',model:'main'},
   inbox=[],cleanups=[],taskAgents=new Map(),warnings=[]
  const agent={session,options:route,status,steer:message=>inbox.push(message)}
@@ -440,11 +440,11 @@ async function recoveryHost(branch=new Table(),status='idle') {
   effect(work){const cleanup=work();if(typeof cleanup==='function')cleanups.push(cleanup)},
   logger:{warn:message=>warnings.push(message)},sessions:{get:id=>id===session.id?session:undefined},
   sessionController:{async resolveAgent(){return {agent}}},agentDefaultModel:{currentSelection:()=>route},
-  subagents:{start(){throw Error('inline recovery must not spawn a child')}},get:()=>undefined,
+  subagents:options.subagents??{start(){throw Error('inline recovery must not spawn a child')}},get:()=>undefined,
  },config:{},taskAgents,storyBranchIsActive:()=>true,statusFixedContext:()=>({}),
  taskDependenciesCurrent:()=>true,taskInstruction:()=> 'Retained pending maintenance.',getMaintenanceJob:()=>undefined,
  runStatusObligation:async()=>undefined,STATUS_SYSTEM:'status-system',DECISION_SYSTEM:'decision-system',
- ORGANIZE_WORKER_SYSTEM:'novel-system',inputTaskRecoveryBlockCode:s=>{
+ ORGANIZE_WORKER_SYSTEM:'novel-system',inputCurrency:options.inputCurrency,inputTaskRecoveryBlockCode:s=>{
   assert.equal(s,session);gateReads++;return blockCode
  }})
  // Establish the real default policy before measuring task-side writes. Its
@@ -462,7 +462,7 @@ async function recoveryHost(branch=new Table(),status='idle') {
   for(const cleanup of cleanups.splice(0).reverse())cleanup()
   throw error
  }finally {branch.put=put}
- return {branch,session,agent,inbox,warnings,host,
+ return {branch,session,agent,inbox,warnings,host,taskAgents,route,
   request:()=>host.nativeTask({session,agent,system:'memory-system',user:'Retained notes.',format:'text',taskStage:'notes'}),
   block(code){blockCode=code},gateReads:()=>gateReads,
   close(){for(const cleanup of cleanups.splice(0).reverse())cleanup()},
@@ -561,4 +561,121 @@ const continuationTick=()=>new Promise(resolve=>setTimeout(resolve,10))
   assert.deepEqual(cold.warnings,[])
  }finally {cold?.close();first.close()}
 }
-console.log('tavern-task-lifecycle=ok (batch lifecycle, native host adapter, recovery and source fences)')
+// Independent card classification shares the existing single-child executor,
+// even on the main model. Each failed request retains its durable retry anchor.
+{
+ const table=new Table(),route={...agent.options},children=[],waiting=deferred()
+ const policy={resolve:()=>({execution:'inline',main:route,actualRoute:route})}
+ let outcome='success'
+ const engine=createTavernTasks({table,policy,subagents:{start(mode,request){
+  assert.equal(mode,'spawn');assert.equal(request.parent,agent);children.push(request)
+  const prompt=JSON.parse(request.prompt[0].text)
+  assert.equal(prompt.branchId,session.id);assert.equal(prompt.tasks,undefined,'independent work bypasses batch envelopes')
+  if(outcome==='provider')throw Error('independent provider failure')
+  return {id:'independent-child-'+children.length,result:outcome==='cancel'||outcome==='timeout'?waiting.promise:
+   Promise.resolve({stopReason:'completed',structured:{classified:true}}),dispose(){}}
+ }}})
+ const make=(key,extra={})=>({session,agent,kind:'card-export',source:{workflowId:'independent-card',
+  workflowType:'card',generation:'workflow-generation',events:[]},input:{taskStage:'native-card-conversion',checkpoint:'kept'},
+  requestKey:key,executionPolicy:'independent',format:'json',validate:value=>value,...extra})
+ const first=make('independent-success')
+ assert.deepEqual(await engine.request(first),{classified:true})
+ const completed=engine.list(session)[0]
+ assert.equal(completed.schemaVersion,2);assert.equal(completed.execution,'spawn')
+ assert.equal(completed.executionPolicy,'independent');assert.equal(completed.sessionId,session.id)
+ assert.deepEqual(completed.actualRoute,route,'execution policy does not change the model purpose or route')
+ for(const failure of ['provider','validation','cancel','timeout']) {
+  outcome=failure
+  const controller=new AbortController()
+  const spec=make('independent-'+failure,{signal:controller.signal,timeoutMs:1000,
+   validate:value=>{if(failure==='validation')throw Error('classification invalid');return value}})
+  const work=engine.request(spec)
+  const rejected=assert.rejects(work,error=>!(error instanceof InlinePending))
+  if(failure==='cancel'){await drain();controller.abort(Error('player cancelled independent'))}
+  await rejected
+  const job=engine.list(session).find(job=>job.input&&job.id===taskHash({sessionId:session.id,kind:spec.kind,source:spec.source,input:spec.requestKey}))
+  assert.equal(job.status,'failed');assert.equal(job.execution,'spawn');assert.equal(job.executionPolicy,'independent')
+  assert.equal(job.fallback,undefined);assert.ok(job.failedAt);assert.ok(job.failure)
+  if(failure==='timeout')assert.equal(job.failure.category,'timeout')
+  assert.deepEqual(engine.pending(session),[],'failure never creates work for the main loop')
+  if(failure==='validation') {
+   assert.equal(job.failure.category,'validation');assert.equal(job.input.checkpoint,'kept')
+   const retried=await engine.retry(session,job.id)
+   assert.notEqual(retried.generation,job.generation);assert.equal(retried.executionPolicy,'independent')
+   outcome='success'
+   assert.deepEqual(await engine.request({...spec,validate:value=>value}),{classified:true})
+  }
+ }
+ // A live process can finish after another process has observed an unknown
+ // running result. The unknown anchor blocks that late result until retry.
+ const late=deferred(),coldTable=new Table();let coldStarts=0
+ const old=createTavernTasks({table:coldTable,policy,subagents:{start(){return {id:'old-independent',result:late.promise,dispose(){}}}}})
+ const coldSpec=make('cold-independent'),oldWork=old.request(coldSpec).then(value=>({value}),error=>({error}))
+ await drain()
+ const prior=old.list(session)[0]
+ const cold=createTavernTasks({table:coldTable,policy,subagents:{start(){coldStarts++;return {
+  id:'retried-independent',result:Promise.resolve({stopReason:'completed',structured:{classified:'retried'}}),dispose(){}}}}})
+ await assert.rejects(cold.request(coldSpec),/INDEPENDENT_TASK_COMPLETION_UNKNOWN/)
+ const unknown=cold.list(session)[0]
+ assert.equal(unknown.status,'failed');assert.equal(unknown.execution,'spawn');assert.equal(coldStarts,0)
+ assert.equal(unknown.generation,prior.generation);assert.equal(unknown.input.checkpoint,'kept')
+ assert.deepEqual(cold.pending(session),[])
+ await cold.retry(session,unknown.id)
+ assert.deepEqual(await cold.request(coldSpec),{classified:'retried'})
+ assert.equal(coldStarts,1);assert.equal(cold.list(session)[0].executionPolicy,'independent')
+ late.resolve({stopReason:'completed',structured:{classified:'late'}});assert.ok((await oldWork).error)
+ assert.deepEqual(cold.list(session)[0].result,{classified:'retried'})
+}
+
+// Main-input recovery refusals remain intact while a separately owned card
+// workflow runs a native child. A flag alone cannot acquire this permission.
+{
+ const children=[],nativeResult=deferred(),f=await recoveryHost(undefined,'idle',{
+  inputCurrency(){throw Error('independent work must not borrow main hot currency')},
+  subagents:{start(_mode,request){children.push(request);return {id:'independent-host-child',result:nativeResult.promise,dispose(){}}}},
+ })
+ try {
+  f.taskAgents.set(f.session.id,f.agent)
+  const anchorKey=f.session.id+'__native-input-unknown',anchor={schemaVersion:1,status:'unknown',source:'retained'}
+  f.branch.set(anchorKey,anchor);f.block('INPUT_PREVIOUS_TERMINAL_UNRESOLVED')
+  const preparationKey=f.session.id+'__task-preparation',preparation={id:'main-preparing',sessionId:f.session.id,status:'preparing'}
+  f.branch.set(preparationKey,preparation)
+  const workflowKey='tavern_cardjob__independent-host',workflow={schemaVersion:3,id:'independent-host',
+   sessionId:f.session.id,kind:'card-export',executionPolicy:'independent',generation:'independent-generation',status:'running'}
+  const input={session:f.session,kind:'card-export',executionPolicy:'independent',format:'json',
+   system:'classify native card',user:'frozen current author text',taskStage:'native-card-conversion',
+   source:{workflowId:workflow.id,workflowType:'card',generation:workflow.generation,events:[]},
+   selection:{execution:'inline',main:f.route,actualRoute:f.route}}
+  await assert.rejects(f.host.nativeTask(input),/INDEPENDENT_CARD_WORKFLOW_REQUIRED/)
+  f.branch.set(workflowKey,workflow)
+  const sideAgent={session:{id:'side-chat'},options:f.route}
+  await assert.rejects(f.host.nativeTask({...input,agent:sideAgent}),/INDEPENDENT_CARD_MAIN_OWNER_REQUIRED/)
+  assert.equal(f.taskAgents.get(f.session.id),f.agent)
+  const work=f.host.nativeTask(input)
+  await drain()
+  assert.equal(children.length,1);assert.equal(children[0].parent,f.agent)
+  const task=f.host.tavernTasks.list(f.session)[0]
+  assert.equal(task.sessionId,f.session.id);assert.equal(task.source.inputPreparation,undefined)
+  assert.equal(task.source.preparationId,undefined);assert.deepEqual(f.branch.get(preparationKey),preparation)
+  assert.equal(f.taskAgents.get(f.session.id),f.agent);assert.deepEqual(f.branch.get(anchorKey),anchor)
+  nativeResult.resolve({stopReason:'completed',structured:{classification:'current'}})
+  assert.deepEqual(await work,{classification:'current'})
+  await continuationTick()
+  assert.deepEqual(f.inbox,[]);assert.equal(f.gateReads(),0)
+  assert.deepEqual(f.branch.get(anchorKey),anchor)
+  assert.deepEqual(f.branch.get(preparationKey),preparation)
+  const validating=deferred(),releaseValidation=deferred()
+  let archives=0
+  const late=f.host.nativeTask({...input,user:'new late classification',validate:async value=>{
+   validating.resolve();await releaseValidation.promise;return value
+  }}).then(value=>{archives++;return value})
+  const rejected=assert.rejects(late,error=>!(error instanceof InlinePending))
+  await validating.promise
+  f.branch.set(workflowKey,{...workflow,generation:'replacement-generation'})
+  releaseValidation.resolve();await rejected
+  assert.equal(archives,0,'a workflow generation change during validation cannot release an export result')
+  assert.deepEqual(f.branch.get(anchorKey),anchor);assert.deepEqual(f.inbox,[])
+  await assert.rejects(f.request(),/INPUT_PREVIOUS_TERMINAL_UNRESOLVED/,'ordinary recovery remains blocked')
+ }finally {f.close()}
+}
+console.log('tavern-task-lifecycle=ok (batch lifecycle, native host adapter, recovery and source fences; independent card execution)')

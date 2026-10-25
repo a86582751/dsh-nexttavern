@@ -411,6 +411,7 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
     async function request(spec) {
         const { session, agent, kind, source, input, signal } = spec;
         const isolatedCompaction = kind === 'memory' && input.taskStage === 'compaction';
+        const independent = spec.executionPolicy === 'independent';
         const authorDialog = kind === 'author-dialog' && input?.taskStage === 'author-dialog-submit' ? spec.authorDialog : undefined;
         const rubyTask = kind === 'ruby-analysis' && input?.taskStage === 'ruby-analysis' ? spec.rubyTask : undefined;
         if (kind === 'author-dialog' && (!authorDialog || spec.background !== true || spec.format !== 'text'))
@@ -459,6 +460,8 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
             let found = raw === undefined ? null : copy(executableTask(raw));
             if (raw !== undefined && (!found || found.id !== id || found.sessionId !== session.id))
                 throw new Error('任务记录损坏或归属不符，保留原记录以便恢复');
+            if (found && found.executionPolicy !== spec.executionPolicy)
+                throw Error('任务执行策略不同，请先完成或取消现有任务');
             if (found?.background && found.status === 'failed' && spec.retryBackground === true) {
                 found = { ...found, generation: randomUUID(), status: 'queued', validationFailures: 0, error: null, failure: null, failedAt: null, updatedAt: Date.now() };
                 await table.put(key, found);
@@ -466,21 +469,25 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
             if (found?.execution === 'spawn' && found.status === 'running' && !running.has(id) && !admissions.has(id)) {
                 // A started Ruby child may have spent its sole request before restart.
                 // Keep that unknown outcome for explicit retry instead of spending again.
-                found = rubyTask
-                    ? { ...found, status: 'failed', error: 'RUBY_NATIVE_COMPLETION_UNKNOWN',
-                        failure: { code: 'RUBY_NATIVE_COMPLETION_UNKNOWN' }, failedAt: Date.now(), updatedAt: Date.now() }
-                    : found.background || isolatedCompaction
-                        ? { ...found, generation: randomUUID(), status: 'queued', recoveredAt: Date.now(), updatedAt: Date.now() }
-                        : { ...found, generation: randomUUID(), execution: 'inline', actualRoute: copy(found.main), status: 'queued',
-                            fallback: { from: found.actualRoute, reason: 'runtime-restart', at: Date.now() }, updatedAt: Date.now() };
+                found = independent
+                    ? { ...found, status: 'failed', error: 'INDEPENDENT_TASK_COMPLETION_UNKNOWN',
+                        failure: { code: 'INDEPENDENT_TASK_COMPLETION_UNKNOWN' }, failedAt: Date.now(), updatedAt: Date.now() }
+                    : rubyTask
+                        ? { ...found, status: 'failed', error: 'RUBY_NATIVE_COMPLETION_UNKNOWN',
+                            failure: { code: 'RUBY_NATIVE_COMPLETION_UNKNOWN' }, failedAt: Date.now(), updatedAt: Date.now() }
+                        : found.background || isolatedCompaction
+                            ? { ...found, generation: randomUUID(), status: 'queued', recoveredAt: Date.now(), updatedAt: Date.now() }
+                            : { ...found, generation: randomUUID(), execution: 'inline', actualRoute: copy(found.main), status: 'queued',
+                                fallback: { from: found.actualRoute, reason: 'runtime-restart', at: Date.now() }, updatedAt: Date.now() };
                 await table.put(key, found);
             }
             if (!found) {
                 const selection = spec.selection ?? await policy.resolve(session, kind, agent);
-                found = { schemaVersion: 1, id, sessionId: session.id, branchId: session.id, kind, source: copy(source), sourceHash: taskHash(source), input: copy(input), allowedTools: copy(spec.tools ?? []),
+                found = { schemaVersion: independent ? 2 : 1, id, sessionId: session.id, branchId: session.id, kind, source: copy(source), sourceHash: taskHash(source), input: copy(input), allowedTools: copy(spec.tools ?? []),
+                    ...(independent ? { executionPolicy: spec.executionPolicy } : {}),
                     ...selection, ...(spec.promptContext ? { promptContext: copy(spec.promptContext) } : {}),
                     ...(spec.background === true ? { background: true, execution: 'spawn' } : {}),
-                    ...(isolatedCompaction ? { execution: 'spawn' } : {}),
+                    ...(isolatedCompaction || independent ? { execution: 'spawn' } : {}),
                     generationOptions: spec.maxTokens === undefined ? {} : { maxTokens: spec.maxTokens },
                     status: 'queued', generation: randomUUID(), progress: { done: 0, total: 1 }, createdAt: Date.now(), updatedAt: Date.now() };
                 await table.put(key, found);
@@ -515,7 +522,7 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
         // Normal non-main work is admitted for one event-loop turn.  A caller can
         // hold the session gate while it admits a dependent status/decision pair;
         // this never waits for a native result and background memory is excluded.
-        if (!job.background && !isolatedCompaction && spec.format !== 'workflow') {
+        if (!job.background && !isolatedCompaction && !independent && spec.format !== 'workflow') {
             const admission = enqueue(session, job, spec);
             await spec.onAdmission?.(copy(job));
             admission.readyForDispatch();
@@ -637,13 +644,13 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
                         return;
                     }
                     const failure = taskFailureDetails(ac.signal.aborted ? ac.signal.reason : error);
-                    if (live.background || isolatedCompaction) {
+                    if (live.background || isolatedCompaction || independent) {
                         await table.put(key, { ...live, status: 'failed', failure, error: failure.label, failedAt: Date.now(), updatedAt: Date.now() });
                         return;
                     }
                     await table.put(key, { ...live, execution: 'inline', actualRoute: copy(live.main), status: 'queued', fallback: { from: job.actualRoute, to: copy(live.main), at: Date.now(), reason: failure.category === 'timeout' ? 'timeout' : 'failed', failure }, error: `${failure.label}，已交回主循环`, updatedAt: Date.now() });
                 });
-                if (job.background || isolatedCompaction || signal?.aborted || superseded)
+                if (job.background || isolatedCompaction || independent || signal?.aborted || superseded)
                     throw error;
                 throw new InlinePending(id);
             }

@@ -2,7 +2,8 @@
 import {parseFragment,defaultTreeAdapter} from 'parse5'
 import type {DefaultTreeAdapterTypes} from 'parse5'
 import {decodeHTML} from 'entities'
-import ts from 'typescript'
+import ts from 'dsh-nexttavern-typescript-runtime'
+import type * as TypeScript from 'typescript'
 import parseCss from 'css-tree/parser'
 import walkCss from 'css-tree/walker'
 
@@ -196,7 +197,7 @@ export function sourceImageCssLiteralsV1(source:string,position:string,
   return result
 }
 
-function dynamicAncestor(node:ts.Node):ts.Node|undefined {
+function dynamicAncestor(node:TypeScript.Node):TypeScript.Node|undefined {
   for(let parent=node.parent;parent&&!ts.isSourceFile(parent);parent=parent.parent) {
     if(ts.isTemplateExpression(parent)||ts.isTaggedTemplateExpression(parent)
       ||ts.isBinaryExpression(parent)&&parent.operatorToken.kind===ts.SyntaxKind.PlusToken)return parent
@@ -229,17 +230,17 @@ function scriptCssContext(source:string):'stylesheet'|'declarationList'|'image-v
 export function sourceImageScriptLiteralsV1(source:string,position:string):ParsedSourceImagesV1 {
   const result=empty(),reported=new Set<number>()
   const file=ts.createSourceFile('source-images.js',source,ts.ScriptTarget.ES2023,true,ts.ScriptKind.JS)
-  const diagnostics=(file as ts.SourceFile&{parseDiagnostics:readonly ts.Diagnostic[]}).parseDiagnostics
+  const diagnostics=(file as TypeScript.SourceFile&{parseDiagnostics:readonly TypeScript.Diagnostic[]}).parseDiagnostics
   for(const diagnostic of diagnostics)result.diagnostics.push({position:position+'@'+(diagnostic.start??0),
     code:'IMAGE_SCRIPT_PARSE',message:ts.flattenDiagnosticMessageText(diagnostic.messageText,'\n')})
-  const unsupported=(node:ts.Node)=>{
+  const unsupported=(node:TypeScript.Node)=>{
     const offset=node.getStart(file)
     if(reported.has(offset))return
     reported.add(offset)
     result.diagnostics.push({position:position+'@'+offset,code:'IMAGE_DYNAMIC_LITERAL',
       message:'图片相关字符串含拼接、插值或模板标签；未执行作者代码，无法确定完整地址。'})
   }
-  const stack:ts.Node[]=[file]
+  const stack:TypeScript.Node[]=[file]
   while(stack.length) {
     const node=stack.pop()!
     if(ts.isTemplateExpression(node)&&imageMention(node.getText(file)))unsupported(node)
@@ -253,7 +254,7 @@ export function sourceImageScriptLiteralsV1(source:string,position:string):Parse
           const named=node.parent.parent.properties.find(property=>ts.isPropertyAssignment(property)
             &&(ts.isIdentifier(property.name)||ts.isStringLiteralLike(property.name))
             &&property.name.text==='name'&&ts.isStringLiteralLike(property.initializer))
-          if(named&&ts.isPropertyAssignment(named))name=(named.initializer as ts.StringLiteralLike).text
+          if(named&&ts.isPropertyAssignment(named))name=(named.initializer as TypeScript.StringLiteralLike).text
         }
         result.literals.push({uri:node.text,carrier:'script',position:at,...(name?{name}:{})})
         const directUri=/^\s*(?:https?:\/\/|data:image\/)/i.test(node.text)
@@ -271,7 +272,7 @@ export function sourceImageScriptLiteralsV1(source:string,position:string):Parse
         }
       }
     }
-    const children:ts.Node[]=[]
+    const children:TypeScript.Node[]=[]
     ts.forEachChild(node,child=>{children.push(child)})
     for(let index=children.length-1;index>=0;index--)stack.push(children[index]!)
   }

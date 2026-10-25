@@ -14,7 +14,8 @@ import type {TavernLoreCurrentNativeOverlayV1} from './tavern-lore-plan-types.mj
 import type {TavernLoreEditsDepsV1,TavernLoreJournalRequestV2,TavernLoreJournalEventV2,TavernLoreJournalResultV2,
   TavernLoreEditRecoveryAnchorV1,TavernLoreEditsDataV1,TavernLoreEditRefusalV1,
   TavernLoreEditObservationV1,TavernLoreEditJournalObservationV1,TavernLoreEditResultV1,TavernLoreMutationResultV2,
-  TavernLoreEditSourceDataCaptureV1,TavernLoreMutationRetryLocatorV1,TavernLoreMutationRetryResultV2}
+  TavernLoreEditSourceDataCaptureV1,TavernLoreMutationRetryLocatorV1,TavernLoreMutationRetryResultV2,
+  TavernLoreEditorSelectionV1,TavernLoreEditPageObservationV1}
   from './roleplay-tavern-lore-edits-types.js'
 export type * from './roleplay-tavern-lore-edits-types.js'
 export {TAVERN_LORE_EDITS_BOUNDS_V1} from './roleplay-tavern-lore-edits-data.js'
@@ -61,7 +62,7 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
       // changed records. Re-read the full namespace and Source before delivery.
       const actual=readJournal(deps,source)
       if(actual.refsSha256!==journal.refsSha256||!same(actual.headRef,journal.headRef))fail('HEAD_CHANGED')
-      return freeze({schemaVersion:1,kind:'captured-data',...packet})
+      return Object.freeze({schemaVersion:1,kind:'captured-data',...packet})
     }catch(error){return refusal(error)}
   }
   /** The actual input Owner already captured Source under the shared lock.
@@ -69,6 +70,19 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
    * is created for this synchronous DATA supplier. */
   function observeSourceData(captured:TavernLoreEditSourceDataCaptureV1):TavernLoreEditObservationV1 {
     return observeSourceDataWithLegacyData(captured).observed
+  }
+  /** Same current Source/journal contract as the full editor. Pagination only
+   * limits derived entry construction; it never substitutes a partial Source
+   * identity or grants a stale page permission to write. */
+  function observeSourcePage(captured:TavernLoreEditSourceDataCaptureV1,
+    selection:TavernLoreEditorSelectionV1):TavernLoreEditPageObservationV1 {
+    try {
+      if(selection.kind==='page'&&(!Number.isSafeInteger(selection.cursor)||selection.cursor<0
+        ||!Number.isSafeInteger(selection.limit)||selection.limit<1||selection.limit>24))fail('REQUEST_INVALID')
+      const {source,legacy,journal}=sourceJournal(captured,{})
+      const packet=publishedData(source,journal,legacy.overlay,selection)
+      return Object.freeze({schemaVersion:1,kind:'captured-data',data:packet.data,editor:packet.editor,page:packet.page!})
+    }catch(error){return refusal(error)}
   }
   function sourceJournal(captured:TavernLoreEditSourceDataCaptureV1,options:{suppressBookConstants?:boolean}) {
     if(!captured||captured.schemaVersion!==1||captured.kind!=='captured-data')fail('SOURCE_UNAVAILABLE')
@@ -98,7 +112,7 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
   } {
     try {
       const {source,legacy,journal}=sourceJournal(captured,options),packet=publishedData(source,journal,legacy.overlay)
-      return {observed:freeze({schemaVersion:1,kind:'captured-data',...packet}),legacy}
+      return {observed:Object.freeze({schemaVersion:1,kind:'captured-data',...packet}),legacy}
     }catch(error){return {observed:refusal(error),legacy:null}}
   }
   /** Currency of already parsed owner DATA; raw records enter through the
@@ -282,6 +296,6 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
       })
     }catch(error){return refusal(error,recovery)}
   }
-  return {observe,captureCurrentData:observe,observeSourceData,observeSourceDataWithLegacyData,
+  return {observe,captureCurrentData:observe,observeSourceData,observeSourcePage,observeSourceDataWithLegacyData,
     observeJournalDataWithLegacyData,current,edit,mutate,retryMutation,observeCurrent}
 }

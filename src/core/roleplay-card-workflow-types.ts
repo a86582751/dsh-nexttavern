@@ -1,5 +1,5 @@
 import type { ContextSession, ContextMessage } from './roleplay-context.js'
-import type { TaskAgent, TaskSelection, StoredTask } from './tavern-task-types.js'
+import type { TaskAgent, TaskSelection, StoredTask, TaskExecutionPolicy } from './tavern-task-types.js'
 import type { ResourceRecord } from './roleplay-resource-bridge-types.js'
 import type { createTavernLibrary } from './tavern-library.js'
 import type {NextTavernCardExportDocument} from './nexttavern-card.js'
@@ -31,6 +31,7 @@ export interface CardWorkflowJob extends Record<string, unknown> {
   status: string
   selection?: TaskSelection
   execution: TaskSelection['execution'] | 'deterministic'
+  executionPolicy?: TaskExecutionPolicy
   source: {sourceFile: string | null; sha256: string;fileSha256?:string}
   clientRequestId?: string
   toolCallIds?: string[]
@@ -64,6 +65,7 @@ export interface CardWorkflowDependencies {
   driveNativeConversion?(session:CardWorkflowSession,job:CardWorkflowJob,
     agent?:CardWorkflowAgent,signal?:AbortSignal):Promise<CardWorkflowResult>
   nativeTask(options: {
+    executionPolicy?: TaskExecutionPolicy;
     session: CardWorkflowSession; agent?: CardWorkflowAgent; kind: string; format: string; selection: TaskSelection;
     source: {workflowId: string; workflowType: string; generation: string; events: {seq: number; hash: string}[]}; signal?: AbortSignal;
     timeoutMs: number; tools: string[]; system: string; user: string; validate(): Promise<CardWorkflowResult>

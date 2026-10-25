@@ -360,6 +360,10 @@ let SessionController = (() => {
         selectModel(request) {
             return this.commands.selectModel(request);
         }
+        /** Select a model for this Session without changing the default used by other conversations. */
+        selectModelForSession(request) {
+            return this.commands.selectModel(request, false);
+        }
         /**
          * Select the first available account model after login when no provider API key is configured.
          * @returns after saving the first available model or retaining the existing default.

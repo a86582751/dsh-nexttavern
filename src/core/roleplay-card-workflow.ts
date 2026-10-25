@@ -6,6 +6,7 @@ import { isInlinePending, taskPhaseMessage } from './tavern-tasks.js'
 import { assertWorkspaceSession, type ContextSession } from './roleplay-context.js'
 import {nativeCardConversionIsDeterministicV1} from './native-card-conversion.js'
 import type { CardWorkflowDependencies, CardWorkflowSession, CardWorkflowAgent, CardWorkflowRecord, CardWorkflowJob, CardWorkflowResult } from './roleplay-card-workflow-types.js'
+import type {TaskExecutionPolicy} from './tavern-task-types.js'
 
 export function createCardWorkflows(deps: CardWorkflowDependencies) {
   const { T, storyBranchIsActive, modelPolicy, statusFixedContext, nativeTask, driveStructuredImport,
@@ -51,9 +52,11 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
   }
   async function beginCardWorkflow(session: CardWorkflowSession,kind: string,sourceFile: unknown,
     agent?: CardWorkflowAgent,clientRequestId?: string,toolCallId?: string,mode:'original'|'organized'='original',
-    authoringOrigin?:import('./roleplay-card-workflow-types.js').NativeCardAuthoringOriginV1) {
+    authoringOrigin?:import('./roleplay-card-workflow-types.js').NativeCardAuthoringOriginV1,
+    executionPolicy?:TaskExecutionPolicy) {
     return withStartLock(session.id,async()=>{
     if(!['card-import','card-export','card-convert'].includes(kind))throw new Error('角色卡任务类型无效')
+    if(executionPolicy==='independent'&&kind==='card-import')throw Error('独立执行策略仅用于角色卡导出或转换')
     if(clientRequestId!==undefined && (typeof clientRequestId!=='string' || kind!=='card-import'
       || !/^[A-Za-z0-9_-]{1,128}$/.test(clientRequestId)))throw new Error('角色卡请求 requestId 无效')
     if(toolCallId!==undefined&&(typeof toolCallId!=='string'||kind!=='card-import'
@@ -82,6 +85,7 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
       if(matches.length>1)throw new Error('角色卡请求身份重复，拒绝选择不确定任务')
       const previous=matches[0]
       if(previous){
+        if(previous.executionPolicy!==executionPolicy)throw Error('角色卡任务执行策略不同，请先完成或取消现有任务')
         if(previous.kind!==kind || previous.source.sourceFile!==source?.sourcePath
           || previous.source.sha256!==sourceHash)throw new Error('角色卡 requestId 已绑定不同来源')
         if(clientRequestId&&previous.clientRequestId&&previous.clientRequestId!==clientRequestId)
@@ -100,6 +104,7 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
     const active=activeCardWorkflow(session)
     if(active&&(active.kind!==kind||kind==='card-export'&&(active.mode??'organized')!==mode))throw new Error('当前会话已有另一项角色卡任务，请先完成或取消')
     if(active){
+      if(active.executionPolicy!==executionPolicy)throw Error('角色卡任务执行策略不同，请先完成或取消现有任务')
       if(source&&(active.source.sha256!==sourceHash
         || active.source.sourceFile!==source.sourcePath))throw new Error('当前会话正在读取另一张卡，请先完成或取消')
       if(kind==='card-convert'&&(active.source.sourceFile!==(resourceSource?.sourcePath??null)
@@ -125,11 +130,12 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
     const selection=deterministic?undefined:await modelPolicy.resolve(session,kind==='card-convert'?'card-export':kind,agent)
     exportSource?.assertCurrent()
     const id=randomUUID()
-    const job={schemaVersion:deterministic&&kind==='card-export'?2:1,id,kind,sessionId:session.id,branchId:session.id,generation:randomUUID(),
+    const job={schemaVersion:executionPolicy==='independent'?3:deterministic&&kind==='card-export'?2:1,id,kind,sessionId:session.id,branchId:session.id,generation:randomUUID(),
+      ...(executionPolicy?{executionPolicy}:{}),
       ...(kind==='card-export'?{mode,...(exportSource?.document?{exportDocument:exportSource.document}:{})}:{}),
       ...(exportSource?.conversionSnapshot?{conversionSnapshot:exportSource.conversionSnapshot,
         nativeAuthoring:exportSource.nativeAuthoring,conversionClassification:exportSource.conversionClassification}:{}),
-      ...(selection?{selection,actualRoute:selection.actualRoute}:{}),execution:deterministic?'deterministic':selection!.execution,
+      ...(selection?{selection,actualRoute:selection.actualRoute}:{}),execution:deterministic?'deterministic':executionPolicy==='independent'?'spawn':selection!.execution,
       ...(authoringOrigin?{authoringOrigin}:{}),
       status:'queued',createdAt:Date.now(),progress:{done:0,total:1},
       ...(clientRequestId?{clientRequestId}:{}),
@@ -203,6 +209,7 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
         ?job.kind==='card-export'?await deps.driveStructuredExport(session,job)
           :await driveStructuredImport(session as CardWorkflowSession,job,agent,signal)
         : await nativeTask({session,agent,kind:job.kind,format:'workflow',selection:job.selection!,source,signal,timeoutMs:600000,
+        executionPolicy:job.executionPolicy,
         tools:job.kind==='card-import'?['rp_card_import_begin','rp_card_import_chunk','rp_card_import_stage','rp_card_import_finalize']:['rp_card_export_begin','rp_card_export_chunk','rp_card_export_finalize'],
         system:job.kind==='card-import'
           ?'使用原生读卡工具处理需要语义分类的 Markdown/TXT：rp_card_import_begin → 连续rp_card_import_chunk全文审阅 → rp_card_import_stage完整分类 → rp_card_import_finalize激活。只处理任务指定文件，失败不能绕过或改源文件，不续写剧情。已存在当前任务的导入记录时续做该记录，不重新开始。完成后提交任务结果。\n'+CARD_CLASSIFICATION_GUIDE
@@ -219,6 +226,7 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
             }
           }
           if(!completed)throw new Error('角色卡任务还没有可核验的完整结果，请继续原生工具流程')
+          if(job.executionPolicy==='independent')assertCardWorkflow(session,completed)
           if(job.kind==='card-import') {
             const resource=await archiveImported(session,completed)
             return {importId:completed.importId,resourceId:resource?.id??resource?.resourceId}
@@ -229,17 +237,18 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
         },
       })
       const live=T.branch.get(cardWorkflowKey(job.id)) as CardWorkflowJob | undefined
-      if(live?.generation===job.generation&&!['cancelled','failed'].includes(live.status))
+      if(live?.generation===job.generation&&!['cancelled','stale','failed'].includes(live.status))
         await T.branch.put(cardWorkflowKey(job.id),{...live,status:'completed',result,resourceId:result.resourceId,
           progress:{done:1,total:1},completedAt:Date.now()})
     }catch(error){
+      const pending=job.executionPolicy!=='independent'&&isInlinePending(error)
       const live=T.branch.get(cardWorkflowKey(job.id)) as CardWorkflowJob | undefined
       if(live?.generation===job.generation&&live.status!=='cancelled')await T.branch.put(cardWorkflowKey(job.id),{
-        ...live,status:isInlinePending(error)?'waiting-main':'failed',
-        error:isInlinePending(error)?null:String((error as Error).message),
-        ...(isInlinePending(error)?{}:{failedAt:Date.now()}),
+        ...live,status:pending?'waiting-main':'failed',
+        error:pending?null:String((error as Error).message),
+        ...(pending?{}:{failedAt:Date.now()}),
       })
-      if(isInlinePending(error))throw error
+      if(pending)throw error
     }
   }
   async function completeCardWorkflow(session: CardWorkflowSession,record: CardWorkflowRecord,result: CardWorkflowResult) {
@@ -247,6 +256,7 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
     const job=T.branch.get(cardWorkflowKey(record.workflowId)) as CardWorkflowJob | undefined
     if(!job||job.sessionId!==session.id||['cancelled','stale','failed'].includes(job.status))throw new Error('角色卡任务已失效')
     assertStartPublished(job)
+    if(job.executionPolicy==='independent'&&record.workflowGeneration!==job.generation)throw Error('角色卡任务授权已取消或来源已失效')
     if(job.kind==='card-import'?(!record.importId||record.status!=='active'||record.rawSha256!==job.source.sha256):!record.exportId)throw new Error('角色卡任务与完成结果不匹配')
     if(!result.resourceId){await T.branch.put(cardWorkflowKey(job.id),{...job,status:'failed',error:'设定已保存，资源入库待重试'});return}
     for(const task of tavernTasks.pending(session).filter(t=>(t.source as {workflowId?: string} | undefined)?.workflowId===job.id)) {

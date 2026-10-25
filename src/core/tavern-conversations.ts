@@ -50,7 +50,7 @@ type RegisteredForkOperation = LegacyForkOperation & {
   kind: string
   anchor: { sourceSessionId: string; [field: string]: unknown }
 }
-const kinds = new Set(['regenerate','player-edit','player-edit-send','edit','delete-user'])
+const kinds = new Set(['regenerate','player-edit','player-edit-send','edit','delete-user','prepare-clean-branch'])
 const copy = <T>(value: T): T => structuredClone(value)
 const id = (value: unknown): string => {
   if(typeof value!=='string'||!/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/.test(value)||['__proto__','constructor','prototype'].includes(value))throw new Error('会话或操作标识无效')
@@ -70,10 +70,10 @@ export function createConversationCatalog({read,write}: {
   for(const book of Object.values(state.conversations))if(book?.selectionRevision!==undefined&&(!Number.isSafeInteger(book.selectionRevision)||book.selectionRevision<0))throw Error('世界线选择版本损坏，未覆盖原记录')
   let chain: Promise<unknown> = Promise.resolve()
   const rootOf = (sessionId: string, snapshot = state) => snapshot.worldlines[id(sessionId)]?.conversationId ?? sessionId
-  const mutate = (work: (next: ConversationSnapshot) => boolean | void | Promise<boolean | void>) => {
+  const mutate = (work: (next: ConversationSnapshot) => boolean | void | Promise<boolean | void>,callerCurrent?:()=>void) => {
     const job=chain.catch(()=>{}).then(async()=>{
       const next=copy(state),changed=await work(next)
-      if(changed!==false){next.revision=state.revision+1;next.updatedAt=Date.now();await write(next);state=next}
+      if(changed!==false){callerCurrent?.();next.revision=state.revision+1;next.updatedAt=Date.now();await write(next);state=next}
       return copy(state)
     })
     chain=job;return job
@@ -99,14 +99,14 @@ export function createConversationCatalog({read,write}: {
       const root=rootOf(sessionId),book=state.conversations[root]
       return {root,activeSessionId:book?.activeSessionId??root,revision:book?.selectionRevision??0}
     },
-    reserve:(reservation: WorldlineReservation)=>mutate(next=>reserve(next,reservation)),
-    markReady:(sessionId: string)=>mutate(next=>{
+    reserve:(reservation: WorldlineReservation,callerCurrent?:()=>void)=>mutate(next=>reserve(next,reservation),callerCurrent),
+    markReady:(sessionId: string,callerCurrent?:()=>void)=>mutate(next=>{
       const member=next.worldlines[id(sessionId)]
       if(!member)throw new Error('世界线尚未登记')
       if(member.status==='failed')throw new Error('世界线已失效，请重新发起')
       if(member.status==='ready')return false
       member.status='ready'
-    }),
+    },callerCurrent),
     fail:(sessionId: string,operationId?: string)=>mutate(next=>{
       const member=next.worldlines[id(sessionId)]
       if(!member)return false

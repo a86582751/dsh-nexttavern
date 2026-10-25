@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { withTavernLock } from './tavern-tasks.js'
 import { VELVET_BLADE_TEXT } from './narrative-preset-default.js'
 import { NARRATIVE_STYLE_PRESETS } from './narrative-preset-catalog.js'
-import type { AuthorToolsDependencies } from './roleplay-author-tools-types.js'
+import type { AuthorToolExecution,AuthorToolsDependencies } from './roleplay-author-tools-types.js'
 
 export type StyleMode = 'system' | 'blend' | 'card'
 export interface StyleSelection { presetId: string; mode: StyleMode }
@@ -107,8 +107,13 @@ export function createNarrativePresets(table: Table, rootOf: (sessionId: string)
 }
 
 /** Agent management uses the same store/CAS/root mapping as the panel; no second preset registry. */
-export function registerNarrativePresetTool({ctx,simpleTool,sessionOf,storyBranchIsActive,presets}:Pick<AuthorToolsDependencies,'ctx'|'simpleTool'|'sessionOf'|'storyBranchIsActive'>&{presets:ReturnType<typeof createNarrativePresets>}) {
-  ctx.effect(()=>ctx.tools.register(simpleTool('rp_preset',
+export function registerNarrativePresetTool({
+  ctx,simpleTool,sessionOf,storyBranchIsActive,presets,assertCallerCurrent,
+}:Pick<AuthorToolsDependencies,'ctx'|'simpleTool'|'sessionOf'|'storyBranchIsActive'>&{
+  presets:ReturnType<typeof createNarrativePresets>
+  assertCallerCurrent?(execution:AuthorToolExecution):void
+}) {
+  const tool=simpleTool('rp_preset',
     '管理文风预设。list/read 只读；按玩家明确要求 create/update/select/inherit。内置只读，create copy_from 可复制；update 只做 name 或唯一 find/replace 修改，保留其余正文。预设库共享，修改可能影响其他引用对话；范围不明确时复制并仅选择当前对话。写入必须携带刚读取的 expected_revision，冲突重新读取，不盲重试。此轮是管理问答，不推进剧情。',
     {type:'object',properties:{action:{type:'string',enum:['list','read','create','update','select','inherit']},preset_id:{type:'string'},copy_from:{type:'string'},name:{type:'string'},text:{type:'string'},find:{type:'string'},replace:{type:'string'},mode:{type:'string',enum:['system','blend','card']},scope:{type:'string',enum:['conversation','global']},expected_revision:{type:'integer',minimum:0},cursor:{type:'integer',minimum:0},offset:{type:'integer',minimum:0},max_chars:{type:'integer',minimum:256,maximum:8000}},required:['action'],additionalProperties:false},
     async(a,exec)=>{
@@ -159,9 +164,12 @@ export function registerNarrativePresetTool({ctx,simpleTool,sessionOf,storyBranc
       if(exec.signal?.aborted||!storyBranchIsActive(session))throw Error('当前世界线已失效或操作取消')
       const next=await presets.mutate(session.id,{...body,expectedRevision:a.expected_revision},()=>{
         if(exec.signal?.aborted||!storyBranchIsActive(session)||presets.policy(session.id).conversationId!==before.conversationId)throw Error('当前世界线已失效或操作取消')
+        assertCallerCurrent?.(exec)
       })
       if(action==='create')createdId=next.presets.find(p=>!before.presets.some(old=>old.id===p.id))?.id
       return {ok:true,...compact(next),action,presetId:createdId??chosen?.id??null,selectionChanged:action==='select'||action==='inherit',sharedPresetEdited:action==='update',affectedUsage:action==='update'?usage(chosen!.id):null}
     }
-  )),'roleplay: preset management tool')
+  )
+  ctx.effect(()=>ctx.tools.register(tool),'roleplay: preset management tool')
+  return tool
 }

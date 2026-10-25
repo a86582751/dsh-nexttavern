@@ -1,6 +1,8 @@
 import { keyOf, recordSha256 } from './roleplay-data.js';
 import { withTavernLock } from './tavern-tasks.js';
 import { importActiveKey } from './roleplay-import.js';
+import { readAuthorCoreDataV1 } from './roleplay-import-record.js';
+import type { ImportRecord } from './roleplay-import-types.js';
 import type { PanelRouteBody, SettingArguments, SettingToolDependencies } from './roleplay-panel-routes-types.js';
 import { simpleTool } from './roleplay-task-tools.js';
 import type { HostAgent, HostSession } from './roleplay-task-host-types.js';
@@ -39,7 +41,16 @@ export function registerSettingTool(deps: SettingToolDependencies) {
         if ((table === 'cards' || table === 'worldbook') && !/^[a-zA-Z0-9_-]{1,64}$/.test(a.id ?? ''))
             throw Error('先 list 取得条目 id；新条目 id 为 1–64 位字母、数字、下划线或连字符');
         const key = keyOf(s.id, table === 'cards' || table === 'worldbook' ? a.id! : 'spec'), record = T[table].get(key);
-        const field = table === 'rules' ? a.target! : 'content', text = String(record?.[table === 'status' ? 'text' : field] ?? '');
+        const field = table === 'rules' ? a.target! : 'content';
+        let text = String(record?.[table === 'status' ? 'text' : field] ?? '');
+        if (a.target === 'core') {
+            const pointer = T.branch.get(importActiveKey(s.id));
+            const imported = pointer?.importId ? T.branch.get(keyOf(
+                pointer.sourceRecordSessionId ?? s.id, `import-${pointer.importId}`
+            )) as unknown as ImportRecord | undefined : undefined;
+            // Edit the author's Core projection; CAS still owns the actual rules record.
+            text = readAuthorCoreDataV1(imported, record ?? {}).text;
+        }
         const revision = record ? recordSha256(record) : table === 'cards' || table === 'worldbook' ? 'missing' : recordSha256(record);
         return {
             table, key, record, text, revision, exists: record !== undefined && record !== null
@@ -130,13 +141,21 @@ export function registerSettingTool(deps: SettingToolDependencies) {
             before, body, text
         };
     }
-    async function apply(s: HostSession, a: SettingArguments, signal?: AbortSignal, repairId?: string, stamp = deps.selectionStamp(s) ?? undefined) {
+    async function apply(
+        s: HostSession,
+        a: SettingArguments,
+        signal?: AbortSignal,
+        repairId?: string,
+        stamp = deps.selectionStamp(s) ?? undefined,
+        assertCallerCurrent?:()=>void,
+    ) {
         // The import lock keeps the revision check and the append-only setting mutation atomic.
         return withImportLock(
         s.id,
             null,
             async () => {
                 active(s, signal, stamp);
+                assertCallerCurrent?.();
                 const existing = target(s, a);
                 if (repairId && object(existing.record?.editedFrom).repairId === repairId)
                     return {
@@ -151,7 +170,7 @@ export function registerSettingTool(deps: SettingToolDependencies) {
                             repairId
                         } : {})
                     },
-                    () => active(s, signal, stamp),
+                    () => {active(s, signal, stamp);assertCallerCurrent?.();},
                     'agent-edit'
                 );
                 if (!saved.ok)
@@ -391,13 +410,12 @@ export function registerSettingTool(deps: SettingToolDependencies) {
             type: 'string'
         }
     };
-    ctx.effect(
-    () => ctx.tools.register(simpleTool<SettingArguments, {
+    const settingTool=simpleTool<SettingArguments, {
         agent?: HostAgent;
         signal?: AbortSignal;
     }, Promise<unknown>>(
     'rp_setting',
-        '定点管理已导入设定：list/read 取得当前世界线与版本；patch 用唯一 find/replace，append 加入固定设定，create 增加人物/世界书。保留未返回分页及未改字段，不重新导入、不重开剧情。发现问题优先 repair：提交明确目标与 instruction 后立即继续正文，专用后台子代理查证修补；basis=source 需本卡原著 source_id，basis=player 仅用于玩家明确新设定。jobs 查看结果，失败不盲重试。版本或世界线变化拒绝覆盖。正文演出与原著设定不同不自动视为错误，角色知情边界不能凭空改变。',
+        '定点管理已导入设定：list/read 取得 branchId 与 revision；任何写入必须原样带 expected_branch_id=branchId 和 expected_revision=revision。patch 用唯一 find/replace，append 加入固定设定，create 增加人物/世界书。保留未返回分页及未改字段，不重新导入、不重开剧情。发现问题优先 repair：提交明确目标与 instruction 后立即继续正文，专用后台子代理查证修补；basis=source 需本卡原著 source_id，basis=player 仅用于玩家明确新设定。jobs 查看结果，失败不盲重试。版本或世界线变化拒绝覆盖。正文演出与原著设定不同不自动视为错误，角色知情边界不能凭空改变。',
 
         {
             type: 'object', properties, required: ['action'], additionalProperties: false
@@ -554,11 +572,10 @@ export function registerSettingTool(deps: SettingToolDependencies) {
                     }
                 );
             }
-            return apply(s, a, exec.signal);
+            return apply(s, a, exec.signal, undefined, undefined, () => deps.assertCallerCurrent?.(exec));
         }
-    )),
-        'roleplay: bounded setting repair'
     );
+    ctx.effect(() => ctx.tools.register(settingTool), 'roleplay: bounded setting repair');
     ctx.effect(
     () => ctx.tools.register(simpleTool<Record<string, unknown>, {
         agent?: HostAgent;
@@ -651,4 +668,5 @@ export function registerSettingTool(deps: SettingToolDependencies) {
             }))) + '\n成功无需打断正文；需要玩家判断时简短说明，不擅自认定。' : '';
         }
     });
+    return settingTool;
 }

@@ -37,10 +37,14 @@ export function decodeTaskRecord(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value))
         return null;
     const record = value;
-    if (record.schemaVersion !== 1 || typeof record.id !== 'string' || typeof record.sessionId !== 'string' ||
+    if ((record.schemaVersion !== 1 && record.schemaVersion !== 2) || typeof record.id !== 'string' || typeof record.sessionId !== 'string' ||
         (record.branchId !== undefined && typeof record.branchId !== 'string') || typeof record.kind !== 'string' || typeof record.status !== 'string' ||
         !['queued', 'running', 'waiting-main', 'completed', 'failed', 'cancelled', 'stale'].includes(record.status) ||
         !['inline', 'spawn'].includes(String(record.execution ?? 'spawn')))
+        return null;
+    if (record.schemaVersion === 2
+        ? record.executionPolicy !== 'independent' || record.execution !== 'spawn'
+        : record.executionPolicy !== undefined)
         return null;
     return record;
 }

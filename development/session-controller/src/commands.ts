@@ -150,7 +150,7 @@ export class SessionCommandController {
    * @param request - Session identity and requested model selection.
    * @returns the normalized selection installed for the Session, without waiting for default persistence.
    */
-  async selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue> {
+  async selectModel(request: SessionSelectModelRequest, saveDefault = true): Promise<SessionSelectModelValue> {
     const agent = await this.resolveAgent(request.sessionId)
     return this.agents.serializeImageAdmission(agent, async () => {
       try {
@@ -170,7 +170,7 @@ export class SessionCommandController {
             : { reasoningEffort: resolved.reasoningEffort }),
         }
         this.agents.selectForNextRequest(agent, selected)
-        void this.ctx.agentDefaultModel.saveSelection(selected).catch((error: unknown) => {
+        if (saveDefault) void this.ctx.agentDefaultModel.saveSelection(selected).catch((error: unknown) => {
           this.ctx.logger.warn(
             `session-controller: model selection changed for the Session but the default was not saved: ${String(error)}`,
           )

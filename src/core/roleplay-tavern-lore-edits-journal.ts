@@ -19,7 +19,8 @@ import type {TavernLoreCurrentNativeOverlayV1,TavernLoreSemanticEntryV1}
   from './tavern-lore-plan-types.mjs'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {TavernLoreEditsDepsV1,TavernLoreEditIdentityV1,TavernLoreEditHeadV1,TavernLoreJournalEventV2,
-  TavernLoreEditRefV1,TavernLoreEditHeadRefV1,TavernLoreEditsDataV1,TavernLoreEditEditorDataV1,TavernLoreMutationRetryLocatorV1}
+  TavernLoreEditRefV1,TavernLoreEditHeadRefV1,TavernLoreEditsDataV1,TavernLoreEditEditorDataV1,TavernLoreMutationRetryLocatorV1,
+  TavernLoreEditorSelectionV1}
   from './roleplay-tavern-lore-edits-types.js'
 
 export interface LoreEditJournalV1 {
@@ -270,8 +271,8 @@ export function publishedJournalData(source:TavernLoreSourceDataV1,journal:LoreE
   return freeze({...body,dataSha256:recordSha256(body)})
 }
 export function publishedData(source:TavernLoreSourceDataV1,journal:LoreEditJournalV1,
-  editorBaseOverlay?:TavernLoreCurrentNativeOverlayV1)
-  :{data:TavernLoreEditsDataV1;editor:TavernLoreEditEditorDataV1} {
+  editorBaseOverlay?:TavernLoreCurrentNativeOverlayV1,selection?:TavernLoreEditorSelectionV1)
+  :{data:TavernLoreEditsDataV1;editor:TavernLoreEditEditorDataV1;page?:{total:number;nextCursor:number|null}} {
   const data=publishedJournalData(source,journal,editorBaseOverlay)
   // Only the editor view includes actual pre-existing legacy differences.
   // The journal data/encodings remain append-only fields, so the prompt owner
@@ -279,9 +280,16 @@ export function publishedData(source:TavernLoreSourceDataV1,journal:LoreEditJour
   const editorOverlay=editorBaseOverlay?composeRoleplayTavernCurrentOverlayV1(editorBaseOverlay,data.overlay):data.overlay,
     compiled=compileTavernLoreBookV1(compilerInput(source,editorOverlay,data.currentNativeMembership))
   if(compiled.kind!=='compiled')fail('FIELDS_INVALID',compiled.diagnostics[0]?.code)
+  // The complete compiler plan still owns Source and semantic identities.
+  // Consumers requesting a page only resolve and construct those entries;
+  // editing a single member must not build every other member's editor view.
+  const all=compiled.plan.entries,entry=selection?.kind==='entry'
+    ?all.find(row=>row.entryId===selection.entryId):undefined
+  const selected=selection?.kind==='page'?all.slice(selection.cursor,selection.cursor+selection.limit)
+    :selection?.kind==='entry'?(entry?[entry]:[]):all
   const editor:TavernLoreEditEditorDataV1={authority:'consumer-data-only',sessionId:source.sessionId,
     sourceSha256:source.sourceSha256,dataSha256:data.dataSha256,revision:journal.head.revision,
-    entries:compiled.plan.entries.map(entry=>({entryId:entry.entryId,rawEntryPointer:entry.sourcePointer,
+    entries:selected.map(entry=>({entryId:entry.entryId,rawEntryPointer:entry.sourcePointer,
       rawEntrySha256:entry.rawEntrySha256,disposition:entry.disposition,
       semantic:{...ST_LORE_ENTRY_DEFAULTS_V1,displayIndex:entry.ordinal,...entry.semanticOverrides} as TavernLoreSemanticEntryV1,
       contentText:resolveTavernLoreContentTextV1(compiled.plan,`${entry.sourcePointer}/content`).text,
@@ -289,5 +297,9 @@ export function publishedData(source:TavernLoreSourceDataV1,journal:LoreEditJour
       ...(entry.currentNativeMember?{currentNativeMember:entry.currentNativeMember}:{})}))}
   // These are owner outputs. Raw requests, journal records and compiler inputs
   // keep their admission budgets; combining their results is not another input.
-  return freeze({data,editor})
+  // publishedJournalData already deeply froze data. Freeze only the newly
+  // constructed view instead of walking that complete Source again.
+  return Object.freeze({data,editor:freeze(editor),...(selection?{page:Object.freeze({total:all.length,
+    nextCursor:selection.kind==='page'&&selection.cursor+selected.length<all.length
+      ?selection.cursor+selected.length:null})}:{})})
 }

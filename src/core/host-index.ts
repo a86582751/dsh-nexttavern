@@ -6,12 +6,31 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync } from 
 import { randomUUID } from 'node:crypto'
 import { createConversationCatalog, type LegacyForkOperation, type ConversationSnapshot } from './tavern-conversations.js'
 import { readUserInfo as readUserInfoFile, writeUserInfo } from './roleplay-userinfo.js'
+import {receiveSideChatBridge} from './roleplay-side-chat-bridge.js'
 
 type UserInfo = Record<string, unknown>
 type SessionEvent = { type?: string; data?: { agentPreset?: unknown } }
 type Session = { id: string; header?: { agentPreset?: unknown } }
 type SessionObservation = Disposable & { events: readonly SessionEvent[] }
 type ResolvedAgent = { agent?: { session?: Session }; error?: unknown }
+type ScopedAgent = {session:Session;ctx:{tools:{register(definition:unknown):()=>void}}}
+type SkinPlugin = {
+  entryId: string
+  moduleName: string
+  patchId?: string
+  enabled: boolean
+  fiberPhase: string | null
+  readOnlyReason?: string
+}
+type SkinChange = {
+  application: 'applied' | 'restart-required' | 'overridden' | 'failed' | 'cancelled'
+  changed: boolean
+  error?: { code: string; diagnostic?: string }
+}
+type SkinManager = {
+  listPlugins: () => Promise<SkinPlugin[]>
+  setPluginEnabled: (entryId: string, enabled: boolean) => Promise<SkinChange>
+}
 type HostContext = {
   connection: { fetch: { register: (route: Route) => unknown } }
   sessionController: { resolveAgent: (id: string) => Promise<ResolvedAgent | null | undefined> }
@@ -19,6 +38,11 @@ type HostContext = {
   sessions: { get: (id: string) => Session | null | undefined }
   effect: (work: () => unknown, description?: string) => unknown
   provide?: (name: string, value: unknown) => unknown
+  get?: (name: 'pluginManager') => SkinManager | undefined
+  agents:{list():ScopedAgent[];get(id:string):ScopedAgent|undefined}
+  on:(event:'agent/created'|'agent/disposed'|'agent/status',listener:(event:{agent:ScopedAgent;status?:string})=>void,
+    options:{global:true})=>()=>void
+  systemPrompt: {section(definition:{name:string;order:number;text(context:{agent?:unknown}):string}):()=>void}
   logger?: { warn?: (message: string) => unknown }
 }
 type Route = ConnectionFetchRoute
@@ -35,10 +59,76 @@ const requestBody = (value: unknown): Record<string, unknown> =>
 const errorText = (error: unknown): string =>
   String(error !== null && typeof error === 'object' && 'message' in error ? error.message ?? error : error)
 
+/** The host manager owns profile persistence and reports whether a live change applied. */
+export function createSkinRoute(managerOf: () => SkinManager | undefined): Route {
+  const findSkin = async (manager: SkinManager) => (await manager.listPlugins())
+    .find(row => row.patchId === 'ui-skin-nexttavern' || row.moduleName === 'dsh-nexttavern-amber')
+  const snapshot = (row: SkinPlugin | undefined) => ({
+    available: row !== undefined && row.readOnlyReason === undefined,
+    enabled: row?.enabled ?? null,
+    phase: row?.fiberPhase ?? null,
+    reason: !row ? '此 profile 尚未安装内置皮肤'
+      : row.readOnlyReason ? `宿主不允许修改此皮肤：${row.readOnlyReason}` : undefined,
+  })
+  return { requestBody: 'buffered', path: '/api/roleplay/skin', methods: ['GET', 'POST'], fetch: async request => {
+    try {
+      const manager = managerOf()
+      if (!manager) return jsonResponse(503, {
+        ok: false, skin: { available: false, enabled: null, reason: '当前宿主不提供插件管理' },
+      })
+      const row = await findSkin(manager)
+      if (request.method === 'GET') return jsonResponse(200, { ok: true, skin: snapshot(row) })
+      const body = requestBody(await request.json().catch(() => null))
+      if (typeof body.enabled !== 'boolean') return jsonResponse(400, { ok: false, error: 'enabled 必须是布尔值' })
+      if (!row || row.readOnlyReason) return jsonResponse(409, { ok: false, skin: snapshot(row) })
+      const result = await manager.setPluginEnabled(row.entryId, body.enabled)
+      // Re-read after the mutation: a higher-priority layer can keep the opposite selection.
+      const skin = snapshot(await findSkin(manager))
+      const ok = result.application === 'applied' || result.application === 'restart-required'
+      return jsonResponse(ok ? 200 : 409, { ok, skin, result })
+    } catch (error) { return jsonResponse(500, { ok: false, error: errorText(error) }) }
+  } }
+}
+
 export const name = 'dsh-roleplay-ui'
-export const inject = ['connection', 'sessionController', 'sessionQuery', 'sessions']
+export const inject = ['connection', 'sessionController', 'sessionQuery', 'sessions', 'agents', 'systemPrompt']
 
 export function apply(ctx: HostContext): void {
+  ctx.effect(()=>receiveSideChatBridge(bridge=>{
+    const registrations=new Map<ScopedAgent,(()=>void)[]>()
+    const detach=(agent:ScopedAgent)=>{
+      for(const dispose of registrations.get(agent)??[])dispose()
+      registrations.delete(agent)
+    }
+    const attach=(agent:ScopedAgent)=>{
+      if(!bridge.owns(agent.session.id)||registrations.has(agent))return
+      registrations.set(agent,bridge.toolsFor(agent.session.id).map(tool=>agent.ctx.tools.register(tool)))
+    }
+    for(const agent of ctx.agents.list())attach(agent)
+    const disposeCreated=ctx.on('agent/created',({agent})=>attach(agent),{global:true})
+    const disposeDisposed=ctx.on('agent/disposed',({agent})=>detach(agent),{global:true})
+    const disposeTools=bridge.onToolsChanged(id=>{
+      const agent=ctx.agents.get(id)
+      if(agent){detach(agent);attach(agent)}
+    })
+    // Native idle follows the complete inbox drain, so capabilities remain
+    // available across every tool continuation of the current task.
+    const disposeIdle=ctx.on('agent/status',({agent,status})=>{
+      if(status==='idle'&&bridge.owns(agent.session.id))bridge.finishTools(agent.session.id)
+    },{global:true})
+    // Session creation announces the Agent before Core can publish its durable
+    // side binding. This single-target notification closes that ordering gap.
+    const disposeBinding=bridge.onBinding(({oldSideSessionId,newSideSessionId})=>{
+      for(const agent of registrations.keys())if(agent.session.id===oldSideSessionId)detach(agent)
+      const agent=ctx.agents.get(newSideSessionId)
+      if(agent)attach(agent)
+    })
+    const disposePrompt=ctx.systemPrompt.section({name:'roleplay:side-chat-host',order:149,
+      text:({agent})=>bridge.prompt(agent)})
+    return ()=>{disposeBinding();disposeCreated();disposeDisposed();disposePrompt();disposeTools();disposeIdle()
+      for(const agent of registrations.keys())detach(agent)}
+  }),'roleplay-ui: side chat native host tools')
+  ctx.effect(() => ctx.connection.fetch.register(createSkinRoute(() => ctx.get?.('pluginManager'))), 'roleplay-ui: built-in skin control')
   const home = process.env.DSH_HOME ?? join(process.env.HOME ?? '.', '.dsh')
   const catalogPath = process.env.DSH_ROLEPLAY_CONVERSATIONS_PATH ?? join(home, 'roleplay-conversations.json')
   const catalog = createConversationCatalog({

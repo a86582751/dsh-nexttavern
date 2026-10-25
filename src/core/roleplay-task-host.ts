@@ -109,12 +109,13 @@ export function createRoleplayTaskHost({
         && source.preparationId!==source.inputPreparation.preparationId)) return false
       if(!historical && source.preparationId && T.branch.get(keyOf(session.id,'task-preparation'))?.id!==source.preparationId)return false
       const hash=source.hashKind==='taskHash'?(value: string)=>recordSha256(value):sha256
-      const live=new Map(taskStory(session).map(e=>[e.seq,hash(e.text)]))
+      const live=source.events?.length?new Map(taskStory(session).map(e=>[e.seq,hash(e.text)])):undefined
       if(source.workflowId) {
         const workflow=T.branch.get(`${source.workflowType==='card'?'tavern_cardjob__':'tavern_novel__'}${source.workflowId}`)
         if(!workflow||workflow.generation!==source.generation||['cancelled','stale'].includes(workflow.status!))return false
+        if(job.executionPolicy==='independent'&&(workflow.executionPolicy!=='independent'||workflow.status==='failed'))return false
       }
-      return (source.events??[]).every(e=>live.get(e.seq)===e.hash)
+      return (source.events??[]).every(e=>live!.get(e.seq)===e.hash)
         && (!source.fixedHash || source.fixedHash===recordSha256(statusFixedContext(session)))
         && taskDependenciesCurrent(T,session.id,source.dependencies)
   }
@@ -123,6 +124,7 @@ export function createRoleplayTaskHost({
     isHistoricalResultCurrent:(session,job) => taskSourceCurrent(session,job,true),
     canPublishResult:(session,job,fromNativeResult) => {
       const source=job.source as HostSource
+      if(job.executionPolicy==='independent')return taskSourceCurrent(session,job)
       if(job.kind==='author-dialog'||job.kind==='ruby-analysis')return taskSourceCurrent(session,job)
       if (!source.inputPreparation) return true
       return taskSourceCurrent(session,job) || (job.status==='completed' || fromNativeResult && job.background===true
@@ -265,8 +267,21 @@ export function createRoleplayTaskHost({
     }
     return {session,job,assertCurrent}
   }
-  async function nativeTask<Result = unknown>({session,agent,system,user,promptContext,format='json',kind,signal,timeoutMs,maxTokens,validate,source:providedSource,selection,generationKey,tools:allowedTools,taskStage,background=false,onResult,onAdmission}: NativeTaskInput<Result>): Promise<Result> {
+  async function nativeTask<Result = unknown>({session,agent,system,user,promptContext,format='json',kind,signal,timeoutMs,maxTokens,validate,source:providedSource,selection,generationKey,tools:allowedTools,taskStage,background=false,executionPolicy,onResult,onAdmission}: NativeTaskInput<Result>): Promise<Result> {
     if(!session)throw new Error('酒馆任务缺少所属会话')
+    const independent=executionPolicy==='independent'
+    if(independent) {
+      const workflow=providedSource?.workflowType==='card'&&providedSource.workflowId
+        ?T.branch.get(`tavern_cardjob__${providedSource.workflowId}`):undefined
+      if(!workflow||workflow.schemaVersion!==3||workflow.executionPolicy!=='independent'
+        ||workflow.sessionId!==session.id||workflow.generation!==providedSource?.generation
+        ||!['card-export','card-convert'].includes(String(workflow.kind))
+        ||!['queued','running'].includes(String(workflow.status))||kind!=='card-export')
+        throw Error('INDEPENDENT_CARD_WORKFLOW_REQUIRED')
+      const owner=taskAgents.get(session.id)??(await ctx.sessionController.resolveAgent?.(session.id))?.agent
+      if(!owner||owner.session!==session||agent&&agent!==owner)throw Error('INDEPENDENT_CARD_MAIN_OWNER_REQUIRED')
+      agent=owner
+    }
     if(!agent&&!taskAgents.has(session.id)) {
       const found=await ctx.sessionController.resolveAgent?.(session.id)
       if(found?.agent)agent=found.agent
@@ -279,7 +294,7 @@ export function createRoleplayTaskHost({
       const code=main?.status==='idle'?inputTaskRecoveryBlockCode?.(session):undefined
       if(code)throw Error(code)
     }
-    assertIdleRecovery()
+    if(!independent)assertIdleRecovery()
     kind=kind??(system===STATUS_SYSTEM?'status':system===DECISION_SYSTEM?'decision':system===ORGANIZE_WORKER_SYSTEM?'novel-export':'memory')
     const compaction=kind==='memory'&&taskStage==='compaction'
     // Nonces protect prompt boundaries, but are not a changing task input.
@@ -294,8 +309,8 @@ export function createRoleplayTaskHost({
     const source=completed?completed.source:(()=>{
       // Explicit rebuilding owns its durable generation, not the completed
       // Story's hot input, which the actual management wake must replace.
-      const preparation=T.branch.get(keyOf(session.id,'task-preparation')),
-        currency=compaction||kind==='status'&&generationKey!==undefined||taskStage==='native-card-conversion'
+      const preparation=independent?undefined:T.branch.get(keyOf(session.id,'task-preparation')),
+        currency=independent||compaction||kind==='status'&&generationKey!==undefined||taskStage==='native-card-conversion'
           ?undefined:inputCurrency?.(session)
       return {...(providedSource??{events:taskStory(session).map(e=>({seq:e.seq,hash:sha256(e.text)})),
         ...(kind==='status'?{fixedHash:recordSha256(statusFixedContext(session))}:{}),
@@ -312,13 +327,14 @@ export function createRoleplayTaskHost({
       }
       await onResult?.(job)
     }
-    try {return await tavernTasks.request({session,agent:main,kind,source,input:{system,user,format,taskStage},promptContext,requestKey,format,signal,timeoutMs,maxTokens,selection,background,tools:allowedTools,onResult:consumeResult,onAdmission,
+    try {return await tavernTasks.request({session,agent:main,kind,source,input:{system,user,format,taskStage},promptContext,requestKey,format,signal,timeoutMs,maxTokens,selection,background,executionPolicy,tools:allowedTools,onResult:consumeResult,onAdmission,
       validate:validate??(value=>{
         if(format==='text'){if(typeof value!=='string'||!value.trim())throw new Error('任务文本为空');return value}
         if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('任务需要 JSON 对象')
         return value
       }),
     }) as Result}catch(error){
+      if(independent)throw error
       if(isInlinePending(error))assertIdleRecovery()
       if(isInlinePending(error)&&kind==='memory'&&format==='text')await T.branch.put(keyOf(session.id,'task-memory-resume'),{schemaVersion:1,sessionId:session.id,status:'pending',taskStage:taskStage??'notes',source:{taskId:(error as {jobId?: string}).jobId},updatedAt:Date.now()})
       if(isInlinePending(error)&&!disposed&&!signal?.aborted&&main?.status==='idle'&&typeof main.steer==='function') {

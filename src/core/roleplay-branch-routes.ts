@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { keyOf, durableSeq, sha256, recordSha256 } from './roleplay-data.js'
-import { eventsOf, surfaceEvents } from './roleplay-context.js'
+import { eventsOf, surfaceEvents, isCompletedTurnEnd } from './roleplay-context.js'
 import { jsonResponse } from './roleplay-state.js'
 import { activeOpeningSource } from './roleplay-import.js'
-import type { BranchRouteSession, StoredBranchOperation, BranchRouteBody, BranchRouteError, ForkReservation, BranchRoutesDependencies } from './roleplay-branch-routes-types.js'
+import type { BranchRouteSession, StoredBranchOperation, BranchRouteBody, BranchRouteError, ForkReservation,
+  BranchRoutesDependencies,CleanBranchInspection,CleanBranchRequest,CleanBranchPreparation,
+  CleanBranchPreparationSummary } from './roleplay-branch-routes-types.js'
 
 export function registerBranchRoutes(deps: BranchRoutesDependencies) {
   const {ctx, T, resolveRoleplaySession, cloneBranchRecord, assertStoryBranchActive, withForkMutationLock,
@@ -14,6 +16,222 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
     prepareWorldlineInheritance,releaseWorldlineInheritance,numericalForkBlockCode} = deps
   const readOperation=(key: string)=>cloneBranchRecord(T.branch.get(key)) as StoredBranchOperation | undefined
   const updateOperation=(key: string,work: (current: StoredBranchOperation | undefined) => object)=>T.branch.update(key,current=>work(current as StoredBranchOperation | undefined)) as PromiseLike<StoredBranchOperation>
+  const routeError=(message:string,httpStatus=409,code?:string)=>Object.assign(Error(message),{httpStatus,...code?{code}:{}})
+  // Both ordinary branch routes and clean recovery reserve through this one
+  // Native/Source coordinator. Replays retain the exact reserved child and DATA.
+  async function createWorldline(operationId:string,callerCurrent?:()=>void,beforeReserve?:()=>void,
+    includeConversations=true) {
+    const operationKey=forkOperationKey(operationId),operation=readOperation(operationKey)
+    const catalog=ctx.get('tavernConversations')
+    if(!operation||!catalog)throw routeError('世界线操作或酒馆会话目录不存在',404)
+    callerCurrent?.()
+    const frozenClean=operation.kind==='prepare-clean-branch'&&!!operation.reservedChildSessionId
+    if(operation.state==='failed'||operation.state==='aborted'||operation.abortedAt
+      ||!frozenClean&&Date.now()>operation.expiresAt) {
+      const childId=operation.reservedChildSessionId??operation.childSessionId
+      if(childId)releaseWorldlineInheritance?.(childId)
+      throw Error('世界线操作已经失效，请重新发起')
+    }
+    const source=await resolveRoleplaySession(operation.anchor.sourceSessionId)
+    if(!source)throw Error('源角色扮演会话不可用')
+    const numericalBlock=numericalForkBlockCode?.(source.id)
+    if(numericalBlock)throw routeError('该角色卡的数值世界线尚不能复制',409,numericalBlock)
+    assertStoryBranchActive(source)
+    await catalog.ready
+    const failReservation=async(childId:string|null)=>{
+      if(childId) {releaseWorldlineInheritance?.(childId);await catalog.fail(childId,operation.operationId)}
+      await T.branch.put(operationKey,{...readOperation(operationKey),state:'failed',
+        failureReason:'世界线创建失败，请重新发起',failedAt:Date.now()})
+    }
+    const lookupReserved=async(childId:string)=>{
+      if(ctx.sessions.get(childId))return ctx.sessions.get(childId)
+      const found=await ctx.sessionController.resolveAgent(childId)
+      if(found?.error&&found.error.code!=='session/not-found')throw found.error
+      return found?.agent?.session??ctx.sessions.get(childId)??null
+    }
+    if(operation.reservedChildSessionId) {
+      const existing=await lookupReserved(operation.reservedChildSessionId)
+      if(existing)return {childSessionId:existing.id,...includeConversations?{conversations:catalog.snapshot()}:{}}
+      await failReservation(operation.reservedChildSessionId)
+      throw Error('世界线创建已失效，请重新发起')
+    }
+    const active=await ctx.sessionController.resolveAgent(source.id)
+    if(active?.agent?.status&&active.agent.status!=='idle')throw Error('请等待当前轮次完成后再切换世界线')
+    let reservedId:string|null=null,reservationCommitted=false
+    const reserve=async({sourceSessionId,childSessionId,seedLength}:ForkReservation)=>{
+      callerCurrent?.()
+      if(sourceSessionId!==source.id)throw Error('原生分支来源不匹配')
+      reservedId=childSessionId
+      const reservedOperation={...operation,anchor:{...operation.anchor,expectedSeedLength:seedLength}},
+        reservation={sourceSessionId,childSessionId,seedLength}
+      const sourcePrepared=await prepareWorldlineInheritance?.(reservedOperation,reservation)
+      if(operation.kind==='prepare-clean-branch'&&sourcePrepared?.kind!=='prepared-data')
+        throw Error('CLEAN_BRANCH_FROZEN_SOURCE_UNAVAILABLE')
+      if(sourcePrepared?.kind==='prepared-data'&&sourcePrepared.disposition==='created')
+        deps.sourceInheritance!.assertPreparedParentCurrent(childSessionId)
+      beforeReserve?.()
+      await catalog.reserve({sourceSessionId,childSessionId,operationId:operation.operationId,
+        kind:operation.kind==='opening-regenerate'?'regenerate':operation.kind,
+        sourceHash:recordSha256(reservedOperation.anchor)},callerCurrent)
+      callerCurrent?.()
+      await T.branch.put(operationKey,{...reservedOperation,reservedChildSessionId:childSessionId,
+        presentation:{schemaVersion:1,kind:'worldline',conversationId:catalog.rootOf(source.id),sourceSessionId,seedLength},reservedAt:Date.now()})
+      reservationCommitted=true
+      callerCurrent?.()
+    }
+    let created
+    try {
+      if(operation.anchor.previousTurnEndSeq==null) {
+        const childSessionId=`session-${randomUUID()}`
+        await reserve({sourceSessionId:source.id,childSessionId,seedLength:0})
+        created=await ctx.sessionController.create({sessionId:childSessionId,
+          ...(source.header?.cwd?{cwd:source.header.cwd}:{}),agentPreset:'roleplay'})
+      }else {
+        if(typeof ctx.sessionController.forkPrepared!=='function')throw Error('原生世界线创建支持尚未安装，请刷新或联系维护者')
+        created=await ctx.sessionController.forkPrepared({sessionId:source.id,atSeq:operation.anchor.previousTurnEndSeq},reserve)
+      }
+      if(!created?.sessionId)throw Error('原生会话未返回世界线标识')
+    }catch(error) {
+      // A response can be lost after Native publication. Keep a real reserved
+      // child for resumption; a missing child is terminal, never silently remade.
+      if(!reservationCommitted||!reservedId||!await lookupReserved(reservedId))await failReservation(reservedId)
+      throw error
+    }
+    return {childSessionId:created.sessionId,...includeConversations?{conversations:catalog.snapshot()}:{}}
+  }
+  async function captureCleanInspection(sessionId:string) {
+    const source=await resolveRoleplaySession(sessionId),catalog=ctx.get('tavernConversations')
+    if(!source||!catalog)throw Error('CLEAN_BRANCH_SOURCE_UNAVAILABLE')
+    await catalog.ready
+    assertStoryBranchActive(source)
+    const selection=catalog.selectionOf(source.id),active=await ctx.sessionController.resolveAgent(source.id)
+    if(!active?.agent||active.agent.status!=='idle')throw Error('CLEAN_BRANCH_MAIN_NOT_IDLE')
+    if(!deps.readInputRecoveryDiagnostic||!deps.readMainModelSelection||!deps.captureCleanBranchSource)
+      throw Error('CLEAN_BRANCH_OWNERS_UNAVAILABLE')
+    const diagnostic=deps.readInputRecoveryDiagnostic(source.id)
+    if(!diagnostic||diagnostic.sourceKind!=='story'||!['unknown','stopped'].includes(diagnostic.status))
+      throw Error('CLEAN_BRANCH_FAILED_INPUT_REQUIRED')
+    const events=eventsOf(source),completed=events.findLast(isCompletedTurnEnd)
+    if(!completed)throw Error('CLEAN_BRANCH_COMPLETED_BOUNDARY_MISSING')
+    const sourceRead=deps.captureCleanBranchSource(source),model=cloneBranchRecord(deps.readMainModelSelection(source)),
+      nativeThroughSeq=Number(events.at(-1)?.seq),completedTurnEndSha256=recordSha256(completed),
+      completedBoundary={turn:Number(completed.data?.turn),turnEndSeq:Number(completed.seq)},
+      revision=recordSha256({sessionId:source.id,selectionRevision:selection.revision,
+        diagnosticRevision:diagnostic.revision,sourceRevision:sourceRead.revision,
+        nativeThroughSeq,completedTurnEndSha256,model})
+    const assertBeforeReserve=()=>{
+      sourceRead.assertCurrent()
+      const current=catalog.selectionOf(source.id)
+      if(active.agent!.status!=='idle'||current.activeSessionId!==source.id||current.revision!==selection.revision
+        ||deps.readInputRecoveryDiagnostic!(source.id)?.revision!==diagnostic.revision
+        ||Number(eventsOf(source).at(-1)?.seq)!==nativeThroughSeq
+        ||recordSha256(deps.readMainModelSelection!(source))!==recordSha256(model))
+        throw Error('CLEAN_BRANCH_DIAGNOSIS_CHANGED')
+    }
+    return {source,sourceRead,model,diagnostic,completedBoundary,completedTurnEndSha256,nativeThroughSeq,
+      selectionRevision:selection.revision,revision,assertBeforeReserve}
+  }
+  async function inspectCleanBranch(sessionId:string):Promise<CleanBranchInspection> {
+    const observed=await captureCleanInspection(sessionId)
+    return {ok:true,branchId:observed.source.id,operationId:randomUUID(),revision:observed.revision,
+      selectionRevision:observed.selectionRevision,diagnostic:observed.diagnostic,
+      completedBoundary:observed.completedBoundary,model:observed.model}
+  }
+  function cleanBranchStatus(sessionId:string,operationId:string,
+    options:{includeConversations:false}):Promise<CleanBranchPreparationSummary>
+  function cleanBranchStatus(sessionId:string,operationId:string):Promise<CleanBranchPreparation>
+  async function cleanBranchStatus(sessionId:string,operationId:string,
+    options?:{includeConversations:false}):Promise<CleanBranchPreparation|CleanBranchPreparationSummary> {
+    const operation=readOperation(forkOperationKey(operationId)),catalog=ctx.get('tavernConversations')
+    if(!operation||operation.kind!=='prepare-clean-branch'||!operation.clean||!catalog
+      ||catalog.rootOf(sessionId)!==catalog.rootOf(operation.anchor.sourceSessionId))
+      throw Error('CLEAN_BRANCH_OPERATION_UNAVAILABLE')
+    return {ok:operation.state!=='failed'&&operation.state!=='aborted',kind:'prepare-clean-branch',operationId,
+      sourceSessionId:operation.anchor.sourceSessionId,
+      childSessionId:operation.childSessionId??operation.reservedChildSessionId??null,
+      status:operation.state==='ready'?'ready':['failed','aborted'].includes(operation.state??'')?'failed':'prepared',
+      requiresPlayerInput:true,error:operation.failureReason??null,
+      ...options?.includeConversations===false?{}:{conversations:catalog.snapshot()}}
+  }
+  function prepareCleanBranch(request:CleanBranchRequest,callerCurrent:()=>void,
+    options:{includeConversations:false}):Promise<CleanBranchPreparationSummary>
+  function prepareCleanBranch(request:CleanBranchRequest,callerCurrent:()=>void):Promise<CleanBranchPreparation>
+  async function prepareCleanBranch(request:CleanBranchRequest,callerCurrent:()=>void,
+    options?:{includeConversations:false}):Promise<CleanBranchPreparation|CleanBranchPreparationSummary> {
+    if(!/^[a-zA-Z0-9_-]{1,128}$/.test(request.operationId)||!request.expectedRevision)
+      throw Error('CLEAN_BRANCH_OPERATION_ID_REQUIRED')
+    return withForkMutationLock(`operation:${request.operationId}`,async()=>{
+      callerCurrent()
+      const key=forkOperationKey(request.operationId)
+      let operation=readOperation(key),observed:Awaited<ReturnType<typeof captureCleanInspection>>|undefined
+      if(operation) {
+        if(operation.kind!=='prepare-clean-branch'||operation.anchor.sourceSessionId!==request.sessionId
+          ||operation.clean?.expectedRevision!==request.expectedRevision)throw Error('CLEAN_BRANCH_OPERATION_CHANGED')
+      }
+      // Reservation freezes Source and the Native cut. Only a new reservation
+      // must still match live diagnosis; resumption uses its saved DATA/model.
+      if(!operation?.reservedChildSessionId) {
+        observed=await captureCleanInspection(request.sessionId)
+        if(observed.revision!==request.expectedRevision)throw Error('CLEAN_BRANCH_DIAGNOSIS_CHANGED')
+      }
+      if(!operation) {
+        const facts=observed!
+        operation={schemaVersion:2,operationId:request.operationId,kind:'prepare-clean-branch',promptText:'',
+          anchor:{sourceSessionId:request.sessionId,sourceTurn:facts.completedBoundary.turn,
+            previousTurnEndSeq:facts.completedBoundary.turnEndSeq,promptText:''},
+          clean:{schemaVersion:1,expectedRevision:request.expectedRevision,diagnostic:facts.diagnostic,
+            sourceRevision:facts.sourceRead.revision,selectionRevision:facts.selectionRevision,
+            completedTurnEndSha256:facts.completedTurnEndSha256,nativeThroughSeq:facts.nativeThroughSeq,model:facts.model},
+          state:'prepared',consumed:false,createdAt:Date.now(),expiresAt:Date.now()+15*60*1000}
+        callerCurrent()
+        await T.branch.put(key,operation)
+      }
+      try {
+        // Clean preparation only consumes the child identity. The chosen
+        // public view is assembled once after bootstrap/model publication.
+        const created=await createWorldline(request.operationId,callerCurrent,observed?.assertBeforeReserve,false)
+        operation=readOperation(key)!
+        if(operation.state==='ready')return options?.includeConversations===false
+          ?cleanBranchStatus(request.sessionId,request.operationId,options)
+          :cleanBranchStatus(request.sessionId,request.operationId)
+        const child=await resolveRoleplaySession(created.childSessionId)
+        if(!child)throw Error('CLEAN_BRANCH_CHILD_UNAVAILABLE')
+        if(!operation.clean!.bootstrapComplete) {
+          callerCurrent()
+          await bootstrapChildBranch(operation,child)
+          operation=await updateOperation(key,current=>({...current!,state:'preparing-clean',
+            clean:{...current!.clean!,bootstrapComplete:true}}))
+        }
+        if(!operation.clean!.modelCopied) {
+          if(!ctx.sessionController.selectModelForSession||!deps.readMainModelSelection)
+            throw Error('CLEAN_BRANCH_MODEL_OWNER_UNAVAILABLE')
+          callerCurrent()
+          const model=operation.clean!.model
+          if(recordSha256(deps.readMainModelSelection(child))!==recordSha256(model))
+            await ctx.sessionController.selectModelForSession({sessionId:child.id,...model})
+          if(!await ctx.sessions.flush(child))throw Error('CLEAN_BRANCH_MODEL_FLUSH_FAILED')
+          operation=await updateOperation(key,current=>({...current!,state:'preparing-clean',
+            clean:{...current!.clean!,modelCopied:true}}))
+        }
+        await ctx.get('tavernConversations')!.markReady(child.id,callerCurrent)
+        callerCurrent()
+        await updateOperation(key,current=>({...current!,state:'ready',consumed:true,childSessionId:child.id,
+          failure:null,failureReason:null,readyAt:Date.now()}))
+        return options?.includeConversations===false?cleanBranchStatus(request.sessionId,request.operationId,options)
+          :cleanBranchStatus(request.sessionId,request.operationId)
+      }catch(error) {
+        const current=readOperation(key)
+        if(current&&current.state!=='ready') {
+          const failure={schemaVersion:1 as const,code:'CLEAN_BRANCH_PREPARATION_FAILED',
+            message:String((error as Error).message??error),at:Date.now()}
+          await updateOperation(key,value=>({...value!,
+            state:value!.state==='failed'||!value!.reservedChildSessionId?'failed':'preparing-clean',
+            failure,failureReason:failure.message,failedAt:failure.at}))
+        }
+        throw error
+      }
+    })
+  }
   async function publishWorldlineSelection(operation: StoredBranchOperation,child: BranchRouteSession) {
     const catalog=ctx.get('tavernConversations')
     if(!catalog)return null // Compatibility for non-web fixtures/older hosts.
@@ -111,6 +329,12 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
           try {
             const body = await request.json() as BranchRouteBody
             const action = String(body?.action ?? '')
+            if(action==='inspect-clean-branch')return jsonResponse(200,await inspectCleanBranch(String(body.sessionId??'')))
+            if(action==='prepare-clean-branch')return jsonResponse(200,await prepareCleanBranch({
+              sessionId:String(body.sessionId??''),operationId:String(body.operationId??''),
+              expectedRevision:String(body.expectedRevision??'')},()=>request.signal.throwIfAborted()))
+            if(action==='clean-branch-status')return jsonResponse(200,
+              await cleanBranchStatus(String(body.sessionId??''),String(body.operationId??'')))
             if(['prepare','generate-opening','register'].includes(action)) {
               const source=await resolveRoleplaySession(body.sessionId)
               const code=source&&numericalForkBlockCode?.(source.id)
@@ -124,76 +348,12 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
               return jsonResponse(200,{ok:true,conversations:await catalog.activate(session.id),executionSessionId:session.id})
             }
             if(action==='create-worldline')return await withForkMutationLock(`operation:${body.operationId}`,async()=>{
-              const operationKey=forkOperationKey(body.operationId),operation=readOperation(operationKey)
-              const catalog=ctx.get('tavernConversations')
-              if(!operation||!catalog)return jsonResponse(404,{ok:false,error:'世界线操作或酒馆会话目录不存在'})
-              if(operation.state==='failed'||operation.state==='aborted'||operation.abortedAt||Date.now()>operation.expiresAt) {
-                const childId=operation.reservedChildSessionId??operation.childSessionId
-                if(childId)releaseWorldlineInheritance?.(childId)
-                throw new Error('世界线操作已经失效，请重新发起')
+              try {return jsonResponse(200,{ok:true,...await createWorldline(String(body.operationId??''))})}
+              catch(error) {
+                const failure=error as Error&{httpStatus?:number;code?:string}
+                return jsonResponse(failure.httpStatus??500,{ok:false,error:failure.message,
+                  ...failure.code?{code:failure.code}:{}})
               }
-              const source=await resolveRoleplaySession(operation.anchor.sourceSessionId)
-              if(!source)throw new Error('源角色扮演会话不可用')
-              const numericalBlock=numericalForkBlockCode?.(source.id)
-              if(numericalBlock)return jsonResponse(409,{ok:false,code:numericalBlock,error:'该角色卡的数值世界线尚不能复制'})
-              assertStoryBranchActive(source)
-              await catalog.ready
-              const failReservation=async(childId: string | null)=>{
-                if(childId) {
-                  releaseWorldlineInheritance?.(childId)
-                  await catalog.fail(childId,operation.operationId)
-                }
-                await T.branch.put(operationKey,{...readOperation(operationKey),state:'failed',failureReason:'世界线创建失败，请重新发起',failedAt:Date.now()})
-              }
-              const lookupReserved=async(childId: string)=>{
-                if(ctx.sessions.get(childId))return ctx.sessions.get(childId)
-                const found=await ctx.sessionController.resolveAgent(childId)
-                if(found?.error&&found.error.code!=='session/not-found')throw found.error
-                return found?.agent?.session??ctx.sessions.get(childId)??null
-              }
-              if(operation.reservedChildSessionId) {
-                const existing=await lookupReserved(operation.reservedChildSessionId)
-                if(existing)return jsonResponse(200,{ok:true,childSessionId:existing.id,conversations:catalog.snapshot()})
-                await failReservation(operation.reservedChildSessionId)
-                throw new Error('世界线创建已失效，请重新发起')
-              }
-              const active=await ctx.sessionController.resolveAgent(source.id)
-              if(active?.agent?.status&&active.agent.status!=='idle')throw new Error('请等待当前轮次完成后再切换世界线')
-              let reservedId: string | null=null,reservationCommitted=false
-              const reserve=async({sourceSessionId,childSessionId,seedLength}: ForkReservation)=>{
-                if(sourceSessionId!==source.id)throw new Error('原生分支来源不匹配')
-                reservedId=childSessionId
-                const reservedOperation={...operation,anchor:{...operation.anchor,expectedSeedLength:seedLength}},
-                  reservation={sourceSessionId,childSessionId,seedLength}
-                const sourcePrepared=await prepareWorldlineInheritance?.(reservedOperation,reservation)
-                // Only a newly captured pair must still agree across the two
-                // parent FIFO phases. Replay never refreshes a frozen package.
-                if(sourcePrepared?.kind==='prepared-data'&&sourcePrepared.disposition==='created')
-                  deps.sourceInheritance!.assertPreparedParentCurrent(childSessionId)
-                await catalog.reserve({sourceSessionId,childSessionId,operationId:operation.operationId,
-                  kind:operation.kind === 'opening-regenerate' ? 'regenerate' : operation.kind,
-                  sourceHash:recordSha256(reservedOperation.anchor)})
-                await T.branch.put(operationKey,{...reservedOperation,reservedChildSessionId:childSessionId,presentation:{schemaVersion:1,kind:'worldline',conversationId:catalog.rootOf(source.id),sourceSessionId,seedLength},reservedAt:Date.now()})
-                reservationCommitted=true
-              }
-              let created
-              try {
-              if(operation.anchor.previousTurnEndSeq==null) {
-                const childSessionId=`session-${randomUUID()}`
-                await reserve({sourceSessionId:source.id,childSessionId,seedLength:0})
-                created=await ctx.sessionController.create({sessionId:childSessionId,...(source.header?.cwd?{cwd:source.header.cwd}:{}),agentPreset:'roleplay'})
-              } else {
-                if(typeof ctx.sessionController.forkPrepared!=='function')throw new Error('原生世界线创建支持尚未安装，请刷新或联系维护者')
-                created=await ctx.sessionController.forkPrepared({sessionId:source.id,atSeq:operation.anchor.previousTurnEndSeq},reserve)
-              }
-              if(!created?.sessionId)throw new Error('原生会话未返回世界线标识')
-              } catch(error) {
-                // A callback rejection precedes native publication. After native
-                // creation, preserve a real child so attach failures can resume.
-                if(!reservationCommitted||!reservedId||!await lookupReserved(reservedId))await failReservation(reservedId)
-                throw error
-              }
-              return jsonResponse(200,{ok:true,childSessionId:created.sessionId,conversations:catalog.snapshot()})
             })
             if (action === 'prepare') {
               const source = await resolveRoleplaySession(body?.sessionId)
@@ -715,5 +875,5 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
       }),
     'roleplay: route native branch'
   )
-
+  return {inspectCleanBranch,prepareCleanBranch,cleanBranchStatus}
 }

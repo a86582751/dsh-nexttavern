@@ -31,6 +31,18 @@ export interface InputClosingView {
 }
 
 export const ROLEPLAY_INPUT_NAMESPACE = 'nexttavern.roleplay.input.v2'
+/** Diagnostic identity of the current actual Native refs, never replay authority. */
+export interface RoleplayInputRecoveryDiagnosticV1 {
+  schemaVersion:1
+  revision:string
+  preparationId:string
+  receiptGeneration:number
+  attemptGeneration:number
+  refs:readonly NativeInputRef[]
+  status:'created'|'active'|'stopped'|'unknown'
+  sourceKind:InputSourceObservation['kind']
+  stop:{status:'terminal'|'unknown';code:string|null}|null
+}
 export interface InputPreparationTable {
   get(key: string): unknown
   put(key: string, value: Record<string, unknown>): Promise<unknown>
@@ -1361,6 +1373,37 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
   }
   const api = {
     bind,
+    readRecoveryDiagnostic(sessionId:string):RoleplayInputRecoveryDiagnosticV1|null {
+      const pointer=table.get(currentKey(sessionId)) as {preparationId?:string;credentialSha256?:string}|undefined
+      if(!pointer)return null
+      const workPrefix=`${prefix(sessionId)}work-`
+      let selected:Work|undefined
+      // The pointer contains no refs/work key. Match its actual identity in
+      // raw inventory before validating or detaching any work; unrelated
+      // history is neither diagnostic input nor a reason to clone every row.
+      for(const [key,value] of table.entries()) {
+        if(!key.startsWith(workPrefix))continue
+        const row=value as Partial<Work>|null|undefined
+        if(!row||row.preparationId!==pointer.preparationId||row.credentialSha256!==pointer.credentialSha256
+          ||!isWork(row,sessionId))continue
+        if(selected)fail('INPUT_RECOVERY_CURRENT_UNKNOWN')
+        selected=row
+      }
+      if(!selected)fail('INPUT_RECOVERY_CURRENT_UNKNOWN')
+      const work=clone(selected)
+      return {schemaVersion:1,revision:recordSha256(work),preparationId:work.preparationId,
+        receiptGeneration:work.receiptGeneration,attemptGeneration:work.attemptGeneration,
+        refs:work.refs,status:work.status,sourceKind:work.source.kind,
+        stop:work.stop?{status:work.stop.status,code:work.stop.code??null}:null}
+    },
+    /** Exact Native refs address the admitted work; diagnostics never grant a lease. */
+    readDiagnostic(sessionId:string,refs:readonly NativeInputRef[]|undefined) {
+      if(!refs)return null
+      const work=table.get(workKey(sessionId,refs)) as Work|undefined
+      if(!work)return null
+      return {status:work.status,sourceKind:work.source.kind,
+        stop:work.stop?{status:work.stop.status,code:work.stop.code??null}:null}
+    },
     /** Source-free provenance only. No scope/current, ledger, Agent lookup or
      * mutation gate runs here; stopped/disposed binders never regain rights. */
     readOwnedNonNumericalBranchRowFacts(session:Session):readonly OwnedNonNumericalInputBranchRowFactV1[] {

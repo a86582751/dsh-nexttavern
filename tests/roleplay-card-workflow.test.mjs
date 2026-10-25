@@ -4,6 +4,10 @@ import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { testTempRoot } from '../lib/operations/test-temp.mjs'
 import { createCardWorkflows } from '../lib/core/roleplay-card-workflow.js'
+import {InlinePending} from '../lib/core/tavern-tasks.js'
+import {freezeNativeCardConversionV1,materializeNativeCardConversionV1} from '../lib/core/native-card-conversion.js'
+import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
+import {installMvuNativeDataTestDependencies} from './mvu-native-data-test-dependencies-fixture.mts'
 
 const hashBytes=bytes=>createHash('sha256').update(bytes).digest('hex')
 const deferred=()=>Promise.withResolvers()
@@ -33,7 +37,11 @@ function exportFixture(workspace,overrides={}) {
 }
 
 const workspace=mkdtempSync(join(testTempRoot(),'dsh-card-workflow-'))
+const removeDependencies=installSchemaTestDependencies()
+let removeNativeDependencies
 try {
+  removeNativeDependencies=await installMvuNativeDataTestDependencies()
+  const {driveNativeCardConversionV1}=await import('../lib/core/native-card-conversion-driver.js')
   writeFileSync(join(workspace,'card.json'),JSON.stringify({name:'Concurrent'}))
   const branch=new Map()
   branch.put=async(key,value)=>{branch.set(key,structuredClone(value))}
@@ -221,4 +229,82 @@ try {
     assert.equal(f.calls.native,1,'an independently replaced generation is not blocked by the old local failure fence')
     assert.equal(f.branch.get(key).status,'completed')
   }
-} finally {rmSync(workspace,{recursive:true,force:true})}
+  {
+    const f=exportFixture(workspace,{nativeTask:async options=>{
+      assert.equal(options.executionPolicy,'independent');throw new InlinePending('bad-fallback')
+    }}),beginIndependent=()=>f.workflows.beginCardWorkflow(
+      f.session,'card-export',undefined,undefined,undefined,undefined,'organized',undefined,'independent')
+    const ordinary=await f.beginExport()
+    await assert.rejects(beginIndependent(),/执行策略不同/,'a live ordinary workflow cannot be silently upgraded')
+    assert.equal(f.branch.get(f.workflows.cardWorkflowKey(ordinary.id)).executionPolicy,undefined)
+    await f.workflows.controlCardWorkflow(f.session,ordinary.id,'cancel')
+    f.deps.modelPolicy.resolve=()=>({execution:'inline',main:f.selection.main,actualRoute:f.selection.main})
+    // A dependency violating the independent contract still cannot create a
+    // waiting-main workflow or awaken the story agent.
+    const independent=await beginIndependent()
+    assert.equal(independent.schemaVersion,3);assert.equal(independent.execution,'spawn')
+    assert.equal(independent.selection.execution,'inline','persist the original purpose route selection')
+    await f.workflows.resumeCardWorkflows(f.session)
+    const failed=f.branch.get(f.workflows.cardWorkflowKey(independent.id))
+    assert.equal(failed.status,'failed');assert.ok(failed.failedAt);assert.equal(f.calls.steer,0)
+    const retried=await f.workflows.controlCardWorkflow(f.session,independent.id,'retry')
+    assert.equal(retried.executionPolicy,'independent');assert.equal(retried.execution,'spawn')
+    await assert.rejects(f.workflows.completeCardWorkflow(f.session,{workflowId:retried.id,
+      workflowGeneration:failed.generation,exportId:'late-export'},{resourceId:'late-resource'}),/失效/)
+  }
+  {
+    const authored={spec:'nexttavern_card',spec_version:'1.0',data:{name:'Self native independent export',
+      cards:[{name:'Explicit character',content:'SELF_NATIVE_CHARACTER'}],worldbook:[],rules:{core:'SELF_NATIVE_CORE'}},archive:{}}
+    const original=freezeNativeCardConversionV1(authored)
+    const classification=snapshot=>({characters:[{id:'self-character',name:'Explicit character'}],
+      assignments:snapshot.units.map(unit=>({sourceId:unit.id,startLine:1,endLine:unit.lineCount,
+        target:unit.pointer.includes('/cards/')?'character':'core',
+        ...(unit.pointer.includes('/cards/')?{characterId:'self-character'}:{})}))})
+    const converted=materializeNativeCardConversionV1(original,classification(original))
+    const invalidated=structuredClone(converted)
+    invalidated.data.compatibility.authorExecution.rules.core+=' SELF_AUTHOR_EDIT'
+    for(const document of [authored,converted,invalidated]) {
+      const snapshot=freezeNativeCardConversionV1(document),shouldClassify=document===invalidated
+      let failArchive=shouldClassify,classifications=0,archives=0,checkpoint
+      let f
+      f=exportFixture(workspace,{
+        captureExportStartSource:()=>({sha256:snapshot.sourceSha256,conversionSnapshot:snapshot,
+          nativeAuthoring:true,assertCurrent(){}}),
+        modelPolicy:{resolve:()=>{f.calls.resolve++;return {execution:'inline',main:f.selection.main,actualRoute:f.selection.main}}},
+        nativeTask:async options=>{classifications++;assert.equal(options.executionPolicy,'independent');
+          assert.equal(options.session,f.session);return options.validate(classification(snapshot))},
+        driveNativeConversion:async(session,job,agent,signal)=>{
+          const output=await driveNativeCardConversionV1({snapshot:job.conversionSnapshot,nativeAuthoring:true,
+            classification:job.conversionClassification,progress:async()=>{},
+            checkpoint:async value=>{checkpoint=value;const live=f.branch.get(f.workflows.cardWorkflowKey(job.id));
+              await f.branch.put(f.workflows.cardWorkflowKey(job.id),{...live,conversionClassification:value})},
+            classify:(system,user,validate)=>f.deps.nativeTask({session,agent,signal,system,user,validate,
+              executionPolicy:job.executionPolicy,kind:'card-export',selection:job.selection}),
+          })
+          if(failArchive)throw Error('archive failure after durable classification checkpoint')
+          archives++;return {resourceId:'self-native-'+archives,document:output}
+        },
+      })
+      const job=await f.workflows.beginCardWorkflow(f.session,'card-export',undefined,undefined,undefined,
+        undefined,'original',undefined,'independent')
+      assert.equal(job.execution,shouldClassify?'spawn':'deterministic')
+      assert.equal(f.calls.resolve,shouldClassify?1:0,'Native 1.0 and valid 1.1 preserve zero classification route requests')
+      await f.workflows.resumeCardWorkflows(f.session)
+      const key=f.workflows.cardWorkflowKey(job.id)
+      if(shouldClassify) {
+        const failed=f.branch.get(key)
+        assert.equal(failed.status,'failed');assert.deepEqual(failed.conversionClassification,checkpoint)
+        failArchive=false
+        const retried=await f.workflows.controlCardWorkflow(f.session,job.id,'retry')
+        assert.equal(retried.executionPolicy,'independent');assert.deepEqual(retried.conversionClassification,checkpoint)
+        // A reconstructed workflow driver consumes the durable checkpoint;
+        // retry cannot spend a second request to rediscover the same source.
+        f.workflows=createCardWorkflows(f.deps)
+        await f.workflows.resumeCardWorkflows(f.session)
+      }
+      assert.equal(f.branch.get(key).status,'completed');assert.equal(archives,1)
+      assert.equal(classifications,shouldClassify?1:0);assert.equal(f.calls.steer,0)
+    }
+  }
+  console.log('independent-card-workflow=ok (policy conflict, deterministic 1.0/valid 1.1, invalid 1.1 classification, checkpoint/retry/cold, no story steering)')
+} finally {removeNativeDependencies?.();removeDependencies();rmSync(workspace,{recursive:true,force:true})}

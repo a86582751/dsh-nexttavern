@@ -183,7 +183,7 @@ export interface WorldlineDependencies {
   resolveRoleplaySession(id: string): Promise<BranchSession | null | undefined>
   isRoleplaySession(session: BranchSession): boolean
   ensureState(id: string): { branchReady: boolean }
-  ensureBranch(session: BranchSession, options: { cadenceAnchorSeq: number; cadenceTurn: number }): Promise<unknown>
+  ensureBranch(session: BranchSession, options?: { cadenceAnchorSeq: number; cadenceTurn: number }): Promise<unknown>
   /** Numeric readiness is independent of static inheritance readiness. */
   commitDerivedBasis?(operation: ForkOperation, child: BranchSession): Promise<void>
   durableSeq(value: unknown): number | null

@@ -89,6 +89,8 @@ export interface SettingToolDependencies extends Pick<PanelRoutesDependencies,
   resolveRoleplaySession(id:string):Promise<HostSession|null|undefined>
   storyBranchIsActive(session:HostSession):boolean
   selectionStamp(session:HostSession):string|null
+  /** Synchronous callers recheck their live authority inside the Source write lane. */
+  assertCallerCurrent?(execution:{agent?:HostAgent;signal?:AbortSignal}):void
   tavernTasks:ReturnType<typeof createRoleplayTaskHost>['tavernTasks']
   modelPolicy:ReturnType<typeof createRoleplayTaskHost>['modelPolicy']
   evidence(session:HostSession,name:string,args:Record<string,unknown>):Promise<unknown>
