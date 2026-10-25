@@ -577,6 +577,7 @@
         ".gitignore",
         "bundled-library-assembly*",
         "tavern-template-runtime-assets*",
+        "development/template-runtime-v1/*",
         "development/author-prompt-runtime-v1/*",
         "development/mvu-schema-runtime-v4-update-batch-v1/*",
         "author-browser-runtime-assets*",
