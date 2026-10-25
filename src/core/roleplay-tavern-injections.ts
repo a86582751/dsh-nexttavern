@@ -8,7 +8,8 @@ import {injectionCreationHeadV1,validateInjectionPhaseV1,validateInjectionReceip
   deriveTrustedInjectionDisposalReceiptV1} from './tavern-template-injection-data.mjs'
 import type {TavernTemplateRequestV1,TavernTemplateOutputV1,TavernTemplateFrozenSnapshotV1,
   TavernTemplateInjectionPromptV1,TavernTemplateInjectionPhaseV1,TavernTemplateInjectionReceiptV1,
-  TavernTemplateInjectionActionV1,TavernTemplateTrustedDisposalV1} from './tavern-template-types.mjs'
+  TavernTemplateInjectionActionV1,TavernTemplateTrustedDisposalV1,
+  TavernTemplateEngineIdentityV1} from './tavern-template-types.mjs'
 import type {AdmittedTavernTemplateComponentV1} from './roleplay-tavern-template-assets.js'
 import type {captureRoleplayTavernMaterialHistoryV1} from './roleplay-tavern-material-history.js'
 import type {PromptProgramV1,PromptCaptureV1,PromptExecutionOutputV1,PromptEffectOriginV1,
@@ -173,7 +174,7 @@ interface Dependencies {
    * starts the current generation's V2 state, before any creation is accepted. */
   readonly promptDefinition?:TavernInjectionDefinitionV1
   readonly browserDefinition?:TavernInjectionDefinitionV1
-  readonly component:AdmittedTavernTemplateComponentV1
+  loadForEngine(engine:TavernTemplateEngineIdentityV1,signal:AbortSignal):Promise<AdmittedTavernTemplateComponentV1>
   readonly assertCurrent:()=>void
   readonly signal:AbortSignal
 }
@@ -584,12 +585,12 @@ export function createRoleplayTavernInjectionRegistryV1(deps:Dependencies) {
         let include=true
         let receiptSha256:string|null=null
         if(p.kind==='template'&&'callbackOrdinal' in row.prompt&&row.prompt.callbackOrdinal!==null) {
-          if(!same(p.creation.output.engine,deps.component.runtime.identity))fail('INPUT_MATERIAL_INJECTION_ENGINE_CHANGED')
+          const component=await deps.loadForEngine(p.creation.output.engine,deps.signal)
           const phase=phaseFor(snapshot,[{kind:'filter',callbackOrdinal:row.prompt.callbackOrdinal,consumer,
             invocationId:`filter-${recordSha256({attemptId:deps.attemptId,step:deps.step,consumer,
               phaseOrdinal:phaseOrdinal++,registrationSha256:row.registrationSha256})}`}])
           ownerCheckpoint()
-          const result=await deps.component.runtime.restoreAndEvaluateInjectionsV1({schemaVersion:1,
+          const result=await component.runtime.restoreAndEvaluateInjectionsV1({schemaVersion:1,
             encoding:'owned-template-injection-restore-v1',programInstanceId:row.programInstanceId,
             creation:{request:p.creation.request,expectedOutput:p.creation.output},journal:p.journal,
             expectedHeadSha256:p.head,current:phase},deps.signal)

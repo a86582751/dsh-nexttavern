@@ -9,7 +9,7 @@ import {pathToFileURL} from 'node:url'
 import {materializeBundledLibraries} from './bundled-library-assembly.mjs'
 import {regularPackageFiles} from './owned-dependency.mjs'
 
-const PACKAGE_NAME='dsh-nexttavern-template-runtime-v1'
+const PACKAGE_NAME='dsh-nexttavern-template-runtime-v2'
 const PACKAGE_VERSION='0.1.0'
 const PINS=Object.freeze({'quickjs-emscripten-core':'0.32.0',
   '@jitl/quickjs-wasmfile-release-sync':'0.32.0','@jitl/quickjs-ffi-types':'0.32.0'})
@@ -138,7 +138,7 @@ export async function buildTavernTemplateRuntimeAssetsV1(options:{repo:string;pl
   // exist. Registration is lexical; actual inputs must resolve to those paths.
   const registered=new Set(options.plan.artifacts.map(item=>path.resolve(inside(repo,item.source))))
   const resourceFor=(file:string)=>{
-    const rows=resources.filter(resource=>fs.realpathSync(inside(repo,
+    const rows=resources.filter(resource=>resource.path.startsWith('src/')&&fs.realpathSync(inside(repo,
       uniqueArtifact(options.plan,resource.artifact).source))===file)
     if(rows.length!==1||!rows[0]!.path.startsWith('src/')||!safe(rows[0]!.path)) {
       throw Error('TEMPLATE_ASSET_SOURCE_RESOURCE_UNREGISTERED')

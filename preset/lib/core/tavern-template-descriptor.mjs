@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto';
 import { recordSha256 } from './roleplay-data.js';
 import { freezeTemplateData, TEMPLATE_POLICY_SHA256, templateFail, templateHash, templateExact } from './tavern-template-data.mjs';
-export const TEMPLATE_PACKAGE_NAME = 'dsh-nexttavern-template-runtime-v1';
+export const TEMPLATE_PACKAGE_NAME = 'dsh-nexttavern-template-runtime-v2';
 export const TEMPLATE_PACKAGE_VERSION = '0.1.0';
 export const TEMPLATE_DESCRIPTOR_PATH = 'assets/runtime.json';
 export const TEMPLATE_DEPENDENCY_PINS = freezeTemplateData({ 'quickjs-emscripten-core': '0.32.0',
@@ -12,7 +12,7 @@ export const TEMPLATE_DEPENDENCY_PINS = freezeTemplateData({ 'quickjs-emscripten
 export const TEMPLATE_MODULES = freezeTemplateData({ provider: 'dist/index.mjs', controller: 'dist/controller.mjs',
     worker: 'dist/tavern-template-worker.mjs' });
 export const TEMPLATE_COMPONENT_RECIPE_PROPOSAL_V1 = freezeTemplateData({ schemaVersion: 1,
-    encoding: 'owned-template-component-recipe-proposal-v1', packageArtifact: 'tavern-template-runtime-v1-package',
+    encoding: 'owned-template-component-recipe-proposal-v1', packageArtifact: 'tavern-template-runtime-v2-package',
     modules: [{ role: 'provider', artifact: 'tavern-template-provider-typescript', output: TEMPLATE_MODULES.provider },
         { role: 'controller', artifact: 'tavern-template-controller-typescript', output: TEMPLATE_MODULES.controller },
         { role: 'worker', artifact: 'tavern-template-worker-typescript', output: TEMPLATE_MODULES.worker }],

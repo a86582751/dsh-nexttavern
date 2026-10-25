@@ -20390,6 +20390,46 @@
         "id": "task-edit-prefix-v1-predecessor-host-package-json",
         "source": "development/author-host-runtime-v5-update-batch-v1/package.json",
         "canonicalSource": "runtime/alpha3/compat/author-host-runtime-v5-update-batch-v1/package.json"
+      },
+      {
+        "id": "tavern-template-runtime-v2-controller-bundle",
+        "source": "development/template-runtime-v2/dist/controller.mjs",
+        "canonicalSource": "runtime/alpha3/compat/template-runtime-v2/dist/controller.mjs"
+      },
+      {
+        "id": "tavern-template-runtime-v2-descriptor",
+        "source": "development/template-runtime-v2/assets/runtime.json",
+        "canonicalSource": "runtime/alpha3/compat/template-runtime-v2/assets/runtime.json"
+      },
+      {
+        "id": "tavern-template-runtime-v2-license",
+        "source": "development/template-runtime-v2/LICENSE",
+        "canonicalSource": "runtime/alpha3/compat/template-runtime-v2/LICENSE"
+      },
+      {
+        "id": "tavern-template-runtime-v2-notice",
+        "source": "development/template-runtime-v2/NOTICE.md",
+        "canonicalSource": "runtime/alpha3/compat/template-runtime-v2/NOTICE.md"
+      },
+      {
+        "id": "tavern-template-runtime-v2-package",
+        "source": "development/template-runtime-v2/package.json",
+        "canonicalSource": "runtime/alpha3/compat/template-runtime-v2/package.json"
+      },
+      {
+        "id": "tavern-template-runtime-v2-provider-bundle",
+        "source": "development/template-runtime-v2/dist/index.mjs",
+        "canonicalSource": "runtime/alpha3/compat/template-runtime-v2/dist/index.mjs"
+      },
+      {
+        "id": "tavern-template-runtime-v2-source-inputs",
+        "source": "development/template-runtime-v2/assets/source-inputs.json",
+        "canonicalSource": "runtime/alpha3/compat/template-runtime-v2/assets/source-inputs.json"
+      },
+      {
+        "id": "tavern-template-runtime-v2-worker-bundle",
+        "source": "development/template-runtime-v2/dist/tavern-template-worker.mjs",
+        "canonicalSource": "runtime/alpha3/compat/template-runtime-v2/dist/tavern-template-worker.mjs"
       }
     ],
     "publicRelease": {
@@ -126998,6 +127038,54 @@
           "executorVersion": 3
         }
       ],
+      "templateRuntime": {
+        "schemaVersion": 1,
+        "encoding": "owned-template-component-recipe-proposal-v1",
+        "packageArtifact": "tavern-template-runtime-v2-package",
+        "modules": [
+          {
+            "role": "provider",
+            "artifact": "tavern-template-provider-typescript",
+            "output": "dist/index.mjs"
+          },
+          {
+            "role": "controller",
+            "artifact": "tavern-template-controller-typescript",
+            "output": "dist/controller.mjs"
+          },
+          {
+            "role": "worker",
+            "artifact": "tavern-template-worker-typescript",
+            "output": "dist/tavern-template-worker.mjs"
+          }
+        ],
+        "descriptorOutput": "assets/runtime.json",
+        "sourceInputOutput": "assets/source-inputs.json",
+        "policyArtifact": "tavern-template-data-generated",
+        "lockArtifact": "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "dependencies": {
+          "quickjs-emscripten-core": "0.32.0",
+          "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
+          "@jitl/quickjs-ffi-types": "0.32.0"
+        },
+        "guests": [],
+        "builder": {
+          "esbuildVersion": "0.24.2",
+          "target": "es2023",
+          "format": "esm",
+          "platform": "node",
+          "bundle": true,
+          "external": [
+            "quickjs-emscripten-core",
+            "@jitl/quickjs-wasmfile-release-sync",
+            "@jitl/quickjs-ffi-types"
+          ],
+          "write": false,
+          "legalComments": "none"
+        },
+        "sourceGraph": "Every bundled TS/MTS input must be shared-manifest registered; no old P0 JS evaluator",
+        "dependencyClosure": "Exact pinned core/sync-WASM/FFI package files, wasm and licenses inventoried; no ancestor resolver fallback"
+      },
       "authorBrowserRuntimeV2": {
         "schemaVersion": 2,
         "encoding": "owned-author-browser-runtime-recipe-v2",
@@ -128173,6 +128261,927 @@
         {
           "packageArtifact": "compat-mvu-schema-runtime-v3-package-json",
           "resources": []
+        },
+        {
+          "packageArtifact": "tavern-template-runtime-v2-package",
+          "resources": [
+            {
+              "artifact": "tavern-template-runtime-v2-license",
+              "path": "LICENSE"
+            },
+            {
+              "artifact": "tavern-template-runtime-v2-notice",
+              "path": "NOTICE.md"
+            },
+            {
+              "artifact": "tavern-template-runtime-v2-descriptor",
+              "path": "assets/runtime.json"
+            },
+            {
+              "artifact": "tavern-template-runtime-v2-source-inputs",
+              "path": "assets/source-inputs.json"
+            },
+            {
+              "artifact": "tavern-template-runtime-v2-controller-bundle",
+              "path": "dist/controller.mjs"
+            },
+            {
+              "artifact": "tavern-template-runtime-v2-provider-bundle",
+              "path": "dist/index.mjs"
+            },
+            {
+              "artifact": "tavern-template-runtime-v2-worker-bundle",
+              "path": "dist/tavern-template-worker.mjs"
+            },
+            {
+              "artifact": "template-known-baseline-ba4ea2ca76851b9803fb",
+              "path": "node_modules/@jitl/quickjs-ffi-types/LICENSE"
+            },
+            {
+              "artifact": "template-known-baseline-9a51f2f624c37937586e",
+              "path": "node_modules/@jitl/quickjs-ffi-types/README.md"
+            },
+            {
+              "artifact": "template-known-baseline-75454d55dff3857bb3b6",
+              "path": "node_modules/@jitl/quickjs-ffi-types/dist/index.d.mts"
+            },
+            {
+              "artifact": "template-known-baseline-d9aa77bfb251c9697c1f",
+              "path": "node_modules/@jitl/quickjs-ffi-types/dist/index.d.ts"
+            },
+            {
+              "artifact": "template-known-baseline-961ba1387e1c208d5244",
+              "path": "node_modules/@jitl/quickjs-ffi-types/dist/index.js"
+            },
+            {
+              "artifact": "template-known-baseline-fb679be9e447eaee7544",
+              "path": "node_modules/@jitl/quickjs-ffi-types/dist/index.js.map"
+            },
+            {
+              "artifact": "template-known-baseline-ff4be0e9a30c179be496",
+              "path": "node_modules/@jitl/quickjs-ffi-types/dist/index.mjs"
+            },
+            {
+              "artifact": "template-known-baseline-661cfed26392c5772f92",
+              "path": "node_modules/@jitl/quickjs-ffi-types/dist/index.mjs.map"
+            },
+            {
+              "artifact": "template-known-baseline-d6123682e15a4f87cce3",
+              "path": "node_modules/@jitl/quickjs-ffi-types/package.json"
+            },
+            {
+              "artifact": "template-known-baseline-32d13cb090ee70cfd4ae",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/LICENSE"
+            },
+            {
+              "artifact": "template-known-baseline-a9e8e6cc755d353d7c7e",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/README.md"
+            },
+            {
+              "artifact": "template-known-baseline-83379496912a02dde24e",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.d.ts"
+            },
+            {
+              "artifact": "template-known-baseline-ccf15f9c91d29c902c60",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.mjs"
+            },
+            {
+              "artifact": "template-known-baseline-1e9629fe798d6e1d5c3b",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cjs"
+            },
+            {
+              "artifact": "template-known-baseline-a750e5fd73cb5773c196",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cloudflare.cjs"
+            },
+            {
+              "artifact": "template-known-baseline-a1269f9c151a9290d2d1",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cloudflare.d.ts"
+            },
+            {
+              "artifact": "template-known-baseline-db4b0501c9ad51045ef2",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.d.ts"
+            },
+            {
+              "artifact": "template-known-baseline-4181391d3baf6878f57f",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.mjs"
+            },
+            {
+              "artifact": "template-known-baseline-36ae7ff7b1c0ad61cc1f",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm"
+            },
+            {
+              "artifact": "template-known-baseline-42008475808a7dadcc6c",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.d.mts"
+            },
+            {
+              "artifact": "template-known-baseline-5731cd56ff883828d259",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.d.ts"
+            },
+            {
+              "artifact": "template-known-baseline-a641c8c915791aca3e63",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.js"
+            },
+            {
+              "artifact": "template-known-baseline-14a75cc5cdbf20008dd3",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.js.map"
+            },
+            {
+              "artifact": "template-known-baseline-69ae1824d4e96ef4a43d",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs"
+            },
+            {
+              "artifact": "template-known-baseline-e2058c2599f309cfb301",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs.map"
+            },
+            {
+              "artifact": "template-known-baseline-1890ca039292db5c4ed0",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.d.mts"
+            },
+            {
+              "artifact": "template-known-baseline-ad91b95b18abbc093e22",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.d.ts"
+            },
+            {
+              "artifact": "template-known-baseline-63cf36c31dce5969292d",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.js"
+            },
+            {
+              "artifact": "template-known-baseline-721d3d51229480986fed",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.js.map"
+            },
+            {
+              "artifact": "template-known-baseline-189a08a4009d856c364c",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.mjs"
+            },
+            {
+              "artifact": "template-known-baseline-fe407dc6052f88a0dfce",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.mjs.map"
+            },
+            {
+              "artifact": "template-known-baseline-2432bd3f16d423a220b7",
+              "path": "node_modules/@jitl/quickjs-wasmfile-release-sync/package.json"
+            },
+            {
+              "artifact": "template-known-baseline-2ca10002dade257e6a0d",
+              "path": "node_modules/quickjs-emscripten-core/LICENSE"
+            },
+            {
+              "artifact": "template-known-baseline-12f6e5ee3dc25176e17b",
+              "path": "node_modules/quickjs-emscripten-core/README.md"
+            },
+            {
+              "artifact": "template-known-baseline-c31abae5f596c0d87703",
+              "path": "node_modules/quickjs-emscripten-core/README.template.md"
+            },
+            {
+              "artifact": "template-known-baseline-4f5d5439921c34a9d41b",
+              "path": "node_modules/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs"
+            },
+            {
+              "artifact": "template-known-baseline-5c19e91364944e11c3d8",
+              "path": "node_modules/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs.map"
+            },
+            {
+              "artifact": "template-known-baseline-e1d8eb4a0f21c9753f59",
+              "path": "node_modules/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs"
+            },
+            {
+              "artifact": "template-known-baseline-b0751f29626aa1c1a052",
+              "path": "node_modules/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs.map"
+            },
+            {
+              "artifact": "template-known-baseline-e8c0be2beaef0216ac89",
+              "path": "node_modules/quickjs-emscripten-core/dist/index.d.mts"
+            },
+            {
+              "artifact": "template-known-baseline-135d6697d8c6513fdc6f",
+              "path": "node_modules/quickjs-emscripten-core/dist/index.d.ts"
+            },
+            {
+              "artifact": "template-known-baseline-f00f8fc022b898ff9249",
+              "path": "node_modules/quickjs-emscripten-core/dist/index.js"
+            },
+            {
+              "artifact": "template-known-baseline-e50f23e4d064027c585a",
+              "path": "node_modules/quickjs-emscripten-core/dist/index.js.map"
+            },
+            {
+              "artifact": "template-known-baseline-4b3930c3ed089d933a3e",
+              "path": "node_modules/quickjs-emscripten-core/dist/index.mjs"
+            },
+            {
+              "artifact": "template-known-baseline-11ad045dadc465707169",
+              "path": "node_modules/quickjs-emscripten-core/dist/index.mjs.map"
+            },
+            {
+              "artifact": "template-known-baseline-d66a5bfeaaf9c136f95f",
+              "path": "node_modules/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs"
+            },
+            {
+              "artifact": "template-known-baseline-0c033da4221cdcbaeef1",
+              "path": "node_modules/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs.map"
+            },
+            {
+              "artifact": "template-known-baseline-daf5cc03822154882b28",
+              "path": "node_modules/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs"
+            },
+            {
+              "artifact": "template-known-baseline-d3e09e880db89db771cf",
+              "path": "node_modules/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs.map"
+            },
+            {
+              "artifact": "template-known-baseline-ed70109a37844df75303",
+              "path": "node_modules/quickjs-emscripten-core/package.json"
+            },
+            {
+              "artifact": "tavern-template-runtime-v2-package",
+              "path": "package.json"
+            },
+            {
+              "artifact": "bounded-regex-typescript",
+              "path": "src/core/bounded-regex.ts"
+            },
+            {
+              "artifact": "card-adaptation-context-typescript",
+              "path": "src/core/card-adaptation-context.ts"
+            },
+            {
+              "artifact": "card-export-projection-typescript",
+              "path": "src/core/card-export-projection.ts"
+            },
+            {
+              "artifact": "card-export-typescript",
+              "path": "src/core/card-export.ts"
+            },
+            {
+              "artifact": "character-cluster-projection-ts",
+              "path": "src/core/character-cluster-projection.ts"
+            },
+            {
+              "artifact": "character-cluster-settings-typescript",
+              "path": "src/core/character-cluster-settings.ts"
+            },
+            {
+              "artifact": "character-cluster-typescript",
+              "path": "src/core/character-cluster.ts"
+            },
+            {
+              "artifact": "narrative-preset-catalog-typescript",
+              "path": "src/core/narrative-preset-catalog.ts"
+            },
+            {
+              "artifact": "narrative-preset-default-typescript",
+              "path": "src/core/narrative-preset-default.ts"
+            },
+            {
+              "artifact": "narrative-presets-typescript",
+              "path": "src/core/narrative-presets.ts"
+            },
+            {
+              "artifact": "narrative-styles-annalistic-typescript",
+              "path": "src/core/narrative-styles/annalistic.ts"
+            },
+            {
+              "artifact": "narrative-styles-cinematic-typescript",
+              "path": "src/core/narrative-styles/cinematic.ts"
+            },
+            {
+              "artifact": "narrative-styles-classical-typescript",
+              "path": "src/core/narrative-styles/classical.ts"
+            },
+            {
+              "artifact": "narrative-styles-comedy-typescript",
+              "path": "src/core/narrative-styles/comedy.ts"
+            },
+            {
+              "artifact": "narrative-styles-cosmic-romance-typescript",
+              "path": "src/core/narrative-styles/cosmic-romance.ts"
+            },
+            {
+              "artifact": "narrative-styles-delicate-typescript",
+              "path": "src/core/narrative-styles/delicate.ts"
+            },
+            {
+              "artifact": "narrative-styles-fantasy-typescript",
+              "path": "src/core/narrative-styles/fantasy.ts"
+            },
+            {
+              "artifact": "narrative-styles-horror-typescript",
+              "path": "src/core/narrative-styles/horror.ts"
+            },
+            {
+              "artifact": "narrative-styles-jrpg-typescript",
+              "path": "src/core/narrative-styles/jrpg.ts"
+            },
+            {
+              "artifact": "narrative-styles-light-novel-typescript",
+              "path": "src/core/narrative-styles/light-novel.ts"
+            },
+            {
+              "artifact": "narrative-styles-luxun-typescript",
+              "path": "src/core/narrative-styles/luxun.ts"
+            },
+            {
+              "artifact": "narrative-styles-lyrical-typescript",
+              "path": "src/core/narrative-styles/lyrical.ts"
+            },
+            {
+              "artifact": "narrative-styles-minimal-typescript",
+              "path": "src/core/narrative-styles/minimal.ts"
+            },
+            {
+              "artifact": "narrative-styles-otome-typescript",
+              "path": "src/core/narrative-styles/otome.ts"
+            },
+            {
+              "artifact": "novel-export-projection-typescript",
+              "path": "src/core/novel-export-projection.ts"
+            },
+            {
+              "artifact": "roleplay-author-context-types-typescript",
+              "path": "src/core/roleplay-author-context-types.ts"
+            },
+            {
+              "artifact": "roleplay-author-context-typescript",
+              "path": "src/core/roleplay-author-context.ts"
+            },
+            {
+              "artifact": "roleplay-author-contributions-typescript",
+              "path": "src/core/roleplay-author-contributions.ts"
+            },
+            {
+              "artifact": "roleplay-author-tools-types-typescript",
+              "path": "src/core/roleplay-author-tools-types.ts"
+            },
+            {
+              "artifact": "roleplay-branch-routes-types-typescript",
+              "path": "src/core/roleplay-branch-routes-types.ts"
+            },
+            {
+              "artifact": "roleplay-card-attachment-typescript",
+              "path": "src/core/roleplay-card-attachment.ts"
+            },
+            {
+              "artifact": "roleplay-card-workflow-types-typescript",
+              "path": "src/core/roleplay-card-workflow-types.ts"
+            },
+            {
+              "artifact": "roleplay-chat-card-source-typescript",
+              "path": "src/core/roleplay-chat-card-source.ts"
+            },
+            {
+              "artifact": "roleplay-context-typescript",
+              "path": "src/core/roleplay-context.ts"
+            },
+            {
+              "artifact": "roleplay-data-typescript",
+              "path": "src/core/roleplay-data.ts"
+            },
+            {
+              "artifact": "roleplay-import-record-typescript",
+              "path": "src/core/roleplay-import-record.ts"
+            },
+            {
+              "artifact": "roleplay-import-types-typescript",
+              "path": "src/core/roleplay-import-types.ts"
+            },
+            {
+              "artifact": "roleplay-import-typescript",
+              "path": "src/core/roleplay-import.ts"
+            },
+            {
+              "artifact": "roleplay-input-cold-row-facts-typescript",
+              "path": "src/core/roleplay-input-cold-row-facts.ts"
+            },
+            {
+              "artifact": "roleplay-input-completion-typescript",
+              "path": "src/core/roleplay-input-completion.ts"
+            },
+            {
+              "artifact": "roleplay-input-continuation-typescript",
+              "path": "src/core/roleplay-input-continuation.ts"
+            },
+            {
+              "artifact": "roleplay-input-material-typescript",
+              "path": "src/core/roleplay-input-material.ts"
+            },
+            {
+              "artifact": "roleplay-input-preparation-typescript",
+              "path": "src/core/roleplay-input-preparation.ts"
+            },
+            {
+              "artifact": "roleplay-input-source-data-typescript",
+              "path": "src/core/roleplay-input-source-data.ts"
+            },
+            {
+              "artifact": "roleplay-input-terminal-typescript",
+              "path": "src/core/roleplay-input-terminal.ts"
+            },
+            {
+              "artifact": "roleplay-message-view-typescript",
+              "path": "src/core/roleplay-message-view.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-ancestry-typescript",
+              "path": "src/core/roleplay-mvu-ancestry.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-edit-facts-typescript",
+              "path": "src/core/roleplay-mvu-edit-facts.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-frozen-lineage-typescript",
+              "path": "src/core/roleplay-mvu-frozen-lineage.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-initialization-typescript",
+              "path": "src/core/roleplay-mvu-initialization.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-lineage-typescript",
+              "path": "src/core/roleplay-mvu-lineage.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-player-facts-typescript",
+              "path": "src/core/roleplay-mvu-player-facts.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-player-records-typescript",
+              "path": "src/core/roleplay-mvu-player-records.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-player-types-typescript",
+              "path": "src/core/roleplay-mvu-player-types.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-prefix-facts-typescript",
+              "path": "src/core/roleplay-mvu-prefix-facts.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-prefix-ledger-typescript",
+              "path": "src/core/roleplay-mvu-prefix-ledger.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-prompt-numerical-facts-typescript",
+              "path": "src/core/roleplay-mvu-prompt-numerical-facts.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-derived-types-typescript",
+              "path": "src/core/roleplay-mvu-schema-derived-types.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-descriptor-data-typescript",
+              "path": "src/core/roleplay-mvu-schema-descriptor-data.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-executor-types-typescript",
+              "path": "src/core/roleplay-mvu-schema-executor-types.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-frozen-prefix-input-typescript",
+              "path": "src/core/roleplay-mvu-schema-frozen-prefix-input.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-history-tail-typescript",
+              "path": "src/core/roleplay-mvu-schema-history-tail.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-journal-typescript",
+              "path": "src/core/roleplay-mvu-schema-journal.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-opening-types-typescript",
+              "path": "src/core/roleplay-mvu-schema-opening-types.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-player-types-typescript",
+              "path": "src/core/roleplay-mvu-schema-player-types.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-prefix-facts-typescript",
+              "path": "src/core/roleplay-mvu-schema-prefix-facts.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-replay-typescript",
+              "path": "src/core/roleplay-mvu-schema-replay.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-scope-facts-typescript",
+              "path": "src/core/roleplay-mvu-schema-scope-facts.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-source-typescript",
+              "path": "src/core/roleplay-mvu-schema-source.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-story-core-typescript",
+              "path": "src/core/roleplay-mvu-schema-story-core.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-story-types-typescript",
+              "path": "src/core/roleplay-mvu-schema-story-types.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-schema-story-typescript",
+              "path": "src/core/roleplay-mvu-schema-story.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-source-policy-typescript",
+              "path": "src/core/roleplay-mvu-source-policy.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-source-typescript",
+              "path": "src/core/roleplay-mvu-source.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-state-typescript",
+              "path": "src/core/roleplay-mvu-state.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-story-typescript",
+              "path": "src/core/roleplay-mvu-story.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-update-v2-typescript",
+              "path": "src/core/roleplay-mvu-update-v2.ts"
+            },
+            {
+              "artifact": "roleplay-mvu-update-typescript",
+              "path": "src/core/roleplay-mvu-update.ts"
+            },
+            {
+              "artifact": "roleplay-opening-material-typescript",
+              "path": "src/core/roleplay-opening-material.ts"
+            },
+            {
+              "artifact": "roleplay-opening-selection-typescript",
+              "path": "src/core/roleplay-opening-selection.ts"
+            },
+            {
+              "artifact": "roleplay-phase-a-row-facts-typescript",
+              "path": "src/core/roleplay-phase-a-row-facts.ts"
+            },
+            {
+              "artifact": "roleplay-preparation-types-typescript",
+              "path": "src/core/roleplay-preparation-types.ts"
+            },
+            {
+              "artifact": "roleplay-preparation-typescript",
+              "path": "src/core/roleplay-preparation.ts"
+            },
+            {
+              "artifact": "roleplay-program-absence-inheritance-data-typescript",
+              "path": "src/core/roleplay-program-absence-inheritance-data.ts"
+            },
+            {
+              "artifact": "roleplay-program-genesis-data-typescript",
+              "path": "src/core/roleplay-program-genesis-data.ts"
+            },
+            {
+              "artifact": "roleplay-program-genesis-types-typescript",
+              "path": "src/core/roleplay-program-genesis-types.ts"
+            },
+            {
+              "artifact": "roleplay-program-opening-basis-types-typescript",
+              "path": "src/core/roleplay-program-opening-basis-types.ts"
+            },
+            {
+              "artifact": "roleplay-program-opening-records-typescript",
+              "path": "src/core/roleplay-program-opening-records.ts"
+            },
+            {
+              "artifact": "roleplay-prompt-opening-source-data-typescript",
+              "path": "src/core/roleplay-prompt-opening-source-data.ts"
+            },
+            {
+              "artifact": "roleplay-prompt-opening-source-types-typescript",
+              "path": "src/core/roleplay-prompt-opening-source-types.ts"
+            },
+            {
+              "artifact": "roleplay-prompt-opening-source-typescript",
+              "path": "src/core/roleplay-prompt-opening-source.ts"
+            },
+            {
+              "artifact": "roleplay-prompt-program-source-types-typescript",
+              "path": "src/core/roleplay-prompt-program-source-types.ts"
+            },
+            {
+              "artifact": "roleplay-prompt-program-source-typescript",
+              "path": "src/core/roleplay-prompt-program-source.ts"
+            },
+            {
+              "artifact": "roleplay-prompt-template-only-data-typescript",
+              "path": "src/core/roleplay-prompt-template-only-data.ts"
+            },
+            {
+              "artifact": "roleplay-prompt-template-only-origins-typescript",
+              "path": "src/core/roleplay-prompt-template-only-origins.ts"
+            },
+            {
+              "artifact": "roleplay-prompt-template-only-types-typescript",
+              "path": "src/core/roleplay-prompt-template-only-types.ts"
+            },
+            {
+              "artifact": "roleplay-resource-bridge-types-typescript",
+              "path": "src/core/roleplay-resource-bridge-types.ts"
+            },
+            {
+              "artifact": "roleplay-source-lock-typescript",
+              "path": "src/core/roleplay-source-lock.ts"
+            },
+            {
+              "artifact": "roleplay-status-types-typescript",
+              "path": "src/core/roleplay-status-types.ts"
+            },
+            {
+              "artifact": "roleplay-task-host-types-typescript",
+              "path": "src/core/roleplay-task-host-types.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-layout-typescript",
+              "path": "src/core/roleplay-tavern-layout.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-lore-contributions-typescript",
+              "path": "src/core/roleplay-tavern-lore-contributions.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-lore-data-typescript",
+              "path": "src/core/roleplay-tavern-lore-data.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-lore-edits-data-typescript",
+              "path": "src/core/roleplay-tavern-lore-edits-data.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-lore-edits-journal-typescript",
+              "path": "src/core/roleplay-tavern-lore-edits-journal.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-lore-edits-types-typescript",
+              "path": "src/core/roleplay-tavern-lore-edits-types.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-lore-edits-typescript",
+              "path": "src/core/roleplay-tavern-lore-edits.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-lore-source-types-typescript",
+              "path": "src/core/roleplay-tavern-lore-source-types.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-lore-source-typescript",
+              "path": "src/core/roleplay-tavern-lore-source.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-material-history-typescript",
+              "path": "src/core/roleplay-tavern-material-history.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-prompt-source-typescript",
+              "path": "src/core/roleplay-tavern-prompt-source.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-source-edit-baseline-typescript",
+              "path": "src/core/roleplay-tavern-source-edit-baseline.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-source-inheritance-data-typescript",
+              "path": "src/core/roleplay-tavern-source-inheritance-data.ts"
+            },
+            {
+              "artifact": "roleplay-tavern-source-inheritance-types-typescript",
+              "path": "src/core/roleplay-tavern-source-inheritance-types.ts"
+            },
+            {
+              "artifact": "roleplay-userinfo-typescript",
+              "path": "src/core/roleplay-userinfo.ts"
+            },
+            {
+              "artifact": "roleplay-worldline-surface-typescript",
+              "path": "src/core/roleplay-worldline-surface.ts"
+            },
+            {
+              "artifact": "roleplay-worldline-types-typescript",
+              "path": "src/core/roleplay-worldline-types.ts"
+            },
+            {
+              "artifact": "roleplay-worldlines-typescript",
+              "path": "src/core/roleplay-worldlines.ts"
+            },
+            {
+              "artifact": "session-history-typescript",
+              "path": "src/core/session-history.ts"
+            },
+            {
+              "artifact": "tavern-card-crc-typescript",
+              "path": "src/core/tavern-card-crc.ts"
+            },
+            {
+              "artifact": "tavern-card-typescript",
+              "path": "src/core/tavern-card.ts"
+            },
+            {
+              "artifact": "tavern-conversations-typescript",
+              "path": "src/core/tavern-conversations.ts"
+            },
+            {
+              "artifact": "tavern-library-input-typescript",
+              "path": "src/core/tavern-library-input.ts"
+            },
+            {
+              "artifact": "tavern-library-record-typescript",
+              "path": "src/core/tavern-library-record.ts"
+            },
+            {
+              "artifact": "tavern-library-typescript",
+              "path": "src/core/tavern-library.ts"
+            },
+            {
+              "artifact": "tavern-lore-compiler-typescript",
+              "path": "src/core/tavern-lore-compiler.mts"
+            },
+            {
+              "artifact": "tavern-lore-evaluator-types-typescript",
+              "path": "src/core/tavern-lore-evaluator-types.mts"
+            },
+            {
+              "artifact": "tavern-lore-fixed-profile-typescript",
+              "path": "src/core/tavern-lore-fixed-profile.mts"
+            },
+            {
+              "artifact": "tavern-lore-plan-types-typescript",
+              "path": "src/core/tavern-lore-plan-types.mts"
+            },
+            {
+              "artifact": "tavern-model-policy-typescript",
+              "path": "src/core/tavern-model-policy.ts"
+            },
+            {
+              "artifact": "tavern-mvu-author-execution-types-v4-typescript",
+              "path": "src/core/tavern-mvu-author-execution-types-v4.mts"
+            },
+            {
+              "artifact": "tavern-mvu-initvar-typescript",
+              "path": "src/core/tavern-mvu-initvar.ts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-data-typescript",
+              "path": "src/core/tavern-mvu-schema-data.ts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-import-policy-typescript",
+              "path": "src/core/tavern-mvu-schema-import-policy.ts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-program-v4-typescript",
+              "path": "src/core/tavern-mvu-schema-program-v4.ts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-runner-v2-typescript",
+              "path": "src/core/tavern-mvu-schema-runner-v2.ts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-runner-v3-typescript",
+              "path": "src/core/tavern-mvu-schema-runner-v3.ts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-runner-v4-typescript",
+              "path": "src/core/tavern-mvu-schema-runner-v4.ts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-types-v2-typescript",
+              "path": "src/core/tavern-mvu-schema-types-v2.ts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-types-v3-typescript",
+              "path": "src/core/tavern-mvu-schema-types-v3.ts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-types-v4-typescript",
+              "path": "src/core/tavern-mvu-schema-types-v4.ts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-types-typescript",
+              "path": "src/core/tavern-mvu-schema-types.ts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-update-effects-v2-typescript",
+              "path": "src/core/tavern-mvu-schema-update-effects-v2.ts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-worker-v2-typescript",
+              "path": "src/core/tavern-mvu-schema-worker-v2.mts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-worker-v3-typescript",
+              "path": "src/core/tavern-mvu-schema-worker-v3.mts"
+            },
+            {
+              "artifact": "tavern-mvu-schema-worker-v4-typescript",
+              "path": "src/core/tavern-mvu-schema-worker-v4.mts"
+            },
+            {
+              "artifact": "tavern-mvu-scope-read-types-typescript",
+              "path": "src/core/tavern-mvu-scope-read-types.ts"
+            },
+            {
+              "artifact": "tavern-mvu-scope-read-typescript",
+              "path": "src/core/tavern-mvu-scope-read.ts"
+            },
+            {
+              "artifact": "tavern-mvu-state-loader-policy-v4-typescript",
+              "path": "src/core/tavern-mvu-state-loader-policy-v4.mts"
+            },
+            {
+              "artifact": "tavern-mvu-yaml-typescript",
+              "path": "src/core/tavern-mvu-yaml.ts"
+            },
+            {
+              "artifact": "tavern-prompt-transform-types-typescript",
+              "path": "src/core/tavern-prompt-transform-types.mts"
+            },
+            {
+              "artifact": "tavern-prompt-transform-worker-typescript",
+              "path": "src/core/tavern-prompt-transform-worker.mts"
+            },
+            {
+              "artifact": "tavern-task-context-typescript",
+              "path": "src/core/tavern-task-context.ts"
+            },
+            {
+              "artifact": "tavern-task-primitives-typescript",
+              "path": "src/core/tavern-task-primitives.ts"
+            },
+            {
+              "artifact": "tavern-task-retirement-typescript",
+              "path": "src/core/tavern-task-retirement.ts"
+            },
+            {
+              "artifact": "tavern-task-support-typescript",
+              "path": "src/core/tavern-task-support.ts"
+            },
+            {
+              "artifact": "tavern-task-types-typescript",
+              "path": "src/core/tavern-task-types.ts"
+            },
+            {
+              "artifact": "tavern-tasks-typescript",
+              "path": "src/core/tavern-tasks.ts"
+            },
+            {
+              "artifact": "tavern-template-assets-typescript",
+              "path": "src/core/tavern-template-assets.mts"
+            },
+            {
+              "artifact": "tavern-template-compiler-typescript",
+              "path": "src/core/tavern-template-compiler.mts"
+            },
+            {
+              "artifact": "tavern-template-controller-typescript",
+              "path": "src/core/tavern-template-controller.mts"
+            },
+            {
+              "artifact": "tavern-template-data-typescript",
+              "path": "src/core/tavern-template-data.mts"
+            },
+            {
+              "artifact": "tavern-template-descriptor-typescript",
+              "path": "src/core/tavern-template-descriptor.mts"
+            },
+            {
+              "artifact": "tavern-template-injection-data-typescript",
+              "path": "src/core/tavern-template-injection-data.mts"
+            },
+            {
+              "artifact": "tavern-template-injection-guest-typescript",
+              "path": "src/core/tavern-template-injection-guest.mts"
+            },
+            {
+              "artifact": "tavern-template-provider-typescript",
+              "path": "src/core/tavern-template-provider.mts"
+            },
+            {
+              "artifact": "tavern-template-types-typescript",
+              "path": "src/core/tavern-template-types.mts"
+            },
+            {
+              "artifact": "tavern-template-worker-typescript",
+              "path": "src/core/tavern-template-worker.mts"
+            },
+            {
+              "artifact": "memory-history-typescript",
+              "path": "src/memory/memory-history.ts"
+            },
+            {
+              "artifact": "memory-provenance-typescript",
+              "path": "src/memory/memory-provenance.ts"
+            },
+            {
+              "artifact": "status-template-typescript",
+              "path": "src/status-template.ts"
+            }
+          ]
         }
       ]
     }
@@ -128226,7 +129235,12 @@
     "development/mvu-schema-runtime-v3/assets/LICENSE.zod-4.4.3",
     "development/mvu-schema-runtime-v3/assets/lodash-4.18.1.js",
     "development/mvu-schema-runtime-v3/assets/LICENSE.lodash-4.18.1",
-    "development/mvu-schema-runtime-v3/assets/runtime.json"
+    "development/mvu-schema-runtime-v3/assets/runtime.json",
+    "development/template-runtime-v2/dist/index.mjs",
+    "development/template-runtime-v2/dist/controller.mjs",
+    "development/template-runtime-v2/dist/tavern-template-worker.mjs",
+    "development/template-runtime-v2/assets/runtime.json",
+    "development/template-runtime-v2/assets/source-inputs.json"
   ],
   "compatibilityEntrypoints": [
     {

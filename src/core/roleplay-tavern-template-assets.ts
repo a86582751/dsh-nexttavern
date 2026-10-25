@@ -5,11 +5,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {createRequire} from 'node:module'
 import {fileURLToPath,pathToFileURL} from 'node:url'
+import {recordSha256} from './roleplay-data.js'
 import type {TavernTemplateRuntimeV1,TavernTemplateOwnedInventoryV1,TavernTemplateCurrentRuntimeV1}
   from './tavern-template-types.mjs'
+import type {TavernTemplateEngineIdentityV1} from './tavern-template-types.mjs'
 
-const NAME='dsh-nexttavern-template-runtime-v1'
+const NAME='dsh-nexttavern-template-runtime-v2'
+const LEGACY_NAME='dsh-nexttavern-template-runtime-v1'
 const VERSION='0.1.0'
+type TemplatePackageName=TavernTemplateEngineIdentityV1['packageName']
 // This actual Core asset-owner module instance only. The rejection count does
 // not transfer runtime frames or provide a process-wide lock/approval token.
 let ownedReadScopeDepth=0
@@ -36,15 +40,18 @@ export interface AdmittedTavernTemplateComponentV1 {
 }
 export function createRoleplayTavernTemplateAssetOwnerV1() {
   let closed=false
-  let pending:Promise<AdmittedTavernTemplateComponentV1>|undefined
-  let admitted:AdmittedTavernTemplateComponentV1|undefined
-  let currentRuntime:TavernTemplateCurrentRuntimeV1|undefined
+  const instances=new Map<TemplatePackageName,{
+    pending?:Promise<AdmittedTavernTemplateComponentV1>
+    admitted?:AdmittedTavernTemplateComponentV1
+    runtime?:TavernTemplateCurrentRuntimeV1
+  }>()
   function checkCurrentSync(checks:()=>void):void {
     if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
     ownedReadScopeDepth++
     try {
       // Only internal synchronous read/assert guards use this scope. It never
       // encloses code loading, persistence, worker or provider dispatch.
+      const currentRuntime=instances.get(NAME)?.runtime
       if(currentRuntime){currentRuntime.checkCurrentSync(checks);return}
       const returned=checks() as unknown
       if(returned&&typeof returned==='object'&&'then' in returned) {
@@ -53,15 +60,15 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
       if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
     } finally {ownedReadScopeDepth--}
   }
-  async function load():Promise<AdmittedTavernTemplateComponentV1> {
+  async function load(name:TemplatePackageName):Promise<AdmittedTavernTemplateComponentV1> {
     const root=owningProductRoot(),require=createRequire(path.join(root,'package.json'))
-    const metadataPath=fs.realpathSync(require.resolve(NAME+'/package.json'))
-    const ownedDirectory=path.join(root,'node_modules',NAME),ownedStat=fs.lstatSync(ownedDirectory)
+    const metadataPath=fs.realpathSync(require.resolve(name+'/package.json'))
+    const ownedDirectory=path.join(root,'node_modules',name),ownedStat=fs.lstatSync(ownedDirectory)
     if(!ownedStat.isDirectory()||ownedStat.isSymbolicLink())throw Error('TEMPLATE_RUNTIME_PACKAGE_OWNER_CHANGED')
     const owned=fs.realpathSync(ownedDirectory)
     if(owned!==path.resolve(ownedDirectory))throw Error('TEMPLATE_RUNTIME_PACKAGE_OWNER_CHANGED')
     if(metadataPath!==path.join(owned,'package.json'))throw Error('TEMPLATE_RUNTIME_PACKAGE_OWNER_CHANGED')
-    const entry=fs.realpathSync(require.resolve(NAME))
+    const entry=fs.realpathSync(require.resolve(name))
     if(entry!==path.join(owned,'dist','index.mjs'))throw Error('TEMPLATE_RUNTIME_ENTRY_OWNER_CHANGED')
     const bootstrap=await import(pathToFileURL(path.join(root,'lib/operations/bundled-package-bootstrap.mjs')).href) as
       typeof import('../operations/bundled-package-bootstrap.mjs')
@@ -70,18 +77,18 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
     const readInventory=()=>{
       if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
       const identity=bootstrap.readBundleIdentity(root)
-      const rows=identity.packages.filter(row=>row.name===NAME)
+      const rows=identity.packages.filter(row=>row.name===name)
       if(identity.productRoot!==root||rows.length!==1||rows[0]!.version!==VERSION
-        ||fs.realpathSync(require.resolve(NAME+'/package.json'))!==metadataPath
-        ||fs.realpathSync(path.join(root,'node_modules',NAME))!==owned
-        ||fs.realpathSync(require.resolve(NAME))!==entry)throw Error('TEMPLATE_RUNTIME_INVENTORY_OWNER_CHANGED')
+        ||fs.realpathSync(require.resolve(name+'/package.json'))!==metadataPath
+        ||fs.realpathSync(path.join(root,'node_modules',name))!==owned
+        ||fs.realpathSync(require.resolve(name))!==entry)throw Error('TEMPLATE_RUNTIME_INVENTORY_OWNER_CHANGED')
       const row=rows[0]!
       if(protection.protectedGeneration(row)!==row.generation)throw Error('TEMPLATE_RUNTIME_GENERATION_CHANGED')
       return row
     }
     const readOwnedInventory=():TavernTemplateOwnedInventoryV1=>{
       const row=readInventory()
-      return {name:NAME,version:VERSION,files:structuredClone(row.files),generation:row.generation}
+      return {name,version:VERSION,files:structuredClone(row.files),generation:row.generation}
     }
     // Runtime code cannot protect its own import. Keep the original generic
     // full verification before loading it; ordinary installer APIs stay intact.
@@ -110,54 +117,75 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
         throw Error('TEMPLATE_RUNTIME_IMPLEMENTATION_CHANGED')
       }
       runtime.checkCurrent()
-      if(runtime.identity.packageName!==NAME||runtime.identity.packageVersion!==VERSION
+      if(runtime.identity.packageName!==name||runtime.identity.packageVersion!==VERSION
         ||runtime.identity.protectedGeneration!==initialGeneration)throw Error('TEMPLATE_RUNTIME_IMPLEMENTATION_CHANGED')
       const result=Object.freeze({runtime,inventory:initial,
         verify:()=>{runtime.checkCurrent()},
         observe:()=>{runtime.checkCurrent()},checkCurrentSync})
-      currentRuntime=runtime
-      admitted=result
+      const state=instances.get(name)!
+      state.runtime=runtime
+      state.admitted=result
       return result
     } catch(error) {
       await runtime.dispose()
       throw error
     }
   }
+  async function loadSelected(name:TemplatePackageName,signal?:AbortSignal) {
+    signal?.throwIfAborted()
+    if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
+    if(ownedReadScopeDepth)throw Error('TEMPLATE_EXECUTION_IN_VERIFICATION_SCOPE')
+    const state=instances.get(name)??{}
+    if(!instances.has(name))instances.set(name,state)
+    state.runtime?.assertCurrentScopeInactive()
+    if(!state.pending){state.pending=load(name);void state.pending.catch(()=>{if(!closed)state.pending=undefined})}
+    const result=await state.pending
+    signal?.throwIfAborted()
+    if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
+    result.verify()
+    return result
+  }
   return {
     checkCurrentSync,
     /** Admission already captured the product/component generation. Later
      * availability checks consult only the actual runtime's lifetime. */
     observeAdmitted():AdmittedTavernTemplateComponentV1|undefined {
+      const admitted=instances.get(NAME)?.admitted
       if(closed||!admitted)return undefined
       admitted.observe()
       return admitted
     },
     current():AdmittedTavernTemplateComponentV1|undefined {
+      const admitted=instances.get(NAME)?.admitted
       if(closed||!admitted)return undefined
       admitted.verify()
       return admitted
     },
     async load(signal?:AbortSignal):Promise<AdmittedTavernTemplateComponentV1> {
-      signal?.throwIfAborted()
-      if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
-      if(ownedReadScopeDepth)throw Error('TEMPLATE_EXECUTION_IN_VERIFICATION_SCOPE')
-      currentRuntime?.assertCurrentScopeInactive()
-      if(!pending){pending=load();void pending.catch(()=>{if(!closed)pending=undefined})}
-      const result=await pending
-      signal?.throwIfAborted()
-      if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
-      result.verify()
+      return loadSelected(NAME,signal)
+    },
+    async loadForEngine(engine:TavernTemplateEngineIdentityV1,signal?:AbortSignal)
+      :Promise<AdmittedTavernTemplateComponentV1> {
+      if(engine.packageName!==NAME&&engine.packageName!==LEGACY_NAME)throw Error('TEMPLATE_RUNTIME_ENGINE_UNAVAILABLE')
+      const result=await loadSelected(engine.packageName,signal)
+      // An old closure must execute under its creating implementation, rather
+      // than merely another component with the same wire protocol.
+      if(recordSha256(result.runtime.identity)!==recordSha256(engine))throw Error('TEMPLATE_RUNTIME_ENGINE_UNAVAILABLE')
       return result
     },
     async dispose():Promise<void> {
       if(ownedReadScopeDepth)throw Error('TEMPLATE_EXECUTION_IN_VERIFICATION_SCOPE')
-      currentRuntime?.assertCurrentScopeInactive()
+      for(const state of instances.values())state.runtime?.assertCurrentScopeInactive()
       closed=true
-      currentRuntime?.invalidateCurrent()
+      for(const state of instances.values())state.runtime?.invalidateCurrent()
       // Await an in-flight factory: its own post-await guard disposes any late
       // runtime before rejecting; cancellation cannot leave a worker owner.
-      const result=admitted??await pending?.catch(()=>undefined)
-      await result?.runtime.dispose()
+      const results=await Promise.allSettled([...instances.values()].map(async state=>{
+        const result=state.admitted??await state.pending?.catch(()=>undefined)
+        await result?.runtime.dispose()
+      }))
+      const failure=results.find(result=>result.status==='rejected')
+      if(failure?.status==='rejected')throw failure.reason
     },
   }
 }

@@ -10962,6 +10962,38 @@
       "source": "development/author-host-runtime-v5-update-batch-v1/package.json"
     },
     {
+      "id": "tavern-template-runtime-v2-controller-bundle",
+      "source": "development/template-runtime-v2/dist/controller.mjs"
+    },
+    {
+      "id": "tavern-template-runtime-v2-descriptor",
+      "source": "development/template-runtime-v2/assets/runtime.json"
+    },
+    {
+      "id": "tavern-template-runtime-v2-license",
+      "source": "development/template-runtime-v2/LICENSE"
+    },
+    {
+      "id": "tavern-template-runtime-v2-notice",
+      "source": "development/template-runtime-v2/NOTICE.md"
+    },
+    {
+      "id": "tavern-template-runtime-v2-package",
+      "source": "development/template-runtime-v2/package.json"
+    },
+    {
+      "id": "tavern-template-runtime-v2-provider-bundle",
+      "source": "development/template-runtime-v2/dist/index.mjs"
+    },
+    {
+      "id": "tavern-template-runtime-v2-source-inputs",
+      "source": "development/template-runtime-v2/assets/source-inputs.json"
+    },
+    {
+      "id": "tavern-template-runtime-v2-worker-bundle",
+      "source": "development/template-runtime-v2/dist/tavern-template-worker.mjs"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },

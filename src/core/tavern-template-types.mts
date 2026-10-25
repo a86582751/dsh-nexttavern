@@ -83,7 +83,7 @@ export interface TavernTemplateActivationProposalV1 {
 export interface TavernTemplateEngineIdentityV1 {
   readonly schemaVersion:1
   readonly encoding:'owned-template-engine-identity-v1'
-  readonly packageName:'dsh-nexttavern-template-runtime-v1'
+  readonly packageName:'dsh-nexttavern-template-runtime-v1'|'dsh-nexttavern-template-runtime-v2'
   readonly packageVersion:'0.1.0'
   readonly protectedGeneration:string
   readonly implementationSha256:string
@@ -149,7 +149,7 @@ export interface TavernTemplateCurrentRuntimeV1 extends TavernTemplateRuntimeV1 
 }
 export interface TavernTemplatePackageFileV1 {readonly path:string;readonly sha256:string}
 export interface TavernTemplateOwnedInventoryV1 {
-  readonly name:'dsh-nexttavern-template-runtime-v1'
+  readonly name:TavernTemplateEngineIdentityV1['packageName']
   readonly version:'0.1.0'
   readonly generation:string
   readonly files:readonly TavernTemplatePackageFileV1[]

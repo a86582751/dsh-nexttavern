@@ -354,7 +354,8 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
             const note = snapshot.contextMessageRefs?.refs.find(row => row.form === 'director-notes'), noteIndex = note ? native.selected.messages.findIndex(row => row.id === note.id && row.messageSha256 === note.messageSha256) : -1;
             const definitions = captureRoleplayTavernInjectionDefinitionsV1(source, compilation.plan, residual, authorPromptFacts?.program, authorBrowserFacts?.program, authorInputs), injections = createRoleplayTavernInjectionRegistryV1({ sessionId: scope.session.id, turn: scope.turn, step: scope.step,
                 attemptId, history: materialHistory, definitions: definitions.definitions, promptDefinition: definitions.promptDefinition,
-                browserDefinition: definitions.browserDefinition, component, assertCurrent, signal: scope.signal });
+                browserDefinition: definitions.browserDefinition,
+                loadForEngine: (engine, signal) => deps.loadTemplate(signal, engine), assertCurrent, signal: scope.signal });
             if (authorBrowser && authorBrowserFacts && definitions.browserDefinition) {
                 injections.acceptBrowserGeneration(authorBrowserFacts.program, authorBrowser.capture, authorBrowser.output, definitions.browserDefinition);
                 assertCurrent();

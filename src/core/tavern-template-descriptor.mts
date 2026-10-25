@@ -7,7 +7,7 @@ import {freezeTemplateData,TEMPLATE_POLICY_SHA256,templateFail,templateHash,temp
 import type {TavernTemplateEngineIdentityV1,TavernTemplateOwnedInventoryV1,
   TavernTemplatePackageFileV1} from './tavern-template-types.mjs'
 
-export const TEMPLATE_PACKAGE_NAME='dsh-nexttavern-template-runtime-v1' as const
+export const TEMPLATE_PACKAGE_NAME='dsh-nexttavern-template-runtime-v2' as const
 export const TEMPLATE_PACKAGE_VERSION='0.1.0' as const
 export const TEMPLATE_DESCRIPTOR_PATH='assets/runtime.json'
 export const TEMPLATE_DEPENDENCY_PINS=freezeTemplateData({'quickjs-emscripten-core':'0.32.0' as const,
@@ -15,7 +15,7 @@ export const TEMPLATE_DEPENDENCY_PINS=freezeTemplateData({'quickjs-emscripten-co
 export const TEMPLATE_MODULES=freezeTemplateData({provider:'dist/index.mjs',controller:'dist/controller.mjs',
   worker:'dist/tavern-template-worker.mjs'})
 export const TEMPLATE_COMPONENT_RECIPE_PROPOSAL_V1=freezeTemplateData({schemaVersion:1,
-  encoding:'owned-template-component-recipe-proposal-v1',packageArtifact:'tavern-template-runtime-v1-package',
+  encoding:'owned-template-component-recipe-proposal-v1',packageArtifact:'tavern-template-runtime-v2-package',
   modules:[{role:'provider',artifact:'tavern-template-provider-typescript',output:TEMPLATE_MODULES.provider},
     {role:'controller',artifact:'tavern-template-controller-typescript',output:TEMPLATE_MODULES.controller},
     {role:'worker',artifact:'tavern-template-worker-typescript',output:TEMPLATE_MODULES.worker}],

@@ -2904,7 +2904,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       const actual=narrativePresets.policy(id)
       return {conversationId:actual.conversationId,effective:actual.effective,preset:actual.preset,summary:actual.summary}
     },
-    loadTemplate:signal=>tavernTemplate.load(signal),
+    loadTemplate:(signal,engine)=>engine?tavernTemplate.loadForEngine(engine,signal):tavernTemplate.load(signal),
     projections:()=>ctx.sessions.messageProjections,
     inheritedTiming:(scope,source,current,lineage)=>captureInheritedTiming(scope.session.id,source,current,lineage),
     schemaScopes:mvuOpening.captureSchemaPromptScopes,

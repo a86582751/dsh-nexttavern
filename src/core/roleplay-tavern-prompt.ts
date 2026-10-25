@@ -32,7 +32,7 @@ import type {AdmittedTavernTemplateComponentV1} from './roleplay-tavern-template
 import type {PreparationSnapshot} from './roleplay-preparation-types.js'
 import type {RoleplayInputMaterialDependenciesV1,RoleplayInputMaterialScopeV1} from './roleplay-input-material.js'
 import type {RoleplayOpeningMaterialScopeV1} from './roleplay-opening-material.js'
-import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
+import type {TavernTemplateScopeBindingV1,TavernTemplateEngineIdentityV1} from './tavern-template-types.mjs'
 import type {RoleplayInputStateOwner} from './roleplay-input-state.js'
 import {produceAuthorPromptCaptureV1} from './roleplay-author-prompt-capture.js'
 import type {PromptProgramV1,PromptCaptureV1,PromptExecutionV1,PromptExecutionOutputV1}
@@ -103,7 +103,7 @@ interface Dependencies extends SourceDependencies {
   withSourceLock<T>(sessionId:string,work:()=>Promise<T>,signal:AbortSignal):Promise<T>
   includeCardStyle(sessionId:string):boolean
   authorPolicy(sessionId:string):Readonly<Record<string,unknown>>
-  loadTemplate(signal:AbortSignal):Promise<AdmittedTavernTemplateComponentV1>
+  loadTemplate(signal:AbortSignal,engine?:TavernTemplateEngineIdentityV1):Promise<AdmittedTavernTemplateComponentV1>
   projections():readonly SessionMessageProjection[]
   /** Uses the existing selected-window continuity policy and real internal
    * maintenance provenance, with no second prompt budget or Session fold. */
@@ -439,7 +439,8 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         authorPromptFacts?.program,authorBrowserFacts?.program,authorInputs),
         injections=createRoleplayTavernInjectionRegistryV1({sessionId:scope.session.id,turn:scope.turn,step:scope.step,
           attemptId,history:materialHistory,definitions:definitions.definitions,promptDefinition:definitions.promptDefinition,
-          browserDefinition:definitions.browserDefinition,component,assertCurrent,signal:scope.signal})
+          browserDefinition:definitions.browserDefinition,
+          loadForEngine:(engine,signal)=>deps.loadTemplate(signal,engine),assertCurrent,signal:scope.signal})
       if(authorBrowser&&authorBrowserFacts&&definitions.browserDefinition) {
         injections.acceptBrowserGeneration(authorBrowserFacts.program,authorBrowser.capture,
           authorBrowser.output,definitions.browserDefinition)
