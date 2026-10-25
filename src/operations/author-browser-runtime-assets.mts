@@ -210,7 +210,8 @@ export async function buildAuthorBrowserRuntimeAssetsV2(options:{repo:string;pla
   const resources=options.plan.product.packages.find(row=>row.packageArtifact===recipe.packageArtifact)?.resources
   if(!resources)throw Error('AUTHOR_BROWSER_V2_PACKAGE_UNREGISTERED')
   const registered=new Map(options.plan.artifacts.map(item=>[path.resolve(inside(repo,item.source)),item]))
-  const root=path.resolve(options.packageRoot),libraries=fs.realpathSync(options.libraryRoot)
+  const root=path.resolve(options.packageRoot),libraryLookup=path.resolve(options.libraryRoot),
+    libraries=fs.realpathSync(libraryLookup)
   const outputs=new Map<string,Buffer>(),graphs:Partial<Record<AuthorBrowserRuntimeRoleV2,readonly SourceInput[]>>={}
   const bundledDependencies:Record<string,string>={}
   const prefix=path.posix.dirname(find(recipe.packageArtifact).source)
@@ -221,7 +222,8 @@ export async function buildAuthorBrowserRuntimeAssetsV2(options:{repo:string;pla
     const result=await esbuild.build({absWorkingDir:repo,entryPoints:[inside(repo,find(module.artifact).source)],
       bundle:true,platform:browser?'browser':'node',format:browser&&module.role!=='execution-worker'?'iife':'esm',
       target:recipe.builder.target,write:false,metafile:true,minifyWhitespace:true,legalComments:'none',
-      nodePaths:[libraries],external:browser?[]:Object.keys(recipe.dependencies),tsconfigRaw:{compilerOptions:{}}})
+      // Bundle under this checkout's identities; audit actual dependency bytes below.
+      preserveSymlinks:true,nodePaths:[libraryLookup],external:browser?[]:Object.keys(recipe.dependencies),tsconfigRaw:{compilerOptions:{}}})
     if(result.outputFiles?.length!==1||!result.metafile)throw Error('AUTHOR_BROWSER_V2_OUTPUT_INVALID')
     const sources:SourceInput[]=[]
     for(const input of Object.keys(result.metafile.inputs)) {

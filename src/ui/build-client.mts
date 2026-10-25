@@ -37,6 +37,8 @@ const external = recipe?.browser?.external ?? ['react', 'react-dom/client', '@de
 
 const result = await build({
   metafile: true,
+  // Shared toolchain junctions must retain the paths registered by this checkout.
+  preserveSymlinks: true,
   absWorkingDir: dirname(resolve(entry)),
   entryPoints: [basename(entry)],
   outfile: resolve(outfile),
