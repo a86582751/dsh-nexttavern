@@ -1,18 +1,53 @@
 import assert from 'node:assert/strict'
-import { createRoleplayInheritance } from '../lib/core/roleplay-inheritance.js'
-import { createRoleplayService } from '../lib/core/roleplay-service.js'
 import { mock } from 'node:test'
 import { createHash } from 'node:crypto'
-import { directorNotesForBranch, legacyCadenceSlots, memoryNotesCadence, selectedStoryHistory } from '../lib/memory/roleplay-memory-engine.js'
-import { apply, recentWindowSince, readRoleplayActivity } from '../lib/core/roleplay-core.js'
-import { recordSha256 } from '../lib/core/roleplay-data.js'
-import { createConversationCatalog } from '../lib/core/tavern-conversations.js'
+import {registerHooks} from 'node:module'
+import {pathToFileURL} from 'node:url'
+import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
+import {ownedPackages, mountMaintainedPeer} from './plugin-owned-packages-fixture.mts'
+import {sharedTypeScriptRuntimeFixture} from './shared-typescript-runtime-fixture.mts'
+
+const releaseSchemaDependencies=installSchemaTestDependencies()
+const native=await ownedPackages(['session-format'],[],{localSession:true})
+let sharedTypeScript, peerHooks, queryHost
+try {
+await mountMaintainedPeer(native,'llm')
+await mountMaintainedPeer(native,'agent-loop')
+sharedTypeScript=await sharedTypeScriptRuntimeFixture({productRoot:native.directory})
+const generatedCore=new URL('../lib/core/',import.meta.url).href
+const nativePeers=new Set(['@deepseek-ai/dsh-agent-loop','@deepseek-ai/dsh-session',
+  '@deepseek-ai/dsh-session/surface','@deepseek-ai/dsh-llm','@deepseek-ai/dsh-tools',
+  'dsh-nexttavern-session-format/mvu-player-marker','dsh-nexttavern-typescript-runtime'])
+// Keep canonical Core and memory modules in one Node graph. Only bare peer
+// imports use this fixture's complete maintained packages; no bundled copies.
+peerHooks=registerHooks({resolve(specifier,context,next) {
+  if(nativePeers.has(specifier)&&context.parentURL?.startsWith(generatedCore)) {
+    return {url:pathToFileURL(native.require.resolve(specifier)).href,shortCircuit:true}
+  }
+  return next(specifier,context)
+}})
+const {createRoleplayInheritance}=await import('../lib/core/roleplay-inheritance.js')
+const {createRoleplayService}=await import('../lib/core/roleplay-service.js')
+const {directorNotesForBranch,legacyCadenceSlots,memoryNotesCadence,selectedStoryHistory}=
+  await import('../lib/memory/roleplay-memory-engine.js')
+const {apply,recentWindowSince,readRoleplayActivity}=await import('../lib/core/roleplay-core.js')
+const {recordSha256}=await import('../lib/core/roleplay-data.js')
+const {createConversationCatalog}=await import('../lib/core/tavern-conversations.js')
+const {messageEditProjection,assertMessageEdit,editMessageText}=await native.load('dsh-nexttavern-session-format/projection')
+const {appendMessageEdit,latestMessageEdit,currentMessageEdits,projectMessageEditPrefix}=
+  await native.load('dsh-nexttavern-session-format')
 
 class Table extends Map {
-  async put(key, value) { this.set(key, structuredClone(value)) }
+  // Core retains the Domain's writer identity. Faults/gates live behind that
+  // stable writer, rather than replacing a method after consumers captured it.
+  async put(key, value) {
+    await this.beforePut?.(key, value)
+    this.set(key, structuredClone(value))
+  }
   async delete(key) { return super.delete(key) }
   async update(key, fn) {
     if (!this.has(key)) throw new Error('missing-key')
+    await this.beforeUpdate?.(key)
     const next = fn(structuredClone(this.get(key)))
     this.set(key, structuredClone(next))
     return structuredClone(next)
@@ -34,19 +69,8 @@ const sessions = new Map()
 const persistedSessions = new Map()
 const sessionEventObservers = []
 const nexttavernMessageEdits = {
-  append(session, targetSeq, identity, textValue) {
-    return session.append('roleplay/message-edit', {
-      schemaVersion: 1, targetSeq, ...identity, text: textValue,
-    }, {surfaceOp: 'append'})
-  },
-  latest(events, targetSeq) {
-    return [...events].reverse().find((event) =>
-      event.type === 'roleplay/message-edit' && event.data?.targetSeq === targetSeq) ?? null
-  },
-  current(session, events) {
-    const history = Array.isArray(session) ? session : events ?? session.events
-    return history.filter((event) => event.type === 'roleplay/message-edit')
-  },
+  append:appendMessageEdit,latest:latestMessageEdit,current:currentMessageEdits,
+  projectPrefix:projectMessageEditPrefix,assertMessageEdit,editMessageText,
 }
 const ctx = {
   storageDomain: { async open(options) {
@@ -58,7 +82,8 @@ const ctx = {
     }
     return domain
   } },
-  sessions: { get(id) { return sessions.get(id) }, async flush() { return true } },
+  sessions: { get(id) { return sessions.get(id) }, async flush() { return true },
+    messageProjections: [messageEditProjection] },
   nexttavernMessageEdits,
   sessionController: {
     async resolveAgent(id) {
@@ -82,15 +107,33 @@ const ctx = {
   provide(name, value) { services.set(name, value) },
   get(name) { return services.get(name) },
 }
+const {Context}=await native.load('@deepseek-ai/cordis')
+const {SessionQueryEngine}=await native.load('@deepseek-ai/dsh-session-query')
+queryHost=new Context()
+queryHost.provide('sessions',ctx.sessions)
+await queryHost.plugin(SessionQueryEngine)
+ctx.sessionQuery=queryHost.sessionQuery
 
 const text = (value) => [{ type: 'text', text: value }]
+const fixtureEvents = (events) => events.map(event => {
+  event.time ??= 100 + event.seq
+  if (event.type === 'user/message') event.data.role ??= 'user'
+  if (event.type === 'assistant/message') event.data.message.role ??= 'assistant'
+  return event
+})
 const enableAppend = (session) => {
+  fixtureEvents(session.events)
+  session.header.id = session.id
+  session.inheritedEventCount ??= 0
+  if (session.header.parentSession) session.header.isSeeded = true
+  session.snapshotEvents = (fromSeq = 0, toSeqExclusive = session.events.length) =>
+    Object.freeze(session.events.slice(fromSeq, toSeqExclusive))
   session.surface.contentGeneration ??= 0
   session.append = (type, data, opts = {}) => {
-    const event = {
+    const [event] = fixtureEvents([{
       type, seq: session.events.length, time: Date.now(), data: structuredClone(data),
       surfaceOp: structuredClone(opts.surfaceOp), sourceEventSeqs: [...(opts.sourceEventSeqs ?? [])],
-    }
+    }])
     const op = opts.surfaceOp
     if (op && typeof op === 'object' && op.op === 'replace') {
       const start = session.surface.nodes.indexOf(op.startSeq)
@@ -176,7 +219,7 @@ await apply(ctx, {})
    assert.equal(response.status,404);assert.match(response.headers.get('content-type'),/application\/json/);assert.equal((await response.json()).ok,false)
   }
  }
- const first=await request('/api/roleplay/state');assert.equal(first.status,200)
+ const first=await request('/api/roleplay/state');assert.equal(first.status,200,await first.clone().text())
  table('cards').set(`${session.id}__sparse`,{})
  table('worldbook').set(`${session.id}__legacy`,{id:'legacy',name:'kept'})
  table('cards').set('foreign-state__card',{id:'foreign',content:'FOREIGN'})
@@ -370,17 +413,23 @@ assert.equal(failedRegenerate.body.recoveryOnly, true)
 // A failed model may have emitted a partial assistant. It is not a completed
 // story anchor, but the same failed turn must retain retry and worldline paging.
 {
- const failed=enableAppend({id:'failed-partial-worldline',header:{agentPreset:'roleplay'},events:[
+ const partialEvents=fixtureEvents([
   {seq:0,type:'turn/start',data:{turn:7}},
   {seq:1,type:'user/message',data:{id:'failed-player',content:text('编辑后的失败输入'),source:{kind:'user',rpcId:'failed-rpc'}},surfaceOp:'append'},
   {seq:2,type:'assistant/message',data:{turn:7,step:1,interrupted:true,message:{id:'partial-output',content:text('尚未完成')}},surfaceOp:'append'},
   {seq:3,type:'turn/end',data:{turn:7,reason:{kind:'error',error:{message:'transport closed'}}}},
- ],seq:4,surface:{nodes:[1,2]}})
- sessions.set(failed.id,failed)
-await table('branch').put('fork-group-failed-pager',{schemaVersion:2,groupId:'failed-pager',members:[
+ ])
+ const failedPager=(session,legacy=false)=>({schemaVersion:2,groupId:'failed-pager',members:[
   {sessionId:root.id,ordinal:1,assistantMessageId:'a1',deleted:false,playerVariantId:'failed-pager:player:1',playerOrdinal:1},
-  {sessionId:failed.id,ordinal:2,kind:'player-edit-send',requestId:'failed-rpc',failed:true,deleted:true,pending:false,assistantMessageId:null,playerVariantId:'failed-pager:player:2',playerOrdinal:2,failureReason:'turn 7 未以 completed 正常结束'},
-],playerVariants:{'failed-pager:player:1':{text:'原玩家输入',revision:1},'failed-pager:player:2':{text:'编辑后的失败输入',revision:1}}})
+  {sessionId:session.id,ordinal:2,kind:'player-edit-send',requestId:legacy?'old-transport-id':'failed-rpc',
+   failed:!legacy,deleted:!legacy,pending:legacy,assistantMessageId:null,
+   playerVariantId:'failed-pager:player:2',playerOrdinal:2,failureReason:'turn 7 未以 completed 正常结束'},
+ ],playerVariants:{'failed-pager:player:1':{text:'原玩家输入',revision:1},'failed-pager:player:2':{text:'编辑后的失败输入',revision:1}}})
+ {
+ const failed=enableAppend({id:'failed-partial-worldline',header:{agentPreset:'roleplay'},
+  events:structuredClone(partialEvents),seq:4,surface:{nodes:[1,2]}})
+ sessions.set(failed.id,failed)
+ await table('branch').put('fork-group-failed-pager',failedPager(failed))
  const response=await routes.get('/api/roleplay/state').fetch(new Request('https://local.test/api/roleplay/state?sessionId='+failed.id))
  const state=await response.json()
  assert.equal(state.failedTurnRecoveryByTurn?.['7'],1,'partial assistant does not hide failed-turn recovery')
@@ -390,12 +439,24 @@ assert.equal(state.failedTurnBranchGroupByTurn?.['7']?.members[0]?.sessionId,fai
  const retry=await callRoute('/api/roleplay/branch',{action:'prepare',sessionId:failed.id,userSeq:1,kind:'regenerate'})
  assert.equal(retry.status,200,JSON.stringify(retry.body))
  assert.equal(retry.body.recoveryOnly,true,'partial failure replays its player input in a clean worldline')
- failed.header={...failed.header,parentSession:root.id};failed.inheritedEventCount=1
- const legacy=table('branch').get('fork-group-failed-pager')
- Object.assign(legacy.members[1],{requestId:'old-transport-id',pending:true,failed:false,deleted:false})
- await table('branch').put('fork-group-failed-pager',legacy)
+ await table('branch').delete('fork-op-'+retry.body.operationId)
+ await table('branch').delete('fork-group-failed-pager')
+ sessions.delete(failed.id)
+ }
+ // A second durable identity models an old seeded fork. Native headers never
+ // change from parentless to seeded during a Session's lifetime.
+ {
+ const failedParent=enableAppend({id:'failed-partial-parent',header:{agentPreset:'roleplay'},
+  events:structuredClone(partialEvents.slice(0,1)),seq:1,surface:{nodes:[]}})
+ sessions.set(failedParent.id,failedParent)
+ const failed=enableAppend({id:'failed-partial-seeded-worldline',header:{agentPreset:'roleplay',parentSession:failedParent.id},
+  inheritedEventCount:1,events:structuredClone(partialEvents),seq:4,surface:{nodes:[1,2]}})
+ sessions.set(failed.id,failed)
+ await table('branch').put('fork-group-failed-pager',failedPager(failed,true))
  const legacyState=await (await routes.get('/api/roleplay/state').fetch(new Request('https://local.test/api/roleplay/state?sessionId='+failed.id))).json()
 assert.equal(legacyState.failedTurnBranchGroupByTurn?.['7']?.total,1,'first post-seed failed edited input keeps only its own pager despite an old transport ID')
+ const retry=await callRoute('/api/roleplay/branch',{action:'prepare',sessionId:failed.id,userSeq:1,kind:'regenerate'})
+ assert.equal(retry.status,200,JSON.stringify(retry.body))
  const recoveredChild=enableAppend({id:'recovered-legacy-pending',header: {agentPreset:'roleplay',parentSession:failed.id}, inheritedEventCount: 0,events:[],seq:0,surface:{nodes:[]}})
  sessions.set(recoveredChild.id,recoveredChild)
  const registeredRetry=await callRoute('/api/roleplay/branch',{action:'register',operationId:retry.body.operationId,childSessionId:recoveredChild.id,requestId:'new-retry-rpc',promptText:'编辑后的失败输入'})
@@ -428,6 +489,8 @@ assert.equal(legacyState.failedTurnBranchGroupByTurn?.['7']?.total,1,'first post
  sessions.delete(secondRecoveredChild.id)
  await table('branch').delete('fork-group-failed-pager')
  sessions.delete(failed.id)
+ sessions.delete(failedParent.id)
+ }
 }
 
 const registered = await callRoute('/api/roleplay/branch', {
@@ -445,12 +508,12 @@ assert.equal(pendingOperation.body.status, 'pending')
 assert.equal(pendingOperation.body.registered, true)
 assert.equal(pendingOperation.body.requestAccepted, false)
 
-child.events.push(
+child.events.push(...fixtureEvents([
   { type: 'turn/start', seq: 0, data: { turn: 1 } },
   { type: 'user/message', seq: 1, data: { id: 'u2', content: text('原始玩家消息'), source: { kind: 'user', rpcId: 'req-regen-1' } }, surfaceOp: 'append' },
   { type: 'assistant/message', seq: 2, data: { turn: 1, message: { id: 'a2', content: text('新分支回复') } }, surfaceOp: 'append' },
   { type: 'turn/end', seq: 3, data: { turn: 1, reason: { kind: 'completed' } } },
-)
+]))
 child.seq = 4
 child.surface.nodes = [1, 2]
 
@@ -481,7 +544,7 @@ sessions.delete(root.id)
 const savedUser = await callRoute('/api/roleplay/branch', {
   action: 'replace-message', sessionId: child.id, role: 'user', seq: 1, text: '原地修改后的玩家消息',
 })
-assert.equal(savedUser.status, 200)
+assert.equal(savedUser.status, 200, JSON.stringify(savedUser.body))
 assert.equal(savedUser.body.changed, 1)
 assert.equal(savedUser.body.matched, 1)
 assert.equal(root.events[root.surface.nodes[0]].data.content[0].text, '原始玩家消息')
@@ -553,6 +616,12 @@ if (childMemberBeforeInheritedEdit && childMemberAfterInheritedEdit) {
   assert.equal(childMemberAfterInheritedEdit.assistantSeq, childMemberBeforeInheritedEdit.assistantSeq)
 }
 
+const deleteGroup = [...table('branch').values()].find(value => value?.members?.some(member => member.sessionId === child.id))
+const failedDeleteReservation = {...structuredClone(deleteGroup.members.find(member => member.sessionId === child.id)),
+  sessionId: 'failed-empty-delete-sibling', ordinal: 3, assistantMessageId: null, assistantSeq: null,
+  pending: false, failed: true, failureReason: '生成未完成'}
+deleteGroup.members.push(failedDeleteReservation)
+await table('branch').put(`fork-group-${deleteGroup.groupId}`, deleteGroup)
 const deleted = await callRoute('/api/roleplay/branch', {
   action: 'delete', sessionId: child.id, messageId: 'a2',
 })
@@ -565,9 +634,19 @@ const replayedDelete = await callRoute('/api/roleplay/branch', {
 assert.equal(replayedDelete.status, 200)
 assert.equal(replayedDelete.body.alreadyDeleted, true)
 assert.equal(replayedDelete.body.nextSessionId, root.id)
+assert.deepEqual(table('branch').get(`fork-group-${deleteGroup.groupId}`).members.find(member =>
+  member.sessionId === failedDeleteReservation.sessionId), failedDeleteReservation, 'deletion keeps the failed recovery reservation intact')
 const deletedStateResponse = await stateRoute.fetch(new Request('https://example.test/api/roleplay/state?sessionId=session-child'))
 const deletedState = await deletedStateResponse.json()
-assert.deepEqual(deletedState.deletedBranchMessageIds, ['a2'])
+assert.equal(deletedStateResponse.status, 200, JSON.stringify(deletedState))
+assert.deepEqual(deletedState.deletedBranchMessageIds, ['a2'], JSON.stringify(deletedState))
+const deletedEventsBefore = structuredClone(child.events)
+const deletedWrite = await callRoute('/api/roleplay/branch', {
+  action: 'replace-message', sessionId: child.id, role: 'assistant', messageId: 'a2', text: '不得修改已删除分支',
+})
+assert.equal(deletedWrite.status, 500)
+assert.match(deletedWrite.body.error, /剧情分支已删除/)
+assert.deepEqual(child.events, deletedEventsBefore, 'reading a tombstone never reopens its write eligibility')
 
 // A later-turn native fork must cut at the previous turn/end and inherit only
 // memory facts at or before the child's seedLength.
@@ -582,7 +661,8 @@ const laterEvents = [
   { type: 'turn/end', seq: 7, data: { turn: 2, reason: { kind: 'completed' } } },
 ]
 const later = enableAppend({ id: 'session-later', header: { agentPreset: 'roleplay' }, events: laterEvents, seq: 8, surface: { nodes: [1, 2, 5, 6] } })
-const laterChild = enableAppend({ id: 'session-later-child', header: { agentPreset: 'roleplay', parentSession: later.id}, inheritedEventCount: 4, events: [], seq: 0, surface: { nodes: [] } })
+const laterChild = enableAppend({ id: 'session-later-child', header: { agentPreset: 'roleplay', parentSession: later.id},
+  inheritedEventCount: 4, events: structuredClone(later.events.slice(0,4)), seq: 4, surface: { nodes: [1,2] } })
 sessions.set(later.id, later)
 sessions.set(laterChild.id, laterChild)
 await table('cards').put('session-later__user', { id: 'user', name: '玩家', content: '设定' })
@@ -604,13 +684,13 @@ assert.equal(laterRegistered.status, 200)
 assert.equal(laterRegistered.body.playerTotal, 2)
 assert.deepEqual(table('memory').get('session-later-child__head').deltas.map((item) => item.summary), ['保留'])
 assert.deepEqual(table('memory').get('session-later-child__head').pendingConfirmations.map((item) => item.claim), ['保留'])
-laterChild.events = [
+laterChild.events = fixtureEvents([
   ...structuredClone(later.events.slice(0, 4)),
   { type: 'turn/start', seq: 4, data: { turn: 2 } },
   { type: 'user/message', seq: 5, data: { id: 'lu2-edited', content: text('修改后的第二轮'), source: { kind: 'user', rpcId: 'req-edit-2' } }, surfaceOp: 'append' },
   { type: 'assistant/message', seq: 6, data: { turn: 2, message: { id: 'la2-edited', content: text('修改消息产生的回复') } }, surfaceOp: 'append' },
   { type: 'turn/end', seq: 7, data: { turn: 2, reason: { kind: 'completed' } } },
-]
+])
 laterChild.seq = 8
 laterChild.surface.nodes = [1, 2, 5, 6]
 const playerEditStateResponse = await stateRoute.fetch(new Request('https://example.test/api/roleplay/state?sessionId=session-later-child'))
@@ -638,12 +718,12 @@ const regenRegistered = await callRoute('/api/roleplay/branch', {
 })
 assert.equal(regenRegistered.body.playerTotal, 2)
 assert.equal(regenRegistered.body.total, 3)
-laterRegen.events.push(
+laterRegen.events.push(...fixtureEvents([
   { type: 'turn/start', seq: 4, data: { turn: 2 } },
   { type: 'user/message', seq: 5, data: { id: 'lu2-regen', content: text('修改后的第二轮'), source: { kind: 'user', rpcId: 'req-regen-after-edit' } }, surfaceOp: 'append' },
   { type: 'assistant/message', seq: 6, data: { turn: 2, message: { id: 'la2-regen', content: text('同一玩家消息的重生回复') } }, surfaceOp: 'append' },
   { type: 'turn/end', seq: 7, data: { turn: 2, reason: { kind: 'completed' } } },
-)
+]))
 laterRegen.seq = 8
 laterRegen.surface.nodes = [1, 2, 5, 6]
 const regenStateResponse = await stateRoute.fetch(new Request('https://example.test/api/roleplay/state?sessionId=session-later-regen'))
@@ -656,7 +736,7 @@ assert.equal(regenState.branchGroupsByMessageId['la2-regen'].total, 2)
 const truncatedChild = enableAppend({
   id: 'session-truncated-child',
   header: { agentPreset: 'roleplay', parentSession: later.id}, inheritedEventCount: 4,
-  events: [], seq: 0, surface: { nodes: [] },
+  events: structuredClone(later.events.slice(0,4)), seq: 4, surface: { nodes: [1,2] },
 })
 sessions.set(truncatedChild.id, truncatedChild)
 const truncatePrepared = await callRoute('/api/roleplay/branch', {
@@ -716,12 +796,12 @@ const registeredAfterSave = await callRoute('/api/roleplay/branch', {
 })
 assert.equal(registeredAfterSave.body.playerTotal, 1)
 assert.equal(registeredAfterSave.body.total, 2)
-saveRegen.events = [
+saveRegen.events = fixtureEvents([
   { type: 'turn/start', seq: 0, data: { turn: 1 } },
   { type: 'user/message', seq: 1, data: { id: 'save-u2', content: text('无名客很生气'), source: { kind: 'user', rpcId: 'req-regen-after-save' } }, surfaceOp: 'append' },
   { type: 'assistant/message', seq: 2, data: { turn: 1, message: { id: 'save-a2', content: text('重生回复') } }, surfaceOp: 'append' },
   { type: 'turn/end', seq: 3, data: { turn: 1, reason: { kind: 'completed' } } },
-]
+])
 saveRegen.seq = 4
 saveRegen.surface.nodes = [1, 2]
 const savedRegenStateResponse = await stateRoute.fetch(new Request('https://example.test/api/roleplay/state?sessionId=session-save-regen'))
@@ -745,18 +825,17 @@ assert.equal(savedRegenState.branchGroupsByMessageId['save-a2'].total, 2)
   })
   sessions.set(pendingChild.id, pendingChild)
   const branches = table('branch')
-  const originalPut = branches.put
+  const originalBeforePut = branches.beforePut
   let releaseCommit, enteredCommit
   const commitGate = new Promise(resolve => { releaseCommit = resolve })
   const entered = new Promise(resolve => { enteredCommit = resolve })
   let paused = false
-  branches.put = async function (key, value) {
+  branches.beforePut = async function (key, value) {
     if (!paused && key.startsWith('fork-group-') && value.rootSessionId === saveRoot.id) {
       paused = true
       enteredCommit()
       await commitGate
     }
-    return originalPut.call(this, key, value)
   }
   let editing, registering
   try {
@@ -765,7 +844,7 @@ assert.equal(savedRegenState.branchGroupsByMessageId['save-a2'].total, 2)
       text: '并发编辑后的玩家消息',
     })
     // Race against completion too, so a broken fixture fails instead of hanging.
-    await Promise.race([entered, editing.then(() => { throw Error('edit did not reach ledger commit') })])
+    await Promise.race([entered, editing.then(result => { throw Error('edit did not reach ledger commit: '+JSON.stringify(result)) })])
     let registered = false
     registering = callRoute('/api/roleplay/branch', {
       action: 'register', operationId: prepared.body.operationId,
@@ -787,7 +866,7 @@ assert.equal(savedRegenState.branchGroupsByMessageId['save-a2'].total, 2)
   } finally {
     releaseCommit()
     await Promise.allSettled([editing, registering])
-    branches.put = originalPut
+    branches.beforePut = originalBeforePut
   }
 }
 
@@ -811,7 +890,8 @@ const metadataPrepare = await callRoute('/api/roleplay/branch', { action: 'prepa
 const metadataRegister = await callRoute('/api/roleplay/branch', { action: 'register', operationId: metadataPrepare.body.operationId, childSessionId: metadataChild.id, requestId: 'meta-request', promptText: 'metadata prompt' })
 assert.equal(metadataRegister.status, 200, JSON.stringify(metadataRegister.body))
 const badPrepare = await callRoute('/api/roleplay/branch', { action: 'prepare', sessionId: metadataRoot.id, messageId: 'meta-a2', kind: 'regenerate' })
-const badChild = enableAppend({ id: 'session-bad-seed', header: { agentPreset: 'roleplay', parentSession: metadataRoot.id}, inheritedEventCount: 4, events: [], seq: 0, surface: { nodes: [] } })
+const badChild = enableAppend({ id: 'session-bad-seed', header: { agentPreset: 'roleplay', parentSession: metadataRoot.id},
+  inheritedEventCount: 4, events: structuredClone(metadataRoot.events.slice(0,4)), seq: 4, surface: { nodes: [1,2] } })
 sessions.set(badChild.id, badChild)
 const badRegister = await callRoute('/api/roleplay/branch', { action: 'register', operationId: badPrepare.body.operationId, childSessionId: badChild.id, requestId: 'bad-request', promptText: 'metadata prompt' })
 assert.equal(badRegister.status, 500, 'async registration error must return JSON instead of escaping HTTP bridge')
@@ -828,14 +908,13 @@ assert.equal(table('status').get('session-metadata-root__panel').stale, true)
     version: 1,
     deltas: [{ sessionId: metadataRoot.id, atSeq: 1 }, { sessionId: metadataRoot.id, atSeq: metadataRoot.seq }],
   })
-  const originalUpdate = memory.update
+  const originalBeforeUpdate = memory.beforeUpdate
   let injected = false
-  memory.update = async function (key, update) {
+  memory.beforeUpdate = async function (key) {
     if (key === memoryKey && !injected) {
       injected = true
       throw Error('fixture interrupted edit invalidation')
     }
-    return originalUpdate.call(this, key, update)
   }
   const request = {
     action: 'replace-message', sessionId: metadataRoot.id,
@@ -853,7 +932,7 @@ assert.equal(table('status').get('session-metadata-root__panel').stale, true)
     assert.equal((await callRoute('/api/roleplay/branch', request)).status, 200)
     assert.equal(memory.get(memoryKey).version, version, 'committed receipt prevents repeated invalidation')
   } finally {
-    memory.update = originalUpdate
+    memory.beforeUpdate = originalBeforeUpdate
   }
 }
 {
@@ -1071,7 +1150,7 @@ assert.equal(table('status').get('session-metadata-root__panel').stale, true)
   assert.equal(players.members[0].sessionId, 'cold-1-2', 'prefer the last completed live member over pending/deleted siblings')
   assert.equal(players.members.at(-1).sessionId, `cold-${variantCount}-2`)
   assert.deepEqual(players.members.map(member => member.sourceOrdinal), Array.from({ length: variantCount }, (_, i) => i + 1))
-  assert.equal(state.branchGroupsByMessageId['many-a'].total, 3)
+  assert.equal(state.branchGroupsByMessageId['many-a'].total, 2, 'reply paging skips the empty pending reservation')
   assert.equal(sessions.size, loadedBefore, 'projecting variants must not load cold sibling sessions')
   assert.equal(largeSession.events.length, 4, 'an already synchronized player variant needs no replacement')
 }
@@ -1238,3 +1317,10 @@ for(const startSeq of [2,5]) {
  assert.deepEqual(svc.branchLineage(registered.get('0')).map(entry=>entry.sessionId),['0','1','2'])
 }
 console.log('roleplay-core native branch and shared service smoke: ok')
+} finally {
+  await queryHost?.fiber.dispose()
+  peerHooks?.deregister()
+  sharedTypeScript?.close()
+  native.close()
+  releaseSchemaDependencies()
+}

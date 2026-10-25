@@ -219,6 +219,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       if(artifact)anchor.taskArtifact=artifact
     }
     const statusEvent=latestStatusEvent(session)
+    const deletedBranchMessageIds=deletedBranchMessageIdsFor(session,forkLookup)
     return {
       ok: true,
       preset: 'roleplay',
@@ -258,7 +259,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       programmaticOpeningActionAnchor,
       internalAssistantMessageIds,
       internalMaintenanceTurns:[...maintenanceTurns].filter(turn=>endedTurns.has(turn)&&!playerTurns.has(turn)&&!assistantActionAnchorsByTurn[String(turn)]),
-      deletedBranchMessageIds: deletedBranchMessageIdsFor(session, forkLookup),
+      deletedBranchMessageIds,
       inheritedAssistantMessageIds: inheritedAssistantMessageIdsFor(session, forkLookup),
       // The append-only audit log can contain regenerated/deleted siblings.
       // Reader and memory consumers must address only these authoritative
@@ -266,7 +267,8 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
        recordVersions:{...recordVersionsFor(session),readerDisplaySource:recordSha256({pointer:activeImport,
          rawSha256:activeSourceRecord?.rawSha256??null,normalizedSha256:activeSourceRecord?.normalizedSha256??null,
          transactionId:activeSourceRecord?.activation?.transactionId??null,userinfo,
-         displayContext:readerDisplayContextVersion?.(session.id)??null})},
+         // Deleted audit views do not open a live Reader observation.
+         displayContext:deletedBranchMessageIds.length?null:readerDisplayContextVersion?.(session.id)??null})},
       surfaceNodes: surfaceEntries(session).map((entry) => ({
         seq: entry.seq,
         kind: entry.kind,
