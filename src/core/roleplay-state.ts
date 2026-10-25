@@ -78,11 +78,8 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       statusRecoveredSessions.add(session.id)
       recoverStatusObligations(session, 'session-resume')
     }
-    const branchGroupsByMessageId = await nativeBranchGroupsFor(session)
-    // nativeBranchGroupsFor deliberately rebuilds its own lookup after repair;
-    // use a fresh index for the related player/deletion projections too.
-    forkLookup = buildForkLookupIndex(session)
-    const userActionsBySeq = await nativePlayerGroupsFor(session, branchGroupsByMessageId)
+    const branchGroupsByMessageId = await nativeBranchGroupsFor(session, forkLookup)
+    const userActionsBySeq = await nativePlayerGroupsFor(session, branchGroupsByMessageId, forkLookup)
     const failedTurnRecoveryByTurn: Record<string, number> = {}, failedTurnBranchGroupByTurn: Record<string, FailedTurnGroup> = {}, assistantActionAnchorsByTurn: Record<string, {seq: number; messageId: string;
       taskArtifact?:{sha256:string;kind:'patch'|'unchanged'|'cleared';operationCount:number}}> = {}
     const internalMessages = internalTaskSeqs(session)

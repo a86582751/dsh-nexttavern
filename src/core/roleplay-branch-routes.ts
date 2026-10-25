@@ -427,7 +427,7 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
               if (!requestedMessageId) {
                 return jsonResponse(400, { ok: false, error: '缺少 Agent 回复锚点' })
               }
-              const existingPointer = forkPointerFor(source, requestedMessageId)
+              const existingPointer = forkPointerFor(source, requestedMessageId, null, false)
               const existingGroup = existingPointer?.groupId
                 ? hydrateForkGroup(T.branch.get(forkGroupKey(existingPointer.groupId)))
                 : null
@@ -810,7 +810,7 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
                 if (!group) return jsonResponse(404, { ok: false, error: '分支组已被移除，请刷新后重试' })
                 const exactMember = groupMemberForSession(group, session, messageId, { includeDeleted: true })
                 if (exactMember?.deleted && exactMember.deleteResult) {
-                  const activeNow = group.members.filter((member) => !member.deleted)
+                  const activeNow = group.members.filter((member) => !member.deleted && !!member.assistantMessageId)
                   const preferred = activeNow.find((member) => member.sessionId === exactMember.deleteResult!.nextSessionId)
                     ?? activeNow[0]
                   if (!preferred) return jsonResponse(409, { ok: false, error: '分支组已没有可切换的活动版本' })
@@ -822,7 +822,9 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
                     alreadyDeleted: true,
                   })
                 }
-                const active = group.members.filter((member) => !member.deleted)
+                // Deletion must return a reply the user can open. Empty failed
+                // reservations stay in the ledger for their owning recovery.
+                const active = group.members.filter((member) => !member.deleted && !!member.assistantMessageId)
                 if (active.length <= 1) return jsonResponse(409, { ok: false, error: '至少保留一个可用分支；请先重新生成，再删除不需要的版本' })
                 const victimMember = exactMember
                 const index = active.findIndex((member) => member === victimMember)

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {createRequire,registerHooks} from 'node:module'
 import {pathToFileURL} from 'node:url'
-import type { WorldlineDependencies } from '../lib/core/roleplay-worldline-types.js'
+import type { ForkGroup, WorldlineDependencies } from '../lib/core/roleplay-worldline-types.js'
 import type { CompletionDependencies, CompletionState } from '../lib/core/roleplay-completion-types.js'
 import type { ContextEvent, ContextSession } from '../lib/core/roleplay-context.js'
 import type { BranchRoutesDependencies } from '../lib/core/roleplay-branch-routes-types.js'
@@ -259,6 +259,102 @@ for(const failedTail of ['anchor','delete'] as const)for(const conflict of ['non
   assert.equal(h.member().assistantSeq,conflict==='seq'?3:h.proof.seq)
   if(conflict==='none')assert.equal(h.anchors()[0].groupId,h.records.get(h.groupKey).groupId)
 }
+await test('opening reply pager skips failed and pending empty members without changing durable recovery history',async()=>{
+  const groupId='opening-reply-pager',playerVariantId=`${groupId}:player:1`
+  const originalMessageId='card-opening-copy',generatedMessageId='opening-regenerate-operation-9'
+  const original:ContextSession={id:'opening-copy',events:[
+    {seq:0,type:'turn/start',data:{turn:1}},
+    {seq:1,type:'assistant/message',data:{turn:1,message:{id:originalMessageId,
+      content:[{type:'text',text:'The copied card opening.'}]}}},
+  ],surface:{nodes:[1]}}
+  const generated:ContextSession={id:'opening-generated-9',events:[
+    {seq:0,type:'turn/start',data:{turn:1}},
+    {seq:1,type:'assistant/message',data:{turn:1,message:{id:generatedMessageId,source:{kind:'model'},
+      content:[{type:'text',text:'The completed generated opening.'}]}}},
+    {seq:2,type:'turn/end',data:{turn:1,reason:{kind:'completed'}}},
+  ],surface:{nodes:[1]}}
+  const sessions=new Map([[original.id,original],[generated.id,generated]])
+  const records=new Map<string,unknown>()
+  const branch={get:(key:string)=>records.get(key),entries:()=>records.entries(),
+    put:async(key:string,value:unknown)=>{records.set(key,structuredClone(value))},
+    delete:async(key:string)=>{records.delete(key)}}
+  const api=createRoleplayWorldlines({ctx:{sessions:{get:(id:string)=>sessions.get(id)}},T:{branch},
+    safeId:String,keyOf:(id:string,key:string)=>`${id}__${key}`,sha256,textOf,eventsOf,surfaceEvents,
+    isCompletedTurnEnd,cloneBranchRecord:structuredClone,canonicalAssistantForTurn} as unknown as WorldlineDependencies)
+  const reservation=(ordinal:number)=>({operationId:`operation-${ordinal}`,sessionId:`opening-generated-${ordinal}`,
+    ordinal,kind:'opening-regenerate',promptText:'',userMessageId:null,userSeq:null,playerVariantId,
+    playerOrdinal:1,playerTextRevision:1,playerAppliedRevision:0,assistantMessageId:null,assistantSeq:null,
+    createdAt:ordinal,deleted:false,pending:true})
+  // R24 retained seven failed opening reservations between the original copy
+  // and its first completed generation. They remain available for recovery.
+  const failedMembers=Array.from({length:7},(_,index)=>{
+    const ordinal=index+2
+    return {...reservation(ordinal),pending:false,failed:true,failureReason:'生成未完成',failedAt:ordinal+100}
+  })
+  const group:ForkGroup={schemaVersion:2,groupId,rootSessionId:original.id,
+    anchor:{sourceSessionId:original.id,sourceAssistantMessageId:originalMessageId,sourceAssistantSeq:1,
+      sourceAssistantTurn:1,sourceTurn:1,previousTurnEndSeq:null,promptText:'',openingOnly:true},
+    members:[{sessionId:original.id,ordinal:1,kind:'original',promptText:'',userMessageId:null,userSeq:null,
+      playerVariantId,playerOrdinal:1,assistantMessageId:originalMessageId,assistantSeq:1,
+      createdAt:1,deleted:false,pending:false},...failedMembers,
+      {...reservation(9),pending:false,assistantMessageId:generatedMessageId,assistantSeq:1,completedAt:109},
+      reservation(10)],
+    playerVariants:{[playerVariantId]:{text:'',revision:1,updatedAt:1}},createdAt:1,updatedAt:110}
+  const groupKey=api.forkGroupKey(groupId)
+  records.set(groupKey,group)
+  records.set(api.forkPendingKey('opening-generated-10',groupId),{groupId,ordinal:10,operationId:'operation-10'})
+  const before=JSON.stringify([...records.entries()])
+  const expectedMembers=[
+    {sessionId:original.id,ordinal:1,sourceOrdinal:1,kind:'original',pending:false},
+    {sessionId:generated.id,ordinal:2,sourceOrdinal:9,kind:'opening-regenerate',pending:false},
+  ]
+  const generatedProjection=await api.nativeBranchGroupsFor(generated)
+  assert.deepEqual(generatedProjection[generatedMessageId],{groupId,currentOrdinal:2,total:2,members:expectedMembers},
+    'previous reply points directly to the original copy across the seven failed empty reservations')
+  const originalProjection=await api.nativeBranchGroupsFor(original)
+  assert.deepEqual(originalProjection[originalMessageId],{groupId,currentOrdinal:1,total:2,members:expectedMembers},
+    'next reply points directly to the completed generation with its durable source ordinal')
+  assert.equal(JSON.stringify([...records.entries()]),before,'paging leaves every durable group and recovery pointer unchanged')
+  const retained=records.get(groupKey) as ForkGroup
+  assert.equal(retained.members.length,10)
+  assert.deepEqual(retained.members.filter(member=>member.failed),failedMembers,'all seven failed recovery members remain intact')
+  assert.equal(retained.members[9]!.pending,true)
+  assert.equal(retained.members[9]!.assistantMessageId,null)
+
+  const recoveryMembers=structuredClone(retained.members.filter(member=>member.failed||member.pending))
+  const pendingKey=api.forkPendingKey('opening-generated-10',groupId),pendingRecord=structuredClone(records.get(pendingKey))
+  const nativeHistory=structuredClone({original:original.events,generated:generated.events})
+  // Normal Native completion persists this pointer. The ledger fallback above
+  // covers paging; the retained pointer also anchors a deleted reply's retry.
+  records.set(`${generated.id}__fork-anchor-${sha256(generatedMessageId).slice(0,24)}`,{groupId})
+  let branchRoute!:{fetch(request:Request):Promise<Response>}
+  registerBranchRoutes({...api,T:{branch},cloneBranchRecord:structuredClone,
+    resolveRoleplaySession:async(id:string)=>sessions.get(id),
+    ctx:{effect:(work:()=>unknown)=>work(),connection:{fetch:{register:(route:typeof branchRoute)=>{branchRoute=route}}}},
+  } as unknown as BranchRoutesDependencies)
+  const deleteRequest=()=>branchRoute.fetch(new Request('https://fixture.test/api/roleplay/branch',{
+    method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({action:'delete',sessionId:generated.id,messageId:generatedMessageId}),
+  }))
+  const deleted=await deleteRequest(),deletedBody=await deleted.json()
+  assert.equal(deleted.status,200)
+  assert.equal(deletedBody.nextSessionId,original.id,'delete selects a completed reply across the failed empty members')
+  assert.equal(deletedBody.remaining,1,'empty failed and pending members are not remaining browsable replies')
+  const afterDelete=JSON.stringify(records.get(groupKey))
+  const replayed=await deleteRequest(),replayedBody=await replayed.json()
+  assert.equal(replayed.status,200)
+  assert.equal(replayedBody.alreadyDeleted,true)
+  assert.equal(replayedBody.nextSessionId,original.id)
+  assert.equal(replayedBody.remaining,1)
+  assert.equal(JSON.stringify(records.get(groupKey)),afterDelete,'delete retry preserves the committed tombstone')
+  const deletedGroup=records.get(groupKey) as ForkGroup
+  assert.deepEqual(deletedGroup.members.filter(member=>member.failed||member.pending),recoveryMembers,
+    'delete and retry preserve all failed and pending recovery members')
+  assert.deepEqual(records.get(pendingKey),pendingRecord)
+  assert.deepEqual(deletedGroup.members.filter(member=>member.deleted).map(member=>member.sessionId),[generated.id])
+  assert.equal(deletedGroup.members.find(member=>member.sessionId===generated.id)!.assistantMessageId,generatedMessageId)
+  assert.deepEqual({original:original.events,generated:generated.events},nativeHistory,'branch deletion retains both Native bodies')
+})
 await test('worldline terminal transitions release prepared inheritance resources',async()=>{
   for(const transition of ['abort','operation-status','create-worldline','expired-create','expired-register'] as const) {
     const expired=transition.startsWith('expired-')

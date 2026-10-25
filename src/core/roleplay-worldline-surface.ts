@@ -29,7 +29,9 @@ interface ForkAccess {
   forkAnchorLockKey(anchor: Pick<ForkAnchor, 'sourceSessionId' | 'sourceAssistantMessageId'>): string
   withForkMutationLock<T>(key: string, work: () => Promise<T>): Promise<T>
   hydrateForkGroup(value: unknown): ForkGroup | null
-  forkPointerFor(session: ReadBranchSession, messageId: unknown, lookup?: ForkLookup | null): { groupId?: string } | null
+  buildForkLookupIndex(session: ReadBranchSession): ForkLookup
+  forkPointerFor(session: ReadBranchSession, messageId: unknown, lookup?: ForkLookup | null,
+    openingOnly?: boolean): { groupId?: string } | null
   groupMemberForSession(
     group: ForkGroup | null,
     session: ReadBranchSession,
@@ -91,6 +93,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     forkAnchorLockKey,
     withForkMutationLock,
     hydrateForkGroup,
+    buildForkLookupIndex,
     forkPointerFor,
     groupMemberForSession,
     assistantMessageId,
@@ -105,7 +108,8 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     keyOf(sessionId, `player-projection-${sha256(`${groupId}\0${playerVariantId}`).slice(0, 32)}`)
   const playerSaves=createWorldlinePlayerSaves(T.branch)
 
-  async function nativePlayerGroupsFor(session: ReadBranchSession, assistantGroups: Record<string, BranchProjection>) {
+  async function nativePlayerGroupsFor(session: ReadBranchSession, assistantGroups: Record<string, BranchProjection>,
+    lookup?: ForkLookup) {
     const result: Record<string, PlayerProjection> = {}
     const entries = surfaceEntries(session)
     const publish = (user: SurfaceEntry, value: PlayerProjection) => {
@@ -119,8 +123,17 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
         if (entries[next]!.kind === 'user') break
         if (entries[next]!.kind === 'assistant') assistant = entries[next]
       }
-      const assistantGroup = assistant?.messageId ? assistantGroups[assistant.messageId] : null
-      if (!assistant?.messageId || !assistantGroup) {
+      const selected=assistant?.messageId?assistantGroups[assistant.messageId]:undefined
+      let stored=selected?hydrateForkGroup(T.branch.get(forkGroupKey(selected.groupId))):null
+      if(stored?.anchor.openingOnly) {
+        // Assistant paging can select an opening sibling for the same anchor.
+        // Player paging uses the ordinary group from the already repaired ledger.
+        lookup??=buildForkLookupIndex(session)
+        const pointer=forkPointerFor(session,assistant!.messageId,lookup,false)
+        stored=pointer?.groupId?hydrateForkGroup(T.branch.get(forkGroupKey(pointer.groupId))):null
+      }
+      const current=stored&&assistant?.messageId?groupMemberForSession(stored,session,assistant.messageId):null
+      if (!assistant?.messageId || !stored || !current) {
         publish(user, {
           userMessageId: user.messageId,
           assistantMessageId: assistant?.messageId ?? null,
@@ -128,10 +141,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
         })
         continue
       }
-      const stored = hydrateForkGroup(T.branch.get(forkGroupKey(assistantGroup.groupId)))
-      const active = stored?.members?.filter((member) => !member.deleted) ?? []
-      const current = groupMemberForSession(stored, session, assistant.messageId)
-      if (!stored || !current) continue
+      const active = stored.members.filter((member) => !member.deleted)
       const variants: { playerVariantId: string; sourceOrdinal: number; candidates: ForkMember[] }[] = []
       const byPlayerVariant = new Map<string, (typeof variants)[number]>()
       for (const member of active) {
@@ -387,7 +397,9 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     const pendingTaskEdit=taskRecovery?.kind==='matched'||taskRecovery?.kind==='pending'?taskRecovery.intent:undefined
     for (const assistant of surfaceEvents(session).filter(event => event.type === 'assistant/message')) {
       const messageId = assistantMessageId(assistant)
-      const pointer = forkPointerFor(session, messageId, lookup)
+      // Player revisions use their ordinary lineage even when this assistant
+      // also anchors an independent no-player opening group.
+      const pointer = forkPointerFor(session, messageId, lookup, false)
       const initial = pointer?.groupId ? hydrateForkGroup(T.branch.get(forkGroupKey(pointer.groupId))) : null
       if (!initial) continue
       await withForkMutationLock(forkAnchorLockKey(initial.anchor), async () => {
@@ -479,7 +491,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
       const visible = session.surface?.nodes?.includes(target.seq) === true
       const messageId = target.type === 'assistant/message' ? assistantMessageId(target)
         : visible ? assistantMessageId(userForkContext(session, target.seq).followingAssistant) : ''
-      const pointer = messageId ? forkPointerFor(session, messageId) : null
+      const pointer = messageId ? forkPointerFor(session, messageId, null, target.type === 'user/message' ? false : undefined) : null
       let group = pointer?.groupId ? hydrateForkGroup(T.branch.get(forkGroupKey(pointer.groupId))) : null
       if (!group && target.type === 'user/message') {
         // Archived player nodes no longer have a live surface neighbour. Their
@@ -487,7 +499,8 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
         for (const [key, value] of T.branch.entries()) {
           if (!key.startsWith('fork-group-')) continue
           const candidate = hydrateForkGroup(value)
-          if (candidate?.members.some(member => member.userMessageId === target.data?.id && member.userSeq === target.seq)) {
+          if (candidate && !candidate.anchor.openingOnly &&
+            candidate.members.some(member => member.userMessageId === target.data?.id && member.userSeq === target.seq)) {
             group = candidate
             break
           }
@@ -522,7 +535,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
       if (surface[index]?.type === 'assistant/message' && !internal.has(Number(surface[index]!.seq))) followingAssistant = surface[index]
     }
     const pointer = followingAssistant
-      ? forkPointerFor(session, assistantMessageId(followingAssistant))
+      ? forkPointerFor(session, assistantMessageId(followingAssistant), null, false)
       : null
     const group = pointer?.groupId ? hydrateForkGroup(T.branch.get(forkGroupKey(pointer.groupId))) : null
     return { event, followingAssistant, group }

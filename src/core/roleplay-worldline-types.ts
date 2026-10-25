@@ -118,7 +118,6 @@ export interface RecordTable<T> {
   update(key: string, update: (current: T | undefined) => object): Promise<unknown>
 }
 export interface ForkLookup {
-  bySessionMessage: Map<string, string>
   groups: ForkGroup[]
 }
 export interface BranchProjection {

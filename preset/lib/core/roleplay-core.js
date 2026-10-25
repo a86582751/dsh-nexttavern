@@ -2428,10 +2428,10 @@ export async function apply(ctx, config = {}) {
                 // A compacted player node still fed the branch's numerical history.
                 // Its durable variant must not become invisible to this denial gate.
                 for (const assistant of history.filter(event => event.type === 'assistant/message')) {
-                    const messageId = assistantMessageId(assistant), pointer = forkPointerFor(session, messageId);
+                    const messageId = assistantMessageId(assistant), pointer = forkPointerFor(session, messageId, null, false);
                     const group = pointer?.groupId ? hydrateForkGroup(T.branch.get(forkGroupKey(pointer.groupId))) : null;
                     const member = groupMemberForSession(group, session, messageId);
-                    if (!group || group.anchor.openingOnly || !member || member.pending || member.deleted)
+                    if (!group || !member || member.pending || member.deleted)
                         continue;
                     const variant = group.playerVariants[member.playerVariantId];
                     if (!variant || typeof variant.text !== 'string')
@@ -2449,7 +2449,7 @@ export async function apply(ctx, config = {}) {
                 for (const user of surfaceEvents(session).filter(event => event.type === 'user/message' && event.data?.source?.kind === 'user')) {
                     const { group, followingAssistant } = userForkContext(session, user.seq);
                     const member = groupMemberForSession(group, session, assistantMessageId(followingAssistant));
-                    if (!group || group.anchor.openingOnly || !member || member.deleted)
+                    if (!group || !member || member.deleted)
                         continue;
                     const variant = group.playerVariants[member.playerVariantId];
                     if (!variant || typeof variant.text !== 'string')

@@ -200,7 +200,6 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
 
   function buildForkLookupIndex(session: ReadBranchSession): ForkLookup {
     const lineage = new Set<string | undefined>(sessionLineageIds(session))
-    const bySessionMessage = new Map<string, string>()
     const groups = []
     for (const [key, raw] of T.branch.entries()) {
       if (!String(key).startsWith('fork-group-')) continue
@@ -211,37 +210,36 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       const group = hydrateForkGroup(raw)
       if (!group) continue
       groups.push(group)
-      for (const member of group.members) {
-        if (!member.deleted && member.sessionId && member.assistantMessageId) {
-          bySessionMessage.set(`${member.sessionId}\0${member.assistantMessageId}`, group.groupId)
-        }
-      }
     }
-    return { bySessionMessage, groups }
+    return { groups }
   }
 
-  function forkPointerFor(session: ReadBranchSession, messageId: unknown, lookup: ForkLookup | null = null) {
+  function forkPointerFor(session: ReadBranchSession, messageId: unknown, lookup: ForkLookup | null = null,
+    openingOnly?: boolean) {
     const lineage = sessionLineageIds(session)
     for (const sessionId of lineage) {
       const pointer = T.branch.get(forkAnchorKey(sessionId, messageId))
-      if (pointer?.groupId) return pointer
+      if (!pointer?.groupId) continue
+      if (openingOnly === undefined) return pointer
+      const group = T.branch.get(forkGroupKey(pointer.groupId))
+      if (group && (group.anchor?.openingOnly === true) === openingOnly) return pointer
     }
-    if (lookup?.bySessionMessage instanceof Map) {
-      for (const sessionId of lineage) {
-        const groupId = lookup.bySessionMessage.get(`${sessionId}\0${messageId}`)
-        if (groupId) return { groupId, recovered: true }
-      }
-      return null
-    }
-    // Recover an interrupted "group committed, child pointer not yet written"
-    // transaction from the small navigation ledger. This also ensures every
-    // descendant regeneration resolves the canonical root-anchor lock.
-    for (const [key, raw] of T.branch.entries()) {
-      if (!String(key).startsWith('fork-group-')) continue
-      if (Array.isArray(raw?.members) && raw.members.some((member) =>
-        !member.deleted && lineage.includes(member.sessionId) && member.assistantMessageId === messageId)) {
-        return { groupId: raw.groupId, recovered: true }
-      }
+    // Recover an interrupted group-to-pointer write from the same ledger,
+    // with or without a supplied lookup. One assistant can anchor both
+    // contracts; default assistant navigation retains the opening siblings.
+    const groups = lookup?.groups ?? [...T.branch.entries()]
+      .filter(([key]) => String(key).startsWith('fork-group-')).map(([, group]) => group)
+    for (const sessionId of lineage) {
+      const hasMember = (candidate: BranchRecord) => candidate.members?.some(member =>
+        (openingOnly !== undefined || !member.deleted)
+        && member.sessionId === sessionId && member.assistantMessageId === messageId)
+      const group = openingOnly === undefined
+        ? groups.find(candidate => candidate.anchor?.openingOnly === true && hasMember(candidate))
+          ?? groups.find(hasMember)
+        : groups.find(candidate => (candidate.anchor?.openingOnly === true) === openingOnly && hasMember(candidate))
+      // Typed recovery retains tombstones for the owning action's deletion
+      // decision; ordinary edits must not bypass it through opening navigation.
+      if (group) return {groupId: group.groupId, recovered: true}
     }
     return null
   }
@@ -349,7 +347,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       && source.producer === 'dsh-nexttavern' && typeof source.origin === 'string'
       && /^card-opening:[a-zA-Z0-9_-]{1,64}$/.test(source.origin)
       && typeof source.operationId === 'string' && !!source.operationId
-    const pointer = source?.kind === 'model' ? forkPointerFor(session, messageId) : null
+    const pointer = source?.kind === 'model' ? forkPointerFor(session, messageId, null, true) : null
     const group = pointer?.groupId ? hydrateForkGroup(T.branch.get(forkGroupKey(pointer.groupId))) : null
     const generatedMember=group?.members.find(member=>!member.deleted&&member.sessionId===session.id
       &&member.assistantMessageId===messageId&&Number(member.assistantSeq)===seq)
@@ -507,11 +505,23 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
 
   async function registerNativeFork(operation: ForkOperation, child: BranchSession, lockAttempt = 0): Promise<RegistrationResult | null> {
     const messageId = operation.anchor.sourceAssistantMessageId
+    const openingOnly = operation.anchor.openingOnly === true
+    const selectRegistrationGroup = (source: ReadBranchSession) => {
+      const pointer = forkPointerFor(source, messageId, null, openingOnly)
+      let groupId = pointer?.groupId ?? `g-${sha256(`${source.id}\0${messageId}`).slice(0, 32)}`
+      let group = hydrateForkGroup(T.branch.get(forkGroupKey(groupId)))
+      if (group && (group.anchor.openingOnly === true) !== openingOnly) {
+        // Preserve the occupied contract and its failed history. Both groups
+        // derive from the same canonical anchor and share its mutation lock.
+        const contract = openingOnly ? 'opening' : 'ordinary'
+        const anchorPair = `${group.anchor.sourceSessionId}\0${group.anchor.sourceAssistantMessageId}`
+        groupId = `g-${sha256(`${anchorPair}\0${contract}`).slice(0, 32)}`
+        group = hydrateForkGroup(T.branch.get(forkGroupKey(groupId)))
+      }
+      return {groupId, group}
+    }
     const sourceHint = await resolveRoleplaySession(operation.anchor.sourceSessionId)
-    const pointerHint = sourceHint ? forkPointerFor(sourceHint, messageId) : null
-    const groupHint = pointerHint?.groupId
-      ? hydrateForkGroup(T.branch.get(forkGroupKey(pointerHint.groupId)))
-      : null
+    const groupHint = sourceHint ? selectRegistrationGroup(sourceHint).group : null
     // Once a reply belongs to a group, every descendant's messageId must use
     // the original group's anchor lock. Two simultaneous regenerations from
     // different child Sessions otherwise hold different locks and overwrite
@@ -528,10 +538,8 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       }
       const source = await resolveRoleplaySession(operation.anchor.sourceSessionId)
       if (!source) throw new Error('源角色扮演会话不存在或无法恢复')
-      const livePointer = forkPointerFor(source, messageId)
-      const deterministicGroupId = `g-${sha256(`${source.id}\0${messageId}`).slice(0, 32)}`
-      let groupId = livePointer?.groupId ?? deterministicGroupId
-      let group = hydrateForkGroup(T.branch.get(forkGroupKey(groupId)))
+      const {groupId, group: selectedGroup} = selectRegistrationGroup(source)
+      let group = selectedGroup
       const canonicalLockKey = group?.anchor ? forkAnchorLockKey(group.anchor) : lockKey
       if (canonicalLockKey !== lockKey) {
         retryWithCanonicalLock = true
@@ -578,7 +586,13 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       // idempotent and stays inside the same anchor lock.
       const anchorKey = forkAnchorKey(source.id, messageId)
       const anchorPointer = T.branch.get(anchorKey)
-      if (anchorPointer?.groupId !== groupId) await T.branch.put(anchorKey, { groupId })
+      const navigationPointer = openingOnly ? null : forkPointerFor(source, messageId)
+      const navigationGroup = navigationPointer?.groupId ? T.branch.get(forkGroupKey(navigationPointer.groupId)) : null
+      // Ordinary player registration must not replace opening navigation.
+      // Its own group remains recoverable through the contract-aware ledger.
+      if (anchorPointer?.groupId !== groupId && (openingOnly || navigationGroup?.anchor?.openingOnly !== true)) {
+        await T.branch.put(anchorKey, { groupId })
+      }
 
       const existing = group.members.find((member) => member.operationId === operation.operationId)
       if (existing) {
@@ -1058,10 +1072,13 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     }
   }
 
-  async function nativeBranchGroupsFor(session: ReadBranchSession, _legacyLookup: ForkLookup | null = null) {
+  async function nativeBranchGroupsFor(session: ReadBranchSession, lookup: ForkLookup | null = null) {
     await reconcileNativeFork(session)
-    // A recovered pending member can change navigation; rebuild its lookup.
-    const lookup = buildForkLookupIndex(session)
+    // Repair can change navigation. Refresh the caller's shared projection
+    // snapshot here so player/deletion views reuse this same repaired ledger.
+    const repaired=buildForkLookupIndex(session)
+    if(lookup)lookup.groups=repaired.groups
+    else lookup=repaired
     const result: Record<string, BranchProjection> = {}
     for (const event of surfaceEvents(session)) {
       if (event?.type !== 'assistant/message') continue
@@ -1074,8 +1091,9 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       if (!current) continue
       // Assistant paging belongs to the currently selected player wording.
       // The durable group retains every player variant for navigation, while
-      // this projection exposes only sibling replies to that exact variant.
-      const members = group.members.filter((member) => !member.deleted &&
+      // this projection exposes only confirmed sibling replies to that variant.
+      // Empty failed/pending reservations remain in the durable recovery group.
+      const members = group.members.filter((member) => !member.deleted && !!member.assistantMessageId &&
         member.playerVariantId === current.playerVariantId)
       result[messageId] = {
         groupId: group.groupId,
@@ -1096,7 +1114,9 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
   function deletedBranchMessageIdsFor(session: ReadBranchSession, lookup: ForkLookup | null = null) {
     lookup ??= buildForkLookupIndex(session)
     const deleted = []
-    for (const event of surfaceEvents(session)) {
+    // Tombstones still revoke branches whose assistant anchors have left the
+    // model window; those original Native messages remain in retained history.
+    for (const event of eventsOf(session)) {
       if (event?.type !== 'assistant/message') continue
       const messageId = assistantMessageId(event)
       const pointer = forkPointerFor(session, messageId, lookup)
@@ -1147,7 +1167,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     replaceUserText,
   } = createWorldlineSurface(deps, {
     forkGroupKey, forkAnchorKey, forkAnchorLockKey, withForkMutationLock,
-    hydrateForkGroup, forkPointerFor, groupMemberForSession,
+    hydrateForkGroup, buildForkLookupIndex, forkPointerFor, groupMemberForSession,
     assistantMessageId, requestUserEvent, currentSurfaceUserBefore, turnForEvent,
   })
 
