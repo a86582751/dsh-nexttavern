@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import { NATIVE_MVU_SOURCE_POLICY, NATIVE_MVU_YAML_SOURCE_POLICY, isNativeMvuSourcePolicy, isNativeMvuYamlSourcePolicy, nativeMvuPayloadGrammar } from './roleplay-mvu-source-policy.js';
 import { parseMvuYamlData } from './tavern-mvu-yaml.js';
-import { parseMvuUpdateV2 } from './roleplay-mvu-update-v2.js';
+import { parseMvuUpdateRegionV2, parseMvuUpdateV2 } from './roleplay-mvu-update-v2.js';
 const BOUNDS = {
     inputBytes: 1048576, outputBytes: 1048576, depth: 32, descriptorDepth: 48,
     nodes: 32000, arrayLength: 4096, numberMagnitude: 9007199254740991,
@@ -343,9 +343,9 @@ function greetingPayload(body, pointer, metadata) {
         reject('INITVAR_FENCE_UNSUPPORTED', pointer);
     return captured;
 }
-function extractGreetingPayloads(text, pointer, headers) {
+function extractGreetingPayloads(text, pointer, headers, spans) {
     const result = [];
-    let openEnd = -1;
+    let openEnd = -1, openStart = -1;
     // ASCII tag regexp has no variable repetition and keeps offsets in the ORIGINAL UTF-16 source.
     // Lowercasing the whole source would move indices for characters such as U+0130.
     for (const tag of text.matchAll(/<\/?initvar>/gi)) {
@@ -353,6 +353,7 @@ function extractGreetingPayloads(text, pointer, headers) {
         if (!closing) {
             if (openEnd >= 0)
                 reject('INITVAR_WRAPPER_UNSUPPORTED', pointer);
+            openStart = tag.index;
             openEnd = tag.index + tag[0].length;
         }
         else {
@@ -363,6 +364,7 @@ function extractGreetingPayloads(text, pointer, headers) {
             const metadata = {};
             result.push(greetingPayload(text.slice(openEnd, tag.index), pointer, headers ? metadata : undefined));
             headers?.push(metadata.header ?? '');
+            spans?.push({ start: openStart, end: tag.index + tag[0].length });
             openEnd = -1;
         }
     }
@@ -370,12 +372,33 @@ function extractGreetingPayloads(text, pointer, headers) {
         reject('INITVAR_WRAPPER_UNSUPPORTED', pointer);
     return result;
 }
+/** The captured blocks own all data inside this wrapper. Leave any other text
+ * outside it for the update/Source owner; never infer commands from InitVar data. */
+function initializationUpdateOutside(text, spans) {
+    if (!spans.length)
+        return null;
+    const start = text.lastIndexOf('<UpdateVariable>', spans[0].start);
+    if (start < 0)
+        return null;
+    let cursor = start + '<UpdateVariable>'.length;
+    for (const span of spans) {
+        if (text.slice(cursor, span.start).trim())
+            return null;
+        cursor = span.end;
+    }
+    const end = text.indexOf('</UpdateVariable>', cursor);
+    if (end < 0 || text.slice(cursor, end).trim())
+        return null;
+    const outside = text.slice(0, start) + text.slice(end + '</UpdateVariable>'.length);
+    return parseMvuUpdateRegionV2(outside, { openingText: true }).candidate.kind === 'no-update' ? outside : null;
+}
 /** The actual source owner and compiler share this selector and the same pinned
  * wrappers. Only entries used by InitVar and extracted greeting blocks count;
  * ordinary prose and unrelated YAML-looking colons cannot choose a policy. */
 export function selectNativeMvuInitializationPolicy(input) {
     try {
         let yaml = false;
+        const openingInitialization = [];
         for (const book of input.books)
             for (const entry of book.entries) {
                 if (!entry.comment.toLowerCase().includes('[initvar]'))
@@ -386,18 +409,25 @@ export function selectNativeMvuInitializationPolicy(input) {
                 yaml ||= nativeMvuPayloadGrammar(expanded, expandedHeader.header, rawHeader.header, raw) === 'yaml';
             }
         for (const [index, swipe] of input.swipes.entries()) {
-            if (swipe.materialization === 'materialized')
+            if (swipe.materialization === 'materialized') {
+                openingInitialization.push(null);
                 continue;
+            }
             const rawHeaders = [], expandedHeaders = [];
-            const raw = extractGreetingPayloads(swipe.rawOpening, `/swipes/${index}`, rawHeaders);
-            const expanded = extractGreetingPayloads(swipe.renderedOpening, `/swipes/${index}`, expandedHeaders);
+            const rawSpans = [], expandedSpans = [];
+            const raw = extractGreetingPayloads(swipe.rawOpening, `/swipes/${index}`, rawHeaders, rawSpans);
+            const expanded = extractGreetingPayloads(swipe.renderedOpening, `/swipes/${index}`, expandedHeaders, expandedSpans);
             if (raw.length !== expanded.length)
                 reject('MACRO_BINDING', `/swipes/${index}`);
+            const rawOutside = initializationUpdateOutside(swipe.rawOpening, rawSpans), renderedOutside = initializationUpdateOutside(swipe.renderedOpening, expandedSpans);
+            if ((rawOutside === null) !== (renderedOutside === null))
+                reject('MACRO_BINDING', `/swipes/${index}`);
+            openingInitialization.push(rawOutside === null ? null : { rawOutside, renderedOutside: renderedOutside });
             for (const [block, text] of expanded.entries()) {
                 yaml ||= nativeMvuPayloadGrammar(text, expandedHeaders[block], rawHeaders[block], raw[block]) === 'yaml';
             }
         }
-        return { kind: 'selected', policy: yaml ? NATIVE_MVU_YAML_SOURCE_POLICY : NATIVE_MVU_SOURCE_POLICY };
+        return { kind: 'selected', policy: yaml ? NATIVE_MVU_YAML_SOURCE_POLICY : NATIVE_MVU_SOURCE_POLICY, openingInitialization };
     }
     catch (error) {
         return { kind: 'unsupported', diagnostics: [error instanceof Refusal ? { code: error.code, pointer: error.pointer }
@@ -480,7 +510,7 @@ function loadBooks(input, starting, seen, context) {
     }
     return { statData, dataSha256: dataHash(statData), initializedBooks: [...initialized], books };
 }
-function calculate(safe, existing, nativePolicy, openingUpdateDeferred = false) {
+function calculate(safe, existing, nativePolicy, openingUpdateDeferred = false, openingInitialization) {
     const base = existing.bookStatData;
     const context = { macros: safe.capabilities.macros, nodes: 0, cache: new Map(),
         ...(nativePolicy && isNativeMvuYamlSourcePolicy(nativePolicy) ? { yaml: true } : {}) };
@@ -489,7 +519,9 @@ function calculate(safe, existing, nativePolicy, openingUpdateDeferred = false) 
     let resultBytes = Buffer.byteLength(canonical(baseline), 'utf8')
         + Buffer.byteLength(canonical(existing), 'utf8');
     for (const [index, swipe] of safe.swipes.entries()) {
-        if (!openingUpdateDeferred && swipe.materialization !== 'materialized' && /<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(swipe.rawOpening)) {
+        const updateSource = openingInitialization?.[index]?.rawOutside ?? swipe.rawOpening;
+        if (!openingUpdateDeferred && swipe.materialization !== 'materialized'
+            && /<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(updateSource)) {
             reject('OPENING_UPDATE_UNSUPPORTED', `/swipes/${index}`);
         }
         let statData = merge(jsonObject(swipe.statData, `/swipes/${index}/statData`), structuredClone(baseline.statData));
@@ -711,6 +743,9 @@ export function compileSchemaMvuInitData(input) {
             hash(swipe.renderedSha256, `/swipes/${index}/renderedSha256`);
         }
         const source = checked;
+        const selectedPolicy = selectNativeMvuInitializationPolicy(source);
+        if (selectedPolicy.kind === 'unsupported')
+            reject(selectedPolicy.diagnostics[0].code, selectedPolicy.diagnostics[0].pointer);
         let openingUpdate;
         if (source.schemaVersion === 2) {
             if (source.swipes.length !== 1 || source.swipes[0].identity !== source.selectedSwipeIdentity)
@@ -721,13 +756,10 @@ export function compileSchemaMvuInitData(input) {
             openingUpdate = candidate;
         }
         const { safe, existing } = prepareCalculationData(source);
-        const selectedPolicy = selectNativeMvuInitializationPolicy(source);
-        if (selectedPolicy.kind === 'unsupported')
-            reject(selectedPolicy.diagnostics[0].code, selectedPolicy.diagnostics[0].pointer);
         const grammar = isNativeMvuYamlSourcePolicy(selectedPolicy.policy) ? 'yaml-1.2-json-data-v1' : 'strict-json-object-v1';
         if (grammar !== source.grammar)
             reject('INIT_GRAMMAR', '/grammar');
-        const { baseline, swipes } = calculate(safe, existing, selectedPolicy.policy, source.schemaVersion === 2);
+        const { baseline, swipes } = calculate(safe, existing, selectedPolicy.policy, source.schemaVersion === 2, selectedPolicy.openingInitialization);
         const selected = swipes.find(swipe => swipe.identity === source.selectedSwipeIdentity);
         const initialized = {};
         for (const identity of selected.initializedBooks)

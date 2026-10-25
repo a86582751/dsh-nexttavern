@@ -564,7 +564,10 @@ export function readMvuSchemaCurrentAuthorMaterial(deps:MvuSourceDeps,sessionId:
 }
 export function createRoleplayMvuSource(deps: MvuSourceDeps) {
   const capture = (sessionId: string, selectedIndex: number) => captureSource(deps,sessionId,selectedIndex)
-  function openingSyntax(candidate:TavernOpeningCandidate,allowUpdate:boolean):'none'|'update'|'unsupported' {
+  function openingSyntax(candidate:TavernOpeningCandidate,allowUpdate:boolean,
+    initialization:{rawOutside:string;renderedOutside:string}|null):'none'|'update'|'unsupported' {
+    if(initialization)return stateSyntax(initialization.rawOutside)||stateSyntax(initialization.renderedOutside)
+      ?'unsupported':'none'
     if(!allowUpdate)return stateSyntax(candidate.rawText)?'unsupported':'none'
     const raw=parseMvuUpdateRegionV2(candidate.rawText,{openingText:true})
     const rendered=parseMvuUpdateRegionV2(candidate.renderedText,{openingText:true})
@@ -648,10 +651,14 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
           renderedContent:rendered,renderedContentSha256:sha(rendered)})
       }
     }
+    const selection=selectNativeMvuInitializationPolicy({books:[{entries}],
+      swipes:candidates.map(item=>({rawOpening:item.rawText,renderedOpening:item.renderedText,
+        ...(item.materialization?{materialization:item.materialization}:{})}))})
+    if(selection.kind==='unsupported')fail('INITVAR_INVALID',selection.diagnostics[0]!.pointer)
     let openingInit = false,openingUpdate=false
-    for (const candidate of candidates) {
+    for (const [index,candidate] of candidates.entries()) {
       if(nativeCard&&candidate.materialization==='materialized')continue
-      const syntax=openingSyntax(candidate,allowUpdate)
+      const syntax=openingSyntax(candidate,allowUpdate,authorSchema?selection.openingInitialization[index]!:null)
       if (syntax==='unsupported') fail('STATE_SYNTAX_UNSUPPORTED',candidate.sourcePointer,candidate.rawText)
       openingUpdate=syntax==='update'
       if (openingBlocks(candidate.renderedText,candidate.sourcePointer)) openingInit = true
@@ -679,9 +686,9 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       }
       // Schema content already owns templates in these original author rows.
       if(original&&(ref.table==='rules'||authorSchema&&ref.table==='cards'))continue
-      // The selected raw greeting owns these commands. Its hash-bound activated
+      // The selected raw greeting owns this initialization. Its hash-bound activated
       // opening copy is retained Source material, not a second init interpreter.
-      if(ref.table==='opening'&&original&&(openingUpdate||selectedMaterialized))continue
+      if(ref.table==='opening'&&original&&(openingUpdate||openingInit||selectedMaterialized))continue
       for(const field of fields) {
         const text=value[field]
         if(typeof text!=='string')continue
@@ -690,10 +697,6 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
         if(initSyntax(text)&&!original)fail('INITVAR_OUTSIDE_BINDING','/settings',text)
       }
     }
-    const selection=selectNativeMvuInitializationPolicy({books:[{entries}],
-      swipes:candidates.map(item=>({rawOpening:item.rawText,renderedOpening:item.renderedText,
-        ...(item.materialization?{materialization:item.materialization}:{})}))})
-    if(selection.kind==='unsupported')fail('INITVAR_INVALID',selection.diagnostics[0]!.pointer)
     return {entries,candidates,hasInit:entries.length > 0 || openingInit,policy:selection.policy,openingUpdate}
   }
 

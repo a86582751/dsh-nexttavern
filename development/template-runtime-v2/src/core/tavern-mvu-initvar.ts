@@ -4,7 +4,7 @@ import {NATIVE_MVU_SOURCE_POLICY,NATIVE_MVU_YAML_SOURCE_POLICY,isNativeMvuSource
 import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
 import type {NativeMvuJsonCandidate} from './roleplay-mvu-source.js'
 import {parseMvuYamlData} from './tavern-mvu-yaml.js'
-import {parseMvuUpdateV2} from './roleplay-mvu-update-v2.js'
+import {parseMvuUpdateRegionV2,parseMvuUpdateV2} from './roleplay-mvu-update-v2.js'
 import type {ParsedMvuUpdateV2} from './roleplay-mvu-update-v2.js'
 
 export type MvuJsonValue = null | boolean | number | string | MvuJsonValue[] | MvuJsonObject
@@ -495,15 +495,19 @@ function greetingPayload(body: string, pointer: string,metadata?:{header?:string
   return captured
 }
 
-function extractGreetingPayloads(text: string, pointer: string,headers?:string[]): string[] {
+type OpeningInitialization = {rawOutside:string;renderedOutside:string}
+type GreetingPayloadSpan = {start:number;end:number}
+
+function extractGreetingPayloads(text: string, pointer: string,headers?:string[],spans?:GreetingPayloadSpan[]): string[] {
   const result: string[] = []
-  let openEnd = -1
+  let openEnd = -1,openStart = -1
   // ASCII tag regexp has no variable repetition and keeps offsets in the ORIGINAL UTF-16 source.
   // Lowercasing the whole source would move indices for characters such as U+0130.
   for (const tag of text.matchAll(/<\/?initvar>/gi)) {
     const closing = tag[0][1] === '/'
     if (!closing) {
       if (openEnd >= 0) reject('INITVAR_WRAPPER_UNSUPPORTED', pointer)
+      openStart = tag.index!
       openEnd = tag.index! + tag[0].length
     } else {
       if (openEnd < 0) reject('INITVAR_WRAPPER_UNSUPPORTED', pointer)
@@ -511,11 +515,28 @@ function extractGreetingPayloads(text: string, pointer: string,headers?:string[]
       const metadata:{header?:string}={}
       result.push(greetingPayload(text.slice(openEnd, tag.index), pointer,headers?metadata:undefined))
       headers?.push(metadata.header??'')
+      spans?.push({start:openStart,end:tag.index!+tag[0].length})
       openEnd = -1
     }
   }
   if (openEnd >= 0) reject('INITVAR_WRAPPER_UNSUPPORTED', pointer)
   return result
+}
+/** The captured blocks own all data inside this wrapper. Leave any other text
+ * outside it for the update/Source owner; never infer commands from InitVar data. */
+function initializationUpdateOutside(text:string,spans:readonly GreetingPayloadSpan[]):string|null {
+  if(!spans.length)return null
+  const start=text.lastIndexOf('<UpdateVariable>',spans[0]!.start)
+  if(start<0)return null
+  let cursor=start+'<UpdateVariable>'.length
+  for(const span of spans) {
+    if(text.slice(cursor,span.start).trim())return null
+    cursor=span.end
+  }
+  const end=text.indexOf('</UpdateVariable>',cursor)
+  if(end<0||text.slice(cursor,end).trim())return null
+  const outside=text.slice(0,start)+text.slice(end+'</UpdateVariable>'.length)
+  return parseMvuUpdateRegionV2(outside,{openingText:true}).candidate.kind==='no-update'?outside:null
 }
 /** The actual source owner and compiler share this selector and the same pinned
  * wrappers. Only entries used by InitVar and extracted greeting blocks count;
@@ -523,9 +544,11 @@ function extractGreetingPayloads(text: string, pointer: string,headers?:string[]
 export function selectNativeMvuInitializationPolicy(input:{
   books:readonly {entries:readonly {comment:string;content:string;renderedContent:string}[]}[]
   swipes:readonly {rawOpening:string;renderedOpening:string;materialization?:'template'|'materialized'}[]
-}):{kind:'selected';policy:NativeMvuSourcePolicy}|{kind:'unsupported';diagnostics:MvuInitDiagnostic[]} {
+}):{kind:'selected';policy:NativeMvuSourcePolicy;openingInitialization:(OpeningInitialization|null)[]}
+  |{kind:'unsupported';diagnostics:MvuInitDiagnostic[]} {
   try {
     let yaml=false
+    const openingInitialization:(OpeningInitialization|null)[]=[]
     for(const book of input.books)for(const entry of book.entries) {
       if(!entry.comment.toLowerCase().includes('[initvar]'))continue
       const rawHeader:{header?:string}={},expandedHeader:{header?:string}={}
@@ -534,16 +557,21 @@ export function selectNativeMvuInitializationPolicy(input:{
       yaml||=nativeMvuPayloadGrammar(expanded,expandedHeader.header,rawHeader.header,raw)==='yaml'
     }
     for(const [index,swipe] of input.swipes.entries()) {
-      if(swipe.materialization==='materialized')continue
+      if(swipe.materialization==='materialized') {openingInitialization.push(null);continue}
       const rawHeaders:string[]=[],expandedHeaders:string[]=[]
-      const raw=extractGreetingPayloads(swipe.rawOpening,`/swipes/${index}`,rawHeaders)
-      const expanded=extractGreetingPayloads(swipe.renderedOpening,`/swipes/${index}`,expandedHeaders)
+      const rawSpans:GreetingPayloadSpan[]=[],expandedSpans:GreetingPayloadSpan[]=[]
+      const raw=extractGreetingPayloads(swipe.rawOpening,`/swipes/${index}`,rawHeaders,rawSpans)
+      const expanded=extractGreetingPayloads(swipe.renderedOpening,`/swipes/${index}`,expandedHeaders,expandedSpans)
       if(raw.length!==expanded.length)reject('MACRO_BINDING',`/swipes/${index}`)
+      const rawOutside=initializationUpdateOutside(swipe.rawOpening,rawSpans),
+        renderedOutside=initializationUpdateOutside(swipe.renderedOpening,expandedSpans)
+      if((rawOutside===null)!==(renderedOutside===null))reject('MACRO_BINDING',`/swipes/${index}`)
+      openingInitialization.push(rawOutside===null?null:{rawOutside,renderedOutside:renderedOutside!})
       for(const [block,text] of expanded.entries()) {
         yaml||=nativeMvuPayloadGrammar(text,expandedHeaders[block],rawHeaders[block],raw[block])==='yaml'
       }
     }
-    return {kind:'selected',policy:yaml?NATIVE_MVU_YAML_SOURCE_POLICY:NATIVE_MVU_SOURCE_POLICY}
+    return {kind:'selected',policy:yaml?NATIVE_MVU_YAML_SOURCE_POLICY:NATIVE_MVU_SOURCE_POLICY,openingInitialization}
   } catch(error) {
     return {kind:'unsupported',diagnostics:[error instanceof Refusal?{code:error.code,pointer:error.pointer}
       :{code:'INVALID_INPUT',pointer:''}]}
@@ -628,7 +656,7 @@ function loadBooks(input: MvuCalculationInput, starting: MvuJsonObject, seen: st
 }
 
 function calculate(safe: MvuCalculationInput, existing: MvuInitBasis,nativePolicy?:NativeMvuSourcePolicy,
-  openingUpdateDeferred=false) {
+  openingUpdateDeferred=false,openingInitialization?:readonly (OpeningInitialization|null)[]) {
   const base = existing.bookStatData
   const context: PayloadContext = {macros: safe.capabilities.macros, nodes: 0, cache: new Map(),
     ...(nativePolicy&&isNativeMvuYamlSourcePolicy(nativePolicy)?{yaml:true}:{})}
@@ -637,7 +665,9 @@ function calculate(safe: MvuCalculationInput, existing: MvuInitBasis,nativePolic
   let resultBytes = Buffer.byteLength(canonical(baseline as unknown as MvuJsonObject), 'utf8')
     + Buffer.byteLength(canonical(existing as unknown as MvuJsonObject), 'utf8')
   for (const [index, swipe] of safe.swipes.entries()) {
-    if (!openingUpdateDeferred&&swipe.materialization!=='materialized'&&/<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(swipe.rawOpening)) {
+    const updateSource=openingInitialization?.[index]?.rawOutside??swipe.rawOpening
+    if (!openingUpdateDeferred&&swipe.materialization!=='materialized'
+      &&/<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(updateSource)) {
       reject('OPENING_UPDATE_UNSUPPORTED', `/swipes/${index}`)
     }
     let statData = merge(jsonObject(swipe.statData, `/swipes/${index}/statData`), structuredClone(baseline.statData))
@@ -846,6 +876,8 @@ export function compileSchemaMvuInitData(input: SchemaMvuInitDataSource|SchemaMv
       hash(swipe.renderedSha256, `/swipes/${index}/renderedSha256`)
     }
     const source = checked as unknown as SchemaMvuInitDataSource|SchemaMvuInitDataSourceV2
+    const selectedPolicy = selectNativeMvuInitializationPolicy(source)
+    if (selectedPolicy.kind === 'unsupported') reject(selectedPolicy.diagnostics[0]!.code, selectedPolicy.diagnostics[0]!.pointer)
     let openingUpdate:ParsedMvuUpdateV2|undefined
     if(source.schemaVersion===2) {
       if(source.swipes.length!==1||source.swipes[0]!.identity!==source.selectedSwipeIdentity)reject('FRESH_BASIS','/swipes')
@@ -854,11 +886,10 @@ export function compileSchemaMvuInitData(input: SchemaMvuInitDataSource|SchemaMv
       openingUpdate=candidate
     }
     const {safe, existing} = prepareCalculationData(source)
-    const selectedPolicy = selectNativeMvuInitializationPolicy(source)
-    if (selectedPolicy.kind === 'unsupported') reject(selectedPolicy.diagnostics[0]!.code, selectedPolicy.diagnostics[0]!.pointer)
     const grammar = isNativeMvuYamlSourcePolicy(selectedPolicy.policy) ? 'yaml-1.2-json-data-v1' : 'strict-json-object-v1'
     if (grammar !== source.grammar) reject('INIT_GRAMMAR', '/grammar')
-    const {baseline, swipes} = calculate(safe, existing, selectedPolicy.policy,source.schemaVersion===2)
+    const {baseline, swipes} = calculate(safe, existing, selectedPolicy.policy,source.schemaVersion===2,
+      selectedPolicy.openingInitialization)
     const selected = swipes.find(swipe => swipe.identity === source.selectedSwipeIdentity)!
     const initialized: MvuJsonObject = {}
     for (const identity of selected.initializedBooks) initialized[identity] = true
