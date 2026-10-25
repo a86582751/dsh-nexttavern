@@ -34190,6 +34190,26 @@
       "source": "development/template-runtime-v2/dist/tavern-template-worker.mjs"
     },
     {
+      "id": "browser2-source-html-partition-predecessor-assets-source-inputs-json",
+      "source": "development/history/browser2-source-html-partition-predecessor/assets/source-inputs.json"
+    },
+    {
+      "id": "browser2-source-html-partition-predecessor-dist-browser-ast-worker-mjs",
+      "source": "development/history/browser2-source-html-partition-predecessor/dist/browser-ast-worker.mjs"
+    },
+    {
+      "id": "browser2-source-html-partition-predecessor-dist-browser-execution-worker-js",
+      "source": "development/history/browser2-source-html-partition-predecessor/dist/browser-execution-worker.js"
+    },
+    {
+      "id": "browser2-source-html-partition-predecessor-dist-partition-mjs",
+      "source": "development/history/browser2-source-html-partition-predecessor/dist/partition.mjs"
+    },
+    {
+      "id": "browser2-source-html-partition-predecessor-package-json",
+      "source": "development/history/browser2-source-html-partition-predecessor/package.json"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },

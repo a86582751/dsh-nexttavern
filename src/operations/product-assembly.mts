@@ -245,7 +245,9 @@ export function productAuthorRuntimeHistory(repo:string,suppliedPlan?:ProductAss
     ...component(row.browserPackageArtifact)?{browserComponent:component(row.browserPackageArtifact)}:{},
     ...row.promptPackageArtifact?{promptPackage:name(row.promptPackageArtifact),
       ...component(row.promptPackageArtifact)?{promptComponent:component(row.promptPackageArtifact)}:{}}:{},
-    ...row.browserPartitionPackageArtifact?{browserPartitionPackage:name(row.browserPartitionPackageArtifact)}:{},
+    ...row.browserPartitionPackageArtifact?{browserPartitionPackage:name(row.browserPartitionPackageArtifact),
+      ...component(row.browserPartitionPackageArtifact)?{
+        browserPartitionComponent:component(row.browserPartitionPackageArtifact)}:{}}:{},
     server:row.server,host:row.host}))
 }
 

@@ -87,7 +87,8 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
   }
   async function load(name:string,selectedServer?:OwnedMvuSchemaExecutor,
     selectedBrowser=browserName,selectedPartition:string|undefined=undefined,
-    hostComponent?:string,browserComponent?:string,promptComponent?:string):Promise<ProtectedAuthorHostRuntimeV5> {
+    hostComponent?:string,browserComponent?:string,promptComponent?:string,
+    browserPartitionComponent?:string):Promise<ProtectedAuthorHostRuntimeV5> {
     const {root,require,identity,protection}=await productAssets()
     current()
     function admit(name:string,component?:string):AdmittedPackage {
@@ -138,7 +139,9 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
     let host:AuthorHostRuntimeV5|undefined,prompt:OwnedAuthorPromptRuntimeV1|undefined
     try {
       current()
-      if(selectedPartition)browserPartition=await loadBrowser(selectedPartition) as OwnedAuthorBrowserRuntimeV2
+      if(selectedPartition) {
+        browserPartition=await loadBrowser(selectedPartition,browserPartitionComponent) as OwnedAuthorBrowserRuntimeV2
+      }
       current()
       const admittedPrompt=admit(AUTHOR_PROMPT_RUNTIME_NAME,promptComponent)
       prompt=await loadAdmittedAuthorPromptRuntimeV1({...admittedPrompt,inventory:{...admittedPrompt.inventory,
@@ -168,13 +171,15 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
   }
   async function admitted(name=hostName,server?:OwnedMvuSchemaExecutor,
     selectedBrowser=browserName,selectedPartition:string|undefined=undefined,
-    key='default',hostComponent?:string,browserComponent?:string,promptComponent?:string):Promise<ProtectedAuthorHostRuntimeV5> {
+    key='default',hostComponent?:string,browserComponent?:string,promptComponent?:string,
+    browserPartitionComponent?:string):Promise<ProtectedAuthorHostRuntimeV5> {
     current()
     // A frozen Host package is shared by distinct injected Browser/server
     // tuples. Historical identity, rather than its package name, owns reuse.
     let pending=runtimes.get(key)
     if(!pending) {
-      pending=load(name,server,selectedBrowser,selectedPartition,hostComponent,browserComponent,promptComponent)
+      pending=load(name,server,selectedBrowser,selectedPartition,hostComponent,browserComponent,promptComponent,
+        browserPartitionComponent)
         .then(runtime=>{
           runtimesByIdentity.set(runtime.implementationKey+':'+recordSha256(runtime.host.server),runtime)
           return runtime
@@ -217,7 +222,8 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
         const selectedServer=entry?await deps.serverAssets.getForVerifiedEpoch({compiler:server.compiler,
           bridge:server.bridge,libraries:server.libraries,runner:server.runner}):undefined
         const runtime=await admitted(entry?.hostPackage,selectedServer,entry?.browserPackage,entry?.browserPartitionPackage,
-          entry?hostKey+':'+serverKey:'default',entry?.hostComponent,entry?.browserComponent,entry?.promptComponent)
+          entry?hostKey+':'+serverKey:'default',entry?.hostComponent,entry?.browserComponent,entry?.promptComponent,
+          entry?.browserPartitionComponent)
         if(runtime.implementationKey!==hostKey||recordSha256(runtime.host.server)!==serverKey) {
           throw Error('AUTHOR_HOST_HISTORY_UNAVAILABLE')
         }

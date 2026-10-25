@@ -49425,6 +49425,31 @@
         "id": "tavern-template-runtime-v2-worker-bundle",
         "source": "development/template-runtime-v2/dist/tavern-template-worker.mjs",
         "canonicalSource": "runtime/alpha3/compat/template-runtime-v2/dist/tavern-template-worker.mjs"
+      },
+      {
+        "id": "browser2-source-html-partition-predecessor-assets-source-inputs-json",
+        "source": "development/history/browser2-source-html-partition-predecessor/assets/source-inputs.json",
+        "canonicalSource": "runtime/alpha3/history/browser2-source-html-partition-predecessor/assets/source-inputs.json"
+      },
+      {
+        "id": "browser2-source-html-partition-predecessor-dist-browser-ast-worker-mjs",
+        "source": "development/history/browser2-source-html-partition-predecessor/dist/browser-ast-worker.mjs",
+        "canonicalSource": "runtime/alpha3/history/browser2-source-html-partition-predecessor/dist/browser-ast-worker.mjs"
+      },
+      {
+        "id": "browser2-source-html-partition-predecessor-dist-browser-execution-worker-js",
+        "source": "development/history/browser2-source-html-partition-predecessor/dist/browser-execution-worker.js",
+        "canonicalSource": "runtime/alpha3/history/browser2-source-html-partition-predecessor/dist/browser-execution-worker.js"
+      },
+      {
+        "id": "browser2-source-html-partition-predecessor-dist-partition-mjs",
+        "source": "development/history/browser2-source-html-partition-predecessor/dist/partition.mjs",
+        "canonicalSource": "runtime/alpha3/history/browser2-source-html-partition-predecessor/dist/partition.mjs"
+      },
+      {
+        "id": "browser2-source-html-partition-predecessor-package-json",
+        "source": "development/history/browser2-source-html-partition-predecessor/package.json",
+        "canonicalSource": "runtime/alpha3/history/browser2-source-html-partition-predecessor/package.json"
       }
     ],
     "publicRelease": {

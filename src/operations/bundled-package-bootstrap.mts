@@ -38,7 +38,7 @@ interface BundleInventory {
   authorRuntimeHistory?:readonly {serverPackage:string;hostPackage:string;browserPackage:string;
     serverComponent?:string;hostComponent?:string;browserComponent?:string;
     promptPackage?:string;promptComponent?:string;
-    browserPartitionPackage?:string;
+    browserPartitionPackage?:string;browserPartitionComponent?:string;
     server:AuthorServerExecutorV4;host:AuthorHostIdentityV5}[]
 }
 interface PackageMetadata {
