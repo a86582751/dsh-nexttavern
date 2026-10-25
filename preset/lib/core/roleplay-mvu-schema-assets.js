@@ -56,16 +56,19 @@ export function createRoleplayMvuSchemaAssetOwner() {
         // Package generations share this owner's fixed installed product catalog.
         return product ??= loadProduct(name, packageVersion).catch(error => { product = undefined; throw error; });
     }
-    async function load(version, name, component) {
+    async function load(version, ref) {
         const packageVersion = version === 4 ? '0.4.0' : '0.3.0';
-        const { root, require, identity, protection } = await productAssets(component === undefined ? name : policyPackageName, packageVersion);
-        const historical = component === undefined ? undefined : identity.historicalComponents.find(spec => spec.path === component);
-        const specs = historical ? [historical] : component === undefined ? identity.packages.filter(spec => spec.name === name) : [];
-        if (specs.length !== 1 || specs[0].name !== name || specs[0].version !== packageVersion) {
+        const { root, require, identity, protection } = await productAssets(policyPackageName, packageVersion);
+        const selected = ref ?? identity.currentRuntime?.roles.schema;
+        const binding = selected ? identity.runtimeComponents.get(selected.name + '\0' + selected.generation + '\0' + (selected.context ?? '')) : undefined;
+        const name = binding?.name ?? policyPackageName, historical = binding?.path !== undefined;
+        const specs = selected ? binding ? [binding] : [] : identity.packages.filter(spec => spec.name === name);
+        if (specs.length !== 1 || !binding && specs[0].version !== packageVersion
+            || binding && binding.factory !== 'schema-v4-shared-typescript') {
             throw Error('SCHEMA_RUNTIME_INVENTORY_OWNER_CHANGED');
         }
         const spec = specs[0];
-        const owned = fs.realpathSync(historical?.source ?? path.join(root, 'node_modules', name));
+        const owned = fs.realpathSync(binding?.source ?? path.join(root, 'node_modules', name));
         const metadataPath = fs.realpathSync(historical ? path.join(owned, 'package.json') : require.resolve(name + '/package.json'));
         if (metadataPath !== path.join(owned, 'package.json'))
             throw Error('SCHEMA_RUNTIME_PACKAGE_OWNER_CHANGED');
@@ -75,7 +78,7 @@ export function createRoleplayMvuSchemaAssetOwner() {
             throw Error('SCHEMA_RUNTIME_ENTRY_OWNER_CHANGED');
         }
         protection.verifyProtectedPackage(owned, spec);
-        const inventory = { name, version: packageVersion, files: structuredClone(spec.files), generation: spec.generation };
+        const inventory = { name, version: spec.version, files: structuredClone(spec.files), generation: spec.generation };
         if (closed)
             throw Error('SCHEMA_RUNTIME_DISPOSED');
         const verifyOwnedPackage = (fixed) => {
@@ -106,9 +109,11 @@ export function createRoleplayMvuSchemaAssetOwner() {
                 throw Error('SCHEMA_RUNTIME_DISPOSED');
             loaded = await module.createMvuSchemaRuntimeV3({ verifyOwnedPackage });
         }
-        else if (name === policyPackageName && component === undefined) {
+        else if (binding?.factory === 'schema-v4-shared-typescript' || !binding && name === policyPackageName) {
             const module = await import(__rewriteRelativeImportExtension(pathToFileURL(entry).href));
-            const typescript = await typescriptAssets.get();
+            if (binding && !binding.dependencies.typescript)
+                throw Error('SCHEMA_RUNTIME_TYPESCRIPT_UNAVAILABLE');
+            const typescript = await typescriptAssets.get(binding?.dependencies.typescript);
             if (closed)
                 throw Error('SCHEMA_RUNTIME_DISPOSED');
             loaded = await module.createMvuSchemaRuntimeV4({ verifyOwnedPackage: fixed => verifyOwnedPackage(fixed), typescript });
@@ -237,17 +242,18 @@ export function createRoleplayMvuSchemaAssetOwner() {
                 } }, dispose: () => loaded.dispose() };
         return { version, runtime: loaded, executor };
     }
-    async function admitted(version, name = version === 4 ? policyPackageName : version === 1 ? packageName : packageName + '-v' + version, component) {
+    async function admitted(version, ref) {
         if (closed)
             throw Error('SCHEMA_RUNTIME_DISPOSED');
         // ABI1–3 were retired before release. Their lookup entry points remain
         // explicit failures and must never select the current executor instead.
         if (version !== 4)
             throw Error('SCHEMA_HISTORY_EXECUTOR_UNAVAILABLE');
-        const key = name + '\0' + (component ?? '');
+        const selected = ref ?? (await productAssets(policyPackageName, '0.4.0')).identity.currentRuntime?.roles.schema;
+        const key = selected ? selected.name + '\0' + selected.generation + '\0' + (selected.context ?? '') : 'default';
         let pending = runtimes.get(key);
         if (!pending) {
-            pending = load(version, name, component).then(actual => {
+            pending = load(version, selected).then(actual => {
                 runtimesByIdentity.set(actual.executor.implementationKey, actual.executor);
                 return actual;
             }).catch(error => { runtimes.delete(key); throw error; });
@@ -259,7 +265,7 @@ export function createRoleplayMvuSchemaAssetOwner() {
         return actual;
     }
     return {
-        getTypeScript: () => typescriptAssets.get(),
+        getTypeScript: (ref) => typescriptAssets.get(ref),
         /** Retain the legacy signatures as unavailable lookups. New preparation
          * uses ABI4; an old request never implicitly upgrades to that default. */
         async get() {
@@ -285,17 +291,16 @@ export function createRoleplayMvuSchemaAssetOwner() {
                 const known = runtimesByIdentity.get(implementationKey);
                 if (known)
                     return known;
-                let name, component;
+                let component;
                 if (version === 4) {
                     const { identity } = await productAssets(policyPackageName, '0.4.0');
-                    const entry = identity.authorRuntimeHistory.find(row => recordSha256({
+                    const entry = identity.releasedRuntime?.schemas.find(row => recordSha256({
                         compiler: row.server.compiler, bridge: row.server.bridge, libraries: row.server.libraries,
                         runner: row.server.runner
                     }) === implementationKey);
-                    name = entry?.serverPackage;
-                    component = entry?.serverComponent;
+                    component = entry?.component;
                 }
-                const actual = (await admitted(version, name, component)).executor;
+                const actual = (await admitted(version, component)).executor;
                 if (actual.implementationKey !== implementationKey)
                     throw Error('SCHEMA_HISTORY_EXECUTOR_UNAVAILABLE');
                 return actual;

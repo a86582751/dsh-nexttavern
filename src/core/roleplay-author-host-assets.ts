@@ -19,6 +19,7 @@ import {AUTHOR_BROWSER_RUNTIME_NAME_V3,AUTHOR_BROWSER_RUNTIME_VERSION_V3}
 import type {OwnedAuthorPromptRuntimeV1} from './tavern-author-prompt-types.mjs'
 import {AUTHOR_PROMPT_RUNTIME_NAME,AUTHOR_PROMPT_RUNTIME_VERSION} from './tavern-author-prompt-descriptor.mjs'
 import {loadAdmittedAuthorPromptRuntimeV1} from './roleplay-author-prompt-assets.js'
+import type {ReleasedRuntimeComponent,ReleasedRuntimeRoles,ReleasedRuntimeRole} from '../operations/released-component-types.mjs'
 
 const browserName=AUTHOR_BROWSER_RUNTIME_NAME_V3,browserVersion=AUTHOR_BROWSER_RUNTIME_VERSION_V3
 const hostName='dsh-nexttavern-author-host-runtime-v5-update-batch-v1',hostVersion='0.6.0'
@@ -26,6 +27,7 @@ interface AdmittedPackage {
   entry:string
   owned:string
   inventory:{name:string;version:string;files:readonly {path:string;sha256:string}[];generation:string}
+  binding?:ReleasedRuntimeComponent
 }
 export type ProtectedAuthorHostRuntimeV5=OwnedMvuSchemaExecutor&{
   executorVersion:4
@@ -85,70 +87,70 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
     // Installed product identity is fixed until this owner is disposed.
     return product??=loadProduct().catch(error=>{product=undefined;throw error})
   }
-  async function load(name:string,selectedServer?:OwnedMvuSchemaExecutor,
-    selectedBrowser=browserName,selectedPartition:string|undefined=undefined,
-    hostComponent?:string,browserComponent?:string,promptComponent?:string,
-    browserPartitionComponent?:string):Promise<ProtectedAuthorHostRuntimeV5> {
+  async function load(roles?:ReleasedRuntimeRoles,selectedServer?:OwnedMvuSchemaExecutor):Promise<ProtectedAuthorHostRuntimeV5> {
     const {root,require,identity,protection}=await productAssets()
     current()
-    function admit(name:string,component?:string):AdmittedPackage {
-      const historical=component===undefined?undefined:identity.historicalComponents.find(spec=>spec.path===component)
-      const specs=historical?[historical]:component===undefined?identity.packages.filter(spec=>spec.name===name):[]
-      if(specs.length!==1||specs[0]!.name!==name)throw Error('AUTHOR_HOST_PACKAGE_OWNER_CHANGED')
+    const selectedRoles=roles??identity.currentRuntime?.roles
+    function admit(role:ReleasedRuntimeRole,fallback:string):AdmittedPackage {
+      const ref=selectedRoles?.[role],binding=ref?identity.runtimeComponents.get(ref.name+'\0'+ref.generation+'\0'+(ref.context??'')):undefined
+      const name=binding?.name??fallback,historical=binding?.path!==undefined
+      const specs=selectedRoles?binding?[binding]:[]:identity.packages.filter(spec=>spec.name===name)
+      if(specs.length!==1)throw Error('AUTHOR_HOST_PACKAGE_OWNER_CHANGED')
       const spec=specs[0]!
-      const owned=fs.realpathSync(historical?.source??path.join(root,'node_modules',name))
+      const owned=fs.realpathSync(binding?.source??path.join(root,'node_modules',name))
       const metadata=fs.realpathSync(historical?path.join(owned,'package.json'):require.resolve(name+'/package.json'))
       const entry=fs.realpathSync(historical?path.join(owned,'dist','index.mjs'):require.resolve(name))
       if(metadata!==path.join(owned,'package.json')
         ||entry!==path.join(owned,'dist','index.mjs'))throw Error('AUTHOR_HOST_PACKAGE_OWNER_CHANGED')
       protection.verifyProtectedPackage(owned,spec)
-      return {entry,owned,inventory:{name,version:spec.version,files:structuredClone(spec.files),generation:spec.generation}}
+      return {entry,owned,binding,inventory:{name,version:spec.version,files:structuredClone(spec.files),generation:spec.generation}}
     }
     const server=selectedServer??await deps.serverAssets.getDefaultForNewRealm(4)
     current()
     if(server.executorVersion!==4||!server.stateLoader)throw Error('AUTHOR_HOST_SERVER_ABI_UNSUPPORTED')
-    async function loadBrowser(selected:string,component?:string) {
-      const admittedBrowser=admit(selected,component)
-      if(selected===browserName&&component===undefined) {
+    async function loadBrowser(role:'browser'|'browserPartition') {
+      const admittedBrowser=admit(role,browserName)
+      const factory=admittedBrowser.binding?.factory??'browser-v3-shared-typescript'
+      if(factory==='browser-v3-shared-typescript') {
         const browserModule=await import(pathToFileURL(admittedBrowser.entry).href) as {
           createOwnedAuthorBrowserRuntimeV3(deps:{verifyOwnedPackage:ReturnType<typeof packageVerifier>;
             typescript:AdmittedTypeScript}):Promise<OwnedAuthorBrowserRuntimeV3>
         }
-        const typescript=await deps.serverAssets.getTypeScript()
+        if(admittedBrowser.binding&&!admittedBrowser.binding.dependencies.typescript)
+          throw Error('AUTHOR_HOST_TYPESCRIPT_UNAVAILABLE')
+        const typescript=await deps.serverAssets.getTypeScript(admittedBrowser.binding?.dependencies.typescript)
         current()
         return browserModule.createOwnedAuthorBrowserRuntimeV3({
           verifyOwnedPackage:packageVerifier(admittedBrowser),typescript})
       }
-      // Frozen factories retain their original package-local compiler and ABI.
+      if(factory!=='browser-v2-local-typescript')throw Error('AUTHOR_HOST_BROWSER_ABI_UNSUPPORTED')
+      // The published Browser2 factory owns its package-local compiler.
       const browserModule=await import(pathToFileURL(admittedBrowser.entry).href) as {
-        createOwnedAuthorBrowserRuntimeV1?(deps:{verifyOwnedPackage:ReturnType<typeof packageVerifier>}):
-          Promise<OwnedAuthorBrowserRuntimeV1>
-        createOwnedAuthorBrowserRuntimeV2?(deps:{verifyOwnedPackage:ReturnType<typeof packageVerifier>}):
+        createOwnedAuthorBrowserRuntimeV2(deps:{verifyOwnedPackage:ReturnType<typeof packageVerifier>}):
           Promise<OwnedAuthorBrowserRuntimeV2>
-        createOwnedAuthorBrowserRuntimeV3?(deps:{verifyOwnedPackage:ReturnType<typeof packageVerifier>}):
-          Promise<OwnedAuthorBrowserRuntimeV3>
       }
       current()
       const dependency={verifyOwnedPackage:packageVerifier(admittedBrowser)}
-      if(browserModule.createOwnedAuthorBrowserRuntimeV3)return browserModule.createOwnedAuthorBrowserRuntimeV3(dependency)
-      if(browserModule.createOwnedAuthorBrowserRuntimeV2)return browserModule.createOwnedAuthorBrowserRuntimeV2(dependency)
-      return browserModule.createOwnedAuthorBrowserRuntimeV1!(dependency)
+      return browserModule.createOwnedAuthorBrowserRuntimeV2(dependency)
     }
-    const browser=await loadBrowser(selectedBrowser,browserComponent)
+    const browser=await loadBrowser('browser')
     let browserPartition:OwnedAuthorBrowserRuntimeV2|undefined
     let host:AuthorHostRuntimeV5|undefined,prompt:OwnedAuthorPromptRuntimeV1|undefined
     try {
       current()
-      if(selectedPartition) {
-        browserPartition=await loadBrowser(selectedPartition,browserPartitionComponent) as OwnedAuthorBrowserRuntimeV2
+      if(selectedRoles?.browserPartition) {
+        browserPartition=await loadBrowser('browserPartition') as OwnedAuthorBrowserRuntimeV2
       }
       current()
-      const admittedPrompt=admit(AUTHOR_PROMPT_RUNTIME_NAME,promptComponent)
+      const admittedPrompt=admit('prompt',AUTHOR_PROMPT_RUNTIME_NAME)
+      if(admittedPrompt.binding&&(admittedPrompt.binding.factory!=='prompt-v1-shared-typescript'
+        ||!admittedPrompt.binding.dependencies.typescript))throw Error('AUTHOR_HOST_PROMPT_ABI_UNSUPPORTED')
       prompt=await loadAdmittedAuthorPromptRuntimeV1({...admittedPrompt,inventory:{...admittedPrompt.inventory,
         name:AUTHOR_PROMPT_RUNTIME_NAME,version:admittedPrompt.inventory.version as typeof AUTHOR_PROMPT_RUNTIME_VERSION}},
-      current,promptComponent===undefined?await deps.serverAssets.getTypeScript():undefined)
+      current,await deps.serverAssets.getTypeScript(admittedPrompt.binding?.dependencies.typescript))
       current()
-      const admittedHost=admit(name,hostComponent)
+      const admittedHost=admit('host',hostName)
+      if(admittedHost.binding&&admittedHost.binding.factory!=='host-v5')throw Error('AUTHOR_HOST_ABI_UNSUPPORTED')
       const hostModule=await import(pathToFileURL(admittedHost.entry).href) as {
         createOwnedAuthorHostRuntimeV5(deps:{verifyOwnedPackage:ReturnType<typeof packageVerifier>;
           server:AdmittedAuthorServerV4;browser:OwnedAuthorBrowserRuntimeV1|OwnedAuthorBrowserRuntimeV2|OwnedAuthorBrowserRuntimeV3;
@@ -169,17 +171,14 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
       throw error
     }
   }
-  async function admitted(name=hostName,server?:OwnedMvuSchemaExecutor,
-    selectedBrowser=browserName,selectedPartition:string|undefined=undefined,
-    key='default',hostComponent?:string,browserComponent?:string,promptComponent?:string,
-    browserPartitionComponent?:string):Promise<ProtectedAuthorHostRuntimeV5> {
+  async function admitted(roles?:ReleasedRuntimeRoles,server?:OwnedMvuSchemaExecutor,key='default')
+    :Promise<ProtectedAuthorHostRuntimeV5> {
     current()
     // A frozen Host package is shared by distinct injected Browser/server
     // tuples. Historical identity, rather than its package name, owns reuse.
     let pending=runtimes.get(key)
     if(!pending) {
-      pending=load(name,server,selectedBrowser,selectedPartition,hostComponent,browserComponent,promptComponent,
-        browserPartitionComponent)
+      pending=load(roles,server)
         .then(runtime=>{
           runtimesByIdentity.set(runtime.implementationKey+':'+recordSha256(runtime.host.server),runtime)
           return runtime
@@ -217,13 +216,11 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
         if(known){known.host.checkCurrent();return known}
         const {identity:catalog}=await productAssets()
         current()
-        const entry=catalog.authorRuntimeHistory.find(row=>
+        const entry=catalog.releasedRuntime?.authors.find(row=>
           recordSha256(row.host)===hostKey&&recordSha256(row.server)===serverKey)
         const selectedServer=entry?await deps.serverAssets.getForVerifiedEpoch({compiler:server.compiler,
           bridge:server.bridge,libraries:server.libraries,runner:server.runner}):undefined
-        const runtime=await admitted(entry?.hostPackage,selectedServer,entry?.browserPackage,entry?.browserPartitionPackage,
-          entry?hostKey+':'+serverKey:'default',entry?.hostComponent,entry?.browserComponent,entry?.promptComponent,
-          entry?.browserPartitionComponent)
+        const runtime=await admitted(entry?.roles,selectedServer,entry?hostKey+':'+serverKey:'default')
         if(runtime.implementationKey!==hostKey||recordSha256(runtime.host.server)!==serverKey) {
           throw Error('AUTHOR_HOST_HISTORY_UNAVAILABLE')
         }

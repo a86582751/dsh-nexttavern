@@ -19,7 +19,7 @@ import type {MvuSchemaRunnerV4,MvuSchemaRunnerDepsV4,MvuSchemaRunResultV4,MvuSch
   from '../../../src/core/tavern-mvu-schema-types-v4.js'
 
 export interface MvuSchemaRuntimeV4Inventory {
-  name:typeof SCHEMA_RUNTIME_NAME;version:typeof SCHEMA_RUNTIME_VERSION
+  name:typeof SCHEMA_RUNTIME_NAME;version:string
   files:readonly SchemaRuntimeFile[];generation:string
 }
 export type OwnedSchemaPackageInventory=MvuSchemaRuntimeV4Inventory

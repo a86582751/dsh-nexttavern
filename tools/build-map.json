@@ -8634,6 +8634,42 @@
         "lib/core/roleplay-worldline-player-save.js",
         "preset/lib/core/roleplay-worldline-player-save.js"
       ]
+    },
+    {
+      "artifact": "released-component-types",
+      "source": "src/operations/released-component-types.mts",
+      "banner": "runtime/alpha3/src/operations/released-component-types.mts",
+      "primaryOutput": "lib/operations/released-component-types.mjs",
+      "outputs": [
+        "lib/operations/released-component-types.mjs"
+      ]
+    },
+    {
+      "artifact": "released-component-catalog",
+      "source": "src/operations/released-component-catalog.mts",
+      "banner": "runtime/alpha3/src/operations/released-component-catalog.mts",
+      "primaryOutput": "lib/operations/released-component-catalog.mjs",
+      "outputs": [
+        "lib/operations/released-component-catalog.mjs"
+      ]
+    },
+    {
+      "artifact": "released-component-archive",
+      "source": "src/operations/released-component-archive.mts",
+      "banner": "runtime/alpha3/src/operations/released-component-archive.mts",
+      "primaryOutput": "lib/operations/released-component-archive.mjs",
+      "outputs": [
+        "lib/operations/released-component-archive.mjs"
+      ]
+    },
+    {
+      "artifact": "released-component-assembly",
+      "source": "src/operations/released-component-assembly.mts",
+      "banner": "runtime/alpha3/src/operations/released-component-assembly.mts",
+      "primaryOutput": "lib/operations/released-component-assembly.mjs",
+      "outputs": [
+        "lib/operations/released-component-assembly.mjs"
+      ]
     }
   ],
   "compilerPlan": {
@@ -12642,6 +12678,11 @@
         "id": "inventory-runtime-alpha3-operations-dsh-debug-README-md",
         "source": "tools/dsh-debug/README.md",
         "canonicalSource": "runtime/alpha3/operations/dsh-debug/README.md"
+      },
+      {
+        "id": "inventory-runtime-alpha3-operations-release-archive-py",
+        "source": "operations/release-archive.py",
+        "canonicalSource": "runtime/alpha3/operations/release-archive.py"
       },
       {
         "id": "management-panels",
@@ -19827,6 +19868,51 @@
         "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-package-json",
         "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/package.json",
         "canonicalSource": "runtime/alpha3/compat/quickjs-runtime-libraries/quickjs-emscripten-core/package.json"
+      },
+      {
+        "id": "released-component-types-typescript",
+        "source": "src/operations/released-component-types.mts",
+        "canonicalSource": "runtime/alpha3/src/operations/released-component-types.mts"
+      },
+      {
+        "id": "released-component-types",
+        "source": "lib/operations/released-component-types.mjs",
+        "canonicalSource": "runtime/alpha3/lib/operations/released-component-types.mjs"
+      },
+      {
+        "id": "released-component-catalog-typescript",
+        "source": "src/operations/released-component-catalog.mts",
+        "canonicalSource": "runtime/alpha3/src/operations/released-component-catalog.mts"
+      },
+      {
+        "id": "released-component-catalog",
+        "source": "lib/operations/released-component-catalog.mjs",
+        "canonicalSource": "runtime/alpha3/lib/operations/released-component-catalog.mjs"
+      },
+      {
+        "id": "released-component-archive-typescript",
+        "source": "src/operations/released-component-archive.mts",
+        "canonicalSource": "runtime/alpha3/src/operations/released-component-archive.mts"
+      },
+      {
+        "id": "released-component-archive",
+        "source": "lib/operations/released-component-archive.mjs",
+        "canonicalSource": "runtime/alpha3/lib/operations/released-component-archive.mjs"
+      },
+      {
+        "id": "released-component-assembly-typescript",
+        "source": "src/operations/released-component-assembly.mts",
+        "canonicalSource": "runtime/alpha3/src/operations/released-component-assembly.mts"
+      },
+      {
+        "id": "released-component-assembly",
+        "source": "lib/operations/released-component-assembly.mjs",
+        "canonicalSource": "runtime/alpha3/lib/operations/released-component-assembly.mjs"
+      },
+      {
+        "id": "published-components-catalog",
+        "source": "tools/published-components.json",
+        "canonicalSource": "release/published-components.json"
       }
     ],
     "publicRelease": {
@@ -20847,7 +20933,9 @@
         "images",
         "screenshots",
         "site",
-        "tests"
+        "tests",
+        "operations",
+        "tools/published-components.json"
       ],
       "checkoutExcludedRoots": [
         "development/history"
@@ -21349,7 +21437,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/ui/author-browser-pending.ts"
       },
@@ -21646,7 +21735,8 @@
           "src/ui/reader-submission-handoff.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/ui/author-browser-session.ts"
       },
@@ -22346,7 +22436,8 @@
           "src/core/roleplay-reader-narrative-display.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/operations/bundled-package-bootstrap.mts"
       },
@@ -34713,7 +34804,11 @@
           "src/core/roleplay-tavern-lore-export.ts",
           "src/ui/reader-submission-handoff.ts",
           "src/core/roleplay-mvu-player-expected.ts",
-          "src/core/tavern-typescript-runtime-descriptor.mts"
+          "src/core/tavern-typescript-runtime-descriptor.mts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/operations/mvu-schema-runtime-assets.mts"
       },
@@ -35960,7 +36055,8 @@
           "development/subagent/src/owned-ruby-task.ts",
           "src/core/reader-regex-document-types.mts",
           "src/core/roleplay-reader-display.ts",
-          "src/core/roleplay-reader-narrative-display.ts"
+          "src/core/roleplay-reader-narrative-display.ts",
+          "src/operations/released-component-types.mts"
         ],
         "kind": "typescript-module",
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
@@ -36047,7 +36143,8 @@
           "src/operations/build-typescript.mts",
           "src/core/reader-regex-document-types.mts",
           "src/core/roleplay-reader-display.ts",
-          "src/core/roleplay-reader-narrative-display.ts"
+          "src/core/roleplay-reader-narrative-display.ts",
+          "src/operations/released-component-types.mts"
         ],
         "kind": "typescript-module",
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
@@ -36093,7 +36190,8 @@
           "src/operations/build-typescript.mts",
           "src/core/reader-regex-document-types.mts",
           "src/core/roleplay-reader-display.ts",
-          "src/core/roleplay-reader-narrative-display.ts"
+          "src/core/roleplay-reader-narrative-display.ts",
+          "src/operations/released-component-types.mts"
         ],
         "kind": "typescript-module",
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
@@ -37066,7 +37164,11 @@
           "src/status-template.ts",
           "src/core/reader-regex-document-types.mts",
           "src/core/roleplay-reader-display.ts",
-          "src/core/roleplay-reader-narrative-display.ts"
+          "src/core/roleplay-reader-narrative-display.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "kind": "typescript-module",
         "entry": "src/operations/product-assembly.mts",
@@ -37261,7 +37363,8 @@
           "development/typert-generator/src/workspace.ts",
           "src/operations/subagent-typert-assets.mts",
           "development/typert-generator/package.json",
-          "lib/operations/subagent-typert-assets.mjs"
+          "lib/operations/subagent-typert-assets.mjs",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/operations/public-build-modules.mts"
       },
@@ -38256,7 +38359,8 @@
           "src/ui/reader-submission-handoff.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/ui/reader-view.ts"
       },
@@ -38513,7 +38617,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-browser.ts"
       },
@@ -38784,7 +38889,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-browser-generation-types.ts"
       },
@@ -39056,7 +39162,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-browser-generation.ts"
       },
@@ -39304,7 +39411,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-browser-types.ts"
       },
@@ -39575,7 +39683,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-chat-state-types.ts"
       },
@@ -40253,7 +40362,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-host-assets.ts"
       },
@@ -40499,7 +40609,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-host-types-v5.ts"
       },
@@ -40758,7 +40869,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-prompt-assets.ts"
       },
@@ -41014,7 +41126,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-prompt-capture.ts"
       },
@@ -41445,7 +41558,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-script-resources.ts"
       },
@@ -45230,7 +45347,8 @@
           "src/core/roleplay-mvu-schema-maintenance.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
           "src/core/roleplay-mvu-schema-task-edit.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-core.ts"
       },
@@ -45586,7 +45704,8 @@
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-maintenance.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-core-types.ts"
       },
@@ -53308,7 +53427,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-opening.ts"
       },
@@ -55572,7 +55692,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-assets.ts"
       },
@@ -55972,7 +56096,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-core.ts"
       },
@@ -56370,7 +56498,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-derived.ts"
       },
@@ -56767,7 +56899,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-derived-types.ts"
       },
@@ -58141,7 +58277,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-journal.ts"
       },
@@ -58538,7 +58678,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-opening.ts"
       },
@@ -58933,7 +59077,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-opening-types.ts"
       },
@@ -59330,7 +59478,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-player.ts"
       },
@@ -59579,7 +59731,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-player-core.ts"
       },
@@ -59974,7 +60127,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-player-types.ts"
       },
@@ -60369,7 +60526,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-prefix-facts.ts"
       },
@@ -60764,7 +60925,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-replay.ts"
       },
@@ -61406,7 +61571,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-source.ts"
       },
@@ -61802,7 +61971,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-story.ts"
       },
@@ -62050,7 +62223,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-story-core.ts"
       },
@@ -62448,7 +62622,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-story-types.ts"
       },
@@ -64304,7 +64482,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-opening-routes.ts"
       },
@@ -68735,7 +68914,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-program-opening.ts"
       },
@@ -69084,7 +69264,8 @@
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-maintenance.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-program-opening-core.ts"
       },
@@ -77637,7 +77818,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-tavern-injection-definitions.ts"
       },
@@ -77889,7 +78071,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-tavern-injections.ts"
       },
@@ -80103,7 +80286,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-tavern-lore-edits-types.ts"
       },
@@ -81844,7 +82028,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-tavern-prompt.ts"
       },
@@ -82821,7 +83006,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-tavern-prompt-render.ts"
       },
@@ -85958,7 +86144,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-tavern-template-assets.ts"
       },
@@ -87011,7 +87198,8 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/ui/client.ts"
       },
@@ -88965,7 +89153,8 @@
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-narrative-display.ts",
           "development/agent-loop/src/request-budget.ts",
-          "development/token-meter/src/types.ts"
+          "development/token-meter/src/types.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-artifact.mts"
       },
@@ -89249,7 +89438,8 @@
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-narrative-display.ts",
           "development/agent-loop/src/request-budget.ts",
-          "development/token-meter/src/types.ts"
+          "development/token-meter/src/types.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-ast-worker.mts"
       },
@@ -89547,7 +89737,8 @@
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-narrative-display.ts",
           "development/agent-loop/src/request-budget.ts",
-          "development/token-meter/src/types.ts"
+          "development/token-meter/src/types.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-child.ts"
       },
@@ -89793,7 +89984,8 @@
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-narrative-display.ts",
           "development/agent-loop/src/request-budget.ts",
-          "development/token-meter/src/types.ts"
+          "development/token-meter/src/types.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-child-entry.ts"
       },
@@ -90040,7 +90232,8 @@
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-narrative-display.ts",
           "development/agent-loop/src/request-budget.ts",
-          "development/token-meter/src/types.ts"
+          "development/token-meter/src/types.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-compiler.mts"
       },
@@ -90369,7 +90562,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-frame.ts"
       },
@@ -90683,7 +90877,8 @@
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-narrative-display.ts",
           "development/agent-loop/src/request-budget.ts",
-          "development/token-meter/src/types.ts"
+          "development/token-meter/src/types.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-partition.mts"
       },
@@ -90945,7 +91140,8 @@
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-narrative-display.ts",
           "development/agent-loop/src/request-budget.ts",
-          "development/token-meter/src/types.ts"
+          "development/token-meter/src/types.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-profile.mts"
       },
@@ -91245,7 +91441,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-types.mts"
       },
@@ -91516,7 +91713,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-types-v2.mts"
       },
@@ -91801,7 +91999,8 @@
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-narrative-display.ts",
           "development/agent-loop/src/request-budget.ts",
-          "development/token-meter/src/types.ts"
+          "development/token-meter/src/types.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-combined-compiler.mts"
       },
@@ -92047,7 +92246,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-combined-data.mts"
       },
@@ -92293,7 +92493,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-combined-types.mts"
       },
@@ -92539,7 +92740,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-host-provider.mts"
       },
@@ -92838,7 +93040,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-prompt-compiler.mts"
       },
@@ -93094,7 +93297,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-prompt-data.mts"
       },
@@ -93382,7 +93586,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-prompt-provider.mts"
       },
@@ -93638,7 +93843,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-prompt-runtime.mts"
       },
@@ -93894,7 +94100,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-prompt-types.mts"
       },
@@ -94148,7 +94355,8 @@
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-narrative-display.ts",
           "development/agent-loop/src/request-budget.ts",
-          "development/token-meter/src/types.ts"
+          "development/token-meter/src/types.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-prompt-worker.mts"
       },
@@ -100255,7 +100463,11 @@
           "src/core/roleplay-mvu-player-expected.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-mvu-schema-import-policy.ts"
       },
@@ -109577,7 +109789,8 @@
           "src/operations/subagent-typert-assets.mts",
           "src/operations/tavern-template-runtime-assets.mts",
           "src/operations/test-temp.mts",
-          "src/operations/tool-resolution.mts"
+          "src/operations/tool-resolution.mts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/operations/build-typescript.mts"
       },
@@ -109918,7 +110131,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-chat-state.ts"
       },
@@ -110211,7 +110425,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-artifact-v2.mts"
       },
@@ -110487,7 +110702,8 @@
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-narrative-display.ts",
           "development/agent-loop/src/request-budget.ts",
-          "development/token-meter/src/types.ts"
+          "development/token-meter/src/types.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-ast-worker-v2.mts"
       },
@@ -110763,7 +110979,8 @@
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-narrative-display.ts",
           "development/agent-loop/src/request-budget.ts",
-          "development/token-meter/src/types.ts"
+          "development/token-meter/src/types.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-child-entry-v2.ts"
       },
@@ -111041,7 +111258,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-child-v2.ts"
       },
@@ -111319,7 +111537,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-compiler-v2.mts"
       },
@@ -111597,7 +111816,8 @@
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-narrative-display.ts",
           "development/agent-loop/src/request-budget.ts",
-          "development/token-meter/src/types.ts"
+          "development/token-meter/src/types.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-execution-worker-v2.ts"
       },
@@ -111876,7 +112096,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-frame-v2.ts"
       },
@@ -112182,7 +112403,8 @@
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-narrative-display.ts",
           "development/agent-loop/src/request-budget.ts",
-          "development/token-meter/src/types.ts"
+          "development/token-meter/src/types.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-partition-v2.mts"
       },
@@ -112460,7 +112682,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-profile-v2.mts"
       },
@@ -112780,7 +113003,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-combined-data-v5.mts"
       },
@@ -113079,7 +113303,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-combined-types-v5.mts"
       },
@@ -113477,7 +113702,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-browser-dialog-core.ts"
       },
@@ -113784,7 +114010,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-dialog-content.ts"
       },
@@ -114063,7 +114290,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-dialog.ts"
       },
@@ -114367,7 +114595,8 @@
           "development/token-meter/src/types.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-tavern-content.ts"
       },
@@ -114936,7 +115165,8 @@
           "src/operations/build-typescript.mts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-reader-display.ts"
       },
@@ -115205,7 +115435,8 @@
           "src/operations/build-typescript.mts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/reader-regex-document-types.mts"
       },
@@ -115457,7 +115688,8 @@
           "build-tools/tsconfig.json",
           "build-tools/package.json",
           "build-tools/package-lock.json",
-          "src/operations/build-typescript.mts"
+          "src/operations/build-typescript.mts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/reader-regex-document-profile-v1.mts"
       },
@@ -115714,7 +115946,8 @@
           "build-tools/tsconfig.json",
           "build-tools/package.json",
           "build-tools/package-lock.json",
-          "src/operations/build-typescript.mts"
+          "src/operations/build-typescript.mts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/reader-regex-document-compiler.mts"
       },
@@ -116378,7 +116611,8 @@
           "src/status-template.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-ruby-task-types.ts"
       },
@@ -116618,7 +116852,8 @@
           "src/status-template.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-ruby-capture.ts"
       },
@@ -116861,7 +117096,8 @@
           "src/status-template.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-ruby-owner.ts"
       },
@@ -117099,7 +117335,8 @@
           "src/status-template.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-ruby-owner-types.ts"
       },
@@ -117335,7 +117572,8 @@
           "src/status-template.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-lore-derived.mts"
       },
@@ -117654,7 +117892,8 @@
           "src/core/roleplay-tavern-derived-content-execution.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-tavern-derived-content-execution.ts"
       },
@@ -119350,7 +119589,8 @@
           "development/mvu-schema-runtime-v4-update-batch-v1/src/descriptor.ts",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/compat/mvu-schema-runtime-v4-update-batch-v1/src/index.ts"
       },
@@ -119656,7 +119896,8 @@
           "build-tools/package-lock.json",
           "src/core/roleplay-mvu-schema-maintenance-types.ts",
           "src/core/roleplay-mvu-schema-task-edit-types.ts",
-          "src/core/roleplay-worldline-player-save.ts"
+          "src/core/roleplay-worldline-player-save.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-typescript-assets.ts"
       },
@@ -120180,7 +120421,8 @@
           "src/operations/bundled-package-bootstrap.mts",
           "src/operations/protected-packages.mts",
           "src/operations/public-transaction.mts",
-          "src/status-template.ts"
+          "src/status-template.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-maintenance.ts"
       },
@@ -120543,7 +120785,8 @@
           "src/operations/bundled-package-bootstrap.mts",
           "src/operations/protected-packages.mts",
           "src/operations/public-transaction.mts",
-          "src/status-template.ts"
+          "src/status-template.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-maintenance-types.ts"
       },
@@ -120906,7 +121149,8 @@
           "src/operations/bundled-package-bootstrap.mts",
           "src/operations/protected-packages.mts",
           "src/operations/public-transaction.mts",
-          "src/status-template.ts"
+          "src/status-template.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-task-edit.ts"
       },
@@ -121269,7 +121513,8 @@
           "src/operations/bundled-package-bootstrap.mts",
           "src/operations/protected-packages.mts",
           "src/operations/public-transaction.mts",
-          "src/status-template.ts"
+          "src/status-template.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-task-edit-types.ts"
       },
@@ -121632,9 +121877,1030 @@
           "src/operations/bundled-package-bootstrap.mts",
           "src/operations/protected-packages.mts",
           "src/operations/public-transaction.mts",
-          "src/status-template.ts"
+          "src/status-template.ts",
+          "src/operations/released-component-types.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-worldline-player-save.ts"
+      },
+      {
+        "id": "released-component-types",
+        "artifact": "released-component-types",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "build-tools/node_modules/typescript/lib/typescript.js",
+          "build-tools/package-lock.json",
+          "build-tools/package.json",
+          "build-tools/tsconfig.json",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/owned-ruby-task.ts",
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/index.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/workspace.ts",
+          "lib/operations/build-typescript.mjs",
+          "src/core/bounded-regex.ts",
+          "src/core/card-adaptation-context.ts",
+          "src/core/card-export-projection.ts",
+          "src/core/card-export.ts",
+          "src/core/character-cluster-projection.ts",
+          "src/core/character-cluster-settings.ts",
+          "src/core/character-cluster.ts",
+          "src/core/narrative-preset-catalog.ts",
+          "src/core/narrative-preset-default.ts",
+          "src/core/narrative-presets.ts",
+          "src/core/narrative-styles/annalistic.ts",
+          "src/core/narrative-styles/cinematic.ts",
+          "src/core/narrative-styles/classical.ts",
+          "src/core/narrative-styles/comedy.ts",
+          "src/core/narrative-styles/cosmic-romance.ts",
+          "src/core/narrative-styles/delicate.ts",
+          "src/core/narrative-styles/fantasy.ts",
+          "src/core/narrative-styles/horror.ts",
+          "src/core/narrative-styles/jrpg.ts",
+          "src/core/narrative-styles/light-novel.ts",
+          "src/core/narrative-styles/luxun.ts",
+          "src/core/narrative-styles/lyrical.ts",
+          "src/core/narrative-styles/minimal.ts",
+          "src/core/narrative-styles/otome.ts",
+          "src/core/nexttavern-card.ts",
+          "src/core/novel-export-projection.ts",
+          "src/core/roleplay-author-browser-generation-types.ts",
+          "src/core/roleplay-author-chat-state-types.ts",
+          "src/core/roleplay-author-context-types.ts",
+          "src/core/roleplay-author-context.ts",
+          "src/core/roleplay-author-contributions.ts",
+          "src/core/roleplay-author-host-assets.ts",
+          "src/core/roleplay-author-host-types-v5.ts",
+          "src/core/roleplay-author-prompt-assets.ts",
+          "src/core/roleplay-author-prompt-capture.ts",
+          "src/core/roleplay-author-script-resources.ts",
+          "src/core/roleplay-author-tools-types.ts",
+          "src/core/roleplay-branch-routes-types.ts",
+          "src/core/roleplay-card-attachment.ts",
+          "src/core/roleplay-card-export-opening.ts",
+          "src/core/roleplay-card-workflow-types.ts",
+          "src/core/roleplay-chat-card-source.ts",
+          "src/core/roleplay-context.ts",
+          "src/core/roleplay-data.ts",
+          "src/core/roleplay-import-record.ts",
+          "src/core/roleplay-import-types.ts",
+          "src/core/roleplay-import.ts",
+          "src/core/roleplay-input-cold-row-facts.ts",
+          "src/core/roleplay-input-completion.ts",
+          "src/core/roleplay-input-continuation.ts",
+          "src/core/roleplay-input-material.ts",
+          "src/core/roleplay-input-preparation.ts",
+          "src/core/roleplay-input-source-data.ts",
+          "src/core/roleplay-input-state.ts",
+          "src/core/roleplay-input-terminal.ts",
+          "src/core/roleplay-message-view.ts",
+          "src/core/roleplay-mvu-ancestry.ts",
+          "src/core/roleplay-mvu-display-facts.ts",
+          "src/core/roleplay-mvu-edit-facts.ts",
+          "src/core/roleplay-mvu-frozen-lineage.ts",
+          "src/core/roleplay-mvu-initialization.ts",
+          "src/core/roleplay-mvu-lineage.ts",
+          "src/core/roleplay-mvu-player-facts.ts",
+          "src/core/roleplay-mvu-player-records.ts",
+          "src/core/roleplay-mvu-player-types.ts",
+          "src/core/roleplay-mvu-prefix-facts.ts",
+          "src/core/roleplay-mvu-prefix-ledger.ts",
+          "src/core/roleplay-mvu-prompt-numerical-facts.ts",
+          "src/core/roleplay-mvu-schema-assets.ts",
+          "src/core/roleplay-mvu-schema-derived-types.ts",
+          "src/core/roleplay-mvu-schema-descriptor-data.ts",
+          "src/core/roleplay-mvu-schema-executor-types.ts",
+          "src/core/roleplay-mvu-schema-frozen-prefix-input.ts",
+          "src/core/roleplay-mvu-schema-history-tail.ts",
+          "src/core/roleplay-mvu-schema-journal.ts",
+          "src/core/roleplay-mvu-schema-opening-types.ts",
+          "src/core/roleplay-mvu-schema-player-types.ts",
+          "src/core/roleplay-mvu-schema-prefix-facts.ts",
+          "src/core/roleplay-mvu-schema-replay.ts",
+          "src/core/roleplay-mvu-schema-scope-facts.ts",
+          "src/core/roleplay-mvu-schema-source.ts",
+          "src/core/roleplay-mvu-schema-story-core.ts",
+          "src/core/roleplay-mvu-schema-story-types.ts",
+          "src/core/roleplay-mvu-schema-story.ts",
+          "src/core/roleplay-mvu-source-policy.ts",
+          "src/core/roleplay-mvu-source.ts",
+          "src/core/roleplay-mvu-state.ts",
+          "src/core/roleplay-mvu-story.ts",
+          "src/core/roleplay-mvu-update-v2.ts",
+          "src/core/roleplay-mvu-update.ts",
+          "src/core/roleplay-opening-material.ts",
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/roleplay-phase-a-row-facts.ts",
+          "src/core/roleplay-preparation-types.ts",
+          "src/core/roleplay-preparation.ts",
+          "src/core/roleplay-program-absence-inheritance-data.ts",
+          "src/core/roleplay-program-absence-inventory.ts",
+          "src/core/roleplay-program-copy-span.ts",
+          "src/core/roleplay-program-genesis-data.ts",
+          "src/core/roleplay-program-genesis-types.ts",
+          "src/core/roleplay-program-opening-basis-types.ts",
+          "src/core/roleplay-program-opening-records.ts",
+          "src/core/roleplay-prompt-opening-source-data.ts",
+          "src/core/roleplay-prompt-opening-source-types.ts",
+          "src/core/roleplay-prompt-opening-source.ts",
+          "src/core/roleplay-prompt-program-source-types.ts",
+          "src/core/roleplay-prompt-program-source.ts",
+          "src/core/roleplay-prompt-template-only-data.ts",
+          "src/core/roleplay-prompt-template-only-origins.ts",
+          "src/core/roleplay-prompt-template-only-types.ts",
+          "src/core/roleplay-resource-bridge-types.ts",
+          "src/core/roleplay-source-lock.ts",
+          "src/core/roleplay-status-types.ts",
+          "src/core/roleplay-task-host-types.ts",
+          "src/core/roleplay-tavern-chat-clock.ts",
+          "src/core/roleplay-tavern-current-overlay.ts",
+          "src/core/roleplay-tavern-layout.ts",
+          "src/core/roleplay-tavern-legacy-write-target-types.ts",
+          "src/core/roleplay-tavern-lore-contributions.ts",
+          "src/core/roleplay-tavern-lore-data.ts",
+          "src/core/roleplay-tavern-lore-edits-data.ts",
+          "src/core/roleplay-tavern-lore-edits-journal.ts",
+          "src/core/roleplay-tavern-lore-edits-types.ts",
+          "src/core/roleplay-tavern-lore-edits.ts",
+          "src/core/roleplay-tavern-lore-export.ts",
+          "src/core/roleplay-tavern-lore-source-types.ts",
+          "src/core/roleplay-tavern-lore-source.ts",
+          "src/core/roleplay-tavern-material-history.ts",
+          "src/core/roleplay-tavern-prompt-macros.ts",
+          "src/core/roleplay-tavern-prompt-source.ts",
+          "src/core/roleplay-tavern-source-edit-baseline.ts",
+          "src/core/roleplay-tavern-source-inheritance-data.ts",
+          "src/core/roleplay-tavern-source-inheritance-types.ts",
+          "src/core/roleplay-userinfo.ts",
+          "src/core/roleplay-worldline-surface.ts",
+          "src/core/roleplay-worldline-types.ts",
+          "src/core/roleplay-worldlines.ts",
+          "src/core/session-history.ts",
+          "src/core/tavern-author-browser-budget.ts",
+          "src/core/tavern-author-browser-descriptor-v2.mts",
+          "src/core/tavern-author-browser-descriptor.mts",
+          "src/core/tavern-author-browser-types-v2.mts",
+          "src/core/tavern-author-browser-types.mts",
+          "src/core/tavern-author-combined-compiler.mts",
+          "src/core/tavern-author-combined-data.mts",
+          "src/core/tavern-author-combined-types.mts",
+          "src/core/tavern-author-host-provider.mts",
+          "src/core/tavern-author-prompt-compiler.mts",
+          "src/core/tavern-author-prompt-data.mts",
+          "src/core/tavern-author-prompt-descriptor.mts",
+          "src/core/tavern-author-prompt-profile.mts",
+          "src/core/tavern-author-prompt-provider.mts",
+          "src/core/tavern-author-prompt-runtime.mts",
+          "src/core/tavern-author-prompt-types.mts",
+          "src/core/tavern-card-crc.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-conversations.ts",
+          "src/core/tavern-display-html.ts",
+          "src/core/tavern-library-input.ts",
+          "src/core/tavern-library-record.ts",
+          "src/core/tavern-library.ts",
+          "src/core/tavern-lore-compiler.mts",
+          "src/core/tavern-lore-evaluator-types.mts",
+          "src/core/tavern-lore-fixed-profile.mts",
+          "src/core/tavern-lore-match.mts",
+          "src/core/tavern-lore-plan-types.mts",
+          "src/core/tavern-lore-snapshot.mts",
+          "src/core/tavern-model-policy.ts",
+          "src/core/tavern-mvu-author-execution-classifier-v4.mts",
+          "src/core/tavern-mvu-author-execution-types-v4.mts",
+          "src/core/tavern-mvu-initvar.ts",
+          "src/core/tavern-mvu-schema-compiler-ast-v4.ts",
+          "src/core/tavern-mvu-schema-compiler-v4.ts",
+          "src/core/tavern-mvu-schema-compiler-worker-v4.mts",
+          "src/core/tavern-mvu-schema-data.ts",
+          "src/core/tavern-mvu-schema-fresh-selector.ts",
+          "src/core/tavern-mvu-schema-import-policy.ts",
+          "src/core/tavern-mvu-schema-program-v4.ts",
+          "src/core/tavern-mvu-schema-runner-v2.ts",
+          "src/core/tavern-mvu-schema-runner-v3.ts",
+          "src/core/tavern-mvu-schema-runner-v4.ts",
+          "src/core/tavern-mvu-schema-types-v2.ts",
+          "src/core/tavern-mvu-schema-types-v3.ts",
+          "src/core/tavern-mvu-schema-types-v4.ts",
+          "src/core/tavern-mvu-schema-types.ts",
+          "src/core/tavern-mvu-schema-update-effects-v2.ts",
+          "src/core/tavern-mvu-schema-worker-v2.mts",
+          "src/core/tavern-mvu-schema-worker-v3.mts",
+          "src/core/tavern-mvu-schema-worker-v4.mts",
+          "src/core/tavern-mvu-scope-read-types.ts",
+          "src/core/tavern-mvu-scope-read.ts",
+          "src/core/tavern-mvu-state-loader-policy-v4.mts",
+          "src/core/tavern-mvu-yaml.ts",
+          "src/core/tavern-prompt-transform-output.mts",
+          "src/core/tavern-prompt-transform-types.mts",
+          "src/core/tavern-prompt-transform-worker.mts",
+          "src/core/tavern-prompt-transform.mts",
+          "src/core/tavern-task-context.ts",
+          "src/core/tavern-task-primitives.ts",
+          "src/core/tavern-task-retirement.ts",
+          "src/core/tavern-task-support.ts",
+          "src/core/tavern-task-types.ts",
+          "src/core/tavern-tasks.ts",
+          "src/core/tavern-template-data.mts",
+          "src/core/tavern-template-types.mts",
+          "src/memory/memory-history.ts",
+          "src/memory/memory-provenance.ts",
+          "src/operations/author-browser-runtime-assets.mts",
+          "src/operations/author-host-runtime-assets.mts",
+          "src/operations/author-prompt-runtime-assets.mts",
+          "src/operations/build-typescript.mts",
+          "src/operations/bundled-library-assembly.mts",
+          "src/operations/bundled-package-bootstrap.mts",
+          "src/operations/native-fork-host-profile.mts",
+          "src/operations/owned-dependency.mts",
+          "src/operations/product-assembly.mts",
+          "src/operations/protected-packages.mts",
+          "src/operations/public-transaction.mts",
+          "src/operations/subagent-typert-assets.mts",
+          "src/operations/tavern-template-runtime-assets.mts",
+          "src/operations/test-temp.mts",
+          "src/operations/tool-resolution.mts",
+          "src/status-template.ts",
+          "src/core/reader-regex-document-types.mts",
+          "src/core/roleplay-reader-display.ts",
+          "src/core/roleplay-reader-narrative-display.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
+        ],
+        "kind": "typescript-module",
+        "entry": "src/operations/released-component-types.mts",
+        "typeContext": "public-pipeline",
+        "banner": "runtime/alpha3/src/operations/released-component-types.mts"
+      },
+      {
+        "id": "released-component-catalog",
+        "artifact": "released-component-catalog",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "build-tools/node_modules/typescript/lib/typescript.js",
+          "build-tools/package-lock.json",
+          "build-tools/package.json",
+          "build-tools/tsconfig.json",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/owned-ruby-task.ts",
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/index.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/workspace.ts",
+          "lib/operations/build-typescript.mjs",
+          "src/core/bounded-regex.ts",
+          "src/core/card-adaptation-context.ts",
+          "src/core/card-export-projection.ts",
+          "src/core/card-export.ts",
+          "src/core/character-cluster-projection.ts",
+          "src/core/character-cluster-settings.ts",
+          "src/core/character-cluster.ts",
+          "src/core/narrative-preset-catalog.ts",
+          "src/core/narrative-preset-default.ts",
+          "src/core/narrative-presets.ts",
+          "src/core/narrative-styles/annalistic.ts",
+          "src/core/narrative-styles/cinematic.ts",
+          "src/core/narrative-styles/classical.ts",
+          "src/core/narrative-styles/comedy.ts",
+          "src/core/narrative-styles/cosmic-romance.ts",
+          "src/core/narrative-styles/delicate.ts",
+          "src/core/narrative-styles/fantasy.ts",
+          "src/core/narrative-styles/horror.ts",
+          "src/core/narrative-styles/jrpg.ts",
+          "src/core/narrative-styles/light-novel.ts",
+          "src/core/narrative-styles/luxun.ts",
+          "src/core/narrative-styles/lyrical.ts",
+          "src/core/narrative-styles/minimal.ts",
+          "src/core/narrative-styles/otome.ts",
+          "src/core/nexttavern-card.ts",
+          "src/core/novel-export-projection.ts",
+          "src/core/roleplay-author-browser-generation-types.ts",
+          "src/core/roleplay-author-chat-state-types.ts",
+          "src/core/roleplay-author-context-types.ts",
+          "src/core/roleplay-author-context.ts",
+          "src/core/roleplay-author-contributions.ts",
+          "src/core/roleplay-author-host-assets.ts",
+          "src/core/roleplay-author-host-types-v5.ts",
+          "src/core/roleplay-author-prompt-assets.ts",
+          "src/core/roleplay-author-prompt-capture.ts",
+          "src/core/roleplay-author-script-resources.ts",
+          "src/core/roleplay-author-tools-types.ts",
+          "src/core/roleplay-branch-routes-types.ts",
+          "src/core/roleplay-card-attachment.ts",
+          "src/core/roleplay-card-export-opening.ts",
+          "src/core/roleplay-card-workflow-types.ts",
+          "src/core/roleplay-chat-card-source.ts",
+          "src/core/roleplay-context.ts",
+          "src/core/roleplay-data.ts",
+          "src/core/roleplay-import-record.ts",
+          "src/core/roleplay-import-types.ts",
+          "src/core/roleplay-import.ts",
+          "src/core/roleplay-input-cold-row-facts.ts",
+          "src/core/roleplay-input-completion.ts",
+          "src/core/roleplay-input-continuation.ts",
+          "src/core/roleplay-input-material.ts",
+          "src/core/roleplay-input-preparation.ts",
+          "src/core/roleplay-input-source-data.ts",
+          "src/core/roleplay-input-state.ts",
+          "src/core/roleplay-input-terminal.ts",
+          "src/core/roleplay-message-view.ts",
+          "src/core/roleplay-mvu-ancestry.ts",
+          "src/core/roleplay-mvu-display-facts.ts",
+          "src/core/roleplay-mvu-edit-facts.ts",
+          "src/core/roleplay-mvu-frozen-lineage.ts",
+          "src/core/roleplay-mvu-initialization.ts",
+          "src/core/roleplay-mvu-lineage.ts",
+          "src/core/roleplay-mvu-player-facts.ts",
+          "src/core/roleplay-mvu-player-records.ts",
+          "src/core/roleplay-mvu-player-types.ts",
+          "src/core/roleplay-mvu-prefix-facts.ts",
+          "src/core/roleplay-mvu-prefix-ledger.ts",
+          "src/core/roleplay-mvu-prompt-numerical-facts.ts",
+          "src/core/roleplay-mvu-schema-assets.ts",
+          "src/core/roleplay-mvu-schema-derived-types.ts",
+          "src/core/roleplay-mvu-schema-descriptor-data.ts",
+          "src/core/roleplay-mvu-schema-executor-types.ts",
+          "src/core/roleplay-mvu-schema-frozen-prefix-input.ts",
+          "src/core/roleplay-mvu-schema-history-tail.ts",
+          "src/core/roleplay-mvu-schema-journal.ts",
+          "src/core/roleplay-mvu-schema-opening-types.ts",
+          "src/core/roleplay-mvu-schema-player-types.ts",
+          "src/core/roleplay-mvu-schema-prefix-facts.ts",
+          "src/core/roleplay-mvu-schema-replay.ts",
+          "src/core/roleplay-mvu-schema-scope-facts.ts",
+          "src/core/roleplay-mvu-schema-source.ts",
+          "src/core/roleplay-mvu-schema-story-core.ts",
+          "src/core/roleplay-mvu-schema-story-types.ts",
+          "src/core/roleplay-mvu-schema-story.ts",
+          "src/core/roleplay-mvu-source-policy.ts",
+          "src/core/roleplay-mvu-source.ts",
+          "src/core/roleplay-mvu-state.ts",
+          "src/core/roleplay-mvu-story.ts",
+          "src/core/roleplay-mvu-update-v2.ts",
+          "src/core/roleplay-mvu-update.ts",
+          "src/core/roleplay-opening-material.ts",
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/roleplay-phase-a-row-facts.ts",
+          "src/core/roleplay-preparation-types.ts",
+          "src/core/roleplay-preparation.ts",
+          "src/core/roleplay-program-absence-inheritance-data.ts",
+          "src/core/roleplay-program-absence-inventory.ts",
+          "src/core/roleplay-program-copy-span.ts",
+          "src/core/roleplay-program-genesis-data.ts",
+          "src/core/roleplay-program-genesis-types.ts",
+          "src/core/roleplay-program-opening-basis-types.ts",
+          "src/core/roleplay-program-opening-records.ts",
+          "src/core/roleplay-prompt-opening-source-data.ts",
+          "src/core/roleplay-prompt-opening-source-types.ts",
+          "src/core/roleplay-prompt-opening-source.ts",
+          "src/core/roleplay-prompt-program-source-types.ts",
+          "src/core/roleplay-prompt-program-source.ts",
+          "src/core/roleplay-prompt-template-only-data.ts",
+          "src/core/roleplay-prompt-template-only-origins.ts",
+          "src/core/roleplay-prompt-template-only-types.ts",
+          "src/core/roleplay-resource-bridge-types.ts",
+          "src/core/roleplay-source-lock.ts",
+          "src/core/roleplay-status-types.ts",
+          "src/core/roleplay-task-host-types.ts",
+          "src/core/roleplay-tavern-chat-clock.ts",
+          "src/core/roleplay-tavern-current-overlay.ts",
+          "src/core/roleplay-tavern-layout.ts",
+          "src/core/roleplay-tavern-legacy-write-target-types.ts",
+          "src/core/roleplay-tavern-lore-contributions.ts",
+          "src/core/roleplay-tavern-lore-data.ts",
+          "src/core/roleplay-tavern-lore-edits-data.ts",
+          "src/core/roleplay-tavern-lore-edits-journal.ts",
+          "src/core/roleplay-tavern-lore-edits-types.ts",
+          "src/core/roleplay-tavern-lore-edits.ts",
+          "src/core/roleplay-tavern-lore-export.ts",
+          "src/core/roleplay-tavern-lore-source-types.ts",
+          "src/core/roleplay-tavern-lore-source.ts",
+          "src/core/roleplay-tavern-material-history.ts",
+          "src/core/roleplay-tavern-prompt-macros.ts",
+          "src/core/roleplay-tavern-prompt-source.ts",
+          "src/core/roleplay-tavern-source-edit-baseline.ts",
+          "src/core/roleplay-tavern-source-inheritance-data.ts",
+          "src/core/roleplay-tavern-source-inheritance-types.ts",
+          "src/core/roleplay-userinfo.ts",
+          "src/core/roleplay-worldline-surface.ts",
+          "src/core/roleplay-worldline-types.ts",
+          "src/core/roleplay-worldlines.ts",
+          "src/core/session-history.ts",
+          "src/core/tavern-author-browser-budget.ts",
+          "src/core/tavern-author-browser-descriptor-v2.mts",
+          "src/core/tavern-author-browser-descriptor.mts",
+          "src/core/tavern-author-browser-types-v2.mts",
+          "src/core/tavern-author-browser-types.mts",
+          "src/core/tavern-author-combined-compiler.mts",
+          "src/core/tavern-author-combined-data.mts",
+          "src/core/tavern-author-combined-types.mts",
+          "src/core/tavern-author-host-provider.mts",
+          "src/core/tavern-author-prompt-compiler.mts",
+          "src/core/tavern-author-prompt-data.mts",
+          "src/core/tavern-author-prompt-descriptor.mts",
+          "src/core/tavern-author-prompt-profile.mts",
+          "src/core/tavern-author-prompt-provider.mts",
+          "src/core/tavern-author-prompt-runtime.mts",
+          "src/core/tavern-author-prompt-types.mts",
+          "src/core/tavern-card-crc.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-conversations.ts",
+          "src/core/tavern-display-html.ts",
+          "src/core/tavern-library-input.ts",
+          "src/core/tavern-library-record.ts",
+          "src/core/tavern-library.ts",
+          "src/core/tavern-lore-compiler.mts",
+          "src/core/tavern-lore-evaluator-types.mts",
+          "src/core/tavern-lore-fixed-profile.mts",
+          "src/core/tavern-lore-match.mts",
+          "src/core/tavern-lore-plan-types.mts",
+          "src/core/tavern-lore-snapshot.mts",
+          "src/core/tavern-model-policy.ts",
+          "src/core/tavern-mvu-author-execution-classifier-v4.mts",
+          "src/core/tavern-mvu-author-execution-types-v4.mts",
+          "src/core/tavern-mvu-initvar.ts",
+          "src/core/tavern-mvu-schema-compiler-ast-v4.ts",
+          "src/core/tavern-mvu-schema-compiler-v4.ts",
+          "src/core/tavern-mvu-schema-compiler-worker-v4.mts",
+          "src/core/tavern-mvu-schema-data.ts",
+          "src/core/tavern-mvu-schema-fresh-selector.ts",
+          "src/core/tavern-mvu-schema-import-policy.ts",
+          "src/core/tavern-mvu-schema-program-v4.ts",
+          "src/core/tavern-mvu-schema-runner-v2.ts",
+          "src/core/tavern-mvu-schema-runner-v3.ts",
+          "src/core/tavern-mvu-schema-runner-v4.ts",
+          "src/core/tavern-mvu-schema-types-v2.ts",
+          "src/core/tavern-mvu-schema-types-v3.ts",
+          "src/core/tavern-mvu-schema-types-v4.ts",
+          "src/core/tavern-mvu-schema-types.ts",
+          "src/core/tavern-mvu-schema-update-effects-v2.ts",
+          "src/core/tavern-mvu-schema-worker-v2.mts",
+          "src/core/tavern-mvu-schema-worker-v3.mts",
+          "src/core/tavern-mvu-schema-worker-v4.mts",
+          "src/core/tavern-mvu-scope-read-types.ts",
+          "src/core/tavern-mvu-scope-read.ts",
+          "src/core/tavern-mvu-state-loader-policy-v4.mts",
+          "src/core/tavern-mvu-yaml.ts",
+          "src/core/tavern-prompt-transform-output.mts",
+          "src/core/tavern-prompt-transform-types.mts",
+          "src/core/tavern-prompt-transform-worker.mts",
+          "src/core/tavern-prompt-transform.mts",
+          "src/core/tavern-task-context.ts",
+          "src/core/tavern-task-primitives.ts",
+          "src/core/tavern-task-retirement.ts",
+          "src/core/tavern-task-support.ts",
+          "src/core/tavern-task-types.ts",
+          "src/core/tavern-tasks.ts",
+          "src/core/tavern-template-data.mts",
+          "src/core/tavern-template-types.mts",
+          "src/memory/memory-history.ts",
+          "src/memory/memory-provenance.ts",
+          "src/operations/author-browser-runtime-assets.mts",
+          "src/operations/author-host-runtime-assets.mts",
+          "src/operations/author-prompt-runtime-assets.mts",
+          "src/operations/build-typescript.mts",
+          "src/operations/bundled-library-assembly.mts",
+          "src/operations/bundled-package-bootstrap.mts",
+          "src/operations/native-fork-host-profile.mts",
+          "src/operations/owned-dependency.mts",
+          "src/operations/product-assembly.mts",
+          "src/operations/protected-packages.mts",
+          "src/operations/public-transaction.mts",
+          "src/operations/subagent-typert-assets.mts",
+          "src/operations/tavern-template-runtime-assets.mts",
+          "src/operations/test-temp.mts",
+          "src/operations/tool-resolution.mts",
+          "src/status-template.ts",
+          "src/core/reader-regex-document-types.mts",
+          "src/core/roleplay-reader-display.ts",
+          "src/core/roleplay-reader-narrative-display.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
+        ],
+        "kind": "typescript-module",
+        "entry": "src/operations/released-component-catalog.mts",
+        "typeContext": "public-pipeline",
+        "banner": "runtime/alpha3/src/operations/released-component-catalog.mts"
+      },
+      {
+        "id": "released-component-archive",
+        "artifact": "released-component-archive",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "build-tools/node_modules/typescript/lib/typescript.js",
+          "build-tools/package-lock.json",
+          "build-tools/package.json",
+          "build-tools/tsconfig.json",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/owned-ruby-task.ts",
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/index.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/workspace.ts",
+          "lib/operations/build-typescript.mjs",
+          "src/core/bounded-regex.ts",
+          "src/core/card-adaptation-context.ts",
+          "src/core/card-export-projection.ts",
+          "src/core/card-export.ts",
+          "src/core/character-cluster-projection.ts",
+          "src/core/character-cluster-settings.ts",
+          "src/core/character-cluster.ts",
+          "src/core/narrative-preset-catalog.ts",
+          "src/core/narrative-preset-default.ts",
+          "src/core/narrative-presets.ts",
+          "src/core/narrative-styles/annalistic.ts",
+          "src/core/narrative-styles/cinematic.ts",
+          "src/core/narrative-styles/classical.ts",
+          "src/core/narrative-styles/comedy.ts",
+          "src/core/narrative-styles/cosmic-romance.ts",
+          "src/core/narrative-styles/delicate.ts",
+          "src/core/narrative-styles/fantasy.ts",
+          "src/core/narrative-styles/horror.ts",
+          "src/core/narrative-styles/jrpg.ts",
+          "src/core/narrative-styles/light-novel.ts",
+          "src/core/narrative-styles/luxun.ts",
+          "src/core/narrative-styles/lyrical.ts",
+          "src/core/narrative-styles/minimal.ts",
+          "src/core/narrative-styles/otome.ts",
+          "src/core/nexttavern-card.ts",
+          "src/core/novel-export-projection.ts",
+          "src/core/roleplay-author-browser-generation-types.ts",
+          "src/core/roleplay-author-chat-state-types.ts",
+          "src/core/roleplay-author-context-types.ts",
+          "src/core/roleplay-author-context.ts",
+          "src/core/roleplay-author-contributions.ts",
+          "src/core/roleplay-author-host-assets.ts",
+          "src/core/roleplay-author-host-types-v5.ts",
+          "src/core/roleplay-author-prompt-assets.ts",
+          "src/core/roleplay-author-prompt-capture.ts",
+          "src/core/roleplay-author-script-resources.ts",
+          "src/core/roleplay-author-tools-types.ts",
+          "src/core/roleplay-branch-routes-types.ts",
+          "src/core/roleplay-card-attachment.ts",
+          "src/core/roleplay-card-export-opening.ts",
+          "src/core/roleplay-card-workflow-types.ts",
+          "src/core/roleplay-chat-card-source.ts",
+          "src/core/roleplay-context.ts",
+          "src/core/roleplay-data.ts",
+          "src/core/roleplay-import-record.ts",
+          "src/core/roleplay-import-types.ts",
+          "src/core/roleplay-import.ts",
+          "src/core/roleplay-input-cold-row-facts.ts",
+          "src/core/roleplay-input-completion.ts",
+          "src/core/roleplay-input-continuation.ts",
+          "src/core/roleplay-input-material.ts",
+          "src/core/roleplay-input-preparation.ts",
+          "src/core/roleplay-input-source-data.ts",
+          "src/core/roleplay-input-state.ts",
+          "src/core/roleplay-input-terminal.ts",
+          "src/core/roleplay-message-view.ts",
+          "src/core/roleplay-mvu-ancestry.ts",
+          "src/core/roleplay-mvu-display-facts.ts",
+          "src/core/roleplay-mvu-edit-facts.ts",
+          "src/core/roleplay-mvu-frozen-lineage.ts",
+          "src/core/roleplay-mvu-initialization.ts",
+          "src/core/roleplay-mvu-lineage.ts",
+          "src/core/roleplay-mvu-player-facts.ts",
+          "src/core/roleplay-mvu-player-records.ts",
+          "src/core/roleplay-mvu-player-types.ts",
+          "src/core/roleplay-mvu-prefix-facts.ts",
+          "src/core/roleplay-mvu-prefix-ledger.ts",
+          "src/core/roleplay-mvu-prompt-numerical-facts.ts",
+          "src/core/roleplay-mvu-schema-assets.ts",
+          "src/core/roleplay-mvu-schema-derived-types.ts",
+          "src/core/roleplay-mvu-schema-descriptor-data.ts",
+          "src/core/roleplay-mvu-schema-executor-types.ts",
+          "src/core/roleplay-mvu-schema-frozen-prefix-input.ts",
+          "src/core/roleplay-mvu-schema-history-tail.ts",
+          "src/core/roleplay-mvu-schema-journal.ts",
+          "src/core/roleplay-mvu-schema-opening-types.ts",
+          "src/core/roleplay-mvu-schema-player-types.ts",
+          "src/core/roleplay-mvu-schema-prefix-facts.ts",
+          "src/core/roleplay-mvu-schema-replay.ts",
+          "src/core/roleplay-mvu-schema-scope-facts.ts",
+          "src/core/roleplay-mvu-schema-source.ts",
+          "src/core/roleplay-mvu-schema-story-core.ts",
+          "src/core/roleplay-mvu-schema-story-types.ts",
+          "src/core/roleplay-mvu-schema-story.ts",
+          "src/core/roleplay-mvu-source-policy.ts",
+          "src/core/roleplay-mvu-source.ts",
+          "src/core/roleplay-mvu-state.ts",
+          "src/core/roleplay-mvu-story.ts",
+          "src/core/roleplay-mvu-update-v2.ts",
+          "src/core/roleplay-mvu-update.ts",
+          "src/core/roleplay-opening-material.ts",
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/roleplay-phase-a-row-facts.ts",
+          "src/core/roleplay-preparation-types.ts",
+          "src/core/roleplay-preparation.ts",
+          "src/core/roleplay-program-absence-inheritance-data.ts",
+          "src/core/roleplay-program-absence-inventory.ts",
+          "src/core/roleplay-program-copy-span.ts",
+          "src/core/roleplay-program-genesis-data.ts",
+          "src/core/roleplay-program-genesis-types.ts",
+          "src/core/roleplay-program-opening-basis-types.ts",
+          "src/core/roleplay-program-opening-records.ts",
+          "src/core/roleplay-prompt-opening-source-data.ts",
+          "src/core/roleplay-prompt-opening-source-types.ts",
+          "src/core/roleplay-prompt-opening-source.ts",
+          "src/core/roleplay-prompt-program-source-types.ts",
+          "src/core/roleplay-prompt-program-source.ts",
+          "src/core/roleplay-prompt-template-only-data.ts",
+          "src/core/roleplay-prompt-template-only-origins.ts",
+          "src/core/roleplay-prompt-template-only-types.ts",
+          "src/core/roleplay-resource-bridge-types.ts",
+          "src/core/roleplay-source-lock.ts",
+          "src/core/roleplay-status-types.ts",
+          "src/core/roleplay-task-host-types.ts",
+          "src/core/roleplay-tavern-chat-clock.ts",
+          "src/core/roleplay-tavern-current-overlay.ts",
+          "src/core/roleplay-tavern-layout.ts",
+          "src/core/roleplay-tavern-legacy-write-target-types.ts",
+          "src/core/roleplay-tavern-lore-contributions.ts",
+          "src/core/roleplay-tavern-lore-data.ts",
+          "src/core/roleplay-tavern-lore-edits-data.ts",
+          "src/core/roleplay-tavern-lore-edits-journal.ts",
+          "src/core/roleplay-tavern-lore-edits-types.ts",
+          "src/core/roleplay-tavern-lore-edits.ts",
+          "src/core/roleplay-tavern-lore-export.ts",
+          "src/core/roleplay-tavern-lore-source-types.ts",
+          "src/core/roleplay-tavern-lore-source.ts",
+          "src/core/roleplay-tavern-material-history.ts",
+          "src/core/roleplay-tavern-prompt-macros.ts",
+          "src/core/roleplay-tavern-prompt-source.ts",
+          "src/core/roleplay-tavern-source-edit-baseline.ts",
+          "src/core/roleplay-tavern-source-inheritance-data.ts",
+          "src/core/roleplay-tavern-source-inheritance-types.ts",
+          "src/core/roleplay-userinfo.ts",
+          "src/core/roleplay-worldline-surface.ts",
+          "src/core/roleplay-worldline-types.ts",
+          "src/core/roleplay-worldlines.ts",
+          "src/core/session-history.ts",
+          "src/core/tavern-author-browser-budget.ts",
+          "src/core/tavern-author-browser-descriptor-v2.mts",
+          "src/core/tavern-author-browser-descriptor.mts",
+          "src/core/tavern-author-browser-types-v2.mts",
+          "src/core/tavern-author-browser-types.mts",
+          "src/core/tavern-author-combined-compiler.mts",
+          "src/core/tavern-author-combined-data.mts",
+          "src/core/tavern-author-combined-types.mts",
+          "src/core/tavern-author-host-provider.mts",
+          "src/core/tavern-author-prompt-compiler.mts",
+          "src/core/tavern-author-prompt-data.mts",
+          "src/core/tavern-author-prompt-descriptor.mts",
+          "src/core/tavern-author-prompt-profile.mts",
+          "src/core/tavern-author-prompt-provider.mts",
+          "src/core/tavern-author-prompt-runtime.mts",
+          "src/core/tavern-author-prompt-types.mts",
+          "src/core/tavern-card-crc.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-conversations.ts",
+          "src/core/tavern-display-html.ts",
+          "src/core/tavern-library-input.ts",
+          "src/core/tavern-library-record.ts",
+          "src/core/tavern-library.ts",
+          "src/core/tavern-lore-compiler.mts",
+          "src/core/tavern-lore-evaluator-types.mts",
+          "src/core/tavern-lore-fixed-profile.mts",
+          "src/core/tavern-lore-match.mts",
+          "src/core/tavern-lore-plan-types.mts",
+          "src/core/tavern-lore-snapshot.mts",
+          "src/core/tavern-model-policy.ts",
+          "src/core/tavern-mvu-author-execution-classifier-v4.mts",
+          "src/core/tavern-mvu-author-execution-types-v4.mts",
+          "src/core/tavern-mvu-initvar.ts",
+          "src/core/tavern-mvu-schema-compiler-ast-v4.ts",
+          "src/core/tavern-mvu-schema-compiler-v4.ts",
+          "src/core/tavern-mvu-schema-compiler-worker-v4.mts",
+          "src/core/tavern-mvu-schema-data.ts",
+          "src/core/tavern-mvu-schema-fresh-selector.ts",
+          "src/core/tavern-mvu-schema-import-policy.ts",
+          "src/core/tavern-mvu-schema-program-v4.ts",
+          "src/core/tavern-mvu-schema-runner-v2.ts",
+          "src/core/tavern-mvu-schema-runner-v3.ts",
+          "src/core/tavern-mvu-schema-runner-v4.ts",
+          "src/core/tavern-mvu-schema-types-v2.ts",
+          "src/core/tavern-mvu-schema-types-v3.ts",
+          "src/core/tavern-mvu-schema-types-v4.ts",
+          "src/core/tavern-mvu-schema-types.ts",
+          "src/core/tavern-mvu-schema-update-effects-v2.ts",
+          "src/core/tavern-mvu-schema-worker-v2.mts",
+          "src/core/tavern-mvu-schema-worker-v3.mts",
+          "src/core/tavern-mvu-schema-worker-v4.mts",
+          "src/core/tavern-mvu-scope-read-types.ts",
+          "src/core/tavern-mvu-scope-read.ts",
+          "src/core/tavern-mvu-state-loader-policy-v4.mts",
+          "src/core/tavern-mvu-yaml.ts",
+          "src/core/tavern-prompt-transform-output.mts",
+          "src/core/tavern-prompt-transform-types.mts",
+          "src/core/tavern-prompt-transform-worker.mts",
+          "src/core/tavern-prompt-transform.mts",
+          "src/core/tavern-task-context.ts",
+          "src/core/tavern-task-primitives.ts",
+          "src/core/tavern-task-retirement.ts",
+          "src/core/tavern-task-support.ts",
+          "src/core/tavern-task-types.ts",
+          "src/core/tavern-tasks.ts",
+          "src/core/tavern-template-data.mts",
+          "src/core/tavern-template-types.mts",
+          "src/memory/memory-history.ts",
+          "src/memory/memory-provenance.ts",
+          "src/operations/author-browser-runtime-assets.mts",
+          "src/operations/author-host-runtime-assets.mts",
+          "src/operations/author-prompt-runtime-assets.mts",
+          "src/operations/build-typescript.mts",
+          "src/operations/bundled-library-assembly.mts",
+          "src/operations/bundled-package-bootstrap.mts",
+          "src/operations/native-fork-host-profile.mts",
+          "src/operations/owned-dependency.mts",
+          "src/operations/product-assembly.mts",
+          "src/operations/protected-packages.mts",
+          "src/operations/public-transaction.mts",
+          "src/operations/subagent-typert-assets.mts",
+          "src/operations/tavern-template-runtime-assets.mts",
+          "src/operations/test-temp.mts",
+          "src/operations/tool-resolution.mts",
+          "src/status-template.ts",
+          "src/core/reader-regex-document-types.mts",
+          "src/core/roleplay-reader-display.ts",
+          "src/core/roleplay-reader-narrative-display.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
+        ],
+        "kind": "typescript-module",
+        "entry": "src/operations/released-component-archive.mts",
+        "typeContext": "public-pipeline",
+        "banner": "runtime/alpha3/src/operations/released-component-archive.mts"
+      },
+      {
+        "id": "released-component-assembly",
+        "artifact": "released-component-assembly",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "build-tools/node_modules/typescript/lib/typescript.js",
+          "build-tools/package-lock.json",
+          "build-tools/package.json",
+          "build-tools/tsconfig.json",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/owned-ruby-task.ts",
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/index.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/workspace.ts",
+          "lib/operations/build-typescript.mjs",
+          "src/core/bounded-regex.ts",
+          "src/core/card-adaptation-context.ts",
+          "src/core/card-export-projection.ts",
+          "src/core/card-export.ts",
+          "src/core/character-cluster-projection.ts",
+          "src/core/character-cluster-settings.ts",
+          "src/core/character-cluster.ts",
+          "src/core/narrative-preset-catalog.ts",
+          "src/core/narrative-preset-default.ts",
+          "src/core/narrative-presets.ts",
+          "src/core/narrative-styles/annalistic.ts",
+          "src/core/narrative-styles/cinematic.ts",
+          "src/core/narrative-styles/classical.ts",
+          "src/core/narrative-styles/comedy.ts",
+          "src/core/narrative-styles/cosmic-romance.ts",
+          "src/core/narrative-styles/delicate.ts",
+          "src/core/narrative-styles/fantasy.ts",
+          "src/core/narrative-styles/horror.ts",
+          "src/core/narrative-styles/jrpg.ts",
+          "src/core/narrative-styles/light-novel.ts",
+          "src/core/narrative-styles/luxun.ts",
+          "src/core/narrative-styles/lyrical.ts",
+          "src/core/narrative-styles/minimal.ts",
+          "src/core/narrative-styles/otome.ts",
+          "src/core/nexttavern-card.ts",
+          "src/core/novel-export-projection.ts",
+          "src/core/roleplay-author-browser-generation-types.ts",
+          "src/core/roleplay-author-chat-state-types.ts",
+          "src/core/roleplay-author-context-types.ts",
+          "src/core/roleplay-author-context.ts",
+          "src/core/roleplay-author-contributions.ts",
+          "src/core/roleplay-author-host-assets.ts",
+          "src/core/roleplay-author-host-types-v5.ts",
+          "src/core/roleplay-author-prompt-assets.ts",
+          "src/core/roleplay-author-prompt-capture.ts",
+          "src/core/roleplay-author-script-resources.ts",
+          "src/core/roleplay-author-tools-types.ts",
+          "src/core/roleplay-branch-routes-types.ts",
+          "src/core/roleplay-card-attachment.ts",
+          "src/core/roleplay-card-export-opening.ts",
+          "src/core/roleplay-card-workflow-types.ts",
+          "src/core/roleplay-chat-card-source.ts",
+          "src/core/roleplay-context.ts",
+          "src/core/roleplay-data.ts",
+          "src/core/roleplay-import-record.ts",
+          "src/core/roleplay-import-types.ts",
+          "src/core/roleplay-import.ts",
+          "src/core/roleplay-input-cold-row-facts.ts",
+          "src/core/roleplay-input-completion.ts",
+          "src/core/roleplay-input-continuation.ts",
+          "src/core/roleplay-input-material.ts",
+          "src/core/roleplay-input-preparation.ts",
+          "src/core/roleplay-input-source-data.ts",
+          "src/core/roleplay-input-state.ts",
+          "src/core/roleplay-input-terminal.ts",
+          "src/core/roleplay-message-view.ts",
+          "src/core/roleplay-mvu-ancestry.ts",
+          "src/core/roleplay-mvu-display-facts.ts",
+          "src/core/roleplay-mvu-edit-facts.ts",
+          "src/core/roleplay-mvu-frozen-lineage.ts",
+          "src/core/roleplay-mvu-initialization.ts",
+          "src/core/roleplay-mvu-lineage.ts",
+          "src/core/roleplay-mvu-player-facts.ts",
+          "src/core/roleplay-mvu-player-records.ts",
+          "src/core/roleplay-mvu-player-types.ts",
+          "src/core/roleplay-mvu-prefix-facts.ts",
+          "src/core/roleplay-mvu-prefix-ledger.ts",
+          "src/core/roleplay-mvu-prompt-numerical-facts.ts",
+          "src/core/roleplay-mvu-schema-assets.ts",
+          "src/core/roleplay-mvu-schema-derived-types.ts",
+          "src/core/roleplay-mvu-schema-descriptor-data.ts",
+          "src/core/roleplay-mvu-schema-executor-types.ts",
+          "src/core/roleplay-mvu-schema-frozen-prefix-input.ts",
+          "src/core/roleplay-mvu-schema-history-tail.ts",
+          "src/core/roleplay-mvu-schema-journal.ts",
+          "src/core/roleplay-mvu-schema-opening-types.ts",
+          "src/core/roleplay-mvu-schema-player-types.ts",
+          "src/core/roleplay-mvu-schema-prefix-facts.ts",
+          "src/core/roleplay-mvu-schema-replay.ts",
+          "src/core/roleplay-mvu-schema-scope-facts.ts",
+          "src/core/roleplay-mvu-schema-source.ts",
+          "src/core/roleplay-mvu-schema-story-core.ts",
+          "src/core/roleplay-mvu-schema-story-types.ts",
+          "src/core/roleplay-mvu-schema-story.ts",
+          "src/core/roleplay-mvu-source-policy.ts",
+          "src/core/roleplay-mvu-source.ts",
+          "src/core/roleplay-mvu-state.ts",
+          "src/core/roleplay-mvu-story.ts",
+          "src/core/roleplay-mvu-update-v2.ts",
+          "src/core/roleplay-mvu-update.ts",
+          "src/core/roleplay-opening-material.ts",
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/roleplay-phase-a-row-facts.ts",
+          "src/core/roleplay-preparation-types.ts",
+          "src/core/roleplay-preparation.ts",
+          "src/core/roleplay-program-absence-inheritance-data.ts",
+          "src/core/roleplay-program-absence-inventory.ts",
+          "src/core/roleplay-program-copy-span.ts",
+          "src/core/roleplay-program-genesis-data.ts",
+          "src/core/roleplay-program-genesis-types.ts",
+          "src/core/roleplay-program-opening-basis-types.ts",
+          "src/core/roleplay-program-opening-records.ts",
+          "src/core/roleplay-prompt-opening-source-data.ts",
+          "src/core/roleplay-prompt-opening-source-types.ts",
+          "src/core/roleplay-prompt-opening-source.ts",
+          "src/core/roleplay-prompt-program-source-types.ts",
+          "src/core/roleplay-prompt-program-source.ts",
+          "src/core/roleplay-prompt-template-only-data.ts",
+          "src/core/roleplay-prompt-template-only-origins.ts",
+          "src/core/roleplay-prompt-template-only-types.ts",
+          "src/core/roleplay-resource-bridge-types.ts",
+          "src/core/roleplay-source-lock.ts",
+          "src/core/roleplay-status-types.ts",
+          "src/core/roleplay-task-host-types.ts",
+          "src/core/roleplay-tavern-chat-clock.ts",
+          "src/core/roleplay-tavern-current-overlay.ts",
+          "src/core/roleplay-tavern-layout.ts",
+          "src/core/roleplay-tavern-legacy-write-target-types.ts",
+          "src/core/roleplay-tavern-lore-contributions.ts",
+          "src/core/roleplay-tavern-lore-data.ts",
+          "src/core/roleplay-tavern-lore-edits-data.ts",
+          "src/core/roleplay-tavern-lore-edits-journal.ts",
+          "src/core/roleplay-tavern-lore-edits-types.ts",
+          "src/core/roleplay-tavern-lore-edits.ts",
+          "src/core/roleplay-tavern-lore-export.ts",
+          "src/core/roleplay-tavern-lore-source-types.ts",
+          "src/core/roleplay-tavern-lore-source.ts",
+          "src/core/roleplay-tavern-material-history.ts",
+          "src/core/roleplay-tavern-prompt-macros.ts",
+          "src/core/roleplay-tavern-prompt-source.ts",
+          "src/core/roleplay-tavern-source-edit-baseline.ts",
+          "src/core/roleplay-tavern-source-inheritance-data.ts",
+          "src/core/roleplay-tavern-source-inheritance-types.ts",
+          "src/core/roleplay-userinfo.ts",
+          "src/core/roleplay-worldline-surface.ts",
+          "src/core/roleplay-worldline-types.ts",
+          "src/core/roleplay-worldlines.ts",
+          "src/core/session-history.ts",
+          "src/core/tavern-author-browser-budget.ts",
+          "src/core/tavern-author-browser-descriptor-v2.mts",
+          "src/core/tavern-author-browser-descriptor.mts",
+          "src/core/tavern-author-browser-types-v2.mts",
+          "src/core/tavern-author-browser-types.mts",
+          "src/core/tavern-author-combined-compiler.mts",
+          "src/core/tavern-author-combined-data.mts",
+          "src/core/tavern-author-combined-types.mts",
+          "src/core/tavern-author-host-provider.mts",
+          "src/core/tavern-author-prompt-compiler.mts",
+          "src/core/tavern-author-prompt-data.mts",
+          "src/core/tavern-author-prompt-descriptor.mts",
+          "src/core/tavern-author-prompt-profile.mts",
+          "src/core/tavern-author-prompt-provider.mts",
+          "src/core/tavern-author-prompt-runtime.mts",
+          "src/core/tavern-author-prompt-types.mts",
+          "src/core/tavern-card-crc.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-conversations.ts",
+          "src/core/tavern-display-html.ts",
+          "src/core/tavern-library-input.ts",
+          "src/core/tavern-library-record.ts",
+          "src/core/tavern-library.ts",
+          "src/core/tavern-lore-compiler.mts",
+          "src/core/tavern-lore-evaluator-types.mts",
+          "src/core/tavern-lore-fixed-profile.mts",
+          "src/core/tavern-lore-match.mts",
+          "src/core/tavern-lore-plan-types.mts",
+          "src/core/tavern-lore-snapshot.mts",
+          "src/core/tavern-model-policy.ts",
+          "src/core/tavern-mvu-author-execution-classifier-v4.mts",
+          "src/core/tavern-mvu-author-execution-types-v4.mts",
+          "src/core/tavern-mvu-initvar.ts",
+          "src/core/tavern-mvu-schema-compiler-ast-v4.ts",
+          "src/core/tavern-mvu-schema-compiler-v4.ts",
+          "src/core/tavern-mvu-schema-compiler-worker-v4.mts",
+          "src/core/tavern-mvu-schema-data.ts",
+          "src/core/tavern-mvu-schema-fresh-selector.ts",
+          "src/core/tavern-mvu-schema-import-policy.ts",
+          "src/core/tavern-mvu-schema-program-v4.ts",
+          "src/core/tavern-mvu-schema-runner-v2.ts",
+          "src/core/tavern-mvu-schema-runner-v3.ts",
+          "src/core/tavern-mvu-schema-runner-v4.ts",
+          "src/core/tavern-mvu-schema-types-v2.ts",
+          "src/core/tavern-mvu-schema-types-v3.ts",
+          "src/core/tavern-mvu-schema-types-v4.ts",
+          "src/core/tavern-mvu-schema-types.ts",
+          "src/core/tavern-mvu-schema-update-effects-v2.ts",
+          "src/core/tavern-mvu-schema-worker-v2.mts",
+          "src/core/tavern-mvu-schema-worker-v3.mts",
+          "src/core/tavern-mvu-schema-worker-v4.mts",
+          "src/core/tavern-mvu-scope-read-types.ts",
+          "src/core/tavern-mvu-scope-read.ts",
+          "src/core/tavern-mvu-state-loader-policy-v4.mts",
+          "src/core/tavern-mvu-yaml.ts",
+          "src/core/tavern-prompt-transform-output.mts",
+          "src/core/tavern-prompt-transform-types.mts",
+          "src/core/tavern-prompt-transform-worker.mts",
+          "src/core/tavern-prompt-transform.mts",
+          "src/core/tavern-task-context.ts",
+          "src/core/tavern-task-primitives.ts",
+          "src/core/tavern-task-retirement.ts",
+          "src/core/tavern-task-support.ts",
+          "src/core/tavern-task-types.ts",
+          "src/core/tavern-tasks.ts",
+          "src/core/tavern-template-data.mts",
+          "src/core/tavern-template-types.mts",
+          "src/memory/memory-history.ts",
+          "src/memory/memory-provenance.ts",
+          "src/operations/author-browser-runtime-assets.mts",
+          "src/operations/author-host-runtime-assets.mts",
+          "src/operations/author-prompt-runtime-assets.mts",
+          "src/operations/build-typescript.mts",
+          "src/operations/bundled-library-assembly.mts",
+          "src/operations/bundled-package-bootstrap.mts",
+          "src/operations/native-fork-host-profile.mts",
+          "src/operations/owned-dependency.mts",
+          "src/operations/product-assembly.mts",
+          "src/operations/protected-packages.mts",
+          "src/operations/public-transaction.mts",
+          "src/operations/subagent-typert-assets.mts",
+          "src/operations/tavern-template-runtime-assets.mts",
+          "src/operations/test-temp.mts",
+          "src/operations/tool-resolution.mts",
+          "src/status-template.ts",
+          "src/core/reader-regex-document-types.mts",
+          "src/core/roleplay-reader-display.ts",
+          "src/core/roleplay-reader-narrative-display.ts",
+          "src/operations/released-component-types.mts",
+          "src/operations/released-component-catalog.mts",
+          "src/operations/released-component-archive.mts",
+          "src/operations/released-component-assembly.mts"
+        ],
+        "kind": "typescript-module",
+        "entry": "src/operations/released-component-assembly.mts",
+        "typeContext": "public-pipeline",
+        "banner": "runtime/alpha3/src/operations/released-component-assembly.mts"
       }
     ],
     "typeScript": {
@@ -122446,6 +123712,9 @@
         ]
       },
       "packageArtifact": "nexttavern-product-package",
+      "publishedReleases": {
+        "catalogArtifact": "published-components-catalog"
+      },
       "patchArtifact": "nexttavern-product-patch",
       "bundleLibraries": {
         "@anthropic-ai/sdk": "0.123.0",

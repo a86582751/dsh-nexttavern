@@ -9,6 +9,7 @@ import {recordSha256} from './roleplay-data.js'
 import type {TavernTemplateRuntimeV1,TavernTemplateOwnedInventoryV1,TavernTemplateCurrentRuntimeV1}
   from './tavern-template-types.mjs'
 import type {TavernTemplateEngineIdentityV1} from './tavern-template-types.mjs'
+import type {ReleasedComponentRef} from '../operations/released-component-types.mjs'
 
 const NAME='dsh-nexttavern-template-runtime-v2'
 const VERSION='0.1.0'
@@ -39,18 +40,33 @@ export interface AdmittedTavernTemplateComponentV1 {
 }
 export function createRoleplayTavernTemplateAssetOwnerV1() {
   let closed=false
-  const instances=new Map<TemplatePackageName,{
+  let defaultKey='default'
+  const instances=new Map<string,{
     pending?:Promise<AdmittedTavernTemplateComponentV1>
     admitted?:AdmittedTavernTemplateComponentV1
     runtime?:TavernTemplateCurrentRuntimeV1
   }>()
-  function checkCurrentSync(checks:()=>void):void {
+  type ProductAssets={root:string;require:ReturnType<typeof createRequire>;
+    identity:ReturnType<typeof import('../operations/bundled-package-bootstrap.mjs').readBundleIdentity>;
+    protection:typeof import('../operations/protected-packages.mjs')}
+  let product:Promise<ProductAssets>|undefined
+  async function productAssets():Promise<ProductAssets> {
+    return product??=(async()=>{
+      const root=owningProductRoot(),require=createRequire(path.join(root,'package.json'))
+      const bootstrap=await import(pathToFileURL(path.join(root,'lib/operations/bundled-package-bootstrap.mjs')).href) as
+        typeof import('../operations/bundled-package-bootstrap.mjs')
+      const protection=await import(pathToFileURL(path.join(root,'lib/operations/protected-packages.mjs')).href) as
+        typeof import('../operations/protected-packages.mjs')
+      return {root,require,identity:bootstrap.readBundleIdentity(root),protection}
+    })().catch(error=>{product=undefined;throw error})
+  }
+  function checkCurrentSync(checks:()=>void,selectedRuntime?:TavernTemplateCurrentRuntimeV1):void {
     if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
     ownedReadScopeDepth++
     try {
       // Only internal synchronous read/assert guards use this scope. It never
       // encloses code loading, persistence, worker or provider dispatch.
-      const currentRuntime=instances.get(NAME)?.runtime
+      const currentRuntime=selectedRuntime??instances.get(defaultKey)?.runtime
       if(currentRuntime){currentRuntime.checkCurrentSync(checks);return}
       const returned=checks() as unknown
       if(returned&&typeof returned==='object'&&'then' in returned) {
@@ -59,35 +75,33 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
       if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
     } finally {ownedReadScopeDepth--}
   }
-  async function load(name:TemplatePackageName):Promise<AdmittedTavernTemplateComponentV1> {
-    const root=owningProductRoot(),require=createRequire(path.join(root,'package.json'))
-    const metadataPath=fs.realpathSync(require.resolve(name+'/package.json'))
-    const ownedDirectory=path.join(root,'node_modules',name),ownedStat=fs.lstatSync(ownedDirectory)
+  async function load(key:string,ref?:ReleasedComponentRef):Promise<AdmittedTavernTemplateComponentV1> {
+    const {root,require,identity,protection}=await productAssets()
+    const binding=ref?identity.runtimeComponents.get(ref.name+'\0'+ref.generation+'\0'+(ref.context??'')):undefined
+    if(ref&&(!binding||binding.factory!=='template-v2'))throw Error('TEMPLATE_RUNTIME_ENGINE_UNAVAILABLE')
+    const name=(binding?.name??NAME) as TemplatePackageName,historical=binding?.path!==undefined
+    const metadataPath=fs.realpathSync(historical?path.join(binding!.source,'package.json'):require.resolve(name+'/package.json'))
+    const ownedDirectory=binding?.source??path.join(root,'node_modules',name),ownedStat=fs.lstatSync(ownedDirectory)
     if(!ownedStat.isDirectory()||ownedStat.isSymbolicLink())throw Error('TEMPLATE_RUNTIME_PACKAGE_OWNER_CHANGED')
     const owned=fs.realpathSync(ownedDirectory)
     if(owned!==path.resolve(ownedDirectory))throw Error('TEMPLATE_RUNTIME_PACKAGE_OWNER_CHANGED')
     if(metadataPath!==path.join(owned,'package.json'))throw Error('TEMPLATE_RUNTIME_PACKAGE_OWNER_CHANGED')
-    const entry=fs.realpathSync(require.resolve(name))
+    const entry=fs.realpathSync(historical?path.join(owned,'dist/index.mjs'):require.resolve(name))
     if(entry!==path.join(owned,'dist','index.mjs'))throw Error('TEMPLATE_RUNTIME_ENTRY_OWNER_CHANGED')
-    const bootstrap=await import(pathToFileURL(path.join(root,'lib/operations/bundled-package-bootstrap.mjs')).href) as
-      typeof import('../operations/bundled-package-bootstrap.mjs')
-    const protection=await import(pathToFileURL(path.join(root,'lib/operations/protected-packages.mjs')).href) as
-      typeof import('../operations/protected-packages.mjs')
     const readInventory=()=>{
       if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
-      const identity=bootstrap.readBundleIdentity(root)
-      const rows=identity.packages.filter(row=>row.name===name)
-      if(identity.productRoot!==root||rows.length!==1||rows[0]!.version!==VERSION
-        ||fs.realpathSync(require.resolve(name+'/package.json'))!==metadataPath
+      const rows=binding?[binding]:identity.packages.filter(row=>row.name===name)
+      if(identity.productRoot!==root||rows.length!==1||!binding&&rows[0]!.version!==VERSION
+        ||!historical&&(fs.realpathSync(require.resolve(name+'/package.json'))!==metadataPath
         ||fs.realpathSync(path.join(root,'node_modules',name))!==owned
-        ||fs.realpathSync(require.resolve(name))!==entry)throw Error('TEMPLATE_RUNTIME_INVENTORY_OWNER_CHANGED')
+        ||fs.realpathSync(require.resolve(name))!==entry))throw Error('TEMPLATE_RUNTIME_INVENTORY_OWNER_CHANGED')
       const row=rows[0]!
       if(protection.protectedGeneration(row)!==row.generation)throw Error('TEMPLATE_RUNTIME_GENERATION_CHANGED')
       return row
     }
     const readOwnedInventory=():TavernTemplateOwnedInventoryV1=>{
       const row=readInventory()
-      return {name,version:VERSION,files:structuredClone(row.files),generation:row.generation}
+      return {name,version:row.version,files:structuredClone(row.files),generation:row.generation}
     }
     // Runtime code cannot protect its own import. Keep the original generic
     // full verification before loading it; ordinary installer APIs stay intact.
@@ -116,12 +130,12 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
         throw Error('TEMPLATE_RUNTIME_IMPLEMENTATION_CHANGED')
       }
       runtime.checkCurrent()
-      if(runtime.identity.packageName!==name||runtime.identity.packageVersion!==VERSION
+      if(runtime.identity.packageName!==name||runtime.identity.packageVersion!==initial.version
         ||runtime.identity.protectedGeneration!==initialGeneration)throw Error('TEMPLATE_RUNTIME_IMPLEMENTATION_CHANGED')
       const result=Object.freeze({runtime,inventory:initial,
         verify:()=>{runtime.checkCurrent()},
-        observe:()=>{runtime.checkCurrent()},checkCurrentSync})
-      const state=instances.get(name)!
+        observe:()=>{runtime.checkCurrent()},checkCurrentSync:(checks:()=>void)=>checkCurrentSync(checks,runtime)})
+      const state=instances.get(key)!
       state.runtime=runtime
       state.admitted=result
       return result
@@ -130,15 +144,25 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
       throw error
     }
   }
-  async function loadSelected(name:TemplatePackageName,signal?:AbortSignal) {
+  async function loadSelected(engine?:TavernTemplateEngineIdentityV1,signal?:AbortSignal) {
     if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
-    if(name!==NAME)throw Error('TEMPLATE_RUNTIME_ENGINE_UNAVAILABLE')
     signal?.throwIfAborted()
     if(ownedReadScopeDepth)throw Error('TEMPLATE_EXECUTION_IN_VERIFICATION_SCOPE')
-    const state=instances.get(name)??{}
-    if(!instances.has(name))instances.set(name,state)
+    const {identity}=await productAssets()
+    if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
+    const historical=engine?identity.releasedRuntime?.templates.find(row=>recordSha256(row.engine)===recordSha256(engine)):undefined
+    const ref=historical?.component??identity.currentRuntime?.roles.template
+    // A tuple not in the release catalog can only match the current component.
+    // Full identity equality below rejects unsupported or unreleased requests.
+    if(engine&&engine.packageName!==NAME)throw Error('TEMPLATE_RUNTIME_ENGINE_UNAVAILABLE')
+    const key=ref?ref.name+'\0'+ref.generation+'\0'+(ref.context??''):'default'
+    const current=identity.currentRuntime?.roles.template
+    if(!historical||current&&ref?.name===current.name&&ref.generation===current.generation
+      &&ref.context===current.context)defaultKey=key
+    const state=instances.get(key)??{}
+    if(!instances.has(key))instances.set(key,state)
     state.runtime?.assertCurrentScopeInactive()
-    if(!state.pending){state.pending=load(name);void state.pending.catch(()=>{if(!closed)state.pending=undefined})}
+    if(!state.pending){state.pending=load(key,ref);void state.pending.catch(()=>{if(!closed)state.pending=undefined})}
     const result=await state.pending
     signal?.throwIfAborted()
     if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
@@ -150,23 +174,23 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
     /** Admission already captured the product/component generation. Later
      * availability checks consult only the actual runtime's lifetime. */
     observeAdmitted():AdmittedTavernTemplateComponentV1|undefined {
-      const admitted=instances.get(NAME)?.admitted
+      const admitted=instances.get(defaultKey)?.admitted
       if(closed||!admitted)return undefined
       admitted.observe()
       return admitted
     },
     current():AdmittedTavernTemplateComponentV1|undefined {
-      const admitted=instances.get(NAME)?.admitted
+      const admitted=instances.get(defaultKey)?.admitted
       if(closed||!admitted)return undefined
       admitted.verify()
       return admitted
     },
     async load(signal?:AbortSignal):Promise<AdmittedTavernTemplateComponentV1> {
-      return loadSelected(NAME,signal)
+      return loadSelected(undefined,signal)
     },
     async loadForEngine(engine:TavernTemplateEngineIdentityV1,signal?:AbortSignal)
       :Promise<AdmittedTavernTemplateComponentV1> {
-      const result=await loadSelected(engine.packageName,signal)
+      const result=await loadSelected(engine,signal)
       // An old closure must execute under its creating implementation, rather
       // than merely another component with the same wire protocol.
       if(recordSha256(result.runtime.identity)!==recordSha256(engine))throw Error('TEMPLATE_RUNTIME_ENGINE_UNAVAILABLE')

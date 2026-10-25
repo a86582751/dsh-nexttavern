@@ -35,15 +35,25 @@ function owningProductRoot() {
 }
 export function createRoleplayTavernTemplateAssetOwnerV1() {
     let closed = false;
+    let defaultKey = 'default';
     const instances = new Map();
-    function checkCurrentSync(checks) {
+    let product;
+    async function productAssets() {
+        return product ??= (async () => {
+            const root = owningProductRoot(), require = createRequire(path.join(root, 'package.json'));
+            const bootstrap = await import(__rewriteRelativeImportExtension(pathToFileURL(path.join(root, 'lib/operations/bundled-package-bootstrap.mjs')).href));
+            const protection = await import(__rewriteRelativeImportExtension(pathToFileURL(path.join(root, 'lib/operations/protected-packages.mjs')).href));
+            return { root, require, identity: bootstrap.readBundleIdentity(root), protection };
+        })().catch(error => { product = undefined; throw error; });
+    }
+    function checkCurrentSync(checks, selectedRuntime) {
         if (closed)
             throw Error('TEMPLATE_RUNTIME_DISPOSED');
         ownedReadScopeDepth++;
         try {
             // Only internal synchronous read/assert guards use this scope. It never
             // encloses code loading, persistence, worker or provider dispatch.
-            const currentRuntime = instances.get(NAME)?.runtime;
+            const currentRuntime = selectedRuntime ?? instances.get(defaultKey)?.runtime;
             if (currentRuntime) {
                 currentRuntime.checkCurrentSync(checks);
                 return;
@@ -59,10 +69,14 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
             ownedReadScopeDepth--;
         }
     }
-    async function load(name) {
-        const root = owningProductRoot(), require = createRequire(path.join(root, 'package.json'));
-        const metadataPath = fs.realpathSync(require.resolve(name + '/package.json'));
-        const ownedDirectory = path.join(root, 'node_modules', name), ownedStat = fs.lstatSync(ownedDirectory);
+    async function load(key, ref) {
+        const { root, require, identity, protection } = await productAssets();
+        const binding = ref ? identity.runtimeComponents.get(ref.name + '\0' + ref.generation + '\0' + (ref.context ?? '')) : undefined;
+        if (ref && (!binding || binding.factory !== 'template-v2'))
+            throw Error('TEMPLATE_RUNTIME_ENGINE_UNAVAILABLE');
+        const name = (binding?.name ?? NAME), historical = binding?.path !== undefined;
+        const metadataPath = fs.realpathSync(historical ? path.join(binding.source, 'package.json') : require.resolve(name + '/package.json'));
+        const ownedDirectory = binding?.source ?? path.join(root, 'node_modules', name), ownedStat = fs.lstatSync(ownedDirectory);
         if (!ownedStat.isDirectory() || ownedStat.isSymbolicLink())
             throw Error('TEMPLATE_RUNTIME_PACKAGE_OWNER_CHANGED');
         const owned = fs.realpathSync(ownedDirectory);
@@ -70,20 +84,17 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
             throw Error('TEMPLATE_RUNTIME_PACKAGE_OWNER_CHANGED');
         if (metadataPath !== path.join(owned, 'package.json'))
             throw Error('TEMPLATE_RUNTIME_PACKAGE_OWNER_CHANGED');
-        const entry = fs.realpathSync(require.resolve(name));
+        const entry = fs.realpathSync(historical ? path.join(owned, 'dist/index.mjs') : require.resolve(name));
         if (entry !== path.join(owned, 'dist', 'index.mjs'))
             throw Error('TEMPLATE_RUNTIME_ENTRY_OWNER_CHANGED');
-        const bootstrap = await import(__rewriteRelativeImportExtension(pathToFileURL(path.join(root, 'lib/operations/bundled-package-bootstrap.mjs')).href));
-        const protection = await import(__rewriteRelativeImportExtension(pathToFileURL(path.join(root, 'lib/operations/protected-packages.mjs')).href));
         const readInventory = () => {
             if (closed)
                 throw Error('TEMPLATE_RUNTIME_DISPOSED');
-            const identity = bootstrap.readBundleIdentity(root);
-            const rows = identity.packages.filter(row => row.name === name);
-            if (identity.productRoot !== root || rows.length !== 1 || rows[0].version !== VERSION
-                || fs.realpathSync(require.resolve(name + '/package.json')) !== metadataPath
-                || fs.realpathSync(path.join(root, 'node_modules', name)) !== owned
-                || fs.realpathSync(require.resolve(name)) !== entry)
+            const rows = binding ? [binding] : identity.packages.filter(row => row.name === name);
+            if (identity.productRoot !== root || rows.length !== 1 || !binding && rows[0].version !== VERSION
+                || !historical && (fs.realpathSync(require.resolve(name + '/package.json')) !== metadataPath
+                    || fs.realpathSync(path.join(root, 'node_modules', name)) !== owned
+                    || fs.realpathSync(require.resolve(name)) !== entry))
                 throw Error('TEMPLATE_RUNTIME_INVENTORY_OWNER_CHANGED');
             const row = rows[0];
             if (protection.protectedGeneration(row) !== row.generation)
@@ -92,7 +103,7 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
         };
         const readOwnedInventory = () => {
             const row = readInventory();
-            return { name, version: VERSION, files: structuredClone(row.files), generation: row.generation };
+            return { name, version: row.version, files: structuredClone(row.files), generation: row.generation };
         };
         // Runtime code cannot protect its own import. Keep the original generic
         // full verification before loading it; ordinary installer APIs stay intact.
@@ -126,13 +137,13 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
                 throw Error('TEMPLATE_RUNTIME_IMPLEMENTATION_CHANGED');
             }
             runtime.checkCurrent();
-            if (runtime.identity.packageName !== name || runtime.identity.packageVersion !== VERSION
+            if (runtime.identity.packageName !== name || runtime.identity.packageVersion !== initial.version
                 || runtime.identity.protectedGeneration !== initialGeneration)
                 throw Error('TEMPLATE_RUNTIME_IMPLEMENTATION_CHANGED');
             const result = Object.freeze({ runtime, inventory: initial,
                 verify: () => { runtime.checkCurrent(); },
-                observe: () => { runtime.checkCurrent(); }, checkCurrentSync });
-            const state = instances.get(name);
+                observe: () => { runtime.checkCurrent(); }, checkCurrentSync: (checks) => checkCurrentSync(checks, runtime) });
+            const state = instances.get(key);
             state.runtime = runtime;
             state.admitted = result;
             return result;
@@ -142,20 +153,32 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
             throw error;
         }
     }
-    async function loadSelected(name, signal) {
+    async function loadSelected(engine, signal) {
         if (closed)
             throw Error('TEMPLATE_RUNTIME_DISPOSED');
-        if (name !== NAME)
-            throw Error('TEMPLATE_RUNTIME_ENGINE_UNAVAILABLE');
         signal?.throwIfAborted();
         if (ownedReadScopeDepth)
             throw Error('TEMPLATE_EXECUTION_IN_VERIFICATION_SCOPE');
-        const state = instances.get(name) ?? {};
-        if (!instances.has(name))
-            instances.set(name, state);
+        const { identity } = await productAssets();
+        if (closed)
+            throw Error('TEMPLATE_RUNTIME_DISPOSED');
+        const historical = engine ? identity.releasedRuntime?.templates.find(row => recordSha256(row.engine) === recordSha256(engine)) : undefined;
+        const ref = historical?.component ?? identity.currentRuntime?.roles.template;
+        // A tuple not in the release catalog can only match the current component.
+        // Full identity equality below rejects unsupported or unreleased requests.
+        if (engine && engine.packageName !== NAME)
+            throw Error('TEMPLATE_RUNTIME_ENGINE_UNAVAILABLE');
+        const key = ref ? ref.name + '\0' + ref.generation + '\0' + (ref.context ?? '') : 'default';
+        const current = identity.currentRuntime?.roles.template;
+        if (!historical || current && ref?.name === current.name && ref.generation === current.generation
+            && ref.context === current.context)
+            defaultKey = key;
+        const state = instances.get(key) ?? {};
+        if (!instances.has(key))
+            instances.set(key, state);
         state.runtime?.assertCurrentScopeInactive();
         if (!state.pending) {
-            state.pending = load(name);
+            state.pending = load(key, ref);
             void state.pending.catch(() => { if (!closed)
                 state.pending = undefined; });
         }
@@ -171,24 +194,24 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
         /** Admission already captured the product/component generation. Later
          * availability checks consult only the actual runtime's lifetime. */
         observeAdmitted() {
-            const admitted = instances.get(NAME)?.admitted;
+            const admitted = instances.get(defaultKey)?.admitted;
             if (closed || !admitted)
                 return undefined;
             admitted.observe();
             return admitted;
         },
         current() {
-            const admitted = instances.get(NAME)?.admitted;
+            const admitted = instances.get(defaultKey)?.admitted;
             if (closed || !admitted)
                 return undefined;
             admitted.verify();
             return admitted;
         },
         async load(signal) {
-            return loadSelected(NAME, signal);
+            return loadSelected(undefined, signal);
         },
         async loadForEngine(engine, signal) {
-            const result = await loadSelected(engine.packageName, signal);
+            const result = await loadSelected(engine, signal);
             // An old closure must execute under its creating implementation, rather
             // than merely another component with the same wire protocol.
             if (recordSha256(result.runtime.identity) !== recordSha256(engine))

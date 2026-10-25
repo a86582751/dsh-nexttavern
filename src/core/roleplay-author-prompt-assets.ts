@@ -12,7 +12,7 @@ export interface AdmittedAuthorPromptPackageV1 {
   readonly inventory:AuthorPromptOwnedInventoryV1
 }
 export async function loadAdmittedAuthorPromptRuntimeV1(admitted:AdmittedAuthorPromptPackageV1,
-  checkOwnerCurrent:()=>void,typescript?:AdmittedTypeScript):Promise<OwnedAuthorPromptRuntimeV1> {
+  checkOwnerCurrent:()=>void,typescript:AdmittedTypeScript):Promise<OwnedAuthorPromptRuntimeV1> {
   const verifyOwnedPackage=(url:URL):AuthorPromptOwnedInventoryV1=>{
     checkOwnerCurrent()
     if(url.protocol!=='file:'||fs.realpathSync(fileURLToPath(url))!==admitted.owned) {
@@ -23,15 +23,9 @@ export async function loadAdmittedAuthorPromptRuntimeV1(admitted:AdmittedAuthorP
   checkOwnerCurrent()
   const module=await import(pathToFileURL(admitted.entry).href)
   checkOwnerCurrent()
-  // The component selection already identifies the factory ABI. Historical
-  // Prompt bytes consume their original compiler instead of today's owner.
-  const runtime=typescript
-    ?await (module as typeof import('./tavern-author-prompt-provider.mjs'))
-      .createOwnedAuthorPromptRuntimeV1({verifyOwnedPackage,typescript})
-    :await (module as {
-      createOwnedAuthorPromptRuntimeV1(deps:{verifyOwnedPackage(url:URL):AuthorPromptOwnedInventoryV1}):
-        Promise<OwnedAuthorPromptRuntimeV1>
-    }).createOwnedAuthorPromptRuntimeV1({verifyOwnedPackage})
+  // Host selected this binding's exact shared compiler before factory entry.
+  const runtime=await (module as typeof import('./tavern-author-prompt-provider.mjs'))
+    .createOwnedAuthorPromptRuntimeV1({verifyOwnedPackage,typescript})
   try {checkOwnerCurrent();runtime.checkCurrent();return runtime}
   catch(error) {await runtime.dispose();throw error}
 }

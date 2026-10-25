@@ -23,6 +23,8 @@ import type {SubagentTypertRecipeV1} from './subagent-typert-assets.mjs'
 import {makeHostForkProfile,type HostForkProfileDescriptorV1} from './native-fork-host-profile.mjs'
 import {authorPromptRuntimeRecipeV1,materializeAuthorPromptRuntimeDependenciesV1,
   type AuthorPromptRuntimeAssetRecipeV1} from './author-prompt-runtime-assets.mjs'
+import {describeCurrentRuntimeComponents,materializeReleasedComponents} from './released-component-assembly.mjs'
+import {readPublishedReleaseCatalog} from './released-component-catalog.mjs'
 
 interface ProductPackageRecipe {
   packageArtifact:string
@@ -31,6 +33,8 @@ interface ProductPackageRecipe {
   resources?:{artifact:string;path:string}[]
 }
 interface ProductRecipe {
+  publishedReleases?:{catalogArtifact:string}
+  mvuSchemaRuntimes?:readonly {packageArtifact:string;executorVersion?:number}[]
   templateRuntime?:TavernTemplateRuntimeAssetRecipeV1
   authorBrowserRuntime?:AuthorBrowserRuntimeAssetRecipeV1
   authorBrowserRuntimeV2?:AuthorBrowserRuntimeAssetRecipeV2
@@ -87,7 +91,7 @@ export interface ProductAssemblyPlan {
 export interface DevelopmentAssemblyFile {source:string;target:string}
 export interface DevelopmentAssemblyUnit {
   id:string
-  kind:'root-libraries'|'owned-package'|'historical-component'|'host-fork'|'bundle'
+  kind:'root-libraries'|'owned-package'|'historical-component'|'host-fork'|'bundle'|'released-runtime'
   name:string
   version:string
   target:string
@@ -114,7 +118,8 @@ export function planDevelopmentAssembly(options:{repo:string;plan:ProductAssembl
   }
   const key=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
   const ordered=(value:Record<string,string>)=>Object.entries(value).sort(([a],[b])=>a.localeCompare(b))
-  const implementation=(...names:string[])=>names.map(name=>[name,sourceHash('runtime/alpha3/src/operations/'+name+'.mts')])
+  const implementation=(...names:string[])=>names.map(name=>[name,sourceHash(plan.artifacts.find(row=>
+    row.source.endsWith('/operations/'+name+'.mts'))?.source??'runtime/alpha3/src/operations/'+name+'.mts')])
   const locks=new Map<string,BundledLibraryLock>()
   const readLock=(source:string)=>{
     let value=locks.get(source)
@@ -166,11 +171,30 @@ export function planDevelopmentAssembly(options:{repo:string;plan:ProductAssembl
       ...(Object.keys(rootOwned).length?{normalizeBundleMetadata:true as const}:{}),
       ...(overlay?{removed:overlay.removed.map(file=>target+'/'+file)}:{})})
   }
-  for(const row of plan.product.historicalComponents??[]) {
+  for(const row of plan.product.publishedReleases?[]:plan.product.historicalComponents??[]) {
     const metadata=json<Metadata>(inside(repo,artifact(row.packageArtifact)))
     units.push({id:'historical:'+row.path,kind:'historical-component',name:metadata.name,version:metadata.version,
       target:row.path,packageArtifact:row.packageArtifact,immutableGeneration:row.immutableGeneration,
       dependencyKey:row.immutableGeneration,files:[]})
+  }
+  if(plan.product.publishedReleases) {
+    const catalog=readPublishedReleaseCatalog(repo,plan)
+    const archiveIdentity=(sha256:string)=>{
+      const file=options.archives['published:'+sha256]
+      if(!file)return {sha256}
+      try {
+        const actual=fs.realpathSync(file),stat=fs.statSync(actual)
+        return {sha256,file:actual,dev:stat.dev,ino:stat.ino,bytes:stat.size,mtime:stat.mtimeMs,ctime:stat.ctimeMs}
+      }catch(error) {
+        if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error
+        return {sha256,file:path.resolve(file),missing:true}
+      }
+    }
+    units.push({id:'released-runtime',kind:'released-runtime',name:'released-runtime',version:'',target:'components',files:[],
+      dependencyKey:key({catalog:sourceHash(artifact(plan.product.publishedReleases.catalogArtifact)),
+        archives:[...new Set(catalog.releases.map(row=>row.archive.sha256))].sort().map(archiveIdentity),
+        implementation:implementation('released-component-assembly','released-component-archive','released-component-catalog'),
+        archiveHelper:sourceHash(artifact('inventory-runtime-alpha3-operations-release-archive-py'))})})
   }
   for(const row of plan.product.hostForks??[])units.push({id:'host-fork:'+row.name,kind:'host-fork',
     name:row.name,version:row.version,target:row.target,dependencyKey:key({name:row.name,version:row.version}),
@@ -743,19 +767,25 @@ export function assembleProduct(options: {
   const hostForks = stageHostForks(repo, packageRoot, plan)
   const hostForkProfile=plan.product.hostForkProfile
     ?makeHostForkProfile(plan.product.hostForkProfile,plan.product.hostForks??[]):undefined
+  const currentRuntime=describeCurrentRuntimeComponents({plan,packageRoot,
+    packages:packages.map((row,index)=>({...row,packageArtifact:owned[index]!.packageArtifact}))})
+  const released=plan.product.publishedReleases?materializeReleasedComponents({repo,packageRoot,plan,currentRuntime,
+    currentPackages:packages,archives:options.archives}):undefined
   // SDK bytes remain distinct from owned plugins and host singleton ownership.
   const inventory = {schemaVersion: 1, productVersion: metadata.version,
     packages: packages.map(({excludedVendoredFiles, ...row}) => row), bundles, hostForks,
-    historicalComponents:assembleHistoricalProductComponents(options),
-    authorRuntimeHistory:productAuthorRuntimeHistory(repo,plan),
+    currentRuntime,
+    ...(released?{releasedRuntime:released.releasedRuntime}:{}),
+    historicalComponents:released?.historicalComponents??assembleHistoricalProductComponents(options),
+    authorRuntimeHistory:released?[]:productAuthorRuntimeHistory(repo,plan),
     ...(hostForkProfile?{hostForkProfile}:{}),
     ...(rawBrowserCompilerLibraries?{rawBrowserCompilerLibraries}:{}),
     rootBundledLibraries: rootLibraries, bundledLibraries}
   const excludedVendoredFiles = packages.flatMap(row => row.excludedVendoredFiles
     .map(item => ({package: row.name, ...item})))
-  if(plan.product.historicalComponents?.length) {
+  if(inventory.historicalComponents.length) {
     metadata.files=[...new Set([...metadata.files??[],
-      ...plan.product.historicalComponents.map(row=>row.path.split('/')[0]!)])]
+      ...inventory.historicalComponents.map(row=>row.path.split('/')[0]!)])]
   }
   save(path.join(packageRoot,'package.json'),normalizeBundledLibraryMetadata(metadata,
     topLevelBundledLibraryVersions(bundledLibraries)))
@@ -797,6 +827,7 @@ export function applyDevelopmentAssembly(options:{
     for(const row of inventory.bundles)fact(inside(options.packageRoot,row.path),row.path,row.files,true)
     for(const row of inventory.hostForks)fact(inside(options.packageRoot,row.path),row.path,row.files)
     for(const row of inventory.historicalComponents)fact(inside(options.packageRoot,row.path),row.path,row.files)
+    for(const row of inventory.releasedRuntime?.dependencyNamespaces??[])fact(inside(options.packageRoot,row.path),row.path,row.files)
     return {inventory,keys,written,removed,reusedOwners}
   }
   const {excludedVendoredFiles:_diagnostics,...previous}=options.previousInventory as DevelopmentAssemblyInventory
@@ -805,7 +836,7 @@ export function applyDevelopmentAssembly(options:{
     bundles:[...previous.bundles],hostForks:[...previous.hostForks],historicalComponents:[...previous.historicalComponents??[]],
     productVersion:json<Metadata>(inside(repo,plan.artifacts.find(row=>row.id===plan.product.packageArtifact)!.source)).version,
     rootBundledLibraries:plan.product.rootBundledLibraries?.libraries??{},
-    authorRuntimeHistory:productAuthorRuntimeHistory(repo,plan),
+    authorRuntimeHistory:plan.product.publishedReleases?[]:productAuthorRuntimeHistory(repo,plan),
     ...(plan.product.hostForkProfile?{hostForkProfile:makeHostForkProfile(plan.product.hostForkProfile,plan.product.hostForks??[])}:{})}
   const priorKeys=options.previousKeys??{}
   const remove=(target:string)=>{options.remove(target);removed.push(target)}
@@ -854,11 +885,13 @@ export function applyDevelopmentAssembly(options:{
   const topRoots=(rows:readonly {path:string}[])=>[...new Set(rows.map(row=>row.path.split('/node_modules/')[0]!))]
   const activeIds=new Set(units.map(unit=>unit.id))
   const previousOwners=new Map(Object.entries(priorKeys))
+  const previousReleasedPaths=new Set((previous.releasedRuntime?.components??[]).flatMap(row=>row.path?[row.path]:[]))
   // Older schema-1 inventories already admitted these paths, before history
   // owners had keys. Their removal still belongs to the whole directory.
-  for(const row of previous.historicalComponents??[])if(!previousOwners.has('historical:'+row.path))
+  for(const row of previous.historicalComponents??[])if(!previousReleasedPaths.has(row.path)&&!previousOwners.has('historical:'+row.path))
     previousOwners.set('historical:'+row.path,{dependencyKey:'',files:[]})
   for(const [id,key] of previousOwners)if(!activeIds.has(id)) {
+    if(id==='released-runtime')continue
     if(id==='root-libraries') {
       for(const root of topRoots(previous.bundledLibraries))remove('node_modules/'+root)
       inventory.bundledLibraries=[]
@@ -875,6 +908,7 @@ export function applyDevelopmentAssembly(options:{
     }
   }
   for(const [index,unit] of units.entries()) {
+    if(unit.kind==='released-runtime')continue
     const oldKey=priorKeys[unit.id],sameDependencies=oldKey?.dependencyKey===unit.dependencyKey
     if(unit.kind==='root-libraries') {
       if(sameDependencies){reusedOwners.push(unit.id);continue}
@@ -938,6 +972,38 @@ export function applyDevelopmentAssembly(options:{
       inventory.bundles=old?inventory.bundles.map(item=>item===old?row:item):[...inventory.bundles,row]
     }
     if(sameDependencies)reusedOwners.push(unit.id)
+  }
+  inventory.currentRuntime=describeCurrentRuntimeComponents({plan,packageRoot:options.packageRoot,
+    packages:plan.product.packages.map(recipe=>{
+      const source=plan.artifacts.find(row=>row.id===recipe.packageArtifact)!.source
+      const metadata=json<Metadata>(inside(repo,source)),row=inventory.packages.find(item=>item.name===metadata.name)!
+      return {...row,packageArtifact:recipe.packageArtifact}
+    })})
+  if(plan.product.publishedReleases||previous.releasedRuntime) {
+    const unit=units.find(row=>row.kind==='released-runtime'),old=priorKeys['released-runtime']
+    const sameRuntime=JSON.stringify(previous.currentRuntime)===JSON.stringify(inventory.currentRuntime)
+    if(unit&&old?.dependencyKey===unit.dependencyKey&&sameRuntime&&previous.releasedRuntime) {
+      reusedOwners.push('released-runtime')
+    }else {
+      const committed=new Set<string>()
+      const released=materializeReleasedComponents({repo,plan,packageRoot:options.packageRoot,
+        currentRuntime:inventory.currentRuntime,currentPackages:inventory.packages,archives:options.archives,
+        ...(!old?.dependencyKey.startsWith('interrupted:')?{previous:{historicalComponents:previous.historicalComponents,
+          ...(previous.releasedRuntime?{releasedRuntime:previous.releasedRuntime}:{})}}:{}),
+        stageRoot:path.join(options.stageRoot,'released-runtime'),commit:(target,staged)=>{
+          options.replaceOwner(target,staged);committed.add(target)
+        }})
+      const retained=new Set(released.historicalComponents.map(row=>row.path))
+      for(const target of previousReleasedPaths)if(!retained.has(target))remove(target)
+      const namespaces=new Set((released.releasedRuntime.dependencyNamespaces??[]).map(row=>row.path))
+      for(const row of previous.releasedRuntime?.dependencyNamespaces??[])if(!namespaces.has(row.path))remove(row.path)
+      for(const row of released.historicalComponents)if(committed.has(row.path))fact(inside(options.packageRoot,row.path),row.path,row.files)
+      for(const row of released.releasedRuntime.dependencyNamespaces??[])if(committed.has(row.path))
+        fact(inside(options.packageRoot,row.path),row.path,row.files)
+      inventory.historicalComponents=[...inventory.historicalComponents.filter(row=>!previousReleasedPaths.has(row.path)),
+        ...released.historicalComponents]
+      inventory.releasedRuntime=released.releasedRuntime
+    }
   }
   return {inventory,keys,written,removed,reusedOwners}
 }

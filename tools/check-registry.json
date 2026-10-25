@@ -571,6 +571,7 @@
         "site/art/worldline-atlas-night.webp",
         "site/art/character-atlas-night.webp",
         "tools/*",
+        "operations/*",
         "site/*",
         "windows-setup*",
         "linux-setup*",
@@ -589,7 +590,9 @@
         "typescript-runtime-*",
         "tavern-typescript-runtime-descriptor*",
         "roleplay-typescript-assets*",
-        "shared-typescript-runtime*"
+        "shared-typescript-runtime*",
+        "released-component-*",
+        "published-release-*"
       ]
     },
     {
