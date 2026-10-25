@@ -16,12 +16,13 @@ function runner(){
     useState(initial){const id=index++,cell=cells[id]??={value:typeof initial==='function'?initial():initial};return [cell.value,next=>{if(cells[id]!==cell)return;const value=typeof next==='function'?next(cell.value):next;if(!Object.is(value,cell.value)){cell.value=value;dirty=true}}]},
     useRef(value){const id=index++;return cells[id]??={current:value}},
     useCallback(fn,deps){const id=index++;if(!same(cells[id]?.deps,deps))cells[id]={deps,fn};return cells[id].fn},
-    useMemo(fn,deps){const id=index++;if(!same(cells[id]?.deps,deps))cells[id]={deps,value:fn()};return cells[id].value},
     useEffect(fn,deps){const id=index++,old=cells[id];if(!same(old?.deps,deps))pending.push(()=>{old?.cleanup?.();cells[id]={deps,cleanup:fn()}})},
   }
   const resolve=node=>{if(node==null||typeof node!=='object')return node;if(Array.isArray(node))return node.map(resolve);if(typeof node.type==='function')return resolve(node.type(node.props));return {...node,props:{...node.props,children:resolve(node.props.children)}}}
   const render=()=>{index=0;dirty=false;seat=resolve(component(props));const work=pending;pending=[];work.forEach(fn=>fn())}
   const unmount=()=>{cells.forEach(cell=>cell?.cleanup?.());cells.length=0;pending=[]}
+  // Every mount creates a fresh component instance. Different panel hook
+  // layouts and late setters from the removed instance cannot own its cells.
   return {React,mount(fn,p){unmount();component=fn;props=p;render()},get seat(){return seat},async flush(){for(let i=0;i<40;i++){await Promise.resolve();if(dirty)render()}},render,unmount}
 }
 const walk=(node,out=[])=>{if(node==null)return out;if(Array.isArray(node)){node.forEach(n=>walk(n,out));return out}out.push(node);if(typeof node==='object')walk(node.props?.children,out);return out}
@@ -44,6 +45,49 @@ async function assertDraftSurvivesRemount(Panel,buttonLabel,fieldType,kind){
 }
 await assertDraftSurvivesRemount(author.WorldbookPanel,'＋ 新增','textarea','worldbook')
 await assertDraftSurvivesRemount(author.CardsPanel,'＋ 新增人物','textarea','cards')
+// The budget shares the settings tab draft while saving its own Source row.
+const budgetRunner=runner(),budgetDrafts=new Map(),budgetWrites=[]
+let budgetPost=deferred()
+const budgetState={ok:true,sessionId:'budget-session',settings:{worldbookBudgetTokens:4096},
+  recordVersions:{settings:'budget-v1',rules:'rules-v1'},rules:{narrative:'Saved narrative'}}
+const budgetPanels=createAuthorPanels({React:budgetRunner.React,sessionDrafts:budgetDrafts,
+  fetchState:async()=>budgetState,invalidateState(){},saveState:async body=>{
+    budgetWrites.push(body);return budgetPost.promise
+  },runMaintenance:async()=>{},jsonFetch:async()=>({}),toast(){}})
+const budgetInput=()=>walk(budgetRunner.seat).find(n=>n?.props?.['aria-label']==='世界书自动注入总预算')
+const budgetSave=()=>walk(budgetRunner.seat).find(n=>n?.type==='button'&&text(n)==='保存世界书预算')
+const budgetMount=async()=>{budgetRunner.mount(budgetPanels.SettingsPanel,
+  {scope:{sessionId:'budget-session'},visible:true});await budgetRunner.flush()}
+await budgetMount()
+assert.equal(budgetInput().props.value,'4096')
+budgetInput().props.onChange({target:{value:'8192'}});await budgetRunner.flush()
+// Keep another field dirty while the budget POST is in flight.
+walk(budgetRunner.seat).find(n=>n?.type==='textarea'&&n.props.value==='Saved narrative')
+  .props.onChange({target:{value:'Unsaved narrative'}});await budgetRunner.flush()
+budgetSave().props.onClick();await budgetRunner.flush()
+assert.equal(budgetWrites[0].kind,'settings');assert.equal(budgetWrites[0].expectedRevision,'budget-v1')
+assert.equal(budgetWrites[0].worldbookBudgetTokens,'8192')
+await budgetMount()
+assert.equal(budgetInput().props.value,'8192','the pending budget draft survives remount')
+budgetInput().props.onChange({target:{value:'12288'}});await budgetRunner.flush()
+budgetState.settings.worldbookBudgetTokens=8192;budgetState.recordVersions.settings='budget-v2'
+budgetPost.resolve(budgetState);await budgetRunner.flush()
+assert.equal(budgetInput().props.value,'12288','late ACK preserves a newer budget draft')
+assert.equal(budgetDrafts.get('budget-session:settings').narrative,'Unsaved narrative')
+assert.equal(budgetDrafts.get('budget-session:settings').baseVersions.settings,'budget-v2')
+budgetPost=deferred();budgetSave().props.onClick();await budgetRunner.flush()
+assert.equal(budgetWrites[1].expectedRevision,'budget-v2')
+budgetState.settings.worldbookBudgetTokens=12288;budgetState.recordVersions.settings='budget-v3'
+budgetPost.resolve(budgetState);await budgetRunner.flush()
+assert.equal(budgetDrafts.get('budget-session:settings').dirtyFields.includes('worldbookBudgetTokens'),false)
+assert.equal(budgetDrafts.get('budget-session:settings').narrative,'Unsaved narrative')
+budgetInput().props.onChange({target:{value:''}});await budgetRunner.flush()
+budgetPost=deferred();budgetSave().props.onClick();await budgetRunner.flush()
+assert.equal(budgetWrites[2].worldbookBudgetTokens,'','blank is sent to the settings owner to clear the override')
+budgetState.settings.worldbookBudgetTokens=null;budgetState.recordVersions.settings='budget-v4'
+budgetPost.resolve(budgetState);await budgetRunner.flush()
+budgetRunner.unmount()
+console.log('worldbook-budget-ui=ok (saved value, CAS, remount, late ACK, separate drafts, clear)')
 const r=runner();let post=deferred();const toasts=[]
 globalThis.fetch=async(_url,init)=>init?.method==='POST'?post.promise:{json:async()=>({ok:true,userinfo:{name:'旧名',gender:'保密'}})}
 const UserInfo=createUserInfoSettings({React:r.React,toast:message=>toasts.push(message)})
@@ -56,7 +100,7 @@ assert.equal(inputs().every(n=>n.props.disabled===true),true,'userinfo fields lo
 post.reject(new Error('synthetic failure'));await r.flush()
 assert.equal(inputs().every(n=>n.props.disabled!==true),true,'userinfo fields unlock after a failed POST')
 assert.match(toasts.at(-1),/保存失败/)
-console.log('author-save-ui=ok (fresh component mounts; worldbook/cards fieldset lock and userinfo failure unlock)')
+console.log('author-save-ui=ok (worldbook/cards fieldset lock; userinfo deferred failure unlock)')
 
 // Use the public factory and deterministic hooks to exercise the extracted pricing lifecycle.
 const originalSetTimeout = globalThis.setTimeout, originalClearTimeout = globalThis.clearTimeout

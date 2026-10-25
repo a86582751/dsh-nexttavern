@@ -80,6 +80,7 @@ export interface BranchRouteBody {
   text?: unknown
   role?: unknown
   expectedRevision?:unknown
+  schemaTaskEdit?:unknown
 }
 export interface ForkReservation {
   sourceSessionId: string

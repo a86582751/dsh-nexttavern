@@ -661,6 +661,13 @@ process.stdout.write(name+'=v1.'+body+'.'+crypto.createHmac('sha256',secret).upd
             return {'ok': False, 'error': {'code': 'upload-business',
                 'message': 'Official raw upload business result was not confirmed; no import job was submitted'}}
         if response.status >= 400:
+            if path.split('?', 1)[0] in ['/api/roleplay/mvu-state', '/api/roleplay/branch']:
+                # Numerical CAS outcomes and blocked branch codes are business
+                # evidence. Preserve them on HTTP failures as well as on 200.
+                return {'ok': False, 'error': {
+                    'code': data.get('code', 'http-error') if isinstance(data, dict) else 'http-error',
+                    'message': data.get('error', 'DSH HTTP error') if isinstance(data, dict) else 'DSH HTTP error',
+                    'details': {'httpStatus': response.status, 'result': data}}}
             return {'ok': False, 'error': {'code': 'http-error', 'status': response.status,
                 **({'details': {'httpStatus': response.status}} if path.split('?', 1)[0] == '/api/roleplay/jobs' else {}),
                 'message': data.get('error', 'DSH HTTP error') if isinstance(data, dict) else 'DSH HTTP error'}}

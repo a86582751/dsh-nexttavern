@@ -33,13 +33,35 @@ const clickImport=async r=>{await button(r,'载入当前').props.onClick();await
 const importFetch=onPost=>async(url,init)=>url==='/api/roleplay/jobs'
   ?onPost(JSON.parse(init.body)):url.includes('/openings')?{candidates:[]}:{cardImport:null}
 {
-  const r=hooks(),post=deferred(),drafts=new Map(),p=panels(r,async(_,init)=>init?post.promise:modelReply,drafts)
+  const r=hooks(),post=deferred(),drafts=new Map(),authorRoute={provider:'p',model:'author-saved',reasoningEffort:'high'}
+  const reply={...modelReply,purposes:[{id:'author-dialog',label:'作者对话'}],
+    catalog:[{provider:'p',model:'author-saved'},{provider:'p',model:'author-next'}],
+    session:{revision:1,allMain:false,routes:{'author-dialog':authorRoute}}}
+  let submitted
+  const p=panels(r,async(_,init)=>{
+    if(!init)return reply
+    submitted=JSON.parse(init.body);return post.promise
+  },drafts)
   r.mount(p.ModelPanel,{sessionId:'story'});await r.flush()
-  nodes(r.seat).find(n=>n?.type==='input').props.onChange({target:{checked:true}});await r.flush()
+  const authorRow=()=>nodes(r.seat).find(n=>n?.type==='div'&&n.props.className==='dsh-rp-item'&&n.props.key==='author-dialog')
+  assert.ok(authorRow(),'the actual ModelPanel renders the server-provided Author purpose')
+  assert.ok(text(authorRow()).includes('作者对话'))
+  const allMain=()=>nodes(r.seat).find(n=>n?.type==='input')
+  allMain().props.onChange({target:{checked:true}});await r.flush()
+  assert.deepEqual(drafts.get('story:models-session').settings.routes['author-dialog'],authorRoute,
+    'changing all-main preserves the saved Author route and reasoning effort')
+  allMain().props.onChange({target:{checked:false}});await r.flush()
+  const authorSelect=nodes(authorRow()).find(n=>n?.type==='select'&&n.props.value==='p\u0000author-saved')
+  assert.ok(authorSelect,'the Author model control starts from the saved server route')
+  authorSelect.props.onChange({target:{value:'p\u0000author-next'}});await r.flush()
+  allMain().props.onChange({target:{checked:true}});await r.flush()
   const saved=button(r,'保存模型路由').props.onClick();await r.flush()
+  assert.deepEqual(submitted.settings.routes['author-dialog'],{provider:'p',model:'author-next'},
+    'saving sends the edited Author route through the actual panel POST')
+  assert.equal(submitted.settings.allMain,true);assert.equal(submitted.expectedRevision,1)
   assert(controls(r.seat).every(c=>c.disabled),'model saving locks scope, routes and input controls')
   const later={dirty:true,settings:{allMain:false},baseRevision:1};drafts.set('story:models-session',later)
-  post.resolve({...modelReply,session:{revision:2,allMain:true}});await saved;await r.flush()
+  post.resolve({...reply,session:{revision:2,allMain:true,routes:submitted.settings.routes}});await saved;await r.flush()
   assert.equal(drafts.get('story:models-session'),later,'a reopened panel draft survives the former save')
   assert(!r.seat.props.disabled);r.unmount()
 }

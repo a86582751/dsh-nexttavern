@@ -267,7 +267,11 @@ export function createRoleplayTaskHost({
     }
     return {session,job,assertCurrent}
   }
-  async function nativeTask<Result = unknown>({session,agent,system,user,promptContext,format='json',kind,signal,timeoutMs,maxTokens,validate,source:providedSource,selection,generationKey,tools:allowedTools,taskStage,background=false,executionPolicy,onResult,onAdmission}: NativeTaskInput<Result>): Promise<Result> {
+  async function nativeTask<Result = unknown>({
+    session,agent,system,user,promptContext,format='json',kind,signal,timeoutMs,maxTokens,validate,
+    source:providedSource,selection,generationKey,tools:allowedTools,taskStage,background=false,
+    executionPolicy,onResult,onAdmission,validationFailurePolicy,
+  }: NativeTaskInput<Result>): Promise<Result> {
     if(!session)throw new Error('酒馆任务缺少所属会话')
     const independent=executionPolicy==='independent'
     if(independent) {
@@ -327,13 +331,18 @@ export function createRoleplayTaskHost({
       }
       await onResult?.(job)
     }
-    try {return await tavernTasks.request({session,agent:main,kind,source,input:{system,user,format,taskStage},promptContext,requestKey,format,signal,timeoutMs,maxTokens,selection,background,executionPolicy,tools:allowedTools,onResult:consumeResult,onAdmission,
-      validate:validate??(value=>{
-        if(format==='text'){if(typeof value!=='string'||!value.trim())throw new Error('任务文本为空');return value}
-        if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('任务需要 JSON 对象')
-        return value
-      }),
-    }) as Result}catch(error){
+    try {
+      return await tavernTasks.request({
+        session,agent:main,kind,source,input:{system,user,format,taskStage},promptContext,requestKey,
+        format,signal,timeoutMs,maxTokens,selection,background,executionPolicy,tools:allowedTools,
+        onResult:consumeResult,onAdmission,validationFailurePolicy,
+        validate:validate??(value=>{
+          if(format==='text'){if(typeof value!=='string'||!value.trim())throw new Error('任务文本为空');return value}
+          if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('任务需要 JSON 对象')
+          return value
+        }),
+      }) as Result
+    }catch(error){
       if(independent)throw error
       if(isInlinePending(error))assertIdleRecovery()
       if(isInlinePending(error)&&kind==='memory'&&format==='text')await T.branch.put(keyOf(session.id,'task-memory-resume'),{schemaVersion:1,sessionId:session.id,status:'pending',taskStage:taskStage??'notes',source:{taskId:(error as {jobId?: string}).jobId},updatedAt:Date.now()})

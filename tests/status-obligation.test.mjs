@@ -753,10 +753,15 @@ console.log('decision-turn-publication=ok (later turn replaces superseded decisi
   // Exercise the actual status transaction at its existing dependency boundary.
   // Model execution and storage failures are fixture inputs; Native permissions,
   // full Core hooks and Session ownership are qualified by the Native caller.
+  const { installSchemaTestDependencies } = await import('./mvu-schema-test-dependencies-fixture.mts')
+  const { installMvuNativeDataTestDependencies } = await import('./mvu-native-data-test-dependencies-fixture.mts')
+  const releaseSchemaDependencies = installSchemaTestDependencies()
+  const releaseNativeDataDependencies = await installMvuNativeDataTestDependencies()
+  try {
   const { createRoleplayStatus } = await import('../lib/core/roleplay-status.js')
   const { taskCancellation } = await import('../lib/core/roleplay-decision.js')
   const { InlinePending } = await import('../lib/core/tavern-tasks.js')
-  function statusBench({ tables, session, result = () => panel } = {}) {
+  function statusBench({ tables, session, result = () => panel, resolveSelection } = {}) {
     const T = tables ?? Object.fromEntries(['status','branch','scene','cards','worldbook','rules'].map(name => [name,new Table()]))
     const currentSession = session ?? {id:'status-recovery',header:{agentPreset:'roleplay'},events:[],surface:{nodes:[]},seq:0}
     if (!T.status.has(`${currentSession.id}__spec`)) T.status.set(`${currentSession.id}__spec`,structuredClone(spec))
@@ -766,7 +771,7 @@ console.log('decision-turn-publication=ok (later turn replaces superseded decisi
       ctx:{get(){},effect(fn){cleanups.push(fn())}},T,
       cfg:{statusRetryMs:60000},DEFAULT_CONFIG:{statusWorkerTimeoutMs:60000},STATUS_SYSTEM:'fixture status',
       cloneBranchRecord:structuredClone,storyBranchIsActive:()=>true,taskCancellation,
-      ensureBranch:async()=>{},modelPolicy:{resolve:()=>selection},
+      ensureBranch:async()=>{},modelPolicy:{resolve:()=>resolveSelection?resolveSelection(selection):selection},
       sameModelRoute:(a,b)=>a?.provider===b.provider&&a?.model===b.model,
       retrieveWorldbook:async()=>({text:''}),resolveRoute:session=>({session}),
       llmJson:async(_ctx,_route,options)=>{
@@ -834,6 +839,52 @@ console.log('decision-turn-publication=ok (later turn replaces superseded decisi
       assert.equal(b.calls.length,2);assert.equal(b.panel().turnId,1)
     } finally {b.dispose()}
   }
+  // Cold reads and idle may recover the original obligation, but an edited
+  // Source cannot turn either completed or pending work into a new generation.
+  for (const changed of ['latest','earlier']) for (const pending of [false,true]) {
+    const b=statusBench({result:()=>{if(pending)throw new InlinePending('edited-source');return panel}})
+    let restored
+    try {
+      let earlier
+      if(changed==='earlier'){b.begin(1);earlier=b.finish(1)}
+      const turn=earlier?2:1
+      b.begin(turn)
+      const event=b.finish(turn)
+      await b.owner.runStatusObligation(b.session,event,'session/event')
+      const original=structuredClone(b.records()[0])
+      assert.equal(original.state,pending?'waiting-main':'completed')
+      const previousPanel=structuredClone(b.panel())
+      const edited=earlier??event
+      edited.data.message.content=text('修改后的剧情 1')
+      b.dispose()
+      restored=statusBench({tables:b.T,session:b.session})
+      const writes=b.T.status.writes.length
+      await Promise.all(restored.owner.recoverStatusObligations(restored.session,'session-resume'))
+      await restored.recover()
+      assert.equal(restored.calls.length,0,'Source drift cannot admit a replacement status task during recovery')
+      if(changed==='latest') {
+        assert.equal(restored.panel(),null,'the old result cannot publish for edited prose')
+        assert.equal(restored.owner.selectedStatusGeneration(restored.session).state,'stale')
+      }else {
+        // This fixture changes raw history without the real edit owner's
+        // panel retirement; recovery must leave that separate owner untouched.
+        assert.deepEqual(restored.panel(),previousPanel)
+      }
+      assert.deepEqual(restored.records()[0],original,'the old obligation and pending generation stay available')
+      assert.equal(b.T.status.writes.length,writes,'recovery preserves the old durable facts')
+
+      await restored.owner.runStatusObligation(restored.session,event,'explicit-rebuild',{force:true})
+      assert.equal(restored.calls.length,1,'explicit rebuilding may settle the edited Source')
+      assert.equal(restored.panel().turnId,turn)
+      assert.equal(restored.owner.selectedStatusGeneration(restored.session).state,'completed')
+
+      await b.T.status.delete(`${restored.session.id}__spec`)
+      restored.begin(turn+1)
+      await restored.owner.runStatusObligation(restored.session,restored.finish(turn+1),'session/event')
+      assert.equal(restored.calls.length,2,'a new Story retains ordinary default status generation')
+      assert.equal(restored.panel().turnId,turn+1)
+    } finally {if(restored)restored.dispose();else b.dispose()}
+  }
   // An idle-only compatibility feed still drains both turns from this run,
   // and the later result keeps the panel when the earlier worker finishes last.
   {
@@ -861,5 +912,25 @@ console.log('decision-turn-publication=ok (later turn replaces superseded decisi
       assert.equal(restored.calls.length,0);assert.equal(restored.panel().turnId,1)
     } finally {if(restored)restored.dispose();else b.dispose()}
   }
-  console.log('status-recovery=ok (5 cases: historical pending, cold latest, current pending, multi-turn idle, pointer restart)')
+  // A route-resolution failure happens before any semantic input or model
+  // request exists. Its minimal retry record still needs a first admission.
+  {
+    const b=statusBench({resolveSelection:()=>{throw Error('fixture-model-selection-unavailable')}})
+    let restored
+    try {
+      b.begin(1);await b.owner.runStatusObligation(b.session,b.finish(1),'session/event')
+      const pending=b.records()[0]
+      assert.equal(pending.state,'retry');assert.equal(pending.inputBasis,undefined)
+      assert.equal(b.calls.length,0)
+      b.dispose();restored=statusBench({tables:b.T,session:b.session})
+      await Promise.all(restored.owner.recoverStatusObligations(restored.session,'session-resume'))
+      assert.equal(restored.calls.length,1,'a pre-admission failure remains recoverable after restart')
+      assert.equal(restored.records()[0].state,'completed');assert.equal(restored.panel().turnId,1)
+    } finally {if(restored)restored.dispose();else b.dispose()}
+  }
+  console.log('status-recovery=ok (10 cases: historical pending, cold latest, current pending, latest/earlier edit completed/pending, multi-turn idle, pointer restart, pre-admission restart)')
+  } finally {
+    releaseNativeDataDependencies()
+    releaseSchemaDependencies()
+  }
 }

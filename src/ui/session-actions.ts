@@ -1,6 +1,13 @@
 import type {ConversationCatalog} from './conversation-projection.js'
 import type {ReaderSubmissionHandoff} from './reader-submission-handoff.js'
 
+export type SchemaTaskEditMode = 'retain' | 'replace' | 'clear'
+export interface SchemaTaskEditIntent {
+  schemaVersion: 1
+  target?: {expectedArtifactSha256: string; mode: SchemaTaskEditMode}
+  suffix: 'retain'
+}
+
 interface ActionError extends Error {status?: number; payload?: unknown; operationStateUnknown?: boolean; safeToAbort?: boolean}
 const errorDetails = (value: unknown): Partial<ActionError> => value && typeof value === 'object' ? value : {}
 interface SaveReply extends Record<string, unknown> {ok?: boolean; error?: string}
@@ -370,14 +377,17 @@ export function createRoleplayActions({sessionsService,
        role,
        seq,
        messageId,
-       text }: {sessionId: string;
-       text: string} & ({role: 'user';
+       text,
+       schemaTaskEdit }: {sessionId: string;
+       text: string;
+       schemaTaskEdit?: SchemaTaskEditIntent} & ({role: 'user';
        seq: number;
        messageId?: string} | {role: 'assistant';
        seq?: number;
        messageId: string})) => {
     const result = await retryBranchMutation({
       action: 'replace-message', sessionId, role, seq, messageId, text,
+      ...(schemaTaskEdit ? {schemaTaskEdit: {...schemaTaskEdit, operationId: globalThis.crypto.randomUUID()}} : {}),
     })
     invalidateState(sessionId)
     return result

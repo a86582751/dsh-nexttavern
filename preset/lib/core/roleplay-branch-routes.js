@@ -898,14 +898,14 @@ export function registerBranchRoutes(deps) {
                         const messageId = String(body?.messageId ?? '');
                         if (!messageId)
                             return jsonResponse(400, { ok: false, error: '缺少 Agent messageId' });
-                        const replacement = await replaceAssistantText(session, messageId, text);
+                        const replacement = await replaceAssistantText(session, messageId, text, body.schemaTaskEdit);
                         return jsonResponse(200, { ok: true, seq: Number(replacement.seq), messageId });
                     }
                     if (body?.role === 'user') {
                         const seq = Number(body?.seq);
                         if (!Number.isSafeInteger(seq) || seq < 0)
                             return jsonResponse(400, { ok: false, error: '玩家消息 seq 无效' });
-                        const result = await replaceUserText(session, seq, text);
+                        const result = await replaceUserText(session, seq, text, body.schemaTaskEdit);
                         return jsonResponse(200, { ok: true, ...result });
                     }
                     return jsonResponse(400, { ok: false, error: 'role 必须是 user 或 assistant' });
@@ -913,7 +913,31 @@ export function registerBranchRoutes(deps) {
                 return jsonResponse(400, { ok: false, error: `未知 branch action: ${action}` });
             }
             catch (error) {
-                return jsonResponse(error?.code === 'ROLEPLAY_NOT_STORY' ? 400 : 500, { ok: false, error: String(error?.message ?? error) });
+                const message = String(error?.message ?? error);
+                let status = error?.code === 'ROLEPLAY_NOT_STORY' ? 400 : 500;
+                // These decisions cannot succeed by resending the same saved intent.
+                // Keep transport/unknown outcomes retryable through the existing client.
+                switch (message) {
+                    case 'SCHEMA_TASK_EDIT_INVALID':
+                    case 'SCHEMA_TASK_EDIT_TARGET_REQUIRED':
+                    case 'SCHEMA_TASK_EDIT_REPLACE_REQUIRED':
+                    case 'SCHEMA_TASK_EDIT_UPDATE_REQUIRED':
+                    case 'SCHEMA_TASK_EDIT_MALFORMED_UPDATE':
+                        status = 400;
+                        break;
+                    case 'SCHEMA_TASK_EDIT_ARTIFACT_CHANGED':
+                    case 'SCHEMA_TASK_EDIT_OPERATION_CONFLICT':
+                    case 'SCHEMA_TASK_EDIT_BASIS_CHANGED':
+                    case 'SCHEMA_TASK_EDIT_NOT_APPLIED':
+                    case 'SCHEMA_TASK_EDIT_PENDING':
+                    case 'SCHEMA_MAINTENANCE_REVISION_REQUIRED':
+                    case 'SCHEMA_TASK_EDIT_FANOUT_BASIS_UNAVAILABLE':
+                    case 'SCHEMA_TASK_EDIT_FANOUT_TARGET_UNPROVEN':
+                    case 'SCHEMA_TASK_EDIT_FANOUT_PENDING':
+                        status = 409;
+                        break;
+                }
+                return jsonResponse(status, { ok: false, error: message });
             }
         },
     }), 'roleplay: route native branch');

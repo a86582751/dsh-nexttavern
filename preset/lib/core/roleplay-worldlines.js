@@ -710,7 +710,7 @@ export function createRoleplayWorldlines(deps) {
                 return false;
             const sameText = Object.entries(group.playerVariants)
                 .find(([, variant]) => String(variant?.text ?? '') === String(recovery.promptText ?? ''));
-            const playerVariantId = sameText?.[0] ?? `${groupId}:player:recovery-original`;
+            const playerVariantId = sameText?.[0] ?? `${groupId}:player:recovery-original:${randomUUID()}`;
             if (!sameText)
                 group.playerVariants[playerVariantId] = { text: recovery.promptText, revision: 1, updatedAt: Date.now() };
             const playerOrdinal = sameText
@@ -815,7 +815,7 @@ export function createRoleplayWorldlines(deps) {
             if (!hasSource && recovery) {
                 const sameText = Object.entries(group.playerVariants)
                     .find(([, variant]) => String(variant?.text ?? '') === String(recovery.promptText ?? ''));
-                const playerVariantId = `${groupId}:player:recovery-original`;
+                const playerVariantId = `${groupId}:player:recovery-original:${randomUUID()}`;
                 const originalVariantId = sameText?.[0] ?? playerVariantId;
                 if (!sameText)
                     group.playerVariants[originalVariantId] = { text: recovery.promptText, revision: 1, updatedAt: Date.now() };
@@ -857,7 +857,8 @@ export function createRoleplayWorldlines(deps) {
                 // evidence available to repair that empty slot.
                 const legacyEmptyVariant = previousMember
                     && !String(previousMember.promptText ?? '').trim()
-                    && !String(group.playerVariants[playerVariantId]?.text ?? '').trim();
+                    && !String(group.playerVariants[playerVariantId]?.text ?? '').trim()
+                    && !group.playerVariants[playerVariantId]?.currentSaveRef;
                 if (legacyEmptyVariant) {
                     group.playerVariants[playerVariantId] = { text: operation.promptText, revision: 1, updatedAt: Date.now() };
                 }
@@ -1140,7 +1141,7 @@ export function createRoleplayWorldlines(deps) {
     const { nativePlayerGroupsFor, readOwnedEditCompletionRows, replaceAssistantText, reconcileCanonicalPlayerVariants, userForkContext, locatePlayerRecoveryTarget, replaceUserText, } = createWorldlineSurface(deps, {
         forkGroupKey, forkAnchorKey, forkAnchorLockKey, withForkMutationLock,
         hydrateForkGroup, forkPointerFor, groupMemberForSession,
-        assistantMessageId, currentSurfaceUserBefore, turnForEvent,
+        assistantMessageId, requestUserEvent, currentSurfaceUserBefore, turnForEvent,
     });
     return {
         storyBranchIsActive,

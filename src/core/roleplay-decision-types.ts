@@ -25,6 +25,8 @@ export interface DecisionContext {
   get(name: 'compaction'): { directorNotes?(session: DecisionSession): {text?: unknown} | null } | null | undefined
 }
 export interface DecisionDependencies {
+  schemaMaintenanceDecision?(session:DecisionSession,event:DecisionEvent,onAdmission:()=>void,signal?:AbortSignal)
+    :Promise<import('./roleplay-mvu-schema-maintenance-types.js').MvuSchemaMaintenanceDecisionV1>|undefined
   advancedCardReady?(session:DecisionSession):boolean
   T: DecisionTables
   withDecisionMutationLock<T>(branchId: string, work: () => Promise<T>): Promise<T>

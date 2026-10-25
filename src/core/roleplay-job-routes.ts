@@ -10,6 +10,8 @@ import { assertWorkspaceSession } from './roleplay-context.js'
 import { assertSteeringAgent } from './roleplay-task-tools.js'
 import type { JobRouteAgent, JobRouteBody, JobRouteRecord, JobRoutesDependencies, MaintenanceRoutesDependencies, MaintenanceRouteJob } from './roleplay-job-routes-types.js'
 
+const schemaMaintenanceRetryHint='此任务不能单独重试。请重新生成该回复，生成新剧情并重新维护变量。'
+
 export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports, modelPolicy, beginCardWorkflow,
   resumeCardWorkflows,controlCardWorkflow,cardWorkflows,cardWorkflowKey,tavernTasks,taskAgents,libraryFor,migrateResources,
   originalCardResource,nativeCardStatus,applyNativeCardConversion}: JobRoutesDependencies) {
@@ -32,6 +34,7 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
     return {id:job.id,parentJobId:job.source?.workflowId??null,kind:job.kind,status:job.status,progress:job.progress,
       execution:child?.execution??job.execution,actualRoute:child?.actualRoute??job.actualRoute,
       error:job.error??null,failure:taskValidationFailure(job)??job.failure??null,validationFailures:job.validationFailures??0,
+      ...job.kind==='schema-maintenance'?{retryable:false,retryHint:schemaMaintenanceRetryHint}:{},
       requestId:job.clientRequestId??null,
       resourceId:job.resourceId??job.result?.resourceId??null,createdAt:job.createdAt,completedAt:job.completedAt??null,
       failedAt:job.failedAt??(job.status==='failed'?job.updatedAt??null:null)}
@@ -61,6 +64,13 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
         const jobs=[...cardWorkflows(session),...await novelExports.refresh(session),...tavernTasks.list(session)]
         const children=jobs.length?latestChildJobs():undefined
         return jsonResponse(200,{ok:true,jobs:jobs.map(job=>publicJob(job,children))})
+      }
+      const retryTask=body.action==='retry'?T.branch.get('tavern_job__'+body.jobId) as
+        {sessionId?:string;kind?:string}|undefined:undefined
+      // A management turn cannot reopen the original Story's closing lease.
+      // Reject before retry replaces its generation or resolves a new Agent.
+      if(retryTask?.sessionId===session.id&&retryTask.kind==='schema-maintenance') {
+        return jsonResponse(409,{ok:false,error:schemaMaintenanceRetryHint})
       }
       let agent:JobRouteAgent|undefined
       // Cancellation only retires durable work; it remains available after
@@ -166,7 +176,7 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
   return { startExportJob }
 }
 
-export function registerMaintenanceRoute({ctx, resolveRoleplaySession, maintenanceJobs, latestStatusEvent, runStatusObligation, selectedStatusRecord}: MaintenanceRoutesDependencies) {
+export function registerMaintenanceRoute({ctx, resolveRoleplaySession, maintenanceJobs, latestStatusEvent, selectedStatusGeneration, runStatusObligation, selectedStatusRecord}: MaintenanceRoutesDependencies) {
   ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered',
     path: '/api/roleplay/maintenance', methods: ['POST'],
     fetch: async (request) => {
@@ -175,6 +185,10 @@ export function registerMaintenanceRoute({ctx, resolveRoleplaySession, maintenan
         const session = await resolveRoleplaySession(body.sessionId)
         if (!session) return jsonResponse(404, { ok: false, error: '角色扮演会话不存在' })
         if (body.action === 'status') return jsonResponse(200, { ok: true, job: maintenanceJobs.get(session.id) ?? null })
+        const statusEvent=body.action==='status-rebuild'?latestStatusEvent(session):undefined
+        if(body.action==='status-rebuild'&&selectedStatusGeneration?.(session,statusEvent??null)?.kind==='schema-maintenance') {
+          return jsonResponse(409,{ok:false,error:'不需要重新生成叙事状态栏，当前变量由schema面板提供'})
+        }
         const active = maintenanceJobs.get(session.id)
         if (active?.state==='running'||active?.state==='waiting-main') return jsonResponse(200, { ok: true, job: active })
         const found = await ctx.sessionController.resolveAgent(session.id)
@@ -190,7 +204,7 @@ export function registerMaintenanceRoute({ctx, resolveRoleplaySession, maintenan
             if (!engine?.organizeNow) throw new Error('导演笔记服务尚未就绪')
             job.result = await engine.organizeNow(agent)
           } else {
-            const event = latestStatusEvent(session)
+            const event = statusEvent
             if (!event) throw new Error('当前分支缺少已完成正文')
             job.atSeq=event.seq
             const result = await runStatusObligation(session, event, 'maintenance', { force: true, agent })

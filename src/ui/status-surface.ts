@@ -16,6 +16,7 @@ interface Size {w: number;h: number;}
 interface WindowPrefs extends Record<string, unknown> {pos?: Position | null;badgePos?: Position | null;size?: Size;}
 export interface StatusSurfaceState extends StateReply {
     numericalState?: MvuStateObservation;
+    statusGeneration?: {kind?: string};
     decision?: {seq?: unknown;};
     statusPanel?: {stale?: boolean;};
     statusSpec?: {regexRules?: {match: string;replace?: string;}[];};
@@ -566,7 +567,9 @@ React,
         const renderPanelBody = () => React.createElement(React.Fragment,null,
             React.createElement(MvuStatePanel,{key:activeSessionId,sessionId:activeSessionId,
                 observation:currentState.numericalState,refresh:async()=>refreshPanelRef.current?.(true)}),
-            React.createElement('h3',null,'叙事状态栏'),renderNarrativePanelBody());
+            currentState.statusGeneration?.kind === 'schema-maintenance' ? null
+                : React.createElement(React.Fragment,null,
+                    React.createElement('h3',null,'叙事状态栏'),renderNarrativePanelBody()));
 
         let main = null;
         // Keep the mode control mounted even while a malformed/empty panel is

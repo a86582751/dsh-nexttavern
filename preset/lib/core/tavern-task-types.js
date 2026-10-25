@@ -19,6 +19,8 @@ export function storedTask(value) {
         return null;
     if (record.background !== undefined && typeof record.background !== 'boolean')
         return null;
+    if (record.validationFailurePolicy !== undefined && record.validationFailurePolicy !== 'terminal')
+        return null;
     if (record.input !== undefined && !taskObject(record.input))
         return null;
     for (const key of ['main', 'actualRoute'])

@@ -281,9 +281,10 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
         const rejected=error instanceof TaskValidationError?error:new TaskValidationError(String(taskObject(error)?.message),
           [{path:'result',rule:'result-contract',expected:'valid-result',actual:'invalid-result'}])
         const now=Date.now()
-        await table.put(keyOf(id),{...job,validationFailures:failures,failure:rejected.failure,status:failures>=3?'failed':job.status,
-          error:rejected.message,...(failures>=3?{failedAt:now}:{}),updatedAt:now})
-        throw new TaskValidationError(`${rejected.message}${failures>=3?'；已保留检查点，请在酒馆管理中重试':'；请按 rp_task_read 中的结果契约修正，不要检查实现代码'}`,
+        const exhausted=job.validationFailurePolicy==='terminal'||failures>=3
+        await table.put(keyOf(id),{...job,validationFailures:failures,failure:rejected.failure,status:exhausted?'failed':job.status,
+          error:rejected.message,...(exhausted?{failedAt:now}:{}),updatedAt:now})
+        throw new TaskValidationError(`${rejected.message}${exhausted?'；已保留检查点，请在酒馆管理中重试':'；请按 rp_task_read 中的结果契约修正，不要检查实现代码'}`,
           rejected.failure.issues as readonly unknown[],rejected.code)
       }
       // A validator can await I/O while stop/Source/attempt changes. The result
@@ -383,6 +384,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
           ...(spec.background===true?{background:true,execution:'spawn'}:{}),
           ...(isolatedCompaction||independent?{execution:'spawn'}:{}),
           generationOptions:spec.maxTokens===undefined?{}:{maxTokens:spec.maxTokens},
+          ...(spec.validationFailurePolicy?{validationFailurePolicy:spec.validationFailurePolicy}:{}),
           status:'queued',generation:randomUUID(),progress:{done:0,total:1},createdAt:Date.now(),updatedAt:Date.now()}
         await table.put(key,found)
       }
@@ -407,7 +409,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
     }
     if (job.status==='completed') {await spec.onAdmission?.(copy(job));return deliver(copy(job.result))}
     if (terminal.has(job.status)) throw new Error(job.status==='failed'&&job.error ? job.error : '任务已取消或失效，请重建或重试')
-    if (job.execution==='inline') throw new InlinePending(id)
+    if (job.execution==='inline') {await spec.onAdmission?.(copy(job));throw new InlinePending(id)}
     // Normal non-main work is admitted for one event-loop turn.  A caller can
     // hold the session gate while it admits a dependent status/decision pair;
     // this never waits for a native result and background memory is excluded.

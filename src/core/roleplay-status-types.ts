@@ -60,6 +60,7 @@ export interface StatusRecord extends Record<string, unknown> {
   publicationState?: string
   publicationError?: string | null
 }
+export type StatusGeneration = StatusRecord | {kind:'schema-maintenance'} | null
 export interface StatusTable<T = Record<string, unknown>> {
   get(key: string): T | undefined
   entries(): Iterable<[string, T]>
@@ -94,6 +95,7 @@ export interface StatusCancellation {
 export type StatusJob = Promise<StatusRecord | null | undefined> & { admission: Promise<unknown>; cancellation: StatusCancellation }
 export interface StatusRunOptions { force?: boolean; agent?: TaskAgent; signal?: AbortSignal }
 export interface StatusDependencies {
+  schemaMaintenance?(session:StatusSession,event:StatusEvent):boolean
   advancedCardReady?(session:StatusSession):boolean
   ctx: StatusContext
   T: StatusTables

@@ -680,6 +680,8 @@ export function createRoleplayMvuOpening(deps) {
         preflightSchema: (id, signal) => hasSchemaOpening(id) && schemaStory
             ? schemaStory.preflight(id, signal) : Promise.resolve(),
         releaseSchemaClosing: (lease) => schemaStory?.releaseClosing(lease),
+        checkSchemaTextEdit: (id, targetSeq) => hasSchemaOpening(id) && schemaStory
+            ? schemaStory.checkTextEdit(id, targetSeq) : Promise.resolve(),
         invalidateSchemaAgent: (agent) => {
             schemaCore?.invalidateAgent(agent);
             schemaStory?.invalidateAgent(agent);

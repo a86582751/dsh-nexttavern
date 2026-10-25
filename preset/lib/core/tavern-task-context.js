@@ -189,8 +189,8 @@ export function inlineTaskInstruction(jobs, { sessionId, maxChars = 128000, resi
     const eligible = jobs.filter(job => job.execution === 'inline' && ['queued', 'running'].includes(job.status)
         && (!sessionId || job.sessionId === sessionId));
     const prepared = maintenanceTaskInputs(eligible, resident);
-    const compact = eligible.some(job => ['status', 'decision'].includes(job.kind) && checkedPrompt(job))
-        && eligible.every(job => ['status', 'decision', 'memory'].includes(job.kind))
+    const compact = eligible.some(job => ['status', 'decision', 'schema-maintenance'].includes(job.kind) && checkedPrompt(job))
+        && eligible.every(job => ['status', 'decision', 'memory', 'schema-maintenance'].includes(job.kind))
         && JSON.stringify(prepared).length <= remaining;
     const inputs = new Map(compact ? eligible.map((job, index) => [job.id, prepared.inputs[index]]) : []);
     if (compact)
@@ -209,11 +209,11 @@ export function inlineTaskInstruction(jobs, { sessionId, maxChars = 128000, resi
             sourceHash: job.sourceHash,
             ...(failure ? {
                 failure,
-                remainingValidationAttempts: Math.max(0, 3 - (job.validationFailures ?? 0))
+                remainingValidationAttempts: Math.max(0, (job.validationFailurePolicy === 'terminal' ? 1 : 3) - (job.validationFailures ?? 0))
             } : {})
         };
         const input = inputs.get(job.id) ?? job.input, text = JSON.stringify(input);
-        if (['memory', 'status', 'decision'].includes(job.kind) && typeof text === 'string' && text.length <= remaining) {
+        if (['memory', 'status', 'decision', 'schema-maintenance'].includes(job.kind) && typeof text === 'string' && text.length <= remaining) {
             task.input = input;
             task.completeSource = true;
             remaining -= text.length;

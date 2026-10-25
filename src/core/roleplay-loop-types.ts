@@ -116,7 +116,10 @@ export interface LoopDependencies {
   storyWindowSettings(session: LoopSession): {tail: number}
   /** First-output deadline per model request; omitted keeps the 90-second default. */
   firstResponseTimeoutMs?: number
-  runStatusObligation: ReturnType<typeof createRoleplayStatus>['runStatusObligation']
+  runStatusObligation(session:import('./roleplay-status-types.js').StatusSession,
+    event:import('./roleplay-status-types.js').StatusEvent|null|undefined,via?:string,
+    options?:import('./roleplay-status-types.js').StatusRunOptions):
+    ReturnType<ReturnType<typeof createRoleplayStatus>['runStatusObligation']>|import('./roleplay-mvu-schema-maintenance.js').MvuSchemaMaintenanceJob
   publishTurnDecision(session: LoopSession, event: ContextEvent, snapshot: CompletionSnapshot, narrative: string, signal?: AbortSignal): DecisionJob
   runPhaseBC(session: LoopSession, event: ContextEvent, state: LoopState, snapshot: CompletionSnapshot, signal?: AbortSignal): Promise<unknown>
 }

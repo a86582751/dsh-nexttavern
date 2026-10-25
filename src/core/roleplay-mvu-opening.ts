@@ -200,7 +200,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
   let schemaStory:ReturnType<typeof createRoleplayMvuSchemaStoryCore>|undefined
   let schemaPlayer:ReturnType<typeof createRoleplayMvuSchemaPlayerCore>|undefined
   function createSchemaStory(completion:Pick<MvuSchemaStoryCoreDeps,'closingView'|'verifyNative'|'verifyConsumedScope'|'readCanonical'
-    |'readConsumedCanonical'|'awaitOwnedCompletion'|'authorChat'>) {
+    |'readConsumedCanonical'|'awaitOwnedCompletion'|'authorChat'|'maintenanceCompletion'|'recoverTaskEdit'>) {
     if(!schemaCore||!deps.schema)return undefined
     const schemaSource=createRoleplayMvuSchemaSource({...sourceDeps,inputState:deps.inputState},
       deps.schema.markers,events=>deps.messageEdits.projectPrefix(events))
@@ -644,6 +644,8 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     preflightSchema:(id:string,signal?:AbortSignal)=>hasSchemaOpening(id)&&schemaStory
       ?schemaStory.preflight(id,signal):Promise.resolve(),
     releaseSchemaClosing:(lease:object)=>schemaStory?.releaseClosing(lease),
+    checkSchemaTextEdit:(id:string,targetSeq:number)=>hasSchemaOpening(id)&&schemaStory
+      ?schemaStory.checkTextEdit(id,targetSeq):Promise.resolve(),
     invalidateSchemaAgent:(agent:object)=>{
       schemaCore?.invalidateAgent(agent)
       schemaStory?.invalidateAgent(agent)

@@ -52,6 +52,16 @@ try {
   storage.set('dsh-roleplay-ui.decisionDismissed.a','999')
   const reopened=await fixture();assert.equal(reopened.seat?.props.decision.seq,1,'reload ignores obsolete persistent dismissal records');reopened.close()
   storage.set('dsh-roleplay-ui.statusCollapsed','0')
+  const schema=await fixture({statusGeneration:{kind:'schema-maintenance'},
+    numericalState:{kind:'schema-ready'}})
+  assert(!JSON.stringify(schema.tree).includes('刷新状态栏'),
+    'schema maintenance must not offer an unsupported narrative rebuild')
+  assert(!JSON.stringify(schema.tree).includes('叙事状态栏'))
+  assert(JSON.stringify(schema.tree).includes('schema-ready'),'the variable panel remains mounted')
+  schema.close()
+  const legacy=await fixture()
+  assert(JSON.stringify(legacy.tree).includes('刷新状态栏'),'legacy narrative rebuild remains available')
+  legacy.close()
   const jobs=[]
   const author=await fixture({statusPanel:{html:'<p>old</p>',title:'old title',options:[{label:'old'}],fields:[{label:'field',value:'old value'}]},statusSpec:{regexRules:[{match:'old',replace:'beautified'}]}},
     (task,signal)=>new Promise((resolve,reject)=>jobs.push({task,signal,resolve,reject})))

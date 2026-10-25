@@ -444,7 +444,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                     for (const raw of tasks) {
                         const task = taskContextRecord(raw), job = typeof task?.id === 'string' ? jobById.get(task.id) : undefined;
                         if (!task || !job || job.sessionId !== session.id || job.execution !== 'inline'
-                            || !['status', 'decision', 'memory'].includes(job.kind)
+                            || !['status', 'decision', 'memory', 'schema-maintenance'].includes(job.kind)
                             || job.kind !== task.kind
                             || typeof task.generation !== 'string'
                             || !task.generation

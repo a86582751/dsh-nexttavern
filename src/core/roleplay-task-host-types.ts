@@ -34,6 +34,7 @@ export interface HostTable {
 }
 export interface HostTables {branch: HostTable; cards: HostTable}
 export interface HostSource {
+  schemaMaintenance?:{basisSha256:string}
   authorDialog?:{binding:AuthorChatBindingV1;operationId:string;promptPlanSha256:string}
   rubyAnalysis?:{sourceIdentitySha256:string;promptPlanSha256:string}
   inputPreparation?: InputPreparationCurrency

@@ -726,7 +726,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       if (!group || group.members.some(member => isRecoverySourceMember(member, anchor, userEvent))) return false
       const sameText = Object.entries(group.playerVariants)
         .find(([, variant]) => String(variant?.text ?? '') === String(recovery.promptText ?? ''))
-      const playerVariantId = sameText?.[0] ?? `${groupId}:player:recovery-original`
+      const playerVariantId = sameText?.[0] ?? `${groupId}:player:recovery-original:${randomUUID()}`
       if (!sameText) group.playerVariants[playerVariantId] = { text: recovery.promptText, revision: 1, updatedAt: Date.now() }
       const playerOrdinal = sameText
         ? Math.max(1, ...group.members
@@ -829,7 +829,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       if (!hasSource && recovery) {
         const sameText = Object.entries(group.playerVariants)
           .find(([, variant]) => String(variant?.text ?? '') === String(recovery.promptText ?? ''))
-        const playerVariantId = `${groupId}:player:recovery-original`
+        const playerVariantId = `${groupId}:player:recovery-original:${randomUUID()}`
         const originalVariantId = sameText?.[0] ?? playerVariantId
         if (!sameText) group.playerVariants[originalVariantId] = { text: recovery.promptText, revision: 1, updatedAt: Date.now() }
         const originalPlayerOrdinal = sameText
@@ -869,6 +869,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
         const legacyEmptyVariant = previousMember
           && !String(previousMember.promptText ?? '').trim()
           && !String(group.playerVariants[playerVariantId]?.text ?? '').trim()
+          && !group.playerVariants[playerVariantId]?.currentSaveRef
         if (legacyEmptyVariant) {
           group.playerVariants[playerVariantId] = { text: operation.promptText, revision: 1, updatedAt: Date.now() }
         } else {
@@ -1147,7 +1148,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
   } = createWorldlineSurface(deps, {
     forkGroupKey, forkAnchorKey, forkAnchorLockKey, withForkMutationLock,
     hydrateForkGroup, forkPointerFor, groupMemberForSession,
-    assistantMessageId, currentSurfaceUserBefore, turnForEvent,
+    assistantMessageId, requestUserEvent, currentSurfaceUserBefore, turnForEvent,
   })
 
   return {

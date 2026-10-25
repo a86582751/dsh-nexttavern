@@ -130,6 +130,23 @@ export interface InputView {
   prepared: boolean
   refs: readonly NativeInputRef[]
 }
+/** Detached facts of the real stored Native work, not a recovered claim or
+ * closing permission. The Native checkpoint selects its exact original row. */
+export interface RoleplaySchemaStoryWorkV1 {
+  readonly sessionId:string
+  readonly workKey:string
+  readonly currency:InputPreparationCurrency
+  readonly refs:readonly NativeInputRef[]
+  readonly checkpoint:NativeDurableInputWorkReceiptV1
+}
+export interface RoleplayNewInputWorkV1 {
+  readonly sessionId:string
+  readonly preparationId:string
+  readonly credentialSha256:string
+  readonly receiptGeneration:number
+  readonly refs:readonly NativeInputRef[]
+  readonly source:InputSourceObservation
+}
 export type InputTransitionResult = {kind: 'acknowledged'} | {kind: 'unknown'; code: string}
 export interface RoleplayInputTransitionLease {
   readonly reservationId: string
@@ -316,8 +333,11 @@ const isWork = (value: unknown, sessionId: string): value is Work => {
 
 export function createRoleplayInputPreparation<Session extends {id: string}>({table, observe, onError,completion,
   awaitMutationBarrier,mutationBlockCode,onMutationStop,preflightObservation,onClosingRelease,material,
-  sessionForRowFacts,readColdMaterialHistory,readFacts}: {
+  sessionForRowFacts,readColdMaterialHistory,readFacts,onNewWork}: {
   table: InputPreparationTable
+  /** Only the actual new-Work path calls this, before its first durable save.
+   * A restored or already pending Work never acquires a newer contract. */
+  onNewWork?(work:RoleplayNewInputWorkV1):Promise<void>
   /** Trusted synchronous actual Source/head observation; never model intent. */
   observe(session: Session): InputSourceObservation
   /** Historical schema execution is verified outside this writer FIFO. The
@@ -956,6 +976,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
           hot = work; revoked = false; claim = undefined; claimedMaintenance = undefined
           currentStep = undefined; currentLease = undefined
           try {
+            await onNewWork?.(work)
             await save(work)
             if (signal.aborted || revoked || !live) return refuseUnclaimed(work,'INPUT_PERMISSION_REVOKED')
             const current={schemaVersion: 2, preparationId: work.preparationId, credentialSha256},
@@ -1403,6 +1424,14 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       if(!work)return null
       return {status:work.status,sourceKind:work.source.kind,
         stop:work.stop?{status:work.stop.status,code:work.stop.code??null}:null}
+    },
+    readSchemaStoryWork(sessionId:string,checkpoint:NativeDurableInputWorkReceiptV1):RoleplaySchemaStoryWorkV1|undefined {
+      if(checkpoint.sessionId!==sessionId)return undefined
+      const recordKey=workKey(sessionId,checkpoint.refs),work=table.get(recordKey)
+      if(!isWork(work,sessionId)||work.transition||work.source.kind!=='story'
+        ||work.source.headRef?.kind!=='schema-head'||!work.attempt?.snapshot
+        ||!equal(work.checkpoint,checkpoint))return undefined
+      return {sessionId,workKey:recordKey,currency:currencyOfStored(work),refs:work.refs,checkpoint}
     },
     /** Source-free provenance only. No scope/current, ledger, Agent lookup or
      * mutation gate runs here; stopped/disposed binders never regain rights. */

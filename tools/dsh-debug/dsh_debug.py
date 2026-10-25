@@ -15,7 +15,7 @@ import time
 import uuid
 from urllib.parse import urlencode
 
-VERSION = '1.7.0'
+VERSION = '1.8.0'
 CONFIG = Path.home() / '.dsh-debug' / 'config.json'
 CARD_BYTES_LIMIT = 20_000_000
 HOST_PATTERN = re.compile(r'\[?[A-Za-z0-9_.:-]+\]?')
@@ -104,7 +104,11 @@ def parse(argv):
          'settings-set',
          'cluster',
          'cluster-set',
-         'cluster-route']:
+         'cluster-route',
+         'community-presets', 'preset-import', 'preset-select', 'preset-inherit', 'preset-set',
+         'regexes', 'regex-import', 'regex-set', 'regex-preview', 'regex-display',
+         'card-conversion', 'card-convert', 'card-apply', 'card-source', 'resource', 'usage-requests',
+         'mvu-state', 'mvu-set', 'model-select']:
         p = sub.add_parser(command, help={
             'send': 'Queue player input using native requestId (text or UTF-8 file)',
             'regenerate': 'Prepare/register a worldline, then queue the original player input',
@@ -122,9 +126,81 @@ def parse(argv):
             'history': 'Read a bounded native session page',
             'settings': 'Read current roleplay settings and revision',
             'settings-set': 'Update roleplay context settings with revision checking',
+            'community-presets': 'Read community policy, one preset, export data or card mapping',
+            'preset-import': 'Import community preset data without selecting it',
+            'preset-select': 'Switch/disable a community preset with the same option reset as the UI',
+            'preset-inherit': 'Clear the conversation community override',
+            'preset-set': 'Apply an explicit community action/revision from a JSON object',
+            'regexes': 'Read community regex policy and library',
+            'regex-import': 'Import regex data with an explicit binding and revision',
+            'regex-set': 'Update/delete a regex library entry from revision-checked JSON',
+            'regex-preview': 'Preview prompt/display regexes without saving',
+            'regex-display': 'Project real history message references from a JSON file',
+            'card-conversion': 'Read Native conversion capability and binding',
+            'card-convert': 'Start an explicit Native conversion job; may call models',
+            'card-apply': 'Apply a completed Native conversion job',
+            'card-source': 'Download the original card upload bytes to a new file',
+            'resource': 'Read one resource metadata and available text',
+            'usage-requests': 'Read a bounded request ledger page with time/model filters',
+            'mvu-state': 'Read numerical state directly, without waking or prewarming the session',
+            'mvu-set': 'Submit an exact numerical CAS body without rereading expected hashes',
+            'model-select': 'Select the native main model of this exact session',
         }.get(command, f'{command}: existing DSH API'))
         p.add_argument('--session', required=True, help='Exact execution session ID, not inferred from the browser')
         p.add_argument('--dry-run', action='store_true', help='Show request plan without connecting')
+        p.add_argument('--no-wake', action='store_true', help='Send the named operation directly, without an implicit wake request')
+        if command == 'mvu-set':
+            p.add_argument('--body-file', required=True, help='Exact schemaVersion/operationId/action/expected/values JSON; no CAS refresh')
+        if command == 'model-select':
+            p.add_argument('--provider', required=True)
+            p.add_argument('--model', required=True)
+            p.add_argument('--effort')
+        if command in ['usage', 'usage-requests', 'logs']:
+            p.add_argument('--scope', choices=['session', 'all'], default='session')
+            p.add_argument('--target-session-id', help='Ledger owner; defaults to --session')
+            p.add_argument('--from', dest='from_time', type=int, help='Inclusive epoch milliseconds; default is last 24h')
+            p.add_argument('--to', dest='to_time', type=int, help='Exclusive epoch milliseconds')
+            p.add_argument('--model')
+            p.add_argument('--kind')
+            if command != 'logs':
+                p.add_argument('--provider')
+                p.add_argument('--currency', choices=['USD', 'CNY'])
+            else:
+                p.add_argument('--status')
+            if command != 'usage':
+                p.add_argument('--offset', type=int, default=0)
+                p.add_argument('--limit', type=int, default=50)
+        if command == 'community-presets':
+            p.add_argument('--preset-id')
+            p.add_argument('--action', choices=['export', 'export-plans', 'card-mapping'])
+        if command in ['preset-import', 'preset-select', 'preset-inherit', 'regex-import']:
+            p.add_argument('--expected-revision', type=int, required=True,
+                help='Revision from community-presets/regexes; conflicts never auto-retry')
+        if command in ['preset-import', 'regex-import']:
+            p.add_argument('--file', required=True, help='Original UTF-8 community JSON source')
+            p.add_argument('--name')
+        if command == 'preset-select':
+            selection = p.add_mutually_exclusive_group(required=True)
+            selection.add_argument('--preset-id')
+            selection.add_argument('--off', action='store_true', help='Disable this scope; distinct from inheriting global selection')
+            p.add_argument('--scope', choices=['conversation', 'global'], default='conversation')
+        if command == 'regex-import':
+            p.add_argument('--binding-scope', choices=['conversation', 'global', 'preset'], default='conversation')
+            p.add_argument('--preset-id', help='Required for --binding-scope preset')
+        if command in ['preset-set', 'regex-set', 'regex-display']:
+            p.add_argument('--body-file', required=True, help='UTF-8 JSON object; session is always --session')
+        if command == 'regex-preview':
+            source = p.add_mutually_exclusive_group(required=True)
+            source.add_argument('--text')
+            source.add_argument('--text-file')
+            p.add_argument('--channel', choices=['prompt', 'display'], default='display')
+            p.add_argument('--placement', type=int, choices=range(7), default=2)
+            p.add_argument('--depth', type=int, default=0)
+            p.add_argument('--is-edit', action='store_true')
+        if command == 'card-apply': p.add_argument('--job-id', required=True)
+        if command == 'card-convert': p.add_argument('--resource-id', help='Convert this library resource; omit for the current card')
+        if command == 'resource': p.add_argument('--resource-id', required=True)
+        if command == 'card-source': p.add_argument('--out', required=True, help='New local file; preserves original bytes')
         if command == 'cluster-set':
             p.add_argument('--enabled', choices=['true', 'false'], required=True)
         if command == 'cluster-route':
@@ -156,8 +232,10 @@ def parse(argv):
             p.add_argument('--through-seq', type=int, required=True, help='Inclusive durable log boundary')
             p.add_argument('--limit', type=int, default=20)
         if command == 'worldline':
-            p.add_argument('--action', choices=['select-worldline', 'operation-status'], required=True)
+            p.add_argument('--action', choices=['select-worldline', 'operation-status', 'prepare', 'create-worldline', 'register'], required=True)
             p.add_argument('--operation-id')
+            p.add_argument('--body-file', help='Exact native fields for prepare/register; action/session come from flags')
+            p.add_argument('--out', help='Save the complete native reply as JSON in a new local file')
         if command == 'model-set':
             p.add_argument('--body-file', required=True, help='Object with scope, settings, expectedRevision')
         if command == 'model-route':
@@ -205,6 +283,12 @@ def parse(argv):
     p.add_argument('--body-file', required=True, help='JSON object; supported fields are name and gender')
     p.add_argument('--dry-run', action='store_true')
     args = parser.parse_args(argv)
+    if args.command == 'community-presets' and args.action in ['export', 'export-plans'] and not args.preset_id:
+        raise CliError('arguments', 'Export requires --preset-id')
+    if args.command == 'regex-import' and args.binding_scope == 'preset' and not args.preset_id:
+        raise CliError('arguments', '--binding-scope preset requires --preset-id')
+    if args.command in ['logs', 'usage-requests'] and (args.offset < 0 or not 1 <= args.limit <= 100):
+        raise CliError('arguments', '--offset must be nonnegative and --limit must be 1-100')
     if args.command == 'cluster-route':
         if bool(args.provider) != bool(args.model): parser.error('--provider and --model must be supplied together')
         if args.inherit and args.effort: parser.error('--inherit cannot set --effort; use --main or a provider/model')
@@ -284,7 +368,9 @@ def rpc(method, request):
 
 
 def text_input(args):
-    value = Path(args.text_file).read_text(encoding='utf-8-sig') if getattr(args, 'text_file', None) else args.text
+    # Branch registration and queueing compare the exact prompt text. Do not
+    # let universal-newline decoding change a Windows CRLF file to LF.
+    value = Path(args.text_file).read_bytes().decode('utf-8-sig') if getattr(args, 'text_file', None) else args.text
     if not value.strip(): raise CliError('input', 'Player input must not be empty')
     return value
 
@@ -360,8 +446,65 @@ def build_plan(args):
         if offset<0: raise CliError('cursor','cursor must be nonnegative')
         return {**rpc('session/list', {}),'summary':'sessions','query':args.query,'limit':args.limit,'offset':offset}
     if command == 'conversations': return rest('conversations')
-    if command in ['state', 'activity', 'models', 'jobs', 'resources', 'logs', 'usage']:
+    if command in ['state', 'activity', 'models', 'jobs', 'resources', 'card-conversion', 'regexes', 'mvu-state']:
         return rest(command + '?' + urlencode(body))
+    if command == 'mvu-set':
+        value = json.loads(Path(args.body_file).read_text(encoding='utf-8-sig'))
+        if not isinstance(value, dict): raise CliError('input', 'Body must be a JSON object')
+        return rest('mvu-state', {**value, **body})
+    if command == 'model-select':
+        return rpc('session/selectModel', {**body, 'provider': args.provider, 'model': args.model,
+            **({'reasoningEffort': args.effort} if args.effort is not None else {})})
+    if command in ['usage', 'usage-requests', 'logs']:
+        query = {**body, 'scope': args.scope}
+        for source, target in [('target_session_id', 'targetSessionId'), ('from_time', 'from'),
+            ('to_time', 'to'), ('provider', 'provider'), ('model', 'model'), ('kind', 'kind'),
+            ('currency', 'currency'), ('status', 'status'), ('offset', 'offset'), ('limit', 'limit')]:
+            value = getattr(args, source, None)
+            if value is not None: query[target] = value
+        return rest(command + '?' + urlencode(query))
+    if command == 'community-presets':
+        query = {**body}
+        if args.preset_id: query['presetId'] = args.preset_id
+        if args.action: query['action'] = args.action
+        return rest('community-presets?' + urlencode(query))
+    if command in ['preset-import', 'regex-import']:
+        source = Path(args.file)
+        raw_text = source.read_bytes().decode('utf-8-sig')
+        json.loads(raw_text)
+        value = {**body, 'action': 'import', 'expectedRevision': args.expected_revision,
+            'rawText': raw_text, 'fileName': source.name}
+        if args.name is not None: value['name'] = args.name
+        if command == 'regex-import':
+            value['bindingScope'] = args.binding_scope
+            if args.preset_id: value['presetId'] = args.preset_id
+        return rest('regexes' if command == 'regex-import' else 'community-presets', value)
+    if command == 'preset-select':
+        return rest('community-presets?' + urlencode(body))
+    if command == 'preset-inherit':
+        return rest('community-presets', {**body, 'action': 'inherit', 'expectedRevision': args.expected_revision})
+    if command in ['preset-set', 'regex-set', 'regex-display']:
+        value = json.loads(Path(args.body_file).read_text(encoding='utf-8-sig'))
+        if not isinstance(value, dict): raise CliError('input', 'Body must be a JSON object')
+        if command == 'regex-display':
+            return rest('regexes', {**body, 'action': 'display', 'messages': value['messages']})
+        actions = (['update', 'delete'] if command == 'regex-set' else
+            ['select', 'update', 'copy', 'delete', 'configure', 'control', 'import-plans', 'preview-plans', 'apply-plans', 'save-plan'])
+        if value.get('action') not in actions: raise CliError('input', 'Unsupported community action')
+        if value['action'] != 'preview-plans' and 'expectedRevision' not in value:
+            raise CliError('input', 'Body requires expectedRevision from the last policy read')
+        if command == 'preset-set': value.setdefault('scope', 'conversation')
+        return rest('regexes' if command == 'regex-set' else 'community-presets', {**value, **body})
+    if command == 'regex-preview':
+        text = Path(args.text_file).read_bytes().decode('utf-8-sig') if args.text_file else args.text
+        return rest('regexes', {**body, 'action': 'preview', 'text': text, 'channel': args.channel,
+            'placement': args.placement, 'depth': args.depth, 'isEdit': args.is_edit})
+    if command == 'card-convert':
+        return rest('jobs', {**body, 'kind': 'card-convert',
+            **({'resourceId': args.resource_id} if args.resource_id else {})})
+    if command == 'card-apply': return rest('card-conversion', {**body, 'jobId': args.job_id})
+    if command == 'card-source': return rest('card-source?' + urlencode(body), download=True)
+    if command == 'resource': return rest('resource?' + urlencode({**body, 'resourceId': args.resource_id}))
     if command == 'settings': return rest('memory-settings?' + urlencode(body))
     if command in ['cluster', 'cluster-set', 'cluster-route']: return rest('character-cluster?' + urlencode(body))
     if command == 'settings-set': return rest('memory-settings?' + urlencode(body), settingsWrite=True)
@@ -421,8 +564,14 @@ def build_plan(args):
                  'kind': 'player-edit' if command == 'edit-send' else 'regenerate',
                  **({'userSeq': args.user_seq} if args.user_seq is not None else {'messageId': args.message_id})})
     if command == 'worldline':
-        if args.action == 'operation-status' and not args.operation_id: raise CliError('input', 'operation-status requires --operation-id')
-        return rest('branch', {**body, 'action': args.action, **({'operationId': args.operation_id} if args.operation_id else {})})
+        value = json.loads(Path(args.body_file).read_text(encoding='utf-8-sig')) if args.body_file else {}
+        if not isinstance(value, dict): raise CliError('input', 'Body must be a JSON object')
+        if args.operation_id: value['operationId'] = args.operation_id
+        if args.action in ['operation-status', 'create-worldline', 'register'] and not value.get('operationId'):
+            raise CliError('input', args.action + ' requires --operation-id or operationId in --body-file')
+        if args.action in ['prepare', 'register'] and not args.body_file:
+            raise CliError('input', args.action + ' requires --body-file with exact native fields')
+        return rest('branch', {**value, **body, 'action': args.action})
     if command == 'model-set':
         settings = json.loads(Path(args.body_file).read_text(encoding='utf-8-sig'))
         if not isinstance(settings,
@@ -602,6 +751,14 @@ def transport(config, plan):
 
 # Keep handlers local: the CLI archive and remote worker have single-file loading contracts.
 def dry_run_result(args, plan):
+    if args.command == 'preset-select':
+        return {'dryRun': True, 'plan': {'read': plan, 'write': rest('community-presets', {
+            'sessionId': args.session, 'action': 'select', 'scope': args.scope,
+            'expectedRevision': args.expected_revision,
+            'selection': '<scope selection; target preset=' + str(None if args.off else args.preset_id)
+                + '; reset preset-specific overrides when changed>'})},
+            'workflow': ['read scope selection', 'preserve general options and reset changed-preset overrides',
+                'submit with caller revision; no automatic retry']}
     if args.command in ['upload-card', 'upload']:
         safe = {key: value for key, value in plan.items() if key != 'fileData'}
         if 'fileData' in plan: safe['fileData'] = '<base64 omitted>'
@@ -703,6 +860,20 @@ def execute_settings_write(args, plan, call):
              dict) else revision}
 
 
+def execute_preset_selection(args, plan, call):
+    policy = call(plan)
+    current = policy['global'] if args.scope == 'global' else policy.get('local') or policy['global']
+    selection = dict(current)
+    preset_id = None if args.off else args.preset_id
+    if preset_id != current.get('presetId'):
+        # Match the product selector: prompt identifiers are reused by different
+        # presets, so their old content/toggle overrides must not cross a switch.
+        selection.update(prompts={}, contents={}, regexes={}, features={})
+    selection['presetId'] = preset_id
+    return call(rest('community-presets', {'sessionId': args.session, 'action': 'select',
+        'scope': args.scope, 'selection': selection, 'expectedRevision': args.expected_revision}))
+
+
 def execute_workspace_create(args, plan, call):
     try:
         adopted = call(rpc('workspace/create', {'path': args.workspace_path}))
@@ -778,7 +949,8 @@ def execute_player_worldline(args, plan, call):
              'admission': result,
              'completion': 'Check worldline --action operation-status; submission does not mean generation completed'}
     except Exception as error:
-        raise CliError('worldline-incomplete', str(error), {**progress, 'automaticRetry': False, 'automaticAbort': False}) from None
+        raise CliError('worldline-incomplete', str(error), {**progress, 'automaticRetry': False, 'automaticAbort': False,
+            'causeCode': getattr(error, 'code', None), 'cause': getattr(error, 'details', None)}) from None
 
 
 def execute_delete_user_worldline(args, plan, call):
@@ -794,7 +966,8 @@ def execute_delete_user_worldline(args, plan, call):
             raise CliError('worldline-incomplete', 'Delete-user registration returned no truncation proof', {**progress, 'registration': registered})
         return {**progress, 'truncated': True, 'completion': 'Deleted player turn is represented by the new worldline'}
     except Exception as error:
-        raise CliError('worldline-incomplete', str(error), {**progress, 'automaticRetry': False, 'automaticAbort': False}) from None
+        raise CliError('worldline-incomplete', str(error), {**progress, 'automaticRetry': False, 'automaticAbort': False,
+            'causeCode': getattr(error, 'code', None), 'cause': getattr(error, 'details', None)}) from None
 
 
 def execute_model_route(args, plan, call):
@@ -1107,10 +1280,21 @@ def execute_workspace_upload(args, plan, call):
 
 def format_common_result(args, plan, result):
     if args.command == 'send': return {'requestId': plan['body']['payload']['args']['request']['requestId'], 'admission': result}
-    if args.command == 'download':
+    if args.command in ['download', 'card-source']:
         raw = base64.b64decode(result['binary'], validate=True)
         with open(args.out, 'xb') as target: target.write(raw)
         return {'path': str(Path(args.out).resolve()), 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+    if args.command == 'worldline' and args.out:
+        # Save the native reply without inventing a second recovery schema.
+        # The operator retains the exact request body and decides the next step.
+        raw = (json.dumps(result, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
+        try:
+            with open(args.out, 'xb') as target: target.write(raw)
+        except OSError:
+            raise CliError('receipt-save', 'Native operation replied but its local receipt could not be saved',
+                {'reply': result, 'automaticRetry': False}) from None
+        return {'reply': result, 'path': str(Path(args.out).resolve()),
+            'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
     if args.command in ['sessions', 'resolve']:
         if isinstance(result, dict) and 'conversations' in result:
             rows = list(result['conversations'].values())
@@ -1174,13 +1358,17 @@ def execute(args, config, transport=transport):
              'auth': auth,
              'credentialsReturned': False,
              'newServerEndpoint': False}
-    if args.command == 'download' and Path(args.out).exists(): raise CliError('exists', 'Download target already exists; choose a new --out path')
+    if args.command in ['download', 'card-source', 'worldline'] and getattr(args, 'out', None) and Path(args.out).exists():
+        raise CliError('exists', 'Download target already exists; choose a new --out path')
     # Agent-owned routes may be absent after a restart. Explicit wake resumes the
     # named Agent only; it sends no prompt. No retries of paid/writing requests.
-    if getattr(args, 'session', None) and args.command not in ['history', 'cancel', 'clone', 'upload']:
+    if (getattr(args, 'session', None) and not getattr(args, 'no_wake', False)
+        and args.command not in ['history', 'cancel', 'clone', 'upload', 'wake', 'mvu-state', 'mvu-set', 'model-select']):
         call(rest('wake', {'sessionId': args.session}))
     if args.command in ['cluster-set', 'cluster-route']:
         return execute_cluster_write(args, plan, call)
+    if args.command == 'preset-select':
+        return execute_preset_selection(args, plan, call)
     if args.command in ['regenerate', 'edit-send']:
         return execute_player_worldline(args, plan, call)
     if args.command == 'delete-user':

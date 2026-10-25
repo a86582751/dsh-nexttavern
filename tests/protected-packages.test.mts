@@ -102,27 +102,38 @@ test('preparation writes versioned payloads and owned refs, preserving user stat
   assert.equal(fs.existsSync(path.join(f.root, 'unused-backup')), false)
 })
 
-test('upgrade preparation rolls back references exactly and removal retains old generations and user packages', () => {
-  const f = fixture('upgrade')
+for (const nextVersion of ['1.0.0', '2.0.0']) test(`changed bytes at ${nextVersion} update references and preserve older generations`, () => {
+  const f = fixture('upgrade-' + nextVersion)
   const one = source(f.root)
   const first = prepareProtectedPackages({...f, packages: [one]})
   const before = fs.readFileSync(f.manifest)
-  const two = source(f.root, one.name, '2.0.0')
+  const retired = path.join(f.home, first.receipt.packages[0].directory, 'index.js')
+  write(retired, 'user edited the superseded generation')
+  const two = source(f.root, one.name, nextVersion)
+  write(path.join(two.source, 'index.js'), 'export const revision = 2\n')
+  two.files.find(file => file.path === 'index.js')!.sha256 = digest(fs.readFileSync(path.join(two.source, 'index.js')))
+  write(path.join(two.source, 'lib/nested.js'), 'export const nested = true\n')
+  two.files.push({path: 'lib/nested.js', sha256: digest(fs.readFileSync(path.join(two.source, 'lib/nested.js')))})
   const backup = path.join(f.root, 'upgrade-backup')
   const second = prepareProtectedPackages({...f, packages: [two], backup})
   assert.notEqual(first.receipt.packages[0].directory, second.receipt.packages[0].directory)
-  assert.ok(fs.existsSync(path.join(f.home, first.receipt.packages[0].directory, 'index.js')))
+  assert.equal(fs.readFileSync(retired, 'utf8'), 'user edited the superseded generation')
+  for (const file of two.files) {
+    assert.equal(digest(fs.readFileSync(path.join(f.home, second.receipt.packages[0].directory, file.path))), file.sha256)
+  }
   rollbackTransaction(backup)
   assert.deepEqual(fs.readFileSync(f.manifest), before)
   const retry = prepareProtectedPackages({...f, packages: [two], backup: path.join(f.root, 'retry-backup')})
-  assert.equal(retry.receipt.packages[0].version, '2.0.0', 'empty directories left by rollback allow retry')
+  assert.equal(retry.receipt.packages[0].version, nextVersion, 'empty directories left by rollback allow retry')
+  assert.equal(json(f.manifest).dependencies[one.name], retry.receipt.packages[0].reference)
   prepareProtectedPackages({...f, packages: [], backup: path.join(f.root, 'remove-backup')})
   assert.equal(json(f.manifest).dependencies[one.name], undefined)
   assert.equal(json(f.manifest).dependencies['dsh-plugin-anydoc'], '1.0.0')
   assert.ok(fs.existsSync(path.join(f.home, retry.receipt.packages[0].directory, 'index.js')))
+  assert.equal(fs.readFileSync(retired, 'utf8'), 'user edited the superseded generation')
 })
 
-test('unknown pins, edited managed refs, tampered payloads and incomplete source inventories fail before writes', () => {
+test('unknown pins, edited managed refs and incomplete source inventories fail before writes', () => {
   const f = fixture('conflicts')
   const input = source(f.root)
   const original = fs.readFileSync(f.manifest)
@@ -136,33 +147,76 @@ test('unknown pins, edited managed refs, tampered payloads and incomplete source
     {path: 'INDEX.js', sha256: input.files[1]!.sha256}]}]}), /Duplicate/)
   assert.throws(() => planProtectedPackages({...f, packages: [{...input, files: [...input.files,
     {path: 'NUL.txt', sha256: input.files[1]!.sha256}]}]}), /portable/)
-  const prepared = prepareProtectedPackages({...f, packages: [input]})
+  prepareProtectedPackages({...f, packages: [input]})
   const accepted = fs.readFileSync(f.manifest)
   write(f.manifest, {...json(f.manifest), dependencies: {...json(f.manifest).dependencies, [input.name]: 'registry-version'}})
   assert.throws(() => planProtectedPackages({...f, packages: [input]}), /reference changed/)
   fs.writeFileSync(f.manifest, accepted)
-  write(path.join(f.home, prepared.receipt.packages[0].directory, 'index.js'), 'user edited')
-  assert.throws(() => planProtectedPackages({...f, packages: [input]}), /hash differs/)
   assert.deepEqual(fs.readFileSync(f.manifest), accepted)
 })
 
-test('reused generations are rechecked under the home lock without rewriting them', () => {
-  const f = fixture('locked-assertions')
+for (const adopted of [false, true]) test(`a rolled-back shared generation cannot publish references (adopted: ${adopted})`, () => {
+  const f = fixture('locked-assertions-' + adopted)
   const input = source(f.root)
-  const first = prepareProtectedPackages({...f, packages: [input]})
+  write(path.join(f.home, 'profiles/other/package.json'), {name: 'other-profile'})
+  const first = prepareProtectedPackages({...f, profile: 'other', packages: [input]})
+  if (adopted) prepareProtectedPackages({...f, packages: [input], backup: path.join(f.root, 'adopt-backup')})
   const before = fs.readFileSync(f.manifest)
-  const two = source(f.root, input.name, '2.0.0')
-  const plan = planProtectedPackages({...f, packages: [two]})
+  const receiptPath = path.join(f.home, 'profiles/web/.nexttavern-protected-packages.json')
+  const beforeReceipt = adopted ? fs.readFileSync(receiptPath) : null
+  const two = source(f.root, 'dsh-nexttavern-pi-ai')
+  const plan = adopted ? null : planProtectedPackages({...f, packages: [input, two]})
   const existing = path.join(f.home, first.receipt.packages[0].directory, 'index.js')
-  write(existing, 'changed after plan')
-  assert.throws(() => applyTransaction({root: f.home, backup: path.join(f.root, 'rejected'),
-    files: plan.changes, assertUnchanged() {
-      assert.equal(json(path.join(f.home, '.nexttavern-transaction.lock')).pid, process.pid)
-      plan.assertUnchanged()
-    }}), /hash differs/)
+  rollbackTransaction(f.backup)
+  if (adopted) {
+    assert.throws(() => prepareProtectedPackages({...f, packages: [input],
+      backup: path.join(f.root, 'unchanged')}), /Committed protected generation is missing/)
+    assert.equal(fs.existsSync(path.join(f.root, 'unchanged')), false, 'unchanged references open no transaction')
+    assert.throws(() => prepareProtectedPackages({...f, packages: [input, two],
+      backup: path.join(f.root, 'rejected')}), /Committed protected generation is missing/)
+    assert.deepEqual(fs.readFileSync(receiptPath), beforeReceipt)
+  } else {
+    assert.throws(() => applyTransaction({root: f.home, backup: path.join(f.root, 'rejected'),
+      files: plan!.changes, assertUnchanged: plan!.assertUnchanged}), /inventory differs/)
+  }
   assert.deepEqual(fs.readFileSync(f.manifest), before)
-  assert.equal(fs.readFileSync(existing, 'utf8'), 'changed after plan', 'unknown edits are never rolled back')
-  assert.equal(fs.existsSync(path.join(f.home, plan.receipt.packages[0].directory, 'index.js')), false)
+  assert.equal(fs.existsSync(existing), false, 'the rejected transaction leaves the other profile rollback intact')
+  assert.equal(fs.existsSync(path.join(f.home, 'maintenance/fixed-packages', two.name)), false,
+    'the rejected preparation writes no new child')
+})
+
+test('an adopted reference waits for a shared generation rebuild to complete', () => {
+  const f = fixture('adopted-partial-rebuild')
+  const input = source(f.root)
+  write(path.join(input.source, 'ui/panel.js'), 'export const panel = true\n')
+  input.files.push({path: 'ui/panel.js', sha256: digest(fs.readFileSync(path.join(input.source, 'ui/panel.js')))})
+  for (const profile of ['other', 'third']) {
+    write(path.join(f.home, 'profiles', profile, 'package.json'), {name: profile + '-profile'})
+  }
+  const created = prepareProtectedPackages({...f, profile: 'other', packages: [input]})
+  prepareProtectedPackages({...f, packages: [input], backup: path.join(f.root, 'adopt-backup')})
+  const prepared = readPreparedProfile(f.home, 'web')!
+  rollbackTransaction(f.backup)
+  const child = path.join(f.root, 'interrupted-rebuild.mjs'), childBackup = path.join(f.root, 'third-backup')
+  write(child, [
+    `import {planProtectedPackages} from ${JSON.stringify(pathToFileURL(compiled).href)};`,
+    `import {applyTransaction} from ${JSON.stringify(new URL('../lib/operations/public-transaction.mjs', import.meta.url).href)};`,
+    `const plan=planProtectedPackages(${JSON.stringify({...f, profile: 'third', packages: [input]})});`,
+    `applyTransaction({root:plan.home,backup:${JSON.stringify(childBackup)},files:plan.changes,`,
+    `purpose:'prepare-protected-package-references',assertUnchanged:plan.assertUnchanged,crashAfter:2});`,
+  ].join('\n'))
+  const result = spawnSync(process.execPath, [child], {encoding: 'utf8', timeout: 10000})
+  assert.equal(result.status, 86, String(result.error ?? result.stderr))
+  const directory = path.join(f.home, created.receipt.packages[0].directory)
+  assert.equal(fs.existsSync(path.join(directory, 'package.json')), true)
+  assert.equal(fs.existsSync(path.join(directory, 'ui/panel.js')), false)
+  assert.equal(durableReferencesIntact(f.home, 'web', prepared.references.values(), prepared.clientClaims), false,
+    'the adopted profile cannot report readiness from a partly rebuilt generation')
+  recoverProtectedPackages(f.home)
+  prepareProtectedPackages({...f, profile: 'third', packages: [input], backup: path.join(f.root, 'third-retry')})
+  assert.equal(durableReferencesIntact(f.home, 'web', prepared.references.values(), prepared.clientClaims), true)
+  assert.deepEqual(fs.readFileSync(path.join(directory, 'ui/panel.js')),
+    fs.readFileSync(path.join(input.source, 'ui/panel.js')))
 })
 
 test('a caller-admitted generation is not read again, while any other record or tree still is', () => {

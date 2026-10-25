@@ -59,6 +59,8 @@ export interface StoredTask {
   error?: string | null
   failure?: unknown
   validationFailures?: number
+  /** A schema proposal is one explicit result, never an automatic repair loop. */
+  validationFailurePolicy?:'terminal'
   [key: string]: unknown
 }
 export interface TaskJob extends StoredTask {
@@ -93,6 +95,7 @@ export interface TaskSpec<S, A> {
   maxTokens?: number
   timeoutMs?: number
   selection?: TaskSelection
+  validationFailurePolicy?:'terminal'
   validate?(value: unknown): unknown | PromiseLike<unknown>
   onAdmission?(job: TaskJob): unknown | PromiseLike<unknown>
   onResult?(job: TaskJob): unknown | PromiseLike<unknown>
@@ -155,6 +158,7 @@ export function storedTask(value: unknown): StoredTask | null {
   for(const key of ['createdAt','updatedAt','validationFailures'])if(record[key]!==undefined&&typeof record[key]!=='number')return null
   if(record.error!=null&&typeof record.error!=='string')return null
   if(record.background!==undefined&&typeof record.background!=='boolean')return null
+  if(record.validationFailurePolicy!==undefined&&record.validationFailurePolicy!=='terminal')return null
   if(record.input!==undefined&&!taskObject(record.input))return null
   for(const key of ['main','actualRoute'])if(record[key]!==undefined&&!isRoute(record[key]))return null
   if(record.allowedTools!==undefined&&(!Array.isArray(record.allowedTools)||!record.allowedTools.every(value=>typeof value==='string')))return null

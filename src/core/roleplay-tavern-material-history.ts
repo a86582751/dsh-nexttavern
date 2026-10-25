@@ -2,12 +2,14 @@
  * These historical facts grant no new step, claim, Source or dispatch rights. */
 import {nativeInputSha256,verifyNativeRequestMaterialHistoryV1,
   validateNativeOpeningInvocationV1,validateNativeOpeningRequestAttemptV1} from '@deepseek-ai/dsh-agent-loop'
-import type {NativeRequestMaterialEventV1} from '@deepseek-ai/dsh-agent-loop'
+import type {NativeRequestMaterialEventV1,NativeRequestMaterialTransformV1} from '@deepseek-ai/dsh-agent-loop'
 import type {Session,SessionEvent,SessionMessageProjection,SessionSeq} from '@deepseek-ai/dsh-session'
 import type {createRoleplayInputStateOwner,RoleplayInputStateRead} from './roleplay-input-state.js'
 import {recordSha256} from './roleplay-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import type {TavernSourceMaterialPublicationV1} from './roleplay-tavern-source-inheritance-types.js'
+import type {CommunityExecutionRecord} from './community-preset-execution.js'
+import type {TavernNativeFinalLoreTextV1} from './roleplay-tavern-layout.js'
 import {roleplayOpeningMaterialKeysV1} from './roleplay-opening-material.js'
 import type {RoleplayOpeningMaterialRecordV1,RoleplayOpeningMaterialDataRefV1} from './roleplay-opening-material.js'
 import {programOpeningInputKeyV1,validateProgramOpeningSeedV1,
@@ -307,6 +309,54 @@ function capturePublication(deps:TavernMaterialHistoryDependenciesV1,event:Nativ
   }
   if(budget.bytes>67_108_864)fail('INPUT_MATERIAL_HISTORY_CORE_BUDGET')
   return facts.publication
+}
+/** One exact published request, selected by its actual Native event. A Story
+ * maintenance consumer does not need a catalog of every historical request. */
+export function captureRoleplayTavernMaterialPublicationV1(deps:TavernMaterialHistoryDependenciesV1,
+  ref:TavernSourceMaterialPublicationV1) {
+  deps.assertOwnerCurrent()
+  const events=deps.events(),event=events[ref.nativeSeq]
+  if(ref.ownerSessionId!==deps.sessionId||event?.type!=='request/material'
+    ||nativeInputSha256(event)!==ref.nativeEventSha256||nativeInputSha256(event.data)!==ref.nativeRecordSha256
+    ||!sameNative(event.data.snapshot,ref.snapshotRef)||!sameNative(event.data.plan,ref.planRef)) {
+    fail('INPUT_MATERIAL_HISTORY_CORE_REF_CONFLICT')
+  }
+  const reads:RoleplayInputStateRead<PublicationFacts>[]=[],references=new Map<string,string>()
+  const publication=capturePublication(deps,event,ref.ownerSessionId,references,budgetV1(),events,[...deps.projections()],reads)
+  deps.assertOwnerCurrent()
+  return publication
+}
+/** Consume only rendered contributions from this exact publication. Original
+ * author partitions can include deliberately suppressed legacy lore; selected
+ * messages and their history projections are not author-contribution inputs. */
+export function collectRoleplayTavernPublishedAuthorMaterialV1(
+  publication:ReturnType<typeof captureRoleplayTavernMaterialPublicationV1>) {
+  const transform=publication.plan.payload.nativeTransform as Pick<NativeRequestMaterialTransformV1,
+    'sections'|'insertions'|'anchoredInsertions'>|undefined,
+    prompt=publication.plan.payload.promptPlan as {finalLore?:readonly TavernNativeFinalLoreTextV1[];
+      community?:CommunityExecutionRecord}|undefined,
+    audit=publication.snapshot.payload.injectionAudit as {consumers?:readonly {
+      consumer:'scan'|'chat';results:readonly {registrationSha256:string;accepted:boolean}[]
+    }[]}|undefined
+  if(!transform?.sections||!prompt?.finalLore)fail('SCHEMA_MAINTENANCE_MATERIAL_UNSUPPORTED')
+  const sections=new Set(['roleplay:cards','roleplay:rules','roleplay:examples','roleplay:community-preset']),
+    authorGroups=transform.sections.filter(section=>sections.has(section.name))
+      .map(section=>({id:section.name,text:section.replacementText})),
+    authoredRefs=new Set<string>(),loreMarkers=new Set(['worldInfoBefore','worldInfoAfter'])
+  // The producer's prompt catalog omits chatHistory and generated Advice or
+  // history wrappers. An arbitrary community-* insertion is not enough.
+  for(const row of prompt.community?.prompts??[]) {
+    // Import identifies these two marker names exactly; their pure lore is
+    // already supplied by finalLore. Card/example markers remain authored DATA.
+    if(row.role!=='system'&&!loreMarkers.has(row.identifier))authoredRefs.add('community-'+row.identifier)
+  }
+  for(const cut of audit?.consumers??[])if(cut.consumer==='chat') {
+    for(const row of cut.results)if(row.accepted)authoredRefs.add('inject-'+row.registrationSha256)
+  }
+  for(const row of [...transform.insertions,...(transform.anchoredInsertions??[])]) {
+    if(authoredRefs.has(row.contributionRef))authorGroups.push({id:row.contributionRef,text:row.renderedText})
+  }
+  return {authorGroups,finalLore:prompt.finalLore}
 }
 function assertOpeningCatalog(deps:TavernMaterialHistoryDependenciesV1,
   publications:readonly ReturnType<typeof readPublication>[],events:readonly SessionEvent[]):void {

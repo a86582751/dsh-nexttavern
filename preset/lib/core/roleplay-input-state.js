@@ -35,6 +35,7 @@ function explanatorySuffix(suffix) {
         || suffix.startsWith('task-snapshot-')
         || suffix === 'task-preparation' || suffix === 'context-window'
         || suffix.startsWith('task-steering-') || suffix.startsWith('maintenance-timing-')
+        || suffix.startsWith('mvu-schema-maintenance-')
         || suffix.startsWith('tavern-prompt-v1-')
         // Browser3 declarations write these canonical outputs. Source membership
         // does not consume them; a captured key head has its own State currency.
@@ -426,7 +427,10 @@ export function createRoleplayInputStateOwner(deps) {
                         return false;
                     }
                 }
-                // Entry already checked identity; these dependency reads are synchronous.
+                if (!nominalCurrent(candidate)) {
+                    markDirty(candidate);
+                    return false;
+                }
                 visiting.delete(candidate);
                 completed.add(candidate);
             }
@@ -539,10 +543,7 @@ export function createRoleplayInputStateOwner(deps) {
             metrics[slot === 'schema' ? 'schemaCaptures' : slot === 'source' ? 'sourceCaptures' :
                 slot === 'observation' ? 'observationCaptures' : slot === 'history' ? 'historicalCaptures' : slot === 'control' ? 'controlCaptures' :
                     slot === 'closing' ? 'closingCaptures' : 'inputCaptures']++;
-            const result = handle(frame, data);
-            capturing = outer;
-            connect(frame);
-            return result;
+            return handle(frame, data);
         }
         catch (error) {
             markDirty(frame);
@@ -551,6 +552,8 @@ export function createRoleplayInputStateOwner(deps) {
         }
         finally {
             capturing = outer;
+            if (current(frame))
+                connect(frame);
         }
     }
     /** Reuse only the Domain footprint of the completed Source capture. The

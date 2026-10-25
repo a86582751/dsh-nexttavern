@@ -100,7 +100,7 @@ function accept(data, seq, epochs, events) {
     if (data.encoding === 'native-mvu-schema-revision-marker-v1') {
         const edit = events[data.editSeq];
         if (!epoch || epoch.pending || edit?.type !== 'roleplay/message-edit' || edit.seq >= seq
-            || edit.data.role !== 'assistant')
+            || (edit.data.role !== 'assistant' && edit.data.role !== 'user'))
             throw Error('MVU_SCHEMA_REVISION_EDIT_UNPROVEN');
         if (epoch.revisions.some(revision => revision.event.data.descriptor.key === data.descriptor.key)) {
             throw Error('MVU_SCHEMA_REVISION_REUSED');

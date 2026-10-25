@@ -116,6 +116,7 @@ import {createChatCardNativeContext} from './roleplay-chat-card-context.js'
 import {createRoleplayOpeningSelection,openingIntentKey} from './roleplay-opening-selection.js'
 import type {OpeningIntent, OpeningRejectionCode,OpeningSelectionDeps} from './roleplay-opening-selection.js'
 import {createRoleplayMvuOpening} from './roleplay-mvu-opening.js'
+import {createRoleplayMvuSchemaMaintenance} from './roleplay-mvu-schema-maintenance.js'
 import {createRoleplayMvuState} from './roleplay-mvu-state.js'
 import {acceptedMvuDisplayUpdate,formatMvuDisplayUpdates} from './roleplay-mvu-display-facts.js'
 import type {MvuAcceptedDisplayUpdate} from './roleplay-mvu-display-facts.js'
@@ -156,7 +157,8 @@ import {readJournal as readTavernLoreEditJournalV1} from './roleplay-tavern-lore
 import {createRoleplayTavernSourceInheritanceV1} from './roleplay-tavern-source-inheritance.js'
 import {createRoleplayTavernOwnSourceRecoveryV1} from './roleplay-tavern-source-recovery.js'
 import {captureRoleplayTavernMaterialPrefixV1,captureRoleplayTavernInheritedMaterialHistoryV1,
-  tavernMaterialPublicationRefsV1} from './roleplay-tavern-material-history.js'
+  tavernMaterialPublicationRefsV1,captureRoleplayTavernMaterialPublicationV1,
+  collectRoleplayTavernPublishedAuthorMaterialV1} from './roleplay-tavern-material-history.js'
 import type {TavernSourceMaterialPublicationV1,TavernSourceFrozenNonNumericalOpeningCaptureV1,
   TavernSourceFrozenNonNumericalOpeningV1,TavernSourceNativeCutV1} from './roleplay-tavern-source-inheritance-types.js'
 import type {PromptTemplateOnlyInheritedSourceInputV2,PromptTemplateOnlyInheritedReadOwnerV2}
@@ -212,6 +214,8 @@ import { registerAuthorTools } from './roleplay-author-tools.js'
 import { registerSessionTools, registerSessionCommands } from './roleplay-session-actions.js'
 import { simpleTool, registerTaskTools, createTaskSubmissionBindings } from './roleplay-task-tools.js'
 import {createRoleplayState,captureRoleplaySourceRecordVersionsV1,jsonResponse} from './roleplay-state.js'
+import {createRoleplayMvuSchemaTaskEdits} from './roleplay-mvu-schema-task-edit.js'
+import {parseMvuSchemaStoryCandidateV2} from './roleplay-mvu-schema-story-types.js'
 import { registerRoleplayDiagnosis } from './roleplay-diagnosis.js'
 import { registerCardAuthoring, registerDraftCheck } from './roleplay-authoring.js'
 import { registerAdaptationTools } from './card-adaptation-tools.js'
@@ -356,6 +360,7 @@ const DECISION_SYSTEM =
 export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CONFIG> = {}) {
   const cfg = { ...DEFAULT_CONFIG, ...(config ?? {}) }
   let inputOwner: ReturnType<typeof createRoleplayInputPreparation<CoreSession>> | undefined
+  let schemaMaintenance:ReturnType<typeof createRoleplayMvuSchemaMaintenance>|undefined
   let sourceReadOwnerClosed=false
   const inputBindings = new Map<object,RoleplayInputBinding>()
   function attachInputOwner(agent:CoreAgent):RoleplayInputBinding | undefined {
@@ -893,8 +898,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     },
     assertMaterialPublications:(id,publications)=>{
       const scope=materialReadScope(id)
-      // Capture reads and joins this complete inherited catalog synchronously.
-      captureRoleplayTavernInheritedMaterialHistoryV1({...scope,publications})
+      captureRoleplayTavernInheritedMaterialHistoryV1({...scope,publications}).assertCurrent()
     },
     ensureParentBranch:async id=>{
       const actual=ctx.sessions.get(id)
@@ -1342,6 +1346,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     selectedStatusGeneration,
     latestStatusEvent,
   } = createRoleplayStatus({
+    schemaMaintenance:(session,event)=>schemaMaintenance?.handles(session,event)===true,
     advancedCardReady:session=>nativeCardAdvanced.read(session.id).state==='ready',
     ctx,
     sessionForRowFacts:id=>ctx.sessions.get(id),
@@ -1489,12 +1494,23 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   } = createRoleplayWorldlines({
     sourceInheritance:tavernSourceInheritance,
     messageEdits: ctx.nexttavernMessageEdits,
-    beginNumericalEdit:id=>{inputState.invalidateSession(id);mvuEdits.begin(id);mvuOpening.invalidateSchemaSession(id)},
-    persistNumericalEdit:async(id,editSeq)=>{
-      const result=await mvuEdits.persistEdit({sessionId:id,editSeq})
-      if(result.kind==='unknown')throw Error(result.code)
+    checkNumericalTextEdit:(id,seq)=>mvuOpening.checkSchemaTextEdit(id,seq),
+    prepareNumericalTextEdit:async(session,event,text,options)=>{
+      await ensureBranch(session)
+      const role=event.type==='assistant/message'?'assistant' as const:'user' as const
+      const message=role==='assistant'?event.data!.message!:event.data!
+      return schemaTaskEdits.prepare(session,{role,seq:Number(event.seq),messageId:String(message.id),text,
+        previousVersionSha256:recordSha256(message)},options)
     },
-    reconcileNumericalEdit:async(id,editSeq)=>{await mvuOpening.reconcileSchemaStoryEdit(id,editSeq)},
+    appendNumericalTextEdit:(session,intent,append)=>schemaTaskEdits.append(session,intent,append),
+    persistNumericalTextEditIntent:(session,intent)=>schemaTaskEdits.persistIntent(session,intent),
+    recoverNumericalTextEdit:session=>schemaTaskEdits.recover(session),
+    beginNumericalEdit:id=>{inputState.invalidateSession(id);mvuEdits.begin(id);mvuOpening.invalidateSchemaSession(id)},
+    persistNumericalEdit:persistNumericalMessageEdit,
+    reconcileNumericalEdit:async(id,editSeq)=>{
+      await mvuOpening.reconcileSchemaStoryEdit(id,editSeq)
+      if(schemaStory?.taskEditResolved(id,editSeq))await schemaTaskEdits.complete(id,editSeq)
+    },
     confirmUnchangedNumericalEdit:id=>mvuEdits.confirmNoEdit(id),
     flushEdits: async session => {
       if (!await ctx.sessions.flush(session)) throw new Error('会话编辑尚无持久化提供者，未提交派生状态')
@@ -1712,7 +1728,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     resumeCardWorkflows,
     reconcileCanonicalPlayerVariants,
     buildForkLookupIndex,
-    resumeNovelExports, ensureBranch, buildPhaseA, buildPhaseACandidate, characterRoster, storyWindowSettings, runStatusObligation,
+    resumeNovelExports, ensureBranch, buildPhaseA, buildPhaseACandidate, characterRoster, storyWindowSettings,
+    runStatusObligation:(session,event,via,options)=>event&&schemaMaintenance?.handles(session,event)
+      ?schemaMaintenance.run(session,event,options?.agent,options?.signal):runStatusObligation(session,event,via,options),
     withImportLock: (...args) => withImportLock(...args),
     publishTurnDecision: (...args) => publishTurnDecision(...args),
     runPhaseBC: (...args) => runPhaseBC(...args),
@@ -1734,6 +1752,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   // Publish choices after durable prose, independently of the slower notes
   // scheduler. Required work can run while the native story turn is stopping.
   const { publishTurnDecision, generateTurnDecision } = createRoleplayDecision({
+    schemaMaintenanceDecision:(session,event,onAdmission,signal)=>
+      schemaMaintenance?.decision(session,event,onAdmission,signal),
     advancedCardReady:session=>nativeCardAdvanced.read(session.id).state==='ready',
     withDecisionMutationLock,
     normalizeDecisionRecord,
@@ -2548,6 +2568,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
           if(!group||group.anchor.openingOnly||!member||member.pending||member.deleted)continue
           const variant=group.playerVariants[member.playerVariantId]
           if(!variant||typeof variant.text!=='string')return 'unknown'
+          // A terminal fanout target intentionally retains its local Native text.
+          if(variant.schemaTaskEdit?.targets[id]?.terminal?.kind==='not-applied')continue
           const user=history.find(event=>event.type==='user/message'&&event.data?.source?.kind==='user'
             &&event.seq===member.userSeq&&event.data.id===member.userMessageId)
           if(!user)return 'unknown'
@@ -2559,6 +2581,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
           if(!group||group.anchor.openingOnly||!member||member.deleted)continue
           const variant=group.playerVariants[member.playerVariantId]
           if(!variant||typeof variant.text!=='string')return 'unknown'
+          if(variant.schemaTaskEdit?.targets[id]?.terminal?.kind==='not-applied')continue
           if(textOf(user.data?.content)!==variant.text)return true
         }
         return false
@@ -2631,6 +2654,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     return {...basis,observedNativeSeq:currentNativeSeq,kind:'schema-ready',values:structuredClone(snapshot.values),
       valuesSha256:snapshot.valuesSha256,sourceSha256:snapshot.sourceSha256,eventId:snapshot.currentHead.eventId,
       snapshot,displayUpdates:observation!.displayUpdates,
+      ...(observation!.lastTaskResultCanonicalSeq!==undefined
+        ?{lastTaskResultCanonicalSeq:observation!.lastTaskResultCanonicalSeq}:{}),
       ...observation!.unavailableExternalAddons
         ?{unavailableExternalAddons:observation!.unavailableExternalAddons}:{},
       ...observation!.commandDiagnostics?{commandDiagnostics:observation!.commandDiagnostics}:{},
@@ -2731,14 +2756,79 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       },
     },scope,descriptor),withSourceLock:(id,work)=>withImportLock(id,'input-management-terminal',work),
   }
+  async function persistNumericalMessageEdit(id:string,editSeq:number) {
+    const result=await mvuEdits.persistEdit({sessionId:id,editSeq})
+    if(result.kind==='unknown')throw Error(result.code)
+  }
   const schemaStory=mvuOpening.createSchemaStory({
     authorChat:authorChatState,
     closingView:(lease,scope)=>inputOwner?.readClosingView(lease,scope),
     verifyConsumedScope:scope=>inputOwner?.verifyConsumedScope(scope)===true,
     verifyNative:completionDeps.verifyNative,readCanonical:completionDeps.readCanonical,
     readConsumedCanonical:completionDeps.readConsumedCanonical!,awaitOwnedCompletion,
+    maintenanceCompletion:(scope,canonical,signal)=>schemaMaintenance?.completion(scope,canonical,signal)??Promise.resolve(undefined),
+    recoverTaskEdit:async session=>{
+      const recovered=await schemaTaskEdits.recover(session)
+      if(recovered?.kind==='matched') {
+        if(schemaStory?.taskEditResolved(session.id,recovered.event.seq))await schemaTaskEdits.complete(session.id,recovered.event.seq)
+        else {
+          await persistNumericalMessageEdit(session.id,recovered.event.seq)
+          return recovered.event.seq
+        }
+      }
+    },
   })
   completionDeps.schema=schemaStory
+  const schemaTaskEdits=createRoleplayMvuSchemaTaskEdits({status:T.status,branch:T.branch,
+    withSourceLock:(id,work)=>withImportLock(id,'mvu-schema-task-edit',work),
+    facts:async(id,target)=>{
+      if(!mvuOpening.hasSchemaOpening(id))return
+      const facts=await schemaStory?.taskEditFacts(id,target.seq)
+      if(!facts)return
+      const agent=taskAgents.get(id),current=target.role==='user'&&agent?.status==='running'
+        ?inputBindings.get(agent)?.current():undefined
+      // An accepted User can precede its completed Story. Its live input is
+      // still using the old text, so shared publication must wait for that turn.
+      const pendingStory=current?.kind==='story'&&current.checkpoint!==undefined
+        &&current.refs.some(ref=>ref.messageId===target.messageId)
+        &&!completionDeps.readCanonical(id,current.checkpoint.actualTurn)
+      return {...facts,pendingStory}
+    },
+    sourceSha256:mvuOpening.readSourceSha256,events:session=>eventsOf(session as ContextSession),
+    currentEditSeq:(session,seq)=>ctx.nexttavernMessageEdits.current(session as ContextSession,
+      eventsOf(session as ContextSession)).find(edit=>edit.data?.targetSeq===seq)?.seq,
+    begin:id=>{inputState.invalidateSession(id);mvuEdits.begin(id);mvuOpening.invalidateSchemaSession(id)},
+    flush:async session=>{
+      // Binding publication follows the actual Native durability acknowledgement.
+      if(!await ctx.sessions.flush(session as import('./roleplay-worldline-types.js').BranchSession)) {
+        throw Error('SCHEMA_TASK_EDIT_FLUSH_UNKNOWN')
+      }
+    },
+    parse:text=>parseMvuSchemaStoryCandidateV2(text,'analysis-alias-rfc6902-members-v1')})
+  schemaMaintenance=createRoleplayMvuSchemaMaintenance({table:T.branch,
+    eligible:id=>schemaStory?.supportsMaintenance(id)===true,
+    work:(session,turn)=>{
+      const agent=taskAgents.get(session.id),owned=agent&&ctx.get('agentLoop')?.getInputAdmissionAgent(agent)
+      if(!agent||owned!==agent||ctx.sessions.get(session.id)!==session)return undefined
+      const current=inputBindings.get(agent)?.current(),lookup=(owned as NativeInputAdmissionAgentV2).lookupInputCompletion(),
+        checkpoint=current?.checkpoint?.actualTurn===turn?current.checkpoint:
+          lookup.status!=='none'&&lookup.checkpoint.actualTurn===turn?lookup.checkpoint:undefined
+      return checkpoint?inputOwner?.readSchemaStoryWork(session.id,checkpoint):undefined
+    },
+    base:work=>schemaStory?.captureMaintenanceBase(work.sessionId,work.currency),
+    material:(session,event,work)=>{
+      const read=materialReadScope(session.id),events=read.events(),turn=Number(event.data?.turn),step=Number(event.data?.step),
+        material=events.findLast(row=>row.type==='request/material'&&row.data.turn===turn&&row.data.step===step
+          &&row.seq<event.seq&&row.seq>=work.checkpoint.startSeq)
+      if(material?.type!=='request/material')throw Error('SCHEMA_MAINTENANCE_MATERIAL_MISSING')
+      const reference:TavernSourceMaterialPublicationV1={ownerSessionId:session.id,nativeSeq:Number(material.seq),
+        nativeEventSha256:nativeInputSha256(material),nativeRecordSha256:nativeInputSha256(material.data),
+        snapshotRef:material.data.snapshot,planRef:material.data.plan},
+        published=captureRoleplayTavernMaterialPublicationV1(read,reference)
+      return {reference,...collectRoleplayTavernPublishedAuthorMaterialV1(published)}
+    },
+    selection:(session,agent)=>modelPolicy.resolve(session,'status',agent),request:input=>nativeTask(input),
+  })
   if(schemaStory)schemaDerived=createRoleplayMvuSchemaDerived({tables:T,branch:T.branch,status:T.status,
     captureRead:(id,compute)=>inputState.captureSource(id,'schema-derived-genesis',compute),
     session:id=>ctx.sessions.get(id) as unknown as NativeSession|undefined,readSession:mvuAncestry.readSession,
@@ -2936,6 +3026,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   }
   ctx.effect(()=>()=>programOpening?.dispose(),'roleplay: program opening owner lifetime')
   inputOwner = createRoleplayInputPreparation({table:T.branch,completion,
+    onNewWork:work=>schemaMaintenance!.admitNewWork(work),
     readFacts:(id,purpose,read)=>ctx.sessions.get(id)
       ?inputState.captureHistoricalFacts(id,purpose,read).data:read(),
     sessionForRowFacts:id=>ctx.sessions.get(id) as unknown as NativeSession|undefined,
@@ -3351,8 +3442,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     contextWindowFor,
     selectedStatusRecord,
     selectedStatusGeneration,
+    latestStatusEvent,
     importSummary,
     numericalState:observeNumericalState,
+    taskArtifact:(id,seq)=>schemaStory?.taskArtifact(id,seq),
     readerDisplay:async(session,messages,signal)=>{
       try {await mvuOpening.preflightSchema(session.id,signal)}catch {
         // Unavailable numerical scopes must not block pure Source display.
@@ -3688,6 +3781,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     resolveRoleplaySession,
     maintenanceJobs,
     latestStatusEvent,
+    selectedStatusGeneration,
     runStatusObligation,
     selectedStatusRecord,
   })

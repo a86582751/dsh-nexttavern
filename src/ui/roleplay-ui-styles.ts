@@ -35,11 +35,20 @@ body[data-dsh-orca-link] [data-slot="sidebar"] > :first-child > button:not([data
 .dsh-rp-edit-backdrop::backdrop { background: transparent; }
 .dsh-rp-edit-card {
   width: min(720px, 94vw); max-height: min(680px, 86vh); display: flex; flex-direction: column; gap: 12px;
+  overflow-y: auto;
   padding: 18px; border-radius: 14px; border: 1px solid rgba(255,255,255,.42);
   background: var(--dsw-alias-bg-layer-1, #fffaf6); color: var(--dsw-alias-label-primary, #413a3d);
   box-shadow: 0 24px 70px rgba(37,27,33,.28), inset 0 1px 0 rgba(255,255,255,.8);
 }
 .dsh-rp-edit-title { font-size: 14px; font-weight: 650; }
+.dsh-rp-edit-state-mode { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; }
+.dsh-rp-edit-state-mode select {
+  max-width: 100%; min-height: 44px; padding: 6px; border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2, #fff); color: inherit; font: inherit;
+}
+.dsh-rp-edit-state-note {
+  flex-basis: 100%; margin: 0; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-secondary, #666);
+}
 .dsh-rp-edit-textarea {
   width: 100%; min-height: 220px; max-height: 56vh; resize: vertical; box-sizing: border-box;
   padding: 12px 14px; border-radius: 10px; border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.28));
@@ -47,7 +56,13 @@ body[data-dsh-orca-link] [data-slot="sidebar"] > :first-child > button:not([data
 }
 .dsh-rp-edit-buttons { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
 .dsh-rp-edit-hint { margin-right: auto; font-size: 11px; color: var(--dsw-alias-label-tertiary, #999); }
-.dsh-rp-edit-action { padding: 5px 14px; border-radius: 9px; border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3)); background: transparent; color: inherit; cursor: pointer; }
+.dsh-rp-edit-action {
+  flex-shrink: 0; white-space: nowrap; min-height: 44px; padding: 5px 14px; border-radius: 9px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3)); background: transparent; color: inherit; cursor: pointer;
+}
+@media (max-height: 600px) {
+  .dsh-rp-edit-textarea { min-height: 100px; }
+}
 .dsh-rp-edit-action[data-primary="true"] { color: #fff; border-color: #8d6f7d; background: linear-gradient(135deg, #b98c7b, #8d7186); }
 .dsh-rp-toast {
   position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 9000;

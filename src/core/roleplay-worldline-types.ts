@@ -68,8 +68,12 @@ export interface ForkMember extends PlayerTarget {
 export interface PlayerVariant {
   text: string
   revision: number
+  currentSaveRef?:import('./roleplay-worldline-player-save.js').WorldlinePlayerSaveRefV1
   updatedAt?: number
   updatedBySessionId?: string
+  schemaTaskEdit?:{schemaVersion:1;options:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditOptionsV1;
+    targets:Record<string,{key:string;sha256:string;
+      terminal?:{kind:'not-applied';reason:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditNotAppliedReason}}|null>}
 }
 export interface ForkGroup {
   schemaVersion: number
@@ -127,6 +131,8 @@ export interface PlayerProjection {
   userMessageId?: string
   assistantMessageId: string | null
   group: BranchProjection | null
+  editConflict?:{operationId:string;requestedText:string;
+    reason:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditNotAppliedReason}
 }
 export interface SurfaceEntry { seq: number; kind: string; messageId?: string }
 export interface RegistrationResult { groupId: string; ordinal: number; total: number; playerOrdinal?: number; playerTotal: number }
@@ -148,6 +154,15 @@ export interface WorldlineDependencies {
   messageEdits: WorldlineMessageEdits
   flushEdits(session: BranchSession): Promise<void>
   /** Synchronous denial precedes append/fanout; durable denial follows flush. */
+  checkNumericalTextEdit?(sessionId:string,targetSeq:number):Promise<void>
+  prepareNumericalTextEdit?(session:BranchSession,event:StoryEvent,text:string,
+    options:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditOptionsV1)
+    :Promise<import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditIntentV1|undefined>
+  persistNumericalTextEditIntent?(session:BranchSession,
+    intent:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditIntentV1):Promise<void>
+  appendNumericalTextEdit?(session:BranchSession,intent:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditIntentV1,
+    append:()=>StoryEvent):Promise<StoryEvent>
+  recoverNumericalTextEdit?(session:ReadBranchSession):Promise<import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditRecovery|undefined>
   beginNumericalEdit?(sessionId:string):void
   persistNumericalEdit?(sessionId:string,editSeq:number):Promise<void>
   reconcileNumericalEdit?(sessionId:string,editSeq:number):Promise<void>

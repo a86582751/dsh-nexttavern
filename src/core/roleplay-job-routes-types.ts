@@ -7,7 +7,7 @@ import type { createResourceBridge } from './roleplay-resource-bridge.js'
 import type { taskPhaseMessage } from './tavern-tasks.js'
 import type { HostSession, HostAgent, MaintenanceJob } from './roleplay-task-host-types.js'
 import type { ContextEvent } from './roleplay-context.js'
-import type { StatusRecord } from './roleplay-status-types.js'
+import type { StatusGeneration, StatusRecord } from './roleplay-status-types.js'
 import type { CardAttachmentServices } from './roleplay-card-attachment.js'
 
 export interface JobRouteAgent extends CardWorkflowAgent {
@@ -94,6 +94,7 @@ export interface MaintenanceRoutesDependencies {
   resolveRoleplaySession(id: string | null | undefined): Promise<HostSession | null | undefined>
   maintenanceJobs: Map<string, MaintenanceRouteJob>
   latestStatusEvent(session: HostSession): ContextEvent | null | undefined
+  selectedStatusGeneration?(session: HostSession, event?: ContextEvent | null): StatusGeneration
   runStatusObligation(session: HostSession, event: ContextEvent, reason: string, options: {force: boolean; agent: MaintenanceAgent}): PromiseLike<StatusRecord | null | undefined>
   selectedStatusRecord(session: HostSession): StatusRecord | null | undefined
 }

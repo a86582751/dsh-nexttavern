@@ -158,8 +158,9 @@ export function createRoleplayStatus(deps: StatusDependencies) {
                 throw Error('STATUS_CONTROL_OWNER_CHANGED');
         },
     });
-    const selectedStatusRecord = (session: StatusSession) => {
+    const selectedStatusRecord = (session: StatusSession, latest: StatusEvent | null = latestStatusEvent(session)) => {
         const record = normalizeStatusRecord(T.status.get(keyOf(session.id, 'panel')));
+        if(latest&&record?.atSeq!==latest.seq&&deps.schemaMaintenance?.(session,latest))return null;
         if (!record?.provenance)
             return record;
         const event = eventsOf(session).find(item => item.seq === record.atSeq);
@@ -182,8 +183,8 @@ export function createRoleplayStatus(deps: StatusDependencies) {
         }
         return null;
     };
-    const selectedStatusGeneration = (session: StatusSession) => {
-        const event = latestStatusEvent(session);
+    const selectedStatusGeneration = (session: StatusSession, event: StatusEvent | null = latestStatusEvent(session)) => {
+        if(event&&deps.schemaMaintenance?.(session,event))return {kind:'schema-maintenance' as const};
         const record = event ? cloneBranchRecord(T.status.get(statusTaskKey(session, event))) : null;
         if (record && !statusSourceLive(session, event, record.source))
             return {
@@ -337,6 +338,7 @@ export function createRoleplayStatus(deps: StatusDependencies) {
          purpose: 'settlement' | 'recovery' = 'settlement'): Promise<StatusRecord | null | undefined> & {
         admission?: Promise<unknown>;
     } {
+        if(event&&deps.schemaMaintenance?.(session,event))return Promise.resolve(null);
         const source = statusSource(session, event);
         if (!event || !source || statusDisposed)
             return Promise.resolve(null);

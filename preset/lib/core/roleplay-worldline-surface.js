@@ -1,5 +1,8 @@
 // Generated from runtime/alpha3/src/core/roleplay-worldline-surface.ts; edit the TypeScript source.
 import { projectStoryEvent } from './roleplay-message-view.js';
+import { recordSha256 } from './roleplay-data.js';
+import { createWorldlinePlayerSaves } from './roleplay-worldline-player-save.js';
+import { validateSchemaTaskEditOptionsV1, schemaTaskEditIntentKey, SchemaTaskEditNotAppliedError } from './roleplay-mvu-schema-task-edit-types.js';
 export function assertBranchSession(session) {
     if (!('append' in session) || typeof session.append !== 'function')
         throw new Error('会话暂不可写入分支历史');
@@ -7,10 +10,11 @@ export function assertBranchSession(session) {
 // Append-only message revisions, projection repair and derived-state
 // invalidation form one operation; callers keep using roleplay-worldlines.
 export function createWorldlineSurface(deps, forks) {
-    const { ctx, messageEdits, flushEdits, beginNumericalEdit, persistNumericalEdit, reconcileNumericalEdit, confirmUnchangedNumericalEdit, safeId, keyOf, sha256, T, eventsOf, surfaceEvents, textOf, cloneBranchRecord, internalTaskSeqs, isRoleplaySession, durableSeq, canonicalAssistantForTurn, surfaceEntries, withDecisionMutationLock, normalizeDecisionRecord, cloneRecord, provenanceSeq, } = deps;
-    const { forkGroupKey, forkAnchorKey, forkAnchorLockKey, withForkMutationLock, hydrateForkGroup, forkPointerFor, groupMemberForSession, assistantMessageId, currentSurfaceUserBefore, turnForEvent, } = forks;
+    const { ctx, messageEdits, flushEdits, beginNumericalEdit, checkNumericalTextEdit, persistNumericalEdit, reconcileNumericalEdit, confirmUnchangedNumericalEdit, safeId, keyOf, sha256, T, eventsOf, surfaceEvents, textOf, cloneBranchRecord, internalTaskSeqs, isRoleplaySession, durableSeq, canonicalAssistantForTurn, surfaceEntries, withDecisionMutationLock, normalizeDecisionRecord, cloneRecord, provenanceSeq, } = deps;
+    const { forkGroupKey, forkAnchorKey, forkAnchorLockKey, withForkMutationLock, hydrateForkGroup, forkPointerFor, groupMemberForSession, assistantMessageId, requestUserEvent, currentSurfaceUserBefore, turnForEvent, } = forks;
     const editInvalidationKey = (sessionId, role, targetSeq) => keyOf(sessionId, `edit-applied-${role}-${safeId(targetSeq)}`);
     const playerProjectionKey = (sessionId, groupId, playerVariantId) => keyOf(sessionId, `player-projection-${sha256(`${groupId}\0${playerVariantId}`).slice(0, 32)}`);
+    const playerSaves = createWorldlinePlayerSaves(T.branch);
     async function nativePlayerGroupsFor(session, assistantGroups) {
         const result = {};
         const entries = surfaceEntries(session);
@@ -62,6 +66,10 @@ export function createWorldlineSurface(deps, forks) {
             publish(user, {
                 userMessageId: user.messageId,
                 assistantMessageId: assistant.messageId,
+                ...(stored.playerVariants[current.playerVariantId]?.schemaTaskEdit?.targets[session.id]?.terminal
+                    ? { editConflict: { operationId: stored.playerVariants[current.playerVariantId].schemaTaskEdit.options.operationId,
+                            requestedText: stored.playerVariants[current.playerVariantId].text,
+                            reason: stored.playerVariants[current.playerVariantId].schemaTaskEdit.targets[session.id].terminal.reason } } : {}),
                 group: {
                     groupId: stored.groupId,
                     currentOrdinal: currentIndex + 1,
@@ -114,20 +122,28 @@ export function createWorldlineSurface(deps, forks) {
         const messageId = String(role === 'assistant' ? event.data?.message?.id ?? '' : event.data?.id ?? '');
         const currentText = textOf(role === 'assistant' ? event.data?.message?.content : event.data?.content);
         const changed = currentText !== text;
+        const taskIntent = options.preparedTaskEdit === undefined
+            ? options.schemaTaskEdit && (changed || role === 'assistant')
+                ? await deps.prepareNumericalTextEdit?.(session, event, text, options.schemaTaskEdit) : undefined
+            : options.preparedTaskEdit;
         const priorEdit = messageEdits.latest(eventsOf(session), targetSeq);
         // The selected Native prefix already owns these effects. Replaying them
         // against the child would revoke its published derived numerical state.
-        if (!changed && priorEdit && inheritedEdit(session, priorEdit)) {
+        if (!taskIntent && !changed && priorEdit && inheritedEdit(session, priorEdit)) {
             return { changed: false, editSeq: Number(priorEdit.seq), inherited: true };
         }
-        // Reusing a completed text projection must not revoke its ready schema view.
-        // Numerical persistence/reconciliation below still owns unfinished recovery.
-        const committed = !changed && !!priorEdit && editEffectsCommitted(session, priorEdit);
-        if ((changed || priorEdit) && !committed)
+        if (!taskIntent && (changed || priorEdit && !editEffectsCommitted(session, priorEdit))) {
+            // Shared users are admitted before variant publication; task edits reuse
+            // their prepared intent, and durable Native repair keeps its admission.
+            if (role === 'assistant' && changed && !options.repair && !options.schemaTaskEdit)
+                await checkNumericalTextEdit?.(session.id, targetSeq);
             beginNumericalEdit?.(session.id);
-        const edit = changed
-            ? messageEdits.append(session, targetSeq, { role, messageId }, text)
-            : priorEdit;
+        }
+        const edit = taskIntent
+            ? await deps.appendNumericalTextEdit(session, taskIntent, () => messageEdits.append(session, targetSeq, { role, messageId }, text))
+            : changed
+                ? messageEdits.append(session, targetSeq, { role, messageId }, text)
+                : priorEdit;
         if (!edit)
             return { changed: false, editSeq: null };
         if (edit.data?.targetSeq !== targetSeq || edit.data.role !== role ||
@@ -137,9 +153,10 @@ export function createWorldlineSurface(deps, forks) {
         const editSeq = Number(edit.seq);
         const receiptKey = editInvalidationKey(session.id, role, targetSeq);
         const textSha256 = sha256(text);
+        const committed = editEffectsCommitted(session, edit);
         // The native provider drains routed live events at this durability barrier.
         // A flush/invalidation failure leaves the edit available for an idempotent retry.
-        if (!committed)
+        if (!committed && !taskIntent)
             await flushEdits(session);
         let numericalFailure;
         try {
@@ -163,7 +180,9 @@ export function createWorldlineSurface(deps, forks) {
             await reconcileNumericalEdit?.(session.id, editSeq);
         return { changed, editSeq };
     }
-    async function replaceAssistantText(session, messageId, text, lockAttempt = 0) {
+    async function replaceAssistantText(session, messageId, text, editOptions = 0, attempt = 0) {
+        const schemaTaskEdit = typeof editOptions === 'number' ? undefined : validateSchemaTaskEditOptionsV1(editOptions);
+        const lockAttempt = typeof editOptions === 'number' ? editOptions : attempt;
         const initialPointer = forkPointerFor(session, messageId);
         const initialGroup = initialPointer?.groupId
             ? hydrateForkGroup(T.branch.get(forkGroupKey(initialPointer.groupId)))
@@ -193,7 +212,7 @@ export function createWorldlineSurface(deps, forks) {
             const event = visibleSurfaceEvent(session, (candidate) => candidate?.type === 'assistant/message' && assistantMessageId(candidate) === messageId);
             if (!event)
                 throw new Error('当前分支中找不到这条 Agent 回复');
-            const result = await applyTextEdit(session, event, text, 'assistant-message-edited');
+            const result = await applyTextEdit(session, event, text, 'assistant-message-edited', { schemaTaskEdit });
             if (result.editSeq !== null && liveGroup && exactLiveMember) {
                 // The member points at the original message node, never the audit edit event.
                 exactLiveMember.assistantSeq = Number(event.seq);
@@ -207,7 +226,7 @@ export function createWorldlineSurface(deps, forks) {
         if (retryWithCanonicalLock) {
             if (lockAttempt >= 4)
                 throw new Error('回复分支在并发修改期间持续变化，请重试');
-            return replaceAssistantText(session, messageId, text, lockAttempt + 1);
+            return replaceAssistantText(session, messageId, text, schemaTaskEdit ?? lockAttempt + 1, lockAttempt + 1);
         }
         return replacement;
     }
@@ -278,6 +297,8 @@ export function createWorldlineSurface(deps, forks) {
     }
     async function reconcileCanonicalPlayerVariants(session, lookup = null) {
         let synced = 0;
+        const taskRecovery = await deps.recoverNumericalTextEdit?.(session);
+        const pendingTaskEdit = taskRecovery?.kind === 'matched' || taskRecovery?.kind === 'pending' ? taskRecovery.intent : undefined;
         for (const assistant of surfaceEvents(session).filter(event => event.type === 'assistant/message')) {
             const messageId = assistantMessageId(assistant);
             const pointer = forkPointerFor(session, messageId, lookup);
@@ -306,7 +327,42 @@ export function createWorldlineSurface(deps, forks) {
                 if (!user)
                     return;
                 assertBranchSession(session);
-                const applied = await applyTextEdit(session, user, variant.text, 'player-message-canonical-sync', { repair: true });
+                const frozen = variant.schemaTaskEdit;
+                const frozenTarget = frozen?.targets[session.id];
+                if (frozenTarget?.terminal)
+                    return;
+                if (taskRecovery?.kind === 'not-applied' && frozenTarget?.key === schemaTaskEditIntentKey(session.id, taskRecovery.intent.operationId)) {
+                    frozenTarget.terminal = { kind: 'not-applied', reason: taskRecovery.reason };
+                    await T.branch.put(forkGroupKey(group.groupId), group);
+                    return;
+                }
+                let preparedTaskEdit = pendingTaskEdit?.target.seq === user.seq ? pendingTaskEdit : undefined;
+                if (frozen && !Object.hasOwn(frozen.targets, session.id)) {
+                    // New regenerations inherit canonical text but were not members of
+                    // the earlier save. Only a different actual projection needs intent.
+                    preparedTaskEdit = textOf(user.data?.content) === variant.text ? undefined :
+                        await deps.prepareNumericalTextEdit?.(session, user, variant.text, frozen.options);
+                    if (preparedTaskEdit)
+                        await deps.persistNumericalTextEditIntent?.(session, preparedTaskEdit);
+                    frozen.targets[session.id] = preparedTaskEdit ? { key: schemaTaskEditIntentKey(session.id, preparedTaskEdit.operationId),
+                        sha256: recordSha256(preparedTaskEdit) } : null;
+                    await T.branch.put(forkGroupKey(group.groupId), group);
+                }
+                let applied;
+                try {
+                    applied = await applyTextEdit(session, user, variant.text, 'player-message-canonical-sync', {
+                        repair: true, schemaTaskEdit: frozen?.options,
+                        ...(preparedTaskEdit ? { preparedTaskEdit } : frozen?.targets[session.id] === null ? { preparedTaskEdit: null } : {})
+                    });
+                }
+                catch (error) {
+                    const target = frozen?.targets[session.id];
+                    if (!(error instanceof SchemaTaskEditNotAppliedError) || !target)
+                        throw error;
+                    target.terminal = { kind: 'not-applied', reason: error.reason };
+                    await T.branch.put(forkGroupKey(group.groupId), group);
+                    return;
+                }
                 const revision = Math.max(1, Number(variant.revision) || 1);
                 if (exact) {
                     // Original fork members have no edit seq until an actual edit. Do
@@ -375,7 +431,8 @@ export function createWorldlineSurface(deps, forks) {
                 assertBranchSession(session);
                 const current = projectStoryEvent(session, target);
                 const text = textOf(target.type === 'assistant/message' ? current.data?.message?.content : current.data?.content);
-                await applyTextEdit(session, current, text, 'message-edit-effects-recovered', { repair: true });
+                await applyTextEdit(session, current, text, 'message-edit-effects-recovered', { repair: true,
+                    ...(pendingTaskEdit?.target.seq === target.seq ? { preparedTaskEdit: pendingTaskEdit } : {}) });
                 if (!committed)
                     recoveredEdits++;
             });
@@ -452,7 +509,9 @@ export function createWorldlineSurface(deps, forks) {
             recoveryOnly: true,
         };
     }
-    async function replaceUserText(session, seq, text, lockAttempt = 0) {
+    async function replaceUserText(session, seq, text, editOptions = 0, attempt = 0) {
+        const schemaTaskEdit = typeof editOptions === 'number' ? undefined : validateSchemaTaskEditOptionsV1(editOptions);
+        const lockAttempt = typeof editOptions === 'number' ? editOptions : attempt;
         const initial = userForkContext(session, seq);
         const lockKey = initial.group?.anchor
             ? forkAnchorLockKey(initial.group.anchor)
@@ -478,10 +537,20 @@ export function createWorldlineSurface(deps, forks) {
             if (exactMember?.deleted || (!exactMember && nearestMember?.deleted)) {
                 throw new Error('这个回复版本已经删除，不能再编辑玩家消息');
             }
+            const variant = group && currentMember ? group.playerVariants[currentMember.playerVariantId] : undefined;
+            const sharedSave = schemaTaskEdit && group && currentMember && variant
+                ? playerSaves.prepare(group.groupId, currentMember.playerVariantId, variant, {
+                    senderSessionId: session.id, target: { sessionId: session.id, seq: Number(live.event.seq),
+                        messageId: String(live.event.data?.id ?? '') }, text, options: schemaTaskEdit
+                }) : undefined;
+            const selected = sharedSave?.current ? variant?.schemaTaskEdit : undefined;
+            const originalTargets = sharedSave?.targetSessionIds ? new Set(sharedSave.targetSessionIds) : undefined;
             const targets = currentMember
-                ? group.members.filter((member) => !member.deleted && member.playerVariantId === currentMember.playerVariantId)
+                ? group.members.filter((member) => !member.deleted && member.playerVariantId === currentMember.playerVariantId
+                    && (!originalTargets || originalTargets.has(member.sessionId)))
                 : [{ sessionId: session.id, userMessageId: String(live.event.data?.id ?? ''), userSeq: Number(live.event.seq) }];
-            if (currentMember && !targets.some((member) => member.sessionId === session.id)) {
+            if (currentMember && (!originalTargets || originalTargets.has(session.id))
+                && !targets.some((member) => member.sessionId === session.id)) {
                 targets.push({
                     projectionOnly: true,
                     sessionId: session.id,
@@ -493,45 +562,134 @@ export function createWorldlineSurface(deps, forks) {
                 });
             }
             let canonicalRevision = null;
-            if (group && currentMember) {
+            const prepared = new Map();
+            const targetSessions = new Map();
+            const targetEvents = new Map();
+            const completed = (member) => !!selected && variant && (member.projectionOnly
+                ? cloneBranchRecord(T.branch.get(playerProjectionKey(member.sessionId, group.groupId, currentMember.playerVariantId)))?.revision
+                : member.playerAppliedRevision) === variant.revision;
+            if (selected && targets.some(member => selected.targets[member.sessionId]?.terminal))
+                throw Error('SCHEMA_TASK_EDIT_NOT_APPLIED');
+            if (selected && targets.every(completed))
+                return { changed: 0, matched: targets.length, replayed: true };
+            if (schemaTaskEdit)
+                for (const member of targets) {
+                    if (completed(member))
+                        continue;
+                    const targetSession = member.sessionId === session.id ? session : await deps.resolveRoleplaySession(member.sessionId);
+                    if (!targetSession || !isRoleplaySession(targetSession))
+                        throw Error('SCHEMA_TASK_EDIT_FANOUT_BASIS_UNAVAILABLE');
+                    const targetEvent = (member.pending ? requestUserEvent(targetSession, member.requestId) : null)
+                        ?? visibleSurfaceEvent(targetSession, candidate => candidate.type === 'user/message' &&
+                            ((member.userMessageId && String(candidate.data?.id ?? '') === member.userMessageId)
+                                || member.userSeq != null && Number(candidate.seq) === Number(member.userSeq)));
+                    if (!targetEvent)
+                        throw Error(member.pending ? 'SCHEMA_TASK_EDIT_FANOUT_PENDING' : 'SCHEMA_TASK_EDIT_FANOUT_TARGET_UNPROVEN');
+                    targetSessions.set(member.sessionId, targetSession);
+                    targetEvents.set(member.sessionId, targetEvent);
+                }
+            // Resolve every Native target before preparing any suffix. A registered
+            // sibling can still be waiting for its actual user input to arrive.
+            if (schemaTaskEdit)
+                for (const member of targets) {
+                    if (completed(member))
+                        continue;
+                    const targetSession = targetSessions.get(member.sessionId), targetEvent = targetEvents.get(member.sessionId);
+                    const frozen = selected?.targets[member.sessionId];
+                    // A selected non-null target still belongs to its original task owner,
+                    // including when Native already shows the requested text after a crash.
+                    const needsIntent = selected ? !!frozen : textOf(targetEvent.data?.content) !== text;
+                    prepared.set(member.sessionId, needsIntent
+                        ? await deps.prepareNumericalTextEdit?.(targetSession, targetEvent, text, schemaTaskEdit) ?? null : null);
+                }
+            const sharedSaveRef = await sharedSave?.persist([...targetSessions.keys()]);
+            // Every real target is now captured. Sealed intents may be stored before
+            // shared publication, but cannot deny a branch or append Native history.
+            for (const [targetId, intent] of prepared)
+                if (intent)
+                    await deps.persistNumericalTextEditIntent?.(targetSessions.get(targetId), intent);
+            // Check every affected suffix before storing shared player-edit intent.
+            // An unsupported task-result revision keeps both text and state intact.
+            if (!schemaTaskEdit && textOf(live.event.data?.content) !== text)
+                for (const member of targets) {
+                    await checkNumericalTextEdit?.(member.sessionId, Number(member.userSeq));
+                }
+            if (group && currentMember && !sharedSave?.current) {
                 const variant = group.playerVariants[currentMember.playerVariantId] ?? { text: String(currentMember.promptText ?? ''), revision: 1 };
                 const changed = variant.text !== text;
-                canonicalRevision = Math.max(1, Number(variant.revision) || 1) + (changed ? 1 : 0);
+                // A new logical choice must settle its members even when prose stays
+                // unchanged; an older applied revision cannot ACK a lost publication.
+                canonicalRevision = Math.max(1, Number(variant.revision) || 1) + 1;
+                const { schemaTaskEdit: previousTaskEdit, currentSaveRef: previousSaveRef, ...variantText } = variant;
                 group.playerVariants[currentMember.playerVariantId] = {
-                    ...variant, text, revision: canonicalRevision,
+                    ...variantText, text, revision: canonicalRevision,
                     updatedAt: changed ? Date.now() : Number(variant.updatedAt ?? Date.now()),
                     updatedBySessionId: session.id,
+                    ...(sharedSaveRef ? { currentSaveRef: sharedSaveRef } : {}),
+                    ...(schemaTaskEdit ? { schemaTaskEdit: { schemaVersion: 1, options: schemaTaskEdit,
+                            targets: Object.fromEntries(targets.map(member => {
+                                const intent = prepared.get(member.sessionId);
+                                return [member.sessionId, intent ? { key: schemaTaskEditIntentKey(member.sessionId, intent.operationId), sha256: recordSha256(intent) } : null];
+                            })) } } : {}),
                 };
-                for (const member of targets) {
-                    member.promptText = text;
-                    member.playerTextRevision = canonicalRevision;
-                }
                 // Persist intent before any hot sibling is edited. Cold/restarted siblings
                 // converge to this revision; a partial fanout must never restore the old text.
-                if (changed)
+                if (changed && !schemaTaskEdit)
                     for (const member of targets)
                         beginNumericalEdit?.(member.sessionId);
                 group.updatedAt = Date.now();
                 await T.branch.put(forkGroupKey(group.groupId), group);
             }
+            else if (sharedSave?.current)
+                canonicalRevision = variant.revision;
             let changed = 0;
             let matched = 0;
+            let conflict;
             for (const member of targets) {
-                const targetSession = member.sessionId === session.id ? session : ctx.sessions.get(member.sessionId);
+                if (completed(member)) {
+                    matched++;
+                    continue;
+                }
+                const targetSession = schemaTaskEdit ? targetSessions.get(member.sessionId)
+                    : member.sessionId === session.id ? session : ctx.sessions.get(member.sessionId);
                 if (!targetSession || !isRoleplaySession(targetSession))
                     continue;
-                const targetEvent = visibleSurfaceEvent(targetSession, candidate => candidate.type === 'user/message' && candidate.data?.source?.kind === 'user' &&
+                const targetEvent = schemaTaskEdit ? targetEvents.get(member.sessionId) : visibleSurfaceEvent(targetSession, candidate => candidate.type === 'user/message' && candidate.data?.source?.kind === 'user' &&
                     ((member.userMessageId && String(candidate.data?.id ?? '') === member.userMessageId) ||
                         Number(candidate.seq) === durableSeq(member.userSeq)));
                 if (!targetEvent)
                     continue;
-                const applied = await applyTextEdit(targetSession, targetEvent, text, 'player-message-edited');
+                let applied;
+                try {
+                    applied = await applyTextEdit(targetSession, targetEvent, text, 'player-message-edited', {
+                        schemaTaskEdit, ...(schemaTaskEdit ? { preparedTaskEdit: prepared.get(member.sessionId) ?? null } : {})
+                    });
+                }
+                catch (error) {
+                    if (!(error instanceof SchemaTaskEditNotAppliedError) || !group || !currentMember)
+                        throw error;
+                    const target = group.playerVariants[currentMember.playerVariantId]?.schemaTaskEdit?.targets[member.sessionId];
+                    if (!target)
+                        throw error;
+                    target.terminal = { kind: 'not-applied', reason: error.reason };
+                    await T.branch.put(forkGroupKey(group.groupId), group);
+                    conflict ??= error;
+                    continue;
+                }
+                // Completion is published only after the inherited numerical denial
+                // has also settled, so a retry may trust the applied-revision marker.
+                if (applied.inherited)
+                    await persistNumericalEdit?.(targetSession.id, applied.editSeq);
+                else if (applied.editSeq === null)
+                    confirmUnchangedNumericalEdit?.(targetSession.id);
                 member.userMessageId = String(targetEvent.data?.id ?? '');
                 member.userSeq = Number(targetEvent.seq);
                 member.promptText = text;
                 member.playerEditSeq = applied.editSeq;
-                if (canonicalRevision !== null)
+                if (canonicalRevision !== null) {
+                    member.playerTextRevision = canonicalRevision;
                     member.playerAppliedRevision = canonicalRevision;
+                }
                 member.editedAt = Date.now();
                 if (member.projectionOnly && group && currentMember) {
                     await T.branch.put(playerProjectionKey(targetSession.id, group.groupId, currentMember.playerVariantId), {
@@ -548,15 +706,11 @@ export function createWorldlineSurface(deps, forks) {
                     await T.branch.put(forkGroupKey(group.groupId), group);
                 }
                 matched++;
-                // Its inherited edit is below the child's basis. Let the numerical owner
-                // retire this fanout denial while preserving any actual local invalidation.
-                if (applied.inherited)
-                    await persistNumericalEdit?.(targetSession.id, applied.editSeq);
-                else if (applied.editSeq === null)
-                    confirmUnchangedNumericalEdit?.(targetSession.id);
                 if (applied.changed)
                     changed++;
             }
+            if (conflict)
+                throw conflict;
             if (matched === 0)
                 throw new Error('玩家消息编辑未能写入当前分支');
             return { changed, matched, replayed: changed === 0 };
@@ -564,7 +718,7 @@ export function createWorldlineSurface(deps, forks) {
         if (retryWithCanonicalLock) {
             if (lockAttempt >= 4)
                 throw new Error('玩家分支在并发修改期间持续变化，请重试');
-            return replaceUserText(session, seq, text, lockAttempt + 1);
+            return replaceUserText(session, seq, text, schemaTaskEdit ?? lockAttempt + 1, lockAttempt + 1);
         }
         return result;
     }

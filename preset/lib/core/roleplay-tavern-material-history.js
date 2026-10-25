@@ -274,6 +274,50 @@ function capturePublication(deps, event, owner, references, budget, events, proj
         fail('INPUT_MATERIAL_HISTORY_CORE_BUDGET');
     return facts.publication;
 }
+/** One exact published request, selected by its actual Native event. A Story
+ * maintenance consumer does not need a catalog of every historical request. */
+export function captureRoleplayTavernMaterialPublicationV1(deps, ref) {
+    deps.assertOwnerCurrent();
+    const events = deps.events(), event = events[ref.nativeSeq];
+    if (ref.ownerSessionId !== deps.sessionId || event?.type !== 'request/material'
+        || nativeInputSha256(event) !== ref.nativeEventSha256 || nativeInputSha256(event.data) !== ref.nativeRecordSha256
+        || !sameNative(event.data.snapshot, ref.snapshotRef) || !sameNative(event.data.plan, ref.planRef)) {
+        fail('INPUT_MATERIAL_HISTORY_CORE_REF_CONFLICT');
+    }
+    const reads = [], references = new Map();
+    const publication = capturePublication(deps, event, ref.ownerSessionId, references, budgetV1(), events, [...deps.projections()], reads);
+    deps.assertOwnerCurrent();
+    return publication;
+}
+/** Consume only rendered contributions from this exact publication. Original
+ * author partitions can include deliberately suppressed legacy lore; selected
+ * messages and their history projections are not author-contribution inputs. */
+export function collectRoleplayTavernPublishedAuthorMaterialV1(publication) {
+    const transform = publication.plan.payload.nativeTransform, prompt = publication.plan.payload.promptPlan, audit = publication.snapshot.payload.injectionAudit;
+    if (!transform?.sections || !prompt?.finalLore)
+        fail('SCHEMA_MAINTENANCE_MATERIAL_UNSUPPORTED');
+    const sections = new Set(['roleplay:cards', 'roleplay:rules', 'roleplay:examples', 'roleplay:community-preset']), authorGroups = transform.sections.filter(section => sections.has(section.name))
+        .map(section => ({ id: section.name, text: section.replacementText })), authoredRefs = new Set(), loreMarkers = new Set(['worldInfoBefore', 'worldInfoAfter']);
+    // The producer's prompt catalog omits chatHistory and generated Advice or
+    // history wrappers. An arbitrary community-* insertion is not enough.
+    for (const row of prompt.community?.prompts ?? []) {
+        // Import identifies these two marker names exactly; their pure lore is
+        // already supplied by finalLore. Card/example markers remain authored DATA.
+        if (row.role !== 'system' && !loreMarkers.has(row.identifier))
+            authoredRefs.add('community-' + row.identifier);
+    }
+    for (const cut of audit?.consumers ?? [])
+        if (cut.consumer === 'chat') {
+            for (const row of cut.results)
+                if (row.accepted)
+                    authoredRefs.add('inject-' + row.registrationSha256);
+        }
+    for (const row of [...transform.insertions, ...(transform.anchoredInsertions ?? [])]) {
+        if (authoredRefs.has(row.contributionRef))
+            authorGroups.push({ id: row.contributionRef, text: row.renderedText });
+    }
+    return { authorGroups, finalLore: prompt.finalLore };
+}
 function assertOpeningCatalog(deps, publications, events) {
     const openings = publications.filter(({ snapshot }) => snapshot.encoding === 'core-program-opening-material-record-v1');
     if (!openings.length)

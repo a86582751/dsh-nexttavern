@@ -44,8 +44,8 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
   buildForkLookupIndex,reconcileCanonicalPlayerVariants,statusRecoveredSessions,recoverStatusObligations,
   nativeBranchGroupsFor,nativePlayerGroupsFor,assistantMessageId,userForkContext,locatePlayerRecoveryTarget,
   failedForkMembership,isRecoverySourceMember,backfillRecoverySourceMember,importRecordKey,preparationRecordKey,
-  tavernTasks,memoryForContext,cloneContextWindow,contextWindowFor,selectedStatusRecord,selectedStatusGeneration,
-  importSummary,chatImportProjection,numericalState,readerDisplay,readerDisplayContextVersion,communityPresets,
+  tavernTasks,memoryForContext,cloneContextWindow,contextWindowFor,selectedStatusRecord,selectedStatusGeneration,latestStatusEvent,
+  importSummary,chatImportProjection,numericalState,taskArtifact,readerDisplay,readerDisplayContextVersion,communityPresets,
   deletedBranchMessageIdsFor,inheritedAssistantMessageIdsFor,
   normalizeDecisionRecord,userValues,svc,resolveRoleplaySession}:StateDependencies) {
   const collectBranchRecords = (session: StateSession) => {
@@ -83,7 +83,8 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
     // use a fresh index for the related player/deletion projections too.
     forkLookup = buildForkLookupIndex(session)
     const userActionsBySeq = await nativePlayerGroupsFor(session, branchGroupsByMessageId)
-    const failedTurnRecoveryByTurn: Record<string, number> = {}, failedTurnBranchGroupByTurn: Record<string, FailedTurnGroup> = {}, assistantActionAnchorsByTurn: Record<string, {seq: number; messageId: string}> = {}
+    const failedTurnRecoveryByTurn: Record<string, number> = {}, failedTurnBranchGroupByTurn: Record<string, FailedTurnGroup> = {}, assistantActionAnchorsByTurn: Record<string, {seq: number; messageId: string;
+      taskArtifact?:{sha256:string;kind:'patch'|'unchanged'|'cleared';operationCount:number}}> = {}
     const internalMessages = internalTaskSeqs(session)
     const internalAssistantMessageIds: string[] = []
     const endedTurns = new Set<number>()
@@ -216,6 +217,11 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       }
     }
     const numericalObservation=await numericalState?.(session.id)??null,userinfo=userValues(session.id)
+    for(const anchor of Object.values(assistantActionAnchorsByTurn)) {
+      const artifact=taskArtifact?.(session.id,anchor.seq)
+      if(artifact)anchor.taskArtifact=artifact
+    }
+    const statusEvent=latestStatusEvent(session)
     return {
       ok: true,
       preset: 'roleplay',
@@ -232,8 +238,8 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       scene: T.scene.get(keyOf(session.id, 'current')) ?? null,
       settings: T.branch.get(keyOf(session.id, 'settings')) ?? null,
       statusSpec: T.status.get(keyOf(session.id, 'spec')) ?? null,
-      statusPanel: selectedStatusRecord(session),
-      statusGeneration: selectedStatusGeneration(session),
+      statusPanel: selectedStatusRecord(session,statusEvent),
+      statusGeneration: selectedStatusGeneration(session,statusEvent),
       numericalState:numericalObservation,
       readerDisplay:{enabled:activeSourceRecord?.extensionInventory?.entries
         .some(entry=>entry.key==='regex_scripts'&&entry.valueType==='array')??false},

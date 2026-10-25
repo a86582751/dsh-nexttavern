@@ -28,7 +28,7 @@ import type {SchemaFrozenOriginal,SchemaStorySourceFrame} from './roleplay-mvu-s
 import type {SchemaExecutionAssociation,SchemaExecutionSelector} from './roleplay-mvu-schema-replay.js'
 import type {SchemaEvaluationInput,SchemaGuestOutput,SchemaAuthorProgram} from './roleplay-mvu-schema-executor-types.js'
 import type {MvuSchemaNumericalSnapshotV2,MvuSchemaStoryPlan,MvuSchemaStoryPhaseFact,
-  MvuSchemaStoryReducerBridge,MvuSchemaStoryPlanV6} from './roleplay-mvu-schema-story-types.js'
+  MvuSchemaStoryReducerBridge,MvuSchemaStoryPlanV6,MvuSchemaStoryPlanV10} from './roleplay-mvu-schema-story-types.js'
 import type {MvuSchemaPlayerPlanV1,MvuSchemaPlayerPhaseFact,MvuSchemaPlayerPlanV5} from './roleplay-mvu-schema-player-types.js'
 import type {MvuSchemaUnpublishedStoryPlanFacts} from './roleplay-mvu-schema-prefix-facts.js'
 import type {WorldlineMessageEdits} from './roleplay-worldline-types.js'
@@ -79,8 +79,9 @@ function versionOf(candidate:Candidate):1|2|3|4 {
   return candidate.kind==='story'?candidate.plan.schemaVersion===2?1:candidate.plan.executorVersion
     :candidate.plan.schemaVersion===1?1:candidate.plan.executorVersion
 }
-function hostPlanOf(candidate:Candidate):MvuSchemaStoryPlanV6|MvuSchemaPlayerPlanV5|undefined {
-  return candidate.kind==='story'?(candidate.plan.schemaVersion===6?candidate.plan:undefined)
+function hostPlanOf(candidate:Candidate):MvuSchemaStoryPlanV6|MvuSchemaStoryPlanV10|MvuSchemaPlayerPlanV5|undefined {
+  return candidate.kind==='story'?([6,10].includes(candidate.plan.schemaVersion)
+    ?candidate.plan as MvuSchemaStoryPlanV6|MvuSchemaStoryPlanV10:undefined)
     :candidate.plan.schemaVersion===5?candidate.plan:undefined
 }
 function candidatePlans(request:MvuSchemaUnpublishedTailRequest,deps:MvuSchemaUnpublishedTailDeps,

@@ -9,6 +9,7 @@ import { validateSchemaEvaluationInputV3 } from './tavern-mvu-schema-runner-v3.j
 import { validateSchemaEvaluationInputV4 } from './tavern-mvu-schema-runner-v4.js';
 import { validateMvuScopeReadFrameV1 } from './tavern-mvu-scope-read.js';
 import { schemaScopeReadFactsEqual } from './roleplay-mvu-schema-scope-facts.js';
+import { mvuSchemaMaintenanceTaskCandidate } from './roleplay-mvu-schema-maintenance-types.js';
 import { freezeMvuSchemaStoryData, sealMvuSchemaStoryFact, validateMvuSchemaStoryPlan, parseMvuSchemaStoryCandidateV2, validateMvuSchemaNumericalSnapshot, validateMvuSchemaStoryEvent, validateMvuSchemaStorySettlement, deriveMvuSchemaStorySelectors, mvuSchemaStoryPhaseInput, mvuSchemaStoryReducerBridge, mvuSchemaStoryEvent, mvuSchemaStoryHead, mvuSchemaStorySettlement, mvuSchemaStoryEventKey, mvuSchemaStorySettlementKey, MVU_SCHEMA_STORY_PHASES, schemaStoryCode, isMvuSchemaGenesisHead } from './roleplay-mvu-schema-story-types.js';
 const same = (a, b) => recordSha256(a) === recordSha256(b);
 const codeOf = (error) => schemaStoryCode(error instanceof Error ? error.message : undefined);
@@ -17,7 +18,7 @@ export function createRoleplayMvuSchemaStory(deps) {
     // A partial attempt is never retried in this owner. Remounts are gated by
     // Root's exact pending terminal ledger and journal, not this process-local set.
     const attempted = new Set();
-    function makePlan(scope, canonical, base, currentFrame, realmEpoch, programSha256, initialCut, clockEpochMs = 0, executorVersion = 1, scopeReadFrame, hostEpoch) {
+    function makePlan(scope, canonical, base, currentFrame, realmEpoch, programSha256, initialCut, clockEpochMs = 0, executorVersion = 1, scopeReadFrame, hostEpoch, maintenance) {
         const input = freezeMvuSchemaStoryData({ scope, canonical, base, currentFrame, realmEpoch, programSha256, initialCut, clockEpochMs });
         scope = input.scope;
         canonical = input.canonical;
@@ -33,6 +34,8 @@ export function createRoleplayMvuSchemaStory(deps) {
             fail('SCHEMA_SCOPE_READ_REQUIRED');
         if (hostEpoch && executorVersion !== 4)
             fail('SCHEMA_EXECUTOR_VERSION_MISMATCH');
+        if (maintenance && !hostEpoch)
+            fail('SCHEMA_MAINTENANCE_HOST_REQUIRED');
         const suffix = { currentFrame, realmEpoch, programSha256, initialCut, clockEpochMs, randomSeed: recordSha256({ scope, canonical }),
             selectors: deriveMvuSchemaStorySelectors(scope, canonical, realmEpoch) };
         const body = executorVersion === 1 ? freezeMvuSchemaStoryData({ schemaVersion: 2,
@@ -41,13 +44,15 @@ export function createRoleplayMvuSchemaStory(deps) {
             encoding: 'native-mvu-schema-story-plan-v3', executorVersion: 2, scope, canonical,
             base: validateMvuSchemaNumericalSnapshot(base), candidate: parseMvuUpdateV2(canonical.narrative), ...suffix }) : executorVersion === 4 ?
             freezeMvuSchemaStoryData({
-                ...(hostEpoch ? { schemaVersion: 6, encoding: 'native-mvu-schema-story-plan-v6',
+                ...(hostEpoch ? { ...(maintenance ? { schemaVersion: 10, encoding: 'native-mvu-schema-story-plan-v10',
+                        maintenance } : { schemaVersion: 6, encoding: 'native-mvu-schema-story-plan-v6' }),
                     epoch: hostEpoch.epoch, serverProgramSha256: hostEpoch.serverProgramSha256,
                     parserPolicy: 'analysis-alias-rfc6902-members-v1',
                     ...(hostEpoch.errorPolicy ? { errorPolicy: hostEpoch.errorPolicy } : {}) } :
                     { schemaVersion: 5, encoding: 'native-mvu-schema-story-plan-v5' }),
                 executorVersion: 4, scope, canonical, base: validateMvuSchemaNumericalSnapshot(base),
-                candidate: parseMvuSchemaStoryCandidateV2(canonical.narrative, hostEpoch ? 'analysis-alias-rfc6902-members-v1' : undefined),
+                candidate: maintenance?.kind === 'task-result' ? mvuSchemaMaintenanceTaskCandidate(maintenance.result)
+                    : parseMvuSchemaStoryCandidateV2(canonical.narrative, hostEpoch ? 'analysis-alias-rfc6902-members-v1' : undefined),
                 scopeReadFrame: validateMvuScopeReadFrameV1(scopeReadFrame), ...suffix
             }) :
             freezeMvuSchemaStoryData({ schemaVersion: 4, encoding: 'native-mvu-schema-story-plan-v4',
@@ -159,7 +164,7 @@ export function createRoleplayMvuSchemaStory(deps) {
                 if (!result.evidence || typeof result.evidence !== 'object')
                     fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
                 let capturedInput = input;
-                if (plan.schemaVersion === 4 || plan.schemaVersion === 5 || plan.schemaVersion === 6) {
+                if (plan.schemaVersion === 4 || plan.schemaVersion === 5 || plan.schemaVersion === 6 || plan.schemaVersion === 10) {
                     if (!result.capturedInput)
                         fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
                     const actual = plan.executorVersion === 4 ? validateSchemaEvaluationInputV4(result.capturedInput)
