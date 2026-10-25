@@ -11,6 +11,7 @@ import {AUTHOR_BROWSER_RUNTIME_NAME_V3,AUTHOR_BROWSER_RUNTIME_VERSION_V3,
   AUTHOR_BROWSER_WASM_SHA256_V3,authorBrowserAssetShaV3}
   from '../core/tavern-author-browser-descriptor-v3.mjs'
 import {TYPESCRIPT_SHARED_DEPENDENCY} from '../core/tavern-typescript-runtime-descriptor.mjs'
+import {createCanonicalRuntimeSourceFiles} from './runtime-asset-source-scope.mjs'
 
 interface Artifact {id:string;source:string;canonicalSource?:string}
 interface SourceInput {artifact:string;path:string;sha256:string}
@@ -64,39 +65,8 @@ export async function buildAuthorBrowserRuntimeAssetsV3(options:{repo:string;pla
   if(!resources)throw Error('AUTHOR_BROWSER_V3_PACKAGE_UNREGISTERED')
   const registered=new Map(options.plan.artifacts.map(item=>[path.resolve(repo,item.source),item]))
   const root=path.resolve(options.packageRoot),libraries=fs.realpathSync(options.libraryRoot)
-  // esbuild uses file names in its lazy-module functions. Keep their manifest
-  // identity when public delivery moves the physical source and toolchain.
-  const canonicalLibraries=path.resolve(repo,path.posix.dirname(find(recipe.lockArtifact).canonicalSource
-    ??find(recipe.lockArtifact).source)+'/node_modules')
-  const physicalByLogical=new Map<string,string>()
-  const logicalFile=(physical:string)=>{
-    const item=registered.get(physical)
-    const logical=physical.startsWith(libraries+path.sep)
-      ?path.join(canonicalLibraries,path.relative(libraries,physical))
-      :item?inside(repo,item.canonicalSource??item.source):physical
-    physicalByLogical.set(logical,physical)
-    return logical
-  }
-  const mappedLayout=libraries!==canonicalLibraries||options.plan.artifacts.some(item=>
-    item.canonicalSource!==undefined&&item.canonicalSource!==item.source)
-  const canonicalFiles:import('esbuild').Plugin={name:'manifest-source-identity',setup(build){
-    build.onResolve({filter:/.*/},async args=>{
-      if(args.pluginData?.canonicalResolution)return
-      const result=await build.resolve(args.path,{kind:args.kind,namespace:args.namespace,
-        importer:physicalByLogical.get(args.importer)??args.importer,resolveDir:args.resolveDir,
-        pluginData:{canonicalResolution:true}})
-      if(result.external||result.errors.length)return result
-      return {...result,path:logicalFile(fs.realpathSync(result.path))}
-    })
-    build.onLoad({filter:/.*/,namespace:'file'},args=>{
-      const physical=physicalByLogical.get(args.path)
-      if(!physical)return
-      const extension=path.extname(physical)
-      const loader:import('esbuild').Loader=extension==='.json'?'json'
-        :extension==='.ts'||extension==='.mts'||extension==='.cts'?'ts':'js'
-      return {contents:fs.readFileSync(physical),loader,resolveDir:path.dirname(physical)}
-    })
-  }}
+  const {plugin:canonicalFiles,mappedLayout,physicalByLogical}=createCanonicalRuntimeSourceFiles({
+    repo,artifacts:options.plan.artifacts,libraryRoot:libraries,lockArtifact:recipe.lockArtifact})
   const outputs=new Map<string,Buffer>(),graphs:Partial<Record<Role,readonly SourceInput[]>>={}
   const bundledDependencies:Record<string,string>={}
   const prefix=path.posix.dirname(find(recipe.packageArtifact).source)

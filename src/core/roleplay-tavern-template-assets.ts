@@ -11,7 +11,6 @@ import type {TavernTemplateRuntimeV1,TavernTemplateOwnedInventoryV1,TavernTempla
 import type {TavernTemplateEngineIdentityV1} from './tavern-template-types.mjs'
 
 const NAME='dsh-nexttavern-template-runtime-v2'
-const LEGACY_NAME='dsh-nexttavern-template-runtime-v1'
 const VERSION='0.1.0'
 type TemplatePackageName=TavernTemplateEngineIdentityV1['packageName']
 // This actual Core asset-owner module instance only. The rejection count does
@@ -132,8 +131,9 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
     }
   }
   async function loadSelected(name:TemplatePackageName,signal?:AbortSignal) {
-    signal?.throwIfAborted()
     if(closed)throw Error('TEMPLATE_RUNTIME_DISPOSED')
+    if(name!==NAME)throw Error('TEMPLATE_RUNTIME_ENGINE_UNAVAILABLE')
+    signal?.throwIfAborted()
     if(ownedReadScopeDepth)throw Error('TEMPLATE_EXECUTION_IN_VERIFICATION_SCOPE')
     const state=instances.get(name)??{}
     if(!instances.has(name))instances.set(name,state)
@@ -166,7 +166,6 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
     },
     async loadForEngine(engine:TavernTemplateEngineIdentityV1,signal?:AbortSignal)
       :Promise<AdmittedTavernTemplateComponentV1> {
-      if(engine.packageName!==NAME&&engine.packageName!==LEGACY_NAME)throw Error('TEMPLATE_RUNTIME_ENGINE_UNAVAILABLE')
       const result=await loadSelected(engine.packageName,signal)
       // An old closure must execute under its creating implementation, rather
       // than merely another component with the same wire protocol.

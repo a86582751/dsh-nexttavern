@@ -226,6 +226,9 @@ export function createRoleplayMvuSchemaAssetOwner() {
     name=version===4?policyPackageName:version===1?packageName:packageName+'-v'+version,
     component?:string):Promise<AdmittedRuntime> {
     if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
+    // ABI1–3 were retired before release. Their lookup entry points remain
+    // explicit failures and must never select the current executor instead.
+    if(version!==4)throw Error('SCHEMA_HISTORY_EXECUTOR_UNAVAILABLE')
     const key=name+'\0'+(component??'')
     let pending=runtimes.get(key)
     if(!pending) {
@@ -241,8 +244,8 @@ export function createRoleplayMvuSchemaAssetOwner() {
   }
   return {
     getTypeScript:()=>typescriptAssets.get(),
-    /** Existing v1 callers remain explicit during migration. New preparation
-     * uses getDefaultForNewRealm; historical lookup never consults that default. */
+    /** Retain the legacy signatures as unavailable lookups. New preparation
+     * uses ABI4; an old request never implicitly upgrades to that default. */
     async get():Promise<MvuSchemaRuntime> {
       return (await admitted(1)).runtime as MvuSchemaRuntime
     },
@@ -275,7 +278,10 @@ export function createRoleplayMvuSchemaAssetOwner() {
         const actual=(await admitted(version,name,component)).executor
         if(actual.implementationKey!==implementationKey)throw Error('SCHEMA_HISTORY_EXECUTOR_UNAVAILABLE')
         return actual
-      } catch {throw Error('SCHEMA_HISTORY_EXECUTOR_UNAVAILABLE')}
+      } catch {
+        if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
+        throw Error('SCHEMA_HISTORY_EXECUTOR_UNAVAILABLE')
+      }
     },
     async dispose():Promise<void> {
       closed=true

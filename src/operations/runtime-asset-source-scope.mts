@@ -7,6 +7,45 @@ import type {Plugin,Loader} from 'esbuild'
 import type {AuthorHostRuntimeAssetRecipeV5} from './author-host-runtime-assets.mjs'
 
 export interface RuntimeAssetSourceArtifactV1 {id:string;source:string;canonicalSource?:string}
+/** esbuild records lazy-module file names in emitted JavaScript. Keep the
+ * manifest's identity while public delivery relocates the physical toolchain. */
+export function createCanonicalRuntimeSourceFiles(options:{repo:string;
+  artifacts:readonly RuntimeAssetSourceArtifactV1[];libraryRoot:string;lockArtifact:string}) {
+  const repo=path.resolve(options.repo),libraries=fs.realpathSync(options.libraryRoot)
+  const registered=new Map(options.artifacts.map(item=>[path.resolve(repo,item.source),item]))
+  const lock=options.artifacts.find(item=>item.id===options.lockArtifact)!
+  const canonicalLibraries=path.resolve(repo,path.posix.dirname(lock.canonicalSource??lock.source)+'/node_modules')
+  const physicalByLogical=new Map<string,string>()
+  const logicalFile=(physical:string)=>{
+    const item=registered.get(physical)
+    const logical=physical.startsWith(libraries+path.sep)
+      ?path.join(canonicalLibraries,path.relative(libraries,physical))
+      :item?path.resolve(repo,item.canonicalSource??item.source):physical
+    physicalByLogical.set(logical,physical)
+    return logical
+  }
+  const mappedLayout=libraries!==canonicalLibraries||options.artifacts.some(item=>
+    item.canonicalSource!==undefined&&item.canonicalSource!==item.source)
+  const plugin:Plugin={name:'manifest-source-identity',setup(build){
+    build.onResolve({filter:/.*/},async args=>{
+      if(args.pluginData?.canonicalResolution)return
+      const result=await build.resolve(args.path,{kind:args.kind,namespace:args.namespace,
+        importer:physicalByLogical.get(args.importer)??args.importer,resolveDir:args.resolveDir,
+        pluginData:{canonicalResolution:true}})
+      if(result.external||result.errors.length)return result
+      return {...result,path:logicalFile(fs.realpathSync(result.path))}
+    })
+    build.onLoad({filter:/.*/,namespace:'file'},args=>{
+      const physical=physicalByLogical.get(args.path)
+      if(!physical)return
+      const extension=path.extname(physical)
+      const loader:Loader=extension==='.json'?'json'
+        :extension==='.ts'||extension==='.mts'||extension==='.cts'?'ts':'js'
+      return {contents:fs.readFileSync(physical),loader,resolveDir:path.dirname(physical)}
+    })
+  }}
+  return {plugin,mappedLayout,physicalByLogical}
+}
 export interface HistoricalRuntimeSourceBindingV1 {
   logicalArtifact:string
   sourceArtifact:string

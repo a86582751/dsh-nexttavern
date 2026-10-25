@@ -16,7 +16,6 @@ import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { recordSha256 } from './roleplay-data.js';
 const NAME = 'dsh-nexttavern-template-runtime-v2';
-const LEGACY_NAME = 'dsh-nexttavern-template-runtime-v1';
 const VERSION = '0.1.0';
 // This actual Core asset-owner module instance only. The rejection count does
 // not transfer runtime frames or provide a process-wide lock/approval token.
@@ -144,9 +143,11 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
         }
     }
     async function loadSelected(name, signal) {
-        signal?.throwIfAborted();
         if (closed)
             throw Error('TEMPLATE_RUNTIME_DISPOSED');
+        if (name !== NAME)
+            throw Error('TEMPLATE_RUNTIME_ENGINE_UNAVAILABLE');
+        signal?.throwIfAborted();
         if (ownedReadScopeDepth)
             throw Error('TEMPLATE_EXECUTION_IN_VERIFICATION_SCOPE');
         const state = instances.get(name) ?? {};
@@ -187,8 +188,6 @@ export function createRoleplayTavernTemplateAssetOwnerV1() {
             return loadSelected(NAME, signal);
         },
         async loadForEngine(engine, signal) {
-            if (engine.packageName !== NAME && engine.packageName !== LEGACY_NAME)
-                throw Error('TEMPLATE_RUNTIME_ENGINE_UNAVAILABLE');
             const result = await loadSelected(engine.packageName, signal);
             // An old closure must execute under its creating implementation, rather
             // than merely another component with the same wire protocol.

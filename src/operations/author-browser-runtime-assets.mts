@@ -6,6 +6,7 @@ import path from 'node:path'
 import {createRequire} from 'node:module'
 import {pathToFileURL} from 'node:url'
 import {materializeBundledLibraries} from './bundled-library-assembly.mjs'
+import {createCanonicalRuntimeSourceFiles} from './runtime-asset-source-scope.mjs'
 import {AUTHOR_BROWSER_RUNTIME_NAME,AUTHOR_BROWSER_RUNTIME_VERSION,AUTHOR_BROWSER_RUNTIME_PINS,
   AUTHOR_BROWSER_MODULES,AUTHOR_BROWSER_RUNTIME_DESCRIPTOR,AUTHOR_BROWSER_SOURCE_INPUTS,
   authorBrowserAssetSha} from '../core/tavern-author-browser-descriptor.mjs'
@@ -18,7 +19,7 @@ import {AUTHOR_BROWSER_RUNTIME_NAME_V2,AUTHOR_BROWSER_RUNTIME_VERSION_V2,AUTHOR_
 import type {AuthorBrowserRuntimeRoleV2,AuthorBrowserRuntimeDescriptorV2}
   from '../core/tavern-author-browser-descriptor-v2.mjs'
 
-interface Artifact {id:string;source:string}
+interface Artifact {id:string;source:string;canonicalSource?:string}
 interface Resource {artifact:string;path:string}
 export interface AuthorBrowserRuntimeAssetRecipeV1 {
   schemaVersion:1
@@ -212,6 +213,8 @@ export async function buildAuthorBrowserRuntimeAssetsV2(options:{repo:string;pla
   const registered=new Map(options.plan.artifacts.map(item=>[path.resolve(inside(repo,item.source)),item]))
   const root=path.resolve(options.packageRoot),libraryLookup=path.resolve(options.libraryRoot),
     libraries=fs.realpathSync(libraryLookup)
+  const canonical=createCanonicalRuntimeSourceFiles({repo,artifacts:options.plan.artifacts,
+    libraryRoot:libraryLookup,lockArtifact:recipe.lockArtifact})
   const outputs=new Map<string,Buffer>(),graphs:Partial<Record<AuthorBrowserRuntimeRoleV2,readonly SourceInput[]>>={}
   const bundledDependencies:Record<string,string>={}
   const prefix=path.posix.dirname(find(recipe.packageArtifact).source)
@@ -222,12 +225,14 @@ export async function buildAuthorBrowserRuntimeAssetsV2(options:{repo:string;pla
     const result=await esbuild.build({absWorkingDir:repo,entryPoints:[inside(repo,find(module.artifact).source)],
       bundle:true,platform:browser?'browser':'node',format:browser&&module.role!=='execution-worker'?'iife':'esm',
       target:recipe.builder.target,write:false,metafile:true,minifyWhitespace:true,legalComments:'none',
-      // Bundle under this checkout's identities; audit actual dependency bytes below.
+      // Relocation changes lookup paths, not the admitted module identities.
+      ...(canonical.mappedLayout?{plugins:[canonical.plugin]}:{}),
       preserveSymlinks:true,nodePaths:[libraryLookup],external:browser?[]:Object.keys(recipe.dependencies),tsconfigRaw:{compilerOptions:{}}})
     if(result.outputFiles?.length!==1||!result.metafile)throw Error('AUTHOR_BROWSER_V2_OUTPUT_INVALID')
     const sources:SourceInput[]=[]
     for(const input of Object.keys(result.metafile.inputs)) {
-      const file=fs.realpathSync(path.resolve(repo,input)),source=registered.get(file)
+      const logical=path.resolve(repo,input)
+      const file=fs.realpathSync(canonical.physicalByLogical.get(logical)??logical),source=registered.get(file)
       if(file.startsWith(libraries+path.sep)) {
         bundledDependencies[path.relative(libraries,file).replaceAll('\\','/')]=authorBrowserAssetShaV2(fs.readFileSync(file))
         continue
