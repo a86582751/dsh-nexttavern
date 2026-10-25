@@ -40,35 +40,20 @@
       "dsh-nexttavern-session-format/*": [
         "../development/session-format/src/*.ts"
       ],
-      "dsh-nexttavern-mvu-schema-runtime": [
-        "../development/schema-executors/v1/compat/mvu-schema-runtime/src/index.ts"
+      "dsh-nexttavern-mvu-schema-runtime-v4-update-batch-v1": [
+        "../development/mvu-schema-runtime-v4-update-batch-v1/src/index.ts"
       ],
-      "dsh-nexttavern-mvu-schema-runtime/*": [
-        "../development/schema-executors/v1/compat/mvu-schema-runtime/src/*.ts"
-      ],
-      "dsh-nexttavern-mvu-schema-runtime-v2": [
-        "../development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/index.ts"
-      ],
-      "dsh-nexttavern-mvu-schema-runtime-v2/*": [
-        "../development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/*.ts"
-      ],
-      "dsh-nexttavern-mvu-schema-runtime-v3": [
-        "../development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/index.ts"
-      ],
-      "dsh-nexttavern-mvu-schema-runtime-v3/*": [
-        "../development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/*.ts"
-      ],
-      "dsh-nexttavern-mvu-schema-runtime-v4": [
-        "../development/mvu-schema-runtime-v4/src/index.ts"
-      ],
-      "dsh-nexttavern-mvu-schema-runtime-v4/*": [
-        "../development/mvu-schema-runtime-v4/src/*.ts"
+      "dsh-nexttavern-mvu-schema-runtime-v4-update-batch-v1/*": [
+        "../development/mvu-schema-runtime-v4-update-batch-v1/src/*.ts"
       ],
       "parse5": [
         "./node_modules/parse5/dist/index.d.ts"
       ],
       "dsh-nexttavern-anydoc/*": [
         "../development/anydoc/src/*.ts"
+      ],
+      "dsh-nexttavern-typescript-runtime": [
+        "../development/typescript-runtime/src/index.ts"
       ]
     },
     "newLine": "lf"

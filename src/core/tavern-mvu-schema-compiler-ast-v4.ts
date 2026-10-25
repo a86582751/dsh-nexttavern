@@ -1,7 +1,8 @@
 /** New v4 canonical schema AST gates. Source is inspected/transpiled only.
  * Registration intent is not execution evidence: the guest still must really
  * register/validate every enabled schema path, with no loader fallback. */
-import ts from 'typescript'
+import ts from 'dsh-nexttavern-typescript-runtime'
+import type * as TypeScript from 'typescript'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import {C_SCHEMA_IMPORT_POLICY_V4} from './tavern-mvu-schema-program-v4.js'
 import type {MvuSchemaDiagnostic} from './tavern-mvu-schema-types.js'
@@ -18,12 +19,12 @@ const hostNames = new Set(['window', 'parent', 'top', 'self', 'globalThis', 'glo
   'localStorage', 'sessionStorage', 'indexedDB', 'TavernHelper', 'SillyTavern', 'setTimeout', 'setInterval',
   'requestAnimationFrame', 'queueMicrotask'])
 const escapeProperties = new Set(['__proto__', 'constructor', 'prototype'])
-function fail(code: string, script: RawAuthorScriptV4, file: ts.SourceFile, node?: ts.Node): never {
+function fail(code: string, script: RawAuthorScriptV4, file: TypeScript.SourceFile, node?: TypeScript.Node): never {
   const position = node ? file.getLineAndCharacterOfPosition(node.getStart(file)) : undefined
   throw new SchemaAstRefusalV4({code, pointer: script.pointer, scriptIdentity: script.identity,
     ...(position ? {line: position.line + 1, column: position.character + 1} : {})})
 }
-function isNameOnly(node: ts.Identifier): boolean {
+function isNameOnly(node: TypeScript.Identifier): boolean {
   const parent = node.parent
   return ts.isPropertyAccessExpression(parent) && parent.name === node
     || (ts.isPropertyAssignment(parent) || ts.isMethodDeclaration(parent) || ts.isPropertyDeclaration(parent))
@@ -32,22 +33,22 @@ function isNameOnly(node: ts.Identifier): boolean {
     || ts.isImportSpecifier(parent) && parent.propertyName === node
     || ts.isExportSpecifier(parent) && parent.propertyName === node
 }
-function symbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
+function symbol(checker: TypeScript.TypeChecker, node: TypeScript.Node): TypeScript.Symbol | undefined {
   return checker.getSymbolAtLocation(node)
 }
 /** Only compile-bound bridge imports or this script's free owned facade can
  * supply the syntactic registration intent. A similarly named object method
  * or local fake function alone does not make arbitrary source schema code. */
-export function hasRegistrationIntentV4(script: RawAuthorScriptV4, file: ts.SourceFile, checker: ts.TypeChecker): boolean {
+export function hasRegistrationIntentV4(script: RawAuthorScriptV4, file: TypeScript.SourceFile, checker: TypeScript.TypeChecker): boolean {
   const bridgeSpecifiers = new Set(script.imports.filter(item => item.kind === 'schema-bridge').map(item => item.specifier))
-  const receivers = new Set<ts.Symbol>(), functions = new Set<ts.Symbol>(), nodes: ts.Node[] = []
-  const pending: ts.Node[] = [file]
+  const receivers = new Set<TypeScript.Symbol>(), functions = new Set<TypeScript.Symbol>(), nodes: TypeScript.Node[] = []
+  const pending: TypeScript.Node[] = [file]
   while (pending.length) {
     const node = pending.pop()!
     nodes.push(node)
     ts.forEachChild(node, child => {pending.push(child)})
   }
-  const importedNamespace = (expression: ts.Expression | undefined): boolean => {
+  const importedNamespace = (expression: TypeScript.Expression | undefined): boolean => {
     if (!expression) return false
     if (ts.isAwaitExpression(expression)) return importedNamespace(expression.expression)
     if (!ts.isCallExpression(expression) || expression.expression.kind !== ts.SyntaxKind.ImportKeyword) return false
@@ -75,7 +76,7 @@ export function hasRegistrationIntentV4(script: RawAuthorScriptV4, file: ts.Sour
       const value = symbol(checker, node.left);if (value) receivers.add(value)
     }
   }
-  const registrationReference = (expression: ts.Expression): boolean => {
+  const registrationReference = (expression: TypeScript.Expression): boolean => {
     if (ts.isIdentifier(expression)) {
       const value = symbol(checker, expression)
       return !!value && functions.has(value) || !value && expression.text === 'registerMvuSchema'
@@ -108,7 +109,7 @@ export function hasRegistrationIntentV4(script: RawAuthorScriptV4, file: ts.Sour
 
 export function compileSchemaAstV4(script: RawAuthorScriptV4,
   input: Pick<MvuSchemaCompilationInputV4,'bridge'|'libraries'>,
-  file: ts.SourceFile, checker: ts.TypeChecker,ordinal:number): {
+  file: TypeScript.SourceFile, checker: TypeScript.TypeChecker,ordinal:number): {
     kind: 'schema'; javascript: string;commandPolicyBindings:readonly RegisteredCommandPolicyBindingV1[];
     initializationWriteBindings:readonly InitializationWriteBindingV1[]}
     | {kind: 'not-schema'} {
@@ -118,11 +119,11 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
   try {
     const bindings = new Map(script.imports.map(item => [item.specifier, item]))
     const libraries = new Map(input.libraries.map(item => [item.kind, item.bundleSha256]))
-    const redirects = new Map<ts.Node, string>()
+    const redirects = new Map<TypeScript.Node, string>()
     const commandPolicyBindings:RegisteredCommandPolicyBindingV1[]=[]
     const initializationWriteBindings:InitializationWriteBindingV1[]=[]
-    const literalName=(name:ts.PropertyName)=>ts.isIdentifier(name)||ts.isStringLiteral(name)?name.text:undefined
-    const initializationWrite=(call:ts.CallExpression)=>{
+    const literalName=(name:TypeScript.PropertyName)=>ts.isIdentifier(name)||ts.isStringLiteral(name)?name.text:undefined
+    const initializationWrite=(call:TypeScript.CallExpression)=>{
       const payload=call.arguments[0],option=call.arguments[1]
       const field=payload&&ts.isObjectLiteralExpression(payload)&&payload.properties.length===1
         ?payload.properties[0]:undefined
@@ -140,12 +141,12 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
         sourceSha256:script.sourceSha256,sourceSpan:{start:call.getStart(file),end:call.end},
         capability:'insert-or-assign-chat-stat-data-v1'})
     }
-    const policyBinding=(specifier:string,node:ts.Node,
+    const policyBinding=(specifier:string,node:TypeScript.Node,
       fields:Pick<RegisteredCommandPolicyBindingV1,'importKind'|'importedName'|'localName'>)=>{
       commandPolicyBindings.push({scriptOrdinal:ordinal,scriptIdentity:script.identity,
         sourceSpan:{start:node.getStart(file),end:node.end},specifier,...fields,policy:'stagedog-command-discard-v1'})
     }
-    const rewriteSpecifier = (literal: ts.StringLiteralLike, node: ts.Node) => {
+    const rewriteSpecifier = (literal: TypeScript.StringLiteralLike, node: TypeScript.Node) => {
       const binding = bindings.get(literal.text)
       if (!binding) fail('MVU_SCHEMA_IMPORT_UNBOUND', script, file, node)
       if (binding.kind === 'native-state-loader') fail('MVU_SCHEMA_V4_MIXED_NATIVE_IMPORT', script, file, node)
@@ -174,7 +175,7 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
     // The planner already bounded scanner/parser/binder work before invoking
     // this private closure. The complete canonical gate still inspects every
     // node, including unreachable branches and code before/after registration.
-    const pending: {node: ts.Node; depth: number}[] = [{node: file, depth: 0}]
+    const pending: {node: TypeScript.Node; depth: number}[] = [{node: file, depth: 0}]
     while (pending.length) {
       const {node, depth} = pending.pop()!
       if (depth > MVU_SCHEMA_BOUNDS.syntaxDepth) fail('MVU_SCHEMA_AST_DEPTH_LIMIT', script, file, node)
@@ -225,12 +226,12 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
       ts.forEachChild(node, child => {pending.push({node: child, depth: depth + 1})})
     }
     if (!hasRegistrationIntentV4(script, file, checker)) return {kind: 'not-schema'}
-    const transformer: ts.TransformerFactory<ts.SourceFile> = context => {
-      const visit: ts.Visitor = node => {
+    const transformer: TypeScript.TransformerFactory<TypeScript.SourceFile> = context => {
+      const visit: TypeScript.Visitor = node => {
         const redirect = redirects.get(node)
         return redirect ? context.factory.createStringLiteral(redirect) : ts.visitEachChild(node, visit, context)
       }
-      return root => ts.visitNode(root, visit) as ts.SourceFile
+      return root => ts.visitNode(root, visit) as TypeScript.SourceFile
     }
     const transformed = ts.transform(file, [transformer])
     let redirected: string

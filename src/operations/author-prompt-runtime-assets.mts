@@ -10,6 +10,7 @@ import {materializeBundledLibraries} from './bundled-library-assembly.mjs'
 import {AUTHOR_PROMPT_RUNTIME_NAME,AUTHOR_PROMPT_RUNTIME_VERSION,AUTHOR_PROMPT_RUNTIME_PINS,
   AUTHOR_PROMPT_MODULES,AUTHOR_PROMPT_RUNTIME_DESCRIPTOR,AUTHOR_PROMPT_SOURCE_INPUTS}
   from '../core/tavern-author-prompt-descriptor.mjs'
+import {TYPESCRIPT_SHARED_DEPENDENCY} from '../core/tavern-typescript-runtime-descriptor.mjs'
 
 interface Artifact {id:string;source:string}
 interface Resource {artifact:string;path:string}
@@ -109,7 +110,7 @@ export async function buildAuthorPromptRuntimeAssetsV1(options:{repo:string;plan
     const entry=inside(repo,artifact(options.plan,module.artifact).source)
     const result=await esbuild.build({absWorkingDir:repo,entryPoints:[entry],bundle:true,platform:'node',format:'esm',
       target:recipe.builder.target,write:false,metafile:true,minifyWhitespace:true,tsconfigRaw:{compilerOptions:{}},
-      external:Object.keys(recipe.dependencies),legalComments:'none'})
+      external:[...Object.keys(recipe.dependencies),TYPESCRIPT_SHARED_DEPENDENCY.name],legalComments:'none'})
     if(result.outputFiles?.length!==1||!result.metafile)throw Error('AUTHOR_PROMPT_ASSET_OUTPUT_INVALID')
     graphs[module.role]=Object.keys(result.metafile.inputs).map(input=>{
       const file=fs.realpathSync(path.resolve(repo,input)),source=registered.get(file)
@@ -129,8 +130,9 @@ export async function buildAuthorPromptRuntimeAssetsV1(options:{repo:string;plan
   const policyFile=inside(repo,artifact(options.plan,recipe.policyArtifact).source),policyURL=pathToFileURL(policyFile)
   policyURL.searchParams.set('authorPromptBuild',sha(JSON.stringify(graphs)+sha(fs.readFileSync(policyFile))))
   const policy=await import(policyURL.href) as {PROMPT_PROFILE_SHA256_V1:string}
-  const descriptor={schemaVersion:1,name:AUTHOR_PROMPT_RUNTIME_NAME,version:AUTHOR_PROMPT_RUNTIME_VERSION,
-    modules:AUTHOR_PROMPT_MODULES,dependencies:AUTHOR_PROMPT_RUNTIME_PINS,profileSha256:policy.PROMPT_PROFILE_SHA256_V1}
+  const descriptor={schemaVersion:2,name:AUTHOR_PROMPT_RUNTIME_NAME,version:AUTHOR_PROMPT_RUNTIME_VERSION,
+    modules:AUTHOR_PROMPT_MODULES,dependencies:AUTHOR_PROMPT_RUNTIME_PINS,sharedCompiler:TYPESCRIPT_SHARED_DEPENDENCY,
+    profileSha256:policy.PROMPT_PROFILE_SHA256_V1}
   outputs.set(recipe.descriptorOutput,Buffer.from(JSON.stringify(descriptor,null,2)+'\n'))
   outputs.set(recipe.sourceInputOutput,Buffer.from(JSON.stringify({schemaVersion:1,
     encoding:'owned-author-prompt-runtime-source-inputs-v1',name:AUTHOR_PROMPT_RUNTIME_NAME,

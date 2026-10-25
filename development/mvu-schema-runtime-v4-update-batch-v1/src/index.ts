@@ -4,6 +4,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {createRequire} from 'node:module'
 import {fileURLToPath,pathToFileURL} from 'node:url'
+import type {AdmittedTypeScript} from 'dsh-nexttavern-typescript-runtime'
+import {TYPESCRIPT_SHARED_DEPENDENCY} from '../../../src/core/tavern-typescript-runtime-descriptor.mjs'
 import {SCHEMA_RUNTIME_NAME,SCHEMA_RUNTIME_VERSION,SCHEMA_RUNTIME_DESCRIPTOR,SCHEMA_RUNTIME_PINS,
   schemaAssetSha,schemaAssetPath,schemaRuntimeImplementation} from './descriptor.js'
 import type {SchemaRuntimeDescriptor,SchemaRuntimeFile} from './descriptor.js'
@@ -22,6 +24,7 @@ export interface MvuSchemaRuntimeV4Inventory {
 }
 export type OwnedSchemaPackageInventory=MvuSchemaRuntimeV4Inventory
 export interface MvuSchemaRuntimeV4Deps {
+  readonly typescript:AdmittedTypeScript
   /** Core binds this to the actual product inventory + verifyProtectedPackage. */
   verifyOwnedPackage(packageRootURL:URL):OwnedSchemaPackageInventory
 }
@@ -93,8 +96,10 @@ export async function createMvuSchemaRuntimeV4(deps:MvuSchemaRuntimeV4Deps):Prom
     loadedGeneration??=pin.generation
     dependencyGraph(root)
     const descriptor=JSON.parse(fs.readFileSync(pathname(root,SCHEMA_RUNTIME_DESCRIPTOR),'utf8')) as SchemaRuntimeDescriptor
-    if(descriptor.schemaVersion!==1||descriptor.name!==pin.name||descriptor.version!==pin.version
-      ||JSON.stringify(descriptor.dependencies)!==JSON.stringify(SCHEMA_RUNTIME_PINS))throw failure()
+    deps.typescript.checkCurrent()
+    if(descriptor.schemaVersion!==2||descriptor.name!==pin.name||descriptor.version!==pin.version
+      ||JSON.stringify(descriptor.dependencies)!==JSON.stringify(SCHEMA_RUNTIME_PINS)
+      ||JSON.stringify(descriptor.sharedCompiler)!==JSON.stringify(TYPESCRIPT_SHARED_DEPENDENCY))throw failure()
     const entries=Object.values(descriptor.modules)
     if(entries.length!==5||new Set(entries).size!==5||descriptor.modules.provider!=='dist/index.mjs')throw failure()
     for(const entry of entries)if(!entry.startsWith('dist/')||!schemaAssetPath(entry))throw failure()
@@ -107,8 +112,11 @@ export async function createMvuSchemaRuntimeV4(deps:MvuSchemaRuntimeV4Deps):Prom
       return {kind:guest.kind,packageName:guest.packageName,version:guest.version,globalName:guest.globalName,
         bundleSha256:guest.sha256,code}
     })
+    const sharedCompiler={ownerName:deps.typescript.ownerName,ownerVersion:deps.typescript.ownerVersion,
+      generation:deps.typescript.generation,compilerFingerprint:deps.typescript.compilerFingerprint}
+    const implementation=(kind:'compiler'|'runner'|'bridge')=>schemaRuntimeImplementation(kind,pin.files,sharedCompiler,pin.generation)
     const bridge=Object.freeze({id:'native-mvu-schema-bridge',version:4,
-      implementationSha256:schemaRuntimeImplementation('bridge',pin.files)})
+      implementationSha256:implementation('bridge')})
     const stateLoader=Object.freeze(deriveOwnedStateLoaderIdentityV4(bridge))
     const compilerModule=await import(pathToFileURL(pathname(root,descriptor.modules.compiler)).href) as {
       createMvuSchemaCompilerV4(deps:CompilerDepsV4):MvuSchemaCandidateCompilerV4}
@@ -116,14 +124,14 @@ export async function createMvuSchemaRuntimeV4(deps:MvuSchemaRuntimeV4Deps):Prom
       createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRunnerV4}
     if(admitted(root,deps).generation!==pin.generation)throw failure()
     compiler=compilerModule.createMvuSchemaCompilerV4({identity:{id:'native-mvu-schema-compiler',version:4,typescriptVersion:'5.9.3',
-      implementationSha256:schemaRuntimeImplementation('compiler',pin.files)},
+      implementationSha256:implementation('compiler')},
       workerUrl:pathToFileURL(pathname(root,descriptor.modules['compiler-worker']))})
     runner=runnerModule.createMvuSchemaRunnerV4({identity:{id:'native-mvu-schema-runner',version:4,quickjsVersion:'0.32.0',
-      implementationSha256:schemaRuntimeImplementation('runner',pin.files)},bridge,stateLoader,libraries,
+      implementationSha256:implementation('runner')},bridge,stateLoader,libraries,
       workerUrl:pathToFileURL(pathname(root,descriptor.modules['runner-worker']))})
     // Admission keeps the entire file set and symlink-free paths unchanged;
     // the initial dependency graph therefore still applies to each worker.
-    const current=()=>{const now=admitted(root,deps);if(now.generation!==pin.generation)throw failure()}
+    const current=()=>{deps.typescript.checkCurrent();const now=admitted(root,deps);if(now.generation!==pin.generation)throw failure()}
     const unavailable={kind:'unavailable' as const,diagnostics:[{code:'SCHEMA_RUNTIME_ASSETS_UNAVAILABLE'}]}
     const guarded=async<T,>(action:()=>Promise<T>,fallback:T):Promise<T>=>{
       try {current();const result=await action();current();return result}catch {return fallback}

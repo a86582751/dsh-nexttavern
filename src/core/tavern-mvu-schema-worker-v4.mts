@@ -6,7 +6,8 @@ import {readFileSync} from 'node:fs'
 import {dirname,resolve} from 'node:path'
 import {newQuickJSWASMModuleFromVariant} from 'quickjs-emscripten-core'
 import variant from '@jitl/quickjs-wasmfile-release-sync'
-import ts from 'typescript'
+import ts from 'dsh-nexttavern-typescript-runtime'
+import type * as TypeScript from 'typescript'
 import {reduceSchemaUpdateOperationV2,mergeSchemaUpdateValuesV2,
   reduceSchemaUpdateBatchV2,mergeSchemaUpdateBatchValuesV2} from './tavern-mvu-schema-update-effects-v2.js'
 import {recordSha256} from './roleplay-data.js'
@@ -91,17 +92,17 @@ function peerVersions():boolean {
  * execution. Local names and property keys remain the author's own bindings. */
 function bindAuthorScope(javascript:string,filename:string,moduleName:string,initializationWrite=false):string {
   const file=ts.createSourceFile(filename,javascript,ts.ScriptTarget.ES2023,true,ts.ScriptKind.JS)
-  if((file as ts.SourceFile&{parseDiagnostics:readonly ts.Diagnostic[]}).parseDiagnostics.length) {
+  if((file as TypeScript.SourceFile&{parseDiagnostics:readonly TypeScript.Diagnostic[]}).parseDiagnostics.length) {
     throw new GuestRefusal('SCHEMA_SCOPE_TRANSFORM_INVALID')
   }
-  const options:ts.CompilerOptions={allowJs:true,checkJs:false,noResolve:true,noLib:true,
+  const options:TypeScript.CompilerOptions={allowJs:true,checkJs:false,noResolve:true,noLib:true,
     target:ts.ScriptTarget.ES2023,module:ts.ModuleKind.ESNext}
-  const host:ts.CompilerHost={getSourceFile:name=>name===filename?file:undefined,getDefaultLibFileName:()=>'',writeFile:()=>{},
+  const host:TypeScript.CompilerHost={getSourceFile:name=>name===filename?file:undefined,getDefaultLibFileName:()=>'',writeFile:()=>{},
     getCurrentDirectory:()=>'',getDirectories:()=>[],fileExists:name=>name===filename,
     readFile:name=>name===filename?javascript:undefined,getCanonicalFileName:name=>name,
     useCaseSensitiveFileNames:()=>true,getNewLine:()=>'\n'}
   const checker=ts.createProgram([filename],options,host).getTypeChecker()
-  const pending:{node:ts.Node;depth:number}[]=[{node:file,depth:0}],identifiers=new Set<string>()
+  const pending:{node:TypeScript.Node;depth:number}[]=[{node:file,depth:0}],identifiers=new Set<string>()
   let visited=0
   while(pending.length) {
     const {node,depth}=pending.pop()!
@@ -115,8 +116,8 @@ function bindAuthorScope(javascript:string,filename:string,moduleName:string,ini
   while(identifiers.has(namespace))namespace+='_' 
   const bound=new Set<string>(scopedNames)
   if(initializationWrite)bound.add('insertOrAssignVariables')
-  const free=(node:ts.Identifier)=>!checker.getSymbolAtLocation(node)?.declarations?.length
-  const nameOnly=(node:ts.Identifier)=>{
+  const free=(node:TypeScript.Identifier)=>!checker.getSymbolAtLocation(node)?.declarations?.length
+  const nameOnly=(node:TypeScript.Identifier)=>{
     const parent=node.parent
     return ts.isPropertyAccessExpression(parent)&&parent.name===node
       ||(ts.isPropertyAssignment(parent)||ts.isMethodDeclaration(parent)||ts.isPropertyDeclaration(parent)
@@ -129,7 +130,7 @@ function bindAuthorScope(javascript:string,filename:string,moduleName:string,ini
   const transformed=ts.transform(file,[context=>{
     const member=(name:string)=>context.factory.createPropertyAccessExpression(
       context.factory.createIdentifier(namespace),name)
-    const visit:ts.Visitor=node=>{
+    const visit:TypeScript.Visitor=node=>{
       if(ts.isShorthandPropertyAssignment(node)&&bound.has(node.name.text)
         &&!checker.getShorthandAssignmentValueSymbol(node)?.declarations?.length) {
         if(node.objectAssignmentInitializer)throw new GuestRefusal('SCHEMA_SCOPE_TRANSFORM_INVALID')
@@ -139,7 +140,7 @@ function bindAuthorScope(javascript:string,filename:string,moduleName:string,ini
       return ts.visitEachChild(node,visit,context)
     }
     return root=>{
-      const rewritten=ts.visitNode(root,visit) as ts.SourceFile
+      const rewritten=ts.visitNode(root,visit) as TypeScript.SourceFile
       const imported=context.factory.createImportDeclaration(undefined,context.factory.createImportClause(false,undefined,
         context.factory.createNamespaceImport(context.factory.createIdentifier(namespace))),
       context.factory.createStringLiteral(moduleName),undefined)

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "name": "dsh-nexttavern-author-prompt-runtime-v1",
   "version": "0.1.0",
   "modules": {
@@ -7,9 +7,14 @@
     "worker": "dist/prompt-worker.mjs"
   },
   "dependencies": {
-    "typescript": "5.9.3",
     "quickjs-emscripten-core": "0.32.0",
     "@jitl/quickjs-wasmfile-release-sync": "0.32.0"
+  },
+  "sharedCompiler": {
+    "name": "dsh-nexttavern-typescript-runtime",
+    "version": "0.1.0",
+    "typescriptVersion": "5.9.3",
+    "entrySha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675"
   },
   "profileSha256": "18367b89a2575c2d5765f29998704c45f0ffbafdbaf21ce372c8a60137107e43"
 }

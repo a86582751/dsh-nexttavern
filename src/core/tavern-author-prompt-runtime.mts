@@ -1,4 +1,5 @@
 import {Worker} from 'node:worker_threads'
+import type {AdmittedTypeScript} from 'dsh-nexttavern-typescript-runtime'
 import {PROMPT_BOUNDS_V1 as bounds} from './tavern-author-prompt-profile.mjs'
 import {createAuthorPromptCompilerV1} from './tavern-author-prompt-compiler.mjs'
 import {validatePromptProgramV1} from './tavern-author-prompt-data.mjs'
@@ -48,20 +49,21 @@ export async function runAuthorPromptProgramV1(program:PromptProgramV1,capture:P
 /** The protected provider fixes the binding once. This owner alone dispatches
  * and revokes all its compilation and execution workers. */
 export function createAuthorPromptExecutionOwnerV1(binding:{compiler:PromptCompilerIdentityV1;
-  runtime:PromptRuntimeIdentityV1;worker:URL}):OwnedAuthorPromptRuntimeV1 {
+  runtime:PromptRuntimeIdentityV1;worker:URL;typescript:AdmittedTypeScript}):OwnedAuthorPromptRuntimeV1 {
   let disposed=false,disposal:Promise<void>|undefined
   const running=new Map<AbortController,Promise<PromptCandidateBatchV1|PromptExecutionV1>>()
   const admittedPrograms=new Set<string>()
-  const checkCurrent=()=>{if(disposed)throw Error('PROMPT_RUNTIME_DISPOSED')}
+  const checkCurrent=()=>{if(disposed)throw Error('PROMPT_RUNTIME_DISPOSED');binding.typescript.checkCurrent()}
   const dispatch=(request:PromptWorkerRequestV1,signal?:AbortSignal):Promise<PromptCandidateBatchV1|PromptExecutionV1>=>{
     checkCurrent()
     const controller=new AbortController(),abort=()=>controller.abort()
     signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort()
     const result=dispatchPromptWorkerV1(binding.worker,request,controller.signal)
+      .then(result=>{checkCurrent();return result})
       .finally(()=>{signal?.removeEventListener('abort',abort);running.delete(controller)})
     running.set(controller,result);return result
   }
-  const compiler=createAuthorPromptCompilerV1({...binding,dispatch,accept:program=>admittedPrograms.add(program.programSha256)})
+  const compiler=createAuthorPromptCompilerV1({...binding,checkCurrent,dispatch,accept:program=>admittedPrograms.add(program.programSha256)})
   return Object.freeze({compiler,runtime:binding.runtime,checkCurrent,
     async execute(program:PromptProgramV1,capture:PromptCaptureV1,signal?:AbortSignal):Promise<PromptExecutionV1> {
       checkCurrent()

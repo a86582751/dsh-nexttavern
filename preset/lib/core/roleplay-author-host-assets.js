@@ -47,9 +47,11 @@ function packageVerifier(admitted) {
 export function createRoleplayAuthorHostAssetOwner(deps) {
     let closed = false, disposal;
     const runtimes = new Map();
+    const runtimesByIdentity = new Map();
+    let product;
     const current = () => { if (closed)
         throw Error('AUTHOR_HOST_RUNTIME_DISPOSED'); };
-    async function load(name, selectedServer, selectedBrowser = browserName, selectedPartition = undefined, hostComponent, browserComponent, promptComponent) {
+    async function loadProduct() {
         const root = productRoot(), require = createRequire(path.join(root, 'package.json'));
         const bootstrap = await import(__rewriteRelativeImportExtension(pathToFileURL(path.join(root, 'lib/operations/bundled-package-bootstrap.mjs')).href));
         const protection = await import(__rewriteRelativeImportExtension(pathToFileURL(path.join(root, 'lib/operations/protected-packages.mjs')).href));
@@ -57,6 +59,15 @@ export function createRoleplayAuthorHostAssetOwner(deps) {
         const identity = bootstrap.readBundleIdentity(root);
         if (identity.productRoot !== root)
             throw Error('AUTHOR_HOST_INVENTORY_OWNER_CHANGED');
+        return { root, require, identity, protection };
+    }
+    function productAssets() {
+        // Installed product identity is fixed until this owner is disposed.
+        return product ??= loadProduct().catch(error => { product = undefined; throw error; });
+    }
+    async function load(name, selectedServer, selectedBrowser = browserName, selectedPartition = undefined, hostComponent, browserComponent, promptComponent) {
+        const { root, require, identity, protection } = await productAssets();
+        current();
         function admit(name, component) {
             const historical = component === undefined ? undefined : identity.historicalComponents.find(spec => spec.path === component);
             const specs = historical ? [historical] : component === undefined ? identity.packages.filter(spec => spec.name === name) : [];
@@ -78,6 +89,15 @@ export function createRoleplayAuthorHostAssetOwner(deps) {
             throw Error('AUTHOR_HOST_SERVER_ABI_UNSUPPORTED');
         async function loadBrowser(selected, component) {
             const admittedBrowser = admit(selected, component);
+            if (selected === browserName && component === undefined) {
+                const browserModule = await import(__rewriteRelativeImportExtension(pathToFileURL(admittedBrowser.entry).href));
+                const typescript = await deps.serverAssets.getTypeScript();
+                current();
+                return browserModule.createOwnedAuthorBrowserRuntimeV3({
+                    verifyOwnedPackage: packageVerifier(admittedBrowser), typescript
+                });
+            }
+            // Frozen factories retain their original package-local compiler and ABI.
             const browserModule = await import(__rewriteRelativeImportExtension(pathToFileURL(admittedBrowser.entry).href));
             current();
             const dependency = { verifyOwnedPackage: packageVerifier(admittedBrowser) };
@@ -97,7 +117,7 @@ export function createRoleplayAuthorHostAssetOwner(deps) {
             current();
             const admittedPrompt = admit(AUTHOR_PROMPT_RUNTIME_NAME, promptComponent);
             prompt = await loadAdmittedAuthorPromptRuntimeV1({ ...admittedPrompt, inventory: { ...admittedPrompt.inventory,
-                    name: AUTHOR_PROMPT_RUNTIME_NAME, version: admittedPrompt.inventory.version } }, current);
+                    name: AUTHOR_PROMPT_RUNTIME_NAME, version: admittedPrompt.inventory.version } }, current, promptComponent === undefined ? await deps.serverAssets.getTypeScript() : undefined);
             current();
             const admittedHost = admit(name, hostComponent);
             const hostModule = await import(__rewriteRelativeImportExtension(pathToFileURL(admittedHost.entry).href));
@@ -124,6 +144,10 @@ export function createRoleplayAuthorHostAssetOwner(deps) {
         let pending = runtimes.get(key);
         if (!pending) {
             pending = load(name, server, selectedBrowser, selectedPartition, hostComponent, browserComponent, promptComponent)
+                .then(runtime => {
+                runtimesByIdentity.set(runtime.implementationKey + ':' + recordSha256(runtime.host.server), runtime);
+                return runtime;
+            })
                 .catch(error => { runtimes.delete(key); throw error; });
             runtimes.set(key, pending);
         }
@@ -151,13 +175,19 @@ export function createRoleplayAuthorHostAssetOwner(deps) {
     return {
         getDefault: () => admitted(),
         async getForVerifiedHost(identity, server) {
+            current();
             try {
                 // Compute both lookup identities before admission yields. A persisted
                 // tuple is DATA only, including the real stateLoader member.
                 const hostKey = recordSha256(identity), serverKey = recordSha256(server);
-                const root = productRoot();
-                const bootstrap = await import(__rewriteRelativeImportExtension(pathToFileURL(path.join(root, 'lib/operations/bundled-package-bootstrap.mjs')).href));
-                const entry = bootstrap.readBundleIdentity(root).authorRuntimeHistory.find(row => recordSha256(row.host) === hostKey && recordSha256(row.server) === serverKey);
+                const known = runtimesByIdentity.get(hostKey + ':' + serverKey);
+                if (known) {
+                    known.host.checkCurrent();
+                    return known;
+                }
+                const { identity: catalog } = await productAssets();
+                current();
+                const entry = catalog.authorRuntimeHistory.find(row => recordSha256(row.host) === hostKey && recordSha256(row.server) === serverKey);
                 const selectedServer = entry ? await deps.serverAssets.getForVerifiedEpoch({ compiler: server.compiler,
                     bridge: server.bridge, libraries: server.libraries, runner: server.runner }) : undefined;
                 const runtime = await admitted(entry?.hostPackage, selectedServer, entry?.browserPackage, entry?.browserPartitionPackage, entry ? hostKey + ':' + serverKey : 'default', entry?.hostComponent, entry?.browserComponent, entry?.promptComponent);
@@ -167,6 +197,7 @@ export function createRoleplayAuthorHostAssetOwner(deps) {
                 return runtime;
             }
             catch {
+                current();
                 throw Error('AUTHOR_HOST_HISTORY_UNAVAILABLE');
             }
         }, dispose,

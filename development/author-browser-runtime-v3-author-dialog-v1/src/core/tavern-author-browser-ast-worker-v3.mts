@@ -10,10 +10,11 @@ import type {ReaderRegexDocumentInputV1} from './reader-regex-document-types.mjs
 const port=parentPort
 if(!port)throw Error('BROWSER_AST_WORKER_PORT_MISSING')
 try {
-  const artifact=loadOwnedAuthorBrowserArtifactV3()
-  if(workerData?.encoding==='reader-regex-document-input-v1')
-    port.postMessage(createReaderRegexDocumentCompilerV1(artifact).compile(workerData as ReaderRegexDocumentInputV1))
-  else port.postMessage(createBrowserCompilerV3(artifact).compile(workerData as BrowserCompilationInputV3))
+  const {input,sharedCompiler,componentGeneration}=workerData
+  const artifact=loadOwnedAuthorBrowserArtifactV3(sharedCompiler,componentGeneration)
+  if(input?.encoding==='reader-regex-document-input-v1')
+    port.postMessage(createReaderRegexDocumentCompilerV1(artifact).compile(input as ReaderRegexDocumentInputV1))
+  else port.postMessage(createBrowserCompilerV3(artifact).compile(input as BrowserCompilationInputV3))
 }catch(error) {
   const raw=error instanceof Error?error.message:''
   const result:BrowserCompilationV3={kind:'refused',

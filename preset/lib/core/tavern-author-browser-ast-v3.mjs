@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/src/core/tavern-author-browser-ast-v3.mts; edit the TypeScript source.
 /** Complete deterministic scope/value proof. Nothing here evaluates author JS. */
-import ts from 'typescript';
+import ts from 'dsh-nexttavern-typescript-runtime';
 import { sha256 } from './roleplay-data.js';
 import { BROWSER_BOUNDS_V3, BROWSER_APIS_V3, BROWSER_METHODS_V3, BROWSER_PROPERTIES_V3, BROWSER_GUEST_INTRINSICS_V3, BROWSER_ABSENT_PROBES_V3, BROWSER_CLOSED_DOM_FACADES_V3, BROWSER_SERVER_GLOBALS_V3, READER_PAGE_AST_APIS_V3 } from './tavern-author-browser-profile-v3.mjs';
 import { BROWSER_NATIVE_METHODS_V3, BROWSER_NATIVE_PROPERTIES_V3 } from './tavern-author-browser-renderer-v3.js';

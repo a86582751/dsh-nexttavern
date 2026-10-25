@@ -10,6 +10,7 @@ import {AUTHOR_BROWSER_RUNTIME_NAME_V3,AUTHOR_BROWSER_RUNTIME_VERSION_V3,
   AUTHOR_BROWSER_RUNTIME_PINS_V3,AUTHOR_BROWSER_MODULES_V3,AUTHOR_BROWSER_WASM_V3,
   AUTHOR_BROWSER_WASM_SHA256_V3,authorBrowserAssetShaV3}
   from '../core/tavern-author-browser-descriptor-v3.mjs'
+import {TYPESCRIPT_SHARED_DEPENDENCY} from '../core/tavern-typescript-runtime-descriptor.mjs'
 
 interface Artifact {id:string;source:string;canonicalSource?:string}
 interface SourceInput {artifact:string;path:string;sha256:string}
@@ -112,7 +113,8 @@ export async function buildAuthorBrowserRuntimeAssetsV3(options:{repo:string;pla
     const result=await esbuild.build({absWorkingDir:repo,entryPoints:[inside(repo,find(module.artifact).source)],
       bundle:true,platform:browser?'browser':'node',format:browser?'iife':'esm',target:recipe.builder.target,
       write:false,metafile:true,minifyWhitespace:true,legalComments:'none',nodePaths:[libraries],
-      external:browser?[]:Object.keys(recipe.dependencies),alias,
+      external:browser?[TYPESCRIPT_SHARED_DEPENDENCY.name]
+        :[...Object.keys(recipe.dependencies),TYPESCRIPT_SHARED_DEPENDENCY.name],alias,
       ...(mappedLayout?{plugins:[canonicalFiles]}:{}),
       banner:browser?undefined:{js:"import {createRequire} from 'node:module'; const require=createRequire(import.meta.url);"},
       tsconfigRaw:{compilerOptions:{}}})
@@ -139,8 +141,9 @@ export async function buildAuthorBrowserRuntimeAssetsV3(options:{repo:string;pla
   const policyURL=pathToFileURL(inside(repo,find(recipe.policyArtifact).source))
   policyURL.searchParams.set('authorBrowserBuildV3',authorBrowserAssetShaV3(JSON.stringify(graphs)))
   const policy=await import(policyURL.href) as {BROWSER_PROFILE_V3:{sha256:string};BROWSER_CAPABILITY_CONTRACT_V3:{contractSha256:string}}
-  outputs.set(recipe.descriptorOutput,Buffer.from(JSON.stringify({schemaVersion:3,name:AUTHOR_BROWSER_RUNTIME_NAME_V3,
+  outputs.set(recipe.descriptorOutput,Buffer.from(JSON.stringify({schemaVersion:4,name:AUTHOR_BROWSER_RUNTIME_NAME_V3,
     version:AUTHOR_BROWSER_RUNTIME_VERSION_V3,modules:AUTHOR_BROWSER_MODULES_V3,dependencies:AUTHOR_BROWSER_RUNTIME_PINS_V3,
+    sharedCompiler:TYPESCRIPT_SHARED_DEPENDENCY,
     wasm:{path:AUTHOR_BROWSER_WASM_V3,sha256:AUTHOR_BROWSER_WASM_SHA256_V3},
     profileSha256:policy.BROWSER_PROFILE_V3.sha256,capabilityContractSha256:policy.BROWSER_CAPABILITY_CONTRACT_V3.contractSha256},null,2)+'\n'))
   outputs.set(recipe.sourceInputOutput,Buffer.from(JSON.stringify({schemaVersion:3,

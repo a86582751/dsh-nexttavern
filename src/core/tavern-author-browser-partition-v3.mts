@@ -2,6 +2,7 @@
  * is a delivery seam; V3 compiles the complete Source and never partitions V2.
  * Completion, cancellation and disposal wait for actual Worker termination. */
 import {Worker} from 'node:worker_threads'
+import type {AdmittedTypeScript} from 'dsh-nexttavern-typescript-runtime'
 import {BrowserBudgetError,quantifyBrowserTransport,freezeBrowserSnapshot} from './tavern-author-browser-budget.js'
 import {loadOwnedAuthorBrowserArtifactV3,ownedBrowserAstWorkerURLV3,
   ownedBrowserCompilerIdentityV3,ownedBrowserRuntimeIdentityV3} from './tavern-author-browser-artifact-v3.mjs'
@@ -17,8 +18,12 @@ export const AUTHOR_BROWSER_COMPILE_BUDGET_V3=Object.freeze({deadlineMs:30_000,
   maxOldGenerationSizeMb:512,stackSizeMb:4})
 const refused=(code:string):BrowserCompilationV3=>({kind:'refused',diagnostics:[{code}]})
 
-export function createOwnedAuthorBrowserCompilerV3():OwnedAuthorBrowserRuntimeV3 {
-  const artifact=loadOwnedAuthorBrowserArtifactV3(),workerUrl=ownedBrowserAstWorkerURLV3(artifact)
+export function createOwnedAuthorBrowserCompilerV3(typescript:AdmittedTypeScript,
+  componentGeneration:string):OwnedAuthorBrowserRuntimeV3 {
+  typescript.checkCurrent()
+  const sharedCompiler={ownerName:typescript.ownerName,ownerVersion:typescript.ownerVersion,
+    generation:typescript.generation,compilerFingerprint:typescript.compilerFingerprint}
+  const artifact=loadOwnedAuthorBrowserArtifactV3(sharedCompiler,componentGeneration),workerUrl=ownedBrowserAstWorkerURLV3(artifact)
   const identity=ownedBrowserCompilerIdentityV3(artifact),runtime=ownedBrowserRuntimeIdentityV3(artifact)
   let disposed=false,disposal:Promise<void>|undefined
   type Compilation=BrowserCompilationV3|ReaderRegexDocumentCompilationV1
@@ -34,7 +39,8 @@ export function createOwnedAuthorBrowserCompilerV3():OwnedAuthorBrowserRuntimeV3
       // Complete V3 Source resources are required by cross-realm proof. Only
       // these input fields cross the Worker boundary; posted artifacts do not.
       quantifyBrowserTransport(wire)
-      worker=new Worker(workerUrl,{workerData:wire,execArgv:[],env:{TZ:'UTC'},
+      typescript.checkCurrent()
+      worker=new Worker(workerUrl,{workerData:{input:wire,sharedCompiler,componentGeneration},execArgv:[],env:{TZ:'UTC'},
         resourceLimits:{maxOldGenerationSizeMb:AUTHOR_BROWSER_COMPILE_BUDGET_V3.maxOldGenerationSizeMb,
           stackSizeMb:AUTHOR_BROWSER_COMPILE_BUDGET_V3.stackSizeMb}})
     }catch(error) {return refused(error instanceof BrowserBudgetError?error.code:'BROWSER_AST_WORKER_UNAVAILABLE')}
@@ -65,6 +71,7 @@ export function createOwnedAuthorBrowserCompilerV3():OwnedAuthorBrowserRuntimeV3
     }
     if(signal?.aborted)return refused('BROWSER_AST_CANCELLED')
     if(disposed)return refused('BROWSER_AST_COMPILER_DISPOSED')
+    try {typescript.checkCurrent()}catch {return refused('BROWSER_RUNTIME_ASSETS_UNAVAILABLE')}
     return freezeBrowserSnapshot(outcome)
   }
   return {identity,runtime,artifact,

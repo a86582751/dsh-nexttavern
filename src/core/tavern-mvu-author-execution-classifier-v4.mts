@@ -1,6 +1,7 @@
 /** Unapplied local AST-only proposal. It never evaluates source, fetches a URL,
  * creates a schema, publishes Native state, or emits a state-ready receipt. */
-import ts from 'typescript'
+import ts from 'dsh-nexttavern-typescript-runtime'
+import type * as TypeScript from 'typescript'
 import {recordSha256, sha256} from './roleplay-data.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import {fixedStateLoaderDependency, FIXED_STATE_LOADER_POLICY_SHA256}
@@ -21,7 +22,7 @@ class RejectedShape extends Error {
   constructor(readonly code: string) { super(code) }
 }
 function reject(code: string): never { throw new RejectedShape(code) }
-const span = (node: ts.Node): AstSpanV1 => ({start: node.getFullStart(), end: node.end})
+const span = (node: TypeScript.Node): AstSpanV1 => ({start: node.getFullStart(), end: node.end})
 function freezeData<T>(value: T): T {
   if (value && typeof value === 'object') {
     for (const child of Object.values(value)) freezeData(child)
@@ -29,14 +30,14 @@ function freezeData<T>(value: T): T {
   }
   return value
 }
-function walk(node: ts.Node, visit: (node: ts.Node, depth: number) => void, depth = 0): void {
+function walk(node: TypeScript.Node, visit: (node: TypeScript.Node, depth: number) => void, depth = 0): void {
   visit(node, depth)
   ts.forEachChild(node, child => walk(child, visit, depth + 1))
 }
-function checkerFor(file: ts.SourceFile, source: string): ts.TypeChecker {
-  const options: ts.CompilerOptions = {noResolve: true, noLib: true,
+function checkerFor(file: TypeScript.SourceFile, source: string): TypeScript.TypeChecker {
+  const options: TypeScript.CompilerOptions = {noResolve: true, noLib: true,
     target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext}
-  const host: ts.CompilerHost = {
+  const host: TypeScript.CompilerHost = {
     getSourceFile: name => name === file.fileName ? file : undefined,
     getDefaultLibFileName: () => '', writeFile() {}, getCurrentDirectory: () => '',
     getDirectories: () => [], fileExists: name => name === file.fileName,
@@ -66,7 +67,7 @@ function parse(script: RawAuthorScriptV4, candidate = false) {
   }
   const file = ts.createSourceFile('author-execution.ts', script.source,
     ts.ScriptTarget.ES2023, true, ts.ScriptKind.TS)
-  const diagnostics = (file as ts.SourceFile & {parseDiagnostics: readonly ts.Diagnostic[]}).parseDiagnostics
+  const diagnostics = (file as TypeScript.SourceFile & {parseDiagnostics: readonly TypeScript.Diagnostic[]}).parseDiagnostics
   if (diagnostics.length) reject('EXECUTION_TYPESCRIPT_SYNTAX')
   let nodeCount = 0
   walk(file, (_node, depth) => {
@@ -75,12 +76,12 @@ function parse(script: RawAuthorScriptV4, candidate = false) {
   })
   return {file, nodeCount, checker: checkerFor(file, script.source), budgetFailure}
 }
-function coverage(file: ts.SourceFile, sourceSha256: string, nodeCount: number): ScriptAstCoverageV1 {
+function coverage(file: TypeScript.SourceFile, sourceSha256: string, nodeCount: number): ScriptAstCoverageV1 {
   return {encoding: 'native-mvu-complete-script-ast-coverage-v1', sourceSha256,
     nodeCount, statementSpans: file.statements.map(span)}
 }
 
-function loaderRecognizer(file: ts.SourceFile, checker: ts.TypeChecker,
+function loaderRecognizer(file: TypeScript.SourceFile, checker: TypeScript.TypeChecker,
   owned: PlannerOwnedDependenciesV1): readonly LoaderImportSiteV1[] | undefined {
   const sites: LoaderImportSiteV1[] = []
   const dependency = (specifier: string, candidateOrdinal: number): FixedStateDependencyV1 => {
@@ -88,7 +89,7 @@ function loaderRecognizer(file: ts.SourceFile, checker: ts.TypeChecker,
     if (!fixed) reject('STATE_LOADER_UNKNOWN_EXACT_URL')
     return {...fixed, candidateOrdinal, ownedImplementation: owned.stateLoaderImplementation}
   }
-  const literalImport = (statement: ts.Statement) => {
+  const literalImport = (statement: TypeScript.Statement) => {
     if (!ts.isExpressionStatement(statement) || !ts.isAwaitExpression(statement.expression)) return undefined
     const call = statement.expression.expression
     if (!ts.isCallExpression(call) || call.expression.kind !== ts.SyntaxKind.ImportKeyword) return undefined
@@ -99,14 +100,14 @@ function loaderRecognizer(file: ts.SourceFile, checker: ts.TypeChecker,
     return {kind: 'bare-await-literal' as const, importSpan: span(call), argumentSpan: span(argument),
       dependencies: [dependency(argument.text, 0)], lowering: 'replace-literal-specifier' as const}
   }
-  const isFreeConsoleLog = (statement: ts.Statement, allowed: ReadonlySet<ts.Symbol>): boolean => {
+  const isFreeConsoleLog = (statement: TypeScript.Statement, allowed: ReadonlySet<TypeScript.Symbol>): boolean => {
     if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression)) return false
     const call = statement.expression, target = call.expression
     if (!ts.isPropertyAccessExpression(target) || !ts.isIdentifier(target.expression)
       || target.expression.text !== 'console' || checker.getSymbolAtLocation(target.expression)
       || !['log', 'info', 'warn', 'error'].includes(target.name.text)
       || call.arguments.length > 2 || call.typeArguments?.length) return false
-    const data = (node: ts.Expression): boolean => {
+    const data = (node: TypeScript.Expression): boolean => {
       if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return true
       if (ts.isIdentifier(node)) {
         const symbol = checker.getSymbolAtLocation(node)
@@ -119,7 +120,7 @@ function loaderRecognizer(file: ts.SourceFile, checker: ts.TypeChecker,
     }
     return call.arguments.every(data)
   }
-  const failureTerminal = (statement: ts.Statement): boolean => {
+  const failureTerminal = (statement: TypeScript.Statement): boolean => {
     if (isFreeConsoleLog(statement, new Set())) return true
     if (!ts.isThrowStatement(statement) || !ts.isNewExpression(statement.expression)) return false
     const error = statement.expression
@@ -128,7 +129,7 @@ function loaderRecognizer(file: ts.SourceFile, checker: ts.TypeChecker,
       && !checker.getSymbolAtLocation(error.expression) && !error.typeArguments?.length && error.arguments?.length === 1
       && !!argument && ts.isStringLiteral(argument)
   }
-  let statements: readonly ts.Statement[] = file.statements
+  let statements: readonly TypeScript.Statement[] = file.statements
   // Only a zero-argument async arrow IIFE is a loader wrapper. Function bodies,
   // callbacks, exports, arbitrary call chains and outer trailing statements
   // are not silently treated as inert bootstrap code.
@@ -136,7 +137,7 @@ function loaderRecognizer(file: ts.SourceFile, checker: ts.TypeChecker,
   if (statements.length === 1 && outerStatement && ts.isExpressionStatement(outerStatement)) {
     const expression = outerStatement.expression
     if (ts.isCallExpression(expression) && expression.arguments.length === 0) {
-      let callee: ts.Expression = expression.expression
+      let callee: TypeScript.Expression = expression.expression
       while (ts.isParenthesizedExpression(callee)) callee = callee.expression
       if (ts.isArrowFunction(callee) && callee.parameters.length === 0 && !callee.typeParameters?.length && !callee.type
         && callee.modifiers?.length === 1 && callee.modifiers[0]?.kind === ts.SyntaxKind.AsyncKeyword
@@ -151,7 +152,7 @@ function loaderRecognizer(file: ts.SourceFile, checker: ts.TypeChecker,
   // Complete sequence of direct side-effect imports, or complete sequence of
   // unused bare await literal imports. No namespace/default/named consumption.
   if (statements.every(ts.isImportDeclaration)) {
-    for (const statement of statements as readonly ts.ImportDeclaration[]) {
+    for (const statement of statements as readonly TypeScript.ImportDeclaration[]) {
       if (statement.importClause) reject('STATE_LOADER_EXPORT_CONSUMPTION_UNSUPPORTED')
       if (statement.attributes || !ts.isStringLiteral(statement.moduleSpecifier)) {
         reject('STATE_LOADER_IMPORT_ATTRIBUTES_UNSUPPORTED')
@@ -282,7 +283,7 @@ export function createAuthorExecutionPlannerV1(owned: PlannerOwnedDependenciesV1
           evidence: 'local-audit-only'}
       }
       let stateLiteralImport = false, stateArrayImport = false, schemaReference = false, browserHost = false
-      const stateArraySymbols = new Set<ts.Symbol>()
+      const stateArraySymbols = new Set<TypeScript.Symbol>()
       walk(parsed.file, node => {
         if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
           && ts.isArrayLiteralExpression(node.initializer) && node.initializer.elements.length
@@ -392,7 +393,7 @@ export function selectionHintForScriptsV1(scripts: readonly RawAuthorScriptV4[])
     try {
       if (sha256(script.source) !== script.sourceSha256) reject('EXECUTION_RAW_SOURCE_HASH_MISMATCH')
       if (Buffer.byteLength(script.source, 'utf8') > MVU_SCHEMA_BOUNDS.sourceBytes) reject('EXECUTION_SOURCE_BYTE_LIMIT')
-      const parsed = parse(script), arraySymbols = new Map<ts.Symbol, readonly string[]>()
+      const parsed = parse(script), arraySymbols = new Map<TypeScript.Symbol, readonly string[]>()
       const add = (exactSpecifier: string) => {
         const fixed = fixedStateLoaderDependency(exactSpecifier)
         if (fixed) known.push({scriptOrdinal, exactSpecifier, group: fixed.group})
@@ -402,7 +403,7 @@ export function selectionHintForScriptsV1(scripts: readonly RawAuthorScriptV4[])
           && ts.isArrayLiteralExpression(node.initializer) && node.initializer.elements.length
           && node.initializer.elements.every(ts.isStringLiteral)) {
           const symbol = parsed.checker.getSymbolAtLocation(node.name)
-          if (symbol) arraySymbols.set(symbol, node.initializer.elements.map(item => (item as ts.StringLiteral).text))
+          if (symbol) arraySymbols.set(symbol, node.initializer.elements.map(item => (item as TypeScript.StringLiteral).text))
         }
         if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) add(node.moduleSpecifier.text)
         if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {

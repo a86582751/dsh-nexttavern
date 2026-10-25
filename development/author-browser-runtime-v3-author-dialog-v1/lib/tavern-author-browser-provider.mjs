@@ -11,5 +11,5 @@ export async function createOwnedAuthorBrowserRuntimeV3(deps) {
     if (generation !== undefined && generation !== inventory.generation)
         throw Error('BROWSER_RUNTIME_GENERATION_CHANGED');
     generation ??= inventory.generation;
-    return createOwnedAuthorBrowserCompilerV3();
+    return createOwnedAuthorBrowserCompilerV3(deps.typescript, inventory.generation);
 }

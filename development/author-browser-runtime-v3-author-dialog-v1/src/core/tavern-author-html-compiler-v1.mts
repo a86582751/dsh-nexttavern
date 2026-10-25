@@ -3,7 +3,8 @@ import {Parser,defaultTreeAdapter} from 'parse5'
 import type {DefaultTreeAdapterMap,DefaultTreeAdapterTypes,TreeAdapter} from 'parse5'
 import parseCss from 'css-tree/parser'
 import walkCss from 'css-tree/walker'
-import ts from 'typescript'
+import ts from 'dsh-nexttavern-typescript-runtime'
+import type * as TypeScript from 'typescript'
 import {recordSha256,sha256} from './roleplay-data.js'
 import type {SourceHtmlInputV1,HtmlParsedCandidateV1,HtmlSpanV1,HtmlAttributeV1,
   HtmlParserStepV1,HtmlNodeCreationV1,HtmlParsedNodeV1,HtmlParsedTextV1,HtmlParsedScriptV1,
@@ -24,8 +25,8 @@ const location=(node:Node):HtmlSpanV1|null=>{
   const value=node.sourceCodeLocation
   return value?span(value.startOffset,value.endOffset):null
 }
-const expressionSpan=(node:ts.Node,file:ts.SourceFile)=>span(node.getStart(file),node.end)
-function member(node:ts.Expression):HtmlSyntacticMemberV1 {
+const expressionSpan=(node:TypeScript.Node,file:TypeScript.SourceFile)=>span(node.getStart(file),node.end)
+function member(node:TypeScript.Expression):HtmlSyntacticMemberV1 {
   if(ts.isIdentifier(node))return {kind:'identifier',name:node.text}
   if(ts.isPropertyAccessExpression(node))return {kind:'property',name:node.name.text}
   if(ts.isElementAccessExpression(node))return {kind:'computed',
@@ -34,12 +35,12 @@ function member(node:ts.Expression):HtmlSyntacticMemberV1 {
 }
 function javascriptCoverage(source:string,inlineOrdinal:number,javascriptSha256:string):HtmlJavascriptAstCoverageV1 {
   const file=ts.createSourceFile('source-html-inline-'+inlineOrdinal+'.js',source,ts.ScriptTarget.ES2023,true,ts.ScriptKind.JS)
-  const parseDiagnostics=(file as ts.SourceFile&{parseDiagnostics:readonly ts.Diagnostic[]}).parseDiagnostics
+  const parseDiagnostics=(file as TypeScript.SourceFile&{parseDiagnostics:readonly TypeScript.Diagnostic[]}).parseDiagnostics
   const syntaxDiagnostics:HtmlParseDiagnosticV1[]=parseDiagnostics.map(value=>({phase:'javascript',
     code:String(value.code),message:ts.flattenDiagnosticMessageText(value.messageText,'\n'),inlineOrdinal,
     span:value.start===undefined?null:span(value.start,value.start+(value.length??0))}))
   const nodes:[number,number,number,number][]=[],calls:HtmlCallCandidateV1[]=[],assignments:HtmlAssignmentCandidateV1[]=[]
-  const stack:{node:ts.Node;depth:number}[]=[{node:file,depth:0}]
+  const stack:{node:TypeScript.Node;depth:number}[]=[{node:file,depth:0}]
   let maxDepth=0
   // Real original code reaches depth 441. An iterative walk retains every
   // dormant branch without putting that depth on our own JavaScript stack.
@@ -56,7 +57,7 @@ function javascriptCoverage(source:string,inlineOrdinal:number,javascriptSha256:
       &&node.operatorToken.kind<=ts.SyntaxKind.LastAssignment)assignments.push({span:expressionSpan(node,file),
       targetSpan:expressionSpan(node.left,file),target:member(node.left),valueSpan:expressionSpan(node.right,file),
       operator:node.operatorToken.kind})
-    const children:ts.Node[]=[]
+    const children:TypeScript.Node[]=[]
     ts.forEachChild(node,child=>{children.push(child)})
     for(let index=children.length-1;index>=0;index--)stack.push({node:children[index]!,depth:depth+1})
   }

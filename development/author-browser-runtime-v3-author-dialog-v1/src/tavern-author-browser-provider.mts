@@ -3,6 +3,7 @@ import {AUTHOR_BROWSER_RUNTIME_NAME_V3,AUTHOR_BROWSER_RUNTIME_VERSION_V3}
   from '../../../src/core/tavern-author-browser-descriptor-v3.mjs'
 import {createOwnedAuthorBrowserCompilerV3} from '../../../src/core/tavern-author-browser-partition-v3.mjs'
 import type {OwnedAuthorBrowserRuntimeV3} from '../../../src/core/tavern-author-browser-types-v3.mjs'
+import type {AdmittedTypeScript} from 'dsh-nexttavern-typescript-runtime'
 
 export interface AuthorBrowserRuntimeInventoryV3 {
   readonly name:string
@@ -11,6 +12,7 @@ export interface AuthorBrowserRuntimeInventoryV3 {
   readonly generation:string
 }
 export interface OwnedAuthorBrowserRuntimeDepsV3 {
+  readonly typescript:AdmittedTypeScript
   verifyOwnedPackage(packageRootURL:URL):AuthorBrowserRuntimeInventoryV3
 }
 const ownRoot=new URL('../',import.meta.url)
@@ -21,5 +23,5 @@ export async function createOwnedAuthorBrowserRuntimeV3(deps:OwnedAuthorBrowserR
     throw Error('BROWSER_RUNTIME_ASSETS_UNAVAILABLE')
   if(generation!==undefined&&generation!==inventory.generation)throw Error('BROWSER_RUNTIME_GENERATION_CHANGED')
   generation??=inventory.generation
-  return createOwnedAuthorBrowserCompilerV3()
+  return createOwnedAuthorBrowserCompilerV3(deps.typescript,inventory.generation)
 }

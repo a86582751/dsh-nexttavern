@@ -12,7 +12,7 @@ var __rewriteRelativeImportExtension = (this && this.__rewriteRelativeImportExte
  * owner. Host alone closes the returned runtime with its Browser lifecycle. */
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-export async function loadAdmittedAuthorPromptRuntimeV1(admitted, checkOwnerCurrent) {
+export async function loadAdmittedAuthorPromptRuntimeV1(admitted, checkOwnerCurrent, typescript) {
     const verifyOwnedPackage = (url) => {
         checkOwnerCurrent();
         if (url.protocol !== 'file:' || fs.realpathSync(fileURLToPath(url)) !== admitted.owned) {
@@ -21,9 +21,14 @@ export async function loadAdmittedAuthorPromptRuntimeV1(admitted, checkOwnerCurr
         return admitted.inventory;
     };
     checkOwnerCurrent();
-    const factory = await import(__rewriteRelativeImportExtension(pathToFileURL(admitted.entry).href));
+    const module = await import(__rewriteRelativeImportExtension(pathToFileURL(admitted.entry).href));
     checkOwnerCurrent();
-    const runtime = await factory.createOwnedAuthorPromptRuntimeV1({ verifyOwnedPackage });
+    // The component selection already identifies the factory ABI. Historical
+    // Prompt bytes consume their original compiler instead of today's owner.
+    const runtime = typescript
+        ? await module
+            .createOwnedAuthorPromptRuntimeV1({ verifyOwnedPackage, typescript })
+        : await module.createOwnedAuthorPromptRuntimeV1({ verifyOwnedPackage });
     try {
         checkOwnerCurrent();
         runtime.checkCurrent();

@@ -1,6 +1,6 @@
 /** Bounded owned v4 worker. Neither author nor upstream helper is evaluated. */
 import {parentPort, workerData} from 'node:worker_threads'
-import ts from 'typescript'
+import ts from 'dsh-nexttavern-typescript-runtime'
 import {recordSha256} from './roleplay-data.js'
 import {schemaTextSha256} from './tavern-mvu-schema-data.js'
 import {createAuthorExecutionPlannerV1}

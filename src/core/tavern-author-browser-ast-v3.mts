@@ -1,5 +1,6 @@
 /** Complete deterministic scope/value proof. Nothing here evaluates author JS. */
-import ts from 'typescript'
+import ts from 'dsh-nexttavern-typescript-runtime'
+import type * as TypeScript from 'typescript'
 import {sha256} from './roleplay-data.js'
 import {BROWSER_BOUNDS_V3,BROWSER_APIS_V3,BROWSER_METHODS_V3,BROWSER_PROPERTIES_V3,
   BROWSER_GUEST_INTRINSICS_V3,BROWSER_ABSENT_PROBES_V3,BROWSER_CLOSED_DOM_FACADES_V3,BROWSER_SERVER_GLOBALS_V3,
@@ -80,7 +81,7 @@ export interface BrowserDiagnosticEvidenceV3 {
     readonly args:readonly BrowserValueEvidenceV3[]}[]
 }
 type Value=Set<Atom>
-interface Cell {readonly values:Value;readonly readers:Set<ts.Node>}
+interface Cell {readonly values:Value;readonly readers:Set<TypeScript.Node>}
 interface Scope {readonly parent:Scope|null;readonly functionScope:boolean;readonly bindings:Map<string,Cell>;
   readonly lexical:Set<string>;readonly global:Atom;readonly fn:Atom|null;readonly catchParameter?:string}
 interface Atom {
@@ -90,12 +91,12 @@ interface Atom {
   readonly literal?:string|number|boolean|null
   readonly fields?:Map<string,Cell>
   readonly elements?:Cell
-  readonly fn?:ts.FunctionLikeDeclaration
+  readonly fn?:TypeScript.FunctionLikeDeclaration
   readonly params?:readonly Cell[]
   readonly returns?:Cell
   readonly thisValue?:Cell
   readonly boundPrefixUnproven?:Cell
-  readonly boundOrigin?:ts.CallExpression|ts.NewExpression
+  readonly boundOrigin?:TypeScript.CallExpression|TypeScript.NewExpression
   readonly nativeName?:string
   readonly operation?:BrowserOperationV3
   readonly receiver?:Atom
@@ -111,41 +112,41 @@ interface Atom {
   readonly fixedGuard?:boolean
   readonly snapshot?:boolean
   readonly choices?:Map<string,Cell>
-  readonly choiceSelector?:ts.Expression
-  readonly choiceProducer?:ts.CallExpression
+  readonly choiceSelector?:TypeScript.Expression
+  readonly choiceProducer?:TypeScript.CallExpression
   readonly choicePure?:Cell
   readonly callback?:{readonly recipe:FactoryRecipe;readonly captures:Map<Cell,Value>;readonly plan:FactoryPlan}
   readonly callbackTargets?:Cell
   readonly strictThis?:boolean
 }
-type FactoryRecipe={readonly kind:'existing';readonly expression:ts.Expression}
-  |{readonly kind:'binding';readonly binding:Cell;readonly expression:ts.Identifier}
-  |{readonly kind:'member';readonly node:ts.PropertyAccessExpression|ts.ElementAccessExpression;
+type FactoryRecipe={readonly kind:'existing';readonly expression:TypeScript.Expression}
+  |{readonly kind:'binding';readonly binding:Cell;readonly expression:TypeScript.Identifier}
+  |{readonly kind:'member';readonly node:TypeScript.PropertyAccessExpression|TypeScript.ElementAccessExpression;
     readonly receiver:FactoryRecipe;readonly selector:string|FactoryRecipe}
   |{readonly kind:'union';readonly recipes:readonly FactoryRecipe[]}
   |{readonly kind:'guarded';readonly guards:readonly {readonly recipe:FactoryGuard;readonly truthy:boolean}[];readonly recipe:FactoryRecipe}
-  |{readonly kind:'call';readonly node:ts.CallExpression;readonly target:FactoryRecipe;
+  |{readonly kind:'call';readonly node:TypeScript.CallExpression;readonly target:FactoryRecipe;
     readonly args:readonly {readonly recipe:FactoryRecipe;readonly spread:boolean}[]}
-  |{readonly kind:'callback';readonly node:ts.ArrowFunction|ts.FunctionExpression;readonly recipe:FactoryRecipe}
+  |{readonly kind:'callback';readonly node:TypeScript.ArrowFunction|TypeScript.FunctionExpression;readonly recipe:FactoryRecipe}
 type FactoryGuard={readonly kind:'truth';readonly recipe:FactoryRecipe}
   |{readonly kind:'callable';readonly recipe:FactoryRecipe}
   |{readonly kind:'and';readonly left:FactoryGuard;readonly right:FactoryGuard}
   |{readonly kind:'not';readonly recipe:FactoryGuard}
-interface FactoryPlan {readonly fn:Atom;readonly bindings:Map<Cell,readonly ts.Expression[]>;
-  readonly returns:readonly FactoryRecipe[];readonly getterCalls:readonly ts.CallExpression[];readonly pure:boolean}
-interface UnitState {readonly input:BrowserAstUnitV3;readonly file:ts.SourceFile;
-  readonly nodes:readonly ts.Node[];readonly coverage:BrowserAstCoverageV3;
+interface FactoryPlan {readonly fn:Atom;readonly bindings:Map<Cell,readonly TypeScript.Expression[]>;
+  readonly returns:readonly FactoryRecipe[];readonly getterCalls:readonly TypeScript.CallExpression[];readonly pure:boolean}
+interface UnitState {readonly input:BrowserAstUnitV3;readonly file:TypeScript.SourceFile;
+  readonly nodes:readonly TypeScript.Node[];readonly coverage:BrowserAstCoverageV3;
   readonly caps:Set<BrowserCapabilityV3>;readonly keys:Set<string>;readonly mounts:Set<string>;
   readonly media:Map<string,{value:string;kind:'image'|'audio';start:number;end:number}>}
-const assignment=(node:ts.BinaryExpression)=>node.operatorToken.kind>=ts.SyntaxKind.FirstAssignment
+const assignment=(node:TypeScript.BinaryExpression)=>node.operatorToken.kind>=ts.SyntaxKind.FirstAssignment
   &&node.operatorToken.kind<=ts.SyntaxKind.LastAssignment
 const cell=():Cell=>({values:new Set(),readers:new Set()})
-const callable=(node:ts.Node):node is ts.FunctionLikeDeclaration=>ts.isFunctionDeclaration(node)
+const callable=(node:TypeScript.Node):node is TypeScript.FunctionLikeDeclaration=>ts.isFunctionDeclaration(node)
   ||ts.isFunctionExpression(node)||ts.isArrowFunction(node)||ts.isMethodDeclaration(node)
   ||ts.isGetAccessorDeclaration(node)||ts.isSetAccessorDeclaration(node)||ts.isConstructorDeclaration(node)
-const ordinaryDeclaration=(node:ts.FunctionDeclaration)=>!node.asteriskToken
+const ordinaryDeclaration=(node:TypeScript.FunctionDeclaration)=>!node.asteriskToken
   &&!node.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.AsyncKeyword)
-function strictDirective(statements:readonly ts.Statement[]):boolean {
+function strictDirective(statements:readonly TypeScript.Statement[]):boolean {
   for(const statement of statements){
     if(!ts.isExpressionStatement(statement)||!ts.isStringLiteral(statement.expression))break
     // Escaped or parenthesized strings are not Use Strict Directives.
@@ -154,7 +155,7 @@ function strictDirective(statements:readonly ts.Statement[]):boolean {
   }
   return false
 }
-function namePosition(node:ts.Identifier):boolean {
+function namePosition(node:TypeScript.Identifier):boolean {
   const p=node.parent
   return ts.isPropertyAccessExpression(p)&&p.name===node
     ||(ts.isPropertyAssignment(p)||ts.isMethodDeclaration(p)||ts.isPropertyDeclaration(p))&&p.name===node
@@ -174,16 +175,16 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   if(ts.version!=='5.9.3')throw Error('BROWSER3_TYPESCRIPT_IDENTITY')
   const diagnostics:BrowserDiagnosticV1[]=[],diagnosticKeys=new Set<string>()
   const diagnosticSites=astOptions.captureDiagnosticEvidence
-    ?[] as {diagnostic:BrowserDiagnosticV1;state:UnitState;node?:ts.Node}[]:undefined
-  const values=new Map<ts.Node,Cell>(),scopes=new Map<ts.Node,Scope>(),units=new Map<ts.Node,UnitState>()
-  const functions=new Map<ts.Node,Atom>(),objects=new Map<ts.Node,Atom>(),realms=new Map<string,Atom>()
+    ?[] as {diagnostic:BrowserDiagnosticV1;state:UnitState;node?:TypeScript.Node}[]:undefined
+  const values=new Map<TypeScript.Node,Cell>(),scopes=new Map<TypeScript.Node,Scope>(),units=new Map<TypeScript.Node,UnitState>()
+  const functions=new Map<TypeScript.Node,Atom>(),objects=new Map<TypeScript.Node,Atom>(),realms=new Map<string,Atom>()
   const realmInputs=new Map(inputs.map(input=>[input.realm,input] as const))
   const sourceParents=new Map(inputs.filter(input=>input.sourceHtml).map(input=>
     [input.sourceHtml!.pageId,input.parentRealm] as const))
   const roots=new Map<string,Scope>(),literalAtoms=new Map<string,Atom>(),nativeAtoms=new Map<string,Atom>()
-  const handles=new Map<string,Atom>(),queue:ts.Node[]=[],queued=new Set<ts.Node>()
-  const functionFallbackReaders=new Set<ts.Node>()
-  const serverNativeReads=new Map<ts.Node,Set<string>>()
+  const handles=new Map<string,Atom>(),queue:TypeScript.Node[]=[],queued=new Set<TypeScript.Node>()
+  const functionFallbackReaders=new Set<TypeScript.Node>()
+  const serverNativeReads=new Map<TypeScript.Node,Set<string>>()
   let functionFallback=false
   let missingFallback=false
   let globalMissingFallback=false
@@ -196,20 +197,20 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(!found){found=atom('literal',{literal:value,fixedGuard});literalAtoms.set(key,found)}
     return found
   }
-  function enqueue(node:ts.Node){if(!queued.has(node)){queued.add(node);queue.push(node)}}
+  function enqueue(node:TypeScript.Node){if(!queued.has(node)){queued.add(node);queue.push(node)}}
   function add(target:Cell,next:Iterable<Atom>):void {
     let changed=false
     for(const value of next)if(!target.values.has(value)){target.values.add(value);changed=true}
     if(changed)for(const node of target.readers)enqueue(node)
   }
   const one=(value:Atom)=>new Set([value])
-  function read(target:Cell,node:ts.Node):Value {target.readers.add(node);return target.values}
-  function nodeCell(node:ts.Node):Cell {
+  function read(target:Cell,node:TypeScript.Node):Value {target.readers.add(node);return target.values}
+  function nodeCell(node:TypeScript.Node):Cell {
     let target=values.get(node)
     if(!target){target=cell();values.set(node,target)}
     return target
   }
-  const value=(child:ts.Node,node:ts.Node)=>read(nodeCell(child),node)
+  const value=(child:TypeScript.Node,node:TypeScript.Node)=>read(nodeCell(child),node)
   function field(owner:Atom,key:string):Cell {
     let target=owner.fields!.get(key)
     if(!target){target=cell();owner.fields!.set(key,target)}
@@ -234,7 +235,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(!found){found=atom('native',{nativeName:name,operation,receiver,fields:new Map(),written:new Set()});nativeAtoms.set(key,found)}
     return found
   }
-  function report(state:UnitState,code:string,node?:ts.Node,feature?:string):void {
+  function report(state:UnitState,code:string,node?:TypeScript.Node,feature?:string):void {
     const at=node?state.file.getLineAndCharacterOfPosition(node.getStart(state.file)):null
     const key=[state.input.realm,state.input.inlineOrdinal,code,at?.line,at?.character,feature].join(':')
     if(diagnosticKeys.has(key))return
@@ -253,7 +254,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     return input.scriptMode==='module'?{parent:found,functionScope:true,bindings:new Map(),
       lexical:new Set(),global:found.global,fn:null}:found
   }
-  function declare(scope:Scope,name:string,isVar:boolean,state:UnitState,node:ts.Node,
+  function declare(scope:Scope,name:string,isVar:boolean,state:UnitState,node:TypeScript.Node,
     duplicateBlockFunction=false):Cell {
     let owner=scope
     if(isVar)while(owner.parent&&!owner.functionScope)owner=owner.parent
@@ -271,13 +272,13 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     for(let current:Scope|null=scope;current;current=current.parent){const found=current.bindings.get(name);if(found)return found}
     return undefined
   }
-  function bindingScope(node:ts.Node,name:string):Scope|undefined {
+  function bindingScope(node:TypeScript.Node,name:string):Scope|undefined {
     for(let current:Scope|null=scopes.get(node)!;current;current=current.parent)
       if(current.bindings.has(name))return current
     return undefined
   }
-  function pattern(name:ts.BindingName,scope:Scope,isVar:boolean,state:UnitState):void {
-    const todo:ts.BindingName[]=[name]
+  function pattern(name:TypeScript.BindingName,scope:Scope,isVar:boolean,state:UnitState):void {
+    const todo:TypeScript.BindingName[]=[name]
     while(todo.length){const item=todo.pop()!
       if(ts.isIdentifier(item))declare(scope,item.text,isVar,state,item)
       else for(const element of item.elements)if(ts.isBindingElement(element))todo.push(element.name)
@@ -291,18 +292,18 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return false
   }
-  const states:UnitState[]=[],mountWrites:ts.BinaryExpression[]=[]
+  const states:UnitState[]=[],mountWrites:TypeScript.BinaryExpression[]=[]
   function registerUnit(input:BrowserAstUnitV3):UnitState {
     const index=states.length
     realmInputs.set(input.realm,input)
     const file=ts.createSourceFile('browser3-'+index+'.js',input.javascript,ts.ScriptTarget.ES2023,true,ts.ScriptKind.JS)
-    const nodes:ts.Node[]=[],statements:BrowserAstCoverageV3['statements'][number][]=[]
+    const nodes:TypeScript.Node[]=[],statements:BrowserAstCoverageV3['statements'][number][]=[]
     const state:UnitState={input,file,nodes,coverage:{encoding:'native-author-browser-complete-ast-coverage-v3',
       sourceSha256:sha256(input.javascript),nodeCount:0,statements},caps:new Set(),keys:new Set(),mounts:new Set(),media:new Map()}
-    const parse=(file as ts.SourceFile&{parseDiagnostics:readonly ts.Diagnostic[]}).parseDiagnostics
+    const parse=(file as TypeScript.SourceFile&{parseDiagnostics:readonly TypeScript.Diagnostic[]}).parseDiagnostics
     if(parse.length)report(state,'BROWSER3_JAVASCRIPT_SYNTAX',file)
-    const aliases:{node:ts.FunctionDeclaration;scope:Scope;fn:Atom}[]=[]
-    const stack:{node:ts.Node;scope:Scope;depth:number;strict:boolean}[]=[{
+    const aliases:{node:TypeScript.FunctionDeclaration;scope:Scope;fn:Atom}[]=[]
+    const stack:{node:TypeScript.Node;scope:Scope;depth:number;strict:boolean}[]=[{
       node:file,scope:root(input),depth:0,strict:input.scriptMode==='module'||strictDirective(file.statements)}]
     let exceeded=false
     while(stack.length){const {node,scope,depth,strict}=stack.pop()!;nodes.push(node);units.set(node,state)
@@ -351,7 +352,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         pattern(node.name,next,isVar,state)
       }
       if(ts.isClassDeclaration(node)&&node.name)declare(next,node.name.text,false,state,node)
-      const children:ts.Node[]=[];ts.forEachChild(node,child=>{children.push(child)})
+      const children:TypeScript.Node[]=[];ts.forEachChild(node,child=>{children.push(child)})
       for(let i=children.length-1;i>=0;i--)stack.push({node:children[i]!,scope:next,depth:depth+1,strict:nextStrict})
     }
     // Process after this unit's declarations: a later lexical declaration also
@@ -396,7 +397,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       else return undefined
     return result
   }
-  function key(node:ts.PropertyName|ts.Expression,reader:ts.Node):Set<string>|undefined {
+  function key(node:TypeScript.PropertyName|TypeScript.Expression,reader:TypeScript.Node):Set<string>|undefined {
     if(ts.isIdentifier(node)&&!ts.isElementAccessExpression(node.parent))return new Set([node.text])
     if(ts.isStringLiteralLike(node)||ts.isNumericLiteral(node))return new Set([node.text])
     if(ts.isComputedPropertyName(node))return names(value(node.expression,reader))
@@ -426,9 +427,9 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     const kind=receiver.handle! as 'node'|'frame'|'frame-parent'
     return !BROWSER_NATIVE_PROPERTIES_V3[kind].includes(name)
   }
-  const memberResults=new Map<ts.Node,Map<Atom,Value>>()
-  const nativeMemberUnknown=new Set<ts.Node>()
-  function memberValues(receiver:Atom,names:Set<string>|undefined,node:ts.Node):Value {
+  const memberResults=new Map<TypeScript.Node,Map<Atom,Value>>()
+  const nativeMemberUnknown=new Set<TypeScript.Node>()
+  function memberValues(receiver:Atom,names:Set<string>|undefined,node:TypeScript.Node):Value {
     const result=resolveMemberValues(receiver,names,node)
     if(ts.isPropertyAccessExpression(node)||ts.isElementAccessExpression(node)){
       let owners=memberResults.get(node)
@@ -439,7 +440,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return result
   }
-  function resolveMemberValues(receiver:Atom,names:Set<string>|undefined,node:ts.Node):Value {
+  function resolveMemberValues(receiver:Atom,names:Set<string>|undefined,node:TypeScript.Node):Value {
     if(receiver.kind==='choice'){
       const own=names?.size===1?receiver.fields?.get([...names][0]!):undefined
       if(own?.values.size)return new Set(read(own,node))
@@ -697,7 +698,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       nativeAtoms.set(id,intrinsic)}
     return intrinsic
   }
-  function globalValue(name:string,global:Atom,node:ts.Node,namedProperty=false):Value {
+  function globalValue(name:string,global:Atom,node:TypeScript.Node,namedProperty=false):Value {
     const state=units.get(node)!,input=state.input
     const own=read(field(global,name),node)
     if(own.size)return new Set(own)
@@ -748,8 +749,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(!globalMissingFallback){functionFallbackReaders.add(node);return new Set()}
     return one(namedProperty?absent:unknown)
   }
-  function bindPattern(name:ts.BindingName,incoming:Value,node:ts.Node):void {
-    const scope=scopes.get(node)!,todo:{name:ts.BindingName;items:Value}[]=[{name,items:incoming}]
+  function bindPattern(name:TypeScript.BindingName,incoming:Value,node:TypeScript.Node):void {
+    const scope=scopes.get(node)!,todo:{name:TypeScript.BindingName;items:Value}[]=[{name,items:incoming}]
     while(todo.length){const entry=todo.pop()!
       if(ts.isIdentifier(entry.name)){const target=lookup(scope,entry.name.text);if(target)add(target,entry.items)}
       else for(let index=0;index<entry.name.elements.length;index++){
@@ -763,7 +764,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       }
     }
   }
-  function object(node:ts.Node,array=false):Atom {
+  function object(node:TypeScript.Node,array=false):Atom {
     let found=objects.get(node)
     if(!found){found=atom(array?'array':'object',{fields:new Map(),written:new Set(),
       ...array?{elements:cell()}: {prototypes:cell()}});objects.set(node,found)}
@@ -771,7 +772,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   }
   /** Keep boundary references through unmodeled guest results. This is a
    * conservative alias set, not an interpretation of reflection or class code. */
-  function boundaryReferences(items:Iterable<Atom>,node:ts.Node):Value {
+  function boundaryReferences(items:Iterable<Atom>,node:TypeScript.Node):Value {
     const result:Value=new Set(),todo=[...items],seen=new Set<Atom>()
     while(todo.length){
       const item=todo.pop()!
@@ -792,8 +793,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return result
   }
-  const unknownHolders=new Map<ts.Node,Atom>()
-  function unknownResult(args:readonly Value[],node:ts.Node):Value {
+  const unknownHolders=new Map<TypeScript.Node,Atom>()
+  function unknownResult(args:readonly Value[],node:TypeScript.Node):Value {
     const references=boundaryReferences(args.flatMap(items=>[...items]),node),result=one(unknown)
     if(references.size){
       let holder=unknownHolders.get(node)
@@ -804,7 +805,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return result
   }
-  function defineProperty(target:Atom,selected:Set<string>|undefined,descriptors:Value,node:ts.Node):void {
+  function defineProperty(target:Atom,selected:Set<string>|undefined,descriptors:Value,node:TypeScript.Node):void {
     const incoming:Value=new Set()
     for(const descriptor of descriptors){
       if(descriptor.fields){
@@ -816,7 +817,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(!selected){incoming.add(unknown);selected=new Set(['*'])}
     for(const name of selected){add(field(target,name),incoming);target.written?.add(name)}
   }
-  function reflection(name:string,args:readonly Value[],node:ts.Node):Value|undefined {
+  function reflection(name:string,args:readonly Value[],node:TypeScript.Node):Value|undefined {
     if(['Object.freeze','Object.seal','Object.preventExtensions'].includes(name))return args[0]??one(unknown)
     if(name==='Object')return args[0]?.size?new Set(args[0]):one(object(node))
     if(name==='Object.create'){
@@ -841,7 +842,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(name.startsWith('Object.'))return unknownResult(args,node)
     return undefined
   }
-  function callGuest(fn:Atom,args:readonly Value[],node:ts.Node,receiver?:Value):Value {
+  function callGuest(fn:Atom,args:readonly Value[],node:TypeScript.Node,receiver?:Value):Value {
     for(let i=0;i<fn.params!.length;i++){
       const parameter=fn.fn!.parameters[i]!
       let incoming=args[i]??one(absent)
@@ -866,19 +867,19 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     return new Set(read(fn.returns!,node))
   }
   const factoryPlans=new Map<Atom,FactoryPlan|null>(),buildingFactories=new Set<Atom>()
-  const factoryChoices=new Map<ts.CallExpression,Map<Atom,Map<string,Atom>>>()
-  const factoryCallbacks=new Map<Atom,Map<ts.Node,Atom>>()
-  const factoryArrays=new Map<Atom,Map<ts.Node,Atom>>()
+  const factoryChoices=new Map<TypeScript.CallExpression,Map<Atom,Map<string,Atom>>>()
+  const factoryCallbacks=new Map<Atom,Map<TypeScript.Node,Atom>>()
+  const factoryArrays=new Map<Atom,Map<TypeScript.Node,Atom>>()
   const factoryInstances=new Map<Atom,Map<string,Atom>>()
-  const factoryBounds=new Map<Atom,Map<ts.CallExpression,Map<Atom,Atom>>>()
+  const factoryBounds=new Map<Atom,Map<TypeScript.CallExpression,Map<Atom,Atom>>>()
   const resolvingFactories=new Set<Atom>()
-  interface GetterPlan {readonly calls:readonly ts.CallExpression[];readonly arrays:ReadonlySet<ts.ArrayLiteralExpression>}
+  interface GetterPlan {readonly calls:readonly TypeScript.CallExpression[];readonly arrays:ReadonlySet<TypeScript.ArrayLiteralExpression>}
   const getterPlans=new Map<Atom,GetterPlan|null>()
   function getterPlan(fn:Atom):GetterPlan|null {
     if(getterPlans.has(fn))return getterPlans.get(fn)!
     const declaration=fn.fn!
     if(declaration.parameters.length||!declaration.body){getterPlans.set(fn,null);return null}
-    const calls:ts.CallExpression[]=[],arrays=new Set<ts.ArrayLiteralExpression>(),todo:ts.Node[]=[declaration.body]
+    const calls:TypeScript.CallExpression[]=[],arrays=new Set<TypeScript.ArrayLiteralExpression>(),todo:TypeScript.Node[]=[declaration.body]
     let valid=true
     while(todo.length){const node=todo.pop()!
       if(node!==declaration.body&&callable(node))continue
@@ -896,7 +897,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     const result=valid?{calls,arrays}:null
     getterPlans.set(fn,result);return result
   }
-  function getterSummary(fn:Atom,node:ts.Node,active=new Set<Atom>()):FactoryEvaluation|undefined {
+  function getterSummary(fn:Atom,node:TypeScript.Node,active=new Set<Atom>()):FactoryEvaluation|undefined {
     const plan=getterPlan(fn)
     if(!plan||active.has(fn))return undefined
     active.add(fn)
@@ -919,7 +920,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     active.delete(fn)
     return {values:new Set(read(fn.returns!,node)),pure,pending}
   }
-  function getterCallSummary(call:ts.CallExpression,node:ts.Node):FactoryEvaluation {
+  function getterCallSummary(call:TypeScript.CallExpression,node:TypeScript.Node):FactoryEvaluation {
     const targets=read(nodeCell(call.expression),node),result:Value=new Set()
     let pure=true,pending=!targets.size
     for(const target of targets){
@@ -929,7 +930,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return {values:result,pure,pending}
   }
-  function choiceValues(items:Value,node:ts.Node):Value {
+  function choiceValues(items:Value,node:TypeScript.Node):Value {
     const result:Value=new Set(),todo=[...items],seen=new Set<Atom>()
     while(todo.length){const item=todo.pop()!
       if(seen.has(item))continue
@@ -943,8 +944,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(factoryPlans.has(fn))return factoryPlans.get(fn)!
     if(buildingFactories.has(fn))return null
     buildingFactories.add(fn)
-    const declaration=fn.fn!,bindings=new Map<Cell,ts.Expression[]>(),returns:ts.Expression[]=[],calls:ts.CallExpression[]=[]
-    const nodes=declaration.body?[declaration.body] as ts.Node[]:[],local=new Set<Cell>(fn.params),writesToParameters=new Set<Cell>()
+    const declaration=fn.fn!,bindings=new Map<Cell,TypeScript.Expression[]>(),returns:TypeScript.Expression[]=[],calls:TypeScript.CallExpression[]=[]
+    const nodes=declaration.body?[declaration.body] as TypeScript.Node[]:[],local=new Set<Cell>(fn.params),writesToParameters=new Set<Cell>()
     let pure=true,selected=false,unsupported=false
     while(nodes.length){const current=nodes.pop()!
       if(current!==declaration.body&&callable(current))continue
@@ -977,7 +978,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       ts.forEachChild(current,child=>{nodes.push(child)})
     }
     if(ts.isArrowFunction(declaration)&&!ts.isBlock(declaration.body))returns.push(declaration.body)
-    const dependent=(expression:ts.Expression,seen=new Set<Cell>()):boolean=>{
+    const dependent=(expression:TypeScript.Expression,seen=new Set<Cell>()):boolean=>{
       if(ts.isIdentifier(expression)){
         const target=lookup(scopes.get(expression)!,expression.text)
         if(target===fn.params?.[0])return true
@@ -987,7 +988,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       }
       return false
     }
-    const buildRecipe=(expression:ts.Expression):FactoryRecipe|undefined=>{
+    const buildRecipe=(expression:TypeScript.Expression):FactoryRecipe|undefined=>{
       if(ts.isParenthesizedExpression(expression))return recipe(expression.expression)
       if(ts.isIdentifier(expression)){
         const binding=lookup(scopes.get(expression)!,expression.text)
@@ -1020,7 +1021,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       }
       if(ts.isArrowFunction(expression)||ts.isFunctionExpression(expression)){
         const body=expression.body
-        let forwarded:ts.Expression|undefined
+        let forwarded:TypeScript.Expression|undefined
         if(ts.isBlock(body)&&body.statements.length===1){const statement=body.statements[0]!
           forwarded=ts.isReturnStatement(statement)?statement.expression:ts.isExpressionStatement(statement)?statement.expression:undefined
         }else if(!ts.isBlock(body))forwarded=body
@@ -1032,7 +1033,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       }
       // An unmodeled expression may be reused only when it does not consume a
       // factory local. Otherwise skipping callGuest would lose its real aliases.
-      const pending:ts.Node[]=[expression]
+      const pending:TypeScript.Node[]=[expression]
       while(pending.length){const part=pending.pop()!
         if(ts.isIdentifier(part)&&!namePosition(part)){
           const binding=lookup(scopes.get(part)!,part.text)
@@ -1043,14 +1044,14 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       }
       return {kind:'existing',expression}
     }
-    const recipe=(expression:ts.Expression):FactoryRecipe|undefined=>{
+    const recipe=(expression:TypeScript.Expression):FactoryRecipe|undefined=>{
       const existing=aliasRecipes.get(expression)
       if(existing)return existing
       const built=buildRecipe(expression)
       if(built)aliasRecipes.set(expression,built)
       return built
     }
-    const buildGuard=(expression:ts.Expression):FactoryGuard|undefined=>{
+    const buildGuard=(expression:TypeScript.Expression):FactoryGuard|undefined=>{
       if(ts.isParenthesizedExpression(expression))return buildGuard(expression.expression)
       if(ts.isPrefixUnaryExpression(expression)&&expression.operator===ts.SyntaxKind.ExclamationToken){
         const nested=buildGuard(expression.operand);return nested?{kind:'not',recipe:nested}:undefined
@@ -1073,7 +1074,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       const result=recipe(expression)
       if(!result)return undefined
       const guards:{recipe:FactoryGuard;truthy:boolean}[]=[]
-      for(let current:ts.Node=expression;current.parent&&current.parent!==declaration;current=current.parent){
+      for(let current:TypeScript.Node=expression;current.parent&&current.parent!==declaration;current=current.parent){
         const parent=current.parent
         if(ts.isIfStatement(parent)&&(current===parent.thenStatement||current===parent.elseStatement)){
           const guard=buildGuard(parent.expression)
@@ -1085,7 +1086,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     // Every local alias has one finite definition graph. Parameter reassignment
     // is not an unchanged selector, even when the shared Cell has matching keys.
     for(const expressions of bindings.values())for(const expression of expressions)if(!recipe(expression))unsupported=true
-    const getterCalls:ts.CallExpression[]=[]
+    const getterCalls:TypeScript.CallExpression[]=[]
     for(const call of calls)
       if(ts.isPropertyAccessExpression(call.expression)&&call.expression.name.text==='bind')continue
       else if(!call.arguments.length&&ts.isIdentifier(call.expression))getterCalls.push(call)
@@ -1097,7 +1098,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     return plan
   }
   interface FactoryEvaluation {readonly values:Value;readonly pure:boolean;readonly pending:boolean}
-  function evaluateFactoryRecipe(recipe:FactoryRecipe,plan:FactoryPlan,context:Map<Cell,Value>,node:ts.Node,
+  function evaluateFactoryRecipe(recipe:FactoryRecipe,plan:FactoryPlan,context:Map<Cell,Value>,node:TypeScript.Node,
     instance:Atom,active=new Set<Cell>(),refinements=new Map<string,Value>()):FactoryEvaluation {
     const merge=(items:readonly FactoryEvaluation[]):FactoryEvaluation=>({
       values:new Set(items.flatMap(item=>[...item.values])),pure:items.every(item=>item.pure),pending:items.some(item=>item.pending)})
@@ -1235,8 +1236,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(!target.values.size){pending=true;functionFallbackReaders.add(node)}
     return {values:result,pure,pending}
   }
-  const aliasRecipes=new Map<ts.Expression,FactoryRecipe>()
-  function resolver(fn:Atom,args:readonly Value[],node:ts.Node,selectorExpression?:ts.Expression):FactoryEvaluation|undefined {
+  const aliasRecipes=new Map<TypeScript.Expression,FactoryRecipe>()
+  function resolver(fn:Atom,args:readonly Value[],node:TypeScript.Node,selectorExpression?:TypeScript.Expression):FactoryEvaluation|undefined {
     if(!ts.isCallExpression(node)||resolvingFactories.has(fn))return undefined
     const plan=factoryPlan(fn)
     if(!plan)return undefined
@@ -1274,10 +1275,10 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(!pending)add(choice.choicePure!,one(literal(pure)))
     return {values:result,pure,pending}
   }
-  const bindingChanges=new Map<Cell,ts.Node[]>(),constantBindings=new Map<Cell,ts.VariableDeclaration>()
+  const bindingChanges=new Map<Cell,TypeScript.Node[]>(),constantBindings=new Map<Cell,TypeScript.VariableDeclaration>()
   const emptyChoiceCell=cell()
   function registerBindingWrites(state:UnitState):void {for(const node of state.nodes){
-    let name:ts.Identifier|undefined
+    let name:TypeScript.Identifier|undefined
     if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)){
       const binding=lookup(scopes.get(node)!,node.name.text)!
       if(ts.isVariableDeclarationList(node.parent)&&node.parent.flags&ts.NodeFlags.Const)constantBindings.set(binding,node)
@@ -1289,8 +1290,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       if(binding){const list=bindingChanges.get(binding)??[];list.push(node);bindingChanges.set(binding,list)}}
   }}
   for(const state of states)registerBindingWrites(state)
-  const truthfulReads=new Map<ts.Identifier,boolean>()
-  function requiresTruthyRead(identifier:ts.Identifier,binding:Cell):boolean {
+  const truthfulReads=new Map<TypeScript.Identifier,boolean>()
+  function requiresTruthyRead(identifier:TypeScript.Identifier,binding:Cell):boolean {
     const known=truthfulReads.get(identifier)
     if(known!==undefined)return known
     const changes=bindingChanges.get(binding)
@@ -1298,7 +1299,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       ||bindingScope(identifier,identifier.text)?.fn!==scopes.get(identifier)!.fn){
       truthfulReads.set(identifier,false);return false
     }
-    const positive=(expression:ts.Expression,wanted:boolean):boolean=>{
+    const positive=(expression:TypeScript.Expression,wanted:boolean):boolean=>{
       if(ts.isParenthesizedExpression(expression))return positive(expression.expression,wanted)
       if(ts.isIdentifier(expression))return wanted&&lookup(scopes.get(expression)!,expression.text)===binding
       if(ts.isPrefixUnaryExpression(expression)&&expression.operator===ts.SyntaxKind.ExclamationToken)
@@ -1309,10 +1310,10 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         return positive(expression.left,wanted)||positive(expression.right,wanted)
       return false
     }
-    const exits=(statement:ts.Statement):boolean=>ts.isReturnStatement(statement)
+    const exits=(statement:TypeScript.Statement):boolean=>ts.isReturnStatement(statement)
       ||ts.isBlock(statement)&&!!statement.statements.length&&ts.isReturnStatement(statement.statements.at(-1)!)
     let required=false
-    for(let child:ts.Node=identifier;child.parent&&!callable(child.parent);child=child.parent){
+    for(let child:TypeScript.Node=identifier;child.parent&&!callable(child.parent);child=child.parent){
       const parent=child.parent
       if(ts.isIfStatement(parent)){
         if(child===parent.thenStatement&&positive(parent.expression,true)
@@ -1335,7 +1336,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     truthfulReads.set(identifier,required);return required
   }
-  function selectorBinding(expression:ts.Expression):{binding:Cell;readAt:ts.Expression}|undefined {
+  function selectorBinding(expression:TypeScript.Expression):{binding:Cell;readAt:TypeScript.Expression}|undefined {
     const seen=new Set<Cell>()
     while(true){
       while(ts.isParenthesizedExpression(expression))expression=expression.expression
@@ -1348,13 +1349,13 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       else return {binding,readAt:expression}
     }
   }
-  function executionBoundary(node:ts.Node):ts.Node {
+  function executionBoundary(node:TypeScript.Node):TypeScript.Node {
     for(let current=node.parent;current;current=current.parent)
       if(callable(current)||ts.isForStatement(current)||ts.isForOfStatement(current)||ts.isForInStatement(current)
         ||ts.isWhileStatement(current)||ts.isDoStatement(current))return current
     return node.getSourceFile()
   }
-  function relatedSelection(choice:Atom,selector:ts.Expression,write:ts.BinaryExpression):boolean|undefined {
+  function relatedSelection(choice:Atom,selector:TypeScript.Expression,write:TypeScript.BinaryExpression):boolean|undefined {
     if(!choice.choiceSelector||!choice.choiceProducer)return false
     const pure=read(choice.choicePure!,write)
     if(!pure.size)return undefined
@@ -1383,7 +1384,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return true
   }
-  function sameDataSelector(left:ts.Expression,right:ts.Expression,node:ts.Node):boolean {
+  function sameDataSelector(left:TypeScript.Expression,right:TypeScript.Expression,node:TypeScript.Node):boolean {
     while(ts.isParenthesizedExpression(left))left=left.expression
     while(ts.isParenthesizedExpression(right))right=right.expression
     if(ts.isIdentifier(left)&&ts.isIdentifier(right)){
@@ -1408,7 +1409,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     return !!owners.size&&[...owners].every(owner=>owner.kind==='array'&&!!owner.fields&&!owner.written?.has('*')
       &&[...owner.fields.values()].every(target=>!!names(read(target,node))))
   }
-  function directDataCopy(target:ts.ElementAccessExpression,right:ts.Expression,node:ts.BinaryExpression,
+  function directDataCopy(target:TypeScript.ElementAccessExpression,right:TypeScript.Expression,node:TypeScript.BinaryExpression,
     name:string):Value|undefined {
     while(ts.isParenthesizedExpression(right))right=right.expression
     // Original b[keys[k]] -> window[keys[k]] is one DATA copy. Reading two
@@ -1428,7 +1429,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     return result
   }
   /** Guard facts restrict a fixed absent facade path, never remove AST coverage. */
-  function unreachable(node:ts.Node):boolean {
+  function unreachable(node:TypeScript.Node):boolean {
     let child=node
     for(let p=node.parent;p;child=p,p=p.parent){
       if(ts.isIfStatement(p)){
@@ -1447,10 +1448,10 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return false
   }
-  const nativeCalls=new Map<ts.Node,Map<Atom,readonly Value[]>>()
-  const boundFunctions=new Map<ts.Node,Map<Atom,Atom>>()
-  const unprovenNativeBoundCalls=new Set<ts.Node>()
-  function invokeFunction(fn:Atom,args:readonly Value[],node:ts.Node,receiver?:Value,selectorExpression?:ts.Expression):Value {
+  const nativeCalls=new Map<TypeScript.Node,Map<Atom,readonly Value[]>>()
+  const boundFunctions=new Map<TypeScript.Node,Map<Atom,Atom>>()
+  const unprovenNativeBoundCalls=new Set<TypeScript.Node>()
+  function invokeFunction(fn:Atom,args:readonly Value[],node:TypeScript.Node,receiver?:Value,selectorExpression?:TypeScript.Expression):Value {
     if(readerGuestHelper(fn))return readerGuestResult(fn,args,node)
     if(fn.kind==='choice'){
       const result:Value=new Set()
@@ -1504,7 +1505,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return one(unknown)
   }
-  function applyArguments(items:Value,node:ts.Node):readonly Value[]|undefined {
+  function applyArguments(items:Value,node:TypeScript.Node):readonly Value[]|undefined {
     if(!items.size)return undefined
     const result:Value[]=[]
     for(const item of items){
@@ -1517,10 +1518,10 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return result.map(value=>value??one(absent))
   }
-  function findSelection(fn:Atom,items:Value,node:ts.Node):Value|undefined {
+  function findSelection(fn:Atom,items:Value,node:TypeScript.Node):Value|undefined {
     const declaration=fn.fn,parameter=declaration?.parameters[0]
     if(!declaration||!parameter||!ts.isIdentifier(parameter.name))return undefined
-    let expression:ts.Node|undefined=declaration.body
+    let expression:TypeScript.Node|undefined=declaration.body
     if(expression&&ts.isBlock(expression)&&expression.statements.length===1){
       const statement=expression.statements[0]!
       expression=ts.isReturnStatement(statement)?statement.expression:undefined
@@ -1542,7 +1543,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return undefined
   }
-  function combine(fn:Atom,args:readonly Value[],node:ts.Node):Value {
+  function combine(fn:Atom,args:readonly Value[],node:TypeScript.Node):Value {
     const owner=fn.receiver!,items=new Set(read(owner.elements!,node)),name=fn.nativeName!
     if(name==='push'){
       for(const incoming of args){add(owner.elements!,incoming);if(owner.fields)add(field(owner,'*'),incoming)}
@@ -1566,7 +1567,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     add(result.elements!,name==='filter'?selected:returned)
     return one(result)
   }
-  function evaluate(node:ts.Node):void {
+  function evaluate(node:TypeScript.Node):void {
     const state=units.get(node)!,scope=scopes.get(node)!,output=nodeCell(node)
     const emit=(items:Iterable<Atom>)=>add(output,items)
     if(ts.isStringLiteralLike(node)){emit(one(literal(node.text)));return}
@@ -1624,7 +1625,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     if(ts.isConditionalExpression(node)){
       const test=guardTruth(value(node.condition,node))
-      const branch=(expression:ts.Expression)=>[...value(expression,node)].map(item=>
+      const branch=(expression:TypeScript.Expression)=>[...value(expression,node)].map(item=>
         test!==undefined&&item.kind==='literal'?literal(item.literal!,true):item)
       if(test!==false)emit(branch(node.whenTrue))
       if(test!==true)emit(branch(node.whenFalse))
@@ -1838,7 +1839,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       ||ts.isVoidExpression(node))emit(one(guest))
   }
   const variableObjects=new Map<string,Atom>()
-  const contextSnapshots=new Map<ts.Node,Atom>()
+  const contextSnapshots=new Map<TypeScript.Node,Atom>()
   const sourceDictionaries=new Map<string,Atom>()
   const sourceEventFields=['MESSAGE_UPDATED','MESSAGE_SWIPED','MESSAGE_SENT','MESSAGE_RECEIVED','MESSAGE_EDITED',
     'MESSAGE_DELETED','CHAT_CHANGED','SETTINGS_UPDATED','USER_MESSAGE_RENDERED','CHARACTER_MESSAGE_RENDERED','GENERATION_AFTER_COMMANDS']
@@ -1852,15 +1853,15 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         result.written!.add(key)}}
     return result
   }
-  const sourceAsyncResults=new Map<ts.Node,Map<string,Atom>>()
-  function sourcePromise(node:ts.Node,name:string,contents:Atom):Value {
+  const sourceAsyncResults=new Map<TypeScript.Node,Map<string,Atom>>()
+  function sourcePromise(node:TypeScript.Node,name:string,contents:Atom):Value {
     let byName=sourceAsyncResults.get(node)
     if(!byName){byName=new Map();sourceAsyncResults.set(node,byName)}
     let promise=byName.get(name)
     if(!promise){promise=atom('promise',{elements:cell()});byName.set(name,promise)}
     add(promise.elements!,one(contents));return one(promise)
   }
-  const avatarResponses=new Map<ts.Node,Atom>(),avatarIdArrays=new Map<ts.Node,Atom>()
+  const avatarResponses=new Map<TypeScript.Node,Atom>(),avatarIdArrays=new Map<TypeScript.Node,Atom>()
   // The actual hidden Source closure shares this ordinary mutable metadata
   // across calls and same-runtime realms; copied context dictionaries do not.
   const contextMetadata=atom('object',{fields:new Map(),written:new Set(),prototypes:cell(),snapshot:true})
@@ -1928,7 +1929,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       found.set(row.authorId,row.data)
     return found
   }
-  function readerDataGet(args:readonly Value[],node:ts.Node):Value {
+  function readerDataGet(args:readonly Value[],node:TypeScript.Node):Value {
     if(!args[0]?.size||!args[1]?.size)return new Set()
     const selected=names(args[1])
     // Unmodeled guest path forms still retain every actual Native reference.
@@ -1952,8 +1953,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     return !!astOptions.readerPageApis&&value.kind==='guest'
       &&['reader.errorCatched','reader.waitGlobalInitialized','reader._.get'].includes(value.nativeName??'')
   }
-  const readerGuestCalls=new Map<ts.Node,Map<string,readonly Value[]>>()
-  function readerGuestResult(fn:Atom,args:readonly Value[],node:ts.Node):Value {
+  const readerGuestCalls=new Map<TypeScript.Node,Map<string,readonly Value[]>>()
+  function readerGuestResult(fn:Atom,args:readonly Value[],node:TypeScript.Node):Value {
     let calls=readerGuestCalls.get(node)
     if(!calls){calls=new Map();readerGuestCalls.set(node,calls)}
     const previous=calls.get(fn.nativeName!),merged:Value[]=[]
@@ -1966,7 +1967,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(fn.nativeName==='reader._.get')return readerDataGet(args,node)
     return sourcePromise(node,'reader-mvu-ready',absent)
   }
-  function nativeResult(fn:Atom,args:readonly Value[],node:ts.Node):Value {
+  function nativeResult(fn:Atom,args:readonly Value[],node:TypeScript.Node):Value {
     const state=units.get(node)!,realmName=state.input.realm,name=fn.nativeName!,operation=fn.operation!
     if(astOptions.readerPageApis&&operation.returns==='page-collection'){
       const receiver=fn.receiver!,collection=receiver.handle==='page-collection'
@@ -2101,7 +2102,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     // All added units share these Cells, scopes, realms and reader queue.
     for(const node of mountWrites){
       if(unreachable(node))continue
-      const target=node.left as ts.PropertyAccessExpression|ts.ElementAccessExpression
+      const target=node.left as TypeScript.PropertyAccessExpression|TypeScript.ElementAccessExpression
       const selected=ts.isPropertyAccessExpression(target)?new Set([target.name.text]):names(finalValue(target.argumentExpression))
       if(!selected)continue
       for(const receiver of finalValue(target.expression))if(receiver.kind==='handle'&&receiver.mount)
@@ -2141,7 +2142,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   drain()
   while(discoverMountedPages())drain()
 
-  function finalValue(node:ts.Node):Value {return nodeCell(node).values}
+  function finalValue(node:TypeScript.Node):Value {return nodeCell(node).values}
   function nativeFunction(fn:Atom):boolean {
     const todo=[fn],seen=new Set<Atom>()
     while(todo.length){const item=todo.pop()!
@@ -2154,15 +2155,15 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return false
   }
-  function strings(node:ts.Node):Set<string>|undefined {return names(finalValue(node))}
-  function options(args:readonly Value[],state:UnitState,node:ts.Node):void {
+  function strings(node:TypeScript.Node):Set<string>|undefined {return names(finalValue(node))}
+  function options(args:readonly Value[],state:UnitState,node:TypeScript.Node):void {
     const selected=args[1]
     if(!selected){return}
     const types=new Set<string>()
     for(const owner of selected)if(owner.fields)for(const type of names(field(owner,'type').values)??[])types.add(type)
     if(types.size!==1||!types.has('chat'))report(state,'BROWSER3_CHAT_SCOPE_UNPROVEN',node)
   }
-  function insertion(args:readonly Value[],state:UnitState,node:ts.Node):void {
+  function insertion(args:readonly Value[],state:UnitState,node:TypeScript.Node):void {
     options(args,state,node)
     const patch=args[0]
     if(!patch){report(state,'BROWSER3_CHAT_PATCH_UNPROVEN',node);return}
@@ -2179,8 +2180,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       else {state.keys.add(name);state.caps.add('owned-declared-key-mutation')}
     }
   }
-  const updaterUnits=new Map<UnitState,ts.Node>()
-  function update(args:readonly Value[],fn:Atom,state:UnitState,node:ts.Node):void {
+  const updaterUnits=new Map<UnitState,TypeScript.Node>()
+  function update(args:readonly Value[],fn:Atom,state:UnitState,node:TypeScript.Node):void {
     // The runtime's updater key belongs to its direct carrier facade. Inline
     // callbacks and borrowed foreign facades do not have this key binding.
     if(state.input.pageId!==null){
@@ -2193,7 +2194,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     const callbacks=args[0]?choiceValues(args[0],node):new Set<Atom>()
     const keys=new Set<string>()
     const fail=()=>report(state,'BROWSER3_CHAT_UPDATE_KEY_UNPROVEN',node)
-    const unwrap=(expression:ts.Expression):ts.Expression=>{
+    const unwrap=(expression:TypeScript.Expression):TypeScript.Expression=>{
       while(ts.isParenthesizedExpression(expression))expression=expression.expression
       return expression
     }
@@ -2203,10 +2204,10 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       if(callback.kind!=='function'||!declaration?.body||!parameter||!ts.isIdentifier(parameter.name)){
         fail();return
       }
-      const returns:(ts.Expression|undefined)[]=[]
+      const returns:(TypeScript.Expression|undefined)[]=[]
       if(!ts.isBlock(declaration.body))returns.push(declaration.body)
       else {
-        const visit=(part:ts.Node):void=>{
+        const visit=(part:TypeScript.Node):void=>{
           if(part!==declaration.body&&callable(part))return
           if(ts.isReturnStatement(part))returns.push(part.expression)
           ts.forEachChild(part,visit)
@@ -2250,7 +2251,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     const pageId=[...sources][0]!.pageId!
     return sourceParents.get(pageId)===frameRealm?pageId:undefined
   }
-  function mountValue(items:Value,state:UnitState,node:ts.Node,frameRealm:string):void {
+  function mountValue(items:Value,state:UnitState,node:TypeScript.Node,frameRealm:string):void {
     const sources=mountSources(items)
     if(sources.size!==1||[...sources][0]!.kind!=='html')report(state,'BROWSER3_SOURCE_PAGE_MOUNT_UNPROVEN',node)
     else {
@@ -2259,7 +2260,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       else {state.mounts.add(pageId);state.caps.add('owned-source-html-page')}
     }
   }
-  function immediatelyStoredObjectUrl(expression:ts.Expression,write:ts.BinaryExpression):Value|undefined {
+  function immediatelyStoredObjectUrl(expression:TypeScript.Expression,write:TypeScript.BinaryExpression):Value|undefined {
     if(!(ts.isPropertyAccessExpression(expression)||ts.isElementAccessExpression(expression))
       ||!ts.isIdentifier(expression.expression)||!ts.isExpressionStatement(write.parent))return undefined
     const statements=ts.isBlock(write.parent.parent)||ts.isSourceFile(write.parent.parent)
@@ -2293,8 +2294,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(!/^https?:\/\/[^\s]+$/i.test(value))return false
     try {const url=new URL(value);return !!url.hostname&&['http:','https:'].includes(url.protocol)}catch{return false}
   }
-  function media(items:Value,state:UnitState,node:ts.Node,kind:'image'|'audio'):void {
-    const record=(url:string,origin:ts.Node,owner=state)=>{
+  function media(items:Value,state:UnitState,node:TypeScript.Node,kind:'image'|'audio'):void {
+    const record=(url:string,origin:TypeScript.Node,owner=state)=>{
       if(!mediaUrl(url,kind))return
       const resource={value:url,kind,start:origin.getStart(owner.file),end:origin.end}
       owner.media.set(kind+':'+resource.start+':'+url,resource)

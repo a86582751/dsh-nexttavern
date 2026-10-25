@@ -3,7 +3,7 @@
 import { Parser, defaultTreeAdapter } from 'parse5';
 import parseCss from 'css-tree/parser';
 import walkCss from 'css-tree/walker';
-import ts from 'typescript';
+import ts from 'dsh-nexttavern-typescript-runtime';
 import { recordSha256, sha256 } from './roleplay-data.js';
 const base = defaultTreeAdapter;
 export const HTML_PARSE_BOUNDS_V1 = Object.freeze({ htmlBytes: 8 * 1_048_576, scriptBytes: 3 * 1_048_576,

@@ -19,15 +19,16 @@
     "NOTICE.md"
   ],
   "dependencies": {
-    "typescript": "5.9.3",
     "quickjs-emscripten-core": "0.32.0",
     "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
     "@jitl/quickjs-ffi-types": "0.32.0"
   },
   "bundleDependencies": [
-    "typescript",
     "quickjs-emscripten-core",
     "@jitl/quickjs-wasmfile-release-sync",
     "@jitl/quickjs-ffi-types"
-  ]
+  ],
+  "peerDependencies": {
+    "dsh-nexttavern-typescript-runtime": "0.1.0"
+  }
 }

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "name": "dsh-nexttavern-author-browser-runtime-v3-author-dialog-v1",
   "version": "0.2.0",
   "modules": {
@@ -8,10 +8,15 @@
     "execution-worker": "dist/browser-execution-worker.js"
   },
   "dependencies": {
-    "typescript": "5.9.3",
     "quickjs-emscripten-core": "0.32.0",
     "@jitl/quickjs-ffi-types": "0.32.0",
     "@jitl/quickjs-wasmfile-release-asyncify": "0.32.0"
+  },
+  "sharedCompiler": {
+    "name": "dsh-nexttavern-typescript-runtime",
+    "version": "0.1.0",
+    "typescriptVersion": "5.9.3",
+    "entrySha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675"
   },
   "wasm": {
     "path": "assets/emscripten-module.wasm",

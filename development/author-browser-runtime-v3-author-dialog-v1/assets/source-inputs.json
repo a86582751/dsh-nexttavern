@@ -18,7 +18,7 @@
       {
         "artifact": "tavern-author-browser-artifact-v3-typescript",
         "path": "src/core/tavern-author-browser-artifact-v3.mts",
-        "sha256": "ecb90ec2191875bc7691763dfc26900621fb04181d25b19f4c4b0ffdddc5bd4b"
+        "sha256": "f2e888df84434bfa986a9cd40dc27d16ee0c99ba461303ea9153121dfd2b2aff"
       },
       {
         "artifact": "tavern-author-browser-budget-typescript",
@@ -33,12 +33,12 @@
       {
         "artifact": "tavern-author-browser-descriptor-v3-typescript",
         "path": "src/core/tavern-author-browser-descriptor-v3.mts",
-        "sha256": "2a4402b38c09409b058acd45ffe71cf3c14e7b7c9eaea285a2b576b7ab3d28c9"
+        "sha256": "ad8860cd5ab930000b55685f0ab933fbfe4dd5f5eaa2fc07934cd02730e06a5f"
       },
       {
         "artifact": "tavern-author-browser-partition-v3-typescript",
         "path": "src/core/tavern-author-browser-partition-v3.mts",
-        "sha256": "460acbc068559edeee9f47529f6aa58ae4d6257c555fdce0c572b4a0702e1365"
+        "sha256": "5b09b1b2a022dd3b7c26360a77d6e7feb5431e1165429df40f511d84c885326c"
       },
       {
         "artifact": "tavern-author-browser-profile-v3-typescript",
@@ -46,9 +46,14 @@
         "sha256": "11f112d369f4d691fffca4f01c76708d96e33bfbef6e4cd7627ced0bc72eb000"
       },
       {
+        "artifact": "tavern-typescript-runtime-descriptor-typescript",
+        "path": "src/core/tavern-typescript-runtime-descriptor.mts",
+        "sha256": "531029fdcd57fa28f8be65df071d780863395288acdb06658b04255dbfd0a0d0"
+      },
+      {
         "artifact": "author-browser-runtime-v3-author-dialog-v1-src-tavern-author-browser-provider-mts",
         "path": "src/tavern-author-browser-provider.mts",
-        "sha256": "163c74c9e43d2adf218e573e7b3cc1ff1c11cc9ed77820b9950552236f59894e"
+        "sha256": "4a40e19eadd289b1df9db4edd7038d1ed9174b4a5a9df212d3e14cf9600702d6"
       }
     ],
     "ast-worker": [
@@ -75,17 +80,17 @@
       {
         "artifact": "tavern-author-browser-artifact-v3-typescript",
         "path": "src/core/tavern-author-browser-artifact-v3.mts",
-        "sha256": "ecb90ec2191875bc7691763dfc26900621fb04181d25b19f4c4b0ffdddc5bd4b"
+        "sha256": "f2e888df84434bfa986a9cd40dc27d16ee0c99ba461303ea9153121dfd2b2aff"
       },
       {
         "artifact": "tavern-author-browser-ast-v3-typescript",
         "path": "src/core/tavern-author-browser-ast-v3.mts",
-        "sha256": "2102f1d73e6a9150a03dea5a8132f08d23b07532873e4c6a992c19fcd1db9a13"
+        "sha256": "5060d1ce52d75442aecff8c234090d41bfb21674b455d1f29b359ed8ba198af1"
       },
       {
         "artifact": "tavern-author-browser-ast-worker-v3-typescript",
         "path": "src/core/tavern-author-browser-ast-worker-v3.mts",
-        "sha256": "fbb3ba104cac5c43870e7db21f20b0b54c90911ccb41279ecae00bc9ea1573ea"
+        "sha256": "aacd054258d8b6e5180293cfec97d04cf6bb14926b677ccedd3e78c78d2bd451"
       },
       {
         "artifact": "tavern-author-browser-compiler-v3-typescript",
@@ -100,7 +105,7 @@
       {
         "artifact": "tavern-author-browser-descriptor-v3-typescript",
         "path": "src/core/tavern-author-browser-descriptor-v3.mts",
-        "sha256": "2a4402b38c09409b058acd45ffe71cf3c14e7b7c9eaea285a2b576b7ab3d28c9"
+        "sha256": "ad8860cd5ab930000b55685f0ab933fbfe4dd5f5eaa2fc07934cd02730e06a5f"
       },
       {
         "artifact": "tavern-author-browser-profile-v3-typescript",
@@ -115,12 +120,17 @@
       {
         "artifact": "tavern-author-html-compiler-v1-typescript",
         "path": "src/core/tavern-author-html-compiler-v1.mts",
-        "sha256": "ce3406448c3c33216940125ca5324d41e661ab4069c9a235c8fa3c269db3dcaa"
+        "sha256": "41b8012f37133fc5940be25b26c3d1efe1f4a8dc02acbee44696038bbba6ccd4"
       },
       {
         "artifact": "tavern-display-html-typescript",
         "path": "src/core/tavern-display-html.ts",
         "sha256": "796f6120515edce4da3af4295c2d86d71fa12f070eefda94232db748144415ed"
+      },
+      {
+        "artifact": "tavern-typescript-runtime-descriptor-typescript",
+        "path": "src/core/tavern-typescript-runtime-descriptor.mts",
+        "sha256": "531029fdcd57fa28f8be65df071d780863395288acdb06658b04255dbfd0a0d0"
       }
     ],
     "execution-worker": [

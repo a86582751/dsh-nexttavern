@@ -1,5 +1,5 @@
 /** Main-thread facade plus the worker-only complete AST compiler. */
-import {createRequire} from 'node:module'
+import ts from 'dsh-nexttavern-typescript-runtime'
 import path from 'node:path'
 import type * as TypeScript from 'typescript'
 import {recordSha256} from './roleplay-data.js'
@@ -33,6 +33,7 @@ function assemble(batch:PromptCandidateBatchV1,ordinals:readonly number[],
   return {kind:'compiled',program:{...data,programSha256:recordSha256(data)}}
 }
 export function createAuthorPromptCompilerV1(deps:{compiler:PromptCompilerIdentityV1;runtime:PromptRuntimeIdentityV1;
+  checkCurrent():void;
   dispatch(request:PromptWorkerRequestV1,signal?:AbortSignal):Promise<PromptCandidateBatchV1|PromptExecutionV1>;
   accept(program:PromptProgramV1):void}):PromptCompilerV1 {
   const {compiler,runtime}=deps
@@ -43,6 +44,7 @@ export function createAuthorPromptCompilerV1(deps:{compiler:PromptCompilerIdenti
     frozen(result);ownedBatches.add(result);return result
   }
   const assembleAccepted=(batch:PromptCandidateBatchV1,ordinals:readonly number[]):PromptCompilationV1=>{
+    deps.checkCurrent()
     // Only this live compiler's completed worker result may be assembled. A
     // persisted program is verified by actual recompilation instead.
     if(!ownedBatches.has(batch))return {kind:'refused',diagnostics:[{code:'PROMPT_CANDIDATE_BATCH_UNOWNED'}]}
@@ -67,10 +69,6 @@ export function createAuthorPromptCompilerV1(deps:{compiler:PromptCompilerIdenti
 /** Not an admission API: the bounded Node worker alone calls this routine. */
 export function compilePromptCandidatesInWorkerV1(input:PromptCompilationInputV1,
   compiler:PromptCompilerIdentityV1,runtime:PromptRuntimeIdentityV1):PromptCandidateBatchV1 {
-  const require=createRequire(import.meta.url)
-  let ts:typeof TypeScript
-  try {ts=require('typescript') as typeof TypeScript}
-  catch {ts=createRequire(new URL('../../build-tools/package.json',import.meta.url))('typescript') as typeof TypeScript}
   if(ts.version!=='5.9.3')throw new Error('PROMPT_TYPESCRIPT_VERSION')
   const allowedSyntax=new Set([...PROMPT_SYNTAX_V1].map(name=>ts.SyntaxKind[name as keyof typeof ts.SyntaxKind]))
   if(input.schemaVersion!==1||input.encoding!=='native-author-prompt-compilation-input-v1'

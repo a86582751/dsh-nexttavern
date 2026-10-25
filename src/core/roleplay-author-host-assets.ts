@@ -5,6 +5,7 @@ import path from 'node:path'
 import {createRequire} from 'node:module'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {recordSha256} from './roleplay-data.js'
+import type {AdmittedTypeScript} from 'dsh-nexttavern-typescript-runtime'
 import type {createRoleplayMvuSchemaAssetOwner} from './roleplay-mvu-schema-assets.js'
 import type {OwnedMvuSchemaExecutor} from './roleplay-mvu-schema-executor-types.js'
 import type {AuthorHostIdentityV5,AuthorServerExecutorV4} from './roleplay-author-host-types-v5.js'
@@ -35,7 +36,7 @@ export type ProtectedAuthorHostRuntimeV5=OwnedMvuSchemaExecutor&{
   readonly prompt:OwnedAuthorPromptRuntimeV1
 }
 export type AuthorHostServerAssetsV5=Pick<ReturnType<typeof createRoleplayMvuSchemaAssetOwner>,
-  'getDefaultForNewRealm'|'getForVerifiedEpoch'>
+  'getDefaultForNewRealm'|'getForVerifiedEpoch'|'getTypeScript'>
 function productRoot():string {
   // These are the registered root/lib/core and preset/lib/core deliveries.
   for(const relative of ['../../','../../../']) {
@@ -63,10 +64,13 @@ function packageVerifier(admitted:AdmittedPackage) {
 export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHostServerAssetsV5}) {
   let closed=false,disposal:Promise<void>|undefined
   const runtimes=new Map<string,Promise<ProtectedAuthorHostRuntimeV5>>()
+  const runtimesByIdentity=new Map<string,ProtectedAuthorHostRuntimeV5>()
+  type ProductAssets={root:string;require:ReturnType<typeof createRequire>;
+    identity:ReturnType<typeof import('../operations/bundled-package-bootstrap.mjs').readBundleIdentity>;
+    protection:typeof import('../operations/protected-packages.mjs')}
+  let product:Promise<ProductAssets>|undefined
   const current=()=>{if(closed)throw Error('AUTHOR_HOST_RUNTIME_DISPOSED')}
-  async function load(name:string,selectedServer?:OwnedMvuSchemaExecutor,
-    selectedBrowser=browserName,selectedPartition:string|undefined=undefined,
-    hostComponent?:string,browserComponent?:string,promptComponent?:string):Promise<ProtectedAuthorHostRuntimeV5> {
+  async function loadProduct():Promise<ProductAssets> {
     const root=productRoot(),require=createRequire(path.join(root,'package.json'))
     const bootstrap=await import(pathToFileURL(path.join(root,'lib/operations/bundled-package-bootstrap.mjs')).href) as
       typeof import('../operations/bundled-package-bootstrap.mjs')
@@ -75,6 +79,17 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
     current()
     const identity=bootstrap.readBundleIdentity(root)
     if(identity.productRoot!==root)throw Error('AUTHOR_HOST_INVENTORY_OWNER_CHANGED')
+    return {root,require,identity,protection}
+  }
+  function productAssets():Promise<ProductAssets> {
+    // Installed product identity is fixed until this owner is disposed.
+    return product??=loadProduct().catch(error=>{product=undefined;throw error})
+  }
+  async function load(name:string,selectedServer?:OwnedMvuSchemaExecutor,
+    selectedBrowser=browserName,selectedPartition:string|undefined=undefined,
+    hostComponent?:string,browserComponent?:string,promptComponent?:string):Promise<ProtectedAuthorHostRuntimeV5> {
+    const {root,require,identity,protection}=await productAssets()
+    current()
     function admit(name:string,component?:string):AdmittedPackage {
       const historical=component===undefined?undefined:identity.historicalComponents.find(spec=>spec.path===component)
       const specs=historical?[historical]:component===undefined?identity.packages.filter(spec=>spec.name===name):[]
@@ -93,6 +108,17 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
     if(server.executorVersion!==4||!server.stateLoader)throw Error('AUTHOR_HOST_SERVER_ABI_UNSUPPORTED')
     async function loadBrowser(selected:string,component?:string) {
       const admittedBrowser=admit(selected,component)
+      if(selected===browserName&&component===undefined) {
+        const browserModule=await import(pathToFileURL(admittedBrowser.entry).href) as {
+          createOwnedAuthorBrowserRuntimeV3(deps:{verifyOwnedPackage:ReturnType<typeof packageVerifier>;
+            typescript:AdmittedTypeScript}):Promise<OwnedAuthorBrowserRuntimeV3>
+        }
+        const typescript=await deps.serverAssets.getTypeScript()
+        current()
+        return browserModule.createOwnedAuthorBrowserRuntimeV3({
+          verifyOwnedPackage:packageVerifier(admittedBrowser),typescript})
+      }
+      // Frozen factories retain their original package-local compiler and ABI.
       const browserModule=await import(pathToFileURL(admittedBrowser.entry).href) as {
         createOwnedAuthorBrowserRuntimeV1?(deps:{verifyOwnedPackage:ReturnType<typeof packageVerifier>}):
           Promise<OwnedAuthorBrowserRuntimeV1>
@@ -116,7 +142,8 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
       current()
       const admittedPrompt=admit(AUTHOR_PROMPT_RUNTIME_NAME,promptComponent)
       prompt=await loadAdmittedAuthorPromptRuntimeV1({...admittedPrompt,inventory:{...admittedPrompt.inventory,
-        name:AUTHOR_PROMPT_RUNTIME_NAME,version:admittedPrompt.inventory.version as typeof AUTHOR_PROMPT_RUNTIME_VERSION}},current)
+        name:AUTHOR_PROMPT_RUNTIME_NAME,version:admittedPrompt.inventory.version as typeof AUTHOR_PROMPT_RUNTIME_VERSION}},
+      current,promptComponent===undefined?await deps.serverAssets.getTypeScript():undefined)
       current()
       const admittedHost=admit(name,hostComponent)
       const hostModule=await import(pathToFileURL(admittedHost.entry).href) as {
@@ -148,6 +175,10 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
     let pending=runtimes.get(key)
     if(!pending) {
       pending=load(name,server,selectedBrowser,selectedPartition,hostComponent,browserComponent,promptComponent)
+        .then(runtime=>{
+          runtimesByIdentity.set(runtime.implementationKey+':'+recordSha256(runtime.host.server),runtime)
+          return runtime
+        })
         .catch(error=>{runtimes.delete(key);throw error})
       runtimes.set(key,pending)
     }
@@ -172,14 +203,16 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
   return {
     getDefault:()=>admitted(),
     async getForVerifiedHost(identity:AuthorHostIdentityV5,server:AuthorServerExecutorV4):Promise<ProtectedAuthorHostRuntimeV5> {
+      current()
       try {
         // Compute both lookup identities before admission yields. A persisted
         // tuple is DATA only, including the real stateLoader member.
         const hostKey=recordSha256(identity),serverKey=recordSha256(server)
-        const root=productRoot()
-        const bootstrap=await import(pathToFileURL(path.join(root,'lib/operations/bundled-package-bootstrap.mjs')).href) as
-          typeof import('../operations/bundled-package-bootstrap.mjs')
-        const entry=bootstrap.readBundleIdentity(root).authorRuntimeHistory.find(row=>
+        const known=runtimesByIdentity.get(hostKey+':'+serverKey)
+        if(known){known.host.checkCurrent();return known}
+        const {identity:catalog}=await productAssets()
+        current()
+        const entry=catalog.authorRuntimeHistory.find(row=>
           recordSha256(row.host)===hostKey&&recordSha256(row.server)===serverKey)
         const selectedServer=entry?await deps.serverAssets.getForVerifiedEpoch({compiler:server.compiler,
           bridge:server.bridge,libraries:server.libraries,runner:server.runner}):undefined
@@ -189,7 +222,7 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
           throw Error('AUTHOR_HOST_HISTORY_UNAVAILABLE')
         }
         return runtime
-      }catch {throw Error('AUTHOR_HOST_HISTORY_UNAVAILABLE')}
+      }catch {current();throw Error('AUTHOR_HOST_HISTORY_UNAVAILABLE')}
     },dispose,
   }
 }

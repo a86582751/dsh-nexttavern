@@ -4,24 +4,35 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {createRequire} from 'node:module'
 import {fileURLToPath,pathToFileURL} from 'node:url'
-import type {MvuSchemaRuntime,OwnedSchemaPackageInventory}
-  from 'dsh-nexttavern-mvu-schema-runtime'
-import type {MvuSchemaRuntimeV2,OwnedSchemaPackageInventory as OwnedSchemaPackageInventoryV2}
-  from 'dsh-nexttavern-mvu-schema-runtime-v2'
-import type {MvuSchemaRuntimeV3,OwnedSchemaPackageInventory as OwnedSchemaPackageInventoryV3}
-  from 'dsh-nexttavern-mvu-schema-runtime-v3'
-import type {MvuSchemaRuntimeV4}
-  from 'dsh-nexttavern-mvu-schema-runtime-v4'
+import type {MvuSchemaRuntimeV4,OwnedSchemaPackageInventory}
+  from 'dsh-nexttavern-mvu-schema-runtime-v4-update-batch-v1'
+import type {MvuSchemaCompiler,MvuSchemaRunner,MvuSchemaLibraryIdentity,MvuSchemaImplementationIdentity}
+  from './tavern-mvu-schema-types.js'
+import type {MvuSchemaRunnerV2} from './tavern-mvu-schema-types-v2.js'
+import type {MvuSchemaRunnerV3} from './tavern-mvu-schema-types-v3.js'
 import {deriveOwnedStateLoaderIdentityV4} from './tavern-mvu-schema-program-v4.js'
 import type {MvuSchemaCandidateCompilerV4,MvuSchemaCompilationInputV4}
   from './tavern-mvu-schema-program-v4.js'
 import {recordSha256} from './roleplay-data.js'
+import {createRoleplayTypeScriptAssetOwner} from './roleplay-typescript-assets.js'
 import type {SchemaExecutorVersion,SchemaExecutorIdentityTuple,OwnedMvuSchemaExecutor}
   from './roleplay-mvu-schema-executor-types.js'
 import {validateSchemaExecutorIdentityTuple} from './roleplay-mvu-schema-executor-types.js'
 
 const packageName='dsh-nexttavern-mvu-schema-runtime'
 const policyPackageName=packageName+'-v4-update-batch-v1'
+// Keep legacy factory signatures narrow without maintaining retired package
+// source just to import its structural runtime types.
+interface LegacySchemaRuntime<Runner> {
+  compiler:MvuSchemaCompiler
+  runner:Runner
+  libraries:readonly MvuSchemaLibraryIdentity[]
+  bridge:MvuSchemaImplementationIdentity
+  dispose():Promise<void>
+}
+type MvuSchemaRuntime=LegacySchemaRuntime<MvuSchemaRunner>
+type MvuSchemaRuntimeV2=LegacySchemaRuntime<MvuSchemaRunnerV2>
+type MvuSchemaRuntimeV3=LegacySchemaRuntime<MvuSchemaRunnerV3>
 const sameDirectory=(left:URL,right:string)=>left.protocol==='file:'
   &&fs.realpathSync(fileURLToPath(left))===right
 
@@ -42,21 +53,35 @@ function productRoot(name:string,packageVersion:string):string {
  * actual factory instead of allowing a delayed import to recreate it. */
 export function createRoleplayMvuSchemaAssetOwner() {
   let closed=false
+  const typescriptAssets=createRoleplayTypeScriptAssetOwner()
   type AdmittedRuntime={version:SchemaExecutorVersion;runtime:MvuSchemaRuntime|MvuSchemaRuntimeV2|MvuSchemaRuntimeV3|MvuSchemaRuntimeV4;
     executor:OwnedMvuSchemaExecutor}
   const runtimes=new Map<string,Promise<AdmittedRuntime>>()
-  async function load(version:SchemaExecutorVersion,name:string,component?:string):Promise<AdmittedRuntime> {
-    const packageVersion=version===4?'0.4.0':'0.3.0'
-    const root=productRoot(component===undefined?name:policyPackageName,packageVersion),
-      require=createRequire(path.join(root,'package.json'))
+  const runtimesByIdentity=new Map<string,OwnedMvuSchemaExecutor>()
+  type ProductAssets={root:string;require:ReturnType<typeof createRequire>;
+    identity:ReturnType<typeof import('../operations/bundled-package-bootstrap.mjs').readBundleIdentity>;
+    protection:typeof import('../operations/protected-packages.mjs')}
+  let product:Promise<ProductAssets>|undefined
+  async function loadProduct(name:string,packageVersion:string):Promise<ProductAssets> {
+    const root=productRoot(name,packageVersion),require=createRequire(path.join(root,'package.json'))
     const bootstrap=await import(pathToFileURL(path.join(root,'lib/operations/bundled-package-bootstrap.mjs')).href) as
       typeof import('../operations/bundled-package-bootstrap.mjs')
     const protection=await import(pathToFileURL(path.join(root,'lib/operations/protected-packages.mjs')).href) as
       typeof import('../operations/protected-packages.mjs')
     const identity=bootstrap.readBundleIdentity(root)
+    if(identity.productRoot!==root)throw Error('SCHEMA_RUNTIME_INVENTORY_OWNER_CHANGED')
+    return {root,require,identity,protection}
+  }
+  function productAssets(name:string,packageVersion:string):Promise<ProductAssets> {
+    // Package generations share this owner's fixed installed product catalog.
+    return product??=loadProduct(name,packageVersion).catch(error=>{product=undefined;throw error})
+  }
+  async function load(version:SchemaExecutorVersion,name:string,component?:string):Promise<AdmittedRuntime> {
+    const packageVersion=version===4?'0.4.0':'0.3.0'
+    const {root,require,identity,protection}=await productAssets(component===undefined?name:policyPackageName,packageVersion)
     const historical=component===undefined?undefined:identity.historicalComponents.find(spec=>spec.path===component)
     const specs=historical?[historical]:component===undefined?identity.packages.filter(spec=>spec.name===name):[]
-    if(identity.productRoot!==root||specs.length!==1||specs[0]!.name!==name||specs[0]!.version!==packageVersion) {
+    if(specs.length!==1||specs[0]!.name!==name||specs[0]!.version!==packageVersion) {
       throw Error('SCHEMA_RUNTIME_INVENTORY_OWNER_CHANGED')
     }
     const spec=specs[0]!
@@ -80,17 +105,30 @@ export function createRoleplayMvuSchemaAssetOwner() {
     }
     let loaded:MvuSchemaRuntime|MvuSchemaRuntimeV2|MvuSchemaRuntimeV3|MvuSchemaRuntimeV4
     if(version===1) {
-      const module=await import(pathToFileURL(entry).href) as typeof import('dsh-nexttavern-mvu-schema-runtime')
+      const module=await import(pathToFileURL(entry).href) as {
+        createMvuSchemaRuntime(deps:{verifyOwnedPackage(root:URL):ReturnType<typeof verifyOwnedPackage>}):Promise<MvuSchemaRuntime>
+      }
       if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
-      loaded=await module.createMvuSchemaRuntime({verifyOwnedPackage:fixed=>verifyOwnedPackage(fixed) as OwnedSchemaPackageInventory})
+      loaded=await module.createMvuSchemaRuntime({verifyOwnedPackage})
     }else if(version===2) {
-      const module=await import(pathToFileURL(entry).href) as typeof import('dsh-nexttavern-mvu-schema-runtime-v2')
+      const module=await import(pathToFileURL(entry).href) as {
+        createMvuSchemaRuntimeV2(deps:{verifyOwnedPackage(root:URL):ReturnType<typeof verifyOwnedPackage>}):Promise<MvuSchemaRuntimeV2>
+      }
       if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
-      loaded=await module.createMvuSchemaRuntimeV2({verifyOwnedPackage:fixed=>verifyOwnedPackage(fixed) as OwnedSchemaPackageInventoryV2})
+      loaded=await module.createMvuSchemaRuntimeV2({verifyOwnedPackage})
     }else if(version===3) {
-      const module=await import(pathToFileURL(entry).href) as typeof import('dsh-nexttavern-mvu-schema-runtime-v3')
+      const module=await import(pathToFileURL(entry).href) as {
+        createMvuSchemaRuntimeV3(deps:{verifyOwnedPackage(root:URL):ReturnType<typeof verifyOwnedPackage>}):Promise<MvuSchemaRuntimeV3>
+      }
       if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
-      loaded=await module.createMvuSchemaRuntimeV3({verifyOwnedPackage:fixed=>verifyOwnedPackage(fixed) as OwnedSchemaPackageInventoryV3})
+      loaded=await module.createMvuSchemaRuntimeV3({verifyOwnedPackage})
+    }else if(name===policyPackageName&&component===undefined) {
+      const module=await import(pathToFileURL(entry).href) as
+        typeof import('dsh-nexttavern-mvu-schema-runtime-v4-update-batch-v1')
+      const typescript=await typescriptAssets.get()
+      if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
+      loaded=await module.createMvuSchemaRuntimeV4({verifyOwnedPackage:fixed=>
+        verifyOwnedPackage(fixed) as OwnedSchemaPackageInventory,typescript})
     }else {
       const module=await import(pathToFileURL(entry).href) as {
         createMvuSchemaRuntimeV4(deps:{verifyOwnedPackage(root:URL):ReturnType<typeof verifyOwnedPackage>}):Promise<MvuSchemaRuntimeV4>
@@ -191,7 +229,10 @@ export function createRoleplayMvuSchemaAssetOwner() {
     const key=name+'\0'+(component??'')
     let pending=runtimes.get(key)
     if(!pending) {
-      pending=load(version,name,component).catch(error=>{runtimes.delete(key);throw error})
+      pending=load(version,name,component).then(actual=>{
+        runtimesByIdentity.set(actual.executor.implementationKey,actual.executor)
+        return actual
+      }).catch(error=>{runtimes.delete(key);throw error})
       runtimes.set(key,pending)
     }
     const actual=await pending
@@ -199,12 +240,13 @@ export function createRoleplayMvuSchemaAssetOwner() {
     return actual
   }
   return {
+    getTypeScript:()=>typescriptAssets.get(),
     /** Existing v1 callers remain explicit during migration. New preparation
      * uses getDefaultForNewRealm; historical lookup never consults that default. */
     async get():Promise<MvuSchemaRuntime> {
       return (await admitted(1)).runtime as MvuSchemaRuntime
     },
-    async getDefaultForNewRealm(version:3|4=3):Promise<OwnedMvuSchemaExecutor> {
+    async getDefaultForNewRealm(version:3|4=4):Promise<OwnedMvuSchemaExecutor> {
       return (await admitted(version)).executor
     },
     async getHistoricalV1():Promise<OwnedMvuSchemaExecutor> {
@@ -214,17 +256,18 @@ export function createRoleplayMvuSchemaAssetOwner() {
       // A persisted tuple is only lookup data. Core still proves its Source,
       // cut and actual replay before minting process-private publication evidence.
       try {
+        if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
         // Snapshot bounded lookup data before package admission can yield. A
         // malformed or later-mutated tuple cannot leak a different failure ABI.
         const verified=validateSchemaExecutorIdentityTuple(tuple)
         const version=verified.runner.version as SchemaExecutorVersion
         const implementationKey=recordSha256(verified)
+        const known=runtimesByIdentity.get(implementationKey)
+        if(known)return known
         let name:string|undefined,component:string|undefined
         if(version===4) {
-          const root=productRoot(policyPackageName,'0.4.0')
-          const bootstrap=await import(pathToFileURL(path.join(root,'lib/operations/bundled-package-bootstrap.mjs')).href) as
-            typeof import('../operations/bundled-package-bootstrap.mjs')
-          const entry=bootstrap.readBundleIdentity(root).authorRuntimeHistory.find(row=>recordSha256({
+          const {identity}=await productAssets(policyPackageName,'0.4.0')
+          const entry=identity.authorRuntimeHistory.find(row=>recordSha256({
             compiler:row.server.compiler,bridge:row.server.bridge,libraries:row.server.libraries,
             runner:row.server.runner})===implementationKey)
           name=entry?.serverPackage;component=entry?.serverComponent
@@ -236,6 +279,7 @@ export function createRoleplayMvuSchemaAssetOwner() {
     },
     async dispose():Promise<void> {
       closed=true
+      typescriptAssets.dispose()
       await Promise.all([...runtimes.values()].map(async active=>{
         try {await (await active).runtime.dispose()}catch { /* Loading already refused or revoked. */ }
       }))
