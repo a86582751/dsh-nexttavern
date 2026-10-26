@@ -113,7 +113,7 @@ export function captureRoleplayTavernScopedRegexV1(cardData:Readonly<Record<stri
     const nullable=(key:string)=>{
       const value=item[key]
       if(value===undefined||value===null)return null
-      if(typeof value!=='number'||!Number.isSafeInteger(value)||value<0)fail('INPUT_MATERIAL_REGEX_RULE_INVALID')
+      if(typeof value!=='number')fail('INPUT_MATERIAL_REGEX_RULE_INVALID')
       return value
     }
     if(typeof item.findRegex!=='string'||typeof item.replaceString!=='string'||!Array.isArray(item.placement)
