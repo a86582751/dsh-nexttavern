@@ -33,6 +33,70 @@ const clickImport=async r=>{await button(r,'载入当前').props.onClick();await
 const importFetch=onPost=>async(url,init)=>url==='/api/roleplay/jobs'
   ?onPost(JSON.parse(init.body)):url.includes('/openings')?{candidates:[]}:{cardImport:null}
 {
+  const r=hooks(),selections=[]
+  const a={provider:'channel-a',model:'same-model'},b={provider:'channel-b',model:'same-model'}
+  let reads=0
+  const p=panels(r,async()=>{
+    if(++reads>1)throw Object.assign(Error('catalog refresh unavailable'),{status:400})
+    return {...modelReply,main:a,catalog:[a,b]}
+  },new Map(),{selectMainModel:async(sessionId,route)=>selections.push({sessionId,route})})
+  r.mount(p.ModelPanel,{sessionId:'story'});await r.flush()
+  nodes(r.seat).find(n=>n?.props?.['aria-label']==='当前对话主模型').props.onChange({target:{value:'channel-b\u0000same-model'}})
+  await r.flush();await button(r,'切换当前对话主模型').props.onClick();await r.flush()
+  assert.equal(selections.length,1)
+  assert.match(text(r.seat),/主模型已切换，但模型目录刷新失败/,'a failed catalog read must not deny a confirmed model selection')
+  assert.equal(button(r,'切换当前对话主模型').props.disabled,true,'the confirmed selection remains selected after a failed refresh')
+  r.unmount()
+}
+for(const fault of [
+  {error:Object.assign(Error('model unavailable'),{status:400,code:'session/model-unavailable'}),known:true},
+  {error:Object.assign(Error('provider directory unavailable'),{status:503}),known:false},
+  {error:TypeError('fetch failed'),known:false},
+  {error:SyntaxError('unreadable response'),known:false},
+]){
+  const r=hooks(),a={provider:'channel-a',model:'same-model'},b={provider:'channel-b',model:'same-model'}
+  const p=panels(r,async()=>({...modelReply,main:a,catalog:[a,b]}),new Map(),{
+    selectMainModel:async()=>{throw fault.error},
+  })
+  r.mount(p.ModelPanel,{sessionId:'story'});await r.flush()
+  const choice=()=>nodes(r.seat).find(n=>n?.props?.['aria-label']==='当前对话主模型')
+  choice().props.onChange({target:{value:'channel-b\u0000same-model'}})
+  await r.flush();await button(r,'切换当前对话主模型').props.onClick();await r.flush()
+  if(fault.known){
+    assert.match(text(r.seat),/主模型切换失败：model unavailable/,'a definite server refusal is shown as a failed choice')
+    assert.doesNotMatch(text(r.seat),/无法确认主模型切换结果/)
+  }else{
+    assert.match(text(r.seat),/无法确认主模型切换结果/,'network, server and unreadable replies preserve the unknown outcome')
+    assert.doesNotMatch(text(r.seat),/主模型切换失败：/)
+  }
+  assert.equal(choice().props.value,'channel-b\u0000same-model','the requested choice remains available for correction or verification')
+  assert.equal(button(r,'切换当前对话主模型').props.disabled,false)
+  r.unmount()
+}
+{
+  const r=hooks(),selections=[],requests=[]
+  const ordinary={provider:'relay-messages',model:'deepseek-flash',label:'DeepSeek Flash',
+    requestMaterialText:{schemaVersion:1,user:'role-and-position',assistant:'unsupported',systemAtDepth:'unsupported'}}
+  const compatible={provider:'relay-chat',model:'deepseek-flash',label:'DeepSeek Flash',
+    requestMaterialText:{schemaVersion:1,user:'role-and-position',assistant:'role-and-position',systemAtDepth:'role-and-position'}}
+  let main=ordinary
+  const p=panels(r,async(url,init)=>{requests.push({url,init});return {...modelReply,main,catalog:[ordinary,compatible]}},new Map(),{
+    selectMainModel:async(sessionId,route)=>{selections.push({sessionId,route});main=compatible}
+  })
+  r.mount(p.ModelPanel,{sessionId:'story'});await r.flush()
+  assert.match(text(r.seat),/不支持.*助手.*系统.*位置/,'default Messages route explains its actual limitations')
+  const choose=nodes(r.seat).find(n=>n?.type==='select'&&n.props['aria-label']==='当前对话主模型')
+  assert.ok(choose,'the roleplay panel can choose the actual main route without YAML')
+  choose.props.onChange({target:{value:'relay-chat\u0000deepseek-flash'}});await r.flush()
+  assert.deepEqual(selections,[],'choosing a route does not silently dispatch or save it')
+  await button(r,'切换当前对话主模型').props.onClick();await r.flush()
+  assert.deepEqual(selections,[{sessionId:'story',route:{provider:'relay-chat',model:'deepseek-flash'}}])
+  assert.match(text(r.seat),/支持全部消息角色与位置/)
+  assert.match(text(r.seat),/切换.*不会自动重发/)
+  assert.ok(requests.every(({init})=>!init),'main selection uses the host selection operation, not auxiliary-purpose policy')
+  r.unmount()
+}
+{
   const r=hooks(),post=deferred(),drafts=new Map(),authorRoute={provider:'p',model:'author-saved',reasoningEffort:'high'}
   const reply={...modelReply,purposes:[{id:'author-dialog',label:'作者对话'}],
     catalog:[{provider:'p',model:'author-saved'},{provider:'p',model:'author-next'}],

@@ -4,6 +4,12 @@ import { keyOf, durableSeq, sha256, recordSha256 } from './roleplay-data.js';
 import { eventsOf, surfaceEvents, isCompletedTurnEnd } from './roleplay-context.js';
 import { jsonResponse } from './roleplay-state.js';
 import { activeOpeningSource } from './roleplay-import.js';
+const cleanBranchBusinessFailures = new Set([
+    'CLEAN_BRANCH_SOURCE_UNAVAILABLE', 'CLEAN_BRANCH_MAIN_NOT_IDLE', 'CLEAN_BRANCH_OWNERS_UNAVAILABLE',
+    'CLEAN_BRANCH_FAILED_INPUT_REQUIRED', 'CLEAN_BRANCH_COMPLETED_BOUNDARY_MISSING', 'CLEAN_BRANCH_DIAGNOSIS_CHANGED',
+    'CLEAN_BRANCH_OPERATION_UNAVAILABLE', 'CLEAN_BRANCH_OPERATION_ID_REQUIRED', 'CLEAN_BRANCH_OPERATION_CHANGED',
+    'CLEAN_BRANCH_FROZEN_SOURCE_UNAVAILABLE', 'CLEAN_BRANCH_CHILD_UNAVAILABLE', 'CLEAN_BRANCH_MODEL_OWNER_UNAVAILABLE',
+]);
 export function registerBranchRoutes(deps) {
     const { ctx, T, resolveRoleplaySession, cloneBranchRecord, assertStoryBranchActive, withForkMutationLock, forkOperationKey, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userForkContext, locatePlayerRecoveryTarget, assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, reconcileNativeFork, failPendingNativeFork, replaceAssistantText, replaceUserText, recoverPlayerSave, prepareWorldlineInheritance, releaseWorldlineInheritance, numericalForkBlockCode } = deps;
     const readOperation = (key) => cloneBranchRecord(T.branch.get(key));
@@ -926,7 +932,8 @@ export function registerBranchRoutes(deps) {
             }
             catch (error) {
                 const message = String(error?.message ?? error);
-                let status = error?.code === 'ROLEPLAY_NOT_STORY' ? 400 : 500;
+                const cleanBusinessCode = cleanBranchBusinessFailures.has(message) ? message : undefined;
+                let status = cleanBusinessCode ? 409 : error?.code === 'ROLEPLAY_NOT_STORY' ? 400 : 500;
                 // These decisions cannot succeed by resending the same saved intent.
                 // Keep transport/unknown outcomes retryable through the existing client.
                 switch (message) {
@@ -958,7 +965,7 @@ export function registerBranchRoutes(deps) {
                         status = 409;
                         break;
                 }
-                return jsonResponse(status, { ok: false, error: message });
+                return jsonResponse(status, { ok: false, error: message, ...cleanBusinessCode ? { code: cleanBusinessCode } : {} });
             }
         },
     }), 'roleplay: route native branch');

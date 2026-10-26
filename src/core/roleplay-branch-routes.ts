@@ -7,6 +7,13 @@ import type { BranchRouteSession, StoredBranchOperation, BranchRouteBody, Branch
   BranchRoutesDependencies,CleanBranchInspection,CleanBranchRequest,CleanBranchPreparation,
   CleanBranchPreparationSummary } from './roleplay-branch-routes-types.js'
 
+const cleanBranchBusinessFailures=new Set([
+  'CLEAN_BRANCH_SOURCE_UNAVAILABLE','CLEAN_BRANCH_MAIN_NOT_IDLE','CLEAN_BRANCH_OWNERS_UNAVAILABLE',
+  'CLEAN_BRANCH_FAILED_INPUT_REQUIRED','CLEAN_BRANCH_COMPLETED_BOUNDARY_MISSING','CLEAN_BRANCH_DIAGNOSIS_CHANGED',
+  'CLEAN_BRANCH_OPERATION_UNAVAILABLE','CLEAN_BRANCH_OPERATION_ID_REQUIRED','CLEAN_BRANCH_OPERATION_CHANGED',
+  'CLEAN_BRANCH_FROZEN_SOURCE_UNAVAILABLE','CLEAN_BRANCH_CHILD_UNAVAILABLE','CLEAN_BRANCH_MODEL_OWNER_UNAVAILABLE',
+])
+
 export function registerBranchRoutes(deps: BranchRoutesDependencies) {
   const {ctx, T, resolveRoleplaySession, cloneBranchRecord, assertStoryBranchActive, withForkMutationLock,
     forkOperationKey, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userForkContext, locatePlayerRecoveryTarget,
@@ -882,7 +889,8 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
             return jsonResponse(400, { ok: false, error: `未知 branch action: ${action}` })
           } catch (error) {
             const message = String((error as BranchRouteError | null)?.message ?? error)
-            let status = (error as BranchRouteError | null)?.code === 'ROLEPLAY_NOT_STORY' ? 400 : 500
+            const cleanBusinessCode=cleanBranchBusinessFailures.has(message)?message:undefined
+            let status = cleanBusinessCode?409:(error as BranchRouteError | null)?.code === 'ROLEPLAY_NOT_STORY' ? 400 : 500
             // These decisions cannot succeed by resending the same saved intent.
             // Keep transport/unknown outcomes retryable through the existing client.
             switch (message) {
@@ -914,7 +922,7 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
                 status = 409
                 break
             }
-            return jsonResponse(status, { ok: false, error: message })
+            return jsonResponse(status, { ok: false, error: message,...cleanBusinessCode?{code:cleanBusinessCode}:{} })
           }
         },
       }),

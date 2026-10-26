@@ -12,6 +12,7 @@ function renderer() {
     createElement:(type,props,...children)=>({type,props:{...props,children}}),
     useState(initial){const owner=current,id=owner.index++;owner.cells[id]??={value:typeof initial==='function'?initial():initial};return [owner.cells[id].value,next=>{const cell=owner.cells[id],value=typeof next==='function'?next(cell.value):next;if(!Object.is(value,cell.value)){cell.value=value;dirty=true}}]},
     useRef(value){const id=current.index++;return current.cells[id]??={current:value}},
+    useId(){return 'preset-ui-test'},
     useEffect(fn,deps){const owner=current,id=owner.index++,old=owner.cells[id];if(!equal(old?.deps,deps))effects.push(()=>{old?.cleanup?.();owner.cells[id]={deps,cleanup:fn()}})},
   }
   function resolve(node,path='root') {
@@ -45,6 +46,7 @@ const change=async(label,value)=>{const input=field(label);assert.ok(input);asse
 const click=async label=>{const b=button(label);assert.ok(b,label);assert.ok(!b.props.disabled,label+' enabled');b.props.onClick();await runner.flush()}
 runner.mount(Panel,{sessionId:'a-fork'});await runner.flush()
 assert.equal(field('生效范围').props.value,'current')
+await click('创作文风')
 assert.equal(field('顶层创作提示词').props.readOnly,true)
 assert.equal(button('修改预设').props.disabled,true);assert.equal(button('删除预设').props.disabled,true)
 await click('新增预设');await change('预设名称','清简');await change('顶层创作提示词','短句，少用修饰。')

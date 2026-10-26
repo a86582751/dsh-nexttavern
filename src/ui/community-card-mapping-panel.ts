@@ -34,11 +34,12 @@ const message=(error:unknown)=>error instanceof Error?error.message:String(error
 
 export function createCommunityCardMappingPanel({React,jsonFetch,toast}:CommunityCardMappingPanelDependencies) {
   const h=React.createElement
-  return function CommunityCardMappingPanel({sessionId}:{sessionId:string}) {
+  return function CommunityCardMappingPanel({sessionId,onLocked}:{sessionId:string;onLocked?(value:boolean):void}) {
     const [data,setData]=React.useState<MappingReply|null>(null)
     const [drafts,setDrafts]=React.useState<Record<string,GroupDraft>>({})
     const [selections,setSelections]=React.useState<Record<string,TextSelection>>({})
     const [busy,setBusy]=React.useState(false),[error,setError]=React.useState('')
+    const [dirty,setDirty]=React.useState(false)
     const sequence=React.useRef(0)
     const textareas=React.useRef(new Map<string,HTMLTextAreaElement>())
     const url=`/api/roleplay/community-presets?sessionId=${encodeURIComponent(sessionId)}&action=card-mapping`
@@ -51,6 +52,7 @@ export function createCommunityCardMappingPanel({React,jsonFetch,toast}:Communit
         if(ticket!==sequence.current)return
         if(!value.ok)throw new Error('无法读取此对话的角色字段归属。')
         setData(value)
+        setDirty(false)
         setDrafts(value.material.kind==='mapping-required'?Object.fromEntries(value.material.groups.map(group=>[
           group.identity,{field:group.fields[0]??'residual',ranges:[],confirmed:false},
         ])): {})
@@ -63,11 +65,15 @@ export function createCommunityCardMappingPanel({React,jsonFetch,toast}:Communit
       void load()
       return()=>{sequence.current++}
     },[sessionId])
+    React.useEffect(()=>{onLocked?.(busy||dirty);return()=>onLocked?.(false)},[busy,dirty,onLocked])
 
-    const updateDraft=(identity:string,update:(draft:GroupDraft)=>GroupDraft)=>setDrafts(before=>{
-      const current=before[identity]??{field:'residual',ranges:[],confirmed:false}
-      return {...before,[identity]:update(current)}
-    })
+    const updateDraft=(identity:string,update:(draft:GroupDraft)=>GroupDraft)=>{
+      setDirty(true)
+      setDrafts(before=>{
+        const current=before[identity]??{field:'residual',ranges:[],confirmed:false}
+        return {...before,[identity]:update(current)}
+      })
+    }
     const addSelection=(identity:string)=>{
       const area=textareas.current.get(identity)
       const liveSelection=area?{start:area.selectionStart,end:area.selectionEnd}:undefined

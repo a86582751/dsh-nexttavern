@@ -6,6 +6,8 @@ export const ACTIVITY_CSS = `
 .rp-activity{display:flex;align-items:center;gap:12px;margin:20px auto;padding:14px 18px;max-width:var(--dsh-chat-content-width,900px);box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:14px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#333);font:inherit;box-shadow:var(--dsw-shadow-lv1,0 2px 8px #00000006)}
 .rp-activity strong{font-weight:500}.rp-activity small{display:block;font-size:12px;color:var(--dsw-alias-label-caption,#888);margin-top:4px}.rp-activity time{margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--dsw-alias-label-caption,#888)}.rp-activity-whale{font-size:24px;animation:rp-whale-breathe 2.4s ease-in-out infinite}
 .rp-pending-player{width:fit-content;max-width:85%;margin:16px 0 16px auto;padding:12px 18px;border-radius:14px;background:var(--dsw-alias-interactive-bg-hover-solid,#efede8);color:var(--dsw-alias-label-primary,#333);white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}.rp-pending-player small{display:block;margin-top:6px;font-size:12px;color:var(--dsw-alias-label-caption,#888)}
+.rp-protocol-failure{display:block}.rp-protocol-failure p{margin:8px 0;line-height:1.7}.rp-protocol-failure-actions{display:flex;gap:8px;flex-wrap:wrap}
+.rp-protocol-failure-actions .dsh-rp-btn{font-size:13px;min-height:44px;padding:8px 12px;white-space:normal;text-align:start}
 @keyframes rp-whale-breathe{50%{transform:translateY(-3px)}}@media(prefers-reduced-motion:reduce){.rp-activity-whale{animation:none}}
 `
 
@@ -28,6 +30,7 @@ export interface ActivityState extends Record<string, unknown> {
   sessionId?: unknown
   backgroundJobs?: unknown
   pendingPlayer?: unknown
+  protocolFailure?: {code:string;requestDispatched:boolean;recovery:string}
 }
 
 export interface ActivityPresentation {
@@ -134,6 +137,7 @@ export interface ActivityComponentDependencies {
   React: typeof ReactAPI
   isRoleplaySession: (sessionId: string) => boolean
   peekState: (sessionId: string) => ActivitySnapshot | null | undefined
+    prepareCleanWorldline?(sessionId:string):Promise<{childSessionId:string;refreshWarning?:string}>
 }
 
 export interface ActivityComponents {
@@ -144,7 +148,7 @@ export interface ActivityComponents {
   DeferredPlayerInput: (props: DeferredPlayerProps) => ReactAPI.ReactNode
 }
 
-export function createActivityComponents({ React, isRoleplaySession, peekState }: ActivityComponentDependencies): ActivityComponents {
+export function createActivityComponents({ React, isRoleplaySession, peekState, prepareCleanWorldline }: ActivityComponentDependencies): ActivityComponents {
   const useTavernActivity = (sessionId: string | null | undefined, seed: ActivityState | null = null): ActivityState | null => {
     const [activity, setActivity] = React.useState<ActivityState | null>(null)
     const [running, setRunning] = React.useState(false)
@@ -169,11 +173,56 @@ export function createActivityComponents({ React, isRoleplaySession, peekState }
 
   const ActivityBanner = ({ activity }: { activity?: ActivityState | null }): ReactAPI.ReactNode => {
     const [now, setNow] = React.useState(Date.now())
+    const [copyResult, setCopyResult] = React.useState('')
+    const [preparation, setPreparation] = React.useState<{
+      key:string;status:'preparing'|'ready'|'failed'|'unknown';error?:string;refreshWarning?:string
+    }|null>(null)
     React.useEffect(() => {
       if (!activity?.running) return
       const timer = setInterval(() => setNow(Date.now()), 1000)
       return () => clearInterval(timer)
     }, [activity?.running])
+    const pending=isRecord(activity?.pendingPlayer)?activity.pendingPlayer as PendingPlayer:null
+    React.useEffect(()=>setCopyResult(''),[activity?.sessionId,pending?.text])
+    const failure=activity?.protocolFailure
+    if(activity&&!activity.running&&failure?.code==='REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED'
+      &&failure.requestDispatched===false&&failure.recovery==='clean-worldline') {
+      const configure=(action:string)=>window.dispatchEvent(new CustomEvent('dsh-roleplay-needs-config',{
+        detail:{sessionId:activity.sessionId,action},
+      }))
+      const key=`${activity.sessionId}:${pending?.messageId??''}`,current=preparation?.key===key?preparation:null
+      const copy=async()=>{
+        if(!pending?.text)return
+        try {await navigator.clipboard.writeText(pending.text);setCopyResult('文字输入已复制')}
+        catch {setCopyResult('复制失败，请手动复制上方保留的输入')}
+      }
+      return React.createElement('div',{className:'rp-activity rp-protocol-failure',role:'alert'},
+        React.createElement('strong',null,'建议切换到 Chat Completions 协议的兼容渠道。本次剧情请求尚未发往模型。'),
+        React.createElement('p',null,'该回合使用的渠道无法保留剧情需要的消息角色和插入位置，失败输入和原世界线已保留。切换渠道不会自动重发。'),
+        React.createElement('p',null,'请以模型面板的角色与位置能力提示为准，仅修改 URL 不一定兼容。先切换主模型，再准备干净世界线；准备完成后，到世界线列表手动切换，粘贴保留的文字并明确发送，附件需重新添加。'),
+        React.createElement('div',{className:'rp-protocol-failure-actions'},
+          React.createElement('button',{type:'button',className:'dsh-rp-btn',onClick:()=>configure('configure-story-model')},'切换主模型渠道'),
+          prepareCleanWorldline?React.createElement('button',{type:'button',className:'dsh-rp-btn',
+            disabled:current?.status==='preparing'||current?.status==='ready',onClick:async()=>{
+              if(current?.status==='preparing'||current?.status==='ready')return
+              setPreparation({key,status:'preparing'})
+              await copy()
+              try {
+                const prepared=await prepareCleanWorldline(String(activity.sessionId))
+                setPreparation({key,status:'ready',refreshWarning:prepared.refreshWarning})
+              }catch(error) {
+                setPreparation({key,status:(error as {operationStateUnknown?:boolean})?.operationStateUnknown?'unknown':'failed',
+                  error:error instanceof Error?error.message:String(error)})
+              }
+            }},current?.status==='preparing'?'正在准备…':current?.status==='unknown'?'重试同一准备操作':'准备干净世界线'):null,
+          pending?.text?React.createElement('button',{type:'button',className:'dsh-rp-btn',onClick:copy},'复制保留的文字输入'):null),
+        current?.status==='ready'?React.createElement('p',{role:'status'},'干净世界线已准备。请到世界线列表手动切换，再粘贴输入并发送；尚未发送模型请求。'):null,
+        current?.refreshWarning?React.createElement('p',{role:'alert'},current.refreshWarning):null,
+        current?.status==='failed'?React.createElement('p',{role:'alert'},'准备未完成，原输入仍保留：'+current.error):null,
+        current?.status==='unknown'?React.createElement('p',{role:'alert'},current.error):null,
+        copyResult?React.createElement('small',{role:'status'},copyResult):null,
+        React.createElement('small',null,failure.code))
+    }
     const value = tavernActivityPresentation(activity, now)
     return value ? React.createElement('div', { className: 'rp-activity', role: 'status', 'aria-live': 'polite' },
       React.createElement('span', { className: 'rp-activity-whale', 'aria-hidden': true }, '🐋'),
@@ -215,7 +264,9 @@ export function createActivityComponents({ React, isRoleplaySession, peekState }
     const nodes: ChatNode[] = chat?.nodes && Array.isArray(chat.order) && isRecord(chat.nodes)
       ? chat.order.map(key => readCollectionValue(chat.nodes, key)).filter(isRecord)
       : []
-    return React.createElement(React.Fragment, null, React.createElement('style', null, ACTIVITY_CSS), pendingPlayerBubble(activity, nodes, props.hasNativePending))
+    return React.createElement(React.Fragment, null, React.createElement('style', null, ACTIVITY_CSS),
+      pendingPlayerBubble(activity, nodes, props.hasNativePending),
+      activity?.protocolFailure?React.createElement(ActivityBanner,{activity}):null)
   }
 
   return { useTavernActivity, ActivityBanner, BackgroundNotesBanner, pendingPlayerBubble, DeferredPlayerInput }

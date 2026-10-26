@@ -50,6 +50,7 @@ export interface StateDependencies extends StateWorldlines {
   readerDisplay?(session:StateSession,messages:readonly ReaderDisplayMessageRef[],signal:AbortSignal):Promise<ReaderDisplayResponse>
   readerDisplayContextVersion?(sessionId:string):string
   communityPresets?(sessionId:string):{fingerprint:string;presetId:string|null;name:string|null;regexes:number}
+  readInputDiagnostic?:ReturnType<typeof import('./roleplay-input-preparation.js').createRoleplayInputPreparation>['readDiagnostic']
   preparationRecordKey(id: string): string
   tavernTasks: ReturnType<typeof createRoleplayTaskHost>['tavernTasks']
   memoryForContext(session: StateSession): unknown

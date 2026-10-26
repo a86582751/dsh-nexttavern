@@ -145,7 +145,8 @@ export function readRoleplayActivity(session, preparation, jobs = [], now = Date
     const storyStep = running && !end && stage === 'story' && phase?.data?.source?.stage === 'story' && typeof stepNumber === 'number' && Number.isSafeInteger(stepNumber) ? stepNumber : null;
     const proofBody = proof ? events[proof.data.source.storySeq] : undefined;
     const provenSeq = proofBody?.type === 'assistant/message' && proofBody.data?.turn === turn && visibleNodes.has(proofBody.seq) ? proofBody.seq : null;
-    return { schemaVersion: 1, sessionId: session.id, turn, running, stage, startedAt: start?.time ?? null,
+    return { schemaVersion: 1, sessionId: session.id, turn, turnStartSeq: start?.seq ?? null, running, stage,
+        ending: end?.data?.reason?.kind ?? null, startedAt: start?.time ?? null,
         phaseSeq: phase?.seq ?? null, storyStep,
         elapsedMs: start ? Math.max(0, (running ? now : end?.time ?? now) - Number(start.time)) : 0, observedAt: now, pendingPlayer,
         storySeq: provenSeq ?? (end ? canonicalAssistantForTurn(session, turn)?.seq ?? null : null),

@@ -2,6 +2,7 @@ import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
 import type { HostSession, HostAgent } from './roleplay-task-host-types.js'
 import type { createRoleplayTaskHost } from './roleplay-task-host.js'
 import type { createRoleplayPreparation } from './roleplay-preparation.js'
+import type {RequestMaterialTextCapabilityV1} from '@deepseek-ai/dsh-llm'
 
 export interface ReasoningInfo {
   efforts?: {id: string; name?: string; description?: string}[]
@@ -20,12 +21,17 @@ export interface SettingsRoutesDependencies {
     effect(work: () => unknown, label: string): unknown
     connection: {fetch: {register(route: ConnectionFetchRoute): unknown}}
     llm: {
-      resolveModelInfo?(provider: string, model: string): PromiseLike<{reasoning?: ReasoningInfo}>
+      resolveModelInfo?(provider: string, model: string): PromiseLike<{
+        reasoning?: ReasoningInfo; requestMaterialText?: RequestMaterialTextCapabilityV1
+      }>
       listProviders?(): {id: string}[]
       listModels(provider: string): PromiseLike<{id: string; name?: string}[]>
     }
     get(name: 'tavernConversations'): {ready?: PromiseLike<unknown>} | null | undefined
     agentDefaultModel: {currentSelection(): unknown}
+    sessionController: {
+      selectModelForSession(request:{sessionId:string;provider:string;model:string;reasoningEffort?:string}):PromiseLike<unknown>
+    }
   }
   T: {branch: {put(key: string, value: unknown): unknown | PromiseLike<unknown>}}
   resolveRoleplaySession(id: string | null | undefined): Promise<HostSession | null | undefined>

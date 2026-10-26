@@ -88,6 +88,82 @@ function actionHarness(handler, options={}) {
 }
 const registration={operationId:'operation',childSessionId:'child',requestId:'request',promptText:'story'}
 {
+  let preparations=0
+  const h=actionHarness(body=>{
+    if(body.action==='inspect-clean-branch')return {ok:true,operationId:'clean-operation',revision:'observed-revision'}
+    assert.equal(body.action,'prepare-clean-branch')
+    assert.equal(body.operationId,'clean-operation');assert.equal(body.expectedRevision,'observed-revision')
+    if(++preparations===1)return Error('committed response was lost')
+    return {ok:true,status:'ready',childSessionId:'clean-child',requiresPlayerInput:true,conversations:{schemaVersion:1}}
+  })
+  assert.deepEqual(await h.controller.prepareCleanWorldline('source'),{childSessionId:'clean-child'})
+  assert.equal(h.calls.filter(body=>body.action==='inspect-clean-branch').length,1)
+  assert.equal(preparations,2,'lost responses retry the same deterministic preparation')
+  assert.ok(h.events.some(event=>event[0]==='catalog'))
+  assert.ok(!h.events.some(event=>['prompt','begin','open','model'].includes(event[0])),
+    'preparing a clean worldline never selects it, sends input or changes a model')
+}
+{
+  let attempts=0,confirmed=false
+  const h=actionHarness(body=>{
+    if(body.action==='inspect-clean-branch')return {ok:true,operationId:'retained-operation',revision:'retained-revision'}
+    assert.equal(body.operationId,'retained-operation')
+    if(body.action==='clean-branch-status')return {ok:true,status:'prepared',childSessionId:'retained-child'}
+    assert.equal(body.action,'prepare-clean-branch');assert.equal(body.expectedRevision,'retained-revision')
+    attempts++
+    return confirmed?{ok:true,status:'ready',childSessionId:'retained-child'}:{http:500,ok:false,error:'CLEAN_BRANCH_MODEL_FLUSH_FAILED'}
+  })
+  await assert.rejects(h.controller.prepareCleanWorldline('source'),error=>
+    error.operationStateUnknown===true&&/先核对世界线列表.*重试同一操作/.test(error.message))
+  assert.equal(attempts,4)
+  confirmed=true
+  assert.deepEqual(await h.controller.prepareCleanWorldline('source'),{childSessionId:'retained-child'})
+  assert.equal(h.calls.filter(body=>body.action==='inspect-clean-branch').length,1,
+    'a later button retry resumes the retained child instead of reserving another operation')
+}
+{
+  const h=actionHarness(body=>body.action==='inspect-clean-branch'
+    ?{ok:true,operationId:'lost-ready',revision:'same-revision'}
+    :body.action==='clean-branch-status'?{ok:true,status:'ready',childSessionId:'already-ready'}:Error('all write acknowledgements lost'))
+  assert.deepEqual(await h.controller.prepareCleanWorldline('source'),{childSessionId:'already-ready'})
+  assert.equal(h.calls.filter(body=>body.action==='prepare-clean-branch').length,4)
+  assert.equal(h.calls.at(-1).action,'clean-branch-status','the existing status read recovers committed readiness')
+}
+{
+  let inspections=0,canPrepare=false
+  const h=actionHarness(body=>{
+    if(body.action==='inspect-clean-branch')return {ok:true,operationId:`terminal-${++inspections}`,revision:'current'}
+    if(body.action==='clean-branch-status')return {ok:false,status:'failed',childSessionId:'failed-child',error:'世界线操作已经失效，请重新发起'}
+    return canPrepare?{ok:true,status:'ready',childSessionId:'new-child'}:{http:500,ok:false,error:'write failed'}
+  })
+  await assert.rejects(h.controller.prepareCleanWorldline('source'),error=>
+    !error.operationStateUnknown&&/操作已经失效/.test(error.message))
+  canPrepare=true
+  assert.deepEqual(await h.controller.prepareCleanWorldline('source'),{childSessionId:'new-child'})
+  assert.equal(inspections,2,'an explicitly failed operation permits a new player-requested preparation')
+}
+{
+  const h=actionHarness(()=>({http:409,ok:false,error:'CLEAN_BRANCH_COMPLETED_BOUNDARY_MISSING'}))
+  await assert.rejects(h.controller.prepareCleanWorldline('source'),/尚无已完成回合.*新建对话/)
+  assert.equal(h.calls.length,1,'a missing clean boundary is a business result, not a retry')
+}
+{
+  const calls=[]
+  const actions=createRoleplayActions({...defaults,
+    sessionsService:{using:async(id,options,fn)=>fn({binding:{}}),refresh:async()=>{throw Error('catalog temporarily unavailable')}},
+    fetch:async(url,init)=>{
+      const body=JSON.parse(init.body);calls.push(body)
+      return {ok:true,status:200,text:async()=>JSON.stringify(body.action==='inspect-clean-branch'
+        ?{ok:true,operationId:'ready-before-refresh',revision:'current'}
+        :{ok:true,status:'ready',childSessionId:'prepared-child'})}
+    }
+  })
+  const result=await actions.prepareCleanWorldline('source')
+  assert.equal(result.childSessionId,'prepared-child')
+  assert.match(result.refreshWarning,/已准备.*列表刷新失败/)
+  assert.equal(calls.filter(body=>body.action==='prepare-clean-branch').length,1,'refresh failure cannot turn a committed preparation into a new mutation')
+}
+{
   const h=actionHarness((body,calls)=>calls.length===1?{http:404,raw:'Not mounted'}:{ok:true})
   await h.controller.branchRequest({action:'register',...registration})
   assert.equal(h.calls.length,2)
@@ -136,6 +212,9 @@ function branchReply(body) {
   assert.deepEqual(h.events.filter(e=>e[0]==='retain'||e[0]==='release'),
     [['retain','source'],['retain','child'],['release','child'],['release','source']])
   assert.deepEqual(h.events.find(e=>e[0]==='begin')[1],{mode:'queue',text:'edited',attachments:[]})
+  assert.deepEqual(h.calls.find(body=>body.selection),{sessionId:'child',
+    selection:{provider:'p',model:'m',reasoningEffort:'high'}},'branch inheritance uses the Session-local owner')
+  assert.equal(h.events.some(event=>event[0]==='model'),false,'branch creation never calls the account-default-saving remote method')
 }
 for(const response of ['lost','rejected']) {
   const h=actionHarness(branchReply,{prompt:async()=>{if(response==='lost')throw Error('transport');return {ok:false,error:{code:'DENIED',message:'rejected'}}}})

@@ -6,6 +6,27 @@ import type { ReasoningInfo, SettingsRouteBody, SettingsRoutesDependencies } fro
 export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPolicy, ensureBranch, taskAgents, characterCluster, characterRoster, nativeCardCapability, memorySettingFields, memorySettingsPolicy, svc, narrativePresets, mutateSource}: SettingsRoutesDependencies) {
   const writeSource: NonNullable<SettingsRoutesDependencies['mutateSource']> =
     mutateSource ?? (async (_session, work) => work())
+  ctx.effect(()=>ctx.connection.fetch.register({requestBody:'buffered',path:'/api/roleplay/model-selection',methods:['POST'],fetch:async request=>{
+    try {
+      const body=await request.json() as {sessionId?:unknown;selection?:{provider?:unknown;model?:unknown;reasoningEffort?:unknown}}
+      const selection=body?.selection
+      if(typeof body?.sessionId!=='string'||!body.sessionId||!selection
+        ||typeof selection.provider!=='string'||typeof selection.model!=='string'
+        ||selection.reasoningEffort!==undefined&&typeof selection.reasoningEffort!=='string')
+        return jsonResponse(400,{ok:false,error:'模型选择需要 sessionId、provider、model 和可选的思考等级字符串'})
+      const session=await resolveRoleplaySession(body.sessionId)
+      if(!session)return jsonResponse(404,{ok:false,error:'角色扮演会话不存在'})
+      // Native owns model/effort validity and the Session's serialized change.
+      // Its internal entry deliberately does not persist the account default.
+      await ctx.sessionController.selectModelForSession({sessionId:session.id,provider:selection.provider,model:selection.model,
+        ...selection.reasoningEffort===undefined?{}:{reasoningEffort:selection.reasoningEffort}})
+      return jsonResponse(200,{ok:true,sessionId:session.id})
+    }catch(error) {
+      const failure=error as {code?:unknown;message?:unknown},code=typeof failure?.code==='string'?failure.code:undefined
+      return jsonResponse(error instanceof SyntaxError||code==='session/model-unavailable'?400:500,
+        {ok:false,error:String(failure?.message??error),...code?{code}:{}})
+    }
+  }}),'roleplay: session-local main model selection')
   ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered',path: '/api/roleplay/presets', methods: ['GET', 'POST'], fetch: async request => {
     try {
       const body = request.method === 'POST' ? await request.json() as SettingsRouteBody : null
@@ -37,9 +58,11 @@ export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPol
       const catalog=[]
       for(const provider of ctx.llm.listProviders?.()??[]) {
         try { for(const model of await ctx.llm.listModels(provider.id)) {
-          let reasoning: ReasoningInfo | undefined
-          try { reasoning=(await ctx.llm.resolveModelInfo?.(provider.id,model.id))?.reasoning }catch{}
+          let info: Awaited<ReturnType<NonNullable<typeof ctx.llm.resolveModelInfo>>> | undefined
+          try { info=await ctx.llm.resolveModelInfo?.(provider.id,model.id) }catch{}
+          const reasoning:ReasoningInfo|undefined=info?.reasoning
           catalog.push({provider:provider.id,model:model.id,label:model.name??model.id,
+            ...(info?.requestMaterialText?{requestMaterialText:info.requestMaterialText}:{}),
             ...(Array.isArray(reasoning?.efforts)?{reasoning:{efforts:reasoning.efforts.map(({id,name,description})=>({id,name,...(description?{description}:{})})),...(reasoning.defaultEffort?{defaultEffort:reasoning.defaultEffort}:{})}}:{})})
         } }catch{}
       }

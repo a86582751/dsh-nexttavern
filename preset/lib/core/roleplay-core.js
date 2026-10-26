@@ -70,7 +70,7 @@ import { acceptedMvuDisplayUpdate, formatMvuDisplayUpdates } from './roleplay-mv
 import { createRoleplayMvuPlayer } from './roleplay-mvu-player.js';
 import { registerMvuPlayerRoutes } from './roleplay-mvu-player-routes.js';
 import { createRoleplayAuthorBrowser } from './roleplay-author-browser.js';
-import { createRoleplayReaderDisplay } from './roleplay-reader-display.js';
+import { createRoleplayReaderDisplay, capturePlainReaderDocumentFacts } from './roleplay-reader-display.js';
 import { createRoleplayAuthorWorldbookCoreV1 } from './roleplay-author-worldbook-core.js';
 import { createCanonicalAuthorChatStateV1, deriveAuthorChatBindingV1, deriveAuthorChatBindingV2 } from './roleplay-author-chat-state.js';
 import { createRoleplayAuthorBrowserKeyCoreV3 } from './roleplay-author-browser-key-core-v3.js';
@@ -3319,18 +3319,18 @@ export async function apply(ctx, config = {}) {
     const readerDisplayScopes = (id) => inputState.captureObservation(id, () => {
         const schema = mvuOpening.captureReaderDisplayScopes(id);
         if (schema)
-            return schema;
+            return { scopes: schema, numerical: undefined };
         if (mvuOpening.hasSchemaOpening(id))
-            return undefined;
+            return { scopes: undefined, numerical: undefined };
         // This is the numerical owner's read-only observation. It does not open
         // a prompt scope, load lore or repair an unavailable variable namespace.
         const actual = mvuState.readNumericalObservation(id);
         if (actual.kind !== 'ready')
-            return undefined;
+            return { scopes: undefined, numerical: actual };
         const values = { stat_data: actual.snapshot.values };
-        return { bindings: [{ scope: 'chat', ownerId: `${id}:prompt-scope:chat`,
-                    versionSha256: actual.snapshot.stateSnapshotSha256, values, valuesSha256: recordSha256(values) }],
-            versionSha256: actual.snapshot.stateSnapshotSha256, displayUpdates: actual.displayUpdates };
+        return { numerical: actual, scopes: { bindings: [{ scope: 'chat', ownerId: `${id}:prompt-scope:chat`,
+                        versionSha256: actual.snapshot.stateSnapshotSha256, values, valuesSha256: recordSha256(values) }],
+                versionSha256: actual.snapshot.stateSnapshotSha256, displayUpdates: actual.displayUpdates } };
     }, 'reader-display-scopes');
     const communityDisplayVariables = (id, presetId) => {
         const session = ctx.sessions.get(id);
@@ -3342,12 +3342,23 @@ export async function apply(ctx, config = {}) {
         community: { policy: communityPresets.policy, variables: communityDisplayVariables },
         session: id => ctx.sessions.get(id), messageEdits: ctx.nexttavernMessageEdits,
         includeCardStyle: id => narrativePresets.policy(id).effective.mode !== 'system',
-        scopes: id => readerDisplayScopes(id).data,
-        documentFacts: mvuOpening.captureReaderDocumentFacts,
+        scopes: id => readerDisplayScopes(id).data.scopes,
+        documentFacts: async (id, read) => {
+            if (mvuOpening.hasSchemaOpening(id))
+                return mvuOpening.captureReaderDocumentFacts(id);
+            const plain = mvuOpening.capturePlainPromptScopeFacts(id);
+            if (!plain)
+                return undefined;
+            const numerical = readerDisplayScopes(id).data.numerical;
+            if (!numerical || numerical.kind === 'ready')
+                return undefined;
+            return capturePlainReaderDocumentFacts(read, plain, numerical);
+        },
         documentRuntime: async () => mvuOpening.readerDocumentRuntime() });
     const { collectBranchRecords, recordVersionsFor, readRoleplayState } = createRoleplayState({
         ctx,
         T,
+        readInputDiagnostic: (id, refs) => inputOwner?.readDiagnostic(id, refs),
         awaitImportBarrier,
         ensureBranch,
         carryTruncationBoundary,
@@ -3387,7 +3398,7 @@ export async function apply(ctx, config = {}) {
         },
         readerDisplayContextVersion: id => {
             const policy = communityPresets.policy(id);
-            return recordSha256({ scopes: readerDisplayScopes(id).data?.versionSha256 ?? null,
+            return recordSha256({ scopes: readerDisplayScopes(id).data.scopes?.versionSha256 ?? null,
                 cardStyle: narrativePresets.policy(id).effective.mode !== 'system', community: policy.fingerprint,
                 variables: policy.preset ? communityDisplayVariables(id, policy.preset.id) : null });
         },

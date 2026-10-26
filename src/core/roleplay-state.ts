@@ -1,4 +1,4 @@
-import { keyOf, recordSha256 } from './roleplay-data.js'
+import { keyOf, recordSha256, textOf } from './roleplay-data.js'
 import { eventsOf, canonicalAssistantByTurn, readRoleplayActivity, surfaceEntries } from './roleplay-context.js'
 import { internalTaskSeqs } from './tavern-tasks.js'
 import { importActiveKey, activeOpeningSource } from './roleplay-import.js'
@@ -7,6 +7,8 @@ import type { StoryEvent } from './roleplay-worldline-types.js'
 import type { ImportRecord } from './roleplay-import-types.js'
 import type { StateSession, StateDependencies, StatePreparation, FailedTurnGroup } from './roleplay-state-types.js'
 import type {ReaderDisplayMessageRef} from './roleplay-reader-display.js'
+import type {ContextMessage} from './roleplay-context.js'
+import type {NativeInputLinkV1} from '@deepseek-ai/dsh-session'
 
 export const jsonResponse = (status: number, value: unknown) =>
     new Response(JSON.stringify(value), {
@@ -45,7 +47,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
   nativeBranchGroupsFor,nativePlayerGroupsFor,assistantMessageId,userForkContext,locatePlayerRecoveryTarget,
   failedForkMembership,isRecoverySourceMember,backfillRecoverySourceMember,importRecordKey,preparationRecordKey,
   tavernTasks,memoryForContext,cloneContextWindow,contextWindowFor,selectedStatusRecord,selectedStatusGeneration,latestStatusEvent,
-  importSummary,chatImportProjection,numericalState,taskArtifact,readerDisplay,readerDisplayContextVersion,communityPresets,
+  importSummary,chatImportProjection,numericalState,taskArtifact,readerDisplay,readerDisplayContextVersion,communityPresets,readInputDiagnostic,
   deletedBranchMessageIdsFor,inheritedAssistantMessageIdsFor,
   normalizeDecisionRecord,userValues,svc,resolveRoleplaySession}:StateDependencies) {
   const collectBranchRecords = (session: StateSession) => {
@@ -62,6 +64,30 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
   }
 
   const recordVersionsFor=(session:Pick<StateSession,'id'>)=>captureRoleplayRecordVersionsV1(T,session.id)
+  const readActivity=(session:StateSession)=>{
+    const activity=readRoleplayActivity(session,T.branch.get(preparationRecordKey(session.id)) as StatePreparation,tavernTasks.activity(session))
+    if(activity.running||!['aborted','error'].includes(activity.ending??''))return activity
+    const events=eventsOf(session),link=activity.turnStartSeq===null?undefined:
+      events[activity.turnStartSeq]?.data?.nativeInputLink as NativeInputLinkV1|undefined
+    if(!link)return activity
+    const diagnostic=readInputDiagnostic?.(session.id,link.refs)
+    // Only the material owner's pre-dispatch refusal grants this explanation;
+    // provider errors and unrelated old failures cannot imply an unsent request.
+    if(diagnostic?.sourceKind!=='story'||!['unknown','stopped'].includes(diagnostic.status)
+      ||diagnostic.stop?.code!=='REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')return activity
+    // These refs already belong to the current refused work. Read only their
+    // exact inbox insertions: a before-first-step refusal has no user/message.
+    const messages=link.refs.flatMap(ref=>{
+      const inserted=events[ref.insertSeq]?.data?.inserted as readonly ContextMessage[]|undefined
+      return inserted?.filter(message=>message.id===ref.messageId&&message.source?.kind==='user')??[]
+    })
+    const pendingPlayer=messages.length?{messageId:messages.map(message=>message.id).join(':'),
+      text:messages.map(message=>textOf(message.content)).filter(Boolean).join('\n\n'),
+      attachmentCount:messages.reduce((total,message)=>total+(message.content??[]).filter(block=>block.type==='image').length,0),
+      time:events[link.refs[0]!.insertSeq]?.time}:activity.pendingPlayer
+    return {...activity,stage:'paused',pendingPlayer,
+      protocolFailure:{code:diagnostic.stop.code,requestDispatched:false,recovery:'clean-worldline'}}
+  }
   const readRoleplayState = async (session: StateSession) => {
     await awaitImportBarrier(session.id)
     await ensureBranch(session)
@@ -224,7 +250,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       ok: true,
       preset: 'roleplay',
       sessionId: session.id,
-      activity:readRoleplayActivity(session,T.branch.get(preparationRecordKey(session.id)) as unknown as StatePreparation,tavernTasks.activity(session)),
+      activity:readActivity(session),
       // The state endpoint is also consumed by the Reader UI.  It must expose
       // the same branch-filtered ledger used for prompt assembly; returning the
       // raw head here leaked post-fork parent facts into an unselected child.
@@ -322,7 +348,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
   ctx.effect(()=>ctx.connection.fetch.register({requestBody: 'buffered',path:'/api/roleplay/activity',methods:['GET'],fetch:async request=>{
     const session=await resolveRoleplaySession(new URL(request.url).searchParams.get('sessionId'))
     if(!session)return jsonResponse(404,{ok:false,error:'角色扮演会话不存在'})
-    return jsonResponse(200,{ok:true,...readRoleplayActivity(session,T.branch.get(preparationRecordKey(session.id)) as unknown as StatePreparation,tavernTasks.activity(session))})
+    return jsonResponse(200,{ok:true,...readActivity(session)})
   }}),'roleplay: lightweight activity and deferred player echo')
 
   return {collectBranchRecords, recordVersionsFor, readRoleplayState}

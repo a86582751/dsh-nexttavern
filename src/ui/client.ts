@@ -248,7 +248,8 @@ export function apply(ctx: ClientContext) {
       {
         React,
         isRoleplaySession,
-        peekState
+        peekState,
+        prepareCleanWorldline:sessionId=>prepareCleanWorldline(sessionId)
       })
   if (slots !== undefined) slots.inject(
     'conversation.chat.roleplay-progress',
@@ -256,7 +257,8 @@ export function apply(ctx: ClientContext) {
       { name: 'conversation.chat.roleplay-progress', id: 'roleplay-progress', order: 10, inject: sessionId => ({ sessionId }) },
       DeferredPlayerInput))
 
-  const { saveState, runMaintenance, replaceMessage, forkAndPrompt, regenerateProgrammaticOpening, forkWithoutUserTurn, openNativeBranch, retryBranchMutation } = createRoleplayActions(
+  const { saveState, runMaintenance, replaceMessage, forkAndPrompt, regenerateProgrammaticOpening,
+    forkWithoutUserTurn, openNativeBranch, retryBranchMutation, prepareCleanWorldline } = createRoleplayActions(
     {
       sessionsService,
       workspacesService,
@@ -357,7 +359,9 @@ export function apply(ctx: ClientContext) {
       const response = await fetch(url, init)
       const data = await response.json()
       if (!response.ok || data?.ok === false) {
-        const error = Object.assign(new Error(data?.error ?? `请求失败 ${response.status}`), { code: data?.code, details: data?.details });
+        const error = Object.assign(new Error(data?.error ?? `请求失败 ${response.status}`), {
+          status: response.status, code: data?.code, details: data?.details,
+        });
         throw error
       }
       return data
@@ -437,6 +441,13 @@ export function apply(ctx: ClientContext) {
           toast,
           confirmWithDialog,
           uploadFile,
+          selectMainModel:async(sessionId,route)=>{
+            await jsonFetch('/api/roleplay/model-selection',{
+              method:'POST',headers:{'content-type':'application/json'},
+              body:JSON.stringify({sessionId,selection:route}),
+            });
+            invalidateState(sessionId);
+          },
           btn
         })
 
@@ -469,8 +480,8 @@ export function apply(ctx: ClientContext) {
           const onNeedsConfig = (event: Event) => {
             const detail = (event as CustomEvent).detail;
             if (detail?.sessionId && detail.sessionId !== sessionId) return;
-            if (detail?.action !== 'configure-adaptation-model') return;
-            setTab('card-adaptation')
+            if (detail?.action === 'configure-story-model') setTab('models')
+            else if (detail?.action === 'configure-adaptation-model') setTab('card-adaptation')
           }
           window.addEventListener(
             'dsh-roleplay-needs-config',
@@ -658,13 +669,16 @@ export function apply(ctx: ClientContext) {
     }
     const onNeedsConfig = (event: Event) => {
       const detail = (event as CustomEvent).detail;
-      if (detail?.forwarded || detail?.action !== 'configure-adaptation-model' || !detail?.sessionId) return;
+      if (detail?.forwarded || !detail?.sessionId) return;
+      const requestedTab=detail.action==='configure-story-model'?'models'
+        :detail.action==='configure-adaptation-model'?'card-adaptation':null;
+      if(!requestedTab)return;
       if (managerState.open) {
-        managerState.requestedTab = 'card-adaptation';
+        managerState.requestedTab = requestedTab;
         managerState.requestedFocusNonce = (managerState.requestedFocusNonce ?? 0) + 1;
         renderManager();
         window.dispatchEvent(new CustomEvent('dsh-roleplay-needs-config', { detail: { ...detail, forwarded: true } }))
-      } else openManager(detail.sessionId, undefined, 'card-adaptation', 1)
+      } else openManager(detail.sessionId, undefined, requestedTab, 1)
     }
     window.addEventListener('dsh-roleplay-needs-config', onNeedsConfig)
     ctx.effect(() => () => window.removeEventListener('dsh-roleplay-needs-config', onNeedsConfig), 'roleplay-ui: adaptation model notice')

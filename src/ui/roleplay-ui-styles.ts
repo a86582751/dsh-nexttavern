@@ -174,6 +174,47 @@ body[data-dsh-orca-link] .dsh-rp-dialog :is(input, select, textarea) { border-ra
 .dsh-rp-muted { color: var(--dsw-alias-label-secondary, #999); font-size: 11px; }
 .dsh-rp-num { width: 90px; }
 .dsh-rp-error { color: var(--dsw-alias-state-error, #e5484d); font-size: 12px; }
+/* Preset management has one scrolling surface; imported controls stay in its flow. */
+.dsh-rp-dialog .dsh-rp-presets { min-width: 0; gap: 22px; font-size: 14px; }
+.dsh-rp-presets [hidden] { display: none !important; }
+.dsh-rp-presets .dsh-rp-preset-tabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; position: sticky; top: -14px; z-index: 2; padding: 10px 0; background: var(--dsw-alias-bg-layer-1, #f7f0e2); }
+.dsh-rp-dialog .dsh-rp-presets .dsh-rp-preset-tabs .dsh-rp-btn { margin: 0; text-align: center; border-color: transparent; background: transparent; }
+.dsh-rp-dialog .dsh-rp-presets .dsh-rp-preset-tabs .dsh-rp-btn[aria-selected=true] { border-color: var(--dsw-alias-brand-primary, #956b36); background: var(--dsw-alias-brand-primary, #956b36); color: var(--dsw-alias-brand-primary-invert, #fff); }
+.dsh-rp-presets .dsh-rp-preset-lock { margin: 0; padding: 10px 12px; font-size: 13px; border-inline-start: 3px solid var(--dsw-alias-brand-primary, #956b36); background: var(--dsw-alias-bg-layer-2, #fff9ed); }
+.dsh-rp-presets [role=tabpanel] { min-width: 0; outline-offset: 2px; }
+.dsh-rp-dialog .dsh-rp-presets [role=tabpanel] > .dsh-rp-panel { height: auto; overflow: visible; padding: 0; }
+@media (max-width: 820px) { .dsh-rp-presets .dsh-rp-preset-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.dsh-rp-presets .dsh-rp-preset-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.dsh-rp-presets .dsh-rp-preset-heading h3 { margin: 0; font-size: 22px; line-height: 1.35; }
+.dsh-rp-presets .dsh-rp-preset-heading h4 { margin: 0; font-size: 17px; line-height: 1.5; }
+.dsh-rp-presets .dsh-rp-muted { margin: 4px 0; font-size: 13px; line-height: 1.65; color: var(--dsw-alias-label-secondary, #756650); }
+.dsh-rp-presets .dsh-rp-preset-scope { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 14px; padding-bottom: 18px; border-bottom: 1px solid var(--dsw-alias-border-l2, #d9cbb5); }
+.dsh-rp-presets :is(.dsh-rp-preset-scope, .dsh-rp-preset-content) > label { display: grid; gap: 6px; min-width: 0; font-weight: 550; }
+.dsh-rp-presets label:not(.dsh-rp-row):not(.dsh-rp-preset-upload) { display: grid; gap: 6px; min-width: 0; }
+.dsh-rp-presets .dsh-rp-community, .dsh-rp-presets .dsh-rp-preset-content { display: flex; flex-direction: column; min-width: 0; gap: 14px; }
+.dsh-rp-presets .dsh-rp-community > .dsh-rp-preset-heading { align-items: center; }
+.dsh-rp-presets .dsh-rp-preset-upload { display: grid; gap: 6px; padding: 18px; border: 1px dashed var(--dsw-alias-brand-primary, #956b36); border-radius: 12px; background: var(--dsw-alias-bg-layer-2, #fff9ed); }
+.dsh-rp-presets .dsh-rp-preset-upload strong { font-size: 15px; }
+.dsh-rp-dialog .dsh-rp-presets input[type=file] { display: block; min-width: 0; width: 100%; max-width: 100%; padding: 8px !important; cursor: pointer; }
+.dsh-rp-presets input::file-selector-button { margin-right: 12px; padding: 9px 14px; min-height: 40px; border: 0; border-radius: 7px; background: var(--dsw-alias-brand-primary, #956b36); color: var(--dsw-alias-brand-primary-invert, #fff); font: inherit; cursor: pointer; }
+.dsh-rp-presets input:disabled::file-selector-button { cursor: not-allowed; opacity: .55; }
+.dsh-rp-presets .dsh-rp-preset-import-status { margin: 0; overflow-wrap: anywhere; color: var(--dsw-alias-label-secondary, #756650); }
+.dsh-rp-presets .dsh-rp-preset-import-status:empty { display: none; }
+.dsh-rp-presets .dsh-rp-preset-empty { margin: 0; padding: 14px 16px; border-inline-start: 3px solid var(--dsw-alias-brand-primary, #956b36); background: var(--dsw-alias-bg-layer-2, #fff9ed); }
+.dsh-rp-presets :is(select, input:not([type=checkbox]):not([type=radio]), textarea) { min-width: 0; max-width: 100%; }
+.dsh-rp-presets select { width: 100%; text-overflow: ellipsis; }
+.dsh-rp-presets fieldset { min-width: 0; margin: 12px 0; padding: 14px 16px; border: 1px solid var(--dsw-alias-border-l2, #d9cbb5); border-radius: 10px; }
+.dsh-rp-presets fieldset legend { padding: 0 6px; font-weight: 650; }
+.dsh-rp-presets fieldset > :is(label, div) { margin-block: 8px; }
+.dsh-rp-presets :is(fieldset, .dsh-rp-preset-prompts) .dsh-rp-btn { margin-block: 4px; margin-inline-end: 6px; }
+.dsh-rp-presets .dsh-rp-preset-prompts { display: grid; gap: 8px; }
+.dsh-rp-presets .dsh-rp-preset-prompts > details { padding: 12px 14px; border: 1px solid var(--dsw-alias-border-l2, #d9cbb5); border-radius: 8px; }
+.dsh-rp-presets summary { cursor: pointer; font-weight: 600; overflow-wrap: anywhere; }
+.dsh-rp-presets .dsh-rp-preset-prompts summary { line-height: 1.6; }
+.dsh-rp-presets .dsh-rp-preset-prompts details[open] summary { margin-bottom: 12px; }
+.dsh-rp-dialog .dsh-rp-presets .dsh-rp-btn { min-height: 40px; white-space: normal; text-align: start; }
+.dsh-rp-presets .dsh-rp-error { padding: 12px 14px; border-inline-start: 3px solid currentColor; font-size: 13px; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .dsh-rp-presets .dsh-rp-preset-upload { padding: 12px; } .dsh-rp-presets fieldset { padding: 10px 12px; } .dsh-rp-dialog .dsh-rp-presets .dsh-rp-btn { min-height: 44px; } }
 /* 状态栏悬浮窗（仅 roleplay 模式）：可拖动（标题栏）、右下角手柄可缩放 */
 /* Import is its own session-scoped workspace; these styles also respect native theme aliases. */
 .dsh-rp-card-import { gap: 18px; }

@@ -485,7 +485,12 @@ await test('clean branch owner retains frozen preparation across lost acknowledg
     assert.equal(f.records.size,1,'inspection creates no operation or recovery permission')
     const request={sessionId:f.parentId,operationId:inspected.operationId,expectedRevision:inspected.revision}
     if(failure==='flush')f.controls.flush=false
-    await assert.rejects(f.api.prepareCleanBranch(request,f.guard),/acknowledgement lost|FLUSH_FAILED/)
+    const failedResponse=await f.route.fetch(new Request('https://fixture.test/api/roleplay/branch',{
+      method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'prepare-clean-branch',...request}),
+    }))
+    const failedBody=await failedResponse.json()
+    assert.equal(failedResponse.status,500,'unknown publication and flush failures remain retryable server errors')
+    assert.match(failedBody.error,/acknowledgement lost|FLUSH_FAILED/,'the original transport/IO evidence is retained')
     const pending=await f.api.cleanBranchStatus(f.parentId,request.operationId)
     assert.equal(pending.childSessionId,f.childId);assert.equal(pending.status,'prepared')
     assert.notEqual(f.catalog.snapshot().worldlines[f.childId]!.status,'ready')
