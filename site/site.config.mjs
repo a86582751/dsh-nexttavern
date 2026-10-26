@@ -203,6 +203,7 @@ export const site = {
             id: 'v03-topics',
             label: '0.3 作者文档',
             pages: [
+                { id: 'development-0.3', title: '0.3 开发日志', nav: '0.3 开发进展', file: 'DEVELOPMENT-0.3.md' },
                 { id: 'community-cards', title: '社区卡兼容与世界书', nav: '社区卡与世界书', file: 'COMMUNITY-CARDS.md' },
                 { id: 'native-card-format', title: '原生卡创作与 EJS 模板', nav: '原生卡与 EJS', file: 'NATIVE-CARD-FORMAT.md' },
                 { id: 'native-state', title: '原生状态系统、MVU 与 Ruby', nav: '原生状态与分析', file: 'NATIVE-STATE.md' },
@@ -229,7 +230,6 @@ export const site = {
                 { id: 'changelog', title: '更新日志', nav: '更新日志', file: 'CHANGELOG.md' },
                 { id: 'development', title: '参与开发', nav: '参与开发', file: 'CONTRIBUTING.md', lang: 'en' },
                 { id: 'feedback', title: '反馈、社区与许可', nav: '反馈与许可', file: 'README.md', sections: ['源码与验证范围', '社区支持', '反馈与许可'] },
-                { id: 'development-0.3', title: '0.3 开发日志', nav: '0.3开发日志', file: 'DEVELOPMENT-0.3.md' }
             ]
         }
     ],

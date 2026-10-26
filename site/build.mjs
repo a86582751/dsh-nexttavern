@@ -701,7 +701,7 @@ function header(activeId) {
         '  </button>',
         '  <a class="brand" href="index.html">' + brandMarkTag() +
             '</a>',
-        '  <nav class="topbar-links" aria-label="主导航"><a href="index.html#chapters">故事的可能</a><a href="quickstart.html">使用手册</a><a href="screenshots.html">界面一瞥</a></nav>',
+        '  <nav class="topbar-links" aria-label="主导航"><a href="quickstart.html">使用手册</a><a href="development-0.3.html">0.3 开发进展</a><a href="changelog.html">更新日志</a><a href="screenshots.html">界面一瞥</a></nav>',
         '  <span class="chip hide-md"><span class="dot"></span>最新发行 <b>v' + escapeHtml(site.releaseVersion) + '</b></span>',
         '  <span class="spacer"></span>',
         '  <div class="topbar-actions">',
@@ -870,6 +870,9 @@ function renderPage(page, position) {
         '      <nav class="breadcrumbs" aria-label="面包屑"><a href="index.html">文档首页</a><span>/</span><span>' +
             escapeHtml(group ? group.label : '') + '</span><span>/</span><span>' + escapeHtml(page.title) + '</span></nav>',
         '      <h1>' + escapeHtml(page.title) + '</h1>',
+        page.id === 'changelog' || page.id === 'development-0.3'
+            ? '      <p class="lede">本页由 GitHub 仓库中的同一份日志生成。<a href="' + site.repoUrl +
+                '/blob/main/' + page.file + '">查看 GitHub 最新原文 ↗</a></p>' : '',
         page.summary ? '      <p class="lede">' + escapeHtml(page.summary) + '</p>' : '',
         html,
         '    </article>',
@@ -1000,7 +1003,7 @@ function landingPage() {
         '<span class="tape tape-one" aria-hidden="true"></span><span class="tape tape-two" aria-hidden="true"></span>',
         '</figure><span class="hero-coordinate" aria-hidden="true">A NEW CHAPTER AWAITS · EST. 2026</span></section>',
         '<div class="edition-strip"><div><span class="edition-label">旅人告示</span><a href="changelog.html">最新发行 <b>v' +
-            escapeHtml(site.releaseVersion) + '</b> <span>↗</span></a></div><p>GitHub 与 npm latest 已同步 · 0.3 开发中，尚未发布</p></div>',
+            escapeHtml(site.releaseVersion) + '</b> <span>↗</span></a></div><p><a href="development-0.3.html">0.3 开发进展 <span>↗</span></a> · 开发中，尚未发布</p></div>',
         '<section class="journal-section chapters-section" id="chapters"><div class="section-heading">',
         '<p class="eyebrow">THE STORY KEEPS UNFOLDING</p><h2>不止是对话。<br>是一段可以走下去的故事。</h2>',
         '<p>NextTavern 把原生 Agent Loop 带进长篇角色扮演。<br>让世界有来处，让选择有去向，让人物有自己的声音。</p></div>',
