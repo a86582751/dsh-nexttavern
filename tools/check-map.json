@@ -244,7 +244,10 @@
     },
     {
       "id": "bounded-regex-typescript",
-      "source": "src/core/bounded-regex.ts"
+      "source": "src/core/bounded-regex.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/bounded-regex.ts"
+      ]
     },
     {
       "id": "build-client",
@@ -289,7 +292,10 @@
     },
     {
       "id": "card-adaptation-context-typescript",
-      "source": "src/core/card-adaptation-context.ts"
+      "source": "src/core/card-adaptation-context.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/card-adaptation-context.ts"
+      ]
     },
     {
       "id": "card-adaptation-management-test",
@@ -376,7 +382,10 @@
     },
     {
       "id": "card-export-projection-typescript",
-      "source": "src/core/card-export-projection.ts"
+      "source": "src/core/card-export-projection.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/card-export-projection.ts"
+      ]
     },
     {
       "id": "card-export-test",
@@ -384,7 +393,10 @@
     },
     {
       "id": "card-export-typescript",
-      "source": "src/core/card-export.ts"
+      "source": "src/core/card-export.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/card-export.ts"
+      ]
     },
     {
       "id": "card-import-panel",
@@ -479,7 +491,10 @@
     },
     {
       "id": "character-cluster-projection-ts",
-      "source": "src/core/character-cluster-projection.ts"
+      "source": "src/core/character-cluster-projection.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/character-cluster-projection.ts"
+      ]
     },
     {
       "id": "character-cluster-settings",
@@ -490,7 +505,10 @@
     },
     {
       "id": "character-cluster-settings-typescript",
-      "source": "src/core/character-cluster-settings.ts"
+      "source": "src/core/character-cluster-settings.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/character-cluster-settings.ts"
+      ]
     },
     {
       "id": "character-cluster-test",
@@ -498,7 +516,10 @@
     },
     {
       "id": "character-cluster-typescript",
-      "source": "src/core/character-cluster.ts"
+      "source": "src/core/character-cluster.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/character-cluster.ts"
+      ]
     },
     {
       "id": "chat-opening-card",
@@ -2562,7 +2583,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-accessibility-module-css-source",
-      "source": "development/ui-chat/src/client/chat/accessibility.module.css"
+      "source": "development/ui-chat/src/client/chat/accessibility.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/accessibility.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-ApprovalCommand-tsx-source",
@@ -2570,7 +2594,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-AssistantMarkdown-module-css-source",
-      "source": "development/ui-chat/src/client/chat/AssistantMarkdown.module.css"
+      "source": "development/ui-chat/src/client/chat/AssistantMarkdown.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/AssistantMarkdown.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-AssistantMarkdown-tsx-source",
@@ -2582,7 +2609,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-ChatGroupSeat-module-css-source",
-      "source": "development/ui-chat/src/client/chat/ChatGroupSeat.module.css"
+      "source": "development/ui-chat/src/client/chat/ChatGroupSeat.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/ChatGroupSeat.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-ChatGroupSeat-tsx-source",
@@ -2594,7 +2624,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-ChatView-module-css-source",
-      "source": "development/ui-chat/src/client/chat/ChatView.module.css"
+      "source": "development/ui-chat/src/client/chat/ChatView.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/ChatView.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-ChatView-tsx-source",
@@ -2614,7 +2647,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-ContextBody-module-css-source",
-      "source": "development/ui-chat/src/client/chat/ContextBody.module.css"
+      "source": "development/ui-chat/src/client/chat/ContextBody.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/ContextBody.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-ContextBody-tsx-source",
@@ -2622,7 +2658,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-ContextInjectionRow-module-css-source",
-      "source": "development/ui-chat/src/client/chat/ContextInjectionRow.module.css"
+      "source": "development/ui-chat/src/client/chat/ContextInjectionRow.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/ContextInjectionRow.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-ContextInjectionRow-tsx-source",
@@ -2630,7 +2669,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-GenericCommandCard-module-css-source",
-      "source": "development/ui-chat/src/client/chat/GenericCommandCard.module.css"
+      "source": "development/ui-chat/src/client/chat/GenericCommandCard.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/GenericCommandCard.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-GenericCommandCard-tsx-source",
@@ -2642,7 +2684,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-MessageIconActions-module-css-source",
-      "source": "development/ui-chat/src/client/chat/MessageIconActions.module.css"
+      "source": "development/ui-chat/src/client/chat/MessageIconActions.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/MessageIconActions.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-MessageIconActions-tsx-source",
@@ -2650,7 +2695,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-MessageItem-module-css-source",
-      "source": "development/ui-chat/src/client/chat/MessageItem.module.css"
+      "source": "development/ui-chat/src/client/chat/MessageItem.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/MessageItem.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-MessageItem-tsx-source",
@@ -2662,7 +2710,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-ReasoningRow-module-css-source",
-      "source": "development/ui-chat/src/client/chat/ReasoningRow.module.css"
+      "source": "development/ui-chat/src/client/chat/ReasoningRow.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/ReasoningRow.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-ReasoningRow-tsx-source",
@@ -2682,7 +2733,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-stat-dialog-module-css-source",
-      "source": "development/ui-chat/src/client/chat/stat-dialog.module.css"
+      "source": "development/ui-chat/src/client/chat/stat-dialog.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/stat-dialog.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-stat-dialog-ts-source",
@@ -2690,7 +2744,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-StatsPills-module-css-source",
-      "source": "development/ui-chat/src/client/chat/StatsPills.module.css"
+      "source": "development/ui-chat/src/client/chat/StatsPills.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/StatsPills.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-StatsPills-tsx-source",
@@ -2722,7 +2779,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-TurnNavigator-module-css-source",
-      "source": "development/ui-chat/src/client/chat/TurnNavigator.module.css"
+      "source": "development/ui-chat/src/client/chat/TurnNavigator.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/TurnNavigator.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-TurnNavigator-tsx-source",
@@ -2730,7 +2790,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-TurnProcessNodeView-module-css-source",
-      "source": "development/ui-chat/src/client/chat/TurnProcessNodeView.module.css"
+      "source": "development/ui-chat/src/client/chat/TurnProcessNodeView.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/TurnProcessNodeView.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-TurnProcessNodeView-tsx-source",
@@ -2738,7 +2801,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-TurnTailNodeView-module-css-source",
-      "source": "development/ui-chat/src/client/chat/TurnTailNodeView.module.css"
+      "source": "development/ui-chat/src/client/chat/TurnTailNodeView.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/TurnTailNodeView.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-TurnTailNodeView-tsx-source",
@@ -2746,7 +2812,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-TurnTriggerNodeView-module-css-source",
-      "source": "development/ui-chat/src/client/chat/TurnTriggerNodeView.module.css"
+      "source": "development/ui-chat/src/client/chat/TurnTriggerNodeView.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/TurnTriggerNodeView.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-TurnTriggerNodeView-tsx-source",
@@ -2754,7 +2823,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-chat-TurnUsagePanel-module-css-source",
-      "source": "development/ui-chat/src/client/chat/TurnUsagePanel.module.css"
+      "source": "development/ui-chat/src/client/chat/TurnUsagePanel.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/chat/TurnUsagePanel.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-chat-TurnUsagePanel-tsx-source",
@@ -2982,7 +3054,10 @@
     },
     {
       "id": "compat-ui-chat-src-client-settings-PreferenceRow-module-css-source",
-      "source": "development/ui-chat/src/client/settings/PreferenceRow.module.css"
+      "source": "development/ui-chat/src/client/settings/PreferenceRow.module.css",
+      "aliases": [
+        "development/ui-chat/lib/client/settings/PreferenceRow.module.css"
+      ]
     },
     {
       "id": "compat-ui-chat-src-client-settings-PreferenceRow-tsx-source",
@@ -3126,7 +3201,10 @@
     },
     {
       "id": "compat-ui-workspace-src-client-rows-AnimatedRows-module-css-source",
-      "source": "development/ui-workspace/src/client/rows/AnimatedRows.module.css"
+      "source": "development/ui-workspace/src/client/rows/AnimatedRows.module.css",
+      "aliases": [
+        "development/ui-workspace/lib/client/rows/AnimatedRows.module.css"
+      ]
     },
     {
       "id": "compat-ui-workspace-src-client-rows-AnimatedRows-tsx-source",
@@ -3134,7 +3212,10 @@
     },
     {
       "id": "compat-ui-workspace-src-client-rows-Rows-module-css-source",
-      "source": "development/ui-workspace/src/client/rows/Rows.module.css"
+      "source": "development/ui-workspace/src/client/rows/Rows.module.css",
+      "aliases": [
+        "development/ui-workspace/lib/client/rows/Rows.module.css"
+      ]
     },
     {
       "id": "compat-ui-workspace-src-client-rows-Rows-tsx-source",
@@ -3142,7 +3223,10 @@
     },
     {
       "id": "compat-ui-workspace-src-client-rows-WorkspaceBrowser-module-css-source",
-      "source": "development/ui-workspace/src/client/rows/WorkspaceBrowser.module.css"
+      "source": "development/ui-workspace/src/client/rows/WorkspaceBrowser.module.css",
+      "aliases": [
+        "development/ui-workspace/lib/client/rows/WorkspaceBrowser.module.css"
+      ]
     },
     {
       "id": "compat-ui-workspace-src-client-rows-WorkspaceBrowser-tsx-source",
@@ -3186,7 +3270,10 @@
     },
     {
       "id": "compat-ui-workspace-src-client-WorkspacePicker-module-css-source",
-      "source": "development/ui-workspace/src/client/WorkspacePicker.module.css"
+      "source": "development/ui-workspace/src/client/WorkspacePicker.module.css",
+      "aliases": [
+        "development/ui-workspace/lib/client/WorkspacePicker.module.css"
+      ]
     },
     {
       "id": "compat-ui-workspace-src-client-WorkspacePicker-tsx-source",
@@ -3429,7 +3516,10 @@
     },
     {
       "id": "memory-history-typescript",
-      "source": "src/memory/memory-history.ts"
+      "source": "src/memory/memory-history.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/memory/memory-history.ts"
+      ]
     },
     {
       "id": "memory-local-catalog-generated",
@@ -3489,7 +3579,10 @@
     },
     {
       "id": "memory-provenance-typescript",
-      "source": "src/memory/memory-provenance.ts"
+      "source": "src/memory/memory-provenance.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/memory/memory-provenance.ts"
+      ]
     },
     {
       "id": "memory-retrieval-generated",
@@ -3634,7 +3727,10 @@
     },
     {
       "id": "narrative-preset-catalog-typescript",
-      "source": "src/core/narrative-preset-catalog.ts"
+      "source": "src/core/narrative-preset-catalog.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-preset-catalog.ts"
+      ]
     },
     {
       "id": "narrative-preset-default",
@@ -3645,7 +3741,10 @@
     },
     {
       "id": "narrative-preset-default-typescript",
-      "source": "src/core/narrative-preset-default.ts"
+      "source": "src/core/narrative-preset-default.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-preset-default.ts"
+      ]
     },
     {
       "id": "narrative-presets",
@@ -3656,7 +3755,10 @@
     },
     {
       "id": "narrative-presets-typescript",
-      "source": "src/core/narrative-presets.ts"
+      "source": "src/core/narrative-presets.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-presets.ts"
+      ]
     },
     {
       "id": "narrative-presets-ui-contract",
@@ -3671,7 +3773,10 @@
     },
     {
       "id": "narrative-styles-annalistic-typescript",
-      "source": "src/core/narrative-styles/annalistic.ts"
+      "source": "src/core/narrative-styles/annalistic.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/annalistic.ts"
+      ]
     },
     {
       "id": "narrative-styles-cinematic",
@@ -3682,7 +3787,10 @@
     },
     {
       "id": "narrative-styles-cinematic-typescript",
-      "source": "src/core/narrative-styles/cinematic.ts"
+      "source": "src/core/narrative-styles/cinematic.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/cinematic.ts"
+      ]
     },
     {
       "id": "narrative-styles-classical",
@@ -3693,7 +3801,10 @@
     },
     {
       "id": "narrative-styles-classical-typescript",
-      "source": "src/core/narrative-styles/classical.ts"
+      "source": "src/core/narrative-styles/classical.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/classical.ts"
+      ]
     },
     {
       "id": "narrative-styles-comedy",
@@ -3704,7 +3815,10 @@
     },
     {
       "id": "narrative-styles-comedy-typescript",
-      "source": "src/core/narrative-styles/comedy.ts"
+      "source": "src/core/narrative-styles/comedy.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/comedy.ts"
+      ]
     },
     {
       "id": "narrative-styles-cosmic-romance",
@@ -3715,7 +3829,10 @@
     },
     {
       "id": "narrative-styles-cosmic-romance-typescript",
-      "source": "src/core/narrative-styles/cosmic-romance.ts"
+      "source": "src/core/narrative-styles/cosmic-romance.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/cosmic-romance.ts"
+      ]
     },
     {
       "id": "narrative-styles-delicate",
@@ -3726,7 +3843,10 @@
     },
     {
       "id": "narrative-styles-delicate-typescript",
-      "source": "src/core/narrative-styles/delicate.ts"
+      "source": "src/core/narrative-styles/delicate.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/delicate.ts"
+      ]
     },
     {
       "id": "narrative-styles-fantasy",
@@ -3737,7 +3857,10 @@
     },
     {
       "id": "narrative-styles-fantasy-typescript",
-      "source": "src/core/narrative-styles/fantasy.ts"
+      "source": "src/core/narrative-styles/fantasy.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/fantasy.ts"
+      ]
     },
     {
       "id": "narrative-styles-horror",
@@ -3748,7 +3871,10 @@
     },
     {
       "id": "narrative-styles-horror-typescript",
-      "source": "src/core/narrative-styles/horror.ts"
+      "source": "src/core/narrative-styles/horror.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/horror.ts"
+      ]
     },
     {
       "id": "narrative-styles-jrpg",
@@ -3759,7 +3885,10 @@
     },
     {
       "id": "narrative-styles-jrpg-typescript",
-      "source": "src/core/narrative-styles/jrpg.ts"
+      "source": "src/core/narrative-styles/jrpg.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/jrpg.ts"
+      ]
     },
     {
       "id": "narrative-styles-light-novel",
@@ -3770,7 +3899,10 @@
     },
     {
       "id": "narrative-styles-light-novel-typescript",
-      "source": "src/core/narrative-styles/light-novel.ts"
+      "source": "src/core/narrative-styles/light-novel.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/light-novel.ts"
+      ]
     },
     {
       "id": "narrative-styles-luxun",
@@ -3781,7 +3913,10 @@
     },
     {
       "id": "narrative-styles-luxun-typescript",
-      "source": "src/core/narrative-styles/luxun.ts"
+      "source": "src/core/narrative-styles/luxun.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/luxun.ts"
+      ]
     },
     {
       "id": "narrative-styles-lyrical",
@@ -3792,7 +3927,10 @@
     },
     {
       "id": "narrative-styles-lyrical-typescript",
-      "source": "src/core/narrative-styles/lyrical.ts"
+      "source": "src/core/narrative-styles/lyrical.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/lyrical.ts"
+      ]
     },
     {
       "id": "narrative-styles-minimal",
@@ -3803,7 +3941,10 @@
     },
     {
       "id": "narrative-styles-minimal-typescript",
-      "source": "src/core/narrative-styles/minimal.ts"
+      "source": "src/core/narrative-styles/minimal.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/minimal.ts"
+      ]
     },
     {
       "id": "narrative-styles-otome",
@@ -3814,7 +3955,10 @@
     },
     {
       "id": "narrative-styles-otome-typescript",
-      "source": "src/core/narrative-styles/otome.ts"
+      "source": "src/core/narrative-styles/otome.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/narrative-styles/otome.ts"
+      ]
     },
     {
       "id": "native-fork-host-activation-bundle",
@@ -3982,7 +4126,10 @@
     },
     {
       "id": "novel-export-projection-typescript",
-      "source": "src/core/novel-export-projection.ts"
+      "source": "src/core/novel-export-projection.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/novel-export-projection.ts"
+      ]
     },
     {
       "id": "novel-export-test",
@@ -4593,11 +4740,17 @@
     },
     {
       "id": "roleplay-author-context-types-typescript",
-      "source": "src/core/roleplay-author-context-types.ts"
+      "source": "src/core/roleplay-author-context-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-author-context-types.ts"
+      ]
     },
     {
       "id": "roleplay-author-context-typescript",
-      "source": "src/core/roleplay-author-context.ts"
+      "source": "src/core/roleplay-author-context.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-author-context.ts"
+      ]
     },
     {
       "id": "roleplay-author-contributions-js",
@@ -4608,7 +4761,10 @@
     },
     {
       "id": "roleplay-author-contributions-typescript",
-      "source": "src/core/roleplay-author-contributions.ts"
+      "source": "src/core/roleplay-author-contributions.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-author-contributions.ts"
+      ]
     },
     {
       "id": "roleplay-author-host-assets-generated",
@@ -4681,7 +4837,10 @@
     },
     {
       "id": "roleplay-author-tools-types-typescript",
-      "source": "src/core/roleplay-author-tools-types.ts"
+      "source": "src/core/roleplay-author-tools-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-author-tools-types.ts"
+      ]
     },
     {
       "id": "roleplay-author-tools-typescript",
@@ -4736,7 +4895,10 @@
     },
     {
       "id": "roleplay-branch-routes-types-typescript",
-      "source": "src/core/roleplay-branch-routes-types.ts"
+      "source": "src/core/roleplay-branch-routes-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-branch-routes-types.ts"
+      ]
     },
     {
       "id": "roleplay-branch-routes-typescript",
@@ -4751,7 +4913,10 @@
     },
     {
       "id": "roleplay-card-attachment-typescript",
-      "source": "src/core/roleplay-card-attachment.ts"
+      "source": "src/core/roleplay-card-attachment.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-card-attachment.ts"
+      ]
     },
     {
       "id": "roleplay-card-authoring",
@@ -4788,7 +4953,10 @@
     },
     {
       "id": "roleplay-card-workflow-types-typescript",
-      "source": "src/core/roleplay-card-workflow-types.ts"
+      "source": "src/core/roleplay-card-workflow-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-card-workflow-types.ts"
+      ]
     },
     {
       "id": "roleplay-card-workflow-typescript",
@@ -4814,7 +4982,10 @@
     },
     {
       "id": "roleplay-chat-card-source-typescript",
-      "source": "src/core/roleplay-chat-card-source.ts"
+      "source": "src/core/roleplay-chat-card-source.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-chat-card-source.ts"
+      ]
     },
     {
       "id": "roleplay-completion",
@@ -4847,7 +5018,10 @@
     },
     {
       "id": "roleplay-context-typescript",
-      "source": "src/core/roleplay-context.ts"
+      "source": "src/core/roleplay-context.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-context.ts"
+      ]
     },
     {
       "id": "roleplay-core",
@@ -4884,7 +5058,14 @@
     },
     {
       "id": "roleplay-data-typescript",
-      "source": "src/core/roleplay-data.ts"
+      "source": "src/core/roleplay-data.ts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/roleplay-data.ts",
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/roleplay-data.ts",
+        "development/author-host-runtime-v5-update-batch-v1/src/core/roleplay-data.ts",
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/roleplay-data.ts",
+        "development/template-runtime-v2/src/core/roleplay-data.ts"
+      ]
     },
     {
       "id": "roleplay-decision",
@@ -4969,7 +5150,10 @@
     },
     {
       "id": "roleplay-import-record-typescript",
-      "source": "src/core/roleplay-import-record.ts"
+      "source": "src/core/roleplay-import-record.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-import-record.ts"
+      ]
     },
     {
       "id": "roleplay-import-types",
@@ -4980,11 +5164,17 @@
     },
     {
       "id": "roleplay-import-types-typescript",
-      "source": "src/core/roleplay-import-types.ts"
+      "source": "src/core/roleplay-import-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-import-types.ts"
+      ]
     },
     {
       "id": "roleplay-import-typescript",
-      "source": "src/core/roleplay-import.ts"
+      "source": "src/core/roleplay-import.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-import.ts"
+      ]
     },
     {
       "id": "roleplay-inheritance",
@@ -5017,7 +5207,10 @@
     },
     {
       "id": "roleplay-input-cold-row-facts-typescript",
-      "source": "src/core/roleplay-input-cold-row-facts.ts"
+      "source": "src/core/roleplay-input-cold-row-facts.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-input-cold-row-facts.ts"
+      ]
     },
     {
       "id": "roleplay-input-completion-js",
@@ -5028,7 +5221,10 @@
     },
     {
       "id": "roleplay-input-completion-typescript",
-      "source": "src/core/roleplay-input-completion.ts"
+      "source": "src/core/roleplay-input-completion.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-input-completion.ts"
+      ]
     },
     {
       "id": "roleplay-input-continuation-js",
@@ -5039,7 +5235,10 @@
     },
     {
       "id": "roleplay-input-continuation-typescript",
-      "source": "src/core/roleplay-input-continuation.ts"
+      "source": "src/core/roleplay-input-continuation.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-input-continuation.ts"
+      ]
     },
     {
       "id": "roleplay-input-import-js",
@@ -5072,7 +5271,10 @@
     },
     {
       "id": "roleplay-input-material-typescript",
-      "source": "src/core/roleplay-input-material.ts"
+      "source": "src/core/roleplay-input-material.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-input-material.ts"
+      ]
     },
     {
       "id": "roleplay-input-preparation-js",
@@ -5083,7 +5285,10 @@
     },
     {
       "id": "roleplay-input-preparation-typescript",
-      "source": "src/core/roleplay-input-preparation.ts"
+      "source": "src/core/roleplay-input-preparation.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-input-preparation.ts"
+      ]
     },
     {
       "id": "roleplay-input-source-data-js",
@@ -5094,7 +5299,10 @@
     },
     {
       "id": "roleplay-input-source-data-typescript",
-      "source": "src/core/roleplay-input-source-data.ts"
+      "source": "src/core/roleplay-input-source-data.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-input-source-data.ts"
+      ]
     },
     {
       "id": "roleplay-input-state-js",
@@ -5116,7 +5324,10 @@
     },
     {
       "id": "roleplay-input-terminal-typescript",
-      "source": "src/core/roleplay-input-terminal.ts"
+      "source": "src/core/roleplay-input-terminal.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-input-terminal.ts"
+      ]
     },
     {
       "id": "roleplay-job-routes",
@@ -5182,7 +5393,10 @@
     },
     {
       "id": "roleplay-message-view-typescript",
-      "source": "src/core/roleplay-message-view.ts"
+      "source": "src/core/roleplay-message-view.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-message-view.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-ancestry-js",
@@ -5193,7 +5407,10 @@
     },
     {
       "id": "roleplay-mvu-ancestry-typescript",
-      "source": "src/core/roleplay-mvu-ancestry.ts"
+      "source": "src/core/roleplay-mvu-ancestry.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-ancestry.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-basis-js",
@@ -5237,7 +5454,10 @@
     },
     {
       "id": "roleplay-mvu-edit-facts-typescript",
-      "source": "src/core/roleplay-mvu-edit-facts.ts"
+      "source": "src/core/roleplay-mvu-edit-facts.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-edit-facts.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-frozen-lineage-js",
@@ -5248,7 +5468,10 @@
     },
     {
       "id": "roleplay-mvu-frozen-lineage-typescript",
-      "source": "src/core/roleplay-mvu-frozen-lineage.ts"
+      "source": "src/core/roleplay-mvu-frozen-lineage.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-frozen-lineage.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-initialization-js",
@@ -5259,7 +5482,10 @@
     },
     {
       "id": "roleplay-mvu-initialization-typescript",
-      "source": "src/core/roleplay-mvu-initialization.ts"
+      "source": "src/core/roleplay-mvu-initialization.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-initialization.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-lineage-js",
@@ -5270,7 +5496,10 @@
     },
     {
       "id": "roleplay-mvu-lineage-typescript",
-      "source": "src/core/roleplay-mvu-lineage.ts"
+      "source": "src/core/roleplay-mvu-lineage.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-lineage.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-native-js",
@@ -5303,7 +5532,10 @@
     },
     {
       "id": "roleplay-mvu-player-facts-typescript",
-      "source": "src/core/roleplay-mvu-player-facts.ts"
+      "source": "src/core/roleplay-mvu-player-facts.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-player-facts.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-player-js",
@@ -5321,7 +5553,10 @@
     },
     {
       "id": "roleplay-mvu-player-records-typescript",
-      "source": "src/core/roleplay-mvu-player-records.ts"
+      "source": "src/core/roleplay-mvu-player-records.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-player-records.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-player-routes-js",
@@ -5343,7 +5578,10 @@
     },
     {
       "id": "roleplay-mvu-player-types-typescript",
-      "source": "src/core/roleplay-mvu-player-types.ts"
+      "source": "src/core/roleplay-mvu-player-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-player-types.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-player-typescript",
@@ -5358,7 +5596,10 @@
     },
     {
       "id": "roleplay-mvu-prefix-facts-typescript",
-      "source": "src/core/roleplay-mvu-prefix-facts.ts"
+      "source": "src/core/roleplay-mvu-prefix-facts.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-prefix-facts.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-prefix-ledger-js",
@@ -5369,7 +5610,10 @@
     },
     {
       "id": "roleplay-mvu-prefix-ledger-typescript",
-      "source": "src/core/roleplay-mvu-prefix-ledger.ts"
+      "source": "src/core/roleplay-mvu-prefix-ledger.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-prefix-ledger.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-prompt-numerical-facts-js",
@@ -5380,7 +5624,10 @@
     },
     {
       "id": "roleplay-mvu-prompt-numerical-facts-typescript",
-      "source": "src/core/roleplay-mvu-prompt-numerical-facts.ts"
+      "source": "src/core/roleplay-mvu-prompt-numerical-facts.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-prompt-numerical-facts.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-assets-js",
@@ -5420,7 +5667,10 @@
     },
     {
       "id": "roleplay-mvu-schema-derived-types-typescript",
-      "source": "src/core/roleplay-mvu-schema-derived-types.ts"
+      "source": "src/core/roleplay-mvu-schema-derived-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-derived-types.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-derived-typescript",
@@ -5435,7 +5685,10 @@
     },
     {
       "id": "roleplay-mvu-schema-descriptor-data-typescript",
-      "source": "src/core/roleplay-mvu-schema-descriptor-data.ts"
+      "source": "src/core/roleplay-mvu-schema-descriptor-data.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-descriptor-data.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-executor-types-generated",
@@ -5446,7 +5699,11 @@
     },
     {
       "id": "roleplay-mvu-schema-executor-types-typescript",
-      "source": "src/core/roleplay-mvu-schema-executor-types.ts"
+      "source": "src/core/roleplay-mvu-schema-executor-types.ts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/roleplay-mvu-schema-executor-types.ts",
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-executor-types.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-frozen-prefix-input-js",
@@ -5457,7 +5714,10 @@
     },
     {
       "id": "roleplay-mvu-schema-frozen-prefix-input-typescript",
-      "source": "src/core/roleplay-mvu-schema-frozen-prefix-input.ts"
+      "source": "src/core/roleplay-mvu-schema-frozen-prefix-input.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-frozen-prefix-input.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-history-tail-js",
@@ -5468,7 +5728,10 @@
     },
     {
       "id": "roleplay-mvu-schema-history-tail-typescript",
-      "source": "src/core/roleplay-mvu-schema-history-tail.ts"
+      "source": "src/core/roleplay-mvu-schema-history-tail.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-history-tail.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-journal-js",
@@ -5479,7 +5742,11 @@
     },
     {
       "id": "roleplay-mvu-schema-journal-typescript",
-      "source": "src/core/roleplay-mvu-schema-journal.ts"
+      "source": "src/core/roleplay-mvu-schema-journal.ts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/roleplay-mvu-schema-journal.ts",
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-journal.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-opening-js",
@@ -5497,7 +5764,10 @@
     },
     {
       "id": "roleplay-mvu-schema-opening-types-typescript",
-      "source": "src/core/roleplay-mvu-schema-opening-types.ts"
+      "source": "src/core/roleplay-mvu-schema-opening-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-opening-types.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-opening-typescript",
@@ -5530,7 +5800,10 @@
     },
     {
       "id": "roleplay-mvu-schema-player-types-typescript",
-      "source": "src/core/roleplay-mvu-schema-player-types.ts"
+      "source": "src/core/roleplay-mvu-schema-player-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-player-types.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-player-typescript",
@@ -5545,7 +5818,10 @@
     },
     {
       "id": "roleplay-mvu-schema-prefix-facts-typescript",
-      "source": "src/core/roleplay-mvu-schema-prefix-facts.ts"
+      "source": "src/core/roleplay-mvu-schema-prefix-facts.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-prefix-facts.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-replay-js",
@@ -5556,7 +5832,11 @@
     },
     {
       "id": "roleplay-mvu-schema-replay-typescript",
-      "source": "src/core/roleplay-mvu-schema-replay.ts"
+      "source": "src/core/roleplay-mvu-schema-replay.ts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/roleplay-mvu-schema-replay.ts",
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-replay.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-scope-facts-js",
@@ -5567,7 +5847,10 @@
     },
     {
       "id": "roleplay-mvu-schema-scope-facts-typescript",
-      "source": "src/core/roleplay-mvu-schema-scope-facts.ts"
+      "source": "src/core/roleplay-mvu-schema-scope-facts.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-scope-facts.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-source-js",
@@ -5578,7 +5861,10 @@
     },
     {
       "id": "roleplay-mvu-schema-source-typescript",
-      "source": "src/core/roleplay-mvu-schema-source.ts"
+      "source": "src/core/roleplay-mvu-schema-source.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-source.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-story-core-js",
@@ -5589,7 +5875,10 @@
     },
     {
       "id": "roleplay-mvu-schema-story-core-typescript",
-      "source": "src/core/roleplay-mvu-schema-story-core.ts"
+      "source": "src/core/roleplay-mvu-schema-story-core.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-story-core.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-story-js",
@@ -5607,11 +5896,17 @@
     },
     {
       "id": "roleplay-mvu-schema-story-types-typescript",
-      "source": "src/core/roleplay-mvu-schema-story-types.ts"
+      "source": "src/core/roleplay-mvu-schema-story-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-story-types.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-story-typescript",
-      "source": "src/core/roleplay-mvu-schema-story.ts"
+      "source": "src/core/roleplay-mvu-schema-story.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-schema-story.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-source-js",
@@ -5629,11 +5924,17 @@
     },
     {
       "id": "roleplay-mvu-source-policy-typescript",
-      "source": "src/core/roleplay-mvu-source-policy.ts"
+      "source": "src/core/roleplay-mvu-source-policy.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-source-policy.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-source-typescript",
-      "source": "src/core/roleplay-mvu-source.ts"
+      "source": "src/core/roleplay-mvu-source.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-source.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-state-js",
@@ -5644,7 +5945,10 @@
     },
     {
       "id": "roleplay-mvu-state-typescript",
-      "source": "src/core/roleplay-mvu-state.ts"
+      "source": "src/core/roleplay-mvu-state.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-state.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-story-js",
@@ -5655,7 +5959,10 @@
     },
     {
       "id": "roleplay-mvu-story-typescript",
-      "source": "src/core/roleplay-mvu-story.ts"
+      "source": "src/core/roleplay-mvu-story.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-mvu-story.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-update-js",
@@ -5666,7 +5973,11 @@
     },
     {
       "id": "roleplay-mvu-update-typescript",
-      "source": "src/core/roleplay-mvu-update.ts"
+      "source": "src/core/roleplay-mvu-update.ts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/roleplay-mvu-update.ts",
+        "development/template-runtime-v2/src/core/roleplay-mvu-update.ts"
+      ]
     },
     {
       "id": "roleplay-mvu-update-v2-js",
@@ -5677,7 +5988,11 @@
     },
     {
       "id": "roleplay-mvu-update-v2-typescript",
-      "source": "src/core/roleplay-mvu-update-v2.ts"
+      "source": "src/core/roleplay-mvu-update-v2.ts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/roleplay-mvu-update-v2.ts",
+        "development/template-runtime-v2/src/core/roleplay-mvu-update-v2.ts"
+      ]
     },
     {
       "id": "roleplay-narrative-style",
@@ -5714,7 +6029,10 @@
     },
     {
       "id": "roleplay-opening-material-typescript",
-      "source": "src/core/roleplay-opening-material.ts"
+      "source": "src/core/roleplay-opening-material.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-opening-material.ts"
+      ]
     },
     {
       "id": "roleplay-opening-routes",
@@ -5736,7 +6054,10 @@
     },
     {
       "id": "roleplay-opening-selection-typescript",
-      "source": "src/core/roleplay-opening-selection.ts"
+      "source": "src/core/roleplay-opening-selection.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-opening-selection.ts"
+      ]
     },
     {
       "id": "roleplay-panel-routes",
@@ -5769,7 +6090,10 @@
     },
     {
       "id": "roleplay-phase-a-row-facts-typescript",
-      "source": "src/core/roleplay-phase-a-row-facts.ts"
+      "source": "src/core/roleplay-phase-a-row-facts.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-phase-a-row-facts.ts"
+      ]
     },
     {
       "id": "roleplay-preparation",
@@ -5787,11 +6111,17 @@
     },
     {
       "id": "roleplay-preparation-types-typescript",
-      "source": "src/core/roleplay-preparation-types.ts"
+      "source": "src/core/roleplay-preparation-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-preparation-types.ts"
+      ]
     },
     {
       "id": "roleplay-preparation-typescript",
-      "source": "src/core/roleplay-preparation.ts"
+      "source": "src/core/roleplay-preparation.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-preparation.ts"
+      ]
     },
     {
       "id": "roleplay-preset",
@@ -5821,7 +6151,10 @@
     },
     {
       "id": "roleplay-program-absence-inheritance-data-typescript",
-      "source": "src/core/roleplay-program-absence-inheritance-data.ts"
+      "source": "src/core/roleplay-program-absence-inheritance-data.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-program-absence-inheritance-data.ts"
+      ]
     },
     {
       "id": "roleplay-program-absence-inventory-js",
@@ -5876,7 +6209,10 @@
     },
     {
       "id": "roleplay-program-genesis-data-typescript",
-      "source": "src/core/roleplay-program-genesis-data.ts"
+      "source": "src/core/roleplay-program-genesis-data.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-program-genesis-data.ts"
+      ]
     },
     {
       "id": "roleplay-program-genesis-publisher-js",
@@ -5898,7 +6234,10 @@
     },
     {
       "id": "roleplay-program-genesis-types-typescript",
-      "source": "src/core/roleplay-program-genesis-types.ts"
+      "source": "src/core/roleplay-program-genesis-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-program-genesis-types.ts"
+      ]
     },
     {
       "id": "roleplay-program-inherited-absence-js",
@@ -5938,7 +6277,10 @@
     },
     {
       "id": "roleplay-program-opening-basis-types-typescript",
-      "source": "src/core/roleplay-program-opening-basis-types.ts"
+      "source": "src/core/roleplay-program-opening-basis-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-program-opening-basis-types.ts"
+      ]
     },
     {
       "id": "roleplay-program-opening-basis-typescript",
@@ -5993,7 +6335,10 @@
     },
     {
       "id": "roleplay-program-opening-records-typescript",
-      "source": "src/core/roleplay-program-opening-records.ts"
+      "source": "src/core/roleplay-program-opening-records.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-program-opening-records.ts"
+      ]
     },
     {
       "id": "roleplay-program-opening-row-facts-js",
@@ -6019,7 +6364,10 @@
     },
     {
       "id": "roleplay-prompt-opening-source-data-typescript",
-      "source": "src/core/roleplay-prompt-opening-source-data.ts"
+      "source": "src/core/roleplay-prompt-opening-source-data.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-prompt-opening-source-data.ts"
+      ]
     },
     {
       "id": "roleplay-prompt-opening-source-js",
@@ -6037,11 +6385,17 @@
     },
     {
       "id": "roleplay-prompt-opening-source-types-typescript",
-      "source": "src/core/roleplay-prompt-opening-source-types.ts"
+      "source": "src/core/roleplay-prompt-opening-source-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-prompt-opening-source-types.ts"
+      ]
     },
     {
       "id": "roleplay-prompt-opening-source-typescript",
-      "source": "src/core/roleplay-prompt-opening-source.ts"
+      "source": "src/core/roleplay-prompt-opening-source.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-prompt-opening-source.ts"
+      ]
     },
     {
       "id": "roleplay-prompt-program-source-js",
@@ -6059,11 +6413,17 @@
     },
     {
       "id": "roleplay-prompt-program-source-types-typescript",
-      "source": "src/core/roleplay-prompt-program-source-types.ts"
+      "source": "src/core/roleplay-prompt-program-source-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-prompt-program-source-types.ts"
+      ]
     },
     {
       "id": "roleplay-prompt-program-source-typescript",
-      "source": "src/core/roleplay-prompt-program-source.ts"
+      "source": "src/core/roleplay-prompt-program-source.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-prompt-program-source.ts"
+      ]
     },
     {
       "id": "roleplay-prompt-template-inherited-source-js",
@@ -6085,7 +6445,10 @@
     },
     {
       "id": "roleplay-prompt-template-only-data-typescript",
-      "source": "src/core/roleplay-prompt-template-only-data.ts"
+      "source": "src/core/roleplay-prompt-template-only-data.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-prompt-template-only-data.ts"
+      ]
     },
     {
       "id": "roleplay-prompt-template-only-origins-js",
@@ -6096,7 +6459,10 @@
     },
     {
       "id": "roleplay-prompt-template-only-origins-typescript",
-      "source": "src/core/roleplay-prompt-template-only-origins.ts"
+      "source": "src/core/roleplay-prompt-template-only-origins.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-prompt-template-only-origins.ts"
+      ]
     },
     {
       "id": "roleplay-prompt-template-only-source-js",
@@ -6118,7 +6484,10 @@
     },
     {
       "id": "roleplay-prompt-template-only-types-typescript",
-      "source": "src/core/roleplay-prompt-template-only-types.ts"
+      "source": "src/core/roleplay-prompt-template-only-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-prompt-template-only-types.ts"
+      ]
     },
     {
       "id": "roleplay-reference-dragon-card",
@@ -6144,7 +6513,10 @@
     },
     {
       "id": "roleplay-resource-bridge-types-typescript",
-      "source": "src/core/roleplay-resource-bridge-types.ts"
+      "source": "src/core/roleplay-resource-bridge-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-resource-bridge-types.ts"
+      ]
     },
     {
       "id": "roleplay-resource-bridge-typescript",
@@ -6251,7 +6623,10 @@
     },
     {
       "id": "roleplay-source-lock-typescript",
-      "source": "src/core/roleplay-source-lock.ts"
+      "source": "src/core/roleplay-source-lock.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-source-lock.ts"
+      ]
     },
     {
       "id": "roleplay-side-chat-bridge",
@@ -6336,7 +6711,10 @@
     },
     {
       "id": "roleplay-status-types-typescript",
-      "source": "src/core/roleplay-status-types.ts"
+      "source": "src/core/roleplay-status-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-status-types.ts"
+      ]
     },
     {
       "id": "roleplay-status-typescript",
@@ -6358,7 +6736,10 @@
     },
     {
       "id": "roleplay-task-host-types-typescript",
-      "source": "src/core/roleplay-task-host-types.ts"
+      "source": "src/core/roleplay-task-host-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-task-host-types.ts"
+      ]
     },
     {
       "id": "roleplay-task-host-typescript",
@@ -6439,7 +6820,10 @@
     },
     {
       "id": "roleplay-tavern-layout-typescript",
-      "source": "src/core/roleplay-tavern-layout.ts"
+      "source": "src/core/roleplay-tavern-layout.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-layout.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-legacy-reading-js",
@@ -6472,7 +6856,10 @@
     },
     {
       "id": "roleplay-tavern-lore-contributions-typescript",
-      "source": "src/core/roleplay-tavern-lore-contributions.ts"
+      "source": "src/core/roleplay-tavern-lore-contributions.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-lore-contributions.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-data-js",
@@ -6483,7 +6870,10 @@
     },
     {
       "id": "roleplay-tavern-lore-data-typescript",
-      "source": "src/core/roleplay-tavern-lore-data.ts"
+      "source": "src/core/roleplay-tavern-lore-data.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-lore-data.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-editor-routes-js",
@@ -6516,7 +6906,10 @@
     },
     {
       "id": "roleplay-tavern-lore-edits-data-typescript",
-      "source": "src/core/roleplay-tavern-lore-edits-data.ts"
+      "source": "src/core/roleplay-tavern-lore-edits-data.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-lore-edits-data.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-edits-journal-js",
@@ -6527,7 +6920,10 @@
     },
     {
       "id": "roleplay-tavern-lore-edits-journal-typescript",
-      "source": "src/core/roleplay-tavern-lore-edits-journal.ts"
+      "source": "src/core/roleplay-tavern-lore-edits-journal.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-lore-edits-journal.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-edits-js",
@@ -6545,11 +6941,17 @@
     },
     {
       "id": "roleplay-tavern-lore-edits-types-typescript",
-      "source": "src/core/roleplay-tavern-lore-edits-types.ts"
+      "source": "src/core/roleplay-tavern-lore-edits-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-lore-edits-types.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-edits-typescript",
-      "source": "src/core/roleplay-tavern-lore-edits.ts"
+      "source": "src/core/roleplay-tavern-lore-edits.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-lore-edits.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-export-js",
@@ -6589,11 +6991,17 @@
     },
     {
       "id": "roleplay-tavern-lore-source-types-typescript",
-      "source": "src/core/roleplay-tavern-lore-source-types.ts"
+      "source": "src/core/roleplay-tavern-lore-source-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-lore-source-types.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-source-typescript",
-      "source": "src/core/roleplay-tavern-lore-source.ts"
+      "source": "src/core/roleplay-tavern-lore-source.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-lore-source.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-timed-history-js",
@@ -6626,7 +7034,10 @@
     },
     {
       "id": "roleplay-tavern-material-history-typescript",
-      "source": "src/core/roleplay-tavern-material-history.ts"
+      "source": "src/core/roleplay-tavern-material-history.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-material-history.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-prompt-initial-js",
@@ -6699,7 +7110,10 @@
     },
     {
       "id": "roleplay-tavern-prompt-source-typescript",
-      "source": "src/core/roleplay-tavern-prompt-source.ts"
+      "source": "src/core/roleplay-tavern-prompt-source.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-prompt-source.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-prompt-typescript",
@@ -6758,7 +7172,10 @@
     },
     {
       "id": "roleplay-tavern-source-edit-baseline-typescript",
-      "source": "src/core/roleplay-tavern-source-edit-baseline.ts"
+      "source": "src/core/roleplay-tavern-source-edit-baseline.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-source-edit-baseline.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-source-inheritance-data-js",
@@ -6769,7 +7186,10 @@
     },
     {
       "id": "roleplay-tavern-source-inheritance-data-typescript",
-      "source": "src/core/roleplay-tavern-source-inheritance-data.ts"
+      "source": "src/core/roleplay-tavern-source-inheritance-data.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-source-inheritance-data.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-source-inheritance-js",
@@ -6798,7 +7218,10 @@
     },
     {
       "id": "roleplay-tavern-source-inheritance-types-typescript",
-      "source": "src/core/roleplay-tavern-source-inheritance-types.ts"
+      "source": "src/core/roleplay-tavern-source-inheritance-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-tavern-source-inheritance-types.ts"
+      ]
     },
     {
       "id": "roleplay-tavern-source-inheritance-typescript",
@@ -6889,7 +7312,14 @@
     },
     {
       "id": "roleplay-userinfo-typescript",
-      "source": "src/core/roleplay-userinfo.ts"
+      "source": "src/core/roleplay-userinfo.ts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/roleplay-userinfo.ts",
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/roleplay-userinfo.ts",
+        "development/author-host-runtime-v5-update-batch-v1/src/core/roleplay-userinfo.ts",
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/roleplay-userinfo.ts",
+        "development/template-runtime-v2/src/core/roleplay-userinfo.ts"
+      ]
     },
     {
       "id": "roleplay-worldline-surface",
@@ -6900,7 +7330,10 @@
     },
     {
       "id": "roleplay-worldline-surface-typescript",
-      "source": "src/core/roleplay-worldline-surface.ts"
+      "source": "src/core/roleplay-worldline-surface.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-worldline-surface.ts"
+      ]
     },
     {
       "id": "roleplay-worldline-types-js",
@@ -6911,7 +7344,10 @@
     },
     {
       "id": "roleplay-worldline-types-typescript",
-      "source": "src/core/roleplay-worldline-types.ts"
+      "source": "src/core/roleplay-worldline-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-worldline-types.ts"
+      ]
     },
     {
       "id": "roleplay-worldlines",
@@ -6922,7 +7358,10 @@
     },
     {
       "id": "roleplay-worldlines-typescript",
-      "source": "src/core/roleplay-worldlines.ts"
+      "source": "src/core/roleplay-worldlines.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/roleplay-worldlines.ts"
+      ]
     },
     {
       "id": "screenshot-authoring",
@@ -7025,7 +7464,10 @@
     },
     {
       "id": "session-history-typescript",
-      "source": "src/core/session-history.ts"
+      "source": "src/core/session-history.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/session-history.ts"
+      ]
     },
     {
       "id": "settings-projection",
@@ -7120,7 +7562,10 @@
     },
     {
       "id": "status-template-typescript",
-      "source": "src/status-template.ts"
+      "source": "src/status-template.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/status-template.ts"
+      ]
     },
     {
       "id": "status-template-public-ui-typescript",
@@ -7155,7 +7600,11 @@
     },
     {
       "id": "tavern-author-browser-adapter-v2-typescript",
-      "source": "src/core/tavern-author-browser-adapter-v2.ts"
+      "source": "src/core/tavern-author-browser-adapter-v2.ts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-adapter-v2.ts",
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-adapter-v2.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-adapter-v3-js",
@@ -7166,7 +7615,10 @@
     },
     {
       "id": "tavern-author-browser-adapter-v3-typescript",
-      "source": "src/core/tavern-author-browser-adapter-v3.ts"
+      "source": "src/core/tavern-author-browser-adapter-v3.ts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-adapter-v3.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-artifact-generated",
@@ -7188,7 +7640,10 @@
     },
     {
       "id": "tavern-author-browser-artifact-v3-typescript",
-      "source": "src/core/tavern-author-browser-artifact-v3.mts"
+      "source": "src/core/tavern-author-browser-artifact-v3.mts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-artifact-v3.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-ast-v3-generated",
@@ -7199,7 +7654,10 @@
     },
     {
       "id": "tavern-author-browser-ast-v3-typescript",
-      "source": "src/core/tavern-author-browser-ast-v3.mts"
+      "source": "src/core/tavern-author-browser-ast-v3.mts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-ast-v3.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-ast-worker-generated",
@@ -7221,7 +7679,10 @@
     },
     {
       "id": "tavern-author-browser-ast-worker-v3-typescript",
-      "source": "src/core/tavern-author-browser-ast-worker-v3.mts"
+      "source": "src/core/tavern-author-browser-ast-worker-v3.mts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-ast-worker-v3.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-attachment-worker-v3-js",
@@ -7232,7 +7693,10 @@
     },
     {
       "id": "tavern-author-browser-attachment-worker-v3-typescript",
-      "source": "src/core/tavern-author-browser-attachment-worker-v3.ts"
+      "source": "src/core/tavern-author-browser-attachment-worker-v3.ts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-attachment-worker-v3.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-budget-generated",
@@ -7243,7 +7707,12 @@
     },
     {
       "id": "tavern-author-browser-budget-typescript",
-      "source": "src/core/tavern-author-browser-budget.ts"
+      "source": "src/core/tavern-author-browser-budget.ts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-budget.ts",
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-browser-budget.ts",
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-budget.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-child-entry-generated",
@@ -7287,7 +7756,10 @@
     },
     {
       "id": "tavern-author-browser-compiler-v3-typescript",
-      "source": "src/core/tavern-author-browser-compiler-v3.mts"
+      "source": "src/core/tavern-author-browser-compiler-v3.mts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-compiler-v3.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-descriptor-generated",
@@ -7309,7 +7781,12 @@
     },
     {
       "id": "tavern-author-browser-descriptor-v2-typescript",
-      "source": "src/core/tavern-author-browser-descriptor-v2.mts"
+      "source": "src/core/tavern-author-browser-descriptor-v2.mts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-descriptor-v2.mts",
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-browser-descriptor-v2.mts",
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-descriptor-v2.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-descriptor-v3-generated",
@@ -7320,7 +7797,10 @@
     },
     {
       "id": "tavern-author-browser-descriptor-v3-typescript",
-      "source": "src/core/tavern-author-browser-descriptor-v3.mts"
+      "source": "src/core/tavern-author-browser-descriptor-v3.mts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-descriptor-v3.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-execution-worker-v3-js",
@@ -7331,7 +7811,10 @@
     },
     {
       "id": "tavern-author-browser-execution-worker-v3-typescript",
-      "source": "src/core/tavern-author-browser-execution-worker-v3.ts"
+      "source": "src/core/tavern-author-browser-execution-worker-v3.ts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-execution-worker-v3.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-frame-generated",
@@ -7375,7 +7858,10 @@
     },
     {
       "id": "tavern-author-browser-page-guest-v3-typescript",
-      "source": "src/core/tavern-author-browser-page-guest-v3.ts"
+      "source": "src/core/tavern-author-browser-page-guest-v3.ts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-page-guest-v3.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-page-worker-v3-js",
@@ -7386,7 +7872,10 @@
     },
     {
       "id": "tavern-author-browser-page-worker-v3-typescript",
-      "source": "src/core/tavern-author-browser-page-worker-v3.ts"
+      "source": "src/core/tavern-author-browser-page-worker-v3.ts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-page-worker-v3.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-partition-generated",
@@ -7408,7 +7897,10 @@
     },
     {
       "id": "tavern-author-browser-partition-v3-typescript",
-      "source": "src/core/tavern-author-browser-partition-v3.mts"
+      "source": "src/core/tavern-author-browser-partition-v3.mts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-partition-v3.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-profile-generated",
@@ -7430,7 +7922,11 @@
     },
     {
       "id": "tavern-author-browser-profile-v3-typescript",
-      "source": "src/core/tavern-author-browser-profile-v3.mts"
+      "source": "src/core/tavern-author-browser-profile-v3.mts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-profile-v3.mts",
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-browser-profile-v3.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-renderer-v3-js",
@@ -7441,7 +7937,10 @@
     },
     {
       "id": "tavern-author-browser-renderer-v3-typescript",
-      "source": "src/core/tavern-author-browser-renderer-v3.ts"
+      "source": "src/core/tavern-author-browser-renderer-v3.ts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-renderer-v3.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-source-guest-v3-js",
@@ -7452,7 +7951,10 @@
     },
     {
       "id": "tavern-author-browser-source-guest-v3-typescript",
-      "source": "src/core/tavern-author-browser-source-guest-v3.ts"
+      "source": "src/core/tavern-author-browser-source-guest-v3.ts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-browser-source-guest-v3.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-types-generated",
@@ -7474,7 +7976,10 @@
     },
     {
       "id": "tavern-author-browser-types-v2-typescript",
-      "source": "src/core/tavern-author-browser-types-v2.mts"
+      "source": "src/core/tavern-author-browser-types-v2.mts",
+      "aliases": [
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-types-v2.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-types-v3-generated",
@@ -7518,7 +8023,10 @@
     },
     {
       "id": "tavern-author-combined-data-typescript",
-      "source": "src/core/tavern-author-combined-data.mts"
+      "source": "src/core/tavern-author-combined-data.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-combined-data.mts"
+      ]
     },
     {
       "id": "tavern-author-combined-types-generated",
@@ -7540,7 +8048,10 @@
     },
     {
       "id": "tavern-author-host-provider-typescript",
-      "source": "src/core/tavern-author-host-provider.mts"
+      "source": "src/core/tavern-author-host-provider.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-host-provider.mts"
+      ]
     },
     {
       "id": "tavern-author-html-compiler-v1-generated",
@@ -7551,7 +8062,10 @@
     },
     {
       "id": "tavern-author-html-compiler-v1-typescript",
-      "source": "src/core/tavern-author-html-compiler-v1.mts"
+      "source": "src/core/tavern-author-html-compiler-v1.mts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-author-html-compiler-v1.mts"
+      ]
     },
     {
       "id": "tavern-author-html-parser-declarations-typescript",
@@ -7574,7 +8088,10 @@
     },
     {
       "id": "tavern-author-prompt-compiler-typescript",
-      "source": "src/core/tavern-author-prompt-compiler.mts"
+      "source": "src/core/tavern-author-prompt-compiler.mts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/tavern-author-prompt-compiler.mts"
+      ]
     },
     {
       "id": "tavern-author-prompt-data-generated",
@@ -7585,7 +8102,11 @@
     },
     {
       "id": "tavern-author-prompt-data-typescript",
-      "source": "src/core/tavern-author-prompt-data.mts"
+      "source": "src/core/tavern-author-prompt-data.mts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/tavern-author-prompt-data.mts",
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-prompt-data.mts"
+      ]
     },
     {
       "id": "tavern-author-prompt-descriptor-generated",
@@ -7596,7 +8117,10 @@
     },
     {
       "id": "tavern-author-prompt-descriptor-typescript",
-      "source": "src/core/tavern-author-prompt-descriptor.mts"
+      "source": "src/core/tavern-author-prompt-descriptor.mts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/tavern-author-prompt-descriptor.mts"
+      ]
     },
     {
       "id": "tavern-author-prompt-profile-generated",
@@ -7607,7 +8131,11 @@
     },
     {
       "id": "tavern-author-prompt-profile-typescript",
-      "source": "src/core/tavern-author-prompt-profile.mts"
+      "source": "src/core/tavern-author-prompt-profile.mts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/tavern-author-prompt-profile.mts",
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-prompt-profile.mts"
+      ]
     },
     {
       "id": "tavern-author-prompt-provider-generated",
@@ -7615,7 +8143,10 @@
     },
     {
       "id": "tavern-author-prompt-provider-typescript",
-      "source": "src/core/tavern-author-prompt-provider.mts"
+      "source": "src/core/tavern-author-prompt-provider.mts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/tavern-author-prompt-provider.mts"
+      ]
     },
     {
       "id": "tavern-author-prompt-runtime-generated",
@@ -7623,7 +8154,10 @@
     },
     {
       "id": "tavern-author-prompt-runtime-typescript",
-      "source": "src/core/tavern-author-prompt-runtime.mts"
+      "source": "src/core/tavern-author-prompt-runtime.mts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/tavern-author-prompt-runtime.mts"
+      ]
     },
     {
       "id": "tavern-author-prompt-types-generated",
@@ -7631,7 +8165,10 @@
     },
     {
       "id": "tavern-author-prompt-types-typescript",
-      "source": "src/core/tavern-author-prompt-types.mts"
+      "source": "src/core/tavern-author-prompt-types.mts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/tavern-author-prompt-types.mts"
+      ]
     },
     {
       "id": "tavern-author-prompt-worker-generated",
@@ -7639,7 +8176,10 @@
     },
     {
       "id": "tavern-author-prompt-worker-typescript",
-      "source": "src/core/tavern-author-prompt-worker.mts"
+      "source": "src/core/tavern-author-prompt-worker.mts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/tavern-author-prompt-worker.mts"
+      ]
     },
     {
       "id": "tavern-card-adapter",
@@ -7657,7 +8197,10 @@
     },
     {
       "id": "tavern-card-crc-typescript",
-      "source": "src/core/tavern-card-crc.ts"
+      "source": "src/core/tavern-card-crc.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-card-crc.ts"
+      ]
     },
     {
       "id": "tavern-card-legacy-fixture",
@@ -7669,7 +8212,10 @@
     },
     {
       "id": "tavern-card-typescript",
-      "source": "src/core/tavern-card.ts"
+      "source": "src/core/tavern-card.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-card.ts"
+      ]
     },
     {
       "id": "tavern-compat-contract-v1-fixture",
@@ -7713,7 +8259,10 @@
     },
     {
       "id": "tavern-conversations-typescript",
-      "source": "src/core/tavern-conversations.ts"
+      "source": "src/core/tavern-conversations.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-conversations.ts"
+      ]
     },
     {
       "id": "tavern-display-html-js",
@@ -7724,7 +8273,12 @@
     },
     {
       "id": "tavern-display-html-typescript",
-      "source": "src/core/tavern-display-html.ts"
+      "source": "src/core/tavern-display-html.ts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-display-html.ts",
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-display-html.ts",
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-display-html.ts"
+      ]
     },
     {
       "id": "tavern-embedding-telemetry.test.mjs-contract",
@@ -7765,7 +8319,10 @@
     },
     {
       "id": "tavern-library-input-typescript",
-      "source": "src/core/tavern-library-input.ts"
+      "source": "src/core/tavern-library-input.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-library-input.ts"
+      ]
     },
     {
       "id": "tavern-library-record-js",
@@ -7780,7 +8337,10 @@
     },
     {
       "id": "tavern-library-record-typescript",
-      "source": "src/core/tavern-library-record.ts"
+      "source": "src/core/tavern-library-record.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-library-record.ts"
+      ]
     },
     {
       "id": "tavern-library-test",
@@ -7788,7 +8348,10 @@
     },
     {
       "id": "tavern-library-typescript",
-      "source": "src/core/tavern-library.ts"
+      "source": "src/core/tavern-library.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-library.ts"
+      ]
     },
     {
       "id": "tavern-loop-test",
@@ -7803,7 +8366,10 @@
     },
     {
       "id": "tavern-lore-compiler-typescript",
-      "source": "src/core/tavern-lore-compiler.mts"
+      "source": "src/core/tavern-lore-compiler.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-lore-compiler.mts"
+      ]
     },
     {
       "id": "tavern-lore-editor-data-js",
@@ -7837,7 +8403,10 @@
     },
     {
       "id": "tavern-lore-evaluator-types-typescript",
-      "source": "src/core/tavern-lore-evaluator-types.mts"
+      "source": "src/core/tavern-lore-evaluator-types.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-lore-evaluator-types.mts"
+      ]
     },
     {
       "id": "tavern-lore-evaluator-typescript",
@@ -7852,7 +8421,10 @@
     },
     {
       "id": "tavern-lore-fixed-profile-typescript",
-      "source": "src/core/tavern-lore-fixed-profile.mts"
+      "source": "src/core/tavern-lore-fixed-profile.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-lore-fixed-profile.mts"
+      ]
     },
     {
       "id": "tavern-lore-match-mjs",
@@ -7874,7 +8446,10 @@
     },
     {
       "id": "tavern-lore-plan-types-typescript",
-      "source": "src/core/tavern-lore-plan-types.mts"
+      "source": "src/core/tavern-lore-plan-types.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-lore-plan-types.mts"
+      ]
     },
     {
       "id": "tavern-lore-scan-mjs",
@@ -7929,7 +8504,10 @@
     },
     {
       "id": "tavern-model-policy-typescript",
-      "source": "src/core/tavern-model-policy.ts"
+      "source": "src/core/tavern-model-policy.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-model-policy.ts"
+      ]
     },
     {
       "id": "tavern-mvu-author-execution-classifier-v4-js",
@@ -7945,7 +8523,10 @@
     },
     {
       "id": "tavern-mvu-author-execution-types-v4-typescript",
-      "source": "src/core/tavern-mvu-author-execution-types-v4.mts"
+      "source": "src/core/tavern-mvu-author-execution-types-v4.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-mvu-author-execution-types-v4.mts"
+      ]
     },
     {
       "id": "tavern-mvu-initvar-js",
@@ -7956,7 +8537,10 @@
     },
     {
       "id": "tavern-mvu-initvar-typescript",
-      "source": "src/core/tavern-mvu-initvar.ts"
+      "source": "src/core/tavern-mvu-initvar.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-mvu-initvar.ts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-compiler-ast-v4-js",
@@ -8013,7 +8597,12 @@
     },
     {
       "id": "tavern-mvu-schema-data-typescript",
-      "source": "src/core/tavern-mvu-schema-data.ts"
+      "source": "src/core/tavern-mvu-schema-data.ts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/tavern-mvu-schema-data.ts",
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-mvu-schema-data.ts",
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-data.ts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-fresh-selector-js",
@@ -8032,7 +8621,11 @@
     },
     {
       "id": "tavern-mvu-schema-import-policy-typescript",
-      "source": "src/core/tavern-mvu-schema-import-policy.ts"
+      "source": "src/core/tavern-mvu-schema-import-policy.ts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-mvu-schema-import-policy.ts",
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-import-policy.ts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-program-v4-js",
@@ -8043,7 +8636,11 @@
     },
     {
       "id": "tavern-mvu-schema-program-v4-typescript",
-      "source": "src/core/tavern-mvu-schema-program-v4.ts"
+      "source": "src/core/tavern-mvu-schema-program-v4.ts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-mvu-schema-program-v4.ts",
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-program-v4.ts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-runner-js",
@@ -8065,7 +8662,11 @@
     },
     {
       "id": "tavern-mvu-schema-runner-v2-typescript",
-      "source": "src/core/tavern-mvu-schema-runner-v2.ts"
+      "source": "src/core/tavern-mvu-schema-runner-v2.ts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-mvu-schema-runner-v2.ts",
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-runner-v2.ts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-runner-v3-generated",
@@ -8076,7 +8677,11 @@
     },
     {
       "id": "tavern-mvu-schema-runner-v3-typescript",
-      "source": "src/core/tavern-mvu-schema-runner-v3.ts"
+      "source": "src/core/tavern-mvu-schema-runner-v3.ts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-mvu-schema-runner-v3.ts",
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-runner-v3.ts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-runner-v4-js",
@@ -8087,7 +8692,11 @@
     },
     {
       "id": "tavern-mvu-schema-runner-v4-typescript",
-      "source": "src/core/tavern-mvu-schema-runner-v4.ts"
+      "source": "src/core/tavern-mvu-schema-runner-v4.ts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-mvu-schema-runner-v4.ts",
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-runner-v4.ts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-types-js",
@@ -8098,7 +8707,12 @@
     },
     {
       "id": "tavern-mvu-schema-types-typescript",
-      "source": "src/core/tavern-mvu-schema-types.ts"
+      "source": "src/core/tavern-mvu-schema-types.ts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/tavern-mvu-schema-types.ts",
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-mvu-schema-types.ts",
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-types.ts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-types-v2-generated",
@@ -8106,7 +8720,10 @@
     },
     {
       "id": "tavern-mvu-schema-types-v2-typescript",
-      "source": "src/core/tavern-mvu-schema-types-v2.ts"
+      "source": "src/core/tavern-mvu-schema-types-v2.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-types-v2.ts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-types-v3-generated",
@@ -8114,7 +8731,10 @@
     },
     {
       "id": "tavern-mvu-schema-types-v3-typescript",
-      "source": "src/core/tavern-mvu-schema-types-v3.ts"
+      "source": "src/core/tavern-mvu-schema-types-v3.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-types-v3.ts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-types-v4-js",
@@ -8122,7 +8742,10 @@
     },
     {
       "id": "tavern-mvu-schema-types-v4-typescript",
-      "source": "src/core/tavern-mvu-schema-types-v4.ts"
+      "source": "src/core/tavern-mvu-schema-types-v4.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-types-v4.ts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-update-effects-v2-generated",
@@ -8133,7 +8756,11 @@
     },
     {
       "id": "tavern-mvu-schema-update-effects-v2-typescript",
-      "source": "src/core/tavern-mvu-schema-update-effects-v2.ts"
+      "source": "src/core/tavern-mvu-schema-update-effects-v2.ts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-update-effects-v2.ts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-worker-mjs",
@@ -8155,7 +8782,10 @@
     },
     {
       "id": "tavern-mvu-schema-worker-v2-typescript",
-      "source": "src/core/tavern-mvu-schema-worker-v2.mts"
+      "source": "src/core/tavern-mvu-schema-worker-v2.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-worker-v2.mts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-worker-v3-generated",
@@ -8166,7 +8796,10 @@
     },
     {
       "id": "tavern-mvu-schema-worker-v3-typescript",
-      "source": "src/core/tavern-mvu-schema-worker-v3.mts"
+      "source": "src/core/tavern-mvu-schema-worker-v3.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-worker-v3.mts"
+      ]
     },
     {
       "id": "tavern-mvu-schema-worker-v4-js",
@@ -8177,7 +8810,10 @@
     },
     {
       "id": "tavern-mvu-schema-worker-v4-typescript",
-      "source": "src/core/tavern-mvu-schema-worker-v4.mts"
+      "source": "src/core/tavern-mvu-schema-worker-v4.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-mvu-schema-worker-v4.mts"
+      ]
     },
     {
       "id": "tavern-mvu-scope-read-generated",
@@ -8195,11 +8831,21 @@
     },
     {
       "id": "tavern-mvu-scope-read-types-typescript",
-      "source": "src/core/tavern-mvu-scope-read-types.ts"
+      "source": "src/core/tavern-mvu-scope-read-types.ts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/tavern-mvu-scope-read-types.ts",
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-mvu-scope-read-types.ts",
+        "development/template-runtime-v2/src/core/tavern-mvu-scope-read-types.ts"
+      ]
     },
     {
       "id": "tavern-mvu-scope-read-typescript",
-      "source": "src/core/tavern-mvu-scope-read.ts"
+      "source": "src/core/tavern-mvu-scope-read.ts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/tavern-mvu-scope-read.ts",
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-mvu-scope-read.ts",
+        "development/template-runtime-v2/src/core/tavern-mvu-scope-read.ts"
+      ]
     },
     {
       "id": "tavern-mvu-state-loader-policy-v4-js",
@@ -8210,7 +8856,12 @@
     },
     {
       "id": "tavern-mvu-state-loader-policy-v4-typescript",
-      "source": "src/core/tavern-mvu-state-loader-policy-v4.mts"
+      "source": "src/core/tavern-mvu-state-loader-policy-v4.mts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-mvu-state-loader-policy-v4.mts",
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-mvu-state-loader-policy-v4.mts",
+        "development/template-runtime-v2/src/core/tavern-mvu-state-loader-policy-v4.mts"
+      ]
     },
     {
       "id": "tavern-mvu-yaml-js",
@@ -8221,7 +8872,10 @@
     },
     {
       "id": "tavern-mvu-yaml-typescript",
-      "source": "src/core/tavern-mvu-yaml.ts"
+      "source": "src/core/tavern-mvu-yaml.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-mvu-yaml.ts"
+      ]
     },
     {
       "id": "tavern-named-worldbook-data-js",
@@ -8309,7 +8963,10 @@
     },
     {
       "id": "tavern-prompt-transform-types-typescript",
-      "source": "src/core/tavern-prompt-transform-types.mts"
+      "source": "src/core/tavern-prompt-transform-types.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-prompt-transform-types.mts"
+      ]
     },
     {
       "id": "tavern-prompt-transform-typescript",
@@ -8324,7 +8981,10 @@
     },
     {
       "id": "tavern-prompt-transform-worker-typescript",
-      "source": "src/core/tavern-prompt-transform-worker.mts"
+      "source": "src/core/tavern-prompt-transform-worker.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-prompt-transform-worker.mts"
+      ]
     },
     {
       "id": "tavern-task-context-js",
@@ -8335,7 +8995,10 @@
     },
     {
       "id": "tavern-task-context-typescript",
-      "source": "src/core/tavern-task-context.ts"
+      "source": "src/core/tavern-task-context.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-task-context.ts"
+      ]
     },
     {
       "id": "tavern-task-lifecycle-test",
@@ -8350,7 +9013,10 @@
     },
     {
       "id": "tavern-task-primitives-typescript",
-      "source": "src/core/tavern-task-primitives.ts"
+      "source": "src/core/tavern-task-primitives.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-task-primitives.ts"
+      ]
     },
     {
       "id": "tavern-task-retirement",
@@ -8361,7 +9027,10 @@
     },
     {
       "id": "tavern-task-retirement-typescript",
-      "source": "src/core/tavern-task-retirement.ts"
+      "source": "src/core/tavern-task-retirement.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-task-retirement.ts"
+      ]
     },
     {
       "id": "tavern-task-support-js",
@@ -8372,7 +9041,10 @@
     },
     {
       "id": "tavern-task-support-typescript",
-      "source": "src/core/tavern-task-support.ts"
+      "source": "src/core/tavern-task-support.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-task-support.ts"
+      ]
     },
     {
       "id": "tavern-task-types-js",
@@ -8383,7 +9055,10 @@
     },
     {
       "id": "tavern-task-types-typescript",
-      "source": "src/core/tavern-task-types.ts"
+      "source": "src/core/tavern-task-types.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-task-types.ts"
+      ]
     },
     {
       "id": "tavern-tasks",
@@ -8394,7 +9069,10 @@
     },
     {
       "id": "tavern-tasks-typescript",
-      "source": "src/core/tavern-tasks.ts"
+      "source": "src/core/tavern-tasks.ts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-tasks.ts"
+      ]
     },
     {
       "id": "tavern-telemetry",
@@ -8475,7 +9153,10 @@
     },
     {
       "id": "tavern-template-assets-typescript",
-      "source": "src/core/tavern-template-assets.mts"
+      "source": "src/core/tavern-template-assets.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-template-assets.mts"
+      ]
     },
     {
       "id": "tavern-template-compiler-generated",
@@ -8486,7 +9167,10 @@
     },
     {
       "id": "tavern-template-compiler-typescript",
-      "source": "src/core/tavern-template-compiler.mts"
+      "source": "src/core/tavern-template-compiler.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-template-compiler.mts"
+      ]
     },
     {
       "id": "tavern-template-controller-generated",
@@ -8497,7 +9181,10 @@
     },
     {
       "id": "tavern-template-controller-typescript",
-      "source": "src/core/tavern-template-controller.mts"
+      "source": "src/core/tavern-template-controller.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-template-controller.mts"
+      ]
     },
     {
       "id": "tavern-template-data-generated",
@@ -8508,7 +9195,10 @@
     },
     {
       "id": "tavern-template-data-typescript",
-      "source": "src/core/tavern-template-data.mts"
+      "source": "src/core/tavern-template-data.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-template-data.mts"
+      ]
     },
     {
       "id": "tavern-template-descriptor-generated",
@@ -8519,7 +9209,10 @@
     },
     {
       "id": "tavern-template-descriptor-typescript",
-      "source": "src/core/tavern-template-descriptor.mts"
+      "source": "src/core/tavern-template-descriptor.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-template-descriptor.mts"
+      ]
     },
     {
       "id": "tavern-template-injection-data-mjs",
@@ -8530,7 +9223,10 @@
     },
     {
       "id": "tavern-template-injection-data-typescript",
-      "source": "src/core/tavern-template-injection-data.mts"
+      "source": "src/core/tavern-template-injection-data.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-template-injection-data.mts"
+      ]
     },
     {
       "id": "tavern-template-injection-guest-mjs",
@@ -8541,7 +9237,10 @@
     },
     {
       "id": "tavern-template-injection-guest-typescript",
-      "source": "src/core/tavern-template-injection-guest.mts"
+      "source": "src/core/tavern-template-injection-guest.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-template-injection-guest.mts"
+      ]
     },
     {
       "id": "tavern-template-provider-generated",
@@ -8552,7 +9251,10 @@
     },
     {
       "id": "tavern-template-provider-typescript",
-      "source": "src/core/tavern-template-provider.mts"
+      "source": "src/core/tavern-template-provider.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-template-provider.mts"
+      ]
     },
     {
       "id": "tavern-template-runtime-assets-generated",
@@ -8571,7 +9273,10 @@
     },
     {
       "id": "tavern-template-types-typescript",
-      "source": "src/core/tavern-template-types.mts"
+      "source": "src/core/tavern-template-types.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-template-types.mts"
+      ]
     },
     {
       "id": "tavern-template-worker-generated",
@@ -8582,7 +9287,10 @@
     },
     {
       "id": "tavern-template-worker-typescript",
-      "source": "src/core/tavern-template-worker.mts"
+      "source": "src/core/tavern-template-worker.mts",
+      "aliases": [
+        "development/template-runtime-v2/src/core/tavern-template-worker.mts"
+      ]
     },
     {
       "id": "telemetry-panels",
@@ -8740,7 +9448,11 @@
     },
     {
       "id": "tavern-author-browser-artifact-v2-typescript",
-      "source": "src/core/tavern-author-browser-artifact-v2.mts"
+      "source": "src/core/tavern-author-browser-artifact-v2.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-browser-artifact-v2.mts",
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-artifact-v2.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-ast-worker-v2-generated",
@@ -8751,7 +9463,10 @@
     },
     {
       "id": "tavern-author-browser-ast-worker-v2-typescript",
-      "source": "src/core/tavern-author-browser-ast-worker-v2.mts"
+      "source": "src/core/tavern-author-browser-ast-worker-v2.mts",
+      "aliases": [
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-ast-worker-v2.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-child-entry-v2-js",
@@ -8762,7 +9477,10 @@
     },
     {
       "id": "tavern-author-browser-child-entry-v2-typescript",
-      "source": "src/core/tavern-author-browser-child-entry-v2.ts"
+      "source": "src/core/tavern-author-browser-child-entry-v2.ts",
+      "aliases": [
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-child-entry-v2.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-child-v2-js",
@@ -8773,7 +9491,11 @@
     },
     {
       "id": "tavern-author-browser-child-v2-typescript",
-      "source": "src/core/tavern-author-browser-child-v2.ts"
+      "source": "src/core/tavern-author-browser-child-v2.ts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-browser-child-v2.ts",
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-child-v2.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-compiler-v2-generated",
@@ -8784,7 +9506,11 @@
     },
     {
       "id": "tavern-author-browser-compiler-v2-typescript",
-      "source": "src/core/tavern-author-browser-compiler-v2.mts"
+      "source": "src/core/tavern-author-browser-compiler-v2.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-browser-compiler-v2.mts",
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-compiler-v2.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-execution-worker-v2-js",
@@ -8795,7 +9521,10 @@
     },
     {
       "id": "tavern-author-browser-execution-worker-v2-typescript",
-      "source": "src/core/tavern-author-browser-execution-worker-v2.ts"
+      "source": "src/core/tavern-author-browser-execution-worker-v2.ts",
+      "aliases": [
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-execution-worker-v2.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-frame-v2-js",
@@ -8806,7 +9535,10 @@
     },
     {
       "id": "tavern-author-browser-frame-v2-typescript",
-      "source": "src/core/tavern-author-browser-frame-v2.ts"
+      "source": "src/core/tavern-author-browser-frame-v2.ts",
+      "aliases": [
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-frame-v2.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-guard-entry-v2-js",
@@ -8817,7 +9549,10 @@
     },
     {
       "id": "tavern-author-browser-guard-entry-v2-typescript",
-      "source": "src/core/tavern-author-browser-guard-entry-v2.ts"
+      "source": "src/core/tavern-author-browser-guard-entry-v2.ts",
+      "aliases": [
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-guard-entry-v2.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-guest-v2-js",
@@ -8828,7 +9563,10 @@
     },
     {
       "id": "tavern-author-browser-guest-v2-typescript",
-      "source": "src/core/tavern-author-browser-guest-v2.ts"
+      "source": "src/core/tavern-author-browser-guest-v2.ts",
+      "aliases": [
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-guest-v2.ts"
+      ]
     },
     {
       "id": "tavern-author-browser-partition-v2-generated",
@@ -8839,7 +9577,10 @@
     },
     {
       "id": "tavern-author-browser-partition-v2-typescript",
-      "source": "src/core/tavern-author-browser-partition-v2.mts"
+      "source": "src/core/tavern-author-browser-partition-v2.mts",
+      "aliases": [
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-partition-v2.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-profile-v2-generated",
@@ -8850,7 +9591,11 @@
     },
     {
       "id": "tavern-author-browser-profile-v2-typescript",
-      "source": "src/core/tavern-author-browser-profile-v2.mts"
+      "source": "src/core/tavern-author-browser-profile-v2.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-browser-profile-v2.mts",
+        "development/author-browser-runtime-v2-native-personas-v1/src/core/tavern-author-browser-profile-v2.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-source-projection-v3-generated",
@@ -8861,7 +9606,10 @@
     },
     {
       "id": "tavern-author-browser-source-projection-v3-typescript",
-      "source": "src/core/tavern-author-browser-source-projection-v3.mts"
+      "source": "src/core/tavern-author-browser-source-projection-v3.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-browser-source-projection-v3.mts"
+      ]
     },
     {
       "id": "tavern-author-combined-compiler-v6-generated",
@@ -8872,7 +9620,10 @@
     },
     {
       "id": "tavern-author-combined-compiler-v6-typescript",
-      "source": "src/core/tavern-author-combined-compiler-v6.mts"
+      "source": "src/core/tavern-author-combined-compiler-v6.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-combined-compiler-v6.mts"
+      ]
     },
     {
       "id": "tavern-author-combined-data-v5-generated",
@@ -8883,7 +9634,10 @@
     },
     {
       "id": "tavern-author-combined-data-v5-typescript",
-      "source": "src/core/tavern-author-combined-data-v5.mts"
+      "source": "src/core/tavern-author-combined-data-v5.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-combined-data-v5.mts"
+      ]
     },
     {
       "id": "tavern-author-combined-data-v6-generated",
@@ -8894,7 +9648,10 @@
     },
     {
       "id": "tavern-author-combined-data-v6-typescript",
-      "source": "src/core/tavern-author-combined-data-v6.mts"
+      "source": "src/core/tavern-author-combined-data-v6.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-combined-data-v6.mts"
+      ]
     },
     {
       "id": "tavern-author-combined-types-v5-generated",
@@ -8916,7 +9673,10 @@
     },
     {
       "id": "tavern-author-combined-types-v6-typescript",
-      "source": "src/core/tavern-author-combined-types-v6.mts"
+      "source": "src/core/tavern-author-combined-types-v6.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-combined-types-v6.mts"
+      ]
     },
     {
       "id": "tavern-author-browser-frame-v3-typescript",
@@ -9347,7 +10107,10 @@
     },
     {
       "id": "reader-regex-document-types-typescript",
-      "source": "src/core/reader-regex-document-types.mts"
+      "source": "src/core/reader-regex-document-types.mts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/reader-regex-document-types.mts"
+      ]
     },
     {
       "id": "reader-regex-document-types-generated",
@@ -9358,7 +10121,10 @@
     },
     {
       "id": "reader-regex-document-profile-v1-typescript",
-      "source": "src/core/reader-regex-document-profile-v1.mts"
+      "source": "src/core/reader-regex-document-profile-v1.mts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/reader-regex-document-profile-v1.mts"
+      ]
     },
     {
       "id": "reader-regex-document-profile-v1-generated",
@@ -9369,7 +10135,10 @@
     },
     {
       "id": "reader-regex-document-compiler-typescript",
-      "source": "src/core/reader-regex-document-compiler.mts"
+      "source": "src/core/reader-regex-document-compiler.mts",
+      "aliases": [
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/reader-regex-document-compiler.mts"
+      ]
     },
     {
       "id": "reader-regex-document-compiler-generated",
@@ -10086,7 +10855,10 @@
     },
     {
       "id": "tavern-author-combined-types-v7-typescript",
-      "source": "src/core/tavern-author-combined-types-v7.mts"
+      "source": "src/core/tavern-author-combined-types-v7.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-combined-types-v7.mts"
+      ]
     },
     {
       "id": "tavern-author-combined-types-v7-generated",
@@ -10097,7 +10869,10 @@
     },
     {
       "id": "tavern-author-combined-data-v7-typescript",
-      "source": "src/core/tavern-author-combined-data-v7.mts"
+      "source": "src/core/tavern-author-combined-data-v7.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-combined-data-v7.mts"
+      ]
     },
     {
       "id": "tavern-author-combined-data-v7-generated",
@@ -10108,7 +10883,10 @@
     },
     {
       "id": "tavern-author-combined-compiler-v7-typescript",
-      "source": "src/core/tavern-author-combined-compiler-v7.mts"
+      "source": "src/core/tavern-author-combined-compiler-v7.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-combined-compiler-v7.mts"
+      ]
     },
     {
       "id": "tavern-author-combined-compiler-v7-generated",
@@ -10119,7 +10897,10 @@
     },
     {
       "id": "tavern-author-external-addons-typescript",
-      "source": "src/core/tavern-author-external-addons.mts"
+      "source": "src/core/tavern-author-external-addons.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-external-addons.mts"
+      ]
     },
     {
       "id": "tavern-author-external-addons-generated",
@@ -10261,7 +11042,12 @@
     },
     {
       "id": "tavern-typescript-runtime-descriptor-typescript",
-      "source": "src/core/tavern-typescript-runtime-descriptor.mts"
+      "source": "src/core/tavern-typescript-runtime-descriptor.mts",
+      "aliases": [
+        "development/author-prompt-runtime-v1/src/core/tavern-typescript-runtime-descriptor.mts",
+        "development/author-browser-runtime-v3-author-dialog-v1/src/core/tavern-typescript-runtime-descriptor.mts",
+        "development/mvu-schema-runtime-v4-update-batch-v1/src/core/tavern-typescript-runtime-descriptor.mts"
+      ]
     },
     {
       "id": "tavern-typescript-runtime-descriptor-generated",
@@ -10514,203 +11300,403 @@
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-ffi-types-LICENSE",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/LICENSE"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/LICENSE",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-ffi-types/LICENSE",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-ffi-types/LICENSE"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-ffi-types-README-md",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/README.md"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/README.md",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-ffi-types/README.md",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-ffi-types/README.md"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-ffi-types-dist-index-d-mts",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/dist/index.d.mts"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/dist/index.d.mts",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-ffi-types/dist/index.d.mts",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-ffi-types/dist/index.d.mts"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-ffi-types-dist-index-d-ts",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/dist/index.d.ts"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/dist/index.d.ts",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-ffi-types/dist/index.d.ts",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-ffi-types/dist/index.d.ts"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-ffi-types-dist-index-js",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/dist/index.js"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/dist/index.js",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-ffi-types/dist/index.js",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-ffi-types/dist/index.js"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-ffi-types-dist-index-js-map",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/dist/index.js.map"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/dist/index.js.map",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-ffi-types/dist/index.js.map",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-ffi-types/dist/index.js.map"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-ffi-types-dist-index-mjs",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/dist/index.mjs"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/dist/index.mjs",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-ffi-types/dist/index.mjs",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-ffi-types/dist/index.mjs"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-ffi-types-dist-index-mjs-map",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/dist/index.mjs.map"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/dist/index.mjs.map",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-ffi-types/dist/index.mjs.map",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-ffi-types/dist/index.mjs.map"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-ffi-types-package-json",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/package.json"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-ffi-types/package.json",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-ffi-types/package.json",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-ffi-types/package.json"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-LICENSE",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/LICENSE"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/LICENSE",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/LICENSE",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/LICENSE"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-README-md",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/README.md"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/README.md",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/README.md",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/README.md"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-emscripten-module-browser-d-ts",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.d.ts"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.d.ts",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.d.ts",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.d.ts"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-emscripten-module-browser-mjs",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.mjs"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.mjs",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.mjs",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.mjs"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-emscripten-module-cjs",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cjs"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cjs",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cjs",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cjs"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-emscripten-module-cloudflare-cjs",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cloudflare.cjs"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cloudflare.cjs",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cloudflare.cjs",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cloudflare.cjs"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-emscripten-module-cloudflare-d-ts",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cloudflare.d.ts"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cloudflare.d.ts",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cloudflare.d.ts",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.cloudflare.d.ts"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-emscripten-module-d-ts",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.d.ts"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.d.ts",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.d.ts",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.d.ts"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-emscripten-module-mjs",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.mjs"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.mjs",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.mjs",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.mjs"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-emscripten-module-wasm",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-ffi-d-mts",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/ffi.d.mts"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/ffi.d.mts",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.d.mts",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.d.mts"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-ffi-d-ts",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/ffi.d.ts"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/ffi.d.ts",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.d.ts",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.d.ts"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-ffi-js",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/ffi.js"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/ffi.js",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.js",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.js"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-ffi-js-map",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/ffi.js.map"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/ffi.js.map",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.js.map",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.js.map"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-ffi-mjs",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-ffi-mjs-map",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs.map"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs.map",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs.map",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs.map"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-index-d-mts",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/index.d.mts"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/index.d.mts",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.d.mts",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.d.mts"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-index-d-ts",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/index.d.ts"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/index.d.ts",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.d.ts",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.d.ts"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-index-js",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/index.js"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/index.js",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.js",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.js"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-index-js-map",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/index.js.map"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/index.js.map",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.js.map",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.js.map"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-index-mjs",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/index.mjs"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/index.mjs",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.mjs",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.mjs"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-dist-index-mjs-map",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/index.mjs.map"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/dist/index.mjs.map",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.mjs.map",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.mjs.map"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0--jitl-quickjs-wasmfile-release-sync-package-json",
-      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/package.json"
+      "source": "development/quickjs-runtime-libraries/@jitl/quickjs-wasmfile-release-sync/package.json",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/@jitl/quickjs-wasmfile-release-sync/package.json",
+        "development/template-runtime-v2/node_modules/@jitl/quickjs-wasmfile-release-sync/package.json"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-LICENSE",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/LICENSE"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/LICENSE",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/LICENSE",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/LICENSE"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-README-md",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/README.md"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/README.md",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/README.md",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/README.md"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-README-template-md",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/README.template.md"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/README.template.md",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/README.template.md",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/README.template.md"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-chunk-TAV5CUKK-mjs",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-chunk-TAV5CUKK-mjs-map",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs.map"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs.map",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs.map",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs.map"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-chunk-V2S4ZYJR-mjs",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-chunk-V2S4ZYJR-mjs-map",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs.map"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs.map",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs.map",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs.map"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-index-d-mts",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/index.d.mts"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/index.d.mts",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/index.d.mts",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/index.d.mts"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-index-d-ts",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/index.d.ts"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/index.d.ts",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/index.d.ts",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/index.d.ts"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-index-js",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/index.js"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/index.js",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/index.js",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/index.js"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-index-js-map",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/index.js.map"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/index.js.map",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/index.js.map",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/index.js.map"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-index-mjs",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/index.mjs"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/index.mjs",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/index.mjs",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/index.mjs"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-index-mjs-map",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/index.mjs.map"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/index.mjs.map",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/index.mjs.map",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/index.mjs.map"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-module-ES6BEMUI-mjs",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-module-ES6BEMUI-mjs-map",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs.map"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs.map",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs.map",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs.map"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-module-asyncify-2EFITU5U-mjs",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-dist-module-asyncify-2EFITU5U-mjs-map",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs.map"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs.map",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs.map",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs.map"
+      ]
     },
     {
       "id": "shared-quickjs-0-32-0-quickjs-emscripten-core-package-json",
-      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/package.json"
+      "source": "development/quickjs-runtime-libraries/quickjs-emscripten-core/package.json",
+      "aliases": [
+        "development/mvu-schema-runtime-v4-update-batch-v1/node_modules/quickjs-emscripten-core/package.json",
+        "development/template-runtime-v2/node_modules/quickjs-emscripten-core/package.json"
+      ]
     },
     {
       "id": "released-component-types-typescript",
@@ -10766,7 +11752,10 @@
     },
     {
       "id": "tavern-author-combined-types-v8-typescript",
-      "source": "src/core/tavern-author-combined-types-v8.mts"
+      "source": "src/core/tavern-author-combined-types-v8.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-combined-types-v8.mts"
+      ]
     },
     {
       "id": "tavern-author-combined-types-v8-generated",
@@ -10777,7 +11766,10 @@
     },
     {
       "id": "tavern-author-combined-data-v8-typescript",
-      "source": "src/core/tavern-author-combined-data-v8.mts"
+      "source": "src/core/tavern-author-combined-data-v8.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-combined-data-v8.mts"
+      ]
     },
     {
       "id": "tavern-author-combined-data-v8-generated",
@@ -10788,7 +11780,10 @@
     },
     {
       "id": "tavern-author-combined-compiler-v8-typescript",
-      "source": "src/core/tavern-author-combined-compiler-v8.mts"
+      "source": "src/core/tavern-author-combined-compiler-v8.mts",
+      "aliases": [
+        "development/author-host-runtime-v5-update-batch-v1/src/core/tavern-author-combined-compiler-v8.mts"
+      ]
     },
     {
       "id": "tavern-author-combined-compiler-v8-generated",
@@ -10808,6 +11803,10 @@
     {
       "id": "quality-public-build-map",
       "source": "tools/build-map.json"
+    },
+    {
+      "id": "quality-source-provenance",
+      "source": "SOURCE-PROVENANCE.json"
     }
   ],
   "builds": [

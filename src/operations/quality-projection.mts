@@ -3,6 +3,7 @@ import type {CheckRegistry, SourceMapping} from './quality-types.mjs'
 
 interface ProjectionPlan extends SourceMapping {
   deliveries: {artifact: string; layout: string; path: string}[]
+  product?: {packages: {packageArtifact: string; resources?: {artifact: string; path: string}[]}[]}
   publicRelease: {layoutPaths: Record<string, string>; publicTests: {artifact: string; path: string}[]}
 }
 
@@ -13,16 +14,27 @@ export function projectChecks(plan: ProjectionPlan, registry: CheckRegistry): {
 } {
   const paths = new Map<string, string>()
   const aliases = new Map<string, Set<string>>()
+  const deliver = (artifact: string, target: string) => {
+    if (!paths.has(artifact)) paths.set(artifact, target)
+    else if (paths.get(artifact) !== target) {
+      if (!aliases.has(artifact)) aliases.set(artifact, new Set())
+      aliases.get(artifact)!.add(target)
+    }
+  }
   for (const artifact of plan.artifacts) if (artifact.public?.path) paths.set(artifact.id, artifact.public.path)
   for (const delivery of plan.deliveries) {
     const base = plan.publicRelease.layoutPaths[delivery.layout]
     if (base === undefined) continue
     const target = path.posix.join(base, delivery.path)
-    if (!paths.has(delivery.artifact)) paths.set(delivery.artifact, target)
-    else if (paths.get(delivery.artifact) !== target) {
-      if (!aliases.has(delivery.artifact)) aliases.set(delivery.artifact, new Set())
-      aliases.get(delivery.artifact)!.add(target)
-    }
+    deliver(delivery.artifact, target)
+  }
+  // Resource copies retain the canonical artifact's feature owner. The same
+  // package resources drive the public writer; do not invent another file list.
+  for (const package_ of plan.product?.packages ?? []) {
+    const metadata = paths.get(package_.packageArtifact)
+    if (!metadata) continue
+    for (const resource of package_.resources ?? [])
+      deliver(resource.artifact, path.posix.join(path.posix.dirname(metadata), resource.path))
   }
   for (const test of plan.publicRelease.publicTests) paths.set(test.artifact, test.path)
   // Locked browser inputs are reconstructed by npm ci, not copied into public
@@ -58,7 +70,8 @@ export function projectChecks(plan: ProjectionPlan, registry: CheckRegistry): {
   }
   mapping.artifacts.push({id: 'quality-registry', source: 'tools/check-registry.json'},
     {id: 'quality-public-map', source: 'tools/check-map.json'},
-    {id: 'quality-public-build-map', source: 'tools/build-map.json'})
+    {id: 'quality-public-build-map', source: 'tools/build-map.json'},
+    {id: 'quality-source-provenance', source: 'SOURCE-PROVENANCE.json'})
   const tasks = registry.tasks.filter(task => {
     const unsupported = task.requires?.includes('maintenance') || (task.artifact && !paths.has(task.artifact))
     return !unsupported && !task.unavailable

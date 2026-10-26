@@ -464,6 +464,7 @@
         "run-contracts",
         "select-public-tests",
         "source-manifest",
+        "SOURCE-PROVENANCE",
         "tsconfig",
         "licenses/TypeScript-Apache-2.0.txt",
         "licenses/TypeScript-ThirdPartyNoticeText.txt",

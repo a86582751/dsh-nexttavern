@@ -69,14 +69,16 @@ try {
     artifacts: [
       {id: 'source', source: 'runtime/alpha3/compat/agent-loop/src/request.ts', public: {path: 'development/agent-loop/src/request.ts'}},
       {id: 'test', source: 'runtime/alpha3/tests/request.test.mjs', public: {path: 'tests/request.test.mjs'}},
+      {id: 'package', source: 'runtime/alpha3/compat/fixture/package.json', public: {path: 'development/fixture/package.json'}},
     ],
     builds: [], deliveries: [{artifact: 'source', layout: 'preset', path: 'lib/request.js'}],
+    product: {packages: [{packageArtifact: 'package', resources: [{artifact: 'source', path: 'src/request.ts'}]}]},
     publicRelease: {layoutPaths: {preset: 'preset'}, publicTests: []},
   }, {
     schemaVersion: 1,
     modules: [
       {id: 'loop', aliases: [], patterns: ['runtime/alpha3/compat/agent-loop/*']},
-      {id: 'operations', aliases: [], patterns: ['build-*']},
+      {id: 'operations', aliases: [], patterns: ['build-*', 'SOURCE-PROVENANCE']},
     ],
     tasks: [
       {id: 'loop-test', action: 'test', artifact: 'test', modules: ['loop']},
@@ -98,6 +100,12 @@ try {
   const alias = makePlan(projectedContext, request('file', ['preset/lib/request.js']));
   assert.deepEqual(ids(alias), ['loop-test'], 'delivery aliases select the canonical source feature');
   assert.deepEqual(alias.uncovered, []);
+  const resource = makePlan(projectedContext, request('file', ['development/fixture/src/request.ts']));
+  assert.deepEqual(ids(resource), ['loop-test'], 'package resource copies select their canonical feature');
+  assert.deepEqual(resource.uncovered, []);
+  const provenance = makePlan(projectedContext, request('file', ['SOURCE-PROVENANCE.json']));
+  assert.deepEqual(ids(provenance), ['tools-test'], 'generated source provenance belongs to source delivery checks');
+  assert.deepEqual(provenance.uncovered, []);
   const buildMap = makePlan(projectedContext, request('file', ['tools/build-map.json']));
   assert.deepEqual(ids(buildMap), ['tools-test'], 'the public build map selects its existing operations checks');
   assert.deepEqual(buildMap.uncovered, []);
