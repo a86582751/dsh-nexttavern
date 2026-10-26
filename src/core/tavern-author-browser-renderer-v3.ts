@@ -91,6 +91,11 @@ export const BROWSER_STATE_NATIVE_METHODS_V3:typeof BROWSER_NATIVE_METHODS_V3=Ob
 export const BROWSER_STATE_NATIVE_PROPERTIES_V3:typeof BROWSER_NATIVE_PROPERTIES_V3=Object.freeze({
   ...BROWSER_NATIVE_PROPERTIES_V3,node:[...BROWSER_NATIVE_PROPERTIES_V3.node,'options','selectedOptions'],composer:['value'],
 })
+/** Profile 6 adds these interfaces without changing historical tables. */
+export const BROWSER_INTERACTION_STATE_NATIVE_METHODS_V3:typeof BROWSER_NATIVE_METHODS_V3=Object.freeze({
+  ...BROWSER_STATE_NATIVE_METHODS_V3,document:[...BROWSER_STATE_NATIVE_METHODS_V3.document,'contains'],
+})
+export const BROWSER_INTERACTION_STATE_NATIVE_PROPERTIES_V3=BROWSER_STATE_NATIVE_PROPERTIES_V3
 /** One NativeScene registers actual nodes issued by its own renderers. Normal
  * DOM adoption retains the node creator's handle and disposal lifetime. */
 export interface BrowserNativeNodeRegistryV3 {
@@ -148,6 +153,7 @@ export interface BrowserPageRendererOptionsV3 {
   readonly externalFrames?:BrowserNativeFrameHookV3
   readonly sharedNodes?:BrowserNativeNodeRegistryV3
   readonly composer?:BrowserComposerAccessV3
+  readonly interactionState?:true
 }
 
 export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3):BrowserPageRendererV3 {
@@ -659,7 +665,9 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
   function read(target:any,kind:NativeHandleKindV3,key:string):NativeWireValueV3 {
     if(kind==='composer'){
       if(key!=='value')throw Error('BROWSER3_COMPOSER_PROPERTY_UNSUPPORTED')
-      composerExpected=options.composer!.read();return composerExpected
+      const text=options.composer!.read()
+      if(!options.interactionState)composerExpected=text
+      return text
     }
     if(key.startsWith('on'))return propertyListeners.get(target)?.get(key.slice(2))?.callback??null
     if(kind==='document') {
@@ -780,7 +788,8 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(target instanceof view.HTMLImageElement&&(key==='alt'||key==='title'))imageNamed(target)
   }
   function call(target:any,kind:NativeHandleKindV3,method:string,args:any[]):NativeWireValueV3 {
-    if(!BROWSER_STATE_NATIVE_METHODS_V3[kind].includes(method))throw Error('BROWSER3_DOM_METHOD_UNSUPPORTED')
+    const methods=options.interactionState?BROWSER_INTERACTION_STATE_NATIVE_METHODS_V3:BROWSER_STATE_NATIVE_METHODS_V3
+    if(!methods[kind].includes(method))throw Error('BROWSER3_DOM_METHOD_UNSUPPORTED')
     if(kind==='composer'){
       if(method==='focus')options.composer!.focus()
       else if(args[0]?.type==='input'||args[0]?.type==='change')options.composer!.dispatch(args[0].type)
@@ -791,6 +800,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(method==='addEventListener')return installListener(target,args[0],args[1],args[2]).listenerId
     if(method==='removeEventListener'){removeListener(target,args[0],args[1],args[2]);return {tag:'undefined'}}
     if(kind==='document') {
+      if(method==='contains')return target.contains(args[0])
       if(options.composer&&args[0]==='#send_textarea'
         &&(method==='querySelector'||method==='querySelectorAll')){
         const reference=ref(composerToken,'composer')
@@ -986,6 +996,18 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
       if('target' in request&&request.target.handle<0&&options.externalFrames)
         return options.externalFrames.request(request,css)
       if(request.op==='get'){const target=owned(request.target);return read(target.value,target.kind,request.key)}
+      if(request.op==='composer-write') {
+        const target=owned(request.target)
+        if(!options.interactionState||target.kind!=='composer')throw Error('BROWSER3_COMPOSER_WRITE_UNSUPPORTED')
+        if(request.expectation.kind==='read') {
+          options.composer!.replace(request.value,request.expectation.text)
+          // Main's contenteditable can normalize line endings. The next CAS
+          // consumes its successful actual write, not the authored input text.
+          return options.composer!.read()
+        }
+        options.composer!.overwrite(request.value)
+        return {tag:'undefined'}
+      }
       if(request.op==='set'){const target=owned(request.target);write(target.value,target.kind,request.key,decode(request.value));return {tag:'undefined'}}
       if(request.op==='call'){const target=owned(request.target);return call(target.value,target.kind,request.method,request.args.map(decode))}
       if(request.op==='create')return create(request.creation)

@@ -5,7 +5,9 @@ import {sha256} from './roleplay-data.js'
 import {BROWSER_BOUNDS_V3,BROWSER_APIS_V3,BROWSER_METHODS_V3,BROWSER_PROPERTIES_V3,
   BROWSER_GUEST_INTRINSICS_V3,BROWSER_ABSENT_PROBES_V3,BROWSER_CLOSED_DOM_FACADES_V3,BROWSER_SERVER_GLOBALS_V3,
   READER_PAGE_AST_APIS_V3,BROWSER_STATE_METHODS_V3,BROWSER_STATE_WAIT_V3,BROWSER_STATE_ABSENT_MEMBERS_V3,
-  BROWSER_STATE_NODE_METHODS_V3,BROWSER_STATE_NODE_PROPERTIES_V3,BROWSER_STATE_DOCUMENT_METHODS_V3}
+  BROWSER_STATE_NODE_METHODS_V3,BROWSER_STATE_NODE_PROPERTIES_V3,BROWSER_STATE_DOCUMENT_METHODS_V3,
+  BROWSER_INTERACTION_DOCUMENT_METHODS_V3,BROWSER_INTERACTION_COMPOSER_METHODS_V3,
+  BROWSER_INTERACTION_COMPOSER_PROPERTIES_V3,BROWSER_INTERACTION_ABSENT_MEMBERS_V3}
   from './tavern-author-browser-profile-v3.mjs'
 import type {BrowserFacadeKindV3,BrowserOperationV3} from './tavern-author-browser-profile-v3.mjs'
 import type {BrowserAstCoverageV3,BrowserCapabilityV3,BrowserScriptResourceProjectionV3}
@@ -18,6 +20,8 @@ import {fixedStateLoaderDependency} from './tavern-mvu-state-loader-policy-v4.mj
 export interface BrowserAstUnitV3 {
   readonly realm:string
   readonly parentRealm:string
+  /** Supplied only by the actual Helper container compiler, not Source DATA. */
+  readonly parentDocumentOwner?:'registered-reader'
   readonly javascript:string
   readonly ordinal:number
   readonly identity:string
@@ -38,6 +42,7 @@ export interface BrowserAstProofV3 {
   readonly pageMounts:readonly string[]
   readonly media:readonly {value:string;kind:'image'|'audio';start:number;end:number}[]
   readonly stateFacade:boolean
+  readonly interactionFacade:boolean
   readonly stateImports:readonly {readonly importSpan:{readonly start:number;readonly end:number};
     readonly argumentSpan:{readonly start:number;readonly end:number};readonly exactSpecifiers:readonly string[]}[]
 }
@@ -107,6 +112,7 @@ interface Atom {
   readonly receiver?:Atom
   readonly handle?:BrowserFacadeKindV3
   readonly realm?:string
+  readonly documentOwner?:'registered-reader'
   readonly pageId?:string
   readonly sources?:Cell
   readonly mount?:boolean
@@ -191,6 +197,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   const functionFallbackReaders=new Set<TypeScript.Node>()
   const serverNativeReads=new Map<TypeScript.Node,Set<string>>()
   const stateFacadeUnits=new Set<UnitState>()
+  const interactionFacadeUnits=new Set<UnitState>()
   const stateImportSites=new Map<UnitState,BrowserAstProofV3['stateImports'][number][]>()
   let functionFallback=false
   let missingFallback=false
@@ -223,17 +230,21 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(!target){target=cell();owner.fields!.set(key,target)}
     return target
   }
-  function realm(name:string):Atom {
-    let found=realms.get(name)
-    if(!found){found=atom('object',{fields:new Map(),written:new Set(),realm:name});realms.set(name,found)}
+  function realm(name:string,documentOwner?:Atom['documentOwner']):Atom {
+    const key=documentOwner?name+':registered-reader':name
+    let found=realms.get(key)
+    if(!found){found=atom('object',{fields:new Map(),written:new Set(),realm:name,
+      ...documentOwner?{documentOwner}:{}});realms.set(key,found)}
     return found
   }
-  function handle(kind:BrowserFacadeKindV3,realmName:string,mount=false,pageId?:string):Atom {
-    const key=kind+':'+realmName+':'+mount+':'+(pageId??'')
+  function handle(kind:BrowserFacadeKindV3,realmName:string,mount=false,pageId?:string,documentOwner?:Atom['documentOwner']):Atom {
+    const key=kind+':'+realmName+':'+mount+':'+(pageId??'')+':'+(documentOwner??'')
     let found=handles.get(key)
     if(!found){found=atom('handle',{handle:kind,realm:realmName,mount,...pageId?{pageId}:{},
+      ...documentOwner?{documentOwner}:{},
       ...kind==='frame'?{sources:cell()}:{},
-      ...['node','frame','frame-parent'].includes(kind)?{fields:new Map(),written:new Set(),prototypes:cell()}: {}});handles.set(key,found)}
+      ...['node','frame','frame-parent'].includes(kind)||kind==='document'&&!astOptions.readerPageApis
+        ?{fields:new Map(),written:new Set(),prototypes:cell()}: {}});handles.set(key,found)}
     return found
   }
   function native(name:string,operation:BrowserOperationV3,receiver:Atom):Atom {
@@ -427,11 +438,14 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     return items.size&&[...items].some(item=>item.fixedGuard)?truth(items):undefined
   }
   function guestFieldsOwner(receiver:Atom):boolean {
-    return receiver.kind==='handle'&&['node','frame','frame-parent'].includes(receiver.handle!)
+    return receiver.kind==='handle'&&(['node','frame','frame-parent'].includes(receiver.handle!)
+      ||receiver.handle==='document'&&!astOptions.readerPageApis)
   }
   function guestField(receiver:Atom,name:string):boolean {
     if(!guestFieldsOwner(receiver)||name.startsWith('on'))return false
-    const kind=receiver.handle! as 'node'|'frame'|'frame-parent'
+    const kind=receiver.handle! as 'node'|'frame'|'frame-parent'|'document'
+    if(kind==='document'&&(BROWSER_STATE_ABSENT_MEMBERS_V3.document.includes(name)
+      ||BROWSER_PROPERTIES_V3.document![name]==='absent'))return false
     return !BROWSER_NATIVE_PROPERTIES_V3[kind].includes(name)
   }
   const memberResults=new Map<TypeScript.Node,Map<Atom,Value>>()
@@ -553,13 +567,16 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         ...Object.keys(BROWSER_PROPERTIES_V3[receiver.handle!]??{}),...receiver.fields?.keys()??[]])
       for(const name of selected){
         if(guestFieldsOwner(receiver)){
+          const kind=receiver.handle! as 'node'|'frame'|'frame-parent'|'document'
+          const stateMember=kind==='node'&&(name in BROWSER_STATE_NODE_METHODS_V3||name in BROWSER_STATE_NODE_PROPERTIES_V3)
+            ||kind==='document'&&(name in BROWSER_STATE_DOCUMENT_METHODS_V3||name in BROWSER_INTERACTION_DOCUMENT_METHODS_V3)
+          const ownGuest=guestField(receiver,name)&&!BROWSER_NATIVE_METHODS_V3[kind].includes(name)&&!stateMember
+          if(kind==='document'&&ownGuest)interactionFacadeUnits.add(state)
           const own=read(field(receiver,name),node)
           if(own.size){for(const item of own)out.add(item);if(!own.has(absent))continue}
           if(!functionFallback){functionFallbackReaders.add(node);continue}
           if(name.startsWith('on')){out.add(absent);continue}
-          const kind=receiver.handle! as 'node'|'frame'|'frame-parent'
-          const stateMember=kind==='node'&&(name in BROWSER_STATE_NODE_METHODS_V3||name in BROWSER_STATE_NODE_PROPERTIES_V3)
-          if(guestField(receiver,name)&&!BROWSER_NATIVE_METHODS_V3[kind].includes(name)&&!stateMember){
+          if(ownGuest){
             const prototypes=read(receiver.prototypes!,node)
             if(prototypes.size)for(const prototype of prototypes)
               for(const item of memberValues(prototype,new Set([name]),node))out.add(item)
@@ -572,6 +589,24 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         if(receiver.handle==='dataset'){out.add(guest);continue}
         if(receiver.handle==='event'&&['touches','changedTouches'].includes(name)){
           out.add(touchList(receiver,name));continue
+        }
+        if(!astOptions.readerPageApis){
+          const absentMembers=BROWSER_INTERACTION_ABSENT_MEMBERS_V3[
+            receiver.handle as keyof typeof BROWSER_INTERACTION_ABSENT_MEMBERS_V3]
+          if(absentMembers?.includes(name)){
+            const id='interaction-absent:'+receiver.handle+'.'+name
+            let missing=nativeAtoms.get(id)
+            if(!missing){missing=atom('absent',{fixedGuard:true,nativeName:id});nativeAtoms.set(id,missing)}
+            interactionFacadeUnits.add(state);out.add(missing);continue
+          }
+          const method=receiver.handle==='document'
+            ?BROWSER_INTERACTION_DOCUMENT_METHODS_V3[name as keyof typeof BROWSER_INTERACTION_DOCUMENT_METHODS_V3]
+            :receiver.handle==='composer'
+              ?BROWSER_INTERACTION_COMPOSER_METHODS_V3[name as keyof typeof BROWSER_INTERACTION_COMPOSER_METHODS_V3]:undefined
+          if(method){interactionFacadeUnits.add(state);out.add(native(name,method,receiver));continue}
+          if(receiver.handle==='composer'&&name in BROWSER_INTERACTION_COMPOSER_PROPERTIES_V3){
+            interactionFacadeUnits.add(state);out.add(guest);continue
+          }
         }
         const absentMembers=BROWSER_STATE_ABSENT_MEMBERS_V3[receiver.handle as keyof typeof BROWSER_STATE_ABSENT_MEMBERS_V3]
         if(absentMembers?.includes(name)){
@@ -631,12 +666,12 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         if(property==='nodes'||property==='files'){
           const array=handleArray(receiver,property==='nodes'?'node':'file');out.add(array);continue}
         if(property==='guest'||property==='guest-object'){out.add(guest);continue}
-        if(property){out.add(handle(property as BrowserFacadeKindV3,receiver.realm!));continue}
+        if(property){out.add(handle(property as BrowserFacadeKindV3,receiver.realm!,false,undefined,receiver.documentOwner));continue}
         // getContext returns a copied ordinary guest snapshot, not a Native
         // receiver that exports guessed host functions for missing fields.
         if(receiver.handle==='context'){out.add(fixedAbsent);continue}
         if(receiver.handle==='window'){
-          for(const entry of globalValue(name,realm(receiver.realm!),node,true))out.add(entry);continue}
+          for(const entry of globalValue(name,realm(receiver.realm!,receiver.documentOwner),node,true))out.add(entry);continue}
         // Native objects never turn an arbitrary property into a guessed guest method.
         if(scalarProperty(receiver.handle!,name))out.add(guest)
         else if(BROWSER_ABSENT_PROBES_V3.includes(name))out.add(fixedAbsent)
@@ -681,7 +716,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     const id=receiver.id+':'+kind
     let found=arrays.get(id)
     if(!found){found=atom('array',{elements:cell()});arrays.set(id,found)
-      add(found.elements!,one(handle(kind,receiver.realm!)))}
+      add(found.elements!,one(handle(kind,receiver.realm!,false,undefined,receiver.documentOwner)))}
     return found
   }
   function scalarProperty(kind:BrowserFacadeKindV3,name:string):boolean {
@@ -735,12 +770,17 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       names.add(name);serverNativeReads.set(node,names)
       return one(unknown)
     }
-    if(name==='window'||name==='globalThis')return one(global)
-    if(name==='parent'||name==='top')return one(realm(input.parentRealm))
-    if(name==='document')return one(handle('document',global.realm!))
+    if(name==='window'||name==='globalThis'||name==='self'&&global.documentOwner==='registered-reader')return one(global)
+    if(name==='parent'||name==='top'){
+      if(global.documentOwner==='registered-reader')return one(global)
+      const owner=realmInputs.get(global.realm!)??input
+      return one(realm(owner.parentRealm,astOptions.readerPageApis?undefined:owner.parentDocumentOwner))
+    }
+    if(name==='document')return one(handle('document',global.realm!,false,undefined,global.documentOwner))
     if(name==='frameElement'){
       const owner=realmInputs.get(global.realm!)
-      return one(handle('frame',owner?.parentRealm??input.parentRealm,false,owner?.pageId??undefined))
+      return one(handle('frame',owner?.parentRealm??input.parentRealm,false,owner?.pageId??undefined,
+        astOptions.readerPageApis?undefined:owner?.parentDocumentOwner))
     }
     if(name==='TavernHelper')return one(handle('helper',global.realm!))
     if(name==='SillyTavern')return one(handle('tavern',global.realm!))
@@ -1475,6 +1515,25 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return false
   }
+  /** A direct `if (name in receiver) receiver.name = value` has no intervening
+   * code before the assignment captures that same lexical receiver. Preserve
+   * the real frozen catalog absence rather than granting it composer writes. */
+  function fixedMembershipExcludes(receiver:Atom,target:TypeScript.PropertyAccessExpression|TypeScript.ElementAccessExpression,
+    write:TypeScript.BinaryExpression,name:string):boolean {
+    if(astOptions.readerPageApis||!ts.isIdentifier(target.expression))return false
+    const absentMembers=BROWSER_INTERACTION_ABSENT_MEMBERS_V3[
+      receiver.handle as keyof typeof BROWSER_INTERACTION_ABSENT_MEMBERS_V3]
+    if(!absentMembers?.includes(name)||!ts.isExpressionStatement(write.parent))return false
+    let statement:TypeScript.Statement=write.parent
+    if(ts.isBlock(statement.parent)&&statement.parent.statements.length===1)statement=statement.parent
+    const branch=statement.parent
+    if(!ts.isIfStatement(branch)||branch.thenStatement!==statement||!ts.isBinaryExpression(branch.expression)
+      ||branch.expression.operatorToken.kind!==ts.SyntaxKind.InKeyword)return false
+    const guard=branch.expression
+    if(!ts.isStringLiteralLike(guard.left)||guard.left.text!==name||!ts.isIdentifier(guard.right))return false
+    const binding=lookup(scopes.get(guard.right)!,guard.right.text)
+    return !!binding&&binding===lookup(scopes.get(target.expression)!,target.expression.text)
+  }
   const nativeCalls=new Map<TypeScript.Node,Map<Atom,readonly Value[]>>()
   const boundFunctions=new Map<TypeScript.Node,Map<Atom,Atom>>()
   const unprovenNativeBoundCalls=new Set<TypeScript.Node>()
@@ -2134,12 +2193,23 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         add(field(result,'stat_data'),one(guest))}
       out.add(result);return out
     }
+    if(!astOptions.readerPageApis&&fn.receiver?.handle==='document'&&fn.receiver.documentOwner==='registered-reader'
+      &&(name==='querySelector'||name==='querySelectorAll')){
+      const selectors=names(args[0]??new Set())
+      const composer=!selectors||selectors.has('#send_textarea'),ordinary=!selectors||[...selectors].some(value=>value!=='#send_textarea')
+      if(composer){
+        interactionFacadeUnits.add(units.get(node)!)
+        const kinds:BrowserFacadeKindV3[]=ordinary?['node','composer']:['composer']
+        return new Set(kinds.map(kind=>name==='querySelectorAll'?handleArray(fn.receiver!,kind)
+          :handle(kind,fn.receiver!.realm!,false,undefined,'registered-reader')))
+      }
+    }
     if(operation.returns==='nodes')return one(handleArray(fn.receiver!,'node'))
     if(operation.returns==='guest'||operation.returns==='void')return one(guest)
     if(operation.frameTarget==='receiver-owned-frame')return one(handle('frame',fn.receiver!.realm!))
     const tag=names(args[0]??new Set())
     const frame=name==='createElement'&&tag?.size===1&&tag.has('iframe')
-    return one(handle(frame?'frame':operation.returns,fn.receiver?.realm??realmName,frame))
+    return one(handle(frame?'frame':operation.returns,fn.receiver?.realm??realmName,frame,undefined,fn.receiver?.documentOwner))
   }
   function drain():void {
     while(queue.length){const node=queue.pop()!;queued.delete(node);evaluate(node)}
@@ -2413,7 +2483,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         continue
       }
       const targets=finalValue(node.expression)
-      if([...targets].some(fn=>fn.kind==='absent'&&fn.nativeName?.startsWith('state-absent:'))){
+      if([...targets].some(fn=>fn.kind==='absent'&&(fn.nativeName?.startsWith('state-absent:')
+        ||fn.nativeName?.startsWith('interaction-absent:')))){
         let caught=false
         for(let child:TypeScript.Node=node;child.parent&&!callable(child.parent);child=child.parent)
           if(ts.isTryStatement(child.parent)&&child.parent.tryBlock===child&&child.parent.catchClause){caught=true;break}
@@ -2490,9 +2561,13 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       for(const receiver of finalValue(target.expression))if(receiver.kind==='handle'){
         if(!selected){report(state,'BROWSER3_NATIVE_MEMBER_UNPROVEN',node);continue}
         for(const name of selected){
+          if(fixedMembershipExcludes(receiver,target,node,name)){interactionFacadeUnits.add(state);continue}
           if(receiver.mount&&['src','srcdoc'].includes(name))mountValue(
             name==='src'?immediatelyStoredObjectUrl(node.right,node)??finalValue(node.right):finalValue(node.right),state,node,receiver.realm!)
-          else if(guestField(receiver,name))continue
+          else if(guestField(receiver,name)){
+            if(receiver.handle==='document')interactionFacadeUnits.add(state)
+            continue
+          }
           else if(guestFieldsOwner(receiver)&&name.startsWith('on')&&(receiver.handle==='node'||name==='onload')){
             state.caps.add('owned-synchronous-page-events')
           }
@@ -2503,6 +2578,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
             // catalog as src writes. The renderer still owns every actual URL.
             media(finalValue(node.right),state,node,'image');media(finalValue(node.right),state,node,'audio')
           }
+          else if(receiver.handle==='composer'&&name==='value')interactionFacadeUnits.add(state)
           else if(receiver.handle==='frame'&&!scalarProperty('frame',name))report(state,'BROWSER3_NATIVE_PARENT_DOM_UNSUPPORTED',node,name)
           else if(!scalarProperty(receiver.handle!,name)&&receiver.handle!=='style')report(state,'BROWSER3_NATIVE_WRITE_UNSUPPORTED',node,name)
         }
@@ -2580,6 +2656,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   })
   return {proofs:states.map(state=>({unit:state.input,coverage:state.coverage,capabilities:[...state.caps].sort(),
     keys:[...state.keys].sort(),pageMounts:[...state.mounts].sort(),media:[...state.media.values()],
-    stateFacade:stateFacadeUnits.has(state),stateImports:stateImportSites.get(state)??[]})),diagnostics,
+    stateFacade:stateFacadeUnits.has(state),interactionFacade:interactionFacadeUnits.has(state),
+    stateImports:stateImportSites.get(state)??[]})),diagnostics,
     ...diagnosticEvidence?{diagnosticEvidence}: {}}
 }

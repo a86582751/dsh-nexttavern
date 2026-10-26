@@ -135,6 +135,36 @@ function cssBlockEnd(css: string, openIndex: number) {
     return -1;
 }
 
+/** Selector-list commas inside :is(), attributes and escaped identifiers belong
+ * to that selector. Only the outer list receives separate Reader prefixes. */
+function readerCssSelectors(header: string): string[] {
+    const selectors: string[] = [];
+    let start = 0, parentheses = 0, brackets = 0, quote = '', comment = false;
+    for (let index = 0; index < header.length; index++) {
+        const char = header[index], next = header[index + 1];
+        if (comment) {
+            if (char === '*' && next === '/') {comment = false;index++;}
+            continue;
+        }
+        if (char === '\\') {index++;continue;}
+        if (quote) {
+            if (char === quote) quote = '';
+            continue;
+        }
+        if (char === '/' && next === '*') {comment = true;index++;continue;}
+        if (char === '"' || char === "'") {quote = char;continue;}
+        if (char === '(') parentheses++;
+        else if (char === ')') parentheses--;
+        else if (char === '[') brackets++;
+        else if (char === ']') brackets--;
+        else if (char === ',' && parentheses === 0 && brackets === 0) {
+            selectors.push(header.slice(start, index));start = index + 1;
+        }
+    }
+    selectors.push(header.slice(start));
+    return selectors;
+}
+
 /** Scope complete CSS rules while preserving keyframes and nested at-rules. */
 function scopeCssText(css: unknown, roots: readonly string[]): string {
     const input = String(css ?? '');
@@ -154,7 +184,7 @@ function scopeCssText(css: unknown, roots: readonly string[]): string {
             output += header + '{' + body + '}';
         } else {
             const leading = header.match(/^\s*/)?.[0] ?? '';
-            const selectors = header.slice(leading.length).split(',').map((selector) => {
+            const selectors = readerCssSelectors(header.slice(leading.length)).map((selector) => {
                 const value = selector.trim();
                 if (!value) return '';
                 if (roots.some((root) => value === root
@@ -444,7 +474,11 @@ function paragraphizeReaderContainer(container: DocumentFragment | Element) {
         const element = child as Element;
         if (READER_BLOCK_TAGS.has(element.tagName)) {
             flushParagraph();
-            if (READER_PARAGRAPH_CONTAINERS.has(element.tagName)) paragraphizeReaderContainer(element);
+            // Explicit author layout trees own their child structure. Plain
+            // attributed prose still receives paragraphs and dialogue styling.
+            if (READER_PARAGRAPH_CONTAINERS.has(element.tagName)
+                && (element.attributes.length === 0 || element.children.length === 0))
+                paragraphizeReaderContainer(element);
             output.appendChild(child);
         } else {
             ensureParagraph().appendChild(child);

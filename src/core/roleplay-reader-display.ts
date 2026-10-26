@@ -1,6 +1,7 @@
 /** Reader consumes current author DATA and selected committed Native messages.
  * Display projections never replace canonical text or own a Native write. */
 import {recordSha256,sha256,textOf} from './roleplay-data.js'
+import {sourceLiteralReaderCss} from './roleplay-reader-style-parser.mjs'
 import {eventsOf,surfaceEntries} from './roleplay-context.js'
 import type {ContextMessage,ContextSession} from './roleplay-context.js'
 import type {WorldlineMessageEdits} from './roleplay-worldline-types.js'
@@ -66,6 +67,8 @@ export interface ReaderDisplayRow extends ReaderDisplayMessageRef {
   readonly isEdit:boolean
   readonly displayText:string
   readonly fragments?:readonly ReaderDisplayFragment[]
+  /** Ephemeral CSS from matched Source literals, never mixed model text. */
+  readonly css?:string
 }
 export interface ReaderDisplayResponse {
   readonly ok:true
@@ -151,6 +154,7 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       const macros=communityBindings?{...nativeMacros,
         localVariables:mergeBindings('localVariables'),globalVariables:mergeBindings('globalVariables')}:nativeMacros
       return {source,sourceIdentitySha256:captured.currentIdentitySha256,scopes,macros,policy,variables,
+        literalStyles:new Map<string,string>(),
         rules,documentRules:scopedRules.map((rule,ordinal)=>({
           ruleId:rules.find(effective=>effective.sourcePointer===rule.sourcePointer
             &&effective.sourceSnapshotSha256===rule.sourceSnapshotSha256)!.id,
@@ -196,8 +200,19 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
     if(transformed.kind!=='transformed')fail(transformed.diagnostics[0]?.code??'READER_DISPLAY_UNAVAILABLE')
     let rows:ReaderDisplayRow[]=selected.rows.map((row,index)=>{
       const displayText=transformed.output.entries[index]!.outputText,
-        fragments=projectReaderDisplayFragments(displayText,transformed.displayProvenance?.[index]?.replacements??[])
-      return {...row,displayText,...fragments?{fragments}:{}}
+        replacements=transformed.displayProvenance?.[index]?.replacements??[],
+        fragments=projectReaderDisplayFragments(displayText,replacements),styles=new Set<string>()
+      for(const replacement of replacements) {
+        if(fragments?.some(fragment=>fragment.kind==='author-document'
+          &&fragment.origin.displaySpan.start===replacement.start&&fragment.origin.displaySpan.end===replacement.end))continue
+        for(const part of replacement.parts)if(part.kind==='literal') {
+          let css=read.data.literalStyles.get(part.text)
+          if(css===undefined){css=sourceLiteralReaderCss(part.text);if(css)read.data.literalStyles.set(part.text,css)}
+          if(css){styles.delete(css);styles.add(css)}
+        }
+      }
+      const css=Array.from(styles).join('\n')
+      return {...row,displayText,...fragments?{fragments}:{},...css?{css}:{}}
     })
     let execution:ReaderRegexDocumentExecutionV1|undefined,documentDiagnostics:readonly BrowserDiagnosticV1[]|undefined
     const documents:ReaderRegexDocumentInputV1['documents'][number][]=[],locations:{row:number;fragment:number}[]=[]

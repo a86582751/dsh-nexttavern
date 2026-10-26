@@ -119,11 +119,18 @@ export function browserPageGuestBootstrapV3(config:any) {
     const nativeProperties=new Set(config.properties?.[value.kind]??[])
     const guestFields=['document','node','frame','frame-parent'].includes(value.kind)&&config.properties!==undefined
     const proxy=new Proxy({}, {
+      has(target,name:any) {
+        if(config.interactionState&&value.kind==='composer'&&typeof name==='string')
+          return methods.has(name)||nativeProperties.has(name)||Reflect.has(target,name)
+        return Reflect.has(target,name)
+      },
       get(target,name:any) {
         if(Object.prototype.hasOwnProperty.call(target,name))return Reflect.get(target,name)
         if(name===Symbol.toStringTag)return value.kind
         if(typeof name==='symbol'||name==='then')return undefined
         if(value.kind==='document'&&name==='currentScript')return currentScript
+        if(config.interactionState&&value.kind==='composer'&&!methods.has(name)&&!nativeProperties.has(name))
+          return undefined
         const logical=logicalEvents.get(proxy)
         if(value.kind==='event'&&name==='detail'&&eventDetails.has(proxy))return eventDetails.get(proxy)
         if(logical&&name==='target')return logical.target
@@ -156,10 +163,15 @@ export function browserPageGuestBootstrapV3(config:any) {
         // Author expandos belong to this ordinary VM object. The closed native
         // owner catalog determines which actual DOM slots require its ACK.
         if(guestFields&&!nativeProperties.has(name))return Reflect.get(target,name)
-        return rpc({op:'get',target:value,key:name})
+        const result=rpc({op:'get',target:value,key:name})
+        if(config.interactionState&&value.kind==='composer'&&name==='value')registry.composerRead(value,result)
+        return result
       },
       set(target,name:any,next:any) {
         if(typeof name==='symbol')return Reflect.set(target,name,next)
+        if(config.interactionState&&value.kind==='composer'&&name==='value') {
+          registry.composerWrite(value,String(next),rpc);return true
+        }
         if(name.startsWith('on')) {
           const group=properties.get(proxy)??new Map();properties.set(proxy,group)
           if(typeof next==='function')group.set(name,next);else group.delete(name)

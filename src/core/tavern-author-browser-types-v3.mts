@@ -139,7 +139,7 @@ export interface BrowserProgramV3 {
   readonly authority:'compiled-program-data-only'
   readonly source:BrowserProgramSourceLocatorV1
   readonly compiler:BrowserCompilerIdentityV3
-  readonly profile:{readonly id:'nexttavern-browser-source-html';readonly version:3|4|5;readonly sha256:string}
+  readonly profile:{readonly id:'nexttavern-browser-source-html';readonly version:3|4|5|6;readonly sha256:string}
   readonly runtime:BrowserRuntimeIdentityV3
   readonly capabilityContract:BrowserCapabilityContractV3
   readonly scripts:readonly BrowserCompiledScriptV3[]
@@ -148,7 +148,7 @@ export interface BrowserProgramV3 {
   /** Only the new generation profile associates its single admitted ordinary
    * writer with explicit dialogue. Historical profiles have no such grant. */
   readonly generationDeclarationId?:string|null
-  /** Only profile5 can carry the complete Browser owner's fixed import proof. */
+  /** Profiles5/6 share the complete Browser owner's unchanged fixed import proof. */
   readonly stateImports?:BrowserStateImportsV1
   readonly requiredCapabilities:readonly BrowserCapabilityV3[]
   readonly programSha256:string

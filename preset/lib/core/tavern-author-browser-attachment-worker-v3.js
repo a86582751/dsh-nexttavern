@@ -83,7 +83,8 @@ export class BrowserAttachmentWorkerV3 {
         const controller = await actor.capture(context, '(' + browserSourceGuestBootstrapV3.toString() + ')(' + JSON.stringify({
             snapshot: this.options.snapshot, binding: this.options.binding, operationPrefix: this.options.operationPrefix,
             readerDocument: readerProgram(program),
-            stateFacade: !readerProgram(program) && program.profile.version === 5,
+            stateFacade: !readerProgram(program) && (program.profile.version === 5 || program.profile.version === 6),
+            ...!readerProgram(program) && program.profile.version === 6 ? { interactionState: true } : {},
             generationWriterIdentity: generation?.writer.scriptIdentity
         }) + ')');
         const methods = {};
@@ -172,7 +173,8 @@ export class BrowserAttachmentWorkerV3 {
         });
         const captured = await actor.capture(context, '(' + browserPageGuestBootstrapV3.toString() + ')(' + JSON.stringify({
             pageId: id, document, methods: this.options.methods, properties: this.options.properties,
-            stateDom: readerProgram(this.options.program) || this.options.program.profile.version === 5
+            stateDom: readerProgram(this.options.program) || this.options.program.profile.version === 5 || this.options.program.profile.version === 6,
+            ...!readerProgram(this.options.program) && this.options.program.profile.version === 6 ? { interactionState: true } : {}
         }) + ')');
         const methods = {};
         await actor.enter(() => {
@@ -299,7 +301,7 @@ export class BrowserAttachmentWorkerV3 {
             return;
         }
         let helperParent;
-        if (program.profile.version === 5 && this.options.createHelperRoot) {
+        if ((program.profile.version === 5 || program.profile.version === 6) && this.options.createHelperRoot) {
             const native = await this.options.createHelperRoot();
             helperParent = await actor.createPage('helper-root');
             await this.bootstrap(helperParent, 'helper-root', helperParent, native.document, { kind: 'helper-host' });

@@ -62,7 +62,7 @@ async function acceptedDisplayScope(task: ReaderBeautyTask): Promise<ReaderMvuDi
 export function createReaderBeautyCache({
 renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
 }: BeautyRendering = {}) {
-    const cache = new Map<string, {html: string;text: string;error?: string;fragments?: readonly AuthorFrameFragment[];
+    const cache = new Map<string, {html: string;text: string;css?: string;error?: string;fragments?: readonly AuthorFrameFragment[];
         readerFragments?: readonly ReaderRegexDocumentRenderFragmentV1[];}>();
     const fallbackHtml = new Map<string, string>();
     let execution: ReaderRegexDocumentExecutionV1 | undefined;
@@ -117,12 +117,18 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
                 catch (error) { displayError = error; }
             }
             if (stale()) return;
+            // Intern only this visible read batch, preferring an unchanged row's
+            // existing sheet. Row/scope ownership still lives in the cache.
+            const cssPool = new Map<string, string>();
             const projections = new Map(tasks.flatMap(task => {
                 const ref = displayRef(task);
                 const row = response && response.sessionId === display?.sessionId && ref
                     ? response.rows.find(row => row.seq === ref.seq && row.messageId === ref.messageId
                         && row.rawText === (typeof task === 'string' ? task : task.canonicalText ?? task.text)) : undefined;
-                return row ? [[taskKey(task), row] as const] : [];
+                if (!row) return [];
+                const key = taskKey(task), priorCss = cache.get(key)?.css;
+                if (row.css && priorCss === row.css) cssPool.set(row.css, priorCss);
+                return [[key, row] as const];
             }));
             const acceptedExecution = projections.size === messages.length ? response?.execution : undefined;
             for (const task of tasks) {
@@ -132,6 +138,8 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
                 const projection = projections.get(key);
                 const cached = cache.get(key);
                 if (cached && !projection) continue;
+                let css = projection?.css;
+                if (css) {css = cssPool.get(css) ?? css;cssPool.set(css, css);}
                 let displayScope: ReaderMvuDisplayScope | undefined;
                 // Core has already applied the accepted MVU projection before ST.
                 // Its rewritten text must never receive offsets from the raw body.
@@ -146,7 +154,8 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
                 const previousDisplay = cached?.text === text ? cached : undefined;
                 let value;
                 try {
-                    value = { text, html: previousDisplay?.html ?? await renderAsync(source, rules, runBeautyRegex, displayScope) };
+                    value = { text, html: previousDisplay?.html ?? await renderAsync(source, rules, runBeautyRegex, displayScope),
+                        css };
                     if (projection?.fragments) {
                         const fragments: AuthorFrameFragment[] = [];
                         const readerFragments: ReaderRegexDocumentRenderFragmentV1[] = [];
@@ -177,6 +186,7 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
                 } catch (error) {
                     value = {
                         text, html: renderSync(source, [], displayScope),
+                        css,
 
                         error: String(error && typeof error === 'object' && 'message' in error ? error.message : error),
                     };
@@ -224,6 +234,16 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
     const failed = (tasks: readonly ReaderBeautyTask[]) => tasks.some(task => cache.get(taskKey(task))?.error);
     const fragmentsFor = (task: ReaderBeautyTask) => cache.get(taskKey(task))?.fragments;
     const readerFragmentsFor = (task: ReaderBeautyTask) => cache.get(taskKey(task))?.readerFragments;
+    const cssFor = (tasks: readonly ReaderBeautyTask[]) => {
+        const sheets = new Set<string>();
+        for (const task of tasks) {
+            const css = cache.get(taskKey(task))?.css;
+            // Repeated HUD rows share their sheet. Keep the last occurrence's
+            // order so a later row still wins over an intervening author sheet.
+            if (css) {sheets.delete(css);sheets.add(css);}
+        }
+        return Array.from(sheets).join('\n');
+    };
     const hasDocuments = () => Array.from(cache.values()).some(value => value.fragments?.some(fragment => fragment.kind === 'author-document'));
     function executionFor(tasks?: readonly ReaderBeautyTask[]) {
         if (!tasks) return execution;
@@ -232,6 +252,6 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
         });
         return executionWindowKey === JSON.stringify(messages) ? execution : undefined;
     }
-    return { selectScope, run, htmlFor, textFor, failed, fragmentsFor, hasDocuments, readerFragmentsFor,
+    return { selectScope, run, htmlFor, textFor, cssFor, failed, fragmentsFor, hasDocuments, readerFragmentsFor,
         execution: executionFor };
 }

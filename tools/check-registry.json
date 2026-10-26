@@ -261,6 +261,7 @@
       ],
       "patterns": [
         "reader-*",
+        "roleplay-reader-*",
         "client*",
         "host-index*",
         "ui-contract*",

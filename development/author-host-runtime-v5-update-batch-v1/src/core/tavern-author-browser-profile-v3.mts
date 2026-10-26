@@ -7,7 +7,7 @@ export const BROWSER_BOUNDS_V3=Object.freeze({scripts:64,pages:64,sourceBytes:3*
 export type BrowserFacadeKindV3='window'|'document'|'node'|'frame'|'frame-parent'|'style'|'class-list'
   |'event'|'canvas'|'point'|'matrix'|'audio'|'file'|'file-reader'|'observer'|'media-query'
   |'viewport'|'preferences'|'url'|'helper'|'tavern'|'context'|'mvu'|'navigator'|'performance'|'gradient'|'frame-style'|'dataset'
-  |'persona-catalog'|'persona-row'|'persona-dataset'|'next-tavern'|'page-collection'
+  |'persona-catalog'|'persona-row'|'persona-dataset'|'next-tavern'|'page-collection'|'composer'
 export interface BrowserOperationV3 {
   readonly capability:BrowserCapabilityV3
   readonly returns:'guest'|'void'|BrowserFacadeKindV3|'nodes'|'variables'|'source-id'|'source-trees'|'object-url'
@@ -226,5 +226,27 @@ export const BROWSER_STATE_PROFILE_V3=Object.freeze({id:BROWSER_PROFILE_V3.id,ve
     imports:'complete-ast-finite-fixed-B-empty-esm-namespace',
     readiness:'live-attachment-and-actual-numerical-publication',
     replacement:'current-chat-stat_data-only-existing-save-owner',
+    contract:BROWSER_STATE_CAPABILITY_CONTRACT_V3}),
+})
+
+/** The actual registered reader Document may expose its composer token. A
+ * selector in an ordinary owned page cannot create that receiver or authority. */
+export const BROWSER_INTERACTION_DOCUMENT_METHODS_V3=Object.freeze({contains:operation('isolated-dom-text')})
+export const BROWSER_INTERACTION_COMPOSER_METHODS_V3=Object.freeze({
+  focus:operation('isolated-dom-text','void'),dispatchEvent:event,
+})
+export const BROWSER_INTERACTION_COMPOSER_PROPERTIES_V3=Object.freeze({value:'guest'})
+export const BROWSER_INTERACTION_ABSENT_MEMBERS_V3=Object.freeze({
+  mvu:['on'],composer:['val','trigger','length','0'],
+  'persona-catalog':['val','trigger','focus','value'],'persona-row':['focus'],
+})
+export const BROWSER_INTERACTION_STATE_PROFILE_V3=Object.freeze({id:BROWSER_PROFILE_V3.id,version:6 as const,
+  sha256:recordSha256({encoding:'native-author-browser-interaction-state-profile-v1',baseProfile:BROWSER_STATE_PROFILE_V3,
+    documentMethods:BROWSER_INTERACTION_DOCUMENT_METHODS_V3,documentExpandos:'vm-owned-native-slot-preserving',
+    documentOwner:'actual-registered-reader-parent-only',
+    composerMethods:BROWSER_INTERACTION_COMPOSER_METHODS_V3,composerProperties:BROWSER_INTERACTION_COMPOSER_PROPERTIES_V3,
+    absentMembers:BROWSER_INTERACTION_ABSENT_MEMBERS_V3,jqueryFn:'frozen-empty-persona-marker',
+    composerWrite:'active-source-invocation-full-handle-read-cas-or-explicit-overwrite',
+    composerLifetime:'no-active-invocation-no-write',composerSend:'none',
     contract:BROWSER_STATE_CAPABILITY_CONTRACT_V3}),
 })

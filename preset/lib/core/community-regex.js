@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/src/core/community-regex.ts; edit the TypeScript source.
 import { recordSha256, sha256 } from './roleplay-data.js';
-import { applyTavernPromptTransformsV1 } from './tavern-prompt-transform.mjs';
+import { applyTavernPromptTransformsV1, tavernPromptRegexAppliesToChannelV1 } from './tavern-prompt-transform.mjs';
 import { TAVERN_PROMPT_TRANSFORM_LIMITS_V1 } from './tavern-prompt-transform-types.mjs';
 export function communityRegexRules(policy, scoped = []) {
     const rules = [];
@@ -37,7 +37,9 @@ export function communityRegexMacros(aliases, chat, global, sourceSha256) {
 }
 export async function applyCommunityRegex(policy, entries, macros, scoped = [], signal) {
     const rules = communityRegexRules(policy, scoped);
-    if (!rules.some(rule => !rule.disabled))
+    if (entries.every(entry => entry.pipeline === 'regex-only' && !rules.some(rule => rule.allowed && !rule.disabled
+        && tavernPromptRegexAppliesToChannelV1(rule, entry.channel)
+        && rule.placement.includes(entry.placement))))
         return entries.map(entry => entry.inputText);
     // Independent message strings share frozen rules/macros, not mutable state.
     // Bound the actual text per worker so a 500-row Reader page does not become

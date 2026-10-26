@@ -2,6 +2,7 @@ import {cloneSchemaData,schemaTextSha256} from './tavern-mvu-schema-data.js'
 import {recordSha256} from './roleplay-data.js'
 import {boundedSTPromptTransformBatchV1} from './bounded-regex.js'
 import {executeTavernPromptTransformsV1,hasTavernPromptMacroSyntaxV1} from './tavern-prompt-transform-execution.mjs'
+export {tavernPromptRegexAppliesToChannelV1} from './tavern-prompt-transform-execution.mjs'
 import {TAVERN_PROMPT_TRANSFORM_LIMITS_V1 as LIMITS,TAVERN_PROMPT_CARD_ORDER_V1,
   TAVERN_PROMPT_POST_ORDER_V1,TAVERN_PROMPT_INSTRUCT_ORDER_V1} from './tavern-prompt-transform-types.mjs'
 export {TAVERN_PROMPT_CARD_ORDER_V1,TAVERN_PROMPT_POST_ORDER_V1,

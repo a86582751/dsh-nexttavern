@@ -31,10 +31,25 @@ export function browserSourceGuestBootstrapV3(config:any) {
     withInvocation:(pageId:string,delivery:any,work:()=>any)=>{
       const generation=delivery?.generation
       const invocation={pageId,...generation,callbackId:delivery?.callback?.callbackId,
-        sourceGeneration:delivery?.sourceGeneration,consumed:false}
+        sourceGeneration:delivery?.sourceGeneration,consumed:false,
+        ...config.interactionState?{composerReads:new Map<string,string>()}:{}}
       invocations.push(invocation)
       try {return work()}
       finally {invocations.pop()}
+    },
+    composerRead:(reference:any,text:string)=>{
+      const invocation=invocations.at(-1)
+      if(invocation)invocation.composerReads.set(stringify([reference.pageId,reference.handle,reference.kind]),text)
+    },
+    composerWrite:(reference:any,text:string,write:Function)=>{
+      const invocation=invocations.at(-1)
+      if(!invocation)throw Error('BROWSER3_COMPOSER_INVOCATION_REQUIRED')
+      const key=stringify([reference.pageId,reference.handle,reference.kind]),reads=invocation.composerReads
+      const expectation=reads.has(key)?{kind:'read',text:reads.get(key)}:{kind:'explicit'}
+      const actual=write({op:'composer-write',target:reference,value:text,expectation})
+      // Only a successful ACK advances this invocation's captured read. An
+      // explicit write does not manufacture a read for later writes.
+      if(expectation.kind==='read')reads.set(key,actual)
     },
     dispatch:(deliveries:any[])=>{
       try {for(const delivery of deliveries)pageControllers.get(delivery.callback.pageId)?.deliverOne(delivery)}

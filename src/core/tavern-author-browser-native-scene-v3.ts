@@ -62,6 +62,7 @@ export function createBrowserNativeSceneV3(options:Options) {
   const frameTokens=new Map<number,BrowserNativeSourceFrameV3>()
   const publishedFrameReferences=new Set<string>()
   const program=options.program,reader=program.encoding==='reader-regex-document-program-v1'
+  const interactionState=program.encoding==='native-author-browser-program-v3'&&program.profile?.version===6
   const pagePlans=new Map((program.encoding==='reader-regex-document-program-v1'?program.documents:program.sourcePages)
     .map(plan=>[plan.pagePlanSha256,plan] as const))
   const readerPlans=new Map<BrowserNativeSourceFrameV3,string>()
@@ -104,7 +105,7 @@ export function createBrowserNativeSceneV3(options:Options) {
         ?event=>options.observeNativeEvent!(event,pageId,frame.principal.kind==='helper'
           ?frame.principal.carrierIdentity:''):undefined,
       onCallback:emitCallback,onPromiseSettlement:options.onSettlement,onImages:options.onImages,
-      resolveResource:options.resolveResource,sharedNodes})})
+      resolveResource:options.resolveResource,sharedNodes,...interactionState?{interactionState:true}:{}})})
   function remember(value:unknown,facts:BrowserNativeFrameFactV3[]):void {
     if(!value||typeof value!=='object')return
     if(Array.isArray(value)){for(const item of value)remember(item,facts);return}
@@ -137,7 +138,7 @@ export function createBrowserNativeSceneV3(options:Options) {
       // A trusted empty carrier shell is Native bootstrap DATA. It is not a
       // fabricated parsed Source candidate and carries no admission hashes.
       const renderer=createBrowserPageRendererV3({document:source.document,pageId:contextId,
-        sharedNodes,
+        sharedNodes,...interactionState?{interactionState:true}:{},
         schedulerWindow:options.schedulerWindow,
         onNativeEvent:options.observeNativeEvent
           ?event=>options.observeNativeEvent!(event,contextId,script.descriptor.identity):undefined,
@@ -168,10 +169,11 @@ export function createBrowserNativeSceneV3(options:Options) {
     return {document:readerRoot.getDocumentHandle(),frames:facts}
   }
   function createHelperRoot() {
-    if(program.encoding!=='native-author-browser-program-v3'||program.profile.version!==5||!options.helperRootDocument)
+    if(program.encoding!=='native-author-browser-program-v3'
+      ||(program.profile.version!==5&&program.profile.version!==6)||!options.helperRootDocument)
       throw Error('BROWSER3_HELPER_ROOT_UNAVAILABLE')
     helperRoot=createBrowserPageRendererV3({document:options.helperRootDocument,pageId:'helper-root',readerRootDocument:true,
-      sharedNodes,composer:options.composer,schedulerWindow:options.schedulerWindow,
+      sharedNodes,composer:options.composer,schedulerWindow:options.schedulerWindow,...interactionState?{interactionState:true}:{},
       plan:{parsed:{document:{documentNodeId:0,mode:'no-quirks',nodes:[]},steps:[],scripts:[],styles:[],resources:[]},resources:[]},
       onCallback:emitCallback,onPromiseSettlement:options.onSettlement})
     helperRoot.setDocumentState('complete')

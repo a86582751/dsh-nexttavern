@@ -7,7 +7,7 @@ import {TAVERN_PROMPT_TRANSFORM_LIMITS_V1 as LIMITS,TAVERN_PROMPT_POST_ORDER_V1,
   TAVERN_PROMPT_CARD_ORDER_V1,TAVERN_PROMPT_INSTRUCT_ORDER_V1} from './tavern-prompt-transform-types.mjs'
 import type {TavernPromptTransformWorkerInputV1,TavernPromptTransformResultV1,
   TavernPromptTransformDiagnosticV1,TavernPromptProjectionV1,TavernPromptBindingV1,
-  TavernPromptTransformEntryV1,TavernPromptRegexRuleV1,TavernPromptNamesV1,
+  TavernPromptTransformEntryV1,TavernPromptRegexRuleV1,TavernPromptNamesV1,TavernPromptChannelV1,
   TavernPromptRuleReceiptV1,TavernPromptStageReceiptV1,TavernPromptDisplayPartV1,
   TavernPromptDisplayReplacementV1,TavernPromptDisplayProvenanceV1} from './tavern-prompt-transform-types.mjs'
 import type {TavernTemplateReadV1} from './tavern-template-types.mjs'
@@ -19,6 +19,14 @@ export function hasTavernPromptMacroSyntaxV1(text:string):boolean {
   if(text.includes('{{'))return true
   const lower=text.toLowerCase()
   return legacyAliases.some(([pattern])=>lower.includes(pattern.toLowerCase()))
+}
+
+/** Channel applicability is independent of the current text and rule order. */
+export function tavernPromptRegexAppliesToChannelV1(
+  rule:Pick<TavernPromptRegexRuleV1,'markdownOnly'|'promptOnly'>,channel:TavernPromptChannelV1,
+):boolean {
+  return channel==='display'?rule.markdownOnly:channel==='prompt'?rule.promptOnly:
+    !rule.markdownOnly&&!rule.promptOnly
 }
 
 class Refusal extends Error {
@@ -384,9 +392,7 @@ function run(data:TavernPromptTransformWorkerInputV1):TavernPromptTransformResul
     if(!current.allowed)return 'not-allowed'
     if(current.disabled)return 'disabled'
     if(!text)return 'empty-input'
-    const isMarkdown=entry!.channel==='display',isPrompt=entry!.channel==='prompt'
-    if(!((current.markdownOnly&&isMarkdown)||(current.promptOnly&&isPrompt)
-      ||(!current.markdownOnly&&!current.promptOnly&&!isMarkdown&&!isPrompt)))return 'channel'
+    if(!tavernPromptRegexAppliesToChannelV1(current,entry!.channel))return 'channel'
     if(entry!.isEdit&&!current.runOnEdit)return 'edit'
     if(entry!.depth!==null) {
       if(current.minDepth!==null&&current.minDepth>=-1&&entry!.depth<current.minDepth)return 'min-depth'

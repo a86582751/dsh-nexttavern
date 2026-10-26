@@ -102,18 +102,22 @@ export function createReaderComposerAccess(document:Document,current:()=>boolean
         return value;
     };
     const text=(value:HTMLElement)=>value.innerText??value.textContent??'';
+    const replace=(target:HTMLElement,value:string)=>{
+        target.focus();
+        const selection=document.defaultView!.getSelection();
+        if(!selection)throw Error('BROWSER_COMPOSER_SELECTION_UNAVAILABLE');
+        const range=document.createRange();range.selectNodeContents(target);
+        selection.removeAllRanges();selection.addRange(range);
+        if(!document.execCommand('insertText',false,value))throw Error('BROWSER_COMPOSER_REPLACE_FAILED');
+    };
     return {
         read:()=>text(editor()),
         replace(value,expectedText){
             const target=editor();
             if(text(target)!==expectedText)throw Error('BROWSER_COMPOSER_CHANGED');
-            target.focus();
-            const selection=document.defaultView!.getSelection();
-            if(!selection)throw Error('BROWSER_COMPOSER_SELECTION_UNAVAILABLE');
-            const range=document.createRange();range.selectNodeContents(target);
-            selection.removeAllRanges();selection.addRange(range);
-            if(!document.execCommand('insertText',false,value))throw Error('BROWSER_COMPOSER_REPLACE_FAILED');
+            replace(target,value);
         },
+        overwrite:value=>replace(editor(),value),
         dispatch:type=>{editor().dispatchEvent(new document.defaultView!.Event(type,{bubbles:true}));},
         focus:()=>editor().focus(),
     };
@@ -589,6 +593,7 @@ React,
         const beautyTasks = visibleTasks.filter((_, index) => visibleParts[index]!.kind === 'narrator'
             && !visibleParts[index]!.transient);
         const readerExecution = beautyCache.execution(beautyTasks);
+        const readerAuthorCss = authorCss+'\n'+beautyCache.cssFor(beautyTasks);
         const beautyInput = JSON.stringify(beautyTasks);
         React.useEffect(
         () => beautyCache.run(beautyScope, beautyTasks, rules, () => refreshBeauty(n => n + 1),
@@ -646,7 +651,7 @@ React,
             : `${part.kind}:${part.seq ?? ''}:${part.messageId ?? ''}`;
         const renderedHeadKey = renderedParts.length ? readerPartKey(renderedParts[0]!) : null;
         const frameIdentity = JSON.stringify([
-            frameEpoch, sessionId, state?.sessionId, state?.preset, authorJs, authorCss, committedDocHtml,
+            frameEpoch, sessionId, state?.sessionId, state?.preset, authorJs, readerAuthorCss, committedDocHtml,
             beautyCache.hasDocuments(),
         ]);
         frameIdentityRef.current = frameIdentity;
@@ -676,7 +681,8 @@ React,
         // row is hidden while native Reader owns community option controls.
         const browserUserKeys=renderedParts.filter(part=>part.nativeUserProjection&&!part.transient)
             .map(part=>`[data-reader-key=${JSON.stringify(readerPartKey(part))}]`);
-        const readerBaseCss=READER_BASE_CSS+'\n'+COMMUNITY_READER_CSS+'\n'+authorCss;
+        const readerDefaultCss='@layer dsh-roleplay-reader-default {\n'+READER_BASE_CSS+'\n'+COMMUNITY_READER_CSS+'\n}';
+        const readerBaseCss=readerDefaultCss+'\n'+readerAuthorCss;
         const browserReaderCss=readerBaseCss
             +(browserUserKeys.length?'\n'+browserUserKeys.join(',')+'{display:none!important}':'');
         const sharedReaderCss=readerBaseCss
@@ -806,8 +812,8 @@ React,
             const identity = frameIdentity;
             const controller = createAuthorFrame(frameRef.current, {
                 ...(authorJs.trim() ? {mode: 'script' as const, source: authorJs} : {mode: 'static-document' as const}),
-                css: authorCss,
-                baseCss: READER_BASE_CSS+'\n'+COMMUNITY_READER_CSS,
+                css: readerAuthorCss,
+                baseCss: readerDefaultCss,
                 current: () => readerSessionRef.current === sessionId && frameIdentityRef.current === identity,
                 fill: text => fillComposer(text, false),
                 layout: value => setFrameLayout({identity, value}),
@@ -902,8 +908,7 @@ React,
         // low-specificity author selector such as `h2 { ... }` wins merely by
         // appearing as unlayered author CSS. Inline styles from the card remain
         // authoritative as usual.
-        const scopedCss = '@layer dsh-roleplay-reader-default {\n' +
-            scopeReaderCss(READER_BASE_CSS+'\n'+COMMUNITY_READER_CSS) + '\n}\n' + (framed ? '' : scopeReaderCss(authorCss)) + `
+        const scopedCss = scopeReaderCss(readerDefaultCss) + '\n' + (framed ? '' : scopeReaderCss(readerAuthorCss)) + `
 .rp-author-frame-host { position: relative; width: min(1500px, 100%); align-self: center; overflow: hidden; }
 .rp-reader-view > .rp-author-frame-host { flex-shrink: 0; }
 .rp-author-guard-frame { display: block; width: 100%; height: 150px; border: 0; }

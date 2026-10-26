@@ -294,13 +294,13 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
   }
   async function loaded(document:Document):Promise<void> {
     if(!current()||scene)return
-    if(program.encoding==='native-author-browser-program-v3'&&program.profile.version===5){
+    if(program.encoding==='native-author-browser-program-v3'&&(program.profile.version===5||program.profile.version===6)){
       const lease=await surface.acquireHelperLease()
       if(!current()){lease.release();return}
       helperLease=lease
     }
     scene=createBrowserNativeSceneV3({program,schedulerWindow:view,onCallback:deliver,
-      ...program.encoding==='native-author-browser-program-v3'&&program.profile.version===5
+      ...program.encoding==='native-author-browser-program-v3'&&(program.profile.version===5||program.profile.version===6)
         ?{helperRootDocument:document,composer:options.composer}:{},
       ...program.encoding==='reader-regex-document-program-v1'?{readerRootDocument:document,
         readerDocumentContainer:plan=>surface.documentContainer(plan.pagePlanSha256)}:{},
@@ -311,7 +311,7 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
       onFrameClosed:frameId=>send({type:'frame-closed',frameId}),
       async createCarrierDocument(script,contextId,signal) {
         const iframe=document.createElement('iframe')
-        const borrowedParent=program.encoding==='native-author-browser-program-v3'&&program.profile.version===5
+        const borrowedParent=program.encoding==='native-author-browser-program-v3'&&(program.profile.version===5||program.profile.version===6)
         const container=borrowedParent?document.createElement('div'):iframe
         if(borrowedParent){container.style.cssText='height:0;overflow:hidden';container.appendChild(iframe)}
         iframe.title='作者脚本 '+script.ordinal;iframe.dataset.browserCarrier=contextId

@@ -10,6 +10,7 @@ export type NativeHandleKindV3='document'|'node'|'style'|'dataset'|'class-list'
 export interface BrowserComposerAccessV3 {
   read():string
   replace(text:string,expectedText:string):void
+  overwrite(text:string):void
   dispatch(type:'input'|'change'):void
   focus():void
 }
@@ -65,6 +66,10 @@ export type NativeCreateV3=
 export type NativeRequestV3=
   |{readonly op:'get';readonly target:NativeHandleV3;readonly key:string}
   |{readonly op:'set';readonly target:NativeHandleV3;readonly key:string;readonly value:NativeWireValueV3}
+  /** Profile 6 selects this contract inside the current Source invocation.
+   * Profiles 4/5 retain their existing get/set wire and renderer expectation. */
+  |{readonly op:'composer-write';readonly target:NativeHandleV3;readonly value:string;
+    readonly expectation:{readonly kind:'read';readonly text:string}|{readonly kind:'explicit'}}
   |{readonly op:'call';readonly target:NativeHandleV3;readonly method:string;readonly args:readonly NativeWireValueV3[]}
   |{readonly op:'create';readonly creation:NativeCreateV3}
   |{readonly op:'timer';readonly mode:'timeout'|'interval'|'raf';readonly callback:OwnedNativeCallbackV3;readonly delay?:number}

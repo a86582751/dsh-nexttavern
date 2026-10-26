@@ -3,7 +3,7 @@
 import { recordSha256, sha256 } from './roleplay-data.js';
 import { parseSourceHtmlCandidateV1 } from './tavern-author-html-compiler-v1.mjs';
 import { analyseBrowserAstV3 } from './tavern-author-browser-ast-v3.mjs';
-import { BROWSER_BOUNDS_V3, BROWSER_PROFILE_V3, BROWSER_CAPABILITY_CONTRACT_V3, BROWSER_STATE_PROFILE_V3, BROWSER_STATE_CAPABILITY_CONTRACT_V3 } from './tavern-author-browser-profile-v3.mjs';
+import { BROWSER_BOUNDS_V3, BROWSER_PROFILE_V3, BROWSER_CAPABILITY_CONTRACT_V3, BROWSER_STATE_PROFILE_V3, BROWSER_STATE_CAPABILITY_CONTRACT_V3, BROWSER_INTERACTION_STATE_PROFILE_V3 } from './tavern-author-browser-profile-v3.mjs';
 import { FIXED_STATE_LOADER_POLICY_SHA256, fixedStateLoaderDependency } from './tavern-mvu-state-loader-policy-v4.mjs';
 const sorted = (values) => [...new Set(values)].sort();
 function declaration(writer, key) {
@@ -102,6 +102,7 @@ export function createBrowserCompilerV3(artifact) {
                 if (script.descriptor.enabled) {
                     const pageId = pageCarriers.get(script.ordinal), page = pageId ? pageInputs.get(pageId) : undefined;
                     units.unshift({ realm: 'carrier-' + script.ordinal, parentRealm: 'carrier-' + script.ordinal,
+                        parentDocumentOwner: 'registered-reader',
                         javascript: script.descriptor.source, ordinal: script.ordinal, identity: script.descriptor.identity,
                         pointer: script.descriptor.pointer, pageId: null, inlineOrdinal: null,
                         sourceResources: input.sourceResources,
@@ -211,12 +212,13 @@ export function createBrowserCompilerV3(artifact) {
                     originalOrdinal: proof.unit.ordinal, rawDescriptorSha256: recordSha256(scripts.get(proof.unit.ordinal).descriptor), ...site
                 }))),
             } : undefined;
-            const stateProfile = !!stateImports || result.proofs.some(proof => proof.stateFacade);
+            const interactionProfile = result.proofs.some(proof => proof.interactionFacade);
+            const stateProfile = interactionProfile || !!stateImports || result.proofs.some(proof => proof.stateFacade);
             if (stateProfile && !artifact.stateIdentity)
                 return { kind: 'refused', diagnostics: [{ code: 'BROWSER_STATE_RUNTIME_UNAVAILABLE' }] };
             const body = { schemaVersion: 3, encoding: 'native-author-browser-program-v3',
                 authority: 'compiled-program-data-only', source: input.source, compiler: identity,
-                profile: stateProfile ? BROWSER_STATE_PROFILE_V3 : BROWSER_PROFILE_V3,
+                profile: interactionProfile ? BROWSER_INTERACTION_STATE_PROFILE_V3 : stateProfile ? BROWSER_STATE_PROFILE_V3 : BROWSER_PROFILE_V3,
                 runtime: stateProfile ? artifact.stateIdentity : artifact.identity,
                 capabilityContract: stateProfile ? BROWSER_STATE_CAPABILITY_CONTRACT_V3 : BROWSER_CAPABILITY_CONTRACT_V3,
                 ...stateImports ? { stateImports } : {}, scripts: compiled, sourcePages: plans,

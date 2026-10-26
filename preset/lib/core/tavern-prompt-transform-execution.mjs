@@ -14,6 +14,11 @@ export function hasTavernPromptMacroSyntaxV1(text) {
     const lower = text.toLowerCase();
     return legacyAliases.some(([pattern]) => lower.includes(pattern.toLowerCase()));
 }
+/** Channel applicability is independent of the current text and rule order. */
+export function tavernPromptRegexAppliesToChannelV1(rule, channel) {
+    return channel === 'display' ? rule.markdownOnly : channel === 'prompt' ? rule.promptOnly :
+        !rule.markdownOnly && !rule.promptOnly;
+}
 class Refusal extends Error {
     diagnostic;
     constructor(diagnostic) {
@@ -492,9 +497,7 @@ function run(data) {
             return 'disabled';
         if (!text)
             return 'empty-input';
-        const isMarkdown = entry.channel === 'display', isPrompt = entry.channel === 'prompt';
-        if (!((current.markdownOnly && isMarkdown) || (current.promptOnly && isPrompt)
-            || (!current.markdownOnly && !current.promptOnly && !isMarkdown && !isPrompt)))
+        if (!tavernPromptRegexAppliesToChannelV1(current, entry.channel))
             return 'channel';
         if (entry.isEdit && !current.runOnEdit)
             return 'edit';

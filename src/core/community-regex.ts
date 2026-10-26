@@ -1,5 +1,5 @@
 import {recordSha256,sha256} from './roleplay-data.js'
-import {applyTavernPromptTransformsV1} from './tavern-prompt-transform.mjs'
+import {applyTavernPromptTransformsV1,tavernPromptRegexAppliesToChannelV1} from './tavern-prompt-transform.mjs'
 import type {TavernPromptBindingV1,TavernPromptMacroSnapshotV1,TavernPromptRegexRuleV1,
   TavernPromptTransformEntryV1} from './tavern-prompt-transform-types.mjs'
 import type {CommunityPresetPolicy,CommunityRegexOrigin} from './community-presets.js'
@@ -43,7 +43,9 @@ export async function applyCommunityRegex(policy:CommunityPresetPolicy,
   entries:readonly TavernPromptTransformEntryV1[],macros:TavernPromptMacroSnapshotV1,
   scoped:readonly TavernPromptRegexRuleV1[]=[],signal?:AbortSignal) {
   const rules=communityRegexRules(policy,scoped)
-  if(!rules.some(rule=>!rule.disabled))return entries.map(entry=>entry.inputText)
+  if(entries.every(entry=>entry.pipeline==='regex-only'&&!rules.some(rule=>rule.allowed&&!rule.disabled
+    &&tavernPromptRegexAppliesToChannelV1(rule,entry.channel)
+    &&rule.placement.includes(entry.placement))))return entries.map(entry=>entry.inputText)
   // Independent message strings share frozen rules/macros, not mutable state.
   // Bound the actual text per worker so a 500-row Reader page does not become
   // one oversized packet or borrow a longer regex deadline. Never split prose
