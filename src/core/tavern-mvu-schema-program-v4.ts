@@ -91,15 +91,17 @@ const fixedEntries: ReadonlyMap<string, {exactSpecifier: string; group: StateLoa
   upstreamRootSha256: retainedPolicy.roots[group].sha256,
   namespaceContract: group === 'D' ? 'side-effect-only' : 'empty-esm-namespace',
   }]))
-// This exact author URL maps to the owned registration/update contract. The
-// reviewed upstream differs only in browser error notification; no remote code
-// or notification callback is loaded into the atomic-refusal executor.
+// These exact author URLs are syntax aliases for the owned registration/update
+// contract, not a claim that mutable CDN bytes equal the reviewed snapshot.
+// No remote helper or notification callback is loaded into this executor.
 export const C_SCHEMA_IMPORT_POLICY_V4=Object.freeze({
   version:4 as const,contract:'native-register-mvu-schema-atomic-refusal-v4' as const,
   reviewedUpstream:Object.freeze({bytes:4607,
     sha256:'e540ab99589ad83de1495056a84693bda00af92f8848926bcb9a53b9263a0302'}),
   entries:Object.freeze([...PINNED_C_SCHEMA_IMPORT_POLICY_V1.entries.map(item=>item.specifier),
-    'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js']),
+    'https://fastly.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js',
+    'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js',
+    'https://cdn.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js']),
 })
 const fixedCSpecifiers=new Set<string>(C_SCHEMA_IMPORT_POLICY_V4.entries)
 

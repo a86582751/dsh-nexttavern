@@ -175,7 +175,7 @@
       {
         "artifact": "tavern-mvu-schema-program-v4-typescript",
         "path": "src/core/tavern-mvu-schema-program-v4.ts",
-        "sha256": "cc94022b2600b5e0454db5aa58caaa52288038bbda4582ef36dae31d95c0edd6"
+        "sha256": "d37e31454c87191d00012a89a1147eda3577da2ace9b77eb924dd0dd05a41684"
       },
       {
         "artifact": "tavern-mvu-schema-runner-v2-typescript",
