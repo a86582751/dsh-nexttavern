@@ -9,16 +9,20 @@ import type {BrowserProgramV3,BrowserSnapshotV3,BrowserRuntimeArtifactV3,Browser
   from './tavern-author-browser-types-v3.mjs'
 import type {BrowserWorkerRpcV3,BrowserWorkerInputV3,BrowserSourceEventV3} from './tavern-author-browser-worker-protocol-v3.js'
 import type {NativeCallbackDeliveryV3,BrowserNativeImageV3} from './tavern-author-browser-native-types-v3.js'
+import type {BrowserComposerAccessV3} from './tavern-author-browser-native-types-v3.js'
 import type {BrowserCallbackRegistrationV3,BrowserGenerationInvocationV3,BrowserGenerationResultV3}
   from './roleplay-author-browser-generation-types.js'
 import type {ReaderRegexDocumentProgramV1,ReaderRegexDocumentSnapshotV1,ReaderRegexDocumentRenderV1}
   from './reader-regex-document-types.mjs'
+import type {OwnedBrowserStateBindingV1} from './tavern-author-browser-state-imports-v1.mjs'
 
 export interface BrowserFrameHostV3 extends BrowserHostBridgeV3 {
   closeBinding(binding:BrowserBindingV1):Promise<void>
 }
 
 interface Options {
+  readonly stateProgramBinding?:OwnedBrowserStateBindingV1
+  readonly composer?:BrowserComposerAccessV3
   current():boolean
   layout(value:{height:number;renderRevision:number}):void
   diagnostic(code:string):void
@@ -130,6 +134,7 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
   const worker=new Worker(workerURL,{type:'module'})
   let active=true,latest:FrameSnapshot|undefined,initialized=false,entry:EntryClock|undefined
   let scene:ReturnType<typeof createBrowserNativeSceneV3>|undefined
+  let helperLease:{release():void}|undefined
   let generationSequence=0
   const registrationRequests=new Map<number,{resolve:(rows:readonly BrowserCallbackRegistrationV3[])=>void;reject:(error:Error)=>void}>()
   const generationRequests=new Map<string,{invocation:BrowserGenerationInvocationV3;
@@ -169,13 +174,17 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
     for(const pending of generationRequests.values()){pending.cleanup();pending.reject(error)}
     generationRequests.clear()
     rejectStarted(Error('BROWSER_GENERATION_REVOKED'))
+    // Native resources stop immediately, including while Core finishes its
+    // independent prompt cleanup and any already admitted save receipt.
+    const nativeDisposal=(scene?.dispose()??Promise.resolve())
+      .catch(error=>options.diagnostic(String(error)))
+      .finally(()=>{helperLease?.release();helperLease=undefined})
     // Core closes the attachment's prompt resources before removing its private
     // owner. This confirmation must survive termination of the guest Worker.
     void (host?host.closeBinding(binding):Promise.resolve()).catch(error=>options.diagnostic(String(error)))
       .finally(async()=>{
         worker.terminate();URL.revokeObjectURL(workerURL)
-        try {await scene?.dispose()}
-        catch(error){options.diagnostic(String(error))}
+        try {await nativeDisposal}
         finally {if(ownsSurface)surface.dispose();resolveDisposed()}
       })
   }
@@ -280,11 +289,19 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
     const bytes=Uint8Array.from(atob(artifact.wasm.data),character=>character.charCodeAt(0))
     if(program.encoding==='reader-regex-document-program-v1')
       send({type:'reader-start',binding,program,snapshot:latest as ReaderRegexDocumentSnapshotV1,wasm:bytes.buffer,operationPrefix})
-    else send({type:'start',binding,program,snapshot:latest as BrowserSnapshotV3,wasm:bytes.buffer,operationPrefix})
+    else send({type:'start',binding,program,snapshot:latest as BrowserSnapshotV3,wasm:bytes.buffer,operationPrefix,
+      stateProgramBinding:options.stateProgramBinding})
   }
-  function loaded(document:Document):void {
+  async function loaded(document:Document):Promise<void> {
     if(!current()||scene)return
+    if(program.encoding==='native-author-browser-program-v3'&&program.profile.version===5){
+      const lease=await surface.acquireHelperLease()
+      if(!current()){lease.release();return}
+      helperLease=lease
+    }
     scene=createBrowserNativeSceneV3({program,schedulerWindow:view,onCallback:deliver,
+      ...program.encoding==='native-author-browser-program-v3'&&program.profile.version===5
+        ?{helperRootDocument:document,composer:options.composer}:{},
       ...program.encoding==='reader-regex-document-program-v1'?{readerRootDocument:document,
         readerDocumentContainer:plan=>surface.documentContainer(plan.pagePlanSha256)}:{},
       onImages:options.onImages,
@@ -294,6 +311,9 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
       onFrameClosed:frameId=>send({type:'frame-closed',frameId}),
       async createCarrierDocument(script,contextId,signal) {
         const iframe=document.createElement('iframe')
+        const borrowedParent=program.encoding==='native-author-browser-program-v3'&&program.profile.version===5
+        const container=borrowedParent?document.createElement('div'):iframe
+        if(borrowedParent){container.style.cssText='height:0;overflow:hidden';container.appendChild(iframe)}
         iframe.title='作者脚本 '+script.ordinal;iframe.dataset.browserCarrier=contextId
         // A viewport-relative carrier height would grow with the outer chat
         // height. Keep the existing 600px carrier viewport independent of it.
@@ -302,12 +322,22 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
         const carrierDocument=await new Promise<Document>((resolve,reject)=>{
           const finish=()=>{iframe.removeEventListener('load',done);signal.removeEventListener('abort',cancel)}
           const done=()=>{finish();resolve(iframe.contentDocument!)}
-          const cancel=()=>{finish();iframe.remove();reject(Error('BROWSER3_ATTACHMENT_CLOSED'))}
+          const cancel=()=>{finish();container.remove();reject(Error('BROWSER3_ATTACHMENT_CLOSED'))}
           iframe.addEventListener('load',done,{once:true});signal.addEventListener('abort',cancel,{once:true})
-          iframe.src='about:blank';document.body.appendChild(iframe)
+          iframe.src='about:blank';document.body.appendChild(container)
         })
         carrierDocument.open();carrierDocument.write(BROWSER_NATIVE_INERT_SHELL_V3);carrierDocument.close()
-        return {document:carrierDocument,dispose:()=>iframe.remove()}
+        // Keep the real 600px carrier viewport. A Source helper that renders
+        // only into its borrowed Reader parent contributes no empty 600px row.
+        let content:MutationObserver|undefined
+        if(borrowedParent){
+          const layout=()=>{container.style.height=carrierDocument.body.childNodes.length?'600px':'0px'}
+          // The renderer replaces the inert shell body. Observe its retained
+          // document element so later author content follows the live body.
+          content=new view.MutationObserver(layout)
+          content.observe(carrierDocument.documentElement,{childList:true,subtree:true});layout()
+        }
+        return {document:carrierDocument,dispose:()=>{content?.disconnect();container.remove()}}
       }})
     initialize()
   }

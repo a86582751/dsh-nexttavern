@@ -4,7 +4,8 @@ import type * as TypeScript from 'typescript'
 import {sha256} from './roleplay-data.js'
 import {BROWSER_BOUNDS_V3,BROWSER_APIS_V3,BROWSER_METHODS_V3,BROWSER_PROPERTIES_V3,
   BROWSER_GUEST_INTRINSICS_V3,BROWSER_ABSENT_PROBES_V3,BROWSER_CLOSED_DOM_FACADES_V3,BROWSER_SERVER_GLOBALS_V3,
-  READER_PAGE_AST_APIS_V3}
+  READER_PAGE_AST_APIS_V3,BROWSER_STATE_METHODS_V3,BROWSER_STATE_WAIT_V3,BROWSER_STATE_ABSENT_MEMBERS_V3,
+  BROWSER_STATE_NODE_METHODS_V3,BROWSER_STATE_NODE_PROPERTIES_V3,BROWSER_STATE_DOCUMENT_METHODS_V3}
   from './tavern-author-browser-profile-v3.mjs'
 import type {BrowserFacadeKindV3,BrowserOperationV3} from './tavern-author-browser-profile-v3.mjs'
 import type {BrowserAstCoverageV3,BrowserCapabilityV3,BrowserScriptResourceProjectionV3}
@@ -12,6 +13,7 @@ import type {BrowserAstCoverageV3,BrowserCapabilityV3,BrowserScriptResourceProje
 import type {MvuJsonValue} from './tavern-mvu-initvar.js'
 import type {BrowserDiagnosticV1} from './tavern-author-browser-types.mjs'
 import {BROWSER_NATIVE_METHODS_V3,BROWSER_NATIVE_PROPERTIES_V3} from './tavern-author-browser-renderer-v3.js'
+import {fixedStateLoaderDependency} from './tavern-mvu-state-loader-policy-v4.mjs'
 
 export interface BrowserAstUnitV3 {
   readonly realm:string
@@ -35,6 +37,9 @@ export interface BrowserAstProofV3 {
   readonly keys:readonly string[]
   readonly pageMounts:readonly string[]
   readonly media:readonly {value:string;kind:'image'|'audio';start:number;end:number}[]
+  readonly stateFacade:boolean
+  readonly stateImports:readonly {readonly importSpan:{readonly start:number;readonly end:number};
+    readonly argumentSpan:{readonly start:number;readonly end:number};readonly exactSpecifiers:readonly string[]}[]
 }
 export interface BrowserAstResultV3 {
   readonly proofs:readonly BrowserAstProofV3[]
@@ -185,6 +190,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   const handles=new Map<string,Atom>(),queue:TypeScript.Node[]=[],queued=new Set<TypeScript.Node>()
   const functionFallbackReaders=new Set<TypeScript.Node>()
   const serverNativeReads=new Map<TypeScript.Node,Set<string>>()
+  const stateFacadeUnits=new Set<UnitState>()
+  const stateImportSites=new Map<UnitState,BrowserAstProofV3['stateImports'][number][]>()
   let functionFallback=false
   let missingFallback=false
   let globalMissingFallback=false
@@ -551,7 +558,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
           if(!functionFallback){functionFallbackReaders.add(node);continue}
           if(name.startsWith('on')){out.add(absent);continue}
           const kind=receiver.handle! as 'node'|'frame'|'frame-parent'
-          if(guestField(receiver,name)&&!BROWSER_NATIVE_METHODS_V3[kind].includes(name)){
+          const stateMember=kind==='node'&&(name in BROWSER_STATE_NODE_METHODS_V3||name in BROWSER_STATE_NODE_PROPERTIES_V3)
+          if(guestField(receiver,name)&&!BROWSER_NATIVE_METHODS_V3[kind].includes(name)&&!stateMember){
             const prototypes=read(receiver.prototypes!,node)
             if(prototypes.size)for(const prototype of prototypes)
               for(const item of memberValues(prototype,new Set([name]),node))out.add(item)
@@ -565,6 +573,18 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         if(receiver.handle==='event'&&['touches','changedTouches'].includes(name)){
           out.add(touchList(receiver,name));continue
         }
+        const absentMembers=BROWSER_STATE_ABSENT_MEMBERS_V3[receiver.handle as keyof typeof BROWSER_STATE_ABSENT_MEMBERS_V3]
+        if(absentMembers?.includes(name)){
+          const id='state-absent:'+receiver.handle+'.'+name
+          let missing=nativeAtoms.get(id)
+          if(!missing){missing=atom('absent',{fixedGuard:true,nativeName:id});nativeAtoms.set(id,missing)}
+          stateFacadeUnits.add(units.get(node)!);out.add(missing);continue
+        }
+        const stateMethod=receiver.handle==='mvu'
+          ?BROWSER_STATE_METHODS_V3[name as keyof typeof BROWSER_STATE_METHODS_V3]
+          :receiver.handle==='node'?BROWSER_STATE_NODE_METHODS_V3[name as keyof typeof BROWSER_STATE_NODE_METHODS_V3]
+          :receiver.handle==='document'?BROWSER_STATE_DOCUMENT_METHODS_V3[name as keyof typeof BROWSER_STATE_DOCUMENT_METHODS_V3]:undefined
+        if(stateMethod){stateFacadeUnits.add(units.get(node)!);out.add(native(name,stateMethod,receiver));continue}
         const method=astOptions.readerPageApis&&receiver.handle==='page-collection'
           ?READER_PAGE_AST_APIS_V3.methods[name as keyof typeof READER_PAGE_AST_APIS_V3.methods]
           :astOptions.readerPageApis&&(receiver.handle==='window'||receiver.handle==='helper')
@@ -595,7 +615,10 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
           }
           continue
         }
-        const property=BROWSER_PROPERTIES_V3[receiver.handle!]?.[name]
+        const stateProperty=receiver.handle==='node'
+          ?BROWSER_STATE_NODE_PROPERTIES_V3[name as keyof typeof BROWSER_STATE_NODE_PROPERTIES_V3]:undefined
+        if(stateProperty)stateFacadeUnits.add(units.get(node)!)
+        const property=stateProperty??BROWSER_PROPERTIES_V3[receiver.handle!]?.[name]
         if(property==='event-map'){out.add(sourceDictionary('events',sourceEventFields));continue}
         if(property==='mvu-event-map'){out.add(sourceDictionary('mvu-events',sourceMvuEventFields));continue}
         if(property==='absent'){out.add(fixedAbsent);continue}
@@ -722,6 +745,10 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(name==='TavernHelper')return one(handle('helper',global.realm!))
     if(name==='SillyTavern')return one(handle('tavern',global.realm!))
     if(name==='Mvu')return one(handle('mvu',global.realm!))
+    if(name==='CSS'){stateFacadeUnits.add(state);return one(intrinsicValue('CSS'))}
+    if(name==='waitGlobalInitialized'){
+      stateFacadeUnits.add(state);return one(native(name,BROWSER_STATE_WAIT_V3,global))
+    }
     if(name==='NextTavern')return one(handle('next-tavern',global.realm!))
     if(name==='localStorage')return one(handle('preferences',global.realm!))
     if(name==='URL')return one(handle('url',global.realm!))
@@ -1451,6 +1478,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   const nativeCalls=new Map<TypeScript.Node,Map<Atom,readonly Value[]>>()
   const boundFunctions=new Map<TypeScript.Node,Map<Atom,Atom>>()
   const unprovenNativeBoundCalls=new Set<TypeScript.Node>()
+  const promiseSettlements=new Map<TypeScript.Node,{promise:Atom;rows:Atom;row:Atom}>()
   function invokeFunction(fn:Atom,args:readonly Value[],node:TypeScript.Node,receiver?:Value,selectorExpression?:TypeScript.Expression):Value {
     if(readerGuestHelper(fn))return readerGuestResult(fn,args,node)
     if(fn.kind==='choice'){
@@ -1731,6 +1759,12 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       return
     }
     if(ts.isCallExpression(node)||ts.isNewExpression(node)){
+      if(node.expression.kind===ts.SyntaxKind.ImportKeyword){
+        // The namespace is actually empty. Its absent exports must not turn
+        // into guessed Native functions when the author probes Mvu/default.
+        const namespace=object(node)
+        emit(sourcePromise(node,'fixed-state-import',namespace));return
+      }
       const args=(node.arguments??[]).map(argument=>value(argument,node)),target=value(node.expression,node)
       const access=ts.isPropertyAccessExpression(node.expression)||ts.isElementAccessExpression(node.expression)?node.expression:null
       const receiver=access?value(access.expression,node):undefined
@@ -1800,6 +1834,21 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
               else add(promise.elements!,one(item))
             }
             emit(one(promise));continue
+          }
+          if(fn.nativeName==='Promise.allSettled'){
+            stateFacadeUnits.add(units.get(node)!)
+            let settled=promiseSettlements.get(node)
+            if(!settled){
+              const row=atom('object',{fields:new Map(),written:new Set(),snapshot:true})
+              add(field(row,'status'),new Set([literal('fulfilled'),literal('rejected')]))
+              add(field(row,'reason'),one(guest));row.written!.add('status');row.written!.add('reason');row.written!.add('value')
+              const rows=atom('array',{elements:cell()});add(rows.elements!,one(row))
+              const promise=atom('promise',{elements:cell()});add(promise.elements!,one(rows))
+              settled={promise,rows,row};promiseSettlements.set(node,settled)
+            }
+            for(const array of args[0]??[])for(const item of array.elements?read(array.elements,node):one(unknown))
+              add(field(settled.row,'value'),item.kind==='promise'?read(item.elements!,node):one(item))
+            emit(one(settled.promise));continue
           }
           if(fn.nativeName==='Object.assign'){
             for(const target of args[0]??[])if(target.fields)for(const source of args.slice(1).flatMap(set=>[...set])){
@@ -1969,6 +2018,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   }
   function nativeResult(fn:Atom,args:readonly Value[],node:TypeScript.Node):Value {
     const state=units.get(node)!,realmName=state.input.realm,name=fn.nativeName!,operation=fn.operation!
+    if(name==='waitGlobalInitialized')return sourcePromise(node,'source-mvu-ready',handle('mvu',realmName))
     if(astOptions.readerPageApis&&operation.returns==='page-collection'){
       const receiver=fn.receiver!,collection=receiver.handle==='page-collection'
         ?receiver:handle('page-collection',receiver.realm??realmName)
@@ -2348,8 +2398,27 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       if(nativeMemberUnknown.has(node))report(state,'BROWSER3_NATIVE_MEMBER_UNPROVEN',node)
     }
     if(ts.isCallExpression(node)||ts.isNewExpression(node)){
-      if(node.expression.kind===ts.SyntaxKind.ImportKeyword){report(state,'BROWSER3_IMPORT_UNSUPPORTED',node);continue}
+      if(node.expression.kind===ts.SyntaxKind.ImportKeyword){
+        const argument=node.arguments?.[0],selected=argument?names(finalValue(argument)):undefined
+        if(state.input.pageId!==null||node.arguments?.length!==1||node.typeArguments?.length
+          ||!selected?.size||[...selected].some(specifier=>fixedStateLoaderDependency(specifier)?.group!=='B'))
+          report(state,'BROWSER3_IMPORT_UNSUPPORTED',node)
+        else {
+          state.caps.add('owned-fixed-state-imports')
+          const sites=stateImportSites.get(state)??[]
+          sites.push({importSpan:{start:node.getStart(state.file),end:node.end},
+            argumentSpan:{start:argument!.getStart(state.file),end:argument!.end},exactSpecifiers:[...selected]})
+          stateImportSites.set(state,sites)
+        }
+        continue
+      }
       const targets=finalValue(node.expression)
+      if([...targets].some(fn=>fn.kind==='absent'&&fn.nativeName?.startsWith('state-absent:'))){
+        let caught=false
+        for(let child:TypeScript.Node=node;child.parent&&!callable(child.parent);child=child.parent)
+          if(ts.isTryStatement(child.parent)&&child.parent.tryBlock===child&&child.parent.catchClause){caught=true;break}
+        if(!caught)report(state,'BROWSER3_FIXED_ABSENCE_CALL_UNCAUGHT',node)
+      }
       for(const fn of targets){
         if(fn.kind==='invoke'&&fn.nativeName==='apply'&&nativeFunction(fn.receiver!)&&!nativeCalls.get(node)?.size)
           report(state,'BROWSER3_NATIVE_APPLY_ARGUMENTS_UNPROVEN',node)
@@ -2367,6 +2436,12 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         report(state,'BROWSER3_READER_GLOBAL_READINESS_UNSUPPORTED',node)
     }
     for(const [fn,args] of nativeCalls.get(node)??[]){
+        if(fn.nativeName==='waitGlobalInitialized'){
+          const selected=names(args[0]??new Set())
+          if(selected?.size!==1||!selected.has('Mvu'))report(state,'BROWSER3_READER_GLOBAL_READINESS_UNSUPPORTED',node)
+        }
+        if(astOptions.readerPageApis&&fn.nativeName==='replaceMvuData')
+          report(state,'BROWSER3_READER_STATE_WRITE_UNSUPPORTED',node)
         if(astOptions.readerPageApis&&fn.operation!.returns==='page-collection'
           &&(READER_PAGE_AST_APIS_V3.resourceMethods.includes(fn.nativeName!)
             ||['$','jQuery'].includes(fn.nativeName!)&&[...args[0]??[]].some(item=>
@@ -2381,8 +2456,10 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         }
         // Helper getAllVariables includes captured script DATA. Reader's same
         // name merges only its owned variable snapshots, without that catalog.
-        if(fn.nativeName==='getAllVariables'&&!astOptions.readerPageApis||fn.nativeName==='getVariables'
-          &&[...args[0]??[]].some(option=>option.fields&&names(field(option,'type').values)?.has('script')))
+        const scriptScope=['getVariables','getMvuData'].includes(fn.nativeName!)
+          &&[...args[0]??[]].some(option=>option.fields&&names(field(option,'type').values)?.has('script'))
+        if(scriptScope&&astOptions.readerPageApis)report(state,'BROWSER3_READER_SCRIPT_SCOPE_UNSUPPORTED',node)
+        else if(fn.nativeName==='getAllVariables'&&!astOptions.readerPageApis||scriptScope)
           state.caps.add('owned-script-source-resources')
         if(fn.operation!.returns==='avatar-fetch'){
           const urls=args[0]?names(args[0]):undefined,methods:Value=new Set()
@@ -2502,6 +2579,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
   })
   return {proofs:states.map(state=>({unit:state.input,coverage:state.coverage,capabilities:[...state.caps].sort(),
-    keys:[...state.keys].sort(),pageMounts:[...state.mounts].sort(),media:[...state.media.values()]})),diagnostics,
+    keys:[...state.keys].sort(),pageMounts:[...state.mounts].sort(),media:[...state.media.values()],
+    stateFacade:stateFacadeUnits.has(state),stateImports:stateImportSites.get(state)??[]})),diagnostics,
     ...diagnosticEvidence?{diagnosticEvidence}: {}}
 }

@@ -2,6 +2,8 @@
  * Source, permissions, host-wait cancellation and hard termination stay outside. */
 import {createAsyncifyRuntimeV2} from './tavern-author-browser-adapter-v2.js'
 import type {BrowserVmCleanupV2} from './tavern-author-browser-adapter-v2.js'
+import type {BrowserProgramV3} from './tavern-author-browser-types-v3.mjs'
+import type {OwnedBrowserStateBindingV1} from './tavern-author-browser-state-imports-v1.mjs'
 
 export type BrowserPrimitiveV3=number|string|undefined
 export type BrowserPromiseResultV3={readonly kind:'pending'}
@@ -84,6 +86,27 @@ export class BrowserActorV3 {
     })
   }
   getPage(id:string):any|undefined {return this.pages.get(id)}
+  /** Called once by the accepted attachment owner, before any author realm
+   * entry. Resolution never executes the researched upstream bundle. A missing
+   * binding remains a real import rejection for the author's own fallback. */
+  installOwnedStateModules(input:{readonly browserProgram:BrowserProgramV3;
+    readonly stateProgramBinding?:OwnedBrowserStateBindingV1}):Promise<void> {
+    return this.enter(()=>{
+      const {browserProgram,stateProgramBinding}=input
+      const bound=stateProgramBinding!==undefined&&stateProgramBinding.browserProgramSha256===browserProgram.programSha256
+        &&stateProgramBinding.dependencyGroup==='B'
+        &&(Object.keys(browserProgram.source) as (keyof BrowserProgramV3['source'])[])
+          .every(key=>stateProgramBinding.source[key]===browserProgram.source[key])
+      const exact=new Set(bound?browserProgram.stateImports?.sites.flatMap(site=>site.exactSpecifiers):[])
+      this.runtime.setModuleLoader((name:string)=>{
+        if(!exact.has(name))throw Error('BROWSER_STATE_IMPORT_UNBOUND')
+        return 'export {}'
+      },(_base:string,name:string)=>{
+        if(!exact.has(name))throw Error('BROWSER_STATE_IMPORT_UNBOUND')
+        return name
+      })
+    })
+  }
   /** These are actual same-runtime guest values. The Worker owns the named
    * global slots and unlinks its other callback/window references before close. */
   linkPage(id:string,parentGlobalName:string):Promise<void> {

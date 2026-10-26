@@ -57,7 +57,6 @@ export function browserSourceGuestBootstrapV3(config:any) {
     VARIABLE_UPDATE_STARTED:'mag_variable_update_started',COMMAND_PARSED:'mag_command_parsed',
     VARIABLE_UPDATE_ENDED:'mag_variable_update_ended',BEFORE_MESSAGE_UPDATE:'mag_before_message_update',
     SINGLE_VARIABLE_UPDATED:'mag_variable_updated'})
-  const mvu=freeze({events:mvuEvents})
   const live=(creator:any)=>active&&!retiredPages.has(creator.pageId)
   const promptResource=(pageId:string)=>({browserSessionId:config.binding.browserSessionId,
     generation:config.binding.generation,pageId})
@@ -189,7 +188,9 @@ export function browserSourceGuestBootstrapV3(config:any) {
     }
     if(stringify(previous.personas)!==stringify(next.personas)||stringify(previous.persona)!==stringify(next.persona))
       emit(eventTypes.SETTINGS_UPDATED,[])
-    if(mvuReady(next))for(const waiter of mvuWaiters){mvuWaiters.delete(waiter);waiter.resolve()}
+    if(mvuReady(next))for(const waiter of mvuWaiters)if(live(waiter.creator)){
+      mvuWaiters.delete(waiter);waiter.resolve()
+    }
     // A Reader does not write MVU state. Its event follows the selected Native
     // owner's published snapshot identity, not every UI refresh or reconnect.
     const published=mvuPublication(next)
@@ -197,7 +198,8 @@ export function browserSourceGuestBootstrapV3(config:any) {
       &&next.basis.sourceSnapshotSha256===previous.basis.sourceSnapshotSha256)
       emit(mvuEvents.VARIABLE_UPDATE_ENDED,[])
   }
-  const mvuReady=(state:any)=>['ready','schema-ready'].includes(state.numerical.kind)
+  const mvuReady=(state:any)=>['ready','schema-ready'].includes(state.numerical?.kind)
+    &&typeof state.numerical.expected?.stateSnapshotSha256==='string'
   const mvuPublication=(state:any)=>mvuReady(state)?state.numerical.expected.stateSnapshotSha256:undefined
   const operationId=()=>config.operationPrefix+'-'+ ++sequence
   const variableValue=(value:any)=>value?.kind==='available'?value.variables:undefined
@@ -453,7 +455,7 @@ export function browserSourceGuestBootstrapV3(config:any) {
       getChatMessages:(range:any,options:any)=>messages(range,options,reading(creator)),
       ...(config.generationWriterIdentity===creator.scriptIdentity?{generateRaw}:{}),
       ...(creator.updateChatKey?{updateVariablesWith}:{}),
-      event_types:eventTypes,tavern_events:eventTypes,Mvu:mvu,
+      event_types:eventTypes,tavern_events:eventTypes,
       eventOn:(type:string,callback:Function)=>subscribe(creator,type,callback),
       eventOnce:(type:string,callback:Function)=>subscribe(creator,type,callback,true),
       eventMakeFirst:(type:string,callback:Function)=>subscribe(creator,type,callback,false,true),
@@ -505,7 +507,7 @@ export function browserSourceGuestBootstrapV3(config:any) {
     const tavern={getCurrentChatId:()=>config.binding.sessionId,getContext:()=>({
       name1:snapshot.persona.name,name2:snapshot.character?.name??'',chatId:config.binding.sessionId,
       characterId:snapshot.character?0:undefined,characters:clone(snapshot.character?[snapshot.character]:[]),eventTypes,
-      tavern_events:eventTypes,Mvu:mvu,
+      tavern_events:eventTypes,
       getRequestHeaders:()=>({'Content-Type':'application/json'}),
       chat:clone(snapshot.messages.map((row:any)=>({name:row.role==='user'?snapshot.persona.name:snapshot.character?.name??'',
         mes:row.message,is_user:row.role==='user',is_system:false,
@@ -515,7 +517,9 @@ export function browserSourceGuestBootstrapV3(config:any) {
       replaceNumericalValues:async(values:any,expected:any)=>{
         const reply=await request({op:'save',request:{requestId:++sequence,generation:config.binding.generation,
           readRevision:snapshot.readRevision,scriptIdentity:creator.scriptIdentity,values:clone(values),expected:clone(expected)}})
-        if(reply.snapshot)setSnapshot(reply.snapshot)
+        if(!reply.snapshot){active=false;listeners.clear();throw Error('BROWSER_ATTACHMENT_REVOKED')}
+        setSnapshot(reply.snapshot)
+        for(const event of reply.sourceEvents??[])emit(event.type,event.args)
         return reply.result
       }}
     const guard=(fn:Function)=>(...args:any[])=>{
@@ -524,6 +528,44 @@ export function browserSourceGuestBootstrapV3(config:any) {
     }
     const guarded=(value:any)=>Object.fromEntries(Object.entries(value).map(([key,fn])=>
       [key,typeof fn==='function'?guard(fn):fn]))
+    const ready=()=>live(creator)&&mvuReady(reading(creator))
+    const mvuRead=guard((option:any={type:'chat'})=>{
+      if(!ready())throw Error('MVU_PLAYER_NOT_READY')
+      return getVariables(option)
+    })
+    const mvuReplace=guard(async(data:any,option:any={type:'chat'})=>{
+      if(!ready())throw Error('MVU_PLAYER_NOT_READY')
+      // The upstream API replaces a whole variable table across several
+      // scopes. This facade implements only the lossless current chat subset;
+      // reject other tables before invoking the existing numerical writer.
+      if(!option||option.type!=='chat'||ownKeys(option).some(key=>key!=='type')
+        ||!data||typeof data!=='object'||Array.isArray(data)
+        ||ownKeys(data).length!==1||!Object.prototype.hasOwnProperty.call(data,'stat_data'))
+        throw Error('BROWSER_MVU_REPLACEMENT_UNSUPPORTED')
+      const numerical=snapshot.numerical
+      if(!numerical.canEdit)throw Error(numerical.editBlockCode??'MVU_PLAYER_NOT_READY')
+      const result=await nextTavern.replaceNumericalValues(data.stat_data,numerical.expected)
+      if(!live(creator))throw Error('BROWSER_ATTACHMENT_REVOKED')
+      if(!result.ok||!['updated','no-update'].includes(result.operation?.outcome))
+        throw Error(result.code??'MVU_PLAYER_WRITE_UNCONFIRMED')
+    })
+    const liveMvu=freeze(Object.defineProperties({events:mvuEvents},reader||config.stateFacade?{
+      getMvuData:{enumerable:true,get:()=>ready()?mvuRead:undefined},
+      ...reader?{}:{replaceMvuData:{enumerable:true,get:()=>ready()?mvuReplace:undefined}},
+    }:{}))
+    const waitGlobalInitialized=guard((name:string)=>{
+      if(name!=='Mvu')throw Error('BROWSER_GLOBAL_READINESS_UNSUPPORTED')
+      if(ready())return Promise.resolve(liveMvu)
+      return new Promise<void>(resolve=>mvuWaiters.add({creator,resolve})).then(()=>{
+        if(!live(creator))throw Error('BROWSER_ATTACHMENT_REVOKED')
+        return liveMvu
+      })
+    })
+    const withMvu=(value:any)=>Object.defineProperty(value,'Mvu',{enumerable:true,get:()=>liveMvu})
+    const exposedTavern=freeze({...guarded(tavern),getContext:guard(()=>{
+      const context=tavern.getContext()
+      return withMvu(context)
+    })})
     if(reader) {
       const readSubscribe=(type:string,callback:Function,once=false,first=false)=>{
         if(type===eventTypes.GENERATION_AFTER_COMMANDS)throw Error('READER_REGEX_DOCUMENT_GENERATION_UNAVAILABLE')
@@ -541,16 +583,11 @@ export function browserSourceGuestBootstrapV3(config:any) {
           &&published.provenance.state.revision===state.numerical.expected?.revision)
           merged.stat_data=clone(published.variables.stat_data)
         return merged
-      },getChatMessages:apis.getChatMessages,event_types:eventTypes,tavern_events:eventTypes,Mvu:mvu,
+      },getChatMessages:apis.getChatMessages,event_types:eventTypes,tavern_events:eventTypes,
       eventOn:(type:string,callback:Function)=>readSubscribe(type,callback),
       eventOnce:(type:string,callback:Function)=>readSubscribe(type,callback,true),
       eventMakeFirst:(type:string,callback:Function)=>readSubscribe(type,callback,false,true),
       eventRemoveListener:apis.eventRemoveListener,structuredClone:clone,
-      waitGlobalInitialized:(name:string)=>{
-        if(name!=='Mvu')throw Error('READER_REGEX_DOCUMENT_GLOBAL_UNSUPPORTED')
-        if(mvuReady(reading(creator)))return Promise.resolve()
-        return new Promise<void>(resolve=>mvuWaiters.add({creator,resolve}))
-      },
       // Callback failure reporting already belongs to the page invocation
       // owner. The helper preserves sync throws and Promise rejection there.
       errorCatched:(fn:Function)=>(...args:any[])=>fn(...args)}
@@ -574,17 +611,18 @@ export function browserSourceGuestBootstrapV3(config:any) {
         for(const part of parts){if(selected===null||selected===undefined){selected=undefined;break}selected=selected[part]}
         return selected===undefined?fallback:selected
       }
-      return {...exposed,$:jquery,jQuery:jquery,_:freeze({get:dataGet}),
-        TavernHelper:freeze({...exposed,$:jquery,jQuery:jquery}),SillyTavern:freeze(guarded(tavern)),
+      return withMvu({...exposed,waitGlobalInitialized,$:jquery,jQuery:jquery,_:freeze({get:dataGet}),
+        TavernHelper:freeze(withMvu({...exposed,$:jquery,jQuery:jquery})),SillyTavern:exposedTavern,
         NextTavern:freeze({getNumericalState:guard(nextTavern.getNumericalState)}),
-        get name1(){return snapshot.persona.name},get name2(){return snapshot.character?.name??''}}
+        get name1(){return snapshot.persona.name},get name2(){return snapshot.character?.name??''}})
     }
     const jquery=guard(personaJQuery) as any
     jquery.fn=freeze({})
     const exposed={...guarded(apis),$:jquery,jQuery:jquery,fetch:guard(avatarFetch)}
-    return {...exposed,TavernHelper:freeze({...exposed,getVariables:guard(explicitVariables)}),
-      SillyTavern:freeze(guarded(tavern)),NextTavern:freeze(guarded(nextTavern)),
-      get name1(){return snapshot.persona.name},get name2(){return snapshot.character?.name??''}}
+    return withMvu({...exposed,...config.stateFacade?{waitGlobalInitialized}:{},
+      TavernHelper:freeze(withMvu({...exposed,getVariables:guard(explicitVariables)})),
+      SillyTavern:exposedTavern,NextTavern:freeze(guarded(nextTavern)),
+      get name1(){return snapshot.persona.name},get name2(){return snapshot.character?.name??''}})
   }
   return {createFacade,facadeKeys:(facade:any)=>stringify(ownKeys(facade)),nativeRegistry,
     getGenerationRegistrations:()=>stringify(generationRows().map(registration)),invokeGeneration,

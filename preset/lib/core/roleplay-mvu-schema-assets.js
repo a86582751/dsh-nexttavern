@@ -19,6 +19,8 @@ import { createRoleplayTypeScriptAssetOwner } from './roleplay-typescript-assets
 import { validateSchemaExecutorIdentityTuple } from './roleplay-mvu-schema-executor-types.js';
 const packageName = 'dsh-nexttavern-mvu-schema-runtime';
 const policyPackageName = packageName + '-v4-update-batch-v1';
+const isV4Program = (program) => 'encoding' in program && (program.encoding === 'native-mvu-author-schema-program-v2'
+    || program.encoding === 'native-mvu-owned-state-program-v1');
 const sameDirectory = (left, right) => left.protocol === 'file:'
     && fs.realpathSync(fileURLToPath(left)) === right;
 function productRoot(name, packageVersion) {
@@ -153,11 +155,19 @@ export function createRoleplayMvuSchemaAssetOwner() {
                 // Preserve the admitted compiler's actual optional surface, including
                 // historical candidate generations; older executors expose no method.
                 ...(version === 4 && 'partitionCandidates' in loaded.compiler ? {
-                    async partitionCandidates(input, signal) {
+                    async partitionCandidates(input, signal, browserCandidateOrdinals) {
                         if (closed)
                             throw Error('SCHEMA_RUNTIME_DISPOSED');
                         return loaded.compiler
-                            .partitionCandidates(input, signal);
+                            .partitionCandidates(input, signal, browserCandidateOrdinals);
+                    },
+                } : {}),
+                ...(version === 4 && 'assembleOwnedStateProgram' in loaded.compiler ? {
+                    assembleOwnedStateProgram(...args) {
+                        if (closed)
+                            throw Error('SCHEMA_RUNTIME_DISPOSED');
+                        return loaded.compiler
+                            .assembleOwnedStateProgram(...args);
                     },
                 } : {}),
                 async compile(input, signal) {
@@ -180,7 +190,7 @@ export function createRoleplayMvuSchemaAssetOwner() {
                         throw Error('SCHEMA_RUNTIME_DISPOSED');
                     if (version === 4 && program.schemaVersion === 2)
                         return loaded.compiler.verifyProgram(program, signal);
-                    if (program.schemaVersion !== 1)
+                    if (program.schemaVersion !== 1 || isV4Program(program))
                         return false;
                     if (version === 1)
                         return loaded.compiler.verifyProgram(program, signal);
@@ -196,7 +206,7 @@ export function createRoleplayMvuSchemaAssetOwner() {
                     ? async (program, input, signal) => {
                         if (closed)
                             throw Error('SCHEMA_RUNTIME_DISPOSED');
-                        if (input.schemaVersion !== 4 || program.schemaVersion !== 2) {
+                        if (input.schemaVersion !== 4 || !isV4Program(program)) {
                             return { kind: 'unavailable', diagnostics: [{ code: 'SCHEMA_EXECUTOR_VERSION_MISMATCH' }] };
                         }
                         return loaded.runner.openManualRun(program, input, signal);
@@ -205,7 +215,7 @@ export function createRoleplayMvuSchemaAssetOwner() {
                     ? async (program, input, signal) => {
                         if (closed)
                             throw Error('SCHEMA_RUNTIME_DISPOSED');
-                        if (input.schemaVersion !== 4 || program.schemaVersion !== 2) {
+                        if (input.schemaVersion !== 4 || !isV4Program(program)) {
                             return { kind: 'unavailable', diagnostics: [{ code: 'SCHEMA_EXECUTOR_VERSION_MISMATCH' }] };
                         }
                         return loaded.runner.evaluateNext(program, input, signal);
@@ -217,26 +227,26 @@ export function createRoleplayMvuSchemaAssetOwner() {
                         return { kind: 'unavailable', diagnostics: [{ code: 'SCHEMA_EXECUTOR_VERSION_MISMATCH' }] };
                     // The admitted provider verifies the full owned package before and
                     // after each call; the adapter only owns lifecycle and ABI selection.
-                    if (input.schemaVersion === 1 && version === 1 && program.schemaVersion === 1)
+                    if (input.schemaVersion === 1 && version === 1 && !isV4Program(program))
                         return loaded.runner.evaluateTrace(program, input, signal);
-                    if (input.schemaVersion === 2 && version === 2 && program.schemaVersion === 1)
+                    if (input.schemaVersion === 2 && version === 2 && !isV4Program(program))
                         return loaded.runner.evaluateTrace(program, input, signal);
-                    if (input.schemaVersion === 3 && version === 3 && program.schemaVersion === 1)
+                    if (input.schemaVersion === 3 && version === 3 && !isV4Program(program))
                         return loaded.runner.evaluateTrace(program, input, signal);
-                    if (input.schemaVersion === 4 && version === 4 && program.schemaVersion === 2)
+                    if (input.schemaVersion === 4 && version === 4 && isV4Program(program))
                         return loaded.runner.evaluateTrace(program, input, signal);
                     return { kind: 'unavailable', diagnostics: [{ code: 'SCHEMA_EXECUTOR_VERSION_MISMATCH' }] };
                 },
                 async verifyTrace(program, evaluation, signal) {
                     if (closed)
                         throw Error('SCHEMA_RUNTIME_DISPOSED');
-                    if (evaluation.schemaVersion === 1 && version === 1 && program.schemaVersion === 1)
+                    if (evaluation.schemaVersion === 1 && version === 1 && !isV4Program(program))
                         return loaded.runner.verifyTrace(program, evaluation, signal);
-                    if (evaluation.schemaVersion === 2 && version === 2 && program.schemaVersion === 1)
+                    if (evaluation.schemaVersion === 2 && version === 2 && !isV4Program(program))
                         return loaded.runner.verifyTrace(program, evaluation, signal);
-                    if (evaluation.schemaVersion === 3 && version === 3 && program.schemaVersion === 1)
+                    if (evaluation.schemaVersion === 3 && version === 3 && !isV4Program(program))
                         return loaded.runner.verifyTrace(program, evaluation, signal);
-                    if (evaluation.schemaVersion === 4 && version === 4 && program.schemaVersion === 2)
+                    if (evaluation.schemaVersion === 4 && version === 4 && isV4Program(program))
                         return loaded.runner.verifyTrace(program, evaluation, signal);
                     return false;
                 } }, dispose: () => loaded.dispose() };

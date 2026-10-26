@@ -13,18 +13,18 @@ import {reduceSchemaUpdateOperationV2,mergeSchemaUpdateValuesV2,
 import {recordSha256} from './roleplay-data.js'
 import {cloneSchemaData,unpackSchemaEnvelopeV4,cloneSchemaValues,schemaTextSha256} from './tavern-mvu-schema-data.js'
 import type {SchemaMaterialEnvelopeV4} from './tavern-mvu-schema-data.js'
-import {schemaPhaseErrorPolicyForProgramV4} from './tavern-mvu-schema-program-v4.js'
+import {schemaPhaseErrorPolicyForProgramV4,schemaExecutionViewV4} from './tavern-mvu-schema-program-v4.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
+import type {MvuSchemaLibraryBytes} from './tavern-mvu-schema-types.js'
 import {validateSchemaGuestOutputForParsedProgramV4} from './tavern-mvu-schema-runner-v4.js'
 import {createMvuScopeReaderV1,readMvuVariable,MvuScopeReadError} from './tavern-mvu-scope-read.js'
 import type {MvuUpdateOperationV2} from './roleplay-mvu-update-v2.js'
 import type {MvuSchemaCleanupEffectV2} from './tavern-mvu-schema-update-effects-v2.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {QuickJSContext,QuickJSHandle,QuickJSRuntime} from 'quickjs-emscripten-core'
-import type {MvuSchemaWorkerRequestV4,MvuSchemaWorkerEvaluationResponseV4,
+import type {MvuSchemaWorkerRequestV4,MvuSchemaWorkerTraceInputV4,MvuSchemaWorkerEvaluationResponseV4,
   MvuSchemaManualWorkerMessageV4,MvuSchemaManualWorkerResponseV4} from './tavern-mvu-schema-runner-v4.js'
-import type {MvuSchemaEvaluationInputV4,MvuSchemaTraceFrameV4,MvuSchemaGuestOutputV4,
-  MvuSchemaTraceRequestedStepV4,MvuSchemaTraceStepRecordV4} from './tavern-mvu-schema-types-v4.js'
+import type {MvuSchemaEvaluationInputV4,MvuSchemaGuestOutputV4} from './tavern-mvu-schema-types-v4.js'
 
 const require=createRequire(import.meta.url)
 const MAX_JOBS=1024
@@ -188,10 +188,15 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,r
   const array=A.isArray,own=O.hasOwn,freeze=O.freeze,define=O.defineProperty,finite=Number.isFinite;
   const char=String.prototype.charCodeAt,push=A.prototype.push,slice=A.prototype.slice;
   const objectProto=O.prototype,arrayProto=A.prototype;
-  let input=Jparse(wire);const material=Jparse(materialWire),libraries=Jparse(libraryWire),scripts=Jparse(scriptWire);
   const plan=Jparse(planWire);
-  const zNamespace=G[libraries.zod],z=zNamespace.z||zNamespace,rawLodash=G[libraries.lodash],lodash=rawLodash.default||rawLodash;
-  const ZodObject=z.ZodObject,looseObject=z.looseObject;
+  let input=Jparse(wire);
+  const libraries=plan.stateOnly?undefined:Jparse(libraryWire),scripts=plan.stateOnly?[]:Jparse(scriptWire);
+  let z,lodash,ZodObject,looseObject;
+  if(!plan.stateOnly){
+    const zNamespace=G[libraries.zod],rawLodash=G[libraries.lodash];
+    z=zNamespace.z||zNamespace;lodash=rawLodash.default||rawLodash;
+    ZodObject=z.ZodObject;looseObject=z.looseObject;
+  }
   const registrations=[],readyCallbacks=[];
   let values=input.values,commands=input.commands,metadata=input.context;
   const initializationWriters=plan.initializationWriteScriptIds||[];
@@ -243,7 +248,7 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,r
     return Jparse(encode(value,1048576,32,32000));}
   function frozen(value){if(value&&typeof value==='object'){
     const names=keys(value);for(let index=0;index<names.length;index++)frozen(value[names[index]]);freeze(value);}return value;}
-  let source=frozen(material);
+  let source=plan.stateOnly?undefined:frozen(Jparse(materialWire));
   function readSource(){if(arguments.length)fail('SCHEMA_READ_UNSUPPORTED');return source;}
   function schemaFor(entry){
     const registration=entry.registration;
@@ -371,7 +376,7 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,r
       if(initializationHandoffPending){
         if(input.phase==='initialization'&&initializationCandidate!==undefined)values=initializationCandidate;
         initializationHandoffPending=false;initializationCandidate=undefined;}
-      source=material;},
+      if(!plan.stateOnly)source=material;},
     loaded(){registrationBoundary();},
     async ready(){for(let index=0;index<readyCallbacks.length;index++){
       await readyCallbacks[index].callback();}
@@ -510,13 +515,9 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
   // The private parent parsed and bound the complete program and phase inputs
   // before transfer. This worker owns fresh guest output and replay semantics.
   const program=request.program
-  const plan=program.executionPlan
-  const initializationWriters=new Set(plan.initializationWriteProfile?.bindings.map(binding=>binding.scriptIdentity)??[])
-  const serverOrdinals=new Set(plan.scripts.filter(script=>script.enabled&&script.disposition==='server')
-    .map(script=>script.ordinal))
-  const serverScripts=program.scripts.map((script,index)=>({script,index}))
-    .filter(({index})=>serverOrdinals.has(index))
-  const stateOnly=plan.summary.enabledServerSchema===0&&plan.summary.enabledNativeLoaders>0
+  const view=schemaExecutionViewV4(program)
+  const {initializationWriters,serverScripts,stateOnly,scripts}=view
+  const schemaPlan=program.encoding==='native-mvu-author-schema-program-v2'?program.executionPlan:null
   if(!stateOnly&&!serverScripts.length)return unavailable('SCHEMA_REGISTRATION_MISSING')
   const trace='trace' in request?request.trace:undefined
   const input:MvuSchemaEvaluationInputV4=trace?{schemaVersion:4,
@@ -526,9 +527,12 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
     commands:[],context:trace.loadFrame.context,scopeReadFrame:trace.loadFrame.scopeReadFrame,
     clockEpochMs:trace.loadFrame.clockEpochMs,randomSeed:trace.loadFrame.randomSeed}:
     (request as Extract<MvuSchemaWorkerRequestV4,{input:unknown}>).input
-  const libraries=cloneSchemaData(request.libraries,MVU_SCHEMA_BOUNDS.programBytes)
-  for(const library of libraries)if(schemaTextSha256(library.code)!==library.bundleSha256) {
-    return {kind:'unavailable',code:'SCHEMA_LIBRARY_UNAVAILABLE'}
+  let libraries:readonly MvuSchemaLibraryBytes[]=[]
+  if(!stateOnly) {
+    libraries=cloneSchemaData(request.libraries!,MVU_SCHEMA_BOUNDS.programBytes)
+    for(const library of libraries)if(schemaTextSha256(library.code)!==library.bundleSha256) {
+      return {kind:'unavailable',code:'SCHEMA_LIBRARY_UNAVAILABLE'}
+    }
   }
   const quickjs=await newQuickJSWASMModuleFromVariant(variant)
   const runtime=quickjs.newRuntime()
@@ -568,12 +572,12 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
   let readers=new Map<string,ReturnType<typeof createMvuScopeReaderV1>>()
   let initializationWriteError:QuickJSHandle|undefined
   try {
-    readers=new Map(input.scopeReadFrame.scripts.map(script=>[script.scriptId,
+    if(!stateOnly)readers=new Map(input.scopeReadFrame.scripts.map(script=>[script.scriptId,
       createMvuScopeReaderV1(input.scopeReadFrame,script.scriptId)]))
     const inputHandle=context.newString(JSON.stringify(input));owned.push(inputHandle)
     const determinism=checked(context.evalCode(DETERMINISM,'trusted-clock.js'));owned.push(determinism)
     const clockFrame=checked(context.callFunction(determinism,context.undefined,inputHandle));owned.push(clockFrame)
-    for(const library of libraries)checked(context.evalCode(library.code,`trusted-${library.kind}.js`)).dispose()
+    if(!stateOnly)for(const library of libraries)checked(context.evalCode(library.code,`trusted-${library.kind}.js`)).dispose()
     const callbackPayload=(wireHandle:QuickJSHandle,encoding:string,fields:readonly string[]):Record<string,unknown>=>{
       if(context.typeof(wireHandle)!=='string')throw Error('SCHEMA_CALLBACK_INPUT_INVALID')
       const wire=context.getString(wireHandle)
@@ -663,15 +667,18 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
         return context.newString(JSON.stringify({kind:'unavailable',code}))
       }
     });owned.push(read)
-    const libraryNames=Object.fromEntries(libraries.map(library=>[library.kind,library.globalName]))
-    const material=context.newString(JSON.stringify(trace?.loadFrame.material??program.source.material))
-    const names=context.newString(JSON.stringify(libraryNames))
-    const scriptScopes=context.newString(JSON.stringify(input.scopeReadFrame.scripts.map(({scriptId,pointer})=>({scriptId,pointer}))))
-    const execution=context.newString(JSON.stringify({executionPlanSha256:plan.executionPlanSha256,stateOnly,
+    const material=stateOnly?context.undefined:
+      context.newString(JSON.stringify(trace?.loadFrame.material??program.source.material))
+    const names=stateOnly?context.undefined:
+      context.newString(JSON.stringify(Object.fromEntries(libraries.map(library=>[library.kind,library.globalName]))))
+    const scriptScopes=stateOnly?context.undefined:
+      context.newString(JSON.stringify(input.scopeReadFrame.scripts.map(({scriptId,pointer})=>({scriptId,pointer}))))
+    const execution=context.newString(JSON.stringify({executionPlanSha256:view.executionPlanSha256,stateOnly,
       errorPolicy:schemaPhaseErrorPolicyForProgramV4(program),
       serverScriptIds:serverScripts.map(({script})=>script.identity),...initializationWriters.size
         ?{initializationWriteScriptIds:[...initializationWriters]}:{}}))
-    owned.push(material,names,scriptScopes,execution)
+    if(!stateOnly)owned.push(material,names,scriptScopes)
+    owned.push(execution)
     const bootstrap=checked(context.evalCode(BOOTSTRAP,'trusted-schema-bridge.js'));owned.push(bootstrap)
     const controller=checked(context.callFunction(bootstrap,context.undefined,inputHandle,material,names,scriptScopes,
       execution,reduce,merge,reduceBatch,mergeBatch,read))
@@ -682,104 +689,110 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
     }
     const ready=context.getProp(controller,'ready'),run=context.getProp(controller,'run')
     const frame=context.getProp(controller,'frame'),loaded=context.getProp(controller,'loaded');owned.push(ready,run,frame,loaded)
-    const sourceValue=context.getProp(controller,'source'),prepareMaterial=context.getProp(controller,'material')
-    owned.push(sourceValue,prepareMaterial)
-    // The DATA owner has already interned identical full materials. Keep each
-    // immutable VM snapshot once; a changed frame must never mutate an old one
-    // captured by an author closure. Handles belong only to this VM's cleanup.
-    const materials=new Map<object,QuickJSHandle>()
-    const initialMaterial=trace?.loadFrame.material??program.source.material
-    const initialSource=checked(context.callFunction(sourceValue,controller),context)
-    materials.set(initialMaterial,initialSource);owned.push(initialSource)
-    function materialHandle(value:object):QuickJSHandle {
-      const cached=materials.get(value)
-      if(cached)return cached
-      const wire=context.newString(JSON.stringify(value))
-      try {
-        const source=checked(context.callFunction(prepareMaterial,controller,wire),context)
-        materials.set(value,source);owned.push(source);return source
-      }finally{wire.dispose()}
-    }
-    const capabilities=context.getProp(controller,'capabilities');owned.push(capabilities)
-    const modules=new Map<string,string>()
-    for(const library of libraries) {
-      const handle=context.getProp(context.global,library.globalName)
-      let exported:string[]
-      try {
-        const list=checked(context.evalCode(`Object.keys(globalThis[${JSON.stringify(library.globalName)}])`,'trusted-exports.js'))
-        try {exported=context.dump(list)}finally {list.dispose()}
-      } finally {handle.dispose()}
-      const source=exported.filter(name=>/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)&&!['__proto__','constructor','prototype'].includes(name))
-        .map((name,index)=>`const value${index}=globalThis[${JSON.stringify(library.globalName)}][${JSON.stringify(name)}];export {value${index} as ${name}};`)
-      if(!exported.includes('default'))source.push(`export default globalThis.${library.kind==='zod'?'z':'_'};`)
-      if(library.kind==='lodash'&&!exported.includes('_'))source.push('export const _=globalThis._;')
-      if(library.kind==='zod'&&!exported.includes('z'))source.push('export const z=globalThis.z;')
-      modules.set(`nexttavern:${library.kind}`,source.join('\n'))
-    }
-    const scopeModules=new Map(program.scripts.map((script,index)=>[index,`nexttavern:scope-author-${index}`]))
-    const stagedogModules=new Map((plan.commandPolicyProfile?.bindings??[]).map(binding=>[
-      binding.scriptOrdinal,`nexttavern:scope-author-${binding.scriptOrdinal}-stagedog`] as const))
-    const scopeLoaderKey='__native_mvu_scope_preload'
-    for(const {index,script} of serverScripts) {
-      const names=initializationWriters.has(script.identity)?[...scopedNames,'insertOrAssignVariables']:scopedNames
-      const exports=names.map((name,ordinal)=>
-        `const value${ordinal}=owner[${JSON.stringify(name)}];export {value${ordinal} as ${name}};`).join('\n')
-      modules.set(scopeModules.get(index)!,`const owner=globalThis[${JSON.stringify(scopeLoaderKey)}];\n${exports}`)
-      if(stagedogModules.has(index)) {
-        modules.set(stagedogModules.get(index)!,`const owner=globalThis[${JSON.stringify(scopeLoaderKey)}];\n${exports}`)
-      }
-    }
-    const allowed=new Map(serverScripts.map(({script,index})=>[`author-${index}.mjs`,new Set([
-      ...script.imports.map(binding=>`nexttavern:${binding.kind}`),scopeModules.get(index)!,
-      ...(stagedogModules.has(index)?['nexttavern:stagedog-schema-bridge']:[])])]))
-    runtime.setModuleLoader(name=>{
-      const source=modules.get(name)
-      if(source===undefined){denied=true;throw Error('SCHEMA_IMPORT_UNAVAILABLE')}
-      return source
-    },(base,name)=>{
-      if(base!=='trusted-preload.mjs'&&!base.startsWith('trusted-scope-preload-')&&!allowed.get(base)?.has(name)) {
-        denied=true;throw Error('SCHEMA_IMPORT_UNAVAILABLE')}
-      if(name==='nexttavern:schema-bridge'||name==='nexttavern:stagedog-schema-bridge') {
-        const index=program.scripts.findIndex((_script,index)=>base===`author-${index}.mjs`)
-        if(index<0){denied=true;throw Error('SCHEMA_IMPORT_UNAVAILABLE')}
-        return name==='nexttavern:stagedog-schema-bridge'?stagedogModules.get(index)!:scopeModules.get(index)!
-      }
-      return name
-    })
-    // Cache library/bridge exports before author code can mutate library globals.
-    const preload=checked(context.evalCode([...modules.keys()].filter(name=>!name.startsWith('nexttavern:scope-author-'))
-      .map(name=>`import ${JSON.stringify(name)};`).join('\n'),
-      'trusted-preload.mjs',{type:'module'}))
-    try {completed(context,runtime,preload,trace?budget:{jobs:0})}finally {preload.dispose()}
-    // Preload each capability export while only trusted code can see its VM
-    // object, then delete the temporary global before evaluating any author.
-    for(const {index,script} of serverScripts) {
-      const exports=[{module:scopeModules.get(index)!,policy:'atomic-refusal'}]
-      if(stagedogModules.has(index))exports.push({module:stagedogModules.get(index)!,
-        policy:plan.commandPolicyProfile!.bindings.find(binding=>binding.scriptOrdinal===index)!.policy})
-      for(const entry of exports) {
-        const id=context.newString(script.identity),policy=context.newString(entry.policy)
-        const bound=(()=>{
-          try {return checked(context.callFunction(capabilities,controller,id,policy))}
-          finally {id.dispose();policy.dispose()}
-        })()
+    let materialHandle:((value:object)=>QuickJSHandle)|undefined
+    if(!stateOnly) {
+      const sourceValue=context.getProp(controller,'source'),prepareMaterial=context.getProp(controller,'material')
+      owned.push(sourceValue,prepareMaterial)
+      // Schema closures retain their complete immutable Source snapshots.
+      // State-only phases never read Source, so they prepare no guest material.
+      const materials=new Map<object,QuickJSHandle>()
+      const initialMaterial=trace?.loadFrame.material??program.source.material
+      const initialSource=checked(context.callFunction(sourceValue,controller),context)
+      materials.set(initialMaterial,initialSource);owned.push(initialSource)
+      materialHandle=value=>{
+        const cached=materials.get(value)
+        if(cached)return cached
+        const wire=context.newString(JSON.stringify(value))
         try {
-          context.setProp(context.global,scopeLoaderKey,bound)
-          const preloaded=checked(context.evalCode(`import ${JSON.stringify(entry.module)};`,
-            `trusted-scope-preload-${index}-${entry.policy}.mjs`,{type:'module'}))
-          try {completed(context,runtime,preloaded,trace?budget:{jobs:0})}finally {preloaded.dispose()}
-        } finally {
-          checked(context.evalCode(`delete globalThis[${JSON.stringify(scopeLoaderKey)}];`,'trusted-scope-cleanup.js')).dispose()
-          bound.dispose()
+          const source=checked(context.callFunction(prepareMaterial,controller,wire),context)
+          materials.set(value,source);owned.push(source);return source
+        }finally{wire.dispose()}
+      }
+    }
+    // State-only phases have no author modules or registrations; their JSON reducer
+    // does not consume schema/lodash guests. Keep those assets with the schema branch.
+    if(!stateOnly) {
+      const capabilities=context.getProp(controller,'capabilities');owned.push(capabilities)
+      const modules=new Map<string,string>()
+      for(const library of libraries) {
+        const handle=context.getProp(context.global,library.globalName)
+        let exported:string[]
+        try {
+          const list=checked(context.evalCode(`Object.keys(globalThis[${JSON.stringify(library.globalName)}])`,'trusted-exports.js'))
+          try {exported=context.dump(list)}finally {list.dispose()}
+        } finally {handle.dispose()}
+        const source=exported.filter(name=>/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)&&!['__proto__','constructor','prototype'].includes(name))
+          .map((name,index)=>`const value${index}=globalThis[${JSON.stringify(library.globalName)}][${JSON.stringify(name)}];export {value${index} as ${name}};`)
+        if(!exported.includes('default'))source.push(`export default globalThis.${library.kind==='zod'?'z':'_'};`)
+        if(library.kind==='lodash'&&!exported.includes('_'))source.push('export const _=globalThis._;')
+        if(library.kind==='zod'&&!exported.includes('z'))source.push('export const z=globalThis.z;')
+        modules.set(`nexttavern:${library.kind}`,source.join('\n'))
+      }
+      const scopeModules=new Map(scripts.map((script,index)=>[index,`nexttavern:scope-author-${index}`]))
+      const stagedogModules=new Map((schemaPlan?.commandPolicyProfile?.bindings??[]).map(binding=>[
+        binding.scriptOrdinal,`nexttavern:scope-author-${binding.scriptOrdinal}-stagedog`] as const))
+      const scopeLoaderKey='__native_mvu_scope_preload'
+      for(const {index,script} of serverScripts) {
+        const names=initializationWriters.has(script.identity)?[...scopedNames,'insertOrAssignVariables']:scopedNames
+        const exports=names.map((name,ordinal)=>
+          `const value${ordinal}=owner[${JSON.stringify(name)}];export {value${ordinal} as ${name}};`).join('\n')
+        modules.set(scopeModules.get(index)!,`const owner=globalThis[${JSON.stringify(scopeLoaderKey)}];\n${exports}`)
+        if(stagedogModules.has(index)) {
+          modules.set(stagedogModules.get(index)!,`const owner=globalThis[${JSON.stringify(scopeLoaderKey)}];\n${exports}`)
         }
       }
-    }
-    for(const {index,script} of serverScripts) {
-      if(expired())throw new GuestRefusal('SCHEMA_VM_TIMEOUT')
-      const filename=`author-${index}.mjs`,source=bindAuthorScope(script.javascript,filename,scopeModules.get(index)!,
-        initializationWriters.has(script.identity))
-      const result=checked(context.evalCode(source,filename,{type:'module'}),context)
-      try {completed(context,runtime,result,trace?budget:{jobs:0})}finally {result.dispose()}
+      const allowed=new Map(serverScripts.map(({script,index})=>[`author-${index}.mjs`,new Set([
+        ...script.imports.map(binding=>`nexttavern:${binding.kind}`),scopeModules.get(index)!,
+        ...(stagedogModules.has(index)?['nexttavern:stagedog-schema-bridge']:[])])]))
+      runtime.setModuleLoader(name=>{
+        const source=modules.get(name)
+        if(source===undefined){denied=true;throw Error('SCHEMA_IMPORT_UNAVAILABLE')}
+        return source
+      },(base,name)=>{
+        if(base!=='trusted-preload.mjs'&&!base.startsWith('trusted-scope-preload-')&&!allowed.get(base)?.has(name)) {
+          denied=true;throw Error('SCHEMA_IMPORT_UNAVAILABLE')}
+        if(name==='nexttavern:schema-bridge'||name==='nexttavern:stagedog-schema-bridge') {
+          const index=scripts.findIndex((_script,index)=>base===`author-${index}.mjs`)
+          if(index<0){denied=true;throw Error('SCHEMA_IMPORT_UNAVAILABLE')}
+          return name==='nexttavern:stagedog-schema-bridge'?stagedogModules.get(index)!:scopeModules.get(index)!
+        }
+        return name
+      })
+      // Cache library/bridge exports before author code can mutate library globals.
+      const preload=checked(context.evalCode([...modules.keys()].filter(name=>!name.startsWith('nexttavern:scope-author-'))
+        .map(name=>`import ${JSON.stringify(name)};`).join('\n'),
+        'trusted-preload.mjs',{type:'module'}))
+      try {completed(context,runtime,preload,trace?budget:{jobs:0})}finally {preload.dispose()}
+      // Preload each capability export while only trusted code can see its VM
+      // object, then delete the temporary global before evaluating any author.
+      for(const {index,script} of serverScripts) {
+        const exports=[{module:scopeModules.get(index)!,policy:'atomic-refusal'}]
+        if(stagedogModules.has(index))exports.push({module:stagedogModules.get(index)!,
+          policy:schemaPlan!.commandPolicyProfile!.bindings.find(binding=>binding.scriptOrdinal===index)!.policy})
+        for(const entry of exports) {
+          const id=context.newString(script.identity),policy=context.newString(entry.policy)
+          const bound=(()=>{
+            try {return checked(context.callFunction(capabilities,controller,id,policy))}
+            finally {id.dispose();policy.dispose()}
+          })()
+          try {
+            context.setProp(context.global,scopeLoaderKey,bound)
+            const preloaded=checked(context.evalCode(`import ${JSON.stringify(entry.module)};`,
+              `trusted-scope-preload-${index}-${entry.policy}.mjs`,{type:'module'}))
+            try {completed(context,runtime,preloaded,trace?budget:{jobs:0})}finally {preloaded.dispose()}
+          } finally {
+            checked(context.evalCode(`delete globalThis[${JSON.stringify(scopeLoaderKey)}];`,'trusted-scope-cleanup.js')).dispose()
+            bound.dispose()
+          }
+        }
+      }
+      for(const {index,script} of serverScripts) {
+        if(expired())throw new GuestRefusal('SCHEMA_VM_TIMEOUT')
+        const filename=`author-${index}.mjs`,source=bindAuthorScope(script.javascript,filename,scopeModules.get(index)!,
+          initializationWriters.has(script.identity))
+        const result=checked(context.evalCode(source,filename,{type:'module'}),context)
+        try {completed(context,runtime,result,trace?budget:{jobs:0})}finally {result.dispose()}
+      }
     }
     const readyResult=checked(context.callFunction(ready,controller),context)
     try {completed(context,runtime,readyResult,trace?budget:{jobs:0})}finally {readyResult.dispose()}
@@ -788,17 +801,18 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
       checked(context.callFunction(loaded,controller),context).dispose()
       const nextOnly='response' in request&&request.response==='next',outputs:string[]=[]
       let responseBytes=2,lastOutput=''
-      function evaluateStep(step:MvuSchemaTraceRequestedStepV4|MvuSchemaTraceStepRecordV4):
+      function evaluateStep(step:MvuSchemaWorkerTraceInputV4['requestedStep']|MvuSchemaWorkerTraceInputV4['prefix'][number]):
         {kind:'phase';output:MvuSchemaGuestOutputV4}|Extract<MvuSchemaWorkerEvaluationResponseV4,{kind:'unavailable'}> {
         if(timedOut||expired())return unavailable('SCHEMA_VM_TIMEOUT')
-        const current:MvuSchemaTraceFrameV4=step.frame
+        const current=step.frame
         readInput=current.input
-        readers=new Map(readInput.scopeReadFrame.scripts.map(script=>[script.scriptId,
+        if(!stateOnly)readers=new Map(readInput.scopeReadFrame.scripts.map(script=>[script.scriptId,
           createMvuScopeReaderV1(readInput.scopeReadFrame,script.scriptId)]))
-        const wire=context.newString(JSON.stringify(current.input)),source=materialHandle(current.material)
+        const wire=context.newString(JSON.stringify(current.input))
         try {
           checked(context.callFunction(clockFrame,context.undefined,wire),context).dispose()
-          checked(context.callFunction(frame,controller,wire,source),context).dispose()
+          if(stateOnly)checked(context.callFunction(frame,controller,wire),context).dispose()
+          else checked(context.callFunction(frame,controller,wire,materialHandle!(current.material!)),context).dispose()
         } finally {wire.dispose()}
         let output:MvuSchemaGuestOutputV4
         const handle=checked(context.callFunction(run,controller),context)
@@ -830,7 +844,8 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
             // Await Native only after this single wait slot has been armed.
             const next=await manual.park(JSON.stringify(output))
             if(next.kind==='close')return {kind:'manual-finished'}
-            const fresh=evaluateStep({eventId:next.step.eventId,frame:{...next.step.frame,material}})
+            const fresh=evaluateStep({eventId:next.step.eventId,
+              frame:stateOnly?next.step.frame:{...next.step.frame,material}})
             if(fresh.kind==='unavailable')return fresh
             output=fresh.output
           }

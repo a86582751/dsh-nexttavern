@@ -10,6 +10,7 @@ import {browserSourceGuestBootstrapV3} from './tavern-author-browser-source-gues
 import type {BrowserProgramV3,BrowserSnapshotV3,BrowserCompiledScriptV3,BrowserSourcePagePlanV3}
   from './tavern-author-browser-types-v3.mjs'
 import type {BrowserBindingV1} from './tavern-author-browser-types.mjs'
+import type {OwnedBrowserStateBindingV1} from './tavern-author-browser-state-imports-v1.mjs'
 import type {ReaderRegexDocumentProgramV1,ReaderRegexDocumentPlanV1,ReaderRegexDocumentSnapshotV1}
   from './reader-regex-document-types.mjs'
 import type {BrowserCallbackRegistrationV3,BrowserGenerationInvocationV3}
@@ -30,7 +31,7 @@ interface GuestController extends BrowserPageGuestControllerV3 {
 }
 type AttachmentPrincipal={readonly kind:'helper';readonly script:BrowserCompiledScriptV3;
   readonly sourcePage?:BrowserSourcePagePlanV3}|{readonly kind:'reader-regex-document';
-  readonly programSha256:string;readonly document?:ReaderRegexDocumentPlanV1}
+  readonly programSha256:string;readonly document?:ReaderRegexDocumentPlanV1}|{readonly kind:'helper-host'}
 type AttachmentProgram=BrowserProgramV3|ReaderRegexDocumentProgramV1
 const readerProgram=(program:AttachmentProgram):program is ReaderRegexDocumentProgramV1=>
   program.encoding==='reader-regex-document-program-v1'
@@ -40,6 +41,7 @@ export interface BrowserAttachmentWorkerOptionsV3<Frame extends object> {
   readonly snapshot:BrowserSnapshotV3|ReaderRegexDocumentSnapshotV1
   readonly binding:BrowserBindingV1
   readonly operationPrefix:string
+  readonly stateProgramBinding?:OwnedBrowserStateBindingV1
   readonly methods:Readonly<Record<string,readonly string[]>>
   readonly properties:Readonly<Record<string,readonly string[]>>
   readonly pages:BrowserPageTransportV3<Frame>
@@ -56,6 +58,7 @@ export interface BrowserAttachmentWorkerOptionsV3<Frame extends object> {
    * Helper descriptor or posted frame ID can satisfy this native ownership. */
   createReaderRoot?():Promise<{readonly document:NativeHandleV3;
     readonly frames:readonly {readonly frame:Frame;readonly documentPlanSha256:string}[]}>
+  createHelperRoot?():Promise<{readonly document:NativeHandleV3}>
   /** This actual caller route owns native DOM/frame resources. It may suspend
    * for their ACK, but must never enter or wait for an Actor method. */
   nativeRequest?(contextId:string,request:NativeRequestV3,signal:AbortSignal):Promise<NativeReplyV3>
@@ -132,6 +135,7 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     const controller=await actor.capture(context,'('+browserSourceGuestBootstrapV3.toString()+')('+JSON.stringify({
       snapshot:this.options.snapshot,binding:this.options.binding,operationPrefix:this.options.operationPrefix,
       readerDocument:readerProgram(program),
+      stateFacade:!readerProgram(program)&&program.profile.version===5,
       generationWriterIdentity:generation?.writer.scriptIdentity})+')')
     const methods:Record<string,any>={}
     await actor.enter(()=>{
@@ -155,6 +159,7 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     if(this.active)await this.pages.drain()
   }
   private async sourceFacade(context:any,principal:AttachmentPrincipal,pageId:string,updateChatKey:string|null):Promise<void> {
+    if(principal.kind==='helper-host')return
     const {actor}=this.options,source=actor.parent
     let creator:any
     await actor.enter(()=>{creator=source.newString(JSON.stringify(principal.kind==='helper'
@@ -197,7 +202,8 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
       }
     })
     const captured=await actor.capture(context,'('+browserPageGuestBootstrapV3.toString()+')('+JSON.stringify({
-      pageId:id,document,methods:this.options.methods,properties:this.options.properties})+')')
+      pageId:id,document,methods:this.options.methods,properties:this.options.properties,
+      stateDom:readerProgram(this.options.program)||this.options.program.profile.version===5})+')')
     const methods:Record<string,any>={}
     await actor.enter(()=>{for(const name of ['setCurrentScript','dispatchLifecycle','decodeNative','deliver','settle','retire','destroy'])
       methods[name]=context.getProp(captured,name)})
@@ -205,13 +211,15 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     await actor.enter(()=>{name=actor.parent.newString(id)})
     try {await actor.call(actor.parent,this.sourceMethods!.registerPage,[name,captured])}finally {name.dispose()}
     await this.sourceFacade(context,principal,id,updateChatKey)
+    if(principal.kind==='helper-host')await actor.runSource(context,
+      'globalThis.SillyTavern=Object.freeze({getContext:()=>({chatId:'+JSON.stringify(this.options.binding.sessionId)+'})});')
     const controller:GuestController={context,methods,
       setCurrentScript:node=>this.primitive(context,methods.setCurrentScript,node),
       setSourceScriptOrigin:page=>this.primitive(actor.parent,this.sourceMethods!.setScriptOrigin,{pageId:id,
         origin:page?principal.kind==='helper'?{originalOrdinal:principal.script.ordinal,
           scriptIdentity:principal.script.descriptor.identity,descriptorSha256:principal.script.descriptorSha256,page}
-          :{principal:principal.kind,programSha256:principal.programSha256,
-            origin:principal.document?.origin,page}:null}),
+          :principal.kind==='reader-regex-document'?{principal:principal.kind,programSha256:principal.programSha256,
+            origin:principal.document?.origin,page}:null:null}),
       dispatchLifecycle:type=>this.primitive(context,methods.dispatchLifecycle,{type}),
       disposeHandles:()=>{for(const method of Object.values(methods))method.dispose()},
     }
@@ -284,6 +292,8 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
   }
   async start():Promise<void> {
     const {actor,program}=this.options
+    if(!readerProgram(program))await actor.installOwnedStateModules({browserProgram:program,
+      stateProgramBinding:this.options.stateProgramBinding})
     await this.startSource()
     if(readerProgram(program)) {
       const native=await this.options.createReaderRoot!()
@@ -296,6 +306,12 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
       await this.pages.pump();await this.pages.drain()
       return
     }
+    let helperParent:any
+    if(program.profile.version===5&&this.options.createHelperRoot){
+      const native=await this.options.createHelperRoot()
+      helperParent=await actor.createPage('helper-root')
+      await this.bootstrap(helperParent,'helper-root',helperParent,native.document,{kind:'helper-host'})
+    }
     for(const script of program.scripts)if(script.disposition==='compiled-browser') {
       const id='carrier-'+script.ordinal,context=await actor.createPage(id)
       const native=await this.options.createCarrier(script,id,this.abort.signal)
@@ -304,7 +320,7 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
       // have no retained unit owner, so their shared facade receives no key.
       const ordinaryKeys=script.declarations.filter(row=>row.kind==='ordinary-source-key').map(row=>row.key)
       const updateChatKey=ordinaryKeys.length===1?ordinaryKeys[0]!:null
-      const controller=await this.bootstrap(context,id,context,native.document,{kind:'helper',script},updateChatKey)
+      const controller=await this.bootstrap(context,id,helperParent??context,native.document,{kind:'helper',script},updateChatKey)
       await native.setDocumentState('loading',this.abort.signal)
       await controller.setCurrentScript(native.script)
       try {await this.pages.enterOriginal(context,script.javascript,
@@ -421,6 +437,7 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
         this.hostWaits.clear()
         for(const carrier of this.carriers.values())this.controllers.get(carrier.id)?.disposeHandles()
         this.controllers.get('reader-root')?.disposeHandles()
+        this.controllers.get('helper-root')?.disposeHandles()
         for(const method of Object.values(this.sourceMethods??{}))method.dispose()
         this.nativeRegistry?.dispose()
       })

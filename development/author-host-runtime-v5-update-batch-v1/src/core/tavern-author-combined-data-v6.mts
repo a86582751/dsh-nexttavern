@@ -8,6 +8,8 @@ import type {BrowserProgramV3} from './tavern-author-browser-types-v3.mjs'
 import type {CombinedAuthorProgramV6} from './tavern-author-combined-types-v6.mjs'
 import {COMBINED_AUTHOR_DATA_BOUNDS_V6 as bounds} from './tavern-author-combined-types-v6.mjs'
 import type {CombinedPlanRowV3} from './tavern-author-combined-types.mjs'
+import {BROWSER_STATE_PROFILE_V3,BROWSER_STATE_CAPABILITY_CONTRACT_V3} from './tavern-author-browser-profile-v3.mjs'
+import {FIXED_STATE_LOADER_POLICY_V1,FIXED_STATE_LOADER_POLICY_SHA256} from './tavern-mvu-state-loader-policy-v4.mjs'
 
 const validatedPrograms=new WeakSet<object>()
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
@@ -46,11 +48,30 @@ function browserData(program:BrowserProgramV3):BrowserProgramV3 {
     ||program.compiler.typescriptVersion!=='5.9.3'||!hash(program.compiler.implementationSha256)
     ||program.runtime?.id!=='native-author-browser-runtime'||program.runtime.version!==3
     ||program.runtime.quickjsVersion!=='0.32.0'||!hash(program.runtime.implementationSha256)
-    ||program.profile?.id!=='nexttavern-browser-source-html'||![3,4].includes(program.profile.version)
+    ||program.profile?.id!=='nexttavern-browser-source-html'||![3,4,5].includes(program.profile.version)
     ||!hash(program.profile.sha256)||program.capabilityContract?.schemaVersion!==3
     ||program.capabilityContract.authority!=='requirements-only')fail()
   checksum(program.capabilityContract,'contractSha256')
   if(program.runtime.capabilityContractSha256!==program.capabilityContract.contractSha256)fail()
+  if(program.profile.version===5&&(!same(program.profile,BROWSER_STATE_PROFILE_V3)
+    ||!same(program.capabilityContract,BROWSER_STATE_CAPABILITY_CONTRACT_V3)))fail()
+  if(program.stateImports) {
+    const proof=program.stateImports,root=FIXED_STATE_LOADER_POLICY_V1.roots.B
+    if(program.profile.version!==5||proof.schemaVersion!==1||proof.encoding!=='native-author-browser-state-imports-v1'
+      ||proof.dependencyPolicySha256!==FIXED_STATE_LOADER_POLICY_SHA256
+      ||!same(proof.dependency,{group:'B',upstreamRootSha256:root.sha256,upstreamRootBytes:root.bytes,
+        namespaceContract:'empty-esm-namespace'})||!Array.isArray(proof.sites)||!proof.sites.length)fail()
+    const urls=new Set(FIXED_STATE_LOADER_POLICY_V1.entries.filter(([group])=>group==='B').map(([,url])=>url as string))
+    for(const site of proof.sites) {
+      const script=program.scripts.find(item=>item.ordinal===site.originalOrdinal)
+      if(!script?.descriptor.enabled||site.rawDescriptorSha256!==script.descriptorSha256
+        ||!Array.isArray(site.exactSpecifiers)||!site.exactSpecifiers.length
+        ||site.exactSpecifiers.some((url:string)=>!urls.has(url)))fail()
+      for(const span of [site.importSpan,site.argumentSpan])if(!span||!Number.isSafeInteger(span.start)
+        ||!Number.isSafeInteger(span.end)||span.start<0||span.end<=span.start||span.end>script.descriptor.source.length)fail()
+      if(site.argumentSpan.start<site.importSpan.start||site.argumentSpan.end>site.importSpan.end)fail()
+    }
+  }
   for(const script of program.scripts) {
     if(script.descriptorSha256!==recordSha256(script.descriptor)
       ||script.javascript!==(script.descriptor.enabled?script.descriptor.source:'')

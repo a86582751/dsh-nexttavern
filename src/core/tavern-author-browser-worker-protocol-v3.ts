@@ -2,6 +2,7 @@
  * actual Main resource owner; their serialized IDs grant no author authority. */
 import type {BrowserBindingV1} from './tavern-author-browser-types.mjs'
 import type {BrowserProgramV3,BrowserSnapshotV3} from './tavern-author-browser-types-v3.mjs'
+import type {OwnedBrowserStateBindingV1} from './tavern-author-browser-state-imports-v1.mjs'
 import type {ReaderRegexDocumentProgramV1,ReaderRegexDocumentSnapshotV1}
   from './reader-regex-document-types.mjs'
 import type {BrowserGenerationInvocationV3,BrowserGenerationResultV3,BrowserCallbackRegistrationV3}
@@ -22,6 +23,7 @@ export type BrowserWorkerRequestV3=
   |{readonly op:'carrier-state';readonly contextId:string;readonly state:'loading'|'interactive'|'complete'}
   |{readonly op:'carrier-dispose';readonly contextId:string}
   |{readonly op:'reader-root-create'}
+  |{readonly op:'helper-root-create'}
   |{readonly op:'native';readonly contextId:string;readonly request:NativeRequestV3}
   |{readonly op:'page-mount';readonly frameId:number;readonly pageId:string;readonly planSha256:string}
   |{readonly op:'page-dispose';readonly frameId:number;readonly pageId:string}
@@ -43,7 +45,8 @@ export interface BrowserSourceEventV3 {
 
 export type BrowserWorkerInputV3=
   |{readonly type:'start';readonly binding:BrowserBindingV1;readonly program:BrowserProgramV3;
-    readonly snapshot:BrowserSnapshotV3;readonly wasm:ArrayBuffer;readonly operationPrefix:string}
+    readonly snapshot:BrowserSnapshotV3;readonly wasm:ArrayBuffer;readonly operationPrefix:string;
+    readonly stateProgramBinding?:OwnedBrowserStateBindingV1}
   |{readonly type:'reader-start';readonly binding:BrowserBindingV1;readonly program:ReaderRegexDocumentProgramV1;
     readonly snapshot:ReaderRegexDocumentSnapshotV1;readonly wasm:ArrayBuffer;readonly operationPrefix:string}
   |{readonly type:'result';readonly id:number;readonly value?:unknown;readonly error?:string;

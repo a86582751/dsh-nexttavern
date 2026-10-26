@@ -12,7 +12,7 @@ import {schemaExecutionProgramSha256,schemaExecutionServerTailSha256} from './ro
 import {validateSchemaEvaluationInputV2,validateSchemaGuestOutputV2} from './tavern-mvu-schema-runner-v2.js'
 import {validateSchemaEvaluationInputV3,validateSchemaGuestOutputV3} from './tavern-mvu-schema-runner-v3.js'
 import {validateSchemaEvaluationInputV4,validateSchemaGuestOutputForProgramV4} from './tavern-mvu-schema-runner-v4.js'
-import {validateSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
+import {validateMvuExecutableProgramV4} from './tavern-mvu-schema-program-v4.js'
 import {sealMvuSchemaStoryFact,validateMvuSchemaNumericalSnapshot,validateMvuSchemaStoryPlan,
   mvuSchemaStoryPhaseInput,mvuSchemaStoryReducerBridge,mvuSchemaStoryEvent,mvuSchemaStoryEventKey,
   mvuSchemaStorySettlement,mvuSchemaStorySettlementKey,validateMvuSchemaStoryEvent,
@@ -187,7 +187,7 @@ function provePair(request:MvuSchemaUnpublishedTailRequest,deps:MvuSchemaUnpubli
   return association
 }
 function proveOutput(input:SchemaEvaluationInput,output:SchemaGuestOutput,program:SchemaAuthorProgram):void {
-  if(input.schemaVersion===4)validateSchemaGuestOutputForProgramV4(output,validateSchemaProgramV4(program),
+  if(input.schemaVersion===4)validateSchemaGuestOutputForProgramV4(output,validateMvuExecutableProgramV4(program),
     validateSchemaEvaluationInputV4(input))
   else if(input.schemaVersion===3)validateSchemaGuestOutputV3(output,validateSchemaEvaluationInputV3(input))
   else if(input.schemaVersion===2)validateSchemaGuestOutputV2(output,validateSchemaEvaluationInputV2(input))

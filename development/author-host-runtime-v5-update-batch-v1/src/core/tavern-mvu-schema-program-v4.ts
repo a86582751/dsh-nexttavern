@@ -11,6 +11,8 @@ import type {MvuSchemaCompilerIdentity, MvuSchemaImplementationIdentity, MvuSche
   MvuSchemaLibraryIdentity, MvuSchemaSourceBinding}
   from './tavern-mvu-schema-types.js'
 import type {MvuSchemaPhaseErrorPolicyV4} from './tavern-mvu-schema-types-v4.js'
+import type {MvuExecutableProgramV4,OwnedMvuStateProgramV1} from './tavern-mvu-owned-state-types-v1.mjs'
+import type {BrowserProgramV3} from './tavern-author-browser-types-v3.mjs'
 import type {AuthorExecutionPlanV1, CompiledAuthorScriptV4, ImportBindingV4,
   MvuSchemaCompilationInputV4, MvuSchemaProgramV4, RawAuthorScriptV4, StateLoaderGroupV1}
   from './tavern-mvu-author-execution-types-v4.mjs'
@@ -40,7 +42,8 @@ export interface MvuSchemaCompilerV4 {
   dispose(): Promise<void>
 }
 export interface MvuSchemaCandidateCompilerV4 extends MvuSchemaCompilerV4 {
-  partitionCandidates(input: MvuSchemaCompilationInputV4, signal?: AbortSignal): Promise<ServerCandidatePartitionV4>
+  partitionCandidates(input: MvuSchemaCompilationInputV4, signal?: AbortSignal,
+    browserCandidateOrdinals?:readonly number[]): Promise<ServerCandidatePartitionV4>
 }
 export interface CompilerDepsV4 {
   readonly identity: MvuSchemaCompilerIdentity & {readonly version: 4}
@@ -281,15 +284,13 @@ function executionPlan(raw: unknown, scripts: readonly RawAuthorScriptV4[],
         if (!admitted || admitted.kind !== 'native-state-loader'
           || admitted.implementationSha256 !== stateLoader.implementationSha256) fail('SCHEMA_V4_NATIVE_IMPORT_CLOSURE')
         if (site.kind === 'bounded-const-forof') {
-          if (dependency.candidateOrdinal !== candidateIndex || dependency.group !== 'A'
-            || dependency.exactSpecifier !== retainedPolicy.entries[2 + candidateIndex]?.[1]) {
+          if (dependency.candidateOrdinal !== candidateIndex || dependency.group !== 'A') {
             fail('SCHEMA_V4_BOUNDED_ARRAY_POLICY')
           }
         } else if (site.dependencies.length !== 1 || dependency.candidateOrdinal !== 0
           && !(site.kind === 'bare-await-literal' && siteIndex === 1 && row.loaderImports.length === 2
             && dependency.candidateOrdinal === 1)) fail('SCHEMA_V4_LITERAL_SITE_POLICY')
       }
-      if (site.kind === 'bounded-const-forof' && site.dependencies.length !== 3) fail('SCHEMA_V4_BOUNDED_ARRAY_POLICY')
     }
     if (compiled) {
       const output = original as CompiledAuthorScriptV4
@@ -356,8 +357,36 @@ function executionPlan(raw: unknown, scripts: readonly RawAuthorScriptV4[],
 }
 /** A compiled program already owns this decision. Callers derive the phase
  * discriminator without inspecting allowed imports or choosing a policy. */
-export const schemaPhaseErrorPolicyForProgramV4=(program:MvuSchemaProgramV4):MvuSchemaPhaseErrorPolicyV4=>
-  program.executionPlan.commandPolicyProfile?.errorPolicy??'atomic-refusal'
+export const schemaPhaseErrorPolicyForProgramV4=(program:MvuExecutableProgramV4):MvuSchemaPhaseErrorPolicyV4=>
+  program.encoding==='native-mvu-owned-state-program-v1'?program.executionPlan.errorPolicy:
+    program.executionPlan.commandPolicyProfile?.errorPolicy??'atomic-refusal'
+
+/** Execution consumes this view of the parsed variant. Owned state has no
+ * author rows, scope readers or invented native loader classifications. */
+function buildSchemaExecutionViewV4(program:MvuExecutableProgramV4) {
+  const owned=program.encoding==='native-mvu-owned-state-program-v1'
+  const scripts=owned?[]:program.scripts
+  const plan=owned?null:program.executionPlan
+  const serverOrdinals=new Set(plan?.scripts.filter(row=>row.enabled&&row.disposition==='server')
+    .map(row=>row.ordinal)??[])
+  return {source:program.source,compiler:program.compiler,bridge:program.bridge,stateLoader:program.stateLoader,
+    libraries:program.libraries,executionPlanSha256:program.executionPlan.executionPlanSha256,
+    errorPolicy:schemaPhaseErrorPolicyForProgramV4(program),scripts,
+    serverScripts:scripts.map((script,index)=>({script,index})).filter(({index})=>serverOrdinals.has(index)),
+    enabledServerSchema:plan?.summary.enabledServerSchema??0,
+    stateOnly:owned||plan!.summary.enabledServerSchema===0&&plan!.summary.enabledNativeLoaders>0,
+    initializationWriters:new Set(plan?.initializationWriteProfile?.bindings.map(binding=>binding.scriptIdentity)??[])}
+}
+const executionViews=new WeakMap<MvuExecutableProgramV4,ReturnType<typeof buildSchemaExecutionViewV4>>()
+export function schemaExecutionViewV4(program:MvuExecutableProgramV4) {
+  const known=executionViews.get(program)
+  if(known)return known
+  const view=buildSchemaExecutionViewV4(program)
+  // Host callers retain their compiler/Journal result. The private worker
+  // retains its unpacked copy unchanged while only phase frames advance.
+  executionViews.set(program,view)
+  return view
+}
 function compilationCode(value: RecordData, compiled: boolean): void {
   bridgeIdentity(value.bridge);implementation(value.stateLoader)
   if (!same(value.stateLoader, deriveOwnedStateLoaderIdentityV4(value.bridge))) fail('SCHEMA_V4_STATE_LOADER_IDENTITY')
@@ -409,6 +438,55 @@ export function validateSchemaProgramV4(input: unknown): MvuSchemaProgramV4 {
   const program = freezeData(value) as unknown as MvuSchemaProgramV4
   validatedPrograms.add(program)
   return program
+}
+const validatedOwnedPrograms=new WeakSet<object>()
+/** Trusted fresh compilation only. The compiler closure supplies its validated
+ * identity, partition-owned frozen original and that compilation's Browser
+ * result. Cold/raw DATA must use the validator below instead. */
+export function captureCompiledOwnedMvuStateProgramV1(original:MvuSchemaCompilationInputV4,
+  browser:BrowserProgramV3,compiler:MvuSchemaCompilerIdentity&{readonly version:4}):OwnedMvuStateProgramV1 {
+  const planBody={schemaVersion:1 as const,encoding:'native-mvu-owned-state-execution-plan-v1' as const,
+    browserProgramSha256:browser.programSha256,dependencyGroup:'B' as const,phaseAbi:4 as const,
+    errorPolicy:'update-batch-atomic-v1' as const,registrationPolicy:'none' as const}
+  const executionPlan=Object.freeze({...planBody,executionPlanSha256:recordSha256(planBody)})
+  const body={schemaVersion:1 as const,encoding:'native-mvu-owned-state-program-v1' as const,
+    compiler,source:original.source,bridge:original.bridge,stateLoader:original.stateLoader,
+    libraries:original.libraries,executionPlan}
+  const program=Object.freeze({...body,programSha256:recordSha256(body)})
+  validatedOwnedPrograms.add(program)
+  return program
+}
+export function validateOwnedMvuStateProgramV1(input:unknown):OwnedMvuStateProgramV1 {
+  if(validatedOwnedPrograms.has(input as object))return input as OwnedMvuStateProgramV1
+  const value=cloneSchemaEnvelopeV4(input,MVU_SCHEMA_BOUNDS.programBytes)
+  exact(value,['schemaVersion','encoding','compiler','source','libraries','bridge','stateLoader','executionPlan','programSha256'])
+  if(value.schemaVersion!==1||value.encoding!=='native-mvu-owned-state-program-v1')fail('SCHEMA_OWNED_STATE_PROGRAM_INVALID')
+  implementation(value.compiler,true);source(value.source);bridgeIdentity(value.bridge);implementation(value.stateLoader)
+  if(!same(value.stateLoader,deriveOwnedStateLoaderIdentityV4(value.bridge)))fail('SCHEMA_V4_STATE_LOADER_IDENTITY')
+  if(!Array.isArray(value.libraries)||value.libraries.length>2)fail('SCHEMA_V4_LIBRARY_INVALID')
+  const kinds=new Set<string>(),globals=new Set<string>()
+  for(const item of value.libraries) {
+    library(item)
+    if(kinds.has(item.kind)||globals.has(item.globalName))fail('SCHEMA_V4_LIBRARY_DUPLICATE')
+    kinds.add(item.kind);globals.add(item.globalName)
+  }
+  const plan=value.executionPlan
+  exact(plan,['schemaVersion','encoding','browserProgramSha256','dependencyGroup','phaseAbi','errorPolicy',
+    'registrationPolicy','executionPlanSha256'])
+  if(plan.schemaVersion!==1||plan.encoding!=='native-mvu-owned-state-execution-plan-v1'
+    ||!hash(plan.browserProgramSha256)||plan.dependencyGroup!=='B'||plan.phaseAbi!==4
+    ||plan.errorPolicy!=='update-batch-atomic-v1'||plan.registrationPolicy!=='none')fail('SCHEMA_OWNED_STATE_PLAN_INVALID')
+  checksum(plan,'executionPlanSha256','SCHEMA_OWNED_STATE_PLAN_HASH')
+  checksum(value,'programSha256','SCHEMA_OWNED_STATE_PROGRAM_HASH')
+  const program=freezeData(value) as unknown as OwnedMvuStateProgramV1
+  validatedOwnedPrograms.add(program)
+  return program
+}
+/** Encoding identifies the contract; both historical schema and owned state
+ * can carry schemaVersion 1 in the wider author-program family. */
+export function validateMvuExecutableProgramV4(input:unknown):MvuExecutableProgramV4 {
+  return (input as {encoding?:unknown})?.encoding==='native-mvu-owned-state-program-v1'
+    ?validateOwnedMvuStateProgramV1(input):validateSchemaProgramV4(input)
 }
 export function validateSchemaCompilationCodeV4(input:unknown):SchemaCompilationCodeV4 {
   const value=cloneSchemaData(input,MVU_SCHEMA_BOUNDS.inputBytes)

@@ -13,6 +13,8 @@ import type {MvuSchemaRunnerV3} from './tavern-mvu-schema-types-v3.js'
 import {deriveOwnedStateLoaderIdentityV4} from './tavern-mvu-schema-program-v4.js'
 import type {MvuSchemaCandidateCompilerV4,MvuSchemaCompilationInputV4}
   from './tavern-mvu-schema-program-v4.js'
+import type {MvuExecutableProgramV4,MvuOwnedStateCandidateCompilerV1} from './tavern-mvu-owned-state-types-v1.mjs'
+import type {SchemaAuthorProgram} from './roleplay-mvu-schema-executor-types.js'
 import {recordSha256} from './roleplay-data.js'
 import {createRoleplayTypeScriptAssetOwner} from './roleplay-typescript-assets.js'
 import type {SchemaExecutorVersion,SchemaExecutorIdentityTuple,OwnedMvuSchemaExecutor}
@@ -22,6 +24,9 @@ import type {ReleasedComponentRef} from '../operations/released-component-types.
 
 const packageName='dsh-nexttavern-mvu-schema-runtime'
 const policyPackageName=packageName+'-v4-update-batch-v1'
+const isV4Program=(program:SchemaAuthorProgram):program is MvuExecutableProgramV4=>
+  'encoding' in program&&(program.encoding==='native-mvu-author-schema-program-v2'
+    ||program.encoding==='native-mvu-owned-state-program-v1')
 // Keep legacy factory signatures narrow without maintaining retired package
 // source just to import its structural runtime types.
 interface LegacySchemaRuntime<Runner> {
@@ -164,10 +169,17 @@ export function createRoleplayMvuSchemaAssetOwner() {
         // Preserve the admitted compiler's actual optional surface, including
         // historical candidate generations; older executors expose no method.
         ...(version===4&&'partitionCandidates' in loaded.compiler?{
-          async partitionCandidates(input:MvuSchemaCompilationInputV4,signal?:AbortSignal) {
+          async partitionCandidates(input:MvuSchemaCompilationInputV4,signal?:AbortSignal,browserCandidateOrdinals?:readonly number[]) {
             if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
             return ((loaded as MvuSchemaRuntimeV4).compiler as MvuSchemaCandidateCompilerV4)
-              .partitionCandidates(input,signal)
+              .partitionCandidates(input,signal,browserCandidateOrdinals)
+          },
+        }:{}),
+        ...(version===4&&'assembleOwnedStateProgram' in loaded.compiler?{
+          assembleOwnedStateProgram(...args:Parameters<MvuOwnedStateCandidateCompilerV1['assembleOwnedStateProgram']>) {
+            if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
+            return ((loaded as MvuSchemaRuntimeV4).compiler as MvuOwnedStateCandidateCompilerV1)
+              .assembleOwnedStateProgram(...args)
           },
         }:{}),
         async compile(input,signal) {
@@ -182,7 +194,7 @@ export function createRoleplayMvuSchemaAssetOwner() {
         async verifyProgram(program,signal) {
           if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
           if(version===4&&program.schemaVersion===2)return (loaded as MvuSchemaRuntimeV4).compiler.verifyProgram(program,signal)
-          if(program.schemaVersion!==1)return false
+          if(program.schemaVersion!==1||isV4Program(program))return false
           if(version===1)return (loaded as MvuSchemaRuntime).compiler.verifyProgram(program,signal)
           if(version===2)return (loaded as MvuSchemaRuntimeV2).compiler.verifyProgram(program,signal)
           if(version===3)return (loaded as MvuSchemaRuntimeV3).compiler.verifyProgram(program,signal)
@@ -193,7 +205,7 @@ export function createRoleplayMvuSchemaAssetOwner() {
         openManualRun:version===4&&(loaded as MvuSchemaRuntimeV4).runner.openManualRun
           ?async(program,input,signal)=>{
             if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
-            if(input.schemaVersion!==4||program.schemaVersion!==2) {
+            if(input.schemaVersion!==4||!isV4Program(program)) {
               return {kind:'unavailable',diagnostics:[{code:'SCHEMA_EXECUTOR_VERSION_MISMATCH'}]}
             }
             return (loaded as MvuSchemaRuntimeV4).runner.openManualRun!(program,input,signal)
@@ -201,7 +213,7 @@ export function createRoleplayMvuSchemaAssetOwner() {
         evaluateNext:version===4&&(loaded as MvuSchemaRuntimeV4).runner.evaluateNext
           ?async(program,input,signal)=>{
             if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
-            if(input.schemaVersion!==4||program.schemaVersion!==2) {
+            if(input.schemaVersion!==4||!isV4Program(program)) {
               return {kind:'unavailable',diagnostics:[{code:'SCHEMA_EXECUTOR_VERSION_MISMATCH'}]}
             }
             return (loaded as MvuSchemaRuntimeV4).runner.evaluateNext!(program,input,signal)
@@ -211,18 +223,18 @@ export function createRoleplayMvuSchemaAssetOwner() {
           if(input.schemaVersion!==version)return {kind:'unavailable',diagnostics:[{code:'SCHEMA_EXECUTOR_VERSION_MISMATCH'}]}
           // The admitted provider verifies the full owned package before and
           // after each call; the adapter only owns lifecycle and ABI selection.
-          if(input.schemaVersion===1&&version===1&&program.schemaVersion===1)return (loaded as MvuSchemaRuntime).runner.evaluateTrace(program,input,signal)
-          if(input.schemaVersion===2&&version===2&&program.schemaVersion===1)return (loaded as MvuSchemaRuntimeV2).runner.evaluateTrace(program,input,signal)
-          if(input.schemaVersion===3&&version===3&&program.schemaVersion===1)return (loaded as MvuSchemaRuntimeV3).runner.evaluateTrace(program,input,signal)
-          if(input.schemaVersion===4&&version===4&&program.schemaVersion===2)return (loaded as MvuSchemaRuntimeV4).runner.evaluateTrace(program,input,signal)
+          if(input.schemaVersion===1&&version===1&&!isV4Program(program))return (loaded as MvuSchemaRuntime).runner.evaluateTrace(program,input,signal)
+          if(input.schemaVersion===2&&version===2&&!isV4Program(program))return (loaded as MvuSchemaRuntimeV2).runner.evaluateTrace(program,input,signal)
+          if(input.schemaVersion===3&&version===3&&!isV4Program(program))return (loaded as MvuSchemaRuntimeV3).runner.evaluateTrace(program,input,signal)
+          if(input.schemaVersion===4&&version===4&&isV4Program(program))return (loaded as MvuSchemaRuntimeV4).runner.evaluateTrace(program,input,signal)
           return {kind:'unavailable',diagnostics:[{code:'SCHEMA_EXECUTOR_VERSION_MISMATCH'}]}
         },
         async verifyTrace(program,evaluation,signal) {
           if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
-          if(evaluation.schemaVersion===1&&version===1&&program.schemaVersion===1)return (loaded as MvuSchemaRuntime).runner.verifyTrace(program,evaluation,signal)
-          if(evaluation.schemaVersion===2&&version===2&&program.schemaVersion===1)return (loaded as MvuSchemaRuntimeV2).runner.verifyTrace(program,evaluation,signal)
-          if(evaluation.schemaVersion===3&&version===3&&program.schemaVersion===1)return (loaded as MvuSchemaRuntimeV3).runner.verifyTrace(program,evaluation,signal)
-          if(evaluation.schemaVersion===4&&version===4&&program.schemaVersion===2)return (loaded as MvuSchemaRuntimeV4).runner.verifyTrace(program,evaluation,signal)
+          if(evaluation.schemaVersion===1&&version===1&&!isV4Program(program))return (loaded as MvuSchemaRuntime).runner.verifyTrace(program,evaluation,signal)
+          if(evaluation.schemaVersion===2&&version===2&&!isV4Program(program))return (loaded as MvuSchemaRuntimeV2).runner.verifyTrace(program,evaluation,signal)
+          if(evaluation.schemaVersion===3&&version===3&&!isV4Program(program))return (loaded as MvuSchemaRuntimeV3).runner.verifyTrace(program,evaluation,signal)
+          if(evaluation.schemaVersion===4&&version===4&&isV4Program(program))return (loaded as MvuSchemaRuntimeV4).runner.verifyTrace(program,evaluation,signal)
           return false
         }},dispose:()=>loaded.dispose()}
     return {version,runtime:loaded,executor}

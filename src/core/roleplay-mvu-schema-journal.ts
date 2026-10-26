@@ -10,6 +10,7 @@ import {validateCombinedAuthorProgram} from './tavern-author-combined-data.mjs'
 import type {AuthorHostEpochV5,AuthorHostDispatchV5,AuthorHostCompletionV5,AuthorHostUnavailableV5}
   from './roleplay-author-host-types-v5.js'
 import type {MvuSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
+import type {MvuExecutableProgramV4} from './tavern-mvu-owned-state-types-v1.mjs'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import {COMBINED_AUTHOR_DATA_BOUNDS_V6} from './tavern-author-combined-types-v6.mjs'
 import {validateSchemaEvaluationInputV2,validateSchemaGuestOutputV2} from './tavern-mvu-schema-runner-v2.js'
@@ -186,7 +187,7 @@ export type SchemaJournalCapture=SchemaJournalReady|{kind:'absent'|'blocked';cod
 /** Execution projections consume an already validated epoch. Host identity
  * never substitutes for its retained real server program or v4 load frame. */
 export function schemaEpochExecution(epoch:SchemaEpochRecord):{
-  program:MvuSchemaProgram|MvuSchemaProgramV4;runner:MvuSchemaRunnerIdentity;
+  program:MvuSchemaProgram|MvuExecutableProgramV4;runner:MvuSchemaRunnerIdentity;
   loadFrame:SchemaRealmLoadFrame;loadAnchorSha256:string} {
   return epoch.schemaVersion===5?{program:epoch.program.serverProgram!,runner:epoch.server.executor.runner,
     loadFrame:epoch.server.loadFrame,loadAnchorSha256:epoch.server.loadAnchorSha256}:epoch

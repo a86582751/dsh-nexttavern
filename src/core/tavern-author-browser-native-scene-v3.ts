@@ -3,6 +3,7 @@
 import {createBrowserSourceFrameOwnerV3} from './tavern-author-browser-frame-native-v3.js'
 import type {BrowserNativeSourceFrameV3} from './tavern-author-browser-frame-native-v3.js'
 import {createBrowserPageRendererV3} from './tavern-author-browser-renderer-v3.js'
+import type {BrowserNativeNodeRegistryV3} from './tavern-author-browser-renderer-v3.js'
 import type {BrowserCompiledScriptV3,BrowserProgramV3,BrowserPageResourceV3}
   from './tavern-author-browser-types-v3.mjs'
 import type {BrowserPageNativeSessionV3} from './tavern-author-browser-page-worker-v3.js'
@@ -11,6 +12,7 @@ import type {BrowserPageRendererV3,NativeHandleV3,NativeWireObjectV3,NativeCallb
 import type {BrowserNativeFrameFactV3,BrowserWorkerRequestV3}
   from './tavern-author-browser-worker-protocol-v3.js'
 import type {ReaderRegexDocumentProgramV1,ReaderRegexDocumentPlanV1} from './reader-regex-document-types.mjs'
+import type {BrowserComposerAccessV3} from './tavern-author-browser-native-types-v3.js'
 
 export interface BrowserNativeCarrierDocumentV3 {
   readonly document:Document
@@ -22,6 +24,10 @@ interface Options {
   /** Actual isolated Reader DOM and selected containers are Main resources,
    * never Source HTML or author-posted nodes. */
   readonly readerRootDocument?:Document
+  /** A Helper attachment borrows this actual isolated surface through its
+   * own parent realm; another Reader Actor keeps its independent ownership. */
+  readonly helperRootDocument?:Document
+  readonly composer?:BrowserComposerAccessV3
   readerDocumentContainer?(plan:ReaderRegexDocumentPlanV1):HTMLElement
   /** Frontend owns the real document/container, including its layout. This
    * callback supplies an inert carrier document, never the Main app document. */
@@ -60,7 +66,29 @@ export function createBrowserNativeSceneV3(options:Options) {
     .map(plan=>[plan.pagePlanSha256,plan] as const))
   const readerPlans=new Map<BrowserNativeSourceFrameV3,string>()
   let readerRoot:BrowserPageRendererV3|undefined
+  let helperRoot:BrowserPageRendererV3|undefined
   let active=true,disposal:Promise<void>|undefined
+  const nodeReferences=new WeakMap<object,NativeHandleV3>()
+  const registeredNodes=new Map<string,{node:Node;reference:NativeHandleV3}>()
+  const pageNodes=new Map<string,Set<string>>()
+  const referenceKey=(reference:NativeHandleV3)=>reference.pageId+':'+reference.handle
+  const sharedNodes:BrowserNativeNodeRegistryV3={
+    reference:node=>nodeReferences.get(node),
+    resolve:reference=>{
+      const row=registeredNodes.get(referenceKey(reference))
+      return row?.reference.kind===reference.kind?row.node:undefined
+    },
+    register(node,reference){
+      const key=referenceKey(reference),keys=pageNodes.get(reference.pageId)??new Set<string>()
+      keys.add(key);pageNodes.set(reference.pageId,keys)
+      nodeReferences.set(node,reference);registeredNodes.set(key,{node,reference})
+    },
+    release(pageId){
+      for(const key of pageNodes.get(pageId)??[]){const row=registeredNodes.get(key)!
+        nodeReferences.delete(row.node);registeredNodes.delete(key)}
+      pageNodes.delete(pageId)
+    },
+  }
   const prepareCallback=(delivery:NativeCallbackDeliveryV3)=>{
     const pageId=delivery.callback.pageId,identity=carriers.get(pageId)?.scriptIdentity??pages.get(pageId)?.carrierIdentity
     return identity&&options.prepareCallback?options.prepareCallback(delivery,identity):delivery
@@ -76,7 +104,7 @@ export function createBrowserNativeSceneV3(options:Options) {
         ?event=>options.observeNativeEvent!(event,pageId,frame.principal.kind==='helper'
           ?frame.principal.carrierIdentity:''):undefined,
       onCallback:emitCallback,onPromiseSettlement:options.onSettlement,onImages:options.onImages,
-      resolveResource:options.resolveResource})})
+      resolveResource:options.resolveResource,sharedNodes})})
   function remember(value:unknown,facts:BrowserNativeFrameFactV3[]):void {
     if(!value||typeof value!=='object')return
     if(Array.isArray(value)){for(const item of value)remember(item,facts);return}
@@ -109,6 +137,7 @@ export function createBrowserNativeSceneV3(options:Options) {
       // A trusted empty carrier shell is Native bootstrap DATA. It is not a
       // fabricated parsed Source candidate and carries no admission hashes.
       const renderer=createBrowserPageRendererV3({document:source.document,pageId:contextId,
+        sharedNodes,
         schedulerWindow:options.schedulerWindow,
         onNativeEvent:options.observeNativeEvent
           ?event=>options.observeNativeEvent!(event,contextId,script.descriptor.identity):undefined,
@@ -126,7 +155,7 @@ export function createBrowserNativeSceneV3(options:Options) {
   function createReaderRoot(facts:BrowserNativeFrameFactV3[]) {
     if(program.encoding!=='reader-regex-document-program-v1')throw Error('READER_REGEX_DOCUMENT_UNAVAILABLE')
     const document=options.readerRootDocument!
-    readerRoot=createBrowserPageRendererV3({document,pageId:'reader-root',readerRootDocument:true,
+    readerRoot=createBrowserPageRendererV3({document,pageId:'reader-root',readerRootDocument:true,sharedNodes,
       plan:{parsed:{document:{documentNodeId:0,mode:'no-quirks',nodes:[]},
         steps:[],scripts:[],styles:[],resources:[]},resources:[]},schedulerWindow:options.schedulerWindow,
       externalFrames:frames.forDocument({document,pageId:'reader-root',principal:{kind:'reader-regex-document',
@@ -137,6 +166,16 @@ export function createBrowserNativeSceneV3(options:Options) {
       readerPlans.set(frame,plan.pagePlanSha256);remember(reference,facts)
     }
     return {document:readerRoot.getDocumentHandle(),frames:facts}
+  }
+  function createHelperRoot() {
+    if(program.encoding!=='native-author-browser-program-v3'||program.profile.version!==5||!options.helperRootDocument)
+      throw Error('BROWSER3_HELPER_ROOT_UNAVAILABLE')
+    helperRoot=createBrowserPageRendererV3({document:options.helperRootDocument,pageId:'helper-root',readerRootDocument:true,
+      sharedNodes,composer:options.composer,schedulerWindow:options.schedulerWindow,
+      plan:{parsed:{document:{documentNodeId:0,mode:'no-quirks',nodes:[]},steps:[],scripts:[],styles:[],resources:[]},resources:[]},
+      onCallback:emitCallback,onPromiseSettlement:options.onSettlement})
+    helperRoot.setDocumentState('complete')
+    return {document:helperRoot.getDocumentHandle()}
   }
   async function disposeCarrier(contextId:string):Promise<void> {
     const carrier=carriers.get(contextId)
@@ -152,12 +191,14 @@ export function createBrowserNativeSceneV3(options:Options) {
     const facts:BrowserNativeFrameFactV3[]=[]
     if(input.op==='carrier-create')value=await createCarrier(input.ordinal,input.contextId)
     else if(input.op==='reader-root-create')value=createReaderRoot(facts)
+    else if(input.op==='helper-root-create')value=createHelperRoot()
     else if(input.op==='carrier-state')carriers.get(input.contextId)!.renderer.setDocumentState(input.state)
     else if(input.op==='carrier-dispose')await disposeCarrier(input.contextId)
     else if(input.op==='native') {
       const target='target' in input.request?input.request.target:undefined
       const contextId=target?.pageId??input.contextId,carrier=carriers.get(contextId)
-      value=contextId==='reader-root'&&readerRoot?readerRoot.requestReply(input.request)
+      value=contextId==='helper-root'&&helperRoot?helperRoot.requestReply(input.request)
+        :contextId==='reader-root'&&readerRoot?readerRoot.requestReply(input.request)
         :carrier?carrier.renderer.requestReply(input.request)
         :await pages.get(contextId)!.session.request(input.request,abort.signal)
     }else if(input.op==='page-mount') {
@@ -205,6 +246,7 @@ export function createBrowserNativeSceneV3(options:Options) {
     disposal=(async()=>{
       const results=await Promise.allSettled([...carriers.keys()].map(disposeCarrier))
       await readerRoot?.dispose();readerRoot=undefined;readerPlans.clear()
+      await helperRoot?.dispose();helperRoot=undefined
       frames.dispose();pages.clear();frameTokens.clear();publishedFrameReferences.clear()
       const failed=results.find(result=>result.status==='rejected')
       if(failed?.status==='rejected')throw failed.reason

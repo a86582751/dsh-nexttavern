@@ -196,3 +196,35 @@ export const BROWSER_PROFILE_V3=Object.freeze({id:'nexttavern-browser-source-htm
     guestComputation:'vm-owned-with-boundary-provenance',dynamicCode:'disabled-before-any-author-realm-entry',
     contract:BROWSER_CAPABILITY_CONTRACT_V3}),
 })
+
+/** Profile4's published method tables and identity stay frozen. Only a program
+ * using the new Source-owned state boundary selects this contract. */
+export const BROWSER_STATE_METHODS_V3=Object.freeze({
+  getMvuData:operation('owned-variable-snapshot','variables'),
+  replaceMvuData:operation('owned-numerical-variable-replacement'),
+})
+export const BROWSER_STATE_WAIT_V3=operation('owned-numerical-snapshot')
+export const BROWSER_STATE_NODE_METHODS_V3=Object.freeze({matches:operation('isolated-dom-text'),select:dom})
+export const BROWSER_STATE_NODE_PROPERTIES_V3=Object.freeze({options:'nodes',selectedOptions:'nodes'})
+export const BROWSER_STATE_DOCUMENT_METHODS_V3=Object.freeze({createTextNode:dom,createDocumentFragment:dom})
+/** The isolated scene has neither system clipboard authority nor legacy
+ * document commands. Original probes and caught fallbacks keep that absence. */
+export const BROWSER_STATE_ABSENT_MEMBERS_V3=Object.freeze({navigator:['clipboard'],document:['execCommand']})
+const stateContract={...contract,capabilities:sortedStateCapabilities()}
+function sortedStateCapabilities():readonly BrowserCapabilityV3[] {
+  return [...capabilities,'owned-fixed-state-imports' as const].sort()
+}
+export const BROWSER_STATE_CAPABILITY_CONTRACT_V3:BrowserCapabilityContractV3=Object.freeze({
+  ...stateContract,contractSha256:recordSha256(stateContract),
+})
+export const BROWSER_STATE_PROFILE_V3=Object.freeze({id:BROWSER_PROFILE_V3.id,version:5 as const,
+  sha256:recordSha256({encoding:'native-author-browser-state-profile-v1',baseProfile:BROWSER_PROFILE_V3,
+    methods:BROWSER_STATE_METHODS_V3,wait:BROWSER_STATE_WAIT_V3,absentMembers:BROWSER_STATE_ABSENT_MEMBERS_V3,
+    nodeMethods:BROWSER_STATE_NODE_METHODS_V3,nodeProperties:BROWSER_STATE_NODE_PROPERTIES_V3,
+    documentMethods:BROWSER_STATE_DOCUMENT_METHODS_V3,promiseAggregates:'allSettled-retains-fulfilled-value-provenance',
+    cssEscape:'cssom-serialize-identifier',helperParent:'borrowed-main-reader-document-and-registered-composer',
+    imports:'complete-ast-finite-fixed-B-empty-esm-namespace',
+    readiness:'live-attachment-and-actual-numerical-publication',
+    replacement:'current-chat-stat_data-only-existing-save-owner',
+    contract:BROWSER_STATE_CAPABILITY_CONTRACT_V3}),
+})

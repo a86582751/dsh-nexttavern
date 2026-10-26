@@ -162,7 +162,8 @@ export function createRoleplayAuthorBrowser(deps) {
             }
             const attachment = { binding: value.binding, program: value.program, artifact: value.artifact, snapshot: project(value, facts) };
             return { ok: true, kind: 'attached', attachment: value.program.schemaVersion === 3
-                    ? { schemaVersion: 3, encoding: 'native-author-browser-attachment-v3', ...attachment }
+                    ? { schemaVersion: 3, encoding: 'native-author-browser-attachment-v3', ...attachment,
+                        ...('stateProgramBinding' in facts && facts.stateProgramBinding ? { stateProgramBinding: facts.stateProgramBinding } : {}) }
                     : value.program.schemaVersion === 2
                         ? { schemaVersion: 2, encoding: 'native-author-browser-attachment-v2', ...attachment }
                         : { schemaVersion: 1, encoding: 'native-author-browser-attachment-v1', ...attachment } };

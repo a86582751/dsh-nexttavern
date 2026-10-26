@@ -3,7 +3,16 @@
 export type NativeHandleKindV3='document'|'node'|'style'|'dataset'|'class-list'
   |'canvas'|'gradient'|'point'|'matrix'|'event'|'audio'|'file'|'blob'
   |'file-reader'|'observer'|'media-query'|'viewport'
-  |'frame'|'frame-parent'|'frame-style'
+  |'frame'|'frame-parent'|'frame-style'|'composer'
+
+/** Main's registered editor capability; it never exposes a Main DOM node.
+ * Only this owner resolves the read/write conflict against the live draft. */
+export interface BrowserComposerAccessV3 {
+  read():string
+  replace(text:string,expectedText:string):void
+  dispatch(type:'input'|'change'):void
+  focus():void
+}
 
 export interface NativeHandleV3 {
   readonly tag:'handle'

@@ -9,6 +9,7 @@ import { validatePromptProgramV1 } from './tavern-author-prompt-data.mjs';
 import { validateCombinedAuthorProgramV5 } from './tavern-author-combined-data-v5.mjs';
 import { validateCombinedAuthorProgramV6, combinedCompilationInputForProgramV6 } from './tavern-author-combined-data-v6.mjs';
 import { validateCombinedAuthorProgramV7, combinedCompilationInputForProgramV7 } from './tavern-author-combined-data-v7.mjs';
+import { validateCombinedAuthorProgramV8, combinedCompilationInputForProgramV8 } from './tavern-author-combined-data-v8.mjs';
 const same = (left, right) => recordSha256(left) === recordSha256(right);
 function fail() { throw Error('COMBINED_PROGRAM_DATA_INVALID'); }
 const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -225,6 +226,8 @@ export function validateCombinedAuthorProgramV4(input) {
     return program;
 }
 export function validateCombinedAuthorProgram(input) {
+    if (input?.schemaVersion === 8)
+        return validateCombinedAuthorProgramV8(input);
     if (input?.schemaVersion === 7)
         return validateCombinedAuthorProgramV7(input);
     if (input?.schemaVersion === 6)
@@ -237,6 +240,8 @@ export function validateCombinedAuthorProgram(input) {
 /** Rebuild only the tagged input envelope. The complete original Source and
  * descriptors stay with the program and are never repartitioned here. */
 export function combinedCompilationInputForProgram(program) {
+    if (program.schemaVersion === 8)
+        return combinedCompilationInputForProgramV8(program);
     if (program.schemaVersion === 7)
         return combinedCompilationInputForProgramV7(program);
     if (program.schemaVersion === 6)

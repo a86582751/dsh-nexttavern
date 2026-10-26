@@ -4,14 +4,14 @@ import {Worker} from 'node:worker_threads'
 import {recordSha256} from './roleplay-data.js'
 import {cloneSchemaData,cloneSchemaEnvelopeV4,packSchemaEnvelopeV4,cloneSchemaValues,schemaTextSha256}
   from './tavern-mvu-schema-data.js'
-import {validateSchemaProgramV4,deriveOwnedStateLoaderIdentityV4,schemaPhaseErrorPolicyForProgramV4}
+import {validateMvuExecutableProgramV4,deriveOwnedStateLoaderIdentityV4,schemaPhaseErrorPolicyForProgramV4,schemaExecutionViewV4}
   from './tavern-mvu-schema-program-v4.js'
-import type {MvuSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
+import type {MvuExecutableProgramV4} from './tavern-mvu-owned-state-types-v1.mjs'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import {isKnownSchemaUpdateRejectionV2,validateSchemaUpdateCommandsV2} from './tavern-mvu-schema-update-effects-v2.js'
 import {validateMvuScopeReadFrameV1} from './tavern-mvu-scope-read.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
-import type {MvuSchemaDiagnostic,MvuSchemaLibraryBytes,
+import type {MvuSchemaDiagnostic,MvuSchemaLibraryBytes,MvuSchemaLibraryIdentity,
   MvuSchemaImplementationIdentity} from './tavern-mvu-schema-types.js'
 import type {MvuSchemaRunnerV4,MvuSchemaRunnerDepsV4,MvuSchemaEvaluationInputV4,
   MvuSchemaGuestOutputV4,MvuSchemaRunResultV4,MvuSchemaEvaluationV4,MvuSchemaTraceInputV4,MvuSchemaTraceRunResultV4,
@@ -19,11 +19,24 @@ import type {MvuSchemaRunnerV4,MvuSchemaRunnerDepsV4,MvuSchemaEvaluationInputV4,
   MvuSchemaTraceRequestedStepV4,MvuSchemaDiagnosticV4,MvuSchemaNextRunResultV4,
   MvuSchemaManualRequestedStepV4,MvuSchemaManualRunV4,MvuSchemaOpenManualRunResultV4} from './tavern-mvu-schema-types-v4.js'
 
+type WorkerMaterialFrameV4<T extends {material:object}>=Omit<T,'material'>&Partial<Pick<T,'material'>>
+/** Private execution projection only. Parent evaluation/record hashes retain
+ * the complete parsed frames; no wire projection supplies a replacement hash. */
+export type MvuSchemaWorkerTraceInputV4=Omit<MvuSchemaTraceInputV4,'loadFrame'|'prefix'|'requestedStep'>&{
+  loadFrame:WorkerMaterialFrameV4<MvuSchemaTraceInputV4['loadFrame']>
+  prefix:readonly (Omit<MvuSchemaTraceInputV4['prefix'][number],'frame'>&{
+    frame:WorkerMaterialFrameV4<MvuSchemaTraceFrameV4>
+  })[]
+  requestedStep:Omit<MvuSchemaTraceRequestedStepV4,'frame'>&{frame:WorkerMaterialFrameV4<MvuSchemaTraceFrameV4>}
+}
+type MvuSchemaWorkerInputV4={program:MvuExecutableProgramV4;input:MvuSchemaEvaluationInputV4}
+  |{program:MvuExecutableProgramV4;trace:MvuSchemaTraceInputV4;response?:'next'|'manual'}
 export type MvuSchemaWorkerRequestV4={
-  program:MvuSchemaProgramV4
+  program:MvuExecutableProgramV4
   input:MvuSchemaEvaluationInputV4
-  libraries:readonly MvuSchemaLibraryBytes[]
-}|{program:MvuSchemaProgramV4;trace:MvuSchemaTraceInputV4;libraries:readonly MvuSchemaLibraryBytes[];response?:'next'|'manual'}
+  libraries?:readonly MvuSchemaLibraryBytes[]
+}|{program:MvuExecutableProgramV4;trace:MvuSchemaWorkerTraceInputV4;
+  libraries?:readonly MvuSchemaLibraryBytes[];response?:'next'|'manual'}
 export type MvuSchemaWorkerEvaluationResponseV4={kind:'output';json:string}|{kind:'trace-output';json:string}
   |{kind:'next-output';json:string}
   |{kind:'unavailable';code:string}
@@ -60,10 +73,10 @@ function implementation(value:MvuSchemaImplementationIdentity):void {
     throw Error('SCHEMA_IMPLEMENTATION_UNAVAILABLE')
   }
 }
-export function validateSchemaEvaluationInputV4(input:unknown,program?:MvuSchemaProgramV4):MvuSchemaEvaluationInputV4 {
+export function validateSchemaEvaluationInputV4(input:unknown,program?:MvuExecutableProgramV4):MvuSchemaEvaluationInputV4 {
   return evaluationInputData(cloneSchemaData(input,MVU_SCHEMA_BOUNDS.inputBytes) as MvuSchemaEvaluationInputV4,program)
 }
-function evaluationInputData(value:MvuSchemaEvaluationInputV4,program?:MvuSchemaProgramV4):MvuSchemaEvaluationInputV4 {
+function evaluationInputData(value:MvuSchemaEvaluationInputV4,program?:MvuExecutableProgramV4):MvuSchemaEvaluationInputV4 {
   exact(value,['schemaVersion','encoding','commandsEncoding','errorPolicy','phase','base','values','commands',
     'context','scopeReadFrame','clockEpochMs','randomSeed'])
   const object=(v:unknown)=>v!==null&&typeof v==='object'&&!Array.isArray(v)
@@ -85,7 +98,7 @@ function evaluationInputData(value:MvuSchemaEvaluationInputV4,program?:MvuSchema
 }
 /** Pure correlations only. The enclosing Core owner must still prove the cut,
  * mutable snapshot and each published-state reference against Native facts. */
-export function validateSchemaScopeProgramFrameV4(program:MvuSchemaProgramV4,scope:MvuScopeReadFrameV1,
+export function validateSchemaScopeProgramFrameV4(program:MvuExecutableProgramV4,scope:MvuScopeReadFrameV1,
   binding?:{ownerSessionId:string;sourceNativeCutSha256:string},load=false):void {
   if(scope.source.importId!==program.source.importId||scope.source.rawSha256!==program.source.sourceSha256
     ||binding&&(scope.source.sessionId!==binding.ownerSessionId||scope.sourceNativeCutSha256!==binding.sourceNativeCutSha256)
@@ -93,12 +106,13 @@ export function validateSchemaScopeProgramFrameV4(program:MvuSchemaProgramV4,sco
     throw Error('SCHEMA_SCOPE_BINDING_MISMATCH')
   }
   const matches=new Set<string>()
+  const {scripts}=schemaExecutionViewV4(program)
   for(const scoped of scope.scripts) {
-    const script=program.scripts.find(item=>item.pointer===scoped.pointer&&item.sourceSha256===scoped.sourceSha256)
+    const script=scripts.find(item=>item.pointer===scoped.pointer&&item.sourceSha256===scoped.sourceSha256)
     if(!script||script.identity!==scoped.scriptId||matches.has(script.identity))throw Error('SCHEMA_SCOPE_SCRIPT_MISMATCH')
     matches.add(script.identity)
   }
-  if(program.scripts.some(script=>script.enabled&&!matches.has(script.identity)))throw Error('SCHEMA_SCOPE_SCRIPT_MISMATCH')
+  if(scripts.some(script=>script.enabled&&!matches.has(script.identity)))throw Error('SCHEMA_SCOPE_SCRIPT_MISMATCH')
 }
 /** Optional input correlates a stored output with its exact completed phase.
  * Journal reads accept only the explicit schema, atomic update and scope refusals. */
@@ -216,13 +230,13 @@ function assertOutputInputBindingsV4(output:MvuSchemaGuestOutputV4,input:MvuSche
 }
 /** Reading data does not authorize 0REG. Every current capture and historical
  * replay must additionally bind this envelope to its actual validated program. */
-export function validateSchemaGuestOutputForProgramV4(raw:unknown,program:MvuSchemaProgramV4,
+export function validateSchemaGuestOutputForProgramV4(raw:unknown,program:MvuExecutableProgramV4,
   input?:MvuSchemaEvaluationInputV4):MvuSchemaGuestOutputV4 {
-  return validateSchemaGuestOutputForParsedProgramV4(raw,validateSchemaProgramV4(program),input)
+  return validateSchemaGuestOutputForParsedProgramV4(raw,validateMvuExecutableProgramV4(program),input)
 }
 /** The runner's request parser owns the program before its private worker runs.
  * Fresh guest bytes still need the same output grammar and program joins. */
-export function validateSchemaGuestOutputForParsedProgramV4(raw:unknown,actual:MvuSchemaProgramV4,
+export function validateSchemaGuestOutputForParsedProgramV4(raw:unknown,actual:MvuExecutableProgramV4,
   input?:MvuSchemaEvaluationInputV4):MvuSchemaGuestOutputV4 {
   const output=parseGuestOutputV4(raw)
   assertSchemaGuestOutputBindingsV4(output,actual,input)
@@ -230,17 +244,16 @@ export function validateSchemaGuestOutputForParsedProgramV4(raw:unknown,actual:M
 }
 /** The record parser owns output DATA. These joins consume its typed result
  * and correlate the actual program and phase without re-reading either fact. */
-export function assertSchemaGuestOutputBindingsV4(output:MvuSchemaGuestOutputV4,actual:MvuSchemaProgramV4,
+export function assertSchemaGuestOutputBindingsV4(output:MvuSchemaGuestOutputV4,actual:MvuExecutableProgramV4,
   input?:MvuSchemaEvaluationInputV4):void {
   if(input)assertOutputInputBindingsV4(output,input)
   if(output.executionPlanSha256!==actual.executionPlan.executionPlanSha256)throw Error('SCHEMA_OUTPUT_PLAN_MISMATCH')
   const policy=schemaPhaseErrorPolicyForProgramV4(actual)
   if(output.errorPolicy!==policy||input&&input.errorPolicy!==policy)throw Error('SCHEMA_OUTPUT_POLICY_MISMATCH')
-  const counts=actual.executionPlan.summary
-  const stateOnly=counts.enabledServerSchema===0&&counts.enabledNativeLoaders>0
+  const {stateOnly,enabledServerSchema}=schemaExecutionViewV4(actual)
   if(output.kind==='accepted') {
     const validRegistrations=stateOnly?output.registrations===0:
-      counts.enabledServerSchema>0&&output.registrations>=counts.enabledServerSchema
+      enabledServerSchema>0&&output.registrations>=enabledServerSchema
     if(!validRegistrations)throw Error('SCHEMA_REGISTRATION_MISSING')
     if(stateOnly&&output.errorPolicy==='registered-command-policy-v1'&&output.discarded.length)throw Error('SCHEMA_OUTPUT_INVALID')
   } else for(const item of output.diagnostics) {
@@ -254,7 +267,7 @@ function outputData(json:string):MvuSchemaGuestOutputV4 {
   // isolated JSON bytes. Parent decoding does not re-own that validation.
   return JSON.parse(json) as MvuSchemaGuestOutputV4
 }
-function traceInputData(program:MvuSchemaProgramV4,input:unknown):{input:MvuSchemaTraceInputV4;loadAnchorSha256:string} {
+function traceInputData(program:MvuExecutableProgramV4,input:unknown):{input:MvuSchemaTraceInputV4;loadAnchorSha256:string} {
   // Numerical/code metadata retains one aggregate budget. Source DATA is owned
   // separately and repeated load/prefix/requested references share one material.
   const value=cloneSchemaEnvelopeV4(input,MVU_SCHEMA_BOUNDS.inputBytes) as MvuSchemaTraceInputV4
@@ -302,7 +315,7 @@ function traceInputData(program:MvuSchemaProgramV4,input:unknown):{input:MvuSche
   frame(value.requestedStep.frame)
   return {input:value,loadAnchorSha256}
 }
-export function validateSchemaTraceInputV4(program:MvuSchemaProgramV4,input:unknown):MvuSchemaTraceInputV4 {
+export function validateSchemaTraceInputV4(program:MvuExecutableProgramV4,input:unknown):MvuSchemaTraceInputV4 {
   return traceInputData(program,input).input
 }
 const safeCode=(code:unknown,fallback:string)=>typeof code==='string'&&/^SCHEMA_[A-Z_]+$/.test(code)?code:fallback
@@ -314,6 +327,7 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
   const bridge=Object.freeze(cloneSchemaData(deps.bridge,4096))
   const stateLoader=Object.freeze(cloneSchemaData(deps.stateLoader,4096))
   const libraries=cloneSchemaData(deps.libraries,MVU_SCHEMA_BOUNDS.programBytes)
+  const libraryIdentities:MvuSchemaLibraryIdentity[]=[]
   let availability:string|undefined
   try {
     implementation(identity);implementation(bridge);implementation(stateLoader)
@@ -329,6 +343,8 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
       if(library.packageName!==library.kind||library.version!==(library.kind==='zod'?'4.4.3':'4.18.1')
         ||!['zod','lodash'].includes(library.kind)||!/^[A-Za-z_$][A-Za-z0-9_$]{0,127}$/.test(library.globalName)
         ||schemaTextSha256(library.code)!==library.bundleSha256)throw Error('SCHEMA_LIBRARY_UNAVAILABLE')
+      const {code:_code,...libraryIdentity}=library
+      libraryIdentities.push(libraryIdentity)
     }
   } catch(error) {availability=safeCode(error instanceof Error?error.message:undefined,'SCHEMA_IMPLEMENTATION_UNAVAILABLE')}
   let disposed=false
@@ -340,25 +356,38 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
     if(availability)return unavailable(availability)
     if(active.size>=4)return unavailable('SCHEMA_RUNNER_BUSY')
   }
-  function programData(program:MvuSchemaProgramV4):MvuSchemaProgramV4 {
-    const frozenProgram=validateSchemaProgramV4(program)
+  function programData(program:MvuExecutableProgramV4):MvuExecutableProgramV4 {
+    const frozenProgram=validateMvuExecutableProgramV4(program)
     programBindings(frozenProgram)
     return frozenProgram
   }
-  function programBindings(program:MvuSchemaProgramV4):void {
+  function programBindings(program:MvuExecutableProgramV4):void {
     if(program.compiler.version!==4)throw Error('SCHEMA_IMPLEMENTATION_UNAVAILABLE')
     if(!same(program.bridge,bridge))throw Error('SCHEMA_BRIDGE_UNAVAILABLE')
     if(!same(program.stateLoader,stateLoader))throw Error('SCHEMA_STATE_LOADER_UNAVAILABLE')
-    const supplied=libraries.map(({code:_code,...library})=>library)
-    if(!same(program.libraries,supplied))throw Error('SCHEMA_LIBRARY_UNAVAILABLE')
+    if(!same(program.libraries,libraryIdentities))throw Error('SCHEMA_LIBRARY_UNAVAILABLE')
   }
-  async function executeWorker(request:MvuSchemaWorkerRequestV4,signal?:AbortSignal):Promise<MvuSchemaWorkerEvaluationResponseV4|RunnerFailure> {
+  function packWorkerRequest(request:MvuSchemaWorkerInputV4) {
+    const stateOnly=schemaExecutionViewV4(request.program).stateOnly
+    let payload:MvuSchemaWorkerRequestV4=stateOnly?request:{...request,libraries}
+    if(stateOnly&&'trace' in request) {
+      const withoutMaterial=<T extends {material:object}>(frame:T)=>{
+        const {material:_material,...rest}=frame
+        return rest
+      }
+      const trace=request.trace
+      payload={...request,trace:{...trace,loadFrame:withoutMaterial(trace.loadFrame),
+        prefix:trace.prefix.map(step=>({...step,frame:withoutMaterial(step.frame)})),
+        requestedStep:{...trace.requestedStep,frame:withoutMaterial(trace.requestedStep.frame)}}}
+    }
+    return packSchemaEnvelopeV4(payload,2*MVU_SCHEMA_BOUNDS.programBytes+MVU_SCHEMA_BOUNDS.inputBytes,evaluationBounds)
+  }
+  async function executeWorker(request:MvuSchemaWorkerInputV4,signal?:AbortSignal):Promise<MvuSchemaWorkerEvaluationResponseV4|RunnerFailure> {
     // All three callers preflight before synchronous parsing, then reach this
     // worker start without yielding. They own admission for the same state.
     let worker:Worker
     try {
-      const wire=packSchemaEnvelopeV4(request,2*MVU_SCHEMA_BOUNDS.programBytes+MVU_SCHEMA_BOUNDS.inputBytes,
-        evaluationBounds)
+      const wire=packWorkerRequest(request)
       worker=new Worker(workerUrl,{workerData:wire,env:{TZ:'UTC'},resourceLimits:{maxOldGenerationSizeMb:256,stackSizeMb:4}})
     } catch {return unavailable('SCHEMA_WORKER_UNAVAILABLE')}
     const closed=Promise.withResolvers<void>()
@@ -399,17 +428,17 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
     // disposal during cleanup invalidates an already received guest message.
     return signal?.aborted?cancelled():disposed?unavailable('SCHEMA_RUNNER_DISPOSED'):outcome
   }
-  async function evaluate(program:MvuSchemaProgramV4,input:MvuSchemaEvaluationInputV4,signal?:AbortSignal):Promise<MvuSchemaRunResultV4> {
+  async function evaluate(program:MvuExecutableProgramV4,input:MvuSchemaEvaluationInputV4,signal?:AbortSignal):Promise<MvuSchemaRunResultV4> {
     const blocked=preflight(signal)
     if(blocked)return blocked
-    let frozenProgram:MvuSchemaProgramV4,frozenInput:MvuSchemaEvaluationInputV4
+    let frozenProgram:MvuExecutableProgramV4,frozenInput:MvuSchemaEvaluationInputV4
     try {
       frozenProgram=programData(program);frozenInput=validateSchemaEvaluationInputV4(input,frozenProgram)
       validateSchemaScopeProgramFrameV4(frozenProgram,frozenInput.scopeReadFrame)
     }catch(error) {
       return unavailable(safeCode(error instanceof Error?error.message:undefined,'SCHEMA_INPUT_INVALID'))
     }
-    const result=await executeWorker({program:frozenProgram,input:frozenInput,libraries},signal)
+    const result=await executeWorker({program:frozenProgram,input:frozenInput},signal)
     if(signal?.aborted)return cancelled()
     if(disposed)return unavailable('SCHEMA_RUNNER_DISPOSED')
     if('diagnostics' in result)return result
@@ -426,10 +455,10 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
       return {kind:'evaluated',evaluation:cloneSchemaData({...body,evaluationSha256:recordSha256(body)},evaluationBytes,evaluationBounds)}
     } catch {return unavailable('SCHEMA_EVALUATION_LIMIT')}
   }
-  async function evaluateTrace(program:MvuSchemaProgramV4,input:MvuSchemaTraceInputV4,signal?:AbortSignal):Promise<MvuSchemaTraceRunResultV4> {
+  async function evaluateTrace(program:MvuExecutableProgramV4,input:MvuSchemaTraceInputV4,signal?:AbortSignal):Promise<MvuSchemaTraceRunResultV4> {
     const blocked=preflight(signal)
     if(blocked)return blocked
-    let frozenProgram:MvuSchemaProgramV4,frozenInput:MvuSchemaTraceInputV4,loadAnchorSha256:string
+    let frozenProgram:MvuExecutableProgramV4,frozenInput:MvuSchemaTraceInputV4,loadAnchorSha256:string
     try {
       frozenProgram=programData(program)
       const parsed=traceInputData(frozenProgram,input)
@@ -437,7 +466,7 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
     }catch(error) {
       return unavailable(safeCode(error instanceof Error?error.message:undefined,'SCHEMA_TRACE_INPUT_INVALID'))
     }
-    const result=await executeWorker({program:frozenProgram,trace:frozenInput,libraries},signal)
+    const result=await executeWorker({program:frozenProgram,trace:frozenInput},signal)
     if(signal?.aborted)return cancelled()
     if(disposed)return unavailable('SCHEMA_RUNNER_DISPOSED')
     if('diagnostics' in result)return result
@@ -461,14 +490,14 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
         traceEvaluationBytes,evaluationBounds)}
     } catch(error) {return unavailable(safeCode(error instanceof Error?error.message:undefined,'SCHEMA_TRACE_OUTPUT_INVALID'))}
   }
-  async function evaluateNext(program:MvuSchemaProgramV4,input:MvuSchemaTraceInputV4,signal?:AbortSignal):Promise<MvuSchemaNextRunResultV4> {
+  async function evaluateNext(program:MvuExecutableProgramV4,input:MvuSchemaTraceInputV4,signal?:AbortSignal):Promise<MvuSchemaNextRunResultV4> {
     const blocked=preflight(signal)
     if(blocked)return blocked
     let parsed:ReturnType<typeof traceInputData>
     try {programBindings(program);parsed=traceInputData(program,input)}catch(error) {
       return unavailable(safeCode(error instanceof Error?error.message:undefined,'SCHEMA_TRACE_INPUT_INVALID'))
     }
-    const result=await executeWorker({program,trace:parsed.input,libraries,response:'next'},signal)
+    const result=await executeWorker({program,trace:parsed.input,response:'next'},signal)
     if(signal?.aborted)return cancelled()
     if(disposed)return unavailable('SCHEMA_RUNNER_DISPOSED')
     if('diagnostics' in result)return result
@@ -480,7 +509,7 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
       return {kind:'evaluated-next',record:traceRecord(parsed.input.requestedStep,prefix.length+1,previous,output)}
     }catch(error) {return unavailable(safeCode(error instanceof Error?error.message:undefined,'SCHEMA_TRACE_OUTPUT_INVALID'))}
   }
-  async function openManualRun(program:MvuSchemaProgramV4,input:MvuSchemaTraceInputV4,
+  async function openManualRun(program:MvuExecutableProgramV4,input:MvuSchemaTraceInputV4,
     signal?:AbortSignal):Promise<MvuSchemaOpenManualRunResultV4> {
     const blocked=preflight(signal)
     if(blocked)return blocked
@@ -490,8 +519,7 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
     }
     let worker:Worker
     try {
-      const wire=packSchemaEnvelopeV4({program,trace:parsed.input,libraries,response:'manual'} satisfies MvuSchemaWorkerRequestV4,
-        2*MVU_SCHEMA_BOUNDS.programBytes+MVU_SCHEMA_BOUNDS.inputBytes,evaluationBounds)
+      const wire=packWorkerRequest({program,trace:parsed.input,response:'manual'})
       worker=new Worker(workerUrl,{workerData:wire,env:{TZ:'UTC'},
         resourceLimits:{maxOldGenerationSizeMb:256,stackSizeMb:4}})
     }catch {return unavailable('SCHEMA_WORKER_UNAVAILABLE')}
@@ -631,7 +659,7 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
     return result.kind==='evaluated-next'?{kind:'opened-manual-run',run,record:result.record}:result
   }
   return {identity,evaluate,evaluateTrace,evaluateNext,openManualRun,
-    async verifyEvaluation(program:MvuSchemaProgramV4,evaluation:MvuSchemaEvaluationV4,signal?:AbortSignal) {
+    async verifyEvaluation(program:MvuExecutableProgramV4,evaluation:MvuSchemaEvaluationV4,signal?:AbortSignal) {
       try {
         const stored=cloneSchemaData(evaluation,evaluationBytes,evaluationBounds)
         exact(stored,['schemaVersion','encoding','programSha256','runner','input','inputSha256','output','evaluationSha256'])
@@ -644,7 +672,7 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
         return actual.kind==='evaluated'&&same(actual.evaluation,stored)
       } catch {return false}
     },
-    async verifyTrace(program:MvuSchemaProgramV4,evaluation:MvuSchemaTraceEvaluationV4,signal?:AbortSignal) {
+    async verifyTrace(program:MvuExecutableProgramV4,evaluation:MvuSchemaTraceEvaluationV4,signal?:AbortSignal) {
       try {
         const stored=cloneSchemaEnvelopeV4(evaluation,traceEvaluationBytes,evaluationBounds)
         exact(stored,['schemaVersion','encoding','programSha256','runner','input','inputSha256','records','evaluationSha256'])

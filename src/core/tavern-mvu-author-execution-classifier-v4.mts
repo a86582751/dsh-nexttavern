@@ -1,4 +1,4 @@
-/** Unapplied local AST-only proposal. It never evaluates source, fetches a URL,
+/** AST-only ownership classification. It never evaluates source, fetches a URL,
  * creates a schema, publishes Native state, or emits a state-ready receipt. */
 import ts from 'dsh-nexttavern-typescript-runtime'
 import type * as TypeScript from 'typescript'
@@ -13,11 +13,6 @@ import type {AstSpanV1, AuthorExecutionPlanV1, ExecutionPlanScriptV1,
   from './tavern-mvu-author-execution-types-v4.mjs'
 
 const HASH = /^[0-9a-f]{64}$/
-const C23_A_ORDER = [
-  'https://cdn.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js',
-  'https://testingcf.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js',
-  'https://fastly.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js',
-] as const
 class RejectedShape extends Error {
   constructor(readonly code: string) { super(code) }
 }
@@ -106,7 +101,7 @@ function loaderRecognizer(file: TypeScript.SourceFile, checker: TypeScript.TypeC
     if (!ts.isPropertyAccessExpression(target) || !ts.isIdentifier(target.expression)
       || target.expression.text !== 'console' || checker.getSymbolAtLocation(target.expression)
       || !['log', 'info', 'warn', 'error'].includes(target.name.text)
-      || call.arguments.length > 2 || call.typeArguments?.length) return false
+      || call.typeArguments?.length) return false
     const data = (node: TypeScript.Expression): boolean => {
       if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return true
       if (ts.isIdentifier(node)) {
@@ -188,9 +183,9 @@ function loaderRecognizer(file: TypeScript.SourceFile, checker: TypeScript.TypeC
     const array = declaration.declarations[0]
     if (!array || !ts.isIdentifier(array.name) || array.type || array.exclamationToken
       || !array.initializer || !ts.isArrayLiteralExpression(array.initializer)
-      || array.initializer.elements.length !== C23_A_ORDER.length) return undefined
+      || !array.initializer.elements.length) return undefined
     const literals = array.initializer.elements
-    if (!literals.every((item, index) => ts.isStringLiteral(item) && item.text === C23_A_ORDER[index])) return undefined
+    if (!literals.every(item => ts.isStringLiteral(item) && fixedStateLoaderDependency(item.text)?.group === 'A')) return undefined
     const arraySymbol = checker.getSymbolAtLocation(array.name)
     if (!arraySymbol || !ts.isIdentifier(loop.expression)
       || checker.getSymbolAtLocation(loop.expression) !== arraySymbol || loop.awaitModifier
@@ -240,7 +235,8 @@ function loaderRecognizer(file: TypeScript.SourceFile, checker: TypeScript.TypeC
     })
     if (arrayUses !== 1 || forbiddenUse) return undefined
     sites.push({kind: 'bounded-const-forof', importSpan: span(call), argumentSpan: span(argument),
-      dependencies: C23_A_ORDER.map(dependency), lowering: 'exact-url-conditional'})
+      dependencies: literals.map((literal, index) => dependency((literal as TypeScript.StringLiteral).text, index)),
+      lowering: 'exact-url-conditional'})
   } else return undefined
   const families = new Set(sites.flatMap(site => site.dependencies.map(item => item.group)))
   if (families.size !== 1) reject('STATE_LOADER_MULTIPLE_FAMILIES_UNSUPPORTED')

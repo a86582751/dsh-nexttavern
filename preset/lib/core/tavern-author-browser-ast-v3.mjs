@@ -2,8 +2,9 @@
 /** Complete deterministic scope/value proof. Nothing here evaluates author JS. */
 import ts from 'dsh-nexttavern-typescript-runtime';
 import { sha256 } from './roleplay-data.js';
-import { BROWSER_BOUNDS_V3, BROWSER_APIS_V3, BROWSER_METHODS_V3, BROWSER_PROPERTIES_V3, BROWSER_GUEST_INTRINSICS_V3, BROWSER_ABSENT_PROBES_V3, BROWSER_CLOSED_DOM_FACADES_V3, BROWSER_SERVER_GLOBALS_V3, READER_PAGE_AST_APIS_V3 } from './tavern-author-browser-profile-v3.mjs';
+import { BROWSER_BOUNDS_V3, BROWSER_APIS_V3, BROWSER_METHODS_V3, BROWSER_PROPERTIES_V3, BROWSER_GUEST_INTRINSICS_V3, BROWSER_ABSENT_PROBES_V3, BROWSER_CLOSED_DOM_FACADES_V3, BROWSER_SERVER_GLOBALS_V3, READER_PAGE_AST_APIS_V3, BROWSER_STATE_METHODS_V3, BROWSER_STATE_WAIT_V3, BROWSER_STATE_ABSENT_MEMBERS_V3, BROWSER_STATE_NODE_METHODS_V3, BROWSER_STATE_NODE_PROPERTIES_V3, BROWSER_STATE_DOCUMENT_METHODS_V3 } from './tavern-author-browser-profile-v3.mjs';
 import { BROWSER_NATIVE_METHODS_V3, BROWSER_NATIVE_PROPERTIES_V3 } from './tavern-author-browser-renderer-v3.js';
+import { fixedStateLoaderDependency } from './tavern-mvu-state-loader-policy-v4.mjs';
 const assignment = (node) => node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
     && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment;
 const cell = () => ({ values: new Set(), readers: new Set() });
@@ -46,6 +47,8 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
     const handles = new Map(), queue = [], queued = new Set();
     const functionFallbackReaders = new Set();
     const serverNativeReads = new Map();
+    const stateFacadeUnits = new Set();
+    const stateImportSites = new Map();
     let functionFallback = false;
     let missingFallback = false;
     let globalMissingFallback = false;
@@ -566,7 +569,8 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
                         continue;
                     }
                     const kind = receiver.handle;
-                    if (guestField(receiver, name) && !BROWSER_NATIVE_METHODS_V3[kind].includes(name)) {
+                    const stateMember = kind === 'node' && (name in BROWSER_STATE_NODE_METHODS_V3 || name in BROWSER_STATE_NODE_PROPERTIES_V3);
+                    if (guestField(receiver, name) && !BROWSER_NATIVE_METHODS_V3[kind].includes(name) && !stateMember) {
                         const prototypes = read(receiver.prototypes, node);
                         if (prototypes.size)
                             for (const prototype of prototypes)
@@ -587,6 +591,27 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
                 }
                 if (receiver.handle === 'event' && ['touches', 'changedTouches'].includes(name)) {
                     out.add(touchList(receiver, name));
+                    continue;
+                }
+                const absentMembers = BROWSER_STATE_ABSENT_MEMBERS_V3[receiver.handle];
+                if (absentMembers?.includes(name)) {
+                    const id = 'state-absent:' + receiver.handle + '.' + name;
+                    let missing = nativeAtoms.get(id);
+                    if (!missing) {
+                        missing = atom('absent', { fixedGuard: true, nativeName: id });
+                        nativeAtoms.set(id, missing);
+                    }
+                    stateFacadeUnits.add(units.get(node));
+                    out.add(missing);
+                    continue;
+                }
+                const stateMethod = receiver.handle === 'mvu'
+                    ? BROWSER_STATE_METHODS_V3[name]
+                    : receiver.handle === 'node' ? BROWSER_STATE_NODE_METHODS_V3[name]
+                        : receiver.handle === 'document' ? BROWSER_STATE_DOCUMENT_METHODS_V3[name] : undefined;
+                if (stateMethod) {
+                    stateFacadeUnits.add(units.get(node));
+                    out.add(native(name, stateMethod, receiver));
                     continue;
                 }
                 const method = astOptions.readerPageApis && receiver.handle === 'page-collection'
@@ -639,7 +664,11 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
                     }
                     continue;
                 }
-                const property = BROWSER_PROPERTIES_V3[receiver.handle]?.[name];
+                const stateProperty = receiver.handle === 'node'
+                    ? BROWSER_STATE_NODE_PROPERTIES_V3[name] : undefined;
+                if (stateProperty)
+                    stateFacadeUnits.add(units.get(node));
+                const property = stateProperty ?? BROWSER_PROPERTIES_V3[receiver.handle]?.[name];
                 if (property === 'event-map') {
                     out.add(sourceDictionary('events', sourceEventFields));
                     continue;
@@ -824,6 +853,14 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
             return one(handle('tavern', global.realm));
         if (name === 'Mvu')
             return one(handle('mvu', global.realm));
+        if (name === 'CSS') {
+            stateFacadeUnits.add(state);
+            return one(intrinsicValue('CSS'));
+        }
+        if (name === 'waitGlobalInitialized') {
+            stateFacadeUnits.add(state);
+            return one(native(name, BROWSER_STATE_WAIT_V3, global));
+        }
         if (name === 'NextTavern')
             return one(handle('next-tavern', global.realm));
         if (name === 'localStorage')
@@ -1897,6 +1934,7 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
     const nativeCalls = new Map();
     const boundFunctions = new Map();
     const unprovenNativeBoundCalls = new Set();
+    const promiseSettlements = new Map();
     function invokeFunction(fn, args, node, receiver, selectorExpression) {
         if (readerGuestHelper(fn))
             return readerGuestResult(fn, args, node);
@@ -2332,6 +2370,13 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
             return;
         }
         if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+            if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+                // The namespace is actually empty. Its absent exports must not turn
+                // into guessed Native functions when the author probes Mvu/default.
+                const namespace = object(node);
+                emit(sourcePromise(node, 'fixed-state-import', namespace));
+                return;
+            }
             const args = (node.arguments ?? []).map(argument => value(argument, node)), target = value(node.expression, node);
             const access = ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression) ? node.expression : null;
             const receiver = access ? value(access.expression, node) : undefined;
@@ -2441,6 +2486,29 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
                                 add(promise.elements, one(item));
                         }
                         emit(one(promise));
+                        continue;
+                    }
+                    if (fn.nativeName === 'Promise.allSettled') {
+                        stateFacadeUnits.add(units.get(node));
+                        let settled = promiseSettlements.get(node);
+                        if (!settled) {
+                            const row = atom('object', { fields: new Map(), written: new Set(), snapshot: true });
+                            add(field(row, 'status'), new Set([literal('fulfilled'), literal('rejected')]));
+                            add(field(row, 'reason'), one(guest));
+                            row.written.add('status');
+                            row.written.add('reason');
+                            row.written.add('value');
+                            const rows = atom('array', { elements: cell() });
+                            add(rows.elements, one(row));
+                            const promise = atom('promise', { elements: cell() });
+                            add(promise.elements, one(rows));
+                            settled = { promise, rows, row };
+                            promiseSettlements.set(node, settled);
+                        }
+                        for (const array of args[0] ?? [])
+                            for (const item of array.elements ? read(array.elements, node) : one(unknown))
+                                add(field(settled.row, 'value'), item.kind === 'promise' ? read(item.elements, node) : one(item));
+                        emit(one(settled.promise));
                         continue;
                     }
                     if (fn.nativeName === 'Object.assign') {
@@ -2680,6 +2748,8 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
     }
     function nativeResult(fn, args, node) {
         const state = units.get(node), realmName = state.input.realm, name = fn.nativeName, operation = fn.operation;
+        if (name === 'waitGlobalInitialized')
+            return sourcePromise(node, 'source-mvu-ready', handle('mvu', realmName));
         if (astOptions.readerPageApis && operation.returns === 'page-collection') {
             const receiver = fn.receiver, collection = receiver.handle === 'page-collection'
                 ? receiver : handle('page-collection', receiver.realm ?? realmName);
@@ -3249,10 +3319,30 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
             }
             if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
                 if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-                    report(state, 'BROWSER3_IMPORT_UNSUPPORTED', node);
+                    const argument = node.arguments?.[0], selected = argument ? names(finalValue(argument)) : undefined;
+                    if (state.input.pageId !== null || node.arguments?.length !== 1 || node.typeArguments?.length
+                        || !selected?.size || [...selected].some(specifier => fixedStateLoaderDependency(specifier)?.group !== 'B'))
+                        report(state, 'BROWSER3_IMPORT_UNSUPPORTED', node);
+                    else {
+                        state.caps.add('owned-fixed-state-imports');
+                        const sites = stateImportSites.get(state) ?? [];
+                        sites.push({ importSpan: { start: node.getStart(state.file), end: node.end },
+                            argumentSpan: { start: argument.getStart(state.file), end: argument.end }, exactSpecifiers: [...selected] });
+                        stateImportSites.set(state, sites);
+                    }
                     continue;
                 }
                 const targets = finalValue(node.expression);
+                if ([...targets].some(fn => fn.kind === 'absent' && fn.nativeName?.startsWith('state-absent:'))) {
+                    let caught = false;
+                    for (let child = node; child.parent && !callable(child.parent); child = child.parent)
+                        if (ts.isTryStatement(child.parent) && child.parent.tryBlock === child && child.parent.catchClause) {
+                            caught = true;
+                            break;
+                        }
+                    if (!caught)
+                        report(state, 'BROWSER3_FIXED_ABSENCE_CALL_UNCAUGHT', node);
+                }
                 for (const fn of targets) {
                     if (fn.kind === 'invoke' && fn.nativeName === 'apply' && nativeFunction(fn.receiver) && !nativeCalls.get(node)?.size)
                         report(state, 'BROWSER3_NATIVE_APPLY_ARGUMENTS_UNPROVEN', node);
@@ -3271,6 +3361,13 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
                     report(state, 'BROWSER3_READER_GLOBAL_READINESS_UNSUPPORTED', node);
             }
             for (const [fn, args] of nativeCalls.get(node) ?? []) {
+                if (fn.nativeName === 'waitGlobalInitialized') {
+                    const selected = names(args[0] ?? new Set());
+                    if (selected?.size !== 1 || !selected.has('Mvu'))
+                        report(state, 'BROWSER3_READER_GLOBAL_READINESS_UNSUPPORTED', node);
+                }
+                if (astOptions.readerPageApis && fn.nativeName === 'replaceMvuData')
+                    report(state, 'BROWSER3_READER_STATE_WRITE_UNSUPPORTED', node);
                 if (astOptions.readerPageApis && fn.operation.returns === 'page-collection'
                     && (READER_PAGE_AST_APIS_V3.resourceMethods.includes(fn.nativeName)
                         || ['$', 'jQuery'].includes(fn.nativeName) && [...args[0] ?? []].some(item => ['function', 'factory-callback', 'choice', 'bound', 'native'].includes(item.kind))))
@@ -3288,8 +3385,11 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
                 }
                 // Helper getAllVariables includes captured script DATA. Reader's same
                 // name merges only its owned variable snapshots, without that catalog.
-                if (fn.nativeName === 'getAllVariables' && !astOptions.readerPageApis || fn.nativeName === 'getVariables'
-                    && [...args[0] ?? []].some(option => option.fields && names(field(option, 'type').values)?.has('script')))
+                const scriptScope = ['getVariables', 'getMvuData'].includes(fn.nativeName)
+                    && [...args[0] ?? []].some(option => option.fields && names(field(option, 'type').values)?.has('script'));
+                if (scriptScope && astOptions.readerPageApis)
+                    report(state, 'BROWSER3_READER_SCRIPT_SCOPE_UNSUPPORTED', node);
+                else if (fn.nativeName === 'getAllVariables' && !astOptions.readerPageApis || scriptScope)
                     state.caps.add('owned-script-source-resources');
                 if (fn.operation.returns === 'avatar-fetch') {
                     const urls = args[0] ? names(args[0]) : undefined, methods = new Set();
@@ -3433,6 +3533,7 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
         };
     });
     return { proofs: states.map(state => ({ unit: state.input, coverage: state.coverage, capabilities: [...state.caps].sort(),
-            keys: [...state.keys].sort(), pageMounts: [...state.mounts].sort(), media: [...state.media.values()] })), diagnostics,
+            keys: [...state.keys].sort(), pageMounts: [...state.mounts].sort(), media: [...state.media.values()],
+            stateFacade: stateFacadeUnits.has(state), stateImports: stateImportSites.get(state) ?? [] })), diagnostics,
         ...diagnosticEvidence ? { diagnosticEvidence } : {} };
 }

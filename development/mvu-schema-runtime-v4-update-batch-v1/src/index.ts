@@ -12,8 +12,9 @@ import type {SchemaRuntimeDescriptor,SchemaRuntimeFile} from './descriptor.js'
 import type {MvuSchemaLibraryIdentity,MvuSchemaLibraryBytes,
   MvuSchemaImplementationIdentity} from '../../../src/core/tavern-mvu-schema-types.js'
 import {deriveOwnedStateLoaderIdentityV4} from '../../../src/core/tavern-mvu-schema-program-v4.js'
-import type {MvuSchemaCandidateCompilerV4,CompilerDepsV4,
+import type {CompilerDepsV4,
   CompilationV4,ServerCandidatePartitionV4} from '../../../src/core/tavern-mvu-schema-program-v4.js'
+import type {MvuOwnedStateCandidateCompilerV1} from '../../../src/core/tavern-mvu-owned-state-types-v1.mjs'
 import type {MvuSchemaRunnerV4,MvuSchemaRunnerDepsV4,MvuSchemaRunResultV4,MvuSchemaTraceRunResultV4,
   MvuSchemaNextRunResultV4,MvuSchemaOpenManualRunResultV4}
   from '../../../src/core/tavern-mvu-schema-types-v4.js'
@@ -29,7 +30,7 @@ export interface MvuSchemaRuntimeV4Deps {
   verifyOwnedPackage(packageRootURL:URL):OwnedSchemaPackageInventory
 }
 export interface MvuSchemaRuntimeV4 {
-  compiler:MvuSchemaCandidateCompilerV4;runner:MvuSchemaRunnerV4
+  compiler:MvuOwnedStateCandidateCompilerV1;runner:MvuSchemaRunnerV4
   libraries:readonly MvuSchemaLibraryIdentity[];bridge:MvuSchemaImplementationIdentity
   stateLoader:MvuSchemaImplementationIdentity
   dispose():Promise<void>
@@ -89,7 +90,7 @@ function dependencyGraph(root:string):void {
 }
 
 export async function createMvuSchemaRuntimeV4(deps:MvuSchemaRuntimeV4Deps):Promise<MvuSchemaRuntimeV4> {
-  let compiler:MvuSchemaCandidateCompilerV4|undefined,runner:MvuSchemaRunnerV4|undefined
+  let compiler:MvuOwnedStateCandidateCompilerV1|undefined,runner:MvuSchemaRunnerV4|undefined
   try {
     const root=fileURLToPath(ownRoot),pin=admitted(root,deps)
     if(loadedGeneration!==undefined&&loadedGeneration!==pin.generation)throw failure()
@@ -119,7 +120,7 @@ export async function createMvuSchemaRuntimeV4(deps:MvuSchemaRuntimeV4Deps):Prom
       implementationSha256:implementation('bridge')})
     const stateLoader=Object.freeze(deriveOwnedStateLoaderIdentityV4(bridge))
     const compilerModule=await import(pathToFileURL(pathname(root,descriptor.modules.compiler)).href) as {
-      createMvuSchemaCompilerV4(deps:CompilerDepsV4):MvuSchemaCandidateCompilerV4}
+      createMvuSchemaCompilerV4(deps:CompilerDepsV4):MvuOwnedStateCandidateCompilerV1}
     const runnerModule=await import(pathToFileURL(pathname(root,descriptor.modules.runner)).href) as {
       createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRunnerV4}
     if(admitted(root,deps).generation!==pin.generation)throw failure()
@@ -159,8 +160,15 @@ export async function createMvuSchemaRuntimeV4(deps:MvuSchemaRuntimeV4Deps):Prom
       compiler:{identity:actualCompiler.identity,
         compile:(input,signal)=>guarded(()=>actualCompiler.compile(input,signal),
           {kind:'refused',diagnostics:unavailable.diagnostics} as CompilationV4),
-        partitionCandidates:(input,signal)=>guarded(()=>actualCompiler.partitionCandidates(input,signal),
+        partitionCandidates:(input,signal,browserCandidateOrdinals)=>guarded(
+          ()=>actualCompiler.partitionCandidates(input,signal,browserCandidateOrdinals),
           {kind:'refused',diagnostics:unavailable.diagnostics} as ServerCandidatePartitionV4),
+        assembleOwnedStateProgram:(original,browserProgram)=>{
+          current()
+          const program=actualCompiler.assembleOwnedStateProgram(original,browserProgram)
+          current()
+          return program
+        },
         verifyProgram:(program,signal)=>guarded(()=>actualCompiler.verifyProgram(program,signal),false),
         dispose:()=>actualCompiler.dispose()},
       runner:{identity:actualRunner.identity,

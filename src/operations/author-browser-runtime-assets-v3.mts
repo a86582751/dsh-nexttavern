@@ -110,12 +110,15 @@ export async function buildAuthorBrowserRuntimeAssetsV3(options:{repo:string;pla
   outputs.set(recipe.wasmOutput,wasm)
   const policyURL=pathToFileURL(inside(repo,find(recipe.policyArtifact).source))
   policyURL.searchParams.set('authorBrowserBuildV3',authorBrowserAssetShaV3(JSON.stringify(graphs)))
-  const policy=await import(policyURL.href) as {BROWSER_PROFILE_V3:{sha256:string};BROWSER_CAPABILITY_CONTRACT_V3:{contractSha256:string}}
+  const policy=await import(policyURL.href) as {BROWSER_PROFILE_V3:{sha256:string};BROWSER_CAPABILITY_CONTRACT_V3:{contractSha256:string};
+    BROWSER_STATE_PROFILE_V3:{sha256:string};BROWSER_STATE_CAPABILITY_CONTRACT_V3:{contractSha256:string}}
   outputs.set(recipe.descriptorOutput,Buffer.from(JSON.stringify({schemaVersion:4,name:AUTHOR_BROWSER_RUNTIME_NAME_V3,
     version:AUTHOR_BROWSER_RUNTIME_VERSION_V3,modules:AUTHOR_BROWSER_MODULES_V3,dependencies:AUTHOR_BROWSER_RUNTIME_PINS_V3,
     sharedCompiler:TYPESCRIPT_SHARED_DEPENDENCY,
     wasm:{path:AUTHOR_BROWSER_WASM_V3,sha256:AUTHOR_BROWSER_WASM_SHA256_V3},
-    profileSha256:policy.BROWSER_PROFILE_V3.sha256,capabilityContractSha256:policy.BROWSER_CAPABILITY_CONTRACT_V3.contractSha256},null,2)+'\n'))
+    profileSha256:policy.BROWSER_PROFILE_V3.sha256,capabilityContractSha256:policy.BROWSER_CAPABILITY_CONTRACT_V3.contractSha256,
+    stateProfile:{profileSha256:policy.BROWSER_STATE_PROFILE_V3.sha256,
+      capabilityContractSha256:policy.BROWSER_STATE_CAPABILITY_CONTRACT_V3.contractSha256}},null,2)+'\n'))
   outputs.set(recipe.sourceInputOutput,Buffer.from(JSON.stringify({schemaVersion:3,
     encoding:'owned-author-browser-runtime-source-inputs-v3',name:AUTHOR_BROWSER_RUNTIME_NAME_V3,
     version:AUTHOR_BROWSER_RUNTIME_VERSION_V3,graphs,bundledDependencies},null,2)+'\n'))

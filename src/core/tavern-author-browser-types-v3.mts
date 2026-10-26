@@ -15,11 +15,12 @@ import type {MvuPlayerEditResponse} from './roleplay-mvu-player-types.js'
 import type {BrowserSourceEventV3} from './tavern-author-browser-worker-protocol-v3.js'
 import type {BrowserPromptCleanupRequestV3} from './roleplay-author-browser-generation-types.js'
 import type {ReaderRegexDocumentCompilerV1} from './reader-regex-document-types.mjs'
+import type {BrowserStateImportsV1} from './tavern-author-browser-state-imports-v1.mjs'
 
 export type BrowserCapabilityV3=BrowserCapabilityV2|'owned-source-html-page'
   |'owned-synchronous-page-events'|'owned-page-canvas-svg'|'owned-page-audio'
   |'owned-page-ephemeral-preferences'|'owned-declared-key-mutation'|'owned-page-file-gesture'
-  |'owned-page-frame-lifecycle'|'owned-numerical-variable-replacement'
+  |'owned-page-frame-lifecycle'|'owned-numerical-variable-replacement'|'owned-fixed-state-imports'
 export interface BrowserCapabilityContractV3 {
   readonly schemaVersion:3
   readonly encoding:'native-author-browser-capability-contract-v3'
@@ -138,7 +139,7 @@ export interface BrowserProgramV3 {
   readonly authority:'compiled-program-data-only'
   readonly source:BrowserProgramSourceLocatorV1
   readonly compiler:BrowserCompilerIdentityV3
-  readonly profile:{readonly id:'nexttavern-browser-source-html';readonly version:3|4;readonly sha256:string}
+  readonly profile:{readonly id:'nexttavern-browser-source-html';readonly version:3|4|5;readonly sha256:string}
   readonly runtime:BrowserRuntimeIdentityV3
   readonly capabilityContract:BrowserCapabilityContractV3
   readonly scripts:readonly BrowserCompiledScriptV3[]
@@ -147,6 +148,8 @@ export interface BrowserProgramV3 {
   /** Only the new generation profile associates its single admitted ordinary
    * writer with explicit dialogue. Historical profiles have no such grant. */
   readonly generationDeclarationId?:string|null
+  /** Only profile5 can carry the complete Browser owner's fixed import proof. */
+  readonly stateImports?:BrowserStateImportsV1
   readonly requiredCapabilities:readonly BrowserCapabilityV3[]
   readonly programSha256:string
 }
@@ -200,6 +203,9 @@ export interface BrowserRuntimeArtifactV3 extends Pick<BrowserRuntimeArtifactV2,
   'executionWorkerJavascript'|'executionWorkerSha256'|'wasm'> {
   readonly schemaVersion:3
   readonly identity:BrowserRuntimeIdentityV3
+  /** Same physical runtime producer, bound to the profile5 state contract.
+   * Historical artifacts omit it and cannot compile the new profile. */
+  readonly stateIdentity?:BrowserRuntimeIdentityV3
   /** The Browser3 byte producer supplies its distinct complete compiler
    * identity. DATA compilation alone cannot admit this artifact for execution. */
   readonly compiler:BrowserCompilerIdentityV3

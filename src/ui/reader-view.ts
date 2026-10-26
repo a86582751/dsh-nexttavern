@@ -13,6 +13,7 @@ import { scopeReaderCss, READER_BASE_CSS,renderReaderNarrative } from './reader-
 import {createAuthorBrowserSession,createReaderRegexDocumentSession, type AuthorBrowserStatus} from './author-browser-session.js';
 import {createAuthorReaderSurface} from '../core/tavern-author-reader-surface.js';
 import type {AuthorReaderSurface,AuthorReaderSurfaceLayout} from '../core/tavern-author-reader-surface.js';
+import type {BrowserComposerAccessV3} from '../core/tavern-author-browser-native-types-v3.js';
 import {mountStaticAuthorDocument} from './author-runtime.js';
 import type {createSessionImages} from './session-images.js';
 import {createReaderCommunityCache,createCommunityOptionsRenderer,COMMUNITY_READER_CSS} from './reader-community.js';
@@ -89,6 +90,33 @@ interface ReaderDependencies extends Pick<MessageComponents, 'UserActions' | 'As
     ACTIVITY_CSS: string;
     images?: Pick<ReturnType<typeof createSessionImages>, 'acceptBrowserImages' | 'releaseBrowserImages'>;
     readerHandoff?: Pick<ReaderSubmissionHandoff,'mount'>;
+}
+
+/** The UI alone owns the real editor. A guest receives only this narrow
+ * capability; it cannot traverse Main DOM or dispatch a send action. */
+export function createReaderComposerAccess(document:Document,current:()=>boolean):BrowserComposerAccessV3 {
+    const editor=()=>{
+        if(!current())throw Error('BROWSER_COMPOSER_SESSION_CHANGED');
+        const value=document.querySelector<HTMLElement>('[data-composer-input]');
+        if(!value)throw Error('BROWSER_COMPOSER_UNAVAILABLE');
+        return value;
+    };
+    const text=(value:HTMLElement)=>value.innerText??value.textContent??'';
+    return {
+        read:()=>text(editor()),
+        replace(value,expectedText){
+            const target=editor();
+            if(text(target)!==expectedText)throw Error('BROWSER_COMPOSER_CHANGED');
+            target.focus();
+            const selection=document.defaultView!.getSelection();
+            if(!selection)throw Error('BROWSER_COMPOSER_SELECTION_UNAVAILABLE');
+            const range=document.createRange();range.selectNodeContents(target);
+            selection.removeAllRanges();selection.addRange(range);
+            if(!document.execCommand('insertText',false,value))throw Error('BROWSER_COMPOSER_REPLACE_FAILED');
+        },
+        dispatch:type=>{editor().dispatchEvent(new document.defaultView!.Event(type,{bubbles:true}));},
+        focus:()=>editor().focus(),
+    };
 }
 
 export function createReaderView({
@@ -743,6 +771,7 @@ React,
             const controller = createAuthorBrowserSession({
                 sessionId, container: browserContainerRef.current,
                 surface: () => readerSurfaceFactoryRef.current!(),
+                composer:createReaderComposerAccess(document,()=>resolveActiveSessionId()===sessionId),
                 current: () => readerSessionRef.current === sessionId && browserControllerRef.current === controller,
                 status: setBrowserStatus,
                 preparation: value=>readerSubmission?.publish(value),

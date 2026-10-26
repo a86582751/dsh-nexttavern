@@ -445,7 +445,7 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
       if(original.schemaVersion===5) {
         // V7 recovery is owned by the checked Journal and its private Original.
         // An external DTO cannot replace that result with a second plan parser.
-        if(original.preparation.compilation.schemaVersion===7)return false
+        if(original.preparation.compilation.schemaVersion===7||original.preparation.compilation.schemaVersion===8)return false
         return hostOriginalFactsCurrent(original,body,originalSha256)
       }
       exact(original,['schemaVersion','encoding','sessionId','preparation','sourceSnapshot','authorInput',

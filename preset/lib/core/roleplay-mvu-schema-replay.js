@@ -20,6 +20,8 @@ function exact(value, keys) {
         fail('SCHEMA_REPLAY_SHAPE');
 }
 function compilationInput(program, expected) {
+    if ('encoding' in program && program.encoding === 'native-mvu-owned-state-program-v1')
+        fail('SCHEMA_COMBINED_ORIGINAL_REQUIRED');
     if (program.schemaVersion === 2) {
         const value = program;
         return { schemaVersion: 2, encoding: 'native-mvu-author-compilation-input-v2', source: value.source,
@@ -100,12 +102,12 @@ export function createRoleplayMvuSchemaReplay(deps) {
     async function compileAuthor(input, signal, resources) {
         if (host) {
             if (input.schemaVersion !== 3 && input.schemaVersion !== 4 && input.schemaVersion !== 5 && input.schemaVersion !== 6
-                && input.schemaVersion !== 7)
+                && input.schemaVersion !== 7 && input.schemaVersion !== 8)
                 fail('SCHEMA_REPLAY_VERSION_MISMATCH');
             return host.compiler.compile(input, signal, resources);
         }
         if (input.schemaVersion === 3 || input.schemaVersion === 4 || input.schemaVersion === 5 || input.schemaVersion === 6
-            || input.schemaVersion === 7)
+            || input.schemaVersion === 7 || input.schemaVersion === 8)
             fail('SCHEMA_REPLAY_VERSION_MISMATCH');
         return deps.compiler.compile(input, signal);
     }
@@ -193,7 +195,7 @@ export function createRoleplayMvuSchemaReplay(deps) {
             }
             else if (!host || (captured.authorInput.schemaVersion !== 3 && captured.authorInput.schemaVersion !== 4
                 && captured.authorInput.schemaVersion !== 5 && captured.authorInput.schemaVersion !== 6
-                && captured.authorInput.schemaVersion !== 7)
+                && captured.authorInput.schemaVersion !== 7 && captured.authorInput.schemaVersion !== 8)
                 || !deps.completeHostFrames)
                 fail('SCHEMA_OWNER_UNPROVEN');
             check('captured');
@@ -220,7 +222,7 @@ export function createRoleplayMvuSchemaReplay(deps) {
                 fail('SCHEMA_COMPILATION_REFUSED');
             const completeProgram = compiled.program;
             combined = completeProgram.schemaVersion === 3 || completeProgram.schemaVersion === 4
-                || completeProgram.schemaVersion === 5 || completeProgram.schemaVersion === 6 || completeProgram.schemaVersion === 7 ? completeProgram : null;
+                || completeProgram.schemaVersion === 5 || completeProgram.schemaVersion === 6 || completeProgram.schemaVersion === 7 || completeProgram.schemaVersion === 8 ? completeProgram : null;
             const program = combined ? combined.serverProgram : completeProgram;
             // Compilation can retain browser-only DATA. Numerical initialization
             // needs a real server result and creates no fake epoch or Native marker.
@@ -230,7 +232,7 @@ export function createRoleplayMvuSchemaReplay(deps) {
                 fail('SCHEMA_IMPLEMENTATION_CHANGED');
             if (!combined) {
                 if (captured.authorInput.schemaVersion === 3 || captured.authorInput.schemaVersion === 4
-                    || captured.authorInput.schemaVersion === 5 || captured.authorInput.schemaVersion === 6 || captured.authorInput.schemaVersion === 7
+                    || captured.authorInput.schemaVersion === 5 || captured.authorInput.schemaVersion === 6 || captured.authorInput.schemaVersion === 7 || captured.authorInput.schemaVersion === 8
                     || !same(compilationInput(program, captured.authorInput), captured.authorInput))
                     fail('SCHEMA_AUTHOR_SOURCE_MISMATCH');
             }
@@ -520,7 +522,7 @@ export function createRoleplayMvuSchemaReplay(deps) {
                         // program above. Keep one real historical execution, not a second
                         // compilation of that same newly produced result.
                         const program = compiled.program.schemaVersion === 3 || compiled.program.schemaVersion === 4
-                            || compiled.program.schemaVersion === 5 || compiled.program.schemaVersion === 6 || compiled.program.schemaVersion === 7
+                            || compiled.program.schemaVersion === 5 || compiled.program.schemaVersion === 6 || compiled.program.schemaVersion === 7 || compiled.program.schemaVersion === 8
                             ? compiled.program.serverProgram : compiled.program;
                         if (!program)
                             fail('SCHEMA_HOST_SERVER_PROGRAM_REQUIRED');

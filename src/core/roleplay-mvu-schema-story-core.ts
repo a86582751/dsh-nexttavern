@@ -1535,7 +1535,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     :{facts:HistoricalCutFacts;originalSha256:string} {
     return Object.freeze({facts:Object.freeze({authorInput:schemaOriginalReplayCompilationInput(original),
       ...original.schemaVersion===5
-        &&(original.preparation.compilation.schemaVersion===6||original.preparation.compilation.schemaVersion===7)
+        &&(original.preparation.compilation.schemaVersion===6||original.preparation.compilation.schemaVersion===7||original.preparation.compilation.schemaVersion===8)
         ?{compilationResources:deps.source.captureOriginalCompilationResources(original)}:{},
       ready,frozen:ready.frozen,events:all(session)}),originalSha256:original.originalSha256})
   }
@@ -1769,7 +1769,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         sourceNativeCut:freezeSchemaJournalData(cut),requestedStep,
         compiledProgram:owner.compiledProgram,
         ...owner.original.schemaVersion===5
-          &&(owner.original.preparation.compilation.schemaVersion===6||owner.original.preparation.compilation.schemaVersion===7)
+          &&(owner.original.preparation.compilation.schemaVersion===6||owner.original.preparation.compilation.schemaVersion===7||owner.original.preparation.compilation.schemaVersion===8)
           &&!owner.compiledProgram
           ?{compilationResources:deps.source.captureOriginalCompilationResources(owner.original)}:{}}
       Object.defineProperty(owner.scope,'captureJournal',{value:captureJournal})
@@ -2596,7 +2596,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     const view=views.get(sid),history=view&&viewCurrent(view)?view.history:undefined
     if(!history)return undefined
     const epoch=history.ready.epoch,program=epoch.schemaVersion===5?epoch.program:undefined
-    const unavailableExternalAddons=program?.schemaVersion===7
+    const unavailableExternalAddons=(program?.schemaVersion===7||program?.schemaVersion===8)
       ?program.executionPlan.scripts.filter(row=>row.disposition==='external-addon-unavailable'):undefined
     return {snapshot:structuredClone(history.snapshot),displayUpdates:history.displayUpdates??[],
       ...history.lastTaskResultCanonicalSeq!==undefined?{lastTaskResultCanonicalSeq:history.lastTaskResultCanonicalSeq}:{},
@@ -2831,11 +2831,16 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(!program)return undefined
     if(program.schemaVersion===3) {
       const owned=captureDeclaredChatKeys(sid,program)
+      const numerical=ready.epoch.program.serverProgram
+      const stateProgramBinding=numerical?.encoding==='native-mvu-owned-state-program-v1'
+        ?{programSha256:numerical.programSha256,browserProgramSha256:program.programSha256,
+          source:program.source,dependencyGroup:'B' as const}:undefined
       const dataV3:Omit<BrowserSnapshotV3,'generation'|'readRevision'>={...data,
         schemaVersion:3,encoding:'native-author-browser-snapshot-v3',messages:capturedMessages,
         persona:{name:context.user,...context.user_gender!==undefined?{gender:context.user_gender}:{},avatar:null},character,
         authorChats:owned.map(row=>({declarationId:row.declarationId,capture:row.capture.data}))}
       return {program,artifact:runtime.browser.artifact as BrowserRuntimeArtifactV3,data:dataV3,
+        ...stateProgramBinding?{stateProgramBinding}:{},
         sourceCurrent:()=>ownerCurrent()&&deps.source.frameIdentityCurrent(frame),
         current:()=>current()&&owned.every(row=>row.capture.current()),
         ...(program.requiredCapabilities.includes('owned-script-source-resources')
@@ -2931,7 +2936,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
           realmEpoch:plan.realmEpoch,loadFrame:schemaEpochExecution(ready.epoch).loadFrame,inheritedCut:owner.inheritedCut,
           sourceNativeCut:freezeSchemaJournalData(cut),requestedStep,journalCut:ready,compiledProgram:owner.compiledProgram,
           ...owner.original.schemaVersion===5
-            &&(owner.original.preparation.compilation.schemaVersion===6||owner.original.preparation.compilation.schemaVersion===7)
+            &&(owner.original.preparation.compilation.schemaVersion===6||owner.original.preparation.compilation.schemaVersion===7||owner.original.preparation.compilation.schemaVersion===8)
             &&!owner.compiledProgram
             ?{compilationResources:deps.source.captureOriginalCompilationResources(owner.original)}:{}}
         // Replay may be a separate Host5 bundle. The actual Node producer owns

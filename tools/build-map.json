@@ -8670,6 +8670,51 @@
       "outputs": [
         "lib/operations/released-component-assembly.mjs"
       ]
+    },
+    {
+      "artifact": "tavern-author-browser-state-imports-v1-generated",
+      "source": "src/core/tavern-author-browser-state-imports-v1.mts",
+      "banner": "runtime/alpha3/src/core/tavern-author-browser-state-imports-v1.mts",
+      "primaryOutput": "lib/core/tavern-author-browser-state-imports-v1.mjs",
+      "outputs": [
+        "lib/core/tavern-author-browser-state-imports-v1.mjs"
+      ]
+    },
+    {
+      "artifact": "tavern-mvu-owned-state-types-v1-generated",
+      "source": "src/core/tavern-mvu-owned-state-types-v1.mts",
+      "banner": "runtime/alpha3/src/core/tavern-mvu-owned-state-types-v1.mts",
+      "primaryOutput": "lib/core/tavern-mvu-owned-state-types-v1.mjs",
+      "outputs": [
+        "lib/core/tavern-mvu-owned-state-types-v1.mjs"
+      ]
+    },
+    {
+      "artifact": "tavern-author-combined-types-v8-generated",
+      "source": "src/core/tavern-author-combined-types-v8.mts",
+      "banner": "runtime/alpha3/src/core/tavern-author-combined-types-v8.mts",
+      "primaryOutput": "lib/core/tavern-author-combined-types-v8.mjs",
+      "outputs": [
+        "lib/core/tavern-author-combined-types-v8.mjs"
+      ]
+    },
+    {
+      "artifact": "tavern-author-combined-data-v8-generated",
+      "source": "src/core/tavern-author-combined-data-v8.mts",
+      "banner": "runtime/alpha3/src/core/tavern-author-combined-data-v8.mts",
+      "primaryOutput": "lib/core/tavern-author-combined-data-v8.mjs",
+      "outputs": [
+        "lib/core/tavern-author-combined-data-v8.mjs"
+      ]
+    },
+    {
+      "artifact": "tavern-author-combined-compiler-v8-generated",
+      "source": "src/core/tavern-author-combined-compiler-v8.mts",
+      "banner": "runtime/alpha3/src/core/tavern-author-combined-compiler-v8.mts",
+      "primaryOutput": "lib/core/tavern-author-combined-compiler-v8.mjs",
+      "outputs": [
+        "lib/core/tavern-author-combined-compiler-v8.mjs"
+      ]
     }
   ],
   "compilerPlan": {
@@ -19913,6 +19958,56 @@
         "id": "published-components-catalog",
         "source": "tools/published-components.json",
         "canonicalSource": "release/published-components.json"
+      },
+      {
+        "id": "tavern-author-browser-state-imports-v1-typescript",
+        "source": "src/core/tavern-author-browser-state-imports-v1.mts",
+        "canonicalSource": "runtime/alpha3/src/core/tavern-author-browser-state-imports-v1.mts"
+      },
+      {
+        "id": "tavern-author-browser-state-imports-v1-generated",
+        "source": "lib/core/tavern-author-browser-state-imports-v1.mjs",
+        "canonicalSource": "runtime/alpha3/lib/core/tavern-author-browser-state-imports-v1.mjs"
+      },
+      {
+        "id": "tavern-mvu-owned-state-types-v1-typescript",
+        "source": "src/core/tavern-mvu-owned-state-types-v1.mts",
+        "canonicalSource": "runtime/alpha3/src/core/tavern-mvu-owned-state-types-v1.mts"
+      },
+      {
+        "id": "tavern-mvu-owned-state-types-v1-generated",
+        "source": "lib/core/tavern-mvu-owned-state-types-v1.mjs",
+        "canonicalSource": "runtime/alpha3/lib/core/tavern-mvu-owned-state-types-v1.mjs"
+      },
+      {
+        "id": "tavern-author-combined-types-v8-typescript",
+        "source": "src/core/tavern-author-combined-types-v8.mts",
+        "canonicalSource": "runtime/alpha3/src/core/tavern-author-combined-types-v8.mts"
+      },
+      {
+        "id": "tavern-author-combined-types-v8-generated",
+        "source": "lib/core/tavern-author-combined-types-v8.mjs",
+        "canonicalSource": "runtime/alpha3/lib/core/tavern-author-combined-types-v8.mjs"
+      },
+      {
+        "id": "tavern-author-combined-data-v8-typescript",
+        "source": "src/core/tavern-author-combined-data-v8.mts",
+        "canonicalSource": "runtime/alpha3/src/core/tavern-author-combined-data-v8.mts"
+      },
+      {
+        "id": "tavern-author-combined-data-v8-generated",
+        "source": "lib/core/tavern-author-combined-data-v8.mjs",
+        "canonicalSource": "runtime/alpha3/lib/core/tavern-author-combined-data-v8.mjs"
+      },
+      {
+        "id": "tavern-author-combined-compiler-v8-typescript",
+        "source": "src/core/tavern-author-combined-compiler-v8.mts",
+        "canonicalSource": "runtime/alpha3/src/core/tavern-author-combined-compiler-v8.mts"
+      },
+      {
+        "id": "tavern-author-combined-compiler-v8-generated",
+        "source": "lib/core/tavern-author-combined-compiler-v8.mjs",
+        "canonicalSource": "runtime/alpha3/lib/core/tavern-author-combined-compiler-v8.mjs"
       }
     ],
     "publicRelease": {
@@ -122901,6 +122996,96 @@
         "entry": "src/operations/released-component-assembly.mts",
         "typeContext": "public-pipeline",
         "banner": "runtime/alpha3/src/operations/released-component-assembly.mts"
+      },
+      {
+        "id": "tavern-author-browser-state-imports-v1-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-author-browser-state-imports-v1-generated",
+        "entry": "src/core/tavern-author-browser-state-imports-v1.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/tavern-author-browser-state-imports-v1.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "src/core/roleplay-mvu-schema-maintenance-types.ts",
+          "src/core/roleplay-mvu-schema-task-edit-types.ts",
+          "src/core/roleplay-worldline-player-save.ts"
+        ],
+        "banner": "runtime/alpha3/src/core/tavern-author-browser-state-imports-v1.mts"
+      },
+      {
+        "id": "tavern-mvu-owned-state-types-v1-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-mvu-owned-state-types-v1-generated",
+        "entry": "src/core/tavern-mvu-owned-state-types-v1.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/tavern-mvu-owned-state-types-v1.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "src/core/roleplay-mvu-schema-maintenance-types.ts",
+          "src/core/roleplay-mvu-schema-task-edit-types.ts",
+          "src/core/roleplay-worldline-player-save.ts"
+        ],
+        "banner": "runtime/alpha3/src/core/tavern-mvu-owned-state-types-v1.mts"
+      },
+      {
+        "id": "tavern-author-combined-types-v8-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-author-combined-types-v8-generated",
+        "entry": "src/core/tavern-author-combined-types-v8.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/tavern-author-combined-types-v8.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "src/core/roleplay-mvu-schema-maintenance-types.ts",
+          "src/core/roleplay-mvu-schema-task-edit-types.ts",
+          "src/core/roleplay-worldline-player-save.ts"
+        ],
+        "banner": "runtime/alpha3/src/core/tavern-author-combined-types-v8.mts"
+      },
+      {
+        "id": "tavern-author-combined-data-v8-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-author-combined-data-v8-generated",
+        "entry": "src/core/tavern-author-combined-data-v8.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/tavern-author-combined-data-v8.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "src/core/roleplay-mvu-schema-maintenance-types.ts",
+          "src/core/roleplay-mvu-schema-task-edit-types.ts",
+          "src/core/roleplay-worldline-player-save.ts"
+        ],
+        "banner": "runtime/alpha3/src/core/tavern-author-combined-data-v8.mts"
+      },
+      {
+        "id": "tavern-author-combined-compiler-v8-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-author-combined-compiler-v8-generated",
+        "entry": "src/core/tavern-author-combined-compiler-v8.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/tavern-author-combined-compiler-v8.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "src/core/roleplay-mvu-schema-maintenance-types.ts",
+          "src/core/roleplay-mvu-schema-task-edit-types.ts",
+          "src/core/roleplay-worldline-player-save.ts"
+        ],
+        "banner": "runtime/alpha3/src/core/tavern-author-combined-compiler-v8.mts"
       }
     ],
     "typeScript": {
@@ -124116,6 +124301,10 @@
             {
               "artifact": "tavern-typescript-runtime-descriptor-typescript",
               "path": "src/core/tavern-typescript-runtime-descriptor.mts"
+            },
+            {
+              "artifact": "tavern-mvu-state-loader-policy-v4-typescript",
+              "path": "src/core/tavern-mvu-state-loader-policy-v4.mts"
             }
           ]
         },
@@ -124570,6 +124759,22 @@
             {
               "artifact": "tavern-author-external-addons-typescript",
               "path": "src/core/tavern-author-external-addons.mts"
+            },
+            {
+              "artifact": "tavern-author-combined-types-v8-typescript",
+              "path": "src/core/tavern-author-combined-types-v8.mts"
+            },
+            {
+              "artifact": "tavern-author-combined-data-v8-typescript",
+              "path": "src/core/tavern-author-combined-data-v8.mts"
+            },
+            {
+              "artifact": "tavern-author-combined-compiler-v8-typescript",
+              "path": "src/core/tavern-author-combined-compiler-v8.mts"
+            },
+            {
+              "artifact": "tavern-author-browser-profile-v3-typescript",
+              "path": "src/core/tavern-author-browser-profile-v3.mts"
             }
           ]
         },

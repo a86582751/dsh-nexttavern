@@ -29,6 +29,7 @@ export interface AuthorBrowserRuntimeDescriptorV3 {
   readonly wasm:{readonly path:typeof AUTHOR_BROWSER_WASM_V3;readonly sha256:typeof AUTHOR_BROWSER_WASM_SHA256_V3}
   readonly profileSha256:string
   readonly capabilityContractSha256:string
+  readonly stateProfile?:{readonly profileSha256:string;readonly capabilityContractSha256:string}
 }
 export const authorBrowserAssetShaV3=(bytes:string|Uint8Array)=>createHash('sha256').update(bytes).digest('hex')
 export function authorBrowserImplementationV3(kind:'compiler'|'runtime',

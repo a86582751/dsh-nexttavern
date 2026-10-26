@@ -26,6 +26,7 @@ export const BROWSER_NATIVE_METHODS_V3 = Object.freeze({
     'media-query': ['addEventListener', 'removeEventListener'], viewport: ['addEventListener', 'removeEventListener'],
     frame: ['remove', 'close', 'addEventListener', 'removeEventListener', 'setAttribute', 'getAttribute', 'removeAttribute'], 'frame-parent': ['removeChild'],
     'frame-style': ['setProperty', 'removeProperty', 'getPropertyValue', 'getPropertyPriority', 'item'],
+    composer: [],
 });
 const htmlTags = new Set(['a', 'article', 'aside', 'audio', 'b', 'br', 'button', 'canvas', 'code', 'datalist', 'details', 'dialog', 'div',
     'em', 'fieldset', 'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hr', 'i', 'img', 'input',
@@ -71,6 +72,16 @@ export const BROWSER_NATIVE_PROPERTIES_V3 = Object.freeze({
     'media-query': ['matches', 'media'], viewport: ['width', 'height', 'offsetTop', 'offsetLeft', 'scale'],
     frame: ['id', 'style', 'isConnected', 'contentWindow', 'src', 'srcdoc', 'parentNode', 'nodeType', 'ownerDocument', 'parentElement', 'parent'],
     'frame-parent': ['nodeType', 'ownerDocument', 'parentElement', 'parentNode', 'parent'], 'frame-style': [],
+    composer: [],
+});
+/** Historical Source profiles keep their original expando namespace. The
+ * profile5/Reader caller explicitly selects these additional real interfaces. */
+export const BROWSER_STATE_NATIVE_METHODS_V3 = Object.freeze({
+    ...BROWSER_NATIVE_METHODS_V3, node: [...BROWSER_NATIVE_METHODS_V3.node, 'matches', 'select'],
+    composer: ['dispatchEvent', 'focus'],
+});
+export const BROWSER_STATE_NATIVE_PROPERTIES_V3 = Object.freeze({
+    ...BROWSER_NATIVE_PROPERTIES_V3, node: [...BROWSER_NATIVE_PROPERTIES_V3.node, 'options', 'selectedOptions'], composer: ['value'],
 });
 export function createBrowserPageRendererV3(options) {
     const { document: doc, plan, pageId } = options, view = doc.defaultView;
@@ -116,14 +127,24 @@ export function createBrowserPageRendererV3(options) {
     let readyState = 'loading';
     let disposal;
     let callbackBatch;
+    const composerToken = {};
+    let composerExpected;
+    const nativeNode = (value) => value instanceof view.Node
+        || !!value && typeof value === 'object' && options.sharedNodes?.reference(value) !== undefined;
     function ref(value, kind) {
+        const shared = options.sharedNodes?.reference(value);
+        if (shared)
+            return shared;
         let handle = reverse.get(value);
         if (handle === undefined) {
             handle = ++nextHandle;
             reverse.set(value, handle);
             handles.set(handle, { value, kind });
         }
-        return { tag: 'handle', pageId, handle, kind };
+        const reference = { tag: 'handle', pageId, handle, kind };
+        if (nativeNode(value))
+            options.sharedNodes?.register(value, reference);
+        return reference;
     }
     const documentHandle = ref(doc, 'document');
     const publishImages = () => options.onImages?.(pageId, [...images.values()]);
@@ -146,7 +167,7 @@ export function createBrowserPageRendererV3(options) {
             publishImages();
     }
     const visibleNode = (node) => ownedNodes.has(node) || !!options.externalFrames?.encode(node)
-        || options.readerRootDocument === true && node.ownerDocument === doc;
+        || options.sharedNodes?.reference(node) !== undefined || options.readerRootDocument === true && node.ownerDocument === doc;
     function owned(reference) {
         const result = reference.pageId === pageId ? handles.get(reference.handle) : undefined;
         if (!result)
@@ -342,8 +363,8 @@ export function createBrowserPageRendererV3(options) {
             return { tag: 'page-window', pageId };
         if (value === doc)
             return documentHandle;
-        if (value instanceof view.Node)
-            return options.externalFrames?.encode(value)
+        if (nativeNode(value))
+            return options.sharedNodes?.reference(value) ?? options.externalFrames?.encode(value)
                 ?? (visibleNode(value) ? ref(value, value instanceof view.HTMLMediaElement ? 'audio' : 'node') : null);
         if (value instanceof view.Event)
             return ref(value, 'event');
@@ -371,7 +392,7 @@ export function createBrowserPageRendererV3(options) {
             return ref(value, 'observer');
         if (Array.isArray(value) || value instanceof view.NodeList || value instanceof view.HTMLCollection
             || value instanceof view.FileList)
-            return Array.from(value).filter(item => !(item instanceof view.Node)
+            return Array.from(value).filter(item => !nativeNode(item)
                 || visibleNode(item)).map(encode);
         return { tag: 'record', entries: Object.fromEntries(Object.entries(value).map(([key, item]) => [key, encode(item)])) };
     }
@@ -390,6 +411,12 @@ export function createBrowserPageRendererV3(options) {
                     if (node)
                         return node;
                     throw Error('BROWSER3_FRAME_UNAVAILABLE');
+                }
+                if (wire.pageId !== pageId) {
+                    const node = options.sharedNodes?.resolve(wire);
+                    if (node)
+                        return node;
+                    throw Error('BROWSER3_DOM_HANDLE_UNAVAILABLE');
                 }
                 const target = owned(wire);
                 return target.kind === 'event' ? target.value.event ?? target.value : target.value;
@@ -776,6 +803,12 @@ export function createBrowserPageRendererV3(options) {
         }
     }
     function read(target, kind, key) {
+        if (kind === 'composer') {
+            if (key !== 'value')
+                throw Error('BROWSER3_COMPOSER_PROPERTY_UNSUPPORTED');
+            composerExpected = options.composer.read();
+            return composerExpected;
+        }
         if (key.startsWith('on'))
             return propertyListeners.get(target)?.get(key.slice(2))?.callback ?? null;
         if (kind === 'document') {
@@ -851,11 +884,14 @@ export function createBrowserPageRendererV3(options) {
         if (key === 'classList')
             return ref(target.classList, 'class-list');
         if (key === 'ownerDocument')
-            return documentHandle;
+            return target.ownerDocument === doc ? documentHandle
+                : options.sharedNodes?.reference(target.ownerDocument) ?? null;
         if (key === 'innerHTML')
             return ownedHtml(target);
         if (key === 'children' || key === 'childNodes')
             return encode(Array.from(target[key]).filter(node => visibleNode(node)));
+        if (key === 'options' || key === 'selectedOptions')
+            return encode(target[key]);
         if (key === 'childElementCount')
             return Array.from(target.children).filter(node => visibleNode(node)).length;
         if (key === 'offsetParent')
@@ -875,6 +911,14 @@ export function createBrowserPageRendererV3(options) {
         throw Error('BROWSER3_DOM_PROPERTY_UNSUPPORTED');
     }
     function write(target, kind, key, value) {
+        if (kind === 'composer') {
+            if (key !== 'value' || composerExpected === undefined)
+                throw Error('BROWSER3_COMPOSER_READ_REQUIRED');
+            const text = String(value);
+            options.composer.replace(text, composerExpected);
+            composerExpected = text;
+            return;
+        }
         if (key.startsWith('on')) {
             const type = key.slice(2), group = propertyListeners.get(target) ?? new Map();
             propertyListeners.set(target, group);
@@ -960,8 +1004,17 @@ export function createBrowserPageRendererV3(options) {
             imageNamed(target);
     }
     function call(target, kind, method, args) {
-        if (!BROWSER_NATIVE_METHODS_V3[kind].includes(method))
+        if (!BROWSER_STATE_NATIVE_METHODS_V3[kind].includes(method))
             throw Error('BROWSER3_DOM_METHOD_UNSUPPORTED');
+        if (kind === 'composer') {
+            if (method === 'focus')
+                options.composer.focus();
+            else if (args[0]?.type === 'input' || args[0]?.type === 'change')
+                options.composer.dispatch(args[0].type);
+            else
+                throw Error('BROWSER3_COMPOSER_EVENT_UNSUPPORTED');
+            return method === 'dispatchEvent' ? true : { tag: 'undefined' };
+        }
         if (kind === 'event')
             target = target.event ?? target;
         if (method === 'addEventListener')
@@ -971,6 +1024,11 @@ export function createBrowserPageRendererV3(options) {
             return { tag: 'undefined' };
         }
         if (kind === 'document') {
+            if (options.composer && args[0] === '#send_textarea'
+                && (method === 'querySelector' || method === 'querySelectorAll')) {
+                const reference = ref(composerToken, 'composer');
+                return method === 'querySelectorAll' ? [reference] : reference;
+            }
             if (method === 'createElement' || method === 'createElementNS') {
                 const namespace = method === 'createElementNS' ? String(args[0]) : HTML_NS, tag = String(args[method === 'createElementNS' ? 1 : 0]);
                 if (namespace === HTML_NS && tag.toLowerCase() === 'iframe' && options.externalFrames)
@@ -1056,10 +1114,10 @@ export function createBrowserPageRendererV3(options) {
                 return placed;
         }
         if (['append', 'prepend', 'after', 'before', 'replaceWith'].includes(method))
-            args = args.map(value => value instanceof view.Node ? value : own(doc.createTextNode(String(value))));
+            args = args.map(value => nativeNode(value) ? value : own(doc.createTextNode(String(value))));
         if (['appendChild', 'insertBefore', 'replaceChild', 'append', 'prepend', 'after', 'before', 'replaceWith'].includes(method))
             for (const value of args)
-                if (value instanceof view.Node)
+                if (nativeNode(value))
                     prepareInsertion(value);
         const result = target[method](...args);
         if (method === 'removeAttribute' && String(args[0]).toLowerCase() === 'src' && target instanceof view.HTMLImageElement)
@@ -1361,6 +1419,7 @@ export function createBrowserPageRendererV3(options) {
             nodes.clear();
             handles.clear();
             callbackReferences.clear();
+            options.sharedNodes?.release(pageId);
             if (!options.readerRootDocument) {
                 if (shellHtml.parentNode !== doc)
                     doc.appendChild(shellHtml);

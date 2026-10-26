@@ -17,6 +17,9 @@ export interface AuthorReaderSurface {
   /** True while callers must wait for the next surface layout receipt. */
   setActionHeights(value:Readonly<Record<string,number>>):boolean
   documentContainer(planSha256:string):HTMLElement
+  /** Helpers replace one another; the independent Reader Actor never takes
+   * this lease. Release follows native callback/timer revocation. */
+  acquireHelperLease():Promise<{release():void}>
   scheduleLayout():void
   dispose():void
 }
@@ -32,6 +35,7 @@ interface Row {
   content:string
   staticDocuments:{dispose():void}[]
   documentPlans:string[]
+  textFragments:{readonly node:HTMLElement;readonly html:string}[]
 }
 
 export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Options):AuthorReaderSurface {
@@ -40,6 +44,7 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
   let pending:AuthorReaderSurfaceRender|undefined,renderRevision=0,layoutFrame:number|undefined
   let actionHeights:Readonly<Record<string,number>>={}
   let resize:ResizeObserver|undefined,mutation:MutationObserver|undefined
+  let helperTail:Promise<void>=Promise.resolve()
   let resolveReady!:(document:Document)=>void,rejectReady!:(error:Error)=>void
   const ready=new Promise<Document>((resolve,reject)=>{resolveReady=resolve;rejectReady=reject})
   // The view may close before an Actor begins awaiting its document.
@@ -65,6 +70,7 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
     for(const child of row.staticDocuments)child.dispose()
     for(const plan of row.documentPlans)containers.delete(plan)
     row.staticDocuments=[];row.documentPlans=[]
+    row.textFragments=[]
   }
   function render(value:AuthorReaderSurfaceRender):void {
     if(!current())return
@@ -88,7 +94,7 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
         const actions=document.createElement('div')
         actions.className='rp-reader-action-space';actions.setAttribute('aria-hidden','true')
         actions.style.height=(actionHeights[part.key]??0)+'px'
-        row={node,actions,kind:part.kind,content:'',staticDocuments:[],documentPlans:[]};rows.set(part.key,row)
+        row={node,actions,kind:part.kind,content:'',staticDocuments:[],documentPlans:[],textFragments:[]};rows.set(part.key,row)
       }
       if(!row.node.firstChild||row.kind!==part.kind||row.content!==content) {
         releaseRow(row)
@@ -97,7 +103,9 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
         if(part.kind==='user')body.textContent='◈ 你：'+part.text
         else if(fragments)for(const fragment of fragments) {
           const node=document.createElement('div')
-          if(fragment.kind==='text')node.innerHTML=fragment.html
+          if(fragment.kind==='text'){
+            node.innerHTML=fragment.html;row.textFragments.push({node,html:node.innerHTML})
+          }
           else if(fragment.kind==='static-document')
             row.staticDocuments.push(options.mountStaticDocument!(node,fragment.html,scheduleLayout))
           else {
@@ -106,7 +114,9 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
           }
           body.appendChild(node)
         }
-        else body.innerHTML=part.html
+        else {
+          body.innerHTML=part.html;row.textFragments.push({node:body,html:body.innerHTML})
+        }
         row.node.replaceChildren(body,row.actions);row.node.dataset.kind=part.kind==='user'?'user':'assistant'
         row.kind=part.kind;row.content=content
       }
@@ -133,7 +143,27 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
   outer.setAttribute('sandbox','allow-same-origin allow-forms')
   outer.style.cssText='display:block;width:100%;height:620px;border:0'
   outer.addEventListener('load',loaded);outer.src='about:blank'
-  return {outer,ready,render,scheduleLayout,setActionHeights(value) {
+  return {outer,ready,render,scheduleLayout,async acquireHelperLease(){
+    const previous=helperTail
+    let unlock!:()=>void
+    const released=new Promise<void>(resolve=>{unlock=resolve})
+    helperTail=previous.then(()=>released)
+    await previous
+    if(!active){unlock();throw Error('READER_SURFACE_CLOSED')}
+    let done=false
+    return {release(){
+      if(done)return
+      done=true
+      try {
+        // The normalized Source render belongs to the current entries. Restore
+        // only these text fragments; replacing a row discarded its old entry,
+        // and independent regex documents/frames remain untouched.
+        if(active)for(const row of rows.values())for(const fragment of row.textFragments)
+          if(row.node.contains(fragment.node)&&fragment.node.innerHTML!==fragment.html)
+            fragment.node.innerHTML=fragment.html
+      }finally {unlock()}
+    }}
+  },setActionHeights(value) {
     const previous=actionHeights
     actionHeights=value
     let changed=false

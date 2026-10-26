@@ -4,7 +4,8 @@ import * as core from 'quickjs-emscripten-core'
 import Variant from '@jitl/quickjs-wasmfile-release-asyncify'
 import {BrowserActorV3} from './tavern-author-browser-adapter-v3.js'
 import {BrowserAttachmentWorkerV3} from './tavern-author-browser-attachment-worker-v3.js'
-import {BROWSER_NATIVE_METHODS_V3,BROWSER_NATIVE_PROPERTIES_V3} from './tavern-author-browser-renderer-v3.js'
+import {BROWSER_NATIVE_METHODS_V3,BROWSER_NATIVE_PROPERTIES_V3,
+  BROWSER_STATE_NATIVE_METHODS_V3,BROWSER_STATE_NATIVE_PROPERTIES_V3} from './tavern-author-browser-renderer-v3.js'
 import type {BrowserPageNativeSessionV3} from './tavern-author-browser-page-worker-v3.js'
 import type {BrowserNativeFrameFactV3,BrowserWorkerInputV3,BrowserWorkerRequestV3}
   from './tavern-author-browser-worker-protocol-v3.js'
@@ -116,9 +117,14 @@ async function start(message:Extract<BrowserWorkerInputV3,{type:'start'|'reader-
     begin(){actorEntry=++entrySequence;send({type:'actor-entry-start',id:actorEntry})},
     end(){send({type:'actor-entry-end',id:actorEntry});actorEntry=undefined},
   })
+  const stateDom=message.type==='reader-start'||message.program.profile.version===5
   attachment=new BrowserAttachmentWorkerV3({actor,program:message.program,snapshot:message.snapshot,
     binding:message.binding,operationPrefix:message.operationPrefix,
-    methods:BROWSER_NATIVE_METHODS_V3,properties:BROWSER_NATIVE_PROPERTIES_V3,
+    ...message.type==='start'?{stateProgramBinding:message.stateProgramBinding}:{},
+    ...message.type==='start'&&message.program.profile.version===5
+      ?{createHelperRoot:()=>rpc({op:'helper-root-create'})}:{},
+    methods:stateDom?BROWSER_STATE_NATIVE_METHODS_V3:BROWSER_NATIVE_METHODS_V3,
+    properties:stateDom?BROWSER_STATE_NATIVE_PROPERTIES_V3:BROWSER_NATIVE_PROPERTIES_V3,
     pages:{
       async mount(frame,pageId,plan,signal) {
         await rpc({op:'page-mount',frameId:frame.frameId,pageId,planSha256:plan.pagePlanSha256},signal)

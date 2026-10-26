@@ -3,7 +3,7 @@
  * describe an attempt; they cannot recreate this private Native/Source lease. */
 import { recordSha256 } from './roleplay-data.js';
 import { pinnedCSchemaImportBindingsV1, pinnedCSchemaImportBindingsV2 } from './tavern-mvu-schema-import-policy.js';
-import { pinnedCSchemaImportBindingsV4, pinnedNativeStateLoaderImportBindingsV4, validateSchemaProgramV4, deriveOwnedStateLoaderIdentityV4, schemaPhaseErrorPolicyForProgramV4 } from './tavern-mvu-schema-program-v4.js';
+import { pinnedCSchemaImportBindingsV4, pinnedNativeStateLoaderImportBindingsV4, validateSchemaProgramV4, deriveOwnedStateLoaderIdentityV4, schemaPhaseErrorPolicyForProgramV4, schemaExecutionViewV4 } from './tavern-mvu-schema-program-v4.js';
 import { validateSchemaGuestOutputForProgramV4 } from './tavern-mvu-schema-runner-v4.js';
 import { openingIntentKey } from './roleplay-opening-selection.js';
 import { mvuInitializationEventKey, mvuInitializationHeadKey } from './roleplay-mvu-initialization.js';
@@ -203,7 +203,7 @@ export function createRoleplayMvuSchemaCore(deps) {
         const data = { sourceNativeCut: freezeSchemaJournalData(scope.sourceNativeCut),
             inheritedCut, journalCut,
             compiledProgram: owner.compiledProgram,
-            ...(scope.authorInput.schemaVersion === 6 || scope.authorInput.schemaVersion === 7) && !owner.compiledProgram
+            ...(scope.authorInput.schemaVersion === 6 || scope.authorInput.schemaVersion === 7 || scope.authorInput.schemaVersion === 8) && !owner.compiledProgram
                 ? { compilationResources: captureSchemaCompilationResourcesV6(owner.author) } : {} };
         const captured = scope.loadFrame === undefined ? { ...scope, ...data,
             authorInput: freezeSchemaJournalData(scope.authorInput), loadFrame: undefined, requestedStep: undefined } :
@@ -225,7 +225,7 @@ export function createRoleplayMvuSchemaCore(deps) {
         const preparation = owner.preparation, parsed = owner.initialData, cut = scope.sourceNativeCut;
         const binding = { ownerSessionId: owner.session.id, sourceNativeCutSha256: recordSha256(cut), material: owner.author.material };
         const readSource = schemaScopeSource(preparation.sourceSnapshot);
-        const readFrame = buildSchemaScopeReadFrame(readSource, binding.sourceNativeCutSha256, server.scripts, schemaScopeInitialChat(preparation, owner.author.material, cut), schemaScopeVisibleMessages(events(owner.session), deps.projectPrefix, readSource, () => owner.session.id, new Map()));
+        const readFrame = buildSchemaScopeReadFrame(readSource, binding.sourceNativeCutSha256, schemaExecutionViewV4(server).scripts, schemaScopeInitialChat(preparation, owner.author.material, cut), schemaScopeVisibleMessages(events(owner.session), deps.projectPrefix, readSource, () => owner.session.id, new Map()));
         const frames = { loadFrame: { schemaVersion: 4, ...binding, values: parsed.values,
                 context: parsed.context, clockEpochMs: preparation.clockEpochMs, randomSeed: preparation.randomSeed, scopeReadFrame: readFrame },
             requestedStep: { eventId: preparation.selector.batchId, frame: { ...binding, input: { schemaVersion: 4,
@@ -262,7 +262,7 @@ export function createRoleplayMvuSchemaCore(deps) {
             fail('SCHEMA_ORIGINAL_SOURCE_CHANGED');
         if (cut.epoch.schemaVersion === 5) {
             return { authorInput: combinedCompilationInputForProgram(cut.epoch.program),
-                ...(cut.epoch.program.schemaVersion === 6 || cut.epoch.program.schemaVersion === 7)
+                ...(cut.epoch.program.schemaVersion === 6 || cut.epoch.program.schemaVersion === 7 || cut.epoch.program.schemaVersion === 8)
                     ? { compilationResources: captureSchemaCompilationResourcesV6(author) } : {},
                 ready: cut, frozen: cut.frozen, events: all };
         }
@@ -274,9 +274,12 @@ export function createRoleplayMvuSchemaCore(deps) {
                 executionPlan: actual.executionPlan,
                 scripts: actual.scripts.map(({ javascript: _js, javascriptSha256: _hash, ...script }) => script) };
         }
-        else
+        else {
+            if ('encoding' in program && program.encoding === 'native-mvu-owned-state-program-v1')
+                fail('SCHEMA_COMBINED_ORIGINAL_REQUIRED');
             authorInput = { schemaVersion: 1, source: program.source, libraries: program.libraries, bridge: program.bridge,
                 scripts: program.scripts.map(({ javascript: _js, javascriptSha256: _hash, ...script }) => script) };
+        }
         return { authorInput, ready: cut, frozen: cut.frozen, events: all };
     }
     async function engine(preparation, tuple) {
@@ -333,7 +336,7 @@ export function createRoleplayMvuSchemaCore(deps) {
             // retains its recorded input and frozen Host; compiler identity stays V1.
             const preparation = validateMvuSchemaOpeningPreparation(sealMvuSchemaOpeningFact({ ...version, host: runtime.host.identity,
                 compilation: runtime.browser.runtime.version === 3
-                    ? { schemaVersion: 7, encoding: 'native-author-combined-compilation-input-v7', original,
+                    ? { schemaVersion: 8, encoding: 'native-author-combined-compilation-input-v8', original,
                         sourceRecordSessionId: source.authorSource.snapshot.source.sourceRecordSessionId }
                     : runtime.browser.runtime.version === 2
                         ? { schemaVersion: 5, encoding: 'native-author-combined-compilation-input-v5', original,
@@ -417,7 +420,7 @@ export function createRoleplayMvuSchemaCore(deps) {
                     if (firstReady.kind !== 'ready')
                         fail('SCHEMA_JOURNAL_UNPROVEN');
                     const serverProgram = schemaEpochExecution(firstReady.epoch).program;
-                    const serverScripts = serverProgram.scripts;
+                    const serverScripts = schemaExecutionViewV4(serverProgram).scripts;
                     for (const selected of preparation.phaseSelectors.slice(1)) {
                         if (result.kind !== 'completed' || result.output.kind !== 'accepted')
                             fail('SCHEMA_OPENING_UPDATE_REFUSED');
@@ -462,7 +465,8 @@ export function createRoleplayMvuSchemaCore(deps) {
                     const ready = journal.capture(sid, preparation.realmEpoch, events(session));
                     const actual = ready.kind === 'ready' ? ready.steps.at(-1) : undefined;
                     const execution = ready.kind === 'ready' ? schemaEpochExecution(ready.epoch) : undefined;
-                    if (ready.kind !== 'ready' || execution?.program.schemaVersion !== 2 || !actual
+                    if (ready.kind !== 'ready' || !execution || !('encoding' in execution.program)
+                        || !['native-mvu-author-schema-program-v2', 'native-mvu-owned-state-program-v1'].includes(execution.program.encoding) || !actual
                         || actual.step.frame.input.schemaVersion !== 4
                         || schemaEpochAuthorIdentity(ready.epoch).programSha256 !== schemaExecutionProgramSha256(result.association)
                         || !same(actual.step.output, result.output))

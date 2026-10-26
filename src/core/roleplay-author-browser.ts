@@ -21,6 +21,7 @@ import {createRoleplayAuthorBrowserGeneration} from './roleplay-author-browser-g
 import type {AuthorScriptResourceReaderV1} from './roleplay-author-script-resources.js'
 import type {BrowserProgramV3,BrowserRuntimeArtifactV3,BrowserSnapshotV3,
   BrowserOrdinaryKeyRequestV3,BrowserOrdinaryKeyReplyV3} from './tavern-author-browser-types-v3.mjs'
+import type {OwnedBrowserStateBindingV1} from './tavern-author-browser-state-imports-v1.mjs'
 
 export interface AuthorBrowserCapturedFactsV1 {
   readonly program:BrowserProgramV1
@@ -39,6 +40,7 @@ export interface AuthorBrowserCapturedFactsV3 extends Omit<AuthorBrowserCaptured
   readonly program:BrowserProgramV3
   readonly artifact:BrowserRuntimeArtifactV3
   readonly data:Omit<BrowserSnapshotV3,'generation'|'readRevision'>
+  readonly stateProgramBinding?:OwnedBrowserStateBindingV1
   /** Actual Source read excludes its canonical State2 outputs. The separate
    * current() covers this captured DATA, including declared chat head values.
    * Source identity/edits/lifecycle remain watched across an ordinary commit. */
@@ -229,7 +231,8 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
       }
       const attachment={binding:value.binding,program:value.program,artifact:value.artifact,snapshot:project(value,facts)}
       return {ok:true,kind:'attached',attachment:value.program.schemaVersion===3
-        ?{schemaVersion:3,encoding:'native-author-browser-attachment-v3',...attachment}
+        ?{schemaVersion:3,encoding:'native-author-browser-attachment-v3',...attachment,
+          ...('stateProgramBinding' in facts&&facts.stateProgramBinding?{stateProgramBinding:facts.stateProgramBinding}:{})}
         :value.program.schemaVersion===2
         ?{schemaVersion:2,encoding:'native-author-browser-attachment-v2',...attachment}
         :{schemaVersion:1,encoding:'native-author-browser-attachment-v1',...attachment}} as AuthorBrowserReply

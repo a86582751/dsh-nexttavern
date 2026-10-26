@@ -8,6 +8,7 @@ import type {BrowserPageRendererV3,NativeCallbackDeliveryV3,NativeCreateV3,Nativ
   NativeHandleV3,NativePromiseSettlementV3,NativeRequestV3,NativeWireValueV3,
   NativeWireObjectV3,OwnedNativeCallbackV3} from './tavern-author-browser-native-types-v3.js'
 import type {BrowserNativeFrameHookV3,BrowserNativeImageV3,NativeReplyV3} from './tavern-author-browser-native-types-v3.js'
+import type {BrowserComposerAccessV3} from './tavern-author-browser-native-types-v3.js'
 
 /** The same actual receiver-owner declarations can be used by the guest
  * proxy. A flat union of names does not confer methods on another kind. */
@@ -33,6 +34,7 @@ export const BROWSER_NATIVE_METHODS_V3:Readonly<Record<NativeHandleKindV3,readon
   'media-query':['addEventListener','removeEventListener'],viewport:['addEventListener','removeEventListener'],
   frame:['remove','close','addEventListener','removeEventListener','setAttribute','getAttribute','removeAttribute'], 'frame-parent':['removeChild'],
   'frame-style':['setProperty','removeProperty','getPropertyValue','getPropertyPriority','item'],
+  composer:[],
 })
 const htmlTags=new Set(['a','article','aside','audio','b','br','button','canvas','code','datalist','details','dialog','div',
   'em','fieldset','figcaption','figure','footer','form','h1','h2','h3','h4','h5','h6','header','hr','i','img','input',
@@ -78,7 +80,25 @@ export const BROWSER_NATIVE_PROPERTIES_V3:Readonly<Record<NativeHandleKindV3,rea
   'media-query':['matches','media'],viewport:['width','height','offsetTop','offsetLeft','scale'],
   frame:['id','style','isConnected','contentWindow','src','srcdoc','parentNode','nodeType','ownerDocument','parentElement','parent'],
   'frame-parent':['nodeType','ownerDocument','parentElement','parentNode','parent'],'frame-style':[],
+  composer:[],
 })
+/** Historical Source profiles keep their original expando namespace. The
+ * profile5/Reader caller explicitly selects these additional real interfaces. */
+export const BROWSER_STATE_NATIVE_METHODS_V3:typeof BROWSER_NATIVE_METHODS_V3=Object.freeze({
+  ...BROWSER_NATIVE_METHODS_V3,node:[...BROWSER_NATIVE_METHODS_V3.node,'matches','select'],
+  composer:['dispatchEvent','focus'],
+})
+export const BROWSER_STATE_NATIVE_PROPERTIES_V3:typeof BROWSER_NATIVE_PROPERTIES_V3=Object.freeze({
+  ...BROWSER_NATIVE_PROPERTIES_V3,node:[...BROWSER_NATIVE_PROPERTIES_V3.node,'options','selectedOptions'],composer:['value'],
+})
+/** One NativeScene registers actual nodes issued by its own renderers. Normal
+ * DOM adoption retains the node creator's handle and disposal lifetime. */
+export interface BrowserNativeNodeRegistryV3 {
+  reference(node:object):NativeHandleV3|undefined
+  resolve(reference:NativeHandleV3):Node|undefined
+  register(node:Node,reference:NativeHandleV3):void
+  release(pageId:string):void
+}
 interface HandleOwner {readonly value:any;readonly kind:NativeHandleKindV3}
 interface NativeListener {
   readonly listenerId:number;readonly once:boolean;readonly property:boolean
@@ -126,6 +146,8 @@ export interface BrowserPageRendererOptionsV3 {
   /** Resolves an already admitted resource to actual owned bytes/URL. */
   readonly resolveResource?:(resource:BrowserPageResourceV3)=>string
   readonly externalFrames?:BrowserNativeFrameHookV3
+  readonly sharedNodes?:BrowserNativeNodeRegistryV3
+  readonly composer?:BrowserComposerAccessV3
 }
 
 export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3):BrowserPageRendererV3 {
@@ -169,11 +191,19 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
   let readyState:'loading'|'interactive'|'complete'='loading'
   let disposal:Promise<ReturnType<typeof resources>>|undefined
   let callbackBatch:NativeCallbackDeliveryV3[]|undefined
+  const composerToken={}
+  let composerExpected:string|undefined
+  const nativeNode=(value:any):value is Node=>value instanceof view.Node
+    ||!!value&&typeof value==='object'&&options.sharedNodes?.reference(value)!==undefined
 
   function ref(value:object,kind:NativeHandleKindV3):NativeHandleV3 {
+    const shared=options.sharedNodes?.reference(value)
+    if(shared)return shared
     let handle=reverse.get(value)
     if(handle===undefined){handle=++nextHandle;reverse.set(value,handle);handles.set(handle,{value,kind})}
-    return {tag:'handle',pageId,handle,kind}
+    const reference={tag:'handle' as const,pageId,handle,kind}
+    if(nativeNode(value))options.sharedNodes?.register(value,reference)
+    return reference
   }
   const documentHandle=ref(doc,'document')
   const publishImages=()=>options.onImages?.(pageId,[...images.values()])
@@ -192,7 +222,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(handle!==undefined&&images.delete(handle))publishImages()
   }
   const visibleNode=(node:Node)=>ownedNodes.has(node)||!!options.externalFrames?.encode(node)
-    ||options.readerRootDocument===true&&node.ownerDocument===doc
+    ||options.sharedNodes?.reference(node)!==undefined||options.readerRootDocument===true&&node.ownerDocument===doc
   function owned(reference:NativeHandleV3):HandleOwner {
     const result=reference.pageId===pageId?handles.get(reference.handle):undefined
     if(!result)throw Error('BROWSER3_DOM_HANDLE_UNAVAILABLE')
@@ -332,7 +362,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(value===null||typeof value==='string'||typeof value==='number'||typeof value==='boolean')return value
     if(value===view)return {tag:'page-window',pageId}
     if(value===doc)return documentHandle
-    if(value instanceof view.Node)return options.externalFrames?.encode(value)
+    if(nativeNode(value))return options.sharedNodes?.reference(value)??options.externalFrames?.encode(value)
       ??(visibleNode(value)?ref(value,value instanceof view.HTMLMediaElement?'audio':'node'):null)
     if(value instanceof view.Event)return ref(value,'event')
     if(value instanceof view.File)return ref(value,'file')
@@ -348,7 +378,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(value instanceof view.FileReader)return ref(value,'file-reader')
     if(observers.has(value))return ref(value,'observer')
     if(Array.isArray(value)||value instanceof view.NodeList||value instanceof view.HTMLCollection
-      ||value instanceof view.FileList)return Array.from(value).filter(item=>!(item instanceof view.Node)
+      ||value instanceof view.FileList)return Array.from(value).filter(item=>!nativeNode(item)
         ||visibleNode(item)).map(encode)
     return {tag:'record',entries:Object.fromEntries(Object.entries(value).map(([key,item])=>[key,encode(item)]))}
   }
@@ -360,6 +390,8 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
       if(wire.tag==='page-window'&&wire.pageId===pageId)return view
       if(wire.tag==='handle') {
         if(wire.handle<0){const node=options.externalFrames?.resolve(wire);if(node)return node;throw Error('BROWSER3_FRAME_UNAVAILABLE')}
+        if(wire.pageId!==pageId){const node=options.sharedNodes?.resolve(wire)
+          if(node)return node;throw Error('BROWSER3_DOM_HANDLE_UNAVAILABLE')}
         const target=owned(wire)
         return target.kind==='event'?target.value.event??target.value:target.value
       }
@@ -625,6 +657,10 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(step.kind==='end-document'){ended=true;activatePrefixStyles();advanceReadiness()}
   }
   function read(target:any,kind:NativeHandleKindV3,key:string):NativeWireValueV3 {
+    if(kind==='composer'){
+      if(key!=='value')throw Error('BROWSER3_COMPOSER_PROPERTY_UNSUPPORTED')
+      composerExpected=options.composer!.read();return composerExpected
+    }
     if(key.startsWith('on'))return propertyListeners.get(target)?.get(key.slice(2))?.callback??null
     if(kind==='document') {
       if(key==='documentElement')return encode(doc.documentElement)
@@ -674,9 +710,11 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(key==='style')return ref(target.style,'style')
     if(key==='dataset')return ref(target.dataset,'dataset')
     if(key==='classList')return ref(target.classList,'class-list')
-    if(key==='ownerDocument')return documentHandle
+    if(key==='ownerDocument')return target.ownerDocument===doc?documentHandle
+      :options.sharedNodes?.reference(target.ownerDocument)??null
     if(key==='innerHTML')return ownedHtml(target)
     if(key==='children'||key==='childNodes')return encode(Array.from(target[key]).filter(node=>visibleNode(node as Node)))
+    if(key==='options'||key==='selectedOptions')return encode(target[key])
     if(key==='childElementCount')return Array.from(target.children).filter(node=>visibleNode(node as Node)).length
     if(key==='offsetParent')return encode(target.offsetParent)
     if(['firstChild','lastChild','nextSibling','previousSibling','nextElementSibling','parentNode','parentElement'].includes(key)) {
@@ -691,6 +729,11 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     throw Error('BROWSER3_DOM_PROPERTY_UNSUPPORTED')
   }
   function write(target:any,kind:NativeHandleKindV3,key:string,value:any):void {
+    if(kind==='composer'){
+      if(key!=='value'||composerExpected===undefined)throw Error('BROWSER3_COMPOSER_READ_REQUIRED')
+      const text=String(value)
+      options.composer!.replace(text,composerExpected);composerExpected=text;return
+    }
     if(key.startsWith('on')) {
       const type=key.slice(2),group=propertyListeners.get(target)??new Map<string,NativeListener>()
       propertyListeners.set(target,group)
@@ -737,11 +780,22 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(target instanceof view.HTMLImageElement&&(key==='alt'||key==='title'))imageNamed(target)
   }
   function call(target:any,kind:NativeHandleKindV3,method:string,args:any[]):NativeWireValueV3 {
-    if(!BROWSER_NATIVE_METHODS_V3[kind].includes(method))throw Error('BROWSER3_DOM_METHOD_UNSUPPORTED')
+    if(!BROWSER_STATE_NATIVE_METHODS_V3[kind].includes(method))throw Error('BROWSER3_DOM_METHOD_UNSUPPORTED')
+    if(kind==='composer'){
+      if(method==='focus')options.composer!.focus()
+      else if(args[0]?.type==='input'||args[0]?.type==='change')options.composer!.dispatch(args[0].type)
+      else throw Error('BROWSER3_COMPOSER_EVENT_UNSUPPORTED')
+      return method==='dispatchEvent'?true:{tag:'undefined'}
+    }
     if(kind==='event')target=target.event??target
     if(method==='addEventListener')return installListener(target,args[0],args[1],args[2]).listenerId
     if(method==='removeEventListener'){removeListener(target,args[0],args[1],args[2]);return {tag:'undefined'}}
     if(kind==='document') {
+      if(options.composer&&args[0]==='#send_textarea'
+        &&(method==='querySelector'||method==='querySelectorAll')){
+        const reference=ref(composerToken,'composer')
+        return method==='querySelectorAll'?[reference]:reference
+      }
       if(method==='createElement'||method==='createElementNS') {
         const namespace=method==='createElementNS'?String(args[0]):HTML_NS,tag=String(args[method==='createElementNS'?1:0])
         if(namespace===HTML_NS&&tag.toLowerCase()==='iframe'&&options.externalFrames)
@@ -806,9 +860,9 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
       if(placed)return placed
     }
     if(['append','prepend','after','before','replaceWith'].includes(method))
-      args=args.map(value=>value instanceof view.Node?value:own(doc.createTextNode(String(value))))
+      args=args.map(value=>nativeNode(value)?value:own(doc.createTextNode(String(value))))
     if(['appendChild','insertBefore','replaceChild','append','prepend','after','before','replaceWith'].includes(method))
-      for(const value of args)if(value instanceof view.Node)prepareInsertion(value)
+      for(const value of args)if(nativeNode(value))prepareInsertion(value)
     const result=target[method](...args)
     if(method==='removeAttribute'&&String(args[0]).toLowerCase()==='src'&&target instanceof view.HTMLImageElement)
       imageRemoved(target)
@@ -1016,6 +1070,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
       for(const id of [...pendingPromises])settlePromise(id,{kind:'rejected',error:'BROWSER3_PAGE_CLOSED'})
       for(const node of ownedNodes)if(node!==doc&&node!==logicalHtml&&node!==logicalHead&&node!==logicalBody)node.parentNode?.removeChild(node)
       ownedNodes.clear();nodes.clear();handles.clear();callbackReferences.clear()
+      options.sharedNodes?.release(pageId)
       if(!options.readerRootDocument) {
         if(shellHtml.parentNode!==doc)doc.appendChild(shellHtml)
         shellHtml.append(shellHead,shellBody);shellHead.appendChild(trustedHead);shellBody.appendChild(trustedBody)

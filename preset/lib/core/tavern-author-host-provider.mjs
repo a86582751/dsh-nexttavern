@@ -3,7 +3,7 @@
  * same maintained replay/journal source; no lower replay plus JSON stamp can
  * mint its evidence. Source, locks and Native callbacks stay with Core. */
 import { recordSha256 } from './roleplay-data.js';
-import { createCombinedAuthorCompilerV7 } from './tavern-author-combined-compiler-v7.mjs';
+import { createCombinedAuthorCompilerV8 } from './tavern-author-combined-compiler-v8.mjs';
 import { createRoleplayMvuSchemaReplay } from './roleplay-mvu-schema-replay.js';
 export const AUTHOR_HOST_NAME_V5 = 'dsh-nexttavern-author-host-runtime-v5-update-batch-v1';
 export const AUTHOR_HOST_VERSION_V5 = '0.6.0';
@@ -30,7 +30,7 @@ export async function createOwnedAuthorHostRuntimeV5(deps) {
         runner: deps.server.runner.identity });
     const compilerDependencies = { server: candidateCompiler,
         prompt: deps.prompt.compiler, implementationSha256: pin.generation };
-    const actualCompiler = createCombinedAuthorCompilerV7({ ...compilerDependencies, browser: deps.browser });
+    const actualCompiler = createCombinedAuthorCompilerV8({ ...compilerDependencies, browser: deps.browser });
     const identity = Object.freeze({ id: 'native-author-host', version: 5,
         implementationSha256: recordSha256({ encoding: 'native-author-host-implementation-v5', generation: pin.generation,
             combinedCompiler: actualCompiler.identity, server, browser: { compiler: deps.browser.identity, runtime: deps.browser.runtime },

@@ -23,6 +23,7 @@ import type {AuthorScriptResourceRequestV1} from '../core/roleplay-author-script
 import {scopeReaderCss} from './reader-rendering.js';
 import {mountStaticAuthorDocument} from './author-runtime.js';
 import type {BrowserNativeImageV3} from '../core/tavern-author-browser-native-types-v3.js';
+import type {BrowserComposerAccessV3} from '../core/tavern-author-browser-native-types-v3.js';
 import type {ReaderRegexDocumentExecutionV1,ReaderRegexDocumentRenderV1}
     from '../core/reader-regex-document-types.mjs';
 import type {ReaderPreparationState} from './reader-submission-handoff.js';
@@ -134,6 +135,7 @@ export function createAuthorBrowserSession(options: {
     status(value: AuthorBrowserStatus): void;
     preparation?(value: ReaderPreparationState): void;
     surface?(): AuthorReaderSurface;
+    composer?: BrowserComposerAccessV3;
     transport?: AuthorBrowserTransport;
     storage?: Pick<Storage, 'getItem' | 'setItem'>;
     images?(owner:object,pageId:string,images:readonly BrowserNativeImageV3[]):void;
@@ -453,7 +455,8 @@ export function createAuthorBrowserSession(options: {
         // projection together. The shared Reader controller never mixes them.
         const controller:ReaderBrowserFrame = attachment.schemaVersion===3
             ? createBrowserRuntimeFrameV3(outer,attachment.artifact,realmBinding,attachment.program,
-                host as BrowserFrameHostV3,controllerOptions) as ReaderBrowserFrame
+                host as BrowserFrameHostV3,{...controllerOptions,stateProgramBinding:attachment.stateProgramBinding,
+                    composer:options.composer}) as ReaderBrowserFrame
             : attachment.schemaVersion===2
             ? createBrowserRuntimeFrameV2(outer,attachment.artifact,realmBinding,attachment.program,
                 host as BrowserHostBridgeV2,controllerOptions) as ReaderBrowserFrame

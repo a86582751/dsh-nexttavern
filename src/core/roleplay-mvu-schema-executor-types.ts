@@ -2,7 +2,7 @@
  * each epoch to its complete original implementation tuple before dispatch. */
 import {types} from 'node:util'
 import {cloneSchemaData,validateSchemaProgram} from './tavern-mvu-schema-data.js'
-import {validateSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
+import {validateMvuExecutableProgramV4} from './tavern-mvu-schema-program-v4.js'
 import type {MvuSchemaProgram,MvuSchemaRunnerIdentity,MvuSchemaCompiler,MvuSchemaImplementationIdentity,
   MvuSchemaCompilationInput,MvuSchemaCompilation,
   MvuSchemaLibraryIdentity,MvuSchemaEvaluationInput,
@@ -14,6 +14,7 @@ import type {MvuSchemaEvaluationInputV2,MvuSchemaGuestOutputV2,MvuSchemaRealmLoa
   MvuSchemaTraceInputV2,MvuSchemaTraceEvaluationV2,MvuSchemaTraceRunResultV2}
   from './tavern-mvu-schema-types-v2.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
+import type {MvuExecutableProgramV4} from './tavern-mvu-owned-state-types-v1.mjs'
 import type {MvuSchemaEvaluationInputV3,MvuSchemaGuestOutputV3,MvuSchemaRealmLoadFrameV3,
   MvuSchemaTraceRequestedStepV3,MvuSchemaTraceStepRecordV3,MvuSchemaTraceEvaluationStepV3,
   MvuSchemaTraceInputV3,MvuSchemaTraceEvaluationV3,MvuSchemaTraceRunResultV3}
@@ -28,7 +29,7 @@ import type {MvuSchemaEvaluationInputV4,MvuSchemaGuestOutputV4,MvuSchemaRealmLoa
   from './tavern-mvu-schema-types-v4.js'
 
 export type SchemaExecutorVersion=1|2|3|4
-export type SchemaAuthorProgram=MvuSchemaProgram|MvuSchemaProgramV4
+export type SchemaAuthorProgram=MvuSchemaProgram|MvuExecutableProgramV4
 export type SchemaAuthorCompilationInput=MvuSchemaCompilationInput|MvuSchemaCompilationInputV4
 export type SchemaAuthorCompilation=MvuSchemaCompilation|CompilationV4
 /** Version dispatch validates data only. The catalog and compiler still admit
@@ -37,9 +38,10 @@ export function validateSchemaAuthorProgram(input:unknown):SchemaAuthorProgram {
   if(input!==null&&typeof input==='object'&&types.isProxy(input))throw Error('SCHEMA_PROXY_VALUE')
   // Inspect only an own data discriminator without invoking a getter. The
   // selected validator still clones and validates the entire bounded program.
-  const version=input!==null&&typeof input==='object'?Object.getOwnPropertyDescriptor(input,'schemaVersion'):undefined
-  return version&&Object.hasOwn(version,'value')&&version.value===2
-    ?validateSchemaProgramV4(input):validateSchemaProgram(input)
+  const encoding=input!==null&&typeof input==='object'?Object.getOwnPropertyDescriptor(input,'encoding'):undefined
+  return encoding&&Object.hasOwn(encoding,'value')
+    &&['native-mvu-author-schema-program-v2','native-mvu-owned-state-program-v1'].includes(encoding.value)
+    ?validateMvuExecutableProgramV4(input):validateSchemaProgram(input)
 }
 export type SchemaEvaluationInput=MvuSchemaEvaluationInput|MvuSchemaEvaluationInputV2
   |MvuSchemaEvaluationInputV3|MvuSchemaEvaluationInputV4

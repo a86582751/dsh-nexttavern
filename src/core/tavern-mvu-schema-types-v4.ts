@@ -4,7 +4,7 @@ import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {MvuUpdateOperationV2} from './roleplay-mvu-update-v2.js'
 import type {MvuSchemaDiagnostic,MvuSchemaPhase,MvuSchemaRunnerIdentity,
   MvuSchemaRunnerDeps,MvuSchemaRealmReadBinding,MvuSchemaImplementationIdentity} from './tavern-mvu-schema-types.js'
-import type {MvuSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
+import type {MvuExecutableProgramV4} from './tavern-mvu-owned-state-types-v1.mjs'
 import type {MvuSchemaDiagnosticV2} from './tavern-mvu-schema-types-v2.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 
@@ -122,15 +122,15 @@ export type MvuSchemaOpenManualRunResultV4={kind:'opened-manual-run';run:MvuSche
   | {kind:'unavailable'|'cancelled';diagnostics:readonly MvuSchemaDiagnostic[]}
 export interface MvuSchemaRunnerV4 {
   readonly identity:MvuSchemaRunnerIdentity
-  evaluate(program:MvuSchemaProgramV4,input:MvuSchemaEvaluationInputV4,signal?:AbortSignal):Promise<MvuSchemaRunResultV4>
-  verifyEvaluation(program:MvuSchemaProgramV4,evaluation:MvuSchemaEvaluationV4,signal?:AbortSignal):Promise<boolean>
-  evaluateTrace(program:MvuSchemaProgramV4,input:MvuSchemaTraceInputV4,signal?:AbortSignal):Promise<MvuSchemaTraceRunResultV4>
+  evaluate(program:MvuExecutableProgramV4,input:MvuSchemaEvaluationInputV4,signal?:AbortSignal):Promise<MvuSchemaRunResultV4>
+  verifyEvaluation(program:MvuExecutableProgramV4,evaluation:MvuSchemaEvaluationV4,signal?:AbortSignal):Promise<boolean>
+  evaluateTrace(program:MvuExecutableProgramV4,input:MvuSchemaTraceInputV4,signal?:AbortSignal):Promise<MvuSchemaTraceRunResultV4>
   /** Program comes from the compiler or Journal's first parser; this entry owns the trace's first parsing. */
-  evaluateNext?(program:MvuSchemaProgramV4,input:MvuSchemaTraceInputV4,signal?:AbortSignal):Promise<MvuSchemaNextRunResultV4>
+  evaluateNext?(program:MvuExecutableProgramV4,input:MvuSchemaTraceInputV4,signal?:AbortSignal):Promise<MvuSchemaNextRunResultV4>
   /** Additive live-operation entry; previous protected factories keep their
    * exact cold ABI and do not gain a live resource through stored DATA. */
-  openManualRun?(program:MvuSchemaProgramV4,input:MvuSchemaTraceInputV4,signal?:AbortSignal):Promise<MvuSchemaOpenManualRunResultV4>
-  verifyTrace(program:MvuSchemaProgramV4,evaluation:MvuSchemaTraceEvaluationV4,signal?:AbortSignal):Promise<boolean>
+  openManualRun?(program:MvuExecutableProgramV4,input:MvuSchemaTraceInputV4,signal?:AbortSignal):Promise<MvuSchemaOpenManualRunResultV4>
+  verifyTrace(program:MvuExecutableProgramV4,evaluation:MvuSchemaTraceEvaluationV4,signal?:AbortSignal):Promise<boolean>
   dispose():Promise<void>
 }
 export interface MvuSchemaRunnerDepsV4 extends MvuSchemaRunnerDeps {

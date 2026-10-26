@@ -18,6 +18,7 @@ import type {TavernLoreMutationRetryLocatorV1} from './roleplay-tavern-lore-edit
 import type {AuthorScriptResourceRequestV1} from './roleplay-author-script-resources.js'
 import type {BrowserProgramV3,BrowserRuntimeArtifactV3,BrowserSnapshotV3,
   BrowserOrdinaryKeyRequestV3,BrowserOrdinaryKeyReplyV3} from './tavern-author-browser-types-v3.mjs'
+import type {OwnedBrowserStateBindingV1} from './tavern-author-browser-state-imports-v1.mjs'
 
 export interface AuthorBrowserAttachmentV1 {
   readonly schemaVersion:1
@@ -42,6 +43,7 @@ export interface AuthorBrowserAttachmentV3 {
   readonly program:BrowserProgramV3
   readonly artifact:BrowserRuntimeArtifactV3
   readonly snapshot:BrowserSnapshotV3
+  readonly stateProgramBinding?:OwnedBrowserStateBindingV1
 }
 export type AuthorBrowserAttachment=AuthorBrowserAttachmentV1|AuthorBrowserAttachmentV2|AuthorBrowserAttachmentV3
 export type AuthorBrowserSnapshot=BrowserSnapshotV1|BrowserSnapshotV2|BrowserSnapshotV3

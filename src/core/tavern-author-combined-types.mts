@@ -11,6 +11,8 @@ import type {CombinedCompilationInputV6,CombinedAuthorProgramV6,CombinedCompilat
   from './tavern-author-combined-types-v6.mjs'
 import type {CombinedCompilationInputV7,CombinedAuthorProgramV7,CombinedCompilationV7,AuthorExecutionPlanV4}
   from './tavern-author-combined-types-v7.mjs'
+import type {CombinedCompilationInputV8,CombinedAuthorProgramV8,CombinedCompilationV8}
+  from './tavern-author-combined-types-v8.mjs'
 export type {CombinedPlanRowV4,AuthorExecutionPlanV4} from './tavern-author-combined-types-v7.mjs'
 
 export interface CombinedCompilerIdentityV1 {
@@ -93,12 +95,12 @@ export interface CombinedAuthorProgramV4 extends Omit<CombinedAuthorProgramV3,'s
 export type CombinedCompilationV4={readonly kind:'compiled';readonly program:CombinedAuthorProgramV4}
   |{readonly kind:'refused';readonly diagnostics:readonly (MvuSchemaDiagnostic|BrowserDiagnosticV1|PromptDiagnosticV1)[]}
 export type CombinedCompilationInput=CombinedCompilationInputV3|CombinedCompilationInputV4|CombinedCompilationInputV5
-  |CombinedCompilationInputV6|CombinedCompilationInputV7
+  |CombinedCompilationInputV6|CombinedCompilationInputV7|CombinedCompilationInputV8
 export type CombinedAuthorProgram=CombinedAuthorProgramV3|CombinedAuthorProgramV4|CombinedAuthorProgramV5
-  |CombinedAuthorProgramV6|CombinedAuthorProgramV7
+  |CombinedAuthorProgramV6|CombinedAuthorProgramV7|CombinedAuthorProgramV8
 export type AuthorExecutionPlan=AuthorExecutionPlanV2|AuthorExecutionPlanV3|AuthorExecutionPlanV4
 export type CombinedCompilation=CombinedCompilationV3|CombinedCompilationV4|CombinedCompilationV5
-  |CombinedCompilationV6|CombinedCompilationV7
+  |CombinedCompilationV6|CombinedCompilationV7|CombinedCompilationV8
 /** Host accepts tagged historical inputs. Each actual compiler implements its
  * own input version; a new generation cannot execute a legacy identity. */
 export interface CombinedAuthorCompiler {

@@ -2,11 +2,11 @@
  * same maintained replay/journal source; no lower replay plus JSON stamp can
  * mint its evidence. Source, locks and Native callbacks stay with Core. */
 import {recordSha256} from './roleplay-data.js'
-import {createCombinedAuthorCompilerV7} from './tavern-author-combined-compiler-v7.mjs'
+import {createCombinedAuthorCompilerV8} from './tavern-author-combined-compiler-v8.mjs'
 import {createRoleplayMvuSchemaReplay} from './roleplay-mvu-schema-replay.js'
 import type {SchemaReplayDeps} from './roleplay-mvu-schema-replay.js'
 import type {OwnedMvuSchemaExecutor} from './roleplay-mvu-schema-executor-types.js'
-import type {MvuSchemaCandidateCompilerV4} from './tavern-mvu-schema-program-v4.js'
+import type {MvuOwnedStateCandidateCompilerV1} from './tavern-mvu-owned-state-types-v1.mjs'
 import type {MvuSchemaImplementationIdentity} from './tavern-mvu-schema-types.js'
 import type {BrowserCompilerV3} from './tavern-author-browser-types-v3.mjs'
 import type {CombinedAuthorCompiler} from './tavern-author-combined-types.mjs'
@@ -49,7 +49,7 @@ export async function createOwnedAuthorHostRuntimeV5(deps:{
   if(loadedGeneration!==undefined&&loadedGeneration!==pin.generation)throw Error('AUTHOR_HOST_GENERATION_RESTART_REQUIRED')
   loadedGeneration??=pin.generation
   if(deps.server.executorVersion!==4)throw Error('AUTHOR_HOST_SERVER_ABI_UNSUPPORTED')
-  const candidateCompiler=deps.server.compiler as MvuSchemaCandidateCompilerV4
+  const candidateCompiler=deps.server.compiler as MvuOwnedStateCandidateCompilerV1
   if(typeof candidateCompiler.partitionCandidates!=='function')throw Error('AUTHOR_HOST_SERVER_CANDIDATES_UNAVAILABLE')
   if(deps.browser.runtime.version!==3)throw Error('AUTHOR_HOST_BROWSER_ABI_UNSUPPORTED')
   const server:AuthorServerExecutorV4=Object.freeze({compiler:deps.server.compiler.identity as AuthorServerExecutorV4['compiler'],
@@ -57,7 +57,7 @@ export async function createOwnedAuthorHostRuntimeV5(deps:{
     runner:deps.server.runner.identity as AuthorServerExecutorV4['runner']})
   const compilerDependencies={server:candidateCompiler,
     prompt:deps.prompt.compiler,implementationSha256:pin.generation}
-  const actualCompiler:CombinedAuthorCompiler=createCombinedAuthorCompilerV7({...compilerDependencies,browser:deps.browser})
+  const actualCompiler:CombinedAuthorCompiler=createCombinedAuthorCompilerV8({...compilerDependencies,browser:deps.browser})
   const identity:AuthorHostIdentityV5=Object.freeze({id:'native-author-host',version:5,
     implementationSha256:recordSha256({encoding:'native-author-host-implementation-v5',generation:pin.generation,
       combinedCompiler:actualCompiler.identity,server,browser:{compiler:deps.browser.identity,runtime:deps.browser.runtime},

@@ -3,7 +3,8 @@ import {recordSha256,sha256} from './roleplay-data.js'
 import {parseSourceHtmlCandidateV1} from './tavern-author-html-compiler-v1.mjs'
 import {analyseBrowserAstV3} from './tavern-author-browser-ast-v3.mjs'
 import type {BrowserAstUnitV3,BrowserAstProofV3} from './tavern-author-browser-ast-v3.mjs'
-import {BROWSER_BOUNDS_V3,BROWSER_PROFILE_V3,BROWSER_CAPABILITY_CONTRACT_V3}
+import {BROWSER_BOUNDS_V3,BROWSER_PROFILE_V3,BROWSER_CAPABILITY_CONTRACT_V3,
+  BROWSER_STATE_PROFILE_V3,BROWSER_STATE_CAPABILITY_CONTRACT_V3}
   from './tavern-author-browser-profile-v3.mjs'
 import type {BrowserCompilationInputV3,BrowserCompilationV3,BrowserRuntimeArtifactV3,
   BrowserDeclaredChatKeyV3,BrowserWriterOriginV3,BrowserCompiledScriptV3,BrowserSourcePagePlanV3,
@@ -11,6 +12,8 @@ import type {BrowserCompilationInputV3,BrowserCompilationV3,BrowserRuntimeArtifa
   from './tavern-author-browser-types-v3.mjs'
 import type {BrowserDiagnosticV1,BrowserRawScriptV1} from './tavern-author-browser-types.mjs'
 import type {HtmlParsedCandidateV1,SourceHtmlInputV1} from './tavern-author-html-types-v1.mjs'
+import {FIXED_STATE_LOADER_POLICY_SHA256,fixedStateLoaderDependency} from './tavern-mvu-state-loader-policy-v4.mjs'
+import type {BrowserStateImportsV1} from './tavern-author-browser-state-imports-v1.mjs'
 
 const sorted=(values:Iterable<BrowserCapabilityV3>):readonly BrowserCapabilityV3[]=>[...new Set(values)].sort()
 function declaration(writer:BrowserWriterOriginV3,key:string):BrowserDeclaredChatKeyV3 {
@@ -193,9 +196,24 @@ export function createBrowserCompilerV3(artifact:BrowserRuntimeArtifactV3) {
       else generationDeclarationId=own[0]!.declarationId
     }
     if(diagnostics.length)return {kind:'refused',diagnostics}
+    const importProofs=result.proofs.filter(proof=>proof.stateImports.length)
+    const dependency=importProofs[0]?.stateImports[0]?.exactSpecifiers[0]
+    const fixed=dependency?fixedStateLoaderDependency(dependency)!:undefined
+    const stateImports:BrowserStateImportsV1|undefined=fixed?{
+      schemaVersion:1,encoding:'native-author-browser-state-imports-v1',dependencyPolicySha256:FIXED_STATE_LOADER_POLICY_SHA256,
+      dependency:{group:'B',upstreamRootSha256:fixed.upstreamRootSha256,upstreamRootBytes:fixed.upstreamRootBytes,
+        namespaceContract:'empty-esm-namespace'},sites:importProofs.flatMap(proof=>proof.stateImports.map(site=>({
+          originalOrdinal:proof.unit.ordinal,rawDescriptorSha256:recordSha256(scripts.get(proof.unit.ordinal)!.descriptor),...site}))),
+    }:undefined
+    const stateProfile=!!stateImports||result.proofs.some(proof=>proof.stateFacade)
+    if(stateProfile&&!artifact.stateIdentity)
+      return {kind:'refused',diagnostics:[{code:'BROWSER_STATE_RUNTIME_UNAVAILABLE'}]}
     const body:Omit<BrowserProgramV3,'programSha256'>={schemaVersion:3,encoding:'native-author-browser-program-v3',
-      authority:'compiled-program-data-only',source:input.source,compiler:identity,profile:BROWSER_PROFILE_V3,
-      runtime:artifact.identity,capabilityContract:BROWSER_CAPABILITY_CONTRACT_V3,scripts:compiled,sourcePages:plans,
+      authority:'compiled-program-data-only',source:input.source,compiler:identity,
+      profile:stateProfile?BROWSER_STATE_PROFILE_V3:BROWSER_PROFILE_V3,
+      runtime:stateProfile?artifact.stateIdentity!:artifact.identity,
+      capabilityContract:stateProfile?BROWSER_STATE_CAPABILITY_CONTRACT_V3:BROWSER_CAPABILITY_CONTRACT_V3,
+      ...stateImports?{stateImports}:{},scripts:compiled,sourcePages:plans,
       declarations,generationDeclarationId,
       requiredCapabilities:sorted([...compiled.flatMap(row=>row.requiredCapabilities),...plans.flatMap(row=>row.requiredCapabilities)])}
     if(Buffer.byteLength(JSON.stringify(body),'utf8')>BROWSER_BOUNDS_V3.programBytes)

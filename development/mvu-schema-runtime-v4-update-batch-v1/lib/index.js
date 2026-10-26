@@ -174,7 +174,13 @@ export async function createMvuSchemaRuntimeV4(deps) {
         return { libraries: Object.freeze(libraries.map(({ code: _code, ...library }) => Object.freeze(library))), bridge, stateLoader,
             compiler: { identity: actualCompiler.identity,
                 compile: (input, signal) => guarded(() => actualCompiler.compile(input, signal), { kind: 'refused', diagnostics: unavailable.diagnostics }),
-                partitionCandidates: (input, signal) => guarded(() => actualCompiler.partitionCandidates(input, signal), { kind: 'refused', diagnostics: unavailable.diagnostics }),
+                partitionCandidates: (input, signal, browserCandidateOrdinals) => guarded(() => actualCompiler.partitionCandidates(input, signal, browserCandidateOrdinals), { kind: 'refused', diagnostics: unavailable.diagnostics }),
+                assembleOwnedStateProgram: (original, browserProgram) => {
+                    current();
+                    const program = actualCompiler.assembleOwnedStateProgram(original, browserProgram);
+                    current();
+                    return program;
+                },
                 verifyProgram: (program, signal) => guarded(() => actualCompiler.verifyProgram(program, signal), false),
                 dispose: () => actualCompiler.dispose() },
             runner: { identity: actualRunner.identity,
