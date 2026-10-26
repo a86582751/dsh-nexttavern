@@ -269,6 +269,11 @@ export function createBrowserSourceFrameOwnerV3(options:BrowserSourceFrameOwnerO
     })
     signal.throwIfAborted();stateOf(frame)
     document.open();document.write(BROWSER_NATIVE_INERT_SHELL_V3);document.close()
+    // Scripts run in the owned VM, so the script-disabled native sandbox must
+    // not display noscript fallback. Keep author nodes and serialization intact.
+    const presentation=new document.defaultView!.CSSStyleSheet()
+    presentation.insertRule('noscript { display: none !important; }')
+    document.adoptedStyleSheets=[presentation]
     const renderer=createBrowserPageRendererV3({document,plan,pageId,
       ...options.rendererOptions?.(frame,pageId,plan),
       externalFrames:forDocument({document,pageId,principal:frame.principal})})
