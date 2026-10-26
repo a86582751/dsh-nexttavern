@@ -185,7 +185,14 @@ export function createRoleplayMvuOpening(deps) {
                     renderedSha256: intent.renderedSha256 }, intent.committedTurn);
                 return found.status === 'committed' ? { kind: 'ready', receipt: found.receipt } : { kind: 'blocked', code: 'NATIVE_NOT_COMMITTED' };
             } });
-        schemaSelection = { ...transaction, handles: request => {
+        schemaSelection = { ...transaction, readVerified: async (source, purpose) => {
+                // A normal completed read shares the numerical owner's accepted seed.
+                // Only the explicit recovery command requests independent historical
+                // execution; neither path restores a fresh publication permission.
+                if (purpose === 'historical')
+                    return transaction.readVerified(source);
+                return schemaStory?.readCompletedOpening(source) ?? { kind: 'blocked', code: 'SCHEMA_RUNTIME_UNAVAILABLE' };
+            }, handles: request => {
                 const author = source.readAuthorSource(request.identity.sessionId, request.identity.index);
                 // Native loader-only v4 Sources take this same opening transaction. The
                 // complete worker plan and real Native receipt determine publication;

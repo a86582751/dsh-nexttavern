@@ -10,7 +10,7 @@ import type {
   FrozenMvuOpeningInitializationV1, FrozenMvuOpeningInitializationV2,
 } from './roleplay-mvu-initialization.js'
 import type {MvuAbsenceScopeProof, MvuSourceSnapshot, MvuSourceCode} from './roleplay-mvu-source.js'
-import {validateMvuSchemaOpeningIntent,freezeMvuSchemaOpeningData} from './roleplay-mvu-schema-opening-types.js'
+import {validateMvuSchemaOpeningIntent,freezeMvuSchemaOpeningData,schemaOpeningCode} from './roleplay-mvu-schema-opening-types.js'
 import type {OpeningIntentV5,SchemaOpeningSelectionAdapter,SchemaOpeningRequest} from './roleplay-mvu-schema-opening-types.js'
 import {PROMPT_TEMPLATE_ONLY_CODES_V1,validatePromptTemplateOnlyOpeningIntentV6,
   validatePromptTemplateOnlySourceProofV1} from './roleplay-prompt-template-only-data.js'
@@ -873,7 +873,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
   }
   const recover = async (sessionId: string, importId: string): Promise<OpeningIntent | null> => {
     const saved=deps.table.get(openingIntentKey(sessionId,importId)) as OpeningIntent | undefined
-    if (saved?.schemaVersion===5) return readIntentVerified(saved.source)
+    if (saved?.schemaVersion===5) return readIntentVerified(saved.source,'historical')
     if(saved?.schemaVersion===6) {
       checkIntent(saved,sessionId,importId)
       const refused=await preflightExisting(saved)
@@ -910,7 +910,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     })
     return result && 'finish' in result ? finish(result.finish) : result
   }
-  const readIntentVerified = async (source:OpeningSource):Promise<OpeningIntent|null> => {
+  const readIntentVerified = async (source:OpeningSource,purpose?:'historical'):Promise<OpeningIntent|null> => {
     const intent=deps.table.get(openingIntentKey(source.sessionId,source.importId)) as OpeningIntent | undefined
     if(intent?.schemaVersion===6) {
       checkIntent(intent,source.sessionId,source.importId)
@@ -918,8 +918,13 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       return refused?blockedProjection(intent,refused):readIntent(source)
     }
     if (intent?.schemaVersion!==5 || !deps.schemaOpening) return readIntent(source)
-    const ready=await deps.schemaOpening.readVerified(source)
-    return ready.kind==='ready'?ready.intent:ready.intent??readIntent(source)
+    if(intent.status!=='completed'&&purpose!=='historical')return readIntent(source)
+    const ready=await deps.schemaOpening.readVerified(source,purpose)
+    if(ready.kind==='ready')return ready.intent
+    if(ready.intent)return ready.intent
+    const retained=readIntent(source)
+    return retained?.schemaVersion===5?freezeMvuSchemaOpeningData({...retained,
+      initializationCode:schemaOpeningCode(ready.code)}):retained
   }
   return {readCatalog, readIntent, readIntentForObservation, readIntentVerified, select, recover}
 }

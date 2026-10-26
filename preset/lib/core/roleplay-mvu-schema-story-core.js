@@ -2542,6 +2542,28 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         views.set(sid, view);
         deps.inputState.schemaPublished(sid);
     }
+    /** The numerical read already joins this original opening to its accepted
+     * Journal and Native span. Opening UI consumes that same seed; a cold read
+     * captures facts only, never edit recovery, initialization or guest replay. */
+    function readCompletedOpening(source) {
+        try {
+            let view = views.get(source.sessionId);
+            if (!view || !viewCurrent(view)) {
+                const read = captureSchemaRead(source.sessionId);
+                publishSchemaRead(read);
+                view = views.get(source.sessionId);
+            }
+            const seed = view.history.seed;
+            if (seed.kind !== 'opening')
+                fail('SCHEMA_OPENING_RECORD_INVALID');
+            if (!same(seed.intent.source, source))
+                fail('SOURCE_CHANGED');
+            return { kind: 'ready', intent: seed.intent, event: seed.event, head: seed.head };
+        }
+        catch (error) {
+            return { kind: 'blocked', code: codeOf(error) };
+        }
+    }
     /** Called synchronously by Player inside its live Source publication. The
      * callback joins this actual Store/Native read to its existing Replay proof;
      * no posted snapshot or completed terminal alone can publish a view. */
@@ -3126,7 +3148,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             return false;
         }
     }
-    return { preflight, adoptPublishedPlayer, observation, readSnapshot, readSchemaObservation, supportsMaintenance, captureMaintenanceBase, checkTextEdit,
+    return { preflight, readCompletedOpening, adoptPublishedPlayer, observation, readSnapshot, readSchemaObservation, supportsMaintenance, captureMaintenanceBase, checkTextEdit,
         taskEditFacts, taskArtifact, taskEditResolved,
         captureReaderDisplayScopes, capturePromptScopes, executePrompt, captureBrowserFacts, captureReaderDocumentFacts,
         readEditBasis, captureManualBasis, captureHistoricalCut, borrowHistoricalCut,

@@ -177,7 +177,7 @@ export interface SchemaOpeningSelectionAdapter {
   handles(request:SchemaOpeningRequest):boolean
   select(request:SchemaOpeningRequest):Promise<SchemaOpeningSelectResult>
   readIntent(source:OpeningSource):OpeningIntentV5|null
-  readVerified(source:OpeningSource):Promise<SchemaOpeningReadiness>
+  readVerified(source:OpeningSource,purpose?:'historical'):Promise<SchemaOpeningReadiness>
 }
 export const MVU_SCHEMA_OPENING_BOUNDS=Object.freeze({bytes:4_194_304,depth:72,nodes:131072})
 export const schemaOpeningCode=(value:unknown):string=>typeof value==='string'&&/^[A-Z][A-Z0-9_]{0,95}$/.test(value)
