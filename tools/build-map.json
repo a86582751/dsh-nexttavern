@@ -7320,7 +7320,8 @@
       "banner": "runtime/alpha3/src/operations/runtime-asset-source-scope.mts",
       "primaryOutput": "lib/operations/runtime-asset-source-scope.mjs",
       "outputs": [
-        "lib/operations/runtime-asset-source-scope.mjs"
+        "lib/operations/runtime-asset-source-scope.mjs",
+        "preset/lib/operations/runtime-asset-source-scope.mjs"
       ]
     },
     {
@@ -8695,7 +8696,8 @@
       "banner": "runtime/alpha3/src/core/tavern-author-combined-types-v8.mts",
       "primaryOutput": "lib/core/tavern-author-combined-types-v8.mjs",
       "outputs": [
-        "lib/core/tavern-author-combined-types-v8.mjs"
+        "lib/core/tavern-author-combined-types-v8.mjs",
+        "preset/lib/core/tavern-author-combined-types-v8.mjs"
       ]
     },
     {
@@ -8704,7 +8706,8 @@
       "banner": "runtime/alpha3/src/core/tavern-author-combined-data-v8.mts",
       "primaryOutput": "lib/core/tavern-author-combined-data-v8.mjs",
       "outputs": [
-        "lib/core/tavern-author-combined-data-v8.mjs"
+        "lib/core/tavern-author-combined-data-v8.mjs",
+        "preset/lib/core/tavern-author-combined-data-v8.mjs"
       ]
     },
     {
@@ -8713,7 +8716,8 @@
       "banner": "runtime/alpha3/src/core/tavern-author-combined-compiler-v8.mts",
       "primaryOutput": "lib/core/tavern-author-combined-compiler-v8.mjs",
       "outputs": [
-        "lib/core/tavern-author-combined-compiler-v8.mjs"
+        "lib/core/tavern-author-combined-compiler-v8.mjs",
+        "preset/lib/core/tavern-author-combined-compiler-v8.mjs"
       ]
     }
   ],

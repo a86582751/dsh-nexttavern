@@ -5,7 +5,7 @@
   "version": "0.6.0",
   "package": {
     "artifact": "author-host-runtime-v5-update-batch-v1-package-json",
-    "sha256": "b0ee88e61f947681bf20d182e36a10dba86dd75215664c0dfaa95fd5471fc4f4"
+    "sha256": "3077f4dc4bb74a57dbfb59247576364a874c89f1a50dad9971e325b2a75868f4"
   },
   "builder": {
     "esbuildVersion": "0.24.2",

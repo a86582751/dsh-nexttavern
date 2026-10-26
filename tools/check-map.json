@@ -8722,7 +8722,10 @@
     },
     {
       "id": "runtime-asset-source-scope-generated",
-      "source": "lib/operations/runtime-asset-source-scope.mjs"
+      "source": "lib/operations/runtime-asset-source-scope.mjs",
+      "aliases": [
+        "preset/lib/operations/runtime-asset-source-scope.mjs"
+      ]
     },
     {
       "id": "runtime-asset-source-scope-typescript",
@@ -10767,7 +10770,10 @@
     },
     {
       "id": "tavern-author-combined-types-v8-generated",
-      "source": "lib/core/tavern-author-combined-types-v8.mjs"
+      "source": "lib/core/tavern-author-combined-types-v8.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-types-v8.mjs"
+      ]
     },
     {
       "id": "tavern-author-combined-data-v8-typescript",
@@ -10775,7 +10781,10 @@
     },
     {
       "id": "tavern-author-combined-data-v8-generated",
-      "source": "lib/core/tavern-author-combined-data-v8.mjs"
+      "source": "lib/core/tavern-author-combined-data-v8.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-data-v8.mjs"
+      ]
     },
     {
       "id": "tavern-author-combined-compiler-v8-typescript",
@@ -10783,7 +10792,10 @@
     },
     {
       "id": "tavern-author-combined-compiler-v8-generated",
-      "source": "lib/core/tavern-author-combined-compiler-v8.mjs"
+      "source": "lib/core/tavern-author-combined-compiler-v8.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-compiler-v8.mjs"
+      ]
     },
     {
       "id": "quality-registry",
