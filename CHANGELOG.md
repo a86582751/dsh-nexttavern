@@ -4,6 +4,16 @@
 
 本页合并重复流水，保留用户可见变化、迁移要求和验证限制。完整清理前记录见 [2026-10-24 历史快照](https://github.com/a86582751/dsh-nexttavern/blob/d84a35c41189846faaca5643a88a1949fcff776d/CHANGELOG.md)，可追溯原始测试数字、失败记录和候选演变。
 
+## 2026-10-26
+
+### 开发源码与文档 — 原卡交互、Reader 样式与开场读取（未发布）
+
+- 同步原卡输入框交互、原始样式和辅助类名支持，修正 Reader 正文与样式顺序，并补齐样式解析器及对应生成物。
+- 跳过不适用于当前输出位置的正则批次，开场列表读取复用已经完成的状态。一个同会话只读复验中，可比开场读取从约 3.33 秒降至 0.39 秒，冷态界面未再出现遮挡面板的恢复弹窗；未新增模型请求。该样本不代表所有卡片或机器的性能。
+- 更新 [0.3 开发日志](DEVELOPMENT-0.3.md) 的 10 月 25–26 日进展与未覆盖范围，并同步文档站。早先失败保留，0.3 仍未正式发行；本次没有更新 npm、安装器或运行服务。
+
+English: Synchronize original-card composer interactions, Reader styles and ordering, eligible-regex filtering, and completed-opening reads. One same-session read-only follow-up improved the comparable opening read from about 3.33 s to 0.39 s without new model calls. Update the development journal and documentation site; 0.3 remains unreleased, with no package or runtime deployment.
+
 ## 2026-10-24
 
 ### 开发记录 — Native 参考卡与创作流程对齐
