@@ -6,8 +6,7 @@ import {createHash} from 'node:crypto'
 import {createTestDirectory,cleanupTestDirectory} from '../lib/operations/test-temp.mjs'
 import {registerHooks} from 'node:module'
 import {pathToFileURL} from 'node:url'
-import {ownedPackages} from './plugin-owned-packages-fixture.mts'
-import {mountMaintainedPeer} from './native-request-material-fixture.mts'
+import {ownedPackages,mountMaintainedPeer} from './plugin-owned-packages-fixture.mts'
 import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
 
 const closeSchemaPeers=installSchemaTestDependencies()

@@ -6,7 +6,11 @@ import { selectedStoryHistory } from '../lib/memory/roleplay-memory-engine.js'
 import {taskHash} from '../lib/core/tavern-task-primitives.js'
 {
  const legacy=JSON.parse(readFileSync(new URL('./fixtures/task-context-legacy-v1.json',import.meta.url),'utf8'))
- assert.equal(inlineTaskInstruction(legacy.jobs),legacy.instruction,'frozen task prompt bytes stay compatible')
+ // Semantic submission now takes identifiers from the current tool contract.
+ // Keep the historical fixture intact and adapt only that intentional change.
+ const instruction=legacy.instruction.replace('每项按自己的 id、generation、system 与 format 校验',
+   '提交参数遵循当前工具说明，每项按自己的 system 与 format 校验')
+ assert.equal(inlineTaskInstruction(legacy.jobs),instruction,'task prompt preserves the frozen payload under the current submission contract')
  // Preserve the frozen business scenarios, but feed the current producer
  // vocabulary. This fixture adaptation is not a runtime historical migrator.
  for(const scenario of legacy.scenarios) {

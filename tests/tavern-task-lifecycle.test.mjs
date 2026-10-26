@@ -379,7 +379,9 @@ for(const background of [false,true]) {
  const first=make('a'.repeat(36)),admitted=[]
  await assert.rejects(host.nativeTask({...first,onAdmission:job=>admitted.push(job)}),{code:'TAVERN_INLINE_PENDING'})
  const job=host.tavernTasks.list(session)[0]
- assert.equal(admitted.length,0,'inline work has not entered the child admission queue');assert.equal(resolves,1);assert.equal(taskAgents.get(session.id),agent)
+ assert.equal(admitted.length,1,'inline work publishes its durable admission before yielding')
+ assert.equal(admitted[0].id,job.id);assert.equal(admitted[0].generation,job.generation);assert.equal(admitted[0].execution,'inline')
+ assert.equal(children.length,0,'inline admission does not start a native child');assert.equal(resolves,1);assert.equal(taskAgents.get(session.id),agent)
  assert.equal(job.source.preparationId,'prep-one');assert.equal(job.source.events[0].hash,sha256('visible'))
  assert.equal(branch.get(session.id+'__task-memory-resume').source.taskId,job.id)
  instruction='current instruction'
@@ -397,13 +399,13 @@ for(const background of [false,true]) {
  resumeFailure=false;await host.resumeMemoryWork(session,agent)
  assert.equal(branch.get(resumeKey).status,'completed');assert.equal(maintenance.get(session.id).state,'completed')
  const memoryRecord=structuredClone(branch.get(resumeKey))
- const delivered=[]
+ const delivered=[],backgroundAdmissions=[]
  const backgroundResult=await host.nativeTask({session,system:'memory-system',user:'background',format:'text',taskStage:'background-notes',background:true,
   selection:{execution:'inline',main:route,actualRoute:route},maxTokens:321,tools:['rp_history'],timeoutMs:1000,
-  onAdmission:job=>admitted.push(job),onResult:job=>delivered.push(job)})
+  onAdmission:job=>backgroundAdmissions.push(job),onResult:job=>delivered.push(job)})
  assert.equal(backgroundResult,'background notes');assert.equal(children.length,1)
  assert.equal(children[0].parent,agent);assert.equal(children[0].agentOptions.maxTokens,321);assert.deepEqual(children[0].toolFilter.allow,['rp_history'])
- assert.equal(admitted[0].id,delivered[0].id);assert.equal(delivered[0].status,'completed')
+ assert.equal(backgroundAdmissions.length,1);assert.equal(backgroundAdmissions[0].id,delivered[0].id);assert.equal(delivered[0].status,'completed')
  assert.equal(delivered[0].source.preparationId,undefined,'background memory is not fenced to foreground preparation')
  assert.equal(delivered[0].input.taskStage,'background-notes')
  active=false
