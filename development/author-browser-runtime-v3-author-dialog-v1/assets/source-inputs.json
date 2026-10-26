@@ -65,7 +65,7 @@
       {
         "artifact": "reader-regex-document-profile-v1-typescript",
         "path": "src/core/reader-regex-document-profile-v1.mts",
-        "sha256": "217323a719f56c18306ba2b08b012e900481c04c0634b2426c6d74422f4d3a64"
+        "sha256": "7b07b58f0161ea659f99e6a568c92a994f60af1ce75b013e113d56f1ee396d49"
       },
       {
         "artifact": "roleplay-data-typescript",
@@ -85,7 +85,7 @@
       {
         "artifact": "tavern-author-browser-ast-v3-typescript",
         "path": "src/core/tavern-author-browser-ast-v3.mts",
-        "sha256": "590a322f63aa17223be52a57a7dcd488f532c314df80af08a54c1e2a5ac1c36a"
+        "sha256": "d2448ca59ba62bea70039fb8858cc4cb12ca9d1e4e522ff6ba930f5e78ed9892"
       },
       {
         "artifact": "tavern-author-browser-ast-worker-v3-typescript",
@@ -152,7 +152,7 @@
       {
         "artifact": "tavern-author-browser-attachment-worker-v3-typescript",
         "path": "src/core/tavern-author-browser-attachment-worker-v3.ts",
-        "sha256": "d567522e25faf7a1f7790492b1c4f001ead0f370c7327acad310bf993a66a6e9"
+        "sha256": "1315d4f43ca59524706dc588dbbb8dd1b4ab4256280bf680e6fd15ece513f583"
       },
       {
         "artifact": "tavern-author-browser-execution-worker-v3-typescript",
@@ -177,7 +177,7 @@
       {
         "artifact": "tavern-author-browser-source-guest-v3-typescript",
         "path": "src/core/tavern-author-browser-source-guest-v3.ts",
-        "sha256": "13ee53c1387d931e7f0994ef0c958d52aa922642140ee61b69c38892c6c30a30"
+        "sha256": "42293000179bc53c6dbd6c727b466cb7e2ba4d6f8ba7e414485829d456c53aef"
       },
       {
         "artifact": "tavern-display-html-typescript",

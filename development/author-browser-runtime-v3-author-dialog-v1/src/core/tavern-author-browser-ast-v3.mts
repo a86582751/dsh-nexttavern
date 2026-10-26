@@ -4,11 +4,12 @@ import type * as TypeScript from 'typescript'
 import {sha256} from './roleplay-data.js'
 import {BROWSER_BOUNDS_V3,BROWSER_APIS_V3,BROWSER_METHODS_V3,BROWSER_PROPERTIES_V3,
   BROWSER_GUEST_INTRINSICS_V3,BROWSER_ABSENT_PROBES_V3,BROWSER_CLOSED_DOM_FACADES_V3,BROWSER_SERVER_GLOBALS_V3,
-  READER_PAGE_AST_APIS_V3,BROWSER_STATE_METHODS_V3,BROWSER_STATE_WAIT_V3,BROWSER_STATE_ABSENT_MEMBERS_V3,
+  BROWSER_STATE_METHODS_V3,BROWSER_STATE_WAIT_V3,BROWSER_STATE_ABSENT_MEMBERS_V3,
   BROWSER_STATE_NODE_METHODS_V3,BROWSER_STATE_NODE_PROPERTIES_V3,BROWSER_STATE_DOCUMENT_METHODS_V3,
   BROWSER_INTERACTION_DOCUMENT_METHODS_V3,BROWSER_INTERACTION_COMPOSER_METHODS_V3,
   BROWSER_INTERACTION_COMPOSER_PROPERTIES_V3,BROWSER_INTERACTION_ABSENT_MEMBERS_V3}
   from './tavern-author-browser-profile-v3.mjs'
+import {READER_REGEX_DOCUMENT_PAGE_APIS_V1 as READER_PAGE_AST_APIS_V3} from './reader-regex-document-profile-v1.mjs'
 import type {BrowserFacadeKindV3,BrowserOperationV3} from './tavern-author-browser-profile-v3.mjs'
 import type {BrowserAstCoverageV3,BrowserCapabilityV3,BrowserScriptResourceProjectionV3}
   from './tavern-author-browser-types-v3.mjs'
@@ -243,7 +244,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(!found){found=atom('handle',{handle:kind,realm:realmName,mount,...pageId?{pageId}:{},
       ...documentOwner?{documentOwner}:{},
       ...kind==='frame'?{sources:cell()}:{},
-      ...['node','frame','frame-parent'].includes(kind)||kind==='document'&&!astOptions.readerPageApis
+      ...['node','frame','frame-parent','document'].includes(kind)
         ?{fields:new Map(),written:new Set(),prototypes:cell()}: {}});handles.set(key,found)}
     return found
   }
@@ -448,6 +449,14 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       ||BROWSER_PROPERTIES_V3.document![name]==='absent'))return false
     return !BROWSER_NATIVE_PROPERTIES_V3[kind].includes(name)
   }
+  function pageEventProperty(receiver:Atom,name:string):boolean {
+    if(receiver.kind!=='handle'||!name.startsWith('on'))return false
+    // Keyboard handlers belong to a compiled Source document, not its outer
+    // Reader parent. The existing page listener owner performs delivery.
+    return guestFieldsOwner(receiver)&&(receiver.handle==='node'||name==='onload')
+      ||!!astOptions.readerPageApis&&receiver.handle==='document'&&realmInputs.has(receiver.realm!)
+        &&['onkeydown','onkeypress','onkeyup'].includes(name)
+  }
   const memberResults=new Map<TypeScript.Node,Map<Atom,Value>>()
   const nativeMemberUnknown=new Set<TypeScript.Node>()
   function memberValues(receiver:Atom,names:Set<string>|undefined,node:TypeScript.Node):Value {
@@ -566,6 +575,11 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       const selected=names??new Set([...Object.keys(BROWSER_METHODS_V3[receiver.handle!]??{}),
         ...Object.keys(BROWSER_PROPERTIES_V3[receiver.handle!]??{}),...receiver.fields?.keys()??[]])
       for(const name of selected){
+        if(astOptions.readerPageApis&&receiver.handle==='document'&&pageEventProperty(receiver,name)){
+          const assigned=read(field(receiver,name),node)
+          for(const entry of assigned.size?assigned:one(literal(null)))out.add(entry)
+          continue
+        }
         if(guestFieldsOwner(receiver)){
           const kind=receiver.handle! as 'node'|'frame'|'frame-parent'|'document'
           const stateMember=kind==='node'&&(name in BROWSER_STATE_NODE_METHODS_V3||name in BROWSER_STATE_NODE_PROPERTIES_V3)
@@ -1762,7 +1776,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
               const ownWrite=!guestFieldsOwner(owner)||guestField(owner,name)||name.startsWith('on')||owner.written?.has(name)
               if(ownWrite){add(field(owner,name),incoming);owner.written?.add(name)}
               if(owner.kind==='handle'&&owner.handle==='frame'&&['src','srcdoc'].includes(name))add(owner.sources!,incoming)
-              if(guestFieldsOwner(owner)&&name.startsWith('on')&&(owner.handle==='node'||name==='onload'))
+              if(pageEventProperty(owner,name))
                 for(const callback of incoming)if(['function','factory-callback','choice','native','bound'].includes(callback.kind))
                   invokeFunction(callback,[one(handle('event',owner.realm!))],node,one(owner))
             }
@@ -2568,7 +2582,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
             if(receiver.handle==='document')interactionFacadeUnits.add(state)
             continue
           }
-          else if(guestFieldsOwner(receiver)&&name.startsWith('on')&&(receiver.handle==='node'||name==='onload')){
+          else if(pageEventProperty(receiver,name)){
             state.caps.add('owned-synchronous-page-events')
           }
           else if(name==='srcdoc')report(state,'BROWSER3_SOURCE_PAGE_MOUNT_UNPROVEN',node)

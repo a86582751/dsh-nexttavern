@@ -89566,7 +89566,8 @@
           "src/core/reader-regex-document-types.mts",
           "src/core/roleplay-reader-display.ts",
           "src/core/roleplay-reader-style-parser.mts",
-          "src/core/roleplay-reader-narrative-display.ts"
+          "src/core/roleplay-reader-narrative-display.ts",
+          "src/core/reader-regex-document-profile-v1.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-ast-v3.mts"
       },

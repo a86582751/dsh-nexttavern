@@ -22,6 +22,8 @@ import type {ReaderRegexDocumentCompilerV1,ReaderRegexDocumentInputV1,ReaderRege
   ReaderRegexDocumentProgramV1,ReaderRegexDocumentReadFactsV1} from './reader-regex-document-types.mjs'
 import type {BrowserRuntimeArtifactV3} from './tavern-author-browser-types-v3.mjs'
 import type {BrowserDiagnosticV1} from './tavern-author-browser-types.mjs'
+import {createMvuScopeReadFrameV1} from './tavern-mvu-scope-read.js'
+import type {MvuNumericalObservation} from './roleplay-mvu-state.js'
 import {communityRegexRules,communityRegexMacros} from './community-regex.js'
 import {nativeCommunityDisplayRule} from './community-preset-display.js'
 import type {CommunityPresetPolicy} from './community-presets.js'
@@ -94,11 +96,56 @@ interface Dependencies {
   /** Core's shared observation supplies current positive/negative scope DATA. */
   scopes(id:string,source:TavernLoreSourceDataV1):ReaderDisplayScopes|undefined
   documentRuntime?():Promise<(ReaderRegexDocumentCompilerV1&{readonly artifact:BrowserRuntimeArtifactV3})|undefined>
-  documentFacts?(id:string):Promise<ReaderRegexDocumentReadFactsV1|undefined>
+  documentFacts?(id:string,read:ReaderDocumentSourceRead):Promise<ReaderRegexDocumentReadFactsV1|undefined>
   readonly community?:{
     policy(id:string):CommunityPresetPolicy
     variables(id:string,presetId:string):{chat:Record<string,CommunityJson>;global:Record<string,CommunityJson>}
   }
+}
+interface ReaderDocumentSourceRead {
+  readonly source:TavernLoreSourceDataV1
+  readonly session:ContextSession
+  readonly entries:ReturnType<typeof surfaceEntries>
+  readonly events:ReturnType<typeof eventsOf>
+  readonly cardData:Record<string,unknown>
+}
+/** A completed plain opening proves absence, not initialized empty variables.
+ * Reuse the Reader's current Source and Native projection without schema replay. */
+export function capturePlainReaderDocumentFacts(read:ReaderDocumentSourceRead,
+  plain:{readonly data:{readonly nativeOpening:{readonly assistantSeq:number;readonly messageId:string};
+    readonly absenceScopeRef:{readonly sha256:string}};current():boolean},
+  numerical:Exclude<MvuNumericalObservation,{kind:'ready'}>):ReaderRegexDocumentReadFactsV1 {
+  const {source,session,events,entries,cardData}=read,receipt=plain.data.nativeOpening,
+    start=entries.findIndex(entry=>entry.seq===receipt.assistantSeq&&entry.messageId===receipt.messageId)
+  if(start<0)fail('READER_DISPLAY_MESSAGE_UNAVAILABLE')
+  const variables={kind:'unavailable' as const,code:'MESSAGE_STATE_UNAVAILABLE' as const},
+    copy=source.legacyInheritance,
+    messages=entries.slice(start).map((entry,index)=>{
+      const event=events[entry.seq]!,message=(session.deriveEventMessage?.(event)
+        ??(entry.kind==='assistant'?event.data?.message:event.data)) as ContextMessage
+      const ownerSessionId=copy&&entry.seq<copy.seedLength?copy.parentSessionId:session.id
+      return {index,ownerSessionId,nativeSeq:entry.seq,messageId:entry.messageId,
+        messageVersionSha256:recordSha256(message),role:entry.kind,message:textOf(message.content),variables,variants:null}
+    }),
+    basis={sessionId:session.id,sourceSnapshotSha256:source.sourceSha256,materialSha256:source.current.materialSha256,
+      // Reuse the owner's completed absence identity, never an MVU head.
+      numericalSnapshotSha256:plain.data.absenceScopeRef.sha256,
+      nativeCut:events.length,nativePrefixSha256:recordSha256(events)},
+    unavailable={kind:'unavailable' as const,code:'SCOPE_SOURCE_UNAVAILABLE' as const},
+    scopeFrame=createMvuScopeReadFrameV1({schemaVersion:1,encoding:'native-mvu-scope-read-frame-v1',
+      source:{sessionId:session.id,sourceRecordSessionId:source.sourceRecordSessionId,
+        importId:source.original.activePointer.importId,rawSha256:source.original.rawSha256,sourceSnapshotSha256:source.sourceSha256},
+      sourceNativeCutSha256:recordSha256(basis),viewKind:'script',
+      scopes:{chat:unavailable,character:unavailable,global:unavailable},scripts:[],
+      messages:messages.map(({index,ownerSessionId,nativeSeq,messageId,messageVersionSha256})=>({position:index,
+        ownerSessionId,nativeSeq,messageId,messageVersionSha256,selectedVariant:messageVersionSha256,isSystem:false,variables}))}),
+    context=source.current.openingContext.context
+  return {kind:'reader-regex-document-facts',current:plain.current,
+    data:{schemaVersion:1,encoding:'reader-regex-document-snapshot-v1',basis,scopeFrame,messages,
+      numerical:{kind:numerical.kind,code:numerical.code,canEdit:false},
+      persona:{name:context.user??'',...context.user_gender!==undefined?{gender:context.user_gender}:{},avatar:null},
+      character:{sourceId:source.original.activePointer.importId,name:String(cardData.name),
+        ...typeof cardData.avatar==='string'?{avatar:cardData.avatar}:{}},authorChats:[]}}
 }
 function fail(code:string):never {throw Error(code)}
 function acceptedScope(row:Omit<ReaderDisplayRow,'displayText'>,
@@ -153,7 +200,7 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
         [...nativeMacros[key],...communityBindings![key]].map(binding=>[binding.key,binding])).values()]
       const macros=communityBindings?{...nativeMacros,
         localVariables:mergeBindings('localVariables'),globalVariables:mergeBindings('globalVariables')}:nativeMacros
-      return {source,sourceIdentitySha256:captured.currentIdentitySha256,scopes,macros,policy,variables,
+      return {source,cardData,sourceIdentitySha256:captured.currentIdentitySha256,scopes,macros,policy,variables,
         literalStyles:new Map<string,string>(),
         rules,documentRules:scopedRules.map((rule,ordinal)=>({
           ruleId:rules.find(effective=>effective.sourcePointer===rule.sourcePointer
@@ -182,7 +229,7 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
           messageVersionSha256:recordSha256(message),depth:entries.length-found.index-1,
           isEdit:edit?.data?.role==='assistant'&&edit.data.messageId===ref.messageId}
       })
-      return {rows,order:entries.map(entry=>({seq:entry.seq,messageId:entry.messageId,kind:entry.kind}))}
+      return {rows,entries,events:actual,order:entries.map(entry=>({seq:entry.seq,messageId:entry.messageId,kind:entry.kind}))}
     }
     const selected=select(),{source,scopes,macros,rules,policy,variables}=read.data
     const input:TavernPromptTransformInputV1={schemaVersion:1,encoding:'owned-tavern-prompt-transform-v1',
@@ -228,7 +275,8 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       locations.push({row:rowIndex,fragment:fragmentIndex})
     }
     if(documents.length) {
-      const facts=await deps.documentFacts?.(sid),runtime=facts&&await deps.documentRuntime?.()
+      const facts=await deps.documentFacts?.(sid,{source,session,entries:selected.entries,events:selected.events,
+        cardData:read.data.cardData}),runtime=facts&&await deps.documentRuntime?.()
       if(!facts||!runtime)documentDiagnostics=[{code:'READER_REGEX_DOCUMENT_RUNTIME_UNAVAILABLE'}]
       else {
         const scopeSource=facts.data.scopeFrame.source

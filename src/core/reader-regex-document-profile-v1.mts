@@ -6,9 +6,14 @@ import type {BrowserCapabilityV3} from './tavern-author-browser-types-v3.mjs'
 import type {ReaderRegexDocumentProfileV1} from './reader-regex-document-types.mjs'
 import {READER_PAGE_AST_APIS_V3} from './tavern-author-browser-profile-v3.mjs'
 
+/** Reader origin reads do not alter the shared Author Profile4/5/6 tables. */
+export const READER_REGEX_DOCUMENT_PAGE_APIS_V1=Object.freeze({...READER_PAGE_AST_APIS_V3,
+  apis:Object.freeze({...READER_PAGE_AST_APIS_V3.apis,
+    getCurrentMessageId:Object.freeze({capability:'owned-message-snapshot' as const,returns:'guest' as const})})})
+
 const body={id:'nexttavern-reader-regex-document' as const,version:2 as const,
   absentGlobals:['indexedDB'] as const,sourceReads:'captured-source-and-selected-native-scope-frame' as const,
-  writes:'none' as const,modelRequests:'none' as const,pageApis:READER_PAGE_AST_APIS_V3,
+  writes:'none' as const,modelRequests:'none' as const,pageApis:READER_REGEX_DOCUMENT_PAGE_APIS_V1,
   inlineModules:{linkage:'none',topLevelAwait:false,evaluation:'quickjs-module',
     timing:'parser-ended-before-dom-content-loaded'},
   mvuReady:'captured-numerical-state-ready',mvuUpdate:'selected-published-state-snapshot'}

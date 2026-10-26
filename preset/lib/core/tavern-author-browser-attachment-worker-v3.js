@@ -128,7 +128,8 @@ export class BrowserAttachmentWorkerV3 {
                     pageId, originalOrdinal: principal.script.ordinal, updateChatKey,
                     ...principal.sourcePage ? { sourcePage: { htmlSha256: principal.sourcePage.origin.htmlSha256 } } : {} }
                 : { principal: principal.kind, programSha256: principal.programSha256, pageId,
-                    ...principal.document ? { documentPlanSha256: principal.document.pagePlanSha256 } : {} }));
+                    ...principal.document ? { documentPlanSha256: principal.document.pagePlanSha256,
+                        message: principal.document.origin.message } : {} }));
         });
         let facade;
         try {

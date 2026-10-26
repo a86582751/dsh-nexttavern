@@ -59,6 +59,7 @@ export function browserSourceGuestBootstrapV3(config:any) {
   const invocations:any[]=[]
   const chatMetadata={tainted:false}
   let snapshot=freeze(config.snapshot),active=true,sequence=0
+  let readerMessages:Map<string,any>|undefined
   const retiredPages=new Set<string>(),listeners=new Map<string,any[]>()
   const mvuWaiters=new Set<{creator:any;resolve:()=>void}>()
   let eventTail=Promise.resolve()
@@ -194,7 +195,9 @@ export function browserSourceGuestBootstrapV3(config:any) {
     const previous=snapshot
     if(next.basis.sourceSnapshotSha256!==snapshot.basis.sourceSnapshotSha256)resources.clear()
     snapshot=freeze(next)
+    readerMessages?.clear()
     for(const row of next.messages) {
+      readerMessages?.set(row.messageId,row)
       const prior=previous.messages.find((item:any)=>item.index===row.index)
       if(!prior&&row.role==='assistant'&&next.basis.sourceSnapshotSha256===previous.basis.sourceSnapshotSha256)
         emit(eventTypes.MESSAGE_RECEIVED,[row.index])
@@ -335,6 +338,12 @@ export function browserSourceGuestBootstrapV3(config:any) {
   function createFacade(text:string):any {
     const creator=freeze(parse(text))
     const reader=creator.principal==='reader-regex-document'
+    // Only real document principals need origin lookup. The current snapshot
+    // owns this index; ordinary Helpers and the Reader root create no table.
+    if(reader&&creator.message&&!readerMessages) {
+      readerMessages=new Map()
+      for(const row of snapshot.messages)readerMessages.set(row.messageId,row)
+    }
     if(!reader&&!creator.sourcePage)carrierOrigins.set(creator.pageId,freeze({originalOrdinal:creator.originalOrdinal,
       scriptIdentity:creator.scriptIdentity,descriptorSha256:creator.descriptorSha256,page:null}))
     function resource(operation:any):any {
@@ -598,7 +607,12 @@ export function browserSourceGuestBootstrapV3(config:any) {
           &&published.provenance.state.revision===state.numerical.expected?.revision)
           merged.stat_data=clone(published.variables.stat_data)
         return merged
-      },getChatMessages:apis.getChatMessages,event_types:eventTypes,tavern_events:eventTypes,
+      },getChatMessages:apis.getChatMessages,getCurrentMessageId:()=>{
+        const origin=creator.message,row=origin&&readerMessages?.get(origin.messageId)
+        if(!origin?.messageVersionSha256||!row||row.messageVersionSha256!==origin.messageVersionSha256)
+          throw Error('READER_REGEX_DOCUMENT_MESSAGE_UNAVAILABLE')
+        return row.index
+      },event_types:eventTypes,tavern_events:eventTypes,
       eventOn:(type:string,callback:Function)=>readSubscribe(type,callback),
       eventOnce:(type:string,callback:Function)=>readSubscribe(type,callback,true),
       eventMakeFirst:(type:string,callback:Function)=>readSubscribe(type,callback,false,true),
