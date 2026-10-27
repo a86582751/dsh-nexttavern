@@ -5,6 +5,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const code = path.dirname(fileURLToPath(import.meta.url))
 const home = process.env.DSH_HOME
+// ProcessBuilder sets cwd to the canonical native-managed private workspace.
+// The pinned Host has no Android system-Documents resolver; use its explicit
+// deployment option instead. Existing Workspace registrations are not moved.
+const workspace = process.cwd()
 if (!home || !process.env.NEXTTAVERN_GENERATION) throw new Error('Native host paths and generation are required')
 const profile = path.join(home, 'profiles', 'web')
 await mkdir(profile, { recursive: true })
@@ -80,6 +84,9 @@ await writeFile(overlay, [
   '    printUrl: false',
   '    surfaceContext: true',
   '    trustedHosts: !!js ctx.webStartup.trustedHosts',
+  '- id: workspace-controller',
+  '  config:',
+  '    documentsDirectory: ' + JSON.stringify(workspace),
   '- insert:',
   '    - id: nexttavern-mobile-host',
   '      name: ' + JSON.stringify(pathToFileURL(path.join(code, 'android-host.mjs')).href),

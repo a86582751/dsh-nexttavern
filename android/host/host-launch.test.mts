@@ -11,6 +11,8 @@ test('first launch and APK replacement preserve user profile and relink only app
   const root = await mkdtemp(path.join(base, 'android-launch-'))
   try {
     const home = path.join(root, 'home')
+    const workspace = path.join(root, 'private workspace')
+    await mkdir(workspace, {recursive:true})
     const launch = async (version: string) => {
       const code = path.join(root, version)
       await mkdir(path.join(code, 'profile-template'), { recursive: true })
@@ -30,6 +32,7 @@ export async function runCli() {
 if (import.meta.main) await runCli()
 `)
       const result = spawnSync(process.execPath, [path.join(code, 'host-launch.mts')], {
+        cwd:workspace,
         env: { ...process.env, DSH_HOME: home, NEXTTAVERN_GENERATION: version }, encoding: 'utf8',
       })
       assert.equal(result.status, 0, result.stderr)
@@ -39,6 +42,9 @@ if (import.meta.main) await runCli()
       assert.equal(await readlink(path.join(home, 'profiles/web/node_modules/dsh-nexttavern')), path.join(code, 'node_modules/dsh-nexttavern'))
       const pkg=JSON.parse(await readFile(path.join(home,'profiles/web/package.json'),'utf8'))
       assert.equal(pkg.dependencies['dsh-nexttavern'],'file:'+path.join(code,'node_modules/dsh-nexttavern'))
+      const overlay=await readFile(path.join(home,'android-host.patch.yml'),'utf8')
+      assert.ok(overlay.includes('- id: workspace-controller\n  config:\n    documentsDirectory: '+JSON.stringify(workspace)+'\n'),
+        'first, repeated and upgraded launches use the native-managed cwd for the official first-use Workspace policy')
     }
     await launch('v1')
     const patch = path.join(home, 'profiles/web/cordis.patch.yml')
