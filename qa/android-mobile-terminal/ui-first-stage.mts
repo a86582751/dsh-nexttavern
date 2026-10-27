@@ -301,6 +301,39 @@ const fixtureId='nexttavern-fixture';
 const fixtureModelNames=['模型 ID 1','Model ID 1'];
 const named=(node:Node,names:string[])=>names.some(name=>node.text===name||node['content-desc']===name||node.hint===name);
 const button=(node:Node)=>node.clickable==='true'||node.class==='android.widget.Button';
+let modelRoutingScrollBox:number[]|null=null;
+function captureModelRoutingViewport():void {
+  const heading=current.find(node=>node.package===pkg&&node.class==='android.widget.TextView'&&node.text==='模型路由'&&visibleBounds(node));
+  const document=heading&&ancestors(heading).find(node=>node.class==='android.webkit.WebView'&&visibleBounds(node));
+  requireUi(heading&&document,'MODEL_PANEL_VIEWPORT_NOT_EXPOSED');
+  const title=visibleBounds(heading)!,view=visibleBounds(document)!;
+  // Source: ModelsPanel's fieldset is the dialog's overflow-y:auto body.
+  // Pixel evidence confirms its scrollbar below the fixed two-row tabs. Use
+  // the measured interior below its heading, never the whole WebView/screen.
+  modelRoutingScrollBox=[title[0],title[3]+12,title[2],view[3]-12];
+  requireUi(modelRoutingScrollBox[3]-modelRoutingScrollBox[1]>100,'MODEL_PANEL_VIEWPORT_TOO_SMALL');
+}
+async function revealModelControl(names:string[],kind:(node:Node)=>boolean,owner:(node:Node)=>boolean):Promise<Node> {
+  requireUi(modelRoutingScrollBox,'MODEL_PANEL_VIEWPORT_NOT_EXPOSED');
+  const box=modelRoutingScrollBox,end=Date.now()+60000;
+  do {
+    const found=current.filter(node=>owner(node)&&named(node,names)&&kind(node)&&node.enabled!=='false');
+    requireUi(found.length===1,'MODEL_PANEL_TARGET_NOT_UNIQUE');
+    if(visibleBounds(found[0]))return found[0];
+    const before=found[0].bounds,coordinates=before?.match(/-?\d+/g)?.map(Number);
+    requireUi(coordinates?.length===4,'MODEL_PANEL_TARGET_GEOMETRY_MISSING');
+    const upward=coordinates[1]>=box[1],x=Math.round((box[0]+box[2])/2),height=box[3]-box[1];
+    command('shell','input','swipe',String(x),String(Math.round(box[1]+height*(upward ? .85 : .15))),
+      String(x),String(Math.round(box[1]+height*(upward ? .15 : .85))),'450');
+    // No replay after transport failure, and no second gesture without an
+    // observed movement from the preceding one.
+    await until(()=>current.some(node=>owner(node)&&named(node,names)&&kind(node)
+      &&(node.bounds!==before||visibleBounds(node))),10,'MODEL_PANEL_DID_NOT_SCROLL');
+    emit('observed',{interaction:'source-backed-model-panel-scroll',target:names[0],viewport:box,
+      direction:upward?'toward-later-controls':'toward-earlier-controls',movementObserved:true});
+  }while(Date.now()<end);
+  throw new UiFailure('MODEL_PANEL_REVEAL_DEADLINE');
+}
 /** Reveal an observed control using its public accessibility action. When only
  * a source label exists, retain the existing real scroll-owner gesture path. */
 async function reveal(names:string[],kind:(node:Node)=>boolean=button,
@@ -316,6 +349,9 @@ async function reveal(names:string[],kind:(node:Node)=>boolean=button,
     requireUi(visible.length<=1,'NEXT_UI_TARGET_AMBIGUOUS');
     if(visible[0])return visible[0];
     requireUi(found.length<=1,'NEXT_UI_OFFSCREEN_TARGET_AMBIGUOUS');
+    if(found[0]?.package===pkg&&stage==='fixture-main-and-worker-model-routing'&&modelRoutingScrollBox&&has(['模型路由'])) {
+      return revealModelControl(names,kind,owner);
+    }
     if(found[0]?.package===pkg) {
       showControl(found[0]); // One action; acceptance is not proof of scrolling.
       let revealed:Node|undefined;
@@ -615,6 +651,7 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
   stage='fixture-main-and-worker-model-routing';
   await pressManagerTab(['模型','Models']);
   await until(()=>has(['模型路由']),30,'MODEL_ROUTING_PAGE_NOT_EXPOSED');
+  captureModelRoutingViewport();
   captureApprovedScreenshot('model-routing');
   await until(()=>visibleNamed(mainRouteNames,node=>node.class==='android.widget.Spinner'||button(node)).length===1,30,'TAVERN_MAIN_MODEL_SELECTOR_NOT_EXPOSED');
   await press(mainRouteNames,node=>node.class==='android.widget.Spinner'||button(node));
