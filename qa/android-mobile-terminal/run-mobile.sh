@@ -27,6 +27,7 @@ trap cleanup EXIT
 export npm_config_cache="$work/npm-cache" GRADLE_USER_HOME="$work/gradle"
 export ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk" ANDROID_NDK_HOME="$sdk/ndk/28.2.13676358"
 apk="$work/mobile-x64-release.apk"
+probe_apk="$work/probe-x64-kvm.apk"
 if [[ "${1:-}" == prepare ]]; then
   phase=PINNED_BUILD_TOOLS
   node --version
@@ -76,17 +77,49 @@ GRADLE
     --out "$apk" "$work/gradle-build/mobile/outputs/apk/x86Diagnostic/release/mobile-x86Diagnostic-release-unsigned.apk" >> "$work/build.log" 2>&1
   "$tools/apksigner" verify "$apk" >> "$work/build.log" 2>&1
   printf 'NONDEBUG_X64_PREVIEW_APK_BUILT_NOT_ARM64_QUALIFICATION\n'
+  phase=SEPARATE_NONDEBUG_X64_KVM_PROBE_BUILD
+  # Reuse the already prepared JNI/locked CA and preview key. This is a new
+  # runner-local APK, not a frozen probe replacement or the legacy TCG variant.
+  (cd android && ./gradlew --no-daemon --init-script "$work/runner-build.gradle" \
+    -PnexttavernProbeAbi=x86_64 :app:assembleRelease) >> "$work/build.log" 2>&1
+  "$tools/apksigner" sign --ks "$work/preview.p12" --ks-pass pass:android --key-pass pass:android \
+    --out "$probe_apk" "$work/gradle-build/app/outputs/apk/release/app-release-unsigned.apk" >> "$work/build.log" 2>&1
+  "$tools/apksigner" verify "$probe_apk" >> "$work/build.log" 2>&1
+  printf 'SEPARATE_NONDEBUG_X64_KVM_PROBE_BUILT_DEFAULT_BUDGET_NOT_ARM64_OR_FULL_G0\n'
   exit 0
 fi
 [[ "${1:-}" == exercise ]]
 phase=ORDINARY_APP_INSTALL
 adb="${MOBILE_QA_ADB:?}"; serial="${MOBILE_QA_SERIAL:?}"
-"$adb" -s "$serial" install --no-incremental "$apk" > "$work/install.log" 2>&1
-"$adb" -s "$serial" reverse tcp:18765 tcp:18765
-phase=LOCAL_PROTOCOL_FIXTURE
-node "$repo/android/host/protocol-fixture.mts" 18765 > "$work/protocol-fixture.log" 2>&1 &
-fixture_pid=$!
-phase=REAL_MAIN_ACTIVITY_SYNTHETIC_FLOW
-node "$repo/qa/android-mobile-terminal/ui-first-stage.mts" --adb "$adb" --serial "$serial" \
-  --package app.nexttavern.android.x86diagnostic --phase create --work-dir "$work/ui" --fixture-events "$work/protocol-fixture.log"
-printf 'ORDINARY_NONDEBUG_APP_SYNTHETIC_FLOW_COMPLETE_NOT_ARM64_OR_G0\n'
+# Preserve installation/navigation failures too; the independent same-VM probe
+# is still attempted and can never turn a failed product/UI attempt green.
+ui_rc=0
+if "$adb" -s "$serial" install --no-incremental "$apk" > "$work/install.log" 2>&1; then
+  if "$adb" -s "$serial" reverse tcp:18765 tcp:18765; then
+    phase=LOCAL_PROTOCOL_FIXTURE
+    node "$repo/android/host/protocol-fixture.mts" 18765 > "$work/protocol-fixture.log" 2>&1 &
+    fixture_pid=$!
+    phase=REAL_MAIN_ACTIVITY_SYNTHETIC_FLOW
+    node "$repo/qa/android-mobile-terminal/ui-first-stage.mts" --adb "$adb" --serial "$serial" \
+      --package app.nexttavern.android.x86diagnostic --phase create --work-dir "$work/ui" --fixture-events "$work/protocol-fixture.log" || ui_rc=$?
+  else
+    ui_rc=1
+    printf 'MOBILE_FIXTURE_REVERSE_FAILED_NOT_PASSED\n'
+  fi
+else
+  ui_rc=1
+  printf 'MOBILE_INSTALL_FAILED_NOT_PASSED\n'
+fi
+if ((ui_rc==0)); then printf 'ORDINARY_NONDEBUG_APP_SYNTHETIC_FLOW_COMPLETE_NOT_ARM64_OR_G0\n'; fi
+phase=SEPARATE_ORDINARY_APP_KVM_PROBE
+probe_rc=0
+if "$adb" -s "$serial" install --no-incremental "$probe_apk" > "$work/probe-install.log" 2>&1; then
+  node "$repo/qa/android-mobile-terminal/probe-core.mts" --adb "$adb" --serial "$serial" || probe_rc=$?
+else
+  probe_rc=1
+  printf 'PROBE_INSTALL_FAILED_NOT_PASSED\n'
+fi
+printf 'MOBILE_UI_EXIT=%s SEPARATE_CORE_HTTPS_PROBE_EXIT=%s FULL_G0_ACCEPTED=false\n' "$ui_rc" "$probe_rc"
+phase=INDEPENDENT_UI_AND_SCOPED_PROBE_RESULTS
+if ((ui_rc!=0)); then exit "$ui_rc"; fi
+exit "$probe_rc"

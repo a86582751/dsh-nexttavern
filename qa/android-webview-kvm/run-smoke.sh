@@ -375,9 +375,16 @@ done
 mark API35_X86_64_KVM_BOOTED
 if [[ "$mode" == --mobile ]]; then
   phase=MOBILE_UI_EXERCISE
-  bash "$source_dir/../android-mobile-terminal/run-mobile.sh" exercise
-  mark MOBILE_KVM_SYNTHETIC_FLOW_PASSED_NOT_ARM64_OR_FULL_G0
-  exit 0
+  # The child records UI and independent probe outcomes before returning;
+  # retain its original UI failure even when the scoped probe is successful.
+  mobile_rc=0
+  bash "$source_dir/../android-mobile-terminal/run-mobile.sh" exercise || mobile_rc=$?
+  if ((mobile_rc==0)); then
+    mark MOBILE_UI_AND_SEPARATE_SCOPED_CORE_HTTPS_PASSED_NOT_ARM64_OR_FULL_G0
+  else
+    mark "MOBILE_UI_OR_SCOPED_PROBE_FAILED EXIT=$mobile_rc"
+  fi
+  exit "$mobile_rc"
 fi
 "$adb" -s "$serial" install --no-incremental "$work/control.apk" > "$work/install.log" 2>&1
 "$adb" -s "$serial" logcat -c
