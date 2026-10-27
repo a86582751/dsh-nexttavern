@@ -303,6 +303,10 @@ async function reveal(names:string[],kind:(node:Node)=>boolean=button,
     await readySnapshot();
     const found=current.filter(node=>owner(node)&&named(node,names)&&kind(node)&&node.enabled!=='false');
     const visible=found.filter(node=>visibleBounds(node));
+    if(visible.length>1)emit('observed',{interaction:'ambiguous-named-control',target:names[0],
+      candidates:visible.slice(0,8).map(node=>({class:node.class,bounds:visibleBounds(node),
+        clickable:node.clickable,parentClass:current[Number(node.__parent)]?.class,
+        textMatched:names.includes(node.text),descriptionMatched:names.includes(node['content-desc']),hintMatched:names.includes(node.hint)}))});
     requireUi(visible.length<=1,'NEXT_UI_TARGET_AMBIGUOUS');
     if(visible[0])return visible[0];
     requireUi(found.length<=1,'NEXT_UI_OFFSCREEN_TARGET_AMBIGUOUS');
@@ -545,6 +549,18 @@ async function pressManagerTab(names:string[]):Promise<void> {
       String(Math.round(left+width*(later ? .2 : .8))),String(y),'450');
   }
 }
+/** Pinned SidebarRoot exposes both its brand and its labelled New Session
+ * button with the same aria-label and the same startSession() handler. Choose
+ * one actual visible semantic button, not a text descendant or an action retry. */
+function newSessionTarget():Node {
+  const candidates=current.filter(node=>node.package===pkg&&node.class==='android.widget.Button'
+    &&named(node,['新建会话','New session'])&&node.enabled!=='false'&&inWebView(node)&&visibleBounds(node));
+  requireUi(candidates.length>0,'NEW_SESSION_BUTTON_NOT_EXPOSED');
+  candidates.sort((a,b)=>visibleBounds(a)![1]-visibleBounds(b)![1]||visibleBounds(a)![0]-visibleBounds(b)![0]);
+  emit('observed',{interaction:'equivalent-sidebar-new-session-controls',visibleButtons:candidates.length,
+    chosenBounds:visibleBounds(candidates[0]),sourceContract:'shared-startSession-handler'});
+  return candidates[0];
+}
 /** Entry: saved provider directory in Host Settings. Fresh profile's ordinary
  * default Workspace and roleplay preset must be supplied by the actual product.
  * There is no Coding Tools preference or QA-only session creation workaround. */
@@ -552,7 +568,7 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
   stage='ordinary-default-workspace-session';
   await closeWebDialog();
   await showSidebar();
-  await press(['新建会话','New session']);
+  await readySnapshot();tapNode(newSessionTarget());
   await hideSidebar();
   await until(()=>visibleNamed(['选择工作区','Choose workspace']).length===1,60,'NEW_SESSION_WORKSPACE_CHIP_NOT_EXPOSED');
   await press(['选择工作区','Choose workspace']);
