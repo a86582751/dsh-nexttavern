@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # QA only. Default tiny control has no Harness/APK; --mobile builds public inputs
-# in runner-temp. Neither mode uploads payloads, artifacts, caches or secrets.
+# in runner-temp. --transport adds only the same accessibility helper and dummy form.
+# No mode uploads payloads, artifacts, caches or secrets.
 # Official source references:
 # https://developer.android.com/studio/run/emulator-acceleration
 # https://developer.android.com/studio/run/emulator-commandline
@@ -10,7 +11,7 @@ umask 077 # Runner-private diagnostics, including raw emulator/ADB stderr.
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 work="$(mktemp -d "${RUNNER_TEMP:?}/webview-kvm.XXXXXX")"
 mode="${1:-control}"
-[[ "$mode" == control || "$mode" == --mobile ]]
+[[ "$mode" == control || "$mode" == --mobile || "$mode" == --transport ]]
 phase=INITIALIZE
 serial=emulator-5554
 pkg=app.nexttavern.android.webviewcontrol
@@ -375,6 +376,10 @@ cat > "$work/AndroidManifest.xml" <<'XML'
  </application>
 </manifest>
 XML
+if [[ "$mode" == --transport ]]; then
+  # Match the non-debug target36 product without changing default control mode.
+  sed -i 's/android:debuggable="true"/android:debuggable="false"/' "$work/AndroidManifest.xml"
+fi
 "$tools/aapt2" link -I "$android_jar" --manifest "$work/AndroidManifest.xml" -o "$work/unsigned.apk" >> "$work/build.log" 2>&1
 python3 - "$work" <<'PY'
 import pathlib,sys,zipfile
@@ -389,6 +394,12 @@ PY
   --out "$work/control.apk" "$work/aligned.apk" >> "$work/build.log" 2>&1
 "$tools/apksigner" verify "$work/control.apk" >> "$work/build.log" 2>&1
 mark MINIMAL_CONTROL_BUILT
+if [[ "$mode" == --transport ]]; then
+  phase=TRANSPORT_HELPER_BUILD
+  bash "$source_dir/../android-mobile-terminal/build-hierarchy.sh" "$work/transport-helper" "$sdk" \
+    "$work/control.p12" "$work/hierarchy.apk"
+  mark TRANSPORT_SAME_ACCESSIBILITY_HELPER_BUILT
+fi
 fi
 
 phase=AVD_CREATION
@@ -431,10 +442,18 @@ if [[ "$mode" == --mobile ]]; then
   exit "$mobile_rc"
 fi
 "$adb" -s "$serial" install --no-incremental "$work/control.apk" > "$work/install.log" 2>&1
+if [[ "$mode" == --transport ]]; then
+  phase=TRANSPORT_HELPER_INSTALL
+  "$adb" -s "$serial" install --no-incremental -t "$work/hierarchy.apk" > "$work/hierarchy-install.log" 2>&1
+fi
 "$adb" -s "$serial" logcat -c
 "$adb" -s "$serial" shell input keyevent KEYCODE_WAKEUP
 "$adb" -s "$serial" shell wm dismiss-keyguard
-"$adb" -s "$serial" shell am start -W -n "$pkg/.MainActivity" > "$work/launch.log" 2>&1
+if [[ "$mode" == --transport ]]; then
+  "$adb" -s "$serial" shell am start -W -n "$pkg/.MainActivity" --ez transport true > "$work/launch.log" 2>&1
+else
+  "$adb" -s "$serial" shell am start -W -n "$pkg/.MainActivity" > "$work/launch.log" 2>&1
+fi
 pid="$("$adb" -s "$serial" shell pidof "$pkg" | tr -d '\r')"
 [[ "$pid" =~ ^[0-9]+$ ]]
 
@@ -480,6 +499,14 @@ grep -q 'PROVIDER com.google.android.webview 124.0.6367.219' "$work/control.log"
 mark WEBVIEW_PROVIDER=com.google.android.webview/124.0.6367.219
 mark INLINE_JS_DOM_READY
 mark LOCAL_PAGE_FINISHED
+if [[ "$mode" == --transport ]]; then
+  phase=TINY_UI_TRANSPORT_DIAGNOSTIC
+  node "$source_dir/transport-probe.mts" --adb "$adb" --serial "$serial" --work-dir "$work/transport" \
+    --emulator-pid "$emulator_pid" --adb-owner-state "$work/adb-server-owner.json"
+  check_control
+  mark TINY_TRANSPORT_DIAGNOSTIC_FINISHED_NOT_PRODUCT_OR_G0
+  exit 0
+fi
 phase=POST_PAGE_PROCESS_SURVIVAL
 for ((i=0;i<10;i++)); do sleep 1; check_control; done
 mark SAME_CONTROL_PROCESS_SURVIVED

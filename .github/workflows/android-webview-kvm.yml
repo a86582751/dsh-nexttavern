@@ -1,7 +1,7 @@
 # Authorized public Android source and runner-owned QA on android/mobile-terminal.
 # Built payloads, signing material and private profile data are never published.
 # Only the two approved synthetic UI PNGs may be retained, for one day.
-# Default control mode remains available; this job selects the full APK synthetic UI flow.
+# Temporary small transport diagnosis; the full --mobile flow remains available.
 name: Android mobile KVM preview
 on:
   push:
@@ -38,11 +38,11 @@ jobs:
         with:
           node-version: '24.22.1'
           check-latest: false
-      - name: Build public non-debug x64 APK and observe actual UI in required KVM
+      - name: Diagnose tiny WebView instrumentation transport in required KVM
         shell: bash
         env:
           NEXTTAVERN_UI_EVIDENCE_DIR: ${{ runner.temp }}/nexttavern-ui-images
-        run: bash qa/android-webview-kvm/run-smoke.sh --mobile
+        run: bash qa/android-webview-kvm/run-smoke.sh --transport
       - name: Locate only the approved synthetic UI PNGs
         if: always()
         id: ui_images

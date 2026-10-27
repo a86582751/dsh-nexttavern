@@ -22,6 +22,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        boolean transport = getIntent().getBooleanExtra("transport", false);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         TextView status = new TextView(this);
@@ -77,6 +78,9 @@ public final class MainActivity extends Activity {
             web.loadDataWithBaseURL("https://example.invalid/",
                 "<!doctype html><meta name='viewport' content='width=device-width'>"
                 + "<h1>Local WebView control</h1><p id='result'>HTML loaded</p>"
+                + (transport ? "<form onsubmit='return false'><label for='transport-password'>Transport password</label>"
+                    + "<input id='transport-password' type='password' aria-label='Transport password' autocomplete='off'>"
+                    + "</form>" : "")
                 + "<script>document.getElementById('result').textContent='KVM_JS_DOM_READY';"
                 + "if(document.getElementById('result').textContent==='KVM_JS_DOM_READY')"
                 + "console.log('KVM_JS_DOM_READY');else console.error('KVM_JS_DOM_FAILED');</script>",

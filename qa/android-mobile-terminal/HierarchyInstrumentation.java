@@ -41,6 +41,10 @@ public final class HierarchyInstrumentation extends Instrumentation {
                 controlAction(ui, show, click);
                 return;
             }
+            String outputMode = request.getString("outputMode", "hierarchy");
+            if (!"hierarchy".equals(outputMode) && !"summary".equals(outputMode)) {
+                failure("OUTPUT_MODE_INVALID", null); return;
+            }
             // Connection readiness does not imply a root is already available.
             // Reuse this session; a non-active system root alone is not ready.
             // Retry missing active/focused content only, never exceptions.
@@ -73,7 +77,12 @@ public final class HierarchyInstrumentation extends Instrumentation {
                 if (activeRoot) {
                     xml.append("</hierarchy>");
                     if (xml.length() > 350000) throw new IllegalStateException("HIERARCHY_TOO_LARGE");
-                    result.putString("hierarchy", xml.toString());
+                    if ("summary".equals(outputMode)) {
+                        // Diagnostic contrast: identical traversal, small Binder
+                        // result. Never include labels, input values or raw XML.
+                        result.putInt("hierarchyChars", xml.length());
+                        result.putInt("rootCount", rootIds.size());
+                    } else result.putString("hierarchy", xml.toString());
                     phase = "FINISH";
                     finish(Activity.RESULT_OK, result);
                     return;
