@@ -1,20 +1,22 @@
 /** Tiny UI transport diagnostic. No Host, JS bridge, real key, screenshot or action replay. */
 import {spawnSync} from 'node:child_process';
-import {mkdirSync,writeFileSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,chmodSync,unlinkSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
 import {adbFailureKind} from '../android-mobile-terminal/safe-diagnostics.mts';
 
-type ReadMode='hierarchy'|'redirect'|'summary';
+type ReadMode='pulled-hierarchy'|'redirect'|'summary';
 type UiNode=Record<string,string>;
-type Result={stdout:Buffer;stderr:Buffer;status:number|null;signal:string|null;errorCode:string|null};
+type Result={stdout:Buffer;stderr:Buffer;status:number|null;signal:string|null;errorCode:string|null;
+  transportPhase?:string;shellStdoutBytes?:number;pulledBytes?:number;cleanupFailed?:boolean};
 type Identity={boot:string;framework:string;app:string;adbd:string;device:boolean};
 const args:Record<string,string>={};
 for(let i=2;i<process.argv.length;i+=2)args[process.argv[i]]=process.argv[i+1];
 const adb=args['--adb'],serial=args['--serial'],work=args['--work-dir'];
 const pkg='app.nexttavern.android.webviewcontrol';
-const modes:ReadMode[]=['hierarchy','redirect','summary'];
+const modes:ReadMode[]=['pulled-hierarchy','redirect','summary'];
 const deadline=Date.now()+240000;
 let phase='INITIALIZE',readNumber=0,firstFailureSaved=false;
 let anchor:Identity|undefined,lastNodes:UiNode[]=[];
@@ -54,6 +56,8 @@ function emulatorAlive():boolean {
 function metadata(result:Result):Record<string,unknown> {
   const output=result.stdout.toString('utf8');
   return {exit:result.status,signal:result.signal,errorCode:result.errorCode,
+    transportPhase:result.transportPhase??null,shellStdoutBytes:result.shellStdoutBytes??null,
+    pulledBytes:result.pulledBytes??null,cleanupFailed:result.cleanupFailed??false,
     stdoutBytes:result.stdout.length,stderrBytes:result.stderr.length,
     deviceStdoutBytes:output.match(/^DEVICE_STDOUT_BYTES=(\d{1,10})\r?$/m)?.[1]??null,
     instrumentationCode:output.match(/^INSTRUMENTATION_CODE: (-?\d{1,6})\r?$/m)?.[1]??null,
@@ -95,6 +99,7 @@ function sameIdentity(after:Identity|undefined,label:string):boolean {
 function readCommand(mode:ReadMode,until=deadline):Result {
   const cap=Math.min(20000,until-Date.now());
   requireDiagnostic(cap>0,'READ_DEADLINE');
+  if(mode==='pulled-hierarchy')return pulledHierarchy(until);
   if(mode==='redirect') {
     // Keep Binder + am formatting, but send only terminal metadata over ADB.
     // The fixed device-side file belongs to this invocation and is always removed.
@@ -105,19 +110,55 @@ function readCommand(mode:ReadMode,until=deadline):Result {
       + `printf 'AM_RC=%s\\nDEVICE_STDOUT_BYTES=%s\\n' "$rc" "$(wc -c <"$out")"`;
     return command(['shell',script],cap);
   }
-  // Preserve the exact failing primary path; only summary adds a public option.
+  // Summary retains its original small shell result; the full tree uses pull.
   const commandArgs=['shell','am','instrument','-w','-r'];
   if(mode==='summary')commandArgs.push('-e','outputMode','summary');
   commandArgs.push('app.nexttavern.qa.ui/.HierarchyInstrumentation');
   return command(commandArgs,cap);
 }
+function pulledHierarchy(until:number):Result {
+  // Know the exact unique path before issuing any shell command, so even a
+  // dropped terminal reply cannot strand an unknown mktemp allocation.
+  const id=randomUUID(),remote='/data/local/tmp/nexttavern-transport-'+id+'.stdout';
+  const local=join(work,'pulled-hierarchy-'+id+'.stdout');
+  const readUntil=Math.min(until,Date.now()+20000)-3000; // Reserve exact-file cleanup.
+  const readCap=()=>{const value=readUntil-Date.now();requireDiagnostic(value>0,'READ_DEADLINE');return value};
+  let localCreated=false,result:Result|undefined;
+  try {
+    const script=`umask 077; set -C; : > '${remote}' || exit 91; `
+      + `am instrument -w -r app.nexttavern.qa.ui/.HierarchyInstrumentation >> '${remote}' 2>&1; rc=$?; `
+      + `grep -E '^INSTRUMENTATION_CODE: -?[0-9]{1,6}$' '${remote}' | tail -n 1; `
+      + `printf 'AM_RC=%s\\nDEVICE_STDOUT_BYTES=%s\\n' "$rc" "$(wc -c < '${remote}')"`;
+    const terminal=command(['shell',script],readCap());
+    if(!successful(terminal)||!/^AM_RC=0\r?$/m.test(terminal.stdout.toString('utf8'))
+      ||!/^INSTRUMENTATION_CODE: -1\r?$/m.test(terminal.stdout.toString('utf8')))
+      return result={...terminal,transportPhase:'AM_TERMINAL'};
+    writeFileSync(local,'',{mode:0o600,flag:'wx'});localCreated=true;
+    const pull=command(['pull',remote,local],readCap());
+    chmodSync(local,0o600);
+    if(!successful(pull))return result={...pull,transportPhase:'ADB_PULL',shellStdoutBytes:terminal.stdout.length};
+    const output=readFileSync(local);
+    return result={...terminal,stdout:output,transportPhase:'PULLED_HIERARCHY',
+      shellStdoutBytes:terminal.stdout.length,pulledBytes:output.length};
+  } finally {
+    if(localCreated)unlinkSync(local);
+    const cleanupCap=Math.min(3000,until-Date.now());
+    const cleanup=cleanupCap>0?command(['shell','rm','-f',remote],cleanupCap):undefined;
+    if(!cleanup||!successful(cleanup)) {
+      emit('PRIVATE_FILE_CLEANUP_FAILED',{...(cleanup?metadata(cleanup):{classification:'CLEANUP_DEADLINE_EXPIRED'}),replayedAction:false});
+      // Keep the original terminal/pull failure available to first-failure capture.
+      if(result)result.cleanupFailed=true;
+      else throw new DiagnosticFailure('DEVICE_PRIVATE_FILE_CLEANUP_FAILED');
+    }
+  }
+}
 function validRead(result:Result,mode:ReadMode):boolean {
-  if(!successful(result))return false;
+  if(!successful(result)||result.cleanupFailed)return false;
   const output=result.stdout.toString('utf8');
   if(mode==='redirect')return /^AM_RC=0\r?$/m.test(output)
     &&/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)
     &&/^DEVICE_STDOUT_BYTES=\d+\r?$/m.test(output);
-  if(!/^INSTRUMENTATION_CODE: -1\r?$/m.test(output))return false;
+  if(result.transportPhase==='AM_TERMINAL'||!/^INSTRUMENTATION_CODE: -1\r?$/m.test(output))return false;
   if(mode==='summary')return /^INSTRUMENTATION_RESULT: hierarchyChars=\d+\r?$/m.test(output)
     &&/^INSTRUMENTATION_RESULT: rootCount=[1-9]\d*\r?$/m.test(output);
   const xml=output.match(/^INSTRUMENTATION_RESULT: hierarchy=(<hierarchy>[^\r\n]*<\/hierarchy>)\r?$/m)?.[1];
@@ -139,6 +180,8 @@ async function failedRead(result:Result,mode:ReadMode):Promise<never> {
   saveFirstFailure(result);
   emit('READ_FAILED',{mode,readNumber,...metadata(result),privateRawSaved:true});
   captureDefaultInfo();
+  if(result.cleanupFailed)throw new DiagnosticFailure(successful(result)
+    ?'DEVICE_PRIVATE_FILE_CLEANUP_FAILED':'TRANSPORT_READ_AND_CLEANUP_FAILED');
   const followDeadline=Math.min(deadline,Date.now()+35000);
   for(const opposite of modes.filter(value=>value!==mode)) {
     if(Date.now()+1000>=followDeadline)break;
@@ -164,7 +207,7 @@ async function snapshot(mode:ReadMode):Promise<void> {
   emit('READ_OK',{mode,readNumber,...metadata(result),
     hierarchyChars:mode==='summary'?Number(output.match(/^INSTRUMENTATION_RESULT: hierarchyChars=(\d+)\r?$/m)?.[1]):null,
     rootCount:mode==='summary'?Number(output.match(/^INSTRUMENTATION_RESULT: rootCount=(\d+)\r?$/m)?.[1]):null,
-    imeVisible:mode==='hierarchy'?lastNodes.some(node=>/inputmethod/.test(node.package??'')):null});
+    imeVisible:mode==='pulled-hierarchy'?lastNodes.some(node=>/inputmethod/.test(node.package??'')):null});
 }
 function passwordField():UiNode {
   const fields=lastNodes.filter(node=>node.package===pkg&&node.class==='android.widget.EditText'
@@ -195,7 +238,7 @@ try {
   phase='IME_FOCUSED_EMPTY';
   action(['shell','input','tap',String(Math.floor((left+right)/2)),String(Math.floor((top+bottom)/2))]);
   await delay(400);
-  await snapshot('hierarchy');
+  await snapshot('pulled-hierarchy');
   requireDiagnostic(passwordField().focused==='true','PASSWORD_NOT_FOCUSED_NO_INPUT');
   for(let i=1;i<6;i++)await snapshot(modes[i%3]);
   phase='IME_SYNTHETIC_FILLED';
