@@ -69,7 +69,7 @@ npm install -g @deepseek-ai/dsh@0.1.7-rc.2
 
 [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup.sh) 准备便携 Node.js、安装目录及启动／停止入口，面向 x86_64 与 aarch64（glibc），不需要 root 或系统包管理器。从 0.2.5 迁移时使用新的 `--root`；完整步骤与验证范围见 [Linux 一键安装指南](INSTALL-LINUX.md)。
 
-### Android 手机端路线（开发中）
+### Android 
 
 **目标是一个独立安装、点开就能用的 Android APK，让酒馆直接运行在手机上。** 不需要 root，也不以安装 Termux、Ubuntu 或 PRoot 作为使用前提；这不是让手机远程连接一台必须常开的电脑。
 
