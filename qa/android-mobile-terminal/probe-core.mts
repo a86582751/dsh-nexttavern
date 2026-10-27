@@ -157,6 +157,17 @@ function collect():void {
     }
   }
 }
+function packageUid():number {
+  // The filter is substring-based on Android; accept only the exact package row.
+  const output=command('shell','cmd','package','list','packages','-U',pkg);
+  const rows=output.split(/\r?\n/).filter(line=>line.startsWith('package:'+pkg+' uid:'));
+  need(rows.length===1,'ORDINARY_APP_UID_NOT_EXPOSED');
+  const prefix='package:'+pkg+' uid:';
+  const digits=rows[0].slice(prefix.length);
+  need(/^\d+$/.test(digits),'ORDINARY_APP_UID_NOT_EXPOSED');
+  const uid=Number(digits);need(Number.isSafeInteger(uid)&&uid>=10000,'ORDINARY_APP_UID_NOT_EXPOSED');
+  return uid;
+}
 function completeEvidence():number {
   need(headerSeen&&readyLine&&result&&checks.size===expected.length&&expected.every(id=>checks.has(id)),'INCOMPLETE_11_CHECK_EVIDENCE');
   need(terminalStatus===result.status&&result.androidGate===false&&result.ok===false,'NATIVE_GLOBAL_STATUS_MISMATCH');
@@ -166,10 +177,6 @@ function completeEvidence():number {
   if(runtime.status==='passed')need(runtime.evidence.platform==='android'&&runtime.evidence.arch==='x64'
     &&String(runtime.evidence.node).startsWith('24.')
     &&runtime.evidence.execPath===nativeDirectory+'/libnexttavern_node.so','INSTALLER_EXECUTABLE_IDENTITY_MISMATCH');
-  const packageInfo=command('shell','dumpsys','package',pkg);
-  const uid=Number(packageInfo.match(/^\s*userId=(\d+)\s*$/m)?.[1]);
-  need(Number.isInteger(uid)&&uid>=10000,'ORDINARY_APP_UID_NOT_EXPOSED');
-  need(command('shell','pidof',pkg).trim()===pid,'PROBE_ACTIVITY_PROCESS_CHANGED');
   for(const id of expected) {
     const check=checks.get(id)!.value;
     // No error messages, stderr, XML, headers, body or user/model data are logged.
@@ -177,6 +184,13 @@ function completeEvidence():number {
     emit('observed',{check:{id,status:check.status,durationMs:check.durationMs,evidence,
       ...(check.error?{errorCode:safeCode(check.error.code)??'UNSPECIFIED_ERROR'}:{})}});
   }
+  // Valid capability/terminal evidence survives a later package-identity failure.
+  // This observation alone never accepts the ordinary-App-UID scoped gate.
+  emit('observed',{scope:'native-suite-terminal',globalStatus:result.status,globalOk:result.ok,
+    nativeTerminalStatus:terminalStatus,individualCheckCount:checks.size,androidGate:false,
+    finalSummaryComplete:summaryComplete,ordinaryAppUidVerified:false});
+  const uid=packageUid();
+  need(command('shell','pidof',pkg).trim()===pid,'PROBE_ACTIVITY_PROCESS_CHANGED');
   const corePassed=core.every(id=>checks.get(id)!.value.status==='passed');
   const https=checks.get('https-client')!.value;
   const httpsPassed=https.status==='passed'&&https.evidence.authorized===true
@@ -184,7 +198,7 @@ function completeEvidence():number {
     &&Number.isInteger(https.evidence.status)&&Number(https.evidence.status)>=100&&Number(https.evidence.status)<=599;
   emit(corePassed&&httpsPassed?'scoped-passed':'scoped-failed',{scope:'eight-core-plus-fixed-https-client',
     corePassed,httpsClientPassed:httpsPassed,globalStatus:result.status,globalOk:result.ok,androidGate:false,
-    actualPlatform:result.actualPlatform,arch:'x64',appUid:uid,debuggable:false,targetSdk:36,
+    actualPlatform:result.actualPlatform,arch:'x64',appUid:uid,ordinaryAppUidVerified:true,debuggable:false,targetSdk:36,
     individualCheckCount:checks.size,finalSummaryComplete:summaryComplete,
     tlsLocalServerStatus:checks.get('tls-local-ca')!.value.status,dnsLocalhostStatus:checks.get('dns-localhost')!.value.status,
     arm64Qualified:false,fullG0Accepted:false,modelServiceQualified:false});
@@ -229,9 +243,9 @@ function failureContext():Record<string,unknown> {
   try {
     // Still inspect the package UID when its Activity is gone: an owned child
     // can outlive that PID. Never print names, argv or other applications.
-    const info=command('shell','dumpsys','package',pkg),uid=info.match(/^\s*userId=(\d+)\s*$/m)?.[1];
-    if(uid)ownProcesses=command('shell','ps','-A','-o','UID,PID,PPID,NAME').trim().split(/\r?\n/).slice(1)
-      .map(line=>line.trim().split(/\s+/)).filter(row=>row[0]===uid)
+    const uid=packageUid();
+    ownProcesses=command('shell','ps','-A','-o','UID,PID,PPID,NAME').trim().split(/\r?\n/).slice(1)
+      .map(line=>line.trim().split(/\s+/)).filter(row=>row[0]===String(uid))
       .map(row=>({pid:Number(row[1]),parentPid:Number(row[2]),kind:row[1]===currentPid?'activity':/libnexttavern_node|^node$/.test(row[3])?'node':'other-owned'}));
   }catch{/* Diagnostic unavailability is not evidence of runtime failure. */}
   return {hierarchyAvailable,initialActivityPid:pid,currentActivityPid:/^\d+$/.test(currentPid??'')?Number(currentPid):null,

@@ -197,7 +197,10 @@ function onboarding():boolean {
   return false;
 }
 
+let emptyProviderCaptured=false;
+let providerInputsStarted=false;
 function captureApprovedScreenshot(name:'empty-provider'|'synthetic-chat'):void {
+  if(name==='empty-provider'&&emptyProviderCaptured)return;
   const directory=process.env.NEXTTAVERN_UI_EVIDENCE_DIR;
   if(!directory)return;
   // Only the empty provider form BEFORE any input and the verified synthetic
@@ -207,6 +210,7 @@ function captureApprovedScreenshot(name:'empty-provider'|'synthetic-chat'):void 
     timeout:90000,maxBuffer:8*1024*1024,stdio:['ignore','pipe','pipe'],
   });
   writeFileSync(join(directory,name+'.png'),png,{flag:'wx'});
+  if(name==='empty-provider')emptyProviderCaptured=true;
   emit('observed',{syntheticScreenshot:name});
 }
 const fixtureId='nexttavern-fixture';
@@ -274,6 +278,7 @@ async function configureFixtureProvider():Promise<void> {
   captureApprovedScreenshot('empty-provider');
   // Chromium 124 GetHint joins accessible name, placeholder and description with spaces.
   // Exact pinned hints avoid guessing unnamed fields or matching prefix collisions.
+  providerInputsStarted=true;
   await replace(['Provider ID','Provider ID acme-gateway'],fixtureId,['Provider ID']);
   await replace(['API 地址','Base URL','API 地址 https://gateway.example/v1','Base URL https://gateway.example/v1'],'http://127.0.0.1:18765/v1',['API 地址','Base URL']);
   // Never assume the schema's first protocol is the intended one.
@@ -770,6 +775,17 @@ try {
     incrementalRendering:'observed-partial-to-complete',syntheticCoreFlow:true,
     productPlayable:false,fullG0:false,arm64Qualified:false,phaseBCQualified:false,memoryQualified:false});
 }catch(error) {
+  // This fresh synthetic form has received no input yet. Keep the one approved
+  // empty-form checkpoint even if a window transition blocks field discovery.
+  if(stage==='create-fixture-provider'&&!providerInputsStarted) {
+    try{captureApprovedScreenshot('empty-provider')}catch{/* Screenshot failure is not product evidence. */}
+  }
+  let focus:string|null=null,activityAlive:boolean|null=null;
+  try{focus=command('shell','dumpsys','window','windows').match(/mCurrentFocus=Window\{[^}]*\s([A-Za-z0-9_.]+\/[A-Za-z0-9_.$]+)\}/)?.[1]??null}catch{}
+  try{activityAlive=/^\d+(?:\s+\d+)*$/.test(command('shell','pidof',pkg).trim())}catch{activityAlive=false}
+  emit('observed',{interaction:'failed-ui-window-state',focus,activityAlive,
+    roots:current.filter(node=>node.__parent==='-1').map(node=>({package:node.package,class:node.class,
+      active:node['window-active'],focused:node['window-focused'],visible:node['visible-to-user']}))});
   labels();emit('failed',{code:error instanceof UiFailure?error.code:'DRIVER_FAILURE',productPlayable:false,fullG0:false});
   process.exitCode=1;
 }
