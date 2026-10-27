@@ -5,7 +5,6 @@ import {mkdirSync,writeFileSync,readFileSync,chmodSync,rmSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 import {safeErrorTail,adbFailureKind} from './safe-diagnostics.mts';
-import {observeModelCheckbox} from './model-checkbox-visual.mts';
 import {PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID} from '../../android/host/protocol-fixture.mts';
 
 type Node = Record<string,string>;
@@ -412,12 +411,6 @@ function captureApprovedScreenshot(name:'empty-provider'|'model-routing'|'model-
   emit('observed',{syntheticScreenshot:name});
   return png;
 }
-async function visualModelCheckbox(slot:'model-routing'|'model-routing-after'):Promise<string> {
-  const png=captureApprovedScreenshot(slot);requireUi(png,'MODEL_CHECKBOX_SCREENSHOT_REQUIRED');
-  const observation=await observeModelCheckbox(png);
-  emit('observed',{interaction:'model-checkbox-pixels',...observation,axCheckedQualified:false});
-  return observation.state;
-}
 const fixtureId='nexttavern-fixture';
 const fixtureModelNames=['模型 ID 1','Model ID 1'];
 const named=(node:Node,names:string[])=>names.some(name=>node.text===name||node['content-desc']===name||node.hint===name);
@@ -683,7 +676,6 @@ const fixtureReply='【本地协议测试，不是真实模型】酒馆的灯亮
 const stableTitle='AndroidUIFixture';
 const menuOption=(node:Node)=>node.class==='android.widget.CheckedTextView'||node.class==='android.widget.RadioButton';
 const mainRouteNames=['当前对话主模型'];
-const allMainNames=['全部使用主模型（保留用途配置）'];
 const inWebView=(node:Node)=>ancestors(node).some(parent=>parent.class==='android.webkit.WebView');
 const dialogButton=(node:Node)=>button(node)&&ancestors(node).some(parent=>parent.class==='android.app.Dialog');
 const visibleNamed=(names:string[],kind:(node:Node)=>boolean=button)=>current.filter(node=>
@@ -765,17 +757,11 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
   await press(['切换当前对话主模型']);
   await until(()=>current.some(node=>node.package===pkg&&node.text===
     '主模型已切换；不会自动发送或重发。若有失败输入，请按聊天中的恢复提示操作。'),60,'MAIN_MODEL_SWITCH_NOT_CONFIRMED');
-  await modelControl(allMainNames,node=>node.class==='android.widget.CheckBox'||node.class==='android.widget.Switch');
-  // This WebView reports AX checked=false even for a visible blue check.
-  // Use the approved, empirically matched checkbox pixels, never that false bit.
-  const before=await visualModelCheckbox('model-routing');
-  requireUi(before!=='unknown','WORKER_ROUTE_CHECKBOX_VISUAL_UNKNOWN');
-  if(before==='unchecked') {
-    const check=current.find(node=>node.package===pkg&&named(node,allMainNames)&&node.class==='android.widget.CheckBox');
-    requireUi(check,'WORKER_ROUTE_CHECKBOX_NOT_EXPOSED');controlAction(check,'click-control');
-    await readySnapshot();
-    requireUi(await visualModelCheckbox('model-routing-after')==='checked','WORKER_ROUTE_CHECKBOX_CHANGE_NOT_OBSERVED');
-  }
+  // Keep the ordinary default untouched. This WebView's AX checked bit is
+  // demonstrably false for a checked box, and SHOW does not fix its geometry.
+  // Worker routing remains a separate unqualified gate, not a chat prerequisite.
+  emit('not-verified',{scope:'all-main-worker-route',reason:'unreliable-accessibility-state',
+    defaultUntouched:true,automaticAcceptance:false});
   await press(['保存模型路由']);
   await until(()=>current.some(node=>node.package===pkg&&named(node,['保存模型路由'])
     &&button(node)&&node.enabled!=='false'),60,'WORKER_ROUTE_SAVE_NOT_SETTLED');
@@ -787,11 +773,9 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
   emit('observed',{interaction:'model-route-checkpoint',checkpoint:'reloaded'});
   await openManager();await pressManagerTab(['模型','Models']);
   emit('observed',{interaction:'model-route-checkpoint',checkpoint:'retention'});
-  await modelControl(allMainNames,node=>node.class==='android.widget.CheckBox');
   await until(()=>current.some(node=>node.package===pkg&&node.text==='当前主模型：'+fixtureId)
     ,60,'FIXTURE_MAIN_ROUTE_NOT_RETAINED');
-  requireUi(await visualModelCheckbox('model-routing-after')==='checked','WORKER_ROUTE_VISUAL_STATE_NOT_RETAINED');
-  emit('passed',{scope:'ordinary-roleplay-session-and-fixture-main-worker-routing',liveModel:false});
+  emit('passed',{scope:'ordinary-roleplay-session-and-persisted-fixture-main-routing',workerRoutingVerified:false,liveModel:false});
   await pressManagerTab(['角色卡导入']);
   await until(()=>has(['上传角色卡'])&&visibleNamed(fileButton).length===1,30,'CARD_UPLOAD_PAGE_NOT_EXPOSED');
 }
