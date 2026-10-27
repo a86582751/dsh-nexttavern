@@ -296,8 +296,23 @@ async function typeAscii(node:Node,value:string,field='synthetic-composer'):Prom
     ...(!password?{firstDifference:[...value].findIndex((char,index)=>actual[index]!==char),
       asciiLowercaseRoute:/^[a-z][a-z0-9-]*$/.test(actual)}:{})});
   requireUi(matchesExpected,'SYNTHETIC_INPUT_READBACK_MISMATCH');
-  // Back ONLY if the actual hierarchy exposes the IME, not to dismiss a form.
-  if(current.some(item=>/\.inputmethod\./.test(item.package)))command('shell','input','keyevent','KEYCODE_BACK');
+  // IME accessibility roots can be absent during a real window transition.
+  // Android 15's ImeVisibilityStateComputer exposes this actual state in dumpsys.
+  const imeShown=()=>{
+    const state=command('shell','dumpsys','input_method').match(/\bmInputShown=(true|false)\b/)?.[1];
+    requireUi(state!==undefined,'IME_VISIBILITY_STATE_UNAVAILABLE');return state==='true';
+  };
+  if(imeShown()) {
+    command('shell','input','keyevent','KEYCODE_BACK');
+    let previousGeometry:string|undefined;
+    await until(()=>{
+      if(imeShown())return false;
+      const geometry=current.filter(item=>item.package===pkg&&item.class==='android.webkit.WebView'
+        &&visibleBounds(item)).map(item=>item.bounds).join('|');
+      if(!geometry)return false;
+      const stable=geometry===previousGeometry;previousGeometry=geometry;return stable;
+    },15,'IME_DISMISSAL_LAYOUT_NOT_STABLE');
+  }
 }
 
 /** Entry condition: the preceding actual first-stage has exposed Add provider.
