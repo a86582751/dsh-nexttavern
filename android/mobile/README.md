@@ -7,7 +7,7 @@ and deterministic; model requests remain owned by the existing host.
 
 ## Build/input contract
 
-- Java platform APIs only, Java 17, compile/target 36, min 26 (provisional).
+- Java platform APIs only, Java 17, compile/target 36, min 30 (Android 11).
 - `arm64` application ID `app.nexttavern.android`; `x86Diagnostic` adds
   `.x86diagnostic`, a diagnostic ABI rather than accepted arm64 support.
 - The producer supplies ignored `src/main/assets/host.zip` and
@@ -22,6 +22,20 @@ and deterministic; model requests remain owned by the existing host.
   directories.
 - Release is non-debuggable and unsigned by default; task-only signing and exact
   install/execution evidence belong to the selected validation batch.
+
+## Android publication boundary
+
+Android's ordinary-app SELinux policy forbids hard links, including app-owned
+files ([official Android 15 policy](https://android.googlesource.com/platform/system/sepolicy/+/refs/tags/android-15.0.0_r1/private/app_neverallows.te)).
+The original hard-link capability probe therefore remains unavailable/failed,
+not relabeled as a pass. The Android adaptation uses a separate atomic
+`renameat2(RENAME_NOREPLACE)` contract, whose public Bionic symbol requires
+API 30: an existing destination must never be replaced, concurrent publication
+must have one winner, and staged data/directory durability must be retained.
+Immutable aliases require a staged copy so their source object survives.
+Desktop hard-link semantics remain unchanged. Android execution evidence for
+this replacement is still pending; compilation is not acceptance. The separate
+API 26 probe is diagnostic tooling, not an API 26 mobile support promise.
 
 ## Runtime/lifecycle contract
 
@@ -43,9 +57,12 @@ Direct argument vector: `<nativeLibraryDir>/libnexttavern_node.so
 - `TMPDIR`: `files/tmp`
 - `SSL_CERT_FILE`: `<code>/certs/ca-certificates.pem`; `SSL_CERT_DIR`:
   `<code>/certs`; `OPENSSL_CONF` is empty. This relocates this Termux build's
-  OpenSSL-default public CA store; actual Android public HTTPS remains unverified.
+  OpenSSL-default public CA store. The API 35 x64 ordinary-App probe verified
+  public HTTPS with certificate validation; live product model APIs remain unverified.
 - `LD_LIBRARY_PATH` / `NEXTTAVERN_NATIVE_LIBRARY_DIR`: installer native directory
-- `NEXTTAVERN_FLOCK_ADDON`: installer `libnexttavern_flock.so`
+- `NEXTTAVERN_FLOCK_ADDON`: installer `libnexttavern_flock.so` (the native-system
+  binding for flock and Android atomic no-clobber publication; the historical
+  library/environment names remain stable).
 - `NEXTTAVERN_GENERATION`: fresh UUID per start; inherited Node loader hooks removed
 
 Stdout control records use `nexttavern-mobile-v1`, matching `generation`, and

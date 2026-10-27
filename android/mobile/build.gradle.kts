@@ -6,7 +6,7 @@ android {
     buildToolsVersion = "36.0.0"
     defaultConfig {
         applicationId = "app.nexttavern.android"
-        minSdk = 26
+        minSdk = 30
         targetSdk = 36
         versionCode = 1
         versionName = "0.0.1-mobile-dev"

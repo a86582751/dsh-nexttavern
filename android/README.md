@@ -21,12 +21,14 @@ Scripts and test data are app-private; executable binaries never run from
 writable app data. Neither module uses PRoot, a Linux distribution, root access,
 JNI-embedded Node, or a targetSdk 28 workaround. Both target API 36. The mobile
 module owns Node through a user-started foreground service and hosts its
-loopback UI in WebView; the probe has no background service. API 26 and arm64-v8a
-remain provisional build parameters, not a claim that every old WebView or
-arm64 device has passed product acceptance.
+loopback UI in WebView; the probe has no background service. The complete mobile
+module requires API 30 (Android 11) for the public Bionic atomic no-clobber
+publication primitive. The separate probe retains API 26 for diagnostics only.
+Neither build floor nor arm64-v8a packaging establishes device/product acceptance.
 
 The upstream system addon 0.1.2's C `flock` implementation is cross-compiled
-unchanged using NDK r28c. Its published JS loader rejects `android`; the probe
+unchanged using NDK r28c; a maintained wrapper adds Android atomic publication
+without replacing the upstream flock implementation. Its published JS loader rejects `android`; the probe
 therefore explicitly loads the installer-owned addon and adapts its callback API.
 This does **not** claim the unmodified npm package or the full Host already works.
 
