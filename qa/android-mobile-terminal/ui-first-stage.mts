@@ -202,25 +202,57 @@ function captureApprovedScreenshot(name:'models'|'synthetic-chat'):void {
 }
 const fixtureId='nexttavern-fixture';
 const fixtureModelNames=['模型 ID 1','Model ID 1'];
-const named=(node:Node,names:string[])=>names.some(name=>node.text===name||node['content-desc']===name);
+const named=(node:Node,names:string[])=>names.some(name=>node.text===name||node['content-desc']===name||node.hint===name);
 const button=(node:Node)=>node.clickable==='true'||node.class==='android.widget.Button';
+/** Pinned CustomProviderCard/ModelRow render one label and one control per
+ * field. Accept that relationship only when accessibility retains the field
+ * owner; a flattened form is not enough evidence to choose an unnamed input. */
+function labelledControls(names:string[],kind:(node:Node)=>boolean,controlNames:string[]):Node[] {
+  const result:Node[]=[];
+  for(const label of current.filter(node=>node.package===pkg&&node.class==='android.widget.TextView'&&named(node,names))) {
+    const owner=current[Number(label.__parent)];
+    if(!owner||owner.class!=='android.view.View')continue;
+    const children=current.filter(node=>node.package===pkg&&ancestors(node).includes(owner));
+    const labels=children.filter(node=>node.class==='android.widget.TextView'&&(node.text||node['content-desc']));
+    const controls=children.filter(node=>kind(node)&&node.enabled!=='false');
+    if(labels.length!==1||labels[0]!==label||controls.length!==1)continue;
+    const control=controls[0],declared=[control['content-desc'],control.hint].filter(Boolean);
+    if(declared.length&&!declared.some(value=>[...names,...controlNames].includes(value)))continue;
+    if(current.indexOf(control)>current.indexOf(label))result.push(control);
+  }
+  return [...new Set(result)];
+}
 /** Reveal only a named form control through its actual scrollable ancestor;
  * unknown structure remains an observed failure, not a whole-screen fallback. */
 async function reveal(names:string[],kind:(node:Node)=>boolean=button,
-  owner:(node:Node)=>boolean=node=>node.package===pkg,fieldLabel=false):Promise<Node> {
+  owner:(node:Node)=>boolean=node=>node.package===pkg,fieldLabel=false,sourceLabels=names):Promise<Node> {
   for(let attempt=0;;attempt++) {
     snapshot();
-    const found=current.filter(node=>owner(node)&&named(node,names)&&kind(node)&&node.enabled!=='false');
+    // The pinned custom card contains Provider ID and Create provider. Keep
+    // its fields separate from the existing built-in provider credential card.
+    const providerLabel=stage==='create-fixture-provider'?current.find(node=>node.package===pkg
+      &&node.class==='android.widget.TextView'&&named(node,['Provider ID'])):undefined;
+    const providerCard=providerLabel&&ancestors(providerLabel).find(parent=>parent.class==='android.view.View'
+      &&current.some(node=>button(node)&&named(node,['创建提供商','Create provider'])&&ancestors(node).includes(parent)));
+    if(providerLabel)requireUi(providerCard,'CUSTOM_PROVIDER_FIELD_OWNER_NOT_EXPOSED');
+    const owns=(node:Node)=>owner(node)&&(!providerCard||ancestors(node).includes(providerCard));
+    const explicit=current.filter(node=>owns(node)&&named(node,names)&&kind(node)&&node.enabled!=='false');
+    const found=explicit.length?explicit:fieldLabel?labelledControls(sourceLabels,kind,names).filter(owns):[];
     const visible=found.filter(node=>visibleBounds(node));
     requireUi(visible.length<=1,'NEXT_UI_TARGET_AMBIGUOUS');
     if(visible[0])return visible[0];
     requireUi(found.length<=1,'NEXT_UI_OFFSCREEN_TARGET_AMBIGUOUS');
     // Chromium can omit an offscreen textbox while exposing its source label.
     // Scroll that label's real owner, but return only the actual input target.
-    const labels=fieldLabel?current.filter(node=>owner(node)&&node.class==='android.widget.TextView'&&named(node,names)):[];
+    const labels=fieldLabel?current.filter(node=>owns(node)&&node.class==='android.widget.TextView'&&named(node,sourceLabels)):[];
     const visibleLabels=labels.filter(node=>visibleBounds(node));
     const target=found[0]??(visibleLabels.length===1?visibleLabels[0]:labels.length===1?labels[0]:undefined);
     requireUi(target,'NEXT_UI_TARGET_OR_FIELD_LABEL_NOT_EXPOSED');
+    if(attempt===4&&fieldLabel)emit('observed',{interaction:'field-structure',field:names[0],
+      inputs:current.filter(node=>node.package===pkg&&node.class==='android.widget.EditText').map(node=>({
+        bounds:node.bounds,enabled:node.enabled,focused:node.focused,parentClass:current[Number(node.__parent)]?.class,
+        sourceNameMatched:named(node,names),attributeNames:Object.keys(node).filter(key=>key!=='__parent'),
+      }))}); // Attribute names/geometry only; never input values or raw aria text.
     requireUi(attempt<4,'NEXT_UI_TARGET_NOT_VISIBLE_AFTER_SCROLL');
     const scroll=ancestors(target).find(node=>node.scrollable==='true'&&visibleBounds(node));
     requireUi(scroll,'NEXT_UI_SCROLL_ANCESTOR_NOT_EXPOSED');
@@ -233,8 +265,9 @@ async function reveal(names:string[],kind:(node:Node)=>boolean=button,
   }
 }
 async function press(names:string[],kind:(node:Node)=>boolean=button):Promise<void> {tapNode(await reveal(names,kind));}
-async function replace(names:string[],value:string):Promise<void> {
-  await typeAscii(await reveal(names,node=>node.class==='android.widget.EditText',node=>node.package===pkg,true),value);
+async function replace(names:string[],value:string,sourceLabels=names):Promise<void> {
+  emit('observed',{interaction:'edit-source-field',field:names[0]});
+  await typeAscii(await reveal(names,node=>node.class==='android.widget.EditText',node=>node.package===pkg,true,sourceLabels),value);
 }
 async function typeAscii(node:Node,value:string):Promise<void> {
   // All callers supply fixed ASCII synthetic values, never external credentials.
@@ -256,19 +289,20 @@ async function configureFixtureProvider():Promise<void> {
   await until(()=>has(['自定义模型 API','Custom model API']),30,'CUSTOM_PROVIDER_MODE_NOT_EXPOSED');
   await press(['自定义模型 API','Custom model API']);
   await until(()=>has(['Provider ID']),30,'CUSTOM_PROVIDER_FORM_LABEL_NOT_EXPOSED');
-  await replace(['Provider ID'],fixtureId);
-  await replace(['API 地址','Base URL'],'http://127.0.0.1:18765/v1');
+  await replace(['Provider ID','acme-gateway'],fixtureId,['Provider ID']); // Pinned empty-field placeholder, not a supplied value.
+  await replace(['API 地址','Base URL','https://gateway.example/v1'],'http://127.0.0.1:18765/v1',['API 地址','Base URL']);
   // Never assume the schema's first protocol is the intended one.
-  await press(['API 协议','API protocol'],node=>node.class==='android.widget.Spinner'||button(node));
+  tapNode(await reveal(['API 协议','API protocol'],node=>node.class==='android.widget.Spinner'||button(node),
+    node=>node.package===pkg,true));
   const protocolOption=(node:Node)=>node.class==='android.widget.CheckedTextView'||node.class==='android.widget.RadioButton';
   await until(()=>current.some(node=>named(node,['OpenAI Chat Completions'])&&protocolOption(node)),30,'OPENAI_COMPLETIONS_OPTION_NOT_EXPOSED');
   await press(['OpenAI Chat Completions'],protocolOption);
-  await replace(['API 密钥','API key'],'local-test-only');
+  await replace(['API 密钥','API key','输入 API 密钥','Enter your API key'],'local-test-only',['API 密钥','API key']);
   await press(['添加模型','Add model']);
-  await replace(fixtureModelNames,fixtureId);
+  await replace([...fixtureModelNames,'模型 ID','Model ID'],fixtureId);
   await press(['模型选项 1','Model options 1']);
-  await replace(['上下文窗口 1','Context window 1'],'65536');
-  await replace(['最大输出 token 数 1','Max output tokens 1'],'2048');
+  await replace(['上下文窗口 1','Context window 1'],'65536',['上下文窗口','Context window']);
+  await replace(['最大输出 token 数 1','Max output tokens 1'],'2048',['最大输出 token 数','Max output tokens']);
   await press(['创建提供商','Create provider']);
   await until(()=>has(['编辑 '+fixtureId,'Edit '+fixtureId])&&!has(['创建提供商','Create provider']),60,'FIXTURE_PROVIDER_SAVE_NOT_OBSERVED');
   emit('passed',{scope:'custom-provider-form-saved',syntheticProvider:true,liveModel:false});
