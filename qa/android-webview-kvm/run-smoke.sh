@@ -42,6 +42,8 @@ cleanup() {
         if [[ -f "$work/accel.log" ]]; then tail -n 12 "$work/accel.log"; fi ;;
       SDK_TOOL_VERSIONS)
         if [[ -f "$work/versions.log" ]]; then tail -n 12 "$work/versions.log"; fi ;;
+      SDK_HOST_DEPENDENCY)
+        if [[ -f "$work/host-dependency.log" ]]; then tail -n 20 "$work/host-dependency.log"; fi ;;
       MINIMAL_CONTROL_BUILD)
         if [[ -f "$work/build.log" ]]; then tail -n 20 "$work/build.log"; fi ;;
       AVD_CREATION)
@@ -71,6 +73,12 @@ if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
 fi
 [[ -r /dev/kvm && -w /dev/kvm ]]
 mark KVM_DEVICE_ACCESSIBLE
+phase=SDK_HOST_DEPENDENCY
+# The standard Ubuntu 24.04 runner lacks the SDK QEMU binary's libpulse.so.0.
+# This is a Linux SDK dependency, not a graphics/sandbox change inside Android.
+timeout 120 sudo apt-get update -qq > "$work/host-dependency.log" 2>&1
+timeout 120 sudo apt-get install --no-install-recommends -y libpulse0 >> "$work/host-dependency.log" 2>&1
+mark SDK_HOST_LIBPULSE_INSTALLED
 export JAVA_HOME="${JAVA_HOME_17_X64:?}"
 export PATH="$JAVA_HOME/bin:$PATH"
 "$JAVA_HOME/bin/javac" -version
