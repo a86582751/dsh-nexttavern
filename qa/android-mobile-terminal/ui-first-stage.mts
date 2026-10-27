@@ -29,28 +29,57 @@ let adbFailureNumber=0;
 function command(...commandArgs:string[]):string {
   try {return execFileSync(adb,['-s',serial,...commandArgs],{encoding:'utf8',timeout:90000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe']})}
   catch(error) {
-    const failure=error as {status?:number|null;signal?:string|null;code?:string;stderr?:string|Buffer};
+    const failure=error as {status?:number|null;signal?:string|null;code?:string;stderr?:string|Buffer;stdout?:string|Buffer};
     const stderr=String(failure.stderr??'');
     let privateStderrSaved=false,privateLogErrorCode:string|null=null;
     try {
       mkdirSync(args['--work-dir'],{recursive:true});
       writeFileSync(join(args['--work-dir'],`adb-failure-${++adbFailureNumber}.stderr`),stderr,{mode:0o600,flag:'wx'});
+      writeFileSync(join(args['--work-dir'],`adb-failure-${adbFailureNumber}.stdout`),String(failure.stdout??''),{mode:0o600,flag:'wx'});
       privateStderrSaved=true;
     }catch(logError){privateLogErrorCode=(logError as {code?:string}).code??'LOG_WRITE_FAILED'}
     // Do not print Error.message or argv: input commands can contain credentials.
     const safe=safeErrorTail(stderr);
     emit('observed',{interaction:'adb-command-failure',operation:commandArgs.slice(0,2).join(' '),
       exit:failure.status??null,signal:failure.signal??null,errorCode:failure.code??null,
-      classification:adbFailureKind(stderr),stderrTail:safe,privateStderrSaved,privateLogErrorCode});
+      classification:adbFailureKind(stderr),stderrTail:safe,privateStderrSaved,privateLogErrorCode,
+      instrumentationFailure:commandArgs[0]==='shell'&&commandArgs[1]==='am'&&commandArgs[2]==='instrument'
+        ?String(failure.stdout??'').split(/\r?\n/).filter(line=>/^INSTRUMENTATION_(?:FAILED|ABORTED):/.test(line))
+          .slice(-2).map(line=>safeErrorTail(line)):[]});
     throw new UiFailure('ADB_COMMAND_FAILED');
   }
 }
 const decode=(value:string)=>value.replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi,(_,hex,decimal)=>String.fromCodePoint(parseInt(hex??decimal,hex?16:10))).replace(/&amp;/g,'&');
 let current:Node[]=[];
+type DeviceIdentity={boot:string;framework:string;app:string};
+let snapshotIdentity:DeviceIdentity|undefined,snapshotTransportRecoveryUsed=false;
+function deviceIdentity():DeviceIdentity {
+  const identity={boot:command('shell','cat','/proc/sys/kernel/random/boot_id').trim(),
+    framework:command('shell','pidof','system_server').trim(),app:command('shell','pidof',pkg).trim()};
+  requireUi(/^[0-9a-f-]{36}$/.test(identity.boot)&&/^\d+$/.test(identity.framework)&&/^\d+$/.test(identity.app),
+    'ANDROID_PROCESS_IDENTITY_UNAVAILABLE');
+  return identity;
+}
+function hierarchyOutput():string {
+  const read=()=>command('shell','am','instrument','-w','-r','app.nexttavern.qa.ui/.HierarchyInstrumentation');
+  try{return read()}catch(error) {
+    // A recorded brief ADB loss recovered while the same VM remained alive.
+    // Retry only this read-only reader once, never a tap/text/send/install.
+    if(!(error instanceof UiFailure)||error.code!=='ADB_COMMAND_FAILED'||!snapshotIdentity||snapshotTransportRecoveryUsed)throw error;
+    snapshotTransportRecoveryUsed=true;
+    try {execFileSync(adb,['-s',serial,'wait-for-device'],{timeout:15000,stdio:'pipe'})}
+    catch {throw new UiFailure('ADB_RECONNECT_DEADLINE')}
+    const after=deviceIdentity(),sameBoot=after.boot===snapshotIdentity.boot,
+      sameFramework=after.framework===snapshotIdentity.framework,sameApp=after.app===snapshotIdentity.app;
+    emit('observed',{interaction:'readonly-reader-transport-recovery',sameBoot,sameFramework,sameApp,replayedUserAction:false});
+    requireUi(sameBoot&&sameFramework&&sameApp,'ANDROID_PROCESS_RESTART_DURING_READER');
+    return read();
+  }
+}
 function snapshot():Node[] {
   current=[];
   // Public UiAutomation preserves Chromium's hint text; capture privately.
-  const output=command('shell','am','instrument','-w','-r','app.nexttavern.qa.ui/.HierarchyInstrumentation');
+  const output=hierarchyOutput();
   const records=[...output.matchAll(/^INSTRUMENTATION_RESULT: hierarchy=([^\r\n]*)\r?$/gm)];
   if(!/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)||records.length!==1) {
     emit('observed',{interaction:'accessibility-reader-failure',hierarchyRecordCount:records.length,
@@ -582,6 +611,7 @@ async function backgroundStopStartAndRecover():Promise<void> {
   await renameSyntheticConversation();stage='background-return-same-node';
   const before=ownedNodePid();command('shell','input','keyevent','KEYCODE_HOME');await delay(2000);
   command('shell','am','start','-W','-n',pkg+'/app.nexttavern.android.mobile.MainActivity');
+  snapshotIdentity=deviceIdentity();
   await until(()=>has(['本地服务运行中']),60,'NATIVE_READY_NOT_RETAINED_AFTER_HOME');
   requireUi(ownedNodePid()===before,'BACKGROUND_RETURN_REPLACED_NATIVE_NODE');
   await requirePersistedConversation();emit('passed',{scope:'home-return-same-owned-node-and-visible-story'});

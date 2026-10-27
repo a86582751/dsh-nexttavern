@@ -144,12 +144,15 @@ fi
 if ((ui_rc==0)); then printf 'ORDINARY_NONDEBUG_APP_SYNTHETIC_FLOW_COMPLETE_NOT_ARM64_OR_G0\n'; fi
 phase=SEPARATE_ORDINARY_APP_KVM_PROBE
 probe_rc=0
-if "$adb" -s "$serial" install --no-incremental "$probe_apk" > "$work/probe-install.log" 2>&1; then
+# A failed UI reader can coincide with a brief transport outage. Wait once
+# before the independent first install; never replay an ambiguous installation.
+if timeout 15 "$adb" -s "$serial" wait-for-device > "$work/probe-install.log" 2>&1 &&
+  "$adb" -s "$serial" install --no-incremental "$probe_apk" >> "$work/probe-install.log" 2>&1; then
   node "$repo/qa/android-mobile-terminal/probe-core.mts" --adb "$adb" --serial "$serial" || probe_rc=$?
 else
   probe_rc=$?
   chmod 600 "$work/probe-install.log"
-  printf 'PROBE_INSTALL_FAILED_NOT_PASSED EXIT=%s\n' "$probe_rc"
+  printf 'PROBE_DEVICE_READY_OR_INSTALL_FAILED_NOT_PASSED EXIT=%s\n' "$probe_rc"
   node "$repo/qa/android-mobile-terminal/safe-diagnostics.mts" --file "$work/probe-install.log" \
     --source probe-install --exit "$probe_rc" || :
 fi
