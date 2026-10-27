@@ -94,7 +94,8 @@ function snapshot():Node[] {
       instrumentationCode:output.match(/^INSTRUMENTATION_CODE: (-?\d+)\r?$/m)?.[1]??null,
       readerError:output.match(/^INSTRUMENTATION_RESULT: error=([A-Z_]+)\r?$/m)?.[1]??null,
       readerException:output.match(/^INSTRUMENTATION_RESULT: exception=([A-Za-z]+)\r?$/m)?.[1]??null});
-    throw new UiFailure('ACCESSIBILITY_DUMP_UNAVAILABLE');
+    const readerError=output.match(/^INSTRUMENTATION_RESULT: error=([A-Z_]+)\r?$/m)?.[1];
+    throw new UiFailure(readerError==='ROOTS_NOT_READY'?'ACCESSIBILITY_ROOTS_NOT_READY':'ACCESSIBILITY_DUMP_UNAVAILABLE');
   }
   const xml=records[0][1];
   requireUi(xml.startsWith('<hierarchy>')&&xml.endsWith('</hierarchy>'),'ACCESSIBILITY_DUMP_UNAVAILABLE');
@@ -167,10 +168,29 @@ function allowNotifications():void {
   const candidates=matches(['Allow','允许'],true).filter(node=>/permissioncontroller/.test(node.package));
   if(candidates.length===1)tapNode(candidates[0]);
 }
+// Window transitions may temporarily expose no active accessibility root.
+// One shared read-only rule serves timed predicates and standalone reads.
+function observeSnapshot():boolean {
+  try {snapshot();return true}catch(error) {
+    if(!(error instanceof UiFailure)||error.code!=='ACCESSIBILITY_ROOTS_NOT_READY')throw error;
+    const after=deviceIdentity();
+    requireUi(snapshotIdentity&&after.boot===snapshotIdentity.boot
+      &&after.framework===snapshotIdentity.framework&&after.app===snapshotIdentity.app,
+      'ANDROID_PROCESS_RESTART_DURING_READER');
+    emit('observed',{interaction:'readonly-root-pending',sameProcessIdentity:true});
+    return false;
+  }
+}
+async function readySnapshot():Promise<void> {
+  const end=Date.now()+15000;
+  do {if(observeSnapshot())return;await delay(3000)}while(Date.now()<end);
+  throw new UiFailure('ACCESSIBILITY_ROOTS_NOT_READY');
+}
 async function until(predicate:()=>boolean,seconds:number,code:string):Promise<void> {
   const end=Date.now()+seconds*1000;
   do {
-    snapshot();allowNotifications();
+    if(!observeSnapshot()){await delay(3000);continue;}
+    allowNotifications();
     if(current.some(node=>node.package===pkg&&node.text?.startsWith('本地服务未能运行')))throw new UiFailure('NATIVE_RUNTIME_ERROR_VISIBLE');
     if(predicate())return;
     await delay(3000);
@@ -280,7 +300,7 @@ const button=(node:Node)=>node.clickable==='true'||node.class==='android.widget.
 async function reveal(names:string[],kind:(node:Node)=>boolean=button,
   owner:(node:Node)=>boolean=node=>node.package===pkg,fieldLabel=false,sourceLabels=names):Promise<Node> {
   for(let attempt=0;;attempt++) {
-    snapshot();
+    await readySnapshot();
     const found=current.filter(node=>owner(node)&&named(node,names)&&kind(node)&&node.enabled!=='false');
     const visible=found.filter(node=>visibleBounds(node));
     requireUi(visible.length<=1,'NEXT_UI_TARGET_AMBIGUOUS');
@@ -347,7 +367,7 @@ async function typeAscii(node:Node,value:string,field='synthetic-composer'):Prom
   command('shell','input','keycombination','113','29'); // API35 Ctrl+A.
   command('shell','input','keyevent','KEYCODE_DEL');
   command('shell','input','text',value.replaceAll(' ','%s'));
-  snapshot();
+  await readySnapshot();
   const found=focused();
   requireUi(found.length===1,'EXPECTED_FIELD_FOCUS_LOST');
   const actual=found[0].text??'',password=found[0].password==='true';
@@ -379,7 +399,7 @@ async function typeAscii(node:Node,value:string,field='synthetic-composer'):Prom
 /** Entry condition: the preceding actual first-stage has exposed Add provider.
  * Fresh synthetic installation only: no overwrite of a previously saved route. */
 async function configureFixtureProvider():Promise<void> {
-  stage='create-fixture-provider';snapshot();
+  stage='create-fixture-provider';await readySnapshot();
   requireUi(!has(['编辑 '+fixtureId,'Edit '+fixtureId]),'FIXTURE_PROVIDER_ALREADY_PRESENT');
   await press(['添加模型提供商','Add model provider']);
   await until(()=>has(['自定义模型 API','Custom model API']),30,'CUSTOM_PROVIDER_MODE_NOT_EXPOSED');
@@ -415,7 +435,7 @@ const docs=(node:Node)=>/^(?:com\.android|com\.google\.android)\.documentsui$/.t
  * The runner owns this work-dir/emulator. Normal product SAF is the only route
  * into app storage; adb push only supplies a file to the device Downloads. */
 async function selectSyntheticCard(workDir:string):Promise<void> {
-  stage='saf-card-selection';snapshot();
+  stage='saf-card-selection';await readySnapshot();
   requireUi(has(['上传角色卡'])&&has(fileButton),'ROLEPLAY_CARD_UPLOAD_PAGE_REQUIRED');
   requireUi(!has(['确认原导入任务'])&&!has(selectedFile),'FRESH_CARD_SELECTION_REQUIRED');
   mkdirSync(workDir,{recursive:true});
@@ -491,12 +511,12 @@ async function closeWebDialog():Promise<void> {
   await press(['关闭','Close'],node=>dialogButton(node)&&inWebView(node));
 }
 async function showSidebar():Promise<void> {
-  snapshot();
+  await readySnapshot();
   const open=visibleNamed(['打开侧边栏','Open sidebar']);
   if(open.length===1) {tapNode(open[0]);await until(()=>has(['收起侧边栏','Collapse sidebar']),30,'SIDEBAR_DID_NOT_OPEN');}
 }
 async function hideSidebar():Promise<void> {
-  snapshot();
+  await readySnapshot();
   const close=visibleNamed(['收起侧边栏','Collapse sidebar']);
   if(close.length===1) {tapNode(close[0]);await until(()=>has(['打开侧边栏','Open sidebar']),30,'SIDEBAR_DID_NOT_COLLAPSE');}
 }
@@ -513,7 +533,7 @@ async function openManager():Promise<void> {
  * vertical whole-screen swipe or a guessed tab coordinate. */
 async function pressManagerTab(names:string[]):Promise<void> {
   for(let attempt=0;attempt<=4;attempt++) {
-    snapshot();const found=current.filter(node=>node.package===pkg&&named(node,names)&&button(node)&&node.enabled!=='false');
+    await readySnapshot();const found=current.filter(node=>node.package===pkg&&named(node,names)&&button(node)&&node.enabled!=='false');
     requireUi(found.length===1,'TAVERN_TAB_NOT_UNIQUELY_EXPOSED');
     if(visibleBounds(found[0])) {tapNode(found[0]);return;}
     requireUi(attempt<4,'TAVERN_TAB_NOT_VISIBLE_AFTER_HORIZONTAL_SCROLL');
@@ -573,7 +593,7 @@ function visibleMessage(marker:string):Node|undefined {
 /** One opening, one prompt. A missing response is a failure, never an automatic
  * replay; the fixed fixture is visibly labelled as not an actual model. */
 async function chooseOpeningAndChat():Promise<void> {
-  stage='original-opening-selection';snapshot();
+  stage='original-opening-selection';await readySnapshot();
   requireUi(current.some(node=>node.package===pkg&&node.text?.includes('旅人把蓝色书签放在桌上')),'SYNTHETIC_OPENING_PREVIEW_NOT_EXPOSED');
   const compact=visibleNamed(['用这个开场开始']);
   if(compact.length===1)tapNode(compact[0]);else await press(['使用此开场']);
@@ -594,7 +614,7 @@ async function chooseOpeningAndChat():Promise<void> {
 }
 
 async function renameSyntheticConversation():Promise<void> {
-  stage='name-synthetic-conversation';await showSidebar();snapshot();
+  stage='name-synthetic-conversation';await showSidebar();await readySnapshot();
   // A fresh test installation has one actual conversation. Do not choose an
   // arbitrary unrelated session when the actual tree contains multiple menus.
   const menus=current.filter(node=>node.package===pkg&&button(node)&&visibleBounds(node)
@@ -645,7 +665,7 @@ async function requirePersistedConversation():Promise<void> {
   const markers=[fixtureOpening,fixturePrompt,fixtureReply],seen=new Set<string>();
   let scrollBox:number[]|null=null;
   for(const direction of ['older','newer'])for(let attempt=0;attempt<4;attempt++) {
-    snapshot();
+    await readySnapshot();
     for(const marker of markers) {
       const node=visibleMessage(marker);if(!node)continue;seen.add(marker);
       const scroll=ancestors(node).find(parent=>parent.scrollable==='true'&&inWebView(parent)&&visibleBounds(parent));
@@ -676,7 +696,7 @@ async function backgroundStopStartAndRecover():Promise<void> {
   await press(['启动'],node=>button(node)&&!inWebView(node));
   await until(()=>has(['本地服务运行中']),180,'NATIVE_RESTART_READY_NOT_OBSERVED');
   requireUi(ownedNodePid()!==before,'NATIVE_RESTART_DID_NOT_REPLACE_NODE_PROCESS');
-  stage='reopen-persisted-named-conversation';await showSidebar();snapshot();
+  stage='reopen-persisted-named-conversation';await showSidebar();await readySnapshot();
   if(!current.some(node=>node.package===pkg&&named(node,[stableTitle])&&visibleBounds(node))) {
     const search=current.filter(node=>node.package===pkg&&named(node,['搜索会话','Search sessions'])&&button(node)&&visibleBounds(node));
     requireUi(search.length===1,'SESSION_SEARCH_ACTION_NOT_EXPOSED');tapNode(search[0]);
@@ -747,7 +767,7 @@ function fixtureReplyAfter(prompt:string,partial:boolean,visible=true):Node|unde
   });
 }
 async function sendOnePacedPrompt(prompt:string):Promise<void> {
-  snapshot();
+  await readySnapshot();
   const composer=current.filter(node=>node.package===pkg&&node.class==='android.widget.EditText'
     &&node.enabled!=='false'&&inWebView(node)&&visibleBounds(node));
   requireUi(composer.length===1,'PACED_TURN_UNIQUE_COMPOSER_NOT_EXPOSED');
@@ -761,7 +781,7 @@ async function ordinaryNativeStop():Promise<void> {
   await until(()=>visibleNamed(['启动'],node=>button(node)&&!inWebView(node)).length===1,180,'PACED_ORDINARY_STOP_NOT_SETTLED');
 }
 async function reopenNamedConversation():Promise<void> {
-  await showSidebar();snapshot();
+  await showSidebar();await readySnapshot();
   if(!current.some(node=>node.package===pkg&&named(node,[stableTitle])&&visibleBounds(node))) {
     const search=visibleNamed(['搜索会话','Search sessions']);
     requireUi(search.length===1,'PACED_RECOVERY_SESSION_SEARCH_NOT_EXPOSED');tapNode(search[0]);
@@ -778,7 +798,7 @@ async function reopenNamedConversation():Promise<void> {
 async function requirePacedRecoveryUi():Promise<{partialRetained:boolean}> {
   let completeRecovered=false,interruptedRecovered=false,partialRetained=false,interruptedPromptVisible=false,scrollBox:number[]|null=null;
   for(const direction of ['older','newer'])for(let attempt=0;attempt<4;attempt++) {
-    snapshot();
+    await readySnapshot();
     const full=fixtureReplyAfter(completePacedPrompt,false);
     if(full)completeRecovered=true;
     const partial=fixtureReplyAfter(interruptPacedPrompt,true);
