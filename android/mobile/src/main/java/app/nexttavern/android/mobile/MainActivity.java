@@ -139,7 +139,8 @@ public final class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient() {
             @Override public boolean onConsoleMessage(ConsoleMessage message) {
                 String source = message.sourceId();
-                WebDiagnostics.observe(message, origin != null && source != null && origin.contains(source));
+                WebDiagnostics.observe(message, origin != null && source != null && origin.contains(source),
+                    service == null ? null : service.snapshot().url);
                 return true;
             }
             @Override public void onPermissionRequest(PermissionRequest request) { request.deny(); }

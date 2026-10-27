@@ -93,11 +93,17 @@ cookies. There is no `addJavascriptInterface`. Only the current exact owned
 origin stays embedded; external HTTP(S) main-frame links go to the system browser
 and different local origins are blocked. Cleartext network policy allows only
 127.0.0.1, not remote cleartext pages. Raw browser console messages are never
-logged. The arm64 flavor has no console diagnostics. Only `x86Diagnostic` emits
-fixed error categories, React error numbers, allowlisted public identifiers and
-bundle names/line numbers, plus navigation/renderer status metadata. It never
-logs message text, stacks, URLs/queries, form values or credentials; WebView
-debugging remains disabled. These diagnostic records do not establish UI success.
+logged. The arm64 flavor is a diagnostic no-op and does not read cookies for this
+purpose. In controlled fresh synthetic QA only, `x86Diagnostic` emits fixed error
+categories, React error numbers, allowlisted public identifiers/bundle positions,
+and navigation/renderer metadata. A console ERROR may include a sanitized
+description of at most 1000 characters: the current in-memory startup token
+(raw and decoded), current origin cookie values and fixture credential are
+removed first; URLs, queries/fragments, auth/cookie headers, bearer/key assignments,
+JWTs and opaque long values are then removed, with line breaks escaped. Missing
+auth context suppresses the description. The auth URL/cookies are never retained
+or logged, and no raw console channel, WebView debugging or automatic recovery is
+enabled. These diagnostic records do not establish UI success or live-model support.
 
 File inputs use Android SAF `ACTION_OPEN_DOCUMENT`, no broad storage permission
 or native card-import bridge. Selection cancellation/rotation cancels the pending
