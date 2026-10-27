@@ -126,7 +126,9 @@ phase=PINNED_OFFICIAL_INPUTS
 fetch() {
   local filename=$1 algorithm=$2 expected=$3
   input_name="${filename##*/}"
-  curl --fail --location --silent --show-error --retry 2 --connect-timeout 30 --max-time 300 \
+  # A Google HTTP/2 stream reset (curl 92) is retryable for this fixed GET.
+  # Keep the existing two-retry bound and verify the complete pinned digest below.
+  curl --fail --location --silent --show-error --retry 2 --retry-all-errors --connect-timeout 30 --max-time 300 \
     "https://dl.google.com/android/repository/$filename" -o "$work/downloads/${filename##*/}" \
     >> "$work/download.log" 2>&1
   printf '%s  %s\n' "$expected" "$work/downloads/${filename##*/}" | "${algorithm}sum" -c - >> "$work/download.log"
