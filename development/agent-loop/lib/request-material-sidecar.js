@@ -25,7 +25,9 @@ export function bindNativeRequestMaterial(request, binding) {
  * does not repeatedly refold prior request-only overlays or cache Source. */
 function assertBoundMaterialBase(request, binding) {
     const { session, event } = binding, record = event.data, boundary = session.currentRequestBoundary();
-    if (!binding.preparedSelection && Number(session.seq) !== event.seq + 1 || event.seq !== record.base.boundarySeq + 1
+    // This cursor anchors the original material append. The planner below owns
+    // current content equality; concurrent titles may advance the log alone.
+    if (event.seq !== record.base.boundarySeq + 1
         || request.sessionId !== session.id) {
         throw Error('REQUEST_MATERIAL_BOUNDARY_CHANGED');
     }

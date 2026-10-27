@@ -41,7 +41,7 @@ export function assertNativeRequestMaterialSelectionV1(initial, current) {
         throw Error('REQUEST_MATERIAL_SELECTION_NOT_NATIVE');
     }
     const lineage = root.lineage;
-    lineage.assertCurrent();
+    const currentCut = lineage.assertCurrent();
     if (selected.revision !== lineage.revision || selected.pendingCursor !== lineage.pendingCursor
         || selected.boundarySha256 !== lineage.expected.sha256) {
         throw Error('REQUEST_MATERIAL_SELECTION_CUT_EXPIRED');
@@ -49,8 +49,8 @@ export function assertNativeRequestMaterialSelectionV1(initial, current) {
     return Object.freeze({ schemaVersion: 1, encoding: 'native-request-material-selection-lineage-v1',
         sessionId: String(lineage.session.id), turn: lineage.turn, step: lineage.step,
         initialSha256: initial.sha256, currentSha256: current.sha256,
-        boundarySeq: Number(lineage.expected.boundary.boundarySeq),
-        contentGeneration: lineage.expected.boundary.contentGeneration,
+        boundarySeq: Number(currentCut.boundary.boundarySeq),
+        contentGeneration: currentCut.boundary.contentGeneration,
         pendingMessages: lineage.pending.length - lineage.pendingCursor, revision: lineage.revision,
         ...lineage.checkpointSha256 ? { checkpointSha256: lineage.checkpointSha256 } : {},
         events: Object.freeze([...lineage.events]) });
@@ -1630,11 +1630,16 @@ export class ReactLoopAgent {
         this.openingDomainCompletion = { status: 'blocked', code, invocationRef: openingEventRefV1(owner.opening.invocation) };
         throw Error(code);
     }
-    #selectionCut(boundary = this.session.currentRequestBoundary()) {
-        return { boundary, sha256: nativeInputSha256({ boundarySeq: Number(boundary.boundarySeq),
+    #selectionCut() {
+        const boundary = this.session.currentRequestBoundary();
+        // Titles and other metadata advance the log without changing the request.
+        // The physical cursor still anchors each actual append and durable record.
+        return { boundary, sha256: nativeInputSha256({
                 contentGeneration: boundary.contentGeneration, surfaceNodes: boundary.surfaceNodes,
+                header: this.session.requestHeaderBoundary(), context: this.session.requestContext(),
                 messages: boundary.messageNodes.map(({ seq, message }) => ({ seq: Number(seq), id: String(message.id),
-                    role: message.role, messageSha256: nativeInputSha256(message) })) }) };
+                    role: message.role, messageSha256: nativeInputSha256(message) }))
+            }) };
     }
     #retireSelection() {
         if (this.#materialSelection)
@@ -1676,76 +1681,58 @@ export class ReactLoopAgent {
             return;
         this.#assertSelectionOwner(lineage);
         // This lineage owns an exact cut of the actual append-only Session. Its
-        // accepted event/message objects are immutable; no new tail can change it.
-        // Read the live surface generation even on reuse so removed projection
-        // definitions still invalidate their derived messages at this boundary.
-        if (Number(this.session.seq) === Number(lineage.expected.boundary.boundarySeq) + 1
-            && this.session.surface.contentGeneration === lineage.expected.boundary.contentGeneration)
-            return;
-        if (!this.#acceptSelectionTitleTail(lineage, this.#selectionCut())) {
+        // frozen log also owns the header/context folds. A metadata-only tail may
+        // advance this validated cut without replacing the append/recovery owner.
+        // The live getter still rejects removal of used projection definitions.
+        const validated = lineage.validatedCut ?? lineage.expected;
+        if (Number(this.session.seq) === Number(validated.boundary.boundarySeq) + 1
+            && this.session.surface.contentGeneration === validated.boundary.contentGeneration)
+            return validated;
+        const current = this.#selectionCut();
+        if (current.sha256 !== lineage.expected.sha256) {
             this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_BOUNDARY_CHANGED');
         }
-    }
-    #acceptSelectionTitleTail(lineage, after, capturedTail) {
-        const before = lineage.expected;
-        if (after.sha256 === before.sha256)
-            return true;
-        if (after.boundary.boundarySeq <= before.boundary.boundarySeq
-            || this.#selectionCut({ ...after.boundary, boundarySeq: before.boundary.boundarySeq }).sha256 !== before.sha256)
-            return false;
-        // The title service and its optional LLM provider append concurrently
-        // after request/header. Both records are metadata, outside the surface.
-        // Adopt that actual tail once; request-changing events still revoke it.
-        // oxlint-disable-next-line typescript/no-deprecated -- Native owns this exact incremental log cut.
-        const tail = capturedTail ?? this.session.snapshotEvents(SessionLogOffset(Number(before.boundary.boundarySeq) + 1), SessionLogOffset(Number(after.boundary.boundarySeq) + 1));
-        if (tail.some(event => !['session/title', 'session/title-llm-request'].includes(String(event.type))))
-            return false;
-        for (const event of tail) {
-            const next = this.#selectionCut({ ...after.boundary, boundarySeq: event.seq });
-            lineage.events.push(Object.freeze({ kind: 'native-append', seq: Number(event.seq), type: event.type,
-                sha256: nativeInputSha256(event), beforeBoundarySha256: lineage.expected.sha256, afterBoundarySha256: next.sha256 }));
-            lineage.actualEvents.push(event);
-            lineage.expected = next;
-            lineage.revision++;
-        }
-        return true;
+        lineage.validatedCut = current;
+        return current;
     }
     #assertSelectionDecision(lineage, admission, messages) {
-        this.#assertSelectionCurrent(lineage);
+        const cut = this.#assertSelectionCurrent(lineage);
         if ((lineage.kind === 'player-input' ? admission !== lineage.admission : admission !== undefined)
             || messages.length !== lineage.pending.length
             || messages.some((message, index) => nativeInputSha256(message) !== lineage.pending[index]?.messageSha256)) {
             this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_PENDING_CHANGED');
         }
+        return cut;
     }
     #captureSelection(admission, messages, firstAttempt) {
         const lineage = this.#materialSelection;
         if (!lineage)
             return this.#materialSelected(messages, firstAttempt ?? false);
-        this.#assertSelectionDecision(lineage, admission, messages);
+        const cut = this.#assertSelectionDecision(lineage, admission, messages);
         if (firstAttempt !== undefined && firstAttempt === lineage.attemptStarted) {
             this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_ATTEMPT_CHANGED');
         }
         const cached = lineage.selected;
-        if (cached?.revision === lineage.revision && cached.pendingCursor === lineage.pendingCursor)
+        if (cached?.revision === lineage.revision && cached.pendingCursor === lineage.pendingCursor
+            && cached.boundarySeq === Number(cut.boundary.boundarySeq))
             return cached.value;
         const pending = lineage.pending.slice(lineage.pendingCursor).map(row => {
             if (row.message.role !== 'user')
                 return this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_PENDING_INVALID');
             return row.message;
         });
-        const selected = this.#materialSelected(pending, true, lineage.expected.boundary);
+        const selected = this.#materialSelected(pending, true, cut.boundary);
         nativeMaterialSelections.set(selected, { lineage, revision: lineage.revision,
             pendingCursor: lineage.pendingCursor, boundarySha256: lineage.expected.sha256 });
-        lineage.selected = { revision: lineage.revision, pendingCursor: lineage.pendingCursor, value: selected };
+        lineage.selected = { revision: lineage.revision, pendingCursor: lineage.pendingCursor,
+            boundarySeq: Number(cut.boundary.boundarySeq), value: selected };
         return selected;
     }
     #recordSelectionAppend(append, pendingMessage) {
         const lineage = this.#materialSelection;
         if (!lineage)
             return append();
-        this.#assertSelectionCurrent(lineage);
-        const before = lineage.expected;
+        const before = this.#assertSelectionCurrent(lineage);
         const pending = pendingMessage === undefined ? undefined : lineage.pending[lineage.pendingCursor];
         if (pendingMessage !== undefined && (!pending || nativeInputSha256(pendingMessage) !== pending.messageSha256)) {
             this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_PENDING_APPEND_CHANGED');
@@ -1770,19 +1757,17 @@ export class ReactLoopAgent {
             }
         }
         const after = this.#selectionCut();
-        // Publication can synchronously notify observers. Record our append first,
-        // then account for a title-only tail under the same metadata rule.
-        if (Number(event.seq) !== Number(before.boundary.boundarySeq) + 1) {
+        // Publication can synchronously notify arbitrary observers. Only the
+        // actual append's returned event may be the new latest log boundary.
+        if (Number(event.seq) !== Number(before.boundary.boundarySeq) + 1 || after.boundary.boundarySeq !== event.seq) {
             this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_APPEND_BOUNDARY_CHANGED');
         }
-        const appended = after.boundary.boundarySeq === event.seq ? after :
-            this.#selectionCut({ ...after.boundary, boundarySeq: event.seq });
         this.#assertSelectionOwner(lineage);
         if (pending) {
             if (event.type !== 'user/message' || nativeInputSha256(event.data) !== pending.messageSha256) {
                 this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_ADMITTED_MESSAGE_CHANGED');
             }
-            const admitted = appended.boundary.messageNodes.find(row => row.seq === event.seq);
+            const admitted = after.boundary.messageNodes.find(row => row.seq === event.seq);
             if (!admitted || nativeInputSha256(admitted.message) !== pending.messageSha256) {
                 this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_ADMITTED_SURFACE_CHANGED');
             }
@@ -1790,20 +1775,18 @@ export class ReactLoopAgent {
         }
         const eventSha256 = nativeInputSha256(event);
         lineage.events.push(Object.freeze({ kind: 'native-append', seq: Number(event.seq), type: event.type,
-            sha256: eventSha256, beforeBoundarySha256: before.sha256, afterBoundarySha256: appended.sha256,
+            sha256: eventSha256, beforeBoundarySha256: before.sha256, afterBoundarySha256: after.sha256,
             ...pending ? { admitted: Object.freeze({ pendingIndex: lineage.pendingCursor - 1, id: pending.id,
                     role: 'user', messageSha256: pending.messageSha256 }) } : {} }));
         lineage.actualEvents.push(event);
-        lineage.expected = appended;
+        lineage.expected = after;
+        lineage.validatedCut = after;
         lineage.revision++;
         if (event.type === 'step/start')
             lineage.stepStartSeq = Number(event.seq);
         const actualEvent = event;
         if (actualEvent.type === 'assistant/attempt')
             lineage.lastAttempt = { event: actualEvent, sha256: eventSha256 };
-        if (!this.#acceptSelectionTitleTail(lineage, after)) {
-            this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_APPEND_BOUNDARY_CHANGED');
-        }
         return event;
     }
     #recoveryCut(failure) {
@@ -1818,8 +1801,7 @@ export class ReactLoopAgent {
         // owns its frozen log and projections; no detached fold is reimplemented.
         // oxlint-disable-next-line typescript/no-deprecated -- Native's exact recovery window requires actual event refs.
         const events = this.session.snapshotEvents();
-        if (events.length !== Number(lineage.expected.boundary.boundarySeq) + 1
-            || events[Number(lineage.lastAttempt.event.seq)] !== lineage.lastAttempt.event
+        if (events[Number(lineage.lastAttempt.event.seq)] !== lineage.lastAttempt.event
             || nativeInputSha256(lineage.lastAttempt.event) !== lineage.lastAttempt.sha256) {
             this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_RETRY_LOG_CHANGED');
         }
@@ -1861,18 +1843,23 @@ export class ReactLoopAgent {
             return;
         const { lineage, before } = cut;
         this.#assertSelectionOwner(lineage);
+        if (lineage.expected !== before)
+            this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_RETRY_CUT_CHANGED');
         const after = this.#selectionCut();
         if (cut.offloadImages === undefined) {
-            if (!this.#acceptSelectionTitleTail(lineage, after)) {
+            if (after.sha256 !== before.sha256)
                 this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_RETRY_FOREIGN_APPEND');
-            }
             return;
         }
         // oxlint-disable-next-line typescript/no-deprecated -- Inspect only the actual recovery tail against the captured frozen prefix.
         const events = this.session.snapshotEvents();
-        const event = events.slice(cut.events.length).find(event => String(event.type) === 'image/offload');
-        if (!event || cut.events.some((prior, index) => events[index] !== prior)
-            || Reflect.ownKeys(event).some(key => typeof key !== 'string' || !['type', 'seq', 'time', 'data'].includes(key))
+        // Title generation may finish on either side of image offloading. The
+        // frozen Session prefix and this recovery window retain the real event;
+        // its image effect, rather than the latest log cursor, owns the new cut.
+        const recoveryEvents = events.slice(cut.events.length).filter(event => !['session/title', 'session/title-llm-request'].includes(String(event.type)));
+        const event = recoveryEvents[0];
+        if (!event || recoveryEvents.length !== 1
+            || String(event.type) !== 'image/offload' || Reflect.ownKeys(event).some(key => typeof key !== 'string' || !['type', 'seq', 'time', 'data'].includes(key))
             || nativeInputSha256(event.data) !== nativeInputSha256({ targets: cut.targets })
             || after.boundary.contentGeneration !== before.boundary.contentGeneration + 1
             || nativeInputSha256(after.boundary.surfaceNodes) !== nativeInputSha256(before.boundary.surfaceNodes)
@@ -1894,26 +1881,27 @@ export class ReactLoopAgent {
                 this.#failSelection(lineage, 'REQUEST_MATERIAL_IMAGE_OFFLOAD_MESSAGE_CHANGED');
             }
         }
-        const prior = events[Number(event.seq) - 1];
-        const beforeImage = this.#selectionCut({ ...before.boundary, boundarySeq: prior?.seq ?? before.boundary.boundarySeq });
-        if (!this.#acceptSelectionTitleTail(lineage, beforeImage, events.slice(Number(lineage.expected.boundary.boundarySeq) + 1, Number(event.seq)))) {
-            this.#failSelection(lineage, 'REQUEST_MATERIAL_IMAGE_OFFLOAD_RECOVERY_CHANGED');
-        }
-        const imageCut = this.#selectionCut({ ...after.boundary, boundarySeq: event.seq });
         // This certifies the precise effect during Native's failure window, not
         // which plugin handler ran. An identical authorized effect is equivalent.
         lineage.events.push(Object.freeze({ kind: 'image-offload-recovery', seq: Number(event.seq), type: String(event.type),
-            sha256: nativeInputSha256(event), beforeBoundarySha256: lineage.expected.sha256, afterBoundarySha256: imageCut.sha256,
+            sha256: nativeInputSha256(event), beforeBoundarySha256: before.sha256, afterBoundarySha256: after.sha256,
             failureSha256: cut.failureSha256, offloadImages: cut.offloadImages, targets: cut.targets }));
         lineage.actualEvents.push(event);
-        lineage.expected = imageCut;
+        lineage.expected = after;
+        lineage.validatedCut = after;
         lineage.revision++;
-        if (!this.#acceptSelectionTitleTail(lineage, after, events.slice(Number(event.seq) + 1))) {
-            this.#failSelection(lineage, 'REQUEST_MATERIAL_IMAGE_OFFLOAD_RECOVERY_CHANGED');
-        }
     }
     /** Prepare belongs to this final decision before step/start. Only a fully
      * checked prepared result starts a new private selection lineage. */
+    #preparedMaterialSelectionCurrent(selected, contentSha256, messages) {
+        if (this.#selectionCut().sha256 !== contentSha256)
+            return false;
+        const pending = selected.messages.filter(row => row.origin === 'pending-decision');
+        return pending.length === messages.length && pending.every((row, index) => {
+            const message = messages[index];
+            return row.id === String(message.id) && row.role === message.role && row.messageSha256 === nativeInputSha256(message);
+        });
+    }
     async #prepareRequestMaterial(decision, position, signal, prepared) {
         this.#retireSelection();
         this.pendingMaterialCandidate = undefined;
@@ -1922,6 +1910,7 @@ export class ReactLoopAgent {
             return;
         this.assertMaterialRequestOwner(requestOwner, decision.messages);
         let selected = this.#materialSelected(decision.messages, true);
+        let selectedContentSha256 = this.#selectionCut().sha256;
         const { assembly: finalAssembly, sha256: assemblySha256 } = captureNativeMaterialAssemblyV1(decision.assembly);
         const common = { schemaVersion: 1, ...position, signal, finalAssembly, assemblySha256, selected };
         let candidate, candidateMessages;
@@ -1945,6 +1934,7 @@ export class ReactLoopAgent {
                             }
                             this.checkInput(requestOwner.admission, pending);
                             const basis = this.#materialSelected(pending, true);
+                            const candidateContentSha256 = this.#selectionCut().sha256;
                             const preparedRoute = Object.freeze({ configSha256: nativeInputSha256(prepared.config),
                                 ...prepared.preparedCall?.requestMaterialText ? { requestMaterialText: prepared.preparedCall.requestMaterialText } : {},
                                 ...prepared.preparedCall?.systemPromptUpdate ? { systemPromptUpdate: prepared.preparedCall.systemPromptUpdate } : {},
@@ -1955,7 +1945,7 @@ export class ReactLoopAgent {
                                 throw Error(transform.code);
                             signal.throwIfAborted();
                             this.checkInput(requestOwner.admission, pending);
-                            if (this.#materialSelected(pending, true).sha256 !== basis.sha256
+                            if (!this.#preparedMaterialSelectionCurrent(basis, candidateContentSha256, pending)
                                 || transform.kind === 'transform' && (transform.expectedSelectedBaseSha256 !== basis.sha256
                                     || transform.expectedAssemblySha256 !== assemblySha256))
                                 throw Error('REQUEST_MATERIAL_CANDIDATE_CHANGED');
@@ -1964,6 +1954,7 @@ export class ReactLoopAgent {
                             candidate = transform.kind === 'unchanged' ? this.planRequest(proposed, planning, decision.startsRequestSeries === true, true)
                                 : this.planMaterialRequest(proposed, planning, transform, basis, true, finalAssembly);
                             candidateMessages = pending;
+                            selectedContentSha256 = candidateContentSha256;
                             const prices = new Map(candidate.projection?.options.messages.map((message, index) => [String(message.id), candidate.measurement?.estimate.messageTokens[index]]));
                             const allocations = new Map();
                             if (candidate.kind === 'material')
@@ -2022,12 +2013,13 @@ export class ReactLoopAgent {
         if (candidate && candidateMessages) {
             decision.messages = candidateMessages;
             selected = candidate.selected;
-            this.pendingMaterialCandidate = { decision, planned: candidate, prepared };
+            this.pendingMaterialCandidate = { decision, planned: candidate, prepared, finalAssembly };
         }
         this.assertMaterialRequestOwner(requestOwner, decision.messages);
-        // Preparation may write Core data, but the exact Native request cut and
-        // complete assembly cannot change before step/start and checkpoint.
-        if (this.#materialSelected(decision.messages, true).sha256 !== selected.sha256) {
+        // Phase A may checkpoint its own window before the final preview. That
+        // candidate owns the selected cut; later content changes still revoke it.
+        // Without a candidate, preparation remains bound to the original cut.
+        if (!this.#preparedMaterialSelectionCurrent(selected, selectedContentSha256, decision.messages)) {
             this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_PREPARATION_BASE_CHANGED');
         }
         if (nativeInputSha256(decision.assembly) !== assemblySha256) {
@@ -2118,6 +2110,10 @@ export class ReactLoopAgent {
                     await this.#prepareRequestMaterial(decision, { turn, step }, signal, prepared);
                 signal.throwIfAborted();
                 const hotCandidate = this.pendingMaterialCandidate;
+                if (hotCandidate && SessionLogOffset(hotCandidate.planned.preview.baseLogLength) !== this.session.seq) {
+                    this.#assertSelectionCurrent();
+                    this.replanMaterialCandidate(decision, { turn, step, signal }, true);
+                }
                 const stepStart = this.#recordSelectionAppend(() => hotCandidate
                     ? this.session.appendRequestPreviewEvent(hotCandidate.planned.preview)
                     : this.session.append('step/start', { turn, step }));
@@ -2128,6 +2124,8 @@ export class ReactLoopAgent {
                     if (phase.programmatic?.opening)
                         await this.checkpointOpening(decision, stepStart, signal);
                     this.#assertSelectionCurrent();
+                    if (hotCandidate && this.session.seq !== SessionLogOffset(hotCandidate.planned.preview.baseLogLength + 1))
+                        this.replanMaterialCandidate(decision, { turn, step, signal }, false);
                     if (this.#materialSelection && decision.admission?.receipt) {
                         this.#materialSelection.checkpointSha256 = nativeInputSha256(decision.admission.receipt);
                     }
@@ -2603,6 +2601,17 @@ export class ReactLoopAgent {
             this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_SECTION_SUPPRESSED_OR_CHANGED');
         }
         return this.commitMaterialRequest(decision, this.planMaterialRequest(decision, input, plan, selected, false, finalAssembly));
+    }
+    /** A metadata-only tail can advance either side of the real checkpoint.
+     * Keep its original step/start and prepared business result; only the
+     * remaining Native envelope and material receive the current physical cut. */
+    replanMaterialCandidate(decision, position, includeStepStart) {
+        const candidate = this.pendingMaterialCandidate, planned = candidate.planned;
+        const input = { ...candidate.prepared, ...position, firstAttempt: true };
+        const selected = this.#captureSelection(decision.admission, decision.messages, true);
+        candidate.planned = planned.kind === 'material'
+            ? this.planMaterialRequest(decision, input, planned.plan, selected, includeStepStart, candidate.finalAssembly)
+            : this.planRequest(decision, input, decision.startsRequestSeries === true, includeStepStart);
     }
     /** The same canonical envelope/material planner serves hot candidates and
      * committed attempts. A candidate includes its future step/start so no
