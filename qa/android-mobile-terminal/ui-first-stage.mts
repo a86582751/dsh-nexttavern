@@ -26,8 +26,9 @@ requireUi(Object.keys(args).every(key=>['--adb','--serial','--package','--phase'
 if(args['--phase']!=='create') {emit('blocked',{code:'CREATE_FLOW_ONLY',noDeviceActions:true});process.exit(2)}
 requireUi(fixtureEvents && args['--work-dir'],'FIXTURE_EVENTS_AND_WORK_DIRECTORY_REQUIRED');
 let adbFailureNumber=0;
-function command(...commandArgs:string[]):string {
-  try {return execFileSync(adb,['-s',serial,...commandArgs],{encoding:'utf8',timeout:90000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe']})}
+function command(...commandArgs:string[]):string {return timedCommand(90000,...commandArgs)}
+function timedCommand(timeout:number,...commandArgs:string[]):string {
+  try {return execFileSync(adb,['-s',serial,...commandArgs],{encoding:'utf8',timeout,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe']})}
   catch(error) {
     const failure=error as {status?:number|null;signal?:string|null;code?:string;stderr?:string|Buffer;stdout?:string|Buffer};
     const stderr=String(failure.stderr??'');
@@ -53,41 +54,48 @@ const decode=(value:string)=>value.replace(/&quot;/g,'"').replace(/&apos;/g,"'")
 let current:Node[]=[];
 type DeviceIdentity={boot:string;framework:string;app:string;adbd:string|null};
 let snapshotIdentity:DeviceIdentity|undefined,snapshotTransportRecoveries=0;
-function deviceIdentity():DeviceIdentity {
+function readerTimeout(deadline:number,cap=90000):number {
+  const remaining=deadline-Date.now();requireUi(remaining>0,'ACCESSIBILITY_READ_DEADLINE');
+  return Math.min(cap,remaining);
+}
+function deviceIdentity(deadline=Date.now()+90000):DeviceIdentity {
+  const read=(...args:string[])=>timedCommand(readerTimeout(deadline),...args);
   let adbd:string|null=null;
   try {
-    const value=execFileSync(adb,['-s',serial,'shell','pidof','adbd'],{encoding:'utf8',timeout:5000,stdio:'pipe'}).trim();
+    const value=execFileSync(adb,['-s',serial,'shell','pidof','adbd'],{encoding:'utf8',timeout:readerTimeout(deadline,5000),stdio:'pipe'}).trim();
     if(/^\d+$/.test(value))adbd=value;
   }catch {/* Optional daemon diagnostic cannot block valid product identity. */}
-  const identity={adbd,boot:command('shell','cat','/proc/sys/kernel/random/boot_id').trim(),
-    framework:command('shell','pidof','system_server').trim(),app:command('shell','pidof',pkg).trim()};
+  const identity={adbd,boot:read('shell','cat','/proc/sys/kernel/random/boot_id').trim(),
+    framework:read('shell','pidof','system_server').trim(),app:read('shell','pidof',pkg).trim()};
   requireUi(/^[0-9a-f-]{36}$/.test(identity.boot)&&/^\d+$/.test(identity.framework)&&/^\d+$/.test(identity.app),
     'ANDROID_PROCESS_IDENTITY_UNAVAILABLE');
   return identity;
 }
-function hierarchyOutput():string {
-  const read=()=>command('shell','am','instrument','-w','-r','app.nexttavern.qa.ui/.HierarchyInstrumentation');
-  try{return read()}catch(error) {
-    // A recorded brief ADB loss recovered while the same VM remained alive.
-    // Retry each independent read-only reader at most once, never a
-    // tap/text/send/install. A second failure of this read escapes immediately.
-    if(!(error instanceof UiFailure)||error.code!=='ADB_COMMAND_FAILED'||!snapshotIdentity)throw error;
-    snapshotTransportRecoveries++;
-    try {execFileSync(adb,['-s',serial,'wait-for-device'],{timeout:15000,stdio:'pipe'})}
-    catch {throw new UiFailure('ADB_RECONNECT_DEADLINE')}
-    const after=deviceIdentity(),sameBoot=after.boot===snapshotIdentity.boot,
-      sameFramework=after.framework===snapshotIdentity.framework,sameApp=after.app===snapshotIdentity.app;
-    emit('observed',{interaction:'readonly-reader-transport-recovery',sameBoot,sameFramework,sameApp,
-      totalReaderRecoveries:snapshotTransportRecoveries,adbdBefore:snapshotIdentity.adbd,adbdAfter:after.adbd,replayedUserAction:false});
-    requireUi(sameBoot&&sameFramework&&sameApp,'ANDROID_PROCESS_RESTART_DURING_READER');
-    snapshotIdentity=after; // Required identities are unchanged; retain latest optional daemon observation.
-    return read();
+function hierarchyOutput(deadline:number):string {
+  const read=()=>timedCommand(readerTimeout(deadline),'shell','am','instrument','-w','-r',
+    'app.nexttavern.qa.ui/.HierarchyInstrumentation');
+  for(let reconnects=0;;) {
+    try{return read()}catch(error) {
+      // Read-only transport bursts have recovered on the same VM/app. All
+      // attempts share the caller's original deadline; no user action is replayed.
+      if(!(error instanceof UiFailure)||error.code!=='ADB_COMMAND_FAILED'||!snapshotIdentity||reconnects===3)throw error;
+      reconnects++;snapshotTransportRecoveries++;
+      try {execFileSync(adb,['-s',serial,'wait-for-device'],{timeout:readerTimeout(deadline,15000),stdio:'pipe'})}
+      catch {throw new UiFailure('ADB_RECONNECT_DEADLINE')}
+      const after=deviceIdentity(deadline),sameBoot=after.boot===snapshotIdentity.boot,
+        sameFramework=after.framework===snapshotIdentity.framework,sameApp=after.app===snapshotIdentity.app;
+      emit('observed',{interaction:'readonly-reader-transport-recovery',sameBoot,sameFramework,sameApp,
+        reconnectsForThisRead:reconnects,maxReconnects:3,totalReaderRecoveries:snapshotTransportRecoveries,
+        adbdBefore:snapshotIdentity.adbd,adbdAfter:after.adbd,replayedUserAction:false});
+      requireUi(sameBoot&&sameFramework&&sameApp,'ANDROID_PROCESS_RESTART_DURING_READER');
+      snapshotIdentity=after;
+    }
   }
 }
-function snapshot():Node[] {
+function snapshot(deadline:number):Node[] {
   current=[];
   // Public UiAutomation preserves Chromium's hint text; capture privately.
-  const output=hierarchyOutput();
+  const output=hierarchyOutput(deadline);
   const records=[...output.matchAll(/^INSTRUMENTATION_RESULT: hierarchy=([^\r\n]*)\r?$/gm)];
   if(!/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)||records.length!==1) {
     emit('observed',{interaction:'accessibility-reader-failure',hierarchyRecordCount:records.length,
@@ -170,10 +178,10 @@ function allowNotifications():void {
 }
 // Window transitions may temporarily expose no active accessibility root.
 // One shared read-only rule serves timed predicates and standalone reads.
-function observeSnapshot():boolean {
-  try {snapshot();return true}catch(error) {
+function observeSnapshot(deadline:number):boolean {
+  try {snapshot(deadline);return true}catch(error) {
     if(!(error instanceof UiFailure)||error.code!=='ACCESSIBILITY_ROOTS_NOT_READY')throw error;
-    const after=deviceIdentity();
+    const after=deviceIdentity(deadline);
     requireUi(snapshotIdentity&&after.boot===snapshotIdentity.boot
       &&after.framework===snapshotIdentity.framework&&after.app===snapshotIdentity.app,
       'ANDROID_PROCESS_RESTART_DURING_READER');
@@ -183,17 +191,17 @@ function observeSnapshot():boolean {
 }
 async function readySnapshot():Promise<void> {
   const end=Date.now()+15000;
-  do {if(observeSnapshot())return;await delay(3000)}while(Date.now()<end);
+  do {if(observeSnapshot(end))return;await delay(Math.max(0,Math.min(3000,end-Date.now())))}while(Date.now()<end);
   throw new UiFailure('ACCESSIBILITY_ROOTS_NOT_READY');
 }
 async function until(predicate:()=>boolean,seconds:number,code:string):Promise<void> {
   const end=Date.now()+seconds*1000;
   do {
-    if(!observeSnapshot()){await delay(3000);continue;}
+    if(!observeSnapshot(end)){await delay(Math.max(0,Math.min(3000,end-Date.now())));continue;}
     allowNotifications();
     if(current.some(node=>node.package===pkg&&node.text?.startsWith('本地服务未能运行')))throw new UiFailure('NATIVE_RUNTIME_ERROR_VISIBLE');
     if(predicate())return;
-    await delay(3000);
+    await delay(Math.max(0,Math.min(3000,end-Date.now())));
   }while(Date.now()<end);
   throw new UiFailure(code);
 }
