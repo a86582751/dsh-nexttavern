@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, readlink, rm, writeFile, cp } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readlink, rm, writeFile, cp, symlink } from 'node:fs/promises'
+import {existsSync} from 'node:fs'
+import {createRequire} from 'node:module'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import test from 'node:test'
@@ -13,11 +15,18 @@ test('first launch and APK replacement preserve user profile and relink only app
     const home = path.join(root, 'home')
     const workspace = path.join(root, 'private workspace')
     await mkdir(workspace, {recursive:true})
+    const libraries=path.join(repo,existsSync(path.join(repo,'runtime/alpha3/build-tools/package.json'))
+      ? 'runtime/alpha3/build-tools/node_modules' : 'build-tools/node_modules')
+    const yaml=createRequire(path.join(libraries,'../package.json'))('yaml') as {parse(text:string):unknown}
     const launch = async (version: string) => {
       const code = path.join(root, version)
       await mkdir(path.join(code, 'profile-template'), { recursive: true })
       await mkdir(path.join(code, 'node_modules/@deepseek-ai/dsh/lib'), { recursive: true })
       await mkdir(path.join(code, 'node_modules/dsh-nexttavern'), { recursive: true })
+      await writeFile(path.join(code,'node_modules/dsh-nexttavern/package.json'),JSON.stringify({name:'dsh-nexttavern',dependencies:{yaml:'2.8.1'}}))
+      await mkdir(path.join(code,'node_modules/dsh-nexttavern/node_modules'),{recursive:true})
+      const parser=path.join(code,'node_modules/dsh-nexttavern/node_modules/yaml')
+      if(!existsSync(parser))await symlink(path.join(libraries,'yaml'),parser,'junction')
       await cp(path.join(repo, 'android/host/host-launch.mts'), path.join(code, 'host-launch.mts'))
       for (const name of ['package.json', 'cordis.yml', 'cordis.patch.yml', 'pnpm-workspace.yaml']) {
         await writeFile(path.join(code, 'profile-template', name), name === 'package.json' ? JSON.stringify({dependencies:{'dsh-nexttavern':'file:/cloud/product'}}) : '[]\n')
@@ -48,12 +57,16 @@ if (import.meta.main) await runCli()
     }
     await launch('v1')
     const patch = path.join(home, 'profiles/web/cordis.patch.yml')
-    await writeFile(patch, '# user settings\n[]\n')
+    const initial=await readFile(patch,'utf8')
+    assert.deepEqual(yaml.parse(initial),[{id:'agent-preset-registry',config:{default:'roleplay'}}])
+    const userPatch='# user settings\n- id: retained-user-row\n  config:\n    value: !!js ctx.example\n- id: agent-preset-registry\n  config:\n    default: roleplay\n    selectedDefault: standard\n'
+    await writeFile(patch, userPatch)
     await launch('v1')
     await launch('v2')
-    assert.equal(await readFile(patch, 'utf8'), '# user settings\n[]\n')
+    assert.equal(await readFile(patch, 'utf8'), userPatch)
     const overlay = await readFile(path.join(home, 'android-host.patch.yml'), 'utf8')
     assert.match(overlay, /printUrl: false/)
     assert.match(overlay, /v2\/android-host.mjs/)
+    assert.doesNotMatch(overlay, /agent-preset-registry|selectedDefault/)
   } finally { await rm(root, { recursive: true, force: true }) }
 })

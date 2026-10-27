@@ -2,8 +2,11 @@
 import { mkdir, readFile, writeFile, symlink, rename, readlink, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { createRequire } from 'node:module'
 
 const code = path.dirname(fileURLToPath(import.meta.url))
+// Use the admitted product's declared parser, not an incidental Host-root copy.
+const { parseDocument } = createRequire(path.join(code, 'node_modules/dsh-nexttavern/package.json'))('yaml') as typeof import('yaml')
 const home = process.env.DSH_HOME
 // ProcessBuilder sets cwd to the canonical native-managed private workspace.
 // The pinned Host has no Android system-Documents resolver; use its explicit
@@ -39,7 +42,15 @@ function rebase(value: string, sourceProfile: string): string {
 const seed = JSON.parse(await readFile(path.join(code,'profile-template/package.json'),'utf8'))
 for(const [name,value] of Object.entries(seed.dependencies ?? {})) seed.dependencies[name]=rebase(String(value),provision.sourceProfileRoot)
 for (const name of ['package.json', 'cordis.yml', 'cordis.patch.yml', 'pnpm-workspace.yaml']) {
-  const bytes = name === 'package.json' ? JSON.stringify(seed,null,2)+'\n' : await readFile(path.join(code, 'profile-template', name))
+  let bytes: string | Buffer = name === 'package.json' ? JSON.stringify(seed,null,2)+'\n' : await readFile(path.join(code, 'profile-template', name))
+  if (name === 'cordis.patch.yml') {
+    // Android is a Tavern deployment, not the stock coding-workbench default.
+    // Seed the supported registry option only with this wx-created profile.
+    // Its user patch and higher-priority selectedDefault remain untouched later.
+    const patch = parseDocument(bytes.toString())
+    patch.add({ id:'agent-preset-registry', config:{ default:'roleplay' } })
+    bytes = patch.toString()
+  }
   try { await writeFile(path.join(profile, name), bytes, { flag: 'wx' }) }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error }
 }
