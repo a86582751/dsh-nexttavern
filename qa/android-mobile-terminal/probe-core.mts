@@ -13,7 +13,7 @@ const pkg='app.nexttavern.android.probe.x86kvm';
 const component=pkg+'/app.nexttavern.android.probe.MainActivity';
 const core=[...REQUIRED_CAPABILITIES.slice(0,8)];
 const expected=[...REQUIRED_CAPABILITIES,'https-client'];
-let stage='arguments',nodes:Node[]=[],pid='';
+let stage='arguments',nodes:Node[]=[],pid='',hierarchyAvailable=false;
 class ProbeFailure extends Error {
   readonly code:string;
   constructor(code:string){super(code);this.code=code}
@@ -31,12 +31,20 @@ const decode=(value:string)=>value.replace(/&quot;/g,'"').replace(/&apos;/g,"'")
   .replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi,(_,hex,decimal)=>String.fromCodePoint(parseInt(hex??decimal,hex?16:10)))
   .replace(/&amp;/g,'&');
 function snapshot():void {
+  nodes=[];hierarchyAvailable=false;
   // Capture the Bundle privately; never log its raw hierarchy or input values.
   const output=command('shell','am','instrument','-w','-r','app.nexttavern.qa.ui/.HierarchyInstrumentation');
   const records=[...output.matchAll(/^INSTRUMENTATION_RESULT: hierarchy=([^\r\n]*)\r?$/gm)];
-  need(/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)&&records.length===1,'ACCESSIBILITY_UNAVAILABLE');
-  const xml=records[0][1];need(xml.startsWith('<hierarchy>')&&xml.endsWith('</hierarchy>'),'ACCESSIBILITY_UNAVAILABLE');
-  nodes=[];const parents:number[]=[];
+  const resultCode=output.match(/^INSTRUMENTATION_CODE: (-?\d+)\r?$/m)?.[1];
+  const xml=records[0]?.[1];
+  if(resultCode!=='-1'||records.length!==1||!xml?.startsWith('<hierarchy>')||!xml.endsWith('</hierarchy>')) {
+    emit('observed',{interaction:'hierarchy-read-failure',hierarchyRecordCount:records.length,
+      instrumentationCode:resultCode===undefined?null:Number(resultCode),
+      error:output.match(/^INSTRUMENTATION_RESULT: error=([A-Z_]{1,80})\r?$/m)?.[1]??null,
+      exceptionClass:output.match(/^INSTRUMENTATION_RESULT: exception=([A-Za-z]{1,80})\r?$/m)?.[1]??null});
+    throw new ProbeFailure('ACCESSIBILITY_UNAVAILABLE');
+  }
+  hierarchyAvailable=true;const parents:number[]=[];
   for(const match of xml.matchAll(/<node\b([^>]*?)(\/?)>|<\/node>/g)) {
     if(match[0]==='</node>'){parents.pop();continue}
     const node:Node=Object.fromEntries([...match[1].matchAll(/([\w-]+)="([^"]*)"/g)].map(item=>[item[1],decode(item[2])]));
@@ -226,7 +234,7 @@ function failureContext():Record<string,unknown> {
       .map(line=>line.trim().split(/\s+/)).filter(row=>row[0]===uid)
       .map(row=>({pid:Number(row[1]),parentPid:Number(row[2]),kind:row[1]===currentPid?'activity':/libnexttavern_node|^node$/.test(row[3])?'node':'other-owned'}));
   }catch{/* Diagnostic unavailability is not evidence of runtime failure. */}
-  return {initialActivityPid:pid,currentActivityPid:/^\d+$/.test(currentPid??'')?Number(currentPid):null,
+  return {hierarchyAvailable,initialActivityPid:pid,currentActivityPid:/^\d+$/.test(currentPid??'')?Number(currentPid):null,
     ownProcesses,runUiState:runUiState??null,
     rootPackages:counts(roots.map(n=>n.package??'')),rootClasses:counts(roots.map(n=>n.class??'')),
     probeWindowActive:roots.some(n=>n.package===pkg&&n['window-active']==='true'),

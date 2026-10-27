@@ -31,13 +31,19 @@ function command(...commandArgs:string[]):string {
 const decode=(value:string)=>value.replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi,(_,hex,decimal)=>String.fromCodePoint(parseInt(hex??decimal,hex?16:10))).replace(/&amp;/g,'&');
 let current:Node[]=[];
 function snapshot():Node[] {
+  current=[];
   // Public UiAutomation preserves Chromium's hint text; capture privately.
   const output=command('shell','am','instrument','-w','-r','app.nexttavern.qa.ui/.HierarchyInstrumentation');
   const records=[...output.matchAll(/^INSTRUMENTATION_RESULT: hierarchy=([^\r\n]*)\r?$/gm)];
-  requireUi(/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)&&records.length===1,'ACCESSIBILITY_DUMP_UNAVAILABLE');
+  if(!/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)||records.length!==1) {
+    emit('observed',{interaction:'accessibility-reader-failure',hierarchyRecordCount:records.length,
+      instrumentationCode:output.match(/^INSTRUMENTATION_CODE: (-?\d+)\r?$/m)?.[1]??null,
+      readerError:output.match(/^INSTRUMENTATION_RESULT: error=([A-Z_]+)\r?$/m)?.[1]??null,
+      readerException:output.match(/^INSTRUMENTATION_RESULT: exception=([A-Za-z]+)\r?$/m)?.[1]??null});
+    throw new UiFailure('ACCESSIBILITY_DUMP_UNAVAILABLE');
+  }
   const xml=records[0][1];
   requireUi(xml.startsWith('<hierarchy>')&&xml.endsWith('</hierarchy>'),'ACCESSIBILITY_DUMP_UNAVAILABLE');
-  current=[];
   const parents:number[]=[];
   for(const match of xml.matchAll(/<node\b([^>]*?)(\/?)>|<\/node>/g)) {
     if(match[0]==='</node>') {parents.pop();continue;}
@@ -766,6 +772,4 @@ try {
 }catch(error) {
   labels();emit('failed',{code:error instanceof UiFailure?error.code:'DRIVER_FAILURE',productPlayable:false,fullG0:false});
   process.exitCode=1;
-}finally {
-  try {command('shell','rm','-f',remoteXml)}catch{}
 }
