@@ -119,7 +119,7 @@ const settings=['设置','Settings'];
 const sidebar=['打开侧边栏','Open sidebar'];
 const webChrome=[...settings,...sidebar,'新建会话','New session'];
 const addProvider=['添加模型提供商','Add model provider'];
-const onboardingDismissRequested=new Set<string>();
+const onboardingTouches=new Map<string,{geometry:string;taps:number;tapGeometry?:string;dismissed?:boolean}>();
 const onboardingSwipes=new Map<string,number>();
 function interactOnboarding(step:string,names:string[]):void {
   const actions=current.filter(node=>node.package===pkg && node.class==='android.widget.Button'
@@ -140,13 +140,28 @@ function interactOnboarding(step:string,names:string[]):void {
   const box=[Math.max(dialog[0],view[0]),Math.max(dialog[1],view[1]),Math.min(dialog[2],view[2]),Math.min(dialog[3],view[3])];
   requireUi(box[2]>box[0] && box[3]>box[1],'ONBOARDING_SCROLL_REGION_NOT_VISIBLE');
   const action=bounds(actions[0]);
+  const geometry=JSON.stringify({dialog,view,action});
+  let touch=onboardingTouches.get(step);
+  if(!touch || touch.geometry!==geometry) {
+    if(!touch) {touch={geometry,taps:0};onboardingTouches.set(step,touch)}
+    else touch.geometry=geometry;
+    // Autofocus can resize the WebView for the IME after the modal appears.
+    // Require the actual geometry to survive a second observation, not a sleep.
+    emit('observed',{interaction:'onboarding-geometry',step,dialog,view,action,
+      imeExposed:current.some(node=>/\.inputmethod\./.test(node.package))});
+    return;
+  }
+  if(touch.tapGeometry && (geometry===touch.tapGeometry || step!=='key' || touch.taps>=2))return;
   if(action) {
     // Chromium may report positive text/button bounds beyond the modal clip.
     // Only touch the action's actually visible intersection, never its mask.
     const visible=[Math.max(box[0],action[0]),Math.max(box[1],action[1]),Math.min(box[2],action[2]),Math.min(box[3],action[3])];
     if(visible[2]>visible[0] && visible[3]>visible[1]) {
+      emit('observed',{interaction:'onboarding-dismissal-touch',step,attempt:touch.taps+1,
+        action:step==='key'?'configure-later':'continue',target:visible,dialog,view,
+        imeExposed:current.some(node=>/\.inputmethod\./.test(node.package))});
       command('shell','input','tap',String(Math.round((visible[0]+visible[2])/2)),String(Math.round((visible[1]+visible[3])/2)));
-      onboardingDismissRequested.add(step);return;
+      touch.taps++;touch.tapGeometry=geometry;return;
     }
   }
   const count=onboardingSwipes.get(step)??0;
@@ -159,13 +174,16 @@ function interactOnboarding(step:string,names:string[]):void {
   onboardingSwipes.set(step,count+1);emit('observed',{interaction:'onboarding-scroll',step,attempt:count+1});
 }
 function onboarding():boolean {
-  if(has(['内测声明','Internal Testing Notice'])) {
-    if(!onboardingDismissRequested.has('notice'))interactOnboarding('notice',['继续','Continue']);
-    return true;
+  const steps=[{step:'notice',titles:['内测声明','Internal Testing Notice'],actions:['继续','Continue']},
+    {step:'key',titles:['添加一个 API Key 开始使用','Add an API key to get started'],actions:['稍后配置','Configure later']}];
+  for(const item of steps) {
+    const touch=onboardingTouches.get(item.step);
+    if(!has(item.titles) && touch?.taps && !touch.dismissed) {
+      touch.dismissed=true;emit('observed',{interaction:'onboarding-dismissed',step:item.step});
+    }
   }
-  if(has(['添加一个 API Key 开始使用','Add an API key to get started'])) {
-    if(!onboardingDismissRequested.has('key'))interactOnboarding('key',['稍后配置','Configure later']);
-    return true;
+  for(const item of steps)if(has(item.titles)) {
+    interactOnboarding(item.step,item.actions);return true;
   }
   return false;
 }
