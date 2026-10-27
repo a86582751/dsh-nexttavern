@@ -1465,7 +1465,10 @@ export class ReactLoopAgent {
         const assembled = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal));
         const opening = this.phase.programmatic?.opening;
         const generation = position.step === 1 ? this.phase.programmatic : undefined;
-        const assembly = generation ? { ...assembled, tools: [], sections: [...assembled.sections,
+        const assembly = generation ? { ...assembled, tools: [],
+            // Owned openings carry the invocation in request/material, outside the
+            // persisted player history and separate from the provider's system slot.
+            sections: opening ? assembled.sections : [...assembled.sections,
                 { name: 'programmatic:opening-regenerate', text: generation.instruction, interpolate: false }] } : assembled;
         signal.throwIfAborted();
         const sections = renderContextSections(assembly);

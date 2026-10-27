@@ -252,9 +252,21 @@ export function createRoleplayOpeningMaterialOwnerV1(deps:RoleplayOpeningMateria
           const checks={assertCurrent:built.assertCurrent.bind(built),assertSelected:built.assertSelected.bind(built),
             release:built.release.bind(built)}
           checks.assertSelected(input.selected,true)
-          const material=data({requiredSections:built.requiredSections,sections:built.sections,insertions:built.insertions,
+          // The invocation is the actual request action, not a player input.
+          // Keep it in the reconstructable request material so providers with
+          // a separate system slot receive it without adding Native history.
+          const insertions=[...built.insertions]
+          if(input.step===1) {
+            const order=Math.max(-1,...built.insertions.map(row=>row.stableOrder),
+              ...(built.anchoredInsertions??[]).map(row=>row.stableOrder))+1
+            insertions.push({contributionRef:'opening-invocation',sourceSha256:identity.instructionSha256,
+              requestedRole:'user',requestedDepth:0,stableOrder:order,
+              renderedText:identity.instruction,renderedSha256:identity.instructionSha256})
+          }
+          const material=data({requiredSections:built.requiredSections,sections:built.sections,insertions,
             ...built.anchoredInsertions?{anchoredInsertions:built.anchoredInsertions}:{},
-            ...built.messageProjection?{messageProjection:built.messageProjection}:{},...built.story?{story:built.story}:{}},4_194_304),
+            ...built.messageProjection?{messageProjection:built.messageProjection}:{},
+            ...built.story?{story:built.story}:{}},4_194_304),
             materialSha256=nativeInputSha256(material),basis={schemaVersion:1 as const,
               encoding:'core-program-opening-material-record-v1' as const,authority:'consumer-data-only' as const,
               sessionId:String(session.id),identity,seedRef,inputRef,nativeOwner:input.owner,turn:input.turn,step:input.step},
