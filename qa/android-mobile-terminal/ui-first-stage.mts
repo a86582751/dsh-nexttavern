@@ -24,17 +24,19 @@ requireUi(Object.keys(args).every(key=>['--adb','--serial','--package','--phase'
 // The create flow includes ordinary UI card/model/chat/recovery steps; no separate recovery entry is exposed.
 if(args['--phase']!=='create') {emit('blocked',{code:'CREATE_FLOW_ONLY',noDeviceActions:true});process.exit(2)}
 requireUi(fixtureEvents && args['--work-dir'],'FIXTURE_EVENTS_AND_WORK_DIRECTORY_REQUIRED');
-const remoteXml='/data/local/tmp/nexttavern-mobile-first-ui.xml';
 function command(...commandArgs:string[]):string {
   try {return execFileSync(adb,['-s',serial,...commandArgs],{encoding:'utf8',timeout:90000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe']})}
   catch {throw new UiFailure('ADB_COMMAND_FAILED')}
 }
-const decode=(value:string)=>value.replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+const decode=(value:string)=>value.replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi,(_,hex,decimal)=>String.fromCodePoint(parseInt(hex??decimal,hex?16:10))).replace(/&amp;/g,'&');
 let current:Node[]=[];
 function snapshot():Node[] {
-  command('shell','uiautomator','dump',remoteXml);
-  const xml=command('exec-out','cat',remoteXml);
-  requireUi(xml.includes('<hierarchy'),'ACCESSIBILITY_DUMP_UNAVAILABLE');
+  // Public UiAutomation preserves Chromium's hint text; capture privately.
+  const output=command('shell','am','instrument','-w','-r','app.nexttavern.qa.ui/.HierarchyInstrumentation');
+  const records=[...output.matchAll(/^INSTRUMENTATION_RESULT: hierarchy=([^\r\n]*)\r?$/gm)];
+  requireUi(/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)&&records.length===1,'ACCESSIBILITY_DUMP_UNAVAILABLE');
+  const xml=records[0][1];
+  requireUi(xml.startsWith('<hierarchy>')&&xml.endsWith('</hierarchy>'),'ACCESSIBILITY_DUMP_UNAVAILABLE');
   current=[];
   const parents:number[]=[];
   for(const match of xml.matchAll(/<node\b([^>]*?)(\/?)>|<\/node>/g)) {
@@ -79,6 +81,7 @@ function bounds(node:Node):number[]|null {
   return numbers;
 }
 function visibleBounds(node:Node):number[]|null {
+  if(node['visible-to-user']!=='true')return null;
   let box=bounds(node);if(!box)return null;
   for(const parent of ancestors(node)) {
     const clip=bounds(parent);if(!clip)continue;
@@ -188,11 +191,11 @@ function onboarding():boolean {
   return false;
 }
 
-function captureApprovedScreenshot(name:'models'|'synthetic-chat'):void {
+function captureApprovedScreenshot(name:'empty-provider'|'synthetic-chat'):void {
   const directory=process.env.NEXTTAVERN_UI_EVIDENCE_DIR;
   if(!directory)return;
-  // Only the fresh Models page and later verified synthetic conversation are
-  // approved. Never capture generic failures/credential editors or print bytes.
+  // Only the empty provider form BEFORE any input and the verified synthetic
+  // conversation are approved. Never capture populated editors or generic failures.
   mkdirSync(directory,{recursive:true});
   const png=execFileSync(adb,['-s',serial,'exec-out','screencap','-p'],{
     timeout:90000,maxBuffer:8*1024*1024,stdio:['ignore','pipe','pipe'],
@@ -204,47 +207,20 @@ const fixtureId='nexttavern-fixture';
 const fixtureModelNames=['模型 ID 1','Model ID 1'];
 const named=(node:Node,names:string[])=>names.some(name=>node.text===name||node['content-desc']===name||node.hint===name);
 const button=(node:Node)=>node.clickable==='true'||node.class==='android.widget.Button';
-/** Pinned CustomProviderCard/ModelRow render one label and one control per
- * field. Accept that relationship only when accessibility retains the field
- * owner; a flattened form is not enough evidence to choose an unnamed input. */
-function labelledControls(names:string[],kind:(node:Node)=>boolean,controlNames:string[]):Node[] {
-  const result:Node[]=[];
-  for(const label of current.filter(node=>node.package===pkg&&node.class==='android.widget.TextView'&&named(node,names))) {
-    const owner=current[Number(label.__parent)];
-    if(!owner||owner.class!=='android.view.View')continue;
-    const children=current.filter(node=>node.package===pkg&&ancestors(node).includes(owner));
-    const labels=children.filter(node=>node.class==='android.widget.TextView'&&(node.text||node['content-desc']));
-    const controls=children.filter(node=>kind(node)&&node.enabled!=='false');
-    if(labels.length!==1||labels[0]!==label||controls.length!==1)continue;
-    const control=controls[0],declared=[control['content-desc'],control.hint].filter(Boolean);
-    if(declared.length&&!declared.some(value=>[...names,...controlNames].includes(value)))continue;
-    if(current.indexOf(control)>current.indexOf(label))result.push(control);
-  }
-  return [...new Set(result)];
-}
 /** Reveal only a named form control through its actual scrollable ancestor;
  * unknown structure remains an observed failure, not a whole-screen fallback. */
 async function reveal(names:string[],kind:(node:Node)=>boolean=button,
   owner:(node:Node)=>boolean=node=>node.package===pkg,fieldLabel=false,sourceLabels=names):Promise<Node> {
   for(let attempt=0;;attempt++) {
     snapshot();
-    // The pinned custom card contains Provider ID and Create provider. Keep
-    // its fields separate from the existing built-in provider credential card.
-    const providerLabel=stage==='create-fixture-provider'?current.find(node=>node.package===pkg
-      &&node.class==='android.widget.TextView'&&named(node,['Provider ID'])):undefined;
-    const providerCard=providerLabel&&ancestors(providerLabel).find(parent=>parent.class==='android.view.View'
-      &&current.some(node=>button(node)&&named(node,['创建提供商','Create provider'])&&ancestors(node).includes(parent)));
-    if(providerLabel)requireUi(providerCard,'CUSTOM_PROVIDER_FIELD_OWNER_NOT_EXPOSED');
-    const owns=(node:Node)=>owner(node)&&(!providerCard||ancestors(node).includes(providerCard));
-    const explicit=current.filter(node=>owns(node)&&named(node,names)&&kind(node)&&node.enabled!=='false');
-    const found=explicit.length?explicit:fieldLabel?labelledControls(sourceLabels,kind,names).filter(owns):[];
+    const found=current.filter(node=>owner(node)&&named(node,names)&&kind(node)&&node.enabled!=='false');
     const visible=found.filter(node=>visibleBounds(node));
     requireUi(visible.length<=1,'NEXT_UI_TARGET_AMBIGUOUS');
     if(visible[0])return visible[0];
     requireUi(found.length<=1,'NEXT_UI_OFFSCREEN_TARGET_AMBIGUOUS');
     // Chromium can omit an offscreen textbox while exposing its source label.
     // Scroll that label's real owner, but return only the actual input target.
-    const labels=fieldLabel?current.filter(node=>owns(node)&&node.class==='android.widget.TextView'&&named(node,sourceLabels)):[];
+    const labels=fieldLabel?current.filter(node=>owner(node)&&node.class==='android.widget.TextView'&&named(node,sourceLabels)):[];
     const visibleLabels=labels.filter(node=>visibleBounds(node));
     const target=found[0]??(visibleLabels.length===1?visibleLabels[0]:labels.length===1?labels[0]:undefined);
     requireUi(target,'NEXT_UI_TARGET_OR_FIELD_LABEL_NOT_EXPOSED');
@@ -289,20 +265,23 @@ async function configureFixtureProvider():Promise<void> {
   await until(()=>has(['自定义模型 API','Custom model API']),30,'CUSTOM_PROVIDER_MODE_NOT_EXPOSED');
   await press(['自定义模型 API','Custom model API']);
   await until(()=>has(['Provider ID']),30,'CUSTOM_PROVIDER_FORM_LABEL_NOT_EXPOSED');
-  await replace(['Provider ID','acme-gateway'],fixtureId,['Provider ID']); // Pinned empty-field placeholder, not a supplied value.
-  await replace(['API 地址','Base URL','https://gateway.example/v1'],'http://127.0.0.1:18765/v1',['API 地址','Base URL']);
+  captureApprovedScreenshot('empty-provider');
+  // Chromium 124 GetHint joins accessible name, placeholder and description with spaces.
+  // Exact pinned hints avoid guessing unnamed fields or matching prefix collisions.
+  await replace(['Provider ID','Provider ID acme-gateway'],fixtureId,['Provider ID']);
+  await replace(['API 地址','Base URL','API 地址 https://gateway.example/v1','Base URL https://gateway.example/v1'],'http://127.0.0.1:18765/v1',['API 地址','Base URL']);
   // Never assume the schema's first protocol is the intended one.
   tapNode(await reveal(['API 协议','API protocol'],node=>node.class==='android.widget.Spinner'||button(node),
     node=>node.package===pkg,true));
   const protocolOption=(node:Node)=>node.class==='android.widget.CheckedTextView'||node.class==='android.widget.RadioButton';
   await until(()=>current.some(node=>named(node,['OpenAI Chat Completions'])&&protocolOption(node)),30,'OPENAI_COMPLETIONS_OPTION_NOT_EXPOSED');
   await press(['OpenAI Chat Completions'],protocolOption);
-  await replace(['API 密钥','API key','输入 API 密钥','Enter your API key'],'local-test-only',['API 密钥','API key']);
+  await replace(['API 密钥','API key','API 密钥 输入 API 密钥','API key Enter your API key'],'local-test-only',['API 密钥','API key']);
   await press(['添加模型','Add model']);
-  await replace([...fixtureModelNames,'模型 ID','Model ID'],fixtureId);
+  await replace([...fixtureModelNames,'模型 ID 1 模型 ID','Model ID 1 Model ID'],fixtureId);
   await press(['模型选项 1','Model options 1']);
-  await replace(['上下文窗口 1','Context window 1'],'65536',['上下文窗口','Context window']);
-  await replace(['最大输出 token 数 1','Max output tokens 1'],'2048',['最大输出 token 数','Max output tokens']);
+  await replace(['上下文窗口 1','Context window 1','Context window 1 Uses the provider default','上下文窗口 1 使用提供商默认值'],'65536',['上下文窗口','Context window']);
+  await replace(['最大输出 token 数 1','Max output tokens 1','Max output tokens 1 Uses the provider default','最大输出 token 数 1 使用提供商默认值'],'2048',['最大输出 token 数','Max output tokens']);
   await press(['创建提供商','Create provider']);
   await until(()=>has(['编辑 '+fixtureId,'Edit '+fixtureId])&&!has(['创建提供商','Create provider']),60,'FIXTURE_PROVIDER_SAVE_NOT_OBSERVED');
   emit('passed',{scope:'custom-provider-form-saved',syntheticProvider:true,liveModel:false});
@@ -777,7 +756,7 @@ try {
     return false;
   },180,'MODEL_DIRECTORY_NOT_READY_OR_LAYOUT_CLIPPED');
   stage='host-models-page';
-  labels();captureApprovedScreenshot('models');
+  labels();
   await runContiguousCreate(args['--work-dir']);
   await pacedCompleteThenInterruptAndRecover(fixtureEvents);
   emit('passed',{scope:'ordinary-ui-synthetic-card-chat-stream-stop-recovery',package:pkg,

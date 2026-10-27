@@ -31,9 +31,11 @@ const decode=(value:string)=>value.replace(/&quot;/g,'"').replace(/&apos;/g,"'")
   .replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi,(_,hex,decimal)=>String.fromCodePoint(parseInt(hex??decimal,hex?16:10)))
   .replace(/&amp;/g,'&');
 function snapshot():void {
-  command('shell','uiautomator','dump','/data/local/tmp/nexttavern-probe-ui.xml');
-  const xml=command('exec-out','cat','/data/local/tmp/nexttavern-probe-ui.xml');
-  need(xml.includes('<hierarchy'),'ACCESSIBILITY_UNAVAILABLE');
+  // Capture the Bundle privately; never log its raw hierarchy or input values.
+  const output=command('shell','am','instrument','-w','-r','app.nexttavern.qa.ui/.HierarchyInstrumentation');
+  const records=[...output.matchAll(/^INSTRUMENTATION_RESULT: hierarchy=([^\r\n]*)\r?$/gm)];
+  need(/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)&&records.length===1,'ACCESSIBILITY_UNAVAILABLE');
+  const xml=records[0][1];need(xml.startsWith('<hierarchy>')&&xml.endsWith('</hierarchy>'),'ACCESSIBILITY_UNAVAILABLE');
   nodes=[];const parents:number[]=[];
   for(const match of xml.matchAll(/<node\b([^>]*?)(\/?)>|<\/node>/g)) {
     if(match[0]==='</node>'){parents.pop();continue}
@@ -47,6 +49,7 @@ function bounds(node:Node):number[]|null {
   return n?.length===4&&n[0]>=0&&n[1]>=0&&n[2]>n[0]&&n[3]>n[1]?n:null;
 }
 function visible(node:Node):number[]|null {
+  if(node['visible-to-user']!=='true')return null;
   let box=bounds(node);if(!box)return null;
   while(Number(node.__parent)>=0) {
     node=nodes[Number(node.__parent)];const clip=bounds(node);if(!clip)continue;
@@ -80,6 +83,7 @@ async function seek(predicate:(n:Node)=>boolean,down:boolean):Promise<Node> {
 const checks=new Map<string,{line:string;value:Check}>();
 let readyLine='',resultLine='',result:Envelope|undefined,summaryComplete=false;
 let headerSeen=false,nativeDirectory='',terminalStatus:string|undefined;
+let runUiState:Record<string,unknown>|undefined;
 function safeCode(value:unknown):string|undefined {return typeof value==='string'&&/^[A-Z0-9_]{1,80}$/.test(value)?value:undefined}
 function checkRecord(value:unknown):Check {
   const check=value as Check;
@@ -197,15 +201,44 @@ async function main():Promise<number> {
       if(!terminalStatus)await seek(n=>n.text?.includes('\nready=true\n')&&/^(?:失败 ·|BLOCKED ·|能力探针通过 ·)/.test(n.text),false);
       stage='scoped-evidence';return completeEvidence();
     }
+    if(!runUiState) {
+      runUiState={runEnabled:own(n=>n.text==='运行能力探针')[0]?.enabled,
+        stopEnabled:own(n=>n.text==='停止')[0]?.enabled,
+        copyEnabled:own(n=>n.text==='复制测试记录')[0]?.enabled};
+      emit('observed',{interaction:'after-native-run-touch',...runUiState});
+    }
     if(!own(n=>n.text?.includes('"protocol":"nexttavern-g0"')).length)scroll(true);
     await delay(2000);
   }
   throw new ProbeFailure('PROBE_TERMINAL_EVIDENCE_DEADLINE');
 }
+function failureContext():Record<string,unknown> {
+  const counts=(items:string[])=>Object.fromEntries([...new Set(items)].slice(0,20).map(key=>[key,items.filter(item=>item===key).length]));
+  const roots=nodes.filter(n=>n.__parent==='-1');
+  let ownProcesses:Record<string,unknown>[]=[];
+  let currentPid:string|null=null;
+  try{currentPid=command('shell','pidof',pkg).trim()}catch{/* The Activity may already have exited. */}
+  try {
+    // Still inspect the package UID when its Activity is gone: an owned child
+    // can outlive that PID. Never print names, argv or other applications.
+    const info=command('shell','dumpsys','package',pkg),uid=info.match(/^\s*userId=(\d+)\s*$/m)?.[1];
+    if(uid)ownProcesses=command('shell','ps','-A','-o','UID,PID,PPID,NAME').trim().split(/\r?\n/).slice(1)
+      .map(line=>line.trim().split(/\s+/)).filter(row=>row[0]===uid)
+      .map(row=>({pid:Number(row[1]),parentPid:Number(row[2]),kind:row[1]===currentPid?'activity':/libnexttavern_node|^node$/.test(row[3])?'node':'other-owned'}));
+  }catch{/* Diagnostic unavailability is not evidence of runtime failure. */}
+  return {initialActivityPid:pid,currentActivityPid:/^\d+$/.test(currentPid??'')?Number(currentPid):null,
+    ownProcesses,runUiState:runUiState??null,
+    rootPackages:counts(roots.map(n=>n.package??'')),rootClasses:counts(roots.map(n=>n.class??'')),
+    probeWindowActive:roots.some(n=>n.package===pkg&&n['window-active']==='true'),
+    probeWindowFocused:roots.some(n=>n.package===pkg&&n['window-focused']==='true'),
+    nativeStatus:own(n=>n.class==='android.widget.TextView'&&n.text?.includes('\nready='))
+      .map(n=>({state:/^(运行中|失败|BLOCKED|已取消|超时|能力探针通过|尚未运行)/.exec(n.text)?.[1]??'unknown',
+        ready:/\nready=true\n/.test(n.text)})).slice(0,2)};
+}
 try{process.exitCode=await main()}catch(error) {
   emit('failed',{code:error instanceof ProbeFailure?error.code:'PROBE_UI_DRIVER_ERROR',
     parsedCheckCount:checks.size,nativeTerminalStatus:terminalStatus??null,displayedGlobalStatus:result?.status??null,
-    finalSummaryComplete:summaryComplete,headerSeen,androidGate:false,fullG0Accepted:false,
+    finalSummaryComplete:summaryComplete,headerSeen,androidGate:false,fullG0Accepted:false,...failureContext(),
     nativeControls:own(n=>['android.widget.Button','android.widget.CheckBox'].includes(n.class))
       .slice(0,8).map(n=>({class:n.class,bounds:n.bounds,enabled:n.enabled,checked:n.checked}))});
   process.exitCode=1;
