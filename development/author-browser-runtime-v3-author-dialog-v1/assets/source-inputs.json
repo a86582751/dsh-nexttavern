@@ -85,7 +85,7 @@
       {
         "artifact": "tavern-author-browser-ast-v3-typescript",
         "path": "src/core/tavern-author-browser-ast-v3.mts",
-        "sha256": "75259c5764ddb8803b7568b528b7b3082b926757e68d6de2ac73bba55d310568"
+        "sha256": "caaa4f0f80dbd014ce8514e1b667124b2de32798ee401f3465d6c71fb7e293cd"
       },
       {
         "artifact": "tavern-author-browser-ast-worker-v3-typescript",
@@ -152,7 +152,7 @@
       {
         "artifact": "tavern-author-browser-attachment-worker-v3-typescript",
         "path": "src/core/tavern-author-browser-attachment-worker-v3.ts",
-        "sha256": "eaad0bc20e99d874bc89e07d18c0db66808abbfc52de8baf379615bcbd9ed1b2"
+        "sha256": "6356e60315a96a9395c042e50b26a0e48a01dc05c8f6be006d4e5e64f2b139ca"
       },
       {
         "artifact": "tavern-author-browser-execution-worker-v3-typescript",
@@ -177,7 +177,7 @@
       {
         "artifact": "tavern-author-browser-source-guest-v3-typescript",
         "path": "src/core/tavern-author-browser-source-guest-v3.ts",
-        "sha256": "42293000179bc53c6dbd6c727b466cb7e2ba4d6f8ba7e414485829d456c53aef"
+        "sha256": "a26dd4364679bb33e71f4b1c1dbbfa66cddd501075a80f59807af568bcefec22"
       },
       {
         "artifact": "tavern-display-html-typescript",

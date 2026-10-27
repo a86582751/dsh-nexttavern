@@ -2531,7 +2531,7 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
     const promiseSettlements = new Map();
     function invokeFunction(fn, args, node, receiver, selectorExpression) {
         if (helperHostContext(fn))
-            return one(sourceDictionary('helper-host.context', ['chatId']));
+            return one(helperHostContextData());
         if (readerGuestHelper(fn))
             return readerGuestResult(fn, args, node);
         if (fn.kind === 'choice') {
@@ -3190,6 +3190,24 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
             }
         }
         return result;
+    }
+    function helperHostContextData() {
+        const prior = sourceDictionaries.get('helper-host.context');
+        if (prior)
+            return prior;
+        const context = sourceDictionary('helper-host.context', ['chatId', 'name2']);
+        const character = sourceDictionary('helper-host.character', ['sourceId', 'name']);
+        add(field(character, 'avatar'), new Set([guest, absent]));
+        character.written.add('avatar');
+        const characters = atom('array', { fields: new Map(), written: new Set(['0', 'length']), elements: cell(), snapshot: true });
+        add(characters.elements, one(character));
+        add(field(characters, '0'), new Set([character, absent]));
+        add(field(characters, 'length'), new Set([literal(0), literal(1)]));
+        add(field(context, 'characterId'), new Set([literal(0), absent]));
+        context.written.add('characterId');
+        add(field(context, 'characters'), one(characters));
+        context.written.add('characters');
+        return context;
     }
     const sourceAsyncResults = new Map();
     function sourcePromise(node, name, contents) {

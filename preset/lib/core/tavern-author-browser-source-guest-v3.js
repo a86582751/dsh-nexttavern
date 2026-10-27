@@ -84,6 +84,8 @@ export function browserSourceGuestBootstrapV3(config) {
     const invocations = [];
     const chatMetadata = { tainted: false };
     let snapshot = freeze(config.snapshot), active = true, sequence = 0;
+    const characterContext = () => ({ chatId: config.binding.sessionId, name2: snapshot.character?.name ?? '',
+        characterId: snapshot.character ? 0 : undefined, characters: clone(snapshot.character ? [snapshot.character] : []) });
     let readerMessages;
     const retiredPages = new Set(), listeners = new Map();
     const mvuWaiters = new Set();
@@ -667,8 +669,7 @@ export function browserSourceGuestBootstrapV3(config) {
                 mutatePersona({ kind: 'replace', id: actual, persona: personaValue(value) });
             }, structuredClone: clone, };
         const tavern = { getCurrentChatId: () => config.binding.sessionId, getContext: () => ({
-                name1: snapshot.persona.name, name2: snapshot.character?.name ?? '', chatId: config.binding.sessionId,
-                characterId: snapshot.character ? 0 : undefined, characters: clone(snapshot.character ? [snapshot.character] : []), eventTypes,
+                name1: snapshot.persona.name, ...characterContext(), eventTypes,
                 tavern_events: eventTypes,
                 getRequestHeaders: () => ({ 'Content-Type': 'application/json' }),
                 chat: clone(snapshot.messages.map((row) => ({ name: row.role === 'user' ? snapshot.persona.name : snapshot.character?.name ?? '',
@@ -811,7 +812,8 @@ export function browserSourceGuestBootstrapV3(config) {
             SillyTavern: exposedTavern, NextTavern: freeze(guarded(nextTavern)),
             get name1() { return snapshot.persona.name; }, get name2() { return snapshot.character?.name ?? ''; } });
     }
-    return { createFacade, facadeKeys: (facade) => stringify(ownKeys(facade)), nativeRegistry,
+    return { createFacade, createHelperHostFacade: () => freeze({ SillyTavern: { getContext: characterContext } }),
+        facadeKeys: (facade) => stringify(ownKeys(facade)), nativeRegistry,
         getGenerationRegistrations: () => stringify(generationRows().map(registration)), invokeGeneration,
         cancelGeneration: (text) => { if (generation?.invocation.invocationId === parse(text).invocationId)
             generation.cancelled = true; return undefined; },

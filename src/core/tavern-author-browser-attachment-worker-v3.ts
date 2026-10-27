@@ -150,7 +150,7 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
       generationWriterIdentity:generation?.writer.scriptIdentity})+')')
     const methods:Record<string,any>={}
     await actor.enter(()=>{
-      for(const name of ['createFacade','installFacade','registerPage','snapshot','event','retirePage','destroy',
+      for(const name of ['createFacade','createHelperHostFacade','installFacade','registerPage','snapshot','event','retirePage','destroy',
         'setScriptOrigin','getGenerationRegistrations','invokeGeneration','cancelGeneration'])
         methods[name]=context.getProp(controller,name)
       this.nativeRegistry=context.getProp(controller,'nativeRegistry')
@@ -170,8 +170,12 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     if(this.active)await this.pages.drain()
   }
   private async sourceFacade(context:any,principal:AttachmentPrincipal,pageId:string,updateChatKey:string|null):Promise<void> {
-    if(principal.kind==='helper-host')return
     const {actor}=this.options,source=actor.parent
+    if(principal.kind==='helper-host'){
+      const facade=await actor.captureCall(source,this.sourceMethods!.createHelperHostFacade,[])
+      await actor.call(source,this.sourceMethods!.installFacade,[facade,context.global])
+      return
+    }
     let creator:any
     await actor.enter(()=>{creator=source.newString(JSON.stringify(principal.kind==='helper'
       ?{scriptIdentity:principal.script.descriptor.identity,descriptorSha256:principal.script.descriptorSha256,
@@ -224,8 +228,6 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     await actor.enter(()=>{name=actor.parent.newString(id)})
     try {await actor.call(actor.parent,this.sourceMethods!.registerPage,[name,captured])}finally {name.dispose()}
     await this.sourceFacade(context,principal,id,updateChatKey)
-    if(principal.kind==='helper-host')await actor.runSource(context,
-      'globalThis.SillyTavern=Object.freeze({getContext:()=>({chatId:'+JSON.stringify(this.options.binding.sessionId)+'})});')
     const controller:GuestController={context,methods,
       setCurrentScript:node=>this.primitive(context,methods.setCurrentScript,node),
       setSourceScriptOrigin:page=>this.primitive(actor.parent,this.sourceMethods!.setScriptOrigin,{pageId:id,

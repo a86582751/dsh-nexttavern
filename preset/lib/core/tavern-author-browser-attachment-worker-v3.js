@@ -101,7 +101,7 @@ export class BrowserAttachmentWorkerV3 {
         }) + ')');
         const methods = {};
         await actor.enter(() => {
-            for (const name of ['createFacade', 'installFacade', 'registerPage', 'snapshot', 'event', 'retirePage', 'destroy',
+            for (const name of ['createFacade', 'createHelperHostFacade', 'installFacade', 'registerPage', 'snapshot', 'event', 'retirePage', 'destroy',
                 'setScriptOrigin', 'getGenerationRegistrations', 'invokeGeneration', 'cancelGeneration'])
                 methods[name] = context.getProp(controller, name);
             this.nativeRegistry = context.getProp(controller, 'nativeRegistry');
@@ -130,9 +130,12 @@ export class BrowserAttachmentWorkerV3 {
             await this.pages.drain();
     }
     async sourceFacade(context, principal, pageId, updateChatKey) {
-        if (principal.kind === 'helper-host')
-            return;
         const { actor } = this.options, source = actor.parent;
+        if (principal.kind === 'helper-host') {
+            const facade = await actor.captureCall(source, this.sourceMethods.createHelperHostFacade, []);
+            await actor.call(source, this.sourceMethods.installFacade, [facade, context.global]);
+            return;
+        }
         let creator;
         await actor.enter(() => {
             creator = source.newString(JSON.stringify(principal.kind === 'helper'
@@ -203,8 +206,6 @@ export class BrowserAttachmentWorkerV3 {
             name.dispose();
         }
         await this.sourceFacade(context, principal, id, updateChatKey);
-        if (principal.kind === 'helper-host')
-            await actor.runSource(context, 'globalThis.SillyTavern=Object.freeze({getContext:()=>({chatId:' + JSON.stringify(this.options.binding.sessionId) + '})});');
         const controller = { context, methods,
             setCurrentScript: node => this.primitive(context, methods.setCurrentScript, node),
             setSourceScriptOrigin: page => this.primitive(actor.parent, this.sourceMethods.setScriptOrigin, { pageId: id,

@@ -59,6 +59,8 @@ export function browserSourceGuestBootstrapV3(config:any) {
   const invocations:any[]=[]
   const chatMetadata={tainted:false}
   let snapshot=freeze(config.snapshot),active=true,sequence=0
+  const characterContext=()=>({chatId:config.binding.sessionId,name2:snapshot.character?.name??'',
+    characterId:snapshot.character?0:undefined,characters:clone(snapshot.character?[snapshot.character]:[])})
   let readerMessages:Map<string,any>|undefined
   const retiredPages=new Set<string>(),listeners=new Map<string,any[]>()
   const mvuWaiters=new Set<{creator:any;resolve:()=>void}>()
@@ -529,8 +531,7 @@ export function browserSourceGuestBootstrapV3(config:any) {
       },structuredClone:clone,
     }
     const tavern={getCurrentChatId:()=>config.binding.sessionId,getContext:()=>({
-      name1:snapshot.persona.name,name2:snapshot.character?.name??'',chatId:config.binding.sessionId,
-      characterId:snapshot.character?0:undefined,characters:clone(snapshot.character?[snapshot.character]:[]),eventTypes,
+      name1:snapshot.persona.name,...characterContext(),eventTypes,
       tavern_events:eventTypes,
       getRequestHeaders:()=>({'Content-Type':'application/json'}),
       chat:clone(snapshot.messages.map((row:any)=>({name:row.role==='user'?snapshot.persona.name:snapshot.character?.name??'',
@@ -653,7 +654,8 @@ export function browserSourceGuestBootstrapV3(config:any) {
       SillyTavern:exposedTavern,NextTavern:freeze(guarded(nextTavern)),
       get name1(){return snapshot.persona.name},get name2(){return snapshot.character?.name??''}})
   }
-  return {createFacade,facadeKeys:(facade:any)=>stringify(ownKeys(facade)),nativeRegistry,
+  return {createFacade,createHelperHostFacade:()=>freeze({SillyTavern:{getContext:characterContext}}),
+    facadeKeys:(facade:any)=>stringify(ownKeys(facade)),nativeRegistry,
     getGenerationRegistrations:()=>stringify(generationRows().map(registration)),invokeGeneration,
     cancelGeneration:(text:string)=>{if(generation?.invocation.invocationId===parse(text).invocationId)generation.cancelled=true;return undefined},
     setScriptOrigin:(text:string)=>{const data=parse(text)

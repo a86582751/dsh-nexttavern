@@ -1977,7 +1977,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   const unprovenNativeBoundCalls=new Set<TypeScript.Node>()
   const promiseSettlements=new Map<TypeScript.Node,{promise:Atom;rows:Atom;row:Atom}>()
   function invokeFunction(fn:Atom,args:readonly Value[],node:TypeScript.Node,receiver?:Value,selectorExpression?:TypeScript.Expression):Value {
-    if(helperHostContext(fn))return one(sourceDictionary('helper-host.context',['chatId']))
+    if(helperHostContext(fn))return one(helperHostContextData())
     if(readerGuestHelper(fn))return readerGuestResult(fn,args,node)
     if(fn.kind==='choice'){
       const result:Value=new Set()
@@ -2404,6 +2404,20 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       for(const key of keys){add(field(result,key),one(name==='events'&&key==='GENERATION_AFTER_COMMANDS'?literal(key):guest))
         result.written!.add(key)}}
     return result
+  }
+  function helperHostContextData():Atom {
+    const prior=sourceDictionaries.get('helper-host.context')
+    if(prior)return prior
+    const context=sourceDictionary('helper-host.context',['chatId','name2'])
+    const character=sourceDictionary('helper-host.character',['sourceId','name'])
+    add(field(character,'avatar'),new Set([guest,absent]));character.written!.add('avatar')
+    const characters=atom('array',{fields:new Map(),written:new Set(['0','length']),elements:cell(),snapshot:true})
+    add(characters.elements!,one(character))
+    add(field(characters,'0'),new Set([character,absent]))
+    add(field(characters,'length'),new Set([literal(0),literal(1)]))
+    add(field(context,'characterId'),new Set([literal(0),absent]));context.written!.add('characterId')
+    add(field(context,'characters'),one(characters));context.written!.add('characters')
+    return context
   }
   const sourceAsyncResults=new Map<TypeScript.Node,Map<string,Atom>>()
   function sourcePromise(node:TypeScript.Node,name:string,contents:Atom):Value {
