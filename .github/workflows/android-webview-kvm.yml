@@ -16,6 +16,7 @@ on:
       - preset/**
       - development/**
       - tools/**
+      - package.json
       - build-tools/package*.json
       - harness/package*.json
       - integrations/auth-webserver/**
