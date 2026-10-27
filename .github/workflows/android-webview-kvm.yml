@@ -48,7 +48,7 @@ jobs:
         id: ui_images
         shell: bash
         run: |
-          if [[ -f "$RUNNER_TEMP/nexttavern-ui-images/empty-provider.png" || -f "$RUNNER_TEMP/nexttavern-ui-images/synthetic-chat.png" ]]; then
+          if [[ -f "$RUNNER_TEMP/nexttavern-ui-images/empty-provider.png" || -f "$RUNNER_TEMP/nexttavern-ui-images/ui-state.png" ]]; then
             echo 'present=true' >> "$GITHUB_OUTPUT"
           fi
       - name: Retain approved synthetic UI images for one day
@@ -59,7 +59,7 @@ jobs:
           name: android-synthetic-ui
           path: |
             ${{ runner.temp }}/nexttavern-ui-images/empty-provider.png
-            ${{ runner.temp }}/nexttavern-ui-images/synthetic-chat.png
+            ${{ runner.temp }}/nexttavern-ui-images/ui-state.png
           retention-days: 1
           if-no-files-found: error
           compression-level: 0

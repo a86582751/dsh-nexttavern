@@ -273,27 +273,28 @@ function onboarding():boolean {
 
 let emptyProviderCaptured=false;
 let providerKeyInputStarted=false;
-function captureApprovedScreenshot(name:'empty-provider'|'model-routing'|'synthetic-chat',replaceEmpty=false):void {
+function captureApprovedScreenshot(name:'empty-provider'|'model-routing'|'model-routing-after'|'synthetic-chat',replaceEmpty=false):void {
   if(name==='empty-provider') {
     requireUi(!providerKeyInputStarted,'CREDENTIAL_FORM_SCREENSHOT_FORBIDDEN');
     if(emptyProviderCaptured&&!replaceEmpty)return;
   }
-  if(name==='model-routing') {
+  if(name==='model-routing'||name==='model-routing-after') {
     requireUi(stage==='fixture-main-and-worker-model-routing'&&has(['模型路由'])
       &&!current.some(node=>node.package===pkg&&node.password==='true'),'MODEL_ROUTING_SCREENSHOT_NOT_SAFE');
   }
   const directory=process.env.NEXTTAVERN_UI_EVIDENCE_DIR;
   if(!directory)return;
   // Approved synthetic setup (empty provider form or credential-free model
-  // routing) shares one artifact slot; the verified conversation uses the other.
+  // routing) shares one artifact slot; the other holds the gesture result, later
+  // replaced by the verified synthetic conversation.
   // Never capture credential-filled editors or retain a third image.
   mkdirSync(directory,{recursive:true});
   const png=execFileSync(adb,['-s',serial,'exec-out','screencap','-p'],{
     timeout:90000,maxBuffer:8*1024*1024,stdio:['ignore','pipe','pipe'],
   });
   // Reuse the first approved artifact slot; never retain a third image.
-  const filename=name==='model-routing'?'empty-provider':name;
-  writeFileSync(join(directory,filename+'.png'),png,{flag:name==='model-routing'||name==='empty-provider'&&replaceEmpty?'w':'wx'});
+  const filename=name==='empty-provider'||name==='model-routing'?'empty-provider':'ui-state';
+  writeFileSync(join(directory,filename+'.png'),png,{flag:name!=='empty-provider'||replaceEmpty?'w':'wx'});
   if(name==='empty-provider')emptyProviderCaptured=true;
   emit('observed',{syntheticScreenshot:name});
 }
@@ -302,15 +303,22 @@ const fixtureModelNames=['模型 ID 1','Model ID 1'];
 const named=(node:Node,names:string[])=>names.some(name=>node.text===name||node['content-desc']===name||node.hint===name);
 const button=(node:Node)=>node.clickable==='true'||node.class==='android.widget.Button';
 let modelRoutingScrollBox:number[]|null=null;
+let modelRoutingGestureX:number|null=null;
+let modelScrollImagesRecorded=false;
 function captureModelRoutingViewport():void {
   const heading=current.find(node=>node.package===pkg&&node.class==='android.widget.TextView'&&node.text==='模型路由'&&visibleBounds(node));
   const document=heading&&ancestors(heading).find(node=>node.class==='android.webkit.WebView'&&visibleBounds(node));
   requireUi(heading&&document,'MODEL_PANEL_VIEWPORT_NOT_EXPOSED');
   const title=visibleBounds(heading)!,view=visibleBounds(document)!;
-  // Source: ModelsPanel's fieldset is the dialog's overflow-y:auto body.
+  // Source: ModelsPanel's root panel is the dialog's overflow-y:auto body.
   // Pixel evidence confirms its scrollbar below the fixed two-row tabs. Use
   // the measured interior below its heading, never the whole WebView/screen.
   modelRoutingScrollBox=[title[0],title[3]+12,title[2],view[3]-12];
+  // The panel's visible right padding lies beyond its form content and before
+  // the scrollbar. A drag starting on a label/select can follow that control's
+  // default handling instead; use this source- and pixel-confirmed body gutter.
+  modelRoutingGestureX=Math.round((title[2]+view[2]-12)/2);
+  requireUi(modelRoutingGestureX>title[2],'MODEL_PANEL_GUTTER_NOT_EXPOSED');
   requireUi(modelRoutingScrollBox[3]-modelRoutingScrollBox[1]>100,'MODEL_PANEL_VIEWPORT_TOO_SMALL');
 }
 async function revealModelControl(names:string[],kind:(node:Node)=>boolean,owner:(node:Node)=>boolean):Promise<Node> {
@@ -322,13 +330,28 @@ async function revealModelControl(names:string[],kind:(node:Node)=>boolean,owner
     if(visibleBounds(found[0]))return found[0];
     const before=found[0].bounds,coordinates=before?.match(/-?\d+/g)?.map(Number);
     requireUi(coordinates?.length===4,'MODEL_PANEL_TARGET_GEOMETRY_MISSING');
-    const upward=coordinates[1]>=box[1],x=Math.round((box[0]+box[2])/2),height=box[3]-box[1];
-    command('shell','input','swipe',String(x),String(Math.round(box[1]+height*(upward ? .85 : .15))),
-      String(x),String(Math.round(box[1]+height*(upward ? .15 : .85))),'450');
+    const upward=coordinates[1]>=box[1],x=modelRoutingGestureX!,height=box[3]-box[1];
+    const startY=Math.round(box[1]+height*(upward ? .85 : .15)),endY=Math.round(box[1]+height*(upward ? .15 : .85));
+    requireUi(!current.some(node=>{
+      if(node.package!==pkg||!(button(node)||node.class==='android.widget.Spinner'||node.class==='android.widget.EditText'))return false;
+      const rect=visibleBounds(node);return rect&&x>=rect[0]&&x<rect[2]&&startY>=rect[1]&&startY<rect[3];
+    }),'MODEL_PANEL_GESTURE_START_INTERACTIVE');
+    if(!modelScrollImagesRecorded)captureApprovedScreenshot('model-routing');
+    emit('observed',{interaction:'model-panel-gesture-before',target:names[0],targetBounds:before,
+      headingBounds:current.find(node=>node.text==='模型路由')?.bounds,viewport:box,from:[x,startY],to:[x,endY]});
+    command('shell','input','swipe',String(x),String(startY),String(x),String(endY),'450');
     // No replay after transport failure, and no second gesture without an
     // observed movement from the preceding one.
-    await until(()=>current.some(node=>owner(node)&&named(node,names)&&kind(node)
-      &&(node.bounds!==before||visibleBounds(node))),10,'MODEL_PANEL_DID_NOT_SCROLL');
+    try {
+      await until(()=>current.some(node=>owner(node)&&named(node,names)&&kind(node)
+        &&(node.bounds!==before||visibleBounds(node))),10,'MODEL_PANEL_DID_NOT_SCROLL');
+    }catch(error) {
+      if(error instanceof UiFailure&&error.code==='MODEL_PANEL_DID_NOT_SCROLL'&&!modelScrollImagesRecorded) {
+        captureApprovedScreenshot('model-routing-after');modelScrollImagesRecorded=true;
+      }
+      throw error;
+    }
+    if(!modelScrollImagesRecorded) {captureApprovedScreenshot('model-routing-after');modelScrollImagesRecorded=true;}
     emit('observed',{interaction:'source-backed-model-panel-scroll',target:names[0],viewport:box,
       direction:upward?'toward-later-controls':'toward-earlier-controls',movementObserved:true});
   }while(Date.now()<end);
