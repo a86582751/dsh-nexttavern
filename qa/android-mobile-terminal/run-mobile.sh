@@ -97,7 +97,7 @@ GRADLE
   cat > "$work/hierarchy/AndroidManifest.xml" <<'XML'
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="app.nexttavern.qa.ui">
  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
- <application android:debuggable="false" android:allowBackup="false" android:testOnly="true" android:label="Runner UI hierarchy reader" />
+ <application android:debuggable="false" android:allowBackup="false" android:testOnly="true" android:label="Runner UI accessibility helper" />
  <instrumentation android:name=".HierarchyInstrumentation" android:targetPackage="app.nexttavern.qa.ui" />
 </manifest>
 XML
@@ -112,7 +112,7 @@ PY_HELPER
   "$tools/apksigner" sign --ks "$work/preview.p12" --ks-pass pass:android --key-pass pass:android \
     --out "$hierarchy_apk" "$work/hierarchy/aligned.apk" >> "$work/build.log" 2>&1
   "$tools/apksigner" verify "$hierarchy_apk" >> "$work/build.log" 2>&1
-  printf 'READONLY_SELF_TARGET_ACCESSIBILITY_HELPER_BUILT\n'
+  printf 'SELF_TARGET_ACCESSIBILITY_SNAPSHOT_FOCUS_HELPER_BUILT\n'
   exit 0
 fi
 [[ "${1:-}" == exercise ]]

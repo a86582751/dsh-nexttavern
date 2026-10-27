@@ -9,12 +9,18 @@ import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.HashSet;
 import java.util.Set;
 
-/** One read-only public accessibility snapshot; no product instrumentation or actions. */
+/** Read-only public snapshots; one explicit semantic focus operation for the QA app only. */
 public final class HierarchyInstrumentation extends Instrumentation {
-    @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
+    private Bundle request;
+    @Override public void onCreate(Bundle arguments) {
+        request = arguments == null ? new Bundle() : new Bundle(arguments);
+        super.onCreate(arguments); start();
+    }
     @Override public void onStart() {
         Bundle result = new Bundle();
         String phase = "AUTOMATION_CONNECT";
@@ -27,6 +33,13 @@ public final class HierarchyInstrumentation extends Instrumentation {
             info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
                 | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
             ui.setServiceInfo(info);
+            String operation = request.getString("operation", "");
+            if (!operation.isEmpty()) {
+                if (!"focus-input".equals(operation)) { failure("OPERATION_NOT_ALLOWED", null); return; }
+                phase = "FOCUS_INPUT";
+                focusInput(ui);
+                return;
+            }
             // Connection readiness does not imply a root is already available.
             // Reuse this session; a non-active system root alone is not ready.
             // Retry missing active/focused content only, never exceptions.
@@ -73,6 +86,74 @@ public final class HierarchyInstrumentation extends Instrumentation {
                 ? "HIERARCHY_TOO_LARGE" : "HIERARCHY_" + phase + "_FAILED";
             failure(reason, error);
         }
+    }
+    private void focusInput(UiAutomation ui) {
+        String targetPackage = request.getString("targetPackage");
+        String hint = request.getString("targetHint");
+        String description = request.getString("targetDescription");
+        if (!"app.nexttavern.android.x86diagnostic".equals(targetPackage) || hint == null || description == null) {
+            failure("FOCUS_REQUEST_INVALID", null);
+            return;
+        }
+        List<AccessibilityNodeInfo> matches = new ArrayList<>();
+        Set<Integer> rootIds = new HashSet<>();
+        boolean appRoot = false;
+        try {
+            long deadline = SystemClock.uptimeMillis() + 3000;
+            do {
+                rootIds.clear();
+                for (AccessibilityWindowInfo window : ui.getWindows()) {
+                    try {
+                        if (!window.isActive() && !window.isFocused()) continue;
+                        AccessibilityNodeInfo root = window.getRoot();
+                        if (root == null) continue;
+                        if (targetPackage.contentEquals(text(root.getPackageName())) && rootIds.add(root.getWindowId())) {
+                            appRoot = true;
+                            findInputs(root, targetPackage, hint, description, matches);
+                        } else root.recycle();
+                    } finally { window.recycle(); }
+                }
+                if (!appRoot) {
+                    AccessibilityNodeInfo root = ui.getRootInActiveWindow();
+                    if (root != null) {
+                        if (targetPackage.contentEquals(text(root.getPackageName()))) {
+                            appRoot = true;
+                            findInputs(root, targetPackage, hint, description, matches);
+                        } else root.recycle();
+                    }
+                }
+                if (appRoot || SystemClock.uptimeMillis() >= deadline) break;
+                SystemClock.sleep(200); // Root readiness only; never retry the focus action.
+            } while (SystemClock.uptimeMillis() < deadline);
+            Bundle result = new Bundle();
+            result.putInt("matchCount", matches.size());
+            if (!appRoot || matches.size() != 1) {
+                result.putBoolean("accepted", false);
+                result.putString("error", !appRoot ? "FOCUS_APP_ROOT_NOT_READY"
+                    : matches.isEmpty() ? "FOCUS_TARGET_NOT_FOUND" : "FOCUS_TARGET_AMBIGUOUS");
+                finish(Activity.RESULT_CANCELED, result);
+                return;
+            }
+            // One explicit action only. Acceptance is not proof of resulting
+            // focus: the caller must obtain a fresh hierarchy before typing.
+            result.putBoolean("accepted", matches.get(0).performAction(AccessibilityNodeInfo.ACTION_FOCUS));
+            finish(Activity.RESULT_OK, result);
+        } finally { for (AccessibilityNodeInfo match : matches) match.recycle(); }
+    }
+    private static String text(CharSequence value) { return value == null ? "" : value.toString(); }
+    private static void findInputs(AccessibilityNodeInfo node, String targetPackage, String hint,
+                                   String description, List<AccessibilityNodeInfo> matches) {
+        try {
+            if (targetPackage.equals(text(node.getPackageName())) && "android.widget.EditText".equals(text(node.getClassName()))
+                && hint.equals(text(node.getHintText())) && description.equals(text(node.getContentDescription()))
+                && node.isEnabled() && node.isVisibleToUser() && node.isEditable()) {
+                matches.add(AccessibilityNodeInfo.obtain(node));
+            }
+            for (int i = 0; i < node.getChildCount(); i++) {
+                AccessibilityNodeInfo child = node.getChild(i);
+                if (child != null) findInputs(child, targetPackage, hint, description, matches);
+            }
+        } finally { node.recycle(); }
     }
     private void failure(String reason, RuntimeException error) {
         Bundle result = new Bundle();

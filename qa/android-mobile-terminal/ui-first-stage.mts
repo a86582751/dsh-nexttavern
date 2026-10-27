@@ -244,18 +244,22 @@ function onboarding():boolean {
 }
 
 let emptyProviderCaptured=false;
-let providerInputsStarted=false;
-function captureApprovedScreenshot(name:'empty-provider'|'synthetic-chat'):void {
-  if(name==='empty-provider'&&emptyProviderCaptured)return;
+let providerKeyInputStarted=false;
+function captureApprovedScreenshot(name:'empty-provider'|'synthetic-chat',replaceEmpty=false):void {
+  if(name==='empty-provider') {
+    requireUi(!providerKeyInputStarted,'CREDENTIAL_FORM_SCREENSHOT_FORBIDDEN');
+    if(emptyProviderCaptured&&!replaceEmpty)return;
+  }
   const directory=process.env.NEXTTAVERN_UI_EVIDENCE_DIR;
   if(!directory)return;
-  // Only the empty provider form BEFORE any input and the verified synthetic
-  // conversation are approved. Never capture populated editors or generic failures.
+  // Only the synthetic provider form BEFORE any API key input and the verified
+  // synthetic conversation are approved. A fixed fictional Provider ID/loopback
+  // URL may replace the same form PNG; never capture credential-filled editors.
   mkdirSync(directory,{recursive:true});
   const png=execFileSync(adb,['-s',serial,'exec-out','screencap','-p'],{
     timeout:90000,maxBuffer:8*1024*1024,stdio:['ignore','pipe','pipe'],
   });
-  writeFileSync(join(directory,name+'.png'),png,{flag:'wx'});
+  writeFileSync(join(directory,name+'.png'),png,{flag:name==='empty-provider'&&replaceEmpty?'w':'wx'});
   if(name==='empty-provider')emptyProviderCaptured=true;
   emit('observed',{syntheticScreenshot:name});
 }
@@ -304,14 +308,34 @@ async function replace(names:string[],value:string,sourceLabels=names):Promise<v
   emit('observed',{interaction:'edit-source-field',field:names[0]});
   await typeAscii(await reveal(names,node=>node.class==='android.widget.EditText',node=>node.package===pkg,true,sourceLabels),value,names[0]);
 }
+function focusInput(node:Node):void {
+  // Public accessibility focus targets the observed semantic node, not a
+  // coordinate that IME resizing can move before Android dispatches the tap.
+  const quote=(text:string)=>"'"+text.replaceAll("'", "'\\''")+"'";
+  const output=command('shell','am','instrument','-w','-r','-e','operation','focus-input',
+    '-e','targetPackage',pkg,'-e','targetHint',quote(node.hint??''),
+    '-e','targetDescription',quote(node['content-desc']??''),'app.nexttavern.qa.ui/.HierarchyInstrumentation');
+  const accepted=/^INSTRUMENTATION_RESULT: accepted=true\r?$/m.test(output),
+    count=output.match(/^INSTRUMENTATION_RESULT: matchCount=(\d+)\r?$/m)?.[1];
+  emit('observed',{interaction:'semantic-input-focus',accepted,matchCount:count===undefined?null:Number(count),
+    helperError:output.match(/^INSTRUMENTATION_RESULT: error=([A-Z_]{1,80})\r?$/m)?.[1]??null});
+  requireUi(/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)&&accepted&&count==='1','ACCESSIBILITY_FOCUS_NOT_ACCEPTED');
+}
 async function typeAscii(node:Node,value:string,field='synthetic-composer'):Promise<void> {
-  // Observe focus before dispatch: a tap can trigger keyboard/layout movement.
+  // Observe actual input focus after the public semantic focus request.
   // All values are fixed synthetic ASCII, but never emit input contents.
   const identity={hint:node.hint,description:node['content-desc'],class:node.class};
   const focused=()=>current.filter(item=>item.package===pkg&&item.class===identity.class&&item.focused==='true'
     &&item.hint===identity.hint&&item['content-desc']===identity.description);
-  tapNode(node);
-  await until(()=>focused().length===1,10,'EXPECTED_FIELD_NOT_FOCUSED');
+  focusInput(node); // Never replay this action after an ADB failure.
+  try {await until(()=>focused().length===1,10,'EXPECTED_FIELD_NOT_FOCUSED')}
+  catch(error) {
+    emit('observed',{interaction:'input-focus-state',field,
+      inputs:current.filter(item=>item.package===pkg&&item.class==='android.widget.EditText').slice(0,20)
+        .map(item=>({focused:item.focused,enabled:item.enabled,bounds:item.bounds,visible:visibleBounds(item)!==null,
+          requestedHint:item.hint===identity.hint,requestedDescription:item['content-desc']===identity.description}))});
+    throw error;
+  }
   command('shell','input','keycombination','113','29'); // API35 Ctrl+A.
   command('shell','input','keyevent','KEYCODE_DEL');
   command('shell','input','text',value.replaceAll(' ','%s'));
@@ -356,7 +380,6 @@ async function configureFixtureProvider():Promise<void> {
   captureApprovedScreenshot('empty-provider');
   // Chromium 124 GetHint joins accessible name, placeholder and description with spaces.
   // Exact pinned hints avoid guessing unnamed fields or matching prefix collisions.
-  providerInputsStarted=true;
   await replace(['Provider ID','Provider ID acme-gateway'],fixtureId,['Provider ID']);
   await replace(['API 地址','Base URL','API 地址 https://gateway.example/v1','Base URL https://gateway.example/v1'],'http://127.0.0.1:18765/v1',['API 地址','Base URL']);
   // Never assume the schema's first protocol is the intended one.
@@ -365,6 +388,7 @@ async function configureFixtureProvider():Promise<void> {
   const protocolOption=(node:Node)=>node.class==='android.widget.CheckedTextView'||node.class==='android.widget.RadioButton';
   await until(()=>current.some(node=>named(node,['OpenAI Chat Completions'])&&protocolOption(node)),30,'OPENAI_COMPLETIONS_OPTION_NOT_EXPOSED');
   await press(['OpenAI Chat Completions'],protocolOption);
+  providerKeyInputStarted=true;
   await replace(['API 密钥','API key','API 密钥 输入 API 密钥','API key Enter your API key'],'local-test-only',['API 密钥','API key']);
   await press(['添加模型','Add model']);
   await replace([...fixtureModelNames,'模型 ID 1 模型 ID','Model ID 1 Model ID'],fixtureId);
@@ -854,10 +878,10 @@ try {
     incrementalRendering:'observed-partial-to-complete',syntheticCoreFlow:true,
     productPlayable:false,fullG0:false,arm64Qualified:false,phaseBCQualified:false,memoryQualified:false});
 }catch(error) {
-  // This fresh synthetic form has received no input yet. Keep the one approved
-  // empty-form checkpoint even if a window transition blocks field discovery.
-  if(stage==='create-fixture-provider'&&!providerInputsStarted) {
-    try{captureApprovedScreenshot('empty-provider')}catch{/* Screenshot failure is not product evidence. */}
+  // Replace the same approved form PNG only before any API key was entered.
+  // It may contain the fixed synthetic route/loopback URL, never credentials.
+  if(stage==='create-fixture-provider'&&!providerKeyInputStarted) {
+    try{captureApprovedScreenshot('empty-provider',true)}catch{/* Screenshot failure is not product evidence. */}
   }
   let focus:string|null=null,activityAlive:boolean|null=null;
   try{focus=command('shell','dumpsys','window','windows').match(/mCurrentFocus=Window\{[^}]*\s([A-Za-z0-9_.]+\/[A-Za-z0-9_.$]+)\}/)?.[1]??null}catch{}
