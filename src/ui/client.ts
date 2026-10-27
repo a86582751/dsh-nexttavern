@@ -511,6 +511,8 @@ export function apply(ctx: ClientContext) {
         ref: dialogRef,
         className: 'dsh-rp-dialog',
         onCancel: (event: ReactAPI.SyntheticEvent<HTMLDialogElement>) => {
+          // A cancelled file picker bubbles its input's cancel event through this dialog.
+          if (event.target !== event.currentTarget) return;
           event.preventDefault();
           onClose()
         }
