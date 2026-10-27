@@ -39,6 +39,17 @@ Roleplay workspace for DeepSeek Harness: interactive character creation, on-dema
 
 先装宿主，再用[一键安装](#一键安装)的官方插件命令。需要自己指定目录、端口或使用归档时，见[安装](#安装)。
 
+## Android 手机端路线（开发中）
+
+**目标是一个独立安装、点开就能用的 Android APK，让酒馆直接运行在手机上。** 不需要 root，也不以安装 Termux、Ubuntu 或 PRoot 作为使用前提；这不是让手机远程连接一台必须常开的电脑。
+
+- **怎么实现：** 用原生 Android 外壳管理启动、停止和应用生命周期，内置可直接运行于 Android 的独立 Node.js（Bionic）引擎，再用 WebView 显示现有酒馆界面。我们会继续适配手机操作，但不是把整套界面重写成原生 Android 控件。
+- **本机运行不等于离线 AI：** 目标是让引擎和故事数据留在手机本地；生成故事仍需配置自己的在线模型服务与 API Key。除非另有明确支持，不代表手机内置了可离线使用的大模型。
+- **现在做到哪了：** 已完成首轮安装包构建，并在硬件加速的 Android 模拟器中启动本地引擎、显示应用页面。角色卡导入、完整对话、数据保存与重启恢复等关键体验仍在逐项验证，**目前还没有面向普通玩家发布、可下载即玩的 Android APK**。目标优先支持 ARM64 手机；模拟器通过不代表已经完成真机适配。
+- **后台运行的边界：** Android 的省电策略和后台限制仍然存在，不承诺锁屏或切到其他应用后全天候持续运行；后台行为与恢复体验还需继续验证。
+
+想看后续进展，可以关注 [`android/mobile-terminal` 开发分支](https://github.com/a86582751/dsh-nexttavern/tree/android/mobile-terminal)。下面的安装说明仍针对现有桌面／服务器版本，不是 Android APK 的安装步骤。
+
 ## 一键安装
 
 **已经装好 Harness 的玩家，只需这一条命令：**
