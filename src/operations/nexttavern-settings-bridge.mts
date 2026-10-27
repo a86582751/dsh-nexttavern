@@ -29,6 +29,7 @@
  * and an adapter that forwarded that value would break the caller's release.
  */
 import type {Context} from '@deepseek-ai/cordis'
+import {isDeepStrictEqual} from 'node:util'
 
 /** One replaced provider row as the product mounted it. */
 export interface RehomedSettingsRow {
@@ -51,6 +52,8 @@ interface ConfigEditor {
 
 /** Installed adapter; `close` stops advertising synchronously. */
 export interface SettingsBridge {
+  /** This exact row/config belongs to the current validated editor write. */
+  ownsWrite(entry: RehomedSettingsRow['entry'], config: unknown): boolean
   close(): void
   /** Release the adapter fiber; safe to call after the fiber already unloaded. */
   dispose(): Promise<void>
@@ -64,6 +67,7 @@ export interface SettingsBridge {
  */
 export function mountSettingsBridge(ctx: Context, rows: () => RehomedSettingsRow[]): SettingsBridge {
   let closed = false
+  const pendingWrites = new Map<RehomedSettingsRow['entry'], {id: string; config: unknown}>()
   const fiber = ctx.inject(['configEditor'], (editorCtx) => {
     if (closed) return
     const editor = editorCtx.get('configEditor') as ConfigEditor | undefined
@@ -100,7 +104,19 @@ export function mountSettingsBridge(ctx: Context, rows: () => RehomedSettingsRow
       const next = previous.then(async () => {
         const replacement = entry.options.name
         entry.options.name = row.declared
-        try { return await write(entry, change) } finally { entry.options.name = replacement }
+        try {
+          return await write(entry, (current, inherited) => {
+            // Settings validates volatile paths before returning this config.
+            // The editor first reconciles disk, so a queued write/row id is
+            // insufficient: only the exact proposal after this callback is ours.
+            const config = change(current, inherited)
+            pendingWrites.set(entry, {id: row.id, config})
+            return config
+          })
+        } finally {
+          pendingWrites.delete(entry)
+          entry.options.name = replacement
+        }
       })
       writes.set(row.id, next.catch(() => undefined))
       return next
@@ -110,6 +126,10 @@ export function mountSettingsBridge(ctx: Context, rows: () => RehomedSettingsRow
   })
   let releasing: Promise<void> | undefined
   return {
+    ownsWrite(entry, config) {
+      const pending = pendingWrites.get(entry)
+      return !closed && pending?.id === entry.options.id && isDeepStrictEqual(pending.config, config)
+    },
     close() {closed = true},
     dispose() {
       // The entry fiber unloads the adapter alongside its own children, so a
