@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, lstatSync, realpathSync, openSync, writeFileSync, closeSync, readFileSync, constants, fsyncSync, linkSync, unlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fenceCardContent } from './tavern-card.js'
+import { publishNoReplace } from '@deepseek-ai/node-addon-system/atomic'
 import {
   exportSnapshot, renderOrganizedExport, stableJson, safeHeading, sourceLines,
   type ExportMaterial, type ExportSnapshot, type ExportSection,
@@ -35,20 +36,23 @@ type Options = {
 const hash = (value: string | Uint8Array): string => createHash('sha256').update(value).digest('hex')
 const recordOf = (value: unknown): ToolArgs => value !== null && typeof value === 'object' ? value as ToolArgs : {}
 
-function writeExport(cwd: string, id: string, markdown: string): string {
+async function writeExport(cwd: string, id: string, markdown: string): Promise<string> {
   if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error('导出标识无效')
   const root = realpathSync(resolve(cwd)), directory = join(root, '.dsh-card-exports')
   try { mkdirSync(directory) } catch (error: unknown) { if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error }
   if (lstatSync(directory).isSymbolicLink() || realpathSync(directory) !== directory) throw new Error('导出目录不能是符号链接')
   const file = join(directory, `${id}.md`); let fd: number | undefined; let directoryFd: number | undefined; let temporary: string | undefined
   try {
-    if (process.platform === 'linux') directoryFd = openSync(directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
+    if (process.platform === 'linux' || process.platform === 'android') directoryFd = openSync(directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
     const accessDirectory = directoryFd === undefined ? directory : `/proc/self/fd/${directoryFd}`
     if (realpathSync(accessDirectory) !== directory) throw new Error('导出目录在写入前改变')
     const target = join(accessDirectory, `${id}.md`); temporary = join(accessDirectory, `${id}.${randomUUID()}.tmp`)
     fd = openSync(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600)
     writeFileSync(fd, markdown, 'utf8'); fsyncSync(fd); closeSync(fd); fd = undefined
-    try { linkSync(temporary, target) } catch (error: unknown) {
+    try {
+      if (process.platform === 'android') await publishNoReplace(temporary, target)
+      else linkSync(temporary, target)
+    } catch (error: unknown) {
       if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
       if (lstatSync(target).isSymbolicLink() || hash(readFileSync(target)) !== hash(markdown)) throw new Error('导出文件已存在且内容不同，拒绝覆盖')
     }
@@ -154,7 +158,7 @@ export function registerCardExport(ctx: Context, options: Options): void {
       value = { ...value, snapshotKey: sourceKey }
     }
     assertWorkflow?.(session, value)
-    const file = writeExport(session.header.cwd, value.exportId, markdown)
+    const file = await writeExport(session.header.cwd, value.exportId, markdown)
     await put(session, value.exportId, { ...value, status: 'completed', resultHash, file, title: args.title, sections: args.sections, completedAt: value.completedAt ?? Date.now() })
     assertWorkflow?.(session, value)
     const resource = await onCompleted?.(session, { ...value, title: args.title, file, resultHash }, markdown), filename = resource?.name ?? `${safeHeading(args.title).replace(/[\x00-\x1f<>:"/\\|?*]/g, '-').slice(0, 90)}.md`

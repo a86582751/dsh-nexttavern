@@ -1,6 +1,14 @@
 /** Host payload membership belongs to the assembly recipes; activation remains manual. */
 export const HOST_VERSION='0.1.7-rc.2'
 
+/** The native helper is a separately pinned release, not a DSH cohort package. */
+export function hostForkPolicy(name:string):{version:string;license:string} {
+  if(name==='@deepseek-ai/node-addon-system')return {version:'0.1.2',license:'BSD-3-Clause'}
+  if(/^@deepseek-ai\/dsh-[a-z0-9-]+$/.test(name))return {version:HOST_VERSION,license:'MIT'}
+  throw Error('Unsupported host fork member: '+name)
+}
+export const hostForkVersion=(name:string):string=>hostForkPolicy(name).version
+
 /** Historical unprofiled inventories and schema 1 receipts retain their original members. */
 export const NATIVE_FORKS=[
   '@deepseek-ai/dsh-llm',
@@ -38,8 +46,9 @@ export function readHostForkProfile(value:unknown):HostForkProfileV1|undefined{
   const profile=descriptor(value)
   const members=(value as {members?:unknown}).members
   if(!Array.isArray(members)||members.length===0||
-    members.some(name=>typeof name!=='string'||!/^@deepseek-ai\/dsh-[a-z0-9-]+$/.test(name))||
+    members.some(name=>typeof name!=='string')||
     new Set(members).size!==members.length)throw Error('Invalid host fork profile members')
+  for(const name of members)hostForkVersion(name)
   return {...profile,members:[...members]}
 }
 

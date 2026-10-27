@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { constants, createReadStream } from 'node:fs';
 import { chmod, link, mkdir, open, readFile, unlink } from 'node:fs/promises';
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
+import { publishNoReplace } from '@deepseek-ai/node-addon-system/atomic';
 import { AttachmentError, AttachmentId, } from '@deepseek-ai/dsh-attachment';
 import { normalizeImage } from './normalization.js';
 import { detectImage, probeImage } from './image.js';
@@ -184,7 +185,7 @@ export async function commitPreparedImageFile(root, prepared) {
 }
 /**
  * Publish one immutable content-addressed object below a versioned attachment
- * root: staged write, fsync, hard-link into place, digest-verified EEXIST
+ * root: staged write, fsync, no-clobber publication, digest-verified EEXIST
  * deduplication, read-only mode, and durable directory entries from the
  * target's parent up to (excluding) `root`.
  * @param root - absolute `DSH_HOME/attachments/v1` root.
@@ -227,13 +228,29 @@ export async function publishImmutableObjectStream(root, data, targetFor, signal
     return { sha256: staged.sha256, bytes: staged.bytes };
 }
 /**
- * Publish another durable hard-link name for an existing immutable object.
+ * Publish another durable name for an existing immutable object: desktop
+ * hard-link, Android staged copy plus atomic no-clobber publication.
  * @param root - absolute versioned attachment root.
  * @param source - existing content-addressed object below `root`.
  * @param target - new alias below `root`.
  * @param sha256 - expected object digest for an existing-target race.
  */
 export async function publishImmutableAlias(root, source, target, sha256) {
+    if (android) {
+        // Preserve the committed source name; reuse the existing streaming stage,
+        // digest and fsync owner instead of renaming the object into its alias.
+        // Defer opening the source until the stage owns its iterator. A directory
+        // or temp-open failure must not leave an unconsumed ReadStream/descriptor.
+        const staged = await stageImmutableObject(root, (async function* () {
+            yield* createReadStream(source);
+        })());
+        if (staged.sha256 !== sha256) {
+            await removeTemporary(staged.path);
+            throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT');
+        }
+        await publishStagedObject(root, target, staged);
+        return;
+    }
     const parent = dirname(target);
     try {
         const boundary = await ensureDurableHome(dirname(dirname(resolve(root))));
@@ -307,7 +324,10 @@ async function publishStagedObject(root, target, staged) {
     try {
         await ensureDurableDirectory(parent, staged.boundary);
         try {
-            await link(staged.path, target);
+            if (android)
+                await publishNoReplace(staged.path, target);
+            else
+                await link(staged.path, target);
         }
         catch (error) {
             /* v8 ignore next -- Private same-filesystem directories make EEXIST the only recoverable link race. */
@@ -319,7 +339,10 @@ async function publishStagedObject(root, target, staged) {
         }
         // Windows shares the read-only attribute across hard links and refuses to
         // unlink either name once it is set, so discard the staging name first.
-        await unlink(staged.path);
+        if (android)
+            await removeTemporary(staged.path); // Success consumed it; EEXIST did not.
+        else
+            await unlink(staged.path);
         // The target remains the sole link for a new object; this also restores
         // read-only mode when the deduplication path observes an existing object.
         await chmod(target, 0o400);

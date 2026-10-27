@@ -40,6 +40,7 @@ import { validateStoredEvents } from 'dsh-nexttavern-session-format/storage-cont
 import type { JsonlCompression } from './format.js'
 import { generationLogFilename, logSuffix, SessionLogScanner } from './format.js'
 import { publishNewFileWin32 } from './win32.js'
+import { publishNoReplace } from '@deepseek-ai/node-addon-system/atomic'
 import {
   compressZstdFrame,
   createZstdFrameDecoder,
@@ -843,6 +844,12 @@ async function publishCurrentExclusive(
       throw error
     }
   }
+  if (internals.platform === 'android') {
+    try { await publishNoReplace(staged, currentPath) }
+    catch (error) { if (isEEXIST(error)) return false; throw error }
+    await syncDirectory(dirname(currentPath), internals)
+    return true
+  }
   try {
     await internals.fs.link(staged, currentPath)
   } catch (error) {
@@ -922,7 +929,7 @@ async function publishPreparedMigration(
       throw new JsonlGenerationSourceChangedError(sourcePath)
     }
     const published = await publishCurrentExclusive(staged.path, currentPath, internals)
-    if (published && internals.platform === 'win32') staged = { ...staged, path: '' }
+    if (published && (internals.platform === 'win32' || internals.platform === 'android')) staged = { ...staged, path: '' }
     await internals.barrier('after-publication', 1)
     let currentIdentity: JsonlPhysicalIdentity
     if (published) {

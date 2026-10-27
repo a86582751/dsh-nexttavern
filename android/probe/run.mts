@@ -6,11 +6,11 @@ import {errorRecord, exitCode, PROTOCOL} from './model.mts';
 import {probes} from './probes.mts';
 import {runSuite} from './runner.mts';
 
-export interface ProbeArgs {output?: string; timeoutMs?: number; httpsClient?: true}
+export interface ProbeArgs {output?: string; timeoutMs?: number; httpsClient?: true; atomicPublish?: true}
 const MAX_DIAGNOSTIC_TIMEOUT_MS = 120_000;
 
 function usage(): never {
-  throw Object.assign(new Error('Usage: node run.mts [--output path] [--timeout-ms 1..120000 (test-only software timing)] [--https-client (fixed no-key public endpoint)]'), {code: 'USAGE'});
+  throw Object.assign(new Error('Usage: node run.mts [--output path] [--timeout-ms 1..120000 (test-only software timing)] [--https-client (fixed no-key public endpoint)] [--atomic-publish (separate Android no-replace evidence)]'), {code: 'USAGE'});
 }
 export function parseArgs(args: string[]): ProbeArgs {
   const options: ProbeArgs = {};
@@ -19,6 +19,9 @@ export function parseArgs(args: string[]): ProbeArgs {
     if(flag==='--https-client') {
       if(options.httpsClient)usage();
       options.httpsClient=true;continue;
+    }
+    if(flag==='--atomic-publish') {
+      if(options.atomicPublish)usage();options.atomicPublish=true;continue;
     }
     const value = args[++index];
     if (flag === '--output') {
@@ -61,7 +64,7 @@ async function main(): Promise<void> {
   try {
     // The Android supervisor supplies an app-private cwd. Never touch Harness data.
     const summary = await runSuite({probes, ...(args.timeoutMs === undefined ? {} : {timeoutMs: args.timeoutMs}),
-      ...(args.httpsClient?{httpsClient:true}:{}),workRoot: join(process.cwd(), 'artifacts', 'test-temp'), signal: controller.signal,
+      ...(args.httpsClient?{httpsClient:true}:{}),...(args.atomicPublish?{atomicPublish:true}:{}),workRoot: join(process.cwd(), 'artifacts', 'test-temp'), signal: controller.signal,
       onEvent: event => process.stdout.write(`${JSON.stringify(event)}\n`)});
     if (args.output) await writeFile(args.output, `${JSON.stringify(summary, null, 2)}\n`, {flag: 'w', mode: 0o600});
     process.exitCode = termination === 'SIGTERM' ? 143 : termination === 'SIGINT' ? 130 : exitCode(summary);

@@ -153,7 +153,7 @@ else
   node "$repo/qa/android-mobile-terminal/safe-diagnostics.mts" --file "$work/probe-install.log" \
     --source probe-install --exit "$probe_rc" || :
 fi
-printf 'MOBILE_UI_EXIT=%s SEPARATE_CORE_HTTPS_PROBE_EXIT=%s FULL_G0_ACCEPTED=false\n' "$ui_rc" "$probe_rc"
+printf 'MOBILE_UI_EXIT=%s SEPARATE_ANDROID_PUBLICATION_HTTPS_PROBE_EXIT=%s FULL_G0_ACCEPTED=false\n' "$ui_rc" "$probe_rc"
 phase=INDEPENDENT_UI_AND_SCOPED_PROBE_RESULTS
 if ((ui_rc!=0)); then exit "$ui_rc"; fi
 exit "$probe_rc"

@@ -43,6 +43,9 @@ public final class ProbePaths {
         return command(runtime, bundle, softwareDiagnostic, false);
     }
     public static List<String> command(File runtime, File bundle, boolean softwareDiagnostic, boolean httpsClient) throws IOException {
+        return command(runtime, bundle, softwareDiagnostic, httpsClient, false);
+    }
+    public static List<String> command(File runtime, File bundle, boolean softwareDiagnostic, boolean httpsClient, boolean atomicPublish) throws IOException {
         File entry = new File(bundle.getCanonicalFile(), "run.mts");
         if (!entry.isFile() || Files.isSymbolicLink(entry.toPath())) throw new IOException("Probe run.mts is missing");
         List<String> command = new ArrayList<>(Arrays.asList(runtime.getAbsolutePath(), "--experimental-strip-types", entry.getAbsolutePath()));
@@ -51,6 +54,7 @@ public final class ProbePaths {
             if (!new File(bundle, "certs/ca-certificates.pem").isFile()) throw new IOException("Locked public CA asset is missing");
             command.add("--https-client");
         }
+        if (atomicPublish) command.add("--atomic-publish");
         return command;
     }
     public static long supervisorTimeoutSeconds(boolean softwareDiagnostic) { return softwareDiagnostic ? 1800 : 180; }

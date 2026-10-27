@@ -375,6 +375,27 @@ this batch; no second CI execution is required merely for the same inputs.
 Successful desktop checks are not Android G0 acceptance. Missing native bindings
 are reported BLOCKED, and a no-op lock cannot satisfy the contention probe.
 
+### Android publication contract on an x64 Linux build host
+
+The focused publication tests use the same C wrapper as the Android addon, built
+for the x64 Linux test host. With Node 24+, a C compiler and `patchelf`, prepare the
+locked x64 diagnostic runtime cache once from the repository root:
+
+```sh
+node android/tools/prepare-runtime.mts --abi x64
+npm run check -- task test:android-atomic-publication
+```
+
+The registered prerequisite runs `node android/tools/build-flock.mts --abi x64
+--host-test` and writes only an ignored host-test addon and receipt under
+`android/artifacts/native-system-host/<host-arch>/`. It does not replace Android
+JNI libraries. The attachment-boundary check uses the same prerequisite. For a
+direct test invocation, run that producer first, then
+`node --test tests/android-atomic-publication.test.mts` in the public checkout.
+Missing native fixtures block these tests rather than becoming successful skips.
+These Linux tests prove adapter/publication contracts, not Android SELinux or
+ARM64 execution; the separate ordinary-App Android probe supplies that evidence.
+
 ## Device handoff
 
 Install the test-signed, non-debug arm64 APK on a modern Android phone, run the

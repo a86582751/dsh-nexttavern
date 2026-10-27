@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "package": "@deepseek-ai/node-addon-system",
+  "version": "0.1.2",
+  "license": "BSD-3-Clause",
+  "source": {
+    "url": "https://registry.npmjs.org/@deepseek-ai/node-addon-system/-/node-addon-system-0.1.2.tgz",
+    "sha256": "347a0bb0cb1ea1af6eb88f2b72eb3ee41cc7703093971e6b2a58fee19191c36e"
+  },
+  "typescript": "Reconstructed from exact published lib/index.js, lib/flock.js and declarations; no claim of original upstream TS bytes",
+  "changes": [
+    "Android installer-owned shared binding",
+    "Android atomic no-clobber publication API; source consumed only on success"
+  ],
+  "upstreamC": [
+    {
+      "path": "src/main.c",
+      "sha256": "0b3f13a6d19b809ea5a895a4873fe94cdea02471f928f214266dfd0a22a949b5"
+    },
+    {
+      "path": "src/flock.c",
+      "sha256": "c1aa773c7a62b03ce3973156b928f41773fef9407afd79d71b2f625b5616421f"
+    }
+  ],
+  "licenseEvidence": {
+    "packageMetadataSpdx": "BSD-3-Clause",
+    "archiveLicense": {
+      "path": "LICENSE",
+      "textLicense": "MIT",
+      "copyright": "Copyright (c) 2026 DeepSeek",
+      "sha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be"
+    },
+    "preservedCopies": [
+      "LICENSE",
+      "LICENSE.upstream"
+    ],
+    "discrepancy": "Pinned upstream package metadata declares BSD-3-Clause while its archive LICENSE contains MIT text. The metadata and original license bytes are preserved without resolving the discrepancy or claiming BSD text is present."
+  }
+}

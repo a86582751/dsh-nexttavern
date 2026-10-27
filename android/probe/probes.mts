@@ -14,6 +14,7 @@ import {ChildSession} from './process-helper.mts';
 import type {ChildMessage} from './process-helper.mts';
 import {flockLoaderDescription, loadFlock} from './flock.mts';
 import {checkHttpsClient} from './https-client.mts';
+import {checkAtomicPublish} from './atomic-publish.mts';
 
 const executable: Probe = async () => {
   if (Number(process.versions.node.split('.')[0]) !== 24) throw new BlockedError('NODE_VERSION', 'The runtime closure requires Node 24');
@@ -260,4 +261,5 @@ export const probes: ProbeMap = {
   'directory-fsync': directoryFsync, 'native-flock': nativeFlock, 'tls-local-ca': localTls,
   'dns-localhost': localDns,
   'https-client': checkHttpsClient,
+  'android-atomic-no-clobber': checkAtomicPublish,
 };

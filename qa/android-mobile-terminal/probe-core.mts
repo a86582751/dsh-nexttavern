@@ -14,8 +14,8 @@ for(let i=2;i<process.argv.length;i+=2)args[process.argv[i]]=process.argv[i+1];
 const adb=args['--adb'],serial=args['--serial'];
 const pkg='app.nexttavern.android.probe.x86kvm';
 const component=pkg+'/app.nexttavern.android.probe.MainActivity';
-const core=[...REQUIRED_CAPABILITIES.slice(0,8)];
-const expected=[...REQUIRED_CAPABILITIES,'https-client'];
+const core=REQUIRED_CAPABILITIES.slice(0,8).filter(id=>id!=='hardlink-no-clobber');
+const expected=[...REQUIRED_CAPABILITIES,'https-client','android-atomic-no-clobber'];
 let stage='arguments',nodes:Node[]=[],pid='',hierarchyAvailable=false;
 class ProbeFailure extends Error {
   readonly code:string;
@@ -173,7 +173,7 @@ function collect():void {
         checks.set(check.id,{line,value:check});
       }else {
         need(!seen.has('result'),'DUPLICATE_RESULT');
-        need(seen.has('ready')&&checkIndex===expected.length,'RESULT_WITHOUT_11_COMPLETE_CHECKS');seen.add('result');
+        need(seen.has('ready')&&checkIndex===expected.length,'RESULT_WITHOUT_12_COMPLETE_CHECKS');seen.add('result');
         need(['passed','failed','blocked'].includes(String(parsed.status))&&typeof parsed.ok==='boolean'
           &&parsed.androidGate===false&&parsed.platform==='android'&&parsed.actualPlatform==='android','INVALID_RESULT_ENVELOPE');
         need(!resultLine||resultLine===line,'RESULT_CHANGED');resultLine=line;result=parsed as Envelope;
@@ -209,7 +209,7 @@ function emitParsedChecks():void {
   }
 }
 function completeEvidence():number {
-  need(headerSeen&&readyLine&&result&&checks.size===expected.length&&expected.every(id=>checks.has(id)),'INCOMPLETE_11_CHECK_EVIDENCE');
+  need(headerSeen&&readyLine&&result&&checks.size===expected.length&&expected.every(id=>checks.has(id)),'INCOMPLETE_12_CHECK_EVIDENCE');
   need(terminalStatus===result.status&&result.androidGate===false&&result.ok===false,'NATIVE_GLOBAL_STATUS_MISMATCH');
   const failed=[...checks.values()].some(({value})=>value.status==='failed');
   need(result.status===(failed?'failed':'blocked'),'X64_GLOBAL_STATUS_MISMATCH');
@@ -230,13 +230,20 @@ function completeEvidence():number {
   const httpsPassed=https.status==='passed'&&https.evidence.authorized===true
     &&['TLSv1.2','TLSv1.3'].includes(String(https.evidence.tlsVersion))
     &&Number.isInteger(https.evidence.status)&&Number(https.evidence.status)>=100&&Number(https.evidence.status)<=599;
-  emit(corePassed&&httpsPassed?'scoped-passed':'scoped-failed',{scope:'eight-core-plus-fixed-https-client',
-    corePassed,httpsClientPassed:httpsPassed,globalStatus:result.status,globalOk:result.ok,androidGate:false,
+  const atomic=checks.get('android-atomic-no-clobber')!.value;
+  const atomicPassed=atomic.status==='passed'&&atomic.evidence.primitive==='renameat2(RENAME_NOREPLACE)'
+    &&atomic.evidence.sourceConsumed===true&&atomic.evidence.existingTargetUnchanged===true
+    &&atomic.evidence.fileFsync===true&&atomic.evidence.sourceDirectoryFsync===true&&atomic.evidence.targetDirectoryFsync===true
+    &&atomic.evidence.committedPublisherTermination==='SIGKILL'&&atomic.evidence.crashReadVerified===true;
+  emit(corePassed&&httpsPassed&&atomicPassed?'scoped-passed':'scoped-failed',{scope:'seven-core-plus-android-atomic-no-clobber-plus-fixed-https-client',
+    sevenCorePassed:corePassed,atomicNoClobberPassed:atomicPassed,httpsClientPassed:httpsPassed,
+    originalHardlinkStatus:checks.get('hardlink-no-clobber')!.value.status,originalSuiteRetained:true,
+    globalStatus:result.status,globalOk:result.ok,androidGate:false,
     actualPlatform:result.actualPlatform,arch:'x64',appUid:uid,ordinaryAppUidVerified:true,debuggable:false,targetSdk:36,
     individualCheckCount:checks.size,finalSummaryComplete:summaryComplete,
     tlsLocalServerStatus:checks.get('tls-local-ca')!.value.status,dnsLocalhostStatus:checks.get('dns-localhost')!.value.status,
     arm64Qualified:false,fullG0Accepted:false,modelServiceQualified:false});
-  return corePassed&&httpsPassed?0:1;
+  return corePassed&&httpsPassed&&atomicPassed?0:1;
 }
 async function main():Promise<number> {
   need(adb&&/^emulator-\d+$/.test(serial??'')&&Object.keys(args).length===2,'EMULATOR_ADB_ARGUMENTS_REQUIRED');
@@ -248,6 +255,11 @@ async function main():Promise<number> {
   need(headerSeen&&checkbox.checked==='false','FRESH_EXPLICIT_OPT_IN_REQUIRED');tap(checkbox);
   snapshot();collect();
   need(own(n=>n.class==='android.widget.CheckBox'&&n.checked==='true').length===1,'HTTPS_OPT_IN_NOT_CHECKED');
+  const atomicLabel='可选：验证 Android 原子无覆盖发布（不是硬链接）';
+  const atomicCheckbox=await seek(n=>n.class==='android.widget.CheckBox'&&n.text===atomicLabel,true);
+  need(atomicCheckbox.checked==='false','FRESH_ATOMIC_OPT_IN_REQUIRED');tap(atomicCheckbox);
+  snapshot();collect();
+  need(own(n=>n.class==='android.widget.CheckBox'&&n.text===atomicLabel&&n.checked==='true').length===1,'ATOMIC_OPT_IN_NOT_CHECKED');
   const run=await seek(n=>n.class==='android.widget.Button'&&n.text==='运行能力探针'&&n.enabled==='true',true);
   stage='foreground-default-budget-suite';tap(run);
   const deadline=Date.now()+240000;

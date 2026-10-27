@@ -6,12 +6,12 @@ import {once} from 'node:events';
 import {parseArgs} from '../run.mts';
 import {REQUIRED_CAPABILITIES} from '../model.mts';
 
-test('JSON Schema requires all ten checks and permits only the explicit HTTPS tail, never full G0', async () => {
+test('JSON Schema requires all ten checks and permits only the explicit HTTPS/atomic tails, never full G0', async () => {
   const schema = JSON.parse(await readFile(new URL('../result.schema.json', import.meta.url), 'utf8'));
   assert.equal(schema.properties.androidGate.const, false);
   assert.equal(schema.properties.checks.minItems, REQUIRED_CAPABILITIES.length);
-  assert.equal(schema.properties.checks.maxItems, REQUIRED_CAPABILITIES.length+1);
-  assert.equal(schema.properties.checks.items.allOf[1].properties.id.const,'https-client');
+  assert.equal(schema.properties.checks.maxItems, REQUIRED_CAPABILITIES.length+2);
+  assert.deepEqual(schema.properties.checks.items.allOf[1].properties.id.enum,['https-client','android-atomic-no-clobber']);
   assert.deepEqual(schema.properties.checks.prefixItems.map((item: {allOf: {properties?: {id: {const: string}}}[]}) =>
     item.allOf[1].properties!.id.const), REQUIRED_CAPABILITIES);
 });

@@ -1,5 +1,6 @@
-import {link, open, stat} from 'node:fs/promises';
-import {join} from 'node:path';
+import {link, open, readFile, stat} from 'node:fs/promises';
+import {loadAtomicPublisher,syncPublicationDirectory} from './atomic-publish.mts';
+import {dirname,join} from 'node:path';
 import {ChildSession} from './process-helper.mts';
 import {loadFlock} from './flock.mts';
 import type {ChildMessage} from './process-helper.mts';
@@ -77,6 +78,33 @@ if (role === 'fork' || role === 'fork-leaf') {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     await finish({kind: 'race-result', id, won: false, code: 'EEXIST'});
   }
+} else if(role==='atomic-racer'||role==='atomic-committer') {
+  const [staging,target,id]=args,source=join(staging,`candidate-${id}`);
+  const handle=await open(source,'wx',0o600);
+  try{await handle.writeFile(`writer-${id}\n`);await handle.sync()}finally{await handle.close()}
+  await syncPublicationDirectory(staging);
+  const info=await stat(source,{bigint:true});
+  const publish=loadAtomicPublisher();
+  await send({kind:'ready',id,inode:String(info.ino),device:String(info.dev)});
+  await receive('race-start');
+  try {
+    await publish(source,target);
+    await syncPublicationDirectory(staging);
+    await syncPublicationDirectory(dirname(target));
+    if(role==='atomic-committer') {
+      await send({kind:'committed',sourceDirectoryFsync:true,targetDirectoryFsync:true});
+      setInterval(()=>{},1000);
+    }else await finish({kind:'race-result',id,won:true,sourceDirectoryFsync:true,targetDirectoryFsync:true});
+  }catch(error) {
+    if((error as NodeJS.ErrnoException).code!=='EEXIST')throw error;
+    await finish({kind:'race-result',id,won:false,code:'EEXIST'});
+  }
+} else if(role==='atomic-reader') {
+  const [target,expected,crashTarget,crashExpected]=args;
+  if(await readFile(target,'utf8')!==expected)throw new Error('Published bytes failed restarted-reader validation');
+  if(crashTarget&&await readFile(crashTarget,'utf8')!==crashExpected)throw new Error('Committed bytes lost after publisher SIGKILL');
+  const info=await stat(target,{bigint:true});
+  await finish({kind:'verified',contentVerified:true,crashContentVerified:!!crashTarget,inode:String(info.ino)});
 } else if (role === 'flock-holder' || role === 'flock-contender') {
   const lock = await loadFlock();
   const handle = await open(args[0], 'w', 0o600);

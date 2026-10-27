@@ -207,3 +207,34 @@ Only the separately named native `.x86diagnostic` test build passes 120000 and
 uses a 1800-second supervisor budget. Its UI/copied evidence labels TCG timing
 as test-only. Original frozen APKs/hashes and their failed results remain
 unchanged; a new diagnostic candidate needs its own execution evidence.
+
+### Separate Android atomic publication (not hard links)
+
+Android 15's official `private/app_neverallows.te` prohibits untrusted apps
+from hard-linking **any** `file_type:file`, including their own private files.
+The original `hardlink-no-clobber` check therefore remains a real failed
+capability and is never renamed, suppressed, or declared passed.
+
+Explicit `--atomic-publish` appends `android-atomic-no-clobber` after the
+unchanged ten checks and optional HTTPS check. The native probe's separate
+unchecked checkbox selects it. Defaults remain ten, or eleven with HTTPS.
+The same installed native-system binding composes unchanged upstream flock
+with async public Bionic `renameat2(RENAME_NOREPLACE)` (API30+); absent symbols
+report ENOSYS/BLOCKED. No ordinary rename, pre-check/write, hard-link fallback,
+raw syscall, policy change or different UID is used. The product floor is a
+separate decision; this probe retains its provisional API26 floor.
+
+The separate check requires two real processes racing, exactly one winner and
+an EEXIST loser, winner stage consumed, existing target bytes preserved on a
+further collision, inode/device continuity, file and both parent-directory
+fsync. A separate committed publisher acknowledges those syncs, is SIGKILLed,
+and a newly launched reader verifies the committed bytes. This is a process
+crash/restart test, **not real power loss**. The native operation itself only
+publishes; product callers retain their own fsync/cleanup/digest contracts and
+must not abort/reject a queued rename before learning its actual outcome.
+
+The KVM business scope may explicitly require seven original core checks,
+this Android publication check, and HTTPS. It must still report original
+hard-link status and the complete original suite's FAILED/BLOCKED status;
+`androidGate:false`, ARM64, device/page-size and full product qualification
+remain separate. A scoped business pass is never a full G0 pass.

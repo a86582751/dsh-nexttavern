@@ -2,7 +2,7 @@ import {mkdir, mkdtemp, realpath, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {release} from 'node:os';
 import {performance} from 'node:perf_hooks';
-import {aggregateStatus, BlockedError, errorRecord, OPTIONAL_HTTPS_CAPABILITY, PROTOCOL, REQUIRED_CAPABILITIES, targetBlockers} from './model.mts';
+import {aggregateStatus, BlockedError, errorRecord, OPTIONAL_HTTPS_CAPABILITY, OPTIONAL_ATOMIC_CAPABILITY, PROTOCOL, REQUIRED_CAPABILITIES, targetBlockers} from './model.mts';
 import type {CapabilityId, CheckResult, Event, ProbeMap, RuntimeIdentity, Summary} from './model.mts';
 
 export async function runtimeIdentity(): Promise<RuntimeIdentity> {
@@ -16,7 +16,7 @@ export async function runtimeIdentity(): Promise<RuntimeIdentity> {
 
 /** Every required capability produces a record, including unavailable APIs. */
 export async function runSuite(options: {
-  probes: ProbeMap; workRoot: string; onEvent?: (event: Event) => void; timeoutMs?: number; signal?: AbortSignal; httpsClient?: boolean;
+  probes: ProbeMap; workRoot: string; onEvent?: (event: Event) => void; timeoutMs?: number; signal?: AbortSignal; httpsClient?: boolean; atomicPublish?: boolean;
 }): Promise<Summary> {
   const startedAt = new Date().toISOString();
   const runtime = await runtimeIdentity();
@@ -27,8 +27,8 @@ export async function runSuite(options: {
   const directory = await mkdtemp(join(options.workRoot, 'run-'));
   const checks: CheckResult[] = [];
   try {
-    const selected:readonly CapabilityId[]=options.httpsClient
-      ?[...REQUIRED_CAPABILITIES,OPTIONAL_HTTPS_CAPABILITY]:REQUIRED_CAPABILITIES;
+    const selected:readonly CapabilityId[]=[...REQUIRED_CAPABILITIES,
+      ...(options.httpsClient?[OPTIONAL_HTTPS_CAPABILITY]:[]),...(options.atomicPublish?[OPTIONAL_ATOMIC_CAPABILITY]:[])];
     for (const id of selected) {
       const started = performance.now();
       const controller = new AbortController();

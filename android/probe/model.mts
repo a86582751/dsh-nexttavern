@@ -6,7 +6,8 @@ export const REQUIRED_CAPABILITIES = [
   'tls-local-ca', 'dns-localhost',
 ] as const;
 export const OPTIONAL_HTTPS_CAPABILITY='https-client' as const;
-export type CapabilityId = typeof REQUIRED_CAPABILITIES[number] | typeof OPTIONAL_HTTPS_CAPABILITY;
+export const OPTIONAL_ATOMIC_CAPABILITY='android-atomic-no-clobber' as const;
+export type CapabilityId = typeof REQUIRED_CAPABILITIES[number] | typeof OPTIONAL_HTTPS_CAPABILITY | typeof OPTIONAL_ATOMIC_CAPABILITY;
 export type Status = 'passed' | 'failed' | 'blocked';
 export type Evidence = Record<string, unknown>;
 export interface CheckResult {

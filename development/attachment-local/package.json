@@ -36,7 +36,8 @@
   "dependencies": {
     "@deepseek-ai/dsh-lazy-require": "0.1.7-rc.2",
     "@deepseek-ai/schemastery": "3.18.4",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.3",
+    "@deepseek-ai/node-addon-system": "0.1.2"
   },
   "private": true
 }

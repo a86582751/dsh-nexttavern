@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { execFile } from 'node:child_process'
 import { open } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { createRequire, registerHooks } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -10,15 +11,23 @@ import { promisify } from 'node:util'
 import { createTestDirectory, cleanupTestDirectory } from '../src/operations/test-temp.mts'
 
 const require = createRequire(new URL('../build-tools/package.json', import.meta.url))
-const source = new URL('../compat/session-persistence-jsonl/src/flock.ts', import.meta.url)
+const packages = existsSync(new URL('../compat/session-persistence-jsonl/package.json',import.meta.url))?'../compat/':'../development/'
+const source = new URL(packages+'session-persistence-jsonl/src/flock.ts', import.meta.url)
 const role = process.argv[2] === '--flock-case' ? process.argv[3] : undefined
 
 async function childCase(mode: string): Promise<void> {
   // Resolve the actual locked build dependency without writing a node_modules
   // fixture or changing product APIs solely for test injection.
-  const upstream = pathToFileURL(require.resolve('@deepseek-ai/node-addon-system/flock')).href
+  const managed = new URL(packages+'node-addon-system/src/flock.ts', import.meta.url).href
+  const managedRoot = new URL(packages+'node-addon-system/src/', import.meta.url).href
+  const platformSpecifier=process.platform==='linux'||process.platform==='darwin'
+    ?`@deepseek-ai/node-addon-system-${process.platform}-${process.arch}/package.json`:undefined
+  const platformManifest=platformSpecifier?pathToFileURL(require.resolve(platformSpecifier)).href:undefined
   const hooks = registerHooks({resolve(specifier, context, nextResolve) {
-    return nextResolve(specifier === '@deepseek-ai/node-addon-system/flock' ? upstream : specifier, context)
+    if(specifier === '@deepseek-ai/node-addon-system/flock')return {url:managed,shortCircuit:true}
+    if(specifier==='./android-binding.js'&&context.parentURL?.startsWith(managedRoot))return {url:new URL('android-binding.ts',managedRoot).href,shortCircuit:true}
+    if(specifier===platformSpecifier&&platformManifest)return {url:platformManifest,shortCircuit:true}
+    return nextResolve(specifier, context)
   }})
   try {
     const { tryLockExclusive } = await import(source.href)

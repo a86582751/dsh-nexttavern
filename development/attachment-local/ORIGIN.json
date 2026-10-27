@@ -65,7 +65,8 @@
   ],
   "changes": [
     "Generated .js relative import paths and private maintained same-name package identity.",
-    "Explicit Android installer-owned durability boundary; desktop directory-fsync semantics retained."
+    "Explicit Android installer-owned durability boundary; desktop directory-fsync semantics retained.",
+    "Android no-clobber renameat2 publication through the managed native-system owner; immutable aliases use a staged fsynced copy and preserve the committed source."
   ],
   "formalForkSynchronized": false
 }

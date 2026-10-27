@@ -11,7 +11,7 @@ const packagedProfile=new URL('./native-fork-host-profile.mjs',import.meta.url)
 const nativeProfile=await import(fs.existsSync(packagedProfile)?packagedProfile.href:
   new URL('../../runtime/alpha3/lib/operations/native-fork-host-profile.mjs',import.meta.url).href) as
   typeof import('dsh-nexttavern-native-fork-host-profile-types')
-export const {HOST_VERSION,NATIVE_FORKS,hostForkNames,readHostForkProfile}=nativeProfile
+export const {HOST_VERSION,NATIVE_FORKS,hostForkNames,hostForkVersion,readHostForkProfile}=nativeProfile
 
 type Manifest = {
   name?:string
@@ -110,7 +110,7 @@ export function planNativeForkHost(input:HostForkInput):HostForkResult {
   for(const anchor of input.anchors){
     const real=fs.realpathSync(anchor)
     if(!within(hostRoot,real))errors.push(`Anchor outside host: ${anchor}`)
-    for(const name of members)queue.push({name,anchor:real,range:HOST_VERSION,optional:false})
+    for(const name of members)queue.push({name,anchor:real,range:hostForkVersion(name),optional:false})
   }
   const planned=new Set<string>()
   while(queue.length){
@@ -155,7 +155,7 @@ export function planNativeForkHost(input:HostForkInput):HostForkResult {
     const directory=fs.realpathSync(source.directory)
     if(within(hostRoot,directory))errors.push(`Fork source is inside fixed host: ${name}`)
     const pkg=manifest(path.join(directory,'package.json'))
-    if(pkg.name!==name||pkg.version!==HOST_VERSION)errors.push(`Source identity mismatch: ${name}`)
+    if(pkg.name!==name||pkg.version!==hostForkVersion(name))errors.push(`Source identity mismatch: ${name}`)
     const actual=packageTreeSha256(directory)
     if(actual!==source.sha256)errors.push(`Source hash mismatch: ${name}`)
     const destinations=packages.filter(item=>item.name===name)

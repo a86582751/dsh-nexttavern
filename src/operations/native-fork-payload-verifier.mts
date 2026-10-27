@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import {contained,digest} from './public-transaction.mjs'
 import {regularPackageFiles} from './owned-dependency.mjs'
-import {makeHostForkProfile,readHostForkProfile,type HostForkProfileDescriptorV1} from './native-fork-host-profile.mjs'
+import {makeHostForkProfile,readHostForkProfile,hostForkVersion,type HostForkProfileDescriptorV1} from './native-fork-host-profile.mjs'
 
 export type HostForkRecipe={name:string,version:string,target:string}
 type HostForkRow={
@@ -20,17 +20,17 @@ function hostForkInventoryRows(hostForks:unknown,recipes:HostForkRecipe[],
     const supplied=readHostForkProfile(inventoryProfile)
     if(JSON.stringify(supplied)!==JSON.stringify(expected))throw Error('Host fork inventory profile differs from recipes')
   }
-  if(!Array.isArray(recipes)||recipes.some(recipe=>recipe.version!=='0.1.7-rc.2'||
+  if(!Array.isArray(recipes)||recipes.some(recipe=>recipe.version!==hostForkVersion(recipe.name)||
     recipe.target!==`host-overrides/${recipe.name}`))throw Error('Invalid registered host fork recipe')
   if(!Array.isArray(hostForks)||hostForks.length!==recipes.length)
     throw Error('Missing host override inventory')
-  return recipes.map(recipe=>{
-    const row=hostForks.find((candidate:HostForkRow)=>candidate?.name===recipe.name) as HostForkRow
+  for(const [index,recipe] of recipes.entries()){
+    const row=hostForks[index] as HostForkRow
     if(!row||row.name!==recipe.name||row.version!==recipe.version||row.path!==recipe.target||
       row.status!=='unapplied-host-override'||!Array.isArray(row.files)||!row.files.length)
       throw Error('Invalid unapplied host override inventory: '+recipe.name)
-    return row
-  })
+  }
+  return hostForks as HostForkRow[]
 }
 
 function assertHostForkMembers(rows:readonly HostForkRow[],

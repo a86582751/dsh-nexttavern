@@ -42,6 +42,8 @@ public final class MainActivity extends Activity {
     private Button copy;
     private CheckBox publicHttps;
     private boolean httpsClientRequested;
+    private CheckBox atomicPublish;
+    private boolean atomicPublishRequested;
     private String evidenceHeader;
     private boolean softwareDiagnostic;
     private volatile String pageSizeEvidence = "not measured";
@@ -81,6 +83,10 @@ public final class MainActivity extends Activity {
         publicHttps.setText("可选：验证 example.com 公网 HTTPS（无密钥）");
         publicHttps.setChecked(false);
         content.addView(publicHttps);
+        atomicPublish = new CheckBox(this);
+        atomicPublish.setText("可选：验证 Android 原子无覆盖发布（不是硬链接）");
+        atomicPublish.setChecked(false);
+        content.addView(atomicPublish);
         LinearLayout buttons = new LinearLayout(this);
         start = new Button(this);
         start.setText("运行能力探针");
@@ -123,8 +129,11 @@ public final class MainActivity extends Activity {
         if (supervisor != null && supervisor.snapshot().state == ProcessSupervisor.State.RUNNING) return;
         ProcessSupervisor run = new ProcessSupervisor(new JsonProtocolParser(), this::queueRefresh);
         final boolean httpsClient = publicHttps.isChecked();
+        final boolean atomic = atomicPublish.isChecked();
         httpsClientRequested = httpsClient;
+        atomicPublishRequested = atomic;
         publicHttps.setEnabled(false);
+        atomicPublish.setEnabled(false);
         supervisor = run;
         run.preparing();
         worker.execute(() -> {
@@ -142,7 +151,7 @@ public final class MainActivity extends Activity {
                 });
                 if (run.isCancelled()) { run.blocked("Cancelled during preparation"); return; }
                 bundle = installer.install(getFilesDir());
-                run.run(ProbePaths.command(runtime, bundle, softwareDiagnostic, httpsClient), data, ProbePaths.supervisorTimeoutSeconds(softwareDiagnostic));
+                run.run(ProbePaths.command(runtime, bundle, softwareDiagnostic, httpsClient, atomic), data, ProbePaths.supervisorTimeoutSeconds(softwareDiagnostic));
             } catch (IOException | RuntimeException error) {
                 run.blocked(error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
             } finally {
@@ -173,6 +182,7 @@ public final class MainActivity extends Activity {
             stop.setEnabled(running);
             copy.setEnabled(!running);
             publicHttps.setEnabled(!running);
+            atomicPublish.setEnabled(!running);
         }, 100);
     }
     private void copyEvidence() {
@@ -180,6 +190,7 @@ public final class MainActivity extends Activity {
         ProcessSupervisor.Snapshot snapshot = supervisor.snapshot();
         String evidence = evidenceHeader + "\nOS page size: " + pageSizeEvidence
             + "\nFixed public HTTPS explicitly requested: " + httpsClientRequested
+            + "\nAndroid atomic publication explicitly requested: " + atomicPublishRequested
             + "\n\nFull G0 accepted: false\nState: " + snapshot.state
             + "\nReady: " + snapshot.ready + "\n" + snapshot.detail
             + "\n\n=== Final protocol record (max 65,536 characters) ===\n" + snapshot.finalRecord

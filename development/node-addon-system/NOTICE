@@ -1,0 +1,3 @@
+Based on @deepseek-ai/node-addon-system 0.1.2. Its pinned npm package.json declares BSD-3-Clause, but the same pinned archive ships MIT License text, Copyright (c) 2026 DeepSeek. This upstream metadata/text discrepancy is preserved, not resolved or relicensed here. LICENSE and LICENSE.upstream are byte-identical copies of that archive LICENSE; no BSD license text is supplied by this fork.
+
+Desktop landlock and flock behavior retained. TypeScript sources reconstruct the published JS and declarations. Android adds an installer-owned shared binding and asynchronous renameat2(RENAME_NOREPLACE) publication. Upstream C sources are copied unchanged; the Android companion extension is built separately. Not an upstream release.

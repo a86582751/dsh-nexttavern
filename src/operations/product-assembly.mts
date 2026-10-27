@@ -20,7 +20,7 @@ import type {HistoricalRuntimeAssetRebuildV1} from './runtime-asset-source-scope
 import {authorBrowserRuntimeRecipeV3,materializeAuthorBrowserRuntimeDependenciesV3,
   type AuthorBrowserRuntimeAssetRecipeV3} from './author-browser-runtime-assets-v3.mjs'
 import type {SubagentTypertRecipeV1} from './subagent-typert-assets.mjs'
-import {makeHostForkProfile,type HostForkProfileDescriptorV1} from './native-fork-host-profile.mjs'
+import {makeHostForkProfile,hostForkPolicy,type HostForkProfileDescriptorV1} from './native-fork-host-profile.mjs'
 import {authorPromptRuntimeRecipeV1,materializeAuthorPromptRuntimeDependenciesV1,
   type AuthorPromptRuntimeAssetRecipeV1} from './author-prompt-runtime-assets.mjs'
 import {describeCurrentRuntimeComponents,materializeReleasedComponents} from './released-component-assembly.mjs'
@@ -285,7 +285,8 @@ export function stageHostForks(repo: string, packageRoot: string, plan: Plan) {
     plan.artifacts.find(artifact=>artifact.id===build.artifact)!.source,build,
   ]))
   const rows = recipes.map(row => {
-    if (row.version !== '0.1.7-rc.2' || !safeRelative(row.source)
+    const policy=hostForkPolicy(row.name)
+    if (row.version !== policy.version || !safeRelative(row.source)
       || !safeRelative(row.target) || row.target !== `host-overrides/${row.name}`) {
       throw Error('Invalid host fork identity or delivery target: ' + row.name)
     }
@@ -294,7 +295,7 @@ export function stageHostForks(repo: string, packageRoot: string, plan: Plan) {
       throw Error('Host fork source is not a regular directory: ' + row.source)
     }
     const metadata = json<Metadata>(inside(repo, `${row.source}/package.json`))
-    if (metadata.name !== row.name || metadata.version !== row.version || metadata.license !== 'MIT') {
+    if (metadata.name !== row.name || metadata.version !== row.version || metadata.license !== policy.license) {
       throw Error('Host fork package identity mismatch: ' + row.name)
     }
     const files = regularPackageFiles(source).filter(file => {

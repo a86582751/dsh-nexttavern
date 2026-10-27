@@ -3,11 +3,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, lstatSync, realpathSync, openSync, writeFileSync, closeSync, readFileSync, constants, fsyncSync, linkSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fenceCardContent } from './tavern-card.js';
+import { publishNoReplace } from '@deepseek-ai/node-addon-system/atomic';
 import { exportSnapshot, renderOrganizedExport, stableJson, safeHeading, sourceLines, } from './card-export-projection.js';
 export { exportSnapshot, renderOrganizedExport, stableJson };
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const recordOf = (value) => value !== null && typeof value === 'object' ? value : {};
-function writeExport(cwd, id, markdown) {
+async function writeExport(cwd, id, markdown) {
     if (!/^[a-f0-9-]{36}$/.test(id))
         throw new Error('导出标识无效');
     const root = realpathSync(resolve(cwd)), directory = join(root, '.dsh-card-exports');
@@ -25,7 +26,7 @@ function writeExport(cwd, id, markdown) {
     let directoryFd;
     let temporary;
     try {
-        if (process.platform === 'linux')
+        if (process.platform === 'linux' || process.platform === 'android')
             directoryFd = openSync(directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
         const accessDirectory = directoryFd === undefined ? directory : `/proc/self/fd/${directoryFd}`;
         if (realpathSync(accessDirectory) !== directory)
@@ -38,7 +39,10 @@ function writeExport(cwd, id, markdown) {
         closeSync(fd);
         fd = undefined;
         try {
-            linkSync(temporary, target);
+            if (process.platform === 'android')
+                await publishNoReplace(temporary, target);
+            else
+                linkSync(temporary, target);
         }
         catch (error) {
             if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST'))
@@ -201,7 +205,7 @@ export function registerCardExport(ctx, options) {
             value = { ...value, snapshotKey: sourceKey };
         }
         assertWorkflow?.(session, value);
-        const file = writeExport(session.header.cwd, value.exportId, markdown);
+        const file = await writeExport(session.header.cwd, value.exportId, markdown);
         await put(session, value.exportId, { ...value, status: 'completed', resultHash, file, title: args.title, sections: args.sections, completedAt: value.completedAt ?? Date.now() });
         assertWorkflow?.(session, value);
         const resource = await onCompleted?.(session, { ...value, title: args.title, file, resultHash }, markdown), filename = resource?.name ?? `${safeHeading(args.title).replace(/[\x00-\x1f<>:"/\\|?*]/g, '-').slice(0, 90)}.md`;

@@ -75,6 +75,11 @@ public final class CoreTest {
         check(ProbePaths.command(runtime, bundle, false, true).equals(Arrays.asList(runtime.getAbsolutePath(),
             "--experimental-strip-types", entry.getAbsolutePath(), "--https-client")),
             "explicit HTTPS opt-in keeps default KVM/device budgets");
+        check(ProbePaths.command(runtime, bundle, false, true, true).equals(Arrays.asList(runtime.getAbsolutePath(),
+            "--experimental-strip-types", entry.getAbsolutePath(), "--https-client", "--atomic-publish")),
+            "atomic publication is a separate explicit flag after HTTPS");
+        check(ProbePaths.command(runtime, bundle, false, false, true).contains("--atomic-publish"),
+            "atomic publication opt-in does not require HTTPS");
         Map<String, String> environment = ProcessSupervisor.processBuilder(command, data).environment();
         check(environment.get("SSL_CERT_FILE").equals(new File(certificates, "ca-certificates.pem").getAbsolutePath()),
             "probe uses the private certificate asset, like mobile");

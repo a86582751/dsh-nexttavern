@@ -97,7 +97,8 @@
     "dsh-nexttavern-author-host-runtime-v5-update-batch-v1": "0.6.0",
     "dsh-nexttavern-typescript-runtime": "0.1.0",
     "dsh-nexttavern-author-browser-runtime-v2-native-personas-v1": "0.1.0",
-    "dsh-nexttavern-template-runtime-v2": "0.1.0"
+    "dsh-nexttavern-template-runtime-v2": "0.1.0",
+    "@deepseek-ai/node-addon-system": "0.1.2"
   },
   "bundleDependencies": [
     "dsh-nexttavern-anydoc",

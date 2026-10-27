@@ -12,8 +12,15 @@ all private parent entries through and including dataDir, never dataDir's system
 The installer vouches for the dataDir directory entry itself. Cache membership is recorded only
 after success, and the fixed captured boundary keeps that existing per-home cache identity valid.
 
-Desktop ignores this Android-only environment and keeps the upstream root walk. File/data fsync,
-hard-link publication, directory modes and concurrent-writer durability remain unchanged; no
+Android 15 ordinary app policy forbids hard links even within app data. Android therefore uses
+installer-owned renameat2(RENAME_NOREPLACE) through the managed native-system owner. Success
+consumes a disposable stage; EEXIST preserves both paths and still verifies the existing digest.
+Filename aliases use the same streamed/hash/fsync staging owner to copy bytes without moving the
+committed object. The source stream opens only after successful stage setup. API 30+ and the
+actual native binding are required; missing support fails, never overwrites.
+
+Desktop ignores this Android-only environment and keeps the upstream root walk and hard links.
+File/data fsync, directory modes and concurrent-writer durability remain unchanged; no
 EACCES suppression, permission change outside owned paths, or durability downgrade is introduced.
 No model request/retry is added.
 

@@ -77,7 +77,8 @@
     "Shared edit vocabulary/catalog in both main and verification worker",
     "Official SessionPersistence base class, errors and handle contracts retain their shared instances",
     "Strict emitted .js imports and ESM worker path; independent provider diagnostic name",
-    "Reject malformed or unsupported required events and replay edit-containing batches before writing bytes; unchanged streaming batches avoid extra history reads"
+    "Reject malformed or unsupported required events and replay edit-containing batches before writing bytes; unchanged streaming batches avoid extra history reads",
+    "Android materialization and current-generation publication use the managed native-system renameat2 no-clobber owner; desktop hardlinks and durable directory ordering retained."
   ],
   "formalForkSynchronized": false
 }

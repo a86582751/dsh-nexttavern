@@ -22,6 +22,7 @@ import { SessionFormatError } from '@deepseek-ai/dsh-session-format';
 import { validateStoredEvents } from 'dsh-nexttavern-session-format/storage-contract';
 import { generationLogFilename, logSuffix, SessionLogScanner } from './format.js';
 import { publishNewFileWin32 } from './win32.js';
+import { publishNoReplace } from '@deepseek-ai/node-addon-system/atomic';
 import { compressZstdFrame, createZstdFrameDecoder, decompressZstdPrefix, scanZstdFrames, } from './zstd.js';
 /** Internal scheduling bounds: preserve old decode cadence and cap each synchronous encode slice. */
 const MIGRATION_DECODE_YIELD_INTERVAL_MS = 500;
@@ -587,6 +588,18 @@ async function publishCurrentExclusive(staged, currentPath, internals) {
             throw error;
         }
     }
+    if (internals.platform === 'android') {
+        try {
+            await publishNoReplace(staged, currentPath);
+        }
+        catch (error) {
+            if (isEEXIST(error))
+                return false;
+            throw error;
+        }
+        await syncDirectory(dirname(currentPath), internals);
+        return true;
+    }
     try {
         await internals.fs.link(staged, currentPath);
     }
@@ -651,7 +664,7 @@ async function publishPreparedMigration(options, suffix, artifact, sourceIdentit
             throw new JsonlGenerationSourceChangedError(sourcePath);
         }
         const published = await publishCurrentExclusive(staged.path, currentPath, internals);
-        if (published && internals.platform === 'win32')
+        if (published && (internals.platform === 'win32' || internals.platform === 'android'))
             staged = { ...staged, path: '' };
         await internals.barrier('after-publication', 1);
         let currentIdentity;
