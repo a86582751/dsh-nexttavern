@@ -1,16 +1,18 @@
 // Generated from runtime/alpha3/compat/anydoc/src/document-reader.ts; edit the TypeScript source.
-import { formatFromExtension, toMarkdownBytes } from '@firecrawl/anydoc';
+// Loading the document reader must not load an optional native converter. Plain
+// text stays usable on every Host; binary conversion reports its real loader error.
+const convertNative = async (...args) => (await import('@firecrawl/anydoc')).toMarkdownBytes(...args);
 import { dshNormalizeMarkdown } from './normalize-markdown.js';
 const MAX_INPUT_BYTES = 64 * 1024 * 1024;
 const MAX_CACHE_CHARACTERS = 4 * 1024 * 1024;
 const MAX_CACHE_ENTRIES = 8;
 /** Read the complete frozen DOCX upload without creating a file or preview.
  * The caller retains original bytes for download; Markdown is working text. */
-export async function docxBytesToMarkdown(bytes, convert = toMarkdownBytes) {
-    return dshNormalizeMarkdown(await convert(Buffer.from(bytes), formatFromExtension('docx')));
+export async function docxBytesToMarkdown(bytes, convert = convertNative) {
+    return dshNormalizeMarkdown(await convert(Buffer.from(bytes), 'docx'));
 }
 /** One preset's bounded cache, separated again by actual filesystem provider. */
-export function createDocumentReader(convert = toMarkdownBytes) {
+export function createDocumentReader(convert = convertNative) {
     let caches = new WeakMap();
     async function read(fs, filePath, format, cwd, signal) {
         signal.throwIfAborted();
@@ -37,7 +39,7 @@ export function createDocumentReader(convert = toMarkdownBytes) {
         const extension = /\.([^./\\]+)$/.exec(filePath)?.[1]?.toLowerCase();
         const textOnly = ['txt', 'md', 'markdown'].includes(format ?? extension ?? '');
         const bytes = await fs.readBytes(target, signal, MAX_INPUT_BYTES);
-        const resolvedFormat = textOnly ? undefined : (format ?? formatFromExtension(extension ?? ''));
+        const resolvedFormat = textOnly ? undefined : (format ?? (await import('@firecrawl/anydoc')).formatFromExtension(extension ?? ''));
         const markdown = textOnly
             ? new TextDecoder('utf-8', { fatal: true }).decode(bytes)
             : resolvedFormat === 'docx' ? await docxBytesToMarkdown(bytes, convert)

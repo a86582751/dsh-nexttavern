@@ -1,5 +1,10 @@
 import type {FileSystem} from '@deepseek-ai/dsh-fs'
-import {formatFromExtension, toMarkdownBytes, type Format} from '@firecrawl/anydoc'
+import type {Format, toMarkdownBytes} from '@firecrawl/anydoc'
+
+// Loading the document reader must not load an optional native converter. Plain
+// text stays usable on every Host; binary conversion reports its real loader error.
+const convertNative: typeof toMarkdownBytes = async (...args) =>
+  (await import('@firecrawl/anydoc')).toMarkdownBytes(...args)
 import {dshNormalizeMarkdown} from './normalize-markdown.js'
 
 const MAX_INPUT_BYTES = 64 * 1024 * 1024
@@ -14,12 +19,12 @@ interface CachedDocument {
 
 /** Read the complete frozen DOCX upload without creating a file or preview.
  * The caller retains original bytes for download; Markdown is working text. */
-export async function docxBytesToMarkdown(bytes:Uint8Array,convert=toMarkdownBytes):Promise<string> {
-  return dshNormalizeMarkdown(await convert(Buffer.from(bytes),formatFromExtension('docx')))
+export async function docxBytesToMarkdown(bytes:Uint8Array,convert=convertNative):Promise<string> {
+  return dshNormalizeMarkdown(await convert(Buffer.from(bytes),'docx' as Format))
 }
 
 /** One preset's bounded cache, separated again by actual filesystem provider. */
-export function createDocumentReader(convert = toMarkdownBytes) {
+export function createDocumentReader(convert = convertNative) {
   let caches = new WeakMap<object, Map<string, CachedDocument>>()
 
   async function read(fs: FileSystem, filePath: string, format: string | undefined,
@@ -43,7 +48,7 @@ export function createDocumentReader(convert = toMarkdownBytes) {
     const extension = /\.([^./\\]+)$/.exec(filePath)?.[1]?.toLowerCase()
     const textOnly = ['txt', 'md', 'markdown'].includes(format ?? extension ?? '')
     const bytes = await fs.readBytes(target, signal, MAX_INPUT_BYTES)
-    const resolvedFormat=textOnly?undefined:((format as Format | undefined)??formatFromExtension(extension ?? ''))
+    const resolvedFormat=textOnly?undefined:((format as Format | undefined)??(await import('@firecrawl/anydoc')).formatFromExtension(extension ?? ''))
     const markdown = textOnly
       ? new TextDecoder('utf-8', {fatal: true}).decode(bytes)
       : resolvedFormat==='docx'?await docxBytesToMarkdown(bytes,convert)

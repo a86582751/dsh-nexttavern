@@ -1367,6 +1367,16 @@
       "exactOptionalPropertyTypes": true
     },
     {
+      "artifact": "compat-session-persistence-jsonl-lib-flock-js",
+      "source": "development/session-persistence-jsonl/src/flock.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/flock.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/flock.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/flock.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
       "artifact": "compat-session-persistence-jsonl-lib-migration-verifier-js",
       "source": "development/session-persistence-jsonl/src/migration-verifier.ts",
       "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/migration-verifier.ts",
@@ -8728,6 +8738,70 @@
       "outputs": [
         "lib/core/tavern-author-combined-compiler-v8.mjs",
         "preset/lib/core/tavern-author-combined-compiler-v8.mjs"
+      ]
+    },
+    {
+      "artifact": "android-host-lib-android-host.mjs",
+      "source": "android/host/android-host.mts",
+      "banner": "android/host/android-host.mts",
+      "primaryOutput": "android/host/lib/android-host.mjs",
+      "outputs": [
+        "android/host/lib/android-host.mjs"
+      ]
+    },
+    {
+      "artifact": "android-host-lib-host-launch.mjs",
+      "source": "android/host/host-launch.mts",
+      "banner": "android/host/host-launch.mts",
+      "primaryOutput": "android/host/lib/host-launch.mjs",
+      "outputs": [
+        "android/host/lib/host-launch.mjs"
+      ]
+    },
+    {
+      "artifact": "roleplay-owned-work-js",
+      "source": "src/core/roleplay-owned-work.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-owned-work.ts",
+      "primaryOutput": "lib/core/roleplay-owned-work.js",
+      "outputs": [
+        "lib/core/roleplay-owned-work.js",
+        "preset/lib/core/roleplay-owned-work.js"
+      ]
+    },
+    {
+      "artifact": "android-tools-build-require-builtin-mjs",
+      "source": "android/tools/build-require-builtin.mts",
+      "banner": "android/tools/build-require-builtin.mts",
+      "primaryOutput": "android/tools/build-require-builtin.mjs",
+      "outputs": [
+        "android/tools/build-require-builtin.mjs"
+      ]
+    },
+    {
+      "artifact": "android-tools-pack-host.mjs",
+      "source": "android/tools/pack-host.mts",
+      "banner": "android/tools/pack-host.mts",
+      "primaryOutput": "android/tools/pack-host.mjs",
+      "outputs": [
+        "android/tools/pack-host.mjs"
+      ]
+    },
+    {
+      "artifact": "public-vendor-admission",
+      "source": "src/operations/public-vendor-admission.mts",
+      "banner": "runtime/alpha3/src/operations/public-vendor-admission.mts",
+      "primaryOutput": "lib/operations/public-vendor-admission.mjs",
+      "outputs": [
+        "lib/operations/public-vendor-admission.mjs"
+      ]
+    },
+    {
+      "artifact": "android-tools-prepare-product-mjs",
+      "source": "android/tools/prepare-product.mts",
+      "banner": "android/tools/prepare-product.mts",
+      "primaryOutput": "android/tools/prepare-product.mjs",
+      "outputs": [
+        "android/tools/prepare-product.mjs"
       ]
     }
   ],
@@ -18036,7 +18110,10 @@
       {
         "id": "author-browser-runtime-v3-author-dialog-v1-lib-tavern-author-browser-provider-mjs",
         "source": "development/author-browser-runtime-v3-author-dialog-v1/lib/tavern-author-browser-provider.mjs",
-        "canonicalSource": "runtime/alpha3/compat/author-browser-runtime-v3-author-dialog-v1/lib/tavern-author-browser-provider.mjs"
+        "canonicalSource": "runtime/alpha3/compat/author-browser-runtime-v3-author-dialog-v1/lib/tavern-author-browser-provider.mjs",
+        "public": {
+          "execution": "build-scaffold"
+        }
       },
       {
         "id": "author-browser-runtime-v3-author-dialog-v1-LICENSE",
@@ -19256,7 +19333,10 @@
       {
         "id": "mvu-schema-runtime-v4-update-batch-v1-index-generated",
         "source": "development/mvu-schema-runtime-v4-update-batch-v1/lib/index.js",
-        "canonicalSource": "runtime/alpha3/compat/mvu-schema-runtime-v4-update-batch-v1/lib/index.js"
+        "canonicalSource": "runtime/alpha3/compat/mvu-schema-runtime-v4-update-batch-v1/lib/index.js",
+        "public": {
+          "execution": "build-scaffold"
+        }
       },
       {
         "id": "mvu-schema-runtime-v4-update-batch-v1-package-json",
@@ -20032,6 +20112,481 @@
         "id": "tavern-author-combined-compiler-v8-generated",
         "source": "lib/core/tavern-author-combined-compiler-v8.mjs",
         "canonicalSource": "runtime/alpha3/lib/core/tavern-author-combined-compiler-v8.mjs"
+      },
+      {
+        "id": "android-.gitignore",
+        "source": "android/.gitignore",
+        "canonicalSource": "android/.gitignore"
+      },
+      {
+        "id": "android-README.md",
+        "source": "android/README.md",
+        "canonicalSource": "android/README.md"
+      },
+      {
+        "id": "android-app-README.md",
+        "source": "android/app/README.md",
+        "canonicalSource": "android/app/README.md"
+      },
+      {
+        "id": "android-app-build.gradle.kts",
+        "source": "android/app/build.gradle.kts",
+        "canonicalSource": "android/app/build.gradle.kts"
+      },
+      {
+        "id": "android-app-src-main-AndroidManifest.xml",
+        "source": "android/app/src/main/AndroidManifest.xml",
+        "canonicalSource": "android/app/src/main/AndroidManifest.xml"
+      },
+      {
+        "id": "android-app-src-main-assets-runtime-notices-c-ares-LICENSE",
+        "source": "android/app/src/main/assets/runtime-notices/c-ares-LICENSE",
+        "canonicalSource": "android/app/src/main/assets/runtime-notices/c-ares-LICENSE"
+      },
+      {
+        "id": "android-app-src-main-assets-runtime-notices-ca-certificates-LICENSE",
+        "source": "android/app/src/main/assets/runtime-notices/ca-certificates-LICENSE",
+        "canonicalSource": "android/app/src/main/assets/runtime-notices/ca-certificates-LICENSE"
+      },
+      {
+        "id": "android-app-src-main-assets-runtime-notices-libc-plus-plus-LICENSE",
+        "source": "android/app/src/main/assets/runtime-notices/libc++-LICENSE",
+        "canonicalSource": "android/app/src/main/assets/runtime-notices/libc++-LICENSE"
+      },
+      {
+        "id": "android-app-src-main-assets-runtime-notices-libicu-LICENSE",
+        "source": "android/app/src/main/assets/runtime-notices/libicu-LICENSE",
+        "canonicalSource": "android/app/src/main/assets/runtime-notices/libicu-LICENSE"
+      },
+      {
+        "id": "android-app-src-main-assets-runtime-notices-libsqlite-LICENSE",
+        "source": "android/app/src/main/assets/runtime-notices/libsqlite-LICENSE",
+        "canonicalSource": "android/app/src/main/assets/runtime-notices/libsqlite-LICENSE"
+      },
+      {
+        "id": "android-app-src-main-assets-runtime-notices-node-addon-system-LICENSE",
+        "source": "android/app/src/main/assets/runtime-notices/node-addon-system-LICENSE",
+        "canonicalSource": "android/app/src/main/assets/runtime-notices/node-addon-system-LICENSE"
+      },
+      {
+        "id": "android-app-src-main-assets-runtime-notices-nodejs-lts-LICENSE",
+        "source": "android/app/src/main/assets/runtime-notices/nodejs-lts-LICENSE",
+        "canonicalSource": "android/app/src/main/assets/runtime-notices/nodejs-lts-LICENSE"
+      },
+      {
+        "id": "android-app-src-main-assets-runtime-notices-openssl-LICENSE",
+        "source": "android/app/src/main/assets/runtime-notices/openssl-LICENSE",
+        "canonicalSource": "android/app/src/main/assets/runtime-notices/openssl-LICENSE"
+      },
+      {
+        "id": "android-app-src-main-assets-runtime-notices-zlib-LICENSE",
+        "source": "android/app/src/main/assets/runtime-notices/zlib-LICENSE",
+        "canonicalSource": "android/app/src/main/assets/runtime-notices/zlib-LICENSE"
+      },
+      {
+        "id": "android-app-src-main-java-app-nexttavern-android-probe-JsonProtocolParser.java",
+        "source": "android/app/src/main/java/app/nexttavern/android/probe/JsonProtocolParser.java",
+        "canonicalSource": "android/app/src/main/java/app/nexttavern/android/probe/JsonProtocolParser.java"
+      },
+      {
+        "id": "android-app-src-main-java-app-nexttavern-android-probe-MainActivity.java",
+        "source": "android/app/src/main/java/app/nexttavern/android/probe/MainActivity.java",
+        "canonicalSource": "android/app/src/main/java/app/nexttavern/android/probe/MainActivity.java"
+      },
+      {
+        "id": "android-app-src-main-java-app-nexttavern-android-probe-core-AssetInstaller.java",
+        "source": "android/app/src/main/java/app/nexttavern/android/probe/core/AssetInstaller.java",
+        "canonicalSource": "android/app/src/main/java/app/nexttavern/android/probe/core/AssetInstaller.java"
+      },
+      {
+        "id": "android-app-src-main-java-app-nexttavern-android-probe-core-BoundedLog.java",
+        "source": "android/app/src/main/java/app/nexttavern/android/probe/core/BoundedLog.java",
+        "canonicalSource": "android/app/src/main/java/app/nexttavern/android/probe/core/BoundedLog.java"
+      },
+      {
+        "id": "android-app-src-main-java-app-nexttavern-android-probe-core-ProbePaths.java",
+        "source": "android/app/src/main/java/app/nexttavern/android/probe/core/ProbePaths.java",
+        "canonicalSource": "android/app/src/main/java/app/nexttavern/android/probe/core/ProbePaths.java"
+      },
+      {
+        "id": "android-app-src-main-java-app-nexttavern-android-probe-core-ProcessSupervisor.java",
+        "source": "android/app/src/main/java/app/nexttavern/android/probe/core/ProcessSupervisor.java",
+        "canonicalSource": "android/app/src/main/java/app/nexttavern/android/probe/core/ProcessSupervisor.java"
+      },
+      {
+        "id": "android-app-src-test-java-app-nexttavern-android-probe-core-CoreTest.java",
+        "source": "android/app/src/test/java/app/nexttavern/android/probe/core/CoreTest.java",
+        "canonicalSource": "android/app/src/test/java/app/nexttavern/android/probe/core/CoreTest.java"
+      },
+      {
+        "id": "android-app-tools-test-core.sh",
+        "source": "android/app/tools/test-core.sh",
+        "canonicalSource": "android/app/tools/test-core.sh"
+      },
+      {
+        "id": "android-build.gradle.kts",
+        "source": "android/build.gradle.kts",
+        "canonicalSource": "android/build.gradle.kts"
+      },
+      {
+        "id": "android-gradle.properties",
+        "source": "android/gradle.properties",
+        "canonicalSource": "android/gradle.properties"
+      },
+      {
+        "id": "android-gradle-wrapper-gradle-wrapper.jar",
+        "source": "android/gradle/wrapper/gradle-wrapper.jar",
+        "canonicalSource": "android/gradle/wrapper/gradle-wrapper.jar"
+      },
+      {
+        "id": "android-gradle-wrapper-gradle-wrapper.properties",
+        "source": "android/gradle/wrapper/gradle-wrapper.properties",
+        "canonicalSource": "android/gradle/wrapper/gradle-wrapper.properties"
+      },
+      {
+        "id": "android-gradlew",
+        "source": "android/gradlew",
+        "canonicalSource": "android/gradlew"
+      },
+      {
+        "id": "android-gradlew.bat",
+        "source": "android/gradlew.bat",
+        "canonicalSource": "android/gradlew.bat"
+      },
+      {
+        "id": "android-probe-.gitignore",
+        "source": "android/probe/.gitignore",
+        "canonicalSource": "android/probe/.gitignore"
+      },
+      {
+        "id": "android-probe-README.md",
+        "source": "android/probe/README.md",
+        "canonicalSource": "android/probe/README.md"
+      },
+      {
+        "id": "android-probe-child.mts",
+        "source": "android/probe/child.mts",
+        "canonicalSource": "android/probe/child.mts"
+      },
+      {
+        "id": "android-probe-fixtures-localhost-cert.txt",
+        "source": "android/probe/fixtures/localhost-cert.txt",
+        "canonicalSource": "android/probe/fixtures/localhost-cert.txt"
+      },
+      {
+        "id": "android-probe-fixtures-localhost-key.txt",
+        "source": "android/probe/fixtures/localhost-key.txt",
+        "canonicalSource": "android/probe/fixtures/localhost-key.txt"
+      },
+      {
+        "id": "android-probe-flock.mts",
+        "source": "android/probe/flock.mts",
+        "canonicalSource": "android/probe/flock.mts"
+      },
+      {
+        "id": "android-probe-model.mts",
+        "source": "android/probe/model.mts",
+        "canonicalSource": "android/probe/model.mts"
+      },
+      {
+        "id": "android-probe-probes.mts",
+        "source": "android/probe/probes.mts",
+        "canonicalSource": "android/probe/probes.mts"
+      },
+      {
+        "id": "android-probe-process-helper.mts",
+        "source": "android/probe/process-helper.mts",
+        "canonicalSource": "android/probe/process-helper.mts"
+      },
+      {
+        "id": "android-probe-result.schema.json",
+        "source": "android/probe/result.schema.json",
+        "canonicalSource": "android/probe/result.schema.json"
+      },
+      {
+        "id": "android-probe-run.mts",
+        "source": "android/probe/run.mts",
+        "canonicalSource": "android/probe/run.mts"
+      },
+      {
+        "id": "android-probe-runner.mts",
+        "source": "android/probe/runner.mts",
+        "canonicalSource": "android/probe/runner.mts"
+      },
+      {
+        "id": "android-probe-tests-adapter-check.mts",
+        "source": "android/probe/tests/adapter-check.mts",
+        "canonicalSource": "android/probe/tests/adapter-check.mts"
+      },
+      {
+        "id": "android-probe-tests-capabilities.test.mts",
+        "source": "android/probe/tests/capabilities.test.mts",
+        "canonicalSource": "android/probe/tests/capabilities.test.mts"
+      },
+      {
+        "id": "android-probe-tests-helpers.mts",
+        "source": "android/probe/tests/helpers.mts",
+        "canonicalSource": "android/probe/tests/helpers.mts"
+      },
+      {
+        "id": "android-probe-tests-noop-flock.mts",
+        "source": "android/probe/tests/noop-flock.mts",
+        "canonicalSource": "android/probe/tests/noop-flock.mts"
+      },
+      {
+        "id": "android-probe-tests-runner.test.mts",
+        "source": "android/probe/tests/runner.test.mts",
+        "canonicalSource": "android/probe/tests/runner.test.mts"
+      },
+      {
+        "id": "android-probe-tests-schema.test.mts",
+        "source": "android/probe/tests/schema.test.mts",
+        "canonicalSource": "android/probe/tests/schema.test.mts"
+      },
+      {
+        "id": "android-probe-worker.mts",
+        "source": "android/probe/worker.mts",
+        "canonicalSource": "android/probe/worker.mts"
+      },
+      {
+        "id": "android-runtime-inputs.lock.json",
+        "source": "android/runtime-inputs.lock.json",
+        "canonicalSource": "android/runtime-inputs.lock.json"
+      },
+      {
+        "id": "android-runtime-inputs.x64.lock.json",
+        "source": "android/runtime-inputs.x64.lock.json",
+        "canonicalSource": "android/runtime-inputs.x64.lock.json"
+      },
+      {
+        "id": "android-settings.gradle.kts",
+        "source": "android/settings.gradle.kts",
+        "canonicalSource": "android/settings.gradle.kts"
+      },
+      {
+        "id": "android-tools-build-flock.mts",
+        "source": "android/tools/build-flock.mts",
+        "canonicalSource": "android/tools/build-flock.mts"
+      },
+      {
+        "id": "android-tools-prepare-runtime.mts",
+        "source": "android/tools/prepare-runtime.mts",
+        "canonicalSource": "android/tools/prepare-runtime.mts"
+      },
+      {
+        "id": "android-tools-runtime-abi.test.mts",
+        "source": "android/tools/runtime-abi.test.mts",
+        "canonicalSource": "android/tools/runtime-abi.test.mts"
+      },
+      {
+        "id": "android-tools-check-native.mts",
+        "source": "android/tools/check-native.mts",
+        "canonicalSource": "android/tools/check-native.mts"
+      },
+      {
+        "id": "compat-session-persistence-jsonl-src-flock-ts",
+        "source": "development/session-persistence-jsonl/src/flock.ts",
+        "canonicalSource": "runtime/alpha3/compat/session-persistence-jsonl/src/flock.ts"
+      },
+      {
+        "id": "compat-session-persistence-jsonl-lib-flock-js",
+        "source": "development/session-persistence-jsonl/lib/flock.js",
+        "canonicalSource": "runtime/alpha3/compat/session-persistence-jsonl/lib/flock.js"
+      },
+      {
+        "id": "session-flock-contract",
+        "source": "tests/session-flock.test.mts",
+        "canonicalSource": "runtime/alpha3/tests/session-flock.test.mts"
+      },
+      {
+        "id": "android-host-android-host.test.mts",
+        "source": "android/host/android-host.test.mts",
+        "canonicalSource": "android/host/android-host.test.mts"
+      },
+      {
+        "id": "android-host-android-host.mts",
+        "source": "android/host/android-host.mts",
+        "canonicalSource": "android/host/android-host.mts"
+      },
+      {
+        "id": "android-host-lib-android-host.mjs",
+        "source": "android/host/lib/android-host.mjs",
+        "canonicalSource": "android/host/lib/android-host.mjs"
+      },
+      {
+        "id": "android-host-host-launch.mts",
+        "source": "android/host/host-launch.mts",
+        "canonicalSource": "android/host/host-launch.mts"
+      },
+      {
+        "id": "android-host-lib-host-launch.mjs",
+        "source": "android/host/lib/host-launch.mjs",
+        "canonicalSource": "android/host/lib/host-launch.mjs"
+      },
+      {
+        "id": "android-host-host-launch.test.mts",
+        "source": "android/host/host-launch.test.mts",
+        "canonicalSource": "android/host/host-launch.test.mts"
+      },
+      {
+        "id": "roleplay-background-stop-contract",
+        "source": "tests/roleplay-background-stop.test.mts",
+        "canonicalSource": "runtime/alpha3/tests/roleplay-background-stop.test.mts"
+      },
+      {
+        "id": "roleplay-owned-work-typescript",
+        "source": "src/core/roleplay-owned-work.ts",
+        "canonicalSource": "runtime/alpha3/src/core/roleplay-owned-work.ts"
+      },
+      {
+        "id": "roleplay-owned-work-js",
+        "source": "lib/core/roleplay-owned-work.js",
+        "canonicalSource": "runtime/alpha3/lib/core/roleplay-owned-work.js"
+      },
+      {
+        "id": "android-tools-build-require-builtin-mts",
+        "source": "android/tools/build-require-builtin.mts",
+        "canonicalSource": "android/tools/build-require-builtin.mts"
+      },
+      {
+        "id": "android-tools-build-require-builtin-mjs",
+        "source": "android/tools/build-require-builtin.mjs",
+        "canonicalSource": "android/tools/build-require-builtin.mjs"
+      },
+      {
+        "id": "android-mobile-.gitignore",
+        "source": "android/mobile/.gitignore",
+        "canonicalSource": "android/mobile/.gitignore"
+      },
+      {
+        "id": "android-mobile-README.md",
+        "source": "android/mobile/README.md",
+        "canonicalSource": "android/mobile/README.md"
+      },
+      {
+        "id": "android-mobile-build.gradle.kts",
+        "source": "android/mobile/build.gradle.kts",
+        "canonicalSource": "android/mobile/build.gradle.kts"
+      },
+      {
+        "id": "android-mobile-src-main-AndroidManifest.xml",
+        "source": "android/mobile/src/main/AndroidManifest.xml",
+        "canonicalSource": "android/mobile/src/main/AndroidManifest.xml"
+      },
+      {
+        "id": "android-mobile-src-main-res-xml-network_security_config.xml",
+        "source": "android/mobile/src/main/res/xml/network_security_config.xml",
+        "canonicalSource": "android/mobile/src/main/res/xml/network_security_config.xml"
+      },
+      {
+        "id": "android-mobile-src-main-java-app-nexttavern-android-mobile-MainActivity.java",
+        "source": "android/mobile/src/main/java/app/nexttavern/android/mobile/MainActivity.java",
+        "canonicalSource": "android/mobile/src/main/java/app/nexttavern/android/mobile/MainActivity.java"
+      },
+      {
+        "id": "android-mobile-src-main-java-app-nexttavern-android-mobile-NodeSession.java",
+        "source": "android/mobile/src/main/java/app/nexttavern/android/mobile/NodeSession.java",
+        "canonicalSource": "android/mobile/src/main/java/app/nexttavern/android/mobile/NodeSession.java"
+      },
+      {
+        "id": "android-mobile-src-main-java-app-nexttavern-android-mobile-RuntimeService.java",
+        "source": "android/mobile/src/main/java/app/nexttavern/android/mobile/RuntimeService.java",
+        "canonicalSource": "android/mobile/src/main/java/app/nexttavern/android/mobile/RuntimeService.java"
+      },
+      {
+        "id": "android-mobile-src-x86DiagnosticDebug-AndroidManifest.xml",
+        "source": "android/mobile/src/x86DiagnosticDebug/AndroidManifest.xml",
+        "canonicalSource": "android/mobile/src/x86DiagnosticDebug/AndroidManifest.xml"
+      },
+      {
+        "id": "android-mobile-src-x86DiagnosticDebug-java-app-nexttavern-android-mobile-RuntimeDiagnosticActivity.java",
+        "source": "android/mobile/src/x86DiagnosticDebug/java/app/nexttavern/android/mobile/RuntimeDiagnosticActivity.java",
+        "canonicalSource": "android/mobile/src/x86DiagnosticDebug/java/app/nexttavern/android/mobile/RuntimeDiagnosticActivity.java"
+      },
+      {
+        "id": "android-mobile-src-main-java-app-nexttavern-android-mobile-core-CodeBundle.java",
+        "source": "android/mobile/src/main/java/app/nexttavern/android/mobile/core/CodeBundle.java",
+        "canonicalSource": "android/mobile/src/main/java/app/nexttavern/android/mobile/core/CodeBundle.java"
+      },
+      {
+        "id": "android-mobile-src-main-java-app-nexttavern-android-mobile-core-OriginPolicy.java",
+        "source": "android/mobile/src/main/java/app/nexttavern/android/mobile/core/OriginPolicy.java",
+        "canonicalSource": "android/mobile/src/main/java/app/nexttavern/android/mobile/core/OriginPolicy.java"
+      },
+      {
+        "id": "android-mobile-src-test-java-app-nexttavern-android-mobile-core-MobileCoreTest.java",
+        "source": "android/mobile/src/test/java/app/nexttavern/android/mobile/core/MobileCoreTest.java",
+        "canonicalSource": "android/mobile/src/test/java/app/nexttavern/android/mobile/core/MobileCoreTest.java"
+      },
+      {
+        "id": "android-mobile-tools-test-core.sh",
+        "source": "android/mobile/tools/test-core.sh",
+        "canonicalSource": "android/mobile/tools/test-core.sh"
+      },
+      {
+        "id": "android-host-attachment-smoke.mts",
+        "source": "android/host/attachment-smoke.mts",
+        "canonicalSource": "android/host/attachment-smoke.mts"
+      },
+      {
+        "id": "android-tools-pack-host.mts",
+        "source": "android/tools/pack-host.mts",
+        "canonicalSource": "android/tools/pack-host.mts"
+      },
+      {
+        "id": "android-tools-pack-host.test.mts",
+        "source": "android/tools/pack-host.test.mts",
+        "canonicalSource": "android/tools/pack-host.test.mts"
+      },
+      {
+        "id": "android-tools-pack-host.mjs",
+        "source": "android/tools/pack-host.mjs",
+        "canonicalSource": "android/tools/pack-host.mjs"
+      },
+      {
+        "id": "android-host-protocol-fixture.mts",
+        "source": "android/host/protocol-fixture.mts",
+        "canonicalSource": "android/host/protocol-fixture.mts"
+      },
+      {
+        "id": "android-host-protocol-fixture.test.mts",
+        "source": "android/host/protocol-fixture.test.mts",
+        "canonicalSource": "android/host/protocol-fixture.test.mts"
+      },
+      {
+        "id": "android-app-src-main-assets-runtime-notices-require-builtin-LICENSE",
+        "source": "android/app/src/main/assets/runtime-notices/require-builtin-LICENSE",
+        "canonicalSource": "android/app/src/main/assets/runtime-notices/require-builtin-LICENSE"
+      },
+      {
+        "id": "android-app-src-main-assets-runtime-notices-node-addon-api-LICENSE",
+        "source": "android/app/src/main/assets/runtime-notices/node-addon-api-LICENSE",
+        "canonicalSource": "android/app/src/main/assets/runtime-notices/node-addon-api-LICENSE"
+      },
+      {
+        "id": "public-vendor-admission-typescript",
+        "source": "src/operations/public-vendor-admission.mts",
+        "canonicalSource": "runtime/alpha3/src/operations/public-vendor-admission.mts"
+      },
+      {
+        "id": "public-vendor-admission",
+        "source": "lib/operations/public-vendor-admission.mjs",
+        "canonicalSource": "runtime/alpha3/lib/operations/public-vendor-admission.mjs"
+      },
+      {
+        "id": "android-tools-prepare-product-mts",
+        "source": "android/tools/prepare-product.mts",
+        "canonicalSource": "android/tools/prepare-product.mts"
+      },
+      {
+        "id": "android-tools-prepare-product-test-mts",
+        "source": "android/tools/prepare-product.test.mts",
+        "canonicalSource": "android/tools/prepare-product.test.mts"
+      },
+      {
+        "id": "android-tools-prepare-product-mjs",
+        "source": "android/tools/prepare-product.mjs",
+        "canonicalSource": "android/tools/prepare-product.mjs"
       }
     ],
     "publicRelease": {
@@ -21084,6 +21639,42 @@
           "artifact": "public-build-modules"
         }
       ]
+    },
+    "dependencyAssemblies": {
+      "pi-ai": {
+        "targetTree": "lib",
+        "upstreamVersion": "0.85.1",
+        "ownedRoot": "development/pi-ai",
+        "packageArtifact": "compat-pi-ai-package-json",
+        "overlays": [
+          "compat-pi-ai-google-generative-ai-ts",
+          "compat-pi-ai-google-generative-ai-js",
+          "compat-pi-ai-openai-completions-ts",
+          "compat-pi-ai-openai-completions-js",
+          "compat-pi-ai-openai-responses-shared-ts",
+          "compat-pi-ai-openai-responses-shared-js",
+          "compat-pi-ai-anthropic-messages-ts",
+          "compat-pi-ai-anthropic-messages-js",
+          "compat-pi-ai-package-json",
+          "compat-pi-ai-origin-json",
+          "compat-pi-ai-license",
+          "compat-pi-ai-license-upstream",
+          "compat-pi-ai-notice",
+          "compat-pi-ai-bedrock-converse-stream-ts",
+          "compat-pi-ai-bedrock-converse-stream-js",
+          "compat-pi-ai-mistral-conversations-ts",
+          "compat-pi-ai-mistral-conversations-js",
+          "compat-pi-ai-pi-messages-ts",
+          "compat-pi-ai-pi-messages-js",
+          "compat-pi-ai-openai-ordered-input-ts",
+          "compat-pi-ai-openai-ordered-input-js",
+          "compat-pi-ai-openai-completions-dts",
+          "compat-pi-ai-openai-ordered-input-dts"
+        ],
+        "upstreamPackage": "@earendil-works/pi-ai",
+        "lockArtifact": "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "upstreamTree": "dist"
+      }
     },
     "builds": [
       {
@@ -27391,6 +27982,7 @@
         "artifact": "compat-session-persistence-jsonl-lib-catalog-migration-js",
         "entry": "development/session-persistence-jsonl/src/catalog-migration.ts",
         "inputs": [
+          "development/session-persistence-jsonl/src/flock.ts",
           "development/session-persistence-jsonl/src/format.ts",
           "development/session-persistence-jsonl/src/generation.ts",
           "development/session-persistence-jsonl/src/index.ts",
@@ -27434,6 +28026,7 @@
         "artifact": "compat-session-persistence-jsonl-lib-format-js",
         "entry": "development/session-persistence-jsonl/src/format.ts",
         "inputs": [
+          "development/session-persistence-jsonl/src/flock.ts",
           "development/session-persistence-jsonl/src/format.ts",
           "development/session-persistence-jsonl/src/generation.ts",
           "development/session-persistence-jsonl/src/index.ts",
@@ -27487,6 +28080,7 @@
         "artifact": "compat-session-persistence-jsonl-lib-generation-js",
         "entry": "development/session-persistence-jsonl/src/generation.ts",
         "inputs": [
+          "development/session-persistence-jsonl/src/flock.ts",
           "development/session-persistence-jsonl/src/format.ts",
           "development/session-persistence-jsonl/src/generation.ts",
           "development/session-persistence-jsonl/src/index.ts",
@@ -27530,6 +28124,7 @@
         "artifact": "compat-session-persistence-jsonl-lib-index-js",
         "entry": "development/session-persistence-jsonl/src/index.ts",
         "inputs": [
+          "development/session-persistence-jsonl/src/flock.ts",
           "development/session-persistence-jsonl/src/format.ts",
           "development/session-persistence-jsonl/src/generation.ts",
           "development/session-persistence-jsonl/src/index.ts",
@@ -27573,6 +28168,7 @@
         "artifact": "compat-session-persistence-jsonl-lib-lease-js",
         "entry": "development/session-persistence-jsonl/src/lease.ts",
         "inputs": [
+          "development/session-persistence-jsonl/src/flock.ts",
           "development/session-persistence-jsonl/src/format.ts",
           "development/session-persistence-jsonl/src/generation.ts",
           "development/session-persistence-jsonl/src/index.ts",
@@ -27621,11 +28217,66 @@
         "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/lease.ts"
       },
       {
+        "id": "compat-session-persistence-jsonl-flock-js-build",
+        "kind": "typescript-module",
+        "artifact": "compat-session-persistence-jsonl-lib-flock-js",
+        "entry": "development/session-persistence-jsonl/src/flock.ts",
+        "inputs": [
+          "development/session-persistence-jsonl/src/flock.ts",
+          "development/session-persistence-jsonl/src/format.ts",
+          "development/session-persistence-jsonl/src/generation.ts",
+          "development/session-persistence-jsonl/src/index.ts",
+          "development/session-persistence-jsonl/src/lease.ts",
+          "development/session-persistence-jsonl/src/migration-verifier.ts",
+          "development/session-persistence-jsonl/src/storage.ts",
+          "development/session-persistence-jsonl/src/win32.ts",
+          "development/session-persistence-jsonl/src/worker.ts",
+          "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+          "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+          "development/session-persistence-jsonl/src/zstd.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "development/session-format/src/catalog.ts",
+          "development/session-format/src/index.ts",
+          "development/session-format/src/projection.ts",
+          "development/session-format/src/storage-contract.ts",
+          "development/session-persistence-jsonl/src/catalog-migration.ts",
+          "development/session/src/index.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/assembler.ts",
+          "development/session/src/types.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session-format/src/mvu-player-marker.ts",
+          "src/operations/build-typescript.mts"
+        ],
+        "typeContext": "session-storage",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/flock.ts"
+      },
+      {
         "id": "compat-session-persistence-jsonl-migration-verifier-js-build",
         "kind": "typescript-module",
         "artifact": "compat-session-persistence-jsonl-lib-migration-verifier-js",
         "entry": "development/session-persistence-jsonl/src/migration-verifier.ts",
         "inputs": [
+          "development/session-persistence-jsonl/src/flock.ts",
           "development/session-persistence-jsonl/src/format.ts",
           "development/session-persistence-jsonl/src/generation.ts",
           "development/session-persistence-jsonl/src/index.ts",
@@ -27669,6 +28320,7 @@
         "artifact": "compat-session-persistence-jsonl-lib-storage-js",
         "entry": "development/session-persistence-jsonl/src/storage.ts",
         "inputs": [
+          "development/session-persistence-jsonl/src/flock.ts",
           "development/session-persistence-jsonl/src/format.ts",
           "development/session-persistence-jsonl/src/generation.ts",
           "development/session-persistence-jsonl/src/index.ts",
@@ -27744,6 +28396,7 @@
           "development/session/src/preparation.ts",
           "development/session/src/seq-ranges.ts",
           "development/session-format/src/mvu-player-marker.ts",
+          "development/session-persistence-jsonl/src/flock.ts",
           "development/session-persistence-jsonl/src/format.ts",
           "src/operations/build-typescript.mts"
         ],
@@ -27756,6 +28409,7 @@
         "artifact": "compat-session-persistence-jsonl-lib-win32-js",
         "entry": "development/session-persistence-jsonl/src/win32.ts",
         "inputs": [
+          "development/session-persistence-jsonl/src/flock.ts",
           "development/session-persistence-jsonl/src/format.ts",
           "development/session-persistence-jsonl/src/generation.ts",
           "development/session-persistence-jsonl/src/index.ts",
@@ -27788,6 +28442,7 @@
         "artifact": "compat-session-persistence-jsonl-lib-worker-js",
         "entry": "development/session-persistence-jsonl/src/worker.ts",
         "inputs": [
+          "development/session-persistence-jsonl/src/flock.ts",
           "development/session-persistence-jsonl/src/format.ts",
           "development/session-persistence-jsonl/src/generation.ts",
           "development/session-persistence-jsonl/src/index.ts",
@@ -27831,6 +28486,7 @@
         "artifact": "compat-session-persistence-jsonl-lib-zstd-js",
         "entry": "development/session-persistence-jsonl/src/zstd.ts",
         "inputs": [
+          "development/session-persistence-jsonl/src/flock.ts",
           "development/session-persistence-jsonl/src/format.ts",
           "development/session-persistence-jsonl/src/generation.ts",
           "development/session-persistence-jsonl/src/index.ts",
@@ -27863,6 +28519,7 @@
         "artifact": "compat-session-persistence-jsonl-lib-zstd-private-decoder-js",
         "entry": "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
         "inputs": [
+          "development/session-persistence-jsonl/src/flock.ts",
           "development/session-persistence-jsonl/src/format.ts",
           "development/session-persistence-jsonl/src/generation.ts",
           "development/session-persistence-jsonl/src/index.ts",
@@ -27895,6 +28552,7 @@
         "artifact": "compat-session-persistence-jsonl-lib-zstd-public-decoder-js",
         "entry": "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
         "inputs": [
+          "development/session-persistence-jsonl/src/flock.ts",
           "development/session-persistence-jsonl/src/format.ts",
           "development/session-persistence-jsonl/src/generation.ts",
           "development/session-persistence-jsonl/src/index.ts",
@@ -33513,6 +34171,7 @@
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
         "inputs": [
           "src/core/host-index.ts",
+          "src/core/roleplay-owned-work.ts",
           "src/core/roleplay-side-chat-bridge.ts",
           "src/core/tavern-conversations.ts",
           "build-tools/tsconfig.json",
@@ -45283,6 +45942,7 @@
           "src/core/roleplay-context.ts",
           "src/core/roleplay-core-types.ts",
           "src/core/roleplay-core.ts",
+          "src/core/roleplay-owned-work.ts",
           "src/core/roleplay-side-chat.ts",
           "src/core/roleplay-data.ts",
           "src/core/roleplay-decision-types.ts",
@@ -120579,6 +121239,32 @@
         "banner": "runtime/alpha3/compat/client-modules/src/client/system.ts"
       },
       {
+        "id": "compat-client-modules-browser-build",
+        "artifact": "compat-client-modules-browser",
+        "entry": "development/client-modules/src/client/index.ts",
+        "builder": "runtime/alpha3/lib/ui/build-client.mjs",
+        "inputs": [
+          "development/client-modules/src/index.ts",
+          "development/client-modules/src/invariant.ts",
+          "development/client-modules/src/client/entries.ts",
+          "development/client-modules/src/client/entry-lifecycle.ts",
+          "development/client-modules/src/client/index.ts",
+          "development/client-modules/src/client/manifest.ts",
+          "development/client-modules/src/client/system.ts",
+          "lib/ui/build-client.mjs",
+          "src/ui/build-client.mts",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "development/client-modules/package.json"
+        ],
+        "browser": {
+          "moduleId": "@deepseek-ai/dsh-client-modules",
+          "external": [],
+          "minifyWhitespace": false
+        },
+        "banner": "runtime/alpha3/compat/client-modules/src/client/index.ts"
+      },
+      {
         "id": "roleplay-mvu-schema-maintenance-build",
         "kind": "typescript-module",
         "artifact": "roleplay-mvu-schema-maintenance-js",
@@ -123516,6 +124202,135 @@
           "src/core/roleplay-worldline-player-save.ts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-combined-compiler-v8.mts"
+      },
+      {
+        "id": "android-host-android-host-mjs-build",
+        "kind": "typescript-module",
+        "artifact": "android-host-lib-android-host.mjs",
+        "entry": "android/host/android-host.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "android/host/android-host.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs"
+        ],
+        "typeContext": "default",
+        "banner": "android/host/android-host.mts"
+      },
+      {
+        "id": "android-host-host-launch-mjs-build",
+        "kind": "typescript-module",
+        "artifact": "android-host-lib-host-launch.mjs",
+        "entry": "android/host/host-launch.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "android/host/host-launch.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs"
+        ],
+        "typeContext": "default",
+        "banner": "android/host/host-launch.mts"
+      },
+      {
+        "id": "roleplay-owned-work-js-build",
+        "kind": "typescript-module",
+        "artifact": "roleplay-owned-work-js",
+        "entry": "src/core/roleplay-owned-work.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "bundledDependencies": [
+          "parse5",
+          "entities"
+        ],
+        "inputs": [
+          "src/core/roleplay-owned-work.ts",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "externalDependencies": [
+          "dsh-nexttavern-typescript-runtime"
+        ],
+        "banner": "runtime/alpha3/src/core/roleplay-owned-work.ts"
+      },
+      {
+        "id": "android-tools-build-require-builtin-mjs-build",
+        "kind": "typescript-module",
+        "artifact": "android-tools-build-require-builtin-mjs",
+        "entry": "android/tools/build-require-builtin.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "bundledDependencies": [
+          "parse5",
+          "entities"
+        ],
+        "inputs": [
+          "android/tools/build-require-builtin.mts",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "externalDependencies": [
+          "dsh-nexttavern-typescript-runtime"
+        ],
+        "banner": "android/tools/build-require-builtin.mts"
+      },
+      {
+        "id": "android-tools-pack-host-mjs-build",
+        "kind": "typescript-module",
+        "artifact": "android-tools-pack-host.mjs",
+        "entry": "android/tools/pack-host.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "android/tools/pack-host.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs"
+        ],
+        "typeContext": "default",
+        "banner": "android/tools/pack-host.mts"
+      },
+      {
+        "id": "public-vendor-admission-typed-build",
+        "kind": "typescript-module",
+        "artifact": "public-vendor-admission",
+        "entry": "src/operations/public-vendor-admission.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "build-tools/package-lock.json",
+          "build-tools/package.json",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/public-vendor-admission.mts"
+        ],
+        "banner": "runtime/alpha3/src/operations/public-vendor-admission.mts"
+      },
+      {
+        "id": "android-tools-prepare-product-mjs-build",
+        "kind": "typescript-module",
+        "artifact": "android-tools-prepare-product-mjs",
+        "entry": "android/tools/prepare-product.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "android/tools/prepare-product.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "lib/operations/product-assembly.mjs",
+          "lib/operations/public-vendor-admission.mjs",
+          "src/operations/product-assembly.mts",
+          "src/operations/public-vendor-admission.mts"
+        ],
+        "typeContext": "default",
+        "banner": "android/tools/prepare-product.mts"
       }
     ],
     "typeScript": {
@@ -124372,6 +125187,92 @@
         },
         "lockArtifact": "inventory-runtime-alpha3-build-tools-package-lock-json"
       },
+      "bundles": [
+        {
+          "layout": "skin-package"
+        }
+      ],
+      "bundlePlatforms": [
+        "win32-x64",
+        "win32-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "hostForkProfile": {
+        "schemaVersion": 1,
+        "encoding": "owned-native-host-fork-profile-v1",
+        "id": "nexttavern-owned-author-dialog-v1",
+        "hostVersion": "0.1.7-rc.2",
+        "activation": "manual-only"
+      },
+      "hostForks": [
+        {
+          "name": "@deepseek-ai/dsh-llm",
+          "version": "0.1.7-rc.2",
+          "source": "development/llm",
+          "target": "host-overrides/@deepseek-ai/dsh-llm"
+        },
+        {
+          "name": "@deepseek-ai/dsh-session",
+          "version": "0.1.7-rc.2",
+          "source": "development/session",
+          "target": "host-overrides/@deepseek-ai/dsh-session"
+        },
+        {
+          "name": "@deepseek-ai/dsh-agent-loop",
+          "version": "0.1.7-rc.2",
+          "source": "development/agent-loop",
+          "target": "host-overrides/@deepseek-ai/dsh-agent-loop"
+        },
+        {
+          "name": "@deepseek-ai/dsh-subagent",
+          "version": "0.1.7-rc.2",
+          "source": "development/subagent",
+          "target": "host-overrides/@deepseek-ai/dsh-subagent"
+        },
+        {
+          "name": "@deepseek-ai/dsh-subagent-in-process-driver",
+          "version": "0.1.7-rc.2",
+          "source": "development/subagent-in-process-driver",
+          "target": "host-overrides/@deepseek-ai/dsh-subagent-in-process-driver"
+        },
+        {
+          "name": "@deepseek-ai/dsh-subagent-spawn-in-process",
+          "version": "0.1.7-rc.2",
+          "source": "development/subagent-spawn-in-process",
+          "target": "host-overrides/@deepseek-ai/dsh-subagent-spawn-in-process"
+        },
+        {
+          "name": "@deepseek-ai/dsh-http-proxy",
+          "version": "0.1.7-rc.2",
+          "source": "development/http-proxy",
+          "target": "host-overrides/@deepseek-ai/dsh-http-proxy"
+        },
+        {
+          "name": "@deepseek-ai/dsh-storage-json",
+          "version": "0.1.7-rc.2",
+          "source": "development/storage-json",
+          "target": "host-overrides/@deepseek-ai/dsh-storage-json"
+        },
+        {
+          "name": "@deepseek-ai/dsh-llm-deepseek",
+          "version": "0.1.7-rc.2",
+          "source": "development/llm-deepseek",
+          "target": "host-overrides/@deepseek-ai/dsh-llm-deepseek"
+        },
+        {
+          "name": "@deepseek-ai/dsh-tool-skill",
+          "version": "0.1.7-rc.2",
+          "source": "development/tool-skill",
+          "target": "host-overrides/@deepseek-ai/dsh-tool-skill"
+        },
+        {
+          "name": "@deepseek-ai/dsh-client-modules",
+          "version": "0.1.7-rc.2",
+          "source": "development/client-modules",
+          "target": "host-overrides/@deepseek-ai/dsh-client-modules"
+        }
+      ],
       "packages": [
         {
           "packageArtifact": "compat-anydoc-package-json",

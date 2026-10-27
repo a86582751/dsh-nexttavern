@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NextTavern Node capability summary v1 (not full Android G0)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "protocol", "scope", "startedAt", "finishedAt", "actualPlatform", "platform", "runtime", "capabilityStatus", "status", "ok", "androidGate", "targetBlockers", "unverified", "checks"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "protocol": {"const": "nexttavern-g0"},
+    "scope": {"const": "node-capabilities-only"},
+    "startedAt": {"type": "string", "format": "date-time"},
+    "finishedAt": {"type": "string", "format": "date-time"},
+    "actualPlatform": {"type": "string"},
+    "platform": {"type": "string"},
+    "runtime": {
+      "type": "object", "additionalProperties": false,
+      "required": ["platform", "arch", "node", "execPath", "executableRealPath", "cwd", "osRelease", "versions"],
+      "properties": {
+        "platform": {"type": "string"}, "arch": {"type": "string"},
+        "node": {"type": "string"}, "execPath": {"type": "string"},
+        "executableRealPath": {"type": "string"}, "cwd": {"type": "string"},
+        "osRelease": {"type": "string"},
+        "versions": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "capabilityStatus": {"$ref": "#/$defs/status"},
+    "status": {"$ref": "#/$defs/status"},
+    "ok": {"type": "boolean"},
+    "androidGate": {"const": false},
+    "targetBlockers": {"type": "array", "items": {"type": "string"}},
+    "unverified": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "checks": {
+      "type": "array", "minItems": 10, "maxItems": 10,
+      "prefixItems": [
+        {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "runtime-executable"}}}]},
+        {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "sqlite-wal-crash"}}}]},
+        {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "fork-ipc"}}}]},
+        {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "worker-threads"}}}]},
+        {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "zstd-integrity"}}}]},
+        {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "hardlink-no-clobber"}}}]},
+        {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "directory-fsync"}}}]},
+        {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "native-flock"}}}]},
+        {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "tls-local-ca"}}}]},
+        {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "dns-localhost"}}}]}
+      ],
+      "items": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"capabilityStatus": {"const": "passed"}}},
+      "then": {"properties": {"checks": {"items": {"properties": {"status": {"const": "passed"}}}}}}
+    },
+    {
+      "if": {"properties": {"capabilityStatus": {"const": "blocked"}}},
+      "then": {"properties": {"checks": {
+        "items": {"properties": {"status": {"enum": ["passed", "blocked"]}}},
+        "contains": {"properties": {"status": {"const": "blocked"}}}
+      }}}
+    },
+    {
+      "if": {"properties": {"capabilityStatus": {"const": "failed"}}},
+      "then": {"properties": {"status": {"const": "failed"}, "checks": {
+        "contains": {"properties": {"status": {"const": "failed"}}}
+      }}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "passed"}}},
+      "then": {"properties": {
+        "ok": {"const": true}, "actualPlatform": {"const": "android"}, "platform": {"const": "android"},
+        "capabilityStatus": {"const": "passed"}, "targetBlockers": {"maxItems": 0},
+        "runtime": {"properties": {"platform": {"const": "android"}, "arch": {"const": "arm64"}, "node": {"pattern": "^24\\."}}}
+      }},
+      "else": {"properties": {"ok": {"const": false}}}
+    }
+  ],
+  "$defs": {
+    "status": {"enum": ["passed", "failed", "blocked"]},
+    "check": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "status", "durationMs", "evidence"],
+      "properties": {
+        "id": {"type": "string"}, "status": {"$ref": "#/$defs/status"},
+        "durationMs": {"type": "integer", "minimum": 0},
+        "evidence": {"type": "object"},
+        "error": {
+          "type": "object", "additionalProperties": false, "required": ["name", "message"],
+          "properties": {"name": {"type": "string"}, "code": {"type": "string"}, "message": {"type": "string"}}
+        }
+      },
+      "if": {"properties": {"status": {"enum": ["failed", "blocked"]}}},
+      "then": {"required": ["error"]}
+    }
+  }
+}

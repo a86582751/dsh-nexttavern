@@ -1,0 +1,5 @@
+build/
+src/main/assets/host.zip
+src/main/assets/host-version.txt
+src/main/assets/host-pack.json
+src/x86DiagnosticDebug/jniLibs/
