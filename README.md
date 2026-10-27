@@ -18,7 +18,7 @@
 
 **创作一个世界，走进它，再把它带走。**
 
-[在线文档](https://a86582751.github.io/dsh-nexttavern/) · [一键安装](#一键安装) · [开始体验](#开始体验) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md) · [核心能力](#核心能力) · [记忆系统](#记忆系统) · [架构设计](#架构设计) · [手机电脑公网访问指南](PUBLIC-ACCESS.md) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose) · [0.3开发日志](DEVELOPMENT-0.3.md)
+[在线文档](https://a86582751.github.io/dsh-nexttavern/) · [一键安装](#一键安装) · [开始体验](#开始体验) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md) · [核心能力](#核心能力) · [记忆系统](#记忆系统) · [架构设计](#架构设计) · [手机电脑公网访问指南](PUBLIC-ACCESS.md) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose) · [0.3开发日志](DEVELOPMENT-0.3.md) · [Android路线（开发中）](DEVELOPMENT-ANDROID.md)
 
 **角色卡作者与社区开发者：** 下面四篇介绍运行机制、格式字段和创作示例。内容对应 **0.3 开发线，尚未随正式 0.3 发布**；Native 1.0／1.1 是卡文件格式版本。随包 Native 参考卡也属于 0.3 开发线，当前正式版 **0.2.9-rc.4 不含本批卡片**。
 
@@ -38,17 +38,6 @@ Roleplay workspace for DeepSeek Harness: interactive character creation, on-dema
 **0.2.9-rc.4** · Harness **0.1.7-rc.2** · pi-ai **0.85.1** · 自有代码 **GPL-3.0-only**
 
 先装宿主，再用[一键安装](#一键安装)的官方插件命令。需要自己指定目录、端口或使用归档时，见[安装](#安装)。
-
-## Android 手机端路线（开发中）
-
-**目标是一个独立安装、点开就能用的 Android APK，让酒馆直接运行在手机上。** 不需要 root，也不以安装 Termux、Ubuntu 或 PRoot 作为使用前提；这不是让手机远程连接一台必须常开的电脑。
-
-- **怎么实现：** 用原生 Android 外壳管理启动、停止和应用生命周期，内置可直接运行于 Android 的独立 Node.js（Bionic）引擎，再用 WebView 显示现有酒馆界面。我们会继续适配手机操作，但不是把整套界面重写成原生 Android 控件。
-- **本机运行不等于离线 AI：** 目标是让引擎和故事数据留在手机本地；生成故事仍需配置自己的在线模型服务与 API Key。除非另有明确支持，不代表手机内置了可离线使用的大模型。
-- **现在做到哪了：** 已完成首轮安装包构建，并在硬件加速的 Android 模拟器中启动本地引擎、显示应用页面。角色卡导入、完整对话、数据保存与重启恢复等关键体验仍在逐项验证，**目前还没有面向普通玩家发布、可下载即玩的 Android APK**。目标优先支持 ARM64 手机；模拟器通过不代表已经完成真机适配。
-- **后台运行的边界：** Android 的省电策略和后台限制仍然存在，不承诺锁屏或切到其他应用后全天候持续运行；后台行为与恢复体验还需继续验证。
-
-想看后续进展，可以关注 [`android/mobile-terminal` 开发分支](https://github.com/a86582751/dsh-nexttavern/tree/android/mobile-terminal)。下面的安装说明仍针对现有桌面／服务器版本，不是 Android APK 的安装步骤。
 
 ## 一键安装
 
@@ -79,6 +68,17 @@ npm install -g @deepseek-ai/dsh@0.1.7-rc.2
 ### Linux
 
 [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup.sh) 准备便携 Node.js、安装目录及启动／停止入口，面向 x86_64 与 aarch64（glibc），不需要 root 或系统包管理器。从 0.2.5 迁移时使用新的 `--root`；完整步骤与验证范围见 [Linux 一键安装指南](INSTALL-LINUX.md)。
+
+### Android 手机端路线（开发中）
+
+**目标是一个独立安装、点开就能用的 Android APK，让酒馆直接运行在手机上。** 不需要 root，也不以安装 Termux、Ubuntu 或 PRoot 作为使用前提；这不是让手机远程连接一台必须常开的电脑。
+
+- **怎么实现：** 用原生 Android 外壳管理启动、停止和应用生命周期，内置可直接运行于 Android 的独立 Node.js（Bionic）引擎，再用 WebView 显示现有酒馆界面。我们会继续适配手机操作，但不是把整套界面重写成原生 Android 控件。
+- **本机运行不等于离线 AI：** 目标是让引擎和故事数据留在手机本地；生成故事仍需配置自己的在线模型服务与 API Key。除非另有明确支持，不代表手机内置了可离线使用的大模型。
+- **现在做到哪了：** 已完成首轮安装包构建，并在硬件加速的 Android 模拟器中启动本地引擎、显示应用页面。角色卡导入、完整对话、数据保存与重启恢复等关键体验仍在逐项验证，**目前还没有面向普通玩家发布、可下载即玩的 Android APK**。目标优先支持 ARM64 手机；模拟器通过不代表已经完成真机适配。
+- **后台运行的边界：** Android 的省电策略和后台限制仍然存在，不承诺锁屏或切到其他应用后全天候持续运行；后台行为与恢复体验还需继续验证。
+
+想看后续进展，可以关注 [`android/mobile-terminal` 开发分支](https://github.com/a86582751/dsh-nexttavern/tree/android/mobile-terminal)。详细介绍见 [Android 手机端路线](DEVELOPMENT-ANDROID.md)。本节其余安装说明仍针对现有桌面／服务器版本，不是 Android APK 的安装步骤。
 
 ### 安装与模型费用
 
