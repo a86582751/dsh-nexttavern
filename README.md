@@ -18,7 +18,7 @@
 
 **创作一个世界，走进它，再把它带走。**
 
-[在线文档](https://a86582751.github.io/dsh-nexttavern/) · [一键安装](#一键安装) · [开始体验](#开始体验) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md) · [核心能力](#核心能力) · [记忆系统](#记忆系统) · [架构设计](#架构设计) · [手机电脑公网访问指南](PUBLIC-ACCESS.md) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose) · [0.3开发日志](DEVELOPMENT-0.3.md) · [Android路线（开发中）](DEVELOPMENT-ANDROID.md)
+[在线文档](https://a86582751.github.io/dsh-nexttavern/) · [一键安装](#一键安装) · [开始体验](#开始体验) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md)  · [android](#android)· [核心能力](#核心能力) · [记忆系统](#记忆系统) · [架构设计](#架构设计) · [手机电脑公网访问指南](PUBLIC-ACCESS.md) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose) · [0.3开发日志](DEVELOPMENT-0.3.md) · [Android路线（开发中）](DEVELOPMENT-ANDROID.md)
 
 **角色卡作者与社区开发者：** 下面四篇介绍运行机制、格式字段和创作示例。内容对应 **0.3 开发线，尚未随正式 0.3 发布**；Native 1.0／1.1 是卡文件格式版本。随包 Native 参考卡也属于 0.3 开发线，当前正式版 **0.2.9-rc.4 不含本批卡片**。
 
