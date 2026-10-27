@@ -56,6 +56,10 @@ failure_runtime_context() {
     fi
   fi
   if [[ -n "$adb" && -n "$emulator_pid" ]]; then
+    # Read only the initially acquired default INFO log before another adb command
+    # can affect transport/server state. No trace, restart or raw log output.
+    node "$source_dir/../android-mobile-terminal/safe-diagnostics.mts" --source adb-server \
+      --state-file "$work/adb-server-owner.json" --file "$work/failure-adb-server.log" || :
     timeout 5 "$adb" -s "$serial" get-state > "$work/failure-adb-state.log" 2>&1 || adb_exit=$?
     chmod 600 "$work/failure-adb-state.log"
     node "$source_dir/../android-mobile-terminal/safe-diagnostics.mts" --file "$work/failure-adb-state.log" --source adb-state --exit "$adb_exit" || :
@@ -407,6 +411,12 @@ done
 [[ "$("$adb" -s "$serial" shell getprop ro.build.version.sdk | tr -d '\r')" == 35 ]]
 [[ "$("$adb" -s "$serial" shell getprop ro.product.cpu.abi | tr -d '\r')" == x86_64 ]]
 mark API35_X86_64_KVM_BOOTED
+# Acquire the live task SDK server's exact default-log identity once. Subsequent
+# failure capture does not issue server-status (which could auto-start a server).
+timeout 5 "$adb" server-status > "$work/adb-server-status.log" 2>&1 || :
+chmod 600 "$work/adb-server-status.log"
+node "$source_dir/../android-mobile-terminal/safe-diagnostics.mts" --source adb-server-acquire \
+  --status-file "$work/adb-server-status.log" --adb-executable "$adb" --state-file "$work/adb-server-owner.json" || :
 if [[ "$mode" == --mobile ]]; then
   phase=MOBILE_UI_EXERCISE
   # The child records UI and independent probe outcomes before returning;
