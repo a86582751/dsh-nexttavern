@@ -1,7 +1,8 @@
 /** Ordinary UI-only synthetic flow: no product HTTP, READY/token reads or JS evaluation; fixed approved PNG checkpoints only. */
 import {execFileSync} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
-import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,chmodSync,unlinkSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 import {safeErrorTail,adbFailureKind} from './safe-diagnostics.mts';
 import {PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID} from '../../android/host/protocol-fixture.mts';
@@ -72,8 +73,39 @@ function deviceIdentity(deadline=Date.now()+90000):DeviceIdentity {
   return identity;
 }
 function hierarchyOutput(deadline:number):string {
-  const read=()=>timedCommand(readerTimeout(deadline),'shell','am','instrument','-w','-r',
-    'app.nexttavern.qa.ui/.HierarchyInstrumentation');
+  const read=()=>{
+    // The full shell stdout stream disconnects during IME reads on the same
+    // live VM. Keep the original helper/output, but transfer its private file.
+    const id=randomUUID(),remote='/data/local/tmp/nexttavern-ui-'+id+'.stdout';
+    const local=join(args['--work-dir'],'hierarchy-'+id+'.stdout'),readDeadline=deadline-3000;
+    let localCreated=false;
+    try {
+      const script=`umask 077; set -C; : > "${remote}" || exit 91; `
+        + `am instrument -w -r app.nexttavern.qa.ui/.HierarchyInstrumentation >> "${remote}" 2>&1; rc=$?; `
+        + `grep -E "^INSTRUMENTATION_CODE: -?[0-9]{1,6}$" "${remote}" | tail -n 1; `
+        + `printf "AM_RC=%s\\n" "$rc"; exit "$rc"`;
+      timedCommand(readerTimeout(readDeadline),'shell',script);
+      mkdirSync(args['--work-dir'],{recursive:true,mode:0o700});
+      writeFileSync(local,'',{mode:0o600,flag:'wx'});localCreated=true;
+      timedCommand(readerTimeout(readDeadline),'pull',remote,local);
+      chmodSync(local,0o600);
+      // Canceled/error results (including ROOTS_NOT_READY) must still reach
+      // the existing parser, not become successful reads or transport retries.
+      return readFileSync(local,'utf8');
+    } finally {
+      if(localCreated)unlinkSync(local);
+      try {
+        execFileSync(adb,['-s',serial,'shell','rm','-f',remote],{
+          timeout:readerTimeout(deadline,3000),stdio:'pipe',
+        });
+      } catch {
+        emit('observed',{interaction:'readonly-reader-private-cleanup-failed',replayedUserAction:false});
+        // Never classify cleanup as ADB_COMMAND_FAILED: the outer loop must
+        // not retry a read whose exact private-file cleanup was not confirmed.
+        throw new UiFailure('ACCESSIBILITY_PRIVATE_FILE_CLEANUP_FAILED');
+      }
+    }
+  };
   for(let reconnects=0;;) {
     try{return read()}catch(error) {
       // Read-only transport bursts have recovered on the same VM/app. All
