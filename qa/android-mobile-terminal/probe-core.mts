@@ -7,7 +7,7 @@ import {join,isAbsolute,dirname,resolve} from 'node:path';
 import {safeErrorTail,adbFailureKind} from './safe-diagnostics.mts';
 
 type Node=Record<string,string>;
-type Check={id:string;status:'passed'|'failed'|'blocked';durationMs:number;evidence:Record<string,unknown>;error?:{name?:string;code?:string}};
+type Check={id:string;status:'passed'|'failed'|'blocked';durationMs:number;evidence:Record<string,unknown>;error?:{name?:string;code?:string;message?:string}};
 type Envelope={protocol:string;event:string;status:string;ok:boolean;platform:string;actualPlatform:string;androidGate:false};
 const args:Record<string,string>={};
 for(let i=2;i<process.argv.length;i+=2)args[process.argv[i]]=process.argv[i+1];
@@ -202,7 +202,9 @@ function emitParsedChecks():void {
     const check=record.value;
     const evidence=id==='https-client'?{status:check.evidence.status,authorized:check.evidence.authorized,tlsVersion:check.evidence.tlsVersion}:check.evidence;
     emit('observed',{check:{id,status:check.status,durationMs:check.durationMs,evidence,
-      ...(check.error?{errorCode:safeCode(check.error.code)??'UNSPECIFIED_ERROR'}:{})}});
+      ...(check.error?{errorCode:safeCode(check.error.code)??'UNSPECIFIED_ERROR',
+        errorName:typeof check.error.name==='string'&&/^[A-Za-z][A-Za-z0-9]{0,79}$/.test(check.error.name)?check.error.name:'Error',
+        ...(id==='https-client'?{}:{errorDetail:safeErrorTail(check.error.message??'')})}:{})}});
     reportedChecks.add(id);
   }
 }

@@ -250,6 +250,9 @@ async function reveal(names:string[],kind:(node:Node)=>boolean=button,
     const labels=fieldLabel?current.filter(node=>owner(node)&&node.class==='android.widget.TextView'&&named(node,sourceLabels)):[];
     const visibleLabels=labels.filter(node=>visibleBounds(node));
     const target=found[0]??(visibleLabels.length===1?visibleLabels[0]:labels.length===1?labels[0]:undefined);
+    if(!target)emit('observed',{interaction:'missing-named-control',target:names[0],
+      matchingControls:current.filter(item=>owner(item)&&named(item,names)&&kind(item)).map(item=>({
+        enabled:item.enabled,bounds:item.bounds,visible:item['visible-to-user']}))});
     requireUi(target,'NEXT_UI_TARGET_OR_FIELD_LABEL_NOT_EXPOSED');
     if(attempt===4&&fieldLabel)emit('observed',{interaction:'field-structure',field:names[0],
       inputs:current.filter(node=>node.package===pkg&&node.class==='android.widget.EditText').map(node=>({
@@ -270,17 +273,31 @@ async function reveal(names:string[],kind:(node:Node)=>boolean=button,
 async function press(names:string[],kind:(node:Node)=>boolean=button):Promise<void> {tapNode(await reveal(names,kind));}
 async function replace(names:string[],value:string,sourceLabels=names):Promise<void> {
   emit('observed',{interaction:'edit-source-field',field:names[0]});
-  await typeAscii(await reveal(names,node=>node.class==='android.widget.EditText',node=>node.package===pkg,true,sourceLabels),value);
+  await typeAscii(await reveal(names,node=>node.class==='android.widget.EditText',node=>node.package===pkg,true,sourceLabels),value,names[0]);
 }
-async function typeAscii(node:Node,value:string):Promise<void> {
-  // All callers supply fixed ASCII synthetic values, never external credentials.
+async function typeAscii(node:Node,value:string,field='synthetic-composer'):Promise<void> {
+  // Observe focus before dispatch: a tap can trigger keyboard/layout movement.
+  // All values are fixed synthetic ASCII, but never emit input contents.
+  const identity={hint:node.hint,description:node['content-desc'],class:node.class};
+  const focused=()=>current.filter(item=>item.package===pkg&&item.class===identity.class&&item.focused==='true'
+    &&item.hint===identity.hint&&item['content-desc']===identity.description);
   tapNode(node);
+  await until(()=>focused().length===1,10,'EXPECTED_FIELD_NOT_FOCUSED');
   command('shell','input','keycombination','113','29'); // API35 Ctrl+A.
   command('shell','input','keyevent','KEYCODE_DEL');
   command('shell','input','text',value.replaceAll(' ','%s'));
   snapshot();
+  const found=focused();
+  requireUi(found.length===1,'EXPECTED_FIELD_FOCUS_LOST');
+  const actual=found[0].text??'',password=found[0].password==='true';
+  const matchesExpected=password?actual.length===value.length:actual===value;
+  emit('observed',{interaction:'input-readback',field,password,matchesExpected,
+    expectedLength:value.length,observedLength:actual.length,
+    ...(!password?{firstDifference:[...value].findIndex((char,index)=>actual[index]!==char),
+      asciiLowercaseRoute:/^[a-z][a-z0-9-]*$/.test(actual)}:{})});
+  requireUi(matchesExpected,'SYNTHETIC_INPUT_READBACK_MISMATCH');
   // Back ONLY if the actual hierarchy exposes the IME, not to dismiss a form.
-  if(current.some(node=>/\.inputmethod\./.test(node.package)))command('shell','input','keyevent','KEYCODE_BACK');
+  if(current.some(item=>/\.inputmethod\./.test(item.package)))command('shell','input','keyevent','KEYCODE_BACK');
 }
 
 /** Entry condition: the preceding actual first-stage has exposed Add provider.
