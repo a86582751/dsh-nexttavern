@@ -6,17 +6,21 @@ import {errorRecord, exitCode, PROTOCOL} from './model.mts';
 import {probes} from './probes.mts';
 import {runSuite} from './runner.mts';
 
-export interface ProbeArgs {output?: string; timeoutMs?: number}
+export interface ProbeArgs {output?: string; timeoutMs?: number; httpsClient?: true}
 const MAX_DIAGNOSTIC_TIMEOUT_MS = 120_000;
 
 function usage(): never {
-  throw Object.assign(new Error('Usage: node run.mts [--output path] [--timeout-ms 1..120000 (test-only software timing)]'), {code: 'USAGE'});
+  throw Object.assign(new Error('Usage: node run.mts [--output path] [--timeout-ms 1..120000 (test-only software timing)] [--https-client (fixed no-key public endpoint)]'), {code: 'USAGE'});
 }
 export function parseArgs(args: string[]): ProbeArgs {
   const options: ProbeArgs = {};
-  for (let index = 0; index < args.length; index += 2) {
+  for (let index = 0; index < args.length; index++) {
     const flag = args[index];
-    const value = args[index + 1];
+    if(flag==='--https-client') {
+      if(options.httpsClient)usage();
+      options.httpsClient=true;continue;
+    }
+    const value = args[++index];
     if (flag === '--output') {
       if (!value || value.startsWith('--') || options.output !== undefined) usage();
       options.output = resolve(value);
@@ -56,7 +60,8 @@ async function main(): Promise<void> {
   process.once('SIGINT', onInt);
   try {
     // The Android supervisor supplies an app-private cwd. Never touch Harness data.
-    const summary = await runSuite({probes, ...(args.timeoutMs === undefined ? {} : {timeoutMs: args.timeoutMs}), workRoot: join(process.cwd(), 'artifacts', 'test-temp'), signal: controller.signal,
+    const summary = await runSuite({probes, ...(args.timeoutMs === undefined ? {} : {timeoutMs: args.timeoutMs}),
+      ...(args.httpsClient?{httpsClient:true}:{}),workRoot: join(process.cwd(), 'artifacts', 'test-temp'), signal: controller.signal,
       onEvent: event => process.stdout.write(`${JSON.stringify(event)}\n`)});
     if (args.output) await writeFile(args.output, `${JSON.stringify(summary, null, 2)}\n`, {flag: 'w', mode: 0o600});
     process.exitCode = termination === 'SIGTERM' ? 143 : termination === 'SIGINT' ? 130 : exitCode(summary);

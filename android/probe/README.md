@@ -1,9 +1,10 @@
 # Android G0: standalone Node capability probes
 
-Maintained `.mts`, directly runnable with Node 24 type stripping. No build,
-model credentials, provider calls, package installation, or internet access is
-performed by the suite. TLS connects only to `127.0.0.1`; DNS asks the OS for
-`localhost`. Public CA trust, external DNS and network access remain unverified.
+Maintained `.mts`, directly runnable with Node 24 type stripping. The default
+suite performs no build, credentials/provider calls, package installation or
+internet access. Its TLS connects only to `127.0.0.1`; DNS asks the OS for
+`localhost`. An explicit optional check below makes one fixed no-key public
+HTTPS request; it is transport/trust evidence, not model/API functionality.
 
 ```sh
 cd android/probe
@@ -17,7 +18,8 @@ Temporary databases, files and locks live only under
 `cwd/artifacts/test-temp/run-*` and are removed after the run; tests use this
 directory below `android/probe`. An abrupt kill can leave disposable run files.
 The suite never opens a Harness profile, session or credential store. Each
-capability has a 12-second deadline (at most 120 seconds plus cleanup); the
+capability has a 12-second deadline (120 seconds by default, 132 seconds with
+the optional client, plus cleanup); the
 supervisor should allow 180 seconds. SIGTERM/SIGINT cancel current work, kill
 owned child processes and terminate workers. Child IPC disconnect exits any
 remaining descendant; every child also has a 20-second safety deadline.
@@ -27,8 +29,9 @@ remaining descendant; every child also has a 20-second safety deadline.
 Stdout is JSONL, one object per line, all with `protocol: "nexttavern-g0"`:
 
 1. `event: "ready"`: `scope`, `pid`, `platform`, `actualPlatform`.
-2. Ten `event: "check"` objects, each containing `check` with `id`, `status`,
-   `durationMs`, `evidence`, and `error` on `failed`/`blocked`.
+2. Ten required `event: "check"` objects in the maintained order, each containing
+   `check` with `id`, `status`, `durationMs`, `evidence`, and `error` on failure.
+   Explicit `--https-client` appends one eleventh `https-client` check.
 3. `event: "result"`: `status`, `ok`, `platform`, `actualPlatform`,
    `androidGate: false`, and the full `summary`.
 
@@ -66,6 +69,74 @@ not that unavailable Android/native capabilities have become available.
 | `native-flock` | Real nonblocking exclusive native syscall across processes; contention, fd-close release, SIGKILL release, stable lock inode, never unlink lock |
 | `tls-local-ca` | Loopback TLS roundtrip using public test-only fixture CA; rejects untrusted CA (not system/public CA validation) |
 | `dns-localhost` | OS `getaddrinfo`/lookup of localhost must return only loopback addresses |
+
+## Optional fixed public HTTPS client
+
+`node run.mts --https-client` explicitly adds one GET to `https://example.com/`.
+The native checkbox **可选：验证 example.com 公网 HTTPS（无密钥）** is unchecked by
+default. No other URL, credentials, headers or redirect input is accepted.
+Normal hostname/certificate verification stays enabled, minimum TLS is1.2,
+and the response body is destroyed rather than retained or logged. Evidence
+contains only HTTP `status`, `authorized:true`, and negotiated `tlsVersion`;
+failures retain a safe error code and a fixed generic message, not raw errors.
+An HTTP403 or other non-2xx result can establish TLS transport/trust, not endpoint,
+provider, or model functionality. The fixed endpoint does not qualify every
+provider, Android system-CA integration, or general network connectivity.
+
+APK packaging includes the **same locked Termux public CA set as mobile**:
+ca-certificates1:2026.10.20-1, SHA256
+`796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe`.
+Gradle takes it from the already prepared ABI cache, verifies the staged bytes,
+and puts it at `probe/certs/ca-certificates.pem`. The native supervisor sets
+`SSL_CERT_FILE=<private-bundle>/certs/ca-certificates.pem`, `SSL_CERT_DIR` to
+that directory and `OPENSSL_CONF=''`, like mobile. It does not add a root to
+Android's system trust store or weaken certificate checks.
+
+The default ten-check gate, including `tls-local-ca`, remains unchanged.
+That existing check runs a **Node TLS server** and a client against it; a server
+failure is not proof that outbound HTTPS is broken. Conversely a passing public
+client does not erase that server failure. Summaries aggregate every selected
+check, keep real target blockers, and always retain `androidGate:false`.
+The HTTPS unit tests use a mock transport to test policy, cleanup and redaction;
+they perform no public request and cannot prove Android TLS success.
+
+## Same-KVM x64 evidence after the playable UI phase
+
+Do not rebuild, delete or upload the frozen probe APKs. For a new ephemeral
+runner-local probe, reuse the existing job's prepared x64 JNI closure and CA
+cache, SDK, signing key and **one already booted KVM VM**:
+
+```sh
+# Same public job/repository, after prepare-runtime.mts --abi x64 and build-flock.mts --abi x64.
+cd android
+./gradlew --no-daemon --init-script "$work/runner-build.gradle" \
+  -PnexttavernProbeAbi=x86_64 :app:assembleRelease
+# Reuse the job's existing preview key/apksigner, with a NEW runner-local output:
+# $work/gradle-build/app/outputs/apk/release/app-release-unsigned.apk
+# -> $work/probe-x64-kvm.apk; verify signature, then install on the existing serial.
+```
+
+The explicit property accepts only `arm64-v8a` (unchanged default target) or
+`x86_64` (diagnostic-only). Packaging checks the selected native path; no verify
+task is skipped. x64 uses package `app.nexttavern.android.probe.x86kvm`, not the
+legacy `.x86diagnostic` TCG selection: KVM keeps12s/check and180s supervision.
+The actual component is
+`app.nexttavern.android.probe.x86kvm/app.nexttavern.android.probe.MainActivity`.
+This is a separately installed ordinary nondebug App UID, not execution from
+adb shell or a debug/run-as proof; ARM64,16KiB and fullG0 remain unqualified.
+
+Through actual accessibility bounds, select the optional checkbox if that
+network check is desired, then tap **运行能力探针**. Keep this Activity foreground:
+its existing onStop cancels the suite. Scroll only its actual ScrollView when
+needed; no hardcoded taps or extra VM/display/security settings are required.
+Read the structured native stdout TextView after completion. Each individual
+check line is retained up to4096characters; the longer final summary display can
+be truncated, so do not assume its displayed JSON is complete. Require complete,
+unique records for the eight core IDs above (through `native-flock`), plus the
+optional `https-client` when selected, while preserving the actual server/DNS
+records and global failed/blocked result. Do not read private files or invent a
+green full-G0 result from core-only evidence. No new screenshot/artifact upload
+or model request is required by this integration.
 
 ## Native flock: explicit Android loader adapter
 
@@ -106,7 +177,8 @@ npm install --prefix . --cache artifacts/npm-cache --ignore-scripts \
 Tests separately create isolated missing-addon and generated no-op-addon
 fixtures, proving they report BLOCKED and FAILED respectively. The TLS fixture
 private key is intentionally public **test data only**, never an app credential.
-APK assets need root `*.mts` and `fixtures/**`; exclude tests, artifacts and
+APK assets need root `*.mts`, `fixtures/**`, and the separately staged locked CA;
+exclude tests, artifacts and
 node_modules. No generated JS is maintained or needed by the production probes.
 
 ### Public localhost TLS fixture

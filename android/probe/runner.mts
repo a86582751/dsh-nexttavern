@@ -2,8 +2,8 @@ import {mkdir, mkdtemp, realpath, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {release} from 'node:os';
 import {performance} from 'node:perf_hooks';
-import {aggregateStatus, BlockedError, errorRecord, PROTOCOL, REQUIRED_CAPABILITIES, targetBlockers} from './model.mts';
-import type {CheckResult, Event, ProbeMap, RuntimeIdentity, Summary} from './model.mts';
+import {aggregateStatus, BlockedError, errorRecord, OPTIONAL_HTTPS_CAPABILITY, PROTOCOL, REQUIRED_CAPABILITIES, targetBlockers} from './model.mts';
+import type {CapabilityId, CheckResult, Event, ProbeMap, RuntimeIdentity, Summary} from './model.mts';
 
 export async function runtimeIdentity(): Promise<RuntimeIdentity> {
   return {
@@ -16,7 +16,7 @@ export async function runtimeIdentity(): Promise<RuntimeIdentity> {
 
 /** Every required capability produces a record, including unavailable APIs. */
 export async function runSuite(options: {
-  probes: ProbeMap; workRoot: string; onEvent?: (event: Event) => void; timeoutMs?: number; signal?: AbortSignal;
+  probes: ProbeMap; workRoot: string; onEvent?: (event: Event) => void; timeoutMs?: number; signal?: AbortSignal; httpsClient?: boolean;
 }): Promise<Summary> {
   const startedAt = new Date().toISOString();
   const runtime = await runtimeIdentity();
@@ -27,7 +27,9 @@ export async function runSuite(options: {
   const directory = await mkdtemp(join(options.workRoot, 'run-'));
   const checks: CheckResult[] = [];
   try {
-    for (const id of REQUIRED_CAPABILITIES) {
+    const selected:readonly CapabilityId[]=options.httpsClient
+      ?[...REQUIRED_CAPABILITIES,OPTIONAL_HTTPS_CAPABILITY]:REQUIRED_CAPABILITIES;
+    for (const id of selected) {
       const started = performance.now();
       const controller = new AbortController();
       const cancel = () => controller.abort(options.signal?.reason ?? new Error('Probe suite cancelled'));
@@ -74,7 +76,8 @@ export async function runSuite(options: {
       'Full G0 is not certified by this Node-only suite',
       'Release APK install/upgrade, nativeLibraryDir origin, modern target and SELinux execution',
       '4 KiB and 16 KiB Android device/page-size matrix and every bundled ELF',
-      'System/public TLS CA trust, external DNS/connectivity and provider/model requests',
+      options.httpsClient ? 'Optional fixed-endpoint HTTPS evidence does not qualify general DNS, Android system CA integration or provider/model functionality'
+        : 'System/public TLS CA trust, external DNS/connectivity and provider/model requests',
       'Harness/NextTavern integration, real JSONL lease lifecycle and Android lifecycle/data migration',
     ], checks,
   };

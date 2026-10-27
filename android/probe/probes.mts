@@ -13,6 +13,7 @@ import type {Probe, ProbeContext, ProbeMap} from './model.mts';
 import {ChildSession} from './process-helper.mts';
 import type {ChildMessage} from './process-helper.mts';
 import {flockLoaderDescription, loadFlock} from './flock.mts';
+import {checkHttpsClient} from './https-client.mts';
 
 const executable: Probe = async () => {
   if (Number(process.versions.node.split('.')[0]) !== 24) throw new BlockedError('NODE_VERSION', 'The runtime closure requires Node 24');
@@ -258,4 +259,5 @@ export const probes: ProbeMap = {
   'worker-threads': workerThreads, 'zstd-integrity': zstd, 'hardlink-no-clobber': hardlink,
   'directory-fsync': directoryFsync, 'native-flock': nativeFlock, 'tls-local-ca': localTls,
   'dns-localhost': localDns,
+  'https-client': checkHttpsClient,
 };

@@ -30,7 +30,7 @@
     "targetBlockers": {"type": "array", "items": {"type": "string"}},
     "unverified": {"type": "array", "minItems": 1, "items": {"type": "string"}},
     "checks": {
-      "type": "array", "minItems": 10, "maxItems": 10,
+      "type": "array", "minItems": 10, "maxItems": 11,
       "prefixItems": [
         {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "runtime-executable"}}}]},
         {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "sqlite-wal-crash"}}}]},
@@ -43,7 +43,7 @@
         {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "tls-local-ca"}}}]},
         {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "dns-localhost"}}}]}
       ],
-      "items": false
+      "items": {"allOf": [{"$ref": "#/$defs/check"}, {"properties": {"id": {"const": "https-client"}}}]}
     }
   },
   "allOf": [

@@ -6,13 +6,23 @@ import {once} from 'node:events';
 import {parseArgs} from '../run.mts';
 import {REQUIRED_CAPABILITIES} from '../model.mts';
 
-test('JSON Schema requires all ten checks in maintained order and never certifies full G0', async () => {
+test('JSON Schema requires all ten checks and permits only the explicit HTTPS tail, never full G0', async () => {
   const schema = JSON.parse(await readFile(new URL('../result.schema.json', import.meta.url), 'utf8'));
   assert.equal(schema.properties.androidGate.const, false);
   assert.equal(schema.properties.checks.minItems, REQUIRED_CAPABILITIES.length);
-  assert.equal(schema.properties.checks.maxItems, REQUIRED_CAPABILITIES.length);
+  assert.equal(schema.properties.checks.maxItems, REQUIRED_CAPABILITIES.length+1);
+  assert.equal(schema.properties.checks.items.allOf[1].properties.id.const,'https-client');
   assert.deepEqual(schema.properties.checks.prefixItems.map((item: {allOf: {properties?: {id: {const: string}}}[]}) =>
     item.allOf[1].properties!.id.const), REQUIRED_CAPABILITIES);
+});
+
+test('public HTTPS is an explicit fixed-endpoint flag, not a URL/credential input',()=>{
+  assert.deepEqual(parseArgs(['--https-client']),{httpsClient:true});
+  const combined=parseArgs(['--https-client','--output','result.json','--timeout-ms','120000']);
+  assert.equal(combined.httpsClient,true);assert.equal(combined.timeoutMs,120_000);
+  assert.equal(parseArgs(['--timeout-ms','120000','--https-client']).httpsClient,true);
+  for(const args of [['--https-client','--https-client'],['--https-client','true'],['--https-client','https://other.test/']])
+    assert.throws(()=>parseArgs(args),/Usage:/);
 });
 
 test('CLI keeps its default and documented optional output path', () => {

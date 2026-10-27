@@ -42,6 +42,9 @@ public final class CoreTest {
         System.out.println("PASS: " + checks + " core assertions (desktop Java only; no Android/G0 claim)");
     }
     private static void paths(File root) throws Exception {
+        check(!ProbePaths.softwareDiagnostic("app.nexttavern.android.probe.x86kvm"), "x64 KVM selection never implies TCG timing");
+        check(!ProbePaths.softwareDiagnostic("app.nexttavern.android.probe.x86kvm.debug"), "debug KVM keeps default timing too");
+        check(ProbePaths.softwareDiagnostic("app.nexttavern.android.probe.x86diagnostic"), "legacy TCG diagnostic remains explicit");
         File data = ProbePaths.privateDirectory(root, "probe-data");
         check(data.equals(ProbePaths.privateDirectory(root, "probe-data")), "stable data cwd");
         fails(() -> ProbePaths.privateDirectory(root, "../outside"), "reject directory traversal");
@@ -65,6 +68,19 @@ public final class CoreTest {
             "explicit software diagnostic argv passes per-check budget");
         check(ProbePaths.supervisorTimeoutSeconds(false) == 180, "device supervisor budget unchanged");
         check(ProbePaths.supervisorTimeoutSeconds(true) == 1800, "software diagnostic supervisor covers extended checks");
+        fails(() -> ProbePaths.command(runtime, bundle, false, true), "HTTPS opt-in requires the bundled locked CA");
+        File certificates = new File(bundle, "certs");
+        check(certificates.mkdir(), "create public certificate fixture directory");
+        Files.write(new File(certificates, "ca-certificates.pem").toPath(), new byte[] {0});
+        check(ProbePaths.command(runtime, bundle, false, true).equals(Arrays.asList(runtime.getAbsolutePath(),
+            "--experimental-strip-types", entry.getAbsolutePath(), "--https-client")),
+            "explicit HTTPS opt-in keeps default KVM/device budgets");
+        Map<String, String> environment = ProcessSupervisor.processBuilder(command, data).environment();
+        check(environment.get("SSL_CERT_FILE").equals(new File(certificates, "ca-certificates.pem").getAbsolutePath()),
+            "probe uses the private certificate asset, like mobile");
+        check(environment.get("SSL_CERT_DIR").equals(certificates.getAbsolutePath()), "probe CA directory relocated");
+        check(environment.get("OPENSSL_CONF").equals(""), "probe never uses inaccessible Termux OpenSSL config");
+        check(environment.get("LD_LIBRARY_PATH").equals(nativeDir.getAbsolutePath()), "native closure remains installer-owned");
         File symlink = new File(root, "linked-data");
         Files.createSymbolicLink(symlink.toPath(), data.toPath());
         fails(() -> ProbePaths.privateDirectory(root, "linked-data"), "reject private data symlink");

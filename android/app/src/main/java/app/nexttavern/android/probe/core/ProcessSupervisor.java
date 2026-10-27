@@ -64,19 +64,26 @@ public final class ProcessSupervisor {
     private boolean streamFailure;
 
     public ProcessSupervisor(Parser parser, Listener listener) {
-        this(parser, listener, (command, cwd) -> {
-            ProcessBuilder builder = new ProcessBuilder(command).directory(cwd).redirectErrorStream(false);
-            // Do not inherit desktop/test Node hooks or arbitrary loader injection.
-            builder.environment().remove("NODE_OPTIONS");
-            builder.environment().remove("NODE_PATH");
-            builder.environment().put("HOME", cwd.getAbsolutePath());
-            builder.environment().put("TMPDIR", cwd.getAbsolutePath());
-            String nativeDirectory = new File(command.get(0)).getParent();
-            builder.environment().put("LD_LIBRARY_PATH", nativeDirectory);
-            builder.environment().put("NEXTTAVERN_FLOCK_ADDON",
-                new File(nativeDirectory, "libnexttavern_flock.so").getAbsolutePath());
-            return builder.start();
-        });
+        this(parser, listener, (command, cwd) -> processBuilder(command, cwd).start());
+    }
+    static ProcessBuilder processBuilder(List<String> command, File cwd) {
+        ProcessBuilder builder = new ProcessBuilder(command).directory(cwd).redirectErrorStream(false);
+        // Do not inherit desktop/test Node hooks or arbitrary loader injection.
+        builder.environment().remove("NODE_OPTIONS");
+        builder.environment().remove("NODE_PATH");
+        builder.environment().put("HOME", cwd.getAbsolutePath());
+        builder.environment().put("TMPDIR", cwd.getAbsolutePath());
+        String nativeDirectory = new File(command.get(0)).getParent();
+        builder.environment().put("LD_LIBRARY_PATH", nativeDirectory);
+        builder.environment().put("NEXTTAVERN_FLOCK_ADDON",
+            new File(nativeDirectory, "libnexttavern_flock.so").getAbsolutePath());
+        // ProbePaths fixes argv[2] to the private script entry. Use the same
+        // app-owned CA relocation as mobile, not inaccessible Termux paths.
+        File certificates = new File(new File(command.get(2)).getParentFile(), "certs");
+        builder.environment().put("SSL_CERT_FILE", new File(certificates, "ca-certificates.pem").getAbsolutePath());
+        builder.environment().put("SSL_CERT_DIR", certificates.getAbsolutePath());
+        builder.environment().put("OPENSSL_CONF", "");
+        return builder;
     }
     public ProcessSupervisor(Parser parser, Listener listener, Launcher launcher) {
         this.parser = parser;

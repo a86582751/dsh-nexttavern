@@ -5,7 +5,8 @@ export const REQUIRED_CAPABILITIES = [
   'zstd-integrity', 'hardlink-no-clobber', 'directory-fsync', 'native-flock',
   'tls-local-ca', 'dns-localhost',
 ] as const;
-export type CapabilityId = typeof REQUIRED_CAPABILITIES[number];
+export const OPTIONAL_HTTPS_CAPABILITY='https-client' as const;
+export type CapabilityId = typeof REQUIRED_CAPABILITIES[number] | typeof OPTIONAL_HTTPS_CAPABILITY;
 export type Status = 'passed' | 'failed' | 'blocked';
 export type Evidence = Record<string, unknown>;
 export interface CheckResult {

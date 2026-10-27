@@ -12,6 +12,7 @@ import android.system.Os;
 import android.system.OsConstants;
 import android.graphics.Typeface;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -39,6 +40,8 @@ public final class MainActivity extends Activity {
     private Button start;
     private Button stop;
     private Button copy;
+    private CheckBox publicHttps;
+    private boolean httpsClientRequested;
     private String evidenceHeader;
     private boolean softwareDiagnostic;
     private volatile String pageSizeEvidence = "not measured";
@@ -59,7 +62,7 @@ public final class MainActivity extends Activity {
         });
         text(content, "NextTavern · Android G0 能力探针", 22, false);
         text(content, "仅验证原生 Node 运行路径，不是可用的手机端产品。\n能力测试通过 ≠ G0 通过；仍需真实 APK／设备验收。", 15, false);
-        softwareDiagnostic = getPackageName().contains(".x86diagnostic");
+        softwareDiagnostic = ProbePaths.softwareDiagnostic(getPackageName());
         boolean debug = (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
         evidenceHeader = "NextTavern Android capability probe\nPackage: " + getPackageName()
             + "\nVersion: " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
@@ -69,10 +72,15 @@ public final class MainActivity extends Activity {
             + "\n构建证据: " + (debug ? "DEBUG（不算 release 验证）" : "NON-DEBUG（仍需签名／安装证据）")
             + "\nDebuggable: " + debug
             + "\nNative library directory: " + getApplicationInfo().nativeLibraryDir
-            + "\nTiming: " + (softwareDiagnostic ? "TEST-ONLY TCG / 120000ms each / 1800s supervisor; NOT phone performance" : "Default device probe budget")
+            + "\nTiming: " + (softwareDiagnostic ? "TEST-ONLY TCG / 120000ms each / 1800s supervisor; NOT phone performance"
+                : BuildConfig.PROBE_KVM_DIAGNOSTIC ? "x64 KVM diagnostic / default 12000ms each / 180s supervisor; NOT phone performance" : "Default device probe budget")
             + "\nTarget API: " + getApplicationInfo().targetSdkVersion
             + "\n临时探针最低 API 26；不是产品最低版本承诺。";
         text(content, evidenceHeader, 13, false);
+        publicHttps = new CheckBox(this);
+        publicHttps.setText("可选：验证 example.com 公网 HTTPS（无密钥）");
+        publicHttps.setChecked(false);
+        content.addView(publicHttps);
         LinearLayout buttons = new LinearLayout(this);
         start = new Button(this);
         start.setText("运行能力探针");
@@ -114,6 +122,9 @@ public final class MainActivity extends Activity {
     private void startProbe() {
         if (supervisor != null && supervisor.snapshot().state == ProcessSupervisor.State.RUNNING) return;
         ProcessSupervisor run = new ProcessSupervisor(new JsonProtocolParser(), this::queueRefresh);
+        final boolean httpsClient = publicHttps.isChecked();
+        httpsClientRequested = httpsClient;
+        publicHttps.setEnabled(false);
         supervisor = run;
         run.preparing();
         worker.execute(() -> {
@@ -131,7 +142,7 @@ public final class MainActivity extends Activity {
                 });
                 if (run.isCancelled()) { run.blocked("Cancelled during preparation"); return; }
                 bundle = installer.install(getFilesDir());
-                run.run(ProbePaths.command(runtime, bundle, softwareDiagnostic), data, ProbePaths.supervisorTimeoutSeconds(softwareDiagnostic));
+                run.run(ProbePaths.command(runtime, bundle, softwareDiagnostic, httpsClient), data, ProbePaths.supervisorTimeoutSeconds(softwareDiagnostic));
             } catch (IOException | RuntimeException error) {
                 run.blocked(error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
             } finally {
@@ -161,12 +172,14 @@ public final class MainActivity extends Activity {
             start.setEnabled(!running);
             stop.setEnabled(running);
             copy.setEnabled(!running);
+            publicHttps.setEnabled(!running);
         }, 100);
     }
     private void copyEvidence() {
         if (supervisor == null) return;
         ProcessSupervisor.Snapshot snapshot = supervisor.snapshot();
         String evidence = evidenceHeader + "\nOS page size: " + pageSizeEvidence
+            + "\nFixed public HTTPS explicitly requested: " + httpsClientRequested
             + "\n\nFull G0 accepted: false\nState: " + snapshot.state
             + "\nReady: " + snapshot.ready + "\n" + snapshot.detail
             + "\n\n=== Final protocol record (max 65,536 characters) ===\n" + snapshot.finalRecord

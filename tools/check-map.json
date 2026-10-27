@@ -12287,6 +12287,14 @@
       "source": "tests/attachment-local-android-boundary.test.mts"
     },
     {
+      "id": "android-probe-https-client.mts",
+      "source": "android/probe/https-client.mts"
+    },
+    {
+      "id": "android-probe-tests-https-client.test.mts",
+      "source": "android/probe/tests/https-client.test.mts"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },

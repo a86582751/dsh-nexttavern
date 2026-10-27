@@ -9967,6 +9967,7 @@
         "android-probe-flock.mts",
         "android-probe-model.mts",
         "android-probe-probes.mts",
+        "android-probe-https-client.mts",
         "android-probe-process-helper.mts",
         "android-probe-result.schema.json",
         "android-probe-run.mts",
@@ -10001,6 +10002,7 @@
         "android-probe-flock.mts",
         "android-probe-model.mts",
         "android-probe-probes.mts",
+        "android-probe-https-client.mts",
         "android-probe-process-helper.mts",
         "android-probe-result.schema.json",
         "android-probe-run.mts",
@@ -10035,6 +10037,7 @@
         "android-probe-flock.mts",
         "android-probe-model.mts",
         "android-probe-probes.mts",
+        "android-probe-https-client.mts",
         "android-probe-process-helper.mts",
         "android-probe-result.schema.json",
         "android-probe-run.mts",
@@ -10292,6 +10295,24 @@
       ],
       "depends": [
         "generated"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:android-https-client",
+      "action": "test",
+      "artifact": "android-probe-tests-https-client.test.mts",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "android-runtime-probe"
+      ],
+      "inputs": [
+        "android-probe-https-client.mts",
+        "android-probe-model.mts",
+        "android-probe-tests-https-client.test.mts"
       ],
       "timeoutMs": 60000,
       "cache": false
