@@ -10223,7 +10223,8 @@
         "owned-dependency-mjs",
         "owned-dependency-mts",
         "public-vendor-admission",
-        "public-vendor-admission-typescript"
+        "public-vendor-admission-typescript",
+        "nexttavern-product-package"
       ],
       "timeoutMs": 60000,
       "cache": false
