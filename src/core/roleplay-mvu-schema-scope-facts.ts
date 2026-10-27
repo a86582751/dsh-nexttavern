@@ -113,10 +113,11 @@ export function schemaScopeSource(snapshot:MvuSchemaAuthorSource['snapshot'],ses
     rawSha256:source.rawSha256,sourceSnapshotSha256:snapshot.snapshotSha256}
 }
 export function schemaScopeInitialChat(preparation:MvuSchemaOpeningPreparation,material:MvuJsonObject,
-  originalCut:SourceNativeCutFacts,source=schemaScopeSource(preparation.sourceSnapshot)):MvuScopeVariablesV1 {
+  originalCut:SourceNativeCutFacts,source=schemaScopeSource(preparation.sourceSnapshot),
+  initialData?:Extract<ReturnType<typeof compileSchemaMvuInitData>,{kind:'parsed'}>):MvuScopeVariablesV1 {
   const owner=schemaScopeOwner(source,'chat')
   const configuration=schemaScopeConfiguration(preparation.sourceSnapshot,material)
-  const parsed=compileSchemaMvuInitData(preparation.initSource)
+  const parsed=initialData??compileSchemaMvuInitData(preparation.initSource)
   if(parsed.kind!=='parsed'||originalCut.sessionId!==preparation.identity.sessionId
     ||originalCut.ownerSessionId!==preparation.identity.sessionId||originalCut.materialSha256!==recordSha256(material)
     ||originalCut.sourceSnapshotSha256!==preparation.sourceSnapshot.snapshotSha256

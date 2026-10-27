@@ -9,7 +9,7 @@ import type {MvuSchemaRealmLoadFrameV4,MvuSchemaTraceRequestedStepV4,MvuSchemaTr
 import type {SourceNativeCutFacts,SchemaExecutionAnchor,SchemaJournalRef,SchemaNativeMarkerRef}
   from './roleplay-mvu-schema-journal.js'
 import type {MvuSchemaOpeningPreparationV1} from './roleplay-mvu-schema-opening-types.js'
-import type {SchemaMvuInitDataSourceV2} from './tavern-mvu-initvar.js'
+import type {SchemaMvuInitDataSourceV2,SchemaMvuInitDataSourceV3} from './tavern-mvu-initvar.js'
 import type {SchemaExecutionSelector} from './roleplay-mvu-schema-replay.js'
 
 export interface AuthorHostIdentityV5 {
@@ -36,7 +36,7 @@ export interface AuthorOpeningPreparationV6 extends Omit<AuthorOpeningPreparatio
   'schemaVersion'|'encoding'|'initSource'> {
   readonly schemaVersion:6
   readonly encoding:'native-author-opening-preparation-v6'
-  readonly initSource:SchemaMvuInitDataSourceV2
+  readonly initSource:SchemaMvuInitDataSourceV2|SchemaMvuInitDataSourceV3
   /** The first selector retains the realm's original load provenance. */
   readonly phaseSelectors:readonly [
     {readonly phase:'initialization';readonly selector:SchemaExecutionSelector},

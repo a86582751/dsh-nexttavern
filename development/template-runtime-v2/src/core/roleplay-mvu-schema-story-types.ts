@@ -5,7 +5,7 @@ import {cloneSchemaValues} from './tavern-mvu-schema-data.js'
 import {freezeImmutableSchemaDescriptorDataV4,createImmutableDescriptorValidator} from './roleplay-mvu-schema-descriptor-data.js'
 import {validateMvuSchemaOpeningHead} from './roleplay-mvu-schema-opening-types.js'
 import {parseMvuUpdate,reduceMvuUpdateOperations} from './roleplay-mvu-update.js'
-import {parseMvuUpdateV2,reduceMvuUpdateOperationsV2} from './roleplay-mvu-update-v2.js'
+import {parseMvuUpdateV2,parseMvuUpdateAnalysisAliasRegionV2,reduceMvuUpdateOperationsV2} from './roleplay-mvu-update-v2.js'
 import {mvuSchemaMaintenanceTaskCandidate,validateMvuSchemaMaintenanceCandidateSourceV1}
   from './roleplay-mvu-schema-maintenance-types.js'
 import type {MvuSchemaMaintenanceCandidateSourceV1} from './roleplay-mvu-schema-maintenance-types.js'
@@ -385,13 +385,10 @@ export const mvuSchemaStoryRevisionCompletionKey=(sid:string,descriptorSha:strin
 export const schemaStoryCode=(value:unknown):string=>typeof value==='string'&&/^[A-Z][A-Z0-9_]{0,95}$/.test(value)
   ?value:'SCHEMA_STORY_UNKNOWN'
 export function parseMvuSchemaStoryCandidateV2(narrative:string,parserPolicy?:MvuSchemaStoryParserPolicy):MvuUpdateCandidateV2 {
-  // Keep the frozen shared parser and its byte bounds. Both replacement tags
-  // retain their original ASCII byte lengths; the canonical text stays raw.
-  const text=parserPolicy==='analysis-alias-v1'||parserPolicy==='analysis-alias-rfc6902-members-v1'
-    ?narrative.replace(/(<UpdateVariable>\s*)<(analysis|Analysis)>([\s\S]*?)<\/\2>/,
-      (_match,prefix:string,_tag:string,content:string)=>`${prefix}<Analyze> ${content} </Analyze>`)
-    :narrative
-  return parseMvuUpdateV2(text,parserPolicy==='analysis-alias-rfc6902-members-v1'?{jsonPatchMembers:'rfc6902'}:undefined)
+  if(parserPolicy==='analysis-alias-v1'||parserPolicy==='analysis-alias-rfc6902-members-v1')
+    return parseMvuUpdateAnalysisAliasRegionV2(narrative,
+      parserPolicy==='analysis-alias-rfc6902-members-v1'?{jsonPatchMembers:'rfc6902'}:undefined).candidate
+  return parseMvuUpdateV2(narrative)
 }
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 const hash=(value:unknown)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)

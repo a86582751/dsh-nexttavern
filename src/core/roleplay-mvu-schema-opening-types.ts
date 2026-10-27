@@ -13,7 +13,7 @@ import type {SchemaGuestOutput,SchemaExecutorIdentityTuple} from './roleplay-mvu
 import type {AuthorOpeningPreparationV5,AuthorOpeningPreparationV6,AuthorHostIdentityV5,AuthorServerExecutorV4,AuthorHostAssociationV5}
   from './roleplay-author-host-types-v5.js'
 import {deriveOwnedStateLoaderIdentityV4} from './tavern-mvu-schema-program-v4.js'
-import type {MvuJsonObject,SchemaMvuInitDataSource,SchemaMvuInitDataSourceV2} from './tavern-mvu-initvar.js'
+import type {MvuJsonObject,SchemaMvuInitDataSource,SchemaMvuInitDataSourceV2,SchemaMvuInitDataSourceV3} from './tavern-mvu-initvar.js'
 import type {TavernOpeningCandidate} from './tavern-card.js'
 
 export interface MvuSchemaOpeningPreparationV1 {
@@ -85,7 +85,7 @@ export interface FrozenMvuOpeningInitializationV8 extends Omit<FrozenMvuOpeningI
   'schemaVersion'|'encoding'|'initSource'> {
   schemaVersion:8
   encoding:'mvu-programmatic-opening-plan-v8'
-  initSource:SchemaMvuInitDataSourceV2
+  initSource:SchemaMvuInitDataSourceV2|SchemaMvuInitDataSourceV3
   phases:readonly [
     {readonly phase:'initialization';readonly execution:AuthorHostAssociationV5},
     {readonly phase:'command-parsed';readonly execution:AuthorHostAssociationV5},
@@ -278,14 +278,14 @@ function serverExecutorV4(value:AuthorServerExecutorV4):void {
   if(actual.runner.version!==4||!same(stateLoader,deriveOwnedStateLoaderIdentityV4(actual.bridge)))fail()
 }
 function inputFacts(value:Pick<MvuSchemaOpeningPreparation,'identity'|'authorSourceSha256'|'sourceSnapshot'|'initSource'|'freshNativeBasisProof'>,
-  initVersion:1|2=1) {
+  initVersion:1|2|3=1) {
   identity(value.identity)
   const snapshot=value.sourceSnapshot,init=value.initSource,proof=value.freshNativeBasisProof,selected=snapshot.selected
   exact(snapshot,['schemaVersion','encoding','source','pointerSha256','importRecordSha256','coverageSha256','materialRows',
     'settings','bindings','selected','swipes','macroContext','documentSha256','snapshotSha256'],['sourceProvenance'])
   exact(selected,['index','pointer','sourceSha256','renderedSha256'])
   exact(init,['schemaVersion','encoding','grammar','books','bookStatData','initializedBooks','messageIndex',
-    'selectedSwipeIdentity','swipes','macros','initSourceSha256'])
+    'selectedSwipeIdentity','swipes','macros','initSourceSha256',...(initVersion===3?['parserPolicy']:[])])
   exact(proof,['schemaVersion','encoding','sessionId','ownerSessionId','branch','numerical','native',
     'bookStatDataSha256','swipes','factsSha256','proofSha256'])
   exact(proof.branch,['metaKey','metaSha256','inheritance','parentSessionId','inheritedPrefixLength','ready'])
@@ -298,6 +298,7 @@ function inputFacts(value:Pick<MvuSchemaOpeningPreparation,'identity'|'authorSou
     ||selected.pointer!==value.identity.sourcePointer||selected.sourceSha256!==value.identity.sourceSha256
     ||selected.renderedSha256!==value.identity.renderedSha256||init.schemaVersion!==initVersion
     ||init.encoding!==`native-mvu-schema-opening-init-source-v${initVersion}`
+    ||init.schemaVersion===3&&init.parserPolicy!=='analysis-alias-v1'
     ||!['strict-json-object-v1','yaml-1.2-json-data-v1'].includes(init.grammar)
     ||init.messageIndex!==0||!Array.isArray(init.initializedBooks)||init.initializedBooks.length!==0
     ||!['none','verified-identity-rendering'].includes(init.macros)||!Array.isArray(init.books)||!Array.isArray(init.swipes)
@@ -343,7 +344,8 @@ export function validateMvuSchemaOpeningPreparation(input:MvuSchemaOpeningPrepar
     'selector','realmEpoch','clockEpochMs','randomSeed','preparationSha256',
     ...(value.schemaVersion===6?['host','compilation','phaseSelectors']:
       value.schemaVersion===5?['host','compilation']:value.schemaVersion!==1?['executor']:[])])
-  fact(value,'preparationSha256');inputFacts(value,value.schemaVersion===6?2:1)
+  fact(value,'preparationSha256');inputFacts(value,value.schemaVersion===6
+    ?value.initSource.schemaVersion===3?3:2:1)
   if(value.schemaVersion===5||value.schemaVersion===6) {
     hostIdentity(value.host)
     exact(value.compilation,['schemaVersion','encoding','original','sourceRecordSessionId'])
@@ -435,7 +437,8 @@ export function validateMvuSchemaOpeningPlan(input:unknown):FrozenMvuOpeningInit
     'initialValuesSha256','freshNativeBasisProof','execution','values','valuesSha256','planSha256',
     ...(value.schemaVersion===8?['host','server','phases']:
       value.schemaVersion===7?['host','server']:value.schemaVersion!==3?['executor']:[])])
-  fact(value,'planSha256');inputFacts(value,value.schemaVersion===8?2:1)
+  fact(value,'planSha256');inputFacts(value,value.schemaVersion===8
+    ?value.initSource.schemaVersion===3?3:2:1)
   if(value.schemaVersion===8)executionPhasesV8(value)
   else execution(value.execution,value)
   if(value.schemaVersion===7||value.schemaVersion===8) {

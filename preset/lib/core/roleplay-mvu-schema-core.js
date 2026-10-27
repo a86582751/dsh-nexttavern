@@ -225,7 +225,7 @@ export function createRoleplayMvuSchemaCore(deps) {
         const preparation = owner.preparation, parsed = owner.initialData, cut = scope.sourceNativeCut;
         const binding = { ownerSessionId: owner.session.id, sourceNativeCutSha256: recordSha256(cut), material: owner.author.material };
         const readSource = schemaScopeSource(preparation.sourceSnapshot);
-        const readFrame = buildSchemaScopeReadFrame(readSource, binding.sourceNativeCutSha256, schemaExecutionViewV4(server).scripts, schemaScopeInitialChat(preparation, owner.author.material, cut), schemaScopeVisibleMessages(events(owner.session), deps.projectPrefix, readSource, () => owner.session.id, new Map()));
+        const readFrame = buildSchemaScopeReadFrame(readSource, binding.sourceNativeCutSha256, schemaExecutionViewV4(server).scripts, schemaScopeInitialChat(preparation, owner.author.material, cut, readSource, parsed), schemaScopeVisibleMessages(events(owner.session), deps.projectPrefix, readSource, () => owner.session.id, new Map()));
         const frames = { loadFrame: { schemaVersion: 4, ...binding, values: parsed.values,
                 context: parsed.context, clockEpochMs: preparation.clockEpochMs, randomSeed: preparation.randomSeed, scopeReadFrame: readFrame },
             requestedStep: { eventId: preparation.selector.batchId, frame: { ...binding, input: { schemaVersion: 4,
@@ -326,10 +326,11 @@ export function createRoleplayMvuSchemaCore(deps) {
             const original = inputFor(source.authorSource, runtime);
             if (original.schemaVersion !== 2)
                 fail('AUTHOR_HOST_SERVER_ABI_UNSUPPORTED');
-            const execution = source.initSource.schemaVersion === 2
+            const openingUpdate = source.initSource.schemaVersion === 2 || source.initSource.schemaVersion === 3;
+            const execution = openingUpdate
                 ? deriveAuthorHostOpeningExecutionV6(request.identity, runtime.host.identity)
                 : deriveAuthorHostOpeningExecutionV5(request.identity, runtime.host.identity);
-            const version = source.initSource.schemaVersion === 2
+            const version = openingUpdate
                 ? { schemaVersion: 6, encoding: 'native-author-opening-preparation-v6' }
                 : { schemaVersion: 5, encoding: 'native-author-opening-preparation-v5' };
             // Only new Sources use the default Host's current DATA tag. Recovery
@@ -382,6 +383,7 @@ export function createRoleplayMvuSchemaCore(deps) {
                 const { runtime, replay: driver } = await engine(preparation), parsed = compileSchemaMvuInitData(preparation.initSource);
                 if (parsed.kind !== 'parsed')
                     fail('SCHEMA_INITIAL_DATA_INVALID');
+                admitted.initialData = parsed;
                 const sourceNativeCut = { schemaVersion: 1, sessionId: sid, ownerSessionId: sid, nativeCut: cut,
                     nativePrefixSha256: recordSha256(all), sourceSnapshotSha256: preparation.sourceSnapshot.snapshotSha256,
                     materialSha256: admitted.author.materialSha256, stopGeneration: 'notice' in stop ? stop.notice.stopSequence : 0,
@@ -391,12 +393,11 @@ export function createRoleplayMvuSchemaCore(deps) {
                     signal: AbortSignal.any([signal, admitted.abort.signal]), realmEpoch: preparation.realmEpoch,
                     inheritedCut: null, sourceNativeCut };
                 if (preparation.schemaVersion === 5 || preparation.schemaVersion === 6) {
-                    admitted.initialData = parsed;
                     admitted.scope = { ...capturedScope, authorInput: preparation.compilation };
                 }
                 else {
                     const authorInput = inputFor(admitted.author, runtime), readSource = schemaScopeSource(preparation.sourceSnapshot);
-                    const scopeReadFrame = runtime.executorVersion >= 3 ? buildSchemaScopeReadFrame(readSource, binding.sourceNativeCutSha256, authorInput.scripts, schemaScopeInitialChat(preparation, admitted.author.material, sourceNativeCut), schemaScopeVisibleMessages(all, deps.projectPrefix, readSource, () => sid, new Map())) : undefined;
+                    const scopeReadFrame = runtime.executorVersion >= 3 ? buildSchemaScopeReadFrame(readSource, binding.sourceNativeCutSha256, authorInput.scripts, schemaScopeInitialChat(preparation, admitted.author.material, sourceNativeCut, readSource, parsed), schemaScopeVisibleMessages(all, deps.projectPrefix, readSource, () => sid, new Map())) : undefined;
                     admitted.scope = { ...capturedScope, authorInput,
                         loadFrame: schemaRealmLoadFrame(runtime.executorVersion, binding, parsed.values, parsed.context, preparation.clockEpochMs, preparation.randomSeed, scopeReadFrame),
                         requestedStep: schemaTraceRequestedStep(preparation.selector.batchId, binding, schemaEmptyPhaseInput(runtime.executorVersion, 'initialization', null, parsed.values, parsed.context, preparation.clockEpochMs, preparation.randomSeed, scopeReadFrame)) };
@@ -522,7 +523,7 @@ export function createRoleplayMvuSchemaCore(deps) {
             if (!owner || !scope || !owner.inSource || sourceLeases.get(owner.session.id) !== owner || !ownerCurrent(owner)
                 || intent.status !== 'pending' || !same(retained(owner.preparation), intent) || !same(intent.initialization, live.plan)
                 || !same(live.association, live.plan.execution) || live.output.kind !== 'accepted'
-                || !same(live.plan.values, live.output.values) || live.plan.initialValuesSha256 !== compileInitialValuesSha(owner.preparation)
+                || !same(live.plan.values, live.output.values) || live.plan.initialValuesSha256 !== owner.initialData?.valuesSha256
                 || owner.agent.status !== 'idle' || owner.agent.inbox.nextStep.length || owner.agent.inbox.nextTurn.length
                 || !['none', 'settled'].includes(owner.agent.lookupInputCompletion().status))
                 return false;
@@ -559,7 +560,7 @@ export function createRoleplayMvuSchemaCore(deps) {
             const owner = liveOwners.get(live);
             if (!owner || !owner.inSource || !ownerCurrent(owner) || live.output.kind !== 'accepted'
                 || !same(boundary.intent.initialization, live.plan) || !same(retained(owner.preparation), boundary.intent)
-                || live.plan.initialValuesSha256 !== compileInitialValuesSha(owner.preparation)
+                || live.plan.initialValuesSha256 !== owner.initialData?.valuesSha256
                 || !same(live.plan.values, live.output.values) || !numericalRowsAllowed(owner, boundary))
                 return false;
             return !!owner.replay?.checkEvidence(live.evidence, { association: live.association, output: live.output });
@@ -567,12 +568,6 @@ export function createRoleplayMvuSchemaCore(deps) {
         catch {
             return false;
         }
-    }
-    function compileInitialValuesSha(preparation) {
-        const parsed = compileSchemaMvuInitData(preparation.initSource);
-        if (parsed.kind !== 'parsed')
-            fail('SCHEMA_INITIAL_DATA_INVALID');
-        return parsed.valuesSha256;
     }
     async function withPublicationBoundary(live, action) {
         const owner = liveOwners.get(live);

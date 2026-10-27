@@ -6,11 +6,11 @@ import type {ImportPointer, ImportRecord} from './roleplay-import-types.js'
 import type {OpeningCatalog, OpeningSource} from './roleplay-opening-selection.js'
 import type {TavernOpeningCandidate, TavernOpeningContext} from './tavern-card.js'
 import {selectNativeMvuInitializationPolicy} from './tavern-mvu-initvar.js'
-import {parseMvuUpdateRegionV2} from './roleplay-mvu-update-v2.js'
+import {parseMvuUpdateRegionV2,parseMvuUpdateAnalysisAliasRegionV2} from './roleplay-mvu-update-v2.js'
 import {NATIVE_MVU_SOURCE_POLICY,isNativeMvuSourcePolicy,isNativeMvuYamlSourcePolicy} from './roleplay-mvu-source-policy.js'
 import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
 import {cloneSchemaData,schemaTextSha256,captureSchemaMaterialV4} from './tavern-mvu-schema-data.js'
-import type {MvuJsonObject,SchemaMvuInitDataSource,SchemaMvuInitDataSourceV2} from './tavern-mvu-initvar.js'
+import type {MvuJsonObject,SchemaMvuInitDataSource,SchemaMvuInitDataSourceV2,SchemaMvuInitDataSourceV3} from './tavern-mvu-initvar.js'
 import type {MvuSchemaAuthorScript} from './tavern-mvu-schema-types.js'
 import {nextTavernExecutionAuthorData} from './nexttavern-card.js'
 import type {NextTavernCardData} from './nexttavern-card.js'
@@ -56,7 +56,7 @@ export type MvuSchemaAuthorSourceDecision={kind:'author-source';source:MvuSchema
   |{kind:'absent'}|{kind:'unsupported';diagnostics:readonly MvuSourceDiagnostic[]}
 /** Raw initialization data only. The surrounding author card is a separate
  * schema program, so this descriptor never grants native-json permissions. */
-export type MvuSchemaOpeningInitSource=SchemaMvuInitDataSource|SchemaMvuInitDataSourceV2
+export type MvuSchemaOpeningInitSource=SchemaMvuInitDataSource|SchemaMvuInitDataSourceV2|SchemaMvuInitDataSourceV3
 export interface MvuSchemaOpeningSource {
   authorSource:MvuSchemaAuthorSource
   initSource:MvuSchemaOpeningInitSource
@@ -565,17 +565,22 @@ export function readMvuSchemaCurrentAuthorMaterial(deps:MvuSourceDeps,sessionId:
 export function createRoleplayMvuSource(deps: MvuSourceDeps) {
   const capture = (sessionId: string, selectedIndex: number) => captureSource(deps,sessionId,selectedIndex)
   function openingSyntax(candidate:TavernOpeningCandidate,allowUpdate:boolean,
-    initialization:{rawOutside:string;renderedOutside:string}|null):'none'|'update'|'unsupported' {
+    initialization:{rawOutside:string;renderedOutside:string}|null,
+    allowAnalysisAlias:boolean):'none'|'update'|'update-alias'|'unsupported' {
     if(initialization)return stateSyntax(initialization.rawOutside)||stateSyntax(initialization.renderedOutside)
       ?'unsupported':'none'
     if(!allowUpdate)return stateSyntax(candidate.rawText)?'unsupported':'none'
-    const raw=parseMvuUpdateRegionV2(candidate.rawText,{openingText:true})
-    const rendered=parseMvuUpdateRegionV2(candidate.renderedText,{openingText:true})
+    const parse=allowAnalysisAlias?parseMvuUpdateAnalysisAliasRegionV2:parseMvuUpdateRegionV2
+    const raw=parse(candidate.rawText,{openingText:true}),rendered=parse(candidate.renderedText,{openingText:true})
     if(raw.candidate.kind==='rejected'||rendered.candidate.kind==='rejected') {
       fail('STATE_SYNTAX_UNSUPPORTED',candidate.sourcePointer,candidate.rawText)
     }
     if(raw.candidate.kind!==rendered.candidate.kind)fail('MACRO_UNSUPPORTED',candidate.sourcePointer)
-    return stateSyntax(raw.outside)?'unsupported':raw.candidate.kind==='parsed'?'update':'none'
+    if(stateSyntax(raw.outside))return 'unsupported'
+    if(raw.candidate.kind!=='parsed')return 'none'
+    const analysisAlias='analysisAlias' in raw&&raw.analysisAlias===true
+      ||'analysisAlias' in rendered&&rendered.analysisAlias===true
+    return analysisAlias?'update-alias':'update'
   }
   const classify = (captured: Captured, authorSchema=false,recordedInitSource?:MvuSchemaOpeningInitSource) => {
     // Schema opening initialization consumes one selected greeting. The capture
@@ -584,7 +589,9 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
     const candidates=authorSchema&&!(recordedInitSource&&recordedInitSource.swipes.length>1)
       ?captured.candidates.filter(candidate=>candidate.index===captured.snapshot.selected.index)
       :captured.candidates
-    const allowUpdate=authorSchema&&(!recordedInitSource||recordedInitSource.schemaVersion===2)
+    const allowUpdate=authorSchema&&(!recordedInitSource||recordedInitSource.schemaVersion===2
+      ||recordedInitSource.schemaVersion===3)
+    const allowAnalysisAlias=authorSchema&&(!recordedInitSource||recordedInitSource.schemaVersion===3)
     const {data,context,snapshot} = captured
     const nativeCard=captured.document.spec==='nexttavern_card'
     // The decoder owns the complete envelope, including compatibility mirrors
@@ -656,11 +663,13 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
         ...(item.materialization?{materialization:item.materialization}:{})}))})
     if(selection.kind==='unsupported')fail('INITVAR_INVALID',selection.diagnostics[0]!.pointer)
     let openingInit = false,openingUpdate=false
+    let openingParserPolicy=recordedInitSource?.schemaVersion===3?recordedInitSource.parserPolicy:undefined
     for (const [index,candidate] of candidates.entries()) {
       if(nativeCard&&candidate.materialization==='materialized')continue
-      const syntax=openingSyntax(candidate,allowUpdate,authorSchema?selection.openingInitialization[index]!:null)
+      const syntax=openingSyntax(candidate,allowUpdate,authorSchema?selection.openingInitialization[index]!:null,allowAnalysisAlias)
       if (syntax==='unsupported') fail('STATE_SYNTAX_UNSUPPORTED',candidate.sourcePointer,candidate.rawText)
-      openingUpdate=syntax==='update'
+      openingUpdate=syntax==='update'||syntax==='update-alias'
+      if(syntax==='update-alias')openingParserPolicy='analysis-alias-v1'
       if (openingBlocks(candidate.renderedText,candidate.sourcePointer)) openingInit = true
       render(candidate.rawText,context,entries.length > 0 || openingInit)
     }
@@ -697,7 +706,7 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
         if(initSyntax(text)&&!original)fail('INITVAR_OUTSIDE_BINDING','/settings',text)
       }
     }
-    return {entries,candidates,hasInit:entries.length > 0 || openingInit,policy:selection.policy,openingUpdate}
+    return {entries,candidates,hasInit:entries.length > 0 || openingInit,policy:selection.policy,openingUpdate,openingParserPolicy}
   }
 
   const fresh = (snapshot: MvuSourceSnapshot): {proof:FreshNativeBasisProof; facts:FreshNativeBasisFacts} => {
@@ -803,9 +812,10 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
     const author=authorSourceOf(captured)
     if(author.kind!=='author-source')return author
     if(!author.source.scripts.some(script=>script.enabled))return {kind:'absent' as const}
-    const {entries,candidates,policy,openingUpdate}=classify(captured,true,recordedInitSource)
+    const {entries,candidates,policy,openingUpdate,openingParserPolicy}=classify(captured,true,recordedInitSource)
     const primary=captured.snapshot.bindings.primary
-    const version=openingUpdate?{schemaVersion:2 as const,encoding:'native-mvu-schema-opening-init-source-v2' as const}
+    const version=openingParserPolicy?{schemaVersion:3 as const,encoding:'native-mvu-schema-opening-init-source-v3' as const,
+      parserPolicy:openingParserPolicy}:openingUpdate?{schemaVersion:2 as const,encoding:'native-mvu-schema-opening-init-source-v2' as const}
       :{schemaVersion:1 as const,encoding:'native-mvu-schema-opening-init-source-v1' as const}
     const body={...version,
       grammar:isNativeMvuYamlSourcePolicy(policy)?'yaml-1.2-json-data-v1' as const:'strict-json-object-v1' as const,
