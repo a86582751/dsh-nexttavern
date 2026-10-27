@@ -525,13 +525,9 @@ export function createManagementPanels({
             }
             finally{setSaving(false);}
         };
-        // Keep scrolling on a normal flex item. A fieldset lays out its
-        // contents in an anonymous box; it only owns the form's disabled state.
-        return React.createElement('div', {className: 'dsh-rp-panel'},
-        React.createElement('fieldset', {
-            disabled: saving, style: {
-                border: 0, margin: 0, padding: 0, minWidth: 0,
-                display: 'flex', flexDirection: 'column', gap: 8
+        return React.createElement('fieldset', {
+            className: 'dsh-rp-panel', disabled: saving, style: {
+                border: 0, margin: 0, minWidth: 0
             }
         }, React.createElement('h4', null, '模型路由'),
         React.createElement('section',{className:'dsh-rp-item','aria-label':'剧情主模型与协议兼容性'},
@@ -637,7 +633,7 @@ export function createManagementPanels({
             className: 'dsh-rp-btn', disabled: saving, onClick: () => save()
         }, saving ? '保存中…' : '保存模型路由'), scope === 'session' ? React.createElement('button', {
             className: 'dsh-rp-btn', disabled: saving, onClick: clearSession
-        }, '清除会话覆盖') : null)));
+        }, '清除会话覆盖') : null));
     }
     const resourceTypeLabels: Record<string, string> = {
         'image/png': '卡片 PNG',
