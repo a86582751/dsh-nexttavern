@@ -1,7 +1,7 @@
 /** Ordinary UI-only synthetic flow: no product HTTP, READY/token reads or JS evaluation; fixed approved PNG checkpoints only. */
 import {execFileSync} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
-import {mkdirSync,writeFileSync,readFileSync,chmodSync,unlinkSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,chmodSync,rmSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 import {safeErrorTail,adbFailureKind} from './safe-diagnostics.mts';
@@ -123,12 +123,14 @@ function deviceIdentity(deadline=Date.now()+90000):DeviceIdentity {
   return identity;
 }
 function hierarchyOutput(deadline:number):string {
+  let pendingRemote:string|undefined;
   const read=()=>{
     // The full shell stdout stream disconnects during IME reads on the same
     // live VM. Keep the original helper/output, but transfer its private file.
     const id=randomUUID(),remote='/data/local/tmp/nexttavern-ui-'+id+'.stdout';
     const local=join(args['--work-dir'],'hierarchy-'+id+'.stdout'),readDeadline=deadline-cleanupReserveMs;
-    let localCreated=false;
+    let localCreated=false,readCompleted=false;
+    pendingRemote=remote;
     try {
       const script=`umask 077; set -C; : > "${remote}" || exit 91; `
         + `am instrument -w -r app.nexttavern.qa.ui/.HierarchyInstrumentation >> "${remote}" 2>&1; rc=$?; `
@@ -141,24 +143,32 @@ function hierarchyOutput(deadline:number):string {
       chmodSync(local,0o600);
       // Canceled/error results (including ROOTS_NOT_READY) must still reach
       // the existing parser, not become successful reads or transport retries.
-      return readFileSync(local,'utf8');
+      const output=readFileSync(local,'utf8');readCompleted=true;return output;
     } finally {
-      if(localCreated)unlinkSync(local);
+      // Failed adb pull can remove its destination itself.
+      if(localCreated)rmSync(local,{force:true});
       try {
         execFileSync(adb,['-s',serial,'shell','rm','-f',remote],{
           timeout:readerTimeout(deadline,3000),stdio:'pipe',
         });
+        pendingRemote=undefined;
       } catch {
-        emit('observed',{interaction:'readonly-reader-private-cleanup-failed',replayedUserAction:false});
-        // Never classify cleanup as ADB_COMMAND_FAILED: the outer loop must
-        // not retry a read whose exact private-file cleanup was not confirmed.
-        throw new UiFailure('ACCESSIBILITY_PRIVATE_FILE_CLEANUP_FAILED');
+        // Keep this exact path until the existing same-identity reconnect can
+        // clean it. Never replace an earlier read failure with cleanup failure.
+        emit('observed',{interaction:'readonly-reader-private-cleanup-deferred',replayedUserAction:false});
+        if(readCompleted)throw new UiFailure('ADB_COMMAND_FAILED');
       }
     }
   };
   for(let reconnects=0;;) {
     requireUi(Date.now()+cleanupReserveMs<deadline,'ACCESSIBILITY_READ_DEADLINE');
-    try{return read()}catch(error) {
+    try {
+      if(pendingRemote) {
+        timedCommand(readerTimeout(deadline),'shell','rm','-f',pendingRemote);
+        pendingRemote=undefined;
+      }
+      return read();
+    }catch(error) {
       // Read-only transport bursts have recovered on the same VM/app. All
       // attempts share the caller's original deadline; no user action is replayed.
       if(!(error instanceof UiFailure)||error.code!=='ADB_COMMAND_FAILED'||!snapshotIdentity||reconnects===3)throw error;
