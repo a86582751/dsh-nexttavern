@@ -5,6 +5,7 @@ import {mkdirSync,writeFileSync,readFileSync,chmodSync,rmSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 import {safeErrorTail,adbFailureKind} from './safe-diagnostics.mts';
+import {observeModelCheckbox} from './model-checkbox-visual.mts';
 import {PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID} from '../../android/host/protocol-fixture.mts';
 
 type Node = Record<string,string>;
@@ -385,7 +386,7 @@ function onboarding():boolean {
 
 let emptyProviderCaptured=false;
 let providerKeyInputStarted=false;
-function captureApprovedScreenshot(name:'empty-provider'|'model-routing'|'model-routing-after'|'synthetic-chat',replaceEmpty=false):void {
+function captureApprovedScreenshot(name:'empty-provider'|'model-routing'|'model-routing-after'|'synthetic-chat',replaceEmpty=false):Buffer|undefined {
   if(name==='empty-provider') {
     requireUi(!providerKeyInputStarted,'CREDENTIAL_FORM_SCREENSHOT_FORBIDDEN');
     if(emptyProviderCaptured&&!replaceEmpty)return;
@@ -409,6 +410,13 @@ function captureApprovedScreenshot(name:'empty-provider'|'model-routing'|'model-
   writeFileSync(join(directory,filename+'.png'),png,{flag:name!=='empty-provider'||replaceEmpty?'w':'wx'});
   if(name==='empty-provider')emptyProviderCaptured=true;
   emit('observed',{syntheticScreenshot:name});
+  return png;
+}
+async function visualModelCheckbox(slot:'model-routing'|'model-routing-after'):Promise<string> {
+  const png=captureApprovedScreenshot(slot);requireUi(png,'MODEL_CHECKBOX_SCREENSHOT_REQUIRED');
+  const observation=await observeModelCheckbox(png);
+  emit('observed',{interaction:'model-checkbox-pixels',...observation,axCheckedQualified:false});
+  return observation.state;
 }
 const fixtureId='nexttavern-fixture';
 const fixtureModelNames=['模型 ID 1','Model ID 1'];
@@ -758,26 +766,16 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
   await until(()=>current.some(node=>node.package===pkg&&node.text===
     '主模型已切换；不会自动发送或重发。若有失败输入，请按聊天中的恢复提示操作。'),60,'MAIN_MODEL_SWITCH_NOT_CONFIRMED');
   await modelControl(allMainNames,node=>node.class==='android.widget.CheckBox'||node.class==='android.widget.Switch');
-  // SHOW changes the viewport; the pre-SHOW node can report stale checked state.
-  await readySnapshot();
-  const checks=current.filter(node=>node.package===pkg&&named(node,allMainNames)
-    &&(node.class==='android.widget.CheckBox'||node.class==='android.widget.Switch'));
-  requireUi(checks.length===1,'WORKER_ROUTE_CHECKBOX_NOT_UNIQUE');
-  const check=checks[0];
-  emit('observed',{interaction:'checkbox-state-after-show',checked:check.checked});
-  requireUi(check.checked==='true'||check.checked==='false','WORKER_ROUTE_CHECKED_STATE_NOT_EXPOSED');
-  captureApprovedScreenshot('model-routing'); // Same first slot, now the actual checkbox viewport.
-  if(check.checked==='false')controlAction(check,'click-control');
-  // ACTION_CLICK acceptance is not a checked-state observation. Never save an
-  // unobserved change or click again when the first result is ambiguous.
-  let checkboxStateCaptured=false;
-  await until(()=>{
-    if(!checkboxStateCaptured) {
-      captureApprovedScreenshot('model-routing-after');checkboxStateCaptured=true;
-    }
-    return current.some(node=>node.package===pkg&&named(node,allMainNames)
-      &&node.class==='android.widget.CheckBox'&&node.checked==='true');
-  },15,'WORKER_ROUTE_CHECKBOX_CHANGE_NOT_OBSERVED');
+  // This WebView reports AX checked=false even for a visible blue check.
+  // Use the approved, empirically matched checkbox pixels, never that false bit.
+  const before=await visualModelCheckbox('model-routing');
+  requireUi(before!=='unknown','WORKER_ROUTE_CHECKBOX_VISUAL_UNKNOWN');
+  if(before==='unchecked') {
+    const check=current.find(node=>node.package===pkg&&named(node,allMainNames)&&node.class==='android.widget.CheckBox');
+    requireUi(check,'WORKER_ROUTE_CHECKBOX_NOT_EXPOSED');controlAction(check,'click-control');
+    await readySnapshot();
+    requireUi(await visualModelCheckbox('model-routing-after')==='checked','WORKER_ROUTE_CHECKBOX_CHANGE_NOT_OBSERVED');
+  }
   await press(['保存模型路由']);
   await until(()=>current.some(node=>node.package===pkg&&named(node,['保存模型路由'])
     &&button(node)&&node.enabled!=='false'),60,'WORKER_ROUTE_SAVE_NOT_SETTLED');
@@ -791,7 +789,8 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
   emit('observed',{interaction:'model-route-checkpoint',checkpoint:'retention'});
   await modelControl(allMainNames,node=>node.class==='android.widget.CheckBox');
   await until(()=>current.some(node=>node.package===pkg&&node.text==='当前主模型：'+fixtureId)
-    &&current.some(node=>node.package===pkg&&named(node,allMainNames)&&node.checked==='true'),60,'FIXTURE_MAIN_OR_WORKER_ROUTE_NOT_RETAINED');
+    ,60,'FIXTURE_MAIN_ROUTE_NOT_RETAINED');
+  requireUi(await visualModelCheckbox('model-routing-after')==='checked','WORKER_ROUTE_VISUAL_STATE_NOT_RETAINED');
   emit('passed',{scope:'ordinary-roleplay-session-and-fixture-main-worker-routing',liveModel:false});
   await pressManagerTab(['角色卡导入']);
   await until(()=>has(['上传角色卡'])&&visibleNamed(fileButton).length===1,30,'CARD_UPLOAD_PAGE_NOT_EXPOSED');
