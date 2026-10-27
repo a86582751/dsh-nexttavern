@@ -757,19 +757,27 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
   await press(['切换当前对话主模型']);
   await until(()=>current.some(node=>node.package===pkg&&node.text===
     '主模型已切换；不会自动发送或重发。若有失败输入，请按聊天中的恢复提示操作。'),60,'MAIN_MODEL_SWITCH_NOT_CONFIRMED');
-  const check=await modelControl(allMainNames,node=>node.class==='android.widget.CheckBox'||node.class==='android.widget.Switch');
+  await modelControl(allMainNames,node=>node.class==='android.widget.CheckBox'||node.class==='android.widget.Switch');
+  // SHOW changes the viewport; the pre-SHOW node can report stale checked state.
+  await readySnapshot();
+  const checks=current.filter(node=>node.package===pkg&&named(node,allMainNames)
+    &&(node.class==='android.widget.CheckBox'||node.class==='android.widget.Switch'));
+  requireUi(checks.length===1,'WORKER_ROUTE_CHECKBOX_NOT_UNIQUE');
+  const check=checks[0];
+  emit('observed',{interaction:'checkbox-state-after-show',checked:check.checked});
   requireUi(check.checked==='true'||check.checked==='false','WORKER_ROUTE_CHECKED_STATE_NOT_EXPOSED');
   captureApprovedScreenshot('model-routing'); // Same first slot, now the actual checkbox viewport.
   if(check.checked==='false')controlAction(check,'click-control');
   // ACTION_CLICK acceptance is not a checked-state observation. Never save an
   // unobserved change or click again when the first result is ambiguous.
-  try {
-    await until(()=>current.some(node=>node.package===pkg&&named(node,allMainNames)
-      &&node.class==='android.widget.CheckBox'&&node.checked==='true'),15,'WORKER_ROUTE_CHECKBOX_CHANGE_NOT_OBSERVED');
-  } finally {
-    try {captureApprovedScreenshot('model-routing-after')} // Same second slot; no key form.
-    catch {emit('observed',{interaction:'checkbox-screenshot-unavailable'})}
-  }
+  let checkboxStateCaptured=false;
+  await until(()=>{
+    if(!checkboxStateCaptured) {
+      captureApprovedScreenshot('model-routing-after');checkboxStateCaptured=true;
+    }
+    return current.some(node=>node.package===pkg&&named(node,allMainNames)
+      &&node.class==='android.widget.CheckBox'&&node.checked==='true');
+  },15,'WORKER_ROUTE_CHECKBOX_CHANGE_NOT_OBSERVED');
   await press(['保存模型路由']);
   await until(()=>current.some(node=>node.package===pkg&&named(node,['保存模型路由'])
     &&button(node)&&node.enabled!=='false'),60,'WORKER_ROUTE_SAVE_NOT_SETTLED');
@@ -781,6 +789,7 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
   emit('observed',{interaction:'model-route-checkpoint',checkpoint:'reloaded'});
   await openManager();await pressManagerTab(['模型','Models']);
   emit('observed',{interaction:'model-route-checkpoint',checkpoint:'retention'});
+  await modelControl(allMainNames,node=>node.class==='android.widget.CheckBox');
   await until(()=>current.some(node=>node.package===pkg&&node.text==='当前主模型：'+fixtureId)
     &&current.some(node=>node.package===pkg&&named(node,allMainNames)&&node.checked==='true'),60,'FIXTURE_MAIN_OR_WORKER_ROUTE_NOT_RETAINED');
   emit('passed',{scope:'ordinary-roleplay-session-and-fixture-main-worker-routing',liveModel:false});
