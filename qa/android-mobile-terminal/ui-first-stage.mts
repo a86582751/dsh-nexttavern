@@ -1,13 +1,15 @@
-/** Temporary UI-only first stage. No HTTP, READY/token reads, JS evaluation or screenshots. */
+/** Ordinary UI-only synthetic flow: no product HTTP, READY/token reads or JS evaluation; fixed approved PNG checkpoints only. */
 import {execFileSync} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
-import {mkdirSync,writeFileSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID} from '../../android/host/protocol-fixture.mts';
 
 type Node = Record<string,string>;
 const args:Record<string,string>={};
 for(let i=2;i<process.argv.length;i+=2) args[process.argv[i]]=process.argv[i+1];
 const adb=args['--adb'], serial=args['--serial'], pkg=args['--package'];
+const fixtureEvents=args['--fixture-events'];
 let stage='arguments';
 class UiFailure extends Error {
   readonly code:string;
@@ -18,9 +20,10 @@ const emit=(status:string,extra:Record<string,unknown>={})=>console.log(JSON.str
 }));
 function requireUi(value:unknown,code:string):asserts value {if(!value)throw new UiFailure(code)}
 requireUi(adb && /^emulator-\d+$/.test(serial ?? '') && /^app\.nexttavern\.android(?:\.x86diagnostic)?(?:\.debug)?$/.test(pkg ?? ''),'EMULATOR_APP_ARGUMENTS_REQUIRED');
-requireUi(Object.keys(args).every(key=>['--adb','--serial','--package','--phase','--work-dir'].includes(key)),'UNKNOWN_ARGUMENT');
-// Recovery/card/model mutation/chat are deliberately not implemented in this first stage.
-if(args['--phase']!=='create') {emit('blocked',{code:'FIRST_STAGE_ONLY',noDeviceActions:true});process.exit(2)}
+requireUi(Object.keys(args).every(key=>['--adb','--serial','--package','--phase','--work-dir','--fixture-events'].includes(key)),'UNKNOWN_ARGUMENT');
+// The create flow includes ordinary UI card/model/chat/recovery steps; no separate recovery entry is exposed.
+if(args['--phase']!=='create') {emit('blocked',{code:'CREATE_FLOW_ONLY',noDeviceActions:true});process.exit(2)}
+requireUi(fixtureEvents && args['--work-dir'],'FIXTURE_EVENTS_AND_WORK_DIRECTORY_REQUIRED');
 const remoteXml='/data/local/tmp/nexttavern-mobile-first-ui.xml';
 function command(...commandArgs:string[]):string {
   try {return execFileSync(adb,['-s',serial,...commandArgs],{encoding:'utf8',timeout:90000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe']})}
@@ -53,14 +56,15 @@ function ancestors(node:Node):Node[] {
 }
 const redact=(text:string)=>text.replace(/(?:https?|wss?):\/\/[^\s"<>]+/gi,'[URL]')
   .replace(/(?:token|cookie|authorization|api[_ -]?key)\s*[:=]\s*[^\s,;]+/gi,'[REDACTED]')
+  .replaceAll('local-test-only','[SYNTHETIC_KEY]')
   .replace(/[A-Za-z0-9_\-+/=]{48,}/g,'[LONG_VALUE]').slice(0,140);
 function labels():void {
-  // Only this synthetic app's accessible labels; no raw XML, URLs, EditText values or dumpsys.
+  // Only the synthetic app and its task-owned DocumentsUI selection; no raw XML, URLs or EditText values.
   const unique=new Set<string>();
   const rows:Record<string,string>[]=[];
   let chars=0;
   for(const node of current) {
-    if(node.package!==pkg || node.class==='android.widget.EditText')continue;
+    if((node.package!==pkg && !(stage==='saf-card-selection' && docs(node))) || node.class==='android.widget.EditText')continue;
     const text=redact([node['content-desc'],node.text].filter(Boolean).join(' | '));
     if(!text || unique.has(text))continue;
     unique.add(text);chars+=text.length;
@@ -166,17 +170,17 @@ function onboarding():boolean {
   return false;
 }
 
-function captureModelsBeforeCredentials():void {
+function captureApprovedScreenshot(name:'models'|'synthetic-chat'):void {
   const directory=process.env.NEXTTAVERN_UI_EVIDENCE_DIR;
   if(!directory)return;
-  // Only this source-guarded, fresh Models page is approved. Never capture a
-  // generic failure or a credential editor, and never print image bytes.
+  // Only the fresh Models page and later verified synthetic conversation are
+  // approved. Never capture generic failures/credential editors or print bytes.
   mkdirSync(directory,{recursive:true});
   const png=execFileSync(adb,['-s',serial,'exec-out','screencap','-p'],{
     timeout:90000,maxBuffer:8*1024*1024,stdio:['ignore','pipe','pipe'],
   });
-  writeFileSync(join(directory,'models.png'),png,{flag:'wx'});
-  emit('observed',{syntheticScreenshot:'models-before-credential-entry'});
+  writeFileSync(join(directory,name+'.png'),png,{flag:'wx'});
+  emit('observed',{syntheticScreenshot:name});
 }
 const fixtureId='nexttavern-fixture';
 const fixtureModelNames=['模型 ID 1','Model ID 1'];
@@ -184,13 +188,21 @@ const named=(node:Node,names:string[])=>names.some(name=>node.text===name||node[
 const button=(node:Node)=>node.clickable==='true'||node.class==='android.widget.Button';
 /** Reveal only a named form control through its actual scrollable ancestor;
  * unknown structure remains an observed failure, not a whole-screen fallback. */
-async function reveal(names:string[],kind:(node:Node)=>boolean=button):Promise<Node> {
+async function reveal(names:string[],kind:(node:Node)=>boolean=button,
+  owner:(node:Node)=>boolean=node=>node.package===pkg,fieldLabel=false):Promise<Node> {
   for(let attempt=0;;attempt++) {
     snapshot();
-    const found=current.filter(node=>node.package===pkg&&named(node,names)&&kind(node)&&node.enabled!=='false');
-    requireUi(found.length===1,found.length?'NEXT_UI_TARGET_AMBIGUOUS':'NEXT_UI_TARGET_NOT_EXPOSED');
-    const target=found[0];
-    if(visibleBounds(target))return target;
+    const found=current.filter(node=>owner(node)&&named(node,names)&&kind(node)&&node.enabled!=='false');
+    const visible=found.filter(node=>visibleBounds(node));
+    requireUi(visible.length<=1,'NEXT_UI_TARGET_AMBIGUOUS');
+    if(visible[0])return visible[0];
+    requireUi(found.length<=1,'NEXT_UI_OFFSCREEN_TARGET_AMBIGUOUS');
+    // Chromium can omit an offscreen textbox while exposing its source label.
+    // Scroll that label's real owner, but return only the actual input target.
+    const labels=fieldLabel?current.filter(node=>owner(node)&&node.class==='android.widget.TextView'&&named(node,names)):[];
+    const visibleLabels=labels.filter(node=>visibleBounds(node));
+    const target=found[0]??(visibleLabels.length===1?visibleLabels[0]:labels.length===1?labels[0]:undefined);
+    requireUi(target,'NEXT_UI_TARGET_OR_FIELD_LABEL_NOT_EXPOSED');
     requireUi(attempt<4,'NEXT_UI_TARGET_NOT_VISIBLE_AFTER_SCROLL');
     const scroll=ancestors(target).find(node=>node.scrollable==='true'&&visibleBounds(node));
     requireUi(scroll,'NEXT_UI_SCROLL_ANCESTOR_NOT_EXPOSED');
@@ -204,9 +216,11 @@ async function reveal(names:string[],kind:(node:Node)=>boolean=button):Promise<N
 }
 async function press(names:string[],kind:(node:Node)=>boolean=button):Promise<void> {tapNode(await reveal(names,kind));}
 async function replace(names:string[],value:string):Promise<void> {
-  // All fixture values are fixed ASCII; no shell metacharacters or credentials
-  // from outside this synthetic run can enter input text.
-  tapNode(await reveal(names,node=>node.class==='android.widget.EditText'));
+  await typeAscii(await reveal(names,node=>node.class==='android.widget.EditText',node=>node.package===pkg,true),value);
+}
+async function typeAscii(node:Node,value:string):Promise<void> {
+  // All callers supply fixed ASCII synthetic values, never external credentials.
+  tapNode(node);
   command('shell','input','keycombination','113','29'); // API35 Ctrl+A.
   command('shell','input','keyevent','KEYCODE_DEL');
   command('shell','input','text',value.replaceAll(' ','%s'));
@@ -223,7 +237,7 @@ async function configureFixtureProvider():Promise<void> {
   await press(['添加模型提供商','Add model provider']);
   await until(()=>has(['自定义模型 API','Custom model API']),30,'CUSTOM_PROVIDER_MODE_NOT_EXPOSED');
   await press(['自定义模型 API','Custom model API']);
-  await until(()=>current.some(node=>node.package===pkg&&node.class==='android.widget.EditText'&&named(node,['Provider ID'])),30,'CUSTOM_PROVIDER_FORM_NOT_EXPOSED');
+  await until(()=>has(['Provider ID']),30,'CUSTOM_PROVIDER_FORM_LABEL_NOT_EXPOSED');
   await replace(['Provider ID'],fixtureId);
   await replace(['API 地址','Base URL'],'http://127.0.0.1:18765/v1');
   // Never assume the schema's first protocol is the intended one.
@@ -240,6 +254,439 @@ async function configureFixtureProvider():Promise<void> {
   await press(['创建提供商','Create provider']);
   await until(()=>has(['编辑 '+fixtureId,'Edit '+fixtureId])&&!has(['创建提供商','Create provider']),60,'FIXTURE_PROVIDER_SAVE_NOT_OBSERVED');
   emit('passed',{scope:'custom-provider-form-saved',syntheticProvider:true,liveModel:false});
+}
+
+const fileButton=['选择角色卡文件'];
+const selectedFile=['角色卡文件已选择，等待确认导入'];
+const docs=(node:Node)=>/^(?:com\.android|com\.google\.android)\.documentsui$/.test(node.package);
+/** Entry condition: an actual roleplay session's Card import page is exposed.
+ * The runner owns this work-dir/emulator. Normal product SAF is the only route
+ * into app storage; adb push only supplies a file to the device Downloads. */
+async function selectSyntheticCard(workDir:string):Promise<void> {
+  stage='saf-card-selection';snapshot();
+  requireUi(has(['上传角色卡'])&&has(fileButton),'ROLEPLAY_CARD_UPLOAD_PAGE_REQUIRED');
+  requireUi(!has(['确认原导入任务'])&&!has(selectedFile),'FRESH_CARD_SELECTION_REQUIRED');
+  mkdirSync(workDir,{recursive:true});
+  const file=join(workDir,'nexttavern-ui-card.json');
+  writeFileSync(file,JSON.stringify({spec:'chara_card_v2',spec_version:'2.0',data:{
+    name:'旅人',description:'旅人是一位喜爱阅读的合成测试角色，随身携带蓝色书签。',
+    personality:'温和、耐心。',scenario:'旅人与读者在安静的酒馆中整理一本书。',
+    first_mes:'旅人把蓝色书签放在桌上：“欢迎回来，这是本地合成测试的开场。”',
+    mes_example:'',creator_notes:'仅用于本次 Android 真实 UI 合成测试。',
+    system_prompt:'',post_history_instructions:'',alternate_greetings:[],tags:['local-synthetic-test'],
+    creator:'local-test',character_version:'1.0',extensions:{},
+  }}));
+  command('push',file,'/sdcard/Download/nexttavern-ui-card.json');
+  await press(fileButton);
+  await until(()=>current.some(docs),30,'SYSTEM_DOCUMENTS_UI_NOT_OPENED');
+  command('shell','input','keyevent','KEYCODE_BACK'); // Genuine user cancellation.
+  await until(()=>has(fileButton),30,'SAF_CANCEL_DID_NOT_RETURN_TO_APP');
+  requireUi(!has(selectedFile),'SAF_CANCEL_UNEXPECTEDLY_SELECTED_FILE');
+  await press(fileButton);
+  await until(()=>current.some(docs),30,'SYSTEM_DOCUMENTS_UI_NOT_REOPENED');
+  if(!current.some(node=>docs(node)&&named(node,['nexttavern-ui-card.json'])&&visibleBounds(node))) {
+    const roots=current.filter(node=>docs(node)&&named(node,['Show roots','显示根目录'])&&visibleBounds(node));
+    requireUi(roots.length===1,'DOCUMENTS_ROOT_DRAWER_NOT_EXPOSED');tapNode(roots[0]);
+    await until(()=>current.some(node=>docs(node)&&named(node,['Downloads','下载'])),30,'DOCUMENTS_DOWNLOADS_NOT_EXPOSED');
+    tapNode(await reveal(['Downloads','下载'],node=>node.class!=='android.widget.EditText',docs));
+  }
+  await until(()=>current.some(node=>docs(node)&&named(node,['nexttavern-ui-card.json'])),30,'SYNTHETIC_CARD_NOT_LISTED_IN_DOCUMENTS_UI');
+  tapNode(await reveal(['nexttavern-ui-card.json'],node=>node.class!=='android.widget.EditText',docs));
+  await until(()=>has(selectedFile)&&current.some(node=>node.package===pkg&&node.class==='android.webkit.WebView'),30,'SAF_SELECTED_FILE_NOT_RECEIVED_BY_WEBVIEW');
+  emit('passed',{scope:'real-system-saf-cancel-reopen-selection',syntheticCard:true,import:'not-submitted'});
+}
+
+/** Normal upload, and at most one explicit confirmation of the retained ORIGINAL
+ * import. UI does not expose request/job IDs: this cannot assert exact ID equality.
+ * It never reselects/reuploads the card or clears the browser recovery journal. */
+async function submitSelectedCard():Promise<void> {
+  stage='upload-and-import-card';
+  await press(['上传并导入']);
+  const inDialog=(node:Node)=>button(node)&&ancestors(node).some(parent=>parent.class==='android.app.Dialog');
+  await until(()=>has(['导入角色卡'])&&current.some(node=>named(node,['上传并导入'])&&inDialog(node)),30,'CARD_IMPORT_CONFIRMATION_NOT_EXPOSED');
+  await press(['上传并导入'],inDialog);
+  let recovered=false,recoveryConfirmed=false;
+  await until(()=>{
+    if(current.some(node=>node.package===pkg&&node.enabled!=='false'&&button(node)
+      &&named(node,['使用此开场','用这个开场开始'])&&visibleBounds(node)))return true;
+    if(!recovered) {
+      const recovery=current.filter(node=>node.package===pkg&&button(node)&&node.enabled!=='false'
+        &&named(node,['确认原导入任务'])&&visibleBounds(node));
+      if(recovery.length===1) {tapNode(recovery[0]);recovered=true;}
+    } else if(!recoveryConfirmed) {
+      const confirm=current.filter(node=>node.package===pkg&&node.enabled!=='false'
+        &&named(node,['确认原导入任务'])&&inDialog(node)&&visibleBounds(node));
+      if(confirm.length===1) {tapNode(confirm[0]);recoveryConfirmed=true;}
+    }
+    return false;
+  },120,'IMPORTED_CARD_OPENING_NOT_READY');
+  emit('passed',{scope:'saf-upload-import-opening-available',originalRecoveryRequested:recovered,
+    exactJobIdEquality:'not-exposed-by-ui',openingSelection:'not-run',chat:'not-run'});
+}
+
+const fixtureOpening='旅人把蓝色书签放在桌上：“欢迎回来，这是本地合成测试的开场。”';
+const fixturePrompt='Traveler keep the blue bookmark local protocol test.';
+const fixtureReply='【本地协议测试，不是真实模型】酒馆的灯亮着。欢迎回来，我们的对话已经继续。';
+const stableTitle='AndroidUIFixture';
+const menuOption=(node:Node)=>node.class==='android.widget.CheckedTextView'||node.class==='android.widget.RadioButton';
+const mainRouteNames=['当前对话主模型'];
+const allMainNames=['全部使用主模型（保留用途配置）'];
+const inWebView=(node:Node)=>ancestors(node).some(parent=>parent.class==='android.webkit.WebView');
+const dialogButton=(node:Node)=>button(node)&&ancestors(node).some(parent=>parent.class==='android.app.Dialog');
+const visibleNamed=(names:string[],kind:(node:Node)=>boolean=button)=>current.filter(node=>
+  node.package===pkg&&node.enabled!=='false'&&named(node,names)&&kind(node)&&visibleBounds(node));
+async function closeWebDialog():Promise<void> {
+  await press(['关闭','Close'],node=>dialogButton(node)&&inWebView(node));
+}
+async function showSidebar():Promise<void> {
+  snapshot();
+  const open=visibleNamed(['打开侧边栏','Open sidebar']);
+  if(open.length===1) {tapNode(open[0]);await until(()=>has(['收起侧边栏','Collapse sidebar']),30,'SIDEBAR_DID_NOT_OPEN');}
+}
+async function hideSidebar():Promise<void> {
+  snapshot();
+  const close=visibleNamed(['收起侧边栏','Collapse sidebar']);
+  if(close.length===1) {tapNode(close[0]);await until(()=>has(['打开侧边栏','Open sidebar']),30,'SIDEBAR_DID_NOT_COLLAPSE');}
+}
+async function openManager():Promise<void> {
+  await showSidebar();
+  // This is backed by the native session-list preset identity, not a guessed
+  // label, a hidden REST probe, or enabling Coding Tools to unlock a seat.
+  await until(()=>visibleNamed(['酒馆管理']).length===1,60,'DEFAULT_SESSION_NOT_ROLEPLAY_OR_ENTRY_NOT_EXPOSED');
+  await press(['酒馆管理']);
+  await until(()=>has(['角色卡导入'])&&has(['人物设定']),30,'TAVERN_MANAGER_NOT_EXPOSED');
+}
+/** The product's <=760px CSS makes each of its two tab rows overflow-x:auto.
+ * Only use that actual tab button's nearest scrollable ancestor, never a
+ * vertical whole-screen swipe or a guessed tab coordinate. */
+async function pressManagerTab(names:string[]):Promise<void> {
+  for(let attempt=0;attempt<=4;attempt++) {
+    snapshot();const found=current.filter(node=>node.package===pkg&&named(node,names)&&button(node)&&node.enabled!=='false');
+    requireUi(found.length===1,'TAVERN_TAB_NOT_UNIQUELY_EXPOSED');
+    if(visibleBounds(found[0])) {tapNode(found[0]);return;}
+    requireUi(attempt<4,'TAVERN_TAB_NOT_VISIBLE_AFTER_HORIZONTAL_SCROLL');
+    const row=ancestors(found[0]).find(parent=>parent.scrollable==='true'&&visibleBounds(parent));
+    requireUi(row,'TAVERN_TAB_SCROLL_ROW_NOT_EXPOSED');
+    const [left,top,right,bottom]=visibleBounds(row)!,width=right-left,y=Math.round((top+bottom)/2);
+    const later=attempt<2;
+    command('shell','input','swipe',String(Math.round(left+width*(later ? .8 : .2))),String(y),
+      String(Math.round(left+width*(later ? .2 : .8))),String(y),'450');
+  }
+}
+/** Entry: saved provider directory in Host Settings. Fresh profile's ordinary
+ * default Workspace and roleplay preset must be supplied by the actual product.
+ * There is no Coding Tools preference or QA-only session creation workaround. */
+async function prepareRoleplaySessionAndCardPage():Promise<void> {
+  stage='ordinary-default-workspace-session';
+  await closeWebDialog();
+  await showSidebar();
+  await press(['新建会话','New session']);
+  await hideSidebar();
+  await until(()=>visibleNamed(['选择工作区','Choose workspace']).length===1,60,'NEW_SESSION_WORKSPACE_CHIP_NOT_EXPOSED');
+  await press(['选择工作区','Choose workspace']);
+  await until(()=>visibleNamed(['默认工作区','Default workspace']).length===1,30,'OFFICIAL_DEFAULT_WORKSPACE_NOT_LISTED');
+  await press(['默认工作区','Default workspace']);
+  await openManager();
+  stage='fixture-main-and-worker-model-routing';
+  await pressManagerTab(['模型','Models']);
+  await until(()=>visibleNamed(mainRouteNames,node=>node.class==='android.widget.Spinner'||button(node)).length===1,30,'TAVERN_MAIN_MODEL_SELECTOR_NOT_EXPOSED');
+  await press(mainRouteNames,node=>node.class==='android.widget.Spinner'||button(node));
+  // Source builds <label-or-model> · <provider> — <capability summary>.
+  const routeOption=(node:Node)=>menuOption(node)&&node.text?.startsWith(fixtureId+' · '+fixtureId+' — ');
+  await until(()=>current.filter(node=>node.package===pkg&&routeOption(node)&&visibleBounds(node)).length===1,30,'FIXTURE_ROUTE_OPTION_NOT_EXPOSED');
+  tapNode(current.find(node=>node.package===pkg&&routeOption(node)&&visibleBounds(node))!);
+  await press(['切换当前对话主模型']);
+  await until(()=>current.some(node=>node.package===pkg&&node.text===
+    '主模型已切换；不会自动发送或重发。若有失败输入，请按聊天中的恢复提示操作。'),60,'MAIN_MODEL_SWITCH_NOT_CONFIRMED');
+  const check=await reveal(allMainNames,node=>node.class==='android.widget.CheckBox'||node.class==='android.widget.Switch');
+  requireUi(check.checked==='true'||check.checked==='false','WORKER_ROUTE_CHECKED_STATE_NOT_EXPOSED');
+  if(check.checked==='false')tapNode(check);
+  await press(['保存模型路由']);
+  await until(()=>visibleNamed(['保存模型路由']).length===1,60,'WORKER_ROUTE_SAVE_NOT_SETTLED');
+  // Re-mount the real panel and verify the server-backed state, rather than
+  // counting a transient toast or treating local checkbox state as persisted.
+  await closeWebDialog();await openManager();await pressManagerTab(['模型','Models']);
+  await until(()=>current.some(node=>node.package===pkg&&named(node,mainRouteNames)&&node.text?.includes(fixtureId))
+    &&current.some(node=>node.package===pkg&&named(node,allMainNames)&&node.checked==='true'),60,'FIXTURE_MAIN_OR_WORKER_ROUTE_NOT_RETAINED');
+  emit('passed',{scope:'ordinary-roleplay-session-and-fixture-main-worker-routing',liveModel:false});
+  await pressManagerTab(['角色卡导入']);
+  await until(()=>has(['上传角色卡'])&&visibleNamed(fileButton).length===1,30,'CARD_UPLOAD_PAGE_NOT_EXPOSED');
+}
+
+function visibleMessage(marker:string):Node|undefined {
+  return current.find(node=>node.package===pkg&&node.class!=='android.webkit.WebView'
+    &&node.class!=='android.widget.EditText'&&node.scrollable!=='true'
+    &&[node.text,node['content-desc']].some(text=>text?.includes(marker))&&inWebView(node)&&visibleBounds(node));
+}
+/** One opening, one prompt. A missing response is a failure, never an automatic
+ * replay; the fixed fixture is visibly labelled as not an actual model. */
+async function chooseOpeningAndChat():Promise<void> {
+  stage='original-opening-selection';snapshot();
+  requireUi(current.some(node=>node.package===pkg&&node.text?.includes('旅人把蓝色书签放在桌上')),'SYNTHETIC_OPENING_PREVIEW_NOT_EXPOSED');
+  const compact=visibleNamed(['用这个开场开始']);
+  if(compact.length===1)tapNode(compact[0]);else await press(['使用此开场']);
+  await until(()=>current.some(node=>node.package===pkg&&(node.text==='开场与初始状态已确认。'
+    ||/^已写入第 \d+ 回合$/.test(node.text??''))),60,'ORIGINAL_OPENING_NOT_COMMITTED');
+  await closeWebDialog();await hideSidebar();
+  await until(()=>Boolean(visibleMessage('旅人把蓝色书签放在桌上')),60,'ORIGINAL_OPENING_NOT_VISIBLE_IN_CONVERSATION');
+  stage='one-synthetic-fixture-prompt';
+  const composers=current.filter(node=>node.package===pkg&&node.class==='android.widget.EditText'
+    &&node.enabled!=='false'&&inWebView(node)&&visibleBounds(node));
+  requireUi(composers.length===1,'UNIQUE_VISIBLE_COMPOSER_NOT_EXPOSED');
+  await typeAscii(composers[0],fixturePrompt);
+  await press(['发送消息','Send message']);
+  await until(()=>Boolean(visibleMessage(fixtureReply))
+    &&visibleNamed(['停止生成','Stop generating']).length===0,180,'SYNTHETIC_ASSISTANT_REPLY_NOT_RENDERED');
+  emit('passed',{scope:'one-native-opening-one-fixture-prompt-visible-reply',liveModel:false,
+    incrementalRendering:'not-qualified-by-single-delta-fixture'});
+}
+
+async function renameSyntheticConversation():Promise<void> {
+  stage='name-synthetic-conversation';await showSidebar();snapshot();
+  // A fresh test installation has one actual conversation. Do not choose an
+  // arbitrary unrelated session when the actual tree contains multiple menus.
+  const menus=current.filter(node=>node.package===pkg&&button(node)&&visibleBounds(node)
+    &&[/^会话“.+”的操作$/,/^Session actions for .+$/].some(pattern=>pattern.test(node['content-desc']??node.text??'')));
+  requireUi(menus.length===1,'CURRENT_CONVERSATION_MENU_NOT_UNIQUE');tapNode(menus[0]);
+  await press(['重命名','Rename']);
+  await until(()=>current.some(node=>node.package===pkg&&node.class==='android.widget.EditText'
+    &&named(node,['会话名称','Session name'])),30,'SESSION_RENAME_FORM_NOT_EXPOSED');
+  await replace(['会话名称','Session name'],stableTitle);
+  await press(['重命名','Rename'],dialogButton);
+  await until(()=>has(['会话“'+stableTitle+'”的操作','Session actions for '+stableTitle]),30,'CONVERSATION_RENAME_NOT_OBSERVED');
+  await hideSidebar();
+}
+function ownedNodePid():number {
+  const app=command('shell','pidof',pkg).trim().split(/\s+/);
+  requireUi(app.length===1&&/^\d+$/.test(app[0]),'OWN_APP_PID_NOT_UNIQUE');
+  // PID/PPID/NAME only: no process argv, READY URL, auth token or private data.
+  const nodes=command('shell','ps','-A','-o','PID,PPID,NAME').trim().split('\n').slice(1)
+    .map(line=>line.trim().split(/\s+/)).filter(row=>row[1]===app[0]&&/^libnexttavern_n/.test(row[2]??''));
+  requireUi(nodes.length===1,'OWN_NATIVE_NODE_CHILD_NOT_UNIQUE');return Number(nodes[0][0]);
+}
+/** Traverse only the actual conversation scroller, collecting small known
+ * synthetic text witnesses. No off-screen DOM or private history API counts as
+ * visible recovery. A different view/layout must stop at its actual hierarchy. */
+async function requirePersistedConversation():Promise<void> {
+  const markers=[fixtureOpening,fixturePrompt,fixtureReply],seen=new Set<string>();
+  let scrollBox:number[]|null=null;
+  for(const direction of ['older','newer'])for(let attempt=0;attempt<4;attempt++) {
+    snapshot();
+    for(const marker of markers) {
+      const node=visibleMessage(marker);if(!node)continue;seen.add(marker);
+      const scroll=ancestors(node).find(parent=>parent.scrollable==='true'&&inWebView(parent)&&visibleBounds(parent));
+      if(scroll)scrollBox=visibleBounds(scroll);
+    }
+    if(seen.size===markers.length)return;
+    requireUi(scrollBox,'CONVERSATION_SCROLL_ANCESTOR_NOT_EXPOSED');
+    const [left,top,right,bottom]=scrollBox,x=Math.round((left+right)/2),height=bottom-top;
+    const older=direction==='older';
+    command('shell','input','swipe',String(x),String(Math.round(top+height*(older ? .2 : .8))),
+      String(x),String(Math.round(top+height*(older ? .8 : .2))),'450');
+  }
+  requireUi(false,'SYNTHETIC_HISTORY_NOT_VISIBLE_AFTER_ORDINARY_SCROLL');
+}
+/** No new prompt is sent in this function, including after the new origin. */
+async function backgroundStopStartAndRecover():Promise<void> {
+  await renameSyntheticConversation();stage='background-return-same-node';
+  const before=ownedNodePid();command('shell','input','keyevent','KEYCODE_HOME');await delay(2000);
+  command('shell','am','start','-W','-n',pkg+'/app.nexttavern.android.mobile.MainActivity');
+  await until(()=>has(['本地服务运行中']),60,'NATIVE_READY_NOT_RETAINED_AFTER_HOME');
+  requireUi(ownedNodePid()===before,'BACKGROUND_RETURN_REPLACED_NATIVE_NODE');
+  await requirePersistedConversation();emit('passed',{scope:'home-return-same-owned-node-and-visible-story'});
+  stage='ordinary-native-stop-start';
+  await press(['停止'],node=>button(node)&&!inWebView(node));
+  await until(()=>has(['停止 NextTavern？'])&&visibleNamed(['停止并收尾']).length===1,30,'ORDINARY_NATIVE_STOP_CONFIRMATION_NOT_EXPOSED');
+  await press(['停止并收尾']);
+  await until(()=>visibleNamed(['启动'],node=>button(node)&&!inWebView(node)).length===1,180,'ORDINARY_STOP_NOT_SETTLED');
+  await press(['启动'],node=>button(node)&&!inWebView(node));
+  await until(()=>has(['本地服务运行中']),180,'NATIVE_RESTART_READY_NOT_OBSERVED');
+  requireUi(ownedNodePid()!==before,'NATIVE_RESTART_DID_NOT_REPLACE_NODE_PROCESS');
+  stage='reopen-persisted-named-conversation';await showSidebar();snapshot();
+  if(!current.some(node=>node.package===pkg&&named(node,[stableTitle])&&visibleBounds(node))) {
+    const search=current.filter(node=>node.package===pkg&&named(node,['搜索会话','Search sessions'])&&button(node)&&visibleBounds(node));
+    requireUi(search.length===1,'SESSION_SEARCH_ACTION_NOT_EXPOSED');tapNode(search[0]);
+    await until(()=>current.some(node=>node.package===pkg&&node.class==='android.widget.EditText'
+      &&named(node,['搜索会话','Search sessions','搜索会话名称','Search session names'])),30,'SESSION_SEARCH_FIELD_NOT_EXPOSED');
+    await replace(['搜索会话','Search sessions','搜索会话名称','Search session names'],stableTitle);
+  }
+  tapNode(await reveal([stableTitle],node=>node.class!=='android.widget.EditText'));
+  await hideSidebar();await requirePersistedConversation();
+  emit('passed',{scope:'ordinary-stop-start-visible-opening-user-prompt-assistant-recovery',newPromptSent:false,
+    fixtureCorePlayable:true,liveModel:false,fullG0:false,arm64Qualified:false});
+}
+async function runContiguousCreate(workDir:string):Promise<void> {
+  await configureFixtureProvider();
+  await prepareRoleplaySessionAndCardPage();
+  await selectSyntheticCard(workDir);
+  await submitSelectedCard();
+  await chooseOpeningAndChat();
+  await backgroundStopStartAndRecover();
+}
+
+interface SafeFixtureCounter {
+  request:number;streamRequested:boolean;paced:boolean;contentDeltas:number;completed:boolean;aborted:boolean;
+}
+/** Runner Linux log ONLY. This is not a product private file or endpoint, and
+ * no raw line, body, model, key or credential is copied to driver output. */
+function fixtureCounterSnapshot(file:string):Map<number,SafeFixtureCounter> {
+  const text=readFileSync(file,'utf8'),records=new Map<number,SafeFixtureCounter>();
+  // The writer can be between console.log's bytes; leave an unfinished line
+  // for the next observation rather than treating a partial write as evidence.
+  for(const line of text.slice(0,text.lastIndexOf('\n')+1).split('\n')) {
+    if(!line.startsWith('{'))continue;
+    let value:Record<string,unknown>;
+    try {value=JSON.parse(line)}catch{requireUi(false,'FIXTURE_COUNTER_LOG_INVALID')}
+    if(value!.kind!=='local-protocol-fixture-request')continue;
+    requireUi(value!.schemaVersion===1&&value!.fixture===PROTOCOL_FIXTURE_ID
+      &&Number.isSafeInteger(value!.request)&&Number(value!.request)>0
+      &&Number.isSafeInteger(value!.contentDeltas)&&Number(value!.contentDeltas)>=0
+      &&typeof value!.streamRequested==='boolean'&&typeof value!.paced==='boolean'
+      &&typeof value!.completed==='boolean'&&typeof value!.aborted==='boolean',
+      'FIXTURE_COUNTER_SCHEMA_NOT_SUPPORTED');
+    records.set(Number(value!.request),{request:Number(value!.request),streamRequested:value!.streamRequested as boolean,
+      paced:value!.paced as boolean,contentDeltas:Number(value!.contentDeltas),
+      completed:value!.completed as boolean,aborted:value!.aborted as boolean});
+  }
+  return records;
+}
+const maxFixtureRequest=(file:string)=>Math.max(0,...fixtureCounterSnapshot(file).keys());
+const freshPaced=(file:string,after:number)=>[...fixtureCounterSnapshot(file).values()]
+  .filter(record=>record.request>after&&record.streamRequested&&record.paced);
+const completePacedPrompt=PACED_STREAM_MARKER+' COMPLETE_UI_TURN';
+const interruptPacedPrompt=PACED_STREAM_MARKER+' INTERRUPT_UI_TURN';
+const leafTexts=(text:string)=>current.filter(node=>node.package===pkg&&node.class!=='android.widget.EditText'
+  &&node.class!=='android.webkit.WebView'&&inWebView(node)&&node.text?.trim()===text)
+  .filter(node=>!current.some(child=>child!==node&&child.text?.trim()===text&&ancestors(child).includes(node)));
+/** Accessibility document order correlates the reply with its unique visible
+ * synthetic user-turn anchor. An OLD identical fixture reply cannot satisfy
+ * this predicate. No hidden DOM id or evaluated JavaScript is used. */
+function fixtureReplyAfter(prompt:string,partial:boolean,visible=true):Node|undefined {
+  const anchors=leafTexts(prompt);
+  if(anchors.length!==1)return;
+  const after=current.indexOf(anchors[0]),view=ancestors(anchors[0]).find(node=>node.class==='android.webkit.WebView');
+  return current.find((node,index)=>{
+    if(index<=after||node.package!==pkg||node.class==='android.widget.EditText'||node.class==='android.webkit.WebView')return false;
+    const text=node.text?.trim()??'';
+    return (partial ? text.length>0&&text.length<fixtureReply.length&&fixtureReply.startsWith(text) : text===fixtureReply)
+      &&ancestors(node).includes(view!)&&(!visible||visibleBounds(node));
+  });
+}
+async function sendOnePacedPrompt(prompt:string):Promise<void> {
+  snapshot();
+  const composer=current.filter(node=>node.package===pkg&&node.class==='android.widget.EditText'
+    &&node.enabled!=='false'&&inWebView(node)&&visibleBounds(node));
+  requireUi(composer.length===1,'PACED_TURN_UNIQUE_COMPOSER_NOT_EXPOSED');
+  await typeAscii(composer[0],prompt);
+  await press(['发送消息','Send message']);
+}
+async function ordinaryNativeStop():Promise<void> {
+  await press(['停止'],node=>button(node)&&!inWebView(node));
+  await until(()=>has(['停止 NextTavern？'])&&visibleNamed(['停止并收尾']).length===1,30,'PACED_ORDINARY_STOP_CONFIRMATION_NOT_EXPOSED');
+  await press(['停止并收尾']);
+  await until(()=>visibleNamed(['启动'],node=>button(node)&&!inWebView(node)).length===1,180,'PACED_ORDINARY_STOP_NOT_SETTLED');
+}
+async function reopenNamedConversation():Promise<void> {
+  await showSidebar();snapshot();
+  if(!current.some(node=>node.package===pkg&&named(node,[stableTitle])&&visibleBounds(node))) {
+    const search=visibleNamed(['搜索会话','Search sessions']);
+    requireUi(search.length===1,'PACED_RECOVERY_SESSION_SEARCH_NOT_EXPOSED');tapNode(search[0]);
+    await until(()=>current.some(node=>node.package===pkg&&node.class==='android.widget.EditText'
+      &&named(node,['搜索会话','Search sessions','搜索会话名称','Search session names'])),30,'PACED_RECOVERY_SEARCH_FIELD_NOT_EXPOSED');
+    await replace(['搜索会话','Search sessions','搜索会话名称','Search session names'],stableTitle);
+  }
+  tapNode(await reveal([stableTitle],node=>node.class!=='android.widget.EditText'));
+  await hideSidebar();
+}
+/** Look only in the genuine conversation scroll ancestor for the two recent
+ * synthetic turn anchors. Actual unexposed or different renderer state stops
+ * at bounded UI labels; it is never replaced with a private history request. */
+async function requirePacedRecoveryUi():Promise<{partialRetained:boolean}> {
+  let completeRecovered=false,interruptedRecovered=false,partialRetained=false,interruptedPromptVisible=false,scrollBox:number[]|null=null;
+  for(const direction of ['older','newer'])for(let attempt=0;attempt<4;attempt++) {
+    snapshot();
+    const full=fixtureReplyAfter(completePacedPrompt,false);
+    if(full)completeRecovered=true;
+    const partial=fixtureReplyAfter(interruptPacedPrompt,true);
+    const anchors=leafTexts(interruptPacedPrompt),anchor=anchors.length===1?current.indexOf(anchors[0]):-1;
+    if(anchors.length===1&&visibleBounds(anchors[0]))interruptedPromptVisible=true;
+    const stopped=current.find((node,index)=>index>anchor&&anchor>=0&&node.package===pkg
+      &&named(node,['已停止','Stopped'])&&inWebView(node)&&visibleBounds(node));
+    if(partial)partialRetained=true;
+    // Native Stop promises interruption, not a committed partial assistant
+    // message. Record prefix retention, but require the durable user anchor
+    // and explicit stopped state rather than inventing a partial-save promise.
+    if(stopped)interruptedRecovered=true;
+    requireUi(!fixtureReplyAfter(interruptPacedPrompt,false,false),'INTERRUPTED_TURN_RENDERED_AS_FULL_FIXTURE_REPLY');
+    if(completeRecovered&&interruptedRecovered&&interruptedPromptVisible)return {partialRetained};
+    const witness=partial??full??stopped??(anchors.length===1&&visibleBounds(anchors[0])?anchors[0]:undefined)??visibleMessage('本地协议测试');
+    const scroll=witness&&ancestors(witness).find(parent=>parent.scrollable==='true'&&inWebView(parent)&&visibleBounds(parent));
+    if(scroll)scrollBox=visibleBounds(scroll);
+    requireUi(scrollBox,'PACED_RECOVERY_CONVERSATION_SCROLL_NOT_EXPOSED');
+    const [left,top,right,bottom]=scrollBox,x=Math.round((left+right)/2),height=bottom-top,older=direction==='older';
+    command('shell','input','swipe',String(x),String(Math.round(top+height*(older ? .2 : .8))),
+      String(x),String(Math.round(top+height*(older ? .8 : .2))),'450');
+  }
+  requireUi(false,'PACED_COMPLETED_OR_STOPPED_TURN_NOT_VISIBLE_AFTER_RESTART');
+}
+/** Run AFTER the normal card/chat/name/background/StopStart flow. The two paced
+ * prompts are different user turns. --fixture-events is a runner-owned Linux
+ * protocol-fixture.log path, not a READY URL or a product-private artifact. */
+async function pacedCompleteThenInterruptAndRecover(fixtureEventsFile:string):Promise<void> {
+  stage='paced-partial-to-complete-ui-turn';
+  const baseline=maxFixtureRequest(fixtureEventsFile),partialUpdates=new Set<string>();
+  await sendOnePacedPrompt(completePacedPrompt);
+  await until(()=>{
+    const partial=fixtureReplyAfter(completePacedPrompt,true);
+    if(partial&&visibleNamed(['停止生成','Stop generating']).length===1)partialUpdates.add(partial.text!.trim());
+    return partialUpdates.size>=2&&freshPaced(fixtureEventsFile,baseline).some(record=>record.contentDeltas>1&&!record.completed&&!record.aborted);
+  },90,'PACED_MULTIPLE_PARTIAL_UI_UPDATES_NOT_OBSERVED');
+  await until(()=>{
+    const partial=fixtureReplyAfter(completePacedPrompt,true);
+    if(partial)partialUpdates.add(partial.text!.trim());
+    return Boolean(fixtureReplyAfter(completePacedPrompt,false))
+      &&visibleNamed(['停止生成','Stop generating']).length===0
+      &&freshPaced(fixtureEventsFile,baseline).some(record=>record.completed&&!record.aborted&&record.contentDeltas>1);
+  },180,'PACED_REPLY_OR_UI_IDLE_NOT_OBSERVED');
+  emit('passed',{scope:'distinct-new-turn-multiple-visible-partial-updates-to-full-reply-and-ui-idle',
+    partialUpdates:partialUpdates.size,pacedHttpCompletedRequests:freshPaced(fixtureEventsFile,baseline).filter(record=>record.completed).length,
+    uniquelyPrimaryRequest:false,phaseBCQualified:false,memoryQualified:false,liveModel:false});
+
+  captureApprovedScreenshot('synthetic-chat');
+  stage='separate-paced-partial-native-stop';
+  const beforeStop=ownedNodePid(),interruptBaseline=maxFixtureRequest(fixtureEventsFile),interruptUpdates=new Set<string>();
+  await sendOnePacedPrompt(interruptPacedPrompt);
+  await until(()=>{
+    const partial=fixtureReplyAfter(interruptPacedPrompt,true);
+    if(partial&&visibleNamed(['停止生成','Stop generating']).length===1)interruptUpdates.add(partial.text!.trim());
+    return interruptUpdates.size>=2&&freshPaced(fixtureEventsFile,interruptBaseline)
+      .some(record=>record.contentDeltas>0&&!record.completed&&!record.aborted);
+  },90,'SECOND_TURN_VISIBLE_PARTIAL_AND_PENDING_HTTP_NOT_OBSERVED');
+  const pending=new Set(freshPaced(fixtureEventsFile,interruptBaseline)
+    .filter(record=>record.contentDeltas>0&&!record.completed&&!record.aborted).map(record=>record.request));
+  await ordinaryNativeStop();
+  await until(()=>{
+    const records=freshPaced(fixtureEventsFile,interruptBaseline);
+    return records.some(record=>pending.has(record.request)&&record.aborted&&!record.completed)
+      &&records.every(record=>record.completed||record.aborted);
+  },30,'NATIVE_STOP_DID_NOT_ABORT_OBSERVED_PACED_CONNECTION');
+  const stoppedRecords=freshPaced(fixtureEventsFile,interruptBaseline),restartBaseline=maxFixtureRequest(fixtureEventsFile);
+  stage='restart-after-explicit-interruption';
+  await press(['启动'],node=>button(node)&&!inWebView(node));
+  await until(()=>has(['本地服务运行中']),180,'NATIVE_RESTART_AFTER_INTERRUPTION_NOT_READY');
+  requireUi(ownedNodePid()!==beforeStop,'INTERRUPTED_NODE_PID_WAS_NOT_REPLACED');
+  await reopenNamedConversation();const recovery=await requirePacedRecoveryUi();
+  const later=freshPaced(fixtureEventsFile,restartBaseline);
+  // A new paced request might be contextual/background work, not necessarily a
+  // primary replay. Block classification rather than inventing that diagnosis.
+  requireUi(later.length===0,'NEW_PACED_REQUEST_AFTER_RESTART_REQUIRES_CLASSIFICATION');
+  emit('passed',{scope:'explicit-native-interruption-http-abort-new-process-visible-recovery',
+    visiblePartialUpdates:interruptUpdates.size,pacedAbortedRequests:stoppedRecords.filter(record=>record.aborted).length,
+    pacedCompletedRequests:stoppedRecords.filter(record=>record.completed).length,newPromptSentAfterRestart:false,
+    newPacedRequestsObservedThroughRecovery:later.length,interruptedTurnRenderedStopped:true,
+    interruptedUserPromptRecovered:true,interruptedPartialRetained:recovery.partialRetained,
+    priorCompletedPacedReplyRecovered:true,uniquelyPrimaryRequest:false,phaseBCQualified:false,
+    memoryQualified:false,drainedAllWork:false,liveModel:false,fullG0:false});
 }
 
 try {
@@ -278,11 +725,13 @@ try {
     return false;
   },180,'MODEL_DIRECTORY_NOT_READY_OR_LAYOUT_CLIPPED');
   stage='host-models-page';
-  labels();captureModelsBeforeCredentials();
-  await configureFixtureProvider();
-  emit('passed',{scope:'native-start-webview-model-provider-config-only',package:pkg,
-    cardImport:'not-run',SAF:'not-run',chat:'not-run',restartRecovery:'not-run',liveModel:false,
-    incrementalRendering:'not-run',productPlayable:false,fullG0:false});
+  labels();captureApprovedScreenshot('models');
+  await runContiguousCreate(args['--work-dir']);
+  await pacedCompleteThenInterruptAndRecover(fixtureEvents);
+  emit('passed',{scope:'ordinary-ui-synthetic-card-chat-stream-stop-recovery',package:pkg,
+    cardImport:'passed',SAF:'passed',chat:'passed',restartRecovery:'passed',liveModel:false,
+    incrementalRendering:'observed-partial-to-complete',syntheticCoreFlow:true,
+    productPlayable:false,fullG0:false,arm64Qualified:false,phaseBCQualified:false,memoryQualified:false});
 }catch(error) {
   labels();emit('failed',{code:error instanceof UiFailure?error.code:'DRIVER_FAILURE',productPlayable:false,fullG0:false});
   process.exitCode=1;

@@ -376,7 +376,7 @@ mark API35_X86_64_KVM_BOOTED
 if [[ "$mode" == --mobile ]]; then
   phase=MOBILE_UI_EXERCISE
   bash "$source_dir/../android-mobile-terminal/run-mobile.sh" exercise
-  mark MOBILE_KVM_FIRST_UI_STAGE_PASSED_NOT_FULL_ACCEPTANCE
+  mark MOBILE_KVM_SYNTHETIC_FLOW_PASSED_NOT_ARM64_OR_FULL_G0
   exit 0
 fi
 "$adb" -s "$serial" install --no-incremental "$work/control.apk" > "$work/install.log" 2>&1

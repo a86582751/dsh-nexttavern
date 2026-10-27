@@ -86,7 +86,7 @@ adb="${MOBILE_QA_ADB:?}"; serial="${MOBILE_QA_SERIAL:?}"
 phase=LOCAL_PROTOCOL_FIXTURE
 node "$repo/android/host/protocol-fixture.mts" 18765 > "$work/protocol-fixture.log" 2>&1 &
 fixture_pid=$!
-phase=REAL_MAIN_ACTIVITY_FIRST_UI_STAGE
+phase=REAL_MAIN_ACTIVITY_SYNTHETIC_FLOW
 node "$repo/qa/android-mobile-terminal/ui-first-stage.mts" --adb "$adb" --serial "$serial" \
-  --package app.nexttavern.android.x86diagnostic --phase create --work-dir "$work/ui"
-printf 'ORDINARY_NONDEBUG_APP_FIRST_UI_STAGE_COMPLETE\n'
+  --package app.nexttavern.android.x86diagnostic --phase create --work-dir "$work/ui" --fixture-events "$work/protocol-fixture.log"
+printf 'ORDINARY_NONDEBUG_APP_SYNTHETIC_FLOW_COMPLETE_NOT_ARM64_OR_G0\n'
