@@ -1,5 +1,6 @@
 # Authorized public Android source and runner-owned QA on android/mobile-terminal.
 # Built payloads, signing material and private profile data are never published.
+# Only the user-approved synthetic Models PNG may be retained, for one day.
 # Default control mode remains available; this job selects the full APK first-UI stage.
 name: Android mobile KVM preview
 on:
@@ -38,4 +39,28 @@ jobs:
           check-latest: false
       - name: Build public non-debug x64 APK and observe actual UI in required KVM
         shell: bash
+        env:
+          NEXTTAVERN_UI_EVIDENCE_DIR: ${{ runner.temp }}/nexttavern-ui-images
         run: bash qa/android-webview-kvm/run-smoke.sh --mobile
+      - name: Locate only the approved synthetic Models PNG
+        if: always()
+        id: ui_images
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/nexttavern-ui-images/models.png" ]]; then
+            echo 'present=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Retain approved synthetic UI image for one day
+        if: always() && steps.ui_images.outputs.present == 'true'
+        # Official actions/upload-artifact v4.6.2; tag verified 2026-10-27.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: android-synthetic-ui
+          path: ${{ runner.temp }}/nexttavern-ui-images/models.png
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
+      - name: Remove approved runner-local PNG only
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/nexttavern-ui-images"

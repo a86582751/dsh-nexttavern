@@ -1,6 +1,8 @@
 /** Temporary UI-only first stage. No HTTP, READY/token reads, JS evaluation or screenshots. */
 import {execFileSync} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
+import {mkdirSync,writeFileSync} from 'node:fs';
+import {join} from 'node:path';
 
 type Node = Record<string,string>;
 const args:Record<string,string>={};
@@ -72,13 +74,22 @@ function bounds(node:Node):number[]|null {
   if(!numbers || numbers.length!==4 || numbers[0]<0 || numbers[1]<0 || numbers[2]<=numbers[0] || numbers[3]<=numbers[1])return null;
   return numbers;
 }
+function visibleBounds(node:Node):number[]|null {
+  let box=bounds(node);if(!box)return null;
+  for(const parent of ancestors(node)) {
+    const clip=bounds(parent);if(!clip)continue;
+    box=[Math.max(box[0],clip[0]),Math.max(box[1],clip[1]),Math.min(box[2],clip[2]),Math.min(box[3],clip[3])];
+    if(box[2]<=box[0] || box[3]<=box[1])return null;
+  }
+  return box;
+}
 function matches(names:string[],interactive=false):Node[] {
   return current.filter(node=>names.some(name=>node.text===name||node['content-desc']===name)
     && node.enabled!=='false' && bounds(node)
     && (!interactive||node.clickable==='true'||node.class==='android.widget.Button'));
 }
 function tapNode(node:Node):void {
-  const box=bounds(node);requireUi(box,'NO_VISIBLE_TARGET_BOUNDS');
+  const box=visibleBounds(node);requireUi(box,'NO_VISIBLE_TARGET_BOUNDS');
   command('shell','input','tap',String(Math.round((box[0]+box[2])/2)),String(Math.round((box[1]+box[3])/2)));
 }
 function tap(names:string[]):void {
@@ -155,6 +166,82 @@ function onboarding():boolean {
   return false;
 }
 
+function captureModelsBeforeCredentials():void {
+  const directory=process.env.NEXTTAVERN_UI_EVIDENCE_DIR;
+  if(!directory)return;
+  // Only this source-guarded, fresh Models page is approved. Never capture a
+  // generic failure or a credential editor, and never print image bytes.
+  mkdirSync(directory,{recursive:true});
+  const png=execFileSync(adb,['-s',serial,'exec-out','screencap','-p'],{
+    timeout:90000,maxBuffer:8*1024*1024,stdio:['ignore','pipe','pipe'],
+  });
+  writeFileSync(join(directory,'models.png'),png,{flag:'wx'});
+  emit('observed',{syntheticScreenshot:'models-before-credential-entry'});
+}
+const fixtureId='nexttavern-fixture';
+const fixtureModelNames=['模型 ID 1','Model ID 1'];
+const named=(node:Node,names:string[])=>names.some(name=>node.text===name||node['content-desc']===name);
+const button=(node:Node)=>node.clickable==='true'||node.class==='android.widget.Button';
+/** Reveal only a named form control through its actual scrollable ancestor;
+ * unknown structure remains an observed failure, not a whole-screen fallback. */
+async function reveal(names:string[],kind:(node:Node)=>boolean=button):Promise<Node> {
+  for(let attempt=0;;attempt++) {
+    snapshot();
+    const found=current.filter(node=>node.package===pkg&&named(node,names)&&kind(node)&&node.enabled!=='false');
+    requireUi(found.length===1,found.length?'NEXT_UI_TARGET_AMBIGUOUS':'NEXT_UI_TARGET_NOT_EXPOSED');
+    const target=found[0];
+    if(visibleBounds(target))return target;
+    requireUi(attempt<4,'NEXT_UI_TARGET_NOT_VISIBLE_AFTER_SCROLL');
+    const scroll=ancestors(target).find(node=>node.scrollable==='true'&&visibleBounds(node));
+    requireUi(scroll,'NEXT_UI_SCROLL_ANCESTOR_NOT_EXPOSED');
+    const box=visibleBounds(scroll)!,targetBox=bounds(target);
+    const reverse=targetBox!==null&&targetBox[3]<=box[1];
+    const x=Math.round((box[0]+box[2])/2),height=box[3]-box[1];
+    command('shell','input','swipe',String(x),String(Math.round(box[1]+height*(reverse ? .2 : .8))),
+      String(x),String(Math.round(box[1]+height*(reverse ? .8 : .2))),'450');
+    emit('observed',{interaction:'named-control-ancestor-scroll',attempt:attempt+1});
+  }
+}
+async function press(names:string[],kind:(node:Node)=>boolean=button):Promise<void> {tapNode(await reveal(names,kind));}
+async function replace(names:string[],value:string):Promise<void> {
+  // All fixture values are fixed ASCII; no shell metacharacters or credentials
+  // from outside this synthetic run can enter input text.
+  tapNode(await reveal(names,node=>node.class==='android.widget.EditText'));
+  command('shell','input','keycombination','113','29'); // API35 Ctrl+A.
+  command('shell','input','keyevent','KEYCODE_DEL');
+  command('shell','input','text',value.replaceAll(' ','%s'));
+  snapshot();
+  // Back ONLY if the actual hierarchy exposes the IME, not to dismiss a form.
+  if(current.some(node=>/\.inputmethod\./.test(node.package)))command('shell','input','keyevent','KEYCODE_BACK');
+}
+
+/** Entry condition: the preceding actual first-stage has exposed Add provider.
+ * Fresh synthetic installation only: no overwrite of a previously saved route. */
+async function configureFixtureProvider():Promise<void> {
+  stage='create-fixture-provider';snapshot();
+  requireUi(!has(['编辑 '+fixtureId,'Edit '+fixtureId]),'FIXTURE_PROVIDER_ALREADY_PRESENT');
+  await press(['添加模型提供商','Add model provider']);
+  await until(()=>has(['自定义模型 API','Custom model API']),30,'CUSTOM_PROVIDER_MODE_NOT_EXPOSED');
+  await press(['自定义模型 API','Custom model API']);
+  await until(()=>current.some(node=>node.package===pkg&&node.class==='android.widget.EditText'&&named(node,['Provider ID'])),30,'CUSTOM_PROVIDER_FORM_NOT_EXPOSED');
+  await replace(['Provider ID'],fixtureId);
+  await replace(['API 地址','Base URL'],'http://127.0.0.1:18765/v1');
+  // Never assume the schema's first protocol is the intended one.
+  await press(['API 协议','API protocol'],node=>node.class==='android.widget.Spinner'||button(node));
+  const protocolOption=(node:Node)=>node.class==='android.widget.CheckedTextView'||node.class==='android.widget.RadioButton';
+  await until(()=>current.some(node=>named(node,['OpenAI Chat Completions'])&&protocolOption(node)),30,'OPENAI_COMPLETIONS_OPTION_NOT_EXPOSED');
+  await press(['OpenAI Chat Completions'],protocolOption);
+  await replace(['API 密钥','API key'],'local-test-only');
+  await press(['添加模型','Add model']);
+  await replace(fixtureModelNames,fixtureId);
+  await press(['模型选项 1','Model options 1']);
+  await replace(['上下文窗口 1','Context window 1'],'65536');
+  await replace(['最大输出 token 数 1','Max output tokens 1'],'2048');
+  await press(['创建提供商','Create provider']);
+  await until(()=>has(['编辑 '+fixtureId,'Edit '+fixtureId])&&!has(['创建提供商','Create provider']),60,'FIXTURE_PROVIDER_SAVE_NOT_OBSERVED');
+  emit('passed',{scope:'custom-provider-form-saved',syntheticProvider:true,liveModel:false});
+}
+
 try {
   stage='verify-self-created-emulator';
   requireUi(command('shell','getprop','ro.kernel.qemu').trim()==='1','NOT_SELF_CREATED_EMULATOR');
@@ -178,7 +265,7 @@ try {
     if(onboarding()) {
       sidebarRequested=false;settingsRequested=false;modelsRequested=false;return false;
     }
-    if(matches(addProvider,true).length===1)return true;
+    if(current.some(node=>node.package===pkg && button(node) && named(node,addProvider)))return true;
     if(!modelsRequested && matches(['模型','Models'],true).length===1) {
       tap(['模型','Models']);modelsRequested=true;return false;
     }
@@ -191,8 +278,9 @@ try {
     return false;
   },180,'MODEL_DIRECTORY_NOT_READY_OR_LAYOUT_CLIPPED');
   stage='host-models-page';
-  labels();
-  emit('passed',{scope:'native-start-webview-host-models-only',package:pkg,
+  labels();captureModelsBeforeCredentials();
+  await configureFixtureProvider();
+  emit('passed',{scope:'native-start-webview-model-provider-config-only',package:pkg,
     cardImport:'not-run',SAF:'not-run',chat:'not-run',restartRecovery:'not-run',liveModel:false,
     incrementalRendering:'not-run',productPlayable:false,fullG0:false});
 }catch(error) {
