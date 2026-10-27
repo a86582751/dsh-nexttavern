@@ -84,10 +84,10 @@ function hierarchyOutput():string {
     return read();
   }
 }
-function snapshot():Node[] {
+function snapshot(suppliedOutput?:string):Node[] {
   current=[];
   // Public UiAutomation preserves Chromium's hint text; capture privately.
-  const output=hierarchyOutput();
+  const output=suppliedOutput??hierarchyOutput();
   const records=[...output.matchAll(/^INSTRUMENTATION_RESULT: hierarchy=([^\r\n]*)\r?$/gm)];
   if(!/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)||records.length!==1) {
     emit('observed',{interaction:'accessibility-reader-failure',hierarchyRecordCount:records.length,
@@ -329,6 +329,14 @@ async function revealModelControl(names:string[],kind:(node:Node)=>boolean,owner
     requireUi(found.length===1,'MODEL_PANEL_TARGET_NOT_UNIQUE');
     if(visibleBounds(found[0]))return found[0];
     const before=found[0].bounds,coordinates=before?.match(/-?\d+/g)?.map(Number);
+    // A distant target can retain the same clipped zero-height bounds through
+    // several genuine scrolls. Also observe one currently visible body label.
+    const anchor=current.find(node=>{
+      if(node.package!==pkg||node.class!=='android.widget.TextView'||!node.text)return false;
+      const rect=visibleBounds(node);return rect&&rect[1]>=box[1]&&rect[3]<=box[3]
+        &&current.filter(other=>other.package===pkg&&other.class===node.class&&other.text===node.text).length===1;
+    });
+    const anchorBefore=anchor?{text:anchor.text,class:anchor.class,bounds:anchor.bounds}:null;
     requireUi(coordinates?.length===4,'MODEL_PANEL_TARGET_GEOMETRY_MISSING');
     const upward=coordinates[1]>=box[1],x=modelRoutingGestureX!,height=box[3]-box[1];
     const startY=Math.round(box[1]+height*(upward ? .85 : .15)),endY=Math.round(box[1]+height*(upward ? .15 : .85));
@@ -339,12 +347,20 @@ async function revealModelControl(names:string[],kind:(node:Node)=>boolean,owner
     if(!modelScrollImagesRecorded)captureApprovedScreenshot('model-routing');
     emit('observed',{interaction:'model-panel-gesture-before',target:names[0],targetBounds:before,
       headingBounds:current.find(node=>node.text==='模型路由')?.bounds,viewport:box,from:[x,startY],to:[x,endY]});
-    command('shell','input','swipe',String(x),String(startY),String(x),String(endY),'450');
+    const gestureOutput=command('shell','am','instrument','-w','-r','-e','operation','swipe-model-panel',
+      '-e','targetPackage',pkg,'-e','gestureX',String(x),'-e','gestureFromY',String(startY),
+      '-e','gestureToY',String(endY),'app.nexttavern.qa.ui/.HierarchyInstrumentation');
+    const gestureEvent=gestureOutput.match(/^INSTRUMENTATION_RESULT: gestureEventType=(\d+)\r?$/m)?.[1];
+    emit('observed',{interaction:'model-panel-gesture-event',eventType:gestureEvent??null,
+      helperError:gestureOutput.match(/^INSTRUMENTATION_RESULT: error=([A-Z_]{1,80})\r?$/m)?.[1]??null});
+    snapshot(gestureOutput); // First observation is from the action's live AX session.
     // No replay after transport failure, and no second gesture without an
     // observed movement from the preceding one.
+    const moved=()=>current.some(node=>owner(node)&&named(node,names)&&kind(node)
+      &&(node.bounds!==before||visibleBounds(node)))||Boolean(anchorBefore&&current.some(node=>
+        node.package===pkg&&node.class===anchorBefore.class&&node.text===anchorBefore.text&&node.bounds!==anchorBefore.bounds));
     try {
-      await until(()=>current.some(node=>owner(node)&&named(node,names)&&kind(node)
-        &&(node.bounds!==before||visibleBounds(node))),10,'MODEL_PANEL_DID_NOT_SCROLL');
+      if(!moved())await until(moved,10,'MODEL_PANEL_DID_NOT_SCROLL');
     }catch(error) {
       if(error instanceof UiFailure&&error.code==='MODEL_PANEL_DID_NOT_SCROLL'&&!modelScrollImagesRecorded) {
         captureApprovedScreenshot('model-routing-after');modelScrollImagesRecorded=true;

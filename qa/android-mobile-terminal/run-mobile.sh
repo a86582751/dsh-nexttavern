@@ -92,11 +92,11 @@ GRADLE
   mkdir -p "$work/hierarchy/classes" "$work/hierarchy/dex"
   "$JAVA_HOME/bin/javac" --release 17 -cp "$sdk/platforms/android-36/android.jar" \
     -d "$work/hierarchy/classes" "$repo/qa/android-mobile-terminal/HierarchyInstrumentation.java" >> "$work/build.log" 2>&1
-  "$tools/d8" --release --min-api 26 --lib "$sdk/platforms/android-36/android.jar" \
+  "$tools/d8" --release --min-api 34 --lib "$sdk/platforms/android-36/android.jar" \
     --output "$work/hierarchy/dex" "$work/hierarchy/classes/app/nexttavern/qa/ui/HierarchyInstrumentation.class" >> "$work/build.log" 2>&1
   cat > "$work/hierarchy/AndroidManifest.xml" <<'XML'
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="app.nexttavern.qa.ui">
- <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
+ <uses-sdk android:minSdkVersion="34" android:targetSdkVersion="36" />
  <application android:debuggable="false" android:allowBackup="false" android:testOnly="true" android:label="Runner UI accessibility helper" />
  <instrumentation android:name=".HierarchyInstrumentation" android:targetPackage="app.nexttavern.qa.ui" />
 </manifest>
