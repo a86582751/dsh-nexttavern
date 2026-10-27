@@ -611,7 +611,6 @@ async function backgroundStopStartAndRecover():Promise<void> {
   await renameSyntheticConversation();stage='background-return-same-node';
   const before=ownedNodePid();command('shell','input','keyevent','KEYCODE_HOME');await delay(2000);
   command('shell','am','start','-W','-n',pkg+'/app.nexttavern.android.mobile.MainActivity');
-  snapshotIdentity=deviceIdentity();
   await until(()=>has(['本地服务运行中']),60,'NATIVE_READY_NOT_RETAINED_AFTER_HOME');
   requireUi(ownedNodePid()===before,'BACKGROUND_RETURN_REPLACED_NATIVE_NODE');
   await requirePersistedConversation();emit('passed',{scope:'home-return-same-owned-node-and-visible-story'});
@@ -816,6 +815,7 @@ try {
   stage='native-first-screen';
   command('shell','input','keyevent','KEYCODE_WAKEUP');
   command('shell','am','start','-W','-n',pkg+'/app.nexttavern.android.mobile.MainActivity');
+  snapshotIdentity=deviceIdentity();
   await until(()=>has(ready)||matches(['启动'],true).length===1,180,'NATIVE_SCREEN_TIMEOUT');
   if(!has(ready))tap(['启动']);
   stage='native-host-ready';
