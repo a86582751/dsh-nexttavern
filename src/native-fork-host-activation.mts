@@ -97,8 +97,8 @@ function payload(input:HostActivationInput):{
     JSON.stringify(inventoryFiles(forkRoot))!==JSON.stringify(registeredPayloadFiles))
     throw Error('Unregistered host override payload file')
   const sources={} as HostForkInput['sources']
-  for(const [index,name] of exactNames.entries()){
-    const record=inventory.hostForks[index] as Record<string,unknown>
+  for(const name of exactNames){
+    const record=inventory.hostForks.find(item=>item?.name===name) as Record<string,unknown>
     const expected=`host-overrides/${name}`
     if(!record||record.name!==name||record.version!==HOST_VERSION||record.path!==expected||
       record.status!=='unapplied-host-override'||!Array.isArray(record.files)||record.files.length===0)

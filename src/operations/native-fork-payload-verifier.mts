@@ -24,13 +24,13 @@ function hostForkInventoryRows(hostForks:unknown,recipes:HostForkRecipe[],
     recipe.target!==`host-overrides/${recipe.name}`))throw Error('Invalid registered host fork recipe')
   if(!Array.isArray(hostForks)||hostForks.length!==recipes.length)
     throw Error('Missing host override inventory')
-  for(const [index,recipe] of recipes.entries()){
-    const row=hostForks[index] as HostForkRow
+  return recipes.map(recipe=>{
+    const row=hostForks.find((candidate:HostForkRow)=>candidate?.name===recipe.name) as HostForkRow
     if(!row||row.name!==recipe.name||row.version!==recipe.version||row.path!==recipe.target||
       row.status!=='unapplied-host-override'||!Array.isArray(row.files)||!row.files.length)
       throw Error('Invalid unapplied host override inventory: '+recipe.name)
-  }
-  return hostForks as HostForkRow[]
+    return row
+  })
 }
 
 function assertHostForkMembers(rows:readonly HostForkRow[],
