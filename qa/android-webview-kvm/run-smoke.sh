@@ -6,6 +6,7 @@
 # https://developer.android.com/studio/run/emulator-commandline
 # SDK pins: existing official repository XML; API35 r9 SHA256 was already verified locally.
 set -Eeuo pipefail
+umask 077 # Runner-private diagnostics, including raw emulator/ADB stderr.
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 work="$(mktemp -d "${RUNNER_TEMP:?}/webview-kvm.XXXXXX")"
 mode="${1:-control}"
@@ -22,13 +23,48 @@ crash_summary() {
   python3 - "$work/crash.log" <<'PY'
 import pathlib,re,sys
 p=pathlib.Path(sys.argv[1]); text=p.read_text(errors='replace') if p.exists() else ''
-relevant=bool(re.search(r'Process: app\.nexttavern\.android\.(?:webviewcontrol|x86diagnostic)\b|>>> [^\n]*(?:app\.nexttavern\.android\.(?:webviewcontrol|x86diagnostic)|sandboxed_process)[^\n]* <<<',text))
+relevant=bool(re.search(r'Process: app\.nexttavern\.android\.(?:webviewcontrol|x86diagnostic|probe\.x86kvm)\b|>>> [^\n]*(?:app\.nexttavern\.android\.(?:webviewcontrol|x86diagnostic|probe\.x86kvm)|sandboxed_process)[^\n]* <<<',text))
 if relevant:
  print('RELEVANT_APP_OR_RENDERER_CRASH')
  for signal in sorted(set(re.findall(r'\b(SIG[A-Z0-9]+)\b',text))):print('CRASH_SIGNAL='+signal)
  for kind in sorted(set(re.findall(r'\b((?:java|android)\.[A-Za-z0-9_.]*(?:Exception|Error))\b',text))):print('CRASH_CLASS='+kind)
  raise SystemExit(1)
 PY
+}
+failure_runtime_context() {
+  local emulator_exit=0 adb_exit=0
+  if [[ -n "$emulator_pid" ]]; then
+    if kill -0 "$emulator_pid" 2>/dev/null; then
+      mark "OWNED_EMULATOR_PID=$emulator_pid ALIVE=true EXIT=unknown"
+    else
+      # Only wait after this owned child is dead; never block a live emulator
+      # just to diagnose a transport failure, and never call an OOM cause proven.
+      wait "$emulator_pid" 2>/dev/null || emulator_exit=$?
+      mark "OWNED_EMULATOR_PID=$emulator_pid ALIVE=false EXIT=$emulator_exit"
+      case "$emulator_exit" in
+        137) mark EMULATOR_EXIT_CONVENTION=SIGKILL ;;
+        139) mark EMULATOR_EXIT_CONVENTION=SIGSEGV ;;
+        134) mark EMULATOR_EXIT_CONVENTION=SIGABRT ;;
+        135) mark EMULATOR_EXIT_CONVENTION=SIGBUS ;;
+        132) mark EMULATOR_EXIT_CONVENTION=SIGILL ;;
+        143) mark EMULATOR_EXIT_CONVENTION=SIGTERM ;;
+      esac
+    fi
+    if [[ -f "$work/emulator.log" ]]; then
+      chmod 600 "$work/emulator.log"
+      node "$source_dir/../android-mobile-terminal/safe-diagnostics.mts" --file "$work/emulator.log" --source emulator || :
+    fi
+  fi
+  if [[ -n "$adb" && -n "$emulator_pid" ]]; then
+    timeout 5 "$adb" -s "$serial" get-state > "$work/failure-adb-state.log" 2>&1 || adb_exit=$?
+    chmod 600 "$work/failure-adb-state.log"
+    node "$source_dir/../android-mobile-terminal/safe-diagnostics.mts" --file "$work/failure-adb-state.log" --source adb-state --exit "$adb_exit" || :
+    if ((adb_exit==0)) && grep -qx 'device' "$work/failure-adb-state.log"; then
+      if timeout 5 "$adb" -s "$serial" logcat -b crash -d > "$work/crash.log" 2>/dev/null; then
+        if crash_summary; then :; fi
+      else mark CRASH_BUFFER_UNAVAILABLE; fi
+    fi
+  fi
 }
 cleanup() {
   result=$?
@@ -52,14 +88,10 @@ cleanup() {
       AVD_CREATION)
         if [[ -f "$work/avd.log" ]]; then tail -n 16 "$work/avd.log"; fi ;;
     esac
-    if [[ -n "$adb" && -n "$emulator_pid" ]]; then
-      if "$adb" -s "$serial" logcat -b crash -d > "$work/crash.log" 2>/dev/null; then
-        if crash_summary; then :; fi
-      fi
-    fi
+    failure_runtime_context || :
   fi
   if [[ -n "$emulator_pid" ]] && kill -0 "$emulator_pid" 2>/dev/null; then
-    kill "$emulator_pid"
+    kill "$emulator_pid" 2>/dev/null || :
     if wait "$emulator_pid" 2>/dev/null; then :; fi
   fi
   rm -rf -- "$work"

@@ -2,6 +2,9 @@
 import {execFileSync} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
 import {REQUIRED_CAPABILITIES} from '../../android/probe/model.mts';
+import {mkdirSync,writeFileSync} from 'node:fs';
+import {join,isAbsolute,dirname,resolve} from 'node:path';
+import {safeErrorTail,adbFailureKind} from './safe-diagnostics.mts';
 
 type Node=Record<string,string>;
 type Check={id:string;status:'passed'|'failed'|'blocked';durationMs:number;evidence:Record<string,unknown>;error?:{name?:string;code?:string}};
@@ -22,9 +25,31 @@ function need(value:unknown,code:string):asserts value {if(!value)throw new Prob
 function emit(status:string,extra:Record<string,unknown>={}):void {
   console.log(JSON.stringify({kind:'nexttavern-kvm-probe',stage,status,...extra}));
 }
+let adbFailureNumber=0;
 function command(...values:string[]):string {
   try{return execFileSync(adb,['-s',serial,...values],{encoding:'utf8',timeout:60000,maxBuffer:2*1024*1024,stdio:['ignore','pipe','pipe']})}
-  catch{throw new ProbeFailure('ADB_COMMAND_FAILED')}
+  catch(error) {
+    const failure=error as {status?:number|null;signal?:string|null;code?:string;stderr?:string|Buffer};
+    const stderr=String(failure.stderr??'');let privateStderrSaved=false,privateLogErrorCode:string|null='TASK_TEMP_UNAVAILABLE';
+    // Existing runner-owned task temp only; never write into the app or repo.
+    const root=process.env.MOBILE_QA_WORK,runnerTemp=process.env.RUNNER_TEMP;
+    if(root&&runnerTemp&&isAbsolute(root)&&dirname(root)===resolve(runnerTemp)&&root.split('/').at(-1)?.startsWith('webview-kvm.')) {
+      try {
+        privateLogErrorCode=null;
+        const directory=join(root,'mobile','probe-errors');mkdirSync(directory,{recursive:true,mode:0o700});
+        writeFileSync(join(directory,`adb-failure-${++adbFailureNumber}.stderr`),stderr,{mode:0o600,flag:'wx'});
+        privateStderrSaved=true;
+      }catch(error) {
+        const code=(error as {code?:string}).code;
+        privateLogErrorCode=typeof code==='string'&&/^[A-Z0-9_]{1,80}$/.test(code)?code:'LOG_WRITE_FAILED';
+      }
+    }
+    emit('observed',{interaction:'adb-command-failure',operation:values.slice(0,2).join(' '),
+      exit:failure.status??null,signal:failure.signal??null,
+      errorCode:typeof failure.code==='string'&&/^[A-Z0-9_]{1,80}$/.test(failure.code)?failure.code:null,
+      classification:adbFailureKind(stderr),privateStderrSaved,privateLogErrorCode,stderrTail:safeErrorTail(stderr)});
+    throw new ProbeFailure('ADB_COMMAND_FAILED');
+  }
 }
 const decode=(value:string)=>value.replace(/&quot;/g,'"').replace(/&apos;/g,"'")
   .replace(/&lt;/g,'<').replace(/&gt;/g,'>')

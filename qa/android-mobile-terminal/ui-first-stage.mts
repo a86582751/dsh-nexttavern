@@ -3,6 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
 import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {safeErrorTail,adbFailureKind} from './safe-diagnostics.mts';
 import {PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID} from '../../android/host/protocol-fixture.mts';
 
 type Node = Record<string,string>;
@@ -24,9 +25,25 @@ requireUi(Object.keys(args).every(key=>['--adb','--serial','--package','--phase'
 // The create flow includes ordinary UI card/model/chat/recovery steps; no separate recovery entry is exposed.
 if(args['--phase']!=='create') {emit('blocked',{code:'CREATE_FLOW_ONLY',noDeviceActions:true});process.exit(2)}
 requireUi(fixtureEvents && args['--work-dir'],'FIXTURE_EVENTS_AND_WORK_DIRECTORY_REQUIRED');
+let adbFailureNumber=0;
 function command(...commandArgs:string[]):string {
   try {return execFileSync(adb,['-s',serial,...commandArgs],{encoding:'utf8',timeout:90000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe']})}
-  catch {throw new UiFailure('ADB_COMMAND_FAILED')}
+  catch(error) {
+    const failure=error as {status?:number|null;signal?:string|null;code?:string;stderr?:string|Buffer};
+    const stderr=String(failure.stderr??'');
+    let privateStderrSaved=false,privateLogErrorCode:string|null=null;
+    try {
+      mkdirSync(args['--work-dir'],{recursive:true});
+      writeFileSync(join(args['--work-dir'],`adb-failure-${++adbFailureNumber}.stderr`),stderr,{mode:0o600,flag:'wx'});
+      privateStderrSaved=true;
+    }catch(logError){privateLogErrorCode=(logError as {code?:string}).code??'LOG_WRITE_FAILED'}
+    // Do not print Error.message or argv: input commands can contain credentials.
+    const safe=safeErrorTail(stderr);
+    emit('observed',{interaction:'adb-command-failure',operation:commandArgs.slice(0,2).join(' '),
+      exit:failure.status??null,signal:failure.signal??null,errorCode:failure.code??null,
+      classification:adbFailureKind(stderr),stderrTail:safe,privateStderrSaved,privateLogErrorCode});
+    throw new UiFailure('ADB_COMMAND_FAILED');
+  }
 }
 const decode=(value:string)=>value.replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi,(_,hex,decimal)=>String.fromCodePoint(parseInt(hex??decimal,hex?16:10))).replace(/&amp;/g,'&');
 let current:Node[]=[];
@@ -782,7 +799,7 @@ try {
   }
   let focus:string|null=null,activityAlive:boolean|null=null;
   try{focus=command('shell','dumpsys','window','windows').match(/mCurrentFocus=Window\{[^}]*\s([A-Za-z0-9_.]+\/[A-Za-z0-9_.$]+)\}/)?.[1]??null}catch{}
-  try{activityAlive=/^\d+(?:\s+\d+)*$/.test(command('shell','pidof',pkg).trim())}catch{activityAlive=false}
+  try{activityAlive=/^\d+(?:\s+\d+)*$/.test(command('shell','pidof',pkg).trim())}catch{/* ADB failure cannot establish process absence. */}
   emit('observed',{interaction:'failed-ui-window-state',focus,activityAlive,
     roots:current.filter(node=>node.__parent==='-1').map(node=>({package:node.package,class:node.class,
       active:node['window-active'],focused:node['window-focused'],visible:node['visible-to-user']}))});

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # One runner-owned product/Harness, then one non-debug x64 app in the required KVM VM.
 set -Eeuo pipefail
+umask 077 # Raw runner diagnostics are never public artifacts.
 repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 work="${MOBILE_QA_WORK:?}/mobile"
 sdk="${MOBILE_QA_SDK:?}"
@@ -146,8 +147,11 @@ probe_rc=0
 if "$adb" -s "$serial" install --no-incremental "$probe_apk" > "$work/probe-install.log" 2>&1; then
   node "$repo/qa/android-mobile-terminal/probe-core.mts" --adb "$adb" --serial "$serial" || probe_rc=$?
 else
-  probe_rc=1
-  printf 'PROBE_INSTALL_FAILED_NOT_PASSED\n'
+  probe_rc=$?
+  chmod 600 "$work/probe-install.log"
+  printf 'PROBE_INSTALL_FAILED_NOT_PASSED EXIT=%s\n' "$probe_rc"
+  node "$repo/qa/android-mobile-terminal/safe-diagnostics.mts" --file "$work/probe-install.log" \
+    --source probe-install --exit "$probe_rc" || :
 fi
 printf 'MOBILE_UI_EXIT=%s SEPARATE_CORE_HTTPS_PROBE_EXIT=%s FULL_G0_ACCEPTED=false\n' "$ui_rc" "$probe_rc"
 phase=INDEPENDENT_UI_AND_SCOPED_PROBE_RESULTS
