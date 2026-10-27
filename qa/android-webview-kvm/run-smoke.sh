@@ -40,6 +40,8 @@ cleanup() {
         if [[ -f "$work/download.log" ]]; then tail -n 16 "$work/download.log"; fi ;;
       REQUIRED_KVM_ACCELERATION)
         if [[ -f "$work/accel.log" ]]; then tail -n 12 "$work/accel.log"; fi ;;
+      SDK_TOOL_VERSIONS)
+        if [[ -f "$work/versions.log" ]]; then tail -n 12 "$work/versions.log"; fi ;;
       MINIMAL_CONTROL_BUILD)
         if [[ -f "$work/build.log" ]]; then tail -n 20 "$work/build.log"; fi ;;
       AVD_CREATION)
@@ -125,7 +127,8 @@ emulator="$sdk/emulator/emulator"
 adb="$sdk/platform-tools/adb"
 tools="$sdk/build-tools/36.0.0"
 android_jar="$sdk/platforms/android-36/android.jar"
-version="$("$emulator" -version 2>/dev/null)"
+phase=SDK_TOOL_VERSIONS
+version="$("$emulator" -version 2> "$work/versions.log")"
 printf '%s\n' "${version%%$'\n'*}"
 "$adb" version | sed -n '1,2p'
 phase=REQUIRED_KVM_ACCELERATION
