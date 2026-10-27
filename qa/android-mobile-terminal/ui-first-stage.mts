@@ -91,16 +91,47 @@ const sidebar=['打开侧边栏','Open sidebar'];
 const webChrome=[...settings,...sidebar,'新建会话','New session'];
 const addProvider=['添加模型提供商','Add model provider'];
 const onboardingHandled=new Set<string>();
-function onboarding():boolean {
-  if(!onboardingHandled.has('notice') && has(['内测声明','Internal Testing Notice']) && matches(['继续','Continue'],true).length===1) {
-    tap(['继续','Continue']);onboardingHandled.add('notice');return true;
+const onboardingSwipes=new Map<string,number>();
+function interactOnboarding(step:string,names:string[]):boolean {
+  const actions=current.filter(node=>node.package===pkg && node.class==='android.widget.Button'
+    && names.some(name=>node.text===name||node['content-desc']===name) && node.enabled!=='false');
+  if(actions.length!==1)return false;
+  const dialogs=current.filter(node=>node.package===pkg && node.class==='android.app.Dialog' && bounds(node));
+  const views=current.filter(node=>node.package===pkg && node.class==='android.webkit.WebView' && bounds(node));
+  requireUi(dialogs.length===1 && views.length===1,'ONBOARDING_SCROLL_REGION_NOT_EXPOSED');
+  const dialog=bounds(dialogs[0])!,view=bounds(views[0])!;
+  const box=[Math.max(dialog[0],view[0]),Math.max(dialog[1],view[1]),Math.min(dialog[2],view[2]),Math.min(dialog[3],view[3])];
+  requireUi(box[2]>box[0] && box[3]>box[1],'ONBOARDING_SCROLL_REGION_NOT_VISIBLE');
+  const action=bounds(actions[0]);
+  if(action) {
+    // Chromium may report positive text/button bounds beyond the modal clip.
+    // Only touch the action's actually visible intersection, never its mask.
+    const visible=[Math.max(box[0],action[0]),Math.max(box[1],action[1]),Math.min(box[2],action[2]),Math.min(box[3],action[3])];
+    if(visible[2]>visible[0] && visible[3]>visible[1]) {
+      command('shell','input','tap',String(Math.round((visible[0]+visible[2])/2)),String(Math.round((visible[1]+visible[3])/2)));
+      onboardingHandled.add(step);return true;
+    }
   }
-  if(!onboardingHandled.has('key') && has(['添加一个 API Key 开始使用','Add an API key to get started'])
-    && matches(['稍后配置','Configure later'],true).length===1) {
-    tap(['稍后配置','Configure later']);onboardingHandled.add('key');return true;
+  const count=onboardingSwipes.get(step)??0;
+  requireUi(count<3,'ONBOARDING_ACTION_NOT_VISIBLE_AFTER_SCROLL');
+  // The pinned Host onboarding content has overflow-y:auto. Use a real touch
+  // gesture inside its visible dialog, then require new visible action bounds.
+  const x=Math.round((box[0]+box[2])/2),height=box[3]-box[1];
+  command('shell','input','swipe',String(x),String(Math.round(box[1]+height*.8)),
+    String(x),String(Math.round(box[1]+height*.2)),'450');
+  onboardingSwipes.set(step,count+1);emit('observed',{interaction:'onboarding-scroll',step,attempt:count+1});
+  return true;
+}
+function onboarding():boolean {
+  if(!onboardingHandled.has('notice') && has(['内测声明','Internal Testing Notice'])) {
+    return interactOnboarding('notice',['继续','Continue']);
+  }
+  if(!onboardingHandled.has('key') && has(['添加一个 API Key 开始使用','Add an API key to get started'])) {
+    return interactOnboarding('key',['稍后配置','Configure later']);
   }
   return false;
 }
+
 try {
   stage='verify-self-created-emulator';
   requireUi(command('shell','getprop','ro.kernel.qemu').trim()==='1','NOT_SELF_CREATED_EMULATOR');
