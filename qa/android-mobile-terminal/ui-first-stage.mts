@@ -674,7 +674,7 @@ async function submitSelectedCard():Promise<void> {
   let recovered=false,recoveryConfirmed=false;
   await until(()=>{
     if(current.some(node=>node.package===pkg&&node.enabled!=='false'&&button(node)
-      &&named(node,['使用此开场','用这个开场开始'])&&visibleBounds(node)))return true;
+      &&named(node,['使用此开场','用这个开场开始'])))return true;
     if(!recovered) {
       const recovery=current.filter(node=>node.package===pkg&&button(node)&&node.enabled!=='false'
         &&named(node,['确认原导入任务'])&&visibleBounds(node));
@@ -811,8 +811,12 @@ function visibleMessage(marker:string):Node|undefined {
 async function chooseOpeningAndChat():Promise<void> {
   stage='original-opening-selection';await readySnapshot();
   requireUi(current.some(node=>node.package===pkg&&node.text?.includes('旅人把蓝色书签放在桌上')),'SYNTHETIC_OPENING_PREVIEW_NOT_EXPOSED');
-  const compact=visibleNamed(['用这个开场开始']);
-  if(compact.length===1)tapNode(compact[0]);else await press(['使用此开场']);
+  // Import completion exposes the opening below the fold. Readiness is not
+  // screen geometry: use the actual unique control and require its write result.
+  const opening=current.filter(node=>node.package===pkg&&button(node)&&node.enabled!=='false'
+    &&named(node,['用这个开场开始','使用此开场']));
+  requireUi(opening.length===1,'ORIGINAL_OPENING_CONTROL_NOT_UNIQUE');
+  showControl(opening[0]);controlAction(opening[0],'click-control');
   await until(()=>current.some(node=>node.package===pkg&&(node.text==='开场与初始状态已确认。'
     ||/^已写入第 \d+ 回合$/.test(node.text??''))),60,'ORIGINAL_OPENING_NOT_COMMITTED');
   await closeWebDialog();await hideSidebar();
