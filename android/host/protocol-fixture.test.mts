@@ -2,7 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {once} from 'node:events'
 import {setTimeout as delay} from 'node:timers/promises'
-import {createProtocolFixture,FIXTURE_REPLY,PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID} from './protocol-fixture.mts'
+import {createProtocolFixture,FIXTURE_REPLY,PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID,
+  EMBEDDING_FIXTURE_ID,EMBEDDING_FIXTURE_MODEL,EMBEDDING_FIXTURE_DIMENSIONS,
+  EMBEDDING_STORY_SENTENCE,EMBEDDING_DISTRACTOR_SENTENCE,EMBEDDING_QUERY} from './protocol-fixture.mts'
 
 test('local fixture offers models and real streamed/nonstreamed OpenAI protocol without retaining prompt contents',async()=>{
   const {server,requests}=createProtocolFixture()
@@ -101,4 +103,44 @@ test('disconnect cancels the owned pacing timer, records abort once, and never e
     assert.equal(events.filter(record=>record.event==='aborted').length,1)
     assert.equal(events.filter(record=>record.event==='completed').length,0)
   } finally {server.closeAllConnections();server.close();await once(server,'close')}
+})
+
+test('online embedding fixture serves distinct fixed synthetic vectors with isolated text/key-free counters',async()=>{
+  const events:unknown[]=[]
+  const {server,requests,embeddingRequests}=createProtocolFixture({onEmbeddingEvent:record=>events.push(record)})
+  server.listen(0,'127.0.0.1');await once(server,'listening')
+  const address=server.address();assert.ok(address&&typeof address!=='string')
+  const base='http://127.0.0.1:'+address.port
+  const embed=(input:unknown,dimensions?:number)=>fetch(base+'/v1/embeddings',{
+    method:'POST',headers:{'content-type':'application/json',authorization:'Bearer embedding-key-never-log'},
+    body:JSON.stringify({model:EMBEDDING_FIXTURE_MODEL,input,dimensions,encoding_format:'float'}),
+  })
+  try {
+    const catalog=await (await fetch(base+'/v1/models')).json()
+    assert.ok(catalog.data.some((row:{id:string})=>row.id===EMBEDDING_FIXTURE_MODEL))
+    const response=await embed([EMBEDDING_STORY_SENTENCE,EMBEDDING_DISTRACTOR_SENTENCE,'private-text-never-log'],4)
+    assert.equal(response.status,200)
+    const body=await response.json()
+    assert.equal(body.model,EMBEDDING_FIXTURE_MODEL)
+    assert.deepEqual(body.data.map((row:{index:number;embedding:number[]})=>({index:row.index,embedding:row.embedding})),[
+      {index:0,embedding:[3,0,0,0]},{index:1,embedding:[0,4,0,0]},{index:2,embedding:[0,0,2,0]},
+    ])
+    assert.deepEqual(body.usage,{prompt_tokens:24,total_tokens:24}) // Fixed synthetic usage, not measured billing.
+    const query=await embed(EMBEDDING_QUERY)
+    assert.equal(query.status,200)
+    assert.deepEqual((await query.json()).data[0].embedding,body.data[0].embedding)
+    const wrongDimensions=await embed([EMBEDDING_STORY_SENTENCE],8)
+    assert.equal(wrongDimensions.status,400);await wrongDimensions.json()
+    assert.equal(requests.length,0,'embedding traffic cannot affect chat request ordinals or stream counters')
+    assert.deepEqual(embeddingRequests.map(row=>({request:row.request,inputCount:row.inputCount,
+      dimensions:row.dimensions,completed:row.completed,aborted:row.aborted})),[
+      {request:1,inputCount:3,dimensions:EMBEDDING_FIXTURE_DIMENSIONS,completed:true,aborted:false},
+      {request:2,inputCount:1,dimensions:EMBEDDING_FIXTURE_DIMENSIONS,completed:true,aborted:false},
+    ])
+    assert.ok(embeddingRequests.every(row=>row.fixture===EMBEDDING_FIXTURE_ID))
+    assert.equal((events as {event:string}[]).filter(row=>row.event==='completed').length,2)
+    const counters=JSON.stringify({embeddingRequests,events})
+    for(const privateValue of ['embedding-key-never-log','private-text-never-log',EMBEDDING_STORY_SENTENCE,
+      EMBEDDING_DISTRACTOR_SENTENCE,EMBEDDING_QUERY,EMBEDDING_FIXTURE_MODEL,'authorization'])assert.ok(!counters.includes(privateValue))
+  }finally{server.closeAllConnections();server.close();await once(server,'close')}
 })
