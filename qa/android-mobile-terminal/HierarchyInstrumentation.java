@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.HashSet;
 import java.util.Set;
 
-/** Read-only public snapshots; one explicit semantic focus operation for the QA app only. */
+/** Read-only snapshots; explicit semantic focus/show operations for the QA app only. */
 public final class HierarchyInstrumentation extends Instrumentation {
     private Bundle request;
     @Override public void onCreate(Bundle arguments) {
@@ -35,9 +35,10 @@ public final class HierarchyInstrumentation extends Instrumentation {
             ui.setServiceInfo(info);
             String operation = request.getString("operation", "");
             if (!operation.isEmpty()) {
-                if (!"focus-input".equals(operation)) { failure("OPERATION_NOT_ALLOWED", null); return; }
-                phase = "FOCUS_INPUT";
-                focusInput(ui);
+                boolean show = "show-control".equals(operation);
+                if (!show && !"focus-input".equals(operation)) { failure("OPERATION_NOT_ALLOWED", null); return; }
+                phase = show ? "SHOW_CONTROL" : "FOCUS_INPUT";
+                controlAction(ui, show);
                 return;
             }
             // Connection readiness does not imply a root is already available.
@@ -87,12 +88,22 @@ public final class HierarchyInstrumentation extends Instrumentation {
             failure(reason, error);
         }
     }
-    private void focusInput(UiAutomation ui) {
+    private void controlAction(UiAutomation ui, boolean show) {
         String targetPackage = request.getString("targetPackage");
+        String targetClass = show ? request.getString("targetClass") : "android.widget.EditText";
         String hint = request.getString("targetHint");
         String description = request.getString("targetDescription");
-        if (!"app.nexttavern.android.x86diagnostic".equals(targetPackage) || hint == null || description == null) {
-            failure("FOCUS_REQUEST_INVALID", null);
+        boolean editable = "android.widget.EditText".equals(targetClass);
+        String targetText = show && !editable ? request.getString("targetText") : null;
+        String prefix = show ? "SHOW" : "FOCUS";
+        if (!"app.nexttavern.android.x86diagnostic".equals(targetPackage) || targetClass == null
+            || targetClass.isEmpty() || hint == null || description == null || show && !editable && targetText == null) {
+            if (show) {
+                Bundle invalid = new Bundle();
+                invalid.putInt("matchCount", 0); invalid.putBoolean("supported", false); invalid.putBoolean("accepted", false);
+                invalid.putString("error", "SHOW_REQUEST_INVALID");
+                finish(Activity.RESULT_CANCELED, invalid);
+            } else failure("FOCUS_REQUEST_INVALID", null);
             return;
         }
         List<AccessibilityNodeInfo> matches = new ArrayList<>();
@@ -109,7 +120,7 @@ public final class HierarchyInstrumentation extends Instrumentation {
                         if (root == null) continue;
                         if (targetPackage.contentEquals(text(root.getPackageName())) && rootIds.add(root.getWindowId())) {
                             appRoot = true;
-                            findInputs(root, targetPackage, hint, description, matches);
+                            findControls(root, targetPackage, targetClass, hint, description, targetText, show, matches);
                         } else root.recycle();
                     } finally { window.recycle(); }
                 }
@@ -118,40 +129,62 @@ public final class HierarchyInstrumentation extends Instrumentation {
                     if (root != null) {
                         if (targetPackage.contentEquals(text(root.getPackageName()))) {
                             appRoot = true;
-                            findInputs(root, targetPackage, hint, description, matches);
+                            findControls(root, targetPackage, targetClass, hint, description, targetText, show, matches);
                         } else root.recycle();
                     }
                 }
                 if (appRoot || SystemClock.uptimeMillis() >= deadline) break;
-                SystemClock.sleep(200); // Root readiness only; never retry the focus action.
+                SystemClock.sleep(200); // Root readiness only; never retry an action.
             } while (SystemClock.uptimeMillis() < deadline);
             Bundle result = new Bundle();
             result.putInt("matchCount", matches.size());
+            if (show) result.putBoolean("supported", false);
             if (!appRoot || matches.size() != 1) {
                 result.putBoolean("accepted", false);
-                result.putString("error", !appRoot ? "FOCUS_APP_ROOT_NOT_READY"
-                    : matches.isEmpty() ? "FOCUS_TARGET_NOT_FOUND" : "FOCUS_TARGET_AMBIGUOUS");
+                result.putString("error", !appRoot ? prefix + "_APP_ROOT_NOT_READY"
+                    : matches.isEmpty() ? prefix + "_TARGET_NOT_FOUND" : prefix + "_TARGET_AMBIGUOUS");
                 finish(Activity.RESULT_CANCELED, result);
+                return;
+            }
+            AccessibilityNodeInfo target = matches.get(0);
+            if (show) {
+                boolean supported = false;
+                for (AccessibilityNodeInfo.AccessibilityAction action : target.getActionList()) {
+                    if (action.getId() == AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.getId()) supported = true;
+                }
+                result.putBoolean("supported", supported);
+                if (!supported) {
+                    result.putBoolean("accepted", false);
+                    result.putString("error", "SHOW_ACTION_UNSUPPORTED");
+                    finish(Activity.RESULT_CANCELED, result);
+                    return;
+                }
+                boolean accepted = target.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.getId());
+                result.putBoolean("accepted", accepted);
+                if (!accepted) result.putString("error", "SHOW_ACTION_REJECTED");
+                finish(Activity.RESULT_OK, result);
                 return;
             }
             // One explicit action only. Acceptance is not proof of resulting
             // focus: the caller must obtain a fresh hierarchy before typing.
-            result.putBoolean("accepted", matches.get(0).performAction(AccessibilityNodeInfo.ACTION_FOCUS));
+            result.putBoolean("accepted", target.performAction(AccessibilityNodeInfo.ACTION_FOCUS));
             finish(Activity.RESULT_OK, result);
         } finally { for (AccessibilityNodeInfo match : matches) match.recycle(); }
     }
     private static String text(CharSequence value) { return value == null ? "" : value.toString(); }
-    private static void findInputs(AccessibilityNodeInfo node, String targetPackage, String hint,
-                                   String description, List<AccessibilityNodeInfo> matches) {
+    private static void findControls(AccessibilityNodeInfo node, String targetPackage, String targetClass, String hint,
+                                    String description, String targetText, boolean show, List<AccessibilityNodeInfo> matches) {
         try {
-            if (targetPackage.equals(text(node.getPackageName())) && "android.widget.EditText".equals(text(node.getClassName()))
+            boolean editable = "android.widget.EditText".equals(targetClass);
+            if (targetPackage.equals(text(node.getPackageName())) && targetClass.equals(text(node.getClassName()))
                 && hint.equals(text(node.getHintText())) && description.equals(text(node.getContentDescription()))
-                && node.isEnabled() && node.isVisibleToUser() && node.isEditable()) {
+                && node.isEnabled() && (show || node.isVisibleToUser())
+                && (editable ? node.isEditable() : targetText.equals(text(node.getText())))) {
                 matches.add(AccessibilityNodeInfo.obtain(node));
             }
             for (int i = 0; i < node.getChildCount(); i++) {
                 AccessibilityNodeInfo child = node.getChild(i);
-                if (child != null) findInputs(child, targetPackage, hint, description, matches);
+                if (child != null) findControls(child, targetPackage, targetClass, hint, description, targetText, show, matches);
             }
         } finally { node.recycle(); }
     }

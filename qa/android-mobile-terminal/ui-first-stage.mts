@@ -273,21 +273,27 @@ function onboarding():boolean {
 
 let emptyProviderCaptured=false;
 let providerKeyInputStarted=false;
-function captureApprovedScreenshot(name:'empty-provider'|'synthetic-chat',replaceEmpty=false):void {
+function captureApprovedScreenshot(name:'empty-provider'|'model-routing'|'synthetic-chat',replaceEmpty=false):void {
   if(name==='empty-provider') {
     requireUi(!providerKeyInputStarted,'CREDENTIAL_FORM_SCREENSHOT_FORBIDDEN');
     if(emptyProviderCaptured&&!replaceEmpty)return;
   }
+  if(name==='model-routing') {
+    requireUi(stage==='fixture-main-and-worker-model-routing'&&has(['模型路由'])
+      &&!current.some(node=>node.package===pkg&&node.password==='true'),'MODEL_ROUTING_SCREENSHOT_NOT_SAFE');
+  }
   const directory=process.env.NEXTTAVERN_UI_EVIDENCE_DIR;
   if(!directory)return;
-  // Only the synthetic provider form BEFORE any API key input and the verified
-  // synthetic conversation are approved. A fixed fictional Provider ID/loopback
-  // URL may replace the same form PNG; never capture credential-filled editors.
+  // Approved synthetic setup (empty provider form or credential-free model
+  // routing) shares one artifact slot; the verified conversation uses the other.
+  // Never capture credential-filled editors or retain a third image.
   mkdirSync(directory,{recursive:true});
   const png=execFileSync(adb,['-s',serial,'exec-out','screencap','-p'],{
     timeout:90000,maxBuffer:8*1024*1024,stdio:['ignore','pipe','pipe'],
   });
-  writeFileSync(join(directory,name+'.png'),png,{flag:name==='empty-provider'&&replaceEmpty?'w':'wx'});
+  // Reuse the first approved artifact slot; never retain a third image.
+  const filename=name==='model-routing'?'empty-provider':name;
+  writeFileSync(join(directory,filename+'.png'),png,{flag:name==='model-routing'||name==='empty-provider'&&replaceEmpty?'w':'wx'});
   if(name==='empty-provider')emptyProviderCaptured=true;
   emit('observed',{syntheticScreenshot:name});
 }
@@ -295,8 +301,8 @@ const fixtureId='nexttavern-fixture';
 const fixtureModelNames=['模型 ID 1','Model ID 1'];
 const named=(node:Node,names:string[])=>names.some(name=>node.text===name||node['content-desc']===name||node.hint===name);
 const button=(node:Node)=>node.clickable==='true'||node.class==='android.widget.Button';
-/** Reveal only a named form control through its actual scrollable ancestor;
- * unknown structure remains an observed failure, not a whole-screen fallback. */
+/** Reveal an observed control using its public accessibility action. When only
+ * a source label exists, retain the existing real scroll-owner gesture path. */
 async function reveal(names:string[],kind:(node:Node)=>boolean=button,
   owner:(node:Node)=>boolean=node=>node.package===pkg,fieldLabel=false,sourceLabels=names):Promise<Node> {
   for(let attempt=0;;attempt++) {
@@ -310,6 +316,17 @@ async function reveal(names:string[],kind:(node:Node)=>boolean=button,
     requireUi(visible.length<=1,'NEXT_UI_TARGET_AMBIGUOUS');
     if(visible[0])return visible[0];
     requireUi(found.length<=1,'NEXT_UI_OFFSCREEN_TARGET_AMBIGUOUS');
+    if(found[0]?.package===pkg) {
+      showControl(found[0]); // One action; acceptance is not proof of scrolling.
+      let revealed:Node|undefined;
+      await until(()=>{
+        const now=current.filter(node=>owner(node)&&named(node,names)&&kind(node)
+          &&node.enabled!=='false'&&visibleBounds(node));
+        requireUi(now.length<=1,'NEXT_UI_TARGET_AMBIGUOUS');
+        revealed=now[0];return Boolean(revealed);
+      },15,'ACCESSIBILITY_SHOW_NOT_OBSERVED');
+      return revealed!;
+    }
     // Chromium can omit an offscreen textbox while exposing its source label.
     // Scroll that label's real owner, but return only the actual input target.
     const labels=fieldLabel?current.filter(node=>owner(node)&&node.class==='android.widget.TextView'&&named(node,sourceLabels)):[];
@@ -326,6 +343,10 @@ async function reveal(names:string[],kind:(node:Node)=>boolean=button,
       }))}); // Attribute names/geometry only; never input values or raw aria text.
     requireUi(attempt<4,'NEXT_UI_TARGET_NOT_VISIBLE_AFTER_SCROLL');
     const scroll=ancestors(target).find(node=>node.scrollable==='true'&&visibleBounds(node));
+    if(!scroll)emit('observed',{interaction:'missing-accessibility-scroll-owner',target:names[0],
+      targetClass:target.class,targetBounds:target.bounds,
+      ancestors:ancestors(target).slice(0,10).map(node=>({class:node.class,bounds:node.bounds,
+        scrollable:node.scrollable,visible:node['visible-to-user']}))});
     requireUi(scroll,'NEXT_UI_SCROLL_ANCESTOR_NOT_EXPOSED');
     const box=visibleBounds(scroll)!,targetBox=bounds(target);
     const reverse=targetBox!==null&&targetBox[3]<=box[1];
@@ -339,6 +360,22 @@ async function press(names:string[],kind:(node:Node)=>boolean=button):Promise<vo
 async function replace(names:string[],value:string,sourceLabels=names):Promise<void> {
   emit('observed',{interaction:'edit-source-field',field:names[0]});
   await typeAscii(await reveal(names,node=>node.class==='android.widget.EditText',node=>node.package===pkg,true,sourceLabels),value,names[0]);
+}
+function showControl(node:Node):void {
+  const quote=(text:string)=>"'"+text.replaceAll("'", "'\\''")+"'";
+  const output=command('shell','am','instrument','-w','-r','-e','operation','show-control',
+    '-e','targetPackage',pkg,'-e','targetClass',quote(node.class),'-e','targetHint',quote(node.hint??''),
+    '-e','targetDescription',quote(node['content-desc']??''),
+    '-e','targetText',quote(node.class==='android.widget.EditText'?'':node.text??''),
+    'app.nexttavern.qa.ui/.HierarchyInstrumentation');
+  const accepted=/^INSTRUMENTATION_RESULT: accepted=true\r?$/m.test(output),
+    supported=/^INSTRUMENTATION_RESULT: supported=true\r?$/m.test(output),
+    count=output.match(/^INSTRUMENTATION_RESULT: matchCount=(\d+)\r?$/m)?.[1];
+  emit('observed',{interaction:'semantic-show-control',targetClass:node.class,supported,accepted,
+    matchCount:count===undefined?null:Number(count),
+    helperError:output.match(/^INSTRUMENTATION_RESULT: error=([A-Z_]{1,80})\r?$/m)?.[1]??null});
+  requireUi(/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)&&supported&&accepted&&count==='1',
+    'ACCESSIBILITY_SHOW_NOT_ACCEPTED');
 }
 function focusInput(node:Node):void {
   // Public accessibility focus targets the observed semantic node, not a
@@ -577,6 +614,8 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
   await openManager();
   stage='fixture-main-and-worker-model-routing';
   await pressManagerTab(['模型','Models']);
+  await until(()=>has(['模型路由']),30,'MODEL_ROUTING_PAGE_NOT_EXPOSED');
+  captureApprovedScreenshot('model-routing');
   await until(()=>visibleNamed(mainRouteNames,node=>node.class==='android.widget.Spinner'||button(node)).length===1,30,'TAVERN_MAIN_MODEL_SELECTOR_NOT_EXPOSED');
   await press(mainRouteNames,node=>node.class==='android.widget.Spinner'||button(node));
   // Source builds <label-or-model> · <provider> — <capability summary>.
