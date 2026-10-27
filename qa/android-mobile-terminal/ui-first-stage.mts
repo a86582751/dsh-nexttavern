@@ -84,10 +84,10 @@ function hierarchyOutput():string {
     return read();
   }
 }
-function snapshot(suppliedOutput?:string):Node[] {
+function snapshot():Node[] {
   current=[];
   // Public UiAutomation preserves Chromium's hint text; capture privately.
-  const output=suppliedOutput??hierarchyOutput();
+  const output=hierarchyOutput();
   const records=[...output.matchAll(/^INSTRUMENTATION_RESULT: hierarchy=([^\r\n]*)\r?$/gm)];
   if(!/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)||records.length!==1) {
     emit('observed',{interaction:'accessibility-reader-failure',hierarchyRecordCount:records.length,
@@ -285,7 +285,7 @@ function captureApprovedScreenshot(name:'empty-provider'|'model-routing'|'model-
   const directory=process.env.NEXTTAVERN_UI_EVIDENCE_DIR;
   if(!directory)return;
   // Approved synthetic setup (empty provider form or credential-free model
-  // routing) shares one artifact slot; the other holds the gesture result, later
+  // routing) shares one artifact slot; the other holds the revealed control, later
   // replaced by the verified synthetic conversation.
   // Never capture credential-filled editors or retain a third image.
   mkdirSync(directory,{recursive:true});
@@ -302,76 +302,17 @@ const fixtureId='nexttavern-fixture';
 const fixtureModelNames=['模型 ID 1','Model ID 1'];
 const named=(node:Node,names:string[])=>names.some(name=>node.text===name||node['content-desc']===name||node.hint===name);
 const button=(node:Node)=>node.clickable==='true'||node.class==='android.widget.Button';
-let modelRoutingScrollBox:number[]|null=null;
-let modelRoutingGestureX:number|null=null;
-let modelScrollImagesRecorded=false;
-function captureModelRoutingViewport():void {
-  const heading=current.find(node=>node.package===pkg&&node.class==='android.widget.TextView'&&node.text==='模型路由'&&visibleBounds(node));
-  const document=heading&&ancestors(heading).find(node=>node.class==='android.webkit.WebView'&&visibleBounds(node));
-  requireUi(heading&&document,'MODEL_PANEL_VIEWPORT_NOT_EXPOSED');
-  const title=visibleBounds(heading)!,view=visibleBounds(document)!;
-  // Source: ModelsPanel's root panel is the dialog's overflow-y:auto body.
-  // Pixel evidence confirms its scrollbar below the fixed two-row tabs. Use
-  // the measured interior below its heading, never the whole WebView/screen.
-  modelRoutingScrollBox=[title[0],title[3]+12,title[2],view[3]-12];
-  // The panel's visible right padding lies beyond its form content and before
-  // the scrollbar. A drag starting on a label/select can follow that control's
-  // default handling instead; use this source- and pixel-confirmed body gutter.
-  modelRoutingGestureX=Math.round((title[2]+view[2]-12)/2);
-  requireUi(modelRoutingGestureX>title[2],'MODEL_PANEL_GUTTER_NOT_EXPOSED');
-  requireUi(modelRoutingScrollBox[3]-modelRoutingScrollBox[1]>100,'MODEL_PANEL_VIEWPORT_TOO_SMALL');
-}
-async function revealModelControl(names:string[],kind:(node:Node)=>boolean,owner:(node:Node)=>boolean):Promise<Node> {
-  requireUi(modelRoutingScrollBox,'MODEL_PANEL_VIEWPORT_NOT_EXPOSED');
-  const box=modelRoutingScrollBox,end=Date.now()+60000;
-  do {
-    const found=current.filter(node=>owner(node)&&named(node,names)&&kind(node)&&node.enabled!=='false');
-    requireUi(found.length===1,'MODEL_PANEL_TARGET_NOT_UNIQUE');
-    if(visibleBounds(found[0]))return found[0];
-    const before=found[0].bounds,coordinates=before?.match(/-?\d+/g)?.map(Number);
-    // A distant target can retain the same clipped zero-height bounds through
-    // several genuine scrolls. Also observe one currently visible body label.
-    const anchor=current.find(node=>{
-      if(node.package!==pkg||node.class!=='android.widget.TextView'||!node.text)return false;
-      const rect=visibleBounds(node);return rect&&rect[1]>=box[1]&&rect[3]<=box[3]
-        &&current.filter(other=>other.package===pkg&&other.class===node.class&&other.text===node.text).length===1;
-    });
-    const anchorBefore=anchor?{text:anchor.text,class:anchor.class,bounds:anchor.bounds}:null;
-    requireUi(coordinates?.length===4,'MODEL_PANEL_TARGET_GEOMETRY_MISSING');
-    const upward=coordinates[1]>=box[1],x=modelRoutingGestureX!,height=box[3]-box[1];
-    const startY=Math.round(box[1]+height*(upward ? .85 : .15)),endY=Math.round(box[1]+height*(upward ? .15 : .85));
-    requireUi(!current.some(node=>{
-      if(node.package!==pkg||!(button(node)||node.class==='android.widget.Spinner'||node.class==='android.widget.EditText'))return false;
-      const rect=visibleBounds(node);return rect&&x>=rect[0]&&x<rect[2]&&startY>=rect[1]&&startY<rect[3];
-    }),'MODEL_PANEL_GESTURE_START_INTERACTIVE');
-    if(!modelScrollImagesRecorded)captureApprovedScreenshot('model-routing');
-    emit('observed',{interaction:'model-panel-gesture-before',target:names[0],targetBounds:before,
-      headingBounds:current.find(node=>node.text==='模型路由')?.bounds,viewport:box,from:[x,startY],to:[x,endY]});
-    const gestureOutput=command('shell','am','instrument','-w','-r','-e','operation','swipe-model-panel',
-      '-e','targetPackage',pkg,'-e','gestureX',String(x),'-e','gestureFromY',String(startY),
-      '-e','gestureToY',String(endY),'app.nexttavern.qa.ui/.HierarchyInstrumentation');
-    const gestureEvent=gestureOutput.match(/^INSTRUMENTATION_RESULT: gestureEventType=(\d+)\r?$/m)?.[1];
-    emit('observed',{interaction:'model-panel-gesture-event',eventType:gestureEvent??null,
-      helperError:gestureOutput.match(/^INSTRUMENTATION_RESULT: error=([A-Z_]{1,80})\r?$/m)?.[1]??null});
-    snapshot(gestureOutput); // First observation is from the action's live AX session.
-    // No replay after transport failure, and no second gesture without an
-    // observed movement from the preceding one.
-    const moved=()=>current.some(node=>owner(node)&&named(node,names)&&kind(node)
-      &&(node.bounds!==before||visibleBounds(node)))||Boolean(anchorBefore&&current.some(node=>
-        node.package===pkg&&node.class===anchorBefore.class&&node.text===anchorBefore.text&&node.bounds!==anchorBefore.bounds));
-    try {
-      if(!moved())await until(moved,10,'MODEL_PANEL_DID_NOT_SCROLL');
-    }catch(error) {
-      if(error instanceof UiFailure&&error.code==='MODEL_PANEL_DID_NOT_SCROLL'&&!modelScrollImagesRecorded) {
-        captureApprovedScreenshot('model-routing-after');modelScrollImagesRecorded=true;
-      }
-      throw error;
-    }
-    if(!modelScrollImagesRecorded) {captureApprovedScreenshot('model-routing-after');modelScrollImagesRecorded=true;}
-    emit('observed',{interaction:'source-backed-model-panel-scroll',target:names[0],viewport:box,
-      direction:upward?'toward-later-controls':'toward-earlier-controls',movementObserved:true});
-  }while(Date.now()<end);
-  throw new UiFailure('MODEL_PANEL_REVEAL_DEADLINE');
+/** These fixed Models controls use standard accessibility interactions. Real
+ * screenshots and a TYPE_VIEW_SCROLLED event proved the panel scrolls, while
+ * this WebView reports stale screen bounds. Acceptance still requires the
+ * caller's actual model-switch and persisted-settings results. */
+async function modelControl(names:string[],kind:(node:Node)=>boolean=button):Promise<Node> {
+  await readySnapshot();
+  const found=current.filter(node=>node.package===pkg&&named(node,names)&&kind(node)&&node.enabled!=='false');
+  requireUi(found.length===1,'MODEL_CONTROL_NOT_UNIQUE');
+  showControl(found[0]);
+  if(names.includes('切换当前对话主模型'))captureApprovedScreenshot('model-routing-after');
+  return found[0];
 }
 /** Reveal an observed control using its public accessibility action. When only
  * a source label exists, retain the existing real scroll-owner gesture path. */
@@ -388,9 +329,6 @@ async function reveal(names:string[],kind:(node:Node)=>boolean=button,
     requireUi(visible.length<=1,'NEXT_UI_TARGET_AMBIGUOUS');
     if(visible[0])return visible[0];
     requireUi(found.length<=1,'NEXT_UI_OFFSCREEN_TARGET_AMBIGUOUS');
-    if(found[0]?.package===pkg&&stage==='fixture-main-and-worker-model-routing'&&modelRoutingScrollBox&&has(['模型路由'])) {
-      return revealModelControl(names,kind,owner);
-    }
     if(found[0]?.package===pkg) {
       showControl(found[0]); // One action; acceptance is not proof of scrolling.
       let revealed:Node|undefined;
@@ -431,14 +369,21 @@ async function reveal(names:string[],kind:(node:Node)=>boolean=button,
     emit('observed',{interaction:'named-control-ancestor-scroll',attempt:attempt+1});
   }
 }
-async function press(names:string[],kind:(node:Node)=>boolean=button):Promise<void> {tapNode(await reveal(names,kind));}
+async function press(names:string[],kind:(node:Node)=>boolean=button):Promise<void> {
+  if(stage==='fixture-main-and-worker-model-routing'
+    &&names.some(name=>name==='切换当前对话主模型'||name==='保存模型路由')) {
+    controlAction(await modelControl(names,kind),'click-control');return;
+  }
+  tapNode(await reveal(names,kind));
+}
 async function replace(names:string[],value:string,sourceLabels=names):Promise<void> {
   emit('observed',{interaction:'edit-source-field',field:names[0]});
   await typeAscii(await reveal(names,node=>node.class==='android.widget.EditText',node=>node.package===pkg,true,sourceLabels),value,names[0]);
 }
-function showControl(node:Node):void {
+function showControl(node:Node):void {controlAction(node,'show-control')}
+function controlAction(node:Node,operation:'show-control'|'click-control'):void {
   const quote=(text:string)=>"'"+text.replaceAll("'", "'\\''")+"'";
-  const output=command('shell','am','instrument','-w','-r','-e','operation','show-control',
+  const output=command('shell','am','instrument','-w','-r','-e','operation',operation,
     '-e','targetPackage',pkg,'-e','targetClass',quote(node.class),'-e','targetHint',quote(node.hint??''),
     '-e','targetDescription',quote(node['content-desc']??''),
     '-e','targetText',quote(node.class==='android.widget.EditText'?'':node.text??''),
@@ -446,11 +391,11 @@ function showControl(node:Node):void {
   const accepted=/^INSTRUMENTATION_RESULT: accepted=true\r?$/m.test(output),
     supported=/^INSTRUMENTATION_RESULT: supported=true\r?$/m.test(output),
     count=output.match(/^INSTRUMENTATION_RESULT: matchCount=(\d+)\r?$/m)?.[1];
-  emit('observed',{interaction:'semantic-show-control',targetClass:node.class,supported,accepted,
+  emit('observed',{interaction:operation==='click-control'?'semantic-click-control':'semantic-show-control',targetClass:node.class,supported,accepted,
     matchCount:count===undefined?null:Number(count),
     helperError:output.match(/^INSTRUMENTATION_RESULT: error=([A-Z_]{1,80})\r?$/m)?.[1]??null});
   requireUi(/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)&&supported&&accepted&&count==='1',
-    'ACCESSIBILITY_SHOW_NOT_ACCEPTED');
+    operation==='click-control'?'ACCESSIBILITY_CLICK_NOT_ACCEPTED':'ACCESSIBILITY_SHOW_NOT_ACCEPTED');
 }
 function focusInput(node:Node):void {
   // Public accessibility focus targets the observed semantic node, not a
@@ -690,7 +635,6 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
   stage='fixture-main-and-worker-model-routing';
   await pressManagerTab(['模型','Models']);
   await until(()=>has(['模型路由']),30,'MODEL_ROUTING_PAGE_NOT_EXPOSED');
-  captureModelRoutingViewport();
   captureApprovedScreenshot('model-routing');
   await until(()=>visibleNamed(mainRouteNames,node=>node.class==='android.widget.Spinner'||button(node)).length===1,30,'TAVERN_MAIN_MODEL_SELECTOR_NOT_EXPOSED');
   await press(mainRouteNames,node=>node.class==='android.widget.Spinner'||button(node));
@@ -701,11 +645,12 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
   await press(['切换当前对话主模型']);
   await until(()=>current.some(node=>node.package===pkg&&node.text===
     '主模型已切换；不会自动发送或重发。若有失败输入，请按聊天中的恢复提示操作。'),60,'MAIN_MODEL_SWITCH_NOT_CONFIRMED');
-  const check=await reveal(allMainNames,node=>node.class==='android.widget.CheckBox'||node.class==='android.widget.Switch');
+  const check=await modelControl(allMainNames,node=>node.class==='android.widget.CheckBox'||node.class==='android.widget.Switch');
   requireUi(check.checked==='true'||check.checked==='false','WORKER_ROUTE_CHECKED_STATE_NOT_EXPOSED');
-  if(check.checked==='false')tapNode(check);
+  if(check.checked==='false')controlAction(check,'click-control');
   await press(['保存模型路由']);
-  await until(()=>visibleNamed(['保存模型路由']).length===1,60,'WORKER_ROUTE_SAVE_NOT_SETTLED');
+  await until(()=>current.some(node=>node.package===pkg&&named(node,['保存模型路由'])
+    &&button(node)&&node.enabled!=='false'),60,'WORKER_ROUTE_SAVE_NOT_SETTLED');
   // Re-mount the real panel and verify the server-backed state, rather than
   // counting a transient toast or treating local checkbox state as persisted.
   await closeWebDialog();await openManager();await pressManagerTab(['模型','Models']);

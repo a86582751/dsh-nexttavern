@@ -7,11 +7,6 @@ import android.app.UiAutomation;
 import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.SystemClock;
-import android.os.ParcelFileDescriptor;
-import android.view.accessibility.AccessibilityEvent;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.concurrent.TimeoutException;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import java.util.ArrayList;
@@ -39,17 +34,11 @@ public final class HierarchyInstrumentation extends Instrumentation {
                 | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
             ui.setServiceInfo(info);
             String operation = request.getString("operation", "");
-            if ("swipe-model-panel".equals(operation)) {
-                phase = "SWIPE_MODEL_PANEL";
-                result.putInt("gestureEventType", swipeModelPanel(ui));
-                // The gesture and its accessibility event happened on this same
-                // connection. Read the complete post-event tree, not old prefetch.
-                ui.clearCache();
-            } else if (!operation.isEmpty()) {
-                boolean show = "show-control".equals(operation);
-                if (!show && !"focus-input".equals(operation)) { failure("OPERATION_NOT_ALLOWED", null); return; }
-                phase = show ? "SHOW_CONTROL" : "FOCUS_INPUT";
-                controlAction(ui, show);
+            if (!operation.isEmpty()) {
+                boolean show = "show-control".equals(operation), click = "click-control".equals(operation);
+                if (!show && !click && !"focus-input".equals(operation)) { failure("OPERATION_NOT_ALLOWED", null); return; }
+                phase = click ? "CLICK_CONTROL" : show ? "SHOW_CONTROL" : "FOCUS_INPUT";
+                controlAction(ui, show, click);
                 return;
             }
             // Connection readiness does not imply a root is already available.
@@ -93,65 +82,27 @@ public final class HierarchyInstrumentation extends Instrumentation {
                 SystemClock.sleep(200);
             } while (SystemClock.uptimeMillis() < deadline);
             failure("ROOTS_NOT_READY", null);
-        } catch (TimeoutException error) {
-            failure("SWIPE_EVENT_NOT_OBSERVED", null); // Never replay the gesture.
         } catch (RuntimeException error) {
             String reason = error instanceof IllegalStateException && "HIERARCHY_TOO_LARGE".equals(error.getMessage())
                 ? "HIERARCHY_TOO_LARGE" : "HIERARCHY_" + phase + "_FAILED";
             failure(reason, error);
         }
     }
-    /** Keep AX connected while the ordinary shell gesture occurs. */
-    private int swipeModelPanel(UiAutomation ui) throws TimeoutException {
+    private void controlAction(UiAutomation ui, boolean show, boolean click) {
+        boolean semantic = show || click;
         String targetPackage = request.getString("targetPackage");
-        int x = Integer.parseInt(request.getString("gestureX", "-1")),
-            from = Integer.parseInt(request.getString("gestureFromY", "-1")),
-            to = Integer.parseInt(request.getString("gestureToY", "-1"));
-        if (!"app.nexttavern.android.x86diagnostic".equals(targetPackage)
-            || x < 0 || from < 0 || to < 0 || from == to) throw new IllegalArgumentException();
-        // Request the active app root before injection so its WebView provider
-        // is connected, rather than enabling AX only after the touch is over.
-        long deadline = SystemClock.uptimeMillis() + 3000;
-        boolean appRoot = false;
-        do {
-            AccessibilityNodeInfo root = ui.getRootInActiveWindow();
-            if (root != null) {
-                appRoot = targetPackage.contentEquals(text(root.getPackageName()));
-                if (appRoot) node(new StringBuilder(), root, null); // Read through the WebView virtual subtree.
-                else root.recycle();
-            }
-            if (appRoot) break;
-            SystemClock.sleep(200);
-        } while (SystemClock.uptimeMillis() < deadline);
-        if (!appRoot) throw new IllegalStateException("SWIPE_APP_ROOT_NOT_READY");
-        AccessibilityEvent event = ui.executeAndWaitForEvent(() -> {
-            // Fixed command, integer coordinates, one actual input action. No
-            // product JS, private bridge, target-app instrumentation or retries.
-            try (InputStream stream = new ParcelFileDescriptor.AutoCloseInputStream(
-                    ui.executeShellCommand("input touchscreen swipe " + x + " " + from + " " + x + " " + to + " 450"))) {
-                byte[] bytes = new byte[256];
-                while (stream.read(bytes) != -1) { /* Wait for the one shell action to finish. */ }
-            } catch (IOException error) { throw new IllegalStateException("SWIPE_COMMAND_FAILED", error); }
-        }, candidate -> targetPackage.contentEquals(text(candidate.getPackageName()))
-            && (candidate.getEventType() == AccessibilityEvent.TYPE_VIEW_SCROLLED
-                || candidate.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED), 5000);
-        try { return event.getEventType(); }
-        finally { event.recycle(); }
-    }
-    private void controlAction(UiAutomation ui, boolean show) {
-        String targetPackage = request.getString("targetPackage");
-        String targetClass = show ? request.getString("targetClass") : "android.widget.EditText";
+        String targetClass = semantic ? request.getString("targetClass") : "android.widget.EditText";
         String hint = request.getString("targetHint");
         String description = request.getString("targetDescription");
         boolean editable = "android.widget.EditText".equals(targetClass);
-        String targetText = show && !editable ? request.getString("targetText") : null;
-        String prefix = show ? "SHOW" : "FOCUS";
+        String targetText = semantic && !editable ? request.getString("targetText") : null;
+        String prefix = click ? "CLICK" : show ? "SHOW" : "FOCUS";
         if (!"app.nexttavern.android.x86diagnostic".equals(targetPackage) || targetClass == null
-            || targetClass.isEmpty() || hint == null || description == null || show && !editable && targetText == null) {
-            if (show) {
+            || targetClass.isEmpty() || hint == null || description == null || semantic && !editable && targetText == null) {
+            if (semantic) {
                 Bundle invalid = new Bundle();
                 invalid.putInt("matchCount", 0); invalid.putBoolean("supported", false); invalid.putBoolean("accepted", false);
-                invalid.putString("error", "SHOW_REQUEST_INVALID");
+                invalid.putString("error", prefix + "_REQUEST_INVALID");
                 finish(Activity.RESULT_CANCELED, invalid);
             } else failure("FOCUS_REQUEST_INVALID", null);
             return;
@@ -170,7 +121,7 @@ public final class HierarchyInstrumentation extends Instrumentation {
                         if (root == null) continue;
                         if (targetPackage.contentEquals(text(root.getPackageName())) && rootIds.add(root.getWindowId())) {
                             appRoot = true;
-                            findControls(root, targetPackage, targetClass, hint, description, targetText, show, matches);
+                            findControls(root, targetPackage, targetClass, hint, description, targetText, semantic, matches);
                         } else root.recycle();
                     } finally { window.recycle(); }
                 }
@@ -179,7 +130,7 @@ public final class HierarchyInstrumentation extends Instrumentation {
                     if (root != null) {
                         if (targetPackage.contentEquals(text(root.getPackageName()))) {
                             appRoot = true;
-                            findControls(root, targetPackage, targetClass, hint, description, targetText, show, matches);
+                            findControls(root, targetPackage, targetClass, hint, description, targetText, semantic, matches);
                         } else root.recycle();
                     }
                 }
@@ -188,7 +139,7 @@ public final class HierarchyInstrumentation extends Instrumentation {
             } while (SystemClock.uptimeMillis() < deadline);
             Bundle result = new Bundle();
             result.putInt("matchCount", matches.size());
-            if (show) result.putBoolean("supported", false);
+            if (semantic) result.putBoolean("supported", false);
             if (!appRoot || matches.size() != 1) {
                 result.putBoolean("accepted", false);
                 result.putString("error", !appRoot ? prefix + "_APP_ROOT_NOT_READY"
@@ -197,21 +148,23 @@ public final class HierarchyInstrumentation extends Instrumentation {
                 return;
             }
             AccessibilityNodeInfo target = matches.get(0);
-            if (show) {
+            if (semantic) {
+                int actionId = click ? AccessibilityNodeInfo.ACTION_CLICK
+                    : AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.getId();
                 boolean supported = false;
                 for (AccessibilityNodeInfo.AccessibilityAction action : target.getActionList()) {
-                    if (action.getId() == AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.getId()) supported = true;
+                    if (action.getId() == actionId) supported = true;
                 }
                 result.putBoolean("supported", supported);
                 if (!supported) {
                     result.putBoolean("accepted", false);
-                    result.putString("error", "SHOW_ACTION_UNSUPPORTED");
+                    result.putString("error", prefix + "_ACTION_UNSUPPORTED");
                     finish(Activity.RESULT_CANCELED, result);
                     return;
                 }
-                boolean accepted = target.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.getId());
+                boolean accepted = target.performAction(actionId);
                 result.putBoolean("accepted", accepted);
-                if (!accepted) result.putString("error", "SHOW_ACTION_REJECTED");
+                if (!accepted) result.putString("error", prefix + "_ACTION_REJECTED");
                 finish(Activity.RESULT_OK, result);
                 return;
             }
