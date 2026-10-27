@@ -1,0 +1,27 @@
+# Publish only these three QA files on the authorized fresh public-base branch
+# android/mobile-terminal, never the current implementation worktree diff.
+# This file -> .github/workflows/android-webview-kvm.yml
+# run-smoke.sh + MainActivity.java -> qa/android-webview-kvm/
+name: Android KVM WebView control
+on:
+  push:
+    branches: [android/mobile-terminal]
+    paths:
+      - .github/workflows/android-webview-kvm.yml
+      - qa/android-webview-kvm/**
+permissions:
+  contents: read
+jobs:
+  control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Read this QA branch
+        # Official actions/checkout v4.3.1; tag/ref verified 2026-10-27.
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Required KVM native-then-WebView control
+        shell: bash
+        run: bash qa/android-webview-kvm/run-smoke.sh
