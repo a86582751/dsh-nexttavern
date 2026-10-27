@@ -123716,7 +123716,9 @@
           "src/operations/released-component-types.mts",
           "src/operations/released-component-catalog.mts",
           "src/operations/released-component-archive.mts",
-          "src/operations/released-component-assembly.mts"
+          "src/operations/released-component-assembly.mts",
+          "development/node-addon-system/src/atomic.ts",
+          "development/node-addon-system/src/android-binding.ts"
         ],
         "kind": "typescript-module",
         "entry": "src/operations/released-component-types.mts",
@@ -123972,7 +123974,9 @@
           "src/operations/released-component-types.mts",
           "src/operations/released-component-catalog.mts",
           "src/operations/released-component-archive.mts",
-          "src/operations/released-component-assembly.mts"
+          "src/operations/released-component-assembly.mts",
+          "development/node-addon-system/src/atomic.ts",
+          "development/node-addon-system/src/android-binding.ts"
         ],
         "kind": "typescript-module",
         "entry": "src/operations/released-component-catalog.mts",
@@ -124228,7 +124232,9 @@
           "src/operations/released-component-types.mts",
           "src/operations/released-component-catalog.mts",
           "src/operations/released-component-archive.mts",
-          "src/operations/released-component-assembly.mts"
+          "src/operations/released-component-assembly.mts",
+          "development/node-addon-system/src/atomic.ts",
+          "development/node-addon-system/src/android-binding.ts"
         ],
         "kind": "typescript-module",
         "entry": "src/operations/released-component-archive.mts",
@@ -124484,7 +124490,9 @@
           "src/operations/released-component-types.mts",
           "src/operations/released-component-catalog.mts",
           "src/operations/released-component-archive.mts",
-          "src/operations/released-component-assembly.mts"
+          "src/operations/released-component-assembly.mts",
+          "development/node-addon-system/src/atomic.ts",
+          "development/node-addon-system/src/android-binding.ts"
         ],
         "kind": "typescript-module",
         "entry": "src/operations/released-component-assembly.mts",
@@ -125374,6 +125382,9 @@
             ],
             "dsh-nexttavern-typert-generator-types": [
               "../development/typert-generator/src/index.ts"
+            ],
+            "@deepseek-ai/node-addon-system/atomic": [
+              "../development/node-addon-system/src/atomic.ts"
             ]
           },
           "rootDirs": [

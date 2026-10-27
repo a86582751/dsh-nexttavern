@@ -4683,6 +4683,11 @@
       ],
       "requires": [
         "compiler"
+      ],
+      "inputs": [
+        "compat-node-addon-system-package-json",
+        "compat-node-addon-system-atomic-ts",
+        "compat-node-addon-system-android-binding-ts"
       ]
     },
     {
@@ -10381,12 +10386,23 @@
         "android-tools-build-flock.mts",
         "android-tools-native-system-android.c",
         "android-tools-prepare-runtime.mts",
-        "android-runtime-inputs.x64.lock.json"
+        "android-runtime-inputs.x64.lock.json",
+        "card-export",
+        "tavern-card-adapter",
+        "card-export-projection-js",
+        "tavern-card-crc-js",
+        "nexttavern-card-js",
+        "card-export-typescript",
+        "tavern-card-typescript",
+        "card-export-projection-typescript",
+        "tavern-card-crc-typescript",
+        "nexttavern-card-typescript"
       ],
       "timeoutMs": 60000,
       "cache": false,
       "depends": [
-        "test:android-native-system-host-fixture"
+        "test:android-native-system-host-fixture",
+        "generated"
       ]
     },
     {
