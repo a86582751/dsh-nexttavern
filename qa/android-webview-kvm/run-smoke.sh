@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Draft QA only. No Gradle, product APK, Harness, model, cache/artifact upload or secrets.
+# QA only. Default tiny control has no Harness/APK; --mobile builds public inputs
+# in runner-temp. Neither mode uploads payloads, artifacts, caches or secrets.
 # Official source references:
 # https://developer.android.com/studio/run/emulator-acceleration
 # https://developer.android.com/studio/run/emulator-commandline
@@ -7,6 +8,8 @@
 set -Eeuo pipefail
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 work="$(mktemp -d "${RUNNER_TEMP:?}/webview-kvm.XXXXXX")"
+mode="${1:-control}"
+[[ "$mode" == control || "$mode" == --mobile ]]
 phase=INITIALIZE
 serial=emulator-5554
 pkg=app.nexttavern.android.webviewcontrol
@@ -19,7 +22,7 @@ crash_summary() {
   python3 - "$work/crash.log" <<'PY'
 import pathlib,re,sys
 p=pathlib.Path(sys.argv[1]); text=p.read_text(errors='replace') if p.exists() else ''
-relevant=bool(re.search(r'Process: app\.nexttavern\.android\.webviewcontrol\b|>>> [^\n]*(?:app\.nexttavern\.android\.webviewcontrol|sandboxed_process)[^\n]* <<<',text))
+relevant=bool(re.search(r'Process: app\.nexttavern\.android\.(?:webviewcontrol|x86diagnostic)\b|>>> [^\n]*(?:app\.nexttavern\.android\.(?:webviewcontrol|x86diagnostic)|sandboxed_process)[^\n]* <<<',text))
 if relevant:
  print('RELEVANT_APP_OR_RENDERER_CRASH')
  for signal in sorted(set(re.findall(r'\b(SIG[A-Z0-9]+)\b',text))):print('CRASH_SIGNAL='+signal)
@@ -310,6 +313,12 @@ phase=REQUIRED_KVM_ACCELERATION
 grep -q 'KVM.*installed and usable' "$work/accel.log"
 mark KVM_ACCEL_CHECK_PASSED
 
+if [[ "$mode" == --mobile ]]; then
+  export MOBILE_QA_WORK="$work" MOBILE_QA_SDK="$sdk" MOBILE_QA_ADB="$adb" MOBILE_QA_SERIAL="$serial"
+  phase=MOBILE_PREPARE
+  rm -rf -- "$work/downloads" # verified SDK archives are not runtime inputs
+  bash "$source_dir/../android-mobile-terminal/run-mobile.sh" prepare
+else
 phase=MINIMAL_CONTROL_BUILD
 mkdir -p "$work/classes" "$work/dex"
 "$JAVA_HOME/bin/javac" --release 17 -cp "$android_jar" -d "$work/classes" \
@@ -342,6 +351,7 @@ PY
   --out "$work/control.apk" "$work/aligned.apk" >> "$work/build.log" 2>&1
 "$tools/apksigner" verify "$work/control.apk" >> "$work/build.log" 2>&1
 mark MINIMAL_CONTROL_BUILT
+fi
 
 phase=AVD_CREATION
 printf 'no\n' | "$sdk/cmdline-tools/22.0/bin/avdmanager" create avd --force --name webview-kvm \
@@ -363,6 +373,12 @@ done
 [[ "$("$adb" -s "$serial" shell getprop ro.build.version.sdk | tr -d '\r')" == 35 ]]
 [[ "$("$adb" -s "$serial" shell getprop ro.product.cpu.abi | tr -d '\r')" == x86_64 ]]
 mark API35_X86_64_KVM_BOOTED
+if [[ "$mode" == --mobile ]]; then
+  phase=MOBILE_UI_EXERCISE
+  bash "$source_dir/../android-mobile-terminal/run-mobile.sh" exercise
+  mark MOBILE_KVM_FIRST_UI_STAGE_PASSED_NOT_FULL_ACCEPTANCE
+  exit 0
+fi
 "$adb" -s "$serial" install --no-incremental "$work/control.apk" > "$work/install.log" 2>&1
 "$adb" -s "$serial" logcat -c
 "$adb" -s "$serial" shell input keyevent KEYCODE_WAKEUP

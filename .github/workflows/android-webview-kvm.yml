@@ -1,20 +1,29 @@
-# Publish only these three QA files on the authorized fresh public-base branch
-# android/mobile-terminal, never the current implementation worktree diff.
-# This file -> .github/workflows/android-webview-kvm.yml
-# run-smoke.sh + MainActivity.java -> qa/android-webview-kvm/
-name: Android KVM WebView control
+# Authorized public Android source and runner-owned QA on android/mobile-terminal.
+# Built payloads, signing material and private profile data are never published.
+# Default control mode remains available; this job selects the full APK first-UI stage.
+name: Android mobile KVM preview
 on:
   push:
     branches: [android/mobile-terminal]
     paths:
       - .github/workflows/android-webview-kvm.yml
       - qa/android-webview-kvm/**
+      - qa/android-mobile-terminal/**
+      - android/**
+      - src/**
+      - lib/**
+      - preset/**
+      - development/**
+      - tools/**
+      - build-tools/package*.json
+      - harness/package*.json
+      - integrations/auth-webserver/**
 permissions:
   contents: read
 jobs:
-  control:
+  mobile:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Read this QA branch
         # Official actions/checkout v4.3.1; tag/ref verified 2026-10-27.
@@ -22,6 +31,11 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: Required KVM native-then-WebView control
+      - name: Pinned public build Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.22.1'
+          check-latest: false
+      - name: Build public non-debug x64 APK and observe actual UI in required KVM
         shell: bash
-        run: bash qa/android-webview-kvm/run-smoke.sh
+        run: bash qa/android-webview-kvm/run-smoke.sh --mobile
