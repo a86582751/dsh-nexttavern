@@ -118,12 +118,12 @@ async function start(message:Extract<BrowserWorkerInputV3,{type:'start'|'reader-
     begin(){actorEntry=++entrySequence;send({type:'actor-entry-start',id:actorEntry})},
     end(){send({type:'actor-entry-end',id:actorEntry});actorEntry=undefined},
   })
-  const interactionState=message.type==='start'&&message.program.profile.version===6
+  const interactionState=message.type==='start'&&message.program.profile.version>=6
   const stateDom=message.type==='reader-start'||message.program.profile.version===5||interactionState
   attachment=new BrowserAttachmentWorkerV3({actor,program:message.program,snapshot:message.snapshot,
     binding:message.binding,operationPrefix:message.operationPrefix,
     ...message.type==='start'?{stateProgramBinding:message.stateProgramBinding}:{},
-    ...message.type==='start'&&(message.program.profile.version===5||message.program.profile.version===6)
+    ...message.type==='start'&&message.program.profile.version>=5
       ?{createHelperRoot:()=>rpc({op:'helper-root-create'})}:{},
     methods:interactionState?BROWSER_INTERACTION_STATE_NATIVE_METHODS_V3
       :stateDom?BROWSER_STATE_NATIVE_METHODS_V3:BROWSER_NATIVE_METHODS_V3,

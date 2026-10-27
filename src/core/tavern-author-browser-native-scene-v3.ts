@@ -4,7 +4,7 @@ import {createBrowserSourceFrameOwnerV3} from './tavern-author-browser-frame-nat
 import type {BrowserNativeSourceFrameV3} from './tavern-author-browser-frame-native-v3.js'
 import {createBrowserPageRendererV3} from './tavern-author-browser-renderer-v3.js'
 import type {BrowserNativeNodeRegistryV3} from './tavern-author-browser-renderer-v3.js'
-import type {BrowserCompiledScriptV3,BrowserProgramV3,BrowserPageResourceV3}
+import type {BrowserCompiledScriptV3,BrowserProgramV3,BrowserPageResourceV3,BrowserSourcePagePlanV3}
   from './tavern-author-browser-types-v3.mjs'
 import type {BrowserPageNativeSessionV3} from './tavern-author-browser-page-worker-v3.js'
 import type {BrowserPageRendererV3,NativeHandleV3,NativeWireObjectV3,NativeCallbackDeliveryV3,
@@ -62,7 +62,7 @@ export function createBrowserNativeSceneV3(options:Options) {
   const frameTokens=new Map<number,BrowserNativeSourceFrameV3>()
   const publishedFrameReferences=new Set<string>()
   const program=options.program,reader=program.encoding==='reader-regex-document-program-v1'
-  const interactionState=program.encoding==='native-author-browser-program-v3'&&program.profile?.version===6
+  const interactionState=program.encoding==='native-author-browser-program-v3'&&(program.profile?.version??0)>=6
   const pagePlans=new Map((program.encoding==='reader-regex-document-program-v1'?program.documents:program.sourcePages)
     .map(plan=>[plan.pagePlanSha256,plan] as const))
   const readerPlans=new Map<BrowserNativeSourceFrameV3,string>()
@@ -100,10 +100,9 @@ export function createBrowserNativeSceneV3(options:Options) {
       frameTokens.delete(frame.frameId)
       if(pageId){pages.delete(pageId);options.onPageClosed?.(pageId)}
       if(active)options.onFrameClosed(frame.frameId)
-    },rendererOptions:(frame,pageId)=>({schedulerWindow:options.schedulerWindow,
-      onNativeEvent:options.observeNativeEvent&&frame.principal.kind==='helper'
-        ?event=>options.observeNativeEvent!(event,pageId,frame.principal.kind==='helper'
-          ?frame.principal.carrierIdentity:''):undefined,
+    },rendererOptions:(frame,pageId,plan)=>({schedulerWindow:options.schedulerWindow,
+      onNativeEvent:options.observeNativeEvent&&'carrier' in plan.origin
+        ?event=>options.observeNativeEvent!(event,pageId,(plan.origin as BrowserSourcePagePlanV3['origin']).carrier.identity):undefined,
       onCallback:emitCallback,onPromiseSettlement:options.onSettlement,onImages:options.onImages,
       resolveResource:options.resolveResource,sharedNodes,...interactionState?{interactionState:true}:{}})})
   function remember(value:unknown,facts:BrowserNativeFrameFactV3[]):void {
@@ -120,7 +119,7 @@ export function createBrowserNativeSceneV3(options:Options) {
         frameTokens.set(frame.frameId,frame)
         publishedFrameReferences.add(referenceKey)
         const owner=frames.owner(frame)
-        if('kind' in owner)
+        if('kind' in owner&&owner.kind==='reader-regex-document')
           facts.push({frameId:frame.frameId,reference:wire,...owner,documentPlanSha256:readerPlans.get(frame)!})
         else facts.push({frameId:frame.frameId,reference:wire,...owner})
       }
@@ -170,10 +169,12 @@ export function createBrowserNativeSceneV3(options:Options) {
   }
   function createHelperRoot() {
     if(program.encoding!=='native-author-browser-program-v3'
-      ||(program.profile.version!==5&&program.profile.version!==6)||!options.helperRootDocument)
+      ||program.profile.version<5||!options.helperRootDocument)
       throw Error('BROWSER3_HELPER_ROOT_UNAVAILABLE')
     helperRoot=createBrowserPageRendererV3({document:options.helperRootDocument,pageId:'helper-root',readerRootDocument:true,
       sharedNodes,composer:options.composer,schedulerWindow:options.schedulerWindow,...interactionState?{interactionState:true}:{},
+      ...program.profile.version===7?{externalFrames:frames.forDocument({document:options.helperRootDocument,
+        pageId:'helper-root',principal:{kind:'helper-root'}})}:{},
       plan:{parsed:{document:{documentNodeId:0,mode:'no-quirks',nodes:[]},steps:[],scripts:[],styles:[],resources:[]},resources:[]},
       onCallback:emitCallback,onPromiseSettlement:options.onSettlement})
     helperRoot.setDocumentState('complete')
@@ -211,11 +212,19 @@ export function createBrowserNativeSceneV3(options:Options) {
           ||owner.programSha256!==program.programSha256||owner.parentPageId!=='reader-root'
           ||readerPlans.get(frame)!==plan.pagePlanSha256||!readerRoot)
           throw Error('READER_REGEX_DOCUMENT_PARENT_UNPROVEN')
-      }else if(!('carrierIdentity' in owner)||plan.encoding!=='native-author-browser-source-page-plan-v3'
-        ||owner.carrierIdentity!==plan.origin.carrier.identity||!carriers.has(owner.parentPageId))
-          throw Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN')
+      }else {
+        if(plan.encoding!=='native-author-browser-source-page-plan-v3')throw Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN')
+        if('kind' in owner&&owner.kind==='helper-root'){
+          if(program.encoding!=='native-author-browser-program-v3'||program.profile.version!==7
+            ||plan.sourceMount?.parentRealm!=='helper-root'||owner.parentPageId!=='helper-root'||!helperRoot)
+            throw Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN')
+        }else if(!('carrierIdentity' in owner)||plan.sourceMount&&plan.sourceMount.parentRealm!==owner.parentPageId
+          ||owner.carrierIdentity!==plan.origin.carrier.identity||!carriers.has(owner.parentPageId))
+            throw Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN')
+      }
       const session=await frames.transport.mount(frame,input.pageId,plan,abort.signal)
-      pages.set(input.pageId,{frame,session,...'carrierIdentity' in owner?{carrierIdentity:owner.carrierIdentity}:{}})
+      pages.set(input.pageId,{frame,session,...plan.encoding==='native-author-browser-source-page-plan-v3'
+        ?{carrierIdentity:plan.origin.carrier.identity}:{}})
     }else if(input.op==='page-dispose') {
       const page=pages.get(input.pageId)
       if(page) {pages.delete(input.pageId);options.onPageClosed?.(input.pageId);await frames.transport.dispose(page.frame,input.pageId)}

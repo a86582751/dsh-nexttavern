@@ -250,3 +250,19 @@ export const BROWSER_INTERACTION_STATE_PROFILE_V3=Object.freeze({id:BROWSER_PROF
     composerLifetime:'no-active-invocation-no-write',composerSend:'none',
     contract:BROWSER_STATE_CAPABILITY_CONTRACT_V3}),
 })
+
+const rootSourceContract={...stateContract,
+  capabilities:[...stateContract.capabilities,'owned-helper-root-source-frame' as const].sort()}
+export const BROWSER_ROOT_SOURCE_CAPABILITY_CONTRACT_V3:BrowserCapabilityContractV3=Object.freeze({
+  ...rootSourceContract,contractSha256:recordSha256(rootSourceContract),
+})
+export const BROWSER_ROOT_SOURCE_PROFILE_V3=Object.freeze({id:BROWSER_PROFILE_V3.id,version:7 as const,
+  sha256:recordSha256({encoding:'native-author-browser-helper-root-source-profile-v1',
+    baseProfile:BROWSER_INTERACTION_STATE_PROFILE_V3,
+    mount:'unique-actual-parent-per-source-origin',sourceOrigin:'original-helper-carrier',
+    rootDocument:'registered-isolated-helper-root',
+    blob:'actual-constructor-realm-and-html-hash-unique-plan',
+    srcdoc:'actual-physical-owner-and-html-hash-unique-plan',
+    callback:'physical-owner-registry-original-closure-and-receiver',
+    contract:BROWSER_ROOT_SOURCE_CAPABILITY_CONTRACT_V3}),
+})

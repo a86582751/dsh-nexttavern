@@ -48,6 +48,7 @@ export interface BrowserAttachmentWorkerOptionsV3<Frame extends object> {
   /** Supplied by the actual native frame owner after joining its document
    * resource to the selected compiled Source page. It accepts no posted owner. */
   frameOwner(frame:Frame):{readonly carrierIdentity:string;readonly parentPageId:string}
+    |{readonly kind:'helper-root';readonly parentPageId:string}
     |{readonly kind:'reader-regex-document';readonly programSha256:string;
       readonly documentPlanSha256:string;readonly parentPageId:string}
   resolveFrame(reference:NativeHandleV3):Frame
@@ -82,6 +83,8 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
   private readonly hostWaits=new Map<number,any>()
   private readonly sourceBlobs=new Map<string,{plan:BrowserSourcePagePlanV3;html:string;mime:string}>()
   private readonly sourceURLs=new Map<string,BrowserSourcePagePlanV3>()
+  private readonly sourceDelegates=new Map<string,BrowserSourcePagePlanV3>()
+  private readonly executionRealms=new Map<string,string>()
   private sourceMethods:Readonly<Record<string,any>>|undefined
   private nativeRegistry:any
   private nextHost=0
@@ -91,6 +94,13 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
   private disposal:Promise<void>|undefined
 
   constructor(private readonly options:BrowserAttachmentWorkerOptionsV3<Frame>) {
+    if(!readerProgram(options.program))for(const plan of options.program.sourcePages){
+      const hash=plan.origin.htmlSha256,grant=plan.sourceMount
+      if(!grant)continue
+      const keys=[...grant.blobConstructorRealms.map(realm=>'blob:'+realm+':'+hash),
+        ...grant.srcdoc?['srcdoc:'+grant.parentRealm+':'+hash]:[]]
+      for(const key of keys)this.sourceDelegates.set(key,plan)
+    }
     this.pages=new BrowserPageWorkerV3({actor:options.actor,transport:options.pages,
       bootstrap:page=>this.bootstrapPage(page),frameLoaded:options.frameLoaded,onPageError:options.onPageError})
   }
@@ -135,8 +145,8 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     const controller=await actor.capture(context,'('+browserSourceGuestBootstrapV3.toString()+')('+JSON.stringify({
       snapshot:this.options.snapshot,binding:this.options.binding,operationPrefix:this.options.operationPrefix,
       readerDocument:readerProgram(program),
-      stateFacade:!readerProgram(program)&&(program.profile.version===5||program.profile.version===6),
-      ...!readerProgram(program)&&program.profile.version===6?{interactionState:true}:{},
+      stateFacade:!readerProgram(program)&&program.profile.version>=5,
+      ...!readerProgram(program)&&program.profile.version>=6?{interactionState:true}:{},
       generationWriterIdentity:generation?.writer.scriptIdentity})+')')
     const methods:Record<string,any>={}
     await actor.enter(()=>{
@@ -205,8 +215,8 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     })
     const captured=await actor.capture(context,'('+browserPageGuestBootstrapV3.toString()+')('+JSON.stringify({
       pageId:id,document,methods:this.options.methods,properties:this.options.properties,
-      stateDom:readerProgram(this.options.program)||this.options.program.profile.version===5||this.options.program.profile.version===6,
-      ...!readerProgram(this.options.program)&&this.options.program.profile.version===6?{interactionState:true}:{}})+')')
+      stateDom:readerProgram(this.options.program)||this.options.program.profile.version>=5,
+      ...!readerProgram(this.options.program)&&this.options.program.profile.version>=6?{interactionState:true}:{}})+')')
     const methods:Record<string,any>={}
     await actor.enter(()=>{for(const name of ['setCurrentScript','dispatchLifecycle','decodeNative','deliver','settle','retire','destroy'])
       methods[name]=context.getProp(captured,name)})
@@ -229,17 +239,18 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     this.controllers.set(id,controller)
     return controller
   }
-  private async sourcePlan(html:string):Promise<BrowserSourcePagePlanV3|undefined> {
+  private async sourcePlan(html:string,transport:'blob'|'srcdoc',realm:string):Promise<BrowserSourcePagePlanV3|undefined> {
     const program=this.options.program
     if(readerProgram(program))return
     const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(html))
     const hash=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('')
-    return program.sourcePages.find(plan=>plan.origin.htmlSha256===hash)
+    if(program.profile.version!==7)return program.sourcePages.find(plan=>plan.origin.htmlSha256===hash)
+    return this.sourceDelegates.get(transport+':'+(this.executionRealms.get(realm)??realm)+':'+hash)
   }
   private async requestNative(id:string,principal:AttachmentPrincipal,request:NativeRequestV3):Promise<NativeReplyV3> {
     if(request.op==='create'&&request.creation.kind==='blob'&&request.creation.mime.toLowerCase().split(';')[0]!.trim()==='text/html'
       &&request.creation.parts.every(part=>typeof part==='string')) {
-      const html=request.creation.parts.join(''),plan=await this.sourcePlan(html)
+      const html=request.creation.parts.join(''),plan=await this.sourcePlan(html,'blob',id)
       if(!plan)throw Error('BROWSER3_SOURCE_PAGE_UNAVAILABLE')
       // Source HTML is a logical Source resource, not a navigable native Blob.
       // The native browser receives only the fixed inert iframe shell.
@@ -253,9 +264,10 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
       if(request.op==='call'&&request.method==='text')return {value:blob.html}
     }
     if(request.op==='set'&&request.target.kind==='frame'&&['src','srcdoc'].includes(request.key)) {
-      const location=String(request.value),plan=request.key==='srcdoc'?await this.sourcePlan(location):this.sourceURLs.get(location)
+      const frame=this.options.resolveFrame(request.target),owner=this.options.frameOwner(frame)
+      const location=String(request.value),plan=request.key==='srcdoc'
+        ?await this.sourcePlan(location,'srcdoc',owner.parentPageId):this.sourceURLs.get(location)
       if(!plan)throw Error('BROWSER3_SOURCE_PAGE_UNAVAILABLE')
-      const frame=this.options.resolveFrame(request.target)
       this.options.recordFrameLocation(frame,{[request.key]:location})
       await this.requestMount(frame,plan)
       return {value:{tag:'undefined'}}
@@ -280,7 +292,8 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     if(readerProgram(program))principal={kind:'reader-regex-document',programSha256:program.programSha256,
       document:program.documents.find(plan=>plan.pagePlanSha256===page.plan.pagePlanSha256)!}
     else {
-      const sourcePage=program.sourcePages.find(plan=>plan.pagePlanSha256===page.plan.pagePlanSha256)!
+      const sourcePage=page.plan as BrowserSourcePagePlanV3
+      this.executionRealms.set(page.pageId,'source-page:'+sourcePage.parsed.candidateSha256)
       principal={kind:'helper',script:program.scripts.find(row=>row.descriptor.identity===sourcePage.origin.carrier.identity)!,sourcePage}
     }
     const controller=await this.bootstrap(page.context,page.pageId,page.parentContext,page.document,principal)
@@ -310,7 +323,7 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
       return
     }
     let helperParent:any
-    if((program.profile.version===5||program.profile.version===6)&&this.options.createHelperRoot){
+    if(program.profile.version>=5&&this.options.createHelperRoot){
       const native=await this.options.createHelperRoot()
       helperParent=await actor.createPage('helper-root')
       await this.bootstrap(helperParent,'helper-root',helperParent,native.document,{kind:'helper-host'})
@@ -349,13 +362,21 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
         ||owner.parentPageId!=='reader-root')return Promise.reject(Error('READER_REGEX_DOCUMENT_PARENT_UNPROVEN'))
       parentContext=this.options.actor.parent
     }else {
-      if(!('carrierIdentity' in owner))return Promise.reject(Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN'))
-      const {carrierIdentity,parentPageId}=owner,carrier=this.carriers.get(carrierIdentity)!
-    // Native document ownership is independent of the Source getter's creator.
-    // The compiler supports this carrier parent, not a nested page parent.
-      if(carrier.id!==parentPageId||plan.encoding!=='native-author-browser-source-page-plan-v3'
-        ||plan.origin.carrier.identity!==carrierIdentity)return Promise.reject(Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN'))
-      parentContext=carrier.context
+      if('kind' in owner&&owner.kind==='helper-root'){
+        if(program.profile.version!==7||plan.encoding!=='native-author-browser-source-page-plan-v3'
+          ||plan.sourceMount?.parentRealm!=='helper-root'||owner.parentPageId!=='helper-root')
+          return Promise.reject(Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN'))
+        parentContext=this.controllers.get('helper-root')!.context
+      }else {
+        if(!('carrierIdentity' in owner))return Promise.reject(Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN'))
+        const {carrierIdentity,parentPageId}=owner,carrier=this.carriers.get(carrierIdentity)!
+        // Native document ownership is independent of the Source getter's creator.
+        // The compiler supports this carrier parent, not a nested page parent.
+        if(carrier.id!==parentPageId||plan.encoding!=='native-author-browser-source-page-plan-v3'
+          ||plan.sourceMount&&plan.sourceMount.parentRealm!==parentPageId
+          ||plan.origin.carrier.identity!==carrierIdentity)return Promise.reject(Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN'))
+        parentContext=carrier.context
+      }
     }
     const previous=this.framePages.get(frame)
     if(previous)this.retiringPages.add(previous)
@@ -447,6 +468,7 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     }finally {
       await this.pages.dispose();this.controllers.clear();this.carriers.clear();this.sourceBlobs.clear();this.sourceURLs.clear()
       this.framePages.clear();this.retiringPages.clear();this.retiredPages.clear()
+      this.sourceDelegates.clear();this.executionRealms.clear()
     }
     const failed=native.find(result=>result.status==='rejected')
     if(failed?.status==='rejected')throw failed.reason

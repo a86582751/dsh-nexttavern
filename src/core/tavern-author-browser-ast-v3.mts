@@ -50,6 +50,8 @@ export interface BrowserAstProofV3 {
 export interface BrowserAstResultV3 {
   readonly proofs:readonly BrowserAstProofV3[]
   readonly diagnostics:readonly BrowserDiagnosticV1[]
+  readonly sourceMounts:readonly {readonly pageId:string;readonly parentRealm:string;
+    readonly transport:'src'|'srcdoc';readonly blobConstructorRealms:readonly string[]}[]
   readonly diagnosticEvidence?:readonly BrowserDiagnosticEvidenceV3[]
 }
 export interface BrowserTextEvidenceV3 {readonly codeUnits:number;readonly utf8Bytes:number;readonly sha256:string}
@@ -119,6 +121,8 @@ interface Atom {
   readonly mount?:boolean
   readonly written?:Set<string>
   readonly mime?:Cell
+  readonly constructorRealms?:Set<string>
+  readonly sourceBlobs?:Cell
   readonly prototypes?:Cell
   /** Only a fixed profile absence may suppress a boundary in an original guard. */
   readonly fixedGuard?:boolean
@@ -183,7 +187,10 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
      * never opts in, so its admitted contract is unchanged. */
     readonly absentGlobals?:readonly string[];
     readonly readerPageApis?:true;
-    readonly loadSourcePage?:(pageId:string)=>readonly BrowserAstUnitV3[]}={}):BrowserAstResultV3 {
+    /** One compile may solve both actual parent topologies. Only parsed
+     * originals are shared; each solve still owns its complete value graph. */
+    readonly parsedSourceFiles?:Map<string,Map<number|null,TypeScript.SourceFile>>;
+    readonly loadSourcePage?:(pageId:string,parentRealm:string)=>readonly BrowserAstUnitV3[]}={}):BrowserAstResultV3 {
   if(ts.version!=='5.9.3')throw Error('BROWSER3_TYPESCRIPT_IDENTITY')
   const diagnostics:BrowserDiagnosticV1[]=[],diagnosticKeys=new Set<string>()
   const diagnosticSites=astOptions.captureDiagnosticEvidence
@@ -191,8 +198,14 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   const values=new Map<TypeScript.Node,Cell>(),scopes=new Map<TypeScript.Node,Scope>(),units=new Map<TypeScript.Node,UnitState>()
   const functions=new Map<TypeScript.Node,Atom>(),objects=new Map<TypeScript.Node,Atom>(),realms=new Map<string,Atom>()
   const realmInputs=new Map(inputs.map(input=>[input.realm,input] as const))
-  const sourceParents=new Map(inputs.filter(input=>input.sourceHtml).map(input=>
-    [input.sourceHtml!.pageId,input.parentRealm] as const))
+  const sourceParents=new Map(inputs.filter(input=>input.pageId!==null&&input.sourceHtml)
+    .map(input=>[input.sourceHtml!.pageId,input.parentRealm] as const))
+  const sourceCarriers=new Map(inputs.filter(input=>input.pageId===null&&input.sourceHtml)
+    .map(input=>[input.sourceHtml!.pageId,input.realm] as const))
+  function sourceParent(pageId:string):string|undefined {
+    return sourceParents.get(pageId)??(astOptions.loadSourcePage?undefined:sourceCarriers.get(pageId))
+  }
+  const sourceMounts:BrowserAstResultV3['sourceMounts'][number][]=[]
   const roots=new Map<string,Scope>(),literalAtoms=new Map<string,Atom>(),nativeAtoms=new Map<string,Atom>()
   const handles=new Map<string,Atom>(),queue:TypeScript.Node[]=[],queued=new Set<TypeScript.Node>()
   const functionFallbackReaders=new Set<TypeScript.Node>()
@@ -203,6 +216,19 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   let functionFallback=false
   let missingFallback=false
   let globalMissingFallback=false
+  type BootstrapStep={readonly kind:'write';readonly node:TypeScript.Node;readonly binding:Cell;
+    readonly expression?:TypeScript.Expression}
+    |{readonly kind:'if';readonly test:TypeScript.Expression;readonly yes:readonly BootstrapStep[];
+      readonly no:readonly BootstrapStep[]}
+    |{readonly kind:'try';readonly body:readonly BootstrapStep[];readonly after:readonly BootstrapStep[]}
+  interface BootstrapProgram {readonly file:TypeScript.SourceFile;readonly scope:Scope;readonly end:number;
+    readonly steps:readonly BootstrapStep[];readonly writes:ReadonlySet<TypeScript.Node>;
+    cached?:{readonly phase:number;readonly dependencies:ReadonlyMap<Cell,number>;
+      readonly status:'ready'|'pending'|'unsupported';readonly final:ReadonlyMap<Cell,Value>;
+      readonly reads:ReadonlyMap<TypeScript.Identifier,Value>}}
+  const bootstrapPrograms=new Map<TypeScript.Node,BootstrapProgram|null>()
+  const bootstrapBindings=new Map<Cell,{readonly writers:number;readonly program:BootstrapProgram|null}>()
+  let bootstrapDependencies:Map<Cell,number>|undefined
   let sequence=0
   const atom=(kind:Atom['kind'],rest:Omit<Atom,'kind'|'id'>={}):Atom=>({id:++sequence,kind,...rest})
   const guest=atom('guest'),unknown=atom('unknown'),absent=atom('absent'),fixedAbsent=atom('absent',{fixedGuard:true})
@@ -219,7 +245,30 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(changed)for(const node of target.readers)enqueue(node)
   }
   const one=(value:Atom)=>new Set([value])
-  function read(target:Cell,node:TypeScript.Node):Value {target.readers.add(node);return target.values}
+  const literalConcatenations=new Map<TypeScript.BinaryExpression,string|null>()
+  function concatenatedLiteral(node:TypeScript.BinaryExpression):string|null {
+    let parent=node.parent
+    while(ts.isParenthesizedExpression(parent))parent=parent.parent
+    // Build the complete literal once, rather than retaining every cumulative
+    // prefix of a long chain. Variables and other guest expressions stay guest.
+    if(ts.isBinaryExpression(parent)&&parent.operatorToken.kind===ts.SyntaxKind.PlusToken)return null
+    const known=literalConcatenations.get(node)
+    if(known!==undefined)return known
+    const pending:TypeScript.Expression[]=[node],parts:string[]=[]
+    while(pending.length){
+      const expression=pending.pop()!
+      if(ts.isStringLiteralLike(expression))parts.push(expression.text)
+      else if(ts.isParenthesizedExpression(expression))pending.push(expression.expression)
+      else if(ts.isBinaryExpression(expression)&&expression.operatorToken.kind===ts.SyntaxKind.PlusToken)
+        pending.push(expression.right,expression.left)
+      else {literalConcatenations.set(node,null);return null}
+    }
+    const result=parts.join('')
+    literalConcatenations.set(node,result);return result
+  }
+  function read(target:Cell,node:TypeScript.Node):Value {
+    target.readers.add(node);bootstrapDependencies?.set(target,target.values.size);return target.values
+  }
   function nodeCell(node:TypeScript.Node):Cell {
     let target=values.get(node)
     if(!target){target=cell();values.set(node,target)}
@@ -315,12 +364,20 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   function registerUnit(input:BrowserAstUnitV3):UnitState {
     const index=states.length
     realmInputs.set(input.realm,input)
-    const file=ts.createSourceFile('browser3-'+index+'.js',input.javascript,ts.ScriptTarget.ES2023,true,ts.ScriptKind.JS)
+    let parsed=astOptions.parsedSourceFiles?.get(input.realm)
+    let file=parsed?.get(input.inlineOrdinal)
+    if(!file){
+      file=ts.createSourceFile('browser3-'+index+'.js',input.javascript,ts.ScriptTarget.ES2023,true,ts.ScriptKind.JS)
+      if(astOptions.parsedSourceFiles){
+        if(!parsed){parsed=new Map();astOptions.parsedSourceFiles.set(input.realm,parsed)}
+        parsed.set(input.inlineOrdinal,file)
+      }
+    }
     const nodes:TypeScript.Node[]=[],statements:BrowserAstCoverageV3['statements'][number][]=[]
     const state:UnitState={input,file,nodes,coverage:{encoding:'native-author-browser-complete-ast-coverage-v3',
       sourceSha256:sha256(input.javascript),nodeCount:0,statements},caps:new Set(),keys:new Set(),mounts:new Set(),media:new Map()}
-    const parse=(file as TypeScript.SourceFile&{parseDiagnostics:readonly TypeScript.Diagnostic[]}).parseDiagnostics
-    if(parse.length)report(state,'BROWSER3_JAVASCRIPT_SYNTAX',file)
+    const parseDiagnostics=(file as TypeScript.SourceFile&{parseDiagnostics:readonly TypeScript.Diagnostic[]}).parseDiagnostics
+    if(parseDiagnostics.length)report(state,'BROWSER3_JAVASCRIPT_SYNTAX',file)
     const aliases:{node:TypeScript.FunctionDeclaration;scope:Scope;fn:Atom}[]=[]
     const stack:{node:TypeScript.Node;scope:Scope;depth:number;strict:boolean}[]=[{
       node:file,scope:root(input),depth:0,strict:input.scriptMode==='module'||strictDirective(file.statements)}]
@@ -428,6 +485,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     for(const item of items){
       if(item.kind==='absent')results.add(false)
       else if(item.kind==='literal')results.add(Boolean(item.literal))
+      else if(helperHostContext(item))results.add(true)
       else if(['object','array','function','native','handle','blob','url','html','invoke','bound','choice','factory-callback','promise'].includes(item.kind))results.add(true)
       else return undefined
     }
@@ -437,6 +495,12 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     // A genuine fixed absence still controls a guard when ordinary nullable
     // alternatives produce the same truth. Guest-only facts cannot prune it.
     return items.size&&[...items].some(item=>item.fixedGuard)?truth(items):undefined
+  }
+  function callableTruth(item:Atom):boolean|undefined {
+    if(['function','native','bound','invoke','combiner','choice','factory-callback'].includes(item.kind)
+      ||helperHostContext(item))return true
+    if(['absent','literal','object','array','handle','blob','url','html','promise'].includes(item.kind))return false
+    return undefined
   }
   function guestFieldsOwner(receiver:Atom):boolean {
     return receiver.kind==='handle'&&(['node','frame','frame-parent'].includes(receiver.handle!)
@@ -492,7 +556,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     // callable or resource that contaminates a guarded finite getter's array.
     if(receiver.kind==='literal'&&receiver.literal===null)return one(absent)
     if(receiver.kind==='native'||receiver.kind==='function'||receiver.kind==='bound'||receiver.kind==='factory-callback'
-      ||readerGuestHelper(receiver)){
+      ||readerGuestHelper(receiver)||helperHostContext(receiver)){
       if(names?.size===1){
         const name=[...names][0]!,own=read(field(receiver,name),node)
         if(own.size)return new Set(own)
@@ -607,7 +671,16 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         if(!astOptions.readerPageApis){
           const absentMembers=BROWSER_INTERACTION_ABSENT_MEMBERS_V3[
             receiver.handle as keyof typeof BROWSER_INTERACTION_ABSENT_MEMBERS_V3]
-          if(absentMembers?.includes(name)){
+          // The actual closed composer getter returns undefined for every
+          // non-slot member. A caught missing call keeps its authored fallback;
+          // an uncaught one still fails the fixed-absence call contract.
+          const composerMethod=receiver.handle==='composer'
+            &&Object.hasOwn(BROWSER_INTERACTION_COMPOSER_METHODS_V3,name)
+            ?BROWSER_INTERACTION_COMPOSER_METHODS_V3[name as keyof typeof BROWSER_INTERACTION_COMPOSER_METHODS_V3]:undefined
+          const composerProperty=receiver.handle==='composer'
+            &&Object.hasOwn(BROWSER_INTERACTION_COMPOSER_PROPERTIES_V3,name)
+          const composerAbsent=receiver.handle==='composer'&&!composerMethod&&!composerProperty
+          if(absentMembers?.includes(name)||composerAbsent){
             const id='interaction-absent:'+receiver.handle+'.'+name
             let missing=nativeAtoms.get(id)
             if(!missing){missing=atom('absent',{fixedGuard:true,nativeName:id});nativeAtoms.set(id,missing)}
@@ -615,10 +688,9 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
           }
           const method=receiver.handle==='document'
             ?BROWSER_INTERACTION_DOCUMENT_METHODS_V3[name as keyof typeof BROWSER_INTERACTION_DOCUMENT_METHODS_V3]
-            :receiver.handle==='composer'
-              ?BROWSER_INTERACTION_COMPOSER_METHODS_V3[name as keyof typeof BROWSER_INTERACTION_COMPOSER_METHODS_V3]:undefined
+            :composerMethod
           if(method){interactionFacadeUnits.add(state);out.add(native(name,method,receiver));continue}
-          if(receiver.handle==='composer'&&name in BROWSER_INTERACTION_COMPOSER_PROPERTIES_V3){
+          if(composerProperty){
             interactionFacadeUnits.add(state);out.add(guest);continue
           }
         }
@@ -655,7 +727,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
           if(receiver.pageId)out.add(realm(receiver.pageId))
           for(const location of read(receiver.sources!,node)){
             const sources=location.kind==='url'&&location.sources?read(location.sources,node):one(location)
-            for(const source of sources)if(source.kind==='html'&&sourceParents.get(source.pageId!)===receiver.realm)
+            for(const source of sources)if(source.kind==='html'&&sourceParent(source.pageId!)===receiver.realm)
               out.add(realm(source.pageId!))
           }
           if(!out.size){
@@ -766,7 +838,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     const id='guest:'+name
     let intrinsic=nativeAtoms.get(id)
     if(!intrinsic){intrinsic=atom('guest',{nativeName:name,
-      ...astOptions.readerPageApis&&name.startsWith('reader.')?{fields:new Map(),written:new Set()}: {}})
+      ...(astOptions.readerPageApis&&name.startsWith('reader.')||name==='helper-host.getContext')
+        ?{fields:new Map(),written:new Set()}: {}})
       nativeAtoms.set(id,intrinsic)}
     return intrinsic
   }
@@ -791,6 +864,22 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       return one(realm(owner.parentRealm,astOptions.readerPageApis?undefined:owner.parentDocumentOwner))
     }
     if(name==='document')return one(handle('document',global.realm!,false,undefined,global.documentOwner))
+    if(global.documentOwner==='registered-reader'){
+      // helper-host receives the page bootstrap and its minimal chat-id
+      // dictionary, not a carrier's captured Source facade or script catalog.
+      if(name==='SillyTavern'){
+        const tavern=sourceDictionary('helper-host.SillyTavern',[])
+        add(field(tavern,'getContext'),one(intrinsicValue('helper-host.getContext')))
+        return one(tavern)
+      }
+      if(name in BROWSER_APIS_V3||['TavernHelper','Mvu','NextTavern','waitGlobalInitialized',
+        'event_types','tavern_events','name1','name2','frameElement'].includes(name)){
+        const id='interaction-absent:helper-host.'+name
+        let missing=nativeAtoms.get(id)
+        if(!missing){missing=atom('absent',{fixedGuard:true,nativeName:id});nativeAtoms.set(id,missing)}
+        return one(missing)
+      }
+    }
     if(name==='frameElement'){
       const owner=realmInputs.get(global.realm!)
       return one(handle('frame',owner?.parentRealm??input.parentRealm,false,owner?.pageId??undefined,
@@ -1200,9 +1289,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         const result=evaluateFactoryRecipe(guard.recipe,plan,refinedContext,node,instance,active,refinedMembers)
         pure&&=result.pure;pending||=result.pending||!result.values.size
         const keep=(item:Atom):boolean=>{
-          const actual=guard.kind==='truth'?truth(one(item)):
-            ['function','native','bound','invoke','combiner','choice','factory-callback'].includes(item.kind)?true:
-              ['absent','literal','object','array','handle','blob','url','html','promise'].includes(item.kind)?false:undefined
+          const actual=guard.kind==='truth'?truth(one(item)):callableTruth(item)
           return actual===undefined||actual===wanted
         }
         const selected=new Set([...result.values].filter(keep))
@@ -1357,6 +1444,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     return {values:result,pure,pending}
   }
   const bindingChanges=new Map<Cell,TypeScript.Node[]>(),constantBindings=new Map<Cell,TypeScript.VariableDeclaration>()
+  interface GuardEvent {readonly node:TypeScript.Node;readonly start:number;readonly kind:'write'|'call'|'suspend'}
+  const guardEvents=new Map<TypeScript.Node,GuardEvent[]>()
   const emptyChoiceCell=cell()
   function registerBindingWrites(state:UnitState):void {for(const node of state.nodes){
     let name:TypeScript.Identifier|undefined
@@ -1369,8 +1458,189 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       &&[ts.SyntaxKind.PlusPlusToken,ts.SyntaxKind.MinusMinusToken].includes(node.operator)&&ts.isIdentifier(node.operand))name=node.operand
     if(name){const binding=lookup(scopes.get(node)!,name.text)
       if(binding){const list=bindingChanges.get(binding)??[];list.push(node);bindingChanges.set(binding,list)}}
+    const target=ts.isBinaryExpression(node)&&assignment(node)?node.left:
+      ts.isDeleteExpression(node)?node.expression:
+      (ts.isPrefixUnaryExpression(node)||ts.isPostfixUnaryExpression(node))
+        &&[ts.SyntaxKind.PlusPlusToken,ts.SyntaxKind.MinusMinusToken].includes(node.operator)?node.operand:undefined
+    const kind=target&&(ts.isPropertyAccessExpression(target)||ts.isElementAccessExpression(target))?'write':
+      ts.isCallExpression(node)||ts.isNewExpression(node)?'call':ts.isAwaitExpression(node)||ts.isYieldExpression(node)?'suspend':undefined
+    if(kind){
+      const owner=scopes.get(node)!.fn?.fn??state.file,events=guardEvents.get(owner)??[]
+      // registerUnit supplies source-order preorder, including dynamically
+      // discovered pages. Index once rather than rescan a body for each call.
+      events.push({node,start:node.getStart(state.file),kind});guardEvents.set(owner,events)
+    }
   }}
   for(const state of states)registerBindingWrites(state)
+  const bootstrapSlots=new Set(['window','globalThis','self','parent','top','document'])
+  function bootstrapExpression(expression:TypeScript.Expression):boolean {
+    if(ts.isIdentifier(expression)||ts.isStringLiteralLike(expression)||ts.isNumericLiteral(expression)
+      ||[ts.SyntaxKind.TrueKeyword,ts.SyntaxKind.FalseKeyword,ts.SyntaxKind.NullKeyword].includes(expression.kind))return true
+    if(ts.isParenthesizedExpression(expression))return bootstrapExpression(expression.expression)
+    if(ts.isPropertyAccessExpression(expression))return bootstrapSlots.has(expression.name.text)
+      &&bootstrapExpression(expression.expression)
+    if(ts.isPrefixUnaryExpression(expression)&&expression.operator===ts.SyntaxKind.ExclamationToken)
+      return bootstrapExpression(expression.operand)
+    return ts.isBinaryExpression(expression)
+      &&[ts.SyntaxKind.AmpersandAmpersandToken,ts.SyntaxKind.BarBarToken,ts.SyntaxKind.QuestionQuestionToken].includes(expression.operatorToken.kind)
+      &&bootstrapExpression(expression.left)&&bootstrapExpression(expression.right)
+  }
+  /** Only the uninterrupted VM bootstrap prefix participates. Calls, DOM
+   * reads, escapes and later writers keep their existing monotone semantics. */
+  function bootstrapProgram(owner:TypeScript.Node):BootstrapProgram|null {
+    if(bootstrapPrograms.has(owner))return bootstrapPrograms.get(owner)!
+    const body=ts.isSourceFile(owner)?owner:callable(owner)&&owner.body&&ts.isBlock(owner.body)?owner.body:undefined
+    if(!body){bootstrapPrograms.set(owner,null);return null}
+    const scope=scopes.get(body)!,writes=new Set<TypeScript.Node>()
+    const write=(node:TypeScript.Node,name:TypeScript.Identifier,expression?:TypeScript.Expression):BootstrapStep[]|null=>{
+      const binding=lookup(scopes.get(name)!,name.text)
+      if(!binding||bindingScope(name,name.text)?.fn!==scope.fn||expression&&!bootstrapExpression(expression))return null
+      writes.add(node);return [{kind:'write',node,binding,...expression?{expression}:{}}]
+    }
+    const list=(statements:readonly TypeScript.Statement[]):BootstrapStep[]|null=>{
+      const result:BootstrapStep[]=[]
+      for(const statement of statements){const steps=parse(statement);if(!steps)return null;result.push(...steps)}
+      return result
+    }
+    const parse=(statement:TypeScript.Statement):BootstrapStep[]|null=>{
+      if(ts.isBlock(statement))return list(statement.statements)
+      if(ts.isEmptyStatement(statement)||ts.isFunctionDeclaration(statement))return []
+      if(ts.isVariableStatement(statement)){
+        const result:BootstrapStep[]=[]
+        for(const declaration of statement.declarationList.declarations){
+          if(!ts.isIdentifier(declaration.name))return null
+          const steps=write(declaration,declaration.name,declaration.initializer)
+          if(!steps)return null;result.push(...steps)
+        }
+        return result
+      }
+      if(ts.isExpressionStatement(statement)){
+        const expression=statement.expression
+        if(ts.isStringLiteralLike(expression))return []
+        return ts.isBinaryExpression(expression)&&expression.operatorToken.kind===ts.SyntaxKind.EqualsToken
+          &&ts.isIdentifier(expression.left)?write(expression,expression.left,expression.right):null
+      }
+      if(ts.isIfStatement(statement)&&bootstrapExpression(statement.expression)){
+        const yes=parse(statement.thenStatement),no=statement.elseStatement?parse(statement.elseStatement):[]
+        return yes&&no?[{kind:'if',test:statement.expression,yes,no}]:null
+      }
+      if(ts.isTryStatement(statement)){
+        const body=parse(statement.tryBlock),caught=statement.catchClause?parse(statement.catchClause.block):[]
+        const after=statement.finallyBlock?parse(statement.finallyBlock):[]
+        return body&&caught&&after?[{kind:'try',body,after}]:null
+      }
+      return null
+    }
+    const steps:BootstrapStep[]=[]
+    let end=body.getStart()
+    for(const statement of body.statements){
+      const next=parse(statement)
+      if(!next)break
+      steps.push(...next);end=statement.end
+    }
+    const program:BootstrapProgram={file:owner.getSourceFile(),scope,end,steps,
+      writes:new Set([...writes].filter(write=>write.end<=end))}
+    bootstrapPrograms.set(owner,program);return program
+  }
+  function bootstrapBinding(binding:Cell):BootstrapProgram|null {
+    const changes=bindingChanges.get(binding)
+    if(!changes||changes.length<2)return null
+    const known=bootstrapBindings.get(binding)
+    if(known?.writers===changes.length)return known.program
+    let program:BootstrapProgram|null=null
+    const owner=scopes.get(changes[0]!)!.fn?.fn??changes[0]!.getSourceFile()
+    if(changes.every(change=>executionBoundary(change)===owner
+      &&(ts.isVariableDeclaration(change)?!!change.initializer&&bootstrapExpression(change.initializer)
+        :ts.isBinaryExpression(change)&&change.operatorToken.kind===ts.SyntaxKind.EqualsToken&&bootstrapExpression(change.right)))){
+      const candidate=bootstrapProgram(owner)
+      if(candidate&&changes.every(change=>candidate.writes.has(change)))program=candidate
+    }
+    bootstrapBindings.set(binding,{writers:changes.length,program});return program
+  }
+  function bootstrapFacts(program:BootstrapProgram,consumer:TypeScript.Identifier):NonNullable<BootstrapProgram['cached']> {
+    const phase=Number(functionFallback)+2*Number(missingFallback)+4*Number(globalMissingFallback),cached=program.cached
+    if(cached&&cached.phase===phase&&[...cached.dependencies].every(([target,size])=>target.values.size===size)){
+      for(const target of cached.dependencies.keys())read(target,consumer)
+      return cached
+    }
+    const dependencies=new Map<Cell,number>(),environment=new Map<Cell,Value>(),reads=new Map<TypeScript.Identifier,Value>()
+    let pending=false
+    const nativeValue=(item:Atom)=>item.kind==='object'&&!!item.realm||item.kind==='handle'&&item.handle==='document'
+    const expression=(node:TypeScript.Expression):Value|undefined=>{
+      if(ts.isParenthesizedExpression(node))return expression(node.expression)
+      if(ts.isStringLiteralLike(node))return one(literal(node.text))
+      if(ts.isNumericLiteral(node))return one(literal(Number(node.text)))
+      if(node.kind===ts.SyntaxKind.NullKeyword)return one(literal(null))
+      if(node.kind===ts.SyntaxKind.TrueKeyword||node.kind===ts.SyntaxKind.FalseKeyword)
+        return one(literal(node.kind===ts.SyntaxKind.TrueKeyword))
+      if(ts.isIdentifier(node)){
+        const binding=lookup(scopes.get(node)!,node.text)
+        if(binding){const result=environment.get(binding);if(result)reads.set(node,result);return result}
+        if(!bootstrapSlots.has(node.text)&&node.text!=='undefined')return undefined
+        return globalValue(node.text,program.scope.global,consumer)
+      }
+      if(ts.isPropertyAccessExpression(node)){
+        const owners=expression(node.expression),result:Value=new Set()
+        if(!owners)return undefined
+        for(const owner of owners){
+          // These slots are VM data on the actual bootstrap global. A DOM
+          // handle or a guest object may invoke RPC/getters and is not safe.
+          if(owner.kind!=='object'||!owner.realm)return undefined
+          for(const value of memberValues(owner,new Set([node.name.text]),consumer))result.add(value)
+        }
+        return result
+      }
+      if(ts.isPrefixUnaryExpression(node)){
+        const value=expression(node.operand),test=value?truth(value):undefined
+        return test===undefined?undefined:one(literal(!test))
+      }
+      if(ts.isBinaryExpression(node)){
+        const left=expression(node.left)
+        if(!left||!left.size){pending||=!!left;return undefined}
+        const test=truth(left),op=node.operatorToken.kind
+        if(op===ts.SyntaxKind.QuestionQuestionToken){
+          if([...left].every(item=>item.kind==='absent'||item.kind==='literal'&&item.literal===null))return expression(node.right)
+          return [...left].some(item=>item.kind==='absent'||item.kind==='literal'&&item.literal===null)?undefined:left
+        }
+        return test===undefined?undefined:(op===ts.SyntaxKind.AmpersandAmpersandToken?test:!test)?expression(node.right):left
+      }
+      return undefined
+    }
+    const safe=(value:Value|undefined):value is Value=>{
+      if(!value?.size){pending||=!!value;return false}
+      return [...value].every(item=>nativeValue(item)||item.kind==='literal'||item.kind==='absent')
+    }
+    const execute=(steps:readonly BootstrapStep[]):boolean=>{
+      for(const step of steps){
+        if(step.kind==='write'){
+          const value=step.expression?expression(step.expression):one(absent)
+          if(!safe(value))return false
+          environment.set(step.binding,value)
+        }else if(step.kind==='if'){
+          const value=expression(step.test)
+          if(!safe(value))return false
+          const test=truth(value)
+          if(test===undefined||!execute(test?step.yes:step.no))return false
+        }else if(!execute(step.body)||!execute(step.after))return false
+      }
+      return true
+    }
+    const previous=bootstrapDependencies
+    bootstrapDependencies=dependencies
+    let ready:boolean
+    try {ready=execute(program.steps)}finally {bootstrapDependencies=previous}
+    return program.cached={phase,dependencies,status:ready?'ready':pending?'pending':'unsupported',final:environment,reads}
+  }
+  function bootstrapRead(identifier:TypeScript.Identifier,binding:Cell):Value|undefined {
+    const program=bootstrapBinding(binding)
+    if(!program||identifier.getSourceFile()!==program.file)return undefined
+    const facts=bootstrapFacts(program,identifier)
+    if(facts.status==='pending'){functionFallbackReaders.add(identifier);return new Set()}
+    if(facts.status!=='ready')return undefined
+    const result=identifier.getStart()<program.end?facts.reads.get(identifier):facts.final.get(binding)
+    return result?.size&&[...result].every(item=>item.kind==='object'&&!!item.realm
+      ||item.kind==='handle'&&item.handle==='document')?result:undefined
+  }
   const truthfulReads=new Map<TypeScript.Identifier,boolean>()
   function requiresTruthyRead(identifier:TypeScript.Identifier,binding:Cell):boolean {
     const known=truthfulReads.get(identifier)
@@ -1391,30 +1661,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         return positive(expression.left,wanted)||positive(expression.right,wanted)
       return false
     }
-    const exits=(statement:TypeScript.Statement):boolean=>ts.isReturnStatement(statement)
-      ||ts.isBlock(statement)&&!!statement.statements.length&&ts.isReturnStatement(statement.statements.at(-1)!)
-    let required=false
-    for(let child:TypeScript.Node=identifier;child.parent&&!callable(child.parent);child=child.parent){
-      const parent=child.parent
-      if(ts.isIfStatement(parent)){
-        if(child===parent.thenStatement&&positive(parent.expression,true)
-          ||child===parent.elseStatement&&positive(parent.expression,false)){required=true;break}
-      }else if(ts.isConditionalExpression(parent)){
-        if(child===parent.whenTrue&&positive(parent.condition,true)
-          ||child===parent.whenFalse&&positive(parent.condition,false)){required=true;break}
-      }else if(ts.isBinaryExpression(parent)&&child===parent.right
-        &&(parent.operatorToken.kind===ts.SyntaxKind.AmpersandAmpersandToken&&positive(parent.left,true)
-          ||parent.operatorToken.kind===ts.SyntaxKind.BarBarToken&&positive(parent.left,false))){required=true;break}
-      else if(ts.isBlock(parent)){
-        for(const statement of parent.statements){
-          if(statement===child)break
-          if(ts.isIfStatement(statement)
-            &&(exits(statement.thenStatement)&&positive(statement.expression,false)
-              ||statement.elseStatement&&exits(statement.elseStatement)&&positive(statement.expression,true))){required=true;break}
-        }
-        if(required)break
-      }
-    }
+    const required=dominatingGuards(identifier).some(guard=>guard.truthRead!==false&&positive(guard.expression,guard.truthy))
     truthfulReads.set(identifier,required);return required
   }
   function selectorBinding(expression:TypeScript.Expression):{binding:Cell;readAt:TypeScript.Expression}|undefined {
@@ -1529,6 +1776,183 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return false
   }
+  type MemberAccess=TypeScript.PropertyAccessExpression|TypeScript.ElementAccessExpression
+  interface DominatingGuard {readonly expression:TypeScript.Expression;readonly truthy:boolean;readonly truthRead?:boolean}
+  interface GuardMember {
+    readonly access:MemberAccess;readonly receiver:TypeScript.Identifier;readonly binding:Cell
+    readonly selector:string|{readonly binding:Cell;readonly readAt:TypeScript.Expression}
+  }
+  const flowGuards=new Map<TypeScript.Node,readonly DominatingGuard[]>()
+  const blockGuardPrefixes=new Map<TypeScript.Block|TypeScript.SourceFile,Map<TypeScript.Statement,readonly DominatingGuard[]>>()
+  const callableGuardMembers=new Map<TypeScript.Expression,Map<boolean,readonly MemberAccess[]>>()
+  const guardMembers=new Map<MemberAccess,GuardMember|null>()
+  const exitsFlow=(statement:TypeScript.Statement):boolean=>ts.isReturnStatement(statement)||ts.isThrowStatement(statement)
+    ||ts.isContinueStatement(statement)||ts.isBreakStatement(statement)
+    ||ts.isBlock(statement)&&!!statement.statements.length&&exitsFlow(statement.statements.at(-1)!)
+  const returnsFlow=(statement:TypeScript.Statement):boolean=>ts.isReturnStatement(statement)
+    ||ts.isBlock(statement)&&!!statement.statements.length&&returnsFlow(statement.statements.at(-1)!)
+  function guardPrefix(block:TypeScript.Block|TypeScript.SourceFile,statement:TypeScript.Statement):readonly DominatingGuard[] {
+    let prefixes=blockGuardPrefixes.get(block)
+    if(!prefixes){
+      prefixes=new Map();blockGuardPrefixes.set(block,prefixes)
+      let guards:readonly DominatingGuard[]=[]
+      for(const previous of block.statements){
+        prefixes.set(previous,guards)
+        if(ts.isIfStatement(previous)){
+          if(exitsFlow(previous.thenStatement))guards=[...guards,{expression:previous.expression,truthy:false,
+            truthRead:returnsFlow(previous.thenStatement)}]
+          else if(previous.elseStatement&&exitsFlow(previous.elseStatement))
+            guards=[...guards,{expression:previous.expression,truthy:true,truthRead:returnsFlow(previous.elseStatement)}]
+        }
+      }
+    }
+    return prefixes.get(statement)??[]
+  }
+  function dominatingGuards(node:TypeScript.Node):readonly DominatingGuard[] {
+    const pending:TypeScript.Node[]=[]
+    let current:TypeScript.Node|undefined=node
+    while(current&&!flowGuards.has(current)){pending.push(current);current=current.parent}
+    while(pending.length){
+      const child=pending.pop()!,parent=child.parent
+      let guards=parent?flowGuards.get(parent)??[]:[]
+      if(parent){
+        if(ts.isIfStatement(parent)&&child===parent.thenStatement)
+          guards=[...guards,{expression:parent.expression,truthy:true}]
+        else if(ts.isIfStatement(parent)&&child===parent.elseStatement)
+          guards=[...guards,{expression:parent.expression,truthy:false}]
+        else if(ts.isConditionalExpression(parent)&&(child===parent.whenTrue||child===parent.whenFalse))
+          guards=[...guards,{expression:parent.condition,truthy:child===parent.whenTrue}]
+        else if(ts.isBinaryExpression(parent)&&child===parent.right
+          &&[ts.SyntaxKind.AmpersandAmpersandToken,ts.SyntaxKind.BarBarToken].includes(parent.operatorToken.kind))
+          guards=[...guards,{expression:parent.left,truthy:parent.operatorToken.kind===ts.SyntaxKind.AmpersandAmpersandToken}]
+        else if((ts.isBlock(parent)||ts.isSourceFile(parent))&&ts.isStatement(child))
+          guards=[...guards,...guardPrefix(parent,child)]
+      }
+      // Only an expression creates its closure at this guarded position.
+      // A hoisted declaration can have been called before the outer guard.
+      if(callable(child)&&!ts.isFunctionExpression(child)&&!ts.isArrowFunction(child))guards=[]
+      flowGuards.set(child,guards)
+    }
+    return flowGuards.get(node)!
+  }
+  function callableMembers(expression:TypeScript.Expression,wanted:boolean):readonly MemberAccess[] {
+    let byTruth=callableGuardMembers.get(expression)
+    if(!byTruth){byTruth=new Map();callableGuardMembers.set(expression,byTruth)}
+    const cached=byTruth.get(wanted)
+    if(cached)return cached
+    let result:readonly MemberAccess[]=[]
+    if(ts.isParenthesizedExpression(expression))result=callableMembers(expression.expression,wanted)
+    else if(ts.isPrefixUnaryExpression(expression)&&expression.operator===ts.SyntaxKind.ExclamationToken)
+      result=callableMembers(expression.operand,!wanted)
+    else if(ts.isBinaryExpression(expression)){
+      const op=expression.operatorToken.kind
+      if(op===(wanted?ts.SyntaxKind.AmpersandAmpersandToken:ts.SyntaxKind.BarBarToken))
+        result=[...callableMembers(expression.left,wanted),...callableMembers(expression.right,wanted)]
+      else if([ts.SyntaxKind.EqualsEqualsToken,ts.SyntaxKind.EqualsEqualsEqualsToken,
+        ts.SyntaxKind.ExclamationEqualsToken,ts.SyntaxKind.ExclamationEqualsEqualsToken].includes(op)){
+        const equal=op===ts.SyntaxKind.EqualsEqualsToken||op===ts.SyntaxKind.EqualsEqualsEqualsToken
+        if(equal===wanted)for(const [left,right] of [[expression.left,expression.right],[expression.right,expression.left]] as const)
+          if(ts.isTypeOfExpression(left)&&ts.isStringLiteralLike(right)&&right.text==='function'
+            &&(ts.isPropertyAccessExpression(left.expression)||ts.isElementAccessExpression(left.expression)))result=[left.expression]
+      }
+    }
+    byTruth.set(wanted,result);return result
+  }
+  function guardMember(access:MemberAccess):GuardMember|null {
+    if(guardMembers.has(access))return guardMembers.get(access)!
+    let result:GuardMember|null=null
+    if(ts.isIdentifier(access.expression)){
+      const receiver=access.expression,binding=lookup(scopes.get(receiver)!,receiver.text)
+      const selector=ts.isPropertyAccessExpression(access)?access.name.text:
+        ts.isStringLiteralLike(access.argumentExpression)?access.argumentExpression.text:selectorBinding(access.argumentExpression)
+      if(binding&&selector)result={access,receiver,binding,selector}
+    }
+    guardMembers.set(access,result);return result
+  }
+  function unchangedGuardBinding(binding:Cell,guard:TypeScript.Expression,use:TypeScript.Node):boolean {
+    const guardFn=scopes.get(guard)!.fn,useFn=scopes.get(use)!.fn,changes=bindingChanges.get(binding)??[]
+    if(guardFn===useFn){
+      const initial=changes.length===1?changes[0]:undefined,initialFn=initial?scopes.get(initial)!.fn:undefined
+      // A callback's own guard may read an outer local created once. Its
+      // original initializer is not an external callback mutation.
+      const outerInitialization=!!initial&&!!initialFn&&ts.isVariableDeclaration(initial)&&!!initial.initializer
+        &&initial.end<=guard.getStart()&&executionBoundary(initial)===initialFn.fn
+      return !changes.some(change=>scopes.get(change)!.fn!==guardFn&&!outerInitialization
+        ||change.getStart()>guard.end&&change.getStart()<use.getStart())
+    }
+    // A sole assignment in a loop is still repeated. Only a once-created
+    // local binding may carry a fact into a later callback closure.
+    if(!guardFn)return false
+    if(guardFn.params?.includes(binding))return changes.length===0
+    return changes.length===1&&changes[0]!.end<=guard.getStart()
+      &&scopes.get(changes[0]!)!.fn===guardFn&&executionBoundary(changes[0]!)===guardFn.fn
+  }
+  function sameGuardSelector(before:GuardMember['selector'],after:GuardMember['selector']):boolean {
+    if(typeof before==='string')return before===after
+    if(typeof after==='string'||before.binding!==after.binding)return false
+    const beforeStart=before.readAt.getStart(),afterStart=after.readAt.getStart()
+    const low=Math.min(beforeStart,afterStart),high=Math.max(beforeStart,afterStart)
+    if((bindingChanges.get(before.binding)??[]).some(change=>change.getStart()>low&&change.getStart()<high))return false
+    return constantBindings.has(before.binding)||executionBoundary(before.readAt)===executionBoundary(after.readAt)
+      ||scopes.get(before.readAt)!.fn?.params?.includes(before.binding)===true
+  }
+  function guardCallIsPure(node:TypeScript.Node):boolean {
+    if(!ts.isCallExpression(node))return false
+    const targets=finalValue(node.expression)
+    return !!targets.size&&[...targets].every(target=>target.kind==='absent'||helperHostContext(target)
+      ||target.kind==='native'&&(target.nativeName==='getContext'&&target.receiver?.handle==='tavern'
+        ||target.nativeName==='getRequestHeaders'&&target.operation?.capability==='owned-persona-snapshot'))
+  }
+  function intactGuardEvents(owner:TypeScript.Node,start:number,end:number,frozenHelper:boolean):boolean {
+    const events=guardEvents.get(owner)??[]
+    let low=0,high=events.length
+    while(low<high){const middle=(low+high)>>>1
+      if(events[middle]!.start<=start)low=middle+1;else high=middle}
+    for(let index=low;index<events.length&&events[index]!.start<end;index++){
+      const event=events[index]!
+      if(event.kind==='write'||event.kind==='suspend'||!frozenHelper&&!guardCallIsPure(event.node))return false
+    }
+    return true
+  }
+  function unchangedGuardMember(member:GuardMember,guard:TypeScript.Expression,use:MemberAccess):boolean {
+    if(!unchangedGuardBinding(member.binding,guard,use))return false
+    if(typeof member.selector!=='string'&&!unchangedGuardBinding(member.selector.binding,guard,use))return false
+    const guardFn=scopes.get(guard)!.fn,captured=guardFn!==scopes.get(use)!.fn
+    const receivers=finalValue(member.access.expression)
+    const frozenHelper=!!receivers.size&&[...receivers].every(receiver=>truth(one(receiver))===false
+      ||receiver.kind==='handle'&&receiver.handle==='helper')
+    if(captured&&!frozenHelper)return false
+    const owner=guardFn?.fn??units.get(guard)!.file
+    if(!intactGuardEvents(owner,guard.end,captured?owner.end:use.getStart(),frozenHelper))return false
+    if(captured){
+      let fn=scopes.get(use)!.fn
+      while(fn&&fn!==guardFn){
+        if(!intactGuardEvents(fn.fn!,-1,fn.fn!.end,frozenHelper))return false
+        fn=scopes.get(fn.fn!.parent)!.fn
+      }
+      if(fn!==guardFn)return false
+    }
+    return true
+  }
+  function guardedCallTargets(node:TypeScript.CallExpression|TypeScript.NewExpression,targets:Value):Value {
+    if(![...targets].some(target=>target.kind==='absent'&&target.nativeName?.startsWith('interaction-absent:')))return targets
+    let subject=node.expression
+    if(ts.isPropertyAccessExpression(subject)&&['bind','call','apply'].includes(subject.name.text)){
+      const ownMethod=subject.name.text
+      if([...finalValue(subject.expression)].some(target=>target.fields?.get(ownMethod)?.values.size))return targets
+      subject=subject.expression
+    }
+    if(!ts.isPropertyAccessExpression(subject)&&!ts.isElementAccessExpression(subject))return targets
+    const actual=guardMember(subject)
+    if(!actual)return targets
+    for(const fact of dominatingGuards(node))for(const access of callableMembers(fact.expression,fact.truthy)){
+      const guarded=guardMember(access)
+      if(!guarded||guarded.binding!==actual.binding)continue
+      if(sameGuardSelector(guarded.selector,actual.selector)&&unchangedGuardMember(guarded,access,subject))
+        return new Set([...targets].filter(target=>callableTruth(target)!==false))
+    }
+    return targets
+  }
   /** A direct `if (name in receiver) receiver.name = value` has no intervening
    * code before the assignment captures that same lexical receiver. Preserve
    * the real frozen catalog absence rather than granting it composer writes. */
@@ -1553,6 +1977,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   const unprovenNativeBoundCalls=new Set<TypeScript.Node>()
   const promiseSettlements=new Map<TypeScript.Node,{promise:Atom;rows:Atom;row:Atom}>()
   function invokeFunction(fn:Atom,args:readonly Value[],node:TypeScript.Node,receiver?:Value,selectorExpression?:TypeScript.Expression):Value {
+    if(helperHostContext(fn))return one(sourceDictionary('helper-host.context',['chatId']))
     if(readerGuestHelper(fn))return readerGuestResult(fn,args,node)
     if(fn.kind==='choice'){
       const result:Value=new Set()
@@ -1678,7 +2103,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(ts.isIdentifier(node)){
       if(namePosition(node))return
       const binding=lookup(scope,node.text)
-      if(binding){const incoming=read(binding,node)
+      if(binding){const stored=read(binding,node),incoming=bootstrapRead(node,binding)??stored
         // Original truth guards narrow immutable local DATA reads only. Native
         // references remain truthy and all original effect nodes stay visited.
         emit(requiresTruthyRead(node,binding)?[...incoming].filter(item=>truth(one(item))!==false):incoming)
@@ -1745,13 +2170,17 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       const types=new Set<string>()
       for(const item of value(node.expression,node))types.add(item.kind==='absent'?'undefined':item.kind==='native'||item.kind==='function'?'function'
         :item.kind==='bound'||item.kind==='invoke'||item.kind==='combiner'||item.kind==='choice'||item.kind==='factory-callback'?'function'
-        :item.kind==='guest'&&item.nativeName==='Object'?'function'
+        :(item.kind==='guest'&&item.nativeName==='Object'||helperHostContext(item))?'function'
         :item.kind==='literal'?typeof item.literal:item.kind==='unknown'?'unknown':'object')
       for(const type of types)emit(one(literal(type,
         [...value(node.expression,node)].some(item=>item.fixedGuard))));return
     }
     if(ts.isBinaryExpression(node)){
       const left=value(node.left,node),right=value(node.right,node),op=node.operatorToken.kind
+      if(op===ts.SyntaxKind.PlusToken){
+        const text=concatenatedLiteral(node)
+        if(text!==null){emit(one(literal(text)));return}
+      }
       if(assignment(node)){
         if(ts.isIdentifier(node.left)){const binding=lookup(scope,node.left.text);add(binding??field(scope.global,node.left.text),right)}
         if(ts.isPropertyAccessExpression(node.left)||ts.isElementAccessExpression(node.left)){
@@ -1890,6 +2319,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         }
         else if(fn.kind==='native')emit(invokeFunction(fn,args,node,receiver))
         else if(fn.kind==='guest'){
+          if(helperHostContext(fn)){emit(invokeFunction(fn,args,node));continue}
           if(readerGuestHelper(fn)){emit(readerGuestResult(fn,args,node));continue}
           if(fn.nativeName&&fn.nativeName!=='Object.assign'){
             const reflected=reflection(fn.nativeName,args,node)
@@ -2075,6 +2505,9 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     return !!astOptions.readerPageApis&&value.kind==='guest'
       &&['reader.errorCatched','reader.waitGlobalInitialized','reader._.get'].includes(value.nativeName??'')
   }
+  function helperHostContext(value:Atom):boolean {
+    return value.kind==='guest'&&value.nativeName==='helper-host.getContext'
+  }
   const readerGuestCalls=new Map<TypeScript.Node,Map<string,readonly Value[]>>()
   function readerGuestResult(fn:Atom,args:readonly Value[],node:TypeScript.Node):Value {
     let calls=readerGuestCalls.get(node)
@@ -2147,15 +2580,19 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     if(name==='Blob'){
       let blob=objects.get(node)
-      if(!blob){blob=atom('blob',{sources:cell(),mime:cell()});objects.set(node,blob)}
+      if(!blob){blob=atom('blob',{sources:cell(),mime:cell(),constructorRealms:new Set()});objects.set(node,blob)}
+      blob.constructorRealms!.add(fn.receiver!.realm!)
       for(const array of args[0]??[])if(array.elements)add(blob.sources!,read(array.elements,node))
       for(const option of args[1]??[])if(option.fields)add(blob.mime!,read(field(option,'type'),node))
       return one(blob)
     }
     if(operation.returns==='object-url'){
       let url=objects.get(node)
-      if(!url){url=atom('url',{sources:cell()});objects.set(node,url)}
-      for(const blob of args[0]??[])if(blob.sources)add(url.sources!,read(blob.sources,node))
+      if(!url){url=atom('url',{sources:cell(),sourceBlobs:cell()});objects.set(node,url)}
+      for(const blob of args[0]??[])if(blob.sources){
+        add(url.sources!,read(blob.sources,node))
+        add(url.sourceBlobs!,one(blob))
+      }
       return one(url)
     }
     // Native getters are bound to the descriptor that created their facade.
@@ -2242,10 +2679,19 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       for(const receiver of finalValue(target.expression))if(receiver.kind==='handle'&&receiver.mount)
         for(const name of selected)if(name==='src'||name==='srcdoc'){
           const incoming=name==='src'?immediatelyStoredObjectUrl(node.right,node)??finalValue(node.right):finalValue(node.right)
-          const pageId=mountedPage(incoming,receiver.realm!)
-          if(!pageId||loadedPages.has(pageId))continue
+          const pageId=mountedPage(incoming)
+          if(!pageId)continue
+          if(receiver.realm!=='helper-root'&&sourceCarriers.get(pageId)!==receiver.realm){
+            report(units.get(node)!,'BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN',node);continue
+          }
+          const parent=sourceParents.get(pageId)
+          if(parent!==undefined&&parent!==receiver.realm){
+            report(units.get(node)!,'BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN',node);continue
+          }
+          sourceParents.set(pageId,receiver.realm!)
+          if(loadedPages.has(pageId))continue
           loadedPages.add(pageId)
-          for(const input of astOptions.loadSourcePage(pageId)){
+          for(const input of astOptions.loadSourcePage(pageId,receiver.realm!)){
             const state=registerUnit(input)
             registerGlobalWrites(state)
             registerBindingWrites(state)
@@ -2379,19 +2825,24 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     return sources
   }
-  function mountedPage(items:Value,frameRealm:string):string|undefined {
+  function mountedPage(items:Value):string|undefined {
     const sources=mountSources(items)
     if(sources.size!==1||[...sources][0]!.kind!=='html')return undefined
     const pageId=[...sources][0]!.pageId!
-    return sourceParents.get(pageId)===frameRealm?pageId:undefined
+    return pageId
   }
-  function mountValue(items:Value,state:UnitState,node:TypeScript.Node,frameRealm:string):void {
+  function mountValue(items:Value,state:UnitState,node:TypeScript.Node,frameRealm:string,transport:'src'|'srcdoc'):void {
     const sources=mountSources(items)
     if(sources.size!==1||[...sources][0]!.kind!=='html')report(state,'BROWSER3_SOURCE_PAGE_MOUNT_UNPROVEN',node)
     else {
       const pageId=[...sources][0]!.pageId!
-      if(sourceParents.get(pageId)!==frameRealm)report(state,'BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN',node)
-      else {state.mounts.add(pageId);state.caps.add('owned-source-html-page')}
+      if(sourceParent(pageId)!==frameRealm)report(state,'BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN',node)
+      else {
+        state.mounts.add(pageId);state.caps.add('owned-source-html-page')
+        sourceMounts.push({pageId,parentRealm:frameRealm,transport,
+          blobConstructorRealms:[...new Set([...items].flatMap(item=>
+            [...item.sourceBlobs?.values??[]].flatMap(blob=>[...blob.constructorRealms??[]])))].sort()})
+      }
     }
   }
   function immediatelyStoredObjectUrl(expression:TypeScript.Expression,write:TypeScript.BinaryExpression):Value|undefined {
@@ -2496,7 +2947,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         }
         continue
       }
-      const targets=finalValue(node.expression)
+      const targets=guardedCallTargets(node,finalValue(node.expression))
       if([...targets].some(fn=>fn.kind==='absent'&&(fn.nativeName?.startsWith('state-absent:')
         ||fn.nativeName?.startsWith('interaction-absent:')))){
         let caught=false
@@ -2577,7 +3028,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         for(const name of selected){
           if(fixedMembershipExcludes(receiver,target,node,name)){interactionFacadeUnits.add(state);continue}
           if(receiver.mount&&['src','srcdoc'].includes(name))mountValue(
-            name==='src'?immediatelyStoredObjectUrl(node.right,node)??finalValue(node.right):finalValue(node.right),state,node,receiver.realm!)
+            name==='src'?immediatelyStoredObjectUrl(node.right,node)??finalValue(node.right):finalValue(node.right),state,node,receiver.realm!,name as 'src'|'srcdoc')
           else if(guestField(receiver,name)){
             if(receiver.handle==='document')interactionFacadeUnits.add(state)
             continue
@@ -2671,6 +3122,6 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   return {proofs:states.map(state=>({unit:state.input,coverage:state.coverage,capabilities:[...state.caps].sort(),
     keys:[...state.keys].sort(),pageMounts:[...state.mounts].sort(),media:[...state.media.values()],
     stateFacade:stateFacadeUnits.has(state),interactionFacade:interactionFacadeUnits.has(state),
-    stateImports:stateImportSites.get(state)??[]})),diagnostics,
+    stateImports:stateImportSites.get(state)??[]})),diagnostics,sourceMounts,
     ...diagnosticEvidence?{diagnosticEvidence}: {}}
 }

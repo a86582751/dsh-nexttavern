@@ -4,7 +4,8 @@ import {parseSourceHtmlCandidateV1} from './tavern-author-html-compiler-v1.mjs'
 import {analyseBrowserAstV3} from './tavern-author-browser-ast-v3.mjs'
 import type {BrowserAstUnitV3,BrowserAstProofV3} from './tavern-author-browser-ast-v3.mjs'
 import {BROWSER_BOUNDS_V3,BROWSER_PROFILE_V3,BROWSER_CAPABILITY_CONTRACT_V3,
-  BROWSER_STATE_PROFILE_V3,BROWSER_STATE_CAPABILITY_CONTRACT_V3,BROWSER_INTERACTION_STATE_PROFILE_V3}
+  BROWSER_STATE_PROFILE_V3,BROWSER_STATE_CAPABILITY_CONTRACT_V3,BROWSER_INTERACTION_STATE_PROFILE_V3,
+  BROWSER_ROOT_SOURCE_PROFILE_V3,BROWSER_ROOT_SOURCE_CAPABILITY_CONTRACT_V3}
   from './tavern-author-browser-profile-v3.mjs'
 import type {BrowserCompilationInputV3,BrowserCompilationV3,BrowserRuntimeArtifactV3,
   BrowserDeclaredChatKeyV3,BrowserWriterOriginV3,BrowserCompiledScriptV3,BrowserSourcePagePlanV3,
@@ -82,7 +83,7 @@ export function createBrowserCompilerV3(artifact:BrowserRuntimeArtifactV3) {
     if(input.schemaVersion!==3||input.encoding!=='native-author-browser-compilation-input-v3'
       ||input.scripts.length>BROWSER_BOUNDS_V3.scripts||input.sourcePages.length>BROWSER_BOUNDS_V3.pages)
       return {kind:'refused',diagnostics:[{code:'BROWSER3_COMPILATION_INPUT_UNSUPPORTED'}]}
-    const scripts=new Map<number,BrowserRawScriptV1>(),units:BrowserAstUnitV3[]=[],parsedPages=new Map<string,HtmlParsedCandidateV1>()
+    const scripts=new Map<number,BrowserRawScriptV1>()
     const pageInputs=new Map<string,SourceHtmlInputV1>(),pageCarriers=new Map<number,string>()
     let previous=-1
     for(const script of input.scripts){
@@ -100,38 +101,72 @@ export function createBrowserCompilerV3(artifact:BrowserRuntimeArtifactV3) {
       }
       pageCarriers.set(carrier.ordinal,pageId);pageInputs.set(pageId,page)
     }
-    for(const script of scripts.values())if(script.descriptor.enabled){
-      const pageId=pageCarriers.get(script.ordinal),page=pageId?pageInputs.get(pageId):undefined
-      units.unshift({realm:'carrier-'+script.ordinal,parentRealm:'carrier-'+script.ordinal,
-        parentDocumentOwner:'registered-reader',
-        javascript:script.descriptor.source,ordinal:script.ordinal,identity:script.descriptor.identity,
-        pointer:script.descriptor.pointer,pageId:null,inlineOrdinal:null,
-        sourceResources:input.sourceResources,
-        ...page?{sourceHtml:{pageId:pageId!,html:page.html,scriptIdentity:script.descriptor.identity,resourcePath:page.resourcePath}}:{}})
-    }
-    // A script DATA field is passive until its value reaches an owned frame
-    // mount. The AST owner discovers that use before parsing page contents.
-    const result=analyseBrowserAstV3(units,{loadSourcePage(pageId){
-      const page=pageInputs.get(pageId)!,carrier=scripts.get(page.carrier.originalOrdinal)!
-      try{
-        const parsed=parseSourceHtmlCandidateV1(page)
-        parsedPages.set(pageId,parsed);diagnostics.push(...htmlRequirements(parsed,page))
-        if(parsed.diagnostics.some(diagnostic=>diagnostic.phase!=='html'))
-          diagnostics.push({code:'BROWSER3_PAGE_SYNTAX_UNSUPPORTED',ordinal:carrier.ordinal})
-        return parsed.scripts.filter(inline=>inline.mode==='classic').map(inline=>({
-          realm:pageId,parentRealm:'carrier-'+carrier.ordinal,javascript:inline.javascript,
+    const parsedSourceFiles=new Map<string,Map<number|null,import('typescript').SourceFile>>()
+    const pageOriginals=new Map<string,{readonly parsed?:HtmlParsedCandidateV1;
+      readonly diagnostics:readonly BrowserDiagnosticV1[]}>()
+    function solveTopology(sharedParent:boolean) {
+      const units:BrowserAstUnitV3[]=[],parsedPages=new Map<string,HtmlParsedCandidateV1>()
+      const pageDiagnostics:BrowserDiagnosticV1[]=[]
+      for(const script of scripts.values())if(script.descriptor.enabled){
+        const realm='carrier-'+script.ordinal,pageId=pageCarriers.get(script.ordinal),page=pageId?pageInputs.get(pageId):undefined
+        units.unshift({realm,parentRealm:sharedParent?'helper-root':realm,
+          ...sharedParent?{parentDocumentOwner:'registered-reader' as const}:{},
+          javascript:script.descriptor.source,ordinal:script.ordinal,identity:script.descriptor.identity,
+          pointer:script.descriptor.pointer,pageId:null,inlineOrdinal:null,
+          sourceResources:input.sourceResources,
+          ...page?{sourceHtml:{pageId:pageId!,html:page.html,scriptIdentity:script.descriptor.identity,resourcePath:page.resourcePath}}:{}})
+      }
+      // Reuse syntax originals, never another topology's reached-page set or
+      // semantic state. A DATA page is parsed only when this solve mounts it.
+      const result=analyseBrowserAstV3(units,{parsedSourceFiles,loadSourcePage(pageId,parentRealm){
+        const page=pageInputs.get(pageId)!,carrier=scripts.get(page.carrier.originalOrdinal)!
+        let original=pageOriginals.get(pageId)
+        if(!original){
+          try{
+            const parsed=parseSourceHtmlCandidateV1(page),requirements=htmlRequirements(parsed,page)
+            if(parsed.diagnostics.some(diagnostic=>diagnostic.phase!=='html'))
+              requirements.push({code:'BROWSER3_PAGE_SYNTAX_UNSUPPORTED',ordinal:carrier.ordinal})
+            original={parsed,diagnostics:requirements}
+          }catch(error){
+            const code=error instanceof Error&&/^HTML_[A-Z0-9_]+$/.test(error.message)?error.message:'BROWSER3_PAGE_PARSE_FAILED'
+            original={diagnostics:[{code,ordinal:carrier.ordinal,pointer:carrier.descriptor.pointer+'/data/html'}]}
+          }
+          pageOriginals.set(pageId,original)
+        }
+        pageDiagnostics.push(...original.diagnostics)
+        if(!original.parsed)return []
+        parsedPages.set(pageId,original.parsed)
+        return original.parsed.scripts.filter(inline=>inline.mode==='classic').map(inline=>({
+          realm:pageId,parentRealm,...parentRealm==='helper-root'?{parentDocumentOwner:'registered-reader' as const}:{},
+          javascript:inline.javascript,
           ordinal:carrier.ordinal,identity:carrier.descriptor.identity,
           pointer:carrier.descriptor.pointer+'/data/html#inline-'+inline.inlineOrdinal,pageId,inlineOrdinal:inline.inlineOrdinal,
           sourceResources:input.sourceResources,
           sourceHtml:{pageId,html:page.html,scriptIdentity:carrier.descriptor.identity,resourcePath:page.resourcePath},
         }))
-      }catch(error){
-        const code=error instanceof Error&&/^HTML_[A-Z0-9_]+$/.test(error.message)?error.message:'BROWSER3_PAGE_PARSE_FAILED'
-        diagnostics.push({code,ordinal:carrier.ordinal,pointer:carrier.descriptor.pointer+'/data/html'})
-        return []
-      }
-    }})
-    diagnostics.push(...result.diagnostics)
+      }})
+      return {result,parsedPages,diagnostics:[...pageDiagnostics,...result.diagnostics]}
+    }
+    const needsState=(result:ReturnType<typeof analyseBrowserAstV3>)=>result.proofs.some(proof=>
+      proof.interactionFacade||proof.stateFacade||proof.stateImports.length>0)
+    // Profile5/6 always run with one shared helper host. Only a base4 result
+    // needs the actual self-parent solve; an environment-dependent upgrade
+    // cannot select its own topology by trying until one happens to admit it.
+    const shared=solveTopology(true)
+    const rootPages=new Set(shared.result.sourceMounts.filter(mount=>mount.parentRealm==='helper-root').map(mount=>mount.pageId))
+    // A newly reachable root page cannot establish the state topology which
+    // was needed to reach that page in the first place.
+    const sharedState=shared.result.proofs.some(proof=>(proof.unit.pageId===null||!rootPages.has(proof.unit.pageId))
+      &&(proof.interactionFacade||proof.stateFacade||proof.stateImports.length>0))
+    const selected=sharedState?shared:solveTopology(false)
+    if(selected!==shared&&needsState(selected.result))
+      diagnostics.push({code:'BROWSER3_PROFILE_PARENT_DEPENDENCY_UNSUPPORTED'})
+    const {result,parsedPages}=selected
+    const executionRealm=(realm:string)=>parsedPages.has(realm)
+      ?'source-page:'+parsedPages.get(realm)!.candidateSha256:realm
+    const rootSourceProfile=selected===shared&&sharedState
+      &&result.sourceMounts.some(mount=>mount.parentRealm==='helper-root')
+    diagnostics.push(...selected.diagnostics)
     const declarations:BrowserDeclaredChatKeyV3[]=[],plans:BrowserSourcePagePlanV3[]=[]
     const declarationsByKey=new Map<string,BrowserDeclaredChatKeyV3>()
     function retainDeclaration(writer:BrowserWriterOriginV3,key:string,pointer:string):BrowserDeclaredChatKeyV3 {
@@ -160,14 +195,36 @@ export function createBrowserCompilerV3(artifact:BrowserRuntimeArtifactV3) {
           requiredCapabilities:proof?.capabilities??[],declarations:own}
         admissions.push({...body,admissionSha256:recordSha256(body)});localDeclarations.push(...own)
       }
+      const pageMounts=rootSourceProfile?result.sourceMounts.filter(mount=>mount.pageId===pageId):[]
       const resources=browserPageResourcesV3(parsed,pageProofs),caps=sorted(['owned-source-html-page','isolated-dom-text',
-        ...pageProofs.flatMap(proof=>proof.capabilities),...resources.length?['owned-media' as const]:[]])
+        ...pageProofs.flatMap(proof=>proof.capabilities),...resources.length?['owned-media' as const]:[],
+        ...pageMounts.some(mount=>mount.parentRealm==='helper-root')?['owned-helper-root-source-frame' as const]:[]])
+      const sourceMount:BrowserSourcePagePlanV3['sourceMount']=pageMounts.length?{
+        schemaVersion:1,parentRealm:pageMounts[0]!.parentRealm,src:pageMounts.some(mount=>mount.transport==='src'),
+        srcdoc:pageMounts.some(mount=>mount.transport==='srcdoc'),
+        blobConstructorRealms:[...new Set(pageMounts.flatMap(mount=>mount.blobConstructorRealms.map(executionRealm)))].sort(),
+      }:undefined
       const body={schemaVersion:3 as const,encoding:'native-author-browser-source-page-plan-v3' as const,
         authority:'compiled-program-data-only' as const,origin:parsed.origin,parsed,scripts:admissions,resources,
-        requiredCapabilities:caps,declarations:localDeclarations}
+        requiredCapabilities:caps,declarations:localDeclarations,...sourceMount?{sourceMount}:{}}
       plans.push({...body,pagePlanSha256:recordSha256(body)})
       if(!result.proofs.some(proof=>proof.pageMounts.includes(pageId)))
         diagnostics.push({code:'BROWSER3_SOURCE_PAGE_MOUNT_UNPROVEN',ordinal:carrier.ordinal})
+    }
+    // Constructor-time facts cannot use a future frame parent to choose a
+    // Source origin. The runtime consumes these unique delegates directly.
+    const delegates=new Map<string,string>()
+    for(const plan of plans){
+      const grant=plan.sourceMount,hash=plan.origin.htmlSha256
+      if(!grant)continue
+      const keys=[...grant.blobConstructorRealms.map(realm=>'blob:'+realm+':'+hash),
+        ...grant.srcdoc?['srcdoc:'+grant.parentRealm+':'+hash]:[]]
+      for(const key of keys){
+        const prior=delegates.get(key)
+        if(prior&&prior!==plan.pagePlanSha256)
+          diagnostics.push({code:'BROWSER3_SOURCE_PAGE_DELEGATION_AMBIGUOUS',ordinal:plan.origin.carrier.originalOrdinal})
+        else delegates.set(key,plan.pagePlanSha256)
+      }
     }
     const compiled:BrowserCompiledScriptV3[]=[]
     for(const script of scripts.values()){
@@ -208,13 +265,18 @@ export function createBrowserCompilerV3(artifact:BrowserRuntimeArtifactV3) {
     }:undefined
     const interactionProfile=result.proofs.some(proof=>proof.interactionFacade)
     const stateProfile=interactionProfile||!!stateImports||result.proofs.some(proof=>proof.stateFacade)
-    if(stateProfile&&!artifact.stateIdentity)
+    if(stateProfile&&!rootSourceProfile&&!artifact.stateIdentity)
       return {kind:'refused',diagnostics:[{code:'BROWSER_STATE_RUNTIME_UNAVAILABLE'}]}
+    if(rootSourceProfile&&!artifact.rootSourceIdentity)
+      return {kind:'refused',diagnostics:[{code:'BROWSER_ROOT_SOURCE_RUNTIME_UNAVAILABLE'}]}
+    const profile=rootSourceProfile?BROWSER_ROOT_SOURCE_PROFILE_V3:interactionProfile
+      ?BROWSER_INTERACTION_STATE_PROFILE_V3:stateProfile?BROWSER_STATE_PROFILE_V3:BROWSER_PROFILE_V3
+    const runtime=rootSourceProfile?artifact.rootSourceIdentity!:stateProfile?artifact.stateIdentity!:artifact.identity
+    const capabilityContract=rootSourceProfile?BROWSER_ROOT_SOURCE_CAPABILITY_CONTRACT_V3:stateProfile
+      ?BROWSER_STATE_CAPABILITY_CONTRACT_V3:BROWSER_CAPABILITY_CONTRACT_V3
     const body:Omit<BrowserProgramV3,'programSha256'>={schemaVersion:3,encoding:'native-author-browser-program-v3',
       authority:'compiled-program-data-only',source:input.source,compiler:identity,
-      profile:interactionProfile?BROWSER_INTERACTION_STATE_PROFILE_V3:stateProfile?BROWSER_STATE_PROFILE_V3:BROWSER_PROFILE_V3,
-      runtime:stateProfile?artifact.stateIdentity!:artifact.identity,
-      capabilityContract:stateProfile?BROWSER_STATE_CAPABILITY_CONTRACT_V3:BROWSER_CAPABILITY_CONTRACT_V3,
+      profile,runtime,capabilityContract,
       ...stateImports?{stateImports}:{},scripts:compiled,sourcePages:plans,
       declarations,generationDeclarationId,
       requiredCapabilities:sorted([...compiled.flatMap(row=>row.requiredCapabilities),...plans.flatMap(row=>row.requiredCapabilities)])}

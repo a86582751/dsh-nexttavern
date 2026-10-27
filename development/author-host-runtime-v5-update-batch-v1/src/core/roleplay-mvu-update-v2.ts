@@ -520,6 +520,16 @@ export function parseMvuUpdateRegionV2(narrative:string,options?:MvuUpdateParseO
     return {candidate:{kind:'parsed',...descriptor,candidateSha256:recordSha256(descriptor)},outside:region.outside!}
   } catch(error){return {candidate:rejected(error),outside:narrative}}
 }
+/** Explicit current-owner policy. The base parser and historical callers keep
+ * their strict grammar; only a matching leading analysis pair is commentary. */
+export function parseMvuUpdateAnalysisAliasRegionV2(narrative:string,
+  options?:MvuUpdateParseOptionsV2&{openingText?:true}):
+  ReturnType<typeof parseMvuUpdateRegionV2>&{analysisAlias:boolean} {
+  // Preserve the original ASCII lengths and leave Source/canonical bytes raw.
+  const text=narrative.replace(/(<UpdateVariable>\s*)<(analysis|Analysis)>([\s\S]*?)<\/\2>/,
+    (_match,prefix:string,_tag:string,content:string)=>`${prefix}<Analyze> ${content} </Analyze>`)
+  return {...parseMvuUpdateRegionV2(text,options),analysisAlias:text!==narrative}
+}
 export function parseMvuUpdateV2(narrative:string,options?:MvuUpdateParseOptionsV2):MvuUpdateCandidateV2 {
   return parseMvuUpdateRegionV2(narrative,options).candidate
 }

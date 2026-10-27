@@ -15,6 +15,7 @@ export interface BrowserPageExecutionDataV3 extends BrowserNativeRenderPlanV3 {
 }
 export type BrowserPagePrincipalV3={readonly kind:'helper';readonly carrierIdentity:string}
   |{readonly kind:'reader-regex-document';readonly programSha256:string}
+  |{readonly kind:'helper-root'}
 /** Renderer operations finish at their actual native ACK. Resource readiness
  * includes the renderer's load-blocking requests, including failed requests. */
 export interface BrowserPageNativeSessionV3 {

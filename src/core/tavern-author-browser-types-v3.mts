@@ -21,6 +21,7 @@ export type BrowserCapabilityV3=BrowserCapabilityV2|'owned-source-html-page'
   |'owned-synchronous-page-events'|'owned-page-canvas-svg'|'owned-page-audio'
   |'owned-page-ephemeral-preferences'|'owned-declared-key-mutation'|'owned-page-file-gesture'
   |'owned-page-frame-lifecycle'|'owned-numerical-variable-replacement'|'owned-fixed-state-imports'
+  |'owned-helper-root-source-frame'
 export interface BrowserCapabilityContractV3 {
   readonly schemaVersion:3
   readonly encoding:'native-author-browser-capability-contract-v3'
@@ -120,6 +121,14 @@ export interface BrowserSourcePagePlanV3 {
   readonly resources:readonly BrowserPageResourceV3[]
   readonly requiredCapabilities:readonly BrowserCapabilityV3[]
   readonly declarations:readonly BrowserDeclaredChatKeyV3[]
+  /** Profile7 only: compile-owned delegation, independent of Source origin. */
+  readonly sourceMount?:{
+    readonly schemaVersion:1
+    readonly parentRealm:string
+    readonly src:boolean
+    readonly srcdoc:boolean
+    readonly blobConstructorRealms:readonly string[]
+  }
   readonly pagePlanSha256:string
 }
 export interface BrowserAstCoverageV3 extends Omit<BrowserAstCoverageV2,'encoding'> {
@@ -139,7 +148,7 @@ export interface BrowserProgramV3 {
   readonly authority:'compiled-program-data-only'
   readonly source:BrowserProgramSourceLocatorV1
   readonly compiler:BrowserCompilerIdentityV3
-  readonly profile:{readonly id:'nexttavern-browser-source-html';readonly version:3|4|5|6;readonly sha256:string}
+  readonly profile:{readonly id:'nexttavern-browser-source-html';readonly version:3|4|5|6|7;readonly sha256:string}
   readonly runtime:BrowserRuntimeIdentityV3
   readonly capabilityContract:BrowserCapabilityContractV3
   readonly scripts:readonly BrowserCompiledScriptV3[]
@@ -206,6 +215,7 @@ export interface BrowserRuntimeArtifactV3 extends Pick<BrowserRuntimeArtifactV2,
   /** Same physical runtime producer, bound to the profile5 state contract.
    * Historical artifacts omit it and cannot compile the new profile. */
   readonly stateIdentity?:BrowserRuntimeIdentityV3
+  readonly rootSourceIdentity?:BrowserRuntimeIdentityV3
   /** The Browser3 byte producer supplies its distinct complete compiler
    * identity. DATA compilation alone cannot admit this artifact for execution. */
   readonly compiler:BrowserCompilerIdentityV3

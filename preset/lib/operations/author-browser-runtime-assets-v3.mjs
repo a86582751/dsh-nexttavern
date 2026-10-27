@@ -106,7 +106,9 @@ export async function buildAuthorBrowserRuntimeAssetsV3(options) {
         wasm: { path: AUTHOR_BROWSER_WASM_V3, sha256: AUTHOR_BROWSER_WASM_SHA256_V3 },
         profileSha256: policy.BROWSER_PROFILE_V3.sha256, capabilityContractSha256: policy.BROWSER_CAPABILITY_CONTRACT_V3.contractSha256,
         stateProfile: { profileSha256: policy.BROWSER_STATE_PROFILE_V3.sha256,
-            capabilityContractSha256: policy.BROWSER_STATE_CAPABILITY_CONTRACT_V3.contractSha256 } }, null, 2) + '\n'));
+            capabilityContractSha256: policy.BROWSER_STATE_CAPABILITY_CONTRACT_V3.contractSha256 },
+        rootSourceProfile: { profileSha256: policy.BROWSER_ROOT_SOURCE_PROFILE_V3.sha256,
+            capabilityContractSha256: policy.BROWSER_ROOT_SOURCE_CAPABILITY_CONTRACT_V3.contractSha256 } }, null, 2) + '\n'));
     outputs.set(recipe.sourceInputOutput, Buffer.from(JSON.stringify({ schemaVersion: 3,
         encoding: 'owned-author-browser-runtime-source-inputs-v3', name: AUTHOR_BROWSER_RUNTIME_NAME_V3,
         version: AUTHOR_BROWSER_RUNTIME_VERSION_V3, graphs, bundledDependencies }, null, 2) + '\n'));

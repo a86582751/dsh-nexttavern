@@ -7,7 +7,8 @@ import {AUTHOR_BROWSER_MODULES_V3,AUTHOR_BROWSER_RUNTIME_PINS_V3,AUTHOR_BROWSER_
   AUTHOR_BROWSER_WASM_SHA256_V3,authorBrowserAssetShaV3,authorBrowserImplementationV3}
   from './tavern-author-browser-descriptor-v3.mjs'
 import {BROWSER_PROFILE_V3,BROWSER_CAPABILITY_CONTRACT_V3,
-  BROWSER_STATE_PROFILE_V3,BROWSER_STATE_CAPABILITY_CONTRACT_V3} from './tavern-author-browser-profile-v3.mjs'
+  BROWSER_STATE_PROFILE_V3,BROWSER_STATE_CAPABILITY_CONTRACT_V3,
+  BROWSER_ROOT_SOURCE_PROFILE_V3,BROWSER_ROOT_SOURCE_CAPABILITY_CONTRACT_V3} from './tavern-author-browser-profile-v3.mjs'
 import type {BrowserRuntimeArtifactV3,BrowserRuntimeIdentityV3,BrowserCompilerIdentityV3}
   from './tavern-author-browser-types-v3.mjs'
 
@@ -44,12 +45,17 @@ export function loadOwnedAuthorBrowserArtifactV3(sharedCompiler:SharedTypeScript
     implementationSha256:authorBrowserImplementationV3('runtime',moduleIdentity(['execution-worker']),runtimeDependencies,
       BROWSER_STATE_PROFILE_V3.sha256,BROWSER_STATE_CAPABILITY_CONTRACT_V3.contractSha256,sharedCompiler,componentGeneration),
     capabilityContractSha256:BROWSER_STATE_CAPABILITY_CONTRACT_V3.contractSha256})
+  const rootSourceIdentity:BrowserRuntimeIdentityV3=Object.freeze({id:'native-author-browser-runtime',version:3,
+    quickjsVersion:AUTHOR_BROWSER_RUNTIME_PINS_V3['quickjs-emscripten-core'],
+    implementationSha256:authorBrowserImplementationV3('runtime',moduleIdentity(['execution-worker']),runtimeDependencies,
+      BROWSER_ROOT_SOURCE_PROFILE_V3.sha256,BROWSER_ROOT_SOURCE_CAPABILITY_CONTRACT_V3.contractSha256,sharedCompiler,componentGeneration),
+    capabilityContractSha256:BROWSER_ROOT_SOURCE_CAPABILITY_CONTRACT_V3.contractSha256})
   const compiler:BrowserCompilerIdentityV3=Object.freeze({id:'native-author-browser-profile-compiler',version:3,
     typescriptVersion:TYPESCRIPT_VERSION,
     implementationSha256:authorBrowserImplementationV3('compiler',moduleIdentity(['provider','ast-worker']),compilerDependencies,
       BROWSER_PROFILE_V3.sha256,BROWSER_CAPABILITY_CONTRACT_V3.contractSha256,sharedCompiler,componentGeneration)})
   const worker=modules.find(row=>row.role==='execution-worker')!
-  const artifact:BrowserRuntimeArtifactV3=Object.freeze({schemaVersion:3,compiler,identity:runtime,stateIdentity,
+  const artifact:BrowserRuntimeArtifactV3=Object.freeze({schemaVersion:3,compiler,identity:runtime,stateIdentity,rootSourceIdentity,
     executionWorkerJavascript:worker.bytes.toString('utf8'),executionWorkerSha256:authorBrowserAssetShaV3(worker.bytes),
     wasm:Object.freeze({encoding:'base64' as const,data:wasm.toString('base64'),sha256:AUTHOR_BROWSER_WASM_SHA256_V3})})
   ownedArtifacts.set(artifact,{runtime,compiler,astWorker:new URL(AUTHOR_BROWSER_MODULES_V3['ast-worker'],root)})

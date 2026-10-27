@@ -17,6 +17,7 @@ interface NativeFrameFactBase {
 }
 export type BrowserNativeFrameFactV3=NativeFrameFactBase&(
   |{readonly kind?:'helper';readonly carrierIdentity:string}
+  |{readonly kind:'helper-root'}
   |{readonly kind:'reader-regex-document';readonly programSha256:string;readonly documentPlanSha256:string})
 export type BrowserWorkerRequestV3=
   |{readonly op:'carrier-create';readonly ordinal:number;readonly contextId:string}

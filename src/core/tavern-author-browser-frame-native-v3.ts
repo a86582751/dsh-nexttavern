@@ -262,10 +262,16 @@ export function createBrowserSourceFrameOwnerV3(options:BrowserSourceFrameOwnerO
       iframe.addEventListener('load',loaded,{once:true})
       // Only the fixed inert shell enters the native browser. Source markup
       // arrives later through the existing renderer's actual parser steps.
-      iframe.src='about:blank'
-      if(!iframe.isConnected) {
-        const parent=carrierBody(state)
-        parent.appendChild(iframe);state.provisionalParent=parent
+      try {
+        iframe.src='about:blank'
+        if(!iframe.isConnected) {
+          const parent=carrierBody(state)
+          parent.appendChild(iframe);state.provisionalParent=parent
+        }
+      }catch(error) {
+        // A synchronous native navigation/placement failure must release this
+        // shell's wait before Source tries srcdoc on the same actual frame.
+        finish(error instanceof Error?error:Error(String(error)))
       }
     })
     signal.throwIfAborted();stateOf(frame)

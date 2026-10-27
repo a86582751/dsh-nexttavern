@@ -40,7 +40,7 @@
       {
         "artifact": "roleplay-mvu-update-v2-typescript",
         "path": "src/core/roleplay-mvu-update-v2.ts",
-        "sha256": "a2aad26c6559287869b5bb2bfae6a4792fc82914bd63daa60d2eaafdf99577cb"
+        "sha256": "2b800d037f73ebbdaf15b091dd227a684db7997447917e49c0003a67d2cc6de8"
       },
       {
         "artifact": "roleplay-mvu-update-typescript",
@@ -85,7 +85,7 @@
       {
         "artifact": "tavern-author-browser-profile-v3-typescript",
         "path": "src/core/tavern-author-browser-profile-v3.mts",
-        "sha256": "6ec4e07a6b61569eeaa0ba4e85aa401beeca3545e1306f7f34e296101d16ce55"
+        "sha256": "e82576c63840156c712b22ea896d5ad96a5b0ad472783ae2a939566bcad906d2"
       },
       {
         "artifact": "tavern-author-browser-source-projection-v3-typescript",
@@ -105,7 +105,7 @@
       {
         "artifact": "tavern-author-combined-data-v6-typescript",
         "path": "src/core/tavern-author-combined-data-v6.mts",
-        "sha256": "00ea9ad342407dc2fadba77acdd6f87eef87912a2a8b1ff7b8a81082ecb850b8"
+        "sha256": "76f711d1642ffa5c96586f9c5894ed8bb6008eb25834acf988fddc1ea7ca86b2"
       },
       {
         "artifact": "tavern-author-combined-data-v7-typescript",

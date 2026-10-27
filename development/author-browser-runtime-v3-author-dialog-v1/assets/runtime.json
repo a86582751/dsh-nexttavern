@@ -27,5 +27,9 @@
   "stateProfile": {
     "profileSha256": "3be677ece09b60dd21a7aac15918ba2f5e4c83b725c46ce362e3ea19d590e870",
     "capabilityContractSha256": "1dae8b87de9b3157fc7a57ae5f5ba24da4f5609ade47c5ffecf1cae57e792bf9"
+  },
+  "rootSourceProfile": {
+    "profileSha256": "7fec12434542d23161e71f30f90777a1ef5da6e21dda34dedf430dca3cae21d4",
+    "capabilityContractSha256": "384933e201961525b9b430d8c045f339fb1958d8a2ebae3a47d65f464aa842bc"
   }
 }
