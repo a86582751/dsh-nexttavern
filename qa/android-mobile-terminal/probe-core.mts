@@ -168,6 +168,19 @@ function packageUid():number {
   const uid=Number(digits);need(Number.isSafeInteger(uid)&&uid>=10000,'ORDINARY_APP_UID_NOT_EXPOSED');
   return uid;
 }
+const reportedChecks=new Set<string>();
+function emitParsedChecks():void {
+  // These are validated individual observations, not a complete-suite/UID gate.
+  // Preserve them when a later accessibility/identity failure stops the driver.
+  for(const id of expected) {
+    const record=checks.get(id);if(!record||reportedChecks.has(id))continue;
+    const check=record.value;
+    const evidence=id==='https-client'?{status:check.evidence.status,authorized:check.evidence.authorized,tlsVersion:check.evidence.tlsVersion}:check.evidence;
+    emit('observed',{check:{id,status:check.status,durationMs:check.durationMs,evidence,
+      ...(check.error?{errorCode:safeCode(check.error.code)??'UNSPECIFIED_ERROR'}:{})}});
+    reportedChecks.add(id);
+  }
+}
 function completeEvidence():number {
   need(headerSeen&&readyLine&&result&&checks.size===expected.length&&expected.every(id=>checks.has(id)),'INCOMPLETE_11_CHECK_EVIDENCE');
   need(terminalStatus===result.status&&result.androidGate===false&&result.ok===false,'NATIVE_GLOBAL_STATUS_MISMATCH');
@@ -177,13 +190,7 @@ function completeEvidence():number {
   if(runtime.status==='passed')need(runtime.evidence.platform==='android'&&runtime.evidence.arch==='x64'
     &&String(runtime.evidence.node).startsWith('24.')
     &&runtime.evidence.execPath===nativeDirectory+'/libnexttavern_node.so','INSTALLER_EXECUTABLE_IDENTITY_MISMATCH');
-  for(const id of expected) {
-    const check=checks.get(id)!.value;
-    // No error messages, stderr, XML, headers, body or user/model data are logged.
-    const evidence=id==='https-client'?{status:check.evidence.status,authorized:check.evidence.authorized,tlsVersion:check.evidence.tlsVersion}:check.evidence;
-    emit('observed',{check:{id,status:check.status,durationMs:check.durationMs,evidence,
-      ...(check.error?{errorCode:safeCode(check.error.code)??'UNSPECIFIED_ERROR'}:{})}});
-  }
+  emitParsedChecks();
   // Valid capability/terminal evidence survives a later package-identity failure.
   // This observation alone never accepts the ordinary-App-UID scoped gate.
   emit('observed',{scope:'native-suite-terminal',globalStatus:result.status,globalOk:result.ok,
@@ -258,6 +265,7 @@ function failureContext():Record<string,unknown> {
         ready:/\nready=true\n/.test(n.text)})).slice(0,2)};
 }
 try{process.exitCode=await main()}catch(error) {
+  emitParsedChecks();
   emit('failed',{code:error instanceof ProbeFailure?error.code:'PROBE_UI_DRIVER_ERROR',
     parsedCheckCount:checks.size,nativeTerminalStatus:terminalStatus??null,displayedGlobalStatus:result?.status??null,
     finalSummaryComplete:summaryComplete,headerSeen,androidGate:false,fullG0Accepted:false,...failureContext(),

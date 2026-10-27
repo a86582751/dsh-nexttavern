@@ -9,6 +9,8 @@ import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
+import java.util.HashSet;
+import java.util.Set;
 
 /** One read-only public accessibility snapshot; no product instrumentation or actions. */
 public final class HierarchyInstrumentation extends Instrumentation {
@@ -26,28 +28,35 @@ public final class HierarchyInstrumentation extends Instrumentation {
                 | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
             ui.setServiceInfo(info);
             // Connection readiness does not imply a root is already available.
-            // Reuse this session; retry only empty root reads, never exceptions.
+            // Reuse this session; a non-active system root alone is not ready.
+            // Retry missing active/focused content only, never exceptions.
             long deadline = SystemClock.uptimeMillis() + 3000;
             do {
                 phase = "ROOT_READ";
                 StringBuilder xml = new StringBuilder("<hierarchy>");
-                int roots = 0;
+                boolean activeRoot = false;
+                Set<Integer> rootIds = new HashSet<>();
                 for (AccessibilityWindowInfo window : ui.getWindows()) {
                     try {
                         AccessibilityNodeInfo root = window.getRoot();
                         if (root != null) {
                             phase = "SERIALIZE";
-                            node(xml, root, window);
-                            roots++;
+                            activeRoot |= window.isActive() || window.isFocused();
+                            if (rootIds.add(root.getWindowId())) node(xml, root, window);
+                            else root.recycle();
                             phase = "ROOT_READ";
                         }
                     } finally { window.recycle(); }
                 }
-                if (roots == 0) {
+                if (!activeRoot) {
                     AccessibilityNodeInfo root = ui.getRootInActiveWindow();
-                    if (root != null) { phase = "SERIALIZE"; node(xml, root, null); roots++; }
+                    if (root != null) {
+                        activeRoot = true; // This public getter identifies the active window.
+                        if (rootIds.add(root.getWindowId())) { phase = "SERIALIZE"; node(xml, root, null); }
+                        else root.recycle(); // Already serialized via getWindows().
+                    }
                 }
-                if (roots > 0) {
+                if (activeRoot) {
                     xml.append("</hierarchy>");
                     if (xml.length() > 350000) throw new IllegalStateException("HIERARCHY_TOO_LARGE");
                     result.putString("hierarchy", xml.toString());
