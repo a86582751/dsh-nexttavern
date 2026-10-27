@@ -608,13 +608,35 @@ async function renameSyntheticConversation():Promise<void> {
   await until(()=>has(['会话“'+stableTitle+'”的操作','Session actions for '+stableTitle]),30,'CONVERSATION_RENAME_NOT_OBSERVED');
   await hideSidebar();
 }
-function ownedNodePid():number {
+function ownedNodeProcesses():{app:number;nodes:number[]} {
   const app=command('shell','pidof',pkg).trim().split(/\s+/);
   requireUi(app.length===1&&/^\d+$/.test(app[0]),'OWN_APP_PID_NOT_UNIQUE');
   // PID/PPID/NAME only: no process argv, READY URL, auth token or private data.
   const nodes=command('shell','ps','-A','-o','PID,PPID,NAME').trim().split('\n').slice(1)
     .map(line=>line.trim().split(/\s+/)).filter(row=>row[1]===app[0]&&/^libnexttavern_n/.test(row[2]??''));
-  requireUi(nodes.length===1,'OWN_NATIVE_NODE_CHILD_NOT_UNIQUE');return Number(nodes[0][0]);
+  return {app:Number(app[0]),nodes:nodes.map(row=>Number(row[0]))};
+}
+function ownedNodePid():number {
+  const {nodes}=ownedNodeProcesses();requireUi(nodes.length===1,'OWN_NATIVE_NODE_CHILD_NOT_UNIQUE');return nodes[0];
+}
+function appFailureEvidence():void {
+  try {
+    const owned=ownedNodeProcesses();
+    emit('observed',{interaction:'own-runtime-processes',appPid:owned.app,nodePids:owned.nodes});
+    // This tag is emitted only by the x86Diagnostic flavor's fixed metadata
+    // classifier. No raw console messages, URLs, stack traces or other apps.
+    const output=command('shell','logcat','-d','--pid='+owned.app,'-t','200','-v','brief','-s','NextTavernWeb:V');
+    let privateLogSaved=false;
+    try {
+      mkdirSync(args['--work-dir'],{recursive:true,mode:0o700});
+      writeFileSync(join(args['--work-dir'],'web-diagnostics.log'),output,{mode:0o600,flag:'wx'});
+      privateLogSaved=true;
+    }catch {/* Private recording failure must not erase already captured safe evidence. */}
+    emit('observed',{interaction:'app-webview-diagnostics',privateLogSaved,errorTail:safeErrorTail(output)});
+  }catch(error) {
+    emit('observed',{interaction:'app-webview-diagnostics',available:false,
+      errorCode:error instanceof UiFailure?error.code:'PRIVATE_DIAGNOSTIC_UNAVAILABLE'});
+  }
 }
 /** Traverse only the actual conversation scroller, collecting small known
  * synthetic text witnesses. No off-screen DOM or private history API counts as
@@ -897,6 +919,7 @@ try {
   emit('observed',{interaction:'failed-ui-window-state',focus,activityAlive,
     roots:current.filter(node=>node.__parent==='-1').map(node=>({package:node.package,class:node.class,
       active:node['window-active'],focused:node['window-focused'],visible:node['visible-to-user']}))});
+  appFailureEvidence();
   labels();emit('failed',{code:error instanceof UiFailure?error.code:'DRIVER_FAILURE',
     totalReaderRecoveries:snapshotTransportRecoveries,productPlayable:false,fullG0:false});
   process.exitCode=1;

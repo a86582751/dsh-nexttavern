@@ -92,7 +92,12 @@ URL access, cross-file access, mixed content, WebView debugging, and third-party
 cookies. There is no `addJavascriptInterface`. Only the current exact owned
 origin stays embedded; external HTTP(S) main-frame links go to the system browser
 and different local origins are blocked. Cleartext network policy allows only
-127.0.0.1, not remote cleartext pages. Browser console messages are not logged.
+127.0.0.1, not remote cleartext pages. Raw browser console messages are never
+logged. The arm64 flavor has no console diagnostics. Only `x86Diagnostic` emits
+fixed error categories, React error numbers, allowlisted public identifiers and
+bundle names/line numbers, plus navigation/renderer status metadata. It never
+logs message text, stacks, URLs/queries, form values or credentials; WebView
+debugging remains disabled. These diagnostic records do not establish UI success.
 
 File inputs use Android SAF `ACTION_OPEN_DOCUMENT`, no broad storage permission
 or native card-import bridge. Selection cancellation/rotation cancels the pending

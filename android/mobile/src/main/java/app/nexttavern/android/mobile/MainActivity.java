@@ -8,6 +8,7 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -17,10 +18,12 @@ import android.view.ViewGroup;
 import android.webkit.ConsoleMessage;
 import android.webkit.CookieManager;
 import android.webkit.PermissionRequest;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -106,6 +109,9 @@ public final class MainActivity extends Activity {
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         web.setWebViewClient(new WebViewClient() {
+            @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                WebDiagnostics.pageStarted(origin != null && origin.contains(url));
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
                 if (origin != null && origin.contains(url)) return false;
@@ -113,14 +119,29 @@ public final class MainActivity extends Activity {
                 return true;
             }
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) status.setText("本地界面暂时不可用；可重载界面或检查本地服务状态。");
+                if (request.isForMainFrame()) {
+                    WebDiagnostics.receivedError(error.getErrorCode());
+                    status.setText("本地界面暂时不可用；可重载界面或检查本地服务状态。");
+                }
+            }
+            @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
+                if (request.isForMainFrame()) WebDiagnostics.receivedHttpError(response.getStatusCode());
             }
             @Override public void onPageFinished(WebView view, String url) {
+                WebDiagnostics.pageFinished(origin != null && origin.contains(url));
                 if (origin != null && origin.contains(url) && service != null) status.setText(service.snapshot().message);
+            }
+            @Override public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                WebDiagnostics.rendererGone(detail.didCrash(), detail.rendererPriorityAtExit());
+                return false; // Preserve the platform's unhandled-renderer behavior; no recovery here.
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
-            @Override public boolean onConsoleMessage(ConsoleMessage message) { return true; }
+            @Override public boolean onConsoleMessage(ConsoleMessage message) {
+                String source = message.sourceId();
+                WebDiagnostics.observe(message, origin != null && source != null && origin.contains(source));
+                return true;
+            }
             @Override public void onPermissionRequest(PermissionRequest request) { request.deny(); }
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (pendingFiles != null) pendingFiles.onReceiveValue(null);
