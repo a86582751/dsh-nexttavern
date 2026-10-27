@@ -29,8 +29,10 @@ requireUi(fixtureEvents && args['--work-dir'],'FIXTURE_EVENTS_AND_WORK_DIRECTORY
 let adbFailureNumber=0;
 function command(...commandArgs:string[]):string {return timedCommand(90000,...commandArgs)}
 function timedCommand(timeout:number,...commandArgs:string[]):string {
+  const startedAt=Date.now();
   try {return execFileSync(adb,['-s',serial,...commandArgs],{encoding:'utf8',timeout,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe']})}
   catch(error) {
+    const elapsedMs=Date.now()-startedAt;
     const failure=error as {status?:number|null;signal?:string|null;code?:string;stderr?:string|Buffer;stdout?:string|Buffer};
     const stderr=String(failure.stderr??'');
     let privateStderrSaved=false,privateLogErrorCode:string|null=null;
@@ -42,7 +44,12 @@ function timedCommand(timeout:number,...commandArgs:string[]):string {
     }catch(logError){privateLogErrorCode=(logError as {code?:string}).code??'LOG_WRITE_FAILED'}
     // Do not print Error.message or argv: input commands can contain credentials.
     const safe=safeErrorTail(stderr);
-    emit('observed',{interaction:'adb-command-failure',operation:commandArgs.slice(0,2).join(' '),
+    const operation=commandArgs[0]==='shell'
+      ?commandArgs.length===2||commandArgs[1]==='sh'?'shell-script'
+        :'shell-'+(['am','input','pidof','cat','getprop','dumpsys'].includes(commandArgs[1])?commandArgs[1]:'other')
+      :['pull','get-state','wait-for-device','exec-out'].includes(commandArgs[0])?commandArgs[0]:'other';
+    emit('observed',{interaction:'adb-command-failure',operation,elapsedMs,timeoutMs:timeout,
+      ...waitReceipt(),
       exit:failure.status??null,signal:failure.signal??null,errorCode:failure.code??null,
       classification:adbFailureKind(stderr),stderrTail:safe,privateStderrSaved,privateLogErrorCode,
       instrumentationFailure:commandArgs[0]==='shell'&&commandArgs[1]==='am'&&commandArgs[2]==='instrument'
@@ -53,6 +60,49 @@ function timedCommand(timeout:number,...commandArgs:string[]):string {
 }
 const decode=(value:string)=>value.replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi,(_,hex,decimal)=>String.fromCodePoint(parseInt(hex??decimal,hex?16:10))).replace(/&amp;/g,'&');
 let current:Node[]=[];
+const cleanupReserveMs=3000;
+type WaitContext={condition:string;budgetMs:number;startedAt:number;startReads:number};
+let waitContext:WaitContext|null=null,successfulSnapshotCount=0;
+let lastSuccessfulSnapshot:{at:number;metadata:Record<string,unknown>}|undefined;
+function waitReceipt() {
+  return {waitCondition:waitContext?.condition??null,waitBudgetMs:waitContext?.budgetMs??null,
+    waitElapsedMs:waitContext?Date.now()-waitContext.startedAt:null,
+    successfulReadsInWait:waitContext?successfulSnapshotCount-waitContext.startReads:null};
+}
+function rememberSnapshot():void {
+  successfulSnapshotCount++;
+  const base={successfulSnapshotCount,waitCondition:waitContext?.condition??null};
+  if(stage!=='fixture-main-and-worker-model-routing') {
+    lastSuccessfulSnapshot={at:Date.now(),metadata:base};return;
+  }
+  const app=current.filter(node=>node.package===pkg);
+  const save=app.filter(node=>named(node,['保存模型路由','保存中…']));
+  const selector=app.filter(node=>named(node,['当前对话主模型']));
+  lastSuccessfulSnapshot={at:Date.now(),metadata:{...base,appNodeCount:app.length,
+    modelsPanelPresent:app.some(node=>named(node,['模型路由'])),
+    dialogPresent:app.some(node=>node.class==='android.app.Dialog'),
+    savePresent:save.length>0,saveEnabled:save.some(node=>node.enabled!=='false'),
+    saving:save.some(node=>node.text==='保存中…'||node['content-desc']==='保存中…'),
+    allMainChecked:app.some(node=>named(node,['全部使用主模型（保留用途配置）'])&&node.checked==='true'),
+    saveToast:app.some(node=>node.text?.startsWith('模型保存失败，草稿已保留：'))?'FAILURE'
+      :app.some(node=>node.text==='模型设置已保存')?'SUCCESS':'NONE',
+    mainSelectors:selector.slice(0,6).map(node=>({
+      class:/^(?:android|androidx|org\.chromium)\.[A-Za-z0-9_.$]{1,120}$/.test(node.class??'')?node.class:'OTHER',
+      matchSources:['text','content-desc','hint'].filter(key=>node[key]==='当前对话主模型'),
+      fixtureInText:node.text?.includes(fixtureId)??false,
+      fixtureInDescription:node['content-desc']?.includes(fixtureId)??false,
+      fixtureInSelectedDescendant:app.some(child=>child.selected==='true'
+        &&[child.text,child['content-desc']].some(value=>value?.includes(fixtureId))&&ancestors(child).includes(node)),
+    })),
+  }};
+}
+function lastSnapshotReceipt() {
+  return lastSuccessfulSnapshot?{ageMs:Date.now()-lastSuccessfulSnapshot.at,...lastSuccessfulSnapshot.metadata}:null;
+}
+function exhaustedReaderBudget(error:unknown,deadline:number):boolean {
+  return error instanceof UiFailure&&['ACCESSIBILITY_READ_DEADLINE','ADB_COMMAND_FAILED','ADB_RECONNECT_DEADLINE'].includes(error.code)
+    &&Date.now()+cleanupReserveMs>=deadline;
+}
 type DeviceIdentity={boot:string;framework:string;app:string;adbd:string|null};
 let snapshotIdentity:DeviceIdentity|undefined,snapshotTransportRecoveries=0;
 function readerTimeout(deadline:number,cap=90000):number {
@@ -77,7 +127,7 @@ function hierarchyOutput(deadline:number):string {
     // The full shell stdout stream disconnects during IME reads on the same
     // live VM. Keep the original helper/output, but transfer its private file.
     const id=randomUUID(),remote='/data/local/tmp/nexttavern-ui-'+id+'.stdout';
-    const local=join(args['--work-dir'],'hierarchy-'+id+'.stdout'),readDeadline=deadline-3000;
+    const local=join(args['--work-dir'],'hierarchy-'+id+'.stdout'),readDeadline=deadline-cleanupReserveMs;
     let localCreated=false;
     try {
       const script=`umask 077; set -C; : > "${remote}" || exit 91; `
@@ -107,10 +157,12 @@ function hierarchyOutput(deadline:number):string {
     }
   };
   for(let reconnects=0;;) {
+    requireUi(Date.now()+cleanupReserveMs<deadline,'ACCESSIBILITY_READ_DEADLINE');
     try{return read()}catch(error) {
       // Read-only transport bursts have recovered on the same VM/app. All
       // attempts share the caller's original deadline; no user action is replayed.
       if(!(error instanceof UiFailure)||error.code!=='ADB_COMMAND_FAILED'||!snapshotIdentity||reconnects===3)throw error;
+      requireUi(Date.now()+cleanupReserveMs<deadline,'ACCESSIBILITY_READ_DEADLINE');
       reconnects++;snapshotTransportRecoveries++;
       try {execFileSync(adb,['-s',serial,'wait-for-device'],{timeout:readerTimeout(deadline,15000),stdio:'pipe'})}
       catch {throw new UiFailure('ADB_RECONNECT_DEADLINE')}
@@ -148,6 +200,7 @@ function snapshot(deadline:number):Node[] {
     const index=current.push(node)-1;
     if(match[2]!=='/')parents.push(index);
   }
+  rememberSnapshot();
   return current;
 }
 function ancestors(node:Node):Node[] {
@@ -217,24 +270,33 @@ function observeSnapshot(deadline:number):boolean {
     requireUi(snapshotIdentity&&after.boot===snapshotIdentity.boot
       &&after.framework===snapshotIdentity.framework&&after.app===snapshotIdentity.app,
       'ANDROID_PROCESS_RESTART_DURING_READER');
-    emit('observed',{interaction:'readonly-root-pending',sameProcessIdentity:true});
+    emit('observed',{interaction:'readonly-root-pending',sameProcessIdentity:true,...waitReceipt()});
     return false;
   }
 }
 async function readySnapshot():Promise<void> {
-  const end=Date.now()+15000;
-  do {if(observeSnapshot(end))return;await delay(Math.max(0,Math.min(3000,end-Date.now())))}while(Date.now()<end);
+  const previous=waitContext,end=Date.now()+15000;
+  waitContext=previous??{condition:'ACCESSIBILITY_ROOTS_NOT_READY',budgetMs:15000,
+    startedAt:Date.now(),startReads:successfulSnapshotCount};
+  while(Date.now()+cleanupReserveMs<end) {
+    try {if(observeSnapshot(end)){waitContext=previous;return}}
+    catch(error){if(exhaustedReaderBudget(error,end))break;throw error}
+    await delay(Math.max(0,Math.min(3000,end-Date.now()-cleanupReserveMs)));
+  }
   throw new UiFailure('ACCESSIBILITY_ROOTS_NOT_READY');
 }
 async function until(predicate:()=>boolean,seconds:number,code:string):Promise<void> {
-  const end=Date.now()+seconds*1000;
-  do {
-    if(!observeSnapshot(end)){await delay(Math.max(0,Math.min(3000,end-Date.now())));continue;}
+  const previous=waitContext,end=Date.now()+seconds*1000;
+  waitContext={condition:code,budgetMs:seconds*1000,startedAt:Date.now(),startReads:successfulSnapshotCount};
+  while(Date.now()+cleanupReserveMs<end) {
+    let observed=false;
+    try {observed=observeSnapshot(end)}catch(error){if(exhaustedReaderBudget(error,end))break;throw error}
+    if(!observed){await delay(Math.max(0,Math.min(3000,end-Date.now()-cleanupReserveMs)));continue;}
     allowNotifications();
     if(current.some(node=>node.package===pkg&&node.text?.startsWith('本地服务未能运行')))throw new UiFailure('NATIVE_RUNTIME_ERROR_VISIBLE');
-    if(predicate())return;
-    await delay(Math.max(0,Math.min(3000,end-Date.now())));
-  }while(Date.now()<end);
+    if(predicate()){waitContext=previous;return}
+    await delay(Math.max(0,Math.min(3000,end-Date.now()-cleanupReserveMs)));
+  }
   throw new UiFailure(code);
 }
 const ready=['本地服务运行中'];
@@ -691,9 +753,14 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
   await press(['保存模型路由']);
   await until(()=>current.some(node=>node.package===pkg&&named(node,['保存模型路由'])
     &&button(node)&&node.enabled!=='false'),60,'WORKER_ROUTE_SAVE_NOT_SETTLED');
-  // Re-mount the real panel and verify the server-backed state, rather than
-  // counting a transient toast or treating local checkbox state as persisted.
-  await closeWebDialog();await openManager();await pressManagerTab(['模型','Models']);
+  emit('observed',{interaction:'model-route-checkpoint',checkpoint:'save-settled',lastSuccessfulSnapshot:lastSnapshotReceipt()});
+  // Re-mount alone can reuse a dirty draft after failed Save. The existing
+  // native reload discards that JS memory; only restored UI state counts.
+  await press(['重载界面'],node=>button(node)&&!inWebView(node));
+  await until(()=>!has(['模型路由'])&&has(webChrome),60,'MODEL_ROUTE_NATIVE_RELOAD_NOT_OBSERVED');
+  emit('observed',{interaction:'model-route-checkpoint',checkpoint:'reloaded'});
+  await openManager();await pressManagerTab(['模型','Models']);
+  emit('observed',{interaction:'model-route-checkpoint',checkpoint:'retention'});
   await until(()=>current.some(node=>node.package===pkg&&named(node,mainRouteNames)&&node.text?.includes(fixtureId))
     &&current.some(node=>node.package===pkg&&named(node,allMainNames)&&node.checked==='true'),60,'FIXTURE_MAIN_OR_WORKER_ROUTE_NOT_RETAINED');
   emit('passed',{scope:'ordinary-roleplay-session-and-fixture-main-worker-routing',liveModel:false});
@@ -1044,6 +1111,7 @@ try {
     incrementalRendering:'observed-partial-to-complete',syntheticCoreFlow:true,
     productPlayable:false,fullG0:false,arm64Qualified:false,phaseBCQualified:false,memoryQualified:false});
 }catch(error) {
+  const failedWait=waitReceipt(),failedSnapshot=lastSnapshotReceipt();
   // Replace the same approved form PNG only before any API key was entered.
   // It may contain the fixed synthetic route/loopback URL, never credentials.
   if(stage==='create-fixture-provider'&&!providerKeyInputStarted) {
@@ -1057,6 +1125,7 @@ try {
       active:node['window-active'],focused:node['window-focused'],visible:node['visible-to-user']}))});
   appFailureEvidence();
   labels();emit('failed',{code:error instanceof UiFailure?error.code:'DRIVER_FAILURE',
+    ...failedWait,lastSuccessfulSnapshot:failedSnapshot,
     totalReaderRecoveries:snapshotTransportRecoveries,productPlayable:false,fullG0:false});
   process.exitCode=1;
 }
