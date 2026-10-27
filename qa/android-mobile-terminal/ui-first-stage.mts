@@ -604,6 +604,18 @@ async function configureFixtureProvider():Promise<void> {
 
 const fileButton=['选择角色卡文件'];
 const selectedFile=['角色卡文件已选择，等待确认导入'];
+// Chromium exposes the file input as its label plus the current filename,
+// separately from the label TextView (observed on the real Card import page).
+const cardFileControl=(node:Node)=>node.package===pkg&&node.class==='android.widget.Button'
+  &&[node.text,node['content-desc']].some(value=>value==='选择角色卡文件'||value?.startsWith('选择角色卡文件: '));
+async function openCardFilePicker():Promise<void> {
+  await readySnapshot();const controls=current.filter(cardFileControl);
+  requireUi(controls.length===1&&controls[0].enabled!=='false','CARD_FILE_CONTROL_NOT_UNIQUE');
+  showControl(controls[0]);controlAction(controls[0],'click-control');
+  // The caller requires actual system DocumentsUI, not an accepted action or
+  // WebView's already-proven unreliable post-scroll screen bounds.
+}
+
 const docs=(node:Node)=>/^(?:com\.android|com\.google\.android)\.documentsui$/.test(node.package);
 /** Entry condition: an actual roleplay session's Card import page is exposed.
  * The runner owns this work-dir/emulator. Normal product SAF is the only route
@@ -623,12 +635,12 @@ async function selectSyntheticCard(workDir:string):Promise<void> {
     creator:'local-test',character_version:'1.0',extensions:{},
   }}));
   command('push',file,'/sdcard/Download/nexttavern-ui-card.json');
-  await press(fileButton);
+  await openCardFilePicker();
   await until(()=>current.some(docs),30,'SYSTEM_DOCUMENTS_UI_NOT_OPENED');
   command('shell','input','keyevent','KEYCODE_BACK'); // Genuine user cancellation.
   await until(()=>has(fileButton),30,'SAF_CANCEL_DID_NOT_RETURN_TO_APP');
   requireUi(!has(selectedFile),'SAF_CANCEL_UNEXPECTEDLY_SELECTED_FILE');
-  await press(fileButton);
+  await openCardFilePicker();
   await until(()=>current.some(docs),30,'SYSTEM_DOCUMENTS_UI_NOT_REOPENED');
   if(!current.some(node=>docs(node)&&named(node,['nexttavern-ui-card.json'])&&visibleBounds(node))) {
     const roots=current.filter(node=>docs(node)&&named(node,['Show roots','显示根目录'])&&visibleBounds(node));
@@ -777,7 +789,8 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
     ,60,'FIXTURE_MAIN_ROUTE_NOT_RETAINED');
   emit('passed',{scope:'ordinary-roleplay-session-and-persisted-fixture-main-routing',workerRoutingVerified:false,liveModel:false});
   await pressManagerTab(['角色卡导入']);
-  await until(()=>has(['上传角色卡'])&&visibleNamed(fileButton).length===1,30,'CARD_UPLOAD_PAGE_NOT_EXPOSED');
+  stage='card-import-page';
+  await until(()=>has(['上传角色卡'])&&current.filter(cardFileControl).length===1,30,'CARD_UPLOAD_PAGE_NOT_EXPOSED');
 }
 
 function visibleMessage(marker:string):Node|undefined {
