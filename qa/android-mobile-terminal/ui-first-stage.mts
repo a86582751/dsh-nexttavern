@@ -51,10 +51,15 @@ function command(...commandArgs:string[]):string {
 }
 const decode=(value:string)=>value.replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi,(_,hex,decimal)=>String.fromCodePoint(parseInt(hex??decimal,hex?16:10))).replace(/&amp;/g,'&');
 let current:Node[]=[];
-type DeviceIdentity={boot:string;framework:string;app:string};
-let snapshotIdentity:DeviceIdentity|undefined,snapshotTransportRecoveryUsed=false;
+type DeviceIdentity={boot:string;framework:string;app:string;adbd:string|null};
+let snapshotIdentity:DeviceIdentity|undefined,snapshotTransportRecoveries=0;
 function deviceIdentity():DeviceIdentity {
-  const identity={boot:command('shell','cat','/proc/sys/kernel/random/boot_id').trim(),
+  let adbd:string|null=null;
+  try {
+    const value=execFileSync(adb,['-s',serial,'shell','pidof','adbd'],{encoding:'utf8',timeout:5000,stdio:'pipe'}).trim();
+    if(/^\d+$/.test(value))adbd=value;
+  }catch {/* Optional daemon diagnostic cannot block valid product identity. */}
+  const identity={adbd,boot:command('shell','cat','/proc/sys/kernel/random/boot_id').trim(),
     framework:command('shell','pidof','system_server').trim(),app:command('shell','pidof',pkg).trim()};
   requireUi(/^[0-9a-f-]{36}$/.test(identity.boot)&&/^\d+$/.test(identity.framework)&&/^\d+$/.test(identity.app),
     'ANDROID_PROCESS_IDENTITY_UNAVAILABLE');
@@ -64,15 +69,18 @@ function hierarchyOutput():string {
   const read=()=>command('shell','am','instrument','-w','-r','app.nexttavern.qa.ui/.HierarchyInstrumentation');
   try{return read()}catch(error) {
     // A recorded brief ADB loss recovered while the same VM remained alive.
-    // Retry only this read-only reader once, never a tap/text/send/install.
-    if(!(error instanceof UiFailure)||error.code!=='ADB_COMMAND_FAILED'||!snapshotIdentity||snapshotTransportRecoveryUsed)throw error;
-    snapshotTransportRecoveryUsed=true;
+    // Retry each independent read-only reader at most once, never a
+    // tap/text/send/install. A second failure of this read escapes immediately.
+    if(!(error instanceof UiFailure)||error.code!=='ADB_COMMAND_FAILED'||!snapshotIdentity)throw error;
+    snapshotTransportRecoveries++;
     try {execFileSync(adb,['-s',serial,'wait-for-device'],{timeout:15000,stdio:'pipe'})}
     catch {throw new UiFailure('ADB_RECONNECT_DEADLINE')}
     const after=deviceIdentity(),sameBoot=after.boot===snapshotIdentity.boot,
       sameFramework=after.framework===snapshotIdentity.framework,sameApp=after.app===snapshotIdentity.app;
-    emit('observed',{interaction:'readonly-reader-transport-recovery',sameBoot,sameFramework,sameApp,replayedUserAction:false});
+    emit('observed',{interaction:'readonly-reader-transport-recovery',sameBoot,sameFramework,sameApp,
+      totalReaderRecoveries:snapshotTransportRecoveries,adbdBefore:snapshotIdentity.adbd,adbdAfter:after.adbd,replayedUserAction:false});
     requireUi(sameBoot&&sameFramework&&sameApp,'ANDROID_PROCESS_RESTART_DURING_READER');
+    snapshotIdentity=after; // Required identities are unchanged; retain latest optional daemon observation.
     return read();
   }
 }
@@ -889,6 +897,7 @@ try {
   emit('observed',{interaction:'failed-ui-window-state',focus,activityAlive,
     roots:current.filter(node=>node.__parent==='-1').map(node=>({package:node.package,class:node.class,
       active:node['window-active'],focused:node['window-focused'],visible:node['visible-to-user']}))});
-  labels();emit('failed',{code:error instanceof UiFailure?error.code:'DRIVER_FAILURE',productPlayable:false,fullG0:false});
+  labels();emit('failed',{code:error instanceof UiFailure?error.code:'DRIVER_FAILURE',
+    totalReaderRecoveries:snapshotTransportRecoveries,productPlayable:false,fullG0:false});
   process.exitCode=1;
 }
