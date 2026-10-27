@@ -154,6 +154,13 @@ The recorded x64 `prepare-product` run emitted 17
 packages, 11 Host forks and one skin bundle; this is product-assembly evidence
 for x64 diagnostics, not arm64 or Android runtime evidence.
 
+Current source recipes additionally register
+`@deepseek-ai/dsh-attachment-local@0.1.7-rc.2` as the twelfth Host fork. Its Android
+upload-directory durability walk stops at the installer-supplied app data
+boundary rather than inaccessible OS ancestors; desktop behavior is unchanged.
+This source addition does not qualify the earlier assembly run or the still
+pending Android upload, SAF, chat and recovery flows.
+
 Create exactly one fresh, task-owned Harness installation from the public
 Harness manifest and lock; keep its home separate from any personal or
 production data. Keep all Harness, pnpm and XDG state under this root rather

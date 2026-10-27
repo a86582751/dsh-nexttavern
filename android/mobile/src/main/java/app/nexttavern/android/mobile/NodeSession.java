@@ -31,7 +31,7 @@ final class NodeSession {
     private boolean ready;
     private final AtomicBoolean errorReported = new AtomicBoolean();
 
-    NodeSession(File nativeDirectory, File code, File home, File workspace, File memory, File tmp,
+    NodeSession(File nativeDirectory, File code, File applicationDataDirectory, File home, File workspace, File memory, File tmp,
         String generation, Events events, File diagnosticStderr) throws IOException {
         this.generation = generation;
         this.events = events;
@@ -44,6 +44,9 @@ final class NodeSession {
         builder.environment().remove("NODE_PATH");
         builder.environment().put("HOME", home.getAbsolutePath());
         builder.environment().put("DSH_HOME", home.getAbsolutePath());
+        // RuntimeService supplies canonical installer-owned ApplicationInfo.dataDir.
+        // The attachment filesystem owner validates its home against this boundary.
+        builder.environment().put("NEXTTAVERN_ANDROID_DATA_DIR", applicationDataDirectory.getAbsolutePath());
         builder.environment().put("NEXTTAVERN_MEMORY_HOME", memory.getAbsolutePath());
         builder.environment().put("TMPDIR", tmp.getAbsolutePath());
         // This Node build defaults to OpenSSL's CA store, whose compiled paths

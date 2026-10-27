@@ -96,7 +96,7 @@ public final class RuntimeService extends Service implements NodeSession.Events 
             File memory = directory("memory");
             File tmp = directory("tmp");
             NodeSession running = new NodeSession(new File(getApplicationInfo().nativeLibraryDir), code,
-                home, workspace, memory, tmp, generation, this,
+                new File(getApplicationInfo().dataDir).getCanonicalFile(), home, workspace, memory, tmp, generation, this,
                 BuildConfig.DEBUG && "x86Diagnostic".equals(BuildConfig.FLAVOR)
                     ? new File(getCacheDir(), "node-stderr.log") : null);
             session = running;
@@ -110,7 +110,7 @@ public final class RuntimeService extends Service implements NodeSession.Events 
     private File directory(String child) throws IOException {
         File directory = new File(getFilesDir(), child);
         if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("PRIVATE_STORAGE_UNAVAILABLE");
-        return directory;
+        return directory.getCanonicalFile();
     }
     public void requestStop(boolean force) {
         cancelStartup.set(true);

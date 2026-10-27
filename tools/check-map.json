@@ -12187,6 +12187,106 @@
       "source": "android/tools/prepare-product.mjs"
     },
     {
+      "id": "compat-attachment-local-compression-limiter-ts",
+      "source": "development/attachment-local/src/compression-limiter.ts"
+    },
+    {
+      "id": "compat-attachment-local-compression-limiter-js",
+      "source": "development/attachment-local/lib/compression-limiter.js"
+    },
+    {
+      "id": "compat-attachment-local-encoding-ts",
+      "source": "development/attachment-local/src/encoding.ts"
+    },
+    {
+      "id": "compat-attachment-local-encoding-js",
+      "source": "development/attachment-local/lib/encoding.js"
+    },
+    {
+      "id": "compat-attachment-local-file-store-ts",
+      "source": "development/attachment-local/src/file-store.ts"
+    },
+    {
+      "id": "compat-attachment-local-file-store-js",
+      "source": "development/attachment-local/lib/file-store.js"
+    },
+    {
+      "id": "compat-attachment-local-image-ts",
+      "source": "development/attachment-local/src/image.ts"
+    },
+    {
+      "id": "compat-attachment-local-image-js",
+      "source": "development/attachment-local/lib/image.js"
+    },
+    {
+      "id": "compat-attachment-local-index-ts",
+      "source": "development/attachment-local/src/index.ts"
+    },
+    {
+      "id": "compat-attachment-local-index-js",
+      "source": "development/attachment-local/lib/index.js"
+    },
+    {
+      "id": "compat-attachment-local-normalization-ts",
+      "source": "development/attachment-local/src/normalization.ts"
+    },
+    {
+      "id": "compat-attachment-local-normalization-js",
+      "source": "development/attachment-local/lib/normalization.js"
+    },
+    {
+      "id": "compat-attachment-local-request-image-ts",
+      "source": "development/attachment-local/src/request-image.ts"
+    },
+    {
+      "id": "compat-attachment-local-request-image-js",
+      "source": "development/attachment-local/lib/request-image.js"
+    },
+    {
+      "id": "compat-attachment-local-sharp-ts",
+      "source": "development/attachment-local/src/sharp.ts"
+    },
+    {
+      "id": "compat-attachment-local-sharp-js",
+      "source": "development/attachment-local/lib/sharp.js"
+    },
+    {
+      "id": "compat-attachment-local-store-ts",
+      "source": "development/attachment-local/src/store.ts"
+    },
+    {
+      "id": "compat-attachment-local-store-js",
+      "source": "development/attachment-local/lib/store.js"
+    },
+    {
+      "id": "compat-attachment-local-package-json",
+      "source": "development/attachment-local/package.json"
+    },
+    {
+      "id": "compat-attachment-local-license",
+      "source": "development/attachment-local/LICENSE"
+    },
+    {
+      "id": "compat-attachment-local-license-upstream",
+      "source": "development/attachment-local/LICENSE.upstream"
+    },
+    {
+      "id": "compat-attachment-local-notice",
+      "source": "development/attachment-local/NOTICE"
+    },
+    {
+      "id": "compat-attachment-local-origin-json",
+      "source": "development/attachment-local/ORIGIN.json"
+    },
+    {
+      "id": "compat-attachment-local-readme-md",
+      "source": "development/attachment-local/README.md"
+    },
+    {
+      "id": "attachment-local-android-boundary-contract",
+      "source": "tests/attachment-local-android-boundary.test.mts"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -114583,6 +114683,213 @@
         "src/operations/public-vendor-admission.mts"
       ],
       "typeContext": "default"
+    },
+    {
+      "id": "compat-attachment-local-compression-limiter-build",
+      "kind": "typescript-module",
+      "artifact": "compat-attachment-local-compression-limiter-js",
+      "entry": "development/attachment-local/src/compression-limiter.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/attachment-local/src/compression-limiter.ts",
+        "development/attachment-local/src/encoding.ts",
+        "development/attachment-local/src/file-store.ts",
+        "development/attachment-local/src/image.ts",
+        "development/attachment-local/src/index.ts",
+        "development/attachment-local/src/normalization.ts",
+        "development/attachment-local/src/request-image.ts",
+        "development/attachment-local/src/sharp.ts",
+        "development/attachment-local/src/store.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "compat-attachment-local-encoding-build",
+      "kind": "typescript-module",
+      "artifact": "compat-attachment-local-encoding-js",
+      "entry": "development/attachment-local/src/encoding.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/attachment-local/src/compression-limiter.ts",
+        "development/attachment-local/src/encoding.ts",
+        "development/attachment-local/src/file-store.ts",
+        "development/attachment-local/src/image.ts",
+        "development/attachment-local/src/index.ts",
+        "development/attachment-local/src/normalization.ts",
+        "development/attachment-local/src/request-image.ts",
+        "development/attachment-local/src/sharp.ts",
+        "development/attachment-local/src/store.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "compat-attachment-local-file-store-build",
+      "kind": "typescript-module",
+      "artifact": "compat-attachment-local-file-store-js",
+      "entry": "development/attachment-local/src/file-store.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/attachment-local/src/compression-limiter.ts",
+        "development/attachment-local/src/encoding.ts",
+        "development/attachment-local/src/file-store.ts",
+        "development/attachment-local/src/image.ts",
+        "development/attachment-local/src/index.ts",
+        "development/attachment-local/src/normalization.ts",
+        "development/attachment-local/src/request-image.ts",
+        "development/attachment-local/src/sharp.ts",
+        "development/attachment-local/src/store.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "compat-attachment-local-image-build",
+      "kind": "typescript-module",
+      "artifact": "compat-attachment-local-image-js",
+      "entry": "development/attachment-local/src/image.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/attachment-local/src/compression-limiter.ts",
+        "development/attachment-local/src/encoding.ts",
+        "development/attachment-local/src/file-store.ts",
+        "development/attachment-local/src/image.ts",
+        "development/attachment-local/src/index.ts",
+        "development/attachment-local/src/normalization.ts",
+        "development/attachment-local/src/request-image.ts",
+        "development/attachment-local/src/sharp.ts",
+        "development/attachment-local/src/store.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "compat-attachment-local-index-build",
+      "kind": "typescript-module",
+      "artifact": "compat-attachment-local-index-js",
+      "entry": "development/attachment-local/src/index.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/attachment-local/src/compression-limiter.ts",
+        "development/attachment-local/src/encoding.ts",
+        "development/attachment-local/src/file-store.ts",
+        "development/attachment-local/src/image.ts",
+        "development/attachment-local/src/index.ts",
+        "development/attachment-local/src/normalization.ts",
+        "development/attachment-local/src/request-image.ts",
+        "development/attachment-local/src/sharp.ts",
+        "development/attachment-local/src/store.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "compat-attachment-local-normalization-build",
+      "kind": "typescript-module",
+      "artifact": "compat-attachment-local-normalization-js",
+      "entry": "development/attachment-local/src/normalization.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/attachment-local/src/compression-limiter.ts",
+        "development/attachment-local/src/encoding.ts",
+        "development/attachment-local/src/file-store.ts",
+        "development/attachment-local/src/image.ts",
+        "development/attachment-local/src/index.ts",
+        "development/attachment-local/src/normalization.ts",
+        "development/attachment-local/src/request-image.ts",
+        "development/attachment-local/src/sharp.ts",
+        "development/attachment-local/src/store.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "compat-attachment-local-request-image-build",
+      "kind": "typescript-module",
+      "artifact": "compat-attachment-local-request-image-js",
+      "entry": "development/attachment-local/src/request-image.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/attachment-local/src/compression-limiter.ts",
+        "development/attachment-local/src/encoding.ts",
+        "development/attachment-local/src/file-store.ts",
+        "development/attachment-local/src/image.ts",
+        "development/attachment-local/src/index.ts",
+        "development/attachment-local/src/normalization.ts",
+        "development/attachment-local/src/request-image.ts",
+        "development/attachment-local/src/sharp.ts",
+        "development/attachment-local/src/store.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "compat-attachment-local-sharp-build",
+      "kind": "typescript-module",
+      "artifact": "compat-attachment-local-sharp-js",
+      "entry": "development/attachment-local/src/sharp.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/attachment-local/src/compression-limiter.ts",
+        "development/attachment-local/src/encoding.ts",
+        "development/attachment-local/src/file-store.ts",
+        "development/attachment-local/src/image.ts",
+        "development/attachment-local/src/index.ts",
+        "development/attachment-local/src/normalization.ts",
+        "development/attachment-local/src/request-image.ts",
+        "development/attachment-local/src/sharp.ts",
+        "development/attachment-local/src/store.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "compat-attachment-local-store-build",
+      "kind": "typescript-module",
+      "artifact": "compat-attachment-local-store-js",
+      "entry": "development/attachment-local/src/store.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/attachment-local/src/compression-limiter.ts",
+        "development/attachment-local/src/encoding.ts",
+        "development/attachment-local/src/file-store.ts",
+        "development/attachment-local/src/image.ts",
+        "development/attachment-local/src/index.ts",
+        "development/attachment-local/src/normalization.ts",
+        "development/attachment-local/src/request-image.ts",
+        "development/attachment-local/src/sharp.ts",
+        "development/attachment-local/src/store.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
     }
   ],
   "typeScript": {

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "package": "@deepseek-ai/dsh-attachment-local",
+  "upstreamPackage": "@deepseek-ai/dsh-attachment-local",
+  "upstreamVersion": "0.1.7-rc.2",
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+  "license": "MIT",
+  "files": [
+    {
+      "upstream": "packages/attachment/attachment-local/src/compression-limiter.ts",
+      "upstreamSha256": "b25712ad14609b27f2e1c0d8118eafe7be0adb2180ce40739a02f1fd75722063",
+      "source": "src/compression-limiter.ts"
+    },
+    {
+      "upstream": "packages/attachment/attachment-local/src/encoding.ts",
+      "upstreamSha256": "6404620aaa9ccf87fdfcdb6302c2be09b666b76dd755a8f0f761c5890a7c9921",
+      "source": "src/encoding.ts"
+    },
+    {
+      "upstream": "packages/attachment/attachment-local/src/file-store.ts",
+      "upstreamSha256": "8826c8ea6124c489c51c10bdc195f4f454b89370929e5d83c50e6232b2eef958",
+      "source": "src/file-store.ts"
+    },
+    {
+      "upstream": "packages/attachment/attachment-local/src/image.ts",
+      "upstreamSha256": "ec48db7f7702bb06317c10c393c1fc6a8ec0927f87f63021f419f015dd69827f",
+      "source": "src/image.ts"
+    },
+    {
+      "upstream": "packages/attachment/attachment-local/src/index.ts",
+      "upstreamSha256": "1a1d3fda491bbb0789447e6f9ab92840d6652eff8d68fbccc2a4307ccc5f9f8b",
+      "source": "src/index.ts"
+    },
+    {
+      "upstream": "packages/attachment/attachment-local/src/normalization.ts",
+      "upstreamSha256": "3d1b849628f0c827497bac800af49272ac8c5b64be4c59d96bc9f0c23d76fffa",
+      "source": "src/normalization.ts"
+    },
+    {
+      "upstream": "packages/attachment/attachment-local/src/request-image.ts",
+      "upstreamSha256": "bbb89a0150520a8c73d96fa884066e4b2cc82085864c5899500e45bd6aac889e",
+      "source": "src/request-image.ts"
+    },
+    {
+      "upstream": "packages/attachment/attachment-local/src/sharp.ts",
+      "upstreamSha256": "6735e559022dccabc257c72af8e9d12b18bbd2c717503cbee84a125274e374de",
+      "source": "src/sharp.ts"
+    },
+    {
+      "upstream": "packages/attachment/attachment-local/src/store.ts",
+      "upstreamSha256": "4b627d534da3cdd8c7b8e3ca68656e25c8d46563bcf3971f50231c162deb1fa6",
+      "source": "src/store.ts"
+    },
+    {
+      "upstream": "packages/attachment/attachment-local/package.json",
+      "upstreamSha256": "19f6f9cf14c9a8a0c0ff68d462dd731bca2df690a24a620a431bc104f512a914",
+      "source": "package.json"
+    },
+    {
+      "upstream": "LICENSE",
+      "upstreamSha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
+      "source": "LICENSE.upstream"
+    }
+  ],
+  "changes": [
+    "Generated .js relative import paths and private maintained same-name package identity.",
+    "Explicit Android installer-owned durability boundary; desktop directory-fsync semantics retained."
+  ],
+  "formalForkSynchronized": false
+}

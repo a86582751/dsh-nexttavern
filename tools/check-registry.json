@@ -53,7 +53,9 @@
         "deepseek-request-material*",
         "development/tool-skill/*",
         "development/client-modules/*",
-        "client-modules-artifact-revision*"
+        "client-modules-artifact-revision*",
+        "development/attachment-local/*",
+        "attachment-local-android-boundary*"
       ]
     },
     {
@@ -10244,6 +10246,52 @@
         "android-tools-build-flock.mts",
         "android-runtime-inputs.lock.json",
         "android-runtime-inputs.x64.lock.json"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:attachment-local-android-boundary.test.mts",
+      "action": "test",
+      "inputs": [
+        "compat-attachment-local-compression-limiter-ts",
+        "compat-attachment-local-compression-limiter-js",
+        "compat-attachment-local-encoding-ts",
+        "compat-attachment-local-encoding-js",
+        "compat-attachment-local-file-store-ts",
+        "compat-attachment-local-file-store-js",
+        "compat-attachment-local-image-ts",
+        "compat-attachment-local-image-js",
+        "compat-attachment-local-index-ts",
+        "compat-attachment-local-index-js",
+        "compat-attachment-local-normalization-ts",
+        "compat-attachment-local-normalization-js",
+        "compat-attachment-local-request-image-ts",
+        "compat-attachment-local-request-image-js",
+        "compat-attachment-local-sharp-ts",
+        "compat-attachment-local-sharp-js",
+        "compat-attachment-local-store-ts",
+        "compat-attachment-local-store-js",
+        "compat-attachment-local-package-json",
+        "compat-attachment-local-license",
+        "compat-attachment-local-license-upstream",
+        "compat-attachment-local-notice",
+        "compat-attachment-local-origin-json",
+        "compat-attachment-local-readme-md",
+        "attachment-local-android-boundary-contract",
+        "test-temp-helper-typescript",
+        "inventory-runtime-alpha3-build-tools-package-json",
+        "inventory-runtime-alpha3-build-tools-package-lock-json"
+      ],
+      "artifact": "attachment-local-android-boundary-contract",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "depends": [
+        "generated"
       ],
       "timeoutMs": 60000,
       "cache": false
