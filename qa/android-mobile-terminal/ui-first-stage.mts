@@ -30,10 +30,24 @@ function snapshot():Node[] {
   command('shell','uiautomator','dump',remoteXml);
   const xml=command('exec-out','cat',remoteXml);
   requireUi(xml.includes('<hierarchy'),'ACCESSIBILITY_DUMP_UNAVAILABLE');
-  current=[...xml.matchAll(/<node\b([^>]+)>/g)].map(match=>Object.fromEntries(
-    [...match[1].matchAll(/([\w-]+)="([^"]*)"/g)].map(item=>[item[1],decode(item[2])])
-  ));
+  current=[];
+  const parents:number[]=[];
+  for(const match of xml.matchAll(/<node\b([^>]*?)(\/?)>|<\/node>/g)) {
+    if(match[0]==='</node>') {parents.pop();continue;}
+    const node:Node=Object.fromEntries([...match[1].matchAll(/([\w-]+)="([^"]*)"/g)]
+      .map(item=>[item[1],decode(item[2])]));
+    node.__parent=String(parents.at(-1)??-1);
+    const index=current.push(node)-1;
+    if(match[2]!=='/')parents.push(index);
+  }
   return current;
+}
+function ancestors(node:Node):Node[] {
+  const result:Node[]=[];
+  while(Number(node.__parent)>=0) {
+    node=current[Number(node.__parent)];result.push(node);
+  }
+  return result;
 }
 const redact=(text:string)=>text.replace(/(?:https?|wss?):\/\/[^\s"<>]+/gi,'[URL]')
   .replace(/(?:token|cookie|authorization|api[_ -]?key)\s*[:=]\s*[^\s,;]+/gi,'[REDACTED]')
@@ -96,10 +110,18 @@ function interactOnboarding(step:string,names:string[]):void {
   const actions=current.filter(node=>node.package===pkg && node.class==='android.widget.Button'
     && names.some(name=>node.text===name||node['content-desc']===name) && node.enabled!=='false');
   if(actions.length!==1)return;
-  const dialogs=current.filter(node=>node.package===pkg && node.class==='android.app.Dialog' && bounds(node));
-  const views=current.filter(node=>node.package===pkg && node.class==='android.webkit.WebView' && bounds(node));
-  requireUi(dialogs.length===1 && views.length===1,'ONBOARDING_SCROLL_REGION_NOT_EXPOSED');
-  const dialog=bounds(dialogs[0])!,view=bounds(views[0])!;
+  // Android can expose both native and document WebView nodes. Ownership
+  // comes from this button's actual modal/document ancestry, not global counts.
+  const owner=ancestors(actions[0]).find(node=>node.package===pkg && node.class==='android.app.Dialog' && bounds(node));
+  const document=owner && ancestors(owner).find(node=>node.package===pkg && node.class==='android.webkit.WebView' && bounds(node));
+  if(!owner || !document) {
+    const regions=current.filter(node=>node.package===pkg && ['android.app.Dialog','android.webkit.WebView'].includes(node.class));
+    emit('observed',{interaction:'onboarding-region-missing',regionCount:regions.length,
+      regions:regions.slice(0,16).map(node=>({class:node.class,bounds:node.bounds,scrollable:node.scrollable,
+        parentClass:current[Number(node.__parent)]?.class??null}))});
+  }
+  requireUi(owner && document,'ONBOARDING_SCROLL_REGION_NOT_EXPOSED');
+  const dialog=bounds(owner)!,view=bounds(document)!;
   const box=[Math.max(dialog[0],view[0]),Math.max(dialog[1],view[1]),Math.min(dialog[2],view[2]),Math.min(dialog[3],view[3])];
   requireUi(box[2]>box[0] && box[3]>box[1],'ONBOARDING_SCROLL_REGION_NOT_VISIBLE');
   const action=bounds(actions[0]);
