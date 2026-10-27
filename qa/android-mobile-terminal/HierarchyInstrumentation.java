@@ -60,7 +60,7 @@ public final class HierarchyInstrumentation extends Instrumentation {
                         if (root != null) {
                             phase = "SERIALIZE";
                             activeRoot |= window.isActive() || window.isFocused();
-                            if (rootIds.add(root.getWindowId())) node(xml, root, window);
+                            if (rootIds.add(root.getWindowId())) node(xml, root, window, false);
                             else root.recycle();
                             phase = "ROOT_READ";
                         }
@@ -70,7 +70,7 @@ public final class HierarchyInstrumentation extends Instrumentation {
                     AccessibilityNodeInfo root = ui.getRootInActiveWindow();
                     if (root != null) {
                         activeRoot = true; // This public getter identifies the active window.
-                        if (rootIds.add(root.getWindowId())) { phase = "SERIALIZE"; node(xml, root, null); }
+                        if (rootIds.add(root.getWindowId())) { phase = "SERIALIZE"; node(xml, root, null, true); }
                         else root.recycle(); // Already serialized via getWindows().
                     }
                 }
@@ -209,7 +209,7 @@ public final class HierarchyInstrumentation extends Instrumentation {
         }
         finish(Activity.RESULT_CANCELED, result); // No messages, stack traces or partial XML.
     }
-    private static void node(StringBuilder xml, AccessibilityNodeInfo node, AccessibilityWindowInfo window) {
+    private static void node(StringBuilder xml, AccessibilityNodeInfo node, AccessibilityWindowInfo window, boolean fromActiveGetter) {
         try {
             xml.append("<node");
             attr(xml, "text", node.getText());
@@ -234,11 +234,15 @@ public final class HierarchyInstrumentation extends Instrumentation {
             if (window != null) {
                 attr(xml, "window-active", window.isActive());
                 attr(xml, "window-focused", window.isFocused());
+            } else if (fromActiveGetter) {
+                // Preserve the public getter's active-window fact when no
+                // AccessibilityWindowInfo was available; children inherit none.
+                attr(xml, "window-active", true);
             }
             xml.append('>');
             for (int i = 0; i < node.getChildCount(); i++) {
                 AccessibilityNodeInfo child = node.getChild(i);
-                if (child != null) node(xml, child, null);
+                if (child != null) node(xml, child, null, false);
             }
             xml.append("</node>");
             if (xml.length() > 350000) throw new IllegalStateException("HIERARCHY_TOO_LARGE");

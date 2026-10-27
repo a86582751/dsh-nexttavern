@@ -617,6 +617,7 @@ async function openCardFilePicker():Promise<void> {
 }
 
 const docs=(node:Node)=>/^(?:com\.android|com\.google\.android)\.documentsui$/.test(node.package);
+const activeWindow=(node:Node)=>node.__parent==='-1'&&(node['window-active']==='true'||node['window-focused']==='true');
 /** Entry condition: an actual roleplay session's Card import page is exposed.
  * The runner owns this work-dir/emulator. Normal product SAF is the only route
  * into app storage; adb push only supplies a file to the device Downloads. */
@@ -636,12 +637,19 @@ async function selectSyntheticCard(workDir:string):Promise<void> {
   }}));
   command('push',file,'/sdcard/Download/nexttavern-ui-card.json');
   await openCardFilePicker();
-  await until(()=>current.some(docs),30,'SYSTEM_DOCUMENTS_UI_NOT_OPENED');
+  await until(()=>current.some(node=>docs(node)&&activeWindow(node)),30,'SYSTEM_DOCUMENTS_UI_NOT_OPENED');
   command('shell','input','keyevent','KEYCODE_BACK'); // Genuine user cancellation.
-  await until(()=>has(fileButton),30,'SAF_CANCEL_DID_NOT_RETURN_TO_APP');
-  requireUi(!has(selectedFile),'SAF_CANCEL_UNEXPECTEDLY_SELECTED_FILE');
+  await until(()=>!current.some(docs)&&current.some(node=>node.package===pkg&&activeWindow(node)),
+    30,'SAF_CANCEL_DID_NOT_RETURN_TO_APP');
+  const cardPanelRetained=has(['上传角色卡'])&&has(fileButton);
+  emit('observed',{interaction:'saf-cancel-return',appForeground:true,cardPanelRetained});
+  if(!cardPanelRetained) {
+    await openManager();await pressManagerTab(['角色卡导入']);
+    await until(()=>has(['上传角色卡'])&&current.filter(cardFileControl).length===1,30,'CARD_UPLOAD_PAGE_NOT_EXPOSED');
+  }
+  requireUi(!has(selectedFile)&&!has(['确认原导入任务']),'SAF_CANCEL_UNEXPECTEDLY_SELECTED_FILE');
   await openCardFilePicker();
-  await until(()=>current.some(docs),30,'SYSTEM_DOCUMENTS_UI_NOT_REOPENED');
+  await until(()=>current.some(node=>docs(node)&&activeWindow(node)),30,'SYSTEM_DOCUMENTS_UI_NOT_REOPENED');
   if(!current.some(node=>docs(node)&&named(node,['nexttavern-ui-card.json'])&&visibleBounds(node))) {
     const roots=current.filter(node=>docs(node)&&named(node,['Show roots','显示根目录'])&&visibleBounds(node));
     requireUi(roots.length===1,'DOCUMENTS_ROOT_DRAWER_NOT_EXPOSED');tapNode(roots[0]);
