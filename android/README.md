@@ -1,9 +1,16 @@
-# NextTavern Android — option B runtime checkpoint
+# NextTavern Android — option B development
 
-This is a **G0 capability probe, not the NextTavern phone app**. It does not
-contain a running Harness, chat interface, model keys, or local embedding support.
-No existing NextTavern feature is declared removed: those integrations remain
-pending until the standalone runtime is proven on Android.
+This directory contains two distinct Android modules:
+
+- `:app`: the standalone **G0 capability probe**, not a playable Tavern app.
+- `:mobile`: the developing native service/WebView app with a packaged Harness
+  and NextTavern UI. Public-source builds and ordinary-app Host/UI startup have
+  run on an x86_64 Android emulator; card/chat/recovery acceptance is still in
+  progress. It is **not yet a completed or released phone app**.
+
+No existing feature is declared removed. Local embeddings and other unqualified
+native integrations remain explicit open capabilities, not implied support.
+The emulator results do not establish arm64 runtime compatibility or full G0.
 
 ## Architecture and current boundary
 
@@ -11,9 +18,12 @@ The native Java Activity starts a standalone Bionic Node 24 process from
 `ApplicationInfo.nativeLibraryDir/libnexttavern_node.so`. Android's package
 installer extracts native files (`extractNativeLibs` / legacy JNI packaging).
 Scripts and test data are app-private; executable binaries never run from
-writable app data. There is no PRoot, Linux distribution, root access, JNI-embedded
-Node, background service, or targetSdk 28 workaround. This probe targets API 36.
-API 26 and arm64-v8a are provisional probe parameters, not approved product scope.
+writable app data. Neither module uses PRoot, a Linux distribution, root access,
+JNI-embedded Node, or a targetSdk 28 workaround. Both target API 36. The mobile
+module owns Node through a user-started foreground service and hosts its
+loopback UI in WebView; the probe has no background service. API 26 and arm64-v8a
+remain provisional build parameters, not a claim that every old WebView or
+arm64 device has passed product acceptance.
 
 The upstream system addon 0.1.2's C `flock` implementation is cross-compiled
 unchanged using NDK r28c. Its published JS loader rejects `android`; the probe
