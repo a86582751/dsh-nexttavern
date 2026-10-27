@@ -35,6 +35,7 @@ import type {
 } from 'dsh-nexttavern-session-format/storage-contract'
 import type { SessionWriteLease } from './lease.js'
 import {isMessageEdit} from 'dsh-nexttavern-session-format/projection'
+import {assertMvuSchemaHistory} from 'dsh-nexttavern-session-format/mvu-schema-marker'
 
 /** Maximum intentional wait before a routed live session batch starts writing. */
 export const LIVE_WRITE_BATCH_MAX_DELAY_MS = 200
@@ -328,8 +329,10 @@ export class JsonlSessionHandle implements SessionHandle {
     validateStoredEvents(this.header, [...batch])
     await this.ensureLease()
     assertContiguous(this.id, batch, this.state.cursor)
-    if (batch.some(event=>isMessageEdit(event)||event.type==='roleplay/mvu-manual-edit'
-      ||event.type==='roleplay/mvu-schema-dispatched'||event.type==='roleplay/mvu-schema-completed')) {
+    const changesSurface=batch.some(event=>isMessageEdit(event)||event.type==='roleplay/mvu-manual-edit')
+    const changesSchema=batch.some(event=>event.type==='roleplay/mvu-schema-dispatched'
+      ||event.type==='roleplay/mvu-schema-completed'||event.type==='roleplay/mvu-schema-revised')
+    if (changesSurface||changesSchema) {
       // The raw handle is also a public write surface. Validate an edit against
       // the owned durable prefix before publishing it, not only on cold read.
       // This replay occurs per required edit/marker batch, never per streamed token.
@@ -346,7 +349,11 @@ export class JsonlSessionHandle implements SessionHandle {
         else throw Error('SESSION_RECOVERY_PREFIX_MISMATCH')
       }
       if (logical.length !== this.state.cursor) throw Error('SESSION_RECOVERY_PREFIX_MISMATCH')
-      validateMessageEditHistory([...logical, ...batch])
+      // Log-only schema markers cannot change an accepted surface or player
+      // edit. Their owner checks marker references without replaying both.
+      const next=[...logical,...batch]
+      if(changesSurface)validateMessageEditHistory(next)
+      else assertMvuSchemaHistory(next)
     }
     // Commit any pending torn-tail repair first, clearing each step's state
     // only once it lands so a failed step retries on the next mutation:
