@@ -90,12 +90,12 @@ const settings=['设置','Settings'];
 const sidebar=['打开侧边栏','Open sidebar'];
 const webChrome=[...settings,...sidebar,'新建会话','New session'];
 const addProvider=['添加模型提供商','Add model provider'];
-const onboardingHandled=new Set<string>();
+const onboardingDismissRequested=new Set<string>();
 const onboardingSwipes=new Map<string,number>();
-function interactOnboarding(step:string,names:string[]):boolean {
+function interactOnboarding(step:string,names:string[]):void {
   const actions=current.filter(node=>node.package===pkg && node.class==='android.widget.Button'
     && names.some(name=>node.text===name||node['content-desc']===name) && node.enabled!=='false');
-  if(actions.length!==1)return false;
+  if(actions.length!==1)return;
   const dialogs=current.filter(node=>node.package===pkg && node.class==='android.app.Dialog' && bounds(node));
   const views=current.filter(node=>node.package===pkg && node.class==='android.webkit.WebView' && bounds(node));
   requireUi(dialogs.length===1 && views.length===1,'ONBOARDING_SCROLL_REGION_NOT_EXPOSED');
@@ -109,7 +109,7 @@ function interactOnboarding(step:string,names:string[]):boolean {
     const visible=[Math.max(box[0],action[0]),Math.max(box[1],action[1]),Math.min(box[2],action[2]),Math.min(box[3],action[3])];
     if(visible[2]>visible[0] && visible[3]>visible[1]) {
       command('shell','input','tap',String(Math.round((visible[0]+visible[2])/2)),String(Math.round((visible[1]+visible[3])/2)));
-      onboardingHandled.add(step);return true;
+      onboardingDismissRequested.add(step);return;
     }
   }
   const count=onboardingSwipes.get(step)??0;
@@ -120,14 +120,15 @@ function interactOnboarding(step:string,names:string[]):boolean {
   command('shell','input','swipe',String(x),String(Math.round(box[1]+height*.8)),
     String(x),String(Math.round(box[1]+height*.2)),'450');
   onboardingSwipes.set(step,count+1);emit('observed',{interaction:'onboarding-scroll',step,attempt:count+1});
-  return true;
 }
 function onboarding():boolean {
-  if(!onboardingHandled.has('notice') && has(['内测声明','Internal Testing Notice'])) {
-    return interactOnboarding('notice',['继续','Continue']);
+  if(has(['内测声明','Internal Testing Notice'])) {
+    if(!onboardingDismissRequested.has('notice'))interactOnboarding('notice',['继续','Continue']);
+    return true;
   }
-  if(!onboardingHandled.has('key') && has(['添加一个 API Key 开始使用','Add an API key to get started'])) {
-    return interactOnboarding('key',['稍后配置','Configure later']);
+  if(has(['添加一个 API Key 开始使用','Add an API key to get started'])) {
+    if(!onboardingDismissRequested.has('key'))interactOnboarding('key',['稍后配置','Configure later']);
+    return true;
   }
   return false;
 }
@@ -147,15 +148,27 @@ try {
   await until(()=>{if(onboarding())return false;return has(webChrome)},180,'WEBVIEW_APP_CONTROLS_NOT_EXPOSED');
   emit('passed');labels();
   stage='open-host-settings';
-  if(matches(settings,true).length!==1) {
-    tap(sidebar);
-    await until(()=>matches(settings,true).length===1,30,'SETTINGS_TRIGGER_NOT_EXPOSED');
-  }
-  tap(settings);
-  await until(()=>matches(['模型','Models'],true).length===1,60,'MODELS_NAV_NOT_EXPOSED');
-  tap(['模型','Models']);
+  let sidebarRequested=false,settingsRequested=false,modelsRequested=false;
+  await until(()=>{
+    // The Host can mount onboarding after its navigation chrome is visible.
+    // A modal may have intercepted the previous touch; resume the visible path
+    // after it is dismissed rather than treating that touch as completed work.
+    if(onboarding()) {
+      sidebarRequested=false;settingsRequested=false;modelsRequested=false;return false;
+    }
+    if(matches(addProvider,true).length===1)return true;
+    if(!modelsRequested && matches(['模型','Models'],true).length===1) {
+      tap(['模型','Models']);modelsRequested=true;return false;
+    }
+    if(!settingsRequested && matches(settings,true).length===1) {
+      tap(settings);settingsRequested=true;return false;
+    }
+    if(!sidebarRequested && !settingsRequested && matches(sidebar,true).length===1) {
+      tap(sidebar);sidebarRequested=true;
+    }
+    return false;
+  },180,'MODEL_DIRECTORY_NOT_READY_OR_LAYOUT_CLIPPED');
   stage='host-models-page';
-  await until(()=>matches(addProvider,true).length===1,120,'MODEL_DIRECTORY_NOT_READY_OR_LAYOUT_CLIPPED');
   labels();
   emit('passed',{scope:'native-start-webview-host-models-only',package:pkg,
     cardImport:'not-run',SAF:'not-run',chat:'not-run',restartRecovery:'not-run',liveModel:false,
