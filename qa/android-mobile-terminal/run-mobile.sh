@@ -119,10 +119,10 @@ if "$adb" -s "$serial" install --no-incremental "$apk" > "$work/install.log" 2>&
       await new Promise(resolve=>setTimeout(resolve,250));
     }
     process.exit(1)' &&
-    "$adb" -s "$serial" shell 'printf "GET /v1/models HTTP/1.1\r\nHost: fixture\r\nConnection: close\r\n\r\n" | toybox nc -w 5 10.0.2.2 18765 | head -n 1' > "$work/fixture-alias-status.log" &&
+    "$adb" -s "$serial" shell '{ printf "GET /v1/models HTTP/1.1\r\nHost: fixture\r\nConnection: close\r\n\r\n"; sleep 1; } | toybox nc -w 5 10.0.2.2 18765 | head -n 1' > "$work/fixture-alias-status.log" &&
     grep -q '^HTTP/1.1 200' "$work/fixture-alias-status.log" &&
     "$adb" -s "$serial" reverse tcp:18766 tcp:18765 &&
-    "$adb" -s "$serial" shell 'printf "GET /v1/models HTTP/1.1\r\nHost: fixture\r\nConnection: close\r\n\r\n" | toybox nc -w 5 127.0.0.1 18766 | head -n 1' > "$work/fixture-memory-loopback-status.log" &&
+    "$adb" -s "$serial" shell '{ printf "GET /v1/models HTTP/1.1\r\nHost: fixture\r\nConnection: close\r\n\r\n"; sleep 1; } | toybox nc -w 5 127.0.0.1 18766 | head -n 1' > "$work/fixture-memory-loopback-status.log" &&
     grep -q '^HTTP/1.1 200' "$work/fixture-memory-loopback-status.log"; then
     printf 'EMULATOR_HOST_ALIAS_AND_MEMORY_LOOPBACK_FIXTURE_HTTP_200_NOT_APP_UID_EVIDENCE\n'
     phase=REAL_MAIN_ACTIVITY_SYNTHETIC_FLOW

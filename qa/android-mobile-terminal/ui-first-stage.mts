@@ -1171,7 +1171,7 @@ function assertNoMemoryUiError():void {
 function ensureMemoryFixtureLoopback():void {
   const present=command('reverse','--list').split('\n').some(line=>/\btcp:18766\s+tcp:18765\s*$/.test(line));
   if(!present)command('reverse','tcp:18766','tcp:18765'); // Restore test transport, never replay a UI write.
-  const status=command('shell',"printf 'GET /v1/models HTTP/1.1\\r\\nHost: fixture\\r\\nConnection: close\\r\\n\\r\\n' | toybox nc -w 5 127.0.0.1 18766 | head -n 1");
+  const status=command('shell',"{ printf 'GET /v1/models HTTP/1.1\\r\\nHost: fixture\\r\\nConnection: close\\r\\n\\r\\n'; sleep 1; } | toybox nc -w 5 127.0.0.1 18766 | head -n 1");
   requireUi(/^HTTP\/1\.1 200\b/.test(status),'MEMORY_LOOPBACK_FIXTURE_UNREACHABLE');
   emit('observed',{interaction:'memory-loopback-fixture-preflight',mappingRestored:!present,appUidEvidence:false});
 }
