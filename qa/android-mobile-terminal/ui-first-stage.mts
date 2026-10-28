@@ -5,7 +5,7 @@ import {mkdirSync,writeFileSync,readFileSync,chmodSync,rmSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 import {safeErrorTail,adbFailureKind} from './safe-diagnostics.mts';
-import {PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID} from '../../android/host/protocol-fixture.mts';
+import {PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID,EMBEDDING_FIXTURE_ID,EMBEDDING_FIXTURE_MODEL,EMBEDDING_FIXTURE_DIMENSIONS,EMBEDDING_QUERY} from '../../android/host/protocol-fixture.mts';
 
 type Node = Record<string,string>;
 const args:Record<string,string>={};
@@ -1128,6 +1128,157 @@ async function pacedCompleteThenInterruptAndRecover(fixtureEventsFile:string):Pr
     memoryQualified:false,drainedAllWork:false,liveModel:false,fullG0:false});
 }
 
+const memoryProviderName='NextTavernOnlineMemoryFixture', memoryRevision='qa-online-4d-v1';
+type MemoryFixtureCount={request:number;inputCount:number;dimensions:number;completed:boolean;aborted:boolean};
+/** Separate from chat counters. Never emit raw log lines, model input, keys or URLs. */
+function memoryFixtureCounts(file:string):Map<number,MemoryFixtureCount> {
+  const text=readFileSync(file,'utf8'),records=new Map<number,MemoryFixtureCount>();
+  for(const line of text.slice(0,text.lastIndexOf('\n')+1).split('\n')) {
+    if(!line.startsWith('{'))continue;
+    let value:Record<string,unknown>;
+    try {value=JSON.parse(line)}catch{requireUi(false,'MEMORY_FIXTURE_LOG_INVALID')}
+    if(value!.kind!=='local-embedding-fixture-request')continue;
+    requireUi(value!.schemaVersion===1&&value!.fixture===EMBEDDING_FIXTURE_ID
+      &&Number.isSafeInteger(value!.request)&&Number(value!.request)>0
+      &&Number.isSafeInteger(value!.inputCount)&&Number(value!.inputCount)>0
+      &&value!.dimensions===EMBEDDING_FIXTURE_DIMENSIONS
+      &&typeof value!.completed==='boolean'&&typeof value!.aborted==='boolean','MEMORY_FIXTURE_SCHEMA_UNSUPPORTED');
+    records.set(Number(value!.request),{request:Number(value!.request),inputCount:Number(value!.inputCount),
+      dimensions:Number(value!.dimensions),completed:value!.completed as boolean,aborted:value!.aborted as boolean});
+  }
+  return records;
+}
+const maxMemoryFixture=(file:string)=>Math.max(0,...memoryFixtureCounts(file).keys());
+const completedMemoryAfter=(file:string,after:number)=>[...memoryFixtureCounts(file).values()]
+  .filter(record=>record.request>after&&record.completed&&!record.aborted);
+const memoryTexts=()=>current.filter(node=>node.package===pkg&&inWebView(node)
+  &&node.class!=='android.widget.EditText'&&node.class!=='android.webkit.WebView'&&node.text?.trim());
+/** Source labels are confirmed; their Spinner/EditText accessibility joins are
+ * UNOBSERVED for this panel. Unknown/missing controls fail; no field-index fallback. */
+async function selectMemoryOption(label:string,option:string):Promise<void> {
+  tapNode(await reveal([label],node=>node.class==='android.widget.Spinner',node=>node.package===pkg,true,[label]));
+  await press([option],menuOption);
+}
+async function openEmbeddingMemoryPanel():Promise<void> {
+  await openManager();await pressManagerTab(['Embedding 模型设置']);
+  await until(()=>has(['新增接入 / New provider']),30,'EMBEDDING_PANEL_NOT_EXPOSED');
+}
+const memoryProgressPatterns=[/^正文来源 (\d+) · 已覆盖 (\d+)$/,
+  /^索引指纹：([0-9a-f]{20})…$/,
+  /^嵌入元数据：nexttavern-embedding-fixture · 修订 qa-online-4d-v1 · 维度 4 · task=document · pooling=provider-defined$/,
+  /^所选对话向量：(\d+) · 待处理 (\d+) · 运行中 (\d+) · 失败 (\d+) · 结果未知 (\d+)$/];
+type MemoryUiIndex={sources:number;covered:number;fingerprintPrefix:string;vectors:number};
+/** Only actual exposed paragraphs, each publicly revealed before acceptance.
+ * A clipped/omitted metadata paragraph is a UI gate, not permission for HTTP/DB reads. */
+async function observeOnlineMemoryIndex():Promise<MemoryUiIndex> {
+  await selectMemoryOption('查看进度的会话','当前会话');
+  let texts:string[]=[];
+  await until(()=>{
+    texts=memoryProgressPatterns.map(pattern=>memoryTexts().map(node=>node.text!.trim()).find(text=>pattern.test(text))??'');
+    if(texts.some(text=>!text))return false;
+    const coverage=texts[0].match(memoryProgressPatterns[0])!,counts=texts[3].match(memoryProgressPatterns[3])!;
+    return Number(coverage[1])>0&&coverage[1]===coverage[2]&&Number(counts[1])>0
+      &&counts.slice(2).every(value=>Number(value)===0);
+  },120,'ONLINE_MEMORY_INDEX_METADATA_NOT_COMPLETE');
+  for(const text of texts)await reveal([text],node=>node.class!=='android.widget.EditText');
+  const coverage=texts[0].match(memoryProgressPatterns[0])!,counts=texts[3].match(memoryProgressPatterns[3])!;
+  return {sources:Number(coverage[1]),covered:Number(coverage[2]),
+    fingerprintPrefix:texts[1].match(memoryProgressPatterns[1])![1],vectors:Number(counts[1])};
+}
+
+/** Prerequisite: first memory setup in a fresh synthetic CI profile; the SAME
+ * named conversation already contains existing fixtureOpening. The fixture maps
+ * any 蓝色书签 source to the query vector; no card/history changes are needed. */
+async function configureAndIndexOnlineMemory(eventsFile:string):Promise<MemoryUiIndex> {
+  stage='online-memory-provider';
+  await openEmbeddingMemoryPanel();
+  requireUi(!memoryTexts().some(node=>node.text?.includes(memoryProviderName)),'MEMORY_PROVIDER_ALREADY_EXISTS_NO_CREATE_REPLAY');
+  await press(['新增接入 / New provider']);
+  await replace(['名称','名称 My embedding provider'],memoryProviderName,['名称']);
+  await selectMemoryOption('类型','在线 / Online');
+  await selectMemoryOption('协议','OpenAI 官方 / 兼容接口');
+  await replace(['Base URL','Base URL https://…'],'http://127.0.0.1:18765/v1',['Base URL']);
+  await replace(['手动输入模型 ID','手动输入模型 ID 支持自定义别名'],EMBEDDING_FIXTURE_MODEL,['手动输入模型 ID']);
+  await replace(['维度（留空使用模型默认值）'],'4');
+  await replace(['模型修订版本（可选）','模型修订版本（可选） 例如 2026-09-14'],memoryRevision,['模型修订版本（可选）']);
+  await replace(['API Key（留空保留已保存 Key，不回显）'],'local-test-only');
+  await press(['保存供应商']); // Exactly once; ambiguous write must stop, never replay.
+  await until(()=>current.some(node=>named(node,['测试'])&&button(node)&&node.enabled!=='false'),30,'MEMORY_PROVIDER_SAVE_NOT_OBSERVED');
+  const testedAfter=maxMemoryFixture(eventsFile);
+  await press(['测试']);
+  await until(()=>completedMemoryAfter(eventsFile,testedAfter).length>0,60,'ONLINE_EMBEDDING_TEST_REQUEST_NOT_COMPLETED');
+  await reveal(['实际向量维度：4'],node=>node.class!=='android.widget.EditText');
+  await press(['用于剧情记忆']);
+  await pressManagerTab(['记忆']);
+  await selectMemoryOption('将所选方式应用到 / Apply to','当前会话 / Session');
+  await press(['B 语义 / Semantic']);
+  const auto=await reveal(['自动更新语义索引 / Auto-update semantic index'],
+    node=>node.class==='android.widget.CheckBox',node=>node.package===pkg,true);
+  // Fresh profile defaults to indexing disabled; provider/mode writes do not enable it.
+  const indexedAfter=maxMemoryFixture(eventsFile);tapNode(auto);
+  // Fresh completed embedding requests plus full public coverage prove this write.
+  await pressManagerTab(['Embedding 模型设置']);
+  const before=await observeOnlineMemoryIndex();
+  requireUi(completedMemoryAfter(eventsFile,indexedAfter).length>0,'NO_FRESH_EMBEDDING_INDEX_REQUEST');
+  emit('passed',{scope:'online-embedding-ui-provider-and-index',dimensions:4,vectors:before.vectors,
+    sources:before.sources,covered:before.covered,fingerprintPrefix:before.fingerprintPrefix,
+    semanticQuality:false,androidEvidence:'this-run-only'});
+  await closeWebDialog();await hideSidebar();return before;
+}
+
+/** Full JSON in the command summary is NOT yet observed in Android A11y.
+ * GenericCommandCard receives JSON.stringify(result), no UI-only data endpoint.
+ * Single-line output is not expandable; truncated JSON MUST block this gate. */
+function visibleMemoryResults():Record<string,any>[] {
+  const records=new Map<string,Record<string,any>>();
+  for(const node of memoryTexts().filter(node=>visibleBounds(node))) {
+    const text=node.text!.trim();if(!text.startsWith('{'))continue;
+    let value:Record<string,any>;try {value=JSON.parse(text)}catch{continue}
+    if(value.requestedMode==='semantic'&&Array.isArray(value.entries))records.set(text,value);
+  }
+  return [...records.values()];
+}
+/** Run ONLY once and AFTER existing card/chat/paced gates, in a fresh task profile.
+ * This is the FIRST memory search in that scripted profile, deliberately after
+ * restart: no pre-restart identical command outcome can satisfy a fresh result. */
+async function onlineMemoryRestartAndRecall(eventsFile:string):Promise<void> {
+  const before=await configureAndIndexOnlineMemory(eventsFile),oldPid=ownedNodePid();
+  stage='online-memory-ordinary-stop-start';await ordinaryNativeStop();
+  await press(['启动'],node=>button(node)&&!inWebView(node));
+  await until(()=>has(['本地服务运行中']),180,'MEMORY_RESTART_READY_NOT_OBSERVED');
+  requireUi(ownedNodePid()!==oldPid,'MEMORY_RESTART_DID_NOT_REPLACE_NODE');
+  await reopenNamedConversation();await requirePersistedConversation();
+  await openEmbeddingMemoryPanel();const after=await observeOnlineMemoryIndex();
+  requireUi(after.fingerprintPrefix===before.fingerprintPrefix&&after.vectors===before.vectors
+    &&after.sources===before.sources&&after.covered===before.covered,'MEMORY_INDEX_OR_FINGERPRINT_PREFIX_CHANGED_ON_REOPEN');
+  // Do not reapply mode/index flags: fresh semantic query proves effective saved mode.
+  // Index persistence is qualified here, not auto-update of future turns.
+  await closeWebDialog();await hideSidebar();await readySnapshot();
+  requireUi(visibleMemoryResults().length===0,'FIRST_MEMORY_SEARCH_PRECONDITION_NOT_MET');
+  const embeddingBaseline=maxMemoryFixture(eventsFile),chatBaseline=maxFixtureRequest(eventsFile);
+  stage='fresh-semantic-memory-slash-after-restart';
+  const composers=current.filter(node=>node.package===pkg&&node.class==='android.widget.EditText'
+    &&inWebView(node)&&node.enabled!=='false'&&visibleBounds(node));
+  requireUi(composers.length===1,'MEMORY_SLASH_COMPOSER_NOT_UNIQUE');
+  await typeAscii(composers[0],'/memory search '+EMBEDDING_QUERY);
+  await press(['发送消息','Send message']); // One actual slash command, no paid chat turn.
+  let result:Record<string,any>|undefined;
+  await until(()=>{
+    const outcomes=visibleMemoryResults();requireUi(outcomes.length<=1,'FRESH_MEMORY_RESULT_AMBIGUOUS');
+    result=outcomes[0];return Boolean(result)&&completedMemoryAfter(eventsFile,embeddingBaseline).length>0;
+  },90,'FRESH_MEMORY_COMMAND_FULL_JSON_OR_EMBEDDING_REQUEST_NOT_OBSERVED');
+  requireUi(result!.mode==='semantic'&&result!.requestedMode==='semantic'&&!Object.hasOwn(result!,'fallback'),
+    'MEMORY_QUERY_FELL_BACK_OR_WAS_NOT_SEMANTIC');
+  const hit=result!.entries.find((entry:Record<string,any>)=>entry.text?.includes(fixtureOpening));
+  requireUi(hit?.rank===1&&typeof hit.score==='number'&&Number.isFinite(hit.score)&&hit.score>0,'EXPECTED_SYNTHETIC_SEMANTIC_SOURCE_NOT_RANKED_FIRST');
+  requireUi(maxFixtureRequest(eventsFile)===chatBaseline,'CHAT_REQUEST_DURING_MEMORY_COMMAND_ATTRIBUTION_AMBIGUOUS');
+  emit('passed',{scope:'online-memory-ui-index-stop-start-fresh-semantic-recall',dimensions:4,
+    vectors:after.vectors,fingerprintPrefix:after.fingerprintPrefix,fullFingerprintCompared:false,autoIndexPersistenceQualified:false,
+    expectedSource:true,rank:hit.rank,score:hit.score,keywordFallback:false,
+    freshEmbeddingHttpCompletions:completedMemoryAfter(eventsFile,embeddingBaseline).length,
+    semanticQuality:false,separateChunkRanking:false,localModel:false,liveProvider:false});
+}
+
 try {
   stage='verify-self-created-emulator';
   requireUi(command('shell','getprop','ro.kernel.qemu').trim()==='1','NOT_SELF_CREATED_EMULATOR');
@@ -1168,10 +1319,11 @@ try {
   labels();
   await runContiguousCreate(args['--work-dir']);
   await pacedCompleteThenInterruptAndRecover(fixtureEvents);
+  await onlineMemoryRestartAndRecall(fixtureEvents);
   emit('passed',{scope:'ordinary-ui-synthetic-card-chat-stream-stop-recovery',package:pkg,
     cardImport:'passed',SAF:'passed',chat:'passed',restartRecovery:'passed',liveModel:false,
     incrementalRendering:'observed-partial-to-complete',syntheticCoreFlow:true,
-    productPlayable:false,fullG0:false,arm64Qualified:false,phaseBCQualified:false,memoryQualified:false});
+    productPlayable:false,fullG0:false,arm64Qualified:false,phaseBCQualified:false,memoryQualified:true});
 }catch(error) {
   const failedWait=waitReceipt(),failedSnapshot=lastSnapshotReceipt();
   // Replace the same approved form PNG only before any API key was entered.
