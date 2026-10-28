@@ -11,7 +11,7 @@ umask 077 # Runner-private diagnostics, including raw emulator/ADB stderr.
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 work="$(mktemp -d "${RUNNER_TEMP:?}/webview-kvm.XXXXXX")"
 mode="${1:-control}"
-[[ "$mode" == control || "$mode" == --mobile || "$mode" == --transport ]]
+[[ "$mode" == control || "$mode" == --mobile || "$mode" == --transport || "$mode" == --fixture ]]
 phase=INITIALIZE
 serial=emulator-5554
 pkg=app.nexttavern.android.webviewcontrol
@@ -428,6 +428,11 @@ timeout 5 "$adb" server-status > "$work/adb-server-status.log" 2>&1 || :
 chmod 600 "$work/adb-server-status.log"
 node "$source_dir/../android-mobile-terminal/safe-diagnostics.mts" --source adb-server-acquire \
   --status-file "$work/adb-server-status.log" --adb-executable "$adb" --state-file "$work/adb-server-owner.json" || :
+if [[ "$mode" == --fixture ]]; then
+  phase=TINY_FIXTURE_TRANSPORT
+  node "$source_dir/fixture-transport.mts" "$adb" "$serial"
+  exit 0
+fi
 if [[ "$mode" == --mobile ]]; then
   phase=MOBILE_UI_EXERCISE
   # The child records UI and independent probe outcomes before returning;
