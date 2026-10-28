@@ -1298,8 +1298,11 @@ async function runIndependentMemory():Promise<void> {
   await sendOnePacedPrompt(memorySeedPrompt);
   await until(()=>{
     requireUi(!current.some(node=>node.package===pkg&&node.text?.startsWith('This turn failed')),'MEMORY_SEED_TURN_FAILED');
-    return Boolean(visibleMessage(fixtureReply))&&visibleNamed(['停止生成','Stop generating']).length===0;
+    return leafTexts(fixtureReply).length===1&&visibleNamed(['停止生成','Stop generating']).length===0;
   },180,'MEMORY_SEED_REPLY_NOT_OBSERVED');
+  // Reply completion can autofocus the composer after the send-time IME read.
+  // Reveal actual completed messages before asking for any geometry evidence.
+  await requireMemorySeedConversation();captureApprovedScreenshot('synthetic-chat');
   await rememberSyntheticConversation();
   emit('passed',{scope:'independent-memory-real-ui-synthetic-source',SAFRun:false,pacedRun:false,liveModel:false});
   await onlineMemoryRestartAndRecall(fixtureEvents,memorySeedPrompt);
