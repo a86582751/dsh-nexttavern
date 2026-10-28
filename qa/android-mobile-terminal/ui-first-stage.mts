@@ -23,8 +23,9 @@ const emit=(status:string,extra:Record<string,unknown>={})=>console.log(JSON.str
 function requireUi(value:unknown,code:string):asserts value {if(!value)throw new UiFailure(code)}
 requireUi(adb && /^emulator-\d+$/.test(serial ?? '') && /^app\.nexttavern\.android(?:\.x86diagnostic)?(?:\.debug)?$/.test(pkg ?? ''),'EMULATOR_APP_ARGUMENTS_REQUIRED');
 requireUi(Object.keys(args).every(key=>['--adb','--serial','--package','--phase','--work-dir','--fixture-events'].includes(key)),'UNKNOWN_ARGUMENT');
-// The create flow includes ordinary UI card/model/chat/recovery steps; no separate recovery entry is exposed.
-if(args['--phase']!=='create') {emit('blocked',{code:'CREATE_FLOW_ONLY',noDeviceActions:true});process.exit(2)}
+// Independent fresh UI scenarios share setup, not each other's pass/fail gates.
+const memoryOnly=args['--phase']==='memory';
+if(!memoryOnly&&args['--phase']!=='create') {emit('blocked',{code:'UNKNOWN_UI_PHASE',noDeviceActions:true});process.exit(2)}
 requireUi(fixtureEvents && args['--work-dir'],'FIXTURE_EVENTS_AND_WORK_DIRECTORY_REQUIRED');
 let adbFailureNumber=0;
 function command(...commandArgs:string[]):string {return timedCommand(90000,...commandArgs)}
@@ -504,7 +505,7 @@ function showControl(node:Node):void {controlAction(node,'show-control')}
 function controlAction(node:Node,operation:'show-control'|'click-control'):void {
   const quote=(text:string)=>"'"+text.replaceAll("'", "'\\''")+"'";
   const output=command('shell','am','instrument','-w','-r','-e','operation',operation,
-    '-e','targetPackage',pkg,'-e','targetClass',quote(node.class),'-e','targetHint',quote(node.hint??''),
+    '-e','targetPackage',node.package,'-e','targetClass',quote(node.class),'-e','targetHint',quote(node.hint??''),
     '-e','targetDescription',quote(node['content-desc']??''),
     '-e','targetText',quote(node.class==='android.widget.EditText'?'':node.text??''),
     'app.nexttavern.qa.ui/.HierarchyInstrumentation');
@@ -654,7 +655,8 @@ async function selectSyntheticCard(workDir:string):Promise<void> {
   await until(()=>current.some(node=>docs(node)&&activeWindow(node)),30,'SYSTEM_DOCUMENTS_UI_NOT_REOPENED');
   if(!current.some(node=>docs(node)&&named(node,['nexttavern-ui-card.json'])&&visibleBounds(node))) {
     const roots=current.filter(node=>docs(node)&&named(node,['Show roots','显示根目录'])&&visibleBounds(node));
-    requireUi(roots.length===1,'DOCUMENTS_ROOT_DRAWER_NOT_EXPOSED');tapNode(roots[0]);
+    requireUi(roots.length===1,'DOCUMENTS_ROOT_DRAWER_NOT_EXPOSED');
+    controlAction(roots[0],'click-control');
     await until(()=>current.some(node=>docs(node)&&named(node,['Downloads','下载'])),30,'DOCUMENTS_DOWNLOADS_NOT_EXPOSED');
     tapNode(await reveal(['Downloads','下载'],node=>node.class!=='android.widget.EditText',docs));
   }
@@ -746,7 +748,7 @@ function newSessionTarget():Node {
 /** Entry: saved provider directory in Host Settings. Fresh profile's ordinary
  * default Workspace and roleplay preset must be supplied by the actual product.
  * There is no Coding Tools preference or QA-only session creation workaround. */
-async function prepareRoleplaySessionAndCardPage():Promise<void> {
+async function prepareRoleplaySessionAndCardPage(openCardPage=true):Promise<void> {
   stage='ordinary-default-workspace-session';
   await closeWebDialog();
   await showSidebar();
@@ -789,6 +791,7 @@ async function prepareRoleplaySessionAndCardPage():Promise<void> {
   await until(()=>current.some(node=>node.package===pkg&&node.text==='当前主模型：'+fixtureId)
     ,60,'FIXTURE_MAIN_ROUTE_NOT_RETAINED');
   emit('passed',{scope:'ordinary-roleplay-session-and-persisted-fixture-main-routing',workerRoutingVerified:false,liveModel:false});
+  if(!openCardPage){await closeWebDialog();await hideSidebar();return;}
   await pressManagerTab(['角色卡导入']);
   stage='card-import-page';
   await until(()=>has(['上传角色卡'])&&current.filter(cardFileControl).length===1,30,'CARD_UPLOAD_PAGE_NOT_EXPOSED');
@@ -1131,6 +1134,7 @@ async function pacedCompleteThenInterruptAndRecover(fixtureEventsFile:string):Pr
 
 const memoryProviderName='NextTavernOnlineMemoryFixture', memoryRevision='qa-online-4d-v1';
 let memoryKeyInputStarted=false;
+const memorySeedPrompt='Remember the blue bookmark: '+EMBEDDING_QUERY;
 type MemoryFixtureCount={request:number;inputCount:number;dimensions:number;completed:boolean;aborted:boolean};
 /** Separate from chat counters. Never emit raw log lines, model input, keys or URLs. */
 function memoryFixtureCounts(file:string):Map<number,MemoryFixtureCount> {
@@ -1239,13 +1243,14 @@ function visibleMemoryResults():Record<string,any>[] {
 /** Run ONLY once and AFTER existing card/chat/paced gates, in a fresh task profile.
  * This is the FIRST memory search in that scripted profile, deliberately after
  * restart: no pre-restart identical command outcome can satisfy a fresh result. */
-async function onlineMemoryRestartAndRecall(eventsFile:string):Promise<void> {
+async function onlineMemoryRestartAndRecall(eventsFile:string,expectedSource=fixtureOpening):Promise<void> {
   const before=await configureAndIndexOnlineMemory(eventsFile),oldPid=ownedNodePid();
   stage='online-memory-ordinary-stop-start';await ordinaryNativeStop();
   await press(['启动'],node=>button(node)&&!inWebView(node));
   await until(()=>has(['本地服务运行中']),180,'MEMORY_RESTART_READY_NOT_OBSERVED');
   requireUi(ownedNodePid()!==oldPid,'MEMORY_RESTART_DID_NOT_REPLACE_NODE');
-  await reopenNamedConversation();await requirePersistedConversation();
+  await reopenNamedConversation();
+  if(memoryOnly)await requireMemorySeedConversation();else await requirePersistedConversation();
   await openEmbeddingMemoryPanel();const after=await observeOnlineMemoryIndex();
   requireUi(after.fingerprintPrefix===before.fingerprintPrefix&&after.vectors===before.vectors
     &&after.sources===before.sources&&after.covered===before.covered,'MEMORY_INDEX_OR_FINGERPRINT_PREFIX_CHANGED_ON_REOPEN');
@@ -1267,7 +1272,7 @@ async function onlineMemoryRestartAndRecall(eventsFile:string):Promise<void> {
   },90,'FRESH_MEMORY_COMMAND_FULL_JSON_OR_EMBEDDING_REQUEST_NOT_OBSERVED');
   requireUi(result!.mode==='semantic'&&result!.requestedMode==='semantic'&&!Object.hasOwn(result!,'fallback'),
     'MEMORY_QUERY_FELL_BACK_OR_WAS_NOT_SEMANTIC');
-  const hit=result!.entries.find((entry:Record<string,any>)=>entry.text?.includes(fixtureOpening));
+  const hit=result!.entries.find((entry:Record<string,any>)=>entry.text?.includes(expectedSource));
   requireUi(hit?.rank===1&&typeof hit.score==='number'&&Number.isFinite(hit.score)&&hit.score>0,'EXPECTED_SYNTHETIC_SEMANTIC_SOURCE_NOT_RANKED_FIRST');
   requireUi(maxFixtureRequest(eventsFile)===chatBaseline,'CHAT_REQUEST_DURING_MEMORY_COMMAND_ATTRIBUTION_AMBIGUOUS');
   emit('passed',{scope:'online-memory-ui-index-stop-start-fresh-semantic-recall',dimensions:4,
@@ -1275,6 +1280,29 @@ async function onlineMemoryRestartAndRecall(eventsFile:string):Promise<void> {
     expectedSource:true,rank:hit.rank,score:hit.score,keywordFallback:false,
     freshEmbeddingHttpCompletions:completedMemoryAfter(eventsFile,embeddingBaseline).length,
     semanticQuality:false,separateChunkRanking:false,localModel:false,liveProvider:false});
+}
+
+
+/** A fresh source through ordinary chat UI, without SAF or paced prerequisite. */
+async function requireMemorySeedConversation():Promise<void> {
+  await dismissIme();
+  for(const text of [memorySeedPrompt,fixtureReply]) {
+    await until(()=>leafTexts(text).length===1,45,'MEMORY_SEED_MESSAGE_NOT_RESTORED');
+    showControl(leafTexts(text)[0]);await readySnapshot();
+    requireUi(leafTexts(text).length===1,'MEMORY_SEED_MESSAGE_LOST_AFTER_SHOW');
+  }
+}
+async function runIndependentMemory():Promise<void> {
+  await configureFixtureProvider();await prepareRoleplaySessionAndCardPage(false);
+  stage='memory-synthetic-source-chat';
+  await sendOnePacedPrompt(memorySeedPrompt);
+  await until(()=>{
+    requireUi(!current.some(node=>node.package===pkg&&node.text?.startsWith('This turn failed')),'MEMORY_SEED_TURN_FAILED');
+    return Boolean(visibleMessage(fixtureReply))&&visibleNamed(['停止生成','Stop generating']).length===0;
+  },180,'MEMORY_SEED_REPLY_NOT_OBSERVED');
+  await rememberSyntheticConversation();
+  emit('passed',{scope:'independent-memory-real-ui-synthetic-source',SAFRun:false,pacedRun:false,liveModel:false});
+  await onlineMemoryRestartAndRecall(fixtureEvents,memorySeedPrompt);
 }
 
 try {
@@ -1315,23 +1343,29 @@ try {
   },180,'MODEL_DIRECTORY_NOT_READY_OR_LAYOUT_CLIPPED');
   stage='host-models-page';
   labels();
-  await runContiguousCreate(args['--work-dir']);
-  let recoveryFailure:UiFailure|undefined;
-  try {await pacedCompleteThenInterruptAndRecover(fixtureEvents)} catch(error) {
-    // This separate recovery gate remains failed. The live restarted app can
-    // still exercise online indexing; never replay the interrupted user turn.
-    if(!(error instanceof UiFailure)||error.code!=='PACED_COMPLETED_OR_STOPPED_TURN_NOT_EXPOSED_AFTER_RESTART')throw error;
-    recoveryFailure=error;
-    emit('failed',{scope:'paced-interruption-ui-recovery',code:error.code,...waitReceipt(),
-      lastSuccessfulSnapshot:lastSnapshotReceipt(),continuingIndependentMemoryTest:true});
-    labels();captureApprovedScreenshot('synthetic-chat');
+  if(memoryOnly) {
+    await runIndependentMemory();
+    emit('passed',{scope:'independent-online-memory-ui',memoryQualified:true,liveModel:false,
+      productPlayable:false,fullG0:false,arm64Qualified:false});
+  } else {
+    await runContiguousCreate(args['--work-dir']);
+    let recoveryFailure:UiFailure|undefined;
+    try {await pacedCompleteThenInterruptAndRecover(fixtureEvents)} catch(error) {
+      // This separate recovery gate remains failed. The live restarted app can
+      // still exercise online indexing; never replay the interrupted user turn.
+      if(!(error instanceof UiFailure)||error.code!=='PACED_COMPLETED_OR_STOPPED_TURN_NOT_EXPOSED_AFTER_RESTART')throw error;
+      recoveryFailure=error;
+      emit('failed',{scope:'paced-interruption-ui-recovery',code:error.code,...waitReceipt(),
+        lastSuccessfulSnapshot:lastSnapshotReceipt(),continuingIndependentMemoryTest:true});
+      labels();captureApprovedScreenshot('synthetic-chat');
+    }
+    await onlineMemoryRestartAndRecall(fixtureEvents);
+    if(recoveryFailure)throw recoveryFailure;
+    emit('passed',{scope:'ordinary-ui-synthetic-card-chat-stream-stop-recovery',package:pkg,
+      cardImport:'passed',SAF:'passed',chat:'passed',restartRecovery:'passed',liveModel:false,
+      incrementalRendering:'observed-partial-to-complete',syntheticCoreFlow:true,
+      productPlayable:false,fullG0:false,arm64Qualified:false,phaseBCQualified:false,memoryQualified:true});
   }
-  await onlineMemoryRestartAndRecall(fixtureEvents);
-  if(recoveryFailure)throw recoveryFailure;
-  emit('passed',{scope:'ordinary-ui-synthetic-card-chat-stream-stop-recovery',package:pkg,
-    cardImport:'passed',SAF:'passed',chat:'passed',restartRecovery:'passed',liveModel:false,
-    incrementalRendering:'observed-partial-to-complete',syntheticCoreFlow:true,
-    productPlayable:false,fullG0:false,arm64Qualified:false,phaseBCQualified:false,memoryQualified:true});
 }catch(error) {
   const failedWait=waitReceipt(),failedSnapshot=lastSnapshotReceipt();
   // Replace the same approved form PNG only before any API key was entered.

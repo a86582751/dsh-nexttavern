@@ -122,7 +122,13 @@ public final class HierarchyInstrumentation extends Instrumentation {
         boolean editable = "android.widget.EditText".equals(targetClass);
         String targetText = semantic && !editable ? request.getString("targetText") : null;
         String prefix = click ? "CLICK" : show ? "SHOW" : "FOCUS";
-        if (!"app.nexttavern.android.x86diagnostic".equals(targetPackage) || targetClass == null
+        // Only the observed system SAF drawer action is allowed outside the
+        // synthetic app. No system input editing or arbitrary package targets.
+        boolean documentsDrawer = click && ("com.google.android.documentsui".equals(targetPackage)
+            || "com.android.documentsui".equals(targetPackage))
+            && "android.widget.ImageButton".equals(targetClass)
+            && ("Show roots".equals(description) || "显示根目录".equals(description));
+        if ((!"app.nexttavern.android.x86diagnostic".equals(targetPackage) && !documentsDrawer) || targetClass == null
             || targetClass.isEmpty() || hint == null || description == null || semantic && !editable && targetText == null) {
             if (semantic) {
                 Bundle invalid = new Bundle();

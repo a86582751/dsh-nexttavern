@@ -396,6 +396,13 @@ runtime remain open. No formal release is claimed.
 
 ## Focused checks
 
+Runner UI scenarios are independently selectable with `NEXTTAVERN_UI_PHASE`:
+`create` retains the card/SAF/chat/paced interruption flow; `memory` creates a
+fresh synthetic conversation through normal UI and tests online indexing,
+restart and recall without requiring SAF or paced turns first. The current CI
+focuses on `memory`; its result never turns a prior failed `create` run green.
+Unchanged native-probe evidence is reused for memory-only iterations.
+
 See [`probe/README.md`](probe/README.md) for Node checks and their prerequisites;
 see [`app/README.md`](app/README.md) for the Java core checks. Use local checks for
 this batch; no second CI execution is required merely for the same inputs.

@@ -103,6 +103,8 @@ phase=ORDINARY_APP_INSTALL
 # Preserve installation/navigation failures too; the independent same-VM probe
 # is still attempted and can never turn a failed product/UI attempt green.
 ui_rc=0
+ui_phase="${NEXTTAVERN_UI_PHASE:-create}"
+[[ "$ui_phase" == create || "$ui_phase" == memory ]] || { echo 'UNKNOWN_UI_PHASE'; exit 2; }
 if "$adb" -s "$serial" install --no-incremental "$apk" > "$work/install.log" 2>&1; then
   phase=LOCAL_PROTOCOL_FIXTURE
   node "$repo/android/host/protocol-fixture.mts" 18765 > "$work/protocol-fixture.log" 2>&1 &
@@ -121,7 +123,7 @@ if "$adb" -s "$serial" install --no-incremental "$apk" > "$work/install.log" 2>&
     printf 'EMULATOR_HOST_ALIAS_FIXTURE_HTTP_200_NOT_APP_UID_EVIDENCE\n'
     phase=REAL_MAIN_ACTIVITY_SYNTHETIC_FLOW
     node "$repo/qa/android-mobile-terminal/ui-first-stage.mts" --adb "$adb" --serial "$serial" \
-      --package app.nexttavern.android.x86diagnostic --phase create --work-dir "$work/ui" --fixture-events "$work/protocol-fixture.log" || ui_rc=$?
+      --package app.nexttavern.android.x86diagnostic --phase "$ui_phase" --work-dir "$work/ui" --fixture-events "$work/protocol-fixture.log" || ui_rc=$?
   else
     ui_rc=1
     printf 'MOBILE_FIXTURE_READY_OR_HOST_ALIAS_FAILED_NOT_PASSED\n'
@@ -137,7 +139,11 @@ else
   ui_rc=1
   printf 'MOBILE_INSTALL_FAILED_NOT_PASSED\n'
 fi
-if ((ui_rc==0)); then printf 'ORDINARY_NONDEBUG_APP_SYNTHETIC_FLOW_COMPLETE_NOT_ARM64_OR_G0\n'; fi
+if ((ui_rc==0)); then printf 'ORDINARY_NONDEBUG_APP_UI_PHASE=%s PASSED_NOT_ARM64_OR_G0\n' "$ui_phase"; fi
+if [[ "$ui_phase" == memory ]]; then
+  printf 'INDEPENDENT_MEMORY_UI_EXIT=%s NATIVE_PROBE=REUSED_PRIOR_UNCHANGED_INPUTS FULL_G0_ACCEPTED=false\n' "$ui_rc"
+  exit "$ui_rc"
+fi
 phase=SEPARATE_ORDINARY_APP_KVM_PROBE
 probe_rc=0
 # A failed UI reader can coincide with a brief transport outage. Wait once
