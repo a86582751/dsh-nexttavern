@@ -1027,12 +1027,19 @@ async function ordinaryNativeStop():Promise<void> {
   await until(()=>visibleNamed(['启动'],node=>button(node)&&!inWebView(node)).length===1,180,'PACED_ORDINARY_STOP_NOT_SETTLED');
 }
 async function reopenNamedConversation():Promise<void> {
-  await showSidebar();await readySnapshot();
+  // Native READY precedes the new authenticated origin's asynchronous page load.
+  await until(()=>has(webChrome),180,'RESTART_WEBVIEW_APP_CONTROLS_NOT_EXPOSED');
+  await showSidebar();
   // The real treeitem aggregates its title and relative timestamp. One fresh
   // test conversation is required; never choose an arbitrary row or hidden ID.
-  const rows=current.filter(node=>node.package===pkg&&node.class==='android.view.View'
-    &&[node.text,node['content-desc']].some(value=>value===stableTitle||value?.startsWith(stableTitle+' ')));
-  requireUi(stableTitle&&rows.length===1,'PERSISTED_SYNTHETIC_SESSION_ROW_NOT_UNIQUE');
+  requireUi(stableTitle,'PERSISTED_SYNTHETIC_SESSION_TITLE_REQUIRED');
+  let rows:Node[]=[];
+  await until(()=>{
+    rows=current.filter(node=>node.package===pkg&&node.class==='android.view.View'
+      &&[node.text,node['content-desc']].some(value=>value===stableTitle||value?.startsWith(stableTitle+' ')));
+    requireUi(rows.length<=1,'PERSISTED_SYNTHETIC_SESSION_ROW_NOT_UNIQUE');
+    return rows.length===1;
+  },60,'PERSISTED_SYNTHETIC_SESSION_ROW_NOT_EXPOSED');
   showControl(rows[0]);controlAction(rows[0],'click-control');
   await hideSidebar();
 }
