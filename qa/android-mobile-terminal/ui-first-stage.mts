@@ -1251,15 +1251,17 @@ async function configureAndIndexOnlineMemory(eventsFile:string):Promise<MemoryUi
   await closeWebDialog();await hideSidebar();return before;
 }
 
-/** Full JSON in the command summary is NOT yet observed in Android A11y.
- * GenericCommandCard receives JSON.stringify(result), no UI-only data endpoint.
- * Single-line output is not expandable; truncated JSON MUST block this gate. */
-function visibleMemoryResults():Record<string,any>[] {
-  const records=new Map<string,Record<string,any>>();
-  for(const node of memoryTexts().filter(node=>visibleBounds(node))) {
-    const text=node.text!.trim();if(!text.startsWith('{'))continue;
+/** The standard command row joins its fixed title `memory` and summary in
+ * one Android TextView. Keep full JSON parsing; CSS ellipsis is not permission
+ * to accept a truncated result, and an offscreen row must be publicly revealed. */
+function memoryResults(visibleOnly=true):{node:Node;result:Record<string,any>}[] {
+  const records=new Map<string,{node:Node;result:Record<string,any>}>();
+  for(const node of memoryTexts().filter(node=>!visibleOnly||visibleBounds(node))) {
+    let text=node.text!.trim();
+    if(text.startsWith('memory{'))text=text.slice('memory'.length);
+    if(!text.startsWith('{'))continue;
     let value:Record<string,any>;try {value=JSON.parse(text)}catch{continue}
-    if(value.requestedMode==='semantic'&&Array.isArray(value.entries))records.set(text,value);
+    if(value.requestedMode==='semantic'&&Array.isArray(value.entries))records.set(text,{node,result:value});
   }
   return [...records.values()];
 }
@@ -1281,7 +1283,7 @@ async function onlineMemoryRestartAndRecall(eventsFile:string,expectedSource=fix
   // Do not reapply mode/index flags: fresh semantic query proves effective saved mode.
   // Index persistence is qualified here, not auto-update of future turns.
   await closeWebDialog();await hideSidebar();await readySnapshot();
-  requireUi(visibleMemoryResults().length===0,'FIRST_MEMORY_SEARCH_PRECONDITION_NOT_MET');
+  requireUi(memoryResults(false).length===0,'FIRST_MEMORY_SEARCH_PRECONDITION_NOT_MET');
   const embeddingBaseline=maxMemoryFixture(eventsFile),chatBaseline=maxFixtureRequest(eventsFile);
   stage='fresh-semantic-memory-slash-after-restart';
   const composers=current.filter(node=>node.package===pkg&&node.class==='android.widget.EditText'
@@ -1289,11 +1291,15 @@ async function onlineMemoryRestartAndRecall(eventsFile:string,expectedSource=fix
   requireUi(composers.length===1,'MEMORY_SLASH_COMPOSER_NOT_UNIQUE');
   await typeAscii(composers[0],'/memory search '+EMBEDDING_QUERY);
   await press(['发送消息','Send message']); // One actual slash command, no paid chat turn.
-  let result:Record<string,any>|undefined;
+  let outcome:{node:Node;result:Record<string,any>}|undefined;
   await until(()=>{
-    const outcomes=visibleMemoryResults();requireUi(outcomes.length<=1,'FRESH_MEMORY_RESULT_AMBIGUOUS');
-    result=outcomes[0];return Boolean(result)&&completedMemoryAfter(eventsFile,embeddingBaseline).length>0;
+    const outcomes=memoryResults(false);requireUi(outcomes.length<=1,'FRESH_MEMORY_RESULT_AMBIGUOUS');
+    outcome=outcomes[0];return Boolean(outcome)&&completedMemoryAfter(eventsFile,embeddingBaseline).length>0;
   },90,'FRESH_MEMORY_COMMAND_FULL_JSON_OR_EMBEDDING_REQUEST_NOT_OBSERVED');
+  showControl(outcome!.node);
+  await until(()=>memoryResults().length===1,20,'FRESH_MEMORY_RESULT_ROW_NOT_VISIBLE');
+  const result=memoryResults()[0].result;
+  captureApprovedScreenshot('synthetic-chat');
   requireUi(result!.mode==='semantic'&&result!.requestedMode==='semantic'&&!Object.hasOwn(result!,'fallback'),
     'MEMORY_QUERY_FELL_BACK_OR_WAS_NOT_SEMANTIC');
   const hit=result!.entries.find((entry:Record<string,any>)=>entry.text?.includes(expectedSource));
