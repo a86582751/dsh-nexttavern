@@ -38,11 +38,11 @@ jobs:
         with:
           node-version: '24.22.1'
           check-latest: false
-      - name: Verify IME window metadata with tiny KVM control
+      - name: Build and exercise mobile preview in required KVM
         shell: bash
         env:
           NEXTTAVERN_UI_EVIDENCE_DIR: ${{ runner.temp }}/nexttavern-ui-images
-        run: bash qa/android-webview-kvm/run-smoke.sh --transport
+        run: bash qa/android-webview-kvm/run-smoke.sh --mobile
       - name: Locate only the approved synthetic UI PNGs
         if: always()
         id: ui_images

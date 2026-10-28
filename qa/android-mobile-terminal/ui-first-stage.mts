@@ -60,6 +60,7 @@ function timedCommand(timeout:number,...commandArgs:string[]):string {
 }
 const decode=(value:string)=>value.replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi,(_,hex,decimal)=>String.fromCodePoint(parseInt(hex??decimal,hex?16:10))).replace(/&amp;/g,'&');
 let current:Node[]=[];
+let imeWindow={visible:false,count:0,bounds:""};
 const cleanupReserveMs=3000;
 type WaitContext={condition:string;budgetMs:number;startedAt:number;startReads:number};
 let waitContext:WaitContext|null=null,successfulSnapshotCount=0;
@@ -199,6 +200,11 @@ function snapshot(deadline:number):Node[] {
     const readerError=output.match(/^INSTRUMENTATION_RESULT: error=([A-Z_]+)\r?$/m)?.[1];
     throw new UiFailure(readerError==='ROOTS_NOT_READY'?'ACCESSIBILITY_ROOTS_NOT_READY':'ACCESSIBILITY_DUMP_UNAVAILABLE');
   }
+  const imeVisible=output.match(/^INSTRUMENTATION_RESULT: imeVisible=(true|false)\r?$/m)?.[1];
+  const imeCount=output.match(/^INSTRUMENTATION_RESULT: imeWindowCount=(\d+)\r?$/m)?.[1];
+  const imeBounds=output.match(/^INSTRUMENTATION_RESULT: imeBounds=([^\r\n]*)\r?$/m)?.[1];
+  requireUi(imeVisible!==undefined&&imeCount!==undefined&&imeBounds!==undefined,'IME_WINDOW_METADATA_MISSING');
+  imeWindow={visible:imeVisible==='true',count:Number(imeCount),bounds:imeBounds};
   const xml=records[0][1];
   requireUi(xml.startsWith('<hierarchy>')&&xml.endsWith('</hierarchy>'),'ACCESSIBILITY_DUMP_UNAVAILABLE');
   const parents:number[]=[];
@@ -554,14 +560,14 @@ async function typeAscii(node:Node,value:string,field='synthetic-composer'):Prom
   await dismissIme();
 }
 async function dismissIme():Promise<void> {
-  // The current UiAutomation snapshot owns window visibility and read recovery.
-  const visibleIme=()=>current.some(node=>node.__parent==='-1'
-    &&node.package==='com.google.android.inputmethod.latin'&&node['visible-to-user']==='true'&&visibleBounds(node));
-  if(visibleIme()) {
+  // Observe actual public IME window geometry, not a clipped accessibility node.
+  await readySnapshot();
+  if(imeWindow.visible) {
+    emit('observed',{interaction:'ime-window-dismiss',...imeWindow});
     command('shell','input','keyevent','KEYCODE_BACK');
     let previousGeometry:string|undefined;
     await until(()=>{
-      if(visibleIme())return false;
+      if(imeWindow.visible)return false;
       const geometry=current.filter(item=>item.package===pkg&&item.class==='android.webkit.WebView'
         &&visibleBounds(item)).map(item=>item.bounds).join('|');
       if(!geometry)return false;
