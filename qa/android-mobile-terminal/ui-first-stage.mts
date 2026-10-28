@@ -292,11 +292,12 @@ function observeSnapshot(deadline:number):boolean {
     return false;
   }
 }
+// Real large-panel reads take 10–14s. All observation gates need room for
+// the complete tree and cleanup, not only standalone snapshot callers.
+const observationWindowMs=30000;
 async function readySnapshot():Promise<void> {
-  // The real memory form needs 10–14s for a complete tree; 15s including
-  // cleanup left no room for the existing same-identity read recovery.
-  const previous=waitContext,end=Date.now()+30000;
-  waitContext=previous??{condition:'ACCESSIBILITY_ROOTS_NOT_READY',budgetMs:30000,
+  const previous=waitContext,end=Date.now()+observationWindowMs;
+  waitContext=previous??{condition:'ACCESSIBILITY_ROOTS_NOT_READY',budgetMs:observationWindowMs,
     startedAt:Date.now(),startReads:successfulSnapshotCount};
   while(Date.now()+cleanupReserveMs<end) {
     try {if(observeSnapshot(end)){waitContext=previous;return}}
@@ -306,8 +307,8 @@ async function readySnapshot():Promise<void> {
   throw new UiFailure('ACCESSIBILITY_ROOTS_NOT_READY');
 }
 async function until(predicate:()=>boolean,seconds:number,code:string):Promise<void> {
-  const previous=waitContext,end=Date.now()+seconds*1000;
-  waitContext={condition:code,budgetMs:seconds*1000,startedAt:Date.now(),startReads:successfulSnapshotCount};
+  const previous=waitContext,budgetMs=Math.max(observationWindowMs,seconds*1000),end=Date.now()+budgetMs;
+  waitContext={condition:code,budgetMs,startedAt:Date.now(),startReads:successfulSnapshotCount};
   while(Date.now()+cleanupReserveMs<end) {
     let observed=false;
     try {observed=observeSnapshot(end)}catch(error){if(exhaustedReaderBudget(error,end))break;throw error}
