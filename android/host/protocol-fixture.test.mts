@@ -144,3 +144,137 @@ test('online embedding fixture serves distinct fixed synthetic vectors with isol
       EMBEDDING_DISTRACTOR_SENTENCE,EMBEDDING_QUERY,EMBEDDING_FIXTURE_MODEL,'authorization'])assert.ok(!counters.includes(privateValue))
   }finally{server.closeAllConnections();server.close();await once(server,'close')}
 })
+
+const fixtureOptions=[{label:'继续与旅人交谈',heart:false},{label:'询问旅人正在阅读的书',heart:false},{label:'静静观察酒馆',heart:false}]
+const maintenanceTask=()=>({id:'current-task-private',generation:'current-generation-private',kind:'status',
+  completeSource:true,input:{format:'json',system:'你是角色扮演工作台的状态栏渲染生成器。',
+    user:'<rp-content:abc>\n'+JSON.stringify({previousStatus:null,selectedStorySinceStatus:[{role:'assistant',text:FIXTURE_REPLY}]})+'\n</rp-content:abc>'}})
+const maintenanceMessage=(tasks:unknown[]= [maintenanceTask()])=>({role:'user',
+  content:'当前是系统维护阶段，尚不能生成或续写剧情。\n待办：\n'+JSON.stringify(tasks)})
+const maintenanceTools=[{type:'function',function:{name:'rp_task_submit',parameters:{type:'object',
+  required:['id','generation','result'],properties:{id:{type:'string'},generation:{type:'string'},result:{}}}}}]
+
+test('plain-card fixture submits real current identities over both protocols and stops after actual completed tool receipts',async()=>{
+  const {server,requests}=createProtocolFixture({pacedDelayMs:1})
+  server.listen(0,'127.0.0.1');await once(server,'listening')
+  const address=server.address();assert.ok(address&&typeof address!=='string')
+  const post=(body:unknown)=>fetch('http://127.0.0.1:'+address.port+'/v1/chat/completions',{method:'POST',body:JSON.stringify(body)})
+  try {
+    let previousId=''
+    for(const stream of [false,true]) {
+      const messages=[{role:'user',content:PACED_STREAM_MARKER},maintenanceMessage()]
+      const response=await post({stream,tools:maintenanceTools,messages})
+      assert.equal(response.status,200)
+      const raw=await response.text()
+      const packets=stream?raw.split('\n').filter(line=>line.startsWith('data: {')).map(line=>JSON.parse(line.slice(6))):[]
+      const calls=stream?packets.flatMap(packet=>packet.choices.flatMap((choice:any)=>choice.delta?.tool_calls??[]))
+        :JSON.parse(raw).choices[0].message.tool_calls
+      assert.equal(calls.length,1)
+      assert.notEqual(calls[0].id,previousId)
+      previousId=calls[0].id
+      assert.equal(calls[0].function.name,'rp_task_submit')
+      assert.deepEqual(JSON.parse(calls[0].function.arguments),{id:maintenanceTask().id,generation:maintenanceTask().generation,
+        result:{title:'酒馆',fields:[{label:'位置',value:'酒馆'}],options:fixtureOptions}})
+      assert.match(raw,/"finish_reason":"tool_calls"/)
+      assert.equal(requests.at(-1)!.paced,false)
+      assert.equal(requests.at(-1)!.contentDeltas,0)
+      const followup=await post({stream,tools:maintenanceTools,messages:[...messages,
+        {role:'assistant',content:null,tool_calls:calls},
+        {role:'tool',tool_call_id:calls[0].id,content:JSON.stringify({ok:true,status:'completed',resultStored:true})}]})
+      const ended=await followup.text()
+      assert.equal(followup.status,200)
+      assert.match(ended,/"finish_reason":"stop"/)
+      assert.doesNotMatch(ended,/rp_task_submit|酒馆的灯亮着/)
+      assert.equal(requests.at(-1)!.mode,'maintenance-complete')
+    }
+    const changed=maintenanceTask();changed.generation='new-generation-private'
+    const next=await (await post({tools:maintenanceTools,messages:[maintenanceMessage([changed])]})).json()
+    assert.equal(JSON.parse(next.choices[0].message.tool_calls[0].function.arguments).generation,changed.generation)
+    assert.notEqual(next.choices[0].message.tool_calls[0].id,previousId)
+    const prior={title:'保留',fields:[{label:'位置',value:'酒馆'},{label:'物品',value:'蓝色书签'}],rawText:'已确认状态'}
+    const status=maintenanceTask()
+    status.input.user=status.input.user.replace('"previousStatus":null','"previousStatus":'+JSON.stringify(prior))
+    const decision={...maintenanceTask(),id:'decision-private',kind:'decision',input:{format:'json',
+      system:'你是角色扮演工作台的轮末建议生成器。',user:FIXTURE_REPLY}}
+    const semanticTools=[{type:'function',function:{name:'rp_task_submit',parameters:{required:['kind','result']}}}]
+    const semantic=await (await post({tools:semanticTools,messages:[maintenanceMessage([status,decision])]})).json()
+    const submitted=semantic.choices[0].message.tool_calls.map((call:any)=>JSON.parse(call.function.arguments))
+    assert.deepEqual(submitted,[{kind:'status',result:prior},{kind:'decision',result:{options:fixtureOptions}}])
+    status.input.user=status.input.user.replace(JSON.stringify(prior),JSON.stringify({...prior,html:{currentContextRef:'status'}}))
+    const compact=await (await post({tools:semanticTools,messages:[maintenanceMessage([status])]})).json()
+    assert.deepEqual(JSON.parse(compact.choices[0].message.tool_calls[0].function.arguments),{kind:'status',result:prior})
+    assert.doesNotMatch(JSON.stringify(requests),/current-task-private|generation-private|继续交谈|schemaVersion.*variableCandidate/)
+  } finally {server.closeAllConnections();server.close();await once(server,'close')}
+})
+
+test('unsupported or malformed maintenance fails explicitly without story prose, credentials, or fake completion',async()=>{
+  const rejected:unknown[]=[]
+  const {server,requests}=createProtocolFixture({onRejected:record=>rejected.push(record)})
+  server.listen(0,'127.0.0.1');await once(server,'listening')
+  const address=server.address();assert.ok(address&&typeof address!=='string')
+  try {
+    const task=maintenanceTask()
+    const cases=[
+      {messages:[maintenanceMessage()],tools:[]},
+      {messages:[maintenanceMessage([{...task,kind:'schema-maintenance'}])]},
+      {messages:[maintenanceMessage([{...task,completeSource:false}])]},
+      {messages:[maintenanceMessage([{...task,generation:''}])]},
+      {messages:[maintenanceMessage([{...task,input:{...task.input,user:'unrecognized story'}}])]},
+      {messages:[{role:'user',content:'当前是系统维护阶段，尚不能生成或续写剧情。\n待办：\n{broken-private'}]},
+      {messages:[{role:'user',content:JSON.stringify({taskId:'private-background',format:'text',taskStage:'background-notes'})}]},
+      {messages:[maintenanceMessage(),{role:'assistant',tool_calls:[{id:'call_1',function:{name:'rp_task_submit'}}]},
+        {role:'tool',tool_call_id:'call_1',content:JSON.stringify({ok:false,error:'private error'})}]},
+      {messages:[maintenanceMessage()],tools:[{type:'function',function:{name:'private-unknown-tool'}},
+        {type:'function',function:{name:'run_code'}}]},
+    ]
+    for(const candidate of cases) {
+      const response:Response=await fetch('http://127.0.0.1:'+address.port+'/v1/chat/completions',{
+        method:'POST',body:JSON.stringify({stream:true,tools:maintenanceTools,...candidate})})
+      assert.equal(response.status,422)
+      const raw=await response.text()
+      assert.match(raw,/Unsupported or malformed/)
+      assert.doesNotMatch(raw,/private|酒馆的灯亮着|tool_calls|completed/)
+    }
+    assert.equal(requests.length,0)
+    assert.equal(rejected.length,cases.length)
+    assert.doesNotMatch(JSON.stringify(rejected),/private|current-task|generation|unrecognized story|broken/)
+    assert.deepEqual((rejected[0] as any).taskKinds,['status'])
+    assert.equal((rejected[0] as any).reason,'unsupported-tool-surface')
+    assert.deepEqual((rejected[1] as any).taskKinds,['schema-maintenance'])
+    assert.deepEqual((rejected.at(-1) as any).offeredTools,['run_code'])
+  } finally {server.closeAllConnections();server.close();await once(server,'close')}
+})
+
+test('scheduled synthetic memory keeps actual source seqs, previous notes and locked facts without inventing completed actions',async()=>{
+  const {server,requests}=createProtocolFixture()
+  server.listen(0,'127.0.0.1');await once(server,'listening')
+  const address=server.address();assert.ok(address&&typeof address!=='string')
+  try {
+    for(const append of [false,true]) {
+      const system='你是角色扮演工作台的记忆整理员。'+(append?'本任务只记录本批新增剧情事实':'完整八段 Markdown 笔记')
+      const user='整理\n\n## 既有剧情记忆\nprevious-private-preserve\n\n## 本次新增剧情原文\n'
+        +'[用户 · turn:5 · seq:21]\n想离开酒馆。\n\n[叙事者 · turn:5 · seq:23]\n'+FIXTURE_REPLY
+        +'\n\n## 用户显式锁定的剧情事实（逐字保留）\nlocked-private-preserve'
+      const response:Response=await fetch('http://127.0.0.1:'+address.port+'/v1/chat/completions',{
+        method:'POST',body:JSON.stringify({messages:[{role:'user',content:JSON.stringify({taskId:'task-private-memory',
+          generation:'generation-private-memory',system,user,format:'json',taskStage:'background-notes'})}]})})
+      assert.equal(response.status,200)
+      const value=JSON.parse((await response.json()).choices[0].message.content)
+      assert.deepEqual(value.deltas.map((row:any)=>row.evidenceSeq),[21,23])
+      assert.equal(value.deltas[0].status,'uncertain')
+      assert.match(value.deltas[0].summary,/并非已发生剧情/)
+      assert.equal(value.deltas[1].status,'established')
+      assert.match(value.deltas[1].summary,/酒馆的灯亮着/)
+      assert.deepEqual(value.conflicts,[])
+      if(append)assert.equal(value.text,undefined)
+      else {
+        for(let section=1;section<=8;section++)assert.match(value.text,new RegExp('(?:^|\\n)'+section+'\\. '))
+        assert.match(value.text,/previous-private-preserve/)
+        assert.match(value.text,/locked-private-preserve/)
+      }
+      assert.equal(requests.at(-1)!.mode,'background-memory')
+      assert.equal(requests.at(-1)!.paced,false)
+    }
+    assert.doesNotMatch(JSON.stringify(requests),/private|想离开|灯亮/)
+  } finally {server.closeAllConnections();server.close();await once(server,'close')}
+})
