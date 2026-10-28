@@ -109,8 +109,9 @@ if "$adb" -s "$serial" install --no-incremental "$apk" > "$work/install.log" 2>&
   phase=LOCAL_PROTOCOL_FIXTURE
   node "$repo/android/host/protocol-fixture.mts" 18765 > "$work/protocol-fixture.log" 2>&1 &
   fixture_pid=$!
-  # Official emulator host-loopback alias; no ADB reverse tunnel to lose when
-  # the independent UI reader reconnects. Product Host remains on its own loopback.
+  # Chat uses the official host alias. Memory correctly rejects non-loopback
+  # plaintext HTTP, so its local synthetic fixture uses an explicit ADB reverse.
+  # Product URL validation and Host authentication are unchanged.
   if node --input-type=module -e '
     for(let i=0;i<20;i++) {
       try {const r=await fetch("http://127.0.0.1:18765/v1/models",{signal:AbortSignal.timeout(1000)});
@@ -119,14 +120,17 @@ if "$adb" -s "$serial" install --no-incremental "$apk" > "$work/install.log" 2>&
     }
     process.exit(1)' &&
     "$adb" -s "$serial" shell 'printf "GET /v1/models HTTP/1.1\r\nHost: fixture\r\nConnection: close\r\n\r\n" | toybox nc -w 5 10.0.2.2 18765 | head -n 1' > "$work/fixture-alias-status.log" &&
-    grep -q '^HTTP/1.1 200' "$work/fixture-alias-status.log"; then
-    printf 'EMULATOR_HOST_ALIAS_FIXTURE_HTTP_200_NOT_APP_UID_EVIDENCE\n'
+    grep -q '^HTTP/1.1 200' "$work/fixture-alias-status.log" &&
+    "$adb" -s "$serial" reverse tcp:18766 tcp:18765 &&
+    "$adb" -s "$serial" shell 'printf "GET /v1/models HTTP/1.1\r\nHost: fixture\r\nConnection: close\r\n\r\n" | toybox nc -w 5 127.0.0.1 18766 | head -n 1' > "$work/fixture-memory-loopback-status.log" &&
+    grep -q '^HTTP/1.1 200' "$work/fixture-memory-loopback-status.log"; then
+    printf 'EMULATOR_HOST_ALIAS_AND_MEMORY_LOOPBACK_FIXTURE_HTTP_200_NOT_APP_UID_EVIDENCE\n'
     phase=REAL_MAIN_ACTIVITY_SYNTHETIC_FLOW
     node "$repo/qa/android-mobile-terminal/ui-first-stage.mts" --adb "$adb" --serial "$serial" \
       --package app.nexttavern.android.x86diagnostic --phase "$ui_phase" --work-dir "$work/ui" --fixture-events "$work/protocol-fixture.log" || ui_rc=$?
   else
     ui_rc=1
-    printf 'MOBILE_FIXTURE_READY_OR_HOST_ALIAS_FAILED_NOT_PASSED\n'
+    printf 'MOBILE_FIXTURE_READY_ALIAS_OR_MEMORY_LOOPBACK_FAILED_NOT_PASSED\n'
   fi
   if kill -0 "$fixture_pid" 2>/dev/null; then
     printf 'LOCAL_FIXTURE_PROCESS_ALIVE_AFTER_UI=true\n'

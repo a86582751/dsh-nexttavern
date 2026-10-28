@@ -1162,6 +1162,19 @@ const completedMemoryAfter=(file:string,after:number)=>[...memoryFixtureCounts(f
   .filter(record=>record.request>after&&record.completed&&!record.aborted);
 const memoryTexts=()=>current.filter(node=>node.package===pkg&&inWebView(node)
   &&node.class!=='android.widget.EditText'&&node.class!=='android.webkit.WebView'&&node.text?.trim());
+/** Surface actual panel errors even below the bounded general labels summary. */
+function assertNoMemoryUiError():void {
+  const errors=[...new Set(memoryTexts().map(node=>node.text!.trim()).filter(text=>/^Error:|^记忆检索操作失败：/.test(text)))];
+  if(errors.length){emit('observed',{interaction:'memory-panel-error',errors:errors.slice(0,3).map(redact)});
+    throw new UiFailure('MEMORY_PANEL_REPORTED_ERROR')}
+}
+function ensureMemoryFixtureLoopback():void {
+  const present=command('reverse','--list').split('\n').some(line=>/\btcp:18766\s+tcp:18765\s*$/.test(line));
+  if(!present)command('reverse','tcp:18766','tcp:18765'); // Restore test transport, never replay a UI write.
+  const status=command('shell',"printf 'GET /v1/models HTTP/1.1\\r\\nHost: fixture\\r\\nConnection: close\\r\\n\\r\\n' | toybox nc -w 5 127.0.0.1 18766 | head -n 1");
+  requireUi(/^HTTP\/1\.1 200\b/.test(status),'MEMORY_LOOPBACK_FIXTURE_UNREACHABLE');
+  emit('observed',{interaction:'memory-loopback-fixture-preflight',mappingRestored:!present,appUidEvidence:false});
+}
 /** Source labels are confirmed; their Spinner/EditText accessibility joins are
  * UNOBSERVED for this panel. Unknown/missing controls fail; no field-index fallback. */
 async function openEmbeddingMemoryPanel():Promise<void> {
@@ -1179,6 +1192,7 @@ async function observeOnlineMemoryIndex():Promise<MemoryUiIndex> {
   // This panel initializes progressSession to the current session; never changed here.
   let texts:string[]=[];
   await until(()=>{
+    assertNoMemoryUiError();
     texts=memoryProgressPatterns.map(pattern=>memoryTexts().map(node=>node.text!.trim()).find(text=>pattern.test(text))??'');
     if(texts.some(text=>!text))return false;
     const coverage=texts[0].match(memoryProgressPatterns[0])!,counts=texts[3].match(memoryProgressPatterns[3])!;
@@ -1201,7 +1215,9 @@ async function configureAndIndexOnlineMemory(eventsFile:string):Promise<MemoryUi
   await press(['新增接入 / New provider']);
   await replace(['名称','名称 My embedding provider'],memoryProviderName,['名称']);
   // New provider initializes online/OpenAI; preserve those actual default values.
-  await replace(['Base URL','Base URL https://…'],'http://10.0.2.2:18765/v1',['Base URL']);
+  // Memory permits plaintext only for loopback; runner supplies this explicit
+  // ADB reverse to its local fixture, never an exception to product URL policy.
+  await replace(['Base URL','Base URL https://…'],'http://127.0.0.1:18766/v1',['Base URL']);
   await replace(['手动输入模型 ID','手动输入模型 ID 支持自定义别名'],EMBEDDING_FIXTURE_MODEL,['手动输入模型 ID']);
   // Leave optional dimensions empty: use the provider's real model default.
   // Actual test output and persisted index metadata below must still prove 4D.
@@ -1210,10 +1226,11 @@ async function configureAndIndexOnlineMemory(eventsFile:string):Promise<MemoryUi
   memoryKeyInputStarted=true;
   await replace(['API Key（留空保留已保存 Key，不回显）'],'local-test-only');
   await press(['保存供应商']); // Exactly once; ambiguous write must stop, never replay.
-  await until(()=>current.some(node=>named(node,['测试'])&&button(node)&&node.enabled!=='false'),30,'MEMORY_PROVIDER_SAVE_NOT_OBSERVED');
+  await until(()=>{assertNoMemoryUiError();return current.some(node=>named(node,['测试'])&&button(node)&&node.enabled!=='false')},30,'MEMORY_PROVIDER_SAVE_NOT_OBSERVED');
   const testedAfter=maxMemoryFixture(eventsFile);
   await press(['测试']);
-  await until(()=>completedMemoryAfter(eventsFile,testedAfter).length>0,60,'ONLINE_EMBEDDING_TEST_REQUEST_NOT_COMPLETED');
+  await until(()=>{assertNoMemoryUiError();return completedMemoryAfter(eventsFile,testedAfter).length>0
+    &&memoryTexts().some(node=>node.text?.trim()==='实际向量维度：4')},60,'ONLINE_EMBEDDING_TEST_REQUEST_NOT_COMPLETED');
   await reveal(['实际向量维度：4'],node=>node.class!=='android.widget.EditText');
   await press(['用于剧情记忆']);
   await pressManagerTab(['记忆']);
@@ -1254,6 +1271,7 @@ async function onlineMemoryRestartAndRecall(eventsFile:string,expectedSource=fix
   await press(['启动'],node=>button(node)&&!inWebView(node));
   await until(()=>has(['本地服务运行中']),180,'MEMORY_RESTART_READY_NOT_OBSERVED');
   requireUi(ownedNodePid()!==oldPid,'MEMORY_RESTART_DID_NOT_REPLACE_NODE');
+  ensureMemoryFixtureLoopback();
   await reopenNamedConversation();
   if(memoryOnly)await requireMemorySeedConversation();else await requirePersistedConversation();
   await openEmbeddingMemoryPanel();const after=await observeOnlineMemoryIndex();
@@ -1382,6 +1400,7 @@ try {
     try{captureApprovedScreenshot('empty-provider',true)}catch{/* Screenshot failure is not product evidence. */}
   }
   if(stage==='online-memory-provider') {
+    try{assertNoMemoryUiError()}catch{/* Preserve the original failure and emit its actual panel error separately. */}
     emit('observed',{interaction:'memory-form-controls',valuesOmitted:true,controls:current
       .filter(node=>node.package===pkg&&['android.widget.EditText','android.widget.Spinner','android.view.View'].includes(node.class)
         &&(node.class!=='android.view.View'||Boolean(node.hint)))
