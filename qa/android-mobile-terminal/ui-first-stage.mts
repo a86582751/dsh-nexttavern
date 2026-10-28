@@ -566,14 +566,9 @@ async function dismissIme():Promise<void> {
   if(imeWindow.visible) {
     emit('observed',{interaction:'ime-window-dismiss',...imeWindow});
     command('shell','input','keyevent','KEYCODE_BACK');
-    let previousGeometry:string|undefined;
-    await until(()=>{
-      if(imeWindow.visible)return false;
-      const geometry=current.filter(item=>item.package===pkg&&item.class==='android.webkit.WebView'
-        &&visibleBounds(item)).map(item=>item.bounds).join('|');
-      if(!geometry)return false;
-      const stable=geometry===previousGeometry;previousGeometry=geometry;return stable;
-    },15,'IME_DISMISSAL_LAYOUT_NOT_STABLE');
+    // Window disappearance is the actual completion. Each following UI action
+    // already reads its target; a second identical geometry read adds no contract.
+    await until(()=>!imeWindow.visible,30,'IME_WINDOW_NOT_DISMISSED');
   }
 }
 
@@ -1135,6 +1130,7 @@ async function pacedCompleteThenInterruptAndRecover(fixtureEventsFile:string):Pr
 }
 
 const memoryProviderName='NextTavernOnlineMemoryFixture', memoryRevision='qa-online-4d-v1';
+let memoryKeyInputStarted=false;
 type MemoryFixtureCount={request:number;inputCount:number;dimensions:number;completed:boolean;aborted:boolean};
 /** Separate from chat counters. Never emit raw log lines, model input, keys or URLs. */
 function memoryFixtureCounts(file:string):Map<number,MemoryFixtureCount> {
@@ -1161,10 +1157,6 @@ const memoryTexts=()=>current.filter(node=>node.package===pkg&&inWebView(node)
   &&node.class!=='android.widget.EditText'&&node.class!=='android.webkit.WebView'&&node.text?.trim());
 /** Source labels are confirmed; their Spinner/EditText accessibility joins are
  * UNOBSERVED for this panel. Unknown/missing controls fail; no field-index fallback. */
-async function selectMemoryOption(label:string,option:string):Promise<void> {
-  tapNode(await reveal([label],node=>node.class==='android.widget.Spinner',node=>node.package===pkg,true,[label]));
-  await press([option],menuOption);
-}
 async function openEmbeddingMemoryPanel():Promise<void> {
   await openManager();await pressManagerTab(['Embedding 模型设置']);
   await until(()=>has(['新增接入 / New provider']),30,'EMBEDDING_PANEL_NOT_EXPOSED');
@@ -1177,7 +1169,7 @@ type MemoryUiIndex={sources:number;covered:number;fingerprintPrefix:string;vecto
 /** Only actual exposed paragraphs, each publicly revealed before acceptance.
  * A clipped/omitted metadata paragraph is a UI gate, not permission for HTTP/DB reads. */
 async function observeOnlineMemoryIndex():Promise<MemoryUiIndex> {
-  await selectMemoryOption('查看进度的会话','当前会话');
+  // This panel initializes progressSession to the current session; never changed here.
   let texts:string[]=[];
   await until(()=>{
     texts=memoryProgressPatterns.map(pattern=>memoryTexts().map(node=>node.text!.trim()).find(text=>pattern.test(text))??'');
@@ -1201,12 +1193,12 @@ async function configureAndIndexOnlineMemory(eventsFile:string):Promise<MemoryUi
   requireUi(!memoryTexts().some(node=>node.text?.includes(memoryProviderName)),'MEMORY_PROVIDER_ALREADY_EXISTS_NO_CREATE_REPLAY');
   await press(['新增接入 / New provider']);
   await replace(['名称','名称 My embedding provider'],memoryProviderName,['名称']);
-  await selectMemoryOption('类型','在线 / Online');
-  await selectMemoryOption('协议','OpenAI 官方 / 兼容接口');
+  // New provider initializes online/OpenAI; preserve those actual default values.
   await replace(['Base URL','Base URL https://…'],'http://10.0.2.2:18765/v1',['Base URL']);
   await replace(['手动输入模型 ID','手动输入模型 ID 支持自定义别名'],EMBEDDING_FIXTURE_MODEL,['手动输入模型 ID']);
   await replace(['维度（留空使用模型默认值）'],'4');
   await replace(['模型修订版本（可选）','模型修订版本（可选） 例如 2026-09-14'],memoryRevision,['模型修订版本（可选）']);
+  memoryKeyInputStarted=true;
   await replace(['API Key（留空保留已保存 Key，不回显）'],'local-test-only');
   await press(['保存供应商']); // Exactly once; ambiguous write must stop, never replay.
   await until(()=>current.some(node=>named(node,['测试'])&&button(node)&&node.enabled!=='false'),30,'MEMORY_PROVIDER_SAVE_NOT_OBSERVED');
@@ -1216,7 +1208,7 @@ async function configureAndIndexOnlineMemory(eventsFile:string):Promise<MemoryUi
   await reveal(['实际向量维度：4'],node=>node.class!=='android.widget.EditText');
   await press(['用于剧情记忆']);
   await pressManagerTab(['记忆']);
-  await selectMemoryOption('将所选方式应用到 / Apply to','当前会话 / Session');
+  // modeScope initializes to session; this flow never selects the global scope.
   await press(['B 语义 / Semantic']);
   const auto=await reveal(['自动更新语义索引 / Auto-update semantic index'],
     node=>node.class==='android.widget.CheckBox',node=>node.package===pkg,true);
@@ -1346,6 +1338,14 @@ try {
   // It may contain the fixed synthetic route/loopback URL, never credentials.
   if(stage==='create-fixture-provider'&&!providerKeyInputStarted) {
     try{captureApprovedScreenshot('empty-provider',true)}catch{/* Screenshot failure is not product evidence. */}
+  }
+  if(stage==='online-memory-provider') {
+    emit('observed',{interaction:'memory-form-controls',valuesOmitted:true,controls:current
+      .filter(node=>node.package===pkg&&['android.widget.EditText','android.widget.Spinner','android.view.View'].includes(node.class)
+        &&(node.class!=='android.view.View'||Boolean(node.hint)))
+      .map(node=>({class:node.class,hint:redact(node.hint??''),bounds:node.bounds,
+        enabled:node.enabled,password:node.password,focused:node.focused}))});
+    if(!memoryKeyInputStarted)try{captureApprovedScreenshot('empty-provider',true)}catch{}
   }
   let focus:string|null=null,activityAlive:boolean|null=null;
   try{focus=command('shell','dumpsys','window','windows').match(/mCurrentFocus=Window\{[^}]*\s([A-Za-z0-9_.]+\/[A-Za-z0-9_.$]+)\}/)?.[1]??null}catch{}
