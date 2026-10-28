@@ -4,6 +4,16 @@
 
 本页合并重复流水，保留用户可见变化、迁移要求和验证限制。完整清理前记录见 [2026-10-24 历史快照](https://github.com/a86582751/dsh-nexttavern/blob/d84a35c41189846faaca5643a88a1949fcff776d/CHANGELOG.md)，可追溯原始测试数字、失败记录和候选演变。
 
+## 2026-10-28
+
+### 开发方向 — 调整社区卡兼容路线，0.3 继续延期（未发布）
+
+- 复杂卡验证与架构复查表明，现有兼容层对少量样本和特定脚本写法依赖过重；导入或几轮剧情通过，仍不足以保证原作者交互、动态规则及编辑后的恢复可靠。因此继续调整实现，暂不确定新的发布日期。
+- 保留已有导入、原生卡、世界线、状态、预设与记忆成果，按通用能力分别推进，减少逐卡特例。完成判断覆盖原作者玩法、编辑／分支／重新打开和长期使用成本；34 张既有测试卡继续用于回归，固定卡数与旧串行阶段不再作为版本完成标准。
+- 本次公布开发方向，没有发布 0.3 安装包或升级运行服务；正式版本仍为 **0.2.9-rc.4**。已知问题与既有验证范围继续保留，详见 [0.3 开发日志](DEVELOPMENT-0.3.md)。
+
+English: 0.3 needs more development time. Complex-card checks and architecture review exposed excessive dependence on particular samples and script shapes. Work will focus on reusable compatibility capabilities, original author interactions, editing, branching, recovery and realistic history costs while retaining existing foundations and scoped results. The 34 cards remain regression material rather than a release-count gate. No new release date is set; this documentation update does not release a package or upgrade the runtime. The stable release remains 0.2.9-rc.4.
+
 ## 2026-10-26
 
 ### 开发源码与文档 — 原卡交互、Reader 样式与开场读取（未发布）
