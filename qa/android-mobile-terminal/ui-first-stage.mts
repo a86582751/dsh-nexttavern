@@ -554,19 +554,14 @@ async function typeAscii(node:Node,value:string,field='synthetic-composer'):Prom
   await dismissIme();
 }
 async function dismissIme():Promise<void> {
-  // IME accessibility roots can be absent during a real window transition.
-  // Android 15's ImeVisibilityStateComputer exposes this actual state in dumpsys.
-  const imeShown=()=>{
-    const state=command('shell','dumpsys','input_method').match(/\bmInputShown=(true|false)\b/)?.[1];
-    requireUi(state!==undefined,'IME_VISIBILITY_STATE_UNAVAILABLE');return state==='true';
-  };
+  // The current UiAutomation snapshot owns window visibility and read recovery.
   const visibleIme=()=>current.some(node=>node.__parent==='-1'
     &&node.package==='com.google.android.inputmethod.latin'&&node['visible-to-user']==='true'&&visibleBounds(node));
-  if(imeShown()||visibleIme()) {
+  if(visibleIme()) {
     command('shell','input','keyevent','KEYCODE_BACK');
     let previousGeometry:string|undefined;
     await until(()=>{
-      if(imeShown()||visibleIme())return false;
+      if(visibleIme())return false;
       const geometry=current.filter(item=>item.package===pkg&&item.class==='android.webkit.WebView'
         &&visibleBounds(item)).map(item=>item.bounds).join('|');
       if(!geometry)return false;
