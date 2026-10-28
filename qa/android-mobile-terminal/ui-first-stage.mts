@@ -293,8 +293,10 @@ function observeSnapshot(deadline:number):boolean {
   }
 }
 async function readySnapshot():Promise<void> {
-  const previous=waitContext,end=Date.now()+15000;
-  waitContext=previous??{condition:'ACCESSIBILITY_ROOTS_NOT_READY',budgetMs:15000,
+  // The real memory form needs 10–14s for a complete tree; 15s including
+  // cleanup left no room for the existing same-identity read recovery.
+  const previous=waitContext,end=Date.now()+30000;
+  waitContext=previous??{condition:'ACCESSIBILITY_ROOTS_NOT_READY',budgetMs:30000,
     startedAt:Date.now(),startReads:successfulSnapshotCount};
   while(Date.now()+cleanupReserveMs<end) {
     try {if(observeSnapshot(end)){waitContext=previous;return}}
