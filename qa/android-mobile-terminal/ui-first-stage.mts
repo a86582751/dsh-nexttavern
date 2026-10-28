@@ -1227,6 +1227,7 @@ async function configureAndIndexOnlineMemory(eventsFile:string):Promise<MemoryUi
   await replace(['API Key（留空保留已保存 Key，不回显）'],'local-test-only');
   await press(['保存供应商']); // Exactly once; ambiguous write must stop, never replay.
   await until(()=>{assertNoMemoryUiError();return current.some(node=>named(node,['测试'])&&button(node)&&node.enabled!=='false')},30,'MEMORY_PROVIDER_SAVE_NOT_OBSERVED');
+  ensureMemoryFixtureLoopback(); // Reader transport may have recovered since runner startup.
   const testedAfter=maxMemoryFixture(eventsFile);
   await press(['测试']);
   await until(()=>{assertNoMemoryUiError();return completedMemoryAfter(eventsFile,testedAfter).length>0
@@ -1401,6 +1402,9 @@ try {
   }
   if(stage==='online-memory-provider') {
     try{assertNoMemoryUiError()}catch{/* Preserve the original failure and emit its actual panel error separately. */}
+    try{emit('observed',{interaction:'memory-fixture-failure-state',
+      reverseMappingPresent:command('reverse','--list').split('\n').some(line=>/\btcp:18766\s+tcp:18765\s*$/.test(line)),
+      embeddingRecords:fixtureEvents?[...memoryFixtureCounts(fixtureEvents).values()]:[]})}catch{/* Diagnostics do not replace the original error. */}
     emit('observed',{interaction:'memory-form-controls',valuesOmitted:true,controls:current
       .filter(node=>node.package===pkg&&['android.widget.EditText','android.widget.Spinner','android.view.View'].includes(node.class)
         &&(node.class!=='android.view.View'||Boolean(node.hint)))
