@@ -728,22 +728,13 @@ async function openManager():Promise<void> {
   await press(['酒馆管理']);
   await until(()=>has(['角色卡导入'])&&has(['人物设定']),30,'TAVERN_MANAGER_NOT_EXPOSED');
 }
-/** The product's <=760px CSS makes each of its two tab rows overflow-x:auto.
- * Only use that actual tab button's nearest scrollable ancestor, never a
- * vertical whole-screen swipe or a guessed tab coordinate. */
+/** Horizontally clipped tab bounds can be stale. Use the actual unique public
+ * accessibility control; each caller requires its own panel-content result. */
 async function pressManagerTab(names:string[]):Promise<void> {
-  for(let attempt=0;attempt<=4;attempt++) {
-    await readySnapshot();const found=current.filter(node=>node.package===pkg&&named(node,names)&&button(node)&&node.enabled!=='false');
-    requireUi(found.length===1,'TAVERN_TAB_NOT_UNIQUELY_EXPOSED');
-    if(visibleBounds(found[0])) {tapNode(found[0]);return;}
-    requireUi(attempt<4,'TAVERN_TAB_NOT_VISIBLE_AFTER_HORIZONTAL_SCROLL');
-    const row=ancestors(found[0]).find(parent=>parent.scrollable==='true'&&visibleBounds(parent));
-    requireUi(row,'TAVERN_TAB_SCROLL_ROW_NOT_EXPOSED');
-    const [left,top,right,bottom]=visibleBounds(row)!,width=right-left,y=Math.round((top+bottom)/2);
-    const later=attempt<2;
-    command('shell','input','swipe',String(Math.round(left+width*(later ? .8 : .2))),String(y),
-      String(Math.round(left+width*(later ? .2 : .8))),String(y),'450');
-  }
+  await readySnapshot();
+  const found=current.filter(node=>node.package===pkg&&named(node,names)&&button(node)&&node.enabled!=='false');
+  requireUi(found.length===1,'TAVERN_TAB_NOT_UNIQUELY_EXPOSED');
+  showControl(found[0]);controlAction(found[0],'click-control');
 }
 /** Pinned SidebarRoot exposes both its brand and its labelled New Session
  * button with the same aria-label and the same startSession() handler. Choose
@@ -1047,34 +1038,40 @@ async function reopenNamedConversation():Promise<void> {
 }
 /** Recovered user anchors and ordered reply/stopped witnesses come from the
  * actual UI tree. No private history or missing AX scroll-owner assumption. */
-async function requirePacedRecoveryUi():Promise<{partialRetained:boolean}> {
+async function requirePacedRecoveryUi():Promise<{partialRetained:boolean;recoveryKind:"stopped"|"recovery-action"}> {
   await dismissIme();
   let lastProof="";
   const proof=()=>{
     const complete=fixtureReplyAfter(completePacedPrompt,false,false);
     const anchors=leafTexts(interruptPacedPrompt),anchor=anchors.length===1?current.indexOf(anchors[0]):-1;
-    const stopped=current.find((node,index)=>index>anchor&&anchor>=0&&node.package===pkg
-      &&named(node,['已停止','Stopped'])&&inWebView(node));
+    const later=(node:Node,index:number)=>index>anchor&&anchor>=0&&node.package===pkg&&inWebView(node);
+    const stopped=current.find((node,index)=>later(node,index)&&named(node,['已停止','Stopped']));
+    // Product message-actions maps this exact turn-local action to its valid
+    // failedTurnRecoveryByTurn userSeq. Require one action after the last user
+    // anchor, not an unrelated earlier recovery button elsewhere in the tree.
+    const recovery=current.filter((node,index)=>later(node,index)&&button(node)&&node.enabled!=='false'
+      &&named(node,['恢复失败轮次并生成 Agent 回复']));
+    requireUi(recovery.length<=1,'INTERRUPTED_TURN_RECOVERY_ACTION_NOT_UNIQUE');
     requireUi(!fixtureReplyAfter(interruptPacedPrompt,false,false),'INTERRUPTED_TURN_RENDERED_AS_FULL_FIXTURE_REPLY');
     const partialRetained=Boolean(fixtureReplyAfter(interruptPacedPrompt,true,false));
     const observation={completeAnchorCount:leafTexts(completePacedPrompt).length,
       interruptAnchorCount:anchors.length,completedReply:Boolean(complete),stoppedAfterInterrupt:Boolean(stopped),
-      stoppedAnywhere:current.some(node=>node.package===pkg&&named(node,['已停止','Stopped'])),partialRetained};
+      recoveryActionCount:recovery.length,stoppedAnywhere:current.some(node=>node.package===pkg&&named(node,['已停止','Stopped'])),partialRetained};
     const serialized=JSON.stringify(observation);
     if(serialized!==lastProof){emit('observed',{interaction:'paced-recovery-ui-witnesses',...observation});lastProof=serialized;}
-    return {complete,stopped,partialRetained};
+    return {complete,stopped,recovery:recovery[0],partialRetained};
   };
-  await until(()=>{const result=proof();return Boolean(result.complete&&result.stopped)},
+  await until(()=>{const result=proof();return Boolean(result.complete&&(result.stopped||result.recovery))},
     60,'PACED_COMPLETED_OR_STOPPED_TURN_NOT_EXPOSED_AFTER_RESTART');
   for(const marker of [completePacedPrompt,interruptPacedPrompt]) {
     const anchors=leafTexts(marker);requireUi(anchors.length===1,'PACED_RECOVERED_ANCHOR_NOT_UNIQUE');
     showControl(anchors[0]);await readySnapshot();
   }
-  const result=proof();requireUi(result.complete&&result.stopped,'PACED_RECOVERED_UI_WITNESS_LOST');
+  const result=proof();requireUi(result.complete&&(result.stopped||result.recovery),'PACED_RECOVERED_UI_WITNESS_LOST');
   captureApprovedScreenshot('synthetic-chat');
   emit('observed',{interaction:'paced-recovered-ui-text',publicShowActions:2,pixelVisibilityQualified:false});
-  // Native Stop promises a durable stopped turn, not committed partial prose.
-  return {partialRetained:result.partialRetained};
+  // A recovery affordance is not proof that its regeneration action ran.
+  return {partialRetained:result.partialRetained,recoveryKind:result.stopped?'stopped':'recovery-action'};
 }
 /** Run AFTER the normal card/chat/name/background/StopStart flow. The two paced
  * prompts are different user turns. --fixture-events is a runner-owned Linux
@@ -1130,7 +1127,8 @@ async function pacedCompleteThenInterruptAndRecover(fixtureEventsFile:string):Pr
   emit('passed',{scope:'explicit-native-interruption-http-abort-new-process-ui-recovery',
     visiblePartialUpdates:interruptUpdates.size,pacedAbortedRequests:stoppedRecords.filter(record=>record.aborted).length,
     pacedCompletedRequests:stoppedRecords.filter(record=>record.completed).length,newPromptSentAfterRestart:false,
-    newPacedRequestsObservedThroughRecovery:later.length,interruptedTurnRenderedStopped:true,
+    newPacedRequestsObservedThroughRecovery:later.length,interruptedTurnRenderedStopped:recovery.recoveryKind==='stopped',
+    recoveryKind:recovery.recoveryKind,recoveryActionExecuted:false,
     interruptedUserPromptRecovered:true,interruptedPartialRetained:recovery.partialRetained,
     priorCompletedPacedReplyRecovered:true,uniquelyPrimaryRequest:false,phaseBCQualified:false,
     memoryQualified:false,drainedAllWork:false,liveModel:false,fullG0:false});
