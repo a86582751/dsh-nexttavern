@@ -1200,7 +1200,9 @@ async function configureAndIndexOnlineMemory(eventsFile:string):Promise<MemoryUi
   // New provider initializes online/OpenAI; preserve those actual default values.
   await replace(['Base URL','Base URL https://…'],'http://10.0.2.2:18765/v1',['Base URL']);
   await replace(['手动输入模型 ID','手动输入模型 ID 支持自定义别名'],EMBEDDING_FIXTURE_MODEL,['手动输入模型 ID']);
-  await replace(['维度（留空使用模型默认值）'],'4');
+  // Leave optional dimensions empty: use the provider's real model default.
+  // Actual test output and persisted index metadata below must still prove 4D.
+  emit('not-verified',{scope:'manual-embedding-dimension-input',defaultUntouched:true});
   await replace(['模型修订版本（可选）','模型修订版本（可选） 例如 2026-09-14'],memoryRevision,['模型修订版本（可选）']);
   memoryKeyInputStarted=true;
   await replace(['API Key（留空保留已保存 Key，不回显）'],'local-test-only');
