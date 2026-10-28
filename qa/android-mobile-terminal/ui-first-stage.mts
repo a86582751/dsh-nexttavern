@@ -551,6 +551,9 @@ async function typeAscii(node:Node,value:string,field='synthetic-composer'):Prom
     ...(!password?{firstDifference:[...value].findIndex((char,index)=>actual[index]!==char),
       asciiLowercaseRoute:/^[a-z][a-z0-9-]*$/.test(actual)}:{})});
   requireUi(matchesExpected,'SYNTHETIC_INPUT_READBACK_MISMATCH');
+  await dismissIme();
+}
+async function dismissIme():Promise<void> {
   // IME accessibility roots can be absent during a real window transition.
   // Android 15's ImeVisibilityStateComputer exposes this actual state in dumpsys.
   const imeShown=()=>{
@@ -827,8 +830,12 @@ async function chooseOpeningAndChat():Promise<void> {
   requireUi(composers.length===1,'UNIQUE_VISIBLE_COMPOSER_NOT_EXPOSED');
   await typeAscii(composers[0],fixturePrompt);
   await press(['发送消息','Send message']);
-  await until(()=>Boolean(visibleMessage(fixtureReply))
-    &&visibleNamed(['停止生成','Stop generating']).length===0,180,'SYNTHETIC_ASSISTANT_REPLY_NOT_RENDERED');
+  await dismissIme(); // Host composer can refocus itself after sending.
+  await until(()=>{
+    requireUi(!current.some(node=>node.package===pkg&&node.text?.includes(
+      '酒馆维护尚未完成，检查点已保留；可在酒馆管理中重试')),'SYNTHETIC_TURN_MAINTENANCE_FAILED');
+    return Boolean(visibleMessage(fixtureReply))&&visibleNamed(['停止生成','Stop generating']).length===0;
+  },180,'SYNTHETIC_ASSISTANT_REPLY_NOT_RENDERED');
   emit('passed',{scope:'one-native-opening-one-fixture-prompt-visible-reply',liveModel:false,
     incrementalRendering:'not-qualified-by-single-delta-fixture'});
 }
@@ -964,6 +971,31 @@ function fixtureCounterSnapshot(file:string):Map<number,SafeFixtureCounter> {
   }
   return records;
 }
+/** Only the synthetic fixture's fixed enums/counters leave its private log. */
+function fixtureFailureEvidence(file:string):void {
+  const rows=readFileSync(file,'utf8').split('\n').flatMap(line=>{
+    try {return [JSON.parse(line)]}catch{return []}
+  });
+  const enumList=(value:unknown,allowed:string[])=>Array.isArray(value)
+    ?value.filter(item=>typeof item==='string'&&allowed.includes(item)):[];
+  const rejected=rows.filter(row=>row.kind==='local-protocol-fixture-rejected'
+    &&row.schemaVersion===1&&row.fixture===PROTOCOL_FIXTURE_ID).slice(-8).map(row=>({
+      reason:enumList([row.reason],['unsupported-tool-surface','malformed-envelope','unsupported-task-contract',
+        'unsupported-worker','incomplete-tool-receipt'])[0]??'unrecognized',
+      offeredTools:enumList(row.offeredTools,['rp_task_submit','rp_task_read','run_code']),
+      taskKinds:enumList(row.taskKinds,['schema-maintenance','status','decision','memory','other']),
+      taskStages:enumList(row.taskStages,['schema-maintenance-v1','background-notes','compaction','other']),
+    }));
+  const requests=[...fixtureCounterSnapshot(file).values()];
+  const modes=new Map<number,string>();
+  for(const row of rows)if(row.kind==='local-protocol-fixture-request'&&row.fixture===PROTOCOL_FIXTURE_ID
+    &&Number.isSafeInteger(row.request)&&['story','maintenance','maintenance-complete','background-memory'].includes(row.mode))
+      modes.set(row.request,row.mode);
+  emit('observed',{interaction:'synthetic-fixture-summary',requests:requests.length,
+    modes:Object.fromEntries(['story','maintenance','maintenance-complete','background-memory']
+      .map(mode=>[mode,[...modes.values()].filter(value=>value===mode).length])),
+    completed:requests.filter(row=>row.completed).length,aborted:requests.filter(row=>row.aborted).length,rejected});
+}
 const maxFixtureRequest=(file:string)=>Math.max(0,...fixtureCounterSnapshot(file).keys());
 const freshPaced=(file:string,after:number)=>[...fixtureCounterSnapshot(file).values()]
   .filter(record=>record.request>after&&record.streamRequested&&record.paced);
@@ -993,6 +1025,7 @@ async function sendOnePacedPrompt(prompt:string):Promise<void> {
   requireUi(composer.length===1,'PACED_TURN_UNIQUE_COMPOSER_NOT_EXPOSED');
   await typeAscii(composer[0],prompt);
   await press(['发送消息','Send message']);
+  await dismissIme();
 }
 async function ordinaryNativeStop():Promise<void> {
   await press(['停止'],node=>button(node)&&!inWebView(node));
@@ -1161,6 +1194,7 @@ try {
     roots:current.filter(node=>node.__parent==='-1').map(node=>({package:node.package,class:node.class,
       active:node['window-active'],focused:node['window-focused'],visible:node['visible-to-user']}))});
   appFailureEvidence();
+  if(fixtureEvents)try{fixtureFailureEvidence(fixtureEvents)}catch{emit('observed',{interaction:'synthetic-fixture-summary',available:false})}
   labels();emit('failed',{code:error instanceof UiFailure?error.code:'DRIVER_FAILURE',
     ...failedWait,lastSuccessfulSnapshot:failedSnapshot,
     totalReaderRecoveries:snapshotTransportRecoveries,productPlayable:false,fullG0:false});
