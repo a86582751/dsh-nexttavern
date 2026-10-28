@@ -888,27 +888,23 @@ function appFailureEvidence():void {
       errorCode:error instanceof UiFailure?error.code:'PRIVATE_DIAGNOSTIC_UNAVAILABLE'});
   }
 }
-/** Traverse only the actual conversation scroller, collecting small known
- * synthetic text witnesses. No off-screen DOM or private history API counts as
- * visible recovery. A different view/layout must stop at its actual hierarchy. */
+/** Recover actual UI text, not private history. This WebView omits the CSS
+ * scroller's AX scrollable flag; public SHOW works without inventing an owner.
+ * AX bounds are recorded separately, not promoted to pixel verification. */
 async function requirePersistedConversation():Promise<void> {
-  const markers=[fixtureOpening,fixturePrompt,fixtureReply],seen=new Set<string>();
-  let scrollBox:number[]|null=null;
-  for(const direction of ['older','newer'])for(let attempt=0;attempt<4;attempt++) {
-    await readySnapshot();
-    for(const marker of markers) {
-      const node=visibleMessage(marker);if(!node)continue;seen.add(marker);
-      const scroll=ancestors(node).find(parent=>parent.scrollable==='true'&&inWebView(parent)&&visibleBounds(parent));
-      if(scroll)scrollBox=visibleBounds(scroll);
-    }
-    if(seen.size===markers.length)return;
-    requireUi(scrollBox,'CONVERSATION_SCROLL_ANCESTOR_NOT_EXPOSED');
-    const [left,top,right,bottom]=scrollBox,x=Math.round((left+right)/2),height=bottom-top;
-    const older=direction==='older';
-    command('shell','input','swipe',String(x),String(Math.round(top+height*(older ? .2 : .8))),
-      String(x),String(Math.round(top+height*(older ? .8 : .2))),'450');
+  await dismissIme();
+  let positiveBounds=0;
+  for(const marker of [fixtureOpening,fixturePrompt,fixtureReply]) {
+    await readySnapshot();const nodes=leafTexts(marker);
+    requireUi(nodes.length===1,'RECOVERED_STORY_TEXT_NOT_UNIQUE');
+    showControl(nodes[0]);await readySnapshot();
+    const revealed=leafTexts(marker);
+    requireUi(revealed.length===1,'RECOVERED_STORY_TEXT_LOST_AFTER_SHOW');
+    if(visibleBounds(revealed[0]))positiveBounds++;
   }
-  requireUi(false,'SYNTHETIC_HISTORY_NOT_VISIBLE_AFTER_ORDINARY_SCROLL');
+  captureApprovedScreenshot('synthetic-chat');
+  emit('observed',{interaction:'recovered-ui-story-text',textWitnesses:3,publicShowActions:3,
+    positiveAxBounds:positiveBounds,pixelVisibilityQualified:false});
 }
 /** No new prompt is sent in this function, including after the new origin. */
 async function backgroundStopStartAndRecover():Promise<void> {
@@ -917,7 +913,7 @@ async function backgroundStopStartAndRecover():Promise<void> {
   command('shell','am','start','-W','-n',pkg+'/app.nexttavern.android.mobile.MainActivity');
   await until(()=>has(['本地服务运行中']),60,'NATIVE_READY_NOT_RETAINED_AFTER_HOME');
   requireUi(ownedNodePid()===before,'BACKGROUND_RETURN_REPLACED_NATIVE_NODE');
-  await requirePersistedConversation();emit('passed',{scope:'home-return-same-owned-node-and-visible-story'});
+  await requirePersistedConversation();emit('passed',{scope:'home-return-same-owned-node-and-exposed-ui-story'});
   stage='ordinary-native-stop-start';
   await press(['停止'],node=>button(node)&&!inWebView(node));
   await until(()=>has(['停止 NextTavern？'])&&visibleNamed(['停止并收尾']).length===1,30,'ORDINARY_NATIVE_STOP_CONFIRMATION_NOT_EXPOSED');
@@ -928,7 +924,7 @@ async function backgroundStopStartAndRecover():Promise<void> {
   requireUi(ownedNodePid()!==before,'NATIVE_RESTART_DID_NOT_REPLACE_NODE_PROCESS');
   stage='reopen-persisted-named-conversation';await reopenNamedConversation();
   await requirePersistedConversation();
-  emit('passed',{scope:'ordinary-stop-start-visible-opening-user-prompt-assistant-recovery',newPromptSent:false,
+  emit('passed',{scope:'ordinary-stop-start-ui-opening-user-prompt-assistant-recovery',newPromptSent:false,
     fixtureCorePlayable:true,liveModel:false,fullG0:false,arm64Qualified:false});
 }
 async function runContiguousCreate(workDir:string):Promise<void> {
@@ -1040,36 +1036,29 @@ async function reopenNamedConversation():Promise<void> {
   showControl(rows[0]);controlAction(rows[0],'click-control');
   await hideSidebar();
 }
-/** Look only in the genuine conversation scroll ancestor for the two recent
- * synthetic turn anchors. Actual unexposed or different renderer state stops
- * at bounded UI labels; it is never replaced with a private history request. */
+/** Recovered user anchors and ordered reply/stopped witnesses come from the
+ * actual UI tree. No private history or missing AX scroll-owner assumption. */
 async function requirePacedRecoveryUi():Promise<{partialRetained:boolean}> {
-  let completeRecovered=false,interruptedRecovered=false,partialRetained=false,interruptedPromptVisible=false,scrollBox:number[]|null=null;
-  for(const direction of ['older','newer'])for(let attempt=0;attempt<4;attempt++) {
-    await readySnapshot();
-    const full=fixtureReplyAfter(completePacedPrompt,false);
-    if(full)completeRecovered=true;
-    const partial=fixtureReplyAfter(interruptPacedPrompt,true);
+  await dismissIme();
+  const proof=()=>{
+    const complete=fixtureReplyAfter(completePacedPrompt,false,false);
     const anchors=leafTexts(interruptPacedPrompt),anchor=anchors.length===1?current.indexOf(anchors[0]):-1;
-    if(anchors.length===1&&visibleBounds(anchors[0]))interruptedPromptVisible=true;
     const stopped=current.find((node,index)=>index>anchor&&anchor>=0&&node.package===pkg
-      &&named(node,['已停止','Stopped'])&&inWebView(node)&&visibleBounds(node));
-    if(partial)partialRetained=true;
-    // Native Stop promises interruption, not a committed partial assistant
-    // message. Record prefix retention, but require the durable user anchor
-    // and explicit stopped state rather than inventing a partial-save promise.
-    if(stopped)interruptedRecovered=true;
+      &&named(node,['已停止','Stopped'])&&inWebView(node));
     requireUi(!fixtureReplyAfter(interruptPacedPrompt,false,false),'INTERRUPTED_TURN_RENDERED_AS_FULL_FIXTURE_REPLY');
-    if(completeRecovered&&interruptedRecovered&&interruptedPromptVisible)return {partialRetained};
-    const witness=partial??full??stopped??(anchors.length===1&&visibleBounds(anchors[0])?anchors[0]:undefined)??visibleMessage('本地协议测试');
-    const scroll=witness&&ancestors(witness).find(parent=>parent.scrollable==='true'&&inWebView(parent)&&visibleBounds(parent));
-    if(scroll)scrollBox=visibleBounds(scroll);
-    requireUi(scrollBox,'PACED_RECOVERY_CONVERSATION_SCROLL_NOT_EXPOSED');
-    const [left,top,right,bottom]=scrollBox,x=Math.round((left+right)/2),height=bottom-top,older=direction==='older';
-    command('shell','input','swipe',String(x),String(Math.round(top+height*(older ? .2 : .8))),
-      String(x),String(Math.round(top+height*(older ? .8 : .2))),'450');
+    return {complete,stopped,partialRetained:Boolean(fixtureReplyAfter(interruptPacedPrompt,true,false))};
+  };
+  await until(()=>{const result=proof();return Boolean(result.complete&&result.stopped)},
+    60,'PACED_COMPLETED_OR_STOPPED_TURN_NOT_EXPOSED_AFTER_RESTART');
+  for(const marker of [completePacedPrompt,interruptPacedPrompt]) {
+    const anchors=leafTexts(marker);requireUi(anchors.length===1,'PACED_RECOVERED_ANCHOR_NOT_UNIQUE');
+    showControl(anchors[0]);await readySnapshot();
   }
-  requireUi(false,'PACED_COMPLETED_OR_STOPPED_TURN_NOT_VISIBLE_AFTER_RESTART');
+  const result=proof();requireUi(result.complete&&result.stopped,'PACED_RECOVERED_UI_WITNESS_LOST');
+  captureApprovedScreenshot('synthetic-chat');
+  emit('observed',{interaction:'paced-recovered-ui-text',publicShowActions:2,pixelVisibilityQualified:false});
+  // Native Stop promises a durable stopped turn, not committed partial prose.
+  return {partialRetained:result.partialRetained};
 }
 /** Run AFTER the normal card/chat/name/background/StopStart flow. The two paced
  * prompts are different user turns. --fixture-events is a runner-owned Linux
@@ -1122,7 +1111,7 @@ async function pacedCompleteThenInterruptAndRecover(fixtureEventsFile:string):Pr
   // A new paced request might be contextual/background work, not necessarily a
   // primary replay. Block classification rather than inventing that diagnosis.
   requireUi(later.length===0,'NEW_PACED_REQUEST_AFTER_RESTART_REQUIRES_CLASSIFICATION');
-  emit('passed',{scope:'explicit-native-interruption-http-abort-new-process-visible-recovery',
+  emit('passed',{scope:'explicit-native-interruption-http-abort-new-process-ui-recovery',
     visiblePartialUpdates:interruptUpdates.size,pacedAbortedRequests:stoppedRecords.filter(record=>record.aborted).length,
     pacedCompletedRequests:stoppedRecords.filter(record=>record.completed).length,newPromptSentAfterRestart:false,
     newPacedRequestsObservedThroughRecovery:later.length,interruptedTurnRenderedStopped:true,
