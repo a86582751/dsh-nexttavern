@@ -53,9 +53,20 @@ public final class HierarchyInstrumentation extends Instrumentation {
                 phase = "ROOT_READ";
                 StringBuilder xml = new StringBuilder("<hierarchy>");
                 boolean activeRoot = false;
+                int imeWindowCount = 0;
+                Rect imeBounds = new Rect();
                 Set<Integer> rootIds = new HashSet<>();
                 for (AccessibilityWindowInfo window : ui.getWindows()) {
                     try {
+                        // The window remains observable even when its root is
+                        // absent. Node package/visibility and node bounds do not
+                        // establish whether the input-method window is showing.
+                        if (window.getType() == AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
+                            imeWindowCount++;
+                            Rect bounds = new Rect();
+                            window.getBoundsInScreen(bounds);
+                            if (!bounds.isEmpty()) imeBounds.union(bounds);
+                        }
                         AccessibilityNodeInfo root = window.getRoot();
                         if (root != null) {
                             phase = "SERIALIZE";
@@ -77,6 +88,11 @@ public final class HierarchyInstrumentation extends Instrumentation {
                 if (activeRoot) {
                     xml.append("</hierarchy>");
                     if (xml.length() > 350000) throw new IllegalStateException("HIERARCHY_TOO_LARGE");
+                    result.putBoolean("imeVisible", !imeBounds.isEmpty());
+                    result.putInt("imeWindowCount", imeWindowCount);
+                    result.putString("imeBounds", imeBounds.isEmpty() ? ""
+                        : "[" + imeBounds.left + "," + imeBounds.top + "]["
+                            + imeBounds.right + "," + imeBounds.bottom + "]");
                     if ("summary".equals(outputMode)) {
                         // Diagnostic contrast: identical traversal, small Binder
                         // result. Never include labels, input values or raw XML.

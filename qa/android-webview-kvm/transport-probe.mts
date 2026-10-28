@@ -9,6 +9,7 @@ import {adbFailureKind} from '../android-mobile-terminal/safe-diagnostics.mts';
 
 type ReadMode='pulled-hierarchy'|'redirect'|'summary';
 type UiNode=Record<string,string>;
+type ImeWindowState={visible:boolean;windowCount:number;bounds:string};
 type Result={stdout:Buffer;stderr:Buffer;status:number|null;signal:string|null;errorCode:string|null;
   transportPhase?:string;shellStdoutBytes?:number;pulledBytes?:number;cleanupFailed?:boolean};
 type Identity={boot:string;framework:string;app:string;adbd:string;device:boolean};
@@ -20,6 +21,7 @@ const modes:ReadMode[]=['pulled-hierarchy','redirect','summary'];
 const deadline=Date.now()+240000;
 let phase='INITIALIZE',readNumber=0,firstFailureSaved=false;
 let anchor:Identity|undefined,lastNodes:UiNode[]=[];
+let lastIme: ImeWindowState|undefined;
 const emit=(status:string,extra:Record<string,unknown>={})=>console.log(JSON.stringify({
   kind:'nexttavern-tiny-transport',phase,status,elapsedMs:Date.now()-(deadline-240000),...extra,
 }));
@@ -159,13 +161,44 @@ function validRead(result:Result,mode:ReadMode):boolean {
     &&/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)
     &&/^DEVICE_STDOUT_BYTES=\d+\r?$/m.test(output);
   if(result.transportPhase==='AM_TERMINAL'||!/^INSTRUMENTATION_CODE: -1\r?$/m.test(output))return false;
+  const ime=imeWindowState(output);
+  if(!ime)return false;
   if(mode==='summary')return /^INSTRUMENTATION_RESULT: hierarchyChars=\d+\r?$/m.test(output)
     &&/^INSTRUMENTATION_RESULT: rootCount=[1-9]\d*\r?$/m.test(output);
   const xml=output.match(/^INSTRUMENTATION_RESULT: hierarchy=(<hierarchy>[^\r\n]*<\/hierarchy>)\r?$/m)?.[1];
   if(!xml)return false;
   lastNodes=[...xml.matchAll(/<node\b([^>]*?)>/g)].map(match=>Object.fromEntries(
     [...match[1].matchAll(/([\w-]+)="([^"]*)"/g)].map(attr=>[attr[1],attr[2]])));
+  lastIme=ime;
   return lastNodes.length>0;
+}
+function imeWindowState(output:string):ImeWindowState|undefined {
+  const visible=output.match(/^INSTRUMENTATION_RESULT: imeVisible=(true|false)\r?$/m)?.[1];
+  const count=output.match(/^INSTRUMENTATION_RESULT: imeWindowCount=(\d+)\r?$/m)?.[1];
+  const bounds=output.match(/^INSTRUMENTATION_RESULT: imeBounds=([^\r\n]*)\r?$/m)?.[1];
+  if(visible===undefined||count===undefined||bounds===undefined)return undefined;
+  if(visible==='false')return bounds===''?{visible:false,windowCount:Number(count),bounds}:undefined;
+  const box=rect(bounds);
+  return Number(count)>0&&box?{visible:true,windowCount:Number(count),bounds}:undefined;
+}
+function requireImeWindow(visible:boolean,code:string):void {
+  requireDiagnostic(lastIme?.visible===visible,code);
+}
+function rect(value:string):number[]|undefined {
+  const match=value.match(/^\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]$/);
+  if(!match)return undefined;
+  const box=match.slice(1).map(Number);
+  return box[2]>box[0]&&box[3]>box[1]?box:undefined;
+}
+function webViewBounds():string {
+  // Native/virtual WebView nodes can share a viewport. Use the outermost
+  // visible viewport, not the document's scrolled descendants.
+  const views=lastNodes.filter(node=>node.package===pkg&&node.class==='android.webkit.WebView'
+    &&node['visible-to-user']==='true').map(node=>({bounds:node.bounds,box:rect(node.bounds??'')}))
+    .filter((view):view is {bounds:string;box:number[]}=>view.box!==undefined);
+  views.sort((a,b)=>(b.box[2]-b.box[0])*(b.box[3]-b.box[1])-(a.box[2]-a.box[0])*(a.box[3]-a.box[1]));
+  requireDiagnostic(views.length>0,'VISIBLE_WEBVIEW_BOUNDS_UNAVAILABLE');
+  return views[0].bounds;
 }
 function captureDefaultInfo():void {
   // Capture before a recovery command can affect the originally acquired log.
@@ -204,10 +237,12 @@ async function snapshot(mode:ReadMode):Promise<void> {
   const result=readCommand(mode);
   if(!validRead(result,mode))await failedRead(result,mode);
   const output=result.stdout.toString('utf8');
+  const ime=mode==='redirect'?undefined:imeWindowState(output);
   emit('READ_OK',{mode,readNumber,...metadata(result),
     hierarchyChars:mode==='summary'?Number(output.match(/^INSTRUMENTATION_RESULT: hierarchyChars=(\d+)\r?$/m)?.[1]):null,
     rootCount:mode==='summary'?Number(output.match(/^INSTRUMENTATION_RESULT: rootCount=(\d+)\r?$/m)?.[1]):null,
-    imeVisible:mode==='pulled-hierarchy'?lastNodes.some(node=>/inputmethod/.test(node.package??'')):null});
+    imeVisible:ime?.visible??null,imeWindowCount:ime?.windowCount??null,imeBounds:ime?.bounds??null,
+    webViewBounds:mode==='pulled-hierarchy'?webViewBounds():null});
 }
 function passwordField():UiNode {
   const fields=lastNodes.filter(node=>node.package===pkg&&node.class==='android.widget.EditText'
@@ -230,6 +265,8 @@ try {
   phase='BEFORE_INTERACTION';
   for(let i=0;i<6;i++)await snapshot(modes[i%3]);
   requireDiagnostic(sameIdentity(identity(),'after-baseline'),'IDENTITY_CHANGED');
+  requireImeWindow(false,'BASELINE_IME_WINDOW_NOT_ABSENT');
+  const baselineWebView=webViewBounds();
   const field=passwordField();
   const bounds=field.bounds.match(/^\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]$/);
   requireDiagnostic(bounds,'PASSWORD_BOUNDS_UNAVAILABLE');
@@ -240,17 +277,33 @@ try {
   await delay(400);
   await snapshot('pulled-hierarchy');
   requireDiagnostic(passwordField().focused==='true','PASSWORD_NOT_FOCUSED_NO_INPUT');
+  requireImeWindow(true,'FOCUSED_IME_WINDOW_NOT_OBSERVED');
   for(let i=1;i<6;i++)await snapshot(modes[i%3]);
   phase='IME_SYNTHETIC_FILLED';
   action(['shell','input','text','local-test-only']);
   emit('SINGLE_SYNTHETIC_INPUT',{replayedAction:false});
   // Complete three-mode rounds in each state; no action is repeated.
   for(let i=0;i<18;i++)await snapshot(modes[i%3]);
+  requireImeWindow(true,'FILLED_IME_WINDOW_NOT_OBSERVED');
+  const focusedWebView=webViewBounds();
   requireDiagnostic(sameIdentity(identity(),'after-ime'),'IDENTITY_CHANGED');
   phase='AFTER_SINGLE_IME_HIDE';
   action(['shell','input','keyevent','KEYCODE_BACK']);
-  for(let i=0;i<6;i++)await snapshot(modes[i%3]);
+  let restoredSnapshots=0;
+  for(let i=0;i<6;i++) {
+    const mode=modes[i%3];
+    await snapshot(mode);
+    if(mode==='pulled-hierarchy') {
+      requireImeWindow(false,'BACK_DID_NOT_HIDE_IME_WINDOW');
+      requireDiagnostic(webViewBounds()===baselineWebView,'WEBVIEW_BOUNDS_NOT_RESTORED_AFTER_BACK');
+      restoredSnapshots++;
+    }
+  }
+  requireDiagnostic(restoredSnapshots===2,'WEBVIEW_GEOMETRY_NOT_OBSERVED_STABLE');
   requireDiagnostic(sameIdentity(identity(),'after-hide'),'IDENTITY_CHANGED');
+  emit('IME_WINDOW_BACK_GEOMETRY_CONTRAST_PASSED',{source:'UiAutomation.TYPE_INPUT_METHOD.windowBounds',
+    baselineWebView,focusedWebView,restoredWebView:webViewBounds(),restoredSnapshots,
+    singleBack:true,replayedAction:false});
   emit('DIAGNOSTIC_NO_FAILURE_OBSERVED',{reads:readNumber,productPassed:false,fullG0Accepted:false});
 }catch(error) {
   emit('DIAGNOSTIC_FAILED',{code:error instanceof DiagnosticFailure?error.code:'LOCAL_DIAGNOSTIC_ERROR',
