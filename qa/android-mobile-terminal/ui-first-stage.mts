@@ -188,7 +188,7 @@ function hierarchyOutput(deadline:number):string {
   }
 }
 function snapshot(deadline:number):Node[] {
-  current=[];
+  const next:Node[]=[];
   // Public UiAutomation preserves Chromium's hint text; capture privately.
   const output=hierarchyOutput(deadline);
   const records=[...output.matchAll(/^INSTRUMENTATION_RESULT: hierarchy=([^\r\n]*)\r?$/gm)];
@@ -213,9 +213,10 @@ function snapshot(deadline:number):Node[] {
     const node:Node=Object.fromEntries([...match[1].matchAll(/([\w-]+)="([^"]*)"/g)]
       .map(item=>[item[1],decode(item[2])]));
     node.__parent=String(parents.at(-1)??-1);
-    const index=current.push(node)-1;
+    const index=next.push(node)-1;
     if(match[2]!=='/')parents.push(index);
   }
+  current=next;
   rememberSnapshot();
   return current;
 }
@@ -1048,13 +1049,20 @@ async function reopenNamedConversation():Promise<void> {
  * actual UI tree. No private history or missing AX scroll-owner assumption. */
 async function requirePacedRecoveryUi():Promise<{partialRetained:boolean}> {
   await dismissIme();
+  let lastProof="";
   const proof=()=>{
     const complete=fixtureReplyAfter(completePacedPrompt,false,false);
     const anchors=leafTexts(interruptPacedPrompt),anchor=anchors.length===1?current.indexOf(anchors[0]):-1;
     const stopped=current.find((node,index)=>index>anchor&&anchor>=0&&node.package===pkg
       &&named(node,['已停止','Stopped'])&&inWebView(node));
     requireUi(!fixtureReplyAfter(interruptPacedPrompt,false,false),'INTERRUPTED_TURN_RENDERED_AS_FULL_FIXTURE_REPLY');
-    return {complete,stopped,partialRetained:Boolean(fixtureReplyAfter(interruptPacedPrompt,true,false))};
+    const partialRetained=Boolean(fixtureReplyAfter(interruptPacedPrompt,true,false));
+    const observation={completeAnchorCount:leafTexts(completePacedPrompt).length,
+      interruptAnchorCount:anchors.length,completedReply:Boolean(complete),stoppedAfterInterrupt:Boolean(stopped),
+      stoppedAnywhere:current.some(node=>node.package===pkg&&named(node,['已停止','Stopped'])),partialRetained};
+    const serialized=JSON.stringify(observation);
+    if(serialized!==lastProof){emit('observed',{interaction:'paced-recovery-ui-witnesses',...observation});lastProof=serialized;}
+    return {complete,stopped,partialRetained};
   };
   await until(()=>{const result=proof();return Boolean(result.complete&&result.stopped)},
     60,'PACED_COMPLETED_OR_STOPPED_TURN_NOT_EXPOSED_AFTER_RESTART');
@@ -1318,8 +1326,18 @@ try {
   stage='host-models-page';
   labels();
   await runContiguousCreate(args['--work-dir']);
-  await pacedCompleteThenInterruptAndRecover(fixtureEvents);
+  let recoveryFailure:UiFailure|undefined;
+  try {await pacedCompleteThenInterruptAndRecover(fixtureEvents)} catch(error) {
+    // This separate recovery gate remains failed. The live restarted app can
+    // still exercise online indexing; never replay the interrupted user turn.
+    if(!(error instanceof UiFailure)||error.code!=='PACED_COMPLETED_OR_STOPPED_TURN_NOT_EXPOSED_AFTER_RESTART')throw error;
+    recoveryFailure=error;
+    emit('failed',{scope:'paced-interruption-ui-recovery',code:error.code,...waitReceipt(),
+      lastSuccessfulSnapshot:lastSnapshotReceipt(),continuingIndependentMemoryTest:true});
+    labels();captureApprovedScreenshot('synthetic-chat');
+  }
   await onlineMemoryRestartAndRecall(fixtureEvents);
+  if(recoveryFailure)throw recoveryFailure;
   emit('passed',{scope:'ordinary-ui-synthetic-card-chat-stream-stop-recovery',package:pkg,
     cardImport:'passed',SAF:'passed',chat:'passed',restartRecovery:'passed',liveModel:false,
     incrementalRendering:'observed-partial-to-complete',syntheticCoreFlow:true,
