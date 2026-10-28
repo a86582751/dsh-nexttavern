@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {once} from 'node:events'
 import {setTimeout as delay} from 'node:timers/promises'
-import {createProtocolFixture,FIXTURE_REPLY,PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID,
+import {createProtocolFixture,FIXTURE_REPLY,FIXTURE_MAINTENANCE_ACK,PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID,
   EMBEDDING_FIXTURE_ID,EMBEDDING_FIXTURE_MODEL,EMBEDDING_FIXTURE_DIMENSIONS,
   EMBEDDING_STORY_SENTENCE,EMBEDDING_DISTRACTOR_SENTENCE,EMBEDDING_QUERY} from './protocol-fixture.mts'
 
@@ -185,6 +185,12 @@ test('plain-card fixture submits real current identities over both protocols and
       assert.equal(followup.status,200)
       assert.match(ended,/"finish_reason":"stop"/)
       assert.doesNotMatch(ended,/rp_task_submit|酒馆的灯亮着/)
+      const ack=stream?ended.split('\n').filter(line=>line.startsWith('data: {')).map(line=>JSON.parse(line.slice(6)))
+        .flatMap(packet=>packet.choices.map((choice:any)=>choice.delta?.content??'')).join('')
+        :JSON.parse(ended).choices[0].message.content
+      assert.equal(ack,FIXTURE_MAINTENANCE_ACK)
+      assert.equal(requests.at(-1)!.contentDeltas,stream?1:0)
+      assert.equal(requests.at(-1)!.toolcallCount,0)
       assert.equal(requests.at(-1)!.mode,'maintenance-complete')
     }
     const changed=maintenanceTask();changed.generation='new-generation-private'

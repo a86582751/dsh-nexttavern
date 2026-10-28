@@ -4,6 +4,7 @@ import {pathToFileURL} from 'node:url'
 
 export const PROTOCOL_FIXTURE_ID='nexttavern-local-openai-v1'
 export const PACED_STREAM_MARKER='NEXTTAVERN_QA_PACED_STREAM'
+export const FIXTURE_MAINTENANCE_ACK='【本地协议测试】维护结果已提交。'
 export const FIXTURE_REPLY='【本地协议测试，不是真实模型】酒馆的灯亮着。欢迎回来，我们的对话已经继续。'
 export const EMBEDDING_FIXTURE_ID='nexttavern-local-embedding-v1'
 export const EMBEDDING_FIXTURE_MODEL='nexttavern-embedding-fixture'
@@ -51,7 +52,9 @@ function fixturePlan(body:ChatBody,requestNumber:number):{mode:'story'|'maintena
         if(receipt.role!=='tool'||receipt.tool_call_id!==call.id)return false
         try {const value=JSON.parse(messageText(receipt));return value.ok===true&&value.status==='completed'&&value.resultStored===true}catch{return false}
       })))return fixtureFailure('incomplete-tool-receipt')
-      return {mode:'maintenance-complete'}
+      // Host requires a nonempty assistant completion; the real maintenance phase
+      // owns this acknowledgement, so it is not another canonical story.
+      return {mode:'maintenance-complete',content:FIXTURE_MAINTENANCE_ACK}
     }
   }
   if(latest?.role!=='user'||!text.startsWith(maintenancePrefix)) {
@@ -271,7 +274,7 @@ export function createProtocolFixture(options:FixtureOptions={}) {
       response.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-cache'})
       const emit=(choices:unknown[],extra={})=>response.write('data: '+JSON.stringify({id,model,created,object:'chat.completion.chunk',choices,...extra})+'\n\n')
       emit([{index:0,delta:{role:'assistant'},finish_reason:null}])
-      if(plan.mode!=='story'&&plan.mode!=='background-memory') {
+      if(plan.mode==='maintenance') {
         if(plan.calls)emit([{index:0,delta:{tool_calls:plan.calls.map((call,index)=>({index,...call}))},finish_reason:null}])
         emit([{index:0,delta:{},finish_reason:plan.calls?'tool_calls':'stop'}])
         emit([],{usage});response.end('data: [DONE]\n\n');return
