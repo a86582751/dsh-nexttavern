@@ -560,11 +560,13 @@ async function dismissIme():Promise<void> {
     const state=command('shell','dumpsys','input_method').match(/\bmInputShown=(true|false)\b/)?.[1];
     requireUi(state!==undefined,'IME_VISIBILITY_STATE_UNAVAILABLE');return state==='true';
   };
-  if(imeShown()) {
+  const visibleIme=()=>current.some(node=>node.__parent==='-1'
+    &&node.package==='com.google.android.inputmethod.latin'&&node['visible-to-user']==='true'&&visibleBounds(node));
+  if(imeShown()||visibleIme()) {
     command('shell','input','keyevent','KEYCODE_BACK');
     let previousGeometry:string|undefined;
     await until(()=>{
-      if(imeShown())return false;
+      if(imeShown()||visibleIme())return false;
       const geometry=current.filter(item=>item.package===pkg&&item.class==='android.webkit.WebView'
         &&visibleBounds(item)).map(item=>item.bounds).join('|');
       if(!geometry)return false;
@@ -830,8 +832,12 @@ async function chooseOpeningAndChat():Promise<void> {
   requireUi(composers.length===1,'UNIQUE_VISIBLE_COMPOSER_NOT_EXPOSED');
   await typeAscii(composers[0],fixturePrompt);
   await press(['发送消息','Send message']);
-  await dismissIme(); // Host composer can refocus itself after sending.
+  await until(()=>current.some(node=>node.package===pkg&&node.class!=='android.widget.EditText'
+    &&node.text===fixturePrompt),30,'SYNTHETIC_USER_MESSAGE_NOT_SUBMITTED');
+  await dismissIme(); // Observe the submitted row before handling Host autofocus.
   await until(()=>{
+    requireUi(!current.some(node=>node.package===pkg&&node.text?.startsWith('This turn failed')),
+      'SYNTHETIC_TURN_FAILED');
     requireUi(!current.some(node=>node.package===pkg&&node.text?.includes(
       '酒馆维护尚未完成，检查点已保留；可在酒馆管理中重试')),'SYNTHETIC_TURN_MAINTENANCE_FAILED');
     return Boolean(visibleMessage(fixtureReply))&&visibleNamed(['停止生成','Stop generating']).length===0;
@@ -1025,6 +1031,8 @@ async function sendOnePacedPrompt(prompt:string):Promise<void> {
   requireUi(composer.length===1,'PACED_TURN_UNIQUE_COMPOSER_NOT_EXPOSED');
   await typeAscii(composer[0],prompt);
   await press(['发送消息','Send message']);
+  await until(()=>current.some(node=>node.package===pkg&&node.class!=='android.widget.EditText'
+    &&node.text===prompt),30,'PACED_USER_MESSAGE_NOT_SUBMITTED');
   await dismissIme();
 }
 async function ordinaryNativeStop():Promise<void> {
