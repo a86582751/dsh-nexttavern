@@ -423,11 +423,11 @@ const fixtureId='nexttavern-fixture';
 const fixtureModelNames=['模型 ID 1','Model ID 1'];
 const named=(node:Node,names:string[])=>names.some(name=>node.text===name||node['content-desc']===name||node.hint===name);
 const button=(node:Node)=>node.clickable==='true'||node.class==='android.widget.Button';
-/** These fixed Models controls use standard accessibility interactions. Real
+/** These observed panel controls use standard accessibility interactions. Real
  * screenshots and a TYPE_VIEW_SCROLLED event proved the panel scrolls, while
  * this WebView reports stale screen bounds. Acceptance still requires the
  * caller's actual model-switch and persisted-settings results. */
-async function modelControl(names:string[],kind:(node:Node)=>boolean=button):Promise<Node> {
+async function semanticPanelControl(names:string[],kind:(node:Node)=>boolean=button):Promise<Node> {
   await readySnapshot();
   const found=current.filter(node=>node.package===pkg&&named(node,names)&&kind(node)&&node.enabled!=='false');
   requireUi(found.length===1,'MODEL_CONTROL_NOT_UNIQUE');
@@ -491,9 +491,12 @@ async function reveal(names:string[],kind:(node:Node)=>boolean=button,
   }
 }
 async function press(names:string[],kind:(node:Node)=>boolean=button):Promise<void> {
-  if(stage==='fixture-main-and-worker-model-routing'
-    &&names.some(name=>name==='切换当前对话主模型'||name==='保存模型路由')) {
-    controlAction(await modelControl(names,kind),'click-control');return;
+  const semanticModel=stage==='fixture-main-and-worker-model-routing'
+    &&names.some(name=>name==='切换当前对话主模型'||name==='保存模型路由');
+  const semanticMemory=stage==='online-memory-provider'
+    &&names.some(name=>['新增接入 / New provider','保存供应商','测试','用于剧情记忆','B 语义 / Semantic'].includes(name));
+  if(semanticModel||semanticMemory) {
+    controlAction(await semanticPanelControl(names,kind),'click-control');return;
   }
   tapNode(await reveal(names,kind));
 }
@@ -1216,10 +1219,10 @@ async function configureAndIndexOnlineMemory(eventsFile:string):Promise<MemoryUi
   await pressManagerTab(['记忆']);
   // modeScope initializes to session; this flow never selects the global scope.
   await press(['B 语义 / Semantic']);
-  const auto=await reveal(['自动更新语义索引 / Auto-update semantic index'],
-    node=>node.class==='android.widget.CheckBox',node=>node.package===pkg,true);
+  const auto=await semanticPanelControl(['自动更新语义索引 / Auto-update semantic index'],
+    node=>node.class==='android.widget.CheckBox');
   // Fresh profile defaults to indexing disabled; provider/mode writes do not enable it.
-  const indexedAfter=maxMemoryFixture(eventsFile);tapNode(auto);
+  const indexedAfter=maxMemoryFixture(eventsFile);controlAction(auto,'click-control');
   // Fresh completed embedding requests plus full public coverage prove this write.
   await pressManagerTab(['Embedding 模型设置']);
   const before=await observeOnlineMemoryIndex();
