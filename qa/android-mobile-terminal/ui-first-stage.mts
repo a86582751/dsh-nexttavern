@@ -590,7 +590,7 @@ async function configureFixtureProvider():Promise<void> {
   // Chromium 124 GetHint joins accessible name, placeholder and description with spaces.
   // Exact pinned hints avoid guessing unnamed fields or matching prefix collisions.
   await replace(['Provider ID','Provider ID acme-gateway'],fixtureId,['Provider ID']);
-  await replace(['API 地址','Base URL','API 地址 https://gateway.example/v1','Base URL https://gateway.example/v1'],'http://127.0.0.1:18765/v1',['API 地址','Base URL']);
+  await replace(['API 地址','Base URL','API 地址 https://gateway.example/v1','Base URL https://gateway.example/v1'],'http://10.0.2.2:18765/v1',['API 地址','Base URL']);
   // Never assume the schema's first protocol is the intended one.
   tapNode(await reveal(['API 协议','API protocol'],node=>node.class==='android.widget.Spinner'||button(node),
     node=>node.package===pkg,true));
@@ -1205,7 +1205,7 @@ async function configureAndIndexOnlineMemory(eventsFile:string):Promise<MemoryUi
   await replace(['名称','名称 My embedding provider'],memoryProviderName,['名称']);
   await selectMemoryOption('类型','在线 / Online');
   await selectMemoryOption('协议','OpenAI 官方 / 兼容接口');
-  await replace(['Base URL','Base URL https://…'],'http://127.0.0.1:18765/v1',['Base URL']);
+  await replace(['Base URL','Base URL https://…'],'http://10.0.2.2:18765/v1',['Base URL']);
   await replace(['手动输入模型 ID','手动输入模型 ID 支持自定义别名'],EMBEDDING_FIXTURE_MODEL,['手动输入模型 ID']);
   await replace(['维度（留空使用模型默认值）'],'4');
   await replace(['模型修订版本（可选）','模型修订版本（可选） 例如 2026-09-14'],memoryRevision,['模型修订版本（可选）']);
