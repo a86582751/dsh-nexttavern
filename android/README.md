@@ -6,12 +6,15 @@ This directory contains two distinct Android modules:
 - `:mobile`: the native service/WebView app with a packaged Harness and
   NextTavern UI. Non-debug x86_64 Android 35 / target 36 evidence covers
   native/Host UI, SAF cancel/reopen/import, first synthetic chat, Home return,
-  and ordinary Stop/Start session restoration. Seven partial UI updates within one paced reply
-  were observed before completion, and an interrupted cycle reached native Stop, HTTP
-  abort, and a new Node process. The unique failed-turn recovery action is
-  available but has not been executed; interrupted partial prose was not
-  retained. Online embedding remains unqualified. This is **not yet a completed
-  or released phone app**.
+  and ordinary Stop/Start session restoration. One paced reply produced seven
+  partial UI updates before completion; an interrupted cycle reached native
+  Stop, HTTP abort, and a new Node process. The unique failed-turn recovery
+  action is available but has not been executed; interrupted partial prose was
+  not retained. A fixed synthetic-fixture online-memory UI/index/Stop/Start/
+  fresh-recall scope has now passed on x86_64 Android; this does not qualify
+  semantic quality, live-provider behavior, full fingerprints, future-turn
+  auto-index, or local-model support. This is **not yet a completed or released
+  phone app**.
 
 No existing feature is declared removed. Local embeddings and other unqualified native integrations
 remain explicit open capabilities, not implied support. The evidence below
@@ -389,10 +392,18 @@ The last-turn UI exposes a unique “recover failed turn and reply” action, bu
 execution and regenerated prose are unverified; do not call this a Stopped badge
 or tested regeneration. The interrupted user turn and earlier completed reply
 were retained without a fabricated completed reply or automatic paced replay.
-Online-embedding UI/configuration, index, Stop/Start and first fresh semantic
-query are implemented in the QA flow, but Android online embedding is not yet
-passed. Full G0 and arm64
-runtime remain open. No formal release is claimed.
+GitHub Actions [run 40656886374](https://github.com/a86582751/dsh-nexttavern/actions/runs/40656886374)
+passed the scoped online-memory UI/index/Stop/Start/fresh-semantic-recall flow
+on non-debug x86_64 Android 35 / target 36: provider Test returned 4D; activation,
+semantic request, and index passed (`sources=1`, `covered=1`, `vectors=1`).
+Stop/Start with a new Node restored the same conversation, counts, and 20-hex
+fingerprint prefix `a0a96f8b7e5ae3411940`. Fresh search returned rank 1 / score 1
+from the original synthetic marker source without keyword fallback; one new
+embedding HTTP completion occurred and chat-request count did not increase. The
+scope reports `memoryQualified=true`. This does not establish semantic quality,
+live-provider behavior, full-fingerprint equality, future-turn auto-indexing, or
+local-model support. The failed-turn recovery action remains unexecuted. Full G0
+and arm64 runtime remain open; no formal release is claimed.
 
 ## Focused checks
 
@@ -446,6 +457,7 @@ process-lifecycle evidence. Force-killing the parent is not established as a
 process-tree cleanup strategy. Do not infer these gates from packaging or a
 green capability summary.
 
-Next: complete the Android online-embedding flow. Separately qualify the
-failed-turn regeneration action, arm64 runtime and remaining G0 gates. No automatic paid model
-calls, production keys, or production deployment are introduced.
+Next: qualify broader semantic quality, live-provider behavior, full-fingerprint
+and future-turn auto-indexing; execute and verify the failed-turn recovery action;
+then test arm64 runtime and remaining G0 gates. No automatic paid model calls,
+production keys, or production deployment are introduced.
