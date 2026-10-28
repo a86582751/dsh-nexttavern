@@ -698,7 +698,7 @@ async function submitSelectedCard():Promise<void> {
 const fixtureOpening='旅人把蓝色书签放在桌上：“欢迎回来，这是本地合成测试的开场。”';
 const fixturePrompt='Traveler keep the blue bookmark local protocol test.';
 const fixtureReply='【本地协议测试，不是真实模型】酒馆的灯亮着。欢迎回来，我们的对话已经继续。';
-const stableTitle='AndroidUIFixture';
+let stableTitle='';
 const menuOption=(node:Node)=>node.class==='android.widget.CheckedTextView'||node.class==='android.widget.RadioButton';
 const mainRouteNames=['当前对话主模型'];
 const inWebView=(node:Node)=>ancestors(node).some(parent=>parent.class==='android.webkit.WebView');
@@ -846,20 +846,17 @@ async function chooseOpeningAndChat():Promise<void> {
     incrementalRendering:'not-qualified-by-single-delta-fixture'});
 }
 
-async function renameSyntheticConversation():Promise<void> {
-  stage='name-synthetic-conversation';await showSidebar();await readySnapshot();
-  // A fresh test installation has one actual conversation. Do not choose an
-  // arbitrary unrelated session when the actual tree contains multiple menus.
-  const menus=current.filter(node=>node.package===pkg&&button(node)&&visibleBounds(node)
-    &&[/^会话“.+”的操作$/,/^Session actions for .+$/].some(pattern=>pattern.test(node['content-desc']??node.text??'')));
-  requireUi(menus.length===1,'CURRENT_CONVERSATION_MENU_NOT_UNIQUE');tapNode(menus[0]);
-  await press(['重命名','Rename']);
-  await until(()=>current.some(node=>node.package===pkg&&node.class==='android.widget.EditText'
-    &&named(node,['会话名称','Session name'])),30,'SESSION_RENAME_FORM_NOT_EXPOSED');
-  await replace(['会话名称','Session name'],stableTitle);
-  await press(['重命名','Rename'],dialogButton);
-  await until(()=>has(['会话“'+stableTitle+'”的操作','Session actions for '+stableTitle]),30,'CONVERSATION_RENAME_NOT_OBSERVED');
-  await hideSidebar();
+async function rememberSyntheticConversation():Promise<void> {
+  stage='remember-synthetic-conversation';await readySnapshot();
+  // Capture the actual public document title of this fresh, single conversation.
+  // Renaming through a hover-only sidebar menu is not a persistence prerequisite.
+  const titles=new Set(current.filter(node=>node.package===pkg&&node.class==='android.webkit.WebView')
+    .flatMap(node=>[node.text,node['content-desc']]).filter(value=>value?.endsWith(' — DeepSeek Harness'))
+    .map(value=>value.slice(0,-' — DeepSeek Harness'.length)));
+  requireUi(titles.size===1,'SYNTHETIC_CONVERSATION_TITLE_NOT_UNIQUE');
+  stableTitle=[...titles][0];
+  requireUi(stableTitle.startsWith('【本地协议测试，不是真实模型】'),'SYNTHETIC_CONVERSATION_TITLE_NOT_OBSERVED');
+  emit('observed',{interaction:'remember-actual-synthetic-title',renameVerified:false});
 }
 function ownedNodeProcesses():{app:number;nodes:number[]} {
   const app=command('shell','pidof',pkg).trim().split(/\s+/);
@@ -915,7 +912,7 @@ async function requirePersistedConversation():Promise<void> {
 }
 /** No new prompt is sent in this function, including after the new origin. */
 async function backgroundStopStartAndRecover():Promise<void> {
-  await renameSyntheticConversation();stage='background-return-same-node';
+  await rememberSyntheticConversation();stage='background-return-same-node';
   const before=ownedNodePid();command('shell','input','keyevent','KEYCODE_HOME');await delay(2000);
   command('shell','am','start','-W','-n',pkg+'/app.nexttavern.android.mobile.MainActivity');
   await until(()=>has(['本地服务运行中']),60,'NATIVE_READY_NOT_RETAINED_AFTER_HOME');
@@ -929,16 +926,8 @@ async function backgroundStopStartAndRecover():Promise<void> {
   await press(['启动'],node=>button(node)&&!inWebView(node));
   await until(()=>has(['本地服务运行中']),180,'NATIVE_RESTART_READY_NOT_OBSERVED');
   requireUi(ownedNodePid()!==before,'NATIVE_RESTART_DID_NOT_REPLACE_NODE_PROCESS');
-  stage='reopen-persisted-named-conversation';await showSidebar();await readySnapshot();
-  if(!current.some(node=>node.package===pkg&&named(node,[stableTitle])&&visibleBounds(node))) {
-    const search=current.filter(node=>node.package===pkg&&named(node,['搜索会话','Search sessions'])&&button(node)&&visibleBounds(node));
-    requireUi(search.length===1,'SESSION_SEARCH_ACTION_NOT_EXPOSED');tapNode(search[0]);
-    await until(()=>current.some(node=>node.package===pkg&&node.class==='android.widget.EditText'
-      &&named(node,['搜索会话','Search sessions','搜索会话名称','Search session names'])),30,'SESSION_SEARCH_FIELD_NOT_EXPOSED');
-    await replace(['搜索会话','Search sessions','搜索会话名称','Search session names'],stableTitle);
-  }
-  tapNode(await reveal([stableTitle],node=>node.class!=='android.widget.EditText'));
-  await hideSidebar();await requirePersistedConversation();
+  stage='reopen-persisted-named-conversation';await reopenNamedConversation();
+  await requirePersistedConversation();
   emit('passed',{scope:'ordinary-stop-start-visible-opening-user-prompt-assistant-recovery',newPromptSent:false,
     fixtureCorePlayable:true,liveModel:false,fullG0:false,arm64Qualified:false});
 }
@@ -1043,14 +1032,12 @@ async function ordinaryNativeStop():Promise<void> {
 }
 async function reopenNamedConversation():Promise<void> {
   await showSidebar();await readySnapshot();
-  if(!current.some(node=>node.package===pkg&&named(node,[stableTitle])&&visibleBounds(node))) {
-    const search=visibleNamed(['搜索会话','Search sessions']);
-    requireUi(search.length===1,'PACED_RECOVERY_SESSION_SEARCH_NOT_EXPOSED');tapNode(search[0]);
-    await until(()=>current.some(node=>node.package===pkg&&node.class==='android.widget.EditText'
-      &&named(node,['搜索会话','Search sessions','搜索会话名称','Search session names'])),30,'PACED_RECOVERY_SEARCH_FIELD_NOT_EXPOSED');
-    await replace(['搜索会话','Search sessions','搜索会话名称','Search session names'],stableTitle);
-  }
-  tapNode(await reveal([stableTitle],node=>node.class!=='android.widget.EditText'));
+  // The real treeitem aggregates its title and relative timestamp. One fresh
+  // test conversation is required; never choose an arbitrary row or hidden ID.
+  const rows=current.filter(node=>node.package===pkg&&node.class==='android.view.View'
+    &&[node.text,node['content-desc']].some(value=>value===stableTitle||value?.startsWith(stableTitle+' ')));
+  requireUi(stableTitle&&rows.length===1,'PERSISTED_SYNTHETIC_SESSION_ROW_NOT_UNIQUE');
+  showControl(rows[0]);controlAction(rows[0],'click-control');
   await hideSidebar();
 }
 /** Look only in the genuine conversation scroll ancestor for the two recent
