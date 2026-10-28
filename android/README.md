@@ -3,14 +3,19 @@
 This directory contains two distinct Android modules:
 
 - `:app`: the standalone **G0 capability probe**, not a playable Tavern app.
-- `:mobile`: the developing native service/WebView app with a packaged Harness
-  and NextTavern UI. Public-source builds and ordinary-app Host/UI startup have
-  run on an x86_64 Android emulator; card/chat/recovery acceptance is still in
-  progress. It is **not yet a completed or released phone app**.
+- `:mobile`: the native service/WebView app with a packaged Harness and
+  NextTavern UI. Non-debug x86_64 Android 35 / target 36 evidence covers
+  native/Host UI, SAF cancel/reopen/import, first synthetic chat, Home return,
+  and ordinary Stop/Start session restoration. Seven partial UI updates within one paced reply
+  were observed before completion, and an interrupted cycle reached native Stop, HTTP
+  abort, and a new Node process. The unique failed-turn recovery action is
+  available but has not been executed; interrupted partial prose was not
+  retained. Online embedding remains unqualified. This is **not yet a completed
+  or released phone app**.
 
-No existing feature is declared removed. Local embeddings and other unqualified
-native integrations remain explicit open capabilities, not implied support.
-The emulator results do not establish arm64 runtime compatibility or full G0.
+No existing feature is declared removed. Local embeddings and other unqualified native integrations
+remain explicit open capabilities, not implied support. The evidence below
+does not establish arm64 runtime compatibility or full G0.
 
 ## Architecture and current boundary
 
@@ -28,9 +33,12 @@ Neither build floor nor arm64-v8a packaging establishes device/product acceptanc
 
 The upstream system addon 0.1.2's C `flock` implementation is cross-compiled
 unchanged using NDK r28c; a maintained wrapper adds Android atomic publication
-without replacing the upstream flock implementation. Its published JS loader rejects `android`; the probe
-therefore explicitly loads the installer-owned addon and adapts its callback API.
-This does **not** claim the unmodified npm package or the full Host already works.
+without replacing the upstream flock implementation. The tested ordinary Android app was denied hard links
+with `EACCES`; the mobile adapter instead uses the public
+no-clobber atomic rename path, which passed the scoped x86_64 Android race test.
+No permission bypass is used. The package's published JS loader rejects
+`android`, so mobile uses its installer-owned native addon and adapter; this does
+not establish unmodified npm-loader compatibility or arm64 runtime support.
 
 Development source baseline: maintenance `release/public-v0.3.0`, commit
 `2f5a9dffdeb1afe1545655b280e4b89875e452a3`. Host remains `0.1.7-rc.2`.
@@ -162,16 +170,13 @@ node android/tools/prepare-product.mjs --repo "$PWD" --out "$P" --abi "$ABI" \
   --pi-ai-archive "$INPUTS/earendil-works__pi-ai-0.85.1.tgz"
 ```
 
-The recorded x64 `prepare-product` run emitted 17
-packages, 11 Host forks and one skin bundle; this is product-assembly evidence
-for x64 diagnostics, not arm64 or Android runtime evidence.
-
-Current source recipes additionally register
-`@deepseek-ai/dsh-attachment-local@0.1.7-rc.2` as the twelfth Host fork. Its Android
-upload-directory durability walk stops at the installer-supplied app data
-boundary rather than inaccessible OS ancestors; desktop behavior is unchanged.
-This source addition does not qualify the earlier assembly run or the still
-pending Android upload, SAF, chat and recovery flows.
+The current public `prepare-product` output is 17 packages, 13 Host forks,
+and one skin. `@deepseek-ai/dsh-attachment-local@0.1.7-rc.2` is the twelfth
+fork; the thirteenth is the maintained `node-addon-system@0.1.2` Android atomic
+publication wrapper, retaining upstream flock behavior. The attachment fork
+stops its upload-directory durability walk at the installer-supplied app-data
+boundary; desktop behavior is unchanged. The public assembly procedure above
+remains the source of the reproducible build inputs.
 
 Create exactly one fresh, task-owned Harness installation from the public
 Harness manifest and lock; keep its home separate from any personal or
@@ -357,15 +362,37 @@ cd android
 ./gradlew :mobile:assembleX86DiagnosticDebug # x64 debug, not final-qualified
 ```
 
-The public pack step has passed with 540 packages; its ZIP is 183,418,362 bytes
-(SHA-256 `f26cd021a41d8309e62ed9746556f0e9f86bb8692063cbc6d627eb3c3002b34d`).
-The current x64 debug candidate (248,817,677 bytes; SHA-256
-`696899953a08ed4f3a648fa05b5c9222264d67c27c746ba7d39031e494e46c3b`) includes
-the public payload, debug-only diagnostic Activity, and corrected pinned ICU
-notice; signature verification passed. Installation/device entry remains
-pending. This candidate is not final-qualified; mobile G0, foreground service
-and runtime gates remain open. No formal release or production signing is
-claimed.
+The current Host pack contains 540 packages (183,501,290 bytes; SHA-256
+`6b4978174e7c18fccb63aa07c98877e10537ca4f7f17327fd68402612d4be28f`). A fresh
+static ARM candidate from public `d471fbd` is non-debug, min API 30 / target 36,
+with 12 ARM ELF files; APK size is 217,708,953 bytes (SHA-256
+`ecdea8dd7ec2c9325b5345e943ac405099233d2b0bf7cdf9a42184e9197feec5`). Signature,
+Host ZIP/version/notices/JNI bytes, 16 KiB zipalign, and the new thirteenth-fork
+inventory/atomic/launcher match passed. Its 14,264-byte wrapper passed static ELF
+16 KiB LOAD and closure checks; SHA-bound static evidence for the unchanged 11 ELF files was reused.
+This is static packaging only, not arm64 runtime, app UI, full G0, or on-device
+16 KiB runtime evidence. The candidate has not been uploaded.
+
+The preview uses QA certificate SHA-256
+`54b6ff7096cdf80f55840f1a13e7cf7e33e4272214769554473332071f04e37f`, different
+from the prior test install certificate
+`85172bfe0702b4c3e4de8abb1f83bafac85f3705337536dc222a7430ebf57833`; it cannot
+upgrade that install in place and is not production-signed. Do not uninstall or
+replace an existing test app to try this preview until its data has been safely
+exported or migrated. Never commit a keystore or signing secret.
+
+Ordinary non-debug x86_64 Android 35 / target 36 runs have passed native/Host UI,
+SAF cancel/reopen and card import, first synthetic chat, Home, and ordinary
+Stop/Start session restoration. One paced reply showed seven partial UI updates before
+completion; one interrupted cycle reached native Stop → HTTP abort → new Node.
+The last-turn UI exposes a unique “recover failed turn and reply” action, but
+execution and regenerated prose are unverified; do not call this a Stopped badge
+or tested regeneration. The interrupted user turn and earlier completed reply
+were retained without a fabricated completed reply or automatic paced replay.
+Online-embedding UI/configuration, index, Stop/Start and first fresh semantic
+query are implemented in the QA flow, but Android online embedding is not yet
+passed. Full G0 and arm64
+runtime remain open. No formal release is claimed.
 
 ## Focused checks
 
@@ -393,23 +420,25 @@ JNI libraries. The attachment-boundary check uses the same prerequisite. For a
 direct test invocation, run that producer first, then
 `node --test tests/android-atomic-publication.test.mts` in the public checkout.
 Missing native fixtures block these tests rather than becoming successful skips.
-These Linux tests prove adapter/publication contracts, not Android SELinux or
-ARM64 execution; the separate ordinary-App Android probe supplies that evidence.
+These Linux tests prove adapter/publication contracts, not Android SELinux,
+arm64 execution, or full G0. Ordinary-App x86_64 evidence supplies only the
+scoped atomic-publication and product-flow results described above.
 
 ## Device handoff
 
-Install the test-signed, non-debug arm64 APK on a modern Android phone, run the
-probe in the foreground, then copy its result. Switching away cancels the run.
-Keep the exact APK SHA-256 and returned device/API/page-size/build context with
-the results. Test data is synthetic and isolated from NextTavern user data.
+The test-signed, non-debug arm64 preview is static evidence only and has not
+been uploaded or run on an arm64 phone. Before any device attempt, record the APK
+SHA-256 and device/API/page-size/build context. Its test certificate differs
+from the previously installed test package, so it cannot replace that package
+in place; do not uninstall an existing app or risk its data without a verified
+export/migration path. Keep test data synthetic and isolated from user data.
 
-One successful phone run proves only that device/configuration. G0 still needs
-the planned cold install / replacement upgrade, 4 KB / 16 KB, dependency closure,
-and process-lifecycle evidence. In particular, force-killing the parent is not
-yet a proven process-tree cleanup strategy. Do not infer those gates from a
-green capability summary or a successfully compiled APK.
+A future arm64 run qualifies only that device/configuration. Full G0 still needs
+cold-install/replacement-upgrade, 4 KiB / 16 KiB runtime, dependency-closure, and
+process-lifecycle evidence. Force-killing the parent is not established as a
+process-tree cleanup strategy. Do not infer these gates from packaging or a
+green capability summary.
 
-Next: use actual device evidence to fix runtime issues, then integrate the
-correct release-branch Host, stable homes/profile, native lifecycle, authenticated
-loopback WebView, SAF, and real product flows. No automatic paid model calls or
-production deployment is introduced by this checkpoint.
+Next: complete the Android online-embedding flow. Separately qualify the
+failed-turn regeneration action, arm64 runtime and remaining G0 gates. No automatic paid model
+calls, production keys, or production deployment are introduced.
