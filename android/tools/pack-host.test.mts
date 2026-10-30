@@ -7,8 +7,8 @@ import {createHash} from 'node:crypto'
 import {createRequire} from 'node:module'
 import {fileURLToPath} from 'node:url'
 import {runInNewContext} from 'node:vm'
-import {execFileSync} from 'node:child_process'
-import {prepareHostTree,packHost,archiveHostTree,inspectProductPublishedFiles,inspectHostGraph} from './pack-host.mts'
+import {execFileSync,spawnSync} from 'node:child_process'
+import {type HostPackReceipt,prepareHostTree,packHost,archiveHostTree,inspectProductPublishedFiles,inspectHostGraph} from './pack-host.mts'
 
 const tempRoot=fileURLToPath(new URL('../artifacts/test-temp/',import.meta.url))
 const write=async(file:string,body:string)=>{await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,body)}
@@ -166,3 +166,67 @@ test('missing official profile install or unexpected user patch blocks packing i
   await write(path.join(f.profile,'cordis.patch.yml'),'- id: user-model-config\n  config: {}\n')
   await assert.rejects(prepareHostTree(options,path.join(f.directory,'second')),/Unexpected task profile configuration/)
 }))
+
+
+test('publication interruption preserves a coherent old generation or blocks availability, and fresh retries recover',async()=>{
+  await fs.mkdir(tempRoot,{recursive:true})
+  const directory=await fs.mkdtemp(path.join(tempRoot,'host-publication-'))
+  const receipt=():HostPackReceipt=>({schemaVersion:1,purpose:'android-host-assets',abi:'x64',
+    hostVersion:'fixture',productVersion:'fixture',productInventorySha256:'fixture',harnessLockSha256:'fixture',
+    packages:[],optionalExcluded:[],excludedFiles:[],unqualifiedCapabilities:[],profileFiles:[],androidVerified:false})
+  const stage=async(base:string,generation:string)=>{
+    const tree=path.join(base,generation)
+    await write(path.join(tree,'host-launch.mjs'),`// ${generation} generation\n`)
+    await write(path.join(tree,generation+'.txt'),generation)
+    return tree
+  }
+  const coherent=async(out:string)=>{
+    const bytes=await fs.readFile(path.join(out,'host.zip'))
+    const sha=createHash('sha256').update(bytes).digest('hex')
+    assert.equal((await fs.readFile(path.join(out,'host-version.txt'),'utf8')).trim(),sha)
+    const packed=JSON.parse(await fs.readFile(path.join(out,'host-pack.json'),'utf8'))
+    assert.equal(packed.hostZipSha256,sha)
+    assert.equal(packed.hostZipBytes,bytes.length)
+    return sha
+  }
+  try {
+    // Stage-write failure must preserve A; every interrupted public replacement
+    // must remove availability, including the two formerly mismatched windows.
+    for(const [operation,target,oldComplete] of [
+      ['writeFile','.host-pack.json',true],
+      ['rename','host.zip',false],
+      ['rename','host-pack.json',false],
+      ['rename','host-version.txt',false],
+    ] as const) {
+      const base=path.join(directory,operation+'-'+target),out=path.join(base,'out')
+      await archiveHostTree(await stage(base,'old'),out,receipt())
+      const oldSha=await coherent(out),next=await stage(base,'next')
+      const destination=path.join(operation==='writeFile'?next:out,target)
+      const script=`
+        import fs from 'node:fs/promises';
+        import {archiveHostTree} from ${JSON.stringify(new URL('./pack-host.mts',import.meta.url).href)};
+        const operation=${JSON.stringify(operation)},destination=${JSON.stringify(destination)};
+        const original=fs[operation];
+        fs[operation]=async function(...args) {
+          if(String(args[operation==='rename'?1:0])===destination)process.exit(73);
+          return original.apply(this,args);
+        };
+        await archiveHostTree(${JSON.stringify(next)},${JSON.stringify(out)},${JSON.stringify(receipt())});
+      `
+      const child=spawnSync(process.execPath,['--input-type=module','--eval',script],{encoding:'utf8'})
+      assert.equal(child.status,73,child.stderr)
+      if(oldComplete)assert.equal(await coherent(out),oldSha)
+      else await assert.rejects(fs.access(path.join(out,'host-version.txt')),{code:'ENOENT'})
+      // Production retries use fresh staging. Their completed identity must
+      // describe the new bytes, and old/interrupted members must not survive.
+      await archiveHostTree(await stage(base,'recovered'),out,receipt())
+      assert.notEqual(await coherent(out),oldSha)
+      assert.deepEqual(execFileSync('unzip',['-Z','-1',path.join(out,'host.zip')],{encoding:'utf8'})
+        .trim().split('\n').sort(),['host-launch.mjs','recovered.txt'])
+      await archiveHostTree(await stage(base,'repeated'),out,receipt())
+      await coherent(out)
+      assert.deepEqual(execFileSync('unzip',['-Z','-1',path.join(out,'host.zip')],{encoding:'utf8'})
+        .trim().split('\n').sort(),['host-launch.mjs','repeated.txt'])
+    }
+  } finally {await fs.rm(directory,{recursive:true,force:true})}
+})

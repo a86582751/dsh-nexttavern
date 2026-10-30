@@ -396,6 +396,7 @@ export async function archiveHostTree(staging, output, receipt) {
     // zip updates existing archives. A fresh owned staging directory prevents
     // an interrupted prior process's archive from retaining stale members.
     const zip = path.join(staging, '.host.zip');
+    const version = path.join(staging, '.host-version.txt'), pack = path.join(staging, '.host-pack.json');
     try {
         const files = await allFiles(staging);
         execFileSync('zip', ['-X', '-q', zip, '-@'], { cwd: staging, input: files.join('\n') + '\n', env: { ...process.env, TZ: 'UTC' } });
@@ -404,13 +405,20 @@ export async function archiveHostTree(staging, output, receipt) {
             hash.update(chunk);
         receipt.hostZipSha256 = hash.digest('hex');
         receipt.hostZipBytes = (await fs.stat(zip)).size;
+        await fs.writeFile(version, receipt.hostZipSha256 + '\n');
+        await fs.writeFile(pack, JSON.stringify(receipt, null, 2) + '\n');
+        // The version is the completion marker. Prepare everything first, then
+        // invalidate it before replacing public bytes; an interruption must block
+        // consumers, never label a new ZIP with an old completed identity.
+        await fs.rm(path.join(out, 'host-version.txt'), { force: true });
         await fs.rename(zip, path.join(out, 'host.zip'));
-        await fs.writeFile(path.join(out, 'host-version.txt'), receipt.hostZipSha256 + '\n');
-        await fs.writeFile(path.join(out, 'host-pack.json'), JSON.stringify(receipt, null, 2) + '\n');
+        await fs.rename(pack, path.join(out, 'host-pack.json'));
+        await fs.rename(version, path.join(out, 'host-version.txt'));
         return receipt;
     }
     finally {
-        await fs.rm(zip, { force: true });
+        for (const file of [zip, version, pack])
+            await fs.rm(file, { force: true });
     }
 }
 export async function packHost(options) {

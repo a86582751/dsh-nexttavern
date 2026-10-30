@@ -347,12 +347,25 @@ the packer resolves and incorporates its physical profile installation too.
 the first two into the mobile assets:
 
 ```sh
+(
+set -e
 OUT="$PWD/artifacts/android-host-$ABI"
 node android/tools/pack-host.mjs --harness-root "$H" --product-root "$P" \
   --out "$OUT" --abi "$ABI" --ca-bundle "$CA_BUNDLE"
-cp "$OUT/host.zip" android/mobile/src/main/assets/host.zip
-cp "$OUT/host-version.txt" android/mobile/src/main/assets/host-version.txt
+ASSETS=android/mobile/src/main/assets
+# Missing version blocks packaging if copying is interrupted; publish it last.
+rm -f "$ASSETS/host-version.txt"
+cp "$OUT/host.zip" "$ASSETS/host.zip"
+cp "$OUT/host-version.txt" "$ASSETS/.host-version.txt"
+mv "$ASSETS/.host-version.txt" "$ASSETS/host-version.txt"
+)
 ```
+
+Run packing, asset copying, and Gradle sequentially, never concurrently against
+the same directories. A failed/interrupted publication may leave its version
+file absent: rerun the producer/copy step successfully before packaging. The
+version file is published last and identifies a complete ZIP/receipt generation;
+do not copy an incomplete output or restore an older version file.
 
 Keep `host-pack.json` outside the APK. Build the mobile variant with the pinned
 NDK. `build-require-builtin.mts` emits both ABI libraries; the release APK is

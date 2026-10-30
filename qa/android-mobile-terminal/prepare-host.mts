@@ -122,5 +122,13 @@ const output=path.join(work,'packed-host')
 await packHost({harnessRoot:harness,productRoot:product,out:output,abi:'x64',caBundle:ca})
 const assets=path.join(repo,'android/mobile/src/main/assets')
 fs.mkdirSync(assets,{recursive:true})
-for(const file of ['host.zip','host-version.txt'])fs.copyFileSync(path.join(output,file),path.join(assets,file))
+// Serialize asset publication with packaging. Missing version blocks Gradle if
+// copying fails or the job stops; never leave new bytes with an old identity.
+const assetVersion=path.join(assets,'host-version.txt'),stagedVersion=path.join(assets,'.host-version.txt')
+fs.rmSync(assetVersion,{force:true})
+try {
+  fs.copyFileSync(path.join(output,'host.zip'),path.join(assets,'host.zip'))
+  fs.copyFileSync(path.join(output,'host-version.txt'),stagedVersion)
+  fs.renameSync(stagedVersion,assetVersion)
+} finally {fs.rmSync(stagedVersion,{force:true})}
 mark('PUBLIC_HOST_ASSETS_PACKED_RECEIPT_NOT_BUNDLED')
