@@ -46,13 +46,23 @@ public final class RuntimeService extends Service implements NodeSession.Events 
     public final class LocalBinder extends Binder { RuntimeService service() { return RuntimeService.this; } }
     private final LocalBinder binder = new LocalBinder();
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final ExecutorService control = Executors.newSingleThreadExecutor();
+    private final ExecutorService control;
     private final CopyOnWriteArrayList<Runnable> observers = new CopyOnWriteArrayList<>();
-    private final AtomicBoolean cancelStartup = new AtomicBoolean();
-    private volatile NodeSession session;
-    private volatile boolean destroyed;
-    private volatile String processError;
+    // Main owns lifecycle publication. The worker only installs/creates and performs
+    // process I/O; every queued action retains its original start's identity.
+    private static final class Start {
+        final String generation = UUID.randomUUID().toString();
+        final AtomicBoolean cancelled = new AtomicBoolean();
+        volatile NodeSession session;
+        String processError;
+        boolean finished;
+    }
+    private Start active;
+    private boolean destroyed;
     private Snapshot current = new Snapshot(State.STOPPED, "", null, "本地服务尚未启动");
+
+    public RuntimeService() { this(Executors.newSingleThreadExecutor()); }
+    RuntimeService(ExecutorService control) { this.control = control; }
 
     @Override public void onCreate() {
         super.onCreate();
@@ -65,11 +75,10 @@ public final class RuntimeService extends Service implements NodeSession.Events 
         else if (intent != null && START.equals(intent.getAction())) {
             if (snapshot().state == State.STOPPED || snapshot().state == State.ERROR) {
                 foreground("正在准备本地服务");
-                set(new Snapshot(State.STARTING, UUID.randomUUID().toString(), null, "正在准备本地代码；已有故事数据会保留"));
-                cancelStartup.set(false);
-                processError = null;
-                String generation = snapshot().generation;
-                control.execute(() -> start(generation));
+                Start start = new Start();
+                active = start;
+                set(new Snapshot(State.STARTING, start.generation, null, "正在准备本地代码；已有故事数据会保留"));
+                control.execute(() -> start(start));
             }
         }
         return START_NOT_STICKY;
@@ -81,7 +90,7 @@ public final class RuntimeService extends Service implements NodeSession.Events 
         synchronized (this) { current = value; }
         main.post(() -> { if (!destroyed) for (Runnable observer : observers) observer.run(); });
     }
-    private void start(String generation) {
+    private void start(Start start) {
         try {
             String version;
             try (BufferedReader input = new BufferedReader(new InputStreamReader(getAssets().open("host-version.txt"), StandardCharsets.US_ASCII))) {
@@ -89,22 +98,26 @@ public final class RuntimeService extends Service implements NodeSession.Events 
             }
             if (version == null || !version.matches("[a-f0-9]{64}")) throw new IOException("HOST_ASSET_VERSION_INVALID");
             File code = CodeBundle.install(new File(getFilesDir(), "code"), version,
-                getAssets().open("host.zip"), cancelStartup::get);
-            if (cancelStartup.get()) { stopped("启动已取消"); return; }
+                getAssets().open("host.zip"), start.cancelled::get);
+            if (start.cancelled.get()) { main.post(() -> stopped(start, "启动已取消")); return; }
             File home = directory("home");
             File workspace = directory("workspace");
             File memory = directory("memory");
             File tmp = directory("tmp");
             NodeSession running = new NodeSession(new File(getApplicationInfo().nativeLibraryDir), code,
-                new File(getApplicationInfo().dataDir).getCanonicalFile(), home, workspace, memory, tmp, generation, this,
+                new File(getApplicationInfo().dataDir).getCanonicalFile(), home, workspace, memory, tmp, start.generation, this,
                 BuildConfig.DEBUG && "x86Diagnostic".equals(BuildConfig.FLAVOR)
                     ? new File(getCacheDir(), "node-stderr.log") : null);
-            session = running;
-            if (cancelStartup.get()) running.terminate();
+            start.session = running;
+            // Destruction/Stop may occur while ProcessBuilder.start is in flight.
+            // Publish only to this start; cancellation is never reset by a new start.
+            if (start.cancelled.get()) running.terminate();
             running.observe();
         } catch (IOException | RuntimeException error) {
-            if (cancelStartup.get()) stopped("启动已取消");
-            else failed("HOST_START_FAILED"); // Do not expose paths, URLs or environment/host output.
+            main.post(() -> {
+                if (start.cancelled.get()) stopped(start, "启动已取消");
+                else failed(start, "HOST_START_FAILED"); // Never expose host output.
+            });
         }
     }
     private File directory(String child) throws IOException {
@@ -113,15 +126,19 @@ public final class RuntimeService extends Service implements NodeSession.Events 
         return directory.getCanonicalFile();
     }
     public void requestStop(boolean force) {
-        cancelStartup.set(true);
-        Snapshot before = snapshot();
-        if (before.state == State.STOPPED || before.state == State.ERROR) return;
-        set(new Snapshot(State.STOPPING, before.generation, null,
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main.post(() -> requestStop(force));
+            return;
+        }
+        Start start = active;
+        if (!owns(start)) return;
+        start.cancelled.set(true);
+        set(new Snapshot(State.STOPPING, start.generation, null,
             force ? "正在强制停止；未完成回应可能中断" : "正在请求停止并收尾；当前生成会中断"));
         foreground("正在停止本地服务");
         control.execute(() -> {
-            NodeSession running = session;
-            if (running == null) { stopped("本地服务已停止"); return; }
+            NodeSession running = start.session;
+            if (running == null) { main.post(() -> stopped(start, "本地服务已停止")); return; }
             if (force) running.forceDestroy();
             else {
                 try { running.stop(); }
@@ -129,48 +146,61 @@ public final class RuntimeService extends Service implements NodeSession.Events 
             }
         });
     }
+    private boolean owns(Start start) {
+        return !destroyed && start != null && active == start && !start.finished;
+    }
+    private boolean owns(NodeSession owner) {
+        return owns(active) && active.session == owner;
+    }
     @Override public void ready(NodeSession owner, String url, String hostVersion, OriginPolicy origin) {
-        if (owner != session || cancelStartup.get() || destroyed) return;
-        Snapshot before = snapshot();
-        set(new Snapshot(State.RUNNING, before.generation, url, "本地服务运行中", origin));
-        main.post(() -> { if (!destroyed) foreground("本地服务运行中；离开界面不会中断故事"); });
+        main.post(() -> {
+            if (!owns(owner) || active.cancelled.get() || snapshot().state != State.STARTING) return;
+            set(new Snapshot(State.RUNNING, active.generation, url, "本地服务运行中", origin));
+            // Notification and state are published together, never via a stale queued update.
+            foreground("本地服务运行中；离开界面不会中断故事");
+        });
     }
     @Override public void error(NodeSession owner, String code) {
-        if (owner != session || destroyed) return;
-        processError = code;
-        Snapshot before = snapshot();
-        set(new Snapshot(State.STOPPING, before.generation, null, "服务发生错误，正在停止（" + code + "）"));
-        control.execute(owner::terminate);
+        main.post(() -> {
+            if (!owns(owner)) return;
+            active.processError = code;
+            set(new Snapshot(State.STOPPING, active.generation, null, "服务发生错误，正在停止（" + code + "）"));
+            foreground("正在停止本地服务");
+            control.execute(owner::terminate);
+        });
     }
     @Override public void stopped(NodeSession owner) {
-        if (owner != session || destroyed) return;
-        Snapshot before = snapshot();
-        set(new Snapshot(State.STOPPING, before.generation, null, "已收到中断确认，正在退出本地服务"));
-        control.execute(owner::terminate);
+        main.post(() -> {
+            if (!owns(owner)) return;
+            set(new Snapshot(State.STOPPING, active.generation, null, "已收到中断确认，正在退出本地服务"));
+            foreground("正在停止本地服务");
+            control.execute(owner::terminate);
+        });
     }
     @Override public void exited(NodeSession owner, int exit) {
         main.post(() -> {
-            if (owner != session || destroyed) return;
-            session = null;
-            if (processError != null) failed(processError);
-            else if (cancelStartup.get() || exit == 0) stopped("本地服务已停止；本轮可能已中断，先前故事仍保留");
-            else failed("HOST_EXIT_" + exit);
+            if (!owns(owner)) return;
+            Start start = active;
+            start.session = null;
+            if (start.processError != null) failed(start, start.processError);
+            else if (start.cancelled.get() || exit == 0) stopped(start, "本地服务已停止；本轮可能已中断，先前故事仍保留");
+            else failed(start, "HOST_EXIT_" + exit);
         });
     }
-    private void failed(String code) {
-        Snapshot before = snapshot();
-        set(new Snapshot(State.ERROR, before.generation, null, "本地服务未能运行（" + code + "）"));
-        main.post(this::releaseForeground);
+    private void failed(Start start, String code) {
+        if (!owns(start)) return;
+        start.finished = true;
+        set(new Snapshot(State.ERROR, start.generation, null, "本地服务未能运行（" + code + "）"));
+        main.post(() -> releaseForeground(start));
     }
-    private void stopped(String message) {
-        Snapshot before = snapshot();
-        set(new Snapshot(State.STOPPED, before.generation, null, message));
-        main.post(this::releaseForeground);
+    private void stopped(Start start, String message) {
+        if (!owns(start)) return;
+        start.finished = true;
+        set(new Snapshot(State.STOPPED, start.generation, null, message));
+        main.post(() -> releaseForeground(start));
     }
-    private void releaseForeground() {
-        // A delayed old failure must not stop a user-requested replacement start.
-        State state = snapshot().state;
-        if (state == State.STOPPED || state == State.ERROR) {
+    private void releaseForeground(Start start) {
+        if (!destroyed && active == start && start.finished) {
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
         }
@@ -189,11 +219,16 @@ public final class RuntimeService extends Service implements NodeSession.Events 
     }
     @Override public void onDestroy() {
         destroyed = true;
-        cancelStartup.set(true);
         observers.clear();
-        NodeSession running = session;
-        session = null;
-        if (running != null) control.execute(running::terminate);
+        Start start = active;
+        if (start != null) {
+            start.cancelled.set(true);
+            // Queued behind construction, so even an in-flight process is reclaimed.
+            control.execute(() -> {
+                NodeSession running = start.session;
+                if (running != null) running.terminate();
+            });
+        }
         control.shutdown();
         super.onDestroy();
     }

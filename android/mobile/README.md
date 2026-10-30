@@ -49,6 +49,20 @@ and rename. `.complete` is a schema-1 completion marker; an already completed
 version is reused without reading/decompressing the ZIP. Persistent `files/home`,
 `workspace`, and `memory` are never extraction targets or deleted on upgrades.
 
+Lifecycle state and notification publication belong to the main thread. Each
+start retains its own cancellation flag and process identity; delayed Stop,
+startup completion or foreground-release work cannot act on a replacement start.
+Installation and process I/O remain on the control worker.
+
+The Android launcher atomically publishes new profile files without replacing
+existing user files. Its schema-2 receipt journals exact owned dependency and
+override values before an upgrade, so interruption can be resumed without
+rewriting a user's changed values. Schema-1 migration requires the retained old
+slot's seed provenance. An already mixed legacy profile is preserved and blocked
+with `ANDROID_PROFILE_MIGRATION_AMBIGUOUS`, rather than silently claiming repair;
+missing old provenance is likewise explicit. Old code slots are not pruned by
+this change, because safe reclamation requires resolved reference ownership.
+
 Direct argument vector: `<nativeLibraryDir>/libnexttavern_node.so
 <codeRoot>/host-launch.mjs`; no shell or strip-types flag. Environment:
 
@@ -121,8 +135,23 @@ JAVAC=/path/to/jdk/bin/javac JAVA=/path/to/jdk/bin/java \
 ```
 
 The standalone test covers code-version reuse, transactional cancellation and
-upgrade preservation plus same-origin navigation policy; it does not run Android,
-WebView, foreground services, native Node or the actual host.
+upgrade preservation plus same-origin navigation policy. It also compiles the
+actual `RuntimeService` with isolated platform/process boundary doubles to test
+late readiness, replacement starts, queued Stop work and destruction during
+construction. These are JVM scheduling regressions, not Android foreground-service,
+WebView, native Node or actual Host execution evidence.
+
+The existing `Android mobile KVM preview` workflow runs these JVM regressions and
+the launcher/packer interruption tests after its locked dependency build, before
+preparing the single real Host and non-debug x64 APK. It explicitly owns this
+Android batch's execution; the older public projected check registry has not
+been reconstructed or relabeled as covering the new fixtures. The workflow also
+rejects stale committed Android generated mirrors instead of silently repairing
+them during preparation.
+
+Final protocol-record versus process-exit ordering in `NodeSession` remains a
+separate diagnostic limitation. This change does not wait indefinitely for EOF
+on pipes inherited by descendants or introduce an arbitrary drain deadline.
 
 ## Diagnostic-only private stderr
 
