@@ -55,7 +55,17 @@ if [[ "${1:-}" == prepare ]]; then
   npm ci --prefix build-tools --no-audit --no-fund >> "$work/build.log" 2>&1
   npm ci --prefix integrations/auth-webserver --no-audit --no-fund >> "$work/build.log" 2>&1
   node tools/build-modules.mjs --write >> "$work/build.log" 2>&1
+  # These are the Android consumers of this batch's generated code. Do not let
+  # the preparation build silently repair an uncommitted/stale Android mirror.
+  git diff --exit-code -- android/host/lib/host-launch.mjs android/tools/pack-host.mjs >> "$work/build.log" 2>&1
   printf 'PUBLIC_MODULE_BUILD_COMPLETE\n'
+  phase=ANDROID_INTERRUPTION_AND_LIFECYCLE_REGRESSIONS
+  # Reuse this job's locked dependencies and JDK before preparing the sole Host.
+  # The public projected registry predates these fixtures; this Android workflow
+  # owns their explicit execution, without borrowing or changing Tavern checks.
+  node --test android/host/host-launch.test.mts android/tools/pack-host.test.mts >> "$work/build.log" 2>&1
+  bash android/mobile/tools/test-core.sh >> "$work/build.log" 2>&1
+  printf 'ANDROID_PUBLICATION_RECOVERY_AND_SERVICE_REGRESSIONS_PASSED\n'
   phase=TARGET_X64_RUNTIME_AND_ADDONS
   node android/tools/prepare-runtime.mts --abi x64 >> "$work/build.log" 2>&1
   node android/tools/build-flock.mts --abi x64 >> "$work/build.log" 2>&1

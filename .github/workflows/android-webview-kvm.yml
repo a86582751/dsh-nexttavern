@@ -38,7 +38,7 @@ jobs:
         with:
           node-version: '24.22.1'
           check-latest: false
-      - name: Build and exercise independent online memory in required KVM
+      - name: Run Android regressions, then exercise online memory in required KVM
         shell: bash
         env:
           NEXTTAVERN_UI_PHASE: memory
