@@ -68,6 +68,7 @@ import {
 } from './roleplay-context.js'
 import { decodeTaskSelection } from './tavern-task-primitives.js'
 import { adaptationIsActive } from '../memory/memory-provenance.js'
+import {registerRoleplayOwnedWork} from './roleplay-owned-work.js'
 export {
   createStableRoleplayFence,
   readRoleplayActivity,
@@ -1406,7 +1407,20 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
 
   // domain 生命周期归本 fiber：卸载/失败挂载时必须 close，否则域名泄漏、
   // 重挂载会撞上 "already open"。
-  ctx.effect(() => () => domain.close(), 'roleplay: close domain')
+  const completionOwners:{pending():number;close():Promise<void>}[]=[]
+  const backgroundWork={
+    pending:()=>completionOwners.reduce((pending,owner)=>pending+owner.pending(),0),
+    close:async()=>{await Promise.all(completionOwners.map(owner=>owner.close()))},
+  }
+  // This Core's close waits for its detached owners. Root shutdown must also
+  // use the pre-disposal registry barrier before storage providers close units.
+  ctx.effect(() => async () => {await backgroundWork.close();await domain.close()}, 'roleplay: close domain')
+  ctx.effect(()=>{
+    const release=registerRoleplayOwnedWork((ctx as CoreContext & {root:object}).root,backgroundWork)
+    // Register before constructing owners, and keep an unloading Core visible
+    // until its actual promises settle.
+    return async()=>{await backgroundWork.close();release()}
+  },'roleplay: standing completion owners')
 
   const ensureState = (sessionId: string): CoreState => {
     let st = sessions.get(sessionId)
@@ -1628,7 +1642,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     // Both live and cold inputs are native session logs; preserve their surface for tombstone checks.
     active: session => storyBranchIsActive(session as Parameters<typeof storyBranchIsActive>[0]),
   })
-  Object.assign(svc,{retrieval,inputStateDiagnostics:inputState.diagnostics,whenStateReadRecoverySettled})
+  Object.assign(svc,{retrieval,inputStateDiagnostics:inputState.diagnostics,whenStateReadRecoverySettled,backgroundWork})
   ctx.effect(() => () => retrieval.dispose(), 'roleplay: retrieval lifetime')
   ctx.on('session/created', session => retrieval.created(session), { global: true })
   ctx.on('session/event', async (session, event) => {
@@ -1758,7 +1772,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
 
   // Publish choices after durable prose, independently of the slower notes
   // scheduler. Required work can run while the native story turn is stopping.
-  const { publishTurnDecision, generateTurnDecision } = createRoleplayDecision({
+  const decisionOwner = createRoleplayDecision({
     schemaMaintenanceDecision:(session,event,onAdmission,signal)=>
       schemaMaintenance?.decision(session,event,onAdmission,signal),
     advancedCardReady:session=>nativeCardAdvanced.read(session.id).state==='ready',
@@ -1784,7 +1798,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     DEFAULT_CONFIG
   })
 
-  const { runPhaseBC, isStale,awaitOwnedCompletion } = createRoleplayCompletion({
+  const {publishTurnDecision,generateTurnDecision}=decisionOwner
+  completionOwners.push(decisionOwner)
+
+  const phaseCompletionOwner = createRoleplayCompletion({
     rowFacts:phaseARowFacts,
     inputSnapshotCurrent,
     isManagementInput:(session,turn)=>{
@@ -1813,6 +1830,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     statusRunStartSeq,
     recoverStatusObligations
   })
+  const {runPhaseBC,isStale,awaitOwnedCompletion}=phaseCompletionOwner
+  completionOwners.push(phaseCompletionOwner)
 
   // ── 分支继承：原生 Session fork 的 seed 只复制会话事件，preset 私有域
   //    需要在子会话首次使用时惰性建立。卡片/规则属于创作配置，按 fork

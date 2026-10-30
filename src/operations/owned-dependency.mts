@@ -82,10 +82,10 @@ export function planOwnedDependencyOverlays(options:{repo:string;id:string;plan?
  * This never opens an installed upstream file for writing or runs a replay.
  */
 export function assembleOwnedDependency(options: {
-  repo: string; id: string; archive: string; output: string
+  repo: string; id: string; archive: string; output: string; plan?:Manifest
 }) {
   const repo = fs.realpathSync(options.repo)
-  const overlayPlan=planOwnedDependencyOverlays({repo,id:options.id})
+  const overlayPlan=planOwnedDependencyOverlays({repo,id:options.id,...(options.plan ? {plan:options.plan}:{})})
   const {assembly,metadata}=overlayPlan
   const output = path.resolve(options.output)
   if (fs.existsSync(output)) throw Error('Owned dependency output already exists')

@@ -53,7 +53,9 @@
         "deepseek-request-material*",
         "development/tool-skill/*",
         "development/client-modules/*",
-        "client-modules-artifact-revision*"
+        "client-modules-artifact-revision*",
+        "development/attachment-local/*",
+        "attachment-local-android-boundary*"
       ]
     },
     {
@@ -615,6 +617,54 @@
         "nexttavern-profile-plan*",
         "plugin-product-entry*",
         "plugin-product-preset*"
+      ]
+    },
+    {
+      "id": "android-runtime-probe",
+      "aliases": [
+        "安卓运行时探针"
+      ],
+      "patterns": [
+        "android/probe/*",
+        "android/tools/prepare-runtime.mts",
+        "android/tools/build-flock.mts",
+        "android/runtime-inputs.lock.json",
+        "android/tools/native/*"
+      ]
+    },
+    {
+      "id": "android-native-core",
+      "aliases": [
+        "安卓宿主核心"
+      ],
+      "patterns": [
+        "android/app/*",
+        "android/tools/check-native.mts",
+        "android/build.gradle.kts",
+        "android/settings.gradle.kts",
+        "android/gradle*",
+        "android/.gitignore"
+      ]
+    },
+    {
+      "id": "android-host",
+      "aliases": [
+        "安卓产品宿主"
+      ],
+      "patterns": [
+        "android/host/*",
+        "android/tools/build-require-builtin.*",
+        "android/tools/pack-host.*",
+        "android/tools/prepare-product.*"
+      ]
+    },
+    {
+      "id": "android-mobile",
+      "aliases": [
+        "安卓移动界面"
+      ],
+      "patterns": [
+        "android/mobile/*"
       ]
     }
   ],
@@ -4633,6 +4683,11 @@
       ],
       "requires": [
         "compiler"
+      ],
+      "inputs": [
+        "compat-node-addon-system-package-json",
+        "compat-node-addon-system-atomic-ts",
+        "compat-node-addon-system-android-binding-ts"
       ]
     },
     {
@@ -9898,6 +9953,483 @@
       "requires": [
         "compiler"
       ]
+    },
+    {
+      "id": "test:android-capabilities",
+      "action": "test",
+      "artifact": "android-probe-tests-capabilities.test.mts",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "android-runtime-probe"
+      ],
+      "inputs": [
+        "android-probe-.gitignore",
+        "android-probe-README.md",
+        "android-probe-child.mts",
+        "android-probe-fixtures-localhost-cert.txt",
+        "android-probe-fixtures-localhost-key.txt",
+        "android-probe-flock.mts",
+        "android-probe-model.mts",
+        "android-probe-probes.mts",
+        "android-probe-https-client.mts",
+        "android-probe-atomic-publish.mts",
+        "android-probe-process-helper.mts",
+        "android-probe-result.schema.json",
+        "android-probe-run.mts",
+        "android-probe-runner.mts",
+        "android-probe-tests-adapter-check.mts",
+        "android-probe-tests-capabilities.test.mts",
+        "android-probe-tests-helpers.mts",
+        "android-probe-tests-noop-flock.mts",
+        "android-probe-tests-runner.test.mts",
+        "android-probe-tests-schema.test.mts",
+        "android-probe-worker.mts"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:android-runner",
+      "action": "test",
+      "artifact": "android-probe-tests-runner.test.mts",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "android-runtime-probe"
+      ],
+      "inputs": [
+        "android-probe-.gitignore",
+        "android-probe-README.md",
+        "android-probe-child.mts",
+        "android-probe-fixtures-localhost-cert.txt",
+        "android-probe-fixtures-localhost-key.txt",
+        "android-probe-flock.mts",
+        "android-probe-model.mts",
+        "android-probe-probes.mts",
+        "android-probe-https-client.mts",
+        "android-probe-atomic-publish.mts",
+        "android-probe-process-helper.mts",
+        "android-probe-result.schema.json",
+        "android-probe-run.mts",
+        "android-probe-runner.mts",
+        "android-probe-tests-adapter-check.mts",
+        "android-probe-tests-capabilities.test.mts",
+        "android-probe-tests-helpers.mts",
+        "android-probe-tests-noop-flock.mts",
+        "android-probe-tests-runner.test.mts",
+        "android-probe-tests-schema.test.mts",
+        "android-probe-worker.mts"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:android-schema",
+      "action": "test",
+      "artifact": "android-probe-tests-schema.test.mts",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "android-runtime-probe"
+      ],
+      "inputs": [
+        "android-probe-.gitignore",
+        "android-probe-README.md",
+        "android-probe-child.mts",
+        "android-probe-fixtures-localhost-cert.txt",
+        "android-probe-fixtures-localhost-key.txt",
+        "android-probe-flock.mts",
+        "android-probe-model.mts",
+        "android-probe-probes.mts",
+        "android-probe-https-client.mts",
+        "android-probe-atomic-publish.mts",
+        "android-probe-process-helper.mts",
+        "android-probe-result.schema.json",
+        "android-probe-run.mts",
+        "android-probe-runner.mts",
+        "android-probe-tests-adapter-check.mts",
+        "android-probe-tests-capabilities.test.mts",
+        "android-probe-tests-helpers.mts",
+        "android-probe-tests-noop-flock.mts",
+        "android-probe-tests-runner.test.mts",
+        "android-probe-tests-schema.test.mts",
+        "android-probe-worker.mts"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:android-native-core",
+      "action": "test",
+      "artifact": "android-tools-check-native.mts",
+      "modules": [
+        "android-native-core"
+      ],
+      "inputs": [
+        "android-app-src-main-java-app-nexttavern-android-probe-JsonProtocolParser.java",
+        "android-app-src-main-java-app-nexttavern-android-probe-MainActivity.java",
+        "android-app-src-main-java-app-nexttavern-android-probe-core-AssetInstaller.java",
+        "android-app-src-main-java-app-nexttavern-android-probe-core-BoundedLog.java",
+        "android-app-src-main-java-app-nexttavern-android-probe-core-ProbePaths.java",
+        "android-app-src-main-java-app-nexttavern-android-probe-core-ProcessSupervisor.java",
+        "android-app-src-test-java-app-nexttavern-android-probe-core-CoreTest.java",
+        "android-app-tools-test-core.sh",
+        "android-tools-check-native.mts"
+      ],
+      "timeoutMs": 60000,
+      "effects": {
+        "build": true
+      }
+    },
+    {
+      "id": "test:android-host",
+      "action": "test",
+      "artifact": "android-host-android-host.test.mts",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "android-host"
+      ],
+      "inputs": [
+        "android-host-android-host.test.mts",
+        "android-host-android-host.mts"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:android-launch",
+      "action": "test",
+      "artifact": "android-host-host-launch.test.mts",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "android-host"
+      ],
+      "inputs": [
+        "android-host-host-launch.test.mts",
+        "android-host-host-launch.mts"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:android-session-flock",
+      "action": "test",
+      "artifact": "session-flock-contract",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [
+        "session-flock-contract",
+        "compat-session-persistence-jsonl-src-flock-ts",
+        "compat-node-addon-system-package-json",
+        "compat-node-addon-system-flock-ts",
+        "compat-node-addon-system-android-binding-ts"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:roleplay-background-stop",
+      "action": "test",
+      "artifact": "roleplay-background-stop-contract",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "branches",
+        "decision",
+        "android-host"
+      ],
+      "inputs": [
+        "roleplay-background-stop-contract",
+        "roleplay-owned-work-typescript",
+        "roleplay-completion-typescript",
+        "roleplay-decision-typescript",
+        "roleplay-core-typescript",
+        "roleplay-host-index-typescript"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:android-mobile-core",
+      "action": "test",
+      "artifact": "android-tools-check-native.mts",
+      "args": [
+        "mobile"
+      ],
+      "modules": [
+        "android-mobile"
+      ],
+      "inputs": [
+        "android-mobile-src-main-java-app-nexttavern-android-mobile-core-CodeBundle.java",
+        "android-mobile-src-main-java-app-nexttavern-android-mobile-core-OriginPolicy.java",
+        "android-mobile-src-test-java-app-nexttavern-android-mobile-core-MobileCoreTest.java",
+        "android-mobile-tools-test-core.sh",
+        "android-tools-check-native.mts"
+      ],
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 60000
+    },
+    {
+      "id": "test:android-pack-host",
+      "action": "test",
+      "artifact": "android-tools-pack-host.test.mts",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "android-host",
+        "operations"
+      ],
+      "inputs": [
+        "android-tools-pack-host.test.mts",
+        "android-tools-pack-host.mts",
+        "bundled-library-assembly",
+        "bundled-library-assembly-typescript"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:android-prepare-product",
+      "action": "test",
+      "artifact": "android-tools-prepare-product-test-mts",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "android-host",
+        "operations"
+      ],
+      "inputs": [
+        "android-tools-prepare-product-test-mts",
+        "android-tools-prepare-product-mts",
+        "product-assembly",
+        "product-assembly-typescript",
+        "owned-dependency-mjs",
+        "owned-dependency-mts",
+        "public-vendor-admission",
+        "public-vendor-admission-typescript",
+        "nexttavern-product-package"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:android-protocol-fixture",
+      "action": "test",
+      "artifact": "android-host-protocol-fixture.test.mts",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "android-host"
+      ],
+      "inputs": [
+        "android-host-protocol-fixture.test.mts",
+        "android-host-protocol-fixture.mts"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:android-runtime-abi",
+      "action": "test",
+      "artifact": "android-tools-runtime-abi.test.mts",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "android-host"
+      ],
+      "inputs": [
+        "android-tools-runtime-abi.test.mts",
+        "android-tools-prepare-runtime.mts",
+        "android-tools-build-flock.mts",
+        "android-runtime-inputs.lock.json",
+        "android-runtime-inputs.x64.lock.json",
+        "android-tools-native-system-android.c"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:attachment-local-android-boundary.test.mts",
+      "action": "test",
+      "inputs": [
+        "compat-attachment-local-compression-limiter-ts",
+        "compat-attachment-local-compression-limiter-js",
+        "compat-attachment-local-encoding-ts",
+        "compat-attachment-local-encoding-js",
+        "compat-attachment-local-file-store-ts",
+        "compat-attachment-local-file-store-js",
+        "compat-attachment-local-image-ts",
+        "compat-attachment-local-image-js",
+        "compat-attachment-local-index-ts",
+        "compat-attachment-local-index-js",
+        "compat-attachment-local-normalization-ts",
+        "compat-attachment-local-normalization-js",
+        "compat-attachment-local-request-image-ts",
+        "compat-attachment-local-request-image-js",
+        "compat-attachment-local-sharp-ts",
+        "compat-attachment-local-sharp-js",
+        "compat-attachment-local-store-ts",
+        "compat-attachment-local-store-js",
+        "compat-attachment-local-package-json",
+        "compat-attachment-local-license",
+        "compat-attachment-local-license-upstream",
+        "compat-attachment-local-notice",
+        "compat-attachment-local-origin-json",
+        "compat-attachment-local-readme-md",
+        "attachment-local-android-boundary-contract",
+        "test-temp-helper-typescript",
+        "inventory-runtime-alpha3-build-tools-package-json",
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "compat-node-addon-system-package-json",
+        "compat-node-addon-system-atomic-ts",
+        "compat-node-addon-system-android-binding-ts",
+        "android-tools-build-flock.mts",
+        "android-tools-native-system-android.c",
+        "android-tools-prepare-runtime.mts",
+        "android-runtime-inputs.x64.lock.json"
+      ],
+      "artifact": "attachment-local-android-boundary-contract",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "depends": [
+        "generated",
+        "test:android-native-system-host-fixture"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:android-https-client",
+      "action": "test",
+      "artifact": "android-probe-tests-https-client.test.mts",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "android-runtime-probe"
+      ],
+      "inputs": [
+        "android-probe-https-client.mts",
+        "android-probe-model.mts",
+        "android-probe-tests-https-client.test.mts"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:android-atomic-publish",
+      "action": "test",
+      "artifact": "android-probe-tests-atomic-publish.test.mts",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "android-runtime-probe"
+      ],
+      "inputs": [
+        "android-probe-atomic-publish.mts",
+        "android-probe-model.mts",
+        "android-probe-process-helper.mts",
+        "android-probe-child.mts",
+        "android-probe-flock.mts",
+        "android-probe-https-client.mts",
+        "android-probe-probes.mts",
+        "android-probe-run.mts",
+        "android-probe-runner.mts",
+        "android-probe-tests-helpers.mts",
+        "android-probe-tests-atomic-publish.test.mts"
+      ],
+      "timeoutMs": 60000,
+      "cache": false
+    },
+    {
+      "id": "test:android-atomic-publication",
+      "action": "test",
+      "artifact": "android-atomic-publication-contract",
+      "nodeArgs": [
+        "--test"
+      ],
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [
+        "android-atomic-publication-contract",
+        "compat-node-addon-system-package-json",
+        "compat-node-addon-system-atomic-ts",
+        "compat-node-addon-system-flock-ts",
+        "compat-node-addon-system-android-binding-ts",
+        "test-temp-helper-typescript",
+        "inventory-runtime-alpha3-build-tools-package-json",
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "android-tools-build-flock.mts",
+        "android-tools-native-system-android.c",
+        "android-tools-prepare-runtime.mts",
+        "android-runtime-inputs.x64.lock.json",
+        "card-export",
+        "tavern-card-adapter",
+        "card-export-projection-js",
+        "tavern-card-crc-js",
+        "nexttavern-card-js",
+        "card-export-typescript",
+        "tavern-card-typescript",
+        "card-export-projection-typescript",
+        "tavern-card-crc-typescript",
+        "nexttavern-card-typescript"
+      ],
+      "timeoutMs": 60000,
+      "cache": false,
+      "depends": [
+        "test:android-native-system-host-fixture",
+        "generated"
+      ]
+    },
+    {
+      "id": "test:android-native-system-host-fixture",
+      "action": "test",
+      "artifact": "android-tools-build-flock.mts",
+      "args": [
+        "--abi",
+        "x64",
+        "--host-test"
+      ],
+      "modules": [
+        "android-runtime-probe"
+      ],
+      "inputs": [
+        "android-tools-build-flock.mts",
+        "android-tools-native-system-android.c",
+        "android-tools-prepare-runtime.mts",
+        "android-runtime-inputs.x64.lock.json"
+      ],
+      "timeoutMs": 180000,
+      "effects": {
+        "build": true,
+        "network": true
+      },
+      "cache": false
     }
   ]
 }

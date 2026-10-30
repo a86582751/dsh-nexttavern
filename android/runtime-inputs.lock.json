@@ -1,0 +1,66 @@
+[
+  {
+    "name": "c-ares",
+    "version": "1.34.9",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/c/c-ares/c-ares_1.34.9_aarch64.deb",
+    "sha256": "623d84855e176f3f2a415d24c0e1d2f529356f4b5439bb3313e6d7ff0da4585c"
+  },
+  {
+    "name": "ca-certificates",
+    "version": "1:2026.10.20-1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/c/ca-certificates/ca-certificates_1:2026.10.20-1_all.deb",
+    "sha256": "ab8a7fe63293b455c02399ee125eb8a0041e430ccfdf89a5be8317522fdf9107"
+  },
+  {
+    "name": "libc++",
+    "version": "30",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libc/libc++/libc++_30_aarch64.deb",
+    "sha256": "53d0b84a7ba7459024257cb94d5b136fe13ef858567f65a8064b35950799f2ca"
+  },
+  {
+    "name": "libicu",
+    "version": "78.3",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libi/libicu/libicu_78.3_aarch64.deb",
+    "sha256": "f536403f65a08fe0df6e7304184e902d54def77d5c3bd5edfd9109d57601d276",
+    "notice": {
+      "url": "https://raw.githubusercontent.com/unicode-org/icu/release-78.3/LICENSE",
+      "sha256": "e55522d81edc687a341a4411e0776e54ca654e90147f354a90458aaced4116af"
+    }
+  },
+  {
+    "name": "libsqlite",
+    "version": "3.54.1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/libs/libsqlite/libsqlite_3.54.1_aarch64.deb",
+    "sha256": "0856cac8cc87f6e112f2eef4fcac6ad5cb08209ecb7cc260f997874fc186a3c0"
+  },
+  {
+    "name": "nodejs-lts",
+    "version": "24.22.1",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/n/nodejs-lts/nodejs-lts_24.22.1_aarch64.deb",
+    "sha256": "c4aae57009e4398613807d77ff395026455fe03b6d9d8a29f929212b04f74719"
+  },
+  {
+    "name": "openssl",
+    "version": "1:3.6.5",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/o/openssl/openssl_1:3.6.5_aarch64.deb",
+    "sha256": "a2fb7856875e63ef6b90442752e05974813372c3ca86d2513a78ea43c67a0f8b"
+  },
+  {
+    "name": "resolv-conf",
+    "version": "1.3",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/r/resolv-conf/resolv-conf_1.3_aarch64.deb",
+    "sha256": "ab541abac8e0c81709cd7ca4a02bcfa0d60ba1f4bfe7fd6dce4a694a4a9dfffa"
+  },
+  {
+    "name": "zlib",
+    "version": "1.3.2",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/z/zlib/zlib_1.3.2_aarch64.deb",
+    "sha256": "75e7d0af17fcc3b40004309fdc00a1ddb9ae08346dce5e269902c34ac3966ac9"
+  },
+  {
+    "name": "termux-licenses",
+    "version": "2.2",
+    "url": "https://packages.termux.dev/apt/termux-main/pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+    "sha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9"
+  }
+]

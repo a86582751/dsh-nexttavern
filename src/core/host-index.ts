@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { createConversationCatalog, type LegacyForkOperation, type ConversationSnapshot } from './tavern-conversations.js'
 import { readUserInfo as readUserInfoFile, writeUserInfo } from './roleplay-userinfo.js'
 import {receiveSideChatBridge} from './roleplay-side-chat-bridge.js'
+import {pendingRoleplayOwnedWork,stopRoleplayOwnedWork} from './roleplay-owned-work.js'
 
 type UserInfo = Record<string, unknown>
 type SessionEvent = { type?: string; data?: { agentPreset?: unknown } }
@@ -32,6 +33,7 @@ type SkinManager = {
   setPluginEnabled: (entryId: string, enabled: boolean) => Promise<SkinChange>
 }
 type HostContext = {
+  root: object
   connection: { fetch: { register: (route: Route) => unknown } }
   sessionController: { resolveAgent: (id: string) => Promise<ResolvedAgent | null | undefined> }
   sessionQuery: { observeSession: (id: string, options: { projectionMode: 'none' }) => Promise<SessionObservation> }
@@ -163,7 +165,10 @@ export function apply(ctx: HostContext): void {
   const ready = catalog.migrate(legacy)
   // Retain rejection for request-time 503 without an unhandled startup error.
   void ready.catch(() => ctx.logger?.warn?.('roleplay: worldline catalog migration failed; original records retained'))
-  ctx.provide?.('tavernConversations', { ...catalog, ready })
+  ctx.provide?.('tavernConversations', { ...catalog, ready,
+    pendingOwnedWork:()=>pendingRoleplayOwnedWork(ctx.root),
+    stopOwnedWork:()=>stopRoleplayOwnedWork(ctx.root),
+  })
   ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered', path: '/api/roleplay/conversations', methods: ['GET'], fetch: async () => {
     try { await ready; return jsonResponse(200, { ok: true, ...catalog.snapshot() }) }
     catch { return jsonResponse(503, { ok: false, error: '酒馆会话目录未就绪，原有记录未改写' }) }

@@ -28,15 +28,19 @@ export function createRoleplayCompletion(deps: CompletionDependencies) {
     return !userEvent || !live.has(userEvent.seq)
   }
 
-  const ownedCompletions=new Map<string,Promise<void>>()
+  const ownedCompletions=new Map<string,{work:Promise<void>;stop:AbortController}>()
+  let closing=false
+  let closed:Promise<void>|undefined
   function runPhaseBC(session: ContextSession,event:ContextEvent,st:CompletionState,
     suppliedSnapshot:CompletionSnapshot|null=null,signal?:AbortSignal):Promise<void> {
     const key=`${session.id}:${Number(event.data?.turn)}`
     const existing=ownedCompletions.get(key)
-    if(existing)return existing
-    const work=runPhaseBCImpl(session,event,st,suppliedSnapshot,signal)
-    ownedCompletions.set(key,work)
-    const clear=()=>{if(ownedCompletions.get(key)===work)ownedCompletions.delete(key)}
+    if(existing)return existing.work
+    if(closing)return Promise.reject(new Error('ROLEPLAY_COMPLETION_STOPPED'))
+    const stop=new AbortController(),effectiveSignal=signal?AbortSignal.any([signal,stop.signal]):stop.signal
+    const work=runPhaseBCImpl(session,event,st,suppliedSnapshot,effectiveSignal)
+    ownedCompletions.set(key,{work,stop})
+    const clear=()=>{if(ownedCompletions.get(key)?.work===work)ownedCompletions.delete(key)}
     void work.then(clear,clear)
     return work
   }
@@ -79,6 +83,9 @@ export function createRoleplayCompletion(deps: CompletionDependencies) {
     const route = resolveRoute(session, snapshot?.agent)
     const backgroundMemory = ctx.get('compaction')?.backgroundMemory === true
     const mem = memoryForContext(session)
+    // A close can arrive while pre-commit reconciliation is still awaiting.
+    // Do not admit fresh worker/model work after that owner was interrupted.
+    signal?.throwIfAborted()
 
     // Do not make the user wait for ledger/continuity/status workers before the
     // decision card becomes available. Errors remain isolated from Phase B/C.
@@ -266,7 +273,7 @@ export function createRoleplayCompletion(deps: CompletionDependencies) {
         // Keep the snapshot until a retry succeeds. A bounded retry avoids
         // dropping memory/scene updates after one transient storage/provider
         // failure while still preventing an endless restart loop.
-        if (attempts <= 3 && !st.phaseBRetryTimers.has(Number(snapshot.turnId)) && !signal?.aborted) {
+        if (attempts <= 3 && !closing && !st.phaseBRetryTimers.has(Number(snapshot.turnId)) && !signal?.aborted) {
           const timer = setTimeout(() => {
             st.phaseBRetryTimers.delete(Number(snapshot.turnId))
             if(signal?.aborted)return
@@ -431,10 +438,29 @@ export function createRoleplayCompletion(deps: CompletionDependencies) {
     }
   })
   return { runPhaseBC, isStale,
+    /** Running Phase B/C promises plus scheduled retries, not every Core task. */
+    pending():number {
+      let pending=ownedCompletions.size
+      for(const state of sessions.values())pending+=state.phaseBRetryTimers.size
+      return pending
+    },
+    /** Interrupt owned work and wait for its actual promise before storage closes.
+     * Durable snapshots/retry records remain recovery inputs, not a success ACK. */
+    close():Promise<void> {
+      if(closed)return closed
+      closing=true
+      for(const state of sessions.values()) {
+        for(const timer of state.phaseBRetryTimers.values())clearTimeout(timer)
+        state.phaseBRetryTimers.clear()
+      }
+      for(const owner of ownedCompletions.values())owner.stop.abort(new Error('ROLEPLAY_COMPLETION_STOPPED'))
+      closed=Promise.allSettled([...ownedCompletions.values()].map(owner=>owner.work)).then(()=>{})
+      return closed
+    },
     /** The actual original-turn promise, including pre-commit async work.
      * Agent idle happens after terminal publication and would deadlock here. */
     async awaitOwnedCompletion(sessionId:string,turn:number):Promise<void> {
-      await ownedCompletions.get(`${sessionId}:${turn}`)
+      await ownedCompletions.get(`${sessionId}:${turn}`)?.work
       const state=sessions.get(sessionId)
       await state?.commitChain
       const phase=T.branch.get(keyOf(sessionId,`phaseb-${turn}`))

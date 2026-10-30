@@ -17,7 +17,7 @@ const packagedProfile = new URL('./native-fork-host-profile.mjs', import.meta.ur
 // The same tool runs from the repository and the isolated shipped tools directory.
 const nativeProfile = await import(__rewriteRelativeImportExtension(fs.existsSync(packagedProfile) ? packagedProfile.href :
     new URL('../../runtime/alpha3/lib/operations/native-fork-host-profile.mjs', import.meta.url).href));
-export const { HOST_VERSION, NATIVE_FORKS, hostForkNames, readHostForkProfile } = nativeProfile;
+export const { HOST_VERSION, NATIVE_FORKS, hostForkNames, hostForkVersion, readHostForkProfile } = nativeProfile;
 const within = (root, child) => child === root || child.startsWith(root + path.sep);
 const manifest = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -109,7 +109,7 @@ export function planNativeForkHost(input) {
         if (!within(hostRoot, real))
             errors.push(`Anchor outside host: ${anchor}`);
         for (const name of members)
-            queue.push({ name, anchor: real, range: HOST_VERSION, optional: false });
+            queue.push({ name, anchor: real, range: hostForkVersion(name), optional: false });
     }
     const planned = new Set();
     while (queue.length) {
@@ -183,7 +183,7 @@ export function planNativeForkHost(input) {
         if (within(hostRoot, directory))
             errors.push(`Fork source is inside fixed host: ${name}`);
         const pkg = manifest(path.join(directory, 'package.json'));
-        if (pkg.name !== name || pkg.version !== HOST_VERSION)
+        if (pkg.name !== name || pkg.version !== hostForkVersion(name))
             errors.push(`Source identity mismatch: ${name}`);
         const actual = packageTreeSha256(directory);
         if (actual !== source.sha256)

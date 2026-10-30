@@ -19,6 +19,7 @@ import { dirname, join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { scheduler } from 'node:timers/promises'
 import { createHash, randomBytes } from 'node:crypto'
+import { publishNoReplace } from '@deepseek-ai/node-addon-system/atomic'
 import {
   SessionPersistence, SessionPersistenceRevision, SessionFormatUnsupportedError,
   SessionPersistenceCorruptionError,
@@ -1211,12 +1212,12 @@ class JsonlSessionPersistence extends SessionPersistence {
     await this.syncDirPosix(project)
     await this.rejectExistingLog(finalPath, id)
     const tmp = await this.writeSyncedTempFile(finalPath, content)
-    // Publish via link()+unlink(), NOT rename(): link fails with EEXIST if the
-    // final path already exists, so two processes materializing the same id
-    // concurrently cannot clobber each other. rename() would silently overwrite.
+    // Desktop link()+unlink() and Android renameat2(RENAME_NOREPLACE) both
+    // reject EEXIST atomically. Ordinary rename() could clobber a concurrent log.
     let linked = false
     try {
-      await link(tmp, finalPath)
+      if (process.platform === 'android') await publishNoReplace(tmp, finalPath)
+      else await link(tmp, finalPath)
       linked = true
     } finally {
       // Remove an unpublished temp on failure. After publication, defer cleanup
@@ -1224,9 +1225,8 @@ class JsonlSessionPersistence extends SessionPersistence {
       /* v8 ignore next -- link failure is the TOCTOU/IO race guarded above; not reachable in test */
       if (!linked) await rm(tmp, { force: true })
     }
-    // link() succeeded — the log is published. fsync the directory so the new
-    // entry survives a power loss: the new link is not crash-durable until the
-    // parent directory's metadata is synced.
+    // Publication succeeded; its new entry is not crash-durable until the
+    // parent directory is synced. Android has already consumed the temp name.
     await this.syncDirPosix(dir)
     // Best-effort temp cleanup: the log is already published and durable, so a
     // failure to remove the redundant temp hard link must NOT reject the

@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {createHash,randomUUID} from 'node:crypto'
 import {applyNativeForkHost,restoreNativeForkHost,type HostForkApplyResult} from './native-fork-host-apply.mts'
-import {HOST_VERSION,hostForkNames,readHostForkProfile,packageTreeSha256,planNativeForkHost,
+import {HOST_VERSION,hostForkNames,hostForkVersion,readHostForkProfile,packageTreeSha256,planNativeForkHost,
   type HostForkInput,type HostForkResult} from './native-fork-host-plan.mts'
 import type {HostForkProfileV1} from 'dsh-nexttavern-native-fork-host-profile-types'
 
@@ -97,10 +97,10 @@ function payload(input:HostActivationInput):{
     JSON.stringify(inventoryFiles(forkRoot))!==JSON.stringify(registeredPayloadFiles))
     throw Error('Unregistered host override payload file')
   const sources={} as HostForkInput['sources']
-  for(const name of exactNames){
-    const record=inventory.hostForks.find(item=>item?.name===name) as Record<string,unknown>
+  for(const [index,name] of exactNames.entries()){
+    const record=inventory.hostForks[index] as Record<string,unknown>
     const expected=`host-overrides/${name}`
-    if(!record||record.name!==name||record.version!==HOST_VERSION||record.path!==expected||
+    if(!record||record.name!==name||record.version!==hostForkVersion(name)||record.path!==expected||
       record.status!=='unapplied-host-override'||!Array.isArray(record.files)||record.files.length===0)
       throw Error(`Invalid host payload inventory: ${name}`)
     const directory=path.join(packageRoot,...expected.split('/'))
@@ -124,7 +124,7 @@ function payload(input:HostActivationInput):{
     }
     const manifest=JSON.parse(fs.readFileSync(path.join(directory,'package.json'),'utf8')) as
       {name?:string,version?:string,private?:boolean}
-    if(manifest.name!==name||manifest.version!==HOST_VERSION||manifest.private!==true)
+    if(manifest.name!==name||manifest.version!==hostForkVersion(name)||manifest.private!==true)
       throw Error(`Host payload package identity mismatch: ${name}`)
     sources[name]={directory,sha256:packageTreeSha256(directory)}
   }

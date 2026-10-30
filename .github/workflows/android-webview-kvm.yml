@@ -1,0 +1,70 @@
+# Authorized public Android source and runner-owned QA on android/mobile-terminal.
+# Built payloads, signing material and private profile data are never published.
+# Only the two approved synthetic UI PNGs may be retained, for one day.
+# The tiny transport control remains available separately as --transport.
+name: Android mobile KVM preview
+on:
+  push:
+    branches: [android/mobile-terminal]
+    paths:
+      - .github/workflows/android-webview-kvm.yml
+      - qa/android-webview-kvm/**
+      - qa/android-mobile-terminal/**
+      - android/**
+      - src/**
+      - lib/**
+      - preset/**
+      - development/**
+      - tools/**
+      - package.json
+      - build-tools/package*.json
+      - harness/package*.json
+      - integrations/auth-webserver/**
+permissions:
+  contents: read
+jobs:
+  mobile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Read this QA branch
+        # Official actions/checkout v4.3.1; tag/ref verified 2026-10-27.
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Pinned public build Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.22.1'
+          check-latest: false
+      - name: Run Android regressions, then exercise online memory in required KVM
+        shell: bash
+        env:
+          NEXTTAVERN_UI_PHASE: memory
+          NEXTTAVERN_UI_EVIDENCE_DIR: ${{ runner.temp }}/nexttavern-ui-images
+        run: bash qa/android-webview-kvm/run-smoke.sh --mobile
+      - name: Locate only the approved synthetic UI PNGs
+        if: always()
+        id: ui_images
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/nexttavern-ui-images/empty-provider.png" || -f "$RUNNER_TEMP/nexttavern-ui-images/ui-state.png" ]]; then
+            echo 'present=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Retain approved synthetic UI images for one day
+        if: always() && steps.ui_images.outputs.present == 'true'
+        # Official actions/upload-artifact v4.6.2; tag verified 2026-10-27.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: android-synthetic-ui
+          path: |
+            ${{ runner.temp }}/nexttavern-ui-images/empty-provider.png
+            ${{ runner.temp }}/nexttavern-ui-images/ui-state.png
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
+      - name: Remove approved runner-local PNGs only
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/nexttavern-ui-images"

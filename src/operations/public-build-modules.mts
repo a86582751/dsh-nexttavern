@@ -70,7 +70,14 @@ export async function publicBuildModulesCli(args = process.argv.slice(2), root =
       if (/\.(?:js|mjs|cjs)$/.test(file) && (sourceTree || !allowedOutputs.has(file))) throw Error('Unmapped generated module: ' + file)
     }
   }
-  for (const directory of new Set(map.modules.map(module => tree(module.source, 'src')))) inspect(directory, true)
+  for (const directory of new Set(map.modules.filter(module=>module.source.split('/').includes('src'))
+    .map(module => tree(module.source, 'src')))) inspect(directory, true)
+  // Android tooling has explicitly mapped sibling sources, tests and generated
+  // files, not a homogeneous src/ tree. Its exact outputs are compared below;
+  // scanning the parent as a source-only tree would reject those owned outputs.
+  for(const module of map.modules.filter(module=>!module.source.split('/').includes('src'))) {
+    if(!fs.lstatSync(safe(module.source)).isFile())throw Error('Mapped module source is not a file: '+module.source)
+  }
   // Manifest-declared legacy file aliases can live outside lib/. They are
   // compared below; ownership scans stay on complete canonical lib trees.
   for (const directory of new Set([...allowedOutputs].filter(file => file.split('/').includes('lib'))

@@ -23,6 +23,8 @@ export function taskCancellation(initial?: AbortSignal) {
 export function createRoleplayDecision(deps: DecisionDependencies) {
   const { withDecisionMutationLock, normalizeDecisionRecord, T, taskStory, isStale, isLatestVisibleTurn, statusSource, modelPolicy, selectedStatusRecord, sameModelRoute, normalizeStatusRecord, normalizeStatusOption, buildDecisionContext, memoryForContext, ctx, resolveRoute, llmJson, DECISION_SYSTEM, cfg, DEFAULT_CONFIG } = deps
   const decisionJobs=new Map<string, DecisionJob>()
+  let closing=false
+  let closed:Promise<void>|undefined
   function publishTurnDecision(session: DecisionSession,event: DecisionEvent,snapshot: DecisionSnapshot,narrative: string,signal?: AbortSignal) {
     const key=`${session.id}:${event.seq}`
     if(decisionJobs.has(key)) {
@@ -41,9 +43,11 @@ export function createRoleplayDecision(deps: DecisionDependencies) {
     return work
   }
   async function generateTurnDecision(session: DecisionSession, event: DecisionEvent, snapshot: DecisionSnapshot, narrative: string, onAdmission: (value: unknown) => void, signal?: AbortSignal) {
+    if(closing)throw new Error('ROLEPLAY_DECISION_STOPPED')
     const branchId = session.id
     const key = keyOf(branchId, 'current')
     const canPublish = () => {
+      if(closing||signal?.aborted)return false
       const current = normalizeDecisionRecord(T.decision.get(key))
       const currentTurn = Number(current?.turnId)
       const requestedTurn = Number(snapshot.turnId)
@@ -160,5 +164,16 @@ export function createRoleplayDecision(deps: DecisionDependencies) {
       }
     })
   }
-  return { publishTurnDecision, generateTurnDecision }
+  return { publishTurnDecision, generateTurnDecision,
+    pending:()=>decisionJobs.size,
+    /** The existing cancellation owner reaches both schema and native workers.
+     * Await publication/finally too; a transport abort alone is not settlement. */
+    close():Promise<void> {
+      if(closed)return closed
+      closing=true
+      for(const job of decisionJobs.values())job.cancellation.follow(AbortSignal.abort(new Error('ROLEPLAY_DECISION_STOPPED')))
+      closed=Promise.allSettled([...decisionJobs.values()]).then(()=>{})
+      return closed
+    },
+  }
 }

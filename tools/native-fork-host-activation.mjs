@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { applyNativeForkHost, restoreNativeForkHost } from "./native-fork-host-apply.mjs";
-import { HOST_VERSION, hostForkNames, readHostForkProfile, packageTreeSha256, planNativeForkHost } from "./native-fork-host-plan.mjs";
+import { HOST_VERSION, hostForkNames, hostForkVersion, readHostForkProfile, packageTreeSha256, planNativeForkHost } from "./native-fork-host-plan.mjs";
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const inside = (root, child) => child === root || child.startsWith(root + path.sep);
 const regular = (file) => { const stat = fs.lstatSync(file); return stat.isFile() && !stat.isSymbolicLink(); };
@@ -90,10 +90,10 @@ function payload(input) {
         JSON.stringify(inventoryFiles(forkRoot)) !== JSON.stringify(registeredPayloadFiles))
         throw Error('Unregistered host override payload file');
     const sources = {};
-    for (const name of exactNames) {
-        const record = inventory.hostForks.find(item => item?.name === name);
+    for (const [index, name] of exactNames.entries()) {
+        const record = inventory.hostForks[index];
         const expected = `host-overrides/${name}`;
-        if (!record || record.name !== name || record.version !== HOST_VERSION || record.path !== expected ||
+        if (!record || record.name !== name || record.version !== hostForkVersion(name) || record.path !== expected ||
             record.status !== 'unapplied-host-override' || !Array.isArray(record.files) || record.files.length === 0)
             throw Error(`Invalid host payload inventory: ${name}`);
         const directory = path.join(packageRoot, ...expected.split('/'));
@@ -117,7 +117,7 @@ function payload(input) {
                 throw Error(`Host payload byte drift: ${name}/${file.path}`);
         }
         const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8'));
-        if (manifest.name !== name || manifest.version !== HOST_VERSION || manifest.private !== true)
+        if (manifest.name !== name || manifest.version !== hostForkVersion(name) || manifest.private !== true)
             throw Error(`Host payload package identity mismatch: ${name}`);
         sources[name] = { directory, sha256: packageTreeSha256(directory) };
     }

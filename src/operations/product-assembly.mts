@@ -9,7 +9,7 @@ import {assembleOwnedDependency,planOwnedDependencyOverlays,regularPackageFiles,
   type OwnedDependencyAssembly} from './owned-dependency.mjs'
 import {contained as inside} from './public-transaction.mjs'
 import {materializeBundledLibraries,bundledLibraryLockFingerprint,topLevelBundledLibraryVersions,
-  normalizeBundledLibraryMetadata,type BundledLibraryLock} from './bundled-library-assembly.mjs'
+  normalizeBundledLibraryMetadata,type BundledLibraryLock,type BundledLibraryTarget} from './bundled-library-assembly.mjs'
 import {templateRuntimeRecipeV1,materializeTavernTemplateRuntimeDependenciesV1,
   assertTavernTemplateRuntimePackageV1,type TavernTemplateRuntimeAssetRecipeV1} from './tavern-template-runtime-assets.mjs'
 import {authorBrowserRuntimeRecipeV1,materializeAuthorBrowserRuntimeDependenciesV1,
@@ -20,7 +20,7 @@ import type {HistoricalRuntimeAssetRebuildV1} from './runtime-asset-source-scope
 import {authorBrowserRuntimeRecipeV3,materializeAuthorBrowserRuntimeDependenciesV3,
   type AuthorBrowserRuntimeAssetRecipeV3} from './author-browser-runtime-assets-v3.mjs'
 import type {SubagentTypertRecipeV1} from './subagent-typert-assets.mjs'
-import {makeHostForkProfile,type HostForkProfileDescriptorV1} from './native-fork-host-profile.mjs'
+import {makeHostForkProfile,hostForkPolicy,type HostForkProfileDescriptorV1} from './native-fork-host-profile.mjs'
 import {authorPromptRuntimeRecipeV1,materializeAuthorPromptRuntimeDependenciesV1,
   type AuthorPromptRuntimeAssetRecipeV1} from './author-prompt-runtime-assets.mjs'
 import {describeCurrentRuntimeComponents,materializeReleasedComponents} from './released-component-assembly.mjs'
@@ -76,6 +76,8 @@ interface ProductRecipe {
    * dependency that fails to load on a supported platform.
    */
   bundlePlatforms?: string[]
+  /** Explicit assembly target; omitted for the existing multi-platform product. */
+  bundleTarget?: BundledLibraryTarget
   /** Unapplied, exact host replacement payloads; never profile dependencies. */
   hostForks?: {name: string; version: string; source: string; target: string}[]
 }
@@ -131,7 +133,7 @@ export function planDevelopmentAssembly(options:{repo:string;plan:ProductAssembl
   const rootLibraries=plan.product.rootBundledLibraries
   if(rootLibraries&&Object.keys(rootLibraries.libraries).length)units.push({id:'root-libraries',kind:'root-libraries',
     name:'root-libraries',version:'',target:'node_modules',files:[],dependencyKey:key({
-      libraries:ordered(rootLibraries.libraries),lock:lock(rootLibraries.lockArtifact,rootLibraries.libraries),
+      target:plan.product.bundleTarget,libraries:ordered(rootLibraries.libraries),lock:lock(rootLibraries.lockArtifact,rootLibraries.libraries),
       implementation:implementation('bundled-library-assembly')})})
   for(const row of plan.product.packages) {
     const metadata=json<Metadata>(inside(repo,artifact(row.packageArtifact))),target='node_modules/'+metadata.name
@@ -155,7 +157,7 @@ export function planDevelopmentAssembly(options:{repo:string;plan:ProductAssembl
     ].find(item=>item.recipe?.packageArtifact===row.packageArtifact)
     const dependencies=ordered(metadata.dependencies??{}).filter(([name])=>!name.startsWith('dsh-nexttavern-'))
     const hasLibraries=dependencies.length>0||Object.keys(rootOwned).length>0
-    const dependencyKey=key({dependencies,rootOwned:ordered(rootOwned),platforms:hasLibraries?plan.product.bundlePlatforms:undefined,
+    const dependencyKey=key({dependencies,target:hasLibraries?plan.product.bundleTarget:undefined,rootOwned:ordered(rootOwned),platforms:hasLibraries?plan.product.bundlePlatforms:undefined,
       pins:hasLibraries?dependencies.map(([name])=>[name,plan.product.bundleLibraries?.[name]]):undefined,
       lock:hasLibraries&&rootLibraries?lock(rootLibraries.lockArtifact,Object.fromEntries(dependencies)):undefined,
       special:special?{dependencies:ordered(special.recipe!.dependencies),lock:lock(special.recipe!.lockArtifact,special.recipe!.dependencies),
@@ -283,7 +285,8 @@ export function stageHostForks(repo: string, packageRoot: string, plan: Plan) {
     plan.artifacts.find(artifact=>artifact.id===build.artifact)!.source,build,
   ]))
   const rows = recipes.map(row => {
-    if (row.version !== '0.1.7-rc.2' || !safeRelative(row.source)
+    const policy=hostForkPolicy(row.name)
+    if (row.version !== policy.version || !safeRelative(row.source)
       || !safeRelative(row.target) || row.target !== `host-overrides/${row.name}`) {
       throw Error('Invalid host fork identity or delivery target: ' + row.name)
     }
@@ -292,7 +295,7 @@ export function stageHostForks(repo: string, packageRoot: string, plan: Plan) {
       throw Error('Host fork source is not a regular directory: ' + row.source)
     }
     const metadata = json<Metadata>(inside(repo, `${row.source}/package.json`))
-    if (metadata.name !== row.name || metadata.version !== row.version || metadata.license !== 'MIT') {
+    if (metadata.name !== row.name || metadata.version !== row.version || metadata.license !== policy.license) {
       throw Error('Host fork package identity mismatch: ' + row.name)
     }
     const files = regularPackageFiles(source).filter(file => {
@@ -542,7 +545,7 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
   if (row.assembly) {
     const archive = options.archives?.[row.assembly]
     if (!archive) throw Error('Missing pinned archive: ' + row.assembly)
-    const result = assembleOwnedDependency({repo, id: row.assembly, archive, output})
+    const result = assembleOwnedDependency({repo, id: row.assembly, archive, output, plan})
     if (result.name !== pkg.name || result.version !== pkg.version) throw Error('Assembly identity differs from recipe')
   }
   // Historical resources are a complete output map. In particular, maintained
@@ -604,7 +607,7 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
     // These packages move to protected file pins outside the product tree.
     // Their own bundle must retain the locked closure before its inventory is
     // taken, so a later relink cannot borrow an ancestor or run SDK hooks.
-    const closure=materializeBundledLibraries({libraryRoot: options.libraryRoot ?? '', moduleRoot: inside(output, 'node_modules'),
+    const closure=materializeBundledLibraries({target:plan.product.bundleTarget,libraryRoot: options.libraryRoot ?? '', moduleRoot: inside(output, 'node_modules'),
       lockFile: inside(repo, artifact(rootRecipe!.lockArtifact).source), libraries: ownedRootLibraries,
       admit: options.admitVendoredFile ?? (() => {throw Error('Owned SDKs require public vendor admission')})})
     save(path.join(output,'package.json'),normalizeBundledLibraryMetadata(pkg,topLevelBundledLibraryVersions(closure.packages)))
@@ -622,9 +625,9 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
  * activation row is created; the containing product already owns its lifetime. */
 export function assembleHistoricalProductComponents(options:Omit<ProductPackageAssemblyOptions,'output'|'packageArtifact'>
   &{packageRoot:string}) {
-  const plan=json<Plan>(path.join(options.repo,'release/source-manifest.json'))
+  const plan=options.plan ?? json<Plan>(path.join(options.repo,'release/source-manifest.json'))
   return (plan.product.historicalComponents??[]).map(row=>{
-    const result=assembleProductPackage({...options,packageArtifact:row.packageArtifact,
+    const result=assembleProductPackage({...options,plan,packageArtifact:row.packageArtifact,
       output:inside(options.packageRoot,row.path)})
     return {name:result.name,version:result.version,files:result.files,path:row.path}
   })
@@ -639,9 +642,10 @@ export function assembleProduct(options: {
   repo: string; packageRoot: string; archives: Record<string, string>; libraryRoot?: string
   admitVendoredFile?: VendorAdmission; includeDevelopmentCopies?: boolean
   projectedFiles?:DevelopmentProjectedFiles
+  plan?:ProductAssemblyPlan
 }) {
   const repo = fs.realpathSync(options.repo)
-  const plan = json<Plan>(path.join(repo, 'release/source-manifest.json'))
+  const plan = options.plan ?? json<Plan>(path.join(repo, 'release/source-manifest.json'))
   if (!plan.product?.packages.length) throw Error('Missing root product recipe')
   const artifact = (id: string) => {
     const row = plan.artifacts.find(item => item.id === id)
@@ -692,7 +696,7 @@ export function assembleProduct(options: {
   if (fs.existsSync(moduleRoot)) throw Error('Candidate dependencies must be absent before assembly')
   fs.mkdirSync(moduleRoot)
   const bundledLibraries = plan.product.rootBundledLibraries
-    ? materializeBundledLibraries({
+    ? materializeBundledLibraries({target:plan.product.bundleTarget,
       libraryRoot: options.libraryRoot ?? '', moduleRoot,
       lockFile: inside(repo, artifact(plan.product.rootBundledLibraries.lockArtifact).source),
       libraries: rootLibraries,
@@ -703,7 +707,7 @@ export function assembleProduct(options: {
     schemaVersion: rawCompilerRecipe.schemaVersion,
     projections: rawCompilerRecipe.moduleRoots.map(moduleRoot => ({
       moduleRoot,
-      packages: materializeBundledLibraries({
+      packages: materializeBundledLibraries({target:plan.product.bundleTarget,
         libraryRoot: options.libraryRoot ?? '', moduleRoot: inside(packageRoot, moduleRoot),
         lockFile: inside(repo, artifact(rawCompilerRecipe.lockArtifact).source),
         libraries: rawCompilerRecipe.libraries,
@@ -713,7 +717,7 @@ export function assembleProduct(options: {
   } : undefined
   const packages = owned.map(({pkg, packageArtifact, assembly, publicMetadata}) => {
     const output = inside(moduleRoot, pkg.name)
-    const result = assembleProductPackage({repo, output, packageArtifact, archives: options.archives,
+    const result = assembleProductPackage({repo, output, packageArtifact, archives: options.archives, plan,
       ...(options.libraryRoot === undefined ? {} : {libraryRoot: options.libraryRoot}),
       ...(options.admitVendoredFile === undefined ? {} : {admitVendoredFile: options.admitVendoredFile})})
     if (assembly && options.includeDevelopmentCopies !== false) {
@@ -783,9 +787,11 @@ export function assembleProduct(options: {
     rootBundledLibraries: rootLibraries, bundledLibraries}
   const excludedVendoredFiles = packages.flatMap(row => row.excludedVendoredFiles
     .map(item => ({package: row.name, ...item})))
-  if(inventory.historicalComponents.length) {
+  const deliveredRoots=[...inventory.historicalComponents,...inventory.bundles,...inventory.hostForks]
+    .map(row=>row.path.split('/')[0]!)
+  if(deliveredRoots.length) {
     metadata.files=[...new Set([...metadata.files??[],
-      ...inventory.historicalComponents.map(row=>row.path.split('/')[0]!)])]
+      ...deliveredRoots])]
   }
   save(path.join(packageRoot,'package.json'),normalizeBundledLibraryMetadata(metadata,
     topLevelBundledLibraryVersions(bundledLibraries)))
@@ -819,7 +825,7 @@ export function applyDevelopmentAssembly(options:{
     }
   }
   if(!options.previousInventory) {
-    const {excludedVendoredFiles:_diagnostics,...inventory}=assembleProduct({repo,packageRoot:options.packageRoot,archives:options.archives,
+    const {excludedVendoredFiles:_diagnostics,...inventory}=assembleProduct({repo,plan,packageRoot:options.packageRoot,archives:options.archives,
       libraryRoot:options.libraryRoot,admitVendoredFile:options.admitVendoredFile,includeDevelopmentCopies:false,
       projectedFiles:options.projectedFiles})
     for(const row of inventory.packages)fact(inside(options.packageRoot,'node_modules/'+row.name),'node_modules/'+row.name,row.files)
@@ -916,7 +922,7 @@ export function applyDevelopmentAssembly(options:{
       fs.mkdirSync(stage,{recursive:true})
       const recipe=plan.product.rootBundledLibraries!
       const lock=plan.artifacts.find(row=>row.id===recipe.lockArtifact)!
-      const result=materializeBundledLibraries({libraryRoot:options.libraryRoot??'',moduleRoot:stage,
+      const result=materializeBundledLibraries({target:plan.product.bundleTarget,libraryRoot:options.libraryRoot??'',moduleRoot:stage,
         lockFile:inside(repo,lock.source),libraries:recipe.libraries,
         admit:options.admitVendoredFile??(()=>{throw Error('Root SDKs require public vendor admission')})})
       for(const row of result.packages)fact(inside(stage,row.path),'node_modules/'+row.path,row.files)

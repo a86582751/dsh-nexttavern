@@ -1,0 +1,5 @@
+Maintained NextTavern compatibility fork of @deepseek-ai/dsh-attachment-local 0.1.7-rc.2.
+Upstream: deepseek-ai/deepseek-harness commit 477b4f420553e8a52c2fbccc464d7561b239c443.
+Copyright and MIT license remain in LICENSE.upstream. This is not an upstream npm release.
+Changes: emitted .js import paths and explicit native Android data-directory fsync boundary.
+Android publication additionally uses installer-owned renameat2(RENAME_NOREPLACE); immutable aliases retain their source through the existing streamed/fsynced staging owner. Desktop hard-link behavior is unchanged.

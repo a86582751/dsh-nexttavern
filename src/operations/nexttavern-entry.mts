@@ -109,16 +109,39 @@ export default class NextTavernEntry extends EntryTree {
       const ownedIntent = (plan: ProfilePlan) => ({
         selected: plan.selected,
         product: plan.rows.find(row => row.id === loaderEntry(owner.ctx).options.id),
-        providers: owner.config.providers.map(provider => plan.provider({id:provider.id,module:provider.original})),
+        providers: owner.config.providers.map(provider => {
+          const intent = plan.provider({id:provider.id,module:provider.original})
+          if (!intent) return intent
+          const {config: _config, ...row} = intent.row
+          return {...intent, row}
+        }),
       })
-      if (isDeepStrictEqual(ownedIntent(state.plan), ownedIntent(proposal))) {
-        // Native settings saves also update Include. Keep unrelated rows on
-        // that normal path so a welcome/theme edit cannot revoke live Session
-        // RPCs and browser scope adapters by restarting the entire product.
+      const configChanges = owner.config.providers.flatMap(provider => {
+        const before = state.plan.provider({id:provider.id,module:provider.original})
+        const after = proposal.provider({id:provider.id,module:provider.original})
+        return isDeepStrictEqual(before?.row.config, after?.row.config)
+          ? [] : [{id:provider.id, config:after?.row.config}]
+      })
+      if (isDeepStrictEqual(ownedIntent(state.plan), ownedIntent(proposal))
+        && configChanges.every(change => owner.settingsBridge?.ownsWrite(owner.resolve(change.id), change.config))) {
+        // Validated settings saves belong to the existing provider Entry, not the
+        // whole product. Loader commits volatile fields in place and owns any
+        // ordinary child restart; neither path removes unrelated Session RPCs
+        // or browser scope adapters. Include still applies all native rows.
         const accepted = {plan:state.plan, patches:state.patches}
         state.plan = proposal
         state.patches = proposal.rows
-        try {return next()} catch (error) {
+        try {
+          const result = next()
+          for (const change of configChanges) {
+            // Entry.update commits volatile references synchronously. Ordinary
+            // updates record their lifecycle on the child fiber, which the
+            // official profile reconciler already awaits through Loader.
+            void owner.resolve(change.id).update({config:structuredClone(change.config)})
+              .catch(error => owner.ctx.logger.error(error))
+          }
+          return result
+        } catch (error) {
           state.plan = accepted.plan
           state.patches = accepted.patches
           throw error

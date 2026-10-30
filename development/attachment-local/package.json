@@ -1,0 +1,43 @@
+{
+  "name": "@deepseek-ai/dsh-attachment-local",
+  "description": "NextTavern maintained attachment storage with an Android installer-owned durability boundary; not an upstream release",
+  "version": "0.1.7-rc.2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/attachment/attachment-local"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./lib/index.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "lib",
+    "README.md",
+    "LICENSE",
+    "LICENSE.upstream",
+    "NOTICE",
+    "ORIGIN.json"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/dsh-attachment": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-home-paths": "0.1.7-rc.2",
+    "@deepseek-ai/cordis": "4.0.4"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-lazy-require": "0.1.7-rc.2",
+    "@deepseek-ai/schemastery": "3.18.4",
+    "sharp": "^0.35.3",
+    "@deepseek-ai/node-addon-system": "0.1.2"
+  },
+  "private": true
+}
