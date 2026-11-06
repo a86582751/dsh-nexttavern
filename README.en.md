@@ -12,6 +12,8 @@
 
 Sorry for the long wait. The 0.3 goal is broader SillyTavern community-card compatibility, including MVU variables, EJS, RUBY and frontend styling. Connecting them to our own state, structured events and recovery mechanisms has proved harder than expected, and work is accelerating. The rc.4 release retains the distribution and installation fixes and addresses Issue #17; broader 0.3 compatibility remains in development. Thank you for helping us improve it with your feedback.
 
+The development line now runs author pages and helper hooks in the browser's native JavaScript environment. MVU, EJS and persistent-message workflows have passed controlled Core checks; complete original-card play and recovery still need validation. See the [0.3 development log](DEVELOPMENT-0.3.md).
+
 For 0.3 development progress, read the [development log](DEVELOPMENT-0.3.md). Card authors can follow the [community-card guide](COMMUNITY-CARDS.md), [Native format and complete examples](NATIVE-CARD-FORMAT.md), [state/MVU/Ruby guide](NATIVE-STATE.md), and [preset/regex guide](COMMUNITY-PRESETS.md). These Chinese guides describe unreleased development capabilities; Native 1.0/1.1 are file-format versions, not a 0.3 product release.
 
 **Let your characters think for themselves, and let the world unfold from your choices.**
@@ -433,7 +435,7 @@ npm ci --prefix ./build-tools --ignore-scripts --no-audit --no-fund
 npm run build
 ```
 
-Public sources rebuild all four registered browser bundles, including the product and its compatibility providers. If you change the sources, update your own version and provenance rather than passing it off as the original release. The full paid behavior acceptance used an alpha.1 candidate. The rc.2 migration received minimal source checks and real local/server installation, without rerunning that full paid suite. A clean VM and real ARM64 devices remain unverified.
+Public sources rebuild the registered browser bundles, including the product and its compatibility providers; the bundled build map lists the current entry points. If you change the sources, update your own version and provenance rather than passing it off as the original release. The full paid behavior acceptance used an alpha.1 candidate. The rc.2 migration received minimal source checks and real local/server installation, without rerunning that full paid suite. A clean VM and real ARM64 devices remain unverified.
 
 ## Community
 
