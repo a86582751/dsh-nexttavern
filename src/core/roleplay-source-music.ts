@@ -17,7 +17,8 @@ export interface SourceMusicCandidateV1 {
   type:string
   carrier:'asset'|'html'|'script'
   position:string
-  storage:'embedded'|'remote'
+  storage:'embedded'|'remote'|'unresolved'
+  reason?:string
 }
 export interface SourceRemoteAudioV1 {id:string;name:string;type:string;url:string}
 interface LocatedMusic {
@@ -31,36 +32,52 @@ const remoteAudioTypes:Readonly<Record<string,string>>={
   mp3:'audio/mpeg',wav:'audio/wav',ogg:'audio/ogg',m4a:'audio/mp4',aac:'audio/aac',
   flac:'audio/flac',opus:'audio/ogg',webm:'audio/webm',
 }
-function remoteAudioType(uri:string):string|undefined {
-  if(!/^https?:\/\//i.test(uri))return
-  try {return remoteAudioTypes[new URL(uri).pathname.split('.').at(-1)!.toLowerCase()]}
-  catch{return}
-}
-
 function discover(data:NextTavernCardData):LocatedMusic[] {
   const cardsPointer=nextTavernExecutionAuthorPointer(data,'cards')
   const rulesPointer=nextTavernExecutionAuthorPointer(data,'rules')
   data=nextTavernExecutionAuthorData(data)
   const found:LocatedMusic[]=[]
-  const add=(uri:string,carrier:SourceMusicCandidateV1['carrier'],position:string,name?:string)=>{
+  const add=(uri:string,carrier:SourceMusicCandidateV1['carrier'],position:string,name?:string,
+    audioSink=false,hint?:string)=>{
+    uri=uri.trim()
     const match=audioData.exec(uri)
-    const type=match?.[1]?.toLowerCase()??remoteAudioType(uri)
+    let remote=false,pathType:string|undefined
+    if(!match)try {
+      const url=new URL(uri)
+      remote=/^https?:$/.test(url.protocol)&&!!url.hostname
+      if(remote)pathType=remoteAudioTypes[url.pathname.split('.').at(-1)!.toLowerCase()]
+    }catch {}
+    const type=match?.[1]?.toLowerCase()??hint??pathType??(audioSink?'audio/unknown':undefined)
     if(!type)return
+    const storage=match?'embedded':remote?'remote':'unresolved'
     found.push({uri,candidate:{candidateId:recordSha256([carrier,position]),
-      name:name??`角色卡音频 ${found.length+1}`,type,carrier,position,storage:match?'embedded':'remote'}})
+      name:name??`角色卡音频 ${found.length+1}`,type,carrier,position,storage,
+      ...(storage==='unresolved'?{reason:'音频地址缺少可用的 HTTP/S、内嵌数据或资源映射；请在原卡中补全地址。'}:{})}})
   }
-  const assets=(value:unknown,position:string,name?:string):void=>{
-    if(typeof value==='string'){add(value,'asset',position,name);return}
-    if(Array.isArray(value)){value.forEach((item,index)=>assets(item,position+'/'+index,name));return}
-    if(object(value))for(const [key,item]of Object.entries(value)) {
-      assets(item,position+'/'+pointer(key),typeof value.name==='string'?value.name:name)
+  const assets=(value:unknown,position:string,name?:string,hint?:string,audioAsset=false):void=>{
+    if(typeof value==='string'){add(value,'asset',position,name,audioAsset,hint);return}
+    if(Array.isArray(value)){value.forEach((item,index)=>assets(item,position+'/'+index,name,hint,audioAsset));return}
+    if(object(value)) {
+      const declared=typeof value.type==='string'&&value.type.startsWith('audio/')?value.type
+        :typeof value.mime==='string'&&value.mime.startsWith('audio/')?value.mime:undefined
+      const extension=typeof value.ext==='string'?remoteAudioTypes[value.ext.toLowerCase()]:undefined
+      const localHint=declared??extension??hint
+      const localAudio=audioAsset||!!localHint||['audio','music','bgm'].includes(String(value.type))
+      for(const [key,item]of Object.entries(value)) {
+        if(['name','type','mime','ext'].includes(key))continue
+        const address=['uri','url','src','path','data','uris','urls','sources'].includes(key)
+        assets(item,position+'/'+pointer(key),typeof value.name==='string'?value.name:name,
+          address?localHint:undefined,address&&localAudio)
+      }
     }
   }
   const script=(source:string,position:string)=>{
-    for(const literal of scriptLiteralsV1(source,position))add(literal.value,literal.carrier,literal.position,literal.name)
+    for(const literal of scriptLiteralsV1(source,position))add(literal.value,literal.carrier,literal.position,
+      literal.name,literal.audioSink,literal.typeHint)
   }
   const html=(source:string,position:string)=>{
-    for(const literal of htmlLiteralsV1(source,position))add(literal.value,literal.carrier,literal.position,literal.name)
+    for(const literal of htmlLiteralsV1(source,position))add(literal.value,literal.carrier,literal.position,
+      literal.name,literal.audioSink,literal.typeHint)
   }
   assets(data.assets,'/data/assets')
   for(const field of ['cards','worldbook']as const)data[field].forEach((row,index)=>html(row.content,`${field==='cards'?cardsPointer:'/data/worldbook'}/${index}/content`))
@@ -98,17 +115,14 @@ function discover(data:NextTavernCardData):LocatedMusic[] {
 
 export function createSourceMusicV1(deps:{
   read(session:ResourceSession):SourceMusicDataV1|null
+  /** InputState owns the complete Source read and discovery lifetime. */
+  capture<T>(session:ResourceSession,build:()=>T):T
   libraryFor(session:ResourceSession):ReturnType<typeof createTavernLibrary>
 }) {
-  const catalogs=new Map<string,{sourceHash:string;importId:string;items:LocatedMusic[]}>()
-  const catalog=(session:ResourceSession)=>{
-    const source=deps.read(session),previous=catalogs.get(session.id)
-    if(!source){catalogs.delete(session.id);return null}
-    if(previous?.sourceHash===source.sourceHash)return previous
-    const next={sourceHash:source.sourceHash,importId:source.importId,items:discover(source.data)}
-    catalogs.set(session.id,next)
-    return next
-  }
+  const catalog=(session:ResourceSession)=>deps.capture(session,()=>{
+    const source=deps.read(session)
+    return source?{sourceHash:source.sourceHash,importId:source.importId,items:discover(source.data)}:null
+  })
   return {
     list(session:ResourceSession) {
       const current=catalog(session)
@@ -119,6 +133,7 @@ export function createSourceMusicV1(deps:{
       if(!current||current.sourceHash!==sourceHash)throw Error('角色卡来源已变化，请刷新音乐列表后重新选择。')
       const item=current.items.find(value=>value.candidate.candidateId===candidateId)
       if(!item)throw Error('角色卡音频已不存在，请刷新音乐列表。')
+      if(item.candidate.storage==='unresolved')throw Error(item.candidate.reason!)
       if(item.candidate.storage==='remote')return {id:recordSha256([current.sourceHash,candidateId]),
         name:item.candidate.name,type:item.candidate.type,url:item.uri}
       const match=audioData.exec(item.uri)!
@@ -129,6 +144,5 @@ export function createSourceMusicV1(deps:{
         source:{kind:'source-media-v1',sessionId:session.id,importId:current.importId,
           sourceHash:current.sourceHash,candidateId}})
     },
-    dispose() {catalogs.clear()},
   }
 }
