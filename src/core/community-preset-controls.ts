@@ -1,25 +1,41 @@
 import type {CommunityPresetV1,CommunityPresetControlOption,CommunityPresetPrompt,CommunityJson} from './community-preset-types.js'
 import type {CommunityMacroWrite} from './community-preset-macros.js'
+import {boundedRegexNameMatrix,worldbookRegex} from './bounded-regex.js'
+import {communityBetweenOptions} from './community-preset-types.js'
+export {communityBetweenOptions} from './community-preset-types.js'
 
 type Data=Record<string,CommunityJson>
 const object=(value:unknown):Data=>value&&typeof value==='object'&&!Array.isArray(value)?value as Data:{}
 const list=(value:CommunityJson|undefined):CommunityJson[]=>Array.isArray(value)?value:[]
 const text=(value:CommunityJson|undefined)=>typeof value==='string'?value:''
 const strings=(value:CommunityJson|undefined)=>list(value).filter((value):value is string=>typeof value==='string')
-function matchesBoundary(name:string,pattern:string) {
-  const literal=/^\/([\s\S]*)\/([a-z]*)$/.exec(pattern)
-  try{return new RegExp(literal?.[1]??pattern,(literal?.[2]??'').replace(/[gy]/g,'')).test(name)}catch{return false}
-}
-/** One range interpretation is shared by native controls and their editor. */
-export function communityBetweenOptions(preset:CommunityPresetV1,option:CommunityPresetControlOption):CommunityPresetPrompt[] {
-  if(!option.match)return []
+export async function resolveCommunityPresetControls(preset:CommunityPresetV1,imported=false):Promise<void> {
+  const candidates=preset.profile.groups.flatMap(group=>group.options).filter(option=>option.match)
+  if(!candidates.length)return
   const byId=new Map(preset.prompts.map(prompt=>[prompt.identifier,prompt]))
   const prompts=preset.promptOrder.length?preset.promptOrder.map(row=>byId.get(row.identifier))
     .filter((prompt):prompt is CommunityPresetPrompt=>!!prompt):preset.prompts
-  const below=prompts.findIndex(prompt=>matchesBoundary(prompt.name,option.match!.below))
-  if(below<0)return []
-  const above=prompts.findIndex((prompt,index)=>index>below&&matchesBoundary(prompt.name,option.match!.above))
-  return above<0?[]:prompts.slice(below+1,above).filter(prompt=>!prompt.marker&&!prompt.configurationOnly)
+  const basis=JSON.stringify(prompts.map(prompt=>[prompt.identifier,prompt.name,prompt.marker,prompt.configurationOnly]))
+  const identity=(option:CommunityPresetControlOption)=>JSON.stringify([basis,option.match])
+  const options=candidates.filter(option=>imported||option.raw.resolvedRangeBasis!==identity(option))
+  if(!options.length)return
+  const patterns:ReturnType<typeof worldbookRegex>[]=[],positions=new Map<string,number>()
+  const position=(source:string)=>{
+    const pattern=worldbookRegex(source,true),key=JSON.stringify(pattern)
+    let index=positions.get(key)
+    if(index===undefined){index=patterns.length;positions.set(key,index);patterns.push(pattern)}
+    return index
+  }
+  const boundaries=options.map(option=>[position(option.match!.below),position(option.match!.above)] as const)
+  const matrix=await boundedRegexNameMatrix(patterns,prompts.map(prompt=>prompt.name))
+  for(const [index,option] of options.entries()) {
+    const [lower,upper]=boundaries[index]!
+    const below=matrix[lower]!.indexOf(true)
+    const above=below<0?-1:matrix[upper]!.findIndex((match,at)=>at>below&&match)
+    option.raw.resolvedPromptIds=above<0?[]:prompts.slice(below+1,above)
+      .filter(prompt=>!prompt.marker&&!prompt.configurationOnly).map(prompt=>prompt.identifier)
+    option.raw.resolvedRangeBasis=identity(option)
+  }
 }
 export function applyCommunityPresetControl(preset:CommunityPresetV1,request:{groupId:string;optionId:string;
   enabled:boolean;value?:CommunityJson;answers?:Data}) {

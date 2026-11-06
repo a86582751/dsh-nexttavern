@@ -1,8 +1,8 @@
 import type * as ReactAPI from 'react'
 import type {CommunityPresetPolicy,CommunitySelection} from '../core/community-presets.js'
 import type {CommunityJson,CommunityPresetPrompt,CommunityPresetV1} from '../core/community-preset-types.js'
-import {communityBetweenOptions} from '../core/community-preset-controls.js'
-export {communityBetweenOptions} from '../core/community-preset-controls.js'
+import {communityBetweenOptions} from '../core/community-preset-types.js'
+export {communityBetweenOptions} from '../core/community-preset-types.js'
 
 export interface CommunityPanelDependencies {
   React:typeof ReactAPI
@@ -252,6 +252,10 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
             view==='all'&&button('编辑预设库条目',edit,!!draft),
             button('删除社区预设',()=>void mutate({action:'delete',presetId:selected}),!!draft)))))),
       h('div',panel('features'),showFeatures&&preset&&h('div',null,
+          h('label',null,'原生适配',h('select',{'aria-label':'原生适配',className:'dsh-rp-input',
+            value:preset.profile.id,disabled:working||!!draft,
+            onChange:(event:ReactAPI.ChangeEvent<HTMLSelectElement>)=>void mutate({action:'profile',presetId:selected,profile:event.target.value})},
+          ['standard','dream','kemini','reborn','izumi'].map(id=>h('option',{key:id,value:id},id)))),
           !canConfigure&&h('p',{className:'dsh-rp-muted'},'当前仅查看该库条目。应用到所选范围后，可修改分组与生成设置。'),
           h('fieldset',{disabled:working||!!draft||!canConfigure},h('legend',null,'生成设置'),
             checkbox('应用预设采样参数',current?.applySampling??false,checked=>configure({applySampling:checked})),

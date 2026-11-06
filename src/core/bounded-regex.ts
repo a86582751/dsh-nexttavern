@@ -228,6 +228,38 @@ export function worldbookRegex(key: unknown, caseSensitive = false): WorldbookRe
   return { pattern: key, flags: caseSensitive ? '' : 'i' }
 }
 
+/** Prompt-name ranges are published on edit by Core. The UI consumes ids;
+ * neither side runs an author's expression on its event loop. Compile once
+ * per boundary and test the actual ordered names in one bounded worker. */
+export async function boundedRegexNameMatrix(patterns:readonly RegexPattern[],names:readonly string[]):Promise<boolean[][]> {
+  if(patterns.length*names.length>8192||patterns.length*names.reduce((sum,name)=>sum+name.length,0)>4_194_304
+    ||names.some(name=>name.length>32768)
+    ||patterns.some(pattern=>!isRegexPattern(pattern)))throw Error('COMMUNITY_PROMPT_NAME_REGEX_LIMIT')
+  if(!patterns.length)return []
+  if(active>=4)throw Error('COMMUNITY_PROMPT_NAME_REGEX_BUSY')
+  active++
+  let worker:Worker|undefined
+  try {
+    return await new Promise<boolean[][]>((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(Error('COMMUNITY_PROMPT_NAME_REGEX_TIMEOUT')),250)
+      const done=(error:Error|null,value?:boolean[][])=>{
+        clearTimeout(timer)
+        if(error)reject(error);else resolve(value!)
+      }
+      try {
+        worker=new Worker(`const {parentPort,workerData}=require('node:worker_threads');
+          parentPort.postMessage(workerData.patterns.map(p=>{let re;
+            try{re=new RegExp(p.pattern,p.flags)}catch{return workerData.names.map(()=>false)}
+            return workerData.names.map(name=>re.test(name))}));`,
+        {eval:true,workerData:{patterns,names},resourceLimits:{maxOldGenerationSizeMb:24,stackSizeMb:2}})
+        worker.once('message',value=>done(null,value))
+        worker.once('error',error=>done(error))
+        worker.once('exit',code=>{if(code)done(Error('COMMUNITY_PROMPT_NAME_REGEX_WORKER'))})
+      }catch(error){done(error as Error)}
+    })
+  }finally{if(worker)await worker.terminate();active--}
+}
+
 /** One ready worker processes the complete catalog with batch-local state.
  * Active batches share the existing replacement slots. Trusted module startup
  * precedes dispatch; the unchanged deadline covers clone, regex and receipts.

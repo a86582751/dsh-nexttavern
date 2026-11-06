@@ -2,7 +2,7 @@ import type {SettingsRoutesDependencies} from './roleplay-settings-routes-types.
 import type {CommunityPresets} from './community-presets.js'
 import {jsonResponse} from './roleplay-state.js'
 import {applyCommunityRegex,communityRegexEntry,communityRegexMacros} from './community-regex.js'
-import {createCommunityPresetDisplay} from './community-preset-display.js'
+import {createCommunityPresetDisplay,communityDisplayPolicy} from './community-preset-display.js'
 import type {CommunityDisplayInput} from './community-preset-display.js'
 
 export function registerCommunityPresetRoutes(deps:Pick<SettingsRoutesDependencies,'ctx'|'resolveRoleplaySession'>
@@ -20,6 +20,7 @@ export function registerCommunityPresetRoutes(deps:Pick<SettingsRoutesDependenci
         await ctx.get('tavernConversations')?.ready
         if(!body) {
           const presetId=url.searchParams.get('presetId'),action=url.searchParams.get('action')
+          if(kind==='community-presets'&&!action)await communityPresets.ensureControls(session.id,presetId??undefined)
           if(kind==='community-presets'&&action==='card-mapping')return jsonResponse(200,{ok:true,
             ...await deps.cardMappingInput?.(session.id) as Record<string,unknown>})
           if(presetId&&action==='export')return jsonResponse(200,{ok:true,data:communityPresets.exportPreset(presetId)})
@@ -31,7 +32,8 @@ export function registerCommunityPresetRoutes(deps:Pick<SettingsRoutesDependenci
           return jsonResponse(200,{ok:true,...communityPresets.policy(session.id)})
         }
         if(kind==='regexes'&&body.action==='preview') {
-          const policy=communityPresets.policy(session.id),text=String(body.text??''),channel=body.channel==='prompt'?'prompt':'display'
+          const text=String(body.text??''),channel=body.channel==='prompt'?'prompt':'display',
+            current=communityPresets.policy(session.id),policy=channel==='display'?communityDisplayPolicy(current):current
           const placement=Number(body.placement??2) as 0|1|2|3|4|5|6,depth=body.depth===null?null:Number(body.depth??0)
           const output=await applyCommunityRegex(policy,[communityRegexEntry('preview',text,policy.fingerprint,{channel,placement,depth,isEdit:body.isEdit===true})],
             communityRegexMacros({user:'用户',char:'角色',input:text},{},{},policy.fingerprint),[],request.signal)

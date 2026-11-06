@@ -19,7 +19,7 @@ function controlGroups(value:CommunityJson|undefined):CommunityPresetControlGrou
         id:str(raw.id,`option-${index+1}`),label:str(raw.label),type:str(raw.type,'toggle'),
         enable:strings(raw.enable),disable:strings(raw.disable),
         ...(raw.variable_id?{variableId:str(raw.variable_id)}:{}),
-        ...(raw.match?{match:{below:str(match.below),above:str(match.above)}}:{}),raw,
+        ...(raw.match?{match:{below:str(match.below),above:str(match.above)}}:{}),raw:structuredClone(raw),
       }
     })
     return {id:str(raw.id),label:str(raw.label),mode:raw.mode==='multiple'?'multiple':'single',options,
@@ -92,14 +92,15 @@ function keminiGroups(configuration:Data,prompts:CommunityPresetPrompt[]):Commun
 
 export function extractCommunityPresetProfile(raw:Data,prompts:CommunityPresetPrompt[]):CommunityPresetProfile {
   const extensions=obj(raw.extensions),helper=obj(extensions.tavern_helper)
-  const scripts=list(helper.scripts).map(obj)
+  const scripts=list(helper.scripts).map(obj).filter(script=>script.enabled!==false&&script.disabled!==true)
   const source=scripts.map(script=>str(script.content)).join('\n')
+  const selected=str(obj(extensions.nexttavern).profile)
   const spreset=obj(extensions.SPreset)
   const profile:CommunityPresetProfile={id:'standard',version:1,groups:[],configuration:{},transport:{kind:'standard'},actions:[]}
   if(Object.keys(spreset).length)profile.configuration.spreset=inertConfiguration(spreset)
   const dream=scripts.find(script=>obj(script.data).chat_history&&obj(script.data).entry_processing)
   const dreamControls=scripts.find(script=>Array.isArray(obj(script.data).groups))
-  if(dream&&dreamControls){
+  if(selected==='dream'&&dream&&dreamControls){
     profile.id='dream';profile.groups=controlGroups(obj(dreamControls.data).groups)
     profile.configuration.dream={messageProcessing:obj(dream.data),emptyPlotRecovery:true,
       reasoningExtraction:obj(scripts.find(script=>obj(script.data).start_regex)?.data),
@@ -108,14 +109,14 @@ export function extractCommunityPresetProfile(raw:Data,prompts:CommunityPresetPr
     for(const id of ['format-completion','dream-self-repair','extra-summary']){
       profile.actions.push({id,status:'deferred',reason:'额外模型动作保留配置，后续接入；本轮不发起请求'})
     }
-  }else if(source.includes('configurablePrompts')&&source.includes('emit_complete_response_')&&source.includes('nameFallbacks')){
+  }else if(selected==='kemini'){
     profile.id='kemini';const config=keminiConfiguration(source)
     profile.configuration.kemini=config
     profile.groups=keminiGroups(config,prompts)
     profile.transport={kind:'kemini',toolNamePrefix:'emit_complete_response_',contentType:'string',
       controlAnchor:config.transportControlAnchor??'<format>',preserveClientTools:true,toolChoice:'auto',
       bypassCallerToolChoices:['none','required','forced'],enabled:true}
-  }else if(source.includes('ZHUYIN_MAP')&&source.includes('SENSITIVE_WORDS')&&source.includes('izumi_layer')){
+  }else if(selected==='izumi'){
     profile.id='izumi'
     const extracted=extractCommunityStatic(source,['ZHUYIN_MAP','SENSITIVE_WORDS','DEFAULT_SANITIZER_CONFIG',
       'DIRECT_CONFLICT_GROUPS','ADVICE_CONTINUE_TEXT','SANITIZER_ZERO_WIDTH_CHAR'])
@@ -131,8 +132,7 @@ export function extractCommunityPresetProfile(raw:Data,prompts:CommunityPresetPr
     }
     profile.transport={kind:'izumi',advice:true,sanitizer:true}
     profile.actions.push({id:'wordflow',status:'deferred',reason:'词库推进属于显式用户动作，后续接入'})
-  }else if(str(obj(spreset.ChatSquash).squashed_post_script).includes('openSoliumbraMessage')
-    &&Object.values(obj(spreset.ToolBindings)).some(value=>str(obj(value).resolvedName)==='game_content')){
+  }else if(selected==='reborn'){
     profile.id='reborn'
     profile.configuration.reborn={postscript:{enabled:obj(spreset.ChatSquash).squashed_post_script_enable===true,
       independentOfChatSquash:true,noConvertMarker:'<|no-convert|>',prefillThinkingTag:'prefill_thinking',
@@ -147,7 +147,7 @@ export function extractCommunityPresetProfile(raw:Data,prompts:CommunityPresetPr
   }else {
     const extra=extractCommunityStatic(source,['EXTRA_PARAMS','TARGET_MODEL'])
     if(extra.EXTRA_PARAMS)profile.configuration.extraParameters={value:extra.EXTRA_PARAMS,
-      enabled:scripts.some(script=>script.enabled===true&&str(script.content).includes('EXTRA_PARAMS')),
+      enabled:obj(extensions.nexttavern).extraParameters===true,
       targetModel:extra.TARGET_MODEL??''}
   }
   return profile
