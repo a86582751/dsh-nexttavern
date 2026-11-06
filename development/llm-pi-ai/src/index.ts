@@ -60,8 +60,8 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 
 import type { Context } from '@deepseek-ai/cordis'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
-import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
-import type { AdapterRegistrationHandle, DirectoryRegistrationHandle, LlmConfigurableProvider } from '@deepseek-ai/dsh-llm'
+import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from 'dsh-nexttavern-native-llm'
+import type { AdapterRegistrationHandle, DirectoryRegistrationHandle, LlmConfigurableProvider } from 'dsh-nexttavern-native-llm'
 import type {} from '@deepseek-ai/dsh-fs'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import { PiAiAdapter } from './adapter.js'
@@ -70,6 +70,7 @@ import { catalogProviderIds } from './catalog.js'
 import { assertServiceable, Config, resolveProfiles } from './config.js'
 import type { ResolvedPiAiProviderProfile } from './config.js'
 import { discoverModels } from './discovery.js'
+import { createNativeHttpTransport } from 'dsh-nexttavern-native-http'
 import type { StoredModelDiscoveryProfile } from './discovery.js'
 import { registerPiAiFlows } from './login.js'
 
@@ -148,6 +149,8 @@ function directoryEntries(
 
 /** Register one generic pi-ai adapter for all configured provider routes. */
 export function apply(ctx: Context, config: Config): void {
+  const transport = createNativeHttpTransport()
+  ctx.effect(() => () => transport.close(), 'llm-pi-ai.http()')
   ctx.inject(['settings'], child => { child.effect(() => child.settings.configure({auto: false}, ctx.fiber)) })
   const settingsNs = ctx.fiber.entry?.options.id ?? NS
   const readProviders = () => structuredClone(config.providers.get()) as import('./config.js').Options['providers']
@@ -197,6 +200,7 @@ export function apply(ctx: Context, config: Config): void {
   // a configuration change causes, and a sign-in survives one.
   const auth = { credentials: credentialStoreFrom(ctx), authContext: authContextFrom(ctx) }
   const adapter = new PiAiAdapter({
+    fetch: transport.fetch,
     profiles,
     resolveApiKey,
     auth,
@@ -262,6 +266,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.llm.registerModelDiscovery(settingsNs, (request, signal) => discoverModels(
     { ...request, ...signal === undefined ? {} : { signal } },
     () => storedDiscoveryProfile(request.provider),
+    transport.fetch,
   ))
   // Route effects bind to this apply fiber via the stable `ctx` reference,
   // even when a swap runs inside the scoped settings callback below. A bare

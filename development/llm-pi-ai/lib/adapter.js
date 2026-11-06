@@ -78,7 +78,7 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
     var e = new Error(message);
     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
 });
-import { attributionHeaders, contentHasImage, LlmAdapter, LlmError, assertAgentLoopRequestCurrent, ReasoningEffortId, } from '@deepseek-ai/dsh-llm';
+import { attributionHeaders, contentHasImage, LlmAdapter, LlmError, assertAgentLoopRequestCurrent, ReasoningEffortId, } from 'dsh-nexttavern-native-llm';
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout';
 import { toPiContext, toOrderedCompletionsInputV1, toOrderedCompletionsInputV2 } from './context.js';
 import { createModels, getSupportedThinkingLevels } from './models.js';
@@ -366,7 +366,7 @@ export class PiAiAdapter extends LlmAdapter {
             // Even an empty insertion delta has a live material owner and residual
             // section changes. Every supported route keeps that guard through fetch.
             const guardedTransport = hasMaterial || supported;
-            const transportFetch = globalThis.fetch;
+            const transportFetch = this.config.fetch ?? globalThis.fetch;
             const assertCurrent = () => {
                 options.signal?.throwIfAborted();
                 assertAgentLoopRequestCurrent(options);
@@ -413,14 +413,15 @@ export class PiAiAdapter extends LlmAdapter {
                     assertCurrent();
                 // SDK auth, lazy API loading and payload hooks may await afterwards.
                 // Each HTTP delegation checks the same owner immediately before fetch.
-                const materialTransportFetch = (input, init) => {
-                    assertCurrent();
+                const guardedTransportFetch = (input, init) => {
+                    if (guardedTransport)
+                        assertCurrent();
                     watchdog.signal.throwIfAborted();
                     return transportFetch(input, init);
                 };
                 const streamOptions = {
                     ...profileOptions(profile, reasoning, apiKey),
-                    ...guardedTransport ? { fetch: materialTransportFetch } : {},
+                    fetch: guardedTransportFetch,
                     ...options.temperature === undefined ? {} : { temperature: options.temperature },
                     ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
                     ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },

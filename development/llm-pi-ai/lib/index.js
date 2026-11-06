@@ -1,12 +1,13 @@
 // Generated from runtime/alpha3/compat/llm-pi-ai/src/index.ts; edit the TypeScript source.
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment';
-import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm';
+import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from 'dsh-nexttavern-native-llm';
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values';
 import { PiAiAdapter } from './adapter.js';
 import { authContextFrom, credentialStoreFrom } from './auth.js';
 import { catalogProviderIds } from './catalog.js';
 import { assertServiceable, Config, resolveProfiles } from './config.js';
 import { discoverModels } from './discovery.js';
+import { createNativeHttpTransport } from 'dsh-nexttavern-native-http';
 import { registerPiAiFlows } from './login.js';
 export { PiAiAdapter } from './adapter.js';
 export { Config } from './config.js';
@@ -65,6 +66,8 @@ function directoryEntries(profiles, settingsNs) {
 }
 /** Register one generic pi-ai adapter for all configured provider routes. */
 export function apply(ctx, config) {
+    const transport = createNativeHttpTransport();
+    ctx.effect(() => () => transport.close(), 'llm-pi-ai.http()');
     ctx.inject(['settings'], child => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)); });
     const settingsNs = ctx.fiber.entry?.options.id ?? NS;
     const readProviders = () => structuredClone(config.providers.get());
@@ -106,6 +109,7 @@ export function apply(ctx, config) {
     // a configuration change causes, and a sign-in survives one.
     const auth = { credentials: credentialStoreFrom(ctx), authContext: authContextFrom(ctx) };
     const adapter = new PiAiAdapter({
+        fetch: transport.fetch,
         profiles,
         resolveApiKey,
         auth,
@@ -164,7 +168,7 @@ export function apply(ctx, config) {
     // except the stored credential and deployment-owned headers: the curated UI
     // accepts neither, so an already-configured route supplies both inside the
     // Host rather than widening the discovery request.
-    ctx.llm.registerModelDiscovery(settingsNs, (request, signal) => discoverModels({ ...request, ...signal === undefined ? {} : { signal } }, () => storedDiscoveryProfile(request.provider)));
+    ctx.llm.registerModelDiscovery(settingsNs, (request, signal) => discoverModels({ ...request, ...signal === undefined ? {} : { signal } }, () => storedDiscoveryProfile(request.provider), transport.fetch));
     // Route effects bind to this apply fiber via the stable `ctx` reference,
     // even when a swap runs inside the scoped settings callback below. A bare
     // mount (zero routes) is the dormant posture: nothing registers until a

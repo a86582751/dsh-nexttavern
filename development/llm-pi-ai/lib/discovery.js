@@ -22,8 +22,8 @@
  *
  * @module dsh-llm-pi-ai/discovery
  */
-import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@deepseek-ai/dsh-llm';
-import { attributionHeaders } from '@deepseek-ai/dsh-llm';
+import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from 'dsh-nexttavern-native-llm';
+import { attributionHeaders } from 'dsh-nexttavern-native-llm';
 import { catalogModels } from './catalog.js';
 /**
  * Protocols whose model listing this module can read. OpenAI protocols use
@@ -206,7 +206,7 @@ function usableProbeKey(raw) {
  * @throws LlmError when the protocol has no readable listing, the endpoint
  *   refuses or fails the request, or the reply is not a model listing.
  */
-export async function discoverModels(request, storedProfile) {
+export async function discoverModels(request, storedProfile, transportFetch = globalThis.fetch) {
     // A catalog route already has its answer, and a better one: the installed
     // entries carry context windows and output caps no listing endpoint reports.
     if (request.provider !== undefined) {
@@ -258,7 +258,7 @@ export async function discoverModels(request, storedProfile) {
         }
         for (const [name, value] of Object.entries(attributionHeaders()))
             headers.set(name, value);
-        response = await fetch(url, {
+        response = await transportFetch(url, {
             method: 'GET',
             headers,
             ...request.signal === undefined ? {} : { signal: request.signal },

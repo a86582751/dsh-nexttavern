@@ -52,10 +52,10 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
     var e = new Error(message);
     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
 });
-import { assertAgentLoopRequestCurrent, attributionHeaders, LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm';
+import { assertAgentLoopRequestCurrent, attributionHeaders, LlmAdapter, LlmError } from 'dsh-nexttavern-native-llm';
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout';
 import { modelInfo } from './model-info.js';
-import { DeepSeekFileStore } from './file-store.js';
+import { DeepSeekFileStore } from '@deepseek-ai/dsh-llm-deepseek';
 import { MESSAGES_FILES_BETA, MESSAGES_TOOL_CHANGES_BETA, messagesApiRoot } from './messages-api.js';
 import { FileResolutionFailure, RequestFiles } from './request-files.js';
 import { prepareRequestExtensions } from './request-extensions.js';
@@ -75,7 +75,7 @@ export class DeepSeekAdapter extends LlmAdapter {
     constructor(dependencies) {
         super();
         this.dependencies = dependencies;
-        this.files = dependencies.resolveFiles?.() ?? new DeepSeekFileStore();
+        this.files = dependencies.resolveFiles?.() ?? new DeepSeekFileStore({ fetch: dependencies.fetch });
     }
     providerInfo(provider) { return { id: provider, name: this.dependencies.providerName ?? 'DeepSeek' }; }
     providerRetryPolicy(_provider) { return this.dependencies.options().retryPolicy; }
@@ -182,7 +182,7 @@ export class DeepSeekAdapter extends LlmAdapter {
                 // Credential, file and extension preparation may await. The original
                 // Native owner must still be current at each actual Messages delegation.
                 assertAgentLoopRequestCurrent(options);
-                const response = await fetch(`${messagesApiRoot(connection.baseURL)}/messages`, {
+                const response = await (this.dependencies.fetch ?? globalThis.fetch)(`${messagesApiRoot(connection.baseURL)}/messages`, {
                     method: 'POST', signal, body: extensions.payload, redirect: 'error',
                     headers: {
                         ...attributionHeaders(),
