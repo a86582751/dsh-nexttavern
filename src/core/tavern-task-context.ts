@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { adaptationTurns, importedStoryProjection } from '../memory/memory-provenance.js';
+import { createAdaptationActivityCursor, importedStoryProjection,createImportedStorySelectionCursor,
+    createImportedStorySelectionIndex } from '../memory/memory-provenance.js';
+import type {SurfaceCursorTransition} from 'dsh-nexttavern-native-session/surface';
 import { createTaskRetirement, taskContextRecord } from './tavern-task-retirement.js';
 import { taskHash, isInlinePending } from './tavern-task-primitives.js';
 import { taskValidationFailure } from './tavern-task-support.js';
@@ -395,70 +397,130 @@ export function taskStorySeqs(session: TaskContextSession) {
     const events = taskProjectionEvents(session), previous = storyProjectionCache.get(session);
     if (previous?.events === events)
         return new Set(previous.story);
-    const result = new Set<number>();
-    for (const event of events) {
-        const source = event?.type === 'user/message' ? event.data?.source : undefined;
-        if (source?.kind === 'roleplay-tasks' && source.stage === 'after-story'
-            && typeof source.storySeq === 'number'
-            && Number.isSafeInteger(source.storySeq))
-            result.add(source.storySeq);
-    }
+    const cursor = createTaskStoryCursor();
+    for (const event of events) cursor.advance(event);
+    const result = cursor.story;
     storyProjectionCache.set(session, {
         events, story: result
     });
     return result;
+}
+export function createTaskStoryCursor() {
+    const story = new Set<number>();
+    return {story, advance(event: TaskEvent) {
+        const source = event.type === 'user/message' ? event.data?.source : undefined;
+        if (source?.kind === 'roleplay-tasks' && source.stage === 'after-story'
+            && typeof source.storySeq === 'number' && Number.isSafeInteger(source.storySeq)) {
+            const changed = !story.has(source.storySeq);
+            story.add(source.storySeq);
+            return changed ? source.storySeq : undefined;
+        }
+        return undefined;
+    }};
+}
+export type TaskProjectionTurn = number | null | undefined;
+/** One append-only owner for task, authoring and adaptation classification.
+ * Imported-story selection is supplied separately from the exact surface cut. */
+export function createTaskActivityCursor() {
+    const management = new Set<TaskProjectionTurn>(), internalSeqs = new Set<number>();
+    const turns = new Map<number, TaskProjectionTurn>(), adaptation = createAdaptationActivityCursor();
+    let internal = false, turn: TaskProjectionTurn = null, authoring = false;
+    return {internalSeqs, turns,
+        effectiveTurn(event: TaskEvent): TaskProjectionTurn {return event.data?.turn ?? turns.get(event.seq)},
+        isInternal(event: TaskEvent, importedProse: boolean) {
+            const actualTurn = event.data?.turn ?? turns.get(event.seq);
+            return internalSeqs.has(event.seq) || !importedProse
+                && (management.has(actualTurn) || typeof actualTurn === 'number' && adaptation.turns.has(actualTurn))
+                && (event.type === 'assistant/message' || event.type === 'user/message' && event.data?.source?.kind === 'user');
+        },
+        advance(event: TaskEvent) {
+            const dirty = new Set<TaskProjectionTurn>(adaptation.advance(event));
+            function mark(value: TaskProjectionTurn) {
+                if (!management.has(value)) {management.add(value); dirty.add(value)}
+            }
+            if (event.type === 'turn/start') turn = event.data?.turn;
+            turns.set(event.seq, turn);
+            if (event.type === 'tool/call' && event.data?.name === 'rp_card_draft_check') authoring = true;
+            if (event.type === 'tool/call' && ['rp_card_import_begin', 'rp_commit_card'].includes(event.data?.name ?? '')) authoring = false;
+            if (event.type === 'user/message' && event.data?.source?.kind === 'roleplay-tasks'
+                && event.data.source.stage === 'after-story') authoring = false;
+            if (authoring && event.type === 'tool/call' && event.data?.name === 'ask_user_question') mark(event.data.turn ?? turn);
+            if (event.type === 'tool/call'
+                && (/^(?:rp_card_export_(?:begin|chunk|finalize)|rp_novel_export|rp_diagnose|rp_preset|rp_card_draft_check)$/.test(event.data?.name ?? '')
+                    || isSettingManagementCall(event.data))) mark(event.data?.turn ?? turn);
+            if (event.type === 'user/message' && event.data?.source?.kind === 'roleplay-tasks'
+                && ['card-export', 'novel-export'].includes(event.data.source.jobKind ?? '')) mark(turn);
+            if (event.type === 'turn/start' || event.type === 'turn/end') internal = false;
+            if (event.type === 'user/message' && event.data?.source?.kind === 'roleplay-tasks' && event.data.source.form === 'phase') {
+                internal = event.data.source.stage !== 'story';
+            }
+            if (event.type === 'user/message' && event.data?.source?.kind === 'roleplay-tasks'
+                && event.data.source.form === 'management-receipt' && event.data.source.jobKind === 'card-import') internal = true;
+            if (internal && event.type === 'assistant/message') internalSeqs.add(event.seq);
+            if (event.type === 'turn/end') turn = null;
+            return dirty;
+        },
+    };
+}
+/** One incremental task/receipt interpretation over an exact visible cut.
+ * Selection owners keep their distinct message policies and output ordering. */
+export function createTaskHistoryClassification(eventAt:(seq:number)=>TaskEvent|undefined) {
+    const activity=createTaskActivityCursor(),story=createTaskStoryCursor(),selection=createImportedStorySelectionIndex(eventAt)
+    type ImportCursor=ReturnType<typeof createImportedStorySelectionCursor>
+    interface Segment {events:TaskEvent[];cursor:ImportCursor;processed:number}
+    const bySeq=new Map<number,Segment>()
+    const make=():Segment=>({events:[],processed:-1,cursor:createImportedStorySelectionCursor(selection.visible,selection.selected)})
+    let current=make()
+    return {
+        committed:(seq:number)=>story.story.has(seq),
+        effective:(event:TaskEvent)=>activity.effectiveTurn(event),
+        internal:(event:TaskEvent)=>activity.isInternal(event,bySeq.get(event.seq)?.cursor.prose.has(event.seq)??false),
+        advance(event:TaskEvent,transition:SurfaceCursorTransition|undefined) {
+            const dirty=new Set<TaskProjectionTurn>(),changedSeqs=new Set<number>(),replay=new Set<Segment>()
+            const relevant=event.type!=='assistant/chunk'
+            if(relevant) {
+                if(event.type==='turn/start')current=make()
+                current.events.push(event);bySeq.set(event.seq,current)
+                for(const turn of activity.advance(event))dirty.add(turn)
+                const storySeq=story.advance(event)
+                if(storySeq!==undefined)changedSeqs.add(storySeq)
+            }
+            const removed=transition?.kind==='replace'?transition.removed:[],
+                added=transition?.kind==='append'||transition?.kind==='replace'?[transition.seq]:[]
+            for(const seq of selection.changeVisible(removed,added)) {
+                const row=eventAt(seq),source=row?.type==='user/message'?row.data?.source:undefined
+                if(row?.type!=='assistant/message'&&row?.type!=='tool/result'
+                    &&!(source?.kind==='roleplay-tasks'&&source.form==='phase'))continue
+                const segment=bySeq.get(seq)
+                if(segment&&seq<=segment.processed)replay.add(segment)
+            }
+            for(const segment of replay) {
+                const prior=segment.cursor.prose
+                segment.cursor=createImportedStorySelectionCursor(selection.visible,selection.selected)
+                for(const row of segment.events)segment.cursor.advance(row)
+                segment.processed=segment.events.at(-1)?.seq??-1
+                for(const seq of prior)if(!segment.cursor.prose.has(seq))changedSeqs.add(seq)
+                for(const seq of segment.cursor.prose)if(!prior.has(seq))changedSeqs.add(seq)
+            }
+            if(relevant&&!replay.has(current)) {
+                current.cursor.advance(event);current.processed=event.seq
+                if(current.cursor.prose.has(event.seq))changedSeqs.add(event.seq)
+            }
+            return {dirty,changedSeqs}
+        },
+    }
 }
 /** Durable step provenance, never keyword heuristics or a whole-turn ban. */
 export function internalTaskSeqs(session: TaskContextSession) {
     const events = taskProjectionEvents(session), previous = internalProjectionCache.get(session), surfaceKey = [...(session.surface?.nodes ?? [])].join(',');
     if (previous?.events === events && previous.surfaceKey === surfaceKey)
         return new Set(previous.hidden);
-    const hidden = new Set<number>(), managementTurns = new Set<number | null | undefined>(), turns = new Map<number, number | null | undefined>();
-    let internal = false, turn: number | null | undefined = null, authoring = false;
-    for (const turn of adaptationTurns(events))
-        managementTurns.add(turn);
-    for (const e of events) {
-        if (e?.type === 'turn/start')
-            turn = e.data?.turn;
-        if (e)
-            turns.set(e.seq, turn);
-        if (e?.type === 'tool/call' && e.data?.name === 'rp_card_draft_check')
-            authoring = true;
-        if (e?.type === 'tool/call' && ['rp_card_import_begin', 'rp_commit_card'].includes(e.data?.name ?? ''))
-            authoring = false;
-        if (e?.type === 'user/message' && e.data?.source?.kind === 'roleplay-tasks'
-            && e.data.source.stage === 'after-story')
-            authoring = false;
-        if (authoring && e?.type === 'tool/call' && e.data?.name === 'ask_user_question')
-            managementTurns.add(e.data?.turn ?? turn);
-        if (e?.type === 'tool/call'
-            && (/^(?:rp_card_export_(?:begin|chunk|finalize)|rp_novel_export|rp_diagnose|rp_preset|rp_card_draft_check)$/.test(e.data?.name ?? '')
-                || isSettingManagementCall(e.data)))
-            managementTurns.add(e.data?.turn ?? turn);
-        if (e?.type === 'user/message' && e.data?.source?.kind === 'roleplay-tasks'
-            && ['card-export', 'novel-export'].includes(e.data?.source?.jobKind ?? ''))
-            managementTurns.add(turn);
-        if (e?.type === 'turn/start' || e?.type === 'turn/end')
-            internal = false;
-        if (e?.type === 'user/message' && e.data?.source?.kind === 'roleplay-tasks'
-            && e.data?.source?.form === 'phase')
-            internal = e.data.source.stage !== 'story';
-        // The deterministic importer retires only its proven tool prelude.
-        // Its following acknowledgement is maintenance until a new story phase;
-        // a whole-turn ban would incorrectly hide a later genuine opening.
-        if (e?.type === 'user/message' && e.data?.source?.kind === 'roleplay-tasks'
-            && e.data.source.form === 'management-receipt' && e.data.source.jobKind === 'card-import')
-            internal = true;
-        if (internal && e?.type === 'assistant/message')
-            hidden.add(e.seq);
-        if (e?.type === 'turn/end')
-            turn = null;
-    }
+    const activity = createTaskActivityCursor();
+    for (const event of events) activity.advance(event);
+    const hidden = new Set(activity.internalSeqs);
     const resumed = importedStoryProjection(events, [...(session.surface?.nodes ?? [])]).prose;
     for (const e of events)
-        if (!resumed.has(e.seq) && managementTurns.has(e.data?.turn ?? turns.get(e.seq))
-            && (e.type === 'assistant/message' || (e.type === 'user/message' && e.data?.source?.kind === 'user')))
-            hidden.add(e.seq);
+        if (activity.isInternal(e, resumed.has(e.seq))) hidden.add(e.seq);
     internalProjectionCache.set(session, {
         events, surfaceKey, hidden
     });
@@ -490,5 +552,5 @@ export function tavernTaskToolBoundary(table: {
 }
 // Old imports share the same projection owner and append-only retirement implementation.
 export const { retireCompletedTaskContexts, retireSettledInlineContexts, retireUsedStoryReads } = createTaskRetirement({
-    internalTaskSeqs, inlineTaskEnvelope
+    internalTaskSeqs, inlineTaskEnvelope,createClassification:createTaskHistoryClassification
 });

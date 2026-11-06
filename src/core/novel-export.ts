@@ -28,7 +28,9 @@ interface RequestSpec<T, S extends Session, A> {
   system: string; user: string; validate: (value: unknown) => T; timeoutMs: number
 }
 interface Dependencies<S extends Session, A> {
-  table: { get(key: string): unknown; entries(): Iterable<[string, unknown]>; put(key: string, value: NovelExportJob): unknown | Promise<unknown> }
+  table: { get(key: string): unknown; entries(): Iterable<[string, unknown]>;
+    entriesPrefix?(prefix:string|readonly string[]):Iterable<[string,unknown]>;
+    put(key: string, value: NovelExportJob): unknown | Promise<unknown> }
   history(session: S): readonly Readonly<StoryEntry>[]
   request<T>(spec: RequestSpec<T, S, A>): Promise<T>
   archive(session: S, job: NovelExportJob, markdown: string): Promise<{ id: string; path: string }>
@@ -83,7 +85,7 @@ export function createNovelExports<S extends Session = Session, A = unknown>({ t
     if (!record(value) || value.sessionId !== session.id) fail('小说任务不属于当前会话')
     return clone(decodeJob(value))
   }
-  const list = (session: S): NovelExportJob[] => [...table.entries()]
+  const list = (session: S): NovelExportJob[] => [...(table.entriesPrefix?.('tavern_novel__')??table.entries())]
     .filter(([k, value]) => k.startsWith('tavern_novel__') && record(value) && value.sessionId === session.id)
     .map(([, value]) => clone(decodeJob(value)))
   const current = (session: S, job: NovelExportJob): boolean => {

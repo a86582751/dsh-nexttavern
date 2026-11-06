@@ -10,7 +10,7 @@ import {storedTask, executableTask, taskObject} from './tavern-task-types.js'
 import type {TaskSession, TaskAgent, TaskSpec, TaskJob, StoredTask, TaskResult, TaskChild, TaskOptions, Admission, Batch, SharedBatch, TaskControl} from './tavern-task-types.js'
 import {authorDialogSystemPrefixV1} from './roleplay-author-dialog.js'
 import type {NativeCompletedInputWorkReceiptV1,NativeDurableInputWorkReceiptV1,NativeInputStopNoticeV1}
-  from '@deepseek-ai/dsh-agent-loop'
+  from 'dsh-nexttavern-native-agent-loop'
 export type {TaskFailure} from './tavern-task-support.js'
 
 const copy = <T>(value: T): T => value == null ? value : structuredClone(value)
@@ -32,12 +32,15 @@ import {InlinePending, awaitTaskAdmissions, taskPhaseMessage, inlineTaskInstruct
 export {InlinePending, awaitTaskAdmissions, taskPhaseMessage, inlineTaskInstruction, inlineTaskMessages, taskStorySeqs, retireCompletedTaskContexts, internalTaskSeqs, tavernTaskToolBoundary}
 const keyOf = (id: string) => `tavern_job__${id}`
 const terminal = new Set(['completed','cancelled','stale','failed'])
+const privateCharacterTask = (kind:string) =>
+  kind==='character'||kind==='character-perception'||kind==='character-offscreen'
 /**
  * Both execution paths use these exact records. Inline request NEVER waits for
  * a future main-loop step: it persists and yields InlinePending to the stage
  * controller. Only native, independently executing children may be awaited.
  */
-export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({table,policy,subagents,isCurrent=()=>true,isHistoricalResultCurrent,canPublishResult}: TaskOptions<S,A>) {
+export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({table,policy,subagents,isCurrent=()=>true,
+  isHistoricalResultCurrent,canPublishResult,observeRecords}: TaskOptions<S,A>) {
   const nativeResults=new WeakMap<object,{id:string;generation:string}>()
   const nativeResult=(id:string,generation:string) => {const token={};nativeResults.set(token,{id,generation});return token}
   const liveHistoricalResult=(session:S,job:TaskJob) => job.background===true && job.status==='running'
@@ -45,20 +48,71 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
     && isHistoricalResultCurrent?.(session,job)
   const validators=new Map<string,{spec:TaskSpec<S,A>;generation:string;validate:(value:unknown)=>unknown}>()
   const running=new Map<string,{generation:string;promise:Promise<unknown>}>(), controllers=new Map<string,TaskControl<S,A>>(), locks=new Map<string,Promise<unknown>>(), batches=new Map<string,Batch<S,A>>(), admissions=new Map<string,Admission<S,A>>(), holds=new Map<string,number>()
-  const list = (session: S) => [...table.entries()].flatMap(([key,value])=>{const job=key.startsWith('tavern_job__')?storedTask(value):null;return job?.sessionId===session.id?[copy(job)]:[]})
+  // Character inputs and lifecycle remain private to their owner.
+  const list = (session: S) => [...(table.entriesPrefix?.('tavern_job__')??table.entries())]
+    .flatMap(([key,value])=>{const job=key.startsWith('tavern_job__')?storedTask(value):null;return job?.sessionId===session.id&&!privateCharacterTask(job.kind)?[copy(job)]:[]})
+  // Only the Domain owns these rows. The index retains membership and original
+  // insertion order; every consumer still reads the current record and applies
+  // its own execution/source contract. Completed history is not a hot query.
+  const positions=new Map<string,number>(),members=new Map<string,string>(),
+    activeBySession=new Map<string,Map<string,number>>()
+  let nextPosition=0,indexReady=false,closed=false
+  function removeMember(key:string) {
+    const sessionId=members.get(key)
+    if(sessionId===undefined)return
+    const keys=activeBySession.get(sessionId)!
+    keys.delete(key);members.delete(key)
+    if(!keys.size)activeBySession.delete(sessionId)
+  }
+  function indexRecord(key:string,value:unknown) {
+    removeMember(key)
+    if(!positions.has(key))positions.set(key,nextPosition++)
+    const job=storedTask(value)
+    if(!job||terminal.has(job.status))return
+    let keys=activeBySession.get(job.sessionId)
+    if(!keys)activeBySession.set(job.sessionId,keys=new Map())
+    keys.set(key,positions.get(key)!);members.set(key,job.sessionId)
+  }
+  const stopObserving=observeRecords?.(change=>{
+    if(!indexReady||change.table!=='branch')return
+    if(change.operation==='deleted') {
+      removeMember(change.key);positions.delete(change.key)
+    }else indexRecord(change.key,change.value)
+  })
+  function activeRecords(session:S,taskKeysOnly:boolean):StoredTask[] {
+    if(!observeRecords||closed)return taskKeysOnly?list(session).filter(job=>!terminal.has(job.status))
+      :[...table.entries()].flatMap(([,value])=>{const job=storedTask(value)
+        return job?.sessionId===session.id&&!terminal.has(job.status)?[job]:[]})
+    if(!indexReady) {
+      for(const [key,value] of table.entries())indexRecord(key,value)
+      indexReady=true
+    }
+    const keys=[...(activeBySession.get(session.id)??[])].sort((left,right)=>left[1]-right[1]),jobs:StoredTask[]=[]
+    for(const [key] of keys) {
+      if(taskKeysOnly&&!key.startsWith('tavern_job__'))continue
+      const job=storedTask(table.get(key))
+      if(job?.sessionId===session.id&&!terminal.has(job.status)&&(!taskKeysOnly||!privateCharacterTask(job.kind)))jobs.push(taskKeysOnly?copy(job):job)
+    }
+    return jobs
+  }
   async function lock<T>(id: string,fn: () => T | PromiseLike<T>): Promise<T> {
     const previous=locks.get(id)??Promise.resolve()
     const next=previous.catch(()=>{}).then(fn);locks.set(id,next)
     try{return await next}finally{if(locks.get(id)===next)locks.delete(id)}
   }
   function ownedRecord(session: S,id: string) {
-    const job=copy(storedTask(table.get(keyOf(id))))
-    if (!job || job.id!==id || job.sessionId!==session.id) throw new Error('任务不属于当前所属会话')
-    return job
+    const job=storedTask(table.get(keyOf(id)))
+    if (!job || job.id!==id || job.sessionId!==session.id || job.kind==='character') throw new Error('任务不属于当前所属会话')
+    return copy(job)
   }
   function owned(session: S,id: string): TaskJob {
     const job=executableTask(ownedRecord(session,id))
     if(!job)throw new Error('任务记录缺少执行数据，保留原记录以便恢复')
+    return job
+  }
+  function publicRecord(session:S,id:string) {
+    const job=ownedRecord(session,id)
+    if(privateCharacterTask(job.kind))throw Error('角色私有任务只能由所属人物服务访问')
     return job
   }
   const priority=(kind: string)=>kind==='status'?0:kind==='decision'?1:2
@@ -261,7 +315,8 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       if(job.status==='failed')throw new Error('该任务已失败，请在酒馆管理中重试')
       const proof=nativeToken ? nativeResults.get(nativeToken) : undefined
       const fromNativeResult=proof?.id===id && proof.generation===generation
-      if((job.kind==='author-dialog'||job.kind==='ruby-analysis')&&job.status!=='completed'&&!fromNativeResult)
+      if((job.kind==='author-dialog'||job.kind==='ruby-analysis'||privateCharacterTask(job.kind))
+        &&job.status!=='completed'&&!fromNativeResult)
         throw Error(job.kind==='ruby-analysis'?'RUBY_NATIVE_COMPLETION_REQUIRED':'AUTHOR_DIALOG_NATIVE_COMPLETION_REQUIRED')
       if (!await isCurrent(session,job)
         && !(job.status==='completed' && await isHistoricalResultCurrent?.(session,job))
@@ -274,7 +329,10 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       if (!registration) throw new Error('任务尚未恢复来源校验，请先继续任务')
       let result
       try {
-        result=await registration.validate(copy(value))
+        // Spawn paths already decode JSON; parsing again would reinterpret string values.
+        const submitted=job.execution==='inline'&&registration.spec.format==='json'&&typeof value==='string'
+          ?JSON.parse(value):value
+        result=await registration.validate(copy(submitted))
         if (result===undefined || result===null) throw new Error('任务结果没有通过校验')
       }catch(error){
         const failures=(job.validationFailures??0)+1
@@ -318,12 +376,13 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
     const independent=spec.executionPolicy==='independent'
     const authorDialog=kind==='author-dialog'&&input?.taskStage==='author-dialog-submit'?spec.authorDialog:undefined
     const rubyTask=kind==='ruby-analysis'&&input?.taskStage==='ruby-analysis'?spec.rubyTask:undefined
+    const characterBackground=(kind==='character-perception'||kind==='character-offscreen')&&input.taskStage===kind
     if(kind==='author-dialog'&&(!authorDialog||spec.background!==true||spec.format!=='text'))
       throw Error('AUTHOR_DIALOG_OWNED_PLAN_REQUIRED')
     if(kind==='ruby-analysis'&&(!rubyTask||spec.background!==true||spec.format!=='text'))
       throw Error('RUBY_OWNED_PLAN_REQUIRED')
     if(spec.background===true&&!((kind==='memory'&&input?.taskStage==='background-notes')
-      ||(kind==='setting-repair'&&input?.taskStage==='setting-repair')||authorDialog||rubyTask))
+      ||(kind==='setting-repair'&&input?.taskStage==='setting-repair')||authorDialog||rubyTask||characterBackground))
       throw new Error('该任务用途不允许独立同模型子代理')
     if (Number(agent?.options?.subagentDepth)>0) throw new Error('辅助子代理不能递归调度酒馆任务')
     if(spec.maxTokens!==undefined&&(!Number.isSafeInteger(spec.maxTokens)||spec.maxTokens<1))throw new Error('辅助任务输出上限必须是正整数')
@@ -486,7 +545,10 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
         const starting=Promise.resolve(subagents!.start('spawn',{parent:agent,signal:ac.signal,
           agentOptions:{...job.actualRoute,...job.generationOptions,tavernTaskId:id},maxDepth:1,
           toolFilter:{allow:spec.tools??[]},label:`Tavern:${id}:${job.generation}`,
-          ...(rubyActivation?{rubyActivation,rubyOwner,prompt:[]}:activation?{activation,prompt:[]}:{
+          ...(rubyActivation?{rubyActivation,rubyOwner,prompt:[]}:activation?{activation,prompt:[]}:characterBackground?{
+            isolatedSystem:String(input.system),
+            prompt:[{type:'text' as const,text:String(input.user)}],
+          }:{
             persona:'你是酒馆的专用维护助手。只处理收到的冻结来源和任务，不续写剧情，不创建子代理。',
             prompt:[{type:'text' as const,text:JSON.stringify({taskId:id,generation:job.generation,
               branchId:session.id,sourceHash:job.sourceHash,...input})}]}),
@@ -529,7 +591,9 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       }
     })()
     running.set(id,{generation:job.generation,promise:run})
-    try{return await deliver(await run)}finally{if(running.get(id)?.promise===run)running.delete(id)}
+    try{return await deliver(await run)}finally{
+      if(running.get(id)?.promise===run)running.delete(id)
+    }
   }
   function resolveRegisteredCardImport(session:S,agent:A,reference:{taskId?:string;generation?:string;
     workflowId?:string;childSessionId?:string}) {
@@ -560,9 +624,18 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
     return {task:assertCurrent(),assertCurrent}
   }
   return {list,request,submit,holdBatch,resolveRegisteredCardImport,
-    activity:(session: S)=>[...table.entries()].flatMap(([,value])=>{const j=storedTask(value);return j?.sessionId===session.id&&['queued','running'].includes(j.status)?[{sessionId:j.sessionId,kind:j.kind,status:j.status,execution:j.execution,background:j.background===true,createdAt:j.createdAt}]:[]}),
+    active:(session:S)=>activeRecords(session,true),
+    /** Current DATA for a visible context's referenced task. Missing or foreign
+     * records preserve the context; this read grants no publication authority. */
+    contextJob(session:S,id:string) {
+      const job=storedTask(table.get(keyOf(id)))
+      return job?.id===id&&job.sessionId===session.id&&!privateCharacterTask(job.kind)?job:undefined
+    },
+    dispose(){closed=true;stopObserving?.();positions.clear();members.clear();activeBySession.clear()},
+    activity:(session: S)=>activeRecords(session,false).flatMap(j=>['queued','running'].includes(j.status)
+      ?[{sessionId:j.sessionId,kind:j.kind,status:j.status,execution:j.execution,background:j.background===true,createdAt:j.createdAt}]:[]),
     async invalidate(session: S) {
-      for(const job of list(session).filter(j=>!terminal.has(j.status)))if(!await isCurrent(session,job)
+      for(const job of activeRecords(session,true))if(!await isCurrent(session,job)
         && !await liveHistoricalResult(session,owned(session,job.id))) {
         const admission=admissions.get(job.id),control=controllers.get(job.id)
         await lock(job.id,async()=>{const live=ownedRecord(session,job.id);if(!terminal.has(live.status))await table.put(keyOf(job.id),{...live,status:'stale',generation:randomUUID(),updatedAt:Date.now()})})
@@ -571,11 +644,11 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       }
     },
     async fail(session: S,id: string,error: unknown) {
-      return lock(id,async()=>{const job=ownedRecord(session,id);if(terminal.has(job.status))return job
+      return lock(id,async()=>{const job=publicRecord(session,id);if(terminal.has(job.status))return job
         const next={...job,status:'failed',error:String(error),failure:taskFailureDetails(error),failedAt:Date.now(),updatedAt:Date.now()};await table.put(keyOf(id),next);return next})
     },
     read(session: S,id: string,offset=0,maxChars=64000) {
-      const job=ownedRecord(session,id), text=JSON.stringify(job.input)
+      const job=publicRecord(session,id), text=JSON.stringify(job.input)
       if(text===undefined)throw new Error('任务记录缺少来源输入')
       const start=Number(offset), cap=Math.max(256,Math.min(128000,Number(maxChars)||64000))
       if(!Number.isSafeInteger(start)||start<0||start>text.length)throw new Error('任务读取游标无效')
@@ -583,9 +656,9 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       return {id:job.id,generation:job.generation,kind:job.kind,branchId:job.branchId,sourceHash:job.sourceHash,offset:start,text:text.slice(start,end),nextOffset:end<text.length?end:null,totalChars:text.length,
         failure:taskValidationFailure(job),validationFailures:job.validationFailures??0,remainingValidationAttempts:Math.max(0,3-(job.validationFailures??0))}
     },
-    cancel:cancelJob,
+    async cancel(session:S,id:string) {publicRecord(session,id);return cancelJob(session,id)},
     async retry(session: S,id: string) {
-      const result=await lock(id,async()=>{const job=ownedRecord(session,id)
+      const result=await lock(id,async()=>{const job=publicRecord(session,id)
         if(job.status==='completed')return job
         if(!await isCurrent(session,job))throw new Error('来源已变化，需要新快照')
         const next={...job,status:'queued',generation:randomUUID(),validationFailures:0,error:null,failure:null,failedAt:null,updatedAt:Date.now()}
@@ -601,7 +674,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       }
       return result
     },
-    pending(session: S) {return list(session).filter(j=>j.execution==='inline'&&!terminal.has(j.status))},
+    pending(session: S) {return activeRecords(session,true).filter(j=>j.execution==='inline')},
   }
 }
 import {ensureSessionHistory, sessionEvents} from './session-history.js'

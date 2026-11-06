@@ -1,14 +1,15 @@
-import type { ContextEvent, ContextSession } from './roleplay-context.js'
+import type { ContextEvent, ContextSession,ContextStoryEntryReader } from './roleplay-context.js'
 import type { createCharacterCluster } from './character-cluster.js'
-import type { TaskAgent, TaskOptions, TaskSpec } from './tavern-task-types.js'
+import type { TaskAgent, TaskOptions, TaskSpec,TaskSelection,StoredTask } from './tavern-task-types.js'
 import type { StatusRecord } from './roleplay-status-types.js'
 import type { AuthorTables, AuthorDependency } from './roleplay-author-context-types.js'
 import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
-import type {AuthorChatBindingV1} from './roleplay-author-chat-state-types.js'
+import type {AuthorDialogChatAddress} from './roleplay-author-dialog.js'
 import type {AuthorDialogPromptV1} from './roleplay-author-dialog.js'
 import type {RubyAnalysisPromptV1} from './roleplay-ruby-task-types.js'
-import type {OwnedRubyTaskOwnerV1} from '@deepseek-ai/dsh-subagent'
+import type {OwnedRubyTaskOwnerV1} from 'dsh-nexttavern-native-subagent'
 import type {TaskJob} from './tavern-task-types.js'
+import type {CharacterPrivateView} from '../memory/character-private-memory.js'
 
 export interface HostSession extends ContextSession {
   header?: NonNullable<ContextSession['header']> & {parentSession?: string}
@@ -34,8 +35,9 @@ export interface HostTable {
 }
 export interface HostTables {branch: HostTable; cards: HostTable}
 export interface HostSource {
+  characterBackground?:{sourceKey:string}
   schemaMaintenance?:{basisSha256:string}
-  authorDialog?:{binding:AuthorChatBindingV1;operationId:string;promptPlanSha256:string}
+  authorDialog?:{binding:AuthorDialogChatAddress;operationId:string;promptPlanSha256:string}
   rubyAnalysis?:{sourceIdentitySha256:string;promptPlanSha256:string}
   inputPreparation?: InputPreparationCurrency
   preparationId?: string
@@ -46,6 +48,45 @@ export interface HostSource {
   events?: {seq: number; hash: string}[]
   fixedHash?: string
   dependencies?: readonly AuthorDependency[]
+}
+export type CharacterBackgroundTaskKindV1='character-perception'|'character-offscreen'
+export interface CharacterBackgroundTaskReferenceV1 {
+  readonly kind:CharacterBackgroundTaskKindV1
+  readonly taskId:string
+  readonly generation:string
+  readonly resultSha256?:string
+  readonly childSessionId?:string
+}
+export interface CharacterBackgroundResultV1<Result=unknown> extends CharacterBackgroundTaskReferenceV1 {
+  readonly resultSha256:string
+  readonly result:Result
+}
+export interface CharacterBackgroundRequestV1<Result=unknown> {
+  readonly session:HostSession
+  readonly agent?:HostAgent
+  readonly kind:CharacterBackgroundTaskKindV1
+  readonly sourceKey:string
+  readonly input:Record<string,unknown>
+  readonly system:string
+  readonly user:string
+  readonly selection?:TaskSelection
+  /** The branch/feature/member owner supplies this lifetime, independently of the parent turn. */
+  readonly signal?:AbortSignal
+  current():boolean
+  readonly format?:'json'|'text'
+  readonly timeoutMs?:number
+  readonly maxTokens?:number
+  /** Persist the real admitted job before its first Native request. */
+  onPrepared?(reference:CharacterBackgroundTaskReferenceV1):void|PromiseLike<void>
+  validate?(value:unknown):Result|PromiseLike<Result>
+}
+export interface CharacterPrivateTaskHostV1 {
+  enabled(session:HostSession):boolean
+  catalog(session:HostSession):{id:string;name:string}[]
+  prepare(session:HostSession,characterId:string,signal?:AbortSignal):Promise<CharacterPrivateView>
+  current(view:CharacterPrivateView):boolean
+  beforeCast(session:HostSession,characterIds:readonly string[]):void|PromiseLike<void>
+  taskCurrent(session:HostSession,job:StoredTask):boolean
 }
 export interface AuthorDialogRequestV1 {
   session:HostSession
@@ -87,9 +128,13 @@ export interface NativeTaskInput<Result = unknown> extends Omit<TaskSpec<HostSes
 }
 export interface TaskHostCompaction {
   storyEvidence?(session: HostSession): {seq: number; text: string}[]
+  storyEvidenceAt?(session:HostSession,seqs:readonly number[]):readonly {seq:number;text:string}[]
   resumeTask?(agent: HostAgent, signal: AbortSignal | undefined, stage?: string): PromiseLike<unknown>
 }
 export interface TaskHostDependencies {
+  characterPrivate?:CharacterPrivateTaskHostV1
+  storyEntryReader?:ContextStoryEntryReader
+  observeRecords?:TaskOptions<HostSession,HostAgent>['observeRecords']
   advancedCard?(session:HostSession):{state:string;characters:{id:string;name:unknown;content:string}[]}
   assertCardWorkflow(session:import('./roleplay-import-types.js').ImportSession,
     record:import('./roleplay-card-workflow-types.js').CardWorkflowRecord):void

@@ -3,11 +3,13 @@ import { keyOf, sha256, recordSha256 } from './roleplay-data.js';
 import { eventsOf, surfaceEvents, surfaceEntries } from './roleplay-context.js';
 import { createCharacterCluster } from './character-cluster.js';
 import { createModelPolicy, createTavernTasks, selectedMainRoute, isInlinePending, taskPhaseMessage, taskHash } from './tavern-tasks.js';
-export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranchIsActive, statusFixedContext, taskDependenciesCurrent, taskInstruction, getMaintenanceJob, runStatusObligation, STATUS_SYSTEM, DECISION_SYSTEM, ORGANIZE_WORKER_SYSTEM, inputCurrency, inputCurrencyCurrent, inputHistoricalCurrencyCurrent, inputTaskRecoveryBlockCode, currentTaskClaim, assertCardWorkflow, advancedCard, }) {
+export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranchIsActive, statusFixedContext, taskDependenciesCurrent, taskInstruction, getMaintenanceJob, runStatusObligation, STATUS_SYSTEM, DECISION_SYSTEM, ORGANIZE_WORKER_SYSTEM, inputCurrency, inputCurrencyCurrent, inputHistoricalCurrencyCurrent, inputTaskRecoveryBlockCode, currentTaskClaim, assertCardWorkflow, advancedCard, observeRecords, storyEntryReader, characterPrivate, }) {
     const continuationTimers = new Set();
     const authorDialogOwners = new Map();
     let disposed = false;
     const rubyOwners = new Map();
+    const characterBackgroundOwners = new Map();
+    const characterBackgroundLifetime = new AbortController();
     ctx.effect(() => () => {
         disposed = true;
         for (const timer of continuationTimers)
@@ -15,6 +17,8 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
         continuationTimers.clear();
         authorDialogOwners.clear();
         rubyOwners.clear();
+        characterBackgroundOwners.clear();
+        characterBackgroundLifetime.abort(Error('角色后台任务宿主已释放'));
     }, 'roleplay: task host continuation lifetime');
     const sameModelRoute = (a, b) => Boolean(a?.provider && a?.model && a.provider === b?.provider && a.model === b?.model);
     const canonicalModelRoute = async (selection) => {
@@ -40,6 +44,7 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
         return [...bySeq.values()];
     };
     const cluster = createCharacterCluster({ table: T.branch, subagents: ctx.subagents,
+        privateMemory: characterPrivate,
         rootOf: session => ctx.get('tavernConversations')?.rootOf(session.id) ?? session.id,
         main: (session, agent) => selectedMainRoute(session, agent, ctx.agentDefaultModel.currentSelection()),
         isCurrent: (session, job) => storyBranchIsActive(session)
@@ -47,13 +52,24 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
             && (!job.input?.character || characterRoster(session).some(character => character.id === job.input.character.id
                 && character.content === job.input.character.content)),
     });
-    const characterCluster = { ...cluster, read: (session) => {
+    const characterCluster = { ...cluster, readSettings: cluster.read, run: async (input) => {
+            if (characterPrivate?.enabled(input.session))
+                await characterPrivate.beforeCast(input.session, input.characters.map(character => character.id));
+            return cluster.run(input);
+        }, read: (session) => {
             const settings = cluster.read(session);
-            return { ...settings, enabled: settings.enabled && (!advancedCard || advancedCard(session).state === 'ready') };
+            return { ...settings, enabled: settings.enabled && (!advancedCard || advancedCard(session).state === 'ready'),
+                privateMemoryEnabled: characterPrivate?.enabled(session) === true };
         } };
-    const characterRoster = (session) => advancedCard ? advancedCard(session).characters
-        : [...T.cards.entries()].filter(([key, c]) => key.startsWith(`${session.id}__`) && c?.kind !== 'user' && c?.id !== 'user' && c?.enabled !== false)
-            .map(([, c]) => ({ id: c.id, name: c.name ?? c.id, content: c.content ?? '' }));
+    const characterRoster = (session) => {
+        // Static advanced text is not the private cast catalog. Dynamic Source
+        // members can be known before their trusted persona becomes playable.
+        if (characterPrivate?.enabled(session))
+            return characterPrivate.catalog(session).map(character => ({ ...character, content: '' }));
+        return advancedCard ? advancedCard(session).characters
+            : [...T.cards.entries()].filter(([key, c]) => key.startsWith(`${session.id}__`) && c?.kind !== 'user' && c?.id !== 'user' && c?.enabled !== false)
+                .map(([, c]) => ({ id: c.id, name: c.name ?? c.id, content: c.content ?? '' }));
+    };
     const clusterLoreVisible = (session, record, before = Infinity) => record.schemaVersion === 1 && surfaceEvents(session).some(e => e.type === 'tool/result' && e.seq < before && !e.data?.error
         && record.callId && (e.data?.message?.source?.callId ?? e.data?.callId) === record.callId);
     const clusterPhase = (session) => {
@@ -79,6 +95,11 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
         if (disposed || ctx.sessions.get(session.id) !== session)
             return false;
         const source = job.source;
+        if (job.kind === 'character-perception' || job.kind === 'character-offscreen') {
+            const owner = characterBackgroundOwners.get(job.id);
+            return !!owner && owner.session === session && characterPrivate?.enabled(session) === true
+                && owner.current() && characterPrivate.taskCurrent(session, job);
+        }
         if (job.kind === 'author-dialog') {
             const owner = authorDialogOwners.get(job.id), declared = source.authorDialog;
             return !!owner && owner.session === session && taskAgents.get(session.id) === owner.agent
@@ -105,7 +126,15 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
         if (!historical && source.preparationId && T.branch.get(keyOf(session.id, 'task-preparation'))?.id !== source.preparationId)
             return false;
         const hash = source.hashKind === 'taskHash' ? (value) => recordSha256(value) : sha256;
-        const live = source.events?.length ? new Map(taskStory(session).map(e => [e.seq, hash(e.text)])) : undefined;
+        let live;
+        if (source.events?.length) {
+            const seqs = source.events.map(event => event.seq), wanted = new Set(seqs), compaction = ctx.get('compaction'), archived = compaction?.storyEvidenceAt?.(session, seqs)
+                ?? compaction?.storyEvidence?.(session).filter(entry => wanted.has(entry.seq)) ?? [], selected = storyEntryReader?.surfaceEntriesAt(session, seqs)
+                ?? surfaceEntries(session).filter(entry => wanted.has(entry.seq));
+            // Archives fill the durable evidence first; the selected surface owns
+            // the current text for the same seq, including an open-turn body.
+            live = new Map([...archived, ...selected].map(entry => [entry.seq, hash(entry.text)]));
+        }
         if (source.workflowId) {
             const workflow = T.branch.get(`${source.workflowType === 'card' ? 'tavern_cardjob__' : 'tavern_novel__'}${source.workflowId}`);
             if (!workflow || workflow.generation !== source.generation || ['cancelled', 'stale'].includes(workflow.status))
@@ -118,6 +147,7 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
             && taskDependenciesCurrent(T, session.id, source.dependencies);
     }
     const tavernTasks = createTavernTasks({ table: T.branch, policy: modelPolicy, subagents: ctx.subagents,
+        observeRecords,
         isCurrent: (session, job) => taskSourceCurrent(session, job),
         isHistoricalResultCurrent: (session, job) => taskSourceCurrent(session, job, true),
         canPublishResult: (session, job, fromNativeResult) => {
@@ -132,6 +162,71 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
                 && job.kind === 'memory' && job.input?.taskStage === 'background-notes') && taskSourceCurrent(session, job, true);
         },
     });
+    ctx.effect(() => () => tavernTasks.dispose(), 'roleplay: task record index lifetime');
+    async function requestCharacterBackground(input) {
+        const session = input.session, signal = AbortSignal.any([
+            characterBackgroundLifetime.signal, ...(input.signal ? [input.signal] : [])
+        ]);
+        signal?.throwIfAborted();
+        const current = () => !disposed && ctx.sessions.get(session.id) === session
+            && characterPrivate?.enabled(session) === true && input.current();
+        if (!current())
+            throw Error('CHARACTER_BACKGROUND_OWNER_CHANGED');
+        // Capture once before resolving the Native Agent. The existing task hash
+        // binds this frozen semantic input and both prompt strings to its source.
+        const captured = structuredClone({ sourceKey: input.sourceKey, input: input.input, system: input.system, user: input.user,
+            format: input.format ?? 'json' }), source = { characterBackground: { sourceKey: captured.sourceKey } }, requestKey = { input: captured.input, system: captured.system, user: captured.user, format: captured.format }, id = taskHash({ sessionId: session.id, kind: input.kind, source, input: requestKey });
+        let main = input.agent ?? taskAgents.get(session.id);
+        if (!main)
+            main = (await ctx.sessionController.resolveAgent?.(session.id))?.agent;
+        signal?.throwIfAborted();
+        if (!main || main.session !== session || !current())
+            throw Error('CHARACTER_BACKGROUND_OWNER_CHANGED');
+        taskAgents.set(session.id, main);
+        let selection = input.selection;
+        if (!selection) {
+            const primary = await executedMainRoute(session, main), override = cluster.read(session).defaultRoute, requested = override && 'main' in override
+                ? { ...primary, ...(override.reasoningEffort ? { reasoningEffort: override.reasoningEffort } : {}) }
+                : override ?? primary;
+            selection = { execution: 'spawn', main: primary, actualRoute: await canonicalModelRoute(requested) };
+        }
+        const owner = { session, current };
+        characterBackgroundOwners.set(id, owner);
+        let completed;
+        try {
+            const result = await tavernTasks.request({ session, agent: main, kind: input.kind, source, requestKey,
+                input: { taskStage: input.kind, ...captured }, executionPolicy: 'independent', background: true,
+                format: captured.format, tools: [], signal, selection,
+                timeoutMs: input.timeoutMs, maxTokens: input.maxTokens, validationFailurePolicy: 'terminal',
+                validate: input.validate, onResult: job => { completed = job; },
+                onAdmission: job => input.onPrepared?.({ kind: input.kind, taskId: job.id, generation: job.generation,
+                    ...(typeof job.childSessionId === 'string' ? { childSessionId: job.childSessionId } : {}) }) });
+            signal?.throwIfAborted();
+            if (!completed?.generation || typeof completed.resultHash !== 'string')
+                throw Error('CHARACTER_BACKGROUND_COMPLETED_TASK_MISSING');
+            return { kind: input.kind, result: result, taskId: completed.id, generation: completed.generation,
+                resultSha256: completed.resultHash,
+                ...(typeof completed.childSessionId === 'string' ? { childSessionId: completed.childSessionId } : {}) };
+        }
+        finally {
+            if (characterBackgroundOwners.get(id) === owner)
+                characterBackgroundOwners.delete(id);
+        }
+    }
+    /** Completed DATA can be recovered without a live request owner. The
+     * private coordinator separately owns permission to publish that result. */
+    function readCompletedCharacterBackground(session, reference) {
+        if (disposed || ctx.sessions.get(session.id) !== session)
+            return undefined;
+        const job = T.branch.get('tavern_job__' + reference.taskId);
+        if (job?.sessionId !== session.id || job.id !== reference.taskId || job.kind !== reference.kind
+            || job.status !== 'completed' || job.generation !== reference.generation || typeof job.resultHash !== 'string'
+            || reference.resultSha256 !== undefined && job.resultHash !== reference.resultSha256
+            || reference.childSessionId !== undefined && job.childSessionId !== reference.childSessionId)
+            return undefined;
+        return { kind: reference.kind, taskId: job.id, generation: reference.generation, resultSha256: job.resultHash,
+            ...(typeof job.childSessionId === 'string' ? { childSessionId: job.childSessionId } : {}), result: structuredClone(job.result) };
+    }
     async function requestRubyAnalysis(input) {
         const { session, prompt, signal } = input;
         signal?.throwIfAborted();
@@ -149,7 +244,9 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
         rubyOwners.set(id, owner);
         let completed;
         try {
-            if (input.retry)
+            // Owner input can be durable before the Native job is created. An
+            // explicit retry of that gap creates its first job from the frozen plan.
+            if (input.retry && T.branch.get('tavern_job__' + id))
                 await tavernTasks.retry(session, id);
             const text = await tavernTasks.request({ session, agent: main, kind: 'ruby-analysis', source, requestKey,
                 input: { taskStage: 'ruby-analysis', rubyTask: prompt }, background: true, format: 'text', tools: [], signal,
@@ -184,7 +281,7 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
     async function requestAuthorDialog(input) {
         const { session, prompt, signal } = input;
         signal?.throwIfAborted();
-        if (disposed || ctx.sessions.get(session.id) !== session || prompt.binding.sessionId !== session.id || !input.current())
+        if (disposed || ctx.sessions.get(session.id) !== session || prompt.binding.namespace.sessionId !== session.id || !input.current())
             throw Error('AUTHOR_DIALOG_OWNER_CHANGED');
         let main = input.agent ?? taskAgents.get(session.id);
         if (!main)
@@ -233,7 +330,7 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
             promptPlanSha256: completion.promptPlanSha256, text: job.result, completion };
     }
     function readCompletedAuthorDialog(session, binding, reference) {
-        if (disposed || ctx.sessions.get(session.id) !== session || binding.sessionId !== session.id)
+        if (disposed || ctx.sessions.get(session.id) !== session || binding.namespace.sessionId !== session.id)
             return undefined;
         const job = T.branch.get('tavern_job__' + reference.taskId), completion = job?.authorDialogCompletion, source = job?.source?.authorDialog, frozenPrompt = job?.input?.authorDialog;
         if (job?.sessionId !== session.id || job.id !== reference.taskId || job.kind !== 'author-dialog'
@@ -246,7 +343,7 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
             || !frozenPrompt || frozenPrompt.promptSha256 !== completion.promptPlanSha256)
             return undefined;
         return { schemaVersion: 1, encoding: 'native-author-dialog-result-v1', authority: 'consumer-data-only',
-            binding, revision: frozenPrompt.revision, operationId: source.operationId,
+            binding, root: frozenPrompt.root, operationId: source.operationId,
             promptSha256: source.promptPlanSha256, task: reference, text: job.result };
     }
     function resolveCurrentCardImport(session, exec) {
@@ -333,9 +430,10 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
             && taskHash({ sessionId: session.id, kind, source: job.source, input: requestKey }) === job.id)
             .sort((a, b) => Number(a.createdAt ?? 0) - Number(b.createdAt ?? 0) || a.id.localeCompare(b.id))[0] : undefined;
         const source = completed ? completed.source : (() => {
-            // Explicit rebuilding owns its durable generation, not the completed
-            // Story's hot input, which the actual management wake must replace.
-            const preparation = independent ? undefined : T.branch.get(keyOf(session.id, 'task-preparation')), currency = independent || compaction || kind === 'status' && generationKey !== undefined || taskStage === 'native-card-conversion'
+            // Notes own completed history; a newer foreground MVU head cannot
+            // revoke that history. Explicit status rebuilds own their generation.
+            const historyNotes = kind === 'memory' && (taskStage === 'notes' || taskStage === 'background-notes');
+            const preparation = independent || historyNotes ? undefined : T.branch.get(keyOf(session.id, 'task-preparation')), currency = independent || historyNotes || compaction || kind === 'status' && generationKey !== undefined || taskStage === 'native-card-conversion'
                 ? undefined : inputCurrency?.(session);
             return { ...(providedSource ?? { events: taskStory(session).map(e => ({ seq: e.seq, hash: sha256(e.text) })),
                     ...(kind === 'status' ? { fixedHash: recordSha256(statusFixedContext(session)) } : {}),
@@ -455,5 +553,6 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
     }
     return { sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster, characterRoster,
         clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask,
-        requestAuthorDialog, readCompletedAuthorDialog, requestRubyAnalysis, readCompletedRubyAnalysis, resumeMemoryWork, resumeStatusMaintenance };
+        requestAuthorDialog, readCompletedAuthorDialog, requestRubyAnalysis, readCompletedRubyAnalysis,
+        requestCharacterBackground, readCompletedCharacterBackground, resumeMemoryWork, resumeStatusMaintenance };
 }

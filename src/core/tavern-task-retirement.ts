@@ -1,9 +1,13 @@
 import {sessionEvents} from './session-history.js'
 import { randomUUID } from 'node:crypto';
 import { taskHash } from './tavern-task-primitives.js';
-import { retireFinishedAdaptation, retireDeliveredDraft } from './card-adaptation-context.js';
+import { retireFinishedAdaptation, retireDeliveredDraft,retireCoarseResearchReads,retireAdaptationReads } from './card-adaptation-context.js';
+import type {AdaptationProgress} from './card-adaptation-context.js'
 import { taskValidationFailure, taskFailureDetails, FAILURE_LABELS } from './tavern-task-support.js';
 import type { TaskContextSession, TaskEvent, TaskBlock, TaskMessage, InlineContextJob } from './tavern-task-context.js';
+import type {createTaskHistoryClassification} from './tavern-task-context.js'
+import {createRetirementHistory} from './tavern-task-retirement-history.js'
+import type {RetirementHistoryOptions,RetirementTurn,RetirementHistoryAccess} from './tavern-task-retirement-history.js'
 interface TurnGroup {
     turn?: number;
     export: boolean;
@@ -85,15 +89,20 @@ export function provenImportPreludeAssistants(session: TaskContextSession, activ
     return ignored;
 }
 /** Share the owning projection cache while keeping all receipt writes in one implementation. */
-export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
+export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope,projections,createClassification }: {
     internalTaskSeqs(session: TaskContextSession): Set<number>;
     inlineTaskEnvelope(text: string): unknown;
+    createClassification?:typeof createTaskHistoryClassification
+    projections?:RetirementHistoryOptions['projections']
 }) {
+    const readHistory:RetirementHistoryAccess=createClassification
+        ?createRetirementHistory({createClassification,...projections?{projections}:{}}):()=>undefined
     /** Keep one successful receipt per projection kind. Empty owned user nodes
      * retain replay anchors before the next step opens, without wire messages. */
     function retireSuccessfulReceipts(session: TaskContextSession, form: string) {
-        const lookup = new Map(sessionEvents(session).map(event => [event.seq, event]));
-        const successful = [...(session.surface?.nodes ?? [])].filter(seq => {
+        const native=readHistory(session),lookup=native?.lookup??new Map(sessionEvents(session).map(event => [event.seq, event]));
+        const successful = (native?native.selected(form as 'maintenance-receipt'|'read-evidence-receipt')
+            :[...(session.surface?.nodes ?? [])]).filter(seq => {
             const event = lookup.get(seq), source = event?.type === 'user/message' ? event.data?.source : undefined;
             if (source?.kind !== 'roleplay-tasks' || source.form !== form || source.schemaVersion !== 1)
                 return false;
@@ -133,7 +142,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
             return ['list', 'read', 'repair', 'jobs'].includes(String(args?.action));
         } catch { return false; }
     }
-    function completedImportSpan(nodes: number[], lookup: Map<number, TaskEvent>) {
+    function completedImportSpan(nodes: number[], lookup: Pick<ReadonlyMap<number,TaskEvent>,'get'>) {
         const callsOf = (e: TaskEvent | undefined) => e?.type === 'assistant/message' ? (e.data?.message?.content
             ?? []).filter(b => b.type === 'tool-call') : [];
         const begin = nodes.findIndex(seq => callsOf(lookup.get(seq)).some(b => b.name === 'rp_card_import_begin'));
@@ -216,18 +225,18 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
     }) {
         if (typeof session?.append !== 'function')
             return 0;
-        const retiredResearch = retireDeliveredDraft(session, currentTurn) + retireFinishedAdaptation(session, currentTurn, activeImport);
-        const events = sessionEvents(session),
-             groups: TurnGroup[] = [],
-             bySeq = new Map<number,
-             TurnGroup>(),
-             lookup = new Map<number,
-             TaskEvent>();
+        const retiredResearch = retireDeliveredDraft(session, currentTurn,readHistory)
+            + retireFinishedAdaptation(session, currentTurn, activeImport,readHistory);
+        const native=readHistory(session),events=native?undefined:sessionEvents(session),
+             groups: TurnGroup[] = native?.managementTurns()??[],
+             rawBySeq = new Map<number,TurnGroup>(),rawLookup = new Map<number,TaskEvent>(),
+             bySeq=native?{get:(seq:number)=>native.group(seq)}:rawBySeq,
+             lookup=native?.lookup??rawLookup;
         let group: TurnGroup | null = null;
-        for (const e of events) {
+        if(!native)for (const e of events!) {
             if (!e)
                 continue;
-            lookup.set(e.seq, e);
+            rawLookup.set(e.seq, e);
             if (e.type === 'turn/start') {
                 group = {
                     turn: e.data?.turn, export: false, story: false, completed: false
@@ -235,7 +244,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                 groups.push(group);
             }
             if (group)
-                bySeq.set(e.seq, group);
+                rawBySeq.set(e.seq, group);
             const source = e.type === 'user/message' ? e.data?.source : null;
             if (group && source?.kind === 'roleplay-tasks') {
                 if (['card-export', 'novel-export'].includes(source.jobKind ?? ''))
@@ -251,7 +260,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                 group = null;
             }
         }
-        const visible = [...(session.surface?.nodes ?? [])], nodesByGroup = new Map<TurnGroup, number[]>(), positions = new Map<number, number>();
+        const visible = native?[]:[...(session.surface?.nodes ?? [])], nodesByGroup = new Map<TurnGroup, number[]>(), positions = new Map<number, number>();
         for (let index = 0; index < visible.length; index++) {
             const seq = visible[index]!;
             if (!positions.has(seq))
@@ -268,7 +277,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
             const currentImport = !!activeImport && candidate.turn === currentTurn;
             if ((!candidate.completed || candidate.turn === currentTurn) && !currentImport)
                 continue;
-            const groupNodes = nodesByGroup.get(candidate) ?? [];
+            const groupNodes = native?native.nodes(candidate as RetirementTurn):nodesByGroup.get(candidate) ?? [];
             const imported = completedImportSpan(groupNodes, lookup);
             if (imported?.directBegin && (!activeImport
                 || imported.importId !== activeImport.importId
@@ -286,11 +295,10 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
             const start = selected[0]!, end = selected.at(-1)!, first = positions.get(start)!, last = positions.get(end)!;
             // A branch-local replacement/checkpoint can interleave nodes from another
             // turn. Never consume a foreign story to retire management material.
-            if (last - first + 1 !== selected.length)
+            if (native?!native.contiguous(selected):last - first + 1 !== selected.length)
                 continue;
             let contiguous = true;
-            for (let index = first; index <= last; index++) {
-                const seq = visible[index]!;
+            for (const seq of native?selected:visible.slice(first,last+1)) {
                 if (!lookup.has(seq) || bySeq.get(seq) !== candidate) {
                     contiguous = false;
                     break;
@@ -340,29 +348,29 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
     }
     /** Program-selected prompt retention. Terminal task attempts become receipts;
      * durable source data, validation results and every raw event stay recoverable. */
-    function retireSettledInlineContexts(session: TaskContextSession, currentTurn: number, jobs: readonly InlineContextJob[]) {
+    function retireSettledInlineContexts(session: TaskContextSession, currentTurn: number,
+        jobs: readonly InlineContextJob[]|((id:string)=>InlineContextJob|undefined)) {
         if (!session.append)
             return 0;
-        const events = sessionEvents(session),
-             lookup = new Map(events.map(e => [e.seq,
-             e])),
-             owners = new Map<number,
-             number>(),
-             ended = new Set<number>();
+        const native=readHistory(session),events=native?undefined:sessionEvents(session),
+             lookup = native?.lookup??new Map(events!.map(e => [e.seq,e])),
+             rawOwners=new Map<number,number>(),owners=native?.owner??rawOwners,
+             ended = native?.ended??new Set<number>();
         let turn: number | undefined;
-        for (const e of events) {
+        if(!native)for (const e of events!) {
             if (e.type === 'turn/start')
                 turn = e.data?.turn;
             if (turn !== undefined)
-                owners.set(e.seq, turn);
+                rawOwners.set(e.seq, turn);
             if (e.type === 'turn/end') {
                 if (turn !== undefined)
                     ended.add(turn);
                 turn = undefined;
             }
         }
-        const internal = internalTaskSeqs(session), visible = [...(session.surface?.nodes ?? [])], groups: number[][] = [];
-        const visibleResults = new Map<string, number[]>();
+        const internal = native?.internal??internalTaskSeqs(session), visible = native?[]:[...(session.surface?.nodes ?? [])],
+            groups: number[][] = native?.inlineGroups(currentTurn)??[];
+        const rawResults = new Map<string, number[]>(),visibleResults=native?.visibleResults??rawResults;
         let group: number[] = [];
         const flush = () => {
             if (group.length)
@@ -373,9 +381,9 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
             const e = lookup.get(seq)!, source = e.type === 'user/message' ? e.data?.source : undefined, owner = owners.get(seq);
             const callId = e.type === 'tool/result' ? e.data?.message?.source?.callId : undefined;
             if (typeof callId === 'string') {
-                const results = visibleResults.get(callId);
+                const results = rawResults.get(callId);
                 if (results) results.push(seq);
-                else visibleResults.set(callId, [seq]);
+                else rawResults.set(callId, [seq]);
             }
             if (owner === undefined || owner >= currentTurn || !ended.has(owner)
                 || group.length && owners.get(group[0]!) !== owner) {
@@ -399,7 +407,9 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                 flush();
         }
         flush();
-        const jobById = new Map(jobs.map(j => [j.id, j])), terminal = new Set(['completed', 'failed', 'cancelled', 'stale']);
+        const jobById = typeof jobs==='function'?undefined:new Map(jobs.map(j => [j.id, j])),
+            readJob=typeof jobs==='function'?jobs:(id:string)=>jobById!.get(id),
+            terminal = new Set(['completed', 'failed', 'cancelled', 'stale']);
         let retired = 0;
         for (const selected of groups) {
             const attempts = new Map<string, {
@@ -442,7 +452,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                         break;
                     }
                     for (const raw of tasks) {
-                        const task = taskContextRecord(raw), job = typeof task?.id === 'string' ? jobById.get(task.id) : undefined;
+                        const task = taskContextRecord(raw), job = typeof task?.id === 'string' ? readJob(task.id) : undefined;
                         if (!task || !job || job.sessionId !== session.id || job.execution !== 'inline'
                             || !['status', 'decision', 'memory', 'schema-maintenance'].includes(job.kind)
                             || job.kind !== task.kind
@@ -513,7 +523,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
             // A stopped attempt can have no result. It is safe to retire the call only
             // when no still-visible result elsewhere would become orphaned.
             const selectedSet = new Set(selected);
-            if ([...calls].some(callId => visibleResults.get(callId)?.some(seq => !selectedSet.has(seq))))
+            if ([...calls].some(callId => [...(visibleResults.get(callId)??[])].some(seq => !selectedSet.has(seq))))
                 continue;
             const details = [...attempts.values()],
                  recover = details.filter(a => a.state === 'failed'),
@@ -561,22 +571,20 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
     function retireUsedStoryReads(session: TaskContextSession, currentTurn: number) {
         if (!session.append)
             return 0;
-        const events = sessionEvents(session),
-             lookup = new Map(events.map(e => [e.seq,
-             e])),
-             nodes = [...(session.surface?.nodes
-            ?? [])],
-             owners = new Map<number,
-             number>(),
-             completed = new Set<number>(),
-             bodies = new Map<number,
-             number>();
+        const native=readHistory(session),events=native?undefined:sessionEvents(session),
+             lookup = native?.lookup??new Map(events!.map(e => [e.seq,e])),
+             nodes = native?native.selected('read'):[...(session.surface?.nodes??[])],
+             positions=native?undefined:new Map(nodes.map((seq,index)=>[seq,index])),
+             next=(seq:number)=>native?native.next(seq):nodes[positions!.get(seq)!+1],
+             rawOwners=new Map<number,number>(),owners=native?.owner??rawOwners,
+             completed = native?.completed??new Set<number>(),
+             bodies = native?.bodies??new Map<number,number>();
         let turn: number | undefined;
-        for (const e of events) {
+        if(!native)for (const e of events!) {
             if (e.type === 'turn/start')
                 turn = e.data?.turn;
             if (turn !== undefined)
-                owners.set(e.seq, turn);
+                rawOwners.set(e.seq, turn);
             const source = e.type === 'user/message' ? e.data?.source : undefined;
             if (turn !== undefined && source?.kind === 'roleplay-tasks'
                 && source.form === 'phase'
@@ -593,7 +601,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                 turn = undefined;
             }
         }
-        const allowed = new Set(['rp_history', 'rp_worldbook_list', 'rp_worldbook_search']), internal = internalTaskSeqs(session);
+        const allowed = new Set(['rp_history', 'rp_worldbook_list', 'rp_worldbook_search']), internal = native?.internal??internalTaskSeqs(session);
         let retired = 0;
         for (let i = 0; i < nodes.length; i++) {
             const e = lookup.get(nodes[i]!)!, owner = owners.get(e.seq), body = owner === undefined ? undefined : bodies.get(owner);
@@ -609,14 +617,15 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
             if (calls.size !== blocks.length)
                 continue;
             const selected = [e.seq], pending = new Set(calls);
-            let j = i + 1;
-            for (; j < nodes.length && pending.size; j++) {
-                const result = lookup.get(nodes[j]!)!, id = result.data?.message?.source?.callId;
+            let following=next(e.seq);
+            while(following!==undefined&&pending.size) {
+                const result = lookup.get(following)!, id = result.data?.message?.source?.callId;
                 if (result.type !== 'tool/result' || owners.get(result.seq) !== owner || result.seq >= body || !id
                     || !pending.has(id))
                     break;
                 pending.delete(id);
                 selected.push(result.seq);
+                following=next(following);
             }
             if (pending.size)
                 continue;
@@ -653,11 +662,15 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                 sourceEventSeqs: selected
             });
             retired += selected.length;
-            i = j - 1;
         }
         return retired + retireSuccessfulReceipts(session, 'read-evidence-receipt');
     }
     return {
-        retireCompletedTaskContexts, retireSettledInlineContexts, retireUsedStoryReads
+        retireCompletedTaskContexts, retireSettledInlineContexts, retireUsedStoryReads,
+        internal:(session:TaskContextSession)=>readHistory(session)?.internal??internalTaskSeqs(session),
+        retireDeliveredDraft:(session:TaskContextSession,turn:number)=>retireDeliveredDraft(session,turn,readHistory),
+        retireCoarseResearchReads:(session:TaskContextSession,owner:string)=>retireCoarseResearchReads(session,owner,readHistory),
+        retireAdaptationReads:(session:TaskContextSession,
+            notes:{sourceId:string;segment:number;seq:number;progress?:AdaptationProgress}[])=>retireAdaptationReads(session,notes,readHistory),
     };
 }

@@ -1,10 +1,10 @@
 import {decodeTaskRecord} from './tavern-task-primitives.js'
 import type {AuthorDialogPromptV1,AuthorDialogNativeCompletionV1} from './roleplay-author-dialog.js'
-import type {OwnedAuthorDialogActivationV1} from '@deepseek-ai/dsh-subagent'
+import type {OwnedAuthorDialogActivationV1} from 'dsh-nexttavern-native-subagent'
 import type {OwnedRubyTaskActivationV1,OwnedRubyTaskOwnerV1,OwnedRubyTaskMessageV1}
-  from '@deepseek-ai/dsh-subagent'
+  from 'dsh-nexttavern-native-subagent'
 import type {NativeCompletedInputWorkReceiptV1,NativeDurableInputWorkReceiptV1,NativeInputStopNoticeV1}
-  from '@deepseek-ai/dsh-agent-loop'
+  from 'dsh-nexttavern-native-agent-loop'
 
 export interface RubyTaskNativeCompletionV1 {
   readonly schemaVersion:1
@@ -78,6 +78,7 @@ export interface TaskSelection {
 }
 export interface TaskSpec<S, A> {
   executionPolicy?: TaskExecutionPolicy
+  /** Only the actual Author dialog owner supplies this frozen plan. */
   authorDialog?:AuthorDialogPromptV1
   rubyTask?:RubyTaskSpecV1
   session: S
@@ -112,7 +113,14 @@ export interface TaskChild {
   localAgent?: {session?: {events?: {type: string; data?: {reason?: unknown}}[]}}
 }
 export interface TaskOptions<S, A> {
-  table: {get(key: string): unknown; entries(): Iterable<[string, unknown]>; put(key: string, value: unknown): unknown | PromiseLike<unknown>}
+  table: {
+    get(key: string): unknown
+    entries(): Iterable<[string, unknown]>
+    entriesPrefix?(prefix:string|readonly string[]):Iterable<[string,unknown]>
+    put(key: string, value: unknown): unknown | PromiseLike<unknown>
+  }
+  /** Actual Domain row changes, including writes by other owners. */
+  observeRecords?(observe:(change:import('@deepseek-ai/dsh-storage-domain').DomainChanged)=>void):()=>void
   policy: {resolve(session: S, kind: string, agent?: A): TaskSelection | PromiseLike<TaskSelection>}
   subagents?: {start(mode: 'spawn', request: {
     parent?: A
@@ -122,6 +130,7 @@ export interface TaskOptions<S, A> {
     toolFilter: {allow: string[]}
     label: string
     persona?: string
+    isolatedSystem?: string
     prompt: {type: 'text'; text: string}[]
     activation?:OwnedAuthorDialogActivationV1
     rubyActivation?:OwnedRubyTaskActivationV1

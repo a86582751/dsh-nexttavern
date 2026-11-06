@@ -3,56 +3,75 @@ import { sessionEvents } from './session-history.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { adaptationToolResult } from '../memory/memory-provenance.js';
 import { readCardSource } from './tavern-card.js';
+const deliveredDraftHistory = {};
+function createDeliveredDraftHistory() {
+    const calls = new Map(), ended = new Set(), drafts = new Set();
+    let start = null, turn = -1;
+    return { data: { drafts, ended }, advance(e) {
+            if (e.type === 'turn/start')
+                turn = Number(e.data?.turn);
+            if (e.type === 'turn/end' && e.data?.reason?.kind === 'completed')
+                ended.add(turn);
+            if (e.type === 'assistant/message')
+                for (const b of e.data?.message?.content ?? [])
+                    if (b.type === 'tool-call' && b.id && b.name)
+                        calls.set(b.id, { name: b.name, seq: e.seq });
+            if (e.type === 'tool/call' && typeof e.data?.callId === 'string' && !calls.has(e.data.callId))
+                calls.set(e.data.callId, { name: String(e.data.name), seq: e.seq });
+            if (e.type !== 'tool/result')
+                return;
+            const call = calls.get(e.data?.message?.source?.callId ?? ''), decoded = adaptationToolResult(e.data?.message);
+            if (!call || !decoded || decoded.failed)
+                return;
+            let proof;
+            try {
+                proof = JSON.parse(decoded.text);
+            }
+            catch {
+                return;
+            }
+            if (!proof || typeof proof !== 'object')
+                return;
+            if ((call.name === 'rp_source_begin' && typeof proof.sourceId === 'string')
+                || (call.name === 'rp_card_draft_check' && proof.ok === true && proof.mode === 'authoring'))
+                start ??= call.seq;
+            if (call.name === 'rp_source_close' && proof.ok === true)
+                start = null;
+            if (call.name === 'rp_card_import_begin' && proof.ok === true)
+                start = null;
+            if (call.name === 'rp_card_draft_check' && start !== null && proof.ok === true && proof.schemaVersion === 1
+                && typeof proof.sourcePath === 'string' && /^[a-f0-9]{64}$/.test(String(proof.sha256))
+                && proof.statusRendering?.renderable === true
+                && Array.isArray(proof.errors) && !proof.errors.length) {
+                drafts.add({ start, end: call.seq - 1, turn, path: proof.sourcePath, sha256: String(proof.sha256) });
+            }
+        } };
+}
 /** A delivered, checked JSON or legacy MD is the research/authoring checkpoint. */
-export function retireDeliveredDraft(session, currentTurn) {
+export function retireDeliveredDraft(session, currentTurn, readHistory) {
     if (!session.append)
         return 0;
-    const events = sessionEvents(session), lookup = new Map(events.map(e => [e.seq, e]));
-    const calls = new Map(), ended = new Set();
-    const drafts = [];
-    let start = null, turn = -1;
-    for (const e of events) {
-        if (e.type === 'turn/start')
-            turn = Number(e.data?.turn);
-        if (e.type === 'turn/end' && e.data?.reason?.kind === 'completed')
-            ended.add(turn);
-        if (e.type === 'assistant/message')
-            for (const b of e.data?.message?.content ?? [])
-                if (b.type === 'tool-call' && b.id && b.name)
-                    calls.set(b.id, { name: b.name, seq: e.seq });
-        if (e.type === 'tool/call' && typeof e.data?.callId === 'string' && !calls.has(e.data.callId))
-            calls.set(e.data.callId, { name: String(e.data.name), seq: e.seq });
-        if (e.type !== 'tool/result')
-            continue;
-        const call = calls.get(e.data?.message?.source?.callId ?? ''), decoded = adaptationToolResult(e.data?.message);
-        if (!call || !decoded || decoded.failed)
-            continue;
-        let proof;
-        try {
-            proof = JSON.parse(decoded.text);
-        }
-        catch {
-            continue;
-        }
-        if (!proof || typeof proof !== 'object')
-            continue;
-        if ((call.name === 'rp_source_begin' && typeof proof.sourceId === 'string') || (call.name === 'rp_card_draft_check' && proof.ok === true && proof.mode === 'authoring'))
-            start ??= call.seq;
-        if (call.name === 'rp_source_close' && proof.ok === true)
-            start = null;
-        if (call.name === 'rp_card_import_begin' && proof.ok === true)
-            start = null;
-        if (call.name === 'rp_card_draft_check' && start !== null && proof.ok === true && proof.schemaVersion === 1
-            && typeof proof.sourcePath === 'string' && /^[a-f0-9]{64}$/.test(String(proof.sha256))
-            && proof.statusRendering?.renderable === true && Array.isArray(proof.errors) && !proof.errors.length) {
-            drafts.push({ start, end: call.seq - 1, turn, path: proof.sourcePath, sha256: String(proof.sha256) });
-        }
+    const native = readHistory?.(session), events = native ? undefined : sessionEvents(session), lookup = native?.lookup ?? new Map(events.map(e => [e.seq, e]));
+    let facts;
+    if (native)
+        facts = native.foldNative(deliveredDraftHistory, createDeliveredDraftHistory);
+    else {
+        const fold = createDeliveredDraftHistory();
+        for (const event of events)
+            fold.advance(event);
+        facts = fold.data;
     }
+    const { drafts, ended } = facts;
     let retired = 0;
-    for (const draft of drafts.reverse()) {
+    for (const draft of [...drafts].reverse()) {
         if (draft.turn === currentTurn || !ended.has(draft.turn))
             continue;
-        const nodes = [...(session.surface?.nodes ?? [])], groups = [];
+        const current = readHistory?.(session);
+        if (current && !current.hasRange(draft.start, draft.end)) {
+            drafts.delete(draft);
+            continue;
+        }
+        const nodes = current ? current.range(draft.start, draft.end) : [...(session.surface?.nodes ?? [])], groups = [];
         let group = [];
         const flush = () => { if (group.length)
             groups.push(group); group = []; };
@@ -60,14 +79,20 @@ export function retireDeliveredDraft(session, currentTurn) {
             const e = lookup.get(seq), source = e?.data?.source;
             const owned = e && seq >= draft.start && seq <= draft.end && (e.type === 'assistant/message' || e.type === 'tool/result'
                 || e.type === 'user/message' && ['roleplay-tasks', 'roleplay-context'].includes(source?.kind ?? ''));
-            if (owned)
+            if (owned) {
+                if (current && group.length && current.next(group.at(-1)) !== seq)
+                    flush();
                 group.push(seq);
+            }
             else
                 flush();
         }
         flush();
-        if (!groups.length)
+        if (!groups.length) {
+            if (native)
+                drafts.delete(draft);
             continue;
+        }
         try {
             const source = readCardSource(session.header?.cwd ?? '', draft.path);
             if (createHash('sha256').update(source.bytes.toString('utf8')).digest('hex') !== draft.sha256)
@@ -82,109 +107,127 @@ export function retireDeliveredDraft(session, currentTurn) {
                 content: [{ type: 'text', text: `写卡阶段已交付并通过草稿检查：${draft.path}（SHA-256 ${draft.sha256}）。玩家确认的要求与最终交付消息保留；研究/写卡过程在历史 seq ${first}–${last} 可追溯。导入请直接读取该文件；原著与阅读笔记仍可按需查询，文件通过检查不代表已激活。` }] }, { surfaceOp: { op: 'replace', startSeq: first, endSeq: last }, sourceEventSeqs: selected });
             retired += selected.length;
         }
+        if (native)
+            drafts.delete(draft);
     }
     return retired;
 }
-/** A successfully activated card closes the explicit research workflow. Unlike
- * in-progress read retirement, this can release failed and mixed tool attempts:
- * the authoritative card has committed and the entire raw audit remains. */
-export function retireFinishedAdaptation(session, currentTurn, activeImport) {
+const finishedAdaptationHistory = {};
+function createFinishedAdaptationHistory() {
+    const calls = new Map(), ended = new Set();
+    const spans = new Set();
+    let turn = -1, researchStart = null, sourceId = '', finished = false, importId = null, importHash = null;
+    return { data: { spans, ended }, advance(event) {
+            if (event.type === 'turn/start')
+                turn = Number(event.data?.turn);
+            if (event.type === 'turn/end') {
+                if (event.data?.reason?.kind === 'completed')
+                    ended.add(turn);
+                return;
+            }
+            if (event.type === 'assistant/message')
+                for (const block of event.data?.message?.content ?? []) {
+                    if (block.type === 'tool-call' && block.id && block.name)
+                        calls.set(block.id, { name: block.name, seq: event.seq });
+                }
+            if (event.type === 'tool/call') {
+                const id = event.data?.callId ?? event.data?.id;
+                if (typeof id === 'string' && !calls.has(id))
+                    calls.set(id, { name: String(event.data?.name), seq: event.seq });
+            }
+            if (event.type !== 'tool/result')
+                return;
+            const id = event.data?.message?.source?.callId, call = id ? calls.get(id) : undefined;
+            if (!call || !['rp_source_begin', 'rp_source_library', 'rp_source_finish', 'rp_source_close', 'rp_card_import_begin', 'rp_card_import_finalize', 'rp_commit_card'].includes(call.name))
+                return;
+            const decoded = adaptationToolResult(event.data?.message);
+            if (!decoded || decoded.failed)
+                return;
+            let proof;
+            try {
+                const value = JSON.parse(decoded.text);
+                if (value && typeof value === 'object')
+                    proof = value;
+            }
+            catch { }
+            if (!proof)
+                return;
+            if (['rp_source_begin', 'rp_source_library'].includes(call.name) && typeof proof.sourceId === 'string' && (call.name === 'rp_source_begin' || proof.attached === true)) {
+                researchStart = researchStart ?? call.seq;
+                sourceId = proof.sourceId;
+                finished = false;
+                importId = null;
+                importHash = null;
+                return;
+            }
+            const coarse = proof.research;
+            if (call.name === 'rp_source_finish' && proof.ok === true && proof.sourceId === sourceId && proof.status === 'finished'
+                && Number.isSafeInteger(proof.segments) && Number(proof.segments) > 0
+                && ((proof.reviewed === proof.segments && proof.read === proof.segments)
+                    || (proof.readingMode === 'coarse' && [1, 2].includes(Number(coarse?.schemaVersion)) && coarse?.mode === 'coarse' && coarse.status === 'finished' && coarse.coverage?.ready === true))) {
+                finished = true;
+                return;
+            }
+            if (call.name === 'rp_source_close' && proof.ok === true && ['authoring', 'roleplay'].includes(String(proof.mode))) {
+                researchStart = null;
+                finished = false;
+                importId = null;
+                importHash = null;
+                return;
+            }
+            if (call.name === 'rp_card_import_begin' && proof.ok === true) {
+                importId = finished && typeof proof.importId === 'string' ? proof.importId : null;
+                importHash = importId && /^[a-f0-9]{64}$/.test(String(proof.normalizedSha256)) ? String(proof.normalizedSha256) : null;
+                return;
+            }
+            // Native authoring commits through Core's same import transaction and
+            // returns its actual activation summary. Legacy column writes have no
+            // such summary and cannot retire research as if they activated a card.
+            const nativeCommit = call.name === 'rp_commit_card';
+            if ((call.name === 'rp_card_import_finalize' || nativeCommit) && researchStart !== null && finished
+                && (nativeCommit || importId && importHash && proof.importId === importId && proof.normalizedSha256 === importHash)
+                && proof.ok === true && proof.coverage === 1
+                && typeof proof.activatedAt === 'number' && Number.isFinite(proof.activatedAt) && proof.activatedAt > 0
+                && typeof proof.importId === 'string' && /^[a-f0-9]{64}$/.test(String(proof.normalizedSha256))) {
+                spans.add({ start: researchStart, sourceId, end: event.seq, turn, importId: proof.importId,
+                    normalizedSha256: String(proof.normalizedSha256) });
+                researchStart = null;
+            }
+        } };
+}
+export function retireFinishedAdaptation(session, currentTurn, activeImport, readHistory) {
     if (!session.append)
         return 0;
-    const events = sessionEvents(session), lookup = new Map(events.map(e => [e.seq, e]));
-    const calls = new Map(), ended = new Set();
-    const spans = [];
-    let turn = -1, researchStart = null, sourceId = '', finished = false, importId = null, importHash = null;
-    for (const event of events) {
-        if (event.type === 'turn/start')
-            turn = Number(event.data?.turn);
-        if (event.type === 'turn/end') {
-            if (event.data?.reason?.kind === 'completed')
-                ended.add(turn);
-            continue;
-        }
-        if (event.type === 'assistant/message')
-            for (const block of event.data?.message?.content ?? []) {
-                if (block.type === 'tool-call' && block.id && block.name)
-                    calls.set(block.id, { name: block.name, seq: event.seq });
-            }
-        if (event.type === 'tool/call') {
-            const id = event.data?.callId ?? event.data?.id;
-            if (typeof id === 'string' && !calls.has(id))
-                calls.set(id, { name: String(event.data?.name), seq: event.seq });
-        }
-        if (event.type !== 'tool/result')
-            continue;
-        const id = event.data?.message?.source?.callId, call = id ? calls.get(id) : undefined;
-        if (!call || !['rp_source_begin', 'rp_source_library', 'rp_source_finish', 'rp_source_close', 'rp_card_import_begin', 'rp_card_import_finalize', 'rp_commit_card'].includes(call.name))
-            continue;
-        const decoded = adaptationToolResult(event.data?.message);
-        if (!decoded || decoded.failed)
-            continue;
-        let proof;
-        try {
-            const value = JSON.parse(decoded.text);
-            if (value && typeof value === 'object')
-                proof = value;
-        }
-        catch { }
-        if (!proof)
-            continue;
-        if (['rp_source_begin', 'rp_source_library'].includes(call.name) && typeof proof.sourceId === 'string' && (call.name === 'rp_source_begin' || proof.attached === true)) {
-            researchStart = researchStart ?? call.seq;
-            sourceId = proof.sourceId;
-            finished = false;
-            importId = null;
-            importHash = null;
-            continue;
-        }
-        const coarse = proof.research;
-        if (call.name === 'rp_source_finish' && proof.ok === true && proof.sourceId === sourceId && proof.status === 'finished'
-            && Number.isSafeInteger(proof.segments) && Number(proof.segments) > 0
-            && ((proof.reviewed === proof.segments && proof.read === proof.segments)
-                || (proof.readingMode === 'coarse' && [1, 2].includes(Number(coarse?.schemaVersion)) && coarse?.mode === 'coarse' && coarse.status === 'finished' && coarse.coverage?.ready === true))) {
-            finished = true;
-            continue;
-        }
-        if (call.name === 'rp_source_close' && proof.ok === true && ['authoring', 'roleplay'].includes(String(proof.mode))) {
-            researchStart = null;
-            finished = false;
-            importId = null;
-            importHash = null;
-            continue;
-        }
-        if (call.name === 'rp_card_import_begin' && proof.ok === true) {
-            importId = finished && typeof proof.importId === 'string' ? proof.importId : null;
-            importHash = importId && /^[a-f0-9]{64}$/.test(String(proof.normalizedSha256)) ? String(proof.normalizedSha256) : null;
-            continue;
-        }
-        // Native authoring commits through Core's same import transaction and
-        // returns its actual activation summary. Legacy column writes have no
-        // such summary and cannot retire research as if they activated a card.
-        const nativeCommit = call.name === 'rp_commit_card';
-        if ((call.name === 'rp_card_import_finalize' || nativeCommit) && researchStart !== null && finished
-            && (nativeCommit || importId && importHash && proof.importId === importId && proof.normalizedSha256 === importHash)
-            && proof.ok === true && proof.coverage === 1
-            && typeof proof.activatedAt === 'number' && Number.isFinite(proof.activatedAt) && proof.activatedAt > 0
-            && typeof proof.importId === 'string' && /^[a-f0-9]{64}$/.test(String(proof.normalizedSha256))) {
-            spans.push({ start: researchStart, sourceId, end: event.seq, turn, importId: proof.importId,
-                normalizedSha256: String(proof.normalizedSha256) });
-            researchStart = null;
-        }
+    const native = readHistory?.(session), events = native ? undefined : sessionEvents(session), lookup = native?.lookup ?? new Map(events.map(e => [e.seq, e]));
+    let facts;
+    if (native)
+        facts = native.foldNative(finishedAdaptationHistory, createFinishedAdaptationHistory);
+    else {
+        const fold = createFinishedAdaptationHistory();
+        for (const event of events)
+            fold.advance(event);
+        facts = fold.data;
     }
+    const { spans, ended } = facts;
     let retired = 0;
     for (const span of spans) {
+        const current = readHistory?.(session);
+        if (current && !current.hasRange(span.start, span.end)) {
+            spans.delete(span);
+            continue;
+        }
         if (span.turn === currentTurn) {
             // The native pre-step supplies the active table pointer only after the
             // import transaction committed. Research no longer serves the opening.
-            if (activeImport?.importId !== span.importId || activeImport.normalizedSha256 !== span.normalizedSha256 || !session.surface?.nodes?.includes(span.end))
+            if (activeImport?.importId !== span.importId || activeImport.normalizedSha256 !== span.normalizedSha256
+                || (current ? !current.visible(span.end) : !session.surface?.nodes?.includes(span.end)))
                 continue;
         }
         else if (!ended.has(span.turn))
             continue;
         // Work only on the visible branch projection. Separate ranges around
         // player input or unrelated nodes rather than swallowing their contents.
-        const nodes = [...(session.surface?.nodes ?? [])], groups = [];
+        const nodes = current ? current.range(span.start, span.end) : [...(session.surface?.nodes ?? [])], groups = [];
         let group = [];
         const flush = () => { if (group.length)
             groups.push(group); group = []; };
@@ -192,8 +235,11 @@ export function retireFinishedAdaptation(session, currentTurn, activeImport) {
             const event = lookup.get(seq), source = event?.data?.source;
             const owned = event && seq >= span.start && seq <= span.end && (event.type === 'assistant/message' || event.type === 'tool/result'
                 || event.type === 'user/message' && ['roleplay-tasks', 'roleplay-context'].includes(source?.kind ?? ''));
-            if (owned)
+            if (owned) {
+                if (current && group.length && current.next(group.at(-1)) !== seq)
+                    flush();
                 group.push(seq);
+            }
             else
                 flush();
         }
@@ -206,72 +252,88 @@ export function retireFinishedAdaptation(session, currentTurn, activeImport) {
                 content: [{ type: 'text', text: `原著研究已结束，角色卡已完整激活，当前设定由酒馆栏目提供。研究材料与旧工具尝试保留于历史 seq ${start}–${end}；需要核对原著时按 sourceId ${span.sourceId} 查询阅读笔记或原文。研究过程不是扮演正史。` }] }, { surfaceOp: { op: 'replace', startSeq: start, endSeq: end }, sourceEventSeqs: selected });
             retired += selected.length;
         }
+        if (native)
+            spans.delete(span);
     }
     return retired;
 }
-/** A coarse batch is released only after all of its actual evidence packets
- * were explicitly acknowledged by a later successful durable note write.
- * The visible native call/result chain supplies provenance, never model prose. */
-export function retireCoarseResearchReads(session, owner) {
+function researchEnvelope(value, owner) {
+    if (!value || typeof value !== 'object')
+        return null;
+    const v = value;
+    return v.schemaVersion === 1 && v.owner === owner && typeof v.sourceId === 'string' && !!v.sourceId
+        && /^[a-f0-9]{64}$/.test(v.textSha256) && typeof v.generation === 'string' && !!v.generation
+        && Array.isArray(v.packetIds) && v.packetIds.length > 0 && v.packetIds.every(p => typeof p === 'string' && p.length > 0)
+        ? v : null;
+}
+const researchIdentity = (v) => JSON.stringify([v.owner, v.sourceId, v.textSha256, v.generation]);
+function createCoarseResearchHistory(owner) {
+    const calls = new Map(), confirmed = new Map();
+    const deliveries = new Map(), published = new Map();
+    return { data: { calls, confirmed, deliveries, published }, advance(e) {
+            if (e.type === 'assistant/message')
+                for (const b of e.data?.message?.content ?? []) {
+                    if (b.type !== 'tool-call' || b.name !== 'rp_source_research' || !b.id)
+                        continue;
+                    try {
+                        const args = typeof b.arguments === 'string' ? JSON.parse(b.arguments) : b.arguments;
+                        if (typeof args?.action === 'string' && typeof args?.source_id === 'string')
+                            calls.set(b.id, { action: args.action, sourceId: args.source_id });
+                    }
+                    catch { }
+                }
+            if (e.type !== 'tool/result')
+                return;
+            const call = calls.get(e.data?.message?.source?.callId ?? ''), decoded = adaptationToolResult(e.data?.message);
+            if (!call || !decoded || decoded.failed)
+                return;
+            let proof;
+            try {
+                proof = JSON.parse(decoded.text);
+            }
+            catch {
+                return;
+            }
+            if (!proof || typeof proof !== 'object' || proof.sourceId !== call.sourceId)
+                return;
+            if (['query', 'read'].includes(call.action)) {
+                const v = researchEnvelope(proof.researchDelivery, owner);
+                if (v && v.sourceId === call.sourceId) {
+                    deliveries.set(e.seq, v);
+                    const key = researchIdentity(v), packets = published.get(key) ?? new Map();
+                    for (const id of v.packetIds)
+                        packets.set(id, Math.min(e.seq, packets.get(id) ?? Infinity));
+                    published.set(key, packets);
+                }
+            }
+            if (['save', 'append'].includes(call.action)) {
+                const v = researchEnvelope(proof.researchCheckpoint, owner);
+                if (!v || v.sourceId !== call.sourceId || !Number.isSafeInteger(v.revision) || Number(v.revision) < 0)
+                    return;
+                const key = researchIdentity(v), packets = confirmed.get(key) ?? new Map();
+                for (const id of v.packetIds)
+                    packets.set(id, Math.max(e.seq, packets.get(id) ?? -1));
+                confirmed.set(key, packets);
+            }
+        } };
+}
+export function retireCoarseResearchReads(session, owner, readHistory) {
     if (!session.append)
         return 0;
-    const events = sessionEvents(session), bySeq = new Map(events.map(e => [e.seq, e])), nodes = [...(session.surface?.nodes ?? [])];
-    const envelope = (value) => {
-        if (!value || typeof value !== 'object')
-            return null;
-        const v = value;
-        return v.schemaVersion === 1 && v.owner === owner && typeof v.sourceId === 'string' && !!v.sourceId
-            && /^[a-f0-9]{64}$/.test(v.textSha256) && typeof v.generation === 'string' && !!v.generation
-            && Array.isArray(v.packetIds) && v.packetIds.length > 0 && v.packetIds.every(p => typeof p === 'string' && p.length > 0)
-            ? v : null;
-    };
-    const identity = (v) => JSON.stringify([v.owner, v.sourceId, v.textSha256, v.generation]);
-    const calls = new Map(), confirmed = new Map();
-    const deliveries = new Map();
-    for (const seq of nodes) {
-        const e = bySeq.get(seq);
-        if (!e)
-            continue;
-        if (e.type === 'assistant/message')
-            for (const b of e.data?.message?.content ?? []) {
-                if (b.type !== 'tool-call' || b.name !== 'rp_source_research' || !b.id)
-                    continue;
-                try {
-                    const args = typeof b.arguments === 'string' ? JSON.parse(b.arguments) : b.arguments;
-                    if (typeof args?.action === 'string' && typeof args?.source_id === 'string')
-                        calls.set(b.id, { action: args.action, sourceId: args.source_id });
-                }
-                catch { }
-            }
-        if (e.type !== 'tool/result')
-            continue;
-        const call = calls.get(e.data?.message?.source?.callId ?? ''), decoded = adaptationToolResult(e.data?.message);
-        if (!call || !decoded || decoded.failed)
-            continue;
-        let proof;
-        try {
-            proof = JSON.parse(decoded.text);
+    const native = readHistory?.(session), events = native ? undefined : sessionEvents(session), bySeq = native?.lookup ?? new Map(events.map(e => [e.seq, e])), nodes = native ? native.selected('research-proof') : [...(session.surface?.nodes ?? [])], positions = native ? undefined : new Map(nodes.map((seq, index) => [seq, index])), next = (seq) => native ? native.next(seq) : nodes[positions.get(seq) + 1];
+    let facts;
+    if (native)
+        facts = native.foldVisible('coarse-research\0' + owner, 'research-proof', () => createCoarseResearchHistory(owner));
+    else {
+        const fold = createCoarseResearchHistory(owner);
+        for (const seq of nodes) {
+            const event = bySeq.get(seq);
+            if (event)
+                fold.advance(event);
         }
-        catch {
-            continue;
-        }
-        if (!proof || typeof proof !== 'object' || proof.sourceId !== call.sourceId)
-            continue;
-        if (['query', 'read'].includes(call.action)) {
-            const v = envelope(proof.researchDelivery);
-            if (v && v.sourceId === call.sourceId)
-                deliveries.set(seq, v);
-        }
-        if (['save', 'append'].includes(call.action)) {
-            const v = envelope(proof.researchCheckpoint);
-            if (!v || v.sourceId !== call.sourceId || !Number.isSafeInteger(v.revision) || Number(v.revision) < 0)
-                continue;
-            const key = identity(v), packets = confirmed.get(key) ?? new Map();
-            for (const id of v.packetIds)
-                packets.set(id, Math.max(seq, packets.get(id) ?? -1));
-            confirmed.set(key, packets);
-        }
+        facts = fold.data;
     }
+    const { calls, confirmed, deliveries, published } = facts;
     let retired = 0;
     for (let i = 0; i < nodes.length; i++) {
         const e = bySeq.get(nodes[i]);
@@ -284,16 +346,17 @@ export function retireCoarseResearchReads(session, owner) {
         if (pending.size !== blocks.length)
             continue;
         const selected = [e.seq];
-        let j = i + 1;
-        for (; j < nodes.length && pending.size; j++) {
-            const result = bySeq.get(nodes[j]), id = result?.data?.message?.source?.callId, v = result ? deliveries.get(result.seq) : null;
+        let following = next(e.seq);
+        while (following !== undefined && pending.size) {
+            const result = bySeq.get(following), id = result?.data?.message?.source?.callId, v = result ? deliveries.get(result.seq) : null;
             if (result?.type !== 'tool/result' || !id || !pending.has(id) || !v)
                 break;
-            const saved = confirmed.get(identity(v));
+            const saved = confirmed.get(researchIdentity(v));
             if (!saved || v.packetIds.some(packet => (saved.get(packet) ?? -1) <= result.seq))
                 break;
             selected.push(result.seq);
             pending.delete(id);
+            following = next(following);
         }
         if (pending.size)
             continue;
@@ -302,23 +365,22 @@ export function retireCoarseResearchReads(session, owner) {
                 sourceSha256: createHash('sha256').update(JSON.stringify(selected.map(seq => bySeq.get(seq)))).digest('hex') },
             content: [{ type: 'text', text: `这批粗颗粒度原文已整理到阅读笔记，长工具结果移出请求，原始证据保留于历史 seq ${start}–${end}。用 rp_source_research(entries) 查笔记；确需重新核实时才定向 read。继续下一批关系检索，勿重复注入已读原文；原著事实不是当前世界线剧情。` }] }, { surfaceOp: { op: 'replace', startSeq: start, endSeq: end }, sourceEventSeqs: selected });
         retired += selected.length;
-        i = j - 1;
     }
     // Large batches use the native deferred-context channel so generic tool
     // result pruning cannot silently discard original evidence. Its provenance
     // must still trace to a successful visible tool delivery before this node.
-    for (const seq of nodes) {
+    for (const seq of native ? native.selected('coarse-evidence') : nodes) {
         const e = bySeq.get(seq), source = e?.data?.source;
         if (e?.type !== 'user/message' || source?.kind !== 'roleplay-tasks' || source.form !== 'coarse-research-evidence')
             continue;
-        const v = envelope(source);
+        const v = researchEnvelope(source, owner);
         if (!v)
             continue;
-        const saved = confirmed.get(identity(v));
+        const saved = confirmed.get(researchIdentity(v));
         if (!saved || v.packetIds.some(id => (saved.get(id) ?? -1) <= seq))
             continue;
-        const published = new Set([...deliveries].filter(([at, d]) => at < seq && identity(d) === identity(v)).flatMap(([, d]) => d.packetIds));
-        if (v.packetIds.some(id => !published.has(id)))
+        const delivered = published.get(researchIdentity(v));
+        if (v.packetIds.some(id => (delivered?.get(id) ?? Infinity) >= seq))
             continue;
         session.append('user/message', { id: randomUUID(), role: 'user', source: { schemaVersion: 1, kind: 'roleplay-tasks', form: 'adaptation-receipt', owner: session.id, researchOwner: owner,
                 sourceSha256: createHash('sha256').update(JSON.stringify(e)).digest('hex') },
@@ -327,18 +389,44 @@ export function retireCoarseResearchReads(session, owner) {
     }
     return retired;
 }
-export function retireAdaptationReads(session, notes) {
+const adaptationReadHistory = {};
+function createAdaptationReadHistory(researchCalls = new Set()) {
+    const data = { checkpoint: -1 };
+    return { data, advance(event) {
+            if (event.type === 'assistant/message')
+                for (const block of event.data?.message?.content ?? [])
+                    if (block.type === 'tool-call' && /^rp_source_/.test(block.name ?? '') && block.id)
+                        researchCalls.add(block.id);
+            if (event.type === 'tool/result' && researchCalls.has(event.data?.message?.source?.callId ?? '')) {
+                const result = adaptationToolResult(event.data?.message);
+                if (result !== null && !result.failed)
+                    data.checkpoint = Math.max(data.checkpoint, event.seq);
+            }
+        } };
+}
+export function retireAdaptationReads(session, notes, readHistory) {
     if (!session.append || !notes.length)
         return 0;
-    const events = sessionEvents(session), lookup = new Map(events.map(e => [e.seq, e])), nodes = [...(session.surface?.nodes ?? [])];
-    const researchCalls = new Set();
-    for (const e of events)
-        if (e.type === 'assistant/message')
-            for (const block of e.data?.message?.content ?? [])
-                if (block.type === 'tool-call' && /^rp_source_/.test(block.name ?? '') && block.id)
-                    researchCalls.add(block.id);
+    const native = readHistory?.(session), events = native ? undefined : sessionEvents(session), lookup = native?.lookup ?? new Map(events.map(e => [e.seq, e])), nodes = native ? native.selected('research-read') : [...(session.surface?.nodes ?? [])], positions = native ? undefined : new Map(nodes.map((seq, index) => [seq, index])), next = (seq) => native ? native.next(seq) : nodes[positions.get(seq) + 1];
+    let facts;
+    if (native)
+        facts = native.foldNative(adaptationReadHistory, createAdaptationReadHistory);
+    else {
+        // The loaded API historically collects call IDs before testing results.
+        // Keep that order for caller-supplied arrays, including mutable old data.
+        const researchCalls = new Set();
+        for (const event of events)
+            if (event.type === 'assistant/message')
+                for (const block of event.data?.message?.content ?? [])
+                    if (block.type === 'tool-call' && /^rp_source_/.test(block.name ?? '') && block.id)
+                        researchCalls.add(block.id);
+        const fold = createAdaptationReadHistory(researchCalls);
+        for (const event of events)
+            fold.advance(event);
+        facts = fold.data;
+    }
     const successful = (e) => { const result = adaptationToolResult(e.data?.message); return result !== null && !result.failed; };
-    const checkpoint = Math.max(-1, ...notes.map(n => n.seq), ...events.filter(e => e.type === 'tool/result' && researchCalls.has(e.data?.message?.source?.callId ?? '') && successful(e)).map(e => e.seq));
+    const checkpoint = Math.max(facts.checkpoint, ...notes.map(n => n.seq));
     const progress = [...new Map(notes.flatMap(n => n.progress ? [[n.sourceId, n.progress]] : [])).values()];
     const resume = progress.length ? `程序核对的当前阅读进度：${JSON.stringify(progress)}。按当前改编 sourceId 选择进度；requiresReregister=true 的旧资料须先用原文件 begin 重新登记，不能沿用其已读标记。其他资料的 nextSegment 是下一批需要读取并保存笔记的编号。indexPolicy=running 仅表示已请求后台索引，不代表编码完成；不要重复提交 index 或轮询等待，先继续 read/note。读完后、需要语义查询时再检查一次索引进度。` : '按已保存笔记继续当前研究任务；索引在后台运行时不要反复提交或轮询等待。';
     let retired = 0;
@@ -370,9 +458,9 @@ export function retireAdaptationReads(session, notes) {
         if (event.seq >= groupCheckpoint)
             continue;
         const pending = new Set(blocks.map(b => b.id)), selected = [event.seq];
-        let j = i + 1;
-        for (; j < nodes.length && pending.size; j++) {
-            const result = lookup.get(nodes[j]), message = result?.data?.message, callId = message?.source?.callId;
+        let following = next(event.seq);
+        while (following !== undefined && pending.size) {
+            const result = lookup.get(following), message = result?.data?.message, callId = message?.source?.callId;
             if (!result || result.seq >= groupCheckpoint || result.type !== 'tool/result' || !callId || !pending.has(callId))
                 break;
             if (!successful(result)) {
@@ -384,6 +472,7 @@ export function retireAdaptationReads(session, notes) {
             }
             pending.delete(callId);
             selected.push(result.seq);
+            following = next(following);
         }
         if (pending.size)
             continue;
@@ -392,19 +481,24 @@ export function retireAdaptationReads(session, notes) {
                 sourceSha256: createHash('sha256').update(JSON.stringify(selected.map(seq => lookup.get(seq)))).digest('hex') },
             content: [{ type: 'text', text: `改编研究资料已保存笔记。原始工具记录保留于 seq ${start}–${end}；需要细节才调用 rp_source_notes / rp_source_read。${resume}原著与改编设想均不是已发生的扮演剧情。` }] }, { surfaceOp: { op: 'replace', startSeq: start, endSeq: end }, sourceEventSeqs: selected });
         retired += selected.length;
-        i = j - 1;
     }
     // Keep adjacent receipts bounded too; their nested sourceEventSeqs retain the full append-only audit chain.
-    const current = sessionEvents(session), bySeq = new Map(current.map(e => [e.seq, e])), visible = [...(session.surface?.nodes ?? [])];
-    for (let i = 0; i < visible.length; i++) {
-        const group = [];
-        while (i < visible.length) {
-            const e = bySeq.get(visible[i]), source = e?.data?.source;
-            if (e?.type !== 'user/message' || source?.form !== 'adaptation-receipt' || source.owner !== session.id)
-                break;
-            group.push(e.seq);
-            i++;
+    const currentNative = readHistory?.(session), current = currentNative ? undefined : sessionEvents(session), bySeq = currentNative?.lookup ?? new Map(current.map(e => [e.seq, e])), visible = currentNative ? currentNative.selected('adaptation-receipt') : [...(session.surface?.nodes ?? [])], groups = [];
+    let adjacent = [];
+    const flush = () => { if (adjacent.length)
+        groups.push(adjacent); adjacent = []; };
+    for (const seq of visible) {
+        const event = bySeq.get(seq), source = event?.data?.source;
+        if (event?.type !== 'user/message' || source?.form !== 'adaptation-receipt' || source.owner !== session.id) {
+            flush();
+            continue;
         }
+        if (currentNative && adjacent.length && currentNative.next(adjacent.at(-1)) !== seq)
+            flush();
+        adjacent.push(seq);
+    }
+    flush();
+    for (const group of groups) {
         if (group.length < 2)
             continue;
         const start = group[0], end = group.at(-1);

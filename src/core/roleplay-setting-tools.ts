@@ -30,7 +30,7 @@ const object = (v: unknown): Record<string, unknown> => v !== null && typeof v =
 export function registerSettingTool(deps: SettingToolDependencies) {
     const { ctx, T, sessionOf, storyBranchIsActive, withImportLock, tavernTasks, modelPolicy, evidence } = deps;
     const running = new Set<string>();
-    const repairs = (sid: string) => [...T.branch.entries()].flatMap(([k,
+    const repairs = (sid: string) => [...(T.branch.entriesPrefix?.(`${sid}__setting-repair-`)??T.branch.entries())].flatMap(([k,
          v]) => k.startsWith(`${sid}__setting-repair-`)
         && v.schemaVersion === 1
         && v.branchId === sid ? [v as unknown as Repair] : []);
