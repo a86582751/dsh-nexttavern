@@ -197,7 +197,7 @@ export function registerAuthorPrompts({ctx,T,isRoleplaySession,allowAuthorFields
       if (Number(context.agent?.options?.subagentDepth)>0) return ''
       if (!isRoleplaySession(context.agent?.session)) return ''
       return `${CARD_CLASSIFICATION_GUIDE}\n【玩家读卡与导出：系统默认工作流】
-玩家不是程序员，不需要提供工具名、游标、哈希、覆盖率或实现步骤。识别自然语言意图：“读取这张角色卡，准备开始角色扮演”“导入这张卡”使用读卡流程；“导出角色卡”“把设定保存成文件”使用逆向组卡流程。不要把这些管理请求扩写成剧情。角色设定导出不同于小说正文导出。
+玩家不是程序员，不需要提供工具名、游标、哈希、覆盖率或实现步骤。识别自然语言意图：“读取这张角色卡，准备开始角色扮演”“导入这张卡”使用读卡流程；“导出角色卡”“把设定保存成文件”使用程序保真导出；只有玩家明确要求重新按语义编排内容时才使用整理流程。不要把这些管理请求扩写成剧情。角色设定导出不同于小说正文导出。
 创作新卡或检查新卡草稿：加载最新 roleplay-card-authoring 技能，使用 rp_card_draft_check 进入写卡管理与检查文件。12项是AI内部清单，不让用户填工程表或设计CSS；默认用原生 questions 自然聊故事偏好，再把喜好映射成完整卡。用户说你来决定可跳过剩余问卷，但主代理仍逐项审阅；大纲统一后可并行细化独立模块。交付实际文件链接，不把写卡回执或偏好问答当剧情，不另写重复校验脚本。
 已导入设定可用 rp_setting list/read 后按版本定点 patch/append/create，不重新导入、不重开对话。演出中发现遗漏或原著疑点，优先 rp_setting repair 提交目标和明确指令，由后台子代理查证修补，提交后继续正文，不轮询等待；玩家新增固定设定用 basis=player，原著纠错用 basis=source 和当前原著 source_id。后台助手只返回补丁，程序校验版本与世界线后写入。无法确认的内容留待玩家决定，不把剧情分歧或角色未知秘密当作设定错误。已保存内容由系统下次上下文组装提供，失败以 jobs 回执为准。
 读卡：上传本身不代表要求导入，普通图片也不是角色卡。只有玩家明确说“导入这张卡”等读卡请求时，聊天附件使用 rp_card_import_begin(chat_attachment:{})；同会话最新可见附件有多个候选时，先自然询问文件名，再用 chat_attachment:{name:文件名}，不让玩家填路径、receipt、哈希或请求标识。程序从真实聊天消息核对原件和归属；不能使用图片预览、翻找旧会话或猜保存路径。玩家明确提供工作区文件时保留 source_file 入口。没有可核对原件时请玩家上传。DOCX 直接交给同一读卡入口，由程序提取完整正文并保留上传原件；PDF 先转换成持久 Markdown/文本，再读转换结果；不把图片识别当角色卡解析。
@@ -237,8 +237,13 @@ Markdown/TXT（以及玩家明确要求 merge 的工作区补充包）保留 rp_
   const fixedAuthorFence=createStableRoleplayFence()
   ctx.effect(()=>ctx.systemPrompt.section({name:'roleplay:character-cluster',order:170,text:context=>{
     const session=context.agent?.session
-    if(!session||Number(context.agent?.options?.subagentDepth)>0||!isRoleplaySession(session)||!characterCluster.read(session).enabled)return ''
-    return `【角色 agent 集群已开启】除读卡、写卡问答、管理与诊断回合之外，每轮正式剧情动笔前调用一次 rp_character_cast。先判断本回合预计出场的主要人物（作者预设或推动剧情的重要人物，排除路人），按 ID 选角；没有主要人物可传空列表。资料不足时先按需查世界书，程序会把当前与最近三个剧情回合已读资料、当前窗口正文、核心设定、各自人设和导演笔记注入独立子代理。不要手工复制或概括这些上下文。新出现且逐渐重要的人物先用 rp_card_set 保存独立人设，再选入集群；现有人物不要重复登记。等待工具返回后把各人物意向作为参考，协调矛盾再写正文。临场出现的意外人物可自由发挥，不必再次调用集群。当前可选人物：${JSON.stringify(characterRoster(session).map(({id,name})=>({id,name})))}`
+    if(!session||Number(context.agent?.options?.subagentDepth)>0||!isRoleplaySession(session))return ''
+    const settings=characterCluster.read(session)
+    if(!settings.enabled)return ''
+    const materials=settings.privateMemoryEnabled
+      ?'程序只向各人物提供本人可知的人设和私有经历，并先等待当前已接受正文的感知结果。材料不足的人物会返回暂不可用。人物可用 rp_history 检索本人材料。'
+      :'程序会把当前与最近三个剧情回合已读资料、当前窗口正文、核心设定、各自人设和导演笔记注入独立子代理。'
+    return `【角色 agent 集群已开启】除读卡、写卡问答、管理与诊断回合之外，每轮正式剧情动笔前调用一次 rp_character_cast。先判断本回合预计出场的主要人物（作者预设或推动剧情的重要人物，排除路人），按 ID 选角；没有主要人物可传空列表。${materials}不要手工复制或概括这些上下文。新出现且逐渐重要的人物先用 rp_card_set 保存独立人设，再选入集群；现有人物不要重复登记。等待工具返回后把各人物意向作为参考，协调矛盾再写正文。临场出现的意外人物可自由发挥，不必再次调用集群。当前可选人物：${JSON.stringify(characterRoster(session).map(({id,name})=>({id,name})))}`
   }}),'roleplay: character cluster writer instructions')
   ctx.effect(
     () =>
