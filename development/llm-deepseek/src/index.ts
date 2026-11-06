@@ -1,6 +1,6 @@
 /** DeepSeek Messages transport, request configuration, and model capabilities. */
-export { deepSeekConfigFields, Config, plainOptions, resolveAdapterOptions, PUBLIC_BASE_URL } from './config.js'
-export type { Options, ResolvedDeepSeekOptions } from './config.js'
+export { deepSeekConfigFields, Config, plainOptions, resolveAdapterOptions, PUBLIC_BASE_URL } from '@deepseek-ai/dsh-llm-deepseek'
+export type { Options, ResolvedDeepSeekOptions } from '@deepseek-ai/dsh-llm-deepseek'
 export {
   DEFAULT_CONTEXT_WINDOW,
   DEFAULT_FILE_EXPIRY_SECONDS,
@@ -13,7 +13,7 @@ export {
   DEFAULT_MAX_INLINE_REQUEST_IMAGE_BYTES,
   DEFAULT_MAX_TOKENS,
   DEFAULT_STREAM_IDLE_TIMEOUT_MS,
-} from './defaults.js'
+} from '@deepseek-ai/dsh-llm-deepseek'
 export { DeepSeekAdapter } from './adapter.js'
 export type { DeepSeekRequestAuth, DeepSeekAdapterOptions, DeepSeekCatalogModel, DeepSeekConnectionOptions } from './types.js'
 export {
@@ -25,17 +25,17 @@ export {
   deepSeekImageRequestPricing,
   resolveRequestImageMaxBytes,
   resolveRequestImageTarget,
-} from './request-pricing.js'
-export { deepSeekImageTokens, deepSeekRequestImageDimensions } from './image-tokens.js'
-export { DeepSeekFileStore, MAX_IMAGE_BYTES } from './file-store.js'
-export type { DeepSeekFileConnection, DeepSeekFilePolicy, DeepSeekFileReference } from './file-store.js'
-export { DeepSeekFilesClient, MAX_FILE_EXPIRY_SECONDS, MAX_FILE_UPLOAD_BYTES, MAX_STORED_FILE_BYTES, MAX_STORED_FILE_COUNT, MIN_FILE_EXPIRY_SECONDS } from './files-api.js'
-export type { DeepSeekFileObject, DeepSeekFilePage } from './files-api.js'
-export { DeepSeekFileId } from './file-id.js'
-export type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.js'
-export { DeepSeekUploadIndex, deepSeekFileScope } from './upload-index.js'
-export type { DeepSeekUploadRecord } from './upload-index.js'
+} from '@deepseek-ai/dsh-llm-deepseek'
+export { deepSeekImageTokens, deepSeekRequestImageDimensions } from '@deepseek-ai/dsh-llm-deepseek'
+export { DeepSeekFileStore, MAX_IMAGE_BYTES } from '@deepseek-ai/dsh-llm-deepseek'
+export type { DeepSeekFileConnection, DeepSeekFilePolicy, DeepSeekFileReference } from '@deepseek-ai/dsh-llm-deepseek'
+export { DeepSeekFilesClient, MAX_FILE_EXPIRY_SECONDS, MAX_FILE_UPLOAD_BYTES, MAX_STORED_FILE_BYTES, MAX_STORED_FILE_COUNT, MIN_FILE_EXPIRY_SECONDS } from '@deepseek-ai/dsh-llm-deepseek'
+export type { DeepSeekFileObject, DeepSeekFilePage } from '@deepseek-ai/dsh-llm-deepseek'
+export { DeepSeekFileId } from '@deepseek-ai/dsh-llm-deepseek'
+export type { DeepSeekFileId as DeepSeekFileIdType } from '@deepseek-ai/dsh-llm-deepseek'
+export { DeepSeekUploadIndex, deepSeekFileScope } from '@deepseek-ai/dsh-llm-deepseek'
+export type { DeepSeekUploadRecord } from '@deepseek-ai/dsh-llm-deepseek'
 export type { RequestDefaults } from './types.js'
 
-export { catalogModelInfo } from './model-info.js'
+export { catalogModelInfo } from '@deepseek-ai/dsh-llm-deepseek'
 export { registerDeepSeekProvider } from './host.js'

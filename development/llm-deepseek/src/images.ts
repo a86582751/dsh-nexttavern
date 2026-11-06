@@ -1,14 +1,14 @@
 /** Deterministic Messages image preparation for Files references and bounded inline fallback. */
 
 import type { AttachmentStore, ImageAttachmentRef, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
-import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requiredImageOffload } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock, ImageAttachmentAccessResolver, RequestMessage } from '@deepseek-ai/dsh-llm'
+import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requiredImageOffload } from 'dsh-nexttavern-native-llm'
+import type { ContentBlock, ImageAttachmentAccessResolver, RequestMessage } from 'dsh-nexttavern-native-llm'
 import type { DeepSeekConnectionOptions as Connection } from './types.js'
-import { resolveRequestImageTarget } from './request-pricing.js'
-import type { DeepSeekFileId } from './file-id.js'
+import { resolveRequestImageTarget } from '@deepseek-ai/dsh-llm-deepseek'
+import type { DeepSeekFileId } from '@deepseek-ai/dsh-llm-deepseek'
 import type { RequestFiles } from './request-files.js'
 
-export { deepSeekImageRequestPricing as imagePricing } from './request-pricing.js'
+export { deepSeekImageRequestPricing as imagePricing } from '@deepseek-ai/dsh-llm-deepseek'
 
 function bounds(connection: Connection, representation: 'raw' | 'base64') {
   return {

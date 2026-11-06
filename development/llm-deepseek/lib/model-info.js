@@ -1,6 +1,7 @@
 // Generated from runtime/alpha3/compat/llm-deepseek/src/model-info.ts; edit the TypeScript source.
 /** Protocol-independent model capabilities and reasoning choices. */
-import { ReasoningEffortId } from '@deepseek-ai/dsh-llm';
+import { ReasoningEffortId } from 'dsh-nexttavern-native-llm';
+import { catalogModelInfo } from '@deepseek-ai/dsh-llm-deepseek';
 const OFF_REASONING_EFFORT = ReasoningEffortId('off');
 const LOW_REASONING_EFFORT = ReasoningEffortId('low');
 const HIGH_REASONING_EFFORT = ReasoningEffortId('high');
@@ -34,20 +35,6 @@ const OFF_ONLY_REASONING_EFFORTS = [
         description: 'Use for simple tasks that do not need reasoning.',
     },
 ];
-/** Advertise one catalog entry.
- * @param provider - registered provider id.
- * @param model - advisory catalog entry.
- * @returns selector metadata.
- */
-export function catalogModelInfo(provider, model) {
-    return {
-        provider,
-        id: model.id,
-        name: model.name ?? model.id,
-        ...model.description === undefined ? {} : { description: model.description },
-        inputModalities: model.inputModalities ?? ['text'],
-    };
-}
 /** Resolve model capabilities against one configuration generation.
  * @param connection - validated connection facts.
  * @param provider - registered provider id.
