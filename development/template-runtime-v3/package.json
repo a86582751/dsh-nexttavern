@@ -1,0 +1,36 @@
+{
+  "name": "dsh-nexttavern-template-runtime-v3",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Owned EJS source compiler and retained isolated template realms",
+  "license": "GPL-3.0-only",
+  "main": "./dist/index.mjs",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "assets",
+    "src",
+    "LICENSE",
+    "NOTICE.md"
+  ],
+  "dependencies": {
+    "ejs": "3.1.10",
+    "quickjs-emscripten-core": "0.32.0",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
+    "@jitl/quickjs-ffi-types": "0.32.0",
+    "yaml": "2.8.1",
+    "nexttavern-mvu-lodash": "npm:lodash@4.18.1"
+  },
+  "bundleDependencies": [
+    "ejs",
+    "quickjs-emscripten-core",
+    "@jitl/quickjs-wasmfile-release-sync",
+    "@jitl/quickjs-ffi-types",
+    "yaml",
+    "nexttavern-mvu-lodash"
+  ]
+}
