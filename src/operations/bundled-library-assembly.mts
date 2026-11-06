@@ -31,7 +31,8 @@ interface PackageReceipt {
 /** Actual materialized roots, including installed optional peers. Nested
  * placements remain owned by their root package and are not promoted. */
 export function topLevelBundledLibraryVersions(packages:readonly {name:string;version:string;path:string}[]):Versions {
-  return Object.fromEntries(packages.filter(row=>row.path===row.name).map(row=>[row.name,row.version]))
+  return Object.fromEntries(packages.filter(row=>!row.path.includes('/node_modules/')).map(row=>[
+    row.path,row.path===row.name?row.version:`npm:${row.name}@${row.version}`]))
 }
 
 /** Directory installers follow dependency metadata when collecting nested
@@ -42,8 +43,29 @@ export function normalizeBundledLibraryMetadata<T extends {dependencies?:Version
     bundleDependencies:[...new Set([...(metadata.bundleDependencies??[]),...Object.keys(modules)])]}
 }
 interface PlannedPackage {
-  source: string; relative: string; metadata: Metadata
-  files: {path: string; bytes: Buffer; sha256: string}[]
+  source: string; relative: string; name:string; metadata: Metadata
+  files: readonly AdmittedFile[]
+}
+type Admission = (file: string, bytes: Buffer) => boolean
+interface AdmittedFile {path: string; bytes: Buffer; sha256: string}
+interface LibraryInput {
+  metadata: Metadata
+  metadataBytes: Buffer
+  published?: PublishedPackageFiles
+  files: Map<string, {bytes: Buffer; sha256?: string}>
+  admitted: Map<Admission, readonly AdmittedFile[]>
+}
+interface LibraryInputScope {
+  lock: BundledLibraryLock
+  packages: Map<string, LibraryInput>
+}
+/** One assembly owns these immutable source/lock inputs and admission policies.
+ * Destinations remain independent ordinary files. Do not reuse across jobs. */
+export interface BundledLibraryAssemblyContext {
+  inputs: Map<string, LibraryInputScope>
+}
+export function createBundledLibraryAssemblyContext(): BundledLibraryAssemblyContext {
+  return {inputs: new Map()}
 }
 const NAME = /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/
 const LICENSE = /^(?:licen[sc]e|copying|notice)(?:[._-].*)?$/i
@@ -200,13 +222,19 @@ function declaredEntry(metadata: Metadata, file: string): boolean {
  */
 export function materializeBundledLibraries(options: {
   libraryRoot: string; moduleRoot: string; lockFile: string; libraries: Versions
-  admit: (file: string, bytes: Buffer) => boolean
+  admit: Admission
+  context?: BundledLibraryAssemblyContext
 }): {packages: PackageReceipt[]} {
   const libraryRoot = fs.realpathSync(options.libraryRoot)
   const moduleRoot = outputRoot(options.moduleRoot)
   if (moduleRoot === libraryRoot || moduleRoot.startsWith(libraryRoot + path.sep)
     || libraryRoot.startsWith(moduleRoot + path.sep)) throw Error('Bundled source and output must not overlap')
-  const lock = read<BundledLibraryLock>(options.lockFile)
+  const lockFile = fs.realpathSync(options.lockFile)
+  const inputKey = JSON.stringify([libraryRoot, lockFile])
+  const previousInputs = options.context?.inputs.get(inputKey)
+  const inputs = previousInputs ?? {lock: read<BundledLibraryLock>(lockFile), packages: new Map<string, LibraryInput>()}
+  if (!previousInputs) options.context?.inputs.set(inputKey, inputs)
+  const lock = inputs.lock
   if (lock.lockfileVersion !== 3 || !lock.packages) throw Error('Bundled libraries require an npm v3 package lock')
   const locked = lock.packages
   // npm already depends on semver. Use that CLI's own resolver, matching the
@@ -233,15 +261,20 @@ export function materializeBundledLibraries(options: {
   }
   const validate = (source: string, name: string, range: string): Metadata => {
     const row = validateLock(lockKey(source), name, range)
-    const metadata = read<Metadata>(contained(source, 'package.json'))
-    if (metadata.name !== name || metadata.version !== row.version) {
+    const previous = inputs.packages.get(source)
+    const metadataBytes = previous?.metadataBytes ?? fs.readFileSync(contained(source, 'package.json'))
+    const metadata = previous?.metadata ?? JSON.parse(metadataBytes.toString('utf8')) as Metadata
+    if (metadata.name !== (row.name??name) || metadata.version !== row.version) {
       throw Error('Bundled library version differs from manifest, lock or requirement: ' + name)
     }
-    for (const key of ['dependencies', 'optionalDependencies', 'peerDependencies', 'peerDependenciesMeta', 'os', 'cpu'] as const) {
-      if (stable(metadata[key] ?? (key === 'os' || key === 'cpu' ? [] : {}))
-        !== stable(row[key] ?? (key === 'os' || key === 'cpu' ? [] : {}))) {
-        throw Error('Bundled library source metadata differs from lock: ' + name + '.' + key)
+    if (!previous) {
+      for (const key of ['dependencies', 'optionalDependencies', 'peerDependencies', 'peerDependenciesMeta', 'os', 'cpu'] as const) {
+        if (stable(metadata[key] ?? (key === 'os' || key === 'cpu' ? [] : {}))
+          !== stable(row[key] ?? (key === 'os' || key === 'cpu' ? [] : {}))) {
+          throw Error('Bundled library source metadata differs from lock: ' + name + '.' + key)
+        }
       }
+      inputs.packages.set(source, {metadata, metadataBytes, files: new Map(), admitted: new Map()})
     }
     return metadata
   }
@@ -253,7 +286,7 @@ export function materializeBundledLibraries(options: {
     // Its metadata/lock identity was admitted on the first incoming edge.
     const previous = planned.get(source)
     if (previous) {
-      if (previous.metadata.name !== name || !semver.validRange(range)
+      if (previous.name !== name || !semver.validRange(range)
         || !semver.satisfies(previous.metadata.version, range)) {
         throw Error('Bundled library version differs from lock or requirement: ' + name)
       }
@@ -261,7 +294,7 @@ export function materializeBundledLibraries(options: {
     }
     const metadata = validate(source, name, range)
     const relative = slash(path.relative(libraryRoot, source))
-    planned.set(source, {source, relative, metadata, files: []})
+    planned.set(source, {source, relative, name, metadata, files: []})
     const follow = (dependency: string, requirement: string, kind: 'required' | 'optional' | 'optional-peer') => {
       dependencyName(dependency)
       if (typeof requirement !== 'string' || !semver.validRange(requirement)) {
@@ -322,27 +355,44 @@ export function materializeBundledLibraries(options: {
   }
 
   const packages = [...planned.values()]
-  const fileLists = publishedFiles(packages.map(item => item.source))
-  for (const [index, item] of packages.entries()) {
-    const published=fileLists[index]!
-    for (const file of published.files) {
-      if (file.startsWith('node_modules/')) { bundledChild(item, file); continue }
-      const from = contained(item.source, file)
-      if (!fs.lstatSync(from).isFile()) throw Error('Bundled published file is not regular: ' + item.relative + '/' + file)
-      let bytes = fs.readFileSync(from)
-      if(file==='package.json'&&typeof item.metadata.bin==='string') {
-        // Reuse npm's already-normalized bin semantics. pnpm's nested directory
-        // collector otherwise iterates a scalar bin as character properties.
-        bytes=Buffer.from(JSON.stringify({...JSON.parse(bytes.toString('utf8')),bin:published.normalizedBin},null,2)+'\n')
-      }
-      if (!options.admit(file, bytes)) {
-        if (file === 'package.json' || LICENSE.test(path.posix.basename(file)) || declaredEntry(item.metadata, file)) {
-          throw Error('Bundled mandatory file rejected: ' + item.relative + '/' + file)
+  const unpublished = packages.filter(item => !inputs.packages.get(item.source)!.published)
+  const fileLists = publishedFiles(unpublished.map(item => item.source))
+  for (const [index, item] of unpublished.entries()) inputs.packages.get(item.source)!.published = fileLists[index]!
+  for (const item of packages) {
+    const input = inputs.packages.get(item.source)!, published = input.published!
+    // Placement belongs to the requested graph, even when its publisher list
+    // and normalized bytes came from another independent destination.
+    for (const file of published.files) if (file.startsWith('node_modules/')) bundledChild(item, file)
+    let admitted = input.admitted.get(options.admit)
+    if (!admitted) {
+      const files: AdmittedFile[] = []
+      for (const file of published.files) {
+        if (file.startsWith('node_modules/')) continue
+        let original = input.files.get(file)
+        if (!original) {
+          const from = contained(item.source, file)
+          if (!fs.lstatSync(from).isFile()) throw Error('Bundled published file is not regular: ' + item.relative + '/' + file)
+          let bytes = file === 'package.json' ? input.metadataBytes : fs.readFileSync(from)
+          if (file === 'package.json' && typeof item.metadata.bin === 'string') {
+            // Normalize before caching, hashing or admission: pnpm needs npm's
+            // bin map, while lock identity still uses the original metadata.
+            bytes = Buffer.from(JSON.stringify({...input.metadata, bin: published.normalizedBin}, null, 2) + '\n')
+          }
+          original = {bytes}
+          input.files.set(file, original)
         }
-        continue
+        if (!options.admit(file, original.bytes)) {
+          if (file === 'package.json' || LICENSE.test(path.posix.basename(file)) || declaredEntry(item.metadata, file)) {
+            throw Error('Bundled mandatory file rejected: ' + item.relative + '/' + file)
+          }
+          continue
+        }
+        files.push({path: file, bytes: original.bytes, sha256: original.sha256 ??= digest(original.bytes)})
       }
-      item.files.push({path: file, bytes, sha256: digest(bytes)})
+      admitted = files
+      input.admitted.set(options.admit, admitted)
     }
+    item.files = admitted
     if (!item.files.some(file => file.path === 'package.json')) throw Error('Bundled package metadata was not published: ' + item.relative)
     const target = contained(moduleRoot, item.relative)
     for (const file of item.files) {

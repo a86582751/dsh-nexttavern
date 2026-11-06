@@ -50,11 +50,17 @@ export interface HistoricalRuntimeSourceBindingV1 {
   logicalArtifact:string
   sourceArtifact:string
   sha256:string
+  /** Original producer's delivered source position, when a later package
+   * snapshot retained a different revision at that position. */
+  packagePath?:string
 }
 interface HistoricalRuntimeAssetRebuildCommonV1 {
   schemaVersion:1
   packageArtifact:string
   expectedGeneration:string
+  /** Original producer address retained when its immutable package is mapped
+   * under a new artifact ID. It does not select current package bytes. */
+  logicalPackageArtifact?:string
   sourceBindings:readonly HistoricalRuntimeSourceBindingV1[]
 }
 export type HistoricalRuntimeAssetRebuildV1=HistoricalRuntimeAssetRebuildCommonV1&(

@@ -49,6 +49,69 @@
     }
   },
   {
+    "id": "llm",
+    "name": "@deepseek-ai/dsh-llm",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "id": "session",
+    "name": "@deepseek-ai/dsh-session",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "id": "agent-loop",
+    "name": "@deepseek-ai/dsh-agent-loop",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "id": "subagent",
+    "name": "@deepseek-ai/dsh-subagent",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "id": "subagent-spawn-in-process",
+    "name": "@deepseek-ai/dsh-subagent-spawn-in-process",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "id": "storage-json",
+    "name": "@deepseek-ai/dsh-storage-json",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "id": "modules",
+    "name": "@deepseek-ai/dsh-client-modules",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "id": "llm-deepseek",
+    "name": "@deepseek-ai/dsh-llm-deepseek-api-key",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "id": "llm-deepseek-account",
+    "name": "@deepseek-ai/dsh-llm-deepseek-account",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
     "insert": [
       {
         "id": "nexttavern",
@@ -84,6 +147,51 @@
               "id": "ui-workspace",
               "original": "@deepseek-ai/dsh-client-ui-workspace",
               "replacement": "dsh-nexttavern-ui-workspace"
+            },
+            {
+              "id": "llm",
+              "original": "@deepseek-ai/dsh-llm",
+              "replacement": "dsh-nexttavern-native-llm"
+            },
+            {
+              "id": "session",
+              "original": "@deepseek-ai/dsh-session",
+              "replacement": "dsh-nexttavern-native-session"
+            },
+            {
+              "id": "agent-loop",
+              "original": "@deepseek-ai/dsh-agent-loop",
+              "replacement": "dsh-nexttavern-native-agent-loop"
+            },
+            {
+              "id": "subagent",
+              "original": "@deepseek-ai/dsh-subagent",
+              "replacement": "dsh-nexttavern-native-subagent"
+            },
+            {
+              "id": "subagent-spawn-in-process",
+              "original": "@deepseek-ai/dsh-subagent-spawn-in-process",
+              "replacement": "dsh-nexttavern-native-subagent-spawn-in-process"
+            },
+            {
+              "id": "storage-json",
+              "original": "@deepseek-ai/dsh-storage-json",
+              "replacement": "dsh-nexttavern-native-storage-json"
+            },
+            {
+              "id": "modules",
+              "original": "@deepseek-ai/dsh-client-modules",
+              "replacement": "dsh-nexttavern-native-client-modules"
+            },
+            {
+              "id": "llm-deepseek",
+              "original": "@deepseek-ai/dsh-llm-deepseek-api-key",
+              "replacement": "dsh-nexttavern-native-llm-deepseek-api-key"
+            },
+            {
+              "id": "llm-deepseek-account",
+              "original": "@deepseek-ai/dsh-llm-deepseek-account",
+              "replacement": "dsh-nexttavern-native-llm-deepseek-account"
             }
           ],
           "addons": [

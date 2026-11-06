@@ -486,7 +486,7 @@ installed host. The following host-side details remain relevant:
 - First-start and install diagnostics changed upstream: skipped profile bundles are reported once per launch with their reasons, the plugin manager records its package-manager run tree under `.plugin-manager/run.json`, and a lock whose recorded owner process no longer exists may be taken over. These are host-side behaviours the CLI observes; they add no request or retry of its own.
 - Regenerating once stays the caller's single action. The alpha.7 acceptance saw one regeneration leave two turns in the child session; the user's ruling (2026-09-25) is that this is a **CLI-side defect**, so the CLI does not re-send or de-duplicate to compensate and the tavern product is not asked to carry extra logic for it. Report the observation instead of hiding it.
 
-`upload-card --import` sends the original `.md`, `.txt`, `.json`, or `.png`
+`upload-card --import` accepts `.md`, `.markdown`, `.txt`, `.json`, `.png`, and `.docx`, and sends their original
 bytes to the official `/api/session/uploadFileBinary?sessionId=...&name=...`
 route, then submits `/api/roleplay/jobs` with
 `{sessionId,kind:'card-import',attachment:{receiptId},requestId}`. It verifies
@@ -496,6 +496,7 @@ This import path runs through the same worker on Windows and Linux, including
 SSH; it no longer needs local Workspace staging, `systemctl`, or service UID
 switching. Existing authentication and non-loopback refusal remain in place.
 No import queues `session/prompt` or puts card bytes in a player prompt.
+DOCX extraction and Markdown classification remain owned by the runtime import workflow; the CLI only uploads the original bytes.
 
 Before jobs POST, the CLI atomically saves and reads back one local v1 recovery
 index containing only `schemaVersion,targetId,sessionId,receiptId,requestId,createdAt`.
@@ -582,6 +583,12 @@ model. No model-driven selector, warmup, cache padding or automatic retry.
 ## Current settings and character cluster
 
 Memory settings use `settings` / `settings-set`: window size, complete-story tail budget and notes cadence are primary. Target/archive options are legacy compatibility controls. Preserve revisions and scope; `0` restores inheritance as documented above.
+
+`model-route --purpose PURPOSE_ID` accepts the purpose IDs returned by `models.purposes`,
+including `card-import`, `card-export`, `novel-export`, `author-dialog` and
+`ruby-analysis` as well as `memory`, `status` and `decision`. The server owns
+purpose validation. The command preserves the existing `allMain` switch and
+other routes and adds no model requests, retries or fallback requests.
 
 The character cluster is default off. The GET response exposes effective `settings`
 plus raw `session` and `global` records. The CLI writes the owning scope explicitly:

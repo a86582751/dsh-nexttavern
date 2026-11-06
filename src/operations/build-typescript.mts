@@ -6,13 +6,11 @@ import { fileURLToPath,pathToFileURL } from 'node:url'
 
 import type * as CompilerAPI from '../../build-tools/node_modules/typescript/lib/typescript.js'
 import type {MvuSchemaRuntimeAssetRecipe} from './mvu-schema-runtime-assets.mjs'
-import type {TavernTemplateRuntimeAssetRecipeV1} from './tavern-template-runtime-assets.mjs'
-import type {AuthorBrowserRuntimeAssetRecipeV1,AuthorBrowserRuntimeAssetRecipeV2} from './author-browser-runtime-assets.mjs'
-import type {AuthorBrowserRuntimeAssetRecipeV3} from './author-browser-runtime-assets-v3.mjs'
+import type {TavernTemplateEjsRuntimeAssetRecipeV1} from './tavern-template-ejs-runtime-assets.mjs'
 import type {AuthorHostRuntimeAssetRecipeV5} from './author-host-runtime-assets.mjs'
 import type {HistoricalRuntimeAssetRebuildV1} from './runtime-asset-source-scope.mjs'
-import type {AuthorPromptRuntimeAssetRecipeV1} from './author-prompt-runtime-assets.mjs'
 import type {SubagentTypertRecipeV1} from './subagent-typert-assets.mjs'
+import type {ReaderNativeLibraryAssetRecipeV1} from './reader-native-library-assets.mjs'
 interface Recipe {
   id: string; kind: string; artifact: string; entry: string; inputs: string[]
   outputSource?: string; text?: string; typeContext?: string; banner?: string
@@ -25,14 +23,12 @@ interface CompiledRecipe extends Recipe { outputSource: string; text: string }
 export interface CompilePlan {
   builds: Recipe[]
   artifacts: {id: string; source: string; canonicalSource?: string}[]
-  product?:{mvuSchemaRuntime?:MvuSchemaRuntimeAssetRecipe;mvuSchemaRuntimes?:readonly MvuSchemaRuntimeAssetRecipe[];
-    templateRuntime?:TavernTemplateRuntimeAssetRecipeV1;
-    authorBrowserRuntime?:AuthorBrowserRuntimeAssetRecipeV1;authorBrowserRuntimeV2?:AuthorBrowserRuntimeAssetRecipeV2;
-    authorBrowserRuntimeV3?:AuthorBrowserRuntimeAssetRecipeV3;
+  product?:{mvuSchemaRuntimes?:readonly MvuSchemaRuntimeAssetRecipe[];
+    templateEjsRuntime?:TavernTemplateEjsRuntimeAssetRecipeV1;
     authorHostRuntime?:AuthorHostRuntimeAssetRecipeV5;
     historicalRuntimeRebuilds?:readonly HistoricalRuntimeAssetRebuildV1[];
-    authorPromptRuntime?:AuthorPromptRuntimeAssetRecipeV1;
     subagentTypert?:SubagentTypertRecipeV1;
+    readerNativeLibraries?:ReaderNativeLibraryAssetRecipeV1;
     packages?:readonly {packageArtifact:string;resources?:readonly {artifact:string;path:string}[];immutableGeneration?:string}[]}
   typeScript: {
     config: string; declarationPackages: string[]; ambientDeclarations?: string[]
@@ -448,7 +444,7 @@ export function writeTypeScriptBuild(compilation: Compilation, entry: string | u
 /** This recipe comes from the same source manifest/public compiler projection.
  * Presence alone is insufficient for executable bundles and guest assets. */
 export async function checkMvuSchemaRuntimeBuild(repo:string,plan:CompilePlan,write=false) {
-  if(!plan.product||!plan.product.mvuSchemaRuntime&&!plan.product.mvuSchemaRuntimes)return undefined
+  if(!plan.product?.mvuSchemaRuntimes)return undefined
   const builder=plan.artifacts.find(artifact=>artifact.id==='mvu-schema-runtime-assets-js')
   if(!builder)throw Error('Schema runtime builder is not registered')
   // Native TS bootstrap executes from src; installed/public callers execute
@@ -478,63 +474,29 @@ export async function checkMvuSchemaRuntimeBuild(repo:string,plan:CompilePlan,wr
   return {packages,files:packages.flatMap(pkg=>pkg.files.map(file=>({...file,packageName:pkg.name})))}
 }
 
-/** The independent component uses its own registered producer. Its declaration
- * and generated-module ownership remains with the same compiler program. */
-export async function checkTavernTemplateRuntimeBuild(repo:string,plan:CompilePlan,write=false) {
-  if(!plan.product?.templateRuntime)return undefined
-  if(plan.product.packages?.find(row=>row.packageArtifact===plan.product!.templateRuntime!.packageArtifact)
-    ?.immutableGeneration)return undefined
-  const rows=plan.artifacts.filter(artifact=>artifact.id==='tavern-template-runtime-assets-generated')
-  if(rows.length!==1)throw Error('Template runtime builder must have one registered output')
-  const {buildTavernTemplateRuntimeAssetsV1}=await import(pathToFileURL(inside(repo,rows[0]!.source)).href) as
-    typeof import('./tavern-template-runtime-assets.mjs')
-  const recipe=plan.product.templateRuntime,metadata=plan.artifacts.filter(artifact=>artifact.id===recipe.packageArtifact)
-  if(metadata.length!==1)throw Error('Template runtime package must have one source mapping')
-  return buildTavernTemplateRuntimeAssetsV1({repo,
-    plan:{artifacts:plan.artifacts,product:{templateRuntime:recipe,packages:plan.product.packages??[]}},
-    packageRoot:inside(repo,path.posix.dirname(metadata[0]!.source)),
-    libraryRoot:inside(repo,path.posix.dirname(plan.typeScript.config)+'/node_modules'),write})
-}
-
 /** Each independent author component is produced from its sole manifest
  * recipe. Strict module generation runs first, including these producers. */
 export async function checkAuthorRuntimeBuild(repo:string,plan:CompilePlan,write=false) {
   const product=plan.product
-  if(!product||!product.authorBrowserRuntime&&!product.authorBrowserRuntimeV2&&!product.authorBrowserRuntimeV3
-    &&!product.authorHostRuntime&&!product.authorPromptRuntime)return undefined
+  if(!product||!product.authorHostRuntime&&!product.templateEjsRuntime)return undefined
   const packages=[]
   const componentPlan={artifacts:plan.artifacts,product:{...product,packages:product.packages??[]}}
-  for(const component of ['authorBrowserRuntime','authorBrowserRuntimeV2','authorBrowserRuntimeV3','authorHostRuntime','authorPromptRuntime'] as const) {
+  for(const component of ['authorHostRuntime','templateEjsRuntime'] as const) {
     const recipe=product[component]
     if(!recipe)continue
     if(product.packages?.find(row=>row.packageArtifact===recipe.packageArtifact)?.immutableGeneration)continue
-    const builderId=component==='authorBrowserRuntimeV3'?'author-browser-runtime-assets-v3-generated'
-      :component==='authorBrowserRuntime'||component==='authorBrowserRuntimeV2'?'author-browser-runtime-assets-generated'
-      :component==='authorHostRuntime'?'author-host-runtime-assets-generated':'author-prompt-runtime-assets-generated'
+    const builderId=component==='authorHostRuntime'?'author-host-runtime-assets-generated'
+      :'tavern-template-ejs-runtime-assets-generated'
     const builder=plan.artifacts.find(artifact=>artifact.id===builderId)
     const metadata=plan.artifacts.find(artifact=>artifact.id===recipe.packageArtifact)
     if(!builder||!metadata)throw Error('Author component producer or package is not registered')
     const options={repo,plan:componentPlan,packageRoot:inside(repo,path.posix.dirname(metadata.source)),write}
-    if(component==='authorBrowserRuntimeV3') {
-      const lockArtifact=plan.artifacts.find(artifact=>artifact.id===recipe.lockArtifact)
-      if(!lockArtifact)throw Error('Author component dependency lock is not registered')
-      const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./author-browser-runtime-assets-v3.mjs')
-      packages.push(await producer.buildAuthorBrowserRuntimeAssetsV3({...options,
-        libraryRoot:inside(repo,path.posix.dirname(lockArtifact.source)+'/node_modules')}))
-    }else if(component==='authorBrowserRuntime'||component==='authorBrowserRuntimeV2') {
-      const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./author-browser-runtime-assets.mjs')
-      if(component==='authorBrowserRuntimeV2') {
-        const lockArtifact=plan.artifacts.find(artifact=>artifact.id===recipe.lockArtifact)
-        if(!lockArtifact)throw Error('Author component dependency lock is not registered')
-        packages.push(await producer.buildAuthorBrowserRuntimeAssetsV2({...options,
-          libraryRoot:inside(repo,path.posix.dirname(lockArtifact.source)+'/node_modules')}))
-      }else packages.push(await producer.buildAuthorBrowserRuntimeAssetsV1(options))
-    }else if(component==='authorHostRuntime') {
+    if(component==='authorHostRuntime') {
       const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./author-host-runtime-assets.mjs')
       packages.push(await producer.buildAuthorHostRuntimeAssetsV5(options))
     }else {
-      const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./author-prompt-runtime-assets.mjs')
-      packages.push(await producer.buildAuthorPromptRuntimeAssetsV1(options))
+      const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./tavern-template-ejs-runtime-assets.mjs')
+      packages.push(await producer.buildTavernTemplateEjsRuntimeAssetsV1(options))
     }
   }
   return {packages,files:packages.flatMap(pkg=>pkg.files.map(file=>({...file,packageName:pkg.name})))}
@@ -548,6 +510,15 @@ export async function checkSubagentTypertBuild(repo:string,plan:CompilePlan,writ
   return producer.buildSubagentTypertAssetsV1({repo,plan,write,typescriptAlreadyChecked})
 }
 
+/** Native author globals follow the same manifest-owned asset pass as the
+ * independent runtime components, after their TypeScript producer is emitted. */
+export async function checkReaderNativeLibraryBuild(repo:string,plan:CompilePlan,write=false) {
+  if(!plan.product?.readerNativeLibraries)return undefined
+  const builder=plan.artifacts.find(artifact=>artifact.id==='reader-native-library-assets-generated')!
+  const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./reader-native-library-assets.mjs')
+  return producer.buildReaderNativeLibraryAssetsV1({repo,plan,write})
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [entry, output] = process.argv.slice(2)
   if (entry === '--types') {
@@ -559,11 +530,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const assets=await checkMvuSchemaRuntimeBuild(root,plan,process.argv.includes('--write'))
     console.log(JSON.stringify({schemaAssets:assets?.files??[],mode:process.argv.includes('--write')?'write':'check'}))
   }
-  else if(entry==='--template-assets') {
-    const plan=readJson<CompilePlan>(path.join(root,'release/source-manifest.json'))
-    const templateAssets=await checkTavernTemplateRuntimeBuild(root,plan,process.argv.includes('--write'))
-    console.log(JSON.stringify({templateAssets:templateAssets?.files??[],mode:process.argv.includes('--write')?'write':'check'}))
-  }
   else if(entry==='--author-assets') {
     const plan=readJson<CompilePlan>(path.join(root,'release/source-manifest.json'))
     const assets=await checkAuthorRuntimeBuild(root,plan,process.argv.includes('--write'))
@@ -573,12 +539,13 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const compilation=compileTypeScript(root)
     const result=checkTypeScript(root,entry==='--write',compilation)
     const assets=await checkMvuSchemaRuntimeBuild(root,compilation.plan,entry==='--write')
-    const templateAssets=await checkTavernTemplateRuntimeBuild(root,compilation.plan,entry==='--write')
     const authorAssets=await checkAuthorRuntimeBuild(root,compilation.plan,entry==='--write')
     const subagentTypert=await checkSubagentTypertBuild(root,compilation.plan,entry==='--write',true)
+    const readerNativeLibraries=await checkReaderNativeLibraryBuild(root,compilation.plan,entry==='--write')
     console.log(JSON.stringify({...result,...(assets?{schemaAssets:assets.files}: {}),
-      ...(templateAssets?{templateAssets:templateAssets.files}:{}),...(authorAssets?{authorAssets:authorAssets.files}:{}),
-      ...(subagentTypert?{subagentTypert:[...subagentTypert.outputs.keys()]}:{})}))
+      ...(authorAssets?{authorAssets:authorAssets.files}:{}),
+      ...(subagentTypert?{subagentTypert:[...subagentTypert.outputs.keys()]}:{}),
+      ...(readerNativeLibraries?{readerNativeLibraries:readerNativeLibraries.files}:{})}))
   }
   else {
     writeTypeScriptBuild(compileTypeScript(root, undefined, entry === undefined ? [] : [entry]), entry, output)

@@ -172,11 +172,13 @@ For `edit-message`, source the assistant ID from
 and the user `seq` from native history. `--text-file` preserves line endings and
 trailing blank lines; replacement is synchronous and returns the new `seq` and
 `messageId` without an operation-status step.
-`model-route --purpose status|decision|memory --provider ... --model ...`
+`model-route --purpose PURPOSE_ID --provider ... --model ...`
 reads and revision-checks the current policy, preserving other routes; use
 `--effort low|medium|off` as supported by the selected model. Scope defaults to
 the session and global scope must be explicit. Capability validation remains on
-the native models route.
+the native models route. Read `models.purposes` for current IDs, including
+card import/export, novel export, author dialogue and `ruby-analysis`; the CLI
+does not maintain a second purpose allowlist.
 Use `upload-card --session ID --file card.png --import --request-id stable-ID`
 for an explicitly authorized import. It sends the original bytes through the
 official `uploadFileBinary` route, verifies the returned file reference, saves
@@ -184,7 +186,8 @@ a bounded v1 target/session/receipt/request identity locally, then POSTs one
 attachment `card-import` job. The import worker path supports Windows and
 Linux without service filesystem staging. No import sends a player prompt.
 PNG/JSON classification adds normal/retry/fallback model requests 0/0/0;
-Markdown/TXT keep the existing model task. Admission is not completion.
+Accepted formats are `.md`, `.markdown`, `.txt`, `.json`, `.png`, and `.docx`.
+Markdown/TXT and DOCX keep the runtime extraction/classification workflow; the CLI does not extract or rewrite their contents. Admission is not completion.
 
 On uncertainty use `upload-card --session ID --import --resume` without a file:
 it reuses the saved receipt/request and never uploads again. Optional

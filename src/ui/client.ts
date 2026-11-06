@@ -1,4 +1,5 @@
 import { ROLEPLAY_UI_CSS } from './roleplay-ui-styles.js'
+import {READER_NATIVE_DOCUMENT_LIBRARIES} from './reader-native-document-libraries.js'
 import { createConversationPresentation, type SessionSelector } from './conversation-presentation.js'
 import type * as ReactAPI from 'react'
 import type { SessionList, SessionSummary } from './conversation-projection.js'
@@ -94,8 +95,12 @@ export { tavernActivityPresentation, backgroundNotesPresentation } from './activ
 import { createAuthorPanels } from './author-panels.js'
 import { createMemoryRetrievalPanel, MEMORY_RETRIEVAL_CSS } from './memory-retrieval-panel.js'
 import { createRubyAnalysisPanel } from './ruby-analysis-panel.js'
+import {createCharacterClusterPanel, createCharacterPanelAPI, createCharacterOffscreenRunsPanel} from './character-cluster-panel.js'
+import {createCharacterClusterSettingsPanels} from './character-cluster-settings-panel.js'
+import {characterClusterStyles} from './character-cluster-styles.js'
 import { createCardAdaptationPanel, CARD_ADAPTATION_CSS } from './card-adaptation-panel.js'
 import { createReaderView } from './reader-view.js'
+import {createReaderFrontendSettings,createReaderFrontendPanel} from './reader-frontend-settings.js'
 import { createStatusSurface } from './status-surface.js'
 import { createSessionBgm, createSessionBgmControls } from './session-bgm.js'
 import { createSessionImages, createSessionImageComponents } from './session-images.js'
@@ -194,7 +199,7 @@ export function apply(ctx: ClientContext) {
   const style = document.createElement('style')
   style.setAttribute('data-plugin', 'dsh-nexttavern')
   style.setAttribute('data-plugin-css', 'dsh-roleplay-ui')
-  style.textContent = ROLEPLAY_UI_CSS + MEMORY_RETRIEVAL_CSS + CARD_ADAPTATION_CSS
+  style.textContent = ROLEPLAY_UI_CSS + MEMORY_RETRIEVAL_CSS + CARD_ADAPTATION_CSS + characterClusterStyles
   document.head.appendChild(style)
   ctx.effect(() => () => style.remove(), 'roleplay-ui: styles')
 
@@ -415,7 +420,6 @@ export function apply(ctx: ClientContext) {
         })
     const { MemoryPanel: MemoryRetrievalMemoryPanel, EmbeddingPanel, RebuildPrompt } = createMemoryRetrievalPanel({ React, jsonFetch, toast })
     const CardAdaptationPanel = createCardAdaptationPanel({ React, jsonFetch, toast, confirmWithDialog })
-    const RubyAnalysisPanel = createRubyAnalysisPanel({ React, jsonFetch })
 
     const panelTabs: [string, string, ReactAPI.ComponentType<{ scope?: { sessionId: string }; visible?: boolean }>][] = [
       ['cards', '人物设定', CardsPanel],
@@ -428,7 +432,6 @@ export function apply(ctx: ClientContext) {
       ['settings', '自定义规则', SettingsPanel],
     ]
     const {
-      CharacterClusterPanel,
       ModelPanel,
       CardImportPanel,
       ResourcesPanel,
@@ -451,6 +454,18 @@ export function apply(ctx: ClientContext) {
           btn
         })
 
+    const {OffscreenSettingsPanel,ModelsPanel:CharacterModelsPanel}=createCharacterClusterSettingsPanels({React,sessionDrafts,jsonFetch})
+    const OffscreenRunsPanel=createCharacterOffscreenRunsPanel({React,jsonFetch})
+    const CharacterClusterPanel=createCharacterClusterPanel({React,sessionDrafts,api:createCharacterPanelAPI(jsonFetch),
+      renderOffscreenSettings:sessionId=>React.createElement(OffscreenSettingsPanel,{sessionId}),
+      renderOffscreenRuns:(sessionId,selectCharacter)=>React.createElement(OffscreenRunsPanel,{sessionId,selectCharacter}),
+      renderModels:(sessionId,scope)=>React.createElement(CharacterModelsPanel,{sessionId,scope})})
+    const RubyAnalysisPanel = createRubyAnalysisPanel({React,jsonFetch,
+      renderModelSettings:sessionId=>React.createElement(ModelPanel,{sessionId,purpose:'ruby-analysis'}),
+      openModelSettings:sessionId=>{
+        window.dispatchEvent(new CustomEvent('dsh-roleplay-needs-config',{
+          detail:{sessionId,action:'configure-story-model'}}))
+      }})
     const PresetPanel = createPresetPanel(
       {
         React,
@@ -692,6 +707,8 @@ export function apply(ctx: ClientContext) {
         + 'M8 4.75v5.5M5.25 7.5h5.5',
       decision: 'M2 2.5h12v9H8l-3.5 3v-3H2zM4.5 5.5h7M4.5 8h5',
       status: 'M2 2.5h12v11H2zM10 2.5v11M4 5h3M4 8h3',
+      values: 'M2 5h12M2 11h12M5 2v6M11 8v6',
+      frontend: 'M2 2.5h12v9H2zM5 14h6M8 11.5V14M2 5h12',
       music: 'M6 11.5V4l7-1.5V10M6 6.5l7-1.5M6 11.5a2 1.5 0 1 1-4 0 2 1.5 0 0 1 4 0Z'
         + 'm7-1.5a2 1.5 0 1 1-4 0 2 1.5 0 0 1 4 0Z',
       images: 'M2 2.5h12v11H2zM2 10l3.5-3.5L9 10l2-2 3 3M11.5 5a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z',
@@ -760,7 +777,7 @@ export function apply(ctx: ClientContext) {
         onClick: (event: ReactAPI.MouseEvent<HTMLButtonElement>) => {
           const opened = !sessionImages.getSnapshot().opened
           if (opened) sessionBgm.open(false)
-          sessionImages.open(opened, mediaPanelPosition(event.currentTarget, 340))
+          sessionImages.open(opened, mediaPanelPosition(event.currentTarget, 380))
         },
       }, sidebarIcon('images'), props.wide === false ? null
         : React.createElement('span', {className: 'dsh-rp-tool-label'}, '图片')))
@@ -774,7 +791,7 @@ export function apply(ctx: ClientContext) {
         onClick: (event: ReactAPI.MouseEvent<HTMLButtonElement>) => {
           const opened = !sessionBgm.getSnapshot().opened
           if (opened) sessionImages.open(false)
-          sessionBgm.open(opened, mediaPanelPosition(event.currentTarget, 280))
+          sessionBgm.open(opened, mediaPanelPosition(event.currentTarget, 360))
         },
       }, sidebarIcon('music'), props.wide === false ? null
         : React.createElement('span', {className: 'dsh-rp-tool-label'}, '音乐')))
@@ -813,13 +830,34 @@ export function apply(ctx: ClientContext) {
           sidebarIcon('decision'),
           props.wide === false ? null : React.createElement('span', {className: 'dsh-rp-tool-label'}, '决策')))
     }
+    const NumericalButton = (props: SidebarProps) => {
+      const sessionId = useMainSessionId()
+      const opened = numericalSeat.useOpen()
+      return sidebarTooltip(props,'状态机：查看和编辑游戏数值',React.createElement('button',{
+        type:'button',className:'dsh-rp-tool-button',disabled:!isRoleplaySession(sessionId),
+        'aria-label':'状态机：游戏数值','aria-expanded':opened,'aria-controls':'dsh-rp-values-panel',
+        onClick:()=>numericalSeat.toggle()
+      },sidebarIcon('values'),props.wide===false?null:React.createElement('span',{className:'dsh-rp-tool-label'},'状态机')))
+    }
+    const frontendSettings = createReaderFrontendSettings()
+    const FrontendSettingsPanel = createReaderFrontendPanel(React,frontendSettings)
+    const FrontendButton = (props: SidebarProps) => {
+      const sessionId = useMainSessionId()
+      const opened = React.useSyncExternalStore(frontendSettings.subscribeOpen,frontendSettings.getOpen,frontendSettings.getOpen)
+      return sidebarTooltip(props,'前端设置',React.createElement('button',{
+        type:'button',className:'dsh-rp-tool-button',disabled:!isRoleplaySession(sessionId),
+        'aria-label':'前端设置','aria-expanded':opened,'aria-controls':'dsh-rp-frontend-panel',
+        onClick:()=>frontendSettings.open(!frontendSettings.getOpen())
+      },sidebarIcon('frontend'),props.wide===false?null:React.createElement('span',{className:'dsh-rp-tool-label'},'前端')))
+    }
     const RoleplayTools = (props: SidebarProps) => {
       const cell = (key: string, component: ReactAPI.ComponentType<SidebarProps>) => React.createElement(
         'div', {key, className: 'dsh-rp-tool-cell'}, React.createElement(component, props))
       return React.createElement('div', {
         className: 'dsh-rp-tools' + (props.wide === false ? ' dsh-rp-tools-rail' : ''),
         role: 'group', 'aria-label': '酒馆工具',
-      }, cell('images', ImageButton), cell('music', BgmButton), cell('status', StatusModeButton), cell('decision', DecisionButton))
+      }, cell('images', ImageButton), cell('music', BgmButton), cell('status', StatusModeButton), cell('decision', DecisionButton),
+      cell('values',NumericalButton),cell('frontend',FrontendButton))
     }
     if (slots !== undefined) {
       slots.inject(
@@ -847,7 +885,7 @@ export function apply(ctx: ClientContext) {
     // ── 状态栏悬浮窗（仅 roleplay 会话；可最小化）────────────────────────────
     const SessionBgmControls = createSessionBgmControls({React, player: sessionBgm, jsonFetch, uploadFile})
     const {Controls: SessionImageControls, Scene: SessionImageScene} = createSessionImageComponents({React, images: sessionImages})
-    const { decisionSeat, StatusOverlay } = createStatusSurface(
+    const { decisionSeat, StatusOverlay, numericalSeat } = createStatusSurface(
       {
         React,
         createRoot: require('react-dom/client').createRoot,
@@ -878,8 +916,11 @@ export function apply(ctx: ClientContext) {
     const ReaderView = createReaderView(
       {
         React,
+        frontendSettings,
+        nativeLibraries:READER_NATIVE_DOCUMENT_LIBRARIES,
         images: sessionImages,
         readerHandoff,
+        navigate: sessionId => openNativeBranch({sessionId}),
         resolveActiveSessionId,
         isRoleplaySession,
         useTavernActivity,
@@ -938,6 +979,9 @@ export function apply(ctx: ClientContext) {
               : null,
             overlaySessionId && isRoleplaySession(overlaySessionId)
               ? React.createElement(SessionImageControls, {key: `images:${overlaySessionId}`})
+              : null,
+            overlaySessionId && isRoleplaySession(overlaySessionId)
+              ? React.createElement(FrontendSettingsPanel)
               : null,
             overlaySessionId && isRoleplaySession(overlaySessionId)
 

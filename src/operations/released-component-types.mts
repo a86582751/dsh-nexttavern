@@ -1,7 +1,7 @@
 /** Durable publication facts and the local execution closure derived from them.
  * File inventories remain owned by the immutable published archive. */
 import type {AuthorHostIdentityV5,AuthorServerExecutorV4} from '../core/roleplay-author-host-types-v5.js'
-import type {TavernTemplateEngineIdentityV1} from '../core/tavern-template-types.mjs'
+import type {TavernEjsRuntimeIdentity} from '../core/tavern-template-ejs-runtime-types.mjs'
 import type {ProtectedFile} from './protected-packages.mjs'
 
 export interface ReleasedComponentRef {
@@ -11,8 +11,7 @@ export interface ReleasedComponentRef {
   context?:string
 }
 export type ReleasedComponentFactory = 'typescript-v1' | 'schema-v4-shared-typescript'
-  | 'browser-v2-local-typescript' | 'browser-v3-shared-typescript'
-  | 'prompt-v1-shared-typescript' | 'template-v2' | 'host-v5'
+  | 'template-ejs-v1' | 'host-v5'
 export interface ReleasedRuntimeComponent extends ReleasedComponentRef {
   version:string
   factory:ReleasedComponentFactory
@@ -20,7 +19,7 @@ export interface ReleasedRuntimeComponent extends ReleasedComponentRef {
   /** Present in an installed closure; absent in the publication declaration. */
   path?:string
 }
-export type ReleasedRuntimeRole = 'typescript'|'schema'|'browser'|'browserPartition'|'prompt'|'host'|'template'
+export type ReleasedRuntimeRole = 'typescript'|'schema'|'host'|'templateEjs'
 export type ReleasedRuntimeRoles = Partial<Record<ReleasedRuntimeRole,ReleasedComponentRef>>
 export interface CurrentRuntimeComponents {
   schemaVersion:1
@@ -28,7 +27,8 @@ export interface CurrentRuntimeComponents {
   roles:ReleasedRuntimeRoles
 }
 export interface PublishedRuntimeClosure extends CurrentRuntimeComponents {
-  identities:{server?:AuthorServerExecutorV4;host?:AuthorHostIdentityV5;template?:TavernTemplateEngineIdentityV1}
+  identities:{server?:AuthorServerExecutorV4;host?:AuthorHostIdentityV5;
+    templateEjs?:TavernEjsRuntimeIdentity}
 }
 export interface PublishedComponentSummary extends ReleasedComponentRef {
   version:string
@@ -59,7 +59,7 @@ export interface ReleasedRuntimeInventory {
   releases:{version:string;archiveSha256:string}[]
   schemas:{server:AuthorServerExecutorV4;component:ReleasedComponentRef}[]
   authors:{server:AuthorServerExecutorV4;host:AuthorHostIdentityV5;roles:ReleasedRuntimeRoles}[]
-  templates:{engine:TavernTemplateEngineIdentityV1;component:ReleasedComponentRef}[]
+  templateEjs?:{engine:TavernEjsRuntimeIdentity;component:ReleasedComponentRef}[]
   /** Generated Node resolution bridges live beside, never inside, payloads. */
   dependencyNamespaces?:{
     component:ReleasedComponentRef

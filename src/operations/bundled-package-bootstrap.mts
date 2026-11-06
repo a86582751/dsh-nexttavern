@@ -3,7 +3,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {createRequire, findPackageJSON} from 'node:module'
 import {pathToFileURL} from 'node:url'
-import type {AuthorHostIdentityV5,AuthorServerExecutorV4} from '../core/roleplay-author-host-types-v5.js'
 import type {CurrentRuntimeComponents,ReleasedComponentRef,ReleasedRuntimeComponent,ReleasedRuntimeInventory}
   from './released-component-types.mjs'
 import {withFileLock} from '@deepseek-ai/dsh-atomic-write'
@@ -39,11 +38,6 @@ interface BundleInventory {
   historicalComponents?:BundledHistoricalComponentSpec[]
   currentRuntime?:CurrentRuntimeComponents
   releasedRuntime?:ReleasedRuntimeInventory
-  authorRuntimeHistory?:readonly {serverPackage:string;hostPackage:string;browserPackage:string;
-    serverComponent?:string;hostComponent?:string;browserComponent?:string;
-    promptPackage?:string;promptComponent?:string;
-    browserPartitionPackage?:string;browserPartitionComponent?:string;
-    server:AuthorServerExecutorV4;host:AuthorHostIdentityV5}[]
 }
 interface PackageMetadata {
   name: string
@@ -226,7 +220,7 @@ export function readBundleIdentity(productRoot: string) {
   }
   return {productRoot, rootManifest, metadata: product, version: product.version, packages, bundles,historicalComponents,
     currentRuntime:inventory.currentRuntime,releasedRuntime:inventory.releasedRuntime,runtimeComponents,dependencyNamespaces,
-    authorRuntimeHistory:inventory.authorRuntimeHistory??[]}
+    }
 }
 
 const runtimeComponentKey=(ref:ReleasedComponentRef)=>ref.name+'\0'+ref.generation+'\0'+(ref.context??'')

@@ -239,14 +239,14 @@ def parse(argv):
         if command == 'model-set':
             p.add_argument('--body-file', required=True, help='Object with scope, settings, expectedRevision')
         if command == 'model-route':
-            p.add_argument('--purpose', choices=['status', 'decision', 'memory'], required=True)
+            p.add_argument('--purpose', required=True, help='Purpose ID returned by models.purposes; validated by the server')
             p.add_argument('--provider', required=True)
             p.add_argument('--model', required=True)
             p.add_argument('--effort', default='medium', help='Provider-supported reasoning effort, e.g. low, medium, off')
             p.add_argument('--scope', choices=['session', 'global'], default='session')
         if command == 'upload-card':
             source = p.add_mutually_exclusive_group(required=True)
-            source.add_argument('--file', help='Local .md/.txt/.json/.png role card, maximum 20,000,000 bytes')
+            source.add_argument('--file', help='Local .md/.markdown/.txt/.json/.png/.docx role card, maximum 20,000,000 bytes')
             source.add_argument('--resume', action='store_true', help='Confirm the saved import identity without uploading again; requires --import')
             p.add_argument('--import', dest='import_card', action='store_true', help='Explicitly import through official raw upload and durable jobs')
             p.add_argument('--request-id', help='Stable request ID for --import')
@@ -378,8 +378,8 @@ def text_input(args):
 def card_file(args):
     path = Path(args.file)
     extension = path.suffix.lower()
-    if extension not in {'.md', '.txt', '.json', '.png'}:
-        raise CliError('input', 'Role card file extension must be .md, .txt, .json or .png')
+    if extension not in {'.md', '.markdown', '.txt', '.json', '.png', '.docx'}:
+        raise CliError('input', 'Role card file extension must be .md, .markdown, .txt, .json, .png or .docx')
     if not path.is_file():
         raise CliError('input', 'Role card file does not exist or is not a regular file')
     size = path.stat().st_size

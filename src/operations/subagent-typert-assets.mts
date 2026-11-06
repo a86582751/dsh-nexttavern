@@ -23,6 +23,8 @@ export interface SubagentTypertRecipeV1 {
   readonly schemaVersion:1
   readonly encoding:'owned-subagent-typert-recipe-v1'
   readonly packageArtifact:string
+  /** Existing RPC vocabulary is independent of the private npm carrier. */
+  readonly protocolPackage:string
   readonly generatorPackageArtifact:string
   readonly generatorEntryArtifact:string
   readonly typeContext:string
@@ -83,8 +85,7 @@ export async function buildSubagentTypertAssetsV1(options:{repo:string;plan:Suba
   const original=(id:string)=>path.resolve(repo,artifact(plan,id).source)
   const packageFile=original(recipe.packageArtifact),packageRoot=path.dirname(packageFile)
   const packageBytes=fs.readFileSync(packageFile),metadata=JSON.parse(packageBytes.toString('utf8')) as PackageMetadata
-  // Native packages are whole hostForks, not product.packages. Their existing
-  // canonical prefix inventory owns the maintained source mirror as well.
+  // The canonical prefix inventory owns the maintained source mirror.
   const packagePrefix=path.posix.dirname(artifact(plan,recipe.packageArtifact).source)+'/'
   const sourceResources=plan.artifacts.filter(row=>row.source.startsWith(packagePrefix+'src/')
     &&/\.[cm]?ts$/.test(row.source)).map(row=>({artifact:row.id,path:row.source.slice(packagePrefix.length)}))
@@ -115,7 +116,11 @@ export async function buildSubagentTypertAssetsV1(options:{repo:string;plan:Suba
   try {
     const mirrorRoot=path.join(temporary,'packages','subagent'),mirrored=new Map<string,string>()
     fs.mkdirSync(mirrorRoot,{recursive:true})
-    fs.writeFileSync(path.join(mirrorRoot,'package.json'),packageBytes)
+    // Typert derives invocation identifiers from the modeled package. Preserve
+    // the shared RPC vocabulary while the runtime has its own private carrier.
+    fs.writeFileSync(path.join(mirrorRoot,'package.json'),JSON.stringify({
+      ...metadata,name:recipe.protocolPackage,
+    }))
     for(const resource of sourceResources) {
       const source=original(resource.artifact),destination=path.join(mirrorRoot,resource.path)
       fs.mkdirSync(path.dirname(destination),{recursive:true})
@@ -155,6 +160,7 @@ export async function buildSubagentTypertAssetsV1(options:{repo:string;plan:Suba
       const source=typeof target==='string'?target:target.types
       if(!source||(!source.includes('*')&&!/\.[cm]?ts$/.test(source)))continue
       compilerOptions.paths[metadata.name+(subpath==='.'?'':subpath.slice(1))]=[path.resolve(mirrorRoot,source)]
+      compilerOptions.paths[recipe.protocolPackage+(subpath==='.'?'':subpath.slice(1))]=[path.resolve(mirrorRoot,source)]
     }
     // Remote decorators are identified by their owning package registration.
     // Keep the installed protocol declarations exact, inside the analyzer's
@@ -254,11 +260,11 @@ export async function buildSubagentTypertAssetsV1(options:{repo:string;plan:Suba
       }
     }
     const workspace=new generator.WorkspaceAnalyzer({root:temporary,hostConfig:'tsconfig.host.json',
-      clientConfig:'tsconfig.client.absent.json',packages:[metadata.name],faces:['host'],mode:'check',
+      clientConfig:'tsconfig.client.absent.json',packages:[recipe.protocolPackage],faces:['host'],mode:'check',
       checkDiagnostics:!options.typescriptAlreadyChecked,caches:new ObservedCaches()}).analyze()
     const hostFace=workspace.faces.find((face)=>face.face==='host')
     if(!hostFace)throw Error('SUBAGENT_TYPERT_HOST_FACE_MISSING')
-    const emitted=new generator.FaceModelEmitter(hostFace).emit(metadata.name)
+    const emitted=new generator.FaceModelEmitter(hostFace).emit(recipe.protocolPackage)
     if(!emitted.remote)throw Error('SUBAGENT_TYPERT_REMOTE_MISSING')
     const bodies:Record<OutputRole,string>={'host-js':emitted.js,'host-dts':emitted.dts,
       'remote-js':emitted.remote.js,'remote-dts':emitted.remote.dts}

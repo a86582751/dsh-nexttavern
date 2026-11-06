@@ -4,27 +4,21 @@ import path from 'node:path'
 import {createHash} from 'node:crypto'
 import {execFileSync} from 'node:child_process'
 import {createRequire} from 'node:module'
-import type {AuthorHostIdentityV5,AuthorServerExecutorV4} from '../core/roleplay-author-host-types-v5.js'
 import {assembleOwnedDependency,planOwnedDependencyOverlays,regularPackageFiles,
   type OwnedDependencyAssembly} from './owned-dependency.mjs'
 import {contained as inside} from './public-transaction.mjs'
-import {materializeBundledLibraries,bundledLibraryLockFingerprint,topLevelBundledLibraryVersions,
-  normalizeBundledLibraryMetadata,type BundledLibraryLock} from './bundled-library-assembly.mjs'
-import {templateRuntimeRecipeV1,materializeTavernTemplateRuntimeDependenciesV1,
-  assertTavernTemplateRuntimePackageV1,type TavernTemplateRuntimeAssetRecipeV1} from './tavern-template-runtime-assets.mjs'
-import {authorBrowserRuntimeRecipeV1,materializeAuthorBrowserRuntimeDependenciesV1,
-  authorBrowserRuntimeRecipeV2,materializeAuthorBrowserRuntimeDependenciesV2,
-  type AuthorBrowserRuntimeAssetRecipeV1,type AuthorBrowserRuntimeAssetRecipeV2} from './author-browser-runtime-assets.mjs'
+import {materializeBundledLibraries,createBundledLibraryAssemblyContext,
+  bundledLibraryLockFingerprint,topLevelBundledLibraryVersions,normalizeBundledLibraryMetadata,
+  type BundledLibraryAssemblyContext,type BundledLibraryLock} from './bundled-library-assembly.mjs'
+import {templateEjsRuntimeRecipeV1,materializeTavernTemplateEjsRuntimeDependenciesV1,
+  type TavernTemplateEjsRuntimeAssetRecipeV1} from './tavern-template-ejs-runtime-assets.mjs'
 import type {AuthorHostRuntimeAssetRecipeV5} from './author-host-runtime-assets.mjs'
 import type {HistoricalRuntimeAssetRebuildV1} from './runtime-asset-source-scope.mjs'
-import {authorBrowserRuntimeRecipeV3,materializeAuthorBrowserRuntimeDependenciesV3,
-  type AuthorBrowserRuntimeAssetRecipeV3} from './author-browser-runtime-assets-v3.mjs'
 import type {SubagentTypertRecipeV1} from './subagent-typert-assets.mjs'
 import {makeHostForkProfile,type HostForkProfileDescriptorV1} from './native-fork-host-profile.mjs'
-import {authorPromptRuntimeRecipeV1,materializeAuthorPromptRuntimeDependenciesV1,
-  type AuthorPromptRuntimeAssetRecipeV1} from './author-prompt-runtime-assets.mjs'
 import {describeCurrentRuntimeComponents,materializeReleasedComponents} from './released-component-assembly.mjs'
 import {readPublishedReleaseCatalog} from './released-component-catalog.mjs'
+import type {ReleasedComponentFactory} from './released-component-types.mjs'
 
 interface ProductPackageRecipe {
   packageArtifact:string
@@ -34,27 +28,20 @@ interface ProductPackageRecipe {
 }
 interface ProductRecipe {
   publishedReleases?:{catalogArtifact:string}
-  mvuSchemaRuntimes?:readonly {packageArtifact:string;executorVersion?:number}[]
-  templateRuntime?:TavernTemplateRuntimeAssetRecipeV1
-  authorBrowserRuntime?:AuthorBrowserRuntimeAssetRecipeV1
-  authorBrowserRuntimeV2?:AuthorBrowserRuntimeAssetRecipeV2
-  authorBrowserRuntimeV3?:AuthorBrowserRuntimeAssetRecipeV3
+  mvuSchemaRuntimes?:readonly {packageArtifact:string;executorVersion?:number;immutableGeneration?:string}[]
+  templateEjsRuntime?:TavernTemplateEjsRuntimeAssetRecipeV1
   authorHostRuntime?:AuthorHostRuntimeAssetRecipeV5
   historicalRuntimeRebuilds?:readonly HistoricalRuntimeAssetRebuildV1[]
   subagentTypert?:SubagentTypertRecipeV1
   hostForkProfile?:HostForkProfileDescriptorV1
-  authorPromptRuntime?:AuthorPromptRuntimeAssetRecipeV1
   packageArtifact: string
   patchArtifact: string
   packages:ProductPackageRecipe[]
   /** Exact old components live inside the pinned product, outside npm's
    * single-name dependency roster. Their original metadata and bytes survive. */
   historicalComponents?:(ProductPackageRecipe&{path:string;immutableGeneration:string;
-    resources:{artifact:string;path:string}[]})[]
-  authorRuntimeHistory?:readonly {serverPackageArtifact:string;hostPackageArtifact:string;browserPackageArtifact:string;
-    promptPackageArtifact?:string;
-    browserPartitionPackageArtifact?:string;
-    server:AuthorServerExecutorV4;host:AuthorHostIdentityV5}[]
+    resources:{artifact:string;path:string}[];
+    runtime?:{factory:ReleasedComponentFactory;typescriptPackageArtifact?:string}})[]
   /**
    * Optional activation layers that ship beside the owned packages. Each one
    * names a registered delivery layout, so the payload path stays a single
@@ -65,10 +52,6 @@ interface ProductRecipe {
   bundleLibraries?: Record<string, string>
   /** Root SDKs with install hooks travel prebuilt, including their locked runtime graph. */
   rootBundledLibraries?: {libraries: Record<string, string>; lockArtifact: string}
-  /** Raw compiler projections retain their original relative library roots. */
-  rawBrowserCompilerLibraries?: {
-    schemaVersion: 1; libraries: Record<string, string>; lockArtifact: string; moduleRoots: string[]
-  }
   /**
    * Platform targets the product ships native companions for. A vendored
    * library that declares platform packages (for example koffi's loaders)
@@ -147,11 +130,7 @@ export function planDevelopmentAssembly(options:{repo:string;plan:ProductAssembl
     const rootOwned=Object.fromEntries(Object.entries(rootLibraries?.libraries??{})
       .filter(([name])=>metadata.bundleDependencies?.includes(name)))
     const special=[
-      {recipe:plan.product.templateRuntime,module:'tavern-template-runtime-assets'},
-      {recipe:plan.product.authorBrowserRuntime,module:'author-browser-runtime-assets'},
-      {recipe:plan.product.authorBrowserRuntimeV2,module:'author-browser-runtime-assets'},
-      {recipe:plan.product.authorBrowserRuntimeV3,module:'author-browser-runtime-assets-v3'},
-      {recipe:plan.product.authorPromptRuntime,module:'author-prompt-runtime-assets'},
+      {recipe:plan.product.templateEjsRuntime,module:'tavern-template-ejs-runtime-assets'},
     ].find(item=>item.recipe?.packageArtifact===row.packageArtifact)
     const dependencies=ordered(metadata.dependencies??{}).filter(([name])=>!name.startsWith('dsh-nexttavern-'))
     const hasLibraries=dependencies.length>0||Object.keys(rootOwned).length>0
@@ -171,13 +150,13 @@ export function planDevelopmentAssembly(options:{repo:string;plan:ProductAssembl
       ...(Object.keys(rootOwned).length?{normalizeBundleMetadata:true as const}:{}),
       ...(overlay?{removed:overlay.removed.map(file=>target+'/'+file)}:{})})
   }
-  for(const row of plan.product.publishedReleases?[]:plan.product.historicalComponents??[]) {
+  for(const row of plan.product.historicalComponents??[]) {
     const metadata=json<Metadata>(inside(repo,artifact(row.packageArtifact)))
     units.push({id:'historical:'+row.path,kind:'historical-component',name:metadata.name,version:metadata.version,
       target:row.path,packageArtifact:row.packageArtifact,immutableGeneration:row.immutableGeneration,
       dependencyKey:row.immutableGeneration,files:[]})
   }
-  if(plan.product.publishedReleases) {
+  if(plan.product.publishedReleases||plan.product.historicalComponents?.some(row=>row.runtime)) {
     const catalog=readPublishedReleaseCatalog(repo,plan)
     const archiveIdentity=(sha256:string)=>{
       const file=options.archives['published:'+sha256]
@@ -191,10 +170,13 @@ export function planDevelopmentAssembly(options:{repo:string;plan:ProductAssembl
       }
     }
     units.push({id:'released-runtime',kind:'released-runtime',name:'released-runtime',version:'',target:'components',files:[],
-      dependencyKey:key({catalog:sourceHash(artifact(plan.product.publishedReleases.catalogArtifact)),
+      dependencyKey:key({catalog:plan.product.publishedReleases
+        ?sourceHash(artifact(plan.product.publishedReleases.catalogArtifact)):undefined,
+        explicit:(plan.product.historicalComponents??[]).filter(row=>row.runtime).map(row=>({
+          packageArtifact:row.packageArtifact,path:row.path,generation:row.immutableGeneration,runtime:row.runtime})),
         archives:[...new Set(catalog.releases.map(row=>row.archive.sha256))].sort().map(archiveIdentity),
         implementation:implementation('released-component-assembly','released-component-archive','released-component-catalog'),
-        archiveHelper:sourceHash(artifact('inventory-runtime-alpha3-operations-release-archive-py'))})})
+        archiveHelper:catalog.releases.length?sourceHash(artifact('inventory-runtime-alpha3-operations-release-archive-py')):undefined})})
   }
   for(const row of plan.product.hostForks??[])units.push({id:'host-fork:'+row.name,kind:'host-fork',
     name:row.name,version:row.version,target:row.target,dependencyKey:key({name:row.name,version:row.version}),
@@ -249,30 +231,6 @@ function packageSourceFiles(plan:Plan,row:ProductPackageRecipe,maintained=true):
   }
   for(const resource of row.resources??[])files.set(resource.path,artifact(resource.artifact).source)
   return [...files].map(([target,source])=>({source,target})).sort((a,b)=>a.target.localeCompare(b.target))
-}
-
-/** Runtime lookup names come from the same package mapping as assembly.
- * Historical tuples select an exact admitted component, never a latest ABI. */
-export function productAuthorRuntimeHistory(repo:string,suppliedPlan?:ProductAssemblyPlan) {
-  const plan=suppliedPlan??json<Plan>(path.join(repo,'release/source-manifest.json'))
-  const name=(id:string)=>{
-    const row=plan.artifacts.find(artifact=>artifact.id===id)
-    if(!row)throw Error('Unregistered historical runtime package: '+id)
-    return json<Metadata>(inside(repo,row.source)).name
-  }
-  const component=(id:string)=>plan.product.historicalComponents?.find(row=>row.packageArtifact===id)?.path
-  return (plan.product.authorRuntimeHistory??[]).map(row=>({
-    serverPackage:name(row.serverPackageArtifact),hostPackage:name(row.hostPackageArtifact),
-    browserPackage:name(row.browserPackageArtifact),
-    ...component(row.serverPackageArtifact)?{serverComponent:component(row.serverPackageArtifact)}:{},
-    ...component(row.hostPackageArtifact)?{hostComponent:component(row.hostPackageArtifact)}:{},
-    ...component(row.browserPackageArtifact)?{browserComponent:component(row.browserPackageArtifact)}:{},
-    ...row.promptPackageArtifact?{promptPackage:name(row.promptPackageArtifact),
-      ...component(row.promptPackageArtifact)?{promptComponent:component(row.promptPackageArtifact)}:{}}:{},
-    ...row.browserPartitionPackageArtifact?{browserPartitionPackage:name(row.browserPartitionPackageArtifact),
-      ...component(row.browserPartitionPackageArtifact)?{
-        browserPartitionComponent:component(row.browserPartitionPackageArtifact)}:{}}:{},
-    server:row.server,host:row.host}))
 }
 
 /** Stage a complete, manifest-registered fork tree without activating it. */
@@ -405,6 +363,7 @@ export interface ProductPackageAssemblyOptions {
   archives?: Record<string, string>
   libraryRoot?: string
   admitVendoredFile?: VendorAdmission
+  libraryContext?: BundledLibraryAssemblyContext
   /** Public compiler plans carry the same registered package/source identities. */
   plan?:ProductAssemblyPlan
   /** Only the selected historical producer's registered outputs can be replaced. */
@@ -521,11 +480,7 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
   if(rebuilt&&rebuilt.scope.packageArtifact!==row.packageArtifact) {
     throw Error('Historical producer output belongs to another package')
   }
-  const templateRecipe=templateRuntimeRecipeV1(plan),templateComponent=templateRecipe?.packageArtifact===row.packageArtifact
-  const browserRecipe=authorBrowserRuntimeRecipeV1(plan),browserComponent=browserRecipe?.packageArtifact===row.packageArtifact
-  const browserRecipeV2=authorBrowserRuntimeRecipeV2(plan),browserComponentV2=browserRecipeV2?.packageArtifact===row.packageArtifact
-  const browserRecipeV3=authorBrowserRuntimeRecipeV3(plan),browserComponentV3=browserRecipeV3?.packageArtifact===row.packageArtifact
-  const promptRecipe=authorPromptRuntimeRecipeV1(plan),promptComponent=promptRecipe?.packageArtifact===row.packageArtifact
+  const ejsRecipe=templateEjsRuntimeRecipeV1(plan),ejsComponent=ejsRecipe?.packageArtifact===row.packageArtifact
   const source = artifact(row.packageArtifact).source
   const pkg = json<Metadata>(inside(repo, source))
   const product = json<Metadata>(inside(repo, artifact(plan.product.packageArtifact).source))
@@ -563,41 +518,15 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
     }
   }
   const ordinaryDependencies = Object.fromEntries(Object.entries(pkg.dependencies ?? {})
-    .filter(([name]) => !Object.hasOwn(ownedRootLibraries, name)&&!templateComponent
-      &&!browserComponent&&!browserComponentV2&&!browserComponentV3&&!promptComponent&&!row.immutableGeneration))
+    .filter(([name]) => !Object.hasOwn(ownedRootLibraries, name)&&!ejsComponent
+      &&!row.immutableGeneration))
   const excludedVendoredFiles = vendorLibraries(output, pkg.name, ordinaryDependencies, options.libraryRoot,
     plan.product.bundleLibraries ?? {}, options.admitVendoredFile, plan.product.bundlePlatforms ?? [])
-  if(templateComponent) {
-    // Copy the exact complete locked closure before taking the component's
-    // inventory. Runtime admission cannot borrow an ancestor's WASM or FFI.
-    materializeTavernTemplateRuntimeDependenciesV1({repo,plan,packageRoot:output,
-      libraryRoot:options.libraryRoot??'',admit:options.admitVendoredFile??(()=>{
-        throw Error('Template component requires complete public vendor admission')
-      })})
-    assertTavernTemplateRuntimePackageV1({repo,plan,packageRoot:output})
-  }
-  if(browserComponent) {
-    materializeAuthorBrowserRuntimeDependenciesV1({repo,plan,packageRoot:output,
-      libraryRoot:options.libraryRoot??'',admit:options.admitVendoredFile??(()=>{
-        throw Error('Author browser component requires complete published vendor admission')
-      })})
-  }
-  if(browserComponentV2) {
-    materializeAuthorBrowserRuntimeDependenciesV2({repo,plan,packageRoot:output,
-      libraryRoot:options.libraryRoot??'',admit:options.admitVendoredFile??(()=>{
-        throw Error('Author browser V2 component requires complete published vendor admission')
-      })})
-  }
-  if(browserComponentV3) {
-    materializeAuthorBrowserRuntimeDependenciesV3({repo,plan,packageRoot:output,
-      libraryRoot:options.libraryRoot??'',admit:options.admitVendoredFile??(()=>{
-        throw Error('Author browser V3 component requires complete published vendor admission')
-      })})
-  }
-  if(promptComponent) {
-    materializeAuthorPromptRuntimeDependenciesV1({repo,plan,packageRoot:output,
-      libraryRoot:options.libraryRoot??'',admit:options.admitVendoredFile??(()=>{
-        throw Error('Author prompt component requires complete locked vendor admission')
+  if(ejsComponent) {
+    materializeTavernTemplateEjsRuntimeDependenciesV1({repo,plan,packageRoot:output,
+      context:options.libraryContext,libraryRoot:options.libraryRoot??'',
+      admit:options.admitVendoredFile??(()=>{
+        throw Error('Template EJS component requires complete locked vendor admission')
       })})
   }
   if (Object.keys(ownedRootLibraries).length) {
@@ -605,6 +534,7 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
     // Their own bundle must retain the locked closure before its inventory is
     // taken, so a later relink cannot borrow an ancestor or run SDK hooks.
     const closure=materializeBundledLibraries({libraryRoot: options.libraryRoot ?? '', moduleRoot: inside(output, 'node_modules'),
+      context: options.libraryContext,
       lockFile: inside(repo, artifact(rootRecipe!.lockArtifact).source), libraries: ownedRootLibraries,
       admit: options.admitVendoredFile ?? (() => {throw Error('Owned SDKs require public vendor admission')})})
     save(path.join(output,'package.json'),normalizeBundledLibraryMetadata(pkg,topLevelBundledLibraryVersions(closure.packages)))
@@ -640,6 +570,7 @@ export function assembleProduct(options: {
   admitVendoredFile?: VendorAdmission; includeDevelopmentCopies?: boolean
   projectedFiles?:DevelopmentProjectedFiles
 }) {
+  const libraryContext = createBundledLibraryAssemblyContext()
   const repo = fs.realpathSync(options.repo)
   const plan = json<Plan>(path.join(repo, 'release/source-manifest.json'))
   if (!plan.product?.packages.length) throw Error('Missing root product recipe')
@@ -693,27 +624,16 @@ export function assembleProduct(options: {
   fs.mkdirSync(moduleRoot)
   const bundledLibraries = plan.product.rootBundledLibraries
     ? materializeBundledLibraries({
+      context: libraryContext,
       libraryRoot: options.libraryRoot ?? '', moduleRoot,
       lockFile: inside(repo, artifact(plan.product.rootBundledLibraries.lockArtifact).source),
       libraries: rootLibraries,
       admit: options.admitVendoredFile ?? (() => {throw Error('Root SDKs require public vendor admission')}),
     }).packages : []
-  const rawCompilerRecipe = plan.product.rawBrowserCompilerLibraries
-  const rawBrowserCompilerLibraries = rawCompilerRecipe ? {
-    schemaVersion: rawCompilerRecipe.schemaVersion,
-    projections: rawCompilerRecipe.moduleRoots.map(moduleRoot => ({
-      moduleRoot,
-      packages: materializeBundledLibraries({
-        libraryRoot: options.libraryRoot ?? '', moduleRoot: inside(packageRoot, moduleRoot),
-        lockFile: inside(repo, artifact(rawCompilerRecipe.lockArtifact).source),
-        libraries: rawCompilerRecipe.libraries,
-        admit: options.admitVendoredFile ?? (() => {throw Error('Raw compiler libraries require public vendor admission')}),
-      }).packages,
-    })),
-  } : undefined
   const packages = owned.map(({pkg, packageArtifact, assembly, publicMetadata}) => {
     const output = inside(moduleRoot, pkg.name)
     const result = assembleProductPackage({repo, output, packageArtifact, archives: options.archives,
+      libraryContext,
       ...(options.libraryRoot === undefined ? {} : {libraryRoot: options.libraryRoot}),
       ...(options.admitVendoredFile === undefined ? {} : {admitVendoredFile: options.admitVendoredFile})})
     if (assembly && options.includeDevelopmentCopies !== false) {
@@ -769,17 +689,17 @@ export function assembleProduct(options: {
     ?makeHostForkProfile(plan.product.hostForkProfile,plan.product.hostForks??[]):undefined
   const currentRuntime=describeCurrentRuntimeComponents({plan,packageRoot,
     packages:packages.map((row,index)=>({...row,packageArtifact:owned[index]!.packageArtifact}))})
-  const released=plan.product.publishedReleases?materializeReleasedComponents({repo,packageRoot,plan,currentRuntime,
-    currentPackages:packages,archives:options.archives}):undefined
+  const explicit=assembleHistoricalProductComponents({...options,libraryContext})
+  const released=plan.product.publishedReleases||plan.product.historicalComponents?.some(row=>row.runtime)
+    ?materializeReleasedComponents({repo,packageRoot,plan,currentRuntime,
+      currentPackages:packages,historicalComponents:explicit,archives:options.archives}):undefined
   // SDK bytes remain distinct from owned plugins and host singleton ownership.
   const inventory = {schemaVersion: 1, productVersion: metadata.version,
     packages: packages.map(({excludedVendoredFiles, ...row}) => row), bundles, hostForks,
     currentRuntime,
     ...(released?{releasedRuntime:released.releasedRuntime}:{}),
-    historicalComponents:released?.historicalComponents??assembleHistoricalProductComponents(options),
-    authorRuntimeHistory:released?[]:productAuthorRuntimeHistory(repo,plan),
+    historicalComponents:[...new Map([...explicit,...released?.historicalComponents??[]].map(row=>[row.path,row])).values()],
     ...(hostForkProfile?{hostForkProfile}:{}),
-    ...(rawBrowserCompilerLibraries?{rawBrowserCompilerLibraries}:{}),
     rootBundledLibraries: rootLibraries, bundledLibraries}
   const excludedVendoredFiles = packages.flatMap(row => row.excludedVendoredFiles
     .map(item => ({package: row.name, ...item})))
@@ -836,7 +756,6 @@ export function applyDevelopmentAssembly(options:{
     bundles:[...previous.bundles],hostForks:[...previous.hostForks],historicalComponents:[...previous.historicalComponents??[]],
     productVersion:json<Metadata>(inside(repo,plan.artifacts.find(row=>row.id===plan.product.packageArtifact)!.source)).version,
     rootBundledLibraries:plan.product.rootBundledLibraries?.libraries??{},
-    authorRuntimeHistory:plan.product.publishedReleases?[]:productAuthorRuntimeHistory(repo,plan),
     ...(plan.product.hostForkProfile?{hostForkProfile:makeHostForkProfile(plan.product.hostForkProfile,plan.product.hostForks??[])}:{})}
   const priorKeys=options.previousKeys??{}
   const remove=(target:string)=>{options.remove(target);removed.push(target)}
@@ -979,7 +898,7 @@ export function applyDevelopmentAssembly(options:{
       const metadata=json<Metadata>(inside(repo,source)),row=inventory.packages.find(item=>item.name===metadata.name)!
       return {...row,packageArtifact:recipe.packageArtifact}
     })})
-  if(plan.product.publishedReleases||previous.releasedRuntime) {
+  if(plan.product.publishedReleases||plan.product.historicalComponents?.some(row=>row.runtime)||previous.releasedRuntime) {
     const unit=units.find(row=>row.kind==='released-runtime'),old=priorKeys['released-runtime']
     const sameRuntime=JSON.stringify(previous.currentRuntime)===JSON.stringify(inventory.currentRuntime)
     if(unit&&old?.dependencyKey===unit.dependencyKey&&sameRuntime&&previous.releasedRuntime) {
@@ -987,21 +906,24 @@ export function applyDevelopmentAssembly(options:{
     }else {
       const committed=new Set<string>()
       const released=materializeReleasedComponents({repo,plan,packageRoot:options.packageRoot,
-        currentRuntime:inventory.currentRuntime,currentPackages:inventory.packages,archives:options.archives,
+        currentRuntime:inventory.currentRuntime,currentPackages:inventory.packages,
+        historicalComponents:inventory.historicalComponents,archives:options.archives,
         ...(!old?.dependencyKey.startsWith('interrupted:')?{previous:{historicalComponents:previous.historicalComponents,
           ...(previous.releasedRuntime?{releasedRuntime:previous.releasedRuntime}:{})}}:{}),
         stageRoot:path.join(options.stageRoot,'released-runtime'),commit:(target,staged)=>{
           options.replaceOwner(target,staged);committed.add(target)
         }})
-      const retained=new Set(released.historicalComponents.map(row=>row.path))
+      const explicitPaths=new Set((plan.product.historicalComponents??[]).map(row=>row.path))
+      const retained=new Set([...explicitPaths,...released.historicalComponents.map(row=>row.path)])
       for(const target of previousReleasedPaths)if(!retained.has(target))remove(target)
       const namespaces=new Set((released.releasedRuntime.dependencyNamespaces??[]).map(row=>row.path))
       for(const row of previous.releasedRuntime?.dependencyNamespaces??[])if(!namespaces.has(row.path))remove(row.path)
       for(const row of released.historicalComponents)if(committed.has(row.path))fact(inside(options.packageRoot,row.path),row.path,row.files)
       for(const row of released.releasedRuntime.dependencyNamespaces??[])if(committed.has(row.path))
         fact(inside(options.packageRoot,row.path),row.path,row.files)
-      inventory.historicalComponents=[...inventory.historicalComponents.filter(row=>!previousReleasedPaths.has(row.path)),
-        ...released.historicalComponents]
+      inventory.historicalComponents=[...new Map([
+        ...inventory.historicalComponents.filter(row=>explicitPaths.has(row.path)||!previousReleasedPaths.has(row.path)),
+        ...released.historicalComponents].map(row=>[row.path,row])).values()]
       inventory.releasedRuntime=released.releasedRuntime
     }
   }

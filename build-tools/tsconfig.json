@@ -46,14 +46,122 @@
       "dsh-nexttavern-mvu-schema-runtime-v4-update-batch-v1/*": [
         "../development/mvu-schema-runtime-v4-update-batch-v1/src/*.ts"
       ],
+      "dsh-nexttavern-mvu-schema-runtime-v4-policy": [
+        "../compat/mvu-schema-runtime-v4-policy/src/index.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v4-policy-init-chat-v1": [
+        "../compat/mvu-schema-runtime-v4-policy-init-chat-v1/src/index.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v4-policy-save-next-v1": [
+        "../compat/mvu-schema-runtime-v4-policy-save-next-v1/src/index.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v4-policy-save-joins-v1": [
+        "../compat/mvu-schema-runtime-v4-policy-save-joins-v1/src/index.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v4-policy-save-facts-v1": [
+        "../compat/mvu-schema-runtime-v4-policy-save-facts-v1/src/index.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v4-policy-save-step-facts-v1": [
+        "../compat/mvu-schema-runtime-v4-policy-save-step-facts-v1/src/index.ts"
+      ],
       "parse5": [
         "./node_modules/parse5/dist/index.d.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v4-policy-save-continuous-v1": [
+        "../compat/mvu-schema-runtime-v4-policy-save-continuous-v1/src/index.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v4-policy-save-codec-v1": [
+        "../compat/mvu-schema-runtime-v4-policy-save-codec-v1/src/index.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v4-policy-save-material-owner-v1": [
+        "../compat/mvu-schema-runtime-v4-policy-save-material-owner-v1/src/index.ts"
       ],
       "dsh-nexttavern-anydoc/*": [
         "../development/anydoc/src/*.ts"
       ],
       "dsh-nexttavern-typescript-runtime": [
         "../development/typescript-runtime/src/index.ts"
+      ],
+      "dsh-nexttavern-native-llm": [
+        "../development/llm/src/index.ts"
+      ],
+      "dsh-nexttavern-native-llm/*": [
+        "../development/llm/src/*.ts"
+      ],
+      "dsh-nexttavern-native-session": [
+        "../development/session/src/index.ts"
+      ],
+      "dsh-nexttavern-native-session/request-material": [
+        "../development/session/src/request-material-types.ts"
+      ],
+      "dsh-nexttavern-native-session/*": [
+        "../development/session/src/*.ts"
+      ],
+      "dsh-nexttavern-native-agent-loop": [
+        "../development/agent-loop/src/index.ts"
+      ],
+      "dsh-nexttavern-native-agent-loop/*": [
+        "../development/agent-loop/src/*.ts"
+      ],
+      "dsh-nexttavern-native-subagent": [
+        "../development/subagent/src/index.ts"
+      ],
+      "dsh-nexttavern-native-subagent/*": [
+        "../development/subagent/src/*.ts"
+      ],
+      "dsh-nexttavern-native-subagent-in-process-driver": [
+        "../development/subagent-in-process-driver/src/index.ts"
+      ],
+      "dsh-nexttavern-native-subagent-in-process-driver/*": [
+        "../development/subagent-in-process-driver/src/*.ts"
+      ],
+      "dsh-nexttavern-native-subagent-spawn-in-process": [
+        "../development/subagent-spawn-in-process/src/index.ts"
+      ],
+      "dsh-nexttavern-native-subagent-spawn-in-process/*": [
+        "../development/subagent-spawn-in-process/src/*.ts"
+      ],
+      "dsh-nexttavern-native-storage-json": [
+        "../development/storage-json/src/index.ts"
+      ],
+      "dsh-nexttavern-native-storage-json/*": [
+        "../development/storage-json/src/*.ts"
+      ],
+      "dsh-nexttavern-native-llm-deepseek": [
+        "../development/llm-deepseek/src/index.ts"
+      ],
+      "dsh-nexttavern-native-llm-deepseek/*": [
+        "../development/llm-deepseek/src/*.ts"
+      ],
+      "dsh-nexttavern-native-client-modules": [
+        "../development/client-modules/src/index.ts"
+      ],
+      "dsh-nexttavern-native-client-modules/*": [
+        "../development/client-modules/src/*.ts"
+      ],
+      "dsh-nexttavern-native-llm-deepseek-api-key": [
+        "../development/llm-deepseek-api-key/src/index.ts"
+      ],
+      "dsh-nexttavern-native-llm-deepseek-api-key/*": [
+        "../development/llm-deepseek-api-key/src/*.ts"
+      ],
+      "dsh-nexttavern-native-llm-deepseek-account": [
+        "../development/llm-deepseek-account/src/index.ts"
+      ],
+      "dsh-nexttavern-native-llm-deepseek-account/*": [
+        "../development/llm-deepseek-account/src/*.ts"
+      ],
+      "dsh-nexttavern-native-http": [
+        "../development/native-http/src/index.ts"
+      ],
+      "@deepseek-ai/dsh-llm-deepseek": [
+        "./node_modules/@deepseek-ai/dsh-llm-deepseek/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm-deepseek-api-key": [
+        "./node_modules/@deepseek-ai/dsh-llm-deepseek-api-key/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm-deepseek-account": [
+        "./node_modules/@deepseek-ai/dsh-llm-deepseek-account/lib/types/index.d.ts"
       ]
     },
     "newLine": "lf"

@@ -1,6 +1,5 @@
 /** Small generated-package fixtures sharing the locked host peers; never a Harness install. */
-import assert from 'node:assert/strict'
-import {cp, lstat, mkdir, readFile, readdir, rm, symlink} from 'node:fs/promises'
+import {cp, lstat, mkdir, readFile, readdir, symlink} from 'node:fs/promises'
 import {existsSync} from 'node:fs'
 import {createHash} from 'node:crypto'
 import {createRequire} from 'node:module'
@@ -13,6 +12,30 @@ import {copyStorageJsonPackage, type StorageJsonPin} from './roleplay-core-proce
 // maintenance sources retain compat/. Neither layout is a Harness installation.
 const packageRoot = existsSync(new URL('../development/', import.meta.url)) ? '../development/' : '../development/'
 
+/** Mount maintained packages at their real names, including their Native peers.
+ * Official Host packages stay available under their own names for shared ABI. */
+async function copyMaintainedPackage(directory: string, unit: string): Promise<string> {
+  if (!/^[a-z]+(?:-[a-z]+)*$/.test(unit)) throw Error('Invalid owned package unit')
+  const source = fileURLToPath(new URL(`${packageRoot}${unit}/`, import.meta.url))
+  const metadata = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'))
+  if (metadata.name !== `dsh-nexttavern-${unit}` && metadata.name !== `dsh-nexttavern-native-${unit}`) {
+    throw Error('Owned package identity differs')
+  }
+  const installed = path.join(directory, 'node_modules', metadata.name)
+  if (existsSync(installed)) return metadata.name
+  await mkdir(installed)
+  await cp(path.join(source, 'package.json'), path.join(installed, 'package.json'))
+  await cp(path.join(source, 'lib'), path.join(installed, 'lib'), {recursive: true})
+  for (const name of Object.keys({...metadata.dependencies, ...metadata.peerDependencies})) {
+    if (!name.startsWith('dsh-nexttavern-native-')) continue
+    const directoryName = name.slice('dsh-nexttavern-'.length)
+    const peerUnit = existsSync(new URL(`${packageRoot}${directoryName}/package.json`, import.meta.url))
+      ? directoryName : directoryName.slice('native-'.length)
+    await copyMaintainedPackage(directory, peerUnit)
+  }
+  return metadata.name
+}
+
 export async function ownedPackages(units: readonly string[], extraPeers: readonly string[] = [],
   options: {localSession?: boolean; storageJson?: boolean | 'maintained'; physicalPeers?: readonly string[]} = {}) {
   if (options.storageJson && !options.localSession) throw Error('Selected JSON fixture needs the isolated locked peer scope')
@@ -24,37 +47,19 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
   try {
     let storageJsonPin: StorageJsonPin | undefined
     await mkdir(modules)
-    for (const unit of units) {
-      if (!/^[a-z]+(?:-[a-z]+)*$/.test(unit)) throw Error('Invalid owned package unit')
-      const source = fileURLToPath(new URL(`${packageRoot}${unit}/`, import.meta.url))
-      const metadata = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'))
-      if (metadata.name !== `dsh-nexttavern-${unit}`) throw Error('Owned package identity differs')
-      const installed = path.join(modules, metadata.name)
-      await mkdir(installed)
-      await cp(path.join(source, 'package.json'), path.join(installed, 'package.json'))
-      await cp(path.join(source, 'lib'), path.join(installed, 'lib'), {recursive: true})
-    }
+    for (const unit of units) await copyMaintainedPackage(directory, unit)
     if (options.localSession) {
       const scope = path.join(modules, '@deepseek-ai')
       const lockedScope = path.join(peers, '@deepseek-ai')
       await mkdir(scope)
       for (const name of await readdir(lockedScope)) {
-        if (options.storageJson && name === 'dsh-storage-json') continue
-        if (name === 'dsh-session' || name === 'dsh-session-persistence') continue
+        if (options.storageJson === true && name === 'dsh-storage-json') continue
         await symlink(path.join(lockedScope, name), path.join(scope, name), 'junction')
       }
-      if (options.storageJson) storageJsonPin = await copyStorageJsonPackage(path.join(scope, 'dsh-storage-json'),
+      if (options.storageJson) storageJsonPin = await copyStorageJsonPackage(options.storageJson === 'maintained'
+        ? path.join(modules, 'dsh-nexttavern-native-storage-json') : path.join(scope, 'dsh-storage-json'),
         options.storageJson === 'maintained' ? 'maintained' : 'installed')
-      const localSession = fileURLToPath(new URL(`${packageRoot}session/`, import.meta.url))
-      for (const [name, source] of [
-        ['dsh-session', localSession],
-        ['dsh-session-persistence', path.join(lockedScope, 'dsh-session-persistence')],
-      ] as const) {
-        const installed = path.join(scope, name)
-        await mkdir(installed)
-        await cp(path.join(source, 'package.json'), path.join(installed, 'package.json'))
-        await cp(path.join(source, 'lib'), path.join(installed, 'lib'), {recursive: true})
-      }
+      await copyMaintainedPackage(directory, 'session')
     } else {
       await symlink(path.join(peers, '@deepseek-ai'), path.join(modules, '@deepseek-ai'), 'junction')
     }
@@ -104,17 +109,9 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
   }
 }
 
-/** Only a generated package fixture link is replaced. Do not follow/remove its
- * locked source directory: it is shared with other tests and other conversations. */
+/** Add the real private peer without replacing any official Host package. */
 export async function mountMaintainedPeer(
-  packages: Awaited<ReturnType<typeof ownedPackages>>, name: 'agent-loop' | 'llm',
+  packages: Awaited<ReturnType<typeof ownedPackages>>, name: string,
 ): Promise<void> {
-  const installed = path.join(packages.directory, 'node_modules', '@deepseek-ai', `dsh-${name}`)
-  const existing = await lstat(installed)
-  assert.ok(existing.isSymbolicLink(), 'only the fixture-owned peer link may be replaced')
-  await rm(installed)
-  await mkdir(installed)
-  const source = fileURLToPath(new URL(`${packageRoot}${name}/`, import.meta.url))
-  await cp(path.join(source, 'package.json'), path.join(installed, 'package.json'))
-  await cp(path.join(source, 'lib'), path.join(installed, 'lib'), {recursive: true})
+  await copyMaintainedPackage(packages.directory, name)
 }
