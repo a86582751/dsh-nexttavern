@@ -1,606 +1,684 @@
-import {createBrowserRuntimeFrameV1} from '../core/tavern-author-browser-frame.js';
-import {createBrowserRuntimeFrameV2} from '../core/tavern-author-browser-frame-v2.js';
-import {createBrowserRuntimeFrameV3,createReaderRegexDocumentFrameV1} from '../core/tavern-author-browser-frame-v3.js';
-import type {BrowserFrameHostV3} from '../core/tavern-author-browser-frame-v3.js';
-import type {AuthorReaderSurface} from '../core/tavern-author-reader-surface.js';
-import type {AuthorBrowserReply,AuthorBrowserRequest} from '../core/roleplay-author-browser-types.js';
-import type {BrowserBindingV1,BrowserHostBridgeV1,BrowserRenderV1,BrowserSaveReplyV1,BrowserSnapshotV1}
-    from '../core/tavern-author-browser-types.mjs';
-import type {BrowserHostBridgeV2,BrowserSnapshotV2,BrowserSaveReplyV2,BrowserGenerateRawRequestV2,
-    BrowserAuthorChatRequestV2,BrowserWorldbookMutationRequestV2,BrowserPersonaMutationRequestV2}
-    from '../core/tavern-author-browser-types-v2.mjs';
-import type {BrowserSnapshotV3,BrowserOrdinaryKeyRequestV3}
-    from '../core/tavern-author-browser-types-v3.mjs';
-import type {BrowserCallbackRegistrationV2,BrowserGenerationInvocationV2,BrowserGenerationResultV2,
-    BrowserCallbackRegistrationV3,BrowserGenerationInvocationV3,BrowserGenerationResultV3,BrowserPromptCleanupRequestV3}
+import {createAuthorNativeHelperFrame} from './author-native-helper-frame.js';
+import {mountAuthorNativeScriptButtons} from './author-native-script-buttons.js';
+import type {AuthorNativeHelperFrameControllerV1,AuthorNativeHelperGenerationCallbackV1,
+    AuthorNativeHelperHostV1,AuthorNativeHelperReplyV1,AuthorNativeHelperRequestV1,
+    AuthorNativeHelperResourceV1,AuthorNativeBindingV1,AuthorNativeComposerAccessV1,
+    AuthorNativeSelfScriptV1} from '../core/author-native-helper-types.js';
+import type {AuthorNativeRealmV1,AuthorNativeProgramV1} from '../core/author-native-program.mjs';
+import {AUTHOR_NATIVE_EVENTS_V1,authorNativeNamespaceCauseV1} from '../core/author-native-origin.js';
+import type {AuthorBrowserAttachment,AuthorBrowserReply,AuthorBrowserRequest,AuthorBrowserSnapshot,
+    AuthorNativeNamespaceRequestV1,AuthorNativeWorldbookRequestV1,AuthorNativePersonaRequestV1}
+    from '../core/roleplay-author-browser-types.js';
+import type {BrowserGenerationInvocation,BrowserGenerationResult,BrowserMvuHookInvocation,BrowserMvuHookCompletion,BrowserFilterInvocation}
     from '../core/roleplay-author-browser-generation-types.js';
-import {createAuthorBrowserPendingStore,terminalBrowserReceipt,worldbookPendingRetryLocator,
-    worldbookPendingBlocksNamespace}
-    from './author-browser-pending.js';
-import type {AuthorBrowserPendingV1,AuthorBrowserWorldbookPendingV2,AuthorBrowserPersonaPendingV1}
-    from './author-browser-pending.js';
+import type {AuthorNativeMvuHookRequest,AuthorNativeMvuHookResult,AuthorNativeMvuHookDiagnostic}
+    from '../core/author-native-mvu-hook-types.js';
+import type {ReaderDocumentLayoutSettings} from '../core/tavern-author-reader-document-layout.js';
+import type {ReaderNativeLibraryV1} from '../core/reader-native-document-types.js';
+import type {ReaderOpeningVariantResultV1} from '../core/reader-regex-document-types.mjs';
 import type {AuthorScriptResourceRequestV1} from '../core/roleplay-author-script-resources.js';
-import {scopeReaderCss} from './reader-rendering.js';
-import {mountStaticAuthorDocument} from './author-runtime.js';
-import type {BrowserNativeImageV3} from '../core/tavern-author-browser-native-types-v3.js';
-import type {BrowserComposerAccessV3} from '../core/tavern-author-browser-native-types-v3.js';
-import type {ReaderRegexDocumentExecutionV1,ReaderRegexDocumentRenderV1}
-    from '../core/reader-regex-document-types.mjs';
+import type {MvuJsonObject} from '../core/tavern-mvu-initvar.js';
+import type {AuthorMessageBodyRequestV1} from '../core/roleplay-author-message-edit-types.js';
+import {createAuthorBrowserOrdinaryPendingStore,sameOrdinarySource} from './author-browser-ordinary-pending.js';
+import {createAuthorNativeMessageVariables} from '../core/author-native-message-variables.js';
+import type {AuthorBrowserOrdinaryPending} from './author-browser-ordinary-pending.js';
+import {prepareOrdinaryAuthorChatBatchV3} from '../core/roleplay-author-chat-state-types.js';
+import {createAuthorBrowserPendingStore,terminalBrowserReceipt,worldbookPendingRetryLocator,
+    worldbookPendingBlocksNamespace} from './author-browser-pending.js';
+import type {NumericalPendingV2,AuthorBrowserWorldbookPendingV2,AuthorBrowserPersonaPendingV1,
+    AuthorNativeOpeningPendingV1,AuthorNativeMessageBodyPendingV1} from './author-browser-pending.js';
+import {readerRegexDocumentTransportV1,type ReaderRegexDocumentTransportV1} from './reader-regex-document-session.js';
 import type {ReaderPreparationState} from './reader-submission-handoff.js';
 
 export interface AuthorBrowserStatus {
-    kind: 'loading' | 'inactive' | 'starting' | 'ready' | 'pending' | 'failed';
-    code?: string;
-    pending?: AuthorBrowserPendingV1;
-    worldbooks?: AuthorBrowserWorldbookPendingV2[];
-    personas?: AuthorBrowserPersonaPendingV1[];
+    kind:'loading'|'inactive'|'starting'|'ready'|'pending'|'failed';
+    code?:string;
+    pending?:NumericalPendingV2;
+    worldbooks?:AuthorBrowserWorldbookPendingV2[];
+    personas?:AuthorBrowserPersonaPendingV1[];
+    ordinary?:AuthorBrowserOrdinaryPending[];
+    opening?:AuthorNativeOpeningPendingV1;
+    messageBodies?:readonly AuthorNativeMessageBodyPendingV1[];
 }
-
-/** Reader receives already captured Core DATA. Its local binding owns only
- * this read-only Worker/native scene; no Core writer/session is fabricated. */
-export function createReaderRegexDocumentSession(options: {
-    sessionId: string;
-    container: HTMLElement;
-    current(): boolean;
-    status(value: AuthorBrowserStatus): void;
-    fill(text: string): void;
-    surface?(): AuthorReaderSurface;
-    images?(owner: object,pageId: string,images: readonly BrowserNativeImageV3[]): void;
-    releaseImages?(owner: object): void;
-}) {
-    let active = true, revision = 0, identity = '';
-    let frame: ReturnType<typeof createReaderRegexDocumentFrameV1> | undefined, realm: object | undefined;
-    const current = () => active && options.current();
-    function revoke(): void {
-        frame?.dispose();frame = undefined;
-        if (realm) options.releaseImages?.(realm);
-        realm = undefined;identity = '';
-        if (!options.surface) options.container.replaceChildren();
-    }
-    return {
-        hasFrame: () => !!frame,
-        invalidate(): void {if (active) {revoke();options.status({kind: 'inactive'});}},
-        update(execution: ReaderRegexDocumentExecutionV1,render: Omit<ReaderRegexDocumentRenderV1,'renderRevision'>): void {
-            if (!current()) return;
-            const key = execution.program.programSha256 + ':' + execution.artifact.executionWorkerSha256;
-            if (key !== identity || !frame) {
-                revoke();identity = key;
-                const owner = {};realm = owner;
-                const surface = options.surface?.();
-                const outer = surface?.outer ?? options.container.ownerDocument.createElement('iframe');
-                if (!surface) {
-                    outer.className = 'rp-author-guard-frame';outer.title = '作者正则阅读文档';options.container.append(outer);
-                }
-                const binding = {sessionId: options.sessionId,browserSessionId: crypto.randomUUID(),
-                    generation: execution.snapshot.generation,programSha256: execution.program.programSha256};
-                options.status({kind: 'starting'});
-                const controller = createReaderRegexDocumentFrameV1(outer,execution.artifact,binding,execution.program,{
-                    surface,
-                    current: () => current() && realm === owner,
-                    mountStaticDocument: (container,html,layout) => mountStaticAuthorDocument(container,html,{
-                        current: () => current() && realm === owner,fill: options.fill,layout}),
-                    layout: () => {},startupDeadlineMs: 15000,
-                    diagnostic: code => {if (current() && realm === owner) options.status({kind: 'starting',code});},
-                    failed: code => {
-                        if (!current() || realm !== owner) return;
-                        revoke();options.status({kind: 'failed',code});
-                    },
-                    onImages: (pageId,values) => {if (current() && realm === owner) options.images?.(owner,pageId,values);},
-                });
-                frame = controller;
-                void controller.started.then(() => {
-                    if (current() && realm === owner) options.status({kind: 'ready'});
-                }).catch(() => {}); // The frame's failure owner publishes its code.
-            }
-            frame.render({...render,css: scopeReaderCss(render.css),renderRevision: ++revision});
-            frame.publishSnapshot(execution.snapshot);
-        },
-        dispose(): void {if (!active) return;active = false;revoke();},
-    };
-}
-export type AuthorBrowserTransport = (request: AuthorBrowserRequest, signal?: AbortSignal) => Promise<AuthorBrowserReply>;
-export const authorBrowserTransport: AuthorBrowserTransport = async (request, signal) => {
-    const response = await fetch('/api/roleplay/author-browser', {
-        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(request), signal,
-    });
-    const reply = await response.json() as AuthorBrowserReply;
-    if (!response.ok || !reply.ok) throw Error(reply.ok ? 'BROWSER_TRANSPORT_FAILED' : reply.code);
+export type AuthorBrowserTransport=(request:AuthorBrowserRequest,signal?:AbortSignal)=>Promise<AuthorBrowserReply>;
+export const authorBrowserTransport:AuthorBrowserTransport=async(request,signal)=>{
+    const response=await fetch('/api/roleplay/author-browser',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(request),signal});
+    const reply=await response.json() as AuthorBrowserReply;
+    if(!response.ok||!reply.ok)throw Error(reply.ok?'BROWSER_TRANSPORT_FAILED':reply.code);
     return reply;
 };
-const sameBinding = (a: BrowserBindingV1 | undefined, b: BrowserBindingV1) =>
-    a?.generation === b.generation && a.browserSessionId === b.browserSessionId;
-type Snapshot=BrowserSnapshotV1|BrowserSnapshotV2|BrowserSnapshotV3;
-type SaveReply=Omit<BrowserSaveReplyV1,'snapshot'>&{snapshot:Snapshot;
-    sourceEvents?:readonly import('../core/tavern-author-browser-worker-protocol-v3.js').BrowserSourceEventV3[]};
-interface ReaderBrowserFrame {
-    started:Promise<void>;registrations?:readonly BrowserCallbackRegistrationV2[];
-    publishSnapshot(value:Snapshot):void;render(value:BrowserRenderV1):void;
-    publishSaveConfirmation(value:SaveReply):void;dispose():void;
-    invokeGeneration?(value:BrowserGenerationInvocationV2):Promise<BrowserGenerationResultV2>;
-    generationCallbacks?():Promise<readonly BrowserCallbackRegistrationV3[]>;
-    invokeGenerationV3?(value:BrowserGenerationInvocationV3,signal:AbortSignal):Promise<BrowserGenerationResultV3>;
+const sameBinding=(a:AuthorNativeBindingV1|undefined,b:AuthorNativeBindingV1)=>
+    a?.generation===b.generation&&a.browserSessionId===b.browserSessionId;
+type Snapshot=AuthorBrowserSnapshot;
+type Read=AuthorNativeNamespaceRequestV1['read'];
+interface NativeRealm extends AuthorNativeRealmV1 {
+    resource:AuthorNativeHelperResourceV1;
+    controller?:AuthorNativeHelperFrameControllerV1;
 }
-function renderReaderFrame(frame:ReaderBrowserFrame,value:BrowserRenderV1):void {
-    // V3's outer document also contains private Source carriers. Reader CSS
-    // belongs to its content container, while each carrier keeps its own CSS.
-    frame.render(frame.invokeGenerationV3?{...value,css:scopeReaderCss(value.css)}:value);
-}
-
-/** A Reader owns one live parent realm. Core owns its binding and captured
- * DATA; the durable pending operation survives this object's disposal. */
-export function createAuthorBrowserSession(options: {
-    sessionId: string;
-    container: HTMLElement;
-    current(): boolean;
-    status(value: AuthorBrowserStatus): void;
-    preparation?(value: ReaderPreparationState): void;
-    surface?(): AuthorReaderSurface;
-    composer?: BrowserComposerAccessV3;
-    transport?: AuthorBrowserTransport;
-    storage?: Pick<Storage, 'getItem' | 'setItem'>;
-    images?(owner:object,pageId:string,images:readonly BrowserNativeImageV3[]):void;
-    releaseImages?(owner:object):void;
+/** Core owns captures and durable writes. This session owns native windows,
+ * the live callback registry, and waits that end when their bridge is closed. */
+export function createAuthorBrowserSession(options:{
+    sessionId:string;
+    container:HTMLElement;
+    current():boolean;
+    status(value:AuthorBrowserStatus):void;
+    preparation?(value:ReaderPreparationState):void;
+    composer?:AuthorNativeComposerAccessV1;
+    transport?:AuthorBrowserTransport;
+    openingTransport?:ReaderRegexDocumentTransportV1;
+    storage?:Pick<Storage,'getItem'|'setItem'>;
+    nativeLibraries?:readonly ReaderNativeLibraryV1[];
+    navigate?(sessionId:string):Promise<unknown>|void;
+    documentLayout?:ReaderDocumentLayoutSettings;
+    createFrame?:typeof createAuthorNativeHelperFrame;
 }) {
-    const transport = async (request: AuthorBrowserRequest, signal?: AbortSignal) => {
-        const reply = await (options.transport ?? authorBrowserTransport)(request, signal);
-        if (!reply.ok) throw Error(reply.code);
+    const transport=async(request:AuthorBrowserRequest,signal?:AbortSignal)=>{
+        const reply=await(options.transport??authorBrowserTransport)(request,signal);
+        if(!reply.ok)throw Error(reply.code);
         return reply;
     };
-    const store = createAuthorBrowserPendingStore(options.storage ?? localStorage);
-    let active = true, ready = false, binding: BrowserBindingV1 | undefined;
-    let frame: ReaderBrowserFrame | undefined, sharedSurface = false;
-    let realm: object | undefined, captured: Snapshot | undefined;
-    let generationWait:AbortController|undefined;
-    const operationRealms = new Map<string, object>();
-    let render: BrowserRenderV1 | undefined, revision = 0;
-    let refreshing: Promise<void> | undefined, refreshAgain = false;
-    let checking: Promise<void> | undefined;
-    let lastStatus: AuthorBrowserStatus = {kind: 'loading'};
-    const worldbookChecks = new Map<string, Promise<void>>();
-    const personaChecks = new Map<string, Promise<void>>();
-    const current = () => active && options.current();
-    const preparation = (value: ReaderPreparationState) => options.preparation?.(value);
-    const notify = (value: AuthorBrowserStatus) => {
-        if (!current()) return;
-        lastStatus = {...value, worldbooks: store.readWorldbooks(options.sessionId), personas: store.readPersonas(options.sessionId)};
+    const store=createAuthorBrowserPendingStore(options.storage??localStorage);
+    const ordinaryStore=createAuthorBrowserOrdinaryPendingStore(options.storage??localStorage);
+    let active=true,ready=false,binding:AuthorNativeBindingV1|undefined;
+    let owner:object|undefined,captured:Snapshot|undefined,currentSnapshotScope='';
+    let activeGeneration:BrowserGenerationInvocation|undefined,activeGenerationScope='';
+    let activeFilter:BrowserFilterInvocation|undefined;
+    let refreshing:Promise<void>|undefined,refreshAgain=false,checking:Promise<void>|undefined;
+    let generationWait:AbortController|undefined,generationExecuting=false,sequence=0;
+    let canonicalRevision=0,lastStatus:AuthorBrowserStatus={kind:'loading'};
+    let buttons:ReturnType<typeof mountAuthorNativeScriptButtons>|undefined;
+    const realms=new Map<string,NativeRealm>(),registrations:AuthorNativeHelperGenerationCallbackV1[]=[];
+    const recoveries=new Map<string,Promise<void>>();
+    const current=()=>active&&options.current();
+    const preparation=(value:ReaderPreparationState)=>options.preparation?.(value);
+    const hasFrame=()=>realms.size>0;
+    function notify(value:AuthorBrowserStatus=lastStatus) {
+        if(!current())return;
+        const pending=store.read(options.sessionId);
+        lastStatus={...value,pending:pending?.state==='terminal'?undefined:pending,
+            worldbooks:store.readWorldbooks(options.sessionId),personas:store.readPersonas(options.sessionId),
+            ordinary:ordinaryStore.readHelper(options.sessionId),opening:store.readOpening(options.sessionId),
+            messageBodies:store.readBodies(options.sessionId)};
         options.status(lastStatus);
-    };
-    const release = (old: BrowserBindingV1) => {
-        void transport({action: 'dispose', binding: old}).catch(() => {});
-    };
-    const revoke = () => {
-        preparation({kind: 'starting'});
-        generationWait?.abort();generationWait=undefined;
-        if(realm)options.releaseImages?.(realm);
-        const frameClosesBinding=Boolean(frame?.invokeGenerationV3);
-        frame?.dispose();frame = undefined;ready = false;realm = undefined;captured = undefined;
-        if (!sharedSurface) options.container.replaceChildren();
-        if (binding&&!frameClosesBinding) release(binding);
-        binding = undefined;
-    };
-    async function installReceipt(envelope: AuthorBrowserPendingV1, result: Parameters<typeof store.record>[1],
-        snapshot?: Snapshot) {
-        const next = store.record(envelope, result);
-        if (!current()) return;
-        if (!frame && next.state !== 'terminal') notify({kind: 'pending', pending: next, code: result?.code});
-        const savedRealm = operationRealms.get(envelope.operation.operationId);
-        if (!result || !savedRealm || savedRealm !== realm || !sameBinding(binding, envelope.binding) || !frame) return;
-        if (!snapshot) {
-            const captured = await transport({action: 'capture', binding: envelope.binding});
-            if (captured.kind !== 'snapshot') return;
-            snapshot = captured.snapshot;
-        }
-        if (!current() || savedRealm !== realm || !sameBinding(binding, envelope.binding) || !frame) return;
-        captured = snapshot;
-        frame.publishSnapshot(snapshot);
-        frame.publishSaveConfirmation({...envelope.child, result, snapshot});
-        notify(next.state === 'terminal' ? {kind: ready ? 'ready' : 'starting'}
-            : {kind: 'pending', pending: next, code: result.code});
     }
-    const createHost = (owner: object) => ({
-        async cleanupPrompts(target:BrowserBindingV1,request:BrowserPromptCleanupRequestV3) {
-            const reply=await transport({action:'cleanup-prompts',binding:target,request});
-            if(reply.kind!=='prompts-cleaned')throw Error('BROWSER_PROMPT_CLEANUP_UNCONFIRMED');
-        },
-        async closeBinding(target:BrowserBindingV1) {
-            const reply=await transport({action:'dispose',binding:target});
-            if(reply.kind!=='disposed')throw Error('BROWSER_PROMPT_CLEANUP_UNCONFIRMED');
-        },
-        async capture(target:BrowserBindingV1, signal:AbortSignal):Promise<Snapshot> {
-            // Attach already returned an actual Core capture. Reuse that cut
-            // for the initial frame handshake rather than performing two reads.
-            if (realm === owner && sameBinding(binding, target) && captured) return captured;
-            const reply = await transport({action: 'capture', binding: target}, signal);
-            if (reply.kind !== 'snapshot') throw Error('BROWSER_SNAPSHOT_UNAVAILABLE');
-            return reply.snapshot;
-        },
-        async save(target:BrowserBindingV1, request:Parameters<BrowserHostBridgeV1['save']>[1]):Promise<SaveReply> {
-            const envelope = store.begin(target, request);
-            operationRealms.clear();
-            operationRealms.set(envelope.operation.operationId, owner);
-            notify({kind: 'pending', pending: envelope});
-            try {
-                // Do not abort an admitted save when its realm is disposed. Its
-                // receipt still belongs to the persisted original operation.
-                const reply = await transport({action: 'save', binding: target,
-                    request: envelope.child, operation: envelope.operation});
-                if (reply.kind !== 'saved') throw Error('BROWSER_SAVE_ACK_UNKNOWN');
-                const next = store.record(envelope, reply.result);
-                if (!reply.snapshot || !current() || realm !== owner || !sameBinding(binding, target) || !frame) {
-                    if (current() && realm === owner && sameBinding(binding, target)) {
-                        notify({kind: 'loading'});
-                        void refresh();
-                    }
-                    throw Error('BROWSER_GENERATION_REVOKED');
-                }
-                captured = reply.snapshot;
-                frame.publishSnapshot(reply.snapshot);
-                notify(next.state === 'terminal' ? {kind: ready ? 'ready' : 'starting'}
-                    : {kind: 'pending', pending: next, code: reply.result.code});
-                return {requestId: request.requestId, generation: request.generation,
-                    result: reply.result, snapshot: reply.snapshot,
-                    ...reply.sourceEvents?{sourceEvents:reply.sourceEvents}:{}};
-            } catch (error) {
-                // A receipt written before revocation must remain terminal.
-                const existing = store.read(target.sessionId);
-                if (existing?.operation.operationId === envelope.operation.operationId && existing.state === 'pending') {
-                    const next = store.record(envelope);
-                    if (realm === owner && sameBinding(binding, target)) notify({kind: 'pending', pending: next, code: 'BROWSER_SAVE_ACK_UNKNOWN'});
-                }
-                throw error;
+    const release=(target:AuthorNativeBindingV1)=>{void transport({action:'dispose',binding:target}).catch(()=>{});};
+    function revoke() {
+        buttons?.dispose();buttons=undefined;
+        generationWait?.abort();generationWait=undefined;generationExecuting=false;
+        activeGeneration=undefined;activeGenerationScope='';activeFilter=undefined;
+        owner=undefined;ready=false;captured=undefined;currentSnapshotScope='';
+        for(const row of realms.values())row.controller?.dispose();
+        realms.clear();registrations.length=0;options.container.replaceChildren();
+        if(binding)release(binding);
+        binding=undefined;
+    }
+    function realmSnapshot(snapshot:Snapshot,realmId:string):Snapshot {
+        const {realmScripts,...context}=snapshot.context??{};
+        return {...snapshot,context:{...context,script:(realmScripts as Record<string,unknown>|undefined)?.[realmId]}};
+    }
+    function dispatch(event:string,args:readonly unknown[]) {
+        for(const row of realms.values())row.controller?.dispatchEvent(event,args);
+    }
+    function publish(snapshot:Snapshot) {
+        const previous=captured,sameRevision=previous?.generation===snapshot.generation
+            &&previous.readRevision===snapshot.readRevision;
+        if(!sameRevision||!currentSnapshotScope)currentSnapshotScope=crypto.randomUUID();
+        const scope=currentSnapshotScope;captured=snapshot;
+        for(const row of realms.values())row.controller?.updateSnapshot(realmSnapshot(snapshot,row.realmId),scope);
+        if(!previous)return;
+        const before=new Map(previous.messages.map(row=>[row.messageId,row]));
+        for(const row of snapshot.messages){
+            const old=before.get(row.messageId);
+            if(!old)dispatch(row.role==='user'?AUTHOR_NATIVE_EVENTS_V1.MESSAGE_SENT:AUTHOR_NATIVE_EVENTS_V1.MESSAGE_RECEIVED,[row.index]);
+            else if(old.message!==row.message)dispatch(AUTHOR_NATIVE_EVENTS_V1.MESSAGE_UPDATED,[row.index]);
+        }
+        // A changed projection establishes message changes, never Reader DOM
+        // render completion. Render events require the actual Reader owner.
+    }
+    function readBasis(scope:string|undefined):{snapshot:Snapshot;read:Read} {
+        if(activeFilter&&scope===activeFilter.readScope)return {snapshot:activeFilter.snapshot,
+            read:{kind:'generation',invocationId:activeFilter.invocationId}};
+        if(currentSnapshotScope&&scope===currentSnapshotScope&&captured)return {snapshot:captured,
+            read:{kind:'snapshot',readRevision:captured.readRevision}};
+        if(activeGenerationScope&&scope===activeGenerationScope&&activeGeneration)return {snapshot:activeGeneration.snapshot,
+            read:{kind:'generation',invocationId:activeGeneration.invocationId}};
+        throw Error('AUTHOR_NATIVE_READ_BASIS_CHANGED');
+    }
+    function adopt(snapshot:Snapshot|undefined,expectedOwner:object) {
+        if(!current()||owner!==expectedOwner)return;
+        canonicalRevision++;
+        if(snapshot){
+            if(snapshot.readRevision!==captured?.readRevision||snapshot.generation!==captured.generation)activeGenerationScope='';
+            publish(snapshot);
+        }
+        else{
+            // The receipt is still canonical. Without new DATA, the previous
+            // read cannot authorize another write; refresh after its ACK.
+            currentSnapshotScope='';activeGenerationScope='';void refresh();
+        }
+    }
+    function response(value:unknown,realmId:string):AuthorNativeHelperReplyV1 {
+        return {value,...captured&&currentSnapshotScope?{snapshot:realmSnapshot(captured,realmId),readScope:currentSnapshotScope}:{}};
+    }
+    function record(run:()=>unknown,code='BROWSER_PENDING_STORE_FAILED'):string|undefined {
+        try{run();}catch{return code;}
+    }
+    const acknowledge=(envelope:AuthorBrowserOrdinaryPending)=>
+        record(()=>ordinaryStore.acknowledge(envelope),'AUTHOR_CHAT_ACK_LOCAL_RECORD_PENDING');
+    const unknown=(envelope:AuthorBrowserOrdinaryPending,code:string)=>
+        record(()=>ordinaryStore.unknown(envelope,code),'AUTHOR_CHAT_OUTBOX_UPDATE_FAILED');
+    function registryRequest(row:NativeRealm,request:AuthorNativeHelperRequestV1):boolean {
+        if(request.operation==='generation-listener-add'){
+            const data=(request.payload as {registration:AuthorNativeHelperGenerationCallbackV1}).registration;
+            if(![AUTHOR_NATIVE_EVENTS_V1.GENERATION_AFTER_COMMANDS,'mag_command_parsed',
+                'mag_variable_update_ended','mag_before_message_update'].includes(data.event))return true;
+            const index=registrations.findIndex(value=>value.realmId===row.realmId&&value.callbackId===data.callbackId);
+            const existing=index<0?undefined:registrations.splice(index,1)[0];
+            const registration={...(existing??data),realmId:row.realmId,resource:existing?.resource??row.resource,
+                makeFirst:data.makeFirst,order:++sequence};
+            if(data.makeFirst)registrations.unshift(registration);else registrations.push(registration);
+        }else if(request.operation==='generation-listener-remove'){
+            const {callbackId}=request.payload as {callbackId:string};
+            const index=registrations.findIndex(value=>value.realmId===row.realmId&&value.callbackId===callbackId);
+            if(index>=0)registrations.splice(index,1);
+        }else return false;
+        if(!generationExecuting)generationWait?.abort();
+        return true;
+    }
+    function navigateCommitted(row:NativeRealm,result:ReaderOpeningVariantResultV1,expectedOwner:object) {
+        if(result.kind!=='committed'||!result.navigation||!options.navigate)return;
+        const destination=result.navigation.sessionId;
+        // Return the Host reply first. Navigation observes the actual native
+        // ACK; waiting inside the request would wait for its own return.
+        void(async()=>{
+            try{await row.controller!.waitForAdmittedSourceWrites();
+                if(current()&&owner===expectedOwner)await options.navigate!(destination);}
+            catch{notify({...lastStatus,code:'AUTHOR_NATIVE_ACK_UNOBSERVED'});}
+        })();
+    }
+    function createHost(expectedOwner:object,target:AuthorNativeBindingV1,program:AuthorNativeProgramV1):AuthorNativeHelperHostV1 {
+        return {async request(address,request,_signal){
+            if(!current()||owner!==expectedOwner||!sameBinding(binding,target))throw Error('AUTHOR_NATIVE_BINDING_REVOKED');
+            const row=realms.get(address.realmId)!;
+            if(registryRequest(row,request))return {};
+            const data=request.payload as any;
+            if(request.operation==='mutate-prompts'){
+                const reply=await transport({action:'mutate-prompts',binding:target,
+                    request:{operationId:request.operationId,realmId:row.realmId,resource:row.resource,mutation:data.mutation}},_signal);
+                if(reply.kind!=='prompts-mutated')throw Error('AUTHOR_NATIVE_INJECTION_UNAVAILABLE');
+                adopt(reply.snapshot,expectedOwner);
+                return {value:{retiredFilterCallbackIds:reply.retiredFilterCallbackIds??[]}};
             }
-        },
-        async mutateAuthorKey(target:BrowserBindingV1,request:BrowserOrdinaryKeyRequestV3,signal:AbortSignal) {
-            const reply=await transport({action:'mutate-author-key',binding:target,request},signal);
-            if(reply.kind!=='author-key-mutated')throw Error('AUTHOR_CHAT_WRITE_ACK_UNKNOWN');
-            if(reply.snapshot&&current()&&realm===owner&&sameBinding(binding,target))captured=reply.snapshot;
-            return {...reply.reply,...reply.snapshot?{snapshot:reply.snapshot}:{}};
-        },
-        async generateRaw(target:BrowserBindingV1,request:BrowserGenerateRawRequestV2,signal:AbortSignal) {
-            const reply=await transport({action:'generate-raw',binding:target,request},signal);
-            if(reply.kind!=='generated')throw Error('BROWSER_NATIVE_TASK_UNAVAILABLE');
-            return reply.result;
-        },
-        async updateAuthorChat(target:BrowserBindingV1,request:BrowserAuthorChatRequestV2,signal:AbortSignal) {
-            const reply=await transport({action:'update-author-chat',binding:target,request},signal);
-            if(reply.kind!=='author-chat-updated')throw Error('BROWSER_AUTHOR_CHAT_UPDATE_FAILED');
-            return reply.capture;
-        },
-        async readSourceResource(target:BrowserBindingV1,request:AuthorScriptResourceRequestV1,signal:AbortSignal) {
-            const reply=await transport({action:'read-source-resource',binding:target,request},signal);
-            if(reply.kind!=='source-resource')throw Error('AUTHOR_SCRIPT_RESOURCE_UNAVAILABLE');
-            return reply.value;
-        },
-        async mutateWorldbook(target:BrowserBindingV1,request:BrowserWorldbookMutationRequestV2,signal:AbortSignal) {
-            // Associate this dispatch with the parent's actual captured DATA,
-            // before persisting its address and sending the mutation.
-            const book = captured && 'worldbook' in captured ? captured.worldbook : undefined;
-            if (!current() || realm !== owner || !sameBinding(binding, target)) throw Error('BROWSER_GENERATION_REVOKED');
-            if (!book || book.schemaVersion !== 2 || book.dataSha256 !== request.expectedDataSha256) {
-                throw Error('AUTHOR_WORLDBOOK_STALE_BASE');
+            if(request.operation==='composer'){
+                const composer=options.composer;if(!composer)throw Error('AUTHOR_NATIVE_COMPOSER_UNAVAILABLE');
+                if(data.action==='get')return {value:composer.read()};
+                composer.overwrite(data.value);composer.dispatch('input');return {};
             }
-            const envelope = store.beginWorldbook(target, request, book.identitySha256);
-            notify(lastStatus);
-            try {
-                const reply=await transport({action:'mutate-worldbook',binding:target,request},signal);
-                if(reply.kind!=='worldbook-mutated')throw Error('AUTHOR_WORLDBOOK_MUTATION_ACK_UNKNOWN');
-                store.recordWorldbook(envelope, reply.reply.result);
-                notify(lastStatus);
-                if(reply.reply.snapshot&&current()&&realm===owner&&sameBinding(binding,target)) {
-                    captured=reply.reply.snapshot;
-                }
-                // Preserve a committed receipt even when Core has revoked its
-                // continuation. Frame owns termination; this bridge never heals it.
-                return reply.reply;
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'AUTHOR_WORLDBOOK_MUTATION_ACK_UNKNOWN';
-                store.recordWorldbook(envelope, undefined, code);
-                notify(lastStatus);
-                throw error;
+            if(request.operation==='generate-raw'){
+                const reply=await transport({action:'generate-raw',binding:target,
+                    request:{realmId:row.realmId,options:data.options,operationId:request.operationId}});
+                if(reply.kind!=='generated')throw Error('BROWSER_NATIVE_TASK_UNAVAILABLE');
+                return {value:reply.result};
             }
-        },
-        async mutatePersona(target:BrowserBindingV1,request:BrowserPersonaMutationRequestV2,_signal:AbortSignal) {
-            const envelope=store.beginPersona(target,request);
-            notify(lastStatus);
-            try {
-                // An admitted account write must still finish its receipt when
-                // the Reader or original Worker disappears before the ACK.
-                const reply=await transport({action:'mutate-persona',binding:target,request});
-                if(reply.kind!=='persona-mutated')throw Error('NATIVE_PERSONA_MUTATION_ACK_UNKNOWN');
-                store.recordPersona(envelope,reply.reply.result);
-                notify(lastStatus);
-                if(reply.reply.snapshot&&current()&&realm===owner&&sameBinding(binding,target)) {
-                    captured=reply.reply.snapshot;
-                }
-                return reply.reply;
-            } catch(error) {
-                store.recordPersona(envelope,undefined,
-                    error instanceof Error?error.message:'NATIVE_PERSONA_MUTATION_ACK_UNKNOWN');
-                // Unknown writes cannot continue the old author's callback or
-                // admit another realm. Manual recovery only looks up a receipt.
-                if(current()&&realm===owner&&sameBinding(binding,target))revoke();
+            if(request.operation==='execute-commands'){
+                const reply=await transport({action:'execute-commands',binding:target,realmId:row.realmId,
+                    request:{operationId:request.operationId,command:data.command}},_signal);
+                if(reply.kind!=='commands-executed')throw Error('AUTHOR_NATIVE_COMMAND_ACK_UNKNOWN');
+                adopt(reply.snapshot,expectedOwner);
+                return response(reply.result,row.realmId);
+            }
+            if(request.operation==='resource-read'){
+                const script=realmSnapshot(captured!,row.realmId).context?.script as any;
+                if(!script)throw Error('AUTHOR_SCRIPT_RESOURCE_UNAVAILABLE');
+                const resource=data.resource;
+                const operation:AuthorScriptResourceRequestV1['operation']=resource?.kind==='self-script-data'
+                    ?{kind:'self-script-data'}:resource?.kind==='script-data'
+                        ?{kind:'explicit-script-data',scriptId:resource.identity}:resource==='script-id'
+                            ?{kind:'script-id'}:{kind:'script-trees',scope:resource};
+                const reply=await transport({action:'read-source-resource',binding:target,request:{
+                    schemaVersion:1,encoding:'native-author-script-resource-request-v1',realmId:row.realmId,
+                    scriptIdentity:script.identity,descriptorSha256:script.descriptorSha256,
+                    sourceSnapshotSha256:script.sourceSnapshotSha256,operation}});
+                if(reply.kind!=='source-resource')throw Error('AUTHOR_SCRIPT_RESOURCE_UNAVAILABLE');
+                return {value:reply.value};
+            }
+            const basis=readBasis(request.readScope);
+            if(request.operation==='message-body'){
+                const selected=createAuthorNativeMessageVariables(basis.snapshot).normalizeBodyRows(data.rows);
+                if(!selected||selected.message.variants)throw Error('AUTHOR_NATIVE_MESSAGE_BODY_TARGET_UNAVAILABLE');
+                const message=selected.message,wire:AuthorMessageBodyRequestV1={schemaVersion:1,
+                    operationId:request.operationId,readRevision:basis.snapshot.readRevision,
+                    expected:{sessionId:basis.snapshot.basis.sessionId,seq:message.nativeSeq!,messageId:message.messageId,
+                        role:message.role,messageVersionSha256:message.messageVersionSha256},
+                    text:selected.text,refresh:data.refresh};
+                const envelope=store.beginBody(target,program.programSha256,row.realmId,wire);
                 notify({kind:'pending'});
-                throw error;
+                let result:Extract<AuthorBrowserReply,{kind:'message-body-mutated'}>;
+                try{
+                    const reply=await transport({action:'mutate-message-body',binding:target,realmId:row.realmId,
+                        read:basis.read,request:envelope.request},_signal);
+                    if(reply.kind!=='message-body-mutated')throw Error('AUTHOR_NATIVE_MESSAGE_BODY_ACK_UNKNOWN');result=reply;
+                }catch(error){
+                    const code=error instanceof Error?error.message:'AUTHOR_NATIVE_MESSAGE_BODY_ACK_UNKNOWN',
+                        warning=record(()=>store.recordBody(envelope,undefined,code));
+                    revoke();notify({kind:'pending',code:warning??code});throw error;
+                }
+                const warning=record(()=>store.recordBody(envelope,result.result));
+                adopt(result.snapshot,expectedOwner);
+                if(result.result.kind==='unknown')revoke();
+                notify({kind:result.result.kind==='unknown'?'pending':ready?'ready':'starting',
+                    code:warning??('code' in result.result?result.result.code:undefined)});
+                return response(result.result,row.realmId);
             }
-        },
-    });
-    async function generationLoop(owner:object,controller:ReaderBrowserFrame,target:BrowserBindingV1) {
-        const waiting=new AbortController();generationWait?.abort();generationWait=waiting;
-        try {
-            while(current()&&realm===owner&&frame===controller&&!waiting.signal.aborted) {
-                preparation({kind: 'starting'});
-                const registrations=controller.generationCallbacks?await controller.generationCallbacks():controller.registrations??[];
-                if(!current()||realm!==owner||waiting.signal.aborted)return;
-                let reply:AuthorBrowserReply;
-                try {
-                    const invocation=transport({action:'generation-wait',binding:target,registrations},waiting.signal);
-                    // Core already waits for this matching reader. Local startup
-                    // is dispatched now; awaiting its invocation would deadlock send.
-                    preparation({kind: 'waiting'});
-                    reply=await invocation;
-                }
-                catch(error) {
-                    if(controller.generationCallbacks&&error instanceof Error
-                        &&error.message==='BROWSER_GENERATION_RESOURCE_RETIRED')continue;
-                    throw error;
-                }
-                if(reply.kind!=='generation-invocation') {
-                    preparation({kind:'failed',code:'作者生成连接已结束。'});return;
-                }
-                const result=reply.invocation.schemaVersion===3
-                    ?await controller.invokeGenerationV3!(reply.invocation,waiting.signal)
-                    :await controller.invokeGeneration!(reply.invocation);
-                if(!current()||realm!==owner||frame!==controller||waiting.signal.aborted)return;
-                if(result.kind==='cancelled'&&result.diagnostics[0]?.code==='BROWSER_GENERATION_RESOURCE_RETIRED')continue;
-                try {await transport({action:'generation-complete',binding:target,result},waiting.signal);}
-                catch(error) {
-                    // Core can retire the page after handing off its challenge
-                    // but before this Frame registers the Worker invocation.
-                    // Its obsolete completion stays refused; the Reader waits
-                    // for the next preparation using the current page registry.
-                    if(reply.invocation.schemaVersion===3&&error instanceof Error
-                        &&error.message==='BROWSER_GENERATION_INVOCATION_REVOKED')continue;
-                    throw error;
-                }
+            if(request.operation==='mutate-author-namespace'){
+                const self=(basis.snapshot.context?.realmScripts as Readonly<Record<string,AuthorNativeSelfScriptV1>>|undefined)?.[row.realmId];
+                const capture=data.selector?.type==='script'?self?.ordinary:data.selector?createAuthorNativeMessageVariables(basis.snapshot)
+                    .resolve(data.selector,true).capture!:basis.snapshot.ordinaryChat;
+                if(!capture)throw Error('AUTHOR_NATIVE_SCRIPT_ADDRESS_UNAVAILABLE');
+                const envelope=ordinaryStore.begin(target,prepareOrdinaryAuthorChatBatchV3(capture.root,
+                    data.nextVariables as MvuJsonObject,request.operationId,authorNativeNamespaceCauseV1(program.programSha256,row)));
+                notify({kind:'pending'});
+                let result:Extract<AuthorBrowserReply,{kind:'author-namespace-mutated'}>;
+                try{
+                    const reply=await transport({action:'mutate-author-namespace',binding:target,request:{
+                        realmId:row.realmId,operationId:request.operationId,read:basis.read,nextVariables:data.nextVariables,
+                        ...data.selector?{selector:data.selector}:{}}});
+                    if(reply.kind!=='author-namespace-mutated')throw Error('AUTHOR_CHAT_WRITE_ACK_UNKNOWN');result=reply;
+                }catch(error){const code=error instanceof Error?error.message:'AUTHOR_CHAT_WRITE_ACK_UNKNOWN';
+                    const warning=unknown(envelope,code);revoke();notify({kind:'pending',code:warning??code});throw error;}
+                const warning=acknowledge(envelope);adopt(result.snapshot,expectedOwner);
+                notify({kind:ready?'ready':'starting',code:warning});return response(result.reply,row.realmId);
             }
-        }catch(error) {
-            if(!waiting.signal.aborted&&current()&&realm===owner) {
-                preparation({kind:'failed',code:error instanceof Error?error.message:'BROWSER_GENERATION_WAIT_FAILED'});
-                notify({kind:'ready',code:error instanceof Error?error.message:'BROWSER_GENERATION_WAIT_FAILED'});
+            if(request.operation==='numerical-replace'){
+                const envelope=store.begin(target,{requestId:++sequence,generation:target.generation,
+                    readRevision:basis.snapshot.readRevision,realmId:row.realmId,values:data.values,expected:data.expected,
+                    ...data.target?{target:data.target}:{}},request.operationId);
+                notify({kind:'pending'});
+                let result:Extract<AuthorBrowserReply,{kind:'saved'}>;
+                try{
+                    const reply=await transport({action:'save',binding:target,request:envelope.origin.child,operation:envelope.operation});
+                    if(reply.kind!=='saved')throw Error('BROWSER_SAVE_ACK_UNKNOWN');result=reply;
+                }catch(error){record(()=>store.record(envelope));revoke();notify({kind:'pending',code:'BROWSER_SAVE_ACK_UNKNOWN'});throw error;}
+                const warning=record(()=>store.record(envelope,result.result));adopt(result.snapshot,expectedOwner);
+                for(const event of result.sourceEvents??[])dispatch(event.type,event.args);
+                notify({kind:terminalBrowserReceipt(result.result)?ready?'ready':'starting':'pending',code:warning??result.result.code});
+                return response(result.result,row.realmId);
             }
-        }finally{if(generationWait===waiting)generationWait=undefined;}
+            if(request.operation==='worldbook-mutate'){
+                const wire:AuthorNativeWorldbookRequestV1={...data,realmId:row.realmId,operationId:request.operationId};
+                const book=basis.snapshot.worldbook;
+                if(!book||book.schemaVersion!==2||book.dataSha256!==wire.expectedDataSha256)throw Error('AUTHOR_WORLDBOOK_STALE_BASE');
+                const envelope=store.beginWorldbook(target,wire,book.identitySha256);notify();
+                let result:Extract<AuthorBrowserReply,{kind:'worldbook-mutated'}>;
+                try{const reply=await transport({action:'mutate-worldbook',binding:target,request:wire});
+                    if(reply.kind!=='worldbook-mutated')throw Error('AUTHOR_WORLDBOOK_MUTATION_ACK_UNKNOWN');result=reply;
+                }catch(error){record(()=>store.recordWorldbook(envelope,undefined,String(error)));revoke();notify({kind:'pending'});throw error;}
+                const warning=record(()=>store.recordWorldbook(envelope,result.reply.result));
+                adopt(result.reply.snapshot,expectedOwner);notify({...lastStatus,code:warning});return response(result.reply,row.realmId);
+            }
+            if(request.operation==='persona-mutate'){
+                const wire:AuthorNativePersonaRequestV1={...data,realmId:row.realmId,operationId:request.operationId};
+                const envelope=store.beginPersona(target,wire);notify();
+                let result:Extract<AuthorBrowserReply,{kind:'persona-mutated'}>;
+                try{const reply=await transport({action:'mutate-persona',binding:target,request:wire});
+                    if(reply.kind!=='persona-mutated')throw Error('NATIVE_PERSONA_MUTATION_ACK_UNKNOWN');result=reply;
+                }catch(error){record(()=>store.recordPersona(envelope,undefined,String(error)));revoke();notify({kind:'pending'});throw error;}
+                const warning=record(()=>store.recordPersona(envelope,result.reply.result));
+                adopt(result.reply.snapshot,expectedOwner);notify({...lastStatus,code:warning});return response(result.reply,row.realmId);
+            }
+            if(request.operation==='opening-variants'){
+                const envelope=store.beginOpening(target,row.realmId,{operationId:request.operationId,
+                    readRevision:basis.snapshot.readRevision,rows:data.rows,refresh:data.refresh});notify();
+                let result:Extract<AuthorBrowserReply,{kind:'opening-variants-mutated'}>;
+                try{const reply=await transport({action:'mutate-opening-variants',binding:target,realmId:row.realmId,
+                    read:basis.read,request:envelope.request});
+                    if(reply.kind!=='opening-variants-mutated')throw Error('READER_WRITE_ACK_UNKNOWN');result=reply;
+                }catch(error){record(()=>store.recordOpening(envelope));revoke();notify({kind:'pending',code:'READER_WRITE_ACK_UNKNOWN'});throw error;}
+                const warning=record(()=>store.recordOpening(envelope,result.result));adopt(result.snapshot,expectedOwner);
+                notify({...lastStatus,code:warning});navigateCommitted(row,result.result,expectedOwner);return response(result.result,row.realmId);
+            }
+            throw Error('AUTHOR_NATIVE_OPERATION_UNSUPPORTED');
+        }};
+    }
+    async function executeMvuHook(challenge:BrowserMvuHookInvocation,target:AuthorNativeBindingV1,
+        signal:AbortSignal):Promise<BrowserMvuHookCompletion> {
+        let request=challenge.request;
+        const callbackIds:string[]=[],diagnostics:AuthorNativeMvuHookDiagnostic[]=[];
+        const resultOf=(input:AuthorNativeMvuHookRequest):AuthorNativeMvuHookResult=>{
+            if(input.stage==='command-parsed')return {stage:input.stage,
+                output:{variables:input.payload.variables,commands:input.payload.commands},diagnostics};
+            if(input.stage==='update-ended')return {stage:input.stage,output:{variables:input.payload.variables},diagnostics};
+            return {stage:input.stage,output:{context:input.payload.context},diagnostics};
+        };
+        try{
+            for(const callback of challenge.registrations){
+                if(!registrations.some(row=>row.callbackId===callback.callbackId&&row.realmId===callback.realmId))continue;
+                const row=realms.get(callback.realmId)!;
+                const output=await row.controller!.invokeMvuHook({invocationId:challenge.invocationId,
+                    request,callbackIds:[callback.callbackId]},signal);
+                callbackIds.push(...output.callbackIds);diagnostics.push(...output.result.diagnostics);
+                if(request.stage==='command-parsed'&&output.result.stage==='command-parsed')
+                    request={...request,payload:{...request.payload,...output.result.output}};
+                else if(request.stage==='update-ended'&&output.result.stage==='update-ended')
+                    request={...request,payload:{...request.payload,...output.result.output}};
+                else if(request.stage==='before-message-update'&&output.result.stage==='before-message-update')
+                    request={...request,payload:output.result.output};
+                else throw Error('AUTHOR_NATIVE_MVU_HOOK_OUTPUT_CHANGED');
+            }
+            return {kind:'executed',binding:target,invocationId:challenge.invocationId,callbackIds,result:resultOf(request)};
+        }catch(error){return {kind:'refused',binding:target,invocationId:challenge.invocationId,
+            code:error instanceof Error?error.message:'AUTHOR_NATIVE_MVU_HOOK_FAILED'};}
+    }
+    async function generationLoop(expectedOwner:object,target:AuthorNativeBindingV1) {
+        while(current()&&owner===expectedOwner){
+            const wait=new AbortController();generationWait=wait;
+            try{
+                const challenge=transport({action:'generation-wait',binding:target,registrations:[...registrations]},wait.signal);
+                // Start admission before releasing the Reader's send handoff;
+                // awaiting the challenge itself would deadlock that send.
+                preparation({kind:'waiting'});
+                const reply=await challenge;
+                if(reply.kind!=='generation-invocation')throw Error('BROWSER_GENERATION_WAIT_FAILED');
+                if(!current()||owner!==expectedOwner||wait.signal.aborted)return;
+                if(reply.invocation.encoding==='author-native-injection-filter-retired-v1'){
+                    const message=reply.invocation,row=realms.get(message.realmId);
+                    if(row&&row.resource.pageId===message.resource.pageId)row.controller!.retireFilterCallbacks(message.ids);
+                    continue;
+                }
+                if(reply.invocation.encoding==='author-native-injection-filter-invocation-v1'){
+                    const call=reply.invocation,row=realms.get(call.realmId);
+                    generationExecuting=true;activeFilter=call;
+                    let result:import('../core/roleplay-author-browser-generation-types.js').BrowserFilterCompletion;
+                    try{
+                        if(!row||row.resource.pageId!==call.resource.pageId)throw Error('AUTHOR_NATIVE_INJECTION_FILTER_SOURCE_CHANGED');
+                        row.controller!.updateSnapshot(realmSnapshot(call.snapshot,row.realmId),call.readScope);
+                        const accepted=await row.controller!.invokeFilter(call,wait.signal);
+                        await row.controller!.waitForAdmittedSourceWrites();
+                        result={binding:target,invocationId:call.invocationId,operationId:call.operationId,kind:'executed',accepted};
+                    }catch(error){result={binding:target,invocationId:call.invocationId,operationId:call.operationId,
+                        kind:'refused',code:error instanceof Error?error.message:'AUTHOR_NATIVE_INJECTION_FILTER_FAILED'};}
+                    finally{activeFilter=undefined;if(captured&&row)row.controller!.updateSnapshot(realmSnapshot(captured,row.realmId),currentSnapshotScope);}
+                    if(!current()||owner!==expectedOwner)return;
+                    await transport({action:'filter-complete',binding:target,result},wait.signal);
+                    continue;
+                }
+                if(reply.invocation.encoding==='author-native-mvu-hook-invocation-v1'){
+                    generationExecuting=true;
+                    const result=await executeMvuHook(reply.invocation,target,wait.signal);
+                    if(!current()||owner!==expectedOwner)return;
+                    await transport({action:'mvu-hook-complete',binding:target,result},wait.signal);
+                    continue;
+                }
+                generationExecuting=true;activeGeneration=reply.invocation;activeGenerationScope=crypto.randomUUID();
+                if(captured?.readRevision!==reply.invocation.snapshot.readRevision
+                    ||captured.generation!==reply.invocation.snapshot.generation)currentSnapshotScope=crypto.randomUUID();
+                captured=reply.invocation.snapshot;
+                // Install the challenge once. Subsequent callback invocations
+                // retain any preceding callback's canonical ACK and fresh DATA.
+                for(const row of realms.values())row.controller!.updateSnapshot(
+                    realmSnapshot(reply.invocation.snapshot,row.realmId),activeGenerationScope);
+                const executed:string[]=[],effects:any[]=[];
+                let result:BrowserGenerationResult;
+                try{
+                    for(const callback of reply.invocation.registrations){
+                        if(!registrations.some(row=>row.callbackId===callback.callbackId&&row.realmId===callback.realmId))continue;
+                        const row=realms.get(callback.realmId)!;
+                        const output=await row.controller!.invokeGeneration({invocationId:reply.invocation.invocationId,
+                            event:AUTHOR_NATIVE_EVENTS_V1.GENERATION_AFTER_COMMANDS,args:[],callbackIds:[callback.callbackId]},wait.signal);
+                        await row.controller!.waitForAdmittedSourceWrites();
+                        executed.push(...output.callbackIds);effects.push(...output.effects);
+                    }
+                    result={kind:'executed',binding:target,invocationId:reply.invocation.invocationId,
+                        result:{invocationId:reply.invocation.invocationId,callbackIds:executed,effects}};
+                }catch(error){result={kind:'refused',binding:target,invocationId:reply.invocation.invocationId,
+                    diagnostics:[{code:error instanceof Error?error.message:'AUTHOR_NATIVE_GENERATION_FAILED'}]};
+                }finally{
+                    activeGeneration=undefined;activeGenerationScope='';
+                    if(captured)for(const row of realms.values())row.controller!.updateSnapshot(
+                        realmSnapshot(captured,row.realmId),currentSnapshotScope);
+                }
+                if(!current()||owner!==expectedOwner)return;
+                await transport({action:'generation-complete',binding:target,result},wait.signal);
+            }catch(error){
+                if(!current()||owner!==expectedOwner)return;
+                if(wait.signal.aborted)continue;
+                const code=error instanceof Error?error.message:'BROWSER_GENERATION_WAIT_FAILED';
+                if(code==='BROWSER_GENERATION_RESOURCE_RETIRED'||code==='BROWSER_GENERATION_INVOCATION_REVOKED')continue;
+                preparation({kind:'failed',code});notify({kind:'ready',code});return;
+            }finally{if(generationWait===wait){generationWait=undefined;generationExecuting=false;}}
+        }
     }
     async function refreshOnce() {
-        if(store.readPersonas(options.sessionId).some(value=>value.state!=='terminal')) {
-            if(!frame)preparation({kind:'blocked',code:'高级人物操作尚未确认，请先处理阅读视图中的提示。'});
-            notify({kind:'pending'});return;
+        const pending=store.read(options.sessionId),opening=store.readOpening(options.sessionId);
+        if(!hasFrame()&&(pending&&pending.state!=='terminal'||opening&&opening.state!=='terminal'&&!opening.manualReleased
+            ||store.readPersonas(options.sessionId).some(row=>row.state!=='terminal'))){
+            preparation({kind:'blocked',code:'作者操作尚未确认，请先处理阅读视图中的提示。'});notify({kind:'pending'});return;
         }
-        const pending = store.read(options.sessionId);
-        if (!frame && pending && pending.state !== 'terminal') {
-            preparation({kind:'blocked',code:'作者数值操作尚未确认，请先处理阅读视图中的提示。'});
-            notify({kind: 'pending', pending});return;
+        const beforeWrite=canonicalRevision,oldBinding=binding,beforeOwner=owner;
+        const reply=await transport({action:'attach',sessionId:options.sessionId,...oldBinding?{binding:oldBinding}:{}});
+        await Promise.all([...realms.values()].map(row=>row.controller!.waitForAdmittedSourceWrites()));
+        if(!current()){if(reply.kind==='attached')release(reply.attachment.binding);return;}
+        if(owner!==beforeOwner||binding!==oldBinding){
+            if(reply.kind==='attached'&&!sameBinding(binding,reply.attachment.binding))release(reply.attachment.binding);
+            refreshAgain=true;return;
         }
-        const target = binding;
-        const reply = await transport({action: 'attach', sessionId: options.sessionId, ...(target ? {binding: target} : {})});
-        if (!current()) {
-            if (reply.kind === 'attached') release(reply.attachment.binding);
-            return;
+        if(reply.kind==='inactive'){revoke();preparation({kind:'not-required'});notify({kind:'inactive',code:reply.code});return;}
+        if(reply.kind!=='attached')throw Error('BROWSER_ATTACHMENT_UNAVAILABLE');
+        let attachment:AuthorBrowserAttachment=reply.attachment;
+        if(canonicalRevision!==beforeWrite){
+            if(sameBinding(binding,attachment.binding)&&captured)attachment={...attachment,snapshot:captured};
+            else{const fresh=await transport({action:'capture',binding:attachment.binding});
+                if(fresh.kind!=='snapshot'){release(attachment.binding);throw Error('BROWSER_SNAPSHOT_UNAVAILABLE');}
+                attachment={...attachment,snapshot:fresh.snapshot};}
         }
-        if (reply.kind === 'inactive') {
-            revoke();preparation({kind:'not-required'});notify({kind: 'inactive', code: reply.code});return;
+        if(ordinaryStore.readHelper(options.sessionId).some(row=>!row.manualReleased&&sameOrdinarySource(row.operation,
+            {namespace:attachment.snapshot.ordinaryChat.root.namespace}))){
+            const previous=binding;revoke();if(!sameBinding(previous,attachment.binding))release(attachment.binding);
+            preparation({kind:'blocked',code:'作者变量保存尚未确认，请先确认或恢复原操作。'});notify({kind:'pending'});return;
         }
-        if (reply.kind !== 'attached') throw Error('BROWSER_ATTACHMENT_UNAVAILABLE');
-        const attachment = reply.attachment;
-        const book = 'worldbook' in attachment.snapshot ? attachment.snapshot.worldbook : undefined;
-        const identitySha256 = book?.schemaVersion === 2 ? book.identitySha256 : undefined;
-        if (sameBinding(binding, attachment.binding) && frame) {
-            // A current realm may still be awaiting its own writer's ACK.
-            // Pending records block replacement realms, not this live binding.
-            captured = attachment.snapshot;
-            frame.publishSnapshot(attachment.snapshot);
-            const activePending = store.read(options.sessionId);
-            notify(activePending && activePending.state !== 'terminal' ? {kind: 'pending', pending: activePending}
-                : {kind: ready ? 'ready' : 'starting'});
-            return;
+        if(store.readBodies(options.sessionId).some(row=>row.state!=='terminal'
+            &&row.sourceProgramSha256===attachment.program.programSha256)){
+            const previous=binding;revoke();if(!sameBinding(previous,attachment.binding))release(attachment.binding);
+            preparation({kind:'blocked',code:'正文保存尚未确认，请先确认或恢复原操作。'});notify({kind:'pending'});return;
         }
-        if (store.readWorldbooks(options.sessionId).some(value =>
-            worldbookPendingBlocksNamespace(value, identitySha256))) {
-            // Capture current namespace DATA before deciding whether it may
-            // mount. A's pending intent remains visible while B can proceed.
-            const previous = binding;
-            revoke();
-            if (!previous || !sameBinding(previous, attachment.binding)) release(attachment.binding);
-            preparation({kind:'blocked',code:'世界书操作尚未确认，请先处理阅读视图中的提示。'});
-            notify({kind: 'pending'});return;
+        if(sameBinding(binding,attachment.binding)&&hasFrame()){
+            publish(attachment.snapshot);notify({kind:ready?'ready':'starting'});return;
         }
-        if (!sameBinding(binding, attachment.binding)) revoke();
-        else {
-            preparation({kind:'starting'});
-            frame?.dispose();frame = undefined;ready = false;if (!sharedSurface) options.container.replaceChildren();
+        const book=attachment.snapshot.worldbook;
+        if(store.readWorldbooks(options.sessionId).some(row=>worldbookPendingBlocksNamespace(row,
+            book?.schemaVersion===2?book.identitySha256:undefined))){
+            const previous=binding;revoke();if(!sameBinding(previous,attachment.binding))release(attachment.binding);
+            preparation({kind:'blocked',code:'世界书操作尚未确认，请先处理阅读视图中的提示。'});notify({kind:'pending'});return;
         }
-        binding = attachment.binding;captured = attachment.snapshot;
-        const realmOwner = {};realm = realmOwner;
-        sharedSurface = attachment.schemaVersion === 3 && !!options.surface;
-        const surface = sharedSurface ? options.surface!() : undefined;
-        const outer = surface?.outer ?? document.createElement('iframe');
-        if (!surface) {
-            outer.className = 'rp-author-guard-frame';outer.title = '作者交互阅读内容';options.container.append(outer);
+        // A same binding without a frame is still retained by Core. Do not
+        // dispose it while mounting the new native windows for that binding.
+        if(sameBinding(binding,attachment.binding))binding=undefined;
+        revoke();binding=attachment.binding;captured=attachment.snapshot;
+        const expectedOwner={};owner=expectedOwner;currentSnapshotScope=crypto.randomUUID();
+        const target=binding,host=createHost(expectedOwner,target,attachment.program),controllers:AuthorNativeHelperFrameControllerV1[]=[];
+        notify({kind:'starting'});preparation({kind:'starting'});
+        try{for(const address of attachment.program.realms){
+            if(!attachment.program.scripts.some(script=>script.enabled&&script.realmId===address.realmId))continue;
+            const row:NativeRealm={...address,resource:{browserSessionId:target.browserSessionId,
+                generation:target.generation,pageId:crypto.randomUUID()}};
+            realms.set(address.realmId,row);
+            const controller=(options.createFrame??createAuthorNativeHelperFrame)(options.container,attachment.program,address,
+                {snapshot:realmSnapshot(captured,address.realmId),readScope:currentSnapshotScope},host,{
+                    parentOrigin:attachment.parentOrigins[address.groupId]!,resource:row.resource,
+                    documentLayout:options.documentLayout,libraries:options.nativeLibraries,
+                    current:()=>current()&&owner===expectedOwner&&sameBinding(binding,target),
+                    failed:code=>{if(current()&&owner===expectedOwner){preparation({kind:'failed',code});notify({kind:'failed',code});}},
+                });
+            row.controller=controller;controllers.push(controller);
         }
-        const realmBinding = binding;
-        notify({kind: 'starting'});
-        const controllerOptions = {
-            surface,
-            current: () => current() && realm === realmOwner && sameBinding(binding, realmBinding),
-            layout: () => {}, diagnostic: (code:string) => {
-                if (!current() || realm !== realmOwner) return;
-                const pending = store.read(options.sessionId);
-                notify(pending && pending.state !== 'terminal' ? {kind: 'pending', pending, code}
-                    : {kind: ready ? 'ready' : 'starting', code});
-            },
-            failed: (code:string) => {
-                if (!current() || realm !== realmOwner) return;
-                preparation({kind:'failed',code});
-                options.releaseImages?.(realmOwner);
-                generationWait?.abort();generationWait=undefined;
-                frame = undefined;realm = undefined;ready = false;
-                if (!sharedSurface) options.container.replaceChildren();
-                notify({kind: 'failed', code});
-            }, startupDeadlineMs: 15000,
-            onImages: (pageId:string,images:readonly BrowserNativeImageV3[]) => {
-                if(current()&&realm===realmOwner)options.images?.(realmOwner,pageId,images);
-            },
-        };
-        const host=createHost(realmOwner);
-        // The attachment schema selects both implementation and captured
-        // projection together. The shared Reader controller never mixes them.
-        const controller:ReaderBrowserFrame = attachment.schemaVersion===3
-            ? createBrowserRuntimeFrameV3(outer,attachment.artifact,realmBinding,attachment.program,
-                host as BrowserFrameHostV3,{...controllerOptions,stateProgramBinding:attachment.stateProgramBinding,
-                    composer:options.composer}) as ReaderBrowserFrame
-            : attachment.schemaVersion===2
-            ? createBrowserRuntimeFrameV2(outer,attachment.artifact,realmBinding,attachment.program,
-                host as BrowserHostBridgeV2,controllerOptions) as ReaderBrowserFrame
-            : createBrowserRuntimeFrameV1(outer,attachment.artifact,realmBinding,attachment.program,
-                host as BrowserHostBridgeV1,controllerOptions) as ReaderBrowserFrame;
-        frame = controller;
-        controller.publishSnapshot(attachment.snapshot);
-        if (render) renderReaderFrame(controller,render);
-        controller.started.then(() => {
-            if (current() && frame === controller) {
-                ready = true;
-                const pending = store.read(options.sessionId);
-                notify(pending && pending.state !== 'terminal' ? {kind: 'pending', pending} : {kind: 'ready'});
-                if(controller.invokeGeneration||controller.invokeGenerationV3)void generationLoop(realmOwner,controller,realmBinding);
-                else preparation({kind:'not-required'});
-            }
-        }).catch(error => {
-            if (current() && frame === controller) {
-                preparation({kind:'failed',code:String(error.message)});
-                options.releaseImages?.(realmOwner);
-                frame = undefined;ready = false;if (!sharedSurface) options.container.replaceChildren();
-                notify({kind: 'failed', code: String(error.message)});
-            }
+        await Promise.all(controllers.map(controller=>controller.started));
+        await Promise.all(controllers.map(controller=>controller.waitForAdmittedSourceWrites()));
+        }catch(error){if(owner===expectedOwner)revoke();throw error;}
+        if(!current()||owner!==expectedOwner)return;
+        buttons=mountAuthorNativeScriptButtons(options.container,attachment.program.scripts,{
+            current:()=>current()&&owner===expectedOwner,
+            dispatch:(realmId,event)=>realms.get(realmId)?.controller?.dispatchEvent(event,[]),
+        });
+        ready=true;notify({kind:'ready'});void generationLoop(expectedOwner,target);
+    }
+    function refresh():Promise<void> {
+        if(!current())return Promise.resolve();
+        refreshAgain=true;if(refreshing)return refreshing;
+        refreshing=(async()=>{
+            try{while(current()&&refreshAgain){refreshAgain=false;await refreshOnce();}}
+            catch(error){const code=error instanceof Error?error.message:String(error);preparation({kind:'failed',code});notify({kind:'failed',code});}
+            finally{refreshing=undefined;}
+        })();return refreshing;
+    }
+    function recovery(key:string,work:()=>Promise<void>):Promise<void> {
+        const running=recoveries.get(key);if(running)return running;
+        const result=work().finally(()=>recoveries.delete(key));recoveries.set(key,result);return result;
+    }
+    function confirm(retry=false):Promise<void> {
+        if(checking)return checking;
+        checking=(async()=>{
+            try{
+                const envelope=store.read(options.sessionId);
+                if(envelope&&envelope.state!=='terminal'){
+                    const reply=await transport({action:retry?'retry':'confirm',operation:envelope.operation});
+                    if(reply.kind!=='saved'&&reply.kind!=='confirmed')throw Error('BROWSER_SAVE_ACK_UNKNOWN');
+                    const warning=record(()=>store.record(envelope,reply.result));
+                    notify({kind:terminalBrowserReceipt(reply.result)?'loading':'pending',code:warning??reply.result.code});
+                    if(!terminalBrowserReceipt(reply.result))return;revoke();
+                }
+                for(const operation of ordinaryStore.readHelper(options.sessionId))
+                    if(!operation.manualReleased)await ordinaryRecovery(operation.operation.operationId,false,false);
+                for(const operation of store.readBodies(options.sessionId))
+                    if(operation.state!=='terminal')await messageBodyRecovery(operation.request.operationId,false,false);
+                await refresh();
+            }catch(error){notify({kind:'pending',code:error instanceof Error?error.message:String(error)});}
+        })().finally(()=>{checking=undefined;});return checking;
+    }
+    function ordinaryRecovery(operationId:string,retry:boolean,refreshAfter=true):Promise<void> {
+        return recovery('ordinary:'+operationId,async()=>{
+            const envelope=ordinaryStore.readHelper(options.sessionId).find(row=>row.operation.operationId===operationId);
+            if(!envelope)return;
+            let replacement:AuthorNativeBindingV1|undefined;
+            try{
+                let warning:string|undefined;
+                if(retry){
+                    const attached=await transport({action:'attach',sessionId:options.sessionId});
+                    if(attached.kind!=='attached')throw Error('AUTHOR_CHAT_RECOVERY_SOURCE_UNAVAILABLE');
+                    replacement=attached.attachment.binding;
+                    const operation=envelope.operation,cause=operation.cause as ReturnType<typeof authorNativeNamespaceCauseV1>,
+                        program=attached.attachment.program;
+                    if(!sameOrdinarySource(operation,{namespace:attached.attachment.snapshot.ordinaryChat.root.namespace})
+                        ||cause.encoding!=='author-native-namespace-cause-v1'||cause.programSha256!==program.programSha256
+                        ||!program.realms.some(row=>row.realmId===cause.realmId&&row.groupId===cause.groupId))
+                        throw Error('AUTHOR_CHAT_RECOVERY_SOURCE_CHANGED');
+                    const reply=await transport({action:'retry-author-namespace',binding:replacement,realmId:cause.realmId,operation});
+                    if(reply.kind!=='author-namespace-mutated')throw Error('AUTHOR_CHAT_WRITE_ACK_UNKNOWN');warning=acknowledge(envelope);
+                }else{
+                    const reply=await transport({action:'confirm-author-namespace',sessionId:options.sessionId,operation:envelope.operation});
+                    if(reply.kind!=='author-namespace-confirmed')throw Error('AUTHOR_CHAT_RECEIPT_UNAVAILABLE');
+                    warning=reply.receipt.kind==='applied'?acknowledge(envelope)
+                        :unknown(envelope,reply.receipt.kind==='pending'?'AUTHOR_CHAT_RECEIPT_PENDING':'AUTHOR_CHAT_RECEIPT_UNCONFIRMED');
+                }
+                notify({...lastStatus,code:warning});
+            }catch(error){const code=error instanceof Error?error.message:'AUTHOR_CHAT_RECEIPT_UNAVAILABLE';
+                notify({kind:'pending',code:unknown(envelope,code)??code});}
+            finally{if(replacement&&!sameBinding(binding,replacement))release(replacement);}
+            if(refreshAfter)await refresh();
         });
     }
-    function refresh(): Promise<void> {
-        if (!current()) return Promise.resolve();
-        refreshAgain = true;
-        if (refreshing) return refreshing;
-        refreshing = (async () => {
-            try {
-                while (current() && refreshAgain) {refreshAgain = false;await refreshOnce();}
-            } catch (error) {
-                const code=error instanceof Error ? error.message : String(error);
-                preparation({kind:'failed',code});notify({kind:'failed',code});
-            }
-            finally {refreshing = undefined;}
-        })();
-        return refreshing;
-    }
-    function confirm(retry = false): Promise<void> {
-        if (checking) return checking;
-        checking = (async () => {
-            let pending: AuthorBrowserPendingV1 | undefined;
-            try {
-                const envelope = store.read(options.sessionId);pending = envelope;
-                if (envelope && envelope.state !== 'terminal') {
-                    const reply = await transport(retry
-                        ? {action: 'retry', operation: envelope.operation}
-                        : {action: 'confirm', operation: envelope.operation});
-                    if (reply.kind !== 'saved' && reply.kind !== 'confirmed') throw Error('BROWSER_SAVE_ACK_UNKNOWN');
-                    if (retry) {
-                        // Explicit recovery is owned by Core's actual current
-                        // session, not by the stored Browser binding or realm.
-                        // Its receipt never resolves a realm's author callback.
-                        pending = store.record(envelope, reply.result);
-                        if (pending.state !== 'terminal') notify({kind: 'pending', pending, code: reply.result.code});
-                        else if (frame && operationRealms.get(envelope.operation.operationId) === realm) {
-                            // rpc-error leaves an unknown request locked in its
-                            // child. A plain snapshot cannot clear that lock;
-                            // replace only the original realm after its receipt
-                            // becomes terminal, then start with a fresh capture.
-                            revoke();
-                        }
-                    } else {
-                        await installReceipt(envelope, reply.result);
-                        pending = store.read(options.sessionId);
-                    }
-                    if (!terminalBrowserReceipt(reply.result)) {
-                        if(!frame)preparation({kind:'blocked',code:'作者数值操作尚未确认，请先处理阅读视图中的提示。'});
-                        return;
-                    }
+    function messageBodyRecovery(operationId:string,retry:boolean,refreshAfter=true):Promise<void> {
+        return recovery('message-body:'+operationId,async()=>{
+            const envelope=store.readBodies(options.sessionId).find(row=>row.request.operationId===operationId);
+            if(!envelope||envelope.state==='terminal')return;
+            let replacement:AuthorNativeBindingV1|undefined;
+            try{
+                let result:Extract<AuthorBrowserReply,{kind:'message-body-mutated'|'message-body-confirmed'}>;
+                if(retry){
+                    const attached=await transport({action:'attach',sessionId:options.sessionId});
+                    if(attached.kind!=='attached')throw Error('AUTHOR_NATIVE_MESSAGE_BODY_SOURCE_UNAVAILABLE');
+                    replacement=attached.attachment.binding;
+                    const program=attached.attachment.program;
+                    if(program.programSha256!==envelope.sourceProgramSha256
+                        ||!program.realms.some(row=>row.realmId===envelope.realmId))
+                        throw Error('AUTHOR_NATIVE_MESSAGE_BODY_SOURCE_CHANGED');
+                    const reply=await transport({action:'retry-message-body',binding:replacement,realmId:envelope.realmId,
+                        sourceProgramSha256:envelope.sourceProgramSha256,request:envelope.request});
+                    if(reply.kind!=='message-body-mutated')throw Error('AUTHOR_NATIVE_MESSAGE_BODY_ACK_UNKNOWN');result=reply;
+                }else{
+                    const reply=await transport({action:'confirm-message-body',sessionId:options.sessionId,operationId});
+                    if(reply.kind!=='message-body-confirmed')throw Error('AUTHOR_NATIVE_MESSAGE_BODY_ACK_UNKNOWN');result=reply;
                 }
-                await refresh();
-            } catch (error) {
-                if(!frame)preparation({kind:'failed',code:error instanceof Error?error.message:String(error)});
-                notify({kind: pending && pending.state !== 'terminal' ? 'pending' : 'failed', pending,
-                    code: error instanceof Error ? error.message : String(error)});
-            }
-        })().finally(() => {checking = undefined;});
-        return checking;
+                const warning=record(()=>store.recordBody(envelope,result.result));
+                notify({...lastStatus,code:warning??('code' in result.result?result.result.code:undefined)});
+            }catch(error){
+                const code=error instanceof Error?error.message:'AUTHOR_NATIVE_MESSAGE_BODY_ACK_UNKNOWN',
+                    warning=record(()=>store.recordBody(envelope,undefined,code));
+                notify({kind:'pending',code:warning??code});
+            }finally{if(replacement&&!sameBinding(binding,replacement))release(replacement);}
+            if(refreshAfter)await refresh();
+        });
     }
-    function retryWorldbook(operationId: string): Promise<void> {
-        const checking = worldbookChecks.get(operationId);
-        if (checking) return checking;
-        const work = (async () => {
-            const envelope = store.readWorldbooks(options.sessionId).find(value => value.operationId === operationId);
-            if (!envelope || envelope.state === 'terminal') return;
-            try {
-                // Core selects the current Native owner and its existing intent.
-                // Neither the stored binding nor a lost author callback is resumed.
-                const locator = worldbookPendingRetryLocator(envelope);
-                const reply = await transport({action: 'retry-worldbook', sessionId: options.sessionId, operationId,
-                    ...locator ? {locator} : {}});
-                if (reply.kind !== 'worldbook-retried') throw Error('AUTHOR_WORLDBOOK_MUTATION_ACK_UNKNOWN');
-                const code = reply.result.kind === 'refused'
-                    && reply.result.diagnostics.some(value => value.code === 'OPERATION_NOT_RECORDED')
-                    ? 'AUTHOR_WORLDBOOK_OPERATION_NOT_RECORDED' : undefined;
-                store.recordWorldbook(envelope, reply.result, code);
-                if (current() && sameBinding(binding, envelope.binding)) revoke();
-                notify(frame ? lastStatus : {kind: 'failed', code: 'BROWSER_GENERATION_REVOKED'});
-            } catch (error) {
-                store.recordWorldbook(envelope, undefined,
-                    error instanceof Error ? error.message : 'AUTHOR_WORLDBOOK_MUTATION_ACK_UNKNOWN');
-                notify(lastStatus);
-            }
-        })().finally(() => {worldbookChecks.delete(operationId);});
-        worldbookChecks.set(operationId, work);
-        return work;
+    function retryWorldbook(operationId:string):Promise<void> {
+        return recovery('worldbook:'+operationId,async()=>{
+            const envelope=store.readWorldbooks(options.sessionId).find(row=>row.operationId===operationId);
+            if(!envelope||envelope.state==='terminal')return;
+            try{const locator=worldbookPendingRetryLocator(envelope);
+                const reply=await transport({action:'retry-worldbook',sessionId:options.sessionId,operationId,...locator?{locator}:{}});
+                if(reply.kind!=='worldbook-retried')throw Error('AUTHOR_WORLDBOOK_MUTATION_ACK_UNKNOWN');
+                const code=reply.result.kind==='refused'&&reply.result.diagnostics.some(row=>row.code==='OPERATION_NOT_RECORDED')
+                    ?'AUTHOR_WORLDBOOK_OPERATION_NOT_RECORDED':undefined;
+                store.recordWorldbook(envelope,reply.result,code);
+                if(sameBinding(binding,envelope.binding))revoke();
+                notify(hasFrame()?lastStatus:{kind:'failed',code:'BROWSER_GENERATION_REVOKED'});
+            }catch(error){store.recordWorldbook(envelope,undefined,String(error));notify();}
+        });
     }
     function retryPersona(operationId:string):Promise<void> {
-        const checking=personaChecks.get(operationId);
-        if(checking)return checking;
-        const work=(async()=>{
-            const envelope=store.readPersonas(options.sessionId).find(value=>value.operationId===operationId);
+        return recovery('persona:'+operationId,async()=>{
+            const envelope=store.readPersonas(options.sessionId).find(row=>row.operationId===operationId);
             if(!envelope||envelope.state==='terminal')return;
-            try {
-                const reply=await transport({action:'retry-persona',sessionId:options.sessionId,operationId});
+            try{const reply=await transport({action:'retry-persona',sessionId:options.sessionId,operationId});
                 if(reply.kind!=='persona-retried')throw Error('NATIVE_PERSONA_MUTATION_ACK_UNKNOWN');
                 store.recordPersona(envelope,reply.result);
-                if(current()&&sameBinding(binding,envelope.binding))revoke();
-                notify(frame?lastStatus:{kind:'failed',code:'BROWSER_GENERATION_REVOKED'});
-            } catch(error) {
-                store.recordPersona(envelope,undefined,
-                    error instanceof Error?error.message:'NATIVE_PERSONA_MUTATION_ACK_UNKNOWN');
-                notify(lastStatus);
-            }
-        })().finally(()=>{personaChecks.delete(operationId);});
-        personaChecks.set(operationId,work);
-        return work;
+                if(sameBinding(binding,envelope.binding))revoke();
+                notify(hasFrame()?lastStatus:{kind:'failed',code:'BROWSER_GENERATION_REVOKED'});
+            }catch(error){store.recordPersona(envelope,undefined,String(error));notify();}
+        });
+    }
+    function recoverOpening(retry:boolean):Promise<void> {
+        return recovery('opening',async()=>{
+            const envelope=store.readOpening(options.sessionId);if(!envelope||envelope.state==='terminal')return;
+            try{const reply=await(options.openingTransport??readerRegexDocumentTransportV1)({
+                action:retry?'retry-opening-variants':'confirm-opening-variants',sessionId:options.sessionId,operationId:envelope.request.operationId});
+                if(!reply.ok||reply.kind!=='opening-variants-confirmed')throw Error('READER_WRITE_ACK_UNKNOWN');
+                const warning=record(()=>store.recordOpening(envelope,reply.result));notify({...lastStatus,code:warning});
+                if(reply.result.kind!=='unknown'){
+                    revoke();
+                    if(reply.result.kind==='committed'&&reply.result.navigation&&options.navigate)
+                        await options.navigate(reply.result.navigation.sessionId);
+                    else await refresh();
+                }
+            }catch(error){notify({kind:'pending',code:error instanceof Error?error.message:String(error)});}
+        });
     }
     return {
-        start: () => confirm(), refresh, confirm: () => confirm(), retry: () => confirm(true),
-        retryWorldbook,retryPersona,
-        async showCurrentPageWithLegacyUnknown(operationId: string) {
-            store.releaseLegacyWorldbook(operationId, options.sessionId);
-            notify(lastStatus);
-            await refresh();
+        start:()=>confirm(),refresh,confirm:()=>confirm(),retry:()=>confirm(true),retryWorldbook,retryPersona,
+        confirmOrdinary:(operationId:string)=>ordinaryRecovery(operationId,false),
+        retryOrdinary:(operationId:string)=>ordinaryRecovery(operationId,true),
+        confirmOpening:()=>recoverOpening(false),retryOpening:()=>recoverOpening(true),
+        confirmMessageBody:(operationId:string)=>messageBodyRecovery(operationId,false),
+        retryMessageBody:(operationId:string)=>messageBodyRecovery(operationId,true),
+        async showCurrentPageWithOpeningUnknown(){
+            const envelope=store.readOpening(options.sessionId);if(!envelope)return;
+            store.releaseOpening(envelope);notify();await refresh();
         },
-        hasFrame: () => !!frame,
-        supportsReaderSurface: () => sharedSurface,
-        render(value: Omit<BrowserRenderV1, 'renderRevision'>) {
-            render = {...value, renderRevision: ++revision};if(frame)renderReaderFrame(frame,render);
+        async showCurrentPageWithOrdinaryUnknown(operationId:string){
+            const envelope=ordinaryStore.readHelper(options.sessionId).find(row=>row.operation.operationId===operationId);if(!envelope)return;
+            const warning=record(()=>ordinaryStore.release(envelope),'AUTHOR_CHAT_RELEASE_LOCAL_ONLY');
+            notify({...lastStatus,code:warning});await refresh();
         },
-        dispose() {if (!active) return;active = false;revoke();},
+        hasFrame,
+        dispose(){if(!active)return;active=false;revoke();},
     };
 }

@@ -16,8 +16,9 @@ export function freezeAuthorDialogPromptV1(input) {
     ]);
     const body = { schemaVersion: 1, encoding: 'native-author-dialog-frozen-prompt-v1',
         authority: 'consumer-data-only', binding: Object.freeze({ ...input.binding }),
-        revision: Object.freeze({ revision: input.revision.revision,
-            head: input.revision.head ? Object.freeze({ ...input.revision.head }) : null }),
-        operationId: input.operationId, orderedSystem, shouldSilence: true, maxChatHistory: 0 };
+        root: input.root,
+        operationId: input.operationId, orderedSystem,
+        ...input.ordinaryPreparationEvidence ? { ordinaryPreparationEvidence: input.ordinaryPreparationEvidence } : {},
+        shouldSilence: true, maxChatHistory: 0 };
     return Object.freeze({ ...body, promptSha256: recordSha256(body) });
 }
