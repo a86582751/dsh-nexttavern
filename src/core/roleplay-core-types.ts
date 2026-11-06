@@ -56,6 +56,7 @@ export type CoreTables = Intersection<TablesOf<ModuleDependencies>> & AuthorTabl
   userinfo: import('./roleplay-service-types.js').ServiceTable
 }
 export type CoreSession = LoopSession & BranchSession
+  & Pick<import('dsh-nexttavern-native-session').Session,'snapshotEvents'|'isOwnSeq'|'eventAt'>
 export type CoreAgent = LoopAgent & {session: CoreSession}
 export interface CoreState extends LoopState, InheritanceState {
   sessionId: string
@@ -89,13 +90,24 @@ export type CoreContext = {
   nexttavernMvuPlayerMarkers:typeof import('dsh-nexttavern-session-format/mvu-player-marker').mvuPlayerMarkers
   nexttavernMvuSchemaMarkers:typeof import('dsh-nexttavern-session-format/mvu-schema-marker').mvuSchemaMarkers
   nexttavernAuthorInjectionCleanupMarkers:typeof import('dsh-nexttavern-session-format/author-injection-cleanup').authorInjectionCleanupMarkers
+  nexttavernAuthorInjectionDeclarationMarkers:typeof import('dsh-nexttavern-session-format/author-injection-cleanup').authorInjectionDeclarationMarkers
+  nexttavernAuthorChatRootMarkers:typeof import('dsh-nexttavern-session-format/author-chat-marker').authorChatRootMarkers
   userQuestions: {ask(input:{agent:NonNullable<import('./roleplay-task-tools-types.js').TaskToolExecution['agent']>;signal?:AbortSignal;questions:{id:string;question:string;header?:string;detail?:string;options?:{label:string;description:string}[]}[]}):Promise<{answers:{id:string;selected:string[];custom?:string}[]}>}
   sessions: {get(id: string): CoreSession | undefined; flush(session: BranchSession): Promise<boolean>;
-    readonly messageProjections:readonly import('@deepseek-ai/dsh-session').SessionMessageProjection[]}
+    readonly messageProjections:readonly import('dsh-nexttavern-native-session').SessionMessageProjection[]}
   agents?: {list(): readonly CoreAgent[]}
-  sessionController: {resolveAgent(id: string): Promise<{agent?: CoreAgent; error?: Error} | undefined>}
+  sessionController: {
+    forkBeforeFirstPrepared?(request:{sessionId:string;resume?:import('./roleplay-opening-variant-activation.js').OpeningVariantForkReservation},
+      beforePublish:(reservation:import('./roleplay-opening-variant-activation.js').OpeningVariantForkReservation)=>Promise<void>)
+      :PromiseLike<{sessionId:string}>
+    resolveAgent(id: string): Promise<{agent?: CoreAgent; error?: Error} | undefined>
+    registerUserSourceOperation(agent:CoreAgent,
+      operation:import('../../compat/session-controller/src/types.js').UserSourceOperation):()=>void
+    appendAuthorUserInput(agent:CoreAgent,input:import('../../compat/session-controller/src/types.js').AuthorUserInput,
+      signal?:AbortSignal):Promise<import('dsh-nexttavern-native-agent-loop/published-input').NativePublishedUserInputResultV1>
+  }
   get(name:'agentLoop'):{getInputAdmissionAgent(agent:unknown):object | undefined;
-    getProgrammaticOpeningAgent(agent:unknown):import('@deepseek-ai/dsh-agent-loop').NativeProgrammaticOpeningAgentV1|undefined} | undefined
+    getProgrammaticOpeningAgent(agent:unknown):import('dsh-nexttavern-native-agent-loop').NativeProgrammaticOpeningAgentV1|undefined} | undefined
   get(name:'agentPresets'):{serviceFor(agent:unknown,name:'roleplay'):unknown} | undefined
   storageDomain: {open(options: unknown): Promise<{table<K extends keyof CoreTables>(name: K): CoreTables[K]; close(): unknown}>}
   sessionQuery: Parameters<typeof createTelemetry>[0]['query']

@@ -4,19 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { jsonResponse } from './roleplay-state.js';
 import { createRoleplayAuthorBrowserGeneration } from './roleplay-author-browser-generation.js';
-/** A page executes as its captured carrier. Only that carrier's admitted mount
- * joins page requirements to these Native writers; unrelated pages grant none. */
-function scriptCapability(program, identity, capability) {
-    if (program.schemaVersion === 2)
-        return program.scripts.some(script => script.descriptor.identity === identity && script.requiredCapabilities.includes(capability));
-    const script = program.scripts.find(row => row.descriptor.identity === identity);
-    if (!script)
-        return false;
-    if (script.requiredCapabilities.includes(capability))
-        return true;
-    return program.sourcePages.some(page => page.origin.carrier.identity === identity && script.sourcePagePlans.includes(page.pagePlanSha256)
-        && page.requiredCapabilities.includes(capability));
-}
+import { authorMessageBodyRequestValid } from './roleplay-author-message-edit-types.js';
 const sameBinding = (left, right) => left.browserSessionId === right.browserSessionId && left.generation === right.generation
     && left.sessionId === right.sessionId && left.programSha256 === right.programSha256;
 const codeOf = (error) => error instanceof Error && /^[A-Z][A-Z0-9_]{0,95}$/.test(error.message)
@@ -24,10 +12,15 @@ const codeOf = (error) => error instanceof Error && /^[A-Z][A-Z0-9_]{0,95}$/.tes
 export function createRoleplayAuthorBrowser(deps) {
     const attachments = new Map();
     const actionQueues = new Map();
+    const waitingGenerations = new Set();
     let disposed = false;
     const fail = (code) => { throw Error(code); };
     const revoke = (value) => {
-        if (value.program.schemaVersion === 3 && value.generationQueue?.hasProducedPrompts()) {
+        for (const waiting of waitingGenerations)
+            if (waiting.sessionId === value.binding.sessionId
+                && waiting.programSha256 === value.program.programSha256)
+                waiting.stop('BROWSER_ATTACHMENT_REVOKED');
+        if (deps.cleanupPrompts) {
             deps.cleanupPrompts?.({ schemaVersion: 1, encoding: 'native-author-injection-cleanup-v1',
                 sessionId: value.binding.sessionId, programSha256: value.program.programSha256, kind: 'resource-closed',
                 resource: { browserSessionId: value.binding.browserSessionId, generation: value.binding.generation } });
@@ -48,11 +41,35 @@ export function createRoleplayAuthorBrowser(deps) {
         }
         return value;
     }
+    function nativeRealm(value, realmId) {
+        const realm = value.realms.get(realmId);
+        if (!realm)
+            return fail('AUTHOR_NATIVE_REALM_REVOKED');
+        return realm;
+    }
     function project(value, facts) {
         if (!value.current() || !facts.current() || facts.program.programSha256 !== value.program.programSha256) {
             return fail('BROWSER_ATTACHMENT_REVOKED');
         }
-        return { ...facts.data, generation: value.binding.generation, readRevision: ++value.readRevision };
+        // A later ordinary write must derive its ACK from this delivered cut.
+        // Keep the original Source lifetime separately; adopting current DATA
+        // cannot give that retained realm a replacement Source permission.
+        value.facts = facts;
+        value.resources = facts.resources;
+        const data = facts.data, numerical = data.numerical;
+        // These are the owning producers' existing identities. Polling an unchanged
+        // cut must not manufacture a new write revision and stale an in-flight read.
+        const identity = JSON.stringify([data.scopeFrame.frameSha256, data.ordinaryChat.root, data.ordinaryPublicationSeq,
+            data.worldbook?.dataSha256, data.personas?.dataSha256, data.readonlyPreset?.fingerprint, numerical.kind, numerical.canEdit,
+            'editBlockCode' in numerical ? numerical.editBlockCode : 'code' in numerical ? numerical.code : undefined]);
+        if (value.lastSnapshot && value.snapshotIdentity === identity
+            && value.lastSnapshot.avatarPaths?.user === data.avatarPaths?.user
+            && value.lastSnapshot.avatarPaths?.character === data.avatarPaths?.character)
+            return value.lastSnapshot;
+        const snapshot = { ...data, generation: value.binding.generation, readRevision: ++value.readRevision };
+        value.snapshotIdentity = identity;
+        value.lastSnapshot = snapshot;
+        return snapshot;
     }
     async function snapshot(value) {
         const facts = await deps.captureFacts(value.binding.sessionId);
@@ -60,27 +77,33 @@ export function createRoleplayAuthorBrowser(deps) {
             return fail('BROWSER_PROGRAM_UNAVAILABLE');
         return project(value, facts);
     }
-    async function adoptCommittedFacts(value, sourceCurrent) {
-        if (!value.ownerCurrent() || sourceCurrent && !sourceCurrent())
+    async function adoptCommittedFacts(value, sourceCurrent, kind = 'unchanged-source') {
+        const sourceDataMutation = kind === 'source-data';
+        if (!value.ownerCurrent() || !sourceDataMutation && !sourceCurrent())
             return undefined;
-        const facts = await deps.captureFacts(value.binding.sessionId);
+        const facts = kind === 'ordinary' && value.facts.captureOrdinarySuccessor
+            ? value.facts.captureOrdinarySuccessor() : await deps.captureFacts(value.binding.sessionId);
         if (disposed || attachments.get(value.binding.browserSessionId) !== value || !value.ownerCurrent()
-            || sourceCurrent && !sourceCurrent() || !facts || facts.program.schemaVersion === 1
-            || facts.program.schemaVersion !== value.program.schemaVersion
-            || facts.data.schemaVersion !== value.program.schemaVersion || !facts.current()
+            || !sourceDataMutation && !sourceCurrent() || !facts || !facts.current()
             || facts.program.programSha256 !== value.program.programSha256)
             return undefined;
         // Only the actual successful writer calls this path. External changes must
         // pass retained(), whose old DATA currency still revokes the attachment.
-        // The guarded adoption switches DATA and its matching immutable resource
-        // index together; no request can observe a new snapshot with old pins.
+        // Book/persona writers deliberately change their own DATA cut. Their actual
+        // committed receipt may adopt fresh DATA for the exact same program/realm;
+        // it cannot survive Stop, import, helper bytes or layout changes. Other
+        // callers still require the original Source lifetime.
         value.facts = facts;
-        value.resources = 'resources' in facts ? facts.resources : undefined;
+        value.resources = facts.resources;
+        if (sourceDataMutation && value.sourceLifetime) {
+            // Existing model requests keep their original content currency. Future
+            // calls capture the newly accepted DATA instead of reusing that old cut.
+            deps.releaseOwner?.(value.sourceLifetime);
+            value.sourceLifetime = undefined;
+        }
         return project(value, facts);
     }
     function originalSourceLifetime(value) {
-        if (value.program.schemaVersion !== 3 || !('sourceCurrent' in value.facts))
-            return undefined;
         if (value.sourceLifetime)
             return value.sourceLifetime;
         const facts = value.facts;
@@ -97,11 +120,25 @@ export function createRoleplayAuthorBrowser(deps) {
             return { ok: true, kind: 'disposed' };
         }
         const sid = input.action === 'attach' || input.action === 'retry-worldbook' || input.action === 'retry-persona'
+            || input.action === 'confirm-author-namespace' || input.action === 'confirm-message-body'
             ? input.sessionId : input.action === 'confirm' || input.action === 'retry'
             ? input.operation.sessionId : input.binding.sessionId;
         const session = await deps.resolveSession(sid);
         if (!session)
             return { ok: false, code: 'MVU_PLAYER_SESSION_INACTIVE' };
+        if (input.action === 'confirm-message-body') {
+            if (!deps.confirmMessageBody)
+                return { ok: false, code: 'AUTHOR_MESSAGE_EDIT_OWNER_UNAVAILABLE' };
+            return { ok: true, kind: 'message-body-confirmed', result: await deps.confirmMessageBody(session.id, input.operationId) };
+        }
+        if (input.action === 'confirm-author-namespace') {
+            if (!deps.confirmAuthorNamespace)
+                return { ok: false, code: 'AUTHOR_CHAT_RECOVERY_UNAVAILABLE' };
+            if (input.operation.namespace.sessionId !== session.id)
+                return { ok: false, code: 'AUTHOR_CHAT_BINDING_CHANGED' };
+            return { ok: true, kind: 'author-namespace-confirmed',
+                receipt: await deps.confirmAuthorNamespace(session.id, input.operation) };
+        }
         if (input.action === 'retry-worldbook') {
             const owner = deps.captureOwner(session.id);
             if (!owner || !deps.retryWorldbook)
@@ -150,29 +187,122 @@ export function createRoleplayAuthorBrowser(deps) {
             if (!value) {
                 const binding = { browserSessionId: randomUUID(), generation: randomUUID(), sessionId: session.id,
                     programSha256: facts.program.programSha256 };
-                value = { binding, program: facts.program, artifact: facts.artifact, readRevision: 0, facts, ownerCurrent: owner,
-                    ...('resources' in facts ? { resources: facts.resources } : {}),
+                const parentOrigins = await deps.acquireParentOrigins([...new Set(facts.program.realms.map(realm => realm.groupId))]);
+                value = { binding, program: facts.program, parentOrigins, realms: new Map(facts.program.realms.map(realm => [realm.realmId, realm])),
+                    readRevision: 0, facts, ownerCurrent: owner,
+                    resources: facts.resources,
                     current: () => !disposed && value !== undefined && attachments.get(binding.browserSessionId) === value
                         && value.ownerCurrent() && value.facts.current() };
                 attachments.set(binding.browserSessionId, value);
-                if (facts.program.schemaVersion !== 1)
-                    value.generationQueue = createRoleplayAuthorBrowserGeneration({
-                        binding, program: facts.program, current: value.current
-                    });
+                value.generationQueue = createRoleplayAuthorBrowserGeneration({
+                    binding, program: facts.program, current: value.current
+                });
             }
-            const attachment = { binding: value.binding, program: value.program, artifact: value.artifact, snapshot: project(value, facts) };
-            return { ok: true, kind: 'attached', attachment: value.program.schemaVersion === 3
-                    ? { schemaVersion: 3, encoding: 'native-author-browser-attachment-v3', ...attachment,
-                        ...('stateProgramBinding' in facts && facts.stateProgramBinding ? { stateProgramBinding: facts.stateProgramBinding } : {}) }
-                    : value.program.schemaVersion === 2
-                        ? { schemaVersion: 2, encoding: 'native-author-browser-attachment-v2', ...attachment }
-                        : { schemaVersion: 1, encoding: 'native-author-browser-attachment-v1', ...attachment } };
+            return { ok: true, kind: 'attached', attachment: { schemaVersion: 1, encoding: 'author-native-helper-attachment-v1',
+                    binding: value.binding, program: value.program, parentOrigins: value.parentOrigins, snapshot: project(value, facts) } };
         }
         const value = retained(input.binding);
+        if (input.action === 'mutate-message-body' || input.action === 'retry-message-body') {
+            if (!deps.editMessageBody)
+                return { ok: false, code: 'AUTHOR_MESSAGE_EDIT_OWNER_UNAVAILABLE' };
+            const realm = nativeRealm(value, input.realmId), request = input.request;
+            if (!authorMessageBodyRequestValid(request))
+                return { ok: false, code: 'AUTHOR_MESSAGE_EDIT_REQUEST_INVALID' };
+            if (input.action === 'mutate-message-body') {
+                const snapshot = input.read.kind === 'generation' ? value.generationQueue?.snapshotFor(input.read.invocationId)
+                    : value.lastSnapshot?.readRevision === input.read.readRevision ? value.lastSnapshot : undefined, expected = request.expected, row = snapshot?.messages.find(message => message.nativeSeq === expected.seq
+                    && message.messageId === expected.messageId);
+                if (!snapshot || snapshot.readRevision !== request.readRevision || !row || row.nativeSeq === null
+                    || expected.sessionId !== session.id || row.role !== expected.role
+                    || row.messageVersionSha256 !== expected.messageVersionSha256)
+                    return { ok: false, code: 'READER_READ_BASIS_CHANGED' };
+                if (row.variants || row.ordinary?.selectedTarget.identity.variant.kind === 'opening-variant')
+                    return { ok: false, code: 'AUTHOR_MESSAGE_EDIT_OPENING_VARIANTS_REQUIRED' };
+            }
+            else {
+                if (input.sourceProgramSha256 !== value.program.programSha256)
+                    return { ok: false, code: 'AUTHOR_MESSAGE_EDIT_SOURCE_CHANGED' };
+                const row = value.lastSnapshot?.messages.find(message => message.nativeSeq === request.expected.seq
+                    && message.messageId === request.expected.messageId);
+                if (row?.variants || row?.ordinary?.selectedTarget.identity.variant.kind === 'opening-variant')
+                    return { ok: false, code: 'AUTHOR_MESSAGE_EDIT_OPENING_VARIANTS_REQUIRED' };
+            }
+            const sourceCurrent = originalSourceLifetime(value), source = value.program.source, result = await deps.editMessageBody(session.id, { schemaVersion: 1, operationId: request.operationId,
+                expected: request.expected, text: request.text, origin: { sourceRecordSessionId: source.sourceRecordSessionId,
+                    importId: source.importId, rawSha256: source.sourceSha256, realmId: realm.realmId, groupId: realm.groupId } }, sourceCurrent, signal);
+            if (result.kind !== 'committed' && result.kind !== 'unchanged')
+                return { ok: true, kind: 'message-body-mutated', result };
+            if (result.kind === 'unchanged')
+                return { ok: true, kind: 'message-body-mutated', result,
+                    ...value.current() && value.lastSnapshot ? { snapshot: value.lastSnapshot } : {} };
+            try {
+                const snapshot = await adoptCommittedFacts(value, sourceCurrent);
+                return { ok: true, kind: 'message-body-mutated', result, ...snapshot ? { snapshot } : {} };
+            }
+            catch {
+                return { ok: true, kind: 'message-body-mutated', result };
+            }
+        }
+        if (input.action === 'execute-commands') {
+            const realm = nativeRealm(value, input.realmId);
+            if (!deps.commands)
+                return { ok: false, code: 'AUTHOR_NATIVE_COMMANDS_UNAVAILABLE' };
+            const sourceCurrent = originalSourceLifetime(value);
+            const result = await deps.commands(session.id, `helper:${value.program.programSha256}:${realm.realmId}`, input.request, sourceCurrent, signal);
+            // Publication may invalidate old DATA. Its real receipt remains valid;
+            // only the original live Source can adopt a successor for this realm.
+            try {
+                const refreshed = await adoptCommittedFacts(value, sourceCurrent);
+                return { ok: true, kind: 'commands-executed', result, ...refreshed ? { snapshot: refreshed } : {} };
+            }
+            catch {
+                return { ok: true, kind: 'commands-executed', result };
+            }
+        }
+        if (input.action === 'mutate-opening-variants') {
+            nativeRealm(value, input.realmId);
+            const snapshot = input.read.kind === 'generation' ? value.generationQueue?.snapshotFor(input.read.invocationId)
+                : value.lastSnapshot?.readRevision === input.read.readRevision ? value.lastSnapshot : undefined, first = snapshot?.messages[0];
+            if (!snapshot || snapshot.readRevision !== input.request.readRevision || first?.nativeSeq === null || !first)
+                return { ok: false, code: 'READER_READ_BASIS_CHANGED' };
+            const sourceCurrent = originalSourceLifetime(value), capture = {
+                binding: value.binding, snapshot, openingMessage: { seq: first.nativeSeq, messageId: first.messageId,
+                    messageVersionSha256: first.messageVersionSha256 }, current: value.current, sourceCurrent
+            };
+            const result = await deps.mutateOpeningVariants(capture, input.request, signal);
+            if (result.kind !== 'committed')
+                return { ok: true, kind: 'opening-variants-mutated', result };
+            try {
+                const refreshed = await adoptCommittedFacts(value, sourceCurrent);
+                return { ok: true, kind: 'opening-variants-mutated', result, ...refreshed ? { snapshot: refreshed } : {} };
+            }
+            catch {
+                return { ok: true, kind: 'opening-variants-mutated', result };
+            }
+        }
+        if (input.action === 'mutate-prompts') {
+            const realm = nativeRealm(value, input.request.realmId), resource = input.request.resource;
+            if (resource.browserSessionId !== value.binding.browserSessionId || resource.generation !== value.binding.generation)
+                return { ok: false, code: 'BROWSER_ATTACHMENT_REVOKED' };
+            if (!deps.mutatePrompts)
+                return { ok: false, code: 'AUTHOR_NATIVE_INJECTION_UNAVAILABLE' };
+            const sourceCurrent = originalSourceLifetime(value);
+            const reply = await deps.mutatePrompts({ sessionId: value.binding.sessionId, program: value.program, realm,
+                binding: value.binding, request: input.request, current: sourceCurrent, signal });
+            let refreshed;
+            try {
+                refreshed = await adoptCommittedFacts(value, sourceCurrent);
+            }
+            catch { }
+            return { ok: true, kind: 'prompts-mutated', ...reply, ...refreshed ? { snapshot: refreshed } : {} };
+        }
+        if (input.action === 'filter-complete') {
+            value.generationQueue.completeFilter(input.result);
+            return { ok: true, kind: 'generation-acknowledged' };
+        }
         if (input.action === 'cleanup-prompts') {
             const program = value.program, request = input.request, resource = request.resource;
-            if (program.schemaVersion !== 3 || !deps.cleanupPrompts
-                || !program.requiredCapabilities.includes('owned-prompt-effects'))
+            if (!deps.cleanupPrompts)
                 return { ok: false, code: 'BROWSER_PROMPT_CLEANUP_UNAVAILABLE' };
             if (resource.browserSessionId !== value.binding.browserSessionId || resource.generation !== value.binding.generation)
                 return { ok: false, code: 'BROWSER_ATTACHMENT_REVOKED' };
@@ -180,8 +310,7 @@ export function createRoleplayAuthorBrowser(deps) {
             // synchronous owner cut. Main waits outside it; its old capture is
             // invalidated by the existing Native feed before a late result publishes.
             const sourceCurrent = originalSourceLifetime(value);
-            const removesPrompts = request.kind === 'remove-ids' ? request.ids.length > 0 :
-                value.generationQueue?.hasProducedPrompts() === true;
+            const removesPrompts = request.kind === 'resource-closed' || request.ids.length > 0;
             if (removesPrompts)
                 deps.cleanupPrompts({ schemaVersion: 1, encoding: 'native-author-injection-cleanup-v1',
                     sessionId: value.binding.sessionId, programSha256: program.programSha256, ...request });
@@ -196,42 +325,57 @@ export function createRoleplayAuthorBrowser(deps) {
                 catch { }
             return { ok: true, kind: 'prompts-cleaned' };
         }
-        if (input.action === 'mutate-author-key') {
-            if (value.program.schemaVersion !== 3 || !('sourceCurrent' in value.facts) || !deps.mutateAuthorKey)
-                return { ok: false, code: 'AUTHOR_CHAT_DECLARATION_UNAVAILABLE' };
+        if (input.action === 'retry-author-namespace') {
+            if (!deps.retryAuthorNamespace)
+                return { ok: false, code: 'AUTHOR_CHAT_RECOVERY_UNAVAILABLE' };
             const sourceCurrent = originalSourceLifetime(value);
-            // Project only this action's DATA. Posted declaration/page/script fields
-            // cannot replace the program selected by retained() or the Source owner.
-            const { key, value: next, expected, operationId } = input.request;
-            const reply = await deps.mutateAuthorKey(session.id, value.program, { key, value: next, expected, operationId }, sourceCurrent, signal);
-            // A durable State receipt survives Stop/Source loss. Fresh DATA is adopted
-            // only while the same original Source proof and Native owner still hold.
+            const reply = await deps.retryAuthorNamespace(session.id, value.program, nativeRealm(value, input.realmId), input.operation, sourceCurrent, signal);
             try {
-                const refreshed = await adoptCommittedFacts(value, sourceCurrent);
-                return { ok: true, kind: 'author-key-mutated', reply,
-                    ...refreshed?.schemaVersion === 3 ? { snapshot: refreshed } : {} };
+                const refreshed = await adoptCommittedFacts(value, sourceCurrent, 'ordinary');
+                return { ok: true, kind: 'author-namespace-mutated', reply, ...refreshed ? { snapshot: refreshed } : {} };
             }
             catch {
-                return { ok: true, kind: 'author-key-mutated', reply };
+                return { ok: true, kind: 'author-namespace-mutated', reply };
+            }
+        }
+        if (input.action === 'mutate-author-namespace') {
+            if (!deps.mutateAuthorNamespace)
+                return { ok: false, code: 'AUTHOR_CHAT_DECLARATION_UNAVAILABLE' };
+            const request = input.request, read = request.read;
+            const basis = read.kind === 'generation' ? value.generationQueue?.snapshotFor(read.invocationId)
+                : value.lastSnapshot?.readRevision === read.readRevision ? value.lastSnapshot : undefined;
+            // A posted revision locates the actual snapshot that was sent. A stale
+            // async result never silently adopts a newer DATA basis.
+            if (!basis)
+                return { ok: false, code: 'AUTHOR_CHAT_READ_BASIS_CHANGED' };
+            const sourceCurrent = originalSourceLifetime(value);
+            const reply = await deps.mutateAuthorNamespace(session.id, value.program, nativeRealm(value, request.realmId), request, basis, sourceCurrent, signal);
+            if (reply.kind === 'no-update')
+                return { ok: true, kind: 'author-namespace-mutated', reply,
+                    ...value.current() && value.lastSnapshot ? { snapshot: value.lastSnapshot } : {} };
+            try {
+                const refreshed = await adoptCommittedFacts(value, sourceCurrent, 'ordinary');
+                return { ok: true, kind: 'author-namespace-mutated', reply, ...refreshed ? { snapshot: refreshed } : {} };
+            }
+            catch {
+                return { ok: true, kind: 'author-namespace-mutated', reply };
             }
         }
         if (input.action === 'mutate-persona') {
             const program = value.program;
-            if (program.schemaVersion === 1 || value.facts.data.schemaVersion === 1 || !value.facts.data.personas || !deps.mutatePersona
-                || program.schemaVersion === 3 && !('sourceCurrent' in value.facts))
+            if (!value.facts.data.personas || !deps.mutatePersona)
                 return { ok: false, code: 'NATIVE_PERSONA_UNAVAILABLE' };
-            if (!scriptCapability(program, input.request.scriptIdentity, 'owned-native-personas'))
-                return { ok: false, code: 'BROWSER_AUTHOR_REQUEST_INVALID' };
+            const realm = nativeRealm(value, input.request.realmId);
             const sourceCurrent = originalSourceLifetime(value);
-            if (sourceCurrent && !sourceCurrent())
+            if (!sourceCurrent())
                 return fail('BROWSER_ATTACHMENT_REVOKED');
             // Native persistence may itself invalidate Source. Its writer retains
             // the original Native owner; Source3 only admits and adopts this realm.
-            const result = deps.mutatePersona(session.id, program, input.request, value.ownerCurrent, signal);
+            const result = deps.mutatePersona(session.id, program, realm, input.request, value.ownerCurrent, signal, value.generationQueue?.sourceDataFor(realm.realmId));
             if (result.kind !== 'committed')
                 return { ok: true, kind: 'persona-mutated', reply: { result } };
             try {
-                const refreshed = await adoptCommittedFacts(value, sourceCurrent);
+                const refreshed = await adoptCommittedFacts(value, sourceCurrent, 'source-data');
                 return { ok: true, kind: 'persona-mutated', reply: { result, ...refreshed ? { snapshot: refreshed } : {} } };
             }
             catch {
@@ -239,22 +383,20 @@ export function createRoleplayAuthorBrowser(deps) {
             }
         }
         if (input.action === 'mutate-worldbook') {
-            const program = value.program, basis = 'worldbook' in value.facts ? value.facts.worldbook : undefined;
-            if (program.schemaVersion === 1 || !basis || !deps.mutateWorldbook
-                || program.schemaVersion === 3 && !('sourceCurrent' in value.facts))
+            const program = value.program, basis = value.facts.worldbook;
+            if (!basis || !deps.mutateWorldbook)
                 return { ok: false, code: 'AUTHOR_WORLDBOOK_UNAVAILABLE' };
-            if (!scriptCapability(program, input.request.scriptIdentity, 'owned-named-worldbooks'))
-                return { ok: false, code: 'BROWSER_AUTHOR_REQUEST_INVALID' };
+            nativeRealm(value, input.request.realmId);
             const sourceCurrent = originalSourceLifetime(value);
-            if (sourceCurrent && !sourceCurrent())
+            if (!sourceCurrent())
                 return fail('BROWSER_ATTACHMENT_REVOKED');
             // The existing journal owns Source/head publication under its FIFO.
             // Its own writes must not turn a captured DATA proof into writer Stop.
-            const reply = await deps.mutateWorldbook(session.id, program, input.request, basis, value.ownerCurrent, signal);
+            const reply = await deps.mutateWorldbook(session.id, program, input.request, basis, value.ownerCurrent, signal, value.generationQueue?.sourceDataFor(input.request.realmId));
             if (reply.result.kind !== 'edited-data')
                 return { ok: true, kind: 'worldbook-mutated', reply };
             try {
-                const refreshed = await adoptCommittedFacts(value, sourceCurrent);
+                const refreshed = await adoptCommittedFacts(value, sourceCurrent, 'source-data');
                 return { ok: true, kind: 'worldbook-mutated', reply: { ...reply, ...refreshed ? { snapshot: refreshed } : {} } };
             }
             catch {
@@ -262,11 +404,9 @@ export function createRoleplayAuthorBrowser(deps) {
             }
         }
         if (input.action === 'read-source-resource') {
-            if (value.program.schemaVersion === 1 || !value.resources)
+            if (!value.resources)
                 return { ok: false, code: 'AUTHOR_SCRIPT_RESOURCE_UNAVAILABLE' };
-            if (!scriptCapability(value.program, input.request.scriptIdentity, 'owned-script-source-resources')) {
-                return { ok: false, code: 'BROWSER_AUTHOR_REQUEST_INVALID' };
-            }
+            nativeRealm(value, input.request.realmId);
             // This read is synchronous after the attachment's live Source/Session/Stop
             // check. Resource addressing never creates a second permission owner.
             return { ok: true, kind: 'source-resource', value: value.resources.read(input.request) };
@@ -276,7 +416,14 @@ export function createRoleplayAuthorBrowser(deps) {
         if (input.action === 'generation-wait') {
             if (!value.generationQueue)
                 return { ok: false, code: 'BROWSER_GENERATION_UNAVAILABLE' };
-            const invocation = await value.generationQueue.wait(input.binding, input.registrations, signal);
+            const reader = value.generationQueue.wait(input.binding, input.registrations, signal);
+            // wait() installs the real Reader synchronously. Hand it to one matching
+            // preparation now, before an asynchronous readiness notification can race.
+            const waiting = [...waitingGenerations].find(row => row.sessionId === value.binding.sessionId
+                && row.programSha256 === value.program.programSha256);
+            if (value.generationQueue.hasReader())
+                waiting?.start(value);
+            const invocation = await reader;
             return { ok: true, kind: 'generation-invocation', invocation };
         }
         if (input.action === 'generation-complete') {
@@ -285,37 +432,25 @@ export function createRoleplayAuthorBrowser(deps) {
             value.generationQueue.complete(input.result);
             return { ok: true, kind: 'generation-acknowledged' };
         }
-        if (input.action === 'generate-raw' || input.action === 'update-author-chat') {
+        if (input.action === 'mvu-hook-complete') {
+            if (!sameBinding(input.binding, input.result.binding) || !value.generationQueue)
+                return { ok: false, code: 'BROWSER_GENERATION_UNAVAILABLE' };
+            value.generationQueue.completeHook(input.result);
+            return { ok: true, kind: 'generation-acknowledged' };
+        }
+        if (input.action === 'generate-raw') {
             const program = value.program;
-            if (program.schemaVersion === 1 || program.schemaVersion === 3 && input.action !== 'generate-raw')
+            const realm = nativeRealm(value, input.request.realmId);
+            if (!deps.generateRaw)
                 return { ok: false, code: 'BROWSER_GENERATION_UNAVAILABLE' };
-            const script = program.scripts.find(row => row.descriptor.identity === input.request.scriptIdentity), required = input.action === 'generate-raw' ? 'owned-generate-raw-gesture' : 'owned-chat-key-update';
-            const admitted = program.schemaVersion === 3
-                ? scriptCapability(program, input.request.scriptIdentity, 'owned-generate-raw-gesture')
-                : script?.requiredCapabilities.includes(required);
-            if (!admitted)
-                return { ok: false, code: 'BROWSER_AUTHOR_REQUEST_INVALID' };
-            if (input.action === 'generate-raw') {
-                if (!deps.generateRaw)
-                    return { ok: false, code: 'BROWSER_GENERATION_UNAVAILABLE' };
-                const current = program.schemaVersion === 3 ? originalSourceLifetime(value) : value.current;
-                if (!current)
-                    return { ok: false, code: 'BROWSER_GENERATION_UNAVAILABLE' };
-                return { ok: true, kind: 'generated', result: await deps.generateRaw(session.id, program, input.request, current, signal) };
-            }
-            if (program.schemaVersion !== 2 || !deps.updateAuthorChat)
-                return { ok: false, code: 'BROWSER_GENERATION_UNAVAILABLE' };
-            return { ok: true, kind: 'author-chat-updated', capture: await deps.updateAuthorChat(session.id, program, input.request, value.current, signal) };
+            const current = originalSourceLifetime(value);
+            return { ok: true, kind: 'generated', result: await deps.generateRaw(session.id, program, realm, input.request, current, signal) };
         }
         if (input.action !== 'save')
             return { ok: false, code: 'BROWSER_REQUEST_INVALID' };
         const request = input.request, operation = input.operation;
-        const canSave = value.program.schemaVersion === 3
-            ? value.program.scripts.find(row => row.descriptor.identity === request.scriptIdentity)
-                ?.requiredCapabilities.includes('owned-numerical-variable-replacement')
-            : value.program.scripts.find(row => row.descriptor.identity === request.scriptIdentity)
-                ?.requiredCapabilities.includes('owned-numerical-player-save');
-        if (request.generation !== value.binding.generation || !canSave
+        nativeRealm(value, request.realmId);
+        if (request.generation !== value.binding.generation
             || operation.sessionId !== value.binding.sessionId || operation.schemaVersion !== 1 || operation.action !== 'replace-values') {
             return { ok: false, code: 'BROWSER_NUMERICAL_REQUEST_INVALID' };
         }
@@ -334,8 +469,8 @@ export function createRoleplayAuthorBrowser(deps) {
             // the same Source's after-capture. It carries no fabricated MvuData and
             // does not claim the library's precommit variable-editing callback phase.
             return { ok: true, kind: 'saved', result, snapshot: captured,
-                ...value.program.schemaVersion === 3 && result.operation?.outcome === 'updated' && !result.operation.replayed
-                    ? { sourceEvents: [{ type: 'mag_variable_update_ended', args: [] }] } : {} };
+                ...result.operation?.outcome === 'updated' && !result.operation.replayed
+                    ? { sourceEvents: [{ type: 'nexttavern_numerical_updated', args: [] }] } : {} };
         }
         catch {
             return { ok: true, kind: 'saved', result };
@@ -351,7 +486,8 @@ export function createRoleplayAuthorBrowser(deps) {
         // Long generation calls only wait for admission: holding their queue would
         // prevent the callback's own RPC or completion from ever being delivered.
         const result = previous.then(() => handleCurrent(input, signal));
-        if (input.action === 'generation-wait' || input.action === 'generation-complete' || input.action === 'generate-raw')
+        if (input.action === 'generation-wait' || input.action === 'generation-complete' || input.action === 'mvu-hook-complete' || input.action === 'filter-complete' || input.action === 'generate-raw'
+            || input.action === 'execute-commands')
             return result;
         const settled = result.then(() => { }, () => { });
         actionQueues.set(key, settled);
@@ -372,9 +508,11 @@ export function createRoleplayAuthorBrowser(deps) {
                 catch {
                     return jsonResponse(400, { ok: false, code: 'BROWSER_REQUEST_INVALID' });
                 }
-                if (!input || !['attach', 'capture', 'save', 'confirm', 'retry', 'dispose', 'generation-wait', 'generation-complete',
-                    'generate-raw', 'update-author-chat', 'read-source-resource', 'mutate-worldbook', 'retry-worldbook',
-                    'mutate-persona', 'retry-persona', 'mutate-author-key', 'cleanup-prompts'].includes(input.action)) {
+                if (!input || !['attach', 'capture', 'save', 'confirm', 'retry', 'dispose', 'mutate-opening-variants', 'generation-wait', 'generation-complete',
+                    'mvu-hook-complete', 'generate-raw', 'execute-commands', 'read-source-resource', 'mutate-worldbook', 'retry-worldbook',
+                    'mutate-persona', 'retry-persona', 'cleanup-prompts', 'mutate-prompts', 'filter-complete',
+                    'mutate-message-body', 'confirm-message-body', 'retry-message-body',
+                    'mutate-author-namespace', 'confirm-author-namespace', 'retry-author-namespace'].includes(input.action)) {
                     return jsonResponse(400, { ok: false, code: 'BROWSER_REQUEST_INVALID' });
                 }
                 const result = await handle(input, request.signal);
@@ -385,35 +523,96 @@ export function createRoleplayAuthorBrowser(deps) {
             }
         } }), 'roleplay: owned author browser attachment');
     const invalidateSession = (sid) => {
+        for (const waiting of waitingGenerations)
+            if (waiting.sessionId === sid)
+                waiting.stop('BROWSER_ATTACHMENT_REVOKED');
         for (const value of attachments.values())
             if (value.binding.sessionId === sid)
                 revoke(value);
     };
-    async function invokeGeneration(sid, program, capture, facts, signal) {
-        const value = [...attachments.values()].find(row => row.binding.sessionId === sid
-            && row.program.programSha256 === program.programSha256 && row.current() && row.generationQueue?.hasReader());
-        if (!value?.generationQueue)
-            return fail('BROWSER_GENERATION_READER_UNAVAILABLE');
-        const common = {
-            generation: value.binding.generation, readRevision: ++value.readRevision,
-            basis: { sessionId: sid, sourceSnapshotSha256: capture.sourceSnapshotSha256, ...facts.basis,
-                nativeCut: capture.nativeCut, nativePrefixSha256: capture.nativePrefixSha256 },
-            scopeFrame: facts.scopes, messages: capture.messages, numerical: facts.numerical,
-            persona: facts.persona,
-            ...value.facts.data.schemaVersion !== 1 && value.facts.data.personas
-                ? { personas: value.facts.data.personas } : {},
-            ...value.facts.data.schemaVersion !== 1 && value.facts.data.character
-                ? { character: value.facts.data.character } : {},
-            ...value.facts.data.schemaVersion !== 1 && value.facts.data.worldbook
-                ? { worldbook: value.facts.data.worldbook } : {}
+    async function invokeGeneration(sid, program, capture, facts, signal, sourceData) {
+        if (disposed)
+            return fail('BROWSER_ATTACHMENT_REVOKED');
+        const invoke = (value) => {
+            const common = {
+                generation: value.binding.generation, readRevision: ++value.readRevision,
+                basis: { sessionId: sid, sourceSnapshotSha256: capture.sourceSnapshotSha256, ...facts.basis,
+                    nativeCut: capture.nativeCut, nativePrefixSha256: capture.nativePrefixSha256 },
+                scopeFrame: facts.scopes, messages: capture.messages, numerical: facts.numerical,
+                persona: facts.persona,
+                ...value.facts.data.personas
+                    ? { personas: value.facts.data.personas } : {},
+                ...value.facts.data.character
+                    ? { character: value.facts.data.character } : {},
+                ...value.facts.data.worldbook
+                    ? { worldbook: value.facts.data.worldbook } : {},
+                ...value.facts.data.avatarPaths ? { avatarPaths: value.facts.data.avatarPaths } : {},
+                ...value.facts.data.tavernRegexes ? { tavernRegexes: value.facts.data.tavernRegexes } : {},
+                ...value.facts.data.readonlyPreset ? { readonlyPreset: value.facts.data.readonlyPreset } : {}
+            };
+            const snapshot = { ...common, schemaVersion: 1, encoding: 'author-native-helper-snapshot-v1',
+                ordinaryChat: facts.ordinaryChat, ...facts.ordinaryMessages ? { ordinaryMessages: facts.ordinaryMessages } : {},
+                ordinaryPublicationSeq: value.facts.data.ordinaryPublicationSeq,
+                context: value.facts.data.context };
+            // The challenge becomes the realm's current read snapshot after its
+            // generation callback finishes. Retain that exact server-owned basis for
+            // subsequent SDK writes; the previous capture's cache key no longer fits.
+            value.lastSnapshot = snapshot;
+            value.snapshotIdentity = undefined;
+            return value.generationQueue.invoke({ attemptId: capture.attemptId, capture, snapshot }, signal, sourceData);
         };
-        const snapshot = 'authorChats' in facts
-            ? { ...common, schemaVersion: 3, encoding: 'native-author-browser-snapshot-v3', authorChats: facts.authorChats }
-            : { ...common, schemaVersion: 2, encoding: 'native-author-browser-snapshot-v2', authorChat: facts.authorChat };
-        return value.generationQueue.invoke({ attemptId: capture.attemptId, capture, snapshot }, signal);
+        return new Promise((resolve, reject) => {
+            const cleanup = () => {
+                if (!waitingGenerations.delete(waiting))
+                    return false;
+                signal.removeEventListener('abort', abort);
+                return true;
+            };
+            const abort = () => waiting.stop('BROWSER_GENERATION_CANCELLED');
+            const waiting = { sessionId: sid, programSha256: program.programSha256,
+                start(value) {
+                    if (!cleanup())
+                        return;
+                    try {
+                        resolve(invoke(value));
+                    }
+                    catch (error) {
+                        reject(error);
+                    }
+                },
+                stop(code) { if (cleanup())
+                    reject(Error(code)); } };
+            waitingGenerations.add(waiting);
+            signal.addEventListener('abort', abort, { once: true });
+            if (signal.aborted)
+                abort();
+            else {
+                const value = [...attachments.values()].find(row => row.binding.sessionId === sid
+                    && row.program.programSha256 === program.programSha256 && row.current() && row.generationQueue?.hasReader());
+                if (value)
+                    waiting.start(value);
+            }
+        });
     }
-    return { handle, invokeGeneration, invalidateSession, dispose: () => {
+    const prepareHook = async (request, signal) => {
+        const value = [...attachments.values()].find(row => row.binding.sessionId === request.sessionId && row.current());
+        return value?.generationQueue?.prepareHook(request, signal);
+    };
+    const invokeFilter = (binding, input, signal, sourceData) => retained(binding).generationQueue.invokeFilter(input, signal, sourceData);
+    const retireFilterCallbacks = (binding, realmId, resource, ids) => {
+        // Retirement only releases Guest closures. A writer may have just changed
+        // its DATA basis before adoptCommittedFacts; do not revoke its attachment
+        // merely to deliver a release notification during that ACK.
+        const value = attachments.get(binding.browserSessionId);
+        if (!value || !sameBinding(value.binding, binding))
+            return;
+        nativeRealm(value, realmId);
+        value.generationQueue.retireFilterCallbacks({ encoding: 'author-native-injection-filter-retired-v1', realmId, resource, ids });
+    };
+    return { handle, invokeGeneration, invokeFilter, retireFilterCallbacks, prepareHook, invalidateSession, dispose: () => {
             disposed = true;
+            for (const waiting of waitingGenerations)
+                waiting.stop('BROWSER_ATTACHMENT_REVOKED');
             for (const value of attachments.values())
                 revoke(value);
         } };

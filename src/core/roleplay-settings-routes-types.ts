@@ -2,7 +2,7 @@ import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
 import type { HostSession, HostAgent } from './roleplay-task-host-types.js'
 import type { createRoleplayTaskHost } from './roleplay-task-host.js'
 import type { createRoleplayPreparation } from './roleplay-preparation.js'
-import type {RequestMaterialTextCapabilityV1} from '@deepseek-ai/dsh-llm'
+import type {RequestMaterialTextCapabilityV1} from 'dsh-nexttavern-native-llm'
 
 export interface ReasoningInfo {
   efforts?: {id: string; name?: string; description?: string}[]
@@ -13,6 +13,8 @@ export interface SettingsRouteBody<Revision = number | null> {
   scope: string
   settings?: Record<string, unknown> & {routes?: Record<string, {provider: string; model: string; reasoningEffort?: unknown} | null>}
   expectedRevision?: Revision
+  purpose?: string
+  route?: {provider:string;model:string;reasoningEffort?:string}|null
   [key: string]: unknown
 }
 type TaskHost = ReturnType<typeof createRoleplayTaskHost>
@@ -42,6 +44,7 @@ export interface SettingsRoutesDependencies {
   taskAgents: Map<string, HostAgent>
   characterCluster: TaskHost['characterCluster']
   characterRoster: TaskHost['characterRoster']
+  characterSettingsChanged?(session:HostSession):Promise<void>
   nativeCardCapability?(session:HostSession):{state:string;reason?:string;staticReady:boolean}
   memorySettingFields: readonly string[]
   memorySettingsPolicy: ReturnType<typeof createRoleplayPreparation>['memorySettingsPolicy']
