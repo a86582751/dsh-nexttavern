@@ -203,8 +203,9 @@ export function projectReaderNarrativeDisplay(raw, scope) {
     if (new TextEncoder().encode(block).length > MVU_DISPLAY_BLOCK_LIMIT)
         return text;
     let body = text.slice(first.end, last.start).trim(), inner = tags.slice(1, -1);
-    if (body.startsWith('<Analyze>')) {
-        if (inner[0]?.text !== '<Analyze>' || inner[1]?.text !== '</Analyze>')
+    const analysisTag = ['Analyze', 'analysis', 'Analysis'].find(name => body.startsWith(`<${name}>`));
+    if (analysisTag) {
+        if (inner[0]?.text !== `<${analysisTag}>` || inner[1]?.text !== `</${analysisTag}>`)
             return text;
         const analysis = text.slice(inner[0].end, inner[1].start);
         for (let at = analysis.indexOf('<'); at >= 0; at = analysis.indexOf('<', at + 1)) {
