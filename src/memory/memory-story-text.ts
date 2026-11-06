@@ -1,7 +1,67 @@
 import {createHash} from 'node:crypto'
-import { selectedStoryHistorySnapshot, importManagementInputs, type StorySession, type StoryRow, type StoryEvent, type StoryBlock } from './memory-history.js'
+import { selectedStoryHistorySnapshot, historySourceKeys, queryStoryHistory, readStoryHistory,
+  importManagementInputs, type StorySession, type StoryRow, type StoryEvent, type StoryBlock } from './memory-history.js'
 import { projectStoryEvent } from '../core/roleplay-message-view.js'
-import {sessionEvents} from '../core/session-history.js'
+import {sessionEvents,sessionHistoryCut} from '../core/session-history.js'
+import type {CaptureRoleplayStoryText,RoleplayStoryTextCapture} from '../core/roleplay-story-text.js'
+
+/** This view changes consumption text only. The point read still supplies the
+ * original selected Native message object, never a reconstructed proof/DTO. */
+export interface MemoryStoryTextView {
+  readonly owner:CaptureRoleplayStoryText|undefined
+  readonly capture:RoleplayStoryTextCapture|undefined
+  text(seq:number,originalText:string):string
+  rows(entries:readonly Readonly<StoryRow>[]):readonly Readonly<StoryRow>[]
+}
+const effectiveRows=new WeakMap<Readonly<StoryRow>,{text:string;row:Readonly<StoryRow>}>()
+const effectiveSourceKeys=new WeakMap<Readonly<StoryRow>,string>()
+const ownedEffectiveRows=new WeakSet<Readonly<StoryRow>>()
+
+export function captureMemoryStoryText(session:StorySession,captureStoryText?:CaptureRoleplayStoryText,
+  previous?:MemoryStoryTextView):MemoryStoryTextView {
+  // A retained accepted capture knows its invalidation. An absent capture must
+  // be acquired again, because the first accepted body can appear after it.
+  const capture=previous&&previous.owner===captureStoryText&&previous.capture?.current()
+    ?previous.capture:captureStoryText?.(session.id)
+  const cut=capture?.hasValues?sessionHistoryCut<StoryEvent>(session):undefined
+  const text=(seq:number,originalText:string)=>{
+    if(!capture?.hasValues||!cut)return originalText
+    const event=cut.at(seq)
+    if(event?.type!=='assistant/message')return originalText
+    const message=session.deriveEventMessage?session.deriveEventMessage(event):event.data?.message
+    if(!message)return originalText
+    return capture.text(seq,message as Parameters<RoleplayStoryTextCapture['text']>[1],originalText)
+  }
+  return {owner:captureStoryText,capture,text,rows(entries){
+    if(!capture?.hasValues)return entries
+    let changed=false
+    const result=entries.map(row=>{
+      if(row.role!=='assistant')return row
+      const value=text(row.seq,row.text)
+      if(value===row.text)return row
+      changed=true
+      const cached=effectiveRows.get(row)
+      if(cached?.text===value)return cached.row
+      const effective=Object.freeze({...row,text:value})
+      ownedEffectiveRows.add(effective)
+      effectiveRows.set(row,{text:value,row:effective})
+      return effective
+    })
+    return changed?Object.freeze(result):entries
+  }}
+}
+
+/** Canonical rows keep the history owner's keys. Only accepted-body rows are
+ * owned here, and their exact input key is computed once for that row version. */
+export function memoryStorySourceKeys(entries:readonly Readonly<StoryRow>[]):string[] {
+  return entries.map(row=>{
+    const cached=effectiveSourceKeys.get(row)
+    if(cached!==undefined)return cached
+    const key=historySourceKeys([row])[0]!
+    if(ownedEffectiveRows.has(row))effectiveSourceKeys.set(row,key)
+    return key
+  })
+}
 
 export interface SourceSpan { start: number; end: number }
 export interface CleanStoryText { text: string; spans: SourceSpan[]; unresolved: boolean }
@@ -10,13 +70,22 @@ export type RetrievalReadRow = Readonly<Omit<RetrievalRow, 'spans'>> & {readonly
 
 const retrievalSnapshots = new WeakMap<StorySession, {
   events: readonly StoryEvent[]; history: readonly Readonly<StoryRow>[]; id: string; rows: readonly RetrievalReadRow[]
+  storyText:MemoryStoryTextView
 }>()
+const cleanedRows=new WeakMap<Readonly<StoryRow>,{raw:string;unresolved:boolean;row:RetrievalReadRow}>()
 const ownedRetrievalRows = new WeakSet<RetrievalReadRow>()
 const ownedRetrievalSnapshots = new WeakSet<readonly RetrievalReadRow[]>()
 const rowHashes = new WeakMap<RetrievalReadRow, string>()
 const rowLowerText = new WeakMap<RetrievalReadRow, string>()
 const sourceFingerprints = new WeakMap<readonly RetrievalReadRow[], string>()
 const hash = (text: string) => createHash('sha256').update(text).digest('hex')
+
+function ownRetrievalRow(row:RetrievalReadRow):RetrievalReadRow {
+  if(ownedRetrievalRows.has(row))return row
+  const owned=Object.freeze({...row,spans:Object.freeze(row.spans.map(span=>Object.freeze(span)))})
+  ownedRetrievalRows.add(owned)
+  return owned
+}
 
 export function retrievalRowHash(row: RetrievalReadRow): string {
   const cached = rowHashes.get(row)
@@ -153,23 +222,30 @@ export function cleanStoryText(text: string): CleanStoryText {
   return { text: out.join(''), spans, unresolved }
 }
 
-export function selectedRetrievalRows(session: StorySession): RetrievalRow[] {
-  return selectedRetrievalRowsSnapshot(session).map(row => ({...row, spans: row.spans.map(span => ({...span}))}))
+export function selectedRetrievalRows(session: StorySession,captureStoryText?:CaptureRoleplayStoryText): RetrievalRow[] {
+  return selectedRetrievalRowsSnapshot(session,captureStoryText).map(row => ({...row, spans: row.spans.map(span => ({...span}))}))
 }
 
 /** The story owner checks the actual log/selection/projection (including its
  * live getter) before this derived view can reuse cleaned text and offsets. */
-export function selectedRetrievalRowsSnapshot(session: StorySession): readonly RetrievalReadRow[] {
+export function selectedRetrievalRowsSnapshot(session: StorySession,captureStoryText?:CaptureRoleplayStoryText): readonly RetrievalReadRow[] {
   const history = selectedStoryHistorySnapshot(session), events = sessionEvents(session)
   const cached = retrievalSnapshots.get(session)
-  if (cached?.history === history && cached.events === events && cached.id === session.id) return cached.rows
-  const bySeq = new Map(events.map(event => [Number(event?.seq), event]))
+  const storyText=captureMemoryStoryText(session,captureStoryText,cached?.storyText)
+  if (cached?.history === history && cached.events === events && cached.id === session.id
+    &&cached.storyText.capture===storyText.capture) return cached.rows
   const selected = history.flatMap(row => {
-    const source = rawTextFor(session, row, bySeq.get(row.seq) ?? null)
+    const source = rawTextFor(session, row, events[row.seq] ?? null)
     if (!source.raw) return []
+    source.raw=storyText.text(row.seq,source.raw)
+    const prior=cleanedRows.get(row)
+    if(prior?.raw===source.raw&&prior.unresolved===source.unresolved)return [prior.row]
     const cleaned = cleanStoryText(source.raw)
     if (!cleaned.text) return []
-    return [{ ...row, text: cleaned.text, rawText: source.raw, spans: cleaned.spans, unresolved: source.unresolved || cleaned.unresolved }]
+    const effective=ownRetrievalRow({ ...row, text: cleaned.text, rawText: source.raw, spans: cleaned.spans,
+      unresolved: source.unresolved || cleaned.unresolved })
+    cleanedRows.set(row,{raw:source.raw,unresolved:source.unresolved,row:effective})
+    return [effective]
   })
   const endedTurns = new Set(events.filter(event => event?.type === 'turn/end').map(event => Number(event.data?.turn)))
   const management = importManagementInputs(session, events)
@@ -186,7 +262,7 @@ export function selectedRetrievalRowsSnapshot(session: StorySession): readonly R
       return [{ ...row, text: cleaned.text, rawText: source.raw, spans: cleaned.spans, unresolved: source.unresolved || cleaned.unresolved }]
     })
   extra.sort((left, right) => visibleIndex.get(left.seq)! - visibleIndex.get(right.seq)!)
-  const merged: RetrievalRow[] = []
+  const merged: RetrievalReadRow[] = []
   let cursor = 0
   // Keep the selected story's logical order, including expanded compacted rows
   // absent from the surface. Each extra still precedes its first greater rank.
@@ -196,14 +272,27 @@ export function selectedRetrievalRowsSnapshot(session: StorySession): readonly R
     merged.push(row)
   }
   while (cursor < extra.length) merged.push(extra[cursor++]!)
-  const rows = Object.freeze(merged.map(row => {
-    const owned = Object.freeze({...row, spans: Object.freeze(row.spans.map(span => Object.freeze(span)))})
-    ownedRetrievalRows.add(owned)
-    return owned
-  }))
+  const rows = Object.freeze(merged.map(ownRetrievalRow))
   ownedRetrievalSnapshots.add(rows)
-  retrievalSnapshots.set(session, {events, history, id: session.id, rows})
+  retrievalSnapshots.set(session, {events, history, id: session.id, rows,storyText})
   return rows
+}
+
+/** Raw-history consumers retain the original query/read contract. The normal
+ * retrieval service separately owns markup cleaning and vector sources. */
+export function queryMemoryStoryHistory(session:StorySession,options:Parameters<typeof queryStoryHistory>[1],
+  captureStoryText?:CaptureRoleplayStoryText) {
+  if(options?.scope&&options.scope!=='story')return queryStoryHistory(session,options)
+  const view=captureMemoryStoryText(session,captureStoryText)
+  if(!view.capture?.hasValues)return queryStoryHistory(session,options)
+  return queryStoryHistory(session,options,view.rows(selectedStoryHistorySnapshot(session)))
+}
+export function readMemoryStoryHistory(session:StorySession,options:Parameters<typeof readStoryHistory>[1],
+  captureStoryText?:CaptureRoleplayStoryText) {
+  if(options?.scope&&options.scope!=='story')return readStoryHistory(session,options)
+  const view=captureMemoryStoryText(session,captureStoryText)
+  if(!view.capture?.hasValues)return readStoryHistory(session,options)
+  return readStoryHistory(session,options,view.rows(selectedStoryHistorySnapshot(session)))
 }
 
 export function projectedSourceOffset(row: Pick<RetrievalReadRow, 'spans'>, index: number): number {

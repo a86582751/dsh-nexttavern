@@ -1,5 +1,5 @@
 import {sessionEvents, ensureSessionHistory} from '../core/session-history.js'
-import {sessionEventsIfReady} from '../core/roleplay-context.js'
+import {readSessionClassificationIfReady} from '../core/roleplay-context.js'
 // roleplay-memory-engine.js — roleplay preset 的记忆/压缩引擎。
 //
 // 提供本 preset isolate group 内的 `compaction` 服务（command-compact 与
@@ -26,9 +26,11 @@ import { createDirectorNotesWriter, type NotesEngine, type NotesSettings, type N
 import { createMemoryScheduler } from './memory-scheduler.js'
 import { createMemorySummarizer, type NativeSummaryTask } from './memory-summary.js'
 import { queryMemoryAgreements } from './memory-agreements.js'
-import { surfaceSeqsOf, isCompletedTurnEnd, selectedStoryHistory, selectedStoryHistorySnapshot, queryStoryHistory, readStoryHistory, historySourceKeys, legacyCadenceSlots, memoryNotesCadence, directorNotesForBranch, type NotesRecord } from './memory-history.js'
+import { surfaceSeqsOf, isCompletedTurnEnd, selectedStoryHistory, selectedStoryHistorySnapshot, queryStoryHistory, readStoryHistory, legacyCadenceSlots, memoryNotesCadence, directorNotesForBranch, type NotesRecord } from './memory-history.js'
 export { selectedStoryHistory, queryStoryHistory, readStoryHistory, storyCadenceSlots, legacyCadenceSlots, memoryNotesCadence, directorNotesForBranch } from './memory-history.js'
 import { lastSeqOf, textOf, branchScope, provenanceSeqOf, belongsToBranch, filterMemoryRecordForBranch as typedFilterMemoryRecordForBranch, type MemoryRecordProjection } from './memory-provenance.js'
+import {captureMemoryStoryText,memoryStorySourceKeys,queryMemoryStoryHistory,readMemoryStoryHistory,
+  type MemoryStoryTextView} from './memory-story-text.js'
 
 export const name = 'roleplay-memory-engine'
 
@@ -66,10 +68,15 @@ export interface MemoryAgent {
 }
 export interface MemorySettings extends NotesSettings, CompactionSettings { autoNotesEveryTurns?: unknown }
 export interface RoleplayMemoryHost extends NotesEngine {
+  /** Exact selected-story DATA from the live Core's actual Native owner. */
+  readStoryEvidenceAt?(session:MemorySession,seqs:readonly number[]):{
+    entries:{seq:number;text:string}[];agentPreset:unknown;subagent:boolean
+  }|undefined
   retrieval?: {search(session: MemorySession, options?: Record<string,unknown>): Promise<unknown>;read(session: MemorySession, options?: Record<string,unknown>):unknown}
   memoryUpdate: (sessionId: string, patch: Record<string, unknown>) => unknown | Promise<unknown>
   isStoryBranchActive?: (session: MemorySession) => boolean
   ownsMemoryPreparation?: boolean
+  ownsStoryMemoryCompletion?: (sessionId:string)=>boolean
   settings?: (sessionId: string) => MemorySettings | null | undefined
   nativeTask?: (options: NativeSummaryTask<MemorySession>) => Promise<unknown>
 }
@@ -135,8 +142,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
 
   const scheduler = createMemoryScheduler<MemorySession, MemoryAgent, NotesWriteResult, CompactionResult | null>({
     config: cfg, notesBusy, busy, isRoleplaySession: session => isRoleplaySession(session),
-    notesDue: session => memoryNotesCadence(session, getEngine()?.memoryHead?.(session.id),
-      Number(getEngine()?.settings?.(session.id)?.autoNotesEveryTurns) || cfg.autoNotesEveryTurns).due,
+    notesDue: session => cadenceForSession(session).due,
     requestNotes: (session, agent, signal) => refreshDirectorNotes(session, agent, signal, undefined, { automatic: true, background: true }),
     requestCompaction: (session, agent, signal, force) => compact(session, agent, signal, undefined, { force, manual: false }),
     aboveThreshold: session => branchTokensAboveThreshold(session),
@@ -147,16 +153,10 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
 
   const isRoleplaySession = (session: MemorySession | null | undefined): session is MemorySession => {
     if (!session) return false
-    let preset = session.header?.agentPreset
-    const seed = Number(session.inheritedEventCount ?? 0)
-    const events = sessionEventsIfReady(session)
-    if (events === null) return preset === 'roleplay'
-    for (const event of events) {
-      const type = event?.type
-      if (type === 'subagent/descriptor' && Number(event.seq) >= seed) return false
-      if (type === 'agent-preset/selected' && event.data?.agentPreset) preset = event.data.agentPreset
-    }
-    return preset === 'roleplay'
+    const classification=readSessionClassificationIfReady(session)
+    if(classification===null)return session.header?.agentPreset==='roleplay'
+    return !classification.localSubagentDescriptor
+      &&(classification.lastTruthySelectedPreset??session.header?.agentPreset)==='roleplay'
   }
 
   // ── 分支感知：只计算当前 Session surface，而不是 append-only log ────────
@@ -172,7 +172,20 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     }
   }
 
-  function memoryForSession(session: MemorySession): (MemoryRecordProjection & { directorNotes: ReturnType<typeof directorNotesForBranch> }) | null {
+  function effectiveHistory(session:MemorySession,view=captureMemoryStoryText(session,getEngine()?.captureStoryText)) {
+    return view.rows(selectedStoryHistorySnapshot(session))
+  }
+  function notesForSession(session:MemorySession,record:unknown,entries=effectiveHistory(session)) {
+    return directorNotesForBranch(record,session,entries,memoryStorySourceKeys(entries))
+  }
+  function cadenceForSession(session:MemorySession) {
+    const engine=getEngine(),entries=effectiveHistory(session)
+    return memoryNotesCadence(session,engine?.memoryHead?.(session.id),
+      Number(engine?.settings?.(session.id)?.autoNotesEveryTurns)||cfg.autoNotesEveryTurns,
+      entries,memoryStorySourceKeys(entries))
+  }
+  function memoryForSession(session: MemorySession,storyText?:MemoryStoryTextView)
+    : (MemoryRecordProjection & { directorNotes: ReturnType<typeof directorNotesForBranch> }) | null {
     const engine = getEngine()
     const storedRecord = engine?.memoryHead?.(session.id) ?? null
     const checkpoint = checkpointSummaryFromSurface(session)
@@ -194,7 +207,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     return {
       ...projected,
       archives,
-      directorNotes: directorNotesForBranch(projected, session),
+      directorNotes: notesForSession(session,projected,effectiveHistory(session,storyText)),
     }
   }
 
@@ -236,8 +249,8 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
         try { await wait(active) } catch (error) { if (signal?.aborted) throw error }
       }
       const covered = () => {
-        const entries = selectedStoryHistorySnapshot(session)
-        const notes = directorNotesForBranch(getEngine()?.memoryHead?.(session.id), session, entries)
+        const entries = effectiveHistory(session)
+        const notes = notesForSession(session,getEngine()?.memoryHead?.(session.id),entries)
         return { entries, notes, complete: entries.length === (notes?.sourceKeys.length ?? 0) }
       }
       let proof = covered()
@@ -251,14 +264,14 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
       if (!proof.complete) throw new Error('窗口检查点未保存完整，保留当前窗口；请重试')
       return { schemaVersion: 1, status: 'ready', branchId: session.id,
         generationId: proof.notes?.generationId ?? null,
-        sourceKeys: historySourceKeys(proof.entries), sourceSeqs: proof.entries.map(entry => entry.seq) }
+        sourceKeys: memoryStorySourceKeys(proof.entries), sourceSeqs: proof.entries.map(entry => entry.seq) }
     },
     async finishTurn(agent: MemoryAgent, signal?: AbortSignal) {
       const session=agent?.session
       await ensureSessionHistory(session, signal)
       if(cfg.autoNotes===false||!session||!isRoleplaySession(session))return null
       scheduleNotes(agent)
-      return memoryNotesCadence(session,getEngine()?.memoryHead?.(session.id),Number(getEngine()?.settings?.(session.id)?.autoNotesEveryTurns)||cfg.autoNotesEveryTurns)
+      return cadenceForSession(session)
     },
     settingsDefaults(){return {autoNotesEveryTurns:cfg.autoNotesEveryTurns,targetContextTokens:cfg.targetContextTokens,archiveTokens:cfg.archiveTokens}},
     async resumeTask(agent: MemoryAgent, signal?: AbortSignal, stage?: string) {
@@ -272,17 +285,25 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     storyEvidence(session: MemorySession | null | undefined) {
       return session && isRoleplaySession(session) ? selectedStoryHistory(session) : []
     },
+    storyEvidenceAt(session:MemorySession|null|undefined,seqs:readonly number[]) {
+      if(!session)return []
+      const native=getEngine()?.readStoryEvidenceAt?.(session,seqs)
+      if(native)return native.agentPreset==='roleplay'&&!native.subagent?native.entries:[]
+      const wanted=new Set(seqs)
+      return isRoleplaySession(session)?selectedStoryHistory(session).filter(entry=>wanted.has(entry.seq)):[]
+    },
     storyEvidenceSnapshot(session: MemorySession | null | undefined) {
-      return session && isRoleplaySession(session) ? selectedStoryHistorySnapshot(session) : []
+      return session && isRoleplaySession(session) ? effectiveHistory(session) : []
     },
     legacyCadenceSlotsFor(session: MemorySession | null | undefined, record?: NotesRecord | null) {
-      return session && isRoleplaySession(session) ? legacyCadenceSlots(selectedStoryHistorySnapshot(session), record) : []
+      return session && isRoleplaySession(session) ? legacyCadenceSlots(effectiveHistory(session), record) : []
     },
     memoryProjection(session: MemorySession | null | undefined) {
       if (!session || !isRoleplaySession(session)) return null
-      const projected = memoryForSession(session)
+      const storyText=captureMemoryStoryText(session,getEngine()?.captureStoryText)
+      const projected = memoryForSession(session,storyText)
       if (!projected) return null
-      const history = selectedStoryHistorySnapshot(session)
+      const history = effectiveHistory(session,storyText)
       const live = new Set([...surfaceSeqsOf(session), ...history.map(entry => entry.seq)])
       const scoped = (items: readonly Record<string, unknown>[]) => (Array.isArray(items) ? items : []).filter(item => {
         const seq = provenanceSeqOf(item)
@@ -292,7 +313,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
       return { ...projected, summary: checkpoint?.text ?? '',
         deltas: scoped(projected.deltas), pendingConfirmations: scoped(projected.pendingConfirmations),
         archiveDigests: scoped(projected.archiveDigests),
-        directorNotes: directorNotesForBranch(getEngine()?.memoryHead?.(session.id), session, history) }
+        directorNotes: notesForSession(session,getEngine()?.memoryHead?.(session.id),history) }
     },
     async prepareForTurn(agent: MemoryAgent, signal?: AbortSignal) {
       const session = agent?.session
@@ -310,8 +331,8 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
         await compact(session, agent, signal, undefined, { manual: false })
       }
       if (cfg.autoNotes !== false) scheduleNotes(agent)
-      const entries = selectedStoryHistorySnapshot(session)
-      const notes = directorNotesForBranch(getEngine()?.memoryHead?.(session.id), session, entries)
+      const entries = effectiveHistory(session)
+      const notes = notesForSession(session,getEngine()?.memoryHead?.(session.id),entries)
       return { schemaVersion: 1, branchId: session.id, generationId: randomUUID(),
         sourceSeqs: entries.map(entry => entry.seq), status: 'ready',
         notesStatus:notes?(notes.pendingEntries?'verified-prefix':'current'):'pending',
@@ -319,7 +340,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     },
     directorNotes(session: MemorySession | null | undefined) {
       if (!session || !isRoleplaySession(session)) return null
-      return directorNotesForBranch(getEngine()?.memoryHead?.(session.id), session)
+      return notesForSession(session,getEngine()?.memoryHead?.(session.id))
     },
     saveDirectorNotes: notesWriter.saveDirectorNotes,
     history(session: MemorySession, options?: Parameters<typeof queryStoryHistory>[1] & { kind?: 'agreements' }) {
@@ -327,11 +348,13 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
       if (options?.kind === 'agreements') {
         return queryMemoryAgreements(session.id, getEngine()?.memoryHead?.(session.id)?.deltas, options)
       }
-      return getEngine()?.retrieval?.search(session,{...options}) ?? queryStoryHistory(session, options)
+      const engine=getEngine()
+      return engine?.retrieval?.search(session,{...options}) ?? queryMemoryStoryHistory(session, options,engine?.captureStoryText)
     },
     historyRead(session: MemorySession, options?: Parameters<typeof readStoryHistory>[1]) {
       if (!session || !isRoleplaySession(session)) throw new Error('当前会话不是角色扮演会话')
-      return getEngine()?.retrieval?.read(session,{...options}) ?? readStoryHistory(session, options)
+      const engine=getEngine()
+      return engine?.retrieval?.read(session,{...options}) ?? readMemoryStoryHistory(session, options,engine?.captureStoryText)
     },
     async organizeNow(agent: MemoryAgent, signal?: AbortSignal, commandId?: unknown) {
       const session = agent?.session
@@ -428,14 +451,22 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
   if (cfg.autoNotes !== false) {
     ctx.on('session/event', (session, event) => {
       if (!isCompletedTurnEnd(event)) return
+      if(getEngine()?.ownsStoryMemoryCompletion?.(session.id))return
       // Notifications must not block native append or start background work
       // before its history is ready. Observation failures leave work retryable.
-      void ensureSessionHistory(session).then(() => scheduleNotes({ session }))
+      void ensureSessionHistory(session).then(() => {
+        captureMemoryStoryText(session,getEngine()?.captureStoryText)
+        scheduleNotes({ session })
+      })
         .catch(error => ctx.logger?.warn?.(`roleplay-memory: history unavailable: ${String(error)}`))
     }, { global: true })
     ctx.on('agent/status', (payload) => {
       if (payload?.status !== 'idle') return
-      void ensureSessionHistory(payload.agent?.session).then(() => scheduleNotes(payload.agent))
+      void ensureSessionHistory(payload.agent?.session).then(() => {
+        const session=payload.agent?.session
+        if(session&&isRoleplaySession(session))captureMemoryStoryText(session,getEngine()?.captureStoryText)
+        scheduleNotes(payload.agent)
+      })
         .catch(error => ctx.logger?.warn?.(`roleplay-memory: history unavailable: ${String(error)}`))
     })
   }

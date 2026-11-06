@@ -93,6 +93,9 @@ export function createCharacterClusterSettings<S extends {
                 schemaVersion: 1,
                 revision: previous.revision + 1,
                 ...clusterSettings(value),
+                // Old foreground-only clients must not erase the separately edited offscreen fields.
+                ...(clusterRecord(value)?.offscreen === undefined && previous.offscreen
+                    ? { offscreen: previous.offscreen } : {}),
                 updatedAt: Date.now()
             };
             await table.put(settingsKey(s), next);

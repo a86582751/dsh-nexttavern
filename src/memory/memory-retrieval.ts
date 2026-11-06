@@ -1,4 +1,5 @@
-import {sessionEvents, ensureSessionHistory} from '../core/session-history.js'
+import {ensureSessionHistory} from '../core/session-history.js'
+import {readSessionClassification} from '../core/roleplay-context.js'
 import { fork, type ChildProcess } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync } from 'node:fs';
@@ -15,6 +16,7 @@ import {
 } from './memory-story-text.js';
 import type { RetrievalReadRow } from './memory-story-text.js';
 import type { StorySession, StoryEvent } from './memory-history.js';
+import type { CaptureRoleplayStoryText } from '../core/roleplay-story-text.js';
 import { LOCAL_MODELS, localTokenBudget } from './memory-local-catalog.js';
 import { boundedJSON } from './memory-embedding-api.js';
 import type {
@@ -53,6 +55,7 @@ interface Settings {
     conversationIndex: Record<string, boolean>;
 }
 interface Dependencies {
+    captureStoryText?: CaptureRoleplayStoryText;
     table: {
         get(key: string): unknown;
         put(key: string, value: unknown): unknown | PromiseLike<unknown>;
@@ -84,10 +87,8 @@ const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 const MODE = ['keyword', 'semantic', 'hybrid'];
 const SETTINGS = 'memory-retrieval-settings-v1';
 function eligible(session: Session) {
-    let preset = session.header?.agentPreset;
-    for (const e of sessionEvents(session))
-        if (e.type === 'agent-preset/selected')
-            preset = e.data?.agentPreset as string | undefined;
+    const classification=readSessionClassification(session);
+    const preset=classification.hasPresetSelection?classification.lastSelectedPreset:session.header?.agentPreset;
     return preset === 'roleplay' && session.header?.origin !== 'subagent';
 }
 const initial = (): Settings => ({
@@ -466,7 +467,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
         if (!sessionEnabled(cfg, session) || !cfg.activeProviderId)
             return;
         await configure(session);
-        const rows = selectedRetrievalRowsSnapshot(session);
+        const rows = selectedRetrievalRowsSnapshot(session, deps.captureStoryText);
         await request({
             action: 'sync', workspace: ws, legacyWorkspace: pathWorkspace(session), sources: vectorSources(session, rows)
         }, 30000);
@@ -568,7 +569,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
                 action: 'status',
                 workspace: ws,
                 legacyWorkspace: pathWorkspace(session),
-                sources: vectorSources(session, selectedRetrievalRowsSnapshot(session))
+                sources: vectorSources(session, selectedRetrievalRowsSnapshot(session, deps.captureStoryText))
             }) as typeof status;
         }
         return {
@@ -629,7 +630,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
         if (worker && configured.get(ws) === generation) {
             try {
                 const reply = await request({
-                    action: 'status', workspace: ws, sources: vectorSources(session, selectedRetrievalRowsSnapshot(session))
+                    action: 'status', workspace: ws, sources: vectorSources(session, selectedRetrievalRowsSnapshot(session, deps.captureStoryText))
                 }, 3000) as {
                     progress: Record<string, unknown>;
                 };
@@ -1007,7 +1008,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
             throw Error('剧情检索只允许玩家输入和有效正文');
         if (!eligible(session) || !deps.active(session))
             throw Error('当前世界线已失效');
-        const rows = selectedRetrievalRowsSnapshot(session), cfg = settings(), mode = modeFor(session, cfg);
+        const rows = selectedRetrievalRowsSnapshot(session, deps.captureStoryText), cfg = settings(), mode = modeFor(session, cfg);
         const keyword = queryRetrievalRows(rows, session.id, options), started = Date.now();
         const p = cfg.providers.find(p => p.id === cfg.activeProviderId);
         if (mode === 'keyword' || !String(options.query ?? '').trim())
@@ -1039,7 +1040,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
                 offset: number;
             }[];
             if (!deps.active(session)
-                || fingerprint !== retrievalSourceFingerprint(selectedRetrievalRowsSnapshot(session))
+                || fingerprint !== retrievalSourceFingerprint(selectedRetrievalRowsSnapshot(session, deps.captureStoryText))
                 || settings().activeProviderId !== p.id
                 || settings().providers.find(x => x.id === p.id)?.revision !== p.revision
                 || settings().chunkChars !== cfg.chunkChars)
@@ -1135,7 +1136,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
         }
         catch (error) {
             if (!deps.active(session)
-                || fingerprint !== retrievalSourceFingerprint(selectedRetrievalRowsSnapshot(session)))
+                || fingerprint !== retrievalSourceFingerprint(selectedRetrievalRowsSnapshot(session, deps.captureStoryText)))
                 throw Error('查询期间来源已变化，请重新查询');
             if (/来源已变化|世界线/.test(String((error as Error).message)))
                 throw error;
@@ -1152,7 +1153,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
                 model: p.name + ' · ' + p.model,
                 reason: String((error as Error).message),
                 key: `${workspace(session)}:${cfg.revision}`,
-                valid: () => thisIsCurrent() && fingerprint === retrievalSourceFingerprint(selectedRetrievalRowsSnapshot(session)),
+                valid: () => thisIsCurrent() && fingerprint === retrievalSourceFingerprint(selectedRetrievalRowsSnapshot(session, deps.captureStoryText)),
                 confirm: () => mutate(session, {
                     action: 'rebuild-index', expectedRevision: cfg.revision, confirmProviderId: p.id
                 })
@@ -1175,7 +1176,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
             throw Error('当前世界线已失效');
         if (options.scope && options.scope !== 'story')
             throw Error('只允许正文回读');
-        return readRetrievalRows(selectedRetrievalRowsSnapshot(session), options);
+        return readRetrievalRows(selectedRetrievalRowsSnapshot(session, deps.captureStoryText), options);
     }
     /** A separate workspace namespace keeps novel research out of story sources, scans and clear/rebuild operations. */
     async function adaptation(

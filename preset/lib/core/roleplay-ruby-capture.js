@@ -14,7 +14,9 @@ export function createRoleplayRubyCaptureV1(deps) {
                 return { configurationStatus: 'uninitialized', configurationIssues: [] };
             const raw = original.contributionInput.rawDecoded.data.extensions?.RubyAnalyzer, configuration = readRubyConfigurationV1(raw, { ownerId: id, sourcePath: '/data/extensions/RubyAnalyzer',
                 version: recordSha256(raw ?? null) });
-            return { configurationStatus: configuration.status, configurationIssues: configuration.issues };
+            return { configurationStatus: configuration.status, configurationIssues: configuration.issues,
+                tasks: configuration.tasks.map(task => ({ taskKey: task.taskKey, name: task.displayName, enabled: task.enabled,
+                    cyclePositions: task.cyclePositions, useReferences: task.useReferences, useOutputs: task.useOutputs })) };
         }, 'ruby-configuration-summary').data;
     }
     async function capture(id, signal) {

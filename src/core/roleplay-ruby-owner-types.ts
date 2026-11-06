@@ -41,6 +41,8 @@ export interface RubyRunV1 {
   readonly promptRef?:{readonly key:string;readonly sha256:string}
   readonly promptPlanSha256?:string
   readonly taskId?:string
+  readonly execution?:Pick<import('./tavern-task-types.js').TaskJob,'id'|'generation'|'actualRoute'>
+  readonly publicationRef?:RubyOutputHeadV1['ref']
 }
 export interface RubyOwnerStateV1 {
   readonly schemaVersion:1

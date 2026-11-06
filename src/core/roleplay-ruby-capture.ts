@@ -1,6 +1,6 @@
 /** One Source/history read for Ruby. Explicit lookups retain raw book order,
  * disabled entries and current author content; no evaluator activates them. */
-import type {Session,SessionMessageProjection} from '@deepseek-ai/dsh-session'
+import type {Session,SessionMessageProjection} from 'dsh-nexttavern-native-session'
 import {recordSha256} from './roleplay-data.js'
 import {captureRoleplayTavernPromptSourceDataV1} from './roleplay-tavern-prompt-source.js'
 import {captureReadonlyAuthorDialogChatClockV1} from './roleplay-tavern-chat-clock.js'
@@ -42,7 +42,9 @@ export function createRoleplayRubyCaptureV1(deps:Dependencies) {
       const raw=(original.contributionInput.rawDecoded.data.extensions as Readonly<Record<string,unknown>>|undefined)?.RubyAnalyzer,
         configuration=readRubyConfigurationV1(raw,{ownerId:id,sourcePath:'/data/extensions/RubyAnalyzer',
           version:recordSha256(raw??null)})
-      return {configurationStatus:configuration.status,configurationIssues:configuration.issues}
+      return {configurationStatus:configuration.status,configurationIssues:configuration.issues,
+        tasks:configuration.tasks.map(task=>({taskKey:task.taskKey,name:task.displayName,enabled:task.enabled,
+          cyclePositions:task.cyclePositions,useReferences:task.useReferences,useOutputs:task.useOutputs}))}
     },'ruby-configuration-summary').data
   }
   async function capture(id:string,signal:AbortSignal):Promise<RubySourceCaptureV1|undefined> {

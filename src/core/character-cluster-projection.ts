@@ -7,6 +7,24 @@ export interface CharacterSettings {
   enabled: boolean
   defaultRoute: CharacterRoute | null
   characters: Record<string, CharacterRoute | null>
+  offscreen?: CharacterOffscreenSettings
+}
+
+export interface CharacterOffscreenSettings {
+  enabled: boolean
+  maxCharacters: number
+  /** null inherits the cluster default, independently of per-character foreground overrides. */
+  route: CharacterRoute | null
+}
+
+export function offscreenSettings(raw: unknown): CharacterOffscreenSettings {
+  if (raw == null) return { enabled: false, maxCharacters: 2, route: null }
+  const value = Object(raw) as Record<string, unknown>
+  if (typeof value.enabled !== 'boolean') throw new Error('必须指定场外推理开关')
+  const maxCharacters = value.maxCharacters ?? 2
+  if (typeof maxCharacters !== 'number' || !Number.isSafeInteger(maxCharacters) || maxCharacters < 1)
+    throw new Error('每批最多人数必须为正整数')
+  return { enabled: value.enabled, maxCharacters, route: clusterRoute(value.route) }
 }
 
 export function clusterRoute(raw: unknown): CharacterRoute | null {
@@ -26,9 +44,10 @@ export function clusterSettings(raw: unknown): CharacterSettings {
   const characters: Record<string, CharacterRoute | null> = {}
   for (const [id, route] of Object.entries(Object(value.characters ?? {}) as Record<string, unknown>)) {
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id)) throw new Error('人物 ID 无效')
-    characters[id] = clusterRoute(route)
+    Object.defineProperty(characters, id, {value: clusterRoute(route), enumerable: true, writable: true, configurable: true})
   }
-  return { enabled: value.enabled, defaultRoute: clusterRoute(value.defaultRoute), characters }
+  return { enabled: value.enabled, defaultRoute: clusterRoute(value.defaultRoute), characters,
+    ...(value.offscreen === undefined ? {} : { offscreen: offscreenSettings(value.offscreen) }) }
 }
 
 export interface CharacterInputSource {

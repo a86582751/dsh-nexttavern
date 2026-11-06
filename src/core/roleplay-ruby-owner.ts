@@ -1,7 +1,7 @@
 /** Owns Ruby's serial scheduling and derived DATA. The existing TaskHost and
  * Native child own requests, cancellation, completion and durable task jobs. */
-import type {NativeInputAdmissionHookV2} from '@deepseek-ai/dsh-agent-loop'
-import type {OwnedRubyTaskOwnerV1} from '@deepseek-ai/dsh-subagent'
+import type {NativeInputAdmissionHookV2} from 'dsh-nexttavern-native-agent-loop'
+import type {OwnedRubyTaskOwnerV1} from 'dsh-nexttavern-native-subagent'
 import type {TaskJob} from './tavern-task-types.js'
 import type {RubyAnalysisPromptV1,RubyAnalysisResultV1} from './roleplay-ruby-task-types.js'
 import type {RubySourceCaptureV1} from './roleplay-ruby-capture.js'
@@ -55,6 +55,9 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
   type SourceView={capture:RubySourceCaptureV1;users:number;owner:boolean}
   const sources=new Map<string,SourceView>(),sourceViews=new Set<SourceView>()
   const knownOutputs=new Map<string,RubyPublishedOutputV1>()
+  // Owner writes replace this immutable map. Reuse its index on unchanged hot
+  // status reads; cold/new durable state builds it once, without result bodies.
+  const runIndexes=new WeakMap<RubyOwnerStateV1['runs'],[string,RubyRunV1][]>()
   let disposed=false
   const enabled=(sid:string)=>(deps.table.get(rubyEnablementKeyV1(sid)) as RubyEnablementV1|undefined)?.enabled!==false
   const state=(sid:string)=>deps.table.get(rubyOwnerStateKeyV1(sid)) as RubyOwnerStateV1|undefined
@@ -145,12 +148,13 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
       async onStop(notice){active=false;return {schemaVersion:1,stopSequence:notice.stopSequence,
         stopNonce:notice.stopNonce,kind:'acknowledged'}}}
   }
-  async function execute(sid:string,run:RubyRunV1,signal:AbortSignal,retry?:true) {
+  async function execute(sid:string,run:RubyRunV1,signal:AbortSignal,retry?:true,borrowed?:RubySourceCaptureV1) {
     assertAlive(sid,signal)
-    const capture=await deps.capture(sid,signal)
+    const capture=borrowed??await deps.capture(sid,signal)
     if(!capture)return
     try {
       const assertCurrent=()=>{assertAlive(sid,signal);capture.assertCurrent()},previous=state(sid)!
+      assertCurrent()
       if(previous.sourceIdentitySha256!==capture.sourceIdentitySha256)throw Error('RUBY_SOURCE_OWNER_CHANGED')
       let input:RubyTaskInputCaptureV1,plan:NonNullable<RubyRunV1['promptRef']>,
         snapshot:RubyOrderedMessagePlanV1['input'],promptPlanSha256:string
@@ -224,12 +228,17 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
           promptPlanSha256,snapshot,plan,orderedMessages:input.messages.map(message=>({role:message.role,text:message.content})),
           ...(input.mainInputMessageIndex!==undefined?{mainInputMessageIndex:input.mainInputMessageIndex}:{})}
       const queued:RubyRunV1={task:run.task,trigger:run.trigger,status:'queued',promptRef:plan,promptPlanSha256,
+        ...(run.execution?{execution:run.execution}:{}),
         ...(run.taskId?{taskId:run.taskId}:{})}
       await save(sid,{...previous,runs:{...previous.runs,[runKey(run)]:queued}},assertCurrent,signal)
+      let execution=run.execution
       try {
         const result=await deps.request({capture,prompt,signal,current:()=>{
           try {assertCurrent();return true}catch{return false}
-        },createOwner:job=>createChildOwner(capture,prompt,job,signal),...(retry?{retry}:{})})
+        },createOwner:job=>{
+          execution={id:job.id,generation:job.generation,actualRoute:{...job.actualRoute}}
+          return createChildOwner(capture,prompt,job,signal)
+        },...(retry?{retry}:{})})
         assertCurrent()
         const prepared=prepareRubyAnalysisOutputV1(input,run.task,result.text)
         if(prepared.kind!=='prepared')throw Error(prepared.code)
@@ -253,17 +262,18 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
           await deps.table.put(rubyOwnerStateKeyV1(sid),freeze({...actual,revision:actual.revision+1,
             cursor:advanceRubyBookmarkAfterPublicationV1(actual.cursor,prepared.output.bookmark),
             outputs:{...actual.outputs,[run.task.outputKey||run.task.outputVarName]:{ref}},
-            runs:{...actual.runs,[runKey(run)]:{...queued,status:'published',taskId:result.completion.taskId}}}))
+            runs:{...actual.runs,[runKey(run)]:{...queued,status:'published',taskId:result.completion.taskId,
+              execution,publicationRef:ref}}}))
         },signal)
       }catch(error) {
         // A revoked Source/cancelled request cannot publish even a failure
         // into its successor. Ordinary failure remains an explicit retry row.
         assertCurrent()
-        const actual=state(sid)!,failed:RubyRunV1={...queued,status:'failed',reason:String((error as Error).message),
+        const actual=state(sid)!,failed:RubyRunV1={...queued,status:'failed',execution,reason:String((error as Error).message),
           ...((error as {rubyTaskId?:string}).rubyTaskId?{taskId:(error as {rubyTaskId:string}).rubyTaskId}:{})}
         await save(sid,{...actual,runs:{...actual.runs,[runKey(run)]:failed}},assertCurrent,signal)
       }
-    }finally{capture.release()}
+    }finally{if(!borrowed)capture.release()}
   }
   async function settle(sid:string,parentSignal:AbortSignal):Promise<void> {
     const existing=running.get(sid)
@@ -297,7 +307,9 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
         if(!previous||recordSha256(next)!==recordSha256(previous))await save(sid,next,assertCurrent,signal)
         remember(capture)
       }catch(error){capture.release();throw error}
-      for(const run of due)await execute(sid,run,signal)
+      // The selected Source stays frozen across this serial batch. Each task
+      // still reads the latest accepted owner outputs through chatBook above.
+      for(const run of due)await execute(sid,run,signal,undefined,capture)
     })().catch(error=>{
       // All settlers share this promise. Turning off optional Ruby must let
       // their player input proceed; player Stop and disposal still propagate.
@@ -356,7 +368,7 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
   async function retry(sid:string,key:string,signal:AbortSignal):Promise<void> {
     if(running.has(sid))throw Error('RUBY_ANALYSIS_BUSY')
     const run=state(sid)?.runs[key]
-    if(!run||run.status!=='failed')throw Error('RUBY_FAILED_TASK_UNAVAILABLE')
+    if(!run||(run.status!=='failed'&&!(run.status==='queued'&&run.promptRef)))throw Error('RUBY_FAILED_TASK_UNAVAILABLE')
     const controller=new AbortController(),combined=AbortSignal.any([signal,controller.signal]),
       promise=execute(sid,run,combined,true).catch(error=>{
         if(error===disabledReason&&!signal.aborted&&!disposed)return
@@ -365,15 +377,51 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
     running.set(sid,operation)
     try{await promise}finally{if(running.get(sid)===operation)running.delete(sid)}
   }
-  function status(sid:string) {
+  function effectiveness(actual:RubyOwnerStateV1,run:RubyRunV1):'current'|'superseded'|undefined {
+    if(run.status!=='published')return undefined
+    const head=actual.outputs[run.task.outputKey||run.task.outputVarName]?.ref
+    if(!head)return 'superseded'
+    if(run.publicationRef)return head.key===run.publicationRef.key&&head.sha256===run.publicationRef.sha256
+      &&head.ownerId===run.publicationRef.ownerId?'current':'superseded'
+    const value=deps.table.get(head.key) as RubyPublishedOutputV1|undefined
+    return value?.completionRef.taskId===run.taskId?'current':'superseded'
+  }
+  function status(sid:string,page?:{offset:number;limit:number}) {
     const actual=state(sid),settings=deps.table.get(rubyEnablementKeyV1(sid)) as RubyEnablementV1|undefined
+    let allRuns=actual?runIndexes.get(actual.runs):undefined
+    if(!allRuns){allRuns=Object.entries(actual?.runs??{});if(actual)runIndexes.set(actual.runs,allRuns)}
+    const total=allRuns.length,
+      limit=page?Math.max(1,Math.floor(page.limit)):total,
+      offset=page?Math.min(Math.max(0,Math.floor(page.offset)),Math.max(0,Math.ceil(total/limit)-1)*limit):0,
+      end=total-offset,selected=page?allRuns.slice(Math.max(0,end-limit),end):allRuns
     return {enabled:settings?.enabled!==false,revision:settings?.revision??0,busy:running.has(sid),
       configurationStatus:actual?.configuration.status??'uninitialized',configurationIssues:actual?.configuration.issues??[],
       cycleBaseline:actual?.cursor.baseline??null,
-      runs:Object.entries(actual?.runs??{}).map(([key,run])=>({key,taskName:run.task.displayName,
+      ...(page?{runPage:{offset,limit,total}}:{}),
+      outputs:Object.entries(actual?.outputs??{}).map(([key,head])=>{
+        const value=deps.table.get(head.ref.key) as RubyPublishedOutputV1
+        return {outputKey:key,sourceOrdinal:value.output.sourceOrdinal,ownerSessionId:head.ref.ownerId,
+          inherited:head.ref.ownerId!==sid,publication:'accepted' as const,effectiveness:'current' as const,
+          injectionTarget:value.output.entry?'derived-worldbook' as const:'owner-output' as const}
+      }),
+      runs:selected.map(([key,run])=>({key,taskName:run.task.displayName,
         taskKey:run.task.taskKey,sourceOrdinal:run.trigger.sourceOrdinal,status:run.status,reason:run.reason,
-        taskId:run.taskId,normalRequests:run.status==='published'?1:undefined})),
+        taskId:run.taskId,actualRoute:run.execution?.actualRoute,materialReady:!!run.promptRef,
+        cyclePositions:run.task.cyclePositions,useReferences:run.task.useReferences,useOutputs:run.task.useOutputs,
+        publication:run.status==='published'?'accepted':undefined,
+        effectiveness:actual?effectiveness(actual,run):undefined,
+        interrupted:run.status==='queued'&&!running.has(sid),
+        injectionTarget:run.status==='published'?(run.task.outputKey?'derived-worldbook':'owner-output'):undefined})),
       affectedCapability:'Ruby动态分析与输出世界书；关闭后保留已完成记录并停止注入'}
+  }
+  /** Explicit detail read; status never loads every saved result body. */
+  function result(sid:string,key:string) {
+    const actual=state(sid),run=actual?.runs[key]
+    if(!run?.publicationRef)return undefined
+    const value=published({ref:run.publicationRef})
+    return {taskName:run.task.displayName,sourceOrdinal:run.trigger.sourceOrdinal,
+      publication:'accepted' as const,effectiveness:effectiveness(actual!,run),content:value.output.content,
+      actualRoute:run.execution?.actualRoute,completionRef:value.completionRef}
   }
   async function restoreHeads(sid:string,signal:AbortSignal) {
     if(!enabled(sid)||!Object.keys(state(sid)?.outputs??{}).length)return
@@ -428,5 +476,5 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
     sources.clear();sourceViews.clear()
     knownOutputs.clear()
   }
-  return {settle,snapshot,setEnabled,retry,status,restoreHeads,inherit,dispose}
+  return {settle,snapshot,setEnabled,retry,status,result,restoreHeads,inherit,dispose}
 }

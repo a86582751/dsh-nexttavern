@@ -111,17 +111,28 @@ export function adaptationToolResult(value: unknown): {text:string;failed:boolea
   return {text:(result.content as unknown[]).flatMap(b=>record(b)&&b.type==='text'&&typeof b.text==='string'?[b.text]:[]).join('\n'),failed:value.isError===true||result.isError===true}
 }
 /** Only a successful, explicit adaptation start opens research mode. Never infer it from novel/user text. */
-function adaptationActivity(events: readonly {type:string;data?:{turn?:unknown;name?:unknown;id?:unknown;callId?:unknown;message?:unknown}}[]) {
-  const turns=new Set<number>(),pending=new Map<string,{name:string;turn:number}>(),closing=new Map<string,{name:string;turn:number}>();let active=false,turn=-1
-  for(const e of events){
-    if(e.type==='turn/start'){turn=Number(e.data?.turn);if(active)turns.add(turn)}
+export interface AdaptationActivityEvent {type:string;data?:{turn?:unknown;name?:unknown;id?:unknown;callId?:unknown;message?:unknown}}
+export function createAdaptationActivityCursor() {
+  const turns=new Set<number>(),pending=new Map<string,{name:string;turn:number}>(),closing=new Map<string,{name:string;turn:number}>()
+  let active=false,turn=-1
+  let changed=new Set<number>()
+  function mark(value:number,present=true) {
+    if(present?!turns.has(value):turns.has(value))changed.add(value)
+    if(present)turns.add(value);else turns.delete(value)
+  }
+  function advance(e:AdaptationActivityEvent) {
+    changed=new Set()
+    if(e.type==='turn/start'){turn=Number(e.data?.turn);if(active)mark(turn)}
     const callId=e.data?.callId??e.data?.id
     const name=String(e.data?.name)
-    if(e.type==='tool/call'&&['rp_source_begin','rp_source_library'].includes(name)&&typeof callId==='string')pending.set(callId,{name,turn:Number(e.data?.turn??turn)})
+    if(e.type==='tool/call'&&['rp_source_begin','rp_source_library'].includes(name)&&typeof callId==='string') {
+      pending.set(callId,{name,turn:Number(e.data?.turn??turn)})
+    }
     // A source-status consultation is a management turn even though it does
     // not open persistent research mode or constrain later original writing.
-    if(e.type==='tool/call'&&/^rp_source_/.test(name))turns.add(Number(e.data?.turn??turn))
-    if(e.type==='tool/call'&&['rp_commit_card','rp_card_import_begin','rp_source_close'].includes(String(e.data?.name))&&typeof callId==='string')closing.set(callId,{name:String(e.data?.name),turn:Number(e.data?.turn??turn)})
+    if(e.type==='tool/call'&&/^rp_source_/.test(name))mark(Number(e.data?.turn??turn))
+    if(e.type==='tool/call'&&['rp_commit_card','rp_card_import_begin','rp_source_close'].includes(String(e.data?.name))
+      &&typeof callId==='string')closing.set(callId,{name:String(e.data?.name),turn:Number(e.data?.turn??turn)})
     if(e.type==='tool/result'){
       const message=e.data?.message as {source?:{callId?:string};isError?:boolean;content?:{text?:string}[]}|undefined
       const resultId=message?.source?.callId
@@ -130,45 +141,51 @@ function adaptationActivity(events: readonly {type:string;data?:{turn?:unknown;n
         pending.delete(resultId!)
         try{const proof=adaptationToolResult(message),result=proof&&!proof.failed?JSON.parse(proof.text):null
           // begin freezes/chooses a source; library only starts after an explicit attach.
-          if(result?.sourceId&&(start.name==='rp_source_begin'||result?.attached===true)){active=true;turns.add(start.turn)}
+          if(result?.sourceId&&(start.name==='rp_source_begin'||result?.attached===true)){active=true;mark(start.turn)}
         }catch{}
       }
       const close=resultId?closing.get(resultId):undefined
       if(close){
         closing.delete(resultId!)
         // Failed or unproven commits must retain research isolation and allow recovery.
-        try{const proof=adaptationToolResult(message),result=proof&&!proof.failed?JSON.parse(proof.text):null;if(result?.ok===true&&(close.name!=='rp_source_close'||['roleplay','authoring'].includes(result.mode))){active=false;turns.delete(close.turn)}}catch{}
+        try {
+          const proof=adaptationToolResult(message),result=proof&&!proof.failed?JSON.parse(proof.text):null
+          if(result?.ok===true&&(close.name!=='rp_source_close'||['roleplay','authoring'].includes(result.mode))) {
+            active=false;mark(close.turn,false)
+          }
+        } catch {}
       }
     }
+    return changed as ReadonlySet<number>
   }
-  return {turns,active}
+  return {turns,get active(){return active},advance}
+}
+function adaptationActivity(events:readonly AdaptationActivityEvent[]) {
+  const cursor=createAdaptationActivityCursor()
+  for(const event of events)cursor.advance(event)
+  return {turns:cursor.turns,active:cursor.active}
 }
 export const adaptationTurns=(events:Parameters<typeof adaptationActivity>[0])=>adaptationActivity(events).turns
 export const adaptationIsActive=(events:Parameters<typeof adaptationActivity>[0])=>adaptationActivity(events).active
 
 /** A questionnaire need not end a native turn. Only a verified activation and
  * its selected program opening phase can end management isolation mid-turn. */
-export function importedStoryProjection(events:readonly {seq:number;type:string;data?:{turn?:unknown;message?:unknown;source?:unknown};sourceEventSeqs?:unknown}[],nodes:readonly number[]) {
-  const visible=new Set(nodes),selected=new Set(nodes),bySeq=new Map(events.map(e=>[e.seq,e]));
-  const pending=[...nodes];
-  for(let i=0;i<pending.length;i++){
-    const event=bySeq.get(pending[i]!),source=record(event?.data?.source)?event.data.source:null;
-    if(event?.type!=='user/message'||source?.kind!=='roleplay-tasks'||source.form!=='management-receipt'||!Array.isArray(event.sourceEventSeqs))continue;
-    for(const seq of event.sourceEventSeqs)if(bySeq.has(seq)&&!selected.has(seq)){selected.add(seq);pending.push(seq)}
-  }
+export interface ImportedStoryEvent {seq:number;type:string;data?:{turn?:unknown;message?:unknown;source?:unknown};sourceEventSeqs?:unknown}
+/** Shared interpreter: callers own the exact visible/receipt-ancestry cut. */
+export function createImportedStorySelectionCursor(visible:(seq:number)=>boolean,selected:(seq:number)=>boolean) {
   const prose=new Set<number>(),boundaries:{turn:number;finalizeSeq:number;storyPhaseSeq:number;importId:string;normalizedSha256:string}[]=[];
   const calls=new Map<string,{name:string;turn:number}>();
   let turn=-1,begin:{id:string;hash:string}|null=null,final:{id:string;hash:string;seq:number}|null=null,story=false;
-  for(const event of events){
+  function advance(event:ImportedStoryEvent) {
     if(event.type==='turn/start'){turn=Number(event.data?.turn);begin=null;final=null;story=false;calls.clear()}
     const message=record(event.data?.message)?event.data.message:null,source=record(event.data?.source)?event.data.source:null;
-    if(event.type==='assistant/message'&&selected.has(event.seq)&&Array.isArray(message?.content))for(const block of message.content){
+    if(event.type==='assistant/message'&&selected(event.seq)&&Array.isArray(message?.content))for(const block of message.content){
       if(!record(block)||block.type!=='tool-call'||typeof block.id!=='string'||typeof block.name!=='string')continue;
       if(/^(?:rp_card_|rp_source_|rp_preset$|rp_diagnose$)/.test(block.name))story=false;
       if(block.name==='rp_card_import_begin'){begin=null;final=null}
       if(['rp_card_import_begin','rp_card_import_finalize'].includes(block.name))calls.set(block.id,{name:block.name,turn});
     }
-    if(event.type==='tool/result'&&selected.has(event.seq)&&record(message?.source)){
+    if(event.type==='tool/result'&&selected(event.seq)&&record(message?.source)){
       const call=typeof message.source.callId==='string'?calls.get(message.source.callId):undefined;
       if(call&&call.turn===turn){
         calls.delete(String(message.source.callId));
@@ -176,16 +193,69 @@ export function importedStoryProjection(events:readonly {seq:number;type:string;
         try{proof=decoded&&!decoded.failed?JSON.parse(decoded.text):null}catch{proof=null}
         if(record(proof)&&proof.ok===true&&typeof proof.importId==='string'&&/^[a-f0-9]{64}$/.test(String(proof.normalizedSha256))){
           if(call.name==='rp_card_import_begin')begin={id:proof.importId,hash:String(proof.normalizedSha256)};
-          else if(begin?.id===proof.importId&&begin.hash===proof.normalizedSha256&&proof.coverage===1&&typeof proof.activatedAt==='number'&&Number.isFinite(proof.activatedAt)&&proof.activatedAt>0)final={...begin,seq:event.seq};
+          else if(begin?.id===proof.importId&&begin.hash===proof.normalizedSha256&&proof.coverage===1
+            &&typeof proof.activatedAt==='number'&&Number.isFinite(proof.activatedAt)&&proof.activatedAt>0) {
+            final={...begin,seq:event.seq};
+          }
         }
       }
     }
-    if(event.type==='user/message'&&visible.has(event.seq)&&source?.kind==='roleplay-tasks'&&source.form==='phase'){
+    if(event.type==='user/message'&&visible(event.seq)&&source?.kind==='roleplay-tasks'&&source.form==='phase'){
       story=source.stage==='story'&&!!final&&source.openingImportId===final.id&&event.seq>final.seq;
       if(story&&final)boundaries.push({turn,finalizeSeq:final.seq,storyPhaseSeq:event.seq,importId:final.id,normalizedSha256:final.hash});
     }
-    if(story&&visible.has(event.seq)&&event.type==='assistant/message'&&Number(event.data?.turn)===turn&&Array.isArray(message?.content)&&!message.content.some(b=>record(b)&&b.type==='tool-call')&&textOf(message.content).trim())prose.add(event.seq);
+    if(story&&visible(event.seq)&&event.type==='assistant/message'&&Number(event.data?.turn)===turn
+      &&Array.isArray(message?.content)&&!message.content.some(b=>record(b)&&b.type==='tool-call')
+      &&textOf(message.content).trim())prose.add(event.seq);
     if(event.type==='turn/end'){story=false;begin=null;final=null;calls.clear()}
   }
-  return {prose,boundaries};
+  return {prose,boundaries,advance};
+}
+export function importedStoryProjection(events:readonly ImportedStoryEvent[],nodes:readonly number[]) {
+  const bySeq=new Map(events.map(event=>[event.seq,event])),selection=createImportedStorySelectionIndex(seq=>bySeq.get(seq))
+  for(const seq of nodes)selection.setVisible(seq,true)
+  const cursor=createImportedStorySelectionCursor(selection.visible,selection.selected)
+  for(const event of events)cursor.advance(event)
+  return {prose:cursor.prose,boundaries:cursor.boundaries};
+}
+/** Receipt ancestry is an accepted Native DAG (all cited seqs precede the
+ * receipt). Removing one root retains ancestors still selected by another. */
+export function createImportedStorySelectionIndex(eventAt:(seq:number)=>ImportedStoryEvent|undefined) {
+  const visible=new Set<number>(),selected=new Set<number>(),references=new Map<number,number>()
+  function changeVisible(removed:readonly number[],added:readonly number[]):ReadonlySet<number> {
+    const changed=new Set<number>(),inserted:number[]=[],deleted:number[]=[]
+    function visibleChanged(seq:number) {
+      const event=eventAt(seq),source=record(event?.data?.source)?event.data.source:null
+      if(event?.type==='assistant/message'||event?.type==='user/message'
+        &&source?.kind==='roleplay-tasks'&&source.form==='phase')changed.add(seq)
+    }
+    for(const seq of added)if(!visible.has(seq)){visible.add(seq);inserted.push(seq);visibleChanged(seq)}
+    for(const seq of removed)if(visible.has(seq)){visible.delete(seq);deleted.push(seq);visibleChanged(seq)}
+    function update(roots:readonly number[]) {
+      const queue=[...roots]
+      for(let index=0;index<queue.length;index++) {
+        const target=queue[index]!
+        const next=visible.has(target)||(references.get(target)??0)>0
+        if(next===selected.has(target))continue
+        if(next)selected.add(target);else selected.delete(target)
+        changed.add(target)
+        const event=eventAt(target),source=record(event?.data?.source)?event.data.source:null
+        if(event?.type!=='user/message'||source?.kind!=='roleplay-tasks'
+          ||source.form!=='management-receipt'||!Array.isArray(event.sourceEventSeqs))continue
+        for(const child of event.sourceEventSeqs)if(typeof child==='number'&&eventAt(child)) {
+          const count=(references.get(child)??0)+(next?1:-1)
+          if(count)references.set(child,count);else references.delete(child)
+          queue.push(child)
+        }
+      }
+    }
+    // A replacement receipt may retain its old root as ancestry. Establish
+    // new roots before retiring old ones so unchanged ancestry is not replayed.
+    update(inserted);update(deleted)
+    return changed
+  }
+  return {
+    visible:(seq:number)=>visible.has(seq),selected:(seq:number)=>selected.has(seq),changeVisible,
+    setVisible:(seq:number,present:boolean)=>present?changeVisible([],[seq]):changeVisible([seq],[]),
+  }
 }

@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { estimateTokens, durableSeq, textOf } from './memory-provenance.js'
-import { surfaceSeqsOf, contentOfEvent, importManagementInputs, isStoryEvent, isCompletedTurnEnd, canonicalAssistantSeqsOf, selectedStoryHistorySnapshot, historySourceKeys, isCompactedStoryEvent, type StorySession, type StoryEvent, type NotesRecord } from './memory-history.js'
+import { surfaceSeqsOf, contentOfEvent, importManagementInputs, isStoryEvent, isCompletedTurnEnd, canonicalAssistantSeqsOf, selectedStoryHistorySnapshot, isCompactedStoryEvent, type StorySession, type StoryEvent, type NotesRecord } from './memory-history.js'
 import { validateDetailedSummary, type SummaryOptions, type SummaryResult } from './memory-summary.js'
 import { projectStoryEvent, type StorySurfaceReplacement } from '../core/roleplay-message-view.js'
 import {sessionEvents} from '../core/session-history.js'
+import {captureMemoryStoryText,memoryStorySourceKeys,type MemoryStoryTextView} from './memory-story-text.js'
+import type {CaptureRoleplayStoryText} from '../core/roleplay-story-text.js'
 
 export interface CompactionEvent extends StoryEvent {
   data?: NonNullable<StoryEvent['data']> & { shadowedRange?: unknown }
@@ -33,6 +35,7 @@ export interface CompactionMemory extends NotesRecord {
   archives?: readonly unknown[]
 }
 export interface CompactionEngine {
+  captureStoryText?:CaptureRoleplayStoryText
   memoryHead?: (sessionId: string) => unknown
   awaitCommitted?: (sessionId: string) => unknown | Promise<unknown>
   memoryUpdate?: (sessionId: string, patch: Record<string, unknown>) => unknown | Promise<unknown>
@@ -46,7 +49,7 @@ export interface CheckpointMessage extends Record<string, unknown> {
 export interface CompactionOptions<S extends CompactionSession> {
   config: CompactionSettings
   getEngine: () => CompactionEngine | null | undefined
-  memoryForSession: (session: S) => CompactionMemory | null | undefined
+  memoryForSession: (session: S,storyText?:MemoryStoryTextView) => CompactionMemory | null | undefined
   branchSettings: (session: S) => CompactionSettings | null | undefined
   assertBranchActive: (session: S) => void
   summarizeDetailed: (options: SummaryOptions<S>) => Promise<SummaryResult>
@@ -324,14 +327,14 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
 
   // ── 单次压缩 ──────────────────────────────────────────────────────────────
 
-  function storyTextForSeqs(session: S, seqs: readonly number[]) {
+  function storyTextForSeqs(session: S, seqs: readonly number[],storyText:MemoryStoryTextView) {
     const log = eventsOf(session)
     return seqs.map((seq) => {
       const original = log[seq]
       const event = original ? projectStoryEvent(session, original) : undefined
       if (!isStoryEvent(event)) return ''
       const role = event.type === 'user/message' ? '用户' : '叙事者'
-      return `\n[${role} · seq:${seq}]\n${textOf(contentOfEvent(event))}`
+      return `\n[${role} · seq:${seq}]\n${storyText.text(seq,textOf(contentOfEvent(event)))}`
     }).filter(Boolean).join('\n')
   }
 
@@ -346,15 +349,16 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
     }
   }
 
-  function reusableSummary(session: S, range: ArchiveRange, mem: CompactionMemory, sourceText: string, locked: readonly unknown[]): CompactionSummary | null {
+  function reusableSummary(session: S, range: ArchiveRange, mem: CompactionMemory, sourceText: string,
+    locked: readonly unknown[],storyText:MemoryStoryTextView): CompactionSummary | null {
     if (mem.directorNotes?.manual === true) return null
     const selected = {
       id: session.id, header: session.header, events: eventsOf(session),
       surface: { nodes: range.shadowedSeqs, contentGeneration: session.surface?.contentGeneration },
       deriveEventMessage: session.deriveEventMessage?.bind(session),
     }
-    const history = selectedStoryHistorySnapshot(selected)
-    const expected = historySourceKeys(history)
+    const history = storyText.rows(selectedStoryHistorySnapshot(selected))
+    const expected = memoryStorySourceKeys(history)
     if (!expected.length) return null
     const candidates = [mem.directorNotes, ...(Array.isArray(mem.directorCheckpoints) ? mem.directorCheckpoints.toReversed() : [])]
     for (const candidate of candidates) {
@@ -403,9 +407,10 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
 
       // 只读取当前 surface 中本次选中的真实 user/assistant 剧情；工具结果、
       // 未选分支、角色卡/世界书存储与插件检查点不进入剧情摘要。
-      const sourceText = storyTextForSeqs(session, range.storySeqs)
+      let storyText=captureMemoryStoryText(session,engine.captureStoryText)
+      const sourceText = storyTextForSeqs(session, range.storySeqs,storyText)
       if (!sourceText.trim()) throw new Error('归档区间没有可用原文')
-      const mem = memoryForSession(session) ?? {}
+      const mem = memoryForSession(session,storyText) ?? {}
       // lockedFacts() 会把角色卡/世界书也聚合进来；记忆压缩不得复制这些
       // 独立材料，只保留用户在记忆账本中显式锁定的剧情事实。
       const locked = Array.isArray(mem.lockedFacts) ? mem.lockedFacts : []
@@ -429,7 +434,7 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
       const timeoutMs = manual
         ? Math.max(30000, Number(settings?.summaryTimeoutMs ?? cfg.summaryTimeoutMs) || 300000)
         : Math.max(1000, Math.min(60000, Number(cfg.autoTimeoutMs) || 30000))
-      const summaryResult: CompactionSummary = reusableSummary(session, range, mem, sourceText, locked) ?? await summarizeDetailed({
+      const summaryResult: CompactionSummary = reusableSummary(session, range, mem, sourceText, locked,storyText) ?? await summarizeDetailed({
         taskStage:'compaction',
         session,
         previousSummary: prevSummary,
@@ -469,7 +474,8 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
       assertSelectedSurfaceStable(session, range)
       // Edits preserve nodes/seq. A summary created from an older body must
       // never replace the newly edited text after the model request returns.
-      if (storyTextForSeqs(session, range.storySeqs) !== sourceText) {
+      storyText=captureMemoryStoryText(session,engine.captureStoryText,storyText)
+      if (storyTextForSeqs(session, range.storySeqs,storyText) !== sourceText) {
         throw new Error('整理期间归档正文已编辑，请重试')
       }
       assertBranchActive(session)
