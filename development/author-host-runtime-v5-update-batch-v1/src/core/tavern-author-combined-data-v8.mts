@@ -1,14 +1,12 @@
-/** Stored Combined8 disposition DATA. Neither a known declaration nor its
- * unavailable row grants an external runtime, Native owner or execution ACK. */
+/** Stored Combined8 Source layout and dispositions. DATA restoration grants
+ * neither a live native bridge nor a numerical publication owner. */
 import {recordSha256} from './roleplay-data.js'
 import {cloneSchemaDescriptorEnvelopeV4} from './tavern-mvu-schema-data.js'
 import {validateSchemaCompilationInputV4,validateMvuExecutableProgramV4} from './tavern-mvu-schema-program-v4.js'
-import {validatePromptProgramV1} from './tavern-author-prompt-data.mjs'
-import {validateStoredBrowserProgramDataV3} from './tavern-author-combined-data-v6.mjs'
+import {authorNativeProgramSha256V1} from './author-native-program.mjs'
 import {identifyUnavailableExternalAddonV1,EXTERNAL_ADDON_RUNTIME_UNAVAILABLE}
   from './tavern-author-external-addons.mjs'
-import type {CombinedAuthorProgramV8} from './tavern-author-combined-types-v8.mjs'
-import type {CombinedPlanRowV4} from './tavern-author-combined-types-v7.mjs'
+import type {CombinedAuthorProgramV8,CombinedPlanRowV4} from './tavern-author-combined-types-v8.mjs'
 import {COMBINED_AUTHOR_DATA_BOUNDS_V8 as bounds} from './tavern-author-combined-types-v8.mjs'
 
 const validatedPrograms=new WeakSet<object>()
@@ -27,8 +25,7 @@ function captureRecord(input:unknown):CombinedAuthorProgramV8 {
     {nodes:bounds.descriptorNodes,depth:bounds.descriptorDepth,
       arrayLength:bounds.descriptorArrayLength}) as CombinedAuthorProgramV8
 }
-/** Fresh compilation already owns the nested results. Capture their immutable
- * DATA once under the same aggregate budget as historical decoding. */
+/** Fresh compiler outputs already own their accepted nested facts. */
 export function captureCompiledCombinedAuthorProgramV8(program:CombinedAuthorProgramV8):CombinedAuthorProgramV8 {
   return freeze(captureRecord(program))
 }
@@ -49,21 +46,35 @@ export function validateCombinedAuthorProgramV8(input:unknown):CombinedAuthorPro
   const executable=program.serverProgram===null?null:validateMvuExecutableProgramV4(program.serverProgram)
   const owned=executable?.encoding==='native-mvu-owned-state-program-v1'?executable:null
   const server=executable?.encoding==='native-mvu-author-schema-program-v2'?executable:null
-  const browser=program.browserProgram===null?null:validateStoredBrowserProgramDataV3(program.browserProgram)
-  const prompt=program.promptProgram===null?null:validatePromptProgramV1(program.promptProgram)
-  if(owned&&(!browser?.stateImports||owned.executionPlan.browserProgramSha256!==browser.programSha256)
-    ||browser?.stateImports&&!owned)fail()
+  const native=program.nativeProgram,layout=program.nativeLayout
+  if(!layout||!Array.isArray(layout.realms)
+    ||layout.numericalProfile!==null&&layout.numericalProfile!=='native-mvu-state-v1')fail()
+  const membership=new Map<number,string>()
+  for(const realm of layout.realms){
+    if(typeof realm.realmId!=='string'||typeof realm.groupId!=='string'||!Array.isArray(realm.originalOrdinals))fail()
+    for(const ordinal of realm.originalOrdinals)membership.set(ordinal,realm.realmId)
+  }
   const {material:_material,...source}=original.source
   const locator={...source,sourceRecordSessionId:program.sourceRecordSessionId}
   if(executable&&(!same(executable.source,original.source)||!same(executable.bridge,original.bridge)
-    ||!same(executable.stateLoader,original.stateLoader)||!same(executable.libraries,original.libraries))
-    ||browser&&!same(browser.source,locator)
-    ||prompt&&!same(prompt.source,locator))fail()
+    ||!same(executable.stateLoader,original.stateLoader)||!same(executable.libraries,original.libraries)))fail()
+  if(native!==null){
+    if(native.schemaVersion!==1||native.encoding!=='author-native-program-v1'
+      ||native.authority!=='captured-source-data-only'||!Array.isArray(native.scripts)
+      ||!same(native.source,locator))fail()
+    const nativeOrdinals=new Set(native.scripts.map(script=>script.originalOrdinal))
+    if(!same(native.realms,layout.realms.filter(realm=>realm.originalOrdinals.some((ordinal:number)=>nativeOrdinals.has(ordinal)))
+      .map(({realmId,groupId})=>({realmId,groupId}))))fail()
+    const {programSha256,...body}=native
+    if(programSha256!==authorNativeProgramSha256V1(body))fail()
+  }
+  const needsOwned=native?.scripts.some(script=>script.enabled)&&layout.numericalProfile==='native-mvu-state-v1'
+  if(owned&&!needsOwned||needsOwned&&!executable)fail()
   const plan=program.executionPlan
   if(plan?.schemaVersion!==4||plan.encoding!=='native-author-source-disposition-plan-v4'
     ||plan.authority!=='compiled-program-data-only'||!Array.isArray(plan.scripts)
     ||plan.scripts.length!==original.scripts.length)fail()
-  let serverIndex=0,browserIndex=0,promptIndex=0,enabledBrowser=0,disabled=0,enabledExternalAddonsUnavailable=0
+  let serverIndex=0,nativeIndex=0,enabledNative=0,disabled=0,enabledExternalAddonsUnavailable=0
   for(const [ordinal,row] of plan.scripts.entries()) {
     const descriptor=original.scripts[ordinal]!
     const common={originalOrdinal:ordinal,identity:descriptor.identity,pointer:descriptor.pointer,
@@ -82,35 +93,30 @@ export function validateCombinedAuthorProgramV8(input:unknown):CombinedAuthorPro
       expected={...common,disposition:'server',serverIndex,
         classification:classified.classification as 'server-schema'|'native-state-loader'}
       serverIndex++
-    }else if(row.disposition==='prompt') {
-      const compiled=prompt?.scripts[promptIndex]
-      if(!descriptor.enabled||!compiled||compiled.disposition!=='compiled-prompt'
-        ||compiled.ordinal!==ordinal||!same(compiled.descriptor,descriptor))fail()
-      expected={...common,disposition:'prompt',promptIndex}
-      promptIndex++
-    }else if(row.disposition==='browser'||row.disposition==='disabled-source-retained') {
-      const compiled=browser?.scripts[browserIndex]
-      if(!compiled||compiled.ordinal!==ordinal||!same(compiled.descriptor,descriptor)
-        ||compiled.disposition!==(descriptor.enabled?'compiled-browser':'disabled-source-retained'))fail()
-      expected={...common,disposition:descriptor.enabled?'browser':'disabled-source-retained',browserIndex}
-      if(descriptor.enabled)enabledBrowser++;else disabled++
-      browserIndex++
+    }else if(row.disposition==='native'||row.disposition==='disabled-source-retained') {
+      const captured=native?.scripts[nativeIndex]
+      if(!captured||captured.originalOrdinal!==ordinal||captured.realmId!==membership.get(ordinal)
+        ||captured.identity!==descriptor.identity||captured.pointer!==descriptor.pointer
+        ||captured.enabled!==descriptor.enabled||captured.javascript!==descriptor.source
+        ||captured.sourceSha256!==descriptor.sourceSha256||captured.descriptorSha256!==common.rawDescriptorSha256)fail()
+      expected={...common,disposition:descriptor.enabled?'native':'disabled-source-retained',nativeIndex}
+      if(descriptor.enabled)enabledNative++;else disabled++
+      nativeIndex++
     }else fail()
     if(!same(row,expected))fail()
   }
-  if(serverIndex!==(server?.scripts.length??0)||browserIndex!==(browser?.scripts.length??0)
-    ||promptIndex!==(prompt?.scripts.length??0))fail()
+  if(serverIndex!==(server?.scripts.length??0)||nativeIndex!==(native?.scripts.length??0))fail()
   if(!same(plan.summary,{enabledServerSchema:server?.executionPlan.summary.enabledServerSchema??0,
-    enabledNativeLoaders:server?.executionPlan.summary.enabledNativeLoaders??0,enabledBrowser,disabled,
-    enabledPrompt:promptIndex,enabledExternalAddonsUnavailable}))fail()
+    enabledNativeLoaders:server?.executionPlan.summary.enabledNativeLoaders??0,enabledNative,disabled,
+    enabledExternalAddonsUnavailable}))fail()
   checksum(plan,'executionPlanSha256')
   checksum(program,'combinedProgramSha256')
-  const checked=freeze({...program,original,serverProgram:executable,browserProgram:browser,promptProgram:prompt})
+  const checked=freeze({...program,original,serverProgram:executable,nativeProgram:native})
   validatedPrograms.add(checked)
   return checked
 }
 
 export function combinedCompilationInputForProgramV8(program:CombinedAuthorProgramV8) {
   return {schemaVersion:8 as const,encoding:'native-author-combined-compilation-input-v8' as const,
-    original:program.original,sourceRecordSessionId:program.sourceRecordSessionId}
+    original:program.original,sourceRecordSessionId:program.sourceRecordSessionId,nativeLayout:program.nativeLayout}
 }

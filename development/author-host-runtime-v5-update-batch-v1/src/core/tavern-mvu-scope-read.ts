@@ -6,7 +6,7 @@ import {cloneSchemaData} from './tavern-mvu-schema-data.js'
 import {MVU_SCOPE_READ_LIMITS as limits} from './tavern-mvu-scope-read-types.js'
 import type {MvuJsonObject,MvuJsonValue} from './tavern-mvu-initvar.js'
 import type {MvuScopeReadFrameV1,MvuScopeReaderV1,MvuScopeVariablesV1,
-  MvuScopeSourceIdentityV1,MvuVariableScope,MvuVariableReadOption} from './tavern-mvu-scope-read-types.js'
+  MvuScopeSourceIdentityV1,MvuVariableScope,MvuVariableReadOption,MvuScopeReadViewV2} from './tavern-mvu-scope-read-types.js'
 
 export const MVU_SCOPE_READ_ERRORS=Object.freeze({
   frame:'SCOPE_READ_FRAME_INVALID',hash:'SCOPE_READ_HASH_MISMATCH',owner:'SCOPE_READ_OWNER_MISMATCH',
@@ -39,7 +39,9 @@ function clone<T>(value:T):T {
     return fail(code)
   }
 }
-function variables(value:MvuScopeVariablesV1,source:MvuScopeSourceIdentityV1,
+/** Validate one already decoded JSON slot, including its exact value hashes
+ * and provenance. Does not clone, seal a frame, or confer publication rights. */
+export function validateMvuScopeVariablesV1(value:MvuScopeVariablesV1,source:MvuScopeSourceIdentityV1,
   scope:MvuVariableScope,identity:string,ownerSessionId=source.sessionId,stateOwner?:string):void {
   if(!object(value))fail(MVU_SCOPE_READ_ERRORS.state)
   if(value.kind==='unavailable') {
@@ -95,7 +97,7 @@ function readFrame(input:unknown,seal:boolean):MvuScopeReadFrameV1 {
   if(!text(source.sessionId)||!text(source.sourceRecordSessionId)||!text(source.importId)
     ||!hash(source.rawSha256)||!hash(source.sourceSnapshotSha256))fail(MVU_SCOPE_READ_ERRORS.frame)
   exact(frame.scopes,['chat','character','global'])
-  for(const scope of ['chat','character','global'] as const)variables(frame.scopes[scope],source,scope,scope)
+  for(const scope of ['chat','character','global'] as const)validateMvuScopeVariablesV1(frame.scopes[scope],source,scope,scope)
   if(!Array.isArray(frame.scripts)||frame.scripts.length>limits.scripts
     ||!Array.isArray(frame.messages)||frame.messages.length>limits.messages)fail(MVU_SCOPE_READ_ERRORS.frame)
   const scriptIds=new Set<string>(),pointers=new Set<string>()
@@ -105,7 +107,7 @@ function readFrame(input:unknown,seal:boolean):MvuScopeReadFrameV1 {
       ||script.pointer!==''&&!script.pointer.startsWith('/')||!hash(script.sourceSha256)
       ||scriptIds.has(script.scriptId)||pointers.has(script.pointer))fail(MVU_SCOPE_READ_ERRORS.frame)
     scriptIds.add(script.scriptId);pointers.add(script.pointer)
-    variables(script.variables,source,'script',script.scriptId)
+    validateMvuScopeVariablesV1(script.variables,source,'script',script.scriptId)
   }
   const nativeMessages=new Set<string>()
   for(const [position,message] of frame.messages.entries()) {
@@ -116,7 +118,7 @@ function readFrame(input:unknown,seal:boolean):MvuScopeReadFrameV1 {
       fail(MVU_SCOPE_READ_ERRORS.frame)
     }
     nativeMessages.add(JSON.stringify([message.ownerSessionId,message.nativeSeq]))
-    variables(message.variables,source,'message',message.messageId,message.ownerSessionId,message.ownerSessionId)
+    validateMvuScopeVariablesV1(message.variables,source,'message',message.messageId,message.ownerSessionId,message.ownerSessionId)
   }
   const {frameSha256,...body}=frame
   const computed=recordSha256(body)
@@ -159,8 +161,20 @@ function available(table:MvuScopeVariablesV1):MvuJsonObject {
 }
 export function createMvuScopeReaderV1(input:unknown,currentScriptId:string):MvuScopeReaderV1 {
   const frame=validateMvuScopeReadFrameV1(input)
-  const script=frame.scripts.find(item=>item.scriptId===currentScriptId)
-  if(!script)fail(MVU_SCOPE_READ_ERRORS.script)
+  const scripts=new Map(frame.scripts.map(script=>[script.scriptId,script]))
+  return createMvuScopeReaderV2({source:frame.source,scopes:frame.scopes,
+    script:id=>scripts.get(id),messageCount:frame.messages.length,messageAt:index=>frame.messages[index],
+    latestMessage:frame.messages.findLast(item=>!item.isSystem)},currentScriptId)
+}
+/** Consume only an internal codec/owner view. External DATA must use its full
+ * decoder first; this function neither hydrates nor revalidates a V1 frame. */
+export function createMvuScopeReaderV2(view:MvuScopeReadViewV2,currentScriptId:string):MvuScopeReaderV1 {
+  function script() {
+    const selected=view.script(currentScriptId)
+    if(!selected)fail(MVU_SCOPE_READ_ERRORS.script)
+    return selected
+  }
+  script()
   function getVariables(option?:MvuVariableReadOption):MvuJsonObject|undefined {
     const selected:Record<string,unknown>=option===undefined?{type:'chat'}:request(option)
     if(selected.type===undefined) {
@@ -169,32 +183,32 @@ export function createMvuScopeReaderV1(input:unknown,currentScriptId:string):Mvu
     }
     if(typeof selected.type==='string'&&['chat','character','global'].includes(selected.type)) {
       exact(selected,['type'],MVU_SCOPE_READ_ERRORS.request)
-      return available(frame.scopes[selected.type as 'chat'|'character'|'global'])
+      return available(view.scopes[selected.type as 'chat'|'character'|'global'])
     }
     if(selected.type==='script') {
       if(Object.keys(selected).some(key=>!['type','script_id'].includes(key))
         ||selected.script_id!==undefined&&selected.script_id!==currentScriptId)fail(MVU_SCOPE_READ_ERRORS.request)
-      return available(script!.variables)
+      return available(script().variables)
     }
     if(selected.type!=='message'||Object.keys(selected).some(key=>!['type','message_id'].includes(key))) {
       fail(MVU_SCOPE_READ_ERRORS.request)
     }
     const id=selected.message_id
     if(id===undefined||id==='latest') {
-      const message=frame.messages.findLast(item=>!item.isSystem)
+      const message=view.latestMessage
       if(!message)fail('MESSAGE_STATE_UNAVAILABLE')
       return available(message.variables)
     }
     if(typeof id!=='number'||!Number.isSafeInteger(id))fail(MVU_SCOPE_READ_ERRORS.request)
-    const position=id<0?frame.messages.length+id:id
-    if(position<0||position>=frame.messages.length)fail(MVU_SCOPE_READ_ERRORS.index)
-    return available(frame.messages[position]!.variables)
+    const position=id<0?view.messageCount+id:id
+    if(position<0||position>=view.messageCount)fail(MVU_SCOPE_READ_ERRORS.index)
+    return available(view.messageAt(position)!.variables)
   }
   function getAllVariables():MvuJsonObject {
-    // This frame grants only a script view. Message iframe precedence needs its
+    // This reader grants only a script view. Message iframe precedence needs its
     // own owner and cannot be inferred from a caller-supplied message index.
-    return freeze(Object.assign({},available(frame.scopes.global),available(frame.scopes.character),
-      available(script!.variables),available(frame.scopes.chat)))
+    return freeze(Object.assign({},available(view.scopes.global),available(view.scopes.character),
+      available(script().variables),available(view.scopes.chat)))
   }
   return Object.freeze({getVariables,getAllVariables})
 }

@@ -1,28 +1,21 @@
-/** Core admits real Browser/Host5 package bytes before importing either
+/** Core admits real Host5 package bytes before importing its
  * factory. The admitted generation then owns this one lazy lifecycle. */
 import fs from 'node:fs'
 import path from 'node:path'
 import {createRequire} from 'node:module'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {recordSha256} from './roleplay-data.js'
-import type {AdmittedTypeScript} from 'dsh-nexttavern-typescript-runtime'
 import type {createRoleplayMvuSchemaAssetOwner} from './roleplay-mvu-schema-assets.js'
 import type {OwnedMvuSchemaExecutor} from './roleplay-mvu-schema-executor-types.js'
 import type {AuthorHostIdentityV5,AuthorServerExecutorV4} from './roleplay-author-host-types-v5.js'
 import type {AuthorHostRuntimeV5,AdmittedAuthorServerV4}
   from './tavern-author-host-provider.mjs'
-import type {OwnedAuthorBrowserRuntimeV1} from './tavern-author-browser-types.mjs'
-import type {OwnedAuthorBrowserRuntimeV2} from './tavern-author-browser-types-v2.mjs'
-import type {OwnedAuthorBrowserRuntimeV3} from './tavern-author-browser-types-v3.mjs'
-import {AUTHOR_BROWSER_RUNTIME_NAME_V3,AUTHOR_BROWSER_RUNTIME_VERSION_V3}
-  from './tavern-author-browser-descriptor-v3.mjs'
-import type {OwnedAuthorPromptRuntimeV1} from './tavern-author-prompt-types.mjs'
-import {AUTHOR_PROMPT_RUNTIME_NAME,AUTHOR_PROMPT_RUNTIME_VERSION} from './tavern-author-prompt-descriptor.mjs'
-import {loadAdmittedAuthorPromptRuntimeV1} from './roleplay-author-prompt-assets.js'
+import {EJS_RUNTIME_PACKAGE} from './tavern-template-ejs-runtime-types.mjs'
+import type {TavernEjsRuntime} from './tavern-template-ejs-runtime-types.mjs'
+import type {TavernEjsReplayEngine} from './tavern-template-ejs-replay.mjs'
 import type {ReleasedRuntimeComponent,ReleasedRuntimeRoles,ReleasedRuntimeRole} from '../operations/released-component-types.mjs'
 
-const browserName=AUTHOR_BROWSER_RUNTIME_NAME_V3,browserVersion=AUTHOR_BROWSER_RUNTIME_VERSION_V3
-const hostName='dsh-nexttavern-author-host-runtime-v5-update-batch-v1',hostVersion='0.6.0'
+const hostName='dsh-nexttavern-author-host-runtime-v5-update-batch-v1'
 interface AdmittedPackage {
   entry:string
   owned:string
@@ -33,9 +26,6 @@ export type ProtectedAuthorHostRuntimeV5=OwnedMvuSchemaExecutor&{
   executorVersion:4
   stateLoader:AuthorServerExecutorV4['stateLoader']
   host:AuthorHostRuntimeV5
-  browser:OwnedAuthorBrowserRuntimeV1|OwnedAuthorBrowserRuntimeV2|OwnedAuthorBrowserRuntimeV3
-  browserPartition?:OwnedAuthorBrowserRuntimeV2
-  readonly prompt:OwnedAuthorPromptRuntimeV1
 }
 export type AuthorHostServerAssetsV5=Pick<ReturnType<typeof createRoleplayMvuSchemaAssetOwner>,
   'getDefaultForNewRealm'|'getForVerifiedEpoch'|'getTypeScript'>
@@ -45,10 +35,8 @@ function productRoot():string {
     const root=fs.realpathSync(fileURLToPath(new URL(relative,import.meta.url)))
     const metadata=path.join(root,'package.json')
     if(!fs.existsSync(metadata))continue
-    const product=JSON.parse(fs.readFileSync(metadata,'utf8')) as {name?:string;dependencies?:Record<string,string>}
-    if(product.name==='dsh-nexttavern'&&product.dependencies?.[browserName]===browserVersion
-      &&product.dependencies?.[hostName]===hostVersion
-      &&product.dependencies?.[AUTHOR_PROMPT_RUNTIME_NAME]===AUTHOR_PROMPT_RUNTIME_VERSION)return root
+    const product=JSON.parse(fs.readFileSync(metadata,'utf8')) as {name?:string}
+    if(product.name==='dsh-nexttavern')return root
   }
   throw Error('AUTHOR_HOST_PRODUCT_OWNER_UNAVAILABLE')
 }
@@ -66,6 +54,8 @@ function packageVerifier(admitted:AdmittedPackage) {
 export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHostServerAssetsV5}) {
   let closed=false,disposal:Promise<void>|undefined
   const runtimes=new Map<string,Promise<ProtectedAuthorHostRuntimeV5>>()
+  const ejsRuntimes=new Map<string,{pending:Promise<TavernEjsRuntime>;runtime?:TavernEjsRuntime}>()
+  let defaultEjsKey:string|undefined
   const runtimesByIdentity=new Map<string,ProtectedAuthorHostRuntimeV5>()
   type ProductAssets={root:string;require:ReturnType<typeof createRequire>;
     identity:ReturnType<typeof import('../operations/bundled-package-bootstrap.mjs').readBundleIdentity>;
@@ -87,94 +77,55 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
     // Installed product identity is fixed until this owner is disposed.
     return product??=loadProduct().catch(error=>{product=undefined;throw error})
   }
+  function admit(assets:ProductAssets,roles:ReleasedRuntimeRoles|undefined,
+    role:ReleasedRuntimeRole,fallback:string):AdmittedPackage {
+    const {root,require,identity,protection}=assets
+    const ref=roles?.[role],binding=ref?identity.runtimeComponents.get(ref.name+'\0'+ref.generation+'\0'+(ref.context??'')):undefined
+    const name=binding?.name??fallback,historical=binding?.path!==undefined
+    const specs=roles?binding?[binding]:[]:identity.packages.filter(spec=>spec.name===name)
+    if(specs.length!==1)throw Error('AUTHOR_HOST_PACKAGE_OWNER_CHANGED')
+    const spec=specs[0]!
+    const owned=fs.realpathSync(binding?.source??path.join(root,'node_modules',name))
+    const metadata=fs.realpathSync(historical?path.join(owned,'package.json'):require.resolve(name+'/package.json'))
+    const entry=fs.realpathSync(historical?path.join(owned,'dist','index.mjs'):require.resolve(name))
+    if(metadata!==path.join(owned,'package.json')
+      ||entry!==path.join(owned,'dist','index.mjs'))throw Error('AUTHOR_HOST_PACKAGE_OWNER_CHANGED')
+    protection.verifyProtectedPackage(owned,spec)
+    return {entry,owned,binding,inventory:{name,version:spec.version,files:structuredClone(spec.files),generation:spec.generation}}
+  }
   async function load(roles?:ReleasedRuntimeRoles,selectedServer?:OwnedMvuSchemaExecutor):Promise<ProtectedAuthorHostRuntimeV5> {
-    const {root,require,identity,protection}=await productAssets()
+    const assets=await productAssets(),{identity}=assets
     current()
     const selectedRoles=roles??identity.currentRuntime?.roles
-    function admit(role:ReleasedRuntimeRole,fallback:string):AdmittedPackage {
-      const ref=selectedRoles?.[role],binding=ref?identity.runtimeComponents.get(ref.name+'\0'+ref.generation+'\0'+(ref.context??'')):undefined
-      const name=binding?.name??fallback,historical=binding?.path!==undefined
-      const specs=selectedRoles?binding?[binding]:[]:identity.packages.filter(spec=>spec.name===name)
-      if(specs.length!==1)throw Error('AUTHOR_HOST_PACKAGE_OWNER_CHANGED')
-      const spec=specs[0]!
-      const owned=fs.realpathSync(binding?.source??path.join(root,'node_modules',name))
-      const metadata=fs.realpathSync(historical?path.join(owned,'package.json'):require.resolve(name+'/package.json'))
-      const entry=fs.realpathSync(historical?path.join(owned,'dist','index.mjs'):require.resolve(name))
-      if(metadata!==path.join(owned,'package.json')
-        ||entry!==path.join(owned,'dist','index.mjs'))throw Error('AUTHOR_HOST_PACKAGE_OWNER_CHANGED')
-      protection.verifyProtectedPackage(owned,spec)
-      return {entry,owned,binding,inventory:{name,version:spec.version,files:structuredClone(spec.files),generation:spec.generation}}
-    }
     const server=selectedServer??await deps.serverAssets.getDefaultForNewRealm(4)
     current()
     if(server.executorVersion!==4||!server.stateLoader)throw Error('AUTHOR_HOST_SERVER_ABI_UNSUPPORTED')
-    async function loadBrowser(role:'browser'|'browserPartition') {
-      const admittedBrowser=admit(role,browserName)
-      const factory=admittedBrowser.binding?.factory??'browser-v3-shared-typescript'
-      if(factory==='browser-v3-shared-typescript') {
-        const browserModule=await import(pathToFileURL(admittedBrowser.entry).href) as {
-          createOwnedAuthorBrowserRuntimeV3(deps:{verifyOwnedPackage:ReturnType<typeof packageVerifier>;
-            typescript:AdmittedTypeScript}):Promise<OwnedAuthorBrowserRuntimeV3>
-        }
-        if(admittedBrowser.binding&&!admittedBrowser.binding.dependencies.typescript)
-          throw Error('AUTHOR_HOST_TYPESCRIPT_UNAVAILABLE')
-        const typescript=await deps.serverAssets.getTypeScript(admittedBrowser.binding?.dependencies.typescript)
-        current()
-        return browserModule.createOwnedAuthorBrowserRuntimeV3({
-          verifyOwnedPackage:packageVerifier(admittedBrowser),typescript})
-      }
-      if(factory!=='browser-v2-local-typescript')throw Error('AUTHOR_HOST_BROWSER_ABI_UNSUPPORTED')
-      // The published Browser2 factory owns its package-local compiler.
-      const browserModule=await import(pathToFileURL(admittedBrowser.entry).href) as {
-        createOwnedAuthorBrowserRuntimeV2(deps:{verifyOwnedPackage:ReturnType<typeof packageVerifier>}):
-          Promise<OwnedAuthorBrowserRuntimeV2>
-      }
-      current()
-      const dependency={verifyOwnedPackage:packageVerifier(admittedBrowser)}
-      return browserModule.createOwnedAuthorBrowserRuntimeV2(dependency)
-    }
-    const browser=await loadBrowser('browser')
-    let browserPartition:OwnedAuthorBrowserRuntimeV2|undefined
-    let host:AuthorHostRuntimeV5|undefined,prompt:OwnedAuthorPromptRuntimeV1|undefined
+    let host:AuthorHostRuntimeV5|undefined
     try {
       current()
-      if(selectedRoles?.browserPartition) {
-        browserPartition=await loadBrowser('browserPartition') as OwnedAuthorBrowserRuntimeV2
-      }
-      current()
-      const admittedPrompt=admit('prompt',AUTHOR_PROMPT_RUNTIME_NAME)
-      if(admittedPrompt.binding&&(admittedPrompt.binding.factory!=='prompt-v1-shared-typescript'
-        ||!admittedPrompt.binding.dependencies.typescript))throw Error('AUTHOR_HOST_PROMPT_ABI_UNSUPPORTED')
-      prompt=await loadAdmittedAuthorPromptRuntimeV1({...admittedPrompt,inventory:{...admittedPrompt.inventory,
-        name:AUTHOR_PROMPT_RUNTIME_NAME,version:admittedPrompt.inventory.version as typeof AUTHOR_PROMPT_RUNTIME_VERSION}},
-      current,await deps.serverAssets.getTypeScript(admittedPrompt.binding?.dependencies.typescript))
-      current()
-      const admittedHost=admit('host',hostName)
+      const admittedHost=admit(assets,selectedRoles,'host',hostName)
       if(admittedHost.binding&&admittedHost.binding.factory!=='host-v5')throw Error('AUTHOR_HOST_ABI_UNSUPPORTED')
       const hostModule=await import(pathToFileURL(admittedHost.entry).href) as {
         createOwnedAuthorHostRuntimeV5(deps:{verifyOwnedPackage:ReturnType<typeof packageVerifier>;
-          server:AdmittedAuthorServerV4;browser:OwnedAuthorBrowserRuntimeV1|OwnedAuthorBrowserRuntimeV2|OwnedAuthorBrowserRuntimeV3;
-          browserPartition?:OwnedAuthorBrowserRuntimeV2;
-          prompt:OwnedAuthorPromptRuntimeV1}):Promise<AuthorHostRuntimeV5>
+          server:AdmittedAuthorServerV4}):Promise<AuthorHostRuntimeV5>
       }
       current()
       host=await hostModule.createOwnedAuthorHostRuntimeV5({
         verifyOwnedPackage:packageVerifier(admittedHost),
-        server:server as AdmittedAuthorServerV4,browser,...browserPartition?{browserPartition}:{},prompt})
+        server:server as AdmittedAuthorServerV4})
       current()
       return Object.freeze({executorVersion:4 as const,compiler:server.compiler,runner:server.runner,
         bridge:server.bridge,libraries:server.libraries,stateLoader:server.stateLoader,
-        implementationKey:recordSha256(host.identity),host,browser,...browserPartition?{browserPartition}:{},prompt,dispose})
+        implementationKey:recordSha256(host.identity),host,dispose})
     }catch(error) {
       host?.dispose()
-      await Promise.all([browser.dispose(),browserPartition?.dispose(),prompt?.dispose()])
       throw error
     }
   }
   async function admitted(roles?:ReleasedRuntimeRoles,server?:OwnedMvuSchemaExecutor,key='default')
     :Promise<ProtectedAuthorHostRuntimeV5> {
     current()
-    // A frozen Host package is shared by distinct injected Browser/server
+    // A frozen Host package is shared by distinct injected server
     // tuples. Historical identity, rather than its package name, owns reuse.
     let pending=runtimes.get(key)
     if(!pending) {
@@ -190,6 +141,55 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
     current();runtime.host.checkCurrent()
     return runtime
   }
+  async function getEjs(engine?:TavernEjsReplayEngine,signal?:AbortSignal):Promise<TavernEjsRuntime> {
+    current();signal?.throwIfAborted()
+    const assets=await productAssets(),identity=assets.identity
+    current()
+    const selected=engine?identity.releasedRuntime?.templateEjs?.find(row=>
+      recordSha256(row.engine)===recordSha256(engine))?.component:undefined
+    const ref=selected??identity.currentRuntime?.roles.templateEjs
+    if(!ref)throw Error('TEMPLATE_EJS_ENGINE_UNAVAILABLE')
+    const key=ref.name+'\0'+ref.generation+'\0'+(ref.context??'')
+    const defaultRef=identity.currentRuntime?.roles.templateEjs
+    // A historical replay may admit another generation without making that
+    // instance available to a fresh opening under today's current role.
+    if(defaultRef&&ref.name===defaultRef.name&&ref.generation===defaultRef.generation
+      &&ref.context===defaultRef.context)defaultEjsKey=key
+    let state=ejsRuntimes.get(key)
+    if(!state) {
+      const pending=(async()=>{
+        const owned=admit(assets,{templateEjs:ref},'templateEjs',EJS_RUNTIME_PACKAGE)
+        if(owned.binding?.factory!=='template-ejs-v1')throw Error('TEMPLATE_EJS_ENGINE_UNAVAILABLE')
+        const module=await import(pathToFileURL(owned.entry).href) as typeof import('./tavern-template-ejs-runtime-provider.mjs')
+        current()
+        const runtime=await module.createOwnedTavernEjsRuntimeV1({verifyOwnedPackage:root=>{
+          current();return packageVerifier(owned)(root)
+        }})
+        try {current();runtime.current();return runtime}
+        catch(error) {await runtime.dispose();throw error}
+      })().then(runtime=>{ejsRuntimes.get(key)!.runtime=runtime;return runtime})
+        .catch(error=>{ejsRuntimes.delete(key);throw error})
+      state={pending}
+      ejsRuntimes.set(key,state)
+    }
+    const runtime=await state.pending
+    current();signal?.throwIfAborted();runtime.current()
+    if(engine&&recordSha256(runtime.identity)!==recordSha256(engine))throw Error('TEMPLATE_EJS_ENGINE_UNAVAILABLE')
+    return runtime
+  }
+  function currentEjs():TavernEjsRuntime|undefined {
+    if(closed||defaultEjsKey===undefined)return undefined
+    const runtime=ejsRuntimes.get(defaultEjsKey)?.runtime
+    runtime?.current()
+    return runtime
+  }
+  function checkEjsCurrentSync(checks:()=>void):void {
+    current()
+    const runtime=defaultEjsKey===undefined?undefined:ejsRuntimes.get(defaultEjsKey)?.runtime
+    if(!runtime)throw Error('TEMPLATE_EJS_ENGINE_UNAVAILABLE')
+    runtime.checkCurrentSync(checks)
+    current()
+  }
   function dispose():Promise<void> {
     if(disposal)return disposal
     closed=true
@@ -198,14 +198,17 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
         try {
           const runtime=await pending
           runtime.host.dispose()
-          await Promise.all([runtime.browser.dispose(),runtime.browserPartition?.dispose(),runtime.prompt.dispose()])
         }catch { /* A revoked load cleans up its own created factories. */ }
+      }))
+      await Promise.all([...ejsRuntimes.values()].map(async state=>{
+        const runtime=await state.pending.catch(()=>undefined)
+        await runtime?.dispose()
       }))
       // The injected server asset owner retains its independent ABI1–4 lifetime.
     })()
   }
   return {
-    getDefault:()=>admitted(),
+    getDefault:()=>admitted(),getEjs,currentEjs,checkEjsCurrentSync,
     async getForVerifiedHost(identity:AuthorHostIdentityV5,server:AuthorServerExecutorV4):Promise<ProtectedAuthorHostRuntimeV5> {
       current()
       try {

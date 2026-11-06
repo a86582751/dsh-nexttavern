@@ -23,26 +23,23 @@ export async function createOwnedAuthorHostRuntimeV5(deps) {
     const candidateCompiler = deps.server.compiler;
     if (typeof candidateCompiler.partitionCandidates !== 'function')
         throw Error('AUTHOR_HOST_SERVER_CANDIDATES_UNAVAILABLE');
-    if (deps.browser.runtime.version !== 3)
-        throw Error('AUTHOR_HOST_BROWSER_ABI_UNSUPPORTED');
     const server = Object.freeze({ compiler: deps.server.compiler.identity,
         bridge: deps.server.bridge, libraries: deps.server.libraries, stateLoader: deps.server.stateLoader,
         runner: deps.server.runner.identity });
-    const compilerDependencies = { server: candidateCompiler,
-        prompt: deps.prompt.compiler, implementationSha256: pin.generation };
-    const actualCompiler = createCombinedAuthorCompilerV8({ ...compilerDependencies, browser: deps.browser });
+    const actualCompiler = createCombinedAuthorCompilerV8({ server: candidateCompiler,
+        implementationSha256: pin.generation });
     const identity = Object.freeze({ id: 'native-author-host', version: 5,
         implementationSha256: recordSha256({ encoding: 'native-author-host-implementation-v5', generation: pin.generation,
-            combinedCompiler: actualCompiler.identity, server, browser: { compiler: deps.browser.identity, runtime: deps.browser.runtime },
-            prompt: { compiler: deps.prompt.compiler.identity, runtime: deps.prompt.runtime } }) });
+            combinedCompiler: actualCompiler.identity, server }) });
     let disposed = false;
     const owners = new Set();
     const checkCurrent = () => { if (disposed)
         throw Error('AUTHOR_HOST_RUNTIME_DISPOSED'); };
     const compiler = { identity: actualCompiler.identity,
-        compile(input, signal, resources) { checkCurrent(); return actualCompiler.compile(input, signal, resources); },
-        verifyProgram(program, signal, resources) { checkCurrent(); return actualCompiler.verifyProgram(program, signal, resources); } };
-    return Object.freeze({ identity, server, compiler, prompt: deps.prompt,
+        compile(input, signal) { checkCurrent(); return actualCompiler.compile(input, signal); },
+        verifyProgram(program, signal) { checkCurrent(); return actualCompiler.verifyProgram(program, signal); } };
+    return Object.freeze({ identity, server, compiler, scopeInputProtocols: deps.server.runner.scopeInputProtocols,
+        journalInputProtocol: 'bounded-v1',
         createReplay(bindings) {
             checkCurrent();
             const replay = createRoleplayMvuSchemaReplay({ ...bindings, compiler: deps.server.compiler, runner: deps.server.runner,
@@ -59,6 +56,6 @@ export async function createOwnedAuthorHostRuntimeV5(deps) {
             for (const replay of owners)
                 replay.dispose();
             owners.clear();
-            // Core owns the injected server, Browser and Prompt component lifetimes.
+            // Core owns the injected server lifetime.
         } });
 }

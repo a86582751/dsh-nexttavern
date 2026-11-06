@@ -8,9 +8,11 @@ import type {MvuSchemaRealmLoadFrameV4,MvuSchemaTraceRequestedStepV4,MvuSchemaTr
   from './tavern-mvu-schema-types-v4.js'
 import type {SourceNativeCutFacts,SchemaExecutionAnchor,SchemaJournalRef,SchemaNativeMarkerRef}
   from './roleplay-mvu-schema-journal.js'
-import type {MvuSchemaOpeningPreparationV1} from './roleplay-mvu-schema-opening-types.js'
+import type {MvuSchemaOpeningPreparationFields} from './roleplay-mvu-schema-opening-types.js'
 import type {SchemaMvuInitDataSourceV2,SchemaMvuInitDataSourceV3} from './tavern-mvu-initvar.js'
 import type {SchemaExecutionSelector} from './roleplay-mvu-schema-replay.js'
+import type {AuthorNativeMvuHookRequest,AuthorNativeMvuHookIdentity,AuthorNativeMvuHookResult}
+  from './author-native-mvu-hook-types.js'
 
 export interface AuthorHostIdentityV5 {
   readonly id:'native-author-host'
@@ -24,8 +26,8 @@ export interface AuthorServerExecutorV4 {
   readonly stateLoader:MvuSchemaProgramV4['stateLoader']
   readonly runner:MvuSchemaRunnerIdentity&{readonly version:4}
 }
-export interface AuthorOpeningPreparationV5 extends Omit<MvuSchemaOpeningPreparationV1,
-  'schemaVersion'|'encoding'|'preparationSha256'> {
+export interface AuthorOpeningPreparationV5 extends Omit<MvuSchemaOpeningPreparationFields,
+  'preparationSha256'> {
   readonly schemaVersion:5
   readonly encoding:'native-author-opening-preparation-v5'
   readonly host:AuthorHostIdentityV5
@@ -66,7 +68,7 @@ interface AuthorHostRecordHeaderV5 {
   readonly recordSha256:string
 }
 export interface AuthorHostEpochV5 extends AuthorHostRecordHeaderV5 {
-  readonly encoding:'native-mvu-schema-epoch-v5'
+  readonly encoding:'native-mvu-schema-epoch-v5'|'native-mvu-schema-epoch-v5-scope-ref-v2'
   readonly host:AuthorHostIdentityV5
   readonly program:CombinedAuthorProgram
   /** Only real nonempty server execution creates a numerical Host5 epoch.
@@ -75,7 +77,7 @@ export interface AuthorHostEpochV5 extends AuthorHostRecordHeaderV5 {
     readonly loadFrame:MvuSchemaRealmLoadFrameV4;readonly loadAnchorSha256:string}
 }
 export interface AuthorHostDispatchV5 extends AuthorHostRecordHeaderV5 {
-  readonly encoding:'native-mvu-schema-dispatch-v5'
+  readonly encoding:'native-mvu-schema-dispatch-v5'|'native-mvu-schema-dispatch-v5-scope-ref-v2'
   readonly batchId:string
   readonly ordinal:number
   readonly epoch:SchemaJournalRef
@@ -86,7 +88,7 @@ export interface AuthorHostDispatchV5 extends AuthorHostRecordHeaderV5 {
   readonly sourceNativeCut:SourceNativeCutFacts
 }
 export interface AuthorHostCompletionV5 extends AuthorHostRecordHeaderV5 {
-  readonly encoding:'native-mvu-schema-completion-v5'
+  readonly encoding:'native-mvu-schema-completion-v5'|'native-mvu-schema-completion-v5-scope-ref-v2'
   readonly batchId:string
   readonly dispatch:SchemaJournalRef
   readonly dispatchMarker:SchemaNativeMarkerRef
@@ -96,15 +98,33 @@ export interface AuthorHostCompletionV5 extends AuthorHostRecordHeaderV5 {
   readonly step:MvuSchemaTraceEvaluationStepV4
 }
 export interface AuthorHostUnavailableV5 extends AuthorHostRecordHeaderV5 {
-  readonly encoding:'native-mvu-schema-unavailable-v5'
+  readonly encoding:'native-mvu-schema-unavailable-v5'|'native-mvu-schema-unavailable-v5-scope-ref-v2'
   readonly batchId:string
   readonly dispatch:SchemaJournalRef|null
   readonly sourceNativeCut:SourceNativeCutFacts
   readonly combinedProgramSha256:string
   readonly code:string
 }
+/** Host-owned browser facts have no server runner receipt. The server tail
+ * remains unchanged while their dispatch/completion advances Host ordering. */
+export interface AuthorHostBrowserDispatchV5 extends AuthorHostRecordHeaderV5 {
+  readonly encoding:'native-author-browser-hook-dispatch-v5'
+  readonly batchId:string
+  readonly epoch:SchemaJournalRef
+  readonly previousTailSha256:string
+  readonly sourceNativeCut:SourceNativeCutFacts
+  readonly request:AuthorNativeMvuHookRequest
+  readonly identity:AuthorNativeMvuHookIdentity
+}
+export interface AuthorHostBrowserCompletionV5 extends AuthorHostRecordHeaderV5 {
+  readonly encoding:'native-author-browser-hook-completion-v5'
+  readonly batchId:string
+  readonly dispatch:SchemaJournalRef
+  readonly dispatchMarker:SchemaNativeMarkerRef
+  readonly result:AuthorNativeMvuHookResult
+}
 export type AuthorHostRecordV5=AuthorHostEpochV5|AuthorHostDispatchV5
-  |AuthorHostCompletionV5|AuthorHostUnavailableV5
+  |AuthorHostCompletionV5|AuthorHostUnavailableV5|AuthorHostBrowserDispatchV5|AuthorHostBrowserCompletionV5
 export interface AuthorHostAssociationV5 {
   readonly schemaVersion:5
   readonly encoding:'native-author-host-association-v5'

@@ -56,27 +56,28 @@ function atPointer(card:MvuJsonValue,pointer:string):MvuJsonValue|undefined {
  * frozen values preserves complete DATA without another clone, hash or parser.
  * Core owns live attachment revocation when that Source frame ceases to apply. */
 export function createAuthorScriptResourceReaderV1(frame:AuthorScriptResourceSourceV1,
-  descriptors:readonly AuthorScriptResourceDescriptorV1[]):AuthorScriptResourceReaderV1 {
+  descriptors:readonly AuthorScriptResourceDescriptorV1[],
+  allDescriptors:readonly AuthorScriptResourceDescriptorV1[]):AuthorScriptResourceReaderV1 {
   const card=object(frame.material.card)!,data=object(card.data)??card,
     helper=object(object(data.extensions)?.tavern_helper)!,trees=helper.scripts as MvuJsonValue[]
   const byId=new Map<string,MvuJsonObject>()
-  function index(trees:readonly MvuJsonValue[]):void {
-    for(const value of trees) {
-      const node=object(value)!
-      if(node.type==='folder')index(node.scripts as MvuJsonValue[])
-      else if(node.type==='script'&&typeof node.id==='string')byId.set(node.id,node)
-    }
-  }
-  index(trees)
-  const callers=new Map(descriptors.map(pin=>{
+  const aliases=new Map<string,MvuJsonObject>()
+  const allowed=new Map(descriptors.map(pin=>[pin.identity,pin]))
+  const callers=new Map<string,{descriptor:MvuJsonObject;pin:AuthorScriptResourceDescriptorV1;id:string}>()
+  // Source already expanded the tree. Index its complete leaf catalog, while
+  // retaining the narrower Native caller grant as a separate fact.
+  for(const pin of allDescriptors){
     const descriptor=object(atPointer(card,pin.pointer))
     if(!descriptor)fail('AUTHOR_SCRIPT_RESOURCE_DESCRIPTOR_UNAVAILABLE')
     // Only a descriptor without an original ID receives its existing legacy
     // identity alias. A synthetic alias must not replace a real author UUID.
     const id=typeof descriptor.id==='string'?descriptor.id:pin.identity
-    if(typeof descriptor.id!=='string')byId.set(id,descriptor)
-    return [pin.identity,{descriptor,pin,id}] as const
-  }))
+    if(typeof descriptor.id==='string')byId.set(id,descriptor)
+    else aliases.set(id,descriptor)
+    const caller=allowed.get(pin.identity)
+    if(caller)callers.set(pin.identity,{descriptor,pin:caller,id})
+  }
+  for(const [id,descriptor] of aliases)if(!byId.has(id))byId.set(id,descriptor)
   function read(request:AuthorScriptResourceRequestV1):MvuJsonValue {
     if(request.schemaVersion!==1||request.encoding!=='native-author-script-resource-request-v1') {
       fail('AUTHOR_SCRIPT_RESOURCE_REQUEST_UNSUPPORTED')
