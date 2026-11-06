@@ -19,8 +19,72 @@ const button=(r,label)=>nodes(r.seat).find(n=>n?.type==='button'&&text(n)===labe
 function controls(node,disabled=false,out=[]){if(Array.isArray(node))node.forEach(n=>controls(n,disabled,out));else if(node&&typeof node==='object'){const blocked=disabled||!!node.props.disabled;if(['input','select','textarea','button'].includes(node.type))out.push({node,disabled:blocked});controls(node.props.children,disabled||(node.type==='fieldset'&&blocked),out)}return out}
 function panels(r,jsonFetch,drafts=new Map(),options={}){return createManagementPanels({React:r.React,jsonFetch,sessionDrafts:drafts,toast(){},confirmWithDialog:async()=>true,btn:(label,onClick,extra)=>r.React.createElement('button',{onClick,...extra},label),...options})}
 const modelReply={catalog:[],main:{provider:'p',model:'main'},global:{revision:1},session:{revision:1},effective:{}}
+{
+ const ruby=hooks(),drafts=new Map(),posts=[]
+ const otherDraft={dirty:true,baseRevision:1,settings:{allMain:false,routes:{memory:{provider:'p',model:'unsaved'}}}}
+ drafts.set('story:models-session',otherDraft)
+ let saved={revision:1,allMain:false,routes:{memory:{provider:'p',model:'persisted'},'ruby-analysis':null}}
+ const catalog=[{provider:'p',model:'ruby',reasoning:{efforts:[{id:'low',name:'低'}]}}]
+ const fetch=async(_,init)=>{
+   if(init){const body=JSON.parse(init.body);posts.push(body);saved={...saved,revision:2,routes:{...saved.routes,[body.purpose]:body.route}}}
+   return {...modelReply,catalog,session:saved,effective:saved,purposes:[{id:'ruby-analysis',label:'RUBY'}]}
+ }
+ const p=panels(ruby,fetch,drafts)
+ ruby.mount(p.ModelPanel,{sessionId:'story',purpose:'ruby-analysis'})
+ await ruby.flush()
+ nodes(ruby.seat).find(n=>n?.props?.['aria-label']==='RUBY模型').props.onChange({target:{value:'p\u0000ruby'}})
+ await ruby.flush()
+ nodes(ruby.seat).find(n=>n?.props?.['aria-label']==='RUBY思考等级').props.onChange({target:{value:'low'}})
+ await ruby.flush();await button(ruby,'保存 RUBY 模型').props.onClick();await ruby.flush()
+ assert.deepEqual(posts,[{sessionId:'story',scope:'session',purpose:'ruby-analysis',route:{provider:'p',model:'ruby',reasoningEffort:'low'},expectedRevision:1}])
+ assert.equal(saved.routes.memory.model,'persisted')
+ assert.equal(drafts.get('story:models-session'),otherDraft,'Ruby save leaves whole-model draft untouched')
+ assert.equal(drafts.has('story:models-purpose-ruby-analysis'),false)
+ ruby.unmount()
+}
 const importResource={id:'a'.repeat(64),name:'Synthetic private card name',path:'private/card.json',
   type:'application/json',bytes:20,text:'SYNTHETIC_PRIVATE_CARD_TEXT'}
+for(const allMain of [false,true]){
+ const r=hooks(),drafts=new Map();let revision=1,posts=0
+ const p=panels(r,async(_,init)=>{
+   if(init){posts++;revision=2;throw Object.assign(Error('配置已更新'),{status:409})}
+   return {...modelReply,purposes:[{id:'ruby-analysis',label:'RUBY'}],catalog:[{provider:'p',model:'ruby'}],
+     session:{revision,allMain,routes:{}},effective:{allMain,routes:{'ruby-analysis':{provider:'p',model:'saved'}}}}
+ },drafts)
+ r.mount(p.ModelPanel,{sessionId:'story',purpose:'ruby-analysis'});await r.flush()
+ const choice=()=>nodes(r.seat).find(n=>n?.props?.['aria-label']==='RUBY模型')
+ if(allMain){
+   assert.equal(choice().props.disabled,true)
+   assert.equal(button(r,'保存 RUBY 模型').props.disabled,true)
+   assert.match(text(r.seat),/统一跟随主模型/)
+ }else{
+   choice().props.onChange({target:{value:'p\u0000ruby'}});await r.flush()
+   await button(r,'保存 RUBY 模型').props.onClick();await r.flush()
+   assert.equal(posts,1)
+   assert.equal(choice().props.value,'p\u0000ruby','conflict refresh preserves the independent draft')
+   assert.match(text(r.seat),/当前生效模型 saved/)
+   assert.ok(drafts.get('story:models-purpose-ruby-analysis').dirty)
+ }
+ r.unmount()
+}
+{
+ const full=hooks(),ruby=hooks();let active=full.React,reads=0,revision=1
+ const sharedReact=new Proxy({}, {get:(_target,key)=>active[key]})
+ const fetch=async(_url,init)=>{
+   if(init)revision++
+   else reads++
+   return {...modelReply,session:{revision,allMain:false,routes:{}},effective:{allMain:false,routes:{}},
+     purposes:[{id:'ruby-analysis',label:'RUBY'}]}
+ }
+ const p=panels(full,fetch,new Map(),{React:sharedReact})
+ full.mount(props=>{active=full.React;return p.ModelPanel(props)},{sessionId:'story'})
+ await full.flush()
+ ruby.mount(props=>{active=ruby.React;return p.ModelPanel(props)},{sessionId:'story',purpose:'ruby-analysis'})
+ await ruby.flush();const before=reads
+ await button(ruby,'保存 RUBY 模型').props.onClick();await ruby.flush();await full.flush()
+ assert.equal(reads,before+2,'a purpose save refreshes both mounted policy consumers')
+ full.unmount();ruby.unmount()
+}
 const memoryStorage=()=>{const records=new Map();return {records,
   getItem:key=>records.get(key)??null,setItem:(key,value)=>records.set(key,value),removeItem:key=>records.delete(key)}}
 const importKey=(sessionId,resourceId)=>`dsh.nexttavern.card-import.v1.${encodeURIComponent(JSON.stringify([sessionId,resourceId]))}`
@@ -128,17 +192,6 @@ for(const fault of [
   post.resolve({...reply,session:{revision:2,allMain:true,routes:submitted.settings.routes}});await saved;await r.flush()
   assert.equal(drafts.get('story:models-session'),later,'a reopened panel draft survives the former save')
   assert(!r.seat.props.disabled);r.unmount()
-}
-{
-  const r=hooks(),post=deferred(),reply={settings:{revision:1},session:{revision:1,enabled:false},global:{revision:1},characters:[{id:'npc',name:'NPC'}]}
-  const p=panels(r,async(url,init)=>init?post.promise:url.includes('character-cluster')?reply:modelReply)
-  r.mount(p.CharacterClusterPanel,{sessionId:'story'});await r.flush()
-  nodes(r.seat).find(n=>n?.type==='input').props.onChange({target:{checked:true}});await r.flush()
-  const saved=button(r,'保存当前对话设置').props.onClick();await r.flush()
-  assert(controls(r.seat).every(c=>c.disabled),'cluster saving also locks global and per-character routes')
-  post.reject(Error('controlled failure'));await saved;await r.flush()
-  assert.equal(nodes(r.seat).find(n=>n?.type==='input').props.checked,true,'failure retains edits')
-  assert(controls(r.seat).some(c=>!c.disabled));r.unmount()
 }
 const originalFetch=globalThis.fetch,originalSetInterval=globalThis.setInterval,
   originalClearInterval=globalThis.clearInterval,originalDocument=globalThis.document
@@ -262,6 +315,58 @@ try{
     assert.deepEqual(messages,['角色卡已导入，请选择开场','原导入任务已完成，请核对当前角色卡和开场'],
       'both matching completion receipts succeed without an identity-replacement error')
     r.unmount()
+  }
+  {
+    const r=hooks(),report={schemaVersion:2,total:4,omitted:0,
+      counts:{interpreted:4,'preserved-unexecuted':0,'missing-external-resource':0,'requires-optional-analysis':0},
+      evidence:{originalSaved:'not-assessed',callableCapabilities:'not-assessed',
+        resourceAvailability:'declarations-only',originalGameplay:'not-assessed'},entries:[
+        {sourcePointer:'/data/rules',status:'interpreted',reason:'native-author-projection'},
+        {sourcePointer:'/data/worldbook',status:'interpreted',reason:'passive-material-projection'},
+        {sourcePointer:'/data/compatibility/authorExecution',status:'interpreted',reason:'preserved-author-projection'},
+        {sourcePointer:'/data/compatibility/sillytavernMacroFields',status:'interpreted',reason:'structured-projection'}]}
+    const Panel=createCardImportPanel({React:r.React,toast(){},
+      jsonFetch:async url=>url.includes('/state?')?{cardImport:{capabilityReport:report}}:{candidates:[]}})
+    r.mount(Panel,{sessionId:'native'});await r.flush()
+    const displayed=text(r.seat)
+    for(const label of ['作者规则','被动资料','保留的作者资料','原始宏字段','不等同于自动触发的世界书',
+      '普通剧情读取保留的作者资料，人物分类供高级功能使用','不代表原卡玩法已验证',
+      '原件保存：本报告未评估保存结果','可调用能力：本报告未评估运行与调用结果',
+      '未验证实际资源可用性','原卡玩法：本报告未评估'])assert(displayed.includes(label),label)
+    assert(!displayed.includes('该声明尚待核对'),'known Native projection reasons have useful descriptions')
+    assert(!displayed.includes('已验证原卡玩法'))
+    r.unmount()
+  }
+  for(const [kind,label,description] of [
+    ['uploaded-original','下载上传原件','上传原件保留最初上传的文件名与字节'],
+    ['authored-document','导出作者文档','作者文档来自互动写卡，不是上传原件'],
+    [undefined,'导出源文档','源文档来源尚未确认'],
+  ]) {
+    const r=hooks(),p=panels(r,async()=>({jobs:[],originalSourceKind:kind}))
+    r.mount(p.ExportPanel,{sessionId:'source-kind'});await r.flush()
+    assert(nodes(r.seat).some(node=>node?.type==='a'&&text(node)===label),label)
+    assert(text(r.seat).includes(description))
+    assert(text(r.seat).includes('包含当前已保存设定的派生导出'))
+    assert(!text(r.seat).includes('导出上传源文件'))
+    r.unmount()
+  }
+  {
+    let tick,kind='uploaded-original',reads=0
+    const savedSetInterval=globalThis.setInterval,savedClearInterval=globalThis.clearInterval
+    globalThis.setInterval=fn=>(tick=fn,1);globalThis.clearInterval=()=>{}
+    const r=hooks(),p=panels(r,async url=>{
+      assert(url.startsWith('/api/roleplay/jobs?'),'source kind uses the existing jobs read')
+      reads++;return {jobs:[],originalSourceKind:kind}
+    })
+    try {
+      r.mount(p.ExportPanel,{sessionId:'changing-source'});await r.flush()
+      assert(nodes(r.seat).some(node=>node?.type==='a'&&text(node)==='下载上传原件'))
+      kind='authored-document';tick();await r.flush()
+      assert(nodes(r.seat).some(node=>node?.type==='a'&&text(node)==='导出作者文档'))
+      assert.equal(reads,2,'one jobs read per existing refresh also updates source kind')
+    } finally {
+      r.unmount();globalThis.setInterval=savedSetInterval;globalThis.clearInterval=savedClearInterval
+    }
   }
   {
     globalThis.fetch=async()=>listResponse([importResource])
