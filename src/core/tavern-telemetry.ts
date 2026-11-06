@@ -10,6 +10,9 @@ import {
     telemetryOutcome as outcome,
 } from './tavern-telemetry-normalize.js';
 import { foldSessionCalls } from './tavern-telemetry-fold.js';
+import { createTelemetryIngest, TELEMETRY_USAGE_PREFIX as PREFIX,
+    TELEMETRY_LOG_PREFIX as LOG, TELEMETRY_META_PREFIX as META } from './tavern-telemetry-ingest.js';
+import type {DomainChanged} from '@deepseek-ai/dsh-storage-domain';
 import { aggregateUsage } from './tavern-telemetry-aggregate.js';
 import { queryUsageRequests } from './tavern-telemetry-query.js';
 export { foldSessionCalls, aggregateUsage, queryUsageRequests };
@@ -26,7 +29,7 @@ interface SessionHeader {
     origin?: string;
     parentSession?: string;
 }
-interface RuntimeSession {
+export interface RuntimeSession {
     id: string;
     inheritedEventCount?: unknown;
     header?: SessionHeader;
@@ -36,20 +39,21 @@ interface RuntimeSession {
 interface SessionView extends Omit<RuntimeSession, 'id'> {
     id: string | null;
 }
-interface TelemetryTable {
+export interface TelemetryTable {
     get(key: string): unknown;
     put(key: string, value: unknown): unknown | Promise<unknown>;
     entries(exactPrefix?: string): Iterable<[
         string,
         unknown
     ]>;
+    entriesPrefix?(prefix: string | readonly string[]): Iterable<[string, unknown]>;
 }
 interface TelemetryRoute {
     provider?: unknown;
     model?: unknown;
     reasoningEffort?: unknown;
 }
-interface TelemetryJob {
+export interface TelemetryJob {
     id: string;
     sessionId?: string;
     branchId?: string;
@@ -98,6 +102,7 @@ interface TelemetryOptions {
     };
     jobs?(sessionId?: string): readonly unknown[];
     streamRows?(sessionId: string, read: () => readonly StoredCall[]): readonly StoredCall[];
+    domainRecords?: {observe(listener: (change: DomainChanged) => void): () => void; jobPrefixes: readonly string[]};
 }
 const objectRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 function isTelemetryJob(value: unknown): value is TelemetryJob {
@@ -148,10 +153,10 @@ interface Coverage {
     historical?: string;
     live?: string;
 }
-type StoredCall = TelemetryCallRecord & {
+export type StoredCall = TelemetryCallRecord & {
     superseded?: boolean;
 };
-interface LogRecord {
+export interface LogRecord {
     schemaVersion: number;
     id: string;
     sessionId: string | null | undefined;
@@ -216,7 +221,7 @@ interface ObserveOptions {
     purpose?: string;
     signal?: AbortSignal;
 }
-const PREFIX = 'tavern_usage__', LOG = 'tavern_log__', PRICE = 'tavern_prices', META = 'tavern_usage_session__';
+const PRICE = 'tavern_prices';
 const hash = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex');
 // Live reads use the ready incremental ledger; cold corpus reads supply a cut.
 const events = (s: Pick<RuntimeSession, 'events' | 'log'> | null | undefined): readonly TelemetryEvent[] => sessionEvents(s);
@@ -254,7 +259,7 @@ function presetOf(s: SessionView) {
     return p;
 }
 /** No prompts, tool arguments, output text, headers or credentials are stored. */
-export function createTelemetry({ table, sessions, query, jobs: readJobs = () => [], streamRows }: TelemetryOptions) {
+export function createTelemetry({ table, sessions, query, jobs: readJobs = () => [], streamRows, domainRecords }: TelemetryOptions) {
     const jobs = (sessionId?: string) => readJobs(sessionId).filter(isTelemetryJob);
     let syncPromise: Promise<Coverage> | null = null, persistenceFailures = 0, lastSyncAt = 0, coverage: Coverage = {
         scanning: false, scannedSessions: 0, totalSessions: 0, failedSessions: 0
@@ -262,8 +267,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
     const scanned = new Map<string, number>(),
         known = new Map<string | null | undefined, SessionHeader | undefined>(),
         active = new Set<string>(),
-        coldRead = new Set<string>(),
-        persisted = new Map<string, string>();
+        coldRead = new Set<string>();
     // Existing schema rows are selected by namespace; migration does not filter or rewrite legacy records.
     const values = <K extends keyof StoredRows>(prefix: K): StoredRows[K][] =>
         [...table.entries(prefix)]
@@ -285,18 +289,22 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
         }
         return h?.id ?? s.id;
     };
+    const incremental = createTelemetryIngest({table, domainRecords, isTelemetryJob, active,
+        owner, meta, headerPreset: s => s.header?.agentPreset,
+        eligible: (s, preset) => {
+            const id = owner(s);
+            return preset === 'roleplay' ||
+                (known.get(id) ?? (id ? sessions.get(id)?.header : undefined))?.agentPreset === 'roleplay';
+        }});
     function eligible(s: SessionView) {
-        if (presetOf(s) === 'roleplay')
+        const recent = incremental.recent(s);
+        if ((recent ? recent.preset : presetOf(s)) === 'roleplay')
             return true;
         const id = owner(s);
         return (known.get(id) ?? (id ? sessions.get(id)?.header : undefined))?.agentPreset === 'roleplay';
     }
     async function writeChanged(key: string, value: unknown) {
-        const snapshot = JSON.stringify(value);
-        if (persisted.get(key) === snapshot)
-            return;
-        await table.put(key, value);
-        persisted.set(key, snapshot);
+        await incremental.writeChanged(key, value);
     }
     async function put(call: StoredCall) {
         await writeChanged(PREFIX + call.id, call);
@@ -305,6 +313,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
     // prevents concurrent readers from publishing a partial fold or duplicate persistence.
     async function ingestUnlocked(s: RuntimeSession) {
         await ensureSessionHistory(s);
+        if (await incremental.ingest(s)) return;
         meta(s);
         if (!eligible(s))
             return;
@@ -636,7 +645,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
         return row;
     }
     async function* observe<C extends TelemetryChunk>(options: ObserveOptions, next: () => AsyncIterable<C>,
-        requestMeasurement?:()=>import('@deepseek-ai/dsh-agent-loop').NativeRequestMeasurementV1|undefined): AsyncGenerator<C> {
+        requestMeasurement?:()=>import('dsh-nexttavern-native-agent-loop').NativeRequestMeasurementV1|undefined): AsyncGenerator<C> {
         if (options.sessionId) await ensureSessionHistory(sessions.get(options.sessionId));
         const liveSession = options.sessionId ? sessions.get(options.sessionId) : undefined, s: SessionView = liveSession ?? {
             id: options.sessionId ?? null, header: {
@@ -649,9 +658,12 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
             yield* next();
             return;
         }
-        const boundary = events(s).findLast(e => e.type === 'step/start' || e.type === 'llm/retry-started');
-        const startedAt = Date.now(), id = randomUUID(), job = jobs(s.id ?? undefined).find(j => j.childSessionId === s.id);
-        const message = events(s).findLast(e => e.type === 'user/message')?.data,
+        const recent = incremental.recent(s);
+        const boundary = recent ? recent.boundary : events(s).findLast(e => e.type === 'step/start' || e.type === 'llm/retry-started');
+        const startedAt = Date.now(), id = randomUUID();
+        const sessionJobs = recent && s.id ? incremental.jobs(s.id) : jobs(s.id ?? undefined);
+        const job = sessionJobs.find(j => j.childSessionId === s.id);
+        const message = recent ? recent.message?.data : events(s).findLast(e => e.type === 'user/message')?.data,
             phase = message?.source?.kind === 'roleplay-tasks'
                 ? (message.source.jobKind ?? message.source.stage ?? 'management')
                 : 'narrative';
@@ -893,6 +905,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
         savePrices,
         sessionList: () => values(META).filter(r => r.sessionId === r.ownerSessionId).map(r => ({
             id: r.sessionId, label: r.label ?? `会话 ${r.sessionId.slice(-8)}`
-        }))
+        })),
+        dispose: incremental.dispose,
     };
 }

@@ -1,10 +1,178 @@
 import assert from 'node:assert/strict'
 import { foldSessionCalls, aggregateUsage, createTelemetry, timeRange, queryUsageRequests } from '../lib/core/tavern-telemetry.js'
 import {createRoleplayInputStateOwner} from '../lib/core/roleplay-input-state.js'
+import {createSessionHistory,sessionHistoryCut} from '../lib/core/session-history.js'
+import {ownedPackages} from './plugin-owned-packages-fixture.mts'
+import {loadChatCardSource} from './chat-card-controller-fixture.mts'
+import {createTestDirectory,cleanupTestDirectory} from '../src/operations/test-temp.mts'
 class Table extends Map { async put(k,v){this.set(k,structuredClone(v))} }
 class IdentityTable extends Map {
   constructor(){super();this.durable=new Map()}
   async put(k,v){this.durable.set(k,structuredClone(v));if(!this.has(k))this.set(k,v)}
+}
+// Actual Native accepted events and the official Domain/JSON implementation
+// exercise the automatic consumer. The detached public parser remains the
+// reference for full-history output and final turn/step attribution.
+{
+ const directory=createTestDirectory('telemetry-native-domain-'),native=await ownedPackages([],[],{localSession:true})
+ const {Session,SessionId}=await native.load('@deepseek-ai/dsh-session')
+ const {DomainFacility}=await native.load('@deepseek-ai/dsh-storage-domain')
+ const {z}=await native.load('zod')
+ const {JsonStorageBackend}=await loadChatCardSource('compat/storage-json/src/index.ts',directory,native.require)
+ const backend=new JsonStorageBackend(directory+'/storage'),sessions=new Map(),prefixes=['tavern_job__','tavern_cardjob__','tavern_novel__']
+ const input=createRoleplayInputStateOwner({domainName:'roleplay',session:id=>sessions.get(id),agent:()=>undefined,active:()=>true})
+ const facility=new DomainFacility({storage:{backend:{get:()=>backend}},logger:{warn(){},error(){}},
+  emit(name,change){assert.equal(name,'domain/changed');input.domainChanged(change)}},{backend:'json'})
+ let domain,api,current,history,beforePut,afterPut
+ const spec={name:'roleplay',version:1,layout:'per-record',tables:{branch:{valueSchema:z.unknown()}}}
+ try{
+  domain=await facility.open(spec)
+  const durable=domain.table('branch')
+  const table=input.table('branch',{get:key=>durable.get(key),entries:()=>durable.entries(),async put(key,value){
+   await beforePut?.(key,value)
+   await durable.put(key,value)
+   await afterPut?.(key,value)
+  }})
+  const allJobs=()=>[...durable.entries()].filter(([key])=>prefixes.some(prefix=>key.startsWith(prefix))).map(([,value])=>value)
+  const create=()=>createTelemetry({table,sessions:{get:id=>sessions.get(id),list:()=>[...sessions.values()]},jobs:allJobs,
+   domainRecords:{observe:input.observeDomainChanges,jobPrefixes:prefixes}})
+  const live=(id,events,header,inherited=0)=>{
+   const branded=SessionId(id),base=Session.create(branded)
+   const value=Session.create(branded,events,{...base.header,agentPreset:'roleplay',...header},inherited)
+   sessions.set(id,value);return value
+  }
+  current=live('telemetry-native-owner')
+  history=createSessionHistory({get:id=>sessions.get(id),observe:async id=>{
+   const value=sessions.get(id)
+   return {source:'live',header:{id},cursor:value.seq-1,inheritedEventCount:value.inheritedEventCount,
+    events:value.snapshotEvents(),[Symbol.dispose]() {}}
+  }})
+  const append=(type,data,options)=>{const value=current.append(type,data,options);history.accept(current,value);return value}
+  const route=(provider)=>append('request/header',{reason:'change',header:{config:{provider,model:'m'}}})
+  const reply=(turn,step=1)=>append('assistant/message',{turn,step,usage:{inputTokens:10,outputTokens:2},stream:[],
+   message:{id:`reply-${current.seq}`,role:'assistant',source:{kind:'model',provider:'actual',model:'m'},content:[{type:'text',text:'PRIVATE_BODY'}]}},
+   {surfaceOp:'append'})
+  const begin=(turn,step=1)=>{append('turn/start',{turn});return append('step/start',{turn,step})}
+  const end=(turn,step=1)=>{append('step/end',{turn,step});append('turn/end',{turn,reason:{kind:'completed'}})}
+  const usageRows=rows=>rows.filter(([,row])=>row?.source?.kind==='session-attempt'||row?.source?.kind==='stream')
+   .map(([key,row])=>[key,row]).sort(([a],[b])=>a.localeCompare(b))
+  const operationRows=rows=>rows.filter(([,row])=>row?.source?.kind==='session-event').sort(([a],[b])=>a.localeCompare(b))
+  const check=async()=>{
+   const referenceTable=new Table([...durable.entries()].map(([key,value])=>[key,structuredClone(value)]))
+   const loaded={id:current.id,header:current.header,inheritedEventCount:current.inheritedEventCount,events:current.snapshotEvents()}
+   const reference=createTelemetry({table:referenceTable,sessions:{get:id=>id===loaded.id?loaded:sessions.get(id)},jobs:allJobs})
+   await reference.ingest(loaded);await api.ingest(current)
+   assert.deepEqual(usageRows([...durable.entries()]),usageRows([...referenceTable]),'Native tail preserves the full detached charge result')
+   assert.deepEqual(operationRows([...durable.entries()]),operationRows([...referenceTable]),'Native tail preserves final turn/step operation attribution')
+   reference.dispose()
+  }
+  await history.ready(current);api=create()
+  begin(1);route('first');reply(1)
+  append('tool/call',{turn:1,step:1,callId:'tool',name:'read_file',arguments:'PRIVATE_ARGUMENT'})
+  append('tool/result',{turn:1,step:1,message:{id:'tool-result',role:'tool',toolCallId:'tool',source:{kind:'tool',callId:'tool'},
+   content:[{type:'text',text:'PRIVATE_RESULT'}]}},{surfaceOp:'append'})
+  await check()
+  append('llm/retry',{retryId:'retry',turn:1,step:1,provider:'first',mode:'normal',policyKey:'fixture',retry:1,maxRetries:2,
+   delayMs:0,failure:{kind:'network',message:'PRIVATE_FAILURE'}})
+  append('llm/retry-started',{retryId:'retry',turn:1,step:1,retry:1});route('retry');reply(1);end(1)
+  await check()
+  for(let turn=2;turn<=7;turn++){begin(turn);route('route-'+turn);reply(turn);end(turn);await check()}
+  assert(!JSON.stringify([...durable.entries()]).includes('PRIVATE_'),'telemetry never stores Native body or tool payloads')
+
+  // Same Native count: an actual stream can replace the native echo, and an
+  // external job update must change the next stream's purpose immediately.
+  const echo=foldSessionCalls({id:current.id,events:current.snapshotEvents()})[0]
+  const stream={...echo,id:'external-stream',status:'running',startedAt:echo.startedAt,
+   source:{kind:'stream',sessionId:current.id,startSeq:echo.source.startSeq,purpose:null}}
+  await durable.put('tavern_usage__external-stream',stream);await check()
+  assert.equal(durable.get('tavern_usage__external-stream').status,echo.status)
+  assert.equal(durable.get('tavern_usage__'+echo.id).superseded,true)
+  await durable.put('tavern_cardjob__one',{id:'one',sessionId:current.id,childSessionId:current.id,kind:'card-export',status:'running',createdAt:1})
+  await api.ingest(current)
+  assert(durable.get('tavern_usage__external-stream').source.jobIds.includes('one'))
+  await durable.put('tavern_cardjob__one',{id:'one',sessionId:current.id,childSessionId:current.id,kind:'novel-export',status:'running',createdAt:1})
+  for await(const _chunk of api.observe({sessionId:current.id,purpose:'auxiliary'},async function*(){yield {type:'finish',reason:{kind:'stop'}}})){}
+  assert.equal(api.calls().find(row=>row.source.purpose==='auxiliary').kind,'novel-export')
+  await durable.delete('tavern_cardjob__one')
+  for await(const _chunk of api.observe({sessionId:current.id,purpose:'after-delete'},async function*(){yield {type:'finish',reason:{kind:'stop'}}})){}
+  assert.equal(api.calls().find(row=>row.source.purpose==='after-delete').kind,'after-delete')
+  await durable.delete('tavern_usage__external-stream');await check()
+  assert.equal(durable.get('tavern_usage__'+echo.id).superseded,undefined,'deleting a matching stream restores the Native charge at the same cut')
+  const damaged={...durable.get('tavern_usage__'+echo.id),provider:'external-damage'}
+  await durable.put('tavern_usage__'+echo.id,damaged);await check()
+  assert.equal(durable.get('tavern_usage__'+echo.id).provider,echo.provider,'external changes revoke the prior successful-write memo')
+  const [operationKey,operation]=[...durable.entries()].find(([,row])=>row.source?.kind==='session-event')
+  await durable.put(operationKey,{...operation,label:'external operation damage'});await api.ingest(current)
+  assert.deepEqual(durable.get(operationKey),operation,'an owned operation output is restored after an external replacement')
+  await durable.delete(operationKey);await api.ingest(current)
+  assert.deepEqual(durable.get(operationKey),operation,'an owned operation output is restored after external deletion')
+  const [labelKey,label]=[...durable.entries()].find(([,row])=>row.source?.kind==='session-header'&&row.sessionId===current.id)
+  await durable.put(labelKey,{...label,label:'external label damage'});await api.ingest(current)
+  assert.equal(durable.get(labelKey).label,label.label,'the owned session label is restored after an external replacement')
+  await durable.delete(labelKey);await api.ingest(current)
+  assert.equal(durable.get(labelKey).label,label.label,'the owned session label is restored after external deletion')
+
+  // A rejected write and a committed write whose caller loses the ACK both
+  // retain the pending output. A subsequent real write failure must surface.
+  begin(8);route('write-failure');reply(8);end(8)
+  const failure=Error('telemetry before durability')
+  beforePut=(key)=>{if(key.startsWith('tavern_usage__')){beforePut=undefined;throw failure}}
+  await assert.rejects(api.ingest(current),error=>error===failure)
+  await check()
+  begin(9);route('lost-ack');reply(9);end(9)
+  afterPut=(key)=>{if(key.startsWith('tavern_usage__')){afterPut=undefined;throw Error('telemetry lost ACK')}}
+  await assert.rejects(api.ingest(current),/telemetry lost ACK/)
+  beforePut=(key)=>{if(key.startsWith('tavern_usage__')){beforePut=undefined;throw failure}}
+  await assert.rejects(api.ingest(current),error=>error===failure)
+  await check()
+
+  begin(10);route('before-await')
+  afterPut=(key)=>{if(key.startsWith('tavern_usage__')){afterPut=undefined;route('after-await');reply(10);end(10)}}
+  await api.ingest(current)
+  assert.equal(api.calls().find(row=>row.source.startSeq===current.snapshotEvents().findLast(row=>row.type==='step/start').seq).status,'completed',
+   'an accepted Native tail arriving during persistence is reconciled before ingest resolves')
+  await check()
+
+  // A new row inserted during association is visible before the same ingest returns.
+  const associatedStart=begin(11);route('associated');reply(11);end(11)
+  const associated=foldSessionCalls({id:current.id,events:current.snapshotEvents()}).at(-1)
+  await durable.put('tavern_usage__association-old',{...stream,id:'association-old',source:{...stream.source,startSeq:-1}})
+  await durable.put('tavern_job__association',{id:'association',sessionId:current.id,childSessionId:current.id,
+   kind:'status',status:'running',createdAt:1})
+  afterPut=async(key)=>{if(key==='tavern_usage__association-old'){
+   afterPut=undefined
+   await durable.put('tavern_usage__association-new',{...associated,id:'association-new',status:'running',
+    source:{kind:'stream',sessionId:current.id,startSeq:associatedStart.seq,purpose:null}})
+  }}
+  await api.ingest(current)
+  assert.equal(durable.get('tavern_usage__association-new').status,'completed',
+   'a stream published during job association participates in the same Native reconciliation')
+  await durable.delete('tavern_job__association')
+
+  // Existing active stream output remains owned by its invocation.
+  const activeStart=begin(12);route('active')
+  let release
+  const gate=new Promise(resolve=>{release=resolve})
+  const iterator=api.observe({sessionId:current.id},async function*(){yield {type:'usage',usage:{inputTokens:42}};await gate;
+   yield {type:'finish',reason:{kind:'stop'}}})[Symbol.asyncIterator]()
+  await iterator.next();reply(12);end(12);await api.ingest(current)
+  const active=api.calls().find(row=>row.source.kind==='stream'&&row.source.startSeq===activeStart.seq)
+  assert.equal(active.status,'running');assert.equal(active.usage.inputTokens,42)
+  release();await iterator.next();await iterator.next();await api.ingest(current)
+  assert.equal(api.calls().find(row=>row.id===active.id).status,'completed')
+
+  const old=current,owner=sessionHistoryCut(old).owner,saved=old.snapshotEvents()
+  history.disposeSession(old);current=live(old.id,saved,old.header);await history.ready(current)
+  assert.notEqual(sessionHistoryCut(current).owner,owner);await check()
+  const parent=current,seed=parent.seq
+  current=live('telemetry-native-child',parent.snapshotEvents(),{origin:'subagent',parentSession:parent.id,isSeeded:true},seed)
+  await history.ready(current);begin(13);route('child');reply(13);end(13);await check()
+  const childCalls=api.calls().filter(row=>row.sessionId===current.id)
+  assert.equal(childCalls.length,1,'seeded Native history establishes lifecycle without a second charge')
+  assert.equal(childCalls[0].ownerSessionId,parent.id)
+  api.dispose();api=create();await check()
+  console.log('telemetry-native-domain=ok (retry/seed/external/delete/ACK/tail/active/cold)')
+ }finally{api?.dispose();history?.dispose();input.dispose();await domain?.close();native.close();cleanupTestDirectory(directory)}
 }
 const event=(seq,type,data,time=1000+seq*100)=>({seq,type,data,time})
 const usage={inputTokens:100,outputTokens:20,cacheReadTokens:900,cacheWriteTokens:0}
