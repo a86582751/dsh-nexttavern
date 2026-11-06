@@ -30,7 +30,7 @@ export function captureRoleplayRecordVersionsV1(T, sessionId) {
         opening: recordSha256(T.opening.get(keyOf(sessionId, 'scene'))),
     };
 }
-export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, carryTruncationBoundary, buildForkLookupIndex, reconcileCanonicalPlayerVariants, statusRecoveredSessions, recoverStatusObligations, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, importRecordKey, preparationRecordKey, tavernTasks, memoryForContext, cloneContextWindow, contextWindowFor, selectedStatusRecord, selectedStatusGeneration, latestStatusEvent, importSummary, chatImportProjection, numericalState, taskArtifact, readerDisplay, readerDisplayContextVersion, communityPresets, readInputDiagnostic, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, normalizeDecisionRecord, userValues, svc, resolveRoleplaySession }) {
+export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, carryTruncationBoundary, buildForkLookupIndex, reconcileCanonicalPlayerVariants, statusRecoveredSessions, recoverStatusObligations, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, importRecordKey, preparationRecordKey, tavernTasks, memoryForContext, cloneContextWindow, contextWindowFor, selectedStatusRecord, selectedStatusGeneration, latestStatusEvent, importSummary, chatImportProjection, numericalState, taskArtifact, readerDisplay, readerDocument, readerBeauty, readerRenderHtml, readerReleasePhase, readerDisplayContextVersion, communityPresets, readInputDiagnostic, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, normalizeDecisionRecord, userValues, svc, resolveRoleplaySession }) {
     const collectBranchRecords = (session) => {
         const prefix = `${session.id}__`;
         const cards = [];
@@ -212,9 +212,6 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
             ? T.branch.get(importRecordKey(importSourceSessionId, activeImport.importId))
             : null;
         const activeSourceRecord = activeImportRecord;
-        const currentRules = T.rules.get(keyOf(session.id, 'spec'));
-        const summary = activeImportRecord ? importSummary(activeImportRecord, currentRules ?? undefined) : null;
-        const { authorCoreData, ...cardSummary } = summary ?? {};
         const versions = T.branch.get(keyOf(session.id, 'versions')) ?? { anchors: {} };
         const flatVersions = [];
         for (const [anchor, group] of Object.entries(versions.anchors ?? {})) {
@@ -229,6 +226,11 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
             }
         }
         const numericalObservation = await numericalState?.(session.id) ?? null, userinfo = userValues(session.id);
+        // Read the rules and their existing owner digest in one synchronous cut.
+        // Origin admission may yield; its response still carries this exact Source.
+        const currentRules = T.rules.get(keyOf(session.id, 'spec')), recordVersions = recordVersionsFor(session), summary = activeImportRecord ? importSummary(activeImportRecord, currentRules ?? undefined) : null, { authorCoreData, ...cardSummary } = summary ?? {}, beautyJavascript = String(currentRules?.beauty?.js ?? ''), nativeBeauty = readerBeauty && beautyJavascript.trim() ? await readerBeauty({ schemaVersion: 1,
+            encoding: 'reader-native-beauty-source-v1', sessionId: session.id, rulesRecordSha256: recordVersions.rules,
+            javascript: beautyJavascript }) : undefined;
         for (const anchor of Object.values(assistantActionAnchorsByTurn)) {
             const artifact = taskArtifact?.(session.id, anchor.seq);
             if (artifact)
@@ -255,8 +257,10 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
             statusPanel: selectedStatusRecord(session, statusEvent),
             statusGeneration: selectedStatusGeneration(session, statusEvent),
             numericalState: numericalObservation,
-            readerDisplay: { enabled: activeSourceRecord?.extensionInventory?.entries
-                    .some(entry => entry.key === 'regex_scripts' && entry.valueType === 'array') ?? false },
+            readerDisplay: { enabled: (activeSourceRecord?.extensionInventory?.entries
+                    .some(entry => entry.key === 'regex_scripts' && entry.valueType === 'array') ?? false)
+                    || numericalObservation?.kind === 'schema-ready' && numericalObservation.hasFinalizedMessages === true },
+            ...nativeBeauty ? { readerBeauty: nativeBeauty } : {},
             communityPresets: communityPresets?.(session.id) ?? null,
             rules: currentRules ? { ...currentRules, ...authorCoreData
                     ? { core: authorCoreData.text, coreOrigin: authorCoreData.kind } : {} } : null,
@@ -264,7 +268,7 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
             cardImport: activeImportRecord
                 ? { ...cardSummary, sourceRecordSessionId: importSourceSessionId,
                     ...chatImportProjection?.(session, activeImportRecord) }
-                : activeImport,
+                : activeImport ?? { originalSourceKind: 'authored-document' },
             drafts: [...T.drafts.entries()].filter(([k]) => k.startsWith(`${session.id}__draft__`)).map(([, v]) => ({ draft_id: v?.id, idea: String(v?.idea ?? '').slice(0, 80), modules: Object.keys(v?.modules ?? {}), updatedAt: v?.updatedAt })),
             versions: flatVersions,
             branchGroupsByMessageId,
@@ -280,7 +284,7 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
             // The append-only audit log can contain regenerated/deleted siblings.
             // Reader and memory consumers must address only these authoritative
             // nodes, which are exactly what the next model request sees.
-            recordVersions: { ...recordVersionsFor(session), readerDisplaySource: recordSha256({ pointer: activeImport,
+            recordVersions: { ...recordVersions, readerDisplaySource: recordSha256({ pointer: activeImport,
                     rawSha256: activeSourceRecord?.rawSha256 ?? null, normalizedSha256: activeSourceRecord?.normalizedSha256 ?? null,
                     transactionId: activeSourceRecord?.activation?.transactionId ?? null, userinfo,
                     // Deleted audit views do not open a live Reader observation.
@@ -310,6 +314,26 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
                     }
                     catch {
                         return jsonResponse(400, { ok: false, code: 'READER_DISPLAY_REQUEST_INVALID', error: '请求体必须是 JSON' });
+                    }
+                    if (body?.action === 'reader-render-html') {
+                        if (!readerRenderHtml)
+                            return jsonResponse(503, { ok: false, code: 'READER_RENDER_HTML_UNAVAILABLE' });
+                        return jsonResponse(200, await readerRenderHtml(body, request.signal));
+                    }
+                    if (body?.action === 'reader-release-phase') {
+                        if (!readerReleasePhase)
+                            return jsonResponse(503, { ok: false, code: 'READER_RENDER_HTML_UNAVAILABLE' });
+                        await readerReleasePhase(body.binding);
+                        return jsonResponse(200, { ok: true });
+                    }
+                    if (['mutate-opening-variants', 'confirm-opening-variants', 'retry-opening-variants', 'release-reader-binding',
+                        'save-reader-numerical', 'confirm-reader-numerical', 'retry-reader-numerical',
+                        'execute-reader-commands', 'mutate-reader-message-body', 'confirm-reader-message-body',
+                        'retry-reader-message-body', 'mutate-reader-namespace', 'confirm-reader-namespace',
+                        'retry-reader-namespace'].includes(String(body?.action))) {
+                        if (!readerDocument)
+                            return jsonResponse(503, { ok: false, code: 'READER_DOCUMENT_UNAVAILABLE' });
+                        return jsonResponse(200, await readerDocument(body, request.signal));
                     }
                     if (body?.action !== 'reader-display' || !Array.isArray(body.messages)
                         || body.messages.some(ref => !ref || typeof ref !== 'object' || !Number.isSafeInteger(ref.seq)

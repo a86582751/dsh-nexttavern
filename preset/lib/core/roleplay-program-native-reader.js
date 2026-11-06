@@ -3,7 +3,7 @@
  * lookup, flush, append, model request, protected renderer or Source grant. */
 import { recordSha256, sha256 } from './roleplay-data.js';
 import { types as utilTypes } from 'node:util';
-import { inspectNativeOpeningGenerationObservationV1, inspectInheritedOpeningGenerationObservationV1, nativeInputSha256 } from '@deepseek-ai/dsh-agent-loop';
+import { inspectNativeOpeningGenerationObservationV1, inspectInheritedOpeningGenerationObservationV1, nativeInputSha256 } from 'dsh-nexttavern-native-agent-loop';
 import { verifyProgrammaticCardCopySpanV1, verifyInheritedProgrammaticCardCopySpanV1, verifyInheritedProgrammaticCardCopyPublicationSpanV1 } from './roleplay-program-copy-span.js';
 export { verifyProgrammaticCardCopySpanV1, verifyInheritedProgrammaticCardCopySpanV1 } from './roleplay-program-copy-span.js';
 const unknown = (code) => ({ kind: 'unknown', code });

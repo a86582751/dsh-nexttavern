@@ -1,6 +1,7 @@
 export { decodeStatusTemplate, statusFactsHtml } from './status-rendering.js';
 import { runReaderRegex } from './reader-regex.js';
 import type { ReaderRule, ReaderNarrativeRegexRunner } from './reader-regex.js';
+import { sanitizeDisplayTree } from '../core/tavern-display-html.js';
 
 export {projectReaderNarrativeDisplay} from '../core/roleplay-reader-narrative-display.js';
 export type {ReaderMvuDisplayScope} from '../core/roleplay-reader-narrative-display.js';
@@ -392,46 +393,17 @@ function sanitizeReaderStyle(styleText: unknown) {
 }
 
 function sanitizeReaderTree(root: DocumentFragment | Element, scopedStyles = false) {
-    for (const element of Array.from(root.querySelectorAll('*'))) {
-        if (!element.parentNode) continue;
-        const tag = element.tagName;
-        if (tag === 'STYLE' && scopedStyles) {
-            // Status styles have already been scoped. Reject network-capable CSS
-            // and escape syntax rather than treating a selector prefix as a CSS sandbox.
-            const css = element.textContent ?? '';
+    sanitizeDisplayTree(root, {
+        allowedTags: READER_ALLOWED_TAGS, dropTags: READER_DROP_TAGS,
+        safeAttributes: READER_SAFE_ATTRIBUTES, styleAttribute: sanitizeReaderStyle,
+        ...(scopedStyles ? {styleText: (css: string) => {
+            // Preserve the existing Status policy and its already scoped CSS.
             if (/[\\]/.test(css) || /@(?:import|namespace|font-face|document)\b|(?:url|image-set|expression)\s*\(|(?:behavior|-moz-binding)\s*:/i.test(css)) {
-                element.remove();
-                continue;
+                return null;
             }
-            for (const attribute of Array.from(element.attributes)) element.removeAttribute(attribute.name);
-            continue;
-        }
-        if (READER_DROP_TAGS.has(tag)) {
-            element.remove();
-            continue;
-        }
-        if (!READER_ALLOWED_TAGS.has(tag)) {
-            const parent = element.parentNode;
-            while (element.firstChild) parent.insertBefore(element.firstChild, element);
-            element.remove();
-            continue;
-        }
-        for (const attribute of Array.from(element.attributes)) {
-            const name = attribute.name.toLowerCase();
-            const allowed = READER_SAFE_ATTRIBUTES.has(name) || name.startsWith('aria-') || name.startsWith('data-');
-            if (!allowed || name.startsWith('on') || name === 'srcdoc' || name === 'href' || name === 'src'
-                || name === 'xlink:href') {
-                element.removeAttribute(attribute.name);
-                continue;
-            }
-            if (name === 'style') {
-                const clean = sanitizeReaderStyle(attribute.value);
-                if (clean) element.setAttribute('style', clean);
-                else element.removeAttribute('style');
-            }
-        }
-        if (tag === 'BUTTON') element.setAttribute('type', 'button');
-    }
+            return css;
+        }} : {}),
+    });
 }
 
 export function sanitizeStatusHtml(value: unknown): string {
@@ -613,6 +585,13 @@ function applyReaderBlockMarkdown(root: DocumentFragment | Element) {
             paragraph.replaceWith(blockquote);
         }
     }
+}
+
+/** HTML returned from a Reader phase is already Markdown-expanded. Sanitize
+ * that same representation without interpreting it a second time. */
+export function sanitizeReaderNarrativeHtml(html:string):string {
+    const template=document.createElement('template');template.innerHTML=html;
+    sanitizeReaderTree(template.content);return template.innerHTML;
 }
 
 export async function renderReaderNarrativeAsync(raw: unknown, rules: ReaderRule[], run: ReaderNarrativeRegexRunner = runReaderRegex,

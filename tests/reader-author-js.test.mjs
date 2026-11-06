@@ -204,3 +204,58 @@ assert.equal(bounded.htmlFor('0'), 'fallback:0', 'cache retains at most the late
 assert.equal(bounded.htmlFor('1'), 'cached:1')
 assert.equal(bounded.htmlFor('500'), 'cached:500')
 console.log('reader-beauty=ok (scope fence, cancellation, cache reuse, fallback and FIFO cap)')
+
+// Static Source documents share the existing frame protocol, without an author
+// script entry. Real browser CSP/resource requests remain an acceptance check.
+{
+  const staticDom = new JSDOM('<!doctype html><iframe id="guard"></iframe>', {url:'http://127.0.0.1/'})
+  const previousWindow = globalThis.window
+  globalThis.window = staticDom.window
+  let child, guardDom
+  try {
+    const guard = staticDom.window.document.querySelector('#guard')
+    const controller = createAuthorFrame(guard, {mode:'static-document',css:'',baseCss:'',current:()=>true,
+      fill:()=>{},layout:()=>{},failed:reason=>assert.fail(reason)})
+    assert.match(guard.srcdoc,/script-src 'nonce-[0-9a-f]{32}'/)
+    assert.match(guard.srcdoc,/https:\/\/fonts\.googleapis\.com/)
+    assert.match(guard.srcdoc,/https:\/\/fonts\.gstatic\.com/)
+    assert.match(guard.srcdoc,/img-src data:/)
+    assert.doesNotMatch(guard.srcdoc,/unsafe-eval/)
+    guardDom = new JSDOM(guard.srcdoc,{runScripts:'dangerously',beforeParse(window){
+      // jsdom has no iframe.sandbox DOMTokenList. Actual sandbox/CSP behavior
+      // remains the real browser check; this shim only lets its guard mount.
+      Object.defineProperty(window.HTMLIFrameElement.prototype,'sandbox',{get(){
+        return {add:(...tokens)=>this.setAttribute('sandbox',tokens.join(' '))}
+      }})
+    }})
+    await new Promise(resolve=>guardDom.window.addEventListener('load',resolve,{once:true}))
+    const childHtml=guardDom.window.document.querySelector('iframe').srcdoc
+    let bind,port,authorCalls=0
+    child = new JSDOM(childHtml,{runScripts:'dangerously',beforeParse(window){
+      const listen=window.addEventListener.bind(window)
+      window.addEventListener=(type,callback,options)=>{if(type==='message')bind=callback;else listen(type,callback,options)}
+      window.ResizeObserver=class {observe(){};disconnect(){}}
+      window.requestAnimationFrame=callback=>window.setTimeout(callback,0)
+      window.Function=function(){authorCalls++;throw Error('STATIC_AUTHOR_JS_MUST_NOT_RUN')}
+    }})
+    await new Promise(resolve=>child.window.addEventListener('load',resolve,{once:true}))
+    const nonce=childHtml.match(/nonce="([0-9a-f]{32})"/)[1]
+    port={postMessage(){},start(){},onmessage:null}
+    bind({source:child.window.parent,data:{v:1,nonce,type:'bind'},ports:[port]})
+    port.onmessage({data:{v:1,nonce,type:'render',revision:1,source:'throw Error("author")',css:'',baseCss:'',parts:[
+      {key:'n:58',kind:'narrator',text:'accepted',html:'fallback',fragments:[
+        {kind:'text',html:'<p>Original prose.</p>'},
+        {kind:'author-document',html:'<style>.northern-status-container{color:#eee}</style><div class="northern-status-container">14:21</div>'}
+      ]}
+    ]}})
+    assert.equal(authorCalls,0)
+    assert.equal(child.window.document.querySelector('.northern-status-container').textContent,'14:21')
+    assert.match(child.window.document.querySelector('.rp-reader-narrative style').textContent,/color:#eee/)
+    assert.equal(child.window.document.querySelectorAll('.rp-author-action-space').length,1)
+    controller.dispose()
+    assert.equal(guard.hasAttribute('srcdoc'),false)
+  } finally {
+    child?.window.close();guardDom?.window.close();staticDom.window.close();globalThis.window=previousWindow
+  }
+  console.log('reader-author-static=ok (Source CSS, nonce bootstrap, no author JS, action anchor and dispose)')
+}
