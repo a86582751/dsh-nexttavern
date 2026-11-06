@@ -166,10 +166,11 @@ function verifyCopySpanFromOriginV1(input:ProgramCardCopyNativeReadInputV1|Progr
     }
     if(mode!=='original-audit') {
       const current=input as ProgramCardCopyNativeReadInputV1|ProgramInheritedCardCopyPublicationReadInputV1,
-        observation=current.observation,nodes=observation.surfaceNodes,
+        observation=current.observation,
         currentObservation=observation as ProgramCardCopyNativeObservationV1
-      if(!Array.isArray(nodes)||nodes.filter(seq=>seq===assistant.seq).length!==1
-        ||current.messageEdits.latest(events,assistant.seq)!==null
+      // Model-window checkpoints archive original messages without changing
+      // their publication. Edits and navigation tombstones own revocation.
+      if(current.messageEdits.latest(events,assistant.seq)!==null
         ||mode==='current-visible'&&(typeof currentObservation.deletedMessageIds==='function'
           ?currentObservation.deletedMessageIds():currentObservation.deletedMessageIds).includes(identity.requestedMessageId)
         ||observation.deriveEventMessage&&!same(observation.deriveEventMessage(assistant),message)) {
