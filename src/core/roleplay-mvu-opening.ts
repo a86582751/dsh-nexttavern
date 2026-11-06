@@ -1,4 +1,5 @@
 import {recordSha256,sha256} from './roleplay-data.js'
+import {IMPORT_NORMALIZER} from './roleplay-import-record.js'
 import {eventsOf} from './roleplay-context.js'
 import {createRoleplayMvuSource} from './roleplay-mvu-source.js'
 import {createRoleplayMvuBasis} from './roleplay-mvu-basis.js'
@@ -12,13 +13,17 @@ import {createRoleplayMvuSchemaOpening} from './roleplay-mvu-schema-opening.js'
 import {createRoleplayMvuSchemaSource} from './roleplay-mvu-schema-source.js'
 import {createRoleplayMvuSchemaStoryCore} from './roleplay-mvu-schema-story-core.js'
 import {createRoleplayMvuSchemaPlayerCore} from './roleplay-mvu-schema-player-core.js'
+import {createRoleplayOpeningVariantCore} from './roleplay-opening-variant-core.js'
+import {createRoleplayMvuScopeStoreV2} from './roleplay-mvu-scope-store-v2.js'
 import type {MvuSchemaStoryCoreDeps} from './roleplay-mvu-schema-story-core.js'
+import type {SchemaPromptScopeSelection,SchemaPromptScopeCaptureV1,SchemaPromptScopeCaptureV2,SchemaPromptScopeCaptureV3}
+  from './roleplay-mvu-schema-story-core.js'
 import {mvuInitializationHeadKey} from './roleplay-mvu-initialization.js'
 import type {MvuSchemaCoreDeps} from './roleplay-mvu-schema-core.js'
 import type {mvuPlayerMarkers} from 'dsh-nexttavern-session-format/mvu-player-marker'
 import type {MvuStateObservation} from './roleplay-mvu-player-types.js'
 import type {SchemaOpeningSelectionAdapter} from './roleplay-mvu-schema-opening-types.js'
-import type {Session,SessionEvent} from '@deepseek-ai/dsh-session'
+import type {Session,SessionEvent} from 'dsh-nexttavern-native-session'
 import type {MvuSourceDeps} from './roleplay-mvu-source.js'
 import type {MvuOpeningIdentity} from './roleplay-mvu-initialization.js'
 import type {OpeningCatalog, OpeningIntent, OpeningSelectionDeps} from './roleplay-opening-selection.js'
@@ -27,6 +32,9 @@ import type {TavernOpeningContext} from './tavern-card.js'
 import type {InputObservation} from './roleplay-input-preparation.js'
 import type {RoleplayInputStateOwner} from './roleplay-input-state.js'
 import {verifyProgrammaticCardCopySpanV1} from './roleplay-program-copy-span.js'
+import {openingVariantActivationSeedKey} from './roleplay-opening-variant-activation.js'
+import type {OpeningVariantActivationHandoff} from './roleplay-opening-variants.js'
+import type {OpeningVariantActivationPacketV1} from './roleplay-opening-variant-activation.js'
 import type {OpeningIntentV6} from './roleplay-prompt-template-only-types.js'
 import type {MvuNumericalAuthority,VerifiedMvuGenesis} from './roleplay-mvu-state.js'
 import type {MvuSchemaDerivedGenesis} from './roleplay-mvu-schema-derived-types.js'
@@ -38,13 +46,14 @@ import type {TavernLoreSourceDepsV1} from './roleplay-tavern-lore-source-types.j
 import {PROMPT_TEMPLATE_ONLY_CODES_V1,clonePromptTemplateOnlyDataV1,freezePromptTemplateOnlyDataV1,
   validatePromptTemplateOnlyOpeningIntentV6,validatePromptTemplateOnlySourceProofV1} from './roleplay-prompt-template-only-data.js'
 import type {PromptTemplateOnlyRuntimeOwnerV1,PromptTemplateOnlySourceProofV1,PromptTemplateOnlyCodeV1,
-  PromptTemplateOnlyScopeFactsV1,PromptTemplateOnlyPreflightDecisionV1,PromptTemplateOnlyInheritedReadOwnerV2,
+  PromptTemplateOnlyScopeFactsV1,PromptTemplateOnlyInheritedReadOwnerV2,
   PromptInheritedSourceProofV2,PromptInheritedScopeFactsV2,PromptTemplateOnlySourceDepsV1}
   from './roleplay-prompt-template-only-types.js'
 
 interface ReadTable {get(key:string):unknown;entries():Iterable<[string,unknown]>}
 interface WritableTable extends ReadTable {put(key:string,value:unknown):Promise<unknown>}
 export interface MvuOpeningDependencies {
+  readAuthorCapture?:MvuSourceDeps['readAuthorCapture']
   inputState:RoleplayInputStateOwner
   tables:Record<'cards' | 'worldbook' | 'rules' | 'opening',ReadTable> & Record<'branch' | 'status',WritableTable>
   session(sessionId:string):ReadBranchSession | undefined
@@ -56,10 +65,13 @@ export interface MvuOpeningDependencies {
   recordVersionsFor:MvuSourceDeps['recordVersionsFor']
   openingContext(sessionId:string):{context:TavernOpeningContext;bindingSha256:string}
   messageEdits:WorldlineMessageEdits
+  projections:()=>readonly import('dsh-nexttavern-native-session/surface').SessionMessageProjection[]
   deletedMessageIds(session:ReadBranchSession):readonly string[]
   /** Actual owning Agent lookup/idle/flush; never called inside native admission or while holding source lock. */
   nativeLookup(identity:MvuOpeningIdentity,text:string):Promise<{status:'committed';turn:number} | {status:'absent' | 'unknown'}>
   catalog(sessionId:string):OpeningCatalog
+  activateOpeningVariant?(handoff:OpeningVariantActivationHandoff,authorizeParent:()=>Promise<void>):Promise<{sessionId:string}>
+  openingVariantModelSelection?(sid:string):OpeningVariantActivationPacketV1['model']
   readOpeningIntent?(source:OpeningCatalog['source']):OpeningIntent | null
   readOpeningIntentForObservation?(source:OpeningCatalog['source']):OpeningIntent|null
   legacyImportPending?(sessionId:string):boolean
@@ -68,9 +80,11 @@ export interface MvuOpeningDependencies {
   derivedBasisRequired?(sessionId:string):boolean
   schemaDerivedRequired?(sessionId:string):boolean
   readSchemaDerivedGenesis?(sessionId:string):MvuSchemaDerivedGenesis|undefined
+  readInheritedOpeningVariantFact?(sessionId:string,key:string):unknown
   captureSchemaRevisionPrefix?:MvuSchemaStoryCoreDeps['captureRevisionPrefix']
   recoverSchemaRevisionPrefix?:MvuSchemaStoryCoreDeps['recoverRevisionPrefix']
   readSchemaEditInvalidation?:MvuSchemaStoryCoreDeps['readEditInvalidation']
+  prepareMvuHook?:import('./author-native-mvu-hook-types.js').PrepareAuthorNativeMvuHook
   /** Private actual product/Native owner. No persisted capability satisfies it. */
   promptTemplateRuntime?:PromptTemplateOnlyRuntimeOwnerV1
   /** Private frozen inheritance reader for the independent v2 domain. It
@@ -95,12 +109,14 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
   const basis = createRoleplayMvuBasis({branch:deps.tables.branch,numerical:deps.tables.status,
     session:deps.session,branchReady:deps.branchReady,nativeCurrent:native.current})
   const sourceDeps:MvuSourceDeps={
+    readAuthorCapture:deps.readAuthorCapture,
     readActivePointer:id => deps.tables.branch.get(deps.importActiveKey(id)),
     readImportRecord:(id,importId) => deps.tables.branch.get(deps.importRecordKey(id,importId)),
     readRow:(table,key) => deps.tables[table].get(key),
     recordVersionsFor:deps.recordVersionsFor,readOpeningContext:deps.openingContext,readFreshNativeBasis:basis.fresh,
   }
-  const source = createRoleplayMvuSource(sourceDeps)
+  const source = createRoleplayMvuSource({...sourceDeps,captureOriginal:deps.inputState.captureOriginal})
+  const scopeStore=deps.schema?createRoleplayMvuScopeStoreV2({table:deps.tables.status,inputState:deps.inputState}):undefined
   const promptDomainDeps:PromptTemplateOnlySourceDepsV1={...sourceDeps,
     session:deps.session,branchReady:deps.branchReady,entries:table=>deps.tables[table].entries(),
     readInheritedPromptTemplateSource:deps.readInheritedPromptTemplateSource,readSourceInheritance:deps.readSourceInheritance}
@@ -180,39 +196,37 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       if(!promptTemplateRuntimeCurrent(saved))throw Error('PROMPT_TEMPLATE_PROTOCOL_UNAVAILABLE')
     })
   }
-  async function preflightPromptTemplateOpening(request:Parameters<typeof promptTemplateSource.produce>[0]):
-    Promise<PromptTemplateOnlyPreflightDecisionV1> {
-    const decision=await deps.withSourceLock(request.catalog.source.sessionId,async()=>promptTemplateSource.produce(request))
-    if(decision.kind!=='prompt-template-only')return {kind:'not-applicable'}
-    try {await preflightPromptTemplateRuntime(decision.proof);return {kind:'ready',proof:decision.proof}}
-    catch(error) {
-      const code=error instanceof Error?error.message:''
-      return {kind:'blocked',proof:decision.proof,code:PROMPT_TEMPLATE_ONLY_CODES_V1.includes(code as PromptTemplateOnlyCodeV1)
-        ?code as PromptTemplateOnlyCodeV1:'PROMPT_TEMPLATE_RUNTIME_REQUIRED'}
-    }
-  }
   const schemaCore=deps.schema?createRoleplayMvuSchemaCore({...deps.schema,branch:deps.tables.branch,
-    status:deps.tables.status,recordOwner:deps.inputState.schemaJournal,source,
+    status:deps.tables.status,recordOwner:deps.inputState.schemaJournal,nativeHistory:deps.inputState.nativeHistory,source,scopeStore,
     session:id=>deps.session(id) as unknown as Session|undefined,
     withSourceLock:deps.withSourceLock,projectPrefix:events=>deps.messageEdits.projectPrefix(events),
     nativeRead:(identity,turn)=>native.read(identity,turn)}):undefined
   let schemaSelection:SchemaOpeningSelectionAdapter|undefined
   let schemaStory:ReturnType<typeof createRoleplayMvuSchemaStoryCore>|undefined
   let schemaPlayer:ReturnType<typeof createRoleplayMvuSchemaPlayerCore>|undefined
+  let schemaVariants:ReturnType<typeof createRoleplayOpeningVariantCore>|undefined
   function createSchemaStory(completion:Pick<MvuSchemaStoryCoreDeps,'closingView'|'verifyNative'|'verifyConsumedScope'|'readCanonical'
-    |'readConsumedCanonical'|'awaitOwnedCompletion'|'authorChat'|'maintenanceCompletion'|'recoverTaskEdit'>) {
+    |'readConsumedCanonical'|'awaitOwnedCompletion'|'authorChat'|'captureOrdinaryChatNamespace'|'maintenanceCompletion'|'recoverTaskEdit'>) {
     if(!schemaCore||!deps.schema)return undefined
-    const schemaSource=createRoleplayMvuSchemaSource({...sourceDeps,inputState:deps.inputState},
+    const schemaSource=createRoleplayMvuSchemaSource({...sourceDeps,inputState:deps.inputState,scopeStore},
       deps.schema.markers,events=>deps.messageEdits.projectPrefix(events))
     const common={...deps.schema,branch:deps.tables.branch,status:deps.tables.status,inputState:deps.inputState,
-      source:schemaSource,session:(id:string)=>deps.session(id) as unknown as Session|undefined,
+      projections:deps.projections,
+      source:schemaSource,scopeStore,session:(id:string)=>deps.session(id) as unknown as Session|undefined,
       sourceSha256:(id:string)=>inputSource(id).sourceSha256,
       protectedRuntime:schemaCore.protectedRuntime,withSourceLock:deps.withSourceLock}
     schemaStory??=createRoleplayMvuSchemaStoryCore({...completion,...common,inputState:deps.inputState,
-      manualPendingCode:(id:string)=>schemaPlayer?.pendingCode(id),
-      captureManualLedger:(id:string)=>schemaPlayer?.captureLedger(id),
-      manualEditBlockCode:(id:string)=>schemaPlayer?.editBlockCode(id),
+      prepareHook:deps.prepareMvuHook,
+      manualPendingCode:(id:string)=>schemaVariants?.pendingCode(id)??schemaPlayer?.pendingCode(id),
+      captureManualLedger:(id:string)=>{
+        const ledger=schemaPlayer?.captureLedger(id),code=schemaVariants?.pendingCode(id)
+        return code?{code,completedByEventKey:ledger?.completedByEventKey??new Map()}:ledger
+      },
+      manualEditBlockCode:(id:string)=>schemaVariants?.pendingCode(id)??schemaPlayer?.editBlockCode(id),
+      readOpeningVariantPacks:(id,initial,variables)=>schemaVariants!.readPacks(id,initial,variables),
+      readOpeningVariantAddresses:(id,message,selectedIndex)=>schemaVariants!.readAddresses(id,message,selectedIndex),
       derivedRequired:deps.schemaDerivedRequired,readDerivedGenesis:deps.readSchemaDerivedGenesis,
+      readInheritedOpeningVariantFact:deps.readInheritedOpeningVariantFact,
       captureRevisionPrefix:deps.captureSchemaRevisionPrefix,
       recoverRevisionPrefix:deps.recoverSchemaRevisionPrefix,
       readEditInvalidation:deps.readSchemaEditInvalidation,
@@ -221,7 +235,11 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       activePointer:id=>deps.tables.branch.get(deps.importActiveKey(id)),sourceSha256:id=>inputSource(id).sourceSha256,
       protectedRuntime:schemaCore.protectedRuntime,withSourceLock:deps.withSourceLock})
     schemaPlayer??=createRoleplayMvuSchemaPlayerCore({...common,story:schemaStory,
-      observe:deps.schema.observe,playerMarkers:deps.schema.playerMarkers})
+      observe:deps.schema.observe,playerMarkers:deps.schema.playerMarkers,
+      readInheritedOpeningVariantFact:deps.readInheritedOpeningVariantFact})
+    schemaVariants??=createRoleplayOpeningVariantCore({...common,story:schemaStory,catalog:deps.catalog,
+      activatePrepared:deps.activateOpeningVariant,modelSelection:deps.openingVariantModelSelection,
+      readInheritedOpeningVariantFact:deps.readInheritedOpeningVariantFact})
     return schemaStory
   }
   function createSchemaSelection(nativeDeps:Pick<OpeningSelectionDeps,'withLock'|'appendOpening'|'findOpeningByOperationId'>) {
@@ -255,7 +273,8 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     const pointer=deps.tables.branch.get(deps.importActiveKey(sessionId)) as {importId?:string}|undefined
     const intent=pointer?.importId?readIntent(sessionId,pointer.importId):undefined
     const head=deps.tables.status.get(mvuInitializationHeadKey(sessionId)) as {encoding?:unknown}|undefined
-    return deps.schemaDerivedRequired?.(sessionId)===true||intent?.schemaVersion===5||head?.encoding==='mvu-schema-opening-head-v2'
+    return deps.tables.branch.get(openingVariantActivationSeedKey(sessionId))!==undefined
+      ||deps.schemaDerivedRequired?.(sessionId)===true||intent?.schemaVersion===5||head?.encoding==='mvu-schema-opening-head-v2'
   }
   async function readSchemaInitialization(sessionId:string) {
     if(!schemaSelection)return {kind:'blocked' as const,code:'SCHEMA_RUNTIME_UNAVAILABLE'}
@@ -286,17 +305,12 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
   })
   const callbacks:Pick<OpeningSelectionDeps,'prepareInitialization' | 'finishInitialization' | 'readInitialization'
     | 'isSourceSnapshotCurrent' | 'readNativeOpening' | 'legacyPendingAllowed'
-    | 'preflightPromptTemplateOpening' | 'preflightPromptTemplateRuntime'
+    | 'preflightPromptTemplateRuntime'
     | 'isPromptTemplateOnlySourceCurrent' | 'isPromptTemplateRuntimeCurrent'> = {
     prepareInitialization:({catalog,candidate,identity}) => {
       const decision = source.produce({catalog,candidate})
       if (decision.kind === 'legacy-v2') return {kind:'legacy-v2',absenceScopeProof:decision.absenceScopeProof}
       if (decision.kind === 'unsupported') {
-        // An old refusal is never converted into Plain. The independent
-        // producer reopens and classifies the complete actual Source itself.
-        const template=promptTemplateSource.produce({catalog,candidate})
-        if(template.kind==='prompt-template-only')return {kind:'prompt-template-only',proof:template.proof}
-        if(template.kind==='unsupported')return {schemaVersion:2,kind:'unsupported',diagnostics:template.diagnostics}
         return {schemaVersion:2,kind:'unsupported',diagnostics:decision.diagnostics.map(({code,pointer})=>({code,pointer}))}
       }
       return prepareNativeMvuOpeningInitialization(identity,decision.candidate)
@@ -304,7 +318,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     finishInitialization:async intent => intent.initialization && Number.isSafeInteger(intent.committedTurn)
       ? initialization.publish(intent.initialization,intent.committedTurn!) : {kind:'blocked',code:'RECORD_INVALID'},
     readInitialization:initialization.read,isSourceSnapshotCurrent:source.current,
-    preflightPromptTemplateOpening,preflightPromptTemplateRuntime,
+    preflightPromptTemplateRuntime,
     isPromptTemplateOnlySourceCurrent:promptTemplateSource.current,
     isPromptTemplateRuntimeCurrent:promptTemplateRuntimeCurrent,
     readNativeOpening:intent => {
@@ -411,7 +425,12 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     if (!imported || imported['status'] !== 'active') return management('ACTIVE_SOURCE_INVALID')
     const envelope = imported['sourceEnvelope'] as {extension?:unknown} | undefined
     if (!envelope) {
-      return Number(imported['schemaVersion']) >= 4 ? management('ACTIVE_SOURCE_INVALID')
+      // DOCX stores its original binary identity separately from extracted
+      // Markdown. Import activation already owns that record's integrity.
+      const extraction=imported['extractedSource'] as {encoding?:unknown}|undefined
+      const extractedText=imported['schemaVersion']===7&&imported['normalizer']===IMPORT_NORMALIZER
+        &&extraction?.encoding==='docx-markdown-v1'
+      return Number(imported['schemaVersion']) >= 4&&!extractedText ? management('ACTIVE_SOURCE_INVALID')
         : {kind:'legacy',sourceSha256,reason:'LEGACY_TEXT_IMPORT'}
     }
     if (!['.png','.json','.md','.txt','.docx'].includes(String(envelope.extension).toLowerCase())) {
@@ -548,6 +567,12 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       return current()?{data,current}:undefined
     }catch{return undefined}
   }
+  function captureSchemaPromptScopes(id:string):SchemaPromptScopeCaptureV1|undefined
+  function captureSchemaPromptScopes(id:string,selection:SchemaPromptScopeSelection):SchemaPromptScopeCaptureV1|SchemaPromptScopeCaptureV2|SchemaPromptScopeCaptureV3|undefined
+  function captureSchemaPromptScopes(id:string,selection?:SchemaPromptScopeSelection):SchemaPromptScopeCaptureV1|SchemaPromptScopeCaptureV2|SchemaPromptScopeCaptureV3|undefined
+  function captureSchemaPromptScopes(id:string,selection?:SchemaPromptScopeSelection):SchemaPromptScopeCaptureV1|SchemaPromptScopeCaptureV2|SchemaPromptScopeCaptureV3|undefined {
+    return schemaStory?.capturePromptScopes(id,selection)
+  }
   return {callbacks,sourceCurrent,readInitialization:initialization.read,nativeCurrent:native.current,
     readNative:(identity:MvuOpeningIdentity,turn?:number) => native.read(identity,turn),readInputObservation,
     readGenesis,readSourceSha256:(sessionId:string)=>inputSource(sessionId).sourceSha256,
@@ -599,15 +624,34 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     createSchemaSelection,hasSchemaOpening,readSchemaInitialization,
     createSchemaStory,readSchemaSnapshot:(id:string)=>schemaStory?.readSnapshot(id),
     readSchemaObservation:(id:string)=>schemaStory?.readSchemaObservation(id),
+    captureSettledStoryMessages:(id:string,selection?:{nativeCut:number})=>schemaStory?.captureSettledStoryMessages(id,selection),
     captureReaderDisplayScopes:(id:string)=>schemaStory?.captureReaderDisplayScopes(id),
-    captureSchemaPromptScopes:(id:string)=>schemaStory?.capturePromptScopes(id),
-    executeAuthorPrompt:(...args:Parameters<NonNullable<typeof schemaStory>['executePrompt']>)=>{
-      if(!schemaStory)throw Error('AUTHOR_PROMPT_RUNTIME_UNAVAILABLE')
-      return schemaStory.executePrompt(...args)
-    },
+    captureSchemaPromptScopes,
     captureSchemaBrowserFacts:(id:string)=>schemaStory?.captureBrowserFacts(id)??Promise.resolve(undefined),
     captureReaderDocumentFacts:(id:string)=>schemaStory?.captureReaderDocumentFacts(id)??Promise.resolve(undefined),
-    readerDocumentRuntime:()=>schemaCore?.readerDocumentRuntime(),
+    mutateOpeningVariants:(...args:Parameters<ReturnType<typeof createRoleplayOpeningVariantCore>['mutate']>)=>{
+      if(!schemaVariants)throw Error('OPENING_VARIANT_RUNTIME_UNAVAILABLE')
+      return schemaVariants.mutate(...args)
+    },
+    confirmOpeningVariants:(sid:string,operationId:string)=>schemaVariants?.confirm(sid,operationId)
+      ??{kind:'unknown' as const,operationId,code:'OPENING_VARIANT_RUNTIME_UNAVAILABLE'},
+    retryOpeningVariants:(sid:string,operationId:string,signal?:AbortSignal)=>{
+      if(!schemaVariants)throw Error('OPENING_VARIANT_RUNTIME_UNAVAILABLE')
+      return schemaVariants.retry(sid,operationId,signal)
+    },
+    publishOpeningVariantActivation:(...args:Parameters<ReturnType<typeof createRoleplayOpeningVariantCore>['publishActivation']>)=>{
+      if(!schemaVariants)throw Error('OPENING_VARIANT_RUNTIME_UNAVAILABLE')
+      return schemaVariants.publishActivation(...args)
+    },
+    templateEjsRuntime:(...args:Parameters<ReturnType<typeof createRoleplayMvuSchemaCore>['templateEjsRuntime']>)=>{
+      if(!schemaCore)throw Error('TEMPLATE_EJS_RUNTIME_UNAVAILABLE')
+      return schemaCore.templateEjsRuntime(...args)
+    },
+    templateEjsCurrent:()=>schemaCore?.templateEjsCurrent(),
+    templateEjsCheckCurrentSync:(checks:()=>void)=>{
+      if(!schemaCore)throw Error('TEMPLATE_EJS_RUNTIME_UNAVAILABLE')
+      schemaCore.templateEjsCheckCurrentSync(checks)
+    },
     capturePlainPromptScopeFacts:(id:string)=>{
       try {
         const legacy=captureLegacyPlainOpening(id)
@@ -649,6 +693,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     schemaPlayerMutationBlockCode:(session:{id:string})=>schemaPlayer?.mutationBlockCode(session),
     preflightSchema:(id:string,signal?:AbortSignal)=>hasSchemaOpening(id)&&schemaStory
       ?schemaStory.preflight(id,signal):Promise.resolve(),
+    captureSchemaAuthorDataPublicationBasis:(id:string)=>schemaStory?.captureAuthorDataPublicationBasis(id),
     releaseSchemaClosing:(lease:object)=>schemaStory?.releaseClosing(lease),
     checkSchemaTextEdit:(id:string,targetSeq:number)=>hasSchemaOpening(id)&&schemaStory
       ?schemaStory.checkTextEdit(id,targetSeq):Promise.resolve(),
@@ -658,5 +703,5 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       schemaPlayer?.invalidateAgent(agent)
     },
     invalidateSchemaSession:(id:string)=>{schemaCore?.invalidateSession(id);schemaStory?.invalidateSession(id);schemaPlayer?.invalidateSession(id)},
-    disposeSchema:()=>{schemaPlayer?.dispose();schemaStory?.dispose();return schemaCore?.dispose()}}
+    disposeSchema:()=>{schemaVariants?.dispose();schemaPlayer?.dispose();schemaStory?.dispose();scopeStore?.dispose();return schemaCore?.dispose()}}
 }

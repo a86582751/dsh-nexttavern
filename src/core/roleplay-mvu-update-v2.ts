@@ -4,6 +4,19 @@ import {recordSha256} from './roleplay-data.js'
 import {MVU_UPDATE_BOUNDS as B,reduceMvuUpdateOperations} from './roleplay-mvu-update.js'
 import type {MvuPatchOperation} from './roleplay-mvu-update.js'
 import type {MvuJsonObject,MvuJsonValue} from './tavern-mvu-initvar.js'
+import type {AuthorNativeMvuCommandInfo} from './author-native-mvu-hook-types.js'
+
+export interface MvuCommandSyntaxV1 {
+  readonly kind:'legacy'|'jsonpatch'
+  readonly start:number
+  readonly end:number
+  readonly type:string
+  readonly path?:string
+  readonly from?:string
+  readonly args:readonly {readonly start:number;readonly end:number}[]
+  readonly reason?:{readonly start:number;readonly end:number}
+}
+export interface MvuCommandSyntaxCaptureV1 {readonly commands:readonly MvuCommandSyntaxV1[]}
 
 export type MvuLegacyCommandV2=
   | {type:'set'|'insert'|'delete';path:readonly string[];args:readonly MvuJsonValue[]}
@@ -107,7 +120,9 @@ function numerical(value:unknown):MvuJsonObject {
 class Literals {
   offset=0
   nodes=0
-  constructor(readonly text:string){}
+  readonly elements:{start:number;end:number;fields:Map<string,{start:number;end:number}>}[]=[]
+  private fields:Map<string,{start:number;end:number}>|undefined
+  constructor(readonly text:string,readonly captureSyntax=false){}
   whitespace(){while(this.offset<this.text.length&&/[\x20\t\r\n]/.test(this.text[this.offset]!))this.offset++}
   string():string {
     const quote=this.text[this.offset++]!,chunks:string[]=[]
@@ -148,7 +163,12 @@ class Literals {
           keys.add(key);this.whitespace()
           if(this.text[this.offset++]!==':')reject('NON_LITERAL_JSON')
         }
+        this.whitespace()
+        const start=this.offset
+        if(this.captureSyntax&&depth===0&&array)this.fields=new Map()
         const item=this.value(depth+1)
+        if(this.captureSyntax&&depth===1&&!array)this.fields?.set(key,{start,end:this.offset})
+        if(this.captureSyntax&&depth===0&&array)this.elements.push({start,end:this.offset,fields:this.fields!})
         if(array) {
           if((result as MvuJsonValue[]).length>=B.arrayLength)reject('ARRAY_LIMIT')
           ;(result as MvuJsonValue[]).push(item)
@@ -243,7 +263,7 @@ function command(type:string,path:string[],args:MvuJsonValue[]):MvuLegacyCommand
 const markup=/<\/?\s*(?:UpdateVariable|JSONPatch|json_patch|Analyze|Analysis)\b/i
 const updateMarkup=/<\/?\s*(?:UpdateVariable|JSONPatch|json_patch)\b/i
 const invocation=/\b_\s*\.\s*[a-zA-Z]+\s*\(/
-function bodyOf(narrative:string,region?:{outside?:string;openingText?:true}):string|undefined {
+function bodyOf(narrative:string,region?:{outside?:string;openingText?:true;bodyStart?:number}):string|undefined {
   if(typeof narrative!=='string')reject('NARRATIVE_TYPE')
   if(Buffer.byteLength(narrative,'utf8')>B.dataBytes)reject('NARRATIVE_BYTE_LIMIT')
   // Source greetings may contain literal analysis text without declaring an
@@ -271,13 +291,17 @@ function bodyOf(narrative:string,region?:{outside?:string;openingText?:true}):st
   const outside=narrative.slice(0,start)+narrative.slice(end)
   if(markup.test(outside)||invocation.test(outside))reject('STRAY_UPDATE_MARKUP')
   if(region)region.outside=outside
-  let body=block.slice(16,-17).trim()
+  const rawBody=block.slice(16,-17)
+  let body=rawBody.trim(),bodyStart=start+16+rawBody.length-rawBody.trimStart().length
   if(body.startsWith('<Analyze>')) {
     const close=body.indexOf('</Analyze>')
     if(close<0)reject('ANALYZE_FORMAT')
     if(/<\/?[A-Za-z]/.test(body.slice(9,close)))reject('NESTED_UPDATE_MARKUP')
-    body=body.slice(close+10).trim()
+    const remainder=body.slice(close+10)
+    bodyStart+=close+10+remainder.length-remainder.trimStart().length
+    body=remainder.trim()
   }
+  if(region)region.bodyStart=bodyStart
   return body
 }
 function jsonOperation(raw:unknown,options?:MvuUpdateParseOptionsV2):MvuUpdateOperationV2 {
@@ -312,17 +336,25 @@ function jsonOperation(raw:unknown,options?:MvuUpdateParseOptionsV2):MvuUpdateOp
   // execution remains the unchanged old pure reducer, including all failures.
   return {kind:'jsonpatch',operation}
 }
-function operationsOf(body:string,options?:MvuUpdateParseOptionsV2):MvuUpdateOperationV2[] {
+function operationsOf(body:string,options?:MvuUpdateParseOptionsV2,syntax?:MvuCommandSyntaxV1[],bodyStart=0):MvuUpdateOperationV2[] {
   if(body.startsWith('<JSONPatch>')) {
     if(!body.endsWith('</JSONPatch>'))reject('UPDATE_CONTENT_UNSUPPORTED')
     const text=body.slice(11,-12)
     if(Buffer.byteLength(text,'utf8')>B.jsonBytes)reject('JSON_BYTE_LIMIT')
     if(markup.test(text))reject('NESTED_UPDATE_MARKUP')
-    const reader=new Literals(text),raw=reader.value()
+    const reader=new Literals(text,!!syntax),raw=reader.value()
     reader.whitespace();if(reader.offset!==text.length)reject('NON_LITERAL_JSON')
     if(!Array.isArray(raw))reject('PATCH_ARRAY_REQUIRED')
     if(!raw.length)reject('EMPTY_PATCH')
     if(raw.length>B.operations)reject('OPERATION_LIMIT')
+    if(syntax)for(const [index,item] of reader.elements.entries()) {
+      const operation=raw[index],offset=bodyStart+11
+      syntax.push({kind:'jsonpatch',start:offset+item.start,end:offset+item.end,type:object(operation)?String(operation.op):'',
+        ...object(operation)&&typeof operation.path==='string'?{path:operation.path}:{},
+        ...object(operation)&&typeof operation.from==='string'?{from:operation.from}:{},
+        args:[item.fields.get('value')].filter((span):span is {start:number;end:number}=>!!span)
+          .map(span=>({start:offset+span.start,end:offset+span.end}))})
+    }
     return raw.map((value,index)=>{
       try{return jsonOperation(value,options)}catch(error){throw error instanceof Refusal?
         new Refusal(error.code,error.pointer,index):error}
@@ -339,6 +371,7 @@ function operationsOf(body:string,options?:MvuUpdateParseOptionsV2):MvuUpdateOpe
     const index=result.length
     try {
       if(index>=B.operations)reject('OPERATION_LIMIT')
+      const commandStart=reader.offset,argSpans:{start:number;end:number}[]=[]
       if(!body.startsWith('_.',reader.offset))reject('LEGACY_COMMAND_FORMAT')
       reader.offset+=2;const start=reader.offset
       while(reader.offset<body.length&&/[a-zA-Z]/.test(body[reader.offset]!))reader.offset++
@@ -348,13 +381,25 @@ function operationsOf(body:string,options?:MvuUpdateParseOptionsV2):MvuUpdateOpe
       const args:MvuJsonValue[]=[]
       reader.whitespace()
       if(body[reader.offset]!==')')while(true) {
-        args.push(reader.value());reader.whitespace()
+        reader.whitespace();const argStart=reader.offset
+        args.push(reader.value());argSpans.push({start:bodyStart+argStart,end:bodyStart+reader.offset});reader.whitespace()
         if(body[reader.offset]===')')break
         if(body[reader.offset++]!==',')reject('UNSUPPORTED_VALUE_EXPRESSION')
       }
       reader.offset++
       if(body[reader.offset++]!==';')reject('LEGACY_SEMICOLON_REQUIRED')
       result.push({kind:'legacy',command:command(type,pathParts(args[0]),args.slice(1))})
+      if(syntax) {
+        const comment=/^\s*\/\/([^\r\n]*)/.exec(body.slice(reader.offset))
+        let reason:MvuCommandSyntaxV1['reason']
+        if(comment) {
+          const commentStart=reader.offset+comment[0].indexOf('//')+2
+          reason={start:bodyStart+commentStart,end:bodyStart+reader.offset+comment[0].length}
+          reader.offset+=comment[0].length
+        }
+        syntax.push({kind:'legacy',start:bodyStart+commandStart,end:bodyStart+reader.offset,type,
+          args:argSpans,...reason?{reason}:{}})
+      }
     } catch(error) {throw error instanceof Refusal?new Refusal(error.code,error.pointer,index):error}
   }
   if(!result.length)reject('EMPTY_UPDATE')
@@ -460,12 +505,27 @@ function applyLegacy(root:MvuJsonObject,cmd:MvuLegacyCommandV2):MvuJsonObject {
   if(cmd.type==='add') {
     const wrapped=Array.isArray(current)&&current.length===2&&typeof current[1]==='string'&&typeof current[0]!=='object'
     const value=wrapped?current[0]:current
-    if(typeof value!=='number')reject('ADD_TARGET_NOT_NUMBER',path)
-    if(typeof cmd.delta!=='number')reject('ADD_DELTA_NOT_NUMBER',path)
-    // Enforce the finite JSON bound before rounding: twelve significant
-    // digits can otherwise hide a sum just beyond the permitted magnitude.
-    const sum=scalarNumber(value+cmd.delta)
-    const next=scalarNumber(parseFloat(sum.toPrecision(12)))
+    let next:MvuJsonValue
+    if(typeof value==='number') {
+      if(typeof cmd.delta!=='number')reject('ADD_DELTA_NOT_NUMBER',path)
+      // Enforce the finite JSON bound before rounding: twelve significant
+      // digits can otherwise hide a sum just beyond the permitted magnitude.
+      const sum=scalarNumber(value+cmd.delta)
+      next=scalarNumber(parseFloat(sum.toPrecision(12)))
+    } else {
+      // Upstream updates a Date or non-numeric date string by a numeric
+      // millisecond delta and always stores the ISO form. A VWD wrapper keeps
+      // its description because only element zero is replaced.
+      const date=typeof value==='string'&&Number.isNaN(Number(value))?new Date(value):undefined
+      if(!date||Number.isNaN(date.getTime()))reject('ADD_TARGET_NOT_NUMBER',path)
+      if(typeof cmd.delta!=='number')reject('ADD_DELTA_NOT_NUMBER',path)
+      const updated=new Date(date.getTime()+cmd.delta)
+      // Upstream throws from toISOString when the shifted timestamp leaves the
+      // Date range; the existing bounded-number refusal keeps the shared
+      // rejection-code allowlist unchanged.
+      if(Number.isNaN(updated.getTime()))reject('NUMBER_LIMIT',path)
+      next=updated.toISOString()
+    }
     if(wrapped){current[0]=next;return root}
     return write(root,cmd.path,next)
   }
@@ -512,12 +572,12 @@ function applyLegacy(root:MvuJsonObject,cmd:MvuLegacyCommandV2):MvuJsonObject {
 /** The Source classifier consumes only the remainder of this same parsed
  * container. It cannot exempt unrelated state syntax elsewhere in the card. */
 export function parseMvuUpdateRegionV2(narrative:string,options?:MvuUpdateParseOptionsV2&{openingText?:true}):
-  {candidate:MvuUpdateCandidateV2;outside:string} {
+  {candidate:MvuUpdateCandidateV2;outside:string;syntax?:MvuCommandSyntaxCaptureV1} {
   try {
-    const region:{outside?:string;openingText?:true}={...options},body=bodyOf(narrative,region)
+    const region:{outside?:string;openingText?:true;bodyStart?:number}={...options},body=bodyOf(narrative,region)
     if(body===undefined)return {candidate:{kind:'no-update',...version},outside:narrative}
-    const operations=operationPackage(operationsOf(body,options)),descriptor={...policy,operations}
-    return {candidate:{kind:'parsed',...descriptor,candidateSha256:recordSha256(descriptor)},outside:region.outside!}
+    const syntax:MvuCommandSyntaxV1[]=[],operations=operationPackage(operationsOf(body,options,syntax,region.bodyStart)),descriptor={...policy,operations}
+    return {candidate:{kind:'parsed',...descriptor,candidateSha256:recordSha256(descriptor)},outside:region.outside!,syntax:{commands:syntax}}
   } catch(error){return {candidate:rejected(error),outside:narrative}}
 }
 /** Explicit current-owner policy. The base parser and historical callers keep
@@ -532,6 +592,57 @@ export function parseMvuUpdateAnalysisAliasRegionV2(narrative:string,
 }
 export function parseMvuUpdateV2(narrative:string,options?:MvuUpdateParseOptionsV2):MvuUpdateCandidateV2 {
   return parseMvuUpdateRegionV2(narrative,options).candidate
+}
+
+/** Public callback DATA is sliced from the parser's original literal spans.
+ * Pointer-to-path conversion is the explicit JSONPatch adapter, not a guess
+ * about how an author originally spelled a legacy command. */
+export function mvuCommandInfos(narrative:string,syntax:MvuCommandSyntaxCaptureV1|undefined,
+  operations:readonly MvuUpdateOperationV2[]):AuthorNativeMvuCommandInfo[] {
+  if(!operations.length)return []
+  if(!syntax||syntax.commands.length!==operations.length)throw Error('MVU_COMMAND_TOKENS_UNAVAILABLE')
+  const path=(pointer:string)=>pointer?pointer.slice(1).split('/').map(key=>
+    '['+JSON.stringify(key.replace(/~1/g,'/').replace(/~0/g,'~'))+']').join(''):''
+  return syntax.commands.map(command=>{
+    const full_match=narrative.slice(command.start,command.end)
+    if(command.kind==='legacy') {
+      const type=command.type==='assign'?'insert':command.type==='unset'||command.type==='remove'?'delete':command.type
+      if(!['set','insert','delete','add','move'].includes(type))throw Error('MVU_COMMAND_INFO_UNSUPPORTED')
+      return {type:type as AuthorNativeMvuCommandInfo['type'],full_match,
+        args:command.args.map(span=>narrative.slice(span.start,span.end)),
+        reason:command.reason?narrative.slice(command.reason.start,command.reason.end).trim():''}
+    }
+    const target=path(command.path!),value=command.args[0],literal=value?narrative.slice(value.start,value.end):''
+    if(command.type==='replace')return {type:'set',full_match,args:[target,literal],reason:'json_patch'}
+    if(command.type==='delta')return {type:'add',full_match,args:[target,literal],reason:'json_patch'}
+    if(command.type==='remove')return {type:'delete',full_match,args:[target],reason:'json_patch'}
+    if(command.type==='move')return {type:'move',full_match,args:[path(command.from!),target],reason:'json_patch'}
+    if((command.type==='add'||command.type==='insert')&&command.path) {
+      const segments=command.path.slice(1).split('/'),last=segments.pop()!.replace(/~1/g,'/').replace(/~0/g,'~')
+      return {type:'insert',full_match,args:[path(segments.length?'/'+segments.join('/'):''),
+        /^\d+$/.test(last)?last:JSON.stringify(last),literal],reason:'json_patch'}
+    }
+    throw Error('MVU_COMMAND_INFO_UNSUPPORTED')
+  })
+}
+/** A callback supplies literal argument text. Consume that same bounded
+ * grammar directly; never execute it or re-encode normalized operations. */
+export function mvuOperationsFromCommandInfos(commands:readonly AuthorNativeMvuCommandInfo[]):MvuUpdateOperationV2[] {
+  if(commands.length>B.operations)reject('OPERATION_LIMIT')
+  const value=(text:string):MvuJsonValue=>{
+    const reader=new Literals(text),result=reader.value();reader.whitespace()
+    if(reader.offset!==text.length)reject('UNSUPPORTED_VALUE_EXPRESSION')
+    return result
+  }
+  const path=(text:string)=>pathParts(['"',"'",'`'].includes(text[0]??'')?value(text):text)
+  return commands.map(item=>{
+    const parts=path(item.args[0]??'')
+    if(item.type==='move') {
+      if(item.args.length!==2)reject('LEGACY_ARGUMENT_COUNT')
+      return {kind:'jsonpatch',operation:{op:'move',from:pointerOf(parts),path:pointerOf(path(item.args[1]!))}}
+    }
+    return {kind:'legacy',command:command(item.type,parts,item.args.slice(1).map(value))}
+  })
 }
 export function reduceMvuUpdateOperationsV2(baseValues:MvuJsonObject,
   rawOperations:readonly unknown[]):PreparedMvuUpdateV2|MvuUpdateRejectionV2 {

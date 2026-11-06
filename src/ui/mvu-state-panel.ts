@@ -20,6 +20,8 @@ interface Draft {
 }
 interface PanelProps {
   sessionId:string
+  sessionLabel?:string
+  worldlineLabel?:string
   observation?:MvuStateObservation
   refresh():Promise<unknown>
 }
@@ -36,6 +38,58 @@ const observationKey=(state:MvuStateObservation|undefined)=>isReady(state)
 const pointer=(parts:readonly string[])=>'/'+parts.map(part=>part.replace(/~/g,'~0').replace(/\//g,'~1')).join('/')
 const typeName=(value:MvuJsonValue)=>value===null?'空值':Array.isArray(value)?'列表':
   typeof value==='object'?'对象':typeof value==='number'?'数字':typeof value==='boolean'?'开关':'文本'
+
+/** Scoped panel styles are included by the owning native tool window. */
+export const MVU_PANEL_CSS=`
+.dsh-rp-mvu-state{color:var(--rp-tool-ink,#49392c);min-width:0;font-size:14px;line-height:1.55}
+.dsh-rp-mvu-state h3,.dsh-rp-mvu-state p{margin:0}
+.dsh-rp-mvu-heading,.dsh-rp-mvu-toolbar,.dsh-rp-mvu-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dsh-rp-mvu-heading{justify-content:space-between;margin-bottom:4px}
+.dsh-rp-mvu-version{font-size:13px;color:var(--rp-tool-muted,#766553)}
+.dsh-rp-mvu-identity{flex:1;min-width:0}
+.dsh-rp-mvu-identity>summary{display:flex;align-items:center;gap:10px;min-height:36px;cursor:pointer;list-style:none}
+.dsh-rp-mvu-identity>summary::before{content:'▸';font-size:11px;color:var(--rp-tool-muted,#766553)}
+.dsh-rp-mvu-identity[open]>summary::before{content:'▾'}
+.dsh-rp-mvu-session-label{font-weight:600;overflow-wrap:anywhere}
+.dsh-rp-mvu-worldline-label{font-size:12px;color:var(--rp-tool-muted,#766553)}
+.dsh-rp-mvu-context{margin:0;padding:4px 0 8px}
+.dsh-rp-mvu-context dt{font-size:12px;color:var(--rp-tool-muted,#766553)}
+.dsh-rp-mvu-context dd{margin:3px 0 0;overflow-wrap:anywhere;font-size:12px}
+.dsh-rp-mvu-notice{padding:10px 12px;margin:10px 0!important;background:var(--rp-tool-soft,#f3ead9);border-inline-start:3px solid var(--rp-tool-accent,#8b571c);border-radius:4px}
+.dsh-rp-mvu-toolbar{justify-content:space-between;margin:6px 0}
+.dsh-rp-mvu-toolbar-buttons{display:flex;gap:8px;flex-wrap:wrap}
+.dsh-rp-mvu-mode{color:var(--rp-tool-muted,#766553);font-size:13px}
+.dsh-rp-mvu-field{padding:6px 0;border-bottom:1px solid var(--rp-tool-border,#dccbb3);min-width:0}
+.dsh-rp-mvu-field-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px}
+.dsh-rp-mvu-name{font-weight:600;overflow-wrap:anywhere}
+.dsh-rp-mvu-value{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0;margin-top:3px}
+.dsh-rp-mvu-value[data-mvu-type=number]{font-size:22px;font-variant-numeric:tabular-nums;line-height:1.3;color:var(--rp-tool-accent,#8b571c)}
+.dsh-rp-mvu-value[data-mvu-type=boolean]{font-weight:600}
+.dsh-rp-mvu-value[data-mvu-type=null]{color:var(--rp-tool-muted,#766553)}
+.dsh-rp-mvu-group>summary{display:flex;justify-content:space-between;align-items:center;gap:12px;cursor:pointer;min-height:44px;font-weight:600;list-style:none}
+.dsh-rp-mvu-group>summary::before{content:'▸';color:var(--rp-tool-muted,#766553)}
+.dsh-rp-mvu-group[open]>summary::before{content:'▾'}
+.dsh-rp-mvu-group-name{flex:1;overflow-wrap:anywhere}
+.dsh-rp-mvu-count{font-size:12px;font-weight:400;color:var(--rp-tool-muted,#766553);white-space:nowrap}
+.dsh-rp-mvu-children{padding-inline-start:16px;border-inline-start:2px solid var(--rp-tool-border,#dccbb3)}
+.dsh-rp-mvu-children>.dsh-rp-mvu-field:last-child{border-bottom:0}
+.dsh-rp-mvu-meta,.dsh-rp-mvu-advanced{margin-top:3px;font-size:12px;color:var(--rp-tool-muted,#766553)}
+.dsh-rp-mvu-meta>summary,.dsh-rp-mvu-advanced>summary{cursor:pointer;min-height:30px;display:flex;align-items:center;gap:6px}
+.dsh-rp-mvu-meta>summary::before,.dsh-rp-mvu-advanced>summary::before{content:'+'}
+.dsh-rp-mvu-meta[open]>summary::before,.dsh-rp-mvu-advanced[open]>summary::before{content:'−'}
+.dsh-rp-mvu-meta code{overflow-wrap:anywhere;white-space:pre-wrap;font-size:12px}
+.dsh-rp-mvu-input{display:block;width:100%;box-sizing:border-box;border:1px solid var(--rp-tool-border,#dccbb3);border-radius:6px;background:var(--rp-tool-paper,#fffaf1);color:var(--rp-tool-ink,#49392c);padding:9px 10px;font:inherit;min-height:44px;margin-top:6px}
+textarea.dsh-rp-mvu-input{resize:vertical;white-space:pre-wrap;overflow-wrap:anywhere}
+.dsh-rp-mvu-input:disabled{opacity:.65}
+.dsh-rp-mvu-state button{min-height:44px;border:1px solid var(--rp-tool-border,#dccbb3);border-radius:6px;padding:8px 12px;background:var(--rp-tool-paper,#fffaf1);color:var(--rp-tool-ink,#49392c);font:inherit;cursor:pointer}
+.dsh-rp-mvu-state button:disabled{opacity:.5;cursor:default}
+.dsh-rp-mvu-state button.dsh-rp-mvu-primary{background:var(--rp-tool-accent,#8b571c);color:#fffaf1;border-color:var(--rp-tool-accent,#8b571c)}
+.dsh-rp-mvu-state :is(button,input,select,textarea,summary):focus-visible{outline:2px solid var(--rp-tool-accent,#8b571c);outline-offset:3px}
+.dsh-rp-mvu-error{color:#9b3028;margin-top:6px!important}
+.dsh-rp-mvu-actions{padding:12px 0 4px;margin-top:12px;border-top:1px solid var(--rp-tool-border,#dccbb3)}
+.dsh-rp-mvu-json{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;padding:12px;background:var(--rp-tool-soft,#f3ead9);border-radius:6px}
+@media(max-width:480px){.dsh-rp-mvu-actions button{flex:1 1 auto}.dsh-rp-mvu-children{padding-inline-start:10px}}
+`
 
 function reason(code?:string) {
   if(code==='GENESIS_UNPROVEN')return '尚无可确认的数值初始化。初始化可能尚未完成或不受支持，请检查角色卡与开场。'
@@ -90,8 +144,9 @@ export function createMvuStatePanel({React,invalidateState,fetch=globalThis.fetc
   const drafts=new Map<string,Draft>()
   const makeDraft=(state:Ready):Draft=>({base:copy(state),baseKey:baseKey(state),values:copy(state.snapshot.values),
     raw:{},errors:{},dirty:false})
-  function MvuStatePanel({sessionId,observation,refresh}:PanelProps) {
+  function MvuStatePanel({sessionId,sessionLabel,worldlineLabel,observation,refresh}:PanelProps) {
     const [,setVersion]=React.useState(0)
+    const [editSessions,setEditSessions]=React.useState<ReadonlySet<string>>(()=>new Set())
     const [notice,setNotice]=React.useState<{sessionId:string;text:string}|undefined>(undefined)
     const [replyObservation,setReplyObservation]=React.useState<{
       sessionId:string;inputKey:string;observation:MvuStateObservation
@@ -123,6 +178,7 @@ export function createMvuStatePanel({React,invalidateState,fetch=globalThis.fetc
     const conflict=draft?.operation?.state==='conflict'
     const needsCompare=stale||conflict
     const editable=!!ready?.canEdit&&!needsCompare&&!pending&&!uncertain
+    const editing=editSessions.has(sessionId)
     const ownsView=()=>live.current?.sessionId===sessionId&&live.current.key===key
     const edit=(parts:readonly string[],text:string,kind:'text'|'number'|'boolean'|'json')=>{
       if(!draft||!editable||!ownsView()||drafts.get(sessionId)!==draft||draft.operation)return
@@ -238,13 +294,17 @@ export function createMvuStatePanel({React,invalidateState,fetch=globalThis.fetc
       Object.entries(values).map(([name,value])=>{
         if(remaining--<=0){limited=true;return null}
         const pathParts=[...parts,name],address=pointer(pathParts),label=typeName(value)
-        const shown=editable&&draft?.raw[address]!==undefined?draft.raw[address]:
+        const fieldName=Array.isArray(values)?`第 ${Number(name)+1} 项`:name
+        const shown=!editing?'':editable&&draft?.raw[address]!==undefined?draft.raw[address]:
           typeof value==='string'?value:JSON.stringify(value,null,2)
-        const common={'aria-label':`${address}（${label}）`,'data-mvu-path':address,disabled:!editable,
-          style:{width:'100%',boxSizing:'border-box' as const}}
+        const common={'aria-label':`${fieldName}（${address}，${label}）`,'data-mvu-path':address,
+          className:'dsh-rp-mvu-input',disabled:!editable}
         const error=draft?.errors[address]
-        const control=typeof value==='string'?h('input',{...common,type:'text',value:shown,
-          onChange:(event:ReactAPI.ChangeEvent<HTMLInputElement>)=>edit(pathParts,event.target.value,'text')}):
+        // A text edit may cross the long/multiline boundary while focused.
+        // Keep one DOM control so React retains its caret and composition.
+        const control=!editing?null:typeof value==='string'?
+          h('textarea',{...common,rows:value.length>72||value.includes('\n')?3:1,value:shown,
+            onChange:(event:ReactAPI.ChangeEvent<HTMLTextAreaElement>)=>edit(pathParts,event.target.value,'text')}):
           typeof value==='number'?h('input',{...common,type:'text',inputMode:'decimal',value:shown,
             onChange:(event:ReactAPI.ChangeEvent<HTMLInputElement>)=>edit(pathParts,event.target.value,'number')}):
           typeof value==='boolean'?h('select',{...common,value:String(value),
@@ -254,46 +314,87 @@ export function createMvuStatePanel({React,invalidateState,fetch=globalThis.fetc
             h('input',{...common,type:'text',value:shown,
               onChange:(event:ReactAPI.ChangeEvent<HTMLInputElement>)=>edit(pathParts,event.target.value,'json')})):null
         const structured=value!==null&&typeof value==='object'
-        return h('div',{key:address,className:'dsh-rp-mvu-field'},
-          h('label',null,h('span',null,`${address} · ${label}`),control),
-          error?h('p',{role:'alert'},error):null,
-          structured?h('details',null,h('summary',null,`${address}：展开${label}`),
-            rows(value,pathParts),h('label',null,`${address}：编辑${label} JSON`,h('textarea',{...common,
-              rows:4,value:shown,onChange:(event:ReactAPI.ChangeEvent<HTMLTextAreaElement>)=>edit(pathParts,event.target.value,'json')}))):null)
+        const childCount=structured?Object.keys(value).length:0
+        const metadata=h('details',{className:'dsh-rp-mvu-meta'},h('summary',null,'字段信息'),
+          h('div',null,label,' · ',h('code',null,address)))
+        return h('div',{key:address,className:'dsh-rp-mvu-field'},structured
+          ?h('details',{className:'dsh-rp-mvu-group','data-mvu-group':address},
+            h('summary',null,h('span',{className:'dsh-rp-mvu-group-name'},fieldName),
+              h('span',{className:'dsh-rp-mvu-count'},`${childCount} 项`)),
+            h('div',{className:'dsh-rp-mvu-children'},childCount?rows(value,pathParts):
+              h('p',{className:'dsh-rp-mvu-mode'},`空${label}`)),metadata,
+            editing?h('details',{className:'dsh-rp-mvu-advanced'},h('summary',null,`高级：编辑此${label} JSON`),
+              h('label',null,`${fieldName} JSON`,h('textarea',{...common,rows:4,value:shown,
+                onChange:(event:ReactAPI.ChangeEvent<HTMLTextAreaElement>)=>edit(pathParts,event.target.value,'json')}))):null)
+          :h(React.Fragment,null,editing?h('label',null,h('span',{className:'dsh-rp-mvu-name'},fieldName),control)
+            :h(React.Fragment,null,h('div',{className:'dsh-rp-mvu-name'},fieldName),
+              h('div',{className:'dsh-rp-mvu-value','data-mvu-value':address,
+                'data-mvu-type':value===null?'null':typeof value},value===null?'空值':
+                typeof value==='boolean'?(value?'开启':'关闭'):value===''?'（空文本）':String(value))),metadata),
+          error?h('p',{role:'alert',className:'dsh-rp-mvu-error'},error):null)
       })
     const shownValues=ready?(needsCompare?ready.snapshot.values:draft?.values??ready.snapshot.values):undefined
     const table=shownValues?rows(shownValues):null
     return h('section',{className:'dsh-rp-mvu-state','aria-label':'游戏数值','data-session-id':sessionId,
-      style:{padding:'8px'}},
-      h('h3',null,'游戏数值'),
-      ready?h('p',null,`当前数值 · 第 ${ready.snapshot.revision} 版`):null,
-      draft?.dirty&&!needsCompare?h('p',{role:'status'},'下方修改是尚未保存的草稿。'):null,
-      !state?h('p',{role:'status'},'尚未读取到当前世界线的数值，请刷新检查。'):
-        !isReady(state)?h('p',{role:'status'},reason(state.code)):
-        !state.canEdit?h('p',{role:'status'},reason(state.editBlockCode)):null,
-      state?.kind==='schema-ready'&&state.canEdit?h('p',{role:'status'},'保存时会按角色卡规则校验数值。'):null,
-      needsCompare&&draft?.dirty?h('p',{role:'status'},'剧情或数值版本已变化。当前显示已读取的数值，旧草稿保留供比较，不能直接覆盖。'):null,
+      'data-mvu-mode':editing?'edit':'read'},
+      h('style',null,MVU_PANEL_CSS),
+      h('div',{className:'dsh-rp-mvu-heading'},
+        h('details',{className:'dsh-rp-mvu-identity'},h('summary',null,
+          h('span',{className:'dsh-rp-mvu-session-label'},sessionLabel||`会话 · ${sessionId.replace(/^session-/,'').slice(0,8)}`),
+          h('span',{className:'dsh-rp-mvu-worldline-label'},worldlineLabel||'当前世界线')),
+          h('dl',{className:'dsh-rp-mvu-context'},h('dt',null,'完整会话标识'),h('dd',null,sessionId))),
+        ready?h('span',{className:'dsh-rp-mvu-version'},`第 ${ready.snapshot.revision} 版`):null),
+      draft?.dirty?h('p',{role:'status',className:'dsh-rp-mvu-notice'},'有尚未保存的草稿。',
+        !needsCompare?'当前修改仅保存在此会话中，保存后才会生效。':null):null,
+      !state?h('p',{role:'status',className:'dsh-rp-mvu-notice'},'尚未读取到当前世界线的数值，请刷新检查。'):
+        !isReady(state)?h('p',{role:'status',className:'dsh-rp-mvu-notice'},reason(state.code)):
+        !state.canEdit?h('p',{role:'status',className:'dsh-rp-mvu-notice'},reason(state.editBlockCode)):null,
+      state?.kind==='schema-ready'&&state.canEdit?h('p',{role:'status',className:'dsh-rp-mvu-notice'},
+        '保存时会按角色卡规则校验数值。'):null,
+      state?.kind==='schema-ready'&&state.commandDiagnostics?.length?h('details',{className:'dsh-rp-mvu-advanced'},
+        h('summary',null,'变量更新未应用详情'),
+        h('ul',null,state.commandDiagnostics.map((item,index)=>h('li',{key:`${item.nativeSeq}:${index}`},
+          'kind' in item
+            ?`${item.source==='opening'?'开场':'剧情'}变量更新整批未应用（${item.phase}，${item.code}`
+              +`${'updateCode' in item?`，${item.updateCode}`:''}${'pointer' in item?`，${item.pointer}`:''}）。`
+            :`${item.source==='opening'?'开场':'剧情'}第 ${item.commandIndex+1} 条更新：${item.code==='SCHEMA_VALIDATION_FAILED'
+              ?'未通过角色卡规则':'无法执行此数值操作'}${item.pointer?`（${item.pointer}）`:''}。`)))):null,
+      needsCompare&&draft?.dirty?h('p',{role:'status',className:'dsh-rp-mvu-notice'},
+        '剧情或数值版本已变化。当前显示已读取的数值，旧草稿保留供比较，不能直接覆盖。'):null,
+      ready?h('div',{className:'dsh-rp-mvu-toolbar'},
+        h('span',{className:'dsh-rp-mvu-mode'},editing?'编辑模式':'阅读模式'),
+        h('div',{className:'dsh-rp-mvu-toolbar-buttons'},h('button',{type:'button',disabled:!editing&&!editable,'aria-pressed':editing,
+          onClick:()=>setEditSessions(current=>{
+            const next=new Set(current)
+            if(next.has(sessionId))next.delete(sessionId)
+            else next.add(sessionId)
+            return next
+          })},editing?'返回阅读':'编辑数值'),
+          h('button',{type:'button',onClick:refreshSafely},'刷新数值'))):
+        h('div',{className:'dsh-rp-mvu-toolbar'},h('button',{type:'button',onClick:refreshSafely},'刷新数值')),
       table,
-      limited?h('p',null,'字段较多，部分内容请在对象或列表的 JSON 编辑区查看；完整数值在高级区。'):null,
-      ready?h('details',null,h('summary',null,'高级：完整数值 JSON'),
-        h('textarea',{'aria-label':'完整数值 JSON',disabled:!editable,rows:6,
-          style:{width:'100%',boxSizing:'border-box'},
+      shownValues&&!Object.keys(shownValues).length?h('p',{className:'dsh-rp-mvu-notice'},
+        '当前数值为空。可在编辑模式的高级区添加字段。'):null,
+      limited?h('p',{className:'dsh-rp-mvu-notice'},'字段较多，完整数值可在高级区查看。'):null,
+      ready?h('details',{className:'dsh-rp-mvu-advanced'},h('summary',null,'高级：完整数值 JSON'),editing
+        ?h('textarea',{'aria-label':'完整数值 JSON',className:'dsh-rp-mvu-input',disabled:!editable,rows:6,
           value:editable&&draft?.raw['']!==undefined?draft.raw['']:JSON.stringify(shownValues,null,2),
-          onChange:(event:ReactAPI.ChangeEvent<HTMLTextAreaElement>)=>edit([],event.target.value,'json')}),
-        draft?.errors['']?h('p',{role:'alert'},draft.errors['']):null):null,
-      draft?.comparison||needsCompare&&draft?.dirty?h('details',null,h('summary',null,'查看保留的旧草稿'),
-        h('pre',{style:{overflow:'auto',maxHeight:'180px'}},
+          onChange:(event:ReactAPI.ChangeEvent<HTMLTextAreaElement>)=>edit([],event.target.value,'json')})
+        :h('pre',{className:'dsh-rp-mvu-json'},JSON.stringify(shownValues,null,2)),
+        draft?.errors['']?h('p',{role:'alert',className:'dsh-rp-mvu-error'},draft.errors['']):null):null,
+      draft?.comparison||needsCompare&&draft?.dirty?h('details',{className:'dsh-rp-mvu-advanced'},
+        h('summary',null,'查看保留的旧草稿'),h('pre',{className:'dsh-rp-mvu-json'},
           draft?.comparison??JSON.stringify({数值:draft?.values,输入:draft?.raw},null,2))):null,
-      draft?.message?h('p',{role:'status'},draft.message):null,
-      notice?.sessionId===sessionId&&ready&&!draft?.dirty?h('p',{role:'status'},notice.text):null,
-      h('div',{className:'dsh-rp-row'},
-        h('button',{type:'button',disabled:!editable||!draft?.dirty||!!Object.keys(draft?.errors??{}).length,
+      draft?.message?h('p',{role:'status',className:'dsh-rp-mvu-notice'},draft.message):null,
+      notice?.sessionId===sessionId&&ready&&!draft?.dirty?h('p',{role:'status',className:'dsh-rp-mvu-notice'},notice.text):null,
+      editing||draft?.dirty?h('div',{className:'dsh-rp-mvu-actions'},
+        h('button',{type:'button',className:'dsh-rp-mvu-primary',
+          disabled:!editable||!draft?.dirty||!!Object.keys(draft?.errors??{}).length,
           onClick:()=>save()},pending?'保存中…':'保存数值'),
         uncertain?h('button',{type:'button',disabled:pending,onClick:()=>save(true)},'重试上次保存'):null,
         h('button',{type:'button',disabled:pending||uncertain||!draft?.dirty,onClick:discard},'取消草稿'),
-        h('button',{type:'button',onClick:refreshSafely},'刷新数值'),
         stale&&draft?.dirty&&ready?h('button',{type:'button',disabled:pending||uncertain,onClick:compareLatest},
-          '载入最新值并比较草稿'):null))
+          '载入最新值并比较草稿'):null):null)
   }
   return {MvuStatePanel}
 }

@@ -39,5 +39,9 @@
     "version": "0.1.0",
     "typescriptVersion": "5.9.3",
     "entrySha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675"
-  }
+  },
+  "scopeInputProtocols": [
+    "full-frame-v1",
+    "scope-ref-v2"
+  ]
 }

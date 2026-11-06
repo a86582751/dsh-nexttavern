@@ -41,9 +41,9 @@ export function createMvuSchemaCompilerV4(deps: CompilerDepsV4): MvuOwnedStateCa
   function run(raw: MvuSchemaCompilationInputV4, signal: AbortSignal | undefined,
     operation: 'compile'): Promise<CompilationV4>
   function run(raw: MvuSchemaCompilationInputV4, signal: AbortSignal | undefined,
-    operation: 'partition', browserCandidateOrdinals?:readonly number[]): Promise<ServerCandidatePartitionV4>
+    operation: 'partition'): Promise<ServerCandidatePartitionV4>
   async function run(raw: MvuSchemaCompilationInputV4, signal: AbortSignal | undefined,
-    operation: 'compile' | 'partition',browserCandidateOrdinals:readonly number[]=[]): Promise<CompilerResultV4> {
+    operation: 'compile' | 'partition'): Promise<CompilerResultV4> {
     if (!live) return refused('MVU_SCHEMA_COMPILER_DISPOSED')
     if (signal?.aborted) return refused('MVU_SCHEMA_COMPILER_CANCELLED')
     if (active.size >= 4) return refused('MVU_SCHEMA_COMPILER_BUSY')
@@ -57,9 +57,10 @@ export function createMvuSchemaCompilerV4(deps: CompilerDepsV4): MvuOwnedStateCa
     const codeInput:SchemaCompilationCodeV4={scripts:input.scripts,libraries:input.libraries,
       bridge:input.bridge,stateLoader:input.stateLoader,executionPlan:input.executionPlan}
     let worker: Worker
+    deps.beforeWorkerLoad?.()
     try {
       worker = new Worker(workerUrl, {workerData: {identity, input:codeInput,
-        ...operation === 'partition' ? {operation,browserCandidateOrdinals} : {}}, resourceLimits: {
+        ...operation === 'partition' ? {operation} : {}}, resourceLimits: {
         maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16, stackSizeMb: 2,
       }})
     } catch {return refused('MVU_SCHEMA_COMPILER_WORKER_UNAVAILABLE')}
@@ -126,12 +127,10 @@ export function createMvuSchemaCompilerV4(deps: CompilerDepsV4): MvuOwnedStateCa
     return completion.promise
   }
   const compile = (input: MvuSchemaCompilationInputV4, signal?: AbortSignal) => run(input, signal, 'compile')
-  const partitionCandidates:MvuSchemaCandidateCompilerV4['partitionCandidates']=(input,signal,browserCandidateOrdinals)=>
-    run(input,signal,'partition',browserCandidateOrdinals)
-  const assembleOwnedStateProgram:MvuOwnedStateCandidateCompilerV1['assembleOwnedStateProgram']=(original,browser)=>{
+  const partitionCandidates:MvuSchemaCandidateCompilerV4['partitionCandidates']=(input,signal)=>run(input,signal,'partition')
+  const assembleOwnedStateProgram:MvuOwnedStateCandidateCompilerV1['assembleOwnedStateProgram']=(original,profile)=>{
     if(!live)throw Error('MVU_SCHEMA_COMPILER_DISPOSED')
-    if(!browser.stateImports?.sites.length)throw Error('SCHEMA_OWNED_BROWSER_IMPORTS_REQUIRED')
-    return captureCompiledOwnedMvuStateProgramV1(original,browser,identity)
+    return captureCompiledOwnedMvuStateProgramV1(original,profile,identity)
   }
   async function verifyProgram(raw: MvuSchemaProgramV4, signal?: AbortSignal): Promise<boolean> {
     if (!live || signal?.aborted) return false

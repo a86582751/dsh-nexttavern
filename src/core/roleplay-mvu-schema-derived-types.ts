@@ -1,7 +1,7 @@
 /** Frozen schema inheritance is a factual baseline. None of these versioned
  * records carries a Native input capability, live lease or publication token. */
 import {recordSha256} from './roleplay-data.js'
-import {COMBINED_AUTHOR_DATA_BOUNDS_V6} from './tavern-author-combined-types-v6.mjs'
+import {COMBINED_AUTHOR_DATA_BOUNDS_V8} from './tavern-author-combined-types-v8.mjs'
 import {sealMvuSchemaStoryFact,validateMvuSchemaNumericalSnapshot}
   from './roleplay-mvu-schema-story-types.js'
 import {validateMvuSchemaOpeningIntent,validateMvuSchemaOpeningEvent,validateMvuSchemaOpeningHead}
@@ -22,10 +22,13 @@ import type {TavernSourceFrozenRefV1} from './roleplay-tavern-source-inheritance
 import type {ForkOperation} from './roleplay-worldline-types.js'
 import type {ForkReservation} from './roleplay-branch-routes-types.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
+import type {SchemaJournalRef} from './roleplay-mvu-schema-journal.js'
+import type {MvuOpeningVariantSelectionV1} from './roleplay-mvu-numerical-publication.js'
 
 export type MvuSchemaPrefixSeed=
   | {kind:'opening';intent:OpeningIntentV5;event:MvuSchemaOpeningEventV2;head:MvuSchemaOpeningHeadV2}
   | {kind:'derived';basisKey:string;basisSha256:string}
+  | {kind:'activation';activationRef:SchemaJournalRef}
 export interface MvuSchemaFrozenPrefixV1 {
   schemaVersion:1
   encoding:'native-mvu-schema-frozen-prefix-v1'
@@ -39,6 +42,7 @@ export interface MvuSchemaFrozenPrefixV1 {
   eventKeys:readonly string[]
   snapshot:MvuSchemaNumericalSnapshotV2
   consumed:readonly {planSha256:string;closureSha256:string}[]
+  openingVariants?:MvuOpeningVariantSelectionV1
   prefixSha256:string
 }
 export interface MvuSchemaDerivedPreparedV1 {
@@ -130,12 +134,12 @@ const hash=(value:unknown)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value
 const id=(value:unknown)=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value)
 const integer=(value:unknown)=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0&&!Object.is(value,-0)
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
-// Cold inheritance metadata and prefix leaves have independent admission
-// owners. Assembling admitted children does not charge their graphs again;
-// Source material keeps its existing material codec.
-const inheritanceBounds={nodes:COMBINED_AUTHOR_DATA_BOUNDS_V6.descriptorNodes,
-  depth:COMBINED_AUTHOR_DATA_BOUNDS_V6.descriptorDepth,
-  arrayLength:COMBINED_AUTHOR_DATA_BOUNDS_V6.descriptorArrayLength}
+// Cold prefix, prepared, basis and closed table inputs have independent raw
+// DATA admission budgets. A live owner assembling already admitted children
+// does not charge them again; Source material keeps its existing material codec.
+const inheritanceBounds={nodes:COMBINED_AUTHOR_DATA_BOUNDS_V8.descriptorNodes,
+  depth:COMBINED_AUTHOR_DATA_BOUNDS_V8.descriptorDepth,
+  arrayLength:COMBINED_AUTHOR_DATA_BOUNDS_V8.descriptorArrayLength}
 const inheritanceClones=new WeakSet<object>()
 function rememberInheritanceClone<T>(value:T):T {
   if(value&&typeof value==='object') {
@@ -204,7 +208,15 @@ function validateFrozenPrefixUncached(input:MvuSchemaFrozenPrefixV1):MvuSchemaFr
 }
 function validateFrozenPrefixFields(prefix:MvuSchemaFrozenPrefixV1):MvuSchemaFrozenPrefixV1 {
   exact(prefix,['schemaVersion','encoding','sessionId','inheritedEventCount','sourceSha256','original',
-    'seed','initial','journal','eventKeys','snapshot','consumed','prefixSha256'])
+    'seed','initial','journal','eventKeys','snapshot','consumed','prefixSha256',
+    ...Object.hasOwn(prefix,'openingVariants')?['openingVariants']:[]])
+  if(Object.hasOwn(prefix,'openingVariants')) {
+    const selection=prefix.openingVariants!
+    exact(selection,['setRef','activeVariantId'])
+    exact(selection.setRef,['key','sha256'])
+    if(typeof selection.setRef.key!=='string'||!/^[A-Za-z0-9_-]{1,256}$/.test(selection.setRef.key)
+      ||!hash(selection.setRef.sha256)||!id(selection.activeVariantId))fail()
+  }
   const initial=validateMvuSchemaNumericalSnapshot(prefix.initial),snapshot=validateMvuSchemaNumericalSnapshot(prefix.snapshot)
   if(prefix.schemaVersion!==1||prefix.encoding!=='native-mvu-schema-frozen-prefix-v1'||!id(prefix.sessionId)
     ||!integer(prefix.inheritedEventCount)||!hash(prefix.sourceSha256)||!hash(prefix.prefixSha256)
@@ -236,6 +248,11 @@ function validateFrozenPrefixFields(prefix:MvuSchemaFrozenPrefixV1):MvuSchemaFro
     exact(prefix.seed,['kind','basisKey','basisSha256'])
     if(prefix.seed.basisKey!==mvuSchemaDerivedBasisKey(prefix.sessionId)||!hash(prefix.seed.basisSha256)
       ||initial.root.derived?.basisSha256!==prefix.seed.basisSha256)fail()
+  }else if(prefix.seed.kind==='activation') {
+    exact(prefix.seed,['kind','activationRef']);exact(prefix.seed.activationRef,['key','sha256'])
+    if(prefix.inheritedEventCount!==0||!hash(prefix.seed.activationRef.sha256)
+      ||prefix.seed.activationRef.key!==`${prefix.sessionId}__opening-variant-activation-seed`
+      ||!initial.root.activation)fail()
   }else fail()
   return prefix
 }
@@ -330,8 +347,9 @@ function validateDerivedBasisJoins(basis:MvuSchemaDerivedBasis,source:MvuDerived
     ||imported.coverageSha256!==original.coverageSha256||imported.transactionId!==original.transactionId
     ||imported.recordSha256!==originalSnapshot.importRecordSha256)fail()
 }
-/** The live reservation owns its constructed prepared DATA; Source supplies
- * its completed proof. This producer owns only the new envelope and joins. */
+/** The live reservation already owns its constructed prepared DATA and the
+ * Source owner supplies its completed proof. Only the new envelope and their
+ * cross-record joins are work here; cold records still use the parser above. */
 export function createMvuSchemaDerivedBasis(prepared:MvuSchemaDerivedPreparedV2,source:MvuDerivedSourceProofV2):MvuSchemaDerivedBasisV2
 export function createMvuSchemaDerivedBasis(prepared:MvuSchemaDerivedPreparedV3,source:MvuDerivedSourceProofV3):MvuSchemaDerivedBasisV3
 export function createMvuSchemaDerivedBasis(prepared:MvuSchemaDerivedPreparedV2|MvuSchemaDerivedPreparedV3,

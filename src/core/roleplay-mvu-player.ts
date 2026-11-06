@@ -8,8 +8,8 @@ import {readMvuPlayerRequest,readMvuPlayerOperation,readMvuPlayerOperationFacts,
   from './roleplay-mvu-player-facts.js'
 import type {MvuPlayerOperation,MvuPlayerOperationCompletion,MvuPlayerOperationRefusal,MvuPlayerFactTable}
   from './roleplay-mvu-player-facts.js'
-import type {Session} from '@deepseek-ai/dsh-session'
-import type {NativeInputAdmissionAgentV2,NativeInputStopNoticeV1} from '@deepseek-ai/dsh-agent-loop'
+import type {Session} from 'dsh-nexttavern-native-session'
+import type {NativeInputAdmissionAgentV2,NativeInputStopNoticeV1} from 'dsh-nexttavern-native-agent-loop'
 import type {mvuPlayerMarkers} from 'dsh-nexttavern-session-format/mvu-player-marker'
 import type {createRoleplayMvuState,MvuStatePermissionPhase,MvuNumericalSnapshot} from './roleplay-mvu-state.js'
 import type {MvuPlayerStateIntent,MvuPlayerStatePublisherSettlement} from './roleplay-mvu-player-records.js'
@@ -180,6 +180,7 @@ export function createRoleplayMvuPlayer(deps:MvuPlayerDeps) {
   async function submit(input:unknown,callerCurrent?:()=>boolean):Promise<MvuPlayerEditResponse> {
     let request:MvuPlayerEditRequest
     try {request=readMvuPlayerRequest(input)} catch(error) {const code=codeOf(error);return {ok:false,code,error:code}}
+    if(request.target)return {ok:false,code:'MVU_PLAYER_MESSAGE_TARGET_UNPROVEN',error:'MVU_PLAYER_MESSAGE_TARGET_UNPROVEN'}
     const writeBlock=deps.writeBlockCode?.(request.sessionId)
     if(writeBlock)return response(request,'unknown',false,writeBlock)
     const session=deps.session(request.sessionId)

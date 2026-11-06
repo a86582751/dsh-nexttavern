@@ -4,7 +4,7 @@
 import {recordSha256,sha256} from './roleplay-data.js'
 import {surfaceEntries} from './roleplay-context.js'
 import {selectedCanonicalChatHistory} from '../memory/memory-history.js'
-import type {StorySession} from '../memory/memory-history.js'
+import type {StorySession,CanonicalChatCut,CanonicalChatEntry} from '../memory/memory-history.js'
 import {cloneSchemaData} from './tavern-mvu-schema-data.js'
 import {compileSchemaMvuInitData} from './tavern-mvu-initvar.js'
 import {createMvuScopeReadFrameV1,validateMvuScopeReadFrameV1} from './tavern-mvu-scope-read.js'
@@ -14,18 +14,29 @@ import type {MvuSchemaAuthorSource} from './roleplay-mvu-source.js'
 import type {SourceNativeCutFacts} from './roleplay-mvu-schema-journal.js'
 import type {MvuSchemaAuthorScript} from './tavern-mvu-schema-types.js'
 import type {ContextSession,ContextEvent} from './roleplay-context.js'
-import type {SessionEvent} from '@deepseek-ai/dsh-session'
+import type {SessionEvent} from 'dsh-nexttavern-native-session'
 import type {WorldlineMessageEdits} from './roleplay-worldline-types.js'
+import type {MvuMessageTargetV1} from './roleplay-mvu-player-types.js'
 import type {MvuScopeReadFrameV1,MvuScopeSourceIdentityV1,MvuScopeOwnerV1,
-  MvuScopeStateRefV1,MvuScopeVariablesV1,MvuScopedMessageV1,MvuVariableScope} from './tavern-mvu-scope-read-types.js'
+  MvuScopeStateRefV1,MvuScopeVariablesV1,MvuScopedMessageV1,MvuVariableScope,
+  MvuPromptScopeReadBasisV1,MvuSelectedPromptScopeDataV2} from './tavern-mvu-scope-read-types.js'
 
 const scopePolicy={schemaVersion:1,id:'native-mvu-published-scope-policy-v1',
-  initializationChat:'configured-book-baseline',storyChat:'configured-message-publication',manualScope:'chat',
+  initializationChat:'configured-book-baseline',storyChat:'configured-message-publication',manualScope:'chat-and-explicit-current-message',
   newMessage:'empty-until-publication',otherScopes:'session-source-owned-empty'} as const
 export const MVU_SCHEMA_SCOPE_POLICY_V1=Object.freeze({...scopePolicy,sha256:recordSha256(scopePolicy)})
 function fail(code:string):never {throw Error(code)}
 const object=(value:unknown):value is MvuJsonObject=>!!value&&typeof value==='object'&&!Array.isArray(value)
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
+
+/** A carrier is maintained by the publication fold, never inferred from the
+ * latest visible message or equality of independently hashed values. */
+export function schemaScopeMessageTargetEqual(left:MvuMessageTargetV1|null|undefined,
+  right:MvuMessageTargetV1|null|undefined):boolean {
+  return !!left&&!!right&&left.kind===right.kind&&left.ownerSessionId===right.ownerSessionId
+    &&left.nativeSeq===right.nativeSeq&&left.messageId===right.messageId
+    &&left.messageVersionSha256===right.messageVersionSha256
+}
 
 export function schemaScopeOwner(source:MvuScopeSourceIdentityV1,scope:MvuVariableScope,identity:string=scope,
   sessionId=source.sessionId):MvuScopeOwnerV1 {
@@ -142,13 +153,32 @@ export function buildSchemaScopeReadFrame(source:MvuScopeSourceIdentityV1,cutSha
   scripts:readonly Pick<MvuSchemaAuthorScript,'identity'|'pointer'|'sourceSha256'>[],chat:MvuScopeVariablesV1,
   messages:readonly MvuScopedMessageV1[]):MvuScopeReadFrameV1 {
   const body={schemaVersion:1 as const,encoding:'native-mvu-scope-read-frame-v1' as const,source,
-    sourceNativeCutSha256:cutSha256,viewKind:'script' as const,
-    scopes:{chat:schemaScopeReowner(chat,schemaScopeOwner(source,'chat')),
+    sourceNativeCutSha256:cutSha256,viewKind:'script' as const,...scopeNamespaces(source,scripts,chat),messages}
+  return createMvuScopeReadFrameV1(body)
+}
+function scopeNamespaces(source:MvuScopeSourceIdentityV1,
+  scripts:readonly Pick<MvuSchemaAuthorScript,'identity'|'pointer'|'sourceSha256'>[],chat:MvuScopeVariablesV1) {
+  return {scopes:{chat:schemaScopeReowner(chat,schemaScopeOwner(source,'chat')),
       character:schemaScopeEmpty(schemaScopeOwner(source,'character')),
       global:schemaScopeEmpty(schemaScopeOwner(source,'global'))},
     scripts:scripts.map(script=>({scriptId:script.identity,pointer:script.pointer,sourceSha256:script.sourceSha256,
-      variables:schemaScopeEmpty(schemaScopeOwner(source,'script',script.identity))})),messages}
-  return createMvuScopeReadFrameV1(body)
+      variables:schemaScopeEmpty(schemaScopeOwner(source,'script',script.identity))}))}
+}
+export function buildSelectedSchemaPromptScopeData(basis:MvuPromptScopeReadBasisV1,source:MvuScopeSourceIdentityV1,
+  scripts:readonly Pick<MvuSchemaAuthorScript,'identity'|'pointer'|'sourceSha256'>[],chat:MvuScopeVariablesV1,
+  messages:readonly MvuScopedMessageV1[],selectedBaseSha256:string):MvuSelectedPromptScopeDataV2 {
+  const body={schemaVersion:2 as const,encoding:'native-mvu-selected-prompt-scope-read-data-v2' as const,
+    authority:'consumer-data-only' as const,basis,source,...scopeNamespaces(source,scripts,chat),messages,selectedBaseSha256}
+  // The numerical owner already froze its published values. Freeze only new
+  // output metadata and shared empty namespaces, without cloning old history.
+  function freeze(value:unknown):void {
+    if(value&&typeof value==='object'&&!Object.isFrozen(value)) {
+      for(const child of Object.values(value))freeze(child)
+      Object.freeze(value)
+    }
+  }
+  freeze(body)
+  return Object.freeze({...body,readDataSha256:recordSha256(body)})
 }
 export function rebindSchemaScopeReadFrame(input:MvuScopeReadFrameV1,cutSha256:string):MvuScopeReadFrameV1 {
   const {frameSha256:_old,...body}=validateMvuScopeReadFrameV1(input)
@@ -162,6 +192,58 @@ export function schemaScopeReadFactsEqual(left:MvuScopeReadFrameV1,right:MvuScop
 }
 export const schemaScopeMessageKey=(ownerSessionId:string,nativeSeq:number,messageId:string,versionSha256:string)=>
   recordSha256({ownerSessionId,nativeSeq,messageId,versionSha256})
+function scopedMessage(source:MvuScopeSourceIdentityV1,position:number,seq:number,messageId:string,
+  messageVersionSha256:string,nativeOwner:string,published:ReadonlyMap<string,MvuScopeVariablesV1>):MvuScopedMessageV1 {
+  const key=schemaScopeMessageKey(nativeOwner,seq,messageId,messageVersionSha256),publication=published.get(key)
+  // The Native origin still locates this message/version. A revised value
+  // belongs to its actual child publication, while untouched inherited DATA
+  // retains its ancestor scope and immutable state reference.
+  const ownerSessionId=publication?.kind==='available'?publication.provenance.owner.sessionId:nativeOwner,
+    owner=schemaScopeOwner(source,'message',messageId,ownerSessionId),
+    variables=schemaScopeReowner(publication??schemaScopeEmpty(owner),owner)
+  return {position,ownerSessionId,nativeSeq:seq,messageId,messageVersionSha256,
+    selectedVariant:messageVersionSha256,isSystem:false,variables}
+}
+/** The canonical cursor already owns each immutable message/version. Only
+ * output rows and their current published variables are assembled here. */
+export function schemaScopeCanonicalMessages(view:CanonicalChatCut,source:MvuScopeSourceIdentityV1,
+  ownerForSeq:(seq:number)=>string,published:ReadonlyMap<string,MvuScopeVariablesV1>):readonly MvuScopedMessageV1[] {
+  return canonicalMessages(view.range(),source,ownerForSeq,published)
+}
+export function schemaScopeSelectedCanonicalMessages(matches:readonly(readonly CanonicalChatEntry[])[],
+  source:MvuScopeSourceIdentityV1,ownerForSeq:(seq:number)=>string,
+  published:ReadonlyMap<string,MvuScopeVariablesV1>):readonly MvuScopedMessageV1[] {
+  // Repeating a selected reference does not create a second Native row. Real
+  // duplicate id/version rows retain distinct seqs and remain ambiguous.
+  const entries=new Map<number,CanonicalChatEntry>()
+  for(const matching of matches)for(const entry of matching)entries.set(entry.row.seq,entry)
+  return canonicalMessages(entries.values(),source,ownerForSeq,published)
+}
+/** Match ambiguity belongs to the selected Native supplier. Variable values
+ * are assembled only at the points the variable selector actually consumes. */
+export function schemaScopeSelectedMessagePoints(matches:readonly(readonly CanonicalChatEntry[])[],
+  source:MvuScopeSourceIdentityV1,ownerForSeq:(seq:number)=>string,published:ReadonlyMap<string,MvuScopeVariablesV1>) {
+  for(const matching of matches)if(matching.length>1)fail('INPUT_MATERIAL_SCOPE_MESSAGE_AMBIGUOUS')
+  return (index:number):MvuScopedMessageV1|undefined=>{
+    const entry=matches[index]?.[0]
+    if(!entry)return
+    const {seq,messageId}=entry.row,nativeOwner=ownerForSeq(seq)
+    if(!nativeOwner||typeof messageId!=='string')fail('SCHEMA_SCOPE_MESSAGE_UNPROVEN')
+    return scopedMessage(source,index,seq,messageId,
+      entry.messageFacts?.messageVersionSha256??recordSha256(entry.message),nativeOwner,published)
+  }
+}
+function canonicalMessages(entries:Iterable<CanonicalChatEntry>,source:MvuScopeSourceIdentityV1,
+  ownerForSeq:(seq:number)=>string,published:ReadonlyMap<string,MvuScopeVariablesV1>):readonly MvuScopedMessageV1[] {
+  const messages:MvuScopedMessageV1[]=[]
+  for(const entry of entries) {
+    const {seq,messageId}=entry.row,nativeOwner=ownerForSeq(seq)
+    if(typeof messageId!=='string'||!nativeOwner)fail('SCHEMA_SCOPE_MESSAGE_UNPROVEN')
+    const version=entry.messageFacts?.messageVersionSha256??recordSha256(entry.message)
+    messages.push(scopedMessage(source,messages.length,seq,messageId,version,nativeOwner,published))
+  }
+  return messages
+}
 export function schemaScopeVisibleMessages(events:readonly SessionEvent[],projectPrefix:WorldlineMessageEdits['projectPrefix'],
   source:MvuScopeSourceIdentityV1,ownerForSeq:(seq:number)=>string,
   published:ReadonlyMap<string,MvuScopeVariablesV1>,selection:'visible'|'canonical-chat'='visible'):readonly MvuScopedMessageV1[] {
@@ -180,15 +262,6 @@ export function schemaScopeVisibleMessages(events:readonly SessionEvent[],projec
     const message=projected.projectedMessageAt(entry.seq)??original,nativeOwner=ownerForSeq(entry.seq)
     if(!message||message.id!==entry.messageId||!nativeOwner)fail('SCHEMA_SCOPE_MESSAGE_UNPROVEN')
     const messageId=message.id as string,messageVersionSha256=recordSha256(message)
-    const key=schemaScopeMessageKey(nativeOwner,entry.seq,messageId,messageVersionSha256)
-    const publication=published.get(key)
-    // The Native origin still locates this message/version. A revised value
-    // belongs to its actual child publication, while untouched inherited DATA
-    // retains its ancestor scope and immutable state reference.
-    const ownerSessionId=publication?.kind==='available'?publication.provenance.owner.sessionId:nativeOwner
-    const owner=schemaScopeOwner(source,'message',messageId,ownerSessionId)
-    const variables=schemaScopeReowner(publication??schemaScopeEmpty(owner),owner)
-    return {position,ownerSessionId,nativeSeq:entry.seq,messageId,messageVersionSha256,
-      selectedVariant:messageVersionSha256,isSystem:false,variables}
+    return scopedMessage(source,position,entry.seq,messageId,messageVersionSha256,nativeOwner,published)
   })
 }

@@ -1,8 +1,6 @@
 /** Fixed P0 C-source aliases to the owned native schema bridge.
  * Upstream hashes identify the researched snapshot, without fetching or
  * executing that module. This policy grants no Source/publication authority. */
-import {sha256} from './roleplay-data.js'
-import type {MvuSchemaImplementationIdentity,MvuSchemaImportBinding} from './tavern-mvu-schema-types.js'
 
 export const PINNED_C_SCHEMA_IMPORT_POLICY_V1=Object.freeze({
   schemaVersion:1 as const,id:'p0-c-schema-native-adapter' as const,version:1 as const,
@@ -21,31 +19,13 @@ export const PINNED_C_SCHEMA_IMPORT_POLICY_V1=Object.freeze({
   ]),
 })
 
-/** Only fresh current-v2 compilation adds these exact aliases. Historical
- * compilers consume their retained program imports unchanged. */
-export function pinnedCSchemaImportBindingsV1(bridge:MvuSchemaImplementationIdentity):readonly MvuSchemaImportBinding[] {
-  if(bridge.id!=='native-mvu-schema-bridge'||bridge.version!==2||!/^[0-9a-f]{64}$/.test(bridge.implementationSha256)) {
-    throw Error('SCHEMA_C_ALIAS_REQUIRES_V2_BRIDGE')
-  }
-  return Object.freeze(PINNED_C_SCHEMA_IMPORT_POLICY_V1.entries.map(entry=>{
-    if(sha256(entry.specifier)!==entry.specifierSha256)throw Error('SCHEMA_C_ALIAS_POLICY_INVALID')
-    return Object.freeze({specifier:entry.specifier,kind:'schema-bridge' as const,
-      implementationSha256:bridge.implementationSha256})
-  }))
-}
-
-/** The same fixed source aliases are admitted by the new executor's own
- * bridge identity. Retained v2 programs keep their original binding bytes. */
-export const PINNED_C_SCHEMA_IMPORT_POLICY_V2=Object.freeze({
-  ...PINNED_C_SCHEMA_IMPORT_POLICY_V1,version:2 as const,targetBridgeVersion:3 as const,
+/** Fresh generic admission owns this independent alias policy. Historical
+ * policy versions (including program-v4's retained policy) remain unchanged;
+ * importing these DATA aliases does not initialize a historical program. */
+export const GENERIC_C_SCHEMA_IMPORT_POLICY_V1=Object.freeze({
+  id:'generic-c-schema-owned-adapter' as const,version:1 as const,
+  entries:Object.freeze([...PINNED_C_SCHEMA_IMPORT_POLICY_V1.entries.map(entry=>entry.specifier),
+    'https://fastly.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js',
+    'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js',
+    'https://cdn.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js']),
 })
-export function pinnedCSchemaImportBindingsV2(bridge:MvuSchemaImplementationIdentity):readonly MvuSchemaImportBinding[] {
-  if(bridge.id!=='native-mvu-schema-bridge'||bridge.version!==3||!/^[0-9a-f]{64}$/.test(bridge.implementationSha256)) {
-    throw Error('SCHEMA_C_ALIAS_REQUIRES_V3_BRIDGE')
-  }
-  return Object.freeze(PINNED_C_SCHEMA_IMPORT_POLICY_V2.entries.map(entry=>{
-    if(sha256(entry.specifier)!==entry.specifierSha256)throw Error('SCHEMA_C_ALIAS_POLICY_INVALID')
-    return Object.freeze({specifier:entry.specifier,kind:'schema-bridge' as const,
-      implementationSha256:bridge.implementationSha256})
-  }))
-}

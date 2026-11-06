@@ -7,11 +7,13 @@ import {createRoleplayMvuFrozenLineage} from './roleplay-mvu-frozen-lineage.js'
 import type {MvuFrozenLineageDeps,MvuDerivedSourceProofUnion} from './roleplay-mvu-frozen-lineage.js'
 import type {TavernSourceFrozenRefV1,TavernSourceInheritanceRefV1} from './roleplay-tavern-source-inheritance-types.js'
 import type {MvuSchemaPrefixInputClosure,FrozenInputsReadContext} from './roleplay-mvu-schema-frozen-prefix-input.js'
+import {createRoleplayMvuSchemaPrefixInputs} from './roleplay-mvu-schema-frozen-prefix-input.js'
+import {createMvuNumericalPublicationOwner} from './roleplay-mvu-numerical-publication.js'
 import {validateMvuSchemaDerivedPrepared,validateMvuSchemaDerivedBasis,createMvuSchemaDerivedBasis,mvuSchemaDerivedGenesis,
   mvuSchemaDerivedPreparedKey,mvuSchemaDerivedBasisKey,mvuSchemaDerivedEventKey,mvuSchemaDerivedHeadKey,
   mvuSchemaPrefixClosureKey,sealMvuSchemaInheritanceFact}
   from './roleplay-mvu-schema-derived-types.js'
-import type {Session,SessionEvent} from '@deepseek-ai/dsh-session'
+import type {Session,SessionEvent} from 'dsh-nexttavern-native-session'
 import type {MvuLineageDeps,MvuDerivedSourceProof} from './roleplay-mvu-lineage.js'
 import type {MvuSchemaDerivedPrepared,MvuSchemaDerivedBasis,MvuSchemaDerivedGenesis,
   MvuSchemaFrozenPrefixV1,MvuSchemaHistoryBasisRef} from './roleplay-mvu-schema-derived-types.js'
@@ -19,7 +21,7 @@ import type {ForkOperation} from './roleplay-worldline-types.js'
 import type {ForkReservation} from './roleplay-branch-routes-types.js'
 import type {SchemaJournalReady,SchemaJournalRef} from './roleplay-mvu-schema-journal.js'
 import {isAuthorHostJournalReadyV5} from './roleplay-mvu-schema-journal.js'
-import type {BrowserProgramV3} from './tavern-author-browser-types-v3.mjs'
+import type {AuthorNativeProgramV1} from './author-native-program.mjs'
 
 interface Table {get(key:string):unknown;put(key:string,value:unknown):Promise<unknown>;entries():Iterable<[string,unknown]>}
 type DerivedSession=Pick<Session,'id'|'snapshotEvents'|'inheritedEventCount'>
@@ -30,7 +32,7 @@ export interface MvuSchemaForkCapture {
   readonly closure?:MvuSchemaPrefixInputClosure
   /** Retain the selected DATA before publishing a basis or child closure. */
   readonly retainInputs?:(storageScope:string)=>Promise<void>
-  readonly browserProgram?:Readonly<{program:BrowserProgramV3;epochRef:SchemaJournalReady['epochRef']}>
+  readonly nativeProgram?:Readonly<{program:AuthorNativeProgramV1;epochRef:SchemaJournalReady['epochRef']}>
   readonly historical?:Readonly<{historyBasis:MvuSchemaHistoryBasisRef;parentSourceSha256:string;
     closure:MvuSchemaPrefixInputClosure;assertCurrent():void;retainInputs?:(storageScope:string)=>Promise<void>}>
 }
@@ -61,7 +63,7 @@ export interface MvuSchemaDerivedDeps extends MvuLineageDeps {
       initial:MvuSchemaDerivedGenesis|undefined,closure:MvuSchemaPrefixInputClosure,
       subjectSessionId?:string,storageScope?:string):
       {prefix:MvuSchemaFrozenPrefixV1;ready?:SchemaJournalReady;closure:MvuSchemaPrefixInputClosure;assertCurrent():void;
-        retainInputs?:(storageScope:string)=>Promise<void>;browserProgram?:MvuSchemaForkCapture['browserProgram']}
+        retainInputs?:(storageScope:string)=>Promise<void>;nativeProgram?:MvuSchemaForkCapture['nativeProgram']}
     verifyFrozenForkPrefix?(prefix:MvuSchemaFrozenPrefixV1,events:readonly SessionEvent[],
       initial:MvuSchemaDerivedGenesis|undefined,closure:MvuSchemaPrefixInputClosure,subjectSessionId?:string):boolean
   }
@@ -70,6 +72,8 @@ const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right
 function fail(code:string):never {throw Error(code)}
 
 export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
+  const publication=createMvuNumericalPublicationOwner(deps.status)
+  const prefixInputs=createRoleplayMvuSchemaPrefixInputs({branch:deps.branch,status:deps.status})
   const lineage=createRoleplayMvuLineage(deps)
   const frozenLineage=deps.sourceInheritance&&deps.readSourceDescriptor?createRoleplayMvuFrozenLineage({
     ...deps,sourceInheritance:deps.sourceInheritance,readSourceDescriptor:deps.readSourceDescriptor}):undefined
@@ -132,8 +136,8 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
     return current?lineage.current(source):lineage.verifyDenialBindingFacts(source)
   }
   function verifyPrepared(input:MvuSchemaDerivedPrepared,events:readonly SessionEvent[],
-    source:Successor,seen:Set<string>,subjectSessionId:string,closedSource?:FrozenPrepared)
-    :{prepared:MvuSchemaDerivedPrepared;ready:SchemaJournalReady} {
+    source:Successor,seen:Set<string>,subjectSessionId:string,closedSource?:FrozenPrepared,readContext?:FrozenInputsReadContext)
+    :{prepared:MvuSchemaDerivedPrepared;ready:SchemaJournalReady;closure?:MvuSchemaPrefixInputClosure} {
     const prepared=validateMvuSchemaDerivedPrepared(input)
     if(events.length!==prepared.seedLength||prepared.prefix.journal.nativePrefixSha256!==recordSha256(events)
       ||prepared.schemaVersion===1&&!operationCurrent(prepared)||!nativeBasisCurrent(prepared))fail('SCHEMA_DERIVED_BASIS_UNPROVEN')
@@ -160,16 +164,16 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
     if(seed.kind==='derived'&&(!initial||initial.basisKey!==seed.basisKey||initial.basisSha256!==seed.basisSha256)) {
       fail('SCHEMA_DERIVED_PARENT_UNPROVEN')
     }
-    let ready:SchemaJournalReady|undefined
+    let ready:SchemaJournalReady|undefined,closure:MvuSchemaPrefixInputClosure|undefined
     if(prepared.schemaVersion!==1) {
-      const closure=deps.branch.get(prepared.prefixClosureRef.key) as MvuSchemaPrefixInputClosure|undefined
+      closure=deps.branch.get(prepared.prefixClosureRef.key) as MvuSchemaPrefixInputClosure|undefined
       if(!closure||recordSha256(closure)!==prepared.prefixClosureRef.sha256
         ||closure.closureSha256!==prepared.prefixClosureRef.closureSha256)fail('SCHEMA_DERIVED_HISTORY_UNPROVEN')
       ready=deps.history.recoverFrozenForkPrefix?.(prepared.prefix,events,initial,closure,
-        subjectSessionId,undefined,prepared.childSessionId)
+        subjectSessionId,readContext,prepared.childSessionId)
     }else ready=deps.history.recoverForkPrefix(prepared.prefix,events,initial)
     if(!ready)fail('SCHEMA_DERIVED_HISTORY_UNPROVEN')
-    return {prepared,ready}
+    return {prepared,ready,closure}
   }
   function verifyReservation(owner:ReservationOwner,events:readonly SessionEvent[]):
     {prepared:MvuSchemaDerivedPrepared;ready:SchemaJournalReady} {
@@ -197,10 +201,10 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
     return genesis
   }
   /** Source calls this before its child commit and numerical genesis exist.
-   * The checked frozen prefix supplies declaration DATA only; this read never
+   * The checked frozen prefix supplies native Source DATA only; this read never
    * creates, spends or restores a numerical publication reservation. */
-  function readPreparedInheritedBrowserProgram(childId:string,sourcePreparedRef:TavernSourceInheritanceRefV1):
-    Readonly<{program:BrowserProgramV3;epochRef:SchemaJournalReady['epochRef']}>|undefined {
+  function readPreparedInheritedNativeProgram(childId:string,sourcePreparedRef:TavernSourceInheritanceRefV1):
+    Readonly<{program:AuthorNativeProgramV1;epochRef:SchemaJournalReady['epochRef']}>|undefined {
     if(disposed)fail('SCHEMA_DERIVED_OWNER_DISPOSED')
     const raw=deps.branch.get(mvuSchemaDerivedPreparedKey(childId))
     if(raw===undefined)return
@@ -216,8 +220,8 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
     const events=prefix(child,prepared.seedLength),{ready}=owner
       ?verifyReservation(owner,events)
       :verifyPrepared(prepared,events,prepared.sourcePreparedRef,new Set([childId]),prepared.parentSessionId)
-    if(!isAuthorHostJournalReadyV5(ready)||ready.epoch.program.browserProgram?.schemaVersion!==3)return
-    return Object.freeze({program:ready.epoch.program.browserProgram,epochRef:ready.epochRef})
+    if(!isAuthorHostJournalReadyV5(ready)||!ready.epoch.program.nativeProgram)return
+    return Object.freeze({program:ready.epoch.program.nativeProgram,epochRef:ready.epochRef})
   }
   /** Validate an older generation against the actual descendant prefix and
    * the next frozen Source, never that ancestor's current pointer or head. */
@@ -258,7 +262,7 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
       subjectSessionId,source.prepared)
     return closedRows(basis,checked.ready)
   }
-  function captureGenesis(sid:string):Readonly<{basis:MvuSchemaDerivedBasis;genesis:MvuSchemaDerivedGenesis}>|undefined {
+  function captureGenesis(sid:string) {
     const session=deps.session(sid)
     if(!session)return
     const basis=validateMvuSchemaDerivedBasis(deps.branch.get(mvuSchemaDerivedBasisKey(sid)) as MvuSchemaDerivedBasis)
@@ -268,18 +272,39 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
       if(!frozenLineage)return
       closedSource=frozenLineage.readHistorical(basis.source,sid).prepared
     }else if(!sourceCurrent(basis.source,false,sid))return
-    const checked=verifyPrepared(basis.prepared,prefix(session,basis.prepared.seedLength),basis.source,new Set([sid]),sid,closedSource)
-    return Object.freeze({basis,genesis:closedRows(basis,checked.ready)})
+    const prepared=basis.prepared,readContext=prepared.schemaVersion!==1
+      ?prefixInputs.createReadContext(prepared.childSessionId):undefined
+    const checked=verifyPrepared(prepared,prefix(session,prepared.seedLength),basis.source,new Set([sid]),sid,closedSource,readContext)
+    let inheritedInputs:ReturnType<typeof prefixInputs.prepareClosed>|undefined,branchKeys:Set<string>|undefined
+    const readInheritedFact=(key:string):unknown=>{
+      if(!checked.closure)return
+      if(!inheritedInputs) {
+        const selected=prepared.prefix
+        inheritedInputs=prefixInputs.prepareClosed(checked.closure,{
+          sessionId:selected.sessionId,inheritedEventCount:selected.inheritedEventCount,nativeCut:selected.journal.nativeCut,
+          nativePrefixSha256:selected.journal.nativePrefixSha256,sourceSha256:selected.sourceSha256,
+          prefixSha256:selected.prefixSha256},readContext)
+        branchKeys=new Set(checked.closure.tables.find(table=>table.table==='branch')!.rows.map(row=>row.key))
+      }
+      return branchKeys!.has(key)?inheritedInputs.branch.get(key):undefined
+    }
+    return Object.freeze({basis,genesis:closedRows(basis,checked.ready),readInheritedFact})
   }
-  function readGenesis(sid:string):MvuSchemaDerivedGenesis|undefined {
+  function readGenesisFacts(sid:string):ReturnType<typeof captureGenesis> {
     try {
       // Consume one historical DATA object. Reusing it preserves
       // inheritedReady's actual recovered-prefix association; today's Source
       // must never become a dependency of that frozen historical slot.
       const captured=deps.captureRead?deps.captureRead(sid,()=>captureGenesis(sid)).data:captureGenesis(sid)
       if(!captured)return
-      return captured.genesis
+      return captured
     }catch {return undefined}
+  }
+  function readGenesis(sid:string):MvuSchemaDerivedGenesis|undefined {
+    return readGenesisFacts(sid)?.genesis
+  }
+  function readInheritedOpeningVariantFact(sid:string,key:string):unknown {
+    return readGenesisFacts(sid)?.readInheritedFact(key)
   }
   function readPrefix(subjectSessionId:string,nativeCut:number,revision=false):MvuSchemaForkCapture {
     const parent=deps.session(subjectSessionId)
@@ -311,7 +336,7 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
         subjectSessionId,prepared.childSessionId)
       if(!captured)fail('SCHEMA_DERIVED_FROZEN_HISTORY_UNAVAILABLE')
       return {prefix:captured.prefix,ready:captured.ready,closure:captured.closure,
-        browserProgram:captured.browserProgram,retainInputs:captured.retainInputs,historical:{historyBasis,
+        nativeProgram:captured.nativeProgram,retainInputs:captured.retainInputs,historical:{historyBasis,
         parentSourceSha256:deps.readSourceSha256(parent.id),closure:captured.closure,
         assertCurrent:captured.assertCurrent,retainInputs:captured.retainInputs}}
     }
@@ -326,7 +351,7 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
     if(disposed)fail('SCHEMA_DERIVED_OWNER_DISPOSED')
     if(operation.anchor.openingOnly||reservation.seedLength===0)return
     if(deps.branch.get(mvuSchemaDerivedPreparedKey(reservation.childSessionId))!==undefined)return
-    // One historical replay supplies both Source declarations and numerical
+    // One historical replay supplies both native Source DATA and numerical
     // inheritance. The reservation coordinator captures before Source locking.
     return readPrefix(reservation.sourceSessionId,reservation.seedLength)
   }
@@ -474,6 +499,7 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
           encoding:'native-mvu-schema-derived-basis-v1' as const,prepared,source},'basisSha256'))
       }
       const genesis=mvuSchemaDerivedGenesis(basis,ready)
+      const selection=prepared.prefix.openingVariants,childPrior=selection?publication.read(child.id):undefined
       // Incomplete event/head/basis publication remains an unknown reservation.
       // A GET or cold read cannot supply the missing writes.
       // Only the actual reservation callback can mint this private, single-use
@@ -481,6 +507,10 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
       reservations.delete(child.id)
       await putExact(deps.status,mvuSchemaDerivedEventKey(child.id),genesis.event)
       await putExact(deps.status,mvuSchemaDerivedHeadKey(child.id),genesis.head)
+      if(selection&&childPrior) {
+        const result=await publication.replaceVariants(childPrior,selection,genesis.head)
+        if(result.kind!=='acknowledged')fail('SCHEMA_DERIVED_PUBLICATION_UNKNOWN')
+      }
       if(!operationCurrent(prepared))fail('SCHEMA_DERIVED_OPERATION_CHANGED')
       await putExact(deps.branch,mvuSchemaDerivedBasisKey(child.id),basis)
       // This reservation already verified the full prefix before publishing.
@@ -494,7 +524,8 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
       }catch {fail('SCHEMA_DERIVED_READY_UNCONFIRMED')}
     })
   }
-  return {capture,captureRevisionPrefix,recoverRevisionPrefix,prepare,commit,readGenesis,readPreparedInheritedBrowserProgram,
+  return {capture,captureRevisionPrefix,recoverRevisionPrefix,prepare,commit,readGenesis,readPreparedInheritedNativeProgram,
+    readInheritedOpeningVariantFact,
     required:(sid:string)=>deps.branch.get(mvuSchemaDerivedPreparedKey(sid))!==undefined
       ||deps.branch.get(mvuSchemaDerivedBasisKey(sid))!==undefined,
     releaseReservation(childId:string):void {reservations.delete(childId)},

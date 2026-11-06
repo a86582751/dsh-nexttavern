@@ -5,7 +5,10 @@ import {createHash} from 'node:crypto'
 import {recordSha256, sha256, textOf} from './roleplay-data.js'
 import type {MessageEdit, editMessageText} from 'dsh-nexttavern-session-format/projection'
 import type {NativeCompletedInputWorkReceiptV1, NativeInputRef, NativePreparationReceiptV1}
-  from '@deepseek-ai/dsh-agent-loop'
+  from 'dsh-nexttavern-native-agent-loop'
+import {createNativePublishedInputHistory} from 'dsh-nexttavern-native-agent-loop/published-input'
+import type {SessionEvent as NativeSessionEvent} from 'dsh-nexttavern-native-session'
+import type {NativePublishedInputAssociationV1} from 'dsh-nexttavern-native-session/types'
 
 export interface MvuInheritedPrefixEvent {seq: number; type: string; data?: unknown}
 export interface MvuInheritedCompletedFactRequest {
@@ -136,6 +139,7 @@ interface Entry {
   conflict?: boolean
   userSeq?: number
   userTurn?: number
+  published?: NativePublishedInputAssociationV1
 }
 interface Turn {
   turn: number
@@ -180,6 +184,7 @@ export function verifyInheritedCompletedFact(input: MvuInheritedCompletedFactReq
       || !hash(input.canonical.versionSha256) || !hash(input.canonical.narrativeSha256)) return false
     const queues: Record<'next-turn' | 'next-step', Entry[]> = {'next-turn': [], 'next-step': []}
     const entries = new Map<string, Entry>(), turns = new Map<number, Turn>(), starts = new Map<number, Turn>()
+    const publications=createNativePublishedInputHistory(input.ownerSessionId,input.ownerInheritedEventCount,nativeHash)
     let open: Turn | undefined, lastStart: number | undefined, revision = -1
     let completedEntries: Entry[] | undefined
     // Replay both actual queues across the complete prefix, while freezing the
@@ -245,16 +250,26 @@ export function verifyInheritedCompletedFact(input: MvuInheritedCompletedFactReq
           else {
             if (!open || entry.claimSeq !== undefined) return false
             entry.claimSeq = event.seq; entry.claimIndex = index; entry.claimTurn = open.turn
+            if(entry.published)entry.userTurn=open.turn
           }
         }
-        const inserted: Entry[] = []
+        const inserted: Entry[] = [],fingerprints:string[]=[]
         for (const message of row.inserted) {
           if (!object(message) || typeof message.id !== 'string' || !message.id.length || message.role !== 'user') return false
+          const fingerprint=nativeHash(message)
+          fingerprints.push(fingerprint)
           const ref = {sessionId: input.ownerSessionId, insertSeq: event.seq,
-            messageId: message.id, messageSha256: nativeHash(message)}
+            messageId: message.id, messageSha256: fingerprint}
           if (entries.has(refIdentity(ref))) return false
           const entry = {ref, message}
           entries.set(refIdentity(ref), entry); inserted.push(entry)
+        }
+        // Native's publication owner consumes the same message fingerprints.
+        // It alone proves the source batch and its actual inbox trigger.
+        publications.append(event as NativeSessionEvent,fingerprints)
+        for(const entry of inserted){
+          const published=publications.association(entry.ref)
+          if(published){entry.published=published;entry.userSeq=published.userSeq}
         }
         queue.splice(row.start, removedCount, ...inserted)
         const pendingIds = [...queues['next-turn'], ...queues['next-step']].map(entry => entry.ref.messageId)
@@ -266,10 +281,13 @@ export function verifyInheritedCompletedFact(input: MvuInheritedCompletedFactReq
         // Original admitted refs remain bound below to their actual claim/hash,
         // unique user seq and first-step/completed-end interval; a step being
         // open at every context append is not part of that Native contract.
-        if (!open || typeof row.id !== 'string') return false
-        open.users.push(event.seq)
+        if (typeof row.id !== 'string') return false
+        const fingerprint=nativeHash(row)
+        publications.append(event as NativeSessionEvent,[fingerprint])
+        if(!open&&!publications.hasUser(event.seq))return false
+        open?.users.push(event.seq)
         const candidates = [...entries.values()].filter(entry => entry.ref.messageId === row.id)
-        const fingerprint = nativeHash(row), matches = candidates.filter(entry => entry.ref.messageSha256 === fingerprint)
+        const matches = candidates.filter(entry => entry.ref.messageSha256 === fingerprint)
         for (const entry of candidates) if (entry.ref.messageSha256 !== fingerprint) entry.conflict = true
         if (matches.length > 1) for (const entry of matches) entry.conflict = true
         if (matches.length === 1) {
@@ -277,7 +295,7 @@ export function verifyInheritedCompletedFact(input: MvuInheritedCompletedFactReq
           // Supplemental admissions are permitted, but a pending/canceled or
           // already admitted inbox entry cannot appear as a new Native user.
           if (entry.userSeq !== undefined || entry.cancelled || entry.claimSeq === undefined) return false
-          entry.userSeq = event.seq; entry.userTurn = open.turn
+          entry.userSeq = event.seq; entry.userTurn = open?.turn
         }
       } else if (event.type === 'assistant/message') {
         const row = data(event)
@@ -300,10 +318,11 @@ export function verifyInheritedCompletedFact(input: MvuInheritedCompletedFactReq
       || !same([...new Set(original.map(entry => entry.claimSeq!))], checkpoint.claimSpliceSeqs)) return false
     for (const [index, entry] of original.entries()) {
       const admitted = receipt.admittedUsers[index]
-      exact(admitted, ['ref', 'userSeq'])
+      exact(admitted, ['ref', 'userSeq',...entry.published?['published']:[]])
       if (!same(admitted.ref, entry.ref) || admitted.userSeq !== entry.userSeq || entry.userTurn !== selected.turn
-        || entry.userSeq === undefined || entry.userSeq <= checkpoint.firstStepStartSeq || entry.userSeq >= receipt.turnEndSeq
-        || index > 0 && entry.userSeq <= original[index - 1]!.userSeq!) return false
+        || entry.userSeq === undefined || entry.userSeq <= checkpoint.firstStepStartSeq && !entry.published
+        || entry.userSeq >= receipt.turnEndSeq
+        || entry.published&&!same(admitted.published,entry.published)) return false
     }
     if (!original.some(entry => object(entry.message.source) && entry.message.source.kind === 'user')) return false
     const canonical = input.canonical, assistant = input.events[canonical.seq]

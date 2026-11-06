@@ -45,7 +45,9 @@ function clone(value) {
         return fail(code);
     }
 }
-function variables(value, source, scope, identity, ownerSessionId = source.sessionId, stateOwner) {
+/** Validate one already decoded JSON slot, including its exact value hashes
+ * and provenance. Does not clone, seal a frame, or confer publication rights. */
+export function validateMvuScopeVariablesV1(value, source, scope, identity, ownerSessionId = source.sessionId, stateOwner) {
     if (!object(value))
         fail(MVU_SCOPE_READ_ERRORS.state);
     if (value.kind === 'unavailable') {
@@ -112,7 +114,7 @@ function readFrame(input, seal) {
         fail(MVU_SCOPE_READ_ERRORS.frame);
     exact(frame.scopes, ['chat', 'character', 'global']);
     for (const scope of ['chat', 'character', 'global'])
-        variables(frame.scopes[scope], source, scope, scope);
+        validateMvuScopeVariablesV1(frame.scopes[scope], source, scope, scope);
     if (!Array.isArray(frame.scripts) || frame.scripts.length > limits.scripts
         || !Array.isArray(frame.messages) || frame.messages.length > limits.messages)
         fail(MVU_SCOPE_READ_ERRORS.frame);
@@ -125,7 +127,7 @@ function readFrame(input, seal) {
             fail(MVU_SCOPE_READ_ERRORS.frame);
         scriptIds.add(script.scriptId);
         pointers.add(script.pointer);
-        variables(script.variables, source, 'script', script.scriptId);
+        validateMvuScopeVariablesV1(script.variables, source, 'script', script.scriptId);
     }
     const nativeMessages = new Set();
     for (const [position, message] of frame.messages.entries()) {
@@ -136,7 +138,7 @@ function readFrame(input, seal) {
             fail(MVU_SCOPE_READ_ERRORS.frame);
         }
         nativeMessages.add(JSON.stringify([message.ownerSessionId, message.nativeSeq]));
-        variables(message.variables, source, 'message', message.messageId, message.ownerSessionId, message.ownerSessionId);
+        validateMvuScopeVariablesV1(message.variables, source, 'message', message.messageId, message.ownerSessionId, message.ownerSessionId);
     }
     const { frameSha256, ...body } = frame;
     const computed = recordSha256(body);
@@ -187,9 +189,21 @@ function available(table) {
 }
 export function createMvuScopeReaderV1(input, currentScriptId) {
     const frame = validateMvuScopeReadFrameV1(input);
-    const script = frame.scripts.find(item => item.scriptId === currentScriptId);
-    if (!script)
-        fail(MVU_SCOPE_READ_ERRORS.script);
+    const scripts = new Map(frame.scripts.map(script => [script.scriptId, script]));
+    return createMvuScopeReaderV2({ source: frame.source, scopes: frame.scopes,
+        script: id => scripts.get(id), messageCount: frame.messages.length, messageAt: index => frame.messages[index],
+        latestMessage: frame.messages.findLast(item => !item.isSystem) }, currentScriptId);
+}
+/** Consume only an internal codec/owner view. External DATA must use its full
+ * decoder first; this function neither hydrates nor revalidates a V1 frame. */
+export function createMvuScopeReaderV2(view, currentScriptId) {
+    function script() {
+        const selected = view.script(currentScriptId);
+        if (!selected)
+            fail(MVU_SCOPE_READ_ERRORS.script);
+        return selected;
+    }
+    script();
     function getVariables(option) {
         const selected = option === undefined ? { type: 'chat' } : request(option);
         if (selected.type === undefined) {
@@ -199,35 +213,35 @@ export function createMvuScopeReaderV1(input, currentScriptId) {
         }
         if (typeof selected.type === 'string' && ['chat', 'character', 'global'].includes(selected.type)) {
             exact(selected, ['type'], MVU_SCOPE_READ_ERRORS.request);
-            return available(frame.scopes[selected.type]);
+            return available(view.scopes[selected.type]);
         }
         if (selected.type === 'script') {
             if (Object.keys(selected).some(key => !['type', 'script_id'].includes(key))
                 || selected.script_id !== undefined && selected.script_id !== currentScriptId)
                 fail(MVU_SCOPE_READ_ERRORS.request);
-            return available(script.variables);
+            return available(script().variables);
         }
         if (selected.type !== 'message' || Object.keys(selected).some(key => !['type', 'message_id'].includes(key))) {
             fail(MVU_SCOPE_READ_ERRORS.request);
         }
         const id = selected.message_id;
         if (id === undefined || id === 'latest') {
-            const message = frame.messages.findLast(item => !item.isSystem);
+            const message = view.latestMessage;
             if (!message)
                 fail('MESSAGE_STATE_UNAVAILABLE');
             return available(message.variables);
         }
         if (typeof id !== 'number' || !Number.isSafeInteger(id))
             fail(MVU_SCOPE_READ_ERRORS.request);
-        const position = id < 0 ? frame.messages.length + id : id;
-        if (position < 0 || position >= frame.messages.length)
+        const position = id < 0 ? view.messageCount + id : id;
+        if (position < 0 || position >= view.messageCount)
             fail(MVU_SCOPE_READ_ERRORS.index);
-        return available(frame.messages[position].variables);
+        return available(view.messageAt(position).variables);
     }
     function getAllVariables() {
-        // This frame grants only a script view. Message iframe precedence needs its
+        // This reader grants only a script view. Message iframe precedence needs its
         // own owner and cannot be inferred from a caller-supplied message index.
-        return freeze(Object.assign({}, available(frame.scopes.global), available(frame.scopes.character), available(script.variables), available(frame.scopes.chat)));
+        return freeze(Object.assign({}, available(view.scopes.global), available(view.scopes.character), available(script().variables), available(view.scopes.chat)));
     }
     return Object.freeze({ getVariables, getAllVariables });
 }

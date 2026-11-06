@@ -23,6 +23,12 @@ export function createRoleplayMvuSchemaTaskEdits(deps) {
             throw Error('SCHEMA_TASK_EDIT_BINDING_UNPROVEN');
         return binding;
     }
+    function lookupOperationBinding(sid, operationId) {
+        const raw = deps.status.get(schemaTaskEditIntentKey(sid, operationId));
+        if (raw === undefined)
+            return;
+        return bindingFor(validateSchemaTaskEditIntent(raw))?.edit;
+    }
     function exactEdit(session, intent) {
         const event = deps.events(session)[intent.basis.nativeCut];
         if (!event)
@@ -45,8 +51,9 @@ export function createRoleplayMvuSchemaTaskEdits(deps) {
         if (active?.key === schemaTaskEditIntentKey(sid, intent.operationId) && active.sha256 === recordSha256(intent))
             await deps.branch.delete(schemaTaskEditActiveKey(sid));
     }
-    async function bind(session, intent, event) {
+    async function bind(session, intent, event, admit) {
         await deps.flush(session);
+        admit?.();
         const body = { schemaVersion: 1, encoding: 'native-mvu-schema-task-edit-binding-v1',
             sessionId: session.id, intent: { key: schemaTaskEditIntentKey(session.id, intent.operationId), sha256: recordSha256(intent) },
             edit: { seq: event.seq, sha256: recordSha256(event) } };
@@ -141,7 +148,7 @@ export function createRoleplayMvuSchemaTaskEdits(deps) {
             await deps.branch.put(schemaTaskEditActiveKey(session.id), { schemaVersion: 1,
                 encoding: 'native-mvu-schema-task-edit-active-v1', key, sha256: recordSha256(intent) });
     }
-    async function append(session, intent, append) {
+    async function append(session, intent, append, admit) {
         return deps.withSourceLock(session.id, async () => {
             await storeIntent(session, intent);
             const binding = bindingFor(intent);
@@ -159,18 +166,26 @@ export function createRoleplayMvuSchemaTaskEdits(deps) {
                     await clearOwnActive(session.id, intent);
                     throw new SchemaTaskEditNotAppliedError(intent, reason);
                 }
-                // Inbox splicing can append during activate's put. Denial and Native
-                // append therefore share this final synchronous boundary.
-                deps.begin(session.id);
-                event = append();
             }
-            else
-                deps.begin(session.id);
-            await bind(session, intent, event);
+            // Source permission may change during either storage await. A rejected
+            // new edit owns no denial; keep its immutable intent for explanation.
+            try {
+                admit?.();
+            }
+            catch (error) {
+                if (!event)
+                    await clearOwnActive(session.id, intent);
+                throw error;
+            }
+            // Inbox splicing can append during activate's put. Denial and Native
+            // append therefore share this final synchronous boundary.
+            deps.begin(session.id);
+            event ??= append();
+            await bind(session, intent, event, admit);
             return event;
         });
     }
-    async function recover(session) {
+    async function recover(session, admit) {
         if (!activeRef(session.id))
             return;
         return deps.withSourceLock(session.id, async () => {
@@ -181,8 +196,10 @@ export function createRoleplayMvuSchemaTaskEdits(deps) {
             if (binding && (!event || binding.edit.seq !== event.seq || binding.edit.sha256 !== recordSha256(event)))
                 throw Error('SCHEMA_TASK_EDIT_BINDING_UNPROVEN');
             if (event) {
-                if (!binding)
-                    await bind(session, intent, event);
+                if (!binding) {
+                    admit?.();
+                    await bind(session, intent, event, admit);
+                }
                 return { kind: 'matched', intent, event };
             }
             const reason = notAppliedReason(session, intent);
@@ -239,5 +256,5 @@ export function createRoleplayMvuSchemaTaskEdits(deps) {
             return { intent, ref: { key, sha256: recordSha256(intent) } };
         });
     }
-    return { prepare, persistIntent, append, recover, complete, bindingFor, prepareExistingUserEditRecovery };
+    return { prepare, persistIntent, append, recover, complete, bindingFor, lookupOperationBinding, prepareExistingUserEditRecovery };
 }

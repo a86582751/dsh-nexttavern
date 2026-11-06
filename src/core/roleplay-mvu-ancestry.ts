@@ -169,7 +169,23 @@ export function createRoleplayMvuAncestry(deps:{
   function retainedSourceOwnerFacts(session:MvuLineageSession,ownerId:string,sourceSeqs:readonly number[]) {
     return retainedSourceOwnerCatalog(session,sourceSeqs).find(fact=>fact.sourceOwnerSessionId===ownerId)
   }
-  return {ready,retainedSourceOwnerFacts,retainedSourceOwnerCatalog,
+  function ownerForSeq(session:MvuLineageSession,seq:number):string {
+    if(disposed)throw Error('DERIVED_ANCESTRY_UNPROVEN')
+    // Native headers and seed boundaries are immutable. ready() already proved
+    // each inherited prefix; this read follows only those retained headers.
+    let current=headers.get(session.id)
+    if(!current) {
+      if(session.inheritedEventCount===0)return session.id
+      throw Error('DERIVED_ANCESTRY_UNPROVEN')
+    }
+    while(seq<current.inheritedEventCount) {
+      const parent=headers.get(current.header.parentSession as string)
+      if(!parent)throw Error('DERIVED_ANCESTRY_UNPROVEN')
+      current=parent
+    }
+    return current.id
+  }
+  return {ready,ownerForSeq,retainedSourceOwnerFacts,retainedSourceOwnerCatalog,
     readSession:(id:string)=>disposed?undefined:deps.live(id)??headers.get(id),
     readNativeObservation:(id:string):MvuRetainedNativeObservationV1|undefined=>{
       if(disposed)return undefined

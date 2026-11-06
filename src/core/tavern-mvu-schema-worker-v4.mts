@@ -16,14 +16,18 @@ import type {SchemaMaterialEnvelopeV4} from './tavern-mvu-schema-data.js'
 import {schemaPhaseErrorPolicyForProgramV4,schemaExecutionViewV4} from './tavern-mvu-schema-program-v4.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import type {MvuSchemaLibraryBytes} from './tavern-mvu-schema-types.js'
-import {validateSchemaGuestOutputForParsedProgramV4} from './tavern-mvu-schema-runner-v4.js'
-import {createMvuScopeReaderV1,readMvuVariable,MvuScopeReadError} from './tavern-mvu-scope-read.js'
+import {validateSchemaGuestOutputForParsedProgramV4,schemaPhaseScopeFromLoadV4} from './tavern-mvu-schema-runner-v4.js'
+import {createMvuScopeReaderV1,createMvuScopeReaderV2,readMvuVariable,MvuScopeReadError} from './tavern-mvu-scope-read.js'
+import {createMvuScopeViewResolverV2} from './tavern-mvu-scope-view-v2.js'
+import type {MvuScopeReadObjectV2,MvuScopeObjectRefV2} from './tavern-mvu-scope-view-v2.js'
+import type {MvuScopedScriptV1} from './tavern-mvu-scope-read-types.js'
 import type {MvuUpdateOperationV2} from './roleplay-mvu-update-v2.js'
 import type {MvuSchemaCleanupEffectV2} from './tavern-mvu-schema-update-effects-v2.js'
-import type {MvuJsonObject} from './tavern-mvu-initvar.js'
+import type {MvuJsonObject,MvuJsonValue} from './tavern-mvu-initvar.js'
 import type {QuickJSContext,QuickJSHandle,QuickJSRuntime} from 'quickjs-emscripten-core'
 import type {MvuSchemaWorkerRequestV4,MvuSchemaWorkerTraceInputV4,MvuSchemaWorkerEvaluationResponseV4,
   MvuSchemaManualWorkerMessageV4,MvuSchemaManualWorkerResponseV4} from './tavern-mvu-schema-runner-v4.js'
+import type {MvuSchemaHotWorkerSeedV4,MvuSchemaScopeWorkerSeedV2} from './tavern-mvu-schema-runner-v4.js'
 import type {MvuSchemaEvaluationInputV4,MvuSchemaGuestOutputV4} from './tavern-mvu-schema-types-v4.js'
 
 const require=createRequire(import.meta.url)
@@ -33,6 +37,8 @@ const scopedNames=['getVariables','getAllVariables','getMvuData','getMvuVariable
 const unavailable=(code:string):Extract<MvuSchemaWorkerEvaluationResponseV4,{kind:'unavailable'}>=>({kind:'unavailable',code})
 interface ManualWorkerInboxV4 {
   park(json:string):Promise<MvuSchemaManualWorkerMessageV4>
+  ready():Promise<MvuSchemaManualWorkerMessageV4>
+  replayed(stepSha256:string):Promise<MvuSchemaManualWorkerMessageV4>
   dispose():void
 }
 /** A single Native wait slot is armed before publishing the completed phase.
@@ -44,12 +50,15 @@ function manualWorkerInbox():ManualWorkerInboxV4 {
     const waiting=receive;receive=undefined;waiting?.(value)
   }
   port.on('message',message)
+  function wait(response:MvuSchemaManualWorkerResponseV4) {
+    const next=new Promise<MvuSchemaManualWorkerMessageV4>(resolve=>{receive=resolve})
+    port.postMessage(response)
+    return next
+  }
   return {
-    park(json){
-      const next=new Promise<MvuSchemaManualWorkerMessageV4>(resolve=>{receive=resolve})
-      port.postMessage({kind:'manual-phase',json} satisfies MvuSchemaManualWorkerResponseV4)
-      return next
-    },
+    park:json=>wait({kind:'manual-phase',json}),
+    ready:()=>wait({kind:'hot-ready'}),
+    replayed:stepSha256=>wait({kind:'hot-replayed',stepSha256}),
     dispose(){receive=undefined;port.off('message',message)},
   }
 }
@@ -385,6 +394,12 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,r
     run(){
       try {
       if(scopeFault)return refused([scopeFault]);
+      // The external message-pack setter stores raw state. frame() already
+      // adopted this owner's values/context without rebuilding the live realm.
+      // Keep registrations and closures, but run none of their phase callbacks.
+      if(input.phase==='external-pack-replacement')return encode({...outputWire,kind:'accepted',
+        values:numerical(values),commands:clone(commands),context:clone(metadata),registrations:registrations.length,
+        ...(plan.errorPolicy==='registered-command-policy-v1'?{discarded:[]}: {})});
       registrationBoundary();
       let discarded=[];
       if(plan.stateOnly){
@@ -406,16 +421,16 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,r
           commands=[];
         }else if(input.phase==='commands-parsed')commands=[];
         else if(input.phase==='update-ended'){delete metadata.display_data;delete metadata.delta_data;}
-        else if(input.phase!=='initialization'&&input.phase!=='manual-replacement')fail('SCHEMA_PHASE_UNSUPPORTED');
+        else if(input.phase!=='initialization'&&input.phase!=='manual-replacement'&&input.phase!=='hook-reconcile')fail('SCHEMA_PHASE_UNSUPPORTED');
         return encode({...outputWire,kind:'accepted',values:numerical(values),commands:clone(commands),
           context:clone(metadata),registrations:0,
           ...(plan.errorPolicy==='registered-command-policy-v1'?{discarded}: {})});
       }
-      if(input.phase==='initialization'||input.phase==='manual-replacement') {
+      if(input.phase==='initialization'||input.phase==='manual-replacement'||input.phase==='hook-reconcile') {
         for(let index=0;index<registrations.length;index++){
           const parsed=parse(schemaFor(registrations[index]),values);
           if(parsed===null)return refused([{code:'SCHEMA_VALIDATION_FAILED',registrationIndex:index}]);
-          if(input.phase==='manual-replacement')values=parsed;
+          if(input.phase==='manual-replacement'||input.phase==='hook-reconcile')values=parsed;
           else{const merged=clone(values),names=keys(parsed);
             for(let field=0;field<names.length;field++)define(merged,names[field],{value:parsed[names[field]],enumerable:true,writable:true,configurable:true});
             values=numerical(merged);}
@@ -509,7 +524,8 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,r
   };
 })`
 
-async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWorkerInboxV4):
+async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWorkerInboxV4,
+  materialIdentity?:Map<string,MvuJsonValue>):
   Promise<MvuSchemaWorkerEvaluationResponseV4|{kind:'manual-finished'}> {
   if(!peerVersions())return {kind:'unavailable',code:'SCHEMA_IMPLEMENTATION_UNAVAILABLE'}
   // The private parent parsed and bound the complete program and phase inputs
@@ -520,12 +536,14 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
   const schemaPlan=program.encoding==='native-mvu-author-schema-program-v2'?program.executionPlan:null
   if(!stateOnly&&!serverScripts.length)return unavailable('SCHEMA_REGISTRATION_MISSING')
   const trace='trace' in request?request.trace:undefined
-  const input:MvuSchemaEvaluationInputV4=trace?{schemaVersion:4,
-    encoding:'native-mvu-author-schema-phase-input-v4',commandsEncoding:'native-mvu-update-operations-v2',
+  const loadFrame=trace?.loadFrame??('loadFrame' in request?request.loadFrame:undefined)
+  const stream='response' in request&&(request.response==='hot'||request.response==='manual-stream')
+  const input:MvuSchemaEvaluationInputV4=loadFrame?{schemaVersion:4,...schemaPhaseScopeFromLoadV4(loadFrame),
+    commandsEncoding:'native-mvu-update-operations-v2',
     errorPolicy:schemaPhaseErrorPolicyForProgramV4(program),
-    phase:'initialization',base:null,values:trace.loadFrame.values,
-    commands:[],context:trace.loadFrame.context,scopeReadFrame:trace.loadFrame.scopeReadFrame,
-    clockEpochMs:trace.loadFrame.clockEpochMs,randomSeed:trace.loadFrame.randomSeed}:
+    phase:'initialization',base:null,values:loadFrame.values,
+    commands:[],context:loadFrame.context,
+    clockEpochMs:loadFrame.clockEpochMs,randomSeed:loadFrame.randomSeed}:
     (request as Extract<MvuSchemaWorkerRequestV4,{input:unknown}>).input
   let libraries:readonly MvuSchemaLibraryBytes[]=[]
   if(!stateOnly) {
@@ -540,8 +558,8 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
   runtime.setMaxStackSize(MVU_SCHEMA_BOUNDS.vmStackBytes)
   const deadline=Date.now()+MVU_SCHEMA_BOUNDS.vmDeadlineMs
   let workMs=0,workStarted=0,workDepth=0
-  // Only a manual operation parks. Cold evaluations keep their original wall
-  // deadline; live operations charge actual nested VM entries cumulatively.
+  // Parked operations charge actual VM work. Ordinary hot Story phases get
+  // their own original phase budget; a manual operation retains its total.
   const expired=()=>manual?workMs+(workDepth?performance.now()-workStarted:0)>=MVU_SCHEMA_BOUNDS.vmDeadlineMs:
     Date.now()>=deadline
   let timedOut=false,denied=false,callbackFault:string|undefined
@@ -570,10 +588,36 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
   }
   let readInput=input
   let readers=new Map<string,ReturnType<typeof createMvuScopeReaderV1>>()
+  const incomingScopeObjects=new Map<string,MvuScopeReadObjectV2>()
+  const scopeKey=(reference:MvuScopeObjectRefV2)=>JSON.stringify([reference.ownerSessionId,reference.key,reference.sha256])
+  let scopeResolver:ReturnType<typeof createMvuScopeViewResolverV2>|undefined
+  let scopeBaseKey:string|undefined
+  function stageScopeObjects(objects:readonly MvuScopeReadObjectV2[]|undefined) {
+    if(objects)for(const item of objects)incomingScopeObjects.set(scopeKey(item.ref),item)
+  }
+  function phaseReaders(current:MvuSchemaEvaluationInputV4):{readers:typeof readers;scripts:readonly MvuScopedScriptV1[]} {
+    if(current.encoding==='native-mvu-author-schema-phase-input-v4') {
+      return {scripts:current.scopeReadFrame.scripts,readers:stateOnly?new Map():new Map(current.scopeReadFrame.scripts.map(script=>[
+        script.scriptId,createMvuScopeReaderV1(current.scopeReadFrame,script.scriptId)]))}
+    }
+    const base=scopeKey(current.scopeReadRef.baseRef)
+    if(scopeBaseKey!==base) {
+      scopeResolver=createMvuScopeViewResolverV2({read(reference) {
+        const key=scopeKey(reference),item=incomingScopeObjects.get(key)
+        incomingScopeObjects.delete(key)
+        return item?.object
+      }})
+      scopeBaseKey=base
+    }
+    const resolved=scopeResolver!.resolve(current.scopeReadRef),scripts=[...resolved.scripts()]
+    return {scripts,readers:stateOnly?new Map():new Map(scripts.map(script=>[
+      script.scriptId,createMvuScopeReaderV2(resolved.view,script.scriptId)]))}
+  }
   let initializationWriteError:QuickJSHandle|undefined
   try {
-    if(!stateOnly)readers=new Map(input.scopeReadFrame.scripts.map(script=>[script.scriptId,
-      createMvuScopeReaderV1(input.scopeReadFrame,script.scriptId)]))
+    stageScopeObjects(request.scopeObjects)
+    const initialScopes=phaseReaders(input)
+    readers=initialScopes.readers
     const inputHandle=context.newString(JSON.stringify(input));owned.push(inputHandle)
     const determinism=checked(context.evalCode(DETERMINISM,'trusted-clock.js'));owned.push(determinism)
     const clockFrame=checked(context.callFunction(determinism,context.undefined,inputHandle));owned.push(clockFrame)
@@ -667,12 +711,14 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
         return context.newString(JSON.stringify({kind:'unavailable',code}))
       }
     });owned.push(read)
+    // Parent projection omits material only for state-only execution; author
+    // programs retain complete Source for this branch and later material use.
     const material=stateOnly?context.undefined:
-      context.newString(JSON.stringify(trace?.loadFrame.material??program.source.material))
+      context.newString(JSON.stringify(loadFrame?.material??program.source.material!))
     const names=stateOnly?context.undefined:
       context.newString(JSON.stringify(Object.fromEntries(libraries.map(library=>[library.kind,library.globalName]))))
     const scriptScopes=stateOnly?context.undefined:
-      context.newString(JSON.stringify(input.scopeReadFrame.scripts.map(({scriptId,pointer})=>({scriptId,pointer}))))
+      context.newString(JSON.stringify(initialScopes.scripts.map(({scriptId,pointer})=>({scriptId,pointer}))))
     const execution=context.newString(JSON.stringify({executionPlanSha256:view.executionPlanSha256,stateOnly,
       errorPolicy:schemaPhaseErrorPolicyForProgramV4(program),
       serverScriptIds:serverScripts.map(({script})=>script.identity),...initializationWriters.size
@@ -696,7 +742,7 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
       // Schema closures retain their complete immutable Source snapshots.
       // State-only phases never read Source, so they prepare no guest material.
       const materials=new Map<object,QuickJSHandle>()
-      const initialMaterial=trace?.loadFrame.material??program.source.material
+      const initialMaterial=loadFrame?.material??program.source.material!
       const initialSource=checked(context.callFunction(sourceValue,controller),context)
       materials.set(initialMaterial,initialSource);owned.push(initialSource)
       materialHandle=value=>{
@@ -762,7 +808,7 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
       const preload=checked(context.evalCode([...modules.keys()].filter(name=>!name.startsWith('nexttavern:scope-author-'))
         .map(name=>`import ${JSON.stringify(name)};`).join('\n'),
         'trusted-preload.mjs',{type:'module'}))
-      try {completed(context,runtime,preload,trace?budget:{jobs:0})}finally {preload.dispose()}
+      try {completed(context,runtime,preload,loadFrame?budget:{jobs:0})}finally {preload.dispose()}
       // Preload each capability export while only trusted code can see its VM
       // object, then delete the temporary global before evaluating any author.
       for(const {index,script} of serverScripts) {
@@ -779,7 +825,7 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
             context.setProp(context.global,scopeLoaderKey,bound)
             const preloaded=checked(context.evalCode(`import ${JSON.stringify(entry.module)};`,
               `trusted-scope-preload-${index}-${entry.policy}.mjs`,{type:'module'}))
-            try {completed(context,runtime,preloaded,trace?budget:{jobs:0})}finally {preloaded.dispose()}
+            try {completed(context,runtime,preloaded,loadFrame?budget:{jobs:0})}finally {preloaded.dispose()}
           } finally {
             checked(context.evalCode(`delete globalThis[${JSON.stringify(scopeLoaderKey)}];`,'trusted-scope-cleanup.js')).dispose()
             bound.dispose()
@@ -791,12 +837,12 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
         const filename=`author-${index}.mjs`,source=bindAuthorScope(script.javascript,filename,scopeModules.get(index)!,
           initializationWriters.has(script.identity))
         const result=checked(context.evalCode(source,filename,{type:'module'}),context)
-        try {completed(context,runtime,result,trace?budget:{jobs:0})}finally {result.dispose()}
+        try {completed(context,runtime,result,loadFrame?budget:{jobs:0})}finally {result.dispose()}
       }
     }
     const readyResult=checked(context.callFunction(ready,controller),context)
-    try {completed(context,runtime,readyResult,trace?budget:{jobs:0})}finally {readyResult.dispose()}
-    if(trace) {
+    try {completed(context,runtime,readyResult,loadFrame?budget:{jobs:0})}finally {readyResult.dispose()}
+    if(trace||stream) {
       // The load boundary must finish before any historical event exists.
       checked(context.callFunction(loaded,controller),context).dispose()
       const nextOnly='response' in request&&request.response==='next',outputs:string[]=[]
@@ -805,9 +851,8 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
         {kind:'phase';output:MvuSchemaGuestOutputV4}|Extract<MvuSchemaWorkerEvaluationResponseV4,{kind:'unavailable'}> {
         if(timedOut||expired())return unavailable('SCHEMA_VM_TIMEOUT')
         const current=step.frame
-        readInput=current.input
-        if(!stateOnly)readers=new Map(readInput.scopeReadFrame.scripts.map(script=>[script.scriptId,
-          createMvuScopeReaderV1(readInput.scopeReadFrame,script.scriptId)]))
+        const scoped=phaseReaders(current.input)
+        readInput=current.input;readers=scoped.readers
         const wire=context.newString(JSON.stringify(current.input))
         try {
           checked(context.callFunction(clockFrame,context.undefined,wire),context).dispose()
@@ -833,17 +878,48 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
         }
         return {kind:'phase',output}
       }
-      for(const step of [...trace.prefix,trace.requestedStep]) {
+      if(stream) {
+        let next=await manual!.ready()
+        let manualMaterial:MvuJsonObject|undefined,manualForeground=false
+        while(next.kind!=='close') {
+          stageScopeObjects(next.scopeObjects)
+          const step=next.kind==='advance'?{eventId:next.step.eventId,frame:{...next.step.frame,material:manualMaterial!}}:
+            unpackSchemaEnvelopeV4(next.step,
+            next.kind==='hot-replay'?MVU_SCHEMA_BOUNDS.inputBytes+MVU_SCHEMA_BOUNDS.outputBytes+4096:MVU_SCHEMA_BOUNDS.inputBytes,
+            {nodes:MVU_SCHEMA_BOUNDS.evaluationNodes,depth:MVU_SCHEMA_BOUNDS.evaluationDepth},materialIdentity)
+          // Reconstruct every actual historical closure in order. Each event
+          // retains its original phase budget; Native's one cold watchdog
+          // bounds the complete reconstruction including these round trips.
+          // Historical reconstruction is preparation. Once a foreground
+          // manual edit starts, its requested phase and every advance share
+          // the original cumulative budget, excluding parked Native waits.
+          if(!manualForeground){workMs=0;budget.jobs=0}
+          if(next.kind==='hot-advance'&&'response' in request&&request.response==='manual-stream') {
+            manualForeground=true;manualMaterial=step.frame.material
+          }
+          const phase=evaluateStep(step)
+          if(phase.kind==='unavailable')return phase
+          if(next.kind==='hot-replay') {
+            const historical=step as MvuSchemaWorkerTraceInputV4['prefix'][number]
+            next=await manual!.replayed(historical.stepSha256)
+          }else if(phase.output.kind==='accepted')next=await manual!.park(JSON.stringify(phase.output))
+          else return {kind:'next-output',json:JSON.stringify(phase.output)}
+        }
+        return {kind:'manual-finished'}
+      }
+      for(const step of [...trace!.prefix,trace!.requestedStep]) {
         const phase=evaluateStep(step)
         if(phase.kind==='unavailable')return phase
         let output=phase.output
         if(manual&&!('output' in step)) {
-          const material=trace.requestedStep.frame.material
+          const material=trace!.requestedStep.frame.material
           while(output.kind==='accepted') {
             // completed() drained all actual jobs before evaluateStep returned.
             // Await Native only after this single wait slot has been armed.
             const next=await manual.park(JSON.stringify(output))
             if(next.kind==='close')return {kind:'manual-finished'}
+            if(next.kind!=='advance')throw new GuestRefusal('SCHEMA_WORKER_OUTPUT_INVALID')
+            stageScopeObjects(next.scopeObjects)
             const fresh=evaluateStep({eventId:next.step.eventId,
               frame:stateOnly?next.step.frame:{...next.step.frame,material}})
             if(fresh.kind==='unavailable')return fresh
@@ -899,6 +975,7 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
       callbackFault??writeFailure??(error instanceof GuestRefusal?error.code:'SCHEMA_GUEST_ERROR')
     return unavailable(code)
   } finally {
+    incomingScopeObjects.clear();scopeResolver=undefined;readers.clear()
     // Attempt every owned cleanup even if one disposer fails. A failed cleanup
     // invalidates a previously computed output rather than completing a phase.
     let cleanupFailed=false
@@ -910,12 +987,20 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
 }
 
 if(parentPort) {
-  const request=unpackSchemaEnvelopeV4(workerData as SchemaMaterialEnvelopeV4<MvuSchemaWorkerRequestV4>,
-    2*MVU_SCHEMA_BOUNDS.programBytes+MVU_SCHEMA_BOUNDS.inputBytes,
-    {nodes:MVU_SCHEMA_BOUNDS.evaluationNodes,depth:MVU_SCHEMA_BOUNDS.evaluationDepth})
-  if('response' in request&&request.response==='manual') {
+  const seed=workerData as MvuSchemaHotWorkerSeedV4|MvuSchemaScopeWorkerSeedV2
+  const materialIdentity=new Map<string,MvuJsonValue>()
+  const bounds={nodes:MVU_SCHEMA_BOUNDS.evaluationNodes,depth:MVU_SCHEMA_BOUNDS.evaluationDepth}
+  const request:MvuSchemaWorkerRequestV4=seed.kind==='live-open'?{
+    ...unpackSchemaEnvelopeV4(seed.header,2*MVU_SCHEMA_BOUNDS.programBytes,bounds,materialIdentity),
+    loadFrame:unpackSchemaEnvelopeV4(seed.load,MVU_SCHEMA_BOUNDS.inputBytes,undefined,materialIdentity),
+    response:seed.mode,scopeObjects:seed.scopeObjects}:seed.kind==='scope-reference-request-v2'?{
+      ...unpackSchemaEnvelopeV4(seed.request,2*MVU_SCHEMA_BOUNDS.programBytes+MVU_SCHEMA_BOUNDS.inputBytes,bounds),
+      scopeObjects:seed.scopeObjects}:
+    unpackSchemaEnvelopeV4(workerData as SchemaMaterialEnvelopeV4<MvuSchemaWorkerRequestV4>,
+      2*MVU_SCHEMA_BOUNDS.programBytes+MVU_SCHEMA_BOUNDS.inputBytes,bounds)
+  if('response' in request&&(request.response==='manual'||request.response==='hot'||request.response==='manual-stream')) {
     const inbox=manualWorkerInbox()
-    evaluateGuest(request,inbox).then(result=>{
+    evaluateGuest(request,inbox,materialIdentity).then(result=>{
       inbox.dispose()
       const value:MvuSchemaManualWorkerResponseV4=result.kind==='next-output'||result.kind==='unavailable'?
         {kind:'manual-closed',cleanup:'completed',result}:{kind:'manual-closed',cleanup:'completed'}

@@ -63,7 +63,7 @@ function parse(script: RawAuthorScriptV4, candidate = false) {
   const file = ts.createSourceFile('author-execution.ts', script.source,
     ts.ScriptTarget.ES2023, true, ts.ScriptKind.TS)
   const diagnostics = (file as TypeScript.SourceFile & {parseDiagnostics: readonly TypeScript.Diagnostic[]}).parseDiagnostics
-  if (diagnostics.length) reject('EXECUTION_TYPESCRIPT_SYNTAX')
+  if (diagnostics.length) exceedBudget('EXECUTION_TYPESCRIPT_SYNTAX')
   let nodeCount = 0
   walk(file, (_node, depth) => {
     if (depth > MVU_SCHEMA_BOUNDS.syntaxDepth) exceedBudget('EXECUTION_AST_DEPTH_LIMIT')
@@ -266,6 +266,35 @@ export function createAuthorExecutionPlannerV1(owned: PlannerOwnedDependenciesV1
       if (!script.enabled) return {...base, classification: 'disabled', disposition: 'disabled',
         coverage: null, loaderImports: [], diagnosticCodes: [], evidence: 'disabled-source-retained'}
       const parsed = parse(script, candidate)
+      if(candidate) {
+        // The schema owner claims only an actual registration. Its invalid
+        // registrations still fail here; unrelated browser syntax never needs
+        // this executor's complete AST profile to reach the native realm.
+        const schema=privateOwned.admitSchemaAst?.({script,ordinal,sourceFile:parsed.file,checker:parsed.checker,
+          ...parsed.budgetFailure?{budgetFailure:parsed.budgetFailure}:{}})
+        if(schema?.kind==='accepted-schema') {
+          const complete=coverage(parsed.file,script.sourceSha256,parsed.nodeCount)
+          if(schema.admittedSourceSha256!==script.sourceSha256
+            ||recordSha256(schema.statementSpans)!==recordSha256(complete.statementSpans))
+            reject('EXECUTION_SCHEMA_AST_COVERAGE_MISMATCH')
+          return {...base,classification:'server-schema',disposition:'server',coverage:complete,
+            loaderImports:[],diagnosticCodes:[],evidence:'trusted-schema-worker'}
+        }
+        if(schema?.kind==='refused')return refused(schema.diagnosticCodes)
+        // A complete fixed loader belongs to the numerical owner. A script
+        // combining that import with DOM/other behavior remains whole/native;
+        // failure to fit a loader shape is not a claim over the whole script.
+        let sites:readonly LoaderImportSiteV1[]|undefined
+        try {sites=loaderRecognizer(parsed.file,parsed.checker,privateOwned)}catch {}
+        if(sites) {
+          if(parsed.budgetFailure)reject(parsed.budgetFailure)
+          return {...base,classification:'native-state-loader',disposition:'native-owned',
+            coverage:coverage(parsed.file,script.sourceSha256,parsed.nodeCount),loaderImports:sites,
+            diagnosticCodes:[],evidence:'complete-loader-ast'}
+        }
+        return {...base,classification:'browser-script',disposition:'browser-deferred',coverage:null,
+          loaderImports:[],diagnosticCodes:[],evidence:'none'}
+      }
       const localEvidence = privateOwned.localBrowserAuditEvidence?.find(item => item.localOnly
         && item.sourceSha256 === script.sourceSha256)
       if (localEvidence) {

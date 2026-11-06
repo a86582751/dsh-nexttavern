@@ -21,6 +21,7 @@ export interface SchemaRuntimeDescriptor {
   guests:readonly SchemaRuntimeGuest[]
   dependencies:Record<string,string>
   sharedCompiler:typeof TYPESCRIPT_SHARED_DEPENDENCY
+  scopeInputProtocols?:readonly ('full-frame-v1'|'scope-ref-v2')[]
 }
 export const schemaAssetSha=(data:string|Uint8Array)=>createHash('sha256').update(data).digest('hex')
 export const schemaAssetPath=(value:string)=>typeof value==='string'&&value.length>0&&!value.includes('\\')

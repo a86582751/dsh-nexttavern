@@ -1,6 +1,7 @@
 /** Versioned schema opening facts. Shape/hash checks prove integrity only;
  * actual Source, Native history and private publication authority belong to Core. */
 import {recordSha256,sha256} from './roleplay-data.js'
+import {validateMvuEffectiveLoreSourceV1} from './roleplay-tavern-lore-edits-data.js'
 import {cloneSchemaValues,cloneSchemaDescriptorEnvelopeV4} from './tavern-mvu-schema-data.js'
 import type {OpeningIntentIdentity,OpeningCatalog,OpeningSource,OpeningAppendResult,OpeningLookupResult,
   OpeningInitializationReceipt} from './roleplay-opening-selection.js'
@@ -16,9 +17,7 @@ import {deriveOwnedStateLoaderIdentityV4} from './tavern-mvu-schema-program-v4.j
 import type {MvuJsonObject,SchemaMvuInitDataSource,SchemaMvuInitDataSourceV2,SchemaMvuInitDataSourceV3} from './tavern-mvu-initvar.js'
 import type {TavernOpeningCandidate} from './tavern-card.js'
 
-export interface MvuSchemaOpeningPreparationV1 {
-  schemaVersion:1
-  encoding:'native-mvu-schema-opening-preparation-v1'
+export interface MvuSchemaOpeningPreparationFields {
   identity:MvuOpeningIdentity
   authorSourceSha256:string
   sourceSnapshot:MvuSchemaAuthorSource['snapshot']
@@ -30,24 +29,13 @@ export interface MvuSchemaOpeningPreparationV1 {
   randomSeed:string
   preparationSha256:string
 }
-export interface MvuSchemaOpeningPreparationV2 extends Omit<MvuSchemaOpeningPreparationV1,'schemaVersion'|'encoding'> {
-  schemaVersion:2
-  encoding:'native-mvu-schema-opening-preparation-v2'
-  executor:SchemaExecutorIdentityTuple
-}
-export interface MvuSchemaOpeningPreparationV3 extends Omit<MvuSchemaOpeningPreparationV2,'schemaVersion'|'encoding'> {
-  schemaVersion:3
-  encoding:'native-mvu-schema-opening-preparation-v3'
-}
-export interface MvuSchemaOpeningPreparationV4 extends Omit<MvuSchemaOpeningPreparationV3,'schemaVersion'|'encoding'> {
+export interface MvuSchemaOpeningPreparationV4 extends MvuSchemaOpeningPreparationFields {
   schemaVersion:4
   encoding:'native-mvu-schema-opening-preparation-v4'
+  executor:SchemaExecutorIdentityTuple
 }
-export type MvuSchemaOpeningPreparation=MvuSchemaOpeningPreparationV1|MvuSchemaOpeningPreparationV2
-  |MvuSchemaOpeningPreparationV3|MvuSchemaOpeningPreparationV4|AuthorOpeningPreparationV5|AuthorOpeningPreparationV6
-export interface FrozenMvuOpeningInitializationLegacyV3 {
-  schemaVersion:3
-  encoding:'mvu-programmatic-opening-plan-v3'
+export type MvuSchemaOpeningPreparation=MvuSchemaOpeningPreparationV4|AuthorOpeningPreparationV5|AuthorOpeningPreparationV6
+interface FrozenMvuOpeningInitializationFields {
   identity:MvuOpeningIdentity
   selectedSwipeIdentity:string
   authorSourceSha256:string
@@ -55,26 +43,17 @@ export interface FrozenMvuOpeningInitializationLegacyV3 {
   initSource:SchemaMvuInitDataSource
   initialValuesSha256:string
   freshNativeBasisProof:FreshNativeBasisProof
-  execution:LegacySchemaExecutionAssociation
   values:MvuJsonObject
   valuesSha256:string
   planSha256:string
 }
-export interface FrozenMvuOpeningInitializationV4 extends Omit<FrozenMvuOpeningInitializationLegacyV3,'schemaVersion'|'encoding'> {
-  schemaVersion:4
-  encoding:'mvu-programmatic-opening-plan-v4'
-  executor:SchemaExecutorIdentityTuple
-}
-export interface FrozenMvuOpeningInitializationV5 extends Omit<FrozenMvuOpeningInitializationV4,'schemaVersion'|'encoding'> {
-  schemaVersion:5
-  encoding:'mvu-programmatic-opening-plan-v5'
-}
-export interface FrozenMvuOpeningInitializationV6 extends Omit<FrozenMvuOpeningInitializationV5,'schemaVersion'|'encoding'> {
+export interface FrozenMvuOpeningInitializationV6 extends FrozenMvuOpeningInitializationFields {
   schemaVersion:6
   encoding:'mvu-programmatic-opening-plan-v6'
+  executor:SchemaExecutorIdentityTuple
+  execution:LegacySchemaExecutionAssociation
 }
-export interface FrozenMvuOpeningInitializationV7 extends Omit<FrozenMvuOpeningInitializationLegacyV3,
-  'schemaVersion'|'encoding'|'execution'> {
+export interface FrozenMvuOpeningInitializationV7 extends FrozenMvuOpeningInitializationFields {
   schemaVersion:7
   encoding:'mvu-programmatic-opening-plan-v7'
   host:AuthorHostIdentityV5
@@ -93,9 +72,7 @@ export interface FrozenMvuOpeningInitializationV8 extends Omit<FrozenMvuOpeningI
     {readonly phase:'update-ended';readonly execution:AuthorHostAssociationV5},
   ]
 }
-/** The retained export is a discriminated host union; no historical wire is upgraded. */
-export type FrozenMvuOpeningInitializationV3=FrozenMvuOpeningInitializationLegacyV3
-  |FrozenMvuOpeningInitializationV4|FrozenMvuOpeningInitializationV5|FrozenMvuOpeningInitializationV6
+export type FrozenMvuOpeningInitializationV3=FrozenMvuOpeningInitializationV6
   |FrozenMvuOpeningInitializationV7|FrozenMvuOpeningInitializationV8
 export interface OpeningIntentV5 extends OpeningIntentIdentity {
   schemaVersion:5
@@ -236,13 +213,11 @@ function identity(value:MvuOpeningIdentity) {
     ||![source.rawSha256,source.normalizedSha256,source.coverageSha256,value.sourceSha256,value.renderedSha256].every(hash)
     ||value.messageId!==`opening-${sha256(`${value.sessionId}\0${source.importId}\0${value.operationId}`).slice(0,32)}`)fail()
 }
-export function deriveMvuSchemaOpeningExecution(input:MvuOpeningIdentity,executor?:SchemaExecutorIdentityTuple):
+export function deriveMvuSchemaOpeningExecution(input:MvuOpeningIdentity,executor:SchemaExecutorIdentityTuple):
   {realmEpoch:string;selector:SchemaExecutionSelector} {
   const value=freezeMvuSchemaOpeningData(input);identity(value)
-  const version=executor?.runner.version===4?4:executor?.runner.version===3?3:2
-  const realmEpoch=executor?recordSha256({schemaVersion:version,encoding:`native-mvu-schema-opening-execution-identity-v${version}`,
-    identity:value,executor:validateSchemaExecutorIdentityTuple(executor)}):
-    recordSha256({schemaVersion:1,encoding:'native-mvu-schema-opening-execution-identity-v1',identity:value})
+  const realmEpoch=recordSha256({schemaVersion:4,encoding:'native-mvu-schema-opening-execution-identity-v4',
+    identity:value,executor:validateSchemaExecutorIdentityTuple(executor)})
   return freezeMvuSchemaOpeningData({realmEpoch,selector:{sessionId:value.sessionId,batchId:`opening-${realmEpoch}`,
     anchor:{kind:'opening',operationId:value.operationId,messageId:value.messageId,importId:value.source.importId,selectedIndex:value.index}}})
 }
@@ -282,7 +257,8 @@ function inputFacts(value:Pick<MvuSchemaOpeningPreparation,'identity'|'authorSou
   identity(value.identity)
   const snapshot=value.sourceSnapshot,init=value.initSource,proof=value.freshNativeBasisProof,selected=snapshot.selected
   exact(snapshot,['schemaVersion','encoding','source','pointerSha256','importRecordSha256','coverageSha256','materialRows',
-    'settings','bindings','selected','swipes','macroContext','documentSha256','snapshotSha256'],['sourceProvenance'])
+    'settings','bindings','selected','swipes','macroContext','documentSha256','snapshotSha256'],['sourceProvenance','effectiveLore'])
+  if(snapshot.effectiveLore)validateMvuEffectiveLoreSourceV1(snapshot.effectiveLore)
   exact(selected,['index','pointer','sourceSha256','renderedSha256'])
   exact(init,['schemaVersion','encoding','grammar','books','bookStatData','initializedBooks','messageIndex',
     'selectedSwipeIdentity','swipes','macros','initSourceSha256',...(initVersion===3?['parserPolicy']:[])])
@@ -343,29 +319,27 @@ export function validateMvuSchemaOpeningPreparation(input:MvuSchemaOpeningPrepar
   exact(value,['schemaVersion','encoding','identity','authorSourceSha256','sourceSnapshot','initSource','freshNativeBasisProof',
     'selector','realmEpoch','clockEpochMs','randomSeed','preparationSha256',
     ...(value.schemaVersion===6?['host','compilation','phaseSelectors']:
-      value.schemaVersion===5?['host','compilation']:value.schemaVersion!==1?['executor']:[])])
+      value.schemaVersion===5?['host','compilation']:['executor'])])
   fact(value,'preparationSha256');inputFacts(value,value.schemaVersion===6
     ?value.initSource.schemaVersion===3?3:2:1)
   if(value.schemaVersion===5||value.schemaVersion===6) {
     hostIdentity(value.host)
-    exact(value.compilation,['schemaVersion','encoding','original','sourceRecordSessionId'])
+    exact(value.compilation,['schemaVersion','encoding','original','sourceRecordSessionId','nativeLayout'])
     if(value.encoding!==`native-author-opening-preparation-v${value.schemaVersion}`
-      ||![3,4,5,6,7,8].includes(value.compilation.schemaVersion)
-      ||value.compilation.encoding!==`native-author-combined-compilation-input-v${value.compilation.schemaVersion}`
+      ||value.compilation.schemaVersion!==8||value.compilation.encoding!=='native-author-combined-compilation-input-v8'
       ||value.compilation.sourceRecordSessionId!==value.sourceSnapshot.source.sourceRecordSessionId)fail()
-  }else if(value.schemaVersion===2||value.schemaVersion===3||value.schemaVersion===4) {
+  }else {
     const executor=validateSchemaExecutorIdentityTuple(value.executor)
-    if(value.encoding!==`native-mvu-schema-opening-preparation-v${value.schemaVersion}`
-      ||executor.runner.version!==value.schemaVersion)fail()
-  }else if(value.schemaVersion!==1||value.encoding!=='native-mvu-schema-opening-preparation-v1')fail()
+    if(value.schemaVersion!==4||value.encoding!=='native-mvu-schema-opening-preparation-v4'
+      ||executor.runner.version!==4)fail()
+  }
   if(!integer(value.clockEpochMs)
     ||typeof value.randomSeed!=='string'||!value.randomSeed.length||value.randomSeed.length>256)fail()
   if(value.schemaVersion===6) {
     if(!same({realmEpoch:value.realmEpoch,selector:value.selector,phaseSelectors:value.phaseSelectors},
       deriveAuthorHostOpeningExecutionV6(value.identity,value.host)))fail()
   }else if(!same({realmEpoch:value.realmEpoch,selector:value.selector},value.schemaVersion===5?
-    deriveAuthorHostOpeningExecutionV5(value.identity,value.host):deriveMvuSchemaOpeningExecution(value.identity,
-      value.schemaVersion!==1?value.executor:undefined)))fail()
+    deriveAuthorHostOpeningExecutionV5(value.identity,value.host):deriveMvuSchemaOpeningExecution(value.identity,value.executor)))fail()
   return value
 }
 function execution(value:SchemaExecutionAssociation,plan:Exclude<FrozenMvuOpeningInitializationV3,FrozenMvuOpeningInitializationV8>) {
@@ -386,7 +360,7 @@ function execution(value:SchemaExecutionAssociation,plan:Exclude<FrozenMvuOpenin
     if(value.schemaVersion!==1)fail()
   exact(value,['schemaVersion','encoding','sessionId','realmEpoch','batchId','anchor','sourceNativeCutSha256','programSha256',
     'dispatch','completion','dispatchMarker','completionMarker','tailSha256','frontierSha256','outputSha256'])
-  const derived=deriveMvuSchemaOpeningExecution(plan.identity,plan.schemaVersion!==3?plan.executor:undefined)
+  const derived=deriveMvuSchemaOpeningExecution(plan.identity,plan.executor)
   if(value.schemaVersion!==1||value.encoding!=='native-mvu-schema-execution-association-v1'
     ||value.sessionId!==plan.identity.sessionId||value.realmEpoch!==derived.realmEpoch
     ||value.batchId!==derived.selector.batchId||!same(value.anchor,derived.selector.anchor)
@@ -436,7 +410,7 @@ export function validateMvuSchemaOpeningPlan(input:unknown):FrozenMvuOpeningInit
   exact(value,['schemaVersion','encoding','identity','selectedSwipeIdentity','authorSourceSha256','sourceSnapshot','initSource',
     'initialValuesSha256','freshNativeBasisProof','execution','values','valuesSha256','planSha256',
     ...(value.schemaVersion===8?['host','server','phases']:
-      value.schemaVersion===7?['host','server']:value.schemaVersion!==3?['executor']:[])])
+      value.schemaVersion===7?['host','server']:['executor'])])
   fact(value,'planSha256');inputFacts(value,value.schemaVersion===8
     ?value.initSource.schemaVersion===3?3:2:1)
   if(value.schemaVersion===8)executionPhasesV8(value)
@@ -444,11 +418,10 @@ export function validateMvuSchemaOpeningPlan(input:unknown):FrozenMvuOpeningInit
   if(value.schemaVersion===7||value.schemaVersion===8) {
     hostIdentity(value.host);serverExecutorV4(value.server)
     if(value.encoding!==`mvu-programmatic-opening-plan-v${value.schemaVersion}`)fail()
-  }else if(value.schemaVersion===4||value.schemaVersion===5||value.schemaVersion===6) {
+  }else {
     const executor=validateSchemaExecutorIdentityTuple(value.executor)
-    if(value.encoding!==`mvu-programmatic-opening-plan-v${value.schemaVersion}`
-      ||executor.runner.version!==value.schemaVersion-2)fail()
-  }else if(value.schemaVersion!==3||value.encoding!=='mvu-programmatic-opening-plan-v3')fail()
+    if(value.schemaVersion!==6||value.encoding!=='mvu-programmatic-opening-plan-v6'||executor.runner.version!==4)fail()
+  }
   if(value.selectedSwipeIdentity!==value.initSource.selectedSwipeIdentity||!hash(value.initialValuesSha256)
     ||value.valuesSha256!==recordSha256(cloneSchemaValues(value.values)))fail()
   return value
@@ -485,11 +458,7 @@ export function validateMvuSchemaOpeningIntent(input:OpeningIntentV5):OpeningInt
       if(plan.schemaVersion!==7||!same(plan.host,value.preparation.host))fail()
     }else if(value.preparation.schemaVersion===4) {
       if(plan.schemaVersion!==6||!same(plan.executor,value.preparation.executor))fail()
-    }else if(value.preparation.schemaVersion===3) {
-      if(plan.schemaVersion!==5||!same(plan.executor,value.preparation.executor))fail()
-    }else if(value.preparation.schemaVersion===2) {
-      if(plan.schemaVersion!==4||!same(plan.executor,value.preparation.executor))fail()
-    }else if(plan.schemaVersion!==3)fail()
+    }
     for(const key of ['identity','authorSourceSha256','sourceSnapshot','initSource','freshNativeBasisProof'] as const) {
       if(!same(plan[key],value.preparation[key]))fail()
     }

@@ -11,7 +11,7 @@ import {mvuSchemaMaintenanceAdmissionKey,mvuSchemaMaintenanceBasisKey,mvuSchemaM
 import type {MvuSchemaMaintenanceAdmissionV1,MvuSchemaMaintenanceBasisV1,MvuSchemaMaintenanceResultV1,
   MvuSchemaMaintenanceCandidateSourceV1,MvuSchemaMaintenanceTaskBindingV1,MvuSchemaMaintenanceDecisionV1}
   from './roleplay-mvu-schema-maintenance-types.js'
-import type {RoleplayNewInputWorkV1,RoleplaySchemaStoryWorkV1} from './roleplay-input-preparation.js'
+import type {RoleplayNewInputWorkV1,RoleplaySchemaStoryWorkV1,InputSourceObservation} from './roleplay-input-preparation.js'
 import type {InputCompletionScope} from './roleplay-input-completion.js'
 import type {MvuSchemaNumericalSnapshotV2,MvuSchemaStoryCanonical,MvuSchemaStoryParserPolicy}
   from './roleplay-mvu-schema-story-types.js'
@@ -70,6 +70,21 @@ export function createRoleplayMvuSchemaMaintenance(deps:Dependencies) {
       preparationId:work.preparationId,credentialSha256:work.credentialSha256,receiptGeneration:work.receiptGeneration,
       refs:work.refs,source:work.source},'admissionSha256')
     await putExact(mvuSchemaMaintenanceAdmissionKey(work.sessionId,work.preparationId),admission)
+  }
+  async function adoptSourceData(work:RoleplayNewInputWorkV1,from:InputSourceObservation):Promise<void> {
+    const key=mvuSchemaMaintenanceAdmissionKey(work.sessionId,work.preparationId),
+      previous=deps.table.get(key) as MvuSchemaMaintenanceAdmissionV1|undefined
+    if(!previous)return
+    if(previous.sessionId!==work.sessionId||previous.preparationId!==work.preparationId
+      ||previous.credentialSha256!==work.credentialSha256||previous.receiptGeneration!==work.receiptGeneration
+      ||!same(previous.refs,work.refs)||!same(previous.source,from))fail('SCHEMA_MAINTENANCE_ADMISSION_CHANGED')
+    const {admissionSha256:_hash,...body}=previous,
+      admission=sealMvuSchemaMaintenanceData({...body,source:work.source},'admissionSha256')
+    // The input owner calls before preparing the successor step. No canonical
+    // basis/task can yet consume this admission; the Work retains its complete
+    // committed DATA chain, rather than treating old Source as current.
+    await deps.table.put(key,admission)
+    if(!same(deps.table.get(key),admission))fail('SCHEMA_MAINTENANCE_ADMISSION_WRITE_UNKNOWN')
   }
   function readAdmission(work:RoleplaySchemaStoryWorkV1):MvuSchemaMaintenanceAdmissionV1|undefined {
     const raw=deps.table.get(mvuSchemaMaintenanceAdmissionKey(work.sessionId,work.currency.preparationId))
@@ -243,5 +258,5 @@ export function createRoleplayMvuSchemaMaintenance(deps:Dependencies) {
         actualRoute:job.actualRoute,execution:job.execution,reusedFrom:'schema-maintenance'}}
     })()
   }
-  return {admitNewWork,handles,run,completion,decision}
+  return {admitNewWork,adoptSourceData,handles,run,completion,decision}
 }

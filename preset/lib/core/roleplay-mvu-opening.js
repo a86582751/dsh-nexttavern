@@ -1,5 +1,6 @@
 // Generated from runtime/alpha3/src/core/roleplay-mvu-opening.ts; edit the TypeScript source.
 import { recordSha256, sha256 } from './roleplay-data.js';
+import { IMPORT_NORMALIZER } from './roleplay-import-record.js';
 import { eventsOf } from './roleplay-context.js';
 import { createRoleplayMvuSource } from './roleplay-mvu-source.js';
 import { createRoleplayMvuBasis } from './roleplay-mvu-basis.js';
@@ -12,8 +13,11 @@ import { createRoleplayMvuSchemaOpening } from './roleplay-mvu-schema-opening.js
 import { createRoleplayMvuSchemaSource } from './roleplay-mvu-schema-source.js';
 import { createRoleplayMvuSchemaStoryCore } from './roleplay-mvu-schema-story-core.js';
 import { createRoleplayMvuSchemaPlayerCore } from './roleplay-mvu-schema-player-core.js';
+import { createRoleplayOpeningVariantCore } from './roleplay-opening-variant-core.js';
+import { createRoleplayMvuScopeStoreV2 } from './roleplay-mvu-scope-store-v2.js';
 import { mvuInitializationHeadKey } from './roleplay-mvu-initialization.js';
 import { verifyProgrammaticCardCopySpanV1 } from './roleplay-program-copy-span.js';
+import { openingVariantActivationSeedKey } from './roleplay-opening-variant-activation.js';
 import { describeRoleplayInputSourceV1, roleplayInputSourceSha256V1 } from './roleplay-input-source-data.js';
 import { createRoleplayPromptTemplateOnlySourceV1 } from './roleplay-prompt-template-only-source.js';
 import { createRoleplayPromptInheritedSourceV2, readPromptNonNumericalInventoryV2, validatePromptInheritedSourceProofV2 } from './roleplay-prompt-template-inherited-source.js';
@@ -28,12 +32,14 @@ export function createRoleplayMvuOpening(deps) {
     const basis = createRoleplayMvuBasis({ branch: deps.tables.branch, numerical: deps.tables.status,
         session: deps.session, branchReady: deps.branchReady, nativeCurrent: native.current });
     const sourceDeps = {
+        readAuthorCapture: deps.readAuthorCapture,
         readActivePointer: id => deps.tables.branch.get(deps.importActiveKey(id)),
         readImportRecord: (id, importId) => deps.tables.branch.get(deps.importRecordKey(id, importId)),
         readRow: (table, key) => deps.tables[table].get(key),
         recordVersionsFor: deps.recordVersionsFor, readOpeningContext: deps.openingContext, readFreshNativeBasis: basis.fresh,
     };
-    const source = createRoleplayMvuSource(sourceDeps);
+    const source = createRoleplayMvuSource({ ...sourceDeps, captureOriginal: deps.inputState.captureOriginal });
+    const scopeStore = deps.schema ? createRoleplayMvuScopeStoreV2({ table: deps.tables.status, inputState: deps.inputState }) : undefined;
     const promptDomainDeps = { ...sourceDeps,
         session: deps.session, branchReady: deps.branchReady, entries: table => deps.tables[table].entries(),
         readInheritedPromptTemplateSource: deps.readInheritedPromptTemplateSource, readSourceInheritance: deps.readSourceInheritance };
@@ -126,41 +132,36 @@ export function createRoleplayMvuOpening(deps) {
                 throw Error('PROMPT_TEMPLATE_PROTOCOL_UNAVAILABLE');
         });
     }
-    async function preflightPromptTemplateOpening(request) {
-        const decision = await deps.withSourceLock(request.catalog.source.sessionId, async () => promptTemplateSource.produce(request));
-        if (decision.kind !== 'prompt-template-only')
-            return { kind: 'not-applicable' };
-        try {
-            await preflightPromptTemplateRuntime(decision.proof);
-            return { kind: 'ready', proof: decision.proof };
-        }
-        catch (error) {
-            const code = error instanceof Error ? error.message : '';
-            return { kind: 'blocked', proof: decision.proof, code: PROMPT_TEMPLATE_ONLY_CODES_V1.includes(code)
-                    ? code : 'PROMPT_TEMPLATE_RUNTIME_REQUIRED' };
-        }
-    }
     const schemaCore = deps.schema ? createRoleplayMvuSchemaCore({ ...deps.schema, branch: deps.tables.branch,
-        status: deps.tables.status, recordOwner: deps.inputState.schemaJournal, source,
+        status: deps.tables.status, recordOwner: deps.inputState.schemaJournal, nativeHistory: deps.inputState.nativeHistory, source, scopeStore,
         session: id => deps.session(id),
         withSourceLock: deps.withSourceLock, projectPrefix: events => deps.messageEdits.projectPrefix(events),
         nativeRead: (identity, turn) => native.read(identity, turn) }) : undefined;
     let schemaSelection;
     let schemaStory;
     let schemaPlayer;
+    let schemaVariants;
     function createSchemaStory(completion) {
         if (!schemaCore || !deps.schema)
             return undefined;
-        const schemaSource = createRoleplayMvuSchemaSource({ ...sourceDeps, inputState: deps.inputState }, deps.schema.markers, events => deps.messageEdits.projectPrefix(events));
+        const schemaSource = createRoleplayMvuSchemaSource({ ...sourceDeps, inputState: deps.inputState, scopeStore }, deps.schema.markers, events => deps.messageEdits.projectPrefix(events));
         const common = { ...deps.schema, branch: deps.tables.branch, status: deps.tables.status, inputState: deps.inputState,
-            source: schemaSource, session: (id) => deps.session(id),
+            projections: deps.projections,
+            source: schemaSource, scopeStore, session: (id) => deps.session(id),
             sourceSha256: (id) => inputSource(id).sourceSha256,
             protectedRuntime: schemaCore.protectedRuntime, withSourceLock: deps.withSourceLock };
         schemaStory ??= createRoleplayMvuSchemaStoryCore({ ...completion, ...common, inputState: deps.inputState,
-            manualPendingCode: (id) => schemaPlayer?.pendingCode(id),
-            captureManualLedger: (id) => schemaPlayer?.captureLedger(id),
-            manualEditBlockCode: (id) => schemaPlayer?.editBlockCode(id),
+            prepareHook: deps.prepareMvuHook,
+            manualPendingCode: (id) => schemaVariants?.pendingCode(id) ?? schemaPlayer?.pendingCode(id),
+            captureManualLedger: (id) => {
+                const ledger = schemaPlayer?.captureLedger(id), code = schemaVariants?.pendingCode(id);
+                return code ? { code, completedByEventKey: ledger?.completedByEventKey ?? new Map() } : ledger;
+            },
+            manualEditBlockCode: (id) => schemaVariants?.pendingCode(id) ?? schemaPlayer?.editBlockCode(id),
+            readOpeningVariantPacks: (id, initial, variables) => schemaVariants.readPacks(id, initial, variables),
+            readOpeningVariantAddresses: (id, message, selectedIndex) => schemaVariants.readAddresses(id, message, selectedIndex),
             derivedRequired: deps.schemaDerivedRequired, readDerivedGenesis: deps.readSchemaDerivedGenesis,
+            readInheritedOpeningVariantFact: deps.readInheritedOpeningVariantFact,
             captureRevisionPrefix: deps.captureSchemaRevisionPrefix,
             recoverRevisionPrefix: deps.recoverSchemaRevisionPrefix,
             readEditInvalidation: deps.readSchemaEditInvalidation,
@@ -169,7 +170,11 @@ export function createRoleplayMvuOpening(deps) {
             activePointer: id => deps.tables.branch.get(deps.importActiveKey(id)), sourceSha256: id => inputSource(id).sourceSha256,
             protectedRuntime: schemaCore.protectedRuntime, withSourceLock: deps.withSourceLock });
         schemaPlayer ??= createRoleplayMvuSchemaPlayerCore({ ...common, story: schemaStory,
-            observe: deps.schema.observe, playerMarkers: deps.schema.playerMarkers });
+            observe: deps.schema.observe, playerMarkers: deps.schema.playerMarkers,
+            readInheritedOpeningVariantFact: deps.readInheritedOpeningVariantFact });
+        schemaVariants ??= createRoleplayOpeningVariantCore({ ...common, story: schemaStory, catalog: deps.catalog,
+            activatePrepared: deps.activateOpeningVariant, modelSelection: deps.openingVariantModelSelection,
+            readInheritedOpeningVariantFact: deps.readInheritedOpeningVariantFact });
         return schemaStory;
     }
     function createSchemaSelection(nativeDeps) {
@@ -205,7 +210,8 @@ export function createRoleplayMvuOpening(deps) {
         const pointer = deps.tables.branch.get(deps.importActiveKey(sessionId));
         const intent = pointer?.importId ? readIntent(sessionId, pointer.importId) : undefined;
         const head = deps.tables.status.get(mvuInitializationHeadKey(sessionId));
-        return deps.schemaDerivedRequired?.(sessionId) === true || intent?.schemaVersion === 5 || head?.encoding === 'mvu-schema-opening-head-v2';
+        return deps.tables.branch.get(openingVariantActivationSeedKey(sessionId)) !== undefined
+            || deps.schemaDerivedRequired?.(sessionId) === true || intent?.schemaVersion === 5 || head?.encoding === 'mvu-schema-opening-head-v2';
     }
     async function readSchemaInitialization(sessionId) {
         if (!schemaSelection)
@@ -248,13 +254,6 @@ export function createRoleplayMvuOpening(deps) {
             if (decision.kind === 'legacy-v2')
                 return { kind: 'legacy-v2', absenceScopeProof: decision.absenceScopeProof };
             if (decision.kind === 'unsupported') {
-                // An old refusal is never converted into Plain. The independent
-                // producer reopens and classifies the complete actual Source itself.
-                const template = promptTemplateSource.produce({ catalog, candidate });
-                if (template.kind === 'prompt-template-only')
-                    return { kind: 'prompt-template-only', proof: template.proof };
-                if (template.kind === 'unsupported')
-                    return { schemaVersion: 2, kind: 'unsupported', diagnostics: template.diagnostics };
                 return { schemaVersion: 2, kind: 'unsupported', diagnostics: decision.diagnostics.map(({ code, pointer }) => ({ code, pointer })) };
             }
             return prepareNativeMvuOpeningInitialization(identity, decision.candidate);
@@ -262,7 +261,7 @@ export function createRoleplayMvuOpening(deps) {
         finishInitialization: async (intent) => intent.initialization && Number.isSafeInteger(intent.committedTurn)
             ? initialization.publish(intent.initialization, intent.committedTurn) : { kind: 'blocked', code: 'RECORD_INVALID' },
         readInitialization: initialization.read, isSourceSnapshotCurrent: source.current,
-        preflightPromptTemplateOpening, preflightPromptTemplateRuntime,
+        preflightPromptTemplateRuntime,
         isPromptTemplateOnlySourceCurrent: promptTemplateSource.current,
         isPromptTemplateRuntimeCurrent: promptTemplateRuntimeCurrent,
         readNativeOpening: intent => {
@@ -390,7 +389,12 @@ export function createRoleplayMvuOpening(deps) {
             return management('ACTIVE_SOURCE_INVALID');
         const envelope = imported['sourceEnvelope'];
         if (!envelope) {
-            return Number(imported['schemaVersion']) >= 4 ? management('ACTIVE_SOURCE_INVALID')
+            // DOCX stores its original binary identity separately from extracted
+            // Markdown. Import activation already owns that record's integrity.
+            const extraction = imported['extractedSource'];
+            const extractedText = imported['schemaVersion'] === 7 && imported['normalizer'] === IMPORT_NORMALIZER
+                && extraction?.encoding === 'docx-markdown-v1';
+            return Number(imported['schemaVersion']) >= 4 && !extractedText ? management('ACTIVE_SOURCE_INVALID')
                 : { kind: 'legacy', sourceSha256, reason: 'LEGACY_TEXT_IMPORT' };
         }
         if (!['.png', '.json', '.md', '.txt', '.docx'].includes(String(envelope.extension).toLowerCase())) {
@@ -563,6 +567,9 @@ export function createRoleplayMvuOpening(deps) {
             return undefined;
         }
     }
+    function captureSchemaPromptScopes(id, selection) {
+        return schemaStory?.capturePromptScopes(id, selection);
+    }
     return { callbacks, sourceCurrent, readInitialization: initialization.read, nativeCurrent: native.current,
         readNative: (identity, turn) => native.read(identity, turn), readInputObservation,
         readGenesis, readSourceSha256: (sessionId) => inputSource(sessionId).sourceSha256,
@@ -627,16 +634,39 @@ export function createRoleplayMvuOpening(deps) {
         createSchemaSelection, hasSchemaOpening, readSchemaInitialization,
         createSchemaStory, readSchemaSnapshot: (id) => schemaStory?.readSnapshot(id),
         readSchemaObservation: (id) => schemaStory?.readSchemaObservation(id),
+        captureSettledStoryMessages: (id, selection) => schemaStory?.captureSettledStoryMessages(id, selection),
         captureReaderDisplayScopes: (id) => schemaStory?.captureReaderDisplayScopes(id),
-        captureSchemaPromptScopes: (id) => schemaStory?.capturePromptScopes(id),
-        executeAuthorPrompt: (...args) => {
-            if (!schemaStory)
-                throw Error('AUTHOR_PROMPT_RUNTIME_UNAVAILABLE');
-            return schemaStory.executePrompt(...args);
-        },
+        captureSchemaPromptScopes,
         captureSchemaBrowserFacts: (id) => schemaStory?.captureBrowserFacts(id) ?? Promise.resolve(undefined),
         captureReaderDocumentFacts: (id) => schemaStory?.captureReaderDocumentFacts(id) ?? Promise.resolve(undefined),
-        readerDocumentRuntime: () => schemaCore?.readerDocumentRuntime(),
+        mutateOpeningVariants: (...args) => {
+            if (!schemaVariants)
+                throw Error('OPENING_VARIANT_RUNTIME_UNAVAILABLE');
+            return schemaVariants.mutate(...args);
+        },
+        confirmOpeningVariants: (sid, operationId) => schemaVariants?.confirm(sid, operationId)
+            ?? { kind: 'unknown', operationId, code: 'OPENING_VARIANT_RUNTIME_UNAVAILABLE' },
+        retryOpeningVariants: (sid, operationId, signal) => {
+            if (!schemaVariants)
+                throw Error('OPENING_VARIANT_RUNTIME_UNAVAILABLE');
+            return schemaVariants.retry(sid, operationId, signal);
+        },
+        publishOpeningVariantActivation: (...args) => {
+            if (!schemaVariants)
+                throw Error('OPENING_VARIANT_RUNTIME_UNAVAILABLE');
+            return schemaVariants.publishActivation(...args);
+        },
+        templateEjsRuntime: (...args) => {
+            if (!schemaCore)
+                throw Error('TEMPLATE_EJS_RUNTIME_UNAVAILABLE');
+            return schemaCore.templateEjsRuntime(...args);
+        },
+        templateEjsCurrent: () => schemaCore?.templateEjsCurrent(),
+        templateEjsCheckCurrentSync: (checks) => {
+            if (!schemaCore)
+                throw Error('TEMPLATE_EJS_RUNTIME_UNAVAILABLE');
+            schemaCore.templateEjsCheckCurrentSync(checks);
+        },
         capturePlainPromptScopeFacts: (id) => {
             try {
                 const legacy = captureLegacyPlainOpening(id);
@@ -686,6 +716,7 @@ export function createRoleplayMvuOpening(deps) {
         schemaPlayerMutationBlockCode: (session) => schemaPlayer?.mutationBlockCode(session),
         preflightSchema: (id, signal) => hasSchemaOpening(id) && schemaStory
             ? schemaStory.preflight(id, signal) : Promise.resolve(),
+        captureSchemaAuthorDataPublicationBasis: (id) => schemaStory?.captureAuthorDataPublicationBasis(id),
         releaseSchemaClosing: (lease) => schemaStory?.releaseClosing(lease),
         checkSchemaTextEdit: (id, targetSeq) => hasSchemaOpening(id) && schemaStory
             ? schemaStory.checkTextEdit(id, targetSeq) : Promise.resolve(),
@@ -695,5 +726,5 @@ export function createRoleplayMvuOpening(deps) {
             schemaPlayer?.invalidateAgent(agent);
         },
         invalidateSchemaSession: (id) => { schemaCore?.invalidateSession(id); schemaStory?.invalidateSession(id); schemaPlayer?.invalidateSession(id); },
-        disposeSchema: () => { schemaPlayer?.dispose(); schemaStory?.dispose(); return schemaCore?.dispose(); } };
+        disposeSchema: () => { schemaVariants?.dispose(); schemaPlayer?.dispose(); schemaStory?.dispose(); scopeStore?.dispose(); return schemaCore?.dispose(); } };
 }

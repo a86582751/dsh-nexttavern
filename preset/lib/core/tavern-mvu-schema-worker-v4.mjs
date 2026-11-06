@@ -13,8 +13,9 @@ import { recordSha256 } from './roleplay-data.js';
 import { cloneSchemaData, unpackSchemaEnvelopeV4, cloneSchemaValues, schemaTextSha256 } from './tavern-mvu-schema-data.js';
 import { schemaPhaseErrorPolicyForProgramV4, schemaExecutionViewV4 } from './tavern-mvu-schema-program-v4.js';
 import { MVU_SCHEMA_BOUNDS } from './tavern-mvu-schema-types.js';
-import { validateSchemaGuestOutputForParsedProgramV4 } from './tavern-mvu-schema-runner-v4.js';
-import { createMvuScopeReaderV1, readMvuVariable, MvuScopeReadError } from './tavern-mvu-scope-read.js';
+import { validateSchemaGuestOutputForParsedProgramV4, schemaPhaseScopeFromLoadV4 } from './tavern-mvu-schema-runner-v4.js';
+import { createMvuScopeReaderV1, createMvuScopeReaderV2, readMvuVariable, MvuScopeReadError } from './tavern-mvu-scope-read.js';
+import { createMvuScopeViewResolverV2 } from './tavern-mvu-scope-view-v2.js';
 const require = createRequire(import.meta.url);
 const MAX_JOBS = 1024;
 const scopedNames = ['getVariables', 'getAllVariables', 'getMvuData', 'getMvuVariable', 'getvar',
@@ -31,12 +32,15 @@ function manualWorkerInbox() {
         waiting?.(value);
     };
     port.on('message', message);
+    function wait(response) {
+        const next = new Promise(resolve => { receive = resolve; });
+        port.postMessage(response);
+        return next;
+    }
     return {
-        park(json) {
-            const next = new Promise(resolve => { receive = resolve; });
-            port.postMessage({ kind: 'manual-phase', json });
-            return next;
-        },
+        park: json => wait({ kind: 'manual-phase', json }),
+        ready: () => wait({ kind: 'hot-ready' }),
+        replayed: stepSha256 => wait({ kind: 'hot-replayed', stepSha256 }),
         dispose() { receive = undefined; port.off('message', message); },
     };
 }
@@ -389,6 +393,12 @@ const BOOTSTRAP = String.raw `((wire,materialWire,libraryWire,scriptWire,planWir
     run(){
       try {
       if(scopeFault)return refused([scopeFault]);
+      // The external message-pack setter stores raw state. frame() already
+      // adopted this owner's values/context without rebuilding the live realm.
+      // Keep registrations and closures, but run none of their phase callbacks.
+      if(input.phase==='external-pack-replacement')return encode({...outputWire,kind:'accepted',
+        values:numerical(values),commands:clone(commands),context:clone(metadata),registrations:registrations.length,
+        ...(plan.errorPolicy==='registered-command-policy-v1'?{discarded:[]}: {})});
       registrationBoundary();
       let discarded=[];
       if(plan.stateOnly){
@@ -410,16 +420,16 @@ const BOOTSTRAP = String.raw `((wire,materialWire,libraryWire,scriptWire,planWir
           commands=[];
         }else if(input.phase==='commands-parsed')commands=[];
         else if(input.phase==='update-ended'){delete metadata.display_data;delete metadata.delta_data;}
-        else if(input.phase!=='initialization'&&input.phase!=='manual-replacement')fail('SCHEMA_PHASE_UNSUPPORTED');
+        else if(input.phase!=='initialization'&&input.phase!=='manual-replacement'&&input.phase!=='hook-reconcile')fail('SCHEMA_PHASE_UNSUPPORTED');
         return encode({...outputWire,kind:'accepted',values:numerical(values),commands:clone(commands),
           context:clone(metadata),registrations:0,
           ...(plan.errorPolicy==='registered-command-policy-v1'?{discarded}: {})});
       }
-      if(input.phase==='initialization'||input.phase==='manual-replacement') {
+      if(input.phase==='initialization'||input.phase==='manual-replacement'||input.phase==='hook-reconcile') {
         for(let index=0;index<registrations.length;index++){
           const parsed=parse(schemaFor(registrations[index]),values);
           if(parsed===null)return refused([{code:'SCHEMA_VALIDATION_FAILED',registrationIndex:index}]);
-          if(input.phase==='manual-replacement')values=parsed;
+          if(input.phase==='manual-replacement'||input.phase==='hook-reconcile')values=parsed;
           else{const merged=clone(values),names=keys(parsed);
             for(let field=0;field<names.length;field++)define(merged,names[field],{value:parsed[names[field]],enumerable:true,writable:true,configurable:true});
             values=numerical(merged);}
@@ -512,7 +522,7 @@ const BOOTSTRAP = String.raw `((wire,materialWire,libraryWire,scriptWire,planWir
     encode,
   };
 })`;
-async function evaluateGuest(request, manual) {
+async function evaluateGuest(request, manual, materialIdentity) {
     if (!peerVersions())
         return { kind: 'unavailable', code: 'SCHEMA_IMPLEMENTATION_UNAVAILABLE' };
     // The private parent parsed and bound the complete program and phase inputs
@@ -524,12 +534,14 @@ async function evaluateGuest(request, manual) {
     if (!stateOnly && !serverScripts.length)
         return unavailable('SCHEMA_REGISTRATION_MISSING');
     const trace = 'trace' in request ? request.trace : undefined;
-    const input = trace ? { schemaVersion: 4,
-        encoding: 'native-mvu-author-schema-phase-input-v4', commandsEncoding: 'native-mvu-update-operations-v2',
+    const loadFrame = trace?.loadFrame ?? ('loadFrame' in request ? request.loadFrame : undefined);
+    const stream = 'response' in request && (request.response === 'hot' || request.response === 'manual-stream');
+    const input = loadFrame ? { schemaVersion: 4, ...schemaPhaseScopeFromLoadV4(loadFrame),
+        commandsEncoding: 'native-mvu-update-operations-v2',
         errorPolicy: schemaPhaseErrorPolicyForProgramV4(program),
-        phase: 'initialization', base: null, values: trace.loadFrame.values,
-        commands: [], context: trace.loadFrame.context, scopeReadFrame: trace.loadFrame.scopeReadFrame,
-        clockEpochMs: trace.loadFrame.clockEpochMs, randomSeed: trace.loadFrame.randomSeed } :
+        phase: 'initialization', base: null, values: loadFrame.values,
+        commands: [], context: loadFrame.context,
+        clockEpochMs: loadFrame.clockEpochMs, randomSeed: loadFrame.randomSeed } :
         request.input;
     let libraries = [];
     if (!stateOnly) {
@@ -545,8 +557,8 @@ async function evaluateGuest(request, manual) {
     runtime.setMaxStackSize(MVU_SCHEMA_BOUNDS.vmStackBytes);
     const deadline = Date.now() + MVU_SCHEMA_BOUNDS.vmDeadlineMs;
     let workMs = 0, workStarted = 0, workDepth = 0;
-    // Only a manual operation parks. Cold evaluations keep their original wall
-    // deadline; live operations charge actual nested VM entries cumulatively.
+    // Parked operations charge actual VM work. Ordinary hot Story phases get
+    // their own original phase budget; a manual operation retains its total.
     const expired = () => manual ? workMs + (workDepth ? performance.now() - workStarted : 0) >= MVU_SCHEMA_BOUNDS.vmDeadlineMs :
         Date.now() >= deadline;
     let timedOut = false, denied = false, callbackFault;
@@ -583,11 +595,40 @@ async function evaluateGuest(request, manual) {
     }
     let readInput = input;
     let readers = new Map();
+    const incomingScopeObjects = new Map();
+    const scopeKey = (reference) => JSON.stringify([reference.ownerSessionId, reference.key, reference.sha256]);
+    let scopeResolver;
+    let scopeBaseKey;
+    function stageScopeObjects(objects) {
+        if (objects)
+            for (const item of objects)
+                incomingScopeObjects.set(scopeKey(item.ref), item);
+    }
+    function phaseReaders(current) {
+        if (current.encoding === 'native-mvu-author-schema-phase-input-v4') {
+            return { scripts: current.scopeReadFrame.scripts, readers: stateOnly ? new Map() : new Map(current.scopeReadFrame.scripts.map(script => [
+                    script.scriptId, createMvuScopeReaderV1(current.scopeReadFrame, script.scriptId)
+                ])) };
+        }
+        const base = scopeKey(current.scopeReadRef.baseRef);
+        if (scopeBaseKey !== base) {
+            scopeResolver = createMvuScopeViewResolverV2({ read(reference) {
+                    const key = scopeKey(reference), item = incomingScopeObjects.get(key);
+                    incomingScopeObjects.delete(key);
+                    return item?.object;
+                } });
+            scopeBaseKey = base;
+        }
+        const resolved = scopeResolver.resolve(current.scopeReadRef), scripts = [...resolved.scripts()];
+        return { scripts, readers: stateOnly ? new Map() : new Map(scripts.map(script => [
+                script.scriptId, createMvuScopeReaderV2(resolved.view, script.scriptId)
+            ])) };
+    }
     let initializationWriteError;
     try {
-        if (!stateOnly)
-            readers = new Map(input.scopeReadFrame.scripts.map(script => [script.scriptId,
-                createMvuScopeReaderV1(input.scopeReadFrame, script.scriptId)]));
+        stageScopeObjects(request.scopeObjects);
+        const initialScopes = phaseReaders(input);
+        readers = initialScopes.readers;
         const inputHandle = context.newString(JSON.stringify(input));
         owned.push(inputHandle);
         const determinism = checked(context.evalCode(DETERMINISM, 'trusted-clock.js'));
@@ -697,12 +738,14 @@ async function evaluateGuest(request, manual) {
             }
         });
         owned.push(read);
+        // Parent projection omits material only for state-only execution; author
+        // programs retain complete Source for this branch and later material use.
         const material = stateOnly ? context.undefined :
-            context.newString(JSON.stringify(trace?.loadFrame.material ?? program.source.material));
+            context.newString(JSON.stringify(loadFrame?.material ?? program.source.material));
         const names = stateOnly ? context.undefined :
             context.newString(JSON.stringify(Object.fromEntries(libraries.map(library => [library.kind, library.globalName]))));
         const scriptScopes = stateOnly ? context.undefined :
-            context.newString(JSON.stringify(input.scopeReadFrame.scripts.map(({ scriptId, pointer }) => ({ scriptId, pointer }))));
+            context.newString(JSON.stringify(initialScopes.scripts.map(({ scriptId, pointer }) => ({ scriptId, pointer }))));
         const execution = context.newString(JSON.stringify({ executionPlanSha256: view.executionPlanSha256, stateOnly,
             errorPolicy: schemaPhaseErrorPolicyForProgramV4(program),
             serverScriptIds: serverScripts.map(({ script }) => script.identity), ...initializationWriters.size
@@ -728,7 +771,7 @@ async function evaluateGuest(request, manual) {
             // Schema closures retain their complete immutable Source snapshots.
             // State-only phases never read Source, so they prepare no guest material.
             const materials = new Map();
-            const initialMaterial = trace?.loadFrame.material ?? program.source.material;
+            const initialMaterial = loadFrame?.material ?? program.source.material;
             const initialSource = checked(context.callFunction(sourceValue, controller), context);
             materials.set(initialMaterial, initialSource);
             owned.push(initialSource);
@@ -822,7 +865,7 @@ async function evaluateGuest(request, manual) {
             const preload = checked(context.evalCode([...modules.keys()].filter(name => !name.startsWith('nexttavern:scope-author-'))
                 .map(name => `import ${JSON.stringify(name)};`).join('\n'), 'trusted-preload.mjs', { type: 'module' }));
             try {
-                completed(context, runtime, preload, trace ? budget : { jobs: 0 });
+                completed(context, runtime, preload, loadFrame ? budget : { jobs: 0 });
             }
             finally {
                 preload.dispose();
@@ -849,7 +892,7 @@ async function evaluateGuest(request, manual) {
                         context.setProp(context.global, scopeLoaderKey, bound);
                         const preloaded = checked(context.evalCode(`import ${JSON.stringify(entry.module)};`, `trusted-scope-preload-${index}-${entry.policy}.mjs`, { type: 'module' }));
                         try {
-                            completed(context, runtime, preloaded, trace ? budget : { jobs: 0 });
+                            completed(context, runtime, preloaded, loadFrame ? budget : { jobs: 0 });
                         }
                         finally {
                             preloaded.dispose();
@@ -867,7 +910,7 @@ async function evaluateGuest(request, manual) {
                 const filename = `author-${index}.mjs`, source = bindAuthorScope(script.javascript, filename, scopeModules.get(index), initializationWriters.has(script.identity));
                 const result = checked(context.evalCode(source, filename, { type: 'module' }), context);
                 try {
-                    completed(context, runtime, result, trace ? budget : { jobs: 0 });
+                    completed(context, runtime, result, loadFrame ? budget : { jobs: 0 });
                 }
                 finally {
                     result.dispose();
@@ -876,12 +919,12 @@ async function evaluateGuest(request, manual) {
         }
         const readyResult = checked(context.callFunction(ready, controller), context);
         try {
-            completed(context, runtime, readyResult, trace ? budget : { jobs: 0 });
+            completed(context, runtime, readyResult, loadFrame ? budget : { jobs: 0 });
         }
         finally {
             readyResult.dispose();
         }
-        if (trace) {
+        if (trace || stream) {
             // The load boundary must finish before any historical event exists.
             checked(context.callFunction(loaded, controller), context).dispose();
             const nextOnly = 'response' in request && request.response === 'next', outputs = [];
@@ -890,10 +933,9 @@ async function evaluateGuest(request, manual) {
                 if (timedOut || expired())
                     return unavailable('SCHEMA_VM_TIMEOUT');
                 const current = step.frame;
+                const scoped = phaseReaders(current.input);
                 readInput = current.input;
-                if (!stateOnly)
-                    readers = new Map(readInput.scopeReadFrame.scripts.map(script => [script.scriptId,
-                        createMvuScopeReaderV1(readInput.scopeReadFrame, script.scriptId)]));
+                readers = scoped.readers;
                 const wire = context.newString(JSON.stringify(current.input));
                 try {
                     checked(context.callFunction(clockFrame, context.undefined, wire), context).dispose();
@@ -932,6 +974,41 @@ async function evaluateGuest(request, manual) {
                 }
                 return { kind: 'phase', output };
             }
+            if (stream) {
+                let next = await manual.ready();
+                let manualMaterial, manualForeground = false;
+                while (next.kind !== 'close') {
+                    stageScopeObjects(next.scopeObjects);
+                    const step = next.kind === 'advance' ? { eventId: next.step.eventId, frame: { ...next.step.frame, material: manualMaterial } } :
+                        unpackSchemaEnvelopeV4(next.step, next.kind === 'hot-replay' ? MVU_SCHEMA_BOUNDS.inputBytes + MVU_SCHEMA_BOUNDS.outputBytes + 4096 : MVU_SCHEMA_BOUNDS.inputBytes, { nodes: MVU_SCHEMA_BOUNDS.evaluationNodes, depth: MVU_SCHEMA_BOUNDS.evaluationDepth }, materialIdentity);
+                    // Reconstruct every actual historical closure in order. Each event
+                    // retains its original phase budget; Native's one cold watchdog
+                    // bounds the complete reconstruction including these round trips.
+                    // Historical reconstruction is preparation. Once a foreground
+                    // manual edit starts, its requested phase and every advance share
+                    // the original cumulative budget, excluding parked Native waits.
+                    if (!manualForeground) {
+                        workMs = 0;
+                        budget.jobs = 0;
+                    }
+                    if (next.kind === 'hot-advance' && 'response' in request && request.response === 'manual-stream') {
+                        manualForeground = true;
+                        manualMaterial = step.frame.material;
+                    }
+                    const phase = evaluateStep(step);
+                    if (phase.kind === 'unavailable')
+                        return phase;
+                    if (next.kind === 'hot-replay') {
+                        const historical = step;
+                        next = await manual.replayed(historical.stepSha256);
+                    }
+                    else if (phase.output.kind === 'accepted')
+                        next = await manual.park(JSON.stringify(phase.output));
+                    else
+                        return { kind: 'next-output', json: JSON.stringify(phase.output) };
+                }
+                return { kind: 'manual-finished' };
+            }
             for (const step of [...trace.prefix, trace.requestedStep]) {
                 const phase = evaluateStep(step);
                 if (phase.kind === 'unavailable')
@@ -945,6 +1022,9 @@ async function evaluateGuest(request, manual) {
                         const next = await manual.park(JSON.stringify(output));
                         if (next.kind === 'close')
                             return { kind: 'manual-finished' };
+                        if (next.kind !== 'advance')
+                            throw new GuestRefusal('SCHEMA_WORKER_OUTPUT_INVALID');
+                        stageScopeObjects(next.scopeObjects);
                         const fresh = evaluateStep({ eventId: next.step.eventId,
                             frame: stateOnly ? next.step.frame : { ...next.step.frame, material } });
                         if (fresh.kind === 'unavailable')
@@ -1021,6 +1101,9 @@ async function evaluateGuest(request, manual) {
         return unavailable(code);
     }
     finally {
+        incomingScopeObjects.clear();
+        scopeResolver = undefined;
+        readers.clear();
         // Attempt every owned cleanup even if one disposer fails. A failed cleanup
         // invalidates a previously computed output rather than completing a phase.
         let cleanupFailed = false;
@@ -1048,10 +1131,21 @@ async function evaluateGuest(request, manual) {
     }
 }
 if (parentPort) {
-    const request = unpackSchemaEnvelopeV4(workerData, 2 * MVU_SCHEMA_BOUNDS.programBytes + MVU_SCHEMA_BOUNDS.inputBytes, { nodes: MVU_SCHEMA_BOUNDS.evaluationNodes, depth: MVU_SCHEMA_BOUNDS.evaluationDepth });
-    if ('response' in request && request.response === 'manual') {
+    const seed = workerData;
+    const materialIdentity = new Map();
+    const bounds = { nodes: MVU_SCHEMA_BOUNDS.evaluationNodes, depth: MVU_SCHEMA_BOUNDS.evaluationDepth };
+    const request = seed.kind === 'live-open' ? {
+        ...unpackSchemaEnvelopeV4(seed.header, 2 * MVU_SCHEMA_BOUNDS.programBytes, bounds, materialIdentity),
+        loadFrame: unpackSchemaEnvelopeV4(seed.load, MVU_SCHEMA_BOUNDS.inputBytes, undefined, materialIdentity),
+        response: seed.mode, scopeObjects: seed.scopeObjects
+    } : seed.kind === 'scope-reference-request-v2' ? {
+        ...unpackSchemaEnvelopeV4(seed.request, 2 * MVU_SCHEMA_BOUNDS.programBytes + MVU_SCHEMA_BOUNDS.inputBytes, bounds),
+        scopeObjects: seed.scopeObjects
+    } :
+        unpackSchemaEnvelopeV4(workerData, 2 * MVU_SCHEMA_BOUNDS.programBytes + MVU_SCHEMA_BOUNDS.inputBytes, bounds);
+    if ('response' in request && (request.response === 'manual' || request.response === 'hot' || request.response === 'manual-stream')) {
         const inbox = manualWorkerInbox();
-        evaluateGuest(request, inbox).then(result => {
+        evaluateGuest(request, inbox, materialIdentity).then(result => {
             inbox.dispose();
             const value = result.kind === 'next-output' || result.kind === 'unavailable' ?
                 { kind: 'manual-closed', cleanup: 'completed', result } : { kind: 'manual-closed', cleanup: 'completed' };

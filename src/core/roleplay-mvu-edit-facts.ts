@@ -33,6 +33,7 @@ export interface MvuEditInvalidationRecord {
 }
 export interface MvuEditFactsDeps {
   table:{get(key:string):unknown;entries(exactPrefix?:string):Iterable<[string,unknown]>;
+    entriesPrefix?(prefix:string|readonly string[]):Iterable<[string,unknown]>;
     put(key:string,value:MvuEditInvalidationRecord):Promise<unknown>}
   readSession(sessionId:string):ReadBranchSession|undefined
   /** Actual maintained history feed and edit interpreter, owned by Core. */
@@ -114,6 +115,7 @@ function basisValid(input:MvuEditBasisFacts):MvuEditBasisFacts {
 }
 
 export function createRoleplayMvuEditFacts(deps:MvuEditFactsDeps) {
+  const editRows=(sid:string)=>deps.table.entriesPrefix?.(prefix(sid))??deps.table.entries(prefix(sid))
   const pending=new Map<string,number>()
   let generation=0
   function history(sid:string) {
@@ -137,7 +139,8 @@ export function createRoleplayMvuEditFacts(deps:MvuEditFactsDeps) {
       ||!seq(data.targetSeq)||data.targetSeq>=edit.seq||typeof data.text!=='string'||data.text.length>1000000
       ||!['assistant','user'].includes(String(data.role))||typeof data.messageId!=='string'
       ||!data.messageId.length||data.messageId.length>1024)fail('NUMERICAL_EDIT_IDENTITY_INVALID')
-    exact(data,['schemaVersion','targetSeq','messageId','role','text'])
+    // Native session-format admits the edit, including optional author operation
+    // metadata. This owner only derives its numerical invalidation identity.
     const target=events[data.targetSeq],role=data.role as 'assistant'|'user'
     const originalMessageId=role==='assistant'?target?.data?.message?.id:target?.data?.id
     const originalRole=role==='assistant'?target?.data?.message?.role:target?.data?.role
@@ -160,7 +163,7 @@ export function createRoleplayMvuEditFacts(deps:MvuEditFactsDeps) {
     const rows=new Map<string,MvuEditInvalidationRecord>()
     // Only denial receipts belong to this inventory's change footprint.
     // Completing a task edit must not revoke its published numerical view.
-    for(const [key,value] of deps.table.entries(prefix(sid)))if(key.startsWith(prefix(sid))) {
+    for(const [key,value] of editRows(sid))if(key.startsWith(prefix(sid))) {
       if(rows.size>=4096||rows.has(key))fail('NUMERICAL_EDIT_RECORD_LIMIT')
       const row=clone(value) as MvuEditInvalidationRecord
       const actual=clone(deps.table.get(key))
@@ -199,7 +202,7 @@ export function createRoleplayMvuEditFacts(deps:MvuEditFactsDeps) {
       if(basis.kind==='verified'&&basis.editFloorSeq>observed.events.length)return false
       const current=observed.current.filter(edit=>basis.kind==='none'||edit.seq>=basis.editFloorSeq)
       if(variantPending(sid)||current.length
-        ||[...deps.table.entries(prefix(sid))].some(([key])=>key.startsWith(prefix(sid)))
+        ||[...editRows(sid)].some(([key])=>key.startsWith(prefix(sid)))
         ||pending.get(sid)!==started)return false
       pending.delete(sid)
       return true
@@ -210,7 +213,7 @@ export function createRoleplayMvuEditFacts(deps:MvuEditFactsDeps) {
       const basis=basisValid(deps.readNumericalBasisFacts(sid))
       if(basis.kind==='unknown')fail('NUMERICAL_EDIT_BASIS_UNKNOWN')
       if(basis.kind==='none') {
-        if([...deps.table.entries(prefix(sid))].some(([key])=>key.startsWith(prefix(sid))))fail('NUMERICAL_EDIT_BASIS_UNKNOWN')
+        if([...editRows(sid)].some(([key])=>key.startsWith(prefix(sid))))fail('NUMERICAL_EDIT_BASIS_UNKNOWN')
         return {kind:'clear'}
       }
       if(variantPending(sid)||pending.has(sid))return {kind:'unknown',code:'NUMERICAL_EDIT_PENDING'}
@@ -242,7 +245,7 @@ export function createRoleplayMvuEditFacts(deps:MvuEditFactsDeps) {
         if(!edit)fail('NUMERICAL_EDIT_NOT_CURRENT')
         const identity=editIdentity(edit,events)
         if(basis.kind==='none') {
-          if([...deps.table.entries(prefix(sid))].some(([key])=>key.startsWith(prefix(sid))))fail('NUMERICAL_EDIT_BASIS_UNKNOWN')
+          if([...editRows(sid)].some(([key])=>key.startsWith(prefix(sid))))fail('NUMERICAL_EDIT_BASIS_UNKNOWN')
           if(pending.get(sid)===started)pending.delete(sid)
           return {kind:'unaffected'}
         }

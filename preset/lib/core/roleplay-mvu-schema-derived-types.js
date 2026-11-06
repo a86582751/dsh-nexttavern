@@ -2,7 +2,7 @@
 /** Frozen schema inheritance is a factual baseline. None of these versioned
  * records carries a Native input capability, live lease or publication token. */
 import { recordSha256 } from './roleplay-data.js';
-import { COMBINED_AUTHOR_DATA_BOUNDS_V6 } from './tavern-author-combined-types-v6.mjs';
+import { COMBINED_AUTHOR_DATA_BOUNDS_V8 } from './tavern-author-combined-types-v8.mjs';
 import { sealMvuSchemaStoryFact, validateMvuSchemaNumericalSnapshot } from './roleplay-mvu-schema-story-types.js';
 import { validateMvuSchemaOpeningIntent, validateMvuSchemaOpeningEvent, validateMvuSchemaOpeningHead } from './roleplay-mvu-schema-opening-types.js';
 import { validateMvuDerivedSourceProof } from './roleplay-mvu-lineage.js';
@@ -19,12 +19,12 @@ const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value
 const id = (value) => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 const integer = (value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && !Object.is(value, -0);
 const same = (left, right) => recordSha256(left) === recordSha256(right);
-// Cold inheritance metadata and prefix leaves have independent admission
-// owners. Assembling admitted children does not charge their graphs again;
-// Source material keeps its existing material codec.
-const inheritanceBounds = { nodes: COMBINED_AUTHOR_DATA_BOUNDS_V6.descriptorNodes,
-    depth: COMBINED_AUTHOR_DATA_BOUNDS_V6.descriptorDepth,
-    arrayLength: COMBINED_AUTHOR_DATA_BOUNDS_V6.descriptorArrayLength };
+// Cold prefix, prepared, basis and closed table inputs have independent raw
+// DATA admission budgets. A live owner assembling already admitted children
+// does not charge them again; Source material keeps its existing material codec.
+const inheritanceBounds = { nodes: COMBINED_AUTHOR_DATA_BOUNDS_V8.descriptorNodes,
+    depth: COMBINED_AUTHOR_DATA_BOUNDS_V8.descriptorDepth,
+    arrayLength: COMBINED_AUTHOR_DATA_BOUNDS_V8.descriptorArrayLength };
 const inheritanceClones = new WeakSet();
 function rememberInheritanceClone(value) {
     if (value && typeof value === 'object') {
@@ -101,7 +101,16 @@ function validateFrozenPrefixUncached(input) {
 }
 function validateFrozenPrefixFields(prefix) {
     exact(prefix, ['schemaVersion', 'encoding', 'sessionId', 'inheritedEventCount', 'sourceSha256', 'original',
-        'seed', 'initial', 'journal', 'eventKeys', 'snapshot', 'consumed', 'prefixSha256']);
+        'seed', 'initial', 'journal', 'eventKeys', 'snapshot', 'consumed', 'prefixSha256',
+        ...Object.hasOwn(prefix, 'openingVariants') ? ['openingVariants'] : []]);
+    if (Object.hasOwn(prefix, 'openingVariants')) {
+        const selection = prefix.openingVariants;
+        exact(selection, ['setRef', 'activeVariantId']);
+        exact(selection.setRef, ['key', 'sha256']);
+        if (typeof selection.setRef.key !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(selection.setRef.key)
+            || !hash(selection.setRef.sha256) || !id(selection.activeVariantId))
+            fail();
+    }
     const initial = validateMvuSchemaNumericalSnapshot(prefix.initial), snapshot = validateMvuSchemaNumericalSnapshot(prefix.snapshot);
     if (prefix.schemaVersion !== 1 || prefix.encoding !== 'native-mvu-schema-frozen-prefix-v1' || !id(prefix.sessionId)
         || !integer(prefix.inheritedEventCount) || !hash(prefix.sourceSha256) || !hash(prefix.prefixSha256)
@@ -138,6 +147,14 @@ function validateFrozenPrefixFields(prefix) {
         exact(prefix.seed, ['kind', 'basisKey', 'basisSha256']);
         if (prefix.seed.basisKey !== mvuSchemaDerivedBasisKey(prefix.sessionId) || !hash(prefix.seed.basisSha256)
             || initial.root.derived?.basisSha256 !== prefix.seed.basisSha256)
+            fail();
+    }
+    else if (prefix.seed.kind === 'activation') {
+        exact(prefix.seed, ['kind', 'activationRef']);
+        exact(prefix.seed.activationRef, ['key', 'sha256']);
+        if (prefix.inheritedEventCount !== 0 || !hash(prefix.seed.activationRef.sha256)
+            || prefix.seed.activationRef.key !== `${prefix.sessionId}__opening-variant-activation-seed`
+            || !initial.root.activation)
             fail();
     }
     else

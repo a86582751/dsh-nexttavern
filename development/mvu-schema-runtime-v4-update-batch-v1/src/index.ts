@@ -124,25 +124,33 @@ export async function createMvuSchemaRuntimeV4(deps:MvuSchemaRuntimeV4Deps):Prom
     const runnerModule=await import(pathToFileURL(pathname(root,descriptor.modules.runner)).href) as {
       createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRunnerV4}
     if(admitted(root,deps).generation!==pin.generation)throw failure()
+    let disposal:Promise<void>|undefined
+    const current=()=>{
+      if(disposal||loadedGeneration!==pin.generation)throw failure()
+      deps.typescript.checkCurrent()
+    }
+    // Installed generations are immutable. Warm operations consume their
+    // loaded resources; only a new Worker loads package bytes again.
+    const beforeWorkerLoad=()=>{
+      current()
+      if(admitted(root,deps).generation!==pin.generation)throw failure()
+    }
     compiler=compilerModule.createMvuSchemaCompilerV4({identity:{id:'native-mvu-schema-compiler',version:4,typescriptVersion:'5.9.3',
       implementationSha256:implementation('compiler')},
-      workerUrl:pathToFileURL(pathname(root,descriptor.modules['compiler-worker']))})
+      workerUrl:pathToFileURL(pathname(root,descriptor.modules['compiler-worker'])),beforeWorkerLoad})
     runner=runnerModule.createMvuSchemaRunnerV4({identity:{id:'native-mvu-schema-runner',version:4,quickjsVersion:'0.32.0',
       implementationSha256:implementation('runner')},bridge,stateLoader,libraries,
-      workerUrl:pathToFileURL(pathname(root,descriptor.modules['runner-worker']))})
-    // Admission keeps the entire file set and symlink-free paths unchanged;
-    // the initial dependency graph therefore still applies to each worker.
-    const current=()=>{deps.typescript.checkCurrent();const now=admitted(root,deps);if(now.generation!==pin.generation)throw failure()}
+      workerUrl:pathToFileURL(pathname(root,descriptor.modules['runner-worker'])),beforeWorkerLoad})
     const unavailable={kind:'unavailable' as const,diagnostics:[{code:'SCHEMA_RUNTIME_ASSETS_UNAVAILABLE'}]}
     const guarded=async<T,>(action:()=>Promise<T>,fallback:T):Promise<T>=>{
       try {current();const result=await action();current();return result}catch {return fallback}
     }
     const actualCompiler=compiler,actualRunner=runner
-    const openManualRun:NonNullable<MvuSchemaRunnerV4['openManualRun']>=async(program,input,signal)=>{
+    const openManualRun=(selected:MvuSchemaRunnerV4):NonNullable<MvuSchemaRunnerV4['openManualRun']>=>async(program,input,signal)=>{
       let opened:Extract<MvuSchemaOpenManualRunResultV4,{kind:'opened-manual-run'}>|undefined
       try {
         current()
-        const result=await actualRunner.openManualRun!(program,input,signal)
+        const result=await selected.openManualRun!(program,input,signal)
         if(result.kind==='opened-manual-run')opened=result
         current()
         // This live resource owns its actually loaded Worker. Later advances
@@ -155,30 +163,40 @@ export async function createMvuSchemaRuntimeV4(deps:MvuSchemaRuntimeV4Deps):Prom
         return unavailable
       }
     }
-    let disposal:Promise<void>|undefined
+    const guardedRunner=(selected:MvuSchemaRunnerV4):MvuSchemaRunnerV4=>({identity:selected.identity,
+      scopeInputProtocols:selected.scopeInputProtocols,
+      bindScopeReferencesV2:selected.bindScopeReferencesV2?read=>{
+        current();return guardedRunner(selected.bindScopeReferencesV2!(read))
+      }:undefined,
+      bindOwnedNext:selected.bindOwnedNext?reader=>{
+        current()
+        const bound=selected.bindOwnedNext!(reader)
+        return {evaluateNext:(program,input,signal)=>guarded(
+          ()=>bound.evaluateNext(program,input,signal),unavailable as MvuSchemaNextRunResultV4)}
+      }:undefined,
+      evaluate:(program,input,signal)=>guarded(()=>selected.evaluate(program,input,signal),unavailable as MvuSchemaRunResultV4),
+      verifyEvaluation:(program,evaluation,signal)=>guarded(()=>selected.verifyEvaluation(program,evaluation,signal),false),
+      evaluateTrace:(program,input,signal)=>guarded(()=>selected.evaluateTrace(program,input,signal),unavailable as MvuSchemaTraceRunResultV4),
+      evaluateNext:(program,input,signal)=>guarded(()=>selected.evaluateNext!(program,input,signal),unavailable as MvuSchemaNextRunResultV4),
+      openManualRun:openManualRun(selected),
+      verifyTrace:(program,evaluation,signal)=>guarded(()=>selected.verifyTrace(program,evaluation,signal),false),
+      dispose:()=>selected.dispose()})
     return {libraries:Object.freeze(libraries.map(({code:_code,...library})=>Object.freeze(library))),bridge,stateLoader,
       compiler:{identity:actualCompiler.identity,
         compile:(input,signal)=>guarded(()=>actualCompiler.compile(input,signal),
           {kind:'refused',diagnostics:unavailable.diagnostics} as CompilationV4),
-        partitionCandidates:(input,signal,browserCandidateOrdinals)=>guarded(
-          ()=>actualCompiler.partitionCandidates(input,signal,browserCandidateOrdinals),
+        partitionCandidates:(input,signal)=>guarded(
+          ()=>actualCompiler.partitionCandidates(input,signal),
           {kind:'refused',diagnostics:unavailable.diagnostics} as ServerCandidatePartitionV4),
-        assembleOwnedStateProgram:(original,browserProgram)=>{
+        assembleOwnedStateProgram:(original,numericalProfile)=>{
           current()
-          const program=actualCompiler.assembleOwnedStateProgram(original,browserProgram)
+          const program=actualCompiler.assembleOwnedStateProgram(original,numericalProfile)
           current()
           return program
         },
         verifyProgram:(program,signal)=>guarded(()=>actualCompiler.verifyProgram(program,signal),false),
         dispose:()=>actualCompiler.dispose()},
-      runner:{identity:actualRunner.identity,
-        evaluate:(program,input,signal)=>guarded(()=>actualRunner.evaluate(program,input,signal),unavailable as MvuSchemaRunResultV4),
-        verifyEvaluation:(program,evaluation,signal)=>guarded(()=>actualRunner.verifyEvaluation(program,evaluation,signal),false),
-        evaluateTrace:(program,input,signal)=>guarded(()=>actualRunner.evaluateTrace(program,input,signal),unavailable as MvuSchemaTraceRunResultV4),
-        evaluateNext:(program,input,signal)=>guarded(()=>actualRunner.evaluateNext!(program,input,signal),unavailable as MvuSchemaNextRunResultV4),
-        openManualRun,
-        verifyTrace:(program,evaluation,signal)=>guarded(()=>actualRunner.verifyTrace(program,evaluation,signal),false),
-        dispose:()=>actualRunner.dispose()},
+      runner:guardedRunner(actualRunner),
       dispose(){return disposal??=Promise.all([actualCompiler.dispose(),actualRunner.dispose()]).then(()=>undefined)}}
   } catch {
     await Promise.all([compiler?.dispose(),runner?.dispose()])
