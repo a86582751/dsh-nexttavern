@@ -157,13 +157,26 @@ export function nativeRequestMaterialDecisionV1(value) {
     }
     if (kind !== 'transform')
         return fail();
+    return nativeMaterialTransformData(value, false);
+}
+export function nativeMaterialTextDraftV1(value) {
+    const row = object(value, ['kind', 'structure', 'finalize']);
+    if (row['kind'] !== 'text-draft' || typeof row['finalize'] !== 'function')
+        return fail();
+    const structure = nativeMaterialTransformData(row['structure'], true);
+    return Object.freeze({ kind: 'text-draft', structure,
+        finalize: row['finalize'].bind(value) });
+}
+function nativeMaterialTransformData(value, draft) {
+    if (value === null || typeof value !== 'object' || utilTypes.isProxy(value))
+        return fail();
     const hasAnchors = Object.hasOwn(value, 'anchoredInsertions');
     const version = Object.getOwnPropertyDescriptor(value, 'schemaVersion')?.value;
-    const hasProjection = Object.hasOwn(value, 'messageProjection'), hasStory = Object.hasOwn(value, 'story');
-    const row = object(value, ['kind', 'schemaVersion', 'encoding', 'snapshot', 'plan', 'captureSha256',
+    const hasProjection = Object.hasOwn(value, 'messageProjection'), hasStory = Object.hasOwn(value, 'story'), hasFinalText = Object.hasOwn(value, 'finalTextProjection');
+    const row = object(value, [...draft ? [] : ['kind', 'snapshot', 'plan', 'captureSha256'], 'schemaVersion', 'encoding',
         'expectedAssemblySha256', 'expectedSelectedBaseSha256', 'requiredSections', 'sections', 'insertions',
         ...hasAnchors ? ['anchoredInsertions'] : [], ...version === 2 ? ['messageTextProjections'] : [],
-        ...hasProjection ? ['messageProjection'] : [], ...hasStory ? ['story'] : []]);
+        ...hasProjection ? ['messageProjection'] : [], ...hasStory ? ['story'] : [], ...hasFinalText ? ['finalTextProjection'] : []]);
     if (!(version === 1 && row['encoding'] === 'native-request-material-owner-transform-v1'
         || version === 2 && row['encoding'] === 'native-request-material-owner-transform-v2'))
         return fail();
@@ -252,14 +265,28 @@ export function nativeRequestMaterialDecisionV1(value) {
     }) : undefined;
     if (messageTextProjections && new Set(messageTextProjections.map(item => item.target.id)).size !== messageTextProjections.length)
         return fail();
-    const common = { kind: 'transform',
-        snapshot: ref(row['snapshot']), plan: ref(row['plan']), captureSha256: sha(row['captureSha256']),
+    const common = { ...draft ? {} : { kind: 'transform',
+            snapshot: ref(row['snapshot']), plan: ref(row['plan']), captureSha256: sha(row['captureSha256']) },
         expectedAssemblySha256: sha(row['expectedAssemblySha256']), expectedSelectedBaseSha256: sha(row['expectedSelectedBaseSha256']),
         requiredSections, sections, insertions, ...anchoredInsertions ? { anchoredInsertions } : {},
         ...hasProjection ? { messageProjection: messageProjection(row['messageProjection']) } : {},
-        ...hasStory ? { story: storyPolicy(row['story']) } : {} };
+        ...hasStory ? { story: storyPolicy(row['story']) } : {},
+        ...hasFinalText ? { finalTextProjection: finalTextProjection(row['finalTextProjection']) } : {} };
     return messageTextProjections ? deepFreeze({ ...common, schemaVersion: 2, encoding: 'native-request-material-owner-transform-v2', messageTextProjections }) :
         deepFreeze({ ...common, schemaVersion: 1, encoding: 'native-request-material-owner-transform-v1' });
+}
+function finalTextProjection(value) {
+    const row = object(value, ['schemaVersion', 'encoding', 'textOutputs']);
+    if (row['schemaVersion'] !== 1 || row['encoding'] !== 'native-request-final-text-projection-v1')
+        return fail();
+    return { schemaVersion: 1, encoding: 'native-request-final-text-projection-v1',
+        textOutputs: array(row['textOutputs'], 131072).map(value => {
+            const output = object(value, ['messageOrdinal', 'blockOrdinal', 'text']), replacement = text(output['text'], 16_777_216);
+            if (!replacement.isWellFormed())
+                return fail();
+            return { messageOrdinal: count(output['messageOrdinal'], 4351),
+                blockOrdinal: output['blockOrdinal'] === null ? null : count(output['blockOrdinal'], 4095), text: replacement };
+        }) };
 }
 function messageProjection(value) {
     const hasTextEdits = value !== null && typeof value === 'object' && !utilTypes.isProxy(value) && Object.hasOwn(value, 'textEdits');
@@ -286,16 +313,21 @@ function messageProjection(value) {
             }) } : {} };
 }
 function storyHooks(value) {
+    const version = value !== null && typeof value === 'object' ? value.schemaVersion : undefined;
     const fields = ['normalizeText', 'recoverText', 'createTextTransform'].filter(field => value !== null && typeof value === 'object'
         && !utilTypes.isProxy(value) && Object.hasOwn(value, field));
-    const row = object(value, ['schemaVersion', ...fields]);
-    if (row['schemaVersion'] !== 1 || fields.some(field => typeof row[field] !== 'function'))
+    const row = object(value, ['schemaVersion', ...fields, ...version === 2 ? ['finalizeText'] : []]);
+    if (version !== 1 && version !== 2 || fields.some(field => typeof row[field] !== 'function')
+        || version === 2 && typeof row['finalizeText'] !== 'function')
         return fail();
-    return Object.freeze({ schemaVersion: 1, ...row['normalizeText'] ? {
+    const shared = { ...row['normalizeText'] ? {
             normalizeText: row['normalizeText'].bind(value)
         } : {},
         ...row['recoverText'] ? { recoverText: row['recoverText'].bind(value) } : {},
-        ...row['createTextTransform'] ? { createTextTransform: row['createTextTransform'].bind(value) } : {} });
+        ...row['createTextTransform'] ? { createTextTransform: row['createTextTransform'].bind(value) } : {} };
+    return version === 2 ? Object.freeze({ ...shared, schemaVersion: 2,
+        finalizeText: row['finalizeText'].bind(value) }) :
+        Object.freeze({ ...shared, schemaVersion: 1 });
 }
 function storyPolicy(value) {
     const fields = ['sampling', 'response'].filter(field => value !== null && typeof value === 'object' && !utilTypes.isProxy(value) && Object.hasOwn(value, field));

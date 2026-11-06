@@ -162,7 +162,17 @@ export function applyChildComposition(childCtx, parent, composition) {
         order: childCtx.systemPrompt.getContextOrder('SUBAGENT_DELEGATION'),
         text: SUBAGENT_DELEGATION_CONTEXT,
     });
-    if (composition.persona !== undefined) {
+    if (composition.isolatedSystem !== undefined) {
+        childCtx.systemPrompt.section({
+            name: 'deployment:persona-prefix',
+            order: childCtx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
+            text: composition.isolatedSystem,
+            interpolate: false,
+            complete: true,
+        });
+        childCtx.systemPrompt.suppressRuntimeContext();
+    }
+    else if (composition.persona !== undefined) {
         childCtx.systemPrompt.section({
             name: 'deployment:persona-prefix',
             order: childCtx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),

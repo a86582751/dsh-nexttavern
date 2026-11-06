@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import * as core from '../lib/core/roleplay-core.js'
+import * as core from '../lib/core/roleplay-context.js'
 
 assert.equal(typeof core.retireRoleplayContexts,'function','context retention remains a native policy boundary')
 const session={id:'selected-branch',events:[],surface:{nodes:[]},seq:0}

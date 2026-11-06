@@ -1,4 +1,4 @@
-import type {BeforeForkPublish} from './fork-reservation.js'
+import type {BeforeForkPublish,BeforeFirstForkPublish,ForkBeforeFirstRequest} from './fork-reservation.js'
 /** Session Remote owner: cold reads, explicit Agent commands, and live control state. */
 
 import { hostname } from 'node:os'
@@ -7,10 +7,10 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-fs'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { errorChain, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { errorChain, ReasoningEffortId } from 'dsh-nexttavern-native-llm'
 import type {} from '@deepseek-ai/dsh-client-file-upload'
 import { canOpenNativePath, nativeFileManager, nativeFileApplications, openNativeFileApplication, openNativeAssociatedPath, revealNativePath } from '@deepseek-ai/dsh-native-command'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionId } from 'dsh-nexttavern-native-session'
 import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -65,10 +65,13 @@ import type {
   SessionProjectionValues,
   SessionUpdateQueueRequest,
   SessionUpdateQueueValue,
+  UserSourceOperation,
+  AuthorUserInput,
 } from './types.js'
 
 export type * from './types.js'
-export type {BeforeForkPublish, ForkReservation} from './fork-reservation.js'
+export type {BeforeForkPublish,ForkReservation,BeforeFirstForkPublish,ForkBeforeFirstRequest,
+  ForkBeforeFirstReservation} from './fork-reservation.js'
 export { ApiSessionNotFound } from './agent.js'
 export { SessionFileReferences, SessionSkillCatalog } from '@deepseek-ai/dsh-api-session-controller'
 
@@ -138,6 +141,7 @@ export class SessionController extends TypertRemoteService {
     installModelSelectionProjection(ctx)
     this.agents = new ApiSessionAgentController(ctx)
     this.commands = new SessionCommandController(ctx, this.agents, process.cwd())
+    ctx.effect(()=>()=>this.commands.disposeUserSourceOperations(),'session-controller: user Source owners')
     // Cordis 4.0.3 wraps function-valued service properties on reads. The native
     // resolver disposer compares callback identity, so it must close over the
     // service receiver itself rather than that tracing proxy. Registration has
@@ -433,6 +437,12 @@ export class SessionController extends TypertRemoteService {
     return this.commands.fork(request, beforePublish)
   }
 
+  /** Reserve a genuine zero-inherited fork and retain its identity on Host retry. */
+  forkBeforeFirstPrepared(request: ForkBeforeFirstRequest, beforePublish: BeforeFirstForkPublish): Promise<SessionForkValue> {
+    if (typeof beforePublish !== 'function') throw new TypeError('forkBeforeFirstPrepared requires a reservation callback')
+    return this.commands.forkBeforeFirstPrepared(request, beforePublish)
+  }
+
   /**
    * Admit one prompt after explicitly resuming its Session.
    * @param request - Session identity, prompt content, source metadata, and delivery mode.
@@ -442,7 +452,17 @@ export class SessionController extends TypertRemoteService {
   @Remote('prompt')
   prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue> {
     signal.throwIfAborted()
-    return this.commands.prompt(request)
+    return this.commands.prompt(request,signal)
+  }
+
+  /** Register the actual Agent's Source owner. Its binder retains the disposer. */
+  registerUserSourceOperation(agent:Agent,operation:UserSourceOperation):()=>void {
+    return this.commands.registerUserSourceOperation(agent,operation)
+  }
+
+  /** Local author capability; remote callers cannot nominate a publisher. */
+  appendAuthorUserInput(agent:Agent,input:AuthorUserInput,signal?:AbortSignal) {
+    return this.commands.appendAuthorUserInput(agent,input,signal)
   }
 
   /**
@@ -461,8 +481,8 @@ export class SessionController extends TypertRemoteService {
    * @returns acknowledgement that the queue mutation was applied.
    */
   @Remote('updateQueue')
-  updateQueue(request: SessionUpdateQueueRequest): Promise<SessionUpdateQueueValue> {
-    return this.commands.updateQueue(request)
+  updateQueue(request: SessionUpdateQueueRequest,signal?:AbortSignal): Promise<SessionUpdateQueueValue> {
+    return this.commands.updateQueue(request,signal)
   }
 
   /**

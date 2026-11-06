@@ -1,7 +1,7 @@
 // Generated from runtime/alpha3/src/core/roleplay-input-material.ts; edit the TypeScript source.
 /** Hot material data belongs to one existing Core input binding. Persisted
  * records can explain a request; they cannot recreate this owner after resume. */
-import { nativeInputSha256 } from '@deepseek-ai/dsh-agent-loop';
+import { nativeInputSha256, projectNativeMaterialTextOutputsV1 } from 'dsh-nexttavern-native-agent-loop';
 import { recordSha256, keyOf } from './roleplay-data.js';
 /** One preparation budget covers lock waits, deterministic workers and record
  * publication. Nested work cannot renew it by starting another evaluator. */
@@ -16,6 +16,7 @@ function candidateTransform(row) {
         ...row.refs, captureSha256: row.captureSha256, expectedAssemblySha256: row.initial.assemblySha256,
         expectedSelectedBaseSha256: row.initial.selected.sha256, requiredSections: row.material.requiredSections,
         sections: row.material.sections, insertions: row.material.insertions,
+        ...row.material.finalTextProjection ? { finalTextProjection: row.material.finalTextProjection } : {},
         ...row.material.anchoredInsertions ? { anchoredInsertions: row.material.anchoredInsertions } : {},
         ...row.material.messageProjection ? { messageProjection: row.material.messageProjection } : {},
         ...row.material.story ? { story: row.material.story } : {} };
@@ -52,6 +53,93 @@ function freeze(value) {
     }
     return value;
 }
+export function roleplayMaterialPreparationJournalKeyV1(snapshotKey, operationId) {
+    if (typeof operationId !== 'string' || !operationId.length)
+        fail('MATERIAL_PREPARATION_JOURNAL_OPERATION_INVALID');
+    return `${snapshotKey}-journal-${recordSha256(operationId)}`;
+}
+/** Project the existing material envelope's owner fields. Envelope validity
+ * remains with the live writer or the actual Native-bound cold reader. */
+export function roleplayMaterialPreparationJournalOwnerV1(basis) {
+    const common = { sessionId: basis['sessionId'], turn: basis['turn'], step: basis['step'] };
+    if (basis['encoding'] === 'core-input-material-record-v1')
+        return { kind: 'input', ...common,
+            branchId: basis['branchId'], preparation: basis['preparation'], currency: basis['currency'],
+            originalInputRefs: basis['originalInputRefs'] };
+    if (basis['encoding'] === 'core-program-opening-material-record-v1')
+        return { kind: 'opening', ...common,
+            identity: basis['identity'], seedRef: basis['seedRef'], inputRef: basis['inputRef'], nativeOwner: basis['nativeOwner'] };
+    return fail('MATERIAL_PREPARATION_JOURNAL_OWNER_INVALID');
+}
+/** The caller supplies the actual material scope/Native identity. This checks
+ * only explanatory DATA association and cannot restore an execution owner. */
+export function readRoleplayMaterialPreparationJournalRowV1(value, expected) {
+    const row = value;
+    if (!row || row.schemaVersion !== 1 || row.encoding !== 'core-material-preparation-journal-v1'
+        || row.authority !== 'consumer-data-only' || Object.keys(row).length !== 6
+        || typeof row.operationId !== 'string' || !row.operationId.length
+        || !row.payload || typeof row.payload !== 'object' || Array.isArray(row.payload)
+        || recordSha256(row.owner) !== recordSha256(expected.owner)
+        || expected.key !== roleplayMaterialPreparationJournalKeyV1(expected.snapshotKey, row.operationId)) {
+        fail('MATERIAL_PREPARATION_JOURNAL_INVALID');
+    }
+    return row;
+}
+/** Shared persistence contract for the two real material writers. Only their
+ * live, source-free lifecycle guard admits reads and append confirmations. */
+export function createRoleplayMaterialPreparationJournalV1(options) {
+    const binding = freeze(structuredClone(options.owner)), refs = new Map();
+    const inspect = (operationId) => {
+        options.assertOwnerFactsCurrent();
+        const key = roleplayMaterialPreparationJournalKeyV1(options.snapshotKey, operationId), value = options.table.get(key);
+        if (value === undefined || value === null)
+            return undefined;
+        const row = readRoleplayMaterialPreparationJournalRowV1(value, { key, snapshotKey: options.snapshotKey, owner: binding }), ref = Object.freeze({ key, sha256: recordSha256(row) });
+        options.register({ ...ref, value: row }, 'writing');
+        options.register({ ...ref, value: row }, 'written');
+        options.assertOwnerFactsCurrent();
+        refs.set(key, ref);
+        return { row, ref };
+    };
+    const journal = {
+        read(operationId) { return inspect(operationId)?.row.payload; },
+        append(operationId, payload, beforeWrite) {
+            return options.enqueue(async () => {
+                const existing = inspect(operationId), key = roleplayMaterialPreparationJournalKeyV1(options.snapshotKey, operationId), value = freeze({ schemaVersion: 1, encoding: 'core-material-preparation-journal-v1',
+                    authority: 'consumer-data-only', owner: binding, operationId, payload: structuredClone(payload) }), ref = Object.freeze({ key, sha256: recordSha256(value) });
+                if (existing) {
+                    if (existing.ref.sha256 !== ref.sha256)
+                        fail('MATERIAL_PREPARATION_JOURNAL_CONFLICT');
+                    return existing.ref;
+                }
+                options.register({ ...ref, value }, 'writing');
+                let failure;
+                const release = beforeWrite?.({ key, value });
+                try {
+                    await options.table.put(key, value);
+                }
+                catch (error) {
+                    failure = { error };
+                }
+                finally {
+                    release?.();
+                }
+                // A lost put ACK can be confirmed from the same durable operation.
+                // No canonical consumer may run until this exact pending append ACKs.
+                if (recordSha256(options.table.get(key)) !== ref.sha256) {
+                    if (failure)
+                        throw failure.error;
+                    fail('MATERIAL_PREPARATION_JOURNAL_WRITE_UNCONFIRMED');
+                }
+                options.register({ ...ref, value }, 'written');
+                options.assertOwnerFactsCurrent();
+                refs.set(key, ref);
+                return ref;
+            });
+        },
+    };
+    return { journal, references: () => Object.freeze([...refs.values()]) };
+}
 /** This factory is invoked only inside the original Core bind closure. The
  * scope callback refuses before revealing a reconstructed or foreign step. */
 export function createRoleplayInputMaterialOwnerV1(deps, owner) {
@@ -76,10 +164,14 @@ export function createRoleplayInputMaterialOwnerV1(deps, owner) {
             fail('INPUT_MATERIAL_RECORD_CHANGED');
     }
     const requestMaterial = { schemaVersion: 1, sectionNames: deps.sectionNames,
-        story: { schemaVersion: 1,
+        story: { schemaVersion: 2,
             normalizeText: text => ready?.responseHooks?.normalizeText?.(text) ?? text,
             recoverText: blocks => ready?.responseHooks?.recoverText?.(blocks),
-            createTextTransform: () => ready?.responseHooks?.createTextTransform?.() ?? { push: text => text, finish: () => '' } },
+            createTextTransform: () => ready?.responseHooks?.createTextTransform?.() ?? { push: text => text, finish: () => '' },
+            async finalizeText(input) {
+                const hooks = ready?.responseHooks;
+                return hooks?.schemaVersion === 2 ? hooks.finalizeText(input) : undefined;
+            } },
         prepare(input) {
             const controller = new AbortController();
             let began = performance.now(), spent = 0, preparing = true, running = true;
@@ -98,11 +190,6 @@ export function createRoleplayInputMaterialOwnerV1(deps, owner) {
                     const original = owner.scope(input, true);
                     if (disposal.signal.aborted)
                         fail('INPUT_MATERIAL_OWNER_DISPOSED');
-                    if (original.stepToken.kind !== 'story') {
-                        outside.add(original.stepToken);
-                        clearReady();
-                        return { kind: 'unchanged' };
-                    }
                     if (ready?.token === original.stepToken) {
                         current(ready);
                         if (nativeInputSha256(input.selected) !== nativeInputSha256(ready.initial.selected)
@@ -111,8 +198,7 @@ export function createRoleplayInputMaterialOwnerV1(deps, owner) {
                         return { kind: 'prepared' };
                     }
                     clearReady();
-                    const prefix = keyOf(original.session.id, `tavern-prompt-v1-${original.currency.preparationId}-${original.currency.attemptGeneration}-${original.step}`);
-                    const signal = AbortSignal.any([original.signal, disposal.signal, controller.signal]);
+                    const signal = AbortSignal.any([input.signal, disposal.signal, controller.signal]);
                     const assertBudgetAndSignal = () => {
                         signal.throwIfAborted();
                         if (preparing && spent + (running ? performance.now() - began : 0) >= ROLEPLAY_INPUT_MATERIAL_LIMITS_V1.deadlineMs) {
@@ -120,110 +206,209 @@ export function createRoleplayInputMaterialOwnerV1(deps, owner) {
                             signal.throwIfAborted();
                         }
                     };
-                    const scope = { ...original, signal,
-                        outputRows: [...original.outputRows ?? [], { table: 'branch', key: prefix + '-snapshot' }, { table: 'branch', key: prefix + '-plan' }],
-                        assertCurrent() {
+                    const sourceDataSuccessor = Symbol('source-data-successor');
+                    const planCandidate = async (original) => {
+                        const prefix = keyOf(original.session.id, `tavern-prompt-v1-${original.currency.preparationId}-${original.currency.attemptGeneration}-${original.step}`);
+                        const scope = { ...original, signal: AbortSignal.any([original.signal, signal]),
+                            outputRows: [...original.outputRows ?? [], { table: 'branch', key: prefix + '-snapshot' }, { table: 'branch', key: prefix + '-plan' }],
+                            assertCurrent() {
+                                assertBudgetAndSignal();
+                                // The scope proves the live input binder. Package byte verification
+                                // belongs to the outer material checkpoint, not every scope read.
+                                original.assertCurrent();
+                            }, assertOwnerFactsCurrent() {
+                                // Facts obey the same combined cancellation and monotonic budget.
+                                // They cannot publish ready or bypass the Native/material gate.
+                                assertBudgetAndSignal();
+                                original.assertOwnerFactsCurrent();
+                            } };
+                        const construct = async (initial, preparedRoute) => {
+                            const data = await deps.prepare(initial, scope);
+                            // The trusted owner has already replaced this opaque step and Phase A.
+                            // No checkpoint of the retired scope can follow this result.
+                            if (data.kind === 'source-data-successor')
+                                throw sourceDataSuccessor;
+                            if (data.kind === 'prepared-data' || data.kind === 'text-draft')
+                                releaseBuild = data.release.bind(data);
+                            scope.signal.throwIfAborted();
+                            scope.assertOwnerFactsCurrent();
+                            if (data.kind !== 'prepared-data' && data.kind !== 'text-draft')
+                                return data;
+                            const checks = { assertCurrent: data.assertCurrent.bind(data), assertSelected: data.assertSelected.bind(data),
+                                release: data.release.bind(data) };
+                            checks.assertSelected(initial.selected, true);
+                            // The recorded plan and the live transform must use the same detached,
+                            // frozen values. A producer's later array mutation cannot alter wire
+                            // content while the persisted explanatory record remains unchanged.
+                            // Layout owns the valid wire data; this publisher only detaches the
+                            // transform so its record and live request retain the same values.
+                            const structure = freeze(structuredClone({ requiredSections: data.requiredSections,
+                                sections: data.sections, insertions: data.insertions,
+                                ...data.anchoredInsertions ? { anchoredInsertions: data.anchoredInsertions } : {},
+                                ...data.messageTextProjections ? { messageTextProjections: data.messageTextProjections } : {},
+                                ...data.messageProjection ? { messageProjection: data.messageProjection } : {}, ...data.story ? { story: data.story } : {} }));
+                            const basis = { schemaVersion: 1, encoding: 'core-input-material-record-v1',
+                                authority: 'consumer-data-only', sessionId: scope.session.id, branchId: scope.session.id,
+                                preparation: scope.preparation, currency: scope.phaseA?.current().reference
+                                    ? { ...scope.currency, snapshot: scope.phaseA.current().reference } : scope.currency,
+                                originalInputRefs: scope.originalInputRefs,
+                                turn: scope.turn, step: scope.step };
+                            const seal = (payload, finalTextProjection) => {
+                                const material = Object.freeze({ ...structure, ...finalTextProjection ? { finalTextProjection } : {} }), materialSha256 = nativeInputSha256(material);
+                                const snapshot = Object.freeze({ ...basis, kind: 'snapshot', payload: payload.snapshot });
+                                const plan = Object.freeze({ ...basis, kind: 'plan', payload: Object.freeze({ promptPlan: payload.plan,
+                                        nativeTransform: material, nativeTransformSha256: materialSha256 }) });
+                                const refs = { snapshot: { key: prefix + '-snapshot', sha256: recordSha256(snapshot) },
+                                    plan: { key: prefix + '-plan', sha256: recordSha256(plan) } };
+                                return { kind: 'material-candidate', initial, scope, checks, material, responseHooks: data.responseHooks,
+                                    ...payload.finalize ? { finalize: payload.finalize } : {},
+                                    ...data.renderedAuthorMaterial ? { renderedAuthorMaterial: data.renderedAuthorMaterial } : {},
+                                    materialSha256, snapshot, plan, refs,
+                                    ...(preparedRoute ? { routeSha256: nativeInputSha256(preparedRoute) } : {}),
+                                    captureSha256: recordSha256({ schemaVersion: 1, encoding: 'core-input-material-capture-v1',
+                                        ...refs, nativeSelectedSha256: initial.selected.sha256, assemblySha256: initial.assemblySha256 }) };
+                            };
+                            if (data.kind === 'prepared-data')
+                                return seal({ ...data, ...data.finalize ? { finalize: data.finalize.bind(data) } : {} });
+                            return { kind: 'material-text-draft', native: { ...structure,
+                                    ...structure.messageTextProjections ? { schemaVersion: 2,
+                                        encoding: 'native-request-material-owner-transform-v2',
+                                        messageTextProjections: structure.messageTextProjections } : { schemaVersion: 1,
+                                        encoding: 'native-request-material-owner-transform-v1' },
+                                    expectedAssemblySha256: initial.assemblySha256, expectedSelectedBaseSha256: initial.selected.sha256 },
+                                async finish(surface) {
+                                    checks.assertCurrent();
+                                    const output = await data.finishRequestText(surface);
+                                    checks.assertCurrent();
+                                    // Native's producer compares actual slots once. Share its sparse
+                                    // immutable result with this plan and Native's final seal.
+                                    return seal(output, projectNativeMaterialTextOutputsV1(surface, output.textOutputs));
+                                } };
+                        };
+                        let chosen;
+                        if (scope.phaseA && input.candidate) {
+                            let selectedBasis;
+                            const preview = async () => input.candidate.preview(scope.phaseA.messages(), async (basis) => {
+                                selectedBasis = basis;
+                                const built = await construct({ ...input, selected: basis.selected,
+                                    selectedCaptureV2: basis.selectedCaptureV2, finalAssembly: basis.finalAssembly,
+                                    assemblySha256: basis.assemblySha256 }, basis.preparedRoute);
+                                if (built.kind === 'material-text-draft')
+                                    return { kind: 'text-draft', structure: built.native,
+                                        async finalize(surface) {
+                                            const finalized = await built.finish(surface);
+                                            chosen = finalized;
+                                            return { ...finalized.refs, captureSha256: finalized.captureSha256,
+                                                ...finalized.material.finalTextProjection ? { finalTextProjection: finalized.material.finalTextProjection } : {} };
+                                        } };
+                                chosen = built;
+                                if (chosen.kind === 'refused')
+                                    fail(chosen.code);
+                                return chosen.kind === 'outside-declared-domain' ? { kind: 'unchanged' } : candidateTransform(chosen);
+                            });
+                            const first = await preview();
                             assertBudgetAndSignal();
-                            // The scope proves the live input binder. Package byte verification
-                            // belongs to the outer material checkpoint, not every scope read.
-                            original.assertCurrent();
-                        }, assertOwnerFactsCurrent() {
-                            // Facts obey the same combined cancellation and monotonic budget.
-                            // They cannot publish ready or bypass the Native/material gate.
-                            assertBudgetAndSignal();
-                            original.assertOwnerFactsCurrent();
-                        } };
-                    const construct = async (initial, preparedRoute) => {
-                        const data = await deps.prepare(initial, scope);
-                        if (data.kind === 'prepared-data')
-                            releaseBuild = data.release.bind(data);
-                        scope.signal.throwIfAborted();
-                        scope.assertOwnerFactsCurrent();
-                        if (data.kind !== 'prepared-data')
-                            return data;
-                        const checks = { assertCurrent: data.assertCurrent.bind(data), assertSelected: data.assertSelected.bind(data),
-                            release: data.release.bind(data) };
-                        checks.assertSelected(initial.selected, true);
-                        // The recorded plan and the live transform must use the same detached,
-                        // frozen values. A producer's later array mutation cannot alter wire
-                        // content while the persisted explanatory record remains unchanged.
-                        // Layout owns the valid wire data; this publisher only detaches the
-                        // transform so its record and live request retain the same values.
-                        const material = freeze(structuredClone({ requiredSections: data.requiredSections,
-                            sections: data.sections, insertions: data.insertions,
-                            ...data.anchoredInsertions ? { anchoredInsertions: data.anchoredInsertions } : {},
-                            ...data.messageTextProjections ? { messageTextProjections: data.messageTextProjections } : {},
-                            ...data.messageProjection ? { messageProjection: data.messageProjection } : {}, ...data.story ? { story: data.story } : {} }));
-                        const materialSha256 = nativeInputSha256(material);
-                        const basis = { schemaVersion: 1, encoding: 'core-input-material-record-v1',
-                            authority: 'consumer-data-only', sessionId: scope.session.id, branchId: scope.session.id,
-                            preparation: scope.preparation, currency: scope.phaseA?.current().reference
-                                ? { ...scope.currency, snapshot: scope.phaseA.current().reference } : scope.currency,
-                            originalInputRefs: scope.originalInputRefs,
-                            turn: scope.turn, step: scope.step };
-                        const snapshot = Object.freeze({ ...basis, kind: 'snapshot', payload: data.snapshot });
-                        const plan = Object.freeze({ ...basis, kind: 'plan', payload: Object.freeze({ promptPlan: data.plan,
-                                nativeTransform: material, nativeTransformSha256: materialSha256 }) });
-                        const refs = { snapshot: { key: prefix + '-snapshot', sha256: recordSha256(snapshot) },
-                            plan: { key: prefix + '-plan', sha256: recordSha256(plan) } };
-                        return { kind: 'material-candidate', initial, scope, checks, material, responseHooks: data.responseHooks,
-                            ...data.renderedAuthorMaterial ? { renderedAuthorMaterial: data.renderedAuthorMaterial } : {},
-                            materialSha256, snapshot, plan, refs,
-                            ...(preparedRoute ? { routeSha256: nativeInputSha256(preparedRoute) } : {}),
-                            captureSha256: recordSha256({ schemaVersion: 1, encoding: 'core-input-material-capture-v1',
-                                ...refs, nativeSelectedSha256: initial.selected.sha256, assemblySha256: initial.assemblySha256 }) };
-                    };
-                    let chosen;
-                    if (scope.phaseA && input.candidate) {
-                        let selectedBasis;
-                        const preview = async () => input.candidate.preview(scope.phaseA.messages(), async (basis) => {
-                            selectedBasis = basis;
-                            chosen = await construct({ ...input, selected: basis.selected, finalAssembly: basis.finalAssembly,
-                                assemblySha256: basis.assemblySha256 }, basis.preparedRoute);
-                            if (chosen.kind === 'refused')
-                                fail(chosen.code);
-                            return chosen.kind === 'outside-declared-domain' ? { kind: 'unchanged' } : candidateTransform(chosen);
-                        });
-                        const first = await preview();
-                        assertBudgetAndSignal();
-                        const checkpoint = checkpointForPreview(scope.phaseA.current(), selectedBasis, first);
-                        if (checkpoint) {
-                            // The existing notes-save owner keeps its own signal/deadline.
-                            // Releasing the old DATA baseline makes its writes visible to the
-                            // next capture without replaying author generation callbacks.
-                            releaseBuild?.();
-                            releaseBuild = undefined;
-                            pauseBudget();
-                            await scope.phaseA.checkpoint(checkpoint.options);
-                            resumeBudget();
-                            assertBudgetAndSignal();
-                            const final = await preview();
-                            if (final.measurement?.capacity.status === 'known' && final.measurement.capacity.excess > 0)
-                                fail('INPUT_REQUEST_CONTEXT_TOO_LARGE_AFTER_CHECKPOINT');
-                        }
-                        await scope.phaseA.commit();
-                    }
-                    else {
-                        if (scope.phaseA) {
-                            if (scope.phaseA.current().needsCheckpoint) {
+                            const checkpoint = checkpointForPreview(scope.phaseA.current(), selectedBasis, first);
+                            if (checkpoint) {
+                                // The existing notes-save owner keeps its own signal/deadline.
+                                // Releasing the old DATA baseline makes its writes visible to the
+                                // next capture without replaying author generation callbacks.
+                                releaseBuild?.();
+                                releaseBuild = undefined;
                                 pauseBudget();
-                                await scope.phaseA.checkpoint();
+                                await scope.phaseA.checkpoint(checkpoint.options);
                                 resumeBudget();
                                 assertBudgetAndSignal();
+                                const final = await preview();
+                                if (final.measurement?.capacity.status === 'known' && final.measurement.capacity.excess > 0)
+                                    fail('INPUT_REQUEST_CONTEXT_TOO_LARGE_AFTER_CHECKPOINT');
                             }
                             await scope.phaseA.commit();
                         }
-                        chosen = await construct(input);
+                        else {
+                            if (scope.phaseA) {
+                                if (scope.phaseA.current().needsCheckpoint) {
+                                    pauseBudget();
+                                    await scope.phaseA.checkpoint();
+                                    resumeBudget();
+                                    assertBudgetAndSignal();
+                                }
+                                await scope.phaseA.commit();
+                            }
+                            const built = await construct(input);
+                            if (built.kind === 'material-text-draft')
+                                fail('INPUT_MATERIAL_FINAL_TEXT_CANDIDATE_REQUIRED');
+                            chosen = built;
+                        }
+                        if (!chosen)
+                            fail('INPUT_MATERIAL_PREPARATION_MISSING');
+                        return { chosen, scope };
+                    };
+                    let planning;
+                    let nextScope = original;
+                    for (;;) {
+                        try {
+                            planning = await planCandidate(nextScope);
+                            break;
+                        }
+                        catch (error) {
+                            if (error !== sourceDataSuccessor)
+                                throw error;
+                            releaseBuild?.();
+                            releaseBuild = undefined;
+                            assertBudgetAndSignal();
+                            // Same Native invocation and monotonic budget, with fresh Phase A
+                            // and selected basis supplied only by the original input owner.
+                            nextScope = owner.scope(input, true);
+                        }
                     }
-                    if (!chosen)
-                        fail('INPUT_MATERIAL_PREPARATION_MISSING');
+                    const scope = planning.scope;
+                    let chosen = planning.chosen;
                     if (chosen.kind === 'refused')
                         return { kind: 'blocked', code: chosen.code };
                     if (chosen.kind === 'outside-declared-domain') {
                         outside.add(scope.stepToken);
                         return { kind: 'unchanged' };
                     }
-                    const { checks, material, materialSha256, snapshot, plan, refs, captureSha256 } = chosen, publishedScope = owner.scope(input);
+                    const publishedScope = owner.scope(input);
+                    if (chosen.finalize) {
+                        const persistence = createRoleplayMaterialPreparationJournalV1({ snapshotKey: chosen.refs.snapshot.key,
+                            owner: roleplayMaterialPreparationJournalOwnerV1(chosen.snapshot),
+                            table: owner.table, enqueue: owner.enqueue,
+                            assertOwnerFactsCurrent() { assertBudgetAndSignal(); publishedScope.assertOwnerFactsCurrent(); },
+                            register(row, phase) {
+                                owner.registerNonNumericalBranchRow?.(input, publishedScope, { ...row, kind: 'input-material-journal', phase });
+                            } });
+                        const additions = await chosen.finalize(persistence.journal), journalRefs = persistence.references();
+                        assertBudgetAndSignal();
+                        publishedScope.assertOwnerFactsCurrent();
+                        if (journalRefs.length || Object.keys(additions?.snapshot ?? {}).length || Object.keys(additions?.plan ?? {}).length) {
+                            const snapshot = Object.freeze({ ...chosen.snapshot, payload: Object.freeze({ ...chosen.snapshot.payload,
+                                    ...additions?.snapshot, ...journalRefs.length ? { materialPreparationJournalRefs: journalRefs } : {} }) }), plan = Object.freeze({ ...chosen.plan, payload: Object.freeze({ ...chosen.plan.payload,
+                                    promptPlan: Object.freeze({ ...chosen.plan.payload['promptPlan'],
+                                        ...additions?.plan }) }) }), refs = { snapshot: { key: chosen.refs.snapshot.key, sha256: recordSha256(snapshot) },
+                                plan: { key: chosen.refs.plan.key, sha256: recordSha256(plan) } }, changed = refs.snapshot.sha256 !== chosen.refs.snapshot.sha256 || refs.plan.sha256 !== chosen.refs.plan.sha256;
+                            chosen = { ...chosen, snapshot, plan, refs, captureSha256: recordSha256({ schemaVersion: 1,
+                                    encoding: 'core-input-material-capture-v1', ...refs, nativeSelectedSha256: chosen.initial.selected.sha256,
+                                    assemblySha256: chosen.initial.assemblySha256 }) };
+                            if (changed && scope.phaseA && input.candidate) {
+                                // Finalized DATA refs affect Native material identities. Refresh
+                                // only Native planning; the selected guest build stays intact.
+                                const finalized = chosen;
+                                const preview = await input.candidate.preview(scope.phaseA.messages(), async (basis) => {
+                                    if (basis.selected.sha256 !== finalized.initial.selected.sha256
+                                        || basis.assemblySha256 !== finalized.initial.assemblySha256
+                                        || nativeInputSha256(basis.preparedRoute) !== finalized.routeSha256)
+                                        fail('INPUT_MATERIAL_FINALIZED_BASIS_CHANGED');
+                                    return candidateTransform(finalized);
+                                });
+                                if (preview.measurement?.capacity.status === 'known' && preview.measurement.capacity.excess > 0) {
+                                    fail('INPUT_REQUEST_CONTEXT_TOO_LARGE_AFTER_FINALIZATION');
+                                }
+                            }
+                        }
+                    }
+                    const { checks, material, materialSha256, snapshot, plan, refs, captureSha256 } = chosen;
                     const records = {};
                     await owner.enqueue(async () => {
                         checks.assertCurrent();
@@ -294,6 +479,7 @@ export function createRoleplayInputMaterialOwnerV1(deps, owner) {
                     captureSha256: row.captureSha256, expectedAssemblySha256: input.assemblySha256,
                     expectedSelectedBaseSha256: input.selected.sha256, requiredSections: row.material.requiredSections,
                     sections: row.material.sections, insertions: row.material.insertions,
+                    ...row.material.finalTextProjection ? { finalTextProjection: row.material.finalTextProjection } : {},
                     ...row.material.anchoredInsertions ? { anchoredInsertions: row.material.anchoredInsertions } : {},
                     ...row.material.messageProjection ? { messageProjection: row.material.messageProjection } : {},
                     ...row.material.story ? { story: row.material.story } : {} };

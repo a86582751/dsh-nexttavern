@@ -1,4 +1,4 @@
-import type {BeforeForkPublish} from './fork-reservation.js'
+import type {BeforeForkPublish,BeforeFirstForkPublish,ForkBeforeFirstRequest} from './fork-reservation.js'
 /** Session commands whose activation policy is explicit at each Remote method. */
 
 import { modelAvailable } from './catalog.js'
@@ -14,12 +14,12 @@ import type {
 import type { FileUploadReceiptId } from '@deepseek-ai/dsh-client-file-upload/types'
 import type {} from '@deepseek-ai/dsh-client-file-upload'
 import {
-  ReasoningEffortId, assistantStreamChunks, createUserMessage, freezeMessage,
-} from '@deepseek-ai/dsh-llm'
-import type { MessageSource } from '@deepseek-ai/dsh-llm'
-import { buildForkSeed } from '@deepseek-ai/dsh-session/fork'
-import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
-import type { SessionEvent, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
+  ReasoningEffortId, assistantStreamChunks, createUserMessage, freezeMessage,MessageId,
+} from 'dsh-nexttavern-native-llm'
+import type { ContentBlock,MessageSource } from 'dsh-nexttavern-native-llm'
+import { buildForkSeed } from 'dsh-nexttavern-native-session/fork'
+import { SessionLogOffset, SessionSeq } from 'dsh-nexttavern-native-session'
+import type { SessionEvent, SessionHeader, SessionId, UserMessage } from 'dsh-nexttavern-native-session'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title'
 import { canonicalClientTimeZone } from '@deepseek-ai/dsh-util-time'
@@ -54,7 +54,11 @@ import type {
   SessionUpdateQueueRequest,
   SessionUpdateQueueValue,
   SessionRequestId,
+  UserSourceOperation,
+  UserSourceOperationResult,
+  AuthorUserInput,
 } from './types.js'
+import type {NativePublishedUserInputResultV1} from '../../agent-loop/src/published-input.js'
 
 interface SessionReadState {
   readonly id: SessionId
@@ -88,6 +92,79 @@ function latestCompletedPrefixBoundary(events: readonly SessionEvent[]): Session
 
 /** Implements Session business commands delegated by the Session Controller Remote service. */
 export class SessionCommandController {
+  private readonly userSourceOperations=new Map<Agent,{operation:UserSourceOperation;abort:AbortController}>()
+
+  registerUserSourceOperation(agent:Agent,operation:UserSourceOperation):()=>void {
+    if(this.ctx.agents.get(agent.id)!==agent||this.userSourceOperations.has(agent))throw Error('USER_SOURCE_OWNER_UNAVAILABLE')
+    const registration={operation,abort:new AbortController()}
+    this.userSourceOperations.set(agent,registration)
+    return ()=>{
+      if(this.userSourceOperations.get(agent)!==registration)return
+      this.userSourceOperations.delete(agent)
+      registration.abort.abort(Error('USER_SOURCE_OWNER_DISPOSED'))
+    }
+  }
+  disposeUserSourceOperations():void {
+    for(const registration of this.userSourceOperations.values())registration.abort.abort(Error('USER_SOURCE_OWNER_DISPOSED'))
+    this.userSourceOperations.clear()
+  }
+  private async admitUserSource(agent:Agent,content:readonly ContentBlock[],source:MessageSource,isEdit:boolean,
+    signal:AbortSignal|undefined,publish:(result:UserSourceOperationResult)=>void|Promise<void>,alreadyAccepted?:()=>boolean):Promise<void> {
+    signal?.throwIfAborted()
+    const registration=this.userSourceOperations.get(agent)
+    if(!registration) {await publish({content});return}
+    const currentSignal=signal?AbortSignal.any([signal,registration.abort.signal]):registration.abort.signal
+    let active=true,published=false,invoked=false,publication:Promise<void>|undefined
+    try {
+      await registration.operation.admit({content,source,isEdit,signal:currentSignal,...alreadyAccepted?{alreadyAccepted}:{}},result=>{
+        currentSignal.throwIfAborted()
+        if(!active||invoked||this.userSourceOperations.get(agent)!==registration||this.ctx.agents.get(agent.id)!==agent) {
+          throw Error('USER_SOURCE_OWNER_CHANGED')
+        }
+        invoked=true
+        const pending=publish(result)
+        if(pending) {publication=Promise.resolve(pending).then(()=>{published=true});return publication}
+        published=true
+      })
+      await publication
+    }catch(error) {
+      // A completed synchronous publication cannot be undone by a later
+      // owner cleanup failure. Its durable message remains the accepted result.
+      if(!published)throw error
+    }finally {active=false}
+    if(!published)throw Error('USER_SOURCE_PUBLICATION_MISSING')
+  }
+  /** Local author publication uses the same Source admission as prompt/edit,
+   * but appends a canonical user without entering or waking the inbox. */
+  async appendAuthorUserInput(agent:Agent,input:AuthorUserInput,signal?:AbortSignal):Promise<NativePublishedUserInputResultV1> {
+    const native=this.ctx.get('agentLoop')?.getInputAdmissionAgent(agent)
+    const registration=this.userSourceOperations.get(agent)
+    if(!native||this.ctx.agents.get(agent.id)!==agent||!registration)
+      return {kind:'blocked',code:'USER_SOURCE_OWNER_UNAVAILABLE'}
+    const content:readonly ContentBlock[]=[{type:'text',text:input.text}],id=MessageId(`author-user:${input.operationId}`)
+    let accepted:UserMessage|undefined,result:NativePublishedUserInputResultV1|undefined
+    const assertCurrent=()=>{signal?.throwIfAborted();registration.abort.signal.throwIfAborted();input.assertCurrent()
+      if(this.ctx.agents.get(agent.id)!==agent||this.userSourceOperations.get(agent)!==registration)
+        throw Error('USER_SOURCE_OWNER_CHANGED')}
+    const alreadyAccepted=()=>{
+      assertCurrent()
+      const previous=native.readPublishedUserInput(input.operationId)
+      if(!previous)return false
+      const message=previous[0],raw=message?.sourceMaterial?.rawSource??message?.content
+      if(previous.length!==1||!message||message.id!==id||raw?.length!==1||raw[0]?.type!=='text'||raw[0].text!==input.text)
+        throw Error('PUBLISHED_INPUT_OPERATION_CONFLICT')
+      accepted=message;return true
+    }
+    assertCurrent()
+    await this.admitUserSource(agent,content,{kind:'user'},false,signal,async prepared=>{
+      assertCurrent()
+      const message:UserMessage=accepted?{...accepted,source:{kind:'user'}}:
+        {id,role:'user',source:{kind:'user'},content:prepared.content,...prepared.material?{sourceMaterial:prepared.material}:{}}
+      result=await native.appendPublishedUserInput({operationId:input.operationId,producer:input.producer,origin:input.origin,
+        messages:[message],assertCurrent})
+    },alreadyAccepted)
+    return result!
+  }
   /**
    * @param ctx - Host context carrying Agent, model, attachment, title, and Workspace services.
    * @param agents - sole owner of create, resume, and Session-local model selection.
@@ -227,23 +304,7 @@ export class SessionCommandController {
     } catch {
       throw new RemoteError('gateway/bad-request', 'atSeq must be a non-negative safe integer', {})
     }
-    let observed: SessionObservation
-    try {
-      observed = await this.ctx.sessionQuery.observeSession(request.sessionId)
-    } catch (error) {
-      if (error instanceof SessionQueryError
-        && error.code === 'SESSION_QUERY_SESSION_NOT_FOUND') {
-        throw new RemoteError('session/not-found', `session "${request.sessionId}" not found`, {
-          sessionId: request.sessionId,
-        })
-      }
-      throw new RemoteError(
-        'gateway/internal',
-        `fork source unavailable for session "${request.sessionId}": ${String(error)}`,
-        {},
-      )
-    }
-    using source = observed
+    using source = await this.observeForkSource(request.sessionId)
     const boundary = atSeq ?? latestCompletedPrefixBoundary(source.events)
     if (boundary === undefined || source.events[boundary]?.seq !== boundary) {
       throw new RemoteError(
@@ -278,6 +339,68 @@ export class SessionCommandController {
     // Rejection leaves no child allocation. The caller owns reconciliation if
     // later creation or workspace attachment fails after durable reservation.
     await beforePublish?.({sourceSessionId: source.header.id, childSessionId: childId, seedLength: cut})
+    return this.publishFork(source.header,seed,cut,childId,composition,workspace)
+  }
+
+  /** Empty-prefix forks retain real lineage while owning every child event. */
+  async forkBeforeFirstPrepared(request:ForkBeforeFirstRequest,
+    beforePublish:BeforeFirstForkPublish):Promise<SessionForkValue> {
+    using source=await this.observeForkSource(request.sessionId)
+    const resume=request.resume
+    if(resume&&(resume.sourceSessionId!==source.header.id||resume.seedLength!==0)) {
+      throw new RemoteError('session/fork-unavailable','reserved fork does not match its source',{sessionId:request.sessionId})
+    }
+    let workspace:Workspace|undefined
+    if(resume) {
+      workspace=resume.workspaceId===null?undefined:this.ctx.workspaceRegistry.list().find(item=>item.id===resume.workspaceId)
+      if(resume.workspaceId!==null&&!workspace) {
+        throw new RemoteError('session/fork-unavailable',`reserved workspace "${resume.workspaceId}" is unavailable`,
+          {sessionId:request.sessionId})
+      }
+    }else workspace=await this.forkWorkspace(source.header)
+    using existing=resume?await this.observeReservedFork(resume.childSessionId):undefined
+    if(existing&&(existing.header.parentSession!==source.header.id||!existing.header.isSeeded
+      ||existing.inheritedEventCount!==0)) {
+      throw new RemoteError('session/fork-unavailable',`reserved child "${existing.header.id}" has different lineage`,
+        {sessionId:request.sessionId})
+    }
+    // An existing child keeps its own mounted preset. Only a genuinely absent
+    // reserved identity may create from the source's current preset.
+    const composition=existing?undefined:await this.agents.composeAgent(this.agents.presetForObservation(source)),
+      childId=resume?.childSessionId??brandString<SessionId>(`session-${randomUUID()}`)
+    await beforePublish({sourceSessionId:source.header.id,childSessionId:childId,seedLength:0,
+      workspaceId:workspace?.id??null})
+    if(existing) {
+      const resolved=await this.agents.resolveObservedAgent(existing)
+      if('error' in resolved)throw resolved.error
+      await this.attachForkWorkspace(workspace,childId)
+      return {sessionId:childId}
+    }
+    return this.publishFork(source.header,[],SessionLogOffset(0),childId,composition!,workspace)
+  }
+
+  private async observeForkSource(sessionId:SessionId):Promise<SessionObservation> {
+    try {return await this.ctx.sessionQuery.observeSession(sessionId)}
+    catch(error) {
+      if(error instanceof SessionQueryError&&error.code==='SESSION_QUERY_SESSION_NOT_FOUND') {
+        throw new RemoteError('session/not-found',`session "${sessionId}" not found`,{sessionId})
+      }
+      throw new RemoteError('gateway/internal',`fork source unavailable for session "${sessionId}": ${String(error)}`,{})
+    }
+  }
+
+  private async observeReservedFork(sessionId:SessionId):Promise<SessionObservation|undefined> {
+    try {return await this.ctx.sessionQuery.observeSession(sessionId)}
+    catch(error) {
+      // A read failure never authorizes another allocation at the reserved id.
+      if(error instanceof SessionQueryError&&error.code==='SESSION_QUERY_SESSION_NOT_FOUND')return
+      throw error
+    }
+  }
+
+  private async publishFork(source:SessionHeader,seed:readonly SessionEvent[],cut:ReturnType<typeof SessionLogOffset>,
+    childId:SessionId,composition:Awaited<ReturnType<ApiSessionAgentController['composeAgent']>>,
+    workspace:Workspace|undefined):Promise<SessionForkValue> {
     try {
       const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
       await this.ctx.agents.create({
@@ -285,8 +408,8 @@ export class SessionCommandController {
         seed,
         inheritedEventCount: cut,
         meta: {
-          ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
-          parentSession: source.header.id,
+          ...(source.cwd === undefined ? {} : { cwd: source.cwd }),
+          parentSession: source.id,
           isSeeded: true,
           ...(composition.agentPreset === undefined
             ? {}
@@ -298,10 +421,15 @@ export class SessionCommandController {
     } catch (error) {
       throw new RemoteError(
         'gateway/internal',
-        `failed to fork session "${request.sessionId}": ${String(error)}`,
+        `failed to fork session "${source.id}": ${String(error)}`,
         {},
       )
     }
+    await this.attachForkWorkspace(workspace,childId)
+    return {sessionId:childId}
+  }
+
+  private async attachForkWorkspace(workspace:Workspace|undefined,childId:SessionId):Promise<void> {
     if (workspace !== undefined) {
       try {
         await workspace.attachSession(childId)
@@ -313,7 +441,6 @@ export class SessionCommandController {
         )
       }
     }
-    return { sessionId: childId }
   }
 
   /**
@@ -321,7 +448,7 @@ export class SessionCommandController {
    * @param request - Session identity, prompt content, source metadata, and delivery mode.
    * @returns acknowledgement that the Agent accepted the prompt.
    */
-  async prompt(request: SessionPromptRequest): Promise<SessionPromptValue> {
+  async prompt(request: SessionPromptRequest,signal?:AbortSignal): Promise<SessionPromptValue> {
     if (!hasPromptContent(request.content)) {
       throw new RemoteError(
         'gateway/bad-request',
@@ -368,7 +495,6 @@ export class SessionCommandController {
         }
         const originalContent = cards ? await cards.admit(this.ctx.attachments) : admission.content
         const content = await this.ctx.attachments.admitPromptContent(originalContent)
-        const message: UserMessage = createUserMessage({ content, source })
         if (this.ctx.agents.get(agent.id) !== agent) {
           throw new RemoteError(
             'session/not-found',
@@ -377,9 +503,14 @@ export class SessionCommandController {
           )
         }
         using binding = this.ctx.fileUploads.bindPrompt(agent, admission.receiptIds, request.requestId)
-        if (request.mode === 'steer') agent.steer(message)
-        else agent.followup(message)
-        binding.commit()
+        await this.admitUserSource(agent,content,source,false,signal,result=>{
+          if(hasPromptRequest(agent,request.requestId))return
+          const message:UserMessage=createUserMessage({content:result.content,source,
+            ...result.material?{sourceMaterial:result.material}:{}})
+          if(request.mode==='steer')agent.steer(message)
+          else agent.followup(message)
+          binding.commit()
+        },()=>hasPromptRequest(agent,request.requestId))
       } catch (error) {
         if (remoteErrorOf(error) !== undefined) throw error
         if (error instanceof CardPngIntakeError) {
@@ -448,7 +579,7 @@ export class SessionCommandController {
    * @param request - Session, queue item, and requested mutation.
    * @returns acknowledgement that the queue mutation was applied.
    */
-  async updateQueue(request: SessionUpdateQueueRequest): Promise<SessionUpdateQueueValue> {
+  async updateQueue(request: SessionUpdateQueueRequest,signal?:AbortSignal): Promise<SessionUpdateQueueValue> {
     if (request.action.kind === 'edit') {
       // oxlint-disable-next-line typescript/no-unnecessary-condition -- Remote callers can submit untyped JSON.
       if (request.action.content.some(block => block.type !== 'text')) {
@@ -498,10 +629,17 @@ export class SessionCommandController {
     }
     switch (request.action.kind) {
       case 'edit':
-        agent.inbox.replace(request.itemId, freezeMessage<UserMessage>({
-          ...message,
-          content: [...request.action.content],
-        }))
+        await this.admitUserSource(agent,request.action.content,message.source,true,signal,result=>{
+          const current=target==='next-turn'?agent.inbox.nextTurn:agent.inbox.nextStep
+          if(this.ctx.agents.get(agent.id)!==agent||current.find(row=>row.id===request.itemId)!==message) {
+            throw new RemoteError('session/queue-item-not-found','queued item changed during source preparation',{itemId:request.itemId})
+          }
+          const {sourceMaterial:_previousMaterial,...original}=message
+          if(!agent.inbox.replace(request.itemId,freezeMessage<UserMessage>({...original,content:[...result.content],
+            ...result.material?{sourceMaterial:result.material}:{}}))) {
+            throw new RemoteError('session/queue-item-not-found','queued item is no longer pending',{itemId:request.itemId})
+          }
+        })
         break
       case 'remove': {
         agent.inbox.remove(request.itemId)
@@ -619,6 +757,8 @@ function resolvePromptFileReceipts(
 }
 
 function hasPromptRequest(agent: Agent, requestId: SessionRequestId): boolean {
+  const inbox=agent.inbox as Agent['inbox']&{hasPromptRequest?(requestId:string):boolean}
+  if(inbox.hasPromptRequest)return inbox.hasPromptRequest(requestId)
   const matches = (message: UserMessage): boolean => {
     const source = message.source
     return source.kind === 'user' && 'rpcId' in source && source.rpcId === requestId

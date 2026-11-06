@@ -3,17 +3,20 @@
  * only dispatch permission. */
 import {types as utilTypes} from 'node:util'
 import {deepFreeze} from '@deepseek-ai/dsh-util-values'
-import type {Message, PreparedLlmCall,AssistantMessage} from '@deepseek-ai/dsh-llm'
+import type {Message, PreparedLlmCall,AssistantMessage} from 'dsh-nexttavern-native-llm'
 import type {PromptAssembly} from '@deepseek-ai/dsh-system-prompt'
-import type {SessionRequestPreview} from '@deepseek-ai/dsh-session'
+import type {SessionRequestPreview} from 'dsh-nexttavern-native-session'
 import type {NativeOpeningIdentityV1,NativeOpeningEventRefV1,NativeGeneratedOpeningReceiptV1,SessionEvent}
-  from '@deepseek-ai/dsh-session'
+  from 'dsh-nexttavern-native-session'
 import type {NativeInputAdmissionCheckV2} from './input-admission.js'
 import type {NativeMaterialDataRefV1, NativeMaterialInsertionV1,NativeMaterialMessageTextProjectionV2} from './request-material.js'
 export type {NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2} from './request-material.js'
 import {nativeInputSha256} from './input-admission.js'
-import type {NativeMessageProjectionV1} from '@deepseek-ai/dsh-session'
-import type {NativeStoryMaterialHooksV1,NativeStoryRequestPolicyV1} from './story-request.js'
+import type {NativeMessageProjectionV1} from 'dsh-nexttavern-native-session'
+import type {NativeMaterialFinalTextProjectionV1,NativeMaterialTextOutputV1,NativeMaterialMessageRefV1}
+  from 'dsh-nexttavern-native-session'
+export type {NativeMaterialFinalTextProjectionV1,NativeMaterialTextOutputV1} from 'dsh-nexttavern-native-session'
+import type {NativeStoryMaterialHooks,NativeStoryMaterialHooksV1,NativeStoryMaterialHooksV2,NativeStoryRequestPolicyV1} from './story-request.ts'
 import type {NativeRequestMeasurementV1} from './request-budget.js'
 
 export interface NativeMaterialSelectedMessageV1 {
@@ -30,6 +33,17 @@ export interface NativeMaterialSelectedBaseV1 {
   readonly surfaceNodes:readonly number[]
   readonly messages:readonly NativeMaterialSelectedMessageV1[]
   readonly sha256:string
+}
+/** Initial selection DATA before planned system/header/user appends. Existing
+ * surface bodies are reconstructed at this exact cut; pending input has no
+ * durable event yet and must remain complete even if preparation is cancelled. */
+export interface NativeMaterialSelectedCaptureV2 {
+  readonly schemaVersion:2
+  readonly encoding:'native-selected-capture-v2'
+  readonly sessionId:string
+  readonly boundarySeq:number
+  readonly selectedSha256:string
+  readonly pendingMessages:readonly Message[]
 }
 /** Serializable observations only. These values never issue a Native lease,
  * Source scope, dispatch token or permission to manufacture selected objects. */
@@ -73,15 +87,22 @@ export interface NativeRequestMaterialInputV1 {
   readonly finalAssembly:Readonly<PromptAssembly>
   readonly assemblySha256:string
   readonly selected:NativeMaterialSelectedBaseV1
+  readonly selectedCaptureV2?:NativeMaterialSelectedCaptureV2
 }
 /** One actual final step decision, before Native appends step/start. The
  * owning Core has already begun its opaque step and finished Phase A. Route
  * capability is checked later by the synchronous transform after prepareCall. */
 export interface NativeMaterialCandidateBasisV1 {
   readonly selected:NativeMaterialSelectedBaseV1
+  readonly selectedCaptureV2?:NativeMaterialSelectedCaptureV2
   readonly finalAssembly:Readonly<PromptAssembly>
   readonly assemblySha256:string
   readonly preparedRoute:NativeRequestMaterialInputV1['preparedRoute']
+}
+export interface NativeOpeningMaterialCandidateBasisV1 extends NativeMaterialCandidateBasisV1 {
+  /** The first request attempt this actual opening work will append for this
+   * step. Candidate DATA does not reserve or publish that attempt. */
+  readonly attempt:number
 }
 export interface NativeMaterialCandidatePreviewV1 {
   readonly measurement?:NativeRequestMeasurementV1
@@ -91,12 +112,42 @@ export interface NativeMaterialCandidatePreviewV1 {
   readonly messageCosts:readonly {readonly id:string;readonly eventSeq:number|null;readonly tokens:number;
     readonly allocation?:'group-text-length-estimate';readonly groupId?:string}[]
 }
+export interface NativeMaterialTextSurfaceV1 {
+  /** Final transport order, including messages with no editable text. Tool
+   * payloads remain opaque; their headers never point into text slots. */
+  readonly messages:readonly {
+    readonly messageOrdinal:number
+    readonly role:Message['role']
+    readonly textSlots:readonly number[]
+  }[]
+  readonly slots:readonly {
+    readonly messageOrdinal:number
+    readonly blockOrdinal:number|null
+    readonly text:string
+    readonly role:Message['role']
+    readonly provenance:
+      |{readonly kind:'base';readonly message:NativeMaterialMessageRefV1}
+      |{readonly kind:'insertion';readonly contributionRef:string;readonly sourceSha256:string}
+      |{readonly kind:'group';readonly targets:readonly NativeMaterialMessageRefV1[]}
+  }[]
+}
+type DraftStructure<T>=Omit<T,'kind'|'snapshot'|'plan'|'captureSha256'|'finalTextProjection'>
+export type NativeMaterialTextDraftStructureV1=DraftStructure<NativeRequestMaterialTransformV1>
+  |DraftStructure<NativeRequestMaterialTransformV2>
+export interface NativeMaterialTextDraftV1 {
+  readonly kind:'text-draft'
+  readonly structure:NativeMaterialTextDraftStructureV1
+  finalize(surface:NativeMaterialTextSurfaceV1):Promise<{
+    readonly snapshot:NativeMaterialDataRefV1;readonly plan:NativeMaterialDataRefV1;
+    readonly captureSha256:string;readonly finalTextProjection?:NativeMaterialFinalTextProjectionV1
+  }>
+}
 export type NativeRequestMaterialPrepareInputV1=Omit<NativeRequestMaterialInputV1,'preparedRoute'|'firstAttempt'>&{
   /** Hot, call-local planning only. Native captures the selected basis before
    * invoking the builder; this function grants no dispatch permission. */
   readonly candidate?:{
-    preview(messages:readonly import('@deepseek-ai/dsh-session').UserMessage[],
-      build:(basis:NativeMaterialCandidateBasisV1)=>Promise<NativeRequestMaterialTransform|{readonly kind:'unchanged'}>)
+    preview(messages:readonly import('dsh-nexttavern-native-session').UserMessage[],
+      build:(basis:NativeMaterialCandidateBasisV1)=>Promise<NativeRequestMaterialTransform|NativeMaterialTextDraftV1|{readonly kind:'unchanged'}>)
       :Promise<NativeMaterialCandidatePreviewV1>
   }
 }
@@ -136,12 +187,13 @@ export interface NativeRequestMaterialTransformV1 {
   readonly anchoredInsertions?:readonly NativeOwnedMaterialAnchoredInsertionV1[]
   readonly messageProjection?:NativeMessageProjectionV1
   readonly story?:NativeStoryRequestPolicyV1
+  readonly finalTextProjection?:NativeMaterialFinalTextProjectionV1
 }
 export type NativeRequestMaterialDecisionV1={readonly kind:'unchanged'}
   | {readonly kind:'blocked';readonly code:string}|NativeRequestMaterialTransformV1
 export interface NativeRequestMaterialOwnerV1 {
   readonly schemaVersion:1
-  readonly story?:NativeStoryMaterialHooksV1
+  readonly story?:NativeStoryMaterialHooks
   /** Names owned by this actual registration. Final assembly must have one
    * exact surviving section per required precondition; ambiguous names refuse. */
   readonly sectionNames:readonly string[]
@@ -183,7 +235,14 @@ export type NativeOpeningMaterialInputV1=Omit<NativeRequestMaterialInputV1,'admi
   readonly noPlayer:{readonly kind:'no-player';readonly selectedUserMessageIds:readonly []}
 }
 export type NativeOpeningMaterialPrepareInputV1=Omit<NativeOpeningMaterialInputV1,
-  'preparedRoute'|'firstAttempt'|'attempt'>
+  'preparedRoute'|'firstAttempt'|'attempt'>&{
+    /** This no-player preview cannot replace pending input or borrow a player
+     * admission. Native supplies only the actual opening selection. */
+    readonly candidate?:{
+      preview(build:(basis:NativeOpeningMaterialCandidateBasisV1)=>Promise<
+        NativeRequestMaterialTransform|NativeMaterialTextDraftV1>):Promise<NativeMaterialCandidatePreviewV1>
+    }
+  }
 /** Identity gates bracket actual Native reservation persistence. The reserved
  * phase carries only the live work's exact invocation ref, before Phase-A. */
 export type NativeOpeningMaterialCheckV1={readonly identity:NativeOpeningIdentityV1;
@@ -208,10 +267,10 @@ export type NativeOpeningClosingAcknowledgementV1={readonly kind:'settled';reado
   readonly ownerReceiptSha256:string}|{readonly kind:'blocked'|'unknown';readonly receiptSha256:string;readonly code:string}
 export interface NativeOpeningMaterialOwnerV1 {
   readonly schemaVersion:1
-  readonly story?:NativeStoryMaterialHooksV1
+  readonly story?:NativeStoryMaterialHooks
   readonly sectionNames:readonly string[]
   prepare(input:NativeOpeningMaterialPrepareInputV1):Promise<NativeRequestMaterialPrepareDecisionV1>
-  transform(input:NativeOpeningMaterialInputV1):NativeRequestMaterialDecisionV1
+  transform(input:NativeOpeningMaterialInputV1):NativeRequestMaterialDecision
   check(input:NativeOpeningMaterialCheckV1):{readonly kind:'allow'}|{readonly kind:'blocked';readonly code:string}
   closing(input:NativeOpeningClosingInputV1):Promise<NativeOpeningClosingAcknowledgementV1>
 }
@@ -338,13 +397,25 @@ export function nativeRequestMaterialDecisionV1(value:unknown):NativeRequestMate
     if(typeof code!=='string'||!/^[A-Z][A-Z0-9_]{0,95}$/.test(code))return fail()
     return Object.freeze({kind,code})}
   if(kind!=='transform')return fail()
+  return nativeMaterialTransformData(value,false) as NativeRequestMaterialTransform
+}
+export function nativeMaterialTextDraftV1(value:unknown):NativeMaterialTextDraftV1 {
+  const row=object(value,['kind','structure','finalize'])
+  if(row['kind']!=='text-draft'||typeof row['finalize']!=='function')return fail()
+  const structure=nativeMaterialTransformData(row['structure'],true) as NativeMaterialTextDraftStructureV1
+  return Object.freeze({kind:'text-draft',structure,
+    finalize:(row['finalize'] as NativeMaterialTextDraftV1['finalize']).bind(value)})
+}
+function nativeMaterialTransformData(value:unknown,draft:boolean) {
+  if(value===null||typeof value!=='object'||utilTypes.isProxy(value))return fail()
   const hasAnchors=Object.hasOwn(value,'anchoredInsertions')
   const version=Object.getOwnPropertyDescriptor(value,'schemaVersion')?.value
-  const hasProjection=Object.hasOwn(value,'messageProjection'),hasStory=Object.hasOwn(value,'story')
-  const row=object(value,['kind','schemaVersion','encoding','snapshot','plan','captureSha256',
+  const hasProjection=Object.hasOwn(value,'messageProjection'),hasStory=Object.hasOwn(value,'story'),
+    hasFinalText=Object.hasOwn(value,'finalTextProjection')
+  const row=object(value,[...draft?[]:['kind','snapshot','plan','captureSha256'],'schemaVersion','encoding',
     'expectedAssemblySha256','expectedSelectedBaseSha256','requiredSections','sections','insertions',
     ...hasAnchors?['anchoredInsertions']:[],...version===2?['messageTextProjections']:[],
-    ...hasProjection?['messageProjection']:[],...hasStory?['story']:[]])
+    ...hasProjection?['messageProjection']:[],...hasStory?['story']:[],...hasFinalText?['finalTextProjection']:[]])
   if(!(version===1&&row['encoding']==='native-request-material-owner-transform-v1'
     ||version===2&&row['encoding']==='native-request-material-owner-transform-v2'))return fail()
   const requiredSections=array(row['requiredSections'],NATIVE_REQUEST_OWNER_BOUNDS.sections).map(item=>{
@@ -412,14 +483,27 @@ export function nativeRequestMaterialDecisionV1(value:unknown):NativeRequestMate
         textEdits,projectionSha256:sha(projection['projectionSha256'])}
     }):undefined
   if(messageTextProjections&&new Set(messageTextProjections.map(item=>item.target.id)).size!==messageTextProjections.length)return fail()
-  const common={kind:'transform' as const,
-    snapshot:ref(row['snapshot']),plan:ref(row['plan']),captureSha256:sha(row['captureSha256']),
+  const common={...draft?{}:{kind:'transform' as const,
+    snapshot:ref(row['snapshot']),plan:ref(row['plan']),captureSha256:sha(row['captureSha256'])},
     expectedAssemblySha256:sha(row['expectedAssemblySha256']),expectedSelectedBaseSha256:sha(row['expectedSelectedBaseSha256']),
     requiredSections,sections,insertions,...anchoredInsertions?{anchoredInsertions}:{},
     ...hasProjection?{messageProjection:messageProjection(row['messageProjection'])}:{},
-    ...hasStory?{story:storyPolicy(row['story'])}:{}}
+    ...hasStory?{story:storyPolicy(row['story'])}:{},
+    ...hasFinalText?{finalTextProjection:finalTextProjection(row['finalTextProjection'])}:{}}
   return messageTextProjections?deepFreeze({...common,schemaVersion:2,encoding:'native-request-material-owner-transform-v2',messageTextProjections}):
     deepFreeze({...common,schemaVersion:1,encoding:'native-request-material-owner-transform-v1'})
+}
+
+function finalTextProjection(value:unknown):NativeMaterialFinalTextProjectionV1 {
+  const row=object(value,['schemaVersion','encoding','textOutputs'])
+  if(row['schemaVersion']!==1||row['encoding']!=='native-request-final-text-projection-v1')return fail()
+  return {schemaVersion:1,encoding:'native-request-final-text-projection-v1',
+    textOutputs:array(row['textOutputs'],131072).map(value=>{
+      const output=object(value,['messageOrdinal','blockOrdinal','text']),replacement=text(output['text'],16_777_216)
+      if(!replacement.isWellFormed())return fail()
+      return {messageOrdinal:count(output['messageOrdinal'],4351),
+        blockOrdinal:output['blockOrdinal']===null?null:count(output['blockOrdinal'],4095),text:replacement}
+    })}
 }
 
 function messageProjection(value:unknown):NativeMessageProjectionV1 {
@@ -440,16 +524,21 @@ function messageProjection(value:unknown):NativeMessageProjectionV1 {
           return {index:count(block['index']),text:text(block['text'],4_194_304)}})}
     })}:{}}
 }
-function storyHooks(value:unknown):NativeStoryMaterialHooksV1 {
+function storyHooks(value:unknown):NativeStoryMaterialHooks {
+  const version=value!==null&&typeof value==='object'?(value as {schemaVersion?:unknown}).schemaVersion:undefined
   const fields=['normalizeText','recoverText','createTextTransform'].filter(field=>value!==null&&typeof value==='object'
     &&!utilTypes.isProxy(value)&&Object.hasOwn(value,field))
-  const row=object(value,['schemaVersion',...fields])
-  if(row['schemaVersion']!==1||fields.some(field=>typeof row[field]!=='function'))return fail()
-  return Object.freeze({schemaVersion:1,...row['normalizeText']?{
+  const row=object(value,['schemaVersion',...fields,...version===2?['finalizeText']:[]])
+  if(version!==1&&version!==2||fields.some(field=>typeof row[field]!=='function')
+    ||version===2&&typeof row['finalizeText']!=='function')return fail()
+  const shared={...row['normalizeText']?{
     normalizeText:(row['normalizeText'] as NonNullable<NativeStoryMaterialHooksV1['normalizeText']>).bind(value)}:{},
     ...row['recoverText']?{recoverText:(row['recoverText'] as NonNullable<NativeStoryMaterialHooksV1['recoverText']>).bind(value)}:{},
     ...row['createTextTransform']?{createTextTransform:(row['createTextTransform'] as
-      NonNullable<NativeStoryMaterialHooksV1['createTextTransform']>).bind(value)}:{}})
+      NonNullable<NativeStoryMaterialHooksV1['createTextTransform']>).bind(value)}:{}}
+  return version===2?Object.freeze({...shared,schemaVersion:2,
+    finalizeText:(row['finalizeText'] as NativeStoryMaterialHooksV2['finalizeText']).bind(value)}):
+    Object.freeze({...shared,schemaVersion:1})
 }
 function storyPolicy(value:unknown):NativeStoryRequestPolicyV1 {
   const fields=['sampling','response'].filter(field=>value!==null&&typeof value==='object'&&!utilTypes.isProxy(value)&&Object.hasOwn(value,field))
@@ -477,7 +566,7 @@ function storyPolicy(value:unknown):NativeStoryRequestPolicyV1 {
 /** Internal, data-only resolver called once on the actual Session preview.
  * The caller retains registration/claim/selected/current checks. This cannot
  * register a selection or recreate a live owner from stored anchor JSON. */
-export function resolveNativeOwnedMaterialAnchorsV1(plan:NativeRequestMaterialTransform,
+export function resolveNativeOwnedMaterialAnchorsV1(plan:NativeRequestMaterialTransform|NativeMaterialTextDraftStructureV1,
   selected:NativeMaterialSelectedBaseV1,preview:SessionRequestPreview,protectedPrefixLength:number) {
   const insertions:NativeMaterialInsertionV1[]=[...plan.insertions]
   const resolutions:{contributionRef:string;baseIndex:number}[]=[]
@@ -532,7 +621,7 @@ export function captureNativeMaterialAssemblyV1(source:PromptAssembly):{
 
 /** Replacing a whole surviving owned section preserves its full preimage;
  * prose substrings and marker text cannot grant a lost slot permission. */
-export function applyNativeOwnedSectionsV1(assembly:PromptAssembly,decision:NativeRequestMaterialTransform,
+export function applyNativeOwnedSectionsV1(assembly:PromptAssembly,decision:NativeRequestMaterialTransform|NativeMaterialTextDraftStructureV1,
   sectionNames:readonly string[]):PromptAssembly {
   const facts=assemblyFacts.get(assembly)
   if((facts?.sha256??nativeInputSha256(assembly))!==decision.expectedAssemblySha256)throw Error('REQUEST_MATERIAL_ASSEMBLY_CHANGED')

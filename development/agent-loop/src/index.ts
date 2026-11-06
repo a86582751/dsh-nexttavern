@@ -23,9 +23,9 @@ import type {
   SessionStartSource,
   TurnBoundaryProjection,
 } from '@deepseek-ai/dsh-agent'
-import { errorChain, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import { interruptedTurnClosers, SessionLogOffset, SessionPreparation, SessionSeq } from '@deepseek-ai/dsh-session'
-import type { Session, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
+import { errorChain, ReasoningEffortId } from 'dsh-nexttavern-native-llm'
+import { interruptedTurnClosers, SessionLogOffset, SessionPreparation, SessionSeq } from 'dsh-nexttavern-native-session'
+import type { Session, SessionHeader, SessionId } from 'dsh-nexttavern-native-session'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-session-projection'
@@ -40,6 +40,7 @@ import { inboxProjectionDefinition } from './inbox.js'
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.js'
 import type {} from './runtime-context.js'
 export {readNativeRequestMeasurementV1} from './request-budget.js'
+export {createNativePublishedInputHistory} from './published-input.js'
 export type {NativeRequestMeasurementV1,RequestComponent,RequestComponents} from './request-budget.js'
 
 /** Fiber states that cannot own or serve a new lifecycle. */
@@ -246,35 +247,41 @@ declare module '@deepseek-ai/cordis' {
 export { DEFAULT_MAX_PARALLEL_TOOL_CALLS }
 export {nativeInputAdmissionCapability,assertNativeRequestMaterialSelectionV1} from './agent.js'
 export {nativeProgrammaticOpeningCapability} from './agent.js'
+export {nativeIsolatedInputCapability} from './agent.js'
+export type {NativeIsolatedInputAgentV1} from './input-admission.js'
 export type {NativeProgrammaticOpeningAgentV1,ProgrammaticAssistantGeneration,ProgrammaticAssistantGenerationResult} from './agent.js'
 export type {NativeOpeningGenerationInspectionV1,NativeOpeningHistoryObservationV1,
   NativeInheritedOpeningGenerationObservationV1} from './opening-generation.js'
 export {inspectNativeOpeningGenerationV1,inspectNativeOpeningGenerationObservationV1,
   inspectInheritedOpeningGenerationObservationV1,buildNativeGeneratedOpeningReceiptObservationV1} from './opening-generation.js'
-export type {NativeMaterialCandidateBasisV1,NativeMaterialCandidatePreviewV1,NativeOpeningMaterialOwnerV1,NativeOpeningMaterialInputV1,NativeOpeningMaterialPrepareInputV1,
+export type {NativeMaterialCandidateBasisV1,NativeOpeningMaterialCandidateBasisV1,NativeMaterialCandidatePreviewV1,NativeMaterialTextDraftV1,
+  NativeMaterialTextDraftStructureV1,NativeMaterialTextSurfaceV1,NativeMaterialTextOutputV1,NativeMaterialFinalTextProjectionV1,
+  NativeOpeningMaterialOwnerV1,NativeOpeningMaterialInputV1,NativeOpeningMaterialPrepareInputV1,
   NativeOpeningMaterialCheckV1,NativeOpeningOwnerIdentityV1,NativeOpeningClosingInputV1,
   NativeOpeningClosingAcknowledgementV1} from './request-material-owner.js'
 export type {NativeOpeningIdentityV1,NativeOpeningInvocationV1,NativeOpeningRequestAttemptV1,
-  NativeGeneratedOpeningReceiptV1,NativeOpeningClosingAckV1,NativeOpeningEventRefV1} from '@deepseek-ai/dsh-session'
+  NativeGeneratedOpeningReceiptV1,NativeOpeningClosingAckV1,NativeOpeningEventRefV1} from 'dsh-nexttavern-native-session'
 export {nativeOpeningRecordSha256V1,nativeOpeningInstructionSha256V1,nativeOpeningTextSha256V1,validateNativeOpeningInvocationV1,
   validateNativeOpeningRequestAttemptV1,validateNativeGeneratedOpeningReceiptV1,validateNativeOpeningClosingAckV1}
   from './opening-record-hashes.js'
 export type {NativeRequestMaterialOwnerV1,NativeRequestMaterialInputV1,NativeRequestMaterialDecisionV1,
   NativeRequestMaterialOwnerV2,NativeRequestMaterialTransformV2,NativeRequestMaterialDecision,NativeRequestMaterialTransform,
   NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2,
-  NativeRequestMaterialTransformV1,NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareInputV1,
+  NativeRequestMaterialTransformV1,NativeMaterialSelectedBaseV1,NativeMaterialSelectedCaptureV2,NativeRequestMaterialPrepareInputV1,
   NativeOwnedMaterialAnchorV1,NativeOwnedMaterialAnchoredInsertionV1,
   NativeRequestMaterialPrepareDecisionV1,NativeMaterialSelectionEvidenceV1,
   NativeMaterialSelectionEventV1} from './request-material-owner.js'
-export {nativeInputSha256,inspectNativeInboxHistory} from './input-admission.js'
+export {nativeInputCanonical,nativeInputSha256,inspectNativeInboxHistory} from './input-admission.js'
 export type {NativeInboxHistory} from './input-admission.js'
-export {reconstructNativeRequestMaterialV1,verifyNativeRequestMaterialHistoryV1,
-  NativeRequestMaterialFailure,projectNativeMessageTextV2} from './request-material.js'
+export {reconstructNativeRequestMaterialV1,reconstructNativeMaterialSelectedCaptureV2,
+  verifyNativeRequestMaterialHistoryV1,verifyNativeSessionRequestMaterialHistoryV1,
+  NativeRequestMaterialFailure,projectNativeMessageTextV2,projectNativeMaterialTextOutputsV1} from './request-material.js'
 export type {NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecord,
   NativeRequestMaterialEventV1} from './request-material.js'
-export type {NativeStoryRequestPolicyV1,NativeStoryMaterialHooksV1,NativeStoryTextTransformV1} from './story-request.js'
-export type {NativeMessageProjectionV1} from '@deepseek-ai/dsh-session'
-export type {NativeInputRef, NativePreparationReceiptV1, NativeInputLinkV1} from '@deepseek-ai/dsh-session'
+export type {NativeStoryRequestPolicyV1,NativeStoryMaterialHooksV1,NativeStoryMaterialHooksV2,
+  NativeStoryMaterialHooks,NativeStoryTextTransformV1} from './story-request.ts'
+export type {NativeMessageProjectionV1} from 'dsh-nexttavern-native-session'
+export type {NativeInputRef, NativePreparationReceiptV1, NativeInputLinkV1} from 'dsh-nexttavern-native-session'
 export type {NativeInputAdmissionAgentV2, NativeInputAdmissionCapabilityV2, NativeInputAdmissionHookV2, NativeInputAdmissionHook,
   NativeInputAdmissionCheckV2, NativeDurableInputWorkReceiptV1, NativeDurableInputWorkSelector,
   NativeInputRefusalBeforeFirstStepV1,

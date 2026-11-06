@@ -12,31 +12,34 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { assertNever, deepFreeze, snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
 import { scopeOf, scopeTarget } from '@deepseek-ai/dsh-scope'
 import type { Scoped } from '@deepseek-ai/dsh-scope'
-import type { Message } from '@deepseek-ai/dsh-llm'
+import type { Message } from 'dsh-nexttavern-native-llm'
 import { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq } from './types.js'
 import type { TypertLookup } from '@deepseek-ai/dsh-typert-protocol'
 import type { CreateSessionOptions, EpochHeader, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SessionId, SessionSeedEventState, SurfaceIntent, SurfaceEventType } from './types.js'
 import { SurfaceManager, validateSessionEventData, validateSurfaceMetadata } from './surface.js'
-import type { SessionSurface, SessionMessageProjection } from './surface.js'
+import type { SessionSurface, SessionMessageProjection, SurfaceAppendPreview } from './surface.js'
 import { foldRequestHeader } from './request-header.js'
 import { ToolHistoryProjection } from './tool-history.js'
-import type { ToolHistory } from '@deepseek-ai/dsh-llm'
+import type { ToolHistory } from 'dsh-nexttavern-native-llm'
 
 import { buildForkSeed } from './fork.js'
-import {previewSessionRequestAppends} from './request-preview.js'
+import {createSessionRequestCandidateEvents,createSessionRequestPreview} from './request-preview.js'
 import type {SessionRequestAppendInput, SessionRequestPreview, SessionRequestPlannedEvent, SessionRequestBoundary} from './request-preview.js'
-import {validateNativeStoryResponseMaterialV1} from './response-material.js'
+import {validateNativeStoryResponseMaterial,assertNativeStoryResponseFinalizationBindingV2} from './response-material.js'
 export {applyNativeStoryResponseOperationsV1,planNativeStoryResponseMaterialV1,reconstructNativeStoryResponseMaterialV1,
   validateNativeStoryResponseMaterialV1,nativeStoryResponseSha256V1,nativeStoryVisibleTextV1} from './response-material.js'
+export {validateNativeStoryResponseMaterial,reconstructNativeStoryResponseMaterial,
+  assertNativeStoryResponseFinalizationBindingV2} from './response-material.js'
 
 export { buildForkSeed } from './fork.js'
 export * from './types.js'
 export type {NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecord,
   NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2,NativeMaterialDataRefV1,NativeMaterialMessageRefV1,
-  NativeMaterialInsertionV1,NativeMaterialPlacementV1,NativeLoreRoleV1,NativeMessageProjectionV1} from './request-material-types.js'
+  NativeMaterialInsertionV1,NativeMaterialPlacementV1,NativeLoreRoleV1,NativeMessageProjectionV1,
+  NativeMaterialFinalTextProjectionV1,NativeMaterialTextOutputV1} from './request-material-types.js'
 export { SessionPreparation } from './preparation.js'
 export type { SessionPreparationOptions } from './preparation.js'
-export type { AssistantMessage, DeveloperMessage, SystemMessage, ToolResultMessage, UserMessage } from '@deepseek-ai/dsh-llm'
+export type { AssistantMessage, DeveloperMessage, SystemMessage, ToolResultMessage, UserMessage } from 'dsh-nexttavern-native-llm'
 export { interruptedTurnClosers, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN } from './repair.js'
 export type { SessionSurface, SurfaceFoldReplacement, SurfaceFoldResult, SessionMessageProjection, SessionMessageProjectionContext } from './surface.js'
 export { deriveEventMessage, foldSurface, isAppendSurfaceEvent, isReplacementSurfaceEvent, isSurfaceEvent, isSurfaceEligibleType } from './surface.js'
@@ -389,7 +392,7 @@ function assertMessageEventShape(event: Record<string, unknown>, subject: string
     }
     if(sourceRecord['responseMaterial']!==undefined) {
       if(sourceRecord['kind']!=='model')throw Error(`${subject} response material requires model source`)
-      validateNativeStoryResponseMaterialV1(sourceRecord['responseMaterial'])
+      validateNativeStoryResponseMaterial(sourceRecord['responseMaterial'])
     }
     return
   }
@@ -469,11 +472,12 @@ const attachments = new WeakMap<Session, SessionEntry>()
  */
 export class Session {
   private log: SessionEvent[] = []
+  /** The latest accepted material is the request that may settle next. */
+  private responseRequestMaterial:SessionEvent<'request/material'>|undefined
   /** Single incremental owner of surface acceptance and projection state. */
   private readonly surfaceManager: SurfaceManager
   /** The preview uses these same pure definitions; it has no observer fiber. */
-  private readonly requestPreviewProjections:readonly SessionMessageProjection[]
-  private readonly requestPreviews=new WeakMap<SessionRequestPreview,{next:number}>()
+  private readonly requestPreviews=new WeakMap<SessionRequestPreview,{next:number;surface:SurfaceAppendPreview}>()
 
   /** The ordered surface over this session's event log. */
   get surface(): SessionSurface {
@@ -582,7 +586,6 @@ export class Session {
     suppliedInheritedEventCount?: SessionLogOffset,
     projections: readonly SessionMessageProjection[] = [],
   ) {
-    this.requestPreviewProjections=projections
     this.surfaceManager = new SurfaceManager(this.log, SessionLogOffset(0), projections)
     const restoredHeader = mode === 'snapshot' ? undefined : validateRestoredSessionHeader(id, header)
     if (seed !== undefined) {
@@ -604,6 +607,7 @@ export class Session {
         if (snapshot.seq !== index) {
           throw new Error(`seed event at index ${index} has seq ${snapshot.seq} (expected ${index}); seed must be contiguous from 0`)
         }
+        this.assertResponseFinalizationBinding(snapshot)
         // A seed is accepted incrementally through the same transition as a
         // live append and a full-log fold. The candidate is planned before it
         // enters `log`, so a failure cannot partially mutate the surface.
@@ -613,6 +617,7 @@ export class Session {
           throw new Error(`invalid seed event at index ${index}: ${error instanceof Error ? error.message : 'invalid surface metadata'}`)
         }
         this.log.push(mode === 'snapshot' ? deepFreeze(snapshot) : snapshot)
+        if(snapshot.type==='request/material')this.responseRequestMaterial=snapshot
       }
     }
     this.firstLiveSeq = SessionLogOffset(this.log.length)
@@ -713,8 +718,13 @@ export class Session {
   /** Snapshot uncommitted Native request appends through the canonical fold.
    * This is data planning, not input permission or a persistence barrier. */
   previewRequestAppends(inputs:readonly SessionRequestAppendInput[]):SessionRequestPreview {
-    const preview=previewSessionRequestAppends(this.log,this.requestPreviewProjections,inputs)
-    this.requestPreviews.set(preview,{next:0})
+    const baseLogLength=this.log.length,events=createSessionRequestCandidateEvents(baseLogLength,inputs),
+      surface=this.surfaceManager.previewAppends(events)
+    this.syncToolHistory()
+    const tools=this.toolHistoryProjection.fork()
+    for(const event of events)tools.apply(event)
+    const preview=createSessionRequestPreview(baseLogLength,events,surface,tools.snapshot())
+    this.requestPreviews.set(preview,{next:0,surface})
     return preview
   }
 
@@ -748,14 +758,24 @@ export class Session {
     // twice even if an observer changes another piece of request ownership.
     state.next++
     try {
-      this.publishAppend(event)
+      this.publishAppend(event,state.surface)
       return event
     } catch(error) {
       this.requestPreviews.delete(preview)
       throw error
-    } finally {
-      if(state.next===preview.events.length)this.requestPreviews.delete(preview)
     }
+  }
+
+  /** Consume this Session's completed candidate after ordinary publication and
+   * its final observers. Exact plans/events establish the result without a
+   * second full request-boundary reconstruction or message-body comparison. */
+  assertRequestPreviewCommitted(preview:SessionRequestPreview):void {
+    const state=this.requestPreviews.get(preview)
+    this.requestPreviews.delete(preview)
+    if(!state||state.next!==preview.events.length||this.log.length!==preview.boundarySeq+1||attachments.get(this)?.appending){
+      throw Error('SESSION_REQUEST_PREVIEW_STALE')
+    }
+    this.surfaceManager.assertPreviewCommitted(state.surface)
   }
 
   /**
@@ -829,12 +849,15 @@ export class Session {
   }
 
   /** One shared acceptance/publication path for ordinary and planned events. */
-  private publishAppend(event:SessionEvent):void {
+  private publishAppend(event:SessionEvent,preview?:SurfaceAppendPreview):void {
     if(event.seq!==this.log.length)throw Error('session append sequence changed')
     const entry=attachments.get(this)
     if(entry?.appending)throw Error('session append cannot reenter while another append is being published')
-    validateSessionEventData(event, `session event "${event.type}" at seq ${event.seq}`)
-    this.surfaceManager.validateNext(event)
+    // The private preview owns already snapshotted/local-validated exact events.
+    // Raw appends still validate here; neither path can supply a caller boolean.
+    if(preview===undefined)validateSessionEventData(event, `session event "${event.type}" at seq ${event.seq}`)
+    this.assertResponseFinalizationBinding(event)
+    this.surfaceManager.validateNext(event,preview)
 
     if (entry !== undefined) entry.appending = true
     try {
@@ -844,6 +867,7 @@ export class Session {
         callbacks = collectSessionCallbacks(entry.emitCtx, [entry.carrier, 'session/event', ...callbackArgs])
       }
       this.log.push(event)
+      if(event.type==='request/material')this.responseRequestMaterial=event
       this.eventsSnapshot = undefined
       if (callbacks !== undefined && entry !== undefined) {
         invokeContainedSessionObservers(entry.emitCtx, 'session/event', entry.id, callbackArgs, callbacks)
@@ -854,6 +878,16 @@ export class Session {
         if (entry.detachRequested && !entry.announcing) entry.detach()
       }
     }
+  }
+
+  private assertResponseFinalizationBinding(event:SessionEvent):void {
+    if(event.type!=='assistant/message')return
+    const source=event.data.message.source,material=source.kind==='model'?source.responseMaterial:undefined
+    if(material?.schemaVersion!==2)return
+    if(this.responseRequestMaterial?.seq!==material.finalization.requestMaterialRef.seq)
+      throw Error('STORY_RESPONSE_MATERIAL_INVALID')
+    assertNativeStoryResponseFinalizationBindingV2(material,{turn:event.data.turn,step:event.data.step,
+      assistantSeq:event.seq,requestMaterial:this.log[material.finalization.requestMaterialRef.seq]})
   }
 
   /** Cached fold of the request-header events — see {@link requestHeader}. */
@@ -921,9 +955,13 @@ export class Session {
    * @returns an immutable snapshot for LLM request projection, including historical addition definitions.
    */
   toolHistory(): ToolHistory {
-    for (const event of this.log.slice(this.toolHistorySeq)) this.toolHistoryProjection.apply(event)
-    this.toolHistorySeq = this.log.length
+    this.syncToolHistory()
     return this.toolHistoryProjection.snapshot()
+  }
+
+  private syncToolHistory():void {
+    for(let index=this.toolHistorySeq;index<this.log.length;index++)this.toolHistoryProjection.apply(this.log[index]!)
+    this.toolHistorySeq = this.log.length
   }
 
   /** The derived-message cache: frozen projections, extended per unseen node. */

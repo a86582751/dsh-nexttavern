@@ -90,7 +90,7 @@ import { hostname } from 'node:os';
 import { resolve } from 'node:path';
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
-import { errorChain, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
+import { errorChain, ReasoningEffortId } from 'dsh-nexttavern-native-llm';
 import { canOpenNativePath, nativeFileManager, nativeFileApplications, openNativeFileApplication, openNativeAssociatedPath, revealNativePath } from '@deepseek-ai/dsh-native-command';
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query';
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
@@ -215,6 +215,7 @@ let SessionController = (() => {
             installModelSelectionProjection(ctx);
             this.agents = new ApiSessionAgentController(ctx);
             this.commands = new SessionCommandController(ctx, this.agents, process.cwd());
+            ctx.effect(() => () => this.commands.disposeUserSourceOperations(), 'session-controller: user Source owners');
             // Cordis 4.0.3 wraps function-valued service properties on reads. The native
             // resolver disposer compares callback identity, so it must close over the
             // service receiver itself rather than that tracing proxy. Registration has
@@ -488,6 +489,12 @@ let SessionController = (() => {
                 throw new TypeError('forkPrepared requires a reservation callback');
             return this.commands.fork(request, beforePublish);
         }
+        /** Reserve a genuine zero-inherited fork and retain its identity on Host retry. */
+        forkBeforeFirstPrepared(request, beforePublish) {
+            if (typeof beforePublish !== 'function')
+                throw new TypeError('forkBeforeFirstPrepared requires a reservation callback');
+            return this.commands.forkBeforeFirstPrepared(request, beforePublish);
+        }
         /**
          * Admit one prompt after explicitly resuming its Session.
          * @param request - Session identity, prompt content, source metadata, and delivery mode.
@@ -496,7 +503,15 @@ let SessionController = (() => {
          */
         prompt(request, signal) {
             signal.throwIfAborted();
-            return this.commands.prompt(request);
+            return this.commands.prompt(request, signal);
+        }
+        /** Register the actual Agent's Source owner. Its binder retains the disposer. */
+        registerUserSourceOperation(agent, operation) {
+            return this.commands.registerUserSourceOperation(agent, operation);
+        }
+        /** Local author capability; remote callers cannot nominate a publisher. */
+        appendAuthorUserInput(agent, input, signal) {
+            return this.commands.appendAuthorUserInput(agent, input, signal);
         }
         /**
          * Read one image proven reachable from the addressed Session log.
@@ -511,8 +526,8 @@ let SessionController = (() => {
          * @param request - Session, queue item, and requested mutation.
          * @returns acknowledgement that the queue mutation was applied.
          */
-        updateQueue(request) {
-            return this.commands.updateQueue(request);
+        updateQueue(request, signal) {
+            return this.commands.updateQueue(request, signal);
         }
         /**
          * Cancel one active Agent turn without dropping its pending inbox.

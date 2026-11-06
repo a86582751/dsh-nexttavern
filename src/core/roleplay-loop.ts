@@ -2,14 +2,14 @@ import { randomUUID } from 'node:crypto'
 import {renderToolsSdk, renderToolsSdkPy} from '@deepseek-ai/dsh-tools'
 import {ensureSessionHistory} from './session-history.js'
 import {provenImportPreludeAssistants} from './tavern-task-retirement.js'
-import { retireSettledInlineContexts, retireUsedStoryReads, isSettingManagementCall } from './tavern-task-context.js'
+import { isSettingManagementCall,createTaskHistoryClassification,inlineTaskEnvelope } from './tavern-task-context.js'
+import {createTaskRetirement} from './tavern-task-retirement.js'
 import { createAdaptationStore } from './card-adaptation.js'
-import { retireAdaptationReads, retireCoarseResearchReads, retireDeliveredDraft } from './card-adaptation-context.js'
 import { adaptationTurns, adaptationIsActive, importedStoryProjection } from '../memory/memory-provenance.js'
 import { keyOf, cloneRecord, recordSha256, textOf } from './roleplay-data.js'
 import { eventsOf, surfaceEvents, surfaceEntries, retireRoleplayContexts, retainRoleplayWindowContinuity, canonicalAssistantForTurn } from './roleplay-context.js'
 import { CHARACTER_PERSONA } from './character-cluster.js'
-import { tavernTaskToolBoundary, inlineTaskInstruction, taskPhaseMessage, retireCompletedTaskContexts, isInlinePending, inlineTaskMessages, internalTaskSeqs } from './tavern-tasks.js'
+import { tavernTaskToolBoundary, inlineTaskInstruction, taskPhaseMessage, isInlinePending, inlineTaskMessages, internalTaskSeqs } from './tavern-tasks.js'
 import type { LoopAgent, LoopSession, LoopPreparation, LoopDependencies,
   PromptAssembly, LoopAssistantStreamFrame } from './roleplay-loop-types.js'
 import type { DecisionJob } from './roleplay-decision-types.js'
@@ -60,8 +60,10 @@ export function registerRoleplayLoop({
   withImportLock,ensureBranch,buildPhaseA,buildPhaseACandidate,reconcileCanonicalPlayerVariants,buildForkLookupIndex,
   characterRoster,storyWindowSettings,runStatusObligation,publishTurnDecision,runPhaseBC,
   adaptationScope,importPromptCheckpoint,authorContext,inputBinding,inputSnapshotCurrent,programOpeningOwner,rowFacts,
-  firstResponseTimeoutMs,submissionBindings,
+    firstResponseTimeoutMs,submissionBindings,projections,storyEntryReader,ownsStoryMemoryCompletion,
 }:LoopDependencies) {
+  const retirement=createTaskRetirement({internalTaskSeqs,inlineTaskEnvelope,
+    createClassification:createTaskHistoryClassification,...projections?{projections}:{}})
   const preparationRecordKey = (sid: string) => keyOf(sid,'task-preparation')
   const handledImportPrompts=new Map<string,string>()
   const firstResponse=createFirstResponseWatchdog(firstResponseTimeoutMs)
@@ -95,6 +97,7 @@ export function registerRoleplayLoop({
   },{global:true})
   const authorPrompts=new WeakMap<HostSession,{revision:string;turn:unknown;parts:{name:string;text:string}[]}>()
   const currentTurn=(session:HostSession)=>{
+    if(storyEntryReader)return storyEntryReader.currentTurn(session)
     const events=eventsOf(session)
     for(let i=events.length-1;i>=0;i--)if(events[i]?.type==='turn/start')return events[i]?.data?.turn
     return undefined
@@ -105,7 +108,8 @@ export function registerRoleplayLoop({
     const author=cached.revision===authorContext?.(session).revision?cached.parts:[]
     // Reuse only this turn's visible input/body. Older evidence may have been
     // removed by the hard window and must remain in the frozen task payload.
-    const story=surfaceEntries(session).filter(entry=>entry.turn===turn)
+    const story=(storyEntryReader?.surfaceEntriesForTurn(session,turn)
+      ??surfaceEntries(session).filter(entry=>entry.turn===turn))
       .map(entry=>({name:`本轮${entry.kind==='assistant'?'正文':'玩家输入'} seq=${entry.seq}`,text:entry.text}))
     return [...author,...story]
   }
@@ -136,7 +140,8 @@ export function registerRoleplayLoop({
     let importing=workflow?.kind==='card-import',exporting=workflow?.kind==='card-export'
     // Legacy manual sources keep their existing current-branch recovery path.
     // A record owned by a stopped job never reopens that job's capabilities.
-    for(const [key,record] of T.branch.entries()){
+    const manualPrefixes=[keyOf(session.id,'import-'),keyOf(session.id,'export-')]
+    for(const [key,record] of T.branch.entriesPrefix?.(manualPrefixes)??T.branch.entries()){
       if(record.workflowId)continue
       if(record.sessionId===session.id&&key===keyOf(session.id,`import-${record.importId}`)
         &&['staging','committing','recovery-required'].includes(String(record.status)))importing=true
@@ -274,7 +279,7 @@ export function registerRoleplayLoop({
     const programmaticGeneration=!!payload.agent.programmaticGeneration
     const programmaticOpening = programmaticGeneration && payload.step === 1
     const input = programmaticGeneration ? undefined : inputBinding?.(payload.agent)
-    const inputStep = input ? await input.beginStep({turn:payload.turn,step:payload.step,
+    let inputStep = input ? await input.beginStep({turn:payload.turn,step:payload.step,
       signal:payload.signal ?? AbortSignal.abort('Native step signal missing')}) : undefined
     const assertInput = () => {
       if (!input || !inputStep) return
@@ -283,12 +288,12 @@ export function registerRoleplayLoop({
     }
     const imported=importPromptCheckpoint?.(session)
     if(payload.step>1&&imported&&handledImportPrompts.get(session.id)!==imported.importId){
-      retireCompletedTaskContexts(session,payload.turn,imported)
+      retirement.retireCompletedTaskContexts(session,payload.turn,imported)
       handledImportPrompts.set(session.id,imported.importId)
     }
     const researchOwner=adaptationScope?.(session)??session.id
-    retireCoarseResearchReads(session,researchOwner)
-    retireAdaptationReads(session,createAdaptationStore(T.branch).checkpoints(researchOwner,session.id))
+    retirement.retireCoarseResearchReads(session,researchOwner)
+    retirement.retireAdaptationReads(session,createAdaptationStore(T.branch).checkpoints(researchOwner,session.id))
     const st=ensureState(session.id)
     if (input && inputStep?.kind === 'management') {
       // The durable phase is interpreted by canonical story/state/memory
@@ -320,18 +325,25 @@ export function registerRoleplayLoop({
               {force:true,resident:residentContext(session)})}
           }
         }
-        // This wake submits the real rebuild task and then closes its status
-        // publication on the next step, without entering Story preparation.
-        try {await resumeStatusMaintenance(session,payload.agent)}
+        // Management wakes publish their completed task results through the
+        // same owners as Story preparation, without creating a new Story.
+        try {
+          await resumeStatusMaintenance(session,payload.agent)
+          await resumeMemoryWork(session,payload.agent,payload.signal)
+        }
         catch(error) {if(!isInlinePending(error))throw error}
         // A dedicated card task can finish before this kickoff spends its
-        // first request. Native's empty entrance closes that internal turn.
+        // first request. Its actual Native input owner closes that internal turn.
         // Keep the ordinary driver when another input arrived while waiting.
         const settledCardKickoff=payload.step===1&&original.every(message=>message.source?.jobId
           &&['card-export','card-convert'].includes(String(message.source.jobKind)))
           &&!activeCardWorkflow(session)&&tavernTasks.pending(session).length===0
           &&!payload.agent.inbox.hasPending
-        if(settledCardKickoff)return {...decision,messages:[]}
+        if(settledCardKickoff) {
+          assertInput()
+          input.completeWithoutRequest(inputStep)
+          return {...decision,messages:[]}
+        }
         // The owning task host already supplied its complete actual envelope.
         // Replacing it with player-management prose loses the queued task
         // input and causes idle wake/retry loops. Never grant this exception
@@ -356,7 +368,7 @@ export function registerRoleplayLoop({
     }
     // Preserve old records for diagnostics, but never resume superseded
     // per-turn semantic preparation after upgrading to direct notes.
-    for (const job of tavernTasks.list(session)) {
+    for (const job of tavernTasks.active(session)) {
       if (job.kind !== 'memory' || job.input?.taskStage || !['queued','running'].includes(job.status)) continue
       const system = String(job.input?.system ?? '')
       if (system.includes('场景状态分析器') || system.includes('记忆提取器')) {
@@ -372,8 +384,8 @@ export function registerRoleplayLoop({
     const hasUser=programmaticOpening || payload.messages.some(m=>m.role==='user'&&m.source?.kind==='user')
     if(hasUser && payload.step===1) {
       if(!tavernTasks.pending(session).length){
-        retireCompletedTaskContexts(session,payload.turn)
-      }else retireDeliveredDraft(session,payload.turn)
+        retirement.retireCompletedTaskContexts(session,payload.turn)
+      }else retirement.retireDeliveredDraft(session,payload.turn)
       await withDecisionMutationLock(session.id,async()=>{
         const key=keyOf(session.id,'current'),decision=normalizeDecisionRecord(T.decision.get(key))
         if(decision&&decision.answered!==true&&decision.superseded!==true)await T.decision.put(key,{...decision,answered:true,superseded:true,supersededAt:Date.now(),supersededReason:'player-input'})
@@ -390,8 +402,8 @@ export function registerRoleplayLoop({
     }
     await tavernTasks.invalidate(session)
     if(hasUser&&payload.step===1){
-      retireSettledInlineContexts(session,payload.turn,tavernTasks.list(session))
-      retireUsedStoryReads(session,payload.turn)
+      retirement.retireSettledInlineContexts(session,payload.turn,id=>tavernTasks.contextJob(session,id))
+      retirement.retireUsedStoryReads(session,payload.turn)
     }
     try {await resumeStatusMaintenance(session,payload.agent);await resumeMemoryWork(session,payload.agent,payload.signal);await resumeCardWorkflows(session,payload.agent,payload.signal);await resumeNovelExports(session,payload.agent,payload.signal)}
     catch(error){
@@ -421,7 +433,7 @@ export function registerRoleplayLoop({
       // Edit recovery takes the fork lock before Source FIFO. It must finish
       // before Phase A takes that FIFO; otherwise its numerical persistence
       // waits behind the Phase A operation that is awaiting this same recovery.
-      await reconcileCanonicalPlayerVariants(session,buildForkLookupIndex(session))
+      await reconcileCanonicalPlayerVariants(session)
       assertInput()
       return await withImportLock(session.id,'__phase-a__',async()=>{
         let decision
@@ -466,6 +478,14 @@ export function registerRoleplayLoop({
         }
         if(input&&inputStep?.kind==='story'&&input.stagePhaseA(inputStep,{
           current:()=>candidate,messages:()=>messagesForCandidate().messages,
+          rebuild:step=>withImportLock(session.id,'__phase-a-source-data__',async()=>{
+            inputStep=step
+            staged.inputPreparation=step.currency
+            preparation={...preparation!,inputPreparation:step.currency}
+            candidate=await buildPhaseACandidate(session,staged,st)
+            retireRoleplayContexts(session,payload.turn,candidate.anchors)
+            assertInput()
+          }),
           checkpoint:options=>withImportLock(session.id,'__phase-a-checkpoint__',async()=>{
             candidate=await candidate.checkpoint(options)
             retireRoleplayContexts(session,payload.turn,candidate.anchors)
@@ -535,7 +555,7 @@ export function registerRoleplayLoop({
       let canonical=canonicalAssistantForTurn(session,turn)
       if(canonical&&importPrelude.has(canonical.seq))canonical=null
       if(!canonical) {
-        const hidden=internalTaskSeqs(session)
+        const hidden=retirement.internal(session)
         canonical=surfaceEvents(session).findLast(e=>e.type==='assistant/message'&&Number(e.data?.turn)===Number(turn)&&!e.data?.interrupted&&!hidden.has(e.seq)&&!importPrelude.has(e.seq)&&textOf(e.data?.message?.content).trim())??null
         if(canonical)session.append('user/message',taskPhaseMessage('after-story','正文已经落盘，下面只完成本轮维护义务，不继续剧情。',{storySeq:canonical.seq,turn}),{surfaceOp:'append'})
       }
@@ -573,7 +593,7 @@ export function registerRoleplayLoop({
           const outcomes=await Promise.allSettled([decisionWork.finally(()=>mark('decision-ready-or-inline')),runPhaseBC(session,canonical,st,snapshot,signal).finally(()=>mark('phase-bc-ready'))])
           for(const outcome of outcomes)if(outcome.status==='rejected'&&!isInlinePending(outcome.reason))throw outcome.reason
         }
-        if(T.branch.get(keyOf(session.id,`phaseb-${turn}`))?.state==='completed') {
+        if(T.branch.get(keyOf(session.id,`phaseb-${turn}`))?.state==='completed'&&!ownsStoryMemoryCompletion?.(session.id)) {
           try {await ctx.get('compaction')?.finishTurn?.(agent,signal)}catch(error){if(!isInlinePending(error))throw error}
         }
       }

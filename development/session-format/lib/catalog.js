@@ -1,24 +1,23 @@
 // Generated from runtime/alpha3/compat/session-format/src/catalog.ts; edit the TypeScript source.
 /** Build a private vocabulary; never mutate the host's exported known-event set. */
-import { KNOWN_SESSION_EVENT_TYPES, Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session';
+import { KNOWN_SESSION_EVENT_TYPES, Session, SessionId, SessionLogOffset } from 'dsh-nexttavern-native-session';
 import { createSessionFormatCatalog } from '@deepseek-ai/dsh-session-format';
 import { currentSessionMessageProjections as officialProjections } from '@deepseek-ai/dsh-session-format-catalog/message-projections';
 import { releasedV0SessionFormatCodec, releasedV1SessionFormatCodec, sessionFormatV0ToV1 } from '@deepseek-ai/dsh-session-format-v0-to-v1';
 import { releasedV2SessionFormatCodec, sessionFormatV1ToV2 } from '@deepseek-ai/dsh-session-format-v1-to-v2';
 import { releasedV3SessionFormatCodec, sessionFormatV2ToV3 } from '@deepseek-ai/dsh-session-format-v2-to-v3';
-import { assertReleasedV4Header, releasedV4SessionFormatCodec, restoreReleasedV4Artifact, sessionFormatV3ToV4 } from '@deepseek-ai/dsh-session-format-v3-to-v4';
+import { assertReleasedV4Header, releasedV4SessionFormatCodec, restoreReleasedV4Artifact, createSessionFormatV3ToV4, sessionFormatV3ToV4 } from '@deepseek-ai/dsh-session-format-v3-to-v4';
 import { MESSAGE_EDIT_EVENT, assertMessageEdit, messageEditProjection } from './projection.js';
 import { MVU_PLAYER_EDIT_EVENT, assertMvuPlayerEditEvent, assertMvuPlayerMarkerBoundary } from './mvu-player-marker.js';
 import { MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT, MVU_SCHEMA_REVISION_EVENT, assertMvuSchemaHistory, assertMvuSchemaEventVocabulary } from './mvu-schema-marker.js';
-import { AUTHOR_INJECTION_CLEANUP_EVENT, assertAuthorInjectionCleanup } from './author-injection-cleanup.js';
+import { AUTHOR_INJECTION_CLEANUP_EVENT, assertAuthorInjectionCleanup, AUTHOR_INJECTION_DECLARATION_EVENT, assertAuthorInjectionDeclaration } from './author-injection-cleanup.js';
+import { AUTHOR_CHAT_ROOT_EVENT, assertAuthorChatRootMarker } from './author-chat-marker.js';
 export { SessionFormatUnsupportedMigrationError } from '@deepseek-ai/dsh-session-format';
-// Historical official sessions use the host's child-aware migration. Private
-// alpha.6 edit logs are deliberately unsupported; new edits are V4 only.
-export { createSessionFormatCatalogWithChildren } from '@deepseek-ai/dsh-session-format-catalog';
 export const currentSessionMessageProjections = [...officialProjections, messageEditProjection];
 export const knownSessionEventTypes = new Set([
     ...KNOWN_SESSION_EVENT_TYPES, MESSAGE_EDIT_EVENT, MVU_PLAYER_EDIT_EVENT,
     MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT, MVU_SCHEMA_REVISION_EVENT, AUTHOR_INJECTION_CLEANUP_EVENT,
+    AUTHOR_CHAT_ROOT_EVENT, AUTHOR_INJECTION_DECLARATION_EVENT,
 ]);
 function restore(artifact) {
     // Reject reserved unknowns before the official unknown-ignorable contract
@@ -29,6 +28,16 @@ function restore(artifact) {
     for (const event of restored.events) {
         if (event.type === MESSAGE_EDIT_EVENT)
             assertMessageEdit(event.data);
+        else if (event.type === AUTHOR_CHAT_ROOT_EVENT) {
+            if (event.ignorable === true)
+                throw Error('AUTHOR_CHAT_ROOT_NOT_IGNORABLE');
+            assertAuthorChatRootMarker(event.data);
+        }
+        else if (event.type === AUTHOR_INJECTION_DECLARATION_EVENT) {
+            if (event.ignorable === true)
+                throw Error('AUTHOR_INJECTION_DECLARATION_NOT_IGNORABLE');
+            assertAuthorInjectionDeclaration(event.data);
+        }
         else if (event.type === AUTHOR_INJECTION_CLEANUP_EVENT) {
             if (event.ignorable === true)
                 throw Error('AUTHOR_INJECTION_CLEANUP_NOT_IGNORABLE');
@@ -49,7 +58,7 @@ function restore(artifact) {
     Session.fromRestore(SessionId(restored.header.id), restored.events, restored.header, SessionLogOffset(restored.inheritedEventCount), 'detached', currentSessionMessageProjections);
     return restored;
 }
-export const sessionFormatCatalog = createSessionFormatCatalog({
+const sessionFormatCatalogOptions = {
     currentVersion: 4,
     codecs: [releasedV0SessionFormatCodec, releasedV1SessionFormatCodec, releasedV2SessionFormatCodec,
         releasedV3SessionFormatCodec, releasedV4SessionFormatCodec],
@@ -62,4 +71,13 @@ export const sessionFormatCatalog = createSessionFormatCatalog({
         Session.fromRestore(SessionId(header.id), [], header, SessionLogOffset(0), 'detached');
         return header;
     },
-});
+};
+export const sessionFormatCatalog = createSessionFormatCatalog(sessionFormatCatalogOptions);
+/** Preserve historical child migration facts while restoring through the Native Session owner. */
+export function createSessionFormatCatalogWithChildren(children) {
+    const migration = createSessionFormatV3ToV4(children);
+    return createSessionFormatCatalog({
+        ...sessionFormatCatalogOptions,
+        migrations: sessionFormatCatalogOptions.migrations.map(edge => edge === sessionFormatV3ToV4 ? migration : edge),
+    });
+}

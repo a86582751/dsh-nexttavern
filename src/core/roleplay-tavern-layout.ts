@@ -1,10 +1,10 @@
 /** Native layout data comes from actual author/Phase-A producers. This module
  * checks complete section preimages and expresses chat anchors; only Native
  * resolves those anchors against its real envelope/Session preview. */
-import {nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
+import {nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
 import type {NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareInputV1,
   NativeRequestMaterialTransformV1,NativeOwnedMaterialAnchoredInsertionV1}
-  from '@deepseek-ai/dsh-agent-loop'
+  from 'dsh-nexttavern-native-agent-loop'
 import {recordSha256,sha256} from './roleplay-data.js'
 import {createStableRoleplayFence} from './roleplay-context.js'
 import type {AuthorContributionDataV1} from './roleplay-author-contributions.js'
@@ -43,7 +43,7 @@ export interface TavernNativeFinalLoreTextV1 {
   readonly outputSha256:string
 }
 interface LayoutInput {
-  readonly native:Omit<NativeRequestMaterialPrepareInputV1,'admission'>
+  readonly native:Pick<NativeRequestMaterialPrepareInputV1,'selected'|'finalAssembly'|'assemblySha256'|'turn'>
   readonly original:AuthorContributionDataV1
   readonly residual:AuthorContributionDataV1
   readonly renderedAuthor:{readonly cardsText:string;readonly rulesText:string;readonly examplesText:string}

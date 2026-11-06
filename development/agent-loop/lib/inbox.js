@@ -4,15 +4,29 @@
  *
  * @module @deepseek-ai/dsh-agent-loop/inbox
  */
-import { SessionLogOffset } from '@deepseek-ai/dsh-session';
+import { SessionLogOffset } from 'dsh-nexttavern-native-session';
 import { z } from 'zod';
 import { deepFreeze } from '@deepseek-ai/dsh-util-values';
 import { createNativeInboxHistoryOwner, nativeInputLink, nativeInputSha256 } from './input-admission.js';
+import { nativeCompletedInputReceipt } from './input-completion.js';
+import { readNativeAuthorPublicationV1 } from 'dsh-nexttavern-native-session/types';
 /** Wire validation for pending agent input reconstructed from durable inbox splices. */
 export const inboxProjectionSchema = z.object({
     'next-turn': z.array(z.custom()).readonly(),
     'next-step': z.array(z.custom()).readonly(),
 }).readonly();
+const publishedInboxViews = new WeakMap();
+function inboxWireView(state) {
+    const retained = publishedInboxViews.get(state);
+    if (retained)
+        return retained;
+    const turn = state['next-turn'].filter(message => !readNativeAuthorPublicationV1(message.source));
+    const step = state['next-step'].filter(message => !readNativeAuthorPublicationV1(message.source));
+    const value = (turn.length === state['next-turn'].length && step.length === state['next-step'].length
+        ? state : { 'next-turn': turn, 'next-step': step });
+    publishedInboxViews.set(state, value);
+    return value;
+}
 /** Standard fold that reconstructs pending input and rejects invalid durable splice history. */
 export const inboxProjectionDefinition = {
     key: 'inbox',
@@ -52,7 +66,9 @@ export const inboxProjectionDefinition = {
         // round-trips the session log as lossless JSON. Only the static type
         // narrows to the JSON-safe projection table entry.
         viewSchema: inboxProjectionSchema,
-        view: (state) => state,
+        // Published users already have canonical message rows. They remain actual
+        // inbox work for admission, but must not appear as a second pending row.
+        view: inboxWireView,
     },
     stateVersion: 1,
 };
@@ -173,6 +189,12 @@ export class ReactLoopInbox {
         return this.claims.has(claim) && this.history().ownsClaim(claim);
     }
     lookupOwnership(ref) { return this.history().ownership(ref); }
+    publishedHistory() { return this.history().published; }
+    isPublished(message, digest) { return this.history().published.isPublished(message, digest); }
+    insertPublished(messages, publishedInput) {
+        this.mutate('next-step', Infinity, 0, [...messages], false, undefined, undefined, publishedInput);
+    }
+    hasPromptRequest(requestId) { return this.history().hasPromptRequest(requestId); }
     pendingOwnership() {
         const history = this.history(), refs = [];
         let unknown = false;
@@ -189,6 +211,14 @@ export class ReactLoopInbox {
     linkReceipt(startSeq) {
         const receipt = this.history().linkReceipt(startSeq);
         return receipt && deepFreeze(structuredClone(receipt));
+    }
+    /** Read the same actual Session owner before/after the publisher await.
+     * Pending inserts may extend it; a later turn, conflict or malformed tail
+     * cannot keep an earlier closing proof current. No flush is performed here. */
+    completedInputReceipt(checkpoint, claim, supplement, end) {
+        if (!this.claims.has(claim) || supplement?.claims.some(owned => !this.claims.has(owned.claim)))
+            return undefined;
+        return nativeCompletedInputReceipt(this.history(), checkpoint, claim, supplement, end);
     }
     canResumeLinked(receipt) {
         return this.history().resumeLinked(receipt) !== undefined;
@@ -340,7 +370,7 @@ export class ReactLoopInbox {
         return state;
     }
     /** Commit one normalized mutation and publish its live events. */
-    mutate(target, start, deleteCount, inserted, discardRemoved, recordSeq, recordInserted) {
+    mutate(target, start, deleteCount, inserted, discardRemoved, recordSeq, recordInserted, publishedInput) {
         const state = this.current();
         const inbox = state[target];
         const truncatedStart = Math.trunc(start);
@@ -368,6 +398,7 @@ export class ReactLoopInbox {
             ...(actualDeleteCount === 0 ? {} : { removedCount: actualDeleteCount }),
             inserted,
             ...(outcome === undefined ? {} : { outcome }),
+            ...publishedInput ? { publishedInput } : {},
         };
         const removed = inbox.slice(actualStart, actualStart + actualDeleteCount);
         const event = this.session.append('agent/inbox/spliced', splice);

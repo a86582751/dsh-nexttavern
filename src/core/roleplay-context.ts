@@ -5,7 +5,8 @@ import { taskProjectionEvents } from './tavern-task-context.js'
 import { textOf, estimateTokens, sha256 } from './roleplay-data.js'
 import type { TaskBlock, TaskEvent, TaskMessage, TaskContextSession } from './tavern-task-context.js'
 import { projectStoryEvent, messageViewGeneration, type MessageViewSession, type StorySurfaceOp } from './roleplay-message-view.js'
-import {sessionEvents} from './session-history.js'
+import {sessionEvents,nativeSessionClassification} from './session-history.js'
+import type {SessionClassificationData} from './session-history.js'
 
 export interface ContextMessage extends TaskMessage {
   id?: unknown
@@ -76,6 +77,13 @@ export interface StoryEntry {
   turn?: number
   step?: number
 }
+/** Selected DATA only; current task, branch and Native permissions stay with
+ * their existing consumers. Raw callers keep the full compatibility parser. */
+export interface ContextStoryEntryReader {
+  currentTurn(session:ContextSession):number|undefined
+  surfaceEntriesAt(session:ContextSession,seqs:readonly number[]):readonly StoryEntry[]
+  surfaceEntriesForTurn(session:ContextSession,turn:number):readonly StoryEntry[]
+}
 
 
 export function eventsOf(session: ContextSession | null | undefined): readonly ContextEvent[] {
@@ -93,6 +101,32 @@ export function sessionEventsIfReady<E>(session: {events?: readonly E[]; log?: r
     return sessionEvents<E>(session)
   } catch (error) {
     if ((error as {code?: unknown} | null)?.code === 'SESSION_HISTORY_NOT_READY') return null
+    throw error
+  }
+}
+
+/** Classification only: no surface or selected-story initialization. Raw
+ * loaded views retain their original event-array semantics and scan cost. */
+export function readSessionClassification(session:object|null|undefined):SessionClassificationData {
+  const native=nativeSessionClassification(session)
+  if(native)return native
+  const loaded=session as {inheritedEventCount?:number;events?:readonly ContextEvent[];log?:readonly ContextEvent[]}|null|undefined
+  let hasPresetSelection=false,lastSelectedPreset:unknown,lastTruthySelectedPreset:unknown,localSubagentDescriptor=false
+  const seed=Number(loaded?.inheritedEventCount??0)
+  for(const event of sessionEvents(loaded)) {
+    if(event?.type==='agent-preset/selected') {
+      hasPresetSelection=true;lastSelectedPreset=event.data?.agentPreset
+      if(lastSelectedPreset)lastTruthySelectedPreset=lastSelectedPreset
+    } else if(event?.type==='subagent/descriptor'&&Number(event.seq)>=seed)localSubagentDescriptor=true
+  }
+  return {hasPresetSelection,lastSelectedPreset,lastTruthySelectedPreset,localSubagentDescriptor}
+}
+
+/** Predicates that previously answered from the header before observation
+ * keep that fallback; strict event consumers use readSessionClassification. */
+export function readSessionClassificationIfReady(session:object|null|undefined):SessionClassificationData|null {
+  try {return readSessionClassification(session)}catch(error) {
+    if((error as {code?:unknown}|null)?.code==='SESSION_HISTORY_NOT_READY')return null
     throw error
   }
 }
@@ -238,6 +272,24 @@ export function retireRoleplayContexts(session: ContextSession & Pick<TaskContex
   return retired
 }
 
+/** Shared DTO/payload policy for full and accepted-tail surface readers. */
+export function surfaceStoryEntry(event:ContextEvent,internal:boolean):StoryEntry|undefined {
+  if(internal)return
+  if(event.type==='user/message') {
+    const source=event.data?.source
+    if(source?.kind!=='user'&&!(source?.kind==='roleplay'&&source.form==='branch-user'))return
+    const text=textOf(event.data?.content)
+    if(text.trim())return {seq:event.seq,kind:'user',text,messageId:String(event.data?.id??''),time:Number(event.time)||0}
+  }else if(event.type==='assistant/message'&&event.data?.interrupted!==true) {
+    const text=textOf(event.data?.message?.content)
+    if(text.trim())return {seq:event.seq,kind:'assistant',text,messageId:String(event.data?.message?.id??''),
+      turn:Number(event.data?.turn),step:Number(event.data?.step),time:Number(event.time)||0}
+  }
+}
+export function surfaceStoryTurnAllowed(event:ContextEvent,ended:ReadonlySet<number>,completed:ReadonlySet<number>,committed:boolean) {
+  const turn=Number(event.data?.turn)
+  return !ended.has(turn)||completed.has(turn)||committed
+}
 export function surfaceEntries(session: ContextSession): StoryEntry[] {
   const surface = surfaceEvents(session)
   const internal = internalTaskSeqs(session)
@@ -254,42 +306,23 @@ export function surfaceEntries(session: ContextSession): StoryEntry[] {
   // prose message for that turn. The audit log still retains every event.
   const canonicalByTurn = new Map<number | string, ContextEvent>()
   for (const event of surface) {
-    if (event?.type !== 'assistant/message' || event.data?.interrupted === true || internal.has(event.seq)) continue
-    const text = textOf(event.data?.message?.content)
-    if (!text.trim()) continue
+    if (event?.type !== 'assistant/message' || !surfaceStoryEntry(event,internal.has(event.seq))) continue
     const turn = Number(event.data?.turn)
     const key = Number.isSafeInteger(turn) ? turn : `seq:${event.seq}`
-    if (!ended.has(turn) || completed.has(turn) || committedStory.has(event.seq)) canonicalByTurn.set(key, event)
+    if (surfaceStoryTurnAllowed(event,ended,completed,committedStory.has(event.seq))) canonicalByTurn.set(key, event)
   }
   const out: StoryEntry[] = []
   for (const e of surface) {
     if (e.type === 'user/message') {
-      if(internal.has(e.seq))continue
-      const src = e.data?.source
-      // 普通玩家输入，以及分支投影中按原文恢复的玩家输入；后台上下文、
-      // compact checkpoint、重生指令和工具材料都不属于剧情正文。
-      if (src?.kind !== 'user' && !(src?.kind === 'roleplay' && src?.form === 'branch-user')) continue
-      const text = textOf(e.data?.content)
-      if (text.trim()) out.push({
-        seq: e.seq,
-        kind: 'user',
-        text,
-        messageId: String(e.data?.id ?? ''),
-        time: Number(e.time) || 0,
-      })
+      const entry=surfaceStoryEntry(e,internal.has(e.seq))
+      if(entry)out.push(entry)
     } else if (e.type === 'assistant/message') {
-      const text = textOf(e.data?.message?.content)
       const turn = Number(e.data?.turn)
       const key = Number.isSafeInteger(turn) ? turn : `seq:${e.seq}`
-      if (text.trim() && canonicalByTurn.get(key) === e) out.push({
-        seq: e.seq,
-        kind: 'assistant',
-        text,
-        messageId: String(e.data?.message?.id ?? ''),
-        turn: Number(e.data?.turn),
-        step: Number(e.data?.step),
-        time: Number(e.time) || 0,
-      })
+      if (canonicalByTurn.get(key) === e) {
+        const entry=surfaceStoryEntry(e,false)
+        if(entry)out.push(entry)
+      }
     }
   }
   return out
@@ -304,6 +337,15 @@ const canonicalAssistantCache = new WeakMap<ContextSession, {
   raw: readonly ContextEvent[]; rawLength: number; rawLast: ContextEvent | undefined
   surfaceKey: string; generation: number; byTurn: Map<number, ContextEvent>
 }>()
+const canonicalPointReaders=new WeakMap<ContextSession,{read(turn:number):ContextEvent|null}>()
+/** The live Core owns Native history and its projection definitions. Generic
+ * Context views retain their raw reader; this binding supplies only DATA. */
+export function bindCanonicalAssistantPointReader(session:ContextSession,read:(turn:number)=>ContextEvent|null):()=>void {
+  const binding={read}
+  canonicalPointReaders.set(session,binding)
+  // A retiring Core/Agent must not remove a newer binding on the same object.
+  return ()=>{if(canonicalPointReaders.get(session)===binding)canonicalPointReaders.delete(session)}
+}
 /** Native request completion only. Management replies remain excluded from story projections.
  * A terminal internal worker, hidden/empty reply or unfinished turn cannot complete a fork. */
 export function completedAssistantReceiptForTurn(session: ContextSession, turn: unknown) {
@@ -355,6 +397,8 @@ export function canonicalAssistantByTurn(session: ContextSession): ReadonlyMap<n
   return byTurn
 }
 export function canonicalAssistantForTurn(session: ContextSession, turn: unknown) {
+  const owned=canonicalPointReaders.get(session)
+  if(owned)return owned.read(Number(turn))
   return canonicalAssistantByTurn(session).get(Number(turn))??null
 }
 

@@ -8,10 +8,9 @@ import { SurfaceManager, validateSessionEventData } from './surface.js';
 import { SessionLogOffset, SessionSeq } from './types.js';
 const ALLOWED = new Set(['system/message', 'user/message', 'developer/message', 'request/header', 'request/context', 'step/start']);
 export const SESSION_REQUEST_PREVIEW_BOUNDS = Object.freeze({ appends: 128, messages: 4096, candidateBytes: 8_388_608 });
-/** The complete committed prefix is borrowed, not cloned. The additional
- * events are detached once before validation, so preview and commit read the
- * same message IDs/data/intents even if the caller later edits its inputs. */
-export function previewSessionRequestAppends(committed, projections, inputs) {
+/** Detach the bounded candidates once, including their final event identity.
+ * Both the Session-owned preview and the raw cold oracle use these events. */
+export function createSessionRequestCandidateEvents(baseLogLength, inputs) {
     if (!Array.isArray(inputs) || inputs.length > SESSION_REQUEST_PREVIEW_BOUNDS.appends) {
         throw Error('SESSION_REQUEST_PREVIEW_APPEND_BUDGET');
     }
@@ -32,12 +31,28 @@ export function previewSessionRequestAppends(committed, projections, inputs) {
         if (candidateBytes > SESSION_REQUEST_PREVIEW_BOUNDS.candidateBytes)
             throw Error('SESSION_REQUEST_PREVIEW_DATA_BUDGET');
         const event = deepFreeze({
-            type: input.type, seq: SessionSeq(committed.length + candidate.length), time: Date.now(), data,
+            type: input.type, seq: SessionSeq(baseLogLength + candidate.length), time: Date.now(), data,
             ...surface,
         });
         validateSessionEventData(event, `request preview at seq ${event.seq}`);
         candidate.push(event);
     }
+    return Object.freeze(candidate);
+}
+/** The folds own immutable messages/tool history. Only the returned request
+ * containers are new; old message bodies are not traversed or frozen again. */
+export function createSessionRequestPreview(baseLogLength, candidate, surface, toolHistory) {
+    if (baseLogLength + candidate.length === 0)
+        throw Error('SESSION_REQUEST_PREVIEW_BOUNDARY_EMPTY');
+    if (surface.messages.length > SESSION_REQUEST_PREVIEW_BOUNDS.messages)
+        throw Error('SESSION_REQUEST_PREVIEW_MESSAGE_BUDGET');
+    return Object.freeze({ baseLogLength, boundarySeq: SessionSeq(baseLogLength + candidate.length - 1), events: candidate,
+        ...surface, toolHistory });
+}
+/** Standalone raw-array callers have no Session-owned accepted fold. Keep
+ * this cold reconstruction as the oracle, without granting commit authority. */
+export function previewSessionRequestAppends(committed, projections, inputs) {
+    const candidate = createSessionRequestCandidateEvents(committed.length, inputs);
     const prefix = [...committed, ...candidate];
     if (prefix.length === 0)
         throw Error('SESSION_REQUEST_PREVIEW_BOUNDARY_EMPTY');
@@ -54,9 +69,7 @@ export function previewSessionRequestAppends(committed, projections, inputs) {
         if (message)
             messageNodes.push({ seq, message });
     }
-    if (messageNodes.length > SESSION_REQUEST_PREVIEW_BOUNDS.messages)
-        throw Error('SESSION_REQUEST_PREVIEW_MESSAGE_BUDGET');
-    return deepFreeze({ baseLogLength: committed.length, boundarySeq: SessionSeq(prefix.length - 1), events: candidate,
-        surfaceNodes: nodes, contentGeneration: surface.contentGeneration,
-        messages: messageNodes.map(row => row.message), messageNodes, toolHistory: tools.snapshot() });
+    return createSessionRequestPreview(committed.length, candidate, { surfaceNodes: Object.freeze(nodes), contentGeneration: surface.contentGeneration,
+        messages: Object.freeze(messageNodes.map(row => row.message)),
+        messageNodes: Object.freeze(messageNodes.map(row => Object.freeze(row))) }, tools.snapshot());
 }

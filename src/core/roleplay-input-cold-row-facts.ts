@@ -1,11 +1,13 @@
 /** Source-free, read-only interpretation of actual Core input control rows.
  * This catalog grants no writer, claim, readiness, execution or stop ACK. */
 import {types as nodeTypes} from 'node:util'
-import {inspectNativeInboxHistory,nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
-import type {NativeDurableInputWorkReceiptV1,NativeInputRef,NativePreparationReceiptV1} from '@deepseek-ai/dsh-agent-loop'
-import type {Session,SessionEvent} from '@deepseek-ai/dsh-session'
+import {inspectNativeInboxHistory,nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
+import type {NativeDurableInputWorkReceiptV1,NativeInputRef,NativePreparationReceiptV1} from 'dsh-nexttavern-native-agent-loop'
+import type {Session,SessionEvent} from 'dsh-nexttavern-native-session'
 import type {captureRoleplayTavernMaterialHistoryV1} from './roleplay-tavern-material-history.js'
 import {recordSha256} from './roleplay-data.js'
+import {readRoleplayMaterialPreparationJournalRowV1,roleplayMaterialPreparationJournalOwnerV1}
+  from './roleplay-input-material.js'
 
 type Row=Record<string,unknown>
 export interface ColdInputMaterialHistoryV1 {
@@ -14,13 +16,13 @@ export interface ColdInputMaterialHistoryV1 {
 }
 export interface ColdNonNumericalInputBranchRowFactV1 {
   readonly schemaVersion:1
-  readonly evidenceKind:'native-associated-typed-local-data'|'typed-local-control-data'
+  readonly evidenceKind:'native-associated-typed-local-data'|'typed-local-control-data'|'typed-local-preparation-data'
   readonly family:'input'
   readonly table:'branch'
   readonly key:string
   readonly value:Readonly<Row>
   readonly sha256:string
-  readonly kind:'input-work'|'input-current'|'input-stop'
+  readonly kind:'input-work'|'input-current'|'input-stop'|'input-material-journal'
   readonly evidenceGrade:'native-and-published-material-association'|'native-identity-associated-control-metadata'
     |'associated-control-metadata'|'local-control-metadata'
   readonly nativeBoundFields:readonly string[]
@@ -153,13 +155,15 @@ function stop(value:unknown,sid:string):void {
     fail('INPUT_COLD_STOP_INVALID')
   if(value.notice!==undefined)notice(value.notice,sid)
 }
-function work(value:Row,sid:string,deps:ColdInputRowFactsDependenciesV1):void {
+function work(value:Row,sid:string,deps:ColdInputRowFactsDependenciesV1,preparedJournal=false):void {
   exact(value,['schemaVersion','namespace','sessionId','branchId','preparationId','receiptGeneration','refs',
     'credentialSha256','preparation','status','source','attemptGeneration'],['checkpoint','attempt','stop','transition'])
   refs(value.refs,sid);preparation(value.preparation);source(value.source,deps)
   if(value.checkpoint!==undefined)receipt(value.checkpoint,sid)
   if(!deps.isWork(value,sid)||!id(value.preparationId)||!integer(value.attemptGeneration)
-    ||!['active','stopped','unknown'].includes(String(value.status)))fail('INPUT_COLD_WORK_INVALID')
+    ||!['active','stopped','unknown'].includes(String(value.status))&&!(value.status==='created'&&preparedJournal)) {
+    fail('INPUT_COLD_WORK_INVALID')
+  }
   if(value.attempt!==undefined) {
     exact(value.attempt,['turn','step','prepared'],['legacyPreparationId','snapshot'])
     if(!integer(value.attempt.turn,1)||!integer(value.attempt.step,1)||typeof value.attempt.prepared!=='boolean'
@@ -198,7 +202,8 @@ export function readColdNonNumericalInputBranchRowFactsV1(session:Session,deps:C
         ||!left||!right||!('value' in left)||!('value' in right)||!left.enumerable||!right.enumerable
         ||typeof left.value!=='string')fail('INPUT_COLD_TABLE_INVALID')
       const key=left.value as string,value=right.value
-      if(!key.startsWith(nativePrefix))continue
+      const journal=key.startsWith(sid+'__tavern-prompt-v1-')&&/-snapshot-journal-[a-f0-9]{64}$/.test(key)
+      if(!key.startsWith(nativePrefix)&&!journal)continue
       if(deps.ownedRowKeys?.has(key))continue
       if(values.has(key)||values.size>=8192)fail('INPUT_COLD_TABLE_INVALID')
       const detached=copyData(value,budget)
@@ -253,7 +258,13 @@ export function readColdNonNumericalInputBranchRowFactsV1(session:Session,deps:C
   }
   const lastStart=[...starts.values()].at(-1),workFacts=new Map<string,{value:Readonly<Row>;
     receipt?:NativeDurableInputWorkReceiptV1;association:ColdNonNumericalInputBranchRowFactV1['nativeAssociation'];materialFields:readonly string[]}>()
-  const result:ColdNonNumericalInputBranchRowFactV1[]=[]
+  const result:ColdNonNumericalInputBranchRowFactV1[]=[],journalOwners=new Map<string,{
+    workKey:string;owner:Readonly<Row>
+  }>(),journalRows=new Map<string,{key:string;value:Readonly<Row>}[]>(),associatedJournals=new Map<string,Readonly<Row>>()
+  for(const [key,value] of captured)if(key.startsWith(sid+'__tavern-prompt-v1-')) {
+    const snapshotKey=key.slice(0,-'-journal-'.length-64),rows=journalRows.get(snapshotKey)??[]
+    rows.push({key,value});journalRows.set(snapshotKey,rows)
+  }
   const make=(key:string,value:Readonly<Row>,kind:ColdNonNumericalInputBranchRowFactV1['kind'],workKeys:readonly string[],
     association:ColdNonNumericalInputBranchRowFactV1['nativeAssociation'],nativeFields:readonly string[],
     materialFields:readonly string[],controlFields:readonly string[])=>Object.freeze({schemaVersion:1 as const,
@@ -268,9 +279,24 @@ export function readColdNonNumericalInputBranchRowFactsV1(session:Session,deps:C
     executionAuthority:'none' as const,stopAcknowledgementEvidence:'not-checked' as const})
   for(const [key,value] of captured) {
     if(!key.startsWith(`${nativePrefix}work-`))continue
-    work(value,sid,deps)
+    const attempt=value.attempt as Row|undefined
+    work(value,sid,deps,value.status==='created'&&value.checkpoint===undefined&&attempt?.prepared===true&&!!attempt.snapshot)
     const originalRefs=value.refs as readonly NativeInputRef[]
     if(key!==deps.workKey(sid,originalRefs))fail('INPUT_COLD_WORK_ADDRESS_INVALID')
+    let preparedJournal=false
+    if(attempt?.prepared===true&&attempt.snapshot&&(value.source as Row).kind==='story') {
+      const snapshotKey=`${sid}__tavern-prompt-v1-${value.preparationId}-${value.attemptGeneration}-${attempt.step}-snapshot`,
+        owner=roleplayMaterialPreparationJournalOwnerV1({
+        encoding:'core-input-material-record-v1',sessionId:sid,branchId:sid,preparation:value.preparation,
+        currency:deps.currencyOfStored(value),originalInputRefs:originalRefs,turn:attempt.turn,step:attempt.step})
+      journalOwners.set(snapshotKey,{workKey:key,owner})
+      for(const row of journalRows.get(snapshotKey)??[])associatedJournals.set(row.key,
+        readRoleplayMaterialPreparationJournalRowV1(row.value,{key:row.key,snapshotKey,owner}))
+      // A material finalizer can persist before Native's first checkpoint.
+      // Its exact journal explains created Work DATA, never cold admission.
+      preparedJournal=value.checkpoint===undefined&&(journalRows.get(snapshotKey)?.length??0)>0
+    }
+    if(value.status==='created'&&!preparedJournal)fail('INPUT_COLD_JOURNAL_WORK_UNPROVEN')
     if(value.checkpoint===undefined) {
       // Admission or material preparation can fail before Native writes its
       // checkpoint. Keep the writer's row as control DATA; its absence proves
@@ -359,7 +385,14 @@ export function readColdNonNumericalInputBranchRowFactsV1(session:Session,deps:C
   }
   for(const [key,value] of captured) {
     if(workFacts.has(key))continue
-    if(key===deps.currentKey(sid)) {
+    if(key.startsWith(sid+'__tavern-prompt-v1-')) {
+      const snapshotKey=key.slice(0,-'-journal-'.length-64),associated=journalOwners.get(snapshotKey)
+      if(!associated)fail('INPUT_COLD_JOURNAL_WORK_UNPROVEN')
+      const journal=associatedJournals.get(key)!,linked=workFacts.get(associated.workKey)!
+      result.push(Object.freeze({...make(key,journal,'input-material-journal',[associated.workKey],linked.association,
+        linked.association==='not-proven'?[]:['owner.sessionId','owner.preparation','owner.originalInputRefs'],
+        [],['owner.currency','owner.turn','owner.step','operationId','payload']),evidenceKind:'typed-local-preparation-data' as const}))
+    }else if(key===deps.currentKey(sid)) {
       exact(value,['schemaVersion','preparationId','credentialSha256'])
       if(value.schemaVersion!==2||!id(value.preparationId)||!sha(value.credentialSha256))fail('INPUT_COLD_CURRENT_INVALID')
       const matches=[...workFacts].filter(([,item])=>item.value.preparationId===value.preparationId

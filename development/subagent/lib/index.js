@@ -479,6 +479,7 @@ let SubagentRuntime = (() => {
                 { when: request.maxDepth !== undefined, cap: 'depthLimit' },
                 { when: request.toolFilter !== undefined, cap: 'toolFilter' },
                 { when: request.persona !== undefined, cap: 'persona' },
+                { when: request.isolatedSystem !== undefined, cap: 'isolatedSystem' },
                 { when: request.activation !== undefined, cap: 'ownedAuthorDialog' },
                 { when: request.rubyActivation !== undefined, cap: 'ownedRubyTask' },
             ];

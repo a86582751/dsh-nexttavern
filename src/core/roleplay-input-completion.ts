@@ -4,7 +4,7 @@ import {recordSha256} from './roleplay-data.js'
 import {createRoleplayInputTerminal} from './roleplay-input-terminal.js'
 import type {InputPreparationCurrency,InputPreparationTable} from './roleplay-input-preparation.js'
 import type {NativeCompletedInputWorkReceiptV1,NativeCompletedInputWorkAcknowledgementV1}
-  from '@deepseek-ai/dsh-agent-loop'
+  from 'dsh-nexttavern-native-agent-loop'
 import type {MvuStateTerminalIntent,MvuNumericalSnapshot,MvuStatePublisherSettlement,MvuStateUpdatePreparation} from './roleplay-mvu-state.js'
 import type {MvuSchemaStoryPlan,MvuSchemaStorySettlementV2} from './roleplay-mvu-schema-story-types.js'
 

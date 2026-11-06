@@ -16,7 +16,7 @@ import type {
   RequestErrorAction,
 } from '@deepseek-ai/dsh-agent'
 import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
-import type { AssistantMessage, GenerateOptions, LlmCallConfig, Message, PreparedLlmCall, ProjectedLlmRequest } from '@deepseek-ai/dsh-llm'
+import type { AssistantMessage, GenerateOptions, LlmCallConfig, Message, PreparedLlmCall, ProjectedLlmRequest } from 'dsh-nexttavern-native-llm'
 import {NativeRequestBudget,retainNativeRequestMeasurement} from './request-budget.js'
 import type {NativeRequestMeasurementV1,NativeRequestMeter} from './request-budget.js'
 import {
@@ -27,7 +27,7 @@ import {
   errorChain,
   freezeMessage,
   markAgentLoopRequest,
-} from '@deepseek-ai/dsh-llm'
+} from 'dsh-nexttavern-native-llm'
 import { assertNever, deepFreeze } from '@deepseek-ai/dsh-util-values'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import {inspectProgrammaticCommit, programmaticTurnIdentity} from './programmatic-commit.js'
@@ -35,13 +35,16 @@ import type {ProgrammaticCommitInput, ProgrammaticAssistantRejectionCode} from '
 import type { Scope } from '@deepseek-ai/dsh-scope'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import type { EpochHeader, RequestContext, Session, SessionEvent, SessionId, SessionSeq, TurnEndReason, UserMessage,
-  NativeOpeningIdentityV1,NativeOpeningEventRefV1,NativeGeneratedOpeningReceiptV1 } from '@deepseek-ai/dsh-session'
-import { canonicalHeader, headerEquals, SessionLogOffset } from '@deepseek-ai/dsh-session'
+  NativeOpeningIdentityV1,NativeOpeningEventRefV1,NativeGeneratedOpeningReceiptV1 } from 'dsh-nexttavern-native-session'
+import { canonicalHeader, headerEquals, SessionLogOffset } from 'dsh-nexttavern-native-session'
 import { joinContextSections, renderContextSections, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { Context } from '@deepseek-ai/cordis'
 import { ReactLoopInbox } from './inbox.js'
+import {appendNativePublishedUserInput,nativePublishedTriggerReceipt} from './published-input.js'
+import type {NativePublishedUserInputV1,NativePublishedUserInputResultV1,NativePublishedTriggerInputV1,
+  NativePublishedTriggerResultV1} from './published-input.js'
 import {randomUUID} from 'node:crypto'
 import type {NativeInputResumeProof} from './inbox.js'
 import {INPUT_ADMISSION_ABORT_REASON, nativeInputLink, nativeInputSha256, nativeInputWorkSha256,
@@ -52,18 +55,19 @@ import type {NativeDurableInputWorkLookup, NativeDurableInputWorkReceiptV1, Nati
   NativeInputOwnership, NativeInputProposal, NativeInputRef, NativeInputWakeResult, NativePreparationReceiptV1,
   NativeInputStopNoticeV1, NativeInputStopLookupV1, NativeOwnedContinuationControlV1,
   NativeInputSupplementV1, NativeInputCompletionLookupV1} from './input-admission.js'
-import {nativeCompletedInputReceipt, nativeCompletedInputAcknowledgement} from './input-completion.js'
+import {nativeCompletedInputAcknowledgement} from './input-completion.js'
 import { RuntimeContextProjection } from './runtime-context.js'
 import { AssistantStreamAttempt } from './assistant-stream.js'
 import { SystemPromptProjection,renderAttributedSystemPrompt } from './runtime-context.js'
 import { executeToolCalls } from './tool-calls.js'
 import {nativeRequestMaterialDecisionV1,nativeRequestMaterialOwnerRegistrationV1,
   nativeRequestMaterialOwnerCheckV1,nativeRequestMaterialPrepareDecisionV1,applyNativeOwnedSectionsV1,
-  captureNativeMaterialAssemblyV1,
+  captureNativeMaterialAssemblyV1,nativeMaterialTextDraftV1,
   resolveNativeOwnedMaterialAnchorsV1,nativeOpeningMaterialOwnerRegistrationV1,
   nativeOpeningClosingAcknowledgementV1} from './request-material-owner.js'
 import type {NativeRequestMaterialOwnerV1,NativeRequestMaterialOwnerV2,NativeRequestMaterialInputV1,NativeRequestMaterialTransform,
-  NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareInputV1,NativeMaterialSelectionEvidenceV1,
+  NativeMaterialSelectedBaseV1,NativeMaterialSelectedCaptureV2,NativeRequestMaterialPrepareInputV1,NativeMaterialSelectionEvidenceV1,
+  NativeMaterialTextDraftStructureV1,
   NativeMaterialSelectionEventV1,NativeOpeningMaterialOwnerV1,NativeOpeningMaterialPrepareInputV1,
   NativeOpeningMaterialInputV1,NativeOpeningOwnerIdentityV1,NativeOpeningMaterialCheckV1} from './request-material-owner.js'
 import {sealNativeOpeningRecordV1,nativeOpeningInstructionSha256V1,validateNativeOpeningInvocationV1,
@@ -71,12 +75,13 @@ import {sealNativeOpeningRecordV1,nativeOpeningInstructionSha256V1,validateNativ
 import {inspectNativeOpeningGenerationV1,openingEventRefV1,hasUnclosedNativeOpeningV1} from './opening-generation.js'
 import type {NativeOpeningGenerationInspectionV1} from './opening-generation.js'
 import {planNativeRequestEnvelope} from './request-envelope.js'
-import {planNativeRequestMaterialV1} from './request-material.js'
+import {prepareNativeMaterialTextV1} from './request-material.js'
+import type {NativeRequestMaterialResultV1} from './request-material.js'
 import {bindNativeRequestMaterial} from './request-material-sidecar.js'
-import {nativeStoryTransportToolsV1,nativeStorySamplingConfigV1,materializeNativeStoryResponseV1,
+import {nativeStoryTransportToolsV1,nativeStorySamplingConfigV1,materializeNativeStoryResponse,materializeNativeStoryResponseV1,
   createNativeStoryStreamProjectionV1,nativeStorySamplingBaseV1,restoreNativeStorySamplingV1} from './story-request.js'
 import type {NativeStoryRequestBindingV1} from './story-request.js'
-import type {SessionRequestAppendInput,SessionRequestBoundary} from '@deepseek-ai/dsh-session'
+import type {SessionRequestAppendInput,SessionRequestBoundary} from 'dsh-nexttavern-native-session'
 
 type Phase =
   | { kind: 'idle'; lastTurn: number }
@@ -87,6 +92,7 @@ type Phase =
     wakeRequested: boolean
   }
   | { kind: 'running'; abort: AbortController; turn: number; step: number; wakeRequested: boolean;
+    inputStep?: {admission: InputAdmission; turn: number; step: number; completedWithoutRequest: boolean};
     programmatic?: {operationId: string; messageId: string; instruction: string;opening?:OpeningWork} }
 
 type StepEndReason = Extract<TurnEndReason, { kind: 'completed' | 'max-tokens' }>
@@ -123,6 +129,8 @@ export interface NativeProgrammaticOpeningAgentV1 {
   readonly id:SessionId
   readonly session:Session
   readonly nativeProgrammaticOpeningVersion:1
+  commitProgrammaticAssistant(input:ProgrammaticAssistantCommit):Promise<ProgrammaticAssistantCommitResult>
+  lookupProgrammaticAssistantCommit(input:ProgrammaticAssistantCommit):Promise<ProgrammaticAssistantLookupResult>
   registerOpeningMaterialOwner(owner:NativeOpeningMaterialOwnerV1):()=>void
   generateProgrammaticAssistant(input:ProgrammaticAssistantGeneration):Promise<ProgrammaticAssistantGenerationResult>
   lookupProgrammaticOpening(input:ProgrammaticAssistantGeneration):NativeOpeningGenerationInspectionV1
@@ -138,6 +146,7 @@ type PreparedStep =
     startsRequestSeries?: true
     assembly: PromptAssembly
     admission?: InputAdmission
+    completedWithoutRequest?: boolean
   }
 type EnterStep=Extract<PreparedStep,{kind:'enter'}>
 type PreparedRequest={config:LlmCallConfig;preparedCall?:PreparedLlmCall}
@@ -153,7 +162,7 @@ interface PlannedRequest {
 interface PlannedMaterialRequest extends PlannedRequest {
   readonly kind:'material'
   readonly plan:NativeRequestMaterialTransform
-  readonly result:ReturnType<typeof planNativeRequestMaterialV1>
+  readonly result:NativeRequestMaterialResultV1
 }
 interface PlannedPlainRequest extends PlannedRequest {readonly kind:'plain'}
 type OwnedContinuation = {ref: NativeInputRef; ownerToken: object; parentSha256: string; turn: number; claimed: boolean}
@@ -182,13 +191,16 @@ type OpeningCompletion={status:'pending'|'blocked'|'unknown'|'settled';code?:str
 type MaterialRequestOwner={readonly kind:'player-input';readonly admission:InputAdmission;readonly owner:NativeRequestMaterialOwnerV2}
   |{readonly kind:'programmatic-opening';readonly opening:OpeningWork;readonly owner:NativeOpeningMaterialOwnerV1}
 
-type MaterialSelectionCut={readonly boundary:SessionRequestBoundary;readonly sha256:string}
+type MaterialSelectionBoundary=Pick<SessionRequestBoundary,'boundarySeq'|'surfaceNodes'|'contentGeneration'|'messageNodes'>
+type MaterialSelectionCut={readonly boundary:MaterialSelectionBoundary;readonly sha256:string}
+type MaterialSelectionSnapshot={readonly session:Session;readonly nodeCount:number;readonly header:ReturnType<Session['requestHeaderBoundary']>;
+  readonly context:ReturnType<Session['requestContext']>;readonly cut:MaterialSelectionCut;
+  readonly refs:readonly {readonly seq:number;readonly id:string;readonly role:Message['role'];readonly messageSha256:string}[]}
 type MaterialSelectionLineage={
   readonly session:Session;readonly phase:Extract<Phase,{kind:'running'}>;readonly turn:number;readonly step:number;
   readonly initial:NativeMaterialSelectedBaseV1;readonly pending:readonly NativeMaterialSelectedBaseV1['messages'][number][];
   readonly assertCurrent:()=>MaterialSelectionCut;readonly events:NativeMaterialSelectionEventV1[];readonly actualEvents:SessionEvent[];
   expected:MaterialSelectionCut;active:boolean;revision:number;pendingCursor:number;attemptStarted:boolean;
-  validatedCut?:MaterialSelectionCut;
   selected?:{readonly revision:number;readonly pendingCursor:number;readonly boundarySeq:number;
     readonly value:NativeMaterialSelectedBaseV1};
   stepStartSeq?:number;checkpointSha256?:string;
@@ -234,6 +246,9 @@ export function nativeInputAdmissionCapability(agent: unknown): NativeInputAdmis
   return agent instanceof ReactLoopAgent && nativeAdmissionAgents.has(agent) ? agent : undefined
 }
 export function nativeProgrammaticOpeningCapability(agent:unknown):NativeProgrammaticOpeningAgentV1|undefined {
+  return agent instanceof ReactLoopAgent&&nativeAdmissionAgents.has(agent)?agent:undefined
+}
+export function nativeIsolatedInputCapability(agent:unknown):import('./input-admission.js').NativeIsolatedInputAgentV1|undefined {
   return agent instanceof ReactLoopAgent&&nativeAdmissionAgents.has(agent)?agent:undefined
 }
 
@@ -300,13 +315,16 @@ export class ReactLoopAgent implements Agent {
   private readonly storyRequests=new WeakMap<GenerateOptions,NativeStoryRequestBindingV1>()
   private readonly storyPreparedCalls=new WeakMap<GenerateOptions,PreparedLlmCall>()
   private readonly systemPrompt: SystemPromptProjection
-  /** Identities fully frozen by this loop; weak references do not retain replaced history. */
-  private readonly frozenMessages = new WeakSet<Message>()
+  /** Only actual Session-derived messages and this loop's detached snapshots
+   * enter this map. Arbitrary caller data never acquires a cached digest. */
+  #materialMessageDigests=new WeakMap<Message,string>()
+  #materialSelectionSnapshot?:MaterialSelectionSnapshot
   /** A failed append before the message boundary cannot be assigned a safe retry turn in this live session. */
   private readonly uncertainProgrammaticOperations = new Set<string>()
   /** An unclosed append-only turn forbids another driver from writing behind it. */
   private programmaticTurnPoisoned = false
   private inputAdmission?: AdmissionRegistration
+  private isolatedInput?:{message:UserMessage;entered:boolean;onEnter():void}
   /** JS-private issuer state; no exported registration seam exists. It is
    * retired at step exit and never reconstructed from serialized evidence. */
   #materialSelection?:MaterialSelectionLineage
@@ -365,7 +383,67 @@ export class ReactLoopAgent implements Agent {
   }
 
   get nativeInputAdmissionVersion(): 2 {return 2}
+  get nativePublishedInputVersion():1{return 1}
+  readPublishedUserInput(operationId:string):readonly UserMessage[]|undefined {
+    return this.inbox.publishedHistory().batch(operationId)?.users.map(user=>user.message)
+  }
+  async appendPublishedUserInput(input:NativePublishedUserInputV1):Promise<NativePublishedUserInputResultV1>{
+    if(this.phase.kind!=='idle'||this.inputDisposed||this.isolatedInput||this.programmaticTurnPoisoned
+      ||this.inputCompletionBlocked||this.openingCompletionBlocked)return {kind:'blocked',code:'PUBLISHED_INPUT_BUSY'}
+    if(this.inputStop||this.inputWakeStopped)return {kind:'blocked',code:'PUBLISHED_INPUT_STOPPED'}
+    const head=this.session.surface.nodes[0]
+    if(head===undefined||this.session.eventAt(head)?.type!=='system/message')
+      return {kind:'blocked',code:'PUBLISHED_INPUT_SYSTEM_HEAD_REQUIRED'}
+    return this.runMaintenance(signal=>appendNativePublishedUserInput({session:this.session,input,signal,
+      history:()=>this.inbox.publishedHistory(),hash:nativeInputSha256,flush:()=>this.ctx.sessions.flush(this.session)}))
+  }
+  async triggerPublishedInput(input:NativePublishedTriggerInputV1):Promise<NativePublishedTriggerResultV1>{
+    const {operationId,assertCurrent}=input
+    if(this.phase.kind!=='idle'||this.inputDisposed||this.isolatedInput||this.programmaticTurnPoisoned
+      ||this.inputCompletionBlocked||this.openingCompletionBlocked)return {kind:'blocked',code:'PUBLISHED_INPUT_BUSY'}
+    if(!operationId)return {kind:'blocked',code:'PUBLISHED_TRIGGER_OPERATION_REQUIRED'}
+    const result=await this.runMaintenance(async signal=>{
+      try {
+        signal.throwIfAborted();assertCurrent()
+        const facts=this.inbox.publishedHistory(),existing=facts.trigger(operationId)
+        if(!existing){
+          if(this.inputStop||this.inputWakeStopped||this.inbox.hasPending)
+            return {kind:'blocked' as const,code:'PUBLISHED_TRIGGER_STOPPED_OR_BUSY'}
+          if(facts.hasIncomplete())return {kind:'blocked' as const,code:'PUBLISHED_TRIGGER_BATCH_INCOMPLETE'}
+          const users=facts.pending()
+          if(!users.length)return {kind:'empty' as const,code:'PUBLISHED_TRIGGER_EMPTY'}
+          assertCurrent();signal.throwIfAborted()
+          this.inbox.insertPublished(users.map(user=>user.message),{schemaVersion:1,encoding:'native-published-trigger-v1',
+            operationId,users:users.map(user=>user.ref)})
+        }
+        if(!await this.ctx.sessions.flush(this.session))return {kind:'unknown' as const,code:'PUBLISHED_TRIGGER_FLUSH_UNCONFIRMED'}
+        const trigger=this.inbox.publishedHistory().trigger(operationId)
+        if(!trigger)return {kind:'unknown' as const,code:'PUBLISHED_TRIGGER_APPEND_UNKNOWN'}
+        return {kind:'triggered' as const,replayed:!!existing,
+          receipt:nativePublishedTriggerReceipt(String(this.session.id),trigger)}
+      }catch{return {kind:'unknown' as const,code:'PUBLISHED_TRIGGER_APPEND_OR_FLUSH_FAILED'}}
+    })
+    if(result.kind!=='triggered')return result
+    // Flush and maintenance release precede normal admission. A replay may
+    // wake its exact still-pending insertion, never consumed or stopped work.
+    let wake:NativeInputWakeResult={kind:'blocked'}
+    try {
+      assertCurrent()
+      if(result.receipt.refs.every(ref=>this.inbox.lookupOwnership(ref).status==='pending'))wake=this.wakePending()
+    }catch{ /* Canonical publication survives later Source revocation. */ }
+    return {...result,wake}
+  }
+  completeInputWithoutRequest(identity: object, position: {turn: number; step: number}): void {
+    const phase = this.phase
+    const scope = phase.kind === 'running' ? phase.inputStep : undefined
+    if (phase.kind !== 'running' || phase.programmatic || phase.step !== 0 || !scope
+      || scope.turn !== position.turn || scope.step !== position.step || scope.step !== 1
+      || scope.admission.identity !== identity) throw Error('INPUT_NO_REQUEST_COMPLETION_SCOPE_CHANGED')
+    this.checkInput(scope.admission, [])
+    scope.completedWithoutRequest = true
+  }
   get nativeRequestMaterialVersion():1 {return 1}
+  get nativeStoryMaterialHooksVersion():2 {return 2}
   get nativeInputStopVersion(): 1 {return 1}
   get nativeProgrammaticOpeningVersion():1 {return 1}
   registerOpeningMaterialOwner(owner:NativeOpeningMaterialOwnerV1):()=>void {
@@ -428,6 +506,7 @@ export class ReactLoopAgent implements Agent {
   }
 
   send(message: UserMessage, target: InboxTarget, wakeup: boolean): void {
+    if(this.isolatedInput)return
     if (wakeup && !this.inputDisposed && (!this.inputStop || this.inputStop.result.status === 'acknowledged')) {
       if (this.inputStop && !this.inputCompletionBlocked) this.inputStopWork = undefined
       this.inputStop = undefined
@@ -1321,6 +1400,7 @@ export class ReactLoopAgent implements Agent {
    *   the inbox insertion so a reentrant cancel cannot reclassify it.
    */
   private wakeDriver(wakeAfterAbort = false): void {
+    if(this.isolatedInput?.entered)return
     if (this.programmaticTurnPoisoned || this.inputDisposed || this.inputStop || this.openingCompletionBlocked
       || this.inputCompletionBlocked || this.inputAdmission?.stopOwner && this.inputWakeStopped) return
     if (this.phase.kind !== 'idle') {
@@ -1352,6 +1432,13 @@ export class ReactLoopAgent implements Agent {
       await (activity = this.activityDone)
       if (this.inputStop) await this.whenInputStopSettled()
     } while (activity !== this.activityDone)
+  }
+  async runIsolatedInput(input:{message:UserMessage;onEnter():void}):Promise<void> {
+    if(this.phase.kind!=='idle'||this.isolatedInput||this.inputAdmission||this.inputDisposed)
+      throw Error('ISOLATED_INPUT_AGENT_BUSY')
+    this.isolatedInput={message:freezeMessage(input.message),entered:false,onEnter:input.onEnter}
+    this.wakeDriver()
+    await this.whenIdle()
   }
 
   /** Report one failure at its live boundary, then preserve it for driver containment. */
@@ -1386,7 +1473,7 @@ export class ReactLoopAgent implements Agent {
           if (blocked.registration.active && !this.inputDisposed) {
             try {blocked.registration.hook.onBlocked?.(blocked.notice)} catch { /* notification cannot restart input */ }
           }
-        } else if (wakeRequested && this.inbox.hasPending && !this.openingCompletionBlocked) this.wakeDriver()
+        } else if (wakeRequested && !this.isolatedInput && this.inbox.hasPending && !this.openingCompletionBlocked) this.wakeDriver()
       }
     }
   }
@@ -1395,6 +1482,16 @@ export class ReactLoopAgent implements Agent {
     previousAdmission?: InputAdmission): Promise<PreparedStep> {
     /* v8 ignore next -- private callers establish the running phase before proposing a step */
     if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": pre-step outside running phase`)
+    if(this.isolatedInput) {
+      const owned=this.isolatedInput
+      if(!owned.entered){owned.onEnter();owned.entered=true}
+      const assembly=await this.loopCtx.systemPrompt.assemble(assembleContextFor(this,this.phase.abort.signal))
+      this.phase.abort.signal.throwIfAborted()
+      // Registered tools still belong to the child preset. Their Native result
+      // messages remain in history, while preset pre-step/inbox additions have
+      // no input authority over this one-shot private conversation.
+      return {kind:'enter',messages:position.step===1?[owned.message]:[],assembly}
+    }
     const activeOpening=this.phase.programmatic?.opening
     // A readable old assistant-only transcript cannot acquire a later system
     // head. Refuse before claim, leaving the original input durably pending.
@@ -1487,16 +1584,28 @@ export class ReactLoopAgent implements Agent {
     signal.throwIfAborted()
     const sections = renderContextSections(assembly)
     const context = this.runtimeContext.project(joinContextSections(sections), sections)
-    const decision = await this.dispatch.waterfall(
-      'agent/pre-step', { messages: claimed, ...position, signal },
-      (): Promise<PreStepDecision> => Promise.resolve<PreStepDecision>({
-        kind: 'enter',
-        messages: context === undefined ? claimed : [...claimed, context],
-      }),
-    )
+    const phase = this.phase
+    const inputStep = admission ? {admission, ...position, completedWithoutRequest: false} : undefined
+    if (inputStep) phase.inputStep = inputStep
+    let decision: PreStepDecision
+    try {
+      decision = await this.dispatch.waterfall(
+        'agent/pre-step', { messages: claimed, ...position, signal },
+        (): Promise<PreStepDecision> => Promise.resolve<PreStepDecision>({
+          kind: 'enter',
+          messages: context === undefined ? claimed : [...claimed, context],
+        }),
+      )
+    } finally {
+      delete phase.inputStep
+    }
     signal.throwIfAborted()
+    if (inputStep?.completedWithoutRequest) {
+      this.checkInput(inputStep.admission, [])
+      return {kind: 'enter', messages: [], assembly, admission: inputStep.admission, completedWithoutRequest: true}
+    }
     if (decision.kind === 'reject') return decision
-    if (!generation&&!opening) return {...decision,assembly,...admission?{admission}:{}}
+    if (!generation&&!opening) return {...decision,assembly,...admission?{admission}:{}, completedWithoutRequest: false}
     if (decision.messages.some(message => message.source.kind === 'user')) {
       throw new Error('programmatic generation cannot admit a player message')
     }
@@ -1509,7 +1618,7 @@ export class ReactLoopAgent implements Agent {
       ...[...systemSections, ...contextSections].map((content, index) => ({
         name: `programmatic:context:${index}`, text: content, interpolate: false,
       }))]}
-    return {...decision, messages: [], assembly: effectiveAssembly}
+    return {...decision, messages: [], assembly: effectiveAssembly, completedWithoutRequest: false}
   }
 
   /** Whether the assembled tool schemas differ from the logged request header's. */
@@ -1548,7 +1657,7 @@ export class ReactLoopAgent implements Agent {
       }
       if (!flushed) return fail('INPUT_COMPLETION_FLUSH_FAILED')
       const receipt = admission.claim
-        ? nativeCompletedInputReceipt(this.session, checkpoint, admission.claim, admission.supplement, end) : undefined
+        ? this.inbox.completedInputReceipt(checkpoint, admission.claim, admission.supplement, end) : undefined
       const hook = admission.registration.hook
       if (!receipt || hook.schemaVersion !== 2 || !hook.completedWork) return fail('INPUT_COMPLETION_PROOF_INVALID')
       state.result = Object.freeze({status: 'pending', checkpoint, receipt})
@@ -1560,7 +1669,7 @@ export class ReactLoopAgent implements Agent {
         if (this.inputStop) await this.whenInputStopSettled()
         return fail('INPUT_COMPLETION_REVOKED')
       }
-      const current = nativeCompletedInputReceipt(this.session, checkpoint, admission.claim!, admission.supplement, end)
+      const current = this.inbox.completedInputReceipt(checkpoint, admission.claim!, admission.supplement, end)
       if (!current || nativeInputSha256(current) !== nativeInputSha256(receipt)) return fail('INPUT_COMPLETION_PROOF_CHANGED')
       // The callback may have moved Source/head. Rechecking the old input
       // currency here would incorrectly reject its own successful commit.
@@ -1635,14 +1744,38 @@ export class ReactLoopAgent implements Agent {
     throw Error(code)
   }
   #selectionCut():MaterialSelectionCut {
-    const boundary=this.session.currentRequestBoundary()
-    // Titles and other metadata advance the log without changing the request.
-    // The physical cursor still anchors each actual append and durable record.
-    return {boundary,sha256:nativeInputSha256({
-      contentGeneration:boundary.contentGeneration,surfaceNodes:boundary.surfaceNodes,
-      header:this.session.requestHeaderBoundary(),context:this.session.requestContext(),
-      messages:boundary.messageNodes.map(({seq,message})=>({seq:Number(seq),id:String(message.id),
-        role:message.role,messageSha256:nativeInputSha256(message)}))})}
+    // Both getters consume the actual Session and still reject removal or
+    // replacement of a used projection. Plain append changes node count even
+    // when contentGeneration is unchanged; no event-type guess is involved.
+    const nodeCount=this.session.surface.nodes.length,generation=this.session.surface.contentGeneration,
+      header=this.session.requestHeaderBoundary(),context=this.session.requestContext(),
+      previous=this.#materialSelectionSnapshot,boundarySeq=(Number(this.session.seq)-1) as SessionSeq,
+      sameSurface=previous?.session===this.session&&previous.nodeCount===nodeCount
+        &&previous.cut.boundary.contentGeneration===generation
+    let boundary:MaterialSelectionBoundary,refs:MaterialSelectionSnapshot['refs']
+    if(sameSurface) {
+      boundary=previous.cut.boundary.boundarySeq===boundarySeq?previous.cut.boundary:
+        Object.freeze({...previous.cut.boundary,boundarySeq})
+      refs=previous.refs
+    }else {
+      const actual=this.session.currentRequestBoundary()
+      boundary=Object.freeze({boundarySeq:actual.boundarySeq,contentGeneration:actual.contentGeneration,
+        surfaceNodes:actual.surfaceNodes,messageNodes:actual.messageNodes})
+      refs=Object.freeze(actual.messageNodes.map(({seq,message})=>Object.freeze({seq:Number(seq),id:String(message.id),
+        role:message.role,messageSha256:this.#ownedMaterialMessageSha256(message)})))
+    }
+    const sameContent=sameSurface&&previous.header?.seq===header?.seq&&previous.header?.header===header?.header
+      &&previous.context===context
+    const sha256=sameContent?previous.cut.sha256:nativeInputSha256({contentGeneration:boundary.contentGeneration,
+      surfaceNodes:boundary.surfaceNodes,header,context,messages:refs})
+    const cut=sameContent&&boundary===previous.cut.boundary?previous.cut:{boundary,sha256}
+    this.#materialSelectionSnapshot={session:this.session,nodeCount,header,context,cut,refs}
+    return cut
+  }
+  #ownedMaterialMessageSha256(message:Message):string {
+    let sha256=this.#materialMessageDigests.get(message)
+    if(sha256===undefined){sha256=nativeInputSha256(message);this.#materialMessageDigests.set(message,sha256)}
+    return sha256
   }
 
   #retireSelection():void {
@@ -1688,23 +1821,21 @@ export class ReactLoopAgent implements Agent {
     // frozen log also owns the header/context folds. A metadata-only tail may
     // advance this validated cut without replacing the append/recovery owner.
     // The live getter still rejects removal of used projection definitions.
-    const validated=lineage.validatedCut??lineage.expected
-    if(Number(this.session.seq)===Number(validated.boundary.boundarySeq)+1
-      &&this.session.surface.contentGeneration===validated.boundary.contentGeneration)return validated
     const current=this.#selectionCut()
     if(current.sha256!==lineage.expected.sha256){
       this.#failSelection(lineage,'REQUEST_MATERIAL_SELECTION_BOUNDARY_CHANGED')
     }
-    lineage.validatedCut=current
     return current
   }
 
   #assertSelectionDecision(lineage:MaterialSelectionLineage,admission:InputAdmission|undefined,
     messages:readonly UserMessage[]):MaterialSelectionCut {
     const cut=this.#assertSelectionCurrent(lineage)!
+    const pending=this.#unpublishedDecisionMessages(messages)
     if((lineage.kind==='player-input'?admission!==lineage.admission:admission!==undefined)
-      ||messages.length!==lineage.pending.length
-      ||messages.some((message,index)=>nativeInputSha256(message)!==lineage.pending[index]?.messageSha256)){
+      ||pending.length!==lineage.pending.length
+      ||pending.some((message,index)=>(this.#materialMessageDigests.get(message)??nativeInputSha256(message))
+        !==lineage.pending[index]?.messageSha256)){
       this.#failSelection(lineage,'REQUEST_MATERIAL_SELECTION_PENDING_CHANGED')
     }
     return cut
@@ -1779,7 +1910,6 @@ export class ReactLoopAgent implements Agent {
         role:'user' as const,messageSha256:pending.messageSha256})}:{}}))
     lineage.actualEvents.push(event)
     lineage.expected=after
-    lineage.validatedCut=after
     lineage.revision++
     if(event.type==='step/start')lineage.stepStartSeq=Number(event.seq)
     const actualEvent:SessionEvent=event
@@ -1875,7 +2005,6 @@ export class ReactLoopAgent implements Agent {
       failureSha256:cut.failureSha256,offloadImages:cut.offloadImages,targets:cut.targets}))
     lineage.actualEvents.push(event)
     lineage.expected=after
-    lineage.validatedCut=after
     lineage.revision++
   }
 
@@ -1885,8 +2014,9 @@ export class ReactLoopAgent implements Agent {
     messages:readonly UserMessage[]):boolean {
     if(this.#selectionCut().sha256!==contentSha256)return false
     const pending=selected.messages.filter(row=>row.origin==='pending-decision')
-    return pending.length===messages.length&&pending.every((row,index)=>{
-      const message=messages[index]!
+    const unpublished=this.#unpublishedDecisionMessages(messages)
+    return pending.length===unpublished.length&&pending.every((row,index)=>{
+      const message=unpublished[index]!
       return row.id===String(message.id)&&row.role===message.role&&row.messageSha256===nativeInputSha256(message)
     })
   }
@@ -1901,82 +2031,121 @@ export class ReactLoopAgent implements Agent {
     let selected=this.#materialSelected(decision.messages,true)
     let selectedContentSha256=this.#selectionCut().sha256
     const {assembly:finalAssembly,sha256:assemblySha256}=captureNativeMaterialAssemblyV1(decision.assembly)
-    const common={schemaVersion:1 as const,...position,signal,finalAssembly,assemblySha256,selected}
+    const common={schemaVersion:1 as const,...position,signal,finalAssembly,assemblySha256,selected,
+      selectedCaptureV2:this.#captureSelected(selected)}
     let candidate:PlannedMaterialRequest|PlannedPlainRequest|undefined,candidateMessages:UserMessage[]|undefined
     let active=true,previews=0
     let result:ReturnType<typeof nativeRequestMaterialPrepareDecisionV1>
+    const previewCandidate:NonNullable<NativeRequestMaterialPrepareInputV1['candidate']>['preview']=async(messages,build)=>{
+      if(!active)throw Error('REQUEST_MATERIAL_CANDIDATE_CLOSED')
+      // Initial pricing, optional checkpoint repricing, then the
+      // finalized durable-effect refs can produce one final plan.
+      if(++previews>3)throw Error('REQUEST_MATERIAL_CANDIDATE_LIMIT')
+      const pending=messages.map(freezeMessage)
+      // Replanning may replace owned context, never the player's
+      // current pending input. Prior story remains checkpoint-owned.
+      if(requestOwner.kind==='player-input')for(const original of decision.messages.filter(message=>message.source.kind==='user')){
+        if(!pending.some(message=>message.id===original.id&&nativeInputSha256(message)===nativeInputSha256(original)))
+          throw Error('REQUEST_MATERIAL_CANDIDATE_PLAYER_CHANGED')
+      }
+      this.assertMaterialRequestOwner(requestOwner,pending)
+      const candidateContentSha256=this.#selectionCut().sha256
+      // Finalizing Domain effect refs leaves the Native cut and
+      // pending messages intact. Reuse that actual selected object so
+      // Core and the published lineage retain the same initial cap.
+      const basis=candidate&&this.#preparedMaterialSelectionCurrent(candidate.selected,
+        selectedContentSha256,pending)?candidate.selected:this.#materialSelected(pending,true)
+      const preparedRoute=Object.freeze({configSha256:nativeInputSha256(prepared.config),
+        ...prepared.preparedCall?.requestMaterialText?{requestMaterialText:prepared.preparedCall.requestMaterialText}:{},
+        ...prepared.preparedCall?.systemPromptUpdate?{systemPromptUpdate:prepared.preparedCall.systemPromptUpdate}:{},
+        ...prepared.preparedCall?.toolUpdate?{toolUpdate:prepared.preparedCall.toolUpdate}:{}})
+      const built=await build({selected:basis,
+        selectedCaptureV2:this.#captureSelected(basis),finalAssembly,
+        assemblySha256,preparedRoute})
+      const draft=Object.getOwnPropertyDescriptor(built,'kind')?.value==='text-draft'
+        ?nativeMaterialTextDraftV1(built):undefined
+      let transform=draft?undefined:nativeRequestMaterialDecisionV1(built)
+      const structure=draft?.structure??transform
+      if(transform?.kind==='blocked')throw Error(transform.code)
+      signal.throwIfAborted()
+      this.assertMaterialRequestOwner(requestOwner,pending)
+      if(requestOwner.kind==='programmatic-opening'&&transform?.kind==='unchanged')
+        throw Error('OPENING_MATERIAL_TRANSFORM_REQUIRED')
+      if(!this.#preparedMaterialSelectionCurrent(basis,candidateContentSha256,pending)
+        ||structure&&'expectedSelectedBaseSha256' in structure&&(structure.expectedSelectedBaseSha256!==basis.sha256
+          ||structure.expectedAssemblySha256!==assemblySha256)
+        ||nativeInputSha256(decision.assembly)!==assemblySha256)throw Error('REQUEST_MATERIAL_CANDIDATE_CHANGED')
+      const proposed={...decision,messages:pending}
+      const planning={...prepared,...position,signal,firstAttempt:true}
+      if(draft) {
+        this.assertMaterialRequestOwner(requestOwner,pending)
+        const resolved=this.prepareMaterialRequestStructure(proposed,planning,draft.structure,basis,true,finalAssembly)
+        const finalized=await draft.finalize(resolved.surface)
+        signal.throwIfAborted()
+        this.assertMaterialRequestOwner(requestOwner,pending)
+        if(!this.#preparedMaterialSelectionCurrent(basis,candidateContentSha256,pending)
+          ||nativeInputSha256(decision.assembly)!==assemblySha256)throw Error('REQUEST_MATERIAL_CANDIDATE_CHANGED')
+        transform=nativeRequestMaterialDecisionV1({...draft.structure,kind:'transform',
+          snapshot:finalized.snapshot,plan:finalized.plan,captureSha256:finalized.captureSha256,
+          ...finalized.finalTextProjection?{finalTextProjection:finalized.finalTextProjection}:{}})
+        if(transform.kind!=='transform')throw Error('REQUEST_MATERIAL_CANDIDATE_CHANGED')
+        candidate=resolved.seal(transform)
+      }else {
+        candidate=transform!.kind==='unchanged'?this.planRequest(proposed,planning,decision.startsRequestSeries===true,true)
+          :this.planMaterialRequest(proposed,planning,transform as NativeRequestMaterialTransform,basis,true,finalAssembly)
+      }
+      candidateMessages=pending
+      selectedContentSha256=candidateContentSha256
+      const prices=new Map(candidate.projection?.options.messages.map((message,index)=>
+        [String(message.id),candidate!.measurement?.estimate.messageTokens[index]]))
+      if(candidate.kind==='material')for(const message of candidate.result.messages) {
+        const originals='requestProjection' in message?message.requestProjection?.originalMessages:undefined
+        if(originals?.length!==1)continue
+        const original=originals[0]!,target=original.source.kind==='request-material-projection'
+          ?original.source.target.id:String(original.id),tokens=prices.get(String(message.id))
+        if(tokens!==undefined)prices.set(target,tokens)
+      }
+      const allocations=new Map<string,{tokens:number;allocation:'group-text-length-estimate';groupId:string}>()
+      if(candidate.kind==='material')for(const [ordinal,group] of (candidate.plan.messageProjection?.groups??[]).entries()) {
+        const projected=candidate.result.messages.find(message=>{
+          const source=message.source as {kind?:string;contributionRef?:string}
+          return source.kind==='request-material'&&source.contributionRef===`projection:${ordinal}`
+        })!
+        const tokens=prices.get(String(projected.id))
+        if(tokens===undefined)continue
+        const targets=group.targets.map(target=>basis.messages.find(row=>row.id===target.id)!)
+        const lengths=targets.map(row=>row.message.content.reduce((sum,block)=>
+          sum+(block.type==='text'?block.text.length:0),0))
+        const total=lengths.reduce((sum,length)=>sum+length,0)
+        let cumulative=0,charged=0
+        for(const [index,target] of targets.entries()) {
+          cumulative+=total===0?1:lengths[index]!
+          const next=index===targets.length-1?tokens:Math.floor(tokens*cumulative/(total||targets.length))
+          allocations.set(target.id,{tokens:next-charged,allocation:'group-text-length-estimate',
+            groupId:String(projected.id)})
+          charged=next
+        }
+      }
+      return Object.freeze({...candidate.measurement?{measurement:candidate.measurement}:{},
+        messageCosts:Object.freeze(basis.messages.flatMap(row=>{
+          const allocation=allocations.get(row.id)
+          if(allocation)return [Object.freeze({id:row.id,eventSeq:row.eventSeq,...allocation})]
+          const tokens=prices.get(row.id)
+          return tokens===undefined?[]:[Object.freeze({id:row.id,eventSeq:row.eventSeq,tokens})]
+        }))})
+    }
     try {
       if(requestOwner.kind==='player-input') {
         const preparation:NativeRequestMaterialPrepareInputV1=Object.freeze({...common,
-          admission:this.materialAdmission(requestOwner.admission,decision.messages),candidate:{
-            preview:async(messages,build)=>{
-              if(!active)throw Error('REQUEST_MATERIAL_CANDIDATE_CLOSED')
-              if(++previews>2)throw Error('REQUEST_MATERIAL_CANDIDATE_LIMIT')
-              const pending=messages.map(freezeMessage)
-              // Replanning may replace owned context, never the player's
-              // current pending input. Prior story remains checkpoint-owned.
-              for(const original of decision.messages.filter(message=>message.source.kind==='user')){
-                if(!pending.some(message=>message.id===original.id&&nativeInputSha256(message)===nativeInputSha256(original)))
-                  throw Error('REQUEST_MATERIAL_CANDIDATE_PLAYER_CHANGED')
-              }
-              this.checkInput(requestOwner.admission,pending)
-              const basis=this.#materialSelected(pending,true)
-              const candidateContentSha256=this.#selectionCut().sha256
-              const preparedRoute=Object.freeze({configSha256:nativeInputSha256(prepared.config),
-                ...prepared.preparedCall?.requestMaterialText?{requestMaterialText:prepared.preparedCall.requestMaterialText}:{},
-                ...prepared.preparedCall?.systemPromptUpdate?{systemPromptUpdate:prepared.preparedCall.systemPromptUpdate}:{},
-                ...prepared.preparedCall?.toolUpdate?{toolUpdate:prepared.preparedCall.toolUpdate}:{}})
-              const transform=nativeRequestMaterialDecisionV1(await build({selected:basis,finalAssembly,
-                assemblySha256,preparedRoute}))
-              if(transform.kind==='blocked')throw Error(transform.code)
-              signal.throwIfAborted()
-              this.checkInput(requestOwner.admission,pending)
-              if(!this.#preparedMaterialSelectionCurrent(basis,candidateContentSha256,pending)
-                ||transform.kind==='transform'&&(transform.expectedSelectedBaseSha256!==basis.sha256
-                  ||transform.expectedAssemblySha256!==assemblySha256))throw Error('REQUEST_MATERIAL_CANDIDATE_CHANGED')
-              const proposed={...decision,messages:pending}
-              const planning={...prepared,...position,signal,firstAttempt:true}
-              candidate=transform.kind==='unchanged'?this.planRequest(proposed,planning,decision.startsRequestSeries===true,true)
-                :this.planMaterialRequest(proposed,planning,transform,basis,true,finalAssembly)
-              candidateMessages=pending
-              selectedContentSha256=candidateContentSha256
-              const prices=new Map(candidate.projection?.options.messages.map((message,index)=>
-                [String(message.id),candidate!.measurement?.estimate.messageTokens[index]]))
-              const allocations=new Map<string,{tokens:number;allocation:'group-text-length-estimate';groupId:string}>()
-              if(candidate.kind==='material')for(const [ordinal,group] of (candidate.plan.messageProjection?.groups??[]).entries()) {
-                const projected=candidate.result.messages.find(message=>{
-                  const source=message.source as {kind?:string;contributionRef?:string}
-                  return source.kind==='request-material'&&source.contributionRef===`projection:${ordinal}`
-                })!
-                const tokens=prices.get(String(projected.id))
-                if(tokens===undefined)continue
-                const targets=group.targets.map(target=>basis.messages.find(row=>row.id===target.id)!)
-                const lengths=targets.map(row=>row.message.content.reduce((sum,block)=>
-                  sum+(block.type==='text'?block.text.length:0),0))
-                const total=lengths.reduce((sum,length)=>sum+length,0)
-                let cumulative=0,charged=0
-                for(const [index,target] of targets.entries()) {
-                  cumulative+=total===0?1:lengths[index]!
-                  const next=index===targets.length-1?tokens:Math.floor(tokens*cumulative/(total||targets.length))
-                  allocations.set(target.id,{tokens:next-charged,allocation:'group-text-length-estimate',
-                    groupId:String(projected.id)})
-                  charged=next
-                }
-              }
-              return Object.freeze({...candidate.measurement?{measurement:candidate.measurement}:{},
-                messageCosts:Object.freeze(basis.messages.flatMap(row=>{
-                  const allocation=allocations.get(row.id)
-                  if(allocation)return [Object.freeze({id:row.id,eventSeq:row.eventSeq,...allocation})]
-                  const tokens=prices.get(row.id)
-                  return tokens===undefined?[]:[Object.freeze({id:row.id,eventSeq:row.eventSeq,tokens})]
-                }))})
-            },
-          }})
+          admission:this.materialAdmission(requestOwner.admission,decision.messages),candidate:{preview:previewCandidate}})
         result=nativeRequestMaterialPrepareDecisionV1(await requestOwner.owner.prepare!(preparation))
       }else {
         const preparation:NativeOpeningMaterialPrepareInputV1=Object.freeze({...common,
           owner:this.openingOwnerIdentity(requestOwner.opening),noPlayer:Object.freeze({kind:'no-player',
-            selectedUserMessageIds:Object.freeze([]) as readonly []})})
+            selectedUserMessageIds:Object.freeze([]) as readonly []}),candidate:{preview:async build=>{
+              const attempt=(requestOwner.opening.attempts.get(position.step)??0)+1
+              return previewCandidate([],basis=>build({...basis,attempt}))
+            }}})
         result=nativeRequestMaterialPrepareDecisionV1(await requestOwner.owner.prepare(preparation))
       }
     }
@@ -2068,6 +2237,10 @@ export class ReactLoopAgent implements Agent {
           return false
         }
         currentAdmission = decision.admission
+        if (decision.completedWithoutRequest) {
+          turnEnds = {kind: 'completed'}
+          return false
+        }
         if (turnEnds && decision.messages.length === 0) break
         // A removed waking message or an enter decision rewritten to empty
         // still owns the initial turn boundary, but it spends no model call.
@@ -2110,11 +2283,11 @@ export class ReactLoopAgent implements Agent {
           this.session.append('step/end', { turn, step })
         }
         signal.throwIfAborted()
-        if (turnEnds && this.inbox.nextStep.length === 0) {
+        if (turnEnds && !this.isolatedInput && this.inbox.nextStep.length === 0) {
           await this.dispatch.serial('agent/turn-stopping', { turn, signal })
           signal.throwIfAborted()
         }
-        if (turnEnds && this.inbox.nextStep.length === 0) break
+        if (turnEnds && (this.isolatedInput || this.inbox.nextStep.length === 0)) break
         target = 'next-step'
       }
       // Source/base currency remains immutable through all maintenance. After
@@ -2195,8 +2368,22 @@ export class ReactLoopAgent implements Agent {
     // append a second end or relabel the already-completed turn as aborted.
     if (requiresCompletion && currentAdmission
       && !await this.completeInputWork(currentAdmission, capturedEnd!, signal)) return false
+    const completedObserver=currentAdmission?.registration.hook.schemaVersion===2
+      &&currentAdmission.registration.hook.observesCompletedWork?.()!==false
+      ?currentAdmission.registration.hook.onCompletedWork:undefined
+    if(completedObserver&&currentAdmission?.receipt&&currentAdmission.claim&&turnEnds?.kind==='completed') {
+      // Terminal owners already flushed this exact end. Plain inputs acquire
+      // their first end durability here, before another turn can replace them.
+      const receipt=requiresCompletion&&this.inputCompletion?.result.status==='settled'
+        ?this.inputCompletion.result.receipt
+        :await this.ctx.sessions.flush(this.session)
+          ?this.inbox.completedInputReceipt(currentAdmission.receipt,currentAdmission.claim,
+            currentAdmission.supplement,capturedEnd!):undefined
+      if(!receipt)throw Error('INPUT_COMPLETED_NOTIFICATION_UNCONFIRMED')
+      await completedObserver(receipt)
+    }
     if(phase.programmatic?.opening&&!await this.closeOwnedOpening(phase.programmatic.opening,signal))return false
-    if (phase.programmatic || !this.inbox.hasPending) return false
+    if (phase.programmatic || this.isolatedInput || !this.inbox.hasPending) return false
     phase.abort = new AbortController()
     // A fresh controller makes a latch set on the old one stale: the live driver claims the queue itself.
     phase.wakeRequested = false
@@ -2213,6 +2400,11 @@ export class ReactLoopAgent implements Agent {
     let firstAttempt = true
     while (true) {
       this.recordOpeningRequestAttempt(decision,{turn,step},firstAttempt)
+      if(firstAttempt&&this.pendingMaterialCandidate&&this.pendingMaterialCandidate.planned.preview.baseLogLength!==Number(this.session.seq)) {
+        // The real opening attempt is an allowed owned append after pricing.
+        // Reuse sealed text while assigning its final physical Native cut.
+        this.replanMaterialCandidate(decision,{turn,step,signal},false)
+      }
       const { config, preparedCall } = firstAttempt?initialPrepared:await this.prepareRequest(turn, step, signal)
       // Adapter preparation can await arbitrary work. Recheck before every
       // system/user/header commit and provider stream, including retries.
@@ -2363,17 +2555,22 @@ export class ReactLoopAgent implements Agent {
         this.#assertSelectionCurrent()
         // A successful model message closes this request lineage. Tool output
         // and the next step are admitted under their own fresh preparation.
-        this.#retireSelection()
-
         const rawBlocks=live.blocks()
-        const response=story?materializeNativeStoryResponseV1(rawBlocks,story):undefined
+        const response=story?.hooks.schemaVersion===2
+          ?await materializeNativeStoryResponse(rawBlocks,story,{signal,turn,step})
+          :story?materializeNativeStoryResponseV1(rawBlocks,story):undefined
+        // Finalization can await the owned regex worker. The same selection
+        // must survive that wait before it may produce an accepted message.
+        signal.throwIfAborted()
+        this.#assertSelectionCurrent()
+        this.#retireSelection()
         const createdMessage = createAssistantMessage({
           content: response?.content??rawBlocks,
           source: {
             provider: request.provider,
             model: request.model,
             ...live.replayState !== undefined ? { replayState: live.replayState } : {},
-            ...response&&response.material.plan.length?{responseMaterial:response.material}:{},
+            ...response&&(response.material.schemaVersion===2||response.material.plan.length)?{responseMaterial:response.material}:{},
           },
         })
         const message = this.phase.programmatic && step === 1
@@ -2395,7 +2592,7 @@ export class ReactLoopAgent implements Agent {
         if (toolCalls.length === 0) return { kind: 'completed' }
         const { concluded } = await executeToolCalls(
           this.loopCtx, turn, step, toolCalls, signal,
-          context => this.inbox.splice('next-step', this.inbox.nextStep.length, 0, [context]),
+          context => {if(!this.isolatedInput)this.inbox.splice('next-step', this.inbox.nextStep.length, 0, [context])},
         )
         return concluded ? { kind: 'completed' } : null
       } catch (error: unknown) {
@@ -2475,19 +2672,34 @@ export class ReactLoopAgent implements Agent {
 
   /** The selected data precedes planned system/header/tool operations. It
    * distinguishes actual surface nodes from not-yet-appended decision input. */
+  #unpublishedDecisionMessages(messages:readonly UserMessage[]):readonly UserMessage[]{
+    return messages.filter(message=>!this.inbox.isPublished(message,this.#ownedMaterialMessageSha256(message)))
+  }
   #materialSelected(messages:readonly UserMessage[],firstAttempt:boolean,
-    boundary=this.session.currentRequestBoundary()):NativeMaterialSelectedBaseV1 {
+    boundary:MaterialSelectionBoundary=this.#selectionCut().boundary):NativeMaterialSelectedBaseV1 {
     const selected=[...boundary.messageNodes.map(({seq,message})=>Object.freeze({origin:'surface' as const,
-      eventSeq:Number(seq),id:String(message.id),role:message.role,messageSha256:nativeInputSha256(message),message})),
-      ...firstAttempt?messages.map(original=>{const message=freezeMessage(original)
+      eventSeq:Number(seq),id:String(message.id),role:message.role,
+      messageSha256:this.#ownedMaterialMessageSha256(message),message})),
+      ...firstAttempt?this.#unpublishedDecisionMessages(messages).map(original=>{
+        const message=this.#materialMessageDigests.has(original)?original:freezeMessage(original)
         return Object.freeze({origin:'pending-decision' as const,eventSeq:null,id:String(message.id),role:message.role,
-          messageSha256:nativeInputSha256(message),message})}):[]]
+          messageSha256:this.#ownedMaterialMessageSha256(message),message})}):[]]
     const data={contentGeneration:boundary.contentGeneration,boundarySeq:Number(boundary.boundarySeq),
       surfaceNodes:Object.freeze([...boundary.surfaceNodes]),messages:Object.freeze(selected)}
     // Message refs bind content as well as membership; plain append does not
     // increase contentGeneration, so that counter alone cannot certify a cut.
     return Object.freeze({...data,sha256:nativeInputSha256({...data,
       messages:selected.map(({message:_message,...ref})=>ref)})})
+  }
+
+  #captureSelected(selected:NativeMaterialSelectedBaseV1):NativeMaterialSelectedCaptureV2 {
+    // #materialSelected always appends pending rows after the complete actual
+    // surface. Borrow their already-frozen bodies without scanning old prose.
+    let start=selected.messages.length
+    while(start>0&&selected.messages[start-1]!.origin==='pending-decision')start--
+    return Object.freeze({schemaVersion:2,encoding:'native-selected-capture-v2',sessionId:String(this.session.id),
+      boundarySeq:selected.boundarySeq,selectedSha256:selected.sha256,
+      pendingMessages:Object.freeze(selected.messages.slice(start).map(row=>row.message))})
   }
 
   private checkMaterialOwner(requestOwner:MaterialRequestOwner,messages:readonly UserMessage[],
@@ -2588,6 +2800,12 @@ export class ReactLoopAgent implements Agent {
   private planMaterialRequest(decision:EnterStep,input:PreparedRequest&{
     turn:number;step:number;firstAttempt:boolean;signal:AbortSignal},plan:NativeRequestMaterialTransform,
     selected:NativeMaterialSelectedBaseV1,includeStepStart:boolean,finalAssembly:PromptAssembly):PlannedMaterialRequest {
+    return this.prepareMaterialRequestStructure(decision,input,plan,selected,includeStepStart,finalAssembly).seal(plan)
+  }
+
+  private prepareMaterialRequestStructure(decision:EnterStep,input:PreparedRequest&{
+    turn:number;step:number;firstAttempt:boolean;signal:AbortSignal},plan:NativeMaterialTextDraftStructureV1,
+    selected:NativeMaterialSelectedBaseV1,includeStepStart:boolean,finalAssembly:PromptAssembly) {
     const requestOwner=this.materialRequestOwner(decision)!
     const owner=requestOwner.owner
     if(plan.story&&!owner.story)this.abortMaterialRequestOwner(requestOwner,'STORY_MATERIAL_OWNER_REQUIRED')
@@ -2619,7 +2837,7 @@ export class ReactLoopAgent implements Agent {
     // so their prior resident contributions cannot survive behind the residual.
     const appends:SessionRequestAppendInput[]=[...includeStepStart?[{type:'step/start' as const,data:{turn,step}}]:[],
       ...systemCommits.map(({message,intent})=>({type:'system/message' as const,data:{turn,step,message},intent}))]
-    if(firstAttempt)for(const message of decision.messages){
+    if(firstAttempt)for(const message of this.#unpublishedDecisionMessages(decision.messages)){
       appends.push({type:'user/message',data:message,intent:{surfaceOp:'append'}})
     }
     let effectiveConfig=plan.story?nativeStorySamplingConfigV1(config,plan.story):config
@@ -2651,14 +2869,16 @@ export class ReactLoopAgent implements Agent {
         ?error.message:'REQUEST_MATERIAL_ANCHOR_RESOLUTION_FAILED'
       this.abortMaterialRequestOwner(requestOwner,code)
     }
-    const result=planNativeRequestMaterialV1({turn,step,header:{seq:envelope.headerSeq,sha256:nativeInputSha256(envelope.header)},
-      snapshot:plan.snapshot,plan:plan.plan,boundarySeq:Number(preview.boundarySeq),contentGeneration:preview.contentGeneration,
+    const resolved=prepareNativeMaterialTextV1({turn,step,header:{seq:envelope.headerSeq,sha256:nativeInputSha256(envelope.header)},
+      boundarySeq:Number(preview.boundarySeq),contentGeneration:preview.contentGeneration,
       surfaceNodes:preview.surfaceNodes,baseMessages:preview.messages,
       baseRefs:preview.messageNodes.map(({seq,message})=>({seq:Number(seq),id:String(message.id),role:message.role,
-        messageSha256:nativeInputSha256(message)})),protectedPrefixLength,insertions:anchored.insertions,
+        messageSha256:this.#ownedMaterialMessageSha256(message)})),protectedPrefixLength,insertions:anchored.insertions,
       ...plan.schemaVersion===2?{messageTextProjections:plan.messageTextProjections}:{},
       ...plan.messageProjection?{messageProjection:plan.messageProjection}:{},
       ...plan.story?.sampling?{requestLocalSampling:nativeStorySamplingBaseV1(config)}:{}})
+    return {surface:resolved.surface,seal:(plan:NativeRequestMaterialTransform):PlannedMaterialRequest=>{
+    const result=resolved.seal({snapshot:plan.snapshot,plan:plan.plan},plan.finalTextProjection)
     for(const expected of anchored.resolutions) {
       const actual=result.record.placements.find(row=>row.contributionRef===expected.contributionRef)
       if(!actual||actual.baseIndex!==expected.baseIndex) {
@@ -2678,6 +2898,7 @@ export class ReactLoopAgent implements Agent {
     if(plan.story?.sampling&&preparedCall)this.storyPreparedCalls.set(request,preparedCall)
     return {kind:'material',firstAttempt,plan,selected,preview,envelope,result,request,
       ...projection?{projection}:{},...measurement?{measurement}:{}}
+    }}
   }
 
   private commitMaterialRequest(decision:EnterStep,planned:PlannedMaterialRequest):GenerateOptions {
@@ -2705,11 +2926,11 @@ export class ReactLoopAgent implements Agent {
       if(event.type==='request/header')this.requestHeaderLogged=true
     }
     this.requestSurfaceGeneration=preview.contentGeneration
-    const actual=this.session.currentRequestBoundary()
-    if(actual.boundarySeq!==preview.boundarySeq||actual.contentGeneration!==preview.contentGeneration
-      ||nativeInputSha256(actual.surfaceNodes)!==nativeInputSha256(preview.surfaceNodes)
-      ||nativeInputSha256(actual.messages)!==nativeInputSha256(preview.messages)){
-      this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_COMMITTED_BASE_CHANGED')
+    try {this.session.assertRequestPreviewCommitted(preview)}catch(error){
+      if(error instanceof Error&&error.message==='SESSION_REQUEST_PREVIEW_STALE'){
+        this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_COMMITTED_BASE_CHANGED')
+      }
+      throw error
     }
     this.checkMaterialOwner(requestOwner,decision.messages,plan,'committed-predispatch')
     const material=this.#recordSelectionAppend(()=>this.session.append('request/material',planned.result.record))
@@ -2721,7 +2942,8 @@ export class ReactLoopAgent implements Agent {
       request.signal?.throwIfAborted()
       this.checkMaterialOwner(requestOwner,decision.messages,plan,'committed-predispatch',materialRef)
     }})
-    if(plan.story&&requestOwner.owner.story)this.storyRequests.set(request,{policy:plan.story,hooks:requestOwner.owner.story})
+    if(plan.story&&requestOwner.owner.story)this.storyRequests.set(request,{policy:plan.story,
+      hooks:requestOwner.owner.story,requestMaterialRef:materialRef})
     return request
   }
 
@@ -2750,7 +2972,7 @@ export class ReactLoopAgent implements Agent {
         ||preparedCall?.toolUpdate===undefined&&this.toolsChanged(decision.assembly.tools),attribution:rendered.attribution})
     const appends:SessionRequestAppendInput[]=[...includeStepStart?[{type:'step/start' as const,data:{turn,step}}]:[],
       ...commits.map(({message,intent})=>({type:'system/message' as const,data:{turn,step,message},intent}))]
-    if(firstAttempt)for(const message of decision.messages)
+    if(firstAttempt)for(const message of this.#unpublishedDecisionMessages(decision.messages))
       appends.push({type:'user/message',data:message,intent:{surfaceOp:'append'}})
     const envelope=planNativeRequestEnvelope({config,...preparedCall?{preparedCall}:{},tools:decision.assembly.tools,
       position:{turn,step},startsSeries,requestHeaderLogged:this.requestHeaderLogged,
@@ -2778,6 +3000,7 @@ export class ReactLoopAgent implements Agent {
       this.#recordSelectionAppend(()=>this.session.appendRequestPreviewEvent(preview),
         planned.type==='user/message'?planned.data:undefined)
     }
+    this.session.assertRequestPreviewCommitted(preview)
     this.requestHeaderLogged=true
     this.requestSurfaceGeneration=preview.contentGeneration
     request.signal?.throwIfAborted()

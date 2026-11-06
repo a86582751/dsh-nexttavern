@@ -53,7 +53,10 @@ export function validateNativeRequestMaterialDataV1(value, subject) {
     const delta = record(rawDelta, ['insertions', 'protectedPrefixLength',
         ...version === 2 ? ['messageTextProjections'] : [],
         ...Object.hasOwn(rawDelta, 'messageProjection') ? ['messageProjection'] : [],
-        ...Object.hasOwn(rawDelta, 'requestLocalSampling') ? ['requestLocalSampling'] : []], subject);
+        ...Object.hasOwn(rawDelta, 'requestLocalSampling') ? ['requestLocalSampling'] : [],
+        ...Object.hasOwn(rawDelta, 'finalTextProjection') ? ['finalTextProjection'] : []], subject);
+    if (delta['finalTextProjection'] !== undefined)
+        validateNativeMaterialFinalTextProjectionV1(delta['finalTextProjection'], subject);
     if (delta['messageProjection'] !== undefined)
         validateNativeMessageProjectionV1(delta['messageProjection'], subject);
     if (delta['requestLocalSampling'] !== undefined) {
@@ -166,4 +169,23 @@ export function validateNativeMessageProjectionV1(value, subject) {
                     fail(subject);
             }
         }
+}
+export function validateNativeMaterialFinalTextProjectionV1(value, subject) {
+    const projection = record(value, ['schemaVersion', 'encoding', 'textOutputs'], subject);
+    if (projection['schemaVersion'] !== 1 || projection['encoding'] !== 'native-request-final-text-projection-v1')
+        fail(subject);
+    let priorMessage = -1, priorBlock = -1, bytes = 0;
+    for (const value of list(projection['textOutputs'], 131072, subject)) {
+        const output = record(value, ['messageOrdinal', 'blockOrdinal', 'text'], subject);
+        const message = output['messageOrdinal'], block = output['blockOrdinal'];
+        if (!integer(message, 4351) || block !== null && !integer(block, 4095) || typeof output['text'] !== 'string'
+            || !output['text'].isWellFormed() || message < priorMessage
+            || message === priorMessage && (block === null || priorBlock < 0 || block <= priorBlock))
+            fail(subject);
+        priorMessage = message;
+        priorBlock = block === null ? -1 : block;
+        bytes += new TextEncoder().encode(output['text']).byteLength;
+        if (bytes > 16777216)
+            fail(subject);
+    }
 }

@@ -6,7 +6,8 @@ import { types as utilTypes } from 'node:util';
 import { brandString } from '@deepseek-ai/dsh-brand';
 import { deepFreeze } from '@deepseek-ai/dsh-util-values';
 import { nativeInputSha256 } from './input-admission.js';
-import { deriveEventMessage, foldSurface } from '@deepseek-ai/dsh-session/surface';
+import { createSurfaceCursor, deriveEventMessage, foldSurface } from 'dsh-nexttavern-native-session/surface';
+import { validateNativeMaterialFinalTextProjectionV1 } from 'dsh-nexttavern-native-session/request-material';
 export const NATIVE_REQUEST_MATERIAL_LIMITS_V1 = Object.freeze({
     baseMessages: 4096, insertions: 128, textChars: 65536, renderedBytes: 1048576,
     depth: 4096, dataBytes: 16777216, dataNodes: 131072, dataDepth: 64,
@@ -139,6 +140,45 @@ function digest(value) {
 function same(left, right) {
     return canonical(left) === canonical(right);
 }
+/** Cold DATA reconstruction only. The initial cut precedes material's planned
+ * appends, so its recovery cannot depend on the later request/material record. */
+export function reconstructNativeMaterialSelectedCaptureV2(raw, events, projections = []) {
+    const capture = object(ownedData(raw, 'selectedCapture'), ['schemaVersion', 'encoding', 'sessionId', 'boundarySeq', 'selectedSha256', 'pendingMessages'], 'selectedCapture');
+    if (capture['schemaVersion'] !== 2 || capture['encoding'] !== 'native-selected-capture-v2'
+        || !identity(capture['sessionId']) || !safeInt(capture['boundarySeq']) || !sha(capture['selectedSha256']))
+        fail('MALFORMED', 'selectedCapture');
+    const length = Number(capture['boundarySeq']) + 1;
+    if (length > events.length)
+        fail('BOUNDARY_MISMATCH', 'selectedCapture.boundarySeq');
+    const prefix = events.slice(0, length);
+    let folded;
+    try {
+        folded = foldSurface(prefix, projections);
+    }
+    catch {
+        fail('SURFACE_RECONSTRUCTION_FAILED', 'selectedCapture.fold');
+    }
+    const messages = [];
+    for (const seq of folded.nodes) {
+        const message = deriveEventMessage(prefix[Number(seq)], folded.projectedMessages);
+        if (message === null)
+            continue;
+        const owned = ownedData(message, 'selectedCapture.surfaceMessage');
+        messages.push(Object.freeze({ origin: 'surface', eventSeq: Number(seq), id: String(owned.id), role: owned.role,
+            messageSha256: nativeInputSha256(owned), message: owned }));
+    }
+    for (const pending of list(capture['pendingMessages'], limits.baseMessages, 'selectedCapture.pendingMessages')) {
+        validateMessage(pending, 'selectedCapture.pendingMessage');
+        const message = pending;
+        messages.push(Object.freeze({ origin: 'pending-decision', eventSeq: null, id: String(message.id), role: message.role,
+            messageSha256: nativeInputSha256(message), message }));
+    }
+    const data = { contentGeneration: folded.contentGeneration, boundarySeq: length - 1,
+        surfaceNodes: Object.freeze([...folded.nodes].map(Number)), messages: Object.freeze(messages) }, sha256 = nativeInputSha256({ ...data, messages: messages.map(({ message: _message, ...ref }) => ref) });
+    if (sha256 !== capture['selectedSha256'])
+        fail('BASE_MISMATCH', 'selectedCapture.selectedSha256');
+    return Object.freeze({ ...data, sha256 });
+}
 function canonicalMessageTextProjections(raw) {
     list(raw, limits.baseMessages, 'messageTextProjections');
     let bytes = 0;
@@ -221,8 +261,6 @@ function validateBase(input) {
         || !safeInt(input.contentGeneration) || !safeInt(input.protectedPrefixLength, input.baseMessages.length)
         || !safeInt(input.header.seq, input.boundarySeq) || !sha(input.header.sha256))
         fail('MALFORMED', 'base.metadata');
-    ref(input.snapshot, 'snapshot');
-    ref(input.plan, 'plan');
     if (input.baseMessages.length > limits.baseMessages || input.surfaceNodes.length > limits.baseMessages
         || input.baseRefs.length !== input.baseMessages.length)
         fail('DATA_LIMIT', 'base.messages');
@@ -314,7 +352,7 @@ function forbiddenToolBoundaries(base) {
     }
     return forbidden;
 }
-function materialize(input) {
+function resolveStructure(input) {
     validateBase(input);
     if (input.requestLocalSampling) {
         const local = input.requestLocalSampling;
@@ -335,7 +373,7 @@ function materialize(input) {
         surfaceNodes: input.surfaceNodes, messages: input.baseRefs,
         sha256: digest(input.baseMessages),
     };
-    const projections = 'messageTextProjections' in input ? canonicalMessageTextProjections(input.messageTextProjections) : undefined;
+    const projections = input.messageTextProjections ? canonicalMessageTextProjections(input.messageTextProjections) : undefined;
     const projected = new Map();
     if (projections)
         for (const projection of projections) {
@@ -349,63 +387,130 @@ function materialize(input) {
                 fail('MATERIAL_MISMATCH', 'projection.output');
             projected.set(target.id, message);
         }
-    const version = projections ? { schemaVersion: 2, encoding: 'native-request-material-v2' } :
-        { schemaVersion: 1, encoding: 'native-request-material-v1' };
-    const seed = {
-        ...version, turn: input.turn, step: input.step,
-        header: input.header, snapshot: input.snapshot, plan: input.plan, base,
-        delta: { insertions, protectedPrefixLength: input.protectedPrefixLength,
-            ...projections ? { messageTextProjections: projections } : {},
-            ...input.messageProjection ? { messageProjection: input.messageProjection } : {},
-            ...input.requestLocalSampling ? { requestLocalSampling: input.requestLocalSampling } : {} },
-    };
-    const inputSha = digest(seed);
     const forbidden = insertions.length > 0 ? forbiddenToolBoundaries(input.baseMessages) : new Set();
     const located = insertions.map((item, insertionOrdinal) => {
         const baseIndex = Math.max(input.protectedPrefixLength, input.baseMessages.length - item.requestedDepth);
         if (forbidden.has(baseIndex))
             fail('TOOL_GROUP_SPLIT', `insertions[${insertionOrdinal}]`);
-        // Every input identity/hash participates; output position never introduces randomness.
-        const messageId = brandString(`native-material-${inputSha}-${insertionOrdinal}`);
-        const payload = {
-            id: messageId, content: [{ type: 'text', text: item.renderedText }],
-            source: { kind: 'request-material', schemaVersion: 1, encoding: 'native-request-material-message-v1',
-                materialInputSha256: inputSha, contributionRef: item.contributionRef,
-                sourceSha256: item.sourceSha256, renderedSha256: item.renderedSha256 },
-        };
-        const message = item.requestedRole === 'system'
-            ? { ...payload, role: 'system' } : item.requestedRole === 'user'
-            ? { ...payload, role: 'user' } : { ...payload, role: 'assistant' };
-        return { item, message, placement: {
+        const row = { role: item.requestedRole, content: [{ type: 'text', text: item.renderedText }],
+            provenance: { kind: 'insertion', contributionRef: item.contributionRef, sourceSha256: item.sourceSha256 },
+            seal: (inputSha, content) => ({ id: brandString(`native-material-${inputSha}-${insertionOrdinal}`),
+                role: item.requestedRole, content, source: { kind: 'request-material', schemaVersion: 1,
+                    encoding: 'native-request-material-message-v1', materialInputSha256: inputSha,
+                    contributionRef: item.contributionRef, sourceSha256: item.sourceSha256,
+                    renderedSha256: textDigest(content[0]?.type === 'text' ? content[0].text : '') } }) };
+        return { item, row, insertionOrdinal, placement: {
                 contributionRef: item.contributionRef, baseIndex, protectedPrefixLength: input.protectedPrefixLength,
-                effectiveDepth: input.baseMessages.length - baseIndex, messageId,
+                effectiveDepth: input.baseMessages.length - baseIndex,
             } };
     }).sort((a, b) => a.placement.baseIndex - b.placement.baseIndex || a.item.stableOrder - b.item.stableOrder
         || (a.item.contributionRef < b.item.contributionRef ? -1 : a.item.contributionRef > b.item.contributionRef ? 1 : 0));
-    const groups = projectMessageGroups(input, inputSha, located.map(item => item.placement.baseIndex));
-    const messages = [];
+    const groups = projectMessageGroups(input, located.map(item => item.placement.baseIndex));
+    const rows = [];
     let insertion = 0;
     for (let index = 0; index <= input.baseMessages.length; index++) {
         while (located[insertion]?.placement.baseIndex === index) {
             const item = located[insertion++];
             if (!item)
                 fail('MATERIAL_MISMATCH', 'placements');
-            messages.push(item.message);
+            rows.push(item.row);
         }
         const item = input.baseMessages[index];
         if (item && !groups.covered.has(index))
-            messages.push(projected.get(String(item.id)) ?? item);
+            rows.push(baseStructureRow(projected.get(String(item.id)) ?? item, input.baseRefs[index]));
         const replacement = groups.starts.get(index);
         if (replacement)
-            messages.push(replacement);
+            rows.push(replacement);
     }
-    const record = { ...seed, placements: located.map(item => item.placement),
-        outputSha256: digest(messages) };
+    return { rows, located, base, insertions, projections };
+}
+const textDigest = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
+function structureSurface(rows) {
+    const slots = [], messages = [];
+    for (const [messageOrdinal, row] of rows.entries()) {
+        const textSlots = [];
+        messages.push({ messageOrdinal, role: row.role, textSlots });
+        // Tool results are opaque payloads, even when their serialization is text.
+        if (row.role === 'tool')
+            continue;
+        for (const [blockOrdinal, block] of row.content.entries())
+            if (block.type === 'text') {
+                textSlots.push(slots.length);
+                slots.push({ messageOrdinal, blockOrdinal, text: block.text, role: row.role, provenance: row.provenance });
+            }
+    }
+    return deepFreeze({ messages, slots });
+}
+/** The producer calls this once on its completed ordered outputs, then shares
+ * this same sparse DATA with Core sealing and Native sealing. Unchanged history
+ * is already represented by the existing base refs, never persisted again. */
+export function projectNativeMaterialTextOutputsV1(surface, textOutputs) {
+    if (textOutputs.length !== surface.slots.length)
+        fail('PROJECTION_MISMATCH', 'finalTextProjection.slots');
+    const changed = [];
+    for (const [index, slot] of surface.slots.entries()) {
+        const output = textOutputs[index];
+        if (output.messageOrdinal !== slot.messageOrdinal || output.blockOrdinal !== slot.blockOrdinal)
+            fail('PROJECTION_MISMATCH', 'finalTextProjection.coordinate');
+        if (output.text !== slot.text)
+            changed.push(output);
+    }
+    return changed.length ? deepFreeze({ schemaVersion: 1, encoding: 'native-request-final-text-projection-v1', textOutputs: changed }) : undefined;
+}
+function sealStructure(input, structure) {
+    ref(input.snapshot, 'snapshot');
+    ref(input.plan, 'plan');
+    const { rows, located, base, insertions, projections } = structure, finalTextProjection = input.finalTextProjection;
+    const contents = rows.map(row => row.content);
+    if (finalTextProjection) {
+        validateNativeMaterialFinalTextProjectionV1(finalTextProjection, 'request final text');
+        for (const output of finalTextProjection.textOutputs) {
+            const row = rows[output.messageOrdinal], block = output.blockOrdinal === null ? undefined : row?.content[output.blockOrdinal];
+            if (!row || row.role === 'tool' || !block || block.type !== 'text')
+                fail('PROJECTION_MISMATCH', 'finalTextProjection.coordinate');
+            // Sparse outputs are in transport order. Copy this affected message's
+            // block array once, then edit its owned copy across adjacent outputs.
+            const content = contents[output.messageOrdinal] === row.content
+                ? [...row.content] : contents[output.messageOrdinal];
+            content[output.blockOrdinal] = { ...block, text: output.text };
+            contents[output.messageOrdinal] = content;
+        }
+    }
+    const version = projections ? { schemaVersion: 2, encoding: 'native-request-material-v2' } :
+        { schemaVersion: 1, encoding: 'native-request-material-v1' };
+    const seed = { ...version, turn: input.turn, step: input.step, header: input.header, snapshot: input.snapshot, plan: input.plan, base,
+        delta: { insertions, protectedPrefixLength: input.protectedPrefixLength, ...projections ? { messageTextProjections: projections } : {},
+            ...input.messageProjection ? { messageProjection: input.messageProjection } : {},
+            ...input.requestLocalSampling ? { requestLocalSampling: input.requestLocalSampling } : {},
+            ...finalTextProjection ? { finalTextProjection } : {} } };
+    const inputSha = digest(seed), messages = rows.map((row, index) => row.seal(inputSha, contents[index]));
+    const record = { ...seed, placements: located.map(({ placement, insertionOrdinal }) => ({ ...placement,
+            messageId: `native-material-${inputSha}-${insertionOrdinal}` })), outputSha256: digest(messages) };
     return ownedData({ record, messages }, 'result');
+}
+function materialize(input) {
+    return sealStructure(input, resolveStructure(input));
+}
+/** The live draft holds only Native-owned structure; final refs never enter
+ * text coordinates and no generated message identity exists before sealing. */
+export function prepareNativeMaterialTextV1(input) {
+    const owned = ownedData(input, 'structure'), structure = resolveStructure(owned), surface = structureSurface(structure.rows);
+    return Object.freeze({ surface, seal: (refs, finalTextProjection) => sealStructure({ ...owned, ...refs,
+            ...finalTextProjection ? { finalTextProjection } : {} }, structure) });
+}
+function baseStructureRow(message, ref) {
+    return { role: message.role, content: message.content, provenance: { kind: 'base', message: ref },
+        seal: (inputSha, content) => {
+            if (content === message.content)
+                return message;
+            return { ...message, id: brandString(`native-final-text-${inputSha}-${ref.seq}`), content,
+                requestProjection: { schemaVersion: 1, encoding: 'native-request-message-projection-v1',
+                    materialInputSha256: inputSha, originalMessages: [message] } };
+        } };
 }
 /** Plain history may change role or collapse into one request-only message.
  * Opaque replay/signatures, tools and media retain their exact original rows. */
-function projectMessageGroups(input, inputSha, insertionPositions) {
+function projectMessageGroups(input, insertionPositions) {
     const starts = new Map(), covered = new Set();
     const projection = input.messageProjection;
     if (!projection)
@@ -443,16 +548,15 @@ function projectMessageGroups(input, inputSha, insertionPositions) {
         if (insertionPositions.some(index => index > start && index < start + targets.length))
             fail('PROJECTION_BOUNDARY', 'projection.insertion');
         const renderedText = group['renderedText'];
-        const payload = {
-            id: brandString(`native-projection-${inputSha}-${ordinal}`), content: [{ type: 'text', text: renderedText }],
-            source: { kind: 'request-material', schemaVersion: 1, encoding: 'native-request-material-message-v1',
-                materialInputSha256: inputSha, contributionRef: `projection:${ordinal}`, sourceSha256: digest(targets),
-                renderedSha256: createHash('sha256').update(renderedText, 'utf8').digest('hex') },
-            requestProjection: { schemaVersion: 1, encoding: 'native-request-message-projection-v1', materialInputSha256: inputSha,
-                originalMessages: input.baseMessages.slice(start, start + targets.length) }
-        };
-        const role = group['role'];
-        starts.set(start, role === 'system' ? { ...payload, role: 'system' } : role === 'user' ? { ...payload, role: 'user' } : { ...payload, role: 'assistant' });
+        const role = group['role'], originalMessages = input.baseMessages.slice(start, start + targets.length), sourceSha256 = digest(targets);
+        starts.set(start, { role, content: [{ type: 'text', text: renderedText }],
+            provenance: { kind: 'group', targets: input.baseRefs.slice(start, start + targets.length) },
+            seal: (inputSha, content) => ({ id: brandString(`native-projection-${inputSha}-${ordinal}`), role, content,
+                source: { kind: 'request-material', schemaVersion: 1, encoding: 'native-request-material-message-v1',
+                    materialInputSha256: inputSha, contributionRef: `projection:${ordinal}`, sourceSha256,
+                    renderedSha256: textDigest(content[0]?.type === 'text' ? content[0].text : '') },
+                requestProjection: { schemaVersion: 1, encoding: 'native-request-message-projection-v1', materialInputSha256: inputSha,
+                    originalMessages } }) });
     }
     if (projection.textEdits)
         for (const [ordinal, edit] of projection.textEdits.entries()) {
@@ -476,10 +580,12 @@ function projectMessageGroups(input, inputSha, insertionPositions) {
                 blocks.set(block.index, block.text);
             }
             covered.add(index);
-            starts.set(index, { ...message, id: brandString(`native-text-projection-${inputSha}-${ordinal}`),
+            starts.set(index, { role: message.role,
                 content: message.content.map((block, index) => blocks.has(index) ? { type: 'text', text: blocks.get(index) } : block),
-                requestProjection: { schemaVersion: 1, encoding: 'native-request-message-projection-v1', materialInputSha256: inputSha,
-                    originalMessages: [message] } });
+                provenance: { kind: 'base', message: input.baseRefs[index] },
+                seal: (inputSha, content) => ({ ...message, id: brandString(`native-text-projection-${inputSha}-${ordinal}`), content,
+                    requestProjection: { schemaVersion: 1, encoding: 'native-request-message-projection-v1', materialInputSha256: inputSha,
+                        originalMessages: [message] } }) });
         }
     return { starts, covered };
 }
@@ -510,6 +616,7 @@ export function planNativeRequestMaterialV1(input) {
     object(data, ['turn', 'step', 'header', 'snapshot', 'plan', 'boundarySeq', 'contentGeneration',
         'surfaceNodes', 'baseMessages', 'baseRefs', 'protectedPrefixLength', 'insertions',
         ...hasProjections ? ['messageTextProjections'] : [],
+        ...Object.hasOwn(data, 'finalTextProjection') ? ['finalTextProjection'] : [],
         ...Object.hasOwn(data, 'messageProjection') ? ['messageProjection'] : [],
         ...Object.hasOwn(data, 'requestLocalSampling') ? ['requestLocalSampling'] : []], 'input');
     const owned = data;
@@ -532,6 +639,7 @@ function recordData(value) {
         'base', 'delta', 'placements', 'outputSha256'], 'record');
     object(record['base'], ['boundarySeq', 'contentGeneration', 'surfaceNodes', 'messages', 'sha256'], 'record.base');
     object(record['delta'], ['insertions', 'protectedPrefixLength', ...version === 2 ? ['messageTextProjections'] : [],
+        ...Object.hasOwn(record['delta'], 'finalTextProjection') ? ['finalTextProjection'] : [],
         ...Object.hasOwn(record['delta'], 'messageProjection') ? ['messageProjection'] : [],
         ...Object.hasOwn(record['delta'], 'requestLocalSampling') ? ['requestLocalSampling'] : []], 'record.delta');
     object(record['header'], ['seq', 'sha256'], 'record.header');
@@ -539,6 +647,81 @@ function recordData(value) {
     return record;
 }
 const sessionMaterialHistory = new WeakMap();
+const nativeSessionMaterialHistory = new WeakMap();
+/** Historical DATA from the actual Session's immutable log. Only unseen events
+ * advance the canonical interpreter; earlier and unordered selections reuse
+ * facts at their original cuts and never consume an unrelated later tail. */
+export function verifyNativeSessionRequestMaterialHistoryV1(input) {
+    const { session, endExclusive } = input;
+    if (!safeInt(endExclusive) || endExclusive > Number(session.seq))
+        fail('BOUNDARY_MISMATCH', 'history.sessionCut');
+    let read = nativeSessionMaterialHistory.get(session);
+    if (!read || read.projections.length !== input.projections.length
+        || read.projections.some((projection, index) => projection !== input.projections[index])) {
+        const projections = [...input.projections], definitions = projectionDefinitions(projections);
+        read = { projections, cursor: createSurfaceCursor({ read: () => ({ length: Number(session.seq),
+                    at: seq => session.eventAt(seq) }), projections: definitions }), verified: new Set(),
+            header: undefined, step: undefined, materialPrefixEvents: 0 };
+        nativeSessionMaterialHistory.set(session, read);
+    }
+    for (const material of input.materials) {
+        if (!safeInt(material.seq, limits.prefixEvents) || material.seq >= endExclusive)
+            fail('BOUNDARY_MISMATCH', 'history.materialSeq');
+        const event = session.eventAt(material.seq);
+        if (event?.type !== 'request/material')
+            fail('BOUNDARY_MISMATCH', 'history.materialEvent');
+        if (!sha(material.expectedHeaderSha256) || event.data.header.sha256 !== material.expectedHeaderSha256)
+            fail('HEADER_MISMATCH', 'expectedHeaderSha256');
+        if (!read.verified.has(material.seq))
+            advanceNativeMaterialHistory(session, read, material.seq);
+    }
+}
+function advanceNativeMaterialHistory(session, read, through) {
+    const accept = (event) => {
+        if (event.type === 'request/header')
+            read.header = event;
+        else if (event.type === 'step/start')
+            read.step = event;
+    };
+    const advance = (end) => {
+        try {
+            read.cursor.advanceTo(end, undefined, accept);
+        }
+        catch (error) {
+            if (error instanceof NativeRequestMaterialFailure)
+                throw error;
+            fail('SURFACE_RECONSTRUCTION_FAILED', 'canonicalFold');
+        }
+    };
+    for (let seq = read.cursor.length; seq <= through; seq++) {
+        const event = session.eventAt(seq);
+        if (!event)
+            fail('BOUNDARY_MISMATCH', `events[${seq}]`);
+        if (event.type !== 'request/material')
+            continue;
+        // Complete this record against the strict preceding cut before allowing
+        // the cursor past it. A failed record remains the next work on retry.
+        advance(seq);
+        const record = recordData(event.data);
+        validateStoredShape(record);
+        if (record.base.boundarySeq !== seq - 1)
+            fail('BOUNDARY_MISMATCH', 'materialEvent.seq');
+        if (read.verified.size > limits.insertions)
+            fail('DATA_LIMIT', 'events.priorMaterials');
+        if (seq + read.materialPrefixEvents > limits.reconstructionFoldEvents)
+            fail('DATA_LIMIT', 'events.reconstructionFoldEvents');
+        reconstructAgainstSurface(record, { nodes: read.cursor.nodes, contentGeneration: read.cursor.contentGeneration,
+            messageAt: node => {
+                const actual = session.eventAt(node);
+                if (!actual)
+                    fail('BOUNDARY_MISMATCH', 'fold.nodes');
+                return read.cursor.deriveEventMessage(actual);
+            } }, read.header, read.step);
+        advance(seq + 1);
+        read.verified.add(seq);
+        read.materialPrefixEvents += seq;
+    }
+}
 /** A standalone read owns its complete frozen prefix. An actual Session may
  * retain the same verified historical DATA across append-only captures; a
  * changed projection definition starts a new interpretation of that history. */
@@ -669,24 +852,44 @@ function reconstructMaterial(input, read) {
     return result;
 }
 function reconstructAgainstPrefix(record, prefix, projections) {
-    // Canonical fold ignores log-only material; no ignorable marker is invented.
-    // Catalog/SessionEventMap registration of this built-in remains Root-owned.
-    // Root will expose the existing fold state's exact generation in the canonical
-    // SurfaceFoldResult. No locally counted/approximated generation is accepted.
     let folded;
+    try {
+        folded = foldSurface(prefix, projections);
+    }
+    catch (error) {
+        if (error instanceof NativeRequestMaterialFailure)
+            throw error;
+        fail('SURFACE_RECONSTRUCTION_FAILED', 'canonicalFold');
+    }
+    let headerEvent;
+    let stepEvent;
+    for (const event of prefix) {
+        if (event.type === 'request/header')
+            headerEvent = event;
+        else if (event.type === 'step/start')
+            stepEvent = event;
+    }
+    return reconstructAgainstSurface(record, { nodes: folded.nodes, contentGeneration: folded.contentGeneration,
+        messageAt: seq => {
+            const actual = prefix[seq];
+            if (!actual)
+                fail('BOUNDARY_MISMATCH', 'fold.nodes');
+            return deriveEventMessage(actual, folded.projectedMessages);
+        } }, headerEvent, stepEvent);
+}
+/** Both descriptor replay and the Session cursor use this complete semantic
+ * comparison/materialization. A new record still pays for its exact current
+ * base messages and output; no previous full event prefix is replayed here. */
+function reconstructAgainstSurface(record, folded, headerEvent, stepEvent) {
     let baseMessages;
     let baseRefs;
     try {
-        folded = foldSurface(prefix, projections);
         if (!safeInt(folded.contentGeneration))
             fail('SURFACE_RECONSTRUCTION_FAILED', 'canonicalFold.contentGeneration');
         baseMessages = [];
         baseRefs = [];
         for (const seq of folded.nodes) {
-            const actual = prefix[seq];
-            if (!actual)
-                fail('BOUNDARY_MISMATCH', 'fold.nodes');
-            const projected = deriveEventMessage(actual, folded.projectedMessages);
+            const projected = folded.messageAt(seq);
             if (projected !== null) {
                 const message = ownedData(projected, `projection.message[${seq}]`);
                 validateMessage(message, `projection.message[${seq}]`);
@@ -705,18 +908,10 @@ function reconstructAgainstPrefix(record, prefix, projections) {
         || !same(baseRefs, record.base.messages) || digest(baseMessages) !== record.base.sha256) {
         fail('BASE_MISMATCH', 'record.base');
     }
-    let headerEvent;
-    for (const item of prefix)
-        if (item.type === 'request/header')
-            headerEvent = item;
     if (!headerEvent || headerEvent.type !== 'request/header' || headerEvent.seq !== record.header.seq
         || digest(headerEvent.data.header) !== record.header.sha256)
         fail('HEADER_MISMATCH', 'record.header');
     // Exact turn/step identity is supplied by the historical Native step bracket.
-    let stepEvent;
-    for (const item of prefix)
-        if (item.type === 'step/start')
-            stepEvent = item;
     if (!stepEvent || stepEvent.type !== 'step/start' || stepEvent.data.turn !== record.turn
         || stepEvent.data.step !== record.step)
         fail('BOUNDARY_MISMATCH', 'record.turnStep');
@@ -725,6 +920,7 @@ function reconstructAgainstPrefix(record, prefix, projections) {
         contentGeneration, surfaceNodes: folded.nodes, baseMessages, baseRefs,
         protectedPrefixLength: record.delta.protectedPrefixLength, insertions: record.delta.insertions,
         ...record.schemaVersion === 2 ? { messageTextProjections: record.delta.messageTextProjections } : {},
+        ...record.delta.finalTextProjection ? { finalTextProjection: record.delta.finalTextProjection } : {},
         ...record.delta.messageProjection ? { messageProjection: record.delta.messageProjection } : {},
         ...record.delta.requestLocalSampling ? { requestLocalSampling: record.delta.requestLocalSampling } : {} });
     if (!same(rebuilt.record, record))

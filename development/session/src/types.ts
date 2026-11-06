@@ -13,7 +13,7 @@ import type {
   ToolResultMessage,
   ToolSchema,
   UserMessage,
-} from '@deepseek-ai/dsh-llm'
+} from 'dsh-nexttavern-native-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {NativeRequestMaterialRecord} from './request-material-types.js'
 
@@ -290,6 +290,71 @@ export interface NativeInputRef {
   readonly insertSeq: number
   readonly messageId: string
   readonly messageSha256: string
+}
+
+/** Author-produced user text is canonical immediately, before a Story turn.
+ * It deliberately has no human RPC identity. Each accepted user is the only
+ * persisted copy of its body; index/count retain a partial batch on I/O failure. */
+export interface NativeAuthorPublicationV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-author-publication-v1'
+  readonly operationId:string
+  readonly producer:string
+  readonly origin:string
+  readonly index:number
+  readonly count:number
+  readonly batchSha256:string
+}
+export interface NativePublishedUserRefV1 {
+  readonly userSeq:number
+  readonly messageId:string
+  readonly messageSha256:string
+}
+/** Metadata on the actual inbox insertion, never another input journal. */
+export interface NativePublishedTriggerV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-published-trigger-v1'
+  readonly operationId:string
+  readonly users:readonly NativePublishedUserRefV1[]
+}
+export interface NativePublishedInputAssociationV1 {
+  readonly schemaVersion:1
+  readonly publicationOperationId:string
+  readonly triggerOperationId:string
+  readonly userSeq:number
+  readonly insertSeq:number
+}
+const publicationRecord=(value:unknown):Record<string,unknown>=>{
+  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('PUBLISHED_INPUT_METADATA_INVALID')
+  return value as Record<string,unknown>
+}
+const publicationText=(value:unknown):value is string=>typeof value==='string'&&value.length>0
+const publicationCount=(value:unknown):value is number=>Number.isSafeInteger(value)&&Number(value)>=0
+const publicationSha=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
+/** Read one persisted source marker. Consumers reuse this decoder. */
+export function readNativeAuthorPublicationV1(source:unknown):NativeAuthorPublicationV1|undefined {
+  const value=publicationRecord(source).authorPublication
+  if(value===undefined)return
+  const row=publicationRecord(value)
+  if(row.schemaVersion!==1||row.encoding!=='native-author-publication-v1'
+    ||!publicationText(row.operationId)||!publicationText(row.producer)||!publicationText(row.origin)
+    ||!publicationCount(row.index)||!publicationCount(row.count)||row.count===0||row.index>=row.count
+    ||!publicationSha(row.batchSha256))throw Error('PUBLISHED_INPUT_METADATA_INVALID')
+  const owner=publicationRecord(source)
+  if(owner.kind!=='user'||Object.hasOwn(owner,'rpcId'))throw Error('PUBLISHED_INPUT_SOURCE_INVALID')
+  return value as NativeAuthorPublicationV1
+}
+export function readNativePublishedTriggerV1(data:unknown):NativePublishedTriggerV1|undefined {
+  const value=publicationRecord(data).publishedInput
+  if(value===undefined)return
+  const row=publicationRecord(value)
+  if(row.schemaVersion!==1||row.encoding!=='native-published-trigger-v1'
+    ||!publicationText(row.operationId)||!Array.isArray(row.users)||!row.users.length)
+    throw Error('PUBLISHED_TRIGGER_METADATA_INVALID')
+  for(const user of row.users){const ref=publicationRecord(user)
+    if(!publicationCount(ref.userSeq)||!publicationText(ref.messageId)||!publicationSha(ref.messageSha256))
+      throw Error('PUBLISHED_TRIGGER_METADATA_INVALID')}
+  return value as NativePublishedTriggerV1
 }
 
 /** Immutable owner selection, not a declaration of current readiness or a stop receipt. */
