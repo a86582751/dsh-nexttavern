@@ -5,7 +5,9 @@ import { join } from 'node:path'
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { createConversationCatalog, type LegacyForkOperation, type ConversationSnapshot } from './tavern-conversations.js'
-import { readUserInfo as readUserInfoFile, writeUserInfo } from './roleplay-userinfo.js'
+import { readEffectiveUserInfo, readNativePersonas, mutateNativePersona, retryNativePersona,
+  readNativePersonaAvatar, writeUserInfo } from './roleplay-userinfo.js'
+import type { NativePersonaOperationV1 } from './roleplay-native-persona-types.js'
 import {receiveSideChatBridge} from './roleplay-side-chat-bridge.js'
 
 type UserInfo = Record<string, unknown>
@@ -48,7 +50,11 @@ type HostContext = {
 type Route = ConnectionFetchRoute
 
 // HTTP clients expect an object even before a user profile exists.
-const readUserInfo = (): UserInfo => readUserInfoFile() ?? {}
+const readUserInfo = (): UserInfo => {
+  // The legacy endpoint retains its best-effort read contract. Persona DATA
+  // and all writes use the owner's strict read, so corrupt bytes are retained.
+  try { return readEffectiveUserInfo() } catch { return {} }
+}
 
 const jsonResponse = (status: number, value: unknown): Response =>
   new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
@@ -172,10 +178,30 @@ export function apply(ctx: HostContext): void {
     try {
       if (request.method === 'GET') return jsonResponse(200, { ok: true, userinfo: readUserInfo() })
       const body = requestBody(await request.json().catch(() => null))
-      const next: UserInfo = { ...readUserInfo(), ...(body.name !== undefined ? { name: String(body.name).slice(0, 60) } : {}), ...(body.gender !== undefined ? { gender: String(body.gender).slice(0, 30) } : {}), updatedAt: Date.now() }
-      writeUserInfo(next); return jsonResponse(200, { ok: true, userinfo: next })
+      const next: UserInfo = { ...(body.name !== undefined ? { name: String(body.name).slice(0, 60) } : {}),
+        ...(body.gender !== undefined ? { gender: String(body.gender).slice(0, 30) } : {}) }
+      writeUserInfo(next); return jsonResponse(200, { ok: true, userinfo: readUserInfo() })
     } catch (error: unknown) { return jsonResponse(500, { ok: false, error: errorText(error) }) }
   }}), 'roleplay-ui: userinfo route')
+  ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered', path: '/api/roleplay/personas',
+    methods: ['GET', 'POST'], fetch: async request => {
+      try {
+        if (request.method === 'GET') return jsonResponse(200, { ok: true, data: readNativePersonas(), userinfo: readEffectiveUserInfo() })
+        const body = requestBody(await request.json())
+        const result = body.action === 'retry'
+          ? retryNativePersona(String(body.operationId ?? ''))
+          : mutateNativePersona(body as unknown as NativePersonaOperationV1)
+        return jsonResponse(result.kind === 'committed' ? 200 : 409, { ok: result.kind === 'committed', result })
+      } catch (error: unknown) { return jsonResponse(500, { ok: false, error: errorText(error) }) }
+    } }), 'roleplay-ui: Native account personas')
+  ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered', path: '/api/roleplay/persona-avatar',
+    methods: ['GET'], fetch: async request => {
+      try {
+        const svg = readNativePersonaAvatar(new URL(request.url).searchParams.get('id') ?? '')
+        return svg === null ? jsonResponse(404, { ok: false, error: 'Persona avatar unavailable' })
+          : new Response(svg, { status: 200, headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache' } })
+      } catch (error: unknown) { return jsonResponse(500, { ok: false, error: errorText(error) }) }
+    } }), 'roleplay-ui: owned persona avatar')
   // Resume only the selected Session after a Host restart. No prompt or sibling
   // wake is issued; agent-owned routes become available through native resume.
   ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered', path: '/api/roleplay/wake', methods: ['POST'], fetch: async request => {

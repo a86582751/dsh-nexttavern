@@ -35,10 +35,12 @@ export type NativePersonaMutationV1=
   |{readonly kind:'select';readonly id:string}
   |{readonly kind:'update-current';readonly values:{readonly name?:string;readonly gender?:string}}
 export interface NativePersonaOriginV1 {
-  readonly kind:'host-ui'|'author-script'|'legacy'
+  readonly kind:'host-ui'|'author-script'|'author-native-realm'|'legacy'
   readonly sessionId?:string
   readonly scriptIdentity?:string
   readonly programSha256?:string
+  readonly realmId?:string
+  readonly groupId?:string
 }
 export interface NativePersonaOperationV1 {
   readonly schemaVersion:1
