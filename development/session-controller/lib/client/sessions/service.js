@@ -1,5 +1,5 @@
 // Generated from runtime/alpha3/compat/session-controller/src/client/sessions/service.ts; edit the TypeScript source.
-import { SessionSeq } from '@deepseek-ai/dsh-session/types';
+import { SessionSeq } from 'dsh-nexttavern-native-session/types';
 import { workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path';
 import { SESSION_SEARCH_RESULT_LIMIT } from '../../types.js';
 import { createSnapshotStore, notifySubscribers, } from '@deepseek-ai/dsh-client-store';

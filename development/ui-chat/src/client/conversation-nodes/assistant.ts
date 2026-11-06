@@ -3,10 +3,10 @@ import type {
   AssistantBlock, AssistantMessageNode, ConversationLocation, ConversationMatch,
   ConversationNodeContext, ConversationNodeDefinition,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { StreamChunk } from 'dsh-nexttavern-native-llm'
 import type {} from '@deepseek-ai/dsh-llm-retry/types'
-import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
-import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
+import type { SessionEvent } from 'dsh-nexttavern-native-session/types'
+import { isAppendSurfaceEvent } from 'dsh-nexttavern-native-session/surface'
 import type { AssistantChatData } from '../contract/chat-nodes.ts'
 import { CHAT_SYNTHETIC_SEQ_OFFSETS, chatNode } from './common.ts'
 import {

@@ -2,7 +2,7 @@
 // The input order is authoritative; lineage only makes each child adjacent to its parent.
 // Orphaned lineage degrades to root level; cycles fail soft and emit as roots.
 
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionId } from 'dsh-nexttavern-native-session/types'
 import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/types'
 import type { SessionSummary } from '../../types.js'
 

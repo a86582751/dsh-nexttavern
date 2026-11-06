@@ -7,7 +7,7 @@
  */
 import { assertNever } from '@deepseek-ai/dsh-util-values';
 import { TOOL_NOT_STARTED } from './repair.js';
-const PACKAGE_NAME = '@deepseek-ai/dsh-session';
+const PACKAGE_NAME = 'dsh-nexttavern-native-session';
 /** Cordis companion plugin name. */
 export const name = 'session-invariant';
 /** Service required before the companion can reserve package ownership. */

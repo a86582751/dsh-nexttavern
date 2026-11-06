@@ -4,7 +4,7 @@
  * @module @deepseek-ai/dsh-subagent/projection-types
  */
 
-import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
+import type { SessionId, SessionSeq } from 'dsh-nexttavern-native-session/types'
 
 /** One current direct-child discovery row materialized from parent facts. */
 export type SubagentCatalogEntry =

@@ -3,8 +3,8 @@
  * Pure folds for durable provider-reported token usage and context occupancy.
  */
 import { z } from 'zod';
-import { lastAssistantStreamChunk } from '@deepseek-ai/dsh-llm';
-import { SessionSeq } from '@deepseek-ai/dsh-session';
+import { lastAssistantStreamChunk } from 'dsh-nexttavern-native-llm';
+import { SessionSeq } from 'dsh-nexttavern-native-session';
 import { foldSurfaceProjection } from './surface-projection.js';
 import { commitSurfaceTokens, planRetainedSurface, retainedPriceSchema } from './surface-fold.js';
 const zeroBuckets = () => ({

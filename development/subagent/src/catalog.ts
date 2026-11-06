@@ -13,7 +13,7 @@ import type {
   SessionHeader,
   SessionId,
   SessionLogOffset,
-} from '@deepseek-ai/dsh-session'
+} from 'dsh-nexttavern-native-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SubagentCatalogEntry } from './projection-types.ts'
 
@@ -34,7 +34,7 @@ export type SubagentCatalogEvent =
     | ({ readonly version: 1 } & (KnownCatalogMode | { readonly mode: 'unknown'; readonly label?: string }))
   )
 
-declare module '@deepseek-ai/dsh-session/types' {
+declare module 'dsh-nexttavern-native-session/types' {
   interface SessionEventMap {
     /**
      * A direct child's identity and available discovery fields.

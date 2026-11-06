@@ -1,6 +1,6 @@
 /** Chat-owned Slot declarations and composed component props. */
-import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
-import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
+import type { MessageId } from 'dsh-nexttavern-native-llm/brand'
+import type { SessionId, SessionSeq } from 'dsh-nexttavern-native-session/types'
 import type {
   CommandNode, CompactionSummaryNode, ConversationLocationDataStore, ConversationTurnDataMap,
   ConversationGroupData, GroupSnapshot,

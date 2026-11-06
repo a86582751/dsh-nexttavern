@@ -1,8 +1,8 @@
 /** Process-local request/material association. Durable descriptors are never
  * looked up as a current owner; only this exact branded request has a binding. */
-import {bindAgentLoopRequestGuard,isAgentLoopRequest} from '@deepseek-ai/dsh-llm'
-import type {GenerateOptions,RequestMessage} from '@deepseek-ai/dsh-llm'
-import type {Session,SessionEvent} from '@deepseek-ai/dsh-session'
+import {bindAgentLoopRequestGuard,isAgentLoopRequest} from 'dsh-nexttavern-native-llm'
+import type {GenerateOptions,RequestMessage} from 'dsh-nexttavern-native-llm'
+import type {Session,SessionEvent} from 'dsh-nexttavern-native-session'
 import {nativeInputSha256} from './input-admission.js'
 import {planNativeRequestMaterialV1} from './request-material.js'
 import type {NativeRequestMaterialEventV1} from './request-material.js'

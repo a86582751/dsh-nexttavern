@@ -5,7 +5,7 @@
  */
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { UserMessage } from '@deepseek-ai/dsh-session'
+import type { UserMessage } from 'dsh-nexttavern-native-session'
 import type { SubagentPromptRequest } from './control-types.ts'
 import { SubagentError } from './error.ts'
 

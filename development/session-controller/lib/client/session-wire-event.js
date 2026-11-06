@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/compat/session-controller/src/client/session-wire-event.ts; edit the TypeScript source.
 /** Event-local acceptance for raw Session journal responses; payloads remain owner-defined JSON. */
-import { validateSessionEventData, validateSurfaceMetadata } from '@deepseek-ai/dsh-session/surface';
+import { validateSessionEventData, validateSurfaceMetadata } from 'dsh-nexttavern-native-session/surface';
 /**
  * Reject non-current event envelopes without stripping or normalizing wire fields.
  * Range membership and source existence require the durable log and remain Host-owned.

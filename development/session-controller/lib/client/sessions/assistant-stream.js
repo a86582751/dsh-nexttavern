@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/compat/session-controller/src/client/sessions/assistant-stream.ts; edit the TypeScript source.
 /** Web presentation fold joining transient Assistant frames to one durable v2 settlement. */
-import { expandAssistantStream } from '@deepseek-ai/dsh-llm/assistant-stream';
+import { expandAssistantStream } from 'dsh-nexttavern-native-llm/assistant-stream';
 /** Keeps transient Assistant presentation behind one settlement-aware interface. */
 export class ClientAssistantStream {
     activeAttempt;

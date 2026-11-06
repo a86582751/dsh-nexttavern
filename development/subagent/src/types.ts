@@ -11,8 +11,8 @@
 
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { ContentBlock, MessageId } from '@deepseek-ai/dsh-llm'
-import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import type { ContentBlock, MessageId } from 'dsh-nexttavern-native-llm'
+import type { SessionEvent, SessionId } from 'dsh-nexttavern-native-session'
 import type { ObjectJsonSchema, ToolRestriction } from '@deepseek-ai/dsh-tools'
 import type { SubagentDescriptorData } from './descriptor.ts'
 import type {OwnedAuthorDialogActivationV1} from './author-dialog-activation.ts'
@@ -138,6 +138,8 @@ export interface SubagentCapabilities {
   /** Private Native start-time mode; public spawn tool input does not expose it. */
   readonly ownedAuthorDialog?:boolean
   readonly ownedRubyTask?:boolean
+  /** Host-selected complete system prompt for a one-shot private task. */
+  readonly isolatedSystem?:boolean
 }
 
 /**
@@ -148,6 +150,8 @@ export interface SubagentCapabilities {
  * {@link SubagentProvider.start}.
  */
 export interface SubagentStartRequest {
+  /** Exact system text, without inherited preset sections or runtime context. */
+  readonly isolatedSystem?:string
   readonly activation?:OwnedAuthorDialogActivationV1
   readonly rubyActivation?:OwnedRubyTaskActivationV1
   /** Same-process Core capability, passed separately from durable DATA. */

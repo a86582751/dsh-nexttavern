@@ -14,7 +14,7 @@
  *
  * @module @deepseek-ai/dsh-token-meter/surface-fold
  */
-import { deriveEventMessage, isSurfaceEvent, SessionSeq } from '@deepseek-ai/dsh-session';
+import { deriveEventMessage, isSurfaceEvent, SessionSeq } from 'dsh-nexttavern-native-session';
 import { z } from 'zod';
 import { assertMessageEdit, isMessageEdit } from 'dsh-nexttavern-session-format/projection';
 import { estimateContent, estimateMessage, estimateStructuralBlock } from './estimate.js';

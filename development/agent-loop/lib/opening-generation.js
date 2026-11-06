@@ -2,7 +2,7 @@
 import { nativeInputSha256 } from './input-admission.js';
 import { reconstructNativeRequestMaterialV1 } from './request-material.js';
 import { sealNativeOpeningRecordV1, validateNativeOpeningInvocationV1, validateNativeOpeningRequestAttemptV1, validateNativeGeneratedOpeningReceiptV1, validateNativeOpeningClosingAckV1, nativeOpeningTextSha256V1 } from './opening-record-hashes.js';
-import { NativeOpeningRecordFailureV1, NATIVE_OPENING_RECORD_BOUNDS_V1 } from '@deepseek-ai/dsh-session/surface';
+import { NativeOpeningRecordFailureV1, NATIVE_OPENING_RECORD_BOUNDS_V1 } from 'dsh-nexttavern-native-session/surface';
 export const openingEventRefV1 = (event) => Object.freeze({
     seq: Number(event.seq), sha256: nativeInputSha256(event)
 });

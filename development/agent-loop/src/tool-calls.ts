@@ -12,8 +12,8 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { createToolResultMessage, type ToolCallBlock } from '@deepseek-ai/dsh-llm'
-import type { Session, SessionSeq, UserMessage } from '@deepseek-ai/dsh-session'
+import { createToolResultMessage, type ToolCallBlock } from 'dsh-nexttavern-native-llm'
+import type { Session, SessionSeq, UserMessage } from 'dsh-nexttavern-native-session'
 import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type ToolExecutionInput, type ToolExecutionMode, type ToolExecutionResult, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 

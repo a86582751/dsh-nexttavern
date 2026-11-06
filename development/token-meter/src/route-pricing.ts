@@ -5,7 +5,7 @@
  * @module @deepseek-ai/dsh-token-meter/route-pricing
  */
 
-import type { ContentBlock, ImageBlock, LlmImageRequestPricing, ProjectedLlmRequest } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, ImageBlock, LlmImageRequestPricing, ProjectedLlmRequest } from 'dsh-nexttavern-native-llm'
 import { estimateContent, estimateMessage, estimateStructuralBlock, estimateSystemText, estimateToolsTokens } from './estimate.js'
 import type { MeterSurfaceNode } from './surface-fold.js'
 import type { TokenSurfaceNode, TokenRequestMeasurement } from './types.js'

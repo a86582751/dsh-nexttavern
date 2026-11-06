@@ -1,5 +1,5 @@
 // Generated from runtime/alpha3/compat/agent-loop/src/story-request.ts; edit the TypeScript source.
-import { applyNativeStoryResponseOperationsV1, planNativeStoryResponseMaterialV1, nativeStoryResponseSha256V1, nativeStoryVisibleTextV1 } from '@deepseek-ai/dsh-session';
+import { applyNativeStoryResponseOperationsV1, planNativeStoryResponseMaterialV1, nativeStoryResponseSha256V1, nativeStoryVisibleTextV1 } from 'dsh-nexttavern-native-session';
 export function nativeStorySamplingConfigV1(config, policy) {
     const sampling = policy.sampling;
     return { ...config, ...sampling?.temperature === undefined ? {} : { temperature: sampling.temperature },
@@ -30,6 +30,16 @@ export function normalizeNativeStoryResponseV1(blocks, binding) {
     return materializeNativeStoryResponseV1(blocks, binding).content;
 }
 export function materializeNativeStoryResponseV1(blocks, binding) {
+    const { plan, extracted } = prepareNativeStoryResponse(blocks, binding);
+    const first = extracted.findIndex(block => block.type === 'text');
+    if (first >= 0 && binding.hooks.normalizeText) {
+        const text = nativeStoryVisibleTextV1(extracted), normalized = binding.hooks.normalizeText(text);
+        if (normalized !== text)
+            plan.push({ kind: 'replace-text', expectedTextSha256: nativeStoryResponseSha256V1(text), text: normalized });
+    }
+    return planNativeStoryResponseMaterialV1(blocks, plan);
+}
+function prepareNativeStoryResponse(blocks, binding) {
     const transport = binding.policy.response?.transport;
     const plan = [];
     if (transport)
@@ -56,13 +66,38 @@ export function materializeNativeStoryResponseV1(blocks, binding) {
             }
         }
     }
-    const first = extracted.findIndex(block => block.type === 'text');
-    if (first >= 0 && binding.hooks.normalizeText) {
-        const text = nativeStoryVisibleTextV1(extracted), normalized = binding.hooks.normalizeText(text);
-        if (normalized !== text)
-            plan.push({ kind: 'replace-text', expectedTextSha256: nativeStoryResponseSha256V1(text), text: normalized });
+    return { plan, extracted };
+}
+/** Await only the actual completed body; no hook runs while replaying DATA. */
+export async function materializeNativeStoryResponse(blocks, binding, input) {
+    if (binding.hooks.schemaVersion === 1)
+        return materializeNativeStoryResponseV1(blocks, binding);
+    const { plan, extracted } = prepareNativeStoryResponse(blocks, binding);
+    if (!extracted.some(block => block.type === 'text'))
+        return planNativeStoryResponseMaterialV1(blocks, plan);
+    const original = nativeStoryVisibleTextV1(extracted);
+    let text = binding.hooks.normalizeText?.(original) ?? original;
+    if (!binding.requestMaterialRef)
+        throw Error('STORY_FINALIZATION_REQUEST_MATERIAL_REQUIRED');
+    input.signal.throwIfAborted();
+    const inputTextSha256 = nativeStoryResponseSha256V1(text);
+    const result = await binding.hooks.finalizeText({ text, ...input, requestMaterialRef: binding.requestMaterialRef });
+    input.signal.throwIfAborted();
+    let finalization;
+    if (result !== undefined) {
+        text = result.text;
+        finalization = { schemaVersion: 1, encoding: 'native-story-response-finalization-v1',
+            requestMaterialRef: binding.requestMaterialRef, turn: input.turn, step: input.step, inputTextSha256,
+            outputTextSha256: nativeStoryResponseSha256V1(text),
+            ...result.producerReceipt === undefined ? {} : { producerReceipt: result.producerReceipt } };
     }
-    return planNativeStoryResponseMaterialV1(blocks, plan);
+    // The operation starts before normalization and ends after finalization:
+    // one replacement preserves the V1 interpreter and nontext block origins.
+    if (text !== original)
+        plan.push({ kind: 'replace-text', expectedTextSha256: nativeStoryResponseSha256V1(original), text });
+    const output = planNativeStoryResponseMaterialV1(blocks, plan);
+    return finalization ? { content: output.content, material: { ...output.material, schemaVersion: 2,
+            encoding: 'native-story-response-material-v2', finalization } } : output;
 }
 /** Raw chunks still enter Native's accumulator unchanged. Only UI frames pass
  * here. Tool argument JSON is held until complete so transport syntax never

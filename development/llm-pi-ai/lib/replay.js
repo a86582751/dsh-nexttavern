@@ -8,7 +8,7 @@
  *
  * @module dsh-llm-pi-ai/replay
  */
-import { LlmError } from '@deepseek-ai/dsh-llm';
+import { LlmError } from 'dsh-nexttavern-native-llm';
 /** Parse tool-call argument JSON; tolerate model malformations with {}. */
 function parseArguments(raw) {
     try {

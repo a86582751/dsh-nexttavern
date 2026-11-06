@@ -15,11 +15,12 @@ import { dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { scheduler } from 'node:timers/promises';
 import { createHash, randomBytes } from 'node:crypto';
-import { SessionPersistence, SessionPersistenceRevision, SessionFormatUnsupportedError, SessionPersistenceCorruptionError, SessionAlreadyExistsError, SessionPersistenceNotFoundError, assertStoredId, materializeCreateHeader, sessionFormatVersionRefusal, validateStoredEvents, } from 'dsh-nexttavern-session-format/storage-contract';
+import { SessionPersistence, SessionPersistenceRevision, SessionFormatUnsupportedError, SessionPersistenceCorruptionError, SessionAlreadyExistsError, SessionPersistenceNotFoundError, createNativeV4RelationshipValidator, assertStoredId, materializeCreateHeader, sessionFormatVersionRefusal, validateStoredEvents, } from 'dsh-nexttavern-session-format/storage-contract';
 import { JsonlBackendTracker, JsonlSessionHandle } from './storage.js';
+import { knownSessionEventTypes } from 'dsh-nexttavern-session-format/catalog';
 import { SessionWriteLease } from './lease.js';
-import { SESSION_FORMAT_VERSION, SessionId as makeSessionId, SessionLogOffset } from '@deepseek-ai/dsh-session';
-import { assertNoRetiredHeaderFields, encodeSegment, eventLines, generationLogFilename, generationLogPath, logPath, logSuffix, parseGenerationLogFilename, projectDir, scanLog, sessionDir, SessionLogScanner, toHeaderLine, } from './format.js';
+import { SESSION_FORMAT_VERSION, SessionId as makeSessionId, SessionLogOffset } from 'dsh-nexttavern-native-session';
+import { assertNoRetiredHeaderFields, encodeSegment, eventLines, generationLogFilename, generationLogPath, logPath, logSuffix, parseGenerationLogFilename, projectDir, scanLog, sessionDir, SessionLogScanner, toHeaderLine, fromHeaderLine, } from './format.js';
 import { compressZstdFrame, createZstdFrameDecoder, decompressZstdFrame, decompressZstdPrefix, scanZstdFrames, } from './zstd.js';
 import { ensureDurableDirectoryWin32, publishNewFileWin32 } from './win32.js';
 import { verifyCurrentGenerationInWorker } from './migration-verifier.js';
@@ -79,6 +80,37 @@ function freezeStoredEvents(events) {
         freezeStoredEvent(event);
     Object.freeze(events);
     return { eventState: 'shared-frozen', events };
+}
+const storedEventCuts = new WeakMap();
+const returnedStoredCuts = new WeakMap();
+/** Only provider-decoded or successfully appended private batches enter this owner.
+ * The getter captures length now: even a first late read cannot see future writes. */
+function storedEventsSnapshot(owner, length) {
+    let snapshot;
+    return { eventState: 'shared-frozen', get events() {
+            if (!snapshot) {
+                snapshot = owner.events.slice(0, length);
+                Object.freeze(snapshot);
+            }
+            return snapshot;
+        } };
+}
+function ownedStoredCut(stored) {
+    let cut = storedEventCuts.get(stored);
+    if (!cut) {
+        const events = [...stored.events], relationships = createNativeV4RelationshipValidator(stored.meta, stored.inheritedEventCount, knownSessionEventTypes);
+        if (stored.relationshipVerifiedThrough === events.length)
+            relationships.verify({ length: events.length,
+                at: seq => events[seq] });
+        cut = { owner: { identity: {}, events, relationships }, length: events.length };
+        storedEventCuts.set(stored, cut);
+    }
+    const { owner, length } = cut;
+    const result = { owner: owner.identity, revision: stored.revision, length, relationshipVerifiedThrough: stored.relationshipVerifiedThrough,
+        at: (seq) => seq >= 0 && seq < length ? owner.events[seq] : undefined,
+        materialize: () => stored.events };
+    returnedStoredCuts.set(result, stored);
+    return result;
 }
 /** Build the stat-derived best-effort change token shared by full and lightweight reads. */
 function fileRevision(identity) {
@@ -452,6 +484,7 @@ class JsonlSessionPersistence extends SessionPersistence {
         const probe = fileRevision(await stat(selected.sourcePath, { bigint: true }));
         const memoized = this.coldLogMemo.get(id);
         if (memoized?.status === 'current' && memoized.revision === probe) {
+            this.verifyStoredRelationships(memoized, selected.sourcePath);
             this.coldLogMemo.delete(id);
             this.coldLogMemo.set(id, memoized);
             return memoized;
@@ -569,6 +602,7 @@ class JsonlSessionPersistence extends SessionPersistence {
         }
         const published = {
             status: 'current',
+            relationshipVerifiedThrough: stored.events.length,
             meta: stored.meta,
             eventState: stored.eventState,
             events: stored.events,
@@ -606,12 +640,36 @@ class JsonlSessionPersistence extends SessionPersistence {
         const probe = fileRevision(await stat(path, { bigint: true }));
         const memoized = this.coldLogMemo.get(expectedId);
         if (memoized?.status === 'current' && memoized.revision === probe) {
+            this.verifyStoredRelationships(memoized, path);
             this.coldLogMemo.delete(expectedId);
             this.coldLogMemo.set(expectedId, memoized);
             return memoized;
         }
         const { bytes, identity } = await readStableJsonlFile(path, signal);
         return this.decodeStoredLog(path, expectedId, bytes, fileRevision(identity), signal);
+    }
+    /** The same actual file revision check as raw read, without an array output. */
+    async readStoredLogCut(path, expectedId, previous) {
+        const retained = previous && returnedStoredCuts.get(previous);
+        if (retained?.meta.id === expectedId && !this.coldLogMemo.has(expectedId))
+            this.memoizeStoredLog(expectedId, retained);
+        return ownedStoredCut(await this.readStoredLog(path, expectedId));
+    }
+    /** Pending successful writes are checked only at the ordinary read boundary.
+     * A failed read rolls back its relationship state, never the durable bytes;
+     * a later end-seed may make the same accumulated tail readable. */
+    verifyStoredRelationships(stored, path) {
+        const cut = ownedStoredCut(stored);
+        if (stored.relationshipVerifiedThrough === cut.length)
+            return;
+        try {
+            const owner = storedEventCuts.get(stored).owner;
+            owner.relationships.verify({ length: cut.length, at: seq => owner.events[seq] });
+            stored.relationshipVerifiedThrough = cut.length;
+        }
+        catch (error) {
+            throw new SessionPersistenceCorruptionError(`session "${stored.meta.id}": stored log is corrupt: ${String(error)} (raw log: ${path})`, { cause: error });
+        }
     }
     /** Decode and memoize one already-stable current physical snapshot. */
     async decodeStoredLog(path, expectedId, buffer, revision, signal) {
@@ -622,7 +680,7 @@ class JsonlSessionPersistence extends SessionPersistence {
             }
             else {
                 signal?.throwIfAborted();
-                const { meta, inheritedEventCount, events, committedBytes } = scanLog(buffer);
+                const { meta, inheritedEventCount, events, committedBytes, relationships } = scanLog(buffer);
                 signal?.throwIfAborted();
                 parsed = {
                     meta,
@@ -632,6 +690,7 @@ class JsonlSessionPersistence extends SessionPersistence {
                     // A torn raw tail is one incomplete JSONL line; it holds no complete
                     // record to recover.
                     recoveredTail: [],
+                    relationships,
                 };
             }
         }
@@ -652,13 +711,15 @@ class JsonlSessionPersistence extends SessionPersistence {
         assertStoredId(expectedId, parsed.meta);
         const location = this.locate(parsed.meta);
         validateStoredEvents(parsed.meta, parsed.events, location);
-        const { events, ...rest } = parsed;
+        const { events, relationships, ...rest } = parsed;
         const stored = {
             status: 'current',
+            relationshipVerifiedThrough: events.length,
             ...rest,
             ...freezeStoredEvents(events),
             revision,
         };
+        storedEventCuts.set(stored, { owner: { identity: {}, events: [...events], relationships }, length: events.length });
         this.memoizeStoredLog(expectedId, stored);
         return stored;
     }
@@ -698,15 +759,39 @@ class JsonlSessionPersistence extends SessionPersistence {
      * @param isMaterialized - whether the session already has a durable artifact.
      * @param inheritedEventCount - the exact fork-inherited prefix length written into a materializing header line.
      */
-    async persistBatch(header, events, isMaterialized, inheritedEventCount) {
+    async persistBatch(header, events, isMaterialized, inheritedEventCount, previousCut) {
+        const retained = previousCut && returnedStoredCuts.get(previousCut), previous = this.coldLogMemo.get(header.id) ?? (retained?.meta.id === header.id ? retained : undefined);
         this.coldLogMemo.delete(header.id);
         await this.ensureRootEncoding();
+        for (const event of events)
+            freezeStoredEvent(event);
+        // Any pending authority construction is before I/O. Once fsync succeeds,
+        // committing the known private tail only advances containers and stamps.
+        const previousEvents = previous?.status === 'current' ? ownedStoredCut(previous) : undefined;
         if (isMaterialized) {
-            await this.appendLines(header, events);
+            const written = await this.appendLines(header, events);
+            if (previous?.status === 'current' && previous.revision === written.before
+                && previous.tornTruncateTo === undefined && !previous.recoveredTail.length
+                && storedEventCuts.get(previous).owner.events.length === previousEvents.length) {
+                const cut = storedEventCuts.get(previous);
+                for (const event of events)
+                    cut.owner.events.push(event);
+                const length = previousEvents.length + events.length, snapshot = storedEventsSnapshot(cut.owner, length), stored = { status: 'current', meta: previous.meta, tornTruncateTo: undefined, recoveredTail: [],
+                    inheritedEventCount: previous.inheritedEventCount, revision: written.after, eventState: 'shared-frozen',
+                    relationshipVerifiedThrough: previous.relationshipVerifiedThrough,
+                    get events() { return snapshot.events; } };
+                storedEventCuts.set(stored, { owner: cut.owner, length });
+                this.memoizeStoredLog(header.id, stored);
+                return ownedStoredCut(stored);
+            }
         }
         else {
-            await this.materialize(header, inheritedEventCount, events);
+            const materializedMeta = await this.materialize(header, inheritedEventCount, events);
             this.tracker.materialized(header.id);
+            const revision = fileRevision(await stat(logPath(this.root, header.cwd, header.id, this.compression), { bigint: true })), frozen = { eventState: 'shared-frozen', events: Object.freeze([...events]) }, stored = { status: 'current', meta: materializedMeta, tornTruncateTo: undefined,
+                recoveredTail: [], inheritedEventCount, revision, relationshipVerifiedThrough: 0, ...frozen };
+            this.memoizeStoredLog(header.id, stored);
+            return ownedStoredCut(stored);
         }
     }
     /**
@@ -812,6 +897,7 @@ class JsonlSessionPersistence extends SessionPersistence {
                     events: prefix.events,
                     tornTruncateTo: undefined,
                     recoveredTail: [],
+                    relationships: prefix.relationships,
                 };
             }
             // A torn final frame's append never resolved, but complete JSONL records
@@ -838,6 +924,7 @@ class JsonlSessionPersistence extends SessionPersistence {
                 events: prefix.events,
                 tornTruncateTo: tornStart,
                 recoveredTail: prefix.events.slice(complete.eventCount),
+                relationships: prefix.relationships,
             };
         }
         catch (error) {
@@ -984,7 +1071,7 @@ class JsonlSessionPersistence extends SessionPersistence {
         const dir = sessionDir(this.root, meta.cwd, meta.id);
         const finalPath = logPath(this.root, meta.cwd, meta.id, this.compression);
         await this.rejectOppositeArtifact(meta.cwd, meta.id);
-        const content = await this.encodeMaterialization(meta, inheritedEventCount, events);
+        const { content, storedMeta } = await this.encodeMaterialization(meta, inheritedEventCount, events);
         /* v8 ignore next -- native Windows coverage exercises this platform dispatch; Linux covers the POSIX peer */
         if (process.platform === 'win32') {
             await this.materializeWin32(project, dir, finalPath, meta.id, content);
@@ -992,6 +1079,7 @@ class JsonlSessionPersistence extends SessionPersistence {
         else {
             await this.materializePosix(project, dir, finalPath, meta.id, content);
         }
+        return storedMeta;
     }
     /* v8 ignore start -- Windows uses the Win32 durable-publish path; POSIX coverage exercises this peer. */
     async materializePosix(project, dir, finalPath, id, content) {
@@ -1074,16 +1162,16 @@ class JsonlSessionPersistence extends SessionPersistence {
     }
     /** Encode the header and first batch without combining their frame boundaries. */
     async encodeMaterialization(meta, inheritedEventCount, events) {
-        const header = JSON.stringify(toHeaderLine(meta, meta.isSeeded ? inheritedEventCount : undefined)) + '\n';
+        const line = toHeaderLine(meta, meta.isSeeded ? inheritedEventCount : undefined), header = JSON.stringify(line) + '\n', storedMeta = fromHeaderLine(line).meta;
         if (events.length === 0) {
-            return this.compression === 'none' ? header : compressZstdFrame(header);
+            return { content: this.compression === 'none' ? header : await compressZstdFrame(header), storedMeta };
         }
         const body = eventLines(events) + '\n';
         if (this.compression === 'none')
-            return header + body;
+            return { content: header + body, storedMeta };
         const headerFrame = await compressZstdFrame(header);
         const eventFrame = await compressZstdFrame(body);
-        return Buffer.concat([headerFrame, eventFrame]);
+        return { content: Buffer.concat([headerFrame, eventFrame]), storedMeta };
     }
     /** Encode one durable append batch in the configured physical representation. */
     async encodeEventBatch(events) {
@@ -1119,10 +1207,12 @@ class JsonlSessionPersistence extends SessionPersistence {
             await handle.close();
         };
         try {
-            const { size: before } = await handle.stat();
+            const beforeIdentity = await handle.stat({ bigint: true }), before = Number(beforeIdentity.size);
             try {
                 await handle.writeFile(content);
                 await handle.sync();
+                const afterIdentity = await handle.stat({ bigint: true });
+                return { before: fileRevision(beforeIdentity), after: fileRevision(afterIdentity) };
             }
             catch (error) {
                 try {

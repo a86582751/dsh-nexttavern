@@ -4,7 +4,7 @@ import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import type { MessageId, ToolCallId } from './brand.js'
-import type { ContentBlock,NativeStoryResponseMaterialV1 } from './types.js'
+import type { ContentBlock,NativeStoryResponseMaterial,MessageSourceMaterialV1 } from './types.ts'
 
 /** Provider/model identity and adapter-private replay data for an assistant message. */
 export interface AssistantProviderMetadata {
@@ -18,7 +18,7 @@ export interface AssistantProviderMetadata {
    * currently owns both this historical provider and the target provider.
    */
   replayState?: unknown
-  responseMaterial?:NativeStoryResponseMaterialV1
+  responseMaterial?:NativeStoryResponseMaterial
 }
 
 /** Required source of an assistant message produced by a routed model. */
@@ -148,6 +148,7 @@ export type MessageSource = MessageSourceMap[keyof MessageSourceMap]
 
 /** Shared immutable fields of every conversation message. */
 interface MessageBase {
+  readonly sourceMaterial?:MessageSourceMaterialV1
   /** Stable identity preserved across every representation boundary. */
   readonly id: MessageId
   /** Exact model-facing blocks. */

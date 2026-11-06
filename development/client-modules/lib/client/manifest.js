@@ -62,8 +62,13 @@ export function parseDshClient(pkgName, value) {
         throw new Error(`client-modules: ${pkgName} has a non-object dsh.client declaration`);
     }
     const decl = value;
+    const moduleName = decl.moduleName;
     if (typeof decl.platform !== 'string') {
         throw new Error(`client-modules: ${pkgName} dsh.client.platform must be a string`);
+    }
+    if (moduleName !== undefined
+        && (typeof moduleName !== 'string' || exactPackageSpecifier(moduleName) === undefined)) {
+        throw new Error(`client-modules: ${pkgName} dsh.client.moduleName must be a package-root module name`);
     }
     const inject = optionalStringArray(pkgName, 'dsh.client.inject', decl.inject);
     const external = optionalStringArray(pkgName, 'dsh.client.external', decl.external);
@@ -72,6 +77,7 @@ export function parseDshClient(pkgName, value) {
     }
     return {
         platform: decl.platform,
+        ...(moduleName !== undefined ? { moduleName } : {}),
         ...(inject !== undefined ? { inject } : {}),
         ...(external !== undefined ? { external } : {}),
         ...(decl.immediately !== undefined ? { immediately: decl.immediately } : {}),

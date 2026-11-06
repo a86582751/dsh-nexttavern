@@ -5,7 +5,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionId } from 'dsh-nexttavern-native-session'
 import type { SubagentListEntry } from './control-types.ts'
 import { SubagentError } from './error.ts'
 import type { SubagentCatalogEntry } from './projection-types.ts'

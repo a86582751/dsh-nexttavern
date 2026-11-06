@@ -1,4 +1,6 @@
 NextTavern compatibility candidate derived from DeepSeek Harness dsh-llm.
+The private Native LLM provider shares the official Host's error constructors
+and ordinary agent-loop request markers. Native request guards remain private.
 Original MIT license and attribution are retained. This is not an official
 DeepSeek release. Formal fork source synchronization and full product lifecycle
 verification remain required before distribution. See ORIGIN.json.

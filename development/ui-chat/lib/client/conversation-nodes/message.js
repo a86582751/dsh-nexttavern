@@ -1,5 +1,5 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/message.ts; edit the TypeScript source.
-import { isAppendSurfaceEvent, isReplacementSurfaceEvent } from '@deepseek-ai/dsh-session/surface';
+import { isAppendSurfaceEvent, isReplacementSurfaceEvent } from 'dsh-nexttavern-native-session/surface';
 import { chatNode } from "./common.js";
 import { contextForm, contextProducer } from "./event-projection.js";
 function isCompactionCheckpoint(event) {

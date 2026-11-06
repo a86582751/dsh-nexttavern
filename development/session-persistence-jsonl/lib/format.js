@@ -9,11 +9,11 @@
  * @module dsh-session-persistence-jsonl/format
  */
 import { isAbsolute, join } from 'node:path';
-import { SESSION_FORMAT_VERSION, SessionLogOffset, } from '@deepseek-ai/dsh-session';
+import { SESSION_FORMAT_VERSION, SessionLogOffset, } from 'dsh-nexttavern-native-session';
 import { parseSessionFormatLogFilename, sessionFormatLogFilename, SessionFormatUnsupportedMigrationError } from '@deepseek-ai/dsh-session-format';
 import { sessionFormatCatalog, knownSessionEventTypes } from 'dsh-nexttavern-session-format/catalog';
-import { assertV4RowAdmission, assertReleasedV4Relationships } from '@deepseek-ai/dsh-session-format-v3-to-v4';
-import { SessionFormatUnsupportedError, sessionFormatVersionRefusal, } from 'dsh-nexttavern-session-format/storage-contract';
+import { assertV4RowAdmission } from '@deepseek-ai/dsh-session-format-v3-to-v4';
+import { SessionFormatUnsupportedError, sessionFormatVersionRefusal, createNativeV4RelationshipValidator, } from 'dsh-nexttavern-session-format/storage-contract';
 /**
  * Return the artifact suffix for one physical encoding.
  * @param compression - configured JSONL artifact encoding.
@@ -90,7 +90,7 @@ export function toHeaderLine(header, inheritedEventCount) {
  * @param line - the shape-checked first line of a log (see the `isHeaderLine` guard).
  * @returns logical Session metadata paired with the exact inherited prefix length.
  */
-function fromHeaderLine(line) {
+export function fromHeaderLine(line) {
     return {
         meta: {
             version: SESSION_FORMAT_VERSION,
@@ -384,12 +384,14 @@ export class SessionLogScanner {
     finish() {
         this.finished = true;
         const artifact = this.restore.finish();
-        assertReleasedV4Relationships(artifact, knownSessionEventTypes);
+        const relationships = createNativeV4RelationshipValidator(artifact.header, artifact.inheritedEventCount, knownSessionEventTypes);
+        relationships.verify({ length: artifact.events.length, at: seq => artifact.events[seq] });
         return {
             meta: this.meta,
             inheritedEventCount: SessionLogOffset(artifact.inheritedEventCount),
             events: artifact.events,
             committedBytes: this.committedBytes,
+            relationships,
         };
     }
     /** Decode one complete event row and update the contiguous prefix. */

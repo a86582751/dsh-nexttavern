@@ -8,9 +8,9 @@
 
 import type { GenerateOptions } from './types.js'
 import type { ReasoningEffortId } from './brand.js'
+import { isAgentLoopRequest } from './host-abi.js'
+export { isAgentLoopRequest, markAgentLoopRequest } from './host-abi.js'
 
-/** Process-local identities of request objects assembled by dsh-agent-loop. */
-const AGENT_LOOP_REQUESTS = new WeakSet<GenerateOptions>()
 /** A material owner's synchronous assertion, associated with exact request
  * identity. It never appears in configuration, messages, headers or JSON. */
 const AGENT_LOOP_REQUEST_GUARDS=new WeakMap<GenerateOptions,()=>void>()
@@ -61,29 +61,10 @@ export function callConfigEquals(a: LlmCallConfig, b: LlmCallConfig): boolean {
   return a.stop.length === b.stop.length && a.stop.every((s, i) => s === b.stop?.[i])
 }
 
-/**
- * Mark one exact request object as assembled by dsh-agent-loop.
- * @param request - loop-owned request envelope before LLM dispatch.
- * @returns the same request object marked as created by the process-local agent loop.
- */
-export function markAgentLoopRequest<T extends GenerateOptions>(request: T): T {
-  AGENT_LOOP_REQUESTS.add(request)
-  return request
-}
-
-/**
- * Test whether the exact request object was assembled by dsh-agent-loop.
- * @param request - request envelope observed at the LLM waterfall.
- * @returns whether {@link markAgentLoopRequest} recorded this object.
- */
-export function isAgentLoopRequest(request: GenerateOptions): boolean {
-  return AGENT_LOOP_REQUESTS.has(request)
-}
-
 /** Bind once after Native has frozen and branded the original request. A
  * serializable material record alone cannot create this hot association. */
 export function bindAgentLoopRequestGuard(request:GenerateOptions,guard:()=>void):void {
-  if(!AGENT_LOOP_REQUESTS.has(request)||!Object.isFrozen(request)||!Object.isFrozen(request.messages)
+  if(!isAgentLoopRequest(request)||!Object.isFrozen(request)||!Object.isFrozen(request.messages)
     ||typeof guard!=='function'||AGENT_LOOP_REQUEST_GUARDS.has(request)){
     throw Error('invalid Native request guard binding')
   }

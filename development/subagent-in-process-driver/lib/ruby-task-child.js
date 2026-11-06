@@ -3,8 +3,8 @@
  * Core supplies live task ownership; this module owns only child composition. */
 import { createHash } from 'node:crypto';
 import { brandString } from '@deepseek-ai/dsh-brand';
-import { freezeMessage } from '@deepseek-ai/dsh-llm';
-import { nativeInputSha256 } from '@deepseek-ai/dsh-agent-loop';
+import { freezeMessage } from 'dsh-nexttavern-native-llm';
+import { nativeInputSha256 } from 'dsh-nexttavern-native-agent-loop';
 const prefixName = 'deployment:persona-prefix';
 const textSha256 = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
 const blocked = (code) => ({ kind: 'blocked', code });

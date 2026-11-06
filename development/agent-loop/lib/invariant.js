@@ -3,10 +3,10 @@
  * Package-owned request-reconstruction invariant for loop-built LLM calls.
  * @module @deepseek-ai/dsh-agent-loop/invariant
  */
-import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
-import { foldRequestHeader } from '@deepseek-ai/dsh-session';
+import { isAgentLoopRequest } from 'dsh-nexttavern-native-llm';
+import { foldRequestHeader } from 'dsh-nexttavern-native-session';
 import { nativeRequestMaterialInvariant } from './request-material-sidecar.js';
-const PACKAGE_NAME = '@deepseek-ai/dsh-agent-loop';
+const PACKAGE_NAME = 'dsh-nexttavern-native-agent-loop';
 /** Cordis companion plugin name. */
 export const name = 'agent-loop-invariant';
 /** Service required before the companion can reserve package ownership. */

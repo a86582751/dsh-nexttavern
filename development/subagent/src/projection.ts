@@ -6,9 +6,9 @@
  */
 
 import { z } from 'zod'
-import { SessionSeq } from '@deepseek-ai/dsh-session'
+import { SessionSeq } from 'dsh-nexttavern-native-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { SessionEvent } from 'dsh-nexttavern-native-session'
 import { foldSubagentDescriptor } from './descriptor.ts'
 import type { SubagentDescriptorData } from './descriptor.ts'
 import type { SubagentIdentityProjection, SubagentTimingProjection } from './projection-types.ts'

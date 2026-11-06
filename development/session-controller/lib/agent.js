@@ -55,7 +55,7 @@ import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 /** Agent activation, composition, and model-selection policy owned by API Session. */
 import { mkdir } from 'node:fs/promises';
 import { installModelSelection } from '@deepseek-ai/dsh-agent';
-import { ReasoningEffortId } from '@deepseek-ai/dsh-llm';
+import { ReasoningEffortId } from 'dsh-nexttavern-native-llm';
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 /** Cold Session identity absent from persistence. */

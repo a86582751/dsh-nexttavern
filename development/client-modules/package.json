@@ -1,7 +1,7 @@
 {
-  "name": "@deepseek-ai/dsh-client-modules",
+  "name": "dsh-nexttavern-native-client-modules",
   "description": "NextTavern maintained rc.2 client module registry; metadata-only changes retain the accepted executable generation",
-  "version": "0.1.7-rc.2",
+  "version": "0.3.0-dev.1",
   "private": true,
   "repository": {
     "type": "git",
@@ -18,7 +18,7 @@
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
-  "dsh": { "client": { "platform": "web", "inject": [], "immediately": true } },
+  "dsh": { "client": { "moduleName": "@deepseek-ai/dsh-client-modules", "platform": "web", "inject": [], "immediately": true } },
   "files": ["src", "lib", "README.md", "LICENSE", "LICENSE.upstream", "NOTICE", "ORIGIN.json"],
   "license": "MIT",
   "peerDependencies": { "@deepseek-ai/cordis": "4.0.4" },

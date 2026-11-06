@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/compat/llm-deepseek/src/request-extensions.ts; edit the TypeScript source.
 /** Prepare plugin-contributed request fields and commit their delivery after HTTP acceptance. */
-import { LlmError } from '@deepseek-ai/dsh-llm';
+import { LlmError } from 'dsh-nexttavern-native-llm';
 /**
  * Merge contributions without replacing Messages fields. Preparation and
  * acceptance failures report REQUEST_EXTENSION. When the merged request fails

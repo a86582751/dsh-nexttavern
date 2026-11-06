@@ -10,15 +10,8 @@
  * human-readable `message`, and supports `cause` chaining via the standard
  * `ErrorOptions`. `name` defaults to the subclass constructor name.
  */
-export class HarnessError extends Error {
-    /** Stable machine-routable failure class (e.g. `RATE_LIMIT`); route on this, never by parsing `message`. */
-    code;
-    constructor(message, code, options) {
-        super(message, options);
-        this.code = code;
-        this.name = new.target.name;
-    }
-}
+import { HarnessError } from './host-abi.js';
+export { HarnessError } from './host-abi.js';
 /** Canonical provider-neutral code for a model request rejected because its context window was exceeded. */
 export const CONTEXT_WINDOW_EXCEEDED_CODE = 'CONTEXT_WINDOW_EXCEEDED';
 /** Canonical provider-neutral code for an exhausted account quota or balance. */

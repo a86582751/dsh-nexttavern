@@ -1,5 +1,5 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/fallback.ts; edit the TypeScript source.
-import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface';
+import { isAppendSurfaceEvent } from 'dsh-nexttavern-native-session/surface';
 import { chatNode } from "./common.js";
 /** Unclaimed append-surface fallback Definition. */
 export const unknownFallbackDefinition = {

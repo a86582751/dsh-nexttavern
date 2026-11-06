@@ -4,7 +4,7 @@
  *
  * @module @deepseek-ai/dsh-subagent/continuation-messages
  */
-import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm';
+import { boundContextSummary, createUserMessage } from 'dsh-nexttavern-native-llm';
 /** Build durable attribution for one adjacent-Agent message. */
 function agentMessageSource(sender) {
     return {

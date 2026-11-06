@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod'
-import { canonicalHeader } from '@deepseek-ai/dsh-session'
+import { canonicalHeader } from 'dsh-nexttavern-native-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { estimateToolsTokens } from './estimate.js'
 import { commitSurfaceTokens, planRetainedSurface, retainedPriceSchema } from './surface-fold.js'

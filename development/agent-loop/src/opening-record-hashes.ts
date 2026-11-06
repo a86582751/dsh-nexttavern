@@ -8,7 +8,7 @@ import {nativeOpeningDataV1,nativeOpeningCanonicalV1,NativeOpeningRecordFailureV
   validateNativeOpeningInvocationV1 as shapeInvocation,
   validateNativeOpeningRequestAttemptV1 as shapeAttempt,
   validateNativeGeneratedOpeningReceiptV1 as shapeReceipt,
-  validateNativeOpeningClosingAckV1 as shapeAck} from '@deepseek-ai/dsh-session/surface'
+  validateNativeOpeningClosingAckV1 as shapeAck} from 'dsh-nexttavern-native-session/surface'
 
 /** Proxies are not plain Native data even when they mimic descriptors. Walk
  * before the browser-safe copier; it then owns getter/cycle/budget refusal. */

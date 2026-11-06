@@ -11,8 +11,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { isDeepStrictEqual } from 'node:util'
-import { errorChain } from '@deepseek-ai/dsh-llm'
-import type { Session, SessionEvent, SessionHeader, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { errorChain } from 'dsh-nexttavern-native-llm'
+import type { Session, SessionEvent, SessionHeader, SessionId, SessionLogOffset } from 'dsh-nexttavern-native-session'
 import {
   assertContiguous,
   SessionAlreadyExistsError,
@@ -35,10 +35,21 @@ import type {
 } from 'dsh-nexttavern-session-format/storage-contract'
 import type { SessionWriteLease } from './lease.js'
 import {isMessageEdit} from 'dsh-nexttavern-session-format/projection'
-import {assertMvuSchemaHistory} from 'dsh-nexttavern-session-format/mvu-schema-marker'
+import {createMvuSchemaHistoryValidator} from 'dsh-nexttavern-session-format/mvu-schema-marker'
 
 /** Maximum intentional wait before a routed live session batch starts writing. */
 export const LIVE_WRITE_BATCH_MAX_DELAY_MS = 200
+
+/** A cut of the provider's actual stamped, immutable durable event owner. */
+export interface JsonlStoredLogCut {
+  readonly owner:object
+  readonly revision:SessionPersistenceRevision
+  readonly length:number
+  /** Exact prefix already admitted by the official whole-relationship owner. */
+  readonly relationshipVerifiedThrough:number
+  at(seq:number):SessionEvent|undefined
+  materialize():readonly SessionEvent[]
+}
 
 /** The file-storage primitives the handle drives on its owning service. */
 export interface JsonlHandleStorage {
@@ -48,7 +59,8 @@ export interface JsonlHandleStorage {
     events: readonly SessionEvent[],
     isMaterialized: boolean,
     inheritedEventCount: SessionLogOffset,
-  ): Promise<void>
+    previous?:JsonlStoredLogCut,
+  ): Promise<JsonlStoredLogCut|undefined>
   /** Materialize the header-only artifact for an explicitly flushed empty session. */
   persistHeader(header: SessionHeader, inheritedEventCount: SessionLogOffset): Promise<void>
   /** Truncate a torn physical tail before the first new append lands. */
@@ -57,6 +69,8 @@ export interface JsonlHandleStorage {
   resolveCurrentLog(id: SessionId, signal?: AbortSignal): Promise<string | undefined>
   /** Read and validate the stored log at `path`, including its established event aliasing state. */
   readStoredLog(path: string, expectedId: SessionId, signal?: AbortSignal): Promise<SessionHandleReadResult>
+  /** Same physical stamp/read contract, without requiring an array snapshot. */
+  readStoredLogCut(path:string,expectedId:SessionId,previous?:JsonlStoredLogCut):Promise<JsonlStoredLogCut>
   /** Whether the id is still a created-but-unmaterialized session here. */
   hasPendingSession(id: SessionId): boolean
   /** Acquire the session's cross-process write lock in its artifact directory. */
@@ -97,6 +111,8 @@ export class JsonlSessionHandle implements SessionHandle {
   /** Set when a drain failed; the automatic timer stays quiet until the next drain. */
   private drainPaused = false
   private draining: Promise<void> | undefined
+  private markerPrefix:{cut:JsonlStoredLogCut|undefined;validator:ReturnType<typeof createMvuSchemaHistoryValidator>}|undefined
+  private durableCut:JsonlStoredLogCut|undefined
 
   constructor(
     private readonly storage: JsonlHandleStorage,
@@ -321,59 +337,86 @@ export class JsonlSessionHandle implements SessionHandle {
   }
 
   /** The shared durable-append body: contiguity, ownership, torn-tail repair, storage write, state advance. */
-  private async persistContiguous(batch: readonly SessionEvent[]): Promise<void> {
+  private async persistContiguous(pendingBatch: readonly SessionEvent[]): Promise<void> {
     if (this.access !== 'write') throw new SessionReadOnlyError(this.id, 'append')
-    if (batch.length === 0) return
+    if (pendingBatch.length === 0) return
     // Refuse an unsupported required event before publishing bytes, rather
     // than producing a log that the same backend cannot open after restart.
-    validateStoredEvents(this.header, [...batch])
+    const batch=validateStoredEvents(this.header,[...pendingBatch])
     await this.ensureLease()
     assertContiguous(this.id, batch, this.state.cursor)
     const changesSurface=batch.some(event=>isMessageEdit(event)||event.type==='roleplay/mvu-manual-edit')
     const changesSchema=batch.some(event=>event.type==='roleplay/mvu-schema-dispatched'
       ||event.type==='roleplay/mvu-schema-completed'||event.type==='roleplay/mvu-schema-revised')
+    let staged:ReturnType<ReturnType<typeof createMvuSchemaHistoryValidator>['stage']>|undefined
     if (changesSurface||changesSchema) {
       // The raw handle is also a public write surface. Validate an edit against
       // the owned durable prefix before publishing it, not only on cold read.
-      // This replay occurs per required edit/marker batch, never per streamed token.
+      // A raw edit still needs its full surface. Ordinary marker batches only
+      // interpret the durable suffix since this writer's last marker check.
       const path = await this.storage.resolveCurrentLog(this.id)
-      const prefix = path === undefined ? [] : (await this.storage.readStoredLog(path, this.id)).events
-      const logical = [...prefix]
-      // The initial decoder already includes recovered events. After truncate
-      // succeeds but their rewrite fails, a retry sees a shorter physical log;
-      // fill only its verified missing suffix, never duplicate a recovered row.
-      for (const event of this.state.recoveredTail ?? []) {
-        if (event.seq < logical.length) {
-          if (!isDeepStrictEqual(logical[event.seq], event)) throw Error('SESSION_RECOVERY_PREFIX_MISMATCH')
-        } else if (event.seq === logical.length) logical.push(event)
-        else throw Error('SESSION_RECOVERY_PREFIX_MISMATCH')
+      const cut=path===undefined?undefined:await this.storage.readStoredLogCut(path,this.id,this.durableCut)
+      this.durableCut=cut
+      let marker=this.markerPrefix
+      let logical:SessionEvent[]|undefined
+      if(changesSurface||!marker||!cut||marker.cut?.owner!==cut.owner||cut.length!==this.state.cursor) {
+        logical=[...cut?.materialize()??[]]
+        // The initial decoder already includes recovered events. After truncate
+        // succeeds but their rewrite fails, a retry sees a shorter physical log;
+        // fill only its verified missing suffix, never duplicate a recovered row.
+        for (const event of this.state.recoveredTail ?? []) {
+          if (event.seq < logical.length) {
+            if (!isDeepStrictEqual(logical[event.seq], event)) throw Error('SESSION_RECOVERY_PREFIX_MISMATCH')
+          } else if (event.seq === logical.length) logical.push(event)
+          else throw Error('SESSION_RECOVERY_PREFIX_MISMATCH')
+        }
+        if(logical.length!==this.state.cursor)throw Error('SESSION_RECOVERY_PREFIX_MISMATCH')
+        if(!changesSurface) {
+          const validator=createMvuSchemaHistoryValidator(logical)
+          // A recovered logical suffix belongs to this handle, even while its
+          // repair has not republished physical bytes. Never adopt a short cut.
+          marker={cut:cut&&logical.length===cut.length?cut:undefined,validator}
+          this.markerPrefix=marker
+        }
       }
-      if (logical.length !== this.state.cursor) throw Error('SESSION_RECOVERY_PREFIX_MISMATCH')
       // Log-only schema markers cannot change an accepted surface or player
       // edit. Their owner checks marker references without replaying both.
-      const next=[...logical,...batch]
-      if(changesSurface)validateMessageEditHistory(next)
-      else assertMvuSchemaHistory(next)
+      if(changesSurface) {
+        validateMessageEditHistory([...logical!,...batch])
+      }else {
+        const validator=marker!.validator
+        staged=validator.stage((function*(){
+          for(let seq=validator.length;seq<(cut?.length??0);seq++)yield cut!.at(seq)!
+          yield* batch
+        })())
+      }
     }
     // Commit any pending torn-tail repair first, clearing each step's state
     // only once it lands so a failed step retries on the next mutation:
     // truncate the torn bytes, then durably rewrite the complete events
     // recovered from them (already counted in the primed cursor).
-    if (this.state.tornTruncateTo !== undefined) {
-      await this.storage.truncateTornTail(this.header, this.state.tornTruncateTo)
-      this.state.tornTruncateTo = undefined
-    }
-    if (this.state.recoveredTail !== undefined) {
-      if (this.state.recoveredTail.length > 0) {
-        await this.storage.persistBatch(this.header, this.state.recoveredTail, this.state.materialized, this.state.inheritedEventCount)
+    try {
+      if (this.state.tornTruncateTo !== undefined) {
+        await this.storage.truncateTornTail(this.header, this.state.tornTruncateTo)
+        this.state.tornTruncateTo = undefined
       }
-      this.state.recoveredTail = undefined
-    }
-    await this.storage.persistBatch(this.header, batch, this.state.materialized, this.state.inheritedEventCount)
-    this.state.materialized = true
-    this.state.cursor += batch.length
-    this.state.primed = undefined
-    this.observedLength = this.state.cursor
+      if (this.state.recoveredTail !== undefined) {
+        if (this.state.recoveredTail.length > 0) {
+          await this.storage.persistBatch(this.header,this.state.recoveredTail,this.state.materialized,this.state.inheritedEventCount)
+        }
+        this.state.recoveredTail = undefined
+      }
+      const durable=await this.storage.persistBatch(this.header,batch,this.state.materialized,
+        this.state.inheritedEventCount,this.durableCut)
+      staged?.commit()
+      this.durableCut=durable
+      if(!changesSurface&&this.markerPrefix&&durable)this.markerPrefix.cut=durable
+      else this.markerPrefix=undefined
+      this.state.materialized = true
+      this.state.cursor += batch.length
+      this.state.primed = undefined
+      this.observedLength = this.state.cursor
+    }catch(error){staged?.rollback();throw error}
   }
 
   /**

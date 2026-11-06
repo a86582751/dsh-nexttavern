@@ -33,7 +33,7 @@ import type { FileHandle } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tryLockExclusive } from '@deepseek-ai/node-addon-system/flock'
 import { SessionAlreadyOwnedError } from 'dsh-nexttavern-session-format/storage-contract'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionId } from 'dsh-nexttavern-native-session'
 import { acquireLockHandleWin32, releaseLockHandleWin32 } from './win32.js'
 
 /** Base name of the kernel lock file inside a session's directory. */

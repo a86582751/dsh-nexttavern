@@ -1,7 +1,7 @@
 {
-  "name": "@deepseek-ai/dsh-subagent-spawn-in-process",
+  "name": "dsh-nexttavern-native-subagent-spawn-in-process",
   "description": "NextTavern maintained owned-author-dialog activation compat; not an upstream release",
-  "version": "0.1.7-rc.2",
+  "version": "0.3.0-dev.1",
   "publishConfig": {
     "access": "public"
   },
@@ -29,31 +29,30 @@
   ],
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/dsh-subagent": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-subagent-in-process-driver": "0.1.7-rc.2",
-    "@deepseek-ai/cordis": "~4.0.4"
-  },
-  "dependencies": {
+    "@deepseek-ai/cordis": "~4.0.4",
+    "dsh-nexttavern-native-subagent": "0.3.0-dev.1",
+    "dsh-nexttavern-native-subagent-in-process-driver": "0.3.0-dev.1",
     "@deepseek-ai/schemastery": "~3.18.4"
   },
+  "dependencies": {},
   "devDependencies": {
     "@deepseek-ai/cordis-plugin-loader": "0.1.7-rc.2",
     "@deepseek-ai/dsh-agent": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-agent-loop": "0.1.7-rc.2",
     "@deepseek-ai/dsh-agent-loop-testkit": "0.1.7-rc.2",
     "@deepseek-ai/dsh-bash-local": "0.1.7-rc.2",
     "@deepseek-ai/dsh-subprocess-local": "0.1.7-rc.2",
     "@deepseek-ai/dsh-invariants": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-llm": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-llm-deepseek": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-llm-deepseek-api-key": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-session": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-subagent": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-subagent-in-process-driver": "0.1.7-rc.2",
     "@deepseek-ai/dsh-tool-bash": "0.1.7-rc.2",
     "@deepseek-ai/dsh-tool-subagent": "0.1.7-rc.2",
     "@deepseek-ai/cordis": "~4.0.4",
-    "@deepseek-ai/dsh-session-projection": "0.1.7-rc.2"
+    "@deepseek-ai/dsh-session-projection": "0.1.7-rc.2",
+    "dsh-nexttavern-native-agent-loop": "0.3.0-dev.1",
+    "dsh-nexttavern-native-llm": "0.3.0-dev.1",
+    "dsh-nexttavern-native-llm-deepseek": "0.3.0-dev.1",
+    "dsh-nexttavern-native-session": "0.3.0-dev.1",
+    "dsh-nexttavern-native-subagent": "0.3.0-dev.1",
+    "dsh-nexttavern-native-subagent-in-process-driver": "0.3.0-dev.1",
+    "dsh-nexttavern-native-llm-deepseek-api-key": "0.3.0-dev.1"
   },
   "private": true
 }

@@ -46,7 +46,9 @@ import { deepFreeze } from '@deepseek-ai/dsh-util-values';
 import { freezeMessage } from './message.js';
 import { resolveRetryPolicy } from './retry-policy.js';
 import { callConfigEquals, assertAgentLoopRequestCurrent, forwardAgentLoopRequestGuard } from './call-config.js';
-import { HarnessError, INVALID_CREDENTIAL_CODE } from './error.js';
+import { INVALID_CREDENTIAL_CODE } from './error.js';
+import { LlmError } from './host-abi.js';
+export { LlmError } from './host-abi.js';
 import { normalizeLlmFailure } from './adapter-failure.js';
 import { normalizeApiKey } from './api-key.js';
 import { contentHasFile, contentHasImage, fileHandleText, projectFilesToText, projectImagesForTextModel, projectToolUpdates, } from './content.js';
@@ -62,47 +64,6 @@ export * from './retry-policy.js';
 export { BlockAssembler } from './assembler.js';
 export { callConfigEquals, isAgentLoopRequest, markAgentLoopRequest } from './call-config.js';
 export { bindAgentLoopRequestGuard, assertAgentLoopRequestCurrent } from './call-config.js';
-/**
- * Typed error for LLM-related failures. Extends {@link HarnessError}, so the
- * `code` string (e.g. `AUTH`, `RATE_LIMIT`, `NO_ADAPTER`) is shared taxonomy.
- */
-export class LlmError extends HarnessError {
-    /** Serializable facts retained beside this live Error. */
-    failure;
-    /**
-     * @param message - non-empty human-readable failure summary.
-     * @param code - non-empty stable provider-neutral machine code.
-     * @param options - optional cause and validated serializable provider facts.
-     */
-    constructor(message, code, options) {
-        if (typeof message !== 'string' || message.length === 0)
-            throw new Error('LlmError message must be a non-empty string');
-        if (typeof code !== 'string' || code.length === 0)
-            throw new Error('LlmError code must be a non-empty string');
-        if (options?.status !== undefined
-            && (!Number.isInteger(options.status) || options.status < 100 || options.status > 599)) {
-            throw new Error('LlmError status must be an integer from 100 through 599');
-        }
-        if (options?.providerRetryAfterMs !== undefined
-            && (!Number.isFinite(options.providerRetryAfterMs) || options.providerRetryAfterMs <= 0)) {
-            throw new Error('LlmError providerRetryAfterMs must be a positive finite number');
-        }
-        if (options?.requestId !== undefined
-            && (typeof options.requestId !== 'string' || options.requestId.length === 0)) {
-            throw new Error('LlmError requestId must be a non-empty string');
-        }
-        super(message, code, options);
-        this.name = 'LlmError';
-        this.failure = Object.freeze({
-            message,
-            code,
-            ...options?.status === undefined ? {} : { status: options.status },
-            ...options?.providerRetryAfterMs === undefined ? {} : { providerRetryAfterMs: options.providerRetryAfterMs },
-            ...options?.requestId === undefined ? {} : { requestId: options.requestId },
-            ...options?.offloadImages === undefined ? {} : { offloadImages: options.offloadImages },
-        });
-    }
-}
 /**
  * Accept one supplied credential, or refuse it as unusable.
  *

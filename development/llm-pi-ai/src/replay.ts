@@ -8,9 +8,9 @@
  * @module dsh-llm-pi-ai/replay
  */
 
-import { LlmError } from '@deepseek-ai/dsh-llm'
+import { LlmError } from 'dsh-nexttavern-native-llm'
 import type { AssistantMessage as HarnessAssistantMessage, ModelMessageSource, ReplayEnvelope, RequestMaterialMessageV1,
-  RequestMessageTextProjectionV2, RequestMessage } from '@deepseek-ai/dsh-llm'
+  RequestMessageTextProjectionV2, RequestMessage } from 'dsh-nexttavern-native-llm'
 import type { Api, AssistantMessage, Usage as PiUsage } from 'dsh-nexttavern-pi-ai'
 
 /** Per-block half of the pi-ai replay envelope, one entry per content block. */

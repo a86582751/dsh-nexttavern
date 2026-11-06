@@ -7,22 +7,22 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-compaction-image-offload/projection'
 import z from '@deepseek-ai/schemastery'
-import { assembleAssistantStream } from '@deepseek-ai/dsh-llm'
-import type { LlmImageRequestPricing, LlmRuntime, Message, ProjectedLlmRequest, TokenUsage } from '@deepseek-ai/dsh-llm'
+import { assembleAssistantStream } from 'dsh-nexttavern-native-llm'
+import type { LlmImageRequestPricing, LlmRuntime, Message, ProjectedLlmRequest, TokenUsage } from 'dsh-nexttavern-native-llm'
 import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import type {
   EpochHeader,
   Session,
   SessionEvent,
   SessionLogOffset as SessionLogOffsetType,
-} from '@deepseek-ai/dsh-session'
+} from 'dsh-nexttavern-native-session'
 import {
   canonicalHeader,
   headerEquals,
   isSurfaceEvent,
   SessionLogOffset,
   SessionSeq,
-} from '@deepseek-ai/dsh-session'
+} from 'dsh-nexttavern-native-session'
 // Type-only: activates the `ctx.sessionProjections` Context declaration.
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {

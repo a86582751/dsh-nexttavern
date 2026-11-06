@@ -23,7 +23,7 @@ import type {
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { HostObservable, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionId } from 'dsh-nexttavern-native-session/types'
 // Type-only: pulls the Controller service merges.
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'

@@ -4,12 +4,12 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { isAgentLoopRequest, type GenerateOptions } from '@deepseek-ai/dsh-llm'
+import { isAgentLoopRequest, type GenerateOptions } from 'dsh-nexttavern-native-llm'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
-import { foldRequestHeader } from '@deepseek-ai/dsh-session'
+import { foldRequestHeader } from 'dsh-nexttavern-native-session'
 import {nativeRequestMaterialInvariant} from './request-material-sidecar.js'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-agent-loop'
+const PACKAGE_NAME = 'dsh-nexttavern-native-agent-loop'
 
 /** Cordis companion plugin name. */
 export const name = 'agent-loop-invariant'

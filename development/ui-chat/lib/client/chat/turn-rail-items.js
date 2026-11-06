@@ -6,7 +6,7 @@
  * every turn of the session, and the loaded window supplies anchors and
  * richer previews for the turns it holds.
  */
-import { SessionSeq } from '@deepseek-ai/dsh-session/types';
+import { SessionSeq } from 'dsh-nexttavern-native-session/types';
 const EMPTY_ITEMS = [];
 /**
  * Structurally narrow one wire outline entry (projection values cross the

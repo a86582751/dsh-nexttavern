@@ -1,8 +1,8 @@
 /// <reference lib="es2024.promise" />
 /** Client catalog and source-labelled ownership of exact Session generations. */
 import type { Context, Fiber } from '@deepseek-ai/cordis'
-import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
-import { SessionSeq, type SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SubagentAddress } from 'dsh-nexttavern-native-subagent/client'
+import { SessionSeq, type SessionId } from 'dsh-nexttavern-native-session/types'
 import { workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { SESSION_SEARCH_RESULT_LIMIT } from '../../types.js'

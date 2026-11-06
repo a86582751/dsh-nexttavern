@@ -6,12 +6,12 @@ import type { CompactionCheckpointSource } from '@deepseek-ai/dsh-compaction/che
 
 // The browser consumes the pure checkpoint contract without importing the host
 // service and its Context augmentation. Preserve its durable source vocabulary.
-declare module '@deepseek-ai/dsh-llm' {
+declare module 'dsh-nexttavern-native-llm' {
   interface MessageSourceMap {'compact-checkpoint': CompactionCheckpointSource}
 }
 import type {} from '@deepseek-ai/dsh-compaction/types'
 import type {} from '@deepseek-ai/dsh-commands/types'
-import { isReplacementSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
+import { isReplacementSurfaceEvent } from 'dsh-nexttavern-native-session/surface'
 import type { ManualCompactionChatData } from '../contract/chat-nodes.ts'
 import { chatNode } from './common.ts'
 

@@ -1,5 +1,5 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/assistant.ts; edit the TypeScript source.
-import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface';
+import { isAppendSurfaceEvent } from 'dsh-nexttavern-native-session/surface';
 import { CHAT_SYNTHETIC_SEQ_OFFSETS, chatNode } from "./common.js";
 import { emptyAssistantBlock, isTokenDelta, toAssistantBlock, toAssistantBlocks, } from "./event-projection.js";
 function initialState(turn, step) {

@@ -1,7 +1,7 @@
 // Generated from runtime/alpha3/compat/llm-deepseek/src/sse.ts; edit the TypeScript source.
 /** SSE framing delegated to eventsource-parser; JSON errors remain provider failures. */
 import { EventSourceParserStream } from 'eventsource-parser/stream';
-import { LlmError } from '@deepseek-ai/dsh-llm';
+import { LlmError } from 'dsh-nexttavern-native-llm';
 import { object } from './replay.js';
 import { providerError } from './transport.js';
 /** Decode complete SSE frames without treating an unterminated tail as an event.

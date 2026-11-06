@@ -1,12 +1,12 @@
 /** Session-owned display projection for required edits; the original journal remains immutable. */
 import type {Context} from '@deepseek-ai/cordis'
 import type {AssistantBlock, ConversationNodeDefinition} from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type {ContentBlock} from '@deepseek-ai/dsh-llm'
+import type {ContentBlock} from 'dsh-nexttavern-native-llm'
 import {assertMessageEdit, type MessageEdit} from 'dsh-nexttavern-session-format/projection'
 import type {ChatConversationViewNode, ChatNode, FinalAssistantChatData} from '../contract/chat-nodes.ts'
 import {chatNode} from './common.ts'
 
-interface ChatMessageEdit extends MessageEdit {readonly editSeq: number}
+type ChatMessageEdit = MessageEdit & {readonly editSeq: number}
 
 declare module '../contract/chat-nodes.ts' {
   interface ChatNodeDataMap {'message-edit': ChatMessageEdit}

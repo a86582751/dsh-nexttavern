@@ -1,5 +1,5 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/tool.ts; edit the TypeScript source.
-import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface';
+import { isAppendSurfaceEvent } from 'dsh-nexttavern-native-session/surface';
 import { CHAT_SYNTHETIC_SEQ_OFFSETS, chatNode, contextLocation } from "./common.js";
 const MAX_DEPTH = 256;
 const projectedBlocks = new WeakMap();

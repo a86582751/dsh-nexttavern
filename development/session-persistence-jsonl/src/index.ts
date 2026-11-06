@@ -23,6 +23,7 @@ import {
   SessionPersistence, SessionPersistenceRevision, SessionFormatUnsupportedError,
   SessionPersistenceCorruptionError,
   SessionAlreadyExistsError, SessionPersistenceNotFoundError,
+  createNativeV4RelationshipValidator,
   assertStoredId, materializeCreateHeader, sessionFormatVersionRefusal, validateStoredEvents,
   type SessionAccess, type SessionHandle,
   type SessionHandleReadResult,
@@ -31,13 +32,15 @@ import {
   type SessionPersistenceSnapshot, type SessionPersistenceStatOptions,
   type SessionPersistenceRevision as PersistenceRevision,
 } from 'dsh-nexttavern-session-format/storage-contract'
-import { JsonlBackendTracker, JsonlSessionHandle, type StorageHandleState } from './storage.js'
+import { JsonlBackendTracker, JsonlSessionHandle, type StorageHandleState, type JsonlStoredLogCut } from './storage.js'
+import {knownSessionEventTypes} from 'dsh-nexttavern-session-format/catalog'
 import { SessionWriteLease } from './lease.js'
-import { SESSION_FORMAT_VERSION, SessionId as makeSessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
-import type { SessionEvent, SessionId, SessionHeader, SessionLogOffset as SessionLogOffsetType } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId as makeSessionId, SessionLogOffset } from 'dsh-nexttavern-native-session'
+import type { SessionEvent, SessionId, SessionHeader, SessionLogOffset as SessionLogOffsetType } from 'dsh-nexttavern-native-session'
+import type {SessionFormatEvent} from '@deepseek-ai/dsh-session-format'
 import {
   assertNoRetiredHeaderFields, encodeSegment, eventLines, generationLogFilename, generationLogPath, logPath, logSuffix,
-  parseGenerationLogFilename, projectDir, scanLog, sessionDir, SessionLogScanner, toHeaderLine,
+  parseGenerationLogFilename, projectDir, scanLog, sessionDir, SessionLogScanner, toHeaderLine,fromHeaderLine,
   type JsonlCompression,
 } from './format.js'
 import {
@@ -119,6 +122,8 @@ interface StoredLogBase extends FrozenStoredEvents {
 /** A decoded current generation that is already durable. */
 interface CurrentStoredLog extends StoredLogBase {
   readonly status: 'current'
+  /** Actual admitted prefix; a successful row write does not verify relationships. */
+  relationshipVerifiedThrough:number
 }
 
 /** A migrated historical generation retained until an explicit write open publishes it. */
@@ -161,6 +166,37 @@ function freezeStoredEvents(events: SessionEvent[]): FrozenStoredEvents {
   for (const event of events) freezeStoredEvent(event)
   Object.freeze(events)
   return { eventState: 'shared-frozen', events }
+}
+
+type NativeRelationships=ReturnType<typeof createNativeV4RelationshipValidator>
+interface StoredEventsOwner {readonly identity:object;events:SessionEvent[];relationships:NativeRelationships}
+const storedEventCuts=new WeakMap<CurrentStoredLog,{owner:StoredEventsOwner;length:number}>()
+const returnedStoredCuts=new WeakMap<JsonlStoredLogCut,CurrentStoredLog>()
+/** Only provider-decoded or successfully appended private batches enter this owner.
+ * The getter captures length now: even a first late read cannot see future writes. */
+function storedEventsSnapshot(owner:StoredEventsOwner,length:number):FrozenStoredEvents {
+  let snapshot:SessionEvent[]|undefined
+  return {eventState:'shared-frozen',get events(){
+    if(!snapshot){snapshot=owner.events.slice(0,length);Object.freeze(snapshot)}
+    return snapshot
+  }}
+}
+function ownedStoredCut(stored:CurrentStoredLog):JsonlStoredLogCut {
+  let cut=storedEventCuts.get(stored)
+  if(!cut) {
+    const events=[...stored.events],relationships=createNativeV4RelationshipValidator(stored.meta,stored.inheritedEventCount,
+      knownSessionEventTypes)
+    if(stored.relationshipVerifiedThrough===events.length)relationships.verify({length:events.length,
+      at:seq=>events[seq] as unknown as SessionFormatEvent|undefined})
+    cut={owner:{identity:{},events,relationships},length:events.length}
+    storedEventCuts.set(stored,cut)
+  }
+  const {owner,length}=cut
+  const result={owner:owner.identity,revision:stored.revision,length,relationshipVerifiedThrough:stored.relationshipVerifiedThrough,
+    at:(seq:number)=>seq>=0&&seq<length?owner.events[seq]:undefined,
+    materialize:()=>stored.events}
+  returnedStoredCuts.set(result,stored)
+  return result
 }
 
 /** One authoritative immutable generation selected from a Session directory. */
@@ -566,6 +602,7 @@ class JsonlSessionPersistence extends SessionPersistence {
     const probe = fileRevision(await stat(selected.sourcePath, { bigint: true }))
     const memoized = this.coldLogMemo.get(id)
     if (memoized?.status === 'current' && memoized.revision === probe) {
+      this.verifyStoredRelationships(memoized,selected.sourcePath)
       this.coldLogMemo.delete(id)
       this.coldLogMemo.set(id, memoized)
       return memoized
@@ -705,6 +742,7 @@ class JsonlSessionPersistence extends SessionPersistence {
     }
     const published: CurrentStoredLog = {
       status: 'current',
+      relationshipVerifiedThrough:stored.events.length,
       meta: stored.meta,
       eventState: stored.eventState,
       events: stored.events,
@@ -752,12 +790,36 @@ class JsonlSessionPersistence extends SessionPersistence {
     const probe = fileRevision(await stat(path, { bigint: true }))
     const memoized = this.coldLogMemo.get(expectedId)
     if (memoized?.status === 'current' && memoized.revision === probe) {
+      this.verifyStoredRelationships(memoized,path)
       this.coldLogMemo.delete(expectedId)
       this.coldLogMemo.set(expectedId, memoized)
       return memoized
     }
     const { bytes, identity } = await readStableJsonlFile(path, signal)
     return this.decodeStoredLog(path, expectedId, bytes, fileRevision(identity), signal)
+  }
+
+  /** The same actual file revision check as raw read, without an array output. */
+  async readStoredLogCut(path:string,expectedId:SessionId,previous?:JsonlStoredLogCut):Promise<JsonlStoredLogCut> {
+    const retained=previous&&returnedStoredCuts.get(previous)
+    if(retained?.meta.id===expectedId&&!this.coldLogMemo.has(expectedId))this.memoizeStoredLog(expectedId,retained)
+    return ownedStoredCut(await this.readStoredLog(path,expectedId))
+  }
+
+  /** Pending successful writes are checked only at the ordinary read boundary.
+   * A failed read rolls back its relationship state, never the durable bytes;
+   * a later end-seed may make the same accumulated tail readable. */
+  private verifyStoredRelationships(stored:CurrentStoredLog,path:string):void {
+    const cut=ownedStoredCut(stored)
+    if(stored.relationshipVerifiedThrough===cut.length)return
+    try {
+      const owner=storedEventCuts.get(stored)!.owner
+      owner.relationships.verify({length:cut.length,at:seq=>owner.events[seq] as unknown as SessionFormatEvent|undefined})
+      stored.relationshipVerifiedThrough=cut.length
+    }catch(error) {
+      throw new SessionPersistenceCorruptionError(
+        `session "${stored.meta.id}": stored log is corrupt: ${String(error)} (raw log: ${path})`,{cause:error})
+    }
   }
 
   /** Decode and memoize one already-stable current physical snapshot. */
@@ -774,13 +836,14 @@ class JsonlSessionPersistence extends SessionPersistence {
       events: SessionEvent[]
       tornTruncateTo: number | undefined
       recoveredTail: SessionEvent[]
+      relationships:NativeRelationships
     }
     try {
       if (this.compression === 'zstd') {
         parsed = await this.readZstdPrefix(buffer, signal)
       } else {
         signal?.throwIfAborted()
-        const { meta, inheritedEventCount, events, committedBytes } = scanLog(buffer)
+        const { meta, inheritedEventCount, events, committedBytes,relationships } = scanLog(buffer)
         signal?.throwIfAborted()
         parsed = {
           meta,
@@ -790,6 +853,7 @@ class JsonlSessionPersistence extends SessionPersistence {
           // A torn raw tail is one incomplete JSONL line; it holds no complete
           // record to recover.
           recoveredTail: [],
+          relationships,
         }
       }
     } catch (error: unknown) {
@@ -809,13 +873,15 @@ class JsonlSessionPersistence extends SessionPersistence {
     assertStoredId(expectedId, parsed.meta)
     const location = this.locate(parsed.meta)
     validateStoredEvents(parsed.meta, parsed.events, location)
-    const { events, ...rest } = parsed
+    const { events,relationships, ...rest } = parsed
     const stored: CurrentStoredLog = {
       status: 'current',
+      relationshipVerifiedThrough:events.length,
       ...rest,
       ...freezeStoredEvents(events),
       revision,
     }
+    storedEventCuts.set(stored,{owner:{identity:{},events:[...events],relationships},length:events.length})
     this.memoizeStoredLog(expectedId, stored)
     return stored
   }
@@ -862,14 +928,40 @@ class JsonlSessionPersistence extends SessionPersistence {
     events: readonly SessionEvent[],
     isMaterialized: boolean,
     inheritedEventCount: SessionLogOffsetType,
-  ): Promise<void> {
+    previousCut?:JsonlStoredLogCut,
+  ): Promise<JsonlStoredLogCut|undefined> {
+    const retained=previousCut&&returnedStoredCuts.get(previousCut),
+      previous=this.coldLogMemo.get(header.id)??(retained?.meta.id===header.id?retained:undefined)
     this.coldLogMemo.delete(header.id)
     await this.ensureRootEncoding()
+    for(const event of events)freezeStoredEvent(event)
+    // Any pending authority construction is before I/O. Once fsync succeeds,
+    // committing the known private tail only advances containers and stamps.
+    const previousEvents=previous?.status==='current'?ownedStoredCut(previous):undefined
     if (isMaterialized) {
-      await this.appendLines(header, events)
+      const written=await this.appendLines(header, events)
+      if(previous?.status==='current'&&previous.revision===written.before
+        &&previous.tornTruncateTo===undefined&&!previous.recoveredTail.length
+        &&storedEventCuts.get(previous)!.owner.events.length===previousEvents!.length) {
+        const cut=storedEventCuts.get(previous)!
+        for(const event of events)cut.owner.events.push(event)
+        const length=previousEvents!.length+events.length,snapshot=storedEventsSnapshot(cut.owner,length),
+          stored:CurrentStoredLog={status:'current',meta:previous.meta,tornTruncateTo:undefined,recoveredTail:[],
+            inheritedEventCount:previous.inheritedEventCount,revision:written.after,eventState:'shared-frozen',
+            relationshipVerifiedThrough:previous.relationshipVerifiedThrough,
+            get events(){return snapshot.events}}
+        storedEventCuts.set(stored,{owner:cut.owner,length});this.memoizeStoredLog(header.id,stored)
+        return ownedStoredCut(stored)
+      }
     } else {
-      await this.materialize(header, inheritedEventCount, events)
+      const materializedMeta=await this.materialize(header, inheritedEventCount, events)
       this.tracker.materialized(header.id)
+      const revision=fileRevision(await stat(logPath(this.root,header.cwd,header.id,this.compression),{bigint:true})),
+        frozen:FrozenStoredEvents={eventState:'shared-frozen',events:Object.freeze([...events])},
+        stored:CurrentStoredLog={status:'current',meta:materializedMeta,tornTruncateTo:undefined,
+          recoveredTail:[],inheritedEventCount,revision,relationshipVerifiedThrough:0,...frozen}
+      this.memoizeStoredLog(header.id,stored)
+      return ownedStoredCut(stored)
     }
   }
 
@@ -949,6 +1041,7 @@ class JsonlSessionPersistence extends SessionPersistence {
     events: SessionEvent[]
     tornTruncateTo: number | undefined
     recoveredTail: SessionEvent[]
+    relationships:NativeRelationships
   }> {
     signal?.throwIfAborted()
     const { frames, tornStart } = scanZstdFrames(buffer)
@@ -991,6 +1084,7 @@ class JsonlSessionPersistence extends SessionPersistence {
           events: prefix.events,
           tornTruncateTo: undefined,
           recoveredTail: [],
+          relationships:prefix.relationships,
         }
       }
       // A torn final frame's append never resolved, but complete JSONL records
@@ -1015,6 +1109,7 @@ class JsonlSessionPersistence extends SessionPersistence {
         events: prefix.events,
         tornTruncateTo: tornStart,
         recoveredTail: prefix.events.slice(complete.eventCount),
+        relationships:prefix.relationships,
       }
     } catch (error) {
       /* v8 ignore next -- decoder failure plus concurrent abort is timing-dependent */
@@ -1181,18 +1276,19 @@ class JsonlSessionPersistence extends SessionPersistence {
     meta: SessionHeader,
     inheritedEventCount: SessionLogOffsetType,
     events: readonly SessionEvent[],
-  ): Promise<void> {
+  ): Promise<SessionHeader> {
     const project = projectDir(this.root, meta.cwd)
     const dir = sessionDir(this.root, meta.cwd, meta.id)
     const finalPath = logPath(this.root, meta.cwd, meta.id, this.compression)
     await this.rejectOppositeArtifact(meta.cwd, meta.id)
-    const content = await this.encodeMaterialization(meta, inheritedEventCount, events)
+    const {content,storedMeta} = await this.encodeMaterialization(meta, inheritedEventCount, events)
     /* v8 ignore next -- native Windows coverage exercises this platform dispatch; Linux covers the POSIX peer */
     if (process.platform === 'win32') {
       await this.materializeWin32(project, dir, finalPath, meta.id, content)
     } else {
       await this.materializePosix(project, dir, finalPath, meta.id, content)
     }
+    return storedMeta
   }
 
   /* v8 ignore start -- Windows uses the Win32 durable-publish path; POSIX coverage exercises this peer. */
@@ -1290,16 +1386,17 @@ class JsonlSessionPersistence extends SessionPersistence {
     meta: SessionHeader,
     inheritedEventCount: SessionLogOffsetType,
     events: readonly SessionEvent[],
-  ): Promise<Buffer | string> {
-    const header = JSON.stringify(toHeaderLine(meta, meta.isSeeded ? inheritedEventCount : undefined)) + '\n'
+  ): Promise<{content:Buffer|string;storedMeta:SessionHeader}> {
+    const line=toHeaderLine(meta,meta.isSeeded?inheritedEventCount:undefined),
+      header=JSON.stringify(line)+'\n',storedMeta=fromHeaderLine(line).meta
     if (events.length === 0) {
-      return this.compression === 'none' ? header : compressZstdFrame(header)
+      return {content:this.compression==='none'?header:await compressZstdFrame(header),storedMeta}
     }
     const body = eventLines(events) + '\n'
-    if (this.compression === 'none') return header + body
+    if (this.compression === 'none') return {content:header+body,storedMeta}
     const headerFrame = await compressZstdFrame(header)
     const eventFrame = await compressZstdFrame(body)
-    return Buffer.concat([headerFrame, eventFrame])
+    return {content:Buffer.concat([headerFrame,eventFrame]),storedMeta}
   }
 
   /** Encode one durable append batch in the configured physical representation. */
@@ -1325,7 +1422,7 @@ class JsonlSessionPersistence extends SessionPersistence {
    * previous size before rethrowing because the unchanged cursor will retry the
    * batch; leaving partial bytes would create duplicate sequence numbers.
    */
-  private async appendLines(meta: SessionHeader, events: readonly SessionEvent[]): Promise<void> {
+  private async appendLines(meta: SessionHeader, events: readonly SessionEvent[]):Promise<{before:PersistenceRevision;after:PersistenceRevision}> {
     const content = await this.encodeEventBatch(events)
     const path = logPath(this.root, meta.cwd, meta.id, this.compression)
     const handle = await open(path, 'a')
@@ -1337,10 +1434,12 @@ class JsonlSessionPersistence extends SessionPersistence {
     }
 
     try {
-      const { size: before } = await handle.stat()
+      const beforeIdentity=await handle.stat({bigint:true}),before=Number(beforeIdentity.size)
       try {
         await handle.writeFile(content)
         await handle.sync()
+        const afterIdentity=await handle.stat({bigint:true})
+        return {before:fileRevision(beforeIdentity),after:fileRevision(afterIdentity)}
       } catch (error) {
         try {
           await closeAppendHandle()

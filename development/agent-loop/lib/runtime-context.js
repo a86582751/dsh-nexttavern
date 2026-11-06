@@ -5,8 +5,8 @@
  * replacement) and the dynamic runtime-context snapshot.
  * @module @deepseek-ai/dsh-agent-loop/runtime-context
  */
-import { createSystemMessage, createUserMessage } from '@deepseek-ai/dsh-llm';
-import { isReplacementSurfaceEvent } from '@deepseek-ai/dsh-session';
+import { createSystemMessage, createUserMessage } from 'dsh-nexttavern-native-llm';
+import { isReplacementSurfaceEvent } from 'dsh-nexttavern-native-session';
 import { renderPrompt } from '@deepseek-ai/dsh-system-prompt';
 const SOURCE = 'runtime-context';
 const CLEARED = 'Current runtime context: none. Earlier runtime-context snapshots no longer apply.';

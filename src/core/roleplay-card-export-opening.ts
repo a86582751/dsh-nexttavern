@@ -1,8 +1,8 @@
 /** Read-only export DATA. Source/current Session ownership is bracketed by Core;
  * original Native audit and current prose are deliberately separate reads. */
 import {inspectNativeOpeningGenerationObservationV1,inspectInheritedOpeningGenerationObservationV1,
-  nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
-import type {SessionEvent,SessionMessageProjection} from '@deepseek-ai/dsh-session'
+  nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
+import type {SessionEvent,SessionMessageProjection} from 'dsh-nexttavern-native-session'
 import {recordSha256,sha256} from './roleplay-data.js'
 import {openingIntentKey} from './roleplay-opening-selection.js'
 import type {OpeningSource} from './roleplay-opening-selection.js'

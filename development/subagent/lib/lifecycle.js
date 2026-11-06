@@ -16,7 +16,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { foldConsumedWork } from '@deepseek-ai/dsh-agent';
-import { SessionLogOffset } from '@deepseek-ai/dsh-session';
+import { SessionLogOffset } from 'dsh-nexttavern-native-session';
 import { finalAssistantOutput } from "./assistant-output.js";
 import { SubagentRunId } from "./types.js";
 /**

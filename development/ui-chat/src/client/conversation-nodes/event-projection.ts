@@ -1,6 +1,6 @@
 /** Chat-owned conversion from durable Session events to Chat view data. */
 
-import type { ContentBlock, StreamChunk } from '@deepseek-ai/dsh-llm/types'
+import type { ContentBlock, StreamChunk } from 'dsh-nexttavern-native-llm/types'
 import type {
   AssistantBlock, ContextProducerView, KnownContextForm,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'

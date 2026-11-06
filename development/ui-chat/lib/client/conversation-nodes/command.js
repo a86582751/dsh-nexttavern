@@ -1,5 +1,5 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/command.ts; edit the TypeScript source.
-import { isReplacementSurfaceEvent } from '@deepseek-ai/dsh-session/surface';
+import { isReplacementSurfaceEvent } from 'dsh-nexttavern-native-session/surface';
 import { chatNode } from "./common.js";
 const COMPACT_KIND = 'compact-checkpoint';
 function commandFromRun(match) {

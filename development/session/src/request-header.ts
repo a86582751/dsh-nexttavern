@@ -7,8 +7,8 @@
  * @module dsh-session/request-header
  */
 
-import { callConfigEquals } from '@deepseek-ai/dsh-llm'
-import type { ToolSchema } from '@deepseek-ai/dsh-llm'
+import { callConfigEquals } from 'dsh-nexttavern-native-llm'
+import type { ToolSchema } from 'dsh-nexttavern-native-llm'
 import type { EpochHeader, SessionEvent } from './types.js'
 
 /**

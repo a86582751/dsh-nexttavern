@@ -7,7 +7,7 @@
  *
  * @module dsh-session/request-header
  */
-import { callConfigEquals } from '@deepseek-ai/dsh-llm';
+import { callConfigEquals } from 'dsh-nexttavern-native-llm';
 /**
  * Normalize a header to canonical form: an empty tool list becomes an absent
  * field, matching how requests are built. Logging, folding, and comparison use

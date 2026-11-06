@@ -1,7 +1,7 @@
 /** Ruby's declared input is durable DATA. The independent live owner remains
  * with Core/TaskHost and is never serialized into the child descriptor. */
 import type {NativeInputAdmissionHookV2,NativePreparationReceiptV1,NativeRequestMaterialTransformV1}
-  from '@deepseek-ai/dsh-agent-loop'
+  from 'dsh-nexttavern-native-agent-loop'
 
 export interface OwnedRubyTaskMessageV1 {
   readonly role:'system'|'user'|'assistant'

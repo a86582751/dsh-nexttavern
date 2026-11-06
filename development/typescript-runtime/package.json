@@ -10,7 +10,15 @@
     ".": "./lib/index.js",
     "./package.json": "./package.json"
   },
-  "files": ["lib", "src", "LICENSE"],
-  "dependencies": {"typescript": "5.9.3"},
-  "bundleDependencies": ["typescript"]
+  "files": [
+    "lib",
+    "src",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "typescript": "5.9.3"
+  },
+  "bundleDependencies": [
+    "typescript"
+  ]
 }

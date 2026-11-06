@@ -6,9 +6,9 @@
  */
 import { Context, Service } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
-import { assembleAssistantStream } from '@deepseek-ai/dsh-llm';
+import { assembleAssistantStream } from 'dsh-nexttavern-native-llm';
 import { deepFreeze } from '@deepseek-ai/dsh-util-values';
-import { canonicalHeader, headerEquals, isSurfaceEvent, SessionLogOffset, SessionSeq, } from '@deepseek-ai/dsh-session';
+import { canonicalHeader, headerEquals, isSurfaceEvent, SessionLogOffset, SessionSeq, } from 'dsh-nexttavern-native-session';
 import { contextBreakdownProjectionDefinition } from './breakdown-projection.js';
 import { contextPressureProjectionDefinition, tokenUsageProjectionDefinition } from './usage-projection.js';
 import { estimateContent, estimateMessage, estimateToolsTokens, ROLE_OVERHEAD } from './estimate.js';

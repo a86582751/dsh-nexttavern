@@ -9,7 +9,7 @@
 
 import type { Context, Plugin } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionId } from 'dsh-nexttavern-native-session'
 import type {} from '@deepseek-ai/dsh-workspace'
 
 /**

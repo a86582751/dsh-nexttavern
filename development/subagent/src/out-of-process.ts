@@ -13,7 +13,7 @@
 
 import { accessSync, constants, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock } from 'dsh-nexttavern-native-llm'
 import type { SubagentCapabilities, SubagentResult, SubagentRun, SubagentStopReason } from './types.ts'
 
 /** Maximum UTF-8 size of {@link SubagentResult.diagnostic}. */

@@ -8,7 +8,7 @@
  * @module @deepseek-ai/dsh-session/surface
  */
 
-import type { Message, ToolSchema } from '@deepseek-ai/dsh-llm'
+import type { Message, ToolSchema } from 'dsh-nexttavern-native-llm'
 import { SessionLogOffset, SessionSeq } from './types.js'
 import { KNOWN_SESSION_EVENT_TYPES, MESSAGE_PROJECTION_EVENT_TYPES } from './known-event-types.js'
 import {validateNativeRequestMaterialDataV1} from './request-material-types.js'
@@ -28,6 +28,8 @@ export interface SessionMessageProjectionContext {
   nodes: readonly SessionSeq[]
   /** Contiguous event window; entries at or beyond the candidate seq are not committed inputs. */
   events: readonly SessionEvent[]
+  /** Indexed committed history; never exposes the candidate or later events. */
+  eventAt?(seq: number): SessionEvent | undefined
   /** Absolute sequence of the window's first event. */
   baseSeq: SessionLogOffset
   /** Previously projected messages keyed by their original event sequences. */
@@ -304,7 +306,7 @@ interface SurfaceFoldState {
   nodes: SessionSeq[]
   replaceGeneration: number
   contentGeneration: number
-  projectedMessages: Map<SessionSeq, Message>
+  projectedMessages: ReadonlyMap<SessionSeq, Message> & {set(seq:SessionSeq,message:Message):unknown}
   projections: Set<SessionMessageProjection>
 }
 
@@ -415,14 +417,13 @@ function assertSourceEventReferences(
 /** Resolve tool additions against their immutable historical request header. */
 function assertDeveloperHeader(
   event: SessionEvent,
-  events: readonly SessionEvent[],
-  baseSeq: SessionLogOffset,
+  eventAt: (seq: number) => SessionEvent | undefined,
 ): void {
   if (event.type !== 'developer/message') return
   validateSessionEventData(event, `developer/message at seq ${event.seq}`)
   if (event.data.headerSeq === undefined) return
   const headerSeq = event.data.headerSeq
-  const headerEvent = events[headerSeq - baseSeq]
+  const headerEvent = eventAt(headerSeq)
   if (headerSeq >= event.seq || headerEvent?.type !== 'request/header') {
     throw new Error('developer/message headerSeq must reference an earlier request/header')
   }
@@ -511,15 +512,14 @@ function isDeepEqualJson(a: unknown, b: unknown): boolean {
 function assertToolResultRewrite(
   event: SessionEvent,
   shadowedSeqs: readonly SessionSeq[],
-  events: readonly SessionEvent[],
-  baseSeq: SessionLogOffset,
+  eventAt: (seq: number) => SessionEvent | undefined,
 ): void {
   if (event.type !== 'tool/result') return
   if (shadowedSeqs.length !== 1) {
     throw new Error('tool/result surface replacement must rewrite exactly one current node')
   }
   for (const originalSeq of shadowedSeqs) {
-    const original = events[originalSeq - baseSeq]
+    const original = eventAt(originalSeq)
     if (original?.type !== 'tool/result') {
       throw new Error('tool/result surface replacement must target a current tool/result')
     }
@@ -550,11 +550,10 @@ function assertSystemHeadRewrite(
   state: SurfaceFoldState,
   startIdx: number,
   shadowedSeqs: readonly SessionSeq[],
-  events: readonly SessionEvent[],
-  baseSeq: SessionLogOffset,
+  eventAt: (seq: number) => SessionEvent | undefined,
 ): void {
   if (startIdx !== 0) return
-  const head = events[state.nodes[0] as number - baseSeq]
+  const head = eventAt(state.nodes[0] as number)
   if (head?.type !== 'system/message') return
   if (event.type !== 'system/message' || shadowedSeqs.length !== 1) {
     throw new Error('surface replace: node 0 holds the system prompt and may be rewritten only by a system/message over exactly that node')
@@ -562,11 +561,21 @@ function assertSystemHeadRewrite(
 }
 
 /** Validate one event at its replay boundary and prepare its atomic fold transition. */
+interface SurfaceHistoryRead {
+  eventAt(seq: number): SessionEvent | undefined
+  readonly events: readonly SessionEvent[]
+}
+function arrayHistory(events: readonly SessionEvent[], baseSeq: SessionLogOffset,
+  length=events.length): SurfaceHistoryRead {
+  let materialized:readonly SessionEvent[]|undefined
+  return {eventAt:seq=>seq>=baseSeq&&seq<baseSeq+length?events[seq-baseSeq]:undefined,
+    get events() {return materialized??=Object.freeze(events.slice(0,length))}}
+}
 function planSurfaceEvent(
   state: SurfaceFoldState,
   event: SessionEvent,
   expectedSeq: SessionSeq,
-  events: readonly SessionEvent[],
+  history: SurfaceHistoryRead,
   baseSeq: SessionLogOffset,
   projections: readonly SessionMessageProjection[],
 ): SurfacePlan | undefined {
@@ -574,11 +583,12 @@ function planSurfaceEvent(
     throw new Error(`session event seq ${event.seq} is not contiguous; expected ${expectedSeq}`)
   }
   const surfaceOp = validateSurfaceMetadata(event)
-  assertDeveloperHeader(event, events, baseSeq)
+  const eventAt = (seq: number) => seq < event.seq ? history.eventAt(seq) : undefined
+  assertDeveloperHeader(event, eventAt)
   const projection = projections.find(item => item.type === event.type)
   if (projection !== undefined) {
     return { kind: 'project', projection, messages: projection.project(event, {
-      nodes: state.nodes, events, baseSeq, messages: state.projectedMessages,
+      nodes: state.nodes, get events() {return history.events}, eventAt, baseSeq, messages: state.projectedMessages,
     }) }
   }
   if (MESSAGE_PROJECTION_EVENT_TYPES.has(event.type)) {
@@ -590,8 +600,8 @@ function planSurfaceEvent(
   }
   const range = replacementRange(state, surfaceOp)
   assertSourceEventReferences(event, range.shadowedSeqs)
-  assertToolResultRewrite(event, range.shadowedSeqs, events, baseSeq)
-  assertSystemHeadRewrite(event, state, range.startIdx, range.shadowedSeqs, events, baseSeq)
+  assertToolResultRewrite(event, range.shadowedSeqs, eventAt)
+  assertSystemHeadRewrite(event, state, range.startIdx, range.shadowedSeqs, eventAt)
   return {
     kind: 'replace',
     seq: event.seq,
@@ -610,7 +620,7 @@ function applySurfaceEvent(
   baseSeq: SessionLogOffset,
   projections: readonly SessionMessageProjection[],
 ): SurfaceFoldReplacement | undefined {
-  const plan = planSurfaceEvent(state, event, expectedSeq, events, baseSeq, projections)
+  const plan = planSurfaceEvent(state,event,expectedSeq,arrayHistory(events,baseSeq,expectedSeq-baseSeq),baseSeq,projections)
   return applySurfacePlan(state, plan)
 }
 
@@ -664,6 +674,103 @@ export function foldSurface(events: readonly SessionEvent[], projections: readon
     contentGeneration: state.contentGeneration }
 }
 
+export interface SurfaceIndexedHistory {
+  readonly length: number
+  at(seq: number): SessionEvent | undefined
+}
+export type SurfaceCursorTransition =
+  | {kind: 'append'; seq: SessionSeq; index: number}
+  | {kind: 'replace'; seq: SessionSeq; index: number; removed: readonly SessionSeq[]}
+  | {kind: 'project'; changedSeqs: readonly SessionSeq[]}
+/** A cut advances through the exact shared interpreter. Legacy custom
+ * projections may explicitly request a copied prefix via context.events. */
+export function createSurfaceCursor(options: {
+  read(): SurfaceIndexedHistory
+  projections?: readonly SessionMessageProjection[]
+}) {
+  const state = createFoldState(), projections = options.projections ?? []
+  let length = 0
+  return {
+    get length() {return length},
+    get nodes(): readonly SessionSeq[] {return state.nodes},
+    get contentGeneration(): number {return state.contentGeneration},
+    projectedMessageAt(seq: number): Message | undefined {return state.projectedMessages.get(SessionSeq(seq))},
+    deriveEventMessage(event: SessionEvent) {return deriveEventMessage(event, state.projectedMessages)},
+    advanceTo(end: number, visit?: (transition: SurfaceCursorTransition, event: SessionEvent) => void,
+      accepted?: (event: SessionEvent) => void) {
+      const reader = options.read()
+      if (!Number.isSafeInteger(end) || end < length || end > reader.length) throw Error('Invalid surface cursor cut')
+      for (const definition of state.projections) if (projections.find(item=>item.type===definition.type)!==definition) {
+        throw Error(`session message projection "${definition.type}" was removed or replaced; restore the session with its owning plugin`)
+      }
+      for (; length < end;) {
+        const event = reader.at(length)
+        if (!event) throw Error(`Missing surface history event at seq ${length}`)
+        let materialized: readonly SessionEvent[] | undefined
+        const prefixEnd = length
+        const history: SurfaceHistoryRead = {
+          eventAt: seq => seq >= 0 && seq < prefixEnd ? reader.at(seq) : undefined,
+          get events() {
+            return materialized ??= Object.freeze(Array.from({length: prefixEnd}, (_, seq) => reader.at(seq)!))
+          },
+        }
+        const plan = planSurfaceEvent(state, event, SessionSeq(length), history, SessionLogOffset(0), projections)
+        const index = state.nodes.length
+        applySurfacePlan(state, plan)
+        length++
+        if (plan?.kind === 'append') visit?.({kind: 'append', seq: plan.seq, index}, event)
+        else if (plan?.kind === 'replace') visit?.({kind: 'replace', seq: plan.seq,
+          index: plan.startIdx, removed: plan.shadowedSeqs}, event)
+        else if (plan?.kind === 'project') visit?.({kind: 'project', changedSeqs: [...plan.messages.keys()]}, event)
+        accepted?.(event)
+      }
+    },
+  }
+}
+
+/** A preview keeps only candidate writes over the live accepted map. Iterating
+ * a legacy projection's ReadonlyMap remains supported and pays for that read;
+ * constructing a preview does not enumerate historical projected messages. */
+class PreviewMessageMap implements ReadonlyMap<SessionSeq,Message> {
+  readonly [Symbol.toStringTag]='Map'
+  private readonly changes=new Map<SessionSeq,Message>()
+  private additions=0
+  constructor(private readonly base:ReadonlyMap<SessionSeq,Message>) {}
+  get size():number {return this.base.size+this.additions}
+  get(seq:SessionSeq):Message|undefined {return this.changes.get(seq)??this.base.get(seq)}
+  has(seq:SessionSeq):boolean {return this.changes.has(seq)||this.base.has(seq)}
+  set(seq:SessionSeq,message:Message):void {
+    if(!this.has(seq))this.additions++
+    this.changes.set(seq,message)
+  }
+  *entries():MapIterator<[SessionSeq,Message]> {
+    for(const [seq,message] of this.base)yield [seq,this.changes.get(seq)??message]
+    for(const [seq,message] of this.changes)if(!this.base.has(seq))yield [seq,message]
+  }
+  *keys():MapIterator<SessionSeq> {for(const [seq] of this.entries())yield seq}
+  *values():MapIterator<Message> {for(const [,message] of this.entries())yield message}
+  [Symbol.iterator]():MapIterator<[SessionSeq,Message]> {return this.entries()}
+  forEach(callback:(value:Message,key:SessionSeq,map:ReadonlyMap<SessionSeq,Message>)=>void,thisArg?:unknown):void {
+    for(const [seq,message] of this.entries())callback.call(thisArg,message,seq,this)
+  }
+}
+
+/** Frozen output of one manager-owned candidate fold. The canonical plans and
+ * their accepted base remain private to the manager that produced it. */
+export interface SurfaceAppendPreview {
+  readonly surfaceNodes:readonly SessionSeq[]
+  readonly contentGeneration:number
+  readonly messages:readonly Message[]
+  readonly messageNodes:readonly {readonly seq:SessionSeq;readonly message:Message}[]
+}
+interface SurfacePreviewPlans {
+  readonly baseLength:number
+  readonly events:readonly SessionEvent[]
+  readonly plans:readonly (SurfacePlan|undefined)[]
+  readonly projections:ReadonlyMap<SessionEvent['type'],SessionMessageProjection|undefined>
+  next:number
+}
+
 /** Incremental ordered surface view and append-boundary validator. */
 export class SurfaceManager implements SessionSurface {
   /** Shared transition state; replacement history is not retained. */
@@ -672,6 +779,7 @@ export class SurfaceManager implements SessionSurface {
   private _lastProcessedSeq: SessionSeqCursor
   /** Candidate already validated by `validateNext`, pending exact log admission. */
   private _pendingPlan: { event: SessionEvent; expectedSeq: SessionSeq; plan: SurfacePlan | undefined } | undefined
+  private readonly _previews=new WeakMap<SurfaceAppendPreview,SurfacePreviewPlans>()
 
   /**
    * @param log - Contiguous complete log or loaded event window.
@@ -690,14 +798,85 @@ export class SurfaceManager implements SessionSurface {
    * Validate the next candidate without mutating the committed surface.
    * @param event - candidate event that has not entered the log yet.
    */
-  validateNext(event: SessionEvent): void {
+  validateNext(event: SessionEvent,preview?:SurfaceAppendPreview): void {
     this._assertProjections()
     if (this._lastProcessedSeq < this.baseSeq + this.log.length - 1) this._processDelta()
     const expectedSeq = SessionSeq(this.baseSeq + this.log.length)
+    let plan:SurfacePlan|undefined
+    if(preview!==undefined) {
+      const staged=this._previews.get(preview)
+      if(!staged||staged.baseLength+staged.next!==this.log.length||staged.events[staged.next]!==event){
+        throw Error('SESSION_REQUEST_PREVIEW_STALE')
+      }
+      this._assertPreviewProjection(staged,event.type)
+      plan=staged.plans[staged.next++]
+    }else {
+      plan=planSurfaceEvent(this._state,event,expectedSeq,arrayHistory(this.log,this.baseSeq),this.baseSeq,this.projections)
+    }
     this._pendingPlan = {
       event,
       expectedSeq,
-      plan: planSurfaceEvent(this._state, event, expectedSeq, this.log, this.baseSeq, this.projections),
+      plan,
+    }
+  }
+
+  /** Fork only the current selected output and bounded candidate writes. The
+   * same canonical plans are later consumed by validateNext on exact events. */
+  previewAppends(events:readonly SessionEvent[]):SurfaceAppendPreview {
+    this._assertProjections()
+    if(this._lastProcessedSeq<this.baseSeq+this.log.length-1)this._processDelta()
+    const baseLength=this.log.length,baseSeq=this.baseSeq,baseEnd=baseSeq+baseLength,
+      state:SurfaceFoldState={nodes:[...this._state.nodes],replaceGeneration:this._state.replaceGeneration,
+        contentGeneration:this._state.contentGeneration,projectedMessages:new PreviewMessageMap(this._state.projectedMessages),
+        projections:new Set(this._state.projections)},
+      plans:(SurfacePlan|undefined)[]=[],projections=new Map<SessionEvent['type'],SessionMessageProjection|undefined>()
+    const eventAt=(seq:number)=>seq>=this.baseSeq&&seq<baseEnd?this.log[seq-this.baseSeq]:events[seq-baseEnd]
+    for(const [index,event] of events.entries()) {
+      let materialized:readonly SessionEvent[]|undefined
+      const end=baseEnd+index,history:SurfaceHistoryRead={
+        eventAt:seq=>seq>=this.baseSeq&&seq<end?eventAt(seq):undefined,
+        get events(){
+          return materialized??=Object.freeze(Array.from({length:baseLength+index},
+            (_,offset)=>eventAt(offset+baseSeq)!))
+        },
+      }
+      const plan=planSurfaceEvent(state,event,SessionSeq(end),history,this.baseSeq,this.projections)
+      plans.push(plan)
+      projections.set(event.type,plan?.kind==='project'?plan.projection:undefined)
+      applySurfacePlan(state,plan)
+    }
+    const messageNodes:{readonly seq:SessionSeq;readonly message:Message}[]=[]
+    for(const seq of state.nodes) {
+      const message=deriveEventMessage(eventAt(seq)!,state.projectedMessages)
+      if(message)messageNodes.push(Object.freeze({seq,message}))
+    }
+    const preview=Object.freeze({surfaceNodes:Object.freeze(state.nodes),contentGeneration:state.contentGeneration,
+      messages:Object.freeze(messageNodes.map(row=>row.message)),messageNodes:Object.freeze(messageNodes)})
+    this._previews.set(preview,{baseLength,events,plans,projections,next:0})
+    return preview
+  }
+
+  /** All staged plans entered the exact live log. Complete after the final
+   * observer so revoking a used projection cannot certify a stale request. */
+  assertPreviewCommitted(preview:SurfaceAppendPreview):void {
+    const staged=this._previews.get(preview)
+    try {
+      if(!staged||staged.next!==staged.events.length||this.log.length!==staged.baseLength+staged.events.length){
+        throw Error('SESSION_REQUEST_PREVIEW_STALE')
+      }
+      this._assertProjections()
+      if(this._lastProcessedSeq<this.baseSeq+this.log.length-1)this._processDelta()
+      // Defined interpreters are already covered by the used-projection guard,
+      // including the final pending plan. Also retain each planned absence.
+      for(const [type,projection] of staged.projections){
+        if(projection===undefined)this._assertPreviewProjection(staged,type)
+      }
+    }finally{this._previews.delete(preview)}
+  }
+
+  private _assertPreviewProjection(staged:SurfacePreviewPlans,type:SessionEvent['type']):void {
+    if(this.projections.find(item=>item.type===type)!==staged.projections.get(type)){
+      throw Error(`session message projection "${type}" was removed or replaced; restore the session with its owning plugin`)
     }
   }
 
@@ -760,7 +939,7 @@ export class SurfaceManager implements SessionSurface {
       ? [...this._state.projections, pending.projection]
       : this._state.projections
     for (const projection of required) {
-      if (!this.projections.includes(projection)) {
+      if (this.projections.find(item=>item.type===projection.type)!==projection) {
         throw new Error(`session message projection "${projection.type}" was removed or replaced; restore the session with its owning plugin`)
       }
     }

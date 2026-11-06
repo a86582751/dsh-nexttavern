@@ -75,11 +75,11 @@ var import_client = require("@deepseek-ai/dsh-api-gateway/client");
 function historyEntries(records) {
   return records;
 }
-function historyRecordFirstSeq(record) {
-  return record.event.seq;
+function historyRecordFirstSeq(record2) {
+  return record2.event.seq;
 }
-function historyRecordLastSeq(record) {
-  return record.event.seq;
+function historyRecordLastSeq(record2) {
+  return record2.event.seq;
 }
 
 // ../../../../build-tools/node_modules/@deepseek-ai/dsh-brand/lib/index.js
@@ -87,7 +87,7 @@ function brandNumber(value) {
   return value;
 }
 
-// ../../../../build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/types.js
+// ../../../session/lib/types.js
 function SessionSeq(value) {
   if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
     throw new TypeError(`SessionSeq must be a non-negative safe integer, got ${String(value)}`);
@@ -101,7 +101,7 @@ function SessionLogOffset(value) {
   return brandNumber(value);
 }
 
-// ../../../../build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/known-event-types.js
+// ../../../session/lib/known-event-types.js
 var KNOWN_SESSION_EVENT_TYPES = /* @__PURE__ */ new Set([
   "agent-preset/selected",
   "agent/inbox/spliced",
@@ -128,10 +128,15 @@ var KNOWN_SESSION_EVENT_TYPES = /* @__PURE__ */ new Set([
   "llm/retry",
   "llm/retry-started",
   "model/selection",
+  "opening/invocation",
+  "opening/request-attempt",
+  "opening/generated-receipt",
+  "opening/closing-ack",
   "permission/preset",
   "plan/mode",
   "request/context",
   "request/header",
+  "request/material",
   "sandbox/mode",
   "schedule/change",
   "session-log-deepseek/delivery-accepted",
@@ -164,7 +169,448 @@ var KNOWN_SESSION_EVENT_TYPES = /* @__PURE__ */ new Set([
   "workspace/changes"
 ]);
 
-// ../../../../build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/surface.js
+// ../../../session/lib/request-material-types.js
+function fail(subject) {
+  throw Error(`${subject} has invalid required request material`);
+}
+var record = (value, fields, subject) => {
+  if (value === null || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length !== fields.length || Object.keys(value).some((key) => !fields.includes(key)))
+    return fail(subject);
+  return value;
+};
+var integer = (value, max = Number.MAX_SAFE_INTEGER) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= max && !Object.is(value, -0);
+var identity = (value) => typeof value === "string" && value.length > 0 && value.length <= 256 && value === value.trim() && !/[\u0000-\u001f\u007f-\u009f]/.test(value);
+var sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+var list = (value, max, subject) => Array.isArray(value) && value.length <= max ? value : fail(subject);
+function dataRef(value, subject) {
+  const row = record(value, ["key", "sha256"], subject);
+  if (!identity(row["key"]) || !sha(row["sha256"]))
+    fail(subject);
+}
+function validateNativeRequestMaterialDataV1(value, subject) {
+  const row = record(value, ["schemaVersion", "encoding", "turn", "step", "header", "snapshot", "plan", "base", "delta", "placements", "outputSha256"], subject);
+  const version = row["schemaVersion"];
+  if (!(version === 1 && row["encoding"] === "native-request-material-v1" || version === 2 && row["encoding"] === "native-request-material-v2") || !integer(row["turn"]) || row["turn"] < 1 || !integer(row["step"]) || row["step"] < 1 || !sha(row["outputSha256"]))
+    fail(subject);
+  dataRef(row["snapshot"], subject);
+  dataRef(row["plan"], subject);
+  const header = record(row["header"], ["seq", "sha256"], subject);
+  const base = record(row["base"], ["boundarySeq", "contentGeneration", "surfaceNodes", "messages", "sha256"], subject);
+  if (!integer(base["boundarySeq"], 65535) || !integer(base["contentGeneration"]) || !sha(base["sha256"]) || !integer(header["seq"]) || header["seq"] > base["boundarySeq"] || !sha(header["sha256"]))
+    fail(subject);
+  const boundarySeq = base["boundarySeq"];
+  const nodes = list(base["surfaceNodes"], 65536, subject);
+  if (nodes.some((seq) => !integer(seq) || seq > boundarySeq) || new Set(nodes).size !== nodes.length)
+    fail(subject);
+  const messages = list(base["messages"], 4096, subject);
+  let priorPosition = -1;
+  const ids = /* @__PURE__ */ new Set();
+  for (const item of messages) {
+    const ref = record(item, ["seq", "id", "role", "messageSha256"], subject);
+    const position = nodes.indexOf(ref["seq"]);
+    if (!integer(ref["seq"]) || position <= priorPosition || !identity(ref["id"]) || ids.has(ref["id"]) || !["system", "developer", "user", "assistant", "tool"].includes(String(ref["role"])) || !sha(ref["messageSha256"]))
+      fail(subject);
+    priorPosition = position;
+    ids.add(ref["id"]);
+  }
+  const rawDelta = row["delta"];
+  const delta = record(rawDelta, [
+    "insertions",
+    "protectedPrefixLength",
+    ...version === 2 ? ["messageTextProjections"] : [],
+    ...Object.hasOwn(rawDelta, "messageProjection") ? ["messageProjection"] : [],
+    ...Object.hasOwn(rawDelta, "requestLocalSampling") ? ["requestLocalSampling"] : [],
+    ...Object.hasOwn(rawDelta, "finalTextProjection") ? ["finalTextProjection"] : []
+  ], subject);
+  if (delta["finalTextProjection"] !== void 0)
+    validateNativeMaterialFinalTextProjectionV1(delta["finalTextProjection"], subject);
+  if (delta["messageProjection"] !== void 0)
+    validateNativeMessageProjectionV1(delta["messageProjection"], subject);
+  if (delta["requestLocalSampling"] !== void 0) {
+    const local = record(delta["requestLocalSampling"], ["schemaVersion", "base"], subject);
+    if (local["schemaVersion"] !== 1)
+      fail(subject);
+    const raw = local["base"];
+    const base2 = record(raw, ["temperature", "maxTokens", "stop"].filter((key) => Object.hasOwn(raw, key)), subject);
+    if (base2["temperature"] !== void 0 && (typeof base2["temperature"] !== "number" || !Number.isFinite(base2["temperature"])))
+      fail(subject);
+    if (base2["maxTokens"] !== void 0 && (!integer(base2["maxTokens"]) || base2["maxTokens"] < 1))
+      fail(subject);
+    if (base2["stop"] !== void 0 && list(base2["stop"], 128, subject).some((value2) => typeof value2 !== "string"))
+      fail(subject);
+  }
+  if (!integer(delta["protectedPrefixLength"], messages.length))
+    fail(subject);
+  if (version === 2) {
+    const projected = /* @__PURE__ */ new Set();
+    for (const value2 of list(delta["messageTextProjections"], 4096, subject)) {
+      const projection = record(value2, ["target", "textEdits", "projectionSha256"], subject);
+      const target = record(projection["target"], ["id", "role", "messageSha256"], subject);
+      if (!identity(target["id"]) || projected.has(target["id"]) || !["user", "assistant"].includes(String(target["role"])) || !sha(target["messageSha256"]) || !sha(projection["projectionSha256"]))
+        fail(subject);
+      projected.add(target["id"]);
+      const edits = list(projection["textEdits"], 4096, subject), indices = /* @__PURE__ */ new Set();
+      if (!edits.length)
+        fail(subject);
+      for (const value3 of edits) {
+        const edit = record(value3, ["blockIndex", "replacementText"], subject);
+        if (!integer(edit["blockIndex"], 4095) || indices.has(edit["blockIndex"]) || typeof edit["replacementText"] !== "string" || !edit["replacementText"].isWellFormed())
+          fail(subject);
+        indices.add(edit["blockIndex"]);
+      }
+    }
+  }
+  const insertions = list(delta["insertions"], 128, subject), contributions = /* @__PURE__ */ new Set(), orders = /* @__PURE__ */ new Set();
+  let bytes = 0;
+  for (const item of insertions) {
+    const insertion = record(item, [
+      "contributionRef",
+      "sourceSha256",
+      "renderedText",
+      "renderedSha256",
+      "requestedRole",
+      "requestedDepth",
+      "stableOrder"
+    ], subject);
+    if (!identity(insertion["contributionRef"]) || contributions.has(insertion["contributionRef"]) || !sha(insertion["sourceSha256"]) || !sha(insertion["renderedSha256"]) || typeof insertion["renderedText"] !== "string" || !insertion["renderedText"].trim() || !insertion["renderedText"].isWellFormed() || insertion["renderedText"].length > 65536 || !["system", "user", "assistant"].includes(String(insertion["requestedRole"])) || !integer(insertion["requestedDepth"], 4096) || !integer(insertion["stableOrder"]) || orders.has(insertion["stableOrder"]))
+      fail(subject);
+    contributions.add(insertion["contributionRef"]);
+    orders.add(insertion["stableOrder"]);
+    bytes += new TextEncoder().encode(insertion["renderedText"]).byteLength;
+    if (bytes > 1048576)
+      fail(subject);
+  }
+  const placements = list(row["placements"], 128, subject);
+  if (placements.length !== insertions.length)
+    fail(subject);
+  const placed = /* @__PURE__ */ new Set(), placementIds = /* @__PURE__ */ new Set();
+  for (const item of placements) {
+    const placement = record(item, ["contributionRef", "baseIndex", "protectedPrefixLength", "effectiveDepth", "messageId"], subject);
+    if (!identity(placement["contributionRef"]) || !contributions.has(placement["contributionRef"]) || placed.has(placement["contributionRef"]) || !integer(placement["baseIndex"], messages.length) || placement["baseIndex"] < delta["protectedPrefixLength"] || placement["protectedPrefixLength"] !== delta["protectedPrefixLength"] || placement["effectiveDepth"] !== messages.length - placement["baseIndex"] || !identity(placement["messageId"]) || ids.has(placement["messageId"]) || placementIds.has(placement["messageId"]))
+      fail(subject);
+    placed.add(placement["contributionRef"]);
+    placementIds.add(placement["messageId"]);
+  }
+}
+function validateNativeMessageProjectionV1(value, subject) {
+  const projection = record(value, [
+    "schemaVersion",
+    "encoding",
+    "groups",
+    ...value !== null && typeof value === "object" && Object.hasOwn(value, "textEdits") ? ["textEdits"] : []
+  ], subject);
+  if (projection["schemaVersion"] !== 1 || projection["encoding"] !== "native-request-message-projection-v1")
+    fail(subject);
+  const ids = /* @__PURE__ */ new Set();
+  let bytes = 0;
+  for (const item of list(projection["groups"], 4096, subject)) {
+    const group = record(item, ["targets", "role", "renderedText"], subject);
+    const targets = list(group["targets"], 4096, subject);
+    if (!targets.length || !["system", "user", "assistant"].includes(String(group["role"])) || typeof group["renderedText"] !== "string" || !group["renderedText"].isWellFormed())
+      fail(subject);
+    bytes += new TextEncoder().encode(group["renderedText"]).byteLength;
+    if (bytes > 4194304)
+      fail(subject);
+    for (const value2 of targets) {
+      const target = record(value2, ["id", "messageSha256"], subject);
+      if (!identity(target["id"]) || !sha(target["messageSha256"]) || ids.has(target["id"]))
+        fail(subject);
+      ids.add(target["id"]);
+    }
+  }
+  if (projection["textEdits"] !== void 0)
+    for (const value2 of list(projection["textEdits"], 4096, subject)) {
+      const edit = record(value2, ["target", "blocks"], subject), target = record(edit["target"], ["id", "messageSha256"], subject);
+      if (!identity(target["id"]) || !sha(target["messageSha256"]) || ids.has(target["id"]))
+        fail(subject);
+      ids.add(target["id"]);
+      const indexes = /* @__PURE__ */ new Set();
+      for (const value3 of list(edit["blocks"], 4096, subject)) {
+        const block = record(value3, ["index", "text"], subject);
+        if (!integer(block["index"]) || indexes.has(block["index"]) || typeof block["text"] !== "string" || !block["text"].isWellFormed())
+          fail(subject);
+        indexes.add(block["index"]);
+        bytes += new TextEncoder().encode(block["text"]).byteLength;
+        if (bytes > 4194304)
+          fail(subject);
+      }
+    }
+}
+function validateNativeMaterialFinalTextProjectionV1(value, subject) {
+  const projection = record(value, ["schemaVersion", "encoding", "textOutputs"], subject);
+  if (projection["schemaVersion"] !== 1 || projection["encoding"] !== "native-request-final-text-projection-v1")
+    fail(subject);
+  let priorMessage = -1, priorBlock = -1, bytes = 0;
+  for (const value2 of list(projection["textOutputs"], 131072, subject)) {
+    const output2 = record(value2, ["messageOrdinal", "blockOrdinal", "text"], subject);
+    const message = output2["messageOrdinal"], block = output2["blockOrdinal"];
+    if (!integer(message, 4351) || block !== null && !integer(block, 4095) || typeof output2["text"] !== "string" || !output2["text"].isWellFormed() || message < priorMessage || message === priorMessage && (block === null || priorBlock < 0 || block <= priorBlock))
+      fail(subject);
+    priorMessage = message;
+    priorBlock = block === null ? -1 : block;
+    bytes += new TextEncoder().encode(output2["text"]).byteLength;
+    if (bytes > 16777216)
+      fail(subject);
+  }
+}
+
+// ../../../session/lib/opening-records.js
+var NATIVE_OPENING_RECORD_BOUNDS_V1 = Object.freeze({
+  bytes: 16777216,
+  nodes: 131072,
+  depth: 64,
+  steps: 256,
+  requests: 256,
+  outputs: 256,
+  toolEvents: 4096,
+  instructionBytes: 65536
+});
+var NativeOpeningRecordFailureV1 = class extends Error {
+  code;
+  constructor(code) {
+    super(code);
+    this.code = code;
+    this.name = "NativeOpeningRecordFailureV1";
+  }
+};
+function fail2(code = "OPENING_RECORD_INVALID") {
+  throw new NativeOpeningRecordFailureV1(code);
+}
+var utf8Bytes = (value) => new TextEncoder().encode(value).byteLength;
+function nativeOpeningDataV1(value) {
+  let nodes = 0, bytes = 0;
+  const active = /* @__PURE__ */ new WeakSet();
+  const charge = (size) => {
+    bytes += size;
+    if (bytes > NATIVE_OPENING_RECORD_BOUNDS_V1.bytes)
+      fail2("OPENING_RECORD_BUDGET");
+  };
+  function visit(input, depth) {
+    if (++nodes > NATIVE_OPENING_RECORD_BOUNDS_V1.nodes || depth > NATIVE_OPENING_RECORD_BOUNDS_V1.depth)
+      fail2("OPENING_RECORD_BUDGET");
+    if (input === null || typeof input === "boolean") {
+      charge(5);
+      return input;
+    }
+    if (typeof input === "number") {
+      if (!Number.isFinite(input) || Object.is(input, -0))
+        fail2();
+      charge(32);
+      return input;
+    }
+    if (typeof input === "string") {
+      if (!input.isWellFormed())
+        fail2();
+      charge(utf8Bytes(input) + 2);
+      return input;
+    }
+    if (typeof input !== "object" || active.has(input))
+      return fail2();
+    active.add(input);
+    try {
+      if (Array.isArray(input)) {
+        const keys = Reflect.ownKeys(input);
+        if (keys.length !== input.length + 1)
+          return fail2();
+        const result2 = [];
+        for (let index = 0; index < input.length; index++) {
+          const descriptor = Object.getOwnPropertyDescriptor(input, String(index));
+          if (!descriptor || !Object.hasOwn(descriptor, "value") || !descriptor.enumerable)
+            return fail2();
+          result2.push(visit(descriptor.value, depth + 1));
+        }
+        charge(2);
+        return Object.freeze(result2);
+      }
+      const prototype = Object.getPrototypeOf(input);
+      if (prototype !== Object.prototype && prototype !== null)
+        return fail2();
+      const result = /* @__PURE__ */ Object.create(null);
+      for (const key of Reflect.ownKeys(input)) {
+        if (typeof key !== "string" || key === "__proto__" || key === "constructor" || key === "prototype")
+          return fail2();
+        const descriptor = Object.getOwnPropertyDescriptor(input, key);
+        if (!descriptor || !Object.hasOwn(descriptor, "value") || !descriptor.enumerable)
+          return fail2();
+        charge(utf8Bytes(key) + 3);
+        result[key] = visit(descriptor.value, depth + 1);
+      }
+      charge(2);
+      return Object.freeze(result);
+    } finally {
+      active.delete(input);
+    }
+  }
+  return visit(value, 0);
+}
+function nativeOpeningCanonicalV1(data) {
+  if (Array.isArray(data))
+    return `[${data.map(nativeOpeningCanonicalV1).join(",")}]`;
+  if (data !== null && typeof data === "object")
+    return `{${Object.keys(data).sort().map((key) => `${JSON.stringify(key)}:${nativeOpeningCanonicalV1(data[key])}`).join(",")}}`;
+  return JSON.stringify(data);
+}
+var same = (left, right) => nativeOpeningCanonicalV1(nativeOpeningDataV1(left)) === nativeOpeningCanonicalV1(nativeOpeningDataV1(right));
+var isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+function exact(value, fields) {
+  if (!isObject(value) || Object.keys(value).length !== fields.length || fields.some((key) => !Object.hasOwn(value, key)))
+    fail2();
+}
+var hash = (value) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+var count = (value, positive = false) => typeof value === "number" && Number.isSafeInteger(value) && value >= (positive ? 1 : 0) && !Object.is(value, -0);
+var id = (value) => typeof value === "string" && value.length > 0 && value.length <= 256 && value === value.trim() && !/[\u0000-\u001f\u007f-\u009f]/.test(value);
+function eventRef(value) {
+  exact(value, ["seq", "sha256"]);
+  if (!count(value["seq"]) || !hash(value["sha256"]))
+    fail2();
+}
+function dataRef2(value) {
+  exact(value, ["key", "sha256"]);
+  if (!id(value["key"]) || !hash(value["sha256"]))
+    fail2();
+}
+function identity2(value) {
+  exact(value, ["kind", "sessionId", "operationId", "messageId", "instruction", "instructionSha256", "intentRef"]);
+  if (value["kind"] !== "programmatic-opening" || !id(value["sessionId"]) || !id(value["operationId"]) || !id(value["messageId"]) || typeof value["instruction"] !== "string" || !value["instruction"].trim() || utf8Bytes(value["instruction"]) > NATIVE_OPENING_RECORD_BOUNDS_V1.instructionBytes || !hash(value["instructionSha256"]))
+    fail2();
+  dataRef2(value["intentRef"]);
+}
+function recordShape(value, encoding, fields, hashKey) {
+  const data = nativeOpeningDataV1(value);
+  exact(data, ["schemaVersion", "encoding", ...fields, hashKey]);
+  if (data["schemaVersion"] !== 1 || data["encoding"] !== encoding || !hash(data[hashKey]))
+    fail2();
+  return data;
+}
+function validateNativeOpeningInvocationV1(value) {
+  const data = recordShape(value, "native-programmatic-opening-invocation-v1", ["identity", "expectedTurn", "prefix"], "invocationSha256");
+  identity2(data["identity"]);
+  exact(data["prefix"], ["eventCount", "inheritedEventCount", "sha256"]);
+  if (!count(data["expectedTurn"], true) || !count(data["prefix"]["eventCount"]) || !count(data["prefix"]["inheritedEventCount"]) || data["prefix"]["inheritedEventCount"] > data["prefix"]["eventCount"] || !hash(data["prefix"]["sha256"]))
+    fail2();
+  return data;
+}
+function validateNativeOpeningRequestAttemptV1(value) {
+  const data = recordShape(value, "native-programmatic-opening-request-attempt-v1", ["invocationRef", "turn", "step", "attempt", "assemblySha256", "selectedSha256"], "attemptSha256");
+  eventRef(data["invocationRef"]);
+  if (!count(data["turn"], true) || !count(data["step"], true) || !count(data["attempt"], true) || data["step"] > NATIVE_OPENING_RECORD_BOUNDS_V1.steps || data["attempt"] > NATIVE_OPENING_RECORD_BOUNDS_V1.requests || !hash(data["assemblySha256"]) || !hash(data["selectedSha256"]))
+    fail2();
+  return data;
+}
+function publication(value) {
+  exact(value, ["attemptRef", "materialRef", "headerRef", "configSha256", "requestMessagesSha256", "snapshot", "plan"]);
+  eventRef(value["attemptRef"]);
+  eventRef(value["materialRef"]);
+  eventRef(value["headerRef"]);
+  dataRef2(value["snapshot"]);
+  dataRef2(value["plan"]);
+  if (!hash(value["configSha256"]) || !hash(value["requestMessagesSha256"]) || value["attemptRef"].seq >= value["materialRef"].seq || value["headerRef"].seq >= value["materialRef"].seq)
+    fail2();
+}
+function output(value) {
+  exact(value, ["eventRef", "messageId", "messageSha256", "textEncoding", "textSha256", "step"]);
+  eventRef(value["eventRef"]);
+  if (!id(value["messageId"]) || !hash(value["messageSha256"]) || !count(value["step"], true) || value["textEncoding"] !== "native-model-text-blocks-concat-v1" || !hash(value["textSha256"]))
+    fail2();
+}
+function validateNativeGeneratedOpeningReceiptV1(value) {
+  const data = recordShape(value, "native-generated-opening-receipt-v1", [
+    "production",
+    "invocationRef",
+    "identity",
+    "turn",
+    "turnStartRef",
+    "turnEndRef",
+    "turnSpanSha256",
+    "invocationSpanSha256",
+    "steps",
+    "outputs",
+    "requestedOutput",
+    "terminalOutput",
+    "toolEvents",
+    "flushed"
+  ], "receiptSha256");
+  identity2(data["identity"]);
+  eventRef(data["invocationRef"]);
+  eventRef(data["turnStartRef"]);
+  eventRef(data["turnEndRef"]);
+  if (data["production"] !== "generated-opening" || data["flushed"] !== true || !count(data["turn"], true) || !hash(data["turnSpanSha256"]) || !hash(data["invocationSpanSha256"]) || data["invocationRef"].seq >= data["turnStartRef"].seq || data["turnStartRef"].seq >= data["turnEndRef"].seq || !Array.isArray(data["steps"]) || !data["steps"].length || data["steps"].length > NATIVE_OPENING_RECORD_BOUNDS_V1.steps || !Array.isArray(data["outputs"]) || !data["outputs"].length || data["outputs"].length > NATIVE_OPENING_RECORD_BOUNDS_V1.outputs || !Array.isArray(data["toolEvents"]) || data["toolEvents"].length > NATIVE_OPENING_RECORD_BOUNDS_V1.toolEvents)
+    fail2();
+  let requests = 0, previousStepEnd = data["turnStartRef"].seq;
+  for (const [index, step] of data["steps"].entries()) {
+    exact(step, ["step", "startRef", "endRef", "requests"]);
+    eventRef(step["startRef"]);
+    eventRef(step["endRef"]);
+    if (step["step"] !== index + 1 || step["startRef"].seq <= previousStepEnd || step["endRef"].seq <= step["startRef"].seq || step["endRef"].seq >= data["turnEndRef"].seq || !Array.isArray(step["requests"]) || !step["requests"].length)
+      fail2();
+    let prior = step["startRef"].seq;
+    for (const request of step["requests"]) {
+      publication(request);
+      if (request.attemptRef.seq <= prior || request.materialRef.seq >= step["endRef"].seq)
+        fail2();
+      prior = request.materialRef.seq;
+      if (++requests > NATIVE_OPENING_RECORD_BOUNDS_V1.requests)
+        fail2("OPENING_RECORD_BUDGET");
+    }
+    previousStepEnd = step["endRef"].seq;
+  }
+  let previousOutput = data["turnStartRef"].seq;
+  const ids = /* @__PURE__ */ new Set();
+  for (const value2 of data["outputs"]) {
+    output(value2);
+    if (value2.eventRef.seq <= previousOutput || value2.eventRef.seq >= data["turnEndRef"].seq || ids.has(value2.messageId) || value2.step > data["steps"].length)
+      fail2();
+    ids.add(value2.messageId);
+    previousOutput = value2.eventRef.seq;
+  }
+  output(data["requestedOutput"]);
+  output(data["terminalOutput"]);
+  if (data["requestedOutput"].messageId !== data["identity"].messageId || data["requestedOutput"].step !== 1 || !data["outputs"].some((item) => same(item, data["requestedOutput"])) || !same(data["terminalOutput"], data["outputs"].at(-1)))
+    fail2();
+  let previousTool = data["turnStartRef"].seq;
+  for (const tool of data["toolEvents"]) {
+    exact(tool, ["type", "eventRef"]);
+    eventRef(tool["eventRef"]);
+    if (tool["type"] !== "tool/call" && tool["type"] !== "tool/result" || tool["eventRef"].seq <= previousTool || tool["eventRef"].seq >= data["turnEndRef"].seq)
+      fail2();
+    previousTool = tool["eventRef"].seq;
+  }
+  return data;
+}
+function validateNativeOpeningClosingAckV1(value) {
+  const data = recordShape(value, "native-programmatic-opening-closing-ack-v1", ["invocationRef", "generatedReceiptRef", "receiptSha256", "ownerReceiptSha256"], "ackSha256");
+  eventRef(data["invocationRef"]);
+  eventRef(data["generatedReceiptRef"]);
+  if (!hash(data["receiptSha256"]) || !hash(data["ownerReceiptSha256"]) || data["generatedReceiptRef"].seq <= data["invocationRef"].seq)
+    fail2();
+  return data;
+}
+var NATIVE_OPENING_EVENT_TYPES_V1 = /* @__PURE__ */ new Set([
+  "opening/invocation",
+  "opening/request-attempt",
+  "opening/generated-receipt",
+  "opening/closing-ack"
+]);
+function validateNativeOpeningSessionEventV1(type, data) {
+  switch (type) {
+    case "opening/invocation":
+      validateNativeOpeningInvocationV1(data);
+      return;
+    case "opening/request-attempt":
+      validateNativeOpeningRequestAttemptV1(data);
+      return;
+    case "opening/generated-receipt":
+      validateNativeGeneratedOpeningReceiptV1(data);
+      return;
+    case "opening/closing-ack":
+      validateNativeOpeningClosingAckV1(data);
+      return;
+    default:
+      return fail2();
+  }
+}
+
+// ../../../session/lib/surface.js
 var SURFACE_EVENT_TYPES = /* @__PURE__ */ new Set([
   "system/message",
   "developer/message",
@@ -178,8 +624,37 @@ function isSurfaceEligibleType(type) {
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+var PROGRAMMATIC_TURN_IDENTITY_FIELDS = /* @__PURE__ */ new Set([
+  "schemaVersion",
+  "operationId",
+  "messageId",
+  "producer",
+  "origin",
+  "textSha256"
+]);
+function validateProgrammaticTurnIdentity(value, subject) {
+  if (!isRecord(value) || value["schemaVersion"] !== 1 || Object.keys(value).some((key) => !PROGRAMMATIC_TURN_IDENTITY_FIELDS.has(key))) {
+    throw new Error(`${subject} has invalid programmatic identity`);
+  }
+  for (const field of ["operationId", "messageId", "producer", "origin"]) {
+    const identity3 = value[field];
+    if (typeof identity3 !== "string" || identity3.length < 1 || identity3.length > 256 || identity3 !== identity3.trim() || /[\u0000-\u001f\u007f-\u009f]/.test(identity3)) {
+      throw new Error(`${subject} has invalid programmatic identity ${field}`);
+    }
+  }
+  if (typeof value["textSha256"] !== "string" || !/^[a-f0-9]{64}$/.test(value["textSha256"])) {
+    throw new Error(`${subject} has invalid programmatic identity textSha256`);
+  }
+}
 function validateSessionEventData(event, subject) {
   const data = event.data;
+  if (event.type === "request/material")
+    validateNativeRequestMaterialDataV1(data, subject);
+  if (NATIVE_OPENING_EVENT_TYPES_V1.has(event.type))
+    validateNativeOpeningSessionEventV1(event.type, data);
+  if (event.type === "turn/start" && isRecord(data) && Object.hasOwn(data, "programmatic")) {
+    validateProgrammaticTurnIdentity(data["programmatic"], subject);
+  }
   if (SURFACE_EVENT_TYPES.has(event.type) && isRecord(data)) {
     const message = event.type === "user/message" ? data : data["message"];
     if (isRecord(message)) {
@@ -304,6 +779,12 @@ function assertSourceEventReferences(event, shadowedSeqs) {
   }
 }
 function validateSurfaceMetadata(event) {
+  if (event.type === "request/material") {
+    validateNativeRequestMaterialDataV1(event.data, `request/material at seq ${event.seq}`);
+    if (event.seq !== event.data.base.boundarySeq + 1 || event.ignorable !== void 0 || event.surfaceOp !== void 0 || event.sourceEventSeqs !== void 0) {
+      throw Error(`request/material at seq ${event.seq} has invalid required envelope`);
+    }
+  }
   const op = surfaceOpOf(event);
   if (op !== void 0 && op !== "append" && (op.startSeq >= event.seq || op.endSeq >= event.seq)) {
     throw new Error(`surface replace at seq ${event.seq}: startSeq and endSeq must reference earlier events`);
@@ -414,8 +895,8 @@ var SessionEventStream = class extends import_client.RemoteJournalStream {
       ...this.repairRequest(request)
     }, signal)) {
       if (frame.type === "snapshot") {
-        for (const record of frame.records)
-          assertSessionWireEvent(record.event);
+        for (const record2 of frame.records)
+          assertSessionWireEvent(record2.event);
         if (frame.assistantStream === void 0) {
           throw new RemoteError("gateway/internal", "session assistant stream omitted its opted-in opening baseline", {});
         }
@@ -450,8 +931,8 @@ var SessionEventStream = class extends import_client.RemoteJournalStream {
     const result = await this.remote.session.page({ address: this.address, throughSeq, ...request }, signal);
     if (!result.ok)
       throw result.error;
-    for (const record of result.value.records)
-      assertSessionWireEvent(record.event);
+    for (const record2 of result.value.records)
+      assertSessionWireEvent(record2.event);
     return result.value;
   }
   /** @inheritdoc */
@@ -480,12 +961,12 @@ function agentScope() {
 }
 function createScope(ctx, key) {
   const fiber = ctx.plugin(agentScope);
-  const identity = { sessionId: key };
+  const identity3 = { sessionId: key };
   const scoped = fiber.ctx.extend({
-    [kScope]: identity,
+    [kScope]: identity3,
     [import_cordis2.Context.filter](listenerCtx) {
       const tag = scopeIdentityOf(listenerCtx);
-      return tag === void 0 || tag === identity;
+      return tag === void 0 || tag === identity3;
     }
   });
   return {
@@ -718,9 +1199,9 @@ function flattenLineage(summaries) {
   const roots = [];
   for (const s of summaries) {
     if (s.parentSessionId !== void 0 && byId.has(s.parentSessionId)) {
-      const list = children.get(s.parentSessionId) ?? [];
-      list.push(s);
-      children.set(s.parentSessionId, list);
+      const list2 = children.get(s.parentSessionId) ?? [];
+      list2.push(s);
+      children.set(s.parentSessionId, list2);
     } else {
       roots.push(s);
     }
@@ -1125,7 +1606,7 @@ function resolvedClientTimeZone() {
   return timeZone;
 }
 
-// ../../../../build-tools/node_modules/@deepseek-ai/dsh-llm/lib/types/assistant-stream.js
+// ../../../llm/lib/assistant-stream.js
 function safeTime(value) {
   if (!Number.isSafeInteger(value))
     throw new TypeError(`Assistant stream time must be a safe integer, got ${String(value)}`);
@@ -1146,27 +1627,27 @@ function snapshotChunk(chunk) {
 function expandAssistantStream(stream) {
   const chunks = [];
   for (const candidate of stream) {
-    const record = validateRecord(candidate);
-    if (record.type === "chunk") {
-      chunks.push({ time: record.time, chunk: record.chunk });
+    const record2 = validateRecord(candidate);
+    if (record2.type === "chunk") {
+      chunks.push({ time: record2.time, chunk: record2.chunk });
       continue;
     }
-    const members = record.type === "tool-call-chunks" ? record.args : record.texts;
-    let time = record.time0;
+    const members = record2.type === "tool-call-chunks" ? record2.args : record2.texts;
+    let time = record2.time0;
     for (let index = 0; index < members.length; index += 1) {
       if (index > 0)
-        time += record.dt[index - 1];
+        time += record2.dt[index - 1];
       let chunk;
-      if (record.type === "text-chunks") {
-        chunk = { type: "text-delta", index: record.index, text: members[index] };
-      } else if (record.type === "reasoning-chunks") {
-        chunk = { type: "reasoning-delta", index: record.index, text: members[index] };
+      if (record2.type === "text-chunks") {
+        chunk = { type: "text-delta", index: record2.index, text: members[index] };
+      } else if (record2.type === "reasoning-chunks") {
+        chunk = { type: "reasoning-delta", index: record2.index, text: members[index] };
       } else {
         chunk = {
           type: "tool-call-delta",
-          index: record.index,
-          id: record.id,
-          ...Object.hasOwn(record, "name") ? { name: record.name } : {},
+          index: record2.index,
+          id: record2.id,
+          ...Object.hasOwn(record2, "name") ? { name: record2.name } : {},
           argumentsDelta: members[index]
         };
       }
@@ -1179,61 +1660,61 @@ function validateRecord(value) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new TypeError("Assistant stream record must be an object");
   }
-  const record = value;
-  switch (record.type) {
+  const record2 = value;
+  switch (record2.type) {
     case "text-chunks":
     case "reasoning-chunks": {
-      exactKeys(record, ["type", "time0", "index", "dt", "texts"], record.type);
-      const texts = stringArray(record.texts, `${record.type} texts`);
+      exactKeys(record2, ["type", "time0", "index", "dt", "texts"], record2.type);
+      const texts = stringArray(record2.texts, `${record2.type} texts`);
       if (texts.length === 0)
-        throw new TypeError(`${record.type} texts must be non-empty`);
-      validateRun(record, texts.length, record.type);
-      return record;
+        throw new TypeError(`${record2.type} texts must be non-empty`);
+      validateRun(record2, texts.length, record2.type);
+      return record2;
     }
     case "tool-call-chunks": {
-      const keys = Object.hasOwn(record, "name") ? ["type", "time0", "index", "dt", "id", "name", "args"] : ["type", "time0", "index", "dt", "id", "args"];
-      exactKeys(record, keys, record.type);
-      const args = stringArray(record.args, "tool-call-chunks args");
+      const keys = Object.hasOwn(record2, "name") ? ["type", "time0", "index", "dt", "id", "name", "args"] : ["type", "time0", "index", "dt", "id", "args"];
+      exactKeys(record2, keys, record2.type);
+      const args = stringArray(record2.args, "tool-call-chunks args");
       if (args.length === 0)
         throw new TypeError("tool-call-chunks args must be non-empty");
-      if (typeof record.id !== "string" || record.id.length === 0) {
+      if (typeof record2.id !== "string" || record2.id.length === 0) {
         throw new TypeError("tool-call-chunks id must be a non-empty string");
       }
-      if (record.name !== void 0 && (typeof record.name !== "string" || record.name.length === 0)) {
+      if (record2.name !== void 0 && (typeof record2.name !== "string" || record2.name.length === 0)) {
         throw new TypeError("tool-call-chunks name must be a non-empty string");
       }
-      validateRun(record, args.length, record.type);
-      return record;
+      validateRun(record2, args.length, record2.type);
+      return record2;
     }
     case "chunk": {
-      exactKeys(record, ["type", "time", "chunk"], "chunk");
-      const time = safeTime(record.time);
-      if (typeof record.chunk !== "object" || record.chunk === null || Array.isArray(record.chunk)) {
+      exactKeys(record2, ["type", "time", "chunk"], "chunk");
+      const time = safeTime(record2.time);
+      if (typeof record2.chunk !== "object" || record2.chunk === null || Array.isArray(record2.chunk)) {
         throw new TypeError("Assistant stream raw chunk must be a lossless JSON object");
       }
       let chunk;
       try {
-        chunk = snapshotChunk(record.chunk);
+        chunk = snapshotChunk(record2.chunk);
       } catch (error) {
         throw new TypeError("Assistant stream raw chunk must be a lossless JSON object", { cause: error });
       }
       return deepFreeze({ type: "chunk", time, chunk });
     }
     default:
-      throw new TypeError(`Unsupported Assistant stream record ${JSON.stringify(record.type)}`);
+      throw new TypeError(`Unsupported Assistant stream record ${JSON.stringify(record2.type)}`);
   }
 }
-function validateRun(record, members, label) {
-  safeTime(record.time0);
-  safeIndex(record.index, label);
-  if (!Array.isArray(record.dt) || record.dt.some((value) => !Number.isSafeInteger(value))) {
+function validateRun(record2, members, label) {
+  safeTime(record2.time0);
+  safeIndex(record2.index, label);
+  if (!Array.isArray(record2.dt) || record2.dt.some((value) => !Number.isSafeInteger(value))) {
     throw new TypeError(`${label} dt must contain safe integers`);
   }
-  if (record.dt.length !== members - 1) {
+  if (record2.dt.length !== members - 1) {
     throw new TypeError(`${label} dt length must be one less than its members`);
   }
-  let time = record.time0;
-  for (const gap of record.dt) {
+  let time = record2.time0;
+  for (const gap of record2.dt) {
     time += gap;
     if (!Number.isSafeInteger(time))
       throw new TypeError(`${label} member times must stay safe integers`);
@@ -1245,8 +1726,8 @@ function stringArray(value, label) {
   }
   return value;
 }
-function exactKeys(record, keys, label) {
-  if (Object.keys(record).length !== keys.length || !keys.every((key) => Object.hasOwn(record, key))) {
+function exactKeys(record2, keys, label) {
+  if (Object.keys(record2).length !== keys.length || !keys.every((key) => Object.hasOwn(record2, key))) {
     throw new TypeError(`${label} Assistant stream record must contain exactly ${keys.join(", ")}`);
   }
 }
@@ -1831,10 +2312,10 @@ var Session = class {
    * @param parentAvailable - latest exact-parent availability hint, or undefined before a catalog read.
    */
   configureSubagent(address, parentAvailable) {
-    const same = this.address?.parentSessionId === address?.parentSessionId && this.address?.childSessionId === address?.childSessionId && this.address?.mode === address?.mode;
+    const same2 = this.address?.parentSessionId === address?.parentSessionId && this.address?.childSessionId === address?.childSessionId && this.address?.mode === address?.mode;
     this.address = address;
     this.parentAvailable = parentAvailable;
-    if (!same && this.openState !== "cold")
+    if (!same2 && this.openState !== "cold")
       void this.resync();
     else
       this.notifier.markDirty();
@@ -2169,13 +2650,13 @@ var Session = class {
     this.notifier.markDirty();
   }
   buildSnapshot() {
-    const identity = this.projections.values().subagent;
+    const identity3 = this.projections.values().subagent;
     return {
       sessionId: this.sessionId,
       pendingSubmissions: this.pendingSubmissions,
       running: this.running,
       subagent: this.address === void 0 ? null : {
-        address: this.address.mode === "unknown" && identity != null ? { ...this.address, mode: identity.mode } : this.address,
+        address: this.address.mode === "unknown" && identity3 != null ? { ...this.address, mode: identity3.mode } : this.address,
         ...this.parentAvailable === void 0 ? {} : { parentAvailable: this.parentAvailable }
       },
       removed: this.removed,
@@ -2271,15 +2752,15 @@ var SessionManager = class {
    * @returns the resolved identity with its explicit or catalog-derived history route installed.
    */
   resolveTarget(target) {
-    const id = typeof target === "string" ? target : target.childSessionId;
-    const address = typeof target === "string" ? this.subagentAddress(id) : target;
-    if (typeof target === "string" && !this.sessions.has(id) && !this.summaries.some((summary) => summary.sessionId === id) && address === void 0) {
-      throw new Error(`sessions.retain: unknown session ${id}`);
+    const id2 = typeof target === "string" ? target : target.childSessionId;
+    const address = typeof target === "string" ? this.subagentAddress(id2) : target;
+    if (typeof target === "string" && !this.sessions.has(id2) && !this.summaries.some((summary) => summary.sessionId === id2) && address === void 0) {
+      throw new Error(`sessions.retain: unknown session ${id2}`);
     }
     if (address !== void 0)
-      this.addresses.set(id, address);
-    this.sessions.get(id)?.configureSubagent(address, address === void 0 ? void 0 : this.agentAvailable(address.parentSessionId));
-    return id;
+      this.addresses.set(id2, address);
+    this.sessions.get(id2)?.configureSubagent(address, address === void 0 ? void 0 : this.agentAvailable(address.parentSessionId));
+    return id2;
   }
   /**
    * Resolve an address for breadcrumb navigation without retaining transport authority.
@@ -2831,8 +3312,8 @@ var SessionManager = class {
     this.listInflight = null;
     void this.refreshList();
     const parents = new Set(this.projectionLoads.keys());
-    for (const id of this.sessions.keys()) {
-      const address = this.addresses.get(id);
+    for (const id2 of this.sessions.keys()) {
+      const address = this.addresses.get(id2);
       if (address !== void 0)
         parents.add(address.parentSessionId);
     }
@@ -2867,9 +3348,9 @@ var SessionManager = class {
       return entry;
     });
     const itemIds = new Set(items.map((entry) => entry.sessionId));
-    for (const id of this.entryCache.keys()) {
-      if (!itemIds.has(id))
-        this.entryCache.delete(id);
+    for (const id2 of this.entryCache.keys()) {
+      if (!itemIds.has(id2))
+        this.entryCache.delete(id2);
     }
     const sameOrder = items.length === this.itemsCache.length && items.every((e, i) => e === this.itemsCache[i]);
     if (!sameOrder)
@@ -2953,7 +3434,7 @@ var SessionForkError = class extends Error {
     this.sourceSessionId = sourceSessionId;
   }
 };
-function displayTitleOf(title, cwd, id) {
+function displayTitleOf(title, cwd, id2) {
   if (title !== void 0)
     return title;
   if (cwd !== void 0 && cwd !== "") {
@@ -2961,7 +3442,7 @@ function displayTitleOf(title, cwd, id) {
     if (base !== "")
       return base;
   }
-  return id;
+  return id2;
 }
 function increasedForkTitle(title) {
   const ascii = /^(.*?)\((\d+)\)$/u.exec(title);
@@ -3002,9 +3483,9 @@ var ClientSessionReference = class {
   released = new AbortController();
   readiness = Promise.withResolvers();
   ready = this.readiness.promise;
-  constructor(sessionId, record, releaseReference) {
+  constructor(sessionId, record2, releaseReference) {
     this.sessionId = sessionId;
-    this.record = record;
+    this.record = record2;
     this.releaseReference = releaseReference;
     void this.ready.catch(() => {
     });
@@ -3079,14 +3560,14 @@ var ClientSessions = class {
       disposeManagerProjection();
       const scopes = [...this.scopes];
       this.scopes.clear();
-      for (const [, record] of scopes) {
-        record.live = false;
-        record.session.unbindScope();
+      for (const [, record2] of scopes) {
+        record2.live = false;
+        record2.session.unbindScope();
       }
       const managerDisposal = this.manager.dispose();
-      for (const [id, record] of scopes) {
-        this.startScopeDrop(id, record);
-        this.publishRetention(id);
+      for (const [id2, record2] of scopes) {
+        this.startScopeDrop(id2, record2);
+        this.publishRetention(id2);
       }
       await this.drainScopeDrops();
       await managerDisposal;
@@ -3098,10 +3579,10 @@ var ClientSessions = class {
     signal?.throwIfAborted();
     if (this.closed)
       throw new Error("Session Controller is disposed");
-    const id = this.manager.resolveTarget(target);
-    const reference = this.retainScope(id, source);
+    const id2 = this.manager.resolveTarget(target);
+    const reference = this.retainScope(id2, source);
     try {
-      reference.attachOpening(this.manager.get(id).open(), signal);
+      reference.attachOpening(this.manager.get(id2).open(), signal);
       return reference;
     } catch (error) {
       reference.release();
@@ -3117,15 +3598,15 @@ var ClientSessions = class {
       reference.release();
     }
   }
-  retainInfo(id) {
-    let observer = this.retainObservers.get(id);
+  retainInfo(id2) {
+    let observer = this.retainObservers.get(id2);
     if (observer === void 0) {
       const listeners = /* @__PURE__ */ new Set();
       observer = {
         listeners,
-        published: this.retentionSnapshot(id),
+        published: this.retentionSnapshot(id2),
         source: {
-          getSnapshot: () => this.retentionSnapshot(id),
+          getSnapshot: () => this.retentionSnapshot(id2),
           subscribe: (listener) => {
             listeners.add(listener);
             return () => {
@@ -3134,7 +3615,7 @@ var ClientSessions = class {
           }
         }
       };
-      this.retainObservers.set(id, observer);
+      this.retainObservers.set(id2, observer);
     }
     return observer.source;
   }
@@ -3144,8 +3625,8 @@ var ClientSessions = class {
    * @param id - possible addressed child id.
    * @returns A retained or loaded-catalog address, without retaining a new selection or scope.
    */
-  subagentAddress(id) {
-    return this.manager.subagentAddress(id);
+  subagentAddress(id2) {
+    return this.manager.subagentAddress(id2);
   }
   /**
    * Load all Session projections once per connection; retry an unsuccessful initial read.
@@ -3266,18 +3747,18 @@ var ClientSessions = class {
    * @param id - session id (the agent identity — 1:1 same axis).
    * @returns the scoped Context, or undefined without a retained generation.
    */
-  scope(id) {
-    return this.scopes.get(id)?.ctx;
+  scope(id2) {
+    return this.scopes.get(id2)?.ctx;
   }
   /**
    * Retain a validated Gateway identity synchronously, without history or catalog I/O.
    * @param id - Host-projected Session identity, possibly not yet catalogued.
    * @returns a Gateway-source reference owned by the invocation.
    */
-  retainAgentScope(id) {
+  retainAgentScope(id2) {
     if (this.closed)
       throw new Error("Session Controller is disposed");
-    return this.retainScope(id, "gateway");
+    return this.retainScope(id2, "gateway");
   }
   /**
    * Read the Agent scope tag off a context. Service-method boundary: fetch
@@ -3300,81 +3781,81 @@ var ClientSessions = class {
    * @returns the matching live Session, or undefined for an untagged or ended generation.
    */
   sessionOf(ctx) {
-    const id = scopeOf(ctx);
-    if (id === void 0)
+    const id2 = scopeOf(ctx);
+    if (id2 === void 0)
       return void 0;
-    const record = this.scopes.get(id);
-    return record !== void 0 && scopeIdentityOf(record.ctx) === scopeIdentityOf(ctx) ? record.binding.session : void 0;
+    const record2 = this.scopes.get(id2);
+    return record2 !== void 0 && scopeIdentityOf(record2.ctx) === scopeIdentityOf(ctx) ? record2.binding.session : void 0;
   }
   /**
    * Borrow an already-retained binding without extending its lifetime.
    * @param id - Session identity.
    * @returns the live binding, or undefined without a retained generation.
    */
-  binding(id) {
-    return this.scopes.get(id)?.binding;
+  binding(id2) {
+    return this.scopes.get(id2)?.binding;
   }
-  retainScope(id, source) {
-    const record = this.scopes.get(id) ?? this.materializeScope(id);
-    const previous = record.retention;
-    record.retention = Object.freeze({
+  retainScope(id2, source) {
+    const record2 = this.scopes.get(id2) ?? this.materializeScope(id2);
+    const previous = record2.retention;
+    record2.retention = Object.freeze({
       referenceCount: previous.referenceCount + 1,
       retainedBy: freezeRetainedBy({ ...previous.retainedBy, [source]: (previous.retainedBy[source] ?? 0) + 1 })
     });
-    const reference = new ClientSessionReference(id, record, () => {
-      if (!record.live)
+    const reference = new ClientSessionReference(id2, record2, () => {
+      if (!record2.live)
         return;
-      const count = record.retention.referenceCount - 1;
-      const { [source]: sourceCount = 0, ...otherSources } = record.retention.retainedBy;
+      const count2 = record2.retention.referenceCount - 1;
+      const { [source]: sourceCount = 0, ...otherSources } = record2.retention.retainedBy;
       const retainedBy = sourceCount > 1 ? { ...otherSources, [source]: sourceCount - 1 } : otherSources;
-      record.retention = count === 0 ? EMPTY_RETAIN_INFO : Object.freeze({ referenceCount: count, retainedBy: freezeRetainedBy(retainedBy) });
-      if (count === 0)
-        this.retireScope(id, record);
+      record2.retention = count2 === 0 ? EMPTY_RETAIN_INFO : Object.freeze({ referenceCount: count2, retainedBy: freezeRetainedBy(retainedBy) });
+      if (count2 === 0)
+        this.retireScope(id2, record2);
       else
-        this.publishRetention(id);
+        this.publishRetention(id2);
     });
-    if (this.list.getSnapshot().byId[id] === void 0 && this.manager.subagentAddress(id) !== void 0) {
+    if (this.list.getSnapshot().byId[id2] === void 0 && this.manager.subagentAddress(id2) !== void 0) {
       this.projectList();
     }
-    this.publishRetention(id);
+    this.publishRetention(id2);
     return reference;
   }
-  retentionSnapshot(id) {
-    return this.scopes.get(id)?.retention ?? EMPTY_RETAIN_INFO;
+  retentionSnapshot(id2) {
+    return this.scopes.get(id2)?.retention ?? EMPTY_RETAIN_INFO;
   }
-  publishRetention(id) {
+  publishRetention(id2) {
     const state = this.list.getSnapshot();
-    const row = state.byId[id];
-    const retainedBy = this.retentionSnapshot(id).retainedBy;
+    const row = state.byId[id2];
+    const retainedBy = this.retentionSnapshot(id2).retainedBy;
     if (row !== void 0 && row.retainedBy !== retainedBy) {
-      this.list.set({ ...state, byId: { ...state.byId, [id]: { ...row, retainedBy } } });
+      this.list.set({ ...state, byId: { ...state.byId, [id2]: { ...row, retainedBy } } });
     }
-    const observer = this.retainObservers.get(id);
-    const snapshot = this.retentionSnapshot(id);
+    const observer = this.retainObservers.get(id2);
+    const snapshot = this.retentionSnapshot(id2);
     if (observer === void 0 || observer.published === snapshot)
       return;
     observer.published = snapshot;
     (0, import_dsh_client_store3.notifySubscribers)(observer.listeners, "[session-controller] reference sources");
   }
-  retireScope(id, record, disposeFiber = true) {
-    if (!record.live)
+  retireScope(id2, record2, disposeFiber = true) {
+    if (!record2.live)
       return;
-    record.live = false;
-    if (this.scopes.get(id) === record)
-      this.scopes.delete(id);
-    record.session.unbindScope();
-    const sessionDisposal = this.manager.drop(id, record.session);
+    record2.live = false;
+    if (this.scopes.get(id2) === record2)
+      this.scopes.delete(id2);
+    record2.session.unbindScope();
+    const sessionDisposal = this.manager.drop(id2, record2.session);
     this.projectList();
-    this.publishRetention(id);
-    this.startScopeDrop(id, record, disposeFiber, sessionDisposal);
+    this.publishRetention(id2);
+    this.startScopeDrop(id2, record2, disposeFiber, sessionDisposal);
   }
   /** Materialize one scope after its caller establishes that the id may be addressed. */
-  materializeScope(id) {
-    const { fiber, ctx } = createScope(this.rootCtx, id);
-    const session = this.manager.get(id);
+  materializeScope(id2) {
+    const { fiber, ctx } = createScope(this.rootCtx, id2);
+    const session = this.manager.get(id2);
     session.bindScope(ctx);
-    const binding = { sessionId: id, session, eventSource: session.eventSource, ctx };
-    const record = {
+    const binding = { sessionId: id2, session, eventSource: session.eventSource, ctx };
+    const record2 = {
       fiber,
       ctx,
       binding,
@@ -3382,11 +3863,11 @@ var ClientSessions = class {
       retention: EMPTY_RETAIN_INFO,
       live: true
     };
-    this.scopes.set(id, record);
+    this.scopes.set(id2, record2);
     ctx.effect(() => () => {
-      this.retireScope(id, record, false);
+      this.retireScope(id2, record2, false);
     }, "session-controller: exact generation");
-    return record;
+    return record2;
   }
   /** Project the manager's list snapshot into the store (title derivation is display-only). */
   projectList() {
@@ -3440,21 +3921,21 @@ var ClientSessions = class {
         }
       }
     }
-    for (const [id, record] of this.scopes) {
-      if (byId[id] !== void 0)
+    for (const [id2, record2] of this.scopes) {
+      if (byId[id2] !== void 0)
         continue;
-      const address = this.manager.subagentAddress(id);
+      const address = this.manager.subagentAddress(id2);
       if (address === void 0)
         continue;
-      const previous = previousById[id];
-      const snapshot = record.session.getSnapshot();
-      const projectionValues = this.manager.projectionValues(id);
+      const previous = previousById[id2];
+      const snapshot = record2.session.getSnapshot();
+      const projectionValues = this.manager.projectionValues(id2);
       const projectedTitle = projectionValues?.title;
       const title = typeof projectedTitle === "string" && projectedTitle !== "" ? projectedTitle : previous?.title;
-      byId[id] = {
-        ...previous ?? { id, displayTitle: id, updatedAt: 0 },
+      byId[id2] = {
+        ...previous ?? { id: id2, displayTitle: id2, updatedAt: 0 },
         running: snapshot.running,
-        retainedBy: record.retention.retainedBy,
+        retainedBy: record2.retention.retainedBy,
         blank: snapshot.blank,
         parentId: address.parentSessionId,
         origin: "subagent",
@@ -3464,8 +3945,8 @@ var ClientSessions = class {
     }
     this.list.set({ ids, byId, phase, projectionsBySession });
   }
-  startScopeDrop(id, record, disposeFiber = true, sessionDisposal = this.manager.drop(id, record.session)) {
-    const drop = this.dropScope(record, disposeFiber, sessionDisposal);
+  startScopeDrop(id2, record2, disposeFiber = true, sessionDisposal = this.manager.drop(id2, record2.session)) {
+    const drop = this.dropScope(record2, disposeFiber, sessionDisposal);
     this.scopeDrops.add(drop);
     void drop.then(() => {
       this.scopeDrops.delete(drop);
@@ -3479,8 +3960,8 @@ var ClientSessions = class {
     }
   }
   /** Await the already-withdrawn Session and scoped cleanup to quiescence. */
-  async dropScope(record, disposeFiber, sessionDisposal) {
-    await Promise.allSettled([sessionDisposal, ...disposeFiber ? [record.fiber.dispose()] : []]);
+  async dropScope(record2, disposeFiber, sessionDisposal) {
+    await Promise.allSettled([sessionDisposal, ...disposeFiber ? [record2.fiber.dispose()] : []]);
   }
 };
 

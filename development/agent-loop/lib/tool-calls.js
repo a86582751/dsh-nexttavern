@@ -11,7 +11,7 @@
  * events without fabricating results.
  * @module dsh-agent-loop/tool-calls
  */
-import { createToolResultMessage } from '@deepseek-ai/dsh-llm';
+import { createToolResultMessage } from 'dsh-nexttavern-native-llm';
 import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER } from '@deepseek-ai/dsh-tools';
 import { assertNever } from '@deepseek-ai/dsh-util-values';
 /**

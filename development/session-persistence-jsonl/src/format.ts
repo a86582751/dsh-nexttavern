@@ -12,22 +12,23 @@ import { isAbsolute, join } from 'node:path'
 import {
   SESSION_FORMAT_VERSION,
   SessionLogOffset,
-} from '@deepseek-ai/dsh-session'
+} from 'dsh-nexttavern-native-session'
 import type {
   SessionEvent,
   SessionHeader,
   SessionId,
   SessionLogOffset as SessionLogOffsetType,
-} from '@deepseek-ai/dsh-session'
+} from 'dsh-nexttavern-native-session'
 import { parseSessionFormatLogFilename, sessionFormatLogFilename, SessionFormatUnsupportedMigrationError } from '@deepseek-ai/dsh-session-format'
 import type { SessionFormatEvent } from '@deepseek-ai/dsh-session-format'
 import type { SessionFormatRecovery, SessionFormatRestore } from '@deepseek-ai/dsh-session-format'
 import { sessionFormatCatalog, knownSessionEventTypes } from 'dsh-nexttavern-session-format/catalog'
-import { assertV4RowAdmission, assertReleasedV4Relationships } from '@deepseek-ai/dsh-session-format-v3-to-v4'
+import { assertV4RowAdmission } from '@deepseek-ai/dsh-session-format-v3-to-v4'
 import {
   SessionFormatUnsupportedError,
   sessionFormatVersionRefusal,
   type SessionStorageMetadata,
+  createNativeV4RelationshipValidator,
 } from 'dsh-nexttavern-session-format/storage-contract'
 
 /** Physical encoding selected for JSONL session artifacts. */
@@ -137,7 +138,7 @@ export function toHeaderLine(
  * @param line - the shape-checked first line of a log (see the `isHeaderLine` guard).
  * @returns logical Session metadata paired with the exact inherited prefix length.
  */
-function fromHeaderLine(line: HeaderLine): SessionStorageMetadata {
+export function fromHeaderLine(line: HeaderLine): SessionStorageMetadata {
   return {
     meta: {
       version: SESSION_FORMAT_VERSION,
@@ -327,6 +328,7 @@ interface SessionLogScan {
   inheritedEventCount: SessionLogOffsetType
   events: SessionEvent[]
   committedBytes: number
+  relationships:ReturnType<typeof createNativeV4RelationshipValidator>
 }
 
 /**
@@ -464,12 +466,14 @@ export class SessionLogScanner {
   finish(): SessionLogScan {
     this.finished = true
     const artifact = this.restore.finish()
-    assertReleasedV4Relationships(artifact, knownSessionEventTypes)
+    const relationships=createNativeV4RelationshipValidator(artifact.header,artifact.inheritedEventCount,knownSessionEventTypes)
+    relationships.verify({length:artifact.events.length,at:seq=>artifact.events[seq]})
     return {
       meta: this.meta,
       inheritedEventCount: SessionLogOffset(artifact.inheritedEventCount),
       events: artifact.events as unknown as SessionEvent[],
       committedBytes: this.committedBytes,
+      relationships,
     }
   }
 

@@ -166,6 +166,16 @@ export type ContentBlockType = keyof ContentBlockMap
 /** Any known content block, derived from {@link ContentBlockMap}; switch on `type` and fall through unknowns (merge-extensible). */
 export type ContentBlock = ContentBlockMap[ContentBlockType]
 
+/** Source-owned raw/effective result persisted with a message or text edit.
+ * The producer owns the bounded receipt and effective-content digest. */
+export interface MessageSourceMaterialV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-message-source-material-v1'
+  readonly rawSource:readonly ContentBlock[]
+  readonly effectiveContentSha256:string
+  readonly producerReceipt:Readonly<Record<string,unknown>>
+}
+
 /** Durable story projection facts. Raw stream and replay remain unchanged;
  * this plan grants no live owner or callback access. */
 export type NativeStoryResponseOperationV1 =
@@ -182,6 +192,23 @@ export interface NativeStoryResponseMaterialV1 {
   readonly canonicalOrigins:readonly (number|null)[]
   readonly plan:readonly NativeStoryResponseOperationV1[]
 }
+export interface NativeStoryResponseFinalizationV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-story-response-finalization-v1'
+  readonly requestMaterialRef:{readonly seq:number;readonly sha256:string}
+  readonly turn:number
+  readonly step:number
+  readonly inputTextSha256:string
+  readonly outputTextSha256:string
+  /** Opaque producer DATA, never permission to execute or write. */
+  readonly producerReceipt?:Readonly<Record<string,unknown>>
+}
+export interface NativeStoryResponseMaterialV2 extends Omit<NativeStoryResponseMaterialV1,'schemaVersion'|'encoding'> {
+  readonly schemaVersion:2
+  readonly encoding:'native-story-response-material-v2'
+  readonly finalization:NativeStoryResponseFinalizationV1
+}
+export type NativeStoryResponseMaterial=NativeStoryResponseMaterialV1|NativeStoryResponseMaterialV2
 
 /**
  * Why a model response stopped.
@@ -552,10 +579,10 @@ export interface RequestMessageProjectionV1 {
   readonly materialInputSha256:string
   /** Exact selected originals retain opaque provider metadata for the adapter
    * to keep signed blocks or refuse a text edit it cannot serialize. */
-  readonly originalMessages:readonly Message[]
+  readonly originalMessages:readonly (Message|RequestMessageTextProjectionV2)[]
 }
 /** Explicit request-only edit preserving the other blocks and original source. */
-export type RequestProjectedMessageV1=Message&{readonly requestProjection:RequestMessageProjectionV1}
+export type RequestProjectedMessageV1=(Message|RequestMessageTextProjectionV2)&{readonly requestProjection:RequestMessageProjectionV1}
 /** Request-only identity: this is never a durable player input or assistant
  * output. Separate arms preserve role narrowing in adapter conversion. */
 export type RequestMaterialMessageV1 =

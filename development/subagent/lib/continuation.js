@@ -67,8 +67,8 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
 });
 import { randomUUID } from 'node:crypto';
 import { brandString } from '@deepseek-ai/dsh-brand';
-import { ReasoningEffortId, contentHasImage, createUserMessage } from '@deepseek-ai/dsh-llm';
-import { SessionLogOffset } from '@deepseek-ai/dsh-session';
+import { ReasoningEffortId, contentHasImage, createUserMessage } from 'dsh-nexttavern-native-llm';
+import { SessionLogOffset } from 'dsh-nexttavern-native-session';
 import { childSessionMeta, captureDelegatedPolicyOverrides, resolveChildAgentOptions, resolveChildDepth, } from "./child-agent.js";
 import { ContinuableActivationRegistry, } from "./continuation-activation.js";
 import { createAgentMessage, withContinuableReturnGuidance, } from "./continuation-messages.js";

@@ -1,4 +1,4 @@
-import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
+import type { SessionEvent } from 'dsh-nexttavern-native-session/types'
 import type {} from '@deepseek-ai/dsh-tools/types'
 import type {
   ConversationNode, RunningToolCall, ToolCallBlock, ToolResultNode,

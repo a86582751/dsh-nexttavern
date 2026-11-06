@@ -5,7 +5,7 @@
  * classification across replacements without retaining historical messages.
  */
 import { z } from 'zod';
-import { canonicalHeader } from '@deepseek-ai/dsh-session';
+import { canonicalHeader } from 'dsh-nexttavern-native-session';
 import { estimateToolsTokens } from './estimate.js';
 import { commitSurfaceTokens, planRetainedSurface, retainedPriceSchema } from './surface-fold.js';
 const tokenCount = z.number().int().nonnegative();

@@ -16,8 +16,8 @@ import { pipeline, Readable } from 'node:stream';
 import { scheduler } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
 import { constants, createZstdCompress } from 'node:zlib';
-import { Session, reconstructNativeStoryResponseMaterialV1 } from '@deepseek-ai/dsh-session';
-import { BlockAssembler, expandAssistantStream } from '@deepseek-ai/dsh-llm';
+import { Session, reconstructNativeStoryResponseMaterial } from 'dsh-nexttavern-native-session';
+import { BlockAssembler, expandAssistantStream } from 'dsh-nexttavern-native-llm';
 import { SessionFormatError } from '@deepseek-ai/dsh-session-format';
 import { validateStoredEvents } from 'dsh-nexttavern-session-format/storage-contract';
 import { generationLogFilename, logSuffix, SessionLogScanner } from './format.js';
@@ -356,7 +356,7 @@ function assertCurrentAssistantStreams(events) {
         }
         const rawContent = event.data.interrupted === true ? assembler.interruptedBlocks() : assembler.blocks();
         const responseMaterial = event.data.message.source.kind === 'model' ? event.data.message.source.responseMaterial : undefined;
-        const content = responseMaterial ? reconstructNativeStoryResponseMaterialV1(rawContent, responseMaterial) : rawContent;
+        const content = responseMaterial ? reconstructNativeStoryResponseMaterial(rawContent, responseMaterial) : rawContent;
         if (!isDeepStrictEqual(event.data.message.content, content)) {
             throw new Error(`seed assistant/message at index ${index} content disagrees with its embedded stream`);
         }

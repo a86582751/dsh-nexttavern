@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/compat/session-controller/src/client/sessions/manager.ts; edit the TypeScript source.
 /** Host catalog, durable projection caches, and explicitly retained Client instances. */
-import { SessionSeq } from '@deepseek-ai/dsh-session/types';
+import { SessionSeq } from 'dsh-nexttavern-native-session/types';
 import { mergeOrderedBaseline } from '../ordered-baseline.js';
 import { isRemoteFailure } from '@deepseek-ai/dsh-api-gateway/client';
 import { assertNever } from '@deepseek-ai/dsh-util-values';
