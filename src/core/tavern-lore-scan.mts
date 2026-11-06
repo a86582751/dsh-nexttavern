@@ -12,22 +12,26 @@ export class TavernLoreScanBufferV1 {
   private activatedText=''
   private readonly injected:string[]=[]
   private injectedBytes=0
+  private readonly texts=new Map<string,string>()
   constructor(private readonly snapshot:TavernLoreFrozenSnapshotV1) {}
   get depth():number{return this.snapshot.settings.scanDepth+this.skew}
   get hasRecurse():boolean{return this.recursive.length>0}
   get budgetBaseText():string{return this.activatedText}
   advance():void {
+    this.texts.clear()
     this.skew++
     if(this.depth>1001)refuse('LORE_SCAN_DEPTH_LIMIT')
   }
   inject(text:string):void {
     if(!text)return
+    this.texts.clear()
     this.injectedBytes+=Buffer.byteLength(text,'utf8')
     if(this.injectedBytes>2_000_000)refuse('LORE_INJECTED_SCAN_TEXT_LIMIT')
     this.injected.push(text)
   }
   feedback(text:string):void {
     if(!text)return
+    this.texts.clear()
     this.recursiveBytes+=Buffer.byteLength(text,'utf8')
     if(this.recursiveBytes>2_000_000)refuse('LORE_RECURSIVE_TEXT_LIMIT')
     this.recursive.push(text)
@@ -40,15 +44,19 @@ export class TavernLoreScanBufferV1 {
     // Fixed source returns before globals/recursion when depth<=startDepth(0).
     if(requested===0)return ''
     const depth=Math.min(1000,requested)
-    const parts=this.snapshot.visibleMessages.slice(0,depth).map(row=>row.scanText.trim())
-    parts.push(...this.injected)
     const fields=[['matchPersonaDescription','personaDescription'],['matchCharacterDescription','characterDescription'],
       ['matchCharacterPersonality','characterPersonality'],['matchCharacterDepthPrompt','characterDepthPrompt'],
       ['matchScenario','scenario'],['matchCreatorNotes','creatorNotes']] as const
+    const identity=`${depth}:${state==='minimum-activations'}:${fields.map(([flag])=>Number(!!semantic[flag])).join('')}`
+    const cached=this.texts.get(identity)
+    if(cached!==undefined)return cached
+    const parts=this.snapshot.visibleMessages.slice(0,depth).map(row=>row.scanText.trim())
+    parts.push(...this.injected)
     for(const [flag,key] of fields)if(semantic[flag]&&this.snapshot.globalScanData[key])parts.push(this.snapshot.globalScanData[key])
     if(state!=='minimum-activations')parts.push(...this.recursive)
     const text='\u0001'+parts.join('\n\u0001')
     if(text.length>32768)refuse('LORE_SCAN_TEXT_LIMIT')
+    this.texts.set(identity,text)
     return text
   }
 }
@@ -63,7 +71,7 @@ export function nextLoreScanStateV1(input:{snapshot:TavernLoreFrozenSnapshotV1;b
   if(settings.recursiveScanning&&!overflowed&&state==='minimum-activations'&&buffer.hasRecurse)next='recursion'
   if(!next&&!overflowed&&settings.minimumActivations>input.activatedCount) {
     const overMax=settings.minimumActivationDepthMax>0&&buffer.depth>settings.minimumActivationDepthMax
-      ||buffer.depth>snapshot.visibleMessages.length
+      ||buffer.depth>(snapshot.scanHistory?Math.min(snapshot.scanHistory.messageCount,1000):snapshot.visibleMessages.length)
     if(!overMax){buffer.advance();next='minimum-activations'}
   }
   let advanceDelay=false

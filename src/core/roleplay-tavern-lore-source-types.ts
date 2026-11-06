@@ -111,6 +111,8 @@ export interface TavernLoreSourceDiagnosticV1 {
 export type TavernLoreSourceCaptureV1 =
   | {readonly schemaVersion: 1; readonly kind: 'captured-data'; readonly source: TavernLoreSourceDataV1;
       readonly currentIdentitySha256: string;
+      readonly currentIdentityRows:readonly TavernLoreSourceRowDataV1[];
+      readonly sourceProvenance:ReturnType<typeof import('./roleplay-import-record.js').readStructuredImportDataV1>['provenance'];
       readonly sourceLineage?: TavernSourceCommittedLineageV1;
       readonly contributionInput: TavernLoreContributionInputV1}
   | {readonly schemaVersion: 1; readonly kind: 'outside-declared-domain';

@@ -11,6 +11,7 @@ import type {TavernLoreSourceCaptureV1,TavernLoreSourceDataV1} from './roleplay-
 import type {TavernLoreEditObservationV1,TavernLoreEditsDataV1,TavernLoreEditSourceDataCaptureV1}
   from './roleplay-tavern-lore-edits-types.js'
 import type {createRoleplayTavernLoreSourceV1} from './roleplay-tavern-lore-source.js'
+import {readCapturedTavernAvatarV1} from './roleplay-tavern-lore-source.js'
 import type {createRoleplayTavernLoreEditsV1} from './roleplay-tavern-lore-edits.js'
 
 interface SourceDependencies {
@@ -22,10 +23,9 @@ interface SourceDependencies {
 }
 interface SourceDataDependencies {
   readonly source:Pick<SourceDependencies['source'],'capture'>
-  readonly edits:Pick<ReturnType<typeof createRoleplayTavernLoreEditsV1>,'observeSourceData'>
+  readonly edits:Pick<ReturnType<typeof createRoleplayTavernLoreEditsV1>,'observeJournalDataWithLegacyData'>
 }
 function fail(code:string):never {throw Error(code)}
-const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
 const freeze=<T>(value:T):T=>{
   if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value)}
   return value
@@ -49,9 +49,10 @@ function sourceAuthorTables(source:TavernLoreSourceDataV1):AuthorTables&{status:
     rules:snapshot(rows.rules),status:snapshot(rows.status)})
 }
 function assemblePromptSourceData(captured:TavernLoreEditSourceDataCaptureV1,edited:TavernLoreEditsDataV1,
-  sessionId:string,includeCardStyle:boolean,tables:AuthorTables&{status:AuthorTable}) {
+  sessionId:string,includeCardStyle:boolean,tables:AuthorTables&{status:AuthorTable},
+  legacy:ReturnType<typeof produceRoleplayTavernCurrentLegacyOverlayV1>) {
   const {source,currentIdentitySha256,contributionInput}=captured
-  const legacy=produceRoleplayTavernCurrentLegacyOverlayV1(contributionInput),first=legacy.contributions,
+  const first=legacy.contributions,
     linkedRows=new Set(legacy.linkedRowKeys),overlay=composeRoleplayTavernCurrentOverlayV1(legacy.overlay,edited.overlay)
   const compilation=compileTavernLoreBookV1({schemaVersion:1,encoding:'st-character-book-compilation-input-v1',
     source:{schemaVersion:1,encoding:'st-character-book-source-reference-v1',ownerSessionId:sessionId,
@@ -87,7 +88,7 @@ function assemblePromptSourceData(captured:TavernLoreEditSourceDataCaptureV1,edi
     splitExamples:true,nativeLoreReadPolicy:'automatic'})
   return {kind:'captured-data' as const,source,currentIdentitySha256,edits:edited,compilation,contributions,original,residual,
     record:contributionInput.activeImport,decoded:contributionInput.rawDecoded,
-    cardData:freeze(contributionInput.rawDecoded.data)}
+    cardData:freeze(contributionInput.rawDecoded.data),avatarPath:readCapturedTavernAvatarV1(captured)}
 }
 
 /** Synchronous DATA supplier for the actual input Owner under its Source lock.
@@ -98,10 +99,12 @@ export function captureRoleplayTavernPromptSourceDataV1(deps:SourceDataDependenc
   if(captured.kind==='outside-declared-domain')return {kind:'outside-declared-domain' as const,reason:captured.code}
   if(captured.kind!=='captured-data')fail(captured.diagnostics[0]?.code??'INPUT_MATERIAL_SOURCE_UNAVAILABLE')
   if(captured.source.sessionId!==sessionId)fail('INPUT_MATERIAL_SOURCE_CHANGED')
-  const edited=deps.edits.observeSourceData(captured)
+  // Prompt consumes published journal fields, not the editor's independently
+  // compiled entry view. The journal retains this same captured Source.
+  const {observed:edited,legacy}=deps.edits.observeJournalDataWithLegacyData(captured)
   if(edited.kind!=='captured-data')fail(edited.diagnostics[0]?.code??'INPUT_MATERIAL_EDIT_UNAVAILABLE')
   const assembled=assemblePromptSourceData(captured,edited.data,sessionId,includeCardStyle,
-    sourceAuthorTables(captured.source))
+    sourceAuthorTables(captured.source),legacy!)
   return {...assembled,...(captured.sourceLineage?{sourceLineage:captured.sourceLineage}:{})}
 }
 
@@ -115,8 +118,11 @@ export function captureRoleplayTavernPromptSourceV1(deps:SourceDependencies,sess
   const {source}=captured,liveEdits=deps.edits.observeCurrent?.(sessionId),
     edited=liveEdits?.observed??deps.edits.observe(sessionId)
   if(edited.kind!=='captured-data')fail(edited.diagnostics[0]?.code??'INPUT_MATERIAL_EDIT_UNAVAILABLE')
-  if(!same(source,edited.data.source))fail('INPUT_MATERIAL_EDIT_SOURCE_CHANGED')
-  const data=assemblePromptSourceData(captured,edited.data,sessionId,includeCardStyle,deps.tables),original=data.original
+  // Independent live readers can capture different Source versions. Join the
+  // owner-supplied identities without hashing their complete DATA again.
+  if(source.sourceSha256!==edited.data.source.sourceSha256)fail('INPUT_MATERIAL_EDIT_SOURCE_CHANGED')
+  const legacy=produceRoleplayTavernCurrentLegacyOverlayV1(captured.contributionInput),
+    data=assemblePromptSourceData(captured,edited.data,sessionId,includeCardStyle,deps.tables,legacy),original=data.original
   const assertCurrent=()=>{
     assertOwnerCurrent()
     if(liveSource)liveSource.assertCurrent()

@@ -153,8 +153,9 @@ function entryBindings(input, decoded, projection) {
     // native/schema 4 spans retain their final full-document/archive assignment.
     const trailingArchive = native ? record.schemaVersion !== 6 : record.normalizer === 'tavern-fields-v1';
     let projectionOrdinal = prefix.assignments.length - (trailingArchive ? 1 : 0);
+    // Every entry refers to this same captured book; its digest is shared.
+    const bookSha256 = recordSha256(book);
     const bindings = [];
-    let bookSha256;
     for (const [entryOrdinal, [entryKey, raw]] of Object.entries(entries).entries()) {
         const projected = projection.worldbook[entryOrdinal];
         if (!object(raw) || typeof raw.content !== 'string' || !projected || projected.sourceIndex !== entryOrdinal) {
@@ -171,7 +172,6 @@ function entryBindings(input, decoded, projection) {
             }
             span = first;
         }
-        bookSha256 ??= recordSha256(book);
         bindings.push({ projectedId: projected.id, constant: projected.constant, enabled: projected.enabled, span,
             ref: { sessionId: input.sessionId, sourceRecordSessionId: input.sourceRecordSessionId, importId: record.importId,
                 activePointerSha256: input.activePointerRef.sha256, importRecordSha256: input.importRecordRef.sha256,

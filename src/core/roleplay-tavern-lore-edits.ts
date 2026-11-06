@@ -3,9 +3,11 @@
 import {recordSha256} from './roleplay-data.js'
 import {restoreTavernLoreSourceCounterWitnessV1} from './roleplay-tavern-lore-source.js'
 import {TAVERN_LORE_EDITS_BOUNDS_V1,LoreEditFailureV1,fail,freeze,same,sessionId,requestData,
-  strictData,identityOf,eventKey,rowRef,headRef,eventFrom,nextHead,receiptOf,validateFields,mutationRequestData}
+  strictData,identityOf,eventKey,rowRef,headRef,eventFrom,nextHead,receiptOf,validateFields,mutationRequestData,
+  materializeTavernEffectiveBookV1}
   from './roleplay-tavern-lore-edits-data.js'
-import {readJournal,readJournalData,publishedData,publishedJournalData,plannedPublication,journalReferencesShaV1,readMutationOperationV1}
+import {readJournal,readJournalData,publishedData,publishedJournalData,plannedPublication,journalReferencesShaV1,readMutationOperationV1,
+  readFrozenPublishedCutV1,publishedAuthorBookDataV1}
   from './roleplay-tavern-lore-edits-journal.js'
 import type {LoreEditJournalV1} from './roleplay-tavern-lore-edits-journal.js'
 import type {TavernLoreSourceDataV1,TavernLoreContributionInputV1} from './roleplay-tavern-lore-source-types.js'
@@ -15,10 +17,43 @@ import type {TavernLoreEditsDepsV1,TavernLoreJournalRequestV2,TavernLoreJournalE
   TavernLoreEditRecoveryAnchorV1,TavernLoreEditsDataV1,TavernLoreEditRefusalV1,
   TavernLoreEditObservationV1,TavernLoreEditJournalObservationV1,TavernLoreEditResultV1,TavernLoreMutationResultV2,
   TavernLoreEditSourceDataCaptureV1,TavernLoreMutationRetryLocatorV1,TavernLoreMutationRetryResultV2,
-  TavernLoreEditorSelectionV1,TavernLoreEditPageObservationV1}
+  TavernLoreEditorSelectionV1,TavernLoreEditPageObservationV1,MvuAuthorCaptureV1,MvuEffectiveLoreSourceV1,
+  MvuFrozenEffectiveLoreInputV1,TavernLoreAuthorBookSourceV1}
   from './roleplay-tavern-lore-edits-types.js'
 export type * from './roleplay-tavern-lore-edits-types.js'
 export {TAVERN_LORE_EDITS_BOUNDS_V1} from './roleplay-tavern-lore-edits-data.js'
+
+/** Numerical Source already admitted this immutable import and its historical
+ * own-session rows. Rebuild the same legacy projection and published cut;
+ * neither a live Source capture nor an ancestor's current head is consulted. */
+export function readFrozenMvuEffectiveBookV1(branch:Pick<TavernLoreEditsDepsV1['branch'],'get'>,
+  input:MvuFrozenEffectiveLoreInputV1,cut:MvuEffectiveLoreSourceV1):Record<string,unknown>|undefined {
+  const {sessionId,pointer,record,decoded,rows,worldbook}=input,owner=pointer.sourceRecordSessionId??sessionId
+  const book=decoded.data.character_book as Record<string,unknown>|undefined
+  const bookSha256=recordSha256(book??null),documentSha256=recordSha256(decoded.document)
+  if(documentSha256!==cut.originalDocumentSha256)fail('SOURCE_IDENTITY_INVALID')
+  const normalizer=record.schemaVersion===6?'nexttavern-fields-v1':record.schemaVersion===5?'tavern-fields-v2':'tavern-fields-v1'
+  const importRecordRef={table:'branch' as const,key:`${owner}__import-${record.importId}`,exists:true,sha256:recordSha256(record)}
+  const activePointerRef={table:'branch' as const,key:`${sessionId}__import-active`,exists:true,sha256:recordSha256(pointer)}
+  const primary={value:book??null,entries:Object.entries(book?.entries??{}).map(([entryKey,value])=>({entryKey,
+    value:value as Record<string,unknown>,ref:{entryPointer:'/data/character_book/entries/'+entryKey.replace(/~/g,'~0').replace(/\//g,'~1'),
+      entrySha256:recordSha256(value)}}))}
+  const source:TavernLoreAuthorBookSourceV1={sessionId,original:{primary}}
+  const identity={schemaVersion:1 as const,encoding:'tavern-lore-edit-original-identity-v1' as const,sessionId,
+    sourceRecordSessionId:owner,importId:record.importId,rawSha256:record.rawSha256,transactionId:pointer.transactionId!,
+    documentSha256,bookPointer:'/data/character_book',bookSha256}
+  const byKey=new Map(rows.map(row=>[`${row.ref.table}:${row.ref.key}`,row]))
+  const currentWorldbook=Object.keys(worldbook).sort().map(id=>{
+    const row=byKey.get(`worldbook:${sessionId}__${id}`)!
+    return {ref:{...row.ref,table:'worldbook' as const},value:row.value!}
+  }),rules=byKey.get(`rules:${sessionId}__spec`)!
+  const legacy=produceRoleplayTavernCurrentLegacyOverlayV1({sessionId,sourceRecordSessionId:owner,normalizer,
+    rawDecoded:decoded,activeImport:record,importRecordRef,activePointer:pointer,activePointerRef,
+    currentRules:{ref:{...rules.ref,table:'rules'},value:rules.value!},currentWorldbook,
+    currentWorldbookMembershipSha256:recordSha256(Object.fromEntries(currentWorldbook.map(row=>[row.ref.key,row.ref.sha256])))})
+  const journal=readFrozenPublishedCutV1(branch,identity,cut),published=publishedAuthorBookDataV1(source,journal,legacy.overlay)
+  return materializeTavernEffectiveBookV1(source,published,legacy.overlay)
+}
 
 function refusal(error:unknown,recovery?:TavernLoreEditRecoveryAnchorV1):TavernLoreEditRefusalV1 {
   const diagnostic=error instanceof LoreEditFailureV1?error.diagnostic:{code:'STORAGE_READ_FAILED' as const}
@@ -103,6 +138,25 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
       return {observed:freeze({schemaVersion:1,kind:'captured-data',data}),legacy}
     }catch(error){return {observed:refusal(error),legacy:null}}
   }
+  /** The synchronous input Owner captures Source and its journal once. Even
+   * an absent head is observed above, so the first later patch invalidates it. */
+  function captureAuthorData(captured:TavernLoreEditSourceDataCaptureV1):MvuAuthorCaptureV1 {
+    const {source,legacy,journal}=sourceJournal(captured,{})
+    if(!journal.headRef.exists&&!journal.inherited&&legacy.overlay.entries.length===0)
+      return {captured,book:source.original.primary.value??undefined}
+    const data=publishedAuthorBookDataV1(source,journal,legacy.overlay)
+    const book=materializeTavernEffectiveBookV1(source,data,legacy.overlay)
+    const inherited=journal.inherited?{baselineRef:journal.inherited.baselineRef,slotRef:journal.inherited.slotRef}:undefined
+    const base={schemaVersion:1 as const,encoding:'native-mvu-effective-lore-source-v1' as const,
+      originalDocumentSha256:source.original.documentSha256}
+    let effectiveLore:MvuEffectiveLoreSourceV1|undefined
+    if(recordSha256(book??null)===source.original.primary.bookSha256)return {captured,book}
+    if(journal.headRef.exists)effectiveLore={...base,kind:'published',head:journal.head,
+      headRef:{...journal.headRef,exists:true},eventRefs:data.journalRefs,...inherited?{inherited}:{}}
+    else if(inherited)effectiveLore={...base,kind:'inherited',...inherited}
+    else effectiveLore={...base,kind:'legacy-rows'}
+    return {captured,book,...effectiveLore?{effectiveLore}:{}}
+  }
   /** Export uses the same already-resolved legacy bindings as this editor.
    * Returning resolved DATA avoids a second Source/journal/resolver capture. */
   function observeSourceDataWithLegacyData(captured:TavernLoreEditSourceDataCaptureV1,
@@ -178,7 +232,8 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
   }
   async function lockedEdit(request:TavernLoreJournalRequestV2,
     callerCurrent?:()=>boolean,captured?:{source:TavernLoreSourceDataV1;
-      editorBaseOverlay:TavernLoreCurrentNativeOverlayV1;journal?:LoreEditJournalV1}):Promise<TavernLoreJournalResultV2> {
+      editorBaseOverlay:TavernLoreCurrentNativeOverlayV1;journal?:LoreEditJournalV1},
+    observePublication?:import('./roleplay-tavern-lore-edits-types.js').TavernLorePublicationObserverV1):Promise<TavernLoreJournalResultV2> {
     let recovery:TavernLoreEditRecoveryAnchorV1|undefined
     try {
       if(callerCurrent&&!callerCurrent())fail('SOURCE_CHANGED')
@@ -227,6 +282,7 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
         payloadSha256:event.payloadSha256,eventRef:rowRef(key,event),baseHeadRef:journal.headRef,
         nextHeadRef:publication.headRef}
       checkpoint(source,journal,callerCurrent)
+      const published=!existing?observePublication?.():undefined
       if(!existing) {
         if(deps.branch.get(key)!==undefined)fail('HEAD_CHANGED')
         // First write is immutable intent; readers must refuse this intermediate
@@ -243,7 +299,11 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
       const actual=checkpoint(source,publication)
       const packet=publishedData(source,actual,editorBaseOverlay)
       checkpoint(source,actual)
-      return freeze({schemaVersion:1,kind:'edited-data',receipt:receiptOf(event),...packet})
+      const result=freeze({schemaVersion:1 as const,kind:'edited-data' as const,receipt:receiptOf(event),...packet})
+      // Failure to adopt Source for Main cannot turn this committed edit into
+      // refusal. Its canonical receipt remains available to confirm/retry.
+      try {published?.(result.receipt)}catch {}
+      return result
     }catch(error){return refusal(error,recovery)}
   }
   async function edit(raw:unknown):Promise<TavernLoreEditResultV1> {
@@ -253,11 +313,13 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
     }catch(error){return refusal(error)}
   }
   async function mutate(raw:unknown,callerCurrent?:()=>boolean,
-    captured?:{source:TavernLoreSourceDataV1;editorBaseOverlay:TavernLoreCurrentNativeOverlayV1}):
+    captured?:{source:TavernLoreSourceDataV1;editorBaseOverlay:TavernLoreCurrentNativeOverlayV1},
+    observePublication?:import('./roleplay-tavern-lore-edits-types.js').TavernLorePublicationObserverV1):
     Promise<TavernLoreMutationResultV2> {
     try {
       const request=freeze(mutationRequestData(raw))
-      return await deps.withSourceLock(request.sessionId,()=>lockedEdit(request,callerCurrent,captured)) as TavernLoreMutationResultV2
+      return await deps.withSourceLock(request.sessionId,
+        ()=>lockedEdit(request,callerCurrent,captured,observePublication)) as TavernLoreMutationResultV2
     }catch(error){return refusal(error)}
   }
   /** An explicit parent recovery selects the already parsed durable request.
@@ -297,5 +359,5 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
     }catch(error){return refusal(error,recovery)}
   }
   return {observe,captureCurrentData:observe,observeSourceData,observeSourcePage,observeSourceDataWithLegacyData,
-    observeJournalDataWithLegacyData,current,edit,mutate,retryMutation,observeCurrent}
+    observeJournalDataWithLegacyData,captureAuthorData,current,edit,mutate,retryMutation,observeCurrent}
 }

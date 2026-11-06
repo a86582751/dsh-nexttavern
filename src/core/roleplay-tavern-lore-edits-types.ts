@@ -64,6 +64,45 @@ export interface TavernLoreEditHeadV1 {
   readonly chainSha256:string
   readonly headSha256:string
 }
+/** Exact published author cut. Absence of this optional MVU field preserves
+ * the historical raw-import contract; no synthetic genesis is persisted. */
+export type MvuEffectiveLoreSourceV1={
+  readonly schemaVersion:1
+  readonly encoding:'native-mvu-effective-lore-source-v1'
+  readonly originalDocumentSha256:string
+}&({readonly kind:'legacy-rows'}|{
+  readonly kind:'published'
+  readonly head:TavernLoreEditHeadV1
+  readonly headRef:TavernLoreEditHeadRefV1&{readonly exists:true}
+  readonly eventRefs:readonly TavernLoreEditRefV1[]
+  readonly inherited?:{readonly baselineRef:TavernSourceInheritanceRefV1;readonly slotRef:TavernSourceInheritanceRefV1}
+}|{readonly kind:'inherited';readonly baselineRef:TavernSourceInheritanceRefV1;readonly slotRef:TavernSourceInheritanceRefV1})
+export interface MvuAuthorCaptureV1 {
+  readonly captured:TavernLoreEditSourceDataCaptureV1
+  readonly book:Record<string,unknown>|undefined
+  readonly effectiveLore?:MvuEffectiveLoreSourceV1
+}
+/** Admitted immutable import and historical rows supplied by numerical Source.
+ * This is an author-book input, never a fabricated full Lore Source capture. */
+export interface MvuFrozenEffectiveLoreInputV1 {
+  readonly sessionId:string
+  readonly pointer:import('./roleplay-import-types.js').ImportPointer
+  readonly record:import('./roleplay-import-types.js').ImportRecord
+  readonly decoded:import('./tavern-card.js').DecodedTavernCard
+  readonly rows:readonly import('./roleplay-tavern-lore-source-types.js').TavernLoreSourceRowDataV1[]
+  readonly worldbook:Readonly<Record<string,string>>
+}
+export interface TavernLoreAuthorBookSourceV1 {
+  readonly sessionId:string
+  readonly original:{readonly primary:{
+    readonly value:Readonly<Record<string,unknown>>|null
+    readonly entries:readonly {
+      readonly entryKey:string
+      readonly value:Readonly<Record<string,unknown>>
+      readonly ref:{readonly entryPointer:string;readonly entrySha256:string}
+    }[]
+  }}
+}
 /** Immutable intent. A head reference publishes it; no second event-state write. */
 export interface TavernLoreEditEventV1 {
   readonly schemaVersion:1
@@ -113,6 +152,10 @@ export interface TavernLoreMutationReceiptV2 extends Omit<TavernLoreEditReceiptV
   readonly encoding:'tavern-lore-mutation-receipt-v2'
   readonly mutationSha256:string
 }
+/** Optional observation by the actual input generation. It neither admits
+ * the edit nor changes the result of its already durable publication. */
+export type TavernLorePublicationObserverV1=()=>
+  ((receipt:TavernLoreEditReceiptV1|TavernLoreMutationReceiptV2)=>void)|undefined
 export interface TavernLoreEditsDataV1 {
   readonly schemaVersion:1
   readonly encoding:'tavern-lore-edits-current-data-v1'

@@ -1,12 +1,14 @@
 /** Adapts actual completed Native variable facts to readonly prompt scopes.
  * Empty-before-publication is an explicit adapter policy, never a claim that
  * ST persisted variables_initialized or that a copied frame grants permission. */
-import {nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
-import type {NativeMaterialSelectedBaseV1} from '@deepseek-ai/dsh-agent-loop'
+import {nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
+import type {NativeMaterialSelectedBaseV1} from 'dsh-nexttavern-native-agent-loop'
 import {recordSha256,sha256,textOf} from './roleplay-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {validateMvuScopeReadFrameV1} from './tavern-mvu-scope-read.js'
-import type {MvuScopeReadFrameV1,MvuScopeVariablesV1} from './tavern-mvu-scope-read-types.js'
+import {selectCurrentPromptMessageV2} from './roleplay-tavern-prompt-variables-message.js'
+import type {MvuScopeReadFrameV1,MvuScopeVariablesV1,MvuScopedMessageV1,MvuSelectedPromptScopeDataV2}
+  from './tavern-mvu-scope-read-types.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
@@ -24,12 +26,15 @@ export type {TavernActualProgramAbsencePromptScopesV1,TavernProgramAbsencePrompt
   from './roleplay-program-opening-prompt-scopes-types.js'
 import type {PromptTemplateOnlyScopeFactsV1,PromptInheritedScopeFactsV2}
   from './roleplay-prompt-template-only-types.js'
-import type {AuthorPromptPreparationFactsV1} from './roleplay-author-prompt-capture.js'
-import type {AuthorBrowserPreparationFactsV2,AuthorBrowserPreparationFactsV3} from './roleplay-author-browser-generation-types.js'
-import type {AuthorChatCaptureV1} from './roleplay-author-chat-state-types.js'
-import type {AuthorChatCaptureV2} from './roleplay-author-chat-state-v2-types.js'
+import type {AuthorBrowserPreparationFactsV3} from './roleplay-author-browser-generation-types.js'
+import type {CanonicalAuthorChatStateV1} from './roleplay-author-chat-state.js'
+import type {AuthorMessageViewV1} from './roleplay-author-message-capture.js'
+import {applyAuthorChatOverlayV3} from './roleplay-author-chat-state-types.js'
 
-/** Readonly dialogue captures a real prefix without a Main selection lease. */
+type OrdinaryChatCapture=ReturnType<CanonicalAuthorChatStateV1['captureNamespaceV3']>
+
+/** The scope adapter consumes readonly message facts. A dialog's tagged
+ * prefix projection grants no Main material-selection authority. */
 type TavernPromptSelectedMessagesV1=Pick<NativeMaterialSelectedBaseV1,'messages'|'sha256'>
 
 export const TAVERN_NATIVE_SCOPE_ADAPTER_POLICY_V1=Object.freeze({schemaVersion:1,
@@ -44,6 +49,10 @@ export const TAVERN_NATIVE_SCOPE_ADAPTER_POLICY_V1=Object.freeze({schemaVersion:
   numerical:'actual-state-fold-and-closed-inherited-prefix; immutable-import-tuple-join; exact-message-version',
   global:'explicit-native-session-import-readonly-empty-namespace; no-ST-global-store-assumption',
   manualCache:'explicit-current-manual-stat-data-overlay; historical-message-values-and-initialization-unchanged'})
+/** Selected-only DATA is a separate consumer contract, without a V1 frame. */
+export const TAVERN_SELECTED_SCOPE_ADAPTER_POLICY_V2=Object.freeze({...TAVERN_NATIVE_SCOPE_ADAPTER_POLICY_V1,
+  schemaVersion:2,encoding:'native-selected-readonly-prompt-scope-adapter-policy-v2',
+  schema:'completed-actual-source-bound-selected-MVU-scope-data; exact-selected-base; independent-current-closure'})
 /** Kept separate so old completed v1 receipts retain their exact policy hash. */
 export const TAVERN_PROGRAM_SCOPE_ADAPTER_POLICY_V1=Object.freeze({schemaVersion:1,
   encoding:'native-program-readonly-prompt-scope-adapter-policy-v1',
@@ -85,11 +94,17 @@ export interface TavernActualSchemaPromptScopesV1 {
   current():boolean
   /** Supplemental DATA from the same completed Source/Native capture. Old
    * scope-frame and readData hashes keep their original body and policy. */
-  readonly authorPrompt?:AuthorPromptPreparationFactsV1
-  readonly authorBrowser?:AuthorBrowserPreparationFactsV2
-  /** Main captures all declared ordinary values alongside the same Native
+  /** Main captures the actual native helper Source alongside this Native
    * scope frame. These readonly facts do not themselves inject any content. */
   readonly authorBrowserV3?:AuthorBrowserPreparationFactsV3
+  ordinaryMessageView?():AuthorMessageViewV1
+}
+export interface TavernActualSchemaPromptScopesV2 extends Omit<TavernActualSchemaPromptScopesV1,'data'> {
+  readonly data:MvuSelectedPromptScopeDataV2
+}
+export interface TavernActualSchemaPromptScopesV3 extends Omit<TavernActualSchemaPromptScopesV1,'data'> {
+  readonly data:import('./tavern-mvu-scope-read-types.js').MvuPromptVariableScopeDataV3
+  messageAt(index:number):MvuScopedMessageV1|undefined
 }
 export interface TavernActualPlainPromptScopesV1 {
   readonly data:{readonly schemaVersion:1;readonly encoding:'native-plain-prompt-scope-facts-v1';
@@ -291,15 +306,14 @@ function pendingOpeningData(input:TavernActualPendingOpeningPromptScopesV1,
   return data
 }
 export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSourceDataV1;currentIdentitySha256:string;
-  selected:TavernPromptSelectedMessagesV1;schema?:TavernActualSchemaPromptScopesV1;
+  selected:TavernPromptSelectedMessagesV1;schema?:TavernActualSchemaPromptScopesV1|TavernActualSchemaPromptScopesV2|TavernActualSchemaPromptScopesV3;
   plain?:TavernActualNonnumericalPromptScopesV1;numerical?:TavernActualNumericalPromptScopesV1;
   opening?:TavernActualPendingOpeningPromptScopesV1;
-  authorChat?:AuthorChatCaptureV1|AuthorChatCaptureV2;
+  ordinaryChat?:OrdinaryChatCapture;
   authorDialogScopes?:MvuScopeReadFrameV1;
   isStoryMessage(row:NativeMaterialSelectedBaseV1['messages'][number]):boolean;
   assertOwnerCurrent():void;scriptId?:string}) {
   const {source,selected}=input,storyRows=selected.messages.filter(input.isStoryMessage),owner=`${source.sessionId}:prompt-scope`
-  const authorChat=input.authorChat
   input.assertOwnerCurrent()
   if([input.schema,input.numerical,input.plain,input.opening].filter(value=>value!==undefined).length>1) {
     fail('INPUT_MATERIAL_SCOPE_AUTHORITY_CONFLICT')
@@ -307,7 +321,9 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
   const scopes:TavernPromptVariableScopeFactV1[]=[],evidence:unknown[]=[],
     missing=(scope:TavernPromptVariableScopeFactV1['scope'],detail:string)=>
       scopes.push({scope,fact:{kind:'unavailable',missingEvidence:[detail]}})
-  let frame:MvuScopeReadFrameV1|undefined,
+  const pointSupplier=input.schema&&'messageAt' in input.schema?input.schema:undefined
+  let frame:MvuScopeReadFrameV1|undefined,selectedData:MvuSelectedPromptScopeDataV2|TavernActualSchemaPromptScopesV3['data']|undefined,
+    scopeData:Pick<MvuScopeReadFrameV1,'source'|'scopes'|'scripts'|'messages'>|undefined,
     plain:TavernActualPlainPromptScopesV1['data']|TavernActualPromptDomainScopesV1['data']|undefined,
     programAbsence:TavernProgramAbsencePromptScopeDataV1|undefined,
     programInheritedAbsence:TavernProgramInheritedAbsencePromptScopeDataV1|undefined,
@@ -320,14 +336,20 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
     evidence.push(opening)
   }else if(input.schema) {
     if(!input.schema.current())fail('INPUT_MATERIAL_SCHEMA_SCOPES_CHANGED')
-    frame=validateMvuScopeReadFrameV1(input.authorDialogScopes??input.schema.data.frame)
-    const identity=frame.source
+    if(input.schema.data.schemaVersion===2||input.schema.data.schemaVersion===3) {
+      selectedData=input.schema.data
+      if(selectedData.selectedBaseSha256!==selected.sha256)fail('INPUT_MATERIAL_SCHEMA_SCOPE_SELECTION_MISMATCH')
+      scopeData='messages' in selectedData?selectedData:{...selectedData,messages:[]}
+    }else {
+      frame=validateMvuScopeReadFrameV1(input.authorDialogScopes??input.schema.data.frame)
+      scopeData=frame
+    }
+    const identity=scopeData.source
     if(identity.sessionId!==source.sessionId||identity.sourceRecordSessionId!==source.sourceRecordSessionId
       ||identity.importId!==source.original.activePointer.importId||identity.rawSha256!==source.original.rawSha256)
       fail('INPUT_MATERIAL_SCHEMA_SCOPE_SOURCE_MISMATCH')
     stateSnapshotSha256=input.schema.data.basis.numericalSnapshotSha256
-    evidence.push(cloneRoleplayTavernLoreDataV1(input.schema.data,8_388_608))
-    if(authorChat)evidence.push(authorChat)
+    evidence.push(selectedData??cloneRoleplayTavernLoreDataV1(input.schema.data,8_388_608))
   }else if(input.numerical) {
     // The numerical producer has already replayed and frozen these facts.
     // InputState owns their subscriptions and all later invalidation.
@@ -410,7 +432,8 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
   const policy=programInheritedAbsence?TAVERN_PROGRAM_INHERITED_ABSENCE_SCOPE_ADAPTER_POLICY_V1:
     programAbsence?TAVERN_PROGRAM_ABSENCE_SCOPE_ADAPTER_POLICY_V1:
     numerical?.inherited?.schemaVersion===2?TAVERN_PROGRAM_INHERITED_SCOPE_ADAPTER_POLICY_V1:
-    opening||numerical?.local.schemaVersion===2?TAVERN_PROGRAM_SCOPE_ADAPTER_POLICY_V1:TAVERN_NATIVE_SCOPE_ADAPTER_POLICY_V1,
+    opening||numerical?.local.schemaVersion===2?TAVERN_PROGRAM_SCOPE_ADAPTER_POLICY_V1:
+    selectedData?TAVERN_SELECTED_SCOPE_ADAPTER_POLICY_V2:TAVERN_NATIVE_SCOPE_ADAPTER_POLICY_V1,
     policySha256=recordSha256(policy),
     absenceJoins=programAbsence?programAbsenceMessageJoins(programAbsence,selected)
       :programInheritedAbsence?programAbsenceMessageJoins(programInheritedAbsence,selected,true):undefined,
@@ -463,14 +486,16 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
   }
   const available=(scope:TavernPromptVariableScopeFactV1['scope'],variables:MvuScopeVariablesV1)=>{
     if(variables.kind!=='available'){missing(scope,variables.code);return}
-    const overlay=scope==='chat'&&authorChat?.exists?authorChat:null,
-      values=cloneRoleplayTavernLoreDataV1(overlay
-        ?{...variables.variables,[overlay.binding.key]:overlay.value}:variables.variables,1_048_576),
-      provenance=ref(`${owner}:${scope}`,overlay?recordSha256({mvu:variables.provenance,authorChat:overlay.captureSha256})
-        :recordSha256(variables.provenance),{schemaVersion:1,encoding:'actual-mvu-prompt-scope-adapter-ref-v1',
-        sourceIdentity:frame!.source,scope,variablesSha256:variables.variablesSha256,origin:variables.provenance,
-        ...overlay?{authorChat:overlay}:{}})
-    scopes.push({scope,fact:{kind:'values',values,valuesSha256:recordSha256(values),provenance}})
+    const values=pointSupplier?variables.variables:cloneRoleplayTavernLoreDataV1(variables.variables,1_048_576),
+      origin=variables.provenance,
+      provenance=ref(`${owner}:${scope}`,recordSha256(selectedData?{schemaVersion:2,
+        encoding:'native-selected-prompt-variable-scope-version-v2',scopeReadDataSha256:selectedData.readDataSha256,origin}:origin),{
+        schemaVersion:selectedData?2:1,encoding:selectedData?'actual-selected-mvu-prompt-scope-adapter-ref-v2':
+          'actual-mvu-prompt-scope-adapter-ref-v1',
+        ...selectedData?{scopeReadDataSha256:selectedData.readDataSha256}:{},
+        sourceIdentity:scopeData!.source,scope,variablesSha256:variables.variablesSha256,origin:variables.provenance})
+    scopes.push({scope,fact:{kind:'values',values,valuesSha256:pointSupplier
+      ?variables.variablesSha256:recordSha256(values),provenance}})
   }
   const numericalValues=(snapshotSha256:string,origin:unknown,scope:'chat'|'message')=>{
     if(!numerical)fail('INPUT_MATERIAL_NUMERICAL_FACT_MISSING')
@@ -494,9 +519,9 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
       for(const scope of ['chat','card'] as const)scopes.push({scope,fact:{kind:'absent',provenance:pendingRef(scope)}})
     }
     missing('script','no actual executing script-scope supplier for the pending program opening')
-  }else if(frame) {
-    available('global',frame.scopes.global);available('chat',frame.scopes.chat);available('card',frame.scopes.character)
-    const scripts=input.scriptId?frame.scripts.filter(row=>row.scriptId===input.scriptId):frame.scripts
+  }else if(scopeData) {
+    available('global',scopeData.scopes.global);available('chat',scopeData.scopes.chat);available('card',scopeData.scopes.character)
+    const scripts=input.scriptId?scopeData.scripts.filter(row=>row.scriptId===input.scriptId):scopeData.scripts
     if(scripts.length===1)available('script',scripts[0]!.variables)
     else missing('script','actual unambiguous executing script scope')
   }else if(numerical) {
@@ -534,9 +559,9 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
   }else {
     for(const scope of ['global','chat','card','script'] as const)missing(scope,'actual current variable scope supplier')
   }
-  const currentManualChat=frame?.scopes.chat.kind==='available'
-    &&frame.scopes.chat.provenance.kind==='published-state'&&frame.scopes.chat.provenance.state.kind==='manual'
-    ?frame.scopes.chat:undefined
+  const currentManualChat=scopeData?.scopes.chat.kind==='available'
+    &&scopeData.scopes.chat.provenance.kind==='published-state'&&scopeData.scopes.chat.provenance.state.kind==='manual'
+    ?scopeData.scopes.chat:undefined
   const numericalStories=numerical?[...numerical.local.storyPublications,...(numerical.inherited?.storyPublications??[])]:[],
     numericalManuals=numerical?[...numerical.local.manualPublications,...(numerical.inherited?.manualPublications??[])]:[],
     latestManual=numericalManuals.filter(row=>row.resultSnapshotSha256===stateSnapshotSha256)
@@ -545,24 +570,39 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
   if(currentManualChat||manualAfterStory) {
     const values=cloneRoleplayTavernLoreDataV1({stat_data:currentManualChat?.variables.stat_data
       ??numerical!.local.currentSnapshot.values},1_048_576),origin=currentManualChat?.provenance??latestManual,
-      provenance=ref(`${owner}:cache-manual-overlay`,recordSha256({origin,stateSnapshotSha256}),{
-        schemaVersion:1,encoding:'native-prompt-cache-manual-current-overlay-ref-v1',sessionId:source.sessionId,
+      provenance=ref(`${owner}:cache-manual-overlay`,recordSha256(selectedData?{schemaVersion:2,
+        encoding:'native-selected-prompt-manual-overlay-version-v2',scopeReadDataSha256:selectedData.readDataSha256,
+        origin,stateSnapshotSha256}:{origin,stateSnapshotSha256}),{
+        schemaVersion:pointSupplier?3:selectedData?2:1,encoding:pointSupplier?'native-prompt-cache-manual-current-overlay-ref-v3':selectedData?'native-selected-prompt-cache-manual-current-overlay-ref-v2':
+          'native-prompt-cache-manual-current-overlay-ref-v1',sessionId:source.sessionId,
+        ...selectedData?{scopeReadDataSha256:selectedData.readDataSha256}:{},
         sourceSha256:source.sourceSha256,policySha256:policySha256,
         snapshotSha256:stateSnapshotSha256,origin,valuesSha256:recordSha256(values)})
     scopes.push({scope:'cache',fact:{kind:'values',values,valuesSha256:recordSha256(values),provenance}})
   }
-  if(authorChat?.exists) {
-    // The explicit dialogue capture owns current author chat outside historical
-    // MVU message publication. Cache consumes that same chat projection.
-    const chat=scopes.find(row=>row.scope==='chat')!
-    const prior=scopes.findIndex(row=>row.scope==='cache'),cache={scope:'cache' as const,fact:chat.fact}
-    if(prior<0)scopes.push(cache);else scopes[prior]=cache
+  if(input.ordinaryChat) {
+    const ordinary=input.ordinaryChat,chatIndex=scopes.findIndex(row=>row.scope==='chat'),
+      prior=chatIndex<0?undefined:scopes[chatIndex]!.fact,
+      values=applyAuthorChatOverlayV3(prior?.kind==='values'?prior.values:{},ordinary),
+      valuesSha256=recordSha256(values),
+      provenance=ref(`${owner}:chat`,recordSha256({ordinaryRoot:ordinary.root,prior}),{
+        schemaVersion:1,encoding:'native-ordinary-chat-prompt-scope-ref-v1',
+        root:ordinary.root,...prior?{prior}:{},valuesSha256}),
+      chat={scope:'chat' as const,fact:{kind:'values' as const,values,valuesSha256,provenance}}
+    if(chatIndex<0)scopes.push(chat);else scopes[chatIndex]=chat
+    evidence.push(ordinary)
+    if(ordinary.root.head||ordinary.root.base) {
+      const cacheIndex=scopes.findIndex(row=>row.scope==='cache'),cache={scope:'cache' as const,fact:chat.fact}
+      if(cacheIndex<0)scopes.push(cache);else scopes[cacheIndex]=cache
+    }
   }
+  const latestVariables:{message:TavernPromptMessageVariablesFactV1|null;absence:TavernPromptVariableRefV1[]}=
+    {message:null,absence:[]}
   // Retain all exact matches: duplicate publications remain ambiguous.
-  const frameMessagesByVersion=new Map<string,Map<string,MvuScopeReadFrameV1['messages'][number][]>>()
-  for(const item of frame?.messages??[]) {
-    let versions=frameMessagesByVersion.get(item.messageId)
-    if(!versions){versions=new Map();frameMessagesByVersion.set(item.messageId,versions)}
+  const scopeMessagesByVersion=new Map<string,Map<string,MvuScopedMessageV1[]>>()
+  for(const item of scopeData?.messages??[]) {
+    let versions=scopeMessagesByVersion.get(item.messageId)
+    if(!versions){versions=new Map();scopeMessagesByVersion.set(item.messageId,versions)}
     const matches=versions.get(item.messageVersionSha256)
     if(matches)matches.push(item);else versions.set(item.messageVersionSha256,[item])
   }
@@ -583,17 +623,22 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
     const matches=versions.get(item.canonical.versionSha256)
     if(matches)matches.push(item);else versions.set(item.canonical.versionSha256,[item])
   }
-  const latestVariables:{message:TavernPromptMessageVariablesFactV1|null;absence:TavernPromptVariableRefV1[]}=
-    {message:null,absence:[]}
-  const messages:TavernPromptMessageVariablesFactV1[]=storyRows.map((row,index)=>{
-    if(nativeInputSha256(row.message)!==row.messageSha256)fail('INPUT_MATERIAL_SCOPE_MESSAGE_HASH_CHANGED')
-    const messageRef=ref(`${owner}:message:${row.id}`,row.messageSha256,{schemaVersion:1,
-      encoding:'actual-native-prompt-selected-message-ref-v1',id:row.id,role:row.role,
+  const pointFacts=new Map<number,TavernPromptMessageVariablesFactV1>()
+  const messageAt=(index:number):TavernPromptMessageVariablesFactV1=>{
+    const previous=pointFacts.get(index)
+    if(previous)return previous
+    const row=storyRows[index]!,point=pointSupplier?.messageAt(index)
+    if(!selectedData&&nativeInputSha256(row.message)!==row.messageSha256)fail('INPUT_MATERIAL_SCOPE_MESSAGE_HASH_CHANGED')
+    const messageRef=ref(`${owner}:message:${row.id}`,selectedData?recordSha256({schemaVersion:2,
+      encoding:'native-selected-prompt-message-version-v2',scopeReadDataSha256:selectedData.readDataSha256,
+      messageSha256:row.messageSha256}):row.messageSha256,{schemaVersion:selectedData?2:1,
+      encoding:selectedData?'actual-native-prompt-selected-message-ref-v2':'actual-native-prompt-selected-message-ref-v1',
+      ...selectedData?{scopeReadDataSha256:selectedData.readDataSha256}:{},id:row.id,role:row.role,
       origin:row.origin,eventSeq:row.eventSeq,messageSha256:row.messageSha256,
       selectedBaseSha256:selected.sha256})
-    const frameVersions=frameMessagesByVersion.get(row.id),numericalKey=JSON.stringify([row.id,row.eventSeq]),
+    const frameVersions=point?new Map([[point.messageVersionSha256,[point]]]):scopeMessagesByVersion.get(row.id),numericalKey=JSON.stringify([row.id,row.eventSeq]),
       storyVersions=numericalStoriesByVersion.get(numericalKey),openingVersions=numericalOpeningsByVersion.get(numericalKey),
-      messageVersionSha256=frameVersions||storyVersions||openingVersions?recordSha256(row.message):'',
+      messageVersionSha256=point?.messageVersionSha256??(frameVersions||storyVersions||openingVersions?recordSha256(row.message):''),
       matches=frameVersions?.get(messageVersionSha256)??[]
     if(matches.length>1)fail('INPUT_MATERIAL_SCOPE_MESSAGE_AMBIGUOUS')
     const variables=matches[0]?.variables
@@ -662,18 +707,26 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
         'an exact Native-owned numerical publication or proven foreign-message absence for this assistant version']}
     }else if(variables?.kind==='available'&&variables.provenance.kind!=='initialized-empty') {
       initialized=true
-      const provenance=ref(`${owner}:message-vars:${row.id}`,recordSha256(variables.provenance),
-        {schemaVersion:1,encoding:'actual-native-published-message-variable-ref-v1',origin:variables.provenance,
-          messageRef,frameSha256:frame!.frameSha256})
+      const provenance=ref(`${owner}:message-vars:${row.id}`,recordSha256(selectedData?{schemaVersion:2,
+        encoding:'native-selected-prompt-published-variable-version-v2',scopeReadDataSha256:selectedData.readDataSha256,
+        origin:variables.provenance}:variables.provenance),
+        selectedData?{schemaVersion:2,encoding:'actual-native-selected-published-message-variable-ref-v2',
+          origin:variables.provenance,messageRef,scopeReadDataSha256:selectedData.readDataSha256}:
+          {schemaVersion:1,encoding:'actual-native-published-message-variable-ref-v1',origin:variables.provenance,
+            messageRef,frameSha256:frame!.frameSha256})
       active={kind:'values',values:variables.variables,valuesSha256:variables.variablesSha256,provenance}
       initializedRef=provenance
     }else if(plain||variables?.kind==='available'&&variables.provenance.kind==='initialized-empty'
-      ||frame&&row.origin==='pending-decision') {
+      ||scopeData&&row.origin==='pending-decision') {
       initialized=false
-      const provenance=ref(`${owner}:message-vars:${row.id}`,stateSnapshotSha256,
-        {schemaVersion:1,encoding:'native-prompt-unpublished-message-variable-ref-v1',messageRef,
+      const provenance=ref(`${owner}:message-vars:${row.id}`,selectedData?recordSha256({schemaVersion:2,
+        encoding:'native-selected-prompt-unpublished-variable-version-v2',scopeReadDataSha256:selectedData.readDataSha256,
+        stateSnapshotSha256}):stateSnapshotSha256,
+        {schemaVersion:selectedData?2:1,encoding:selectedData?'native-selected-prompt-unpublished-message-variable-ref-v2':
+          'native-prompt-unpublished-message-variable-ref-v1',messageRef,
           policySha256:policySha256,
-          scopeBasisSha256:frame?.frameSha256??recordSha256(plain),
+          ...selectedData?{scopeReadDataSha256:selectedData.readDataSha256}:
+            {scopeBasisSha256:frame?.frameSha256??recordSha256(plain)},
           sourceIdentity:{sessionId:source.sessionId,importId:source.original.activePointer.importId,
             rawSha256:source.original.rawSha256}})
       active={kind:'absent',provenance};initializedRef=provenance
@@ -684,25 +737,42 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
       initializedRef:index===storyRows.length-1?initializedRef:null,messageRef}
     if(active.kind==='absent')latestVariables.absence.push(active.provenance)
     else {latestVariables.message=message;latestVariables.absence=[]}
+    pointFacts.set(index,message)
     return message
-  })
-  const history:TavernPromptMessageHistoryV1={kind:'complete-prefix',messageCount:messages.length,
+  }
+  const messages:TavernPromptMessageVariablesFactV1[]=pointSupplier?[]:storyRows.map((_row,index)=>messageAt(index))
+  const selectionRef=pointSupplier?ref(`${owner}:selection`,selected.sha256,{schemaVersion:3,
+    encoding:'native-prompt-variable-selected-membership-ref-v3',selectedBaseSha256:selected.sha256,
+    scopeReadDataSha256:selectedData!.readDataSha256,sourceSha256:source.sourceSha256}):undefined
+  const messageSelection=selectionRef?selectCurrentPromptMessageV2(storyRows.length,messageAt,selected.sha256,{
+    kind:'history',identity:'actual-selected-membership',valueSha256:selected.sha256,provenance:selectionRef}):undefined
+  const selectedMessage=pointSupplier&&storyRows.length?messageAt(storyRows.length-1):messages.at(-1)
+  const history:TavernPromptMessageHistoryV1|undefined=pointSupplier?undefined:{kind:'complete-prefix',messageCount:messages.length,
     selectedIndex:messages.length?messages.length-1:null,selectedSwipe:messages.length?0:null,messages,
-    membershipRef:ref(`${owner}:selected-history`,selected.sha256,{schemaVersion:1,
-      encoding:'actual-native-selected-story-variable-membership-v1',selectedBaseSha256:selected.sha256,
+    membershipRef:ref(`${owner}:selected-history`,selectedData?recordSha256({schemaVersion:2,
+      encoding:'native-selected-prompt-membership-version-v2',scopeReadDataSha256:selectedData.readDataSha256,
+      selectedBaseSha256:selected.sha256}):selected.sha256,{schemaVersion:selectedData?2:1,
+      encoding:selectedData?'actual-native-selected-story-variable-membership-v2':'actual-native-selected-story-variable-membership-v1',
+      ...selectedData?{scopeReadDataSha256:selectedData.readDataSha256}:{},selectedBaseSha256:selected.sha256,
       policySha256:policySha256,
       messages:storyRows.map(row=>({id:row.id,messageSha256:row.messageSha256,origin:row.origin,eventSeq:row.eventSeq}))})}
   // Known absence is skipped, but an unavailable later message cannot grant
   // permission to read an older publication. Reuse the owner's values/hash.
   const latest=latestVariables.message,active=latest?.active
-  const messageVariables:TavernTemplateScopeBindingV1|null=!messages.length||active?.kind==='unavailable'?null:{
-    scope:'message',ownerId:active?.kind==='values'?active.provenance.ownerId:history.membershipRef.ownerId,
-    versionSha256:recordSha256({schemaVersion:1,encoding:'native-latest-message-variables-v1',
-      membershipRef:history.membershipRef,messageRef:latest?.messageRef??null,
+  const messageVariables:TavernTemplateScopeBindingV1|null=messageSelection
+    ?messageSelection.kind==='unavailable'||messageSelection.kind==='empty'?null:{scope:'message',ownerId:selectionRef!.ownerId,
+      versionSha256:recordSha256(messageSelection),values:messageSelection.values??{},
+      valuesSha256:recordSha256(messageSelection.values??{})}
+    :!messages.length||active?.kind==='unavailable'?null:{
+    scope:'message',ownerId:active?.kind==='values'?active.provenance.ownerId:history!.membershipRef.ownerId,
+    versionSha256:recordSha256({schemaVersion:selectedData?2:1,encoding:selectedData?
+      'native-selected-latest-message-variables-v2':'native-latest-message-variables-v1',
+      ...selectedData?{scopeReadDataSha256:selectedData.readDataSha256}:{},
+      membershipRef:history!.membershipRef,messageRef:latest?.messageRef??null,
       publication:active?.kind==='values'?active.provenance:null,laterAbsence:latestVariables.absence}),
     values:active?.kind==='values'?active.values:{},
     valuesSha256:active?.kind==='values'?active.valuesSha256:recordSha256({})}
-  const selectedFact=messages.at(-1)?.selected
+  const selectedFact=selectedMessage?.selected
   if(selectedFact)scopes.push({scope:'message',fact:selectedFact})
   else missing('message','no actual selected message-variable fact')
   const bindings=scopes.filter(row=>row.scope!=='cache').map(factBinding)
@@ -711,7 +781,10 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
   // completes the capture and owns later DATA checks.
   input.assertOwnerCurrent()
   return {scopes:freeze(scopes),bindings:freeze(bindings),history:freeze(history),
+    ...messageSelection?{messageSelection:freeze(messageSelection)}: {},
     messageVariables:freeze(messageVariables),stateSnapshotSha256,
-    evidence:freeze({schemaVersion:1,encoding:'native-prompt-variable-scope-capture-v1',authority:'consumer-data-only',
+    evidence:freeze({schemaVersion:pointSupplier?3:selectedData?2:1,encoding:pointSupplier?'native-prompt-variable-selection-capture-v3':selectedData?'native-selected-prompt-variable-scope-capture-v2':
+      'native-prompt-variable-scope-capture-v1',authority:'consumer-data-only',
+      ...selectedData?{scopeReadDataSha256:selectedData.readDataSha256}:{},
       policy,sourceSha256:source.sourceSha256,selectedBaseSha256:selected.sha256,evidence})}
 }

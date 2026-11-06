@@ -7,21 +7,23 @@ import { resolveTavernLoreEvaluationContentV1, isTavernLoreDerivedEntryV1, taver
 import { exact, sealTavernLoreSnapshotV1, LORE_EVALUATOR_POLICY_V1, freezeLoreData } from './tavern-lore-snapshot.mjs';
 import { refuse } from './tavern-lore-match.mjs';
 import { tavernLoreEntrySemanticSha256V1 } from './tavern-lore-timed.mjs';
+import { hasTavernPromptMacroSyntaxV1 } from './tavern-prompt-transform-execution.mjs';
 export class TavernLoreTemplateFeedbackStateV1 {
     composition;
-    eligible;
+    activationTargets;
     checkpoint;
     producer;
     defaultSignal;
     snapshot;
     receipts = new Map();
+    pendingKeyReceipts = [];
     rows = new Map();
     consumed = new Set();
     scanRows = new Map();
     consumedScans = new Set();
-    constructor(composition, snapshot, eligible, checkpoint, producer, defaultSignal) {
+    constructor(composition, snapshot, activationTargets, checkpoint, producer, defaultSignal) {
         this.composition = composition;
-        this.eligible = eligible;
+        this.activationTargets = activationTargets;
         this.checkpoint = checkpoint;
         this.producer = producer;
         this.defaultSignal = defaultSignal;
@@ -31,7 +33,7 @@ export class TavernLoreTemplateFeedbackStateV1 {
             refuse('LORE_TEMPLATE_PREPARATION_NOT_FRESH');
         }
         for (const receipt of snapshot.renderedTexts) {
-            const resolved = resolveTavernLoreEvaluationContentV1(composition, receipt.pointer);
+            const resolved = this.resolveText(receipt.pointer);
             if (resolved.contentSha256 !== receipt.rawContentSha256)
                 refuse('LORE_TEMPLATE_SOURCE_MISMATCH');
             this.receipts.set(receipt.pointer, receipt);
@@ -40,6 +42,55 @@ export class TavernLoreTemplateFeedbackStateV1 {
             this.rows.set(row.request.entryId, row);
         for (const row of snapshot.injectionFeedback ?? [])
             this.scanRows.set(`${row.loop}:${row.stage}`, row);
+    }
+    resolveText(pointer) {
+        for (const entry of this.composition.entries) {
+            if (isTavernLoreDerivedEntryV1(entry))
+                continue;
+            for (const field of ['primaryKeys', 'secondaryKeys']) {
+                const prefix = `${entry.sourcePointer}/@${field}/`;
+                if (!pointer.startsWith(prefix))
+                    continue;
+                const index = Number(pointer.slice(prefix.length)), keys = tavernLoreEvaluationSemanticV1(entry)[field];
+                if (!Number.isSafeInteger(index) || index < 0 || index >= keys.length || `${prefix}${index}` !== pointer)
+                    refuse('LORE_KEY_RECEIPT_POINTER_INVALID', entry.entryId);
+                return { contentSha256: schemaTextSha256(keys[index]) };
+            }
+        }
+        return resolveTavernLoreEvaluationContentV1(this.composition, pointer);
+    }
+    async keys(entry, field) {
+        const keys = tavernLoreEvaluationSemanticV1(entry)[field], result = [];
+        if ('ordinaryChange' in entry && entry.ordinaryChange.preprocessed)
+            return keys;
+        for (const [index, text] of keys.entries()) {
+            const templated = this.snapshot.settings.macroPolicy === 'frozen-key-alias-receipt-v2'
+                ? hasTavernPromptMacroSyntaxV1(text) : text.includes('{{');
+            if (!templated) {
+                result.push(text);
+                continue;
+            }
+            if (isTavernLoreDerivedEntryV1(entry))
+                refuse('LORE_KEY_TEMPLATE_UNRENDERED', entry.entryId);
+            const pointer = `${entry.sourcePointer}/@${field}/${index}`;
+            let receipt = this.receipts.get(pointer);
+            if (!receipt && this.producer?.renderKey) {
+                this.checkpoint();
+                const supplied = await this.producer.renderKey({ entryId: entry.entryId, pointer, text }, this.producer.signal ?? this.defaultSignal);
+                this.checkpoint();
+                if (supplied.pointer !== pointer || supplied.rawContentSha256 !== schemaTextSha256(text)
+                    || supplied.rendererIdentity !== this.producer.identity
+                    || supplied.rendererImplementationSha256 !== this.producer.implementationSha256)
+                    refuse('LORE_KEY_PRODUCER_MISMATCH', entry.entryId);
+                this.pendingKeyReceipts.push(supplied);
+                this.receipts.set(pointer, supplied);
+                receipt = supplied;
+            }
+            if (!receipt)
+                refuse('LORE_KEY_TEMPLATE_UNRENDERED', entry.entryId, pointer);
+            result.push(receipt.renderedText);
+        }
+        return result;
     }
     async scan(loop, state, stage) {
         const key = `${loop}:${stage}`;
@@ -74,20 +125,19 @@ export class TavernLoreTemplateFeedbackStateV1 {
         return { contributions: row.contributions, activationProposals: row.activationProposals };
     }
     activation(proposal) {
-        const entry = this.composition.entries.find(item => item.entryId === proposal.entryId);
+        const target = this.activationTargets.get(proposal.entryId), entry = target?.entry;
         if (!entry || entry.rawEntrySha256 !== proposal.rawEntrySha256)
             refuse('LORE_FEEDBACK_ENTRY_UNKNOWN', proposal.entryId);
-        const semantic = tavernLoreEvaluationSemanticV1(entry);
-        if (!semantic.enabled)
+        if (!target.semantic.enabled)
             refuse('LORE_FEEDBACK_ENTRY_DISABLED', entry.entryId);
-        if (!this.eligible(entry))
+        if (!target.eligible)
             refuse('LORE_FEEDBACK_ENTRY_INELIGIBLE', entry.entryId);
     }
     async selected(entry, semantic, loop, state) {
         const resolved = resolveTavernLoreEvaluationContentV1(this.composition, semantic.content.pointer);
-        if (isTavernLoreDerivedEntryV1(entry)) {
-            // Model output has no author program authority. Template/macro/decorator
-            // markers stay literal, while this same evaluator counts and scans text.
+        if (isTavernLoreDerivedEntryV1(entry) || 'ordinaryChange' in entry && entry.ordinaryChange.preprocessed) {
+            // Model output and completed prepass output are literal here. The latter
+            // already has its actual execution in the same preparation audit.
             if (Buffer.byteLength(resolved.text, 'utf8') > LORE_EVALUATOR_POLICY_V1.bounds.contentBytes)
                 refuse('LORE_CONTENT_LIMIT', entry.entryId);
             return { text: resolved.text, proposals: [] };
@@ -151,6 +201,9 @@ export class TavernLoreTemplateFeedbackStateV1 {
             refuse('LORE_FEEDBACK_UNSELECTED');
         if ([...this.scanRows.keys()].some(key => !this.consumedScans.has(key)))
             refuse('LORE_INJECTION_SCAN_UNCONSUMED');
+        if (this.pendingKeyReceipts.length)
+            return sealTavernLoreSnapshotV1({ ...this.snapshot,
+                renderedTexts: [...this.snapshot.renderedTexts, ...this.pendingKeyReceipts] });
         return this.snapshot;
     }
 }

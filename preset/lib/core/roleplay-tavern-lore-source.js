@@ -7,12 +7,27 @@ import { recordSha256, sha256 } from './roleplay-data.js';
 import { roleplaySourceMetadataValue } from './roleplay-input-state.js';
 import { cloneRoleplayTavernLoreDataV1, cloneRoleplayTavernLoreImportRecordV1, TavernLoreDataFailureV1, TAVERN_LORE_DATA_BOUNDS_V1 } from './roleplay-tavern-lore-data.js';
 import { CARD_LIMITS } from './tavern-card.js';
-import { assertImportRecordIntegrity, assertAssignmentBudget, assertReferenceBudget, assertReviewProof, importCoverage, normalizeSourceSpans, spanText, validateAssignmentIdentities, readStructuredImportDataV1 } from './roleplay-import-record.js';
+import { assertImportRecordIntegrity, assertAssignmentBudget, assertReferenceBudget, assertReviewProof, importCoverage, normalizeSourceSpans, spanText, validateAssignmentIdentities } from './roleplay-import-record.js';
 // Reuse the decoder's accepted cover without putting its bytes in Source DATA
 // or re-reading the PNG. The weak key follows this exact live capture only.
 const capturedCovers = new WeakMap();
 export function readCapturedTavernCoverV1(capture) {
     return capture.kind === 'captured-data' ? capturedCovers.get(capture.contributionInput.rawDecoded) : undefined;
+}
+/** Select already accepted image DATA from this exact Source capture. PNG
+ * covers stay with their decoder owner; portable cards carry their own URI. */
+export function readCapturedTavernAvatarV1(capture) {
+    if (capture.kind !== 'captured-data')
+        return null;
+    const cover = readCapturedTavernCoverV1(capture);
+    if (cover)
+        return 'data:image/png;base64,' + cover.base64;
+    const assets = capture.contributionInput.rawDecoded.data.assets, prefix = 'data:image/png;base64,';
+    if (!Array.isArray(assets))
+        return null;
+    const avatar = assets.findLast(asset => asset?.type === 'icon' && asset.name === 'avatar' && asset.ext === 'png'
+        && typeof asset.uri === 'string' && asset.uri.startsWith(prefix));
+    return avatar?.uri ?? null;
 }
 export const TAVERN_LORE_SOURCE_BOUNDS_V1 = Object.freeze({ ...TAVERN_LORE_DATA_BOUNDS_V1, rows: 4096 });
 const ID = /^[a-zA-Z0-9_-]{1,128}$/;
@@ -175,8 +190,10 @@ function captured(deps, sessionId) {
         ]);
     if (record.mode !== undefined && record.mode !== 'replace')
         fail('IMPORT_RECORD_INVALID', '/activeImport/mode');
+    let decoded;
+    let sourceProvenance;
     try {
-        assertImportRecordIntegrity(record);
+        assertImportRecordIntegrity(record, (value, structured) => { decoded = value; sourceProvenance = structured.provenance; });
     }
     catch (error) {
         importFailure(error, '/activeImport');
@@ -238,13 +255,6 @@ function captured(deps, sessionId) {
     }
     if (activation.filter(row => row.tableName === 'rules' && row.key === `${sourceRecordSessionId}__spec` && isHash(row.sha256)).length !== 1) {
         fail('ACTIVATION_INVALID', '/activeImport/activation/writeDigests');
-    }
-    let decoded;
-    try {
-        decoded = readStructuredImportDataV1(record).decoded;
-    }
-    catch (error) {
-        importFailure(error, '/activeImport/sourceEnvelope');
     }
     // Headerless V1 retains the table-backed author path; this Source owns /data cards.
     if (decoded.format === 'json-v1' || decoded.format === 'png-v1')
@@ -410,8 +420,11 @@ function captured(deps, sessionId) {
     const source = { ...body, sourceSha256: recordSha256(body) };
     // Source already owns the complete admission above. Publish the same currency
     // identity for consumers without cloning or validating this DATA again.
-    const currentIdentitySha256 = recordSha256(sourceCurrentIdentity(body));
-    const result = freeze({ schemaVersion: 1, kind: 'captured-data', source, currentIdentitySha256, contributionInput });
+    const currentIdentity = sourceCurrentIdentity(body), currentIdentitySha256 = recordSha256(currentIdentity);
+    const data = freeze({ schemaVersion: 1, kind: 'captured-data', source, currentIdentitySha256,
+        sourceProvenance, contributionInput });
+    const currentIdentityRows = Object.freeze(currentIdentity.current.rows.map(row => Object.isFrozen(row) ? row : freeze(row)));
+    const result = Object.freeze({ ...data, currentIdentityRows });
     // The lineage owner already froze this DATA. Carry its reference outside the
     // Source body/hash without traversing those frozen records again.
     return lineage?.kind === 'committed-data' && lineage.sourceLineage
@@ -571,7 +584,7 @@ function sourceCurrentIdentity(body) {
 /** The same complete-row projection is used by Source currency and the actual
  * fresh-basis metadata reader. It grants no row provenance or Source lease. */
 export function tavernLoreSourceCurrentRowIdentityV1(sessionId, row) {
-    if (row.ref.table !== 'branch' || row.ref.key !== `${sessionId}__meta` || !row.value)
+    if (!sourceMetadataRow(sessionId, row))
         return row;
     const value = roleplaySourceMetadataValue(row.value);
     return { ref: { ...row.ref, sha256: recordSha256(value) }, value };

@@ -7,9 +7,9 @@ import { readStructuredImportDataV1 } from './roleplay-import-record.js';
 import { createRoleplayTavernLoreSourceV1 } from './roleplay-tavern-lore-source.js';
 import { validateTavernLoreAbsentSourceReferenceV1 } from './tavern-lore-compiler.mjs';
 import { assertMvuLiteralSourceTextV1, assertMvuNonSchemaSourceExtensionsV1 } from './roleplay-mvu-source.js';
-import { TEMPLATE_POLICY_SHA256, TEMPLATE_LIMITS_V1 } from './tavern-template-data.mjs';
+import { TEMPLATE_LIMITS_V1 } from './tavern-template-data.mjs';
 import { mapPromptTemplateOnlyOriginsV1 } from './roleplay-prompt-template-only-origins.js';
-import { PROMPT_TEMPLATE_ONLY_FIELDS_V1, PROMPT_TEMPLATE_ONLY_POLICY_SHA256, PromptTemplateOnlyRefusalV1, promptTemplateOnlyFail, clonePromptTemplateOnlyDataV1, freezePromptTemplateOnlyDataV1, validatePromptTemplateOnlySourceProofV1 } from './roleplay-prompt-template-only-data.js';
+import { PROMPT_TEMPLATE_ONLY_FIELDS_V1, PROMPT_TEMPLATE_ONLY_POLICY_SHA256, PROMPT_TEMPLATE_ONLY_EJS_RUNTIME_V1, PromptTemplateOnlyRefusalV1, promptTemplateOnlyFail, clonePromptTemplateOnlyDataV1, freezePromptTemplateOnlyDataV1, validatePromptTemplateOnlySourceProofV1 } from './roleplay-prompt-template-only-data.js';
 const same = (left, right) => recordSha256(left) === recordSha256(right);
 const object = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 function fail(...args) { return promptTemplateOnlyFail(...args); }
@@ -273,7 +273,7 @@ export function createRoleplayPromptTemplateOnlySourceV1(deps) {
             exclusionInventorySha256: recordSha256({ documentSha256: source.original.documentSha256,
                 sections: origins.sectionInventory, current: excluded, root: inventory.root }),
             initialization: { kind: 'none', scopeInventorySha256: inventory.inventorySha256 },
-            requiredPromptRuntime: { protocol: 'owned-template-v1', policySha256: TEMPLATE_POLICY_SHA256 } };
+            requiredPromptRuntime: PROMPT_TEMPLATE_ONLY_EJS_RUNTIME_V1 };
         const proof = validatePromptTemplateOnlySourceProofV1({ ...body, proofSha256: recordSha256(body) });
         return freezePromptTemplateOnlyDataV1({ kind: 'prompt-template-only', proof });
     }

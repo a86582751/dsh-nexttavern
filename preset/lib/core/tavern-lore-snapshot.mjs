@@ -29,10 +29,12 @@ export const LORE_EVALUATOR_POLICY_V1 = freezeLoreData({ schemaVersion: 1,
     randomness: 'sha256-counter-domain-separated-v1; replaces-ST-Math.random',
     budget: 'frozen-cumulative-token-ledger-st-gte-v1; empty-scan-token-base; keeps-overflow-candidate; ignore-budget-can-follow',
     template: 'key-group-probability-selected-before-real-budget; trusted-standalone-producer-once; frozen-replay',
+    keys: 'frozen-macro-owner-receipts; semantic-key-pointers; no-EJS; exact-text-match-cache',
+    groups: 'comma-whitespace-membership; each-membership-competes; ordered-fixed-upstream-groups',
     timed: 'start-inclusive-protected; end-exclusive; sticky-before-cooldown; raw-and-effective-semantic-pins',
     feedback: 'declared-entry-activation-only; duplicates-dedupe; nested-frame-audit-owned-by-Root',
     injectedScan: 'owned-registry-captured-phase; serial-actual-filters; scan-text-excluded-from-WI-token-budget; frozen-replay',
-    unsupported: ['multi-group-membership', 'decorators', 'world-info-content-regex', 'key-macros', 'automation', 'trigger-filter'],
+    unsupported: ['decorators', 'world-info-content-regex', 'automation', 'trigger-filter'],
     bounds: { inputBytes: 16_777_216, snapshotBytes: 4_194_304, outputBytes: 8_388_608,
         messages: 1000, scanChars: 32768, renderedTexts: 4096, tokenCounts: 4096, contentBytes: 2_000_000,
         regexWorkerDispatches: 128, scanSteps: 2048, feedbackProposals: 8192 },
@@ -43,11 +45,15 @@ export function validateTavernLoreSnapshotV1(input) {
     const value = cloneSchemaData(input, LORE_EVALUATOR_POLICY_V1.bounds.snapshotBytes, { nodes: 100000, depth: 48 });
     const hasFeedback = object(value) && Object.hasOwn(value, 'activationFeedback');
     const hasInjections = object(value) && Object.hasOwn(value, 'injectionFeedback');
+    const hasScanHistory = object(value) && Object.hasOwn(value, 'scanHistory');
+    const hasExclusions = object(value) && Object.hasOwn(value, 'standaloneExclusions');
     exact(value, ['schemaVersion', 'encoding', 'authority', 'sessionId', 'branchId', 'revision', 'turnId', 'attemptId',
         'sourceSnapshotSha256', 'stateSnapshotSha256', 'sourceReferenceSha256', 'packageSha256', 'compilerPlanSha256',
         'visibleMessages', 'messagesSha256', 'settings', 'settingsSha256', 'seed', 'seedSha256', 'globalScanData',
         'globalScanDataSha256', 'timed', 'timedSha256', 'tokenizer', 'tokenizerSha256', 'renderedTexts',
         'renderedTextsSha256', 'snapshotSha256',
+        ...(hasScanHistory ? ['scanHistory'] : []),
+        ...(hasExclusions ? ['standaloneExclusions'] : []),
         ...(hasFeedback ? ['activationFeedback', 'activationFeedbackSha256'] : []),
         ...(hasInjections ? ['injectionFeedback', 'injectionFeedbackSha256'] : [])]);
     if (value.schemaVersion !== 1 || value.encoding !== 'owned-st-lore-frozen-snapshot-v1'
@@ -69,7 +75,7 @@ export function validateTavernLoreSnapshotV1(input) {
         || !['actual-runtime-settings', 'explicit-native-fallback-v1'].includes(String(settings.provenance))
         || settings.characterStrategy !== 'single-character-book-v1'
         || settings.contentTransformPolicy !== 'no-world-info-output-regex-v1'
-        || settings.macroPolicy !== 'frozen-rendered-receipt-or-marker-free-v1'
+        || !['frozen-rendered-receipt-or-marker-free-v1', 'frozen-key-alias-receipt-v2'].includes(String(settings.macroPolicy))
         || settings.seedPolicy !== 'sha256-counter-domain-separated-v1'
         || settings.budgetPolicy !== 'frozen-cumulative-token-ledger-st-gte-v1')
         refuse('LORE_SETTINGS_POLICY_UNSUPPORTED');
@@ -85,6 +91,21 @@ export function validateTavernLoreSnapshotV1(input) {
         refuse('LORE_SETTINGS_VALUE');
     if (!Array.isArray(value.visibleMessages) || value.visibleMessages.length > 1000)
         refuse('LORE_MESSAGES_LIMIT');
+    if (hasExclusions) {
+        const exclusions = value.standaloneExclusions;
+        exact(exclusions, ['schemaVersion', 'encoding', 'entryIds']);
+        if (exclusions.schemaVersion !== 1 || exclusions.encoding !== 'owned-lore-standalone-exclusions-v1'
+            || !Array.isArray(exclusions.entryIds) || exclusions.entryIds.length > 4096
+            || exclusions.entryIds.some(entryId => !isSha(entryId)))
+            refuse('LORE_STANDALONE_EXCLUSIONS_INVALID');
+    }
+    if (hasScanHistory) {
+        const history = value.scanHistory;
+        exact(history, ['schemaVersion', 'encoding', 'messageCount']);
+        if (history.schemaVersion !== 1 || history.encoding !== 'owned-lore-scan-history-range-v1'
+            || !integer(history.messageCount) || history.messageCount < value.visibleMessages.length)
+            refuse('LORE_MESSAGES_LIMIT');
+    }
     const messages = new Set();
     for (const row of value.visibleMessages) {
         exact(row, ['messageId', 'versionSha256', 'role', 'speakerName', 'text', 'textSha256',

@@ -218,6 +218,20 @@ export function plannedPublication(source, journal, event, editorBaseOverlay) {
 /** Published journal fields are author DATA. Reading them does not need the
  * semantic editor plan, which has its own compiler output contract. */
 export function publishedJournalData(source, journal, legacy) {
+    const { overlay, currentNativeMembership, journalRefs, journalSha256 } = publishedAuthorBookDataV1(source, journal, legacy);
+    const body = { schemaVersion: 1, encoding: 'tavern-lore-edits-current-data-v1',
+        authority: 'consumer-data-only', sessionId: source.sessionId, source, identity: journal.identity,
+        identitySha256: journal.identitySha256, revision: journal.head.revision, head: journal.head,
+        headRef: journal.headRef, journalRefs, journalSha256, overlay,
+        ...(currentNativeMembership ? { currentNativeMembership } : {}), ...journal.inherited ? { inheritance: {
+                baselineRef: journal.inherited.baselineRef, slotRef: journal.inherited.slotRef,
+                baselineSha256: journal.inherited.baseline.baselineSha256,
+                effectiveOverlaySha256: recordSha256(journal.inherited.baseline.effectiveOverlay)
+            } } : {} };
+    return freeze({ ...body, dataSha256: recordSha256(body) });
+}
+/** Both live capture and frozen cuts use this exact fields/membership fold. */
+export function publishedAuthorBookDataV1(source, journal, legacy) {
     if (journal.pending)
         fail('PENDING_INTENT');
     const edited = new Map();
@@ -270,16 +284,46 @@ export function publishedJournalData(source, journal, legacy) {
         fail(error instanceof Error && error.message === 'TAVERN_LORE_MEMBER_TARGET_MISSING'
             ? 'ENTRY_LINK_INVALID' : 'FIELDS_INVALID', error instanceof Error ? error.message : undefined);
     }
-    const body = { schemaVersion: 1, encoding: 'tavern-lore-edits-current-data-v1',
-        authority: 'consumer-data-only', sessionId: source.sessionId, source, identity: journal.identity,
-        identitySha256: journal.identitySha256, revision: journal.head.revision, head: journal.head,
-        headRef: journal.headRef, journalRefs, journalSha256, overlay,
-        ...(currentNativeMembership ? { currentNativeMembership } : {}), ...journal.inherited ? { inheritance: {
-                baselineRef: journal.inherited.baselineRef, slotRef: journal.inherited.slotRef,
-                baselineSha256: journal.inherited.baseline.baselineSha256,
-                effectiveOverlaySha256: recordSha256(journal.inherited.baseline.effectiveOverlay)
-            } } : {} };
-    return freeze({ ...body, dataSha256: recordSha256(body) });
+    return { overlay, currentNativeMembership, journalRefs, journalSha256 };
+}
+/** Reconstruct only this persisted publication. Today's namespace/head cannot
+ * supply evidence for an older epoch or change its captured author book. */
+export function readFrozenPublishedCutV1(branch, identity, cut) {
+    const identitySha256 = recordSha256(identity), inheritedRefs = cut.kind === 'inherited' ? cut
+        : cut.kind === 'published' ? cut.inherited : undefined;
+    let inherited;
+    if (inheritedRefs) {
+        const { baselineRef, slotRef } = inheritedRefs, baselineRaw = branch.get(baselineRef.key), slotRaw = branch.get(slotRef.key);
+        if (recordSha256(baselineRaw) !== baselineRef.sha256 || recordSha256(slotRaw) !== slotRef.sha256
+            || slotRef.key !== tavernSourceEditSlotKeyV1(identitySha256))
+            fail('JOURNAL_INHERITANCE_INVALID');
+        const baseline = validateFrozenSourceEditBaselineV1(baselineRaw), slot = validateInheritanceEditSlotV1(slotRaw);
+        if (baseline.childSessionId !== identity.sessionId || !same(slot.identity, identity)
+            || slot.identitySha256 !== identitySha256 || !same(slot.preparedRef, baseline.preparedRef)
+            || !same(slot.baselineRef, baselineRef))
+            fail('JOURNAL_INHERITANCE_INVALID');
+        inherited = { baseline, baselineRef, slotRef };
+    }
+    const head = cut.kind === 'published' ? parseHead(cut.head, identity) : genesis(identity);
+    const actualHeadRef = headRef(head, cut.kind === 'published');
+    if (cut.kind === 'published' && (head.revision === 0 || !same(cut.headRef, actualHeadRef)))
+        fail('JOURNAL_CHAIN_INVALID');
+    const refs = cut.kind === 'published' ? cut.eventRefs : [], events = new Map();
+    for (const ref of refs) {
+        if (events.has(ref.key))
+            fail('JOURNAL_ORPHAN_CONFLICT');
+        const raw = branch.get(ref.key);
+        if (raw === undefined)
+            fail('JOURNAL_MISSING_EVENT');
+        if (recordSha256(raw) !== ref.sha256)
+            fail('JOURNAL_HASH_INVALID');
+        events.set(ref.key, parseEvent(raw, ref.key, identity));
+    }
+    const { published, seen } = readPublishedChainV1(identity, head, key => events.get(key));
+    if (seen.size !== events.size)
+        fail('JOURNAL_ORPHAN_CONFLICT');
+    return { identity, identitySha256, head, headRef: actualHeadRef, events, published, pending: null, refs,
+        refsSha256: journalReferencesShaV1(refs, inherited), ...inherited ? { inherited } : {} };
 }
 export function publishedData(source, journal, editorBaseOverlay, selection) {
     const data = publishedJournalData(source, journal, editorBaseOverlay);

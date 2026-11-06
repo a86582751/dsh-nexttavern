@@ -1,13 +1,15 @@
 /** Native request/material is the append-only publication of activation timing.
  * Core rows explain that event; a cold read never acquires dispatch permission. */
-import {nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
+import {nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
 import {recordSha256} from './roleplay-data.js'
-import {captureRoleplayTavernMaterialHistoryV1} from './roleplay-tavern-material-history.js'
+import {captureRoleplayTavernMaterialHistoryV1,isTavernHistoryTextOnlyMaterialV1} from './roleplay-tavern-material-history.js'
 import {validateTavernLoreSnapshotV1} from './tavern-lore-snapshot.mjs'
 import {validateTavernLoreCompilationV1} from './tavern-lore-compiler.mjs'
 import {TavernLoreTimedStateV1} from './tavern-lore-timed.mjs'
 import {composeTavernLoreEvaluationV1,validateTavernLoreDerivedSnapshotV1,
-  tavernLoreEvaluationSemanticV1,tavernLoreOriginalEvaluationEntryV1} from './tavern-lore-derived.mjs'
+  tavernLoreEvaluationSemanticV1,applyTavernLoreOrdinaryPreparationV1,createTavernLoreSourceEligibilityV1}
+  from './tavern-lore-derived.mjs'
+import {validateTavernLoreOrdinaryPreparationV1} from './tavern-lore-ordinary-preparation.mjs'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernLoreBranchTimedInputV1,TavernLoreEvaluatorInputV1,
   TavernLoreEvaluationPlanV1,TavernLoreTimedActionV1} from './tavern-lore-evaluator-types.mjs'
@@ -53,8 +55,10 @@ export function readTavernTimedPublicationV1(publication:TavernTimedPublicationV
     ||tavernPlan.authority!=='consumer-data-only')fail('INPUT_MATERIAL_TIMED_TAVERN_RECORD_UNAVAILABLE')
   const plan=tavernPlan as unknown as TavernLoreEvaluationPlanV1,
     compilation=validateTavernLoreCompilationV1(input.compilation),snapshot=validateTavernLoreSnapshotV1(input.snapshot),
-    composition=composeTavernLoreEvaluationV1(compilation.plan,input.derivedSnapshot
+    base=composeTavernLoreEvaluationV1(compilation.plan,input.derivedSnapshot
       ?validateTavernLoreDerivedSnapshotV1(input.derivedSnapshot):undefined),
+    ordinary=input.ordinaryPreparation?validateTavernLoreOrdinaryPreparationV1(input.ordinaryPreparation,compilation.plan):undefined,
+    composition=ordinary?applyTavernLoreOrdinaryPreparationV1(base,ordinary):base,
     {planSha256,...planBody}=plan
   if(input.schemaVersion!==1||input.encoding!=='owned-st-lore-evaluator-input-v1'
     ||recordSha256(planBody)!==planSha256||plan.sessionId!==ownerSessionId||plan.branchId!==ownerSessionId
@@ -81,13 +85,12 @@ export function replayTavernTimedPublicationV1(read:ReturnType<typeof readTavern
     ||new Set(plan.activatedEntryIds).size!==plan.activatedEntryIds.length)fail('INPUT_MATERIAL_TIMED_ACTION_INVALID')
   // Replay the publication's captured entries, including outputs that have
   // since been disabled or replaced. Current heads cannot rewrite old timing.
+  const sourceEligibility=createTavernLoreSourceEligibilityV1(compilation),
+    exclusions=new Set(snapshot.standaloneExclusions?.entryIds??[])
   const entries=new Map(composition.entries.map(entry=>{
-    const original=tavernLoreOriginalEvaluationEntryV1(entry),
-      blocking=original?.diagnosticIndexes.map(index=>compilation.diagnostics[index]!).filter(row=>row.blocking)??[],
-      eligible=!original||original.disposition!=='retained-ineligible'
-        ||blocking.length>0&&blocking.every(row=>row.code==='LORE_VECTORIZED_EVALUATOR_REQUIRED'),
-      semantic=tavernLoreEvaluationSemanticV1(entry)
-    return [entry.entryId,{entry,semantic,eligible}] as const
+    const semantic=tavernLoreEvaluationSemanticV1(entry)
+    return [entry.entryId,{entry,semantic:exclusions.has(entry.entryId)?{...semantic,enabled:false}:semantic,
+      eligible:sourceEligibility(entry)}] as const
   }))
   for(const id of plan.activatedEntryIds) {
     const entry=entries.get(id)
@@ -123,6 +126,7 @@ export function captureRoleplayTavernTimedHistoryV1(deps:Dependencies,chatIndex:
     documentSha256:deps.source.original.documentSha256,bookPointer:deps.source.original.primary.bookPointer,
     bookSha256:deps.source.original.primary.bookSha256}
   for(const publication of history.publications) {
+    if(isTavernHistoryTextOnlyMaterialV1(publication))continue
     const read=readTavernTimedPublicationV1(publication,deps.sessionId),{event}=publication
     if(!same(read.sourceIdentity,actualIdentity))continue
     if(seenPlans.has(read.planKey))continue

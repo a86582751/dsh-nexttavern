@@ -5,7 +5,9 @@ import {captureTavernLoreSourceCounterWitnessV1,parseTavernLoreSourceCounterWitn
   from './roleplay-tavern-lore-source.js'
 import {cloneSchemaData} from './tavern-mvu-schema-data.js'
 import {cloneRoleplayTavernLoreDataV1,TavernLoreDataFailureV1} from './roleplay-tavern-lore-data.js'
-import {compileTavernLoreBookV1,validateTavernLoreAbsentSourceReferenceV1} from './tavern-lore-compiler.mjs'
+import {composeRoleplayTavernCurrentOverlayV1} from './roleplay-tavern-current-overlay.js'
+import {compileTavernLoreBookV1,validateTavernLoreAbsentSourceReferenceV1,
+  materializeTavernLoreEntryFieldsV1} from './tavern-lore-compiler.mjs'
 import type {TavernLoreCompilationInputV1,TavernLoreCurrentNativeOverlayV1,
   TavernLoreCurrentNativeFieldsV1} from './tavern-lore-plan-types.mjs'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
@@ -13,7 +15,56 @@ import type {TavernLoreMembershipDataV1,TavernLoreMemberIdentityV1} from './role
 import type {TavernLoreEditIdentityV1,TavernLoreEditHeadV1,TavernLoreEditEventV1,
   TavernLoreEditRequestV1,TavernLoreEditRefV1,TavernLoreEditHeadRefV1,
   TavernLoreEditReceiptV1,TavernLoreEditDiagnosticV1,TavernLoreMutationRequestV2,TavernLoreJournalRequestV2,
-  TavernLoreJournalEventV2,TavernLoreMutationReceiptV2,TavernLoreMutationRetryLocatorV1} from './roleplay-tavern-lore-edits-types.js'
+  TavernLoreJournalEventV2,TavernLoreMutationReceiptV2,TavernLoreMutationRetryLocatorV1,
+  TavernLoreEditsDataV1,TavernLoreAuthorBookSourceV1,MvuEffectiveLoreSourceV1} from './roleplay-tavern-lore-edits-types.js'
+
+/** One author-book materializer for Native export and numerical Source.
+ * Open book/entry fields remain intact; membership and order use the actual
+ * published journal fold rather than a second interpretation of mutations. */
+export function materializeTavernEffectiveBookV1(source:TavernLoreAuthorBookSourceV1,
+  published:Pick<TavernLoreEditsDataV1,'currentNativeMembership'|'overlay'>,
+  legacy:TavernLoreCurrentNativeOverlayV1):Record<string,unknown>|undefined {
+  const primary=source.original.primary
+  const {entries:originalCollection,...fields}=primary.value??{}
+  let book:Record<string,unknown>|undefined=primary.value===null?undefined:structuredClone(fields)
+  if(published.currentNativeMembership) {
+    const members=published.currentNativeMembership.members
+    const sameMembership=primary.entries.length===members.length&&members.every((member,index)=>{
+      const original=primary.entries[index]!
+      return member.identity.kind==='original'&&member.identity.rawEntryPointer===original.ref.entryPointer
+        &&member.identity.rawEntrySha256===original.ref.entrySha256
+    })
+    const entries=members.map((member,index)=>{
+      const extensions=member.rawEntry.extensions,rawDisplay=extensions&&typeof extensions==='object'&&!Array.isArray(extensions)
+        ?extensions.display_index:undefined
+      const entry=(rawDisplay??index)===member.displayIndex?structuredClone(member.rawEntry)
+        :materializeTavernLoreEntryFieldsV1(member.rawEntry,{displayIndex:member.displayIndex})
+      // A fresh decoder assigns absent ids/display indexes from the exported
+      // order. A real membership change must retain the current member's UID.
+      if(!sameMembership&&!Object.hasOwn(entry,'id'))entry.id=member.uid
+      return entry
+    })
+    if(book&&sameMembership) {
+      const collection=primary.entries.length===0?structuredClone(originalCollection):Array.isArray(originalCollection)?[]:{}
+      for(const [index,original] of primary.entries.entries())
+        (collection as Record<string,unknown>)[original.entryKey]=entries[index]!
+      if(Object.hasOwn(primary.value!,'entries'))book.entries=collection
+    }else book={...book??{},entries}
+  }else if(book) {
+    const overlay=legacy.entries.length===0?published.overlay:published.overlay.entries.length===0?legacy
+      :composeRoleplayTavernCurrentOverlayV1(legacy,published.overlay)
+    const edits=new Map(overlay.entries.map(entry=>[entry.rawEntryPointer,entry.fields]))
+    const collection=primary.entries.length===0?structuredClone(originalCollection):Array.isArray(originalCollection)?[]:{},
+      target=collection as Record<string,unknown>
+    for(const entry of primary.entries) {
+      const edited=edits.get(entry.ref.entryPointer)
+      target[entry.entryKey]=edited
+        ?materializeTavernLoreEntryFieldsV1(entry.value as Record<string,unknown>,edited):structuredClone(entry.value)
+    }
+    if(Object.hasOwn(primary.value!,'entries'))book.entries=collection
+  }
+  return book
+}
 
 export const TAVERN_LORE_EDITS_BOUNDS_V1=Object.freeze({events:256,journalBytes:8_388_608,
   requestBytes:1_048_576,recordBytes:1_114_112,dataBytes:16_777_216,nodes:131_072,depth:66})
@@ -22,6 +73,34 @@ const HASH=/^[a-f0-9]{64}$/
 export const object=(value:unknown):value is Record<string,unknown>=>
   value!==null&&typeof value==='object'&&!Array.isArray(value)
 const hash=(value:unknown):value is string=>typeof value==='string'&&HASH.test(value)
+/** Snapshot shape only. The journal owner parses the actual head/event chain
+ * once during cold reconstruction against the immutable import identity. */
+export function validateMvuEffectiveLoreSourceV1(value:MvuEffectiveLoreSourceV1):void {
+  if(!object(value)||value.schemaVersion!==1||value.encoding!=='native-mvu-effective-lore-source-v1'
+    ||!hash(value.originalDocumentSha256))fail('JOURNAL_SCHEMA_INVALID')
+  const common=['schemaVersion','encoding','originalDocumentSha256','kind']
+  const ref=(input:unknown)=>{
+    if(!object(input))fail('JOURNAL_SCHEMA_INVALID')
+    exact(input,['key','sha256'],'JOURNAL_SCHEMA_INVALID')
+    if(typeof input.key!=='string'||!hash(input.sha256))fail('JOURNAL_SCHEMA_INVALID')
+  }
+  const inherited=(input:unknown)=>{
+    if(!object(input))fail('JOURNAL_SCHEMA_INVALID')
+    exact(input,['baselineRef','slotRef'],'JOURNAL_SCHEMA_INVALID');ref(input.baselineRef);ref(input.slotRef)
+  }
+  if(value.kind==='legacy-rows')exact(value,common,'JOURNAL_SCHEMA_INVALID')
+  else if(value.kind==='inherited') {
+    exact(value,[...common,'baselineRef','slotRef'],'JOURNAL_SCHEMA_INVALID');ref(value.baselineRef);ref(value.slotRef)
+  }else if(value.kind==='published') {
+    exact(value,[...common,'head','headRef','eventRefs',...Object.hasOwn(value,'inherited')?['inherited']:[]],'JOURNAL_SCHEMA_INVALID')
+    if(!object(value.head)||!object(value.headRef)||value.headRef.exists!==true||!Array.isArray(value.eventRefs)
+      ||value.eventRefs.length>TAVERN_LORE_EDITS_BOUNDS_V1.events)fail('JOURNAL_SCHEMA_INVALID')
+    exact(value.headRef,['key','sha256','exists'],'JOURNAL_SCHEMA_INVALID')
+    if(typeof value.headRef.key!=='string'||!hash(value.headRef.sha256))fail('JOURNAL_SCHEMA_INVALID')
+    for(const row of value.eventRefs)ref(row)
+    if(Object.hasOwn(value,'inherited'))inherited(value.inherited)
+  }else fail('JOURNAL_SCHEMA_INVALID')
+}
 export const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
 export class LoreEditFailureV1 extends Error {
   constructor(readonly diagnostic:TavernLoreEditDiagnosticV1){super(diagnostic.code);this.name='LoreEditFailureV1'}
