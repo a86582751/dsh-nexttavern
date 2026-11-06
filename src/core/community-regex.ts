@@ -25,7 +25,8 @@ export function communityRegexRules(policy:CommunityPresetPolicy,
 }
 
 export function communityRegexMacros(aliases:Record<string,string>,chat:Record<string,CommunityJson>,
-  global:Record<string,CommunityJson>,sourceSha256:string):TavernPromptMacroSnapshotV1 {
+  global:Record<string,CommunityJson>,sourceSha256:string,
+  helperScopes:import('./tavern-prompt-transform-types.mjs').TavernPromptHelperVariableScopesV1={}):TavernPromptMacroSnapshotV1 {
   const binding=(key:string,value:string,scope:'chat'|'global'|'card'='card'):TavernPromptBindingV1=>({key,value,
     valueSha256:sha256(value),read:{kind:'variable',purpose:'read',scope,ownerId:`community:${scope}`,key,
       present:true,versionSha256:sourceSha256,valueSha256:recordSha256(value),entryId:null,sourcePointer:null}})
@@ -36,6 +37,9 @@ export function communityRegexMacros(aliases:Record<string,string>,chat:Record<s
       notChar:binding('notChar',user),model:binding('model',aliases.model??'')},card:null,input:binding('input',aliases.input??''),
     instruct:[],dynamic:Object.entries(aliases).filter(([key])=>!['user','char','model','input'].includes(key))
       .map(([key,value])=>binding(key,value)),registered:[],outlets:[],post:[],characterOverrides:[],
+    variableScopes:{...helperScopes,
+      chat:{scope:'chat',ownerId:'community:chat',versionSha256:sourceSha256,values:chat,valuesSha256:recordSha256(chat)},
+      global:{scope:'global',ownerId:'community:global',versionSha256:sourceSha256,values:global,valuesSha256:recordSha256(global)}},
     localVariables:Object.entries(chat).map(([key,value])=>binding(key,typeof value==='string'?value:JSON.stringify(value),'chat')),
     globalVariables:Object.entries(global).map(([key,value])=>binding(key,typeof value==='string'?value:JSON.stringify(value),'global'))}
 }

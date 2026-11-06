@@ -19,3 +19,6 @@ export const TAVERN_PROMPT_INSTRUCT_ORDER_V1 = Object.freeze(['instructStoryStri
     'instructStop', 'instructUserFiller', 'instructSystemInstructionPrefix', 'instructFirstInput|instructFirstUserPrefix',
     'instructLastInput|instructLastUserPrefix', 'systemPrompt', 'defaultSystemPrompt|instructSystem|instructSystemPrompt',
     'chatSeparator', 'chatStart']);
+export const TAVERN_PROMPT_HELPER_VARIABLE_SCOPES_V1 = Object.freeze([
+    'message', 'chat', 'character', 'preset', 'global',
+]);

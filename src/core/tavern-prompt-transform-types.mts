@@ -20,6 +20,17 @@ export const TAVERN_PROMPT_INSTRUCT_ORDER_V1=Object.freeze(['instructStoryString
   'instructStop','instructUserFiller','instructSystemInstructionPrefix','instructFirstInput|instructFirstUserPrefix',
   'instructLastInput|instructLastUserPrefix','systemPrompt','defaultSystemPrompt|instructSystem|instructSystemPrompt',
   'chatSeparator','chatStart'])
+export const TAVERN_PROMPT_HELPER_VARIABLE_SCOPES_V1=Object.freeze([
+  'message','chat','character','preset','global',
+] as const)
+export type TavernPromptHelperVariableScopeV1=typeof TAVERN_PROMPT_HELPER_VARIABLE_SCOPES_V1[number]
+export interface TavernPromptHelperVariableScopesV1 {
+  readonly message?:TavernTemplateScopeBindingV1|null
+  readonly chat?:TavernTemplateScopeBindingV1|null
+  readonly character?:TavernTemplateScopeBindingV1|null
+  readonly preset?:TavernTemplateScopeBindingV1|null
+  readonly global?:TavernTemplateScopeBindingV1|null
+}
 /** All character limits count UTF-16 code units. No entry is truncated. */
 export type TavernPromptPipelineV1='macro-only'|'regex-only'|'macro-then-regex'|'regex-then-macro'
 export type TavernPromptChannelV1='source'|'prompt'|'display'
@@ -46,6 +57,8 @@ export interface TavernPromptMacroSnapshotV1 {
   readonly authority:'consumer-data-only'
   readonly sourceSnapshotSha256:string
   readonly names:TavernPromptNamesV1
+  /** Replayable attempt entropy and stable chat identity, captured by owner. */
+  readonly random?:{readonly seed:string;readonly pickSeed:string}
   /** Fixed ST order: charPrompt, charJailbreak, charInstruction, description,
    * personality, scenario, persona, mesExamples, mesExamplesRaw, charVersion,
    * char_version, charDepthPrompt, creatorNotes. Missing card is explicit null. */
@@ -58,9 +71,13 @@ export interface TavernPromptMacroSnapshotV1 {
   /** Exact caller-owned placeholders for a later deterministic substitution.
    * ST aliases still run first. Ordinary ST snapshots omit this field. */
   readonly deferredMacros?:readonly string[]
-  /** Latest published message variables in this captured prefix, independently
-   * of the pending input's uninitialized message scope. */
-  readonly messageVariables?:TavernTemplateScopeBindingV1|null
+  /** Closed families whose final substitution belongs to the actual material
+   * owner. This does not accept arbitrary unknown author macros. */
+  readonly deferredMacroFamilies?:readonly 'ejs-named-queue-outlet'[]
+  /** Owner-captured structured variable scopes for helper get/format_*_variable
+   * macros. Structured reads use variableScopes; flat ST getvar/getglobalvar macros
+   * continue reading localVariables/globalVariables. Missing/null scopes refuse on read. */
+  readonly variableScopes?:TavernPromptHelperVariableScopesV1
   readonly localVariables:readonly TavernPromptBindingV1[]
   readonly globalVariables:readonly TavernPromptBindingV1[]
   readonly outlets:readonly TavernPromptBindingV1[]
@@ -170,6 +187,8 @@ export interface TavernPromptTransformOutputV1 {
   readonly outputSha256:string
 }
 export type TavernPromptDisplayPartV1={readonly kind:'literal'|'capture';readonly text:string}
+  |{readonly kind:'macro';readonly text:string;readonly sourceText:string;
+    readonly sourceSpan:{readonly start:number;readonly end:number}}
 export interface TavernPromptDisplayReplacementV1 {
   readonly ruleId:string
   readonly sourcePointer:string
