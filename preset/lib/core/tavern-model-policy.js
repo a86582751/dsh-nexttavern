@@ -1,5 +1,5 @@
 // Generated from runtime/alpha3/src/core/tavern-model-policy.ts; edit the TypeScript source.
-import { sessionEvents } from './session-history.js';
+import { sessionHistoryCut } from './session-history.js';
 import { withTavernLock } from './tavern-task-support.js';
 export const PURPOSES = Object.freeze([
     { id: 'memory', label: '记忆与场景整理' }, { id: 'card-import', label: '读卡' },
@@ -49,19 +49,31 @@ function decodePolicy(value) {
     }
     return data;
 }
+const modelHistorySelections = new WeakMap();
 export function selectedMainRoute(session, agent, fallback) {
-    let pending, used;
-    // Read the prepared public history cut, including a selection not yet used by a request.
-    for (const event of sessionEvents(session)) {
-        if (event?.type === 'model/selection')
-            pending = object(event.data);
-        if (event?.type === 'request/header') {
-            used = object(object(object(event.data)?.header)?.config) ?? used;
-            if (pending && used && pending.provider === used.provider && pending.model === used.model && pending.reasoningEffort === used.reasoningEffort)
-                pending = undefined;
-        }
+    const cut = sessionHistoryCut(session);
+    // Only a real append-only Native owner can retain the historical fold.
+    // Loaded arrays are mutable caller data and are read in full on every call.
+    let selection = cut.source === 'native' ? modelHistorySelections.get(cut.owner) : undefined;
+    if (!selection) {
+        selection = { count: 0, pending: undefined, used: undefined };
+        if (cut.source === 'native')
+            modelHistorySelections.set(cut.owner, selection);
     }
-    const configured = pending ?? used ?? object(session?.requestHeader?.()?.config);
+    const state = selection;
+    cut.forEachRange(state.count, cut.length, event => {
+        if (event?.type === 'model/selection')
+            state.pending = object(event.data);
+        if (event?.type === 'request/header') {
+            state.used = object(object(object(event.data)?.header)?.config) ?? state.used;
+            const { pending, used } = state;
+            if (pending && used && pending.provider === used.provider && pending.model === used.model
+                && pending.reasoningEffort === used.reasoningEffort)
+                state.pending = undefined;
+        }
+    });
+    state.count = cut.length;
+    const configured = state.pending ?? state.used ?? object(session?.requestHeader?.()?.config);
     return configured?.provider && configured?.model ? route(configured) : agent?.options?.provider && agent?.options?.model ? route(agent.options) : route(fallback);
 }
 /** Models come from the host; no provider credentials are copied into records. */
@@ -100,8 +112,31 @@ export function createModelPolicy({ table, main, session, canonicalize = value =
         const local = table.get(settingKey(target.id));
         return { global, session: local === undefined ? null : copy(decodePolicy(local)), effective, main: route(await main(target, agent)), inheritedFrom: override && owner && owner.id !== target.id ? owner.id : null, purposes: PURPOSES };
     }
+    async function write(target, key, prior, value) {
+        const next = { schemaVersion: 1, revision: (prior?.revision ?? 0) + 1,
+            ...(value === null ? { inherit: true } : settings(value)),
+            source: { kind: 'player-settings', sessionId: target.id }, updatedAt: Date.now() };
+        await table.put(key, next);
+        return copy(next);
+    }
     return {
         read,
+        async savePurpose(target, kind, value, expectedRevision) {
+            if (!validPurpose(kind))
+                throw new Error('未知模型用途');
+            const selected = value === null ? null : route(value), key = settingKey(target.id);
+            return withTavernLock(table, key, async () => {
+                const raw = table.get(key), prior = raw === undefined ? null : decodePolicy(raw);
+                if (expectedRevision !== (prior?.revision ?? 0))
+                    throw new Error('配置已更新，请重新载入后保存');
+                const data = await read(target);
+                if (data.effective.allMain)
+                    throw new Error('当前统一跟随主模型，请在模型页调整统一策略');
+                // First local override follows the existing whole-settings snapshot contract.
+                const base = prior && prior.inherit !== true ? prior : data.effective;
+                return write(target, key, prior, { allMain: base.allMain, routes: { ...base.routes, [kind]: selected } });
+            });
+        },
         async save(target, scope, value, expectedRevision) {
             if (!['global', 'session'].includes(scope))
                 throw new Error('配置范围无效');
@@ -112,9 +147,7 @@ export function createModelPolicy({ table, main, session, canonicalize = value =
                 const raw = table.get(key), prior = raw === undefined ? null : decodePolicy(raw);
                 if (expectedRevision != null && expectedRevision !== (prior?.revision ?? 0))
                     throw new Error('配置已更新，请重新载入后保存');
-                const next = { schemaVersion: 1, revision: (prior?.revision ?? 0) + 1, ...(value === null ? { inherit: true } : settings(value)), source: { kind: 'player-settings', sessionId: target.id }, updatedAt: Date.now() };
-                await table.put(key, next);
-                return copy(next);
+                return write(target, key, prior, value);
             });
         },
         async resolve(target, kind, agent) {

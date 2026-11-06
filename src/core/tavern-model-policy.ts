@@ -1,4 +1,4 @@
-import {sessionEvents} from './session-history.js'
+import {sessionHistoryCut} from './session-history.js'
 import {withTavernLock} from './tavern-task-support.js'
 
 export const PURPOSES = Object.freeze([
@@ -70,17 +70,34 @@ function decodePolicy(value: unknown): PolicyRecord {
   return data as PolicyRecord
 }
 
+interface ModelHistorySelection {
+  count:number
+  pending:Record<string,unknown>|undefined
+  used:Record<string,unknown>|undefined
+}
+const modelHistorySelections=new WeakMap<object,ModelHistorySelection>()
+
 export function selectedMainRoute(session: PolicySession | null | undefined,agent: PolicyAgent | null | undefined,fallback: unknown): ModelRoute {
-  let pending: Record<string, unknown> | undefined,used: Record<string, unknown> | undefined
-  // Read the prepared public history cut, including a selection not yet used by a request.
-  for(const event of sessionEvents(session)) {
-    if(event?.type==='model/selection')pending=object(event.data)
-    if(event?.type==='request/header') {
-      used=object(object(object(event.data)?.header)?.config)??used
-      if(pending&&used&&pending.provider===used.provider&&pending.model===used.model&&pending.reasoningEffort===used.reasoningEffort)pending=undefined
-    }
+  const cut=sessionHistoryCut<{type:string;data?:unknown}>(session)
+  // Only a real append-only Native owner can retain the historical fold.
+  // Loaded arrays are mutable caller data and are read in full on every call.
+  let selection=cut.source==='native'?modelHistorySelections.get(cut.owner):undefined
+  if(!selection) {
+    selection={count:0,pending:undefined,used:undefined}
+    if(cut.source==='native')modelHistorySelections.set(cut.owner,selection)
   }
-  const configured=pending??used??object(session?.requestHeader?.()?.config)
+  const state=selection
+  cut.forEachRange(state.count,cut.length,event=>{
+    if(event?.type==='model/selection')state.pending=object(event.data)
+    if(event?.type==='request/header') {
+      state.used=object(object(object(event.data)?.header)?.config)??state.used
+      const {pending,used}=state
+      if(pending&&used&&pending.provider===used.provider&&pending.model===used.model
+        &&pending.reasoningEffort===used.reasoningEffort)state.pending=undefined
+    }
+  })
+  state.count=cut.length
+  const configured=state.pending??state.used??object(session?.requestHeader?.()?.config)
   return configured?.provider&&configured?.model?route(configured):agent?.options?.provider&&agent?.options?.model?route(agent.options):route(fallback)
 }
 
@@ -113,8 +130,28 @@ export function createModelPolicy<S extends PolicySession, A = PolicyAgent>({tab
     const local=table.get(settingKey(target.id))
     return {global,session:local===undefined?null:copy(decodePolicy(local)),effective,main:route(await main(target,agent)),inheritedFrom:override&&owner&&owner.id!==target.id?owner.id:null,purposes:PURPOSES}
   }
+  async function write(target:S,key:string,prior:PolicyRecord|null,value:unknown) {
+    const next:PolicyRecord={schemaVersion:1,revision:(prior?.revision??0)+1,
+      ...(value===null?{inherit:true as const}:settings(value)),
+      source:{kind:'player-settings',sessionId:target.id},updatedAt:Date.now()}
+    await table.put(key,next)
+    return copy(next)
+  }
   return {
     read,
+    async savePurpose(target:S,kind:string,value:unknown,expectedRevision:number) {
+      if(!validPurpose(kind))throw new Error('未知模型用途')
+      const selected=value===null?null:route(value),key=settingKey(target.id)
+      return withTavernLock(table,key,async()=>{
+        const raw=table.get(key),prior=raw===undefined?null:decodePolicy(raw)
+        if(expectedRevision!==(prior?.revision??0))throw new Error('配置已更新，请重新载入后保存')
+        const data=await read(target)
+        if(data.effective.allMain)throw new Error('当前统一跟随主模型，请在模型页调整统一策略')
+        // First local override follows the existing whole-settings snapshot contract.
+        const base=prior&&prior.inherit!==true?prior:data.effective
+        return write(target,key,prior,{allMain:base.allMain,routes:{...base.routes,[kind]:selected}})
+      })
+    },
     async save(target: S,scope: string,value: unknown,expectedRevision?: number | null) {
       if(!['global','session'].includes(scope))throw new Error('配置范围无效')
       if(scope==='global'&&value===null)throw new Error('全局配置不能清除')
@@ -122,9 +159,7 @@ export function createModelPolicy<S extends PolicySession, A = PolicyAgent>({tab
       return withTavernLock(table,key,async()=>{
         const raw=table.get(key),prior=raw===undefined?null:decodePolicy(raw)
         if(expectedRevision!=null&&expectedRevision!==(prior?.revision??0))throw new Error('配置已更新，请重新载入后保存')
-        const next: PolicyRecord={schemaVersion:1,revision:(prior?.revision??0)+1,...(value===null?{inherit:true as const}:settings(value)),source:{kind:'player-settings',sessionId:target.id},updatedAt:Date.now()}
-        await table.put(key,next)
-        return copy(next)
+        return write(target,key,prior,value)
       })
     },
     async resolve(target: S,kind: string,agent?: A): Promise<ModelResolution> {
