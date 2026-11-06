@@ -102,8 +102,8 @@ export type CoreContext = {
       :PromiseLike<{sessionId:string}>
     resolveAgent(id: string): Promise<{agent?: CoreAgent; error?: Error} | undefined>
     registerUserSourceOperation(agent:CoreAgent,
-      operation:import('../../compat/session-controller/src/types.js').UserSourceOperation):()=>void
-    appendAuthorUserInput(agent:CoreAgent,input:import('../../compat/session-controller/src/types.js').AuthorUserInput,
+      operation:import('dsh-nexttavern-session-controller/types').UserSourceOperation):()=>void
+    appendAuthorUserInput(agent:CoreAgent,input:import('dsh-nexttavern-session-controller/types').AuthorUserInput,
       signal?:AbortSignal):Promise<import('dsh-nexttavern-native-agent-loop/published-input').NativePublishedUserInputResultV1>
   }
   get(name:'agentLoop'):{getInputAdmissionAgent(agent:unknown):object | undefined;

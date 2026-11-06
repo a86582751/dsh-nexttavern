@@ -4,7 +4,7 @@
 import {applyTavernPromptTransformsV1,tavernPromptRegexAppliesToChannelV1} from './tavern-prompt-transform.mjs'
 import {nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
 import type {ContentBlock} from 'dsh-nexttavern-native-llm'
-import type {UserSourceOperation,UserSourceOperationInput} from '../../compat/session-controller/src/types.js'
+import type {UserSourceOperation,UserSourceOperationInput} from 'dsh-nexttavern-session-controller/types'
 import type {TavernPromptMacroSnapshotV1,TavernPromptRegexRuleV1,
   TavernPromptTransformInputV1,TavernPromptProjectionV1,TavernPromptTransformOutputV1}
   from './tavern-prompt-transform-types.mjs'

@@ -6623,6 +6623,15 @@
       ]
     },
     {
+      "artifact": "tavern-template-ejs-host-types-generated",
+      "source": "src/core/tavern-template-ejs-host-types.mts",
+      "banner": "runtime/alpha3/src/core/tavern-template-ejs-host-types.mts",
+      "primaryOutput": "lib/core/tavern-template-ejs-host-types.mjs",
+      "outputs": [
+        "lib/core/tavern-template-ejs-host-types.mjs"
+      ]
+    },
+    {
       "artifact": "tavern-template-ejs-host-generated",
       "source": "src/core/tavern-template-ejs-host.mts",
       "banner": "runtime/alpha3/src/core/tavern-template-ejs-host.mts",
@@ -16783,6 +16792,16 @@
         "id": "tavern-template-ejs-host-guest-generated",
         "source": "lib/core/tavern-template-ejs-host-guest.mjs",
         "canonicalSource": "runtime/alpha3/lib/core/tavern-template-ejs-host-guest.mjs"
+      },
+      {
+        "id": "tavern-template-ejs-host-types-typescript",
+        "source": "src/core/tavern-template-ejs-host-types.mts",
+        "canonicalSource": "runtime/alpha3/src/core/tavern-template-ejs-host-types.mts"
+      },
+      {
+        "id": "tavern-template-ejs-host-types-generated",
+        "source": "lib/core/tavern-template-ejs-host-types.mjs",
+        "canonicalSource": "runtime/alpha3/lib/core/tavern-template-ejs-host-types.mjs"
       },
       {
         "id": "tavern-template-ejs-host-typescript",
@@ -139372,6 +139391,21 @@
           "src/core/tavern-template-ejs-host-guest.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-template-ejs-host-guest.mts"
+      },
+      {
+        "id": "tavern-template-ejs-host-types-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-template-ejs-host-types-generated",
+        "entry": "src/core/tavern-template-ejs-host-types.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "build-tools/package-lock.json",
+          "build-tools/package.json",
+          "build-tools/tsconfig.json",
+          "src/operations/build-typescript.mts",
+          "src/core/tavern-template-ejs-host-types.mts"
+        ],
+        "banner": "runtime/alpha3/src/core/tavern-template-ejs-host-types.mts"
       },
       {
         "id": "tavern-template-ejs-host-build",

@@ -34,6 +34,9 @@
       "dsh-nexttavern-pi-ai/*": [
         "./node_modules/@earendil-works/pi-ai/dist/*"
       ],
+      "dsh-nexttavern-session-controller/types": [
+        "../development/session-controller/src/types.ts"
+      ],
       "dsh-nexttavern-session-format": [
         "../development/session-format/src/index.ts"
       ],
