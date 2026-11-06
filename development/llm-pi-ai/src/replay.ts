@@ -9,7 +9,7 @@
  */
 
 import { LlmError } from 'dsh-nexttavern-native-llm'
-import type { AssistantMessage as HarnessAssistantMessage, ModelMessageSource, ReplayEnvelope, RequestMaterialMessageV1,
+import type { AssistantMessage as HarnessAssistantMessage, ContentBlock, ModelMessageSource, ReplayEnvelope, RequestMaterialMessageV1,
   RequestMessageTextProjectionV2, RequestMessage } from 'dsh-nexttavern-native-llm'
 import type { Api, AssistantMessage, Usage as PiUsage } from 'dsh-nexttavern-pi-ai'
 
@@ -152,12 +152,12 @@ function readReplayState(value: unknown): PiAiReplayState {
 
 /** Native's durable map names exactly which original blocks survived. New
  * body text never inherits a consumed transport call's provider signature. */
-function messageReplayState(message:HarnessAssistantMessage,source:ModelMessageSource):PiAiReplayState {
+function messageReplayState(content:readonly ContentBlock[],source:ModelMessageSource):PiAiReplayState {
   const state=readReplayState(source.replayState)
   const material=source.responseMaterial
   if(!material)return state
-  if(material.canonicalOrigins.length!==message.content.length)return invalidReplay('response projection origin count mismatch')
-  const blocks=message.content.map((block,index):PiAiReplayBlock=>{
+  if(material.canonicalOrigins.length!==content.length)return invalidReplay('response projection origin count mismatch')
+  const blocks=content.map((block,index):PiAiReplayBlock=>{
     const origin=material.canonicalOrigins[index]
     if(origin===null) {
       if(block.type!=='text')return invalidReplay('response projection manufactured a nontext block')
@@ -167,7 +167,7 @@ function messageReplayState(message:HarnessAssistantMessage,source:ModelMessageS
     if(replay===undefined||replay.type!==block.type)return invalidReplay('response projection origin type mismatch')
     return replay
   })
-  const toolCalls=message.content.some(block=>block.type==='tool-call')
+  const toolCalls=content.some(block=>block.type==='tool-call')
   return {response:{...state.response,stopReason:toolCalls?'toolUse':state.response.stopReason==='toolUse'?'stop':state.response.stopReason},blocks}
 }
 
@@ -180,7 +180,7 @@ export function assertPiRequestProjectionV1(message:RequestMessage):void {
   for(const original of marker.originalMessages) {
     if(original.role!=='assistant'||original.source.kind!=='model'||original.source.replayState===undefined)continue
     let state:PiAiReplayState
-    try {state=messageReplayState(original,original.source)}catch {
+    try {state=messageReplayState(original.content,original.source)}catch {
       throw new LlmError('Cannot project unknown assistant replay metadata','REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
     }
     for(const [index,replay] of state.blocks.entries()) {
@@ -236,7 +236,7 @@ function foreignAssistant(message: HarnessAssistantMessage|RequestMessageTextPro
 
 /** Recombine durable Harness content with validated pi-ai replay metadata. */
 function replayedAssistant(message: HarnessAssistantMessage, source: ModelMessageSource, rawState: unknown): AssistantMessage {
-  const state = messageReplayState(message,{...source,replayState:rawState})
+  const state = messageReplayState(message.content,{...source,replayState:rawState})
   if (state.response.provider !== source.provider) return invalidReplay('provider does not match assistant source')
   if (state.response.model !== source.model) return invalidReplay('model does not match assistant source')
   if (state.blocks.length !== message.content.length) return invalidReplay('block count does not match assistant content')

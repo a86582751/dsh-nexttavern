@@ -129,14 +129,14 @@ function readReplayState(value) {
 }
 /** Native's durable map names exactly which original blocks survived. New
  * body text never inherits a consumed transport call's provider signature. */
-function messageReplayState(message, source) {
+function messageReplayState(content, source) {
     const state = readReplayState(source.replayState);
     const material = source.responseMaterial;
     if (!material)
         return state;
-    if (material.canonicalOrigins.length !== message.content.length)
+    if (material.canonicalOrigins.length !== content.length)
         return invalidReplay('response projection origin count mismatch');
-    const blocks = message.content.map((block, index) => {
+    const blocks = content.map((block, index) => {
         const origin = material.canonicalOrigins[index];
         if (origin === null) {
             if (block.type !== 'text')
@@ -148,7 +148,7 @@ function messageReplayState(message, source) {
             return invalidReplay('response projection origin type mismatch');
         return replay;
     });
-    const toolCalls = message.content.some(block => block.type === 'tool-call');
+    const toolCalls = content.some(block => block.type === 'tool-call');
     return { response: { ...state.response, stopReason: toolCalls ? 'toolUse' : state.response.stopReason === 'toolUse' ? 'stop' : state.response.stopReason }, blocks };
 }
 /** Replay signatures belong to individual original blocks. Native carries the
@@ -163,7 +163,7 @@ export function assertPiRequestProjectionV1(message) {
             continue;
         let state;
         try {
-            state = messageReplayState(original, original.source);
+            state = messageReplayState(original.content, original.source);
         }
         catch {
             throw new LlmError('Cannot project unknown assistant replay metadata', 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
@@ -225,7 +225,7 @@ function foreignAssistant(message) {
 }
 /** Recombine durable Harness content with validated pi-ai replay metadata. */
 function replayedAssistant(message, source, rawState) {
-    const state = messageReplayState(message, { ...source, replayState: rawState });
+    const state = messageReplayState(message.content, { ...source, replayState: rawState });
     if (state.response.provider !== source.provider)
         return invalidReplay('provider does not match assistant source');
     if (state.response.model !== source.model)
