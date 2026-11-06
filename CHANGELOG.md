@@ -4,6 +4,17 @@
 
 本页合并重复流水，保留用户可见变化、迁移要求和验证限制。完整清理前记录见 [2026-10-24 历史快照](https://github.com/a86582751/dsh-nexttavern/blob/d84a35c41189846faaca5643a88a1949fcff776d/CHANGELOG.md)，可追溯原始测试数字、失败记录和候选演变。
 
+## 2026-11-06
+
+### 开发源码与文档 — 浏览器原生作者页与通用交互（未发布）
+
+- 作者页面改用浏览器原生执行，支持外部样式、图片、字体和脚本；接入作者容器访问及连续写入回执。旧前端执行路径及专用组件、测试、依赖和构建映射随替换清理。
+- 常用 Helper 指令、事件、消息变量和编辑接入现有 Native 流程；完善 MVU 数值更新与 EJS／世界书提示准备，修正最终请求文本和普通消息暂存状态的衔接。
+- 维护 CLI 补齐 Markdown／DOCX 上传格式处理；更新原生卡、状态、社区卡及预设指南与中英文首页。详见 [0.3 开发日志](DEVELOPMENT-0.3.md)。
+- 本批是开发源码和文档交付。限定检查与独立审查不代表完整原卡玩法通过；新候选实卡、自然创作、文档导入和新编辑导出往返继续验证。**0.3 尚未发布**，正式版本仍为 **0.2.9-rc.4**，未更新产品包、安装器或生产服务。
+
+English: Move development author pages to native browser execution, retire the superseded frontend stack, and connect common Helper interactions, message edits, MVU updates and EJS/worldbook preparation to Native workflows. Fix Markdown/DOCX upload handling and update the author guides and both homepages. Scoped checks and reviews do not establish complete original-card gameplay; fresh-candidate, natural authoring and import/export validation continue. This is a source and documentation update, not a 0.3 release or production deployment. The formal release remains 0.2.9-rc.4.
+
 ## 2026-10-28
 
 ### 开发方向 — 调整社区卡兼容路线，0.3 继续延期（未发布）
