@@ -5,7 +5,7 @@ import { recordSha256 } from './roleplay-data.js';
 import { programOpeningRecordDataV1, validateProgramOpeningSeedV1, validateProgramOpeningInputV1, validateProgramOpeningAbsentDomainV1, validateProgramOpeningNativeFactsV1, validateOpeningIntentV7, programOpeningSeedKeyV1, programOpeningInputKeyV1, programOpeningDomainKeyV1 } from './roleplay-program-opening-records.js';
 import { openingIntentKey } from './roleplay-opening-selection.js';
 import { roleplayOpeningMaterialKeysV1 } from './roleplay-opening-material.js';
-import { nativeInputSha256, validateNativeGeneratedOpeningReceiptV1, validateNativeOpeningClosingAckV1 } from '@deepseek-ai/dsh-agent-loop';
+import { nativeInputSha256, validateNativeGeneratedOpeningReceiptV1, validateNativeOpeningClosingAckV1 } from 'dsh-nexttavern-native-agent-loop';
 export class ProgramAbsenceOpeningDataFailureV1 extends Error {
     code;
     constructor(code = 'PROGRAM_ABSENCE_OPENING_INVALID') {

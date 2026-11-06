@@ -5,7 +5,7 @@ import type {TavernOpeningContext,TavernOpeningCandidate} from './tavern-card.js
 import type {SchemaMvuInitDataSource,SchemaMvuInitDataResult}
   from './tavern-mvu-initvar.js'
 import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
-import type {PromptProgramSourceDepsV1,PromptProgramSourceInventoryV1}
+import type {PromptProgramSourceDepsV1,PromptProgramSourceInventoryV1,PromptProgramSourceNotApplicableV1}
   from './roleplay-prompt-program-source-types.js'
 import type {ReadBranchSession} from './roleplay-worldline-types.js'
 import type {TavernSourceInheritanceOwnerV1,TavernSourceInheritanceDescriptorV1,
@@ -156,8 +156,11 @@ export interface PromptOpeningSourceProofV1 {
   readonly bindingSha256:string
   readonly proofSha256:string
 }
+export type PromptOpeningSourceNotApplicableV1=PromptProgramSourceNotApplicableV1
+  |{readonly kind:'not-applicable';readonly reason:'no-program-or-raw-init'}
 export type PromptOpeningSourceCaptureV1={readonly kind:'captured-opening-source';
   readonly proof:PromptOpeningSourceProofV1;readonly assertCurrent:()=>void;
   /** Live owner/reader identity only; does not prove DATA currency or grant Source/Native authority. */
   readonly assertOwnerFactsCurrent?:()=>void}
   |{readonly kind:'refused';readonly authority:'none';readonly diagnostics:readonly PromptOpeningSourceDiagnosticV1[]}
+  |PromptOpeningSourceNotApplicableV1

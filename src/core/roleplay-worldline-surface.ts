@@ -13,7 +13,10 @@ import type {
   SurfaceEntry,
   ReplacementResult,
   BranchRecord,
+  WorldlineAuthorEditAdmissionV1,
 } from './roleplay-worldline-types.js'
+import type {AuthorMessageEditInputV1,AuthorMessageEditResultV1,AuthorMessageEditRefV1}
+  from './roleplay-author-message-edit-types.js'
 import { projectStoryEvent } from './roleplay-message-view.js'
 import {recordSha256} from './roleplay-data.js'
 import {createWorldlinePlayerSaves,readWorldlinePlayerSaveIntent,assertWorldlinePlayerSaveRequest}
@@ -22,11 +25,138 @@ import {validateSchemaTaskEditOptionsV1,schemaTaskEditIntentKey,SchemaTaskEditNo
 import {validateSchemaExistingUserEditRecoveryRequest} from './roleplay-mvu-schema-task-edit-types.js'
 import type {SchemaTaskEditOptionsV1,SchemaTaskEditIntent,SchemaExistingUserEditRecoveryResult}
   from './roleplay-mvu-schema-task-edit-types.js'
+import {createSurfaceCursor} from 'dsh-nexttavern-native-session/surface'
+import type {SessionEvent} from 'dsh-nexttavern-native-session'
+import type {SessionMessageProjection,SurfaceCursorTransition} from 'dsh-nexttavern-native-session/surface'
+import {createTaskHistoryClassification} from './tavern-task-context.js'
+import type {TaskEvent} from './tavern-task-context.js'
+import type {SessionHistoryCut} from './session-history.js'
+
+/** Only immutable Native data lives here. Group membership and permission are
+ * still read from the actual ledger by each caller. */
+export function createWorldlineNativeHistory(deps:Pick<WorldlineDependencies,'nativeHistory'|'projections'>) {
+  const states=new WeakMap<object,ReturnType<typeof createState>>()
+  function createState(cut:SessionHistoryCut<SessionEvent>,definitions:readonly SessionMessageProjection[]) {
+    let current=cut,nextOrder=0
+    const surface=createSurfaceCursor({read:()=>current,projections:definitions}),
+      tasks=createTaskHistoryClassification(seq=>seq<surface.length?current.at(seq) as unknown as TaskEvent:undefined),
+      rawUsers=new Map<string,number[]>(),rawAssistants=new Map<string,number[]>(),
+      candidates=new Map<number,{event:SessionEvent;order:number;turn:ReturnType<typeof tasks.effective>}>(),
+      byTurn=new Map<ReturnType<typeof tasks.effective>,Set<number>>(),users:number[]=[],assistants:number[]=[]
+    const order=(seq:number)=>candidates.get(seq)!.order
+    function lower(list:readonly number[],position:number) {
+      let left=0,right=list.length
+      while(left<right){const middle=(left+right)>>>1;if(order(list[middle]!)<position)left=middle+1;else right=middle}
+      return left
+    }
+    function refresh(seq:number) {
+      const candidate=candidates.get(seq)
+      if(!candidate||candidate.event.type!=='assistant/message')return
+      const at=lower(assistants,candidate.order),present=assistants[at]===seq,
+        eligible=!tasks.internal(candidate.event as unknown as TaskEvent)
+      if(eligible&&!present)assistants.splice(at,0,seq)
+      else if(!eligible&&present)assistants.splice(at,1)
+    }
+    const player=(event:SessionEvent)=>event.type==='user/message'&&event.data.source.kind==='user'
+    const relevant=(event:SessionEvent)=>player(event)||event.type==='assistant/message'
+    function rebuild() {
+      users.length=0;assistants.length=0;nextOrder=0
+      for(const seq of surface.nodes) {
+        const candidate=candidates.get(seq)
+        if(!candidate)continue
+        candidate.order=nextOrder++
+        if(player(candidate.event))users.push(seq)
+        else if(!tasks.internal(candidate.event as unknown as TaskEvent))assistants.push(seq)
+      }
+    }
+    function event(seq:number):StoryEvent|undefined {
+      const raw=current.at(seq)
+      return raw?projectStoryEvent({deriveEventMessage:()=>surface.deriveEventMessage(raw)},raw as unknown as StoryEvent):undefined
+    }
+    return {
+      owner:cut.owner,definitions,
+      advance(cut:SessionHistoryCut<SessionEvent>) {
+        current=cut
+        let transition:SurfaceCursorTransition|undefined
+        surface.advanceTo(cut.length,value=>{transition=value},raw=>{
+          const actual=transition;transition=undefined
+          if(raw.type==='user/message'||raw.type==='assistant/message') {
+            const id=raw.type==='user/message'?raw.data.id:raw.data.message.id,
+              index=raw.type==='user/message'?rawUsers:rawAssistants,seqs=index.get(id)??[]
+            seqs.push(raw.seq);index.set(id,seqs)
+          }
+          const delta=tasks.advance(raw as unknown as TaskEvent,actual)
+          let reordered=false
+          if(actual?.kind==='replace')for(const seq of actual.removed) {
+            const prior=candidates.get(seq)
+            if(prior){byTurn.get(prior.turn)?.delete(seq);candidates.delete(seq);reordered=true}
+          }
+          if((actual?.kind==='append'||actual?.kind==='replace')&&relevant(raw)) {
+            const turn=tasks.effective(raw as unknown as TaskEvent)
+            candidates.set(raw.seq,{event:raw,order:nextOrder++,turn})
+            const bucket=byTurn.get(turn)??new Set<number>();bucket.add(raw.seq);byTurn.set(turn,bucket)
+            if(actual.kind==='replace')reordered=true
+            else if(player(raw))users.push(raw.seq)
+            else refresh(raw.seq)
+          }
+          if(reordered)rebuild()
+          else {
+            for(const turn of delta.dirty)for(const seq of byTurn.get(turn)??[])refresh(seq)
+            for(const seq of delta.changedSeqs)refresh(seq)
+          }
+        })
+      },
+      raw(role:'user'|'assistant',id:string) {
+        return ((role==='user'?rawUsers:rawAssistants).get(id)??[]).map(seq=>current.at(seq) as unknown as StoryEvent)
+      },
+      visiblePlayer(seq:number) {return candidates.has(seq)&&player(candidates.get(seq)!.event)?event(seq):undefined},
+      visibleAssistant(seq:number) {
+        return candidates.get(seq)?.event.type==='assistant/message'?event(seq):undefined
+      },
+      surfaceOrder(seq:number) {return candidates.get(seq)!.order},
+      playerOrder(seq:number) {return candidates.get(seq)!.order},
+      playerBefore(seq:number) {
+        const candidate=candidates.get(seq)
+        if(!candidate)return
+        const at=lower(users,candidate.order)-1
+        return at>=0?event(users[at]!):undefined
+      },
+      followingAssistant(seq:number) {
+        const candidate=candidates.get(seq)
+        if(!candidate||!player(candidate.event))return
+        const next=users[lower(users,candidate.order)+1],end=next===undefined?Infinity:order(next),
+          at=lower(assistants,end)-1,found=assistants[at]
+        return found!==undefined&&order(found)>candidate.order?event(found):undefined
+      },
+    }
+  }
+  return {read(session:ReadBranchSession) {
+    if(!deps.nativeHistory?.cut||!deps.projections)return
+    // The actual Session checks removed projection providers even on a quiet
+    // cut. A different native owner or definition identity starts cold data.
+    void session.surface?.contentGeneration
+    const cut=deps.nativeHistory.cut<SessionEvent>(session)
+    // Detached loaded views have their existing explicit full-read contract;
+    // only the genuine Native owner can advance this append-only index.
+    if(cut.source!=='native')return
+    const definitions=deps.projections()
+    let state=states.get(session)
+    if(!state||state.owner!==cut.owner||state.definitions.length!==definitions.length
+      ||state.definitions.some((definition,index)=>definition!==definitions[index])) {
+      state=createState(cut,[...definitions]);states.set(session,state)
+    }
+    try {state.advance(cut);return state}
+    catch(error){states.delete(session);throw error}
+  }}
+}
+type NativeWorldlineMessages=NonNullable<ReturnType<ReturnType<typeof createWorldlineNativeHistory>['read']>>
 
 // Internal seam: the owner supplies its existing ledger lookup and mutation
 // lock. Surface edits must serialize with fork registration, not create a
 // second lock or hydrate a separate copy of durable state at initialization.
 interface ForkAccess {
+  nativeMessages(session:ReadBranchSession):NativeWorldlineMessages|undefined
+  forkAssistantEvents(session:ReadBranchSession,lookup:ForkLookup):StoryEvent[]
   forkGroupKey(groupId: unknown): string
   forkAnchorKey(sessionId: string, messageId: unknown): string
   forkAnchorLockKey(anchor: Pick<ForkAnchor, 'sourceSessionId' | 'sourceAssistantMessageId'>): string
@@ -55,7 +185,8 @@ type SurfaceDependencies = Pick<WorldlineDependencies,
   'messageEdits' | 'flushEdits' | 'beginNumericalEdit' | 'checkNumericalTextEdit' | 'persistNumericalEdit' | 'reconcileNumericalEdit'
   | 'confirmUnchangedNumericalEdit' | 'prepareNumericalTextEdit' | 'appendNumericalTextEdit'
   | 'recoverNumericalTextEdit' | 'resolveRoleplaySession' | 'persistNumericalTextEditIntent'
-  | 'recoverExistingNumericalUserEdit'>
+  | 'recoverExistingNumericalUserEdit' | 'nativeHistory' | 'readMessageVersion'
+  | 'authorTaskEditOptions' | 'authorEditResolved' | 'authorEditReference'>
 
 export function assertBranchSession(session: ReadBranchSession): asserts session is BranchSession {
   if (!('append' in session) || typeof session.append !== 'function') throw new Error('会话暂不可写入分支历史')
@@ -104,10 +235,32 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     requestUserEvent,
     currentSurfaceUserBefore,
     turnForEvent,
+    forkAssistantEvents,
   } = forks
 
   const editInvalidationKey = (sessionId: string, role: string, targetSeq: number) =>
     keyOf(sessionId, `edit-applied-${role}-${safeId(targetSeq)}`)
+  const exactEditInvalidationKey=(sessionId:string,role:string,targetSeq:number,editSeq:number)=>
+    keyOf(sessionId,`edit-applied-${role}-${safeId(targetSeq)}-${safeId(editSeq)}`)
+  const editReferences=new WeakMap<object,AuthorMessageEditRefV1>()
+  function editReference(session:ReadBranchSession,edit:StoryEvent):AuthorMessageEditRefV1 {
+    const saved=editReferences.get(edit)
+    if(saved)return saved
+    const operation=edit.data?.operation as {operationId:string}|undefined,
+      reference=operation&&deps.authorEditReference?.(session.id,operation.operationId,Number(edit.seq))
+    const result=reference??{seq:Number(edit.seq),sha256:recordSha256(edit)}
+    editReferences.set(edit,result)
+    return result
+  }
+  function editReceipt(session:ReadBranchSession,edit:StoryEvent) {
+    const key=exactEditInvalidationKey(session.id,String(edit.data?.role),Number(edit.data?.targetSeq),Number(edit.seq)),
+      exact=T.branch.get(key) as (BranchRecord&Record<string,unknown>)|undefined
+    if(exact)return {key,value:exact}
+    // Released target-keyed receipts remain valid only for the exact edit they
+    // name. New edits keep their own immutable completion row.
+    const legacyKey=editInvalidationKey(session.id,String(edit.data?.role),Number(edit.data?.targetSeq))
+    return {key:legacyKey,value:T.branch.get(legacyKey) as (BranchRecord&Record<string,unknown>)|undefined}
+  }
   const playerProjectionKey = (sessionId: string, groupId: string, playerVariantId: string) =>
     keyOf(sessionId, `player-projection-${sha256(`${groupId}\0${playerVariantId}`).slice(0, 32)}`)
   const playerSaves=createWorldlinePlayerSaves(T.branch)
@@ -195,26 +348,22 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     return [...surfaceEvents(session)].reverse().find(predicate) ?? null
   }
 
-  function inheritedEdit(session: ReadBranchSession, edit: StoryEvent): boolean {
-    return Number(edit.seq) < (session.inheritedEventCount ?? 0)
-  }
-
   function editEffectsCommitted(session: ReadBranchSession, edit: StoryEvent,
-    receipt=cloneBranchRecord(T.branch.get(editInvalidationKey(session.id,
-      String(edit.data?.role), Number(edit.data?.targetSeq))))) {
+    receipt=editReceipt(session,edit).value) {
     return receipt?.schemaVersion === 1 && receipt.state === 'committed' &&
       receipt.role === edit.data?.role && receipt.targetSeq === edit.data?.targetSeq &&
-      receipt.editSeq === edit.seq && receipt.textSha256 === sha256(edit.data?.text)
+      receipt.editSeq === edit.seq
   }
 
   /** The same edit owner supplies its actual completion rows to the initial
    * absence audit. A lifecycle state is not a numerical state publication. */
   function readOwnedEditCompletionRows(session: ReadBranchSession) {
-    const events=eventsOf(session),rows:{key:string;value:Readonly<Record<string,unknown>>}[]=[]
+    const events=deps.nativeHistory?.cut?.<StoryEvent>(session)??eventsOf(session),
+      rows:{key:string;value:Readonly<Record<string,unknown>>}[]=[]
     for(const edit of messageEdits.current(session,events)) {
-      const key=editInvalidationKey(session.id,String(edit.data?.role),Number(edit.data?.targetSeq)),
-        value=cloneBranchRecord(T.branch.get(key)) as (BranchRecord&Record<string,unknown>)|undefined,
-        fields=['schemaVersion','state','role','targetSeq','editSeq','textSha256','committedAt']
+      const {key,value}=editReceipt(session,edit),
+        fields=['schemaVersion','state','role','targetSeq','editSeq','textSha256','committedAt',
+          ...value?.authorCompleted===true?['authorCompleted']:[]]
       if(!value||Object.keys(value).length!==fields.length||fields.some(field=>!Object.hasOwn(value,field))
         ||!Number.isSafeInteger(value.committedAt)||Number(value.committedAt)<0
         ||!editEffectsCommitted(session,edit,value))continue
@@ -223,44 +372,123 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     return rows
   }
 
+  const editCut=(session:ReadBranchSession)=>deps.nativeHistory?.cut?.<StoryEvent>(session)??eventsOf(session)
+  function authorOperationResult(session:ReadBranchSession,edit:StoryEvent,replayed:boolean):AuthorMessageEditResultV1 {
+    const operation=edit.data?.operation as WorldlineAuthorEditAdmissionV1['operation'],
+      receipt=editReceipt(session,edit),reference=editReference(session,edit)
+    if(!editEffectsCommitted(session,edit,receipt.value)
+      ||receipt.value?.authorCompleted!==true)
+      return {kind:'unknown',operationId:operation.operationId,code:'AUTHOR_MESSAGE_EDIT_PENDING',edit:reference}
+    const latest=messageEdits.lookupTarget!(session,editCut(session),Number(edit.data?.targetSeq))
+    return {kind:'committed',operationId:operation.operationId,edit:reference,
+      effects:{key:receipt.key,sha256:recordSha256(receipt.value)},replayed,superseded:latest!==edit}
+  }
+  function confirmAuthorMessageEdit(session:ReadBranchSession,operationId:string,
+    principal?:'reader-regex-document'):AuthorMessageEditResultV1 {
+    const edit=messageEdits.lookupOperation?.(session,editCut(session),operationId)
+    if(edit&&principal) {
+      const origin=(edit.data?.operation as WorldlineAuthorEditAdmissionV1['operation']).origin
+      if(!('principal' in origin)||origin.principal!==principal)
+        return {kind:'refused',operationId,code:'AUTHOR_MESSAGE_EDIT_ORIGIN_MISMATCH'}
+    }
+    return edit?authorOperationResult(session,edit,true)
+      :{kind:'unknown',operationId,code:'AUTHOR_MESSAGE_EDIT_OPERATION_NOT_RECORDED'}
+  }
+  function assertAuthorEditTarget(session:ReadBranchSession,event:StoryEvent,author:WorldlineAuthorEditAdmissionV1) {
+    const {expected}=author.input,role=event.type==='assistant/message'?'assistant':'user',
+      id=String(role==='assistant'?event.data?.message?.id:event.data?.id)
+    author.assertSourceCurrent()
+    if(expected.sessionId!==session.id||Number(event.seq)!==expected.seq||role!==expected.role||id!==expected.messageId
+      ||!deps.readMessageVersion||deps.readMessageVersion(session,event)!==expected.messageVersionSha256)
+      throw Error('AUTHOR_MESSAGE_EDIT_VERSION_CHANGED')
+  }
+  /** Called under the same fork lock as a new edit. A known operation may
+   * finish its own effects, but must never overwrite a later edit. */
+  async function recoverAuthorEdit(session:BranchSession,author:WorldlineAuthorEditAdmissionV1) {
+    if(!messageEdits.lookupOperation||!messageEdits.lookupTarget)throw Error('AUTHOR_MESSAGE_EDIT_OWNER_UNAVAILABLE')
+    const edit=messageEdits.lookupOperation(session,editCut(session),author.input.operationId)
+    if(!edit)return false
+    if((edit.data?.operation as WorldlineAuthorEditAdmissionV1['operation']).requestSha256!==author.operation.requestSha256)
+      throw Error('AUTHOR_MESSAGE_EDIT_OPERATION_CONFLICT')
+    const completed=authorOperationResult(session,edit,true)
+    if(completed.kind==='committed'){author.complete(completed);return true}
+    const latest=messageEdits.lookupTarget(session,editCut(session),Number(edit.data?.targetSeq))
+    if(latest!==edit){author.complete({kind:'unknown',operationId:author.input.operationId,
+      code:'AUTHOR_MESSAGE_EDIT_SUPERSEDED_PENDING',edit:editReference(session,edit)});return true}
+    author.assertSourceCurrent()
+    await deps.recoverNumericalTextEdit?.(session,author.assertSourceCurrent)
+    const event=visibleSurfaceEvent(session,candidate=>Number(candidate.seq)===Number(edit.data?.targetSeq))
+    if(!event)throw Error('AUTHOR_MESSAGE_EDIT_TARGET_UNAVAILABLE')
+    await applyTextEdit(session,event,author.input.text,'author-message-edit-recovered',
+      {repair:true,preparedTaskEdit:null,author,replayed:true})
+    return true
+  }
+  async function replaceAuthorMessageText(session:BranchSession,input:AuthorMessageEditInputV1,
+    assertSourceCurrent:()=>void):Promise<AuthorMessageEditResultV1> {
+    let result:AuthorMessageEditResultV1|undefined
+    const author:WorldlineAuthorEditAdmissionV1={input,operation:{schemaVersion:1,
+      encoding:'native-author-message-edit-operation-v1',operationId:input.operationId,
+      requestSha256:recordSha256(input),expectedMessageVersionSha256:input.expected.messageVersionSha256,origin:input.origin},
+      assertSourceCurrent,complete:value=>{result=value}}
+    try {
+      if(input.expected.role==='assistant')await replaceAssistantText(session,input.expected.messageId,input.text,0,0,author)
+      else await replaceUserText(session,input.expected.seq,input.text,0,0,author)
+      return result??{kind:'unknown',operationId:input.operationId,code:'AUTHOR_MESSAGE_EDIT_ACK_UNKNOWN'}
+    }catch(error) {
+      const known=messageEdits.lookupOperation?.(session,editCut(session),input.operationId),
+        code=error instanceof Error?error.message:'AUTHOR_MESSAGE_EDIT_FAILED'
+      if(code==='AUTHOR_MESSAGE_EDIT_OPERATION_CONFLICT')return {kind:'refused',operationId:input.operationId,code}
+      if(known)return {kind:'unknown',operationId:input.operationId,code,edit:editReference(session,known)}
+      return {kind:'refused',operationId:input.operationId,code}
+    }
+  }
+
   /** Caller holds the fork lock. Receipts distinguish a durable edit from completed derived effects. */
   async function applyTextEdit(session: BranchSession, event: StoryEvent, text: string, reason: string,
-    options:{repair?:boolean;schemaTaskEdit?:SchemaTaskEditOptionsV1;preparedTaskEdit?:SchemaTaskEditIntent|null}={}) {
+    options:{repair?:boolean;schemaTaskEdit?:SchemaTaskEditOptionsV1;preparedTaskEdit?:SchemaTaskEditIntent|null;
+      author?:WorldlineAuthorEditAdmissionV1;replayed?:boolean}={}) {
     const targetSeq = Number(event.seq)
     const role = event.type === 'assistant/message' ? 'assistant' : 'user'
     const messageId = String(role === 'assistant' ? event.data?.message?.id ?? '' : event.data?.id ?? '')
     const currentText = textOf(role === 'assistant' ? event.data?.message?.content : event.data?.content)
     const changed = currentText !== text
+    if(options.author&&!options.repair&&!changed) {
+      // An unchanged acknowledgement is current DATA, not a historical edit.
+      options.author.complete({kind:'unchanged',operationId:options.author.input.operationId})
+      return {changed:false,editSeq:null,recovered:false}
+    }
     const taskIntent=options.preparedTaskEdit===undefined
       ?options.schemaTaskEdit&&(changed||role==='assistant')
         ?await deps.prepareNumericalTextEdit?.(session,event,text,options.schemaTaskEdit):undefined
       :options.preparedTaskEdit
-    const priorEdit=messageEdits.latest(eventsOf(session),targetSeq)
-    // The selected Native prefix already owns these effects. Replaying them
-    // against the child would revoke its published derived numerical state.
-    if(!taskIntent&&!changed&&priorEdit&&inheritedEdit(session,priorEdit)) {
-      return {changed:false,editSeq:Number(priorEdit.seq),inherited:true}
+    const priorEdit=options.author?messageEdits.lookupTarget!(session,editCut(session),targetSeq)
+      :messageEdits.latest(eventsOf(session),targetSeq)
+    // Unchanged inherited text belongs to the Native prefix. Consuming it
+    // must not start a child edit transaction or recreate ancestor receipts.
+    if(!taskIntent&&!changed&&priorEdit&&priorEdit.seq<(session.inheritedEventCount??0)) {
+      return {changed:false,editSeq:Number(priorEdit.seq),inherited:true,recovered:false}
     }
     if(!taskIntent&&(changed||priorEdit&&!editEffectsCommitted(session,priorEdit))) {
       // Shared users are admitted before variant publication; task edits reuse
       // their prepared intent, and durable Native repair keeps its admission.
       if(role==='assistant'&&changed&&!options.repair&&!options.schemaTaskEdit)
         await checkNumericalTextEdit?.(session.id,targetSeq)
+      options.author?.assertSourceCurrent()
       beginNumericalEdit?.(session.id)
     }
+    const append=()=>messageEdits.append(session,targetSeq,{role,messageId},text,undefined,options.author?.operation)
     const edit = taskIntent
-      ?await deps.appendNumericalTextEdit!(session,taskIntent,()=>messageEdits.append(session,targetSeq,{role,messageId},text))
+      ?await deps.appendNumericalTextEdit!(session,taskIntent,append,options.author?.assertSourceCurrent)
       :changed
-      ? messageEdits.append(session, targetSeq, {role, messageId}, text)
+      ? append()
       : priorEdit
-    if (!edit) return {changed: false, editSeq: null}
+    if (!edit) return {changed: false, editSeq: null, recovered: false}
     if (edit.data?.targetSeq !== targetSeq || edit.data.role !== role ||
       edit.data.messageId !== messageId || edit.data.text !== text) {
       throw new Error('消息编辑投影与当前正文不一致，未提交派生状态')
     }
     const editSeq = Number(edit.seq)
-    const receiptKey = editInvalidationKey(session.id, role, targetSeq)
-    const textSha256 = sha256(text)
+    const receiptKey = exactEditInvalidationKey(session.id,role,targetSeq,editSeq)
     const committed=editEffectsCommitted(session,edit)
     // The native provider drains routed live events at this durability barrier.
     // A flush/invalidation failure leaves the edit available for an idempotent retry.
@@ -273,16 +501,25 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     if(!committed) {
       await invalidateDerivedStoryState(session, {fromSeq: targetSeq, reason})
       await T.branch.put(receiptKey, {
-        schemaVersion: 1, state: 'committed', role, targetSeq, editSeq, textSha256, committedAt: Date.now(),
+        schemaVersion:1,state:'committed',role,targetSeq,editSeq,textSha256:sha256(text),committedAt:Date.now(),
       })
     }
     if(numericalFailure&&!options.repair)throw numericalFailure.error
     if(!numericalFailure)await reconcileNumericalEdit?.(session.id,editSeq)
-    return {changed, editSeq}
+    if(options.author&&!numericalFailure&&deps.authorEditResolved?.(session.id,editSeq)!==false) {
+      const receipt=editReceipt(session,edit)
+      // Preserve the revision owner's actual completion before a later edit
+      // replaces its live view. Cold confirmation reads this same exact row.
+      if(receipt.value?.authorCompleted!==true)
+        await T.branch.put(receiptKey,{...receipt.value,authorCompleted:true} as BranchRecord)
+    }
+    if(options.author)options.author.complete(authorOperationResult(session,edit,options.replayed===true))
+    return {changed, editSeq, recovered: !committed}
   }
 
   async function replaceAssistantText(
     session: BranchSession, messageId: string, text: string, editOptions:unknown=0, attempt=0,
+    author?:WorldlineAuthorEditAdmissionV1,
   ): Promise<StoryEvent | null> {
     const schemaTaskEdit=typeof editOptions==='number'?undefined:validateSchemaTaskEditOptionsV1(editOptions)
     const lockAttempt=typeof editOptions==='number'?editOptions:attempt
@@ -304,6 +541,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
         retryWithCanonicalLock = true
         return null
       }
+      if(author&&await recoverAuthorEdit(session,author))return null
       const exactLiveMember = liveGroup?.members?.find((member) =>
         member.sessionId === session.id && member.assistantMessageId === messageId)
       const nearestLiveMember = groupMemberForSession(liveGroup, session, messageId, { includeDeleted: true })
@@ -316,7 +554,12 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
       const event = visibleSurfaceEvent(session, (candidate) =>
         candidate?.type === 'assistant/message' && assistantMessageId(candidate) === messageId)
       if (!event) throw new Error('当前分支中找不到这条 Agent 回复')
-      const result = await applyTextEdit(session, event, text, 'assistant-message-edited',{schemaTaskEdit})
+      if(author) {
+        if(Number(event.seq)<Number(session.inheritedEventCount??0))throw Error('AUTHOR_MESSAGE_EDIT_INHERITED_UNSUPPORTED')
+        assertAuthorEditTarget(session,event,author)
+      }
+      const taskOptions=author?deps.authorTaskEditOptions?.(session,event,author.input.operationId):schemaTaskEdit,
+        result=await applyTextEdit(session,event,text,'assistant-message-edited',{schemaTaskEdit:taskOptions,author})
       if (result.editSeq !== null && liveGroup && exactLiveMember) {
         // The member points at the original message node, never the audit edit event.
         exactLiveMember.assistantSeq = Number(event.seq)
@@ -329,7 +572,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     })
     if (retryWithCanonicalLock) {
       if (lockAttempt >= 4) throw new Error('回复分支在并发修改期间持续变化，请重试')
-      return replaceAssistantText(session, messageId, text, schemaTaskEdit??lockAttempt+1,lockAttempt+1)
+      return replaceAssistantText(session,messageId,text,schemaTaskEdit??lockAttempt+1,lockAttempt+1,author)
     }
     return replacement
   }
@@ -376,7 +619,8 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
           const owners = [item.sessionId, item.branchId, item.ownerSessionId]
             .map((value) => String(value ?? '').trim())
             .filter(Boolean)
-          if (owners.length && !owners.includes(branchId)) return true
+          // This head belongs to the edited branch. An ancestor owner marks
+          // copied evidence, so it cannot exempt that evidence from this edit.
           const itemSeq = provenanceSeq(item)
           if (seq === null) return owners.length === 0
           return itemSeq === null || itemSeq < seq
@@ -399,7 +643,18 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     let synced = 0
     const taskRecovery=await deps.recoverNumericalTextEdit?.(session)
     const pendingTaskEdit=taskRecovery?.kind==='matched'||taskRecovery?.kind==='pending'?taskRecovery.intent:undefined
-    for (const assistant of surfaceEvents(session).filter(event => event.type === 'assistant/message')) {
+    // Recovery can await Source writes while registration publishes a group.
+    // Discover the actual ledger members after that barrier, then retain the
+    // existing pointer precedence and per-anchor mutation lock below.
+    lookup=buildForkLookupIndex(session)
+    const native=lookup.groups.length?forks.nativeMessages(session):undefined
+    const assistants=!lookup.groups.length?[]:native
+      ?forkAssistantEvents(session,lookup).flatMap(event=>{
+        const current=native.visibleAssistant(Number(event.seq))
+        return current?[current]:[]
+      }).sort((left,right)=>native.surfaceOrder(Number(left.seq))-native.surfaceOrder(Number(right.seq)))
+      :surfaceEvents(session).filter(event=>event.type==='assistant/message')
+    for (const assistant of assistants) {
       const messageId = assistantMessageId(assistant)
       // Player revisions use their ordinary lineage even when this assistant
       // also anchors an independent no-player opening group.
@@ -487,15 +742,17 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     // Recover even an ungrouped assistant edit on normal state/prepare entry;
     // receipt completion must not depend on the player retrying the HTTP call.
     let recoveredEdits = 0
-    for (const edit of messageEdits.current(session, eventsOf(session))) {
-      if(inheritedEdit(session,edit))continue
-      const committed=editEffectsCommitted(session,edit)
-      const target = eventsOf(session)[Number(edit.data?.targetSeq)]
+    const editHistory=deps.nativeHistory?.cut?.<StoryEvent>(session)??eventsOf(session)
+    for (const edit of messageEdits.current(session, editHistory)) {
+      // The Native prefix owns inherited effects; they are not local repair work.
+      if(edit.seq<(session.inheritedEventCount??0))continue
+      const target = editHistory.at(Number(edit.data?.targetSeq))
       if (!target) throw new Error('编辑来源节点缺失，无法恢复派生状态')
       const visible = session.surface?.nodes?.includes(target.seq) === true
       const messageId = target.type === 'assistant/message' ? assistantMessageId(target)
         : visible ? assistantMessageId(userForkContext(session, target.seq).followingAssistant) : ''
-      const pointer = messageId ? forkPointerFor(session, messageId, null, target.type === 'user/message' ? false : undefined) : null
+      const pointer = messageId ? forkPointerFor(session, messageId, null,
+        target.type === 'user/message' ? false : undefined) : null
       let group = pointer?.groupId ? hydrateForkGroup(T.branch.get(forkGroupKey(pointer.groupId))) : null
       if (!group && target.type === 'user/message') {
         // Archived player nodes no longer have a live surface neighbour. Their
@@ -517,9 +774,9 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
         assertBranchSession(session)
         const current = projectStoryEvent(session, target)
         const text = textOf(target.type === 'assistant/message' ? current.data?.message?.content : current.data?.content)
-        await applyTextEdit(session, current, text, 'message-edit-effects-recovered',{repair:true,
+        const applied=await applyTextEdit(session, current, text, 'message-edit-effects-recovered',{repair:true,
           ...(pendingTaskEdit?.target.seq===target.seq?{preparedTaskEdit:pendingTaskEdit}:{})})
-        if(!committed)recoveredEdits++
+        if(applied.recovered)recoveredEdits++
       })
     }
     return {synced, recoveredEdits}
@@ -527,6 +784,15 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
 
   function userForkContext(session: ReadBranchSession, seq: unknown) {
     const requested = Number(seq)
+    const native=forks.nativeMessages(session)
+    if(native) {
+      const event=native.visiblePlayer(requested)
+      if(!event)throw new Error('当前分支中找不到这条玩家消息')
+      const followingAssistant=native.followingAssistant(requested)??null,
+        pointer=followingAssistant?forkPointerFor(session,assistantMessageId(followingAssistant),null,false):null,
+        group=pointer?.groupId?hydrateForkGroup(T.branch.get(forkGroupKey(pointer.groupId))):null
+      return {event,followingAssistant,group}
+    }
     const event = visibleSurfaceEvent(session, (candidate) =>
       candidate?.type === 'user/message' && Number(candidate.seq) === requested && candidate.data?.source?.kind === 'user')
     if (!event) throw new Error('当前分支中找不到这条玩家消息')
@@ -591,8 +857,8 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
   }
 
   async function replaceUserText(session: BranchSession, seq: unknown, text: string,
-    editOptions:unknown=0,attempt=0): Promise<ReplacementResult | null> {
-    const schemaTaskEdit=typeof editOptions==='number'?undefined:validateSchemaTaskEditOptionsV1(editOptions)
+    editOptions:unknown=0,attempt=0,author?:WorldlineAuthorEditAdmissionV1): Promise<ReplacementResult | null> {
+    let schemaTaskEdit=typeof editOptions==='number'?undefined:validateSchemaTaskEditOptionsV1(editOptions)
     const lockAttempt=typeof editOptions==='number'?editOptions:attempt
     const initial = userForkContext(session, seq)
     const lockKey = initial.group?.anchor
@@ -611,6 +877,13 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
       if (canonicalLockKey !== lockKey) {
         retryWithCanonicalLock = true
         return null
+      }
+      if(author&&await recoverAuthorEdit(session,author))return null
+      if(author) {
+        if(group)throw Error('AUTHOR_MESSAGE_EDIT_SHARED_USER_UNSUPPORTED')
+        if(Number(live.event.seq)<Number(session.inheritedEventCount??0))throw Error('AUTHOR_MESSAGE_EDIT_INHERITED_UNSUPPORTED')
+        assertAuthorEditTarget(session,live.event,author)
+        schemaTaskEdit=deps.authorTaskEditOptions?.(session,live.event,author.input.operationId)
       }
       const currentMember = groupMemberForSession(group, session, assistantMessageId(live.followingAssistant))
       const exactMember = group?.members.find(member => member.sessionId === session.id &&
@@ -727,7 +1000,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
         let applied:Awaited<ReturnType<typeof applyTextEdit>>
         try {
           applied=await applyTextEdit(targetSession,targetEvent,text,'player-message-edited',{
-            schemaTaskEdit,...(schemaTaskEdit?{preparedTaskEdit:prepared.get(member.sessionId)??null}:{})})
+            schemaTaskEdit,author,...(schemaTaskEdit?{preparedTaskEdit:prepared.get(member.sessionId)??null}:{})})
         }catch(error) {
           if(!(error instanceof SchemaTaskEditNotAppliedError)||!group||!currentMember)throw error
           const target=group.playerVariants[currentMember.playerVariantId]?.schemaTaskEdit?.targets[member.sessionId]
@@ -740,7 +1013,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
         // Completion is published only after the inherited numerical denial
         // has also settled, so a retry may trust the applied-revision marker.
         if(applied.inherited)await persistNumericalEdit?.(targetSession.id,applied.editSeq)
-        else if(applied.editSeq===null)confirmUnchangedNumericalEdit?.(targetSession.id)
+        else if(applied.editSeq===null&&!author)confirmUnchangedNumericalEdit?.(targetSession.id)
         member.userMessageId = String(targetEvent.data?.id ?? '')
         member.userSeq = Number(targetEvent.seq)
         member.promptText = text
@@ -772,7 +1045,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     })
     if (retryWithCanonicalLock) {
       if (lockAttempt >= 4) throw new Error('玩家分支在并发修改期间持续变化，请重试')
-      return replaceUserText(session, seq, text, schemaTaskEdit??lockAttempt+1,lockAttempt+1)
+      return replaceUserText(session,seq,text,schemaTaskEdit??lockAttempt+1,lockAttempt+1,author)
     }
     return result
   }
@@ -821,6 +1094,8 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
   }
 
   return {
+    replaceAuthorMessageText,
+    confirmAuthorMessageEdit,
     nativePlayerGroupsFor,
     readOwnedEditCompletionRows,
     replaceAssistantText,

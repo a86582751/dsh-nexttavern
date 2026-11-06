@@ -1,10 +1,22 @@
 // Generated from runtime/alpha3/src/core/roleplay-opening-material.ts; edit the TypeScript source.
 /** One private no-player opening material owner. Persistent data explains a
  * request; only actual Native registration/phase and Root callbacks permit it. */
-import { nativeInputSha256 } from '@deepseek-ai/dsh-agent-loop';
+import { nativeInputSha256, projectNativeMaterialTextOutputsV1 } from 'dsh-nexttavern-native-agent-loop';
 import { recordSha256, keyOf, sha256 } from './roleplay-data.js';
 import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
-import { ROLEPLAY_INPUT_MATERIAL_LIMITS_V1 } from './roleplay-input-material.js';
+import { ROLEPLAY_INPUT_MATERIAL_LIMITS_V1, createRoleplayMaterialPreparationJournalV1, roleplayMaterialPreparationJournalOwnerV1 } from './roleplay-input-material.js';
+function openingCandidateTransform(row) {
+    return { kind: 'transform', ...row.material.messageTextProjections ? { schemaVersion: 2,
+            encoding: 'native-request-material-owner-transform-v2', messageTextProjections: row.material.messageTextProjections } :
+            { schemaVersion: 1, encoding: 'native-request-material-owner-transform-v1' },
+        ...row.refs, captureSha256: row.captureSha256, expectedAssemblySha256: row.initial.assemblySha256,
+        expectedSelectedBaseSha256: row.initial.selected.sha256, requiredSections: row.material.requiredSections,
+        sections: row.material.sections, insertions: row.material.insertions,
+        ...row.material.anchoredInsertions ? { anchoredInsertions: row.material.anchoredInsertions } : {},
+        ...row.material.messageProjection ? { messageProjection: row.material.messageProjection } : {},
+        ...row.material.finalTextProjection ? { finalTextProjection: row.material.finalTextProjection } : {},
+        ...row.material.story ? { story: row.material.story } : {} };
+}
 const positive = (value) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const id = (value, maximum = 256) => typeof value === 'string' && value.length > 0
@@ -123,12 +135,16 @@ export function createRoleplayOpeningMaterialOwnerV1(deps, owner) {
         return readback;
     }
     const requestMaterial = { schemaVersion: 1, sectionNames,
-        story: { schemaVersion: 1,
+        story: { schemaVersion: 2,
             normalizeText: text => { const row = active && ready.get(active.key); return row?.responseHooks?.normalizeText?.(text) ?? text; },
             recoverText: blocks => { const row = active && ready.get(active.key); return row?.responseHooks?.recoverText?.(blocks); },
             createTextTransform: () => {
                 const row = active && ready.get(active.key);
                 return row?.responseHooks?.createTextTransform?.() ?? { push: text => text, finish: () => '' };
+            },
+            async finalizeText(input) {
+                const hooks = active && ready.get(active.key)?.responseHooks;
+                return hooks && hooks.schemaVersion === 2 ? hooks.finalizeText(input) : undefined;
             } },
         prepare(input) {
             try {
@@ -176,35 +192,117 @@ export function createRoleplayOpeningMaterialOwnerV1(deps, owner) {
             const operation = (async () => {
                 let releaseBuild;
                 try {
-                    const built = await prepareOpening(input, scope);
-                    if (built.kind === 'prepared-data') {
-                        releaseBuild = built.release.bind(built);
+                    const construct = async (initial, nativeBasis) => {
+                        const built = await prepareOpening(initial, scope);
+                        if (built.kind === 'prepared-data' || built.kind === 'text-draft')
+                            releaseBuild = built.release.bind(built);
+                        scope.assertOwnerFactsCurrent();
+                        if (built.kind === 'refused')
+                            fail(built.code);
+                        if (built.kind !== 'prepared-data' && built.kind !== 'text-draft')
+                            fail('OPENING_MATERIAL_OUTSIDE_DECLARED_DOMAIN');
+                        const checks = { assertCurrent: built.assertCurrent.bind(built), assertSelected: built.assertSelected.bind(built),
+                            release: built.release.bind(built) };
+                        checks.assertSelected(initial.selected, true);
+                        // The invocation is the actual request action, not a player input.
+                        // Keep it in the reconstructable request material so providers with
+                        // a separate system slot receive it without adding Native history.
+                        const insertions = [...built.insertions];
+                        if (initial.step === 1) {
+                            const order = Math.max(-1, ...built.insertions.map(row => row.stableOrder), ...(built.anchoredInsertions ?? []).map(row => row.stableOrder)) + 1;
+                            insertions.push({ contributionRef: 'opening-invocation', sourceSha256: identity.instructionSha256,
+                                requestedRole: 'user', requestedDepth: 0, stableOrder: order,
+                                renderedText: identity.instruction, renderedSha256: identity.instructionSha256 });
+                        }
+                        const structure = data({ requiredSections: built.requiredSections, sections: built.sections, insertions,
+                            ...built.anchoredInsertions ? { anchoredInsertions: built.anchoredInsertions } : {},
+                            ...built.messageTextProjections ? { messageTextProjections: built.messageTextProjections } : {},
+                            ...built.messageProjection ? { messageProjection: built.messageProjection } : {},
+                            ...built.story ? { story: built.story } : {} }, 4_194_304), basis = { schemaVersion: 1,
+                            encoding: 'core-program-opening-material-record-v1', authority: 'consumer-data-only',
+                            sessionId: String(session.id), identity, seedRef, inputRef, nativeOwner: initial.owner, turn: initial.turn, step: initial.step };
+                        const seal = (payload, finalTextProjection) => {
+                            const material = Object.freeze({ ...structure, ...finalTextProjection ? { finalTextProjection } : {} }), materialSha256 = nativeInputSha256(material), snapshot = Object.freeze({ ...basis, kind: 'snapshot', payload: payload.snapshot }), plan = Object.freeze({ ...basis, kind: 'plan', payload: Object.freeze({ promptPlan: payload.plan,
+                                    nativeTransform: material, nativeTransformSha256: materialSha256 }) }), refs = { snapshot: { key: keys.snapshot, sha256: recordSha256(snapshot) }, plan: { key: keys.plan, sha256: recordSha256(plan) } };
+                            return { kind: 'material-candidate', initial, checks, material, materialSha256, snapshot, plan, refs,
+                                responseHooks: built.responseHooks, ...payload.finalize ? { finalize: payload.finalize } : {},
+                                ...nativeBasis ? { attempt: nativeBasis.attempt, routeSha256: nativeInputSha256(nativeBasis.preparedRoute) } : {},
+                                captureSha256: recordSha256({ schemaVersion: 1, encoding: 'core-program-opening-material-capture-v1',
+                                    identity, seedRef, inputRef, nativeOwner: initial.owner, turn: initial.turn, step: initial.step, ...refs,
+                                    nativeSelectedSha256: initial.selected.sha256, assemblySha256: initial.assemblySha256 }) };
+                        };
+                        if (built.kind === 'prepared-data')
+                            return seal({ ...built, ...built.finalize ? { finalize: built.finalize.bind(built) } : {} });
+                        return { kind: 'material-text-draft', native: { ...structure, ...structure.messageTextProjections ? {
+                                    schemaVersion: 2, encoding: 'native-request-material-owner-transform-v2',
+                                    messageTextProjections: structure.messageTextProjections
+                                } :
+                                    { schemaVersion: 1, encoding: 'native-request-material-owner-transform-v1' },
+                                expectedAssemblySha256: initial.assemblySha256, expectedSelectedBaseSha256: initial.selected.sha256 },
+                            async finish(surface) {
+                                checks.assertCurrent();
+                                const output = await built.finishRequestText(surface);
+                                scope.assertOwnerFactsCurrent();
+                                checks.assertCurrent();
+                                return seal({ ...output, ...output.finalize ? { finalize: output.finalize.bind(output) } : {} }, projectNativeMaterialTextOutputsV1(surface, output.textOutputs));
+                            } };
+                    };
+                    let chosen;
+                    if (input.candidate) {
+                        await input.candidate.preview(async (nativeBasis) => {
+                            const built = await construct({ ...input, selected: nativeBasis.selected,
+                                ...nativeBasis.selectedCaptureV2 ? { selectedCaptureV2: nativeBasis.selectedCaptureV2 } : {},
+                                finalAssembly: nativeBasis.finalAssembly, assemblySha256: nativeBasis.assemblySha256 }, nativeBasis);
+                            if (built.kind === 'material-text-draft')
+                                return { kind: 'text-draft', structure: built.native,
+                                    async finalize(surface) {
+                                        chosen = await built.finish(surface);
+                                        return { ...chosen.refs, captureSha256: chosen.captureSha256,
+                                            ...chosen.material.finalTextProjection ? { finalTextProjection: chosen.material.finalTextProjection } : {} };
+                                    } };
+                            chosen = built;
+                            return openingCandidateTransform(chosen);
+                        });
                     }
+                    else {
+                        const built = await construct(input);
+                        if (built.kind === 'material-text-draft')
+                            fail('OPENING_MATERIAL_FINAL_TEXT_CANDIDATE_REQUIRED');
+                        chosen = built;
+                    }
+                    if (!chosen)
+                        fail('OPENING_MATERIAL_PREPARATION_MISSING');
                     scope.assertOwnerFactsCurrent();
-                    if (built.kind === 'refused')
-                        return { kind: 'blocked', code: built.code };
-                    if (built.kind !== 'prepared-data')
-                        return { kind: 'blocked', code: 'OPENING_MATERIAL_OUTSIDE_DECLARED_DOMAIN' };
-                    const checks = { assertCurrent: built.assertCurrent.bind(built), assertSelected: built.assertSelected.bind(built),
-                        release: built.release.bind(built) };
-                    checks.assertSelected(input.selected, true);
-                    // The invocation is the actual request action, not a player input.
-                    // Keep it in the reconstructable request material so providers with
-                    // a separate system slot receive it without adding Native history.
-                    const insertions = [...built.insertions];
-                    if (input.step === 1) {
-                        const order = Math.max(-1, ...built.insertions.map(row => row.stableOrder), ...(built.anchoredInsertions ?? []).map(row => row.stableOrder)) + 1;
-                        insertions.push({ contributionRef: 'opening-invocation', sourceSha256: identity.instructionSha256,
-                            requestedRole: 'user', requestedDepth: 0, stableOrder: order,
-                            renderedText: identity.instruction, renderedSha256: identity.instructionSha256 });
+                    if (chosen.finalize) {
+                        const persistence = createRoleplayMaterialPreparationJournalV1({ snapshotKey: keys.snapshot,
+                            owner: roleplayMaterialPreparationJournalOwnerV1(chosen.snapshot), table: owner.table, enqueue,
+                            assertOwnerFactsCurrent: scope.assertOwnerFactsCurrent,
+                            register(row, phase) { if (phase === 'written')
+                                registeredRows.set(row.key, Object.freeze(row)); } }), additions = await chosen.finalize(persistence.journal), journalRefs = persistence.references();
+                        scope.assertOwnerFactsCurrent();
+                        if (journalRefs.length || Object.keys(additions?.snapshot ?? {}).length || Object.keys(additions?.plan ?? {}).length) {
+                            const snapshot = Object.freeze({ ...chosen.snapshot, payload: Object.freeze({ ...chosen.snapshot.payload,
+                                    ...additions?.snapshot, ...journalRefs.length ? { materialPreparationJournalRefs: journalRefs } : {} }) }), plan = Object.freeze({ ...chosen.plan, payload: Object.freeze({ ...chosen.plan.payload, promptPlan: Object.freeze({
+                                        ...chosen.plan.payload['promptPlan'], ...additions?.plan
+                                    }) }) }), refs = { snapshot: { key: keys.snapshot, sha256: recordSha256(snapshot) }, plan: { key: keys.plan, sha256: recordSha256(plan) } }, changed = refs.snapshot.sha256 !== chosen.refs.snapshot.sha256 || refs.plan.sha256 !== chosen.refs.plan.sha256;
+                            chosen = { ...chosen, snapshot, plan, refs, captureSha256: recordSha256({ schemaVersion: 1,
+                                    encoding: 'core-program-opening-material-capture-v1', identity, seedRef, inputRef, nativeOwner: chosen.initial.owner,
+                                    turn: chosen.initial.turn, step: chosen.initial.step, ...refs, nativeSelectedSha256: chosen.initial.selected.sha256,
+                                    assemblySha256: chosen.initial.assemblySha256 }) };
+                            if (changed && input.candidate) {
+                                const finalized = chosen;
+                                await input.candidate.preview(async (nativeBasis) => {
+                                    if (nativeBasis.selected.sha256 !== finalized.initial.selected.sha256
+                                        || nativeBasis.assemblySha256 !== finalized.initial.assemblySha256
+                                        || nativeBasis.attempt !== finalized.attempt
+                                        || nativeInputSha256(nativeBasis.preparedRoute) !== finalized.routeSha256)
+                                        fail('OPENING_MATERIAL_FINALIZED_BASIS_CHANGED');
+                                    return openingCandidateTransform(finalized);
+                                });
+                            }
+                        }
                     }
-                    const material = data({ requiredSections: built.requiredSections, sections: built.sections, insertions,
-                        ...built.anchoredInsertions ? { anchoredInsertions: built.anchoredInsertions } : {},
-                        ...built.messageProjection ? { messageProjection: built.messageProjection } : {},
-                        ...built.story ? { story: built.story } : {} }, 4_194_304), materialSha256 = nativeInputSha256(material), basis = { schemaVersion: 1,
-                        encoding: 'core-program-opening-material-record-v1', authority: 'consumer-data-only',
-                        sessionId: String(session.id), identity, seedRef, inputRef, nativeOwner: input.owner, turn: input.turn, step: input.step }, snapshot = Object.freeze({ ...basis, kind: 'snapshot', payload: built.snapshot }), plan = Object.freeze({ ...basis, kind: 'plan', payload: Object.freeze({ promptPlan: built.plan, nativeTransform: material,
-                            nativeTransformSha256: materialSha256 }) }), snapshotRow = Object.freeze({ key: keys.snapshot, sha256: recordSha256(snapshot), value: snapshot }), planRow = Object.freeze({ key: keys.plan, sha256: recordSha256(plan), value: plan });
+                    const { checks, material, materialSha256 } = chosen, snapshotRow = Object.freeze({ key: keys.snapshot, sha256: chosen.refs.snapshot.sha256, value: chosen.snapshot }), planRow = Object.freeze({ key: keys.plan, sha256: chosen.refs.plan.sha256, value: chosen.plan });
                     const records = {};
                     await enqueue(async () => {
                         checks.assertCurrent();
@@ -215,13 +313,11 @@ export function createRoleplayOpeningMaterialOwnerV1(deps, owner) {
                             checks.assertCurrent();
                         }
                     });
-                    const row = { initial: input, scope, checks, material, materialSha256, responseHooks: built.responseHooks,
+                    const row = { initial: chosen.initial, scope, checks, material, materialSha256, responseHooks: chosen.responseHooks,
                         records: { snapshot: records.snapshot, plan: records.plan },
-                        snapshot: { key: snapshotRow.key, sha256: snapshotRow.sha256 }, plan: { key: planRow.key, sha256: planRow.sha256 },
-                        captureSha256: recordSha256({ schemaVersion: 1, encoding: 'core-program-opening-material-capture-v1',
-                            identity, seedRef, inputRef, nativeOwner: input.owner, turn: input.turn, step: input.step,
-                            snapshot: { key: snapshotRow.key, sha256: snapshotRow.sha256 }, plan: { key: planRow.key, sha256: planRow.sha256 },
-                            nativeSelectedSha256: input.selected.sha256, assemblySha256: input.assemblySha256 }) };
+                        ...chosen.refs, captureSha256: chosen.captureSha256,
+                        ...chosen.routeSha256 ? { routeSha256: chosen.routeSha256, transformed: { firstAttempt: true,
+                                attempt: chosen.attempt, decisionSha256: nativeInputSha256(openingCandidateTransform(chosen)) } } : {} };
                     current(row);
                     ready.set(step.key, row);
                     releaseBuild = undefined;
@@ -264,14 +360,8 @@ export function createRoleplayOpeningMaterialOwnerV1(deps, owner) {
                 if (row.transformed && input.attempt <= row.transformed.attempt)
                     fail('OPENING_MATERIAL_ATTEMPT_REUSED');
                 row.routeSha256 = route;
-                const decision = { kind: 'transform', schemaVersion: 1,
-                    encoding: 'native-request-material-owner-transform-v1', snapshot: row.snapshot, plan: row.plan,
-                    captureSha256: row.captureSha256, expectedAssemblySha256: input.assemblySha256,
-                    expectedSelectedBaseSha256: input.selected.sha256, requiredSections: row.material.requiredSections,
-                    sections: row.material.sections, insertions: row.material.insertions,
-                    ...row.material.anchoredInsertions ? { anchoredInsertions: row.material.anchoredInsertions } : {},
-                    ...row.material.messageProjection ? { messageProjection: row.material.messageProjection } : {},
-                    ...row.material.story ? { story: row.material.story } : {} };
+                const decision = openingCandidateTransform({ initial: input, material: row.material,
+                    refs: { snapshot: row.snapshot, plan: row.plan }, captureSha256: row.captureSha256 });
                 row.transformed = { decisionSha256: nativeInputSha256(decision), firstAttempt: input.firstAttempt, attempt: input.attempt };
                 return decision;
             }

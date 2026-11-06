@@ -29,8 +29,6 @@ import type {TavernSourceInheritanceDepsV1,TavernSourceInheritanceOwnerV1,Tavern
   TavernSourceStaticRowV1,TavernSourceProgramAbsenceObservationV1,TavernSourceLegacyCopyV1}
   from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernSourceStaticTransactionV1,TavernSourceEditBaselineV1} from './roleplay-tavern-source-inheritance-types.js'
-import type {TavernSourcePrepareAuthorChatForkSeedsV2,TavernSourceAuthorChatForkSeedCaptureV2}
-  from './roleplay-tavern-source-inheritance-types.js'
 
 interface SourceClosedStateV1 extends TavernSourceStaticTransactionV1 {
   readonly edit:TavernSourceEditBaselineV1
@@ -239,7 +237,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     const frozen=validateFrozenNonNumericalOpeningV1(p.frozenNonNumericalOpeningV1)
     if(!deps.assertNonNumericalOpening)inheritanceFailV1('SOURCE_INHERITANCE_OPENING_UNAVAILABLE')
     if(frozen.kind==='not-inherited') {
-      if(p.nativeCut.kind!=='reserved-fresh-branch'||p.nativeCut.seedLength!==0)
+      if(p.nativeCut.seedLength!==0)
         inheritanceFailV1('SOURCE_INHERITANCE_OPENING_INVALID')
       return
     }
@@ -303,8 +301,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       })
     }
   }
-  async function prepareSourceInheritance(operation:ForkOperation,reservation:ForkReservation,
-    prepareAuthorChatForkSeedsV2?:TavernSourcePrepareAuthorChatForkSeedsV2) {
+  async function prepareSourceInheritance(operation:ForkOperation,reservation:ForkReservation) {
     const {sourceSessionId:parent,childSessionId:child,seedLength}=reservation
     if(operation.anchor.sourceSessionId!==parent||parent===child||!Number.isSafeInteger(seedLength)||seedLength<0)
       inheritanceFailV1('SOURCE_INHERITANCE_OPERATION_CHANGED')
@@ -318,11 +315,6 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       return {kind:'prepared-data' as const,disposition:'replayed' as const,frozenRef:frozenInheritanceRefV1(p)}
     }
     await deps.ensureParentBranch(parent)
-    // Historical replay may acquire its own Source lock. Prepare declarations
-    // before this FIFO, then freeze reservation-time heads in the body below.
-    const captureAuthorChatSeedsV2:TavernSourceAuthorChatForkSeedCaptureV2|undefined=prepareAuthorChatForkSeedsV2
-      ?await prepareAuthorChatForkSeedsV2()
-      :(cut,source)=>deps.captureAuthorChatForkSeedsV2?.(parent,child,operation.operationId,cut,source)
     return deps.withSourceLock(parent,async()=>{
       // A second reservation may have waited for the same parent lock.
       if(branch.get(tavernSourcePreparedKeyV1(child))!==undefined) {
@@ -341,17 +333,14 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         inherited=Number(native.inheritedEventCount)
       if(!Number.isSafeInteger(inherited)||inherited<0||seedLength>events.length)
         inheritanceFailV1('SOURCE_INHERITANCE_NATIVE_CHANGED')
-      const nativeCut:TavernSourceNativeCutV1=operation.anchor.previousTurnEndSeq===null
+      const nativeCut:TavernSourceNativeCutV1=operation.anchor.previousTurnEndSeq===null&&!operation.anchor.nativeForkBeforeFirst
         ?{kind:'reserved-fresh-branch',seedLength:0,parentInheritedEventCount:inherited,
           prefixEncoding:'record-sha256-native-events-prefix-v1',prefixSha256:recordSha256([])}
         :{kind:'native-fork',seedLength,parentInheritedEventCount:inherited,
           prefixEncoding:'record-sha256-native-events-prefix-v1',prefixSha256:recordSha256(events.slice(0,seedLength))}
       if(nativeCut.seedLength!==seedLength)inheritanceFailV1('SOURCE_INHERITANCE_NATIVE_CHANGED')
-      const frozenAuthorChatSeed=deps.captureAuthorChatForkSeed?.(parent,child,operation.operationId,nativeCut,source)
-      if(frozenAuthorChatSeed!==undefined&&!deps.applyAuthorChatForkSeed)
-        inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
-      const frozenAuthorChatSeeds=captureAuthorChatSeedsV2?.(nativeCut,source)
-      if(frozenAuthorChatSeeds!==undefined&&!deps.applyAuthorChatForkSeedsV2)
+      const authorChatForkBasesV3=deps.captureAuthorChatForkBasesV3?.(parent,child,operation.operationId,nativeCut,source)
+      if(authorChatForkBasesV3!==undefined&&!deps.applyAuthorChatForkBasesV3)
         inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
       const frozenNativeCardConversionSeed=deps.captureNativeCardConversionForkSeed?.(parent)
       if(frozenNativeCardConversionSeed!==undefined&&!deps.applyNativeCardConversionForkSeed)
@@ -367,6 +356,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         preparedRef:source.inheritance.preparedRef,applyIntentRef:source.inheritance.applyIntentRef,
         commitRef:source.inheritance.commitRef,readyRef:source.inheritance.readyRef}]:[]
       const materialPublications=store.publications(deps.captureMaterialPublications(parent,seedLength))
+      const frozenCharacterPrivateV1=await deps.captureCharacterPrivateFork?.(parent,nativeCut,materialPublications)
       const capturedProgramAbsence=deps.captureProgramAbsenceOpening?.(parent,nativeCut)
       if(capturedProgramAbsence!==undefined&&!deps.assertProgramAbsenceOpening)
         inheritanceFailV1('SOURCE_INHERITANCE_OPENING_UNAVAILABLE')
@@ -385,9 +375,9 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
           inheritedFrom:parent,sourceRecordSessionId:source.sourceRecordSessionId},editLayers:[...inheritedLayers,local],
         materialPublications,ancestors,...(frozenOpening===undefined?{}:{frozenNonNumericalOpeningV1:frozenOpening}),
         ...(frozenProgramAbsence===undefined?{}:{frozenProgramAbsenceOpeningV1:frozenProgramAbsence}),
-        ...(frozenAuthorChatSeed===undefined?{}:{frozenAuthorChatSeedV1:frozenAuthorChatSeed}),
-        ...(frozenAuthorChatSeeds===undefined?{}:{frozenAuthorChatSeedsV2:frozenAuthorChatSeeds}),
-        ...(frozenNativeCardConversionSeed===undefined?{}:{frozenNativeCardConversionSeedV1:frozenNativeCardConversionSeed})},'preparedSha256')
+        ...(authorChatForkBasesV3===undefined?{}:{authorChatForkBasesV3}),
+        ...(frozenNativeCardConversionSeed===undefined?{}:{frozenNativeCardConversionSeedV1:frozenNativeCardConversionSeed}),
+        ...(frozenCharacterPrivateV1===undefined?{}:{frozenCharacterPrivateV1})},'preparedSha256')
       assertPreparedData(p)
       assertOperation(p)
       await store.putExact('branch',tavernSourcePreparedKeyV1(child),p)
@@ -787,21 +777,22 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       await store.putExact('branch',materialRef.key,material)
       if(!inheritanceSameV1(store.inventory(sid),a.writes.map(write=>write.next)))
         inheritanceFailV1('SOURCE_INHERITANCE_CHILD_CONFLICT')
-      if(p.frozenAuthorChatSeedV1!==undefined||p.frozenAuthorChatSeedsV2!==undefined||p.frozenNativeCardConversionSeedV1!==undefined) {
+      if(p.authorChatForkBasesV3!==undefined||p.frozenNativeCardConversionSeedV1!==undefined
+        ||p.frozenCharacterPrivateV1!==undefined) {
         const sourceCurrent=()=>{
           try{assertOperation(p);assertChildNative(p,a);return true}catch{return false}
         }
-        if(p.frozenAuthorChatSeedV1!==undefined) {
-          if(!deps.applyAuthorChatForkSeed)inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
-          await deps.applyAuthorChatForkSeed(p.frozenAuthorChatSeedV1,pRef,p,sourceCurrent)
-        }
-        if(p.frozenAuthorChatSeedsV2!==undefined) {
-          if(!deps.applyAuthorChatForkSeedsV2)inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
-          await deps.applyAuthorChatForkSeedsV2(p.frozenAuthorChatSeedsV2,pRef,p,sourceCurrent)
+        if(p.authorChatForkBasesV3!==undefined) {
+          if(!deps.applyAuthorChatForkBasesV3)inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
+          await deps.applyAuthorChatForkBasesV3(p.authorChatForkBasesV3,pRef,p,sourceCurrent)
         }
         if(p.frozenNativeCardConversionSeedV1!==undefined) {
           if(!deps.applyNativeCardConversionForkSeed)inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
           await deps.applyNativeCardConversionForkSeed(sid,p.frozenNativeCardConversionSeedV1)
+        }
+        if(p.frozenCharacterPrivateV1!==undefined) {
+          if(!deps.applyCharacterPrivateFork)inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
+          await deps.applyCharacterPrivateFork(sid,p.operationId,p.frozenCharacterPrivateV1)
         }
         assertChildNative(p,a)
       }

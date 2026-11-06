@@ -1,8 +1,8 @@
 /** Source-free mutable branch control data. Native material binds selected
  * input/window facts, never the entire later row or its scheduling state. */
 import {types} from 'node:util'
-import {nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
-import type {Session,SessionEvent,SessionMessageProjection} from '@deepseek-ai/dsh-session'
+import {nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
+import type {Session,SessionEvent,SessionMessageProjection} from 'dsh-nexttavern-native-session'
 import {recordSha256,textOf} from './roleplay-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {validateRoleplayPhaseABranchRowDataV1} from './roleplay-phase-a-row-facts.js'

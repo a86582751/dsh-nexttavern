@@ -1,6 +1,6 @@
 /** Frozen program genesis is data. Actual Source, Native and intent owners
  * separately prove currency; no checksum creates a generation/publication lease. */
-import type {NativeGeneratedOpeningReceiptV1} from '@deepseek-ai/dsh-agent-loop'
+import type {NativeGeneratedOpeningReceiptV1} from 'dsh-nexttavern-native-agent-loop'
 import type {MvuNativeOpeningReceipt} from './roleplay-mvu-initialization.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {PromptOpeningSourceProofV1} from './roleplay-prompt-opening-source-types.js'

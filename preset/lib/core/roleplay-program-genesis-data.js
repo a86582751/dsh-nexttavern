@@ -7,7 +7,7 @@ import { validatePromptOpeningSourceProofV1 } from './roleplay-prompt-opening-so
 import { compileSchemaMvuInitData } from './tavern-mvu-initvar.js';
 import { prepareMvuUpdate } from './roleplay-mvu-update.js';
 import { prepareMvuUpdateV2 } from './roleplay-mvu-update-v2.js';
-import { validateNativeGeneratedOpeningReceiptV1 } from '@deepseek-ai/dsh-agent-loop';
+import { validateNativeGeneratedOpeningReceiptV1 } from 'dsh-nexttavern-native-agent-loop';
 export class ProgramGenesisDataFailureV1 extends Error {
     code;
     constructor(code) {

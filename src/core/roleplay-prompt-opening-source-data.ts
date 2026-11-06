@@ -268,22 +268,32 @@ export function calculatePromptOpeningRawInitV1(input:{source:TavernLoreSourceDa
     inputBindingSha256:promptOpeningInitializationInputBindingV1(program,data,policy.policy,bindings),
     bindings,grammarPolicy:policy.policy,schemaExecution:'none' as const,calculationPolicy:'raw-init-data-v1' as const}
   const markerCount=initEntries.length+greetingFacts.reduce((count,greeting)=>count+greeting.originalInitBlocks.length,0)
-  inspectPromptOpeningWholeSourceV1({source,decoded,record,program,context,bindings})
   return freezePromptOpeningSourceDataV1(clonePromptOpeningSourceDataV1(markerCount>0
     ?{...common,kind:'raw-init-data' as const,markerCount}
     :{...common,kind:'absent' as const,reason:'no-actual-initvar-markers' as const,markerCount:0 as const}))
 }
 
-function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;decoded:DecodedTavernCard;
+export function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;decoded:DecodedTavernCard;
   record:ImportRecord;program:PromptProgramSourceInventoryV1;context:TavernOpeningContext;bindings:PromptOpeningRawInitBindingV1}) {
   const {source,decoded,record,program,context,bindings}=input,
     initByPointer=new Map(bindings.rawEntries.filter(entry=>entry.isInitVar).map(entry=>[entry.sourcePointer,entry] as const))
   const native=program.importTuple.format==='json-nexttavern-v1'
+  const rawResources=new Set<string>(program.regexResources.map(resource=>resource.originalPointer))
+  // These are the actual CC book fields read by the compiler's key owner.
+  // They are matching/preprocessing input, never an InitVar declaration.
+  for(const entry of bindings.rawEntries)if(!entry.isInitVar) {
+    rawResources.add(entry.sourcePointer+'/keys')
+    rawResources.add(entry.sourcePointer+'/secondary_keys')
+  }
   const rawSpecial=new Set<string>(program.authorFields.map(field=>field.originalPointer))
   for(const entry of bindings.rawEntries)rawSpecial.add(entry.sourcePointer+'/content')
   for(const greeting of bindings.greetingFacts)rawSpecial.add(greeting.sourcePointer)
   for(const entry of bindings.rawEntries)if(entry.isInitVar)rawSpecial.add(entry.sourcePointer+'/comment')
-  const walk=(value:unknown,pointer:string,skip:ReadonlySet<string>):void=>{
+  const walk=(value:unknown,pointer:string,skip:ReadonlySet<string>,resources?:ReadonlySet<string>):void=>{
+    // Source-owned regex resources and book keys belong to their Transform,
+    // Reader or matching/preprocessing consumers. Their actual consumers still
+    // validate and admit them; this walk does not classify them as InitVar.
+    if(resources?.has(pointer))return
     if(typeof value==='string') {if(!skip.has(pointer))literal(value,context,pointer);return}
     if(!value||typeof value!=='object')return
     for(const [key,child] of Object.entries(value)) {
@@ -295,7 +305,7 @@ function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;
           openingSourceFail('OPENING_SOURCE_STATE_SYNTAX_UNSUPPORTED',next)
         }
       }
-      walk(child,next,skip)
+      walk(child,next,skip,resources)
     }
   }
   // The native format enumerates all executable author fields below. Its
@@ -315,16 +325,16 @@ function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;
     // without the program's absence domain for their next actual Story.
     const extensions=decoded.data.extensions,
       literalExtensions=openingSourceObject(extensions)
-        ?Object.fromEntries(Object.entries(extensions).filter(([key])=>key!=='regex_scripts')):extensions
+        ?Object.fromEntries(Object.entries(extensions).filter(([key])=>!rawResources.has('/data/extensions/'+escape(key)))):extensions
     try {assertMvuNonSchemaSourceExtensionsV1(literalExtensions,'/data/extensions')}
     catch {return openingSourceFail('OPENING_SOURCE_STATE_SYNTAX_UNSUPPORTED','/data/extensions')}
-    walk(decoded.document,'',rawSpecial)
+    walk(decoded.document,'',rawSpecial,rawResources)
   }
   for(const field of program.authorFields) {
     if(field.raw)programText(field.raw,field.originalPointer)
     if(field.normalized)programText(field.normalized,field.originalPointer+'/normalized')
   }
-  const currentSpecial=new Map<string,Set<string>>()
+  const currentSpecial=new Map<string,Set<string>>(),currentResources=new Map<string,Set<string>>()
   const allow=(table:string,key:string,pointer:string)=>{
     const id=table+':'+key,set=currentSpecial.get(id)??new Set<string>();set.add(pointer);currentSpecial.set(id,set)
   }
@@ -358,6 +368,12 @@ function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;
     if(init)rawDataSyntax(entry.currentProjection.effective.text,entry.contentPointer+'/current-row')
     else programText(entry.currentProjection.effective,entry.contentPointer+'/current-row')
     allow(entry.currentProjection.row.table,entry.currentProjection.row.key,'/content')
+    if(!init) {
+      // The same compiler-linked importer row owns its actual key projections.
+      // Keep unrelated row fields under the ordinary literal/state guard.
+      currentResources.set(entry.currentProjection.row.table+':'+entry.currentProjection.row.key,
+        new Set(['/keywords','/tavern/keys','/tavern/secondaryKeys']))
+    }
     if(init) {
       const current=source.current.rows.find(row=>same(row.ref,entry.currentProjection!.row))?.value,
         original=init.original,
@@ -397,7 +413,10 @@ function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;
     rawDataSyntax(String(opening.value.text),'/current/opening/text')
     allow(opening.ref.table,opening.ref.key,'/text')
   }
-  if(!native)for(const row of source.current.rows)walk(row.value,'',currentSpecial.get(row.ref.table+':'+row.ref.key)??new Set())
+  if(!native)for(const row of source.current.rows) {
+    const id=row.ref.table+':'+row.ref.key
+    walk(row.value,'',currentSpecial.get(id)??new Set(),currentResources.get(id))
+  }
   // InitVar comments in legacy tavern metadata are exact original projections.
   // Other metadata and appended overlay fields are never broadly exempted.
   if(!native)for(const entry of program.bookEntries)if(entry.currentNativeOrigin) {

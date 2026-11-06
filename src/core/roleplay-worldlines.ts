@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {recordSha256} from './roleplay-data.js'
 import { completedAssistantReceiptForTurn } from './roleplay-context.js'
-import { createWorldlineSurface } from './roleplay-worldline-surface.js'
+import { createWorldlineSurface,createWorldlineNativeHistory } from './roleplay-worldline-surface.js'
 import { activeOpeningSource } from './roleplay-import.js'
 import {tavernSourceOwnedRecordKeysV1} from './roleplay-tavern-source-inheritance-data.js'
 import { provenImportPreludeAssistants } from './tavern-task-retirement.js'
@@ -60,6 +60,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     return group?.anchor ? forkAnchorLockKey(group.anchor) : `group:${safeId(groupId)}`
   }
   const forkMutationLocks = new Map<string, Promise<void>>()
+  const nativeHistory=createWorldlineNativeHistory(deps),nativeMessages=nativeHistory.read
 
   async function withForkMutationLock<T>(key: string, work: () => Promise<T>): Promise<T> {
     const prior = forkMutationLocks.get(key) ?? Promise.resolve()
@@ -201,7 +202,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
   function buildForkLookupIndex(session: ReadBranchSession): ForkLookup {
     const lineage = new Set<string | undefined>(sessionLineageIds(session))
     const groups = []
-    for (const [key, raw] of T.branch.entries()) {
+    for (const [key, raw] of T.branch.entriesPrefix?.('fork-group-')??T.branch.entries()) {
       if (!String(key).startsWith('fork-group-')) continue
       // Hydration clones all player variants. Unrelated conversations cannot
       // participate in this session's pointer recovery or failure navigation.
@@ -227,7 +228,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     // Recover an interrupted group-to-pointer write from the same ledger,
     // with or without a supplied lookup. One assistant can anchor both
     // contracts; default assistant navigation retains the opening siblings.
-    const groups = lookup?.groups ?? [...T.branch.entries()]
+    const groups = lookup?.groups ?? [...(T.branch.entriesPrefix?.('fork-group-')??T.branch.entries())]
       .filter(([key]) => String(key).startsWith('fork-group-')).map(([, group]) => group)
     for (const sessionId of lineage) {
       const hasMember = (candidate: BranchRecord) => candidate.members?.some(member =>
@@ -496,7 +497,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       deps.sourceInheritance?.assertSourceInheritanceReady(child.id)
       ensureState(child.id).branchReady = true
     } else {
-      await ensureBranch(child, operation.kind==='prepare-clean-branch'?undefined:
+      await ensureBranch(child, operation.kind==='prepare-clean-branch'||operation.kind==='opening-variant'?undefined:
         { cadenceAnchorSeq: operation.anchor.sourceUserSeq!, cadenceTurn: operation.anchor.sourceTurn })
     }
     await deps.commitDerivedBasis?.(operation, child)
@@ -925,6 +926,10 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     const member = group.members.find(item => item.sessionId === session.id
       && Number(item.ordinal) === Number(pending.ordinal) && item.operationId === pending.operationId)
     if (!member?.operationId || member.deleted || member.failed) return null
+    if(member.kind==='opening-variant') {
+      const completed=deps.readOpeningVariantSettlement?.(session,member.operationId)
+      return completed?{...completed,programOpening:true}:null
+    }
     const messageId = `opening-regenerate-${member.operationId}`
     const candidate = eventsOf(session).find(event => event.type === 'assistant/message'
       && assistantMessageId(event) === messageId && event.data?.message?.source?.kind === 'model')
@@ -943,7 +948,8 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
 
   async function reconcileNativeFork(session: ReadBranchSession, completedAssistant: StoryEvent | null = null) {
     const prefix = `${session.id}__fork-pending-`
-    const pendingEntries = [...T.branch.entries()].filter(([key, value]) => key.startsWith(prefix) && value)
+    const pendingEntries = [...(T.branch.entriesPrefix?.(prefix)??T.branch.entries())]
+      .filter(([key, value]) => key.startsWith(prefix) && value)
     if (!pendingEntries.length) return
     for (const [pendingKey, pending] of pendingEntries) {
       const requestId = String(pending?.requestId ?? '')
@@ -1051,7 +1057,8 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
 
   async function failPendingNativeFork(session: ReadBranchSession, reason: unknown) {
     const prefix = `${session.id}__fork-pending-`
-    const pendingEntries = [...T.branch.entries()].filter(([key, value]) => key.startsWith(prefix) && value)
+    const pendingEntries = [...(T.branch.entriesPrefix?.(prefix)??T.branch.entries())]
+      .filter(([key, value]) => key.startsWith(prefix) && value)
     for (const [pendingKey, pending] of pendingEntries) {
       await withForkMutationLock(forkGroupLockKey(pending.groupId), async () => {
         const group = hydrateForkGroup(T.branch.get(forkGroupKey(pending.groupId)))
@@ -1111,13 +1118,70 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     return result
   }
 
+  /** Fork permissions concern ledger members, not every ordinary reply. The
+   * Native data owner resolves legacy IDs from its incremental raw index;
+   * detached callers retain the original full-read recovery contract. */
+  function forkAssistantEvents(session:ReadBranchSession,lookup:ForkLookup|null=null):StoryEvent[] {
+    lookup??=buildForkLookupIndex(session)
+    const lineage=new Set(sessionLineageIds(session)),events=new Map<number,StoryEvent>(),
+      located=new Set<string>(),missing=new Set<string>()
+    const native=lookup.groups.length?nativeMessages(session):undefined
+    for(const group of lookup.groups)for(const member of group.members) {
+      if(!member.sessionId||!lineage.has(member.sessionId)||!member.assistantMessageId)continue
+      if(native) {
+        for(const event of native.raw('assistant',String(member.assistantMessageId)))events.set(Number(event.seq),event)
+        continue
+      }
+      const id=String(member.assistantMessageId),seq=member.assistantSeq,
+        event=Number.isSafeInteger(seq)&&Number(seq)>=0?deps.eventAt?.(session,Number(seq)):undefined
+      if(event?.type==='assistant/message'&&assistantMessageId(event)===id) {
+        events.set(Number(event.seq),event);located.add(id)
+      }
+      else missing.add(id)
+    }
+    // Multiple lineage members can describe the same inherited Native row.
+    // One exact address join also resolves its older address-less descriptors.
+    for(const id of located)missing.delete(id)
+    if(missing.size)for(const event of eventsOf(session)) {
+      if(event?.type==='assistant/message'&&missing.has(assistantMessageId(event)))events.set(Number(event.seq),event)
+    }
+    return [...events.values()].sort((a,b)=>Number(a.seq)-Number(b.seq))
+  }
+
+  /** Player denial reads only actual fork candidates. A member without an
+   * assistant still owns its selected user; an inherited reply can instead be
+   * preceded by a different selected player after a real replacement. */
+  function forkPlayerEvents(session:ReadBranchSession,lookup:ForkLookup|null=null):StoryEvent[] {
+    lookup??=buildForkLookupIndex(session)
+    if(!lookup.groups.length)return []
+    const native=nativeMessages(session)
+    if(!native)return surfaceEvents(session).filter(event=>event.type==='user/message'&&event.data?.source?.kind==='user')
+    const lineage=new Set(sessionLineageIds(session)),events=new Map<number,StoryEvent>()
+    function user(id:unknown,seq:unknown) {
+      if(typeof id==='string')for(const event of native!.raw('user',id)) {
+        const selected=native!.visiblePlayer(Number(event.seq));if(selected)events.set(Number(selected.seq),selected)
+      }
+      else if(typeof seq==='number') {
+        const selected=native!.visiblePlayer(seq);if(selected)events.set(Number(selected.seq),selected)
+      }
+    }
+    for(const group of lookup.groups) {
+      if(lineage.has(group.anchor.sourceSessionId))user(group.anchor.sourceUserMessageId,group.anchor.sourceUserSeq)
+      for(const member of group.members)if(member.sessionId&&lineage.has(member.sessionId))user(member.userMessageId,member.userSeq)
+    }
+    for(const assistant of forkAssistantEvents(session,lookup)) {
+      const selected=native.playerBefore(Number(assistant.seq))
+      if(selected)events.set(Number(selected.seq),selected)
+    }
+    return [...events.values()].sort((a,b)=>native.playerOrder(Number(a.seq))-native.playerOrder(Number(b.seq)))
+  }
+
   function deletedBranchMessageIdsFor(session: ReadBranchSession, lookup: ForkLookup | null = null) {
     lookup ??= buildForkLookupIndex(session)
     const deleted = []
     // Tombstones still revoke branches whose assistant anchors have left the
     // model window; those original Native messages remain in retained history.
-    for (const event of eventsOf(session)) {
-      if (event?.type !== 'assistant/message') continue
+    for (const event of forkAssistantEvents(session,lookup)) {
       const messageId = assistantMessageId(event)
       const pointer = forkPointerFor(session, messageId, lookup)
       const group = pointer?.groupId ? hydrateForkGroup(T.branch.get(forkGroupKey(pointer.groupId))) : null
@@ -1158,6 +1222,8 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
   }
 
   const {
+    replaceAuthorMessageText,
+    confirmAuthorMessageEdit,
     nativePlayerGroupsFor,
     readOwnedEditCompletionRows,
     replaceAssistantText,
@@ -1168,15 +1234,20 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     recoverPlayerSave,
   } = createWorldlineSurface(deps, {
     forkGroupKey, forkAnchorKey, forkAnchorLockKey, withForkMutationLock,
+    nativeMessages, forkAssistantEvents,
     hydrateForkGroup, buildForkLookupIndex, forkPointerFor, groupMemberForSession,
     assistantMessageId, requestUserEvent, currentSurfaceUserBefore, turnForEvent,
   })
 
   return {
+    replaceAuthorMessageText,
+    confirmAuthorMessageEdit,
     storyBranchIsActive,
     assertStoryBranchActive,
     reconcileCanonicalPlayerVariants,
     buildForkLookupIndex,
+    forkAssistantEvents,
+    forkPlayerEvents,
     reconcileNativeFork,
     failPendingNativeFork,
     nativeBranchGroupsFor,

@@ -84,6 +84,7 @@ function ordinaryMetadata(suffix, value) {
  * an exemption from the absence scan. */
 function managed(suffix) {
     return /^(?:tavern-source-|tavern-prompt-v1-|program-opening-|native-input-v2-|opening-choice-|edit-applied-)/.test(suffix)
+        || /^author-chat-(?:root-v3|key-event-v3|publication-v3|fork-base-v3)-/.test(suffix)
         || /^(?:phaseb-|task-steering-|maintenance-timing-)/.test(suffix)
         || /^(?:task-(?:snapshot-|input-snapshot-|preparation(?:$|-))|context-window(?:$|-))/.test(suffix);
 }
@@ -100,10 +101,11 @@ function assertFamily(table, suffix, family) {
                 : family === 'input' ? /^native-input-v2-/.test(suffix)
                     : family === 'phase-a' ? /^(?:task-(?:snapshot-|input-snapshot-|preparation$)|context-window$)/.test(suffix)
                         : family === 'native-material' ? /^(?:tavern-prompt-v1-|program-opening-material-)/.test(suffix)
-                            : family === 'branch-control' ?
-                                /^(?:(?:phaseb|task-steering|maintenance-timing)-[1-9][0-9]*|task-preparation|context-window)$/.test(suffix)
-                                    || /^edit-applied-(?:assistant|user)-(?:0|[1-9][0-9]*)$/.test(suffix)
-                                : false;
+                            : family === 'ordinary-chat' ? /^author-chat-(?:root-v3|key-event-v3|publication-v3|fork-base-v3)-/.test(suffix)
+                                : family === 'branch-control' ?
+                                    /^(?:(?:phaseb|task-steering|maintenance-timing)-[1-9][0-9]*|task-preparation|context-window)$/.test(suffix)
+                                        || /^edit-applied-(?:assistant|user)-(?:0|[1-9][0-9]*)$/.test(suffix)
+                                    : false;
     if (!matches)
         fail('PROGRAM_ABSENCE_OWNER_ROW_ADDRESS_INVALID');
 }

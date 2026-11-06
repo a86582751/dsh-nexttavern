@@ -8,9 +8,9 @@ import {programOpeningRecordDataV1,validateProgramOpeningSeedV1,validateProgramO
 import {openingIntentKey} from './roleplay-opening-selection.js'
 import {roleplayOpeningMaterialKeysV1} from './roleplay-opening-material.js'
 import {nativeInputSha256,validateNativeGeneratedOpeningReceiptV1,validateNativeOpeningClosingAckV1}
-  from '@deepseek-ai/dsh-agent-loop'
+  from 'dsh-nexttavern-native-agent-loop'
 import type {NativeOpeningEventRefV1,NativeOpeningClosingAckV1,NativeGeneratedOpeningReceiptV1}
-  from '@deepseek-ai/dsh-agent-loop'
+  from 'dsh-nexttavern-native-agent-loop'
 import type {ProgramOpeningIntentSeedV1,ProgramOpeningInputPacketV1,OpeningIntentV7,
   ProgramOpeningAbsentDomainV1} from './roleplay-program-opening-records.js'
 import type {ProgramGenesisDataRefV1} from './roleplay-program-genesis-types.js'

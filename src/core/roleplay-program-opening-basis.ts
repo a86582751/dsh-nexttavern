@@ -1,7 +1,7 @@
 /** Actual first-opening inventory and historical prefix. A saved digest is
  * consumer data; only these private actual readers establish fresh currency. */
 import {recordSha256} from './roleplay-data.js'
-import {nativeInputSha256,validateNativeOpeningInvocationV1} from '@deepseek-ai/dsh-agent-loop'
+import {nativeInputSha256,validateNativeOpeningInvocationV1} from 'dsh-nexttavern-native-agent-loop'
 import {eventsOf} from './roleplay-context.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {assertImportRecordIntegrity} from './roleplay-import-record.js'
