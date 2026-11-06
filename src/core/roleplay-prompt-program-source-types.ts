@@ -24,6 +24,7 @@ type PromptProgramCoreCaptureDepsV1=Parameters<typeof captureRoleplayTavernPromp
 export interface PromptProgramSourceDepsV1 extends PromptProgramCoreCaptureDepsV1 {
   readonly edits:PromptProgramCoreCaptureDepsV1['edits']&{
     readonly observeSourceData?:ReturnType<typeof createRoleplayTavernLoreEditsV1>['observeSourceData']
+    readonly observeJournalDataWithLegacyData?:ReturnType<typeof createRoleplayTavernLoreEditsV1>['observeJournalDataWithLegacyData']
   }
   readImportRecord(sourceRecordSessionId:string,importId:string):unknown
 }
@@ -134,6 +135,12 @@ export interface PromptProgramExcludedLeafV1 {
   readonly ejsDelimiterPresent:boolean
   readonly disposition:'not-authorized-by-program-source-inventory'
 }
+/** Exact Source resource location, retained as inert DATA. Transform and Reader
+ * own rule validation and execution; this does not authorize prompt or MVU code. */
+export interface PromptProgramRegexResourceV1 {
+  readonly owner:'scoped-transform-and-reader'
+  readonly originalPointer:'/data/extensions/regex_scripts'
+}
 export interface PromptProgramImportTupleV1 {
   readonly ownerSessionId:string
   readonly sourceRecordSessionId:string
@@ -167,6 +174,7 @@ export interface PromptProgramSourceInventoryV1 {
   readonly authorFields:readonly PromptProgramAuthorFieldV1[]
   readonly authorGroups:readonly PromptProgramAuthorGroupV1[]
   readonly assignments:readonly PromptProgramAssignmentOriginV1[]
+  readonly regexResources:readonly PromptProgramRegexResourceV1[]
   readonly bookEntries:readonly PromptProgramBookEntryV1[]
   readonly book:{readonly pointer:string;readonly rawBookSha256:string;readonly bookDisposition:string;
     readonly compilationSha256:string;readonly planSha256:string;readonly semanticPlanBindingSha256:string;
@@ -186,8 +194,14 @@ export interface PromptProgramSourceInventoryV1 {
   readonly audit:{readonly wholeSourceSha256:string;readonly currentRowsSha256:string}
   readonly inventorySha256:string
 }
+export interface PromptProgramSourceNotApplicableV1 {
+  readonly kind:'not-applicable'
+  readonly reason:'outside-program-source-domain'
+  readonly sourceCode:'ACTIVE_SOURCE_MISSING'|'LEGACY_SOURCE_OUTSIDE_DOMAIN'|'STRUCTURED_VERSION_OUTSIDE_DOMAIN'
+}
 export type PromptProgramSourceCaptureV1={readonly kind:'captured-program-source';
   readonly data:PromptProgramSourceInventoryV1;readonly assertCurrent:()=>void;
   /** Live owner/reader identity only; does not prove DATA currency or grant Source/Native authority. */
   readonly assertOwnerFactsCurrent?:()=>void}
   |{readonly kind:'refused';readonly authority:'none';readonly diagnostics:readonly PromptProgramSourceDiagnosticV1[]}
+  |PromptProgramSourceNotApplicableV1

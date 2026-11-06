@@ -105,14 +105,9 @@ export interface StatusDependencies {
   cloneBranchRecord<T>(value: T): T
   storyBranchIsActive(session: StatusSession): boolean
   fixedAuthorContext?(session:StatusSession):FixedStatusContext|undefined
-  /** Actual Native instance and registry readers for source-free status data
-   * facts. Missing readers refuse facts; they never fall back to a fake view. */
+  /** Actual Session lookup for exact local status DATA ownership. Missing
+   * lookup refuses facts; history/prose association belongs to the scheduler. */
   sessionForRowFacts?(id:string):StatusSession|null|undefined
-  projectionsForRowFacts?():readonly import('@deepseek-ai/dsh-session').SessionMessageProjection[]
-  retainedSourceOwnerFacts?(session:StatusSession,ownerId:string,sourceSeqs:readonly number[])
-    :import('./roleplay-mvu-ancestry.js').MvuRetainedSourceOwnerFactsV1|undefined
-  retainedSourceOwnerCatalog?(session:StatusSession,sourceSeqs:readonly number[])
-    :readonly import('./roleplay-mvu-ancestry.js').MvuRetainedSourceOwnerFactsV1[]
   taskCancellation(signal?: AbortSignal): StatusCancellation
   ensureBranch(session: StatusSession): Promise<unknown>
   modelPolicy: { resolve(session: StatusSession, kind: string, agent?: TaskAgent): TaskSelection | PromiseLike<TaskSelection> }

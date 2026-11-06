@@ -4,7 +4,7 @@
   "title": "CommunityPresetVariablesV1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "revision", "global", "globalBase", "publications", "configurationApplied", "conversations"],
+  "required": ["schemaVersion", "revision", "global", "globalBase", "publications", "configurationApplied", "conversations", "outcomes"],
   "properties": {
     "schemaVersion": {"const": 1},
     "revision": {"type": "number"},
@@ -12,7 +12,12 @@
     "globalBase": {"$ref": "#/$defs/jsonRecord"},
     "publications": {"type": "array", "items": {"$ref": "#/$defs/publication"}},
     "configurationApplied": {"$ref": "#/$defs/stringArray"},
-    "conversations": {"type": "object", "additionalProperties": {"$ref": "#/$defs/variableRecord"}}
+    "conversations": {"type": "object", "additionalProperties": {"$ref": "#/$defs/conversationGlobals"}},
+    "outcomes": {"type": "object", "additionalProperties": {"type": "string"}},
+    "pending": {
+      "type": "object", "additionalProperties": false, "required": ["intent", "next"],
+      "properties": {"intent": {"$ref": "#/$defs/contribution"}, "next": {"$ref": "#/$defs/globalRecord"}}
+    }
   },
   "$defs": {
     "json": {"$ref": "community-presets.v1.json#/$defs/json"},
@@ -31,25 +36,74 @@
     "acceptedAttempt": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["digest", "values", "configurationApplied"],
+      "required": ["digest"],
       "properties": {
-        "digest": {"type": "string"},
-        "values": {"$ref": "#/$defs/jsonRecord"},
-        "configurationApplied": {"$ref": "#/$defs/stringArray"}
+        "digest": {"type": "string"}
       }
     },
-    "variableRecord": {
+    "conversationGlobals": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "revision", "values", "baselines", "globalBaselines", "accepted", "configurationApplied"],
+      "required": ["globalBaselines", "accepted"],
       "properties": {
-        "schemaVersion": {"const": 1},
-        "revision": {"type": "number"},
-        "values": {"$ref": "#/$defs/jsonRecord"},
-        "baselines": {"$ref": "#/$defs/baselineRecord"},
         "globalBaselines": {"$ref": "#/$defs/baselineRecord"},
-        "accepted": {"type": "object", "additionalProperties": {"$ref": "#/$defs/acceptedAttempt"}},
-        "configurationApplied": {"$ref": "#/$defs/stringArray"}
+        "accepted": {"type": "object", "additionalProperties": {"$ref": "#/$defs/acceptedAttempt"}}
+      }
+    },
+    "globalRecord": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "revision", "global", "globalBase", "publications", "configurationApplied", "conversations", "outcomes"],
+      "properties": {
+        "schemaVersion": {"const": 1}, "revision": {"type": "number"},
+        "global": {"$ref": "#/$defs/jsonRecord"}, "globalBase": {"$ref": "#/$defs/jsonRecord"},
+        "publications": {"type": "array", "items": {"$ref": "#/$defs/publication"}},
+        "configurationApplied": {"$ref": "#/$defs/stringArray"},
+        "conversations": {"type": "object", "additionalProperties": {"$ref": "#/$defs/conversationGlobals"}},
+        "outcomes": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "ref": {
+      "type": "object", "additionalProperties": false, "required": ["key", "sha256"],
+      "properties": {"key": {"type": "string"}, "sha256": {"type": "string"}}
+    },
+    "namespace": {
+      "type": "object", "additionalProperties": false, "required": ["schemaVersion", "sessionId", "importIncarnation"],
+      "properties": {
+        "schemaVersion": {"const": 3}, "sessionId": {"type": "string"},
+        "importIncarnation": {"oneOf": [
+          {"type": "null"},
+          {"type": "object", "additionalProperties": false,
+            "required": ["sourceRecordSessionId", "importId", "transactionId", "activationSha256"],
+            "properties": {
+              "sourceRecordSessionId": {"type": "string"}, "importId": {"type": "string"},
+              "transactionId": {"type": "string"}, "activationSha256": {"type": "string"}
+            }}
+        ]}
+      }
+    },
+    "contribution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["namespace", "contributionId", "attemptId", "operationId", "replacesAttemptId", "writes", "source", "cause"],
+      "properties": {
+        "namespace": {"$ref": "#/$defs/namespace"}, "contributionId": {"type": "string"},
+        "attemptId": {"type": "string"}, "operationId": {"type": "string"},
+        "replacesAttemptId": {"type": ["string", "null"]},
+        "writes": {"type": "array", "items": {"oneOf": [
+          {"type": "object", "additionalProperties": false, "required": ["key", "operation"],
+            "properties": {"key": {"type": "string"}, "operation": {"const": "delete"}}},
+          {"type": "object", "additionalProperties": false, "required": ["key", "operation", "value"],
+            "properties": {"key": {"type": "string"}, "operation": {"enum": ["set", "add", "append"]},
+              "value": {"$ref": "#/$defs/json"}}}
+        ]}},
+        "source": {"oneOf": [
+          {"type": "object", "additionalProperties": false, "required": ["kind", "ref"],
+            "properties": {"kind": {"const": "native-material"}, "ref": {"$ref": "#/$defs/ref"}}},
+          {"type": "object", "additionalProperties": false,
+            "required": ["kind", "configurationId", "presetId", "conversationId"],
+            "properties": {"kind": {"const": "preset-configuration"}, "configurationId": {"type": "string"},
+              "presetId": {"type": "string"}, "conversationId": {"type": ["string", "null"]}}}
+        ]},
+        "cause": {"$ref": "#/$defs/json"}
       }
     },
     "macroWrite": {
