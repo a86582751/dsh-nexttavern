@@ -6,7 +6,10 @@ import type { createRoleplayTaskHost } from './roleplay-task-host.js'
 import type { createRoleplayStatus } from './roleplay-status.js'
 import type { InheritanceSession, TruncationBoundaryCarry } from './roleplay-inheritance-types.js'
 import type { ImportRecord } from './roleplay-import-types.js'
-import type {ReaderDisplayMessageRef,ReaderDisplayResponse} from './roleplay-reader-display.js'
+import type {ReaderDisplayMessageRef,ReaderDisplayResponse,ReaderRenderHtmlRequestV1,ReaderRenderHtmlReplyV1,
+  ReaderRenderPhaseBindingV1} from './roleplay-reader-display.js'
+import type {ReaderNativeBeautySourceV1,ReaderNativeBeautyExecutionV1} from './reader-native-beauty-types.js'
+import type {ReaderRegexDocumentRequestV1,ReaderRegexDocumentReplyV1} from './reader-regex-document-types.mjs'
 
 export type StateSession = ContextSession & BranchSession
 export interface StateRecord extends Record<string, unknown> {
@@ -48,6 +51,10 @@ export interface StateDependencies extends StateWorldlines {
     |Promise<import('./roleplay-mvu-player-types.js').MvuStateObservation>
   taskArtifact?(sessionId:string,canonicalSeq:number):{sha256:string;kind:'patch'|'unchanged'|'cleared';operationCount:number}|undefined
   readerDisplay?(session:StateSession,messages:readonly ReaderDisplayMessageRef[],signal:AbortSignal):Promise<ReaderDisplayResponse>
+  readerRenderHtml?(request:ReaderRenderHtmlRequestV1,signal:AbortSignal):Promise<ReaderRenderHtmlReplyV1>
+  readerReleasePhase?(binding:ReaderRenderPhaseBindingV1):Promise<void>
+  readerBeauty?(source:ReaderNativeBeautySourceV1):Promise<ReaderNativeBeautyExecutionV1>
+  readerDocument?(request:ReaderRegexDocumentRequestV1,signal:AbortSignal):Promise<ReaderRegexDocumentReplyV1>
   readerDisplayContextVersion?(sessionId:string):string
   communityPresets?(sessionId:string):{fingerprint:string;presetId:string|null;name:string|null;regexes:number}
   readInputDiagnostic?:ReturnType<typeof import('./roleplay-input-preparation.js').createRoleplayInputPreparation>['readDiagnostic']
