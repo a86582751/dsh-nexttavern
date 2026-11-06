@@ -23,7 +23,7 @@
 
 卡 1 用来演示保留既有文本和清晰区分新旧内容。
 
-验证边界：龙女皇已有编译与独立 InitVar 组件证据；其 browser-only 作者程序目前仍不能通过实际数值开场初始化，会返回 `AUTHOR_HOST_BROWSER_ONLY_INITIALIZATION_UNSUPPORTED`。下文 Steam Tide 的实际 Core fixture 证据不适用于这张卡，不能据格式示例推定两卡都已完整可玩。
+验证边界：龙女皇当前沿用 Combined 8 Native 路线，默认数值 profile 为 `native-mvu-state-v1`，并保留现有 `ownedState` fallback；旧 browser-only 初始化拒绝说明已不适用于当前路线。当前有受控 Source／Core 证据，但尚未验证龙女皇整卡的真实 Reader 开场与完整实机玩法。下文 Steam Tide 的受控 Core／Native 组件证据不适用于这张卡，也不能据格式示例推定任一参考卡已完整可玩。
 
 ## Steam Tide：功能组合示例
 
@@ -32,11 +32,11 @@
 - `/data/cards/0` 是玩家角色“归港修复师”，包含角色定位与港口场景上下文；`/data/cards/1` 到 `/data/cards/3` 是三名 NPC 及各自的知识边界。
 - `/data/character_book/entries` 包含 22 条世界书入口；第 0 条是 `[InitVar]`，承载初始港口状态。扫描深度、预算与递归策略由会话 owner 提供，不由世界书根部的额外声明设置。
 - `/data/character_book/entries/19`（条目 ID 60）与 `/data/character_book/entries/20`（条目 ID 61）使用同一 `steam_market_rumor` 组，演示两条市场闲谈互斥；`/data/character_book/entries/21`（条目 ID 62）演示带持续与冷却字段的临时巡港告示。
-- `/data/rules/core` 中的 `{{outlet::steam_tide_watch}}` 展示命名 outlet；港务简报 Prompt hook 触发时，会把当轮简报注入这一段。
+- `/data/rules/core` 中的 `{{outlet::steam_tide_watch}}` 消费世界书“值班台出口”条目；简报脚本另在生成事件中注入一次性聊天提示。
 - `/data/extensions/tavern_helper/scripts/0` 提供固定 loader，`/data/extensions/tavern_helper/scripts/1` 放置 Zod schema，`/data/extensions/tavern_helper/scripts/2/data/html` 是港口值班台界面，`/data/extensions/tavern_helper/scripts/3` 提供值班简报 Prompt hook。
 - `/data/extensions/regex_scripts` 有两条展示正则，可对照 `/data/extensions/tavern_helper/scripts/2/data/html` 查看呈现与 Native 状态的分工。
 - `/data/extensions/RubyAnalyzer/presets/0/tasks/0` 是可选分析任务，默认 `enabled: false`、`keywordScanEnabled: false`；启用时按 `cyclePositions: [8]` 每八个 assistant 位置运行一次，不经过关键词筛选。
 
-可在卡内查看世界书关键词、次关键词、递归、插入位置与 outlet，EJS 的 `getvar`、`getwi` 和 `activateWI`，以及 MVU 数值更新、前端事件与人工电荷校准。值班台使用 `getVariables` 读取聊天变量，并以 `insertOrAssignVariables` 追加写入 `author.log`；日志采用 `schemaVersion: 1` 的 `entries` 数组，累计观察与顾问对话。个人笔记可按所有权增删，独立顾问由受信点击触发。确定性状态和展示流程不调用模型；顾问每次受信点击对应一次模型请求。Ruby 默认关闭，卡片测试覆盖了启用后的八位置调度；本批未调用模型执行分析任务，实际请求数和费用仍须按实际配置记录。
+可在卡内查看世界书关键词、次关键词、递归、插入位置与 outlet，EJS 的 `getvar`、`getwi` 和 `activateWI`，以及 MVU 数值更新、前端事件与人工电荷校准。`getvar` 字符串作用域使用 `local`，当前 host 将它映射到内部 `chat` 绑定。值班台使用 `getVariables` 读取聊天变量，并以 `insertOrAssignVariables` 追加写入 `author.log`；日志采用 `schemaVersion: 1` 的 `entries` 数组，累计观察与顾问对话。个人笔记可按所有权增删，独立顾问由受信点击触发。确定性状态和展示流程不调用模型；顾问每次受信点击对应一次模型请求。Ruby 默认关闭，卡片测试覆盖了启用后的八位置调度；本批未调用模型执行分析任务，实际请求数和费用仍须按实际配置记录。
 
-Steam Tide 的整卡 Core 路径已通过受控 fixture 测试，覆盖四个 Story、简报注入与清理、互斥条目、递归、命名 outlet、临时告示计时和累计日志。验证没有使用真实模型，也没有在 Harness／正式产品宿主或完整浏览器 DOM 中运行；这项结果不代表 0.3 整体验收或发行完成。
+Steam Tide 当前受控验证包括四个 Story 的 Core prompt case（1/1）及覆盖 Parent、Dragon Empress、Steam Tide 的 Native component case（3/3），包含该组件范围内的 Schema 初始化／更新、EJS、Ruby 与 Browser 能力。另已在固定 stock Harness 中完成 Steam Tide Native 导入、两次自然 Story 的真实 provider dispatch、assistant edit／regeneration、Native 导出 roundtrip，以及 new-PID parent／roundtrip cold read。一次 regeneration 的 Schema batch 因 contacts 自由文本不符合 enum 被拒；之后有独立的 owner 数值更新，补充作者规则后第二个 Story 完成。自动 memory job 因输出截断而失败；novel export 仅验证 original mode。以上是限定样例结果，不涵盖完整 lifecycle 或所有导出模式，也不代表 0.3 整体验收或发行完成。

@@ -6,7 +6,7 @@ import {readStructuredImportDataV1,spanText} from './roleplay-import-record.js'
 import {portableNextTavernAuthorFields,isNextTavernCardDocument,nextTavernCardSourceIdV1,
   NEXTTAVERN_ST_MACRO_FIELDS,isNativeTavernCardDocument,readNativeNextTavernAuthorExtensionV1,
   readTavernCardArchiveV1,mergeNativeTavernCardExportV1,nextTavernExecutionAuthorData} from './nexttavern-card.js'
-import {materializeTavernLoreEntryFieldsV1} from './tavern-lore-compiler.mjs'
+import {materializeTavernEffectiveBookV1} from './roleplay-tavern-lore-edits-data.js'
 import type {NextTavernCardDocument,NextTavernCardData,NextTavernAuthorRow,
   NextTavernCardExportDocument} from './nexttavern-card.js'
 import type {TavernLoreSourceCaptureV1} from './roleplay-tavern-lore-source-types.js'
@@ -43,11 +43,14 @@ function preserveNativeAuthorPresence(fields:Record<string,unknown>,original:Rec
 }
 const stRuleFields=[['core','scenario','core-setting'],['style','mes_example','rule-style'],
   ['narrative','system_prompt','rule-narrative'],['reply','post_history_instructions','rule-reply']] as const
-function extraAuthorData(data:Readonly<Record<string,unknown>>,avatarBase64?:string) {
+function extraAuthorData(data:Readonly<Record<string,unknown>>,avatarBase64?:string,native=false) {
   const extra=cloneRecord(data) as Record<string,unknown>
-  for(const field of ['name','description','personality','scenario','mes_example','system_prompt',
-    'post_history_instructions','first_mes','alternate_greetings','character_book','cards','worldbook',
-    'rules','status','opening','settings'])delete extra[field]
+  const projected=['name','character_book','cards','worldbook','rules','status','opening','settings']
+  // ST prose is projected into canonical author rows. Native's open metadata
+  // has no such projection and must survive current-card export verbatim.
+  if(!native)projected.push('description','personality','scenario','mes_example','system_prompt',
+    'post_history_instructions','first_mes','alternate_greetings')
+  for(const field of projected)delete extra[field]
   // The PNG container is no longer present after portable JSON conversion.
   // Its metadata-free cover joins the same asset list used by media owners.
   if(avatarBase64)extra.assets=[...((extra.assets as unknown[]|undefined)??[]),
@@ -91,10 +94,10 @@ export function captureNextTavernAuthorDataV1(deps:AuthorDataDependencies,id:str
   const native=decoded&&isNextTavernCardDocument(decoded.document)?decoded.document:undefined
   const preserved=native?.data.compatibility?.authorExecution
   // Keep open author fields in DATA while runtime text has one canonical home.
-  const extra=extraAuthorData(decoded?.data??{},readCapturedTavernCoverV1(captured)?.base64??decoded?.avatarBase64)
+  const extra=extraAuthorData(decoded?.data??{},readCapturedTavernCoverV1(captured)?.base64??decoded?.avatarBase64,!!native)
   const authorCoordinates:NativeCardAuthorCoordinateV1[]=[]
   const skip=new Set<string>()
-  let book=cloneRecord(decoded?.data.character_book) as NextTavernCardData['character_book']
+  let book=(captured.kind==='captured-data'?undefined:cloneRecord(decoded?.data.character_book)) as NextTavernCardData['character_book']
   const ruleRow=T.rules.get(keyOf(id,'spec')) as Record<string,unknown>|undefined
   let rules=authorFields(ruleRow)
   const editedRuleFields=(ruleRow?.editedFrom as {ruleFields?:string[]}|undefined)?.ruleFields??[]
@@ -118,26 +121,7 @@ export function captureNextTavernAuthorDataV1(deps:AuthorDataDependencies,id:str
       }
     }
     for(const key of legacy!.linkedRowKeys)skip.add(key)
-    if(observed.data.currentNativeMembership) {
-      // Current order/membership comes from the published journal. Original
-      // object keys and removed entries remain in the complete inert archive.
-      const entries=observed.data.currentNativeMembership.members.map(member=>{
-        const entry=materializeTavernLoreEntryFieldsV1(member.rawEntry,{displayIndex:member.displayIndex})
-        // Helper's numeric UID may project a retained textual native id. The
-        // Native document keeps that author metadata; only missing ids use UID.
-        if(!Object.hasOwn(entry,'id'))entry.id=member.uid
-        return entry
-      })
-      book={...book??{},entries}
-    }else if(book) {
-      const edits=new Map(observed.data.overlay.entries.map(entry=>[entry.rawEntryPointer,entry.fields]))
-      const source=captured.source.original.primary
-      if(source.binding==='primary')for(const entry of source.entries) {
-        const fields=edits.get(entry.ref.entryPointer)
-        if(fields)(book.entries as Record<string,unknown>)[entry.entryKey]=
-          materializeTavernLoreEntryFieldsV1(entry.value as Record<string,unknown>,fields)
-      }
-    }
+    book=materializeTavernEffectiveBookV1(captured.source,observed.data,legacy!.overlay) as NextTavernCardData['character_book']
   }
   const cardId=native?nextTavernCardSourceIdV1(native):undefined
   const rows=(table:Table,target:'card'|'worldbook')=>{

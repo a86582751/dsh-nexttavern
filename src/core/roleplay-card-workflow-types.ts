@@ -44,10 +44,12 @@ export interface CardWorkflowJob extends Record<string, unknown> {
   authoringOrigin?:NativeCardAuthoringOriginV1
 }
 export interface CardWorkflowDependencies {
+  readOriginalImportFile?(session:CardWorkflowSession,requestId:string):import('./roleplay-card-attachment.js').ArchivedOriginalFile|null
   T: {
     branch: {
       get(key: string): unknown
       entries(): Iterable<[string, unknown]>
+      entriesPrefix?(prefix:string|readonly string[]):Iterable<[string,unknown]>
       put(key: string, value: unknown): Promise<unknown>
     }
     opening: {get(key: string): {text?: string} | null | undefined}

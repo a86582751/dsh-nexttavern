@@ -1,7 +1,8 @@
 // Generated from runtime/alpha3/src/core/roleplay-import.ts; edit the TypeScript source.
-import { IMPORT_NORMALIZER, IMPORT_LIMITS, resolveImportSource, assertImportRecordIntegrity, assertAssignmentBudget, assertReviewProof, normalizeSourceSpans, spanText, assertReferenceBudget, sourceDescriptor, importCoverage, validateAssignmentIdentities, importSummary, projectStructuredImport, assertDeterministicAssignmentProof, deterministicAssignmentHash, NEXTTAVERN_IMPORT_NORMALIZER, readStructuredImportDataV1, } from './roleplay-import-record.js';
+import { IMPORT_NORMALIZER, IMPORT_LIMITS, resolveImportSource, assertImportRecordIntegrity, assertAssignmentBudget, assertReviewProof, normalizeSourceSpans, spanText, assertReferenceBudget, sourceDescriptor, importCoverage, validateAssignmentIdentities, importSummary, projectStructuredImport, deterministicAssignmentHash, NEXTTAVERN_IMPORT_NORMALIZER, readStructuredImportDataV1, } from './roleplay-import-record.js';
 import { randomUUID } from 'node:crypto';
-import { resolve, basename } from 'node:path';
+import { resolve, extname } from 'node:path';
+import { importedSourceName, importedSourceArchiveName } from './roleplay-resource-bridge.js';
 import { keyOf, safeId, sha256, stableJson, cloneRecord, recordSha256, deescapeMarkdown, stableImportId, } from './roleplay-data.js';
 import { lastSeq, eventsOf } from './roleplay-context.js';
 import { readCardSource, decodeTavernCard, prepareNextTavernExecutionCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernExtensionInventory, compileTavernExtensionInventoryV3, compileTavernCapabilityReport, fenceCardContent } from './tavern-card.js';
@@ -34,6 +35,7 @@ const errorMessage = (error) => error?.message ?? error;
 export function registerRoleplayImports(deps) {
     const { ctx, T, CARD_CLASSIFICATION_GUIDE, activeCardWorkflow, assertCardWorkflow, beginCardWorkflow, resumeCardWorkflows, cardWorkflowKey, libraryFor, resourceName, completeCardWorkflow, ensureBranch, RULE_TEXT_FIELDS, ensureState, simpleTool, sessionOf, RULE_IMPORT_FIELDS, archiveImported, } = deps;
     const importHandlers = new Map();
+    const readImportSource = (session, path, requestId) => resolveImportSource(session, path, requestId ? deps.readOriginalImportFile?.(session, requestId) : null);
     // Only the in-process structured driver can bypass its own outer dispatch.
     // An external tool call must never wait on the driver that called it.
     const structuredDriverExecs = new WeakSet();
@@ -63,8 +65,8 @@ export function registerRoleplayImports(deps) {
                     if (chatAttachment || args.mode === 'merge' || args.request_id !== undefined && args.request_id !== owned.job.clientRequestId) {
                         throw Error('CARD_IMPORT_TASK_ARGUMENTS_MISMATCH');
                     }
-                    const source = resolveImportSource(session, String(args.source_file ?? '').trim());
-                    if (source.sourcePath !== owned.job.source.sourceFile || sha256(source.bytes) !== owned.job.source.sha256) {
+                    const source = readImportSource(session, String(args.source_file ?? '').trim(), owned.job.clientRequestId);
+                    if (source.sourcePath !== owned.job.source.sourceFile || (source.sourceSha256 ?? sha256(source.bytes)) !== owned.job.source.sha256) {
                         throw Error('CARD_IMPORT_TASK_SOURCE_MISMATCH');
                     }
                     // This exact task already owns its workflow and frozen source. Keep
@@ -80,9 +82,11 @@ export function registerRoleplayImports(deps) {
                 if (!chatAttachment) {
                     let internalArgs = args;
                     if (lease?.reserveWorkspace) {
-                        const source = resolveImportSource(session, String(args.source_file ?? '').trim());
+                        const source = readImportSource(session, String(args.source_file ?? '').trim(), args.request_id);
                         const requestId = await lease.reserveWorkspace({ sourceFile: source.sourcePath, sourceBytes: source.bytes.length,
-                            sourceMtimeMs: source.sourceMtimeMs, extension: source.extension, rawSha256: sha256(source.bytes) });
+                            // Input settlement proves the physical file; admission owns its parsing format.
+                            sourceMtimeMs: source.sourceMtimeMs, extension: extname(source.sourcePath).toLowerCase(),
+                            rawSha256: source.sourceSha256 ?? sha256(source.bytes) });
                         if (args.mode !== 'merge')
                             internalArgs = { ...args, request_id: args.request_id ?? requestId };
                         if (['.png', '.json'].includes(source.extension))
@@ -95,7 +99,7 @@ export function registerRoleplayImports(deps) {
                 const source = await deps.resolveChatCardSource(session, exec, selected);
                 await lease?.reserve(source);
                 if (lease) {
-                    const original = resolveImportSource(session, source.sourceFile);
+                    const original = readImportSource(session, source.sourceFile, source.requestId);
                     if (['.png', '.json'].includes(original.extension))
                         decodeTavernCard(original.bytes, original.extension);
                 }
@@ -650,7 +654,7 @@ export function registerRoleplayImports(deps) {
         }
         let source;
         try {
-            source = exec.ownedCardImport?.source ?? resolveImportSource(session, requestedPath);
+            source = exec.ownedCardImport?.source ?? readImportSource(session, requestedPath, workflow?.kind === 'card-import' ? workflow.clientRequestId : args.request_id);
         }
         catch (error) {
             return {
@@ -690,6 +694,7 @@ export function registerRoleplayImports(deps) {
             };
         }
         const docx = source.extension === '.docx';
+        const rawSha256 = nativeTransport?.sourceSha256 ?? decoded?.sourceSha256 ?? source.sourceSha256 ?? sha256(rawBytes);
         const rawSource = docx ? await (await import('dsh-nexttavern-anydoc/document-reader')).docxBytesToMarkdown(rawBytes)
             : executionRawSource ?? (decoded ? JSON.stringify(decoded.document, null, 2) : rawBytes.toString('utf8'));
         if (!decoded && !docx && !Buffer.from(rawSource, 'utf8').equals(rawBytes))
@@ -731,19 +736,22 @@ export function registerRoleplayImports(deps) {
             .slice(0, 200);
         // Complete transport commits before its reference becomes visible.
         // Runtime Source reads the execution JSON without touching this file.
+        const sourceFilename = source.sourceFilename ?? importedSourceName(session, source.sourcePath, rawSha256, libraryFor(session));
         const transportResource = nativeTransport ? await libraryFor(session).archive({
-            name: resourceName(nativeTransport.data.name, '.json'), type: 'application/json', bytes: rawBytes,
-            source: { sessionId: session.id, kind: 'card-import', importId, sha256: sha256(rawBytes) }
+            name: importedSourceArchiveName(sourceFilename), type: 'application/json', bytes: rawBytes,
+            source: { sessionId: session.id, kind: 'card-import', importId, sha256: rawSha256 }
         }) : undefined;
         if (nativeTransport && !transportResource?.id)
             throw new Error('原生角色卡原件归档未完成');
-        const docxResource = docx ? await libraryFor(session).archive({ name: basename(source.sourcePath),
+        const docxResource = docx ? await libraryFor(session).archive({
+            name: importedSourceArchiveName(sourceFilename),
             type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', bytes: rawBytes,
-            source: { sessionId: session.id, kind: 'card-import', importId, sha256: sha256(rawBytes) } }) : undefined;
+            source: { sessionId: session.id, kind: 'card-import', importId, sha256: rawSha256 }
+        }) : undefined;
         const record = {
             schemaVersion: docx ? 7 : nativeTransport ? 6 : decoded ? 5 : 3,
             ...(docxResource ? { originalCardSource: { schemaVersion: 1, encoding: 'nexttavern-original-card-source-v1',
-                    resourceId: docxResource.id, sha256: sha256(rawBytes), bytes: rawBytes.length },
+                    resourceId: docxResource.id, sha256: rawSha256, bytes: rawBytes.length },
                 extractedSource: { schemaVersion: 1, encoding: 'docx-markdown-v1',
                     sha256: sha256(rawSource), bytes: Buffer.byteLength(rawSource, 'utf8') } } : {}),
             importId,
@@ -752,6 +760,7 @@ export function registerRoleplayImports(deps) {
             ...(workflow?.authoringOrigin ? { authoringOrigin: workflow.authoringOrigin } : {}),
             sessionId: session.id,
             sourceFile: source.sourcePath,
+            sourceFilename,
             workspaceRoot: source.workspaceRoot,
             sourceBytes: rawBytes.length,
             sourceMtimeMs: source.sourceMtimeMs,
@@ -765,7 +774,7 @@ export function registerRoleplayImports(deps) {
                     sourceEnvelope: nativeTransport ? {
                         schemaVersion: 2, extension: '.json', format: 'json-nexttavern-v1',
                         executionSha256: decoded.sourceSha256, executionBytes: Buffer.byteLength(rawSource, 'utf8'),
-                        transportSha256: sha256(rawBytes), transportBytes: rawBytes.length,
+                        transportSha256: rawSha256, transportBytes: rawBytes.length,
                         transportResourceId: transportResource.id, warnings: projected.warnings,
                     } : {
                         schemaVersion: 1,
@@ -781,7 +790,7 @@ export function registerRoleplayImports(deps) {
             normalizedSource,
             lines,
             lineStarts,
-            rawSha256: sha256(rawBytes),
+            rawSha256,
             normalizedSha256: sha256(normalizedSource),
             rawChars: rawSource.length,
             normalizedChars: normalizedSource.length,
@@ -798,7 +807,7 @@ export function registerRoleplayImports(deps) {
         if (!structuredDriverExecs.has(exec))
             await deps.inputTransition?.bindLegacyRecord?.(session, exec, record);
         return {
-            ok: true, ...importSummary(record), headings, nextCursor: 1
+            ok: true, ...importSummary(record, undefined, decoded), headings, nextCursor: 1
         };
     })), 'roleplay: tool rp_card_import_begin');
     ctx.effect(() => ctx.tools.register(importTool('rp_card_import_chunk', '按行分页读取已归档角色卡原文。Markdown/TXT 或自定义语义分类须严格按 nextCursor 从 1 连续读到 null；结构化卡的程序建议映射无需模拟全文审阅。', {
@@ -1014,8 +1023,9 @@ export function registerRoleplayImports(deps) {
                 };
             exec.ownedCardImport?.assertCurrent();
             assertOwnedImportRecord(exec, record);
+            let stagedProjection;
             try {
-                assertImportRecordIntegrity(record);
+                assertImportRecordIntegrity(record, (_decoded, _data, projection) => { stagedProjection = projection; });
             }
             catch (error) {
                 return {
@@ -1040,8 +1050,7 @@ export function registerRoleplayImports(deps) {
                 if (args.use_suggested === true) {
                     if (!record.sourceEnvelope)
                         throw new Error('只有结构化 PNG/JSON 原件支持建议映射');
-                    const decoded = readStructuredImportDataV1(record).decoded;
-                    const suggested = projectStructuredImport(record, decoded).assignments;
+                    const suggested = stagedProjection.assignments;
                     if (deterministicSuggested)
                         suggestedSha256 = sha256(stableJson(suggested));
                     args = {
@@ -1189,8 +1198,13 @@ export function registerRoleplayImports(deps) {
                 };
             exec.ownedCardImport?.assertCurrent();
             assertOwnedImportRecord(exec, record);
+            let checkedDecoded;
+            let checkedProjection;
             try {
-                assertImportRecordIntegrity(record);
+                assertImportRecordIntegrity(record, (decoded, _data, projection) => {
+                    checkedDecoded = decoded;
+                    checkedProjection = projection;
+                });
             }
             catch (error) {
                 return {
@@ -1209,7 +1223,7 @@ export function registerRoleplayImports(deps) {
                         ok: true,
                         idempotent: true,
                         current: false,
-                        ...importSummary(record),
+                        ...importSummary(record, undefined, checkedDecoded),
                         ...(record.activation?.summary ?? {})
                     };
                 }
@@ -1263,18 +1277,22 @@ export function registerRoleplayImports(deps) {
                 }
                 const permission = await commitInputActivation(session, record, pointer);
                 if (permission)
-                    return { ...importSummary(record), idempotent: true, current: true, ...permission };
+                    return { ...importSummary(record, undefined, checkedDecoded), idempotent: true, current: true, ...permission };
                 return {
                     ok: true,
                     idempotent: true,
                     current: true,
-                    ...importSummary(record),
+                    ...importSummary(record, undefined, checkedDecoded),
                     ...(record.activation?.summary ?? {})
                 };
             }
             if (record.status === 'committing' || record.status === 'recovery-required') {
                 try {
                     record = await restoreImportTransaction(session.id, key, record);
+                    assertImportRecordIntegrity(record, (decoded, _data, projection) => {
+                        checkedDecoded = decoded;
+                        checkedProjection = projection;
+                    });
                 }
                 catch (error) {
                     return {
@@ -1308,9 +1326,7 @@ export function registerRoleplayImports(deps) {
                 };
             }
             try {
-                if (record.assignmentProof)
-                    assertDeterministicAssignmentProof(record);
-                else
+                if (!record.assignmentProof)
                     assertReviewProof(record);
             }
             catch (error) {
@@ -1321,11 +1337,6 @@ export function registerRoleplayImports(deps) {
             if (String(args.expected_sha256).toLowerCase() !== String(record.normalizedSha256).toLowerCase()) {
                 return {
                     ok: false, error: '来源 SHA-256 不匹配，拒绝对变化后的原卡提交旧分类'
-                };
-            }
-            if (sha256(record.normalizedSource) !== record.normalizedSha256) {
-                return {
-                    ok: false, error: '归档原文完整性校验失败，拒绝激活'
                 };
             }
             if (!(record.assignments ?? []).some((assignment) => assignment.target !== 'archive-only')) {
@@ -1377,10 +1388,16 @@ export function registerRoleplayImports(deps) {
             const beauty = {
                 css: [], js: [], regexRules: [], sources: []
             };
-            const structuredDecoded = record.sourceEnvelope ? readStructuredImportDataV1(record).decoded : undefined;
-            const tavernProjection = structuredDecoded ? projectStructuredImport(record, structuredDecoded) : null;
+            const structuredDecoded = checkedDecoded;
+            const tavernProjection = checkedProjection ?? null;
             const portable = structuredDecoded && isNextTavernCardDocument(structuredDecoded.document)
                 ? nextTavernExecutionAuthorData(structuredDecoded.document.data) : undefined;
+            const portableCardsById = new Map(portable?.cards.map((row, index) => [
+                row.kind === 'user' ? 'user' : `${tavernProjection.cardId}-card-${index}`, row
+            ]));
+            const portableWorldbookById = new Map(portable?.worldbook.map((row, index) => [
+                `${tavernProjection.cardId}-worldbook-${index}`, row
+            ]));
             const tavernWorldbookById = new Map();
             for (const entry of tavernProjection?.worldbook ?? []) {
                 if (!tavernWorldbookById.has(entry.id))
@@ -1471,14 +1488,37 @@ export function registerRoleplayImports(deps) {
             const writeKeys = new Set();
             const addWrite = (tableName, entryKey, next) => {
                 if (portable) {
-                    const rowId = entryKey.slice(session.id.length + 2), cardId = tavernProjection.cardId;
-                    const fields = tableName === 'cards' ? portable.cards.find((row, index) => rowId === (row.kind === 'user' ? 'user' : `${cardId}-card-${index}`))
-                        : tableName === 'worldbook' ? portable.worldbook.find((_, index) => rowId === `${cardId}-worldbook-${index}`)
+                    const rowId = entryKey.slice(session.id.length + 2);
+                    const fields = tableName === 'cards' ? portableCardsById.get(rowId)
+                        : tableName === 'worldbook' ? portableWorldbookById.get(rowId)
                             : tableName === 'rules' ? portable.rules : tableName === 'status' && rowId === 'spec' ? portable.status
                                 : tableName === 'opening' ? portable.opening : undefined;
-                    if (fields)
-                        next = { ...next,
-                            ...portableNextTavernAuthorFields(fields) };
+                    if (fields) {
+                        const author = portableNextTavernAuthorFields(fields);
+                        const materialized = next;
+                        if (record.mode === 'merge' && materialized) {
+                            // The transaction owns merged bodies and local receipts.
+                            // Portable metadata fills author fields, never rewinds the
+                            // result to the incoming fragment or its foreign sources.
+                            const mergedFields = tableName === 'cards' ? ['content', 'locked']
+                                : tableName === 'worldbook' ? ['content', 'aliases', 'keywords', 'triggers', 'priority', 'tokenBudget', 'alwaysOn', 'locked']
+                                    : tableName === 'rules' ? RULE_TEXT_FIELDS
+                                        : tableName === 'status' ? ['text', 'templateHtml'] : ['text'];
+                            for (const field of mergedFields)
+                                delete author[field];
+                            if (tableName === 'rules' && author.beauty)
+                                author.beauty = {
+                                    ...author.beauty,
+                                    ...materialized.beauty
+                                };
+                        }
+                        if (tableName === 'rules' && author.beauty && record.mode !== 'merge')
+                            author.beauty = {
+                                ...author.beauty,
+                                sources: materialized?.beauty?.sources ?? []
+                            };
+                        next = { ...materialized, ...author };
+                    }
                 }
                 const table = importTableByName[tableName];
                 const identity = `${tableName}:${entryKey}`;
@@ -1621,11 +1661,21 @@ export function registerRoleplayImports(deps) {
                 }
                 const previousRules = cloneRecord(T.rules.get(keyOf(session.id, 'spec')));
                 const previousBeauty = previousRules?.beauty ?? {};
+                const { sources: _foreignBeautySources, ...portableBeauty } = portable?.rules.beauty ?? {};
+                // Native author regex entries remain open DATA. Only the array
+                // container is required by merge; Reader owns executable rules.
+                if (portable?.rules.beauty?.regexRules !== undefined
+                    && !Array.isArray(portable.rules.beauty.regexRules))
+                    throw new Error('Native beauty.regexRules 必须是数组；原件已保留，请修正该字段后重新导入');
+                if (!replaceMode && previousBeauty.regexRules !== undefined && !Array.isArray(previousBeauty.regexRules))
+                    throw new Error('当前 beauty.regexRules 不是数组，无法合并；请在编辑界面修正后重试，原记录未改写');
                 const newRuleText = Object.fromEntries(RULE_TEXT_FIELDS.map(field => [field, joinImported(rules[field])]));
                 const nextBeauty = {
+                    ...(replaceMode ? {} : previousBeauty),
+                    ...portableBeauty,
                     regexRules: replaceMode
-                        ? beauty.regexRules
-                        : [...(previousBeauty.regexRules ?? []), ...beauty.regexRules],
+                        ? portable?.rules.beauty?.regexRules ?? beauty.regexRules
+                        : [...(previousBeauty.regexRules ?? []), ...(portable?.rules.beauty?.regexRules ?? beauty.regexRules)],
                     css: replaceMode ? joinImported(beauty.css) : mergeText(previousBeauty.css, joinImported(beauty.css)),
                     js: replaceMode ? joinImported(beauty.js) : mergeText(previousBeauty.js, joinImported(beauty.js)),
                     sources: replaceMode
@@ -1676,7 +1726,8 @@ export function registerRoleplayImports(deps) {
                     addWrite('status', keyOf(session.id, 'spec'), {
                         ...(replaceMode ? {} : previousStatus ?? {}),
                         text: replaceMode ? importedStatus : mergeText(previousStatus?.text, importedStatus),
-                        templateHtml: replaceMode ? importedStatus : mergeText(previousStatus?.templateHtml, importedStatus),
+                        templateHtml: replaceMode ? importedStatus
+                            : mergeText(previousStatus?.templateHtml, portable?.status?.templateHtml ?? importedStatus),
                         sources: replaceMode ? statusSources : [...(previousStatus?.sources ?? []), ...statusSources],
                         importId: record.importId,
                         verified: replaceMode || !previousStatus || previousStatus.verified === true,
@@ -1684,7 +1735,7 @@ export function registerRoleplayImports(deps) {
                         updatedAtSeq: atSeq,
                     });
                 }
-                else if (portable?.status || replaceMode && previousStatus) {
+                else if (replaceMode && previousStatus) {
                     addWrite('status', keyOf(session.id, 'spec'), undefined);
                 }
                 const previousPanel = cloneRecord(T.status.get(keyOf(session.id, 'panel')));
@@ -1703,7 +1754,7 @@ export function registerRoleplayImports(deps) {
                         updatedAtSeq: atSeq,
                     });
                 }
-                else if (portable?.opening || replaceMode && previousOpening) {
+                else if (replaceMode && previousOpening) {
                     addWrite('opening', keyOf(session.id, 'scene'), undefined);
                 }
                 if (portable?.settings) {
@@ -1824,11 +1875,11 @@ export function registerRoleplayImports(deps) {
                     });
                     const permission = await commitInputActivation(session, activeRecord, activePointer, transaction);
                     if (permission)
-                        return { ...importSummary(activeRecord), ...activationSummary,
+                        return { ...importSummary(activeRecord, undefined, structuredDecoded), ...activationSummary,
                             resourceId: resource?.resourceId ?? resource?.id ?? null, ...permission };
                     return {
                         ok: true,
-                        ...importSummary(activeRecord),
+                        ...importSummary(activeRecord, undefined, structuredDecoded),
                         ...activationSummary,
                         resourceId: resource?.resourceId ?? resource?.id ?? null
                     };

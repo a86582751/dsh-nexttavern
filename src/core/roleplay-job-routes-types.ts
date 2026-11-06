@@ -70,7 +70,8 @@ export interface JobRoutesDependencies {
   cardWorkflowKey: CardWorkflows['cardWorkflowKey']
   libraryFor: Resources['libraryFor']
   migrateResources: Resources['migrateResources']
-  originalCardResource?(session:CardWorkflowSession):Promise<{id:string}>
+  originalCardResource?(session:CardWorkflowSession):Promise<{id:string;originalFilename?:string;originalContentType?:string}>
+  readOriginalSourceKind?(session:Pick<CardWorkflowSession,'id'>):'uploaded-original'|'authored-document'|undefined
   nativeCardStatus?(session:CardWorkflowSession):{state:string;reason?:string;staticReady?:boolean}
   applyNativeCardConversion?(session:CardWorkflowSession,jobId:string):Promise<unknown>
 }

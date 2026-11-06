@@ -2,12 +2,13 @@
 import { randomUUID } from 'node:crypto';
 import { taskPhaseMessage, taskValidationFailure, isInlinePending } from './tavern-tasks.js';
 import { decodeTavernCard } from './tavern-card.js';
+import { libraryContentDisposition } from './tavern-library-input.js';
 import { createCardAttachmentSources, createMusicAttachmentSources } from './roleplay-card-attachment.js';
 import { jsonResponse } from './roleplay-state.js';
 import { assertWorkspaceSession } from './roleplay-context.js';
 import { assertSteeringAgent } from './roleplay-task-tools.js';
 const schemaMaintenanceRetryHint = '此任务不能单独重试。请重新生成该回复，生成新剧情并重新维护变量。';
-export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports, modelPolicy, beginCardWorkflow, resumeCardWorkflows, controlCardWorkflow, cardWorkflows, cardWorkflowKey, tavernTasks, taskAgents, libraryFor, migrateResources, originalCardResource, nativeCardStatus, applyNativeCardConversion }) {
+export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports, modelPolicy, beginCardWorkflow, resumeCardWorkflows, controlCardWorkflow, cardWorkflows, cardWorkflowKey, tavernTasks, taskAgents, libraryFor, migrateResources, originalCardResource, readOriginalSourceKind, nativeCardStatus, applyNativeCardConversion }) {
     const attachmentSources = createCardAttachmentSources({ T, libraryFor,
         fileUploads: ctx.fileUploads, attachments: ctx.attachments });
     const musicSources = createMusicAttachmentSources({ T, libraryFor,
@@ -60,7 +61,8 @@ export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports
                 if (!body) {
                     const jobs = [...cardWorkflows(session), ...await novelExports.refresh(session), ...tavernTasks.list(session)];
                     const children = jobs.length ? latestChildJobs() : undefined;
-                    return jsonResponse(200, { ok: true, jobs: jobs.map(job => publicJob(job, children)) });
+                    return jsonResponse(200, { ok: true, jobs: jobs.map(job => publicJob(job, children)),
+                        originalSourceKind: readOriginalSourceKind?.(session) });
                 }
                 const retryTask = body.action === 'retry' ? T.branch.get('tavern_job__' + body.jobId) : undefined;
                 // A management turn cannot reopen the original Story's closing lease.
@@ -178,7 +180,12 @@ export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports
                 if (!originalCardResource)
                     throw Error('当前版本尚未提供源文件导出');
                 const resource = await originalCardResource(session);
-                return libraryFor(session).openDownload(resource.id);
+                const response = libraryFor(session).openDownload(resource.id);
+                if (resource.originalFilename)
+                    response.headers.set('content-disposition', libraryContentDisposition(resource.originalFilename));
+                if (resource.originalContentType)
+                    response.headers.set('content-type', resource.originalContentType);
+                return response;
             }],
         ['/api/roleplay/resources', async (session) => { const lib = await migrateResources(session); return jsonResponse(200, { ok: true, ...lib.listWithPending() }); }],
         ['/api/roleplay/resource', async (session, url) => {
