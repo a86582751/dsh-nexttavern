@@ -312,6 +312,10 @@ export async function prepareHostTree(options:PackHostOptions,directory:string):
   const productFiles=await inspectProductPublishedFiles(planned.product)
   const packages:PackageReceipt[]=[]
   const excludedFiles:HostPackReceipt['excludedFiles']=[],unqualifiedCapabilities:HostPackReceipt['unqualifiedCapabilities']=[]
+  if(planned.inventoried.packages.some(row=>row.name==='dsh-nexttavern-anydoc')) {
+    unqualifiedCapabilities.push({id:'anydoc-binary-conversion',
+      reason:'The pinned anydoc native converter has no Android companion; plain-text reading remains available, binary document conversion is unqualified'})
+  }
   for(const row of planned.placements) {
     const target=path.join(directory,row.relative),files:FileReceipt[]=[]
     if(row.generated) {

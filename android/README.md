@@ -56,6 +56,17 @@ exposed Node 24.16.0 accepting a truncated zstd frame. The strict probe remains
 unchanged; CI now uses the Android runtime's pinned Node 24.22.1. This is not
 successful validation of 24.16.0 or a change to the desktop minimum-version claim.
 
+Independent frozen-source review found two additional interruption gaps, both
+reproduced before fixing: a pre-commit Phase-B Stop left its durable row running,
+and status workers were outside the owned-work barrier. Interrupted Phase B now
+records retry without deleting its snapshot; status workers cancel and settle
+before provider/storage teardown. The generated-mirror gate now derives all five
+Android outputs from the build map, including missing committed outputs.
+
+Canonical regeneration also exposed a public-only type import. Manifest-owned
+type aliases now compile the same prepare-product source in both repository
+layouts; no duplicate assembly types or runtime implementation were added.
+
 Integration verification is in progress. Fresh KVM/UI, ARM64 execution and a
 production release are not established by these source and host-fixture checks.
 
@@ -212,13 +223,15 @@ node android/tools/prepare-product.mjs --repo "$PWD" --out "$P" --abi "$ABI" \
   --pi-ai-archive "$INPUTS/earendil-works__pi-ai-0.85.1.tgz"
 ```
 
-The current public `prepare-product` output is 17 packages, 13 Host forks,
-and one skin. `@deepseek-ai/dsh-attachment-local@0.1.7-rc.2` is the twelfth
-fork; the thirteenth is the maintained `node-addon-system@0.1.2` Android atomic
-publication wrapper, retaining upstream flock behavior. The attachment fork
+The current public plan declares 26 owned packages, two Host overrides,
+and one skin. The overrides are `@deepseek-ai/dsh-attachment-local@0.1.7-rc.2`
+and the maintained `node-addon-system@0.1.2` Android atomic publication wrapper,
+retaining upstream flock behavior. The attachment override
 stops its upload-directory durability walk at the installer-supplied app-data
 boundary; desktop behavior is unchanged. The public assembly procedure above
-remains the source of the reproducible build inputs.
+remains the source of the reproducible build inputs. The pinned anydoc converter
+has no Android native companion: plain-text reading remains available, while
+binary document conversion is explicitly unqualified in the Host pack receipt.
 
 Create exactly one fresh, task-owned Harness installation from the public
 Harness manifest and lock; keep its home separate from any personal or
@@ -417,12 +430,12 @@ cd android
 ./gradlew :mobile:assembleX86DiagnosticDebug # x64 debug, not final-qualified
 ```
 
-The current Host pack contains 540 packages (183,501,290 bytes; SHA-256
+The earlier pre-Native Host pack contained 540 packages (183,501,290 bytes; SHA-256
 `6b4978174e7c18fccb63aa07c98877e10537ca4f7f17327fd68402612d4be28f`). A fresh
 static ARM candidate from public `d471fbd` is non-debug, min API 30 / target 36,
 with 12 ARM ELF files; APK size is 217,708,953 bytes (SHA-256
 `ecdea8dd7ec2c9325b5345e943ac405099233d2b0bf7cdf9a42184e9197feec5`). Signature,
-Host ZIP/version/notices/JNI bytes, 16 KiB zipalign, and the new thirteenth-fork
+Host ZIP/version/notices/JNI bytes, 16 KiB zipalign, and that historical native-system override
 inventory/atomic/launcher match passed. Its 14,264-byte wrapper passed static ELF
 16 KiB LOAD and closure checks; SHA-bound static evidence for the unchanged 11 ELF files was reused.
 This is static packaging only, not arm64 runtime, app UI, full G0, or on-device

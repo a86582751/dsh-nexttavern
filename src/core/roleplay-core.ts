@@ -1566,6 +1566,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   // status-bar fields. Normalize at the boundary so storage, workers, and UI
   // all see one stable shape without rewriting historical records in place.
   const {
+    pending: pendingStatusWork,
+    close: closeStatusWork,
     readOwnedStatusControlFacts,
     readPendingOutputRows:readPendingStatusOutputRows,
     statusFixedContext,
@@ -1640,7 +1642,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
 
   // domain 生命周期归本 fiber：卸载/失败挂载时必须 close，否则域名泄漏、
   // 重挂载会撞上 "already open"。
-  const completionOwners:{pending():number;close():Promise<void>}[]=[]
+  const completionOwners:{pending():number;close():Promise<void>}[]=[{pending:pendingStatusWork,close:closeStatusWork}]
   const backgroundWork={
     pending:()=>completionOwners.reduce((pending,owner)=>pending+owner.pending(),0),
     close:async()=>{await Promise.all(completionOwners.map(owner=>owner.close()))},

@@ -2,9 +2,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {pathToFileURL} from 'node:url'
-import type {ProductAssemblyPlan} from '../../src/operations/product-assembly.mts'
-import type * as Assembly from '../../src/operations/product-assembly.mts'
-import type * as Admission from '../../src/operations/public-vendor-admission.mts'
+import type {ProductAssemblyPlan} from 'dsh-nexttavern-build/product-assembly'
+import type * as Assembly from 'dsh-nexttavern-build/product-assembly'
+import type * as Admission from 'dsh-nexttavern-build/public-vendor-admission'
 
 const toolRoot=path.resolve(import.meta.dirname,'../..')
 const operations=fs.existsSync(path.join(toolRoot,'release/source-manifest.json'))

@@ -1440,7 +1440,7 @@ export async function apply(ctx, config = {}) {
     // The model and older roleplay records use several aliases for the same
     // status-bar fields. Normalize at the boundary so storage, workers, and UI
     // all see one stable shape without rewriting historical records in place.
-    const { readOwnedStatusControlFacts, readPendingOutputRows: readPendingStatusOutputRows, statusFixedContext, runStatusObligation, textAlias, normalizeDecisionRecord, normalizeStatusOption, selectedStatusRecord, statusSource, normalizeStatusRecord, queueStatusObligation, statusRunStartSeq, recoverStatusObligations: recoverStoredStatusObligations, statusRecoveredSessions, selectedStatusGeneration, latestStatusEvent, } = createRoleplayStatus({
+    const { pending: pendingStatusWork, close: closeStatusWork, readOwnedStatusControlFacts, readPendingOutputRows: readPendingStatusOutputRows, statusFixedContext, runStatusObligation, textAlias, normalizeDecisionRecord, normalizeStatusOption, selectedStatusRecord, statusSource, normalizeStatusRecord, queueStatusObligation, statusRunStartSeq, recoverStatusObligations: recoverStoredStatusObligations, statusRecoveredSessions, selectedStatusGeneration, latestStatusEvent, } = createRoleplayStatus({
         schemaMaintenance: (session, event) => schemaMaintenance?.handles(session, event) === true,
         advancedCardReady: session => nativeCardAdvanced.read(session.id).state === 'ready',
         ctx,
@@ -1501,7 +1501,7 @@ export async function apply(ctx, config = {}) {
     }
     // domain 生命周期归本 fiber：卸载/失败挂载时必须 close，否则域名泄漏、
     // 重挂载会撞上 "already open"。
-    const completionOwners = [];
+    const completionOwners = [{ pending: pendingStatusWork, close: closeStatusWork }];
     const backgroundWork = {
         pending: () => completionOwners.reduce((pending, owner) => pending + owner.pending(), 0),
         close: async () => { await Promise.all(completionOwners.map(owner => owner.close())); },

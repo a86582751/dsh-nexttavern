@@ -63,15 +63,18 @@ export function createRoleplayStatus(deps: StatusDependencies) {
     const statusRunStartSeq = new Map<string, number>();
     const statusRecoveredSessions = new Set<string>();
     let statusDisposed = false;
-    ctx.effect(
-    () => () => {
+    const stop = new AbortController();
+    let closed: Promise<void> | undefined;
+    function close(): Promise<void> {
+        if (closed) return closed;
         statusDisposed = true;
-        for (const timer of statusRetryTimers.values())
-            clearTimeout(timer);
+        for (const timer of statusRetryTimers.values()) clearTimeout(timer);
         statusRetryTimers.clear();
-    },
-        'roleplay: status retry cleanup'
-    );
+        stop.abort(new Error('ROLEPLAY_STATUS_STOPPED'));
+        closed = Promise.allSettled([...statusJobs.values()]).then(() => {});
+        return closed;
+    }
+    ctx.effect(() => close, 'roleplay: status retry cleanup');
     // Retry and publication share one branch queue so a late worker cannot overwrite newer status.
     const withStatusLock = async <T,>(branchId: string, fn: () => Promise<T>): Promise<T> => {
         const prior = statusLocks.get(branchId) ?? Promise.resolve();
@@ -343,6 +346,7 @@ export function createRoleplayStatus(deps: StatusDependencies) {
             return existing;
         }
         const cancellation = taskCancellation(signal);
+        cancellation.follow(stop.signal);
         signal = cancellation.signal;
         const retryTimer = statusRetryTimers.get(taskKey);
         if (retryTimer) {
@@ -623,7 +627,10 @@ export function createRoleplayStatus(deps: StatusDependencies) {
                     );
                     return cloneBranchRecord(T.status.get(taskKey));
                 }
-                const live = statusSourceLive(session, event, source);
+                // Closing revokes publication, not the persisted source identity.
+                // An interrupted matching obligation remains retryable; an already
+                // committed result stays available for replay after restart.
+                const live = recordSha256(statusSource(session, event)) === recordSha256(source);
                 // A failed pointer write must leave the committed result available for
                 // replay, including after a process restart. Do not rerun its worker.
                 const durable = cloneBranchRecord(T.status.get(taskKey));
@@ -772,6 +779,8 @@ export function createRoleplayStatus(deps: StatusDependencies) {
         return next;
     };
     return {
+        pending: () => statusJobs.size + statusRetryTimers.size,
+        close,
         readPendingOutputRows,
         readOwnedStatusControlFacts,
         statusFixedContext,

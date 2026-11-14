@@ -55,9 +55,10 @@ startup completion or foreground-release work cannot act on a replacement start.
 Installation and process I/O remain on the control worker.
 
 The Android launcher atomically publishes new profile files without replacing
-existing user files. Its schema-2 receipt journals exact owned dependency and
-override values before an upgrade, so interruption can be resumed without
-rewriting a user's changed values. Schema-1 migration requires the retained old
+existing user files. Its schema-3 receipt journals exact owned dependency and
+override values, including additions and removals, before an upgrade, so interruption can be resumed without
+rewriting a user's changed values. Schema-2 pending writes migrate without
+changing their original before/after values. Schema-1 migration requires the retained old
 slot's seed provenance. An already mixed legacy profile is preserved and blocked
 with `ANDROID_PROFILE_MIGRATION_AMBIGUOUS`, rather than silently claiming repair;
 missing old provenance is likewise explicit. Old code slots are not pruned by

@@ -5,6 +5,7 @@ import {installMvuNativeDataTestDependencies} from './mvu-native-data-test-depen
 import { registerHooks } from 'node:module'
 import type { CompletionDependencies, CompletionState } from '../src/core/roleplay-completion-types.js'
 import type { ContextSession } from '../src/core/roleplay-context.js'
+import type {StatusDependencies} from '../src/core/roleplay-status-types.js'
 import type { DecisionDependencies } from '../src/core/roleplay-decision-types.js'
 import {registerRoleplayOwnedWork,pendingRoleplayOwnedWork,stopRoleplayOwnedWork} from '../src/core/roleplay-owned-work.ts'
 
@@ -15,13 +16,13 @@ after(removeNativeData)
 const sources = new URL('../src/core/', import.meta.url).href
 const generated = new URL('../lib/core/', import.meta.url)
 const dependencies = registerHooks({ resolve(specifier, context, nextResolve) {
-  if (context.parentURL?.startsWith(sources) && specifier.startsWith('./') && specifier.endsWith('.js')) {
+  if (context.parentURL?.startsWith(sources) && specifier.startsWith('.') && specifier.endsWith('.js')) {
     return nextResolve(new URL(specifier, generated).href, context)
   }
   return nextResolve(specifier, context)
 } })
-const [{ createRoleplayCompletion }, { createRoleplayDecision }] = await Promise.all([
-  import('../src/core/roleplay-completion.ts'), import('../src/core/roleplay-decision.ts'),
+const [{ createRoleplayCompletion }, { createRoleplayDecision, taskCancellation }, {createRoleplayStatus}] = await Promise.all([
+  import('../src/core/roleplay-completion.ts'), import('../src/core/roleplay-decision.ts'), import('../src/core/roleplay-status.ts'),
 ])
 dependencies.deregister()
 
@@ -81,6 +82,8 @@ test('completion close waits for its original pre-commit promise, not only commi
   assert.equal(workers, 0, 'interrupted reconciliation must not admit new model work')
   assert.equal(owner.pending(), 0)
   assert.equal(f.state.snapshots.size, 1, 'durable recovery input must not be claimed committed')
+  assert.equal(f.tables.branch.get('background-stop__phaseb-1')!.state, 'retry')
+  await owner.awaitOwnedCompletion(f.session.id, 1)
   await assert.rejects(owner.runPhaseBC(f.session, f.event, f.state, f.snapshot), /ROLEPLAY_COMPLETION_STOPPED/)
 })
 
@@ -201,4 +204,42 @@ test('pre-root barrier waits for registered standing owners before provider tear
   releasePhase()
   releaseDecision()
   assert.equal(pendingRoleplayOwnedWork(root), 0)
+})
+
+
+test('status owner cancellation settles its worker and durable retry before root teardown', async () => {
+  const f=phaseFixture(), cleanup=Promise.withResolvers<void>(), started=Promise.withResolvers<void>()
+  f.session.events[1]!.data!.source={kind:'user'}
+  const T={...f.tables,status:new Table(),cards:new Table(),worldbook:new Table(),rules:new Table()}
+  T.status.set(`${f.session.id}__spec`,{text:'show location',templateHtml:'<div>location</div>'})
+  const selection={execution:'spawn',main:{provider:'fixture',model:'main'},actualRoute:{provider:'fixture',model:'status'}}
+  let aborted=false,putAfterStop=0,stopped=false
+  const put=T.status.put.bind(T.status)
+  T.status.put=async(key,value)=>{if(stopped)putAfterStop++;await put(key,value)}
+  const owner=createRoleplayStatus({
+    ctx:{get(){},effect(fn:()=>unknown){fn()},logger:{warn(){}}},T,
+    cfg:{statusRetryMs:60000},DEFAULT_CONFIG:{statusWorkerTimeoutMs:60000},STATUS_SYSTEM:'status',
+    cloneBranchRecord:structuredClone,storyBranchIsActive:()=>true,taskCancellation,
+    ensureBranch:async()=>{},modelPolicy:{resolve:()=>selection},sameModelRoute:()=>false,
+    retrieveWorldbook:async()=>({text:''}),resolveRoute:session=>({session}),
+    llmJson:async(_ctx,_route,options)=>new Promise((_resolve,reject)=>{
+      options.signal!.addEventListener('abort',()=>{aborted=true;void cleanup.promise.then(()=>reject(options.signal!.reason))},{once:true})
+      started.resolve()
+    }),importRecordKey:(id,importId)=>`${id}__import-${importId}`,spanText:()=>'',
+  } as unknown as StatusDependencies)
+  const root={},release=registerRoleplayOwnedWork(root,owner)
+  const work=owner.queueStatusObligation(f.session,f.event,'turn-end')
+  await Promise.race([started.promise,work.then(()=>{throw Error(JSON.stringify([...T.status]))})])
+  assert.equal(pendingRoleplayOwnedWork(root),1)
+  const stop=stopRoleplayOwnedWork(root)
+  void stop.then(()=>{stopped=true})
+  assert.equal(aborted,true)
+  await tick();assert.equal(stopped,false)
+  cleanup.resolve();await stop;await work
+  assert.equal(owner.pending(),0)
+  assert.equal(T.status.get(`${f.session.id}__turn-1-2`)!.state,'retry')
+  assert.equal(T.status.has(`${f.session.id}__panel`),false)
+  assert.equal(await owner.queueStatusObligation(f.session,f.event,'late'),null)
+  await tick();assert.equal(putAfterStop,0)
+  release()
 })

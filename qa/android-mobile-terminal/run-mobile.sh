@@ -55,9 +55,16 @@ if [[ "${1:-}" == prepare ]]; then
   npm ci --prefix build-tools --no-audit --no-fund >> "$work/build.log" 2>&1
   npm ci --prefix integrations/auth-webserver --no-audit --no-fund >> "$work/build.log" 2>&1
   node tools/build-modules.mjs --write >> "$work/build.log" 2>&1
-  # These are the Android consumers of this batch's generated code. Do not let
-  # the preparation build silently repair an uncommitted/stale Android mirror.
-  git diff --exit-code -- android/host/lib/host-launch.mjs android/tools/pack-host.mjs >> "$work/build.log" 2>&1
+  # All present and future Android mirrors are owned by the build map. Reject
+  # both stale tracked outputs and missing committed outputs repaired above.
+  node --input-type=commonjs <<'NODE' >> "$work/build.log" 2>&1
+const {execFileSync}=require('node:child_process')
+const map=require('./tools/build-map.json')
+const outputs=[...new Set(map.modules.filter(row=>row.source.startsWith('android/')).flatMap(row=>row.outputs))]
+if(!outputs.length)throw Error('No mapped Android generated outputs')
+const changes=execFileSync('git',['status','--porcelain','--untracked-files=all','--',...outputs],{encoding:'utf8'})
+if(changes.trim())throw Error('Stale or uncommitted Android generated outputs:\n'+changes)
+NODE
   printf 'PUBLIC_MODULE_BUILD_COMPLETE\n'
   phase=ANDROID_INTERRUPTION_AND_LIFECYCLE_REGRESSIONS
   # Reuse this job's locked dependencies and JDK before preparing the sole Host.

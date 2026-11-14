@@ -163179,6 +163179,12 @@
             ],
             "@deepseek-ai/node-addon-system/flock": [
               "../development/node-addon-system/src/flock.ts"
+            ],
+            "dsh-nexttavern-build/product-assembly": [
+              "../src/operations/product-assembly.mts"
+            ],
+            "dsh-nexttavern-build/public-vendor-admission": [
+              "../src/operations/public-vendor-admission.mts"
             ]
           },
           "rootDirs": [

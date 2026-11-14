@@ -117,6 +117,25 @@ test('runtime graph excludes installed foreign optional binaries, preserves nest
   assert.equal(receipt.androidVerified,false)
 }))
 
+test('bundled anydoc explicitly records unqualified binary conversion without claiming plain text unsupported',async()=>fixture(async f=>{
+  const filename=path.join(f.product,'nexttavern.dependencies.json')
+  const inventory=JSON.parse(await fs.readFile(filename,'utf8'))
+  const metadata=JSON.stringify({name:'dsh-nexttavern-anydoc',version:'1.0.0'})
+  await write(path.join(f.product,'node_modules/dsh-nexttavern-anydoc/package.json'),metadata)
+  inventory.packages.push({name:'dsh-nexttavern-anydoc',version:'1.0.0',files:[{path:'package.json',sha256:createHash('sha256').update(metadata).digest('hex')}]})
+  await write(filename,JSON.stringify(inventory))
+  const productFile=path.join(f.product,'package.json'),product=JSON.parse(await fs.readFile(productFile,'utf8'))
+  product.dependencies['dsh-nexttavern-anydoc']='1.0.0'
+  product.bundleDependencies.push('dsh-nexttavern-anydoc')
+  await write(productFile,JSON.stringify(product))
+  const receipt=await prepareHostTree({harnessRoot:f.harness,productRoot:f.product,out:f.out,abi:'x64'},path.join(f.directory,'tree'))
+  const capability=receipt.unqualifiedCapabilities.find(row=>row.id==='anydoc-binary-conversion')
+  assert.ok(capability)
+  assert.match(capability.reason,/no Android companion/)
+  assert.match(capability.reason,/plain-text reading remains available/)
+  assert.equal(receipt.androidVerified,false)
+}))
+
 test('published product projection may not omit protected/history inventory members',async()=>fixture(async f=>{
   const file=path.join(f.product,'package.json'),metadata=JSON.parse(await fs.readFile(file,'utf8'))
   metadata.files=metadata.files.filter((name:string)=>name!=='history')
