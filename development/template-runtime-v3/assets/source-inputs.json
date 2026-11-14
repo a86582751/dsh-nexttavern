@@ -11,7 +11,7 @@
     "esbuildVersion": "0.24.2",
     "lock": {
       "artifact": "inventory-runtime-alpha3-build-tools-package-lock-json",
-      "sha256": "3efb38ac12081334bba3c8b12f3cce41cb7512c41203704ae340f37ec0f944ba"
+      "sha256": "c6faae05cba2f09ac25718c3289745df6f879a1cf76aed1a68f94c0a97b0006c"
     }
   },
   "graphs": {
