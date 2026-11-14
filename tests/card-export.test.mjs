@@ -2,16 +2,14 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import {createRequire,registerHooks} from 'node:module'
 import {fileURLToPath, pathToFileURL} from 'node:url'
-import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { createTestDirectory, cleanupTestDirectory } from '../lib/operations/test-temp.mjs'
 import { stableJson as exportJson } from '../lib/core/card-export-projection.js'
 import { stableJson as recordJson, recordSha256 } from '../lib/core/roleplay-data.js'
 
-const systemSources=new URL(existsSync(new URL('../compat/node-addon-system/package.json',import.meta.url))
-  ?'../compat/node-addon-system/src/':'../development/node-addon-system/src/',import.meta.url)
+// Desktop exports use filesystem hard links and must not resolve the Android-only peer.
 const systemHooks=registerHooks({resolve(specifier,context,nextResolve){
-  if(specifier==='@deepseek-ai/node-addon-system/atomic')return {url:new URL('atomic.ts',systemSources).href,shortCircuit:true}
-  if(specifier==='./android-binding.js'&&context.parentURL?.startsWith(systemSources.href))return {url:new URL('android-binding.ts',systemSources).href,shortCircuit:true}
+  if(specifier==='@deepseek-ai/node-addon-system/atomic')throw Error('Desktop card export must not load the Android publication peer')
   return nextResolve(specifier,context)
 }})
 const {exportSnapshot,renderOrganizedExport,registerCardExport}=await import('../lib/core/card-export.js')

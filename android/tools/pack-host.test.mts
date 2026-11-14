@@ -161,8 +161,23 @@ test('missing official profile install or unexpected user patch blocks packing i
   await write(path.join(f.profile,'package.json'),JSON.stringify({name:'dsh-profile-web',dependencies:{}}))
   await assert.rejects(prepareHostTree(options,path.join(f.directory,'first')),/Official product installation/)
   await write(path.join(f.profile,'package.json'),JSON.stringify({name:'dsh-profile-web',dependencies:{'dsh-nexttavern':'file:'+f.product,dshmarket:'1.0.0'}}))
-  await write(path.join(f.profile,'cordis.patch.yml'),'- insert:\n    - id: dsh-nexttavern-session-controller\n      disabled: true\n    - id: dsh-nexttavern-ui-chat\n      disabled: true\n    - id: dsh-nexttavern-ui-workspace\n      disabled: true\n')
+  const labels=['dsh-nexttavern-session-controller','dsh-nexttavern-ui-chat','dsh-nexttavern-ui-workspace','dsh-nexttavern-native-client-modules','future-client-owner']
+  const inventoryFile=path.join(f.product,'nexttavern.dependencies.json')
+  const inventory=JSON.parse(await fs.readFile(inventoryFile,'utf8'))
+  for(const name of labels) {
+    const bytes=JSON.stringify({name,version:'1.0.0',dsh:{client:'lib/client.js'}})
+    await write(path.join(f.product,'node_modules',name,'package.json'),bytes)
+    inventory.packages.push({name,version:'1.0.0',files:[{path:'package.json',sha256:createHash('sha256').update(bytes).digest('hex')}]})
+  }
+  await write(inventoryFile,JSON.stringify(inventory))
+  const patch=(names:string[])=>JSON.stringify([{insert:names.map(id=>({id,disabled:true}))}])
+  await write(path.join(f.profile,'cordis.patch.yml'),patch(labels))
   assert.equal(inspectHostGraph(options).hostVersion,'0.1.7-rc.2')
+  for(const invalid of [patch(labels.slice(1)),patch([...labels,'unknown']),patch([...labels.slice(1),labels[1]]),
+    patch(labels).replace('"disabled":true','"disabled":false'),patch(labels).replace('"disabled":true','"disabled":true,"config":{}')]) {
+    await write(path.join(f.profile,'cordis.patch.yml'),invalid)
+    assert.throws(()=>inspectHostGraph(options),/Unexpected task profile configuration/)
+  }
   await write(path.join(f.profile,'cordis.patch.yml'),'- id: user-model-config\n  config: {}\n')
   await assert.rejects(prepareHostTree(options,path.join(f.directory,'second')),/Unexpected task profile configuration/)
 }))

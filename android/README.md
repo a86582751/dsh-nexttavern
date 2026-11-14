@@ -41,6 +41,21 @@ pins are unchanged. Host native tests can use the running Node distribution's
 N-API headers, without first preparing an Android runtime cache. Cross-compilation
 still uses the pinned Android headers.
 
+The first exact-head CI run exposed an obsolete three-client claim allowlist.
+Packing now derives the exact disabled client claims from inventoried package
+metadata, including future client owners, while still rejecting user configuration.
+The Native volatile-settings fixture now reads the live reference and verifies
+that provider identity is preserved; its prior snapshot assertion incorrectly
+required a restart. Desktop card exports no longer load the Android-only atomic
+peer unless the Android publication path is used.
+
+The first KVM run passed service/publication regressions, real Bionic/addon builds,
+product preparation and official-profile activation, then stopped at that stale
+claim allowlist. It did not reach APK/UI acceptance. General verification also
+exposed Node 24.16.0 accepting a truncated zstd frame. The strict probe remains
+unchanged; CI now uses the Android runtime's pinned Node 24.22.1. This is not
+successful validation of 24.16.0 or a change to the desktop minimum-version claim.
+
 Integration verification is in progress. Fresh KVM/UI, ARM64 execution and a
 production release are not established by these source and host-fixture checks.
 

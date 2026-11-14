@@ -150,7 +150,8 @@ async function prepareFixture(root: string, options: FixtureOptions) {
         ctx.productProbe.attempt(${self}, read());
         if (${self} === 'owned' && (ctx.productProbe.fail || read() === 'reject')) throw Error('owned provider failed');
         ctx.effect(() => ctx.productProbe.acquire(${self}, {...config, value: read()}));
-        ctx.provide(config.service, {owner:${self}, value:read()});
+        // A volatile setting is read when consumed, not captured during apply.
+        ctx.provide(config.service, {owner:${self}, get value() { return read(); }});
       }` : `export default function(ctx,config) {
       ctx.productProbe.attempt(${self}, config.value);
       if (${self} === 'owned' && (ctx.productProbe.fail || config.value === 'reject')) throw Error('owned provider failed');

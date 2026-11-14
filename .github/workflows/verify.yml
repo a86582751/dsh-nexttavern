@@ -28,7 +28,8 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '24.16.0'
+          # Match the pinned Android runtime; 24.16 does not reject truncated zstd frames.
+          node-version: '24.22.1'
           cache: npm
           cache-dependency-path: |
             build-tools/package-lock.json

@@ -1,6 +1,7 @@
 /** Actual Phase B/C + decision owners; deterministic pending work, no model calls. */
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import test, {after} from 'node:test'
+import {installMvuNativeDataTestDependencies} from './mvu-native-data-test-dependencies-fixture.mts'
 import { registerHooks } from 'node:module'
 import type { CompletionDependencies, CompletionState } from '../src/core/roleplay-completion-types.js'
 import type { ContextSession } from '../src/core/roleplay-context.js'
@@ -9,6 +10,8 @@ import {registerRoleplayOwnedWork,pendingRoleplayOwnedWork,stopRoleplayOwnedWork
 
 // Exercise these changed maintained owners directly. Their unchanged relative
 // dependencies remain the canonical generated modules; never write generated JS.
+const removeNativeData = await installMvuNativeDataTestDependencies()
+after(removeNativeData)
 const sources = new URL('../src/core/', import.meta.url).href
 const generated = new URL('../lib/core/', import.meta.url)
 const dependencies = registerHooks({ resolve(specifier, context, nextResolve) {

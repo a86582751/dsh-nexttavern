@@ -166,8 +166,11 @@ test('a replaced provider keeps an official settings namespace and its own profi
     assert.ok(addressed, 'the addressable set carries the mounted replacement')
     const mounted = addressed.options.name
     assert.notEqual(mounted, f.original, 'the addressable row is the replacement, not the disabled profile row')
+    const provider = f.ctx.get('entryProbe')
     await f.ctx.settings.replace('meter', {value: 'from-settings'})
     await settle()
+    assert.equal(f.ctx.get('entryProbe'), provider, 'volatile settings update the existing provider')
+    assert.deepEqual(f.changes, ['start:owned'], 'a settings write must not restart product ownership')
     assert.ok(namespaces().includes('meter'), 'the namespace survives its own write')
     const document = fs.readFileSync(f.patchPath, 'utf8')
     assert.match(document, /id: meter/)

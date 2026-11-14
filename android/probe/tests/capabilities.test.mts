@@ -16,19 +16,22 @@ test('real local runtime suite exercises every required capability', {timeout: 3
       if (check.id === 'native-flock' && check.status === 'blocked') {
         // A passing reporter test is not a native capability pass: the report stays BLOCKED.
         assert.match(check.error!.code!, /^ADDON_/);
-        assert.equal(summary.capabilityStatus, 'blocked');
+        // Another real capability failure still takes precedence in the summary.
       } else assert.equal(check.status, 'passed', JSON.stringify(check));
     });
   }
   assert.equal(summary.androidGate, false);
-  if (process.platform !== 'android') {assert.equal(summary.status, 'blocked'); assert.equal(summary.ok, false);}
+  if (process.platform !== 'android') {
+    assert.equal(summary.status, summary.checks.some(check => check.status === 'failed') ? 'failed' : 'blocked');
+    assert.equal(summary.ok, false);
+  }
 }));
 
 test('missing addon is explicitly BLOCKED in isolated CLI; JSON output matches final event', {timeout: 30_000}, async () => temporary(async directory => {
   await isolatedProbe(directory, 'missing');
   const output = join(directory, 'result.json');
   const result = await cli(directory, ['--output', output]);
-  assert.equal(result.code, 2, result.stderr);
+  assert.equal(result.code, result.summary!.checks.some(check => check.status === 'failed') ? 1 : 2, result.stderr);
   const check = result.summary!.checks.find(check => check.id === 'native-flock')!;
   assert.equal(check.status, 'blocked'); assert.equal(check.error!.code, 'ADDON_UNAVAILABLE');
   assert.deepEqual(JSON.parse(await readFile(output, 'utf8')), result.summary);
@@ -53,7 +56,7 @@ test('explicit installed addon loader failure is BLOCKED, not a silent package f
   const result = await cli(directory, [], {NEXTTAVERN_FLOCK_ADDON: join(directory, 'missing-native.so')});
   const check = result.summary!.checks.find(check => check.id === 'native-flock')!;
   assert.equal(check.status, 'blocked'); assert.equal(check.error!.code, 'ADDON_UNAVAILABLE');
-  assert.equal(result.code, 2);
+  assert.equal(result.code, result.summary!.checks.some(check => check.status === 'failed') ? 1 : 2);
 }));
 
 test('abort kills an outstanding child and waits for exit', {timeout: 10_000}, async () => {

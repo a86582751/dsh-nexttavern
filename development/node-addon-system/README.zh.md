@@ -12,4 +12,4 @@ kind: "package-library"
 
 可选操作系统/CPU 平台包携带二进制。Linux 包含 `bin/landlock-run` 和分别用于两种 libc 的 `bin/glibc/system.node` / `bin/musl/system.node`；macOS 包含 `bin/system.node`。flock 绑定缺失或无法加载时拒绝获取，不在安装时编译。Landlock 仍是遵循既有失败关闭协议的独立可执行文件；不支持的内核或平台探测为不可用。
 
-两个 C 源文件随包分发以供审计。参见工作区[架构](../../docs/architecture.md)、[支持矩阵](../../docs/support-matrix.md)和 [CLI 约定](../../docs/cli-contract.md)。
+两个 C 源文件随包分发以供审计。此包不包含上游工作区的架构、支持矩阵与 CLI 约定文档；固定来源见[源码来源记录](ORIGIN.json)。

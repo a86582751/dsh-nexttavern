@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, lstatSync, realpathSync, openSync, writeFileSync, closeSync, readFileSync, constants, fsyncSync, linkSync, unlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fenceCardContent } from './tavern-card.js'
-import { publishNoReplace } from '@deepseek-ai/node-addon-system/atomic'
 import {
   exportSnapshot, renderOrganizedExport, stableJson, safeHeading, sourceLines,
   type ExportMaterial, type ExportSnapshot, type ExportSection,
@@ -50,8 +49,10 @@ async function writeExport(cwd: string, id: string, markdown: string): Promise<s
     fd = openSync(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600)
     writeFileSync(fd, markdown, 'utf8'); fsyncSync(fd); closeSync(fd); fd = undefined
     try {
-      if (process.platform === 'android') await publishNoReplace(temporary, target)
-      else linkSync(temporary, target)
+      if (process.platform === 'android') {
+        const {publishNoReplace} = await import('@deepseek-ai/node-addon-system/atomic')
+        await publishNoReplace(temporary, target)
+      } else linkSync(temporary, target)
     } catch (error: unknown) {
       if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
       if (lstatSync(target).isSymbolicLink() || hash(readFileSync(target)) !== hash(markdown)) throw new Error('导出文件已存在且内容不同，拒绝覆盖')

@@ -318,22 +318,26 @@ export function checkTypeScriptOwnership(repo = root, plan?: CompilePlan) {
   const artifactsById=new Map(source.artifacts.map(artifact=>[artifact.id,artifact]))
   const registered = source.builds.filter(build => build.kind === 'typescript-module')
   const treeRoot = (file: string, name: string) => {
-    const marker = '/' + name + '/'
-    const offset = file.lastIndexOf(marker)
+    const parts = file.split('/'), offset = parts.lastIndexOf(name)
     if (offset < 0) throw Error('TypeScript mapping must use ' + name + '/: ' + file)
-    return file.slice(0, offset + marker.length - 1)
+    return parts.slice(0, offset + 1).join('/')
   }
   const outputFor = (build: Recipe) => {
     const output = artifactsById.get(build.artifact)?.source
     if (!output) throw Error('Missing build output artifact: ' + build.artifact)
     return output
   }
-  // A manifest-owned maintenance entry may retain its same-stem JS path
-  // beside its TS source without claiming the surrounding legacy directory.
-  const sourceRoots = [...new Set(registered.filter(build => !(build.compatibilityEntry
-    && !build.entry.includes('/src/') && build.entry.endsWith('.mts')
-    && outputFor(build) === build.entry.slice(0, -4) + '.mjs'))
+  // Explicit manifest mappings can also own Android host/tool siblings. They
+  // do not claim a mixed parent directory as src/, but their sources must exist.
+  const inSourceTree = (build: Recipe) => build.entry.split('/').includes('src')
+  const sourceRoots = [...new Set(registered.filter(inSourceTree)
     .map(build => treeRoot(build.entry, 'src')))]
+  for (const build of registered.filter(build => !inSourceTree(build))) {
+    const entry = inside(repo, build.entry)
+    if (!fs.existsSync(entry) || !fs.statSync(entry).isFile()) {
+      throw Error('Mapped TypeScript source is not a file: ' + build.entry)
+    }
+  }
   const outputs = new Map(registered.map(build => [outputFor(build), build.entry] as const))
   if (outputs.size !== registered.length) throw Error('Duplicate TypeScript output mapping')
   const declarations = new Map(registered.filter(build => build.declarationArtifact !== undefined).map(build => {
@@ -351,9 +355,9 @@ export function checkTypeScriptOwnership(repo = root, plan?: CompilePlan) {
     const output=outputFor(build)
     if(output.endsWith('.d.ts'))declarations.set(output,build.entry)
   }
-  // A mapped compatibility entry keeps its established top-level path. The
-  // surrounding directory still contains unmigrated tools, outside lib ownership.
-  const outputRoots = [...new Set(registered.filter(build=>!build.compatibilityEntry)
+  // Every mapped lib/ root remains fully owned, including Android host/lib.
+  // Same-stem tool outputs outside lib/ retain only their explicit mapping.
+  const outputRoots = [...new Set(registered.filter(build=>outputFor(build).split('/').includes('lib'))
     .map(build => treeRoot(outputFor(build), 'lib')))]
   const directories = [...sourceRoots, ...outputRoots]
   const allBuildOutputs = new Set(source.builds.map(outputFor))

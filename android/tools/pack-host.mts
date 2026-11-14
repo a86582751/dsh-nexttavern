@@ -20,7 +20,7 @@ interface Metadata {
   dependencies?:Record<string,string>;optionalDependencies?:Record<string,string>
   peerDependencies?:Record<string,string>;peerDependenciesMeta?:Record<string,{optional?:boolean}>
   os?:string[];cpu?:string[]
-  dsh?:{profile?:{bundles?:string[]}}
+  dsh?:{profile?:{bundles?:string[]};client?:unknown;bundle?:unknown}
 }
 interface LockRow extends Partial<Metadata> {integrity?:string;resolved?:string}
 interface InventorySpec {name:string;version:string;path?:string;files:{path:string;sha256:string}[]}
@@ -55,15 +55,15 @@ const prefix=(name:string)=>'node_modules/'+name
 const PROFILE_FILES=['package.json','cordis.yml','cordis.patch.yml','pnpm-workspace.yaml']
 const CA_SHA256='796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe'
 
-function admitTaskProfileTemplate(filename:string,bytes:string):void {
+function admitTaskProfileTemplate(filename:string,bytes:string,clientClaims:readonly string[]):void {
   const text=bytes.split('\n').filter(line=>!line.trim().startsWith('#')).join('\n').trim()
   if(text===''||text==='[]')return
   if(filename==='cordis.patch.yml') {
     let rows:unknown
     try {rows=(tooling('js-yaml') as {load(text:string):unknown}).load(text)} catch {}
     const row=Array.isArray(rows)&&rows.length===1?rows[0] as Record<string,unknown>|undefined:undefined
-    const labels=new Set(['dsh-nexttavern-session-controller','dsh-nexttavern-ui-chat','dsh-nexttavern-ui-workspace'])
-    if(row&&typeof row==='object'&&Object.keys(row).length===1&&Array.isArray(row.insert)&&row.insert.length===3
+    const labels=new Set(clientClaims)
+    if(row&&typeof row==='object'&&Object.keys(row).length===1&&Array.isArray(row.insert)&&row.insert.length===labels.size
       &&row.insert.every(value=>value&&typeof value==='object'&&Object.keys(value).length===2
         &&value.disabled===true&&typeof value.id==='string'&&labels.delete(value.id))&&labels.size===0)return
   }
@@ -129,11 +129,23 @@ function plan(options:PackHostOptions) {
   const inventory=readFileSync(path.join(product,'nexttavern.dependencies.json'))
   const inventoried=JSON.parse(inventory.toString()) as ProductInventory
   const owned=new Map([...inventoried.packages,...(inventoried.bundles??[])].map(row=>[row.name,row]))
+  // Match bootstrap's client-only claim contract from this admitted product,
+  // not a second list that becomes stale whenever Native adds a client owner.
+  const clientClaims=inventoried.packages.flatMap(spec=>{
+    const filename=realpathSync(path.join(product,'node_modules',spec.name,'package.json'))
+    if(!inside(product,filename))throw new Error(`Owned metadata escapes admitted product: ${spec.name}`)
+    const bytes=readFileSync(filename),pkg=JSON.parse(bytes.toString()) as Metadata
+    if(pkg.name!==spec.name||pkg.version!==spec.version
+      ||spec.files.find(file=>file.path==='package.json')?.sha256!==digest(bytes)) {
+      throw new Error(`Owned metadata differs from product inventory: ${spec.name}`)
+    }
+    return pkg.dsh?.client!==undefined&&pkg.dsh?.bundle===undefined?[spec.name]:[]
+  })
   const profileMetadata=json<Metadata>(path.join(profile,'package.json'))
   if(!profileMetadata.dependencies?.['dsh-nexttavern'])throw new Error('Official product installation into the task profile is not complete')
   if(!profileMetadata.dependencies.dshmarket)throw new Error('Official market installation into the task profile is not complete')
   for(const filename of ['cordis.yml','cordis.patch.yml']) {
-    admitTaskProfileTemplate(filename,readFileSync(path.join(profile,filename),'utf8'))
+    admitTaskProfileTemplate(filename,readFileSync(path.join(profile,filename),'utf8'),clientClaims)
   }
   const lockBytes=readFileSync(path.join(harness,'package-lock.json'))
   const lock=JSON.parse(lockBytes.toString()) as {lockfileVersion:number;packages:Record<string,LockRow>}
