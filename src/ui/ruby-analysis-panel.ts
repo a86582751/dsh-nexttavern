@@ -30,6 +30,7 @@ interface RubyAnalysisStatus {
   busy: boolean
   configurationStatus: RubyConfigurationStatus
   configurationIssues: RubyConfigurationIssue[]
+  generation?: {temperature?: number; maxTokens?: number} | null
   cycleBaseline: number | null
   runs: RubyAnalysisRun[]
   runPage?: {offset: number; limit: number; total: number}
@@ -70,10 +71,8 @@ const errorText = (error: unknown) => String(
 
 function rubyIssueExplanation(code: string): string {
   const labels: Record<string, string> = {
-    RUBY_STARTUP_EXECUTION_UNSUPPORTED: '启动任务缺少原生执行器；依赖材料不能生成，当前配置不会调度。',
     RUBY_DIRECTOR_EXECUTION_UNSUPPORTED: '导演任务缺少原生执行器，当前配置不会调度。',
-    RUBY_SUMMARY_PROVIDER_UNSUPPORTED: '所选摘要供应方尚未接入，无法提供任务所需摘要。',
-    RUBY_GENERATION_OPTIONS_UNSUPPORTED: '生成选项尚未映射到原生任务，当前配置不会调度。',
+    RUBY_GENERATION_OPTION_UNSUPPORTED: '该生成参数尚未接入原生分析请求，请按定位字段调整。',
     RUBY_DEFAULT_MESSAGES_UNAVAILABLE: '缺少用户自有消息材料；上游默认正文尚无再发行许可，不能自动补入。',
   }
   return labels[code] ?? '任务材料或配置尚未支持；展开查看定位信息。'
@@ -241,6 +240,11 @@ export function createRubyAnalysisPanel({ React, jsonFetch, openModelSettings, r
                   ? '分析进行中；可关闭以停止当前分析。'
                   : '额外分析已关闭；可刷新查看最新停止状态。') : null),
           h('div', { className: 'dsh-rp-muted' }, `轮次基线：${status.cycleBaseline ?? '暂无'}`),
+          status.generation ? h('p', {className: 'dsh-rp-muted'},
+            '当前卡片分析参数 '+[
+              ...(status.generation.temperature===undefined?[]:[`温度 ${status.generation.temperature}`]),
+              ...(status.generation.maxTokens===undefined?[]:[`输出上限 ${status.generation.maxTokens} tokens`]),
+            ].join(' · ')) : null,
           h('div', { className: 'dsh-rp-muted' }, status.affectedCapability),
           status.tasks?.map(task => h('div', {className: 'dsh-rp-item', key: task.taskKey},
             h('strong', null, task.name),

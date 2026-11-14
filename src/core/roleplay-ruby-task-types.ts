@@ -3,6 +3,7 @@
 import type {OwnedRubyTaskMessageV1} from 'dsh-nexttavern-native-subagent'
 import type {NativeRequestMaterialTransformV1} from 'dsh-nexttavern-native-agent-loop'
 import type {RubyTaskNativeCompletionV1} from './tavern-task-types.js'
+import type {RubyGenerationOptionsV1} from './roleplay-ruby-types.js'
 
 export interface RubyAnalysisPromptV1 {
   readonly schemaVersion:1
@@ -16,6 +17,7 @@ export interface RubyAnalysisPromptV1 {
   readonly plan:NativeRequestMaterialTransformV1['plan']
   readonly orderedMessages:readonly OwnedRubyTaskMessageV1[]
   readonly mainInputMessageIndex?:number
+  readonly generation?:RubyGenerationOptionsV1
 }
 export interface RubyAnalysisResultV1 {
   readonly schemaVersion:1

@@ -20,6 +20,7 @@ export interface RubyTaskSpecV1 {
   readonly promptPlanSha256:string
   readonly orderedMessages:readonly OwnedRubyTaskMessageV1[]
   readonly mainInputMessageIndex?:number
+  readonly temperature?:number
   /** Called only after the actual durable Tavern job owns id/generation. */
   createOwner(job:TaskJob):OwnedRubyTaskOwnerV1
 }

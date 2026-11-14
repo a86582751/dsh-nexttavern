@@ -500,6 +500,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
         const rubyActivation=rubyTask?{schemaVersion:1 as const,encoding:'owned-ruby-task-v1' as const,
           taskId:id,generation:job.generation,promptPlanSha256:rubyTask.promptPlanSha256,
           userMessageId:randomUUID(),orderedMessages:rubyTask.orderedMessages,
+          ...(rubyTask.temperature===undefined?{}:{temperature:rubyTask.temperature}),
           ...(rubyTask.mainInputMessageIndex===undefined?{}:{mainInputMessageIndex:rubyTask.mainInputMessageIndex})}:undefined
         const rootRubyOwner=rubyTask?.createOwner(copy(job))
         const rubyOwner=rootRubyOwner?{...rootRubyOwner,

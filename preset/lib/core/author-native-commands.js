@@ -28,6 +28,90 @@ export function parseAuthorNativeCommands(source) {
     const fail = (unsupported, offset, detail) => {
         throw new AuthorNativeCommandParseError(unsupported ? 'AUTHOR_NATIVE_COMMAND_UNSUPPORTED' : 'AUTHOR_NATIVE_COMMAND_SYNTAX', commands.length, offset, detail);
     };
+    function ruby(body, index, offset) {
+        // Quotes group argument text but do not survive into Ruby DATA. /send
+        // deliberately keeps its older raw-quote contract in the separate branch.
+        const tokens = [];
+        let token = '', inQuote = false, started = false;
+        for (let cursor = 0; cursor < body.length; cursor++) {
+            const char = body[cursor];
+            if (char === '\\' && escapable(body[cursor + 1])) {
+                token += body[++cursor];
+                started = true;
+            }
+            else if (char === '"') {
+                inQuote = !inQuote;
+                started = true;
+            }
+            else if (/\s/.test(char) && !inQuote) {
+                if (started) {
+                    tokens.push(token);
+                    token = '';
+                    started = false;
+                }
+            }
+            else {
+                token += char;
+                started = true;
+            }
+        }
+        if (started)
+            tokens.push(token);
+        const action = tokens.shift()?.toLowerCase() || 'panel', options = new Map(), positional = [];
+        if (['status', 'panel', 'open', 'reload', 'reinit'].includes(action)) {
+            if (tokens.length)
+                return fail(true, offset, 'ruby ' + action + ' does not accept options');
+            return { index, kind: action === 'status' ? 'ruby-status' : action === 'panel' || action === 'open' ? 'ruby-panel' : 'ruby-reload' };
+        }
+        if (action === 'preset')
+            return { index, kind: 'ruby-preset', selector: tokens.join(' ').trim() };
+        if (action !== 'read' && action !== 'run')
+            return fail(true, offset, 'unsupported ruby action');
+        const allowed = action === 'read' ? ['key', 'json', 'all', 'book', 'raw'] : ['task', 'tasks', 'json', 'startup', 'all'];
+        for (const value of tokens) {
+            const named = /^(\w+)=([\s\S]*)$/.exec(value);
+            if (!named) {
+                positional.push(value);
+                continue;
+            }
+            const name = named[1];
+            if (!allowed.includes(name) || options.has(name))
+                return fail(true, offset, 'unsupported or repeated ruby option: ' + name);
+            options.set(name, named[2]);
+        }
+        const flag = (name) => {
+            if (!options.has(name))
+                return false;
+            const value = options.get(name).toLowerCase();
+            if (value !== 'true' && value !== 'false')
+                return fail(true, offset, name + ' requires true or false');
+            return value === 'true';
+        };
+        const json = flag('json');
+        if (action === 'read')
+            return { index, kind: 'ruby-read', key: (options.get('key') ?? positional.join(' ')).trim(),
+                json, all: flag('all'), book: options.get('book')?.trim() || 'chat', raw: flag('raw') };
+        if (options.has('task') && options.has('tasks'))
+            return fail(true, offset, 'choose task or tasks');
+        const taskSpec = options.get('task') ?? options.get('tasks'), selectors = [];
+        if (taskSpec !== undefined)
+            selectors.push('tasks');
+        if (flag('startup'))
+            selectors.push('startup');
+        if (flag('all'))
+            selectors.push('all');
+        if (positional.length) {
+            if (positional.length !== 1 || !['startup', 'all'].includes(positional[0]))
+                return fail(true, offset, 'ruby run requires task=<spec>, startup or all');
+            selectors.push(positional[0]);
+        }
+        if (selectors.length !== 1)
+            return fail(true, offset, 'ruby run requires exactly one selection');
+        const taskSpecs = taskSpec === undefined ? [] : taskSpec.split(',').map(value => value.trim());
+        if (taskSpecs.some(value => !value))
+            return fail(false, offset, 'ruby task specification is empty');
+        return { index, kind: 'ruby-run', selection: selectors[0], taskSpecs, json };
+    }
     function command(start, end) {
         const segment = source.slice(start, end).trim(), head = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(segment);
         if (!head)
@@ -54,6 +138,8 @@ export function parseAuthorNativeCommands(source) {
             }
             commands.push({ index, kind: 'trigger', awaitCompletion });
         }
+        else if (name === 'ruby')
+            commands.push(ruby(body, index, start));
         else
             fail(true, start, 'command is outside the supported player-command grammar');
     }

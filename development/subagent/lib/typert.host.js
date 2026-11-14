@@ -252,7 +252,7 @@ export const TYPERT = {
           },
           {
             "name": "OwnedRubyTaskActivationV1",
-            "declaration": "export interface OwnedRubyTaskActivationV1 {\n    readonly schemaVersion: 1;\n    readonly encoding: 'owned-ruby-task-v1';\n    readonly taskId: string;\n    readonly generation: string;\n    readonly promptPlanSha256: string;\n    readonly userMessageId: string;\n    readonly orderedMessages: readonly OwnedRubyTaskMessageV1[];\n    readonly mainInputMessageIndex?: number;\n}"
+            "declaration": "export interface OwnedRubyTaskActivationV1 {\n    readonly schemaVersion: 1;\n    readonly encoding: 'owned-ruby-task-v1';\n    readonly taskId: string;\n    readonly generation: string;\n    readonly promptPlanSha256: string;\n    readonly userMessageId: string;\n    readonly orderedMessages: readonly OwnedRubyTaskMessageV1[];\n    readonly mainInputMessageIndex?: number;\n    readonly temperature?: number;\n}"
           },
           {
             "name": "OwnedRubyTaskMessageV1",

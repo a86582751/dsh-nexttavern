@@ -18,7 +18,7 @@ import type {CardWorkflowJob} from './roleplay-card-workflow-types.js'
 export function createRoleplayTaskHost({
   T,ctx,config,taskAgents,storyBranchIsActive,statusFixedContext,taskDependenciesCurrent,
   taskInstruction,getMaintenanceJob,runStatusObligation,STATUS_SYSTEM,DECISION_SYSTEM,ORGANIZE_WORKER_SYSTEM,
-  inputCurrency,inputCurrencyCurrent,inputHistoricalCurrencyCurrent,inputTaskRecoveryBlockCode,currentTaskClaim,assertCardWorkflow,advancedCard,
+  inputCurrency,inputCurrencyCurrent,inputHistoricalCurrencyCurrent,inputTaskRecoveryBlockCode,currentTaskClaim,assertCardWorkflow,advancedCard,advancedCardReady,
   observeRecords,storyEntryReader,characterPrivate,
 }:TaskHostDependencies) {
   const continuationTimers=new Set<ReturnType<typeof setTimeout>>()
@@ -73,7 +73,8 @@ export function createRoleplayTaskHost({
     return cluster.run(input)
   },read:(session:HostSession)=>{
     const settings=cluster.read(session)
-    return {...settings,enabled:settings.enabled&&(!advancedCard||advancedCard(session).state==='ready'),
+    return {...settings,enabled:settings.enabled&&(advancedCardReady
+      ?advancedCardReady(session):!advancedCard||advancedCard(session).state==='ready'),
       privateMemoryEnabled:characterPrivate?.enabled(session)===true}
   }}
   const characterRoster=(session: HostSession)=>{
@@ -251,8 +252,9 @@ export function createRoleplayTaskHost({
       if(input.retry&&T.branch.get('tavern_job__'+id))await tavernTasks.retry(session,id)
       const text=await tavernTasks.request({session,agent:main,kind:'ruby-analysis',source,requestKey,
         input:{taskStage:'ruby-analysis',rubyTask:prompt},background:true,format:'text',tools:[],signal,
-        timeoutMs:input.timeoutMs,maxTokens:input.maxTokens,
+        timeoutMs:input.timeoutMs,maxTokens:prompt.generation?.maxTokens??input.maxTokens,
         rubyTask:{promptPlanSha256:prompt.promptPlanSha256,orderedMessages:prompt.orderedMessages,
+          ...(prompt.generation?.temperature===undefined?{}:{temperature:prompt.generation.temperature}),
           ...(prompt.mainInputMessageIndex===undefined?{}:{mainInputMessageIndex:prompt.mainInputMessageIndex}),
           createOwner:input.createOwner},
         validate:value=>{
@@ -305,15 +307,32 @@ export function createRoleplayTaskHost({
       return result
     }finally{if(authorDialogOwners.get(id)===owner)authorDialogOwners.delete(id)}
   }
-  function readCompletedRubyAnalysis(reference:TavernLoreDerivedCompletionRefV1):RubyAnalysisResultV1|undefined {
-    const job=T.branch.get('tavern_job__'+reference.taskId) as StoredTask|undefined,completion=job?.rubyTaskCompletion
-    if(!job||job.kind!=='ruby-analysis'||job.status!=='completed'||job.generation!==reference.generation
-      ||typeof job.result!=='string'||job.resultHash!==reference.resultSha256||!completion
+  function completedRubyResult(job:StoredTask|undefined):RubyAnalysisResultV1|undefined {
+    const completion=job?.rubyTaskCompletion
+    if(!job||job.kind!=='ruby-analysis'||job.status!=='completed'
+      ||typeof job.result!=='string'||!completion
       ||completion.generation!==job.generation||completion.taskId!==job.id
-      ||completion.childSessionId!==job.childSessionId||completion.resultSha256!==job.resultHash
-      ||recordSha256(completion.nativeCompletedWork)!==reference.completedWorkSha256)return undefined
+      ||completion.childSessionId!==job.childSessionId||completion.resultSha256!==job.resultHash)return undefined
     return {schemaVersion:1,encoding:'native-ruby-analysis-result-v1',authority:'consumer-data-only',
       promptPlanSha256:completion.promptPlanSha256,text:job.result,completion}
+  }
+  function readCompletedRubyAnalysis(reference:TavernLoreDerivedCompletionRefV1):RubyAnalysisResultV1|undefined {
+    const result=completedRubyResult(T.branch.get('tavern_job__'+reference.taskId) as StoredTask|undefined)
+    if(!result||result.completion.generation!==reference.generation
+      ||result.completion.resultSha256!==reference.resultSha256
+      ||recordSha256(result.completion.nativeCompletedWork)!==reference.completedWorkSha256)return undefined
+    return result
+  }
+  /** Recover an accepted completion whose Ruby publication ACK was lost.
+   * This only looks up the TaskHost's existing deterministic job identity; it
+   * never schedules, retries or creates a generation. */
+  function recoverCompletedRubyAnalysis(sessionId:string,sourceIdentitySha256:string,promptPlanSha256:string) {
+    const source:HostSource={rubyAnalysis:{sourceIdentitySha256,promptPlanSha256}},
+      id=taskHash({sessionId,kind:'ruby-analysis',source,input:{promptPlanSha256}}),
+      job=T.branch.get('tavern_job__'+id) as StoredTask|undefined
+    if(job?.sessionId!==sessionId)return undefined
+    const result=completedRubyResult(job)
+    return result?.promptPlanSha256===promptPlanSha256?result:undefined
   }
   function readCompletedAuthorDialog(session:HostSession,binding:AuthorDialogChatAddress,
     reference:AuthorDialogTaskRefV1):AuthorDialogResultV1|undefined {
@@ -503,6 +522,6 @@ export function createRoleplayTaskHost({
   }
   return {sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster, characterRoster,
     clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask,
-    requestAuthorDialog,readCompletedAuthorDialog,requestRubyAnalysis,readCompletedRubyAnalysis,
+    requestAuthorDialog,readCompletedAuthorDialog,requestRubyAnalysis,readCompletedRubyAnalysis,recoverCompletedRubyAnalysis,
     requestCharacterBackground,readCompletedCharacterBackground,resumeMemoryWork,resumeStatusMaintenance}
 }

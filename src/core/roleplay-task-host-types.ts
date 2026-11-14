@@ -136,6 +136,7 @@ export interface TaskHostDependencies {
   storyEntryReader?:ContextStoryEntryReader
   observeRecords?:TaskOptions<HostSession,HostAgent>['observeRecords']
   advancedCard?(session:HostSession):{state:string;characters:{id:string;name:unknown;content:string}[]}
+  advancedCardReady?(session:HostSession):boolean
   assertCardWorkflow(session:import('./roleplay-import-types.js').ImportSession,
     record:import('./roleplay-card-workflow-types.js').CardWorkflowRecord):void
   /** The actual checked Native claim; a player claim never becomes an inline task. */

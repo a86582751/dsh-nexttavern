@@ -116,6 +116,9 @@ export function composeOwnedRubyTaskActivationV1(ctx:Context,child:NativeInputAd
     for(const remove of cleanup.reverse())remove()
   }
   try{
+    if(activation.temperature!==undefined)cleanup.push(ctx.on('agent/request',async(_input,next)=>({
+      ...await next(),temperature:activation.temperature,
+    })))
     // Workspace instructions belong to the inherited Main preset. Remove its
     // post-step contribution before Native selects this task's frozen input;
     // keep the actual admitted user object and the rest of the decision.

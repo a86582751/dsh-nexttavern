@@ -26,9 +26,13 @@ export function readOwnedRubyTaskActivationV1(value) {
     }
     else if (orderedMessages.filter(message => message.role === 'user').length !== 1)
         throw Error('RUBY_ACTIVATION_ORDER_INVALID');
+    if (row.temperature !== undefined && (typeof row.temperature !== 'number' || !Number.isFinite(row.temperature)
+        || row.temperature < 0 || row.temperature > 2))
+        throw Error('RUBY_ACTIVATION_SAMPLING_INVALID');
     return Object.freeze({ schemaVersion: 1, encoding: 'owned-ruby-task-v1',
         taskId: row.taskId, generation: row.generation,
         promptPlanSha256: row.promptPlanSha256, userMessageId: row.userMessageId,
         orderedMessages: Object.freeze(orderedMessages),
+        ...(row.temperature === undefined ? {} : { temperature: row.temperature }),
         ...(indexed ? { mainInputMessageIndex: row.mainInputMessageIndex } : {}) });
 }

@@ -1,15 +1,60 @@
 /** Versioned scheduling/publication DATA. Native completion remains in the
  * existing TavernTasks job; these references never restore a live task lease. */
 import type {RubyCursorV1,RubyPreparedOutputV1,RubySelectedMessageV1,RubyConfigurationV1,
-  RubyTaskV1,RubyTriggerV1,RubyPreparedInputV1} from './roleplay-ruby-types.js'
+  RubyTaskV1,RubyTriggerV1,RubyPreparedInputV1,RubyGenerationOptionsV1} from './roleplay-ruby-types.js'
 import type {TavernLoreDerivedCompletionRefV1} from './tavern-lore-derived.mjs'
 
 export interface RubyTaskInputCaptureV1 extends Omit<RubyPreparedInputV1,'encoding'|'window'|'normalRequests'> {
   readonly encoding:'native-ruby-task-input-capture-v1'
+  readonly generation?:RubyGenerationOptionsV1
+  readonly invocation?:RubyManualInvocationV1
   readonly window:Pick<RubyPreparedInputV1['window'],'startOrdinal'|'endOrdinal'|'count'> & {
     readonly messages:readonly Pick<RubySelectedMessageV1,'messageId'|'messageVersion'|'role'>[]
     readonly scanTextSha256:string
   }
+}
+/** An explicit player action is distinct from both its retries and the static
+ * cycle. Its identity participates in the immutable TaskHost input plan. */
+export interface RubyManualInvocationV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-ruby-manual-invocation-v1'
+  readonly operationId:string
+  readonly origin:string
+  readonly ordinal:number
+}
+export interface RubyManualRunRequestV1 {
+  readonly operationId:string
+  readonly origin:string
+  readonly kind:'tasks'|'startup'|'all'
+  readonly taskSpecs:readonly string[]
+}
+/** Only the first run owns the batch's accepted message cut and ordered keys.
+ * The canonical messages remain in Native; no second body snapshot is stored. */
+export interface RubyManualBatchV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-ruby-manual-batch-v1'
+  readonly request:RubyManualRunRequestV1
+  readonly sourceIdentitySha256:string
+  readonly messageCount:number
+  readonly windowStart:number
+  readonly messages:RubyOwnerStateV1['messages']
+  readonly runKeys:readonly string[]
+}
+export interface RubyManualRunResultV1 {
+  readonly ok:boolean
+  readonly summary:string
+  readonly completed:number
+  readonly failed:number
+  readonly tasks:readonly {readonly name:string;readonly ok:boolean;readonly outputKey:string;readonly reason?:string}[]
+}
+export interface RubyManualRunReceiptV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-ruby-manual-run-receipt-v1'
+  readonly sessionId:string
+  readonly operationId:string
+  readonly sourceIdentitySha256:string
+  readonly runs:readonly {readonly key:string;readonly status:RubyRunV1['status'];
+    readonly publicationRef?:RubyOutputHeadV1['ref']}[]
 }
 export interface RubyOrderedMessagePlanV1 {
   readonly schemaVersion:1
@@ -36,6 +81,8 @@ export interface RubyOutputHeadV1 {
 export interface RubyRunV1 {
   readonly trigger:RubyTriggerV1
   readonly task:RubyTaskV1
+  readonly invocation?:RubyManualInvocationV1
+  readonly manualBatch?:RubyManualBatchV1
   readonly status:'queued'|'skipped'|'failed'|'published'|'unsupported'
   readonly reason?:string
   readonly promptRef?:{readonly key:string;readonly sha256:string}

@@ -18,6 +18,7 @@ export interface OwnedRubyTaskActivationV1 {
   readonly orderedMessages:readonly OwnedRubyTaskMessageV1[]
   /** Index of the one inserted Native input, distinct from optional user items. */
   readonly mainInputMessageIndex?:number
+  readonly temperature?:number
 }
 export interface OwnedRubyTaskOwnerV1 {
   readonly preparation:NativePreparationReceiptV1
@@ -58,9 +59,12 @@ export function readOwnedRubyTaskActivationV1(value:unknown):OwnedRubyTaskActiva
       ||orderedMessages[index]!.role!=='user')throw Error('RUBY_ACTIVATION_ORDER_INVALID')
   }else if(orderedMessages.filter(message=>message.role==='user').length!==1)
     throw Error('RUBY_ACTIVATION_ORDER_INVALID')
+  if(row.temperature!==undefined&&(typeof row.temperature!=='number'||!Number.isFinite(row.temperature)
+    ||row.temperature<0||row.temperature>2))throw Error('RUBY_ACTIVATION_SAMPLING_INVALID')
   return Object.freeze({schemaVersion:1,encoding:'owned-ruby-task-v1',
     taskId:row.taskId as string,generation:row.generation as string,
     promptPlanSha256:row.promptPlanSha256 as string,userMessageId:row.userMessageId as string,
     orderedMessages:Object.freeze(orderedMessages),
+    ...(row.temperature===undefined?{}:{temperature:row.temperature as number}),
     ...(indexed?{mainInputMessageIndex:row.mainInputMessageIndex as number}:{})})
 }

@@ -323,14 +323,14 @@ try{
         resourceAvailability:'declarations-only',originalGameplay:'not-assessed'},entries:[
         {sourcePointer:'/data/rules',status:'interpreted',reason:'native-author-projection'},
         {sourcePointer:'/data/worldbook',status:'interpreted',reason:'passive-material-projection'},
-        {sourcePointer:'/data/compatibility/authorExecution',status:'interpreted',reason:'preserved-author-projection'},
+        {sourcePointer:'/data/cards',status:'interpreted',reason:'native-author-projection'},
         {sourcePointer:'/data/compatibility/sillytavernMacroFields',status:'interpreted',reason:'structured-projection'}]}
     const Panel=createCardImportPanel({React:r.React,toast(){},
       jsonFetch:async url=>url.includes('/state?')?{cardImport:{capabilityReport:report}}:{candidates:[]}})
     r.mount(Panel,{sessionId:'native'});await r.flush()
     const displayed=text(r.seat)
-    for(const label of ['作者规则','被动资料','保留的作者资料','原始宏字段','不等同于自动触发的世界书',
-      '普通剧情读取保留的作者资料，人物分类供高级功能使用','不代表原卡玩法已验证',
+    for(const label of ['作者规则','被动资料','人物资料','原始宏字段','不等同于自动触发的世界书',
+      '已读取原生作者字段，不代表相关脚本已运行','不代表原卡玩法已验证',
       '原件保存：本报告未评估保存结果','可调用能力：本报告未评估运行与调用结果',
       '未验证实际资源可用性','原卡玩法：本报告未评估'])assert(displayed.includes(label),label)
     assert(!displayed.includes('该声明尚待核对'),'known Native projection reasons have useful descriptions')
