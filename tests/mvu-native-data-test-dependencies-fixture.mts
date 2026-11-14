@@ -8,6 +8,8 @@ import {createRequire,registerHooks} from 'node:module'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {createTestDirectory,cleanupTestDirectory} from '../src/operations/test-temp.mts'
 
+const nativeDataSpecifier=/^dsh-nexttavern-native-(?:agent-loop|session(?:\/surface)?)$/
+
 export async function installMvuNativeDataTestDependencies() {
   const directory=createTestDirectory('mvu-native-data-')
   try {
@@ -40,11 +42,10 @@ export async function installMvuNativeDataTestDependencies() {
     }}]})
     assert.equal(result.outputFiles.length,1)
     await writeFile(peer,result.outputFiles[0]!.contents,{flag:'wx'})
+    const peerUrl=pathToFileURL(peer).href
     const hooks=registerHooks({resolve(specifier,context,next) {
-      if((specifier==='dsh-nexttavern-native-agent-loop'||specifier==='dsh-nexttavern-native-session'
-        ||specifier==='dsh-nexttavern-native-session/surface')
-        &&context.parentURL?.startsWith(generatedCore)) {
-        return {url:pathToFileURL(peer).href,shortCircuit:true}
+      if(nativeDataSpecifier.test(specifier)&&context.parentURL?.startsWith(generatedCore)) {
+        return {url:peerUrl,shortCircuit:true}
       }
       return next(specifier,context)
     }})
@@ -52,7 +53,11 @@ export async function installMvuNativeDataTestDependencies() {
       // Revoke the process-local hook before removing its owned module file.
       hooks.deregister()
       cleanupTestDirectory(directory)
-    },{nativeDataModulePath:peer})
+    },{nativeDataModulePath:peer,esbuildPlugin:{name:'maintained-native-data-peer',setup(builder) {
+      // Source bundles consume the same maintained DATA exports as generated
+      // modules. Keep their actual module identity outside the caller bundle.
+      builder.onResolve({filter:nativeDataSpecifier},()=>({path:peerUrl,external:true,sideEffects:false}))
+    }} satisfies import('esbuild').Plugin})
   }catch(error) {
     cleanupTestDirectory(directory)
     throw error

@@ -4,21 +4,24 @@ import {recordSha256} from './roleplay-data.js'
 import {restoreTavernLoreSourceCounterWitnessV1} from './roleplay-tavern-lore-source.js'
 import {TAVERN_LORE_EDITS_BOUNDS_V1,LoreEditFailureV1,fail,freeze,same,sessionId,requestData,
   strictData,identityOf,eventKey,rowRef,headRef,eventFrom,nextHead,receiptOf,validateFields,mutationRequestData,
+  authorMetadataRequestData,operationIdData,
   materializeTavernEffectiveBookV1}
   from './roleplay-tavern-lore-edits-data.js'
 import {readJournal,readJournalData,publishedData,publishedJournalData,plannedPublication,journalReferencesShaV1,readMutationOperationV1,
-  readFrozenPublishedCutV1,publishedAuthorBookDataV1}
+  readFrozenPublishedCutV1,publishedAuthorBookDataV1,publishedAuthorMetadataDataV1}
   from './roleplay-tavern-lore-edits-journal.js'
 import type {LoreEditJournalV1} from './roleplay-tavern-lore-edits-journal.js'
+import {createAuthorMetadataOverlayV1,isAuthorMetadataRequestV1} from './roleplay-tavern-source-author-metadata.js'
 import type {TavernLoreSourceDataV1,TavernLoreContributionInputV1} from './roleplay-tavern-lore-source-types.js'
 import {produceRoleplayTavernCurrentLegacyOverlayV1} from './roleplay-tavern-current-overlay.js'
 import type {TavernLoreCurrentNativeOverlayV1} from './tavern-lore-plan-types.mjs'
-import type {TavernLoreEditsDepsV1,TavernLoreJournalRequestV2,TavernLoreJournalEventV2,TavernLoreJournalResultV2,
+import type {TavernLoreEditsDepsV1,TavernLoreJournalEventV2,TavernLoreJournalResultV2,
   TavernLoreEditRecoveryAnchorV1,TavernLoreEditsDataV1,TavernLoreEditRefusalV1,
   TavernLoreEditObservationV1,TavernLoreEditJournalObservationV1,TavernLoreEditResultV1,TavernLoreMutationResultV2,
   TavernLoreEditSourceDataCaptureV1,TavernLoreMutationRetryLocatorV1,TavernLoreMutationRetryResultV2,
   TavernLoreEditorSelectionV1,TavernLoreEditPageObservationV1,MvuAuthorCaptureV1,MvuEffectiveLoreSourceV1,
-  MvuFrozenEffectiveLoreInputV1,TavernLoreAuthorBookSourceV1}
+  MvuFrozenEffectiveLoreInputV1,TavernLoreAuthorBookSourceV1,TavernSourceJournalRequestV1,
+  TavernAuthorMetadataObservationV1,TavernAuthorMetadataMutationResultV1,TavernAuthorMetadataRetryResultV1}
   from './roleplay-tavern-lore-edits-types.js'
 export type * from './roleplay-tavern-lore-edits-types.js'
 export {TAVERN_LORE_EDITS_BOUNDS_V1} from './roleplay-tavern-lore-edits-data.js'
@@ -76,7 +79,7 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
     catch(error) {fail('FIELDS_INVALID',error instanceof Error&&/^[A-Z][A-Z0-9_]{0,95}$/.test(error.message)
       ?error.message:'current-legacy-overlay-unavailable')}
   }
-  function captureSource(sid:string):{source:TavernLoreSourceDataV1;editorBaseOverlay:TavernLoreCurrentNativeOverlayV1} {
+  function captureSourceData(sid:string):TavernLoreEditSourceDataCaptureV1 {
     sessionId(sid)
     try {
       const result=deps.source.capture(sid)
@@ -85,8 +88,24 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
       if(source.sessionId!==sid)fail('SOURCE_IDENTITY_INVALID')
       identityOf(source)
       if(!deps.source.current(source))fail('SOURCE_CHANGED')
-      return {source:freeze(source),editorBaseOverlay:currentLegacyData(result.contributionInput).overlay}
+      return result
     }catch(error){if(error instanceof LoreEditFailureV1)throw error;fail('SOURCE_UNAVAILABLE')}
+  }
+  function captureSource(sid:string) {
+    const authorSource=captureSourceData(sid)
+    return {source:freeze(authorSource.source),authorSource,
+      editorBaseOverlay:currentLegacyData(authorSource.contributionInput).overlay}
+  }
+  function observeAuthorMetadataData(captured:TavernLoreEditSourceDataCaptureV1,
+    operationId?:string):TavernAuthorMetadataObservationV1 {
+    try {
+      const journal=readJournalData(deps,captured.source)
+      if(journal.pending)pendingFailure(journal.pending)
+      const event=operationId===undefined?undefined:journal.events.get(eventKey(journal.identitySha256,operationId))
+      if(event&&event.schemaVersion!==4)fail('OPERATION_PAYLOAD_CONFLICT')
+      return {schemaVersion:1,kind:'captured-data',data:publishedAuthorMetadataDataV1(captured,journal),
+        ...event?{operation:receiptOf(event)}:{}}
+    }catch(error){return refusal(error)}
   }
   function observe(sid:string):TavernLoreEditObservationV1 {
     try {
@@ -230,14 +249,29 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
       throw new LoreEditFailureV1({code:'WRITE_UNKNOWN',detail,recovery})
     }
   }
-  async function lockedEdit(request:TavernLoreJournalRequestV2,
+  type SourcePublicationResult=TavernLoreJournalResultV2|TavernAuthorMetadataMutationResultV1
+  function publicationResult(event:TavernLoreJournalEventV2,source:TavernLoreSourceDataV1,journal:LoreEditJournalV1,
+    editorBaseOverlay?:TavernLoreCurrentNativeOverlayV1,authorSource?:TavernLoreEditSourceDataCaptureV1):SourcePublicationResult {
+    if(event.schemaVersion===4) {
+      if(!authorSource)fail('SOURCE_UNAVAILABLE')
+      return Object.freeze({schemaVersion:1,kind:'edited-data',receipt:receiptOf(event),
+        data:publishedAuthorMetadataDataV1({...authorSource,source},journal)})
+    }
+    return freeze({schemaVersion:1,kind:'edited-data',receipt:receiptOf(event),
+      ...publishedData(source,journal,editorBaseOverlay)})
+  }
+  async function lockedEdit(request:TavernSourceJournalRequestV1,
     callerCurrent?:()=>boolean,captured?:{source:TavernLoreSourceDataV1;
-      editorBaseOverlay:TavernLoreCurrentNativeOverlayV1;journal?:LoreEditJournalV1},
-    observePublication?:import('./roleplay-tavern-lore-edits-types.js').TavernLorePublicationObserverV1):Promise<TavernLoreJournalResultV2> {
+      editorBaseOverlay?:TavernLoreCurrentNativeOverlayV1;authorSource?:TavernLoreEditSourceDataCaptureV1;journal?:LoreEditJournalV1},
+    observePublication?:import('./roleplay-tavern-lore-edits-types.js').TavernLorePublicationObserverV1):Promise<SourcePublicationResult> {
     let recovery:TavernLoreEditRecoveryAnchorV1|undefined
     try {
       if(callerCurrent&&!callerCurrent())fail('SOURCE_CHANGED')
-      const {source,editorBaseOverlay}=captured??captureSource(request.sessionId),
+      const selected=captured??(isAuthorMetadataRequestV1(request)
+        ?(()=>{const authorSource=captureSourceData(request.sessionId);return {source:authorSource.source,authorSource}})()
+        :captureSource(request.sessionId)),{source}=selected,
+        editorBaseOverlay='editorBaseOverlay' in selected?selected.editorBaseOverlay:undefined,
+        authorSource=selected.authorSource,
         journal=captured?.journal??readJournal(deps,source)
       const key=eventKey(journal.identitySha256,request.operationId),existing=journal.events.get(key)
       const actualOperation=deps.branch.get(key)
@@ -252,9 +286,9 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
       if(request.expectedSourceSha256!==source.sourceSha256)fail('SOURCE_CHANGED')
       if(journal.pending&&journal.pending!==existing)pendingFailure(journal.pending)
       if(existing&&journal.published.some(event=>event.request.operationId===request.operationId)) {
-        const packet=publishedData(source,journal,editorBaseOverlay)
+        const result=publicationResult(existing,source,journal,editorBaseOverlay,authorSource)
         checkpoint(source,journal,callerCurrent)
-        return freeze({schemaVersion:1,kind:'edited-data',receipt:receiptOf(existing),...packet})
+        return result
       }
       if(request.expectedRevision!==journal.head.revision)fail('REVISION_MISMATCH')
       if(!('mutation' in request))validateFields(source,request)
@@ -266,14 +300,24 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
         event=existing;prepared=journal
         const next=nextHead(event),refs=journal.refs.filter(ref=>ref.key!==journal.headRef.key)
         refs.push(rowRef(journal.headRef.key,next));refs.sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0)
+        const metadata=createAuthorMetadataOverlayV1(journal.authorMetadataOverlay)
+        metadata.accept(event.request)
         publication={...journal,head:next,headRef:headRef(next,true),published:[...journal.published,event],
+          authorMetadataOverlay:metadata.data(),
           pending:null,refs,refsSha256:journalReferencesShaV1(refs,journal.inherited)}
-        publishedData(source,publication,editorBaseOverlay)
+        if(event.schemaVersion===4) {
+          if(!authorSource)fail('SOURCE_UNAVAILABLE')
+          publishedAuthorMetadataDataV1({...authorSource,source},publication)
+        }else publishedData(source,publication,editorBaseOverlay)
       }else {
         if(journal.pending)pendingFailure(journal.pending)
         if(journal.head.revision>=TAVERN_LORE_EDITS_BOUNDS_V1.events)fail('JOURNAL_LIMIT')
         event=eventFrom(request,journal.head,journal.headRef.exists,source)
         publication=plannedPublication(source,journal,event,editorBaseOverlay)
+        if(event.schemaVersion===4) {
+          if(!authorSource)fail('SOURCE_UNAVAILABLE')
+          publishedAuthorMetadataDataV1({...authorSource,source},publication)
+        }
         const refs=[...journal.refs,rowRef(key,event)].sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0)
         prepared={...journal,events:new Map([...journal.events,[key,event] as const]),pending:event,refs,
           refsSha256:journalReferencesShaV1(refs,journal.inherited)}
@@ -297,12 +341,11 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
       // Publication is already durable. Deliver its actual receipt even if the
       // caller was stopped during put; attachment continuation belongs to Core.
       const actual=checkpoint(source,publication)
-      const packet=publishedData(source,actual,editorBaseOverlay)
+      const result=publicationResult(event,source,actual,editorBaseOverlay,authorSource)
       checkpoint(source,actual)
-      const result=freeze({schemaVersion:1 as const,kind:'edited-data' as const,receipt:receiptOf(event),...packet})
       // Failure to adopt Source for Main cannot turn this committed edit into
       // refusal. Its canonical receipt remains available to confirm/retry.
-      try {published?.(result.receipt)}catch {}
+      if(result.kind==='edited-data')try {published?.(result.receipt)}catch {}
       return result
     }catch(error){return refusal(error,recovery)}
   }
@@ -322,6 +365,15 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
         ()=>lockedEdit(request,callerCurrent,captured,observePublication)) as TavernLoreMutationResultV2
     }catch(error){return refusal(error)}
   }
+  async function mutateAuthorMetadata(raw:unknown,callerCurrent?:()=>boolean,
+    observePublication?:import('./roleplay-tavern-lore-edits-types.js').TavernLorePublicationObserverV1)
+    :Promise<TavernAuthorMetadataMutationResultV1> {
+    try {
+      const request=freeze(authorMetadataRequestData(raw))
+      return await deps.withSourceLock(request.sessionId,
+        ()=>lockedEdit(request,callerCurrent,undefined,observePublication)) as TavernAuthorMetadataMutationResultV1
+    }catch(error){return refusal(error)}
+  }
   /** An explicit parent recovery selects the already parsed durable request.
    * It never reconstructs a mutation from a lost guest's DTO or new catalog. */
   function retryMutation(sid:string,operationId:string,callerCurrent:()=>boolean):Promise<TavernLoreMutationResultV2>
@@ -329,35 +381,49 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
     locator:TavernLoreMutationRetryLocatorV1):Promise<TavernLoreMutationRetryResultV2>
   async function retryMutation(sid:string,operationId:string,callerCurrent:()=>boolean,
     locator?:TavernLoreMutationRetryLocatorV1):Promise<TavernLoreMutationRetryResultV2> {
+    return retrySourceMutation(sid,operationId,callerCurrent,locator,false) as Promise<TavernLoreMutationRetryResultV2>
+  }
+  async function retryAuthorMetadata(sid:string,operationId:string,callerCurrent:()=>boolean,
+    locator?:TavernLoreMutationRetryLocatorV1):Promise<TavernAuthorMetadataRetryResultV1> {
+    return retrySourceMutation(sid,operationId,callerCurrent,locator,true) as Promise<TavernAuthorMetadataRetryResultV1>
+  }
+  async function retrySourceMutation(sid:string,operationId:string,callerCurrent:()=>boolean,
+    locator:TavernLoreMutationRetryLocatorV1|undefined,metadata:boolean)
+    :Promise<TavernLoreMutationRetryResultV2|TavernAuthorMetadataRetryResultV1> {
     let recovery:TavernLoreEditRecoveryAnchorV1|undefined
     try {
-      return await deps.withSourceLock<TavernLoreMutationRetryResultV2>(sid,()=>{
+      return await deps.withSourceLock<TavernLoreMutationRetryResultV2|TavernAuthorMetadataRetryResultV1>(sid,()=>{
         if(!callerCurrent())fail('SOURCE_CHANGED')
-        sessionId(sid);sessionId(operationId)
+        sessionId(sid);operationIdData(operationId)
         const located=locator?readMutationOperationV1(deps,sid,operationId,locator):undefined
         if(located?.kind==='not-recorded')fail('OPERATION_NOT_RECORDED')
         if(located?.kind==='published') {
+          if((located.event.schemaVersion===4)!==metadata)fail('REQUEST_INVALID')
           // This is an immutable journal fact, even after a different import
           // became active. It grants no Source DATA, attachment or continuation.
           return freeze({schemaVersion:1 as const,kind:'edited-data' as const,receipt:receiptOf(located.event)})
         }
         if(located?.kind==='pending')recovery=pendingRecovery(located.event)
-        const captured=captureSource(sid),journal=readJournal(deps,captured.source)
+        const captured=metadata?(()=>{const authorSource=captureSourceData(sid);return {source:authorSource.source,authorSource}})()
+          :captureSource(sid),journal=readJournal(deps,captured.source)
         if(located?.kind==='pending'&&journal.identitySha256!==located.event.identitySha256)fail('SOURCE_CHANGED')
         const event=journal.events.get(eventKey(journal.identitySha256,operationId))
         if(!event)fail(locator?'OPERATION_NOT_RECORDED':'RETRY_LOCATOR_REQUIRED')
         if(!('mutation' in event.request))fail('REQUEST_INVALID')
+        if((event.schemaVersion===4)!==metadata)fail('REQUEST_INVALID')
         if(journal.pending===event)recovery=pendingRecovery(event)
         // Only Source reconstructs its projected counter rows. The old full SHA
         // must still match exactly; V2 without this witness remains exact-only.
-        const source=event.schemaVersion===3
+        const source=event.schemaVersion===3||event.schemaVersion===4
           ?restoreTavernLoreSourceCounterWitnessV1(captured.source,event.sourceCounters,event.request.expectedSourceSha256)
           :captured.source
         if(!source)fail('SOURCE_CHANGED')
-        return lockedEdit(event.request,callerCurrent,{...captured,source,journal}) as Promise<TavernLoreMutationResultV2>
+        return lockedEdit(event.request,callerCurrent,{...captured,source,journal}) as
+          Promise<TavernLoreMutationResultV2|TavernAuthorMetadataMutationResultV1>
       })
     }catch(error){return refusal(error,recovery)}
   }
   return {observe,captureCurrentData:observe,observeSourceData,observeSourcePage,observeSourceDataWithLegacyData,
-    observeJournalDataWithLegacyData,captureAuthorData,current,edit,mutate,retryMutation,observeCurrent}
+    observeJournalDataWithLegacyData,captureAuthorData,current,edit,mutate,retryMutation,observeCurrent,
+    observeAuthorMetadataData,mutateAuthorMetadata,retryAuthorMetadata}
 }

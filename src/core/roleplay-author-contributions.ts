@@ -94,6 +94,28 @@ export function authorContributionTextsV1(parts:readonly AuthorContributionPartV
     examplesText:splitExamples?parts.filter(part=>part.kind==='examples').map(part=>part.text).join('\n\n'):''}
 }
 
+function residentParts(cardsText:string,core:string,plot:string,pinned:readonly string[])
+  :AuthorContributionDataV1['residentParts'] {
+  return [{section:'roleplay:cards',name:'roleplay:cards',text:cardsText},
+    {section:'roleplay:rules',name:'roleplay:rules / 核心设定',text:core},
+    {section:'roleplay:rules',name:'roleplay:rules / 剧情指引',text:plot},
+    ...pinned.map((entry,index)=>({section:'roleplay:rules',name:`roleplay:rules / 常驻世界书 ${index+1}`,text:entry}))]
+    .filter(part=>!!part.text)
+}
+
+/** Ordinary resident consumers need only text. Projected reads retain the
+ * complete producer's Source proof checks before using residual text. */
+export function produceResidentAuthorPartsV1(T:AuthorTables,sessionId:string,
+  projection?:AuthorContributionProjectionV1):AuthorContributionDataV1['residentParts'] {
+  if(projection)return produceAuthorContributionDataV1({...T,status:{get:()=>undefined,entries:()=>[]}},
+    sessionId,false,projection).residentParts
+  const rules=T.rules.get(keyOf(sessionId,'spec'))
+  const pinned=branchRows(T.worldbook,sessionId)
+    .filter(([,value])=>value&&value.enabled!==false&&value.alwaysOn===true)
+    .map(([,value])=>renderWorldbookEntry(value))
+  return residentParts(renderCards(T,sessionId),text(rules?.core),text(rules?.plot),pinned)
+}
+
 export function produceAuthorContributionDataV1(T:Tables,sessionId:string,includeCardStyle:boolean,
   projection?:AuthorContributionProjectionV1):AuthorContributionDataV1 {
   const specKey=keyOf(sessionId,'spec'),rules=T.rules.get(specKey),status=T.status.get(specKey)
@@ -146,11 +168,8 @@ export function produceAuthorContributionDataV1(T:Tables,sessionId:string,includ
   const body={schemaVersion:1 as const,encoding:'roleplay-author-field-contributions-v1' as const,
     authority:'consumer-data-only' as const,sessionId,includeCardStyle,
     ...authorContributionTextsV1(parts,projection?.splitExamples===true),parts,
-    residentParts:[{section:'roleplay:cards',name:'roleplay:cards',text:renderCards(T,sessionId)},
-      {section:'roleplay:rules',name:'roleplay:rules / 核心设定',text:projection?projection.residualCore:text(rules?.core)},
-      {section:'roleplay:rules',name:'roleplay:rules / 剧情指引',text:text(rules?.plot)},
-      ...pinnedParts.map((part,index)=>({section:'roleplay:rules',name:`roleplay:rules / 常驻世界书 ${index+1}`,text:part.text}))]
-      .filter(part=>!!part.text),
+    residentParts:residentParts(parts.filter(part=>part.kind==='card').map(part=>part.text).join('\n\n'),
+      projection?projection.residualCore:text(rules?.core),text(rules?.plot),pinnedParts.map(part=>part.text)),
     rows:[...cardRefs,...loreRefs,rulesRef,statusRef],cardsMembershipSha256,worldbookMembershipSha256}
   return freeze({...body,dataSha256:recordSha256(body)})
 }

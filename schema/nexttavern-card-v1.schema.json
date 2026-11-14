@@ -1,14 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:nexttavern:card:1.0",
-  "title": "NextTavern portable character card 1.0 / 1.1",
-  "description": "DATA contains current author settings. ARCHIVE retains original sources and never supplies runtime instructions. Unknown author fields remain portable. Runtime identities, sources, import IDs, verification, versions and timestamps are omitted by the export producer.",
+  "$id": "urn:nexttavern:card:1.2",
+  "title": "NextTavern portable character card 1.2",
+  "description": "DATA owns the single current author body. Optional classification binds semantic coordinates to that body. Advanced views are derived at runtime. ARCHIVE retains original sources. Open author metadata remains portable; runtime permissions and session state belong to their runtime owners.",
   "type": "object",
   "required": ["spec", "spec_version", "data", "archive"],
   "additionalProperties": true,
   "properties": {
     "spec": {"const": "nexttavern_card"},
-    "spec_version": {"enum": ["1.0", "1.1"]},
+    "spec_version": {"const": "1.2"},
+    "classification": {"$ref": "#/$defs/classification"},
     "data": {
       "type": "object",
       "required": ["name", "cards", "worldbook", "rules"],
@@ -34,7 +35,6 @@
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "authorExecution": {"$ref": "#/$defs/authorExecution"},
             "sillytavernMacroFields": {
               "description": "Activated ST macro aliases retained independently of canonical author prose; expanded only by the existing protected prompt renderer.",
               "type": "object",
@@ -43,6 +43,12 @@
           }
         },
         "settings": {"type": "object", "additionalProperties": true},
+        "extensions": {
+          "description": "Current author extensions. TavernHelper scripts, regex_scripts and RubyAnalyzer are consumed by their respective runtime owners. Unknown fields are preserved. Live journals, model routes and execution permissions remain runtime-owned.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "assets": {"type": "array", "description": "Author resource declarations with their original addresses and metadata. Availability is resolved by the resource owner."},
         "character_book": {
           "type": "object",
           "additionalProperties": true,
@@ -67,29 +73,51 @@
       }
     }
   },
-  "allOf": [{
-    "if": {"properties": {"spec_version": {"const": "1.1"}}},
-    "then": {"properties": {"data": {
-      "required": ["compatibility"],
-      "properties": {"compatibility": {"required": ["authorExecution"]}}
-    }}},
-    "else": {"properties": {"data": {"properties": {"compatibility": {
-      "not": {"required": ["authorExecution"]}
-    }}}}}
-  }],
   "$defs": {
-    "authorExecution": {
-      "description": "The sole ordinary execution prose in 1.1. Classified data.cards/rules are advanced projections and must not execute alongside these author rows.",
+    "classification": {
+      "description": "Program-owned source coordinates and semantic assignments. The runtime checks them against current DATA before deriving advanced material. Missing or stale classification leaves ordinary author execution available.",
       "type": "object",
-      "required": ["schemaVersion", "mode", "cards", "rules"],
-      "additionalProperties": true,
+      "required": ["schemaVersion", "encoding", "sourceSha256", "characters", "assignments", "sources"],
+      "additionalProperties": false,
       "properties": {
         "schemaVersion": {"const": 1},
-        "mode": {"const": "preserved-author"},
-        "cards": {"type": "array", "items": {"$ref": "#/$defs/authorRow"}},
-        "rules": {"$ref": "#/$defs/rulesRow"}
+        "encoding": {"const": "nexttavern-classification-v1"},
+        "sourceSha256": {"$ref": "#/$defs/sha256"},
+        "characters": {"type": "array", "items": {
+          "type": "object", "required": ["id", "name"], "additionalProperties": false,
+          "properties": {
+            "id": {"$ref": "#/$defs/characterId"}, "name": {"type": "string", "minLength": 1},
+            "aliases": {"type": "array", "items": {"type": "string", "minLength": 1}}
+          }
+        }},
+        "assignments": {"type": "array", "items": {
+          "type": "object", "required": ["sourceId", "startLine", "endLine", "target"], "additionalProperties": false,
+          "properties": {
+            "sourceId": {"type": "string"},
+            "startLine": {"type": "integer", "minimum": 1},
+            "endLine": {"type": "integer", "minimum": 1},
+            "target": {"enum": ["character", "core", "plot", "narrative", "reply", "style", "other"]},
+            "characterId": {"$ref": "#/$defs/characterId"}
+          },
+          "if": {"properties": {"target": {"const": "character"}}},
+          "then": {"required": ["characterId"]},
+          "else": {"not": {"required": ["characterId"]}}
+        }},
+        "sources": {"type": "array", "items": {
+          "type": "object", "required": ["id", "pointer", "sha256", "lineCount", "kind", "atomic"], "additionalProperties": false,
+          "properties": {
+            "id": {"type": "string"},
+            "pointer": {"type": "string", "pattern": "^/data/"},
+            "sha256": {"$ref": "#/$defs/sha256"},
+            "lineCount": {"type": "integer", "minimum": 1},
+            "kind": {"enum": ["author", "worldbook"]},
+            "atomic": {"type": "boolean"}
+          }
+        }}
       }
     },
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "characterId": {"type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$"},
     "rulesRow": {
       "type": "object",
       "additionalProperties": true,
@@ -118,6 +146,8 @@
       "additionalProperties": true,
       "properties": {
         "content": {"type": "string"},
+        "characterId": {"$ref": "#/$defs/characterId"},
+        "enabled": {"type": "boolean"},
         "name": {"type": "string"},
         "kind": {"type": "string"},
         "aliases": {"type": "array", "items": {"type": "string"}},

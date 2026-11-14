@@ -32,13 +32,13 @@ export function createRoleplayCharacterMaterial(deps:{
   }
   const read=(id:string):readonly CharacterMaterial[]=>{
     const captured=deps.capture(id),advanced=deps.read(id)
-    if(advanced.state!=='ready'||!advanced.document)return []
+    if(advanced.state!=='ready'||!advanced.view)return []
     let views=snapshots.get(captured.snapshot)
     if(!views){views=new WeakMap();snapshots.set(captured.snapshot,views)}
-    const cached=views.get(advanced.document)
+    const cached=views.get(advanced.view)
     if(cached)return withBodies(cached,bodyState(id))
     const {snapshot,sourceIdentity}=captured
-    const materials=advanced.document.data.cards.flatMap((row,index):CharacterMaterial[]=>{
+    const materials=advanced.view.cards.flatMap((row,index):CharacterMaterial[]=>{
       if(row.kind==='user'||row.enabled===false)return []
       const characterId=String(row.characterId??`native-character-${index+1}`)
       const assigned=advanced.classification?.assignments.filter(assignment=>
@@ -46,11 +46,11 @@ export function createRoleplayCharacterMaterial(deps:{
       const refs=assigned?.map(assignment=>{
         const unit=snapshot.units.find(unit=>unit.id===assignment.sourceId)!
         const digest=assignment.startLine===1&&assignment.endLine===unit.lineCount?unit.sha256
-          :sha256(sourceLines(unit.text).slice(assignment.startLine-1,assignment.endLine).join('\n'))
+          :sha256(sourceLines(unit.text).slice(assignment.startLine-1,assignment.endLine).join(''))
         return {pointer:unit.pointer,sha256:digest,startLine:assignment.startLine,endLine:assignment.endLine}
-      })??snapshot.units.filter(unit=>unit.pointer===`/data/compatibility/authorExecution/cards/${index}/content`)
+      })??snapshot.units.filter(unit=>unit.pointer===`/data/cards/${index}/content`)
         .map(unit=>({pointer:unit.pointer,sha256:unit.sha256,startLine:1,endLine:unit.lineCount}))
-      const name=row.name??advanced.document!.data.name
+      const name=row.name??advanced.view!.name
       const materialId=recordSha256({sourceIdentity,characterId,name,refs})
       const sourceKeys=refs.map(ref=>`character-source:${recordSha256({sourceIdentity,...ref})}`)
       const dynamic=!advanced.characters.some(character=>character.id===characterId)
@@ -58,7 +58,7 @@ export function createRoleplayCharacterMaterial(deps:{
         authorText:dynamic?'':row.content,...dynamic?{requiresPublishedMaterial:true as const}:{},
         available:!!row.content.trim()}]
     })
-    views.set(advanced.document,materials)
+    views.set(advanced.view,materials)
     return withBodies(materials,bodyState(id))
   }
   function withBodies(materials:readonly CharacterMaterial[],state:BodyState) {

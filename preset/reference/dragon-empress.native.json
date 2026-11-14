@@ -1,6 +1,6 @@
 {
   "spec": "nexttavern_card",
-  "spec_version": "1.0",
+  "spec_version": "1.2",
   "data": {
     "name": "暴躁龙女皇非要和我生小龙人",
     "authorNotes": {
@@ -14,7 +14,8 @@
         "originalStatus": "开场保留原始状态展示；data.status.text保留原状态样例和格式要求，属于作者参考，不会成为本扩展案卷的权威状态。",
         "ruby": "可选任务默认enabled:false；要使用时将RubyAnalyzer.presets[0].tasks[0].enabled改为true，并在设置中启用Ruby额外分析。每8个规范助手回复中的位置8检查一次，且需命中战报/补给等词。成功分析只供后继剧情使用，不回写数值。",
         "frontend": "实际以carrier挂载脚本data.html；仅NextTavern.getNumericalState只读和MESSAGE_UPDATED订阅，无主剧情生成、数值写入或外链依赖。",
-        "limits": "原作者文本的旧输出格式和篇幅要求原样保留；实际生成、状态维护和展示仍以NextTavern当前执行合同为准。"
+        "limits": "原作者文本的旧输出格式和篇幅要求原样保留；实际生成、状态维护和展示仍以NextTavern当前执行合同为准。",
+        "format": "Native 1.2以data.cards/rules保存唯一作者正文。本卡已有明确栏目与稳定characterId，无需附加classification。archive.referenceSource保留原始字节与真实字段映射。运行期人物私有记忆、ordinary变量与数值提交由对应owner保存。"
       }
     },
     "cards": [

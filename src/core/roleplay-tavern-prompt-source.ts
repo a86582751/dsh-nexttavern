@@ -13,6 +13,7 @@ import type {TavernLoreEditObservationV1,TavernLoreEditsDataV1,TavernLoreEditSou
 import type {createRoleplayTavernLoreSourceV1} from './roleplay-tavern-lore-source.js'
 import {readCapturedTavernAvatarV1} from './roleplay-tavern-lore-source.js'
 import type {createRoleplayTavernLoreEditsV1} from './roleplay-tavern-lore-edits.js'
+import {materializeAuthorMetadataExtensionsV1} from './roleplay-tavern-source-author-metadata.js'
 
 interface SourceDependencies {
   readonly tables:AuthorTables&{status:AuthorTable}
@@ -86,9 +87,12 @@ function assemblePromptSourceData(captured:TavernLoreEditSourceDataCaptureV1,edi
     worldbookMembershipSha256:contributions.worldbookMembershipSha256,
     suppressAlwaysOn:contributions.directAlwaysOn.map(item=>({key:item.ref.key,sha256:item.ref.sha256})),
     splitExamples:true,nativeLoreReadPolicy:'automatic'})
+  const originalCardData=freeze(contributionInput.rawDecoded.data),
+    cardData:typeof originalCardData=edited.authorMetadataOverlay?.extensions.length?Object.freeze({...originalCardData,
+      extensions:materializeAuthorMetadataExtensionsV1(originalCardData.extensions,edited.authorMetadataOverlay)}):originalCardData
   return {kind:'captured-data' as const,source,currentIdentitySha256,edits:edited,compilation,contributions,original,residual,
     record:contributionInput.activeImport,decoded:contributionInput.rawDecoded,
-    cardData:freeze(contributionInput.rawDecoded.data),avatarPath:readCapturedTavernAvatarV1(captured)}
+    cardData,avatarPath:readCapturedTavernAvatarV1(captured)}
 }
 
 /** Synchronous DATA supplier for the actual input Owner under its Source lock.

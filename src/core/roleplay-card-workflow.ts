@@ -44,7 +44,13 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
   const cardWorkflows=(session:{id:string})=>[...(T.branch.entriesPrefix?.('tavern_cardjob__')??T.branch.entries())]
     .filter(([k,j])=>k.startsWith('tavern_cardjob__')&&(j as CardWorkflowJob).sessionId===session.id)
     .map(([,j])=>cloneRecord(j as CardWorkflowJob))
-  const activeCardWorkflow=(session: {id: string})=>cardWorkflows(session).find(j=>['queued','running','waiting-main'].includes(j.status))
+  function activeCardWorkflow(session:{id:string}) {
+    for(const [key,value] of T.branch.entriesPrefix?.('tavern_cardjob__')??T.branch.entries()) {
+      const job=value as CardWorkflowJob
+      if(key.startsWith('tavern_cardjob__')&&job.sessionId===session.id
+        &&['queued','running','waiting-main'].includes(job.status))return cloneRecord(job)
+    }
+  }
   function assertCardWorkflow(session: CardWorkflowSession,record: CardWorkflowRecord | null | undefined) {
     if(!record?.workflowId)return
     const job=T.branch.get(cardWorkflowKey(record.workflowId)) as CardWorkflowJob | undefined
@@ -69,7 +75,7 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
       ?resolveImportSource(session,sourceFile):null
     const fileSha256=resourceSource?sha256(resourceSource.bytes):undefined
     if(resourceSource&&!deps.captureResourceConversionSource)throw Error('资源角色卡转换读取器尚未就绪')
-    const exportSource=resourceSource?await deps.captureResourceConversionSource!(session,resourceSource)
+    const exportSource=resourceSource?await deps.captureResourceConversionSource!(session,resourceSource,fileSha256!)
       :(kind==='card-export'||kind==='card-convert')&&deps.captureExportStartSource
       ?deps.captureExportStartSource(session,mode):undefined
     if(kind==='card-convert'&&!exportSource?.conversionSnapshot)throw Error('角色卡转换启动来源无效')
@@ -110,9 +116,9 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
       if(active.executionPolicy!==executionPolicy)throw Error('角色卡任务执行策略不同，请先完成或取消现有任务')
       if(source&&(active.source.sha256!==sourceHash
         || active.source.sourceFile!==source.sourcePath))throw new Error('当前会话正在读取另一张卡，请先完成或取消')
-      if(kind==='card-convert'&&(active.source.sourceFile!==(resourceSource?.sourcePath??null)
+      if((kind==='card-convert'||kind==='card-export')&&(active.source.sourceFile!==(resourceSource?.sourcePath??null)
         ||active.source.sha256!==sourceHash||active.source.fileSha256!==fileSha256)) {
-        throw new Error('当前会话正在转换另一张卡或不同来源版本，请先完成或取消')
+        throw new Error('当前角色卡任务绑定了不同来源版本，请先完成或取消')
       }
       if(clientRequestId&&active.clientRequestId&&active.clientRequestId!==clientRequestId)
         throw new Error('当前会话已有不同 requestId 的导入任务，请查看现有 job')

@@ -24,7 +24,6 @@ const reasons:Record<string,string> = {
   'external-asset-not-bundled':'卡内未附带资源；外部地址尚未验证', 'optional-analysis-not-run':'可选分析尚未运行',
   'native-author-projection':'已读取原生作者字段，不代表相关脚本已运行',
   'passive-material-projection':'已保留为被动资料，不等同于自动触发的世界书',
-  'preserved-author-projection':'普通剧情读取保留的作者资料，人物分类供高级功能使用',
 }
 const names:Record<string,string> = {name:'名称',description:'人物资料',personality:'性格',scenario:'背景场景',
   first_mes:'默认开场',alternate_greetings:'备选开场',character_book:'世界书',mes_example:'对话范例',
@@ -36,7 +35,6 @@ function fieldName(pointer:string):string {
   const offset = parts[0] === 'data' ? 1 : 0
   const field = parts[offset]
   if(field==='compatibility') {
-    if(parts[offset+1]==='authorExecution')return '保留的作者资料'
     if(parts[offset+1]==='sillytavernMacroFields')return '原始宏字段'
   }
   if (field === 'extensions') {

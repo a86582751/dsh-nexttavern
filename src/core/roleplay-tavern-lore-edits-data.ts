@@ -4,6 +4,8 @@ import {recordSha256,sha256} from './roleplay-data.js'
 import {captureTavernLoreSourceCounterWitnessV1,parseTavernLoreSourceCounterWitnessV1}
   from './roleplay-tavern-lore-source.js'
 import {cloneSchemaData} from './tavern-mvu-schema-data.js'
+import {isAuthorMetadataRequestV1} from './roleplay-tavern-source-author-metadata.js'
+import type {TavernAuthorMetadataMutationRequestV1} from './roleplay-tavern-source-author-metadata.js'
 import {cloneRoleplayTavernLoreDataV1,TavernLoreDataFailureV1} from './roleplay-tavern-lore-data.js'
 import {composeRoleplayTavernCurrentOverlayV1} from './roleplay-tavern-current-overlay.js'
 import {compileTavernLoreBookV1,validateTavernLoreAbsentSourceReferenceV1,
@@ -13,8 +15,8 @@ import type {TavernLoreCompilationInputV1,TavernLoreCurrentNativeOverlayV1,
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernLoreMembershipDataV1,TavernLoreMemberIdentityV1} from './roleplay-tavern-lore-membership.js'
 import type {TavernLoreEditIdentityV1,TavernLoreEditHeadV1,TavernLoreEditEventV1,
-  TavernLoreEditRequestV1,TavernLoreEditRefV1,TavernLoreEditHeadRefV1,
-  TavernLoreEditReceiptV1,TavernLoreEditDiagnosticV1,TavernLoreMutationRequestV2,TavernLoreJournalRequestV2,
+  TavernLoreEditRequestV1,TavernSourceJournalRequestV1,TavernLoreEditRefV1,TavernLoreEditHeadRefV1,
+  TavernLoreEditReceiptV1,TavernLoreEditDiagnosticV1,TavernLoreMutationRequestV2,
   TavernLoreJournalEventV2,TavernLoreMutationReceiptV2,TavernLoreMutationRetryLocatorV1,
   TavernLoreEditsDataV1,TavernLoreAuthorBookSourceV1,MvuEffectiveLoreSourceV1} from './roleplay-tavern-lore-edits-types.js'
 
@@ -69,6 +71,7 @@ export function materializeTavernEffectiveBookV1(source:TavernLoreAuthorBookSour
 export const TAVERN_LORE_EDITS_BOUNDS_V1=Object.freeze({events:256,journalBytes:8_388_608,
   requestBytes:1_048_576,recordBytes:1_114_112,dataBytes:16_777_216,nodes:131_072,depth:66})
 const ID=/^[a-zA-Z0-9_-]{1,128}$/
+const OPERATION_ID=/^[a-zA-Z0-9_:-]{1,128}$/
 const HASH=/^[a-f0-9]{64}$/
 export const object=(value:unknown):value is Record<string,unknown>=>
   value!==null&&typeof value==='object'&&!Array.isArray(value)
@@ -127,12 +130,15 @@ export function exact(value:Record<string,unknown>,keys:readonly string[],code:T
 export function sessionId(value:unknown):asserts value is string {
   if(typeof value!=='string'||!ID.test(value))fail('REQUEST_INVALID')
 }
+export function operationIdData(value:unknown):asserts value is string {
+  if(typeof value!=='string'||!OPERATION_ID.test(value))fail('REQUEST_INVALID')
+}
 export function requestData(raw:unknown):TavernLoreEditRequestV1 {
   const value=strictData(raw,TAVERN_LORE_EDITS_BOUNDS_V1.requestBytes)
   if(!object(value))fail('REQUEST_INVALID')
   exact(value,['sessionId','expectedSourceSha256','expectedRevision','operationId','rawEntryPointer','rawEntrySha256','fields'],
     'REQUEST_INVALID')
-  sessionId(value.sessionId);sessionId(value.operationId)
+  sessionId(value.sessionId);operationIdData(value.operationId)
   if(!hash(value.expectedSourceSha256)||!hash(value.rawEntrySha256)||typeof value.expectedRevision!=='number'
     ||!Number.isSafeInteger(value.expectedRevision)||value.expectedRevision<0
     ||value.expectedRevision>TAVERN_LORE_EDITS_BOUNDS_V1.events||typeof value.rawEntryPointer!=='string'
@@ -159,7 +165,7 @@ export function mutationRequestData(raw:unknown):TavernLoreMutationRequestV2 {
   if(!object(value))fail('REQUEST_INVALID')
   exact(value,['schemaVersion','encoding','sessionId','expectedSourceSha256','expectedRevision','operationId','mutation'],
     'REQUEST_INVALID')
-  sessionId(value.sessionId);sessionId(value.operationId)
+  sessionId(value.sessionId);operationIdData(value.operationId)
   if(value.schemaVersion!==2||value.encoding!=='tavern-lore-mutation-request-v2'
     ||!hash(value.expectedSourceSha256)||typeof value.expectedRevision!=='number'
     ||!Number.isSafeInteger(value.expectedRevision)||value.expectedRevision<0
@@ -187,6 +193,23 @@ export function mutationRequestData(raw:unknown):TavernLoreMutationRequestV2 {
     }
   }else fail('REQUEST_INVALID')
   return value as unknown as TavernLoreMutationRequestV2
+}
+export function authorMetadataRequestData(raw:unknown):TavernAuthorMetadataMutationRequestV1 {
+  const value=strictData(raw,TAVERN_LORE_EDITS_BOUNDS_V1.requestBytes)
+  if(!object(value))fail('REQUEST_INVALID')
+  exact(value,['schemaVersion','encoding','sessionId','expectedSourceSha256','expectedRevision','operationId','mutation'],
+    'REQUEST_INVALID')
+  sessionId(value.sessionId);operationIdData(value.operationId)
+  if(value.schemaVersion!==1||!isAuthorMetadataRequestV1(value)||!hash(value.expectedSourceSha256)
+    ||typeof value.expectedRevision!=='number'||!Number.isSafeInteger(value.expectedRevision)
+    ||value.expectedRevision<0||value.expectedRevision>TAVERN_LORE_EDITS_BOUNDS_V1.events
+    ||!object(value.mutation))fail('REQUEST_INVALID')
+  const mutation=value.mutation
+  exact(mutation,['kind','extension','set',...Object.hasOwn(mutation,'remove')?['remove']:[]],'REQUEST_INVALID')
+  if(mutation.kind!=='extension-fields'||typeof mutation.extension!=='string'||!mutation.extension.length
+    ||!object(mutation.set)||mutation.remove!==undefined&&(!Array.isArray(mutation.remove)
+      ||!mutation.remove.every(field=>typeof field==='string')))fail('REQUEST_INVALID')
+  return value as unknown as TavernAuthorMetadataMutationRequestV1
 }
 export function identityOf(source:TavernLoreSourceDataV1):TavernLoreEditIdentityV1 {
   if(!object(source)||source.schemaVersion!==1||source.encoding!=='tavern-lore-current-source-data-v1'
@@ -277,11 +300,13 @@ export function parseHead(raw:unknown,identity:TavernLoreEditIdentityV1):TavernL
   if((value.revision===0)!==(value.lastEvent===null))fail('JOURNAL_CHAIN_INVALID')
   return freeze(value as unknown as TavernLoreEditHeadV1)
 }
-export function eventFrom(request:TavernLoreJournalRequestV2,baseHead:TavernLoreEditHeadV1,exists:boolean,
+export function eventFrom(request:TavernSourceJournalRequestV1,baseHead:TavernLoreEditHeadV1,exists:boolean,
   source?:TavernLoreSourceDataV1):TavernLoreJournalEventV2 {
   if('mutation' in request&&!source)fail('SOURCE_UNAVAILABLE')
   const version='mutation' in request
-    ?{schemaVersion:3 as const,encoding:'tavern-lore-mutation-event-v3' as const,
+    ?{...isAuthorMetadataRequestV1(request)
+        ?{schemaVersion:4 as const,encoding:'tavern-author-metadata-event-v1' as const}
+        :{schemaVersion:3 as const,encoding:'tavern-lore-mutation-event-v3' as const},
       sourceCounters:captureTavernLoreSourceCounterWitnessV1(source!)}
     :{schemaVersion:1 as const,encoding:'tavern-lore-edit-event-v1' as const}
   const body={...version,state:'prepared' as const,
@@ -293,17 +318,19 @@ export function parseEvent(raw:unknown,key:string,identity:TavernLoreEditIdentit
   const value=strictData(raw,TAVERN_LORE_EDITS_BOUNDS_V1.recordBytes)
   if(!object(value))fail('JOURNAL_SCHEMA_INVALID')
   exact(value,['schemaVersion','encoding','state','identity','identitySha256','request','payloadSha256','baseHead',
-    'baseHeadRowSha256','revision','eventSha256',...value.schemaVersion===3?['sourceCounters']:[]],'JOURNAL_SCHEMA_INVALID')
+    'baseHeadRowSha256','revision','eventSha256',...value.schemaVersion===3||value.schemaVersion===4?['sourceCounters']:[]],'JOURNAL_SCHEMA_INVALID')
   if(!(value.schemaVersion===1&&value.encoding==='tavern-lore-edit-event-v1'
     ||value.schemaVersion===2&&value.encoding==='tavern-lore-mutation-event-v2'
-    ||value.schemaVersion===3&&value.encoding==='tavern-lore-mutation-event-v3')
+    ||value.schemaVersion===3&&value.encoding==='tavern-lore-mutation-event-v3'
+    ||value.schemaVersion===4&&value.encoding==='tavern-author-metadata-event-v1')
     ||value.state!=='prepared')fail('JOURNAL_SCHEMA_INVALID')
-  if(value.schemaVersion===3) {
+  if(value.schemaVersion===3||value.schemaVersion===4) {
     try {parseTavernLoreSourceCounterWitnessV1(value.sourceCounters)}
     catch {fail('JOURNAL_SCHEMA_INVALID')}
   }
   if(!same(value.identity,identity)||value.identitySha256!==recordSha256(identity))fail('JOURNAL_IDENTITY_MISMATCH')
-  const request=value.schemaVersion===1?requestData(value.request):mutationRequestData(value.request),
+  const request=value.schemaVersion===1?requestData(value.request)
+    :value.schemaVersion===4?authorMetadataRequestData(value.request):mutationRequestData(value.request),
     baseHead=parseHead(value.baseHead,identity)
   if(key!==eventKey(baseHead.identitySha256,request.operationId)||request.sessionId!==identity.sessionId
     ||value.payloadSha256!==recordSha256(request)||!hash(value.eventSha256))fail('JOURNAL_HASH_INVALID')

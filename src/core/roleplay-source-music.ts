@@ -2,7 +2,6 @@
 import {htmlLiteralsV1,scriptLiteralsV1} from './roleplay-source-music-parser.mjs'
 import {recordSha256} from './roleplay-data.js'
 import type {NextTavernCardData} from './nexttavern-card.js'
-import {nextTavernExecutionAuthorData,nextTavernExecutionAuthorPointer} from './nexttavern-card.js'
 import type {TavernResource,createTavernLibrary} from './tavern-library.js'
 import type {ResourceSession} from './roleplay-resource-bridge-types.js'
 
@@ -33,9 +32,6 @@ const remoteAudioTypes:Readonly<Record<string,string>>={
   flac:'audio/flac',opus:'audio/ogg',webm:'audio/webm',
 }
 function discover(data:NextTavernCardData):LocatedMusic[] {
-  const cardsPointer=nextTavernExecutionAuthorPointer(data,'cards')
-  const rulesPointer=nextTavernExecutionAuthorPointer(data,'rules')
-  data=nextTavernExecutionAuthorData(data)
   const found:LocatedMusic[]=[]
   const add=(uri:string,carrier:SourceMusicCandidateV1['carrier'],position:string,name?:string,
     audioSink=false,hint?:string)=>{
@@ -80,7 +76,7 @@ function discover(data:NextTavernCardData):LocatedMusic[] {
       literal.name,literal.audioSink,literal.typeHint)
   }
   assets(data.assets,'/data/assets')
-  for(const field of ['cards','worldbook']as const)data[field].forEach((row,index)=>html(row.content,`${field==='cards'?cardsPointer:'/data/worldbook'}/${index}/content`))
+  for(const field of ['cards','worldbook']as const)data[field].forEach((row,index)=>html(row.content,`/data/${field}/${index}/content`))
   for(const [key,entry]of Object.entries(data.character_book?.entries??{})) {
     if(object(entry)&&typeof entry.content==='string')html(entry.content,'/data/character_book/entries/'+pointer(key)+'/content')
   }
@@ -90,10 +86,10 @@ function discover(data:NextTavernCardData):LocatedMusic[] {
       if(object(value)&&typeof value.rawText==='string')html(value.rawText,'/data/opening/catalog/'+index+'/rawText')
     })
   }
-  for(const [key,value]of Object.entries(data.rules))if(typeof value==='string')html(value,rulesPointer+'/'+pointer(key))
+  for(const [key,value]of Object.entries(data.rules))if(typeof value==='string')html(value,'/data/rules/'+pointer(key))
   if(data.status)html(data.status.text,'/data/status/text')
   const beauty=data.rules.beauty
-  if(typeof beauty?.js==='string')script(beauty.js,`${rulesPointer}/beauty/js`)
+  if(typeof beauty?.js==='string')script(beauty.js,'/data/rules/beauty/js')
   const extensions=data.extensions
   const helper=object(extensions)&&extensions.tavern_helper
   const scriptTree=(values:unknown[],position:string):void=>values.forEach((value,index)=>{

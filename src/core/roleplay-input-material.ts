@@ -457,9 +457,12 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
           }}
         }
         let chosen:Exclude<Awaited<ReturnType<typeof construct>>,MaterialTextDraft>|undefined
-        if(scope.phaseA&&input.candidate) {
+        if(input.candidate) {
           let selectedBasis:NativeMaterialCandidateBasisV1|undefined
-          const preview=async()=>input.candidate!.preview(scope.phaseA!.messages() as readonly UserMessage[],async basis=>{
+          // Tool continuation steps retain their completed Phase A snapshot.
+          // Native still previews final text against this step's admission messages.
+          const preview=async()=>input.candidate!.preview(
+            scope.phaseA?scope.phaseA.messages() as readonly UserMessage[]:input.admission.messages,async basis=>{
             selectedBasis=basis
             const built=await construct({...input,selected:basis.selected,
               selectedCaptureV2:basis.selectedCaptureV2,finalAssembly:basis.finalAssembly,
@@ -477,20 +480,22 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
           })
           const first=await preview()
           assertBudgetAndSignal()
-          const checkpoint=checkpointForPreview(scope.phaseA.current(),selectedBasis!,first)
-          if(checkpoint) {
-            // The existing notes-save owner keeps its own signal/deadline.
-            // Releasing the old DATA baseline makes its writes visible to the
-            // next capture without replaying author generation callbacks.
-            releaseBuild?.();releaseBuild=undefined
-            pauseBudget()
-            await scope.phaseA.checkpoint(checkpoint.options)
-            resumeBudget();assertBudgetAndSignal()
-            const final=await preview()
-            if(final.measurement?.capacity.status==='known'&&final.measurement.capacity.excess>0)
-              fail('INPUT_REQUEST_CONTEXT_TOO_LARGE_AFTER_CHECKPOINT')
+          if(scope.phaseA) {
+            const checkpoint=checkpointForPreview(scope.phaseA.current(),selectedBasis!,first)
+            if(checkpoint) {
+              // The existing notes-save owner keeps its own signal/deadline.
+              // Releasing the old DATA baseline makes its writes visible to the
+              // next capture without replaying author generation callbacks.
+              releaseBuild?.();releaseBuild=undefined
+              pauseBudget()
+              await scope.phaseA.checkpoint(checkpoint.options)
+              resumeBudget();assertBudgetAndSignal()
+              const final=await preview()
+              if(final.measurement?.capacity.status==='known'&&final.measurement.capacity.excess>0)
+                fail('INPUT_REQUEST_CONTEXT_TOO_LARGE_AFTER_CHECKPOINT')
+            }
+            await scope.phaseA.commit()
           }
-          await scope.phaseA.commit()
         }else {
           if(scope.phaseA) {
             if(scope.phaseA.current().needsCheckpoint) {
@@ -546,11 +551,12 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
             chosen={...chosen,snapshot,plan,refs,captureSha256:recordSha256({schemaVersion:1,
               encoding:'core-input-material-capture-v1',...refs,nativeSelectedSha256:chosen.initial.selected.sha256,
               assemblySha256:chosen.initial.assemblySha256})}
-            if(changed&&scope.phaseA&&input.candidate) {
+            if(changed&&input.candidate) {
               // Finalized DATA refs affect Native material identities. Refresh
               // only Native planning; the selected guest build stays intact.
               const finalized=chosen
-              const preview=await input.candidate.preview(scope.phaseA.messages() as readonly UserMessage[],async basis=>{
+              const preview=await input.candidate.preview(
+                scope.phaseA?scope.phaseA.messages() as readonly UserMessage[]:input.admission.messages,async basis=>{
                 if(basis.selected.sha256!==finalized.initial.selected.sha256
                   ||basis.assemblySha256!==finalized.initial.assemblySha256
                   ||nativeInputSha256(basis.preparedRoute)!==finalized.routeSha256)fail('INPUT_MATERIAL_FINALIZED_BASIS_CHANGED')

@@ -1,7 +1,7 @@
 /** One conversion pipeline for manual conversion and native export. The model
  * only chooses coordinates; the program owns every byte in the output. */
 import {freezeNativeCardConversionV1,materializeNativeCardConversionV1,
-  validateNativeCardClassificationV1} from './native-card-conversion.js'
+  validateNativeCardClassificationV1,readNativeCardClassificationV1} from './native-card-conversion.js'
 export {nativeCardConversionIsDeterministicV1} from './native-card-conversion.js'
 import type {NativeCardClassificationV1,NativeCardConversionSnapshotV1} from './native-card-conversion.js'
 import type {NextTavernCardDocument} from './nexttavern-card.js'
@@ -47,26 +47,22 @@ atomic=true的来源含动态模板，必须整块分配，不能拆开；多人
 export async function driveNativeCardConversionV1(input:NativeCardConversionDriverInputV1):Promise<NextTavernCardDocument> {
   const {snapshot}=input
   await input.progress({stage:'reading',message:'已冻结当前有效设定，正在读取原文结构',done:0,total:4})
-  // Authored native cards already own explicit fields. Export must not pay for
-  // semantic rediscovery, nor invent preserved-author indirection for them.
-  if(input.nativeAuthoring&&snapshot.document.spec_version==='1.0') {
+  // Explicit Native author fields already own their semantic grouping.
+  if(input.nativeAuthoring&&!Object.hasOwn(snapshot.document,'classification')) {
     await input.progress({stage:'saving',message:'原生结构已就绪，正在保存当前设定',done:3,total:4})
     return structuredClone(snapshot.document)
   }
-  const stored=snapshot.document.data.compatibility?.classification as
-    (NativeCardClassificationV1&{sourceSha256?:string})|undefined
-  let classification=input.classification
-  if(!classification&&stored?.sourceSha256===snapshot.sourceSha256) {
-    classification=validateNativeCardClassificationV1(snapshot,{characters:stored.characters,assignments:stored.assignments})
-  }
+  let classification=input.classification??readNativeCardClassificationV1(snapshot)
   if(!classification) {
     await input.progress({stage:'classifying',message:'模型正在识别人物与规则归属；原文不会被改写',done:1,total:4})
     classification=await input.classify(NATIVE_CARD_CLASSIFICATION_SYSTEM_V1,JSON.stringify({
       name:snapshot.document.data.name,
       sources:snapshot.units.map(({text,...unit})=>({...unit,lines:sourceLines(text).map((text,index)=>({line:index+1,text}))})),
     }),value=>validateNativeCardClassificationV1(snapshot,value))
-    await input.checkpoint(classification)
   }
+  // A reused resource classification must also survive in the completed job
+  // so applying that conversion can bind it to the current matching Source.
+  if(!input.classification)await input.checkpoint(classification)
   await input.progress({stage:'materializing',message:'正在按分类坐标拷贝完整原文，保留原有执行条件',done:2,total:4})
   const document=materializeNativeCardConversionV1(snapshot,classification)
   await input.progress({stage:'saving',message:'原生卡已生成，正在保存独立副本',done:3,total:4})
@@ -78,7 +74,7 @@ export const captureNativeCardConversionV1=freezeNativeCardConversionV1
 
 /** A library resource is an independent conversion source. It never borrows
  * or activates the current session's card; the library retains upload bytes. */
-export async function captureNativeCardResourceConversionV1(source:{bytes:Buffer;extension:string;path?:string}):
+export async function captureNativeCardResourceConversionV1(source:{bytes:Buffer;extension:string;path?:string;fileSha256?:string}):
   Promise<{snapshot:NativeCardConversionSnapshotV1;nativeAuthoring:boolean}> {
   const extension=source.extension.toLowerCase()
   let document:NextTavernCardDocument,nativeAuthoring=false
@@ -93,7 +89,7 @@ export async function captureNativeCardResourceConversionV1(source:{bytes:Buffer
       if(embedded) {
         document=embedded
         nativeAuthoring=true
-      }else document={spec:'nexttavern_card',spec_version:'1.0',data:projectTavernCardAuthorDataV1(decoded),
+      }else document={spec:'nexttavern_card',spec_version:'1.2',data:projectTavernCardAuthorDataV1(decoded),
         archive:{documents:[{document:structuredClone(decoded.document),source:{extension,
           format:decoded.format,sha256:decoded.sourceSha256}}]}}
     }
@@ -105,9 +101,9 @@ export async function captureNativeCardResourceConversionV1(source:{bytes:Buffer
       text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(source.bytes)
     }else throw Error('原生卡转换支持 PNG、JSON、Markdown、TXT 或 DOCX 资源')
     const name=source.path?basename(source.path,extname(source.path)):'角色卡'
-    document={spec:'nexttavern_card',spec_version:'1.0',data:{name,cards:[{name,content:text}],
+    document={spec:'nexttavern_card',spec_version:'1.2',data:{name,cards:[{name,content:text}],
       worldbook:[],rules:{}},archive:{classifiedSources:[{rawSource:text,
-        source:{extension,sha256:createHash('sha256').update(source.bytes).digest('hex')}}]}}
+        source:{extension,sha256:source.fileSha256??createHash('sha256').update(source.bytes).digest('hex')}}]}}
   }
   return {snapshot:freezeNativeCardConversionV1(document),nativeAuthoring}
 }

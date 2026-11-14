@@ -24,6 +24,7 @@ import type { TaskAgent } from './tavern-task-types.js'
 import type { ImportRecord,CardImportDependencies,ImportSession } from './roleplay-import-types.js'
 import {captureNextTavernCardDocumentV1,captureNextTavernAuthorDataV1} from './roleplay-native-card-export.js'
 import {captureNativeCardConversionV1,captureNativeCardResourceConversionV1,driveNativeCardConversionV1} from './native-card-conversion-driver.js'
+import {materializeNativeCardConversionV1} from './native-card-conversion.js'
 import {projectNativeCardAdvancedMaterialV1} from './native-card-advanced-material.js'
 import {createNativeCardAdvancedV1} from './native-card-advanced.js'
 import {createRoleplayCharacterMaterial} from './roleplay-character-material.js'
@@ -44,7 +45,9 @@ import {communityRegexMacros,communityRegexRules} from './community-regex.js'
 import {createRoleplayUserSourceOperationV1,createRoleplaySourceMessageProcessorV1,
   roleplaySourceMessageRulesV1} from './roleplay-source-message.js'
 import {executeAuthorNativeCommands} from './roleplay-author-commands.js'
-import type {AuthorNativeCommandRequestV1,AuthorNativeCommandResultV1} from './roleplay-author-commands.js'
+import type {AuthorNativeCommandRequestV1,AuthorNativeCommandResultV1,
+  AuthorNativeCommandSourceControlsV1} from './roleplay-author-commands.js'
+import {createRoleplayRubyCommandsV1} from './roleplay-ruby-commands.js'
 import {registerCommunityPresetRoutes} from './community-preset-routes.js'
 import {captureRoleplayTavernPromptSourceDataV1} from './roleplay-tavern-prompt-source.js'
 import {promptProgramSourceOrdinaryNamespaceV3} from './roleplay-prompt-program-source.js'
@@ -1104,7 +1107,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     return inputState.captureSource(id,'native-card-conversion',()=>{
       const current=captureNextTavernAuthorDataV1({tables:T,source:tavernSource,edits:tavernLoreEdits},id)
       return {snapshot:captureNativeCardConversionV1({spec:'nexttavern_card',
-        spec_version:current.native?.spec_version??'1.0',data:current.data,archive:{}}),
+        spec_version:'1.2',data:current.data,archive:{},
+        ...current.native&&Object.hasOwn(current.native,'classification')
+          ?{classification:current.native.classification}:{}}),
         nativeAuthoring:!current.original||!!current.native,authorCoordinates:current.authorCoordinates,
         sourceIdentity:current.original?{importId:current.original.importId,
           transactionId:current.original.activation?.transactionId,rawSha256:current.original.rawSha256}:'native-authoring'}
@@ -1138,25 +1143,25 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     }})
   function nativeCharacterCatalog(session:{id:string}) {
     const current=nativeCardAdvanced.read(session.id)
-    return current.state==='ready'&&current.document?current.document.data.cards.flatMap((row,index)=>
+    return current.state==='ready'&&current.view?current.view.cards.flatMap((row,index)=>
       row.kind==='user'||row.enabled===false?[]:[{id:String(row.characterId??`native-character-${index+1}`),
-        name:row.name??current.document!.data.name,content:row.content}]):[]
+        name:row.name??current.view!.name,content:row.content}]):[]
   }
   function readNativeCardForRequest(session:{id:string}) {
     const base=nativeCardAdvanced.read(session.id)
-    if(base.state!=='ready'||!base.document)return base
+    if(base.state!=='ready'||!base.view)return base
     const agent=taskAgents.get(session.id),binding=agent&&inputBindings.get(agent),step=binding?.currentStep()
     if(!step)return base
     return binding?.withCurrentMaterial?.(step,material=>{
       const {snapshot,authorCoordinates}=captureNativeCardAdvancedSource(session.id)
       const ids=new Map(snapshot.units.map(unit=>[unit.pointer,unit.id]))
       const coordinates=new Map(authorCoordinates.map(row=>[`${row.table}\0${row.key}\0${row.field}`,row.pointer]))
-      const characters=base.document!.data.cards.filter(row=>row.kind!=='user'&&row.enabled!==false).map(row=>({
-        id:String(row.characterId??`native-character-${base.document!.data.cards.indexOf(row)+1}`),
-        name:row.name??base.document!.data.name,...row.aliases?{aliases:row.aliases}:{}}))
+      const characters=base.view!.cards.filter(row=>row.kind!=='user'&&row.enabled!==false).map(row=>({
+        id:String(row.characterId??`native-character-${base.view!.cards.indexOf(row)+1}`),
+        name:row.name??base.view!.name,...row.aliases?{aliases:row.aliases}:{}}))
       const classification=base.classification??{characters,assignments:snapshot.units.map(unit=>{
         const card=/\/cards\/(\d+)\/content$/.exec(unit.pointer)
-        const row=card?base.document!.data.cards[Number(card[1])]:undefined
+        const row=card?base.view!.cards[Number(card[1])]:undefined
         const character=row&&row.kind!=='user'?characters.find(value=>value.id===String(row.characterId??`native-character-${Number(card![1])+1}`)):undefined
         const rule=/\/rules\/(core|plot|narrative|reply|style)$/.exec(unit.pointer)
         return {sourceId:unit.id,startLine:1,endLine:unit.lineCount,
@@ -1181,8 +1186,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
           ...character.aliases?{aliases:character.aliases}:{},
           content:content+(character.lore?`\n\n${character.lore}`:'')})
       }
-      return {...base,characters:[...roster.values()],document:{...base.document!,data:{...base.document!.data,
-        rules:{...base.document!.data.rules,...projected.rules}}}}
+      return {...base,characters:[...roster.values()],view:{...base.view!,
+        rules:{...base.view!.rules,...projected.rules}}}
     })??base
   }
   const sourceMusic=createSourceMusicV1({libraryFor,
@@ -1225,12 +1230,14 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     requestCharacterBackground,
     readCompletedCharacterBackground,
     readCompletedRubyAnalysis,
+    recoverCompletedRubyAnalysis,
     resumeMemoryWork,
     resumeStatusMaintenance,
   } = createRoleplayTaskHost({
     storyEntryReader,
     observeRecords:inputState.observeDomainChanges,
     advancedCard:readNativeCardForRequest,
+    advancedCardReady:session=>nativeCardAdvanced.read(session.id).state==='ready',
     characterPrivate:{enabled:session=>characterPrivate?.enabled(session.id)===true,
       catalog:session=>characterMaterials(session.id).map(({id,name})=>({id,name})),
       prepare:(session,id,signal)=>characterPrivate!.prepare(session.id,id,signal),
@@ -1388,14 +1395,16 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   }
   let readNativeOpeningForExport:((session:Parameters<NonNullable<CardImportDependencies['readNativeOpeningExport']>>[0],
     captured?:TavernLoreSourceCaptureV1)=>ReturnType<NonNullable<CardImportDependencies['readNativeOpeningExport']>>)|undefined
-  function captureCardExportStartSource(session:ImportSession,mode:'original'|'organized') {
+  function captureCardExportStartSource(session:ImportSession,mode:'original'|'organized',
+    sourceCapture?:TavernLoreSourceCaptureV1) {
     if(mode==='original') {
       const assertCurrent=()=>{
         if(sourceReadOwnerClosed||ctx.sessions.get(session.id)!==session||!storyBranchIsActive(session))
           throw Error('CARD_EXPORT_START_SESSION_CHANGED')
       }
       assertCurrent()
-      const document=captureNextTavernCardDocumentV1({tables:T,source:tavernSource,edits:tavernLoreEdits,
+      const document=captureNextTavernCardDocumentV1({tables:T,
+        source:sourceCapture?{capture:()=>sourceCapture}:tavernSource,edits:tavernLoreEdits,
         readOpening:captured=>readNativeOpeningForExport!(session,captured),readTransport:record=>{
           const envelope=record.sourceEnvelope!
           if(envelope.schemaVersion!==2)throw Error('CARD_EXPORT_ARCHIVE_VERSION_INVALID')
@@ -1408,8 +1417,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       const conversionSnapshot=captureNativeCardConversionV1(document)
       const advanced=nativeCardAdvanced.read(session.id)
       return {conversionSnapshot,nativeAuthoring:advanced.nativeAuthoring,
-        conversionClassification:advanced.state==='ready'?advanced.classification:undefined,
-        sha256:conversionSnapshot.sourceSha256,assertCurrent}
+        conversionClassification:advanced.state==='ready'&&advanced.sourceSha256===conversionSnapshot.sourceSha256
+          ?advanced.classification:undefined,
+        // This complete frozen input also carries opening, settings, metadata
+        // and archive. Reuse its identity for the job, not for classification.
+        sha256:recordSha256(conversionSnapshot.document),assertCurrent}
     }
     const read=captureCardExportSourceData(session)
     // Domain/Native/selection changes retire the captured DATA in InputState.
@@ -1433,9 +1445,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     modelPolicy,
     statusFixedContext: (...args) => statusFixedContext(...args),
     captureExportStartSource:(session,mode)=>captureCardExportStartSource(session,mode),
-    captureResourceConversionSource:async(session,source)=>{
-      const {snapshot,nativeAuthoring}=await captureNativeCardResourceConversionV1({...source,path:source.sourcePath})
-      return {sha256:snapshot.sourceSha256,conversionSnapshot:snapshot,nativeAuthoring,
+    captureResourceConversionSource:async(session,source,fileSha256)=>{
+      const {snapshot,nativeAuthoring}=await captureNativeCardResourceConversionV1({...source,path:source.sourcePath,fileSha256})
+      return {sha256:fileSha256,conversionSnapshot:snapshot,nativeAuthoring,
         assertCurrent:()=>{
           if(sourceReadOwnerClosed||ctx.sessions.get(session.id)!==session||!storyBranchIsActive(session))
             throw Error('CARD_CONVERSION_START_SESSION_CHANGED')
@@ -2195,7 +2207,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       const capability=nativeCardAdvanced.read(session.id)
       if(capability.state!=='ready')throw Error(capability.reason??'请先转化为 NextTavern 原生卡')
     },
-    clusterCore:session=>readNativeCardForRequest(session).document?.data.rules.core??'',
+    clusterCore:session=>readNativeCardForRequest(session).view?.rules.core??'',
   })
 
   const sideChat=registerSideChat({ctx:ctx as unknown as Parameters<typeof registerSideChat>[0]['ctx'],
@@ -2411,9 +2423,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   }
   function readAdvancedTaskTables(session:{id:string},read:NonNullable<ReturnType<typeof captureLegacySourceRead>>) {
     const advanced=nativeCardAdvanced.read(session.id)
-    if(advanced.state!=='ready'||!advanced.document)return read
+    if(advanced.state!=='ready'||!advanced.view)return read
     const cards=new Map(advanced.characters.map(row=>[keyOf(session.id,row.id),{...row}]))
-    const rules=new Map([[keyOf(session.id,'spec'),{...advanced.document.data.rules}]])
+    const rules=new Map([[keyOf(session.id,'spec'),{...advanced.view.rules}]])
     return {tables:{...read.tables,cards,rules},sourceProjectionSha256:recordSha256({
       source:read.sourceProjectionSha256,classification:advanced.classification??null,
       author:advanced.sourceSha256})}
@@ -3345,11 +3357,15 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     withSourceLock:(id,work,signal)=>withImportLock(id,'ruby-source-capture',work,signal)})
   rubyOwner=createRoleplayRubyOwnerV1({table:T.branch,capture:rubyCapture.capture,
     readAcceptedResult:readCompletedRubyAnalysis,
+    recoverAcceptedResult:recoverCompletedRubyAnalysis,
     withSourceLock:(id,work,signal)=>withImportLock(id,'ruby-analysis-publication',work,signal),
     request:({capture,prompt,signal,current,createOwner,retry})=>requestRubyAnalysis({
       session:capture.session as unknown as import('./roleplay-task-host-types.js').HostSession,
       prompt,signal,current,createOwner,...(retry?{retry}:{})})})
   ctx.effect(()=>()=>rubyOwner?.dispose(),'roleplay: Ruby analysis owner lifetime')
+  const rubyCommands=createRoleplayRubyCommandsV1({source:tavernSource,edits:tavernLoreEdits,ruby:rubyOwner,
+    capture:(id,signal)=>rubyCapture.capture(id,signal,{readOnly:true}),
+    withSourceLock:(id,work,signal)=>withImportLock(id,'ruby-command-source',work,signal)})
   const ejsPrograms=createRoleplayTavernEjsPrograms({loadRuntime:(engine,signal)=>
     mvuOpening.templateEjsRuntime(engine,signal)})
   ctx.effect(()=>()=>ejsPrograms.dispose(),'roleplay: retained EJS programs lifetime')
@@ -3808,7 +3824,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     }
   }
   async function authorCommands(sid:string,origin:string,request:AuthorNativeCommandRequestV1,
-    sourceCurrent:()=>boolean,signal:AbortSignal):Promise<AuthorNativeCommandResultV1> {
+    sourceCurrent:()=>boolean,signal:AbortSignal,sourceControls?:AuthorNativeCommandSourceControlsV1)
+    :Promise<AuthorNativeCommandResultV1> {
     const session=ctx.sessions.get(sid),agent=ctx.agents?.list().find(row=>row.session===session),
       actual=agent&&ctx.get('agentLoop')?.getInputAdmissionAgent(agent)
     if(!session||!agent||actual!==agent)throw Error('AUTHOR_NATIVE_COMMAND_SESSION_UNAVAILABLE')
@@ -3821,6 +3838,16 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     assertCurrent();bindUserSourceOwner(agent)
     return executeAuthorNativeCommands(request,{
       assertCurrent,
+      ruby:(operationId,command,commandSignal)=>rubyCommands.execute(sid,origin,operationId,command,commandSignal,{
+        assertCurrent,writeCurrent:()=>!signal.aborted&&ctx.sessions.get(sid)===session
+          &&ctx.get('agentLoop')?.getInputAdmissionAgent(agent)===actual
+          &&(sourceControls?.writeCurrent()??sourceCurrent()),
+        async published(source) {
+          if(!sourceControls)throw Error('AUTHOR_NATIVE_COMMAND_SOURCE_CONTINUATION_UNAVAILABLE')
+          await sourceControls.published(source)
+          assertCurrent()
+        },
+        observePublication:()=>captureAuthorDataPublication(sid,sourceControls?.capturePublication)}),
       publish:(operationId,text)=>ctx.sessionController.appendAuthorUserInput(agent,
         {operationId,text,producer:'dsh-nexttavern',origin,assertCurrent},signal),
       async trigger(operationId,awaitCompletion) {
@@ -4600,13 +4627,16 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       const record=captured.kind==='captured-data'?captured.contributionInput.activeImport
         :active?T.branch.get(importRecordKey(active.sourceRecordSessionId,active.importId)) as ImportRecord:undefined
       if(!record||record.authoringOrigin?.kind==='native-authoring'){
-        const captured=captureCardExportStartSource(session,'original')
-        if(!captured.conversionSnapshot||!captured.nativeAuthoring)
+        const exported=captureCardExportStartSource(session,'original',captured)
+        if(!exported.conversionSnapshot||!exported.nativeAuthoring)
           throw Error('当前对话没有可下载的上传源文件')
-        const document=captured.conversionSnapshot.document
+        const snapshot=exported.conversionSnapshot
+        const {classification:_previousClassification,...authorDocument}=snapshot.document
+        const document=exported.conversionClassification
+          ?materializeNativeCardConversionV1(snapshot,exported.conversionClassification):authorDocument
         return libraryFor(session).archive({name:resourceName(document.data.name,'.json'),type:'application/json',
           bytes:Buffer.from(JSON.stringify(document,null,2)+'\n','utf8'),
-          source:{sessionId:session.id,kind:'card-export',sourceHash:captured.sha256}})
+          source:{sessionId:session.id,kind:'card-export',sourceHash:recordSha256(document)}})
       }
       return originalCardResource(session,record)
     },
@@ -4621,11 +4651,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       if(!storyBranchIsActive(session))throw Error('请先切换到要应用的世界线')
       if(job.nativeAuthoring&&!job.conversionClassification){
         const current=nativeCardAdvanced.read(session.id)
-        if(current.sourceSha256!==job.source.sha256)throw Error('设定已改变；文件仍可下载，请重新导出当前设定')
+        if(current.sourceSha256!==job.conversionSnapshot.sourceSha256)throw Error('设定已改变；文件仍可下载，请重新导出当前设定')
         return current
       }
       if(!job.conversionClassification)throw Error('转换任务尚未保存分类结果')
-      return nativeCardAdvanced.apply(session.id,{sourceSha256:job.source.sha256,
+      return nativeCardAdvanced.apply(session.id,{sourceSha256:job.conversionSnapshot.sourceSha256,
         classification:job.conversionClassification,
         ...(typeof job.resourceId==='string'?{resourceId:job.resourceId}:{})})
     },
@@ -5056,7 +5086,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     })
   const sideExportTool=simpleTool<{action?:'start'|'status';job_id?:string},{agent?:HostAgent;signal?:AbortSignal},Promise<unknown>>(
     'tavern_side_export_card',
-    '明确要求修改原始角色卡并已完成当前导入设定的编辑后，使用现有导出/转换任务生成新的 NextTavern 卡版本；上传原件仍保留。action=start发起，status加job_id查询。分类有效或Native1.0可直接导出；分类失效由独立原生子任务处理并保留分类检查点，不唤醒主剧情，失败时按jobId核对原因而不盲重试。',
+    '明确要求修改原始角色卡并已完成当前导入设定的编辑后，使用现有导出/转换任务生成新的 NextTavern 卡版本；上传原件仍保留。action=start发起，status加job_id查询。分类有效或无待处理分类的原生作者正文可直接导出；分类失效由独立原生子任务处理并保留分类检查点，不唤醒主剧情，失败时按jobId核对原因而不盲重试。',
     {type:'object',properties:{action:{type:'string',enum:['start','status']},job_id:{type:'string'}},additionalProperties:false},async(args,exec)=>{
       if(!exec.agent?.session||!sideChat.ownerOf(exec.agent.session.id))throw Error('仅独立侧聊可发起卡片新版本导出')
       const story=await sideScopedSessionOf(exec) as ImportSession

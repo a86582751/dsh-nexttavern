@@ -6,6 +6,7 @@ import { compileTavernLoreBookV1, resolveTavernLoreContentTextV1 } from './taver
 import { ST_LORE_ENTRY_DEFAULTS_V1 } from './tavern-lore-fixed-profile.mjs';
 import { composeRoleplayTavernCurrentOverlayV1 } from './roleplay-tavern-current-overlay.js';
 import { foldTavernLorePublishedMembershipV2 } from './roleplay-tavern-lore-membership.js';
+import { createAuthorMetadataOverlayV1, isAuthorMetadataRequestV1, materializeAuthorMetadataExtensionsV1 } from './roleplay-tavern-source-author-metadata.js';
 import { validateFrozenSourceEditBaselineV1, validateInheritanceEditSlotV1 } from './roleplay-tavern-source-edit-baseline.js';
 import { tavernSourceEditSlotKeyV1 } from './roleplay-tavern-source-inheritance-data.js';
 import { TAVERN_LORE_EDITS_BOUNDS_V1, fail, freeze, strictData, same, identityOf, namespace, headKey, eventKey, rowRef, headRef, genesis, parseHead, parseEvent, nextHead, validateFields, compilerInput, LoreEditFailureV1, object, mutationRetryLocatorDataV1 } from './roleplay-tavern-lore-edits-data.js';
@@ -13,7 +14,7 @@ export const journalReferencesShaV1 = (refs, inherited) => recordSha256(inherite
         baselineSha256: inherited.baseline.baselineSha256 } } : refs);
 /** The same exact published-chain fold serves live Source and receipt lookup.
  * Only the live writer additionally needs full membership and Source fields. */
-function readPublishedChainV1(identity, head, readEvent) {
+function readPublishedChainV1(identity, head, readEvent, onPublished) {
     const reversed = [], seen = new Set();
     let link = head.lastEvent;
     while (link) {
@@ -35,6 +36,7 @@ function readPublishedChainV1(identity, head, readEvent) {
             || event.baseHeadRowSha256 !== (expected.revision === 0 ? 'missing' : recordSha256(expected)))
             fail('JOURNAL_CHAIN_INVALID');
         expected = nextHead(event);
+        onPublished?.(event);
     }
     if (!same(expected, head) || published.length !== head.revision)
         fail('JOURNAL_CHAIN_INVALID');
@@ -105,6 +107,7 @@ export function readJournal(deps, source, assertCapturedSourceCurrent) {
  * belongs to the surrounding input Owner or the live wrapper above. */
 export function readJournalData(deps, source) {
     const identity = identityOf(source), identitySha256 = recordSha256(identity), prefix = namespace(identitySha256);
+    const metadata = createAuthorMetadataOverlayV1(), acceptMetadata = (event) => metadata.accept(event.request);
     const values = new Map(), refs = [];
     let inherited;
     if (source.inheritance) {
@@ -113,7 +116,7 @@ export function readJournalData(deps, source) {
             if (source.inheritance.childSessionId !== source.sessionId || slotRef.key !== tavernSourceEditSlotKeyV1(identitySha256)
                 || recordSha256(baselineRaw) !== baselineRef.sha256 || recordSha256(slotRaw) !== slotRef.sha256)
                 fail('JOURNAL_INHERITANCE_INVALID');
-            const baseline = validateFrozenSourceEditBaselineV1(baselineRaw), slot = validateInheritanceEditSlotV1(slotRaw);
+            const baseline = validateFrozenSourceEditBaselineV1(baselineRaw, acceptMetadata), slot = validateInheritanceEditSlotV1(slotRaw);
             if (baseline.childSessionId !== source.sessionId || !same(baseline.preparedRef, preparedRef)
                 || !same(slot.identity, identity) || slot.identitySha256 !== identitySha256
                 || !same(slot.preparedRef, preparedRef) || !same(slot.baselineRef, baselineRef))
@@ -188,7 +191,7 @@ export function readJournalData(deps, source) {
                 validateFields(source, event.request);
             events.set(key, event);
         }
-    const { published, seen } = readPublishedChainV1(identity, head, key => events.get(key));
+    const { published, seen } = readPublishedChainV1(identity, head, key => events.get(key), acceptMetadata);
     const extras = [...events].filter(([key]) => !seen.has(key)).map(([, event]) => event);
     if (extras.length > 1)
         fail('JOURNAL_ORPHAN_CONFLICT');
@@ -197,7 +200,8 @@ export function readJournalData(deps, source) {
         || pending.revision !== head.revision + 1))
         fail('JOURNAL_ORPHAN_CONFLICT');
     return { identity, identitySha256, head, headRef: headRef(head, exists), events, published, pending,
-        refs: freeze(refs), refsSha256: journalReferencesShaV1(refs, inherited), ...(inherited ? { inherited } : {}) };
+        refs: freeze(refs), refsSha256: journalReferencesShaV1(refs, inherited), authorMetadataOverlay: metadata.data(),
+        ...(inherited ? { inherited } : {}) };
 }
 /** Validate the exact planned namespace and consumer envelope before intent
  * append. These are prospective hashes, never returned as live publication. */
@@ -210,9 +214,13 @@ export function plannedPublication(source, journal, event, editorBaseOverlay) {
     strictData([[headKey(head.identitySha256), head], ...values], TAVERN_LORE_EDITS_BOUNDS_V1.journalBytes);
     const refs = [rowRef(headKey(head.identitySha256), head), ...values.map(([key, value]) => rowRef(key, value))]
         .sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+    const metadata = createAuthorMetadataOverlayV1(journal.authorMetadataOverlay);
+    metadata.accept(event.request);
     const result = { ...journal, head, headRef: headRef(head, true), events, published: [...journal.published, event],
+        authorMetadataOverlay: metadata.data(),
         pending: null, refs, refsSha256: journalReferencesShaV1(refs, journal.inherited) };
-    publishedData(source, result, editorBaseOverlay);
+    if (!isAuthorMetadataRequestV1(event.request))
+        publishedData(source, result, editorBaseOverlay);
     return result;
 }
 /** Published journal fields are author DATA. Reading them does not need the
@@ -223,6 +231,7 @@ export function publishedJournalData(source, journal, legacy) {
         authority: 'consumer-data-only', sessionId: source.sessionId, source, identity: journal.identity,
         identitySha256: journal.identitySha256, revision: journal.head.revision, head: journal.head,
         headRef: journal.headRef, journalRefs, journalSha256, overlay,
+        ...(journal.authorMetadataOverlay?.extensions.length ? { authorMetadataOverlay: journal.authorMetadataOverlay } : {}),
         ...(currentNativeMembership ? { currentNativeMembership } : {}), ...journal.inherited ? { inheritance: {
                 baselineRef: journal.inherited.baselineRef, slotRef: journal.inherited.slotRef,
                 baselineSha256: journal.inherited.baseline.baselineSha256,
@@ -271,11 +280,12 @@ export function publishedAuthorBookDataV1(source, journal, legacy) {
     const overlay = { schemaVersion: 1,
         encoding: 'st-character-book-current-native-overlay-v1', entries: journal.inherited
             ? [...effective].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, entry]) => entry) : entries };
-    const rows = [...(journal.inherited?.baseline.layers.flatMap(layer => layer.events.map(row => ({
+    const allRows = [...(journal.inherited?.baseline.layers.flatMap(layer => layer.events.map(row => ({
             eventRef: row.ref, request: row.value.request
         }))) ?? []), ...journal.published.map(event => ({
             eventRef: rowRef(eventKey(event.identitySha256, event.request.operationId), event), request: event.request
         }))];
+    const rows = allRows.filter((row) => !isAuthorMetadataRequestV1(row.request));
     let currentNativeMembership;
     try {
         currentNativeMembership = foldTavernLorePublishedMembershipV2(source, rows, legacy);
@@ -291,13 +301,14 @@ export function publishedAuthorBookDataV1(source, journal, legacy) {
 export function readFrozenPublishedCutV1(branch, identity, cut) {
     const identitySha256 = recordSha256(identity), inheritedRefs = cut.kind === 'inherited' ? cut
         : cut.kind === 'published' ? cut.inherited : undefined;
+    const metadata = createAuthorMetadataOverlayV1(), acceptMetadata = (event) => metadata.accept(event.request);
     let inherited;
     if (inheritedRefs) {
         const { baselineRef, slotRef } = inheritedRefs, baselineRaw = branch.get(baselineRef.key), slotRaw = branch.get(slotRef.key);
         if (recordSha256(baselineRaw) !== baselineRef.sha256 || recordSha256(slotRaw) !== slotRef.sha256
             || slotRef.key !== tavernSourceEditSlotKeyV1(identitySha256))
             fail('JOURNAL_INHERITANCE_INVALID');
-        const baseline = validateFrozenSourceEditBaselineV1(baselineRaw), slot = validateInheritanceEditSlotV1(slotRaw);
+        const baseline = validateFrozenSourceEditBaselineV1(baselineRaw, acceptMetadata), slot = validateInheritanceEditSlotV1(slotRaw);
         if (baseline.childSessionId !== identity.sessionId || !same(slot.identity, identity)
             || slot.identitySha256 !== identitySha256 || !same(slot.preparedRef, baseline.preparedRef)
             || !same(slot.baselineRef, baselineRef))
@@ -319,11 +330,32 @@ export function readFrozenPublishedCutV1(branch, identity, cut) {
             fail('JOURNAL_HASH_INVALID');
         events.set(ref.key, parseEvent(raw, ref.key, identity));
     }
-    const { published, seen } = readPublishedChainV1(identity, head, key => events.get(key));
+    const { published, seen } = readPublishedChainV1(identity, head, key => events.get(key), acceptMetadata);
     if (seen.size !== events.size)
         fail('JOURNAL_ORPHAN_CONFLICT');
     return { identity, identitySha256, head, headRef: actualHeadRef, events, published, pending: null, refs,
-        refsSha256: journalReferencesShaV1(refs, inherited), ...inherited ? { inherited } : {} };
+        refsSha256: journalReferencesShaV1(refs, inherited), authorMetadataOverlay: metadata.data(),
+        ...inherited ? { inherited } : {} };
+}
+/** Project effective fields and reuse the journal owner's accepted identity
+ * and head. Metadata consumers need no second history inventory or digest. */
+export function publishedAuthorMetadataDataV1(captured, journal) {
+    if (journal.pending)
+        fail('PENDING_INTENT');
+    const source = captured.source;
+    let extensions;
+    try {
+        extensions = materializeAuthorMetadataExtensionsV1(captured.contributionInput.rawDecoded.data.extensions, journal.authorMetadataOverlay ?? createAuthorMetadataOverlayV1().data());
+    }
+    catch (error) {
+        fail('FIELDS_INVALID', error instanceof Error ? error.message : undefined);
+    }
+    // Source and event values are already immutable owner DATA. Freeze only this
+    // projection's new containers, without revisiting the unchanged author tree.
+    return Object.freeze({ schemaVersion: 1, encoding: 'tavern-author-metadata-current-data-v1', authority: 'consumer-data-only',
+        sessionId: source.sessionId, source, identity: journal.identity, identitySha256: journal.identitySha256,
+        revision: journal.head.revision, head: journal.head,
+        headRef: journal.headRef, extensions });
 }
 export function publishedData(source, journal, editorBaseOverlay, selection) {
     const data = publishedJournalData(source, journal, editorBaseOverlay);

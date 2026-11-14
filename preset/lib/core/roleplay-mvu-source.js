@@ -7,7 +7,6 @@ import { selectNativeMvuInitializationPolicy } from './tavern-mvu-initvar.js';
 import { parseMvuUpdateRegionV2, parseMvuUpdateAnalysisAliasRegionV2 } from './roleplay-mvu-update-v2.js';
 import { NATIVE_MVU_SOURCE_POLICY, isNativeMvuSourcePolicy, isNativeMvuYamlSourcePolicy } from './roleplay-mvu-source-policy.js';
 import { cloneSchemaData, schemaTextSha256, captureSchemaMaterialV4 } from './tavern-mvu-schema-data.js';
-import { nextTavernExecutionAuthorData } from './nexttavern-card.js';
 export { NATIVE_MVU_SOURCE_POLICY, NATIVE_MVU_YAML_SOURCE_POLICY, isNativeMvuSourcePolicy, isNativeMvuYamlSourcePolicy } from './roleplay-mvu-source-policy.js';
 const sha = (value) => createHash('sha256').update(value).digest('hex');
 const hashPattern = /^[a-f0-9]{64}$/;
@@ -203,21 +202,14 @@ export function assertMvuNonSchemaSourceExtensionsV1(value, pointer) {
 }
 const authorFieldNames = ['name', 'description', 'personality', 'scenario', 'mes_example', 'system_prompt',
     'post_history_instructions'];
-function nativeAuthorData(data) {
-    const author = nextTavernExecutionAuthorData(data);
-    // Classification and its materialized card/rule view are not execution
-    // inputs. Compatibility macro fields remain the original ST author fields.
-    const { authorExecution: _execution, classification: _classification, ...compatibility } = author.compatibility ?? {};
-    return { ...author, compatibility };
-}
 function authorFields(captured) {
     if (captured.document.spec !== 'nexttavern_card')
         return authorFieldNames.map(key => ({ key,
             pointer: `/data/${key}`, value: captured.data[key], schemaOwned: ['description', 'personality', 'scenario'].includes(key) }));
-    const author = nativeAuthorData(captured.data), aliases = author.compatibility.sillytavernMacroFields;
+    const author = captured.data, aliases = author.compatibility?.sillytavernMacroFields;
     // These retain the community fields' declared roles. Actual execution cards
     // are already checked by the common captured-row pass below, including its
-    // schema content-owner exemption; their classified view is never consumed.
+    // schema content-owner exemption.
     return authorFieldNames.map(key => ({ key, pointer: key === 'name' ? '/data/name'
             : `/data/compatibility/sillytavernMacroFields/${key}`, value: key === 'name' ? author.name : aliases?.[key],
         schemaOwned: ['description', 'personality', 'scenario'].includes(key) }));
@@ -377,7 +369,7 @@ function captureSource(deps, sessionId, selectedIndex, currentMaterial = false, 
         rawSha256: record.rawSha256, normalizedSha256: record.normalizedSha256, transactionId: pointer.transactionId,
         coverageSha256: pointer.coverageSha256, pointer: { ...pointer } };
     const root = decoded.document.data === decoded.data ? '/data' : '';
-    const used = JSON.stringify(nativeCard ? nativeAuthorData(decoded.data) : decoded.document).includes('{{')
+    const used = JSON.stringify(nativeCard ? decoded.data : decoded.document).includes('{{')
         || rows.some(item => JSON.stringify(item.value ?? null).includes('{{'));
     const membership = { cards, worldbook, rules: versions.rules, settings: versions.settings };
     const content = {

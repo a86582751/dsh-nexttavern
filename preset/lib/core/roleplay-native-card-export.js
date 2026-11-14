@@ -3,8 +3,9 @@
 import { keyOf, cloneRecord, recordSha256 } from './roleplay-data.js';
 import { compileTavernOpeningCandidates } from './tavern-card.js';
 import { readStructuredImportDataV1, spanText } from './roleplay-import-record.js';
-import { portableNextTavernAuthorFields, isNextTavernCardDocument, nextTavernCardSourceIdV1, NEXTTAVERN_ST_MACRO_FIELDS, isNativeTavernCardDocument, readNativeNextTavernAuthorExtensionV1, readTavernCardArchiveV1, mergeNativeTavernCardExportV1, nextTavernExecutionAuthorData } from './nexttavern-card.js';
+import { portableNextTavernAuthorFields, isNextTavernCardDocument, nextTavernCardSourceIdV1, NEXTTAVERN_ST_MACRO_FIELDS, isNativeTavernCardDocument, readNativeNextTavernAuthorExtensionV1, readTavernCardArchiveV1, mergeNativeTavernCardExportV1 } from './nexttavern-card.js';
 import { materializeTavernEffectiveBookV1 } from './roleplay-tavern-lore-edits-data.js';
+import { materializeAuthorMetadataExtensionsV1 } from './roleplay-tavern-source-author-metadata.js';
 import { readCapturedTavernCoverV1 } from './roleplay-tavern-lore-source.js';
 const object = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 const authorFields = (value) => object(value) ? portableNextTavernAuthorFields(value) : {};
@@ -72,7 +73,6 @@ export function captureNextTavernAuthorDataV1(deps, id) {
     const decoded = captured.kind === 'captured-data' ? captured.contributionInput.rawDecoded : original?.sourceEnvelope
         ? readStructuredImportDataV1(original).decoded : undefined;
     const native = decoded && isNextTavernCardDocument(decoded.document) ? decoded.document : undefined;
-    const preserved = native?.data.compatibility?.authorExecution;
     // Keep open author fields in DATA while runtime text has one canonical home.
     const extra = extraAuthorData(decoded?.data ?? {}, readCapturedTavernCoverV1(captured)?.base64 ?? decoded?.avatarBase64, !!native);
     const authorCoordinates = [];
@@ -87,6 +87,9 @@ export function captureNextTavernAuthorDataV1(deps, id) {
         if (observed.kind === 'refused')
             throw Error(observed.diagnostics[0]?.detail ?? observed.diagnostics[0]?.code);
         journalDataSha256 = observed.data.dataSha256;
+        if (observed.data.authorMetadataOverlay) {
+            extra.extensions = cloneRecord(materializeAuthorMetadataExtensionsV1(decoded?.data.extensions, observed.data.authorMetadataOverlay));
+        }
         rules.core = legacy.contributions.coreData.text;
         if (legacy.contributions.coreData.kind === 'legacy-edited-unsplit')
             rules.coreOrigin = 'legacy-edited-unsplit';
@@ -113,7 +116,7 @@ export function captureNextTavernAuthorDataV1(deps, id) {
     const rows = (table, target) => {
         // DATA includes empty bodies, which have no source-span assignment. User
         // cards use their one actual runtime key rather than the generated ordinal.
-        const originalRows = native ? nextTavernExecutionAuthorData(native.data)[target === 'card' ? 'cards' : 'worldbook'] : [];
+        const originalRows = native ? native.data[target === 'card' ? 'cards' : 'worldbook'] : [];
         const ranks = new Map(originalRows.map((row, index) => [
             keyOf(id, target === 'card' && row.kind === 'user' ? 'user' : `${cardId}-${target}-${index}`), index
         ]));
@@ -129,7 +132,7 @@ export function captureNextTavernAuthorDataV1(deps, id) {
             return left.localeCompare(right, 'en');
         }).map(([key, value], index) => {
             authorCoordinates.push({ table: target === 'card' ? 'cards' : 'worldbook', key, field: 'content',
-                pointer: target === 'card' ? `/data/compatibility/authorExecution/cards/${index}/content`
+                pointer: target === 'card' ? `/data/cards/${index}/content`
                     : `/data/worldbook/${index}/content` });
             const fields = authorFields(value), rank = ranks.get(key), original = rank === undefined ? undefined : originalRows[rank];
             if (original)
@@ -143,13 +146,13 @@ export function captureNextTavernAuthorDataV1(deps, id) {
     };
     const cards = rows(T.cards, 'card'), worldbook = rows(T.worldbook, 'worldbook');
     if (native)
-        rules = preserveNativeAuthorPresence(rules, nextTavernExecutionAuthorData(native.data).rules, {
+        rules = preserveNativeAuthorPresence(rules, native.data.rules, {
             core: '', plot: '', narrative: '', reply: '', style: '', beauty: { regexRules: [], css: '', js: '' },
         });
     for (const field of ['core', 'plot', 'narrative', 'reply', 'style'])
         if (rules[field] !== undefined) {
             authorCoordinates.push({ table: 'rules', key: keyOf(id, 'spec'), field,
-                pointer: `/data/compatibility/authorExecution/rules/${field}` });
+                pointer: `/data/rules/${field}` });
         }
     const currentOpening = T.opening.get(keyOf(id, 'scene')) ?? native?.data.opening;
     // Community imports materialize only the active scene into the table. The
@@ -168,20 +171,11 @@ export function captureNextTavernAuthorDataV1(deps, id) {
         ...T.status.get(keyOf(id, 'spec')) !== undefined ? { status: authorFields(T.status.get(keyOf(id, 'spec'))) } : {},
         ...T.branch.get(keyOf(id, 'settings')) !== undefined
             ? { settings: authorFields(T.branch.get(keyOf(id, 'settings'))) } : {} };
-    if (preserved) {
-        // Runtime tables and their editors own execution prose. Classification is a
-        // separate view: an edit invalidates its source hash instead of silently
-        // replacing a character's classified text with the combined author body.
-        data.compatibility = { ...data.compatibility, authorExecution: { ...cloneRecord(preserved), cards, rules } };
-        data.cards = cloneRecord(native.data.cards);
-        data.rules = cloneRecord(native.data.rules);
-    }
-    // Source and journal already seal author edits, so reuse their small identity
-    // tuple. Legacy 1.1 captures lack that seal; their current author DATA supplies
-    // the identity needed to expire a classification after execution edits.
+    // Media selection reuses Source/journal currency. Full export and semantic
+    // classification each bind their own captured input at the workflow boundary.
     const sourceHash = captured.kind === 'captured-data'
         ? recordSha256([captured.currentIdentitySha256, journalDataSha256])
-        : preserved ? recordSha256(data) : undefined;
+        : undefined;
     return { captured, original, decoded, native, data, sourceHash, authorCoordinates };
 }
 function captureCurrentDocument(deps, id) {
@@ -286,7 +280,7 @@ function captureCurrentDocument(deps, id) {
                 }) });
     }
     const unique = (values) => [...new Map(values.map(value => [recordSha256(value), value])).values()];
-    const document = { ...native ?? {}, spec: 'nexttavern_card', spec_version: native?.spec_version ?? '1.0', data,
+    const document = { ...native ?? {}, spec: 'nexttavern_card', spec_version: '1.2', data,
         archive: { ...archive, ...documents.length || archive.documents !== undefined ? { documents: unique(documents) } : {},
             ...classifiedSources.length || archive.classifiedSources !== undefined ? { classifiedSources: unique(classifiedSources) } : {} } };
     return { document, transport };

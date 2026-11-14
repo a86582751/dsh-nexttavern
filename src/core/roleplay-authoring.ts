@@ -18,6 +18,9 @@ export function readAuthoredNativeCardDocumentV1(value:unknown):NextTavernCardDo
   if(!isNextTavernCardDocument(decoded.document))throw Error('写卡定稿必须是 NextTavern 原生 JSON')
   const document=structuredClone(decoded.document),ids=new Set<string>()
   for(const character of document.data.cards) {
+    // Converted cards retain mixed original rows. Their advanced identities
+    // belong to the separately validated classification, not invented row IDs.
+    if(Object.hasOwn(document,'classification')&&character.characterId===undefined)continue
     if(character.kind==='user'&&character.characterId===undefined)character.characterId='user'
     if(typeof character.characterId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(character.characterId))
       throw Error('每个人物必须提供稳定的 ASCII characterId（1–64 位字母、数字、下划线或连字符）')
@@ -123,9 +126,10 @@ export function registerCardAuthoring({ctx, T, svc, RULE_TEXT_FIELDS, sessionOf,
           type: 'object',
           properties: {
             native_document: {
-              type:'object',description:'完整 NextTavern 原生角色卡；新创作使用 spec=nexttavern_card、spec_version=1.0。每个人物带稳定 characterId；data 分别保存 cards/worldbook/rules/status/opening/settings，archive={}。',
-              properties:{spec:{type:'string',enum:['nexttavern_card']},spec_version:{type:'string',enum:['1.0','1.1']},
-                data:{type:'object',additionalProperties:true},archive:{type:'object',additionalProperties:true}},
+              type:'object',description:'完整 NextTavern 1.2 原生角色卡。新创作的人物带稳定 characterId；data.cards/rules 保存唯一作者正文，worldbook/character_book、opening、status、extensions 按实际功能填写，archive 保存原始资料。新创作无需 classification。转换卡的顶层 classification 仅保存原文坐标，禁止用高级派生视图替换作者正文。',
+              properties:{spec:{type:'string',enum:['nexttavern_card']},spec_version:{type:'string',enum:['1.2']},
+                data:{type:'object',additionalProperties:true},archive:{type:'object',additionalProperties:true},
+                classification:{type:'object',additionalProperties:true}},
               required:['spec','spec_version','data','archive'],additionalProperties:true,
             },
             cards: {

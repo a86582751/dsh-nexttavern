@@ -1,9 +1,12 @@
 // NextTavern's author document is portable DATA. Archive fields never execute.
 import {createHash} from 'node:crypto'
 import type {CardAssignment, WorldbookEntry} from './tavern-card.js'
+import type {StoredNativeCardClassificationV1} from './native-card-conversion.js'
 
 export interface NextTavernAuthorRow extends Record<string, unknown> {
   content: string
+  characterId?: string
+  enabled?: boolean
   name?: string
   kind?: string
   aliases?: string[]
@@ -27,14 +30,6 @@ export interface NextTavernRulesRow extends Record<string, unknown> {
 export interface NextTavernCharacterBook extends Record<string, unknown> {
   entries?: Record<string, unknown>[] | Record<string, Record<string, unknown>>
 }
-/** Converted cards classify author prose without executing that prose twice.
- * The ordinary editor and Native prompt still own these original author rows. */
-export interface NextTavernAuthorExecutionV1 {
-  schemaVersion: 1
-  mode: 'preserved-author'
-  cards: NextTavernAuthorRow[]
-  rules: NextTavernRulesRow
-}
 export interface NextTavernCardData extends Record<string, unknown> {
   name: string
   cards: NextTavernAuthorRow[]
@@ -46,7 +41,6 @@ export interface NextTavernCardData extends Record<string, unknown> {
   character_book?: NextTavernCharacterBook
   compatibility?:Record<string,unknown>&{
     sillytavernMacroFields?:Record<string,string>
-    authorExecution?:NextTavernAuthorExecutionV1
   }
 }
 export interface NextTavernCardArchive extends Record<string, unknown> {
@@ -55,9 +49,11 @@ export interface NextTavernCardArchive extends Record<string, unknown> {
 }
 export interface NextTavernCardDocument extends Record<string, unknown> {
   spec: 'nexttavern_card'
-  spec_version: '1.0' | '1.1'
+  spec_version: '1.2'
   data: NextTavernCardData
   archive: NextTavernCardArchive
+  /** Coordinates over DATA. Advanced consumers derive their own read-only view. */
+  classification?:StoredNativeCardClassificationV1
 }
 export interface NativeTavernCardDocument extends Record<string, unknown> {
   spec: 'chara_card_v2'|'chara_card_v3'
@@ -72,6 +68,7 @@ export interface NativeNextTavernAuthorExtensionV1 extends Record<string,unknown
   encoding:'nexttavern-native-author-extension-v1'
   author:NativeNextTavernAuthorDataV1
   archive:NextTavernCardArchive
+  classification?:StoredNativeCardClassificationV1
   /** An earlier opaque value at this writer-owned key remains inert DATA. */
   originalExtension?:unknown
 }
@@ -112,18 +109,7 @@ export function portableNextTavernAuthorFields(row: Record<string, unknown>): Re
 // This is a format discriminator. The JSON decoder owns input validation once.
 export function isNextTavernCardDocument(document: unknown): document is NextTavernCardDocument {
   return object(document) && document.spec === 'nexttavern_card'
-    && (document.spec_version === '1.0' || document.spec_version === '1.1') && object(document.data)
-}
-
-/** Read only after the decoder has validated the versioned execution mode. */
-export function nextTavernExecutionAuthorData(data:NextTavernCardData):NextTavernCardData {
-  const execution=data.compatibility?.authorExecution
-  return execution ? {...data,cards:execution.cards,rules:execution.rules} : data
-}
-
-export function nextTavernExecutionAuthorPointer(data:NextTavernCardData,field:string):string {
-  const preserved=data.compatibility?.authorExecution&&/^(?:cards|rules)(?:\/|$)/.test(field)
-  return `/data/${preserved?'compatibility/authorExecution/':''}${field}`
+    && document.spec_version === '1.2' && object(document.data)
 }
 
 export function isNativeTavernCardDocument(document:unknown):document is NativeTavernCardDocument {
@@ -151,8 +137,8 @@ const nativeAuthorFields=['name','cards','worldbook','rules','status','opening',
 const standardTextFields=['description','personality','scenario','mes_example','system_prompt',
   'post_history_instructions','first_mes','alternate_greetings'] as const
 
-/** Physical ST fields keep their original paths; classified author rows have
- * one canonical execution home, rather than being guessed back into ST fields. */
+/** The transport retains physical ST fields while its Native extension owns
+ * the single current author body and optional semantic coordinates. */
 export function nativeNextTavernExecutionDocumentV1(document:NativeTavernCardDocument):NextTavernCardDocument|undefined {
   const extension=readNativeNextTavernAuthorExtensionV1(document)
   if(!extension)return undefined
@@ -162,19 +148,23 @@ export function nativeNextTavernExecutionDocumentV1(document:NativeTavernCardDoc
     {...document.data,extensions:{...document.data.extensions}}
   for(const field of [...standardTextFields,...nativeAuthorFields])delete data[field]
   delete data.extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY]
-  return {spec:'nexttavern_card',spec_version:extension.author.compatibility?.authorExecution?'1.1':'1.0',
-    data:{...data,...extension.author} as NextTavernCardData,archive:extension.archive}
+  return {spec:'nexttavern_card',spec_version:'1.2',
+    data:{...data,...extension.author} as NextTavernCardData,archive:extension.archive,
+    ...Object.hasOwn(extension,'classification')?{classification:extension.classification}:{}}
 }
 
 export function mergeNativeTavernCardExportV1(original:NativeTavernCardDocument,
   current:NextTavernCardDocument):NativeTavernCardDocument {
   const document=structuredClone(original),data=document.data,prior=readNativeNextTavernAuthorExtensionV1(original)
-  const extensions=object(data.extensions)?data.extensions:{}
+  const extensions={...object(data.extensions)?data.extensions:{},
+    ...object(current.data.extensions)?structuredClone(current.data.extensions):{}}
   const oldValue=extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY]
   const author=Object.fromEntries(nativeAuthorFields.filter(field=>Object.hasOwn(current.data,field))
     .map(field=>[field,structuredClone(current.data[field])])) as unknown as NativeNextTavernAuthorDataV1
-  extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY]={...prior,
+  const {classification:_previousClassification,...extensionFields}=prior??{}
+  extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY]={...extensionFields,
     schemaVersion:1,encoding:'nexttavern-native-author-extension-v1',author,archive:structuredClone(current.archive),
+    ...Object.hasOwn(current,'classification')?{classification:structuredClone(current.classification)}:{},
     ...!prior&&Object.hasOwn(extensions,NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY)?{originalExtension:oldValue}:{}}
   data.extensions=extensions
   data.name=current.data.name
@@ -214,7 +204,7 @@ export function projectNextTavernCard(
   decoded: NextTavernCardProjectionInput, worldbookMetadata?: WorldbookEntry[],
   includeSourceArchive=true,
 ): {text: string; assignments: CardAssignment[]; worldbook: WorldbookEntry[]; cardId: string; warnings: string[]} {
-  const data = nextTavernExecutionAuthorData(decoded.data as NextTavernCardData)
+  const data = decoded.data as NextTavernCardData
   const cardId = nextTavernCardSourceIdV1(decoded.document)
   const worldbook = worldbookMetadata ?? projectBookMetadata(data, cardId)
   const assignments: CardAssignment[] = [], sections: string[] = []

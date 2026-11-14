@@ -3,20 +3,35 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import {after,test} from 'node:test'
-import {createRequire} from 'node:module'
+import {createRequire,registerHooks} from 'node:module'
 import {fileURLToPath,pathToFileURL} from 'node:url'
-import {createSessionHistory, ensureSessionHistory, sessionEvents, sessionHistoryCut, sessionNativePrefixSha256} from '../lib/core/session-history.js'
-import {recordSha256} from '../lib/core/roleplay-data.js'
-import {foldSessionCalls} from '../lib/core/tavern-telemetry-fold.js'
-import {createTelemetry} from '../lib/core/tavern-telemetry.js'
 import {controllerFixture} from './plugin-fork-controller-fixture.mts'
 import {createTestDirectory, cleanupTestDirectory} from '../src/operations/test-temp.mts'
+import {ownedPackages} from './plugin-owned-packages-fixture.mts'
 
 const require = createRequire(new URL('../build-tools/package.json', import.meta.url))
+const nativePeers=await ownedPackages(['session'])
+const generatedCore=new URL('../lib/core/',import.meta.url).href
+const isNativeSession=(name:string)=>name==='dsh-nexttavern-native-session'||name.startsWith('dsh-nexttavern-native-session/')
+const nativeHook=registerHooks({resolve(specifier,context,next){
+  if(isNativeSession(specifier)&&context.parentURL?.startsWith(generatedCore))
+    return {url:pathToFileURL(nativePeers.require.resolve(specifier)).href,shortCircuit:true}
+  return next(specifier,context)
+}})
+after(()=>{nativeHook.deregister();nativePeers.close()})
+const {createSessionHistory,ensureSessionHistory,sessionEvents,sessionHistoryCut,sessionNativePrefixSha256}=
+  await import('../lib/core/session-history.js')
+const {recordSha256}=await import('../lib/core/roleplay-data.js')
+const {foldSessionCalls}=await import('../lib/core/tavern-telemetry-fold.js')
+const {createTelemetry}=await import('../lib/core/tavern-telemetry.js')
 const encoderDirectory=createTestDirectory('session-history-native-encoder-')
 after(()=>cleanupTestDirectory(encoderDirectory))
 const encoderBuild=await require('esbuild').build({entryPoints:[fileURLToPath(new URL(
-  '../development/agent-loop/src/input-admission.ts',import.meta.url))],bundle:true,platform:'node',format:'esm',write:false})
+  '../development/agent-loop/src/input-admission.ts',import.meta.url))],bundle:true,platform:'node',format:'esm',write:false,
+  plugins:[{name:'session-history-native-peers',setup(build){
+    build.onResolve({filter:/^dsh-nexttavern-native-session(?:\/|$)/},args=>({
+      path:pathToFileURL(nativePeers.require.resolve(args.path)).href,external:true}))
+  }}]})
 const encoderFile=path.join(encoderDirectory,'input-admission.mjs')
 fs.writeFileSync(encoderFile,encoderBuild.outputFiles[0].contents)
 const {nativeInputCanonical,nativeInputSha256}=await import(pathToFileURL(encoderFile).href) as

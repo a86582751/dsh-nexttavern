@@ -7,6 +7,7 @@ import { produceRoleplayTavernCurrentLegacyOverlayV1, composeRoleplayTavernCurre
 import { compileTavernLoreBookV1 } from './tavern-lore-compiler.mjs';
 import { produceAuthorContributionDataV1 } from './roleplay-author-contributions.js';
 import { readCapturedTavernAvatarV1 } from './roleplay-tavern-lore-source.js';
+import { materializeAuthorMetadataExtensionsV1 } from './roleplay-tavern-source-author-metadata.js';
 function fail(code) { throw Error(code); }
 const freeze = (value) => {
     if (value && typeof value === 'object') {
@@ -72,9 +73,11 @@ function assemblePromptSourceData(captured, edited, sessionId, includeCardStyle,
         worldbookMembershipSha256: contributions.worldbookMembershipSha256,
         suppressAlwaysOn: contributions.directAlwaysOn.map(item => ({ key: item.ref.key, sha256: item.ref.sha256 })),
         splitExamples: true, nativeLoreReadPolicy: 'automatic' });
+    const originalCardData = freeze(contributionInput.rawDecoded.data), cardData = edited.authorMetadataOverlay?.extensions.length ? Object.freeze({ ...originalCardData,
+        extensions: materializeAuthorMetadataExtensionsV1(originalCardData.extensions, edited.authorMetadataOverlay) }) : originalCardData;
     return { kind: 'captured-data', source, currentIdentitySha256, edits: edited, compilation, contributions, original, residual,
         record: contributionInput.activeImport, decoded: contributionInput.rawDecoded,
-        cardData: freeze(contributionInput.rawDecoded.data), avatarPath: readCapturedTavernAvatarV1(captured) };
+        cardData, avatarPath: readCapturedTavernAvatarV1(captured) };
 }
 /** Synchronous DATA supplier for the actual input Owner under its Source lock.
  * Currency belongs to that Owner; this return value creates no live callback. */

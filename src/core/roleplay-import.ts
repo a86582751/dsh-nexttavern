@@ -57,7 +57,7 @@ import type {
 } from './roleplay-import-types.js';
 import type { CardWorkflowAgent, CardWorkflowJob, CardWorkflowSession } from './roleplay-card-workflow-types.js';
 import type { ExportMaterial } from './card-export-projection.js';
-import {isNextTavernCardDocument,portableNextTavernAuthorFields,nextTavernExecutionAuthorData,
+import {isNextTavernCardDocument,portableNextTavernAuthorFields,
   readNativeNextTavernAuthorExtensionV1} from './nexttavern-card.js';
 export function importActiveKey(sessionId: string) {
   return keyOf(sessionId, 'import-active');
@@ -1520,7 +1520,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               const structuredDecoded=checkedDecoded;
               const tavernProjection=checkedProjection??null;
               const portable=structuredDecoded&&isNextTavernCardDocument(structuredDecoded.document)
-                ?nextTavernExecutionAuthorData(structuredDecoded.document.data):undefined;
+                ?structuredDecoded.document.data:undefined;
               const portableCardsById=new Map(portable?.cards.map((row,index)=>[
                 row.kind==='user'?'user':`${tavernProjection!.cardId}-card-${index}`,row]));
               const portableWorldbookById=new Map(portable?.worldbook.map((row,index)=>[

@@ -13,7 +13,6 @@ import {cloneSchemaData,schemaTextSha256,captureSchemaMaterialV4} from './tavern
 import type {MvuJsonObject,SchemaMvuInitDataSource,SchemaMvuInitDataSourceV2,SchemaMvuInitDataSourceV3} from './tavern-mvu-initvar.js'
 import type {MvuSchemaAuthorScript} from './tavern-mvu-schema-types.js'
 import type {RoleplayInputStateOwner} from './roleplay-input-state.js'
-import {nextTavernExecutionAuthorData} from './nexttavern-card.js'
 import type {NextTavernCardData} from './nexttavern-card.js'
 import type {MvuAuthorCaptureV1,MvuEffectiveLoreSourceV1,MvuFrozenEffectiveLoreInputV1}
   from './roleplay-tavern-lore-edits-types.js'
@@ -351,20 +350,13 @@ interface Captured {
 }
 const authorFieldNames=['name','description','personality','scenario','mes_example','system_prompt',
   'post_history_instructions'] as const
-function nativeAuthorData(data:JsonObject) {
-  const author=nextTavernExecutionAuthorData(data as NextTavernCardData)
-  // Classification and its materialized card/rule view are not execution
-  // inputs. Compatibility macro fields remain the original ST author fields.
-  const {authorExecution:_execution,classification:_classification,...compatibility}=author.compatibility??{}
-  return {...author,compatibility}
-}
 function authorFields(captured:Captured):{key:string;pointer:string;value:unknown;schemaOwned:boolean}[] {
   if(captured.document.spec!=='nexttavern_card')return authorFieldNames.map(key=>({key,
     pointer:`/data/${key}`,value:captured.data[key],schemaOwned:['description','personality','scenario'].includes(key)}))
-  const author=nativeAuthorData(captured.data),aliases=author.compatibility.sillytavernMacroFields
+  const author=captured.data as NextTavernCardData,aliases=author.compatibility?.sillytavernMacroFields
   // These retain the community fields' declared roles. Actual execution cards
   // are already checked by the common captured-row pass below, including its
-  // schema content-owner exemption; their classified view is never consumed.
+  // schema content-owner exemption.
   return authorFieldNames.map(key=>({key,pointer:key==='name'?'/data/name'
     :`/data/compatibility/sillytavernMacroFields/${key}`,value:key==='name'?author.name:aliases?.[key],
     schemaOwned:['description','personality','scenario'].includes(key)}))
@@ -495,7 +487,7 @@ function captureSource(deps: MvuSourceDeps, sessionId: string, selectedIndex: nu
     rawSha256:record.rawSha256,normalizedSha256:record.normalizedSha256,transactionId:pointer.transactionId!,
     coverageSha256:pointer.coverageSha256!,pointer:{...pointer}}
   const root = decoded.document.data === decoded.data ? '/data' : ''
-  const used = JSON.stringify(nativeCard?nativeAuthorData(decoded.data):decoded.document).includes('{{')
+  const used = JSON.stringify(nativeCard?decoded.data:decoded.document).includes('{{')
     ||rows.some(item=>JSON.stringify(item.value??null).includes('{{'))
   const membership = {cards,worldbook,rules:versions.rules,settings:versions.settings}
   const content = {

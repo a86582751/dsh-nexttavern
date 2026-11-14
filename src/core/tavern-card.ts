@@ -221,26 +221,17 @@ export function inspectTavernCardDocument(document:unknown):Pick<DecodedTavernCa
     if (data[key] !== undefined && typeof data[key] !== 'string') fail(`角色卡 ${key} 必须是字符串`)
   }
   if(native) {
-    const execution=object(data.compatibility)?data.compatibility.authorExecution:undefined
-    if(document.spec_version==='1.1') {
-      if(!object(execution)||execution.schemaVersion!==1||execution.mode!=='preserved-author') {
-        fail('NextTavern 1.1 缺少有效的 authorExecution')
-      }
-    }else if(execution!==undefined)fail('authorExecution 需要 NextTavern 1.1')
-    const authorViews=[data,...object(execution)?[execution]:[]]
-    for(const author of authorViews) {
-      const rows=author.cards
-      if(!Array.isArray(rows)||rows.length>CARD_LIMITS.entries
-        ||rows.some(row=>!object(row)||typeof row.content!=='string'))fail('NextTavern cards 条目格式无效')
-      if(!object(author.rules))fail('NextTavern rules 格式无效')
-      for(const key of ['core','plot','narrative','reply','style','status']) {
-        if(author.rules[key]!==undefined&&typeof author.rules[key]!=='string')fail(`NextTavern rules.${key} 必须是字符串`)
-      }
-      if(author.rules.beauty!==undefined) {
-        if(!object(author.rules.beauty))fail('NextTavern beauty 格式无效')
-        for(const key of ['css','js'])if(author.rules.beauty[key]!==undefined&&typeof author.rules.beauty[key]!=='string') {
-          fail('NextTavern beauty 正文格式无效')
-        }
+    const rows=data.cards
+    if(!Array.isArray(rows)||rows.length>CARD_LIMITS.entries
+      ||rows.some(row=>!object(row)||typeof row.content!=='string'))fail('NextTavern cards 条目格式无效')
+    if(!object(data.rules))fail('NextTavern rules 格式无效')
+    for(const key of ['core','plot','narrative','reply','style','status']) {
+      if(data.rules[key]!==undefined&&typeof data.rules[key]!=='string')fail(`NextTavern rules.${key} 必须是字符串`)
+    }
+    if(data.rules.beauty!==undefined) {
+      if(!object(data.rules.beauty))fail('NextTavern beauty 格式无效')
+      for(const key of ['css','js'])if(data.rules.beauty[key]!==undefined&&typeof data.rules.beauty[key]!=='string') {
+        fail('NextTavern beauty 正文格式无效')
       }
     }
     if(!Array.isArray(data.worldbook)||data.worldbook.length>CARD_LIMITS.entries
@@ -829,7 +820,7 @@ export interface TavernCapabilityEntry {
   readonly status: TavernCapabilityStatus
   readonly capability: 'card-field' | 'opening' | 'worldbook' | 'extension' | 'asset' | 'archive'
   readonly reason: 'structured-projection' | 'opening-candidate' | 'worldbook-projection'
-    | 'native-author-projection' | 'passive-material-projection' | 'preserved-author-projection'
+    | 'native-author-projection' | 'passive-material-projection'
     | 'extension-runtime-not-wired' | 'extension-requires-review' | 'opaque-archive'
     | 'external-asset-not-bundled' | 'optional-analysis-not-run'
 }
@@ -894,10 +885,9 @@ function compileTavernCapabilityReportVersion(decoded: DecodedTavernCard, versio
       add(pointer, value, 'interpreted', 'worldbook', 'passive-material-projection')
     } else if (native && key === 'compatibility' && object(value)) {
       for (const field of Object.keys(value).sort()) {
-        const interpreted = field === 'authorExecution' || field === 'sillytavernMacroFields'
+        const interpreted = field === 'sillytavernMacroFields'
         add(`${pointer}/${pointerSegment(field)}`, value[field], interpreted ? 'interpreted' : 'preserved-unexecuted',
-          interpreted ? 'card-field' : 'archive', field === 'authorExecution' ? 'preserved-author-projection'
-            : interpreted ? 'structured-projection' : 'opaque-archive')
+          interpreted ? 'card-field' : 'archive', interpreted ? 'structured-projection' : 'opaque-archive')
       }
     } else if (key === 'first_mes' || key === 'alternate_greetings') {
       if (key === 'alternate_greetings') compileTavernOpeningCandidates(decoded)
