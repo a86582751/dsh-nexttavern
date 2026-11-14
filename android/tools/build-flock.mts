@@ -1,4 +1,5 @@
 /** Compose unchanged upstream flock with explicit Android no-replace publication. */
+import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile, copyFile, chmod } from 'node:fs/promises';
@@ -22,9 +23,15 @@ const output = hostTest ? join(root, 'artifacts/native-system-host', process.arc
   : join(root, 'app/src/main/jniLibs', architecture, 'libnexttavern_flock.so');
 const receiptPath = hostTest ? join(dirname(output), 'build.json')
   : join(root, 'artifacts', abi === 'arm64' ? 'flock-build.json' : 'flock-build-x64.json');
+// setup-node's standard distribution includes its matching N-API headers.
+// Host tests need no Termux runtime download; cross-compilation still uses only
+// the pinned Android headers, and nonstandard host installs retain that fallback.
+const hostHeaders = resolve(dirname(process.execPath), '../include/node');
+const headers = hostTest && existsSync(join(hostHeaders, 'node_api.h')) ? hostHeaders
+  : join(cache, 'extracted/nodejs-lts/data/data/com.termux/files/usr/include/node');
 if (planOnly) {
   console.log(JSON.stringify({ mode: hostTest ? 'host-test' : 'android', abi, architecture: hostTest ? process.arch : architecture,
-    target: hostTest ? `linux-${process.arch}` : target, diagnosticOnly: hostTest || abi === 'x64', cache, wrapper, output, receiptPath,
+    target: hostTest ? `linux-${process.arch}` : target, diagnosticOnly: hostTest || abi === 'x64', cache, headers, wrapper, output, receiptPath,
     ...(hostTest ? { env: { NEXTTAVERN_TEST_SYSTEM_ADDON: output } } : {}) }));
   process.exit(0);
 }
@@ -40,7 +47,6 @@ if (createHash('sha256').update(await readFile(archive)).digest('hex') !== sha25
 const source = join(cache, 'node-addon-system');
 await mkdir(source, { recursive: true });
 execFileSync('tar', ['xzf', archive, '-C', source]);
-const headers = join(cache, 'extracted/nodejs-lts/data/data/com.termux/files/usr/include/node');
 await mkdir(dirname(output), { recursive: true });
 if (hostTest) {
   if (process.platform !== 'linux') throw new Error('BLOCKED: native-system host fixture requires Linux; it is not Android evidence');
