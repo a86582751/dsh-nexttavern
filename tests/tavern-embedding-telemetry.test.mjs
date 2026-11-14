@@ -1,9 +1,13 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
-import { createTelemetry } from '../lib/core/tavern-telemetry.js'
-import { resolvePricing } from '../lib/core/tavern-pricing.js'
-import { aggregateUsage } from '../lib/core/tavern-telemetry-aggregate.js'
-import { queryUsageRequests } from '../lib/core/tavern-telemetry-query.js'
 
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'])
+afterNativeDependencies(removeOwnedNativeDependencies)
+const { createTelemetry }=await import('../lib/core/tavern-telemetry.js')
+const { resolvePricing }=await import('../lib/core/tavern-pricing.js')
+const { aggregateUsage }=await import('../lib/core/tavern-telemetry-aggregate.js')
+const { queryUsageRequests }=await import('../lib/core/tavern-telemetry-query.js')
 class Table extends Map { async put(key, value) { this.set(key, structuredClone(value)) } }
 const call = {
   schemaVersion: 1, id: 'embedding-1', ownerSessionId: null, workspaceId: 'ws-a',

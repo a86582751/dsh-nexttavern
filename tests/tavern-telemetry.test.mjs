@@ -1,10 +1,14 @@
+import {after as afterNativeDependencies} from 'node:test'
 import assert from 'node:assert/strict'
-import { foldSessionCalls, aggregateUsage, createTelemetry, timeRange, queryUsageRequests } from '../lib/core/tavern-telemetry.js'
-import {createRoleplayInputStateOwner} from '../lib/core/roleplay-input-state.js'
-import {createSessionHistory,sessionHistoryCut} from '../lib/core/session-history.js'
-import {ownedPackages} from './plugin-owned-packages-fixture.mts'
+import {ownedPackages,installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import {loadChatCardSource} from './chat-card-controller-fixture.mts'
 import {createTestDirectory,cleanupTestDirectory} from '../src/operations/test-temp.mts'
+
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'])
+afterNativeDependencies(removeOwnedNativeDependencies)
+const { foldSessionCalls, aggregateUsage, createTelemetry, timeRange, queryUsageRequests }=await import('../lib/core/tavern-telemetry.js')
+const {createRoleplayInputStateOwner}=await import('../lib/core/roleplay-input-state.js')
+const {createSessionHistory,sessionHistoryCut}=await import('../lib/core/session-history.js')
 class Table extends Map { async put(k,v){this.set(k,structuredClone(v))} }
 class IdentityTable extends Map {
   constructor(){super();this.durable=new Map()}

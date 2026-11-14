@@ -1,10 +1,14 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import { createModelPolicy, createTavernTasks, InlinePending, taskHash, nativeTaskOutputBudget } from '../lib/core/tavern-tasks.js'
-import { createRoleplayTaskHost } from '../lib/core/roleplay-task-host.js'
-import { sha256, recordSha256 } from '../lib/core/roleplay-data.js'
-import { fenceCardContent } from '../lib/core/tavern-card.js'
 
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'])
+afterNativeDependencies(removeOwnedNativeDependencies)
+const { createModelPolicy, createTavernTasks, InlinePending, taskHash, nativeTaskOutputBudget }=await import('../lib/core/tavern-tasks.js')
+const { createRoleplayTaskHost }=await import('../lib/core/roleplay-task-host.js')
+const { sha256, recordSha256 }=await import('../lib/core/roleplay-data.js')
+const { fenceCardContent }=await import('../lib/core/tavern-card.js')
 class Table extends Map {
   async put(key, value) { this.set(key, structuredClone(value)) }
 }

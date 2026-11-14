@@ -1,8 +1,8 @@
 /** Small generated-package fixtures sharing the locked host peers; never a Harness install. */
 import {cp, lstat, mkdir, readFile, readdir, symlink} from 'node:fs/promises'
-import {existsSync} from 'node:fs'
+import {existsSync,readFileSync} from 'node:fs'
 import {createHash} from 'node:crypto'
-import {createRequire} from 'node:module'
+import {createRequire,registerHooks} from 'node:module'
 import {fileURLToPath, pathToFileURL} from 'node:url'
 import path from 'node:path'
 import {createTestDirectory, cleanupTestDirectory} from '../src/operations/test-temp.mts'
@@ -114,4 +114,43 @@ export async function mountMaintainedPeer(
   packages: Awaited<ReturnType<typeof ownedPackages>>, name: string,
 ): Promise<void> {
   await copyMaintainedPackage(packages.directory, name)
+}
+
+/** Resolve generated consumers against the same maintained packages used by
+ * package tests. Install before importing those consumers and close at teardown. */
+export async function installOwnedNativeTestDependencies(units:readonly string[], readerLibraries=false) {
+  const packages=await ownedPackages(units)
+  const generated=new URL('../',new URL('../lib/core/roleplay-data.js',import.meta.url)).href
+  const libraryImporter=new URL('../lib/ui/reader-native-document-libraries.js',import.meta.url).href
+  // Match build-client's Source/Public mapping selection. Text imports carry
+  // the registered product bytes rather than a second test asset catalog.
+  const packageDirectory=fileURLToPath(new URL('../',import.meta.url))
+  const publicMapping=path.join(packageDirectory,'tools/check-map.json')
+  const root=existsSync(publicMapping)?packageDirectory:path.resolve(packageDirectory,'../..')
+  const mappingFile=existsSync(publicMapping)?publicMapping:path.join(root,'release/source-manifest.json')
+  const textModules=new Map<string,string>()
+  let plan:any
+  let textImports:Record<string,string>|undefined
+  const hooks=registerHooks({resolve(specifier,context,next) {
+    if(context.parentURL?.startsWith(generated)&&specifier.startsWith('dsh-nexttavern-native-')) {
+      return {url:pathToFileURL(packages.require.resolve(specifier)).href,shortCircuit:true}
+    }
+    if(readerLibraries&&context.parentURL===libraryImporter) {
+      if(!textImports) {
+        plan=JSON.parse(readFileSync(mappingFile,'utf8'))
+        textImports=plan.builds.find((row:any)=>row.browser?.textArtifactImports)?.browser.textArtifactImports
+      }
+      let url=textModules.get(specifier)
+      const artifactId=textImports?.[specifier]
+      if(!url&&artifactId) {
+        const artifact=plan.artifacts.find((row:any)=>row.id===artifactId)
+        const text=readFileSync(path.join(root,artifact.source),'utf8')
+        url='data:text/javascript;base64,'+Buffer.from('export default '+JSON.stringify(text)).toString('base64')
+        textModules.set(specifier,url)
+      }
+      if(url)return {url,shortCircuit:true}
+    }
+    return next(specifier,context)
+  }})
+  return ()=>{hooks.deregister();packages.close()}
 }

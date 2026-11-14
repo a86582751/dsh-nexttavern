@@ -1263,7 +1263,15 @@
         "roleplay-author-message-edit-types-typescript",
         "tavern-lore-ordinary-preparation-typescript",
         "roleplay-tavern-source-author-metadata-typescript",
-        "roleplay-tavern-source-author-metadata-js"
+        "roleplay-tavern-source-author-metadata-js",
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "compat-llm-invariant-js",
+        "compat-llm-package-json",
+        "compat-session-invariant-js",
+        "compat-session-package-json",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
       ]
     },
     {
@@ -1507,7 +1515,41 @@
         "roleplay-author-message-edit-types-typescript",
         "tavern-lore-ordinary-preparation-typescript",
         "roleplay-tavern-source-author-metadata-typescript",
-        "roleplay-tavern-source-author-metadata-js"
+        "roleplay-tavern-source-author-metadata-js",
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "compat-llm-adapter-failure-js",
+        "compat-llm-api-key-js",
+        "compat-llm-assembler-js",
+        "compat-llm-assistant-stream-js",
+        "compat-llm-attribution-js",
+        "compat-llm-brand-js",
+        "compat-llm-call-config-js",
+        "compat-llm-content-js",
+        "compat-llm-error-js",
+        "compat-llm-index-js",
+        "compat-llm-invariant-js",
+        "compat-llm-message-js",
+        "compat-llm-package-json",
+        "compat-llm-retry-policy-js",
+        "compat-llm-types-js",
+        "compat-session-fork-js",
+        "compat-session-index-js",
+        "compat-session-invariant-js",
+        "compat-session-known-event-types-js",
+        "compat-session-opening-records-js",
+        "compat-session-package-json",
+        "compat-session-preparation-js",
+        "compat-session-repair-js",
+        "compat-session-request-header-js",
+        "compat-session-request-material-types-js",
+        "compat-session-request-preview-js",
+        "compat-session-seq-ranges-js",
+        "compat-session-surface-js",
+        "compat-session-tool-history-js",
+        "compat-session-types-js",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
       ]
     },
     {
@@ -2032,7 +2074,15 @@
         "roleplay-author-message-edit-types-typescript",
         "tavern-lore-ordinary-preparation-typescript",
         "roleplay-tavern-source-author-metadata-typescript",
-        "roleplay-tavern-source-author-metadata-js"
+        "roleplay-tavern-source-author-metadata-js",
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "compat-llm-invariant-js",
+        "compat-llm-package-json",
+        "compat-session-invariant-js",
+        "compat-session-package-json",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
       ]
     },
     {
@@ -2345,7 +2395,43 @@
       "requires": [
         "compiler"
       ],
-      "inputs": []
+      "inputs": [
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "test-temp-helper-typescript",
+        "compat-llm-adapter-failure-js",
+        "compat-llm-api-key-js",
+        "compat-llm-assembler-js",
+        "compat-llm-assistant-stream-js",
+        "compat-llm-attribution-js",
+        "compat-llm-brand-js",
+        "compat-llm-call-config-js",
+        "compat-llm-content-js",
+        "compat-llm-error-js",
+        "compat-llm-index-js",
+        "compat-llm-invariant-js",
+        "compat-llm-message-js",
+        "compat-llm-package-json",
+        "compat-llm-retry-policy-js",
+        "compat-llm-types-js",
+        "compat-session-fork-js",
+        "compat-session-index-js",
+        "compat-session-invariant-js",
+        "compat-session-known-event-types-js",
+        "compat-session-opening-records-js",
+        "compat-session-package-json",
+        "compat-session-preparation-js",
+        "compat-session-repair-js",
+        "compat-session-request-header-js",
+        "compat-session-request-material-types-js",
+        "compat-session-request-preview-js",
+        "compat-session-seq-ranges-js",
+        "compat-session-surface-js",
+        "compat-session-tool-history-js",
+        "compat-session-types-js",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
+      ]
     },
     {
       "id": "test:inline-task-delivery.test.mjs",
@@ -2360,7 +2446,43 @@
       "requires": [
         "compiler"
       ],
-      "inputs": []
+      "inputs": [
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "test-temp-helper-typescript",
+        "compat-llm-adapter-failure-js",
+        "compat-llm-api-key-js",
+        "compat-llm-assembler-js",
+        "compat-llm-assistant-stream-js",
+        "compat-llm-attribution-js",
+        "compat-llm-brand-js",
+        "compat-llm-call-config-js",
+        "compat-llm-content-js",
+        "compat-llm-error-js",
+        "compat-llm-index-js",
+        "compat-llm-invariant-js",
+        "compat-llm-message-js",
+        "compat-llm-package-json",
+        "compat-llm-retry-policy-js",
+        "compat-llm-types-js",
+        "compat-session-fork-js",
+        "compat-session-index-js",
+        "compat-session-invariant-js",
+        "compat-session-known-event-types-js",
+        "compat-session-opening-records-js",
+        "compat-session-package-json",
+        "compat-session-preparation-js",
+        "compat-session-repair-js",
+        "compat-session-request-header-js",
+        "compat-session-request-material-types-js",
+        "compat-session-request-preview-js",
+        "compat-session-seq-ranges-js",
+        "compat-session-surface-js",
+        "compat-session-tool-history-js",
+        "compat-session-types-js",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
+      ]
     },
     {
       "id": "test:task-context-retirement.test.mjs",
@@ -2597,7 +2719,42 @@
         "roleplay-author-message-edit-types-typescript",
         "tavern-lore-ordinary-preparation-typescript",
         "roleplay-tavern-source-author-metadata-typescript",
-        "roleplay-tavern-source-author-metadata-js"
+        "roleplay-tavern-source-author-metadata-js",
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "test-temp-helper-typescript",
+        "compat-llm-adapter-failure-js",
+        "compat-llm-api-key-js",
+        "compat-llm-assembler-js",
+        "compat-llm-assistant-stream-js",
+        "compat-llm-attribution-js",
+        "compat-llm-brand-js",
+        "compat-llm-call-config-js",
+        "compat-llm-content-js",
+        "compat-llm-error-js",
+        "compat-llm-index-js",
+        "compat-llm-invariant-js",
+        "compat-llm-message-js",
+        "compat-llm-package-json",
+        "compat-llm-retry-policy-js",
+        "compat-llm-types-js",
+        "compat-session-fork-js",
+        "compat-session-index-js",
+        "compat-session-invariant-js",
+        "compat-session-known-event-types-js",
+        "compat-session-opening-records-js",
+        "compat-session-package-json",
+        "compat-session-preparation-js",
+        "compat-session-repair-js",
+        "compat-session-request-header-js",
+        "compat-session-request-material-types-js",
+        "compat-session-request-preview-js",
+        "compat-session-seq-ranges-js",
+        "compat-session-surface-js",
+        "compat-session-tool-history-js",
+        "compat-session-types-js",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
       ]
     },
     {
@@ -3227,7 +3384,20 @@
         "author-native-variable-writers-typescript",
         "tavern-lore-ordinary-preparation-typescript",
         "roleplay-tavern-source-author-metadata-typescript",
-        "roleplay-tavern-source-author-metadata-js"
+        "roleplay-tavern-source-author-metadata-js",
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "test-temp-helper-typescript",
+        "compat-llm-invariant-js",
+        "compat-llm-package-json",
+        "compat-session-invariant-js",
+        "compat-session-package-json",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js",
+        "reader-native-jquery-source",
+        "mvu-schema-runtime-v4-update-batch-v1-output-assets-lodash-4-18-1-js",
+        "reader-native-author-globals-asset",
+        "reader-native-vue-source"
       ]
     },
     {
@@ -3806,7 +3976,14 @@
         "author-native-variable-writers-typescript",
         "tavern-lore-ordinary-preparation-typescript",
         "roleplay-tavern-source-author-metadata-typescript",
-        "roleplay-tavern-source-author-metadata-js"
+        "roleplay-tavern-source-author-metadata-js",
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "test-temp-helper-typescript",
+        "reader-native-jquery-source",
+        "mvu-schema-runtime-v4-update-batch-v1-output-assets-lodash-4-18-1-js",
+        "reader-native-author-globals-asset",
+        "reader-native-vue-source"
       ]
     },
     {
@@ -6357,7 +6534,16 @@
         "roleplay-author-message-edit-types-typescript",
         "tavern-lore-ordinary-preparation-typescript",
         "roleplay-tavern-source-author-metadata-typescript",
-        "roleplay-tavern-source-author-metadata-js"
+        "roleplay-tavern-source-author-metadata-js",
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "test-temp-helper-typescript",
+        "compat-llm-invariant-js",
+        "compat-llm-package-json",
+        "compat-session-invariant-js",
+        "compat-session-package-json",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
       ]
     },
     {
@@ -6373,7 +6559,43 @@
       "requires": [
         "compiler"
       ],
-      "inputs": []
+      "inputs": [
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "test-temp-helper-typescript",
+        "compat-llm-adapter-failure-js",
+        "compat-llm-api-key-js",
+        "compat-llm-assembler-js",
+        "compat-llm-assistant-stream-js",
+        "compat-llm-attribution-js",
+        "compat-llm-brand-js",
+        "compat-llm-call-config-js",
+        "compat-llm-content-js",
+        "compat-llm-error-js",
+        "compat-llm-index-js",
+        "compat-llm-invariant-js",
+        "compat-llm-message-js",
+        "compat-llm-package-json",
+        "compat-llm-retry-policy-js",
+        "compat-llm-types-js",
+        "compat-session-fork-js",
+        "compat-session-index-js",
+        "compat-session-invariant-js",
+        "compat-session-known-event-types-js",
+        "compat-session-opening-records-js",
+        "compat-session-package-json",
+        "compat-session-preparation-js",
+        "compat-session-repair-js",
+        "compat-session-request-header-js",
+        "compat-session-request-material-types-js",
+        "compat-session-request-preview-js",
+        "compat-session-seq-ranges-js",
+        "compat-session-surface-js",
+        "compat-session-tool-history-js",
+        "compat-session-types-js",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
+      ]
     },
     {
       "id": "test:tavern-pricing.test.mjs",
@@ -6903,7 +7125,16 @@
         "roleplay-author-message-edit-types-typescript",
         "tavern-lore-ordinary-preparation-typescript",
         "roleplay-tavern-source-author-metadata-typescript",
-        "roleplay-tavern-source-author-metadata-js"
+        "roleplay-tavern-source-author-metadata-js",
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "test-temp-helper-typescript",
+        "compat-llm-invariant-js",
+        "compat-llm-package-json",
+        "compat-session-invariant-js",
+        "compat-session-package-json",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
       ]
     },
     {
@@ -7394,7 +7625,16 @@
         "roleplay-author-message-edit-types-typescript",
         "tavern-lore-ordinary-preparation-typescript",
         "roleplay-tavern-source-author-metadata-typescript",
-        "roleplay-tavern-source-author-metadata-js"
+        "roleplay-tavern-source-author-metadata-js",
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "test-temp-helper-typescript",
+        "compat-llm-invariant-js",
+        "compat-llm-package-json",
+        "compat-session-invariant-js",
+        "compat-session-package-json",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
       ]
     },
     {
@@ -7932,7 +8172,43 @@
       "requires": [
         "compiler"
       ],
-      "inputs": []
+      "inputs": [
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "test-temp-helper-typescript",
+        "compat-llm-adapter-failure-js",
+        "compat-llm-api-key-js",
+        "compat-llm-assembler-js",
+        "compat-llm-assistant-stream-js",
+        "compat-llm-attribution-js",
+        "compat-llm-brand-js",
+        "compat-llm-call-config-js",
+        "compat-llm-content-js",
+        "compat-llm-error-js",
+        "compat-llm-index-js",
+        "compat-llm-invariant-js",
+        "compat-llm-message-js",
+        "compat-llm-package-json",
+        "compat-llm-retry-policy-js",
+        "compat-llm-types-js",
+        "compat-session-fork-js",
+        "compat-session-index-js",
+        "compat-session-invariant-js",
+        "compat-session-known-event-types-js",
+        "compat-session-opening-records-js",
+        "compat-session-package-json",
+        "compat-session-preparation-js",
+        "compat-session-repair-js",
+        "compat-session-request-header-js",
+        "compat-session-request-material-types-js",
+        "compat-session-request-preview-js",
+        "compat-session-seq-ranges-js",
+        "compat-session-surface-js",
+        "compat-session-tool-history-js",
+        "compat-session-types-js",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
+      ]
     },
     {
       "id": "test:status-surface-refresh.test.mjs",
@@ -9436,7 +9712,42 @@
         "roleplay-author-message-edit-types-typescript",
         "tavern-lore-ordinary-preparation-typescript",
         "roleplay-tavern-source-author-metadata-typescript",
-        "roleplay-tavern-source-author-metadata-js"
+        "roleplay-tavern-source-author-metadata-js",
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "test-temp-helper-typescript",
+        "compat-llm-adapter-failure-js",
+        "compat-llm-api-key-js",
+        "compat-llm-assembler-js",
+        "compat-llm-assistant-stream-js",
+        "compat-llm-attribution-js",
+        "compat-llm-brand-js",
+        "compat-llm-call-config-js",
+        "compat-llm-content-js",
+        "compat-llm-error-js",
+        "compat-llm-index-js",
+        "compat-llm-invariant-js",
+        "compat-llm-message-js",
+        "compat-llm-package-json",
+        "compat-llm-retry-policy-js",
+        "compat-llm-types-js",
+        "compat-session-fork-js",
+        "compat-session-index-js",
+        "compat-session-invariant-js",
+        "compat-session-known-event-types-js",
+        "compat-session-opening-records-js",
+        "compat-session-package-json",
+        "compat-session-preparation-js",
+        "compat-session-repair-js",
+        "compat-session-request-header-js",
+        "compat-session-request-material-types-js",
+        "compat-session-request-preview-js",
+        "compat-session-seq-ranges-js",
+        "compat-session-surface-js",
+        "compat-session-tool-history-js",
+        "compat-session-types-js",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
       ]
     },
     {
@@ -9928,7 +10239,16 @@
         "roleplay-author-message-edit-types-typescript",
         "tavern-lore-ordinary-preparation-typescript",
         "roleplay-tavern-source-author-metadata-typescript",
-        "roleplay-tavern-source-author-metadata-js"
+        "roleplay-tavern-source-author-metadata-js",
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "test-temp-helper-typescript",
+        "compat-llm-invariant-js",
+        "compat-llm-package-json",
+        "compat-session-invariant-js",
+        "compat-session-package-json",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
       ]
     },
     {
@@ -10461,7 +10781,8 @@
         "roleplay-author-message-edit-types-typescript",
         "tavern-lore-ordinary-preparation-typescript",
         "roleplay-tavern-source-author-metadata-typescript",
-        "roleplay-tavern-source-author-metadata-js"
+        "roleplay-tavern-source-author-metadata-js",
+        "compat-agent-loop-published-input-ts"
       ]
     },
     {
@@ -12431,7 +12752,43 @@
       "requires": [
         "compiler"
       ],
-      "inputs": []
+      "inputs": [
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "test-temp-helper-typescript",
+        "compat-llm-adapter-failure-js",
+        "compat-llm-api-key-js",
+        "compat-llm-assembler-js",
+        "compat-llm-assistant-stream-js",
+        "compat-llm-attribution-js",
+        "compat-llm-brand-js",
+        "compat-llm-call-config-js",
+        "compat-llm-content-js",
+        "compat-llm-error-js",
+        "compat-llm-index-js",
+        "compat-llm-invariant-js",
+        "compat-llm-message-js",
+        "compat-llm-package-json",
+        "compat-llm-retry-policy-js",
+        "compat-llm-types-js",
+        "compat-session-fork-js",
+        "compat-session-index-js",
+        "compat-session-invariant-js",
+        "compat-session-known-event-types-js",
+        "compat-session-opening-records-js",
+        "compat-session-package-json",
+        "compat-session-preparation-js",
+        "compat-session-repair-js",
+        "compat-session-request-header-js",
+        "compat-session-request-material-types-js",
+        "compat-session-request-preview-js",
+        "compat-session-seq-ranges-js",
+        "compat-session-surface-js",
+        "compat-session-tool-history-js",
+        "compat-session-types-js",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js"
+      ]
     }
   ]
 }

@@ -1,7 +1,11 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import * as memory from '../lib/memory/roleplay-memory-engine.js'
 
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'])
+afterNativeDependencies(removeOwnedNativeDependencies)
+const memory=await import('../lib/memory/roleplay-memory-engine.js')
 const legacy = JSON.parse(readFileSync(new URL('./fixtures/memory-notes-writer-legacy-v1.json', import.meta.url), 'utf8'))
 function fixture(config = {}) {
   const session = structuredClone(legacy.session)

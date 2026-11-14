@@ -1,7 +1,12 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
-import { createToastController, confirmWithDialog } from '../lib/ui/client.js'
 import { resolveJsdom } from '../lib/operations/tool-resolution.mjs'
+
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies([],true)
+afterNativeDependencies(removeOwnedNativeDependencies)
+const { createToastController, confirmWithDialog }=await import('../lib/ui/client.js')
 
 const require = createRequire(import.meta.url)
 const { JSDOM } = require(resolveJsdom())
