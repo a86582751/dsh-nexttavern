@@ -725,10 +725,17 @@ async function hideSidebar():Promise<void> {
 }
 async function openManager():Promise<void> {
   await showSidebar();
-  // This is backed by the native session-list preset identity, not a guessed
-  // label, a hidden REST probe, or enabling Coding Tools to unlock a seat.
-  await until(()=>visibleNamed(['酒馆管理']).length===1,60,'DEFAULT_SESSION_NOT_ROLEPLAY_OR_ENTRY_NOT_EXPOSED');
-  await press(['酒馆管理']);
+  // The enabled control is backed by the current session's preset identity.
+  // WebView ancestor rectangles can be stale after reopening a conversation;
+  // use the same public AX actions as manager tabs instead of intersecting them.
+  // The Android helper still requires a unique, enabled, visible clickable node.
+  let managers:Node[]=[];
+  await until(()=>{
+    managers=current.filter(node=>node.package===pkg&&named(node,['酒馆管理'])&&button(node)&&node.enabled!=='false');
+    requireUi(managers.length<=1,'TAVERN_MANAGER_NOT_UNIQUELY_EXPOSED');
+    return managers.length===1;
+  },60,'DEFAULT_SESSION_NOT_ROLEPLAY_OR_ENTRY_NOT_EXPOSED');
+  showControl(managers[0]);controlAction(managers[0],'click-control');
   await until(()=>has(['角色卡导入'])&&has(['人物设定']),30,'TAVERN_MANAGER_NOT_EXPOSED');
 }
 /** Horizontally clipped tab bounds can be stale. Use the actual unique public
