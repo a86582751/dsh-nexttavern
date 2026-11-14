@@ -21,7 +21,7 @@ const PROFILE_FILES = ['package.json', 'cordis.yml', 'cordis.patch.yml', 'pnpm-w
 const CA_SHA256 = '796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe';
 function admitTaskProfileTemplate(filename, bytes, clientClaims) {
     const text = bytes.split('\n').filter(line => !line.trim().startsWith('#')).join('\n').trim();
-    if (text === '' || text === '[]')
+    if ((text === '' || text === '[]') && (filename !== 'cordis.patch.yml' || clientClaims.length === 0))
         return;
     if (filename === 'cordis.patch.yml') {
         let rows;

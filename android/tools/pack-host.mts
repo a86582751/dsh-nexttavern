@@ -57,7 +57,7 @@ const CA_SHA256='796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cb
 
 function admitTaskProfileTemplate(filename:string,bytes:string,clientClaims:readonly string[]):void {
   const text=bytes.split('\n').filter(line=>!line.trim().startsWith('#')).join('\n').trim()
-  if(text===''||text==='[]')return
+  if((text===''||text==='[]')&&(filename!=='cordis.patch.yml'||clientClaims.length===0))return
   if(filename==='cordis.patch.yml') {
     let rows:unknown
     try {rows=(tooling('js-yaml') as {load(text:string):unknown}).load(text)} catch {}

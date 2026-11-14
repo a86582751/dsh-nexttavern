@@ -97,9 +97,10 @@ const ctx=new Context()
 try {
   await ctx.plugin(PluginPackages,{resolution})
   const {bootstrapBundledPackages}=await import(pathToFileURL(path.join(installed,'lib/operations/bundled-package-bootstrap.mjs')).href)
-  await bootstrapBundledPackages({productRoot:installed,hostAnchor,home,profile:'web',
+  const bootstrap=await bootstrapBundledPackages({productRoot:installed,hostAnchor,home,profile:'web',
     backup:path.join(work,'bootstrap-backup'),resolvePeerManifest:(name:string,parentURL:string)=>
       ctx.get('pluginPackages').packageOf(name,parentURL)?.manifestPath})
+  if(bootstrap.clientClaims.state==='refused')throw new Error('Official client claims were refused; refusing to pack an incomplete profile')
 }finally{await ctx.root.fiber.dispose()}
 const profilePackage=read(path.join(profileRoot,'package.json'))
 if(!profilePackage.dependencies?.dshmarket)run(dsh,['plugin','--profile','web','add','--save-exact','dshmarket@1.71.1'],harness)
