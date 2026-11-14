@@ -1,6 +1,6 @@
-# Native 1.0 参考卡
+# Native 1.2 参考卡
 
-本目录提供两张 Native 1.0 直接创作示例，供交互写卡 AI 与社区作者参考。龙女皇卡展示如何保留既有 Markdown 原文并映射到可用字段；Steam Tide 卡展示如何组织 Native 数值、世界书、EJS、Ruby、作者前端、值班简报 Prompt hook 与结构化日志。
+本目录提供两张 Native 1.2 作者示例，供交互写卡 AI 与社区作者参考。两张卡均以 `data.cards/rules` 保存唯一作者正文，使用稳定的 `characterId`。龙女皇卡保留既有 Markdown 原文及实际字段映射。Steam Tide 卡组合数值、世界书、EJS、Ruby、作者前端、值班简报 Prompt hook 与结构化日志。
 
 | 文件 | 用途 |
 | --- | --- |
@@ -9,7 +9,9 @@
 | [`模块化卡格式示例-暴躁龙女皇.md`](模块化卡格式示例-暴躁龙女皇.md) | 保留的龙女皇原文与历史参考 |
 | [`steam-tide-full-card.md`](steam-tide-full-card.md) | 保留的 Steam Tide 原文与历史参考 |
 
-两份旧 MD 继续留在原路径，本批不改写它们。直接创作流程与字段约定见[写卡技能入口](https://github.com/a86582751/dsh-nexttavern/blob/main/preset/skills/roleplay-card-authoring/SKILL.md)。示例遵循 Native 1.0；它们是作者参考，不表示 0.3 已通过整体验收或发行。
+两份 MD 在原路径保存历史原文。直接创作流程与字段约定见[写卡技能入口](https://github.com/a86582751/dsh-nexttavern/blob/main/preset/skills/roleplay-card-authoring/SKILL.md)。当前 1.2 修改处于实现阶段，尚待按新输入完成验证。
+
+两张卡已有明确作者栏目，无需附加 `classification`。社区转换的可选顶层分类保存实际 `/data/...` 原文坐标，高级人物视图由程序派生。普通作者正文、当前作者扩展和归档各有独立职责。人物私有记忆、数值提交和 ordinary 变量的运行期记录由运行时 owner 保存。
 
 ## 龙女皇：原文归档与字段映射
 
@@ -23,7 +25,7 @@
 
 卡 1 用来演示保留既有文本和清晰区分新旧内容。
 
-验证边界：龙女皇当前沿用 Combined 8 Native 路线，默认数值 profile 为 `native-mvu-state-v1`，并保留现有 `ownedState` fallback；旧 browser-only 初始化拒绝说明已不适用于当前路线。当前有受控 Source／Core 证据，但尚未验证龙女皇整卡的真实 Reader 开场与完整实机玩法。下文 Steam Tide 的受控 Core／Native 组件证据不适用于这张卡，也不能据格式示例推定任一参考卡已完整可玩。
+龙女皇的数值、EJS 与作者页面由当前 Combined／Native owner 组织。卡片只声明作者数据和脚本。已有受控 Source／Core 证据对应历史输入，1.2 的 Reader 开场、案卷显示与完整玩法仍待验证。
 
 ## Steam Tide：功能组合示例
 
@@ -36,6 +38,8 @@
 - `/data/extensions/tavern_helper/scripts/0` 提供固定 loader，`/data/extensions/tavern_helper/scripts/1` 放置 Zod schema，`/data/extensions/tavern_helper/scripts/2/data/html` 是港口值班台界面，`/data/extensions/tavern_helper/scripts/3` 提供值班简报 Prompt hook。
 - `/data/extensions/regex_scripts` 有两条展示正则，可对照 `/data/extensions/tavern_helper/scripts/2/data/html` 查看呈现与 Native 状态的分工。
 - `/data/extensions/RubyAnalyzer/presets/0/tasks/0` 是可选分析任务，默认 `enabled: false`、`keywordScanEnabled: false`；启用时按 `cyclePositions: [8]` 每八个 assistant 位置运行一次，不经过关键词筛选。
+
+1.2 值班台使用 `await getWorldbook(name)` 读取当前主书，创建与删除回执分别读取 `new_entries` 和 `deleted_entries`。人工校准使用同次读取的完整数值与 `expected`，确认 ACK 后更新提示。顶层分类和普通变量都不会授予数值写权限。该 API 修订与两张卡的 1.2 格式需共同验收。
 
 可在卡内查看世界书关键词、次关键词、递归、插入位置与 outlet，EJS 的 `getvar`、`getwi` 和 `activateWI`，以及 MVU 数值更新、前端事件与人工电荷校准。`getvar` 字符串作用域使用 `local`，当前 host 将它映射到内部 `chat` 绑定。值班台使用 `getVariables` 读取聊天变量，并以 `insertOrAssignVariables` 追加写入 `author.log`；日志采用 `schemaVersion: 1` 的 `entries` 数组，累计观察与顾问对话。个人笔记可按所有权增删，独立顾问由受信点击触发。确定性状态和展示流程不调用模型；顾问每次受信点击对应一次模型请求。Ruby 默认关闭，卡片测试覆盖了启用后的八位置调度；本批未调用模型执行分析任务，实际请求数和费用仍须按实际配置记录。
 

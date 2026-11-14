@@ -2,7 +2,7 @@
 
 [返回首页](README.md) · [正式版本更新日志](CHANGELOG.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
-最后整理：**2026-11-06**。**0.3 正在开发，正式发行版本仍为 0.2.9-rc.4，发布日期待定。** 本页介绍开发线的新能力与进展。
+最后整理：**2026-11-15**。**0.3 正在开发，正式发行版本仍为 0.2.9-rc.4，发布日期待定。** 本页介绍开发线的新能力与进展。
 
 ## 让人物、页面和玩法一起进入故事
 
@@ -10,14 +10,19 @@
 
 10 月 28 日以来，我们围绕作者页面、变量与数值、模板、世界书和原生故事流程完成了一轮底层重构。重点是让常见写法由通用运行环境处理，减少逐卡适配，让相同能力服务更多作品。
 
+11 月 14 日进一步对齐 Native 1.2 单正文、两张参考卡和作者文档，并补齐 Ruby 分析、资料保存与导出流程。相关结果按受影响范围分批核对；完整创作、真实社区卡动态玩法和新进程恢复仍待验证，详见下方记录。
+
+11 月 15 日继续补齐 Ruby 与 Reader 的日常操作和消息写回路径。对应 Source、受控 Core 检查和开发构建已有限定结果，真实卡、自然创作与冷恢复仍待验证。
+
 ## 这一轮带来了什么
 
 - **作者页面进入浏览器原生环境。** HTML、样式、字体、图片与脚本有了共同的运行基础；页面按内容展开，宽页面适配阅读区，主剧情文字与操作区域保持完整。
 - **按钮和数据接上同一段故事。** Helper 事件、消息发送、普通变量、MVU 数值、人物与世界书编辑，逐步汇入同一套原生读写流程。作者页面保存的变化，可以成为下一轮剧情真正使用的材料。
 - **动态模板贯穿提示准备与正文处理。** EJS 能组合当前人物、变量和世界书，配合条件触发、正则及提示注入；多个模板段落可以接续使用前面产生的结果。
 - **创作资料更容易整理、修改和带走。** Native 卡提供清晰的作者栏目、完整参考卡及原件／当前设定导出；原创写卡与长篇改编共用定稿入口。
+- **Ruby 分析可以主动读取、运行和切换方案。** 作者按钮能读取已发布材料、手动运行启用的任务，或保存分析方案选择；开局分析与普通任务按顺序衔接。
 
-本轮开发源码已公开。接下来集中验证真实卡的连续游玩、编辑与重开，以及 Native 自然创作、文档导入和导出往返；RUBY 的作者刷新、方案选择与分析衔接也正在补齐。此前 34 张卡提供了导入和 161 项开场目录的基础记录，后续会继续以实际玩法展示进展。
+此前整合的开发源码已公开。Ruby 的作者刷新、方案选择与分析衔接已有实现与限定检查，后续仍要验证真实卡的连续游玩、编辑与重开，以及 Native 自然创作、文档导入和导出往返。此前 34 张卡提供了导入和 161 项开场目录的基础记录，后续会继续以实际玩法展示进展。
 
 ## 重点功能
 
@@ -27,7 +32,7 @@
 
 它能按需参考当前世界线的角色卡、世界书、规则、数值、记忆和有效剧情。聊出一个满意的想法后，你可以明确要求保存为设定或状态修改，再继续主剧情。例如，先补充某个组织的背景，确认措辞，再让下一段故事沿用新设定；也可以请它定位一个失灵的作者脚本，修好后接着玩。写入会配合当前剧情的运行状态处理。
 
-已有样本走通了“侧聊修改人物／世界书 → 主剧情使用新资料”，以及脚本修复、数值修改、审批、重置、Native 1.1 导出和正常重开等流程。真正发送的侧聊消息与生成、分类操作按实际模型调用计费，面板与设置由程序处理。
+此前样本走通了“侧聊修改人物／世界书 → 主剧情使用新资料”，以及脚本修复、数值修改、审批、重置、当时 Native 1.1 的导出和正常重开等流程。旧输入的结果不替代新格式验证。真正发送的侧聊消息与生成、分类操作按实际模型调用计费，面板与设置由程序处理。
 
 ### Native 原生角色卡：一份有清晰目录的创作稿
 
@@ -42,7 +47,7 @@ Native 卡使用 `nexttavern_card` JSON 文档。它用栏目声明内容和用�
 | 开场 `opening` | 保存当前开场与多个开场的原文目录，为同一组人物设计不同起点 |
 | 作者扩展与归档 | 携带受支持的脚本、分析配置和来源资料，方便追溯原稿与继续开发 |
 
-**1.0 适合直接写卡，1.1 兼顾社区作品转换与高级人物功能。** 结构清晰的 1.0 作者稿可由程序直接读取。1.1 则保存完整作者执行原文，同时建立分类后的人物与规则视图：普通剧情沿用原作者材料，高级人物功能按对应人物读取资料。需要分类时，模型负责识别人物、原文位置与关联，程序据此复制原文，保留作者的细节与表达。复杂动态规则的人物归属还在继续完善。
+**Native 作者源码统一为 1.2，整合与验证继续进行。** 新合同只保存一份作者正文：普通剧情直接使用人物与规则栏目，需要语义分类的社区资料另外保存人物、真实原文位置和关联，高级人物视图按这些位置只读生成。明确分栏的作者稿、自然写卡和完成研究后的小说改编不因此多付一次分类请求。完整示例与两张参考卡按同一合同更新；原创定稿、社区分类和导入导出的新格式验证尚待完成，不能据源码对齐宣称已经发行。复杂动态规则的人物归属仍需按实际消费者检验。
 
 这些栏目也让创作更像搭积木。已有的《龙女皇》参考卡展示如何保留 Markdown 原稿并整理成 Native 栏目；《雾港第十三声钟》展示值班简报、互斥闲谈、持续／冷却告示、世界书与累计日志的组合写法。作者可以从完整示例出发，按栏目替换自己的设定，逐步加入脚本和动态玩法。
 
@@ -70,6 +75,30 @@ Native 卡使用 `nexttavern_card` JSON 文档。它用栏目声明内容和用�
 
 ## 按日期记录
 
+### 11 月 15 日：补齐 Ruby 请求设置与 Reader 消息操作
+
+Ruby 增加状态、面板和 reload 的基础操作。卡片中的温度与 token 限额随独立 Ruby 请求发送，显式重试复用同一组冻结参数。Reader 增加事件清理与当前只读 parent 数据入口，Helper generation callback 现在能读取完整的当前开场资料。完整消息资料可以按读取范围写回，保存非当前开场候选后，按旧读取依据发起的写入会被拒绝。
+
+对应 Source、受控 Core 定点检查和开发构建有通过结果。真实社区卡交互、自然创作和新进程冷恢复仍待验证。0.3 尚未发布，正式版本仍为 0.2.9-rc.4。
+
+**English**
+
+Ruby adds basic status, panel and reload controls. Per-card temperature and token limits go through a separate Ruby request, and an explicit retry reuses the same frozen parameters. Reader adds event cleanup and read-only parent data access, and Helper generation callbacks can read the complete current opening data. Full message data can be written back against its read scope. After a non-current opening candidate is saved, writes based on the old read scope are rejected.
+
+Scoped Source checks, controlled Core cases and a development build have passing results. Real community-card interaction, natural authoring and new-process recovery remain unverified. 0.3 is unreleased, and the formal release is still 0.2.9-rc.4.
+
+### 11 月 14 日：对齐 Native 1.2，补齐 Ruby 使用路径
+
+Native 作者源码、两张完整参考卡和作者文档已统一为 1.2 单正文结构。普通剧情使用作者正文；需要分类的高级视图保留原文位置并从原文生成。格式与文档对齐不代表新格式的完整导入、创作和导出流程已经验收。
+
+Ruby 流程补入辅助关键词；外部摘要缺席时回退到原始剧情文本；开局分析与未声明输出键的任务按顺序衔接。作者也可以读取资料、运行分析、选择预设，并保存和导出方案及相关元数据。此处记录的是已实现路径，不代表所有 Ruby 场景都已验证。
+
+同步修正工作流克隆后的当前项选择、静态就绪标记、常驻角色专用文本生成，以及原创资料下载按当前分类生成并剔除过期结果；侧聊工具说明和作者文档也有更新。继续步骤已与 Native 候选及可选的 Phase A 解耦。
+
+源码和受控 Core 检查按子项取得限定结果；一个先前失败的动态场景在修复后以同一用例复验通过（1/1）。独立审查报告已返回；维护者核实并修正其中已确认的可行动问题，再对相应修复作定点复核。这只说明已核实项的结果，不构成完整双审或 0.3 验收通过。自然模型创作、真实原卡 HTML 与交互、首批十张及第二批随机十张真实卡的完整玩法、新 Native 输入与导出流程，以及新进程恢复仍待验证；本次也未据此宣称整体性能提升。**0.3 尚未发布，正式版本仍为 0.2.9-rc.4。**
+
+English: Align the Native 1.2 author source, two complete reference cards and author guides around a single body. Ruby now supports auxiliary keywords, falls back to the original story when an external summary is missing, orders startup and tasks without output keys, and saves or exports read/run/preset selections and metadata. Follow-up fixes cover cloned workflow selection, readiness state, resident-specific text generation, current classification in original-material downloads, expired outputs and side-chat tool descriptions; continuation is decoupled from the Native candidate and optional Phase A. Source and controlled Core checks remain scoped. One previously failing dynamic case passed a same-case follow-up (1/1). Review reports have been received; maintainers verified and fixed confirmed actionable findings, with follow-up checks limited to those fixes. This does not claim a complete dual-review or 0.3 acceptance pass. Natural-model authoring, real-card HTML interactions, full gameplay across the first ten and second random ten cards, the new Native input/export flows and new-process recovery remain unverified. No overall performance gain is claimed. 0.3 remains unreleased; the formal release is still 0.2.9-rc.4.
+
 ### 11 月 6 日：让作者页面、动态规则与原生故事一起工作
 
 接续 10 月 28 日的路线调整，这段时间的主要成果，是把分散的兼容能力接入共同的原生底座。重构围绕“作者写了什么，页面怎样操作，下一轮故事实际拿到什么”展开。
@@ -82,7 +111,11 @@ Native 卡使用 `nexttavern_card` JSON 文档。它用栏目声明内容和用�
 
 **作者资料与原件保存得更完整。** Native 导入、当前卡导出和参考卡补齐作者元数据；上传原件保留各次的名称与格式。Markdown／DOCX 上传工具补齐格式处理，实际 DOCX 提取已读到中文段落和表格，接下来继续验证从上传、创作到激活和开场的完整体验。
 
-这一轮把作者页面、状态、模板、世界书、任务与界面的开发成果集中整合并公开。下一步先补齐 RUBY 的基础使用衔接，再验证首批十张真实卡及第二批随机十张，并继续自然写卡、小说改编、文档导入和新的导出往返。我们会用实际页面、交互和连续故事来介绍后续结果。
+**Ruby 的基础操作接上作者页面。** `/ruby read` 不调用分析模型，能读当前主角色书或聊天书；`run` 等待实际分析结果，`preset` 先保存卡片的方案选择，再更新生效状态。开局分析先于同轮普通任务，后面的任务可以引用已发布结果；次级关键词只在对应开关开启时使用。外部总结插件缺席时使用原始剧情文本，并在配置记录中标明该来源不可用，不再仅因此停掉可运行的分析。当前 Source 配置、方案选择和导出内容沿同一份已保存资料，上传原件仍保持不变。
+
+此前限定检查累计覆盖了跨批 Source 行为的 140 个去重等价用例，以及分别取得结果的两个受控 Core 流程，均按当时输入保留；它们不是一次140/140或同轮Core全量通过，也不替代后续修正、新格式和完整原卡玩法的验证。独立双审尚未完成：已返回报告中的可行动问题正在修正，另一份独立静态审查继续进行；技术错误不计作审查通过。Native 单正文源码与两张参考卡已对齐 1.2，相关新输入结果另行记录。
+
+此前已公开的整合成果继续保留；本次 Ruby 与 Native 文档随后续源码批次同步。下一步推进 1.2 的完整流程，再验证首批十张真实卡及第二批随机十张，并继续自然写卡、小说改编、文档导入和新的导出往返。我们会用实际页面、交互和连续故事来介绍后续结果。
 
 相关用法见[社区卡指南](COMMUNITY-CARDS.md)、[EJS 作者模板](NATIVE-CARD-FORMAT.md#8-ejs-作者模板动态文本与世界书联动)、[状态指南](NATIVE-STATE.md)和[预设指南](COMMUNITY-PRESETS.md)。
 
@@ -221,14 +254,14 @@ Ruby 辅助分析走通了人工重试、启停、刷新及不同进程恢复的
 
 ## 接下来会继续展示什么
 
-1. **作者按钮与分析面板的联动。** 补齐 RUBY 的读取、执行、方案选择和页面刷新，让卡片里的操作有对应的原生结果。
+1. **作者按钮与分析面板的联动。** 继续验证 RUBY 读取、执行、方案选择和页面刷新在真实卡中的体验，保留失败原因与实际任务结果。
 2. **更多真实作品的持续游玩。** 更新测试版本，依次验证首批十张及第二批随机十张，连同编辑、分支、保存和重开一起体验。
 3. **从原稿到可分享角色卡。** 完成自然 Native 写卡、小说改编及 Markdown／DOCX 完整导入的实测，再核对修改后卡片与新剧情的导出。
 
 ## 专题阅读
 
 - [社区角色卡兼容与转换](COMMUNITY-CARDS.md)：导入、普通游玩、高级转换与导出。
-- [原生角色卡格式](NATIVE-CARD-FORMAT.md)：Native 1.0／1.1、作者栏目与完整示例。
+- [原生角色卡格式](NATIVE-CARD-FORMAT.md)：作者栏目、分类来源、模板与完整示例；1.2 实施进度见本页。
 - [数值状态、MVU 与 Ruby](NATIVE-STATE.md)：数值更新、世界线与可选分析。
 - [社区预设与正则](COMMUNITY-PRESETS.md)：文风、选择范围与提示词配置。
 
