@@ -7215,16 +7215,8 @@
       "source": "src/core/tavern-card.ts"
     },
     {
-      "id": "tavern-compat-contract-v1-fixture",
-      "source": "tests/fixtures/tavern-compat-contract-v1.json"
-    },
-    {
       "id": "tavern-compat-frame-prototype-fixture",
       "source": "tests/fixtures/tavern-compat-frame-prototype.html"
-    },
-    {
-      "id": "tavern-compat-host-assembly-test",
-      "source": "tests/tavern-compat-host-assembly.test.mts"
     },
     {
       "id": "tavern-compat-loader-host-contract",
@@ -7233,14 +7225,6 @@
     {
       "id": "tavern-compat-loader-host-test",
       "source": "tests/tavern-compat-loader-host.mjs"
-    },
-    {
-      "id": "tavern-compat-server-evaluator-test",
-      "source": "tests/tavern-compat-server-evaluator.mjs"
-    },
-    {
-      "id": "tavern-compat-server-prototype-test",
-      "source": "tests/tavern-compat-server-prototype.test.mjs"
     },
     {
       "id": "tavern-conversations",
@@ -11704,6 +11688,28 @@
       ]
     },
     {
+      "id": "roleplay-tavern-source-author-metadata-typescript",
+      "source": "src/core/roleplay-tavern-source-author-metadata.ts"
+    },
+    {
+      "id": "roleplay-tavern-source-author-metadata-js",
+      "source": "lib/core/roleplay-tavern-source-author-metadata.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-source-author-metadata.js"
+      ]
+    },
+    {
+      "id": "roleplay-ruby-commands-typescript",
+      "source": "src/core/roleplay-ruby-commands.ts"
+    },
+    {
+      "id": "roleplay-ruby-commands-js",
+      "source": "lib/core/roleplay-ruby-commands.js",
+      "aliases": [
+        "preset/lib/core/roleplay-ruby-commands.js"
+      ]
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -12101,7 +12107,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -12444,7 +12451,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -12935,7 +12943,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -13281,7 +13290,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -13648,7 +13658,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -13992,7 +14003,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -14338,7 +14350,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -14755,7 +14768,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -15098,7 +15112,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -15615,7 +15630,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -16087,7 +16103,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -16666,7 +16683,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -17046,7 +17064,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -17396,7 +17415,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -29305,7 +29325,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -29651,7 +29672,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -30032,7 +30054,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -30456,7 +30479,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -30799,7 +30823,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -31150,7 +31175,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -31605,7 +31631,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -32019,7 +32046,8 @@
         "src/core/roleplay-mvu-scope-projection-v2.ts",
         "src/core/tavern-task-retirement-history.ts",
         "src/core/tavern-telemetry-ingest.ts",
-        "src/core/roleplay-story-evidence.ts"
+        "src/core/roleplay-story-evidence.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -32371,7 +32399,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -32804,7 +32833,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -33846,7 +33876,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "kind": "typescript-module",
       "builder": "tools/build-modules.mjs"
@@ -34228,7 +34259,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "kind": "typescript-module",
       "builder": "tools/build-modules.mjs"
@@ -34572,7 +34604,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "kind": "typescript-module",
       "builder": "tools/build-modules.mjs"
@@ -34993,7 +35026,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -35336,7 +35370,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -35685,7 +35720,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -36109,7 +36145,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -36509,7 +36546,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "kind": "typescript-module",
       "entry": "src/operations/product-assembly.mts",
@@ -37558,7 +37596,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -38038,7 +38077,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -38376,7 +38416,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -38716,7 +38757,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -39056,7 +39098,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -39394,7 +39437,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -39734,7 +39778,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -40080,7 +40125,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -40423,7 +40469,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -40759,7 +40806,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -41098,7 +41146,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -41436,7 +41485,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -41774,7 +41824,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -42264,7 +42315,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -42611,7 +42664,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -42954,7 +43008,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -43290,7 +43345,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -43640,7 +43696,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -43989,7 +44046,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -44336,7 +44394,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -44682,7 +44741,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -45073,7 +45133,8 @@
         "lib/core/roleplay-author-chat-state-types.js",
         "src/core/roleplay-author-chat-state-types.ts",
         "lib/ui/reader-regex-document-session.js",
-        "src/ui/reader-regex-document-session.ts"
+        "src/ui/reader-regex-document-session.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "browser": {
         "moduleId": "dsh-nexttavern",
@@ -45432,7 +45493,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -45770,7 +45832,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -46116,7 +46179,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -46461,7 +46525,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -46807,7 +46872,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -47152,7 +47218,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -47499,7 +47566,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -47845,7 +47913,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -48188,7 +48257,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -48664,7 +48734,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -49102,7 +49174,8 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -49488,7 +49561,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -49834,7 +49908,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -50225,7 +50300,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -50578,7 +50654,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -50923,7 +51000,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -51268,7 +51346,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -51613,7 +51692,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -51960,7 +52040,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -52306,7 +52387,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -52646,7 +52728,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -52996,7 +53079,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -53347,7 +53431,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -53698,7 +53783,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -54049,7 +54135,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -54390,7 +54477,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -54740,7 +54828,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -55093,7 +55182,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -55443,7 +55533,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -55797,7 +55888,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -56147,7 +56239,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -56502,7 +56595,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -56855,7 +56949,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -57204,7 +57299,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -57619,7 +57715,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -57969,7 +58066,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -58320,7 +58418,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -58685,7 +58784,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -59026,7 +59126,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -59369,7 +59470,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "entry": "src/core/roleplay-mvu-initialization.ts",
       "artifact": "roleplay-mvu-initialization-js",
@@ -59724,7 +59826,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -60074,7 +60177,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -60421,7 +60525,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -60769,7 +60874,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -61119,7 +61225,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -61468,7 +61575,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -61821,7 +61929,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -62172,7 +62281,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -62657,7 +62767,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -62998,7 +63109,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -63487,7 +63599,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -63978,7 +64092,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -64469,7 +64585,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -64960,7 +65078,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -65309,7 +65429,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -65657,7 +65778,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -65998,7 +66120,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -66347,7 +66470,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -66836,7 +66960,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -67327,7 +67453,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -67816,7 +67944,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -68306,7 +68436,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -68647,7 +68779,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -69136,7 +69269,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -69625,7 +69760,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -70114,7 +70251,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -70463,7 +70602,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -70952,7 +71092,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -71441,7 +71583,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -71780,7 +71924,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -72271,7 +72416,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -72619,7 +72766,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -73010,7 +73158,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -73361,7 +73510,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -73705,7 +73855,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "entry": "src/core/roleplay-mvu-update.ts",
       "artifact": "roleplay-mvu-update-js",
@@ -74054,7 +74205,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "entry": "src/core/roleplay-mvu-update-v2.ts",
       "artifact": "roleplay-mvu-update-v2-js",
@@ -74393,7 +74545,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -74747,7 +74900,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -75127,7 +75281,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -75475,7 +75630,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -75829,7 +75985,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -76178,7 +76335,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -76542,7 +76700,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -76888,7 +77047,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -77293,7 +77453,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -77632,7 +77793,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -77973,7 +78135,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -78314,7 +78477,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -78654,7 +78818,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -78994,7 +79159,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -79335,7 +79501,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -79675,7 +79842,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -80019,7 +80187,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -80360,7 +80529,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -80702,7 +80872,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -81042,7 +81213,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -81413,7 +81585,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -81844,7 +82017,8 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -82186,7 +82360,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -82528,7 +82703,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -82868,7 +83044,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -83224,7 +83401,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -83564,7 +83742,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -83904,7 +84083,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -84244,7 +84424,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -84584,7 +84765,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -84926,7 +85108,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -85266,7 +85449,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -85606,7 +85790,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -85947,7 +86132,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -86287,7 +86473,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -86633,7 +86820,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -86978,7 +87166,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -87326,7 +87515,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -87673,7 +87863,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -88021,7 +88212,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -88365,7 +88557,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -88715,7 +88908,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -89068,7 +89262,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -89416,7 +89611,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -89763,7 +89959,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -90128,7 +90325,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -90476,7 +90674,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -90824,7 +91023,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -91164,7 +91364,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -91510,7 +91711,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -91856,7 +92058,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -92202,7 +92405,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -92548,7 +92752,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -92894,7 +93099,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -93242,7 +93448,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -93590,7 +93797,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -93928,7 +94136,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -94268,7 +94477,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -94610,7 +94820,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -94951,7 +95162,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -95291,7 +95503,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -95632,7 +95845,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -95984,7 +96198,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -96340,7 +96555,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -96681,7 +96897,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -97021,7 +97238,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -97361,7 +97579,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -97701,7 +97920,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -98041,7 +98261,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -98381,7 +98602,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -98717,7 +98939,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -99057,7 +99280,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -99397,7 +99621,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -99739,7 +99964,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -100082,7 +100308,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -100422,7 +100649,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -100789,7 +101017,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -101134,7 +101363,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -101476,7 +101706,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -101816,7 +102047,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -102158,7 +102390,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -102504,7 +102737,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -102844,7 +103078,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -103189,7 +103424,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -103532,7 +103768,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -103876,7 +104113,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -104217,7 +104455,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -104557,7 +104796,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -104899,7 +105139,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -105239,7 +105480,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -105580,7 +105822,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -105920,7 +106163,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -106261,7 +106505,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -106602,7 +106847,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -106962,7 +107208,8 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -107321,7 +107568,8 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -107714,7 +107962,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -108135,7 +108384,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -108483,7 +108733,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -108831,7 +109082,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -109213,7 +109465,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -109761,7 +110014,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -110369,7 +110623,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -110707,7 +110962,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -111045,7 +111301,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -111383,7 +111640,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -112001,7 +112259,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -112344,7 +112603,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -112686,7 +112946,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -113030,7 +113291,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -113370,7 +113632,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -113710,7 +113973,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -114050,7 +114314,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -114390,7 +114655,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -114731,7 +114997,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -115071,7 +115338,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -115413,7 +115681,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -115754,7 +116023,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -116097,7 +116367,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -116446,7 +116717,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -116795,7 +117067,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -117138,7 +117411,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "entry": "src/core/tavern-mvu-initvar.ts",
       "artifact": "tavern-mvu-initvar-js",
@@ -117492,7 +117766,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -117841,7 +118116,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -118190,7 +118466,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -118538,7 +118815,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -118888,7 +119166,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -119379,7 +119658,9 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "src/core/roleplay-ruby-commands.ts"
       ]
     },
     {
@@ -119728,7 +120009,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -120077,7 +120359,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -120425,7 +120708,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -120774,7 +121058,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -121124,7 +121409,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -121472,7 +121758,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -121822,7 +122109,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -122171,7 +122459,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -122520,7 +122809,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -122869,7 +123159,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -123217,7 +123508,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -123554,7 +123846,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -124009,7 +124302,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -124349,7 +124643,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -124688,7 +124983,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -125028,7 +125324,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -125368,7 +125665,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -125711,7 +126009,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -126054,7 +126353,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -126397,7 +126697,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -126777,7 +127078,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -127120,7 +127422,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -127470,7 +127773,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -127820,7 +128124,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -128175,7 +128480,8 @@
         "src/core/tavern-telemetry-ingest.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -128524,7 +128830,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -128874,7 +129181,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -129252,7 +129560,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -129593,7 +129902,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -130277,7 +130587,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -130617,7 +130928,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -130969,7 +131281,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -131310,7 +131623,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -131669,7 +131983,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -132009,7 +132324,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -132365,7 +132681,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -132877,7 +133194,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -133220,7 +133538,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -133560,7 +133879,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -133957,7 +134277,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -134308,7 +134629,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -134803,7 +135125,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -135229,7 +135552,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -135673,7 +135997,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -136009,7 +136334,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -136363,7 +136689,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -136700,7 +137027,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -137113,7 +137441,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -137456,7 +137785,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -137802,7 +138132,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -138143,7 +138474,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -138482,7 +138814,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -138852,7 +139185,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -139243,7 +139577,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -139589,7 +139924,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -139933,7 +140269,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -140952,7 +141289,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -141451,7 +141789,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -141802,7 +142141,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "typeContext": "default"
     },
@@ -142172,7 +142512,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -142692,7 +143033,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -143033,7 +143375,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -143374,7 +143717,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -143715,7 +144059,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -144056,7 +144401,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -144418,7 +144764,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "kind": "typescript-module",
       "entry": "src/operations/released-component-types.mts",
@@ -144783,7 +145130,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "kind": "typescript-module",
       "entry": "src/operations/released-component-catalog.mts",
@@ -145148,7 +145496,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "kind": "typescript-module",
       "entry": "src/operations/released-component-archive.mts",
@@ -145514,7 +145863,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ],
       "kind": "typescript-module",
       "entry": "src/operations/released-component-assembly.mts",
@@ -145853,7 +146203,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -146189,7 +146540,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -146525,7 +146877,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -146861,7 +147214,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -147295,7 +147649,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -147644,7 +147999,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -147993,7 +148349,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -148671,7 +149028,8 @@
         "src/core/roleplay-mvu-scope-projection-v2.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -149025,7 +149383,8 @@
         "src/core/tavern-task-retirement-history.ts",
         "src/core/roleplay-story-evidence.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -149367,7 +149726,8 @@
         "src/core/roleplay-mvu-scope-projection-v2.ts",
         "src/core/tavern-task-retirement-history.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -149861,7 +150221,8 @@
         "src/core/roleplay-author-chat-native-roots.ts",
         "development/session-format/src/author-chat-marker.ts",
         "development/llm/src/host-abi.ts",
-        "development/agent-loop/src/published-input.ts"
+        "development/agent-loop/src/published-input.ts",
+        "src/core/roleplay-tavern-source-author-metadata.ts"
       ]
     },
     {
@@ -151062,6 +151423,34 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "src/core/tavern-lore-ordinary-preparation.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "roleplay-tavern-source-author-metadata-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-tavern-source-author-metadata-js",
+      "entry": "src/core/roleplay-tavern-source-author-metadata.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-tavern-source-author-metadata.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "roleplay-ruby-commands-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-ruby-commands-js",
+      "entry": "src/core/roleplay-ruby-commands.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-ruby-commands.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",

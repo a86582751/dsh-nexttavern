@@ -85,7 +85,8 @@
         "native-reference*",
         "preset/reference/dragon-empress.native.json",
         "preset/reference/steam-tide.native.json",
-        "preset/reference/README.md"
+        "preset/reference/README.md",
+        "author-native-commands*"
       ]
     },
     {
@@ -1260,7 +1261,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -1502,7 +1505,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -2025,7 +2030,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -2305,7 +2312,9 @@
         "roleplay-author-message-edit-types-typescript",
         "author-native-current-regex-typescript",
         "author-native-variable-writers-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -2586,7 +2595,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -3214,7 +3225,9 @@
         "roleplay-author-message-edit-types-typescript",
         "author-native-current-regex-typescript",
         "author-native-variable-writers-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -3791,7 +3804,9 @@
         "roleplay-author-message-edit-types-typescript",
         "author-native-current-regex-typescript",
         "author-native-variable-writers-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -4281,8 +4296,269 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
-      ]
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js",
+        "typescript-config",
+        "typescript-builder",
+        "tavern-mvu-author-execution-classifier-v4-typescript",
+        "tavern-mvu-schema-compiler-v4-typescript",
+        "tavern-mvu-schema-compiler-worker-v4-typescript",
+        "tavern-mvu-schema-compiler-ast-v4-typescript",
+        "tavern-mvu-schema-fresh-selector-typescript",
+        "typescript-builder-typescript",
+        "mvu-schema-test-dependencies-fixture-contract",
+        "mvu-native-data-test-dependencies-fixture",
+        "roleplay-native-persona-types-typescript",
+        "nexttavern-card-js",
+        "reader-regex-document-types-typescript",
+        "roleplay-reader-style-parser-typescript",
+        "compat-token-meter-types-ts",
+        "roleplay-mvu-schema-maintenance-types-typescript",
+        "roleplay-mvu-schema-task-edit-types-typescript",
+        "roleplay-worldline-player-save-typescript",
+        "compat-agent-loop-story-request-ts",
+        "compat-anydoc-src-document-reader-ts",
+        "compat-anydoc-src-normalize-markdown-ts",
+        "mvu-schema-runtime-v4-update-batch-v1-src-descriptor-ts",
+        "mvu-schema-runtime-v4-update-batch-v1-src-index-ts",
+        "compat-session-format-src-author-injection-cleanup-ts",
+        "compat-session-response-material-ts",
+        "compat-subagent-archive-admission-typescript",
+        "compat-subagent-assistant-output-typescript",
+        "compat-subagent-catalog-typescript",
+        "compat-subagent-child-agent-typescript",
+        "compat-subagent-continuation-activation-typescript",
+        "compat-subagent-continuation-messages-typescript",
+        "compat-subagent-continuation-typescript",
+        "compat-subagent-control-types-typescript",
+        "compat-subagent-control-typescript",
+        "compat-subagent-depth-typescript",
+        "compat-subagent-descriptor-typescript",
+        "compat-subagent-error-typescript",
+        "compat-subagent-inbox-typescript",
+        "compat-subagent-index-typescript",
+        "compat-subagent-internal-typescript",
+        "compat-subagent-lifecycle-typescript",
+        "compat-subagent-list-children-typescript",
+        "compat-subagent-out-of-process-typescript",
+        "compat-subagent-owned-ruby-task-typescript",
+        "compat-subagent-projection-types-typescript",
+        "compat-subagent-projection-typescript",
+        "compat-subagent-run-settlement-typescript",
+        "compat-subagent-types-typescript",
+        "typescript-runtime-index-typescript",
+        "community-preset-controls-typescript",
+        "community-preset-display-typescript",
+        "community-preset-execution-typescript",
+        "community-preset-import-typescript",
+        "community-preset-macros-typescript",
+        "community-preset-plans-typescript",
+        "community-preset-profiles-typescript",
+        "community-preset-response-typescript",
+        "community-preset-static-typescript",
+        "community-preset-types-typescript",
+        "community-preset-variables-typescript",
+        "community-presets-typescript",
+        "community-regex-typescript",
+        "native-card-advanced-typescript",
+        "native-card-conversion-typescript",
+        "roleplay-author-browser-generation-typescript",
+        "roleplay-author-browser-types-typescript",
+        "roleplay-author-browser-typescript",
+        "roleplay-author-script-resources-typescript",
+        "roleplay-author-worldbook-data-typescript",
+        "roleplay-completion-types-typescript",
+        "roleplay-decision-types-typescript",
+        "roleplay-inheritance-types-typescript",
+        "roleplay-mvu-schema-derived-typescript",
+        "roleplay-ruby-task-types-typescript",
+        "roleplay-state-types-typescript",
+        "roleplay-state-typescript",
+        "roleplay-status-control-facts-typescript",
+        "roleplay-status-presentation-typescript",
+        "roleplay-status-typescript",
+        "roleplay-task-host-typescript",
+        "roleplay-tavern-lore-membership-typescript",
+        "roleplay-tavern-prompt-types-typescript",
+        "roleplay-typescript-assets-typescript",
+        "tavern-author-combined-compiler-v8-typescript",
+        "tavern-author-combined-data-v8-typescript",
+        "tavern-author-combined-types-v8-typescript",
+        "tavern-author-external-addons-typescript",
+        "tavern-lore-derived-typescript",
+        "tavern-lore-match-typescript",
+        "tavern-lore-snapshot-typescript",
+        "tavern-mvu-owned-state-types-v1-typescript",
+        "tavern-named-worldbook-data-typescript",
+        "tavern-prompt-transform-execution-typescript",
+        "tavern-typescript-runtime-descriptor-typescript",
+        "released-component-types-typescript",
+        "compat-llm-host-abi-ts",
+        "compat-agent-loop-published-input-ts",
+        "roleplay-author-dialog-js",
+        "native-card-conversion-js",
+        "roleplay-mvu-schema-opening-typescript",
+        "roleplay-mvu-schema-core-typescript",
+        "card-adaptation-panel-typescript",
+        "card-adaptation-typescript",
+        "card-adaptation-tools-typescript",
+        "card-character-map-typescript",
+        "card-research-planner-typescript",
+        "preset-panel-typescript",
+        "memory-retrieval-types-source",
+        "memory-embedding-api-source",
+        "memory-local-catalog-source",
+        "memory-story-text-source",
+        "memory-retrieval-source",
+        "memory-vector-worker-source",
+        "memory-local-worker-source",
+        "memory-retrieval-panel-source",
+        "telemetry-panels-typescript",
+        "management-panels-typescript",
+        "card-import-request-typescript",
+        "opening-panel-typescript",
+        "user-info-typescript",
+        "author-panels-typescript",
+        "activity-view-typescript",
+        "reader-view-typescript",
+        "status-surface-typescript",
+        "message-actions-typescript",
+        "session-actions-typescript",
+        "state-store-typescript",
+        "reader-model-typescript",
+        "reader-rendering-typescript",
+        "reader-regex-typescript",
+        "panel-state-typescript",
+        "settings-projection-typescript",
+        "roleplay-panel-routes-types-typescript",
+        "roleplay-panel-routes-typescript",
+        "roleplay-branch-routes-typescript",
+        "roleplay-job-routes-types-typescript",
+        "roleplay-job-routes-typescript",
+        "roleplay-telemetry-routes-types-typescript",
+        "roleplay-telemetry-routes-typescript",
+        "roleplay-settings-routes-types-typescript",
+        "roleplay-settings-routes-typescript",
+        "roleplay-authoring-types-typescript",
+        "roleplay-authoring-typescript",
+        "roleplay-diagnosis-types-typescript",
+        "roleplay-diagnosis-typescript",
+        "roleplay-task-tools-types-typescript",
+        "roleplay-task-tools-typescript",
+        "roleplay-session-actions-types-typescript",
+        "roleplay-session-actions-typescript",
+        "roleplay-author-tools-typescript",
+        "roleplay-loop-types-typescript",
+        "roleplay-loop-typescript",
+        "roleplay-service-types-typescript",
+        "roleplay-service-typescript",
+        "roleplay-opening-routes-typescript",
+        "roleplay-resource-bridge-typescript",
+        "roleplay-inheritance-typescript",
+        "roleplay-decision-typescript",
+        "memory-compaction-typescript",
+        "memory-notes-writer-typescript",
+        "memory-scheduler-typescript",
+        "memory-summary-typescript",
+        "novel-export-typescript",
+        "conversation-projection-typescript",
+        "qwen-reasoning-profile-typescript",
+        "roleplay-core-typescript",
+        "roleplay-side-chat-typescript",
+        "roleplay-core-typescript-types",
+        "roleplay-completion-typescript",
+        "tavern-telemetry-normalize-typescript",
+        "tavern-telemetry-fold-typescript",
+        "tavern-telemetry-aggregate-typescript",
+        "tavern-telemetry-query-typescript",
+        "tavern-telemetry-typescript",
+        "tavern-pricing-typescript",
+        "tavern-telemetry-time-range-typescript",
+        "roleplay-ui-typescript",
+        "roleplay-host-index-typescript",
+        "roleplay-memory-typescript",
+        "ask-user-decision-pr-typescript",
+        "roleplay-deescape-typescript",
+        "nexttavern-market-typescript",
+        "public-access-cli-typescript",
+        "public-access-recipes-typescript",
+        "card-research-packets-typescript",
+        "card-adaptation-tool-schemas-typescript",
+        "card-research-record-typescript",
+        "conversation-presentation-typescript",
+        "roleplay-ui-styles-typescript",
+        "tavern-pricing-data-typescript",
+        "tavern-price-catalog-typescript",
+        "tavern-exchange-rates-typescript",
+        "pricing-panel-typescript",
+        "roleplay-setting-store-typescript",
+        "roleplay-setting-tools-typescript",
+        "author-runtime-typescript",
+        "status-rendering-typescript",
+        "decision-seat-typescript",
+        "reader-beauty-typescript",
+        "card-adaptation-presentations-typescript",
+        "quality-types-typescript",
+        "quality-context-typescript",
+        "quality-plan-typescript",
+        "quality-inputs-typescript",
+        "quality-process-typescript",
+        "quality-actions-typescript",
+        "quality-run-typescript",
+        "quality-cli-typescript",
+        "quality-projection-typescript",
+        "nexttavern-lifecycle-typescript",
+        "nexttavern-profile-plan-typescript",
+        "nexttavern-entry-policy-typescript",
+        "nexttavern-entry-typescript",
+        "nexttavern-settings-bridge-typescript",
+        "public-build-modules-typescript",
+        "product-assembly-typescript",
+        "card-upload-panel-typescript",
+        "card-upload-request-typescript",
+        "roleplay-mvu-basis-typescript",
+        "roleplay-mvu-native-typescript",
+        "roleplay-mvu-opening-typescript",
+        "roleplay-chat-card-context-typescript",
+        "card-import-panel-typescript",
+        "chat-opening-card-typescript",
+        "roleplay-input-import-typescript",
+        "roleplay-input-management-typescript",
+        "roleplay-mvu-derived-typescript",
+        "roleplay-mvu-player-typescript",
+        "roleplay-mvu-player-routes-typescript",
+        "mvu-state-panel-typescript",
+        "mvu-schema-runtime-assets-typescript",
+        "roleplay-mvu-schema-player-typescript",
+        "roleplay-mvu-schema-player-core-typescript",
+        "bundled-library-assembly-typescript",
+        "reader-submission-handoff-typescript",
+        "roleplay-mvu-player-expected-typescript",
+        "released-component-catalog-typescript",
+        "released-component-archive-typescript",
+        "released-component-assembly-typescript",
+        "tool-window-typescript",
+        "tavern-telemetry-ingest-typescript",
+        "roleplay-ruby-commands-typescript",
+        "author-native-program-generated",
+        "tavern-author-external-addons-generated",
+        "tavern-author-combined-types-v8-generated",
+        "tavern-author-combined-data-v8-generated",
+        "tavern-author-combined-data-generated",
+        "status-template-public-ui",
+        "tavern-template-ejs-runtime-types-generated",
+        "tavern-template-ejs-runtime-types-typescript",
+        "roleplay-native-card-export-js",
+        "roleplay-native-card-export-typescript",
+        "native-card-conversion-driver-js",
+        "native-card-conversion-driver-typescript",
+        "compat-agent-loop-package-json",
+        "compat-session-package-json"
+      ],
+      "effects": {
+        "build": true
+      }
     },
     {
       "id": "test:tavern-card.test.mjs",
@@ -4299,47 +4575,6 @@
         "compiler"
       ],
       "inputs": []
-    },
-    {
-      "id": "test:tavern-compat-server-prototype.test.mjs",
-      "action": "test",
-      "artifact": "tavern-compat-server-prototype-test",
-      "modules": [
-        "card-import"
-      ],
-      "inputs": [
-        "tavern-compat-server-evaluator-test",
-        "tavern-compat-contract-v1-fixture",
-        "tavern-compat-server-prototype-test"
-      ],
-      "depends": [
-        "generated"
-      ],
-      "requires": [
-        "compiler"
-      ]
-    },
-    {
-      "id": "test:tavern-compat-host-assembly.test.mts",
-      "action": "test",
-      "artifact": "tavern-compat-host-assembly-test",
-      "modules": [
-        "card-import"
-      ],
-      "inputs": [
-        "tavern-compat-server-evaluator-test",
-        "plugin-fork-controller-fixture-test",
-        "inventory-runtime-alpha3-build-tools-package-json",
-        "test-temp-helper-typescript",
-        "tavern-compat-host-assembly-test"
-      ],
-      "depends": [
-        "generated"
-      ],
-      "requires": [
-        "compiler"
-      ],
-      "timeoutMs": 30000
     },
     {
       "id": "test:narrative-presets-ui.test.mjs",
@@ -4570,7 +4805,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -5072,7 +5309,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -5578,7 +5817,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -6114,7 +6355,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -6658,7 +6901,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -7147,7 +7392,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -7637,7 +7884,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -8193,7 +8442,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -8680,7 +8931,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -8943,7 +9196,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -9179,7 +9434,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -9669,7 +9926,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -10200,7 +10459,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ]
     },
     {
@@ -10229,8 +10490,7 @@
         "generated"
       ],
       "requires": [
-        "compiler",
-        "jsdom"
+        "compiler"
       ],
       "inputs": []
     },
@@ -10572,7 +10832,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ],
       "requires": [
         "compiler"
@@ -10851,7 +11113,45 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "compat-agent-loop-input-admission-ts",
+        "compat-llm-adapter-failure-js",
+        "compat-llm-api-key-js",
+        "compat-llm-assembler-js",
+        "compat-llm-assistant-stream-js",
+        "compat-llm-attribution-js",
+        "compat-llm-brand-js",
+        "compat-llm-call-config-js",
+        "compat-llm-content-js",
+        "compat-llm-error-js",
+        "compat-llm-index-js",
+        "compat-llm-invariant-js",
+        "compat-llm-message-js",
+        "compat-llm-package-json",
+        "compat-llm-retry-policy-js",
+        "compat-llm-types-js",
+        "compat-session-fork-js",
+        "compat-session-index-js",
+        "compat-session-invariant-js",
+        "compat-session-known-event-types-js",
+        "compat-session-opening-records-js",
+        "compat-session-package-json",
+        "compat-session-preparation-js",
+        "compat-session-repair-js",
+        "compat-session-request-header-js",
+        "compat-session-request-material-types-js",
+        "compat-session-request-preview-js",
+        "compat-session-seq-ranges-js",
+        "compat-session-surface-js",
+        "compat-session-tool-history-js",
+        "compat-session-types-js",
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
+        "compat-session-response-material-js",
+        "compat-llm-host-abi-js",
+        "compat-agent-loop-published-input-ts",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ],
       "depends": [
         "generated"
@@ -11124,7 +11424,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ],
       "depends": [
         "generated"
@@ -11534,7 +11836,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ],
       "depends": [
         "generated"
@@ -11796,7 +12100,9 @@
         "roleplay-author-message-capture-typescript",
         "author-native-message-variables-typescript",
         "roleplay-author-message-edit-types-typescript",
-        "tavern-lore-ordinary-preparation-typescript"
+        "tavern-lore-ordinary-preparation-typescript",
+        "roleplay-tavern-source-author-metadata-typescript",
+        "roleplay-tavern-source-author-metadata-js"
       ],
       "depends": [
         "generated"
