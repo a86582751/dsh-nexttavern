@@ -103,6 +103,7 @@ if(process.env.FAULT.startsWith('native-')) {
 fs.rename=async function(from,to){
   const result=await rename(from,to);
   if(process.env.FAULT==='manifest-renamed' && to===process.env.PROFILE+'/package.json') process.exit(91);
+  if(process.env.FAULT==='receipt-migrated' && to===process.env.PROFILE+'/.nexttavern-android-code.json') process.exit(95);
   return result;
 };
 fs.link=async function(from,to){
@@ -269,6 +270,112 @@ syncBuiltinESMExports();`)
         await ok(home,'A')
       }
     }
+    // Legacy schema-2 pending journals may precede or follow manifest publication.
+    // They must be upgraded before replay, retaining exact string ownership.
+    for(const phase of ['before','after','user-edited','migration-interrupted'] as const) {
+      const home=path.join(root,'schema2-pending-'+phase)
+      await ok(home,'A')
+      const legacyOwned={dependencies:{'dsh-nexttavern':expected('A')},overrides:{'managed-override':expected('A')}}
+      const oldPending={codeRoot:codes.B,fields:[
+        {map:'dependencies',name:'dsh-nexttavern',before:expected('A'),after:expected('B')},
+        {map:'overrides',name:'managed-override',before:expected('A'),after:expected('B')},
+      ]}
+      await writeFile(receiptOf(home),JSON.stringify({schemaVersion:2,codeRoot:codes.A,owned:legacyOwned,pending:oldPending}))
+      const manifest=await readManifest(home)
+      if(phase==='after'||phase==='user-edited') {
+        manifest.dependencies['dsh-nexttavern']=expected('B')
+        manifest.pnpm.overrides['managed-override']=phase==='user-edited'?'file:/user/legacy-choice':expected('B')
+        await writeFile(manifestOf(home),JSON.stringify(manifest))
+      }
+      if(phase==='migration-interrupted') {
+        const beforeMigration=await readFile(manifestOf(home),'utf8')
+        assert.equal((await launch(home,'C','receipt-migrated')).status,95)
+        const journal=JSON.parse(await readFile(receiptOf(home),'utf8'))
+        assert.equal(journal.schemaVersion,3)
+        assert.deepEqual(journal.pending,oldPending)
+        assert.equal(await readFile(manifestOf(home),'utf8'),beforeMigration,'schema publication precedes replay')
+      }
+      await ok(home,'C')
+      const migrated=JSON.parse(await readFile(receiptOf(home),'utf8'))
+      assert.equal(migrated.schemaVersion,3)
+      assert.equal(migrated.pending,undefined)
+      assert.equal(migrated.codeRoot,codes.C)
+      const result=await readManifest(home)
+      assert.equal(result.dependencies['dsh-nexttavern'],expected('C'))
+      assert.equal(result.pnpm.overrides['managed-override'],phase==='user-edited'?'file:/user/legacy-choice':expected('C'))
+    }
+    // The next APK can change its admitted package graph, not just its code root.
+    const oldSeed={dependencies:{'dsh-nexttavern':'file:/cloud/product',
+      'changed-kind':'1.0.0',moved:'file:/cloud/product/old-location',retired:'file:/cloud/product/retired',
+      deleted:'file:/cloud/product/deleted',edited:'file:/cloud/product/edited'},
+      pnpm:{overrides:{retired:'file:/cloud/product/old-override'}}}
+    const newSeed={dependencies:{'dsh-nexttavern':'file:/cloud/product',
+      'changed-kind':'file:/cloud/product/native-kind',moved:'file:/cloud/product/native-location',added:'file:/cloud/product/native-added',collision:'file:/cloud/product/new-collision',
+      deleted:'file:/cloud/product/deleted',edited:'file:/cloud/product/edited'},
+      pnpm:{overrides:{added:'file:/cloud/product/native-override'}}}
+    await writeFile(path.join(codes.A!,'profile-template/package.json'),JSON.stringify(oldSeed))
+    for(const version of ['B','C']) await writeFile(path.join(codes[version]!,'profile-template/package.json'),JSON.stringify(newSeed))
+    for(const interrupted of [false,true]) {
+      const home=path.join(root,'graph-upgrade-'+interrupted)
+      await ok(home,'A')
+      // Exercise migration of an existing schema-2 receipt without the new seed catalogue.
+      const oldReceipt=JSON.parse(await readFile(receiptOf(home),'utf8'))
+      oldReceipt.schemaVersion=2
+      delete oldReceipt.seedFields
+      await writeFile(receiptOf(home),JSON.stringify(oldReceipt))
+      const before=await readManifest(home)
+      delete before.dependencies.deleted
+      delete before.dependencies['changed-kind']
+      before.dependencies.edited='file:/user/choice'
+      before.dependencies.custom='file:/user/custom'
+      before.dependencies.collision='file:/user/existing-package'
+      before.userSetting={preserved:true}
+      await writeFile(manifestOf(home),JSON.stringify(before))
+      if(interrupted) {
+        assert.equal((await launch(home,'B','manifest-renamed')).status,91)
+        const graphReceipt=JSON.parse(await readFile(receiptOf(home),'utf8'))
+        assert.equal(graphReceipt.schemaVersion,3,'nullable journal operations require their own durable schema')
+        assert.ok(graphReceipt.pending.fields.some((field:{after:string|null})=>field.after===null))
+        const mid=await readManifest(home)
+        mid.dependencies.added='file:/user/interrupted-choice'
+        await writeFile(manifestOf(home),JSON.stringify(mid))
+      }
+      await ok(home,'B');await ok(home,'C')
+      const after=await readManifest(home)
+      assert.equal(after.dependencies.moved,expected('C')+'/native-location')
+      assert.equal(after.dependencies.retired,undefined)
+      assert.equal(after.pnpm.overrides.retired,undefined)
+      assert.equal(after.dependencies.added,interrupted?'file:/user/interrupted-choice':expected('C')+'/native-added')
+      assert.equal(after.pnpm.overrides.added,expected('C')+'/native-override')
+      assert.equal(after.dependencies.deleted,undefined,'an intentionally removed field is not re-added')
+      assert.equal(after.dependencies['changed-kind'],undefined,'an old registry pin is not a newly admitted name')
+      assert.equal(after.dependencies.edited,'file:/user/choice')
+      assert.equal(after.dependencies.custom,'file:/user/custom')
+      assert.equal(after.dependencies.collision,'file:/user/existing-package','new package names do not claim existing user pins')
+      assert.deepEqual(after.userSetting,{preserved:true})
+    }
+    const missingCatalogue=path.join(root,'graph-missing-catalogue')
+    await ok(missingCatalogue,'A')
+    const missingReceipt=JSON.parse(await readFile(receiptOf(missingCatalogue),'utf8'))
+    delete missingReceipt.seedFields
+    await writeFile(receiptOf(missingCatalogue),JSON.stringify(missingReceipt))
+    const missingBefore=await readFile(manifestOf(missingCatalogue),'utf8')
+    // Missing old seed cannot prove that an absent name is new rather than deleted.
+    await rm(path.join(codes.A!,'profile-template/package.json'))
+    const missingResult=await launch(missingCatalogue,'B')
+    assert.equal(missingResult.status,1)
+    assert.match(missingResult.stderr,/ANDROID_PROFILE_PROVENANCE_MISSING/)
+    assert.equal(await readFile(manifestOf(missingCatalogue),'utf8'),missingBefore)
+    assert.equal(await readFile(receiptOf(missingCatalogue),'utf8'),JSON.stringify(missingReceipt))
+    await writeFile(path.join(codes.A!,'profile-template/package.json'),JSON.stringify(oldSeed))
+    await ok(missingCatalogue,'B')
+    assert.equal((await readManifest(missingCatalogue)).dependencies.added,expected('B')+'/native-added')
+    const unowned=path.join(root,'graph-unowned')
+    await mkdir(profileOf(unowned),{recursive:true})
+    const unownedManifest={dependencies:{custom:'file:/user/custom'}}
+    await writeFile(manifestOf(unowned),JSON.stringify(unownedManifest))
+    await ok(unowned,'A');await ok(unowned,'B')
+    assert.deepEqual(await readManifest(unowned),unownedManifest,'an existing user profile does not become app-owned')
     for(const bytes of ['', '{malformed', '{}', '{"schemaVersion":1}']) {
       const home=path.join(root,'unknown-receipt-'+bytes.length)
       await mkdir(profileOf(home),{recursive:true})

@@ -108,6 +108,10 @@ const maps = ['dependencies', 'overrides'];
 function fieldMap(manifest, map) {
     return map === 'dependencies' ? manifest.dependencies : manifest.pnpm?.overrides;
 }
+function seedCatalogue(manifest) {
+    // Include non-file pins: changing their kind does not make their name new.
+    return { dependencies: { ...fieldMap(manifest, 'dependencies') }, overrides: { ...fieldMap(manifest, 'overrides') } };
+}
 function ownedFields(manifest) {
     const owned = { dependencies: {}, overrides: {} };
     for (const map of maps)
@@ -137,7 +141,7 @@ async function seeded(root) {
 const seed = await seeded(code);
 // A pending seed is recorded only when no manifest exists. Exact complete bytes
 // establish an interrupted publication; other current bytes remain user-owned.
-const initial = { schemaVersion: 2, codeRoot: code, owned: { dependencies: {}, overrides: {} },
+const initial = { schemaVersion: 3, codeRoot: code, owned: { dependencies: {}, overrides: {} },
     ...(!await exists(manifestPath) ? { seed: serialize(seed) } : {}) };
 if (!await exists(receiptPath))
     await output(receiptPath, serialize(initial), true);
@@ -148,12 +152,12 @@ if (!await exists(manifestPath) && (stored.schemaVersion === 1 || stored.seed ==
     // an old launch interrupted before first creation. Do not reinterpret an
     // unknown receipt as permission to repair existing profile bytes.
     const recognized = typeof stored.codeRoot === 'string' && path.isAbsolute(stored.codeRoot)
-        && (stored.schemaVersion === 1 || (stored.schemaVersion === 2 && stored.owned
+        && (stored.schemaVersion === 1 || ((stored.schemaVersion === 2 || stored.schemaVersion === 3) && stored.owned
             && typeof stored.owned.dependencies === 'object' && stored.owned.dependencies !== null
             && typeof stored.owned.overrides === 'object' && stored.owned.overrides !== null));
     if (!recognized)
         throw new Error('Unsupported Android profile receipt');
-    stored = { schemaVersion: 2, codeRoot: code, owned: { dependencies: {}, overrides: {} }, seed: serialize(seed) };
+    stored = { schemaVersion: 3, codeRoot: code, owned: { dependencies: {}, overrides: {} }, seed: serialize(seed) };
     await output(receiptPath, serialize(stored));
 }
 if (stored.schemaVersion === 1) {
@@ -184,17 +188,25 @@ if (stored.schemaVersion === 1) {
                 throw new Error('ANDROID_PROFILE_MIGRATION_AMBIGUOUS: restore a coherent profile and code receipt from backup or review the mixed app-slot references before retrying; profile data was preserved');
             }
         }
-    stored = { schemaVersion: 2, codeRoot: stored.codeRoot, owned };
+    stored = { schemaVersion: 3, codeRoot: stored.codeRoot, owned, seedFields: seedCatalogue(legacy) };
     await output(receiptPath, serialize(stored));
 }
-if (stored.schemaVersion !== 2 || typeof stored.codeRoot !== 'string' || !stored.owned)
+if ((stored.schemaVersion !== 2 && stored.schemaVersion !== 3) || typeof stored.codeRoot !== 'string' || !stored.owned)
     throw new Error('Unsupported Android profile receipt');
+if (stored.schemaVersion === 2) {
+    // V2 pending operations replace strings only, so they retain their meaning in
+    // V3. Publish the new schema before replay or any nullable graph operation:
+    // an old launcher must reject this receipt rather than write null into pins.
+    stored = { ...stored, schemaVersion: 3 };
+    await output(receiptPath, serialize(stored));
+}
 const receipt = stored;
 if (receipt.seed !== undefined) {
     await output(manifestPath, receipt.seed, true);
     if (await readFile(manifestPath, 'utf8') === receipt.seed) {
         const seededManifest = JSON.parse(receipt.seed);
         receipt.owned = ownedFields(seededManifest);
+        receipt.seedFields = seedCatalogue(seededManifest);
     }
     delete receipt.seed;
     await output(receiptPath, serialize(receipt));
@@ -218,13 +230,17 @@ async function settlePending() {
     const current = JSON.parse(await readFile(manifestPath, 'utf8'));
     let changed = false;
     for (const field of receipt.pending.fields) {
-        const currentMap = fieldMap(current, field.map);
-        const value = currentMap?.[field.name];
+        const value = fieldMap(current, field.map)?.[field.name] ?? null;
         if (value === field.before) {
-            currentMap[field.name] = field.after;
+            if (field.after === null)
+                delete fieldMap(current, field.map)?.[field.name];
+            else {
+                const currentMap = field.map === 'dependencies' ? (current.dependencies ??= {}) : ((current.pnpm ??= {}).overrides ??= {});
+                currentMap[field.name] = field.after;
+            }
             changed = true;
         }
-        if (value === field.before || value === field.after)
+        if ((value === field.before || value === field.after) && field.after !== null)
             receipt.owned[field.map][field.name] = field.after;
         else
             delete receipt.owned[field.map][field.name]; // A user edit revokes ownership, even under an old slot.
@@ -232,6 +248,8 @@ async function settlePending() {
     if (changed)
         await output(manifestPath, serialize(current));
     receipt.codeRoot = receipt.pending.codeRoot;
+    if (receipt.pending.seedFields)
+        receipt.seedFields = receipt.pending.seedFields;
     delete receipt.pending;
     await output(receiptPath, serialize(receipt));
 }
@@ -239,6 +257,22 @@ await settlePending();
 if (receipt.codeRoot !== code) {
     const current = JSON.parse(await readFile(manifestPath, 'utf8'));
     const fields = [];
+    const nextFields = ownedFields(seed);
+    // Old schema-2 receipts recorded exact ownership but not the seed catalogue.
+    // A retained old slot proves which names are new; without it, do not invent
+    // authority to add fields. Existing owned pins can still move or retire.
+    if (!receipt.seedFields) {
+        try {
+            receipt.seedFields = seedCatalogue(await seeded(receipt.codeRoot));
+        }
+        catch { }
+    }
+    const rootPin = receipt.owned.dependencies['dsh-nexttavern'];
+    const managedRoot = !!rootPin && fieldMap(current, 'dependencies')?.['dsh-nexttavern'] === rootPin;
+    if (managedRoot && !receipt.seedFields && maps.some(map => Object.keys(nextFields[map]).some(name => !Object.hasOwn(receipt.owned[map], name) && !Object.hasOwn(fieldMap(current, map) ?? {}, name)))) {
+        throw new Error('ANDROID_PROFILE_PROVENANCE_MISSING: restore the previous app code slot before adding new managed packages; profile data was preserved');
+    }
+    const mayAdd = managedRoot && !!receipt.seedFields;
     for (const map of maps)
         for (const [name, before] of Object.entries(receipt.owned[map])) {
             if (fieldMap(current, map)?.[name] !== before) {
@@ -250,9 +284,18 @@ if (receipt.codeRoot !== code) {
                 delete receipt.owned[map][name];
                 continue;
             }
-            fields.push({ map, name, before, after: 'file:' + path.join(code, path.relative(receipt.codeRoot, source)) });
+            fields.push({ map, name, before, after: nextFields[map][name] ?? null });
         }
-    receipt.pending = { codeRoot: code, fields };
+    // Add only genuinely new admitted names to an app-managed profile. Names
+    // present in the old seed but absent now may have been deleted by the user.
+    if (mayAdd)
+        for (const map of maps)
+            for (const [name, after] of Object.entries(nextFields[map])) {
+                if (!Object.hasOwn(receipt.seedFields[map], name) && !Object.hasOwn(fieldMap(current, map) ?? {}, name)) {
+                    fields.push({ map, name, before: null, after });
+                }
+            }
+    receipt.pending = { codeRoot: code, fields, seedFields: seedCatalogue(seed) };
     await output(receiptPath, serialize(receipt));
     await settlePending();
 }
