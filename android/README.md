@@ -20,6 +20,30 @@ No existing feature is declared removed. Local embeddings and other unqualified 
 remain explicit open capabilities, not implied support. The evidence below
 does not establish arm64 runtime compatibility or full G0.
 
+## November 14 integration maintenance
+
+This update integrates public `main` at `952dcf7` (maintained-source provenance
+`cde78e605a0e76be3bd7cf969bd14fb24aa3a7c8`). It keeps the current Native product
+packages and EJS runtime rather than restoring the retired runtime recipes.
+Only the Android attachment and native-system bindings remain Host overrides;
+the old thirteen-package Host replacement set is not restored.
+
+APK profile upgrades now reconcile moved, added and retired app-owned pins
+against the new admitted seed. Schema 3 journals additions/removals and migrates
+schema 1/2 receipts while preserving user edits, deletions and collisions. An
+older launcher rejects the new schema without rewriting profile bytes. The
+real-launcher regression fails on the old prefix-only implementation and passes
+with the fix; this is a host-fixture result, not Android device qualification.
+
+Ten rolling-source archive URLs were replaced with an official-listed mirror
+verified to serve the exact original bytes. All runtime versions and SHA-256
+pins are unchanged. Host native tests can use the running Node distribution's
+N-API headers, without first preparing an Android runtime cache. Cross-compilation
+still uses the pinned Android headers.
+
+Integration verification is in progress. Fresh KVM/UI, ARM64 execution and a
+production release are not established by these source and host-fixture checks.
+
 ## Architecture and current boundary
 
 The native Java Activity starts a standalone Bionic Node 24 process from
@@ -43,7 +67,7 @@ No permission bypass is used. The package's published JS loader rejects
 `android`, so mobile uses its installer-owned native addon and adapter; this does
 not establish unmodified npm-loader compatibility or arm64 runtime support.
 
-Development source baseline: maintenance `release/public-v0.3.0`, commit
+Original implementation baseline: maintenance `release/public-v0.3.0`, commit
 `2f5a9dffdeb1afe1545655b280e4b89875e452a3`. Host remains `0.1.7-rc.2`.
 The Android directory is an independent additive patch; no private maintenance
 history/configuration or unrelated 0.3 runtime changes are projected publicly.
@@ -102,7 +126,7 @@ npm ci --prefix integrations/auth-webserver
 node tools/build-modules.mjs --write
 ```
 
-The most recent public module build passed 923 modules. Prepare a **new** product
+After canonical module generation succeeds, prepare a **new** product
 directory from the public build map and a `pi-ai@0.85.1` archive matching the
 public `build-tools/package-lock.json` entry. `ABI=arm64` is the arm64 product
 preview; `ABI=x64` is diagnostic-only and is not product support.
