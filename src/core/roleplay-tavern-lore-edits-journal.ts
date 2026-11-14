@@ -5,6 +5,9 @@ import {compileTavernLoreBookV1,resolveTavernLoreContentTextV1} from './tavern-l
 import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
 import {composeRoleplayTavernCurrentOverlayV1} from './roleplay-tavern-current-overlay.js'
 import {foldTavernLorePublishedMembershipV2} from './roleplay-tavern-lore-membership.js'
+import {createAuthorMetadataOverlayV1,isAuthorMetadataRequestV1,materializeAuthorMetadataExtensionsV1}
+  from './roleplay-tavern-source-author-metadata.js'
+import type {TavernAuthorMetadataOverlayV1} from './roleplay-tavern-source-author-metadata.js'
 import {validateFrozenSourceEditBaselineV1,validateInheritanceEditSlotV1}
   from './roleplay-tavern-source-edit-baseline.js'
 import {tavernSourceEditSlotKeyV1} from './roleplay-tavern-source-inheritance-data.js'
@@ -20,7 +23,8 @@ import type {TavernLoreCurrentNativeOverlayV1,TavernLoreSemanticEntryV1}
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {TavernLoreEditsDepsV1,TavernLoreEditIdentityV1,TavernLoreEditHeadV1,TavernLoreJournalEventV2,
   TavernLoreEditRefV1,TavernLoreEditHeadRefV1,TavernLoreEditsDataV1,TavernLoreEditEditorDataV1,TavernLoreMutationRetryLocatorV1,
-  TavernLoreEditorSelectionV1}
+  TavernLoreEditorSelectionV1,TavernLoreAuthorBookSourceV1,MvuEffectiveLoreSourceV1,TavernLoreJournalRequestV2,
+  TavernLoreEditSourceDataCaptureV1,TavernAuthorMetadataDataV1}
   from './roleplay-tavern-lore-edits-types.js'
 
 export interface LoreEditJournalV1 {
@@ -33,6 +37,7 @@ export interface LoreEditJournalV1 {
   readonly pending:TavernLoreJournalEventV2|null
   readonly refs:readonly TavernLoreEditRefV1[]
   readonly refsSha256:string
+  readonly authorMetadataOverlay?:TavernAuthorMetadataOverlayV1
   readonly inherited?:{readonly baseline:TavernSourceEditBaselineV1;
     readonly baselineRef:TavernSourceInheritanceRefV1;readonly slotRef:TavernSourceInheritanceRefV1}
 }
@@ -43,7 +48,8 @@ export const journalReferencesShaV1=(refs:readonly TavernLoreEditRefV1[],inherit
 /** The same exact published-chain fold serves live Source and receipt lookup.
  * Only the live writer additionally needs full membership and Source fields. */
 function readPublishedChainV1(identity:TavernLoreEditIdentityV1,head:TavernLoreEditHeadV1,
-  readEvent:(key:string)=>TavernLoreJournalEventV2|undefined):{
+  readEvent:(key:string)=>TavernLoreJournalEventV2|undefined,
+  onPublished?:(event:TavernLoreJournalEventV2)=>void):{
     published:TavernLoreJournalEventV2[];seen:Set<string>} {
   const reversed:TavernLoreJournalEventV2[]=[],seen=new Set<string>()
   let link=head.lastEvent
@@ -61,6 +67,7 @@ function readPublishedChainV1(identity:TavernLoreEditIdentityV1,head:TavernLoreE
     if(!same(event.baseHead,expected)
       ||event.baseHeadRowSha256!==(expected.revision===0?'missing':recordSha256(expected)))fail('JOURNAL_CHAIN_INVALID')
     expected=nextHead(event)
+    onPublished?.(event)
   }
   if(!same(expected,head)||published.length!==head.revision)fail('JOURNAL_CHAIN_INVALID')
   return {published,seen}
@@ -124,6 +131,7 @@ export function readJournal(deps:TavernLoreEditsDepsV1,source:TavernLoreSourceDa
  * belongs to the surrounding input Owner or the live wrapper above. */
 export function readJournalData(deps:Pick<TavernLoreEditsDepsV1,'branch'>,source:TavernLoreSourceDataV1):LoreEditJournalV1 {
   const identity=identityOf(source),identitySha256=recordSha256(identity),prefix=namespace(identitySha256)
+  const metadata=createAuthorMetadataOverlayV1(),acceptMetadata=(event:TavernLoreJournalEventV2)=>metadata.accept(event.request)
   const values=new Map<string,unknown>(),refs:TavernLoreEditRefV1[]=[]
   let inherited:LoreEditJournalV1['inherited']
   if(source.inheritance) {
@@ -133,7 +141,7 @@ export function readJournalData(deps:Pick<TavernLoreEditsDepsV1,'branch'>,source
       if(source.inheritance.childSessionId!==source.sessionId||slotRef.key!==tavernSourceEditSlotKeyV1(identitySha256)
         ||recordSha256(baselineRaw)!==baselineRef.sha256||recordSha256(slotRaw)!==slotRef.sha256)
         fail('JOURNAL_INHERITANCE_INVALID')
-      const baseline=validateFrozenSourceEditBaselineV1(baselineRaw),slot=validateInheritanceEditSlotV1(slotRaw)
+      const baseline=validateFrozenSourceEditBaselineV1(baselineRaw,acceptMetadata),slot=validateInheritanceEditSlotV1(slotRaw)
       if(baseline.childSessionId!==source.sessionId||!same(baseline.preparedRef,preparedRef)
         ||!same(slot.identity,identity)||slot.identitySha256!==identitySha256
         ||!same(slot.preparedRef,preparedRef)||!same(slot.baselineRef,baselineRef))fail('JOURNAL_INHERITANCE_INVALID')
@@ -189,14 +197,15 @@ export function readJournalData(deps:Pick<TavernLoreEditsDepsV1,'branch'>,source
     if(event.schemaVersion===1)validateFields(source,event.request)
     events.set(key,event)
   }
-  const {published,seen}=readPublishedChainV1(identity,head,key=>events.get(key))
+  const {published,seen}=readPublishedChainV1(identity,head,key=>events.get(key),acceptMetadata)
   const extras=[...events].filter(([key])=>!seen.has(key)).map(([,event])=>event)
   if(extras.length>1)fail('JOURNAL_ORPHAN_CONFLICT')
   const pending=extras[0]??null
   if(pending&&(!same(pending.baseHead,head)||pending.baseHeadRowSha256!==headRef(head,exists).sha256
     ||pending.revision!==head.revision+1))fail('JOURNAL_ORPHAN_CONFLICT')
   return {identity,identitySha256,head,headRef:headRef(head,exists),events,published,pending,
-    refs:freeze(refs),refsSha256:journalReferencesShaV1(refs,inherited),...(inherited?{inherited}:{})}
+    refs:freeze(refs),refsSha256:journalReferencesShaV1(refs,inherited),authorMetadataOverlay:metadata.data(),
+    ...(inherited?{inherited}:{})}
 }
 /** Validate the exact planned namespace and consumer envelope before intent
  * append. These are prospective hashes, never returned as live publication. */
@@ -210,15 +219,33 @@ export function plannedPublication(source:TavernLoreSourceDataV1,journal:LoreEdi
   strictData([[headKey(head.identitySha256),head],...values],TAVERN_LORE_EDITS_BOUNDS_V1.journalBytes)
   const refs=[rowRef(headKey(head.identitySha256),head),...values.map(([key,value])=>rowRef(key,value))]
     .sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0)
+  const metadata=createAuthorMetadataOverlayV1(journal.authorMetadataOverlay)
+  metadata.accept(event.request)
   const result={...journal,head,headRef:headRef(head,true),events,published:[...journal.published,event],
+    authorMetadataOverlay:metadata.data(),
     pending:null,refs,refsSha256:journalReferencesShaV1(refs,journal.inherited)}
-  publishedData(source,result,editorBaseOverlay)
+  if(!isAuthorMetadataRequestV1(event.request))publishedData(source,result,editorBaseOverlay)
   return result
 }
 /** Published journal fields are author DATA. Reading them does not need the
  * semantic editor plan, which has its own compiler output contract. */
 export function publishedJournalData(source:TavernLoreSourceDataV1,journal:LoreEditJournalV1,
   legacy?:TavernLoreCurrentNativeOverlayV1):TavernLoreEditsDataV1 {
+  const {overlay,currentNativeMembership,journalRefs,journalSha256}=publishedAuthorBookDataV1(source,journal,legacy)
+  const body={schemaVersion:1 as const,encoding:'tavern-lore-edits-current-data-v1' as const,
+    authority:'consumer-data-only' as const,sessionId:source.sessionId,source,identity:journal.identity,
+    identitySha256:journal.identitySha256,revision:journal.head.revision,head:journal.head,
+    headRef:journal.headRef,journalRefs,journalSha256,overlay,
+    ...(journal.authorMetadataOverlay?.extensions.length?{authorMetadataOverlay:journal.authorMetadataOverlay}:{}),
+    ...(currentNativeMembership?{currentNativeMembership}:{}),...journal.inherited?{inheritance:{
+      baselineRef:journal.inherited.baselineRef,slotRef:journal.inherited.slotRef,
+      baselineSha256:journal.inherited.baseline.baselineSha256,
+      effectiveOverlaySha256:recordSha256(journal.inherited.baseline.effectiveOverlay)}}:{}}
+  return freeze({...body,dataSha256:recordSha256(body)})
+}
+/** Both live capture and frozen cuts use this exact fields/membership fold. */
+export function publishedAuthorBookDataV1(source:TavernLoreAuthorBookSourceV1,journal:LoreEditJournalV1,
+  legacy?:TavernLoreCurrentNativeOverlayV1) {
   if(journal.pending)fail('PENDING_INTENT')
   const edited=new Map<string,EditAccumulationV1>()
   for(const event of journal.published) {
@@ -253,22 +280,68 @@ export function publishedJournalData(source:TavernLoreSourceDataV1,journal:LoreE
   const overlay:TavernLoreCurrentNativeOverlayV1={schemaVersion:1,
     encoding:'st-character-book-current-native-overlay-v1',entries:journal.inherited
       ?[...effective].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([,entry])=>entry):entries}
-  const rows=[...(journal.inherited?.baseline.layers.flatMap(layer=>layer.events.map(row=>({
+  const allRows=[...(journal.inherited?.baseline.layers.flatMap(layer=>layer.events.map(row=>({
     eventRef:row.ref,request:row.value.request})))??[]),...journal.published.map(event=>({
       eventRef:rowRef(eventKey(event.identitySha256,event.request.operationId),event),request:event.request}))]
+  const rows=allRows.filter((row):row is {eventRef:TavernLoreEditRefV1;request:TavernLoreJournalRequestV2}=>
+    !isAuthorMetadataRequestV1(row.request))
   let currentNativeMembership:ReturnType<typeof foldTavernLorePublishedMembershipV2>
   try {currentNativeMembership=foldTavernLorePublishedMembershipV2(source,rows,legacy)}
   catch(error) {fail(error instanceof Error&&error.message==='TAVERN_LORE_MEMBER_TARGET_MISSING'
     ?'ENTRY_LINK_INVALID':'FIELDS_INVALID',error instanceof Error?error.message:undefined)}
-  const body={schemaVersion:1 as const,encoding:'tavern-lore-edits-current-data-v1' as const,
-    authority:'consumer-data-only' as const,sessionId:source.sessionId,source,identity:journal.identity,
-    identitySha256:journal.identitySha256,revision:journal.head.revision,head:journal.head,
-    headRef:journal.headRef,journalRefs,journalSha256,overlay,
-    ...(currentNativeMembership?{currentNativeMembership}:{}),...journal.inherited?{inheritance:{
-      baselineRef:journal.inherited.baselineRef,slotRef:journal.inherited.slotRef,
-      baselineSha256:journal.inherited.baseline.baselineSha256,
-      effectiveOverlaySha256:recordSha256(journal.inherited.baseline.effectiveOverlay)}}:{}}
-  return freeze({...body,dataSha256:recordSha256(body)})
+  return {overlay,currentNativeMembership,journalRefs,journalSha256}
+}
+/** Reconstruct only this persisted publication. Today's namespace/head cannot
+ * supply evidence for an older epoch or change its captured author book. */
+export function readFrozenPublishedCutV1(branch:Pick<TavernLoreEditsDepsV1['branch'],'get'>,
+  identity:TavernLoreEditIdentityV1,cut:MvuEffectiveLoreSourceV1):LoreEditJournalV1 {
+  const identitySha256=recordSha256(identity),inheritedRefs=cut.kind==='inherited'?cut
+    :cut.kind==='published'?cut.inherited:undefined
+  const metadata=createAuthorMetadataOverlayV1(),acceptMetadata=(event:TavernLoreJournalEventV2)=>metadata.accept(event.request)
+  let inherited:LoreEditJournalV1['inherited']
+  if(inheritedRefs) {
+    const {baselineRef,slotRef}=inheritedRefs,baselineRaw=branch.get(baselineRef.key),slotRaw=branch.get(slotRef.key)
+    if(recordSha256(baselineRaw)!==baselineRef.sha256||recordSha256(slotRaw)!==slotRef.sha256
+      ||slotRef.key!==tavernSourceEditSlotKeyV1(identitySha256))fail('JOURNAL_INHERITANCE_INVALID')
+    const baseline=validateFrozenSourceEditBaselineV1(baselineRaw,acceptMetadata),slot=validateInheritanceEditSlotV1(slotRaw)
+    if(baseline.childSessionId!==identity.sessionId||!same(slot.identity,identity)
+      ||slot.identitySha256!==identitySha256||!same(slot.preparedRef,baseline.preparedRef)
+      ||!same(slot.baselineRef,baselineRef))fail('JOURNAL_INHERITANCE_INVALID')
+    inherited={baseline,baselineRef,slotRef}
+  }
+  const head=cut.kind==='published'?parseHead(cut.head,identity):genesis(identity)
+  const actualHeadRef=headRef(head,cut.kind==='published')
+  if(cut.kind==='published'&&(head.revision===0||!same(cut.headRef,actualHeadRef)))fail('JOURNAL_CHAIN_INVALID')
+  const refs=cut.kind==='published'?cut.eventRefs:[],events=new Map<string,TavernLoreJournalEventV2>()
+  for(const ref of refs) {
+    if(events.has(ref.key))fail('JOURNAL_ORPHAN_CONFLICT')
+    const raw=branch.get(ref.key)
+    if(raw===undefined)fail('JOURNAL_MISSING_EVENT')
+    if(recordSha256(raw)!==ref.sha256)fail('JOURNAL_HASH_INVALID')
+    events.set(ref.key,parseEvent(raw,ref.key,identity))
+  }
+  const {published,seen}=readPublishedChainV1(identity,head,key=>events.get(key),acceptMetadata)
+  if(seen.size!==events.size)fail('JOURNAL_ORPHAN_CONFLICT')
+  return {identity,identitySha256,head,headRef:actualHeadRef,events,published,pending:null,refs,
+    refsSha256:journalReferencesShaV1(refs,inherited),authorMetadataOverlay:metadata.data(),
+    ...inherited?{inherited}:{}}
+}
+/** Project effective fields and reuse the journal owner's accepted identity
+ * and head. Metadata consumers need no second history inventory or digest. */
+export function publishedAuthorMetadataDataV1(captured:TavernLoreEditSourceDataCaptureV1,journal:LoreEditJournalV1)
+  :TavernAuthorMetadataDataV1 {
+  if(journal.pending)fail('PENDING_INTENT')
+  const source=captured.source
+  let extensions:Readonly<Record<string,unknown>>|undefined
+  try {extensions=materializeAuthorMetadataExtensionsV1(captured.contributionInput.rawDecoded.data.extensions,
+    journal.authorMetadataOverlay??createAuthorMetadataOverlayV1().data())}
+  catch(error){fail('FIELDS_INVALID',error instanceof Error?error.message:undefined)}
+  // Source and event values are already immutable owner DATA. Freeze only this
+  // projection's new containers, without revisiting the unchanged author tree.
+  return Object.freeze({schemaVersion:1,encoding:'tavern-author-metadata-current-data-v1',authority:'consumer-data-only',
+    sessionId:source.sessionId,source,identity:journal.identity,identitySha256:journal.identitySha256,
+    revision:journal.head.revision,head:journal.head,
+    headRef:journal.headRef,extensions})
 }
 export function publishedData(source:TavernLoreSourceDataV1,journal:LoreEditJournalV1,
   editorBaseOverlay?:TavernLoreCurrentNativeOverlayV1,selection?:TavernLoreEditorSelectionV1)

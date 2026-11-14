@@ -163,6 +163,11 @@ export function createCommunityRegexPanel({React,jsonFetch,toast}:CommunityPanel
               button(`删除规则：${rule.scriptName} #${index+1}`,()=>setDraft({...draft,rules:draft.rules.filter((_item,at)=>at!==index)}))),
             h('label',null,'查找表达式',h('textarea',{className:'dsh-rp-input','aria-label':`查找表达式：${index+1}`,value:rule.findRegex,readOnly:!draft,disabled:busy,
               onChange:(event:ReactAPI.ChangeEvent<HTMLTextAreaElement>)=>changeRule(index,{findRegex:event.target.value})})),
+            h('label',null,'原生显示组件',h('select',{'aria-label':`原生显示组件：${index+1}`,className:'dsh-rp-input',
+              value:String(rule.raw.nexttavernWidget??''),disabled:busy||!draft,
+              onChange:(event:ReactAPI.ChangeEvent<HTMLSelectElement>)=>changeRule(index,{raw:{...rule.raw,nexttavernWidget:event.target.value}})},
+            [['','作者替换内容'],['options-izumi','Izumi选项'],['options-lines','逐行选项'],['thinking','思考折叠'],['bubble','气泡折叠'],['danmu','弹幕']]
+              .map(([value,label])=>h('option',{key:value,value},label)))),
             h('label',null,'替换内容',h('textarea',{className:'dsh-rp-input','aria-label':`替换内容：${index+1}`,value:rule.replaceString,readOnly:!draft,disabled:busy,
               onChange:(event:ReactAPI.ChangeEvent<HTMLTextAreaElement>)=>changeRule(index,{replaceString:event.target.value})})),
             draft&&h('div',null,

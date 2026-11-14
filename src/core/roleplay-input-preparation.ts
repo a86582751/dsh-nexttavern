@@ -3,7 +3,7 @@
  * No input queue, model classification or Source lock belongs here. */
 import {createHash, randomUUID} from 'node:crypto'
 import {createRoleplayInputContinuation} from './roleplay-input-continuation.js'
-import {createRoleplayInputCompletion,readInputCompletion} from './roleplay-input-completion.js'
+import {createRoleplayInputCompletion,readInputCompletion,inputCompletionKey} from './roleplay-input-completion.js'
 import {createRoleplayInputMaterialOwnerV1} from './roleplay-input-material.js'
 import {recordSha256} from './roleplay-data.js'
 import {readColdNonNumericalInputBranchRowFactsV1} from './roleplay-input-cold-row-facts.js'
@@ -13,14 +13,17 @@ export type {ColdInputMaterialHistoryV1,ColdNonNumericalInputBranchRowFactV1}
   from './roleplay-input-cold-row-facts.js'
 import type {RoleplayInputMaterialDependenciesV1,RoleplayInputMaterialScopeV1,
   RoleplayInputMaterialScopeInputV1,RoleplayPhaseAStageV1} from './roleplay-input-material.js'
-import type {Session as NativeSession} from '@deepseek-ai/dsh-session'
-import type {InputCompletionProcessor,InputCompletionScope} from './roleplay-input-completion.js'
+import type {Session as NativeSession} from 'dsh-nexttavern-native-session'
+import type {DomainChanged} from '@deepseek-ai/dsh-storage-domain'
+import type {InputCompletionProcessor,InputCompletionScope,InputCompletionPlan} from './roleplay-input-completion.js'
 import type {MvuStateTerminalIntent} from './roleplay-mvu-state.js'
 import type {OwnedContinuationResult} from './roleplay-input-continuation.js'
+import type {NativePersonaReceiptV1} from './roleplay-native-persona-types.js'
+import type {TavernLoreEditReceiptV1,TavernLoreMutationReceiptV2} from './roleplay-tavern-lore-edits-types.js'
 import type {taskPhaseMessage} from './tavern-task-context.js'
 import type {NativeInputAdmissionAgentV2, NativeInputAdmissionHookV2, NativeInputAdmissionCheckV2,
-  NativeDurableInputWorkReceiptV1, NativeInputRefusalBeforeFirstStepV1, NativeInputRef, NativePreparationReceiptV1,
-  NativeInputStopNoticeV1, NativeInputBlocked, NativeInputLinkV1} from '@deepseek-ai/dsh-agent-loop'
+  NativeDurableInputWorkReceiptV1,NativeCompletedInputWorkReceiptV1, NativeInputRefusalBeforeFirstStepV1, NativeInputRef, NativePreparationReceiptV1,
+  NativeInputStopNoticeV1, NativeInputBlocked, NativeInputLinkV1} from 'dsh-nexttavern-native-agent-loop'
 
 export interface InputClosingView {
   agent:NativeInputAdmissionAgentV2
@@ -29,6 +32,14 @@ export interface InputClosingView {
   scope:InputCompletionScope
   current():boolean
 }
+/** Successfully checked historical DATA, never a publisher credential. Its
+ * actual completion owner revokes it on changes to the exact consumed facts. */
+export interface InputConsumedDataProof {
+  current():boolean
+  dispose():void
+}
+export type CaptureInputConsumedDataProof=(scope:InputCompletionScope,plan:InputCompletionPlan,
+  settlement:unknown,onInvalidate:()=>void)=>InputConsumedDataProof|undefined
 
 export const ROLEPLAY_INPUT_NAMESPACE = 'nexttavern.roleplay.input.v2'
 /** Diagnostic identity of the current actual Native refs, never replay authority. */
@@ -54,7 +65,7 @@ export interface OwnedNonNumericalInputBranchRowFactV1 {
   readonly key:string
   readonly value:Readonly<Record<string,unknown>>
   readonly sha256:string
-  readonly kind:'input-work'|'input-current'|'input-stop'|'input-material-snapshot'|'input-material-plan'
+  readonly kind:'input-work'|'input-current'|'input-stop'|'input-material-snapshot'|'input-material-plan'|'input-material-journal'
   readonly phase:'writing'|'written'
 }
 export type InputHeadRef = {kind: 'numerical-head' | 'schema-head' | 'plain-absence' | 'prompt-template-only-domain'
@@ -112,6 +123,28 @@ export interface RoleplayInputStep {
   readonly currency: InputPreparationCurrency
   readonly kind: InputSourceObservation['kind'] | 'maintenance'
 }
+export type RoleplayInputSourceDataReceiptV1=NativePersonaReceiptV1|TavernLoreEditReceiptV1|TavernLoreMutationReceiptV2
+export interface RoleplayInputSourceDataOriginV1 {
+  readonly invocationId:string
+  readonly programSha256:string
+  readonly realmId:string
+  readonly groupId:string
+}
+interface InputSourceDataPublicationV1 {
+  readonly from:InputSourceObservation
+  readonly to:InputSourceObservation
+  readonly origin:RoleplayInputSourceDataOriginV1
+  readonly receipt:RoleplayInputSourceDataReceiptV1
+}
+/** Hot handoff between the actual generation and its canonical DATA writers.
+ * Neither the guest nor a stored receipt can reconstruct this window. */
+export interface RoleplayInputSourceDataWindowV1 {
+  begin(origin:RoleplayInputSourceDataOriginV1):{
+    publish(to:InputSourceObservation,receipt:RoleplayInputSourceDataReceiptV1):void
+    reject():void
+  }|undefined
+  accept():Promise<boolean>
+}
 export interface RoleplayInputTransitionReservation {
   readonly reservationId: string
   readonly preparationId: string
@@ -164,6 +197,7 @@ export interface RoleplayInputTransitionLease {
 export interface RoleplayInputBinding {
   beginStep(input: {turn: number; step: number; signal: AbortSignal; legacyPreparationId?: string}): Promise<RoleplayInputStep>
   checkCurrency(step: RoleplayInputStep): {kind: 'allow'} | {kind: 'blocked'; code: string}
+  completeWithoutRequest(step: RoleplayInputStep): void
   prepare(step: RoleplayInputStep, snapshot?: InputPreparationSnapshotRef): Promise<InputPreparationCurrency>
   /** Stage data for the exact hot step; this never marks the Work prepared. */
   stagePhaseA(step:RoleplayInputStep,candidate:RoleplayPhaseAStageV1):boolean
@@ -232,6 +266,8 @@ interface Work extends Record<string, unknown> {
   preparation: NativePreparationReceiptV1
   status: 'created' | 'active' | 'stopped' | 'unknown'
   source: InputSourceObservation
+  sourceDataSuccessors?:{schemaVersion:1;encoding:'native-input-source-data-successors-v1';
+    publications:readonly InputSourceDataPublicationV1[]}
   attemptGeneration: number
   attempt?: {turn: number; step: number; prepared: boolean; legacyPreparationId?: string;
     snapshot?: InputPreparationSnapshotRef}
@@ -331,6 +367,9 @@ const isWork = (value: unknown, sessionId: string): value is Work => {
     && Number.isSafeInteger(row.receiptGeneration) && row.receiptGeneration > 0 && Array.isArray(row.refs)
     && row.refs.length > 0 && row.refs.every(ref => ref.sessionId === sessionId && sha(ref.messageSha256))
     && (row.terminalRequired===undefined||row.terminalRequired===true)
+    && (row.sourceDataSuccessors===undefined||row.sourceDataSuccessors.schemaVersion===1
+      &&row.sourceDataSuccessors.encoding==='native-input-source-data-successors-v1'
+      &&Array.isArray(row.sourceDataSuccessors.publications))
     && (row.unclaimedRefusal===undefined||validRefusal(row))
     && (row.claimedRefusal===undefined||row.claimedRefusal.schemaVersion===1
       &&row.claimedRefusal.kind==='claimed-native-refusal')
@@ -341,11 +380,18 @@ const isWork = (value: unknown, sessionId: string): value is Work => {
 
 export function createRoleplayInputPreparation<Session extends {id: string}>({table, observe, onError,completion,
   awaitMutationBarrier,mutationBlockCode,onMutationStop,preflightObservation,onClosingRelease,material,
-  sessionForRowFacts,readColdMaterialHistory,readFacts,onNewWork}: {
+  sessionForRowFacts,readColdMaterialHistory,readFacts,readDataInventory=read=>read(),
+  onNewWork,onSourceDataSuccessor,onCheckpoint,onCompletedWork,observesCompletedWork,observeDomainChanges,captureConsumedProof}: {
   table: InputPreparationTable
   /** Only the actual new-Work path calls this, before its first durable save.
    * A restored or already pending Work never acquires a newer contract. */
   onNewWork?(work:RoleplayNewInputWorkV1):Promise<void>
+  /** The same unprepared Native work has accepted its actual writer chain.
+   * Dependent admissions update before the new opaque step is installed. */
+  onSourceDataSuccessor?(work:RoleplayNewInputWorkV1,from:InputSourceObservation):Promise<void>
+  onCheckpoint?(work:RoleplayNewInputWorkV1,receipt:NativeDurableInputWorkReceiptV1):Promise<void>
+  onCompletedWork?(work:RoleplayNewInputWorkV1,receipt:NativeCompletedInputWorkReceiptV1):Promise<void>
+  observesCompletedWork?(session:Session):boolean
   /** Trusted synchronous actual Source/head observation; never model intent. */
   observe(session: Session): InputSourceObservation
   /** Historical schema execution is verified outside this writer FIFO. The
@@ -356,6 +402,17 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
   completion?:InputCompletionProcessor
   /** Actual Core owner tracks durable row reads and Native history edits. */
   readFacts?<T>(sessionId:string,purpose:string,read:()=>T):T
+  /** Index discovery belongs to this Domain-feed owner. Consumers capture
+   * their exact completed records after the index has been refreshed. */
+  readDataInventory?<T>(read:()=>T):T
+  /** Actual same-domain durable row publications. The listener only marks
+   * affected DATA dirty; the next admission read performs all validation. */
+  observeDomainChanges?(listener:(change:DomainChanged)=>void):()=>void
+  /** Returns only successfully checked, currently valid closed DATA. Exact
+   * dependency invalidation synchronously calls onInvalidate; ordinary Native
+   * append and current Source/head replacement do not recreate that history.
+   * dispose ends this subscription. Absence retains the full original check. */
+  captureConsumedProof?:CaptureInputConsumedDataProof
   /** Trusted program producer for the same actual Native v2 registration.
    * Author payloads, restored records and management tasks cannot select it. */
   material?:RoleplayInputMaterialDependenciesV1
@@ -378,6 +435,113 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
   const sessionOwners = new Map<string, object>()
   const liveRevocations=new Map<string,Set<string>>()
   const terminalOwners=new Map<string,ReturnType<typeof createRoleplayInputCompletion>>()
+  // Only the actual binding and durable Domain feed own this inventory.
+  // Indexed rows are immutable DATA; no current pointer or detached snapshot
+  // can register a claim, acknowledge a write or manufacture a closed proof.
+  type ClosedRecord=NonNullable<ReturnType<typeof readInputCompletion>>
+  interface TerminalWork {
+    gate:TerminalGate
+    key:string
+    work:Work
+    rows:Set<string>
+    closed?:ClosedRecord
+    proof?:InputConsumedDataProof
+    structural:boolean
+  }
+  interface TerminalGate {
+    agent:NativeInputAdmissionAgentV2 & {session:Session}
+    session:Session
+    initialized:boolean
+    dirty:Set<string>
+    works:Map<string,TerminalWork>
+    workRefs:Map<string,Set<string>>
+    workPreparations:Map<string,Set<string>>
+    stops:Map<string,Set<string>>
+    stopRefs:Map<string,Set<string>>
+    unknownStops:Set<string>
+    generations:Map<number,number>
+    latestGeneration:number
+    unknownWorks:Set<TerminalWork>
+    malformed:Set<string>
+    structural:Set<TerminalWork>
+    consumed:Set<TerminalWork>
+  }
+  const terminalGates=new Map<string,TerminalGate>()
+  const terminalRowReaders=new Map<string,Set<TerminalWork>>()
+  const rowAddress=(table:string,key:string)=>table+'\0'+key
+  interface ConsumedScopeFact {
+    scope:InputCompletionScope
+    session:Session
+    agent:object
+    dirty:boolean
+    rows:readonly string[]
+    listeners:Set<()=>void>
+    current():boolean
+    onInvalidated(notify:()=>void):()=>void
+  }
+  const consumedScopes=new Map<string,ConsumedScopeFact>()
+  const consumedScopeRows=new Map<string,Set<ConsumedScopeFact>>()
+  const invalidateConsumedScope=(fact:ConsumedScopeFact)=>{
+    if(fact.dirty)return
+    fact.dirty=true
+    for(const row of fact.rows) {
+      const readers=consumedScopeRows.get(row)
+      readers?.delete(fact)
+      if(!readers?.size)consumedScopeRows.delete(row)
+    }
+    for(const notify of fact.listeners)notify()
+    fact.listeners.clear()
+  }
+  const invalidateConsumedScopes=(sid:string,preparations?:ReadonlySet<string>)=>{
+    for(const [key,fact] of consumedScopes)if(fact.session.id===sid
+      &&(!preparations||preparations.has(fact.scope.currency.preparationId))) {
+      invalidateConsumedScope(fact);consumedScopes.delete(key)
+    }
+  }
+  const forgetTerminalRows=(entry:TerminalWork)=>{
+    entry.proof?.dispose();entry.proof=undefined
+    for(const row of entry.rows) {
+      const readers=terminalRowReaders.get(row)
+      readers?.delete(entry)
+      if(!readers?.size)terminalRowReaders.delete(row)
+    }
+    entry.rows.clear()
+  }
+  const watchTerminalRow=(entry:TerminalWork,table:string,key:string)=>{
+    const row=rowAddress(table,key)
+    entry.rows.add(row)
+    let readers=terminalRowReaders.get(row)
+    if(!readers)terminalRowReaders.set(row,readers=new Set())
+    readers.add(entry)
+  }
+  const releaseTerminalGate=(sid:string)=>{
+    invalidateConsumedScopes(sid)
+    const gate=terminalGates.get(sid)
+    if(!gate)return
+    for(const entry of gate.works.values())forgetTerminalRows(entry)
+    gate.works.clear();gate.workRefs.clear();gate.workPreparations.clear();gate.stops.clear();gate.stopRefs.clear()
+    gate.dirty.clear();gate.malformed.clear();gate.unknownStops.clear();gate.unknownWorks.clear()
+    gate.generations.clear();gate.structural.clear();gate.consumed.clear()
+    terminalGates.delete(sid)
+  }
+  const unobserveDomain=observeDomainChanges?.(change=>{
+    // Domain publishes only durable changes. Notifications never validate a
+    // result, acknowledge a write or reopen a Native terminal transaction.
+    for(const entry of terminalRowReaders.get(rowAddress(change.table,change.key))??[]) {
+      entry.gate.dirty.add(entry.key)
+    }
+    for(const fact of consumedScopeRows.get(rowAddress(change.table,change.key))??[])invalidateConsumedScope(fact)
+    if(change.table!=='branch')return
+    const split=change.key.indexOf('__')
+    if(split<1)return
+    const sid=change.key.slice(0,split),gate=terminalGates.get(sid)
+    // A late stop can invalidate the historical claim before its Work update
+    // lands. New ordinary Work/head rows do not affect closed scope facts.
+    if(change.key.startsWith(`${prefix(sid)}stop-`))invalidateConsumedScopes(sid)
+    if(gate&&(change.key.startsWith(`${prefix(sid)}work-`)||change.key.startsWith(`${prefix(sid)}stop-`))) {
+      gate.dirty.add(change.key)
+    }
+  })
   // Weak keys preserve actual Session identity across this binder's disposal.
   // Values contain detached data only; no Agent, Work closure or live checker.
   type OwnedRows={sessionId:string;rows:Map<string,OwnedNonNumericalInputBranchRowFactV1>;
@@ -513,7 +677,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
   /** Separate from physical numerical/Source observation. In particular our
    * own pending terminal must not make an in-flight snapshot self-stale. This
    * read-only gate is also available to deterministic management diagnostics. */
-  const readTerminalAdmissionGate=(sid:string,known?:Work[],verifyConsumed=true)=>{
+  const readFullTerminalAdmissionGate=(sid:string,known?:Work[],verifyConsumed=true)=>{
     if(!completion)return allowed
     try {
       const scanned=known?undefined:inventory(sid)
@@ -539,6 +703,166 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       return allowed
     } catch {return blocked('INPUT_PREVIOUS_TERMINAL_UNKNOWN')}
   }
+  const addRef=(index:Map<string,Set<string>>,ref:string,key:string)=>{
+    let keys=index.get(ref)
+    if(!keys)index.set(ref,keys=new Set())
+    keys.add(key)
+  }
+  const removeRef=(index:Map<string,Set<string>>,ref:string,key:string)=>{
+    const keys=index.get(ref)
+    keys?.delete(key)
+    if(!keys?.size)index.delete(ref)
+  }
+  const refreshInputRows=(gate:TerminalGate)=>readDataInventory(()=>{
+    const sid=gate.session.id
+    if(!gate.initialized) {
+      // The index subscribes to Domain changes itself. Enrolling its work
+      // prefix in a historical consumer would let future inputs revoke it.
+      for(const [key] of table.entries(prefix(sid)))if(key.startsWith(`${prefix(sid)}work-`)
+        ||key.startsWith(`${prefix(sid)}stop-`))gate.dirty.add(key)
+      gate.initialized=true
+    }
+    for(const key of gate.dirty) {
+      if(key.startsWith(`${prefix(sid)}stop-`)) {
+        for(const ref of gate.stops.get(key)??[])removeRef(gate.stopRefs,ref,key)
+        gate.stops.delete(key);gate.unknownStops.delete(key)
+        const raw=table.get(key) as {refs?:NativeInputRef[];notice?:NativeInputStopNoticeV1}|undefined
+        if(raw===undefined)continue
+        if(!Array.isArray(raw?.refs)||raw.notice?.refsCode&&!raw.refs.length) {
+          gate.unknownStops.add(key)
+          continue
+        }
+        const refs=new Set(raw.refs.map(ref=>canonical(ref)))
+        gate.stops.set(key,refs)
+        for(const ref of refs)addRef(gate.stopRefs,ref,key)
+        continue
+      }
+      const raw=table.get(key),work=raw!==undefined&&isWork(raw,sid)?raw:undefined,
+        prior=gate.works.get(key),sameGeneration=!!prior&&prior.work.receiptGeneration===work?.receiptGeneration
+      if(prior) {
+        forgetTerminalRows(prior)
+        gate.structural.delete(prior);gate.consumed.delete(prior);gate.unknownWorks.delete(prior);gate.works.delete(key)
+        for(const ref of prior.work.refs)removeRef(gate.workRefs,canonical(ref),key)
+        removeRef(gate.workPreparations,canonical(prior.work.preparation),key)
+        if(!sameGeneration) {
+          const generation=prior.work.receiptGeneration,count=gate.generations.get(generation)!-1
+          if(count)gate.generations.set(generation,count)
+          else {
+            gate.generations.delete(generation)
+            if(generation===gate.latestGeneration) {
+              gate.latestGeneration=0
+              for(const candidate of gate.generations.keys())gate.latestGeneration=Math.max(gate.latestGeneration,candidate)
+            }
+          }
+        }
+      }
+      gate.malformed.delete(key)
+      if(raw===undefined)continue
+      if(!work){gate.malformed.add(key);continue}
+      const entry:TerminalWork={gate,key,work,rows:new Set(),structural:false}
+      gate.works.set(key,entry)
+      for(const ref of work.refs)addRef(gate.workRefs,canonical(ref),key)
+      addRef(gate.workPreparations,canonical(work.preparation),key)
+      if(!sameGeneration)gate.generations.set(work.receiptGeneration,(gate.generations.get(work.receiptGeneration)??0)+1)
+      gate.latestGeneration=Math.max(gate.latestGeneration,work.receiptGeneration)
+      if(work.terminalRequired&&work.status==='unknown'&&!work.checkpoint&&!work.transition)gate.unknownWorks.add(entry)
+      if(work.terminalRequired){gate.structural.add(entry);gate.consumed.add(entry)}
+    }
+    gate.dirty.clear()
+  })
+  const readTerminalAdmissionGate=(sid:string,known?:Work[],verifyConsumed=true)=>{
+    if(!completion)return allowed
+    const gate=terminalGates.get(sid)
+    if(!gate||gate.agent!==sessionOwners.get(sid)||gate.agent.session!==gate.session
+      ||sessionForRowFacts&&(sessionForRowFacts(sid) as object|undefined)!==gate.session) {
+      return readFullTerminalAdmissionGate(sid,known,verifyConsumed)
+    }
+    try {
+      refreshInputRows(gate)
+      if(gate.malformed.size)return blocked('INPUT_STORED_WORK_UNKNOWN')
+      const candidates=verifyConsumed?gate.consumed:gate.structural
+      for(const entry of candidates) {
+        const {work}=entry
+        // An unclaimed proof still asks Native whether those refs acquired a
+        // claim. Keep it in the small unresolved set until that disposition
+        // has an immutable Native owner; it is never cached as permission.
+        if(verifyUnclaimedRefusal(sid,work))continue
+        if(work.claimedRefusal&&work.status==='stopped'&&work.stop?.status==='terminal'
+          &&!work.checkpoint&&!work.transition) {
+          gate.structural.delete(entry);gate.consumed.delete(entry)
+          continue
+        }
+        if(liveRevocations.get(sid)?.has(work.preparationId))return blocked('INPUT_PREVIOUS_TERMINAL_UNRESOLVED')
+        if(!entry.structural) {
+          const closed=readCompletion(sid,work.preparationId)
+          if(!closed||closed.status!=='settled'||work.stop||work.status!=='active'
+            ||!equal(closed.scope.currency,currencyOfStored(work))||!equal(closed.scope.receipt.checkpoint,work.checkpoint)
+            ||!equal(closed.scope.transition,work.transition))return blocked('INPUT_PREVIOUS_TERMINAL_UNRESOLVED')
+          entry.closed=closed;entry.structural=true
+          watchTerminalRow(entry,'branch',inputCompletionKey(sid,work.preparationId))
+          gate.structural.delete(entry)
+        }
+        if(!verifyConsumed)continue
+        const closed=entry.closed!
+        entry.proof?.dispose();entry.proof=undefined
+        const proof=captureConsumedProof?.(closed.scope,closed.plan,closed.settlement,
+          ()=>{gate.consumed.add(entry)})
+        if(proof) {
+          if(!proof.current()){proof.dispose();return blocked('INPUT_PREVIOUS_TERMINAL_UNRESOLVED')}
+          entry.proof=proof
+          // Only the actual completion owner's invalidation subscription can
+          // remove this Work from later checks. A guessed list of event keys
+          // cannot stand in for its full transitive consumed DATA contract.
+          gate.consumed.delete(entry)
+        }else if(!consumedCompletion(sid,work.preparationId,closed))return blocked('INPUT_PREVIOUS_TERMINAL_UNRESOLVED')
+      }
+      return allowed
+    } catch {return blocked('INPUT_PREVIOUS_TERMINAL_UNKNOWN')}
+  }
+  const verifyConsumedScopeData=(scope:InputCompletionScope,direct=false):boolean=>{
+    try {
+      const sid=scope.receipt.checkpoint.sessionId,row=direct
+        ?readInputCompletion(table,sid,scope.currency.preparationId):readCompletion(sid,scope.currency.preparationId)
+      const refs=scope.receipt.checkpoint.refs,work=table.get(workKey(sid,refs))
+      if(!row||row.status!=='settled'||!equal(row.scope,scope)||!isWork(work,sid)
+        ||work.preparationId!==scope.currency.preparationId||!equal(work.refs,refs))return false
+      if(liveRevocations.get(sid)?.has(work.preparationId))return false
+      const gate=terminalGates.get(sid)
+      if(gate&&gate.agent===sessionOwners.get(sid)&&gate.agent.session===gate.session
+        &&(!sessionForRowFacts||(sessionForRowFacts(sid) as object|undefined)===gate.session)) {
+        refreshInputRows(gate)
+        if(gate.unknownStops.size||refs.some(ref=>gate.stopRefs.has(canonical(ref))))return false
+      }else for(const [recordKey,value] of table.entries(`${prefix(sid)}stop-`))if(recordKey.startsWith(`${prefix(sid)}stop-`)) {
+        const tombstone=value as {refs?:NativeInputRef[];notice?:NativeInputStopNoticeV1}
+        if(!Array.isArray(tombstone.refs)||tombstone.notice?.refsCode&&!tombstone.refs.length
+          ||tombstone.refs.some(ref=>work.refs.some(owned=>equal(ref,owned))))return false
+      }
+      return work.terminalRequired===true&&work.status==='active'&&!work.stop
+        &&equal(currencyOfStored(work),scope.currency)&&equal(work.checkpoint,scope.receipt.checkpoint)
+        &&equal(work.refs,scope.receipt.checkpoint.refs)&&equal(work.transition,scope.transition)
+    }catch{return false}
+  }
+  const captureConsumedScopeProof=(scope:InputCompletionScope)=>{
+    const sid=scope.receipt.checkpoint.sessionId,gate=terminalGates.get(sid)
+    if(!observeDomainChanges||!gate||gate.agent!==sessionOwners.get(sid)||gate.agent.session!==gate.session
+      ||sessionForRowFacts&&(sessionForRowFacts(sid) as object|undefined)!==gate.session)return
+    const key=workKey(sid,scope.receipt.checkpoint.refs),previous=consumedScopes.get(key)
+    if(previous?.current()&&equal(previous.scope,scope))return previous
+    if(previous)invalidateConsumedScope(previous)
+    if(!verifyConsumedScopeData(scope,true))return
+    const rows=[rowAddress('branch',key),rowAddress('branch',inputCompletionKey(sid,scope.currency.preparationId))]
+    const fact:ConsumedScopeFact={scope,session:gate.session,agent:gate.agent,dirty:false,rows,listeners:new Set(),
+      current:()=>!fact.dirty&&sessionOwners.get(sid)===fact.agent
+        &&(!sessionForRowFacts||(sessionForRowFacts(sid) as object|undefined)===fact.session),
+      onInvalidated(notify){fact.listeners.add(notify);return ()=>{fact.listeners.delete(notify)}}}
+    consumedScopes.set(key,fact)
+    for(const row of rows) {
+      let readers=consumedScopeRows.get(row)
+      if(!readers)consumedScopeRows.set(row,readers=new Set())
+      readers.add(fact)
+    }
+    return fact
+  }
 
   /** Caller must obtain this exact Agent from its owning Native factory. No
    * duck-typed service wrapper or brand lookup after disposal is accepted. */
@@ -548,6 +872,10 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     const actualSession=agent.session,sid=actualSession.id
     if (sessionOwners.has(sid)) fail('INPUT_SESSION_ALREADY_BOUND')
     sessionOwners.set(sid, agent)
+    const inputIndex:TerminalGate|undefined=observeDomainChanges?{agent,session:actualSession,initialized:false,
+      dirty:new Set(),works:new Map(),workRefs:new Map(),workPreparations:new Map(),stops:new Map(),stopRefs:new Map(),unknownStops:new Set(),
+      generations:new Map(),latestGeneration:0,unknownWorks:new Set(),malformed:new Set(),structural:new Set(),consumed:new Set()}:undefined
+    if(inputIndex)terminalGates.set(sid,inputIndex)
     // A remounted owner cannot know whether old pending refs lost a stop ACK.
     // Only a future actual Native insertion can obtain a fresh credential.
     let boundSeq = -1
@@ -557,7 +885,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     let revoked = false
     let currentStep: RoleplayInputStep | undefined
     let currentLease: RoleplayInputTransitionLease | undefined
-    const steps = new WeakMap<RoleplayInputStep, {work: Work; generation: number; signal: AbortSignal}>()
+    const steps = new WeakMap<RoleplayInputStep, {work: Work; generation: number; signal: AbortSignal;generationOwner:object}>()
     const reservations = new WeakMap<RoleplayInputTransitionReservation, {work: Work; step: RoleplayInputStep}>()
     const lifecycle = new Map<string, {identity: unknown; receipt: NativeDurableInputWorkReceiptV1}>()
     const pendingRevocations = new Set<string>()
@@ -592,7 +920,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         ||agent.session!==actualSession||work.sessionId!==sid||work.branchId!==sid)return false
       if(Object.keys(work).some(name=>!['schemaVersion','namespace','sessionId','branchId','preparationId',
         'receiptGeneration','refs','credentialSha256','preparation','status','source','attemptGeneration','attempt',
-        'checkpoint','terminalRequired','unclaimedRefusal','transition','stop'].includes(name)))return false
+        'checkpoint','terminalRequired','unclaimedRefusal','transition','stop','sourceDataSuccessors'].includes(name)))return false
       if(ownedWorkObjects.has(work))return true
       const previous=ownedRows.get(actualSession)?.rows.get(key(work))
       // A stop may update a detached older work. Only this writer's complete
@@ -677,7 +1005,8 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         const input = agent.lookupInputOwnership(ref)
         const insertIndex = events.findIndex(event => Number(event.seq) === ref.insertSeq)
         if (insertIndex < inherited || input.status !== 'admitted' || input.turn !== receipt.actualTurn
-          || input.userSeq <= receipt.firstStepStartSeq || input.userSeq >= Number(ends[0].seq)) {
+          || input.userSeq <= receipt.firstStepStartSeq && input.published === undefined
+          || input.userSeq >= Number(ends[0].seq)) {
           return {code: 'HISTORICAL_INPUT_ADMISSION_UNKNOWN'}
         }
       }
@@ -798,12 +1127,24 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         hot.status = notice.refsCode ? 'unknown' : 'stopped'
       }
       let readFailed = false, readError: unknown, targets: Work[] = []
-      try {targets = records(sid).filter(work => notice.preparation ? equal(work.preparation, notice.preparation)
-        : notice.refs.some(ref => work.refs.some(owned => equal(ref, owned))))}
+      try {
+        if(inputIndex) {
+          refreshInputRows(inputIndex)
+          const keys=notice.preparation?inputIndex.workPreparations.get(canonical(notice.preparation))??new Set<string>()
+            :new Set(notice.refs.flatMap(ref=>[...inputIndex.workRefs.get(canonical(ref))??[]]))
+          targets=[...keys].map(key=>clone(inputIndex.works.get(key)!.work))
+        }else targets=records(sid).filter(work=>notice.preparation?equal(work.preparation,notice.preparation)
+          :notice.refs.some(ref=>work.refs.some(owned=>equal(ref,owned))))
+      }
       catch (error) {readFailed = true; readError = error}
       if (hot && matchesHot && !targets.some(work => work.preparationId === hot!.preparationId)) targets.push(hot)
       if (notice.refsCode || readFailed) for (const preparationId of lifecycle.keys()) pendingRevocations.add(preparationId)
       for (const target of targets) pendingRevocations.add(target.preparationId)
+      invalidateConsumedScopes(sid,pendingRevocations)
+      const terminalGate=terminalGates.get(sid)
+      if(terminalGate)for(const entry of terminalGate.works.values()) {
+        if(pendingRevocations.has(entry.work.preparationId))terminalGate.dirty.add(entry.key)
+      }
       if (readFailed) report(readError)
       const effectiveRefs = clone(notice.refs.length ? notice.refs : matchesHot ? hot!.refs : [])
       const unknownCode = notice.refsCode ?? (readFailed ? 'INPUT_STOP_READ_UNKNOWN' : undefined)
@@ -850,6 +1191,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       terminal?.revoke()
       revoked = true
       pendingRevocations.add(hot.preparationId)
+      invalidateConsumedScopes(sid,pendingRevocations)
       hot.status = 'unknown'
       hot.stop ??= {status: 'unknown', code: notice.code}
       const target = hot
@@ -868,6 +1210,71 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     }
     type MaterialInput=RoleplayInputMaterialScopeInputV1
     const phaseACandidates=new WeakMap<RoleplayInputStep,RoleplayPhaseAStageV1>()
+    const sourceDataWindows=new WeakMap<RoleplayInputStep,RoleplayInputSourceDataWindowV1>()
+    function sourceDataWindow(token:RoleplayInputStep,stage:RoleplayPhaseAStageV1):RoleplayInputSourceDataWindowV1 {
+      const existing=sourceDataWindows.get(token)
+      if(existing)return existing
+      const entry=steps.get(token)!,work=entry.work,publications:InputSourceDataPublicationV1[]=[]
+      let rejected=false,accepted=false
+      const tail=()=>publications.at(-1)?.to??token.currency.source
+      const assertOwner=()=>{
+        const code=stepIdentityCurrency(token)??baseFactsCurrency(work)
+        if(code)fail(code)
+        if(work.attempt?.prepared||phaseACandidates.get(token)!==stage)fail('INPUT_SOURCE_DATA_PHASE_CHANGED')
+      }
+      const window:RoleplayInputSourceDataWindowV1={
+        begin(origin) {
+          try {assertOwner()
+            if(accepted||rejected||!equal(observeExact(agent.session),tail())) {
+              rejected=true;return undefined
+            }
+            const from=clone(tail())
+            let settled=false
+            return {
+              publish(to,receipt) {
+                if(settled)return
+                settled=true
+                try {assertOwner()
+                  if(rejected||!equal(tail(),from)||to.kind!=='story'
+                    ||!equal(observeExact(agent.session),to)) {rejected=true;return}
+                  if(!equal(from,to))publications.push({from,to:clone(to),origin:clone(origin),receipt})
+                }catch {rejected=true}
+              },reject(){settled=true;rejected=true},
+            }
+          }catch {rejected=true;return undefined}
+        },
+        accept:()=>enqueue(async()=>{
+          assertOwner()
+          if(rejected)fail('INPUT_SOURCE_DATA_PUBLICATION_CHANGED')
+          if(!publications.length)return false
+          const to=tail()
+          if(!equal(observeExact(agent.session),to))fail('INPUT_SOURCE_CHANGED')
+          // Revoke the old opaque step before the durable write. An unknown
+          // save cannot leave the old scope able to dispatch against new DATA.
+          currentStep=undefined
+          phaseACandidates.delete(token)
+          const from=work.source
+          work.source=clone(to)
+          work.sourceDataSuccessors={schemaVersion:1,encoding:'native-input-source-data-successors-v1',
+            publications:[...work.sourceDataSuccessors?.publications??[],...publications]}
+          await save(work)
+          await onSourceDataSuccessor?.({sessionId:sid,preparationId:work.preparationId,
+            credentialSha256:work.credentialSha256,receiptGeneration:work.receiptGeneration,
+            refs:work.refs,source:work.source},from)
+          const code=baseCurrency(work)
+          if(code||entry.signal.aborted)fail(code??'INPUT_PERMISSION_REVOKED')
+          const next:RoleplayInputStep=Object.freeze({kind:token.kind,currency:Object.freeze(currencyOf(work))})
+          steps.set(next,entry);currentStep=next;accepted=true
+          await stage.rebuild(next)
+          const rebuilt=stepCurrency(next)
+          if(rebuilt)fail(rebuilt)
+          phaseACandidates.set(next,stage)
+          return true
+        }),
+      }
+      sourceDataWindows.set(token,window)
+      return window
+    }
     function materialOriginal(input:MaterialInput,candidate=false) {
       const work=hot,token=currentStep,entry=token&&steps.get(token)
       if(!work||!token||!entry||entry.work!==work) {
@@ -941,10 +1348,10 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
           assertIdentity()
         }
         assertOwnerFactsCurrent()
-        return {session:agent.session as NativeSession,stepToken:token,currency:clone(currency),
+        return {session:agent.session as NativeSession,stepToken:token,generationOwner:entry.generationOwner,currency:clone(currency),
           preparation:clone(work.preparation),originalInputRefs:clone(work.refs),turn,step,
           signal:entry.signal,assertCurrent,assertOwnerFactsCurrent,
-          ...(stage?{phaseA:stage}:{}),
+          ...(stage?{phaseA:stage,sourceData:sourceDataWindow(token,stage)}:{}),
           outputRows:[{table:'branch',key:workKey(sid,work.refs)},{table:'branch',key:currentKey(sid)},
             ...stage?.current().outputRows??[]]}
       },
@@ -962,23 +1369,29 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
           const mutation=mutationCode(agent.session)
           if(mutation)return awaitMutationBarrier&&mutation==='MVU_PLAYER_BUSY'
             ?waitForMutation:blocked(mutation)
-          // Scan owned immutable records, rather than trusting a potentially
-          // lost index/current write. The same refs never acquire a new key.
-          const scanned=inventory(sid),previous=scanned.works
-          if(scanned.malformed)return blocked('INPUT_STORED_WORK_UNKNOWN')
-          const stopped = scanned.stops.some(value => {
+          // The observed owner builds once from real rows and consumes only
+          // later dirty addresses. Detached/legacy readers retain the full
+          // inventory path; neither path trusts the lossy current pointer.
+          if(inputIndex)refreshInputRows(inputIndex)
+          const scanned=inputIndex?undefined:inventory(sid),previous=scanned?.works
+          if(inputIndex?inputIndex.malformed.size:scanned!.malformed)return blocked('INPUT_STORED_WORK_UNKNOWN')
+          const stopped=inputIndex?inputIndex.unknownStops.size>0
+            ||proposal.refs.some(ref=>inputIndex.stopRefs.has(canonical(ref))):scanned!.stops.some(value=>{
             const row = value as {refs?: NativeInputRef[]; notice?: NativeInputStopNoticeV1}
             return !Array.isArray(row?.refs) || row.notice?.refsCode && !row.refs.length
               || row.refs.some(ref => proposal.refs.some(item => equal(ref, item)))
           })
           if (stopped) return blocked('INPUT_STOPPED_REFS')
-          if (table.get(workKey(sid, proposal.refs)) || previous.some(work => work.refs.some(ref => proposal.refs.some(item => equal(ref, item))))) {
+          const reused=inputIndex?proposal.refs.some(ref=>inputIndex.workRefs.has(canonical(ref)))
+            :previous!.some(work=>work.refs.some(ref=>proposal.refs.some(item=>equal(ref,item))))
+          if (table.get(workKey(sid, proposal.refs)) || reused) {
             return blocked('INPUT_EXISTING_WORK_UNKNOWN')
           }
           // Only explicit fresh insertions reach this FIFO. An interrupted
           // before-first-step work may now have a durable Native refusal, even
           // when Core Phase A already saved its prepared attempt/snapshot.
-          for(const work of previous)if(work.terminalRequired&&work.status==='unknown'
+          const uncertain=inputIndex?[...inputIndex.unknownWorks].map(entry=>clone(entry.work)):previous!
+          for(const work of uncertain)if(work.terminalRequired&&work.status==='unknown'
             &&!work.checkpoint&&!work.transition) {
             const lookup=agent.lookupDurableInputWork({preparation:work.preparation,refs:work.refs})
             if(lookup.status==='refused-before-first-step'&&archiveClaimedRefusal(work,lookup.refusal)) {
@@ -998,7 +1411,8 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
             ? {kind: 'management', sourceSha256: actualSource.sourceSha256, reason: 'INTERNAL_NATIVE_INPUT'} : actualSource
           const terminalRequired=completion&&inputSource.kind==='story'&&inputSource.headRef?true:undefined
           const identity = {schemaVersion: 2 as const, namespace: ROLEPLAY_INPUT_NAMESPACE, sessionId: sid,
-            branchId: sid, preparationId: randomUUID(), receiptGeneration: Math.max(0, ...previous.map(work => work.receiptGeneration)) + 1,
+            branchId: sid, preparationId: randomUUID(), receiptGeneration:(inputIndex?inputIndex.latestGeneration:
+              Math.max(0,...previous!.map(work=>work.receiptGeneration)))+1,
             refs: clone(proposal.refs),...(terminalRequired?{terminalRequired:true as const}:{})} as const
           const credentialSha256 = digest(identity)
           const work: Work = {...identity, credentialSha256, preparation: {schemaVersion: 1,
@@ -1089,6 +1503,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
           try {await save(work)} catch (error) {revoked = true; report(error); return blocked('INPUT_CHECKPOINT_WRITE_UNKNOWN')}
           if (signal.aborted || revoked || baseCurrency(work)) return blocked('INPUT_PERMISSION_REVOKED')
           lifecycle.set(work.preparationId, {identity: clone(identityOf(work)), receipt: clone(receipt)})
+          await onCheckpoint?.(work,receipt)
           return allowed
         })
       },
@@ -1096,6 +1511,11 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       onBlocked,
       ...materialOwner?{requestMaterial:materialOwner.requestMaterial}:{},
       ...(terminal?{completedWork:terminal.complete}:{}),
+      ...(onCompletedWork?{onCompletedWork:async(receipt:NativeCompletedInputWorkReceiptV1)=>{
+        const work=hot
+        if(work&&work.source.kind==='story'&&work.checkpoint&&equal(work.checkpoint,receipt.checkpoint))
+          await onCompletedWork(work,receipt)
+      },observesCompletedWork:()=>observesCompletedWork?.(agent.session)!==false}:{}),
     }
     const unregister = agent.registerInputAdmission(hook)
     const currentOpenClaim=()=>{
@@ -1134,12 +1554,18 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
             : work.transition ? 'management' : work.source.kind, currency: Object.freeze({schemaVersion: 2 as const,
             preparationId: work.preparationId, credentialSha256: work.credentialSha256,
             receiptGeneration: work.receiptGeneration, attemptGeneration: work.attemptGeneration, source: clone(work.source)})})
-          steps.set(token, {work, generation: work.attemptGeneration, signal})
+          steps.set(token, {work, generation: work.attemptGeneration, signal,generationOwner:{}})
           currentStep = token
           return token
         })
       },
       checkCurrency(step: RoleplayInputStep) {const code = stepCurrency(step); return code ? blocked(code) : allowed},
+      completeWithoutRequest(step: RoleplayInputStep) {
+        const code = stepCurrency(step)
+        if (code) fail(code)
+        const work = steps.get(step)!.work
+        agent.completeInputWithoutRequest(work, {turn: work.attempt!.turn, step: work.attempt!.step})
+      },
       stagePhaseA(step,candidate) {
         if(!materialOwner||step.kind!=='story')return false
         const code=stepCurrency(step)
@@ -1418,6 +1844,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         revoked = true; continuation.close(); currentStep = undefined; unregister(); owners.delete(agent)
         if (hot?.transition) reservationLeases.delete(hot.transition.reservation.reservationId)
         if (sessionOwners.get(sid) === agent) sessionOwners.delete(sid)
+        if(terminalGates.get(sid)?.agent===agent)releaseTerminalGate(sid)
         if(liveRevocations.get(sid)===pendingRevocations)liveRevocations.delete(sid)
         for (const leaseKey of leases.keys()) if (leaseKey.startsWith(`${sid}:`)) leases.delete(leaseKey)
       },
@@ -1506,6 +1933,8 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
      * retains only exact explanatory data for its actual Session object. */
     disposeOwnedNonNumericalBranchRowFacts():void {
       ownedRowsDisposed=true;ownedRows=new WeakMap()
+      unobserveDomain?.()
+      for(const sid of terminalGates.keys())releaseTerminalGate(sid)
     },
     /** Select and validate the actual closing lease. A returned view is current
      * at this synchronous boundary; retained views recheck after an await. */
@@ -1524,25 +1953,9 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     /** Historical consumption still needs the exact original work ledger. A
      * late Native stop cannot be hidden by an already written settled row. */
     verifyConsumedScope(scope:InputCompletionScope):boolean {
-      try {
-        const sid=scope.receipt.checkpoint.sessionId,row=readCompletion(sid,scope.currency.preparationId)
-        // Native's original refs select the one durable Work address. UUID
-        // identity is joined below; searching every historical Work cannot
-        // establish another valid address for this completed claim.
-        const refs=scope.receipt.checkpoint.refs,work=table.get(workKey(sid,refs))
-        if(!row||row.status!=='settled'||!equal(row.scope,scope)||!isWork(work,sid)
-          ||work.preparationId!==scope.currency.preparationId||!equal(work.refs,refs))return false
-        if(liveRevocations.get(sid)?.has(work.preparationId))return false
-        for(const [recordKey,value] of table.entries(`${prefix(sid)}stop-`))if(recordKey.startsWith(`${prefix(sid)}stop-`)) {
-          const tombstone=value as {refs?:NativeInputRef[];notice?:NativeInputStopNoticeV1}
-          if(!Array.isArray(tombstone.refs)||tombstone.notice?.refsCode&&!tombstone.refs.length
-            ||tombstone.refs.some(ref=>work.refs.some(owned=>equal(ref,owned))))return false
-        }
-        return work.terminalRequired===true&&work.status==='active'&&!work.stop
-          &&equal(currencyOfStored(work),scope.currency)&&equal(work.checkpoint,scope.receipt.checkpoint)
-          &&equal(work.refs,scope.receipt.checkpoint.refs)&&equal(work.transition,scope.transition)
-      } catch {return false}
+      return verifyConsumedScopeData(scope)
     },
+    captureConsumedScopeProof,
     checkTerminalPermission(token:object,intent:MvuStateTerminalIntent):boolean {
       return terminalOwners.get(intent.sessionId)?.checkPermission(token,intent)===true
     },

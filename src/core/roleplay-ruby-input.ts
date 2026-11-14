@@ -2,7 +2,7 @@
  * runPipeline; worldbook.js findEntry/readEntry/writeOutputEntry; jailbreak.js
  * buildMessages. Storage, ST macro resolution and publication belong to Core. */
 import {RUBY_BUILTIN_REFERENCES_V1} from './roleplay-ruby-config.js'
-import type {RubyAnalysisWindowDecisionV1,RubyConfigurationV1,RubyInputDecisionV1,RubyInputWindowV1,
+import type {RubyAcceptedOutputValueV1,RubyAnalysisWindowDecisionV1,RubyConfigurationV1,RubyInputDecisionV1,RubyInputWindowV1,
   RubyMessageItemV1,RubyPreparedInputV1,RubyPreparedOutputV1,RubySelectedMessageV1,RubySourceRefV1,
   RubyTaskV1,RubyTriggerV1,RubyWorldbookEntryV1,RubyWorldbookV1} from './roleplay-ruby-types.js'
 
@@ -115,19 +115,25 @@ export interface RubyInputPreparationV1 {
   readonly characterBook:RubyWorldbookV1
   readonly chatBook:RubyWorldbookV1
   readonly actualCharName:string
+  readonly mode?:'automatic'|'manual'
+  readonly acceptedOutputs?:readonly RubyAcceptedOutputValueV1[]
   readonly windowDecision?:Extract<RubyAnalysisWindowDecisionV1,{readonly kind:'eligible'}>
 }
 export function prepareRubyAnalysisWindowV1(input:Pick<RubyInputPreparationV1,
-  'configuration'|'task'|'bookmark'|'messages'|'actualCharName'>):RubyAnalysisWindowDecisionV1 {
+  'configuration'|'task'|'bookmark'|'messages'|'actualCharName'|'mode'>):RubyAnalysisWindowDecisionV1 {
   const {configuration,task}=input
   if(configuration.status==='unsupported')return {kind:'unsupported',issues:configuration.issues,normalRequests:0}
   const charName=configuration.charName||input.actualCharName||'角色'
   let window:RubyInputWindowV1
-  try {window=readRubyIncrementalWindowV1(input.messages,input.bookmark,configuration.customContentTags,charName)}
+  try {
+    window=readRubyIncrementalWindowV1(input.messages,input.bookmark,configuration.customContentTags,charName)
+    if(input.mode==='manual'&&(window.count===0||!window.scanText))
+      window=readRubyIncrementalWindowV1(input.messages,0,configuration.customContentTags,charName)
+  }
   catch {return {kind:'unsupported',issues:[{code:'RUBY_CONTENT_TAG_PATTERN_UNSUPPORTED',
     sourcePath:configuration.source.sourcePath+'/customContentTags'}],normalRequests:0}}
   if(window.count===0||!window.scanText)return {kind:'skipped',reason:'no-new-text',taskKey:task.taskKey,window,normalRequests:0}
-  const scan=rubyKeywordScanV1(task,window.scanText)
+  const scan=input.mode==='manual'?{run:true,matched:[]}:rubyKeywordScanV1(task,window.scanText)
   if(!scan.run)return {kind:'skipped',reason:'keyword-miss',taskKey:task.taskKey,window,normalRequests:0}
   if(!task.promptKey)return {kind:'unsupported',issues:[{code:'RUBY_TASK_PROMPT_KEY_MISSING',
     sourcePath:task.sourcePath+'/promptKey'}],normalRequests:0}
@@ -155,9 +161,14 @@ export function prepareRubyAnalysisInputV1(input:RubyInputPreparationV1):RubyInp
     referenceValues.set(reference.varName,{content:value.content,refs:value.refs})
   }
   const outputValues=new Map<string,{content:string;refs:readonly RubySourceRefV1[]}>()
-  for(const outputTask of configuration.tasks)if(outputTask.outputKey&&task.useOutputs.includes(outputTask.outputVarName)) {
-    const value=readRubyEntryV1(input.characterBook,input.chatBook,outputTask.outputKey,true)
-    outputValues.set(outputTask.outputVarName,{content:value.content,refs:value.refs})
+  for(const outputTask of configuration.tasks)if(task.useOutputs.includes(outputTask.outputVarName)) {
+    if(outputTask.outputKey) {
+      const value=readRubyEntryV1(input.characterBook,input.chatBook,outputTask.outputKey,true)
+      outputValues.set(outputTask.outputVarName,{content:value.content,refs:value.refs})
+    }else {
+      const value=input.acceptedOutputs?.find(value=>value.outputVarName===outputTask.outputVarName)
+      if(value)outputValues.set(outputTask.outputVarName,{content:value.content,refs:[value.ref]})
+    }
   }
   const body=window.scanText.slice(0,RUBY_INCREMENTAL_READ_POLICY_V1.maxBodyChars),
     truncatedBodyChars=window.scanText.length-body.length,
@@ -184,9 +195,10 @@ export function prepareRubyAnalysisInputV1(input:RubyInputPreparationV1):RubyInp
   for(const name of task.useOutputs){
     const content=variables[name]
     if(!content||content==='（未设定）')continue
-    const match=/^task_(\d+)_Output$/.exec(name),
-      label=match?configuration.tasks.find(value=>value.id===Number(match[1]))?.displayName
-        ||`任务#${match[1]}结果`:name
+    const match=/^task_(\d+)_Output$/.exec(name)
+    let label=name
+    if(name==='startupOutput')label=configuration.tasks.find(value=>value.taskKey==='startup')?.displayName||'开局分析结果'
+    else if(match)label=configuration.tasks.find(value=>value.taskKey===`task_${match[1]}`)?.displayName||`任务#${match[1]}结果`
     sections.push(`【${label}】\n${content}`)
   }
   const assembled:string[]=[]
@@ -225,7 +237,7 @@ export function prepareRubyAnalysisOutputV1(input:Pick<RubyPreparedInputV1,'conf
       constant:task.outputConstant,disabled:task.outputDisable,position:task.position,order:task.order,
       ...(task.position===4?{depth:task.depth}:{}),
       ...(task.noRecursion?{excludeRecursion:true as const,preventRecursion:true as const}:{}),
-      ...(task.selective?{selective:true as const,selectiveLogic:0 as const,
-        secondaryKeys:task.selectiveKeys.length?task.selectiveKeys:['nsfw']}:{} )}:null,
+      selective:task.selective,secondaryKeys:task.selective&&task.selectiveKeysEnabled?task.selectiveKeys:[],
+      ...(task.selective?{selectiveLogic:0 as const}:{})}:null,
     bookmark:{taskKey:task.taskKey,ordinal:input.window.endOrdinal}}}
 }

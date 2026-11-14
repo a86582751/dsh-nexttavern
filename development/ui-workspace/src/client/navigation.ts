@@ -10,11 +10,11 @@ import type {
   SessionListState,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
+import type { SubagentAddress } from 'dsh-nexttavern-native-subagent/client'
 import type {
   IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionId } from 'dsh-nexttavern-native-session/types'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { RowToast } from './contract/slots.ts'
 import { pinOrderAccounts, pinOrderSource } from './pin-order.ts'

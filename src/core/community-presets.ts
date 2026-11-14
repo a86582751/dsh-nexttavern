@@ -1,15 +1,28 @@
 import {randomUUID} from 'node:crypto'
 import {withTavernLock} from './tavern-task-support.js'
 import {recordSha256} from './roleplay-data.js'
-import {parseCommunityPreset,normalizeCommunityRegexes} from './community-preset-import.js'
-import {parseCommunityIzumiPlanPack,applyCommunityIzumiPlans} from './community-preset-plans.js'
-import {applyCommunityPresetControl} from './community-preset-controls.js'
+import {parseCommunityPreset,normalizeCommunityRegexes,communityTavernRegexDto} from './community-preset-import.js'
+import {parseCommunityIzumiPlanPack,applyCommunityIzumiPlans,annotateCommunityIzumiPrompts} from './community-preset-plans.js'
+import {applyCommunityPresetControl,resolveCommunityPresetControls} from './community-preset-controls.js'
+import {extractCommunityPresetProfile} from './community-preset-profiles.js'
 import type {CommunityMacroWrite} from './community-preset-macros.js'
+import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
+import type {TavernEjsPresetCatalogV1} from './tavern-template-ejs-host-types.mjs'
 import type {CommunityJson,CommunityPresetV1,CommunityRegexRule,CommunityIzumiPlanPackV2,
   CommunityPresetPrompt} from './community-preset-types.js'
 
 export type CommunityScope = 'global'|'conversation'
 export type CommunityRegexOrigin = 'global'|'preset'|'scoped'
+export interface CommunityReadonlyPresetDataV1 {
+  readonly settings:Readonly<Record<string,CommunityJson>>
+  readonly prompts:readonly Readonly<Record<string,CommunityJson>>[]
+  readonly prompts_unused:readonly Readonly<Record<string,CommunityJson>>[]
+  readonly extensions:Readonly<Record<string,CommunityJson>>
+}
+export type CommunityReadonlyPresetV1=
+  |{readonly kind:'none';readonly fingerprint:string}
+  |{readonly kind:'available';readonly loadedName:string;readonly fingerprint:string;
+    readonly settingsComplete:false;readonly preset:CommunityReadonlyPresetDataV1}
 export interface CommunitySelection {
   presetId:string|null
   applySampling:boolean
@@ -84,6 +97,14 @@ function exportPreset(preset:CommunityPresetV1):Record<string,CommunityJson> {
   raw.prompt_order=orders
   const extensions=raw.extensions&&typeof raw.extensions==='object'&&!Array.isArray(raw.extensions)?raw.extensions:{}
   extensions.regex_scripts=preset.regexes.map(({raw:source,...rule})=>({...source,...rule})) as unknown as CommunityJson
+  const native=extensions.nexttavern&&typeof extensions.nexttavern==='object'&&!Array.isArray(extensions.nexttavern)
+    ?extensions.nexttavern:{}
+  // Persisted v1 profiles already contain a resolved native contract. Export
+  // makes that choice explicit so re-import never needs source recognition.
+  const extra=preset.profile.configuration.extraParameters
+  const enabled=extra&&typeof extra==='object'&&!Array.isArray(extra)?extra.enabled:undefined
+  extensions.nexttavern={...native,profile:preset.profile.id,
+    ...typeof enabled==='boolean'?{extraParameters:enabled}:{}}
   raw.extensions=extensions
   return raw
 }
@@ -115,7 +136,20 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
     const regexOrder=effective.regexOrder??(preset&&['kemini','reborn','izumi'].includes(preset.profile.id)
       ?['preset','global','scoped'] as CommunityRegexOrigin[]:['global','preset','scoped'] as CommunityRegexOrigin[])
     const fingerprint=recordSha256({preset,selection:effective,regexes:libraries,regexOrder})
+    let helperVariables:TavernTemplateScopeBindingV1|null=null
+    if(preset) {
+      // These are the selected preset's own TavernHelper settings, not the
+      // separate Community global-variable journal. Missing/invalid tables use
+      // the upstream PresetSettings default; no selected preset stays absent.
+      const extensions=preset.source.raw.extensions
+      const settings=extensions&&typeof extensions==='object'&&!Array.isArray(extensions)?extensions.tavern_helper:undefined
+      const raw=settings&&typeof settings==='object'&&!Array.isArray(settings)?settings.variables:undefined
+      const values=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{}
+      helperVariables={scope:'preset',ownerId:`community:${preset.id}:tavern-helper`,
+        versionSha256:preset.source.sha256,values,valuesSha256:recordSha256(values)}
+    }
     return {revision:state.revision,conversationId,global:state.global,local,effective,preset,
+      helperVariables,
       presets:state.presets.map(p=>({id:p.id,name:p.name,profile:p.profile.id,prompts:p.prompts.length,regexes:p.regexes.length})),
       planPack:stored?state.planPacks[stored.id]??null:null,regexes:libraries,regexLibrary:state.regexes,regexOrder,fingerprint}
   }
@@ -125,6 +159,70 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
     let value=policies.get(root)
     if(!value){value=buildPolicy(sessionId);policies.set(root,value)}
     return value
+  }
+  const readonlyPresets=new WeakMap<ReturnType<typeof buildPolicy>,CommunityReadonlyPresetV1>()
+  const ejsPresets=new WeakMap<ReturnType<typeof buildPolicy>,TavernEjsPresetCatalogV1>()
+  const globalRegexes=new WeakMap<ReturnType<typeof buildPolicy>,readonly Readonly<Record<string,CommunityJson>>[]>()
+  function readonlyGlobalRegexes(sessionId:string) {
+    const current=policy(sessionId),saved=globalRegexes.get(current)
+    if(saved)return saved
+    const result=current.regexes.filter(library=>library.binding.scope==='global')
+      .flatMap(library=>library.rules.map(communityTavernRegexDto))
+    globalRegexes.set(current,result)
+    return result
+  }
+  function ejsPreset(sessionId:string,current=policy(sessionId)):TavernEjsPresetCatalogV1 {
+    const saved=ejsPresets.get(current)
+    if(saved)return saved
+    const preset=current.preset,result:TavernEjsPresetCatalogV1=preset?{
+      kind:'available',id:preset.id,loadedName:preset.name,fingerprint:current.fingerprint,
+      prompts:Object.freeze(preset.prompts.map((row,index)=>Object.freeze({name:row.name,content:row.content,
+        sourcePointer:`/community/presets/${preset.id.replaceAll('~','~0').replaceAll('/','~1')}/prompts/${index}/content`})))}
+      :{kind:'none',fingerprint:current.fingerprint}
+    Object.freeze(result);ejsPresets.set(current,result)
+    return result
+  }
+  function readonlyPreset(sessionId:string):CommunityReadonlyPresetV1 {
+    const current=policy(sessionId),saved=readonlyPresets.get(current)
+    if(saved)return saved
+    const preset=current.preset
+    let result:CommunityReadonlyPresetV1
+    if(!preset)result={kind:'none',fingerprint:current.fingerprint}
+    else {
+      const prompt=(row:CommunityPresetPrompt):Record<string,CommunityJson>=>({id:row.identifier,name:row.name,
+        enabled:row.enabled,role:row.role,
+        ...!['main','nsfw','jailbreak','enhanceDefinitions'].includes(row.identifier)?{position:row.injectionPosition===1
+          ?{type:'in_chat',depth:row.injectionDepth,order:row.injectionOrder}:{type:'relative'}}:{},
+        ...!row.marker?{content:row.content}:{},
+        ...row.raw.extra&&typeof row.raw.extra==='object'?{extra:copy(row.raw.extra)}:{}})
+      const byId=new Map(preset.prompts.map(row=>[row.identifier,row])),
+        ordered=preset.promptOrder.length?preset.promptOrder.map(row=>byId.get(row.identifier)!).filter(Boolean)
+          :preset.prompts.filter(row=>!row.unused),
+        raw=preset.source.raw.extensions,
+        extensions:Record<string,CommunityJson>=raw&&typeof raw==='object'&&!Array.isArray(raw)?copy(raw):{}
+      extensions.regex_scripts=preset.regexes.map(communityTavernRegexDto)
+      const helper=extensions.tavern_helper
+      extensions.tavern_helper={...helper&&typeof helper==='object'&&!Array.isArray(helper)?helper:{},
+        variables:copy(current.helperVariables!.values)}
+      // Only these two imported fields are actually passed to Native sampling.
+      // Other imported parameters do not establish current provider settings.
+      const settings:Record<string,CommunityJson>={}
+      if(current.effective.applySampling) {
+        if(typeof preset.parameters.temperature==='number')settings.temperature=preset.parameters.temperature
+        if(typeof preset.parameters.openai_max_tokens==='number')settings.max_completion_tokens=preset.parameters.openai_max_tokens
+      }
+      result={kind:'available',loadedName:preset.name,fingerprint:current.fingerprint,settingsComplete:false,
+        preset:{settings,prompts:ordered.map(prompt),prompts_unused:preset.prompts.filter(row=>row.unused).map(prompt),extensions}}
+    }
+    function freeze(value:unknown):void {
+      if(value&&typeof value==='object'&&!Object.isFrozen(value)) {
+        for(const child of Object.values(value))freeze(child)
+        Object.freeze(value)
+      }
+    }
+    freeze(result)
+    readonlyPresets.set(current,result)
+    return result
   }
   function scopeSelection(state:CommunityPresetStateV1,sessionId:string,scope:CommunityScope):CommunitySelection {
     if(scope==='global')return state.global
@@ -155,6 +253,16 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
         return preset
       }
       switch(body.action) {
+        case 'profile': {
+          const preset=found(),id=text(body.profile)
+          if(!['standard','dream','kemini','reborn','izumi'].includes(id))throw Error('原生适配类型无效')
+          const raw=exportPreset(preset),extensions=raw.extensions as Record<string,CommunityJson>
+          extensions.nexttavern={...(extensions.nexttavern as Record<string,CommunityJson>),profile:id}
+          preset.profile=extractCommunityPresetProfile(raw,preset.prompts)
+          if(preset.profile.id!==id)throw Error('该适配缺少已启用的声明配置')
+          if(id==='izumi')annotateCommunityIzumiPrompts(preset.prompts,preset.promptOrder)
+          break
+        }
         case 'import': {
           const rawText=text(body.rawText),input=body.data??JSON.parse(rawText)
           const preset=parseCommunityPreset(input,{id:`community-${randomUUID()}`,name:text(body.name)||text(body.fileName).replace(/\.json$/i,'')||'社区预设',fileName:text(body.fileName),rawText})
@@ -259,6 +367,7 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
             prompt.enabled=current.prompts[prompt.identifier]??prompt.enabled
             prompt.content=current.contents[prompt.identifier]??prompt.content
           }
+          await resolveCommunityPresetControls(effective)
           const applied=applyCommunityPresetControl(effective,{groupId:text(body.groupId),optionId:text(body.optionId),
             enabled:body.enabled===true,value:body.value as CommunityJson,answers:body.answers as Record<string,CommunityJson>|undefined})
           current.presetId=preset.id
@@ -286,6 +395,11 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
         default:throw Error('未知社区预设操作')
       }
       callerCurrent?.()
+      if(['import','copy','select','update','profile','control'].includes(String(body.action))) {
+        const selected=body.action==='select'?scopeSelection(state,sessionId,scope).presetId:undefined
+        const target=state.presets.find(preset=>preset.id===(selected??result.importedId??body.presetId))
+        if(target)await resolveCommunityPresetControls(target,body.action==='import')
+      }
       state.revision++;await table.put(COMMUNITY_PRESETS_KEY,state)
       return {...policy(sessionId),...result}
     })
@@ -321,7 +435,24 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
       return policy(sessionId)
     })
   }
-  return {read,policy,mutate,mutateRegex,configurations(sessionId:string,presetId:string) {
+  async function ensureControls(sessionId:string,presetId?:string) {
+    const pending=(state:CommunityPresetStateV1|undefined)=>{
+      const id=presetId??(state?.conversations[rootOf(sessionId)]??state?.global)?.presetId
+      const preset=state?.presets.find(preset=>preset.id===id)
+      return preset?.profile.groups.some(group=>group.options.some(option=>option.match
+        &&typeof option.raw.resolvedRangeBasis!=='string'))?preset:undefined
+    }
+    // Ordinary reads consume the published range. Only a legacy record without
+    // that publication enters the existing writer lock and gets migrated once.
+    if(!pending(table.get(COMMUNITY_PRESETS_KEY) as CommunityPresetStateV1|undefined))return
+    await withTavernLock(table,COMMUNITY_PRESETS_KEY,async()=>{
+      const state=read(),preset=pending(state)
+      if(!preset)return
+      await resolveCommunityPresetControls(preset)
+      state.revision++;await table.put(COMMUNITY_PRESETS_KEY,state)
+    })
+  }
+  return {read,policy,readonlyPreset,ejsPreset,readonlyGlobalRegexes,mutate,mutateRegex,ensureControls,configurations(sessionId:string,presetId:string) {
     const conversationId=rootOf(sessionId)
     return read().configurationWrites.filter(row=>row.presetId===presetId).map(row=>({...row,
       writes:row.writes.filter(write=>write.scope==='global'||row.conversationId===null||row.conversationId===conversationId)}))

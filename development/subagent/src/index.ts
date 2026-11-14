@@ -36,9 +36,9 @@ import type {} from '@deepseek-ai/dsh-attachment'
 import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import type { Scoped } from '@deepseek-ai/dsh-scope'
 import { assertObjectJsonSchema } from '@deepseek-ai/dsh-tools'
-import type { ContentBlock, MessageId, MessageSource } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, MessageId, MessageSource } from 'dsh-nexttavern-native-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionId } from 'dsh-nexttavern-native-session'
 import { canonicalClientTimeZone } from '@deepseek-ai/dsh-util-time'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import {
@@ -667,6 +667,7 @@ export class SubagentRuntime extends TypertRemoteService {
       { when: request.maxDepth !== undefined, cap: 'depthLimit' },
       { when: request.toolFilter !== undefined, cap: 'toolFilter' },
       { when: request.persona !== undefined, cap: 'persona' },
+      { when: request.isolatedSystem !== undefined, cap: 'isolatedSystem' },
       { when: request.activation !== undefined, cap:'ownedAuthorDialog' },
       { when: request.rubyActivation !== undefined, cap:'ownedRubyTask' },
     ]

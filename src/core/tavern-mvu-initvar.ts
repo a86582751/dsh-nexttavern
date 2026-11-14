@@ -4,7 +4,7 @@ import {NATIVE_MVU_SOURCE_POLICY,NATIVE_MVU_YAML_SOURCE_POLICY,isNativeMvuSource
 import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
 import type {NativeMvuJsonCandidate} from './roleplay-mvu-source.js'
 import {parseMvuYamlData} from './tavern-mvu-yaml.js'
-import {parseMvuUpdateRegionV2,parseMvuUpdateV2} from './roleplay-mvu-update-v2.js'
+import {parseMvuUpdateRegionV2,parseMvuUpdateV2,parseMvuUpdateAnalysisAliasRegionV2} from './roleplay-mvu-update-v2.js'
 import type {ParsedMvuUpdateV2} from './roleplay-mvu-update-v2.js'
 
 export type MvuJsonValue = null | boolean | number | string | MvuJsonValue[] | MvuJsonObject
@@ -119,6 +119,11 @@ export interface SchemaMvuInitDataSource {
 export interface SchemaMvuInitDataSourceV2 extends Omit<SchemaMvuInitDataSource,'schemaVersion'|'encoding'> {
   schemaVersion:2
   encoding:'native-mvu-schema-opening-init-source-v2'
+}
+export interface SchemaMvuInitDataSourceV3 extends Omit<SchemaMvuInitDataSourceV2,'schemaVersion'|'encoding'> {
+  schemaVersion:3
+  encoding:'native-mvu-schema-opening-init-source-v3'
+  parserPolicy:'analysis-alias-v1'
 }
 export type SchemaMvuInitDataResult =
   | {kind: 'parsed'; values: MvuJsonObject; valuesSha256: string; context: MvuJsonObject;
@@ -827,16 +832,19 @@ function prepareCalculationData(input: RawCalculationData,
 
 /** Compile only raw pre-transform initialization data. Source ownership,
  * schema execution and a fresh Native publication lease are separate proofs. */
-export function compileSchemaMvuInitData(input: SchemaMvuInitDataSource|SchemaMvuInitDataSourceV2): SchemaMvuInitDataResult {
+export function compileSchemaMvuInitData(input: SchemaMvuInitDataSource|SchemaMvuInitDataSourceV2|SchemaMvuInitDataSourceV3): SchemaMvuInitDataResult {
   let inputHash: string | undefined
   try {
     const checked = finiteJson(input, '', undefined, BOUNDS.descriptorDepth)
     if (!isObject(checked)) reject('DESCRIPTOR_SHAPE', '')
     inputHash = dataHash(checked)
     exact(checked, ['schemaVersion', 'encoding', 'grammar', 'books', 'bookStatData', 'initializedBooks',
-      'messageIndex', 'selectedSwipeIdentity', 'swipes', 'macros', 'initSourceSha256'], [], '')
+      'messageIndex', 'selectedSwipeIdentity', 'swipes', 'macros', 'initSourceSha256',
+      ...(checked.schemaVersion===3?['parserPolicy']:[])], [], '')
     if (!(checked.schemaVersion === 1 && checked.encoding === 'native-mvu-schema-opening-init-source-v1')
-      && !(checked.schemaVersion === 2 && checked.encoding === 'native-mvu-schema-opening-init-source-v2')) {
+      && !(checked.schemaVersion === 2 && checked.encoding === 'native-mvu-schema-opening-init-source-v2')
+      && !(checked.schemaVersion === 3 && checked.encoding === 'native-mvu-schema-opening-init-source-v3'
+        && checked.parserPolicy==='analysis-alias-v1')) {
       reject('INPUT_VERSION', '/schemaVersion')
     }
     requireContentHash(checked, 'initSourceSha256', 'INIT_SOURCE_HASH', '/initSourceSha256')
@@ -875,20 +883,23 @@ export function compileSchemaMvuInitData(input: SchemaMvuInitDataSource|SchemaMv
       hash(swipe.sourceSha256, `/swipes/${index}/sourceSha256`)
       hash(swipe.renderedSha256, `/swipes/${index}/renderedSha256`)
     }
-    const source = checked as unknown as SchemaMvuInitDataSource|SchemaMvuInitDataSourceV2
+    const source = checked as unknown as SchemaMvuInitDataSource|SchemaMvuInitDataSourceV2|SchemaMvuInitDataSourceV3
     const selectedPolicy = selectNativeMvuInitializationPolicy(source)
     if (selectedPolicy.kind === 'unsupported') reject(selectedPolicy.diagnostics[0]!.code, selectedPolicy.diagnostics[0]!.pointer)
     let openingUpdate:ParsedMvuUpdateV2|undefined
-    if(source.schemaVersion===2) {
+    const deferredUpdate=source.schemaVersion===2||source.schemaVersion===3
+    if(deferredUpdate) {
       if(source.swipes.length!==1||source.swipes[0]!.identity!==source.selectedSwipeIdentity)reject('FRESH_BASIS','/swipes')
-      const candidate=parseMvuUpdateV2(source.swipes[0]!.renderedOpening)
+      const candidate=source.schemaVersion===3
+        ?parseMvuUpdateAnalysisAliasRegionV2(source.swipes[0]!.renderedOpening).candidate
+        :parseMvuUpdateV2(source.swipes[0]!.renderedOpening)
       if(candidate.kind!=='parsed')reject(candidate.kind==='rejected'?candidate.code:'OPENING_UPDATE_REQUIRED','/swipes/0')
       openingUpdate=candidate
     }
     const {safe, existing} = prepareCalculationData(source)
     const grammar = isNativeMvuYamlSourcePolicy(selectedPolicy.policy) ? 'yaml-1.2-json-data-v1' : 'strict-json-object-v1'
     if (grammar !== source.grammar) reject('INIT_GRAMMAR', '/grammar')
-    const {baseline, swipes} = calculate(safe, existing, selectedPolicy.policy,source.schemaVersion===2,
+    const {baseline, swipes} = calculate(safe, existing, selectedPolicy.policy,deferredUpdate,
       selectedPolicy.openingInitialization)
     const selected = swipes.find(swipe => swipe.identity === source.selectedSwipeIdentity)!
     const initialized: MvuJsonObject = {}

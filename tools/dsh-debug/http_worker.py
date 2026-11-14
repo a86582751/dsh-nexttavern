@@ -177,9 +177,8 @@ def read_workspace_baseline(port, cookie, timeout, stream_endpoint='workspace/fo
 
 def stage_card(plan, root=UPLOAD_ROOT):
     """Stage one validated card; root is an internal test seam, never packet input."""
-    extension = str(plan.get('fileName', '')).rsplit('.', 1)[-1].lower()
     name = str(plan.get('fileName', ''))
-    if extension not in {'md', 'txt', 'json', 'png'} or not re.fullmatch(r'[0-9a-f]{32}\.(?:md|txt|json|png)', name):
+    if not re.fullmatch(r'[0-9a-f]{32}\.(?:md|markdown|txt|json|png|docx)', name):
         raise ValueError('invalid upload filename')
     raw = base64.b64decode(str(plan.get('fileData', '')), validate=True)
     if len(raw) != int(plan.get('bytes', -1)) or len(raw) > 20 * 1024 * 1024:
@@ -625,7 +624,7 @@ process.stdout.write(name+'=v1.'+body+'.'+crypto.createHmac('sha256',secret).upd
         # The same authenticated raw-byte route serves Windows, Linux, and SSH workers;
         # the host owns file storage/Agent receipts, rather than this process staging paths.
         name, session_id = plan.get('fileName'), plan.get('sessionId')
-        if (not isinstance(name, str) or not re.fullmatch(r'[a-f0-9]{64}\.(?:png|json|md|txt)', name)
+        if (not isinstance(name, str) or not re.fullmatch(r'[a-f0-9]{64}\.(?:png|json|md|markdown|txt|docx)', name)
             or not isinstance(session_id, str) or not session_id or len(session_id) > 256
             or re.search(r'[\x00-\x1f\x7f]', session_id)):
             raise ValueError('invalid native card upload identity')

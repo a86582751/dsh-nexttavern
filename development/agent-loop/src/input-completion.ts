@@ -1,32 +1,28 @@
 /** Structural closing proof and exact owner acknowledgement. No Source work,
  * input queue, provider call or cold flush permission belongs to this module. */
-import type {Session, SessionEvent} from '@deepseek-ai/dsh-session'
-import {inspectNativeInboxHistory, nativeInputSha256} from './input-admission.js'
+import type {SessionEvent} from 'dsh-nexttavern-native-session'
+import {nativeInputSha256} from './input-admission.js'
 import type {NativeCompletedInputWorkReceiptV1, NativeDurableInputWorkReceiptV1,
-  NativeInputClaim, NativeInputSupplementV1, NativeInputCompletionLookupV1} from './input-admission.js'
+  NativeInputClaim, NativeInputSupplementV1, NativeInputCompletionLookupV1,NativeInboxHistory} from './input-admission.js'
 
-export function nativeCompletedInputReceipt(session: Session, checkpoint: NativeDurableInputWorkReceiptV1,
+export function nativeCompletedInputReceipt(history:NativeInboxHistory, checkpoint: NativeDurableInputWorkReceiptV1,
   claim: NativeInputClaim, supplement: NativeInputSupplementV1 | undefined,
   capturedEnd: SessionEvent): NativeCompletedInputWorkReceiptV1 | undefined {
   try {
-    const events = session.snapshotEvents(), end = events.find(event => event.seq === capturedEnd.seq)
-    if (!end || end.type !== 'turn/end' || end.data.reason.kind !== 'completed'
-      || end.data.turn !== checkpoint.actualTurn || nativeInputSha256(end) !== nativeInputSha256(capturedEnd)
-      || events.filter(event => event.type === 'turn/end' && event.data.turn === checkpoint.actualTurn).length !== 1
-      || events.some(event => event.type === 'turn/start' && event.seq > checkpoint.startSeq)) return undefined
-    const history = inspectNativeInboxHistory(session.id, events, session.inheritedEventCount)
+    const end=history.completedTurn(checkpoint.startSeq)
+    if(end!==capturedEnd||!end||end.data.turn!==checkpoint.actualTurn)return undefined
     const linked = history.linkReceipt(checkpoint.startSeq)
     if (!linked || nativeInputSha256(linked) !== nativeInputSha256(checkpoint)
       || !history.ownsClaim(claim) || claim.turn !== checkpoint.actualTurn
       || nativeInputSha256(claim.refs) !== nativeInputSha256(checkpoint.refs)
-      || supplement && (!history.ownsClaim(supplement.claims.at(-1)!.claim)
+      || supplement && (!supplement.claims.length
         || supplement.claims.some(owned => !history.ownsClaim(owned.claim)))) return undefined
-    const admittedUsers: {ref: typeof checkpoint.refs[number]; userSeq: number}[] = []
+    const admittedUsers: NativeCompletedInputWorkReceiptV1['admittedUsers'][number][] = []
     for (const ref of checkpoint.refs) {
       const owned = history.ownership(ref)
       if (owned.status !== 'admitted' || owned.turn !== checkpoint.actualTurn
-        || owned.userSeq <= checkpoint.firstStepStartSeq || owned.userSeq >= end.seq) return undefined
-      admittedUsers.push(Object.freeze({ref, userSeq: owned.userSeq}))
+        || owned.userSeq >= end.seq||!owned.published&&owned.userSeq <= checkpoint.firstStepStartSeq)return undefined
+      admittedUsers.push(Object.freeze({ref,userSeq:owned.userSeq,...owned.published?{published:owned.published}:{}}))
     }
     if (!admittedUsers.length || !claim.messages.some(message => message.source.kind === 'user')) return undefined
     return Object.freeze({schemaVersion: 1, checkpoint, turnEndSeq: end.seq,

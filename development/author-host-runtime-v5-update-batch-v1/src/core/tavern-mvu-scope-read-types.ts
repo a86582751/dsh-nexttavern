@@ -84,9 +84,59 @@ export interface MvuScopeReadFrameV1 {
   messages:readonly MvuScopedMessageV1[]
   frameSha256:string
 }
+export interface MvuPromptScopeReadBasisV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-mvu-prompt-scope-read-basis-v1'
+  readonly authority:'consumer-data-only'
+  readonly sessionId:string
+  readonly sourceSnapshotSha256:string
+  readonly materialSha256:string
+  readonly numericalSnapshotSha256:string
+  readonly nativeCut:number
+  readonly nativePrefixSha256:string
+}
+export interface MvuPromptScopeReadDataV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-mvu-prompt-scope-read-data-v1'
+  readonly authority:'consumer-data-only'
+  readonly basis:MvuPromptScopeReadBasisV1
+  readonly frame:MvuScopeReadFrameV1
+  readonly readDataSha256:string
+}
+/** Main's selected variables are a separate DATA protocol. They are not a
+ * complete compatibility frame or an author's full-history read surface. */
+export interface MvuSelectedPromptScopeDataV2 {
+  readonly schemaVersion:2
+  readonly encoding:'native-mvu-selected-prompt-scope-read-data-v2'
+  readonly authority:'consumer-data-only'
+  readonly basis:MvuPromptScopeReadBasisV1
+  readonly source:MvuScopeSourceIdentityV1
+  readonly scopes:MvuScopeReadFrameV1['scopes']
+  readonly scripts:readonly MvuScopedScriptV1[]
+  readonly messages:readonly MvuScopedMessageV1[]
+  readonly selectedBaseSha256:string
+  readonly readDataSha256:string
+}
+export interface MvuPromptVariableScopeDataV3 extends Omit<MvuSelectedPromptScopeDataV2,'schemaVersion'|'encoding'|'messages'> {
+  readonly schemaVersion:3
+  readonly encoding:'native-mvu-prompt-variable-scope-data-v3'
+}
 export interface MvuScopeReaderV1 {
   getVariables(option?:MvuVariableReadOption):MvuJsonObject|undefined
   getAllVariables():MvuJsonObject
+}
+/** Internal decoded DATA access. The owning codec resolves immutable slots and
+ * message identity; readers need no complete frame or message inventory copy.
+ * latestMessage is the last non-system message, unlike a -1 getter request. */
+export type MvuScopeReadMessageV2=Omit<MvuScopedMessageV1,'position'>
+export interface MvuScopeReadViewV2 {
+  readonly source:MvuScopeSourceIdentityV1
+  readonly scopes:Readonly<Record<'chat'|'character'|'global',MvuScopeVariablesV1>>
+  script(id:string):MvuScopedScriptV1|undefined
+  readonly messageCount:number
+  /** Nonnegative compatibility position, already normalized by the reader. */
+  messageAt(index:number):MvuScopeReadMessageV2|undefined
+  readonly latestMessage:MvuScopeReadMessageV2|undefined
 }
 export const MVU_SCOPE_READ_LIMITS=Object.freeze({
   messages:4096,scripts:256,frameBytes:1_048_576,valueNodes:131072,valueDepth:48,

@@ -44,7 +44,7 @@ import {
   LlmError,
   assertAgentLoopRequestCurrent,
   ReasoningEffortId,
-} from '@deepseek-ai/dsh-llm'
+} from 'dsh-nexttavern-native-llm'
 import type {
   GenerateOptions,
   ImageAttachmentAccess,
@@ -55,7 +55,7 @@ import type {
   ReasoningEffortId as ReasoningEffortIdType,
   ResolvedRetryPolicy,
   StreamChunk,
-} from '@deepseek-ai/dsh-llm'
+} from 'dsh-nexttavern-native-llm'
 import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.js'
@@ -138,6 +138,8 @@ interface PiAiSnapshot {
 
 /** Constructor options for {@link PiAiAdapter}: the two resolution hooks the plugin owns. */
 export interface PiAiAdapterOptions {
+  /** Provider-lifetime HTTP transport supplied by the owning plugin. */
+  fetch?: typeof globalThis.fetch
   /** Current validated profiles by provider route; called once per operation. */
   profiles: () => ReadonlyMap<string, ResolvedPiAiProviderProfile>
   /**
@@ -424,7 +426,7 @@ export class PiAiAdapter extends LlmAdapter {
     // Even an empty insertion delta has a live material owner and residual
     // section changes. Every supported route keeps that guard through fetch.
     const guardedTransport=hasMaterial||supported
-    const transportFetch=globalThis.fetch
+    const transportFetch=this.config.fetch ?? globalThis.fetch
     const assertCurrent=():void=>{
       options.signal?.throwIfAborted()
       assertAgentLoopRequestCurrent(options)
@@ -473,14 +475,14 @@ export class PiAiAdapter extends LlmAdapter {
       if(guardedTransport)assertCurrent()
       // SDK auth, lazy API loading and payload hooks may await afterwards.
       // Each HTTP delegation checks the same owner immediately before fetch.
-      const materialTransportFetch:typeof globalThis.fetch=(input,init)=>{
-        assertCurrent()
+      const guardedTransportFetch:typeof globalThis.fetch=(input,init)=>{
+        if(guardedTransport)assertCurrent()
         watchdog.signal.throwIfAborted()
         return transportFetch(input,init)
       }
       const streamOptions:SimpleStreamOptions={
         ...profileOptions(profile, reasoning, apiKey),
-        ...guardedTransport?{fetch:materialTransportFetch}:{},
+        fetch:guardedTransportFetch,
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },

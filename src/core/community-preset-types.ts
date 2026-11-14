@@ -92,6 +92,15 @@ export interface CommunityPresetV1 {
   profile:CommunityPresetProfile
 }
 export interface CommunityPresetParseOptions {id:string;name:string;fileName?:string;rawText?:string}
+
+/** UI and controls consume the same Core-published range, without regex work. */
+export function communityBetweenOptions(preset:CommunityPresetV1,option:CommunityPresetControlOption):CommunityPresetPrompt[] {
+  if(!option.match)return []
+  const ids=Array.isArray(option.raw.resolvedPromptIds)?option.raw.resolvedPromptIds:[]
+  const byId=new Map(preset.prompts.map(prompt=>[prompt.identifier,prompt]))
+  return ids.map(id=>typeof id==='string'?byId.get(id):undefined)
+    .filter((prompt):prompt is CommunityPresetPrompt=>!!prompt)
+}
 export interface CommunityIzumiPlanEntry {
   id?:string
   name?:string

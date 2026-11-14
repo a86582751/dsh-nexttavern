@@ -1,4 +1,4 @@
-import type { StreamChunk } from '@deepseek-ai/dsh-llm/types'
+import type { StreamChunk } from 'dsh-nexttavern-native-llm/types'
 import type {
   AssistantBlock, PartialAssistant,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'

@@ -23,17 +23,12 @@ function compile(): CompilationCodeV4 | ServerCandidateCodePartitionV4 {
   const message = workerData as Record<string, unknown>
   if (!message || typeof message !== 'object' || Array.isArray(message)
     || !(Object.keys(message).sort().join(',') === 'identity,input'
-      || ['identity,input,operation','browserCandidateOrdinals,identity,input,operation']
-        .includes(Object.keys(message).sort().join(',')) && message.operation === 'partition')) {
+      || Object.keys(message).sort().join(',')==='identity,input,operation' && message.operation === 'partition')) {
     throw Error('MVU_SCHEMA_V4_WORKER_MESSAGE')
   }
   const partition = message.operation === 'partition'
   const identity = validateSchemaCompilerIdentityV4(message.identity)
   const input = validateSchemaCompilationCodeV4(message.input)
-  const browserCandidates=new Set(partition?(message.browserCandidateOrdinals as readonly number[]|undefined)??[]:[])
-  if([...browserCandidates].some(ordinal=>!Number.isSafeInteger(ordinal)||ordinal<0||ordinal>=input.scripts.length)) {
-    throw Error('MVU_SCHEMA_V4_BROWSER_CANDIDATE_INVALID')
-  }
   if (partition && input.executionPlan !== null) throw Error('MVU_SCHEMA_V4_CANDIDATE_EXPECTED_PLAN_FORBIDDEN')
   const compiledByIdentity = new Map<string, {rawDescriptorSha256: string; javascript: string;
     commandPolicyBindings:readonly RegisteredCommandPolicyBindingV1[];
@@ -69,13 +64,13 @@ function compile(): CompilationCodeV4 | ServerCandidateCodePartitionV4 {
   const serverOrdinals: number[] = [], serverRows: ExecutionPlanScriptV1[] = []
   if (partition) {
     for (const [originalOrdinal, script] of input.scripts.entries()) {
-      if (!script.enabled||browserCandidates.has(originalOrdinal)) continue
+      if (!script.enabled) continue
       // Accepted output is emitted with its final server-local ordinal. Browser
       // gaps never require a second parse or a second compile of accepted JS.
       const row = planner.classifyCandidate(script, serverRows.length)
       if (row.classification === 'server-schema' || row.classification === 'native-state-loader') {
         serverOrdinals.push(originalOrdinal);serverRows.push(row)
-      } else if (row.diagnosticCodes[0] !== 'MVU_SCHEMA_REGISTRATION_INTENT_MISSING') {
+      } else if (row.disposition !== 'browser-deferred') {
         throw new WorkerRefusalV4(schemaDiagnostics.get(script.identity) ?? {
           code: row.diagnosticCodes[0] ?? 'MVU_SCHEMA_V4_COMPLETE_SHAPE_UNSUPPORTED',
           scriptIdentity: script.identity, pointer: script.pointer,

@@ -7,7 +7,7 @@
  * @module @deepseek-ai/dsh-subagent-spawn-in-process
  */
 import z from '@deepseek-ai/schemastery';
-import { startInProcessRun } from '@deepseek-ai/dsh-subagent-in-process-driver';
+import { startInProcessRun } from 'dsh-nexttavern-native-subagent-in-process-driver';
 export const name = 'subagent-spawn-in-process';
 // `tools` is deliberately not injected: the child factory already provides it during setup,
 // and adding it here would unnecessarily change this provider's apply timing.
@@ -32,6 +32,7 @@ class SpawnInProcessProvider {
         persona: true,
         ownedAuthorDialog: true,
         ownedRubyTask: true,
+        isolatedSystem: true,
     };
     // Context contract: a spawned child starts fresh — it never sees the parent conversation.
     inheritsParentContext = false;

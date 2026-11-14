@@ -1,8 +1,12 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
 import { mock } from 'node:test'
-import { createRoleplayCompletion } from '../lib/core/roleplay-completion.js'
-import { InlinePending } from '../lib/core/tavern-tasks.js'
 
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'])
+afterNativeDependencies(removeOwnedNativeDependencies)
+const { createRoleplayCompletion }=await import('../lib/core/roleplay-completion.js')
+const { InlinePending }=await import('../lib/core/tavern-tasks.js')
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}}
 const flush=()=>new Promise(resolve=>setImmediate(resolve))
 class Table extends Map {

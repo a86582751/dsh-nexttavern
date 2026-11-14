@@ -51,11 +51,17 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
     var e = new Error(message);
     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
 });
+import { createHash } from 'node:crypto';
 import { untilAborted } from './tavern-task-primitives.js';
+import { stableJson } from './roleplay-data.js';
 // Weak instance keys prevent an ID reused after detach from inheriting old data.
 // Owners are removed by plugin disposal; no fields are attached to native Session.
 const ledgers = new WeakMap();
 const owners = new Set();
+// These are immutable cuts produced by this owner, not arbitrary frozen
+// arrays. All cuts share one append-only digest index; an old snapshot keeps
+// its original bound even when the live ledger advances.
+const nativePrefixes = new WeakMap();
 function failure(message) {
     return Object.assign(new Error(`会话历史未就绪：${message}`), { code: 'SESSION_HISTORY_NOT_READY' });
 }
@@ -87,14 +93,98 @@ export function sessionEvents(session) {
     const loaded = loadedEvents(session);
     if (loaded)
         return loaded;
+    return sessionHistoryCut(session).materialize();
+}
+/** Loaded arrays keep their ordinary parser. Native reads retain the same
+ * owner/readiness contract as point access, without materializing history. */
+export function nativeSessionClassification(session) {
+    if (loadedEvents(session))
+        return;
+    sessionHistoryCut(session);
+    return ledgers.get(session).classification;
+}
+/** Native acquisition and point/prefix access are O(1) in history length.
+ * Plain loaded arrays take an explicit copying/canonical-hashing slow path. */
+export function sessionHistoryCut(session, length) {
+    const loaded = loadedEvents(session);
+    if (loaded) {
+        if (length !== undefined && (!Number.isSafeInteger(length) || length < 0 || length > loaded.length))
+            throw RangeError('Session history range is outside this cut');
+        return boundedCut(Object.freeze({}), 'loaded', Object.freeze(loaded.slice(0, length)));
+    }
     const ledger = ledgers.get(session);
-    if (!ledger || !ledger.ready || ledger.error || ![...ledger.holders].some(owner => owner.get(ledger.session.id) === session) ||
+    let live = false;
+    if (ledger)
+        for (const holder of ledger.holders) {
+            if (holder.get(ledger.session.id) === session) {
+                live = true;
+                break;
+            }
+        }
+    if (!ledger || !ledger.ready || ledger.error || !live ||
         ledger.events.length !== ledger.session.seq) {
         throw ledger?.error ?? failure('请先等待公开历史观察完成');
     }
-    // The feed never copies history. Multiple readers at one cursor share one
-    // frozen array; a previous cut remains stable when later events arrive.
-    return (ledger.snapshot ??= Object.freeze(ledger.events.slice()));
+    if (length !== undefined && length !== ledger.events.length) {
+        if (!Number.isSafeInteger(length) || length < 0 || length > ledger.events.length)
+            throw RangeError('Session history range is outside this cut');
+        return boundedCut(ledger.identity, 'native', ledger.events, ledger.prefixes, ledger.nativeInput?.prefixes, length);
+    }
+    return (ledger.cut ??= boundedCut(ledger.identity, 'native', ledger.events, ledger.prefixes, ledger.nativeInput?.prefixes));
+}
+function boundedCut(owner, source, events, prefixes, nativeInputPrefixes, length = events.length) {
+    let materialized;
+    function bounds(start, end) {
+        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end > length) {
+            throw new RangeError('Session history range is outside this cut');
+        }
+    }
+    return Object.freeze({ owner, source, length,
+        at(seq) { return Number.isSafeInteger(seq) && seq >= 0 && seq < length ? events[seq] : undefined; },
+        prefixSha256(cut) {
+            if (!Number.isSafeInteger(cut) || cut < 0 || cut > length)
+                return;
+            return prefixes ? prefixes[cut] : createHash('sha256').update(stableJson(events.slice(0, cut)), 'utf8').digest('hex');
+        },
+        nativeInputPrefixSha256(cut = length) {
+            if (!Number.isSafeInteger(cut) || cut < 0 || cut > length)
+                return;
+            return nativeInputPrefixes?.[cut];
+        },
+        forEachRange(start, end, visit) {
+            bounds(start, end);
+            for (let seq = start; seq < end; seq++)
+                visit(events[seq], seq);
+        },
+        *range(start = 0, end = length) {
+            bounds(start, end);
+            for (let seq = start; seq < end; seq++)
+                yield events[seq];
+        },
+        materialize() {
+            if (!materialized) {
+                materialized = Object.freeze(events.slice(0, length));
+                if (prefixes)
+                    nativePrefixes.set(materialized, { length, prefixes });
+            }
+            return materialized;
+        }, });
+}
+/** Exact recordSha256(array-prefix) DATA from the accepted Native feed.
+ * A caller with raw or detached history keeps its full canonical parser.
+ * The returned hashes carry no current Source or publication authority. */
+export function sessionNativePrefixSha256(events, cuts) {
+    const owned = nativePrefixes.get(events);
+    if (!owned)
+        return;
+    const result = new Map();
+    for (const cut of cuts) {
+        const digest = cut <= owned.length ? owned.prefixes[cut] : undefined;
+        if (digest === undefined)
+            return;
+        result.set(cut, digest);
+    }
+    return result;
 }
 /** Readiness is also required for HTTP activation and children outside the roleplay preset. */
 export async function ensureSessionHistory(session, signal) {
@@ -127,8 +217,32 @@ export function createSessionHistory(deps) {
             return;
         if (event.seq !== ledger.events.length)
             throw failure('增量事件存在缺口或冲突');
+        // Native publishes deeply frozen events after its JSON acceptance. Keep
+        // the persisted array encoding exact, including key ordering and Unicode;
+        // this stream is never a hash of per-event hashes.
+        const encoded = stableJson(event);
+        if (ledger.events.length)
+            ledger.digest.update(',');
+        ledger.digest.update(encoded, 'utf8');
+        ledger.prefixes.push(ledger.digest.copy().update(']', 'utf8').digest('hex'));
+        if (ledger.nativeInput) {
+            const input = ledger.nativeInput;
+            if (ledger.events.length)
+                input.digest.update(',');
+            input.digest.update(input.canonical(event), 'utf8');
+            input.prefixes.push(input.digest.copy().update(']', 'utf8').digest('hex'));
+        }
         ledger.events.push(event);
-        ledger.snapshot = null;
+        if (event.type === 'agent-preset/selected') {
+            const preset = event.data?.agentPreset;
+            ledger.classification = { ...ledger.classification, hasPresetSelection: true, lastSelectedPreset: preset,
+                lastTruthySelectedPreset: preset || ledger.classification.lastTruthySelectedPreset };
+        }
+        else if (event.type === 'subagent/descriptor' && event.seq >= ledger.session.inheritedEventCount
+            && !ledger.classification.localSubagentDescriptor) {
+            ledger.classification = { ...ledger.classification, localSubagentDescriptor: true };
+        }
+        ledger.cut = null;
     }
     function accept(session, event) {
         const ledger = ledgers.get(session);
@@ -199,12 +313,34 @@ export function createSessionHistory(deps) {
         if (ledger) {
             ledger.holders.add(owner);
             owned.add(session);
+            if (!ledger.nativeInput && deps.nativeInputCanonical) {
+                // A later configured mount can join the retained baseline. Install
+                // this independent stream once; existing bounded cuts stay unchanged.
+                const digest = createHash('sha256').update('[', 'utf8');
+                const prefixes = [digest.copy().update(']', 'utf8').digest('hex')];
+                for (const [index, event] of ledger.events.entries()) {
+                    if (index)
+                        digest.update(',');
+                    digest.update(deps.nativeInputCanonical(event), 'utf8');
+                    prefixes.push(digest.copy().update(']', 'utf8').digest('hex'));
+                }
+                ledger.nativeInput = { canonical: deps.nativeInputCanonical, digest, prefixes };
+                ledger.cut = null;
+            }
         }
         if (ledger?.ready && !ledger.error && ledger.events.length === native.seq)
             return;
         if (!ledger?.loading) {
+            const digest = createHash('sha256').update('[', 'utf8');
+            const canonical = ledger?.nativeInput?.canonical ?? deps.nativeInputCanonical;
+            const nativeInputDigest = canonical ? createHash('sha256').update('[', 'utf8') : undefined;
             ledger = { holders: ledger?.holders ?? new Set([owner]), cancellation: new AbortController(), session: native, events: [], pending: new Map(),
-                snapshot: null, loading: null, ready: false, error: null };
+                digest, prefixes: [digest.copy().update(']', 'utf8').digest('hex')],
+                ...(canonical && nativeInputDigest ? { nativeInput: { canonical, digest: nativeInputDigest,
+                        prefixes: [nativeInputDigest.copy().update(']', 'utf8').digest('hex')] } } : {}),
+                identity: Object.freeze({}), cut: null, loading: null, ready: false, error: null,
+                classification: { hasPresetSelection: false, lastSelectedPreset: undefined,
+                    lastTruthySelectedPreset: undefined, localSubagentDescriptor: false } };
             ledgers.set(session, ledger);
             owned.add(session);
             const current = ledger;

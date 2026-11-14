@@ -2,13 +2,14 @@
 // is evaluated by the production Reader on the main UI thread.
 export interface ReaderRule { match: string; replace?: unknown; flags?: unknown }
 export interface SourceTask { op: 'source'; text: string; rules: ReaderRule[] }
-export interface FallbackTask { op: 'fallback'; html: string; rule: ReaderRule; nodes: string[] }
 export interface StatusTask { op: 'status'; texts: string[]; rules: ReaderRule[] }
+export interface FallbackTask { op: 'fallback'; html: string; rule: ReaderRule; nodes: string[] }
 export interface SourceResult { output: string; deferred: number[]; matched: boolean }
+export interface StatusResult { outputs: string[] }
 export type FallbackResult = {kind: 'html'; html: string} | {kind: 'none'; edits?: QuoteEdit[]} | {kind: 'quote'; edits: QuoteEdit[]}
 interface QuoteEdit {node: number; parts: Array<{text: string; html?: never} | {html: string; text?: never}>}
-type ReaderTask = SourceTask | FallbackTask | StatusTask
-type ReaderResult = SourceResult | FallbackResult | string[]
+type ReaderTask = SourceTask | StatusTask | FallbackTask
+type ReaderResult = SourceResult | StatusResult | FallbackResult
 
 export interface ReaderNarrativeRegexRunner {
   (task: SourceTask, signal?: AbortSignal): Promise<SourceResult>
@@ -17,8 +18,8 @@ export interface ReaderNarrativeRegexRunner {
 }
 
 export function readerRegexTask(task: SourceTask): SourceResult
+export function readerRegexTask(task: StatusTask): StatusResult
 export function readerRegexTask(task: FallbackTask): FallbackResult
-export function readerRegexTask(task: StatusTask): string[]
 export function readerRegexTask(task: ReaderTask): ReaderResult {
   const limit = (text: unknown): string => { if (typeof text !== 'string' || text.length > 2_000_000) throw new Error('size'); return text }
   const expand = (found: RegExpExecArray, text: string, replacement: string) => {
@@ -59,20 +60,33 @@ export function readerRegexTask(task: ReaderTask): ReaderResult {
     output.push(text.slice(end))
     return output.join('')
   }
+  const regex = (rule: ReaderRule, status = false) => {
+    if (typeof rule?.match !== 'string' || (!status && !rule.match)
+      || rule.match.length > 4096 || String(rule.replace ?? '').length > 65536) throw new Error('rule-limit')
+    return new RegExp(rule.match, status ? 'g' : 'g' + String(rule.flags ?? '').replace(/[gy]/g, ''))
+  }
   if (task.op === 'status') {
-    return task.texts.map(text => {
+    if (!Array.isArray(task.rules) || task.rules.length > 200) throw new Error('rule-limit')
+    // Status has always used bare global JS patterns, including the empty
+    // pattern. Compile once; each text starts with its own regex cursor.
+    const rules = task.rules.map(rule => {
+      try {return {regex: regex(rule, true), replacement: String(rule.replace ?? '')}} catch {return null}
+    })
+    let inputSize = 0, outputSize = 0
+    const outputs = task.texts.map(text => {
       let output = limit(text)
-      for (const rule of task.rules) {
-        let re: RegExp
-        try { re = new RegExp(rule.match, 'g') } catch { continue }
-        output = limit(replaceBounded(output, re, String(rule.replace ?? '')))
+      inputSize += output.length
+      if (inputSize > 2_000_000) throw new Error('size')
+      for (const rule of rules) {
+        if (!rule) continue
+        rule.regex.lastIndex = 0
+        output = replaceBounded(output, rule.regex, rule.replacement)
       }
+      outputSize += output.length
+      if (outputSize > 2_000_000) throw new Error('size')
       return output
     })
-  }
-  const regex = (rule: ReaderRule) => {
-    if (typeof rule?.match !== 'string' || !rule.match || rule.match.length > 4096 || String(rule.replace ?? '').length > 65536) throw new Error('rule-limit')
-    return new RegExp(rule.match, 'g' + String(rule.flags ?? '').replace(/[gy]/g, ''))
+    return {outputs}
   }
   if (task.op === 'source') {
     let output = limit(task.text), matched = false
@@ -120,8 +134,8 @@ export function readerRegexTask(task: ReaderTask): ReaderResult {
 let readerRegexQueue: Promise<unknown> = Promise.resolve(), readerRegexWorker: Worker | null = null
 
 export function runReaderRegex(task: SourceTask, signal?: AbortSignal): Promise<SourceResult>
+export function runReaderRegex(task: StatusTask, signal?: AbortSignal): Promise<StatusResult>
 export function runReaderRegex(task: FallbackTask, signal?: AbortSignal): Promise<FallbackResult>
-export function runReaderRegex(task: StatusTask, signal?: AbortSignal): Promise<string[]>
 export function runReaderRegex(task: SourceTask | FallbackTask, signal?: AbortSignal): Promise<SourceResult | FallbackResult>
 export function runReaderRegex(task: ReaderTask, signal?: AbortSignal): Promise<ReaderResult>
 export function runReaderRegex(task: ReaderTask, signal?: AbortSignal): Promise<ReaderResult> {

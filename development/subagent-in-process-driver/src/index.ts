@@ -16,10 +16,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { foldConsumedWork } from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
-import { SessionLogOffset } from '@deepseek-ai/dsh-session'
-import type { SessionEvent, SessionId, SessionLogOffset as SessionLogOffsetType, TurnEndReason } from '@deepseek-ai/dsh-session'
-import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
-import {nativeInputAdmissionCapability} from '@deepseek-ai/dsh-agent-loop'
+import { SessionLogOffset } from 'dsh-nexttavern-native-session'
+import type { SessionEvent, SessionId, SessionLogOffset as SessionLogOffsetType, TurnEndReason } from 'dsh-nexttavern-native-session'
+import { createUserMessage, type ContentBlock } from 'dsh-nexttavern-native-llm'
+import {nativeInputAdmissionCapability,nativeIsolatedInputCapability} from 'dsh-nexttavern-native-agent-loop'
 import {
   appendDelegatedPolicyOverrides,
   applyChildComposition,
@@ -31,7 +31,7 @@ import {
   resolveChildDepth,
   composeOwnedAuthorDialogActivationV1,
   driveOwnedAuthorDialogActivationV1,
-} from '@deepseek-ai/dsh-subagent'
+} from 'dsh-nexttavern-native-subagent'
 import type {
   ResolvedSubagentStartRequest,
   SubagentDescriptorData,
@@ -41,7 +41,7 @@ import type {
   OwnedAuthorDialogActivationV1,
   OwnedAuthorDialogProgrammaticDriverV1,
   OwnedRubyTaskOwnerV1,
-} from '@deepseek-ai/dsh-subagent'
+} from 'dsh-nexttavern-native-subagent'
 import {
   attachStructuredRuntime,
   type StructuredAttachment,
@@ -138,6 +138,7 @@ export async function startInProcessRun(
     appendDelegatedPolicyOverrides(child.session, inherited)
     applyChildComposition(childCtx, parent, {
       persona: request.persona,
+      isolatedSystem: request.isolatedSystem,
       toolFilter:rubyActivation!==undefined?{allow:[]}:request.toolFilter,
     })
     if(request.activation!==undefined)composeOwnedAuthorDialogActivationV1(childCtx,request.activation)
@@ -149,7 +150,7 @@ export async function startInProcessRun(
     if (request.outputSchema !== undefined) {
       structured = attachStructuredRuntime(childCtx, request.outputSchema)
     }
-    attachDescriptorAppend(childCtx, request.descriptor)
+    if(request.isolatedSystem===undefined)attachDescriptorAppend(childCtx, request.descriptor)
   }
 
   const handle = await parent.ctx.agents.create({
@@ -171,6 +172,7 @@ export async function startInProcessRun(
     structured,
     request.activation,
     rubyChild,
+    request.isolatedSystem===undefined?undefined:request.descriptor,
   )
 }
 
@@ -187,6 +189,7 @@ function drivePublishedRun(
   structured: StructuredAttachment | undefined,
   activation?:OwnedAuthorDialogActivationV1,
   rubyChild?:OwnedRubyTaskChildV1,
+  isolatedDescriptor?:SubagentDescriptorData,
 ): SubagentRun {
   const child = handle.agent
   const flags = { cancelled: false }
@@ -208,6 +211,11 @@ function drivePublishedRun(
           await child.whenIdle()
         }else if(activation!==undefined) {
           await driveOwnedAuthorDialogActivationV1(child as Agent&OwnedAuthorDialogProgrammaticDriverV1,activation)
+        }else if(isolatedDescriptor!==undefined) {
+          const isolated=nativeIsolatedInputCapability(child)
+          if(!isolated)throw Error('isolated task Native input capability unavailable')
+          await isolated.runIsolatedInput({message:createUserMessage({content:prompt,source:{kind:'user'}}),
+            onEnter:()=>{child.session.append('subagent/descriptor',isolatedDescriptor)}})
         }else {
           child.followup(createUserMessage({ content: prompt, source: { kind: 'user' } }))
           await child.whenIdle()

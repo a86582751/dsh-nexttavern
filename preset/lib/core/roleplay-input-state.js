@@ -31,7 +31,8 @@ function explanatorySuffix(suffix, table = 'branch') {
     // Frozen row copies do not add execution history. Their consumers watch
     // the exact object address; publishing another copy cannot revoke a lease.
     if (table === 'branch' || table === 'status')
-        if (suffix.startsWith('mvu-prefix-input-object-v2-'))
+        if (suffix.startsWith('mvu-prefix-input-object-v2-')
+            || suffix.startsWith('mvu-scope-object-v2-'))
             return true;
     if (table !== 'branch')
         return false;
@@ -44,9 +45,11 @@ function explanatorySuffix(suffix, table = 'branch') {
         || suffix.startsWith('task-steering-') || suffix.startsWith('maintenance-timing-')
         || suffix.startsWith('mvu-schema-maintenance-')
         || suffix.startsWith('tavern-prompt-v1-')
-        // Browser3 declarations write these canonical outputs. Source membership
-        // does not consume them; a captured key head has its own State currency.
+        // Canonical ordinary-chat outputs have their own State currency. Source
+        // membership does not consume Browser declarations or EJS namespace logs.
         || suffix.startsWith('author-chat-head-v2-') || suffix.startsWith('author-chat-event-v2-')
+        || suffix.startsWith('author-chat-root-v3-') || suffix.startsWith('author-chat-key-event-v3-')
+        || suffix.startsWith('author-chat-publication-v3-') || suffix.startsWith('author-chat-fork-base-v3-')
         || suffix.startsWith('program-opening-material-')
         // Reconciliation may first publish this display index while starting a
         // child input. Actual text edits use Native message-edit invalidation.
@@ -87,6 +90,7 @@ export function createRoleplayInputStateOwner(deps) {
     let standaloneProgramAbsenceReentrant = false;
     const slots = new Map();
     const frames = new Set();
+    const sessionReleaseObservers = new Set();
     const handles = new WeakMap();
     const rowReaders = new Map();
     const activeRowReaders = new Map();
@@ -97,9 +101,38 @@ export function createRoleplayInputStateOwner(deps) {
     const programFactRows = new Map();
     const programFactNamespaces = new Map();
     const programFactPrefixes = new Map();
+    const expectedPublications = new Map();
     const sessionReaders = new Map();
     const schemaJournalRows = new Map();
     const decodedJournalRecords = new WeakSet();
+    const schemaHistoryRows = new Set();
+    const domainObservers = new Set();
+    const tablePrefixIndexes = new Map();
+    function schemaHistoryReader(codecs) {
+        function reader(decode) {
+            const rows = new Map();
+            schemaHistoryRows.add(rows);
+            return (key, raw) => {
+                if (disposed)
+                    throw Error('INPUT_STATE_OWNER_DISPOSED');
+                // Only actual Domain/frozen-prefix rows enter this reader. Each fixed
+                // codec owns its DATA result; a frozen copy at the same status address
+                // has a separate raw identity and cannot borrow the live row's parse.
+                if (!raw || typeof raw !== 'object')
+                    return decode(raw);
+                let identities = rows.get(key);
+                const retained = identities?.get(raw);
+                if (retained !== undefined)
+                    return retained;
+                const record = decode(raw);
+                if (!identities)
+                    rows.set(key, identities = new WeakMap());
+                identities.set(raw, record);
+                return record;
+            };
+        }
+        return { story: reader(codecs.story), player: reader(codecs.player), revision: reader(codecs.revision) };
+    }
     function decodeJournalRecord(input) {
         if (disposed)
             throw Error('INPUT_STATE_OWNER_DISPOSED');
@@ -201,6 +234,7 @@ export function createRoleplayInputStateOwner(deps) {
                 continue;
             next.dirty = true;
             metrics.invalidations++;
+            next.onInvalidate?.();
             for (const parent of next.parents)
                 pending.push(parent);
         }
@@ -389,6 +423,9 @@ export function createRoleplayInputStateOwner(deps) {
     }
     function forget(frame) {
         frames.delete(frame);
+        for (const release of frame.releases ?? [])
+            release();
+        frame.releases?.clear();
         for (const read of frame.pendingVariants)
             forgetPendingVariant(read);
         frame.pendingVariants.clear();
@@ -412,8 +449,9 @@ export function createRoleplayInputStateOwner(deps) {
     }
     function nominalCurrent(frame) {
         const valid = !disposed && !frame.dirty && deps.session(frame.session.id) === frame.session
-            && deps.agent(frame.session) === frame.agent && deps.scopeIdentity?.(frame.session) === frame.scopeIdentity;
-        if (valid && frame.slot === 'history')
+            && deps.agent(frame.session) === frame.agent
+            && (frame.slot === 'closed-data' || deps.scopeIdentity?.(frame.session) === frame.scopeIdentity);
+        if (valid && (frame.slot === 'history' || frame.slot === 'closed-data'))
             deps.assertHistoryAvailable?.(frame.session);
         return valid;
     }
@@ -434,10 +472,7 @@ export function createRoleplayInputStateOwner(deps) {
                         return false;
                     }
                 }
-                if (!nominalCurrent(candidate)) {
-                    markDirty(candidate);
-                    return false;
-                }
+                // Entry already checked identity; these dependency reads are synchronous.
                 visiting.delete(candidate);
                 completed.add(candidate);
             }
@@ -450,8 +485,10 @@ export function createRoleplayInputStateOwner(deps) {
                 }
                 visiting.add(candidate);
                 pending.push({ frame: candidate, exit: true });
-                for (const child of [...candidate.children].reverse())
-                    pending.push({ frame: child, exit: false });
+                if (candidate.slot !== 'closed-data') {
+                    for (const child of [...candidate.children].reverse())
+                        pending.push({ frame: child, exit: false });
+                }
             }
         }
         return true;
@@ -464,6 +501,10 @@ export function createRoleplayInputStateOwner(deps) {
     function connect(frame) {
         const parent = capturing ?? readingProgramFact?.frame;
         if (parent && parent !== frame) {
+            // A closed proof may retain other closed facts, never the mutable
+            // current schema/head/Source read. Their invalidation lifetime differs.
+            if (parent.slot === 'closed-data' && frame.slot !== 'closed-data')
+                throw Error('CLOSED_DATA_DEPENDENCY_NOT_CLOSED');
             parent.children.add(frame);
             frame.parents.add(parent);
         }
@@ -530,7 +571,7 @@ export function createRoleplayInputStateOwner(deps) {
         try {
             // This is the sole projection of active/deleted branch facts for a read
             // baseline. Its Domain dependencies are collected with the data below.
-            if (slot !== 'history') {
+            if (slot !== 'history' && slot !== 'closed-data') {
                 readingActive = true;
                 try {
                     if (!deps.active(session))
@@ -550,7 +591,10 @@ export function createRoleplayInputStateOwner(deps) {
             metrics[slot === 'schema' ? 'schemaCaptures' : slot === 'source' ? 'sourceCaptures' :
                 slot === 'observation' ? 'observationCaptures' : slot === 'history' ? 'historicalCaptures' : slot === 'control' ? 'controlCaptures' :
                     slot === 'closing' ? 'closingCaptures' : 'inputCaptures']++;
-            return handle(frame, data);
+            const result = handle(frame, data);
+            capturing = outer;
+            connect(frame);
+            return result;
         }
         catch (error) {
             markDirty(frame);
@@ -559,8 +603,6 @@ export function createRoleplayInputStateOwner(deps) {
         }
         finally {
             capturing = outer;
-            if (current(frame))
-                connect(frame);
         }
     }
     /** Reuse only the Domain footprint of the completed Source capture. The
@@ -622,6 +664,30 @@ export function createRoleplayInputStateOwner(deps) {
      * ordered methods, and its change event is the single invalidation source. */
     function table(name, actual) {
         const methods = new Map();
+        const indexes = new Map();
+        function* prefixRows(prefixes) {
+            const identity = JSON.stringify(prefixes);
+            let index = indexes.get(identity);
+            if (!index) {
+                const keys = new Set();
+                if (prefixes.length)
+                    for (const [key] of actual.entries()) {
+                        metrics.inventoryRows++;
+                        if (prefixes.some(prefix => key.startsWith(prefix)))
+                            keys.add(key);
+                    }
+                index = { prefixes, keys };
+                indexes.set(identity, index);
+                let tables = tablePrefixIndexes.get(name);
+                if (!tables)
+                    tablePrefixIndexes.set(name, tables = new Set());
+                tables.add(indexes);
+            }
+            // Set preserves the real table's matching-key insertion order. Values
+            // belong only to the Domain, including writes between iterator resumes.
+            for (const key of index.keys)
+                yield [key, actual.get(key)];
+        }
         return new Proxy(actual, {
             get(target, property) {
                 // Source captures compare installed reader identities. Reuse these
@@ -649,10 +715,10 @@ export function createRoleplayInputStateOwner(deps) {
                     methods.set(property, trackedGet);
                     return trackedGet;
                 }
-                if (property === 'entries' && target.entries) {
+                if ((property === 'entries' || property === 'entriesPrefix') && target.entries) {
                     if (methods.has(property))
                         return methods.get(property);
-                    const trackedEntries = function* (exactPrefix) {
+                    const trackedEntries = function* (exactPrefix, queryPrefixes) {
                         const prefixes = typeof exactPrefix === 'string' ? [exactPrefix] : exactPrefix;
                         const matches = (key) => prefixes?.some(prefix => key.startsWith(prefix)) === true;
                         const frame = capturing, activeProjection = readingActive, variant = name === 'branch' ? readingPendingVariant : undefined, audit = readingProgramFact;
@@ -675,7 +741,7 @@ export function createRoleplayInputStateOwner(deps) {
                             // The active-branch projection enumerates the Domain only to find
                             // fork tombstones. Its iterator must not make staged numerical
                             // work a dependency of frozen author data or a maintenance lease.
-                            if (exactPrefix !== undefined) {
+                            if (exactPrefix !== undefined && !(queryPrefixes !== undefined && activeProjection)) {
                                 // Identity-addressed journals declare their complete namespace,
                                 // including an absent head and newly appended pending intents.
                                 for (const prefix of prefixes) {
@@ -690,7 +756,7 @@ export function createRoleplayInputStateOwner(deps) {
                                 subscribe(namespaceReaders, ref, frame);
                             }
                         }
-                        for (const [key, value] of target.entries()) {
+                        for (const [key, value] of queryPrefixes === undefined ? target.entries() : prefixRows(queryPrefixes)) {
                             metrics.inventoryRows++;
                             // A table-wide iterator may also include other worldlines. The
                             // actual parser still sees them; only this subject's membership
@@ -725,8 +791,13 @@ export function createRoleplayInputStateOwner(deps) {
                             yield [key, value];
                         }
                     };
-                    methods.set(property, trackedEntries);
-                    return trackedEntries;
+                    const reader = property === 'entriesPrefix' ? (prefix) => {
+                        const prefixes = typeof prefix === 'string' ? [prefix] : [...prefix];
+                        return trackedEntries(prefixes, prefixes);
+                    }
+                        : (prefix) => trackedEntries(prefix);
+                    methods.set(property, reader);
+                    return reader;
                 }
                 const value = Reflect.get(target, property, target);
                 if (typeof value !== 'function')
@@ -740,9 +811,37 @@ export function createRoleplayInputStateOwner(deps) {
     function domainChanged(change) {
         if (disposed || change.domain !== deps.domainName)
             return;
-        if (change.table === 'status')
+        // Domain changes arrive after its in-memory table update. Refresh built
+        // query memberships before any observer or captured branch predicate reads.
+        for (const indexes of tablePrefixIndexes.get(change.table) ?? [])
+            for (const { prefixes, keys } of indexes.values()) {
+                if (prefixes.some(prefix => change.key.startsWith(prefix))) {
+                    if (change.operation === 'put')
+                        keys.add(change.key);
+                    else
+                        keys.delete(change.key);
+                }
+            }
+        if (change.table === 'status') {
             schemaJournalRows.delete(change.key);
+            for (const rows of schemaHistoryRows)
+                rows.delete(change.key);
+        }
+        // Incremental consumers retain their own semantic cursor. This owner is
+        // the sole source of actual Domain row changes; consumers do not poll old
+        // rows or invent a second publication/version stream to detect mutation.
+        for (const observe of domainObservers)
+            observe(change);
         const ref = address(change.table, change.key);
+        const expected = expectedPublications.get(ref), published = new Set();
+        if (change.operation === 'put' && expected)
+            for (const [owner, value] of expected)
+                if (value === change.value) {
+                    published.add(owner);
+                    expected.delete(owner);
+                }
+        if (expected && !expected.size)
+            expectedPublications.delete(ref);
         const audits = new Set(programFactRows.get(ref)), subject = sessionOf(change.key);
         if (subject)
             for (const read of programFactNamespaces.get(namespace(change.table, subject)) ?? [])
@@ -761,16 +860,19 @@ export function createRoleplayInputStateOwner(deps) {
                 // An audit is read-only even at its own declared output. After capture,
                 // only producer-declared exact addresses can be output publications;
                 // unknown namespace members and prior material are captured inputs.
-                if (read === readingProgramFact || !read.outputRows.has(ref))
+                if (read === readingProgramFact || !read.outputRows.has(ref) && !published.has(read.outputRows))
                     markDirty(read.frame);
             }
         for (const [prefix, readers] of prefixReaders)
             if (ref.startsWith(prefix)) {
                 for (const frame of readers)
-                    markDirty(frame);
+                    if (!published.has(frame.outputRows))
+                        markDirty(frame);
             }
         let sourceMetadata;
         for (const frame of rowReaders.get(ref) ?? []) {
+            if (published.has(frame.outputRows))
+                continue;
             const expected = frame.sourceMetadataRows.get(ref);
             if (expected !== undefined) {
                 sourceMetadata ??= sourceMetadataSha256(change.operation === 'put' ? change.value : undefined);
@@ -782,7 +884,7 @@ export function createRoleplayInputStateOwner(deps) {
         const sid = sessionOf(change.key);
         if (sid)
             for (const frame of namespaceReaders.get(namespace(change.table, sid)) ?? []) {
-                if (membershipChange(frame, change.table, change.key))
+                if (!published.has(frame.outputRows) && membershipChange(frame, change.table, change.key))
                     markDirty(frame);
             }
         const variantReads = new Set(pendingVariantRows.get(ref));
@@ -849,7 +951,8 @@ export function createRoleplayInputStateOwner(deps) {
         // Control/Native changes revoke state and input captures. Frozen author
         // data has its own exact Domain dependencies and survives a plot edit.
         for (const frame of sessionReaders.get(id) ?? [])
-            if (frame.slot !== 'source' && frame.slot !== 'author-identity')
+            if (frame.slot !== 'source' && frame.slot !== 'author-identity'
+                && frame.slot !== 'closed-data')
                 markDirty(frame);
     }
     function nativeChanged(session, event) {
@@ -866,6 +969,10 @@ export function createRoleplayInputStateOwner(deps) {
         for (const key of schemaJournalRows.keys())
             if (sessionOf(key) === id)
                 schemaJournalRows.delete(key);
+        for (const rows of schemaHistoryRows)
+            for (const key of rows.keys())
+                if (sessionOf(key) === id)
+                    rows.delete(key);
         for (const [key, frame] of slots)
             if (frame.session.id === id) {
                 markDirty(frame);
@@ -877,12 +984,16 @@ export function createRoleplayInputStateOwner(deps) {
                 markDirty(frame);
                 forget(frame);
             }
+        // Derived readers share this real lifecycle, including a normal detach
+        // after their last reservation has already completed.
+        for (const observer of sessionReleaseObservers)
+            observer(id);
     }
     function configurationChanged() {
         // Account configuration replaces consumed DATA, not immutable author
         // identity. Its Domain and Native subscriptions keep their normal currency.
         for (const frame of frames)
-            if (frame.slot !== 'author-identity')
+            if (frame.slot !== 'author-identity' && frame.slot !== 'closed-data')
                 markDirty(frame);
     }
     function schemaPublished(id) {
@@ -927,10 +1038,52 @@ export function createRoleplayInputStateOwner(deps) {
                 catch {
                     return false;
                 }
-            }, assertCurrent, release() { if (own) {
+            }, assertCurrent, readCurrent(compute) {
+                assertCurrent();
+                const outer = capturing, outerSession = capturingInputSession, outerOutputs = capturingInputOutputRows;
+                // A deferred synchronous DATA read belongs to this same operation's
+                // footprint. It cannot create a fresh input or revive a released frame.
+                capturing = own;
+                capturingInputSession = scope.session;
+                capturingInputOutputRows = outputRows;
+                let value;
+                try {
+                    value = compute();
+                }
+                finally {
+                    capturing = outer;
+                    capturingInputSession = outerSession;
+                    capturingInputOutputRows = outerOutputs;
+                }
+                assertCurrent();
+                return value;
+            }, expectOutput(row) {
+                assertCurrent();
+                const ref = address(row.table, row.key);
+                let owners = expectedPublications.get(ref);
+                if (!owners) {
+                    owners = new Map();
+                    expectedPublications.set(ref, owners);
+                }
+                // The official Domain publishes this same object after its durable put.
+                // One matching emission is this capture's output. A later modification
+                // at the same address retains the ordinary invalidation contract.
+                owners.set(outputRows, row.value);
+                return () => {
+                    if (owners.get(outputRows) === row.value)
+                        owners.delete(outputRows);
+                    if (!owners.size && expectedPublications.get(ref) === owners)
+                        expectedPublications.delete(ref);
+                };
+            }, release() {
+                for (const [ref, owners] of expectedPublications) {
+                    owners.delete(outputRows);
+                    if (!owners.size)
+                        expectedPublications.delete(ref);
+                }
                 markDirty(own);
                 forget(own);
-            } } };
+            } };
     }
     function captureClosing(id, compute) {
         // This fresh basis includes the just-completed Native body. It expires
@@ -951,8 +1104,50 @@ export function createRoleplayInputStateOwner(deps) {
                 forget(own);
             } } };
     }
+    function captureClosedData(id, compute) {
+        // Each collector starts independently. A caller explicitly uses the fact
+        // after the whole finite closure has passed, rather than inheriting the
+        // current schema frame/head as a dependency during its construction.
+        const outer = capturing;
+        let readout;
+        capturing = undefined;
+        try {
+            readout = read('closed-data', id, 'closed-data', compute, false);
+        }
+        finally {
+            capturing = outer;
+        }
+        const own = handles.get(readout), invalidators = new Set();
+        own.onInvalidate = () => { for (const notify of invalidators)
+            notify(); };
+        // Dependency invalidation is propagated eagerly by markDirty. There is
+        // no recursive walk of earlier terminal proofs on a hot gate read.
+        return { data: readout.data, current: () => nominalCurrent(own), use() {
+                if (!nominalCurrent(own))
+                    throw Error('CLOSED_DATA_FACT_CHANGED');
+                connect(own);
+                return readout.data;
+            }, onInvalidated(notify) {
+                invalidators.add(notify);
+                return () => { invalidators.delete(notify); };
+            }, dispose() {
+                markDirty(own);
+                invalidators.clear();
+                own.onInvalidate = undefined;
+                forget(own);
+            } };
+    }
     return {
-        table, schemaJournal, domainChanged, nativeChanged, configurationChanged, schemaPublished, invalidateSession, releaseSession,
+        table, schemaJournal, schemaHistoryReader, nativeHistory: deps.nativeHistory,
+        observeDomainChanges(observe) {
+            domainObservers.add(observe);
+            return () => { domainObservers.delete(observe); };
+        },
+        domainChanged, nativeChanged, configurationChanged, schemaPublished, invalidateSession, releaseSession,
+        observeSessionRelease(observer) {
+            sessionReleaseObservers.add(observer);
+            return () => { sessionReleaseObservers.delete(observer); };
+        },
         captureInput: (scope, compute) => captureActualOperation(scope, 'actual-input', compute),
         /** Explicit author-dialogue captures share change-feed/currentness while
          * retaining a separate operation address from the Main input owner. */
@@ -960,7 +1155,29 @@ export function createRoleplayInputStateOwner(deps) {
         /** Ruby's Source/configuration and selected prose are independent of the
          * Main preparation. Each serial task captures its current output inputs. */
         captureRuby: (scope, operationId, compute) => captureActualOperation(scope, `ruby-analysis:${operationId}`, compute),
-        captureClosing, borrowHistorical, readPendingVariantFacts, readProgramAbsenceNamespaceFacts,
+        captureClosing, borrowHistorical, captureClosedData, readPendingVariantFacts, readProgramAbsenceNamespaceFacts,
+        readDataInventory(compute) {
+            // The inventory discovers new work. Each selected closed fact captures
+            // its own exact reads; the discovery namespace is not a dependency of
+            // every prior pair/terminal that merely shares this caller.
+            const outer = capturing;
+            capturing = undefined;
+            try {
+                return compute();
+            }
+            finally {
+                capturing = outer;
+            }
+        },
+        useClosedDataProof(proof) {
+            if (!proof.current())
+                throw Error('CLOSED_DATA_FACT_CHANGED');
+            const frame = capturing;
+            if (!frame)
+                return;
+            frame.releases ??= new Set();
+            frame.releases.add(proof.onInvalidated(() => markDirty(frame)));
+        },
         readProgramOpeningPreparationFacts,
         captureSchema: (id, compute) => read('schema', id, 'verified-history', compute, true),
         reuseSchema: (id, matches) => {
@@ -979,6 +1196,10 @@ export function createRoleplayInputStateOwner(deps) {
         /** Reusable historical DATA has no admission or active-branch authority.
          * Exact reads inside compute register the dependencies of this proof. */
         captureHistoricalFacts: (id, purpose, compute, prepare) => read('history', id, purpose, compute, true, undefined, undefined, prepare),
+        /** Immutable Native/Domain DATA whose exact dependencies are closed facts.
+         * Eager invalidation covers their ancestors; current Source and selected
+         * head authority stay with the enclosing live consumer. */
+        captureClosedHistoricalFacts: (id, purpose, compute, prepare) => read('closed-data', id, purpose, compute, true, undefined, undefined, prepare),
         capturePlayerLedger: (id, compute) => read('control', id, 'schema-player-ledger', compute, true),
         currentSession: (id) => [...(sessionReaders.get(id) ?? [])].some(frame => frame.session.id === id && current(frame)),
         diagnostics: () => ({ ...metrics }),
@@ -990,6 +1211,16 @@ export function createRoleplayInputStateOwner(deps) {
             }
             slots.clear();
             schemaJournalRows.clear();
+            expectedPublications.clear();
+            for (const rows of schemaHistoryRows)
+                rows.clear();
+            schemaHistoryRows.clear();
+            domainObservers.clear();
+            for (const tables of tablePrefixIndexes.values())
+                for (const indexes of tables)
+                    indexes.clear();
+            tablePrefixIndexes.clear();
+            sessionReleaseObservers.clear();
         },
     };
 }

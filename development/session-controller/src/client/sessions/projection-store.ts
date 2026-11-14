@@ -13,7 +13,7 @@
  * bare observable faces feed `useProjection` (ui-renderer binds them).
  */
 import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/types'
-import type { SessionSeqCursor } from '@deepseek-ai/dsh-session/types'
+import type { SessionSeqCursor } from 'dsh-nexttavern-native-session/types'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import { Notifier } from './notifier.js'
 

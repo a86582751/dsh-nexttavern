@@ -2,7 +2,8 @@
 /** Collect historical discovery facts without recursively preparing related current generations. */
 import { stat } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { historicalSessionFormatCatalog, sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog';
+import { historicalSessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog';
+import { sessionFormatCatalog } from 'dsh-nexttavern-session-format/catalog';
 import { historicalChildCatalogSource } from '@deepseek-ai/dsh-session-format-v3-to-v4';
 import { SessionFormatUnsupportedMigrationError } from '@deepseek-ai/dsh-session-format';
 import { parseGenerationLogFilename } from './format.js';

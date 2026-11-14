@@ -1,7 +1,7 @@
 /** Translate Messages events while preserving block order and cumulative usage. */
 
-import { LlmError, ToolCallId } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock, FinishReason, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
+import { LlmError, ToolCallId } from 'dsh-nexttavern-native-llm'
+import type { ContentBlock, FinishReason, StreamChunk, TokenUsage } from 'dsh-nexttavern-native-llm'
 import { object, replayState } from './replay.js'
 import type { ReplayBlock } from './replay.js'
 

@@ -1,10 +1,10 @@
 # NextTavern 原生角色卡：作者教程与格式参考
 
-原生角色卡是一份可移植的 JSON 作者文档。它把人物、世界资料、剧情指引、回复规则和开场分开保存，使普通剧情能够读取作者设定，也使角色协作能够找到明确的人物资料。新卡优先使用 **Native 1.0**；社区卡需要在完整保留原文的同时建立高级人物分类时，使用转换流程生成 **Native 1.1**。
+原生角色卡是一份可移植的 JSON 作者文档。它把人物、世界资料、剧情指引、回复规则和开场分开保存，使普通剧情能够读取作者设定，也使角色协作能够找到明确的人物资料。**Native 1.2 使用单份作者正文**，同时承接直接创作与社区转换；需要语义分类时另外保存原文坐标，高级视图按这些坐标只读生成。
 
-本文描述 0.3 开发线；**0.3 尚未正式发布**，发行信息见[开发日志](DEVELOPMENT-0.3.md)。
+本文按 0.3 开发线的统一 1.2 合同整理；实现仍在整合，新输入验证尚待完成，**0.3 尚未正式发布**，实际进度见[开发日志](DEVELOPMENT-0.3.md)。Native 文档版本与插件发行版本分别记录。
 
-快速查阅：[完整示例](#1-从一份能继续创作的卡开始) · [完整 Native 1.0 参考卡](preset/reference/README.md) · [字段参考](#2-文档结构与校验边界) · [世界书控制](COMMUNITY-CARDS.md#4-世界书怎样进入本轮剧情) · [开场](#5-开场正文模板和目录) · [Native 1.1](#7-native-11保留执行原文另建高级视图) · [EJS 模板与 API](#8-ejs-作者模板动态文本与世界书联动) · [导入与导出](#10-导入互动写卡转换与导出)
+快速查阅：[完整示例](#1-从一份能继续创作的卡开始) · [完整 Native 1.2 参考卡](preset/reference/README.md) · [字段参考](#2-文档结构与校验边界) · [世界书控制](COMMUNITY-CARDS.md#4-世界书怎样进入本轮剧情) · [开场](#5-开场正文模板和目录) · [作者正文与分类](#7-单份作者正文与可选分类) · [EJS 模板与 API](#8-ejs-作者模板动态文本与世界书联动) · [导入与导出](#10-导入互动写卡转换与导出)
 
 完整卡例属于 **0.3 开发线作者参考**，不包含在当前正式版 0.2.9 中：[龙女皇：查看 JSON](preset/reference/dragon-empress.native.json) · [下载 JSON](https://raw.githubusercontent.com/a86582751/dsh-nexttavern/main/preset/reference/dragon-empress.native.json)；[Steam Tide：查看 JSON](preset/reference/steam-tide.native.json) · [下载 JSON](https://raw.githubusercontent.com/a86582751/dsh-nexttavern/main/preset/reference/steam-tide.native.json)。
 
@@ -12,14 +12,14 @@
 
 把下面的完整 JSON 保存成 UTF-8 文件，例如 `雾港灯塔.json`，通过角色卡导入入口载入。它包含玩家身份、一位主要人物、常驻背景、按需查阅的地点、剧情与文风规则，以及两个可选择的开场。没有数值系统或前端脚本，适合先检查人物与故事能否独立成立。
 
-先用这份精简卡熟悉人物、规则、世界书和开场；再按要学习的功能打开[龙女皇](preset/reference/dragon-empress.native.json)或[Steam Tide](preset/reference/steam-tide.native.json)。龙女皇展示原稿归档、分段映射和只读 EJS 展示；Steam Tide 展示玩家与 NPC 资料、Native 数值、社区世界书、港口界面、值班简报 Prompt hook、互斥闲谈条目、限时告示与可选 Ruby 任务。具体字段路径如下：
+先用这份精简卡熟悉人物、规则、世界书和开场；再按要学习的功能打开[龙女皇](preset/reference/dragon-empress.native.json)或[Steam Tide](preset/reference/steam-tide.native.json)。龙女皇展示原稿归档、分段映射、EJS 动态文本与只读原生案卷页面；Steam Tide 展示玩家与 NPC 资料、Native 数值、社区世界书、港口界面、值班简报 Prompt hook、互斥闲谈条目、限时告示与可选 Ruby 任务。具体字段路径如下：
 
 | 学习点 | 完整卡中的位置 |
 | --- | --- |
 | 原文归档与范围映射 | 龙女皇 `/archive/referenceSource`、`/archive/referenceSource/ranges` |
 | 数值初值与规则 | 两张卡的 `/data/character_book/entries/0` `[InitVar]`；Steam Tide 的 `/data/extensions/tavern_helper/scripts/1` 是 schema |
 | 世界书条目 | Steam Tide `/data/character_book/entries`；龙女皇 `/data/worldbook/9/content` 展示已提交数值 |
-| 命名 outlet | Steam Tide `/data/rules/core` 中的 `{{outlet::steam_tide_watch}}`，由简报 Prompt hook 注入 |
+| 命名 outlet | Steam Tide `/data/rules/core` 中的 `{{outlet::steam_tide_watch}}` 消费世界书“值班台出口”条目；简报脚本另在生成事件中注入一次性聊天提示 |
 | 前端展示 | Steam Tide `/data/extensions/tavern_helper/scripts/2/data/html` |
 | 值班简报 Prompt hook | Steam Tide `/data/extensions/tavern_helper/scripts/3` |
 | 互斥与限时条目 | Steam Tide `/data/character_book/entries/19`（条目 ID 60）、`/20`（ID 61，同组互斥）；`/21`（ID 62，持续与冷却） |
@@ -28,12 +28,12 @@
 
 完整卡、单独下载和字段导览都在[随包参考卡索引](preset/reference/README.md)。先从简例掌握栏目，再按表中路径查看完整卡的数值、世界书与前端如何组合。
 
-Steam Tide 的整卡 Core 路径已通过受控 fixture 测试，覆盖四个 Story、简报注入与清理、互斥条目、递归、命名 outlet、临时告示计时和累计日志。验证没有使用真实模型，也没有在 Harness／正式产品宿主或完整浏览器 DOM 中运行；这项结果不代表 0.3 整体验收或发行完成。世界书扫描深度、预算及递归策略由会话 owner 提供，卡片不在世界书根部声明这些全局策略。
+2026-10-24 的 Steam Tide 1.0 样卡取得过受控整卡 Core 结果，覆盖四个 Story、简报注入与清理、互斥条目、递归、命名 outlet、临时告示计时和累计日志。该验证未使用真实模型、Harness／正式产品宿主或完整浏览器 DOM，只覆盖当时输入，不能直接作为 1.2 或 0.3 整体验收通过。世界书扫描深度、预算及递归策略由会话 owner 提供，卡片不在世界书根部声明这些全局策略。
 
 ```json
 {
   "spec": "nexttavern_card",
-  "spec_version": "1.0",
+  "spec_version": "1.2",
   "data": {
     "name": "雾港灯塔",
     "cards": [
@@ -96,25 +96,27 @@ Steam Tide 的整卡 Core 路径已通过受控 fixture 测试，覆盖四个 St
 
 ## 2. 文档结构与校验边界
 
-完整约束见[原生卡 JSON Schema](https://github.com/a86582751/dsh-nexttavern/blob/main/schema/nexttavern-card-v1.schema.json)。文件名中的 `v1` 同时覆盖 `spec_version: "1.0"` 和 `"1.1"`，不是软件版本号。
+完整约束见[原生卡 JSON Schema](https://github.com/a86582751/dsh-nexttavern/blob/main/schema/nexttavern-card-v1.schema.json)。文件路径继续沿用，文档版本固定为 `spec_version: "1.2"`；文件名中的 `v1` 不表示同时接受旧开发格式，也不是插件版本号。
 
 Schema 检查 JSON 的形状、类型和版本条件；加载器与具体功能再解释运行语义。Schema 没有自动补值的 `default` 声明，表中的“可省略”不表示会替作者补写正文。
 
 | 路径 | 类型 | 必填／省略含义 | 运行作用 |
 | --- | --- | --- | --- |
 | `spec` | 字符串 | 必填，固定 `nexttavern_card` | 选择原生卡解码路径 |
-| `spec_version` | 字符串 | 必填，`1.0` 或 `1.1` | 决定普通作者资料与高级视图的解释方式 |
+| `spec_version` | 字符串 | 必填，固定 `1.2` | 统一作者文档协议 |
 | `data` | 对象 | 必填 | 当前作者设定与可移植兼容资料 |
 | `archive` | 对象 | 必填；新卡可写 `{}` | 保留来源和附加资料，不作为另一份剧情指令注入 |
 | `data.name` | 字符串 | 必填；加载器要求非空白，最长 512 字符 | 整张卡的名称，人物仍各有 `name` |
-| `data.cards` | 作者行数组 | 必填；允许 `[]` | 1.0 的人物／作者资料；1.1 的高级人物视图 |
+| `data.cards` | 作者行数组 | 必填；允许 `[]` | 唯一人物／作者正文，分类不覆盖它 |
 | `data.worldbook` | 作者行数组 | 必填；不用时写 `[]` | 原生世界资料，区分常驻资料和按需检索资料 |
-| `data.rules` | 对象 | 必填；允许 `{}` | 1.0 的作者规则；1.1 的高级规则视图 |
+| `data.rules` | 对象 | 必填；允许 `{}` | 唯一作者规则正文 |
 | `data.opening` | 对象 | 可省略；存在时必须有字符串 `text` | 当前开场、物化方式及备选目录 |
 | `data.status` | 对象 | 可省略；存在时必须有字符串 `text` | 状态栏的作者说明／模板资料 |
 | `data.settings` | 对象 | 可省略 | 保存作者设置；只有对应功能支持的设置才有执行效果 |
 | `data.character_book` | 对象 | 可省略 | 社区结构化世界书及其控制字段 |
-| `data.compatibility` | 对象 | 1.0 可省略；1.1 必填 | 作者执行资料、ST 字段别名及兼容扩展 |
+| `data.extensions` | 对象 | 可省略 | Ruby、Helper、社区正则等受支持声明交各自 owner 读取，未知资料只保存 |
+| `data.compatibility` | 对象 | 可省略 | ST 字段别名等兼容资料，不保存执行副本 |
+| `classification` | 对象 | 顶层可选；由转换流程生成 | 当前原文的分类坐标与来源绑定，供高级消费者派生只读视图 |
 | `archive.documents`、`archive.classifiedSources` | 数组 | 可省略 | 导出器保留的来源归档；新作者无需手工制造 |
 
 Schema 允许未知作者字段。比如添加自己的 `authorNotes` 可以随文档保留，但不会自动产生一个新的提示词槽位；添加 `settings.temperature` 也不等于已覆盖模型设置。对于第三方工具，先明确谁读取该字段，再把它写成运行依赖。
@@ -125,7 +127,7 @@ Schema 允许未知作者字段。比如添加自己的 `authorNotes` 可以随�
 
 ### `cards`：人物的持续身份
 
-把人物的动机、经历、外貌、说话方式、行为逻辑与知识边界放进 `cards[].content`。原生 1.0 的清晰人物行也可直接供角色协作读取，无需先让模型重新分类。
+把人物的动机、经历、外貌、说话方式、行为逻辑与知识边界放进 `cards[].content`。清晰的作者人物行可直接供角色协作读取，无需先让模型重新分类。
 
 | 作者行字段 | 类型 | 必填／常用缺省行为 | 用途 |
 | --- | --- | --- | --- |
@@ -134,10 +136,10 @@ Schema 允许未知作者字段。比如添加自己的 `authorNotes` 可以随�
 | `characterId` | 字符串 | 开放作者字段；互动写卡定稿要求每个人物唯一且稳定 | 1–64 位 ASCII 字母、数字、下划线或连字符；高级人物身份使用此标识 |
 | `kind` | 字符串 | 可省略；普通人物按非玩家处理 | `user` 表示玩家；新卡其他人物建议用 `npc`，世界书可用 `location` 等作者分类 |
 | `aliases` | 字符串数组 | 可省略 | 人物别名；世界书还可用于检索匹配 |
-| `enabled` | 布尔值 | 开放作者字段；未显式为 `false` 时启用 | 人物高级视图与世界书使用方会跳过禁用行；它不是 Schema 为所有扩展定义的通用开关 |
+| `enabled` | 布尔值 | `enabled:false` 表示禁用 | 高级人物视图、NPC 列表、角色材料和世界书检索跳过 `enabled:false` 行；普通 `cards` 作者上下文仍包含该行原文 |
 | `locked` | 布尔值 | 可省略，未标记锁定 | 标记锁定事实，供既有事实约束功能使用；不是文件只读权限 |
 
-Schema 本身没有要求 `characterId`，但互动写卡定稿会要求唯一标识；`user` 行未填写时该入口可补为 `user`。为使同一文件也适用于写卡、改编与高级人物功能，建议一开始就像上例一样显式填写。`user` 资料不会被列为需要独立扮演的 NPC。
+互动写卡定稿要求已填写的人物标识唯一。无 `classification` 时，`kind:"user"` 行缺少 `characterId` 可由定稿入口补为 `"user"`，其他人物需填写稳定标识。有分类的转换卡允许混合原文行省略标识，高级人物身份由分类记录提供。玩家资料按 `kind:"user"` 识别。
 
 ### `worldbook`：按使用时机组织的知识
 
@@ -198,7 +200,7 @@ Native 文档显式填写的作者字段会保留，包括 `false`、`0` 和空�
 | `status` | 字符串 | Schema 允许保留的作者字段；当前原生正文投影没有把它设为独立状态规则入口，状态栏作者资料应写 `data.status.text` |
 | `beauty` | 对象 | 美化资料；可含字符串 `css`、字符串 `js` 和数组 `regexRules`，实际消费归美化与正则能力处理 |
 
-不要把任意 JavaScript 字符串塞进未知字段后期待自动运行。`beauty`、社区正则、作者前端、EJS 和 Ruby 各有自己的解释入口；保存它们的资料并不等于支持任意宿主 API。需要这些能力时继续阅读[社区卡指南](COMMUNITY-CARDS.md)、[原生数值与 Ruby](NATIVE-STATE.md)、[社区预设与正则](COMMUNITY-PRESETS.md)。
+不要把任意 JavaScript 字符串塞进未知字段后期待自动运行。`beauty`、社区正则、作者前端、EJS 和 Ruby 各有自己的解释入口；保存它们的资料并不等于支持任意宿主 API。启用的普通 helper 原始模块按原样在 Native Source 页面执行；generation hook 是同脚本注册的真实回调，完整纯 loader／Schema 仍由既有数值 owner 处理。禁用源码保留但不执行，已登记而当前不可用的外部插件单独报告；作者提供卡片资料与受支持脚本即可，无需填写系统内部执行或数值配置。需要这些能力时继续阅读[社区卡指南](COMMUNITY-CARDS.md)、[原生数值与 Ruby](NATIVE-STATE.md)、[社区预设与正则](COMMUNITY-PRESETS.md)。
 
 ## 5. 开场：正文、模板和目录
 
@@ -249,208 +251,202 @@ Native 文档显式填写的作者字段会保留，包括 `false`、`0` 和空�
 
 `status` 可以携带其他作者元数据，但它们只有在对应状态展示能力读取时才会生效。导出当前原生卡保存作者设定，不替代世界线、聊天历史或运行状态备份。
 
-## 7. Native 1.1：保留执行原文，另建高级视图
+## 7. 单份作者正文与可选分类
 
-长社区字段可能同时写着守塔人、港口居民、叙事规则和模板。简单把这个字段命名为“守塔人”会把所有内容误归给一个人物；让模型摘要又可能删掉作者规则。1.1 用两个视图解决归属问题：普通剧情继续使用完整作者资料，高级功能读取分类结果。
+长社区字段可能同时写着守塔人、港口居民、叙事规则和模板。简单把整个字段命名为“守塔人”会把所有内容误归给一个人物；让模型重新摘要又可能删掉作者细节。Native 1.2 保留完整作者正文，需要时另外记录原文属于谁、位于哪里，高级功能按这些坐标读取材料。
 
-| 内容 | Native 1.0 | Native 1.1 |
-| --- | --- | --- |
-| 普通剧情的 `cards/rules` 来源 | `data.cards/rules` | `data.compatibility.authorExecution.cards/rules` |
-| 角色协作的人物／规则视图 | 直接读取清晰的作者栏目 | `data.cards/rules`，由原文分类物化 |
-| `authorExecution` | 不允许出现 | 必须出现，且包含下方四个必填字段 |
-| 分类关联 | 清晰人物行无需另做分类 | 转换器保存人物、跨度、来源及哈希关联；有效时复用 |
-| 世界书、开场、状态与设置 | 各自的 `data` 栏目 | 继续使用这些栏目，不复制进 `authorExecution` |
+| 内容 | 保存位置与职责 |
+| --- | --- |
+| 唯一作者正文 | `data.cards/rules`；普通剧情、编辑、模板及当前卡导出都使用这份正文 |
+| 可选分类记录 | 文档顶层 `classification`；保存人物、原文跨度、真实来源坐标和语义来源绑定，不是另一套正文 |
+| 高级人物／规则视图 | 运行时根据当前有效分类与实际材料派生，只读消费；不能作为作者 document 导出或回写覆盖正文 |
+| 世界书、开场、状态、设置和扩展 | 继续使用各自 `data` 栏目；分类不会把条件世界书搬成常驻人设 |
+| 原稿与归档 | `archive`；保留已有来源资料，不作为第二份剧情指令注入 |
 
-下面是 **1.1 必需容器片段**，不是一份完整卡，也不是有效分类记录的替代品：
+从零写卡时，像第 1 节一样把人物与规则分开即可，通常不需要 `classification`。原创写卡与完成研究后的小说改编使用相同的作者文档，不为生成 1.2 追加一次分类模型请求。原始社区来源是否需要分类由实际导入来源与工作流决定；把混合字段贴上人物名、填写版本号或自行计算哈希，都不能冒充已完成的语义分类。
 
-```json
-{
-  "compatibility": {
-    "authorExecution": {
-      "schemaVersion": 1,
-      "mode": "preserved-author",
-      "cards": [
-        {"characterId": "keeper", "name": "守塔人", "content": "这里保留完整的当前作者资料。"}
-      ],
-      "rules": {
-        "core": "这里保留完整的当前作者规则。"
-      }
-    }
-  }
-}
-```
+### 转换记录原文位置，不搬动作者正文
 
-`schemaVersion` 必须是数字 `1`，`mode` 必须是字符串 `preserved-author`；`cards` 仍是含 `content` 的作者行数组，`rules` 仍使用前述规则对象。其正文是普通执行的唯一作者来源，不会再与外侧 `data.cards/rules` 注入两遍。
+1. 从**当前已保存的作者设定**冻结本次输入，为可分类正文建立实际来源单位。玩家行和禁用人物行不作为 NPC 分类单位，但原行、未知作者字段和换行仍保存在作者文档中。
+2. 分类任务只判断人物、原文跨度与关联；程序核对并使用这些坐标。坐标指向文档中真实存在的字段，例如 `/data/cards/1/content` 或 `/data/rules/core`，不指向一个尚未存在的执行副本。
+3. 转换在文档顶层保存 `classification`，保留 `data.cards/rules` 原文。分类记录的版本、人物、assignments、sources 与来源绑定由[转换实现](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/native-card-conversion.ts)维护；作者不要手写 ready、verified 或分类凭据。
+4. 高级消费者从有效坐标派生只读人物／规则视图。普通剧情仍执行原文一次，不会再把高级视图注入一遍；当前卡导出保留作者文档与有效分类，不能拿视图代替整张卡。
+5. 相关原文改变后，旧分类会失效，依赖分类的高级功能需重新整理。普通作者执行仍使用当前正文；带有失效分类的社区材料不能被静默当成“无需分类的原创卡”。
 
-### 工具实现者的升级合同
+分类依据与完整导出文件有不同用途。只切换已保存的 Ruby preset，或调整不参与分类的状态／设置时，当前卡导出需要反映变化，但不要求把未变的人物原文重新分类。参与分类的正文、人物身份或单位结构改变时，按现有转换流程更新关联。上传原件仍是最初字节；世界线继承对应切点的作者资料与分类，不用父线后来的改动替换它。
 
-1. 从**当前已保存的作者设定**捕获快照。若输入已经是 1.1，先读取 `authorExecution`，不要把它的高级视图误当原文。
-2. 完整保留执行 `cards/rules` 到 `data.compatibility.authorExecution`，包括玩家行、禁用行、作者字段和原文。普通执行的换行与正文不由分类模型改写。
-3. 为可分类的人物正文、五类文本规则以及世界书正文建立来源单位。玩家行和禁用人物行不作为人物分类单位；它们仍保留在完整执行资料中。
-4. 分类只返回人物身份与原文跨度归属。程序复制静态原文片段，形成 `data.cards` 的人物和 `data.rules` 的规则视图。世界书、动态模板保留来源引用，不把有条件资料复制成常驻人设。
-5. 转换器在 `compatibility.classification` 保存版本、人物、跨度及当前来源哈希关联，随后设 `spec_version: "1.1"`。该记录由[转换实现](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/native-card-conversion.ts)定义，不是可以随意填写的“已验证”标志。
-6. 加载与高级消费会对照实际来源验证关联。人物、规则、世界书或相关扩展修改后，旧分类可能过期；开场选择、状态或设置本身不要求把未变的人物正文再分类一次。
-
-**只改版本号不构成升级。** Schema 合格的 1.1 容器也不自动具有有效高级分类；缺少或过期的分类会让高级能力未就绪，普通执行仍读取完整作者资料。反向迁移同样不能只改成 `1.0`：必须先决定哪份内容是新的普通作者正文，移除 1.1 专用容器并验证人物栏目，不能让高级摘要覆盖原文。
-
-新作者没有混合长字段时，直接写好 1.0 就能避免这项归属转换。对于现有社区卡，使用界面的转换／导出流程比手写哈希与分类记录可靠。
+1.0／1.1 是未正式发行的开发格式，其双正文写法已经退出当前创作规范。不要只改版本号或复制旧高级视图来生成 1.2；当前作者卡应从真实作者正文建立，历史原稿与验证记录按当时版本保留。
 
 ### 角色协作具体能拿到什么
 
-高级视图中的人物需要有效正文。1.0 可以直接读取静态人物；1.1 通过有效分类关联定位原文。`kind: "user"` 和禁用人物不进入独立 NPC 列表。世界书只复用本轮实际准入的材料，不能让人物因为分类引用而提前知道秘密。
+明确的作者人物行可直接提供静态人设；需要分类的社区资料通过有效坐标定位原文。`kind: "user"` 和禁用人物不进入独立 NPC 列表。世界书只复用本轮实际准入的材料，不能让人物因为分类引用而提前知道秘密。
 
 动态 EJS 材料还取决于本轮渲染结果及明确归属。程序不会为了每个人物再执行一遍模板，也不会从渲染后的句子猜测属于谁。当前混合动态规则可能只能用于普通剧情，无法完整拆给角色协作；显式 mapped 社区预设的动态作者高级材料桥仍有限制。界面显示转换 ready，说明分类关联可用，不表示整卡所有动态玩法都能完整用于高级协作。可用的静态人物仍可以单独使用。
 
 ## 8. EJS 作者模板：动态文本与世界书联动
 
-0.3 的源码包含**原生模板执行器提供的 EJS 子集兼容**。作者可以用 JavaScript 条件、局部变量和受支持的 helper 生成本轮提示文本；编译后的作者函数在独立 Worker 内的 QuickJS 环境执行，结果交给 NextTavern 的请求组装与材料发布流程。模板求值是程序计算，不为一次条件判断增加模型请求。
+0.3 开发源码使用固定 EJS 3.1.10 编译作者模板，并在隔离 Worker 的 QuickJS 中执行。模板负责按已捕获的资料组织文本和受支持的作者效果；它不会让模型代替程序解释模板。正常／重试／回退不会因此增加模板专用的模型推理步骤。
 
-EJS 适合“根据已有资料决定本轮写出什么”。例如体力不足时加入休息提示、从世界书取出告示、按条件组织背景。数值更新仍由[原生状态系统](NATIVE-STATE.md)提交；模板读到数值不代表它拥有写回权限。
+EJS 的执行由材料来源和实际消费动作决定，不会扫描卡片的每个字符串。存档正文与请求文本投影分开：正常 Main 的最终请求 slot 可以执行模板，原始消息记录保持不变；只读历史恢复不会因此重跑作者程序。
 
-### 从 Native 1.0 直接使用
+### 直接在作者栏目中使用
 
-在第 1 节完整卡的守塔人 `content` 中追加下面的模板文字即可；它不要求添加 Schema、远程 helper 或固定脚本声明：
+在第 1 节完整卡的守塔人 `content` 中加入模板文字即可；不需要为普通模板额外声明空 Schema：
 
 ```ejs
 守塔人今天检查了<% const floors = 2 + 3; %><%= floors %>层楼梯。
 ```
 
-将内容保存回 JSON 字符串时，仍需按 JSON 规则转义换行与引号。导入后，作者编辑器保留模板原文；后续 Story／生成开场的实际请求材料中，该部分渲染为 `守塔人今天检查了5层楼梯。`。`floors` 只是当前模板的局部变量，不会保存为聊天数值。**选择并复制已有作者开场**仍是复制正文，不能用这个动作验证 NPC 提示模板已经执行。
+写回 JSON 字符串时仍按 JSON 规则转义换行和引号。模板原文保留在作者资料里，实际消费该来源时才渲染。`floors` 只是本次模板的局部值，不是聊天变量。复制已选开场时仍复制其作者正文；不要据此假设任意 EJS 开场都必定被拒绝或自动执行，具体准入看来源和动作。后续正常 Main 请求的最终文本处理与 Reader 显示、只读历史恢复是不同阶段。
 
-原生来源路径称为 prompt-program，可以同时处理普通作者模板和纯数据 InitVar：无需为了加一条 EJS 表达式补一个空 Schema。区别在于，InitVar 的 JSON／YAML 数据载荷本身不能嵌 EJS 求值；模板与初始化数据各走自己的处理步骤。
+模板与纯数据 InitVar 是不同入口：作者文字可以包含 EJS，JSON／YAML 初始化载荷本身不会作为 EJS 求值。读取 `stat_data` 只取得实际捕获的数值快照；数值写入仍归 Schema／MVU owner，EJS `setvar` 不得写 `stat_data`。
 
-### 执行位置与阶段
+### 执行位置与正式阶段
 
-EJS 只在已接入的作者材料上执行，不遍历卡 JSON 中的所有字符串：
+EJS 只在已接入的作者材料被相应 owner 消费时运行：
 
-| 材料 | 当前执行边界 |
+| 材料 | 当前边界 |
 | --- | --- |
-| Native `cards[].content`、`worldbook[].content`、`rules` 的五个正文键、`status.text` | 允许作为模板来源；在对应材料实际消费时渲染，不代表每个字段在所有预设中都常驻注入 |
-| Native 1.1 的执行资料 | 普通剧情沿 `compatibility.authorExecution` 的对应来源读取；高级人物不因此再执行一遍模板 |
-| 社区卡的人物、场景、规则与示例字段 | 按当前来源进入对应作者模板链；无内嵌世界书的 CCv2／CCv3 另有专用六字段路径 |
-| `character_book.entries[*].content` | 本轮选中的世界书条目可独立渲染；`getwi` 显式读取的目录条目可嵌套渲染 |
-| `InitialVariables` 提示变量材料 | 有独立的来源、模板渲染、解析及合并链；与 MVU 的 `[InitVar]` 不是同一入口 |
-| 开场 | 没有“任意开场都自动执行 EJS”的通用合同；无世界书的社区六字段路径要求普通开场及身份宏，EJS 开场会被拒绝 |
-| 普通历史、模型生成正文 | 不因含有 `<%…%>` 就重新执行作者程序 |
-| 社区 preset 的普通 `content` | 使用其 `{{…}}` 宏链，不因选择了 preset 就自动执行 EJS |
+| Native `cards[].content`、`worldbook[].content`、`rules` 正文和 `status.text` | 在对应来源实际参与请求时渲染；字段存在不代表它在每个预设或阶段都注入。 |
+| 可选分类与高级视图 | 复用当前作者正文及本轮已经渲染的材料；分类记录不成为另一个模板入口，高级人物视图不再重复执行模板。 |
+| 社区卡人物、场景、规则和示例字段 | 由当前来源 owner 接入模板链；无内嵌世界书的 CCv2／CCv3 仍有自己的六字段路径。 |
+| `InitialVariables` 提示材料 | 走自己的来源、渲染、解析和合并入口；不是 MVU 的 `[InitVar]`。 |
+| 普通社区 preset 的 `content` | 前置组装使用 `{{…}}` 社区宏；进入正常 Main 最终请求 slot 后，其中的 EJS 按最终文本阶段处理。preset getter 则用于显式读取并嵌套求值捕获目录中的条目，包括未参加最终组装的条目。 |
+| 开场 | 是否执行按来源／动作准入；复制已选作者开场保留原文。 |
+| Native 历史和模型正文 | 原始记录保持不变；正常 Main 最终请求 slot 按下述正则／EJS 流程生成请求投影。maintenance／returnStory 等 history-only 请求只复用已接受正文投影，不重新运行模板、世界书或作者回调。 |
+| Reader 的 HTML 显示 | EJS 不因正则输出或 HTML 渲染再次递归执行；显示清理与页面边界由 Reader owner 处理。 |
 
-社区六字段指 `description`、`personality`、`scenario`、`mes_example`、`system_prompt`、`post_history_instructions`。这是社区来源的专用路径，Native 卡使用自己的字段来源记录。
+普通 WI 的正式准备与 GENERATE loader 按真实来源顺序运行。常见顺序是捕获 `InitialVariables` 和绑定、全局 `GENERATE:BEFORE`、普通 WI formal prepass、普通 WI 选择／反馈／预算、late author，然后进入 Native 实际消息 slot。GENERATE loader 按真实 transport header 和消息 ordinal 定位；tool 或无 text 的 header 仍占位置，不要用可见气泡序号代替。indexed BEFORE／AFTER 只作用于对应的真实 text slot；全局 BEFORE／AFTER 需要实际首／末 text slot。
 
-正常世界书材料依次经过**宏展开 → 被选条目的 EJS → WORLD_INFO 请求正则**；`getwi` 读取的目录正文则经过自己的**来源正则 → 宏 → 同一执行环境内的嵌套 EJS**。人物与规则等作者字段在其实际贡献阶段渲染。不要将“所有正则总在 EJS 前面”或“所有模板总在扫描之前”作为作者假设。
+普通 WI formal 处理按 owner 完成一次：
 
-渲染得到的新宏文本或新 `<%…%>` 不会因为出现在输出里，再自动执行一遍。`getwi` 是明确的嵌套读取入口，不是对任意输出递归求值。
-
-### 标签、局部 JavaScript 与输出
-
-| 写法 | 当前语义 |
+| 声明 | 含义 |
 | --- | --- |
-| `<% const n = 3; %>` | 执行局部代码，不自动输出值 |
-| `<%= n %>` | 将表达式转为字符串并直接输出 |
-| `<%- n %>` | 同样直接输出；当前与 `<%=` 没有 HTML 转义差异 |
-| `<% if (…) { %>正文<% } %>` | 根据条件选择文字；普通局部函数、闭包和循环也可使用 |
-| `<%= await getwi('标题') %>` | 等待受支持的异步读取，再输出文字 |
-| `<%_`、`_%>` | 支持相应的水平空白裁剪；结束裁剪还吞并紧随的一次换行 |
+| `@@if` | 按真实布尔条件决定条目是否继续；条件为 false 时，后续 `@@activate` 不能把它救回。 |
+| `@@preprocessing`／`[Preprocessing]` | 先处理正文，再按各自原文处理 primary／secondary keys；结果作为 literal 使用，不再重复运行宏或 EJS。 |
+| `@@private` | 在启用的普通条目中隔离本条声明和 `return`；不是拒绝所有 private 条目。 |
+| `@@dont_activate`、`@@activate` | `@@dont_activate` 优先；符合条件时 `@@activate` 可提出临时激活，仍由 Native 的准入、预算和定时等 owner 决定。 |
+| `@@always_enabled` | 恢复条目的 enabled 语义；仍按关键词等准入，不绕过匹配条件或预算。 |
 
-完整 EJS 中常见的 `<%# … %>` 注释、`<%% … %%>` 字面标签和 `-%>` 结束写法当前会被拒绝。可以在代码标签里使用普通 JavaScript 注释。`include`／partials 不在该子集内。
+几种正则／模板来源不能混为同一轮扫描：`getwi` 目录读取使用其捕获的早期 Source 正则，再按当前宏和嵌套 EJS 渲染；preprocessing 正文按执行时实际 Source 正则处理一次；普通已选 WI 和 GENERATE 正文不会额外重复这遍 Source 正则；普通 WI 最后仍进入 `WORLD_INFO` 请求正则。Native 最终消息 slot 按 generate 正则 → post-regex EJS 顺序处理。输出中出现的新标签或宏不会自动重启整条模板链。
 
-模板输出是后续使用方的文本输入。两种表达式标签都不替作者做 HTML 转义，不应把 `<%=` 当作网页安全过滤器。是否按 HTML 展示，仍由阅读器与对应显示链决定。
-
-### `getvar`：读取已捕获的作用域
-
-常用形式是 `getvar(key, 'chat')` 或 `getvar(key, {scope:'chat', defaults:0})`。先明确读取哪种数据，再选作用域：
-
-| 作用域 | 数据含义 |
-| --- | --- |
-| `chat`／`local` | 当前聊天绑定；有效数值状态通常通过 `stat_data` 对象提供，`local` 是 `chat` 的别名 |
-| `message` | 当前消息绑定；只有实际捕获该绑定时可读 |
-| `card`、`script`、`global` | 对应卡、脚本、全局绑定；不能假定每次来源都会提供全部作用域 |
-| `initial` | 提示模板初始变量；不是卡中 MVU InitVar 的别名 |
-| `cache` | 本轮已经捕获的合并视图，也是省略 scope 时的默认值 |
-
-正常 `cache` 按 `global → initial → chat → message` 做浅覆盖，再附加执行跟踪字段。它不会为每次读取重新查询数据库，也不对嵌套对象逐层合并。已经有有效 `chat` 数值快照的作者模板或本轮世界书条目可写：
-
-```ejs
-来客当前体力：<%= getvar('stat_data.角色.体力', 'chat') %>
-<% if (getvar('stat_data.角色.体力', 'chat') <= 2) { %>
-来客需要休息。
-<% } %>
-```
-
-体力 9 时只输出第一行和模板中的空白；体力 2 时还输出休息提醒。模板只组织提示，没有扣除或恢复体力。可以在[纯数据初值示例](NATIVE-STATE.md#2-给-native-10-卡加入初值)的普通作者字段中加入模板；整卡进入可组合的程序来源路径，而 InitVar 仍按原始数据初始化。
-
-完整的受支持参数形状为：
-
-```typescript
-declare function getvar(key: string | null, scope?: string): unknown
-declare function getvar(key: string | null, options?: {
-  scope?: string
-  defaults?: JSONValue
-  index?: number | null
-  clone?: boolean
-  noCache?: boolean
-}): unknown
-```
-
-- 路径先匹配完整字面 key，再解释点号／方括号路径。例如实际存在 `"角色.体力"` 这个完整 key 时，它优先于嵌套的 `角色 → 体力`。
-- 缺失 key 默认返回 `null`，可用 `defaults` 指定替代值；真实的 `null`、`false`、`0`、空串不会被默认值覆盖。作用域本身不可用会拒绝，`defaults` 不能创建作用域。
-- `key:null` 返回该作用域整体。默认返回只读数据；`clone:true` 给可修改的局部副本，也不会写回数值。
-- `index` 用于解析字符串中的 JSON 后按非负索引取值，不是对任意对象的通用下标。`noCache:true` 当前不支持。
-- 兼容语义中，字符串参数 `'message'` 读取明确的消息绑定，而选项 `{scope:'message'}` 映射到合并 `cache`。需要当前数值时，优先像上例一样明确写 `'chat'`。
-
-### `getwi` 与 `activateWI`：读取和激活是两件事
+### `getwi`／`getWorldInfo` 与 `activateWI`
 
 ```text
 await getwi(titleOrUidOrRegExp)             → string
 await getwi(worldName, titleOrUidOrRegExp)  → string
-activateWI(titleOrUidOrRegExp)             → boolean
+await getWorldInfo(titleOrUidOrRegExp)      → string
+activateWI(titleOrUidOrRegExp)              → boolean
 activateWI(worldName, titleOrUidOrRegExp)   → boolean
 ```
 
-这是一组调用形式说明。`getwi` 按实际主世界书名称、条目 `comment` 标题或 UID 查询，也支持受维护的正则查询；**不是按条目的 `keys` 关键词查找**。查询命中的内容可继续在同一环境中执行嵌套 EJS；没找到返回空字符串。必须等待结果，直接输出 Promise 会拒绝。
+`getwi`／`getWorldInfo` 按实际主世界书名称、条目 UID 或受支持的正则查询目录；不是按关键词 `keys` 搜索。缺失返回空字符串。命中内容可在同一 guest 环境按当前捕获的 Source／宏继续执行嵌套 EJS。`getwi` 的目录读取不等于激活条目；是否进入普通请求仍由世界书 owner 按其准入规则决定。
 
-例如，主书 `name` 为 `雾港资料`，其中一个条目 `comment` 为 `潮汐告示`、`content` 为 `今晚高潮在午夜。`。另一个本轮已经命中的世界书条目可使用：
+`activateWI` 使用同类查询形式，命中时同步返回 `true` 并记录去重的激活提案；目标缺失会拒绝，而不是返回空正文。它不永久改写条目的 `enabled`。显式激活可以提出原本未由关键词命中的条目，但是否被消费仍取决于实际阶段、formal 条件、启用、预算和定时等规则；不支持该效果的 consumer 会明确拒绝。
+
+### 标签、JavaScript 与 include
+
+| 写法 | 当前语义 |
+| --- | --- |
+| `<% code %>` | 执行普通 JavaScript，不自动输出代码块的值；支持局部函数、闭包、控制流和 `await`。 |
+| `<%= expression %>`、`<%- expression %>` | 都输出原始结果，不自动 HTML 转义；`null`／`undefined` 不输出。 |
+| `<%# comment %>`、`<%% ... %%>` | 支持 EJS 注释和字面标签；字面标签内的表达式不执行。 |
+| `-%>`、`<%_`、`_%>` | 支持 EJS 的换行／空白裁剪语义。 |
+| `print(value)` | 单参数输出别名；不是 `console.log`。 |
+| `<% return 'text'; %>` | 返回字符串可覆盖本次缓冲输出；异步返回会等待，最终结果仍须是字符串。 |
+| `<%- await include(resourceId, data) %>` | 可读取 owner 已提供的 resource ID；`data` 可省略，或为非 null、非数组的对象。不是 Node 文件系统 include，也不接受任意路径、URL 或相对路径搜索。 |
+
+嵌套 include 共享 guest helpers／locals，可在运行时深度和资源预算内调用；必须 `await`，未等待的子调用会使本次结果拒绝。不要凭空编造 resource ID。QuickJS 不是 Node 或浏览器：模板没有 `process`、`require`、DOM、任意网络／文件接口或模块导入。模板计算失败的未接受结果不会被当作成功发布；持久化时出现不确定写入，则按原操作确认或恢复，不承诺多个变量作用域的原子回滚。
+
+### `getvar`：读取变量和真实消息
+
+getter 的默认 scope 是 `cache`。支持的 scope 字符串为 `cache`、`global`、`local`、`chat`、`message` 和 `initial`；`local` 映射普通 chat 绑定。只能读 owner 已捕获的绑定；没有该 scope 时会拒绝，不会实时查询 session 或全局状态。
+
+不带 selector 的 `getvar(key, {scope:'message'})` 仍读取合并 `cache`。只有传入 `withMsg` 才按真实捕获的消息／swipe 视图读取；它不要求该消息拥有数值状态。selector 的整数 `id` 是本次消息视图中的行号，不是 Native seq 或字符串 message ID；可选择 `role` 和 `swipe_id`，负数从视图末尾计数。显式 `id` 优先于 `role`。未捕获消息视图会明确拒绝，`defaults` 只处理已选目标中缺少的值，不会补造整个 selector 或回退到 cache。
+
+`noCache:true` 会清理本次 cache overlay，并从已捕获的 `global → initial → chat → current message` 与 staged 普通写入重建；没有 current message 时使用已有 captured cache。它不会刷新或查询运行中的全局状态。
 
 ```ejs
-灯室墙上的告示写着：<%= await getwi('雾港资料', '潮汐告示') %>
+<% const visits = getvar('visits', {scope:'local', defaults:0});
+   setvar('visits', visits + 1, {scope:'local'}); %>
+已到访 <%= getvar('visits', {scope:'local'}) %> 次。
 ```
 
-输出为 `灯室墙上的告示写着：今晚高潮在午夜。`。目标告示不需要同时通过普通关键词命中。显式目录读取可以与普通准入不同，包括读取目录内禁用条目；读取不会把该条目设为启用。
+这段写入示例仅用于有写权限的 Main 模板。`getvar` 返回的 captured 对象默认只读；`clone:true` 只给局部副本，不会写回。完整 key 优先于点号／方括号路径；`index` 用于解析变量内保存的 JSON 字符串后选取属性，不是任意对象下标。`variables` 是只读 cache 属性视图，按字面属性访问，不支持 `getvar` 的路径语法。
 
-`activateWI` 使用同类查询参数，同步返回 `true` 并记录去重的激活提案。它只适用于当前允许激活的条目和执行阶段，最终仍由世界书所有者决定怎样准入，不会永久改写 `enabled`。人物／规则末段的 `late-author` 渲染阶段已晚于世界书求值，该阶段的激活提案会拒绝；不要在普通人物描述里用它强迫本轮重新扫描。
+读取当前数值时可用 `getvar('stat_data.角色.体力', {scope:'local'})`，前提是 owner 已提供该快照。读取不授予写入权限；`setvar` 对 `stat_data` 的写入会拒绝。
 
-### 提示注入：注册与消费切点
+### `setvar`：普通变量写入
 
-高级作者可以通过以下 API 提交提示注入；这里是参数形状参考，需要先确认模板实际执行阶段，不是一段可放在任何字段、立即影响本轮的通用代码：
+`setvar` 写入普通变量的 staged proposal，不是 MVU 更新入口。只有 owner 接受发布后才成为持久事实；一次模板计算成功不等于已经保存。
 
-```typescript
-type PromptInjection = {
-  id: string
-  position: 'in_chat' | 'none'
-  depth: number
-  role: 'system' | 'user' | 'assistant'
-  content: string
-  should_scan?: boolean
-  filter?: () => boolean | Promise<boolean>
+| scope／选项 | 当前语义 |
+| --- | --- |
+| 默认／`message` | 写入实际 current message target；`withMsg` 可选已有历史消息／swipe。目标或 capture 不存在时拒绝，不降级成 chat 写入。 |
+| `local`／`chat` | 写当前普通 chat namespace；未捕获该 namespace 时拒绝。 |
+| `cache` | 只改本次 cache overlay，不持久化普通 State；可在没有持久 namespace 时使用。 |
+| `value === undefined` | 未使用 `merge` 时可删除普通 key 或受支持的对象路径；嵌套对象中的 `undefined` 不是删除操作。 |
+| `results:'old'`、`'new'`、`'fullcache'` | 控制返回写前 cache 值、写后值或更新后的 cache；默认返回 `new`，不满足条件的写入返回 `undefined`。 |
+| `flags:'nx'`、`'xx'`、`'n'` | 基于 cache 旧值是否存在决定只在不存在、只在存在时写入，或不附加存在性条件；`null` 也算存在。 |
+| `flags:'nxs'`、`'xxs'` | 按相应 getter scope／`withMsg` 判断存在性；这与 writer 默认目标不同。 |
+| `index` | 修改变量中 JSON 字符串指定的 index／path，保留目标对象的其他 sibling，并仍保存为 JSON 字符串。 |
+| `merge:true` | 基于 cache 旧值按当前 Lodash merge 行为合并：顶层数组拼接，嵌套 source array 替换；与 `undefined` 组合时按既有 merge 语义保留旧对象。 |
+| `noCache:true` | 写入前清理 overlay 并重建已捕获基线；仍遵循 getter 与 writer 的 scope 权限。 |
+| `dryRun` 或 boolean 简写 | 被接受，但不构成无写入预览，也不自动启用 ST 全局 dry-run。传 `true` 不能保证不产生正常目标 proposal。 |
+
+EJS guest 明确拒绝对 `global`／`initial` 持久写入、`stat_data` 写入、未知选项／flags、缺少真实目标的写入，以及函数、Symbol、BigInt、非有限数或含嵌套 `undefined` 的非 JSON 值。读写权限不会从其他 Native Browser 接口继承；EJS guest 不提供 `setVariables`、`replaceVariables`、`updateVariables`、MVU setters、Schema 注册或 slash helper。
+
+### 当前 preset、提示注入与正则
+
+preset helper 读取当前已捕获的 raw prompt catalog，不是最终组装 prompt 列表：
+
+| helper | 语义 |
+| --- | --- |
+| `getPresetPrompts()` | 按原 `prompts` 顺序提供名称 generator，包括未启用或不在最终 order 中的条目。 |
+| `getPresetPromptsContent(nameOrRegex)` | 返回第一个名称相等或匹配的原始内容；缺失／空内容返回 `null`，不执行模板。 |
+| `await getpreset(name, data)`、`getprp`、`getPresetPrompt` | 渲染首个匹配项；缺失／空内容返回空字符串。guest 使用真实 Lodash merge 把 `data` 合入 locals 并设置 `prompt_name`，再执行嵌套 EJS 和 NextTavern 当前有界宏展开。 |
+
+`data` 中的函数和对象保留 guest identity，不会先转成 Node JSON。未提供真实 preset capture 时会拒绝。这里不承诺完整 SillyTavern `substituteParams`、preset CRUD 或写入 preset 的 helper。
+
+`injectPrompt(key, prompt, order, sticky, uid)` 与 `getPromptsInjected(...)` 是按 key／uid 管理的命名队列；相同 key／uid 可替换，结果按 order 排序。`getPromptsInjected` 可做 guest replace；没有 postprocess 且设置 `outlet:true` 时留下延迟 outlet 宏，在实际请求文本的引用位置展开。读取不消耗 sticky；生命周期按接受的 generation 推进，失败或未发布的准备不算已消费。
+
+命名 `injectPrompt` 队列与结构化的 `injectPrompts`／`uninjectPrompts` 是两套接口。后者提供 position、depth、role、content、scan/filter 与 once 等正式注入语义，由材料流程记录和消费；不要把命名字符串队列当作结构化 prompt 注册的替代品。
+
+模板中公开的动态正则 helper 是 `activateRegex(pattern, replacement, options)`。pattern 可为字符串或 RegExp；basic replacement 为字符串，实际 generate/message 阶段可用 guest 函数。可设置来源顺序、sticky、角色／World Info／reasoning、深度和阶段标记；具体是否生效取决于真实消费者。Main 接入 basic prompt 与 generate；Reader 的受控 phase 只允许本次 local regex。`before` 和 HTML 显示阶段有实际消费者；写 `after:true` 本身不代表系统会自动执行一个 message-after 阶段。
+
+### Reader、AuthorDialog 与失败边界
+
+Reader 的纯 render 是只读计算；实际 `reader-regex-phase` 只允许局部 `activateRegex`。它不允许用 `setvar` 改 Main State，也不允许 `activateWI` 或提示注入。Reader 的显示顺序包括 message-before、普通 Markdown／真实 HTML、HTML 阶段和 after World Info；HTML 不会重新作为 EJS 模板运行，最终仍受现有 sanitize 和页面边界约束。
+
+AuthorDialog 使用只读模板计算来准备作者资料与 World Info 证据；任何普通变量写入、提示注入或正则效果都会明确拒绝，late author 字段的激活提案也会拒绝。它使用自己的实际 consumer，不等同于 Reader phase，也不能用 `setvar` 改数值。
+
+模板使用本轮捕获的时钟和随机种子；`Date.now()`、无参数 `new Date()` 与 `Math.random()` 不读取任意变化的外部状态。执行受输入、输出、嵌套和时间／内存预算限制；超时、取消、过期来源、不可用 scope 或不支持的 helper 会明确拒绝。持久化状态不确定时应确认原操作，不能假定重发一遍等于安全重试。具体准入以实际来源／动作诊断为准。
+
+### 浏览器 Helper：等待真实读取与保存结果
+
+上面的 EJS helpers 在模板 guest 中运行。作者页面使用另一套浏览器 SDK；名称相近也不具有相同返回类型或写权限。例如 EJS `await getwi(...)` 返回正文字符串，浏览器 `await getWorldbook(name)` 返回当前主书条目数组。
+
+| 浏览器 API | 返回与使用方式 |
+| --- | --- |
+| `getWorldbook(name)` | Promise；`name` 使用当前主书实际名称，先 `await` 再 `filter`／`map`，不要在 Promise 上直接操作数组 |
+| `createWorldbookEntries(name, entries)` | Promise，成功值为 `{worldbook, new_entries}`；新增数量是 `result.new_entries.length` |
+| `deleteWorldbookEntries(name, predicate)` | Promise，成功值为 `{worldbook, deleted_entries}`；删除数量是 `result.deleted_entries.length` |
+| `updateWorldbookWith(name, updater)` | 等待 updater 与保存，成功后返回当前书；updater 使用本次读取的条目，不以旧页面快照覆盖新来源 |
+| `replaceWorldbook(name, entries)` | 等待当前书保存；不要依赖返回一个条目数组 |
+| `getVariables(options)`、`getChatMessages(range, options)` | 同步读取本页面当前捕获的变量／消息；变量默认 chat，script／message 使用实际目标，消息 ID 是该视图中的行号，不是 Native seq |
+| 普通变量写入与 `setChatMessages` | 等待真实写入结果；普通变量不取得 MVU 数值权限，消息修改须使用当前目标与读依据 |
+| `eventOn(...)`、`eventOnce(...)` | 返回含 `stop()` 的注册对象；清理时调用 `registration.stop()`，不要把返回对象当函数调用 |
+| `triggerSlash(command)` | Promise，成功返回 pipe 字符串；拒绝／未知结果抛错。支持 `/send`、`/trigger` 及[有限 Ruby 命令](NATIVE-STATE.md#作者命令读取手动分析与切换方案)，不等于支持任意 ST slash |
+| `generateRaw(options)` | 显式生成请求；由作者操作触发并按实际模型调用计费，普通页面刷新不必调用 |
+
+```js
+async function readNotes(worldbookName) {
+  const entries = await getWorldbook(worldbookName);
+  return entries.filter(entry => entry.comment === '灯塔记录');
 }
-declare function injectPrompts(
-  prompts: PromptInjection[], options?: {once?: boolean}
-): {uninject(): void}
-declare function uninjectPrompts(ids: string[]): void
 ```
 
-`id`、`position`、`depth`、`role`、`content` 必填。`should_scan` 与 `once` 默认都是 `false`；过滤函数必须最终返回严格的布尔值。返回对象的 `uninject()` 移除该批注册 ID，也可通过 `uninjectPrompts` 按 ID 移除。
-
-注入由原生材料流程保存和消费，不依赖 Worker 一直驻留。`late-author` 阶段发生在本轮扫描和聊天注入消费切点之后：该阶段的持久注册供后继 generation 使用；`once` 注册会在本轮终止边界清理。因此不能保证在人物描述末段调用注入，就改变当前已经组装的请求。相同计划的重试不重复结算副作用；父世界线的活动注册也不会仅凭归档自动继承到子线。
-
-### 执行预算、失败与能力边界
-
-模板使用冻结时钟和本轮随机种子：`Date.now()`／无参数 `new Date()` 不读取任意变化的墙钟，`Math.random()` 按本轮确定的顺序抽取。结果可与相应来源和执行记录联系起来；这些值不适合代替需要独立持久记录的游戏抽签结果。
-
-当前单模板源上限为 16,384 字符、输出上限为 65,536 字符，VM 执行预算为 250 ms，父级等待上限为 1.5 s；另有嵌套深度、累计输入输出和 helper 次数预算。这些限制不是模型响应时间限制。不要在模板中轮询外部状态或写无限循环。
-
-该模板接口不提供持久 `setvar`／MVU 写入、Schema 注册、`getVariables`、slash 命令或通用事件订阅；`process`、`require`、联网及 DOM 接口也没有作为模板能力提供。数值、Schema 和浏览器交互应使用它们各自的作者入口。
-
-未支持的 helper、不可用作用域、坏标签、超时、取消或过期来源会产生明确拒绝，不把半份输出当成成功材料。已识别 helper 的拒绝不能靠作者 `try/catch` 吞掉后继续发布。排错时先看来源字段与诊断，再检查作用域、查询标题和执行阶段；不要让模型猜测并替模板执行器补算。
+保存后需要刷新页面内容时，也要等待重新读取完成，并把异步失败放在实际调用链的错误处理中。事件注册与页面生命周期配合清理；数值页面使用 `nextTavern.getNumericalState()` 提供的当前 `values`、`expected` 和可编辑状态，再调用数值写入口检查真实回执。不能把 ordinary 变量里的 `stat_data` 副本当作数值已提交。浏览器 API 的实际入口见 [author-native-helper-frame.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/ui/author-native-helper-frame.ts)。
 
 ## 9. 兼容资料与开放扩展
 
@@ -462,7 +458,7 @@ declare function uninjectPrompts(ids: string[]): void
 - **已有能力读取**：如开场目录、原生世界书、已支持的宏、正则或美化字段，按各自合同执行。
 - **需要外部环境**：未封装的图片、音频、远程页面或第三方插件资料，不会因导出 JSON 自动一并安装。
 
-作者应使用 `characterId` 等可移植标识。`id`、`importId`、`sources`、`verified`、本地 `schemaVersion`／`version`、创建与更新时间、`tavern`、`editedFrom` 等是运行记录中的保留字段；行级导出与激活会移除这些本地字段，`beauty.sources` 也不会作为跨环境权限保留。`authorExecution.schemaVersion` 则是格式明确规定的版本字段，两者不能混淆。
+作者应使用 `characterId` 等可移植标识。`id`、`importId`、`sources`、`verified`、本地 `schemaVersion`／`version`、创建与更新时间、`tavern`、`editedFrom` 等是运行记录中的保留字段；行级导出与激活会移除这些本地字段，`beauty.sources` 也不会作为跨环境权限保留。顶层 classification 自己的版本字段只描述分类记录，不授予运行时写权限。
 
 ## 10. 导入、互动写卡、转换与导出
 
@@ -473,13 +469,13 @@ declare function uninjectPrompts(ids: string[]): void
 | 互动写卡／小说改编定稿 | 共同定稿入口保存原生文档 | `characterId`、实际 JSON 栏目、玩家确认后的应用范围 |
 | 转换并应用到当前对话 | 保存当前来源对应的分类关联 | 高级人物是否符合原文；普通执行资料是否仍完整 |
 | 导出上传源文件 | 当时上传的文件名、类型和原始字节 | 后来的作者编辑不会合并进原件 |
-| 导出当前原生卡 | 当前已保存的作者设定、所需版本及归档 | 这是可继续创作的卡，不是完整聊天备份 |
+| 导出当前原生卡 | 当前已保存的单份作者设定、有效分类及归档 | 这是可继续创作的卡，不是完整聊天备份 |
 
 转换并应用不重新导入原件、不重插开场、不新增剧情轮次，也不改写旧正文。有效原生结构的读取、合并和导出由程序完成，不需要为了识别已有栏目再调用模型。混合社区资料需要语义归属时才运行分类任务；一次任务可能包含续步或重试，不能将“一次转换”等同于一次 HTTP 请求。
 
 没有上传原件的互动写卡，两种导出入口都提供当前原生卡。DOCX 的原始文件字节与抽取文本分别保存。把导出的 JSON 上传到另一工作区后，这份 JSON 成为那次上传的原件；不能从中声称恢复更早的 PNG 文件字节。
 
-社区卡转换后的导出还可能保留原有 CCv2／CCv3 外壳，并在 `data.extensions.dsh_nexttavern_author` 写入版本化原生作者资料。该受支持扩展用于 NextTavern 再导入；看到外壳仍是 `chara_card_v2`／`chara_card_v3`，不代表内部转换没有保存。其他客户端是否理解这份扩展取决于其实现。新写的上例则直接使用 `nexttavern_card` 外壳。
+产品转换和当前卡片导出直接生成 Native 1.2 `nexttavern_card` JSON，包含当前保存的作者资料与有效分类（如有）。已有 CCv2／CCv3 输入和合并接口仍可用于传输与再导入。社区来源版本与 Native 文档版本彼此独立。
 
 ## 11. 作者的验证顺序
 
@@ -502,7 +498,7 @@ declare function uninjectPrompts(ids: string[]): void
 | 占位符原样显示 | 检查是否为 `materialized` 主开场、宏名称是否受支持，以及当前是否提供了该宏上下文 |
 | 条目已保存在文件中，却没进入本轮 | 检查启用、触发词、常驻设置和预算；高级分类引用不会强制准入 |
 | 加了 `status.text` 却没有实时数值 | 它是展示说明；按状态指南另写初始化与更新合同 |
-| 改成 1.1 后高级功能仍未就绪 | `authorExecution` 必需但不充分；需要基于当前来源的有效分类，不要手写 ready 或 verified 标记 |
+| 文件是 1.2，高级功能仍未就绪 | 区分明确作者人物与需要分类的社区来源；分类应与当前原文有效关联，版本号或自填 ready／verified 不代替它 |
 | 导出的原件没有作者刚改的内容 | 原件保留上传字节；应下载“当前原生卡”检查当前设定 |
 | 卡里保留了脚本或扩展，但玩法没有执行 | 保留资料不等于存在运行入口；核对对应能力和依赖，避免依赖未知字段自动执行 |
 
@@ -516,11 +512,11 @@ declare function uninjectPrompts(ids: string[]): void
 | 作者数据、执行视图、可移植字段、ST 扩展外壳 | [nexttavern-card.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/nexttavern-card.ts) |
 | 解码限制、开场候选、基础宏预览 | [tavern-card.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/tavern-card.ts) |
 | 原创卡身份检查、草稿检查与共同定稿 | [roleplay-authoring.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/roleplay-authoring.ts) |
-| 分类输入、跨度验证、原文物化与 1.1 产物 | [native-card-conversion.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/native-card-conversion.ts) |
+| 分类输入、跨度验证、坐标与单正文产物 | [native-card-conversion.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/native-card-conversion.ts) |
 | 高级视图、来源失效与静态人物 | [native-card-advanced.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/native-card-advanced.ts) |
 | 本轮动态材料与高级人物消费 | [native-card-advanced-material.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/native-card-advanced-material.ts) |
-| EJS 标签与支持预算 | [tavern-template-compiler.mts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/tavern-template-compiler.mts)、[tavern-template-data.mts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/tavern-template-data.mts) |
-| EJS 的真实执行、变量和世界书 helper | [tavern-template-worker.mts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/tavern-template-worker.mts)、[tavern-template-injection-guest.mts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/tavern-template-injection-guest.mts) |
+| EJS 标签、执行策略与预算 | [tavern-template-ejs-compiler.mts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/tavern-template-ejs-compiler.mts)、[tavern-template-ejs-runtime-types.mts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/tavern-template-ejs-runtime-types.mts) |
+| EJS 的真实执行、变量和世界书 helper | [tavern-template-ejs-host.mts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/tavern-template-ejs-host.mts)、[tavern-template-ejs-host-guest.mts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/tavern-template-ejs-host-guest.mts)、[tavern-template-ejs-runtime-worker.mts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/tavern-template-ejs-runtime-worker.mts) |
 | Native 模板来源与纯数据初值组合 | [roleplay-prompt-program-source.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/roleplay-prompt-program-source.ts)、[roleplay-prompt-opening-source-data.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/roleplay-prompt-opening-source-data.ts) |
 | 世界书渲染与请求时序 | [roleplay-tavern-prompt-render.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/roleplay-tavern-prompt-render.ts)、[roleplay-tavern-prompt.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/roleplay-tavern-prompt.ts) |
 | 当前作者资料、开场和导出外壳 | [roleplay-native-card-export.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/roleplay-native-card-export.ts) |

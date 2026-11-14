@@ -1,16 +1,25 @@
 /** Frozen original dialogue request DATA. Native transport policy remains
  * with TaskHost: this module neither creates a provider nor invents user input. */
 import {recordSha256} from './roleplay-data.js'
-import type {AuthorChatBindingV1,AuthorChatRevisionV1,AuthorDialogTaskRefV1}
+import type {AuthorChatNamespaceV3,AuthorChatNamespaceRootV3}
   from './roleplay-author-chat-state-types.js'
-import type {AuthorChatBindingV2} from './roleplay-author-chat-state-v2-types.js'
-
-/** Dialog Core resolves the retained programme's static writer once. Content
- * captures its current Source and State under the existing Source FIFO. */
-export interface AdmittedAuthorDialogTarget {
+import type {TavernLoreOrdinaryExecutionEvidenceV1} from './tavern-lore-ordinary-preparation.mjs'
+export interface AuthorDialogTaskRefV1 {
+  readonly taskId:string
+  readonly generation:string
+  readonly resultSha256:string
+}
+export interface AuthorDialogChatAddress {
+  readonly namespace:AuthorChatNamespaceV3
   readonly programSha256:string
-  readonly scriptIdentity:string
-  readonly binding:AuthorChatBindingV1|AuthorChatBindingV2
+  readonly realmId:string
+  readonly groupId:string
+}
+
+/** Dialog Core supplies an actual live realm and Source namespace. No static
+ * variable declaration or synthetic target key grants a model request. */
+export interface AdmittedAuthorDialogTarget {
+  readonly binding:AuthorDialogChatAddress
 }
 
 export const AUTHOR_DIALOG_HOST_SLOTS_V1=['world_info_before','char_description',
@@ -26,12 +35,13 @@ export interface AuthorDialogPromptV1 {
   readonly schemaVersion:1
   readonly encoding:'native-author-dialog-frozen-prompt-v1'
   readonly authority:'consumer-data-only'
-  readonly binding:AuthorChatBindingV1|AuthorChatBindingV2
-  readonly revision:AuthorChatRevisionV1
+  readonly binding:AuthorDialogChatAddress
+  readonly root:AuthorChatNamespaceRootV3
   readonly operationId:string
   /** Preserve the original six ordered system slots. Dynamic system already
    * contains its form input; no additional user phase is declared here. */
   readonly orderedSystem:readonly AuthorDialogSystemSlotV1[]
+  readonly ordinaryPreparationEvidence?:TavernLoreOrdinaryExecutionEvidenceV1
   readonly shouldSilence:true
   readonly maxChatHistory:0
   readonly promptSha256:string
@@ -40,8 +50,8 @@ export interface AuthorDialogResultV1 {
   readonly schemaVersion:1
   readonly encoding:'native-author-dialog-result-v1'
   readonly authority:'consumer-data-only'
-  readonly binding:AuthorChatBindingV1|AuthorChatBindingV2
-  readonly revision:AuthorChatRevisionV1
+  readonly binding:AuthorDialogChatAddress
+  readonly root:AuthorChatNamespaceRootV3
   readonly operationId:string
   readonly promptSha256:string
   readonly task:AuthorDialogTaskRefV1
@@ -61,18 +71,20 @@ export interface AuthorDialogNativeCompletionV1 {
 export function authorDialogSystemPrefixV1(prompt:AuthorDialogPromptV1):string {
   return prompt.orderedSystem.slice(0,5).map(slot=>slot.text).filter(text=>text.length>0).join('\n\n')
 }
-export function freezeAuthorDialogPromptV1(input:{binding:AuthorChatBindingV1|AuthorChatBindingV2;
-  revision:AuthorChatRevisionV1;operationId:string;
+export function freezeAuthorDialogPromptV1(input:{binding:AuthorDialogChatAddress;
+  root:AuthorChatNamespaceRootV3;operationId:string;
   hostSlots:Readonly<Record<AuthorDialogHostSlotV1,{text:string;sourceSha256:string}>>;
-  dynamicSystem:{text:string;sourceSha256:string}}):AuthorDialogPromptV1 {
+  dynamicSystem:{text:string;sourceSha256:string};
+  ordinaryPreparationEvidence?:TavernLoreOrdinaryExecutionEvidenceV1}):AuthorDialogPromptV1 {
   const orderedSystem=Object.freeze([
     ...AUTHOR_DIALOG_HOST_SLOTS_V1.map(slot=>Object.freeze({role:'system' as const,slot,...input.hostSlots[slot]})),
     Object.freeze({role:'system' as const,slot:'dynamic-system' as const,...input.dynamicSystem}),
   ])
   const body={schemaVersion:1 as const,encoding:'native-author-dialog-frozen-prompt-v1' as const,
     authority:'consumer-data-only' as const,binding:Object.freeze({...input.binding}),
-    revision:Object.freeze({revision:input.revision.revision,
-      head:input.revision.head?Object.freeze({...input.revision.head}):null}),
-    operationId:input.operationId,orderedSystem,shouldSilence:true as const,maxChatHistory:0 as const}
+    root:input.root,
+    operationId:input.operationId,orderedSystem,
+    ...input.ordinaryPreparationEvidence?{ordinaryPreparationEvidence:input.ordinaryPreparationEvidence}:{},
+    shouldSilence:true as const,maxChatHistory:0 as const}
   return Object.freeze({...body,promptSha256:recordSha256(body)})
 }

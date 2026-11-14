@@ -1,4 +1,7 @@
-import type {TavernLoreEditRequestV1,TavernLoreEditReceiptV1} from '../core/roleplay-tavern-lore-edits-types.js'
+import type {TavernLoreEditRequestV1} from '../core/roleplay-tavern-lore-edits-types.js'
+import type {TavernLoreEditorRequestV1,TavernLoreEditorFieldsMutationV2,TavernLoreEditorReceiptV1}
+  from '../core/roleplay-tavern-lore-editor-types.js'
+import type {TavernLoreMemberIdentityV1} from '../core/roleplay-tavern-lore-membership.js'
 import type {TavernLoreCurrentNativeFieldsV1} from '../core/tavern-lore-plan-types.mjs'
 
 export const LORE_EDITOR_REQUEST_BYTES_V1=1_048_576
@@ -85,24 +88,55 @@ export function validateTavernLoreEditorFieldV1(field:string,value:unknown):void
   if(!member(value,field==='position'?LORE_EDITOR_POSITIONS_V1:
     field==='role'?LORE_EDITOR_ROLES_V1:LORE_EDITOR_LOGIC_V1))fail('LORE_EDITOR_FIELD_ENUM')
 }
-function canonicalRequest(raw:unknown):TavernLoreEditRequestV1 {
+function canonicalMemberIdentity(raw:unknown):TavernLoreMemberIdentityV1 {
   if(!object(raw))fail('LORE_EDITOR_REQUEST_INVALID')
-  exact(raw,['sessionId','expectedSourceSha256','expectedRevision','operationId','rawEntryPointer','rawEntrySha256','fields'])
+  if(raw.kind==='original') {
+    exact(raw,['kind','rawEntryPointer','rawEntrySha256'])
+    if(typeof raw.rawEntryPointer!=='string'||!raw.rawEntryPointer.startsWith('/')
+      ||typeof raw.rawEntrySha256!=='string'||!HASH.test(raw.rawEntrySha256))fail('LORE_EDITOR_REQUEST_INVALID')
+    return {kind:'original',rawEntryPointer:raw.rawEntryPointer,rawEntrySha256:raw.rawEntrySha256}
+  }
+  if(raw.kind!=='introduced')fail('LORE_EDITOR_REQUEST_INVALID')
+  exact(raw,['kind','eventRef','ordinal'])
+  if(!object(raw.eventRef))fail('LORE_EDITOR_REQUEST_INVALID')
+  exact(raw.eventRef,['key','sha256'])
+  if(typeof raw.eventRef.key!=='string'||typeof raw.eventRef.sha256!=='string'||!HASH.test(raw.eventRef.sha256)
+    ||typeof raw.ordinal!=='number'||!Number.isSafeInteger(raw.ordinal)||raw.ordinal<0)fail('LORE_EDITOR_REQUEST_INVALID')
+  return {kind:'introduced',eventRef:{key:raw.eventRef.key,sha256:raw.eventRef.sha256},ordinal:raw.ordinal}
+}
+function canonicalRequest(raw:unknown):TavernLoreEditorRequestV1 {
+  if(!object(raw))fail('LORE_EDITOR_REQUEST_INVALID')
+  const mutation=raw.schemaVersion===2
+  exact(raw,mutation?['schemaVersion','encoding','sessionId','expectedSourceSha256','expectedRevision','operationId','mutation']:
+    ['sessionId','expectedSourceSha256','expectedRevision','operationId','rawEntryPointer','rawEntrySha256','fields'])
   if(typeof raw.sessionId!=='string'||!SID.test(raw.sessionId)||typeof raw.operationId!=='string'||!SID.test(raw.operationId)
     ||typeof raw.expectedSourceSha256!=='string'||!HASH.test(raw.expectedSourceSha256)
-    ||typeof raw.rawEntrySha256!=='string'||!HASH.test(raw.rawEntrySha256)
     ||typeof raw.expectedRevision!=='number'||!Number.isSafeInteger(raw.expectedRevision)
-    ||raw.expectedRevision<0||raw.expectedRevision>256||typeof raw.rawEntryPointer!=='string'
-    ||!raw.rawEntryPointer.startsWith('/')||bytes(raw.rawEntryPointer)>4096||/[\x00-\x1f]/.test(raw.rawEntryPointer)
-    ||!object(raw.fields)||!Object.keys(raw.fields).length)fail('LORE_EDITOR_REQUEST_INVALID')
-  for(const [key,value] of Object.entries(raw.fields))validateTavernLoreEditorFieldV1(key,value)
+    ||raw.expectedRevision<0||raw.expectedRevision>256)fail('LORE_EDITOR_REQUEST_INVALID')
+  let fieldInput=raw.fields,target:TavernLoreMemberIdentityV1|undefined
+  if(mutation) {
+    if(raw.encoding!=='tavern-lore-mutation-request-v2'||!object(raw.mutation))fail('LORE_EDITOR_REQUEST_INVALID')
+    exact(raw.mutation,['kind','target','fields'])
+    if(raw.mutation.kind!=='fields')fail('LORE_EDITOR_REQUEST_INVALID')
+    target=canonicalMemberIdentity(raw.mutation.target);fieldInput=raw.mutation.fields
+  }else if(typeof raw.rawEntrySha256!=='string'||!HASH.test(raw.rawEntrySha256)
+    ||typeof raw.rawEntryPointer!=='string'||!raw.rawEntryPointer.startsWith('/')
+    ||bytes(raw.rawEntryPointer)>4096||/[\x00-\x1f]/.test(raw.rawEntryPointer))fail('LORE_EDITOR_REQUEST_INVALID')
+  if(!object(fieldInput)||!Object.keys(fieldInput).length)fail('LORE_EDITOR_REQUEST_INVALID')
+  for(const [key,value] of Object.entries(fieldInput))validateTavernLoreEditorFieldV1(key,value)
   const fields:Record<string,unknown>={}
-  for(const key of fieldOrder)if(Object.hasOwn(raw.fields,key))fields[key]=raw.fields[key]
-  return freeze({sessionId:raw.sessionId,expectedSourceSha256:raw.expectedSourceSha256,expectedRevision:raw.expectedRevision,
-    operationId:raw.operationId,rawEntryPointer:raw.rawEntryPointer,rawEntrySha256:raw.rawEntrySha256,
-    fields:fields as TavernLoreCurrentNativeFieldsV1})
+  for(const key of fieldOrder)if(Object.hasOwn(fieldInput,key))fields[key]=fieldInput[key]
+  const basis={sessionId:raw.sessionId,expectedSourceSha256:raw.expectedSourceSha256,
+    expectedRevision:raw.expectedRevision,operationId:raw.operationId}
+  return freeze(target?{schemaVersion:2 as const,encoding:'tavern-lore-mutation-request-v2' as const,...basis,
+    mutation:{kind:'fields' as const,target,fields:fields as TavernLoreCurrentNativeFieldsV1}}:
+    {...basis,rawEntryPointer:raw.rawEntryPointer as string,rawEntrySha256:raw.rawEntrySha256 as string,
+      fields:fields as TavernLoreCurrentNativeFieldsV1})
 }
-export function canonicalTavernLoreEditRequestV1(request:TavernLoreEditRequestV1):TavernLoreEditRequestV1 {
+export function canonicalTavernLoreEditRequestV1(request:TavernLoreEditRequestV1):TavernLoreEditRequestV1
+export function canonicalTavernLoreEditRequestV1(request:TavernLoreEditorFieldsMutationV2):TavernLoreEditorFieldsMutationV2
+export function canonicalTavernLoreEditRequestV1(request:TavernLoreEditorRequestV1):TavernLoreEditorRequestV1
+export function canonicalTavernLoreEditRequestV1(request:TavernLoreEditorRequestV1):TavernLoreEditorRequestV1 {
   return canonicalRequest(parse(JSON.stringify(request),LORE_EDITOR_REQUEST_BYTES_V1))
 }
 /** Same existing record-hash semantics for the strict JSON HTTP domain: UTF-16
@@ -117,7 +151,7 @@ function recordJson(value:unknown):string {
   const x=value as Record<string,unknown>
   return '{'+Object.keys(x).sort().map(k=>JSON.stringify(k)+':'+recordJson(x[k])).join(',')+'}'
 }
-export async function tavernLoreEditPayloadSha256V1(request:TavernLoreEditRequestV1):Promise<string> {
+export async function tavernLoreEditPayloadSha256V1(request:TavernLoreEditorRequestV1):Promise<string> {
   const digest=await globalThis.crypto.subtle.digest('SHA-256',new TextEncoder().encode(recordJson(request)))
   return Array.from(new Uint8Array(digest),value=>value.toString(16).padStart(2,'0')).join('')
 }
@@ -126,7 +160,7 @@ export interface TavernLoreEditorPendingV1 {
   readonly encoding:'tavern-lore-editor-pending-v1'
   readonly sessionId:string
   readonly operationId:string
-  readonly request:TavernLoreEditRequestV1
+  readonly request:TavernLoreEditorRequestV1
   readonly body:string
   readonly payloadSha256:string
 }
@@ -135,7 +169,7 @@ const storageKey=(sid:string):string=>{
   if(!SID.test(sid))fail('LORE_EDITOR_SESSION_INVALID')
   return 'nexttavern-lore-pending-v1:'+sid
 }
-export function createTavernLoreEditorPendingV1(request:TavernLoreEditRequestV1,payloadSha256:string):TavernLoreEditorPendingV1 {
+export function createTavernLoreEditorPendingV1(request:TavernLoreEditorRequestV1,payloadSha256:string):TavernLoreEditorPendingV1 {
   if(!HASH.test(payloadSha256))fail('LORE_EDITOR_PENDING_HASH')
   const canonical=canonicalTavernLoreEditRequestV1(request)
   return freeze({schemaVersion:1,encoding:'tavern-lore-editor-pending-v1',sessionId:canonical.sessionId,
@@ -170,10 +204,11 @@ export function clearTavernLoreEditorPendingV1(storage:TavernLoreEditorStorageV1
   storage.removeItem(key)
   if(storage.getItem(key)!==null)fail('LORE_EDITOR_PENDING_READBACK')
 }
-export function tavernLoreReceiptMatchesV1(receipt:TavernLoreEditReceiptV1,pending:TavernLoreEditorPendingV1):boolean {
+export function tavernLoreReceiptMatchesV1(receipt:TavernLoreEditorReceiptV1,pending:TavernLoreEditorPendingV1):boolean {
+  if(receipt.authority!=='consumer-data-only'||receipt.operationId!==pending.operationId
+    ||receipt.payloadSha256!==pending.payloadSha256||receipt.editSourceSha256!==pending.request.expectedSourceSha256
+    ||receipt.revision!==pending.request.expectedRevision+1)return false
+  if('mutation' in pending.request)return receipt.schemaVersion===2&&receipt.encoding==='tavern-lore-mutation-receipt-v2'
   return receipt.schemaVersion===1&&receipt.encoding==='tavern-lore-edit-receipt-v1'
-    &&receipt.authority==='consumer-data-only'&&receipt.operationId===pending.operationId
-    &&receipt.payloadSha256===pending.payloadSha256&&receipt.editSourceSha256===pending.request.expectedSourceSha256
     &&receipt.rawEntryPointer===pending.request.rawEntryPointer&&receipt.rawEntrySha256===pending.request.rawEntrySha256
-    &&receipt.revision===pending.request.expectedRevision+1
 }

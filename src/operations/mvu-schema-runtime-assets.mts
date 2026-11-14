@@ -11,20 +11,20 @@ import {TYPESCRIPT_SHARED_DEPENDENCY} from '../core/tavern-typescript-runtime-de
 
 // Contract checks intentionally do not import a source-tree runtime helper:
 // ordinary operation emission and public layout relocation preserve imports.
-const SCHEMA_RUNTIME_NAME='dsh-nexttavern-mvu-schema-runtime',SCHEMA_RUNTIME_VERSION='0.3.0'
+const SCHEMA_RUNTIME_NAME='dsh-nexttavern-mvu-schema-runtime-v4-update-batch-v1',SCHEMA_RUNTIME_VERSION='0.4.0'
 const SCHEMA_RUNTIME_DESCRIPTOR='assets/runtime.json'
 const SCHEMA_RUNTIME_PINS={'quickjs-emscripten-core':'0.32.0',
   '@jitl/quickjs-wasmfile-release-sync':'0.32.0','@jitl/quickjs-ffi-types':'0.32.0'}
-const SCHEMA_RUNTIME_LOCAL_COMPILER_PINS={typescript:'5.9.3',...SCHEMA_RUNTIME_PINS}
 const schemaAssetSha=(data:string|Uint8Array)=>createHash('sha256').update(data).digest('hex')
 const schemaAssetPath=(value:string)=>typeof value==='string'&&value.length>0&&!value.includes('\\')
   &&!value.includes(':')&&!value.startsWith('/')&&value.split('/').every(part=>part!==''&&part!=='.'&&part!=='..')
 
 export interface MvuSchemaRuntimeAssetRecipe {
   schemaVersion:1
-  executorVersion?:1|2|3|4
+  executorVersion:4
   commandPolicy?:'registered-command-policy-v1'|'update-batch-atomic-v1'
   immutableGeneration?:string
+  scopeInputProtocols?:readonly ('full-frame-v1'|'scope-ref-v2')[]
   packageArtifact:string
   modules:readonly {role:SchemaRuntimeRole;artifact:string;output:string}[]
   guests:readonly {kind:'zod'|'lodash';packageAlias:string;version:string;globalName:string;output:string;licenseOutput:string}[]
@@ -33,19 +33,17 @@ export interface MvuSchemaRuntimeAssetRecipe {
 }
 export interface MvuSchemaRuntimeAssetPlan {
   artifacts:readonly RuntimeAssetSourceArtifactV1[]
-  product:{mvuSchemaRuntime?:MvuSchemaRuntimeAssetRecipe;mvuSchemaRuntimes?:readonly MvuSchemaRuntimeAssetRecipe[];
+  product:{mvuSchemaRuntimes?:readonly MvuSchemaRuntimeAssetRecipe[];
     historicalRuntimeRebuilds?:readonly HistoricalRuntimeAssetRebuildV1[]}
 }
 interface SchemaRuntimeDescriptor {
-  schemaVersion:1|2;name:string;version:string;modules:Record<SchemaRuntimeRole,string>
+  schemaVersion:2;name:string;version:string;modules:Record<SchemaRuntimeRole,string>
   guests:readonly SchemaRuntimeGuest[];dependencies:Record<string,string>
-  sharedCompiler?:typeof TYPESCRIPT_SHARED_DEPENDENCY
+  sharedCompiler:typeof TYPESCRIPT_SHARED_DEPENDENCY
+  scopeInputProtocols?:readonly ('full-frame-v1'|'scope-ref-v2')[]
 }
-/** Legacy plans own one recipe. New plans own one list; accepting both would
- * give the same package two independent producers and ambiguous identities. */
 export function mvuSchemaRuntimeRecipes(product:MvuSchemaRuntimeAssetPlan['product']):readonly MvuSchemaRuntimeAssetRecipe[] {
-  if(product.mvuSchemaRuntime&&product.mvuSchemaRuntimes)throw Error('SCHEMA_ASSET_RECIPE_DUPLICATE')
-  const recipes=product.mvuSchemaRuntimes??(product.mvuSchemaRuntime?[product.mvuSchemaRuntime]:[])
+  const recipes=product.mvuSchemaRuntimes??[]
   if(new Set(recipes.map(row=>row.packageArtifact)).size!==recipes.length) {
     throw Error('SCHEMA_ASSET_RECIPE_DUPLICATE')
   }
@@ -63,12 +61,9 @@ export async function buildMvuSchemaRuntimeAssets(options:{
 }) {
   const repo=fs.realpathSync(options.repo),recipes=mvuSchemaRuntimeRecipes(options.plan.product)
   const recipe=options.recipe??(recipes.length===1?recipes[0]:undefined)
-  // Frozen producer recipes retain their original package-local compiler and
-  // descriptor. Current shared-compiler output must not rewrite that identity.
-  const sharedCompiler=recipe?.dependencies.typescript===undefined
-  const dependencies=sharedCompiler?SCHEMA_RUNTIME_PINS:SCHEMA_RUNTIME_LOCAL_COMPILER_PINS
+  const dependencies=SCHEMA_RUNTIME_PINS
   if(!recipe||recipe.schemaVersion!==1||recipe.descriptorOutput!==SCHEMA_RUNTIME_DESCRIPTOR
-    ||!recipes.includes(recipe)||![1,2,3,4].includes(recipe.executorVersion??1)
+    ||!recipes.includes(recipe)||recipe.executorVersion!==4
     ||!same(recipe.dependencies,dependencies))throw Error('SCHEMA_ASSET_RECIPE_INVALID')
   const historical=options.historicalRebuild
   if(historical&&(!options.plan.product.historicalRuntimeRebuilds?.includes(historical)
@@ -80,7 +75,6 @@ export async function buildMvuSchemaRuntimeAssets(options:{
   if(recipe.immutableGeneration&&!historical)throw Error('SCHEMA_ASSET_IMMUTABLE_GENERATION')
   const scope=historical?createRuntimeAssetSourceScopeV1({repo,artifacts:options.plan.artifacts,
     sourceBindings:historical.sourceBindings}):undefined
-  const version=recipe.executorVersion??1
   const artifact=(id:string)=>{
     const rows=options.plan.artifacts.filter(row=>row.id===id)
     if(rows.length!==1)throw Error('SCHEMA_ASSET_ARTIFACT_UNKNOWN')
@@ -89,15 +83,7 @@ export async function buildMvuSchemaRuntimeAssets(options:{
   const metadata=JSON.parse(fs.readFileSync(artifact(recipe.packageArtifact),'utf8')) as {
     name:string;version:string;dependencies:Record<string,string>}
   const packageName=metadata.name,packageVersion=metadata.version
-  const supportedNames=version===4?[SCHEMA_RUNTIME_NAME+'-v4',SCHEMA_RUNTIME_NAME+'-v4-policy',
-    SCHEMA_RUNTIME_NAME+'-v4-policy-init-chat-v1',SCHEMA_RUNTIME_NAME+'-v4-policy-save-next-v1',
-    SCHEMA_RUNTIME_NAME+'-v4-policy-save-joins-v1',SCHEMA_RUNTIME_NAME+'-v4-policy-save-facts-v1',
-    SCHEMA_RUNTIME_NAME+'-v4-policy-save-step-facts-v1',SCHEMA_RUNTIME_NAME+'-v4-policy-save-continuous-v1',
-    SCHEMA_RUNTIME_NAME+'-v4-policy-save-codec-v1',SCHEMA_RUNTIME_NAME+'-v4-policy-save-material-owner-v1',
-    SCHEMA_RUNTIME_NAME+'-v4-server-candidates-v1',SCHEMA_RUNTIME_NAME+'-v4-server-candidates-v2',
-    SCHEMA_RUNTIME_NAME+'-v4-update-batch-v1']:
-    [version===1?SCHEMA_RUNTIME_NAME:SCHEMA_RUNTIME_NAME+'-v'+version]
-  if(!supportedNames.includes(packageName)||packageVersion!==(version===4?'0.4.0':SCHEMA_RUNTIME_VERSION)
+  if(packageName!==SCHEMA_RUNTIME_NAME||packageVersion!==SCHEMA_RUNTIME_VERSION
     ||!same(metadata.dependencies,dependencies))throw Error('SCHEMA_ASSET_PACKAGE_INVALID')
   const roles=['provider','compiler','compiler-worker','runner','runner-worker']
   if(recipe.modules.length!==roles.length||new Set(recipe.modules.map(row=>row.role)).size!==roles.length
@@ -139,7 +125,7 @@ export async function buildMvuSchemaRuntimeAssets(options:{
       // Public projection relocates registered source paths. Omit esbuild's
       // path comments so both layouts rebuild the same executable bytes.
       target:'es2023',write:false,metafile:true,minifyWhitespace:true,tsconfigRaw:{compilerOptions:{}},
-      external:[...Object.keys(dependencies),...(sharedCompiler?[TYPESCRIPT_SHARED_DEPENDENCY.name]:[])],
+      external:[...Object.keys(dependencies),TYPESCRIPT_SHARED_DEPENDENCY.name],
       legalComments:'none',...(scope?{plugins:[scope.plugin]}:{})})
     const inputs=Object.keys(result.metafile!.inputs).map(file=>path.resolve(repo,file))
     for(const file of inputs) {
@@ -172,8 +158,9 @@ export async function buildMvuSchemaRuntimeAssets(options:{
     guests.push({kind:row.kind,packageName:guest.name,version:row.version,globalName:row.globalName,
       path:row.output,sha256:schemaAssetSha(code),licensePath:row.licenseOutput})
   }
-  const descriptor:SchemaRuntimeDescriptor={schemaVersion:sharedCompiler?2:1,name:packageName,version:packageVersion,
-    modules,guests,dependencies:{...dependencies},...(sharedCompiler?{sharedCompiler:TYPESCRIPT_SHARED_DEPENDENCY}:{})}
+  const descriptor:SchemaRuntimeDescriptor={schemaVersion:2,name:packageName,version:packageVersion,
+    modules,guests,dependencies:{...dependencies},sharedCompiler:TYPESCRIPT_SHARED_DEPENDENCY,
+    ...recipe.scopeInputProtocols?{scopeInputProtocols:recipe.scopeInputProtocols}:{}}
   add(recipe.descriptorOutput,JSON.stringify(descriptor,null,2)+'\n')
   if(!historical) {
     const root=path.resolve(options.packageRoot)

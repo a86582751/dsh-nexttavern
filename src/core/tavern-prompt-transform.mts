@@ -4,21 +4,31 @@ import {boundedSTPromptTransformBatchV1} from './bounded-regex.js'
 import {executeTavernPromptTransformsV1,hasTavernPromptMacroSyntaxV1} from './tavern-prompt-transform-execution.mjs'
 export {tavernPromptRegexAppliesToChannelV1} from './tavern-prompt-transform-execution.mjs'
 import {TAVERN_PROMPT_TRANSFORM_LIMITS_V1 as LIMITS,TAVERN_PROMPT_CARD_ORDER_V1,
-  TAVERN_PROMPT_POST_ORDER_V1,TAVERN_PROMPT_INSTRUCT_ORDER_V1} from './tavern-prompt-transform-types.mjs'
+  TAVERN_PROMPT_POST_ORDER_V1,TAVERN_PROMPT_INSTRUCT_ORDER_V1,
+  TAVERN_PROMPT_HELPER_VARIABLE_SCOPES_V1} from './tavern-prompt-transform-types.mjs'
 export {TAVERN_PROMPT_CARD_ORDER_V1,TAVERN_PROMPT_POST_ORDER_V1,
-  TAVERN_PROMPT_INSTRUCT_ORDER_V1} from './tavern-prompt-transform-types.mjs'
-import type {TavernPromptBindingV1,TavernPromptMacroSnapshotV1,TavernPromptNamesV1,
+  TAVERN_PROMPT_INSTRUCT_ORDER_V1,TAVERN_PROMPT_HELPER_VARIABLE_SCOPES_V1} from './tavern-prompt-transform-types.mjs'
+import type {TavernPromptBindingV1,TavernPromptHelperVariableScopeV1,TavernPromptMacroSnapshotV1,TavernPromptNamesV1,
   TavernPromptProjectionV1,TavernPromptTransformInputV1,TavernPromptTransformResultV1,
   TavernPromptTransformDependenciesV1,TavernPromptTransformDiagnosticV1} from './tavern-prompt-transform-types.mjs'
 
 const names=['user','char','group','charIfNotGroup','groupNotMuted','notChar','model'] as const
+const readScopes=['card','chat','message','script','global','initial','cache','preset'] as const
+const helperScopeKinds:Readonly<Record<TavernPromptHelperVariableScopeV1,readonly string[]>>={
+  message:['message'],chat:['chat'],character:['card'],preset:['preset'],global:['global'],
+}
 export const TAVERN_PROMPT_TRANSFORM_POLICY_V1=frozen({schemaVersion:1,
   encoding:'owned-st-legacy-prompt-transform-policy-v1',upstreamCommit:'06bde939fb1e9c4c8d8641d810f0a916b5bce127',
   unit:'utf16-code-units',limits:LIMITS,macroEngine:'legacy-frozen-read-only',
+  random:'captured-attempt-sha256-stream; pick-chat-content-offset; no-ambient-entropy',
   scriptOrder:['global','preset','scoped'],capture:'st-callback-full-numeric-and-named-trim-macro',
   unknown:'selected-refusal-catalog-deferred',outlet:'explicit-read-only-macro-consumption',
   messageHelpers:{upstreamCommit:'519599bc68247d8e759cc844a983f8f5252941a8',
-    macros:['get_message_variable','format_message_variable'],values:'owned-latest-message; path-read; omit-private-subtree',
+    scopes:TAVERN_PROMPT_HELPER_VARIABLE_SCOPES_V1,
+    macros:['get_message_variable','format_message_variable','get_chat_variable','format_chat_variable',
+      'get_character_variable','format_character_variable','get_preset_variable','format_preset_variable',
+      'get_global_variable','format_global_variable'],
+    values:'owned-captured-scopes; path-read; omit-private-subtree',
     format:'literal-block-YAML; expanded-inline-prefix-indentation'},
   pipelines:['macro-only','regex-only','macro-then-regex','regex-then-macro'],
   authority:'consumer-data-only',additionalModelRequests:{normal:0,retry:0,fallback:0},
@@ -53,7 +63,7 @@ function read(x:unknown):void {
   if(!member(x.kind,['variable','lore'])||x.purpose!=='read'||typeof x.present!=='boolean'
     ||!hash(x.versionSha256)||!(x.present?hash(x.valueSha256):x.valueSha256===null))fail('PROMPT_TRANSFORM_READ')
   for(const key of ['ownerId','key','entryId','sourcePointer'])if(x[key]!==null)text(x[key])
-  if(x.scope!==null&&!member(x.scope,['card','chat','message','script','global','initial','cache']))
+  if(x.scope!==null&&!member(x.scope,readScopes))
     fail('PROMPT_TRANSFORM_READ')
   if(x.kind==='variable'&&(x.scope===null||x.ownerId===null||x.entryId!==null||x.sourcePointer!==null))
     fail('PROMPT_TRANSFORM_READ')
@@ -80,25 +90,37 @@ function validateNames(x:unknown):asserts x is TavernPromptNamesV1 {
   for(const key of names){const value=x[key];binding(value)
     if(value.key!==key||value.value===null&&key!=='model')fail('PROMPT_TRANSFORM_NAMES')}
 }
+function scopeBinding(scope:unknown,allowed:readonly string[]):void {
+  if(scope===null)return
+  exact(scope,['scope','ownerId','versionSha256','values','valuesSha256'])
+  if(!member(scope.scope,allowed)||!hash(scope.versionSha256)||!hash(scope.valuesSha256)||!object(scope.values))
+    fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
+  text(scope.ownerId)
+}
 function macroSnapshot(x:unknown):asserts x is TavernPromptMacroSnapshotV1 {
-  const deferred=object(x)&&Object.hasOwn(x,'deferredMacros'),messageVariables=object(x)&&Object.hasOwn(x,'messageVariables')
+  const deferred=object(x)&&Object.hasOwn(x,'deferredMacros'),
+    deferredFamilies=object(x)&&Object.hasOwn(x,'deferredMacroFamilies'),
+    variableScopes=object(x)&&Object.hasOwn(x,'variableScopes'),
+    random=object(x)&&Object.hasOwn(x,'random')
   exact(x,['schemaVersion','engine','authority','sourceSnapshotSha256','names','card','input','instruct','dynamic','registered',
     'localVariables','globalVariables','outlets','post','characterOverrides',...deferred?['deferredMacros']:[],
-    ...messageVariables?['messageVariables']:[]])
+    ...variableScopes?['variableScopes']:[],...random?['random']:[],...deferredFamilies?['deferredMacroFamilies']:[]])
   if(x.schemaVersion!==1||!member(x.engine,['legacy','experimental'])
     ||x.authority!=='consumer-data-only'||!hash(x.sourceSnapshotSha256))fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
   validateNames(x.names);binding(x.input)
+  if(random){exact(x.random,['seed','pickSeed']);text(x.random.seed);text(x.random.pickSeed)}
   // A Native generated opening has no player input. The binding/read checks
   // above retain that explicit negative fact, including its null hashes.
   if(x.input.key!=='input')fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
   for(const key of ['instruct','dynamic','registered','localVariables','globalVariables','outlets','post'])bindings(x[key])
   if(deferred){list(x.deferredMacros);for(const name of x.deferredMacros)text(name,256)}
-  if(messageVariables&&x.messageVariables!==null) {
-    const scope=x.messageVariables
-    exact(scope,['scope','ownerId','versionSha256','values','valuesSha256'])
-    if(scope.scope!=='message'||!hash(scope.versionSha256)||!hash(scope.valuesSha256)||!object(scope.values))
-      fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
-    text(scope.ownerId)
+  if(deferredFamilies){list(x.deferredMacroFamilies,1)
+    if(x.deferredMacroFamilies.some(name=>name!=='ejs-named-queue-outlet'))fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')}
+  if(variableScopes) {
+    if(!object(x.variableScopes)||Object.keys(x.variableScopes).some(key=>
+      !member(key,TAVERN_PROMPT_HELPER_VARIABLE_SCOPES_V1)))fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
+    for(const key of TAVERN_PROMPT_HELPER_VARIABLE_SCOPES_V1)
+      if(Object.hasOwn(x.variableScopes,key))scopeBinding(x.variableScopes[key],helperScopeKinds[key])
   }
   if(x.card!==null) {
     bindings(x.card)

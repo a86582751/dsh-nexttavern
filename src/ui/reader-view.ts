@@ -1,8 +1,10 @@
 import { createReaderBeautyCache } from './reader-beauty.js';
-import type { ReaderBeautyTask, FetchReaderDisplay } from './reader-beauty.js';
-import type { ReaderDisplayResponse } from '../core/roleplay-reader-display.js';
+import type { ReaderBeautyTask, FetchReaderDisplay,FetchReaderRenderHtml,ReleaseReaderPhase } from './reader-beauty.js';
+import type { ReaderDisplayResponse,ReaderRenderHtmlReplyV1 } from '../core/roleplay-reader-display.js';
+import type {ReaderNativeLibraryV1} from '../core/reader-native-document-types.js';
+import type {ReaderNativeBeautyExecutionV1} from '../core/reader-native-beauty-types.js';
 import type { MvuAcceptedDisplayUpdate } from '../core/roleplay-mvu-display-facts.js';
-import { AUTHOR_FRAME_MAX_ROWS, createAuthorFrame, type AuthorFrameLayout, type AuthorFramePart } from './author-runtime.js';
+import { AUTHOR_FRAME_MAX_ROWS } from './author-runtime.js';
 export { createAuthorRuntime } from './author-runtime.js';
 import type * as ReactAPI from 'react';
 import type { createMessageActionComponents } from './message-actions.js';
@@ -10,11 +12,15 @@ import type { StateReply } from './state-store.js';
 import type { ActivityState, ActivityComponents } from './activity-view.js';
 import { normalizeConversationNodes, readerNodeSeq, readerMessageId, readerText, readerTime, usageTokens, formatReaderTime } from './reader-model.js';
 import { scopeReaderCss, READER_BASE_CSS,renderReaderNarrative } from './reader-rendering.js';
-import {createAuthorBrowserSession,createReaderRegexDocumentSession, type AuthorBrowserStatus} from './author-browser-session.js';
+import {createAuthorBrowserSession,type AuthorBrowserStatus} from './author-browser-session.js';
+import {createReaderRegexDocumentSession,type ReaderRegexDocumentStatusV1} from './reader-regex-document-session.js';
 import {createAuthorReaderSurface} from '../core/tavern-author-reader-surface.js';
 import type {AuthorReaderSurface,AuthorReaderSurfaceLayout} from '../core/tavern-author-reader-surface.js';
-import type {BrowserComposerAccessV3} from '../core/tavern-author-browser-native-types-v3.js';
+import type {AuthorNativeComposerAccessV1} from '../core/author-native-helper-types.js';
 import {mountStaticAuthorDocument} from './author-runtime.js';
+import type {AuthorBrowserWorldbookPendingV2,AuthorBrowserPersonaPendingV1,
+    MessageBodyPendingV1} from './author-browser-pending.js';
+import type {AuthorBrowserOrdinaryPending} from './author-browser-ordinary-pending.js';
 import type {createSessionImages} from './session-images.js';
 import {createReaderCommunityCache,createCommunityOptionsRenderer,COMMUNITY_READER_CSS} from './reader-community.js';
 import {COMMUNITY_READER_WINDOW_MESSAGES} from '../core/community-preset-types.js';
@@ -22,6 +28,7 @@ import {COMMUNITY_READER_WINDOW_MESSAGES} from '../core/community-preset-types.j
 
 import type { ReaderRule } from './reader-regex.js';
 import type {ReaderSubmissionClaim,ReaderSubmissionHandoff} from './reader-submission-handoff.js';
+import {createReaderFrontendSettings,type ReaderFrontendSettings} from './reader-frontend-settings.js';
 
 
 interface ReaderNode extends Record<string, unknown> {
@@ -46,13 +53,17 @@ interface ReaderMessageProps extends ReaderActionProps {html: string;readerKey: 
 interface HistoryAnchor {
     sessionId: string | null;key: string | null;top: number;headKey: string | null | undefined;count: number;
     resetIfMissing?: boolean;
+    layoutChanged?: boolean;
 }
 interface ReaderState extends StateReply {
+    displayContext?:string|null;
+    recordVersions?:Readonly<Record<string,string|null>>;
     communityPresets?:{fingerprint:string;presetId:string|null;regexes:number}|null;
     activity?: ActivityState;
     rules?: {beauty?: {regexRules?: ReaderRule[];css?: string;js?: string;};};
     surfaceNodes?: {seq?: number;turn?: number;}[];
     readerDisplay?: {enabled: boolean;};
+    readerBeauty?:ReaderNativeBeautyExecutionV1;
     failedTurnRecoveryByTurn?: Record<string, unknown>;
     // Reader consumes only these display fields; numerical snapshots and
     // server execution contracts belong to the state producer.
@@ -81,6 +92,9 @@ interface ReaderDependencies extends Pick<MessageComponents, 'UserActions' | 'As
     useTavernActivity: ActivityComponents['useTavernActivity'];
     fetchState(id: string, force?: boolean): Promise<ReaderState>;
     fetchReaderDisplay?: FetchReaderDisplay;
+    fetchReaderRenderHtml?:FetchReaderRenderHtml;
+    releaseReaderPhase?:ReleaseReaderPhase;
+    nativeLibraries?:readonly ReaderNativeLibraryV1[];
     jsonFetch?<T>(url:string,init?:RequestInit):Promise<T>;
     subscribeState(id: string, listener: () => void): () => void;
     sessionsService: {using<T>(id: string, options: {source: 'nexttavernReader'}, operation: (reference: {binding: {session: {loadOlder(): Promise<void>}}}) => T | Promise<T>): Promise<T>};
@@ -90,11 +104,13 @@ interface ReaderDependencies extends Pick<MessageComponents, 'UserActions' | 'As
     ACTIVITY_CSS: string;
     images?: Pick<ReturnType<typeof createSessionImages>, 'acceptBrowserImages' | 'releaseBrowserImages'>;
     readerHandoff?: Pick<ReaderSubmissionHandoff,'mount'>;
+    frontendSettings?: ReaderFrontendSettings;
+    navigate?(sessionId:string):Promise<unknown>|void;
 }
 
 /** The UI alone owns the real editor. A guest receives only this narrow
  * capability; it cannot traverse Main DOM or dispatch a send action. */
-export function createReaderComposerAccess(document:Document,current:()=>boolean):BrowserComposerAccessV3 {
+export function createReaderComposerAccess(document:Document,current:()=>boolean):AuthorNativeComposerAccessV1 {
     const editor=()=>{
         if(!current())throw Error('BROWSER_COMPOSER_SESSION_CHANGED');
         const value=document.querySelector<HTMLElement>('[data-composer-input]');
@@ -130,6 +146,7 @@ React,
      useTavernActivity,
      fetchState,
      jsonFetch,
+     nativeLibraries,
      fetchReaderDisplay = async (sessionId, messages, signal) => {
          const response = await globalThis.fetch('/api/roleplay/state', {
              method: 'POST', headers: {'content-type': 'application/json'}, signal,
@@ -139,6 +156,18 @@ React,
          if (!response.ok || result.ok !== true) throw new Error(result.code ?? result.error
              ?? `Reader display HTTP ${response.status}`);
          return result;
+     },
+     fetchReaderRenderHtml=async(request,signal)=>{
+         const response=await globalThis.fetch('/api/roleplay/state',{method:'POST',
+             headers:{'content-type':'application/json'},signal,
+             body:JSON.stringify({action:'reader-render-html',sessionId:request.binding.sessionId,...request})});
+         const result=await response.json() as ReaderRenderHtmlReplyV1&{code?:string;error?:string};
+         if(!response.ok||result.ok!==true)throw Error(result.code??result.error??`Reader HTML HTTP ${response.status}`);
+         return result;
+     },
+     releaseReaderPhase=async(binding)=>{
+         await globalThis.fetch('/api/roleplay/state',{method:'POST',headers:{'content-type':'application/json'},
+             body:JSON.stringify({action:'reader-release-phase',sessionId:binding.sessionId,binding})});
      },
      subscribeState,
      sessionsService,
@@ -151,7 +180,9 @@ React,
      ActivityBanner,
      ACTIVITY_CSS,
      images,
-     readerHandoff
+     readerHandoff,
+     frontendSettings = createReaderFrontendSettings(),
+     navigate
 }: ReaderDependencies) {
     const noopSnapshotHook = () => null;
     const actionProps = (part: ReaderPart, sessionId: string): ReaderActionProps => ({
@@ -219,9 +250,16 @@ React,
         const [readerStart, setReaderStart] = React.useState<number | null>(null);
         const [loadingOlder, setLoadingOlder] = React.useState(false);
         const [historyError, setHistoryError] = React.useState<string | null>(null);
+        const holdDocumentLayoutAnchorRef = React.useRef<() => void>(() => {});
+        const subscribeDocumentLayout = React.useCallback((notify: () => void) => frontendSettings.subscribe(() => {
+            holdDocumentLayoutAnchorRef.current();
+            notify();
+        }), []);
+        const readerDocumentMode = React.useSyncExternalStore(subscribeDocumentLayout, frontendSettings.getMode, frontendSettings.getMode);
         const activity = useTavernActivity(sessionId, state?.activity);
         const [, refreshBeauty] = React.useState(0);
         const [communityReload,reloadCommunity]=React.useState(0);
+        const [readerCompilationReload,reloadReaderCompilation]=React.useState(0);
         const beautyCacheRef = React.useRef<ReturnType<typeof createReaderBeautyCache> | null>(null);
         beautyCacheRef.current ??= createReaderBeautyCache();
         const communityCacheRef=React.useRef<ReturnType<typeof createReaderCommunityCache>|null>(null);
@@ -233,8 +271,6 @@ React,
         const historyAnchorRef = React.useRef<HistoryAnchor | null>(null);
         const readerSessionRef = React.useRef(sessionId);
         const stateRequestRef = React.useRef(0);
-        const frameRef = React.useRef<HTMLIFrameElement>(null);
-        const frameControllerRef = React.useRef<ReturnType<typeof createAuthorFrame> | null>(null);
         const browserContainerRef = React.useRef<HTMLDivElement>(null);
         const browserControllerRef = React.useRef<ReturnType<typeof createAuthorBrowserSession> | null>(null);
         const readerSubmissionRef = React.useRef<ReaderSubmissionClaim | null>(null);
@@ -251,11 +287,7 @@ React,
         const readerSurfaceRevisionRef = React.useRef(0);
         const browserObservedStateRef = React.useRef<ReaderState | null>(null);
         const [browserStatus, setBrowserStatus] = React.useState<AuthorBrowserStatus>({kind: 'loading'});
-        const [readerDocumentStatus, setReaderDocumentStatus] = React.useState<AuthorBrowserStatus>({kind: 'inactive'});
-        const frameIdentityRef = React.useRef('');
-        const [frameEpoch, setFrameEpoch] = React.useState(0);
-        const [frameLayout, setFrameLayout] = React.useState<{identity: string;value: AuthorFrameLayout;} | null>(null);
-        const [frameFailure, setFrameFailure] = React.useState<{identity: string;reason: string;} | null>(null);
+        const [readerDocumentStatus, setReaderDocumentStatus] = React.useState<ReaderRegexDocumentStatusV1>({kind: 'inactive'});
         const streamLeaseRef = React.useRef<{sessionId: string;turn: number;step: number;} | null>(null);
         readerSessionRef.current = sessionId;
         if (streamLeaseRef.current?.sessionId !== sessionId) streamLeaseRef.current = null;
@@ -296,9 +328,6 @@ React,
             const unsubscribe = subscribeState(requestedSessionId, () => {
                 // Invalidation may select a new worldline without changing the view's
                 // sessionId. Revoke old author capabilities before fetching new state.
-                frameControllerRef.current?.dispose();
-                frameControllerRef.current = null;
-                setFrameEpoch(value => value + 1);
                 void browserControllerRef.current?.refresh();
                 load(true);
             });
@@ -331,6 +360,19 @@ React,
         const snapshot = useConv((value) => value) ?? props.snapshot ?? props.conversation ?? null;
         const readerRef = React.useRef<HTMLDivElement>(null);
         const scrollRef = React.useRef<HTMLDivElement>(null);
+        const [readerViewportHeight, setReaderViewportHeight] = React.useState<number | null>(null);
+        React.useLayoutEffect(() => {
+            const scroller = scrollRef.current;
+            if (!scroller) return;
+            // Only the host's available content box drives document viewports.
+            // Measuring author scrollHeight here would feed 100vh back into itself.
+            const observer = new scroller.ownerDocument.defaultView!.ResizeObserver(entries => {
+                const height = entries[0]!.contentRect.height;
+                if (height > 0) setReaderViewportHeight(height);
+            });
+            observer.observe(scroller);
+            return () => observer.disconnect();
+        }, [sessionId, state?.sessionId, state?.preset]);
         const useSession = props.useSession ?? noopSnapshotHook;
         const historySnapshot = useSession(value => value);
         // Paging can outlive a view switch, so retain its exact Session through
@@ -369,28 +411,26 @@ React,
         const beauty = state?.rules?.beauty ?? null;
         const rules = Array.isArray(beauty?.regexRules) ? beauty.regexRules : [];
         const authorCss = String(beauty?.css ?? '');
-        const authorJs = String(beauty?.js ?? '');
+        const nativeBeauty=state?.sessionId===sessionId&&state.readerBeauty?.source.sessionId===sessionId
+            &&state.readerBeauty.source.rulesRecordSha256===state.recordVersions?.rules?state.readerBeauty:undefined;
         const numerical = state?.sessionId === sessionId ? state.numericalState : undefined;
         const displayEnabled = state?.sessionId === sessionId && state.readerDisplay?.enabled === true;
         // The selected Source/Native scope owns document fragments and normal
         // beauty results together, including the author frame's history window.
         const beautyScope = sessionId + '\0' + JSON.stringify([rules,state?.communityPresets?.fingerprint, displayEnabled
-            ? [state.surfaceNodes, state.recordVersions, numerical?.kind,
+            ? [state.surfaceNodes, state.recordVersions,state.displayContext, numerical?.kind,
                 numerical?.snapshot?.revision, numerical?.snapshot?.stateSnapshotSha256,
                 numerical?.snapshot?.valuesSha256, numerical?.snapshot?.sourceSha256]
             : null]);
         const beautyCache = beautyCacheRef.current;
         beautyCache.selectScope(beautyScope);
-        const actualBrowserFramed = browserControllerRef.current?.hasFrame() === true
+        const helperHasFrame = browserControllerRef.current?.hasFrame() === true;
+        const actualBrowserFramed = helperHasFrame
             && browserStatus.kind !== 'failed' && browserStatus.kind !== 'inactive';
         const actualReaderFramed = readerDocumentControllerRef.current?.hasFrame() === true
             && readerDocumentStatus.kind !== 'failed' && readerDocumentStatus.kind !== 'inactive';
-        const helperSupportsReader = browserControllerRef.current?.supportsReaderSurface() === true;
-        const helperAllowsReader = browserStatus.kind === 'inactive' || helperSupportsReader;
-        const actualSharedBrowserFramed = actualBrowserFramed && helperSupportsReader;
-        const actualSharedFramed = actualReaderFramed || actualSharedBrowserFramed;
-        const actualFramed = actualBrowserFramed || actualReaderFramed;
-        const authorWindow = actualFramed || !!authorJs.trim() || beautyCache.hasDocuments() || !!beautyCache.execution();
+        const actualSharedFramed = actualReaderFramed || !!nativeBeauty;
+        const authorWindow = actualSharedFramed || beautyCache.hasDocuments() || !!beautyCache.execution();
 
         // Collect only the authoritative surface of this Session.  The Chat
         // target may retain audit/shadow nodes after a replacement, and sibling
@@ -597,12 +637,15 @@ React,
         const beautyInput = JSON.stringify(beautyTasks);
         React.useEffect(
         () => beautyCache.run(beautyScope, beautyTasks, rules, () => refreshBeauty(n => n + 1),
-            displayEnabled && sessionId ? {sessionId, read: fetchReaderDisplay} : undefined),
+            displayEnabled && sessionId ? {sessionId, read: fetchReaderDisplay,
+                renderHtml:fetchReaderRenderHtml,releasePhase:releaseReaderPhase} : undefined),
 
-            [beautyScope, beautyInput]
+            [beautyScope, beautyInput,readerCompilationReload]
         );
         const applyBeauty = beautyCache.htmlFor;
-        const beautyFailed = beautyCache.failed(beautyTasks);
+        const beautyError = beautyCache.errors(beautyTasks);
+        const beautyFailed = !!beautyError;
+        const readerCompilerError=beautyCache.compilerError(beautyTasks);
         const userHtml=(text:string)=>{
             const cache=communityUserHtmlRef.current;
             let html=cache.get(text);
@@ -640,7 +683,6 @@ React,
             );
         }
         const docHtml = renderedParts.map((part) => part.kind === 'narrator' ? part.html : part.text).join('\n');
-        const committedDocHtml = renderedParts.filter(part => !part.transient).map(part => part.kind === 'narrator' ? part.html : part.text).join('\n');
         const historyBusy = loadingOlder || historySnapshot?.loadingOlder === true;
         const canLoadOlder = windowStart > 0 || (!!loadOlder && historySnapshot?.hasMore === true);
         const canLoadNewer = displayEnabled ? windowStart + readerNodes.length < selectedNodes.length
@@ -650,41 +692,24 @@ React,
             ? part.streamKey ?? 'stream:unknown'
             : `${part.kind}:${part.seq ?? ''}:${part.messageId ?? ''}`;
         const renderedHeadKey = renderedParts.length ? readerPartKey(renderedParts[0]!) : null;
-        const frameIdentity = JSON.stringify([
-            frameEpoch, sessionId, state?.sessionId, state?.preset, authorJs, readerAuthorCss, committedDocHtml,
-            beautyCache.hasDocuments(),
-        ]);
-        frameIdentityRef.current = frameIdentity;
-        const framed = browserStatus.kind === 'inactive' && (!readerExecution || !!authorJs.trim())
-            && (!!authorJs.trim() || beautyCache.hasDocuments())
-            && frameFailure?.identity !== frameIdentity;
-        const activeFrameLayout = frameLayout?.identity === frameIdentity ? frameLayout.value : null;
         const activeReaderLayout = readerSurfaceLayout?.surface === readerSurfaceRef.current
             ? readerSurfaceLayout?.value : undefined;
         const restoreHistoryAnchor = () => {
             const held=historyAnchorRef.current,scroller=scrollRef.current;
             if(!held||!scroller||held.sessionId!==sessionId)return;
-            if(held.headKey===renderedHeadKey&&held.count===renderedParts.length)return;
+            if(!held.layoutChanged&&held.headKey===renderedHeadKey&&held.count===renderedParts.length)return;
             const row=Array.from(scroller.querySelectorAll('[data-reader-key]'))
                 .find(element=>element.getAttribute('data-reader-key')===held.key);
             if(row)scroller.scrollTop+=row.getBoundingClientRect().top-scroller.getBoundingClientRect().top-held.top;
             else if(held.resetIfMissing)scroller.scrollTop=0;
             historyAnchorRef.current=null;
         };
-        const framePayload = JSON.stringify(renderedParts.map(part => ({
-            key: readerPartKey(part), kind: part.kind, text: part.displayText, html: part.html, fragments: part.fragments,
-        } satisfies AuthorFramePart)));
-        const committedBrowserPayload = JSON.stringify(renderedParts.filter(part => !part.transient).map(part => ({
-            key: readerPartKey(part), kind: part.kind, text: part.kind==='user'?part.text:part.displayText,html:part.frameHtml,
-        })));
         // Frozen frames retain complete user DATA. Their duplicate projected
         // row is hidden while native Reader owns community option controls.
         const browserUserKeys=renderedParts.filter(part=>part.nativeUserProjection&&!part.transient)
             .map(part=>`[data-reader-key=${JSON.stringify(readerPartKey(part))}]`);
         const readerDefaultCss='@layer dsh-roleplay-reader-default {\n'+READER_BASE_CSS+'\n'+COMMUNITY_READER_CSS+'\n}';
         const readerBaseCss=readerDefaultCss+'\n'+readerAuthorCss;
-        const browserReaderCss=readerBaseCss
-            +(browserUserKeys.length?'\n'+browserUserKeys.join(',')+'{display:none!important}':'');
         const sharedReaderCss=readerBaseCss
             +(browserUserKeys.length?'\n'+browserUserKeys.map(key=>key+' > .rp-user-line').join(',')
                 +'{display:none!important}':'');
@@ -698,9 +723,6 @@ React,
                 : {key: readerPartKey(part),kind: part.kind,html: part.frameHtml,
                     fragments:part.readerFragments?.map(fragment=>fragment.kind==='text'
                         ?{...fragment,html:communityOptionsRef.current!(fragment.html).frameHtml}:fragment)}));
-        const readerDocumentConflict = readerExecution && !helperAllowsReader
-            && browserStatus.kind !== 'loading' ? 'READER_REGEX_DOCUMENT_LEGACY_FRAME_ACTIVE'
-            : readerExecution && authorJs.trim() ? 'READER_REGEX_DOCUMENT_LEGACY_SCRIPT_ACTIVE' : undefined;
         React.useEffect(() => {
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay'
                 || !readerDocumentContainerRef.current) return;
@@ -711,6 +733,7 @@ React,
                 const outer = container.ownerDocument.createElement('iframe');
                 outer.className = 'rp-author-guard-frame';outer.title = '作者交互阅读内容';container.append(outer);
                 const created = createAuthorReaderSurface(outer,{
+                    nativeDocuments:true,
                     current: () => active && readerSessionRef.current === sessionId && readerSurfaceRef.current === created,
                     layout: value => setReaderSurfaceLayout({surface:created,page:readerSurfacePageRef.current,value}),
                     mountStaticDocument: (node,html,layout) => mountStaticAuthorDocument(node,html,{
@@ -731,6 +754,11 @@ React,
             };
         }, [sessionId,state?.sessionId,state?.preset]);
         React.useLayoutEffect(() => {
+            const surface = readerSurfaceRef.current;
+            if (!surface) return;
+            surface.documentLayout.set({mode:readerDocumentMode,viewportHeight:readerViewportHeight??600});
+        }, [readerSurfaceEpoch, readerViewportHeight, readerDocumentMode]);
+        React.useLayoutEffect(() => {
             const surface=readerSurfaceRef.current,layer=readerActionLayerRef.current;
             if(!actualSharedFramed||!surface||!layer||readerSurfaceLayout?.surface!==surface
                 ||readerSurfaceLayout.page!==readerSurfacePayload)return;
@@ -745,12 +773,14 @@ React,
             const hasPendingLayout=measure();
             if(!hasPendingLayout)restoreHistoryAnchor();
             return ()=>observer.disconnect();
-        }, [actualSharedFramed,activeReaderLayout,framePayload,readerSurfacePayload]);
+        }, [actualSharedFramed,activeReaderLayout,readerSurfacePayload]);
         React.useEffect(() => {
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay'
                 || !readerDocumentContainerRef.current) return;
-            const controller = createReaderRegexDocumentSession({sessionId,container: readerDocumentContainerRef.current,
+            const controller = createReaderRegexDocumentSession({sessionId,container: readerDocumentContainerRef.current,nativeLibraries,
                 fill: text => fillComposer(text, false),
+                navigate,
+                requestRecapture:()=>{beautyCache.retryCompilation();reloadReaderCompilation(value=>value+1);},
                 surface: () => readerSurfaceFactoryRef.current!(),
                 current: () => readerSessionRef.current === sessionId && readerDocumentControllerRef.current === controller,
                 status: setReaderDocumentStatus,
@@ -762,27 +792,29 @@ React,
         }, [sessionId,state?.sessionId,state?.preset]);
         React.useEffect(() => {
             readerSurfacePageRef.current=readerSurfacePayload;
-            readerSurfaceRef.current?.render({renderRevision: ++readerSurfaceRevisionRef.current,
+            const surface=readerSurfaceRef.current??(nativeBeauty?readerSurfaceFactoryRef.current?.():undefined);
+            surface?.setNativeBeauty(nativeBeauty,(nativeBeauty?.source.rulesRecordSha256??'')+'\0'+readerDocumentPayload,
+                text=>fillComposer(text,false));
+            surface?.render({renderRevision: ++readerSurfaceRevisionRef.current,
                 css: scopeReaderCss(sharedReaderCss),parts: JSON.parse(readerSurfacePayload)});
-        }, [readerSurfaceEpoch,readerSurfacePayload,sharedReaderCss]);
+        }, [readerSurfaceEpoch,readerSurfacePayload,readerDocumentPayload,sharedReaderCss,
+            nativeBeauty?.source.rulesRecordSha256,nativeBeauty?.parentOrigin]);
         React.useEffect(() => {
             const controller = readerDocumentControllerRef.current;
             if (!controller) return;
-            if (!readerExecution || !helperAllowsReader || authorJs.trim()) {controller.invalidate();return;}
+            if (!readerExecution) {controller.invalidate();return;}
             controller.update(readerExecution,{css: sharedReaderCss,parts: JSON.parse(readerDocumentPayload)});
-        }, [readerExecution,readerDocumentPayload,helperAllowsReader,authorJs,sharedReaderCss]);
+        }, [readerExecution,readerDocumentPayload,sharedReaderCss]);
         React.useEffect(() => {
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay' || !browserContainerRef.current) return;
             const readerSubmission=readerSubmissionRef.current;
             const controller = createAuthorBrowserSession({
-                sessionId, container: browserContainerRef.current,
-                surface: () => readerSurfaceFactoryRef.current!(),
+                sessionId, container: browserContainerRef.current,nativeLibraries,navigate,
+                documentLayout:readerSurfaceFactoryRef.current!().documentLayout,
                 composer:createReaderComposerAccess(document,()=>resolveActiveSessionId()===sessionId),
                 current: () => readerSessionRef.current === sessionId && browserControllerRef.current === controller,
                 status: setBrowserStatus,
                 preparation: value=>readerSubmission?.publish(value),
-                images: (owner,pageId,values) => images?.acceptBrowserImages(sessionId,owner,pageId,values),
-                releaseImages: owner => images?.releaseBrowserImages(owner),
             });
             browserControllerRef.current = controller;
             browserObservedStateRef.current = state;
@@ -794,12 +826,6 @@ React,
             };
         }, [sessionId, state?.sessionId, state?.preset]);
         React.useEffect(() => {
-            browserControllerRef.current?.render({
-                css: browserReaderCss,
-                parts: JSON.parse(committedBrowserPayload),
-            });
-        }, [sessionId, state?.sessionId, state?.preset, committedBrowserPayload, browserReaderCss]);
-        React.useEffect(() => {
             // Core decides whether a changed cut is merely a read revision or a
             // new author generation. React never derives that from body text.
             if (state?.sessionId === sessionId && browserObservedStateRef.current !== state) {
@@ -807,40 +833,18 @@ React,
                 void browserControllerRef.current?.refresh();
             }
         }, [state, sessionId]);
-        React.useEffect(() => {
-            if (!framed || !sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay' || !frameRef.current) return;
-            const identity = frameIdentity;
-            const controller = createAuthorFrame(frameRef.current, {
-                ...(authorJs.trim() ? {mode: 'script' as const, source: authorJs} : {mode: 'static-document' as const}),
-                css: readerAuthorCss,
-                baseCss: readerDefaultCss,
-                current: () => readerSessionRef.current === sessionId && frameIdentityRef.current === identity,
-                fill: text => fillComposer(text, false),
-                layout: value => setFrameLayout({identity, value}),
-                failed: reason => setFrameFailure({identity, reason}),
-            });
-            frameControllerRef.current = controller;
-            return () => {
-                controller.dispose();
-                if (frameControllerRef.current === controller) frameControllerRef.current = null;
-            };
-        }, [frameIdentity, framed, sessionId, state?.sessionId, state?.preset]);
-        React.useEffect(() => {
-            if (framed) frameControllerRef.current?.update(JSON.parse(framePayload) as AuthorFramePart[]);
-        }, [frameIdentity, framePayload, framed]);
         // Native history prepends must not push the paragraph under the pointer
         // off-screen. Keep a DOM row anchor, not a scrollHeight approximation:
         // author HTML can change height after the response arrives.
         React.useLayoutEffect(
         () => {
             if(actualSharedFramed)return;
-            if (framed && !activeFrameLayout) return;
             restoreHistoryAnchor();
         },
-            [docHtml, renderedHeadKey, renderedParts.length, sessionId, activeFrameLayout,actualSharedFramed]
+            [docHtml, renderedHeadKey, renderedParts.length, sessionId,actualSharedFramed,readerDocumentMode]
         );
 
-        const holdHistoryAnchor = (resetIfMissing = false) => {
+        const holdHistoryAnchor = (resetIfMissing = false, layoutChanged = false) => {
             const scroller = scrollRef.current;
             const viewportTop = scroller?.getBoundingClientRect().top ?? 0;
             const anchor = scroller
@@ -855,7 +859,12 @@ React,
                 headKey: renderedHeadKey,
                 count: renderedParts.length,
                 resetIfMissing,
+                layoutChanged,
             } : null;
+        };
+        holdDocumentLayoutAnchorRef.current = () => {
+            holdHistoryAnchor(false,true);
+            readerSurfaceRef.current?.documentLayout.set({mode:frontendSettings.getMode(),viewportHeight:readerViewportHeight??600},true);
         };
         const requestOlder = async () => {
             if (!canLoadOlder || historyBusy || historyRequestRef.current) return;
@@ -908,9 +917,10 @@ React,
         // low-specificity author selector such as `h2 { ... }` wins merely by
         // appearing as unlayered author CSS. Inline styles from the card remain
         // authoritative as usual.
-        const scopedCss = scopeReaderCss(readerDefaultCss) + '\n' + (framed ? '' : scopeReaderCss(readerAuthorCss)) + `
+        const scopedCss = scopeReaderCss(readerDefaultCss) + '\n' + scopeReaderCss(readerAuthorCss) + `
 .rp-author-frame-host { position: relative; width: min(1500px, 100%); align-self: center; overflow: hidden; }
-.rp-reader-view > .rp-author-frame-host { flex-shrink: 0; }
+.rp-reader-content { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+.rp-reader-content > .rp-author-frame-host, .rp-reader-content > .rp-reader { width: 100%; flex-shrink: 0; }
 .rp-author-guard-frame { display: block; width: 100%; height: 150px; border: 0; }
 .rp-author-action-layer { position: absolute; inset: 0; pointer-events: none; }
 .rp-author-action-row { position: absolute; left: 0; right: 0; min-height: 32px;
@@ -959,6 +969,88 @@ React,
             renderReaderActions(actionProps(part, sessionId)));
         };
 
+        const renderWorldbookOperation = (operation: AuthorBrowserWorldbookPendingV2) => {
+            let outcome: string;
+            if (operation.result?.kind === 'edited-data') {
+                outcome = `已保存，修订 ${operation.result.receipt.revision}。`;
+            } else if (operation.state === 'terminal' && operation.code === 'AUTHOR_WORLDBOOK_OPERATION_NOT_RECORDED') {
+                outcome = '这次修改尚未提交，无法恢复；请重新打开交互视图后再修改。';
+            } else if (operation.state === 'terminal') {
+                outcome = '修改已拒绝：';
+                if (operation.result?.kind === 'refused') {
+                    outcome += operation.result.diagnostics.map(value => value.code).join('、');
+                }
+            } else {
+                outcome = '保存结果尚未确认，已保留操作记录。';
+                if (operation.result?.kind === 'refused') {
+                    outcome += ' ' + operation.result.diagnostics.map(value => value.code).join('、');
+                } else if (operation.code) outcome += ' ' + operation.code;
+            }
+            return React.createElement('div', {
+                className: 'rp-reader-empty', role: 'status', key: operation.operationId,
+            }, `世界书「${operation.name}」 · ${operation.operationId}：${outcome}`,
+            operation.state !== 'terminal' ? React.createElement('button', {
+                type: 'button', onClick: () => void browserControllerRef.current?.retryWorldbook(operation.operationId),
+            }, '恢复同一次世界书修改') : null);
+        };
+
+        const renderOrdinaryOperation=(envelope:AuthorBrowserOrdinaryPending)=>{
+            const operation=envelope.operation;
+            const controller=()=>envelope.principal==='reader-regex-document'
+                ?readerDocumentControllerRef.current:browserControllerRef.current;
+            const outcome=envelope.code==='AUTHOR_CHAT_RECEIPT_PENDING'
+                ?'保存记录已写入，当前状态尚未接续。'
+                :envelope.code==='READER_NAMESPACE_DOCUMENT_UNAVAILABLE'
+                    ?'原交互页面已不可用，当前页面不能重试；原请求仍已保留。'
+                :envelope.code==='AUTHOR_CHAT_RECOVERY_SOURCE_CHANGED'
+                    ?'原来源已变化，当前页面不能重试；原请求仍已保留。'
+                    :envelope.code==='AUTHOR_CHAT_READ_BASIS_UNAVAILABLE'
+                        ?'原读取基础已不可用，也没有可接续的保存记录。请保留记录并显示当前页面后重新操作。'
+                    :'保存结果尚未确认，已保留原请求。';
+            return React.createElement('div',{className:'rp-reader-empty',role:'status',key:operation.operationId},
+                `作者变量保存。${outcome}`,
+                React.createElement('button',{type:'button',onClick:()=>void controller()
+                    ?.confirmOrdinary(operation.operationId)},'确认这次保存'),
+                React.createElement('button',{type:'button',onClick:()=>void controller()
+                    ?.retryOrdinary(operation.operationId)},'重试同一次保存'),
+                !envelope.manualReleased?React.createElement('button',{type:'button',onClick:()=>void controller()
+                    ?.showCurrentPageWithOrdinaryUnknown(operation.operationId)},'保留记录，显示当前页面'):null);
+        };
+
+        const renderPersonaOperation = (operation: AuthorBrowserPersonaPendingV1) => {
+            const outcome=operation.result?.kind==='committed'
+                ? operation.result.receipt.result===false
+                    ? '创建未完成：角色名称或标识不可用。'
+                    : operation.result.receipt.changed
+                    ? `已保存，修订 ${operation.result.receipt.revision}。`
+                    : `已确认，无需更改，修订 ${operation.result.receipt.revision}。`
+                : operation.code==='NATIVE_PERSONA_OPERATION_NOT_RECORDED'
+                    ? '没有找到已提交的操作记录；请重新连接后再修改。'
+                    : operation.state==='terminal'
+                        ? '修改已拒绝：'+operation.code
+                        : '保存结果尚未确认，已保留操作身份。';
+            return React.createElement('div',{className:'rp-reader-empty',role:'status',key:operation.operationId},
+                `用户设定 · ${operation.operationId}：${outcome}`,
+                operation.state!=='terminal'?React.createElement('button',{
+                    type:'button',onClick:()=>void browserControllerRef.current?.retryPersona(operation.operationId),
+                },'确认同一次用户设定修改'):null);
+        };
+
+        const renderMessageBodyOperation=(operation:MessageBodyPendingV1)=>{
+            const result=operation.result,pending=operation.state!=='terminal',outcome=pending
+                ?'正文保存结果尚未确认，已保留原操作。'
+                :result?.kind==='committed'?result.superseded?'这次正文修改已保存，当前消息已有后续修改。':'正文已保存。'
+                    :result?.kind==='unchanged'?'正文没有变化。'
+                    :'正文修改已拒绝：'+(result&&'code' in result?result.code:operation.code??'');
+            const controller=()=>operation.encoding==='reader-message-body-pending-v1'
+                ?readerDocumentControllerRef.current:browserControllerRef.current;
+            return React.createElement('div',{className:'rp-reader-empty',role:'status',key:operation.request.operationId},
+                outcome,pending?React.createElement('button',{type:'button',onClick:()=>void controller()
+                    ?.confirmMessageBody(operation.request.operationId)},'确认正文保存结果'):null,
+                pending?React.createElement('button',{type:'button',onClick:()=>void controller()
+                    ?.retryMessageBody(operation.request.operationId)},'重试同一次正文修改'):null);
+        };
+
         return React.createElement(
         'div',
             {
@@ -966,31 +1058,84 @@ React,
 
                 ref: scrollRef,
 
-                onScroll: (event) => {
-                    if (event.currentTarget.scrollTop < 140 && !historyError) void requestOlder();
-                },
-
                 onWheel: (event) => {
-                    // At the very top a wheel gesture need not emit `scroll` at all.
+                    // Saves, layout and latest navigation also scroll this view.
+                    // Only an explicit upward gesture requests an earlier page.
                     if (event.deltaY < 0 && event.currentTarget.scrollTop < 140 && !historyError) void requestOlder();
                 },
             },
 
             React.createElement('style', null, scopedCss + ACTIVITY_CSS),
-            browserStatus.kind === 'pending' ? React.createElement('div', {className: 'rp-reader-empty', role: 'status'},
+            browserStatus.kind === 'pending' && browserStatus.pending && !readerDocumentStatus.numerical
+                ? React.createElement('div', {className: 'rp-reader-empty', role: 'status'},
                 '作者数值保存尚未确认，已保留原请求。',
                 React.createElement('button', {type: 'button', onClick: () => void browserControllerRef.current?.confirm()}, '确认保存结果'),
                 React.createElement('button', {type: 'button', onClick: () => void browserControllerRef.current?.retry()}, '重试同一次保存')) : null,
+            browserStatus.worldbooks?.map(renderWorldbookOperation),
+            browserStatus.personas?.map(renderPersonaOperation),
+            browserStatus.ordinary?.map(renderOrdinaryOperation),
+            readerDocumentStatus.ordinary?.map(renderOrdinaryOperation),
+            browserStatus.messageBodies?.map(renderMessageBodyOperation),
+            readerDocumentStatus.messageBodies?.map(renderMessageBodyOperation),
+            browserStatus.opening&&browserStatus.opening.state!=='terminal'
+                ?React.createElement('div',{className:'rp-reader-empty',role:'status'},
+                    '作者开场候选修改尚未确认，已保留原操作。',
+                    React.createElement('button',{type:'button',onClick:()=>void browserControllerRef.current?.confirmOpening()},
+                        '确认修改结果'),
+                    React.createElement('button',{type:'button',onClick:()=>void browserControllerRef.current?.retryOpening()},
+                        '重试同一次修改'),
+                    !browserStatus.opening.manualReleased?React.createElement('button',{type:'button',onClick:()=>
+                        browserControllerRef.current?.showCurrentPageWithOpeningUnknown()},'保留记录，显示当前页面'):null):null,
+            readerDocumentStatus.kind==='pending'&&readerDocumentStatus.pending
+                ?React.createElement('div',{className:'rp-reader-empty',role:'status'},
+                    '开场候选修改尚未确认，已保留原操作。'+(readerDocumentStatus.code??''),
+                    React.createElement('button',{type:'button',disabled:readerDocumentStatus.busy,onClick:()=>{
+                        void readerDocumentControllerRef.current?.confirm().then(confirmed=>{
+                            if(confirmed){beautyCache.retryCompilation();reloadReaderCompilation(value=>value+1);}
+                        });
+                    }},'确认修改结果'),
+                    React.createElement('button',{type:'button',disabled:readerDocumentStatus.busy,onClick:()=>{
+                        void readerDocumentControllerRef.current?.retry().then(confirmed=>{
+                            if(confirmed){beautyCache.retryCompilation();reloadReaderCompilation(value=>value+1);}
+                        });
+                    }},'重试已保存操作'),
+                    React.createElement('button',{type:'button',disabled:readerDocumentStatus.busy,onClick:()=>{
+                        try {
+                            readerDocumentControllerRef.current?.releasePending();
+                            beautyCache.retryCompilation();reloadReaderCompilation(value=>value+1);
+                        }catch(error){toast(error instanceof Error?error.message:'操作记录暂时无法释放');}
+                    }},'查看当前状态并重新打开')):null,
+            readerDocumentStatus.kind==='pending'&&readerDocumentStatus.numerical
+                ?React.createElement('div',{className:'rp-reader-empty',role:'status'},
+                    '数值保存尚未确认，已保留原操作。'+(readerDocumentStatus.code??''),
+                    React.createElement('button',{type:'button',disabled:readerDocumentStatus.busy,onClick:()=>{
+                        void readerDocumentControllerRef.current?.confirm().then(confirmed=>{
+                            if(confirmed){beautyCache.retryCompilation();reloadReaderCompilation(value=>value+1);}
+                        });
+                    }},'确认保存结果'),
+                    React.createElement('button',{type:'button',disabled:readerDocumentStatus.busy,onClick:()=>{
+                        void readerDocumentControllerRef.current?.retry().then(confirmed=>{
+                            if(confirmed){beautyCache.retryCompilation();reloadReaderCompilation(value=>value+1);}
+                        });
+                    }},'重试同一次保存')):null,
             browserStatus.kind === 'failed' ? React.createElement('div', {className: 'rp-reader-empty', role: 'status'},
                 '作者交互视图不可用：' + browserStatus.code,
                 React.createElement('button', {type: 'button', onClick: () => void browserControllerRef.current?.confirm()}, '重新连接')) : null,
-            frameFailure?.identity === frameIdentity ? React.createElement('div', { className: 'rp-reader-empty', role: 'status' },
-                '隔离阅读视图不可用，已保留正文和原生操作；作者脚本未运行。' + frameFailure.reason) : null,
 
-            beautyFailed ? React.createElement('div', { className: 'rp-reader-empty', role: 'status' }, '部分美化规则未能安全完成，已保留可读正文和原生操作。修改规则后会重新匹配。') : null,
-            readerDocumentConflict || readerDocumentStatus.kind === 'failed'
+
+            beautyFailed ? React.createElement('div', { className: 'rp-reader-empty', role: 'status' },
+                '部分美化规则未能安全完成，已保留可读正文和原生操作。'+beautyError,
+                React.createElement('button',{type:'button',onClick:()=>{
+                    beautyCache.retryCompilation();reloadReaderCompilation(value=>value+1);
+                }},'重试显示')) : null,
+            readerCompilerError?React.createElement('div',{className:'rp-reader-empty',role:'status'},
+                '作者文档编译服务暂不可用：'+readerCompilerError,
+                React.createElement('button',{type:'button',onClick:()=>{
+                    beautyCache.retryCompilation();reloadReaderCompilation(n=>n+1);
+                }},'重试显示编译')):null,
+            readerDocumentStatus.kind === 'failed'
                 ? React.createElement('div', {className: 'rp-reader-empty',role: 'status'},
-                    '作者正则文档未执行：' + (readerDocumentConflict ?? readerDocumentStatus.code)) : null,
+                    '作者正则文档未执行：' + readerDocumentStatus.code) : null,
             communityCache?.failed()?React.createElement('div',{className:'rp-reader-empty',role:'status'},'社区显示规则未能完成，已保留原文。',
                 React.createElement('button',{type:'button',onClick:()=>reloadCommunity(n=>n+1)},'重试显示规则')):null,
 
@@ -1024,30 +1169,17 @@ React,
                 ? React.createElement('div', { className: 'rp-reader-empty' }, '暂无可阅读的正文')
                 : null,
 
+            React.createElement('div', {className: 'rp-reader-content',
+                style: {width: '100%', maxWidth: '1500px'}},
             React.createElement('div', {className: 'rp-author-frame-host', ref: browserContainerRef,
-                style: {display: actualBrowserFramed && !actualSharedBrowserFramed ? undefined : 'none'}}),
+                style: {display: actualBrowserFramed ? undefined : 'none'}}),
             React.createElement('div', {className: 'rp-author-frame-host',
                 style: {display: actualSharedFramed ? undefined : 'none'}},
                 React.createElement('div',{ref:readerDocumentContainerRef}),
                 actualSharedFramed?React.createElement('div',{
                     className:'rp-author-action-layer rp-author-shared-action-layer',ref:readerActionLayerRef,
                 },renderedParts.map(renderFramedPart)):null),
-            actualSharedFramed ? null : actualFramed
-                ? React.createElement('div', {className: 'rp-reader'},
-                    renderedParts.map(renderFramedPart))
-                : framed
-                ? React.createElement('div', { className: 'rp-author-frame-host' },
-                    React.createElement('iframe', {
-                        className: 'rp-author-guard-frame', title: '隔离阅读内容', ref: frameRef,
-                    }),
-                    activeFrameLayout ? React.createElement('div', { className: 'rp-author-action-layer' },
-                        renderedParts.map((part, index) => React.createElement('section', {
-                            className: 'rp-reader-message rp-author-action-row',
-                            'data-kind': part.kind === 'user' ? 'user' : 'assistant',
-                            'data-reader-key': readerPartKey(part),
-                            key: `${part.kind}:${part.seq ?? index}:${part.messageId ?? ''}`,
-                            style: {top: activeFrameLayout.rows[index] ?? 0},
-                        }, renderReaderActions(actionProps(part, sessionId))))) : null)
+            actualSharedFramed ? null
                 : React.createElement('div', {
                     className: 'rp-reader', ref: readerRef,
                     onClick: (event: ReactAPI.MouseEvent<HTMLDivElement>) => {
@@ -1063,7 +1195,7 @@ React,
                     ...actionProps(part, sessionId),
                     html: part.html, readerKey: readerPartKey(part),
                     key: `${part.kind}:${part.seq ?? index}:${part.messageId ?? ''}`,
-                }))),
+                })))),
 
             pendingPlayerBubble(activity, nodes),
 

@@ -61,16 +61,12 @@ export function describeCurrentRuntimeComponents(options:{plan:ProductAssemblyPl
     }
     components.set(key,component);return component
   }
-  const schemas=(plan.product.mvuSchemaRuntimes??[]).filter(row=>row.executorVersion===4)
+  const schemas=(plan.product.mvuSchemaRuntimes??[]).filter(row=>row.executorVersion===4&&!row.immutableGeneration)
   if(schemas.length>1)throw Error('Current schema runtime recipe is ambiguous')
   const recipes:{role:ReleasedRuntimeRole;artifact?:string;factory:ReleasedComponentFactory;shared?:boolean}[]=[
     {role:'schema',artifact:schemas[0]?.packageArtifact,factory:'schema-v4-shared-typescript',shared:true},
     {role:'host',artifact:plan.product.authorHostRuntime?.packageArtifact,factory:'host-v5'},
-    {role:'browser',artifact:plan.product.authorBrowserRuntimeV3?.packageArtifact,
-      factory:'browser-v3-shared-typescript',shared:true},
-    {role:'browserPartition',artifact:plan.product.authorBrowserRuntimeV2?.packageArtifact,factory:'browser-v2-local-typescript'},
-    {role:'prompt',artifact:plan.product.authorPromptRuntime?.packageArtifact,factory:'prompt-v1-shared-typescript',shared:true},
-    {role:'template',artifact:plan.product.templateRuntime?.packageArtifact,factory:'template-v2'},
+    {role:'templateEjs',artifact:plan.product.templateEjsRuntime?.packageArtifact,factory:'template-ejs-v1'},
   ]
   for(const recipe of recipes) {
     if(!recipe.artifact)continue
@@ -86,6 +82,12 @@ export function describeCurrentRuntimeComponents(options:{plan:ProductAssemblyPl
     }
     const component=add(row,recipe.factory,dependencies)
     result.roles[recipe.role]=ref(component)
+  }
+  // A historical consumer may bind to an exact current compiler even when no
+  // current worker uses it. Include that owner in the current change identity.
+  for(const recipe of plan.product.historicalComponents??[]) {
+    const id=recipe.runtime?.typescriptPackageArtifact,row=id&&byArtifact.get(id)
+    if(row)add(row,'typescript-v1')
   }
   result.components=[...components.values()]
   return result
@@ -148,6 +150,8 @@ interface MaterializationOptions {
   plan:ProductAssemblyPlan
   currentRuntime:CurrentRuntimeComponents
   currentPackages:readonly {name:string;version:string;files:ProtectedFile[]}[]
+  /** Explicit immutable payloads already materialized by their package owner. */
+  historicalComponents?:readonly HistoricalReleasedComponent[]
   archives:Readonly<Record<string,string>>
   /** Valid ready-state facts supplied by the development transaction owner. */
   previous?:{historicalComponents:readonly HistoricalReleasedComponent[];releasedRuntime?:ReleasedRuntimeInventory}
@@ -159,7 +163,7 @@ interface MaterializationOptions {
 export function materializeReleasedComponents(options:MaterializationOptions):{
   historicalComponents:HistoricalReleasedComponent[];releasedRuntime:ReleasedRuntimeInventory} {
   const catalog=readPublishedReleaseCatalog(options.repo,options.plan)
-  const result:ReleasedRuntimeInventory={schemaVersion:1,components:[],releases:[],schemas:[],authors:[],templates:[],
+  const result:ReleasedRuntimeInventory={schemaVersion:1,components:[],releases:[],schemas:[],authors:[],
     dependencyNamespaces:[]}
   const current=new Map(options.currentRuntime.components.map(component=>[refKey(component),component]))
   const selected=new Map<string,ReleasedRuntimeComponent>()
@@ -169,8 +173,43 @@ export function materializeReleasedComponents(options:MaterializationOptions):{
   const priorFiles=new Map((options.previous?.historicalComponents??[]).map(component=>[component.path,component]))
   const schemas=new Map<string,ReleasedRuntimeInventory['schemas'][number]>()
   const authors=new Map<string,ReleasedRuntimeInventory['authors'][number]>()
-  const templates=new Map<string,ReleasedRuntimeInventory['templates'][number]>()
+  const templateEjs=new Map<string,NonNullable<ReleasedRuntimeInventory['templateEjs']>[number]>()
   const releases=new Set<string>()
+  const explicit=new Map((options.historicalComponents??[]).map(component=>[component.path,component]))
+  const explicitRecipes=new Map((options.plan.product.historicalComponents??[])
+    .filter(row=>row.runtime).map(row=>[row.packageArtifact,row]))
+  const artifactComponents=new Map<string,ReleasedRuntimeComponent>()
+  const resolveArtifact=(id:string):ReleasedRuntimeComponent=>{
+    const known=artifactComponents.get(id)
+    if(known)return known
+    const recipe=explicitRecipes.get(id)
+    if(recipe) {
+      const payload=explicit.get(recipe.path)
+      if(!payload)throw Error('Explicit historical runtime was not assembled: '+id)
+      const dependencies:ReleasedRuntimeComponent['dependencies']={}
+      if(recipe.runtime!.typescriptPackageArtifact)
+        dependencies.typescript=ref(resolveArtifact(recipe.runtime!.typescriptPackageArtifact))
+      const component:ReleasedRuntimeComponent={name:payload.name,version:payload.version,
+        generation:recipe.immutableGeneration,factory:recipe.runtime!.factory,dependencies,path:recipe.path}
+      const context=componentContext(component)
+      if(context)component.context=context
+      const key=refKey(component),actual=current.get(key)??selected.get(key)
+      if(actual&&bindingKey(actual)!==bindingKey(component))throw Error('Explicit runtime instance has conflicting dependencies: '+payload.name)
+      // One exact instance has one runtime location. A matching current owner
+      // wins; the explicit package owner still retains its declared payload.
+      const admitted=actual??component
+      artifactComponents.set(id,admitted);selected.set(key,admitted)
+      if(admitted.path===recipe.path)specs.set(key,payload)
+      return admitted
+    }
+    const source=options.plan.artifacts.find(row=>row.id===id)?.source
+    const metadata=source&&json<{name:string}>(contained(options.repo,source))
+    const component=metadata&&options.currentRuntime.components.find(row=>row.name===metadata.name)
+    if(!component)throw Error('Explicit runtime dependency is unavailable: '+id)
+    artifactComponents.set(id,component);selected.set(refKey(component),component)
+    return component
+  }
+  for(const id of explicitRecipes.keys())resolveArtifact(id)
   for(const release of catalog.releases) {
     const releaseKey=release.version+'\0'+release.archive.sha256
     if(!releases.has(releaseKey)){result.releases.push({version:release.version,archiveSha256:release.archive.sha256});releases.add(releaseKey)}
@@ -193,9 +232,9 @@ export function materializeReleasedComponents(options:MaterializationOptions):{
       const key=recordSha256({host:identities.host,server:identities.server})
       if(!authors.has(key))authors.set(key,{host:identities.host,server:identities.server,roles})
     }
-    if(identities.template&&roles.template) {
-      const key=recordSha256(identities.template)
-      if(!templates.has(key))templates.set(key,{engine:identities.template,component:roles.template})
+    if(identities.templateEjs&&roles.templateEjs) {
+      const key=recordSha256(identities.templateEjs)
+      if(!templateEjs.has(key))templateEjs.set(key,{engine:identities.templateEjs,component:roles.templateEjs})
     }
   }
   // A reused current package carries its current exact dependency binding.
@@ -211,6 +250,7 @@ export function materializeReleasedComponents(options:MaterializationOptions):{
   const groups=new Map<string,{release:PublishedReleaseRecord;components:ReleasedRuntimeComponent[]}>()
   for(const [key,component] of selected) {
     if(!component.path)continue
+    if(specs.has(key))continue
     const previous=priorComponents.get(key),files=priorFiles.get(component.path)
     if(previous&&files&&bindingKey(previous)===bindingKey(component)) {
       specs.set(key,files);continue
@@ -260,6 +300,7 @@ export function materializeReleasedComponents(options:MaterializationOptions):{
     throw error
   }
   result.components=[...selected.values()]
-  result.schemas=[...schemas.values()];result.authors=[...authors.values()];result.templates=[...templates.values()]
+  result.schemas=[...schemas.values()];result.authors=[...authors.values()]
+  if(templateEjs.size)result.templateEjs=[...templateEjs.values()]
   return {historicalComponents:[...specs.values()],releasedRuntime:result}
 }

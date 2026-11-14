@@ -24,7 +24,7 @@ export interface PromptTemplateOnlyDiagnosticV1 {
   readonly pointer:string
 }
 export interface PromptTemplateOnlyRequiredRuntimeV1 {
-  readonly protocol:'owned-template-v1'
+  readonly protocol:'owned-ejs-template-engine-v1'
   readonly policySha256:string
 }
 export interface PromptTemplateOnlyRuntimeRequestV1 {
@@ -162,13 +162,8 @@ export interface OpeningIntentV6 extends OpeningIntentIdentity {
   readonly initializationCode?:OpeningInitializationCode
   readonly rejectionCode?:OpeningRejectionCode
 }
-export type PromptTemplateOnlyPreflightDecisionV1={readonly kind:'not-applicable'}
-  |{readonly kind:'ready';readonly proof:PromptTemplateOnlySourceProofV1}
-  |{readonly kind:'blocked';readonly proof:PromptTemplateOnlySourceProofV1;readonly code:PromptTemplateOnlyCodeV1}
 export interface PromptTemplateOnlySelectionCallbacksV1 {
-  /** Invoked outside Source FIFO. The actual Source producer may acquire its
-   * own synchronous capture lock before and after Runtime waits. */
-  preflightPromptTemplateOpening(request:MvuSourceRequest):Promise<PromptTemplateOnlyPreflightDecisionV1>
+  /** Existing intent recovery awaits the actual runtime outside Source FIFO. */
   preflightPromptTemplateRuntime(proof:PromptTemplateOnlySourceProofV1):Promise<void>
   isPromptTemplateOnlySourceCurrent(proof:PromptTemplateOnlySourceProofV1):boolean
   isPromptTemplateRuntimeCurrent(proof:PromptTemplateOnlySourceProofV1):boolean

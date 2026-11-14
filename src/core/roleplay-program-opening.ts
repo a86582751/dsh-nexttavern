@@ -1,11 +1,11 @@
 /** Own the actual first-opening transaction and its Native closing handoff.
  * Immutable records explain recovery; actual Session/Source/Native readers
  * independently decide every append, material and publication permission. */
-import {nativeInputSha256,validateNativeOpeningInvocationV1} from '@deepseek-ai/dsh-agent-loop'
+import {nativeInputSha256,validateNativeOpeningInvocationV1} from 'dsh-nexttavern-native-agent-loop'
 import type {NativeProgrammaticOpeningAgentV1,NativeOpeningIdentityV1,NativeOpeningMaterialPrepareInputV1,
   NativeOpeningMaterialCheckV1,NativeOpeningClosingInputV1,NativeOpeningClosingAcknowledgementV1,
-  NativeOpeningOwnerIdentityV1} from '@deepseek-ai/dsh-agent-loop'
-import type {Session} from '@deepseek-ai/dsh-session'
+  NativeOpeningOwnerIdentityV1} from 'dsh-nexttavern-native-agent-loop'
+import type {Session} from 'dsh-nexttavern-native-session'
 import {recordSha256,sha256} from './roleplay-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {assertProgramOpeningRowDataDescriptorsV1} from './roleplay-program-opening-row-facts.js'
@@ -26,7 +26,8 @@ import type {ProgramGenesisIdentityV1,ProgramGenesisDataRefV1,VerifiedMvuProgram
 import type {createRoleplayPromptOpeningSourceV1} from './roleplay-prompt-opening-source.js'
 import type {createRoleplayProgramOpeningBasisV1,ProgramOpeningOwnedBranchRowV1}
   from './roleplay-program-opening-basis.js'
-import type {PromptOpeningSourceProofV1} from './roleplay-prompt-opening-source-types.js'
+import type {PromptOpeningSourceProofV1,PromptOpeningSourceDiagnosticV1,PromptOpeningSourceNotApplicableV1}
+  from './roleplay-prompt-opening-source-types.js'
 import {createProgramOpeningSeedV1,createProgramOpeningInputV1,prepareProgramOpeningPlanRecordV1,
   createPreparedOpeningIntentV7,createOpeningIntentV7,validateOpeningIntentV7,
   validateProgramOpeningSeedV1,validateProgramOpeningInputV1,validateProgramOpeningPlanRecordV1,
@@ -62,6 +63,8 @@ export interface ProgramOpeningDependenciesV1 {
   readonly resolveAgent:(id:string)=>Promise<NativeProgrammaticOpeningAgentV1|undefined>
   readonly isActualAgent:(agent:NativeProgrammaticOpeningAgentV1)=>boolean
   readonly includeCardStyle:(id:string)=>boolean
+  /** Existing combined Source owner supplies the actual enabled-script fact. */
+  readonly ownsCombinedOpening?:(id:string)=>boolean
   readonly readNumericalSourceSha256:(id:string)=>string
   readonly importActiveKey:(id:string)=>string
   readonly withSourceLock:<T>(id:string,work:()=>Promise<T>)=>Promise<T>
@@ -81,8 +84,8 @@ export interface ProgramOpeningDependenciesV1 {
   /** Reads the real Session, original projection/edit/deletion cut and exact
    * Core material rows. This method performs no lookup, flush or append. */
   readonly readNativeFacts:(context:ProgramOpeningRecordContextV1,acknowledgedTurn?:number)=>ActualNativeFactsV1|undefined
-  readonly verifyTemplateIntegrity:()=>void
-  readonly loadTemplate:(signal:AbortSignal)=>Promise<unknown>
+  readonly verifyEjsIntegrity:()=>void
+  readonly loadEjs:(signal:AbortSignal)=>Promise<unknown>
 }
 interface ActiveV1 {
   readonly session:Session
@@ -95,6 +98,10 @@ interface ActiveV1 {
 }
 export type ProgramOpeningReadV1={readonly kind:'ready';readonly context:ProgramOpeningRecordContextV1;
   readonly intent:OpeningIntentV7}|{readonly kind:'outside-domain'}|{readonly kind:'blocked';readonly code:string}
+export type ProgramOpeningCatalogV1={readonly kind:'applicable';readonly catalog:OpeningCatalog}
+  |{readonly kind:'not-applicable';readonly reason:'owned-by-combined-opening'}
+  |PromptOpeningSourceNotApplicableV1
+  |{readonly kind:'refused';readonly diagnostics:readonly PromptOpeningSourceDiagnosticV1[]}
 export interface ProgramOpeningRequestV1 {
   readonly sessionId:string
   readonly index:number
@@ -477,6 +484,7 @@ export function createRoleplayProgramOpeningV1(deps:ProgramOpeningDependenciesV1
       // its seed/input/intent cannot invalidate the author DATA it consumed.
       const captured=deps.source.capture(request.sessionId,request.index,deps.includeCardStyle(request.sessionId),
         ()=>deps.assertSessionCurrent(session),openingOutputs)
+      if(captured.kind==='not-applicable')return {kind:'outside-domain'}
       if(captured.kind!=='captured-opening-source')return {kind:'blocked',code:captured.diagnostics[0]?.code??'PROGRAM_OPENING_SOURCE_UNAVAILABLE'}
       const proof=captured.proof,key=openingIntentKey(request.sessionId,proof.source.importId)
       if(deps.branch.get(key)!==undefined)return {kind:'blocked',code:'PROGRAM_OPENING_PRIOR_INTENT_PRESENT'}
@@ -555,7 +563,7 @@ export function createRoleplayProgramOpeningV1(deps:ProgramOpeningDependenciesV1
         if(!same(before.domainReceipt,receipt))fail('PROGRAM_OPENING_DOMAIN_RECEIPT_CHANGED')
         return
       }
-      deps.verifyTemplateIntegrity()
+      deps.verifyEjsIntegrity()
       await updateIntent(completedContext,createOpeningIntentV7({context:completedContext,revision:before.revision+1,
         status:'completed',nativeReceipt:facts,committedTurn:facts.receipt.turn,domainReceipt:receipt,
         ...envelope?{genesisEnvelope:envelope}:{}}),signal)
@@ -654,7 +662,7 @@ export function createRoleplayProgramOpeningV1(deps:ProgramOpeningDependenciesV1
     if(prepared.intent.status==='completed')return verified(request.sessionId)
     const signal=disposal.signal
     try {
-      await deps.loadTemplate(signal)
+      await deps.loadEjs(signal)
       if(request.production==='selected-card-copy') {
         const found=await deps.lookupCopy(context)
         let turn:number
@@ -666,7 +674,7 @@ export function createRoleplayProgramOpeningV1(deps:ProgramOpeningDependenciesV1
           await deps.withSourceLock(request.sessionId,async()=>{
             if(!sourceCurrent(context.input.source)||!deps.basis.currentBefore(context.input.basis,context.input.source,
               identityFor(context),ownedRows(context)))fail('PROGRAM_OPENING_BASIS_CHANGED')
-            deps.verifyTemplateIntegrity()
+            deps.verifyEjsIntegrity()
           })
           const committed=await deps.appendCopy(context)
           if(committed.kind!=='committed') {
@@ -774,11 +782,13 @@ return deps.branch.put(key,value)
       }
       return false
     },
-    catalog(id:string):Promise<OpeningCatalog|undefined> {
-
+    catalog(id:string):Promise<ProgramOpeningCatalogV1> {
       return (async()=>deps.withSourceLock(id,async()=>{
-        const session=actualSession(id),captured=deps.source.capture(id,0,deps.includeCardStyle(id),()=>deps.assertSessionCurrent(session))
-        return captured.kind==='captured-opening-source'?captured.proof.catalog:undefined
+        const session=actualSession(id)
+        if(deps.ownsCombinedOpening?.(id))return {kind:'not-applicable' as const,reason:'owned-by-combined-opening' as const}
+        const captured=deps.source.capture(id,0,deps.includeCardStyle(id),()=>deps.assertSessionCurrent(session))
+        return captured.kind==='captured-opening-source'?{kind:'applicable' as const,catalog:captured.proof.catalog}
+          :captured.kind==='not-applicable'?captured:{kind:'refused' as const,diagnostics:captured.diagnostics}
       }))()
     },
     async dispose():Promise<void> {

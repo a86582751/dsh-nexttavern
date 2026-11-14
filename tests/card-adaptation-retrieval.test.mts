@@ -1,10 +1,15 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
 import http from 'node:http'
 import {createHash} from 'node:crypto'
 import {join} from 'node:path'
 import {DatabaseSync} from 'node:sqlite'
-import {createMemoryRetrieval,retrievalColdSession} from '../lib/memory/memory-retrieval.js'
 import {createTestDirectory,cleanupTestDirectory} from '../lib/operations/test-temp.mjs'
+
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'])
+afterNativeDependencies(removeOwnedNativeDependencies)
+const {createMemoryRetrieval,retrievalColdSession}=await import('../lib/memory/memory-retrieval.js')
 const home=createTestDirectory('adaptation-vectors-'),previous=process.env.NEXTTAVERN_MEMORY_HOME
 process.env.NEXTTAVERN_MEMORY_HOME=home
 const sent=[],ledger=new Map(),table=new Map();let service,inspection:DatabaseSync|undefined,live=true,latency=0

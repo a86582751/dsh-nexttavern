@@ -7,7 +7,7 @@ import {assertImportRecordIntegrity} from './roleplay-import-record.js'
 import type {ImportRecord} from './roleplay-import-types.js'
 
 export type ProgramAbsenceRowFamilyV1='source'|'source-control'|'program-opening'|'input'|'phase-a'
-  |'native-material'|'status-control'|'branch-control'
+  |'native-material'|'status-control'|'branch-control'|'ordinary-chat'
 export interface ProgramAbsenceOwnedRowFactV1 {
   readonly table:'branch'|'status'
   readonly key:string
@@ -101,6 +101,7 @@ function ordinaryMetadata(suffix:string,value:Record<string,unknown>):void {
  * an exemption from the absence scan. */
 function managed(suffix:string):boolean {
   return /^(?:tavern-source-|tavern-prompt-v1-|program-opening-|native-input-v2-|opening-choice-|edit-applied-)/.test(suffix)
+    ||/^author-chat-(?:root-v3|key-event-v3|publication-v3|fork-base-v3)-/.test(suffix)
     ||/^(?:phaseb-|task-steering-|maintenance-timing-)/.test(suffix)
     ||/^(?:task-(?:snapshot-|input-snapshot-|preparation(?:$|-))|context-window(?:$|-))/.test(suffix)
 }
@@ -117,6 +118,7 @@ function assertFamily(table:'branch'|'status',suffix:string,family:ProgramAbsenc
       :family==='input'?/^native-input-v2-/.test(suffix)
         :family==='phase-a'?/^(?:task-(?:snapshot-|input-snapshot-|preparation$)|context-window$)/.test(suffix)
           :family==='native-material'?/^(?:tavern-prompt-v1-|program-opening-material-)/.test(suffix)
+            :family==='ordinary-chat'?/^author-chat-(?:root-v3|key-event-v3|publication-v3|fork-base-v3)-/.test(suffix)
             :family==='branch-control'?
               /^(?:(?:phaseb|task-steering|maintenance-timing)-[1-9][0-9]*|task-preparation|context-window)$/.test(suffix)
                 ||/^edit-applied-(?:assistant|user)-(?:0|[1-9][0-9]*)$/.test(suffix)

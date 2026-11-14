@@ -8,8 +8,8 @@
  * dispatch) stay on the class, invisible out here.
  */
 import type { AttachmentIdType, FileAttachmentRef, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
-import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
+import type { MessageId } from 'dsh-nexttavern-native-llm/brand'
+import type { SessionId, SessionSeq } from 'dsh-nexttavern-native-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { PromptContentPart, QueueAction, SessionRequestId } from '../../types.js'

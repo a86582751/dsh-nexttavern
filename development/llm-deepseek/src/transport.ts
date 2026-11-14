@@ -1,6 +1,6 @@
 /** Normalize HTTP and in-band Messages errors into provider-neutral failures. */
 
-import { isContextWindowExceededError, isQuotaExceededError, LlmError, ProviderRequestId } from '@deepseek-ai/dsh-llm'
+import { isContextWindowExceededError, isQuotaExceededError, LlmError, ProviderRequestId } from 'dsh-nexttavern-native-llm'
 
 /** Read only provider error fields used by bounded Files recovery.
  * @param raw - decoded HTTP error response.

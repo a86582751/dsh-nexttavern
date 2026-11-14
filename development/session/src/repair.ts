@@ -9,7 +9,7 @@
  */
 
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { MessageId, ToolCallId, ToolResultMessage } from '@deepseek-ai/dsh-llm'
+import type { MessageId, ToolCallId, ToolResultMessage } from 'dsh-nexttavern-native-llm'
 import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import { SessionSeq } from './types.js'
 import type { SessionEvent, SessionSeq as SessionSeqType } from './types.js'

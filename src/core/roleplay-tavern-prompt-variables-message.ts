@@ -5,7 +5,41 @@ import {promptExact,promptFail,promptFact,promptRef,promptRead,promptValues,
   TAVERN_PROMPT_VARIABLE_BOUNDS_V1} from './roleplay-tavern-prompt-variables-data.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {TavernPromptMessageHistoryV1,TavernPromptVariableAvailabilityV1,
-  TavernPromptVariablePacketV1,TavernPromptVariableReadV1} from './roleplay-tavern-prompt-variables-types.js'
+  TavernPromptVariablePacketV1,TavernPromptVariableReadV1,TavernPromptMessageSelectionV2,
+  TavernPromptMessageVariablesFactV1} from './roleplay-tavern-prompt-variables-types.js'
+
+export function selectCurrentPromptMessageV2(count:number,at:(index:number)=>TavernPromptMessageVariablesFactV1,
+  selectedBaseSha256:string,membership:TavernPromptVariableReadV1):TavernPromptMessageSelectionV2 {
+  const selected=(count?at(count-1):undefined)!,reads:TavernPromptVariableReadV1[]=[membership],base={schemaVersion:2 as const,
+    encoding:'owned-prompt-message-selection-v2' as const,selectedBaseSha256,reads},
+    result=(kind:TavernPromptMessageSelectionV2['kind'],values:MvuJsonObject|null,
+      disposition:TavernPromptVariablePacketV1['selection']['disposition'],messageId:string|null,
+      previousMessageId:string|null=null,missingEvidence:readonly string[]=[]):TavernPromptMessageSelectionV2=>
+      Object.freeze({...base,kind,values,missingEvidence,selection:{disposition,messageId,swipe:messageId===null?null:selected!.selectedSwipe,
+        previousMessageId,selectedValuesSha256:values===null?null:recordSha256(values)}})
+  if(!count)return result('empty',{},'empty-chat',null)
+  const own=selected!.selected!
+  const use=(row:TavernPromptMessageVariablesFactV1,selected=false)=>{
+    const fact=selected?row.selected!:row.active
+    if(fact.kind!=='unavailable')reads.push({kind:'message',identity:row.messageId,
+      valueSha256:fact.kind==='values'?fact.valuesSha256:recordSha256({kind:'absent'}),provenance:fact.provenance})
+    return fact
+  }
+  use(selected!,true)
+  if(selected.initializedRef)reads.push({kind:'message',identity:selected.messageId+':initialized',
+    valueSha256:recordSha256({initialized:selected.selectedInitialized}),provenance:selected.initializedRef})
+  if(!selected.initializedRef||own.kind==='unavailable')return result('unavailable',null,'unavailable',selected.messageId,
+    null,own.kind==='unavailable'?own.missingEvidence:['selected.variables_initialized actual presence/value ref'])
+  const ownValues=own.kind==='values'?own.values:{}
+  if(selected.selectedInitialized===true)return result('values',ownValues,'already-initialized',selected.messageId)
+  if(count===1)return result('values',ownValues,'readonly-own-first-message',selected.messageId)
+  for(let index=count-2;index>=0;index--){
+    const row=at(index),fact=use(row)
+    if(fact.kind==='unavailable')return result('unavailable',null,'unavailable',selected.messageId,null,fact.missingEvidence)
+    if(fact.kind==='values')return result('values',{...fact.values,...ownValues},'readonly-previous-copy',selected.messageId,row.messageId)
+  }
+  return result('initial-fallback',ownValues,'readonly-initial-fallback',selected.messageId)
+}
 
 export interface TavernPromptSelectedMessageDataV1 {
   readonly values:MvuJsonObject|null

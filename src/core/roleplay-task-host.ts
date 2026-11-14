@@ -6,18 +6,20 @@ import { createModelPolicy, createTavernTasks, selectedMainRoute, isInlinePendin
 import type { ModelRoute } from './tavern-model-policy.js'
 import type {StoredTask} from './tavern-task-types.js'
 import type { HostSession, HostAgent, HostSource, NativeTaskInput, TaskHostDependencies,
-  AuthorDialogRequestV1,RubyAnalysisRequestV1 } from './roleplay-task-host-types.js'
+  AuthorDialogRequestV1,RubyAnalysisRequestV1,CharacterBackgroundRequestV1,
+  CharacterBackgroundResultV1,CharacterBackgroundTaskReferenceV1 } from './roleplay-task-host-types.js'
 import type {RubyAnalysisResultV1} from './roleplay-ruby-task-types.js'
 import type {TavernLoreDerivedCompletionRefV1} from './tavern-lore-derived.mjs'
-import type {AuthorChatBindingV1,AuthorDialogTaskRefV1} from './roleplay-author-chat-state-types.js'
-import type {AuthorDialogResultV1,AuthorDialogPromptV1} from './roleplay-author-dialog.js'
+import type {AuthorDialogChatAddress,AuthorDialogTaskRefV1,AuthorDialogResultV1,AuthorDialogPromptV1}
+  from './roleplay-author-dialog.js'
 import type {ImportSession,ImportExec,OwnedCardImportWorkflow} from './roleplay-import-types.js'
 import type {CardWorkflowJob} from './roleplay-card-workflow-types.js'
 
 export function createRoleplayTaskHost({
   T,ctx,config,taskAgents,storyBranchIsActive,statusFixedContext,taskDependenciesCurrent,
   taskInstruction,getMaintenanceJob,runStatusObligation,STATUS_SYSTEM,DECISION_SYSTEM,ORGANIZE_WORKER_SYSTEM,
-  inputCurrency,inputCurrencyCurrent,inputHistoricalCurrencyCurrent,inputTaskRecoveryBlockCode,currentTaskClaim,assertCardWorkflow,advancedCard,
+  inputCurrency,inputCurrencyCurrent,inputHistoricalCurrencyCurrent,inputTaskRecoveryBlockCode,currentTaskClaim,assertCardWorkflow,advancedCard,advancedCardReady,
+  observeRecords,storyEntryReader,characterPrivate,
 }:TaskHostDependencies) {
   const continuationTimers=new Set<ReturnType<typeof setTimeout>>()
   const authorDialogOwners=new Map<string,{session:HostSession;agent:HostAgent;
@@ -25,15 +27,20 @@ export function createRoleplayTaskHost({
   let disposed=false
   const rubyOwners=new Map<string,{session:HostSession;agent:HostAgent;
     prompt:RubyAnalysisRequestV1['prompt'];current:()=>boolean}>()
+  const characterBackgroundOwners=new Map<string,{session:HostSession;current:()=>boolean}>()
+  const characterBackgroundLifetime=new AbortController()
   ctx.effect(()=>()=>{
     disposed=true
     for(const timer of continuationTimers)clearTimeout(timer)
     continuationTimers.clear()
     authorDialogOwners.clear()
     rubyOwners.clear()
+    characterBackgroundOwners.clear()
+    characterBackgroundLifetime.abort(Error('角色后台任务宿主已释放'))
   },'roleplay: task host continuation lifetime')
   const sameModelRoute=(a: Partial<Pick<ModelRoute, 'provider' | 'model'>> | null | undefined,b: Partial<Pick<ModelRoute, 'provider' | 'model'>> | null | undefined)=>Boolean(a?.provider&&a?.model&&a.provider===b?.provider&&a.model===b?.model)
-  const canonicalModelRoute=async (selection: ModelRoute)=>{if(!ctx.llm?.resolveModelInfo)return selection
+  const canonicalModelRoute=async <Route extends Pick<ModelRoute,'provider'|'model'>>(selection:Route):Promise<Route>=>{
+    if(!ctx.llm?.resolveModelInfo)return selection
     const info=await ctx.llm.resolveModelInfo(selection.provider,selection.model)
     return {...selection,provider:info.provider,model:info.id}
   }
@@ -52,6 +59,7 @@ export function createRoleplayTaskHost({
     return [...bySeq.values()]
   }
   const cluster=createCharacterCluster<HostSession, HostAgent>({table:T.branch,subagents:ctx.subagents,
+    privateMemory:characterPrivate,
     rootOf:session=>ctx.get('tavernConversations')?.rootOf(session.id)??session.id,
     main:(session,agent)=>selectedMainRoute(session,agent,ctx.agentDefaultModel.currentSelection()),
     isCurrent:(session,job)=>storyBranchIsActive(session)
@@ -59,13 +67,25 @@ export function createRoleplayTaskHost({
       && (!job.input?.character || characterRoster(session).some(character=>character.id===job.input!.character!.id
         &&character.content===job.input!.character!.content)),
   })
-  const characterCluster={...cluster,read:(session:HostSession)=>{
+  const characterCluster={...cluster,readSettings:cluster.read,run:async(input:Parameters<typeof cluster.run>[0])=>{
+    if(characterPrivate?.enabled(input.session))
+      await characterPrivate.beforeCast(input.session,input.characters.map(character=>character.id))
+    return cluster.run(input)
+  },read:(session:HostSession)=>{
     const settings=cluster.read(session)
-    return {...settings,enabled:settings.enabled&&(!advancedCard||advancedCard(session).state==='ready')}
+    return {...settings,enabled:settings.enabled&&(advancedCardReady
+      ?advancedCardReady(session):!advancedCard||advancedCard(session).state==='ready'),
+      privateMemoryEnabled:characterPrivate?.enabled(session)===true}
   }}
-  const characterRoster=(session: HostSession)=>advancedCard?advancedCard(session).characters
-    :[...T.cards.entries()].filter(([key,c])=>key.startsWith(`${session.id}__`)&&c?.kind!=='user'&&c?.id!=='user'&&c?.enabled!==false)
-    .map(([,c])=>({id:c.id,name:c.name??c.id,content:c.content??''}))
+  const characterRoster=(session: HostSession)=>{
+    // Static advanced text is not the private cast catalog. Dynamic Source
+    // members can be known before their trusted persona becomes playable.
+    if(characterPrivate?.enabled(session))
+      return characterPrivate.catalog(session).map(character=>({...character,content:''}))
+    return advancedCard?advancedCard(session).characters
+      :[...T.cards.entries()].filter(([key,c])=>key.startsWith(`${session.id}__`)&&c?.kind!=='user'&&c?.id!=='user'&&c?.enabled!==false)
+      .map(([,c])=>({id:c.id,name:c.name??c.id,content:c.content??''}))
+  }
   const clusterLoreVisible=(session: HostSession,record: {schemaVersion?: unknown; callId?: unknown},before=Infinity)=>record.schemaVersion===1&&surfaceEvents(session).some(e=>e.type==='tool/result'&&e.seq<before&&!e.data?.error
     && record.callId&&(e.data?.message?.source?.callId??e.data?.callId)===record.callId)
   const clusterPhase=(session: HostSession)=>{
@@ -87,6 +107,11 @@ export function createRoleplayTaskHost({
   function taskSourceCurrent(session:HostSession,job:StoredTask,historical=false) {
       if(disposed||ctx.sessions.get(session.id)!==session)return false
       const source=job.source as HostSource
+      if(job.kind==='character-perception'||job.kind==='character-offscreen') {
+        const owner=characterBackgroundOwners.get(job.id)
+        return !!owner&&owner.session===session&&characterPrivate?.enabled(session)===true
+          &&owner.current()&&characterPrivate.taskCurrent(session,job)
+      }
       if(job.kind==='author-dialog') {
         const owner=authorDialogOwners.get(job.id),declared=source.authorDialog
         return !!owner&&owner.session===session&&taskAgents.get(session.id)===owner.agent
@@ -109,7 +134,17 @@ export function createRoleplayTaskHost({
         && source.preparationId!==source.inputPreparation.preparationId)) return false
       if(!historical && source.preparationId && T.branch.get(keyOf(session.id,'task-preparation'))?.id!==source.preparationId)return false
       const hash=source.hashKind==='taskHash'?(value: string)=>recordSha256(value):sha256
-      const live=source.events?.length?new Map(taskStory(session).map(e=>[e.seq,hash(e.text)])):undefined
+      let live:Map<number,string>|undefined
+      if(source.events?.length) {
+        const seqs=source.events.map(event=>event.seq),wanted=new Set(seqs),compaction=ctx.get('compaction'),
+          archived=compaction?.storyEvidenceAt?.(session,seqs)
+            ??compaction?.storyEvidence?.(session).filter(entry=>wanted.has(entry.seq))??[],
+          selected=storyEntryReader?.surfaceEntriesAt(session,seqs)
+            ??surfaceEntries(session).filter(entry=>wanted.has(entry.seq))
+        // Archives fill the durable evidence first; the selected surface owns
+        // the current text for the same seq, including an open-turn body.
+        live=new Map([...archived,...selected].map(entry=>[entry.seq,hash(entry.text)]))
+      }
       if(source.workflowId) {
         const workflow=T.branch.get(`${source.workflowType==='card'?'tavern_cardjob__':'tavern_novel__'}${source.workflowId}`)
         if(!workflow||workflow.generation!==source.generation||['cancelled','stale'].includes(workflow.status!))return false
@@ -120,6 +155,7 @@ export function createRoleplayTaskHost({
         && taskDependenciesCurrent(T,session.id,source.dependencies)
   }
   const tavernTasks = createTavernTasks<HostSession, HostAgent>({table:T.branch,policy:modelPolicy,subagents:ctx.subagents,
+    observeRecords,
     isCurrent:(session,job) => taskSourceCurrent(session,job),
     isHistoricalResultCurrent:(session,job) => taskSourceCurrent(session,job,true),
     canPublishResult:(session,job,fromNativeResult) => {
@@ -131,6 +167,69 @@ export function createRoleplayTaskHost({
         && job.kind==='memory' && job.input?.taskStage==='background-notes') && taskSourceCurrent(session,job,true)
     },
   })
+  ctx.effect(()=>()=>tavernTasks.dispose(),'roleplay: task record index lifetime')
+  async function requestCharacterBackground<Result=unknown>(input:CharacterBackgroundRequestV1<Result>)
+    :Promise<CharacterBackgroundResultV1<Result>> {
+    const session=input.session,signal=AbortSignal.any([
+      characterBackgroundLifetime.signal,...(input.signal?[input.signal]:[])])
+    signal?.throwIfAborted()
+    const current=()=>!disposed&&ctx.sessions.get(session.id)===session
+      &&characterPrivate?.enabled(session)===true&&input.current()
+    if(!current())throw Error('CHARACTER_BACKGROUND_OWNER_CHANGED')
+    // Capture once before resolving the Native Agent. The existing task hash
+    // binds this frozen semantic input and both prompt strings to its source.
+    const captured=structuredClone({sourceKey:input.sourceKey,input:input.input,system:input.system,user:input.user,
+      format:input.format??'json'}),
+      source:HostSource={characterBackground:{sourceKey:captured.sourceKey}},
+      requestKey={input:captured.input,system:captured.system,user:captured.user,format:captured.format},
+      id=taskHash({sessionId:session.id,kind:input.kind,source,input:requestKey})
+    let main=input.agent??taskAgents.get(session.id)
+    if(!main)main=(await ctx.sessionController.resolveAgent?.(session.id))?.agent
+    signal?.throwIfAborted()
+    if(!main||main.session!==session||!current())throw Error('CHARACTER_BACKGROUND_OWNER_CHANGED')
+    taskAgents.set(session.id,main)
+    let selection=input.selection
+    if(!selection) {
+      const primary=await executedMainRoute(session,main),override=cluster.read(session).defaultRoute,
+        requested=override&&'main' in override
+          ?{...primary,...(override.reasoningEffort?{reasoningEffort:override.reasoningEffort}:{})}
+          :override??primary
+      selection={execution:'spawn',main:primary,actualRoute:await canonicalModelRoute(requested)}
+    }
+    const owner={session,current}
+    characterBackgroundOwners.set(id,owner)
+    let completed:StoredTask|undefined
+    try {
+      const result=await tavernTasks.request({session,agent:main,kind:input.kind,source,requestKey,
+        input:{taskStage:input.kind,...captured},executionPolicy:'independent',background:true,
+        format:captured.format,tools:[],signal,selection,
+        timeoutMs:input.timeoutMs,maxTokens:input.maxTokens,validationFailurePolicy:'terminal',
+        validate:input.validate,onResult:job=>{completed=job},
+        onAdmission:job=>input.onPrepared?.({kind:input.kind,taskId:job.id,generation:job.generation,
+          ...(typeof job.childSessionId==='string'?{childSessionId:job.childSessionId}:{})})})
+      signal?.throwIfAborted()
+      if(!completed?.generation||typeof completed.resultHash!=='string')
+        throw Error('CHARACTER_BACKGROUND_COMPLETED_TASK_MISSING')
+      return {kind:input.kind,result:result as Result,taskId:completed.id,generation:completed.generation,
+        resultSha256:completed.resultHash,
+        ...(typeof completed.childSessionId==='string'?{childSessionId:completed.childSessionId}:{})}
+    }finally {
+      if(characterBackgroundOwners.get(id)===owner)characterBackgroundOwners.delete(id)
+    }
+  }
+  /** Completed DATA can be recovered without a live request owner. The
+   * private coordinator separately owns permission to publish that result. */
+  function readCompletedCharacterBackground(session:HostSession,reference:CharacterBackgroundTaskReferenceV1)
+    :CharacterBackgroundResultV1|undefined {
+    if(disposed||ctx.sessions.get(session.id)!==session)return undefined
+    const job=T.branch.get('tavern_job__'+reference.taskId) as StoredTask|undefined
+    if(job?.sessionId!==session.id||job.id!==reference.taskId||job.kind!==reference.kind
+      ||job.status!=='completed'||job.generation!==reference.generation||typeof job.resultHash!=='string'
+      ||reference.resultSha256!==undefined&&job.resultHash!==reference.resultSha256
+      ||reference.childSessionId!==undefined&&job.childSessionId!==reference.childSessionId)return undefined
+    return {kind:reference.kind,taskId:job.id,generation:reference.generation,resultSha256:job.resultHash,
+      ...(typeof job.childSessionId==='string'?{childSessionId:job.childSessionId}:{}),result:structuredClone(job.result)}
+  }
   async function requestRubyAnalysis(input:RubyAnalysisRequestV1):Promise<RubyAnalysisResultV1> {
     const {session,prompt,signal}=input
     signal?.throwIfAborted()
@@ -148,11 +247,14 @@ export function createRoleplayTaskHost({
     rubyOwners.set(id,owner)
     let completed:StoredTask|undefined
     try {
-      if(input.retry)await tavernTasks.retry(session,id)
+      // Owner input can be durable before the Native job is created. An
+      // explicit retry of that gap creates its first job from the frozen plan.
+      if(input.retry&&T.branch.get('tavern_job__'+id))await tavernTasks.retry(session,id)
       const text=await tavernTasks.request({session,agent:main,kind:'ruby-analysis',source,requestKey,
         input:{taskStage:'ruby-analysis',rubyTask:prompt},background:true,format:'text',tools:[],signal,
-        timeoutMs:input.timeoutMs,maxTokens:input.maxTokens,
+        timeoutMs:input.timeoutMs,maxTokens:prompt.generation?.maxTokens??input.maxTokens,
         rubyTask:{promptPlanSha256:prompt.promptPlanSha256,orderedMessages:prompt.orderedMessages,
+          ...(prompt.generation?.temperature===undefined?{}:{temperature:prompt.generation.temperature}),
           ...(prompt.mainInputMessageIndex===undefined?{}:{mainInputMessageIndex:prompt.mainInputMessageIndex}),
           createOwner:input.createOwner},
         validate:value=>{
@@ -174,7 +276,7 @@ export function createRoleplayTaskHost({
   async function requestAuthorDialog(input:AuthorDialogRequestV1):Promise<AuthorDialogResultV1> {
     const {session,prompt,signal}=input
     signal?.throwIfAborted()
-    if(disposed||ctx.sessions.get(session.id)!==session||prompt.binding.sessionId!==session.id||!input.current())
+    if(disposed||ctx.sessions.get(session.id)!==session||prompt.binding.namespace.sessionId!==session.id||!input.current())
       throw Error('AUTHOR_DIALOG_OWNER_CHANGED')
     let main=input.agent??taskAgents.get(session.id)
     if(!main)main=(await ctx.sessionController.resolveAgent?.(session.id))?.agent
@@ -205,19 +307,36 @@ export function createRoleplayTaskHost({
       return result
     }finally{if(authorDialogOwners.get(id)===owner)authorDialogOwners.delete(id)}
   }
-  function readCompletedRubyAnalysis(reference:TavernLoreDerivedCompletionRefV1):RubyAnalysisResultV1|undefined {
-    const job=T.branch.get('tavern_job__'+reference.taskId) as StoredTask|undefined,completion=job?.rubyTaskCompletion
-    if(!job||job.kind!=='ruby-analysis'||job.status!=='completed'||job.generation!==reference.generation
-      ||typeof job.result!=='string'||job.resultHash!==reference.resultSha256||!completion
+  function completedRubyResult(job:StoredTask|undefined):RubyAnalysisResultV1|undefined {
+    const completion=job?.rubyTaskCompletion
+    if(!job||job.kind!=='ruby-analysis'||job.status!=='completed'
+      ||typeof job.result!=='string'||!completion
       ||completion.generation!==job.generation||completion.taskId!==job.id
-      ||completion.childSessionId!==job.childSessionId||completion.resultSha256!==job.resultHash
-      ||recordSha256(completion.nativeCompletedWork)!==reference.completedWorkSha256)return undefined
+      ||completion.childSessionId!==job.childSessionId||completion.resultSha256!==job.resultHash)return undefined
     return {schemaVersion:1,encoding:'native-ruby-analysis-result-v1',authority:'consumer-data-only',
       promptPlanSha256:completion.promptPlanSha256,text:job.result,completion}
   }
-  function readCompletedAuthorDialog(session:HostSession,binding:AuthorChatBindingV1,
+  function readCompletedRubyAnalysis(reference:TavernLoreDerivedCompletionRefV1):RubyAnalysisResultV1|undefined {
+    const result=completedRubyResult(T.branch.get('tavern_job__'+reference.taskId) as StoredTask|undefined)
+    if(!result||result.completion.generation!==reference.generation
+      ||result.completion.resultSha256!==reference.resultSha256
+      ||recordSha256(result.completion.nativeCompletedWork)!==reference.completedWorkSha256)return undefined
+    return result
+  }
+  /** Recover an accepted completion whose Ruby publication ACK was lost.
+   * This only looks up the TaskHost's existing deterministic job identity; it
+   * never schedules, retries or creates a generation. */
+  function recoverCompletedRubyAnalysis(sessionId:string,sourceIdentitySha256:string,promptPlanSha256:string) {
+    const source:HostSource={rubyAnalysis:{sourceIdentitySha256,promptPlanSha256}},
+      id=taskHash({sessionId,kind:'ruby-analysis',source,input:{promptPlanSha256}}),
+      job=T.branch.get('tavern_job__'+id) as StoredTask|undefined
+    if(job?.sessionId!==sessionId)return undefined
+    const result=completedRubyResult(job)
+    return result?.promptPlanSha256===promptPlanSha256?result:undefined
+  }
+  function readCompletedAuthorDialog(session:HostSession,binding:AuthorDialogChatAddress,
     reference:AuthorDialogTaskRefV1):AuthorDialogResultV1|undefined {
-    if(disposed||ctx.sessions.get(session.id)!==session||binding.sessionId!==session.id)return undefined
+    if(disposed||ctx.sessions.get(session.id)!==session||binding.namespace.sessionId!==session.id)return undefined
     const job=T.branch.get('tavern_job__'+reference.taskId) as StoredTask|undefined,
       completion=job?.authorDialogCompletion,source=(job?.source as HostSource|undefined)?.authorDialog,
       frozenPrompt=job?.input?.authorDialog as AuthorDialogPromptV1|undefined
@@ -230,7 +349,7 @@ export function createRoleplayTaskHost({
       ||!source||recordSha256(source.binding)!==recordSha256(binding)
       ||!frozenPrompt||frozenPrompt.promptSha256!==completion.promptPlanSha256)return undefined
     return {schemaVersion:1,encoding:'native-author-dialog-result-v1',authority:'consumer-data-only',
-      binding,revision:frozenPrompt.revision,operationId:source.operationId,
+      binding,root:frozenPrompt.root,operationId:source.operationId,
       promptSha256:source.promptPlanSha256,task:reference,text:job.result}
   }
   function resolveCurrentCardImport(session:ImportSession,exec:ImportExec):OwnedCardImportWorkflow|undefined {
@@ -311,10 +430,11 @@ export function createRoleplayTaskHost({
         &&taskHash({sessionId:session.id,kind,source:job.source,input:requestKey})===job.id)
       .sort((a,b)=>Number(a.createdAt??0)-Number(b.createdAt??0)||a.id.localeCompare(b.id))[0]:undefined
     const source=completed?completed.source:(()=>{
-      // Explicit rebuilding owns its durable generation, not the completed
-      // Story's hot input, which the actual management wake must replace.
-      const preparation=independent?undefined:T.branch.get(keyOf(session.id,'task-preparation')),
-        currency=independent||compaction||kind==='status'&&generationKey!==undefined||taskStage==='native-card-conversion'
+      // Notes own completed history; a newer foreground MVU head cannot
+      // revoke that history. Explicit status rebuilds own their generation.
+      const historyNotes=kind==='memory'&&(taskStage==='notes'||taskStage==='background-notes')
+      const preparation=independent||historyNotes?undefined:T.branch.get(keyOf(session.id,'task-preparation')),
+        currency=independent||historyNotes||compaction||kind==='status'&&generationKey!==undefined||taskStage==='native-card-conversion'
           ?undefined:inputCurrency?.(session)
       return {...(providedSource??{events:taskStory(session).map(e=>({seq:e.seq,hash:sha256(e.text)})),
         ...(kind==='status'?{fixedHash:recordSha256(statusFixedContext(session))}:{}),
@@ -402,5 +522,6 @@ export function createRoleplayTaskHost({
   }
   return {sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster, characterRoster,
     clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask,
-    requestAuthorDialog,readCompletedAuthorDialog,requestRubyAnalysis,readCompletedRubyAnalysis,resumeMemoryWork,resumeStatusMaintenance}
+    requestAuthorDialog,readCompletedAuthorDialog,requestRubyAnalysis,readCompletedRubyAnalysis,recoverCompletedRubyAnalysis,
+    requestCharacterBackground,readCompletedCharacterBackground,resumeMemoryWork,resumeStatusMaintenance}
 }

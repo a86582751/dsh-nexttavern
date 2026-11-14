@@ -6,7 +6,7 @@ import {validatePromptOpeningSourceProofV1} from './roleplay-prompt-opening-sour
 import {prepareProgramMvuOpeningPlanV3,validateFrozenProgramMvuOpeningPlanV3,
   validateProgramGenesisNativeEnvelopeV1,validateProgramMvuGenesisFactsV1,programGenesisEventIdV1}
   from './roleplay-program-genesis-data.js'
-import {validateNativeGeneratedOpeningReceiptV1} from '@deepseek-ai/dsh-agent-loop'
+import {validateNativeGeneratedOpeningReceiptV1} from 'dsh-nexttavern-native-agent-loop'
 import type {OpeningSource} from './roleplay-opening-selection.js'
 import type {PromptOpeningSourceProofV1} from './roleplay-prompt-opening-source-types.js'
 import type {ProgramOpeningBasisProofV1} from './roleplay-program-opening-basis-types.js'
@@ -14,7 +14,7 @@ import type {ProgramGenesisDataRefV1,ProgramGenesisIdentityV1,ProgramGenesisNati
   FrozenProgramMvuOpeningPlanV3,ProgramMvuGenesisEventV1,ProgramMvuGenesisHeadV1}
   from './roleplay-program-genesis-types.js'
 import type {MvuNativeOpeningReceipt} from './roleplay-mvu-initialization.js'
-import type {NativeGeneratedOpeningReceiptV1} from '@deepseek-ai/dsh-agent-loop'
+import type {NativeGeneratedOpeningReceiptV1} from 'dsh-nexttavern-native-agent-loop'
 import type {CompletedStoryBody} from './roleplay-mvu-story.js'
 
 export interface ProgramOpeningIntentSeedV1 {

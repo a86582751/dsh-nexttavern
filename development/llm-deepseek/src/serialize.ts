@@ -1,10 +1,10 @@
 /** Map system snapshots, tool changes, and conversation turns to Messages using the configured route capability. */
 
-import { LlmError, requestImageHandleText } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock, GenerateOptions, ImageAttachmentAccessResolver, RequestMessage } from '@deepseek-ai/dsh-llm'
+import { LlmError, requestImageHandleText } from 'dsh-nexttavern-native-llm'
+import type { ContentBlock, GenerateOptions, ImageAttachmentAccessResolver, RequestMessage } from 'dsh-nexttavern-native-llm'
 import type { ImageAttachmentRef, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
 import type { DeepSeekConnectionOptions as Connection } from './types.js'
-import type { DeepSeekFileId } from './file-id.js'
+import type { DeepSeekFileId } from '@deepseek-ai/dsh-llm-deepseek'
 import { readReplay } from './replay.js'
 import type { WireBlock, WireInput, WireMessage, WireRequest } from './wire-types.js'
 

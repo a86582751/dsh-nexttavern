@@ -5,6 +5,12 @@ import type { StorySurfaceReplacement } from './roleplay-message-view.js'
 import type {OpeningIntent,OpeningSource} from './roleplay-opening-selection.js'
 import type {MvuInheritedMessageEditProtocol} from './roleplay-mvu-prefix-facts.js'
 import type {TavernSourceInheritanceOwnerV1} from './roleplay-tavern-source-inheritance-types.js'
+import type {SessionHistoryReader} from './session-history.js'
+import type {SessionMessageProjection} from 'dsh-nexttavern-native-session/surface'
+import type {MessageSourceMaterialV1} from 'dsh-nexttavern-native-llm/types'
+import type {MessageEditOperationV1} from 'dsh-nexttavern-session-format'
+import type {AuthorMessageEditInputV1,AuthorMessageEditResultV1,AuthorMessageEditRefV1}
+  from './roleplay-author-message-edit-types.js'
 export type MessageData = NonNullable<ContextEvent['data']>
 export type StoryEvent = ContextEvent
 export interface ReadBranchSession extends ContextSession {
@@ -22,6 +28,8 @@ export interface ForkAnchor {
   sourceUserSeq?: number
   sourceTurn: number
   previousTurnEndSeq: number | null
+  /** A real Native fork whose inherited event prefix is empty. */
+  nativeForkBeforeFirst?: true
   expectedSeedLength?: number
   promptText: string
   recoveryOnly?: boolean
@@ -113,6 +121,7 @@ export interface BranchRecord extends Partial<ForkGroup> {
 export interface RecordTable<T> {
   get(key: string): T | undefined
   entries(): Iterable<[string, T]>
+  entriesPrefix?(prefix:string|readonly string[]):Iterable<[string,T]>
   put(key: string, value: object): Promise<unknown>
   delete(key: string): Promise<unknown>
   update(key: string, update: (current: T | undefined) => object): Promise<unknown>
@@ -142,13 +151,31 @@ export interface WorldlinePrefixProjection {
   projectedMessageAt(seq:number):ContextMessage | undefined
 }
 export interface WorldlineMessageEdits extends MvuInheritedMessageEditProtocol {
-  append(session: BranchSession, targetSeq: number, identity: {role: 'user' | 'assistant'; messageId: string}, text: string): StoryEvent
+  append(session: BranchSession, targetSeq: number, identity: {role: 'user' | 'assistant'; messageId: string}, text: string,
+    sourceMaterial?:MessageSourceMaterialV1,operation?:MessageEditOperationV1): StoryEvent
   latest(events: readonly StoryEvent[], targetSeq: number): StoryEvent | null
-  current(session: ReadBranchSession, events: readonly StoryEvent[]): readonly StoryEvent[]
+  current(session: ReadBranchSession,
+    events:{readonly length:number;at(seq:number):StoryEvent|undefined}): readonly StoryEvent[]
   /** Replay the complete raw [0, cut) prefix, without creating a Session. */
   projectPrefix(events:readonly StoryEvent[]):WorldlinePrefixProjection
+  lookupOperation?(session:ReadBranchSession,events:{readonly length:number;at(seq:number):StoryEvent|undefined},
+    operationId:string):StoryEvent|undefined
+  lookupTarget?(session:ReadBranchSession,events:{readonly length:number;at(seq:number):StoryEvent|undefined},
+    targetSeq:number):StoryEvent|undefined
+}
+export interface WorldlineAuthorEditAdmissionV1 {
+  readonly input:AuthorMessageEditInputV1
+  readonly operation:MessageEditOperationV1
+  assertSourceCurrent():void
+  complete(result:AuthorMessageEditResultV1):void
 }
 export interface WorldlineDependencies {
+  /** Reuse the message owner’s version, including opaque Native fields. */
+  readMessageVersion?(session:ReadBranchSession,event:StoryEvent):string
+  authorTaskEditOptions?(session:BranchSession,event:StoryEvent,operationId:string)
+    :import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditOptionsV1|undefined
+  authorEditResolved?(sessionId:string,editSeq:number):boolean
+  authorEditReference?(sessionId:string,operationId:string,editSeq:number):AuthorMessageEditRefV1|undefined
   sourceInheritance?:TavernSourceInheritanceOwnerV1
   messageEdits: WorldlineMessageEdits
   flushEdits(session: BranchSession): Promise<void>
@@ -160,8 +187,9 @@ export interface WorldlineDependencies {
   persistNumericalTextEditIntent?(session:BranchSession,
     intent:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditIntent):Promise<void>
   appendNumericalTextEdit?(session:BranchSession,intent:import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditIntent,
-    append:()=>StoryEvent):Promise<StoryEvent>
-  recoverNumericalTextEdit?(session:ReadBranchSession):Promise<import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditRecovery|undefined>
+    append:()=>StoryEvent,admit?:()=>void):Promise<StoryEvent>
+  recoverNumericalTextEdit?(session:ReadBranchSession,admit?:()=>void)
+    :Promise<import('./roleplay-mvu-schema-task-edit-types.js').SchemaTaskEditRecovery|undefined>
   recoverExistingNumericalUserEdit?(session:BranchSession,
     request:import('./roleplay-mvu-schema-task-edit-types.js').SchemaExistingUserEditRecoveryRequest,
     authorize:(edit:StoryEvent,storedOrigin?:import('./roleplay-mvu-schema-task-edit-types.js').SchemaExistingUserEditRequestOrigin)
@@ -175,6 +203,9 @@ export interface WorldlineDependencies {
   sha256(value: unknown): string
   T: { branch: RecordTable<BranchRecord> } & Record<'cards' | 'worldbook' | 'rules' | 'opening' | 'status' | 'decision' | 'scene' | 'memory', RecordTable<Record<string, unknown>>>
   eventsOf(session: ReadBranchSession): readonly StoryEvent[]
+  eventAt?(session:ReadBranchSession,seq:number):StoryEvent|undefined
+  nativeHistory?:Pick<SessionHistoryReader,'cut'>
+  projections?:()=>readonly SessionMessageProjection[]
   isCompletedTurnEnd(event: StoryEvent): boolean
   surfaceEvents(session: ReadBranchSession): StoryEvent[]
   textOf(content: unknown): string
@@ -198,6 +229,9 @@ export interface WorldlineDependencies {
   readProgramOpeningSettlement?(session:ReadBranchSession,operationId:string,messageId:string):{
     messageId:string;seq:number;turn:number
   } | null | undefined
+  readOpeningVariantSettlement?(session:ReadBranchSession,operationId:string):{
+    messageId:string;seq:number;turn:number
+  } | null
   resolveRoleplaySession(id: string): Promise<BranchSession | null | undefined>
   isRoleplaySession(session: BranchSession): boolean
   ensureState(id: string): { branchReady: boolean }

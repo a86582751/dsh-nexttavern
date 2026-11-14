@@ -3,22 +3,20 @@ import {installMvuNativeDataTestDependencies} from './mvu-native-data-test-depen
 import type {SettingToolDependencies,SettingArguments} from '../lib/core/roleplay-panel-routes-types.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {createRequire,registerHooks} from 'node:module'
+import {registerHooks} from 'node:module'
 import {pathToFileURL} from 'node:url'
 import type { ForkGroup, WorldlineDependencies } from '../lib/core/roleplay-worldline-types.js'
 import type { CompletionDependencies, CompletionState } from '../lib/core/roleplay-completion-types.js'
 import type { ContextEvent, ContextSession } from '../lib/core/roleplay-context.js'
 import type { BranchRoutesDependencies } from '../lib/core/roleplay-branch-routes-types.js'
+import {ownedPackages} from './plugin-owned-packages-fixture.mts'
 
 const removeNativeDependencies=await installMvuNativeDataTestDependencies(),
   removeDependencies=installSchemaTestDependencies()
-const testRequire=createRequire(new URL('../build-tools/package.json',import.meta.url))
+const taskPeers=await ownedPackages(['llm'],[])
 const taskLlmDependency=registerHooks({resolve(specifier,context,next) {
-  if(specifier==='@deepseek-ai/dsh-agent-loop'
-    &&context.parentURL===new URL('../lib/core/roleplay-input-cold-row-facts.js',import.meta.url).href)
-    return {url:new URL('../development/agent-loop/lib/input-admission.js',import.meta.url).href,shortCircuit:true}
-  if(specifier==='@deepseek-ai/dsh-llm'&&context.parentURL===new URL('../lib/core/roleplay-task-tools.js',import.meta.url).href)
-    return {url:pathToFileURL(testRequire.resolve(specifier)).href,shortCircuit:true}
+  if(specifier==='dsh-nexttavern-native-llm'&&context.parentURL===new URL('../lib/core/roleplay-task-tools.js',import.meta.url).href)
+    return {url:pathToFileURL(taskPeers.require.resolve(specifier)).href,shortCircuit:true}
   return next(specifier,context)
 }})
 try {
@@ -859,4 +857,4 @@ for(const action of ['append','patch','repair'] as const) {
 console.log('author-core-setting=ok (legacy ST scenario + constant lore; read/append/patch/repair; actual-row CAS; inherited archive)')
 
 }
-}finally {taskLlmDependency.deregister();removeDependencies();removeNativeDependencies()}
+}finally {taskLlmDependency.deregister();taskPeers.close();removeDependencies();removeNativeDependencies()}

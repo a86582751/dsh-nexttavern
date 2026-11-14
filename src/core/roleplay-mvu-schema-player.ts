@@ -2,16 +2,18 @@
  * journal execution belong to Root; durable facts cannot recreate this owner. */
 import {recordSha256} from './roleplay-data.js'
 import {mvuStateCurrentHeadKey} from './roleplay-mvu-state.js'
-import {validateSchemaEvaluationInputV3} from './tavern-mvu-schema-runner-v3.js'
+import {createMvuNumericalPublicationOwner,mvuNumericalPublicationMatches} from './roleplay-mvu-numerical-publication.js'
 import {validateSchemaEvaluationInputV4} from './tavern-mvu-schema-runner-v4.js'
 import {validateMvuScopeReadFrameV1} from './tavern-mvu-scope-read.js'
+import {validateMvuScopeReadRefV2} from './tavern-mvu-scope-view-v2.js'
+import type {MvuScopeReadRefV2} from './tavern-mvu-scope-view-v2.js'
 import {schemaScopeReadFactsEqual} from './roleplay-mvu-schema-scope-facts.js'
 import {freezeMvuSchemaPlayerData,sealMvuSchemaPlayerFact,validateMvuSchemaPlayerPlan,
   validateMvuSchemaPlayerEvent,validateMvuSchemaPlayerSettlement,deriveMvuSchemaPlayerSelectors,
   mvuSchemaPlayerPhaseInput,mvuSchemaPlayerReducerBridge,mvuSchemaPlayerEvent,mvuSchemaPlayerHead,
   mvuSchemaPlayerSettlement,mvuSchemaPlayerEventKey,mvuSchemaPlayerSettlementKey,MVU_SCHEMA_PLAYER_PHASES,
   schemaPlayerCode} from './roleplay-mvu-schema-player-types.js'
-import {validateMvuSchemaNumericalSnapshot,isMvuSchemaGenesisHead} from './roleplay-mvu-schema-story-types.js'
+import {validateMvuSchemaNumericalSnapshot,schemaScopeReadRefFactsEqualV2} from './roleplay-mvu-schema-story-types.js'
 import type {MvuSchemaPlayerDeps,MvuSchemaPlayerOperationV1,MvuSchemaPlayerPlanV1,MvuSchemaPlayerPhaseFact,
   MvuSchemaPlayerLive,MvuSchemaPlayerEventV1,MvuSchemaPlayerSettlementV1,MvuSchemaPlayerPublication,
   MvuSchemaPlayerPublicationBoundary} from './roleplay-mvu-schema-player-types.js'
@@ -21,35 +23,36 @@ import type {SourceNativeCutFacts} from './roleplay-mvu-schema-replay.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 import type {MvuSchemaPhaseErrorPolicyV4} from './tavern-mvu-schema-types-v4.js'
 
-export type {MvuSchemaPlayerDeps,MvuSchemaPlayerPlanV1,MvuSchemaPlayerPlanV3,MvuSchemaPlayerPlanV5,MvuSchemaPlayerSettlementV1}
+export type {MvuSchemaPlayerDeps,MvuSchemaPlayerPlanV1,MvuSchemaPlayerPlanV4,MvuSchemaPlayerPlanV5,MvuSchemaPlayerPlanV10,MvuSchemaPlayerSettlementV1}
   from './roleplay-mvu-schema-player-types.js'
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 function fail(code:string):never {throw Error(code)}
 const codeOf=(error:unknown)=>schemaPlayerCode(error instanceof Error?error.message:undefined)
 export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
+  const publicationOwner=createMvuNumericalPublicationOwner(deps.table)
   // Attempt identities survive this owner; durable operation/pair/completion
   // gates supplied by Root prohibit cold retries even when this set is gone.
   const attempted=new Set<string>()
   function makePlan(operation:MvuSchemaPlayerOperationV1,marker:SchemaNativeMarkerRef,
-    currentFrame:SchemaStorySourceFrame,initialCut:SourceNativeCutFacts,clockEpochMs=0,executorVersion:1|2|3|4=1,
+    currentFrame:SchemaStorySourceFrame,initialCut:SourceNativeCutFacts,clockEpochMs=0,executorVersion:4=4,
     scopeReadFrame?:MvuScopeReadFrameV1,
     hostEpoch?:{epoch:SchemaJournalRef;serverProgramSha256:string;
-      errorPolicy?:Exclude<MvuSchemaPhaseErrorPolicyV4,'atomic-refusal'>}):MvuSchemaPlayerPlanV1 {
-    if(executorVersion>=3&&!scopeReadFrame)fail('SCHEMA_SCOPE_READ_REQUIRED')
-    if(hostEpoch&&executorVersion!==4)fail('SCHEMA_EXECUTOR_VERSION_MISMATCH')
+      errorPolicy?:Exclude<MvuSchemaPhaseErrorPolicyV4,'atomic-refusal'>},scopeReadRef?:MvuScopeReadRefV2):MvuSchemaPlayerPlanV1 {
+    if(scopeReadRef&&!hostEpoch)fail('SCHEMA_SCOPE_REFERENCE_HOST_REQUIRED')
+    if(scopeReadRef&&scopeReadFrame)fail('SCHEMA_SCOPE_REFERENCE_PLAN_CONFLICT')
+    if(!scopeReadFrame&&!scopeReadRef)fail('SCHEMA_SCOPE_READ_REQUIRED')
     // Core supplies the actual Source and operation facts. This constructor
     // binds those inputs; the raw plan reader owns their full parsing.
     const input={operation,marker,currentFrame,initialCut,clockEpochMs}
-    const version=executorVersion===4?{
+    const version=scopeReadRef?{schemaVersion:10 as const,encoding:'native-mvu-schema-player-plan-v10-scope-ref-v2' as const,
+      executorVersion:4 as const,scopeReadRef:validateMvuScopeReadRefV2(scopeReadRef),
+      epoch:hostEpoch!.epoch,serverProgramSha256:hostEpoch!.serverProgramSha256,
+      ...(hostEpoch!.errorPolicy?{errorPolicy:hostEpoch!.errorPolicy}:{})}:{
       ...(hostEpoch?{schemaVersion:5 as const,encoding:'native-mvu-schema-player-plan-v5' as const,
         epoch:hostEpoch.epoch,serverProgramSha256:hostEpoch.serverProgramSha256,
         ...(hostEpoch.errorPolicy?{errorPolicy:hostEpoch.errorPolicy}:{})}:
         {schemaVersion:4 as const,encoding:'native-mvu-schema-player-plan-v4' as const}),
-      executorVersion:4 as const,scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame)}:
-      executorVersion===3?{schemaVersion:3 as const,encoding:'native-mvu-schema-player-plan-v3' as const,
-      executorVersion:3 as const,scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame)}:
-      executorVersion===2?{schemaVersion:2 as const,encoding:'native-mvu-schema-player-plan-v2' as const,executorVersion:2 as const}:
-      {schemaVersion:1 as const,encoding:'native-mvu-schema-player-plan-v1' as const}
+      executorVersion,scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame)}
     const selectors=deriveMvuSchemaPlayerSelectors(operation,marker),sid=operation.sessionId
     if(marker.seq!==operation.request.expected.observedNativeSeq+1||initialCut.nativeCut!==marker.seq+1
       ||initialCut.nativeCut<operation.base.schemaFrontier.nativeCut||initialCut.sessionId!==sid||initialCut.ownerSessionId!==sid
@@ -63,6 +66,7 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
         ||read.source.sourceSnapshotSha256!==currentFrame.snapshotSha256
         ||read.sourceNativeCutSha256!==recordSha256(initialCut))fail('SCHEMA_PLAYER_RECORD_INVALID')
     }
+    if('scopeReadRef' in version&&version.scopeReadRef!.sourceNativeCutSha256!==recordSha256(initialCut))fail('SCHEMA_PLAYER_RECORD_INVALID')
     return sealMvuSchemaPlayerFact({...version,...input,realmEpoch:input.operation.base.root.realmEpoch,
       programSha256:input.operation.base.root.programSha256,randomSeed:recordSha256({operation:input.operation,marker:input.marker}),
       selectors},'planSha256')
@@ -120,10 +124,8 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
     try {
       const plan=validateMvuSchemaPlayerPlan(suppliedPlan),facts=storedFacts(plan,settlement)
       if(!facts)return false
-      const actualHead=read(mvuStateCurrentHeadKey(plan.operation.sessionId))
-      return facts.settlement.outcome==='accepted'?same(actualHead,facts.settlement.result.head):
-        actualHead===undefined&&isMvuSchemaGenesisHead(plan.operation.base.currentHead)
-          ||same(actualHead,facts.settlement.result.head)
+      const actualHead=publicationOwner.read(plan.operation.sessionId).raw
+      return mvuNumericalPublicationMatches(actualHead,facts.settlement.result.head)
     }catch {return false}
   }
   async function publish(suppliedPlan:MvuSchemaPlayerPlanV1,owner:object):Promise<MvuSchemaPlayerPublication> {
@@ -134,6 +136,8 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
       const plan=candidate
       const sid=plan.operation.sessionId
       checkOwner(owner,plan);checkBase(plan)
+      const publication=publicationOwner.read(sid)
+      if(!mvuNumericalPublicationMatches(publication.raw,plan.operation.base.currentHead))fail('SCHEMA_PLAYER_BASE_CHANGED')
       const eventId=recordSha256({encoding:'native-mvu-schema-player-event-identity-v1',planSha256:plan.planSha256})
       if(attempted.has(plan.planSha256)||read(mvuSchemaPlayerSettlementKey(sid,plan.planSha256))!==undefined
         ||read(mvuSchemaPlayerEventKey(sid,eventId))!==undefined)fail('SCHEMA_PLAYER_ALREADY_ATTEMPTED')
@@ -151,10 +155,20 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
         if(result.kind!=='completed')return {kind:'unknown',code:schemaPlayerCode(result.code)}
         if(!result.evidence||typeof result.evidence!=='object')fail('SCHEMA_PLAYER_EXECUTION_UNPROVEN')
         let capturedInput=input
-        if(plan.schemaVersion===3||plan.schemaVersion===4||plan.schemaVersion===5) {
+        if(plan.schemaVersion===10) {
           if(!result.capturedInput)fail('SCHEMA_PLAYER_EXECUTION_UNPROVEN')
-          const actual=plan.executorVersion===4?validateSchemaEvaluationInputV4(result.capturedInput)
-            :validateSchemaEvaluationInputV3(result.capturedInput)
+          const actual=validateSchemaEvaluationInputV4(result.capturedInput)
+          if(actual.encoding!=='native-mvu-author-schema-phase-input-v4-scope-ref-v2'
+            ||!schemaScopeReadRefFactsEqualV2(actual.scopeReadRef,plan.scopeReadRef)
+            ||actual.scopeReadRef.sourceNativeCutSha256!==result.association.sourceNativeCutSha256
+            ||!same(actual,mvuSchemaPlayerPhaseInput(plan,index,phases,undefined,actual.scopeReadRef))) {
+            fail('SCHEMA_PLAYER_EXECUTION_UNPROVEN')
+          }
+          capturedInput=actual
+        } else {
+          if(!result.capturedInput)fail('SCHEMA_PLAYER_EXECUTION_UNPROVEN')
+          const actual=validateSchemaEvaluationInputV4(result.capturedInput)
+          if(actual.encoding!=='native-mvu-author-schema-phase-input-v4')fail('SCHEMA_PLAYER_EXECUTION_UNPROVEN')
           if(!schemaScopeReadFactsEqual(actual.scopeReadFrame,plan.scopeReadFrame)
             ||actual.scopeReadFrame.sourceNativeCutSha256!==result.association.sourceNativeCutSha256
             ||!same(actual,mvuSchemaPlayerPhaseInput(plan,index,phases,actual.scopeReadFrame))) {
@@ -184,10 +198,10 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
         check('after-event')
         if(event.outcome==='accepted') {
           check('before-head')
-          const prior=read(headKey)
-          if(!same(prior,plan.operation.base.currentHead)
-            &&!(prior===undefined&&isMvuSchemaGenesisHead(plan.operation.base.currentHead)))fail('SCHEMA_PLAYER_BASE_CHANGED')
-          confirmedRows.push({key:headKey,value:await putExact(headKey,head,prior)})
+          const advanced=await publicationOwner.advanceLeaf(publication,head)
+          if(advanced.kind==='conflict')fail('SCHEMA_PLAYER_BASE_CHANGED')
+          if(advanced.kind!=='acknowledged')fail('SCHEMA_PLAYER_WRITE_UNKNOWN')
+          confirmedRows.push({key:advanced.key,value:advanced.value})
           check('after-head')
         }
         check('before-settlement')

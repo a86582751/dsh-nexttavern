@@ -6,7 +6,7 @@
  */
 
 import { AttachmentError } from '@deepseek-ai/dsh-attachment'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionId } from 'dsh-nexttavern-native-session'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { z } from 'zod'
 import { SubagentError } from './error.ts'

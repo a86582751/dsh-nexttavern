@@ -3,7 +3,7 @@ import type {
   ConversationMatch, ConversationNodeContext, ConversationNodeDefinition, TurnLocation,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-llm-retry/types'
-import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
+import type { SessionEvent } from 'dsh-nexttavern-native-session/types'
 import { deriveTurnTokenUsage } from 'dsh-nexttavern-token-meter/client'
 import type {
   AssistantChatData, FinalAssistantChatData, TurnTailChatData,

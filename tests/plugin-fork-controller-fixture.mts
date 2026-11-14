@@ -31,6 +31,13 @@ class PointQuery extends SessionQueryEngine {
   async searchEvents() { throw Error('Search is outside the cold-activation fixture') }
 }
 
+/** Explicit modules from one owned graph. Omission retains the official host. */
+export interface ControllerNativeServices {
+  session: {default: any; buildForkSeed: typeof buildForkSeed; SessionSeq: typeof SessionSeq}
+  llm: {default: any}
+  agentLoop: {default: any}
+}
+
 export async function prepareControllerHost(ctx: any, options: {
   directory: string
   Projection?: any
@@ -40,6 +47,7 @@ export async function prepareControllerHost(ctx: any, options: {
   deferPersistence?: boolean
   nativeFileUploads?: boolean
   includeRuntimeContext?: boolean
+  nativeServices?: ControllerNativeServices
 }) {
   const uploadResolvers = new Set<unknown>()
   let declaration: any
@@ -54,7 +62,7 @@ export async function prepareControllerHost(ctx: any, options: {
     declaration = await ctx.plugin(AgentPreset, {id: 'probe', plugins: rows})
   }
 
-  await ctx.plugin(SessionStore)
+  await ctx.plugin(options.nativeServices?.session.default ?? SessionStore)
   if (options.Format) await ctx.plugin(options.Format)
   await ctx.plugin(options.Projection ?? SessionProjectionRegistry)
   if (!options.deferPersistence) {
@@ -67,7 +75,7 @@ export async function prepareControllerHost(ctx: any, options: {
   await ctx.plugin(SystemPrompt, {includeHarnessIdentity: false,
     includeRuntimeContext: options.includeRuntimeContext ?? false, persona: ''})
   await ctx.plugin(ToolRuntime)
-  await ctx.plugin(LlmRuntime)
+  await ctx.plugin(options.nativeServices?.llm.default ?? LlmRuntime)
   await ctx.plugin(LocalFileSystem, {cwd: options.directory})
   await ctx.plugin(AgentRegistry)
   ctx.loader.builtins.fixtureDefaultModel = AgentDefaultModel
@@ -75,7 +83,7 @@ export async function prepareControllerHost(ctx: any, options: {
     config: {provider: 'fixture-default', model: 'before'}})
   await ctx.loader.await()
   assert.ok(ctx.agentDefaultModel, 'fixture default model must be active')
-  await ctx.plugin(AgentLoop, {agents: []})
+  await ctx.plugin(options.nativeServices?.agentLoop.default ?? AgentLoop, {agents: []})
   await ctx.plugin(AgentPresets, {default: 'probe'})
   await writePreset()
   // Cold projection reads image policy, but this fixture must never touch
@@ -111,6 +119,7 @@ export async function prepareControllerHost(ctx: any, options: {
 }
 
 export async function controllerFixture(options: {
+  nativeServices?: ControllerNativeServices
   Controller?: any
   Projection?: any
   Format?: any
@@ -165,6 +174,7 @@ export async function controllerFixture(options: {
       workspaces: options.workspaces,
       nativeFileUploads: options.nativeFileUploads,
       includeRuntimeContext: options.includeRuntimeContext,
+      nativeServices: options.nativeServices,
     })
     writePreset = preparedHost.writePreset
     uploadResolverCount = preparedHost.uploadResolverCount
@@ -179,7 +189,8 @@ export async function controllerFixture(options: {
 
   async function stageFrom(id: string, source: any) {
     const events = source.snapshotEvents()
-    const seed = buildForkSeed(events, SessionSeq(events.length - 1))
+    const sessionModule = options.nativeServices?.session ?? {buildForkSeed, SessionSeq}
+    const seed = sessionModule.buildForkSeed(events, sessionModule.SessionSeq(events.length - 1))
     const child = ctx.sessions.prepare(id, {seed, inheritedEventCount: events.length, meta: {
       cwd: dir, parentSession: source.id, isSeeded: true, agentPreset: 'probe',
     }})

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "package": "@deepseek-ai/dsh-llm-deepseek",
+  "package": "dsh-nexttavern-native-llm-deepseek",
   "upstreamPackage": "@deepseek-ai/dsh-llm-deepseek",
   "upstreamVersion": "0.1.7-rc.2",
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
@@ -13,39 +13,9 @@
       "source": "src/adapter.ts"
     },
     {
-      "upstream": "packages/llm/llm-deepseek/src/config.ts",
-      "upstreamSha256": "73f802bf72663ace689782db8a4031791864e9a97c995de620ac4c9ce683a30b",
-      "source": "src/config.ts"
-    },
-    {
-      "upstream": "packages/llm/llm-deepseek/src/defaults.ts",
-      "upstreamSha256": "f0c753f0d4188f615182d7d25eabed7bc24021ece255524ac5cb8089718b0520",
-      "source": "src/defaults.ts"
-    },
-    {
-      "upstream": "packages/llm/llm-deepseek/src/file-id.ts",
-      "upstreamSha256": "27aff248186c4e7230a6ddbd803bdee4eadb655607a859c350e77bb29cb9c269",
-      "source": "src/file-id.ts"
-    },
-    {
-      "upstream": "packages/llm/llm-deepseek/src/file-store.ts",
-      "upstreamSha256": "d02c57fcc14fa5440344a6ff36f4d00980fd133c6eb4922efd02f1cae60920ef",
-      "source": "src/file-store.ts"
-    },
-    {
-      "upstream": "packages/llm/llm-deepseek/src/files-api.ts",
-      "upstreamSha256": "0f38622c30c85266bf17db38e0171a130bbee5ce0404327a1de949b1393eca26",
-      "source": "src/files-api.ts"
-    },
-    {
       "upstream": "packages/llm/llm-deepseek/src/host.ts",
       "upstreamSha256": "41661b74ab93198ad37945ef7933de92f0d7738ec33fe67f4d733eb80f745fcc",
       "source": "src/host.ts"
-    },
-    {
-      "upstream": "packages/llm/llm-deepseek/src/image-tokens.ts",
-      "upstreamSha256": "9a7e16b2fd451f99a99b36a39eda33aa1d26f0d3243545f0152ec7f802ec064a",
-      "source": "src/image-tokens.ts"
     },
     {
       "upstream": "packages/llm/llm-deepseek/src/images.ts",
@@ -68,11 +38,6 @@
       "source": "src/model-info.ts"
     },
     {
-      "upstream": "packages/llm/llm-deepseek/src/models.ts",
-      "upstreamSha256": "fbd13439754e6eb9f81463b31cff26fded69d249ae8a768054a3236c5ff0c108",
-      "source": "src/models.ts"
-    },
-    {
       "upstream": "packages/llm/llm-deepseek/src/replay.ts",
       "upstreamSha256": "3edd01ffaedc422a148e1a66e8e93203ac07cb5aa558e35485501e564216f148",
       "source": "src/replay.ts"
@@ -86,11 +51,6 @@
       "upstream": "packages/llm/llm-deepseek/src/request-files.ts",
       "upstreamSha256": "fb8c4f0351509a8db7bccff855972caa5f1805353bea739748cf56759b910d65",
       "source": "src/request-files.ts"
-    },
-    {
-      "upstream": "packages/llm/llm-deepseek/src/request-pricing.ts",
-      "upstreamSha256": "8dcbb62ffcdb7f45eecc176c5219bc1dd424e36c4c9b469d5cb6223b1a503d8d",
-      "source": "src/request-pricing.ts"
     },
     {
       "upstream": "packages/llm/llm-deepseek/src/serialize.ts",
@@ -118,11 +78,6 @@
       "source": "src/types.ts"
     },
     {
-      "upstream": "packages/llm/llm-deepseek/src/upload-index.ts",
-      "upstreamSha256": "2ceb5d7a1563631e61eda9c292b6cda1c8a9ccaece6e5045ac3fd6c2c2b72f8c",
-      "source": "src/upload-index.ts"
-    },
-    {
       "upstream": "packages/llm/llm-deepseek/src/wire-types.ts",
       "upstreamSha256": "38ea37c292c8ba4be2cf0f24f08e2cd62f70c3d437485293fa48909a5bea341d",
       "source": "src/wire-types.ts"
@@ -144,9 +99,63 @@
     }
   ],
   "changes": [
-    "Generated .js import paths and maintained same-name package identity",
+    "Generated .js import paths and private Native package identity",
     "Declare request-only user text and flush preceding system/tool updates before its serializer position",
-    "Consume the existing Native request guard immediately before each Messages fetch"
+    "Consume the existing Native request guard immediately before each Messages fetch",
+    "Reuse unchanged public configuration and helpers through pinned official root exports; maintain only Native adapter wiring and its required private closure."
   ],
-  "formalForkSynchronized": false
+  "formalForkSynchronized": false,
+  "sharedUpstream": [
+    {
+      "upstream": "packages/llm/llm-deepseek/src/config.ts",
+      "upstreamSha256": "73f802bf72663ace689782db8a4031791864e9a97c995de620ac4c9ce683a30b",
+      "exportedBy": "@deepseek-ai/dsh-llm-deepseek@0.1.7-rc.2"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/defaults.ts",
+      "upstreamSha256": "f0c753f0d4188f615182d7d25eabed7bc24021ece255524ac5cb8089718b0520",
+      "exportedBy": "@deepseek-ai/dsh-llm-deepseek@0.1.7-rc.2"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/models.ts",
+      "upstreamSha256": "fbd13439754e6eb9f81463b31cff26fded69d249ae8a768054a3236c5ff0c108",
+      "exportedBy": "@deepseek-ai/dsh-llm-deepseek@0.1.7-rc.2"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/request-pricing.ts",
+      "upstreamSha256": "8dcbb62ffcdb7f45eecc176c5219bc1dd424e36c4c9b469d5cb6223b1a503d8d",
+      "exportedBy": "@deepseek-ai/dsh-llm-deepseek@0.1.7-rc.2"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/image-tokens.ts",
+      "upstreamSha256": "9a7e16b2fd451f99a99b36a39eda33aa1d26f0d3243545f0152ec7f802ec064a",
+      "exportedBy": "@deepseek-ai/dsh-llm-deepseek@0.1.7-rc.2"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/file-store.ts",
+      "upstreamSha256": "d02c57fcc14fa5440344a6ff36f4d00980fd133c6eb4922efd02f1cae60920ef",
+      "exportedBy": "@deepseek-ai/dsh-llm-deepseek@0.1.7-rc.2"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/files-api.ts",
+      "upstreamSha256": "0f38622c30c85266bf17db38e0171a130bbee5ce0404327a1de949b1393eca26",
+      "exportedBy": "@deepseek-ai/dsh-llm-deepseek@0.1.7-rc.2"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/upload-index.ts",
+      "upstreamSha256": "2ceb5d7a1563631e61eda9c292b6cda1c8a9ccaece6e5045ac3fd6c2c2b72f8c",
+      "exportedBy": "@deepseek-ai/dsh-llm-deepseek@0.1.7-rc.2"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/file-id.ts",
+      "upstreamSha256": "27aff248186c4e7230a6ddbd803bdee4eadb655607a859c350e77bb29cb9c269",
+      "exportedBy": "@deepseek-ai/dsh-llm-deepseek@0.1.7-rc.2"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/model-info.ts",
+      "upstreamSha256": "b173d9dd4aa63405f7c30e3fe5844fc59b5117d3e1ed58476a09b72eb2fbff70",
+      "export": "catalogModelInfo",
+      "exportedBy": "@deepseek-ai/dsh-llm-deepseek@0.1.7-rc.2"
+    }
+  ]
 }

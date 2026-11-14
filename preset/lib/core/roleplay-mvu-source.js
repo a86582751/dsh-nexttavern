@@ -4,10 +4,9 @@ import { recordSha256 } from './roleplay-data.js';
 import { assertImportRecordIntegrity, importCoverage } from './roleplay-import-record.js';
 import { compileTavernOpeningCandidates } from './tavern-card.js';
 import { selectNativeMvuInitializationPolicy } from './tavern-mvu-initvar.js';
-import { parseMvuUpdateRegionV2 } from './roleplay-mvu-update-v2.js';
+import { parseMvuUpdateRegionV2, parseMvuUpdateAnalysisAliasRegionV2 } from './roleplay-mvu-update-v2.js';
 import { NATIVE_MVU_SOURCE_POLICY, isNativeMvuSourcePolicy, isNativeMvuYamlSourcePolicy } from './roleplay-mvu-source-policy.js';
 import { cloneSchemaData, schemaTextSha256, captureSchemaMaterialV4 } from './tavern-mvu-schema-data.js';
-import { nextTavernExecutionAuthorData } from './nexttavern-card.js';
 export { NATIVE_MVU_SOURCE_POLICY, NATIVE_MVU_YAML_SOURCE_POLICY, isNativeMvuSourcePolicy, isNativeMvuYamlSourcePolicy } from './roleplay-mvu-source-policy.js';
 const sha = (value) => createHash('sha256').update(value).digest('hex');
 const hashPattern = /^[a-f0-9]{64}$/;
@@ -31,7 +30,7 @@ const isVersion = (value) => value === 'missing' || isHash(value);
 const same = (a, b) => recordSha256(a) === recordSha256(b);
 const pointerPart = (value) => value.replace(/~/g, '~0').replace(/\//g, '~1');
 const numericalChannel = (key) => /^(?:stat_data|statData|mvu_data|mvu|state|opaqueState|variables|schema|scripts?|callbacks?)$/i.test(key)
-    || key === 'card_agent' || key.startsWith('$');
+    || key.startsWith('$');
 const plainEmpty = (value) => isObject(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value))
     && Object.keys(value).length === 0;
 function requireKeys(value, keys, pointer, code) {
@@ -170,7 +169,7 @@ function extensions(value, pointer, authorSchema = false) {
         const depth = value.depth_prompt;
         if (!isObject(depth))
             fail('EXTENSION_UNSUPPORTED', pointer, value);
-        // An empty exported prompt has no initialization input, regardless of placement metadata.
+        // Empty exported prompts provide no initialization input, regardless of placement metadata.
         if (depth.prompt === '')
             return;
         requireKeys(depth, ['prompt', 'depth', 'role'], pointer, 'EXTENSION_UNSUPPORTED');
@@ -203,74 +202,90 @@ export function assertMvuNonSchemaSourceExtensionsV1(value, pointer) {
 }
 const authorFieldNames = ['name', 'description', 'personality', 'scenario', 'mes_example', 'system_prompt',
     'post_history_instructions'];
-function nativeAuthorData(data) {
-    const author = nextTavernExecutionAuthorData(data);
-    // Classification and its materialized card/rule view are not execution
-    // inputs. Compatibility macro fields remain the original ST author fields.
-    const { authorExecution: _execution, classification: _classification, ...compatibility } = author.compatibility ?? {};
-    return { ...author, compatibility };
-}
 function authorFields(captured) {
     if (captured.document.spec !== 'nexttavern_card')
         return authorFieldNames.map(key => ({ key,
             pointer: `/data/${key}`, value: captured.data[key], schemaOwned: ['description', 'personality', 'scenario'].includes(key) }));
-    const author = nativeAuthorData(captured.data), aliases = author.compatibility.sillytavernMacroFields;
+    const author = captured.data, aliases = author.compatibility?.sillytavernMacroFields;
     // These retain the community fields' declared roles. Actual execution cards
     // are already checked by the common captured-row pass below, including its
-    // schema content-owner exemption; their classified view is never consumed.
+    // schema content-owner exemption.
     return authorFieldNames.map(key => ({ key, pointer: key === 'name' ? '/data/name'
             : `/data/compatibility/sillytavernMacroFields/${key}`, value: key === 'name' ? author.name : aliases?.[key],
         schemaOwned: ['description', 'personality', 'scenario'].includes(key) }));
 }
 /** Core owns the existing source/import lock. All reads are synchronous; this
  * module neither acquires a second lock nor writes any Domain/native record. */
-function captureSource(deps, sessionId, selectedIndex, currentMaterial = false) {
+function captureSource(deps, sessionId, selectedIndex, currentMaterial = false, authorMaterial = false) {
     if (!idPattern.test(sessionId) || !Number.isSafeInteger(selectedIndex) || selectedIndex < 0)
         fail('REQUEST_INVALID', '');
-    const pointer = deps.readActivePointer(sessionId);
-    if (!pointer || !idPattern.test(pointer.importId) || !isHash(pointer.normalizedSha256)
-        || !isHash(pointer.coverageSha256) || typeof pointer.transactionId !== 'string')
+    const packet = authorMaterial ? deps.readAuthorCapture?.(sessionId) : undefined, owned = packet?.captured, input = owned?.contributionInput;
+    const frozen = authorMaterial ? deps.readFrozenEffectiveLore : undefined;
+    const materialCurrent = currentMaterial || !!packet?.effectiveLore || !!frozen;
+    const pointer = (input?.activePointer ?? deps.readActivePointer(sessionId));
+    if (!owned && (!pointer || !idPattern.test(pointer.importId) || !isHash(pointer.normalizedSha256)
+        || !isHash(pointer.coverageSha256) || typeof pointer.transactionId !== 'string'))
         fail('SOURCE_INVALID', '/source');
     const pointerKeys = ['importId', 'sourceRecordSessionId', 'normalizedSha256',
         'transactionId', 'coverageSha256', 'activatedAt'];
-    requireKeys(pointer, currentMaterial ? [...pointerKeys, 'inheritedFrom'] : pointerKeys, '/source', 'SOURCE_INVALID');
+    if (!owned)
+        requireKeys(pointer, materialCurrent ? [...pointerKeys, 'inheritedFrom'] : pointerKeys, '/source', 'SOURCE_INVALID');
     const inheritedFrom = pointer.inheritedFrom;
-    if (currentMaterial && Object.hasOwn(pointer, 'inheritedFrom')
+    if (!owned && materialCurrent && Object.hasOwn(pointer, 'inheritedFrom')
         && (typeof inheritedFrom !== 'string' || !idPattern.test(inheritedFrom) || inheritedFrom === sessionId)) {
         fail('SOURCE_INVALID', '/source/inheritedFrom');
     }
-    if (!idPattern.test(pointer.transactionId))
+    if (!owned && !idPattern.test(pointer.transactionId))
         fail('SOURCE_INVALID', '/source');
     const owner = pointer.sourceRecordSessionId ?? sessionId;
-    if (!idPattern.test(owner))
+    if (!owned && !idPattern.test(owner))
         fail('SOURCE_INVALID', '/source');
-    const record = deps.readImportRecord(owner, pointer.importId);
-    if (!record || ![4, 5, 6].includes(record.schemaVersion) || record.status !== 'active'
+    const record = (input?.activeImport ?? deps.readImportRecord(owner, pointer.importId));
+    if (!owned && (!record || ![4, 5, 6].includes(record.schemaVersion) || record.status !== 'active'
         || record.sessionId !== owner || record.importId !== pointer.importId
-        || record.normalizedSha256 !== pointer.normalizedSha256 || record.activation?.transactionId !== pointer.transactionId) {
+        || record.normalizedSha256 !== pointer.normalizedSha256 || record.activation?.transactionId !== pointer.transactionId)) {
         fail('SOURCE_INVALID', '/source');
     }
     let structured;
     // Integrity already decoded this structured record. Consume its matching
     // execution data and provenance instead of decoding the same source again.
     try {
-        assertImportRecordIntegrity(record, (_decoded, data) => { structured = data; });
+        if (owned)
+            structured = { decoded: input.rawDecoded, provenance: owned.sourceProvenance };
+        else
+            assertImportRecordIntegrity(record, (_decoded, data) => { structured = data; });
     }
     catch {
         fail('SOURCE_INVALID', '/source');
     }
-    const { decoded, provenance } = structured;
+    let { decoded } = structured;
+    const { provenance } = structured;
     const nativeCard = decoded.format === 'json-nexttavern-v1';
-    const coverage = importCoverage(record);
-    if (coverage.coverage !== 1 || coverage.uncovered.length || coverage.overlaps.length
-        || recordSha256(coverage) !== pointer.coverageSha256)
+    const coverage = owned
+        ? record.coverage : importCoverage(record);
+    if (!owned && (coverage.coverage !== 1 || coverage.uncovered.length || coverage.overlaps.length
+        || recordSha256(coverage) !== pointer.coverageSha256))
         fail('SOURCE_INVALID', '/source/coverage');
     const rows = [];
     const seen = new Set();
+    const ownedRowMap = owned ? new Map((packet.effectiveLore ? owned.currentIdentityRows : owned.source.current.rows)
+        .map(row => [`${row.ref.table}:${row.ref.key}`, row])) : undefined;
     const read = (table, key, expected) => {
+        const id = `${table}:${key}`;
+        if (ownedRowMap) {
+            const row = ownedRowMap.get(id);
+            // Without a new effective-book cut, retain the historical opening's
+            // original activation contract. Source admission owns today's rows.
+            if (expected !== undefined && row.ref.sha256 !== expected)
+                fail('MATERIAL_INVALID', '/material');
+            if (!seen.has(id)) {
+                rows.push({ ref: row.ref, value: row.ref.exists ? row.value : undefined });
+                seen.add(id);
+            }
+            return row.ref;
+        }
         if (!keyPattern.test(key) || !key.startsWith(`${sessionId}__`) || rows.length >= MAX_ROWS)
             fail('MATERIAL_INVALID', '/material');
-        const id = `${table}:${key}`;
         const value = deps.readRow(table, key);
         if (value !== undefined && !isObject(value))
             fail('FIELD_UNSUPPORTED', '/settings');
@@ -287,52 +302,62 @@ function captureSource(deps, sessionId, selectedIndex, currentMaterial = false) 
     };
     const digests = record.activation.writeDigests;
     const activationRows = new Set();
-    if (!Array.isArray(digests) || !digests.length || digests.length > MAX_ROWS)
+    if (!owned && (!Array.isArray(digests) || !digests.length || digests.length > MAX_ROWS))
         fail('MATERIAL_INVALID', '/material');
     for (const digest of digests) {
-        if (!digest || !['branch', 'cards', 'worldbook', 'rules', 'status', 'opening'].includes(digest.tableName)
-            || !isVersion(digest.sha256))
+        if (!owned && (!digest || !['branch', 'cards', 'worldbook', 'rules', 'status', 'opening'].includes(digest.tableName)
+            || !isVersion(digest.sha256)))
             fail('MATERIAL_INVALID', '/material');
         let materialKey = digest.key;
-        if (currentMaterial) {
+        if (materialCurrent) {
             // The original import keeps ancestor-owned activation keys. Verified
             // inheritance retains their suffixes in this session's own material;
             // neither current reads nor schema frames may borrow ancestor rows.
-            if (typeof materialKey !== 'string' || !materialKey.startsWith(`${owner}__`))
+            if (!owned && (typeof materialKey !== 'string' || !materialKey.startsWith(`${owner}__`)))
                 fail('MATERIAL_INVALID', '/material');
             materialKey = `${sessionId}__${materialKey.slice(owner.length + 2)}`;
         }
-        if (currentMaterial && ((digest.tableName === 'branch' && materialKey !== `${sessionId}__settings`)
+        if (!owned && materialCurrent && ((digest.tableName === 'branch' && materialKey !== `${sessionId}__settings`)
             || (digest.tableName === 'rules' && materialKey !== `${sessionId}__spec`)
             || (digest.tableName === 'status' && materialKey !== `${sessionId}__spec`)
             || (digest.tableName === 'opening' && materialKey !== `${sessionId}__scene`))) {
             fail('MATERIAL_INVALID', '/material');
         }
-        read(digest.tableName, materialKey, currentMaterial ? undefined : digest.sha256);
+        read(digest.tableName, materialKey, materialCurrent ? undefined : digest.sha256);
         activationRows.add(`${digest.tableName}:${materialKey}`);
     }
-    const versions = deps.recordVersionsFor(sessionId);
-    const cards = hashMap(versions.cards, '/settings/cards'), worldbook = hashMap(versions.worldbook, '/settings/worldbook');
-    if (!isVersion(versions.rules) || !isVersion(versions.settings))
+    const versions = owned?.source.current ?? deps.recordVersionsFor(sessionId);
+    const cards = owned ? versions.cards : hashMap(versions.cards, '/settings/cards'), worldbook = owned ? versions.worldbook : hashMap(versions.worldbook, '/settings/worldbook');
+    if (!owned && (!isVersion(versions.rules) || !isVersion(versions.settings)))
         fail('MEMBERSHIP_INVALID', '/settings');
     for (const [id, expected] of Object.entries(cards))
-        read('cards', `${sessionId}__${id}`, expected);
+        read('cards', `${sessionId}__${id}`, owned ? undefined : expected);
     for (const [id, expected] of Object.entries(worldbook))
-        read('worldbook', `${sessionId}__${id}`, expected);
+        read('worldbook', `${sessionId}__${id}`, owned ? undefined : expected);
     const rules = read('rules', `${sessionId}__spec`), settings = read('branch', `${sessionId}__settings`);
-    if (rules.sha256 !== versions.rules || settings.sha256 !== versions.settings)
+    if (!owned && (rules.sha256 !== versions.rules || settings.sha256 !== versions.settings))
         fail('MEMBERSHIP_INVALID', '/settings');
     // A source rule added after import must invalidate even an originally absent
     // record. These are author inputs, unlike dynamic panel/init-head/event output.
     read('status', `${sessionId}__spec`);
     read('opening', `${sessionId}__scene`);
-    const context = deps.readOpeningContext(sessionId);
-    if (!context || !isObject(context.context) || !isHash(context.bindingSha256))
+    const context = owned?.source.current.openingContext ?? deps.readOpeningContext(sessionId);
+    if (!owned && (!context || !isObject(context.context) || !isHash(context.bindingSha256)))
         fail('MACRO_UNSUPPORTED', '/macros');
-    requireKeys(context.context, ['user', 'char', 'user_gender'], '/macros', 'MACRO_UNSUPPORTED');
-    for (const value of Object.values(context.context)) {
+    if (!owned)
+        requireKeys(context.context, ['user', 'char', 'user_gender'], '/macros', 'MACRO_UNSUPPORTED');
+    for (const value of owned ? [] : Object.values(context.context)) {
         if (typeof value !== 'string' || value.length > 512)
             fail('MACRO_UNSUPPORTED', '/macros');
+    }
+    const effective = packet?.effectiveLore ? { book: packet.book, effectiveLore: packet.effectiveLore }
+        : frozen?.({ sessionId, pointer, record, decoded, worldbook,
+            rows: rows.map(row => ({ ref: row.ref, value: row.ref.exists ? row.value : null })) });
+    if (effective) {
+        const data = { ...decoded.data, ...effective.book === undefined ? {} : { character_book: effective.book } };
+        if (effective.book === undefined)
+            delete data.character_book;
+        decoded = { ...decoded, data, document: { ...decoded.document, data } };
     }
     // The import's real decoder has already parsed the entire original document.
     // Numerical classification below consumes only its actual declarations.
@@ -344,12 +369,14 @@ function captureSource(deps, sessionId, selectedIndex, currentMaterial = false) 
         rawSha256: record.rawSha256, normalizedSha256: record.normalizedSha256, transactionId: pointer.transactionId,
         coverageSha256: pointer.coverageSha256, pointer: { ...pointer } };
     const root = decoded.document.data === decoded.data ? '/data' : '';
-    const used = JSON.stringify(nativeCard ? nativeAuthorData(decoded.data) : decoded.document).includes('{{')
+    const used = JSON.stringify(nativeCard ? decoded.data : decoded.document).includes('{{')
         || rows.some(item => JSON.stringify(item.value ?? null).includes('{{'));
     const membership = { cards, worldbook, rules: versions.rules, settings: versions.settings };
     const content = {
         schemaVersion: 1, encoding: 'native-mvu-source-snapshot-v1', policy: NATIVE_MVU_SOURCE_POLICY,
-        source, pointerSha256: recordSha256(pointer), importRecordSha256: recordSha256(record), coverageSha256: recordSha256(coverage),
+        source, pointerSha256: owned?.source.original.activePointerRef.sha256 ?? recordSha256(pointer),
+        importRecordSha256: owned?.source.original.importRecordRef.sha256 ?? recordSha256(record),
+        coverageSha256: owned?.source.original.coverageSha256 ?? recordSha256(coverage),
         materialRows: rows.map(item => item.ref).sort((a, b) => {
             const left = `${a.table}:${a.key}`, right = `${b.table}:${b.key}`;
             return left < right ? -1 : left > right ? 1 : 0;
@@ -363,13 +390,16 @@ function captureSource(deps, sessionId, selectedIndex, currentMaterial = false) 
             sourceSha256: item.sourceSha256, renderedSha256: sha(item.renderedText) })),
         macroContext: { used, bindingSha256: used ? context.bindingSha256 : null, valuesSha256: used ? recordSha256(context.context) : null },
         ...(record.schemaVersion === 6 ? { sourceProvenance: provenance } : {}),
+        ...effective ? { effectiveLore: effective.effectiveLore } : {},
     };
     return { snapshot: { ...content, snapshotSha256: recordSha256(content) }, document: decoded.document,
-        data: decoded.data, context: context.context, candidates, rows, activationRows };
+        data: decoded.data, context: context.context, candidates, rows, activationRows, ...owned ? { ownedRows: true } : {} };
 }
 /** Freezes producer-owned DATA; execution envelopes retain their own budgets. */
 function freezeAuthorSourceData(value) {
-    if (value !== null && typeof value === 'object') {
+    // Internal constructors also consume Lore Source's already deeply frozen
+    // rows/document. Reuse that owner result rather than walking it again.
+    if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
         for (const child of Object.values(value))
             freezeAuthorSourceData(child);
         Object.freeze(value);
@@ -390,20 +420,32 @@ function authorSourceOf(captured, current) {
             fail('EXTENSION_UNSUPPORTED', '/extensions/tavern_helper');
         if (helper.scripts === undefined)
             return { kind: 'absent' };
-        if (!Array.isArray(helper.scripts) || helper.scripts.length > 64) {
+        if (!Array.isArray(helper.scripts)) {
             fail('FIELD_UNSUPPORTED', '/extensions/tavern_helper/scripts');
         }
         const root = captured.document.data === captured.data ? '/data' : '';
-        const scripts = helper.scripts.map((raw, index) => {
-            const pointer = `${root}/extensions/tavern_helper/scripts/${index}`;
-            // Preserve every entry and its explicit enable state in original order.
-            // Selecting only apparent schema calls would silently discard other
-            // author effects. Unknown active code is the compiler's explicit refusal.
+        const scripts = [];
+        const leaf = (raw, pointer, parentEnabled) => {
             if (!isObject(raw) || raw.type !== 'script' || typeof raw.enabled !== 'boolean' || typeof raw.content !== 'string') {
                 fail('FIELD_UNSUPPORTED', pointer);
             }
-            return { identity: `script-${index}`, pointer, enabled: raw.enabled, source: raw.content,
-                sourceSha256: schemaTextSha256(raw.content) };
+            if (scripts.length >= 64)
+                fail('FIELD_UNSUPPORTED', '/extensions/tavern_helper/scripts');
+            scripts.push({ identity: `script-${scripts.length}`, pointer, enabled: parentEnabled && raw.enabled, source: raw.content,
+                sourceSha256: schemaTextSha256(raw.content) });
+        };
+        helper.scripts.forEach((raw, index) => {
+            const pointer = `${root}/extensions/tavern_helper/scripts/${index}`;
+            // Standard TH folders contain Script leaves. Keep every leaf in source
+            // order, even when disabled; only the execution flag inherits the folder
+            // switch. Raw trees, IDs and resource DATA remain untouched in material.
+            if (isObject(raw) && raw.type === 'folder') {
+                if (typeof raw.enabled !== 'boolean' || !Array.isArray(raw.scripts))
+                    fail('FIELD_UNSUPPORTED', pointer);
+                raw.scripts.forEach((child, childIndex) => leaf(child, `${pointer}/scripts/${childIndex}`, raw.enabled));
+            }
+            else
+                leaf(raw, pointer, true);
         });
         if (!scripts.length)
             return { kind: 'absent' };
@@ -416,7 +458,7 @@ function authorSourceOf(captured, current) {
         // The combined descriptor is not another guest execution input.
         const materialInput = { card: captured.document,
             rows: captured.rows.map(({ ref, value }) => ({ table: ref.table, key: ref.key, exists: ref.exists,
-                value: current?.executionV4 ? value ?? null : structuredClone(value ?? null) })),
+                value: current?.executionV4 || captured.ownedRows ? value ?? null : structuredClone(value ?? null) })),
             openingContext: { ...captured.context } };
         // Execution material is detached, budgeted, hashed and frozen by the same
         // DATA owner that later envelopes consume. Raw/legacy Source keeps its
@@ -442,7 +484,7 @@ function authorSourceOf(captured, current) {
  * verifier; this explicit mode never changes the opening capture contract. */
 export function readMvuSchemaCurrentAuthorSource(deps, sessionId, selectedIndex) {
     try {
-        return authorSourceOf(captureSource(deps, sessionId, selectedIndex, true));
+        return authorSourceOf(captureSource(deps, sessionId, selectedIndex, true, true));
     }
     catch (error) {
         return { kind: 'unsupported', diagnostics: [error instanceof SourceFailure
@@ -453,7 +495,7 @@ export function readMvuSchemaCurrentAuthorSource(deps, sessionId, selectedIndex)
  * select the material codec; inspector/original/legacy callers remain separate. */
 export function readMvuSchemaCurrentAuthorMaterial(deps, sessionId, selectedIndex, executionV4) {
     try {
-        return authorSourceOf(captureSource(deps, sessionId, selectedIndex, true), { executionV4 });
+        return authorSourceOf(captureSource(deps, sessionId, selectedIndex, true, true), { executionV4 });
     }
     catch (error) {
         return { kind: 'unsupported', diagnostics: [error instanceof SourceFailure
@@ -461,21 +503,32 @@ export function readMvuSchemaCurrentAuthorMaterial(deps, sessionId, selectedInde
     }
 }
 export function createRoleplayMvuSource(deps) {
-    const capture = (sessionId, selectedIndex) => captureSource(deps, sessionId, selectedIndex);
-    function openingSyntax(candidate, allowUpdate, initialization) {
+    const capture = (sessionId, selectedIndex) => deps.captureOriginal
+        ? deps.captureOriginal(sessionId, `mvu-source:${selectedIndex}`, () => captureSource(deps, sessionId, selectedIndex)).data
+        : captureSource(deps, sessionId, selectedIndex);
+    const captureAuthor = (sessionId, selectedIndex) => deps.captureOriginal
+        ? deps.captureOriginal(sessionId, `mvu-author-material:${selectedIndex}`, () => captureSource(deps, sessionId, selectedIndex, false, true)).data
+        : captureSource(deps, sessionId, selectedIndex, false, true);
+    function openingSyntax(candidate, allowUpdate, initialization, allowAnalysisAlias) {
         if (initialization)
             return stateSyntax(initialization.rawOutside) || stateSyntax(initialization.renderedOutside)
                 ? 'unsupported' : 'none';
         if (!allowUpdate)
             return stateSyntax(candidate.rawText) ? 'unsupported' : 'none';
-        const raw = parseMvuUpdateRegionV2(candidate.rawText, { openingText: true });
-        const rendered = parseMvuUpdateRegionV2(candidate.renderedText, { openingText: true });
+        const parse = allowAnalysisAlias ? parseMvuUpdateAnalysisAliasRegionV2 : parseMvuUpdateRegionV2;
+        const raw = parse(candidate.rawText, { openingText: true }), rendered = parse(candidate.renderedText, { openingText: true });
         if (raw.candidate.kind === 'rejected' || rendered.candidate.kind === 'rejected') {
             fail('STATE_SYNTAX_UNSUPPORTED', candidate.sourcePointer, candidate.rawText);
         }
         if (raw.candidate.kind !== rendered.candidate.kind)
             fail('MACRO_UNSUPPORTED', candidate.sourcePointer);
-        return stateSyntax(raw.outside) ? 'unsupported' : raw.candidate.kind === 'parsed' ? 'update' : 'none';
+        if (stateSyntax(raw.outside))
+            return 'unsupported';
+        if (raw.candidate.kind !== 'parsed')
+            return 'none';
+        const analysisAlias = 'analysisAlias' in raw && raw.analysisAlias === true
+            || 'analysisAlias' in rendered && rendered.analysisAlias === true;
+        return analysisAlias ? 'update-alias' : 'update';
     }
     const classify = (captured, authorSchema = false, recordedInitSource) => {
         // Schema opening initialization consumes one selected greeting. The capture
@@ -484,7 +537,9 @@ export function createRoleplayMvuSource(deps) {
         const candidates = authorSchema && !(recordedInitSource && recordedInitSource.swipes.length > 1)
             ? captured.candidates.filter(candidate => candidate.index === captured.snapshot.selected.index)
             : captured.candidates;
-        const allowUpdate = authorSchema && (!recordedInitSource || recordedInitSource.schemaVersion === 2);
+        const allowUpdate = authorSchema && (!recordedInitSource || recordedInitSource.schemaVersion === 2
+            || recordedInitSource.schemaVersion === 3);
+        const allowAnalysisAlias = authorSchema && (!recordedInitSource || recordedInitSource.schemaVersion === 3);
         const { data, context, snapshot } = captured;
         const nativeCard = captured.document.spec === 'nexttavern_card';
         // The decoder owns the complete envelope, including compatibility mirrors
@@ -574,13 +629,16 @@ export function createRoleplayMvuSource(deps) {
         if (selection.kind === 'unsupported')
             fail('INITVAR_INVALID', selection.diagnostics[0].pointer);
         let openingInit = false, openingUpdate = false;
+        let openingParserPolicy = recordedInitSource?.schemaVersion === 3 ? recordedInitSource.parserPolicy : undefined;
         for (const [index, candidate] of candidates.entries()) {
             if (nativeCard && candidate.materialization === 'materialized')
                 continue;
-            const syntax = openingSyntax(candidate, allowUpdate, authorSchema ? selection.openingInitialization[index] : null);
+            const syntax = openingSyntax(candidate, allowUpdate, authorSchema ? selection.openingInitialization[index] : null, allowAnalysisAlias);
             if (syntax === 'unsupported')
                 fail('STATE_SYNTAX_UNSUPPORTED', candidate.sourcePointer, candidate.rawText);
-            openingUpdate = syntax === 'update';
+            openingUpdate = syntax === 'update' || syntax === 'update-alias';
+            if (syntax === 'update-alias')
+                openingParserPolicy = 'analysis-alias-v1';
             if (openingBlocks(candidate.renderedText, candidate.sourcePointer))
                 openingInit = true;
             render(candidate.rawText, context, entries.length > 0 || openingInit);
@@ -598,6 +656,10 @@ export function createRoleplayMvuSource(deps) {
                 if (numericalChannel(key)) {
                     fail('STATE_SYNTAX_UNSUPPORTED', '/settings');
                 }
+            // Current character prose is the content owner's input too; classifying
+            // its projected copy here would reject the same accepted template again.
+            if (authorSchema && ref.table === 'cards')
+                continue;
             const original = primaryRows.has(`${ref.table}:${ref.key}`);
             const fields = ref.table === 'cards' || ref.table === 'worldbook' ? ['content']
                 : ref.table === 'rules' ? ['core', 'plot', 'narrative', 'reply', 'style']
@@ -627,7 +689,7 @@ export function createRoleplayMvuSource(deps) {
                     fail('INITVAR_OUTSIDE_BINDING', '/settings', text);
             }
         }
-        return { entries, candidates, hasInit: entries.length > 0 || openingInit, policy: selection.policy, openingUpdate };
+        return { entries, candidates, hasInit: entries.length > 0 || openingInit, policy: selection.policy, openingUpdate, openingParserPolicy };
     };
     const fresh = (snapshot) => {
         const observed = deps.readFreshNativeBasis(snapshot.source.sessionId, snapshot.swipes);
@@ -737,7 +799,9 @@ export function createRoleplayMvuSource(deps) {
     };
     function readAuthorSource(sessionId, selectedIndex) {
         try {
-            return authorSourceOf(capture(sessionId, selectedIndex));
+            const compute = () => authorSourceOf(captureAuthor(sessionId, selectedIndex));
+            return deps.captureOriginal
+                ? deps.captureOriginal(sessionId, `mvu-author-source:${selectedIndex}`, () => Object.freeze(compute())).data : compute();
         }
         catch (error) {
             return { kind: 'unsupported', diagnostics: [error instanceof SourceFailure
@@ -745,14 +809,16 @@ export function createRoleplayMvuSource(deps) {
         }
     }
     function schemaOpeningData(captured, recordedInitSource) {
-        const author = authorSourceOf(captured);
+        const author = deps.captureOriginal
+            ? readAuthorSource(captured.snapshot.source.sessionId, captured.snapshot.selected.index) : authorSourceOf(captured);
         if (author.kind !== 'author-source')
             return author;
         if (!author.source.scripts.some(script => script.enabled))
             return { kind: 'absent' };
-        const { entries, candidates, policy, openingUpdate } = classify(captured, true, recordedInitSource);
+        const { entries, candidates, policy, openingUpdate, openingParserPolicy } = classify(captured, true, recordedInitSource);
         const primary = captured.snapshot.bindings.primary;
-        const version = openingUpdate ? { schemaVersion: 2, encoding: 'native-mvu-schema-opening-init-source-v2' }
+        const version = openingParserPolicy ? { schemaVersion: 3, encoding: 'native-mvu-schema-opening-init-source-v3',
+            parserPolicy: openingParserPolicy } : openingUpdate ? { schemaVersion: 2, encoding: 'native-mvu-schema-opening-init-source-v2' }
             : { schemaVersion: 1, encoding: 'native-mvu-schema-opening-init-source-v1' };
         const body = { ...version,
             grammar: isNativeMvuYamlSourcePolicy(policy) ? 'yaml-1.2-json-data-v1' : 'strict-json-object-v1',
@@ -767,11 +833,30 @@ export function createRoleplayMvuSource(deps) {
         const initSource = { ...body, initSourceSha256: recordSha256(body) };
         return { kind: 'schema-opening-data', authorSource: author.source, initSource };
     }
+    function captureSchemaOpeningData(sessionId, selectedIndex, recordedInitSource) {
+        const compute = () => schemaOpeningData(captureAuthor(sessionId, selectedIndex), recordedInitSource);
+        if (!deps.captureOriginal)
+            return compute();
+        // Historical descriptors select all greetings and/or the older literal
+        // grammar. Their two semantic choices are distinct Original read slots.
+        const allGreetings = !!recordedInitSource && recordedInitSource.swipes.length > 1, allowUpdate = !recordedInitSource || recordedInitSource.schemaVersion === 2 || recordedInitSource.schemaVersion === 3;
+        // A retained v3 currency read must not select the version of a fresh
+        // preparation after Source changes. Retained v1/v2 keep their old slots.
+        const policySlot = !recordedInitSource ? ':analysis-alias-v1:fresh'
+            : recordedInitSource.schemaVersion === 3 ? ':analysis-alias-v1' : '';
+        return deps.captureOriginal(sessionId, `mvu-schema-opening:${selectedIndex}:${allGreetings}:${allowUpdate}${policySlot}`, () => {
+            const data = compute();
+            if (data.kind !== 'schema-opening-data')
+                return freezeAuthorSourceData(data);
+            freezeAuthorSourceData(data.initSource);
+            return Object.freeze(data);
+        }).data;
+    }
     /** Original raw descriptors only: no fresh-basis observation, numerical
      * capability, Native owner or publication side effect is created here. */
     function readSchemaOpeningData(sessionId, selectedIndex, recordedInitSource) {
         try {
-            return schemaOpeningData(capture(sessionId, selectedIndex), recordedInitSource);
+            return captureSchemaOpeningData(sessionId, selectedIndex, recordedInitSource);
         }
         catch (error) {
             return { kind: 'unsupported', diagnostics: [error instanceof SourceFailure
@@ -780,12 +865,13 @@ export function createRoleplayMvuSource(deps) {
     }
     function readSchemaOpeningSource(request) {
         try {
-            const captured = capture(request.catalog.source.sessionId, request.candidate.index);
+            const captured = captureAuthor(request.catalog.source.sessionId, request.candidate.index);
             if (!same(captured.snapshot.source, request.catalog.source) || !same(captured.candidates, request.catalog.candidates)
                 || !same(captured.candidates.find(item => item.index === request.candidate.index), request.candidate)) {
                 fail('SOURCE_CHANGED', '/selected');
             }
-            const data = schemaOpeningData(captured);
+            const data = deps.captureOriginal
+                ? captureSchemaOpeningData(request.catalog.source.sessionId, request.candidate.index) : schemaOpeningData(captured);
             if (data.kind !== 'schema-opening-data')
                 return data;
             const { proof } = fresh(captured.snapshot);
@@ -801,9 +887,21 @@ export function createRoleplayMvuSource(deps) {
         try {
             // Do not recapture an empty basis after our own dispatch/opening writes.
             // Original fresh-basis and current Native publication have distinct owners.
-            const data = schemaOpeningData(capture(expected.sourceSnapshot.source.sessionId, expected.sourceSnapshot.selected.index), expected.initSource);
-            return data.kind === 'schema-opening-data' && data.authorSource.authorSourceSha256 === expected.authorSourceSha256
-                && same(data.authorSource.snapshot, expected.sourceSnapshot) && same(data.initSource, expected.initSource);
+            if (deps.captureOriginal) {
+                const author = readAuthorSource(expected.sourceSnapshot.source.sessionId, expected.sourceSnapshot.selected.index);
+                if (author.kind !== 'author-source' || author.source.authorSourceSha256 !== expected.authorSourceSha256)
+                    return false;
+            }
+            const data = captureSchemaOpeningData(expected.sourceSnapshot.source.sessionId, expected.sourceSnapshot.selected.index, expected.initSource);
+            if (data.kind !== 'schema-opening-data')
+                return false;
+            // The actual Original owner already owns parsing, immutable DATA and its
+            // row/membership lifetime. Checkpoints consume those captured identities.
+            return deps.captureOriginal
+                ? data.authorSource.snapshot.snapshotSha256 === expected.sourceSnapshot.snapshotSha256
+                    && data.initSource.initSourceSha256 === expected.initSource.initSourceSha256
+                : data.authorSource.authorSourceSha256 === expected.authorSourceSha256
+                    && same(data.authorSource.snapshot, expected.sourceSnapshot) && same(data.initSource, expected.initSource);
         }
         catch {
             return false;
@@ -811,6 +909,10 @@ export function createRoleplayMvuSource(deps) {
     }
     function authorSourceCurrent(expected) {
         try {
+            if (deps.captureOriginal) {
+                const actual = readAuthorSource(expected.snapshot.source.sessionId, expected.snapshot.selected.index);
+                return actual.kind === 'author-source' && actual.source.authorSourceSha256 === expected.authorSourceSha256;
+            }
             const saved = cloneSchemaData(expected, 8 * MAX_BYTES);
             const actual = readAuthorSource(saved.snapshot.source.sessionId, saved.snapshot.selected.index);
             return actual.kind === 'author-source' && same(saved, actual.source);

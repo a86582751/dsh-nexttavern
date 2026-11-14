@@ -1,13 +1,14 @@
 import type * as ReactAPI from 'react'
 import type {SourceImageCandidateV1, SourceImageCatalogV1} from '../core/roleplay-source-images.js'
-import type {BrowserNativeImageV3} from '../core/tavern-author-browser-native-types-v3.js'
+import type {ReaderNativeImageV1} from '../core/reader-native-document-types.js'
+import {createToolWindow} from './tool-window.js'
 
 export type SessionImageCandidate = SourceImageCandidateV1
 export type SessionImageCatalog = SourceImageCatalogV1
 export interface SessionImageResource {id: string; name: string; type: string; url?: string}
 export type SessionImageSelection =
   | {kind: 'source'; resource: SessionImageResource; name: string; url: string; sourceHash: string; candidateId: string}
-  | {kind: 'browser'; owner: object; pageId: string; image: BrowserNativeImageV3; name: string; url: string; candidateId: string}
+  | {kind: 'browser'; owner: object; pageId: string; image: ReaderNativeImageV1; name: string; url: string; candidateId: string}
 export interface SessionBrowserImage {candidateId: string; selection: Extract<SessionImageSelection, {kind: 'browser'}>}
 type ImageUse = 'gallery' | 'background' | 'portrait'
 type DisplayUse = Exclude<ImageUse, 'gallery'>
@@ -183,7 +184,7 @@ export function createSessionImages(jsonFetch: ImagesJsonFetch, storage?: ImageP
     },
     open(opened: boolean, panelPosition = state.panelPosition) {publish({opened, panelPosition}); if (opened) void refresh()},
     refresh,
-    acceptBrowserImages(sessionId: string, owner: object, pageId: string, images: readonly BrowserNativeImageV3[]) {
+    acceptBrowserImages(sessionId: string, owner: object, pageId: string, images: readonly ReaderNativeImageV1[]) {
       if (disposed || state.sessionId !== sessionId) return
       const previous = state.browserImages.filter(candidate => candidate.selection.owner === owner
         && candidate.selection.pageId === pageId)
@@ -259,16 +260,42 @@ export function createSessionImages(jsonFetch: ImagesJsonFetch, storage?: ImageP
 }
 
 export const SESSION_IMAGES_CSS = `
-.rp-images-controls{position:fixed;z-index:1049;color:#514039;font:13px/1.5 sans-serif}
-.rp-images-controls button{border:1px solid #b7a59c;border-radius:7px;background:#fffaf4;color:inherit;padding:5px 9px;cursor:pointer}
-.rp-images-controls button:disabled{opacity:.5;cursor:default}
-.rp-images-panel{box-sizing:border-box;width:min(340px,calc(100vw - 32px));overflow:auto;padding:12px;background:#fffaf4;border:1px solid #c8b7ab;border-radius:12px;box-shadow:0 6px 26px #36231726}
-.rp-images-actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
-.rp-images-list{display:grid;gap:5px;max-height:180px;overflow:auto}
-.rp-images-candidate{text-align:left;overflow-wrap:anywhere}
-.rp-images-candidate small{display:block;color:#7d6c65;font-size:11px}
-.rp-images-preview{display:block;width:100%;height:190px;object-fit:contain;background:#eee7de;border-radius:7px}
-.rp-images-error{color:#a33c36;overflow-wrap:anywhere}
+.rp-images-content{padding:16px;color:var(--rp-tool-ink,#49392c);font-family:inherit;font-size:14px;line-height:1.5}
+.rp-images-content button{box-sizing:border-box;min-height:44px;border:1px solid var(--rp-tool-border,#dccbb3);border-radius:10px;background:var(--rp-tool-paper,#fffaf1);color:inherit;padding:9px 12px;font:inherit;cursor:pointer}
+.rp-images-content button:hover:not(:disabled){border-color:var(--rp-tool-accent,#8b571c);background:var(--rp-tool-soft,#f3ead9)}
+.rp-images-content button:focus-visible{outline:3px solid var(--rp-tool-accent,#8b571c);outline-offset:3px}
+.rp-images-content button:disabled{opacity:.5;cursor:default}
+.rp-images-toolbar,.rp-images-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.rp-images-toolbar{margin-bottom:12px}
+.rp-images-meta,.rp-images-hint{color:var(--rp-tool-muted,#766553);font-size:12px}
+.rp-images-preview-frame{position:relative;display:grid;place-items:center;aspect-ratio:3/2;min-height:160px;overflow:hidden;border:1px solid var(--rp-tool-border,#dccbb3);border-radius:12px;background:var(--rp-tool-soft,#f3ead9)}
+.rp-images-preview{display:block;width:100%;height:100%;min-height:0;object-fit:contain;position:absolute;inset:0}
+.rp-images-placeholder{text-align:center;padding:24px;color:var(--rp-tool-muted,#766553)}
+.rp-images-placeholder svg{display:block;width:36px;height:36px;margin:0 auto 10px;opacity:.7}
+.rp-images-placeholder strong{display:block;font-size:14px;font-weight:600}
+.rp-images-placeholder p{margin:6px 0 0;font-size:12px}
+.rp-images-loading{position:absolute;left:10px;bottom:10px;padding:5px 10px;border-radius:6px;background:var(--rp-tool-paper,#fffaf1);color:var(--rp-tool-ink,#49392c);font-size:12px;box-shadow:0 1px 5px #49392c14}
+.rp-images-selected-name{margin:10px 0 0;font-weight:600;overflow-wrap:anywhere}
+.rp-images-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.rp-images-actions button{flex:1 1 auto}
+.rp-images-actions .rp-images-primary{border-color:var(--rp-tool-accent,#8b571c);color:var(--rp-tool-accent,#8b571c);background:var(--rp-tool-soft,#f3ead9)}
+.rp-images-current{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;padding-bottom:16px;border-bottom:1px solid var(--rp-tool-border,#dccbb3)}
+.rp-images-current button{font-size:12px;flex:1;text-align:left}
+.rp-images-current span{display:block;font-weight:600;overflow-wrap:anywhere}
+.rp-images-section{margin-top:18px}
+.rp-images-section-heading{margin:0 0 10px;font-size:13px}
+.rp-images-section-heading span{font-weight:400;color:var(--rp-tool-muted,#766553)}
+.rp-images-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.rp-images-list .rp-images-candidate{position:relative;min-width:0;padding:4px;text-align:left;overflow:hidden;border-radius:9px}
+.rp-images-list .rp-images-candidate[aria-pressed=true]{border:2px solid var(--rp-tool-accent,#8b571c);padding:3px;background:var(--rp-tool-soft,#f3ead9)}
+.rp-images-thumb{position:relative;display:grid;place-items:center;width:100%;aspect-ratio:1;overflow:hidden;border-radius:5px;background:var(--rp-tool-soft,#f3ead9);color:var(--rp-tool-muted,#766553)}
+.rp-images-thumb svg{width:28px;height:28px;opacity:.65}
+.rp-images-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.rp-images-thumb-label{position:absolute;left:3px;right:3px;bottom:4px;text-align:center;font-size:11px}
+.rp-images-candidate-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:1.5;margin:6px 3px 3px}
+.rp-images-candidate small{display:block;margin:0 3px 3px;color:var(--rp-tool-muted,#766553);font-size:11px}
+.rp-images-error{margin:10px 0;padding:10px 12px;border-radius:8px;background:#f9e9e3;color:#923c2e;font-size:13px;overflow-wrap:anywhere}
+.rp-images-empty{padding:16px 0;color:var(--rp-tool-muted,#766553);font-size:13px}
 .rp-image-scene{position:relative;contain:size;isolation:isolate;display:flex;flex-direction:column;flex:1;min-height:0;height:100%;width:100%;overflow:hidden}
 .rp-image-scene>.rp-reader-view{position:relative;z-index:1}
 .rp-image-background{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.22;z-index:0;pointer-events:none}
@@ -279,7 +306,19 @@ export const SESSION_IMAGES_CSS = `
 
 export function createSessionImageComponents(deps: {React: typeof ReactAPI; images: ReturnType<typeof createSessionImages>}) {
   const {React, images} = deps, h = React.createElement
+  const ToolWindow = createToolWindow(React)
   const useImages = () => React.useSyncExternalStore(images.subscribe, images.getSnapshot, images.getSnapshot)
+  const imageIcon = () => h('svg', {viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+    strokeWidth: 1.5, 'aria-hidden': true}, h('rect', {x: 3, y: 3, width: 18, height: 18, rx: 3}),
+    h('circle', {cx: 8.5, cy: 8.5, r: 1.5}), h('path', {d: 'm3 17 5-5 4 4 4-6 5 7'}))
+  function Thumbnail({src, unavailable}: {src?: string; unavailable?: boolean}) {
+    const [failed, setFailed] = React.useState(false)
+    React.useEffect(() => setFailed(false), [src])
+    return h('span', {className: 'rp-images-thumb'}, imageIcon(),
+      src && !failed ? h('img', {src, alt: '', loading: 'lazy', onError: () => setFailed(true)}) : null,
+      !src || failed ? h('span', {className: 'rp-images-thumb-label'},
+        unavailable ? '路径未绑定' : failed ? '无法预览' : '点击读取') : null)
+  }
   function image(purpose: ImageUse, selected: SessionImageSelection, className: string) {
     const identity = selected.kind === 'source' ? selected.sourceHash + ':' + selected.resource.id : selected.candidateId
     return h('img', {key: purpose + ':' + identity, className, src: selected.url,
@@ -289,39 +328,62 @@ export function createSessionImageComponents(deps: {React: typeof ReactAPI; imag
   function Controls() {
     const state = useImages()
     if (!state.sessionId) return null
+    const candidates = state.catalog?.candidates ?? []
+    const count = candidates.length + state.browserImages.length
+    const sourceThumbnail = (candidate: SessionImageCandidate) => candidate.storage === 'remote' ? candidate.uri
+      : [state.gallery, state.background, state.portrait].find(selected => selected?.kind === 'source'
+        && selected.sourceHash === state.catalog?.sourceHash && selected.candidateId === candidate.candidateId)?.url
     // Scene keeps its background/portrait styles after the controls close.
     return h(React.Fragment, null,
       h('style', null, SESSION_IMAGES_CSS),
-      state.opened ? h('section', {id: 'dsh-rp-images-panel', className: 'rp-images-controls', 'aria-label': '角色卡图片',
-      style: state.panelPosition},
-      h('div', {className: 'rp-images-panel', style: {maxHeight: `calc(100dvh - ${state.panelPosition.top + 72}px)`}},
-        h('strong', null, '图片'),
-        h('div', {className: 'rp-images-actions'},
-          h('button', {type: 'button', disabled: state.refreshing, onClick: () => void images.refresh()}, state.refreshing ? '读取中…' : '刷新图片'),
-          h('button', {type: 'button', onClick: () => images.open(false)}, '收起')),
+      state.opened ? h(ToolWindow, {id: 'dsh-rp-images-panel', title: '图片', icon: 'images',
+        onClose: () => images.open(false), initialPosition: state.panelPosition, initialSize: {w: 380, h: 600}},
+      h('div', {className: 'rp-images-content'},
+        h('div', {className: 'rp-images-toolbar'},
+          h('span', {className: 'rp-images-meta', role: 'status'}, state.refreshing ? '正在读取图片…' : count + ' 张可发现的图片'),
+          h('button', {type: 'button', disabled: state.refreshing, onClick: () => void images.refresh()}, '刷新图片')),
         state.error ? h('p', {className: 'rp-images-error', role: 'status'}, state.error) : null,
         ...(state.catalog?.diagnostics ?? []).map((diagnostic, index) =>
           h('p', {key: 'diagnostic:' + index, className: 'rp-images-error'}, diagnostic.message + ' · ' + diagnostic.position)),
-        state.gallery && state.load.gallery !== 'failed' ? image('gallery', state.gallery, 'rp-images-preview') : null,
-        state.gallery && state.load.gallery === 'failed' ? h('p', {className: 'rp-images-error', role: 'status'}, '图片加载失败，请重新选择或刷新。') : null,
+        h('div', {className: 'rp-images-preview-frame', 'aria-busy': state.selecting || !!state.gallery && state.load.gallery === 'loading'},
+          state.gallery && state.load.gallery !== 'failed' ? image('gallery', state.gallery, 'rp-images-preview') : null,
+          !state.gallery || state.load.gallery === 'failed' ? h('div', {className: 'rp-images-placeholder'}, imageIcon(),
+            h('strong', null, state.gallery ? '图片加载失败' : '选择一张图片'),
+            h('p', null, state.gallery ? '请重新选择图片，或刷新后重试。' : '在下方预览，也可设为背景或立绘。')) : null,
+          state.selecting || state.gallery && state.load.gallery === 'loading'
+            ? h('span', {className: 'rp-images-loading', role: 'status'}, '正在加载图片…') : null),
+        state.gallery ? h('p', {className: 'rp-images-selected-name'}, state.gallery.name) : null,
         state.gallery ? h('div', {className: 'rp-images-actions'},
-          h('button', {type: 'button', onClick: () => images.useAs('background')}, '作为背景'),
-          h('button', {type: 'button', onClick: () => images.useAs('portrait')}, '作为立绘'),
+          h('button', {type: 'button', className: 'rp-images-primary', onClick: () => images.useAs('background')}, '作为背景'),
+          h('button', {type: 'button', className: 'rp-images-primary', onClick: () => images.useAs('portrait')}, '作为立绘'),
           h('button', {type: 'button', onClick: () => images.clear('gallery')}, '清除预览')) : null,
-        h('div', {className: 'rp-images-actions'},
-          state.background ? h('button', {type: 'button', onClick: () => images.clear('background')}, '清除背景') : null,
-          state.portrait ? h('button', {type: 'button', onClick: () => images.clear('portrait')}, '清除立绘') : null),
-        h('div', {className: 'rp-images-list'}, ...(state.catalog?.candidates ?? []).map(candidate =>
-          h('button', {key: candidate.candidateId, type: 'button', className: 'rp-images-candidate',
-            disabled: state.selecting || candidate.storage === 'unresolved',
-            onClick: () => void images.select(candidate.candidateId)}, candidate.name,
-          h('small', null, candidate.storage === 'unresolved' ? '原路径未绑定资源：' + candidate.uri : candidate.carrier + ' · ' + candidate.position)))),
-        h('div', {className: 'rp-images-list'}, ...state.browserImages.map(candidate =>
-          h('button', {key: candidate.candidateId, type: 'button', className: 'rp-images-candidate',
-            onClick: () => images.selectBrowser(candidate.candidateId)}, candidate.selection.name,
-          h('small', null, '作者页面当前图片')))),
-        state.catalog?.candidates.length === 0 && state.browserImages.length === 0
-          ? h('p', null, '当前角色卡没有可发现的图片。') : null)) : null)
+        state.background || state.portrait ? h('div', {className: 'rp-images-current'},
+          state.background ? h('button', {type: 'button', onClick: () => images.clear('background')},
+            '清除背景', h('span', null, state.background.name)) : null,
+          state.portrait ? h('button', {type: 'button', onClick: () => images.clear('portrait')},
+            '清除立绘', h('span', null, state.portrait.name)) : null) : null,
+        candidates.length ? h('div', {className: 'rp-images-section'},
+          h('h3', {className: 'rp-images-section-heading'}, '角色卡图片', h('span', null, candidates.length + ' 张')),
+          h('div', {className: 'rp-images-list'}, ...candidates.map(candidate =>
+            h('button', {key: candidate.candidateId, type: 'button', className: 'rp-images-candidate',
+              'aria-pressed': state.gallery?.kind === 'source' && state.gallery.candidateId === candidate.candidateId,
+              title: candidate.name + '\n' + (candidate.storage === 'unresolved'
+                ? '原路径未绑定资源：' + candidate.uri : candidate.carrier + ' · ' + candidate.position),
+              disabled: state.selecting || candidate.storage === 'unresolved',
+              onClick: () => void images.select(candidate.candidateId)},
+              h(Thumbnail, {src: sourceThumbnail(candidate), unavailable: candidate.storage === 'unresolved'}),
+              h('span', {className: 'rp-images-candidate-name'}, candidate.name),
+              h('small', null, candidate.storage === 'remote' ? '远程图片' : candidate.storage === 'embedded' ? '内嵌图片' : '路径未绑定'))))) : null,
+        state.browserImages.length ? h('div', {className: 'rp-images-section'},
+          h('h3', {className: 'rp-images-section-heading'}, '作者页面图片', h('span', null, state.browserImages.length + ' 张')),
+          h('div', {className: 'rp-images-list'}, ...state.browserImages.map(candidate =>
+            h('button', {key: candidate.candidateId, type: 'button', className: 'rp-images-candidate',
+              'aria-pressed': state.gallery?.kind === 'browser' && state.gallery.candidateId === candidate.candidateId,
+              title: candidate.selection.name, onClick: () => images.selectBrowser(candidate.candidateId)},
+              h(Thumbnail, {src: candidate.selection.url}),
+              h('span', {className: 'rp-images-candidate-name'}, candidate.selection.name))))) : null,
+        !state.refreshing && state.catalog && count === 0
+          ? h('p', {className: 'rp-images-empty', role: 'status'}, '当前角色卡没有可发现的图片。角色卡更新后可点击刷新。') : null)) : null)
   }
   function Scene(props: {sessionId?: string; children?: ReactAPI.ReactNode}) {
     const state = useImages()

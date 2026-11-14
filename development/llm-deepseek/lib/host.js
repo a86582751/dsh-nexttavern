@@ -1,7 +1,8 @@
 // Generated from runtime/alpha3/compat/llm-deepseek/src/host.ts; edit the TypeScript source.
-import { resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm';
+import { resolveImageAttachmentAccess } from 'dsh-nexttavern-native-llm';
 import { getOrCreateAnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id';
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values';
+import { createNativeHttpTransport } from 'dsh-nexttavern-native-http';
 import { DeepSeekAdapter } from './adapter.js';
 /**
  * Register one provider with request-local transport services and live retry policy.
@@ -10,10 +11,13 @@ import { DeepSeekAdapter } from './adapter.js';
  * @param dependencies - provider-owned discovery, credential, and configuration callbacks.
  */
 export function registerDeepSeekProvider(ctx, provider, dependencies) {
+    const transport = createNativeHttpTransport();
+    ctx.effect(() => () => transport.close(), 'llm-deepseek.http()');
     ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)); });
     let userId;
     const adapter = new DeepSeekAdapter({
         ...dependencies,
+        fetch: transport.fetch,
         resolveUserId: () => userId ??= getOrCreateAnonymousUserId(),
         onReplayDegrade: ({ provider, model, reason }) => {
             ctx.logger.warn(`llm-deepseek: unusable Messages replay state on assistant history for route "${provider}/${model}"; sending provider-neutral content (${reason})`);

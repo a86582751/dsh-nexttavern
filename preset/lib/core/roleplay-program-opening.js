@@ -2,7 +2,7 @@
 /** Own the actual first-opening transaction and its Native closing handoff.
  * Immutable records explain recovery; actual Session/Source/Native readers
  * independently decide every append, material and publication permission. */
-import { nativeInputSha256, validateNativeOpeningInvocationV1 } from '@deepseek-ai/dsh-agent-loop';
+import { nativeInputSha256, validateNativeOpeningInvocationV1 } from 'dsh-nexttavern-native-agent-loop';
 import { recordSha256, sha256 } from './roleplay-data.js';
 import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 import { assertProgramOpeningRowDataDescriptorsV1 } from './roleplay-program-opening-row-facts.js';
@@ -422,6 +422,8 @@ export function createRoleplayProgramOpeningV1(deps) {
             // These are this opening writer's exact prospective outputs. Publishing
             // its seed/input/intent cannot invalidate the author DATA it consumed.
             const captured = deps.source.capture(request.sessionId, request.index, deps.includeCardStyle(request.sessionId), () => deps.assertSessionCurrent(session), openingOutputs);
+            if (captured.kind === 'not-applicable')
+                return { kind: 'outside-domain' };
             if (captured.kind !== 'captured-opening-source')
                 return { kind: 'blocked', code: captured.diagnostics[0]?.code ?? 'PROGRAM_OPENING_SOURCE_UNAVAILABLE' };
             const proof = captured.proof, key = openingIntentKey(request.sessionId, proof.source.importId);
@@ -506,7 +508,7 @@ export function createRoleplayProgramOpeningV1(deps) {
                     fail('PROGRAM_OPENING_DOMAIN_RECEIPT_CHANGED');
                 return;
             }
-            deps.verifyTemplateIntegrity();
+            deps.verifyEjsIntegrity();
             await updateIntent(completedContext, createOpeningIntentV7({ context: completedContext, revision: before.revision + 1,
                 status: 'completed', nativeReceipt: facts, committedTurn: facts.receipt.turn, domainReceipt: receipt,
                 ...envelope ? { genesisEnvelope: envelope } : {} }), signal);
@@ -619,7 +621,7 @@ export function createRoleplayProgramOpeningV1(deps) {
             return verified(request.sessionId);
         const signal = disposal.signal;
         try {
-            await deps.loadTemplate(signal);
+            await deps.loadEjs(signal);
             if (request.production === 'selected-card-copy') {
                 const found = await deps.lookupCopy(context);
                 let turn;
@@ -633,7 +635,7 @@ export function createRoleplayProgramOpeningV1(deps) {
                     await deps.withSourceLock(request.sessionId, async () => {
                         if (!sourceCurrent(context.input.source) || !deps.basis.currentBefore(context.input.basis, context.input.source, identityFor(context), ownedRows(context)))
                             fail('PROGRAM_OPENING_BASIS_CHANGED');
-                        deps.verifyTemplateIntegrity();
+                        deps.verifyEjsIntegrity();
                     });
                     const committed = await deps.appendCopy(context);
                     if (committed.kind !== 'committed') {
@@ -767,8 +769,12 @@ export function createRoleplayProgramOpeningV1(deps) {
         },
         catalog(id) {
             return (async () => deps.withSourceLock(id, async () => {
-                const session = actualSession(id), captured = deps.source.capture(id, 0, deps.includeCardStyle(id), () => deps.assertSessionCurrent(session));
-                return captured.kind === 'captured-opening-source' ? captured.proof.catalog : undefined;
+                const session = actualSession(id);
+                if (deps.ownsCombinedOpening?.(id))
+                    return { kind: 'not-applicable', reason: 'owned-by-combined-opening' };
+                const captured = deps.source.capture(id, 0, deps.includeCardStyle(id), () => deps.assertSessionCurrent(session));
+                return captured.kind === 'captured-opening-source' ? { kind: 'applicable', catalog: captured.proof.catalog }
+                    : captured.kind === 'not-applicable' ? captured : { kind: 'refused', diagnostics: captured.diagnostics };
             }))();
         },
         async dispose() {

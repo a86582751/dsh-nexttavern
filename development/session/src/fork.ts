@@ -6,7 +6,7 @@
 import { openTurnClosers } from './repair.js'
 import { SessionSeq } from './types.js'
 import type { SessionEvent, SessionSeq as SessionSeqType } from './types.js'
-import type { UserMessage } from '@deepseek-ai/dsh-llm'
+import type { UserMessage } from 'dsh-nexttavern-native-llm'
 
 /**
  * Copy an inclusive event prefix, mark its inherited cut, and close its open tail with forked results

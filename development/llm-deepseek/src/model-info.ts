@@ -1,7 +1,8 @@
 /** Protocol-independent model capabilities and reasoning choices. */
-import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { LlmModelInfo, LlmResolvedModelInfo } from '@deepseek-ai/dsh-llm'
-import type { DeepSeekCatalogModel, DeepSeekConnectionOptions } from './types.js'
+import { ReasoningEffortId } from 'dsh-nexttavern-native-llm'
+import type { LlmResolvedModelInfo } from 'dsh-nexttavern-native-llm'
+import { catalogModelInfo } from '@deepseek-ai/dsh-llm-deepseek'
+import type { DeepSeekConnectionOptions } from './types.js'
 
 const OFF_REASONING_EFFORT = ReasoningEffortId('off')
 const LOW_REASONING_EFFORT = ReasoningEffortId('low')
@@ -36,21 +37,6 @@ const OFF_ONLY_REASONING_EFFORTS = [
     description: 'Use for simple tasks that do not need reasoning.',
   },
 ] as const
-
-/** Advertise one catalog entry.
- * @param provider - registered provider id.
- * @param model - advisory catalog entry.
- * @returns selector metadata.
- */
-export function catalogModelInfo(provider: string, model: DeepSeekCatalogModel): LlmModelInfo {
-  return {
-    provider,
-    id: model.id,
-    name: model.name ?? model.id,
-    ...model.description === undefined ? {} : { description: model.description },
-    inputModalities: model.inputModalities ?? ['text'],
-  }
-}
 
 /** Resolve model capabilities against one configuration generation.
  * @param connection - validated connection facts.

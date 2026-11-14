@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/compat/subagent/src/invariant.ts; edit the TypeScript source.
 /** Package-owned subagent registry and lifecycle invariants. @module @deepseek-ai/dsh-subagent/invariant */
-const PACKAGE_NAME = '@deepseek-ai/dsh-subagent';
+const PACKAGE_NAME = 'dsh-nexttavern-native-subagent';
 /** Cordis companion plugin name. */
 export const name = 'subagent-invariant';
 /** Service required before the companion can reserve package ownership. */

@@ -26,6 +26,7 @@ interface PanelTable {
   put(key: string, value: object): PromiseLike<unknown>
   delete(key: string): PromiseLike<unknown>
   entries(): Iterable<[string, PanelRecord]>
+  entriesPrefix?(prefix:string|readonly string[]):Iterable<[string,PanelRecord]>
 }
 type State = ReturnType<typeof createRoleplayState>
 type Status = ReturnType<typeof createRoleplayStatus>

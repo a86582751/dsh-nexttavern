@@ -1,6 +1,11 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
-import { normalizeCatalog, resolvePricing, createPriceCatalog, createExchangeRates, convertUsageCurrency } from '../lib/core/tavern-pricing.js'
-import { registerTelemetryRoutes } from '../lib/core/roleplay-telemetry-routes.js'
+
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'])
+afterNativeDependencies(removeOwnedNativeDependencies)
+const { normalizeCatalog, resolvePricing, createPriceCatalog, createExchangeRates, convertUsageCurrency }=await import('../lib/core/tavern-pricing.js')
+const { registerTelemetryRoutes }=await import('../lib/core/roleplay-telemetry-routes.js')
 const feed={deepseek:{name:'DeepSeek',models:{'deepseek-v4-flash':{id:'deepseek-v4-flash',name:'Flash',modalities:{output:['text']},cost:{input:.14,output:.28,cache_read:.0028}}}},relay:{models:{'deepseek-v4-flash':{modalities:{output:['text']},cost:{input:9,output:9}}}},test:{models:{tiered:{modalities:{output:['text']},cost:{input:1,output:2,cache_read:.1,cache_write:.2,tiers:[{tier:{type:'context',size:200000},input:2,output:4,cache_read:.2,cache_write:.4}]}}}}}
 const catalog=normalizeCatalog(feed)
 const call={provider:'deepseek-official',model:'deepseek-v4-flash',usage:{inputTokens:100,outputTokens:20,cacheReadTokens:900,cacheWriteTokens:0,totalTokens:1020}}

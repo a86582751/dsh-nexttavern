@@ -9,6 +9,8 @@ export interface EmbeddedSourceLiteralV1 {
   carrier:'html'|'script'
   position:string
   name?:string
+  audioSink?:boolean
+  typeHint?:string
 }
 
 export function scriptLiteralsV1(source:string,position:string):EmbeddedSourceLiteralV1[] {
@@ -28,7 +30,10 @@ export function scriptLiteralsV1(source:string,position:string):EmbeddedSourceLi
           &&property.name.getText(file)==='name'&&ts.isStringLiteralLike(property.initializer))
         if(named&&ts.isPropertyAssignment(named))name=(named.initializer as TypeScript.StringLiteralLike).text
       }
-      found.push({value:node.text,carrier:'script',position:position+'@'+node.getStart(file),...(name?{name}:{})})
+      const audioSink=ts.isNewExpression(parent)&&ts.isIdentifier(parent.expression)
+        &&parent.expression.text==='Audio'&&parent.arguments?.[0]===node
+      found.push({value:node.text,carrier:'script',position:position+'@'+node.getStart(file),
+        ...(name?{name}:{}),...(audioSink?{audioSink:true}:{})})
     }
     ts.forEachChild(node,child=>{stack.push(child)})
   }
@@ -45,7 +50,12 @@ export function htmlLiteralsV1(source:string,position:string):EmbeddedSourceLite
     if(defaultTreeAdapter.isElementNode(node)) {
       for(const attribute of node.attrs)if(attribute.name==='src') {
         const offset=node.sourceCodeLocation?.attrs?.[attribute.name]?.startOffset??0
-        found.push({value:attribute.value,carrier:'html',position:position+'@'+offset})
+        const owner=node.parentNode
+        const audioSink=node.tagName==='audio'||node.tagName==='source'
+          &&!!owner&&defaultTreeAdapter.isElementNode(owner)&&owner.tagName==='audio'
+        const typeHint=audioSink?node.attrs.find(value=>value.name==='type')?.value:undefined
+        found.push({value:attribute.value,carrier:'html',position:position+'@'+offset,
+          ...(audioSink?{audioSink:true}:{}),...(typeHint?.startsWith('audio/')?{typeHint}:{})})
       }
       if(node.tagName==='script') {
         const body=node.childNodes.filter(defaultTreeAdapter.isTextNode).map(child=>child.value).join('')

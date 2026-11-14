@@ -10,9 +10,9 @@ import {
   type ReplayEnvelope,
   type StreamChunk,
   type TokenUsage,
-} from '@deepseek-ai/dsh-llm'
+} from 'dsh-nexttavern-native-llm'
 import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
-import type { SessionEventMap, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import type { SessionEventMap, SessionId, SessionSeq } from 'dsh-nexttavern-native-session'
 
 /** Folds one model attempt into one compact stream plus ordered transient frames. */
 export class AssistantStreamAttempt {

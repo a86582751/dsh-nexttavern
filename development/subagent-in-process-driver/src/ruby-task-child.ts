@@ -3,12 +3,12 @@
 import {createHash} from 'node:crypto'
 import type {Context} from '@deepseek-ai/cordis'
 import {brandString} from '@deepseek-ai/dsh-brand'
-import {freezeMessage,type MessageId,type UserMessage} from '@deepseek-ai/dsh-llm'
-import {nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
+import {freezeMessage,type MessageId,type UserMessage} from 'dsh-nexttavern-native-llm'
+import {nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
 import type {NativeInputAdmissionAgentV2,NativeInputAdmissionHookV2,NativeInputAdmissionCheckV2,
   NativeRequestMaterialOwnerV1,NativeOwnedMaterialAnchoredInsertionV1}
-  from '@deepseek-ai/dsh-agent-loop'
-import type {OwnedRubyTaskActivationV1,OwnedRubyTaskOwnerV1} from '@deepseek-ai/dsh-subagent'
+  from 'dsh-nexttavern-native-agent-loop'
+import type {OwnedRubyTaskActivationV1,OwnedRubyTaskOwnerV1} from 'dsh-nexttavern-native-subagent'
 
 const prefixName='deployment:persona-prefix'
 const textSha256=(text:string)=>createHash('sha256').update(text,'utf8').digest('hex')
@@ -116,6 +116,9 @@ export function composeOwnedRubyTaskActivationV1(ctx:Context,child:NativeInputAd
     for(const remove of cleanup.reverse())remove()
   }
   try{
+    if(activation.temperature!==undefined)cleanup.push(ctx.on('agent/request',async(_input,next)=>({
+      ...await next(),temperature:activation.temperature,
+    })))
     // Workspace instructions belong to the inherited Main preset. Remove its
     // post-step contribution before Native selects this task's frozen input;
     // keep the actual admitted user object and the rest of the decision.

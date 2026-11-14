@@ -1,4 +1,4 @@
-import type { ContextEvent, ContextMessage, ContextSession } from './roleplay-context.js'
+import type { ContextEvent, ContextMessage, ContextSession,ContextStoryEntryReader } from './roleplay-context.js'
 import type { StorySurfaceOp } from './roleplay-message-view.js'
 import type { TaskMessage } from './tavern-task-context.js'
 import type { HostAgent, HostSession } from './roleplay-task-host-types.js'
@@ -11,8 +11,9 @@ import type {RoleplayInputBinding,InputPreparationCurrency} from './roleplay-inp
 import type {PhaseABranchRowFactsWriterV1} from './roleplay-phase-a-row-facts.js'
 import type {ForkLookup} from './roleplay-worldline-types.js'
 import type {TaskSubmissionBindings} from './roleplay-task-tools-types.js'
-import type {GenerateOptions,StreamChunk} from '@deepseek-ai/dsh-llm'
+import type {GenerateOptions,StreamChunk} from 'dsh-nexttavern-native-llm'
 import type {ToolRuntime} from '@deepseek-ai/dsh-tools'
+import type {SessionMessageProjection} from 'dsh-nexttavern-native-session/surface'
 
 export interface LoopSession extends HostSession {
   append(type: string, data: TaskMessage, options: {
@@ -85,6 +86,9 @@ export interface LoopContext {
 }
 type TaskHost = ReturnType<typeof createRoleplayTaskHost>
 export interface LoopDependencies {
+  ownsStoryMemoryCompletion?(sessionId:string):boolean
+  storyEntryReader?:ContextStoryEntryReader
+  projections?():readonly SessionMessageProjection[]
   submissionBindings:TaskSubmissionBindings
   /** Same actual Core Phase-A writer registry as preparation/inheritance. */
   rowFacts?:PhaseABranchRowFactsWriterV1
@@ -95,7 +99,10 @@ export interface LoopDependencies {
   adaptationScope?(session:LoopSession):string
   importPromptCheckpoint?(session:LoopSession):{importId:string;normalizedSha256:string;opening:string;openingChoicePending?:boolean}|null
   ctx: LoopContext
-  T: {branch: PreparationTable & {entries(): Iterable<[string, Record<string, unknown>]>}; decision: PreparationTable<DecisionRecord>}
+  T: {branch: PreparationTable & {
+    entries(): Iterable<[string, Record<string, unknown>]>
+    entriesPrefix?(prefix:string|readonly string[]):Iterable<[string,Record<string,unknown>]>
+  }; decision: PreparationTable<DecisionRecord>}
   tavernTasks: TaskHost['tavernTasks']
   clusterJob: TaskHost['clusterJob']
   clusterPhase: TaskHost['clusterPhase']
@@ -113,7 +120,7 @@ export interface LoopDependencies {
   resumeNovelExports(session: LoopSession, agent: LoopAgent, signal?: AbortSignal): Promise<unknown>
   withImportLock<T>(id: string, key: string, work: () => Promise<T>): Promise<T>
   ensureBranch(session:LoopSession):Promise<void>
-  reconcileCanonicalPlayerVariants(session:LoopSession,index:ForkLookup):Promise<unknown>
+  reconcileCanonicalPlayerVariants(session:LoopSession,index?:ForkLookup):Promise<unknown>
   buildForkLookupIndex(session:LoopSession):ForkLookup
   buildPhaseA(session: LoopSession, payload: LoopPayload, state: LoopState): Promise<readonly ContextMessage[]>
   buildPhaseACandidate(session:LoopSession,payload:LoopPayload,state:LoopState):Promise<PhaseACandidate>

@@ -9,24 +9,43 @@ const events = (session) => sessionEvents(session);
 /** Fold raw attempts, never the selected story surface. Seeded parent events
  * only establish lifecycle state; they never create a second charge. */
 export function foldSessionCalls(session) {
+    const fold = createSessionCallFold(session);
+    for (const event of events(session))
+        fold.advance(event);
+    return fold.calls;
+}
+/** One parser serves both detached full history and the accepted Native tail. */
+export function createSessionCallFold(session) {
     const out = [], seed = Number(session.inheritedEventCount ?? 0);
+    const changed = new Set();
+    const add = (call) => {
+        out.push(call);
+        changed.add(call);
+    };
     let current = null, route = {}, phase = 'narrative';
     let taskPhase = [];
-    const finish = (time, status, error) => { if (!current)
-        return; if (time != null) {
-        current.completedAt = time;
-        current.durationMs = Math.max(0, time - current.startedAt);
-    } if (status)
-        current.status = status; if (error)
-        current.error = error; };
-    for (const e of events(session)) {
+    const finish = (time, status, error) => {
+        if (!current)
+            return;
+        if (current.source.startSeq >= seed)
+            changed.add(current);
+        if (time != null) {
+            current.completedAt = time;
+            current.durationMs = Math.max(0, time - current.startedAt);
+        }
+        if (status)
+            current.status = status;
+        if (error)
+            current.error = error;
+    };
+    function advance(e) {
         if (typeof e.time !== 'number' || !Number.isFinite(e.time))
-            continue;
+            return;
         const d = e.data ?? {};
         if (e.type === 'turn/start' || e.type === 'turn/end')
             taskPhase = [];
         if (e.type === 'compaction/summary' && d.usage && !d.nativeTask && e.seq >= seed)
-            out.push({ schemaVersion: 1, id: hash([session.id, 'compaction', d.compactionId ?? e.seq]), sessionId: session.id, ownerSessionId: session.id, kind: 'compaction', provider: d.provider ?? null, model: d.model ?? null, status: 'completed', startedAt: e.time, completedAt: e.time, durationMs: null, firstTokenMs: null, usage: usageOf(d.usage), source: { kind: 'compaction-summary', sessionId: session.id, startSeq: e.seq, evidenceSeq: e.seq } });
+            add({ schemaVersion: 1, id: hash([session.id, 'compaction', d.compactionId ?? e.seq]), sessionId: session.id, ownerSessionId: session.id, kind: 'compaction', provider: d.provider ?? null, model: d.model ?? null, status: 'completed', startedAt: e.time, completedAt: e.time, durationMs: null, firstTokenMs: null, usage: usageOf(d.usage), source: { kind: 'compaction-summary', sessionId: session.id, startSeq: e.seq, evidenceSeq: e.seq } });
         if (e.type === 'request/header') {
             route = d.header?.config ?? route;
             if (current) {
@@ -43,7 +62,7 @@ export function foldSessionCalls(session) {
                 provider: route.provider ?? null, model: route.model ?? null, kind: phase, status: 'running', startedAt: e.time, completedAt: null, durationMs: null, firstTokenMs: null, usage: null,
                 source: { kind: 'session-attempt', sessionId: session.id, startSeq: e.seq, turn: d.turn, step: d.step, evidenceSeq: e.seq } };
             if (e.seq >= seed)
-                out.push(current);
+                add(current);
         }
         if (e.type === 'user/message' && d.source?.kind === 'roleplay-tasks'
             && d.source.form === 'phase' && d.source.schemaVersion === 1) {
@@ -59,7 +78,9 @@ export function foldSessionCalls(session) {
             catch { }
         }
         if (!current)
-            continue;
+            return;
+        if (current.source.startSeq >= seed)
+            changed.add(current);
         current.source.evidenceSeq = e.seq;
         if (e.type === 'tool/call' && ['rp_task_read', 'rp_task_submit'].includes(d.name)) {
             try {
@@ -103,5 +124,5 @@ export function foldSessionCalls(session) {
             current = null;
         }
     }
-    return out;
+    return { calls: out, changed, advance };
 }

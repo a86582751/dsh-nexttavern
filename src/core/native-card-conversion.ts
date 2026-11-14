@@ -2,8 +2,7 @@
  * preserved source; advanced projections never promote conditional lore. */
 import {createHash} from 'node:crypto'
 import {sourceLines,stableJson} from './card-export-projection.js'
-import {nextTavernExecutionAuthorData} from './nexttavern-card.js'
-import type {NextTavernCardDocument,NextTavernRulesRow} from './nexttavern-card.js'
+import type {NextTavernCardDocument} from './nexttavern-card.js'
 
 export type NativeCardClassificationTargetV1='character'|'core'|'plot'|'narrative'|'reply'|'style'|'other'
 export interface NativeCardCharacterV1 {id:string;name:string;aliases?:string[]}
@@ -40,17 +39,13 @@ export interface StoredNativeCardClassificationV1 extends NativeCardClassificati
   sourceSha256:string
   sources:Omit<NativeCardConversionUnitV1,'text'>[]
 }
-export type ConvertedNextTavernCardDocumentV1=NextTavernCardDocument&{spec_version:'1.1'}
-
-/** Native 1.0 owns its explicit fields. Converted 1.1 also owns coordinates,
- * which can be reused only while their author source is unchanged. */
+/** Source provenance distinguishes an authored card from a community projection.
+ * A present classification, including an invalid one, retains its derived role. */
 export function nativeCardConversionIsDeterministicV1(input:{snapshot:NativeCardConversionSnapshotV1;
   nativeAuthoring:boolean;classification?:NativeCardClassificationV1}):boolean {
   if(input.classification)return true
-  if(!input.nativeAuthoring)return false
-  if(input.snapshot.document.spec_version==='1.0')return true
-  const stored=input.snapshot.document.data.compatibility?.classification as {sourceSha256?:string}|undefined
-  return stored?.sourceSha256===input.snapshot.sourceSha256
+  if(input.nativeAuthoring&&!Object.hasOwn(input.snapshot.document,'classification'))return true
+  return readNativeCardClassificationV1(input.snapshot)!==undefined
 }
 
 const ruleFields=['core','plot','narrative','reply','style'] as const
@@ -74,7 +69,7 @@ function freeze<T>(value:T):T {
 /** The decoder owns document validation. Clone once so later editor mutations
  * cannot change the text or conditional metadata seen by an in-flight task. */
 export function freezeNativeCardConversionV1(document:NextTavernCardDocument):NativeCardConversionSnapshotV1 {
-  const captured=structuredClone(document),data=nextTavernExecutionAuthorData(captured.data)
+  const captured=structuredClone(document),data=captured.data
   const units:NativeCardConversionUnitV1[]=[]
   const add=(pointer:string,text:string,kind:NativeCardConversionUnitV1['kind'])=>{
     units.push({id:`source-${units.length+1}`,pointer,text,sha256:sha256(text),
@@ -82,25 +77,20 @@ export function freezeNativeCardConversionV1(document:NextTavernCardDocument):Na
   }
   data.cards.forEach((row,index)=>{
     if(row.enabled===false||row.kind==='user')return
-    add(`/data/compatibility/authorExecution/cards/${index}/content`,row.content,'author')
+    add(`/data/cards/${index}/content`,row.content,'author')
   })
   for(const field of ruleFields)if(data.rules[field]!==undefined) {
-    add(`/data/compatibility/authorExecution/rules/${field}`,data.rules[field]!,'author')
+    add(`/data/rules/${field}`,data.rules[field]!,'author')
   }
   data.worldbook.forEach((row,index)=>add(`/data/worldbook/${index}/content`,row.content,'worldbook'))
   const entries=data.character_book?.entries??[]
   for(const [key,entry] of Object.entries(entries))if(typeof entry.content==='string') {
     add(`/data/character_book/entries/${pointerKey(key)}/content`,entry.content,'worldbook')
   }
-  // Our execution/classification containers are projections, not new author
-  // input. Excluding them keeps conversion/re-export on the same source hash.
-  const {authorExecution:_execution,classification:_classification,...compatibility}=data.compatibility??{}
-  // Opening materialization and live status/settings are not classification
-  // inputs. Export carries their current values without paying to classify
-  // unchanged character/rule text again after an opening choice.
-  const {opening:_opening,status:_status,settings:_settings,...classificationData}=data
-  const sourceSha256=sha256(stableJson({schemaVersion:1,data:{...classificationData,compatibility},
-    sources:units.map(({id,pointer,sha256})=>({id,pointer,sha256}))}))
+  // These are the classifier's actual inputs. Full export identity belongs to
+  // the workflow capture, so metadata edits can retain these same coordinates.
+  const sourceSha256=sha256(stableJson({name:data.name,
+    sources:units.map(({text:_text,...unit})=>unit)}))
   return freeze({schemaVersion:1,sourceSha256,document:captured,units})
 }
 
@@ -159,42 +149,33 @@ export function validateNativeCardClassificationV1(
   return freeze({characters,assignments})
 }
 
-/** Consume the already-validated classification. Static fragments keep source
- * order; lore and templates stay references for the existing admission/render
- * owners, rather than becoming always-on character or rule material. */
+const importedClassifications=new WeakMap<NativeCardConversionSnapshotV1,NativeCardClassificationV1|null>()
+
+/** One imported-classification boundary per immutable snapshot. Uploaded source
+ * directories never override the units derived from current author DATA. */
+export function readNativeCardClassificationV1(snapshot:NativeCardConversionSnapshotV1):NativeCardClassificationV1|undefined {
+  const cached=importedClassifications.get(snapshot)
+  if(cached!==undefined)return cached??undefined
+  const stored=snapshot.document.classification
+  let classification:NativeCardClassificationV1|undefined
+  if(stored?.schemaVersion===1&&stored.encoding==='nexttavern-classification-v1'
+    &&stored.sourceSha256===snapshot.sourceSha256) {
+    try {classification=validateNativeCardClassificationV1(snapshot,{characters:stored.characters,assignments:stored.assignments})}
+    catch { /* Ordinary author DATA remains usable when an optional classification is invalid. */ }
+  }
+  importedClassifications.set(snapshot,classification??null)
+  return classification
+}
+
+/** Persist coordinates beside the single author document. Derived character
+ * and rule text belongs only to the advanced read view. */
 export function materializeNativeCardConversionV1(
   snapshot:NativeCardConversionSnapshotV1,classification:NativeCardClassificationV1,
-):ConvertedNextTavernCardDocumentV1 {
-  const document=structuredClone(snapshot.document) as ConvertedNextTavernCardDocumentV1
-  const author=nextTavernExecutionAuthorData(document.data),rules:NextTavernRulesRow={...author.rules}
-  for(const field of ruleFields)delete rules[field]
-  const characterParts=new Map(classification.characters.map(character=>[character.id,[] as string[]]))
-  const ruleParts=new Map<string,string[]>()
-  for(const unit of snapshot.units) {
-    if(unit.kind!=='author'||unit.atomic)continue
-    const lines=sourceLines(unit.text)
-    const spans=classification.assignments.filter(span=>span.sourceId===unit.id)
-      .sort((left,right)=>left.startLine-right.startLine)
-    for(const span of spans) {
-      const text=lines.slice(span.startLine-1,span.endLine).join('')
-      if(span.target==='character')characterParts.get(span.characterId!)!.push(text)
-      else if(span.target!=='other') {
-        const parts=ruleParts.get(span.target)??[]
-        parts.push(text)
-        ruleParts.set(span.target,parts)
-      }
-    }
-  }
-  for(const field of ruleFields)if(ruleParts.has(field))rules[field]=ruleParts.get(field)!.join('')
+):NextTavernCardDocument {
+  const document=structuredClone(snapshot.document)
   const stored:StoredNativeCardClassificationV1={schemaVersion:1,encoding:'nexttavern-classification-v1',
     sourceSha256:snapshot.sourceSha256,...structuredClone(classification),
     sources:snapshot.units.map(({text:_text,...source})=>({...source}))}
-  document.spec_version='1.1'
-  document.data={...document.data,cards:classification.characters.map(character=>({
-    characterId:character.id,name:character.name,
-    ...character.aliases!==undefined?{aliases:structuredClone(character.aliases)}:{},
-    content:characterParts.get(character.id)!.join(''),
-  })),rules,compatibility:{...document.data.compatibility,
-    authorExecution:{schemaVersion:1,mode:'preserved-author',cards:author.cards,rules:author.rules},classification:stored}}
+  document.classification=stored
   return document
 }

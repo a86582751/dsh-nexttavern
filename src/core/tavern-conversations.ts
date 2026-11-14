@@ -50,7 +50,7 @@ type RegisteredForkOperation = LegacyForkOperation & {
   kind: string
   anchor: { sourceSessionId: string; [field: string]: unknown }
 }
-const kinds = new Set(['regenerate','player-edit','player-edit-send','edit','delete-user','prepare-clean-branch'])
+const kinds = new Set(['regenerate','player-edit','player-edit-send','edit','delete-user','prepare-clean-branch','opening-variant'])
 const copy = <T>(value: T): T => structuredClone(value)
 const id = (value: unknown): string => {
   if(typeof value!=='string'||!/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/.test(value)||['__proto__','constructor','prototype'].includes(value))throw new Error('会话或操作标识无效')

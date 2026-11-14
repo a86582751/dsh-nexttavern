@@ -1,7 +1,11 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import * as memory from '../lib/memory/roleplay-memory-engine.js'
 
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'])
+afterNativeDependencies(removeOwnedNativeDependencies)
+const memory=await import('../lib/memory/roleplay-memory-engine.js')
 const legacy = JSON.parse(readFileSync(new URL('./fixtures/memory-notes-writer-legacy-v1.json', import.meta.url), 'utf8'))
 function fixture(config = {}) {
   const session = structuredClone(legacy.session)
@@ -103,11 +107,16 @@ assert.deepEqual(memory.inject, ['sessions', 'llm', 'tokenMeter', 'agentDefaultM
   await h.ready
   try {
     const count = 10001
-    let reads = 0
     h.session.header.agentPreset = 'standard'
-    h.session.events = Array.from({ length: count }, (_, seq) => ({ seq, get type() { reads++; return seq === count - 1 ? 'agent-preset/selected' : 'assistant/chunk' }, data: { agentPreset: 'roleplay' } }))
+    h.session.events = Array.from({ length: count }, (_, seq) => ({ seq, type: 'assistant/chunk', data: {} }))
+    assert.match((await h.invoke('unrecognized')).text, /不是角色扮演会话/, 'the header classifies a history with no preset selection')
+    h.session.events[count - 1] = { seq: count - 1, type: 'agent-preset/selected', data: { agentPreset: 'roleplay' } }
     assert.match((await h.invoke('unrecognized')).text, /用法/)
-    assert.equal(reads, count, 'roleplay classification scans the history once')
+    h.session.events.push({ seq: count, type: 'agent-preset/selected', data: { agentPreset: '' } })
+    assert.match((await h.invoke('unrecognized')).text, /用法/, 'an empty selection preserves the last truthy preset')
+    h.session.events.push({ seq: count + 1, type: 'agent-preset/selected', data: { agentPreset: 'standard' } })
+    assert.match((await h.invoke('unrecognized')).text, /不是角色扮演会话/, 'the latest selected preset supersedes earlier roleplay history')
+    h.session.events.push({ seq: count + 2, type: 'agent-preset/selected', data: { agentPreset: 'roleplay' } })
     // Alpha.7 keeps the inherited prefix length on the session itself, so the
     // classification boundary follows `inheritedEventCount`.
     h.session.inheritedEventCount = 1
@@ -115,6 +124,7 @@ assert.deepEqual(memory.inject, ['sessions', 'llm', 'tokenMeter', 'agentDefaultM
     assert.match((await h.invoke('unrecognized')).text, /用法/, 'inherited descriptors do not classify a child as a task session')
     h.session.events[1] = { seq: 1, type: 'subagent/descriptor', data: {} }
     assert.match((await h.invoke('unrecognized')).text, /不是角色扮演会话/)
+    assert.equal(h.state.calls.length, 0, 'classification and command guidance never request a model')
   } finally { h.dispose() }
 }
-console.log('memory entry: export/command compatibility, hooks, legacy overload, pre-cancelled checkpoint guard and one-pass roleplay classification passed')
+console.log('memory entry: export/command compatibility, hooks, legacy overload, pre-cancelled checkpoint guard and history/preset/task classification passed')

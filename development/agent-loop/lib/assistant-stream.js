@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/compat/agent-loop/src/assistant-stream.ts; edit the TypeScript source.
 /** Process-local assistant attempt framing and durable stream accumulation. */
-import { AssistantStreamAccumulator, BlockAssembler, LlmAttemptId, } from '@deepseek-ai/dsh-llm';
+import { AssistantStreamAccumulator, BlockAssembler, LlmAttemptId, } from 'dsh-nexttavern-native-llm';
 /** Folds one model attempt into one compact stream plus ordered transient frames. */
 export class AssistantStreamAttempt {
     nextRevision;

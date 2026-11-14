@@ -1,7 +1,7 @@
 /** Exact operation ownership for programmatic turns, independent of live Agent memory. */
 import {createHash} from 'node:crypto'
-import type {ProgrammaticAssistantMessageSource} from '@deepseek-ai/dsh-llm'
-import type {ProgrammaticTurnIdentity, SessionEvent} from '@deepseek-ai/dsh-session'
+import type {ProgrammaticAssistantMessageSource} from 'dsh-nexttavern-native-llm'
+import type {ProgrammaticTurnIdentity, SessionEvent} from 'dsh-nexttavern-native-session'
 
 export interface ProgrammaticCommitInput {
   operationId: string

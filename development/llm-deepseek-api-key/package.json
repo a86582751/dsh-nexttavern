@@ -1,0 +1,45 @@
+{
+  "name": "dsh-nexttavern-native-llm-deepseek-api-key",
+  "description": "NextTavern private Native provider derived from locked Harness rc.2 TypeScript",
+  "version": "0.3.0-dev.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/llm/llm-deepseek-api-key"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./lib/index.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "lib",
+    "LICENSE",
+    "NOTICE",
+    "ORIGIN.json"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/dsh-llm-deepseek-api-key": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-launch-environment": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-credentials": "0.1.7-rc.2",
+    "@deepseek-ai/cordis-plugin-loader": "~1.0.5",
+    "dsh-nexttavern-native-llm": "0.3.0-dev.1",
+    "dsh-nexttavern-native-llm-deepseek": "0.3.0-dev.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis-plugin-loader": {
+      "optional": true
+    }
+  },
+  "dependencies": {},
+  "private": true
+}

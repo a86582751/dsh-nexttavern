@@ -12,7 +12,9 @@
 
 Sorry for the long wait. The 0.3 goal is broader SillyTavern community-card compatibility, including MVU variables, EJS, RUBY and frontend styling. Connecting them to our own state, structured events and recovery mechanisms has proved harder than expected, and work is accelerating. The rc.4 release retains the distribution and installation fixes and addresses Issue #17; broader 0.3 compatibility remains in development. Thank you for helping us improve it with your feedback.
 
-For 0.3 development progress, read the [development log](DEVELOPMENT-0.3.md). Card authors can follow the [community-card guide](COMMUNITY-CARDS.md), [Native format and complete examples](NATIVE-CARD-FORMAT.md), [state/MVU/Ruby guide](NATIVE-STATE.md), and [preset/regex guide](COMMUNITY-PRESETS.md). These Chinese guides describe unreleased development capabilities; Native 1.0/1.1 are file-format versions, not a 0.3 product release.
+The development line now runs author pages and helper hooks in the browser's native JavaScript environment. MVU, EJS and persistent-message workflows have controlled Core results. Ruby supports material reads, manual analysis and preset selection alongside status, panel and reload controls, and sends each card's temperature and output-token limit in a separate Ruby request that reuses frozen parameters on explicit retries. The author source uses a single Native 1.2 document; new inputs, complete original-card play and recovery still need validation. See the [0.3 development log](DEVELOPMENT-0.3.md).
+
+For 0.3 development progress, read the [development log](DEVELOPMENT-0.3.md). Card authors can follow the [community-card guide](COMMUNITY-CARDS.md), [Native format and complete examples](NATIVE-CARD-FORMAT.md), [state/MVU/Ruby guide](NATIVE-STATE.md), and [preset/regex guide](COMMUNITY-PRESETS.md). These Chinese guides and both reference cards now use the unified Native 1.2 contract, with new-input validation still pending. Native versions describe portable card data; this is an unreleased development format, independently of the 0.3 product release.
 
 **Let your characters think for themselves, and let the world unfold from your choices.**
 
@@ -197,6 +199,8 @@ Have a novel and want it as a playable world? The management interface has a **l
 
 For scale: a ~1.19M-character web novel (first 354 chapters) produced 3027 online vectors, and the program suspended for ~292 seconds waiting for the index; delivering the card and opening the import are separate turns, with ~52k tokens of opening input. Adaptation reuses the same questionnaire and twelve-item card check as interactive creation.
 
+After research, the development workflow uses the same Native draft and finalisation entry as original authoring, retaining the source and research evidence. Explicit character and rule fields are imported by the program without an extra format-classification task. Reading, retrieval and creative work still incur their actual model usage.
+
 Long novels can still get individual details wrong; read the finished card through once.
 
 ![Long text to character card](screenshots/novel.png)
@@ -218,6 +222,8 @@ Which one? BGE is fast but weaker across languages; Qwen builds indexes more slo
 ## Character cluster
 
 With the **character agent cluster** enabled, major characters reason in separate contexts. Each can have its own model and thinking effort, and they run independently even on the same model. They receive their own persona, the current story, director notes and recently read worldbook material; the main agent then reconciles their suggestions into the story.
+
+The development line distinguishes explicit author character fields from mixed community material that needs classification. The former can be read directly; the latter uses a player-selected conversion task to bind characters to source text. Player and disabled rows are excluded from the NPC list. Advanced material reuses worldbook entries actually admitted this turn and already-rendered text; some mixed dynamic rules still have limits. A ready conversion does not establish complete gameplay support for character collaboration.
 
 Model configuration has two levels: **a global default plus per-character overrides**. An override belongs to the current visible conversation and is shared across its worldlines, while each actual worldline keeps its inputs and results isolated — preferences are shared, history is written separately.
 
@@ -298,6 +304,8 @@ Prose is readable while it is generated; post-turn status and note maintenance h
 
 The dialogue you polished, the turn you did not expect, the ending you finally reached — all of it deserves to become a real piece of work. Pick the worldline you like and collect it into a novel manuscript; export the polished character card as well, so the world keeps being read, shared and written.
 
+In the development line, a current-card export includes saved author settings and configuration, including a saved Ruby preset choice. Downloading the uploaded original keeps its original bytes and filename. Neither a card nor a novel is a complete session backup; story history and runtime progress have separate owners.
+
 ![One-click novel export](screenshots/export.png)
 
 ## Interactive authoring
@@ -305,6 +313,8 @@ The dialogue you polished, the turn you did not expect, the ending you finally r
 **You do not need a finished card to begin — imagination is enough.** A harbour city where it always rains, a relationship full of friction, or simply "I want a slow-burn adventure" can be the start.
 
 The agent talks with you about characters, relationships, atmosphere and direction, and grows your answers into a world background, a multi-character cast, an opening, a style and a reading layout, then runs a twelve-item completeness check. Polish every detail yourself, or leave the blanks to it: "you decide." From the first idea to a playable card, the creation itself is part of the journey.
+
+Development authoring and novel adaptation after research use the same Native draft and finalisation entry. Draft checking does not activate the card. With your explicit request to apply it, the final draft is saved and imported; otherwise the file is delivered first. Clearly separated author fields need no additional classification model, and finalisation does not add a second opening. See the [author guide](NATIVE-CARD-FORMAT.md) for format, script and display checks.
 
 ![Interactive character card authoring](screenshots/authoring.png)
 
@@ -433,7 +443,7 @@ npm ci --prefix ./build-tools --ignore-scripts --no-audit --no-fund
 npm run build
 ```
 
-Public sources rebuild all four registered browser bundles, including the product and its compatibility providers. If you change the sources, update your own version and provenance rather than passing it off as the original release. The full paid behavior acceptance used an alpha.1 candidate. The rc.2 migration received minimal source checks and real local/server installation, without rerunning that full paid suite. A clean VM and real ARM64 devices remain unverified.
+Public sources rebuild the registered browser bundles, including the product and its compatibility providers; the bundled build map lists the current entry points. If you change the sources, update your own version and provenance rather than passing it off as the original release. The full paid behavior acceptance used an alpha.1 candidate. The rc.2 migration received minimal source checks and real local/server installation, without rerunning that full paid suite. A clean VM and real ARM64 devices remain unverified.
 
 ## Community
 

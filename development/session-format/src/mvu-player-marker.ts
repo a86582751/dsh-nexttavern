@@ -1,7 +1,7 @@
 /** Required, log-only ordering facts for explicitly requested numerical edits.
  * Omitting this event can change a fork's numerical basis, so it is never
  * ignorable and never carries a message/surface replacement. */
-import type {Session, SessionEvent} from '@deepseek-ai/dsh-session'
+import type {Session, SessionEvent} from 'dsh-nexttavern-native-session'
 
 export const MVU_PLAYER_EDIT_EVENT = 'roleplay/mvu-manual-edit' as const
 export interface MvuPlayerEditMarker {
@@ -19,7 +19,7 @@ export interface MvuPlayerEditMarker {
 }
 // Extend the declaring module shared by SessionEvent and upstream plugins.
 // Augmenting its re-export can split the map in a wider compilation graph.
-declare module '@deepseek-ai/dsh-session/types' {
+declare module 'dsh-nexttavern-native-session/types' {
   interface SessionEventMap {'roleplay/mvu-manual-edit': MvuPlayerEditMarker}
 }
 const keys = ['schemaVersion', 'encoding', 'sessionId', 'operationId', 'requestSha256',

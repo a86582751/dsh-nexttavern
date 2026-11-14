@@ -6,7 +6,6 @@ import {materializeTavernLoreEntryFieldsV1,validateTavernLoreCurrentNativeFields
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {TavernLoreEditRefV1,TavernLoreJournalRequestV2} from './roleplay-tavern-lore-edits-types.js'
 import type {TavernLoreCurrentNativeFieldsV1,TavernLoreCurrentNativeOverlayV1} from './tavern-lore-plan-types.mjs'
-import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 
 export type TavernLoreMemberIdentityV1={
   kind:'original';rawEntryPointer:string;rawEntrySha256:string
@@ -52,7 +51,13 @@ export const tavernLoreMemberIdentitySha256V1=(identity:TavernLoreMemberIdentity
 export function originalTavernLoreMembershipV1(members:readonly TavernLoreMemberV1[]):TavernLoreMembershipDataV1 {
   return {schemaVersion:1,encoding:'tavern-lore-membership-data-v1',members:[...members],tombstones:[]}
 }
-export function originalTavernLoreMembershipFromSourceV1(source:TavernLoreSourceDataV1):TavernLoreMembershipDataV1 {
+export interface TavernLoreMembershipSourceV1 {
+  readonly original:{readonly primary:{readonly entries:readonly {
+    readonly value:Readonly<Record<string,unknown>>
+    readonly ref:{readonly entryPointer:string;readonly entrySha256:string}
+  }[]}}
+}
+export function originalTavernLoreMembershipFromSourceV1(source:TavernLoreMembershipSourceV1):TavernLoreMembershipDataV1 {
   // Helper's DTO uses numeric UIDs while Source may retain textual native ids.
   // Reserve every explicit numeric value before assigning ordinal fallbacks so
   // reading another original entry cannot later rename a fallback member.
@@ -130,7 +135,7 @@ export function applyTavernLoreMemberFieldsV1(data:TavernLoreMembershipDataV1,
 
 /** Fold the actual frozen ancestor layers and local publication sequence over
  * the unchanged original archive. No ancestor's mutable head is consulted. */
-export function foldTavernLorePublishedMembershipV2(source:TavernLoreSourceDataV1,
+export function foldTavernLorePublishedMembershipV2(source:TavernLoreMembershipSourceV1,
   rows:readonly {eventRef:TavernLoreEditRefV1;request:TavernLoreJournalRequestV2}[],
   legacy?:TavernLoreCurrentNativeOverlayV1):TavernLoreMembershipDataV1|undefined {
   if(!rows.some(row=>'mutation' in row.request))return undefined

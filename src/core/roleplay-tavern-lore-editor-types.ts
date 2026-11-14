@@ -1,10 +1,12 @@
 import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
 import type {createRoleplayTavernLoreEditsV1} from './roleplay-tavern-lore-edits.js'
-import type {TavernLoreEditReceiptV1,TavernLoreEditRefusalV1} from './roleplay-tavern-lore-edits-types.js'
+import type {TavernLoreEditReceiptV1,TavernLoreEditRefusalV1,TavernLoreEditRequestV1,
+  TavernLoreMutationRequestV2,TavernLoreMutationReceiptV2,TavernLoreEditEditorEntryV1}
+  from './roleplay-tavern-lore-edits-types.js'
 import type {TavernLoreSemanticEntryV1} from './tavern-lore-plan-types.mjs'
 
-/** Browser data deliberately excludes raw Source/archive, content references
- * and origin ref objects. Original identity and field provenance remain inert. */
+/** Browser data excludes raw Source/archive and content references. Current
+ * member identity is inert writer DATA, including an introduced event anchor. */
 export interface TavernLoreEditorFieldSourceV1 {
   readonly field:string
   readonly pointer:string
@@ -22,7 +24,12 @@ export interface TavernLoreEditorEntryV1 {
   readonly contentText:string
   readonly fieldSources:readonly TavernLoreEditorFieldSourceV1[]
   readonly diagnosticCodes:readonly string[]
+  readonly currentNativeMember?:TavernLoreEditEditorEntryV1['currentNativeMember']
 }
+export type TavernLoreEditorFieldsMutationV2=Omit<TavernLoreMutationRequestV2,'mutation'>&{
+  readonly mutation:Extract<TavernLoreMutationRequestV2['mutation'],{kind:'fields'}>}
+export type TavernLoreEditorRequestV1=TavernLoreEditRequestV1|TavernLoreEditorFieldsMutationV2
+export type TavernLoreEditorReceiptV1=TavernLoreEditReceiptV1|TavernLoreMutationReceiptV2
 export interface TavernLoreEditorDataV1 {
   readonly authority:'consumer-data-only'
   readonly sessionId:string
@@ -39,10 +46,10 @@ export interface TavernLoreEditorFailureDetailsV1 {
   /** no-write describes only this API attempt, not an earlier unknown attempt. */
   readonly outcome:'no-write'|'refused'|'unknown'|'edited-unconfirmed'
   readonly refusal?:TavernLoreEditRefusalV1
-  readonly receipt?:TavernLoreEditReceiptV1
+  readonly receipt?:TavernLoreEditorReceiptV1
 }
 export type TavernLoreEditorReplyV1={readonly schemaVersion:1;readonly ok:true;
-  readonly editor:TavernLoreEditorDataV1;readonly receipt?:TavernLoreEditReceiptV1}
+  readonly editor:TavernLoreEditorDataV1;readonly receipt?:TavernLoreEditorReceiptV1}
   |{readonly schemaVersion:1;readonly ok:false;readonly code:TavernLoreEditorCodeV1;
     readonly error:string;readonly details:TavernLoreEditorFailureDetailsV1}
 /** Returned only by Root's trusted Workspace Session supplier. The original
@@ -56,5 +63,5 @@ export interface TavernLoreEditorRouteDependenciesV1 {
     connection:{fetch:{register(route:ConnectionFetchRoute):unknown}}}
   readonly resolveSessionScope:(sessionId:string)=>TavernLoreEditorSessionScopeV1|null|undefined
     |PromiseLike<TavernLoreEditorSessionScopeV1|null|undefined>
-  readonly store:Pick<ReturnType<typeof createRoleplayTavernLoreEditsV1>,'observe'|'edit'>
+  readonly store:Pick<ReturnType<typeof createRoleplayTavernLoreEditsV1>,'observe'|'edit'|'mutate'>
 }

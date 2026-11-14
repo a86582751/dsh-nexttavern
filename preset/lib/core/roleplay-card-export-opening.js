@@ -1,7 +1,7 @@
 // Generated from runtime/alpha3/src/core/roleplay-card-export-opening.ts; edit the TypeScript source.
 /** Read-only export DATA. Source/current Session ownership is bracketed by Core;
  * original Native audit and current prose are deliberately separate reads. */
-import { inspectNativeOpeningGenerationObservationV1, inspectInheritedOpeningGenerationObservationV1, nativeInputSha256 } from '@deepseek-ai/dsh-agent-loop';
+import { inspectNativeOpeningGenerationObservationV1, inspectInheritedOpeningGenerationObservationV1, nativeInputSha256 } from 'dsh-nexttavern-native-agent-loop';
 import { recordSha256, sha256 } from './roleplay-data.js';
 import { openingIntentKey } from './roleplay-opening-selection.js';
 import { programOpeningRecordDataV1, validateProgramOpeningSeedV1 } from './roleplay-program-opening-records.js';

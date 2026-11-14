@@ -10,8 +10,8 @@
  * @module @deepseek-ai/dsh-subagent/assistant-output
  */
 
-import { joinAssistantStreamText, type ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { joinAssistantStreamText, type ContentBlock } from 'dsh-nexttavern-native-llm'
+import type { SessionEvent } from 'dsh-nexttavern-native-session'
 
 /**
  * Incremental fold of the selection rule, for backends that observe a child's

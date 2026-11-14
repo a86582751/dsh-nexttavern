@@ -19,8 +19,8 @@ import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
-import { resolveRetryPolicy, RetryPolicySchema } from '@deepseek-ai/dsh-llm'
-import type { ResolvedRetryPolicy, RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
+import { resolveRetryPolicy, RetryPolicySchema } from 'dsh-nexttavern-native-llm'
+import type { ResolvedRetryPolicy, RetryPolicyConfig } from 'dsh-nexttavern-native-llm'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import {
   CACHE_CONTROL_FORMATS,

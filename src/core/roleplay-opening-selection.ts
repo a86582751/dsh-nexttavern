@@ -12,10 +12,9 @@ import type {
 import type {MvuAbsenceScopeProof, MvuSourceSnapshot, MvuSourceCode} from './roleplay-mvu-source.js'
 import {validateMvuSchemaOpeningIntent,freezeMvuSchemaOpeningData,schemaOpeningCode} from './roleplay-mvu-schema-opening-types.js'
 import type {OpeningIntentV5,SchemaOpeningSelectionAdapter,SchemaOpeningRequest} from './roleplay-mvu-schema-opening-types.js'
-import {PROMPT_TEMPLATE_ONLY_CODES_V1,validatePromptTemplateOnlyOpeningIntentV6,
-  validatePromptTemplateOnlySourceProofV1} from './roleplay-prompt-template-only-data.js'
-import type {OpeningIntentV6,PromptTemplateOnlyCodeV1,PromptTemplateOnlySourceProofV1,
-  PromptTemplateOnlySelectionCallbacksV1,PromptTemplateOnlyPreflightDecisionV1} from './roleplay-prompt-template-only-types.js'
+import {PROMPT_TEMPLATE_ONLY_CODES_V1,validatePromptTemplateOnlyOpeningIntentV6} from './roleplay-prompt-template-only-data.js'
+import type {OpeningIntentV6,PromptTemplateOnlyCodeV1,
+  PromptTemplateOnlySelectionCallbacksV1} from './roleplay-prompt-template-only-types.js'
 export type {OpeningIntentV6} from './roleplay-prompt-template-only-types.js'
 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
@@ -100,7 +99,6 @@ type TransactionalOpeningIntent = OpeningInitializedIntent | OpeningIntentV6
 export type OpeningIntent = OwnedOpeningIntent | OpeningIntentV5
 export type OpeningInitializationPreparation = MvuOpeningPreparation
   | {kind:'legacy-v2'; absenceScopeProof:MvuAbsenceScopeProof}
-  | {kind:'prompt-template-only';proof:PromptTemplateOnlySourceProofV1}
   | {schemaVersion:2;kind:'unsupported';diagnostics:readonly {code:PromptTemplateOnlyCodeV1;pointer:string}[];inputHash?:string}
 export type OpeningNativeReadiness = {kind:'ready';receipt:MvuNativeOpeningReceipt}
   | {kind:'blocked';code:OpeningInitializationCode}
@@ -220,14 +218,6 @@ function validAbsence(proof: MvuAbsenceScopeProof | undefined, intent: OpeningIn
     && proof.reason === 'closed-native-scope-no-initialization' && contentHash(proof,'proofSha256')
     && Object.keys(proof).every(key => ['schemaVersion','encoding','reason','sourceSnapshot','proofSha256'].includes(key))
     && validSnapshot(proof.sourceSnapshot,intent)
-}
-function validPromptTemplateOnly(proof:PromptTemplateOnlySourceProofV1,intent:OpeningIntentIdentity):boolean {
-  try {
-    const checked=validatePromptTemplateOnlySourceProofV1(proof),snapshot=checked.sourceSnapshot
-    return sameRecord(snapshot.source,intent.source)&&snapshot.selected.index===intent.index
-      &&snapshot.selected.pointer===intent.sourcePointer&&snapshot.selected.sourceSha256===intent.sourceSha256
-      &&snapshot.selected.renderedSha256===intent.renderedSha256
-  }catch{return false}
 }
 function validNative(intent: OpeningIntentIdentity, native: MvuNativeOpeningReceipt): boolean {
   return !!native && Object.keys(native).every(key => ['sessionId','operationId','messageId','renderedSha256','turn',
@@ -394,7 +384,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
   }
   const requireV6Deps = () => {
     if(typeof deps.readNativeOpening!=='function'
-      ||typeof deps.preflightPromptTemplateOpening!=='function'||typeof deps.preflightPromptTemplateRuntime!=='function'
+      ||typeof deps.preflightPromptTemplateRuntime!=='function'
       ||typeof deps.isPromptTemplateOnlySourceCurrent!=='function'||typeof deps.isPromptTemplateRuntimeCurrent!=='function') {
       throw new Error('PROMPT_TEMPLATE_PROTOCOL_UNAVAILABLE')
     }
@@ -707,15 +697,12 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       const previous=deps.table.get(openingIntentKey(sessionId,catalog.source.importId)) as OpeningIntent | undefined
       if (previous?.schemaVersion===5 || deps.schemaOpening.handles(request)) return deps.schemaOpening.select(request)
     }
-    let templatePreflight:PromptTemplateOnlyPreflightDecisionV1={kind:'not-applicable'}
-    if(deps.preflightPromptTemplateOpening) {
-      if(!/^[a-zA-Z0-9_-]{1,128}$/.test(operationId))throw new Error('无效的 operationId')
-      const catalog=readCatalog(sessionId,context),candidate=catalog.candidates.find(item=>item.index===index)
-      if(!candidate)throw new Error('开场候选不存在')
-      // Actual asset/Native readiness may await. This is outside withLock,
-      // which Core binds to the non-reentrant Source/import FIFO.
-      templatePreflight=await deps.preflightPromptTemplateOpening({catalog,candidate})
-    }
+    let historicalTemplatePreflight:OpeningInitializationCode|null=null
+    const pointer=deps.table.get(deps.importActiveKey(sessionId)) as ImportPointer|undefined,
+      saved=pointer?deps.table.get(openingIntentKey(sessionId,pointer.importId)) as OpeningIntent|undefined:undefined
+    // Only an existing v6 intent can use its retained runtime. New EJS inputs
+    // belong to ProgramOpening; never reopen the removed NoBook producer here.
+    if(saved?.schemaVersion===6&&saved.status!=='completed')historicalTemplatePreflight=await preflightExisting(saved)
     const result: LockedResult = await deps.withLock(`opening-choice:${sessionId}`, async () => {
       if (!/^[a-zA-Z0-9_-]{1,128}$/.test(operationId)) throw new Error('无效的 operationId')
       const catalog = readCatalog(sessionId, context)
@@ -741,10 +728,9 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
           }
           if(!sourceCurrent(previous))return {status:'busy' as const,
             intent:blockedProjection(previous,'PROMPT_TEMPLATE_SOURCE_CHANGED')}
-          if(templatePreflight.kind!=='ready'
-            ||!sameRecord(templatePreflight.proof,previous.promptTemplateSourceProof)||!runtimeCurrent(previous)) {
-            return {status:'busy' as const,intent:blockedProjection(previous,templatePreflight.kind==='blocked'
-              ?templatePreflight.code:'PROMPT_TEMPLATE_RUNTIME_REQUIRED')}
+          if(historicalTemplatePreflight||!runtimeCurrent(previous)) {
+            return {status:'busy' as const,intent:blockedProjection(previous,
+              historicalTemplatePreflight??'PROMPT_TEMPLATE_RUNTIME_REQUIRED')}
           }
           if(previous.status==='blocked') {
             const found=await deps.findOpeningByOperationId(previous)
@@ -807,22 +793,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
           }
           if (preparation?.kind === 'unsupported') code = 'PREPARE_UNSUPPORTED'
         } catch { /* Persist only bounded diagnosis; no adapter/parser error body belongs in the intent. */ }
-        if(preparation?.kind==='prompt-template-only') {
-          requireV6Deps()
-          if(!validPromptTemplateOnly(preparation.proof,identity))throw new Error('PROMPT_TEMPLATE_RECORD_INVALID')
-          const next:OpeningIntentV6={...identity,schemaVersion:6,mode:'prompt-template-only',status:'pending',
-            textRetained:true,promptTemplateSourceProof:structuredClone(preparation.proof)}
-          const refusal:OpeningInitializationCode|null=!sourceCurrent(next)?'PROMPT_TEMPLATE_SOURCE_CHANGED'
-            :templatePreflight.kind==='not-applicable'||!sameRecord(templatePreflight.proof,preparation.proof)
-              ?'PROMPT_TEMPLATE_SOURCE_CHANGED':templatePreflight.kind==='blocked'?templatePreflight.code
-                :!runtimeCurrent(next)?'PROMPT_TEMPLATE_RUNTIME_REQUIRED':null
-          if(refusal) {
-            const blocked:OpeningIntentV6={...next,status:'blocked',initializationCode:refusal}
-            await deps.table.put(key,blocked)
-            return {status:'busy' as const,intent:blocked}
-          }
-          intent=next
-        }else if (preparation?.kind === 'legacy-v2') {
+        if (preparation?.kind === 'legacy-v2') {
           requireV4Deps()
           if (!validAbsence(preparation.absenceScopeProof,identity)) throw new Error('损坏的开场来源范围证明')
           intent = {...identity,schemaVersion:4,mode:'plain',status:'pending',textRetained:true,
@@ -849,12 +820,6 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
             initialization:structuredClone(preparation.plan)}
         } else intent = {...identity,schemaVersion:3,status:'pending',textRetained:true,
           initialization:structuredClone(preparation.plan)}
-      }
-      if(intent.schemaVersion===6&&(!sourceCurrent(intent)||!runtimeCurrent(intent))) {
-        const blocked:OpeningIntentV6={...intent,status:'blocked',initializationCode:!sourceCurrent(intent)
-          ?'PROMPT_TEMPLATE_SOURCE_CHANGED':'PROMPT_TEMPLATE_RUNTIME_REQUIRED'}
-        await deps.table.put(key,blocked)
-        return {status:'busy' as const,intent:blocked}
       }
       if (intent.schemaVersion === 4 && !sourceCurrent(intent)) {
         const blocked: OpeningIntentV4 = {...identity,schemaVersion:4,mode:'unsupported',status:'blocked',

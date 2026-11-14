@@ -14,6 +14,14 @@ import type {TavernTemplateScopeBindingV1,TavernTemplateScopeV1} from './tavern-
 import type {TavernPromptVariableCatalogV1,TavernPromptVariableCatalogEntryV1,
   TavernPromptVariableObjectFactV1,TavernPromptVariableRefV1,TavernPromptVariableReadV1,
   TavernPromptVariableAvailabilityV1} from './roleplay-tavern-prompt-variables-types.js'
+import type {TavernPromptVariableInputV2} from './roleplay-tavern-prompt-variables-types.js'
+const currentInputs=new WeakSet<object>()
+/** Shares completed current DATA parsing, never Source or current permission. */
+export function currentPromptVariableInputV2(input:TavernPromptVariableInputV2):TavernPromptVariableInputV2 {
+  currentInputs.add(input)
+  return Object.freeze(input)
+}
+export const isCurrentPromptVariableInputV2=(input:object)=>currentInputs.has(input)
 
 export const TAVERN_PROMPT_VARIABLE_BOUNDS_V1=Object.freeze({inputBytes:16_777_216,outputBytes:8_388_608,
   valuesBytes:1_048_576,valuesNodes:32000,valuesDepth:32,entries:2048,initialEntries:128,
@@ -122,8 +130,9 @@ const knownDecorators=new Set(['@@activate','@@dont_activate','@@message_formatt
   '@@always_enabled','@@only_preload','@@preload','@@iframe','@@preprocessing','@@if','@@private'])
 /** Fixed Prompt Template parseDecorators cursor and @@@ fallback rules. Unknown
  * leading decorators are consumed exactly as fixed source, not executed. */
-function inlineDecorators(content:string):{names:string[];body:string} {
-  if(!content.startsWith('@@'))return {names:[],body:content}
+function inlineDecorators(content:string):{names:string[];body:string;bodyOffset:number;
+  directives:readonly {name:string;args:string}[]} {
+  if(!content.startsWith('@@'))return {names:[],body:content,bodyOffset:0,directives:[]}
   const names:string[]=[],decorators:string[]=[]
   let start=0,fallback=false
   while(start<content.length&&content.startsWith('@@',start)) {
@@ -139,19 +148,38 @@ function inlineDecorators(content:string):{names:string[];body:string} {
     start=end===content.length?content.length:end+1
   }
   for(const line of decorators)names.push(line.split(' ')[0]!)
-  return {names,body:content.slice(start)}
+  return {names,body:content.slice(start),bodyOffset:start,directives:decoratorArguments(decorators)}
 }
-export function promptInitialEntryV1(entry:TavernPromptVariableCatalogEntryV1,invertEnabled:boolean):
-  {selected:boolean;enabled:boolean;body:string;names:readonly string[]} {
+function decoratorArguments(lines:readonly string[]):{name:string;args:string}[] {
+  return lines.map(line=>{
+    const space=line.indexOf(' ')
+    return {name:space<0?line:line.slice(0,space),args:space<0?'':line.slice(space+1)}
+  })
+}
+/** One formal Source projection serves initial variables and Reader lifecycle.
+ * Arguments retain Source bytes and never become a second expression parser. */
+export function parseTavernEntryDecoratorsV1(
+  entry:Pick<TavernPromptVariableCatalogEntryV1,'content'|'decorators'|'title'|'currentSemantic'>,invertEnabled:boolean) {
   const parsed=entry.decorators?.length
-    ?{names:entry.decorators.map(line=>line.split(' ')[0]!),body:entry.content}:inlineDecorators(entry.content)
+    ?{names:entry.decorators.map(line=>line.split(' ')[0]!),body:entry.content,bodyOffset:0,
+      directives:decoratorArguments(entry.decorators)}:inlineDecorators(entry.content)
   const has=(name:string)=>parsed.names.includes(name),title=entry.title
   const special=has('@@initial_variables')||title.includes('[InitialVariables]')||title.includes('@INJECT')
     ||has('@@only_preload')||title.includes('[GENERATE:')||title.includes('[RENDER:')
     ||['@@generate_after','@@generate_before','@@render_after','@@render_before'].some(has)
   const enabled=has('@@always_enabled')||((invertEnabled&&special)?!entry.currentSemantic.enabled:entry.currentSemantic.enabled)
-  return {selected:enabled&&(has('@@initial_variables')||title.startsWith('[InitialVariables]')),
-    enabled,body:parsed.body,names:parsed.names}
+  return {...parsed,enabled,special}
+}
+/** Fixed render lifecycle selection accepts either the formal decorator or
+ * the title prefix. Prompt exclusion and Reader execution share this rule. */
+export function tavernEntryRendersInPhaseV1(title:string,names:readonly string[],phase:'before'|'after'):boolean {
+  return names.includes('@@render_'+phase)||title.startsWith('[RENDER:'+phase.toUpperCase()+']')
+}
+export function promptInitialEntryV1(entry:TavernPromptVariableCatalogEntryV1,invertEnabled:boolean):
+  {selected:boolean;enabled:boolean;special:boolean;body:string;names:readonly string[]} {
+  const parsed=parseTavernEntryDecoratorsV1(entry,invertEnabled),enabled=parsed.enabled
+  return {selected:enabled&&(parsed.names.includes('@@initial_variables')||entry.title.startsWith('[InitialVariables]')),
+    enabled,special:parsed.special,body:parsed.body,names:parsed.names}
 }
 /** Verify consumer-data completeness and original/current hash links. Actual
  * owner reads, physical scope identity and currentness stay with the supplier. */

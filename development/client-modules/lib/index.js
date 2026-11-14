@@ -17,8 +17,9 @@
  * set with all current entries and flushes synchronously, so first scan and
  * steady state share one implementation. Package metadata (including the
  * negative "not a client package" verdict) is cached per Loader specifier and
- * owning-tree base URL until restart. The manifest package name identifies
- * the browser module; distinct active Loader sources for that package are a
+ * owning-tree base URL until restart. The declared module name, defaulting to
+ * the manifest package name, identifies
+ * the browser module; distinct active Loader sources for that module are a
  * composition error. Bundle content changes reach the graph only through
  * {@link ClientModuleRegistry.rebuilt}.
  * @module @deepseek-ai/dsh-client-modules
@@ -503,7 +504,7 @@ export class ClientModuleRegistry extends Service {
     }
     /**
      * Absolute path of an entry's client bundle.
-     * @param id - entry id (package name).
+     * @param id - browser module id.
      * @returns the path, or undefined for an unknown id.
      */
     clientPath(id) {
@@ -530,7 +531,7 @@ export class ClientModuleRegistry extends Service {
      * HMR compares it with the live files when installing a watch, so a write
      * between startup composition and watch installation cannot disappear into
      * the watcher's initial state.
-     * @param id - entry id (package name).
+     * @param id - browser module id.
      * @returns the path and baseline, or undefined for an unknown id.
      */
     artifactBaseline(id) {
@@ -541,7 +542,7 @@ export class ClientModuleRegistry extends Service {
      * Publish one completed bundle generation (the HMR watch's registration
      * hook — the only entry point through which build changes reach the graph).
      * Unchanged metadata reuses the accepted bundle; changed metadata publishes only changed bytes.
-     * @param id - entry id (package name).
+     * @param id - browser module id.
      * @returns the current artifact rev, or undefined for an unknown id.
      */
     rebuilt(id) {
@@ -689,7 +690,7 @@ export class ClientModuleRegistry extends Service {
             external: decl.external ?? [],
             immediately: decl.immediately === true,
         };
-        const resolved = { packageName, meta };
+        const resolved = { packageName, moduleName: decl.moduleName ?? packageName, meta };
         this.pkgMeta.set(sourceKey, resolved);
         return resolved;
     }
@@ -821,22 +822,22 @@ export class ClientModuleRegistry extends Service {
             if (source !== undefined)
                 nextSources.set(source.sourceKey, source);
         }
-        const affectedPackages = new Set();
+        const affectedModules = new Set();
         for (const [sourceKey, source] of this.sources) {
             if (source.loaderName !== entryName)
                 continue;
-            affectedPackages.add(source.packageName);
+            affectedModules.add(source.moduleName);
             if (!nextSources.has(sourceKey))
                 this.sources.delete(sourceKey);
         }
         for (const [sourceKey, source] of nextSources) {
-            affectedPackages.add(source.packageName);
+            affectedModules.add(source.moduleName);
             this.sources.set(sourceKey, source);
         }
         let changed = false;
-        for (const packageName of affectedPackages) {
+        for (const moduleName of affectedModules) {
             try {
-                if (this.reconcilePackage(packageName))
+                if (this.reconcileModule(moduleName))
                     changed = true;
             }
             catch (error) {
@@ -856,28 +857,28 @@ export class ClientModuleRegistry extends Service {
             return undefined;
         return { ...resolved, loaderName, baseUrl, sourceKey: this.sourceKey(loaderName, baseUrl) };
     }
-    reconcilePackage(packageName) {
+    reconcileModule(moduleName) {
         const sources = [];
         for (const source of this.sources.values()) {
-            if (source.packageName === packageName)
+            if (source.moduleName === moduleName)
                 sources.push(source);
         }
         if (sources.length > 1) {
             const locations = sources
-                .map(source => `${JSON.stringify(source.loaderName)} from ${source.baseUrl}`)
+                .map(source => `${JSON.stringify(source.loaderName)} from ${source.baseUrl} (package ${source.packageName})`)
                 .join(', ');
-            throw new Error(`client-modules: package ${packageName} resolves from multiple active Loader sources: ${locations}; remove one entry`);
+            throw new Error(`client-modules: package ${moduleName} resolves from multiple active Loader sources: ${locations}; remove one entry`);
         }
         const source = sources[0];
         if (source === undefined)
-            return this.table.delete(packageName);
-        if (this.table.get(packageName)?.sourceKey === source.sourceKey)
+            return this.table.delete(moduleName);
+        if (this.table.get(moduleName)?.sourceKey === source.sourceKey)
             return false;
         // Startup and HMR share revisions so unchanged artifacts survive a server restart.
-        const snapshot = this.initialBundleSnapshot(packageName, source.meta.clientPath);
+        const snapshot = this.initialBundleSnapshot(source.packageName, source.meta.clientPath);
         const rev = artifactRevision(snapshot.baseline);
-        this.table.set(packageName, {
-            entry: graphRow(packageName, rev, source.meta),
+        this.table.set(moduleName, {
+            entry: graphRow(moduleName, rev, source.meta),
             loaderName: source.loaderName,
             sourceKey: source.sourceKey,
             meta: source.meta,

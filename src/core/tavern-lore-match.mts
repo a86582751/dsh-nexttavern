@@ -19,7 +19,7 @@ export class TavernLoreBoundedMatcherV1 {
   private calls=0
   private workerDispatches=0
   private work=0
-  private readonly cache=new Map<string,boolean>()
+  private readonly cache=new Map<string,Map<string,boolean>>()
 
   constructor(private readonly assertCurrent:()=>void=()=>{}) {}
 
@@ -30,11 +30,10 @@ export class TavernLoreBoundedMatcherV1 {
       this.assertCurrent()
       const key=raw.trim()
       if(key.length>512)refuse('LORE_MATCH_KEY_LIMIT')
-      // Keys undergo substituteParams upstream; without a captured rendered
-      // receipt the evaluator must never match unevaluated author macros.
-      if(key.includes('{{')||key.includes('<%'))refuse('LORE_KEY_TEMPLATE_UNRENDERED')
-      const cacheKey=JSON.stringify([text,key,caseSensitive,wholeWords])
-      const cached=this.cache.get(cacheKey)
+      let textCache=this.cache.get(text)
+      if(!textCache){textCache=new Map();this.cache.set(text,textCache)}
+      const cacheKey=JSON.stringify([key,caseSensitive,wholeWords])
+      const cached=textCache.get(cacheKey)
       if(cached!==undefined){result.push(cached);continue}
       if(++this.calls>4096)refuse('LORE_MATCH_CALL_LIMIT')
       this.work+=text.length+key.length
@@ -78,7 +77,7 @@ export class TavernLoreBoundedMatcherV1 {
           }
         }
       }
-      this.cache.set(cacheKey,matched);result.push(matched)
+      textCache.set(cacheKey,matched);result.push(matched)
     }
     return result
   }

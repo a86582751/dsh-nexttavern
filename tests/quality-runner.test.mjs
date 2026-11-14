@@ -351,6 +351,51 @@ try {
   // The fixture is nested in this repository's Git worktree. Its public context
   // must refuse to borrow the parent repository's changes as an archive default.
   assert.throws(() => changedFiles(context), /no own Git metadata|No Git metadata/);
+
+  // A cumulative public diff includes committed retirements after their mapping
+  // and task registrations have gone. Only Git-confirmed deletions are exempt.
+  const selectionRoot = path.join(root, 'retired-selection');
+  const selectionContext = {...context, root: selectionRoot};
+  const writeSelection = (file, text = 'export {};\n') => write(path.join('retired-selection', file), text);
+  const git = args => {
+    const result = spawnSync('git', ['-c', 'user.name=Quality fixture', '-c', 'user.email=quality@example.invalid', ...args],
+      {cwd: selectionRoot, encoding: 'utf8'});
+    assert.equal(result.status, 0, result.stderr + result.stdout);
+    return result.stdout.trim();
+  };
+  const retired = 'development/retired runtime/旧执行器.mts';
+  writeSelection(retired);
+  writeSelection('src/core/cards.ts');
+  writeSelection('src/core/status.ts');
+  writeSelection('src/core/unregistered.ts');
+  git(['init']);
+  git(['add', '.']);
+  git(['commit', '-m', 'Initial selection fixture']);
+  const selectionBase = git(['rev-parse', 'HEAD']);
+  fs.unlinkSync(path.join(selectionRoot, retired));
+  fs.unlinkSync(path.join(selectionRoot, 'src/core/cards.ts'));
+  git(['add', '-u']);
+  git(['commit', '-m', 'Retire old runtime and remove current source']);
+  const cumulative = makePlan(selectionContext, request('changed', [], {base: selectionBase}));
+  assert.deepEqual(cumulative.files, [retired, 'src/core/cards.ts'], 'the plan retains the deletion evidence');
+  assert.deepEqual(cumulative.uncovered, [], 'a retired unregistered deletion does not block cumulative checks');
+  assert.deepEqual(ids(cumulative), ['shared', 'cards:unit', 'cards:integration'],
+    'a deleted source with current ownership still selects its existing feature checks');
+  const explicitRetired = makePlan(selectionContext, request('file', [retired]));
+  assert.match(explicitRetired.uncovered[0], /not registered/, 'explicit missing paths still fail selection');
+
+  writeSelection('src/core/unregistered.ts', 'export const modified = true;\n');
+  writeSelection('src/core/new-source.ts');
+  git(['mv', 'src/core/status.ts', 'src/core/renamed-source.ts']);
+  const survivingUnknown = makePlan(selectionContext, request('changed', [], {base: selectionBase}));
+  assert.deepEqual(survivingUnknown.uncovered.map(item => item.split(':')[0]), [
+    'src/core/new-source.ts', 'src/core/renamed-source.ts', 'src/core/unregistered.ts',
+  ], 'new, renamed and modified unregistered paths remain uncovered');
+  assert(ids(survivingUnknown).includes('status:unit'), 'the old side of a rename retains current ownership checks');
+  writeSelection(retired);
+  const recreated = makePlan(selectionContext, request('changed', [], {base: selectionBase}));
+  assert(recreated.uncovered.some(item => item.startsWith(retired + ':')),
+    'an untracked recreation of a deleted path needs current ownership');
   console.log('quality-runner=ok; selection, prerequisites, cache, interruption, development and candidate boundaries, archive guidance');
 } finally {
   cleanupTestDirectory(root);

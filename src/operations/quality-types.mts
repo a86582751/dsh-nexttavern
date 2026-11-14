@@ -22,7 +22,8 @@ export interface Artifact {id: string; source: string; aliases?: string[]; sha25
 export interface BuildMapping {
   id: string; kind?: string; artifact: string; entry: string; builder: string; inputs: string[]
   declarationArtifact?: string
-  browser?: {moduleId: string; external: string[]; inlineArtifactImports?: Record<string, string>; minifyWhitespace?: boolean}
+  browser?: {moduleId: string; external: string[]; inlineArtifactImports?: Record<string, string>;
+    textArtifactImports?:Record<string,string>;minifyWhitespace?: boolean}
 }
 export interface SourceMapping {
   artifacts: Artifact[]

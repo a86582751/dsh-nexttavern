@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/compat/llm-deepseek/src/replay.ts; edit the TypeScript source.
 /** Minimal native thinking metadata; durable Harness blocks own all response text. */
-import { LlmError } from '@deepseek-ai/dsh-llm';
+import { LlmError } from 'dsh-nexttavern-native-llm';
 /** Reject malformed JSON objects at provider and durable-data reads.
  * @param value - untrusted decoded JSON.
  * @param code - owning failure category.

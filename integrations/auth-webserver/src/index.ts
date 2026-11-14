@@ -1,13 +1,14 @@
 import {WebServer} from '@deepseek-ai/dsh-host-webserver'
 import type {WebRoute,WebUpgradeRoute,Config as WebServerConfig} from '@deepseek-ai/dsh-host-webserver'
 import type {Context} from '@deepseek-ai/cordis'
+import type {HostConnectionHandle} from '@deepseek-ai/dsh-client-connection'
 import type {IncomingMessage,ServerResponse} from 'node:http'
 import type {Duplex} from 'node:stream'
 import {createRemoteJWKSet,jwtVerify} from 'jose'
 
 interface Connection {requestRejection(request:IncomingMessage):number|undefined;authorizeIndex(request:IncomingMessage,response:ServerResponse):boolean}
 declare module '@deepseek-ai/cordis' {
-  interface Context {connection:Connection}
+  interface Context {connection:HostConnectionHandle}
 }
 interface AuthConfig extends WebServerConfig {teamDomain:string;audience:string;allowedEmail:string;publicHost:string;clockToleranceSeconds?:number}
 interface AuthorizationOk {ok:true;accessAuthenticated?:boolean;expiresAt?:number}

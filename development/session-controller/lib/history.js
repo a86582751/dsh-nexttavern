@@ -53,7 +53,7 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
 });
 import { Deque } from '@deepseek-ai/dsh-deque';
-import { isAppendSurfaceEvent, SessionLogOffset, SessionSeq, } from '@deepseek-ai/dsh-session';
+import { isAppendSurfaceEvent, SessionLogOffset, SessionSeq, } from 'dsh-nexttavern-native-session';
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import { SessionAssistantStreamAccumulator } from './assistant-stream.js';

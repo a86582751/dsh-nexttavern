@@ -6,10 +6,12 @@ import { recordSha256, sha256 } from './roleplay-data.js';
 import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 import { readTavernCardMacroFields } from './nexttavern-card.js';
 import { captureRoleplayTavernInitialCatalogV1 } from './roleplay-tavern-prompt-initial.js';
-import { prepareRoleplayTavernPromptVariablesV1 } from './roleplay-tavern-prompt-variables.js';
+import { prepareRoleplayTavernPromptVariablesV1, prepareRoleplayTavernPromptVariablesV2 } from './roleplay-tavern-prompt-variables.js';
+import { currentPromptVariableInputV2 } from './roleplay-tavern-prompt-variables-data.js';
 import { prepareRoleplayTavernRenderCatalogV1 } from './roleplay-tavern-prompt-render.js';
 import { createRoleplayTavernTokenCountV1 } from './roleplay-tavern-token-count.js';
 import { prepareOwnedTavernLoreWithOwnerV1 } from './tavern-lore-evaluator.mjs';
+import { applyTavernLoreOrdinaryPreparationV1, createTavernLoreSourceEligibilityV1 } from './tavern-lore-derived.mjs';
 import { validateTavernLoreSnapshotV1 } from './tavern-lore-snapshot.mjs';
 /** Native has no ST global settings store. Archived character-book settings
  * remain importer metadata; absent session overrides use this content policy. */
@@ -18,7 +20,7 @@ export const TAVERN_NATIVE_PROMPT_SETTINGS_V1 = Object.freeze({
     caseSensitive: false, matchWholeWords: false, scanDepth: 2, useGroupScoring: false, recursiveScanning: true,
     minimumActivations: 0, minimumActivationDepthMax: 0, maxRecursionSteps: 32, includeNames: true,
     characterStrategy: 'single-character-book-v1', budgetTokens: 2048,
-    contentTransformPolicy: 'no-world-info-output-regex-v1', macroPolicy: 'frozen-rendered-receipt-or-marker-free-v1',
+    contentTransformPolicy: 'no-world-info-output-regex-v1', macroPolicy: 'frozen-key-alias-receipt-v2',
     seedPolicy: 'sha256-counter-domain-separated-v1', budgetPolicy: 'frozen-cumulative-token-ledger-st-gte-v1'
 });
 /** The settings owner admits the value; Source has already captured that row.
@@ -42,9 +44,7 @@ export async function prepareRoleplayTavernContentV1(deps) {
     assertCurrent();
     const initialCatalog = captureRoleplayTavernInitialCatalogV1({ source, plan: compilation.plan,
         assertCurrent: assertSignal, signal });
-    const variables = await prepareRoleplayTavernPromptVariablesV1({ schemaVersion: 1,
-        encoding: 'owned-prompt-variable-input-v1', sessionId: source.sessionId, source, catalog: initialCatalog.catalog,
-        scopes: scopeData.scopes, history: scopeData.history, attempt }, { signal, assertCurrent,
+    const variableProducer = { signal, assertCurrent,
         async renderInitial(request) {
             assertCurrent();
             const bindings = [...request.readonlyScopes, request.initialSoFar];
@@ -71,13 +71,28 @@ export async function prepareRoleplayTavernContentV1(deps) {
             return { schemaVersion: 1, encoding: 'owned-prompt-initial-render-output-v1',
                 pipeline: 'actual-macro-template-regex-ejs-v1', requestSha256: request.requestSha256,
                 renderedText: actual.output.renderedText, renderedTextSha256: actual.output.renderedTextSha256, reads, renderRef };
-        } });
+        } };
+    const variables = scopeData.messageSelection
+        ? await prepareRoleplayTavernPromptVariablesV2(currentPromptVariableInputV2({ schemaVersion: 2,
+            encoding: 'owned-prompt-variable-input-v2', sessionId: source.sessionId, source, catalog: initialCatalog.catalog,
+            scopes: scopeData.scopes, messageSelection: scopeData.messageSelection, attempt }), variableProducer)
+        : await prepareRoleplayTavernPromptVariablesV1({ schemaVersion: 1,
+            encoding: 'owned-prompt-variable-input-v1', sessionId: source.sessionId, source, catalog: initialCatalog.catalog,
+            scopes: scopeData.scopes, history: scopeData.history, attempt }, variableProducer);
     assertCurrent();
     if (variables.kind !== 'prepared')
         fail(variables.diagnostics[0]?.code ?? 'INPUT_MATERIAL_VARIABLES_REFUSED');
     const bindings = [...scopeData.bindings, ...[variables.packet.initial, variables.packet.cache]
             .flatMap(value => value.kind === 'bound' ? [value.binding] : [])];
     render.bindVariableScopes(bindings);
+    if (deps.beforeLore) {
+        await deps.beforeLore({ render, bindings, settings });
+        assertCurrent();
+    }
+    const sourceEligibility = createTavernLoreSourceEligibilityV1(compilation), ordinaryPreparation = await render.prepareOrdinaryWorldInfo({ phaseId: basis.attemptId,
+        baseMacros: deps.macrosFor(bindings), sourceEligibility }), composition = ordinaryPreparation
+        ? applyTavernLoreOrdinaryPreparationV1(render.evaluationComposition, ordinaryPreparation) : render.evaluationComposition;
+    assertCurrent();
     const tokenCount = createRoleplayTavernTokenCountV1(assertSignal, signal), card = captured.cardData, text = (value) => typeof value === 'string' ? value : '', aliases = readTavernCardMacroFields(card, source.original.decodedFormat), macros = renderInput.macros, globalScanData = { personaDescription: macros.card?.find(value => value.key === 'persona')?.value ?? '',
         characterDescription: deps.currentCardFields?.description ?? text(aliases.description),
         characterPersonality: deps.currentCardFields?.personality ?? text(aliases.personality),
@@ -91,12 +106,17 @@ export async function prepareRoleplayTavernContentV1(deps) {
         sourceSnapshotSha256: source.sourceSha256, stateSnapshotSha256: scopeData.stateSnapshotSha256,
         sourceReferenceSha256: compilation.plan.sourceReferenceSha256, packageSha256: basis.packageSha256,
         compilerPlanSha256: compilation.plan.planSha256, visibleMessages: deps.visibleMessages,
+        ...deps.scanMessageCount !== undefined ? { scanHistory: { schemaVersion: 1,
+                encoding: 'owned-lore-scan-history-range-v1', messageCount: deps.scanMessageCount } } : {},
         messagesSha256: recordSha256(deps.visibleMessages), settings, settingsSha256: recordSha256(settings),
         seed: basis.randomSeed, seedSha256: sha256(basis.randomSeed), globalScanData, globalScanDataSha256: recordSha256(globalScanData),
         timed, timedSha256: recordSha256(timed), tokenizer: emptyCounts, tokenizerSha256: recordSha256(emptyCounts),
-        renderedTexts: [], renderedTextsSha256: recordSha256([]) };
+        renderedTexts: [], renderedTextsSha256: recordSha256([]),
+        ...initialCatalog.standaloneExclusionEntryIds.length ? { standaloneExclusions: { schemaVersion: 1,
+                encoding: 'owned-lore-standalone-exclusions-v1', entryIds: initialCatalog.standaloneExclusionEntryIds } } : {} };
     const snapshot = validateTavernLoreSnapshotV1({ ...body, snapshotSha256: recordSha256(body) }), producer = deps.loreProducer?.(render, bindings) ?? render.loreProducer, evaluated = await (deps.execution?.evaluate ?? prepareOwnedTavernLoreWithOwnerV1)({ schemaVersion: 1,
-        encoding: 'owned-st-lore-evaluator-input-v1', compilation, snapshot }, { tokenCount, templates: producer, assertCurrent: render.assertCurrent });
+        encoding: 'owned-st-lore-evaluator-input-v1', compilation, snapshot,
+        ...ordinaryPreparation ? { ordinaryPreparation } : {} }, { tokenCount, templates: producer, sourceEligibility, assertCurrent: render.assertCurrent }, composition);
     assertCurrent();
     if (evaluated.kind !== 'prepared')
         fail(evaluated.diagnostics[0]?.code ?? 'INPUT_MATERIAL_LORE_REFUSED');

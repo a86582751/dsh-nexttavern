@@ -1,7 +1,12 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
-import { createToastController, confirmWithDialog } from '../lib/ui/client.js'
 import { resolveJsdom } from '../lib/operations/tool-resolution.mjs'
+
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies([],true)
+afterNativeDependencies(removeOwnedNativeDependencies)
+const { createToastController, confirmWithDialog }=await import('../lib/ui/client.js')
 
 const require = createRequire(import.meta.url)
 const { JSDOM } = require(resolveJsdom())
@@ -23,6 +28,17 @@ assert.equal(manager.querySelector('.dsh-rp-toast').textContent, 'second save')
 toast.dismiss()
 assert.equal(document.querySelectorAll('.dsh-rp-toast').length, 0)
 manager.removeAttribute('open')
+const editor = document.createElement('dialog')
+editor.className = 'dsh-rp-edit-backdrop'
+editor.setAttribute('open', '')
+editor.matches = selector => selector === ':modal'
+document.body.appendChild(editor)
+toast('状态更新块格式有误，请修正后保存。')
+assert.equal(editor.querySelector('.dsh-rp-toast')?.textContent, '状态更新块格式有误，请修正后保存。',
+  'an active message editor must own its validation notice above the modal backdrop')
+toast.dismiss()
+editor.remove()
+
 toast('page notice')
 assert.equal(document.body.querySelectorAll('.dsh-rp-toast').length, 1, 'ordinary pages use the body toast host')
 toast.dismiss()

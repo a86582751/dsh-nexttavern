@@ -3,7 +3,7 @@ import { selectedMainRoute, withTavernLock } from './tavern-tasks.js'
 import { clusterSettings } from './character-cluster.js'
 import type { ReasoningInfo, SettingsRouteBody, SettingsRoutesDependencies } from './roleplay-settings-routes-types.js'
 
-export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPolicy, ensureBranch, taskAgents, characterCluster, characterRoster, nativeCardCapability, memorySettingFields, memorySettingsPolicy, svc, narrativePresets, mutateSource}: SettingsRoutesDependencies) {
+export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPolicy, ensureBranch, taskAgents, characterCluster, characterRoster,characterSettingsChanged, nativeCardCapability, memorySettingFields, memorySettingsPolicy, svc, narrativePresets, mutateSource}: SettingsRoutesDependencies) {
   const writeSource: NonNullable<SettingsRoutesDependencies['mutateSource']> =
     mutateSource ?? (async (_session, work) => work())
   ctx.effect(()=>ctx.connection.fetch.register({requestBody:'buffered',path:'/api/roleplay/model-selection',methods:['POST'],fetch:async request=>{
@@ -46,13 +46,19 @@ export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPol
       const session=await resolveRoleplaySession(body?.sessionId??url.searchParams.get('sessionId'))
       if(!session)return jsonResponse(404,{ok:false,error:'角色扮演会话不存在'})
       if(body) {
-        for(const selected of Object.values(body.settings?.routes??{})) {
-          if(!selected?.reasoningEffort)continue
+        const selectedRoutes=body.purpose===undefined?Object.values(body.settings?.routes??{}):[body.route]
+        for(const selected of selectedRoutes) {
+          if(!selected)continue
+          if(body.purpose===undefined&&!selected.reasoningEffort)continue
           if(!ctx.llm.resolveModelInfo)throw new Error('当前模型目录不可用，无法验证思考等级；请稍后重试')
           const info=await ctx.llm.resolveModelInfo(selected.provider,selected.model)
-          if(!info.reasoning?.efforts?.some(e=>e.id===selected.reasoningEffort))throw new Error(`模型 ${selected.model} 不支持思考等级 ${selected.reasoningEffort}`)
+          if(!info)throw new Error('所选模型不在当前目录中')
+          if(selected.reasoningEffort&&!info.reasoning?.efforts?.some(e=>e.id===selected.reasoningEffort))throw new Error(`模型 ${selected.model} 不支持思考等级 ${selected.reasoningEffort}`)
         }
-        await modelPolicy.save(session,body.scope,body.settings,body.expectedRevision)
+        if(body.purpose!==undefined) {
+          if(body.scope!=='session'||!Number.isSafeInteger(body.expectedRevision))throw new Error('单用途保存需要会话范围和配置版本')
+          await modelPolicy.savePurpose(session,body.purpose,body.route,body.expectedRevision as number)
+        }else await modelPolicy.save(session,body.scope,body.settings,body.expectedRevision)
       }
       const data=await modelPolicy.read(session)
       const catalog=[]
@@ -80,7 +86,7 @@ export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPol
         if(body.scope!==undefined&&!['global','session'].includes(body.scope))throw new Error('必须指定全局或会话范围')
         const settings=clusterSettings(body.scope==='global'?{enabled:false,defaultRoute:body.settings?.defaultRoute,characters:{}}:body.settings)
         const primary=selectedMainRoute(session,taskAgents.get(session.id),ctx.agentDefaultModel.currentSelection())
-        for(const selected of [settings.defaultRoute,...Object.values(settings.characters)].filter((route): route is NonNullable<typeof route>=>route!=null)){
+        for(const selected of [settings.defaultRoute,settings.offscreen?.route,...Object.values(settings.characters)].filter((route): route is NonNullable<typeof route>=>route!=null)){
           const route='main' in selected?{...primary,...selected}:selected
           const info=await ctx.llm.resolveModelInfo?.(route.provider,route.model)
           if(!info)throw new Error('所选模型不在当前目录中')
@@ -88,6 +94,7 @@ export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPol
         }
         if(body.scope==='global')await characterCluster.saveGlobal(settings,body.expectedRevision!)
         else await characterCluster.save(session,settings,body.expectedRevision!)
+        await characterSettingsChanged?.(session)
       }
       return jsonResponse(200,{ok:true,sessionId:session.id,settings:characterCluster.read(session),session:characterCluster.readLocal(session),global:characterCluster.readGlobal(),characters:characterRoster(session).map(({id,name})=>({id,name})),capability:nativeCardCapability?.(session)})
     }catch(error){return jsonResponse(String((error as Error).message).includes('已更新')?409:400,{ok:false,error:String((error as Error).message)})}

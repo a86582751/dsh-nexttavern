@@ -1,66 +1,36 @@
-/** Host transport unions do not choose an executor. The admitted catalog binds
- * each epoch to its complete original implementation tuple before dispatch. */
-import {types} from 'node:util'
-import {cloneSchemaData,validateSchemaProgram} from './tavern-mvu-schema-data.js'
+/** The admitted catalog binds each V4 epoch to its actual implementation. */
+import {cloneSchemaData} from './tavern-mvu-schema-data.js'
 import {validateMvuExecutableProgramV4} from './tavern-mvu-schema-program-v4.js'
-import type {MvuSchemaProgram,MvuSchemaRunnerIdentity,MvuSchemaCompiler,MvuSchemaImplementationIdentity,
-  MvuSchemaCompilationInput,MvuSchemaCompilation,
-  MvuSchemaLibraryIdentity,MvuSchemaEvaluationInput,
-  MvuSchemaGuestOutput,MvuSchemaRealmLoadFrame,MvuSchemaTraceRequestedStep,
-  MvuSchemaTraceStepRecord,MvuSchemaTraceEvaluationStep,MvuSchemaTraceInput,
-  MvuSchemaTraceEvaluation,MvuSchemaTraceRunResult,MvuSchemaRealmReadBinding} from './tavern-mvu-schema-types.js'
-import type {MvuSchemaEvaluationInputV2,MvuSchemaGuestOutputV2,MvuSchemaRealmLoadFrameV2,
-  MvuSchemaTraceRequestedStepV2,MvuSchemaTraceStepRecordV2,MvuSchemaTraceEvaluationStepV2,
-  MvuSchemaTraceInputV2,MvuSchemaTraceEvaluationV2,MvuSchemaTraceRunResultV2}
-  from './tavern-mvu-schema-types-v2.js'
+import type {MvuSchemaRunnerIdentity,MvuSchemaCompilerIdentity,MvuSchemaImplementationIdentity,
+  MvuSchemaLibraryIdentity,MvuSchemaPhase,MvuSchemaRealmReadBinding} from './tavern-mvu-schema-types.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {MvuExecutableProgramV4} from './tavern-mvu-owned-state-types-v1.mjs'
-import type {MvuSchemaEvaluationInputV3,MvuSchemaGuestOutputV3,MvuSchemaRealmLoadFrameV3,
-  MvuSchemaTraceRequestedStepV3,MvuSchemaTraceStepRecordV3,MvuSchemaTraceEvaluationStepV3,
-  MvuSchemaTraceInputV3,MvuSchemaTraceEvaluationV3,MvuSchemaTraceRunResultV3}
-  from './tavern-mvu-schema-types-v3.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
-import type {MvuSchemaProgramV4,MvuSchemaCompilationInputV4,CompilationV4}
+import type {MvuScopeReadRefV2} from './tavern-mvu-scope-view-v2.js'
+import type {MvuSchemaCompilationInputV4,CompilationV4}
   from './tavern-mvu-schema-program-v4.js'
 import type {MvuSchemaEvaluationInputV4,MvuSchemaGuestOutputV4,MvuSchemaRealmLoadFrameV4,
   MvuSchemaTraceRequestedStepV4,MvuSchemaTraceStepRecordV4,MvuSchemaTraceEvaluationStepV4,
   MvuSchemaTraceInputV4,MvuSchemaTraceEvaluationV4,MvuSchemaTraceRunResultV4,MvuSchemaNextRunResultV4,
-  MvuSchemaOpenManualRunResultV4,MvuSchemaPhaseErrorPolicyV4}
+  MvuSchemaOpenManualRunResultV4,MvuSchemaPhaseErrorPolicyV4,MvuSchemaOwnedPrefixReaderV4}
   from './tavern-mvu-schema-types-v4.js'
 
-export type SchemaExecutorVersion=1|2|3|4
-export type SchemaAuthorProgram=MvuSchemaProgram|MvuExecutableProgramV4
-export type SchemaAuthorCompilationInput=MvuSchemaCompilationInput|MvuSchemaCompilationInputV4
-export type SchemaAuthorCompilation=MvuSchemaCompilation|CompilationV4
-/** Version dispatch validates data only. The catalog and compiler still admit
- * the actual implementation and recompute the complete raw author plan. */
-export function validateSchemaAuthorProgram(input:unknown):SchemaAuthorProgram {
-  if(input!==null&&typeof input==='object'&&types.isProxy(input))throw Error('SCHEMA_PROXY_VALUE')
-  // Inspect only an own data discriminator without invoking a getter. The
-  // selected validator still clones and validates the entire bounded program.
-  const encoding=input!==null&&typeof input==='object'?Object.getOwnPropertyDescriptor(input,'encoding'):undefined
-  return encoding&&Object.hasOwn(encoding,'value')
-    &&['native-mvu-author-schema-program-v2','native-mvu-owned-state-program-v1'].includes(encoding.value)
-    ?validateMvuExecutableProgramV4(input):validateSchemaProgram(input)
-}
-export type SchemaEvaluationInput=MvuSchemaEvaluationInput|MvuSchemaEvaluationInputV2
-  |MvuSchemaEvaluationInputV3|MvuSchemaEvaluationInputV4
-export type SchemaGuestOutput=MvuSchemaGuestOutput|MvuSchemaGuestOutputV2|MvuSchemaGuestOutputV3|MvuSchemaGuestOutputV4
-export type SchemaRealmLoadFrame=MvuSchemaRealmLoadFrame|MvuSchemaRealmLoadFrameV2
-  |MvuSchemaRealmLoadFrameV3|MvuSchemaRealmLoadFrameV4
-export type SchemaTraceRequestedStep=MvuSchemaTraceRequestedStep|MvuSchemaTraceRequestedStepV2
-  |MvuSchemaTraceRequestedStepV3|MvuSchemaTraceRequestedStepV4
-export type SchemaTraceStepRecord=MvuSchemaTraceStepRecord|MvuSchemaTraceStepRecordV2
-  |MvuSchemaTraceStepRecordV3|MvuSchemaTraceStepRecordV4
-export type SchemaTraceEvaluationStep=MvuSchemaTraceEvaluationStep|MvuSchemaTraceEvaluationStepV2
-  |MvuSchemaTraceEvaluationStepV3|MvuSchemaTraceEvaluationStepV4
-export type SchemaTraceInput=MvuSchemaTraceInput|MvuSchemaTraceInputV2|MvuSchemaTraceInputV3|MvuSchemaTraceInputV4
-export type SchemaTraceEvaluation=MvuSchemaTraceEvaluation|MvuSchemaTraceEvaluationV2
-  |MvuSchemaTraceEvaluationV3|MvuSchemaTraceEvaluationV4
-export type SchemaTraceRunResult=MvuSchemaTraceRunResult|MvuSchemaTraceRunResultV2
-  |MvuSchemaTraceRunResultV3|MvuSchemaTraceRunResultV4
+export type SchemaExecutorVersion=4
+export type SchemaAuthorProgram=MvuExecutableProgramV4
+export type SchemaAuthorCompilationInput=MvuSchemaCompilationInputV4
+export type SchemaAuthorCompilation=CompilationV4
+export const validateSchemaAuthorProgram=validateMvuExecutableProgramV4
+export type SchemaEvaluationInput=MvuSchemaEvaluationInputV4
+export type SchemaGuestOutput=MvuSchemaGuestOutputV4
+export type SchemaRealmLoadFrame=MvuSchemaRealmLoadFrameV4
+export type SchemaTraceRequestedStep=MvuSchemaTraceRequestedStepV4
+export type SchemaTraceStepRecord=MvuSchemaTraceStepRecordV4
+export type SchemaTraceEvaluationStep=MvuSchemaTraceEvaluationStepV4
+export type SchemaTraceInput=MvuSchemaTraceInputV4
+export type SchemaTraceEvaluation=MvuSchemaTraceEvaluationV4
+export type SchemaTraceRunResult=MvuSchemaTraceRunResultV4
 export interface SchemaCompiler {
-  readonly identity:MvuSchemaCompiler['identity']
+  readonly identity:MvuSchemaCompilerIdentity&{readonly version:4}
   compile(input:SchemaAuthorCompilationInput,signal?:AbortSignal):Promise<SchemaAuthorCompilation>
   verifyProgram(program:SchemaAuthorProgram,signal?:AbortSignal):Promise<boolean>
   dispose():Promise<void>
@@ -70,12 +40,19 @@ export interface SchemaCompiler {
  * the real runner. Widening this host interface never widens either guest ABI. */
 export interface SchemaTraceRunner {
   readonly identity:MvuSchemaRunnerIdentity
+  readonly scopeInputProtocols?:readonly ('full-frame-v1'|'scope-ref-v2')[]
+  bindScopeReferencesV2?(read:import('./tavern-mvu-schema-types-v4.js').MvuSchemaScopeReferenceReaderV2):SchemaTraceRunner
   evaluateTrace(program:SchemaAuthorProgram,input:SchemaTraceInput,signal?:AbortSignal):Promise<SchemaTraceRunResult>
   /** Current live execution needs the last receipt, while historical readers
    * retain the complete evaluation contract of their original executor. */
   /** The live owner supplies its compiler/Journal-parsed program. This entry
    * parses the next trace; historical raw replay retains evaluateTrace. */
   evaluateNext?(program:SchemaAuthorProgram,input:SchemaTraceInput,signal?:AbortSignal):Promise<MvuSchemaNextRunResultV4>
+  /** Trusted Host assembly binds its own capture reader across the runtime
+   * package boundary. Guest/RPC/persisted DTOs never supply this callback. */
+  bindOwnedNext?(reader:MvuSchemaOwnedPrefixReaderV4):{
+    evaluateNext(program:SchemaAuthorProgram,input:SchemaTraceInput,signal?:AbortSignal):Promise<MvuSchemaNextRunResultV4>
+  }
   /** Only a live Replay owner retains this resource. Cold readers never
    * recover a VM from its persisted trace or a program hash. */
   openManualRun?(program:SchemaAuthorProgram,input:SchemaTraceInput,
@@ -115,7 +92,7 @@ export function validateSchemaExecutorIdentityTuple(input:unknown):SchemaExecuto
     ['bridge','native-mvu-schema-bridge',null],['runner','native-mvu-schema-runner','quickjsVersion']] as const) {
     const value=tuple[key]
     exact(value,['id','version','implementationSha256',...(extra?[extra]:[])])
-    if(value.id!==id||![1,2,3,4].includes(value.version)||!/^[a-f0-9]{64}$/.test(value.implementationSha256))fail()
+    if(value.id!==id||value.version!==4||!/^[a-f0-9]{64}$/.test(value.implementationSha256))fail()
   }
   if(tuple.compiler.version!==tuple.runner.version||tuple.bridge.version!==tuple.runner.version
     ||tuple.compiler.typescriptVersion!=='5.9.3'||tuple.runner.quickjsVersion!=='0.32.0'
@@ -130,45 +107,31 @@ export function validateSchemaExecutorIdentityTuple(input:unknown):SchemaExecuto
   return tuple
 }
 
-/** Initialization and editing have no command authority. Preserve the original
- * envelope for v1; v2 carries its explicit normalized-operation contract. */
+/** Initialization and editing carry no command authority. For external pack
+ * adoption, use external-pack-replacement with the prior canonical base and
+ * donor values/context. Acceptance records raw adoption, not schema parsing. */
 export function schemaEmptyPhaseInput(version:SchemaExecutorVersion,
-  phase:MvuSchemaEvaluationInput['phase'],base:MvuJsonObject|null,values:MvuJsonObject,
+  phase:MvuSchemaPhase,base:MvuJsonObject|null,values:MvuJsonObject,
   context:MvuJsonObject,clockEpochMs:number,randomSeed:string,scopeReadFrame?:MvuScopeReadFrameV1,
-  errorPolicy:MvuSchemaPhaseErrorPolicyV4='atomic-refusal'):SchemaEvaluationInput {
+  errorPolicy:MvuSchemaPhaseErrorPolicyV4='atomic-refusal',scopeReadRef?:MvuScopeReadRefV2):SchemaEvaluationInput {
   const body={phase,base,values,commands:[],context,clockEpochMs,randomSeed}
-  if(version===4) {
-    if(!scopeReadFrame)throw Error('SCHEMA_SCOPE_READ_REQUIRED')
-    return {schemaVersion:4,encoding:'native-mvu-author-schema-phase-input-v4',
-      commandsEncoding:'native-mvu-update-operations-v2',errorPolicy,...body,scopeReadFrame}
-  }
-  if(version===3) {
-    if(!scopeReadFrame)throw Error('SCHEMA_SCOPE_READ_REQUIRED')
-    return {schemaVersion:3,encoding:'native-mvu-author-schema-phase-input-v3',
-      commandsEncoding:'native-mvu-update-operations-v2',errorPolicy:'atomic-refusal',...body,scopeReadFrame}
-  }
-  return version===1?{schemaVersion:1,...body}:{schemaVersion:2,
-    encoding:'native-mvu-author-schema-phase-input-v2',commandsEncoding:'native-mvu-update-operations-v2',
-    errorPolicy:'atomic-refusal',...body}
+  if(scopeReadRef)return {schemaVersion:version,encoding:'native-mvu-author-schema-phase-input-v4-scope-ref-v2',
+    commandsEncoding:'native-mvu-update-operations-v2',errorPolicy,...body,scopeReadRef}
+  if(!scopeReadFrame)throw Error('SCHEMA_SCOPE_READ_REQUIRED')
+  return {schemaVersion:version,encoding:'native-mvu-author-schema-phase-input-v4',
+    commandsEncoding:'native-mvu-update-operations-v2',errorPolicy,...body,scopeReadFrame}
 }
 
 export function schemaRealmLoadFrame(version:SchemaExecutorVersion,binding:MvuSchemaRealmReadBinding,
   values:MvuJsonObject,context:MvuJsonObject,clockEpochMs:number,randomSeed:string,
   scopeReadFrame?:MvuScopeReadFrameV1):SchemaRealmLoadFrame {
   const body={...binding,values,context,clockEpochMs,randomSeed}
-  if(version===1)return {schemaVersion:1,...body}
-  if(version===2)return {schemaVersion:2,...body}
   if(!scopeReadFrame)throw Error('SCHEMA_SCOPE_READ_REQUIRED')
-  if(version===4)return {schemaVersion:4,...body,scopeReadFrame}
-  return {schemaVersion:3,...body,scopeReadFrame}
+  return {schemaVersion:version,...body,scopeReadFrame}
 }
 
-/** Preserve the discriminated ABI when a host builds a frame from shared
- * read facts. The branch narrows the actual input without any wire coercion. */
+/** Keep the actual scope input shape supplied by the owning producer. */
 export function schemaTraceRequestedStep(eventId:string,binding:MvuSchemaRealmReadBinding,
   input:SchemaEvaluationInput):SchemaTraceRequestedStep {
-  if(input.schemaVersion===1)return {eventId,frame:{...binding,input}}
-  if(input.schemaVersion===2)return {eventId,frame:{...binding,input}}
-  if(input.schemaVersion===3)return {eventId,frame:{...binding,input}}
   return {eventId,frame:{...binding,input}}
 }

@@ -84,6 +84,8 @@ export interface ImportRecord extends Record<string, unknown> {
   workflowGeneration?: string
   sessionId: string
   sourceFile: string
+  /** Frozen basename of this import transport, distinct from a linked original upload. */
+  sourceFilename?: string
   workspaceRoot: string
   sourceBytes: number
   sourceMtimeMs: number
@@ -197,6 +199,8 @@ export interface ImportInputTransition {
 }
 export interface ImportResource { id?: string; resourceId?: string; name?: string }
 export interface CardImportDependencies {
+  /** Frozen upload identity from the attachment owner; null for workspace requests. */
+  readOriginalImportFile?(session:ImportSession,requestId:string):import('./roleplay-card-attachment.js').ArchivedOriginalFile|null
   inputTransition?: ImportInputTransition
   resolveCurrentCardImport?(session:ImportSession,exec:ImportExec):OwnedCardImportWorkflow|undefined
   /** Read-only Native prose and provenance; never a story execution grant. */
@@ -218,6 +222,7 @@ export interface CardImportDependencies {
   resumeCardWorkflows(session: ImportSession, agent?: ImportExec['agent'], signal?: AbortSignal): Promise<unknown>
   cardWorkflowKey(id: string): string
   libraryFor(session: ImportSession): { archive(input: { name: string; type: string; bytes: Buffer; source: Record<string, unknown> }): Promise<ImportResource> }
+    & Partial<Pick<ReturnType<typeof import('./tavern-library.js').createTavernLibrary>,'describe'|'metadata'>>
   resourceName(name: unknown,extension?:string): string
   completeCardWorkflow(session: ImportSession, record: unknown, result: Record<string, unknown>): Promise<unknown>
   ensureBranch(session: ImportSession): Promise<unknown>

@@ -1,8 +1,8 @@
 // Generated from runtime/alpha3/compat/llm-deepseek/src/images.ts; edit the TypeScript source.
 /** Deterministic Messages image preparation for Files references and bounded inline fallback. */
-import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requiredImageOffload } from '@deepseek-ai/dsh-llm';
-import { resolveRequestImageTarget } from './request-pricing.js';
-export { deepSeekImageRequestPricing as imagePricing } from './request-pricing.js';
+import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requiredImageOffload } from 'dsh-nexttavern-native-llm';
+import { resolveRequestImageTarget } from '@deepseek-ai/dsh-llm-deepseek';
+export { deepSeekImageRequestPricing as imagePricing } from '@deepseek-ai/dsh-llm-deepseek';
 function bounds(connection, representation) {
     return {
         representation,

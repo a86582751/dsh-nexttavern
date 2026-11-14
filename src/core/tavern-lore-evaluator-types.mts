@@ -1,6 +1,8 @@
 import type {TavernLoreCompilationV1,TavernLorePositionV1,TavernLoreRoleV1}
   from './tavern-lore-plan-types.mjs'
 import type {TavernLoreDerivedSnapshotV1,TavernLoreEvaluationCompositionRefV1} from './tavern-lore-derived.mjs'
+import type {createTavernLoreSourceEligibilityV1} from './tavern-lore-derived.mjs'
+import type {TavernLoreOrdinaryPreparationV1} from './tavern-lore-ordinary-preparation.mjs'
 
 /** Every identity is supplied by the real capture owner. This is data, never a
  * current-state assertion, lease, Native permission or provider receipt. */
@@ -19,7 +21,8 @@ export interface TavernLoreFrozenSettingsV1 {
   readonly characterStrategy:'single-character-book-v1'
   readonly budgetTokens:number
   readonly contentTransformPolicy:'no-world-info-output-regex-v1'
-  readonly macroPolicy:'frozen-rendered-receipt-or-marker-free-v1'
+  /** V1 leaves angle-only legacy keys literal; V2 renders those aliases too. */
+  readonly macroPolicy:'frozen-rendered-receipt-or-marker-free-v1'|'frozen-key-alias-receipt-v2'
   readonly seedPolicy:'sha256-counter-domain-separated-v1'
   readonly budgetPolicy:'frozen-cumulative-token-ledger-st-gte-v1'
 }
@@ -114,6 +117,9 @@ export interface TavernLoreTemplateProducerV1 {
   readonly implementationSha256:string
   readonly signal?:AbortSignal
   assertCurrent():void
+  /** WI keys use the same frozen macro owner as prompt text, without EJS. */
+  renderKey?(request:{readonly entryId:string;readonly pointer:string;readonly text:string},signal?:AbortSignal):
+    TavernLoreRenderedTextV1|Promise<TavernLoreRenderedTextV1>
   consumeScan?(request:{readonly loop:number;readonly state:TavernLoreScanStateV1;
     readonly stage:TavernLoreInjectionFeedbackV1['stage']},signal?:AbortSignal):
     Promise<Pick<TavernLoreInjectionFeedbackV1,'contributions'|'activationProposals'>>
@@ -147,9 +153,13 @@ export interface TavernLoreTokenCountProducerV1 {
 export interface TavernLorePreparationOwnerV1 {
   readonly tokenCount:TavernLoreTokenCountProducerV1
   readonly templates:TavernLoreTemplateProducerV1
+  readonly sourceEligibility?:ReturnType<typeof createTavernLoreSourceEligibilityV1>
   assertCurrent():void
 }
 export interface TavernLoreFrozenSnapshotV1 {
+  /** Absent on older captures, which retain their original full selection. */
+  readonly standaloneExclusions?:{readonly schemaVersion:1;
+    readonly encoding:'owned-lore-standalone-exclusions-v1';readonly entryIds:readonly string[]}
   readonly schemaVersion:1
   readonly encoding:'owned-st-lore-frozen-snapshot-v1'
   readonly authority:'consumer-data-only'
@@ -165,6 +175,9 @@ export interface TavernLoreFrozenSnapshotV1 {
   readonly compilerPlanSha256:string
   /** Ascending chat depth: newest visible message first, no sorting guesses. */
   readonly visibleMessages:readonly TavernLoreVisibleMessageV1[]
+  /** A bounded scan window retains the full logical count for the original
+   * minimum-activation stopping rule. Older snapshots contain every row. */
+  readonly scanHistory?:{readonly schemaVersion:1;readonly encoding:'owned-lore-scan-history-range-v1';readonly messageCount:number}
   readonly messagesSha256:string
   readonly settings:TavernLoreFrozenSettingsV1
   readonly settingsSha256:string
@@ -191,6 +204,7 @@ export interface TavernLoreEvaluatorInputV1 {
   readonly compilation:Extract<TavernLoreCompilationV1,{kind:'compiled'}>
   readonly snapshot:TavernLoreFrozenSnapshotV1
   readonly derivedSnapshot?:TavernLoreDerivedSnapshotV1
+  readonly ordinaryPreparation?:TavernLoreOrdinaryPreparationV1
 }
 export interface TavernLoreEvaluationDiagnosticV1 {
   readonly schemaVersion:1

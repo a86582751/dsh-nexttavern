@@ -1,6 +1,6 @@
 /** Inert facts from Root's actual private opening material supplier. JSON,
  * checksums and these types cannot select that owner or recreate its phase. */
-import type {NativeOpeningOwnerIdentityV1} from '@deepseek-ai/dsh-agent-loop'
+import type {NativeOpeningOwnerIdentityV1} from 'dsh-nexttavern-native-agent-loop'
 import type {ProgramOpeningIntentSeedV1,ProgramOpeningInputPacketV1,ProgramOpeningAbsentDomainV1}
   from './roleplay-program-opening-records.js'
 import type {ProgramGenesisDataRefV1} from './roleplay-program-genesis-types.js'

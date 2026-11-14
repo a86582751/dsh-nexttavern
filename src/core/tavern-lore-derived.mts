@@ -6,7 +6,10 @@ import {resolveTavernLoreContentTextV1} from './tavern-lore-compiler.mjs'
 import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
 import {exact,freezeLoreData,LORE_EVALUATOR_POLICY_V1} from './tavern-lore-snapshot.mjs'
 import {refuse} from './tavern-lore-match.mjs'
-import type {TavernLorePlanV1,TavernLoreEntryPlanV1,TavernLoreSemanticEntryV1}
+import {TAVERN_LORE_ORDINARY_PREPARATION_POLICY_SHA256} from './tavern-lore-ordinary-preparation.mjs'
+import type {TavernLoreOrdinaryPreparationV1,TavernLoreOrdinaryFormalChangeV1}
+  from './tavern-lore-ordinary-preparation.mjs'
+import type {TavernLorePlanV1,TavernLoreEntryPlanV1,TavernLoreSemanticEntryV1,TavernLoreCompilationV1}
   from './tavern-lore-plan-types.mjs'
 
 export interface TavernLoreDerivedRefV1 {
@@ -67,13 +70,24 @@ export interface TavernLoreSuppressedOriginalEntryV1 {
   readonly sourceEntry:TavernLoreEntryPlanV1
   readonly semantic:TavernLoreSemanticEntryV1
 }
+export interface TavernLoreOrdinaryPreparedSourceEntryV1 {
+  readonly origin:'ordinary-prepared-source'
+  readonly entryId:string
+  readonly ordinal:number
+  readonly sourcePointer:string
+  readonly rawEntrySha256:string
+  readonly sourceEntry:TavernLoreEntryPlanV1
+  readonly ordinaryChange:TavernLoreOrdinaryFormalChangeV1
+  readonly semantic:TavernLoreSemanticEntryV1
+}
 export type TavernLoreEvaluationEntryV1=TavernLoreEntryPlanV1|TavernLoreDerivedEvaluationEntryV1
-  |TavernLoreSuppressedOriginalEntryV1
+  |TavernLoreSuppressedOriginalEntryV1|TavernLoreOrdinaryPreparedSourceEntryV1
 export interface TavernLoreEvaluationCompositionRefV1 {
   readonly schemaVersion:1
   readonly encoding:'owned-st-lore-evaluation-composition-ref-v1'
   readonly compilerPlanSha256:string
-  readonly derivedSnapshotSha256:string
+  readonly derivedSnapshotSha256?:string
+  readonly ordinaryPreparationSha256?:string
   readonly policySha256:string
   readonly compositionSha256:string
 }
@@ -84,6 +98,9 @@ export interface TavernLoreEvaluationCompositionV1 {
   readonly planSha256:string
   readonly ref?:TavernLoreEvaluationCompositionRefV1
   readonly derivedSnapshot?:TavernLoreDerivedSnapshotV1
+  readonly suppressedOriginalEntryIds?:ReadonlySet<string>
+  readonly ordinaryPreparation?:TavernLoreOrdinaryPreparationV1
+  readonly preparedSourceEntries?:ReadonlyMap<string,TavernLoreOrdinaryPreparedSourceEntryV1>
 }
 export const TAVERN_LORE_DERIVED_POLICY_V1=Object.freeze({schemaVersion:1,
   encoding:'owned-st-lore-derived-composition-policy-v1',
@@ -97,6 +114,8 @@ export const TAVERN_LORE_DERIVED_POLICY_V1=Object.freeze({schemaVersion:1,
   seed:'composition-hash-when-derived-present; original-domain-when-empty',
   layout:'existing-position-slots-and-native-anchors'})
 export const TAVERN_LORE_DERIVED_POLICY_SHA256=recordSha256(TAVERN_LORE_DERIVED_POLICY_V1)
+const ORDINARY_COMPOSITION_POLICY_SHA256=recordSha256({derived:TAVERN_LORE_DERIVED_POLICY_SHA256,
+  ordinary:TAVERN_LORE_ORDINARY_PREPARATION_POLICY_SHA256})
 
 /** The publishing/capture owner calls this once after obtaining real refs. */
 export function sealTavernLoreDerivedSnapshotV1(body:Omit<TavernLoreDerivedSnapshotV1,'snapshotSha256'>)
@@ -126,6 +145,23 @@ export function tavernLoreEvaluationSemanticV1(entry:TavernLoreEvaluationEntryV1
 }
 export function tavernLoreOriginalEvaluationEntryV1(entry:TavernLoreEvaluationEntryV1):TavernLoreEntryPlanV1|undefined {
   return isTavernLoreDerivedEntryV1(entry)?undefined:'sourceEntry' in entry?entry.sourceEntry:entry
+}
+/** One preparation shares its actual Source eligibility facts between the
+ * prepass and evaluator. Derived suppression/admission is a separate gate. */
+export function createTavernLoreSourceEligibilityV1(compilation:Extract<TavernLoreCompilationV1,{kind:'compiled'}>) {
+  const facts=new WeakMap<TavernLoreEntryPlanV1,boolean>()
+  return (entry:TavernLoreEvaluationEntryV1):boolean=>{
+    const original=tavernLoreOriginalEvaluationEntryV1(entry)
+    if(!original)return true
+    const known=facts.get(original)
+    if(known!==undefined)return known
+    const blocking=original.disposition==='retained-ineligible'
+      ?original.diagnosticIndexes.map(index=>compilation.diagnostics[index]!).filter(row=>row.blocking):[]
+    const eligible=original.disposition!=='retained-ineligible'
+      ||blocking.length>0&&blocking.every(row=>row.code==='LORE_VECTORIZED_EVALUATOR_REQUIRED')
+    facts.set(original,eligible)
+    return eligible
+  }
 }
 export function composeTavernLoreEvaluationV1(sourcePlan:TavernLorePlanV1,
   derivedSnapshot?:TavernLoreDerivedSnapshotV1):TavernLoreEvaluationCompositionV1 {
@@ -159,9 +195,51 @@ export function composeTavernLoreEvaluationV1(sourcePlan:TavernLorePlanV1,
           ref:entry.ref,completionRef:entry.completionRef})})})
     }))
   return Object.freeze({sourcePlan,entries:Object.freeze([...originalEntries,...derivedEntries]),derivedEntries,
-    planSha256:ref.compositionSha256,ref,derivedSnapshot})
+    planSha256:ref.compositionSha256,ref,derivedSnapshot,suppressedOriginalEntryIds:suppressed})
+}
+/** Sparse formal DATA changes only actual Source entries. Model output and
+ * already suppressed originals never acquire author execution authority. */
+export function applyTavernLoreOrdinaryPreparationV1(base:TavernLoreEvaluationCompositionV1,
+  preparation:TavernLoreOrdinaryPreparationV1):TavernLoreEvaluationCompositionV1 {
+  const entries=[...base.entries],preparedSourceEntries=new Map<string,TavernLoreOrdinaryPreparedSourceEntryV1>()
+  for(const change of preparation.changes) {
+    const entry=base.entries[change.ordinal]!
+    if(isTavernLoreDerivedEntryV1(entry)||'origin' in entry&&entry.origin==='derived-suppressed-original')continue
+    const sourceEntry=tavernLoreOriginalEvaluationEntryV1(entry)!,sourceSemantic=tavernLoreEvaluationSemanticV1(entry),
+      preprocessed=change.preprocessed,pointer=`/prepared/ordinary-source/${encodeURIComponent(entry.entryId)}/content`,
+      contentSha256=preprocessed?.body.textSha256??change.program?.contentSha256,
+      semantic:TavernLoreSemanticEntryV1={...sourceSemantic,
+        ...change.admission?{enabled:change.admission==='force-enabled'}:{},
+        ...contentSha256?{content:Object.freeze({kind:'ordinary-prepared-source-text' as const,pointer,contentSha256})}:{},
+        ...preprocessed?{primaryKeys:Object.freeze(preprocessed.primaryKeys.map(key=>key.text)),
+          secondaryKeys:Object.freeze(preprocessed.secondaryKeys.map(key=>key.text))}:{}}
+    const prepared:TavernLoreOrdinaryPreparedSourceEntryV1=Object.freeze({origin:'ordinary-prepared-source',
+      entryId:entry.entryId,ordinal:entry.ordinal,sourcePointer:entry.sourcePointer,rawEntrySha256:entry.rawEntrySha256,
+      sourceEntry,ordinaryChange:change,semantic:Object.freeze(semantic)})
+    entries[entry.ordinal]=prepared
+    if(contentSha256)preparedSourceEntries.set(pointer,prepared)
+  }
+  const descriptor={schemaVersion:1 as const,encoding:'owned-st-lore-evaluation-composition-ref-v1' as const,
+    compilerPlanSha256:base.sourcePlan.planSha256,
+    ...base.derivedSnapshot?{derivedSnapshotSha256:base.derivedSnapshot.snapshotSha256}:{},
+    ordinaryPreparationSha256:preparation.preparationSha256,
+    policySha256:ORDINARY_COMPOSITION_POLICY_SHA256}
+  const ref=Object.freeze({...descriptor,compositionSha256:recordSha256(descriptor)})
+  return Object.freeze({...base,entries:Object.freeze(entries),ordinaryPreparation:preparation,preparedSourceEntries,
+    ref,planSha256:ref.compositionSha256})
 }
 export function resolveTavernLoreEvaluationContentV1(composition:TavernLoreEvaluationCompositionV1,pointer:string) {
+  const prepared=composition.preparedSourceEntries?.get(pointer)
+  if(prepared) {
+    const change=prepared.ordinaryChange
+    if(change.preprocessed)return {pointer,text:change.preprocessed.body.text,
+      contentSha256:prepared.semantic.content.contentSha256,rawEntryPointer:prepared.sourcePointer,
+      rawEntrySha256:prepared.rawEntrySha256,origin:'ordinary-prepared-source' as const}
+    const original=resolveTavernLoreContentTextV1(composition.sourcePlan,
+      tavernLoreEvaluationSemanticV1(prepared.sourceEntry).content.pointer)
+    return {...original,pointer,text:original.text.slice(change.program!.bodyOffset),
+      contentSha256:prepared.semantic.content.contentSha256,origin:'ordinary-prepared-source' as const}
+  }
   const entry=composition.derivedEntries?.find(row=>row.semantic.content.pointer===pointer)
   if(entry)return {pointer,text:entry.content,
     contentSha256:entry.semantic.content.contentSha256,rawEntryPointer:entry.sourcePointer,

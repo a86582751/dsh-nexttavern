@@ -107,9 +107,12 @@ export function registerOpeningRoutes(deps: OpeningRoutesDependencies): void {
         if (!await canCommit(session.id))
           return jsonResponse(409,{ok:false,error:'当前宿主尚未提供原生零模型开场提交能力'})
         const programCatalog=await deps.program?.catalog(session.id)
-        if(programCatalog) {
-          if(programCatalog.source.rawSha256!==catalog.source.rawSha256
-            ||programCatalog.source.transactionId!==catalog.source.transactionId)throw Error('PROGRAM_OPENING_SOURCE_CHANGED')
+        if(programCatalog?.kind==='refused')return jsonResponse(409,{ok:false,
+          error:programCatalog.diagnostics[0]?.code??'PROGRAM_OPENING_SOURCE_UNAVAILABLE',
+          diagnostics:programCatalog.diagnostics})
+        if(programCatalog?.kind==='applicable') {
+          if(programCatalog.catalog.source.rawSha256!==catalog.source.rawSha256
+            ||programCatalog.catalog.source.transactionId!==catalog.source.transactionId)throw Error('PROGRAM_OPENING_SOURCE_CHANGED')
           const result=await deps.program!.run({sessionId:session.id,index:body.index as number,
             operationId:body.operationId,messageId,production:'selected-card-copy',instruction:null})
           if(result.kind!=='ready')throw Error(result.kind==='blocked'?result.code:'PROGRAM_OPENING_SOURCE_UNAVAILABLE')

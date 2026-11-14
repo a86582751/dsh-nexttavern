@@ -2,7 +2,8 @@
  * Original provider blocks and signatures remain in the embedded raw stream;
  * stored operations never call a live owner or acquire dispatch authority. */
 import {createHash} from 'node:crypto'
-import type {ContentBlock,NativeStoryResponseMaterialV1,NativeStoryResponseOperationV1} from '@deepseek-ai/dsh-llm'
+import type {ContentBlock,NativeStoryResponseMaterialV1,NativeStoryResponseOperationV1} from 'dsh-nexttavern-native-llm'
+import type {NativeStoryResponseMaterial,NativeStoryResponseMaterialV2} from '../../llm/src/types.ts'
 
 const fail=():never=>{throw Error('STORY_RESPONSE_MATERIAL_INVALID')}
 function canonical(value:unknown):string {
@@ -121,5 +122,47 @@ export function reconstructNativeStoryResponseMaterialV1(raw:readonly ContentBlo
   const {blocks:content,origins}=interpret(raw,material.plan)
   if(canonical(origins)!==canonical(material.canonicalOrigins))return fail()
   if(nativeStoryResponseSha256V1(content)!==material.canonicalContentSha256)return fail()
+  return content
+}
+
+/** V2 adds producer DATA without changing the V1 operation interpreter. */
+export function validateNativeStoryResponseMaterial(value:unknown):asserts value is NativeStoryResponseMaterial {
+  if(value!==null&&typeof value==='object'&&(value as {schemaVersion?:unknown}).schemaVersion===2) {
+    const row=object(value,['schemaVersion','encoding','rawContentSha256','canonicalContentSha256','canonicalOrigins','plan','finalization'])
+    if(row['encoding']!=='native-story-response-material-v2')return fail()
+    const {finalization,schemaVersion:_version,encoding:_encoding,...body}=row
+    validateNativeStoryResponseMaterialV1({...body,schemaVersion:1,encoding:'native-story-response-material-v1'})
+    const hasReceipt=finalization!==null&&typeof finalization==='object'&&Object.hasOwn(finalization,'producerReceipt')
+    const receipt=object(finalization,['schemaVersion','encoding','requestMaterialRef','turn','step',
+      'inputTextSha256','outputTextSha256',...hasReceipt?['producerReceipt']:[]])
+    const ref=object(receipt['requestMaterialRef'],['seq','sha256'])
+    if(receipt['schemaVersion']!==1||receipt['encoding']!=='native-story-response-finalization-v1'
+      ||!integer(ref['seq'])||!hash(ref['sha256'])||!integer(receipt['turn'])||receipt['turn']<1
+      ||!integer(receipt['step'])||receipt['step']<1||!hash(receipt['inputTextSha256'])||!hash(receipt['outputTextSha256']))return fail()
+    if(hasReceipt&&(receipt['producerReceipt']===null||typeof receipt['producerReceipt']!=='object'
+      ||Array.isArray(receipt['producerReceipt'])))return fail()
+    return
+  }
+  validateNativeStoryResponseMaterialV1(value)
+}
+
+/** Called at the Session acceptance boundary with its actual earlier event.
+ * Constant-address lookup preserves cold/fork identity without scanning history. */
+export function assertNativeStoryResponseFinalizationBindingV2(material:NativeStoryResponseMaterialV2,
+  input:{turn:number;step:number;assistantSeq:number;requestMaterial:unknown}):void {
+  const receipt=material.finalization,event=input.requestMaterial as {
+    seq?:unknown;type?:unknown;data?:{turn?:unknown;step?:unknown}}|undefined
+  if(receipt.turn!==input.turn||receipt.step!==input.step||receipt.requestMaterialRef.seq>=input.assistantSeq
+    ||event?.type!=='request/material'||event.seq!==receipt.requestMaterialRef.seq
+    ||event.data?.turn!==input.turn||event.data.step!==input.step
+    ||nativeStoryResponseSha256V1(event)!==receipt.requestMaterialRef.sha256)return fail()
+}
+
+export function reconstructNativeStoryResponseMaterial(raw:readonly ContentBlock[],material:NativeStoryResponseMaterial):ContentBlock[] {
+  if(material.schemaVersion===1)return reconstructNativeStoryResponseMaterialV1(raw,material)
+  validateNativeStoryResponseMaterial(material)
+  const {finalization,schemaVersion:_version,encoding:_encoding,...body}=material
+  const content=reconstructNativeStoryResponseMaterialV1(raw,{...body,schemaVersion:1,encoding:'native-story-response-material-v1'})
+  if(nativeStoryResponseSha256V1(nativeStoryVisibleTextV1(content))!==finalization.outputTextSha256)return fail()
   return content
 }

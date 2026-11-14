@@ -1,28 +1,24 @@
 // Generated from runtime/alpha3/compat/agent-loop/src/input-completion.ts; edit the TypeScript source.
-import { inspectNativeInboxHistory, nativeInputSha256 } from './input-admission.js';
-export function nativeCompletedInputReceipt(session, checkpoint, claim, supplement, capturedEnd) {
+import { nativeInputSha256 } from './input-admission.js';
+export function nativeCompletedInputReceipt(history, checkpoint, claim, supplement, capturedEnd) {
     try {
-        const events = session.snapshotEvents(), end = events.find(event => event.seq === capturedEnd.seq);
-        if (!end || end.type !== 'turn/end' || end.data.reason.kind !== 'completed'
-            || end.data.turn !== checkpoint.actualTurn || nativeInputSha256(end) !== nativeInputSha256(capturedEnd)
-            || events.filter(event => event.type === 'turn/end' && event.data.turn === checkpoint.actualTurn).length !== 1
-            || events.some(event => event.type === 'turn/start' && event.seq > checkpoint.startSeq))
+        const end = history.completedTurn(checkpoint.startSeq);
+        if (end !== capturedEnd || !end || end.data.turn !== checkpoint.actualTurn)
             return undefined;
-        const history = inspectNativeInboxHistory(session.id, events, session.inheritedEventCount);
         const linked = history.linkReceipt(checkpoint.startSeq);
         if (!linked || nativeInputSha256(linked) !== nativeInputSha256(checkpoint)
             || !history.ownsClaim(claim) || claim.turn !== checkpoint.actualTurn
             || nativeInputSha256(claim.refs) !== nativeInputSha256(checkpoint.refs)
-            || supplement && (!history.ownsClaim(supplement.claims.at(-1).claim)
+            || supplement && (!supplement.claims.length
                 || supplement.claims.some(owned => !history.ownsClaim(owned.claim))))
             return undefined;
         const admittedUsers = [];
         for (const ref of checkpoint.refs) {
             const owned = history.ownership(ref);
             if (owned.status !== 'admitted' || owned.turn !== checkpoint.actualTurn
-                || owned.userSeq <= checkpoint.firstStepStartSeq || owned.userSeq >= end.seq)
+                || owned.userSeq >= end.seq || !owned.published && owned.userSeq <= checkpoint.firstStepStartSeq)
                 return undefined;
-            admittedUsers.push(Object.freeze({ ref, userSeq: owned.userSeq }));
+            admittedUsers.push(Object.freeze({ ref, userSeq: owned.userSeq, ...owned.published ? { published: owned.published } : {} }));
         }
         if (!admittedUsers.length || !claim.messages.some(message => message.source.kind === 'user'))
             return undefined;

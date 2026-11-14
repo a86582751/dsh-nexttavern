@@ -7,6 +7,7 @@ import {resolveTavernLoreEvaluationContentV1,isTavernLoreDerivedEntryV1,tavernLo
 import {exact,sealTavernLoreSnapshotV1,LORE_EVALUATOR_POLICY_V1,freezeLoreData} from './tavern-lore-snapshot.mjs'
 import {refuse} from './tavern-lore-match.mjs'
 import {tavernLoreEntrySemanticSha256V1} from './tavern-lore-timed.mjs'
+import {hasTavernPromptMacroSyntaxV1} from './tavern-prompt-transform-execution.mjs'
 import type {TavernLoreSemanticEntryV1}
   from './tavern-lore-plan-types.mjs'
 import type {TavernLoreEvaluationCompositionV1,TavernLoreEvaluationEntryV1} from './tavern-lore-derived.mjs'
@@ -18,12 +19,14 @@ import type {TavernLoreInjectionFeedbackV1} from './tavern-lore-evaluator-types.
 export class TavernLoreTemplateFeedbackStateV1 {
   private snapshot:TavernLoreFrozenSnapshotV1
   private readonly receipts=new Map<string,TavernLoreRenderedTextV1>()
+  private readonly pendingKeyReceipts:TavernLoreRenderedTextV1[]=[]
   private readonly rows=new Map<string,TavernLoreTemplateFeedbackV1>()
   private readonly consumed=new Set<string>()
   private readonly scanRows=new Map<string,TavernLoreInjectionFeedbackV1>()
   private readonly consumedScans=new Set<string>()
   constructor(private readonly composition:TavernLoreEvaluationCompositionV1,snapshot:TavernLoreFrozenSnapshotV1,
-    private readonly eligible:(entry:TavernLoreEvaluationEntryV1)=>boolean,
+    private readonly activationTargets:ReadonlyMap<string,{readonly entry:TavernLoreEvaluationEntryV1;
+      readonly semantic:TavernLoreSemanticEntryV1;readonly eligible:boolean}>,
     private readonly checkpoint:()=>void,private readonly producer?:TavernLoreTemplateProducerV1,
     private readonly defaultSignal?:AbortSignal) {
     this.snapshot=snapshot
@@ -32,12 +35,54 @@ export class TavernLoreTemplateFeedbackStateV1 {
       refuse('LORE_TEMPLATE_PREPARATION_NOT_FRESH')
     }
     for(const receipt of snapshot.renderedTexts) {
-      const resolved=resolveTavernLoreEvaluationContentV1(composition,receipt.pointer)
+      const resolved=this.resolveText(receipt.pointer)
       if(resolved.contentSha256!==receipt.rawContentSha256)refuse('LORE_TEMPLATE_SOURCE_MISMATCH')
       this.receipts.set(receipt.pointer,receipt)
     }
     for(const row of snapshot.activationFeedback??[])this.rows.set(row.request.entryId,row)
     for(const row of snapshot.injectionFeedback??[])this.scanRows.set(`${row.loop}:${row.stage}`,row)
+  }
+  private resolveText(pointer:string):{contentSha256:string} {
+    for(const entry of this.composition.entries) {
+      if(isTavernLoreDerivedEntryV1(entry))continue
+      for(const field of ['primaryKeys','secondaryKeys'] as const) {
+        const prefix=`${entry.sourcePointer}/@${field}/`
+        if(!pointer.startsWith(prefix))continue
+        const index=Number(pointer.slice(prefix.length)),keys=tavernLoreEvaluationSemanticV1(entry)[field]
+        if(!Number.isSafeInteger(index)||index<0||index>=keys.length||`${prefix}${index}`!==pointer)
+          refuse('LORE_KEY_RECEIPT_POINTER_INVALID',entry.entryId)
+        return {contentSha256:schemaTextSha256(keys[index]!)}
+      }
+    }
+    return resolveTavernLoreEvaluationContentV1(this.composition,pointer)
+  }
+  async keys(entry:TavernLoreEvaluationEntryV1,field:'primaryKeys'|'secondaryKeys'):Promise<readonly string[]> {
+    const keys=tavernLoreEvaluationSemanticV1(entry)[field],result:string[]=[]
+    if('ordinaryChange' in entry&&entry.ordinaryChange.preprocessed)return keys
+    for(const [index,text] of keys.entries()) {
+      const templated=this.snapshot.settings.macroPolicy==='frozen-key-alias-receipt-v2'
+        ?hasTavernPromptMacroSyntaxV1(text):text.includes('{{')
+      if(!templated){result.push(text);continue}
+      if(isTavernLoreDerivedEntryV1(entry))refuse('LORE_KEY_TEMPLATE_UNRENDERED',entry.entryId)
+      const pointer=`${entry.sourcePointer}/@${field}/${index}`
+      let receipt=this.receipts.get(pointer)
+      if(!receipt&&this.producer?.renderKey) {
+        this.checkpoint()
+        const supplied=await this.producer.renderKey({entryId:entry.entryId,pointer,text},
+          this.producer.signal??this.defaultSignal)
+        this.checkpoint()
+        if(supplied.pointer!==pointer||supplied.rawContentSha256!==schemaTextSha256(text)
+          ||supplied.rendererIdentity!==this.producer.identity
+          ||supplied.rendererImplementationSha256!==this.producer.implementationSha256)
+          refuse('LORE_KEY_PRODUCER_MISMATCH',entry.entryId)
+        this.pendingKeyReceipts.push(supplied)
+        this.receipts.set(pointer,supplied)
+        receipt=supplied
+      }
+      if(!receipt)refuse('LORE_KEY_TEMPLATE_UNRENDERED',entry.entryId,pointer)
+      result.push(receipt.renderedText)
+    }
+    return result
   }
   async scan(loop:number,state:TavernLoreScanStateV1,stage:TavernLoreInjectionFeedbackV1['stage']) {
     const key=`${loop}:${stage}`
@@ -67,19 +112,18 @@ export class TavernLoreTemplateFeedbackStateV1 {
     for(const proposal of row.activationProposals)this.activation(proposal)
     return {contributions:row.contributions,activationProposals:row.activationProposals}
   }
-  private activation(proposal:TavernLoreTemplateActivationV1):void {
-    const entry=this.composition.entries.find(item=>item.entryId===proposal.entryId)
+  activation(proposal:TavernLoreTemplateActivationV1):void {
+    const target=this.activationTargets.get(proposal.entryId),entry=target?.entry
     if(!entry||entry.rawEntrySha256!==proposal.rawEntrySha256)refuse('LORE_FEEDBACK_ENTRY_UNKNOWN',proposal.entryId)
-    const semantic=tavernLoreEvaluationSemanticV1(entry)
-    if(!semantic.enabled)refuse('LORE_FEEDBACK_ENTRY_DISABLED',entry.entryId)
-    if(!this.eligible(entry))refuse('LORE_FEEDBACK_ENTRY_INELIGIBLE',entry.entryId)
+    if(!target!.semantic.enabled)refuse('LORE_FEEDBACK_ENTRY_DISABLED',entry.entryId)
+    if(!target!.eligible)refuse('LORE_FEEDBACK_ENTRY_INELIGIBLE',entry.entryId)
   }
   async selected(entry:TavernLoreEvaluationEntryV1,semantic:TavernLoreSemanticEntryV1,loop:number,state:TavernLoreScanStateV1)
     :Promise<{text:string;proposals:readonly TavernLoreTemplateActivationV1[]}> {
     const resolved=resolveTavernLoreEvaluationContentV1(this.composition,semantic.content.pointer)
-    if(isTavernLoreDerivedEntryV1(entry)) {
-      // Model output has no author program authority. Template/macro/decorator
-      // markers stay literal, while this same evaluator counts and scans text.
+    if(isTavernLoreDerivedEntryV1(entry)||'ordinaryChange' in entry&&entry.ordinaryChange.preprocessed) {
+      // Model output and completed prepass output are literal here. The latter
+      // already has its actual execution in the same preparation audit.
       if(Buffer.byteLength(resolved.text,'utf8')>LORE_EVALUATOR_POLICY_V1.bounds.contentBytes)
         refuse('LORE_CONTENT_LIMIT',entry.entryId)
       return {text:resolved.text,proposals:[]}
@@ -134,6 +178,8 @@ export class TavernLoreTemplateFeedbackStateV1 {
   final():TavernLoreFrozenSnapshotV1 {
     if(this.consumed.size!==this.rows.size)refuse('LORE_FEEDBACK_UNSELECTED')
     if([...this.scanRows.keys()].some(key=>!this.consumedScans.has(key)))refuse('LORE_INJECTION_SCAN_UNCONSUMED')
+    if(this.pendingKeyReceipts.length)return sealTavernLoreSnapshotV1({...this.snapshot,
+      renderedTexts:[...this.snapshot.renderedTexts,...this.pendingKeyReceipts]})
     return this.snapshot
   }
 }

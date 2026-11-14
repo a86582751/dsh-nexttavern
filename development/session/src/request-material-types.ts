@@ -33,6 +33,18 @@ export interface NativeRequestLocalSamplingV1 {
   readonly schemaVersion:1
   readonly base:{readonly temperature?:number;readonly maxTokens?:number;readonly stop?:readonly string[]}
 }
+/** Last request-text substitutions at Native's resolved transport coordinates.
+ * The structure and original sources remain in this same material record. */
+export interface NativeMaterialTextOutputV1 {
+  readonly messageOrdinal:number
+  readonly blockOrdinal:number|null
+  readonly text:string
+}
+export interface NativeMaterialFinalTextProjectionV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-request-final-text-projection-v1'
+  readonly textOutputs:readonly NativeMaterialTextOutputV1[]
+}
 export interface NativeRequestMaterialRecordV1 {
   readonly schemaVersion:1
   readonly encoding:'native-request-material-v1'
@@ -44,7 +56,8 @@ export interface NativeRequestMaterialRecordV1 {
   readonly base:{readonly boundarySeq:number;readonly contentGeneration:number;readonly surfaceNodes:readonly number[];
     readonly messages:readonly NativeMaterialMessageRefV1[];readonly sha256:string}
   readonly delta:{readonly insertions:readonly NativeMaterialInsertionV1[];readonly protectedPrefixLength:number;
-    readonly messageProjection?:NativeMessageProjectionV1;readonly requestLocalSampling?:NativeRequestLocalSamplingV1}
+    readonly messageProjection?:NativeMessageProjectionV1;readonly requestLocalSampling?:NativeRequestLocalSamplingV1;
+    readonly finalTextProjection?:NativeMaterialFinalTextProjectionV1}
   readonly placements:readonly NativeMaterialPlacementV1[]
   readonly outputSha256:string
 }
@@ -109,7 +122,9 @@ export function validateNativeRequestMaterialDataV1(value:unknown,subject:string
   const delta=record(rawDelta,['insertions','protectedPrefixLength',
     ...version===2?['messageTextProjections']:[],
     ...Object.hasOwn(rawDelta,'messageProjection')?['messageProjection']:[],
-    ...Object.hasOwn(rawDelta,'requestLocalSampling')?['requestLocalSampling']:[]],subject)
+    ...Object.hasOwn(rawDelta,'requestLocalSampling')?['requestLocalSampling']:[],
+    ...Object.hasOwn(rawDelta,'finalTextProjection')?['finalTextProjection']:[]],subject)
+  if(delta['finalTextProjection']!==undefined)validateNativeMaterialFinalTextProjectionV1(delta['finalTextProjection'],subject)
   if(delta['messageProjection']!==undefined)validateNativeMessageProjectionV1(delta['messageProjection'],subject)
   if(delta['requestLocalSampling']!==undefined) {
     const local=record(delta['requestLocalSampling'],['schemaVersion','base'],subject)
@@ -195,5 +210,21 @@ export function validateNativeMessageProjectionV1(value:unknown,subject:string):
       bytes+=new TextEncoder().encode(block['text']).byteLength
       if(bytes>4194304)fail(subject)
     }
+  }
+}
+
+export function validateNativeMaterialFinalTextProjectionV1(value:unknown,subject:string):void {
+  const projection=record(value,['schemaVersion','encoding','textOutputs'],subject)
+  if(projection['schemaVersion']!==1||projection['encoding']!=='native-request-final-text-projection-v1')fail(subject)
+  let priorMessage=-1,priorBlock=-1,bytes=0
+  for(const value of list(projection['textOutputs'],131072,subject)) {
+    const output=record(value,['messageOrdinal','blockOrdinal','text'],subject)
+    const message=output['messageOrdinal'],block=output['blockOrdinal']
+    if(!integer(message,4351)||block!==null&&!integer(block,4095)||typeof output['text']!=='string'
+      ||!output['text'].isWellFormed()||message<priorMessage
+      ||message===priorMessage&&(block===null||priorBlock<0||block<=priorBlock))fail(subject)
+    priorMessage=message;priorBlock=block===null?-1:block as number
+    bytes+=new TextEncoder().encode(output['text']).byteLength
+    if(bytes>16777216)fail(subject)
   }
 }

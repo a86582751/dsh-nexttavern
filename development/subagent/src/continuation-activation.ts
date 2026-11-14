@@ -16,14 +16,14 @@ import type {
   AgentOptions,
   CreateAgentOptions,
 } from '@deepseek-ai/dsh-agent'
-import { errorChain } from '@deepseek-ai/dsh-llm'
-import type { MessageId } from '@deepseek-ai/dsh-llm'
+import { errorChain } from 'dsh-nexttavern-native-llm'
+import type { MessageId } from 'dsh-nexttavern-native-llm'
 import type {
   SessionEvent,
   SessionId,
   SessionLogOffset as SessionLogOffsetType,
   UserMessage,
-} from '@deepseek-ai/dsh-session'
+} from 'dsh-nexttavern-native-session'
 import type { ToolRestriction } from '@deepseek-ai/dsh-tools'
 import {
   appendDelegatedPolicyOverrides,

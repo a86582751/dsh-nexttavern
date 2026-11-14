@@ -1,6 +1,9 @@
 /** Trusted readonly initial/cache producer. The supplier owns all actual reads,
  * currentness, cancellation and protected rendering; these outputs grant none. */
 import {recordSha256} from './roleplay-data.js'
+import {isCurrentPromptVariableInputV2} from './roleplay-tavern-prompt-variables-data.js'
+import type {TavernPromptVariableInputV2,TavernPromptVariableResultV2,TavernPromptVariablePacketV2}
+  from './roleplay-tavern-prompt-variables-types.js'
 import {schemaTextSha256} from './tavern-mvu-schema-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {promptExact,promptFail,promptFact,promptFreeze,promptBound,promptUnavailable,promptRef,promptRead,
@@ -24,18 +27,29 @@ function validateRead(read:TavernPromptVariableReadV1):void {
 }
 export async function prepareRoleplayTavernPromptVariablesV1(raw:unknown,producer:TavernPromptVariableProducerV1)
   :Promise<TavernPromptVariableResultV1> {
+  return prepareVariables(raw,producer,false) as Promise<TavernPromptVariableResultV1>
+}
+export async function prepareRoleplayTavernPromptVariablesV2(raw:TavernPromptVariableInputV2,producer:TavernPromptVariableProducerV1)
+  :Promise<TavernPromptVariableResultV2> {
+  return prepareVariables(raw,producer,true) as Promise<TavernPromptVariableResultV2>
+}
+async function prepareVariables(raw:unknown,producer:TavernPromptVariableProducerV1,v2:boolean)
+  :Promise<TavernPromptVariableResultV1|TavernPromptVariableResultV2> {
   try {
     // Core supplies the Source owner's frozen data and the initial producer's
     // frozen catalog. Detach the remaining per-attempt input without charging
     // those accepted subtrees to another aggregate input budget.
     const {source,catalog,...perAttempt}=raw as TavernPromptVariableInputV1
-    const input:TavernPromptVariableInputV1={...cloneRoleplayTavernLoreDataV1(perAttempt,
-      TAVERN_PROMPT_VARIABLE_BOUNDS_V1.inputBytes,{nodes:131072,depth:66}),source,catalog}
+    const trusted=v2&&isCurrentPromptVariableInputV2(raw as object),
+      input=(trusted?raw:{...cloneRoleplayTavernLoreDataV1(perAttempt,
+      TAVERN_PROMPT_VARIABLE_BOUNDS_V1.inputBytes,{nodes:131072,depth:66}),source,catalog}) as TavernPromptVariableInputV1,
+      selected=v2?(input as unknown as TavernPromptVariableInputV2).messageSelection:undefined
     // Keep the readonly element type while Array.isArray validates the same
     // detached array; its mutable-any[] predicate otherwise erases row types.
     const scopeRows=input.scopes
-    promptExact(input,['schemaVersion','encoding','sessionId','source','catalog','scopes','history','attempt'])
-    if(input.schemaVersion!==1||input.encoding!=='owned-prompt-variable-input-v1'||typeof input.sessionId!=='string'
+    promptExact(input,['schemaVersion','encoding','sessionId','source','catalog','scopes',v2?'messageSelection':'history','attempt'])
+    const versioned=input as unknown as {schemaVersion:unknown;encoding:unknown}
+    if(versioned.schemaVersion!==(v2?2:1)||versioned.encoding!==(v2?'owned-prompt-variable-input-v2':'owned-prompt-variable-input-v1')||typeof input.sessionId!=='string'
       ||!input.sessionId||Buffer.byteLength(input.sessionId,'utf8')>128||!Array.isArray(input.scopes)||input.scopes.length>6) {
       promptFail('PROMPT_VARIABLE_INPUT_INVALID')
     }
@@ -66,13 +80,17 @@ export async function prepareRoleplayTavernPromptVariablesV1(raw:unknown,produce
       if(!['global','chat','message','script','card','cache'].includes(row.scope)||scopeFacts.has(row.scope)) {
         promptFail('PROMPT_VARIABLE_SCOPE_DUPLICATE_OR_INVALID')
       }
-      const fact=promptFact(row.fact);scopeFacts.set(row.scope,fact)
+      const fact=trusted?row.fact.kind==='unavailable'?{kind:'unavailable' as const,missingEvidence:row.fact.missingEvidence}:
+        {kind:'known' as const,values:row.fact.kind==='values'?row.fact.values:{},read:{kind:'scope' as const,
+          identity:'actual-values',valueSha256:row.fact.kind==='values'?row.fact.valuesSha256:recordSha256({kind:'absent'}),
+          provenance:row.fact.provenance}}:promptFact(row.fact)
+      scopeFacts.set(row.scope,fact)
       if(fact.kind==='known') {
         const read={...fact.read,kind:'scope' as const,identity:row.scope};reads.push(read)
         const provenance=row.fact.kind==='unavailable'?null:row.fact.provenance
         if(!provenance)promptFail('PROMPT_VARIABLE_FACT_INVALID')
         readonlyScopes.push({scope:row.scope,ownerId:provenance.ownerId,versionSha256:provenance.versionSha256,
-          values:fact.values,valuesSha256:recordSha256(fact.values)})
+          values:fact.values,valuesSha256:trusted&&row.fact.kind==='values'?row.fact.valuesSha256:recordSha256(fact.values)})
       }
     }
     if(input.attempt)reads.push(promptRead('attempt',input.attempt.attemptId,recordSha256(input.attempt),input.attempt.provenance))
@@ -149,13 +167,42 @@ export async function prepareRoleplayTavernPromptVariablesV1(raw:unknown,produce
       }
     }
     checkpoint()
-    const message=readPromptSelectedMessageDataV1(input.history,initial)
+    if(selected&&!trusted){
+      promptExact(selected,['schemaVersion','encoding','selectedBaseSha256','kind','values','missingEvidence','reads','selection'])
+      if(selected.schemaVersion!==2||selected.encoding!=='owned-prompt-message-selection-v2'
+        ||!['empty','values','initial-fallback','unavailable'].includes(selected.kind)
+        ||!Array.isArray(selected.reads)||selected.reads.length>TAVERN_PROMPT_VARIABLE_BOUNDS_V1.readDependencies
+        ||!Array.isArray(selected.missingEvidence)||typeof selected.selectedBaseSha256!=='string'
+        ||!selected.selectedBaseSha256.match(/^[a-f0-9]{64}$/)
+        ||(selected.kind==='unavailable')!==(selected.values===null)
+        ||selected.kind==='unavailable'&&!selected.missingEvidence.length)
+        promptFail('PROMPT_VARIABLE_HISTORY_INVALID')
+      promptExact(selected.selection,['disposition','messageId','swipe','previousMessageId','selectedValuesSha256'])
+      if(selected.kind==='empty'?(selected.selection.messageId!==null||selected.selection.swipe!==null):
+        typeof selected.selection.messageId!=='string'||!Number.isSafeInteger(selected.selection.swipe)
+          ||Number(selected.selection.swipe)<0)promptFail('PROMPT_VARIABLE_MESSAGE_IDENTITY')
+      for(const read of selected.reads)validateRead(read)
+      if(selected.values!==null){
+        promptValues(selected.values)
+        if(recordSha256(selected.values)!==selected.selection.selectedValuesSha256)promptFail('PROMPT_VARIABLE_FACT_HASH')
+      }
+    }
+    const fallbackValues=selected?.kind==='initial-fallback'&&initial.kind==='bound'
+      ?{...initial.binding.values,...selected.values}:null,
+      message=selected?{values:selected.kind==='unavailable'?null:selected.kind==='initial-fallback'?fallbackValues:selected.values,
+        emptyChat:selected.kind==='empty',missingEvidence:selected.kind==='initial-fallback'&&initial.kind!=='bound'
+          ?['initial fallback for previous-message search',...initial.missingEvidence]:selected.missingEvidence,
+        reads:[...selected.reads,...selected.kind==='initial-fallback'?initial.reads:[]],
+        selection:fallbackValues?{...selected.selection,selectedValuesSha256:recordSha256(fallbackValues)}:selected.selection}
+        :readPromptSelectedMessageDataV1(input.history,initial)
     let cache:TavernPromptVariableAvailabilityV1
     const cacheReads:TavernPromptVariableReadV1[]=[...initial.reads,...message.reads]
     if(message.emptyChat) {
       // Fixed precacheVariables returns before touching globals, initial or trace
       // for empty chat. A complete empty membership fact proves this empty cache.
-      cache=promptBound('cache',cacheOwner,{},message.reads,{policy:'fixed-st-empty-chat-cache-v1',history:input.history})
+      cache=promptBound('cache',cacheOwner,{},message.reads,v2
+        ?{policy:'fixed-st-empty-chat-cache-v1',messageSelection:selected}
+        :{policy:'fixed-st-empty-chat-cache-v1',history:input.history})
     } else {
       const global=scopeFacts.get('global'),chat=scopeFacts.get('chat'),missing:string[]=[]
       if(initial.kind!=='bound')missing.push(...initial.missingEvidence)
@@ -175,9 +222,11 @@ export async function prepareRoleplayTavernPromptVariablesV1(raw:unknown,produce
           _trace_id:input.attempt.traceCounter,_modify_id:0})
         const overlay=scopeFacts.get('cache')
         if(overlay?.kind==='known'
-          &&overlay.read.provenance.ref.encoding==='native-prompt-cache-manual-current-overlay-ref-v1') {
+          &&(overlay.read.provenance.ref.encoding==='native-prompt-cache-manual-current-overlay-ref-v1'
+            ||v2&&overlay.read.provenance.ref.encoding==='native-prompt-cache-manual-current-overlay-ref-v3')) {
           const basis=overlay.read.provenance.ref
-          if(basis.schemaVersion!==1||basis.encoding!=='native-prompt-cache-manual-current-overlay-ref-v1'
+          if(!(basis.schemaVersion===1&&basis.encoding==='native-prompt-cache-manual-current-overlay-ref-v1'
+              ||v2&&basis.schemaVersion===3&&basis.encoding==='native-prompt-cache-manual-current-overlay-ref-v3')
             ||basis.sessionId!==input.sessionId||basis.sourceSha256!==input.source?.sourceSha256
             ||basis.valuesSha256!==recordSha256(overlay.values)||Object.keys(overlay.values).length!==1
             ||!Object.hasOwn(overlay.values,'stat_data'))promptFail('PROMPT_NATIVE_MANUAL_CACHE_OVERLAY_INVALID')
@@ -206,6 +255,24 @@ export async function prepareRoleplayTavernPromptVariablesV1(raw:unknown,produce
       sessionId:input.sessionId,sourceSha256:input.source?.sourceSha256??null,catalogSha256:input.catalog?.catalogSha256??null,
       inputSha256:recordSha256(input),defaultVariableScope:'cache',initial,cache,initialMerges:merges,
       selection:message.selection,reads,diagnostics}
+    if(v2){
+      const dependencies:TavernPromptVariableReadV1[]=[],indexes=new Map<string,number>(),
+        use=(read:TavernPromptVariableReadV1)=>{
+          const key=JSON.stringify([read.kind,read.identity,read.valueSha256,read.provenance.ownerId,
+            read.provenance.versionSha256,read.provenance.refSha256])
+          let index=indexes.get(key)
+          if(index===undefined){index=dependencies.length;indexes.set(key,index);dependencies.push(read)}
+          return index
+        },available=(value:TavernPromptVariableAvailabilityV1)=>{
+          const {reads,...data}=value
+          return {...data,dependencyIndexes:[...new Set(reads.map(use))]}
+        },{reads:_reads,initial:_initial,cache:_cache,...rest}=body,
+        small={...rest,schemaVersion:2 as const,encoding:'owned-prompt-variable-packet-v2' as const,
+          initial:available(initial),cache:available(cache),dependencies}
+      const packet=promptFreeze({...small,packetSha256:recordSha256(small)}) as TavernPromptVariablePacketV2
+      ownerCheckpoint()
+      return {kind:'prepared',input:input as unknown as TavernPromptVariableInputV2,packet}
+    }
     const packet=promptFreeze(cloneRoleplayTavernLoreDataV1({...body,packetSha256:recordSha256(body)},
       TAVERN_PROMPT_VARIABLE_BOUNDS_V1.outputBytes,{nodes:131072,depth:66}) as TavernPromptVariablePacketV1)
     ownerCheckpoint()

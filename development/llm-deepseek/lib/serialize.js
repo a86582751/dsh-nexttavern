@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/compat/llm-deepseek/src/serialize.ts; edit the TypeScript source.
 /** Map system snapshots, tool changes, and conversation turns to Messages using the configured route capability. */
-import { LlmError, requestImageHandleText } from '@deepseek-ai/dsh-llm';
+import { LlmError, requestImageHandleText } from 'dsh-nexttavern-native-llm';
 import { readReplay } from './replay.js';
 function unsupported(type) {
     throw new LlmError(`DeepSeek Messages cannot represent ${type}`, 'UNSUPPORTED_CONTENT');

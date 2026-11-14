@@ -1,6 +1,6 @@
 /** Turn jumps and history-prepend anchoring, independent of DOM measurement. */
 import { useLayoutEffect, useState } from 'react'
-import type { SessionSeq } from '@deepseek-ai/dsh-session/types'
+import type { SessionSeq } from 'dsh-nexttavern-native-session/types'
 import type { ChatNode } from '../contract/chat-nodes.ts'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import type { TurnRailItem } from './turn-rail-items.ts'

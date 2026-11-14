@@ -8,6 +8,8 @@ import {createRequire,registerHooks} from 'node:module'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {createTestDirectory,cleanupTestDirectory} from '../src/operations/test-temp.mts'
 
+const nativeDataSpecifier=/^dsh-nexttavern-native-(?:agent-loop|session(?:\/surface)?)$/
+
 export async function installMvuNativeDataTestDependencies() {
   const directory=createTestDirectory('mvu-native-data-')
   try {
@@ -20,27 +22,30 @@ export async function installMvuNativeDataTestDependencies() {
       peer=path.join(directory,'native-pure-data.mjs'),
       generatedCore=new URL('../lib/core/',import.meta.url).href
     const result=await build({stdin:{contents:[
-      `export {nativeInputSha256} from ${JSON.stringify(input)};`,
-      `export {reconstructNativeRequestMaterialV1,verifyNativeRequestMaterialHistoryV1} from ${JSON.stringify(material)};`,
-      `export {deriveEventMessage,foldSurface} from ${JSON.stringify(surface)};`,
+      `export {nativeInputCanonical,nativeInputSha256,inspectNativeInboxHistory} from ${JSON.stringify(input)};`,
+      `export {reconstructNativeRequestMaterialV1,verifyNativeRequestMaterialHistoryV1,verifyNativeSessionRequestMaterialHistoryV1,projectNativeMaterialTextOutputsV1} from ${JSON.stringify(material)};`,
+      `export {createSurfaceCursor,deriveEventMessage,foldSurface} from ${JSON.stringify(surface)};`,
       `export {validateNativeOpeningInvocationV1,validateNativeGeneratedOpeningReceiptV1,validateNativeOpeningClosingAckV1,validateNativeOpeningRequestAttemptV1}`+
         ` from ${JSON.stringify(opening)};`,
     ].join('\n'),resolveDir:fileURLToPath(new URL('../',import.meta.url)),sourcefile:'mvu-native-pure-data-entry.ts'},
     bundle:true,platform:'node',format:'esm',write:false,
     nodePaths:[fileURLToPath(new URL('../build-tools/node_modules/',import.meta.url))],
     plugins:[{name:'locked-mvu-native-data',setup(builder) {
-      builder.onResolve({filter:/^@deepseek-ai\/dsh-session\/surface$/},()=>({
+      builder.onResolve({filter:/^dsh-nexttavern-native-session\/surface$/},()=>({
         path:fileURLToPath(new URL('../development/session/src/surface.ts',import.meta.url))}))
+      builder.onResolve({filter:/^dsh-nexttavern-native-session\/types$/},()=>({
+        path:fileURLToPath(new URL('../development/session/src/types.ts',import.meta.url))}))
+      builder.onResolve({filter:/^dsh-nexttavern-native-session\/request-material$/},()=>({
+        path:fileURLToPath(new URL('../development/session/src/request-material-types.ts',import.meta.url))}))
       builder.onResolve({filter:/^@deepseek-ai\/dsh-brand$/},()=>({
         path:pathToFileURL(require.resolve('@deepseek-ai/dsh-brand')).href,external:true}))
     }}]})
     assert.equal(result.outputFiles.length,1)
     await writeFile(peer,result.outputFiles[0]!.contents,{flag:'wx'})
+    const peerUrl=pathToFileURL(peer).href
     const hooks=registerHooks({resolve(specifier,context,next) {
-      if((specifier==='@deepseek-ai/dsh-agent-loop'||specifier==='@deepseek-ai/dsh-session'
-        ||specifier==='@deepseek-ai/dsh-session/surface')
-        &&context.parentURL?.startsWith(generatedCore)) {
-        return {url:pathToFileURL(peer).href,shortCircuit:true}
+      if(nativeDataSpecifier.test(specifier)&&context.parentURL?.startsWith(generatedCore)) {
+        return {url:peerUrl,shortCircuit:true}
       }
       return next(specifier,context)
     }})
@@ -48,7 +53,11 @@ export async function installMvuNativeDataTestDependencies() {
       // Revoke the process-local hook before removing its owned module file.
       hooks.deregister()
       cleanupTestDirectory(directory)
-    },{nativeDataModulePath:peer})
+    },{nativeDataModulePath:peer,esbuildPlugin:{name:'maintained-native-data-peer',setup(builder) {
+      // Source bundles consume the same maintained DATA exports as generated
+      // modules. Keep their actual module identity outside the caller bundle.
+      builder.onResolve({filter:nativeDataSpecifier},()=>({path:peerUrl,external:true,sideEffects:false}))
+    }} satisfies import('esbuild').Plugin})
   }catch(error) {
     cleanupTestDirectory(directory)
     throw error

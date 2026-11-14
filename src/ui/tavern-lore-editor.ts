@@ -16,6 +16,7 @@ interface Draft {
   readonly revision:number
   readonly rawEntryPointer:string
   readonly rawEntrySha256:string
+  readonly currentNativeMember?:TavernLoreEditorEntryV1['currentNativeMember']
   readonly values:Values
   readonly changes:TavernLoreCurrentNativeFieldsV1
   readonly raw:Readonly<Record<string,string>>
@@ -76,7 +77,18 @@ function failureOf(error:unknown):TavernLoreEditorFailureDetailsV1|null {
 function draftFor(editor:TavernLoreEditorDataV1,row:TavernLoreEditorEntryV1):Draft {
   return {entryId:row.entryId,sourceSha256:editor.sourceSha256,revision:editor.revision,
     rawEntryPointer:row.rawEntryPointer,rawEntrySha256:row.rawEntrySha256,
+    ...(row.currentNativeMember?{currentNativeMember:row.currentNativeMember}:{}),
     values:{...row.semantic,content:row.contentText},changes:{},raw:{},errors:{}}
+}
+function pendingEntryMatches(pending:TavernLoreEditorPendingV1,row:TavernLoreEditorEntryV1):boolean {
+  const request=pending.request
+  if(!('mutation' in request))return row.rawEntryPointer===request.rawEntryPointer
+    &&row.rawEntrySha256===request.rawEntrySha256
+  const target=request.mutation.target,actual=row.currentNativeMember?.identity
+  if(target.kind==='original')return actual?.kind==='original'
+    &&actual.rawEntryPointer===target.rawEntryPointer&&actual.rawEntrySha256===target.rawEntrySha256
+  return actual?.kind==='introduced'&&actual.eventRef.key===target.eventRef.key
+    &&actual.eventRef.sha256===target.eventRef.sha256&&actual.ordinal===target.ordinal
 }
 /** Client selection owns display and response lifetimes only. All mutation
  * authority remains in the actual route supplier and append-only store. */
@@ -129,8 +141,7 @@ export function createTavernLoreEditorControllerV1(deps:ControllerDependencies) 
       const staleDraft=!!original&&(original.sourceSha256!==editor.sourceSha256||original.revision!==editor.revision
         ||!editor.entries.some(row=>row.entryId===original.entryId&&row.rawEntrySha256===original.rawEntrySha256))
       const canRecover=!!pending&&pending.request.expectedSourceSha256===editor.sourceSha256
-        &&editor.revision>=pending.request.expectedRevision&&editor.entries.some(row=>
-          row.rawEntryPointer===pending.request.rawEntryPointer&&row.rawEntrySha256===pending.request.rawEntrySha256)
+        &&editor.revision>=pending.request.expectedRevision&&editor.entries.some(row=>pendingEntryMatches(pending,row))
       publish({editor,staleDraft,canRecover,error:state.storageBlocked?state.error:
         pending?(canRecover?'本次请求仍需服务端确认；可恢复原请求':'Source 或条目版本已变化；原请求已保留，请重新加载并核对'):
           staleDraft?'Source 或 revision 已变化，请重新载入条目后编辑':null,failureDetails:null})
@@ -222,9 +233,12 @@ export function createTavernLoreEditorControllerV1(deps:ControllerDependencies) 
       ||Object.keys(draft.errors).length||!Object.keys(draft.changes).length)return
     publish({saving:true,error:null})
     try {
-      const request=canonicalTavernLoreEditRequestV1({sessionId:sid,expectedSourceSha256:draft.sourceSha256,
-        expectedRevision:draft.revision,operationId:deps.operationId?.()??'lore-'+globalThis.crypto.randomUUID(),
-        rawEntryPointer:draft.rawEntryPointer,rawEntrySha256:draft.rawEntrySha256,fields:draft.changes})
+      const basis={sessionId:sid,expectedSourceSha256:draft.sourceSha256,
+        expectedRevision:draft.revision,operationId:deps.operationId?.()??'lore-'+globalThis.crypto.randomUUID()}
+      const request=canonicalTavernLoreEditRequestV1(draft.currentNativeMember
+        ?{schemaVersion:2,encoding:'tavern-lore-mutation-request-v2',...basis,
+          mutation:{kind:'fields',target:draft.currentNativeMember.identity,fields:draft.changes}}
+        :{...basis,rawEntryPointer:draft.rawEntryPointer,rawEntrySha256:draft.rawEntrySha256,fields:draft.changes})
       const payloadSha256=await tavernLoreEditPayloadSha256V1(request)
       if(!live(sid,captured))return
       const pending=createTavernLoreEditorPendingV1(request,payloadSha256)
@@ -279,6 +293,14 @@ export function createTavernLoreEditorPanelV1(deps:PanelDependencies) {
       type:'button',className:'dsh-rp-btn',disabled,onClick:guarded(action)},text)
     if(state.sessionId!==sid)return React.createElement('div',{className:'dsh-rp-panel',role:'status'},'正在读取当前会话…')
     const draft=state.draft,pending=state.pending
+    let pendingLabel='',pendingFields:TavernLoreCurrentNativeFieldsV1|undefined
+    if(pending) {
+      const request=pending.request
+      if('mutation' in request) {
+        pendingFields=request.mutation.fields
+        pendingLabel=request.mutation.target.kind==='original'?request.mutation.target.rawEntryPointer:'已新增条目'
+      }else {pendingFields=request.fields;pendingLabel=request.rawEntryPointer}
+    }
     const blocked=state.saving||!!pending||state.staleDraft||state.storageBlocked
     const edit=(key:string,value:unknown,text?:string):void=>{
       if(renderedSid.current===sid&&controller.getState().sessionId===sid)controller.change(key,value,text)
@@ -326,8 +348,8 @@ export function createTavernLoreEditorPanelV1(deps:PanelDependencies) {
         React.createElement('p',null,'本次保存尚未确认。保留原请求，不创建另一操作。'),
         React.createElement('pre',{className:'dsh-rp-muted',style:{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}},
           `操作 ${pending.operationId}\npayload ${pending.payloadSha256}\nSource ${pending.request.expectedSourceSha256}`
-          +`\nrevision ${pending.request.expectedRevision}\n条目 ${pending.request.rawEntryPointer}`),
-        React.createElement('textarea',{className:'dsh-rp-textarea',readOnly:true,value:JSON.stringify(pending.request.fields,null,2),
+          +`\nrevision ${pending.request.expectedRevision}\n条目 ${pendingLabel}`),
+        React.createElement('textarea',{className:'dsh-rp-textarea',readOnly:true,value:JSON.stringify(pendingFields,null,2),
           'aria-label':'待确认修改内容'}),button('恢复本次保存',controller.recover,!state.canRecover||state.loading||state.saving||state.storageBlocked)):null,
       anchor?React.createElement('pre',{className:'dsh-rp-muted',style:{whiteSpace:'pre-wrap',overflowWrap:'anywhere'},
         'aria-label':'服务端恢复锚点'},JSON.stringify(anchor.recovery??anchor.pending,null,2)):null,

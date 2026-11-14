@@ -10,10 +10,10 @@
  * @module
  */
 import { isDeepStrictEqual } from 'node:util';
-import { errorChain } from '@deepseek-ai/dsh-llm';
+import { errorChain } from 'dsh-nexttavern-native-llm';
 import { assertContiguous, SessionAlreadyExistsError, materializeAppendBatch, validateStoredEvents, validateMessageEditHistory, SessionAlreadyOwnedError, SessionHandleClosedError, SessionPersistenceNotFoundError, SessionPersistenceRevision, SessionReadOnlyError, } from 'dsh-nexttavern-session-format/storage-contract';
 import { isMessageEdit } from 'dsh-nexttavern-session-format/projection';
-import { assertMvuSchemaHistory } from 'dsh-nexttavern-session-format/mvu-schema-marker';
+import { createMvuSchemaHistoryValidator } from 'dsh-nexttavern-session-format/mvu-schema-marker';
 /** Maximum intentional wait before a routed live session batch starts writing. */
 export const LIVE_WRITE_BATCH_MAX_DELAY_MS = 200;
 /**
@@ -38,6 +38,8 @@ export class JsonlSessionHandle {
     /** Set when a drain failed; the automatic timer stays quiet until the next drain. */
     drainPaused = false;
     draining;
+    markerPrefix;
+    durableCut;
     constructor(storage, id, header, access, state, 
     /** The cross-process write lock; a create handle acquires it lazily at first materialization. */
     lease) {
@@ -260,68 +262,100 @@ export class JsonlSessionHandle {
         }
     }
     /** The shared durable-append body: contiguity, ownership, torn-tail repair, storage write, state advance. */
-    async persistContiguous(batch) {
+    async persistContiguous(pendingBatch) {
         if (this.access !== 'write')
             throw new SessionReadOnlyError(this.id, 'append');
-        if (batch.length === 0)
+        if (pendingBatch.length === 0)
             return;
         // Refuse an unsupported required event before publishing bytes, rather
         // than producing a log that the same backend cannot open after restart.
-        validateStoredEvents(this.header, [...batch]);
+        const batch = validateStoredEvents(this.header, [...pendingBatch]);
         await this.ensureLease();
         assertContiguous(this.id, batch, this.state.cursor);
         const changesSurface = batch.some(event => isMessageEdit(event) || event.type === 'roleplay/mvu-manual-edit');
         const changesSchema = batch.some(event => event.type === 'roleplay/mvu-schema-dispatched'
             || event.type === 'roleplay/mvu-schema-completed' || event.type === 'roleplay/mvu-schema-revised');
+        let staged;
         if (changesSurface || changesSchema) {
             // The raw handle is also a public write surface. Validate an edit against
             // the owned durable prefix before publishing it, not only on cold read.
-            // This replay occurs per required edit/marker batch, never per streamed token.
+            // A raw edit still needs its full surface. Ordinary marker batches only
+            // interpret the durable suffix since this writer's last marker check.
             const path = await this.storage.resolveCurrentLog(this.id);
-            const prefix = path === undefined ? [] : (await this.storage.readStoredLog(path, this.id)).events;
-            const logical = [...prefix];
-            // The initial decoder already includes recovered events. After truncate
-            // succeeds but their rewrite fails, a retry sees a shorter physical log;
-            // fill only its verified missing suffix, never duplicate a recovered row.
-            for (const event of this.state.recoveredTail ?? []) {
-                if (event.seq < logical.length) {
-                    if (!isDeepStrictEqual(logical[event.seq], event))
+            const cut = path === undefined ? undefined : await this.storage.readStoredLogCut(path, this.id, this.durableCut);
+            this.durableCut = cut;
+            let marker = this.markerPrefix;
+            let logical;
+            if (changesSurface || !marker || !cut || marker.cut?.owner !== cut.owner || cut.length !== this.state.cursor) {
+                logical = [...cut?.materialize() ?? []];
+                // The initial decoder already includes recovered events. After truncate
+                // succeeds but their rewrite fails, a retry sees a shorter physical log;
+                // fill only its verified missing suffix, never duplicate a recovered row.
+                for (const event of this.state.recoveredTail ?? []) {
+                    if (event.seq < logical.length) {
+                        if (!isDeepStrictEqual(logical[event.seq], event))
+                            throw Error('SESSION_RECOVERY_PREFIX_MISMATCH');
+                    }
+                    else if (event.seq === logical.length)
+                        logical.push(event);
+                    else
                         throw Error('SESSION_RECOVERY_PREFIX_MISMATCH');
                 }
-                else if (event.seq === logical.length)
-                    logical.push(event);
-                else
+                if (logical.length !== this.state.cursor)
                     throw Error('SESSION_RECOVERY_PREFIX_MISMATCH');
+                if (!changesSurface) {
+                    const validator = createMvuSchemaHistoryValidator(logical);
+                    // A recovered logical suffix belongs to this handle, even while its
+                    // repair has not republished physical bytes. Never adopt a short cut.
+                    marker = { cut: cut && logical.length === cut.length ? cut : undefined, validator };
+                    this.markerPrefix = marker;
+                }
             }
-            if (logical.length !== this.state.cursor)
-                throw Error('SESSION_RECOVERY_PREFIX_MISMATCH');
             // Log-only schema markers cannot change an accepted surface or player
             // edit. Their owner checks marker references without replaying both.
-            const next = [...logical, ...batch];
-            if (changesSurface)
-                validateMessageEditHistory(next);
-            else
-                assertMvuSchemaHistory(next);
+            if (changesSurface) {
+                validateMessageEditHistory([...logical, ...batch]);
+            }
+            else {
+                const validator = marker.validator;
+                staged = validator.stage((function* () {
+                    for (let seq = validator.length; seq < (cut?.length ?? 0); seq++)
+                        yield cut.at(seq);
+                    yield* batch;
+                })());
+            }
         }
         // Commit any pending torn-tail repair first, clearing each step's state
         // only once it lands so a failed step retries on the next mutation:
         // truncate the torn bytes, then durably rewrite the complete events
         // recovered from them (already counted in the primed cursor).
-        if (this.state.tornTruncateTo !== undefined) {
-            await this.storage.truncateTornTail(this.header, this.state.tornTruncateTo);
-            this.state.tornTruncateTo = undefined;
-        }
-        if (this.state.recoveredTail !== undefined) {
-            if (this.state.recoveredTail.length > 0) {
-                await this.storage.persistBatch(this.header, this.state.recoveredTail, this.state.materialized, this.state.inheritedEventCount);
+        try {
+            if (this.state.tornTruncateTo !== undefined) {
+                await this.storage.truncateTornTail(this.header, this.state.tornTruncateTo);
+                this.state.tornTruncateTo = undefined;
             }
-            this.state.recoveredTail = undefined;
+            if (this.state.recoveredTail !== undefined) {
+                if (this.state.recoveredTail.length > 0) {
+                    await this.storage.persistBatch(this.header, this.state.recoveredTail, this.state.materialized, this.state.inheritedEventCount);
+                }
+                this.state.recoveredTail = undefined;
+            }
+            const durable = await this.storage.persistBatch(this.header, batch, this.state.materialized, this.state.inheritedEventCount, this.durableCut);
+            staged?.commit();
+            this.durableCut = durable;
+            if (!changesSurface && this.markerPrefix && durable)
+                this.markerPrefix.cut = durable;
+            else
+                this.markerPrefix = undefined;
+            this.state.materialized = true;
+            this.state.cursor += batch.length;
+            this.state.primed = undefined;
+            this.observedLength = this.state.cursor;
         }
-        await this.storage.persistBatch(this.header, batch, this.state.materialized, this.state.inheritedEventCount);
-        this.state.materialized = true;
-        this.state.cursor += batch.length;
-        this.state.primed = undefined;
-        this.observedLength = this.state.cursor;
+        catch (error) {
+            staged?.rollback();
+            throw error;
+        }
     }
     /**
      * Hold the cross-process write lock before this session's first durable

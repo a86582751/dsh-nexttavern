@@ -8,8 +8,9 @@ import type {createRoleplayTavernLoreEditsV1} from './roleplay-tavern-lore-edits
 import type {RoleplayInputStateRead} from './roleplay-input-state.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernLoreCurrentNativeOverlayV1} from './tavern-lore-plan-types.mjs'
-import type {BrowserWorldbookMutationRequestV2,BrowserWorldbookMutationReplyV2}
-  from './tavern-author-browser-types-v2.mjs'
+import type {AuthorNativeWorldbookReplyV1 as BrowserWorldbookMutationReplyV2}
+  from './roleplay-author-browser-types.js'
+import type {AuthorNativeWorldbookRequestV1} from './roleplay-author-browser-types.js'
 
 import type {TavernLoreMutationRetryLocatorV1} from './roleplay-tavern-lore-edits-types.js'
 
@@ -35,8 +36,10 @@ export function createRoleplayAuthorWorldbookCoreV1(deps:Dependencies) {
       return basis
     }))
   }
-  async function mutate(sid:string,request:BrowserWorldbookMutationRequestV2,basis:AuthorNamedWorldbookData,
-    originalOwnerCurrent:()=>boolean,signal:AbortSignal):Promise<Omit<BrowserWorldbookMutationReplyV2,'snapshot'>> {
+  async function mutate(sid:string,request:AuthorNativeWorldbookRequestV1,basis:AuthorNamedWorldbookData,
+    originalOwnerCurrent:()=>boolean,signal:AbortSignal,
+    observePublication?:import('./roleplay-tavern-lore-edits-types.js').TavernLorePublicationObserverV1)
+    :Promise<Omit<BrowserWorldbookMutationReplyV2,'snapshot'>> {
     signal.throwIfAborted()
     if(!originalOwnerCurrent())throw Error('BROWSER_ATTACHMENT_REVOKED')
     const captured=capturedBases.get(basis)
@@ -46,7 +49,7 @@ export function createRoleplayAuthorWorldbookCoreV1(deps:Dependencies) {
     // Preserve the request's captured Source bytes across ordinary Story counter
     // changes. The journal checks live Source/head under its existing FIFO; the
     // immutable Native owner must survive the lock and durable write waits.
-    const result=await deps.edits.mutate(plan.request,()=>!signal.aborted&&originalOwnerCurrent(),captured)
+    const result=await deps.edits.mutate(plan.request,()=>!signal.aborted&&originalOwnerCurrent(),captured,observePublication)
     if(result.kind!=='edited-data')return {result}
     // A V2 publication already contains legacy fields in current membership;
     // capture consumes that result directly without applying overlay twice.

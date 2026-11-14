@@ -89,7 +89,7 @@ const capabilitySource = {spec:'chara_card_v3',spec_version:'3.0',data:{name:'Ca
     risuai:{triggerscript:[{type:'manual'}]},'unknown/~key':{code:'inert'}}}}
 const capabilityDecoded = decodeTavernCard(Buffer.from(JSON.stringify(capabilitySource)),'.json')
 const capabilityReport = compileTavernCapabilityReport(capabilityDecoded)
-assert.equal(capabilityReport.schemaVersion,1)
+assert.equal(capabilityReport.schemaVersion,2)
 assert.equal(capabilityReport.sourceSha256,capabilityDecoded.sourceSha256)
 assert.deepEqual(capabilityReport.counts,{interpreted:2,'preserved-unexecuted':3,
   'missing-external-resource':1,'requires-optional-analysis':1})

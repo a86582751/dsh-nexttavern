@@ -5,7 +5,7 @@
  * @module dsh-llm-pi-ai/context
  */
 import { brandString } from '@deepseek-ai/dsh-brand';
-import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload } from '@deepseek-ai/dsh-llm';
+import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload } from 'dsh-nexttavern-native-llm';
 import { toPiAssistant, assertPiRequestProjectionV1 } from './replay.js';
 import { requestImageDimensions } from '@deepseek-ai/dsh-attachment';
 import { DEFAULT_REQUEST_IMAGE_MAX_BYTES, DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET } from './config.js';

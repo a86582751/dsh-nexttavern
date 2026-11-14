@@ -2,9 +2,13 @@
  * effect proof. Programs remain unexecuted until an actual protected owner. */
 import {recordSha256,sha256} from './roleplay-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
-import {TEMPLATE_LIMITS_V1,TEMPLATE_POLICY_SHA256} from './tavern-template-data.mjs'
+import {TEMPLATE_LIMITS_V1} from './tavern-template-data.mjs'
+import {EJS_RUNTIME_POLICY} from './tavern-template-ejs-runtime-types.mjs'
 import type {PromptTemplateOnlyCodeV1,PromptTemplateOnlySegmentV1,PromptTemplateOnlySourceProofV1,
-  OpeningIntentV6} from './roleplay-prompt-template-only-types.js'
+  PromptTemplateOnlyRequiredRuntimeV1,OpeningIntentV6} from './roleplay-prompt-template-only-types.js'
+
+export const PROMPT_TEMPLATE_ONLY_EJS_RUNTIME_V1:PromptTemplateOnlyRequiredRuntimeV1=Object.freeze({
+  protocol:'owned-ejs-template-engine-v1',policySha256:recordSha256(EJS_RUNTIME_POLICY)})
 
 export const PROMPT_TEMPLATE_ONLY_FIELDS_V1=Object.freeze(['description','personality','scenario','mes_example',
   'system_prompt','post_history_instructions'] as const)
@@ -16,7 +20,7 @@ export const PROMPT_TEMPLATE_ONLY_POLICY_V1=Object.freeze({schemaVersion:1,
   projection:'original-projector-complete-section-map-actual-assignment-spans-and-current-owned-field-bytes-v1',
   numerical:'none; actual-complete-numerical-and-opaque-namespace-inventory',
   opening:'all-alternatives-strict-plain-identity-macros; unchanged-Native-zero-model',
-  runtime:'actual-owner-preflight-and-current; no-serialized-capability',
+  runtime:'actual-EJS-owner-preflight-and-current; no-serialized-capability',
   root:'actual-session-parent-prefix-and-complete-known-root-meta-shape; no-unproven-inheritance',
   sourceChars:TEMPLATE_LIMITS_V1.sourceChars,fieldCount:6,proofBytes:16_777_216})
 export const PROMPT_TEMPLATE_ONLY_POLICY_SHA256=recordSha256(PROMPT_TEMPLATE_ONLY_POLICY_V1)
@@ -103,7 +107,8 @@ export function validatePromptTemplateOnlySourceProofV1(input:unknown):PromptTem
   if(recordSha256(body)!==proofSha256)promptTemplateOnlyFail('PROMPT_TEMPLATE_RECORD_INVALID','/proof')
   exact(value.requiredPromptRuntime,['protocol','policySha256'])
   exact(value.initialization,['kind','scopeInventorySha256'])
-  if(value.requiredPromptRuntime.protocol!=='owned-template-v1'||value.requiredPromptRuntime.policySha256!==TEMPLATE_POLICY_SHA256
+  if(value.requiredPromptRuntime.protocol!==PROMPT_TEMPLATE_ONLY_EJS_RUNTIME_V1.protocol
+    ||value.requiredPromptRuntime.policySha256!==PROMPT_TEMPLATE_ONLY_EJS_RUNTIME_V1.policySha256
     ||value.initialization.kind!=='none'||!object(value.sourceSnapshot)
     ||value.initialization.scopeInventorySha256!==(value.sourceSnapshot.scopeInventory as Record<string,unknown>)?.inventorySha256
     ||!hash(value.fieldInventorySha256)||recordSha256(value.templateFields)!==value.fieldInventorySha256

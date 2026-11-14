@@ -1,8 +1,13 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import {registerAdaptationTools} from '../lib/core/card-adaptation-tools.js'
 import {createTestDirectory,cleanupTestDirectory} from '../lib/operations/test-temp.mjs'
+
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['llm','session'])
+afterNativeDependencies(removeOwnedNativeDependencies)
+const {registerAdaptationTools}=await import('../lib/core/card-adaptation-tools.js')
 
 const temp=createTestDirectory('coarse-integration-')
 try {

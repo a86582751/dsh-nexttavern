@@ -75,6 +75,9 @@ export type TavernPromptInitialCatalogReceiptV1=TavernPromptInitialCatalogLegacy
 /** Consumer catalog/receipt are frozen. The retained actual closure remains
  * the only currentness authority; hashes and refs do not substitute for it. */
 export interface TavernPromptInitialCatalogCaptureV1 {
+  /** Formal special entries have dedicated consumers and remain available as
+   * explicit resources. They do not also execute as ordinary selected WI. */
+  readonly standaloneExclusionEntryIds:readonly string[]
   readonly catalog:TavernPromptVariableCatalogV1
   readonly receipt:TavernPromptInitialCatalogReceiptV1
   readonly policySha256:string

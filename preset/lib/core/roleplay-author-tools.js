@@ -176,7 +176,7 @@ export function registerAuthorTools({ ctx, T, simpleTool, sessionOf, storyBranch
             return { ok: true };
         }, exec.signal);
     })), 'roleplay: tool rp_worldbook_remove');
-    ctx.effect(() => ctx.tools.register(simpleTool('rp_worldbook_list', '列出当前分支的世界书条目摘要，供查重与触发条件管理。展示默认每页24项；按nextOffset、limit与sourceHash（传source_hash）续读。complete仅表示摘要列表读完，不表示已读条目正文；来源变化须从0重读。', { type: 'object', properties: {
+    ctx.effect(() => ctx.tools.register(simpleTool('rp_worldbook_list', '列出当前分支的世界书条目摘要，供查重与触发条件管理。展示默认每页24项；按nextOffset、limit与sourceHash（传source_hash）续读。complete仅表示摘要列表读完，不表示已读条目正文；来源变化须从0重读。nativeManaged=true 是原卡编译条目，程序按触发规则直接提供正文；其 id 不是 rp_setting 的读取目标，也不存在 rp_worldbook_read 工具。补充条目的正文可用 rp_worldbook_search 按需查询。', { type: 'object', properties: {
             offset: { type: 'integer', minimum: 0, description: '从第几项继续；首次为0' },
             limit: { type: 'integer', minimum: 1, maximum: 100, description: '每页条目数，默认24' },
             source_hash: { type: 'string', description: '续页带回上页sourceHash；来源变化时从0重读' },
@@ -212,7 +212,7 @@ export function registerAuthorTools({ ctx, T, simpleTool, sessionOf, storyBranch
         return args.offset !== undefined || args.limit !== undefined || args.source_hash !== undefined
             ? worldbookListPage(args, result) : result;
     }, projectWorldbookList)), 'roleplay: tool rp_worldbook_list');
-    ctx.effect(() => ctx.tools.register(simpleTool('rp_worldbook_search', '按导演笔记、当前问题中的明确关键词查询当前分支世界书。世界书是被动资料库；查询结果不是已发生事件。可先用 rp_worldbook_list 查看名称与关键词。', { type: 'object', properties: { query: { type: 'string', minLength: 1, maxLength: 2400 }, max_tokens: { type: 'integer', minimum: 500, maximum: 16000 } }, required: ['query'], additionalProperties: false }, async (args, exec) => {
+    ctx.effect(() => ctx.tools.register(simpleTool('rp_worldbook_search', '按导演笔记、当前问题中的明确关键词查询当前分支的补充世界书资料。原卡 nativeManaged 条目由程序自动触发，不通过本工具重复读取。查询结果不是已发生事件；可先用 rp_worldbook_list 查看名称与关键词。', { type: 'object', properties: { query: { type: 'string', minLength: 1, maxLength: 2400 }, max_tokens: { type: 'integer', minimum: 500, maximum: 16000 } }, required: ['query'], additionalProperties: false }, async (args, exec) => {
         const session = await sessionOf(exec), query = String(args.query ?? '').trim();
         if (!query || query.length > 2400)
             return { ok: false, error: '请输入 1–2400 字的世界书查询关键词' };

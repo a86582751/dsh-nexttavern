@@ -7,16 +7,16 @@ import {
   isAppendSurfaceEvent,
   SessionLogOffset,
   SessionSeq,
-} from '@deepseek-ai/dsh-session'
+} from 'dsh-nexttavern-native-session'
 import type {
   SessionEvent,
   SessionHeader,
   SessionId,
   SessionLogOffset as SessionLogOffsetType,
   SessionSeqCursor,
-} from '@deepseek-ai/dsh-session'
+} from 'dsh-nexttavern-native-session'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
-import type {} from '@deepseek-ai/dsh-subagent'
+import type {} from 'dsh-nexttavern-native-subagent'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {

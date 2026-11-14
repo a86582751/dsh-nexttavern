@@ -3,10 +3,10 @@
  */
 
 import { z } from 'zod'
-import { lastAssistantStreamChunk, type TokenUsage } from '@deepseek-ai/dsh-llm'
+import { lastAssistantStreamChunk, type TokenUsage } from 'dsh-nexttavern-native-llm'
 import type {} from '@deepseek-ai/dsh-llm-retry/types'
-import { SessionSeq } from '@deepseek-ai/dsh-session'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { SessionSeq } from 'dsh-nexttavern-native-session'
+import type { SessionEvent } from 'dsh-nexttavern-native-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { ContextPressureProjection, TokenUsageProjection } from './projection.js'
 import { foldSurfaceProjection } from './surface-projection.js'

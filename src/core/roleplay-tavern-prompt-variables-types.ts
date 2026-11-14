@@ -94,6 +94,31 @@ export interface TavernPromptVariableInputV1 {
   readonly history:TavernPromptMessageHistoryV1
   readonly attempt:TavernPromptVariableAttemptV1|null
 }
+export interface TavernPromptMessageSelectionV2 {
+  readonly schemaVersion:2
+  readonly encoding:'owned-prompt-message-selection-v2'
+  readonly selectedBaseSha256:string
+  readonly kind:'empty'|'values'|'initial-fallback'|'unavailable'
+  readonly values:MvuJsonObject|null
+  readonly missingEvidence:readonly string[]
+  readonly reads:readonly TavernPromptVariableReadV1[]
+  readonly selection:TavernPromptVariablePacketV1['selection']
+}
+export interface TavernPromptVariableInputV2 extends Omit<TavernPromptVariableInputV1,'schemaVersion'|'encoding'|'history'> {
+  readonly schemaVersion:2
+  readonly encoding:'owned-prompt-variable-input-v2'
+  readonly messageSelection:TavernPromptMessageSelectionV2
+}
+export type TavernPromptVariableAvailabilityV2=Omit<Extract<TavernPromptVariableAvailabilityV1,{kind:'bound'}>,'reads'>&{
+  readonly dependencyIndexes:readonly number[]
+}|Omit<Extract<TavernPromptVariableAvailabilityV1,{kind:'unavailable'}>,'reads'>&{readonly dependencyIndexes:readonly number[]}
+export interface TavernPromptVariablePacketV2 extends Omit<TavernPromptVariablePacketV1,'schemaVersion'|'encoding'|'reads'|'initial'|'cache'> {
+  readonly schemaVersion:2
+  readonly encoding:'owned-prompt-variable-packet-v2'
+  readonly dependencies:readonly TavernPromptVariableReadV1[]
+  readonly initial:TavernPromptVariableAvailabilityV2
+  readonly cache:TavernPromptVariableAvailabilityV2
+}
 export interface TavernPromptVariableReadV1 {
   readonly kind:'source'|'catalog'|'settings'|'scope'|'message'|'history'|'attempt'|'render'
   readonly identity:string
@@ -183,3 +208,6 @@ export interface TavernPromptVariablePacketV1 {
 export type TavernPromptVariableResultV1=
   |{readonly kind:'prepared';readonly input:TavernPromptVariableInputV1;readonly packet:TavernPromptVariablePacketV1}
   |{readonly kind:'refused'|'cancelled';readonly diagnostics:readonly {readonly code:string;readonly detail:string}[]}
+export type TavernPromptVariableResultV2=
+  |{readonly kind:'prepared';readonly input:TavernPromptVariableInputV2;readonly packet:TavernPromptVariablePacketV2}
+  |Exclude<TavernPromptVariableResultV1,{kind:'prepared'}>

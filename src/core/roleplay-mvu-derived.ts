@@ -33,7 +33,7 @@ import type {VerifiedMvuGenesis, VerifiedMvuDerivedGenesis, MvuDerivedGenesisEve
 import type {ForkOperation, ReadBranchSession, StoryEvent, WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {ForkReservation} from './roleplay-branch-routes-types.js'
 import type {VerifiedMvuProgramGenesis} from './roleplay-program-genesis-types.js'
-import {nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
+import {nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
 
 interface Table {get(key:string):unknown; entries():Iterable<[string,unknown]>; put(key:string,value:object):Promise<unknown>}
 type Genesis = VerifiedMvuGenesis | VerifiedMvuDerivedGenesis | VerifiedMvuProgramGenesis

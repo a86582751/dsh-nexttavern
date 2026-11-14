@@ -11,7 +11,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentOptions, CreateAgentOptions } from '@deepseek-ai/dsh-agent'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
-import type { Session, SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionId } from 'dsh-nexttavern-native-session'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type { ToolRestriction } from '@deepseek-ai/dsh-tools'
 // Type-only: make `ctx.get('sandboxPolicy')`, `ctx.get('approval')`, and
@@ -158,6 +158,7 @@ export function childSessionMeta(
 
 /** The scoped composition a child agent's creation window applies. */
 export interface ChildComposition {
+  readonly isolatedSystem?: string
   /** Per-child persona shadowing the deployment persona. */
   readonly persona?: string | undefined
   /** Per-child tool scoping. */
@@ -208,7 +209,16 @@ export function applyChildComposition(
     order: childCtx.systemPrompt.getContextOrder('SUBAGENT_DELEGATION'),
     text: SUBAGENT_DELEGATION_CONTEXT,
   })
-  if (composition.persona !== undefined) {
+  if (composition.isolatedSystem !== undefined) {
+    childCtx.systemPrompt.section({
+      name: 'deployment:persona-prefix',
+      order: childCtx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
+      text: composition.isolatedSystem,
+      interpolate: false,
+      complete: true,
+    })
+    childCtx.systemPrompt.suppressRuntimeContext()
+  } else if (composition.persona !== undefined) {
     childCtx.systemPrompt.section({
       name: 'deployment:persona-prefix',
       order: childCtx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),

@@ -4,7 +4,6 @@ import {sourceImageTextLiteralsV1,sourceImageScriptLiteralsV1,sourceImageCssLite
 import type {SourceImageLiteralV1,SourceImageCarrierV1,SourceImageDiagnosticV1,ParsedSourceImagesV1}
   from './roleplay-source-images-parser.mjs'
 import {recordSha256} from './roleplay-data.js'
-import {nextTavernExecutionAuthorData,nextTavernExecutionAuthorPointer} from './nexttavern-card.js'
 import type {NextTavernCardData} from './nexttavern-card.js'
 import type {TavernResource,createTavernLibrary} from './tavern-library.js'
 import type {ResourceSession} from './roleplay-resource-bridge-types.js'
@@ -63,8 +62,6 @@ function classify(uri:string,forceImage:boolean,hint?:string)
 }
 function discover(data:NextTavernCardData):{items:LocatedImage[];diagnostics:SourceImageDiagnosticV1[]} {
   const items:LocatedImage[]=[],diagnostics:SourceImageDiagnosticV1[]=[]
-  const author=nextTavernExecutionAuthorData(data)
-  const authorPointer=(field:string)=>nextTavernExecutionAuthorPointer(data,field)
   const add=(literal:SourceImageLiteralV1,forceImage=literal.carrier==='html'
     ||literal.carrier==='markdown'||literal.imageSink===true,hint?:string)=>{
     const uri=literal.uri.trim(),media=classify(uri,forceImage,hint)
@@ -97,8 +94,8 @@ function discover(data:NextTavernCardData):{items:LocatedImage[];diagnostics:Sou
     }
   }
   assets(data.assets,'/data/assets')
-  for(const field of ['cards','worldbook']as const)author[field].forEach((row,index)=>
-    text(row.content,authorPointer(`${field}/${index}/content`)))
+  for(const field of ['cards','worldbook']as const)data[field].forEach((row,index)=>
+    text(row.content,`/data/${field}/${index}/content`))
   for(const [key,entry]of Object.entries(data.character_book?.entries??{})) {
     if(object(entry)&&typeof entry.content==='string')text(entry.content,'/data/character_book/entries/'+pointer(key)+'/content')
   }
@@ -108,11 +105,11 @@ function discover(data:NextTavernCardData):{items:LocatedImage[];diagnostics:Sou
       if(object(value)&&typeof value.rawText==='string')text(value.rawText,'/data/opening/catalog/'+index+'/rawText')
     })
   }
-  for(const [key,value]of Object.entries(author.rules))if(typeof value==='string')text(value,authorPointer('rules/'+pointer(key)))
+  for(const [key,value]of Object.entries(data.rules))if(typeof value==='string')text(value,'/data/rules/'+pointer(key))
   if(data.status)text(data.status.text,'/data/status/text')
-  const beauty=author.rules.beauty
-  if(typeof beauty?.css==='string')parsed(sourceImageCssLiteralsV1(beauty.css,authorPointer('rules/beauty/css')))
-  if(typeof beauty?.js==='string')script(beauty.js,authorPointer('rules/beauty/js'))
+  const beauty=data.rules.beauty
+  if(typeof beauty?.css==='string')parsed(sourceImageCssLiteralsV1(beauty.css,'/data/rules/beauty/css'))
+  if(typeof beauty?.js==='string')script(beauty.js,'/data/rules/beauty/js')
   const helper=object(data.extensions)&&data.extensions.tavern_helper
   const scripts=(values:unknown[],position:string):void=>values.forEach((value,index)=>{
     if(!object(value))return

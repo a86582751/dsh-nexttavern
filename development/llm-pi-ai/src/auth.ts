@@ -18,7 +18,7 @@ import {
 } from '@deepseek-ai/dsh-credentials'
 import type { CredentialKey, CredentialProvider, CredentialRecord } from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
-import { LlmError } from '@deepseek-ai/dsh-llm'
+import { LlmError } from 'dsh-nexttavern-native-llm'
 
 /**
  * The record scope every credential this adapter family stores is written

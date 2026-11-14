@@ -221,26 +221,17 @@ export function inspectTavernCardDocument(document:unknown):Pick<DecodedTavernCa
     if (data[key] !== undefined && typeof data[key] !== 'string') fail(`角色卡 ${key} 必须是字符串`)
   }
   if(native) {
-    const execution=object(data.compatibility)?data.compatibility.authorExecution:undefined
-    if(document.spec_version==='1.1') {
-      if(!object(execution)||execution.schemaVersion!==1||execution.mode!=='preserved-author') {
-        fail('NextTavern 1.1 缺少有效的 authorExecution')
-      }
-    }else if(execution!==undefined)fail('authorExecution 需要 NextTavern 1.1')
-    const authorViews=[data,...object(execution)?[execution]:[]]
-    for(const author of authorViews) {
-      const rows=author.cards
-      if(!Array.isArray(rows)||rows.length>CARD_LIMITS.entries
-        ||rows.some(row=>!object(row)||typeof row.content!=='string'))fail('NextTavern cards 条目格式无效')
-      if(!object(author.rules))fail('NextTavern rules 格式无效')
-      for(const key of ['core','plot','narrative','reply','style','status']) {
-        if(author.rules[key]!==undefined&&typeof author.rules[key]!=='string')fail(`NextTavern rules.${key} 必须是字符串`)
-      }
-      if(author.rules.beauty!==undefined) {
-        if(!object(author.rules.beauty))fail('NextTavern beauty 格式无效')
-        for(const key of ['css','js'])if(author.rules.beauty[key]!==undefined&&typeof author.rules.beauty[key]!=='string') {
-          fail('NextTavern beauty 正文格式无效')
-        }
+    const rows=data.cards
+    if(!Array.isArray(rows)||rows.length>CARD_LIMITS.entries
+      ||rows.some(row=>!object(row)||typeof row.content!=='string'))fail('NextTavern cards 条目格式无效')
+    if(!object(data.rules))fail('NextTavern rules 格式无效')
+    for(const key of ['core','plot','narrative','reply','style','status']) {
+      if(data.rules[key]!==undefined&&typeof data.rules[key]!=='string')fail(`NextTavern rules.${key} 必须是字符串`)
+    }
+    if(data.rules.beauty!==undefined) {
+      if(!object(data.rules.beauty))fail('NextTavern beauty 格式无效')
+      for(const key of ['css','js'])if(data.rules.beauty[key]!==undefined&&typeof data.rules.beauty[key]!=='string') {
+        fail('NextTavern beauty 正文格式无效')
       }
     }
     if(!Array.isArray(data.worldbook)||data.worldbook.length>CARD_LIMITS.entries
@@ -829,20 +820,28 @@ export interface TavernCapabilityEntry {
   readonly status: TavernCapabilityStatus
   readonly capability: 'card-field' | 'opening' | 'worldbook' | 'extension' | 'asset' | 'archive'
   readonly reason: 'structured-projection' | 'opening-candidate' | 'worldbook-projection'
+    | 'native-author-projection' | 'passive-material-projection'
     | 'extension-runtime-not-wired' | 'extension-requires-review' | 'opaque-archive'
     | 'external-asset-not-bundled' | 'optional-analysis-not-run'
 }
 export interface TavernCapabilityReport {
-  readonly schemaVersion: 1
+  readonly schemaVersion: 1 | 2
   readonly sourceSha256: string
   readonly entries: readonly TavernCapabilityEntry[]
   readonly counts: Readonly<Record<TavernCapabilityStatus, number>>
+  /** Import-time DATA interpretation cannot certify storage, runtime or gameplay. */
+  readonly evidence?: {
+    readonly originalSaved: 'not-assessed'
+    readonly callableCapabilities: 'not-assessed'
+    readonly resourceAvailability: 'declarations-only'
+    readonly originalGameplay: 'not-assessed'
+  }
 }
 
 // A card is only a source of declarations. This report does not resolve URLs,
 // execute extensions, or imply that optional analysis has run. "Missing" means
 // the referenced asset bytes were not bundled in the card itself.
-export function compileTavernCapabilityReport(decoded: DecodedTavernCard): TavernCapabilityReport {
+function compileTavernCapabilityReportVersion(decoded: DecodedTavernCard, version: 1 | 2): TavernCapabilityReport {
   const root = decoded.document.data === decoded.data ? '/data' : ''
   const entries: TavernCapabilityEntry[] = []
   const add = (pointer: string, value: unknown, status: TavernCapabilityStatus,
@@ -852,6 +851,7 @@ export function compileTavernCapabilityReport(decoded: DecodedTavernCard): Taver
   }
   const projected = new Set(['name', 'description', 'personality', 'scenario', 'mes_example',
     'system_prompt', 'post_history_instructions'])
+  const native = version === 2 && isNextTavernCardDocument(decoded.document)
   for (const key of Object.keys(decoded.data).sort()) {
     const value = decoded.data[key]
     const pointer = `${root}/${pointerSegment(key)}`
@@ -878,7 +878,18 @@ export function compileTavernCapabilityReport(decoded: DecodedTavernCard): Taver
       }
       continue
     }
-    if (key === 'first_mes' || key === 'alternate_greetings') {
+    if (native && ['cards', 'rules', 'status', 'opening', 'settings'].includes(key)) {
+      add(pointer, value, 'interpreted', key === 'opening' ? 'opening' : 'card-field', 'native-author-projection')
+    } else if (native && key === 'worldbook') {
+      // Passive author material has no automatic character_book activation semantics.
+      add(pointer, value, 'interpreted', 'worldbook', 'passive-material-projection')
+    } else if (native && key === 'compatibility' && object(value)) {
+      for (const field of Object.keys(value).sort()) {
+        const interpreted = field === 'sillytavernMacroFields'
+        add(`${pointer}/${pointerSegment(field)}`, value[field], interpreted ? 'interpreted' : 'preserved-unexecuted',
+          interpreted ? 'card-field' : 'archive', interpreted ? 'structured-projection' : 'opaque-archive')
+      }
+    } else if (key === 'first_mes' || key === 'alternate_greetings') {
       if (key === 'alternate_greetings') compileTavernOpeningCandidates(decoded)
       add(pointer, value, 'interpreted', 'opening', 'opening-candidate')
     } else if (key === 'character_book') {
@@ -895,7 +906,19 @@ export function compileTavernCapabilityReport(decoded: DecodedTavernCard): Taver
     'requires-optional-analysis':0,
   }
   for (const entry of entries) counts[entry.status]++
-  return {schemaVersion:1, sourceSha256:decoded.sourceSha256, entries, counts}
+  return {schemaVersion:version, sourceSha256:decoded.sourceSha256, entries, counts,
+    ...(version === 2 ? {evidence:{originalSaved:'not-assessed' as const,callableCapabilities:'not-assessed' as const,
+      resourceAvailability:'declarations-only' as const,originalGameplay:'not-assessed' as const}} : {})}
+}
+
+/** Exact persisted v1 interpretation, including its ST-only Native classification. */
+export function compileTavernCapabilityReportV1(decoded: DecodedTavernCard): TavernCapabilityReport {
+  return compileTavernCapabilityReportVersion(decoded, 1)
+}
+
+/** Current DATA report; preserved v1 receipts remain validated by their own algorithm. */
+export function compileTavernCapabilityReport(decoded: DecodedTavernCard): TavernCapabilityReport {
+  return compileTavernCapabilityReportVersion(decoded, 2)
 }
 
 // The compact projection has no duplicate raw JSON. Hash every parsed node in

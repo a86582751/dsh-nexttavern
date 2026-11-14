@@ -8,7 +8,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionId } from 'dsh-nexttavern-native-session'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type { SessionActivity, SessionActivityItem } from '@deepseek-ai/dsh-workspace'
 import { foldSubagentDescriptor } from './descriptor.ts'

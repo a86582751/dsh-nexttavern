@@ -2,3 +2,5 @@ NextTavern compatibility candidate derived from DeepSeek Harness dsh-llm-deepsee
 Original MIT license and attribution are retained. This is not an official
 DeepSeek release. Formal fork source synchronization and full product lifecycle
 verification remain required before distribution. See ORIGIN.json.
+Unchanged public configuration and helper implementations are reused from
+the pinned official package root. ORIGIN.json retains their upstream SHA-256 provenance.

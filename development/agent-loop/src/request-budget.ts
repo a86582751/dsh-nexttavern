@@ -1,6 +1,6 @@
 /** Numeric observations of the final adapter projection. The meter owns all
  * token estimation; this owner only attributes and applies observed error. */
-import type {GenerateOptions,RequestMessage, ProjectedLlmRequest, TokenUsage,TokenRequestMeasurement} from '@deepseek-ai/dsh-llm'
+import type {GenerateOptions,RequestMessage, ProjectedLlmRequest, TokenUsage,TokenRequestMeasurement} from 'dsh-nexttavern-native-llm'
 import {nativeInputSha256} from './input-admission.js'
 
 export type RequestComponent = 'systemFixed'|'authorEffective'|'dynamicState'|'storyPlayer'

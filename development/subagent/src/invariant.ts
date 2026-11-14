@@ -4,7 +4,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 import type { SubagentProvider, SubagentRunEndInfo, SubagentRunInfo } from './types.ts'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-subagent'
+const PACKAGE_NAME = 'dsh-nexttavern-native-subagent'
 
 /** Cordis companion plugin name. */
 export const name = 'subagent-invariant'

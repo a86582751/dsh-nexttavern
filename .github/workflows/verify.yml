@@ -7,6 +7,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      base:
+        description: 'Optional Git baseline for a cumulative affected check after blocked deliveries'
+        required: false
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -16,7 +21,7 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     env:
-      BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      BASE: ${{ inputs.base || github.event.pull_request.base.sha || github.event.before }}
     steps:
       - uses: actions/checkout@v4
         with:

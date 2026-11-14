@@ -5,7 +5,7 @@ import {cloneMvuPlayerReplacement} from './roleplay-mvu-player-records.js'
 import {mvuStateSettlementKey} from './roleplay-mvu-state.js'
 import {assertMvuPlayerEditEvent,assertMvuPlayerMarkerBoundary,MVU_PLAYER_EDIT_EVENT}
   from 'dsh-nexttavern-session-format/mvu-player-marker'
-import type {SessionEvent} from '@deepseek-ai/dsh-session'
+import type {SessionEvent} from 'dsh-nexttavern-native-session'
 import type {MvuPlayerEditRequest} from './roleplay-mvu-player-types.js'
 import type {MvuNumericalSnapshot} from './roleplay-mvu-state.js'
 import type {MvuPlayerStateIntent,MvuPlayerStateReplacement,MvuPlayerStatePublisherSettlement,
@@ -89,13 +89,22 @@ export function cloneMvuPlayerData<T>(input:T):T {
 export function readMvuPlayerRequest(input:unknown):MvuPlayerEditRequest {
   const request=cloneMvuPlayerData(input) as MvuPlayerEditRequest
   if(!request||typeof request!=='object'||Array.isArray(request))fail('MVU_PLAYER_DATA_INVALID')
-  exact(request,['schemaVersion','sessionId','operationId','action','expected','values'])
+  exact(request,['schemaVersion','sessionId','operationId','action','expected','values',
+    ...Object.hasOwn(request,'target')?['target']:[]])
   const e=request.expected
   if(request.schemaVersion!==1||request.action!=='replace-values'||!id(request.sessionId)||!id(request.operationId)
     ||!e||typeof e!=='object'||Array.isArray(e))fail('MVU_PLAYER_DATA_INVALID')
   exact(e,['sourceSha256','root','revision','headSha256','valuesSha256','stateSnapshotSha256','observedNativeSeq'])
   if(!integer(e.revision,1)||!integer(e.observedNativeSeq)||!e.root||typeof e.root!=='object'
     ||![e.sourceSha256,e.headSha256,e.valuesSha256,e.stateSnapshotSha256].every(hash))fail('MVU_PLAYER_DATA_INVALID')
+  if(Object.hasOwn(request,'target')) {
+    const target=request.target
+    if(!target||typeof target!=='object'||Array.isArray(target))fail('MVU_PLAYER_DATA_INVALID')
+    exact(target,['kind','ownerSessionId','nativeSeq','messageId','messageVersionSha256'])
+    if(target.kind!=='message'||typeof target.ownerSessionId!=='string'||!target.ownerSessionId
+      ||!integer(target.nativeSeq)||typeof target.messageId!=='string'||!target.messageId
+      ||!hash(target.messageVersionSha256))fail('MVU_PLAYER_DATA_INVALID')
+  }
   try {request.values=cloneMvuPlayerReplacement({values:request.values,valuesSha256:recordSha256(request.values)}).values}
   catch(error) {fail(String(error).includes('LIMIT')?'MVU_PLAYER_DATA_LIMIT':'MVU_PLAYER_DATA_INVALID')}
   return request

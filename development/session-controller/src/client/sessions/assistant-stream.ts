@@ -4,9 +4,9 @@ import type {
   SessionAssistantStreamBaseline,
   SessionAssistantStreamFrame,
 } from '../../types.js'
-import { expandAssistantStream } from '@deepseek-ai/dsh-llm/assistant-stream'
-import type { AssistantStreamRecord } from '@deepseek-ai/dsh-llm/assistant-stream'
-import type { LlmAttemptId } from '@deepseek-ai/dsh-llm/brand'
+import { expandAssistantStream } from 'dsh-nexttavern-native-llm/assistant-stream'
+import type { AssistantStreamRecord } from 'dsh-nexttavern-native-llm/assistant-stream'
+import type { LlmAttemptId } from 'dsh-nexttavern-native-llm/brand'
 import type {
   SessionAssistantSettlementEntry,
   SessionEventLikeEntry,

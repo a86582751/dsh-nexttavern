@@ -1,9 +1,9 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
+import type { MessageId } from 'dsh-nexttavern-native-llm/brand'
 import type {
   ContextMessageNode, ConversationNodeDefinition, SteeringMessageNode, UserMessageNode,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import { isAppendSurfaceEvent, isReplacementSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
+import { isAppendSurfaceEvent, isReplacementSurfaceEvent } from 'dsh-nexttavern-native-session/surface'
 import type { InboxState } from './inbox.ts'
 import { chatNode } from './common.ts'
 import { contextForm, contextProducer } from './event-projection.ts'

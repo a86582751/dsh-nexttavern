@@ -1,7 +1,7 @@
 /** Event-local acceptance for raw Session journal responses; payloads remain owner-defined JSON. */
 
-import { validateSessionEventData, validateSurfaceMetadata } from '@deepseek-ai/dsh-session/surface'
-import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
+import { validateSessionEventData, validateSurfaceMetadata } from 'dsh-nexttavern-native-session/surface'
+import type { SessionEvent } from 'dsh-nexttavern-native-session/types'
 import type { SessionWireEvent } from '../types.js'
 
 /**

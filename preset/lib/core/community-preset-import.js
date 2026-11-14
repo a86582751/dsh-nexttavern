@@ -27,6 +27,16 @@ export function normalizeCommunityRegexes(value) {
         };
     });
 }
+/** Fixed TavernHelper DTO projection of the original library rule, before
+ * execution adds its origin-specific identity or filters active placements. */
+export function communityTavernRegexDto(row) {
+    return { id: row.id, script_name: row.scriptName, enabled: !row.disabled,
+        find_regex: row.findRegex, trim_strings: [...row.trimStrings], replace_string: row.replaceString,
+        source: { user_input: row.placement.includes(1), ai_output: row.placement.includes(2),
+            slash_command: row.placement.includes(3), world_info: row.placement.includes(5), reasoning: row.placement.includes(6) },
+        destination: { display: row.markdownOnly, prompt: row.promptOnly }, run_on_edit: row.runOnEdit,
+        min_depth: row.minDepth, max_depth: row.maxDepth };
+}
 export function parseCommunityPreset(input, options) {
     const raw = record(input);
     if (!Array.isArray(raw.prompts))

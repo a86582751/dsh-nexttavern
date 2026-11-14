@@ -4,7 +4,7 @@ import type { SessionForkError } from '@deepseek-ai/dsh-api-session-controller/c
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ShortcutCommand, ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionId } from 'dsh-nexttavern-native-session/types'
 import type { UiWorkspace } from './navigation.ts'
 
 /** Transient requests consumed by the existing workspace browser. */

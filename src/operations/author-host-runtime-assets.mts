@@ -46,7 +46,8 @@ export interface AuthorHostRuntimeAssetPlanV5 {
   artifacts:readonly Artifact[]
   product:{authorHostRuntime?:AuthorHostRuntimeAssetRecipeV5;
     historicalRuntimeRebuilds?:readonly HistoricalRuntimeAssetRebuildV1[];
-    packages:readonly {packageArtifact:string;resources?:readonly Resource[]}[]}
+    packages:readonly {packageArtifact:string;resources?:readonly Resource[]}[];
+    historicalComponents?:readonly {packageArtifact:string;resources?:readonly Resource[]}[]}
 }
 const sha=(bytes:string|Uint8Array)=>createHash('sha256').update(bytes).digest('hex')
 const safe=(value:string)=>!!value&&!value.includes('\\')&&!value.includes(':')&&!value.startsWith('/')
@@ -99,7 +100,8 @@ export async function buildAuthorHostRuntimeAssetsV5(options:{repo:string;plan:A
     ||Object.keys(metadata.dependencies??{}).length!==0||(metadata.bundleDependencies??[]).length!==0) {
     throw Error('AUTHOR_HOST_ASSET_PACKAGE_INVALID')
   }
-  const packageRow=options.plan.product.packages.find(row=>row.packageArtifact===recipe.packageArtifact)
+  const packageRow=[...options.plan.product.packages,...options.plan.product.historicalComponents??[]]
+    .find(row=>row.packageArtifact===recipe.packageArtifact)
   if(!packageRow)throw Error('AUTHOR_HOST_ASSET_PACKAGE_UNREGISTERED')
   const resources=packageRow.resources??[],prefix=path.posix.dirname(packageArtifact.source)
   for(const output of [providerOutput,sourceInputOutput]) {
@@ -135,16 +137,17 @@ export async function buildAuthorHostRuntimeAssetsV5(options:{repo:string;plan:A
       throw Error('AUTHOR_HOST_ASSET_SOURCE_UNREGISTERED: '+input)
     }
     const resource=resources.find(row=>row.artifact===source.id||row.artifact===scoped?.physicalArtifact.id)
-    if(!resource||!resource.path.startsWith('src/')||!safe(resource.path)) {
+    const declared=resource?.path??options.historicalRebuild?.sourceBindings.find(row=>row.logicalArtifact===source.id)?.packagePath
+    if(!declared||!declared.startsWith('src/')||!safe(declared)||!resources.some(row=>row.path===declared)) {
       throw Error('AUTHOR_HOST_ASSET_SOURCE_RESOURCE_UNREGISTERED: '+source.id)
     }
-    return {artifact:source.id,path:resource.path,sha256:scoped?.sha256??sha(fs.readFileSync(file))}
+    return {artifact:source.id,path:declared,sha256:scoped?.sha256??sha(fs.readFileSync(file))}
   }).sort((left,right)=>left.path<right.path?-1:left.path>right.path?1:0)
   const graphs={provider:inputs},outputs=new Map<string,Buffer>()
   outputs.set(providerOutput,Buffer.from(output.contents))
   outputs.set(sourceInputOutput,Buffer.from(JSON.stringify({schemaVersion:1,
     encoding:'owned-author-host-runtime-source-inputs-v5',name:packageName,version:packageVersion,
-    package:{artifact:recipe.packageArtifact,sha256:sha(metadataBytes)},
+    package:{artifact:options.historicalRebuild?.logicalPackageArtifact??recipe.packageArtifact,sha256:sha(metadataBytes)},
     builder:{esbuildVersion:esbuild.version,lock:{artifact:recipe.lockArtifact,sha256:sha(lockBytes)}},
     dependencyClosure:recipe.dependencyClosure,graphs},null,2)+'\n'))
   const root=path.resolve(options.packageRoot)

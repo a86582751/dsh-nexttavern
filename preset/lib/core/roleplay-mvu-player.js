@@ -192,6 +192,8 @@ export function createRoleplayMvuPlayer(deps) {
             const code = codeOf(error);
             return { ok: false, code, error: code };
         }
+        if (request.target)
+            return { ok: false, code: 'MVU_PLAYER_MESSAGE_TARGET_UNPROVEN', error: 'MVU_PLAYER_MESSAGE_TARGET_UNPROVEN' };
         const writeBlock = deps.writeBlockCode?.(request.sessionId);
         if (writeBlock)
             return response(request, 'unknown', false, writeBlock);

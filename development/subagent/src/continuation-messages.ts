@@ -5,9 +5,9 @@
  */
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import { boundContextSummary, createUserMessage } from 'dsh-nexttavern-native-llm'
+import type { ContentBlock } from 'dsh-nexttavern-native-llm'
+import type { SessionId } from 'dsh-nexttavern-native-session'
 import type { ActivationTerminal } from './lifecycle.ts'
 import type { SubagentResult } from './types.ts'
 
@@ -37,7 +37,7 @@ export interface SubagentSettledMessageSource {
   readonly senderSessionId: SessionId
 }
 
-declare module '@deepseek-ai/dsh-llm' {
+declare module 'dsh-nexttavern-native-llm' {
   interface MessageSourceMap {
     'agent-message': AgentMessageSource
     'subagent-settled': SubagentSettledMessageSource

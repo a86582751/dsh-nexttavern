@@ -1,6 +1,5 @@
-/** A plan classifies bytes; it grants no Source,
- * Native publication, state-ready, persistence, or zero-registration authority.
- * Existing executor 1–3 input/program records remain schemaVersion: 1. */
+/** A plan classifies bytes. Source, Native publication and persistence
+ * authority belong to the actual execution owner. */
 import type {
   MvuSchemaAuthorScript, MvuSchemaSourceBinding, MvuSchemaCompilerIdentity,
   MvuSchemaImplementationIdentity, MvuSchemaLibraryIdentity,
@@ -170,7 +169,7 @@ export interface MvuSchemaProgramV4 extends Omit<MvuSchemaCompilationInputV4,
   readonly programSha256: string
 }
 export type WorkerSchemaAstBudgetFailureV4 = 'EXECUTION_AST_TOKEN_LIMIT'
-  | 'EXECUTION_AST_DEPTH_LIMIT' | 'EXECUTION_AST_NODE_LIMIT'
+  | 'EXECUTION_AST_DEPTH_LIMIT' | 'EXECUTION_AST_NODE_LIMIT' | 'EXECUTION_TYPESCRIPT_SYNTAX'
 export interface WorkerSchemaAstAdmissionRequest {
   readonly script: RawAuthorScriptV4
   readonly ordinal: number

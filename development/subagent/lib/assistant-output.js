@@ -10,7 +10,7 @@
  *
  * @module @deepseek-ai/dsh-subagent/assistant-output
  */
-import { joinAssistantStreamText } from '@deepseek-ai/dsh-llm';
+import { joinAssistantStreamText } from 'dsh-nexttavern-native-llm';
 /**
  * Incremental fold of the selection rule, for backends that observe a child's
  * output as it streams: session-event backends {@link push} each event, and

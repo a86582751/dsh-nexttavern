@@ -1,9 +1,9 @@
 import {createHash} from 'node:crypto'
-import {nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
+import {nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
 import type {
   NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareInputV1,NativeRequestMaterialTransformV1,
   NativeMessageProjectionV1,NativeStoryRequestPolicyV1,NativeStoryMaterialHooksV1,
-} from '@deepseek-ai/dsh-agent-loop'
+} from 'dsh-nexttavern-native-agent-loop'
 import type {CommunityPresetPolicy} from './community-presets.js'
 import type {CommunityVariableAttempt} from './community-preset-variables.js'
 import type {CommunityJson,CommunityPresetPrompt,CommunityPromptRole,CommunityMarker} from './community-preset-types.js'
@@ -11,6 +11,7 @@ import type {produceRoleplayTavernLayoutV1,TavernNativeFinalLoreTextV1} from './
 import type {TavernLoreEvaluationPlanV1} from './tavern-lore-evaluator-types.mjs'
 import {createCommunityMacroEvaluator} from './community-preset-macros.js'
 import type {CommunityMacroWrite} from './community-preset-macros.js'
+import type {TavernOrdinaryPreparationStage} from './roleplay-tavern-ordinary-stage.js'
 import {createCommunitySanitizer,communityResponseHooks} from './community-preset-response.js'
 
 type Data=Record<string,CommunityJson>
@@ -30,9 +31,11 @@ const plain=(row:Row)=>['user','assistant'].includes(row.role)&&row.message.cont
   block.type==='text'&&Object.keys(block).every(key=>key==='type'||key==='text'))
 const clone=<T>(value:T):T=>structuredClone(value)
 
+type CommunityLoreMetadata=readonly {entryId:string;name:string;constant:boolean;dynamic:boolean}[]
 export interface CommunityExecutionInput {
   policy:CommunityPresetPolicy
   variableAttempt:CommunityVariableAttempt
+  ordinary?:TavernOrdinaryPreparationStage
   selected:NativeMaterialSelectedBaseV1
   historyRows:readonly Row[]
   seed:string
@@ -41,11 +44,12 @@ export interface CommunityExecutionInput {
   aliases:Record<string,string>
   cardData:unknown
   modelName?:string
-  loreEntries?:readonly {entryId:string;name:string;constant:boolean;dynamic:boolean}[]
+  /** Capture-owned data is derived only when Dream consumes worldbook outlets. */
+  loreEntries?:CommunityLoreMetadata|((neededIds:ReadonlySet<string>)=>CommunityLoreMetadata)
   promptHistoryTextEdits?:NativeMessageProjectionV1['textEdits']
 }
 export interface CommunityExecutionFinish {
-  native:Omit<NativeRequestMaterialPrepareInputV1,'admission'>
+  native:Pick<NativeRequestMaterialPrepareInputV1,'finalAssembly'>
   layout:Layout
   finalLore:readonly TavernNativeFinalLoreTextV1[]
   renderedAuthor:{cardsText:string;rulesText:string;examplesText:string}
@@ -53,6 +57,8 @@ export interface CommunityExecutionFinish {
    * object are deliberately empty; residual author sections stay independent. */
   renderedMarkers?:Partial<Record<CommunityMarker,string>>
   evaluation:Pick<TavernLoreEvaluationPlanV1,'placements'>
+  /** One deterministic final expansion after all same-phase EJS effects. */
+  finalizeText?(text:string):string
 }
 export interface CommunityExecutionRecord {
   schemaVersion:1
@@ -119,9 +125,10 @@ export function createCommunityPresetExecution(input:CommunityExecutionInput) {
   const features=object(input.policy.effective.features[preset.profile.id])
   const configuration={...object(preset.profile.configuration[preset.profile.id]),...features}
   const outlets:Record<string,string>={}
-  const initialChat=clone(input.variableAttempt.chat),initialGlobal=clone(input.variableAttempt.global)
-  const macros=createCommunityMacroEvaluator({seed:input.seed,clockEpochMs:input.clockEpochMs,
-    aliases:{...input.aliases,lastUserMessage:input.inputText,input:input.inputText},chat:initialChat,global:initialGlobal,outlets})
+  const macros=createCommunityMacroEvaluator({seed:input.seed,pickSeed:input.variableAttempt.sessionId,clockEpochMs:input.clockEpochMs,
+    aliases:{...input.aliases,lastUserMessage:input.inputText,input:input.inputText},
+    chat:input.variableAttempt.chat,global:input.variableAttempt.global,outlets,
+    ordinary:input.ordinary})
   const byId=new Map(preset.prompts.map(prompt=>[prompt.identifier,prompt]))
   const prompts=(preset.promptOrder.length?preset.promptOrder.map(row=>byId.get(row.identifier)).filter((p):p is CommunityPresetPrompt=>!!p):preset.prompts)
     .filter(prompt=>prompt.enabled&&!prompt.unused&&!prompt.configurationOnly)
@@ -166,12 +173,18 @@ export function createCommunityPresetExecution(input:CommunityExecutionInput) {
       delimiter:{...object(processingBase.delimiter),...object(processingOverrides.delimiter)}}
     const dream=preset.profile.id==='dream'&&processing.enabled!==false
     if(dream&&object(processing.entry_processing).mode==='worldbook'){
-      const metadata=new Map((input.loreEntries??[]).map(entry=>[entry.entryId,entry]))
       const placementById=new Map<string,typeof finish.evaluation.placements[number]>()
       for(const placement of finish.evaluation.placements) {
         // Evaluation order owns the first placement, just as the former find.
         if(!placementById.has(placement.entryId))placementById.set(placement.entryId,placement)
       }
+      const neededIds=new Set(finish.finalLore.filter(row=>{
+        const placement=placementById.get(row.entryId)
+        return placement&&placement.position!=='named-outlet'
+      }).map(row=>row.entryId))
+      const entries=neededIds.size?(typeof input.loreEntries==='function'
+        ?input.loreEntries(neededIds):input.loreEntries??[]):[]
+      const metadata=new Map(entries.map(entry=>[entry.entryId,entry]))
       const staticTexts:string[]=[],dynamicTexts:string[]=[]
       const movedIds=new Set<string>()
       for(const row of finish.finalLore){
@@ -220,6 +233,7 @@ export function createCommunityPresetExecution(input:CommunityExecutionInput) {
         const anchor=String(transport.controlAnchor??'<format>'),index=value.indexOf(anchor)
         value=value.slice(0,index)+controlPrompt+'\n'+value.slice(index);controlPlaced=true
       }
+      value=finish.finalizeText?.(value)??value
       results.push({identifier:prompt.identifier,role:prompt.role,chars:value.length,sha256:sha(value),
         disposition:prompt.marker?'marker':prompt.injectionPosition===1?'in-chat':afterHistory?'tail':'head'})
       if(!value)continue

@@ -8,22 +8,35 @@ import type {TavernLorePlanV1} from './tavern-lore-plan-types.mjs'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {AuthorContributionDataV1} from './roleplay-author-contributions.js'
 import type {TavernInjectionDefinitionV1} from './roleplay-tavern-injections.js'
-import type {PromptProgramV1} from './tavern-author-prompt-types.mjs'
-import type {BrowserProgramV2} from './tavern-author-browser-types-v2.mjs'
-import type {BrowserProgramV3} from './tavern-author-browser-types-v3.mjs'
+import type {AuthorNativeProgramV1} from './author-native-program.mjs'
+import type {TavernSourceRenderCatalogV1} from './tavern-source-render-catalog.mjs'
+
+/** Both ordinary browser declarations and generation consumers use the same
+ * captured Source program. Neither needs to fabricate a generation output. */
+export function captureNativeTavernInjectionDefinitionV1(sessionId:string,program:AuthorNativeProgramV1)
+  :TavernInjectionDefinitionV1 {
+  const logicalOwnerId=`source-${recordSha256({sessionId,sourceRecordSessionId:program.source.sourceRecordSessionId,
+    importId:program.source.importId,importRecordSha256:program.source.importRecordSha256})}:generation-prompt`
+  return Object.freeze({logicalOwnerId,definitionSha256:recordSha256({schemaVersion:1,
+    encoding:'author-native-generation-definition-v1',logicalOwnerId,nativeProgramSha256:program.programSha256}),
+    nativeProgramSha256:program.programSha256})
+}
 
 export function captureRoleplayTavernInjectionDefinitionsV1(source:TavernLoreSourceDataV1,
-  plan:TavernLorePlanV1,residual:AuthorContributionDataV1,promptProgram?:PromptProgramV1,
-  browserProgram?:BrowserProgramV2|BrowserProgramV3,
-  authorSources?:readonly {pointer:string;text:string}[]) {
+  plan:TavernLorePlanV1,residual:AuthorContributionDataV1,nativeProgram?:AuthorNativeProgramV1,
+  authorSources?:readonly {pointer:string;text:string}[],sourceCatalog?:TavernSourceRenderCatalogV1) {
   const owner=recordSha256({schemaVersion:1,encoding:'native-logical-template-Source-owner-v1',
     sessionId:source.sessionId,sourceRecordSessionId:source.sourceRecordSessionId,
     importId:source.original.activePointer.importId,rawSha256:source.original.rawSha256,
     documentSha256:source.original.documentSha256,activation:source.original.activePointerRef})
   const byKey=new Map<string,TavernInjectionDefinitionV1>()
   for(const entry of plan.entries) {
-    const semantic={...ST_LORE_ENTRY_DEFAULTS_V1,...entry.semanticOverrides}
-    if(!semantic.enabled)continue
+    const semantic={...ST_LORE_ENTRY_DEFAULTS_V1,...entry.semanticOverrides},
+      formal=sourceCatalog?.entries[entry.ordinal]?.formal,
+      forced=formal&&!formal.special&&formal.names.includes('@@activate')&&!formal.names.includes('@@dont_activate')
+    // A disabled force declaration can enable only its own actual Source
+    // entry. The shared evaluator still owns eligibility, timing and budget.
+    if(!(formal?.enabled??semantic.enabled)&&!forced)continue
     const content=resolveTavernLoreContentTextV1(plan,`${entry.sourcePointer}/content`)
     const {content:_content,...controls}=semantic
     const logicalOwnerId=`source-${owner}:lore-${entry.entryId}`
@@ -40,18 +53,21 @@ export function captureRoleplayTavernInjectionDefinitionsV1(source:TavernLoreSou
     byKey.set(pointer,Object.freeze({logicalOwnerId,definitionSha256:recordSha256({logicalOwnerId,
       text,includeCardStyle:residual.includeCardStyle})}))
   }
-  const logicalOwnerId=`source-${owner}:generation-prompt`
-  const generationDefinition=browserProgram?Object.freeze({logicalOwnerId,definitionSha256:recordSha256({
-    schemaVersion:3,encoding:'native-author-generation-definition-v3',logicalOwnerId,
-    browserProgramSha256:browserProgram.programSha256,promptProgramSha256:promptProgram?.programSha256??null,
-  }),...browserProgram.schemaVersion===3?{browserProgramV3Sha256:browserProgram.programSha256}:{}}):promptProgram?Object.freeze({logicalOwnerId,
-    definitionSha256:recordSha256({logicalOwnerId,programSha256:promptProgram.programSha256})}):undefined
-  const browserDefinition=browserProgram?generationDefinition:undefined,
-    promptDefinition=promptProgram?generationDefinition:undefined
-  // Both producers share one Source generation ID space and one definition.
-  // The catalog contains it once; each typed producer receives its same ref.
-  return {definitions:Object.freeze([...byKey.values(),...generationDefinition?[generationDefinition]:[]]),
-    browserDefinition,promptDefinition,
+  const nativeDefinition=nativeProgram?captureNativeTavernInjectionDefinitionV1(source.sessionId,nativeProgram):undefined
+  // Final request text is a distinct Native producer. Its creations retain the
+  // exact slot/resource/capture; the logical owner follows the current author
+  // Source, rather than transient message IDs or the refs its output creates.
+  const finalMessageOwner=`source-${owner}:generate-final`,
+    finalMessageDefinition=Object.freeze({logicalOwnerId:finalMessageOwner,definitionSha256:recordSha256({
+      logicalOwnerId:finalMessageOwner,sourceSha256:source.sourceSha256,includeCardStyle:residual.includeCardStyle})})
+  const readerDefinitions=Object.fromEntries((['before','after'] as const).map(phase=>{
+    const logicalOwnerId=`source-${owner}:reader-${phase}`
+    return [phase,Object.freeze({logicalOwnerId,definitionSha256:recordSha256({logicalOwnerId,
+      sourceSha256:source.sourceSha256,includeCardStyle:residual.includeCardStyle})})]
+  })) as Readonly<Record<'before'|'after',TavernInjectionDefinitionV1>>
+  return {definitions:Object.freeze([...byKey.values(),finalMessageDefinition,
+      ...Object.values(readerDefinitions),...nativeDefinition?[nativeDefinition]:[]]),
+    nativeDefinition,finalMessageDefinition,readerDefinitions,
     definitionFor(pointer:string,entryId:string|undefined) {
     const value=byKey.get(entryId??pointer)
     if(!value)throw Error('INPUT_MATERIAL_INJECTION_SOURCE_DEFINITION_UNAVAILABLE')

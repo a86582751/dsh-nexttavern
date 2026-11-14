@@ -4,6 +4,55 @@
 
 本页合并重复流水，保留用户可见变化、迁移要求和验证限制。完整清理前记录见 [2026-10-24 历史快照](https://github.com/a86582751/dsh-nexttavern/blob/d84a35c41189846faaca5643a88a1949fcff776d/CHANGELOG.md)，可追溯原始测试数字、失败记录和候选演变。
 
+## 2026-11-15
+
+### 开发源码与文档 — Ruby 请求设置与 Reader 消息操作（未发布）
+
+- Ruby 增加状态、面板和 reload 的基础操作。卡片中的温度与 token 限额进入独立 Ruby 请求，显式重试复用冻结参数。
+- Reader 增加事件清理与当前只读 parent 数据入口，Helper generation callback 可读取完整当前开场资料。完整消息资料可按原读取范围写回，保存非当前开场候选后会拒绝按旧读取依据发起的写入。
+- 对应 Source、受控 Core 定点检查与开发构建有通过结果。真实社区卡交互、自然创作和新进程恢复仍待验证。0.3 未发布，正式版本仍为 0.2.9-rc.4。
+
+**English**
+
+Ruby adds basic status, panel and reload controls. Per-card temperature and token limits go through an independent Ruby request, and an explicit retry reuses frozen parameters. Reader adds event cleanup and read-only parent data access, and Helper generation callbacks can read the complete current opening data. Full message data can be written back against its read scope. After a non-current opening candidate is saved, writes based on the old read scope are rejected. Scoped Source checks, controlled Core cases and a development build have passing results. Real community-card interaction, natural authoring and new-process recovery remain unverified. 0.3 is unreleased, and the formal release is still 0.2.9-rc.4.
+
+## 2026-11-14
+
+### 开发源码与文档 — Native 1.2 与 Ruby 流程更新（未发布）
+
+- Native 作者源码、两张完整参考卡和作者文档统一为 1.2 单正文结构；完整导入、创作和导出流程仍待验证。
+- Ruby 支持辅助关键词、缺少外部摘要时回退原文、开局及无输出键任务按序运行，并补齐资料读取、分析、预设、元数据保存与导出路径。
+- 修正克隆后工作流选择、就绪状态、常驻角色文本生成及原创资料下载按最新分类生成和清理过期结果；更新侧聊工具说明，并拆开继续步骤与 Native 候选及可选 Phase A 的依赖。
+- 分项源码与受控 Core 检查有了限定结果，一个先前失败的动态用例修复后同例复验通过（1/1）。独立审查报告已返回；维护者核实并修正其中已确认的可行动问题，再对相应修复作定点复核。这只说明已核实项的结果，不构成完整双审或整阶段通过。自然模型创作、真实原卡 HTML 交互、首批十张及第二批随机十张真实卡的完整玩法、新 Native 输入与导出流程和新进程恢复尚待验证，也未证明整体性能提升。**0.3 未发布**，正式版本仍为 **0.2.9-rc.4**。
+
+English: Align the Native 1.2 author source, two complete reference cards and guides around a single body. Ruby adds auxiliary keywords, original-story fallback when an external summary is missing, ordered startup and tasks without output keys, and read/run/preset/metadata save and export paths. Fix cloned workflow selection, readiness, resident-specific text generation, original-material downloads based on current classification, expired outputs and side-chat tool descriptions; decouple continuation from the Native candidate and optional Phase A. Scoped source and controlled Core checks include one previously failing dynamic case passing a same-case follow-up (1/1). Review reports have been received; maintainers verified and fixed confirmed actionable findings, with follow-up checks limited to those fixes. This does not claim a complete dual-review or overall acceptance pass. Natural-model authoring, real-card HTML interactions, full gameplay across the first ten and second random ten cards, the new Native input/export flows and new-process recovery remain unverified; no overall performance gain is claimed. 0.3 remains unreleased; the formal release is still 0.2.9-rc.4.
+
+## 2026-11-06
+
+### 开发源码与文档 — 浏览器原生作者页与通用交互（未发布）
+
+- 作者页面改用浏览器原生执行，支持外部样式、图片、字体和脚本；接入作者容器访问及连续写入回执。旧前端执行路径及专用组件、测试、依赖和构建映射随替换清理。
+- 常用 Helper 指令、事件、消息变量和编辑接入现有 Native 流程；完善 MVU 数值更新与 EJS／世界书提示准备，修正最终请求文本和普通消息暂存状态的衔接。
+- 维护 CLI 补齐 Markdown／DOCX 上传格式处理；更新原生卡、状态、社区卡及预设指南与中英文首页。详见 [0.3 开发日志](DEVELOPMENT-0.3.md)。
+- Ruby 补齐 `/ruby read/run/preset`：读取材料不新增模型请求，手动分析等待真实发布，方案选择先保存当前作者配置再生效。开局任务与普通任务顺序执行，采用 `selectiveKeysEnabled`；外部总结插件不可用时标明配置状态并使用原始剧情文本。
+- Native 作者源码、两张参考卡与教程统一为 1.2：只保存一份人物／规则正文，顶层可选分类记录真实原文位置，高级视图只读消费。纠正参考卡的异步世界书读取与新增／删除回执；相关整合和新输入验证尚待完成，不代表新格式已经发行。
+- Ruby 的限定 Source 检查和分别取得结果的两个受控 Core 流程已有结果；独立双审仍未完成，完整原卡与新 Native 流程继续验证。
+- 本批是开发源码和文档交付。限定检查与独立审查不代表完整原卡玩法通过；新候选实卡、自然创作、文档导入和新编辑导出往返继续验证。**0.3 尚未发布**，正式版本仍为 **0.2.9-rc.4**，未更新产品包、安装器或生产服务。
+
+English: Move development author pages to native browser execution, retire the superseded frontend stack, and connect common Helper interactions, message edits, MVU updates and EJS/worldbook preparation to Native workflows. Fix Markdown/DOCX upload handling and update the author guides and both homepages. Scoped checks and reviews do not establish complete original-card gameplay; fresh-candidate, natural authoring and import/export validation continue. This is a source and documentation update, not a 0.3 release or production deployment. The formal release remains 0.2.9-rc.4.
+
+Ruby now supports material reads, manual task execution and saved preset selection through `/ruby read/run/preset`, with ordered startup/tasks, the secondary-key toggle and raw-story fallback when an external summary plugin is unavailable. Native author source, both reference cards and the guides now use 1.2: one author body, optional source coordinates and a read-only advanced view. Fix asynchronous worldbook reads and create/delete result handling in the reference card; integration and new-input validation remain to be completed. The earlier Ruby Source and separate controlled Core results remain scoped; the independent pair of reviews is not complete.
+
+## 2026-10-28
+
+### 开发方向 — 调整社区卡兼容路线，0.3 继续延期（未发布）
+
+- 复杂卡验证与架构复查表明，现有兼容层对少量样本和特定脚本写法依赖过重；导入或几轮剧情通过，仍不足以保证原作者交互、动态规则及编辑后的恢复可靠。因此继续调整实现，暂不确定新的发布日期。
+- 保留已有导入、原生卡、世界线、状态、预设与记忆成果，按通用能力分别推进，减少逐卡特例。完成判断覆盖原作者玩法、编辑／分支／重新打开和长期使用成本；34 张既有测试卡继续用于回归，固定卡数与旧串行阶段不再作为版本完成标准。
+- 本次公布开发方向，没有发布 0.3 安装包或升级运行服务；正式版本仍为 **0.2.9-rc.4**。已知问题与既有验证范围继续保留，详见 [0.3 开发日志](DEVELOPMENT-0.3.md)。
+
+English: 0.3 needs more development time. Complex-card checks and architecture review exposed excessive dependence on particular samples and script shapes. Work will focus on reusable compatibility capabilities, original author interactions, editing, branching, recovery and realistic history costs while retaining existing foundations and scoped results. The 34 cards remain regression material rather than a release-count gate. No new release date is set; this documentation update does not release a package or upgrade the runtime. The stable release remains 0.2.9-rc.4.
+
 ## 2026-10-26
 
 ### 开发源码与文档 — 原卡交互、Reader 样式与开场读取（未发布）

@@ -3,7 +3,7 @@
 import {recordSha256} from './roleplay-data.js'
 import type {NativeOwnedContinuationControlV1,NativeInputSupplementProposalV1,
   NativeInputSupplementV1,NativeDurableInputWorkReceiptV1,NativeInputRef}
-  from '@deepseek-ai/dsh-agent-loop'
+  from 'dsh-nexttavern-native-agent-loop'
 import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
 
 type Message=Parameters<NativeOwnedContinuationControlV1['steerOwnedContinuation']>[0]

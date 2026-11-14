@@ -11,6 +11,11 @@ import {validateChatCardProof, chatCardProjection, type ChatCardProof} from './r
 
 export interface CardAttachmentSelector {receiptId: string}
 export interface NativeFileRef {attachmentId: string; name: string; bytes: number}
+export interface ArchivedOriginalFile {
+  file:NativeFileRef
+  resourceId:string
+  sourceFile:string
+}
 export interface CardAttachmentAgent {
   session: ContextSession
   ctx: object
@@ -34,12 +39,12 @@ interface ChatAdmission extends AdmissionFields {schemaVersion: 2; chatProof: Ch
 type Admission = ReceiptAdmission | ChatAdmission
 interface Dependencies extends CardAttachmentServices {
   T: {branch: LibraryTable}
-  libraryFor(session: CardWorkflowSession): Pick<ReturnType<typeof createTavernLibrary>, 'archive' | 'metadata'>
+  libraryFor(session: CardWorkflowSession): Pick<ReturnType<typeof createTavernLibrary>, 'archive' | 'metadata' | 'describe'>
     & Partial<Pick<ReturnType<typeof createTavernLibrary>, 'archivalIdentity'>>
 }
 const PREFIX = 'tavern_card_attachment__'
 const TYPES: Readonly<Record<string, string>> = Object.freeze({
-  '.png': 'image/png', '.json': 'application/json', '.md': 'text/markdown', '.txt': 'text/plain',
+  '.png': 'image/png', '.json': 'application/json', '.md': 'text/markdown', '.markdown': 'text/markdown', '.txt': 'text/plain',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 })
 interface AttachmentPolicy {
@@ -48,13 +53,15 @@ interface AttachmentPolicy {
   bytes: number
   sourceKind: string
   defaultName: string
+  /** Cards retain per-upload formats even when the archive deduplicates bytes. */
+  formatAuthority:'admission'|'archive'
 }
 const CARD_POLICY: AttachmentPolicy = Object.freeze({prefix: PREFIX, types: TYPES,
-  bytes: CARD_LIMITS.bytes, sourceKind: 'native-attachment-import', defaultName: '角色卡'})
+  bytes: CARD_LIMITS.bytes, sourceKind: 'native-attachment-import', defaultName: '角色卡',formatAuthority:'admission'})
 const MUSIC_POLICY: AttachmentPolicy = Object.freeze({prefix: 'tavern_music_attachment__',
   types: Object.freeze({'.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
     '.m4a': 'audio/mp4', '.flac': 'audio/flac', '.webm': 'audio/webm'}),
-  bytes: TAVERN_LIBRARY_LIMITS.bytes, sourceKind: 'native-music-attachment-import', defaultName: '音乐'})
+  bytes: TAVERN_LIBRARY_LIMITS.bytes, sourceKind: 'native-music-attachment-import', defaultName: '音乐',formatAuthority:'archive'})
 // Factories sharing a Host table also share admission serialization. Separate
 // processes must retain the Host's single-writer contract; this is not a lease.
 const locks = new WeakMap<object, Map<string, Promise<unknown>>>()
@@ -113,7 +120,8 @@ function sourceOf(row: Admission, policy: AttachmentPolicy): Record<string, stri
 }
 function archiveName(file: NativeFileRef, policy: AttachmentPolicy): string {
   const extension = extname(file.name).toLowerCase()
-  const stem = file.name.slice(0, -extension.length).normalize('NFC').slice(0, 150).trim().replace(/[. ]+$/, '')
+  const stem = file.name.slice(0, -extension.length).normalize('NFC').slice(0, 150)
+    .replace(/[\uD800-\uDBFF]$/, '').trim().replace(/[. ]+$/, '')
   return safeLibraryName(`${stem || policy.defaultName}${extension}`)
 }
 function admissionOf(value: unknown, expected: {
@@ -212,8 +220,10 @@ function createAttachmentSources({T, libraryFor, fileUploads, attachments}: Depe
         const sources = metadata.sources ?? [metadata.source]
         if (metadata.id !== libraryStableId(workspaceHash, row.file.attachmentId.slice(7))
           || metadata.workspaceHash !== workspaceHash || metadata.fullSha256 !== row.file.attachmentId.slice(7)
-          || metadata.bytes !== row.file.bytes || metadata.type !== policy.types[extension]
-          || extname(metadata.path).toLowerCase() !== extension || isAbsolute(pathPart)
+          || metadata.bytes !== row.file.bytes
+          || (policy.formatAuthority==='archive'&&(metadata.type !== policy.types[extension]
+            || extname(metadata.path).toLowerCase() !== extension))
+          || isAbsolute(pathPart)
           || pathPart === '..' || pathPart.startsWith(`..${sep}`)
           || !sources.some(item => Object.entries(source).every(([key, value]) => item[key] === value))) {
           fail('资源库原件或来源身份不匹配')
@@ -270,6 +280,28 @@ function createAttachmentSources({T, libraryFor, fileUploads, attachments}: Depe
     if (row.schemaVersion !== 2) return null
     return structuredClone(row.chatProof)
   }
+  /** Historical admission identity, independent of volatile receipts and Agents.
+   * The actual byte reader still owns content integrity and current activation. */
+  function readOriginalFile(session:CardWorkflowSession,requestId:string):ArchivedOriginalFile|null {
+    identifier(requestId,'requestId')
+    const key=`${policy.prefix}${sha256(JSON.stringify([session.id,requestId]))}`
+    const value=T.branch.get(key)
+    if(value===undefined||value===null)return null
+    const raw=object(value),workspaceRoot=realpathSync(session.header.cwd)
+    // admissionOf validates the stored proof and its authorization together.
+    const proof=raw.schemaVersion===2?raw.chatProof as ChatCardProof:undefined
+    const row=admissionOf(value,{sessionId:session.id,requestId,workspaceRoot,workspaceHash:sha256(workspaceRoot),
+      ...proof?{}:{receiptId:identifier(raw.receiptId,'receiptId')}},policy,proof)
+    if(row.state!=='archived')return null
+    const resource=libraryFor(session).describe(row.resourceId!),source=sourceOf(row,policy)
+    if(resource.fullSha256!==row.file.attachmentId.slice(7)||resource.bytes!==row.file.bytes
+      ||resource.workspaceHash!==row.workspaceHash
+      ||(policy.formatAuthority==='archive'&&resource.type!==policy.types[extname(row.file.name).toLowerCase()])
+      ||!resource.sources.some(item=>Object.entries(source).every(([key,value])=>item[key]===value))) {
+      fail('原件归档与准入身份不匹配')
+    }
+    return {file:row.file,resourceId:row.resourceId!,sourceFile:resource.path}
+  }
   function readChatProvenance(session: CardWorkflowSession, requestId: string) {
     const proof = readChatProof(session,requestId)
     if (!proof) return null
@@ -281,14 +313,15 @@ function createAttachmentSources({T, libraryFor, fileUploads, attachments}: Depe
     const source = sourceOf(row, policy)
     const sources = metadata.sources
     if (metadata.fullSha256 !== proof.file.attachmentId.slice(7) || metadata.bytes !== proof.file.bytes
-      || metadata.workspaceHash !== row.workspaceHash || metadata.type !== policy.types[extname(row.file.name).toLowerCase()]
+      || metadata.workspaceHash !== row.workspaceHash
+      || (policy.formatAuthority==='archive'&&metadata.type !== policy.types[extname(row.file.name).toLowerCase()])
       || metadata.id !== libraryStableId(row.workspaceHash,proof.file.attachmentId.slice(7))
       || !sources.some(item => Object.entries(source).every(([key,value]) => item[key] === value))) fail('聊天原件归档已变化')
     // This identifies a historic admission. Core must separately check the current
     // job/active import/opening readiness before exposing a selectable opening.
     return chatCardProjection(row.chatProof)
   }
-  return {materialize,materializeChat,readChatProof,readChatProvenance}
+  return {materialize,materializeChat,readChatProof,readChatProvenance,readOriginalFile}
 }
 
 export function createCardAttachmentSources(dependencies: Dependencies) {

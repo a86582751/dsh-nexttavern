@@ -12,7 +12,7 @@ import type {ProgramInheritedCardCopyNativeObservationV1,ProgramRetainedCardCopy
   from './roleplay-program-native-reader.js'
 import type {TavernSourceFrozenProgramAbsenceOpeningV1,TavernSourceNativeCutV1}
   from './roleplay-tavern-source-inheritance-types.js'
-import type {SessionEvent,SessionMessageProjection} from '@deepseek-ai/dsh-session'
+import type {SessionEvent,SessionMessageProjection} from 'dsh-nexttavern-native-session'
 import type {WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {TavernProgramInheritedAbsencePromptScopeDataV1}
   from './roleplay-program-opening-prompt-scopes-types.js'

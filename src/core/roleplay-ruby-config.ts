@@ -1,6 +1,6 @@
 /** Fixed caller: RUBY/src/config.js normalizeConfigData/normalizePreset/
  * normalizeTask/normalizePositions; scheduler.js cycleLength. No task starts here. */
-import type {RubyConfigurationV1,RubyIssueV1,RubyMessageItemV1,RubySourceRefV1,RubyTaskV1}
+import type {RubyConfigurationV1,RubyGenerationOptionsV1,RubyIssueV1,RubyMessageItemV1,RubySourceRefV1,RubyTaskV1}
   from './roleplay-ruby-types.js'
 
 type Data=Readonly<Record<string,unknown>>
@@ -41,26 +41,87 @@ function taskData(raw:unknown,index:number,root:string):RubyTaskV1 {
     promptKey:text(row.promptKey),outputKey:text(row.outputKey),outputVarName:text(row.outputVarName)||`task_${row.id||0}_Output`,
     extraKeys:text(row.extraKeys),enableJailbreak:row.enableJailbreak!==false,
     outputConstant:!!row.outputConstant,outputDisable:!!row.outputDisable,selective:!!row.selective,
-    selectiveKeys:strings(row.selectiveKeys),noRecursion:!!row.noRecursion,
+    selectiveKeysEnabled:!!row.selectiveKeysEnabled,
+    selectiveKeys:row.selectiveKeysEnabled&&Array.isArray(row.selectiveKeys)
+      ?row.selectiveKeys.map(value=>String(value??'').trim()).filter(Boolean):[],noRecursion:!!row.noRecursion,
     position:number(row.position,0),depth:number(row.depth,4),order:number(row.order,100),
     keywordScanEnabled:!!row.keywordScanEnabled,
     keywordScanKeywords:keywords.map(value=>String(value).trim()).filter(Boolean),
     useReferences:strings(row.useReferences),useOutputs:strings(row.useOutputs),issues:[]}
+}
+function startupData(raw:unknown,root:string):RubyTaskV1 {
+  // Config merges [1,2] only when fields are absent; scheduler then falls
+  // through an explicit empty cyclePositions to triggerFloors, or finally [1].
+  const row=object(raw),normalized=rubyCyclePositionsV1(row.cyclePositions??row.triggerFloors??[1,2]),
+    cyclePositions=normalized.length?normalized:row.triggerFloors===undefined?[1,2]:
+      Array.isArray(row.triggerFloors)&&row.triggerFloors.length?row.triggerFloors.map(Number):[1]
+  return {...taskData(row,0,root),id:0,taskKey:'startup',sourcePath:`${root}/startupTask`,
+    enabled:!!row.enabled,displayName:text(row.displayName)||'开局分析',cyclePositions,
+    outputVarName:text(row.outputVarName)||'startupOutput'}
+}
+
+interface GenerationNumberRule {
+  readonly min:number
+  readonly max:number
+  readonly exclusiveMin?:true
+}
+const TEMPERATURE_RULE:GenerationNumberRule={min:0,max:2}
+const MAX_TOKENS_RULE:GenerationNumberRule={min:1,max:Infinity}
+const UNSUPPORTED_GENERATION_NUMBER_RULES:readonly (readonly [string,GenerationNumberRule])[]=[
+  ['top_p',{min:0,max:1,exclusiveMin:true}],
+  ['top_k',{min:1,max:1000}],
+  ['presence_penalty',{min:-2,max:2}],
+  ['frequency_penalty',{min:-2,max:2}],
+]
+const REASONING_EFFORT_VALUES=new Set(['low','medium','high'])
+
+function generationNumber(value:unknown,rule:GenerationNumberRule):number|undefined {
+  const parsed=Number(value)
+  if(!Number.isFinite(parsed)||parsed<rule.min||parsed>rule.max)return undefined
+  if(rule.exclusiveMin&&parsed<=rule.min)return undefined
+  return parsed
+}
+
+/** Normalizes upstream `gen` rules from RUBY/src/config.js sanitizeGenParams and ai.js:
+ * only `enabled === true` applies, valid temperature/safe-integer max_tokens map to Native,
+ * invalid values are dropped, and other valid upstream choices emit field-level issues. */
+function readGenerationOptions(rawGen:unknown,genPath:string,issues:RubyIssueV1[]):RubyGenerationOptionsV1|undefined {
+  const gen=object(rawGen)
+  if(gen.enabled!==true)return undefined
+  const temperature=generationNumber(gen.temperature,TEMPERATURE_RULE)
+  const rawMaxTokens=generationNumber(gen.max_tokens,MAX_TOKENS_RULE)
+  let maxTokens:number|undefined
+  if(rawMaxTokens!==undefined) {
+    if(Number.isSafeInteger(rawMaxTokens))maxTokens=rawMaxTokens
+    else issues.push(issue('RUBY_GENERATION_OPTION_UNSUPPORTED',`${genPath}/max_tokens`))
+  }
+  for(const [field,rule] of UNSUPPORTED_GENERATION_NUMBER_RULES) {
+    if(generationNumber(gen[field],rule)!==undefined) {
+      issues.push(issue('RUBY_GENERATION_OPTION_UNSUPPORTED',`${genPath}/${field}`))
+    }
+  }
+  if(REASONING_EFFORT_VALUES.has(String(gen.reasoning_effort))) {
+    issues.push(issue('RUBY_GENERATION_OPTION_UNSUPPORTED',`${genPath}/reasoning_effort`))
+  }
+  if(temperature===undefined&&maxTokens===undefined)return undefined
+  return {
+    ...(temperature!==undefined?{temperature}:{}),
+    ...(maxTokens!==undefined?{maxTokens}:{}),
+  }
 }
 
 export function readRubyConfigurationV1(raw:unknown,source:RubySourceRefV1):RubyConfigurationV1 {
   const data=object(raw),presets=Array.isArray(data.presets)?data.presets:[],
     requested=text(data.activePresetId),selected=presets.findIndex(value=>text(object(value).id)===requested),
     index=selected>=0?selected:0,preset=object(presets[index]),root=`${source.sourcePath}/presets/${index}`,
-    tasks=(Array.isArray(preset.tasks)?preset.tasks:[]).map((value,ordinal)=>taskData(value,ordinal,root)),
-    enabled=tasks.filter(task=>task.enabled),startup=object(preset.startupTask),issues:RubyIssueV1[]=[]
-  const hasProducer=enabled.length>0||!!startup.enabled||!!object(preset.director).enabled
+    tasks=[startupData(preset.startupTask,root),
+      ...(Array.isArray(preset.tasks)?preset.tasks:[]).map((value,ordinal)=>taskData(value,ordinal,root))],
+    enabled=tasks.filter(task=>task.enabled),issues:RubyIssueV1[]=[],summaryProvider=text(data.summaryProvider)
+  const hasProducer=enabled.length>0||!!object(preset.director).enabled
+  let generation:RubyGenerationOptionsV1|undefined
   if(hasProducer) {
-    if(startup.enabled)issues.push(issue('RUBY_STARTUP_EXECUTION_UNSUPPORTED',root+'/startupTask'))
     if(object(preset.director).enabled)issues.push(issue('RUBY_DIRECTOR_EXECUTION_UNSUPPORTED',root+'/director'))
-    if(['littlewhitebox','shujuku','yuzuki','baibaibook'].includes(text(data.summaryProvider)))
-      issues.push(issue('RUBY_SUMMARY_PROVIDER_UNSUPPORTED',source.sourcePath+'/summaryProvider'))
-    if(object(data.gen).enabled===true)issues.push(issue('RUBY_GENERATION_OPTIONS_UNSUPPORTED',source.sourcePath+'/gen'))
+    generation=readGenerationOptions(data.gen,source.sourcePath+'/gen',issues)
   }
   const messageRows=object(data.jailbreak).items,
     messageItems=Array.isArray(messageRows)&&messageRows.length?rubyMessageItemsV1(messageRows):null
@@ -72,7 +133,9 @@ export function readRubyConfigurationV1(raw:unknown,source:RubySourceRefV1):Ruby
   const cycleLength=enabled.reduce((maximum,task)=>Math.max(maximum,...task.cyclePositions),0)
   return {schemaVersion:1,encoding:'ruby-static-configuration-data-v1',source,
     status:issues.length?'unsupported':!hasProducer?'empty':'supported-static',activePresetId:text(preset.id),
-    charName:text(data.charName),customContentTags:Array.isArray(data.customContentTags)
+    charName:text(data.charName),summaryProvider,
+    summaryProviderStatus:['littlewhitebox','shujuku','yuzuki','baibaibook'].includes(summaryProvider)
+      ?'unavailable-raw-text':'disabled',customContentTags:Array.isArray(data.customContentTags)
       ?data.customContentTags.filter((value):value is string=>typeof value==='string'&&!!value.trim()):[],
-    referencePool,tasks,messageItems,cycleLength,issues,requestsPerEligibleTask:1}
+    referencePool,tasks,messageItems,cycleLength,...(generation?{generation}:{}),issues,requestsPerEligibleTask:1}
 }

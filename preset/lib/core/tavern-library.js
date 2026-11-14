@@ -260,6 +260,13 @@ export function createTavernLibrary({ workspace, table }) {
             modifiedAt,
             sha256: record.fullSha256 };
     }
+    /** Archive metadata only. Callers reading/importing bytes retain their own
+     * integrity boundary; describing a filename must not reread the whole file. */
+    function describe(id) {
+        const record = recordFor(id);
+        return { ...record, path: objectPath(record), sha256: record.fullSha256,
+            sources: copy(record.sources ?? [record.source]) };
+    }
     /** Historical archive identity only. Polling this record must not reread a
      * large original; metadata/read/download still verify the complete file, and
      * import/opening transactions own current integrity and readiness checks. */
@@ -377,5 +384,5 @@ export function createTavernLibrary({ workspace, table }) {
             return { ok: false, pending: pendingRecord };
         }
     }
-    return Object.freeze({ archive, list, listWithPending, metadata, archivalIdentity, read, openDownload, migrate, pending });
+    return Object.freeze({ archive, list, listWithPending, metadata, describe, archivalIdentity, read, openDownload, migrate, pending });
 }

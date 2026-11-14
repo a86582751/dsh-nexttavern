@@ -4,6 +4,7 @@ import type {MvuJsonObject,MvuJsonValue} from './tavern-mvu-initvar.js'
 import type {ImportPointer,ImportRecord} from './roleplay-import-types.js'
 import type {TavernSourceInheritanceDescriptorV1,TavernSourceLegacyCopyV1} from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernLoreFrozenDerivedContentReferenceV1} from './tavern-lore-derived.mjs'
+import type {TavernLoreOrdinarySourceContentReferenceV1} from './tavern-lore-ordinary-preparation.mjs'
 import type {TavernLoreMembershipDataV1,TavernLoreMemberIdentityV1} from './roleplay-tavern-lore-membership.js'
 
 /** An absence is a fact about one complete verified document and activation,
@@ -100,6 +101,7 @@ export interface TavernLoreSourceContentReferenceV1 {
   }
 }
 export type TavernLoreContentReferenceV1=TavernLoreSourceContentReferenceV1|TavernLoreFrozenDerivedContentReferenceV1
+  |TavernLoreOrdinarySourceContentReferenceV1
 /** Null scan/match controls require the actual frozen runtime setting. They
  * never mean the startup globals from a different ST installation. */
 export interface TavernLoreSemanticEntryV1 {

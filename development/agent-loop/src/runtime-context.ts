@@ -5,14 +5,14 @@
  * @module @deepseek-ai/dsh-agent-loop/runtime-context
  */
 
-import { createSystemMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
-import type { ContextFormed, ContextSnapshotSection, Message } from '@deepseek-ai/dsh-llm'
-import type { Session, SessionEvent, SessionSeq, SurfaceIntent, SystemMessage, UserMessage } from '@deepseek-ai/dsh-session'
-import { isReplacementSurfaceEvent } from '@deepseek-ai/dsh-session'
+import { createSystemMessage, createUserMessage } from 'dsh-nexttavern-native-llm'
+import type { ContextFormed, ContextSnapshotSection, Message } from 'dsh-nexttavern-native-llm'
+import type { Session, SessionEvent, SessionSeq, SurfaceIntent, SystemMessage, UserMessage } from 'dsh-nexttavern-native-session'
+import { isReplacementSurfaceEvent } from 'dsh-nexttavern-native-session'
 import type { Context } from '@deepseek-ai/cordis'
 import {renderPrompt} from '@deepseek-ai/dsh-system-prompt'
 import type {PromptAssembly} from '@deepseek-ai/dsh-system-prompt'
-declare module '@deepseek-ai/dsh-llm' {
+declare module 'dsh-nexttavern-native-llm' {
   interface MessageSourceMap {
     'runtime-context': { kind: 'runtime-context' } & ContextFormed
   }

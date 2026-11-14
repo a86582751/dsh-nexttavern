@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/compat/session-controller/src/assistant-stream.ts; edit the TypeScript source.
 /** Process-local assistant state retained for reconnecting Web followers. */
-import { AssistantStreamAccumulator } from '@deepseek-ai/dsh-llm';
+import { AssistantStreamAccumulator } from 'dsh-nexttavern-native-llm';
 const EMPTY_BASELINE = { revision: 0 };
 /**
  * Folds dense Agent frames and materializes one shared immutable reconnect

@@ -22,15 +22,15 @@
  */
 
 import { snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import type { SessionEvent } from 'dsh-nexttavern-native-session'
+import type { ReasoningEffortId } from 'dsh-nexttavern-native-llm'
 import type { ToolRestriction } from '@deepseek-ai/dsh-tools'
 import {readOwnedAuthorDialogActivationV1} from './author-dialog-activation.ts'
 import type {OwnedAuthorDialogActivationV1} from './author-dialog-activation.ts'
 import {readOwnedRubyTaskActivationV1} from './owned-ruby-task.ts'
 import type {OwnedRubyTaskActivationV1} from './owned-ruby-task.ts'
 
-declare module '@deepseek-ai/dsh-session/types' {
+declare module 'dsh-nexttavern-native-session/types' {
   interface SessionEventMap {
     /**
      * Durable identity and lifecycle mode of a session-backed subagent child,

@@ -10,15 +10,16 @@ import {createRoleplayPromptProgramSourceV1,validatePromptProgramSourceInventory
   from './roleplay-prompt-program-source.js'
 import {PROMPT_OPENING_SOURCE_POLICY_SHA256,NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_SHA256,PromptOpeningSourceFailureV1,openingSourceFail,
   clonePromptOpeningSourceDataV1,freezePromptOpeningSourceDataV1,openingSourceObject,
-  calculatePromptOpeningRawInitV1,promptOpeningInitializationInputBindingV1,
+  calculatePromptOpeningRawInitV1,inspectPromptOpeningWholeSourceV1,promptOpeningInitializationInputBindingV1,
   renderPromptOpeningIdentityV1,readPromptOpeningGreetingFactsV1}
   from './roleplay-prompt-opening-source-data.js'
 import type {ImportRecord} from './roleplay-import-types.js'
+import type {PromptProgramSourceInventoryV1,PromptProgramTextV1} from './roleplay-prompt-program-source-types.js'
 import type {OpeningSource,OpeningCatalog} from './roleplay-opening-selection.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {SchemaMvuInitDataSource} from './tavern-mvu-initvar.js'
 import type {PromptOpeningSourceDepsV1,PromptOpeningSourceProofV1,PromptOpeningSourceRelationV1,
-  PromptOpeningSourceCaptureV1,PromptOpeningInitializationV1,PromptOpeningGreetingFactsV1}
+  PromptOpeningSourceCaptureV1,PromptOpeningInitializationV1,PromptOpeningGreetingFactsV1,PromptOpeningSourceNotApplicableV1}
   from './roleplay-prompt-opening-source-types.js'
 
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
@@ -28,6 +29,16 @@ const seal=<T>(value:T):T=>freezePromptOpeningSourceDataV1(clonePromptOpeningSou
 // A stored clone, another process or a live Source capture still needs its own
 // validation/current-owner checks; this set supplies no runtime permission.
 const parsedOpeningSourceProofs=new WeakSet<PromptOpeningSourceProofV1>()
+class OpeningSourceNotApplicable extends Error {
+  constructor(readonly result:PromptOpeningSourceNotApplicableV1) {super(result.reason)}
+}
+function hasPromptProgram(program:PromptProgramSourceInventoryV1):boolean {
+  const hasProgram=(text:PromptProgramTextV1|null)=>text!==null
+    &&(text.tokenization!=='complete-UTF16-partition'||text.segments!.some(part=>part.kind!=='literal'))
+  return program.authorFields.some(field=>hasProgram(field.raw)||hasProgram(field.normalized))
+    ||program.authorGroups.some(group=>hasProgram(group.original)||hasProgram(group.effective))
+    ||program.bookEntries.some(entry=>hasProgram(entry.original)||hasProgram(entry.effective))
+}
 function exact(value:unknown,keys:readonly string[],pointer:string):asserts value is Record<string,unknown> {
   if(!openingSourceObject(value)||!same(Object.keys(value).sort(),[...keys].sort())) {
     openingSourceFail('OPENING_SOURCE_PROOF_INVALID',pointer)
@@ -309,6 +320,7 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
       inheritanceReader=inheritanceOwner?.readCommittedStaticSourceInheritance,actualSession=deps.session(sid)
     const supplied=deps.inputState?programs.captureDataWithCurrentSource(sid,style,assertOwnerCurrent)
       :programs.captureWithCurrentSource(sid,style,assertOwnerCurrent)
+    if(supplied.kind==='not-applicable')throw new OpeningSourceNotApplicable(supplied)
     if(supplied.kind!=='captured-program-source')openingSourceFail('OPENING_SOURCE_CURRENT_ORIGIN_UNAVAILABLE','/program')
     const source=supplied.source,program=supplied.data,tuple=program.importTuple
     if(program.audit.wholeSourceSha256!==source.sourceSha256) {
@@ -341,6 +353,12 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
     if(!candidate)openingSourceFail('OPENING_SOURCE_SELECTION_INVALID','/selection')
     const sourceRelation=readRelation(source),initialization=calculatePromptOpeningRawInitV1({source,decoded,record,program,
       candidates:catalog.candidates,selectedIndex:index,context:context.context})
+    // Literal inputs remain with the existing plain owner. This decision uses
+    // the actual prompt partitions and this already calculated raw-init input;
+    // it neither treats a refusal as absence nor runs another classifier.
+    if(!hasPromptProgram(program)&&initialization.kind==='absent')throw new OpeningSourceNotApplicable(
+      {kind:'not-applicable',reason:'no-program-or-raw-init'})
+    inspectPromptOpeningWholeSourceV1({source,decoded,record,program,context:context.context,bindings:initialization.bindings})
     const body={schemaVersion:1 as const,encoding:'native-prompt-opening-source-proof-v1' as const,
       authority:'consumer-data-only' as const,policySha256:tuple.format==='json-nexttavern-v1'
         ?NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_SHA256:PROMPT_OPENING_SOURCE_POLICY_SHA256,
@@ -418,6 +436,7 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
       return {kind:'captured-opening-source',proof,assertCurrent:live.assertCurrent,
         assertOwnerFactsCurrent:live.assertOwnerFactsCurrent}
     }catch(error) {
+      if(error instanceof OpeningSourceNotApplicable)return seal(error.result)
       const diagnostic=error instanceof PromptOpeningSourceFailureV1
         ?{code:error.code,pointer:error.pointer,...(error.calculatorCode?{calculatorCode:error.calculatorCode}:{})}
         :{code:'OPENING_SOURCE_UNAVAILABLE' as const,pointer:'/source'}

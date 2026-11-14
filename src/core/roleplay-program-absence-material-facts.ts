@@ -1,8 +1,8 @@
 /** Source-free current-row facts at one actual Native/material read frame.
  * Native material binding proves bytes, never hot writer/admission ownership. */
 import {types} from 'node:util'
-import {nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
-import type {Session,SessionEvent,SessionMessageProjection} from '@deepseek-ai/dsh-session'
+import {nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
+import type {Session,SessionEvent,SessionMessageProjection} from 'dsh-nexttavern-native-session'
 import {recordSha256} from './roleplay-data.js'
 import {cloneRoleplayTavernLoreDataV1,TAVERN_LORE_DATA_BOUNDS_V1} from './roleplay-tavern-lore-data.js'
 import {captureRoleplayTavernMaterialHistoryV1} from './roleplay-tavern-material-history.js'
@@ -13,11 +13,13 @@ import {inputSnapshotReferenceCurrent} from './roleplay-preparation.js'
 import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
 import type {ColdNonNumericalInputBranchRowFactV1} from './roleplay-input-cold-row-facts.js'
 import {roleplayOpeningMaterialKeysV1} from './roleplay-opening-material.js'
+import {roleplayMaterialPreparationJournalOwnerV1,readRoleplayMaterialPreparationJournalRowV1}
+  from './roleplay-input-material.js'
 import {validateProgramOpeningSeedV1,validateProgramOpeningInputV1} from './roleplay-program-opening-records.js'
 
 interface TableV1 {get(key:string):unknown;entries():Iterable<[string,unknown]>}
 interface DataRefV1 {readonly key:string;readonly sha256:string}
-type FactKindV1='material-snapshot'|'material-plan'|PhaseABranchRowKindV1
+type FactKindV1='material-snapshot'|'material-plan'|'material-journal'|PhaseABranchRowKindV1
 export interface ProgramAbsenceMaterialRowFactV1 {
   readonly table:'branch'
   readonly key:string
@@ -28,7 +30,8 @@ export interface ProgramAbsenceMaterialRowFactV1 {
   readonly executionAuthority?:'none'
   readonly kind:FactKindV1
   readonly bindings:readonly {readonly publication:{readonly seq:number;readonly sha256:string};
-    readonly snapshotRef:DataRefV1;readonly relation:'material-row'|'bound-phase-a'|'identical-task-alias'|'opening-owned-ref'}[]
+    readonly snapshotRef:DataRefV1;readonly relation:'material-row'|'bound-material-journal'|'bound-phase-a'
+      |'identical-task-alias'|'opening-owned-ref'}[]
 }
 export interface ProgramAbsenceMaterialFactsDependenciesV1 {
   readonly tables:Record<'branch'|'status',TableV1>
@@ -50,6 +53,9 @@ const id=(value:unknown):value is string=>typeof value==='string'&&/^[a-zA-Z0-9_
 const count=(value:unknown,minimum=0):value is number=>typeof value==='number'&&Number.isSafeInteger(value)
   &&value>=minimum&&!Object.is(value,-0)
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value)
+const promptCaptureEncoding=(value:Record<string,unknown>)=>value['schemaVersion']===1
+  &&value['encoding']==='native-tavern-prompt-capture-v1'||value['schemaVersion']===2
+  &&value['encoding']==='native-tavern-prompt-capture-v2'
 function fail(code:string):never {throw Error(code)}
 function freeze<T>(value:T):T {
   if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value)}
@@ -233,7 +239,8 @@ export function createRoleplayProgramAbsenceMaterialFactsV1(deps:ProgramAbsenceM
     }
     type Binding=ProgramAbsenceMaterialRowFactV1['bindings'][number]
     function add(ref:DataRefV1,value:Readonly<Record<string,unknown>>,kind:FactKindV1,binding:Binding):void {
-      const family=kind==='material-snapshot'||kind==='material-plan'?'native-material' as const:'phase-a' as const,
+      const family=kind==='material-snapshot'||kind==='material-plan'||kind==='material-journal'
+        ?'native-material' as const:'phase-a' as const,
         prior=facts.get(ref.key)
       if(prior&&(prior.sha256!==ref.sha256||prior.kind!==kind||prior.family!==family||!sameRowData(prior.value,value))) {
         fail('PROGRAM_ABSENCE_MATERIAL_FACT_CURRENT_REF_CONFLICT')
@@ -271,7 +278,7 @@ export function createRoleplayProgramAbsenceMaterialFactsV1(deps:ProgramAbsenceM
         return materialEnvelope(value,kind)
       }
       const material=checkMaterial(snapshot,snapshotRef,'snapshot'),planned=checkMaterial(plan,planRef,'plan'),payload=material['payload']
-      if(!object(payload)||payload['schemaVersion']!==1||payload['encoding']!=='native-tavern-prompt-capture-v1'
+      if(!object(payload)||!promptCaptureEncoding(payload)
         ||payload['authority']!=='consumer-data-only')fail('PROGRAM_ABSENCE_MATERIAL_FACT_PAYLOAD_INVALID')
       let boundRef:DataRefV1,bound:Readonly<Record<string,unknown>>
       if(snapshot.encoding==='core-input-material-record-v1') {
@@ -347,6 +354,16 @@ export function createRoleplayProgramAbsenceMaterialFactsV1(deps:ProgramAbsenceM
         if(!seen.has(boundRef.key))fail('PROGRAM_ABSENCE_MATERIAL_FACT_OWNED_REFS_INVALID')
       }
       add(snapshotRef,material,'material-snapshot',materialBinding);add(planRef,planned,'material-plan',materialBinding)
+      const journalRefs=payload['materialPreparationJournalRefs']
+      if(journalRefs!==undefined) {
+        if(!Array.isArray(journalRefs))fail('PROGRAM_ABSENCE_MATERIAL_FACT_JOURNAL_REFS_INVALID')
+        const owner=roleplayMaterialPreparationJournalOwnerV1(material)
+        for(const raw of journalRefs) {
+          const ref=dataRef(raw),value=readRoleplayMaterialPreparationJournalRowV1(exactRow(ref),
+            {key:ref.key,snapshotKey:snapshotRef.key,owner})
+          add(ref,value,'material-journal',{publication,snapshotRef,relation:'bound-material-journal'})
+        }
+      }
       const phaseKind:PhaseABranchRowKindV1=snapshot.encoding==='core-input-material-record-v1'?'task-input-snapshot':'task-snapshot'
       add(boundRef,bound,phaseKind,{publication,snapshotRef,relation:'bound-phase-a'})
       const aliasKey=`${sid}__task-snapshot-${snapshot.turn}`,alias=materialRow(aliasKey)
@@ -377,7 +394,7 @@ export function createRoleplayProgramAbsenceMaterialFactsV1(deps:ProgramAbsenceM
       const local=(ref:DataRefV1,value:Readonly<Record<string,unknown>>,kind:FactKindV1)=>{
         if(facts.has(ref.key))return
         prepared.set(ref.key,{table:'branch',key:ref.key,value,sha256:ref.sha256,
-          family:kind==='material-snapshot'||kind==='material-plan'?'native-material':'phase-a',kind,
+          family:kind==='material-snapshot'||kind==='material-plan'||kind==='material-journal'?'native-material':'phase-a',kind,
           evidenceKind:'typed-local-preparation-data',executionAuthority:'none',bindings:[]})
       }
       for(const fact of inputFacts) {
@@ -422,7 +439,7 @@ export function createRoleplayProgramAbsenceMaterialFactsV1(deps:ProgramAbsenceM
             ||!sameRowData(value['originalInputRefs'],work['refs']))fail('PROGRAM_ABSENCE_MATERIAL_FACT_CURRENCY_INVALID')
           if(kind==='snapshot') {
             const payload=value['payload']
-            if(!object(payload)||payload['schemaVersion']!==1||payload['encoding']!=='native-tavern-prompt-capture-v1'
+            if(!object(payload)||!promptCaptureEncoding(payload)
               ||payload['authority']!=='consumer-data-only'||!sameRowData(payload['phaseASnapshotRef'],ref)) {
               fail('PROGRAM_ABSENCE_MATERIAL_FACT_PAYLOAD_INVALID')
             }

@@ -1,9 +1,10 @@
 /** Story-only provider policy and response transport. Only a live material
  * owner may attach this to its actual request; stored records grant no hooks. */
-import type {ContentBlock,LlmCallConfig,ToolSchema,StreamChunk,NativeStoryResponseOperationV1} from '@deepseek-ai/dsh-llm'
-import type {NativeRequestMaterialRecordV1} from '@deepseek-ai/dsh-session'
+import type {ContentBlock,LlmCallConfig,ToolSchema,StreamChunk,NativeStoryResponseOperationV1} from 'dsh-nexttavern-native-llm'
+import type {NativeRequestMaterialRecordV1} from 'dsh-nexttavern-native-session'
+import type {NativeStoryResponseMaterial,NativeStoryResponseFinalizationV1} from '../../llm/src/types.ts'
 import {applyNativeStoryResponseOperationsV1,planNativeStoryResponseMaterialV1,nativeStoryResponseSha256V1,
-  nativeStoryVisibleTextV1} from '@deepseek-ai/dsh-session'
+  nativeStoryVisibleTextV1} from 'dsh-nexttavern-native-session'
 
 export interface NativeStoryRequestPolicyV1 {
   readonly schemaVersion:1
@@ -21,9 +22,17 @@ export interface NativeStoryMaterialHooksV1 {
   /** A new transformer per request attempt. Its output is transient UI only. */
   createTextTransform?():NativeStoryTextTransformV1
 }
+export interface NativeStoryMaterialHooksV2 extends Omit<NativeStoryMaterialHooksV1,'schemaVersion'> {
+  readonly schemaVersion:2
+  finalizeText(input:{readonly text:string;readonly signal:AbortSignal;
+    readonly requestMaterialRef:{readonly seq:number;readonly sha256:string};readonly turn:number;readonly step:number}):
+    Promise<{readonly text:string;readonly producerReceipt?:Readonly<Record<string,unknown>>}|undefined>
+}
+export type NativeStoryMaterialHooks=NativeStoryMaterialHooksV1|NativeStoryMaterialHooksV2
 export interface NativeStoryRequestBindingV1 {
   readonly policy:NativeStoryRequestPolicyV1
-  readonly hooks:NativeStoryMaterialHooksV1
+  readonly hooks:NativeStoryMaterialHooks
+  readonly requestMaterialRef?:{readonly seq:number;readonly sha256:string}
 }
 export function nativeStorySamplingConfigV1(config:LlmCallConfig,policy:NativeStoryRequestPolicyV1):LlmCallConfig {
   const sampling=policy.sampling
@@ -54,6 +63,16 @@ export function normalizeNativeStoryResponseV1(blocks:readonly ContentBlock[],bi
   return materializeNativeStoryResponseV1(blocks,binding).content
 }
 export function materializeNativeStoryResponseV1(blocks:readonly ContentBlock[],binding:NativeStoryRequestBindingV1) {
+  const {plan,extracted}=prepareNativeStoryResponse(blocks,binding)
+  const first=extracted.findIndex(block=>block.type==='text')
+  if(first>=0&&binding.hooks.normalizeText) {
+    const text=nativeStoryVisibleTextV1(extracted),normalized=binding.hooks.normalizeText(text)
+    if(normalized!==text)plan.push({kind:'replace-text',expectedTextSha256:nativeStoryResponseSha256V1(text),text:normalized})
+  }
+  return planNativeStoryResponseMaterialV1(blocks,plan)
+}
+
+function prepareNativeStoryResponse(blocks:readonly ContentBlock[],binding:NativeStoryRequestBindingV1) {
   const transport=binding.policy.response?.transport
   const plan:NativeStoryResponseOperationV1[]=[]
   if(transport)plan.push({kind:'extract-transport',name:transport,selection:transport==='game_content'?'transport':'longest'})
@@ -78,12 +97,36 @@ export function materializeNativeStoryResponseV1(blocks:readonly ContentBlock[],
       }
     }
   }
-  const first=extracted.findIndex(block=>block.type==='text')
-  if(first>=0&&binding.hooks.normalizeText) {
-    const text=nativeStoryVisibleTextV1(extracted),normalized=binding.hooks.normalizeText(text)
-    if(normalized!==text)plan.push({kind:'replace-text',expectedTextSha256:nativeStoryResponseSha256V1(text),text:normalized})
+  return {plan,extracted}
+}
+
+/** Await only the actual completed body; no hook runs while replaying DATA. */
+export async function materializeNativeStoryResponse(blocks:readonly ContentBlock[],binding:NativeStoryRequestBindingV1,
+  input:{signal:AbortSignal;turn:number;step:number}):Promise<{content:ContentBlock[];material:NativeStoryResponseMaterial}> {
+  if(binding.hooks.schemaVersion===1)return materializeNativeStoryResponseV1(blocks,binding)
+  const {plan,extracted}=prepareNativeStoryResponse(blocks,binding)
+  if(!extracted.some(block=>block.type==='text'))return planNativeStoryResponseMaterialV1(blocks,plan)
+  const original=nativeStoryVisibleTextV1(extracted)
+  let text=binding.hooks.normalizeText?.(original)??original
+  if(!binding.requestMaterialRef)throw Error('STORY_FINALIZATION_REQUEST_MATERIAL_REQUIRED')
+  input.signal.throwIfAborted()
+  const inputTextSha256=nativeStoryResponseSha256V1(text)
+  const result=await binding.hooks.finalizeText({text,...input,requestMaterialRef:binding.requestMaterialRef})
+  input.signal.throwIfAborted()
+  let finalization:NativeStoryResponseFinalizationV1|undefined
+  if(result!==undefined) {
+    text=result.text
+    finalization={schemaVersion:1,encoding:'native-story-response-finalization-v1',
+      requestMaterialRef:binding.requestMaterialRef,turn:input.turn,step:input.step,inputTextSha256,
+      outputTextSha256:nativeStoryResponseSha256V1(text),
+      ...result.producerReceipt===undefined?{}:{producerReceipt:result.producerReceipt}}
   }
-  return planNativeStoryResponseMaterialV1(blocks,plan)
+  // The operation starts before normalization and ends after finalization:
+  // one replacement preserves the V1 interpreter and nontext block origins.
+  if(text!==original)plan.push({kind:'replace-text',expectedTextSha256:nativeStoryResponseSha256V1(original),text})
+  const output=planNativeStoryResponseMaterialV1(blocks,plan)
+  return finalization?{content:output.content,material:{...output.material,schemaVersion:2,
+    encoding:'native-story-response-material-v2',finalization}}:output
 }
 
 /** Raw chunks still enter Native's accumulator unchanged. Only UI frames pass

@@ -9,8 +9,8 @@
  */
 
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, isContextWindowExceededError, isQuotaExceededError, LlmError, QUOTA_EXCEEDED_CODE } from '@deepseek-ai/dsh-llm'
-import type { FinishReason, StreamChunk, TokenUsage, ToolCallId } from '@deepseek-ai/dsh-llm'
+import { CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, isContextWindowExceededError, isQuotaExceededError, LlmError, QUOTA_EXCEEDED_CODE } from 'dsh-nexttavern-native-llm'
+import type { FinishReason, StreamChunk, TokenUsage, ToolCallId } from 'dsh-nexttavern-native-llm'
 import { isContextOverflow } from 'dsh-nexttavern-pi-ai/utils/overflow'
 import type { AssistantMessage, AssistantMessageEvent, Usage as PiUsage } from 'dsh-nexttavern-pi-ai'
 import { toPiReplayState } from './replay.js'

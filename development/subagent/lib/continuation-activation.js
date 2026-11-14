@@ -9,7 +9,7 @@
  *
  * @module @deepseek-ai/dsh-subagent/continuation-activation
  */
-import { errorChain } from '@deepseek-ai/dsh-llm';
+import { errorChain } from 'dsh-nexttavern-native-llm';
 import { appendDelegatedPolicyOverrides, applyChildComposition, } from "./child-agent.js";
 import { createSettlementMessage } from "./continuation-messages.js";
 import { SubagentError } from "./error.js";

@@ -11,7 +11,7 @@ import {readProgramGeneratedNativeObservationV1,readProgramCardCopyNativeV1}
 import type {ProgramGeneratedNativeObservationV1} from './roleplay-program-native-reader.js'
 import {createProgramOpeningNativeFactsV1} from './roleplay-program-opening-records.js'
 import type {TavernSourceInheritanceOwnerV1} from './roleplay-tavern-source-inheritance-types.js'
-import type {SessionMessageProjection,SessionEvent} from '@deepseek-ai/dsh-session'
+import type {SessionMessageProjection,SessionEvent} from 'dsh-nexttavern-native-session'
 import type {WorldlineMessageEdits,StoryEvent} from './roleplay-worldline-types.js'
 interface Dependencies {
   readonly branch:{get(key:string):unknown}

@@ -7,7 +7,15 @@ import {createImmutableDescriptorValidator} from './roleplay-mvu-schema-descript
 interface Table {
   get(key:string):unknown
   entries(prefix?:string,include?:(key:string,value:unknown)=>boolean):Iterable<[string,unknown]>
+  entriesPrefix?(prefix:string):Iterable<[string,unknown]>
   put(key:string,value:unknown):Promise<unknown>
+}
+interface ScopedTable extends Table {
+  readFact?(key:string,resolve:()=>unknown):unknown
+}
+function readTablePrefix(table:Table,prefix?:string):[string,unknown][] {
+  if(prefix!==undefined&&table.entriesPrefix)return [...table.entriesPrefix(prefix)]
+  return [...table.entries(prefix)].filter(([key])=>prefix===undefined||key.startsWith(prefix))
 }
 export interface MvuSchemaPrefixInputBindingV1 {
   sessionId:string
@@ -172,15 +180,16 @@ const objectKey=(scope:string,table:TableName,row:RowReference)=>
   `${scope}__mvu-prefix-input-object-v2-${recordSha256({table,key:row.key,sha256:row.sha256})}`
 
 export function createRoleplayMvuSchemaPrefixInputs(tables:{branch:Table;status:Table}) {
-  let active:{branch:Table;status:Table}|undefined
+  let active:{branch:ScopedTable;status:ScopedTable}|undefined
   const views=Object.fromEntries((['branch','status'] as const).map(name=>[name,{
     get:(key:string)=>(active?.[name]??tables[name]).get(key),
-    // InputState subscribes to prefixes but yields the whole table. This view
-    // owns actual filtering; include belongs to the consumer, not that proxy.
-    entries:(prefix?:string,include?:(key:string,value:unknown)=>boolean)=>active
-      ?active[name].entries(prefix,include)
-      :[...tables[name].entries(prefix)].filter(([key,value])=>(prefix===undefined||key.startsWith(prefix))
-        &&(!include||include(key,value))),
+    entries:(prefix?:string,include?:(key:string,value:unknown)=>boolean)=>{
+      if(active)return active[name].entries(prefix,include)
+      // A live InputState prefix query owns membership and its subscription.
+      // Closed readers continue to use their finite retained footprint above.
+      const rows=readTablePrefix(tables[name],prefix)
+      return include?rows.filter(([key,value])=>include(key,value)):rows
+    },
     put:(key:string,value:unknown)=>{
       if(active)fail('SCHEMA_FROZEN_INPUT_WRITE_REFUSED')
       return tables[name].put(key,value)
@@ -278,12 +287,12 @@ export function createRoleplayMvuSchemaPrefixInputs(tables:{branch:Table;status:
     source?:MvuSchemaPrefixInputClosure) {
     const pending=new Map<string,ResolvedInput>()
     const recordings=(['branch','status'] as const).map(name=>{
-      const live=inputs[name],rows=new Map<string,RowReference>(),membership=new Set<string>()
+      const live=inputs[name],rows=new Map<string,RowReference>(),membership=new Set<string>(),
+        resolvers=new Map<string,()=>unknown>()
       const sourceRows=source?new Map(source.tables.find(table=>table.table===name)!.rows.map(row=>[row.key,row])):undefined
       const enumerations:{prefix:string|undefined;include:((key:string,value:unknown)=>boolean)|undefined;keys:string[]}[]=[]
-      const entries=(prefix?:string,include?:(key:string,value:unknown)=>boolean)=>[...live.entries(prefix)]
-        .filter(([key,value])=>key.startsWith(`${sessionId}__`)&&(prefix===undefined||key.startsWith(prefix))
-          &&(!include||include(key,value)))
+      const entries=(prefix?:string,include?:(key:string,value:unknown)=>boolean)=>readTablePrefix(live,prefix)
+        .filter(([key,value])=>key.startsWith(`${sessionId}__`)&&(!include||include(key,value)))
       function remember(keyValue:string,value:unknown):unknown {
         const previous=rows.get(keyValue)
         if(previous)return value
@@ -305,7 +314,12 @@ export function createRoleplayMvuSchemaPrefixInputs(tables:{branch:Table;status:
         }
         return value
       }
-      const view:Table={get:key=>remember(key,live.get(key)),entries:(prefix,include)=>{
+      const view:ScopedTable={get:key=>remember(key,live.get(key)),readFact:(key,resolve)=>{
+        if(source)return view.get(key)
+        resolvers.set(key,resolve)
+        const row=rows.get(key)
+        return row?row.exists?pending.get(identity(name,row))!.value:undefined:remember(key,resolve())
+      },entries:(prefix,include)=>{
         const actual=entries(prefix,include),keys=actual.map(([key])=>key)
         enumerations.push({prefix,include,keys})
         for(const key of keys)membership.add(key)
@@ -321,8 +335,10 @@ export function createRoleplayMvuSchemaPrefixInputs(tables:{branch:Table;status:
       },assertCurrent:()=>{
         for(const enumeration of enumerations)if(!same(enumeration.keys,
           entries(enumeration.prefix,enumeration.include).map(([key])=>key)))fail('SCHEMA_FROZEN_INPUT_CHANGED')
-        for(const row of rows.values())if(row.exists?recordSha256(live.get(row.key))!==row.sha256
-          :live.get(row.key)!==undefined)fail('SCHEMA_FROZEN_INPUT_CHANGED')
+        for(const row of rows.values()) {
+          const resolve=resolvers.get(row.key),value=resolve?resolve():live.get(row.key)
+          if(row.exists?recordSha256(value)!==row.sha256:value!==undefined)fail('SCHEMA_FROZEN_INPUT_CHANGED')
+        }
       }}
     })
     const result=scoped({branch:recordings[0]!.view,status:recordings[1]!.view},()=>action({
@@ -377,5 +393,11 @@ export function createRoleplayMvuSchemaPrefixInputs(tables:{branch:Table;status:
     const captured=record(source.sessionId,inputs,action,bindingFor,context,closure)
     return {...captured,assertCurrent(){/* The input rows are immutable frozen DATA. */}}
   }
-  return {branch:views.branch,status:views.status,createReadContext,capture,captureComputed,verify,prepareClosed,derive}
+  function readBranchFact(key:string,resolve:()=>unknown):unknown {
+    if(!active)return resolve()
+    // Live recording enrolls the resolved logical fact. Closed/derive views
+    // read their selected archive exclusively and never invoke this resolver.
+    return active.branch.readFact?active.branch.readFact(key,resolve):active.branch.get(key)
+  }
+  return {branch:views.branch,status:views.status,readBranchFact,createReadContext,capture,captureComputed,verify,prepareClosed,derive}
 }

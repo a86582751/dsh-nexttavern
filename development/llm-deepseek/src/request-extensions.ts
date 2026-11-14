@@ -1,6 +1,6 @@
 /** Prepare plugin-contributed request fields and commit their delivery after HTTP acceptance. */
 
-import { LlmError } from '@deepseek-ai/dsh-llm'
+import { LlmError } from 'dsh-nexttavern-native-llm'
 import type { DeepSeekLlmApiExtensionRequest, PreparedDeepSeekLlmApiExtensions } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 import type { DeepSeekAdapterOptions } from './types.js'
 

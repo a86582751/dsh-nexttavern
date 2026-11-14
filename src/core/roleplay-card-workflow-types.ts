@@ -16,8 +16,10 @@ export interface CardWorkflowResult extends Record<string, unknown> { resourceId
 export interface NativeCardAuthoringOriginV1 {schemaVersion:1;kind:'native-authoring'}
 export type CardWorkflowResourceSourceV1=ReturnType<typeof resolveImportSource>
 export interface CardWorkflowExportStartSourceV1 {
+  /** Complete frozen input identity, including non-classified author fields. */
   sha256:string
   document?:NextTavernCardExportDocument
+  /** sourceSha256 inside this snapshot binds only the semantic classification input. */
   conversionSnapshot?:NativeCardConversionSnapshotV1
   conversionClassification?:NativeCardClassificationV1
   nativeAuthoring?:boolean
@@ -44,10 +46,12 @@ export interface CardWorkflowJob extends Record<string, unknown> {
   authoringOrigin?:NativeCardAuthoringOriginV1
 }
 export interface CardWorkflowDependencies {
+  readOriginalImportFile?(session:CardWorkflowSession,requestId:string):import('./roleplay-card-attachment.js').ArchivedOriginalFile|null
   T: {
     branch: {
       get(key: string): unknown
       entries(): Iterable<[string, unknown]>
+      entriesPrefix?(prefix:string|readonly string[]):Iterable<[string,unknown]>
       put(key: string, value: unknown): Promise<unknown>
     }
     opening: {get(key: string): {text?: string} | null | undefined}
@@ -60,7 +64,7 @@ export interface CardWorkflowDependencies {
     CardWorkflowExportStartSourceV1
   /** A frozen library file supplies its own author DATA. This must not import,
    * activate or read the current conversation's author/editor tables. */
-  captureResourceConversionSource?(session:CardWorkflowSession,source:CardWorkflowResourceSourceV1):
+  captureResourceConversionSource?(session:CardWorkflowSession,source:CardWorkflowResourceSourceV1,fileSha256:string):
     CardWorkflowExportStartSourceV1|PromiseLike<CardWorkflowExportStartSourceV1>
   driveNativeConversion?(session:CardWorkflowSession,job:CardWorkflowJob,
     agent?:CardWorkflowAgent,signal?:AbortSignal):Promise<CardWorkflowResult>

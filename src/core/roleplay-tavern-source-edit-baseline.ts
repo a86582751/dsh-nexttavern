@@ -12,6 +12,7 @@ import type {TavernLoreCurrentNativeOverlayV1,TavernLoreCurrentNativeFieldsV1} f
 import type {LoreEditJournalV1} from './roleplay-tavern-lore-edits-journal.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernLoreEditRefV1} from './roleplay-tavern-lore-edits-types.js'
+import type {TavernLoreJournalEventV2} from './roleplay-tavern-lore-edits-types.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 
 function overlayForLayer(layer:Pick<TavernSourcePublishedEditLayerV1,
@@ -48,7 +49,8 @@ export function freezePublishedLocalEditLayerV1(source:TavernLoreSourceDataV1,jo
   const body={...base,overlay:overlayForLayer(base)}
   return validateFrozenPublishedEditLayerV1({...body,layerSha256:recordSha256(body)})
 }
-export function validateFrozenPublishedEditLayerV1(raw:unknown):TavernSourcePublishedEditLayerV1 {
+export function validateFrozenPublishedEditLayerV1(raw:unknown,
+  onPublished?:(event:TavernLoreJournalEventV2)=>void):TavernSourcePublishedEditLayerV1 {
   const data=inheritanceDataV1(raw)
   inheritanceExactV1(data,['ownerSessionId','sourceSha256','identity','identitySha256','head','headRef',
     'journalRefs','journalSha256','events','overlay','layerSha256'])
@@ -69,6 +71,7 @@ export function validateFrozenPublishedEditLayerV1(raw:unknown):TavernSourcePubl
       if(seen.has(row.ref.key)||row.ref.sha256!==recordSha256(event)||!inheritanceSameV1(event.baseHead,prior))
         inheritanceFailV1('SOURCE_INHERITANCE_JOURNAL_INVALID')
       seen.add(row.ref.key);refs.push(row.ref);prior=nextHead(event)
+      onPublished?.(event)
     }
     refs.sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0)
     if(!inheritanceSameV1(prior,head)||head.revision!==layer.events.length
@@ -99,7 +102,8 @@ export function frozenEditOverlayV1(layers:readonly TavernSourcePublishedEditLay
   return {schemaVersion:1,encoding:'st-character-book-current-native-overlay-v1',
     entries:[...effective].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([,entry])=>entry)}
 }
-export function validateFrozenSourceEditBaselineV1(raw:unknown):TavernSourceEditBaselineV1 {
+export function validateFrozenSourceEditBaselineV1(raw:unknown,
+  onPublished?:(event:TavernLoreJournalEventV2)=>void):TavernSourceEditBaselineV1 {
   const value=inheritanceDataV1(raw)
   inheritanceExactV1(value,['schemaVersion','encoding','childSessionId','preparedRef','layers','effectiveOverlay','baselineSha256'])
   const {baselineSha256,...body}=value
@@ -108,7 +112,7 @@ export function validateFrozenSourceEditBaselineV1(raw:unknown):TavernSourceEdit
     ||!Array.isArray(value.layers)||value.layers.length>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.ancestors)
     inheritanceFailV1('SOURCE_INHERITANCE_JOURNAL_INVALID')
   validateInheritanceRefV1(value.preparedRef,tavernSourcePreparedKeyV1(value.childSessionId))
-  const layers=value.layers.map(validateFrozenPublishedEditLayerV1)
+  const layers=value.layers.map(layer=>validateFrozenPublishedEditLayerV1(layer,onPublished))
   if(layers.reduce((sum,layer)=>sum+layer.events.length,0)>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.events)
     inheritanceFailV1('SOURCE_INHERITANCE_BUDGET')
   if(!inheritanceSameV1(value.effectiveOverlay,frozenEditOverlayV1(layers)))inheritanceFailV1('SOURCE_INHERITANCE_JOURNAL_INVALID')

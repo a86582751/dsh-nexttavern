@@ -183,7 +183,7 @@ profile 由导入器识别实际声明和静态配置，不对同名预设的所
 
 绑定 outlet 后，仍须有本轮实际参与请求的文本引用 `{{outlet::名称}}`。若引用只写在被文风策略排除的 `rules.reply` 等字段中，条目准入不会自动把它追加到其他位置；玩法必需的出口应放在实际生效的作者栏目或预设条目。
 
-EJS 是单独的作者模板链。例如 Native 人物内容可用 `<%= 2 + 3 %>` 生成文本，已接入模板来源的世界书可用 `<%= getvar('stat_data.角色.体力', 'chat') %>` 读取有效数值快照；它不是放在社区 preset prompt 中就自动执行的语法。模板落点、标签、变量和 `getwi`／提示注入 API 见[原生卡 EJS 章节](NATIVE-CARD-FORMAT.md#8-ejs-作者模板动态文本与世界书联动)，数值初始化与写入边界见[状态手册](NATIVE-STATE.md#4-schemaejs-与纯数据路径的边界)。预设消费实际渲染结果，不为每个 marker 再执行一份作者程序。
+EJS 与前置社区宏有不同的执行阶段。例如 Native 人物内容可用 `<%= 2 + 3 %>`，世界书模板可用 `<%= getvar('stat_data.角色.体力', {scope:'local'}) %>` 读取实际数值快照；普通 preset 的前置组装不会单独求值 EJS，但进入正常 Main 最终请求 slot 后，其中的 EJS 会按最终文本流程处理。`getpreset`／`getprp` 则可显式读取当前捕获目录中的首个匹配 prompt，在同一模板环境嵌套求值，包含未启用或未参加最终组装的条目；嵌套调用需要 `await`。模板落点、标签、变量和 `getwi`／提示注入 API 见[原生卡 EJS 章节](NATIVE-CARD-FORMAT.md#8-ejs-作者模板动态文本与世界书联动)，数值初始化与写入边界见[状态手册](NATIVE-STATE.md#4-schemaejs-与纯数据路径的边界)。只读历史恢复不重跑这条准备链；请求投影也不改写原始历史。
 
 ### 历史和响应投影
 
@@ -282,6 +282,6 @@ placement 的当前 UI 名称为 1 用户输入、2 模型回复、3 快捷命�
 
 导入、控件、宏、正则、组装和变量结算不新增模型推理请求，正常／重试／回退增量为 0／0／0。它们可以改变 Story 的 token 数、温度、预算和输出，从而改变实际费用；Ruby 与作者显式生成操作另计。
 
-本文的 JSON 是可交给现有解析器的示例；条目、宏和正则应分别核对导入结果与预期文本。完整兼容还需要真实请求、响应与 UI 操作结果；格式通过不能代替整卡玩法验证。Native 1.1 普通执行与高级人物分类也有不同材料消费者，预设选择成功不能证明全部动态高级投影已支持，详见[原生卡格式](NATIVE-CARD-FORMAT.md)。
+本文的 JSON 是可交给现有解析器的示例；条目、宏和正则应分别核对导入结果与预期文本。完整兼容还需要真实请求、响应与 UI 操作结果；格式通过不能代替整卡玩法验证。Native 1.2 的普通执行使用唯一作者正文，可选分类只为高级消费者提供只读视图，不能替换 preset 的原始字段与宏来源。高级材料复用本轮实际准入和已渲染结果，不为每个人物再执行一次模板；预设选择成功也不能证明全部动态高级投影已支持，详见[原生卡格式](NATIVE-CARD-FORMAT.md#7-单份作者正文与可选分类)。
 
 源码定位：[导入格式](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/community-preset-import.ts)、[作用域](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/community-presets.ts)、[profile](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/community-preset-profiles.ts)、[控件](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/community-preset-controls.ts)、[宏](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/community-preset-macros.ts)、[执行](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/community-preset-execution.ts)、[正则顺序](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/community-regex.ts)、[正则语义](https://github.com/a86582751/dsh-nexttavern/blob/main/src/core/tavern-prompt-transform-execution.mts)。

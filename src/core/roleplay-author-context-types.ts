@@ -57,7 +57,7 @@ export interface AuthorPromptDependencies {
   isRoleplaySession(session: ContextSession | null | undefined): boolean
   allowAuthorFields?(session:ContextSession,agent:TaskAgent|undefined):boolean
   userValues(id?: string): {name: string; gender: string}
-  characterCluster: {read(session: ContextSession): {enabled: boolean}}
+  characterCluster: {read(session: ContextSession): {enabled: boolean;privateMemoryEnabled?:boolean}}
   characterRoster(session: ContextSession): {id?: unknown; name?: unknown}[]
   CARD_CLASSIFICATION_GUIDE: string
   narrativePresets: ReturnType<typeof import('./narrative-presets.js').createNarrativePresets>

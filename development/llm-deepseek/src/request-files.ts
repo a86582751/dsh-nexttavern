@@ -2,8 +2,7 @@
 
 import type { RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { deadline } from '@deepseek-ai/dsh-timeout'
-import type { DeepSeekFileStore, DeepSeekFileConnection, DeepSeekFilePolicy } from './file-store.js'
-import type { DeepSeekFileId } from './file-id.js'
+import type { DeepSeekFileStore, DeepSeekFileConnection, DeepSeekFilePolicy, DeepSeekFileId } from '@deepseek-ai/dsh-llm-deepseek'
 
 /** Position of an image occurrence in the request's conversation messages. */
 export interface ImageWireLocation {

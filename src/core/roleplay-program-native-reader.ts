@@ -3,10 +3,10 @@
 import {recordSha256,sha256} from './roleplay-data.js'
 import {types as utilTypes} from 'node:util'
 import {inspectNativeOpeningGenerationObservationV1,inspectInheritedOpeningGenerationObservationV1,nativeInputSha256}
-  from '@deepseek-ai/dsh-agent-loop'
-import type {Session,SessionEvent,SessionMessageProjection} from '@deepseek-ai/dsh-session'
+  from 'dsh-nexttavern-native-agent-loop'
+import type {Session,SessionEvent,SessionMessageProjection} from 'dsh-nexttavern-native-session'
 import type {NativeOpeningIdentityV1,NativeGeneratedOpeningReceiptV1,NativeOpeningClosingAckV1,
-  NativeOpeningEventRefV1,NativeOpeningHistoryObservationV1,NativeOpeningGenerationInspectionV1} from '@deepseek-ai/dsh-agent-loop'
+  NativeOpeningEventRefV1,NativeOpeningHistoryObservationV1,NativeOpeningGenerationInspectionV1} from 'dsh-nexttavern-native-agent-loop'
 import type {StoryEvent,WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {CompletedStoryBody} from './roleplay-mvu-story.js'
 import {verifyProgrammaticCardCopySpanV1,verifyInheritedProgrammaticCardCopySpanV1,

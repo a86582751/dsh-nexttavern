@@ -3,8 +3,8 @@
  * Core supplies live task ownership; this module owns only child composition. */
 import { createHash } from 'node:crypto';
 import { brandString } from '@deepseek-ai/dsh-brand';
-import { freezeMessage } from '@deepseek-ai/dsh-llm';
-import { nativeInputSha256 } from '@deepseek-ai/dsh-agent-loop';
+import { freezeMessage } from 'dsh-nexttavern-native-llm';
+import { nativeInputSha256 } from 'dsh-nexttavern-native-agent-loop';
 const prefixName = 'deployment:persona-prefix';
 const textSha256 = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
 const blocked = (code) => ({ kind: 'blocked', code });
@@ -122,6 +122,10 @@ export function composeOwnedRubyTaskActivationV1(ctx, child, activation, owner) 
             remove();
     };
     try {
+        if (activation.temperature !== undefined)
+            cleanup.push(ctx.on('agent/request', async (_input, next) => ({
+                ...await next(), temperature: activation.temperature,
+            })));
         // Workspace instructions belong to the inherited Main preset. Remove its
         // post-step contribution before Native selects this task's frozen input;
         // keep the actual admitted user object and the rest of the decision.

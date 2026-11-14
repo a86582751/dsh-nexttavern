@@ -4,12 +4,13 @@ import type * as ReactAPI from 'react';
 import type { StateReply } from './state-store.js';
 import type { ActivityComponents } from './activity-view.js';
 import { createRefreshScheduler } from './panel-state.js';
-import { normalizeDecision, normalizePanel, normalizeOption, normalizeField, renderUserVars } from './reader-model.js';
+import { normalizeDecision, normalizePanel, normalizeOption, normalizeField, renderUserVars, userValuesFromState } from './reader-model.js';
+import {runReaderRegex} from './reader-regex.js';
 
 import { sanitizeStatusHtml, scopeHtmlStyles } from './reader-rendering.js';
 import { statusFactsHtml, decodeStatusTemplate } from './status-rendering.js';
-import {runReaderRegex, type StatusTask} from './reader-regex.js';
 import {createMvuStatePanel} from './mvu-state-panel.js';
+import {createToolWindow} from './tool-window.js';
 import type {MvuStateObservation} from '../core/roleplay-mvu-player-types.js';
 interface Position {left: number;top: number;}
 interface Size {w: number;h: number;}
@@ -38,7 +39,6 @@ interface SurfaceDependencies {
     toast(text: string): void;
     jsonFetch?<T>(url:string,init?:RequestInit):Promise<T>
     onStateAccepted?(state: StatusSurfaceState): void;
-    runStatusRegex?(task: StatusTask, signal?: AbortSignal): Promise<string[]>;
 }
 
 export function createStatusSurface({
@@ -57,17 +57,33 @@ React,
      runMaintenance,
      toast,
      jsonFetch,
-     onStateAccepted,
-     runStatusRegex = runReaderRegex
+     onStateAccepted
 }: SurfaceDependencies) {
     const { DecisionCard, decisionSeat } = createDecisionSeat({ React, createRoot, resolveActiveSessionId, toast });
     const ChatOpeningCard = createChatOpeningCard({React,toast,invalidateState,
       jsonFetch:jsonFetch ?? (async () => {throw new Error('开场选择服务暂不可用')})})
     const {MvuStatePanel} = createMvuStatePanel({React,invalidateState})
+    const ToolWindow = createToolWindow(React)
+    let numericalOpened = false
+    const numericalListeners = new Set<()=>void>()
+    const numericalSeat = {
+        open(value:boolean) {
+            numericalOpened=value
+            numericalListeners.forEach(listener=>listener())
+        },
+        toggle() { numericalSeat.open(!numericalOpened) },
+        useOpen() {
+            return React.useSyncExternalStore(listener=>{
+                numericalListeners.add(listener)
+                return ()=>{numericalListeners.delete(listener)}
+            },()=>numericalOpened,()=>false)
+        }
+    }
 
 
 
     function StatusOverlay({ sessionId }: {sessionId?: string | null;}) {
+        const numericalOpen = numericalSeat.useOpen()
         const [state, setState] = React.useState<StatusSurfaceState | null>(null);
         const [loading, setLoading] = React.useState(Boolean(sessionId || resolveActiveSessionId()));
         const [refreshing, setRefreshing] = React.useState(false);
@@ -391,42 +407,52 @@ React,
             [activeSessionId, backgroundActivity?.storySeq, backgroundActivity?.stage, backgroundActivity?.running]
         );
         const currentState = state?.sessionId === activeSessionId && state?.preset === 'roleplay' ? state : null;
-        const panel = normalizePanel(currentState?.statusPanel);
-        // 状态栏模版由程序替换用户变量，作者正则在 Worker 中顺序执行。
-        const renderVars = (text: unknown) => renderUserVars(text, currentState);
-        const rawOptions = Array.isArray(panel?.options)
-            ? panel.options.map(normalizeOption).map(option => ({...option, label: renderVars(option.label)})) : [];
-        const rawFields = Array.isArray(panel?.fields)
-            ? panel.fields.map(normalizeField).map(field => ({...field, value: renderVars(field.value)})) : [];
-        const rawTitle = renderVars(panel?.title || '状态栏');
-        const statusAuthorRoots = [
-            '.dsh-rp-status-window .dsh-rp-status-author',
-            '.dsh-rp-status-dock .dsh-rp-status-author',
-        ];
-        const rawHtml = panel?.html
-            ? renderVars(scopeHtmlStyles(decodeStatusTemplate(panel.html), statusAuthorRoots)) : '';
-        const [authorText, setAuthorText] = React.useState<{state: StatusSurfaceState; texts: string[]} | null>(null);
+        const userValues = userValuesFromState(currentState);
+        const prepared = React.useMemo(() => {
+            if (!currentState) return null;
+            const panel = normalizePanel(currentState.statusPanel);
+            const fields = panel?.fields.map(normalizeField) ?? [];
+            const options = panel?.options.map(normalizeOption) ?? [];
+            const renderVars = (text: unknown) => renderUserVars(text, currentState);
+            const texts = [renderVars(panel?.title || '状态栏'),
+                ...fields.map(field => renderVars(field.value)),
+                ...options.map(option => renderVars(option.label))];
+            const htmlIndex = panel?.html ? texts.length : null;
+            if (panel?.html) {
+                // Scope author CSS before replacements, then sanitize the result.
+                texts.push(renderVars(scopeHtmlStyles(decodeStatusTemplate(panel.html), [
+                    '.dsh-rp-status-window .dsh-rp-status-author',
+                    '.dsh-rp-status-dock .dsh-rp-status-author',
+                ])));
+            }
+            const rules = Array.isArray(currentState.statusSpec?.regexRules) ? currentState.statusSpec.regexRules : [];
+            const key = JSON.stringify([currentState.sessionId, texts, rules]);
+            return {panel, fields, options, texts, rules, htmlIndex, optionStart: 1 + fields.length, key};
+        }, [currentState?.sessionId, currentState?.statusPanel, currentState?.statusSpec?.regexRules,
+            userValues.name, userValues.gender]);
+        const packetKey = prepared?.key ?? '';
+        const [projection, setProjection] = React.useState<{key: string; outputs: string[]; error?: string} | null>(null);
         React.useEffect(() => {
-            const rules = currentState?.statusSpec?.regexRules;
-            if (!currentState || !rules?.length) return;
+            if (!prepared || !prepared.rules.length) return;
             const controller = new AbortController();
-            const task: StatusTask = {op: 'status',
-                texts: [rawHtml, rawTitle, ...rawOptions.map(option => option.label), ...rawFields.map(field => field.value)], rules};
-            void runStatusRegex(task, controller.signal).then(texts => {
-                if (!controller.signal.aborted) setAuthorText({state: currentState, texts});
-            }).catch(() => {});
-            // Cancellation retires a queued or running task. The state identity
-            // below also prevents an old result from rendering during a refresh.
-            return () => controller.abort();
-        }, [currentState]);
-        const texts = authorText?.state === currentState ? authorText.texts : null;
-        const title = texts?.[1] ?? rawTitle;
-        const options = rawOptions.map((option, index) => ({...option, label: texts?.[index + 2] ?? option.label}));
-        const fields = rawFields.map((field, index) => ({...field, value: texts?.[index + 2 + rawOptions.length] ?? field.value}));
-        // Worker failure keeps the current panel readable with its user variables.
-        const html = rawHtml ? sanitizeStatusHtml(statusFactsHtml(texts?.[0] ?? rawHtml, options)) : '';
-        if (!activeSessionId || !isRoleplaySession(activeSessionId)
-            || (!currentState && !loading && !initialSessionLoading)) return null;
+            let alive = true;
+            void runReaderRegex({op: 'status', texts: prepared.texts, rules: prepared.rules}, controller.signal).then(
+                result => {if (alive) setProjection({key: packetKey, outputs: result.outputs});},
+                error => {
+                    if (alive && !controller.signal.aborted) setProjection({key: packetKey,
+                        outputs: prepared.texts, error: String(error instanceof Error ? error.message : error)});
+                });
+            // Cancel only this projection's Worker ownership. A queued status
+            // task cannot interrupt a Reader task that already owns the queue.
+            return () => {alive = false; controller.abort();};
+        }, [activeSessionId, packetKey]);
+        if (!activeSessionId || !isRoleplaySession(activeSessionId)) return null;
+        const numericalWindow = numericalOpen ? React.createElement(ToolWindow,{
+            id:'dsh-rp-values-panel',title:'状态机',subtitle:'当前世界线的游戏数值',icon:'values',
+            initialSize:{w:460,h:640},onClose:()=>numericalSeat.open(false)
+        },React.createElement(MvuStatePanel,{key:activeSessionId,sessionId:activeSessionId,
+            observation:currentState?.numericalState,refresh:async()=>refreshPanelRef.current?.(true)})) : null;
+        if (!currentState && !loading && !initialSessionLoading) return numericalWindow;
         const renderLoadingBody = () => React.createElement(
         'div',
             { className: 'dsh-rp-status-empty', role: 'status', 'aria-live': 'polite' },
@@ -485,8 +511,20 @@ React,
                             { className: 'dsh-rp-status-resize', onPointerDown: onResizePointerDown, title: '拖动调整大小' }
                         )
                     );
-            return React.createElement(React.Fragment, null, loadingMain);
+            return React.createElement(React.Fragment, null, loadingMain, numericalWindow);
         }
+        const {panel, fields} = prepared!;
+        // 状态栏渲染模版：确定性替换 {{user}} / {{user_gender}}（优先级：用户信息
+        // → 玩家角色卡 → 兜底「用户」），覆盖标题/字段名/字段值/html 渲染
+        // 路径——不依赖模型写出真实名字；模型只需保留占位符。
+        const renderVars = (text: unknown) => renderUserVars(text, currentState);
+        const currentProjection = prepared!.rules.length && projection?.key === packetKey ? projection : null;
+        // Pending and failed jobs render this state, never the previous panel.
+        const texts = currentProjection?.outputs ?? prepared!.texts;
+        const title = texts[0]!;
+        const options = prepared!.options.map((option, i) => ({...option, label: texts[prepared!.optionStart + i]}));
+        const html = prepared!.htmlIndex === null ? ''
+            : sanitizeStatusHtml(statusFactsHtml(texts[prepared!.htmlIndex], options));
         // 面板正文只显示状态；建议统一由独立决策卡展示。
         const renderNarrativePanelBody = () => !panel
             ? React.createElement(
@@ -556,7 +594,7 @@ React,
                             React.createElement('span', { className: 'dsh-rp-status-emoji' }, f.emoji ?? ''),
                             ' ',
 
-                            React.createElement('span', null, f.label ? renderVars(f.label) + '：' : '', f.value)
+                            React.createElement('span', null, f.label ? renderVars(f.label) + '：' : '', texts[i + 1])
                         ))
                         : null
 
@@ -564,12 +602,13 @@ React,
 
             );
 
-        const renderPanelBody = () => React.createElement(React.Fragment,null,
-            React.createElement(MvuStatePanel,{key:activeSessionId,sessionId:activeSessionId,
-                observation:currentState.numericalState,refresh:async()=>refreshPanelRef.current?.(true)}),
-            currentState.statusGeneration?.kind === 'schema-maintenance' ? null
-                : React.createElement(React.Fragment,null,
-                    React.createElement('h3',null,'叙事状态栏'),renderNarrativePanelBody()));
+        const renderPanelBody = () => currentState.statusGeneration?.kind === 'schema-maintenance' && !html && !fields.length
+            ? React.createElement('div',{className:'dsh-rp-status-empty',role:'status'},
+                '当前角色卡未提供独立叙事状态栏。游戏数值可从“状态机”打开。')
+            : React.createElement(React.Fragment,null,
+                currentProjection?.error ? React.createElement('div', {className: 'dsh-rp-status-stale', role: 'status'},
+                    '状态栏美化暂不可用：' + currentProjection.error) : null,
+                renderNarrativePanelBody());
 
         let main = null;
         // Keep the mode control mounted even while a malformed/empty panel is
@@ -701,6 +740,7 @@ React,
         React.Fragment,
             null,
             main,
+            numericalWindow,
             React.createElement(ChatOpeningCard,{sessionId:activeSessionId,
               cardImport:state?.sessionId === activeSessionId ? state.cardImport : null,
               refreshToken:activeSessionId ? stateVersion(activeSessionId) : 0}),
@@ -709,5 +749,5 @@ React,
     }
 
 
-    return { DecisionCard, decisionSeat, StatusOverlay };
+    return { DecisionCard, decisionSeat, StatusOverlay, numericalSeat };
 }

@@ -3,8 +3,8 @@
  * The wrapper has a schema; the old stored rows are neither rewritten nor
  * promoted to authentic writer, completion, readiness or scheduling proof. */
 import { types } from 'node:util';
-import { nativeInputSha256 } from '@deepseek-ai/dsh-agent-loop';
-import { foldSurface, deriveEventMessage } from '@deepseek-ai/dsh-session';
+import { nativeInputSha256 } from 'dsh-nexttavern-native-agent-loop';
+import { foldSurface, deriveEventMessage } from 'dsh-nexttavern-native-session';
 import { recordSha256, textOf } from './roleplay-data.js';
 import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 function fail(code) { throw Error(code); }

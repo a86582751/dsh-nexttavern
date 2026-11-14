@@ -1,9 +1,9 @@
 import {jsonResponse} from './roleplay-state.js'
-import {requestData,TAVERN_LORE_EDITS_BOUNDS_V1} from './roleplay-tavern-lore-edits-data.js'
+import {requestData,mutationRequestData,TAVERN_LORE_EDITS_BOUNDS_V1} from './roleplay-tavern-lore-edits-data.js'
 import type {TavernLoreEditEditorDataV1,TavernLoreEditRefusalV1,TavernLoreEditResultV1,
-  TavernLoreEditObservationV1} from './roleplay-tavern-lore-edits-types.js'
+  TavernLoreEditObservationV1,TavernLoreMutationResultV2} from './roleplay-tavern-lore-edits-types.js'
 import type {TavernLoreEditorDataV1,TavernLoreEditorReplyV1,TavernLoreEditorRouteDependenciesV1,
-  TavernLoreEditorFailureDetailsV1,TavernLoreEditorSessionScopeV1,TavernLoreEditorCodeV1}
+  TavernLoreEditorFailureDetailsV1,TavernLoreEditorSessionScopeV1,TavernLoreEditorCodeV1,TavernLoreEditorRequestV1}
   from './roleplay-tavern-lore-editor-types.js'
 
 const SID=/^[a-zA-Z0-9_-]{1,128}$/
@@ -15,6 +15,7 @@ function editorView(editor:TavernLoreEditEditorDataV1):TavernLoreEditorDataV1 {
       const {content:_sourceContentReference,...semantic}=entry.semantic
       return {entryId:entry.entryId,rawEntryPointer:entry.rawEntryPointer,rawEntrySha256:entry.rawEntrySha256,
         disposition:entry.disposition,semantic,contentText:entry.contentText,diagnosticCodes:entry.diagnosticCodes,
+        ...(entry.currentNativeMember?{currentNativeMember:entry.currentNativeMember}:{}),
         fieldSources:entry.fieldSources.map(row=>({field:row.field,pointer:row.pointer,valueSha256:row.valueSha256,
           disposition:row.disposition,...(row.currentNativeOrigin?{originKind:row.currentNativeOrigin.kind,
             originSha256:row.currentNativeOrigin.refSha256}:{})}))}
@@ -53,15 +54,22 @@ export function registerTavernLoreEditorRoutesV1(deps:TavernLoreEditorRouteDepen
     path:'/api/roleplay/tavern-lore-editor',methods:['GET','POST'],fetch:async request=>{
       let calledStore=false
       let attemptedWrite=false
-      let result:TavernLoreEditResultV1|TavernLoreEditObservationV1|undefined
+      let result:TavernLoreEditResultV1|TavernLoreMutationResultV2|TavernLoreEditObservationV1|undefined
       try {
         const url=new URL(request.url)
-        let body:ReturnType<typeof requestData>|undefined
+        let body:TavernLoreEditorRequestV1|undefined
         if(request.method==='POST') {
           const text=await request.text()
           if(Buffer.byteLength(text,'utf8')>TAVERN_LORE_EDITS_BOUNDS_V1.requestBytes)
             return failed('LORE_EDITOR_BODY_LIMIT',{phase:'before-store',outcome:'no-write'},'世界书修改过大')
-          try {body=requestData(JSON.parse(text))}
+          try {
+            const raw:unknown=JSON.parse(text)
+            if(raw&&typeof raw==='object'&&'schemaVersion' in raw&&raw.schemaVersion===2) {
+              const mutation=mutationRequestData(raw)
+              if(mutation.mutation.kind!=='fields')throw Error('editor-fields-required')
+              body={...mutation,mutation:mutation.mutation}
+            }else body=requestData(raw)
+          }
           catch {return failed('LORE_EDITOR_BODY_INVALID',{phase:'before-store',outcome:'no-write'},'世界书请求格式无效')}
         }
         const sid=body?.sessionId??url.searchParams.get('sessionId')
@@ -75,7 +83,11 @@ export function registerTavernLoreEditorRoutesV1(deps:TavernLoreEditorRouteDepen
           {phase:'before-store',outcome:'no-write'},'会话选择已变化，请重新加载')}
         calledStore=true
         attemptedWrite=body!==undefined
-        result=body?await deps.store.edit(body):deps.store.observe(scope.sessionId)
+        if(!body)result=deps.store.observe(scope.sessionId)
+        else if('mutation' in body)result=await deps.store.mutate(body,()=>{
+          try {check();return true} catch {return false}
+        })
+        else result=await deps.store.edit(body)
         // This assertion never retries or adds a write. An already durable edit
         // is an unconfirmed outcome after scope loss; preserve its exact fact.
         try {check()} catch {

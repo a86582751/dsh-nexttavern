@@ -3,7 +3,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type { ImageAttachmentLimits } from '@deepseek-ai/dsh-attachment'
-import type { Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent, SessionHeader, SessionId } from 'dsh-nexttavern-native-session'
 import type { ProjectionSnapshot } from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-projection-cache'
 import { SessionQueryError, type SessionSearchCursor } from '@deepseek-ai/dsh-session-query'

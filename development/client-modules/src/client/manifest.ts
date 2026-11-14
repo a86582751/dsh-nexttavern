@@ -31,6 +31,11 @@
 
 import type {} from '@deepseek-ai/cordis'
 import type { DshClientManifest } from '@deepseek-ai/dsh-package-manifest'
+
+/** A private Node package may retain a public browser module identity. */
+export interface ClientModuleManifest extends DshClientManifest {
+  moduleName?: string
+}
 import type { ClientEntries } from './entries.js'
 import type { ClientModuleSystem } from './system.js'
 
@@ -50,7 +55,7 @@ declare module '@deepseek-ai/cordis' {
  * non-inject module requests (see {@link WebBootGraph.entries}).
  */
 export interface WebBootEntry {
-  /** Entry name == package name. */
+  /** Browser module identity, defaulting to the Node package name. */
   id: string
   /**
    * Revisioned single-resource combo reference used by HMR. It is relative to
@@ -98,7 +103,7 @@ export interface WebBootGraph {
 
 /** The npm-package view of one boot row: what the module table needs to fetch the bundle. */
 export interface BootModuleRow {
-  /** Entry name == package name (module-table key). */
+  /** Browser module identity (module-table key). */
   id: string
   /** Revisioned single-resource combo reference: the fallback when the row's batch fails and the reload target after HMR invalidation. */
   url: string
@@ -114,7 +119,7 @@ export interface BootModuleRow {
 
 /** The cordis-plugin view of one boot row: what entry composition needs (optional wire fields normalized). */
 export interface BootPluginRow {
-  /** Entry name == package name. */
+  /** Browser module identity used by client entry composition. */
   id: string
   /** Package-name dependency edges ([] when the wire omits them). */
   inject: string[]
@@ -158,14 +163,19 @@ export function optionalStringArray(subject: string, field: string, value: unkno
  * @returns the validated declaration, or undefined when the field is absent.
  * @throws {Error} when the field is present but any member is malformed.
  */
-export function parseDshClient(pkgName: string, value: unknown): DshClientManifest | undefined {
+export function parseDshClient(pkgName: string, value: unknown): ClientModuleManifest | undefined {
   if (value === undefined) return undefined
   if (typeof value !== 'object' || value === null) {
     throw new Error(`client-modules: ${pkgName} has a non-object dsh.client declaration`)
   }
   const decl = value as Record<string, unknown>
+  const moduleName = decl.moduleName
   if (typeof decl.platform !== 'string') {
     throw new Error(`client-modules: ${pkgName} dsh.client.platform must be a string`)
+  }
+  if (moduleName !== undefined
+    && (typeof moduleName !== 'string' || exactPackageSpecifier(moduleName) === undefined)) {
+    throw new Error(`client-modules: ${pkgName} dsh.client.moduleName must be a package-root module name`)
   }
   const inject = optionalStringArray(pkgName, 'dsh.client.inject', decl.inject)
   const external = optionalStringArray(pkgName, 'dsh.client.external', decl.external)
@@ -174,6 +184,7 @@ export function parseDshClient(pkgName: string, value: unknown): DshClientManife
   }
   return {
     platform: decl.platform,
+    ...(moduleName !== undefined ? { moduleName } : {}),
     ...(inject !== undefined ? { inject } : {}),
     ...(external !== undefined ? { external } : {}),
     ...(decl.immediately !== undefined ? { immediately: decl.immediately } : {}),

@@ -1,7 +1,7 @@
 /** Host catalog, durable projection caches, and explicitly retained Client instances. */
 
-import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
-import { SessionSeq, type SessionId, type SessionSeqCursor } from '@deepseek-ai/dsh-session/types'
+import type { SubagentAddress } from 'dsh-nexttavern-native-subagent/client'
+import { SessionSeq, type SessionId, type SessionSeqCursor } from 'dsh-nexttavern-native-session/types'
 import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type {

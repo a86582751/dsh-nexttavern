@@ -6,7 +6,7 @@
  * @module @deepseek-ai/dsh-subagent/run-settlement
  */
 
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock } from 'dsh-nexttavern-native-llm'
 import type { JobOutcome } from '@deepseek-ai/dsh-jobs'
 import type { SubagentResult, SubagentRun } from './types.ts'
 

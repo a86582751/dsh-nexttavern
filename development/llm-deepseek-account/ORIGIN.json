@@ -1,0 +1,24 @@
+{
+  "upstream": "https://github.com/deepseek-ai/deepseek-harness",
+  "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+  "packagePath": "packages/llm/llm-deepseek-account",
+  "license": "MIT",
+  "sources": [
+    {
+      "path": "packages/llm/llm-deepseek-account/src/index.ts",
+      "sha256": "18238c924466c5673dd9a2dfd8b33725c837dde197895c45498c3934b03124ae"
+    }
+  ],
+  "changes": [
+    "Use private Native runtime imports while retaining shared Host service providers and configuration.",
+    "Use emitted .js relative module specifiers.",
+    "Reuse unchanged public configuration and helpers through pinned official root exports; maintain only Native adapter wiring and its required private closure."
+  ],
+  "sharedUpstream": [
+    {
+      "upstream": "packages/llm/llm-deepseek-account/src/config.ts",
+      "upstreamSha256": "2b8701021ef0641cdeb90981fe873c29044192c3d680e0d3aefa3d8853d01788",
+      "exportedBy": "@deepseek-ai/dsh-llm-deepseek-account@0.1.7-rc.2"
+    }
+  ]
+}

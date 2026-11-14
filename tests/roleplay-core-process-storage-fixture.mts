@@ -9,9 +9,9 @@ import {fileURLToPath, pathToFileURL} from 'node:url'
 
 export interface StorageJsonPin {
   schemaVersion: 1
-  encoding: 'official-json-storage-fixture-pin-v1'
-  name: '@deepseek-ai/dsh-storage-json'
-  version: '0.1.7-rc.2'
+  encoding: 'selected-json-storage-fixture-pin-v1'
+  name: '@deepseek-ai/dsh-storage-json' | 'dsh-nexttavern-native-storage-json'
+  version: '0.1.7-rc.2' | '0.3.0-dev.1'
   sourcePackageRoot: string
   files: readonly {path: string; sha256: string; bytes: number}[]
   descriptorSha256: string
@@ -65,8 +65,11 @@ export async function copyStorageJsonPackage(installed: string,
       '../dsh-public-access/artifacts/auth-native/harness/node_modules/@deepseek-ai/dsh-storage-json'))
   const metadataBytes = await readFile(path.join(source, 'package.json'))
   const metadata = JSON.parse(metadataBytes.toString('utf8'))
-  assert.equal(metadata.name, '@deepseek-ai/dsh-storage-json')
-  assert.equal(metadata.version, '0.1.7-rc.2')
+  const selected = selection === 'maintained'
+    ? {name: 'dsh-nexttavern-native-storage-json', version: '0.3.0-dev.1'} as const
+    : {name: '@deepseek-ai/dsh-storage-json', version: '0.1.7-rc.2'} as const
+  assert.equal(metadata.name, selected.name)
+  assert.equal(metadata.version, selected.version)
   const captured: {path: string; bytes: Buffer}[] = [{path: 'package.json', bytes: metadataBytes}]
   async function collect(relative: string) {
     for (const entry of (await readdir(path.join(source, relative), {withFileTypes: true})).sort((a,b)=>a.name.localeCompare(b.name))) {
@@ -89,8 +92,8 @@ export async function copyStorageJsonPackage(installed: string,
     assert.equal(hash(await readFile(path.join(source, file.path))), hash(file.bytes), 'readonly dependency changed during pinning')
   }
   const files = captured.map(file=>Object.freeze({path:file.path,sha256:hash(file.bytes),bytes:file.bytes.length}))
-  const descriptor = {schemaVersion:1 as const,encoding:'official-json-storage-fixture-pin-v1' as const,
-    name:'@deepseek-ai/dsh-storage-json' as const,version:'0.1.7-rc.2' as const,sourcePackageRoot:source,files}
+  const descriptor = {schemaVersion:1 as const,encoding:'selected-json-storage-fixture-pin-v1' as const,
+    ...selected,sourcePackageRoot:source,files}
   return Object.freeze({...descriptor,files:Object.freeze(files),descriptorSha256:hash(JSON.stringify(descriptor))})
 }
 
@@ -106,17 +109,18 @@ export async function installProcessStorage(ctx: any, graph: PackageGraph, dataR
   const cordisFile = await realpath(graph.require.resolve('@deepseek-ai/cordis'))
   const storageFile = await realpath(graph.require.resolve('@deepseek-ai/dsh-storage'))
   const moduleUrls: Record<string,string> = {cordis:pathToFileURL(cordisFile).href,storage:pathToFileURL(storageFile).href}
-  for (const name of ['dsh-storage', 'dsh-storage-domain', 'dsh-storage-json']) {
-    const entry = graph.require.resolve(`@deepseek-ai/${name}`)
+  const jsonPackage = graph.storageJsonPin.name
+  for (const name of ['@deepseek-ai/dsh-storage', '@deepseek-ai/dsh-storage-domain', jsonPackage]) {
+    const entry = graph.require.resolve(name)
     const peers = createRequire(entry)
     assert.equal(equalPath(await realpath(peers.resolve('@deepseek-ai/cordis')), cordisFile), true,
       `${name} must share the fixture Cordis instance`)
-    if (name !== 'dsh-storage') assert.equal(equalPath(await realpath(peers.resolve('@deepseek-ai/dsh-storage')),storageFile),true)
-    moduleUrls[name] = pathToFileURL(await realpath(entry)).href
+    if (name !== '@deepseek-ai/dsh-storage') assert.equal(equalPath(await realpath(peers.resolve('@deepseek-ai/dsh-storage')),storageFile),true)
+    moduleUrls[name.replace('@deepseek-ai/', '')] = pathToFileURL(await realpath(entry)).href
   }
   const [Cordis, Storage, Json, Domain] = await Promise.all([
     graph.load('@deepseek-ai/cordis'), graph.load('@deepseek-ai/dsh-storage'),
-    graph.load('@deepseek-ai/dsh-storage-json'), graph.load('@deepseek-ai/dsh-storage-domain'),
+    graph.load(jsonPackage), graph.load('@deepseek-ai/dsh-storage-domain'),
   ])
   assert.ok(ctx instanceof Cordis.Context, 'storage and caller must share the actual Context constructor')
   await ctx.plugin(Storage.default)

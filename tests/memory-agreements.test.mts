@@ -1,9 +1,14 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
 import {test} from 'node:test'
-import {assertMemoryAgreement, queryMemoryAgreements} from '../lib/memory/memory-agreements.js'
 import type {MemoryAgreement} from '../src/memory/memory-agreements.ts'
-import {apply} from '../lib/memory/roleplay-memory-engine.js'
 import type {MemoryContext, MemorySession, RoleplayMemoryHost} from '../src/memory/roleplay-memory-engine.ts'
+
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'])
+afterNativeDependencies(removeOwnedNativeDependencies)
+const {assertMemoryAgreement, queryMemoryAgreements}=await import('../lib/memory/memory-agreements.js')
+const {apply}=await import('../lib/memory/roleplay-memory-engine.js')
 
 function agreement(fields: Partial<MemoryAgreement> = {}): MemoryAgreement {
   return {schemaVersion:1, participants:['阿岚', '小禾'], subject:'归还借来的书',

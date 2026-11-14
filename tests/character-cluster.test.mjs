@@ -1,7 +1,12 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {createCharacterCluster,characterInput,clusterRoute,clusterSettings,CHARACTER_PERSONA} from '../lib/core/character-cluster.js'
-import {registerSettingsRoutes} from '../lib/core/roleplay-settings-routes.js'
+
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'])
+afterNativeDependencies(removeOwnedNativeDependencies)
+const {createCharacterCluster,characterInput,clusterRoute,clusterSettings,CHARACTER_PERSONA}=await import('../lib/core/character-cluster.js')
+const {registerSettingsRoutes}=await import('../lib/core/roleplay-settings-routes.js')
 assert.equal(clusterRoute(null),null)
 assert.deepEqual(clusterRoute({main:true,reasoningEffort:'high',provider:'ignored'}),{main:true,reasoningEffort:'high'})
 assert.deepEqual(clusterRoute({provider:'fixture',model:'main',reasoningEffort:123}),{provider:'fixture',model:'main',reasoningEffort:123},'legacy effort coercion must retain its serialized value')

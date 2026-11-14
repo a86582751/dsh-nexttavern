@@ -1,6 +1,6 @@
 /** One Source/history read for Ruby. Explicit lookups retain raw book order,
  * disabled entries and current author content; no evaluator activates them. */
-import type {Session,SessionMessageProjection} from '@deepseek-ai/dsh-session'
+import type {Session,SessionMessageProjection} from 'dsh-nexttavern-native-session'
 import {recordSha256} from './roleplay-data.js'
 import {captureRoleplayTavernPromptSourceDataV1} from './roleplay-tavern-prompt-source.js'
 import {captureReadonlyAuthorDialogChatClockV1} from './roleplay-tavern-chat-clock.js'
@@ -11,6 +11,7 @@ import {findRubyEntryV1} from './roleplay-ruby-input.js'
 import type {RoleplayInputStateOwner} from './roleplay-input-state.js'
 import type {RubyConfigurationV1,RubyIssueV1,RubySelectedMessageV1,RubyTaskV1,RubyWorldbookEntryV1,
   RubyWorldbookV1} from './roleplay-ruby-types.js'
+import type {createRoleplayTavernLoreEditsV1} from './roleplay-tavern-lore-edits.js'
 
 type SourceDependencies=Parameters<typeof captureRoleplayTavernPromptSourceDataV1>[0]
 export interface RubySourceCaptureV1 {
@@ -27,7 +28,20 @@ export interface RubySourceCaptureV1 {
   current():boolean
   release():void
 }
+export interface RubyReadableEntryV1 extends RubyWorldbookEntryV1 {
+  readonly uid:string|number
+  readonly comment:string
+  readonly disabled:boolean
+  readonly constant:boolean
+}
+export interface RubySourceReadCaptureV1 extends RubySourceCaptureV1 {
+  readonly primaryName:string|null
+  readonly records:readonly RubyReadableEntryV1[]
+  resolveEntryContent(entries:readonly RubyWorldbookEntryV1[]):Promise<readonly string[]>
+}
 interface Dependencies extends SourceDependencies {
+  readonly edits:SourceDependencies['edits']&Pick<ReturnType<typeof createRoleplayTavernLoreEditsV1>,
+    'observeAuthorMetadataData'>
   readonly inputState:RoleplayInputStateOwner
   session(id:string):Session|undefined
   projections():readonly SessionMessageProjection[]
@@ -39,13 +53,22 @@ export function createRoleplayRubyCaptureV1(deps:Dependencies) {
     return deps.inputState.captureObservation(id,()=>{
       const original=deps.source.capture(id)
       if(original.kind!=='captured-data')return {configurationStatus:'uninitialized' as const,configurationIssues:[]}
-      const raw=(original.contributionInput.rawDecoded.data.extensions as Readonly<Record<string,unknown>>|undefined)?.RubyAnalyzer,
+      const metadata=deps.edits.observeAuthorMetadataData(original)
+      if(metadata.kind!=='captured-data')throw Error(metadata.diagnostics[0]?.code??'RUBY_SOURCE_UNAVAILABLE')
+      const raw=metadata.data.extensions?.RubyAnalyzer,
         configuration=readRubyConfigurationV1(raw,{ownerId:id,sourcePath:'/data/extensions/RubyAnalyzer',
           version:recordSha256(raw??null)})
-      return {configurationStatus:configuration.status,configurationIssues:configuration.issues}
+      return {configurationStatus:configuration.status,configurationIssues:configuration.issues,
+        summaryProvider:configuration.summaryProvider,summaryProviderStatus:configuration.summaryProviderStatus,
+        generation:configuration.generation??null,
+        tasks:configuration.tasks.map(task=>({taskKey:task.taskKey,name:task.displayName,enabled:task.enabled,
+          cyclePositions:task.cyclePositions,useReferences:task.useReferences,useOutputs:task.useOutputs}))}
     },'ruby-configuration-summary').data
   }
-  async function capture(id:string,signal:AbortSignal):Promise<RubySourceCaptureV1|undefined> {
+  function capture(id:string,signal:AbortSignal,options:{readOnly:true}):Promise<RubySourceReadCaptureV1|undefined>
+  function capture(id:string,signal:AbortSignal,options?:{includeEmpty:true}):Promise<RubySourceCaptureV1|undefined>
+  async function capture(id:string,signal:AbortSignal,options?:{readOnly?:true;includeEmpty?:true})
+    :Promise<RubySourceReadCaptureV1|undefined> {
     const session=deps.session(id)
     if(!session)throw Error('RUBY_SESSION_UNAVAILABLE')
     const assertOwnerFactsCurrent=()=>{
@@ -57,22 +80,24 @@ export function createRoleplayRubyCaptureV1(deps:Dependencies) {
       const original=deps.source.capture(id)
       if(original.kind==='outside-declared-domain')return undefined
       if(original.kind!=='captured-data')throw Error(original.diagnostics[0]?.code??'RUBY_SOURCE_UNAVAILABLE')
-      const raw=(original.contributionInput.rawDecoded.data.extensions as Readonly<Record<string,unknown>>|undefined)?.RubyAnalyzer,
+      const metadata=deps.edits.observeAuthorMetadataData(original)
+      if(metadata.kind!=='captured-data')throw Error(metadata.diagnostics[0]?.code??'RUBY_SOURCE_UNAVAILABLE')
+      const raw=metadata.data.extensions?.RubyAnalyzer,
         configuration=readRubyConfigurationV1(raw,{ownerId:id,sourcePath:'/data/extensions/RubyAnalyzer',
           version:recordSha256(raw??null)})
-      if(configuration.status==='empty')return undefined
+      if(configuration.status==='empty'&&!options?.readOnly&&!options?.includeEmpty)return undefined
       // The synchronous Source supplier is already captured. Consumers reuse
       // it rather than rebuilding a book merely to discover no Ruby producer.
       const includeCardStyle=deps.includeCardStyle(id),captured=captureRoleplayTavernPromptSourceDataV1({
         source:{capture:()=>original},edits:deps.edits},id,includeCardStyle)
       if(captured.kind==='outside-declared-domain')return undefined
       const {source,compilation,cardData}=captured,context=source.current.openingContext.context,
-        actualCharName=context.char??'',clock=captureReadonlyAuthorDialogChatClockV1({session,
+        actualCharName=context.char??'',clock=options?.readOnly?undefined:captureReadonlyAuthorDialogChatClockV1({session,
           projections:deps.projections(),assertOwnerCurrent:assertOwnerFactsCurrent}),
-        messages:RubySelectedMessageV1[]=clock.data.rows.map((row,index)=>({
+        messages:RubySelectedMessageV1[]=clock?.data.rows.map((row,index)=>({
           ref:{ownerId:id,sourcePath:`native/messages/${row.id}`,version:row.messageSha256},
           seq:row.seq!,messageId:row.id,messageVersion:row.messageSha256,role:row.role,
-          speakerName:row.role==='user'?context.user??'':actualCharName,text:clock.scanRows[index]!.text})),
+          speakerName:row.role==='user'?context.user??'':actualCharName,text:clock.scanRows[index]!.text}))??[],
         entries=compilation.plan.entries.map(planEntry=>{
           // The compiler's current directory owns membership and raw order.
           // Iterating the archive would resurrect removed prompts and hide new ones.
@@ -86,7 +111,10 @@ export function createRoleplayRubyCaptureV1(deps:Dependencies) {
             keys=planEntry.semanticOverrides.primaryKeys??(Array.isArray(rawEntry.keys)
               ?rawEntry.keys.filter((key):key is string=>typeof key==='string'):[])
           return {ref:{ownerId:source.sourceRecordSessionId,sourcePath:planEntry.sourcePointer,
-            version:recordSha256({rawEntry:rawRef,keys,text})},keys,resolvedContent:text}
+            version:recordSha256({rawEntry:rawRef,keys,text})},keys,resolvedContent:text,
+            uid:member?.uid??planEntry.upstreamUid.value??planEntry.ordinal,
+            comment:typeof rawEntry.comment==='string'?rawEntry.comment:typeof rawEntry.name==='string'?rawEntry.name:'',
+            disabled:planEntry.disposition==='disabled',constant:planEntry.semanticOverrides.constant??!!rawEntry.constant}
         }),book:RubyWorldbookV1={ref:{ownerId:id,sourcePath:source.original.primary.bookPointer,
           version:recordSha256(entries)},entries},
         declaredOutlets=compilation.plan.entries.flatMap(entry=>entry.semanticOverrides.outletName?[entry.semanticOverrides.outletName]:[])
@@ -95,7 +123,8 @@ export function createRoleplayRubyCaptureV1(deps:Dependencies) {
       // inherit accepted output without rewriting the immutable original.
       const sourceIdentitySha256=recordSha256({configuration:raw??null,entries:entries.map(entry=>({
         keys:entry.keys,text:entry.resolvedContent})),context})
-      return {configuration,actualCharName,messages,book,
+      return {configuration,actualCharName,messages,book,records:entries,
+        primaryName:typeof source.original.primary.value?.name==='string'?source.original.primary.value.name:null,
         macroInput:{source,cardData,includeCardStyle,inputText:null,scopes:[],outlets:[],declaredOutlets},
         sourceIdentitySha256,
         sourceSnapshotSha256:source.sourceSha256}
@@ -103,6 +132,35 @@ export function createRoleplayRubyCaptureV1(deps:Dependencies) {
     if(!read.data){read.release();return undefined}
     try {
       const data=read.data
+      const makeMacros=()=>({...produceRoleplayTavernMacroSnapshotV1(data.macroInput).snapshot,
+        deferredMacros:[...new Set(['CHAR_NAME','recentMessages',
+          ...data.configuration.referencePool.map(reference=>reference.varName),
+          ...data.configuration.tasks.flatMap(task=>[task.outputVarName,...task.useReferences,...task.useOutputs])])]})
+      async function transformEntries(selectedEntries:readonly RubyWorldbookEntryV1[],macros:ReturnType<typeof makeMacros>,
+        sourcePath:string) {
+        const transformed=await applyTavernPromptTransformsV1({schemaVersion:1,
+          encoding:'owned-tavern-prompt-transform-v1',authority:'consumer-data-only',
+          sourceSnapshotSha256:data.sourceSnapshotSha256,regexDisabled:true,macros,rules:[],
+          entries:selectedEntries.map((entry,index)=>({key:`ruby-explicit-${index}`,bookId:null,entryId:null,
+            sourcePointer:entry.ref.sourcePath,sourceSnapshotSha256:data.sourceSnapshotSha256,
+            rawText:entry.resolvedContent,storyText:entry.resolvedContent,inputText:entry.resolvedContent,
+            pipeline:'macro-only',channel:'prompt',placement:3,depth:null,isEdit:false,characterOverride:null,required:true}))},
+          {assertCurrent:read.assertCurrent,signal})
+        if(transformed.kind==='transformed')return {kind:'transformed' as const,
+          texts:transformed.output.entries.map(entry=>entry.outputText)}
+        if(transformed.kind==='refused')return {kind:'unsupported' as const,
+          issues:transformed.diagnostics.map(diagnostic=>({code:diagnostic.code,
+            sourcePath:selectedEntries.find((_entry,index)=>diagnostic.entryKey===`ruby-explicit-${index}`)
+              ?.ref.sourcePath??sourcePath}))}
+        signal.throwIfAborted()
+        throw Error(transformed.diagnostics[0]?.code??'PROMPT_TRANSFORM_CANCELLED')
+      }
+      const resolveEntryContent:RubySourceReadCaptureV1['resolveEntryContent']=async entries=>{
+        if(!entries.length)return []
+        const result=await transformEntries(entries,makeMacros(),'/ruby/read')
+        if(result.kind==='unsupported')throw Error(result.issues[0]?.code??'RUBY_READ_MACROS_UNAVAILABLE')
+        return result.texts
+      }
       const resolveInputBooks:RubySourceCaptureV1['resolveInputBooks']=async(task,chatBook)=>{
         const references=new Map(data.configuration.referencePool.map(reference=>[reference.varName,reference])),
           outputs=new Map(data.configuration.tasks.filter(output=>output.outputKey)
@@ -116,7 +174,7 @@ export function createRoleplayRubyCaptureV1(deps:Dependencies) {
           }),lookups=[{key:task.promptKey,books:[data.book,chatBook] as const},
             ...[...referenceKeys,...outputKeys].map(key=>({key,books:[chatBook,data.book] as const}))],
           resolved=new Map<RubyWorldbookEntryV1,string>()
-        let pending=lookups,macros:ReturnType<typeof produceRoleplayTavernMacroSnapshotV1>['snapshot']|undefined
+        let pending=lookups,macros:ReturnType<typeof makeMacros>|undefined
         for(const priority of [0,1] as const) {
           const selectedEntries=[...new Set(pending.flatMap(lookup=>{
             const entry=findRubyEntryV1(lookup.books[priority],lookup.key)
@@ -125,26 +183,9 @@ export function createRoleplayRubyCaptureV1(deps:Dependencies) {
           if(selectedEntries.length) {
             // Eligibility is settled before this method. Only real winning
             // lookups enter the Worker; empty projections unlock the next book.
-            macros??={...produceRoleplayTavernMacroSnapshotV1(data.macroInput).snapshot,
-              deferredMacros:[...new Set(['CHAR_NAME','recentMessages',
-                ...data.configuration.referencePool.map(reference=>reference.varName),
-                ...data.configuration.tasks.flatMap(task=>[task.outputVarName,...task.useReferences,...task.useOutputs])])]}
-            const transformed=await applyTavernPromptTransformsV1({schemaVersion:1,
-              encoding:'owned-tavern-prompt-transform-v1',authority:'consumer-data-only',
-              sourceSnapshotSha256:data.sourceSnapshotSha256,regexDisabled:true,macros,rules:[],
-              entries:selectedEntries.map((entry,index)=>({key:`ruby-explicit-${index}`,bookId:null,entryId:null,
-                sourcePointer:entry.ref.sourcePath,sourceSnapshotSha256:data.sourceSnapshotSha256,
-                rawText:entry.resolvedContent,storyText:entry.resolvedContent,inputText:entry.resolvedContent,
-                pipeline:'macro-only',channel:'prompt',placement:3,depth:null,isEdit:false,characterOverride:null,required:true}))},
-              {assertCurrent:read.assertCurrent,signal})
-            if(transformed.kind!=='transformed') {
-              if(transformed.kind==='refused')return {kind:'unsupported',issues:transformed.diagnostics.map(diagnostic=>({
-                code:diagnostic.code,sourcePath:selectedEntries.find((_entry,index)=>diagnostic.entryKey===`ruby-explicit-${index}`)
-                  ?.ref.sourcePath??task.sourcePath}))}
-              signal.throwIfAborted()
-              throw Error(transformed.diagnostics[0]?.code??'PROMPT_TRANSFORM_CANCELLED')
-            }
-            selectedEntries.forEach((entry,index)=>resolved.set(entry,transformed.output.entries[index]!.outputText))
+            const transformed=await transformEntries(selectedEntries,macros??=makeMacros(),task.sourcePath)
+            if(transformed.kind==='unsupported')return transformed
+            selectedEntries.forEach((entry,index)=>resolved.set(entry,transformed.texts[index]!))
           }
           pending=pending.filter(lookup=>{
             const entry=findRubyEntryV1(lookup.books[priority],lookup.key)
@@ -157,6 +198,7 @@ export function createRoleplayRubyCaptureV1(deps:Dependencies) {
       }
       return {session,configuration:data.configuration,sourceIdentitySha256:data.sourceIdentitySha256,
         actualCharName:data.actualCharName,messages:data.messages,characterBook:data.book,resolveInputBooks,
+        primaryName:data.primaryName,records:data.records,resolveEntryContent,
         assertCurrent:read.assertCurrent,current:read.current,release:read.release}
     }catch(error){read.release();throw error}
   }

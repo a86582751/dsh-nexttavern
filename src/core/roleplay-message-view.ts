@@ -1,5 +1,5 @@
 /** Read current prose through the host projection without rewriting audit events. */
-import type { SurfaceOp } from '@deepseek-ai/dsh-session'
+import type { SurfaceOp } from 'dsh-nexttavern-native-session'
 
 type NativeReplacement = Exclude<SurfaceOp, 'append'>
 /** Keep host field names while accepting numeric seqs from serialized observations. */

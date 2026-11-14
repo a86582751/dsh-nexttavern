@@ -29,16 +29,7 @@ export function portableNextTavernAuthorFields(row) {
 // This is a format discriminator. The JSON decoder owns input validation once.
 export function isNextTavernCardDocument(document) {
     return object(document) && document.spec === 'nexttavern_card'
-        && (document.spec_version === '1.0' || document.spec_version === '1.1') && object(document.data);
-}
-/** Read only after the decoder has validated the versioned execution mode. */
-export function nextTavernExecutionAuthorData(data) {
-    const execution = data.compatibility?.authorExecution;
-    return execution ? { ...data, cards: execution.cards, rules: execution.rules } : data;
-}
-export function nextTavernExecutionAuthorPointer(data, field) {
-    const preserved = data.compatibility?.authorExecution && /^(?:cards|rules)(?:\/|$)/.test(field);
-    return `/data/${preserved ? 'compatibility/authorExecution/' : ''}${field}`;
+        && document.spec_version === '1.2' && object(document.data);
 }
 export function isNativeTavernCardDocument(document) {
     return object(document) && (document.spec === 'chara_card_v2' || document.spec === 'chara_card_v3')
@@ -65,8 +56,8 @@ export function readTavernCardArchiveV1(document) {
 const nativeAuthorFields = ['name', 'cards', 'worldbook', 'rules', 'status', 'opening', 'settings', 'compatibility'];
 const standardTextFields = ['description', 'personality', 'scenario', 'mes_example', 'system_prompt',
     'post_history_instructions', 'first_mes', 'alternate_greetings'];
-/** Physical ST fields keep their original paths; classified author rows have
- * one canonical execution home, rather than being guessed back into ST fields. */
+/** The transport retains physical ST fields while its Native extension owns
+ * the single current author body and optional semantic coordinates. */
 export function nativeNextTavernExecutionDocumentV1(document) {
     const extension = readNativeNextTavernAuthorExtensionV1(document);
     if (!extension)
@@ -77,17 +68,21 @@ export function nativeNextTavernExecutionDocumentV1(document) {
     for (const field of [...standardTextFields, ...nativeAuthorFields])
         delete data[field];
     delete data.extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY];
-    return { spec: 'nexttavern_card', spec_version: extension.author.compatibility?.authorExecution ? '1.1' : '1.0',
-        data: { ...data, ...extension.author }, archive: extension.archive };
+    return { spec: 'nexttavern_card', spec_version: '1.2',
+        data: { ...data, ...extension.author }, archive: extension.archive,
+        ...Object.hasOwn(extension, 'classification') ? { classification: extension.classification } : {} };
 }
 export function mergeNativeTavernCardExportV1(original, current) {
     const document = structuredClone(original), data = document.data, prior = readNativeNextTavernAuthorExtensionV1(original);
-    const extensions = object(data.extensions) ? data.extensions : {};
+    const extensions = { ...object(data.extensions) ? data.extensions : {},
+        ...object(current.data.extensions) ? structuredClone(current.data.extensions) : {} };
     const oldValue = extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY];
     const author = Object.fromEntries(nativeAuthorFields.filter(field => Object.hasOwn(current.data, field))
         .map(field => [field, structuredClone(current.data[field])]));
-    extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY] = { ...prior,
+    const { classification: _previousClassification, ...extensionFields } = prior ?? {};
+    extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY] = { ...extensionFields,
         schemaVersion: 1, encoding: 'nexttavern-native-author-extension-v1', author, archive: structuredClone(current.archive),
+        ...Object.hasOwn(current, 'classification') ? { classification: structuredClone(current.classification) } : {},
         ...!prior && Object.hasOwn(extensions, NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY) ? { originalExtension: oldValue } : {} };
     data.extensions = extensions;
     data.name = current.data.name;
@@ -124,7 +119,7 @@ function projectBookMetadata(data, cardId) {
     }));
 }
 export function projectNextTavernCard(decoded, worldbookMetadata, includeSourceArchive = true) {
-    const data = nextTavernExecutionAuthorData(decoded.data);
+    const data = decoded.data;
     const cardId = nextTavernCardSourceIdV1(decoded.document);
     const worldbook = worldbookMetadata ?? projectBookMetadata(data, cardId);
     const assignments = [], sections = [];

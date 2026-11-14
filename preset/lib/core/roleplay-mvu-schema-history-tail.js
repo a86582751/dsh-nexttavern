@@ -9,8 +9,6 @@ import { readMvuSchemaUnpublishedStoryPlanFacts } from './roleplay-mvu-schema-pr
 import { validateSchemaJournalRecord, validateSchemaSourceCut, schemaJournalKey, schemaEpochExecution, schemaEpochAuthorIdentity } from './roleplay-mvu-schema-journal.js';
 import { schemaOriginalProgramSha256 } from './roleplay-mvu-schema-source.js';
 import { schemaExecutionProgramSha256, schemaExecutionServerTailSha256 } from './roleplay-mvu-schema-replay.js';
-import { validateSchemaEvaluationInputV2, validateSchemaGuestOutputV2 } from './tavern-mvu-schema-runner-v2.js';
-import { validateSchemaEvaluationInputV3, validateSchemaGuestOutputV3 } from './tavern-mvu-schema-runner-v3.js';
 import { validateSchemaEvaluationInputV4, validateSchemaGuestOutputForProgramV4 } from './tavern-mvu-schema-runner-v4.js';
 import { validateMvuExecutableProgramV4 } from './tavern-mvu-schema-program-v4.js';
 import { sealMvuSchemaStoryFact, validateMvuSchemaNumericalSnapshot, validateMvuSchemaStoryPlan, mvuSchemaStoryPhaseInput, mvuSchemaStoryReducerBridge, mvuSchemaStoryEvent, mvuSchemaStoryEventKey, mvuSchemaStorySettlement, mvuSchemaStorySettlementKey, validateMvuSchemaStoryEvent, validateMvuSchemaStorySettlement, MVU_SCHEMA_STORY_PHASES } from './roleplay-mvu-schema-story-types.js';
@@ -35,13 +33,12 @@ function baseOf(candidate) {
     return candidate.kind === 'story' ? candidate.plan.base : candidate.plan.operation.base;
 }
 function versionOf(candidate) {
-    return candidate.kind === 'story' ? candidate.plan.schemaVersion === 2 ? 1 : candidate.plan.executorVersion
-        : candidate.plan.schemaVersion === 1 ? 1 : candidate.plan.executorVersion;
+    return candidate.plan.executorVersion;
 }
 function hostPlanOf(candidate) {
-    return candidate.kind === 'story' ? ([6, 10].includes(candidate.plan.schemaVersion)
+    return candidate.kind === 'story' ? ([6, 10, 12].includes(candidate.plan.schemaVersion)
         ? candidate.plan : undefined)
-        : candidate.plan.schemaVersion === 5 ? candidate.plan : undefined;
+        : candidate.plan.schemaVersion === 5 || candidate.plan.schemaVersion === 10 ? candidate.plan : undefined;
 }
 function candidatePlans(request, deps, first) {
     const sid = request.sessionId, realm = request.ready.epoch.realmEpoch, result = [];
@@ -114,7 +111,8 @@ function provePair(request, deps, candidate, index, step) {
         || !same(step.completion.dispatch, step.dispatchRef) || !same(step.dispatch.epoch, request.ready.epochRef)
         || !same(step.completionRef, { key: schemaJournalKey(step.completion), sha256: step.completion.recordSha256 })
         || !same(step.completion.dispatchMarker, step.dispatchMarker)
-        || step.dispatch.ordinal !== request.ordinal + index + 1 || step.step.ordinal !== request.ordinal + index + 1
+        || step.dispatch.ordinal !== request.ordinal + index + 1
+        || step.step.ordinal !== (request.ready.executionBaseline?.length ?? 0) + request.ordinal + index + 1
         || step.completion.step.frameSha256 !== recordSha256(step.step.frame)
         || !same(step.step.frame, step.dispatch.requestedStep.frame)
         || step.step.eventId !== selector.batchId || step.step.eventId !== step.dispatch.requestedStep.eventId
@@ -169,13 +167,7 @@ function provePair(request, deps, candidate, index, step) {
     return association;
 }
 function proveOutput(input, output, program) {
-    if (input.schemaVersion === 4)
-        validateSchemaGuestOutputForProgramV4(output, validateMvuExecutableProgramV4(program), validateSchemaEvaluationInputV4(input));
-    else if (input.schemaVersion === 3)
-        validateSchemaGuestOutputV3(output, validateSchemaEvaluationInputV3(input));
-    else if (input.schemaVersion === 2)
-        validateSchemaGuestOutputV2(output, validateSchemaEvaluationInputV2(input));
-    // V1's closed output shape was checked by validateSchemaJournalRecord.
+    validateSchemaGuestOutputForProgramV4(output, validateMvuExecutableProgramV4(program), validateSchemaEvaluationInputV4(input));
 }
 function storyPublication(candidate, facts, phases, reducer, deps, selectedCut) {
     const plan = candidate.plan, sid = plan.base.sessionId;
@@ -274,12 +266,13 @@ export function verifyMvuSchemaUnpublishedTail(request, deps) {
         else {
             if (original.schemaVersion !== 1)
                 fail();
-            if (original.preparation.schemaVersion !== 1 && !same(original.preparation.executor, { compiler: execution.program.compiler, bridge: execution.program.bridge,
+            if (!same(original.preparation.executor, { compiler: execution.program.compiler, bridge: execution.program.bridge,
                 libraries: execution.program.libraries, runner: execution.runner }))
                 fail();
         }
         proveCut(request, plan.initialCut, plan.initialCut, plan.currentFrame, plan.selectors[0], first.dispatchMarker.seq);
-        if (version >= 3 && (!('scopeReadFrame' in plan)
+        const referenced = 'scopeReadRef' in plan;
+        if (!referenced && (!('scopeReadFrame' in plan)
             || !same(plan.scopeReadFrame, deps.scopeFrameAt(plan.currentFrame, plan.initialCut))))
             fail();
         let storyFacts;
@@ -311,9 +304,13 @@ export function verifyMvuSchemaUnpublishedTail(request, deps) {
             if (terminated)
                 fail();
             const association = provePair(request, deps, candidate, index, step);
-            const read = version >= 3 ? deps.scopeFrameAt(plan.currentFrame, step.dispatch.sourceNativeCut) : undefined;
-            const input = candidate.kind === 'story' ? mvuSchemaStoryPhaseInput(candidate.plan, index, storyPhases, reducer, read)
-                : mvuSchemaPlayerPhaseInput(candidate.plan, index, playerPhases, read);
+            const requested = step.step.frame.input;
+            const reference = referenced && requested.schemaVersion === 4 ? requested.scopeReadRef : undefined;
+            if (reference)
+                deps.verifyScopeRef(reference, plan.currentFrame, step.dispatch.sourceNativeCut, 'logicalNativeCut' in plan ? plan.logicalNativeCut : undefined);
+            const read = !referenced ? deps.scopeFrameAt(plan.currentFrame, step.dispatch.sourceNativeCut) : undefined;
+            const input = candidate.kind === 'story' ? mvuSchemaStoryPhaseInput(candidate.plan, index, storyPhases, reducer, read, reference)
+                : mvuSchemaPlayerPhaseInput(candidate.plan, index, playerPhases, read, reference);
             if (!same(input, step.step.frame.input))
                 fail();
             proveOutput(input, step.step.output, execution.program);

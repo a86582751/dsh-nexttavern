@@ -1,16 +1,17 @@
 // Generated from runtime/alpha3/compat/agent-loop/src/input-admission.ts; edit the TypeScript source.
 /** Native inbox identity and conservative append-only ownership interpretation. */
 import { createHash } from 'node:crypto';
+import { createNativePublishedInputHistory } from './published-input.js';
 export const INPUT_ADMISSION_ABORT_REASON = 'native-input-admission-before-message';
-const canonical = (value) => {
+export const nativeInputCanonical = (value) => {
     if (Array.isArray(value))
-        return `[${value.map(canonical).join(',')}]`;
+        return `[${value.map(nativeInputCanonical).join(',')}]`;
     if (value !== null && typeof value === 'object')
         return `{${Object.keys(value).sort()
-            .map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+            .map(key => `${JSON.stringify(key)}:${nativeInputCanonical(value[key])}`).join(',')}}`;
     return JSON.stringify(value) ?? 'undefined';
 };
-export const nativeInputSha256 = (value) => createHash('sha256').update(canonical(value)).digest('hex');
+export const nativeInputSha256 = (value) => createHash('sha256').update(nativeInputCanonical(value)).digest('hex');
 export const nativeInputWorkSha256 = (sessionId, preparation, refs) => nativeInputSha256({ schemaVersion: 1,
     encoding: 'native-input-work-v1', sessionId, preparation, refs });
 const sha = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -132,8 +133,11 @@ export function createNativeInboxHistoryOwner(sessionId, events, inheritedBounda
     const queues = { 'next-turn': [], 'next-step': [] };
     const entries = new Map(), turns = new Map();
     const entriesByMessageId = new Map();
+    const entriesByPromptRequest = new Map(), visiblePromptRequests = new Set();
+    const claimedEntriesByTurn = new Map();
     const turnStarts = new Map(), turnsWithUsers = new Set();
     const linkedTurns = new Map();
+    const published = createNativePublishedInputHistory(sessionId, inheritedBoundary, nativeInputSha256);
     let openTurn, lastStartSeq, lastTurn, revision = -1;
     let invalid = !Number.isSafeInteger(inheritedBoundary) || inheritedBoundary < 0 || inheritedBoundary > events.length;
     const append = (event) => {
@@ -170,6 +174,8 @@ export function createNativeInboxHistoryOwner(sessionId, events, inheritedBounda
                             linked.badStep = true;
                         else
                             linked.firstStepStartSeq = event.seq;
+                        if ((claimedEntriesByTurn.get(event.data.turn) ?? []).some(entry => published.association(entry.ref)))
+                            turnsWithUsers.add(event.data.turn);
                     }
                 }
                 else {
@@ -187,7 +193,7 @@ export function createNativeInboxHistoryOwner(sessionId, events, inheritedBounda
             if (linked?.openStep !== undefined)
                 linked.badStep = true;
             if (linked)
-                linked.endSeq = event.seq;
+                linked.end = event;
             const reason = event.data.reason;
             turns.set(event.data.turn, { kind: reason.kind,
                 ...(reason.kind === 'aborted' ? { cancelKind: reason.reason.kind,
@@ -210,11 +216,25 @@ export function createNativeInboxHistoryOwner(sessionId, events, inheritedBounda
                     entry.claimSeq = event.seq;
                     entry.claimIndex = index;
                     entry.turn = openTurn;
+                    if (published.association(entry.ref))
+                        entry.userTurn = openTurn;
+                    if (openTurn !== undefined) {
+                        const claimed = claimedEntriesByTurn.get(openTurn);
+                        if (claimed)
+                            claimed.push(entry);
+                        else
+                            claimedEntriesByTurn.set(openTurn, [entry]);
+                    }
                 }
             }
-            const inserted = splice.inserted.map(message => {
-                const ref = { sessionId, insertSeq: event.seq, messageId: message.id, messageSha256: nativeInputSha256(message) };
+            const insertedDigests = splice.inserted.map(nativeInputSha256);
+            published.append(event, insertedDigests);
+            const inserted = splice.inserted.map((message, index) => {
+                const ref = { sessionId, insertSeq: event.seq, messageId: message.id, messageSha256: insertedDigests[index] };
                 const entry = { ref, message, inherited: event.seq < inheritedBoundary };
+                const publication = published.association(ref);
+                if (publication)
+                    entry.userSeq = publication.userSeq;
                 if (entries.has(refKey(ref)))
                     invalid = true;
                 entries.set(refKey(ref), entry);
@@ -223,6 +243,14 @@ export function createNativeInboxHistoryOwner(sessionId, events, inheritedBounda
                     sameId.push(entry);
                 else
                     entriesByMessageId.set(ref.messageId, [entry]);
+                const source = message.source;
+                if (source.kind === 'user' && 'rpcId' in source && typeof source.rpcId === 'string') {
+                    const sameRequest = entriesByPromptRequest.get(source.rpcId);
+                    if (sameRequest)
+                        sameRequest.push(entry);
+                    else
+                        entriesByPromptRequest.set(source.rpcId, [entry]);
+                }
                 return entry;
             });
             queue.splice(splice.start, count, ...inserted);
@@ -231,10 +259,14 @@ export function createNativeInboxHistoryOwner(sessionId, events, inheritedBounda
                 invalid = true;
         }
         else if (event.type === 'user/message') {
+            const source = event.data.source;
+            if (source.kind === 'user' && 'rpcId' in source && typeof source.rpcId === 'string')
+                visiblePromptRequests.add(source.rpcId);
             if (openTurn !== undefined)
                 turnsWithUsers.add(openTurn);
             const sameId = entriesByMessageId.get(event.data.id) ?? [];
             const fingerprint = nativeInputSha256(event.data);
+            published.append(event, [fingerprint]);
             for (const entry of sameId)
                 if (entry.ref.messageSha256 !== fingerprint)
                     entry.conflict = true;
@@ -287,8 +319,7 @@ export function createNativeInboxHistoryOwner(sessionId, events, inheritedBounda
         }
         if (!current.proposalMatches || current.firstStepStartSeq === undefined)
             return undefined;
-        const original = [...entries.values()].filter(entry => entry.turn === current.turn
-            && entry.claimSeq !== undefined && entry.claimSeq > current.startSeq && entry.claimSeq < current.firstStepStartSeq)
+        const original = (claimedEntriesByTurn.get(current.turn) ?? []).filter(entry => entry.claimSeq !== undefined && entry.claimSeq > current.startSeq && entry.claimSeq < current.firstStepStartSeq)
             .sort((left, right) => left.claimSeq - right.claimSeq || left.claimIndex - right.claimIndex);
         if (!sameRefs(original.map(entry => entry.ref), marker.refs))
             return undefined;
@@ -316,18 +347,17 @@ export function createNativeInboxHistoryOwner(sessionId, events, inheritedBounda
             const marker = linked.marker;
             if (invalid || !marker || marker.mode !== 'claim' || !linked.proposalMatches
                 || linked.startSeq < inheritedBoundary || linked.badStep || linked.firstStepStartSeq !== undefined
-                || linked.endSeq === undefined || !turns.get(linked.turn)?.preAdmission
+                || linked.end === undefined || !turns.get(linked.turn)?.preAdmission
                 || marker.workSha256 !== workSha256 || !sameRefs(marker.refs, refs))
                 continue;
-            const claimed = [...entries.values()].filter(entry => entry.turn === linked.turn
-                && entry.claimSeq !== undefined && entry.claimSeq > linked.startSeq && entry.claimSeq < linked.endSeq)
+            const claimed = (claimedEntriesByTurn.get(linked.turn) ?? []).filter(entry => entry.claimSeq !== undefined && entry.claimSeq > linked.startSeq && entry.claimSeq < linked.end.seq)
                 .sort((left, right) => left.claimSeq - right.claimSeq || left.claimIndex - right.claimIndex);
             if (!sameRefs(claimed.map(entry => entry.ref), refs) || claimed.some(entry => entry.inherited || entry.conflict
-                || entry.cancelledSeq !== undefined || entry.userSeq !== undefined))
+                || entry.cancelledSeq !== undefined || entry.userSeq !== undefined && !published.association(entry.ref)))
                 continue;
             return { status: 'refused-before-first-step', refusal: { schemaVersion: 1, kind: 'refused-before-first-step',
                     sessionId, workSha256, preparation: marker.preparation, refs: marker.refs, actualTurn: linked.turn,
-                    startSeq: linked.startSeq, endSeq: linked.endSeq,
+                    startSeq: linked.startSeq, endSeq: linked.end.seq,
                     claimSpliceSeqs: [...new Set(claimed.map(entry => entry.claimSeq))] } };
         }
         const proof = lastStartSeq === undefined ? undefined : proofAt(lastStartSeq);
@@ -363,8 +393,10 @@ export function createNativeInboxHistoryOwner(sessionId, events, inheritedBounda
         const linked = entryStart === undefined ? undefined : linkedTurns.get(entryStart);
         if (linked?.present && !linked.marker)
             return { status: 'unknown', ref, code: 'INPUT_LINK_METADATA_UNKNOWN' };
-        if (entry.userSeq !== undefined)
-            return { status: 'admitted', ref, userSeq: entry.userSeq, turn: entry.userTurn };
+        const publication = published.association(ref);
+        if (entry.userSeq !== undefined && (!publication || entry.claimSeq !== undefined))
+            return { status: 'admitted', ref,
+                userSeq: entry.userSeq, turn: publication ? entry.turn : entry.userTurn, ...publication ? { published: publication } : {} };
         if (entry.cancelledSeq !== undefined)
             return { status: 'cancelled', ref, cancelSeq: entry.cancelledSeq };
         for (const target of ['next-turn', 'next-step']) {
@@ -392,10 +424,19 @@ export function createNativeInboxHistoryOwner(sessionId, events, inheritedBounda
         }
         return { status: 'unknown', ref, code: 'INPUT_CLOSED_WITHOUT_ADMISSION_PROOF', closedReason };
     };
-    const history = { get revision() { return revision; }, pending: queues, ownership, durableWork, linkReceipt(startSeq) {
+    const history = { get revision() { return revision; }, pending: queues, ownership, durableWork, published,
+        hasPromptRequest(requestId) {
+            return visiblePromptRequests.has(requestId) || (entriesByPromptRequest.get(requestId) ?? [])
+                .some(entry => entry.cancelledSeq === undefined);
+        }, linkReceipt(startSeq) {
             if (lastStartSeq !== startSeq)
                 return undefined;
             return proofAt(startSeq)?.receipt;
+        }, completedTurn(startSeq) {
+            const linked = linkedTurns.get(startSeq);
+            if (invalid || lastStartSeq !== startSeq || !linked?.end || turns.get(linked.turn)?.kind !== 'completed')
+                return undefined;
+            return linked.end;
         }, resumeLinked(receipt) {
             const lookup = durableWork(receipt);
             if (lookup.status !== 'recoverable' || nativeInputSha256(lookup.receipt) !== nativeInputSha256(receipt))
@@ -435,7 +476,7 @@ export function createNativeInboxHistoryOwner(sessionId, events, inheritedBounda
                 return undefined;
             // Resume the complete original claimed work, never a convenient subset.
             const turn = turnsOwned[0];
-            const original = [...entries.values()].filter(entry => entry.turn === turn)
+            const original = [...(claimedEntriesByTurn.get(turn) ?? [])]
                 .sort((left, right) => left.claimSeq - right.claimSeq || left.claimIndex - right.claimIndex);
             if (original.length !== refs.length || original.some((entry, index) => refKey(entry.ref) !== refKey(refs[index])))
                 return undefined;

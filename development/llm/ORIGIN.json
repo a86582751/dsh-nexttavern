@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "package": "@deepseek-ai/dsh-llm",
+  "package": "dsh-nexttavern-native-llm",
   "upstreamPackage": "@deepseek-ai/dsh-llm",
   "upstreamVersion": "0.1.7-rc.2",
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
@@ -81,7 +81,8 @@
   "changes": [
     "Assistant messages may declare versioned programmatic provenance without model provider or model identity",
     "Model-only replay state filtering remains guarded by the model source discriminant",
-    "Generated .js import paths and independent maintained package identity"
+    "Generated .js import paths and independent maintained package identity",
+    "Private Native LlmRuntime and live request guards share official Host error constructors and agent-loop request marker identities"
   ],
   "formalForkSynchronized": false
 }

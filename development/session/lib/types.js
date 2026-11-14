@@ -53,3 +53,42 @@ export function SessionLogOffset(value) {
  * `.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.md`.
  */
 export const SESSION_FORMAT_VERSION = 4;
+const publicationRecord = (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        throw Error('PUBLISHED_INPUT_METADATA_INVALID');
+    return value;
+};
+const publicationText = (value) => typeof value === 'string' && value.length > 0;
+const publicationCount = (value) => Number.isSafeInteger(value) && Number(value) >= 0;
+const publicationSha = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+/** Read one persisted source marker. Consumers reuse this decoder. */
+export function readNativeAuthorPublicationV1(source) {
+    const value = publicationRecord(source).authorPublication;
+    if (value === undefined)
+        return;
+    const row = publicationRecord(value);
+    if (row.schemaVersion !== 1 || row.encoding !== 'native-author-publication-v1'
+        || !publicationText(row.operationId) || !publicationText(row.producer) || !publicationText(row.origin)
+        || !publicationCount(row.index) || !publicationCount(row.count) || row.count === 0 || row.index >= row.count
+        || !publicationSha(row.batchSha256))
+        throw Error('PUBLISHED_INPUT_METADATA_INVALID');
+    const owner = publicationRecord(source);
+    if (owner.kind !== 'user' || Object.hasOwn(owner, 'rpcId'))
+        throw Error('PUBLISHED_INPUT_SOURCE_INVALID');
+    return value;
+}
+export function readNativePublishedTriggerV1(data) {
+    const value = publicationRecord(data).publishedInput;
+    if (value === undefined)
+        return;
+    const row = publicationRecord(value);
+    if (row.schemaVersion !== 1 || row.encoding !== 'native-published-trigger-v1'
+        || !publicationText(row.operationId) || !Array.isArray(row.users) || !row.users.length)
+        throw Error('PUBLISHED_TRIGGER_METADATA_INVALID');
+    for (const user of row.users) {
+        const ref = publicationRecord(user);
+        if (!publicationCount(ref.userSeq) || !publicationText(ref.messageId) || !publicationSha(ref.messageSha256))
+            throw Error('PUBLISHED_TRIGGER_METADATA_INVALID');
+    }
+    return value;
+}

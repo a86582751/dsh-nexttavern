@@ -1,7 +1,7 @@
 // Generated from runtime/alpha3/compat/session-controller/src/client/sessions/session.ts; edit the TypeScript source.
 // Sessions remain resident after creation so their open Remote sources keep running off-screen.
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto';
-import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session/types';
+import { SessionLogOffset, SessionSeq } from 'dsh-nexttavern-native-session/types';
 import { SessionEventStream } from '../transport.js';
 import { MutableSessionEventSource } from '../contract/events.js';
 import { Notifier } from './notifier.js';

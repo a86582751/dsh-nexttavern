@@ -7,7 +7,7 @@ import {compileSchemaMvuInitData} from './tavern-mvu-initvar.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import {prepareMvuUpdate} from './roleplay-mvu-update.js'
 import {prepareMvuUpdateV2} from './roleplay-mvu-update-v2.js'
-import {validateNativeGeneratedOpeningReceiptV1} from '@deepseek-ai/dsh-agent-loop'
+import {validateNativeGeneratedOpeningReceiptV1} from 'dsh-nexttavern-native-agent-loop'
 import type {ProgramOpeningBasisProofV1} from './roleplay-program-opening-basis-types.js'
 import type {PromptOpeningSourceProofV1} from './roleplay-prompt-opening-source-types.js'
 import type {ProgramGenesisIdentityV1,FrozenProgramMvuOpeningPlanV3,ProgramGenesisNativeEnvelopeV1,

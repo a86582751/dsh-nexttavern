@@ -14,10 +14,10 @@
 import { randomUUID } from 'node:crypto';
 import { brandString } from '@deepseek-ai/dsh-brand';
 import { foldConsumedWork } from '@deepseek-ai/dsh-agent';
-import { SessionLogOffset } from '@deepseek-ai/dsh-session';
-import { createUserMessage } from '@deepseek-ai/dsh-llm';
-import { nativeInputAdmissionCapability } from '@deepseek-ai/dsh-agent-loop';
-import { appendDelegatedPolicyOverrides, applyChildComposition, assertSubagentMaxDepth, captureDelegatedPolicyOverrides, childSessionMeta, finalAssistantOutput, resolveChildAgentOptions, resolveChildDepth, composeOwnedAuthorDialogActivationV1, driveOwnedAuthorDialogActivationV1, } from '@deepseek-ai/dsh-subagent';
+import { SessionLogOffset } from 'dsh-nexttavern-native-session';
+import { createUserMessage } from 'dsh-nexttavern-native-llm';
+import { nativeInputAdmissionCapability, nativeIsolatedInputCapability } from 'dsh-nexttavern-native-agent-loop';
+import { appendDelegatedPolicyOverrides, applyChildComposition, assertSubagentMaxDepth, captureDelegatedPolicyOverrides, childSessionMeta, finalAssistantOutput, resolveChildAgentOptions, resolveChildDepth, composeOwnedAuthorDialogActivationV1, driveOwnedAuthorDialogActivationV1, } from 'dsh-nexttavern-native-subagent';
 import { attachStructuredRuntime, } from "./structured.js";
 import { composeOwnedRubyTaskActivationV1 } from "./ruby-task-child.js";
 export { STRUCTURED_OUTPUT_TOOL, STRUCTURED_OUTPUT_INSTRUCTION, } from "./structured.js";
@@ -92,6 +92,7 @@ export async function startInProcessRun(request, options) {
         appendDelegatedPolicyOverrides(child.session, inherited);
         applyChildComposition(childCtx, parent, {
             persona: request.persona,
+            isolatedSystem: request.isolatedSystem,
             toolFilter: rubyActivation !== undefined ? { allow: [] } : request.toolFilter,
         });
         if (request.activation !== undefined)
@@ -105,7 +106,8 @@ export async function startInProcessRun(request, options) {
         if (request.outputSchema !== undefined) {
             structured = attachStructuredRuntime(childCtx, request.outputSchema);
         }
-        attachDescriptorAppend(childCtx, request.descriptor);
+        if (request.isolatedSystem === undefined)
+            attachDescriptorAppend(childCtx, request.descriptor);
     };
     const handle = await parent.ctx.agents.create({
         sessionId: childId,
@@ -117,13 +119,13 @@ export async function startInProcessRun(request, options) {
         signal: request.signal,
         setup,
     });
-    return drivePublishedRun(handle, request.signal, request.prompt, childId, activationBoundary, structured, request.activation, rubyChild);
+    return drivePublishedRun(handle, request.signal, request.prompt, childId, activationBoundary, structured, request.activation, rubyChild, request.isolatedSystem === undefined ? undefined : request.descriptor);
 }
 /**
  * Wrap a published child in the single run lifecycle that owns signal handoff,
  * one turn, result settlement, and quiescent disposal.
  */
-function drivePublishedRun(handle, signal, prompt, childId, boundary, structured, activation, rubyChild) {
+function drivePublishedRun(handle, signal, prompt, childId, boundary, structured, activation, rubyChild, isolatedDescriptor) {
     const child = handle.agent;
     const flags = { cancelled: false };
     const onAbort = () => {
@@ -145,6 +147,13 @@ function drivePublishedRun(handle, signal, prompt, childId, boundary, structured
                 }
                 else if (activation !== undefined) {
                     await driveOwnedAuthorDialogActivationV1(child, activation);
+                }
+                else if (isolatedDescriptor !== undefined) {
+                    const isolated = nativeIsolatedInputCapability(child);
+                    if (!isolated)
+                        throw Error('isolated task Native input capability unavailable');
+                    await isolated.runIsolatedInput({ message: createUserMessage({ content: prompt, source: { kind: 'user' } }),
+                        onEnter: () => { child.session.append('subagent/descriptor', isolatedDescriptor); } });
                 }
                 else {
                     child.followup(createUserMessage({ content: prompt, source: { kind: 'user' } }));

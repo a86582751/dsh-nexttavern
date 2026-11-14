@@ -1,10 +1,11 @@
 // Generated from runtime/alpha3/src/memory/memory-compaction.ts; edit the TypeScript source.
 import { randomUUID } from 'node:crypto';
 import { estimateTokens, durableSeq, textOf } from './memory-provenance.js';
-import { surfaceSeqsOf, contentOfEvent, importManagementInputs, isStoryEvent, isCompletedTurnEnd, canonicalAssistantSeqsOf, selectedStoryHistorySnapshot, historySourceKeys, isCompactedStoryEvent } from './memory-history.js';
+import { surfaceSeqsOf, contentOfEvent, importManagementInputs, isStoryEvent, isCompletedTurnEnd, canonicalAssistantSeqsOf, selectedStoryHistorySnapshot, isCompactedStoryEvent } from './memory-history.js';
 import { validateDetailedSummary } from './memory-summary.js';
 import { projectStoryEvent } from '../core/roleplay-message-view.js';
 import { sessionEvents } from '../core/session-history.js';
+import { captureMemoryStoryText, memoryStorySourceKeys } from './memory-story-text.js';
 function errorText(error) {
     if (error instanceof Error)
         return error.stack || error.message;
@@ -240,7 +241,7 @@ export function createMemoryCompactor(options) {
         };
     }
     // ── 单次压缩 ──────────────────────────────────────────────────────────────
-    function storyTextForSeqs(session, seqs) {
+    function storyTextForSeqs(session, seqs, storyText) {
         const log = eventsOf(session);
         return seqs.map((seq) => {
             const original = log[seq];
@@ -248,7 +249,7 @@ export function createMemoryCompactor(options) {
             if (!isStoryEvent(event))
                 return '';
             const role = event.type === 'user/message' ? '用户' : '叙事者';
-            return `\n[${role} · seq:${seq}]\n${textOf(contentOfEvent(event))}`;
+            return `\n[${role} · seq:${seq}]\n${storyText.text(seq, textOf(contentOfEvent(event)))}`;
         }).filter(Boolean).join('\n');
     }
     function assertSelectedSurfaceStable(session, range) {
@@ -262,7 +263,7 @@ export function createMemoryCompactor(options) {
             throw new Error('整理期间当前分支的归档区间发生变化，请重试');
         }
     }
-    function reusableSummary(session, range, mem, sourceText, locked) {
+    function reusableSummary(session, range, mem, sourceText, locked, storyText) {
         if (mem.directorNotes?.manual === true)
             return null;
         const selected = {
@@ -270,8 +271,8 @@ export function createMemoryCompactor(options) {
             surface: { nodes: range.shadowedSeqs, contentGeneration: session.surface?.contentGeneration },
             deriveEventMessage: session.deriveEventMessage?.bind(session),
         };
-        const history = selectedStoryHistorySnapshot(selected);
-        const expected = historySourceKeys(history);
+        const history = storyText.rows(selectedStoryHistorySnapshot(selected));
+        const expected = memoryStorySourceKeys(history);
         if (!expected.length)
             return null;
         const candidates = [mem.directorNotes, ...(Array.isArray(mem.directorCheckpoints) ? mem.directorCheckpoints.toReversed() : [])];
@@ -332,10 +333,11 @@ export function createMemoryCompactor(options) {
                 throw new Error('自动记忆整理必须位于一个已开启的 turn 内');
             // 只读取当前 surface 中本次选中的真实 user/assistant 剧情；工具结果、
             // 未选分支、角色卡/世界书存储与插件检查点不进入剧情摘要。
-            const sourceText = storyTextForSeqs(session, range.storySeqs);
+            let storyText = captureMemoryStoryText(session, engine.captureStoryText);
+            const sourceText = storyTextForSeqs(session, range.storySeqs, storyText);
             if (!sourceText.trim())
                 throw new Error('归档区间没有可用原文');
-            const mem = memoryForSession(session) ?? {};
+            const mem = memoryForSession(session, storyText) ?? {};
             // lockedFacts() 会把角色卡/世界书也聚合进来；记忆压缩不得复制这些
             // 独立材料，只保留用户在记忆账本中显式锁定的剧情事实。
             const locked = Array.isArray(mem.lockedFacts) ? mem.lockedFacts : [];
@@ -357,7 +359,7 @@ export function createMemoryCompactor(options) {
             const timeoutMs = manual
                 ? Math.max(30000, Number(settings?.summaryTimeoutMs ?? cfg.summaryTimeoutMs) || 300000)
                 : Math.max(1000, Math.min(60000, Number(cfg.autoTimeoutMs) || 30000));
-            const summaryResult = reusableSummary(session, range, mem, sourceText, locked) ?? await summarizeDetailed({
+            const summaryResult = reusableSummary(session, range, mem, sourceText, locked, storyText) ?? await summarizeDetailed({
                 taskStage: 'compaction',
                 session,
                 previousSummary: prevSummary,
@@ -396,7 +398,8 @@ export function createMemoryCompactor(options) {
             assertSelectedSurfaceStable(session, range);
             // Edits preserve nodes/seq. A summary created from an older body must
             // never replace the newly edited text after the model request returns.
-            if (storyTextForSeqs(session, range.storySeqs) !== sourceText) {
+            storyText = captureMemoryStoryText(session, engine.captureStoryText, storyText);
+            if (storyTextForSeqs(session, range.storySeqs, storyText) !== sourceText) {
                 throw new Error('整理期间归档正文已编辑，请重试');
             }
             assertBranchActive(session);

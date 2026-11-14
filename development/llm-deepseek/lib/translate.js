@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/compat/llm-deepseek/src/translate.ts; edit the TypeScript source.
 /** Translate Messages events while preserving block order and cumulative usage. */
-import { LlmError, ToolCallId } from '@deepseek-ai/dsh-llm';
+import { LlmError, ToolCallId } from 'dsh-nexttavern-native-llm';
 import { object, replayState } from './replay.js';
 /** Decode a required string from provider JSON.
  * @param value - provider field.

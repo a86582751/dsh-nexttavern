@@ -1,7 +1,7 @@
 /** Durable model-selection intent and request-use projection. */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { SessionEvent } from 'dsh-nexttavern-native-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
 import type {

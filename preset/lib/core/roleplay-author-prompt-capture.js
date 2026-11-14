@@ -3,15 +3,41 @@
  * This projection creates readonly worker DATA, never an execution lease. */
 import { recordSha256 } from './roleplay-data.js';
 import { schemaScopeEmpty, schemaScopeOwner } from './roleplay-mvu-schema-scope-facts.js';
-/** The same actual Source owns both script namespaces. Project the compiled
- * Prompt members from that captured frame without another Native/table read. */
-export function produceAuthorPromptScopeFrameV1(frame, program) {
-    const { frameSha256: _old, ...sourceFrame } = frame;
-    const body = { ...sourceFrame, scripts: program.scripts.map(({ descriptor }) => ({
-            scriptId: descriptor.identity, pointer: descriptor.pointer, sourceSha256: descriptor.sourceSha256,
-            variables: schemaScopeEmpty(schemaScopeOwner(frame.source, 'script', descriptor.identity)),
-        })) };
-    return { ...body, frameSha256: recordSha256(body) };
+import { applyAuthorChatOverlayV3 } from './roleplay-author-chat-state-types.js';
+/** One row's effective ordinary DATA. stat_data remains the MVU owner's fact;
+ * a message tombstone cannot erase an earlier row in getAllVariables. */
+export function authorOrdinaryMessageVariablesV1(variables, capture) {
+    const base = variables.kind === 'available' ? variables.variables : {}, values = capture ? applyAuthorChatOverlayV3(base, capture) : base, { stat_data: _ordinaryStat, ...effective } = values;
+    if (Object.hasOwn(base, 'stat_data'))
+        effective.stat_data = base.stat_data;
+    return effective;
+}
+/** Index identity DATA once; body versions and author swipe positions never
+ * enter ordinary addresses. A pending input has no address in this view. */
+export function authorOrdinaryMessageSelectionV1(captures, opening) {
+    const byMessage = new Map();
+    // This actual visible Native cut has one row per seq/id. MVU publication
+    // owners may be children; ordinary addresses retain their Native birth owner.
+    const key = (row) => JSON.stringify([row.nativeSeq, row.messageId]);
+    for (const capture of captures) {
+        const target = capture.root.namespace.target;
+        if (!target)
+            continue;
+        const address = key(target.identity), rows = byMessage.get(address) ?? [];
+        rows.push(target);
+        byMessage.set(address, rows);
+    }
+    return (row) => {
+        if (row.nativeSeq === null)
+            return;
+        const variants = byMessage.get(key(row));
+        if (!variants)
+            return;
+        const selectedTarget = variants.find(target => row.messageId === opening.messageId && opening.ordinaryVariants
+            ? target.identity.variant.kind === 'opening-variant' && target.identity.variant.id === opening.ordinaryVariants.activeVariantId
+            : target.identity.variant.kind === 'native-canonical');
+        return selectedTarget ? { selectedTarget, variants } : undefined;
+    };
 }
 export function produceAuthorPromptCaptureV1(input) {
     const { history, scopes, opening } = input;
@@ -22,6 +48,7 @@ export function produceAuthorPromptCaptureV1(input) {
     if (start < 0)
         throw Error('PROMPT_PROGRAM_OPENING_INDEX_UNAVAILABLE');
     const scopeById = new Map(scopes.messages.map(row => [row.messageId, row]));
+    const ordinaryFor = authorOrdinaryMessageSelectionV1(input.ordinaryMessages ?? [], opening);
     const messages = refs.slice(start).map((ref, index) => {
         const content = history.scanRows[start + index];
         const scoped = scopeById.get(ref.id);
@@ -38,7 +65,8 @@ export function produceAuthorPromptCaptureV1(input) {
         }
         else
             throw Error('PROMPT_PROGRAM_MESSAGE_SCOPE_UNAVAILABLE');
-        return { index, messageId: ref.id, ownerSessionId, nativeSeq: ref.seq,
+        const ordinary = ordinaryFor({ messageId: ref.id, ownerSessionId, nativeSeq: ref.seq });
+        return { index, messageId: ref.id, ownerSessionId, nativeSeq: ref.seq, ...ordinary ? { ordinary } : {},
             messageVersionSha256: ref.messageSha256, role: ref.role, message: content.text, variables,
             variants: index === 0 && ref.messageSha256 === opening.originalMessageVersionSha256
                 ? opening.copiedCandidates : null };
@@ -47,6 +75,8 @@ export function produceAuthorPromptCaptureV1(input) {
         authority: 'consumer-data-only', sessionId: history.data.sessionId,
         sourceSnapshotSha256: scopes.source.sourceSnapshotSha256, nativeCut: history.data.nativeCut,
         nativePrefixSha256: history.data.nativePrefixSha256, attemptId: input.attemptId,
-        clockEpochMs: input.clockEpochMs, randomSeed: input.randomSeed, messages, scopeFrame: scopes };
+        clockEpochMs: input.clockEpochMs, randomSeed: input.randomSeed, messages, scopeFrame: scopes,
+        ...input.ordinaryChat ? { ordinaryChat: input.ordinaryChat } : {},
+        ...input.ordinaryMessages ? { ordinaryMessages: input.ordinaryMessages } : {} };
     return { ...body, captureSha256: recordSha256(body) };
 }

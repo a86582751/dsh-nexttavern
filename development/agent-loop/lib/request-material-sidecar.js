@@ -1,7 +1,7 @@
 // Generated from runtime/alpha3/compat/agent-loop/src/request-material-sidecar.ts; edit the TypeScript source.
 /** Process-local request/material association. Durable descriptors are never
  * looked up as a current owner; only this exact branded request has a binding. */
-import { bindAgentLoopRequestGuard, isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
+import { bindAgentLoopRequestGuard, isAgentLoopRequest } from 'dsh-nexttavern-native-llm';
 import { nativeInputSha256 } from './input-admission.js';
 import { planNativeRequestMaterialV1 } from './request-material.js';
 const bindings = new WeakMap();

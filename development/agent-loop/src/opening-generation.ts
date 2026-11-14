@@ -3,12 +3,12 @@
  * material owner, and partial invocation never permits another provider call. */
 import type {Session,SessionEvent,NativeOpeningIdentityV1,
   NativeOpeningEventRefV1,NativeGeneratedOpeningReceiptV1,NativeOpeningRequestPublicationV1,
-  NativeOpeningOutputRefV1,NativeOpeningClosingAckV1,SessionMessageProjection} from '@deepseek-ai/dsh-session'
+  NativeOpeningOutputRefV1,NativeOpeningClosingAckV1,SessionMessageProjection} from 'dsh-nexttavern-native-session'
 import {nativeInputSha256} from './input-admission.js'
 import {reconstructNativeRequestMaterialV1} from './request-material.js'
 import {sealNativeOpeningRecordV1,validateNativeOpeningInvocationV1,validateNativeOpeningRequestAttemptV1,
   validateNativeGeneratedOpeningReceiptV1,validateNativeOpeningClosingAckV1,nativeOpeningTextSha256V1} from './opening-record-hashes.js'
-import {NativeOpeningRecordFailureV1,NATIVE_OPENING_RECORD_BOUNDS_V1} from '@deepseek-ai/dsh-session/surface'
+import {NativeOpeningRecordFailureV1,NATIVE_OPENING_RECORD_BOUNDS_V1} from 'dsh-nexttavern-native-session/surface'
 
 export const openingEventRefV1=(event:SessionEvent):NativeOpeningEventRefV1=>Object.freeze({
   seq:Number(event.seq),sha256:nativeInputSha256(event)})

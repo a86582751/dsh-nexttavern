@@ -4,7 +4,7 @@
 import {recordSha256} from './roleplay-data.js'
 import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
 import type {NativeCompletedInputWorkReceiptV1,NativeDurableInputWorkReceiptV1}
-  from '@deepseek-ai/dsh-agent-loop'
+  from 'dsh-nexttavern-native-agent-loop'
 import type {MvuStateTerminalIntent} from './roleplay-mvu-state.js'
 
 export interface InputTerminalCurrent {

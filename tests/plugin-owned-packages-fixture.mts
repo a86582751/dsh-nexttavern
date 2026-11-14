@@ -1,9 +1,8 @@
 /** Small generated-package fixtures sharing the locked host peers; never a Harness install. */
-import assert from 'node:assert/strict'
-import {cp, lstat, mkdir, readFile, readdir, rm, symlink} from 'node:fs/promises'
-import {existsSync} from 'node:fs'
+import {cp, lstat, mkdir, readFile, readdir, symlink} from 'node:fs/promises'
+import {existsSync,readFileSync} from 'node:fs'
 import {createHash} from 'node:crypto'
-import {createRequire} from 'node:module'
+import {createRequire,registerHooks} from 'node:module'
 import {fileURLToPath, pathToFileURL} from 'node:url'
 import path from 'node:path'
 import {createTestDirectory, cleanupTestDirectory} from '../src/operations/test-temp.mts'
@@ -12,6 +11,30 @@ import {copyStorageJsonPackage, type StorageJsonPin} from './roleplay-core-proce
 // Public development sources use the manifest's development/ package layout;
 // maintenance sources retain compat/. Neither layout is a Harness installation.
 const packageRoot = existsSync(new URL('../development/', import.meta.url)) ? '../development/' : '../development/'
+
+/** Mount maintained packages at their real names, including their Native peers.
+ * Official Host packages stay available under their own names for shared ABI. */
+async function copyMaintainedPackage(directory: string, unit: string): Promise<string> {
+  if (!/^[a-z]+(?:-[a-z]+)*$/.test(unit)) throw Error('Invalid owned package unit')
+  const source = fileURLToPath(new URL(`${packageRoot}${unit}/`, import.meta.url))
+  const metadata = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'))
+  if (metadata.name !== `dsh-nexttavern-${unit}` && metadata.name !== `dsh-nexttavern-native-${unit}`) {
+    throw Error('Owned package identity differs')
+  }
+  const installed = path.join(directory, 'node_modules', metadata.name)
+  if (existsSync(installed)) return metadata.name
+  await mkdir(installed)
+  await cp(path.join(source, 'package.json'), path.join(installed, 'package.json'))
+  await cp(path.join(source, 'lib'), path.join(installed, 'lib'), {recursive: true})
+  for (const name of Object.keys({...metadata.dependencies, ...metadata.peerDependencies})) {
+    if (!name.startsWith('dsh-nexttavern-native-')) continue
+    const directoryName = name.slice('dsh-nexttavern-'.length)
+    const peerUnit = existsSync(new URL(`${packageRoot}${directoryName}/package.json`, import.meta.url))
+      ? directoryName : directoryName.slice('native-'.length)
+    await copyMaintainedPackage(directory, peerUnit)
+  }
+  return metadata.name
+}
 
 export async function ownedPackages(units: readonly string[], extraPeers: readonly string[] = [],
   options: {localSession?: boolean; storageJson?: boolean | 'maintained'; physicalPeers?: readonly string[]} = {}) {
@@ -24,37 +47,19 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
   try {
     let storageJsonPin: StorageJsonPin | undefined
     await mkdir(modules)
-    for (const unit of units) {
-      if (!/^[a-z]+(?:-[a-z]+)*$/.test(unit)) throw Error('Invalid owned package unit')
-      const source = fileURLToPath(new URL(`${packageRoot}${unit}/`, import.meta.url))
-      const metadata = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'))
-      if (metadata.name !== `dsh-nexttavern-${unit}`) throw Error('Owned package identity differs')
-      const installed = path.join(modules, metadata.name)
-      await mkdir(installed)
-      await cp(path.join(source, 'package.json'), path.join(installed, 'package.json'))
-      await cp(path.join(source, 'lib'), path.join(installed, 'lib'), {recursive: true})
-    }
+    for (const unit of units) await copyMaintainedPackage(directory, unit)
     if (options.localSession) {
       const scope = path.join(modules, '@deepseek-ai')
       const lockedScope = path.join(peers, '@deepseek-ai')
       await mkdir(scope)
       for (const name of await readdir(lockedScope)) {
-        if (options.storageJson && name === 'dsh-storage-json') continue
-        if (name === 'dsh-session' || name === 'dsh-session-persistence') continue
+        if (options.storageJson === true && name === 'dsh-storage-json') continue
         await symlink(path.join(lockedScope, name), path.join(scope, name), 'junction')
       }
-      if (options.storageJson) storageJsonPin = await copyStorageJsonPackage(path.join(scope, 'dsh-storage-json'),
+      if (options.storageJson) storageJsonPin = await copyStorageJsonPackage(options.storageJson === 'maintained'
+        ? path.join(modules, 'dsh-nexttavern-native-storage-json') : path.join(scope, 'dsh-storage-json'),
         options.storageJson === 'maintained' ? 'maintained' : 'installed')
-      const localSession = fileURLToPath(new URL(`${packageRoot}session/`, import.meta.url))
-      for (const [name, source] of [
-        ['dsh-session', localSession],
-        ['dsh-session-persistence', path.join(lockedScope, 'dsh-session-persistence')],
-      ] as const) {
-        const installed = path.join(scope, name)
-        await mkdir(installed)
-        await cp(path.join(source, 'package.json'), path.join(installed, 'package.json'))
-        await cp(path.join(source, 'lib'), path.join(installed, 'lib'), {recursive: true})
-      }
+      await copyMaintainedPackage(directory, 'session')
     } else {
       await symlink(path.join(peers, '@deepseek-ai'), path.join(modules, '@deepseek-ai'), 'junction')
     }
@@ -104,17 +109,48 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
   }
 }
 
-/** Only a generated package fixture link is replaced. Do not follow/remove its
- * locked source directory: it is shared with other tests and other conversations. */
+/** Add the real private peer without replacing any official Host package. */
 export async function mountMaintainedPeer(
-  packages: Awaited<ReturnType<typeof ownedPackages>>, name: 'agent-loop' | 'llm',
+  packages: Awaited<ReturnType<typeof ownedPackages>>, name: string,
 ): Promise<void> {
-  const installed = path.join(packages.directory, 'node_modules', '@deepseek-ai', `dsh-${name}`)
-  const existing = await lstat(installed)
-  assert.ok(existing.isSymbolicLink(), 'only the fixture-owned peer link may be replaced')
-  await rm(installed)
-  await mkdir(installed)
-  const source = fileURLToPath(new URL(`${packageRoot}${name}/`, import.meta.url))
-  await cp(path.join(source, 'package.json'), path.join(installed, 'package.json'))
-  await cp(path.join(source, 'lib'), path.join(installed, 'lib'), {recursive: true})
+  await copyMaintainedPackage(packages.directory, name)
+}
+
+/** Resolve generated consumers against the same maintained packages used by
+ * package tests. Install before importing those consumers and close at teardown. */
+export async function installOwnedNativeTestDependencies(units:readonly string[], readerLibraries=false) {
+  const packages=await ownedPackages(units)
+  const generated=new URL('../',new URL('../lib/core/roleplay-data.js',import.meta.url)).href
+  const libraryImporter=new URL('../lib/ui/reader-native-document-libraries.js',import.meta.url).href
+  // Match build-client's Source/Public mapping selection. Text imports carry
+  // the registered product bytes rather than a second test asset catalog.
+  const packageDirectory=fileURLToPath(new URL('../',import.meta.url))
+  const publicMapping=path.join(packageDirectory,'tools/check-map.json')
+  const root=existsSync(publicMapping)?packageDirectory:path.resolve(packageDirectory,'../..')
+  const mappingFile=existsSync(publicMapping)?publicMapping:path.join(root,'release/source-manifest.json')
+  const textModules=new Map<string,string>()
+  let plan:any
+  let textImports:Record<string,string>|undefined
+  const hooks=registerHooks({resolve(specifier,context,next) {
+    if(context.parentURL?.startsWith(generated)&&specifier.startsWith('dsh-nexttavern-native-')) {
+      return {url:pathToFileURL(packages.require.resolve(specifier)).href,shortCircuit:true}
+    }
+    if(readerLibraries&&context.parentURL===libraryImporter) {
+      if(!textImports) {
+        plan=JSON.parse(readFileSync(mappingFile,'utf8'))
+        textImports=plan.builds.find((row:any)=>row.browser?.textArtifactImports)?.browser.textArtifactImports
+      }
+      let url=textModules.get(specifier)
+      const artifactId=textImports?.[specifier]
+      if(!url&&artifactId) {
+        const artifact=plan.artifacts.find((row:any)=>row.id===artifactId)
+        const text=readFileSync(path.join(root,artifact.source),'utf8')
+        url='data:text/javascript;base64,'+Buffer.from('export default '+JSON.stringify(text)).toString('base64')
+        textModules.set(specifier,url)
+      }
+      if(url)return {url,shortCircuit:true}
+    }
+    return next(specifier,context)
+  }})
+  return ()=>{hooks.deregister();packages.close()}
 }

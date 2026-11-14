@@ -2,7 +2,7 @@
 
 本文说明 **0.3 开发源码中的状态机制**，供卡作者设计初值、更新规则和可选分析。0.3 尚未正式发布，完整卡玩法、恢复和性能仍在验收；本文的字段和执行说明不代表所有社区 MVU／RUBY 版本均已兼容。发行状态见[开发日志](DEVELOPMENT-0.3.md)，卡文件结构见[原生卡格式](NATIVE-CARD-FORMAT.md)。
 
-快速查阅：[设计定位](#设计定位原生运行机制兼容社区协议与作者能力) · [完整初值卡](#2-给-native-10-卡加入初值) · [回合更新](#3-一回合如何提交数值) · [Schema 与 EJS](#4-schemaejs-与纯数据路径的边界) · [世界线与编辑](#5-世界线编辑重生成与手动修改) · [Ruby 分析](#6-ruby按周期产生分析材料)
+快速查阅：[设计定位](#设计定位原生运行机制兼容社区协议与作者能力) · [完整初值卡](#2-给-native-12-卡加入初值) · [回合更新](#3-一回合如何提交数值) · [Schema 与 EJS](#4-schemaejs-与纯数据路径的边界) · [世界线与编辑](#5-世界线编辑重生成与手动修改) · [Ruby 分析](#6-ruby按周期产生分析材料)
 
 ## 设计定位：原生运行机制，兼容社区协议与作者能力
 
@@ -44,14 +44,14 @@ Schema 作者脚本中受支持的默认值、转换、校验和回调仍会在�
 
 卡中的 `data.status.text` 是作者状态设定，`data.character_book`／开场中的初值是新游戏的起点；两者都不是已经游玩的实时存档。导出当前原生卡保存作者设定，不应据此期待把整条世界线的数值历史搬到另一台机器。
 
-## 2. 给 Native 1.0 卡加入初值
+## 2. 给 Native 1.2 卡加入初值
 
-最小纯数据路径不要求安装远程 MVU 脚本。把初值放在 **`data.character_book.entries` 的 `[InitVar]` 条目**，把玩法规则放在 `data.rules`。下面是完整 Native 1.0 JSON，可保存为 `雾港灯塔.json`，经“角色卡导入”建立新对话并选择作者开场：
+最小纯数据路径不要求安装远程 MVU 脚本。把初值放在 **`data.character_book.entries` 的 `[InitVar]` 条目**，把玩法规则放在唯一作者正文 `data.rules`。下面是 Native 1.2 初值示例，可保存为 `雾港灯塔.json`；本次新格式的完整导入和运行验证范围见[开发日志](DEVELOPMENT-0.3.md)：
 
 ```json
 {
   "spec": "nexttavern_card",
-  "spec_version": "1.0",
+  "spec_version": "1.2",
   "data": {
     "name": "雾港灯塔",
     "cards": [
@@ -189,7 +189,7 @@ _.insert('角色.背包', '绳索');
 
 纯数据初值负责存值，不运行作者程序。**EJS 与纯数据 InitVar 可以在同一张 Native 卡内使用，无需增加 Schema**：普通人物／规则等作者内容由模板链处理，初值仍由程序按原始 JSON／YAML 计算。整卡会使用相应的 prompt-program 来源路径，不能把它仍描述成仅走旧纯数据来源。初值数据载荷自身不接受 EJS 或 `registerMvuSchema(...)`；也不要把上面的模型回复更新块原样贴到 `rules.core`，将协议输出混成作者规则。
 
-如果卡还启用了 `data.extensions.tavern_helper.scripts`，开场由作者程序的组合执行链处理 server、Prompt 与 Browser 分区；纯 InitVar／模板路径不会先完成初始化后略过脚本。组合编译可以保留只有 Browser 分区的程序，但当前数值初始化仍要求实际 server 结果，缺少时返回 `AUTHOR_HOST_BROWSER_ONLY_INITIALIZATION_UNSUPPORTED`。编译成功、数值已就绪与界面实际挂载是不同结果。
+如果卡还启用了 `data.extensions.tavern_helper.scripts`，组合执行链将真正的 Schema／固定数值 loader 交给数值 owner，把普通 helper 原始模块交给浏览器原生环境；generation hook 使用脚本实际注册的回调。禁用源码只保存不执行，已登记而不可用的外部插件会单独报告。需要原生数值的 helper 仍使用同一数值 owner，不再建立第二套变量框架；作者不必填写内部 profile、编译器版本或运行身份。编译成功、数值已就绪与界面实际挂载分别观察。
 
 Schema 卡由受维护的作者脚本来源、编译器、固定依赖映射和隔离执行器共同处理。初值之后可应用作者 Schema 的默认值、转换和校验；Story 更新经过 `command-parsed`、`commands-parsed`、`update-ended` 阶段，手动改值有 `manual-replacement` 阶段。模型输出仍是数据候选，Schema 不把模型正文当任意程序执行。
 
@@ -205,24 +205,30 @@ registerMvuSchema(z.object({
 }));
 ```
 
-例如手动保存体力 11 会被这条规则拒绝。若希望体力上限自动截断，作者应编写对应转换规则；仅有 `.max(10)` 不等于自动截断。Schema 的逐命令接受、丢弃和批次校验策略取决于实际版本化执行合同，不能把纯数据的整批拒绝承诺套到所有社区 Schema。已识别的固定 helper／Schema 导入由原生映射处理，不会因此下载并运行任意远程模块。
+例如手动保存体力 11 会被这条规则拒绝。若希望体力上限自动截断，作者应编写对应转换规则；仅有 `.max(10)` 不等于自动截断。Schema 的逐命令接受、丢弃和批次校验策略取决于实际版本化执行合同，不能把纯数据的整批拒绝承诺套到所有社区 Schema。作者还需在实际进入模型请求的规则／世界书中写明受枚举约束字段的允许值、数值范围和更新条件；Schema 继续负责校验，但不会自动把这些约束投影到模型上下文。已识别的固定 helper／Schema 导入由原生映射处理，不会因此下载并运行任意远程模块。
 
 ### 读取当前数值的 EJS 片段
 
-已经接入模板执行链、且本轮 `chat` 数值快照有效时，可以在作者模板中读取：
+已经接入模板执行链、且本轮 `local`（内部 `chat`）数值快照有效时，可以在作者模板中读取：
 
 ```ejs
-来客当前体力：<%= getvar('stat_data.角色.体力', 'chat') %>
-<% if (getvar('stat_data.角色.体力', 'chat') <= 2) { %>
+来客当前体力：<%= getvar('stat_data.角色.体力', {scope:'local'}) %>
+<% if (getvar('stat_data.角色.体力', {scope:'local'}) <= 2) { %>
 来客需要休息。
 <% } %>
 ```
 
 体力为 9 时输出“来客当前体力：9”，不会输出休息提醒。它是**普通作者内容中的模板片段**，可以与第 2 节初值同卡使用，但不能写进 InitVar 数据载荷。模板读冻结的当前作用域，不是每调用一次就读取实时数据库；读取不修改数值。
 
-`getvar('键', {scope:'chat', defaults:0})` 的默认值只用于该键缺失；作用域本身不可用会报错，不会借另一条世界线的值补齐。`initial` 也不是 InitVar 的别名。完整标签、变量作用域、`getwi`、激活与提示注入、执行时机及限制见[原生卡 EJS 作者章节](NATIVE-CARD-FORMAT.md#8-ejs-作者模板动态文本与世界书联动)。模板可以读取已提交值并影响提示文本；持久数值的权威仍属于更新与提交链。
+`getvar('键', {scope:'local', defaults:0})` 的默认值只用于该键缺失；作用域本身不可用会报错，不会借另一条世界线的值补齐。`initial` 也不是 InitVar 的别名。完整标签、变量作用域、`getwi`、激活与提示注入、执行时机及限制见[原生卡 EJS 作者章节](NATIVE-CARD-FORMAT.md#8-ejs-作者模板动态文本与世界书联动)。模板可以读取已提交值并影响提示文本；持久数值的权威仍属于更新与提交链。
 
 预设的 `{{getvar::…}}` 是另一套宏变量语法，不能拿它读取 MVU 路径，详见[预设手册](COMMUNITY-PRESETS.md#5-宏变量世界书与历史的组装)。
+
+### 浏览器页面读取与修改数值
+
+页面里的 `getVariables()` 读取普通聊天变量；script／message scope 按实际脚本和消息选择。普通变量写入不等于数值提交。MVU 兼容页面可用 `Mvu.getMvuData({type:'chat'})` 读取包含 `stat_data` 的数据，修改其中数值后 `await Mvu.replaceMvuData(data, {type:'chat'})`；同次读取的其他 envelope 字段应保持原值，失败会抛错。历史消息可读，不代表任意旧消息仍可写。
+
+原生页面也可用同步的 `nextTavern.getNumericalState()` 读取当前状态。只有 `ready`／`schema-ready` 且 `canEdit` 时，才用完整 `values` 配套本次 `expected` 调用 `await nextTavern.replaceNumericalValues(values, expected)` 并检查实际成功回执。页面广播、旧截图或普通变量副本不能替代本次读依据。对应 SDK 见 [author-native-mvu-sdk.ts](https://github.com/a86582751/dsh-nexttavern/blob/main/src/ui/author-native-mvu-sdk.ts)。
 
 ## 5. 世界线、编辑、重生成与手动修改
 
@@ -234,6 +240,10 @@ registerMvuSchema(z.object({
 | 修改卡资料／Schema | 来源发生变化，旧派生结果不能当作新来源已执行；核对来源并重新载入相应流程 |
 | 打开／刷新数值面板 | 读取当前提交结果，不重跑 InitVar 或更新块 |
 | 在面板保存数值 | 单独的手动提交；Schema 卡按角色规则处理，保存不等于编辑卡初值 |
+
+开发线的作者 Helper／Reader 接口也支持单目标历史正文编辑。先读取实际消息，再通过 `setChatMessages` 提交单条 `message` 更改；来源或消息版本冲突会拒绝，不把它自动变成另一条消息。正文没有变化时不新增历史事件；普通正文与变量混写、多目标批次会拒绝，开场 `swipes` 则沿独立的开场选页流程处理。这与编辑后重发、重生成和手工修改数值是不同动作，提交正文自身不会生成一条 Story。
+
+回应丢失时先确认原操作；确认读取已提交的历史事实，重试仍需要当前页面与来源权限。旧页面失效不抹去已提交结果，也不授权它继续写入。多个变量作用域不承诺原子回滚；保存状态不确定时，应沿原操作恢复，不能通过另造操作身份重复提交。
 
 在状态栏找到“**游戏数值**”，可编辑字段或展开“高级：完整数值 JSON”，再点“保存数值”。回合进行中、来源变化或正文编辑影响未确认时，面板会禁止保存并解释原因。其他操作改变了基线时，用“载入最新值并比较草稿”合并；回应丢失时用“重试上次保存”，它保留同一次保存身份，不会另做一次数值操作。
 
@@ -257,7 +267,8 @@ registerMvuSchema(z.object({
 | `useOutputs` | 读取指定任务输出变量对应的世界书材料 |
 | `outputConstant`、`outputDisable`、`extraKeys` | 输出条目的常驻、禁用及逗号分隔附加 key |
 | `position`、`depth`、`order` | 输出条目的注入位置和顺序；`depth` 在位置 4 的深度注入时使用 |
-| `selective`、`selectiveKeys`、`noRecursion` | 输出条目的次级关键词和递归控制；它们不绕过正常世界书准入 |
+| `selective`、`selectiveKeysEnabled`、`selectiveKeys`、`noRecursion` | `selectiveKeysEnabled:true` 才采用 `selectiveKeys` 数组；输出的次级关键词还需 `selective:true`，不绕过正常世界书准入 |
+| `presets[*].startupTask` | 可选开局分析，显式启用并遵循自己的周期位置；同轮到期时先于普通任务执行，结果发布后才供后续任务引用，名称不表示只运行一次 |
 | `jailbreak.items` | 真实作者消息数组，含 `content`、`role`、`enabled`、`position`；位置为 `beforeUser`／`afterUser`／`tail` |
 
 以下是**`data.extensions` 内部配置片段**，并非完整 Native 卡；还必须提供 key 为“灯塔分析指令”的实际世界书条目，内容例如“依据 {{recentMessages}}，只列出本次新确认的灯塔故障。”：
@@ -289,14 +300,43 @@ registerMvuSchema(z.object({
 
 1. 初次接入采用当前规范助手回复数作为基线，**包含开场**，不补跑之前的任务。管理消息、失败正文和未选候选不计作规范新剧情。
 2. 周期长度取所有启用任务的 `cyclePositions` 最大值。第 `n` 个助手回复的位置为 `((n-1) % 周期长度) + 1`。上例长度为 2，因此位置 2 到期，而非“启用后每两条必定立即执行”。
-3. 到期任务读取自己上次成功发布书签之后的文本，最多最近 20 个助手回复及相伴玩家消息。默认尝试提取 `content/maintext/text/body/message` 正文，移除 statusblock、options、other、thinking 和 HTML 注释。
+3. 到期任务按开局分析在前、普通任务配置顺序在后串行处理。后面的任务可以引用前面已经成功发布的输出；失败结果不会被当作新输出。每个任务读取自己上次成功发布书签之后的文本，最多最近 20 个助手回复及相伴玩家消息。默认尝试提取 `content/maintext/text/body/message` 正文，移除 statusblock、options、other、thinking 和 HTML 注释。
 4. 无新文本则 `no-new-text`；启用关键词扫描而无匹配则 `keyword-miss`。这两种跳过均不调用模型，也不推进成功发布书签。
 5. 找到真实指令、作者消息和引用后生成输入。正文最多保留 200,000 字符；使用 `{{recentMessages}}`、`{{CHAR_NAME}}` 和声明的引用／输出变量进行替换。
 6. 模型任务成功且结果仍对应当前执行身份后发布；小于 2 个字符的结果拒绝。成功发布才推进该任务书签，后继 Story 经实际材料组装消费输出。
 
-`startupTask.enabled`、`director.enabled`、外部 `summaryProvider` 的 `littlewhitebox/shujuku/yuzuki/baibaibook`、`gen.enabled:true` 等会明确标为未支持。没有 `jailbreak.items` 的生产任务不能凭空补出上游默认消息。自定义正文标签和模板变量名目前按字面量读取，依赖动态正则模式的配置另有未支持诊断；原生记忆也不等于这些外部总结插件。
+`startupTask` 已接入上述调度。外部 `summaryProvider` 的 `littlewhitebox/shujuku/yuzuki/baibaibook` 在本宿主缺席时，使用当前可用的原始剧情文本，配置记录标为 `unavailable-raw-text`。`director.enabled` 继续给出具体能力诊断。生产任务通过作者提供的 `jailbreak.items` 组织消息，自定义正文标签和模板变量名按受支持配置读取。
+
+`gen.enabled:true` 时，`temperature` 和正整数 `max_tokens` 分别进入该次分析请求的温度与输出上限。温度范围为 0–2，`0` 有效。参数随任务输入冻结，显式重试沿用原值，面板显示当前卡片分析参数。只写启用位时使用原生任务设置。有效的 `top_p`、`top_k`、`presence_penalty`、`frequency_penalty`、卡内 `reasoning_effort` 及非整数输出上限会按具体字段报告能力限制。模型和思考强度继续由原生模型设置管理。
 
 在设置 → “**Ruby额外分析**”查看配置状态、配置原因、轮次基线和任务。`supported-static` 表示已映射静态配置，不保证下一轮一定命中。读取／刷新只看状态；失败任务可在处理原因后显式重试。关闭额外分析会停止分析及其派生世界书注入，保留已完成记录；HTML 注音和普通显示正则不受这个开关影响。
+
+### 作者命令：读取、手动分析与切换方案
+
+作者页面可通过 `await triggerSlash(command)` 调用以下有限命令。成功时返回 **pipe 字符串**；拒绝或完成状态未知时 Promise 会抛错，不能把“已接受任务”当成分析已经发布。它与 EJS 的 `getwi` 是不同接口：`getwi` 按标题／UID查询模板目录，`/ruby read` 按世界书 keys 读取。
+
+| 命令示例 | 实际结果 |
+| --- | --- |
+| `/ruby read key="灯塔故障记录"` | 默认读取聊天世界书；先精确 key，再包含匹配；返回去除首尾空白的正文 |
+| `/ruby read book=char key="灯塔分析指令" json=true` | 读取当前主角色世界书；`book` 也可用该主书的实际名称 |
+| `/ruby read key="灯塔" all=true json=true` | 返回所有匹配记录数组；精确匹配在前，不重复同一条目 |
+| `/ruby read book=char key="灯塔分析指令" raw=true` | 返回捕获的原始内容，不做通常的内容解析；显式读取仍可读禁用条目，不表示将它激活 |
+| `/ruby run task=1 json=true` | 手动执行启用的指定任务并等待真实结果；也可用 `tasks=1,2`，或按名称、指令 key、输出 key 等受支持标识选择 |
+| `/ruby run startup`、`/ruby run all` | 执行已启用的开局分析，或依配置顺序执行全部启用任务；分析会产生实际模型用量 |
+| `/ruby preset`、`/ruby preset "灯塔方案"` | 查看方案列表，或按 ID／名称选择方案；先保存当前卡的 Ruby 配置，再更新生效状态与调度基线 |
+| `/ruby status` | 读取当前启用、运行、配置、轮次基线与最近任务状态 |
+| `/ruby panel` | 打开原生“Ruby额外分析”面板，`/ruby open` 与 `/ruby` 使用相同入口 |
+| `/ruby reload`、`/ruby reinit` | 重新武装当前方案并更新调度基线，保留同一配置已接受的阅读进度 |
+
+`json=true` 的 read 在单条命中时返回对象，`all=true` 返回数组；无结果统一为 `[]`。记录含 `uid`、`book`、`keys`、`comment`、`content`、`disabled` 和 `constant`。普通文本的多条结果以空行、`---`、空行分隔；无匹配返回说明文字。read 不触发分析模型，也不推进任务书签。
+
+```js
+const pipe = await triggerSlash('/ruby read key="灯塔故障记录" json=true');
+const record = JSON.parse(pipe);
+const content = Array.isArray(record) ? '' : record.content;
+```
+
+run 的 JSON 结果提供总体 `ok`、`completed`、`failed`、逐任务 `tasks` 和 `summary`，逐任务说明成功、输出 key 或失败原因。只把成功发布的结果用于下一步；多任务可以部分成功。切换 preset 修改的是 `data.extensions.RubyAnalyzer.activePresetId` 的当前已保存作者配置，原上传文件保持原字节。当前配置、后续剧情与当前卡导出应沿这份已保存选择；来源改变或停止后的结果不能写回旧目标。保存完成但重新启用状态尚待确认时，按同一操作确认／恢复，不把未知结果当成功，也不另发一次分析来掩盖它。
 
 ## 7. 成本和问题定位
 
@@ -304,7 +344,8 @@ registerMvuSchema(z.object({
 | --- | --- |
 | 初值解码、纯数据更新、Schema 的确定性处理、调度、读取和显示 | 0 |
 | Story 附带数值候选 | 沿原剧情请求，不新增数值审查请求 |
-| 一个到期且输入合格的 Ruby 模型任务的一次 generation | 正常 1，自动重试 0，回退 0；显式 retry 另计 |
+| 一个到期或手动选中、输入合格的 Ruby 模型任务的一次 generation | 正常 1，自动重试 0，回退 0；显式 retry 另计；开局任务也计入 |
+| `/ruby read/status/panel/reload`、查看／切换 preset、保存配置与重新启用调度 | 0，显式分析由 run 或实际到期任务执行 |
 | 作者程序显式生成、用户主动生成开场等 | 按该操作实际请求另计 |
 
 额外处理会改变提示长度、等待时间和输出预算；请求数不变不代表 token 费用不变。Ruby 有多个命中任务就可能有多次额外请求，实际用量仍以任务和“使用统计”为准。

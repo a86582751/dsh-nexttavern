@@ -56,14 +56,15 @@ import { randomUUID } from 'node:crypto';
 import z from '@deepseek-ai/schemastery';
 import { z as zod } from 'zod';
 import { brandString } from '@deepseek-ai/dsh-brand';
-import { errorChain, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
-import { interruptedTurnClosers, SessionLogOffset, SessionPreparation, SessionSeq } from '@deepseek-ai/dsh-session';
+import { errorChain, ReasoningEffortId } from 'dsh-nexttavern-native-llm';
+import { interruptedTurnClosers, SessionLogOffset, SessionPreparation, SessionSeq } from 'dsh-nexttavern-native-session';
 import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence';
 import { ReactLoopAgent, nativeInputAdmissionCapability } from './agent.js';
 import { nativeProgrammaticOpeningCapability } from './agent.js';
 import { inboxProjectionDefinition } from './inbox.js';
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.js';
 export { readNativeRequestMeasurementV1 } from './request-budget.js';
+export { createNativePublishedInputHistory } from './published-input.js';
 /** Fiber states that cannot own or serve a new lifecycle. */
 // Cordis 4.0.4 declares FiberState as an ambient const enum and exports no
 // runtime value. Keep its pinned lifecycle codes explicit in this JS output.
@@ -210,10 +211,11 @@ function assertAgentOptions(options) {
 export { DEFAULT_MAX_PARALLEL_TOOL_CALLS };
 export { nativeInputAdmissionCapability, assertNativeRequestMaterialSelectionV1 } from './agent.js';
 export { nativeProgrammaticOpeningCapability } from './agent.js';
+export { nativeIsolatedInputCapability } from './agent.js';
 export { inspectNativeOpeningGenerationV1, inspectNativeOpeningGenerationObservationV1, inspectInheritedOpeningGenerationObservationV1, buildNativeGeneratedOpeningReceiptObservationV1 } from './opening-generation.js';
 export { nativeOpeningRecordSha256V1, nativeOpeningInstructionSha256V1, nativeOpeningTextSha256V1, validateNativeOpeningInvocationV1, validateNativeOpeningRequestAttemptV1, validateNativeGeneratedOpeningReceiptV1, validateNativeOpeningClosingAckV1 } from './opening-record-hashes.js';
-export { nativeInputSha256, inspectNativeInboxHistory } from './input-admission.js';
-export { reconstructNativeRequestMaterialV1, verifyNativeRequestMaterialHistoryV1, NativeRequestMaterialFailure, projectNativeMessageTextV2 } from './request-material.js';
+export { nativeInputCanonical, nativeInputSha256, inspectNativeInboxHistory } from './input-admission.js';
+export { reconstructNativeRequestMaterialV1, reconstructNativeMaterialSelectedCaptureV2, verifyNativeRequestMaterialHistoryV1, verifyNativeSessionRequestMaterialHistoryV1, NativeRequestMaterialFailure, projectNativeMessageTextV2, projectNativeMaterialTextOutputsV1 } from './request-material.js';
 /**
  * Context key a launcher sets before any Loader entry mounts
  * (`ctx.provide(CONFIGURED_AGENT_IDENTITIES_KEY, identities)`) to fix

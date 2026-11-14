@@ -1,9 +1,14 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import { retireCompletedTaskContexts, internalTaskSeqs, taskStorySeqs, inlineTaskInstruction } from '../lib/core/tavern-tasks.js'
-import {provenImportPreludeAssistants} from '../lib/core/tavern-task-retirement.js'
-import { selectedStoryHistory } from '../lib/memory/roleplay-memory-engine.js'
-import {taskHash} from '../lib/core/tavern-task-primitives.js'
+
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'])
+afterNativeDependencies(removeOwnedNativeDependencies)
+const { retireCompletedTaskContexts, internalTaskSeqs, taskStorySeqs, inlineTaskInstruction }=await import('../lib/core/tavern-tasks.js')
+const {provenImportPreludeAssistants}=await import('../lib/core/tavern-task-retirement.js')
+const { selectedStoryHistory }=await import('../lib/memory/roleplay-memory-engine.js')
+const {taskHash}=await import('../lib/core/tavern-task-primitives.js')
 {
  const legacy=JSON.parse(readFileSync(new URL('./fixtures/task-context-legacy-v1.json',import.meta.url),'utf8'))
  // Semantic submission now takes identifiers from the current tool contract.

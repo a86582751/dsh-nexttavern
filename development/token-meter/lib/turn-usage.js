@@ -1,5 +1,5 @@
 // Generated from runtime/alpha3/compat/token-meter/src/turn-usage.ts; edit the TypeScript source.
-import { lastAssistantStreamChunk } from '@deepseek-ai/dsh-llm/assistant-stream';
+import { lastAssistantStreamChunk } from 'dsh-nexttavern-native-llm/assistant-stream';
 function isCount(value) {
     return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }

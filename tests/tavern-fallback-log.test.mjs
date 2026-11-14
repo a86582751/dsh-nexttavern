@@ -1,8 +1,12 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
-import { createTavernTasks, InlinePending, taskFailureDetails } from '../lib/core/tavern-tasks.js'
-import { createTelemetry } from '../lib/core/tavern-telemetry.js'
-import { formatFallbackText } from '../lib/ui/client.js'
 
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'],true)
+afterNativeDependencies(removeOwnedNativeDependencies)
+const { createTavernTasks, InlinePending, taskFailureDetails }=await import('../lib/core/tavern-tasks.js')
+const { createTelemetry }=await import('../lib/core/tavern-telemetry.js')
+const { formatFallbackText }=await import('../lib/ui/client.js')
 class Table extends Map { async put(key, value) { this.set(key, structuredClone(value)) } }
 
 const main = { provider: 'main-provider', model: 'main-model' }

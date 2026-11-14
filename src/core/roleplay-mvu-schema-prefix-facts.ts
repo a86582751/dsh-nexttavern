@@ -16,7 +16,7 @@ import type {MvuSchemaStoryPlan,MvuSchemaStoryEventV2,MvuSchemaStorySettlementV2
 import type {OpeningIntentV5,MvuSchemaOpeningEventV2,MvuSchemaOpeningHeadV2} from './roleplay-mvu-schema-opening-types.js'
 import type {StoryEvent,WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {NativeInputRef,NativePreparationReceiptV1,NativeDurableInputWorkReceiptV1}
-  from '@deepseek-ai/dsh-agent-loop'
+  from 'dsh-nexttavern-native-agent-loop'
 
 export interface MvuSchemaInheritedStoryRequest {
   ownerSessionId:string

@@ -12,24 +12,26 @@
 
 抱歉让大家久等了。0.3 希望兼容更广泛的 SillyTavern 社区卡，包括 MVU 变量、EJS、RUBY 与前端美化；要让它们接入自有状态、结构化事件和恢复机制，难度比预期更大，我们正在加速推进。0.2.9-rc.4 在延续发行、安装与第三方依赖修复的同时，定点修复了 Issue #17；更广泛的社区卡兼容仍在开发。感谢大家继续反馈、陪我们把它打磨好。
 
+当前开发线采用浏览器原生执行作者页与 helper hook。通用 MVU、EJS 和持久消息链已有受控 Core 结果；Ruby 补齐材料读取、手动分析与方案选择。Native 作者源码统一为 1.2，相关新输入、完整原卡玩法与保存恢复仍待验证，进展见 [0.3 开发日志](DEVELOPMENT-0.3.md)。
+
 **让角色独立推演，让世界随你的选择展开。**
 
 一张角色卡，一个突然冒出的念头，一次不愿妥协的选择，都可以成为故事的起点。dsh-NextTavern 把原生 Agent Loop 带进长篇角色扮演：AI 主动查阅世界、整理记忆、推演人物，你掌握方向，一起把故事写下去。
 
 **创作一个世界，走进它，再把它带走。**
 
-[在线文档](https://a86582751.github.io/dsh-nexttavern/) · [一键安装](#一键安装) · [开始体验](#开始体验) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md) · [核心能力](#核心能力) · [记忆系统](#记忆系统) · [架构设计](#架构设计) · [手机电脑公网访问指南](PUBLIC-ACCESS.md) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose) · [0.3开发日志](DEVELOPMENT-0.3.md)
+[在线文档](https://a86582751.github.io/dsh-nexttavern/) · [一键安装](#一键安装) · [开始体验](#开始体验) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md)  · [android](#android)· [核心能力](#核心能力) · [记忆系统](#记忆系统) · [架构设计](#架构设计) · [手机电脑公网访问指南](PUBLIC-ACCESS.md) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose) · [0.3开发日志](DEVELOPMENT-0.3.md) · [Android路线（开发中）](DEVELOPMENT-ANDROID.md)
 
-**角色卡作者与社区开发者：** 下面四篇介绍运行机制、格式字段和创作示例。内容对应 **0.3 开发线，尚未随正式 0.3 发布**；Native 1.0／1.1 是卡文件格式版本。随包 Native 参考卡也属于 0.3 开发线，当前正式版 **0.2.9-rc.4 不含本批卡片**。
+**角色卡作者与社区开发者：** 下面四篇介绍运行机制、格式字段和创作示例。内容对应 **0.3 开发线，尚未随正式 0.3 发布**；Native 是可移植卡文件格式，版本与插件版本分别记录。教程与两张参考卡按统一 1.2 更新，新输入验证尚待完成，详见开发日志。随包 Native 参考卡也属于开发线，当前正式版 **0.2.9-rc.4 不含本批卡片**。
 
 | 从哪里开始 | 能学到什么 |
 | --- | --- |
 | [社区卡兼容与转换](COMMUNITY-CARDS.md) | 理解世界书触发、递归、预算与插入，以及导入、剧情生成、转换和导出的完整过程 |
-| [原生卡格式与创作教程](NATIVE-CARD-FORMAT.md) | 从完整 JSON 示例创作，编写 EJS 动态模板，理解人物、规则、开场和 1.0／1.1 的区别 |
+| [原生卡格式与创作教程](NATIVE-CARD-FORMAT.md) | 从完整 JSON 示例创作，编写 EJS 动态模板，理解作者正文、分类来源、人物、规则和开场 |
 | [原生状态系统、MVU 与 Ruby](NATIVE-STATE.md) | 理解原生数值与分析任务机制，为作品加入初值、回合更新及社区兼容能力 |
 | [社区预设与正则](COMMUNITY-PRESETS.md) | 编写预设、组织提示词，区分请求变换与阅读显示 |
 
-完整 Native 1.0 参考卡：[索引与字段导览](preset/reference/README.md)；[龙女皇：查看 JSON](preset/reference/dragon-empress.native.json) · [下载 JSON](https://raw.githubusercontent.com/a86582751/dsh-nexttavern/main/preset/reference/dragon-empress.native.json)；[Steam Tide：查看 JSON](preset/reference/steam-tide.native.json) · [下载 JSON](https://raw.githubusercontent.com/a86582751/dsh-nexttavern/main/preset/reference/steam-tide.native.json)。Steam Tide 索引也指向值班简报 Prompt hook、市场闲谈互斥、临时告示持续／冷却及累计 `author.log` 的作者路径。该卡的整卡 Core 路径已通过受控 fixture 测试；测试未使用真实模型，也未在 Harness／正式产品宿主或完整浏览器 DOM 中运行，不代表 0.3 整体验收或发行完成。
+完整 Native 1.2 参考卡：[索引与字段导览](preset/reference/README.md)；[龙女皇：查看 JSON](preset/reference/dragon-empress.native.json) · [下载 JSON](https://raw.githubusercontent.com/a86582751/dsh-nexttavern/main/preset/reference/dragon-empress.native.json)；[Steam Tide：查看 JSON](preset/reference/steam-tide.native.json) · [下载 JSON](https://raw.githubusercontent.com/a86582751/dsh-nexttavern/main/preset/reference/steam-tide.native.json)。Steam Tide 索引也指向值班简报 Prompt hook、市场闲谈互斥、临时告示持续／冷却及累计 `author.log` 的作者路径。2026-10-24 的 1.0 样卡曾取得受控整卡 Core 结果，未使用真实模型、Harness／正式产品宿主或完整浏览器 DOM；该结果只覆盖当时输入，不能直接视为 1.2 或 0.3 整体验收通过。
 
 ![沉浸式游玩](screenshots/play.png)
 
@@ -68,6 +70,17 @@ npm install -g @deepseek-ai/dsh@0.1.7-rc.2
 ### Linux
 
 [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup.sh) 准备便携 Node.js、安装目录及启动／停止入口，面向 x86_64 与 aarch64（glibc），不需要 root 或系统包管理器。从 0.2.5 迁移时使用新的 `--root`；完整步骤与验证范围见 [Linux 一键安装指南](INSTALL-LINUX.md)。
+
+### Android 
+
+**目标是一个独立安装、点开就能用的 Android APK，让酒馆直接运行在手机上。** 不需要 root，也不以安装 Termux、Ubuntu 或 PRoot 作为使用前提；这不是让手机远程连接一台必须常开的电脑。
+
+- **怎么实现：** 用原生 Android 外壳管理启动、停止和应用生命周期，内置可直接运行于 Android 的独立 Node.js（Bionic）引擎，再用 WebView 显示现有酒馆界面。我们会继续适配手机操作，但不是把整套界面重写成原生 Android 控件。
+- **本机运行不等于离线 AI：** 目标是让引擎和故事数据留在手机本地；生成故事仍需配置自己的在线模型服务与 API Key。除非另有明确支持，不代表手机内置了可离线使用的大模型。
+- **现在做到哪了：** 已完成首轮安装包构建，并在硬件加速的 Android 模拟器中启动本地引擎、显示应用页面。角色卡导入、完整对话、数据保存与重启恢复等关键体验仍在逐项验证，**目前还没有面向普通玩家发布、可下载即玩的 Android APK**。目标优先支持 ARM64 手机；模拟器通过不代表已经完成真机适配。
+- **后台运行的边界：** Android 的省电策略和后台限制仍然存在，不承诺锁屏或切到其他应用后全天候持续运行；后台行为与恢复体验还需继续验证。
+
+想看后续进展，可以关注 [`android/mobile-terminal` 开发分支](https://github.com/a86582751/dsh-nexttavern/tree/android/mobile-terminal)。详细介绍见 [Android 手机端路线](DEVELOPMENT-ANDROID.md)。本节其余安装说明仍针对现有桌面／服务器版本，不是 Android APK 的安装步骤。
 
 ### 安装与模型费用
 
@@ -232,6 +245,8 @@ flowchart TD
 
 举个例子：一部约 119 万字符的长篇网络小说（前 354 章）建立了 3027 条在线向量，程序为等待索引完成挂起约 292 秒；交付角色卡与打开导入是两个独立回合，开场输入约 52k tokens。改编复用与交互式创作相同的问卷和十二项写卡检查。
 
+开发线在研究完成后使用与原创写卡相同的 Native 草稿与共同定稿入口，保留原文和研究依据。已有清晰的人物／规则栏目由程序直接导入，不为格式再分类一次；阅读、检索和创作本身仍按实际模型任务计费。
+
 小说很长时，个别细节仍可能写错，成稿后建议自己通读一遍。
 
 ![长文本转角色卡](screenshots/novel.png)
@@ -253,6 +268,8 @@ flowchart TD
 ## 角色集群
 
 开启**角色 Agent 集群**后，主要人物分别在独立上下文中推演。每个角色可以选择模型与思考强度，即使用同一个模型也独立运行。它们获得自己的人设、当前剧情、导演笔记和近期已读取的世界书资料，主代理再综合各方建议推进故事。
+
+开发线区分清晰的作者人物栏目与需要分类的社区混合资料。前者可直接读取人物，后者通过玩家选择的转换任务建立原文关联；玩家与禁用人物不进入 NPC 列表。高级资料复用本轮实际准入的世界书和已渲染材料，部分混合动态规则仍有使用限制，不能因转换显示就绪就认定全部玩法都适用于人物协作。
 
 模型配置分两级：**全局默认模型 + 单角色覆盖**。单角色覆盖属于当前可见对话，并与其世界线共用；但每个实际世界线的输入与结果仍然互相隔离——共享的是偏好，剧情历史各写各的。
 
@@ -353,6 +370,8 @@ flowchart TD
 
 那些反复推敲的对白、意想不到的转折、终于抵达的结局，都值得成为一份真正的作品。选中你喜欢的世界线，一键整理成小说稿；也可以导出打磨后的完整角色卡，让这个世界继续被阅读、被分享、被创作。
 
+开发线的当前卡导出包含已保存的人物、规则与作者配置，包括已保存的 Ruby 方案选择；下载上传原件则保留原字节和文件名。卡片、小说与完整会话备份各有用途：卡片承载设定，小说承载选定故事，世界线历史与运行进度另行保存。
+
 ![一键导出小说稿](screenshots/export.png)
 
 <details>
@@ -369,6 +388,8 @@ flowchart TD
 **不必先准备一张完整角色卡，带着想象力来就够了。** 一座永远下雨的港城、一段针锋相对的关系，或只是“我想经历一场慢热的冒险”，都能成为创作的开端。
 
 AI 会和你聊人物、关系、氛围与剧情方向，把你的回答逐步展开成世界背景、多角色人设、开场、文风和阅读排版，再用十二项完整性检查过一遍。你可以亲自雕琢每一处细节，也可以把留白交给它：“你来决定。”从最初的灵感到可以开玩的角色卡，创作本身就是旅程的一部分。
+
+开发线的写卡与完成研究后的小说改编共用一份 Native 作者草稿和定稿入口。草稿检查不激活卡；你已明确要求应用时再保存并进入导入流程，否则先交付文件。明确的人物与规则栏目不需要额外分类模型，定稿也不会自动多写一条开场。格式、脚本与展示仍需按作品实际配置检查，详见[作者教程](NATIVE-CARD-FORMAT.md)。
 
 ![交互式角色卡创作](screenshots/authoring.png)
 
@@ -517,7 +538,7 @@ npm ci --prefix ./build-tools --ignore-scripts --no-audit --no-fund
 npm run build
 ```
 
-公开源码可按登记配方重建四份浏览器 bundle，包括根产品与兼容提供者。改动源码后请更新自己的版本号与 provenance，不要冒充原始 Release。兼容 fork 各自有无需维护仓库的独立重建命令和归档摘要。
+公开源码可按登记配方重建浏览器 bundle，包括根产品与兼容提供者；具体入口以随包构建映射为准。改动源码后请更新自己的版本号与 provenance，不要冒充原始 Release。兼容 fork 各自有无需维护仓库的独立重建命令和归档摘要。
 
 架构设计与各部分的取舍写在[架构说明](ARCHITECTURE.md)里。整合安装、生命周期、记忆和 UI 有对应验收证据。完整付费行为验收使用 alpha.1 候选；迁移到 rc.2 后完成了最小源码检查和本机／服务器实际安装，没有在 rc.2 重跑整套付费验收。纯净 VM 与真实 ARM64 仍未验证；两个一键安装器各自适用哪些场景，写在 [Windows 一键安装指南](INSTALL-WINDOWS.md) 与 [Linux 一键安装指南](INSTALL-LINUX.md) 里。
 

@@ -1,8 +1,8 @@
 // Generated from runtime/alpha3/compat/agent-loop/src/request-envelope.ts; edit the TypeScript source.
 /** Native envelope planning before any request commit. This is the existing
  * header/tool/context policy, producing fixed append data for Session preview. */
-import { createDeveloperMessage } from '@deepseek-ai/dsh-llm';
-import { canonicalHeader, headerEquals, SessionSeq } from '@deepseek-ai/dsh-session';
+import { createDeveloperMessage } from 'dsh-nexttavern-native-llm';
+import { canonicalHeader, headerEquals, SessionSeq } from 'dsh-nexttavern-native-session';
 import { deepFreeze } from '@deepseek-ai/dsh-util-values';
 export function planNativeRequestEnvelope(input) {
     const { config, preparedCall, tools, position, baseline } = input;

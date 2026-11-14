@@ -8,7 +8,8 @@ import type { TaskToolArguments, TaskToolExecution, TaskToolsDependencies, TaskS
 import type { CharacterInputSource } from './character-cluster-projection.js'
 import type { ClaimedMaintenanceInput } from './roleplay-input-preparation.js'
 import type { ContextEvent } from './roleplay-context.js'
-import { isAgentLoopRequest, type GenerateOptions } from '@deepseek-ai/dsh-llm'
+import { queryCharacterPrivateView, type CharacterPrivateView } from '../memory/character-private-memory.js'
+import { isAgentLoopRequest, type GenerateOptions } from 'dsh-nexttavern-native-llm'
 
 export const semanticTaskSubmitDescription='提交当前维护请求的状态或决策结果。kind 使用 status 或 decision；result 为该任务指定的 JSON 或文本。任务标识由程序绑定，无需填写 id 或 generation。'
 export const semanticTaskSubmitParameters={type:'object',properties:{
@@ -180,16 +181,27 @@ export function registerTaskTools({
 
   ctx.effect(() => ctx.tools.register(simpleTool<TaskToolArguments, TaskToolExecution, Promise<unknown>>(
     'rp_history',
-    '查询当前世界线的玩家输入和有效剧情正文，包含已归档旧正文。排除状态、样式、工具和其他世界线。search 按玩家设置使用关键词、语义或混合；可用自然语言描述伏笔或事件，关键词模式用空格分词。search 可选 kind=agreements，按关键词召回导演笔记中已有的人物约定要素及来源；未提取的旧记录仍用普通检索。read 按 seq 与 nextOffset 连续读正文，约定结果可用 evidenceSeq 回读原文。语义相近不等于事实成立。',
+    '查询当前世界线的玩家输入和有效剧情正文，包含已归档旧正文。排除状态、样式、工具和其他世界线。search 按玩家设置使用关键词、语义或混合；可用自然语言描述伏笔或事件，关键词模式用空格分词。search 可选 kind=agreements，按关键词召回导演笔记中已有的人物约定要素及来源；未提取的旧记录仍用普通检索。read 按 seq 与 nextOffset 连续读正文，约定结果可用 evidenceSeq 回读原文。角色私有模式例外：只查询本人知情材料，search仅本人关键词，read用recordId或本人片段seq，不支持全局agreements或全局语义检索。语义相近不等于事实成立。',
     { type: 'object', properties: {
       action: { type: 'string', enum: ['search', 'read'] }, query: { type: 'string' },
       kind: { type: 'string', enum: ['agreements'], description: '仅 search 使用：查询已有的结构化人物约定；不补写旧记录。' },
       scope: { type: 'string', enum: ['story'] },
       seq: { type: 'integer' }, beforeSeq: { type: 'integer' }, offset: { type: 'integer' },
+      recordId: {type: 'string', description: '角色私有检索结果的记录ID；回读只返回本人材料。'},
       limit: { type: 'integer' }, maxChars: { type: 'integer' },
     }, required: ['action'], additionalProperties: false },
     async (args, exec) => {
       const session = await sessionOf(exec)
+      const roleJob = clusterJob(exec.agent)
+      const input = roleJob?.input as {privateView?: CharacterPrivateView} | undefined
+      const privateView = input?.privateView
+      if (privateView) {
+        // Use the job's prepared view, never the parent's complete history. Its
+        // currency is enforced by the cluster owner before accepting results.
+        return queryCharacterPrivateView(privateView, args)
+      }
+      if(roleJob&&characterCluster.read(session).privateMemoryEnabled)
+        throw Error('角色私有材料尚未准备')
       const engine = ctx.get('compaction')
       if (!engine?.history) throw new Error('剧情历史服务尚未就绪')
       if(clusterJob(exec.agent))args={...args,scope:'story',maxChars:Math.min(12000,Math.max(1000,Number(args.maxChars)||6000)),limit:Math.min(8,Math.max(1,Number(args.limit)||5))}
@@ -227,13 +239,18 @@ export function registerTaskTools({
         }
         const previous=T.branch.get(planKey)
         if(previous?.result)return deliver(previous.result)
-        const all=surfaceEntries(session),window=T.branch.get(contextWindowKey(session.id))
-        const stories=all.filter(e=>e.seq>Number(window?.startSeq??-1))
-        const recentTurns=new Set([turn,...all.filter(e=>e.kind==='assistant').slice(-3).map(e=>e.turn)])
-        const lore=[...T.branch.entries()].filter(([key,v])=>key.startsWith(`${session.id}__cluster-lore-`)&&recentTurns.has(v.turn)&&clusterLoreVisible(session,v)).map(([,v])=>v)
-        const notes=ctx.get('compaction')?.directorNotes?.(session)?.text??''
+        let context:Omit<CharacterInputSource,'character'|'branchId'|'turn'>={stories:[],lore:[]}
+        if(!characterCluster.read(session).privateMemoryEnabled) {
+          const all=surfaceEntries(session),window=T.branch.get(contextWindowKey(session.id))
+          const stories=all.filter(e=>e.seq>Number(window?.startSeq??-1))
+          const recentTurns=new Set([turn,...all.filter(e=>e.kind==='assistant').slice(-3).map(e=>e.turn)])
+          const lore=[...T.branch.entries()].filter(([key,v])=>key.startsWith(`${session.id}__cluster-lore-`)&&recentTurns.has(v.turn)&&clusterLoreVisible(session,v)).map(([,v])=>v)
+          const notes=ctx.get('compaction')?.directorNotes?.(session)?.text??''
+          context={stories,notes,lore:lore as {text:unknown}[],
+            core:clusterCore?clusterCore(session):T.rules.get(keyOf(session.id,'spec'))?.core??'',userText:snapshot.userText}
+        }
         const result=await characterCluster.run({session,agent,turn,characters:ids.map(id=>roster.find(c=>c.id===id)! as CharacterInputSource['character']),signal:exec.signal,
-          context:{stories,notes,lore:lore as {text: unknown}[],core:clusterCore?clusterCore(session):T.rules.get(keyOf(session.id,'spec'))?.core??'',userText:snapshot.userText}})
+          context})
         await T.branch.put(planKey,{schemaVersion:1,branchId:session.id,turn,characterIds:ids,result,updatedAt:Date.now()})
         return deliver(result)
       })

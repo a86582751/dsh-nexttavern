@@ -2,7 +2,7 @@
  * be released; an error after put is accepted only after exact actual readback. */
 import {recordSha256,cloneRecord} from './roleplay-data.js'
 import {types} from 'node:util'
-import {inheritanceDataV1,inheritanceDataSha256V1,inheritanceFailV1,inheritanceSameV1,inheritanceObjectV1,
+import {inheritanceDataV1,inheritanceFailV1,inheritanceSameV1,inheritanceObjectV1,
   inheritanceRefV1,sealInheritanceDataV1,validateStaticInventoryV1,validateNumericalCaptureV1,
   validateInheritanceRefV1,inheritanceIdV1,inheritanceHashV1,inheritanceExactV1,TAVERN_SOURCE_INHERITANCE_BOUNDS_V1}
   from './roleplay-tavern-source-inheritance-data.js'
@@ -168,125 +168,6 @@ function nativeDecodeMatchV1(raw:unknown,plan:NativeDecodePlanV1):boolean {
   }
 }
 
-type SourceReadonlyValuePlanV1=
-  |{readonly kind:'scalar';readonly value:null|boolean|number|string}
-  |{readonly kind:'record';readonly keys:readonly string[];readonly children:readonly SourceReadonlyValuePlanV1[]}
-  |{readonly kind:'array';readonly keys:readonly string[];readonly children:readonly SourceReadonlyValuePlanV1[];
-    readonly length:number}
-type SourceReadonlyRowPlanV1=
-  |{readonly exists:false}
-  |{readonly exists:true;readonly value:SourceReadonlyValuePlanV1}
-/** This is readRow's lore-copy budget, not Native decode's cache statistics.
- * Each occurrence counts once; array length descriptors are not data nodes.
- * Only strict JSON spelling enters a plan. All other rows use the old copier. */
-function compileReadonlyRowV1(expected:TavernSourceStaticRowV1):SourceReadonlyRowPlanV1|undefined {
-  try {
-    if(types.isProxy(expected)||!Object.isFrozen(expected))return undefined
-    const prototype=Object.getPrototypeOf(expected),keys=Reflect.ownKeys(expected),
-      fields=['table','key','exists','sha256','value'] as const
-    if(prototype!==Object.prototype&&prototype!==null||keys.length!==fields.length
-      ||keys.some((key,index)=>key!==fields[index]))return undefined
-    const metadata=fields.map(key=>Object.getOwnPropertyDescriptor(expected,key))
-    if(metadata.some(field=>!field||!Object.hasOwn(field,'value')||!field.enumerable))return undefined
-    const [table,key,exists,digest,value]=metadata.map(field=>field!.value as unknown)
-    if(!['branch','cards','worldbook','rules','status','opening'].includes(table as string)
-      ||typeof key!=='string'||!key.isWellFormed())return undefined
-    if(exists===false)return digest==='missing'&&value===null?Object.freeze({exists:false}):undefined
-    if(exists!==true||!inheritanceHashV1(digest)||!inheritanceObjectV1(value))return undefined
-    const active=new Set<object>()
-    let bytes=0,nodes=0
-    function unsupported():never {throw new Error('Source readonly row plan unsupported')}
-    const charge=(size:number)=>{
-      bytes+=size
-      if(bytes>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.bytes)unsupported()
-    }
-    const text=(input:string)=>{
-      if(!input.isWellFormed()||Buffer.byteLength(input,'utf8')>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.bytes-bytes)unsupported()
-      charge(Buffer.byteLength(JSON.stringify(input),'utf8'))
-    }
-    function visit(input:unknown,depth:number):SourceReadonlyValuePlanV1 {
-      if(++nodes>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.nodes||depth>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.depth)unsupported()
-      if(input===null||typeof input==='boolean') {
-        charge(input===null?4:input?4:5)
-        return Object.freeze({kind:'scalar',value:input})
-      }
-      if(typeof input==='string') {text(input);return Object.freeze({kind:'scalar',value:input})}
-      if(typeof input==='number') {
-        if(!Number.isFinite(input)||Math.abs(input)>Number.MAX_SAFE_INTEGER||Object.is(input,-0))unsupported()
-        charge(Buffer.byteLength(JSON.stringify(input),'utf8'))
-        return Object.freeze({kind:'scalar',value:input})
-      }
-      if(input===null||typeof input!=='object'||types.isProxy(input)||active.has(input)||!Object.isFrozen(input))unsupported()
-      const array=Array.isArray(input),prototype=Object.getPrototypeOf(input)
-      if(array?prototype!==Array.prototype:prototype!==Object.prototype&&prototype!==null)unsupported()
-      const ownKeys=Reflect.ownKeys(input)
-      if(ownKeys.length>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.nodes-nodes+1)unsupported()
-      const names:string[]=[],children:SourceReadonlyValuePlanV1[]=[]
-      let length=0
-      active.add(input);charge(2)
-      try {
-        for(const name of ownKeys) {
-          if(typeof name!=='string'||name==='__proto__'||name==='constructor'||name==='prototype')unsupported()
-          const descriptor=Object.getOwnPropertyDescriptor(input,name)
-          if(!descriptor||!Object.hasOwn(descriptor,'value'))unsupported()
-          names.push(name)
-          if(array&&name==='length') {
-            if(descriptor.enumerable||!Number.isSafeInteger(descriptor.value)||descriptor.value<0
-              ||descriptor.value>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.nodes||ownKeys.length!==descriptor.value+1)unsupported()
-            length=descriptor.value
-            continue
-          }
-          if(!descriptor.enumerable)unsupported()
-          if(array) {if(name!==String(children.length))unsupported()}
-          else {text(name);charge(1)}
-          if(children.length)charge(1)
-          children.push(visit(descriptor.value,depth+1))
-        }
-        if(array&&names[names.length-1]!=='length')unsupported()
-        const fields={keys:Object.freeze(names),children:Object.freeze(children)}
-        return array?Object.freeze({kind:'array',length,...fields}):Object.freeze({kind:'record',...fields})
-      }finally {active.delete(input)}
-    }
-    const plan=visit(value,0)
-    // collectOwnedRowFacts observes metadata and validated value with distinct
-    // gets. Neither part alone can prove their combined expected row agrees.
-    if(inheritanceDataSha256V1(value)!==digest)return undefined
-    return Object.freeze({exists:true,value:plan})
-  }catch {return undefined}
-}
-/** A successful match proves the original independent lore clone fits and
- * yields equal JSON. Inspect every new raw occurrence; aliases do not reduce
- * budget charges. Proxy refusal always precedes reflection of that object. */
-function matchesReadonlyRowValueV1(raw:unknown,plan:SourceReadonlyValuePlanV1):boolean {
-  try {
-    const active=new Set<object>()
-    let nodes=0
-    function visit(value:unknown,expected:SourceReadonlyValuePlanV1,depth:number):boolean {
-      if(++nodes>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.nodes||depth>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.depth)return false
-      if(expected.kind==='scalar')return Object.is(value,expected.value)
-      if(value===null||typeof value!=='object'||types.isProxy(value)||active.has(value))return false
-      const array=expected.kind==='array',prototype=Object.getPrototypeOf(value)
-      if(Array.isArray(value)!==array||(array?prototype!==Array.prototype:prototype!==Object.prototype&&prototype!==null))return false
-      const keys=Reflect.ownKeys(value)
-      if(keys.length!==expected.keys.length)return false
-      active.add(value)
-      try {
-        for(let index=0;index<keys.length;index++) {
-          const key=expected.keys[index]!
-          if(keys[index]!==key)return false
-          const descriptor=Object.getOwnPropertyDescriptor(value,key)
-          if(!descriptor||!Object.hasOwn(descriptor,'value'))return false
-          if(expected.kind==='array'&&key==='length') {
-            if(descriptor.enumerable||!Object.is(descriptor.value,expected.length))return false
-          }else if(!descriptor.enumerable||!visit(descriptor.value,expected.children[index]!,depth+1))return false
-        }
-        return true
-      }finally {active.delete(value)}
-    }
-    return visit(raw,plan,0)
-  }catch {return false}
-}
-
 export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDepsV1) {
   const tables=deps.tables
   const nativeDecoded=new Map<string,NativeDecodeEntryV1>()
@@ -345,55 +226,6 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
   }
   function readRow(table:TavernSourceStaticTableV1,key:string,budget?:TavernLoreDataBudgetV1):TavernSourceStaticRowV1 {
     return rowFromRawV1(table,key,tables[table].get(key),budget)
-  }
-  /** Internal Source-owner consumer only. Its factory supplies its own final
-   * frozen collected rows; no caller matcher/checked flag can assert a match.
-   * Closure-local plans retain expected data only and do not outlive the frame. */
-  function createReadonlyRowComparisonV1(expectedRows:readonly TavernSourceStaticRowV1[],
-    validatedRows:readonly TavernSourceStaticRowV1[]=[]) {
-    const ownedRows=new WeakSet<object>(expectedRows),validated=new WeakSet<object>(validatedRows),
-      plans=new WeakMap<object,SourceReadonlyRowPlanV1|null>(),nativePlans=new WeakMap<object,NativeDecodePlanV1|null>()
-    let nativePlanAddresses=0,nativePlanBytes=0,nativePlanNodes=0
-    return (expected:TavernSourceStaticRowV1):boolean=>{
-      const {table,key}=expected,raw=tables[table].get(key)
-      // Actual I/O precedes optional lazy compilation. An unsupported plan or
-      // failed probe cannot replace the old diagnosis or wash this first raw.
-      let equal=false
-      if(ownedRows.has(expected)) {
-        let plan=plans.get(expected)
-        if(plan===undefined){plan=compileReadonlyRowV1(expected)??null;plans.set(expected,plan)}
-        equal=!!plan&&(plan.exists?matchesReadonlyRowValueV1(raw,plan.value):raw===undefined)
-      }
-      if(!equal&&(raw===undefined?expected.exists:!expected.exists||recordSha256(raw)!==expected.sha256))return false
-      if(table!=='branch'||!expected.exists||!validated.has(expected))return true
-      try {
-        // Preserve the separate actual read. Only a complete strict match to
-        // this factory's collected, already parsed value can skip pure decode.
-        // Native's matcher rejects aliases and normalized -0/undefined spellings;
-        // the ordinary readonly comparison alone cannot establish that match.
-        const second=tables.branch.get(key)
-        if(ownedRows.has(expected)) {
-          let plan=nativePlans.get(expected)
-          if(plan===undefined) {
-            const compiled=nativePlanAddresses<NATIVE_DECODE_CACHE_V1.addresses
-              ?compileNativeDecodeV1(expected.value):undefined
-            // These frame-local plans share the Native cache's retention
-            // ceilings. Exhaustion only disables reuse; the same second raw
-            // still goes through the original parser and admission limits.
-            plan=compiled&&nativePlanBytes+compiled.bytes<=NATIVE_DECODE_CACHE_V1.bytes
-              &&nativePlanNodes+compiled.nodes<=NATIVE_DECODE_CACHE_V1.nodes?compiled.plan:null
-            if(plan&&compiled) {
-              nativePlanAddresses++;nativePlanBytes+=compiled.bytes;nativePlanNodes+=compiled.nodes
-            }
-            nativePlans.set(expected,plan)
-          }
-          if(plan&&nativeDecodeMatchV1(second,plan))return true
-        }
-        // Decode this same observed raw on every miss. A later good get must
-        // never wash away a malformed or changed second result.
-        return inheritanceDataSha256V1(readCurrentKey(key,second))===expected.sha256
-      }catch(error) {clearNativeDecoded();throw error}
-    }
   }
   function inventory(sid:string):readonly TavernSourceStaticRowV1[] {
     if(!inheritanceIdV1(sid))inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
@@ -622,7 +454,7 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
     if(input===undefined)return undefined
     const captured=input
     if(captured.kind==='not-inherited') {
-      if(cut.kind!=='reserved-fresh-branch'||cut.seedLength!==0)inheritanceFailV1('SOURCE_INHERITANCE_OPENING_INVALID')
+      if(cut.seedLength!==0)inheritanceFailV1('SOURCE_INHERITANCE_OPENING_INVALID')
       return validateFrozenNonNumericalOpeningV1(sealInheritanceDataV1(captured,'frozenSha256'))
     }
     inheritanceExactV1(captured,['schemaVersion','encoding','kind','frozenOpening','openingEventSpan'])
@@ -646,7 +478,7 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
     input:ProgramAbsenceOpeningClosureV1|undefined):Promise<TavernSourceFrozenProgramAbsenceOpeningV1|undefined> {
     if(input===undefined)return undefined
     const closure=validateProgramAbsenceOpeningClosureV1(input)
-    if(cut.kind==='reserved-fresh-branch'&&cut.seedLength===0) {
+    if(cut.seedLength===0) {
       return validateFrozenProgramAbsenceOpeningV1(sealInheritanceDataV1({schemaVersion:1,
         encoding:'native-tavern-source-program-absence-opening-v1',kind:'not-inherited',reason:'fresh-cut-zero'},'frozenSha256'))
     }
@@ -663,7 +495,7 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
     if(!inheritanceSameV1(readRef(recordRef),record))inheritanceFailV1('SOURCE_INHERITANCE_OPENING_INVALID')
     return packet
   }
-  return {readRow,createReadonlyRowComparisonV1,inventory,readKey,readRef,putExact,native,numerical,
+  return {readRow,inventory,readKey,readRef,putExact,native,numerical,
     original,assertOriginal,publications,writesFor,
     freezeNonNumericalOpening,freezeProgramAbsenceOpening}
 }

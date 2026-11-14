@@ -1,9 +1,9 @@
 /** Native envelope planning before any request commit. This is the existing
  * header/tool/context policy, producing fixed append data for Session preview. */
-import {createDeveloperMessage} from '@deepseek-ai/dsh-llm'
-import type {GenerateOptions,LlmCallConfig,PreparedLlmCall} from '@deepseek-ai/dsh-llm'
-import {canonicalHeader,headerEquals,SessionSeq} from '@deepseek-ai/dsh-session'
-import type {EpochHeader,RequestContext,SessionRequestAppendInput} from '@deepseek-ai/dsh-session'
+import {createDeveloperMessage} from 'dsh-nexttavern-native-llm'
+import type {GenerateOptions,LlmCallConfig,PreparedLlmCall} from 'dsh-nexttavern-native-llm'
+import {canonicalHeader,headerEquals,SessionSeq} from 'dsh-nexttavern-native-session'
+import type {EpochHeader,RequestContext,SessionRequestAppendInput} from 'dsh-nexttavern-native-session'
 import {deepFreeze} from '@deepseek-ai/dsh-util-values'
 
 export interface NativeRequestEnvelopePlanInput {

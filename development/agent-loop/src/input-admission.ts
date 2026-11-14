@@ -1,8 +1,14 @@
 /** Native inbox identity and conservative append-only ownership interpretation. */
 import {createHash} from 'node:crypto'
 import type {Agent, InboxTarget} from '@deepseek-ai/dsh-agent'
-import type {NativeInputLinkV1, NativeInputRef, NativePreparationReceiptV1, SessionEvent, UserMessage} from '@deepseek-ai/dsh-session'
-export type {NativeInputLinkV1, NativeInputRef, NativePreparationReceiptV1} from '@deepseek-ai/dsh-session'
+import type {NativeInputLinkV1, NativeInputRef, NativePreparationReceiptV1, SessionEvent, UserMessage} from 'dsh-nexttavern-native-session'
+import type {NativePublishedInputAssociationV1} from 'dsh-nexttavern-native-session/types'
+import {createNativePublishedInputHistory} from './published-input.js'
+import type {NativePublishedInputHistory,NativePublishedUserInputV1,NativePublishedUserInputResultV1,
+  NativePublishedTriggerInputV1,NativePublishedTriggerResultV1} from './published-input.js'
+export type {NativePublishedUserInputV1,NativePublishedUserInputResultV1,NativePublishedInputReceiptV1,
+  NativePublishedTriggerInputV1,NativePublishedTriggerResultV1,NativePublishedTriggerReceiptV1} from './published-input.js'
+export type {NativeInputLinkV1, NativeInputRef, NativePreparationReceiptV1} from 'dsh-nexttavern-native-session'
 
 export const INPUT_ADMISSION_ABORT_REASON = 'native-input-admission-before-message'
 export interface NativeInputProposal {
@@ -33,7 +39,7 @@ export interface NativeClosedInputReason {
 export type NativeInputOwnership =
   | {status: 'pending'; ref: NativeInputRef; target: InboxTarget; index: number}
   | {status: 'claimed-before-admission'; ref: NativeInputRef; turn: number; claimSeq: number; closedReason: NativeClosedInputReason}
-  | {status: 'admitted'; ref: NativeInputRef; userSeq: number; turn?: number}
+  | {status: 'admitted'; ref: NativeInputRef; userSeq: number; turn?: number;published?:NativePublishedInputAssociationV1}
   | {status: 'cancelled'; ref: NativeInputRef; cancelSeq: number; closedReason?: NativeClosedInputReason}
   | {status: 'unknown'; ref: NativeInputRef; code: string; closedReason?: NativeClosedInputReason}
 export interface NativeInputBlocked {
@@ -155,7 +161,7 @@ export interface NativeCompletedInputWorkReceiptV1 {
   readonly checkpoint: NativeDurableInputWorkReceiptV1
   readonly turnEndSeq: number
   readonly turnEndSha256: string
-  readonly admittedUsers: readonly {ref: NativeInputRef; userSeq: number}[]
+  readonly admittedUsers: readonly {ref: NativeInputRef; userSeq: number;published?:NativePublishedInputAssociationV1}[]
   readonly flushed: true
 }
 export type NativeCompletedInputWorkAcknowledgementV1 = {
@@ -196,6 +202,11 @@ export interface NativeInputAdmissionHookV2 {
    * operation after cancellation: irreversible writes may still settle. */
   completedWork?(receipt: NativeCompletedInputWorkReceiptV1, signal: AbortSignal):
     Promise<NativeCompletedInputWorkAcknowledgementV1>
+  /** Durable successful input notification. Persist downstream pending facts
+   * here, then run background models outside the Native driver. Numerical
+   * completion reuses its existing flush and receipt. */
+  onCompletedWork?(receipt:NativeCompletedInputWorkReceiptV1):Promise<void>
+  observesCompletedWork?():boolean
   /** Invoked synchronously by external cancel, including idle/disposal. Revoke
    * owner readiness before the first await, then persist the terminal stop.
    * Match the original work and cancellation generation even when admit or
@@ -240,9 +251,17 @@ export interface NativeInputStopCapabilityV1 {
   whenInputStopSettled(): Promise<NativeInputStopLookupV1>
 }
 export interface NativeInputAdmissionCapabilityV2 {
+  readonly nativePublishedInputVersion:1
+  appendPublishedUserInput(input:NativePublishedUserInputV1):Promise<NativePublishedUserInputResultV1>
+  readPublishedUserInput(operationId:string):readonly UserMessage[]|undefined
+  triggerPublishedInput(input:NativePublishedTriggerInputV1):Promise<NativePublishedTriggerResultV1>
   readonly nativeInputAdmissionVersion: 2
   readonly nativeRequestMaterialVersion:1
+  readonly nativeStoryMaterialHooksVersion:2
   registerInputAdmission(hook: NativeInputAdmissionHookV2): () => void
+  /** Complete the current first-step input without a request. Identity must be
+   * the actual live work returned by this registration's admit hook. */
+  completeInputWithoutRequest(identity: object, position: {turn: number; step: number}): void
   lookupInputOwnership(ref: NativeInputRef): NativeInputOwnership
   /** Refolds actual events. A hot query is not an I/O barrier or Core readiness.
    * Even recoverable requires the owner's exact persisted checkpoint/credential,
@@ -255,15 +274,20 @@ export interface NativeInputAdmissionCapabilityV2 {
 }
 /** Actual native Agent, returned unchanged by its owning AgentLoop service. */
 export interface NativeInputAdmissionAgentV2 extends Agent, NativeInputAdmissionCapabilityV2, NativeInputStopCapabilityV1 {}
+/** One host-owned task. Its ordinary user input and Native tool results are
+ * the complete conversation, excluding external inbox/context contributions. */
+export interface NativeIsolatedInputAgentV1 {
+  runIsolatedInput(input:{message:UserMessage;onEnter():void}):Promise<void>
+}
 export type NativeInputWakeResult = {kind: 'started' | 'latched' | 'running' | 'empty' | 'disposed' | 'blocked'}
 
-const canonical = (value: unknown): string => {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+export const nativeInputCanonical = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(nativeInputCanonical).join(',')}]`
   if (value !== null && typeof value === 'object') return `{${Object.keys(value).sort()
-    .map(key => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`).join(',')}}`
+    .map(key => `${JSON.stringify(key)}:${nativeInputCanonical((value as Record<string, unknown>)[key])}`).join(',')}}`
   return JSON.stringify(value) ?? 'undefined'
 }
-export const nativeInputSha256 = (value: unknown): string => createHash('sha256').update(canonical(value)).digest('hex')
+export const nativeInputSha256 = (value: unknown): string => createHash('sha256').update(nativeInputCanonical(value)).digest('hex')
 export const nativeInputWorkSha256 = (sessionId: string, preparation: NativePreparationReceiptV1,
   refs: readonly NativeInputRef[]): string => nativeInputSha256({schemaVersion: 1,
   encoding: 'native-input-work-v1', sessionId, preparation, refs})
@@ -355,16 +379,21 @@ type Entry = {ref: NativeInputRef; message: UserMessage; claimSeq?: number; clai
   cancelledSeq?: number; userSeq?: number; userTurn?: number; conflict?: boolean; inherited?: boolean}
 type LinkedTurn = {turn: number; startSeq: number; present: boolean; marker?: NativeInputLinkV1;
   previousActualStartSeq?: number; proposalMatches: boolean; firstStepStartSeq?: number;
-  lastStep: number; openStep?: number; badStep?: true; endSeq?: number}
+  lastStep: number; openStep?: number; badStep?: true; end?: SessionEvent<'turn/end'>}
 type LinkProof = {receipt: NativeDurableInputWorkReceiptV1; entries: readonly Entry[]}
 export interface NativeInboxHistory {
+  readonly published:NativePublishedInputHistory
   readonly revision: number
   readonly pending: Readonly<Record<InboxTarget, readonly {ref: NativeInputRef; message: UserMessage}[]>>
   ownership(ref: NativeInputRef): NativeInputOwnership
+  hasPromptRequest(requestId:string):boolean
   resume(refs: readonly NativeInputRef[]): {messages: readonly UserMessage[]; turn: number} | undefined
   ownsClaim(claim: NativeInputClaim): boolean
   durableWork(selector: NativeDurableInputWorkSelector): NativeDurableInputWorkLookup
   linkReceipt(startSeq: number): NativeDurableInputWorkReceiptV1 | undefined
+  /** Structural history only; an actual flush and publisher acknowledgement
+   * remain the live Agent's responsibility. */
+  completedTurn(startSeq: number): SessionEvent<'turn/end'> | undefined
   resumeLinked(receipt: NativeDurableInputWorkReceiptV1): {messages: readonly UserMessage[]; turn: number} | undefined
 }
 
@@ -386,8 +415,11 @@ export function createNativeInboxHistoryOwner(
   const queues: Record<InboxTarget, Entry[]> = {'next-turn': [], 'next-step': []}
   const entries = new Map<string, Entry>(), turns = new Map<number, NativeClosedInputReason>()
   const entriesByMessageId = new Map<string, Entry[]>()
+  const entriesByPromptRequest=new Map<string,Entry[]>(),visiblePromptRequests=new Set<string>()
+  const claimedEntriesByTurn = new Map<number, Entry[]>()
   const turnStarts = new Map<number, number>(), turnsWithUsers = new Set<number>()
   const linkedTurns = new Map<number, LinkedTurn>()
+  const published=createNativePublishedInputHistory(sessionId,inheritedBoundary,nativeInputSha256)
   let openTurn: number | undefined, lastStartSeq: number | undefined, lastTurn: number | undefined, revision = -1
   let invalid = !Number.isSafeInteger(inheritedBoundary) || inheritedBoundary < 0 || inheritedBoundary > events.length
   const append = (event: SessionEvent): void => {
@@ -417,6 +449,8 @@ export function createNativeInboxHistoryOwner(
           if (event.data.step === 1) {
             if (linked.firstStepStartSeq !== undefined) linked.badStep = true
             else linked.firstStepStartSeq = event.seq
+            if((claimedEntriesByTurn.get(event.data.turn)??[]).some(entry=>published.association(entry.ref)))
+              turnsWithUsers.add(event.data.turn)
           }
         } else {
           if (linked.openStep !== event.data.step) linked.badStep = true
@@ -428,7 +462,7 @@ export function createNativeInboxHistoryOwner(
       if (openTurn !== event.data.turn || turns.has(event.data.turn)) invalid = true
       const startSeq = turnStarts.get(event.data.turn), linked = startSeq === undefined ? undefined : linkedTurns.get(startSeq)
       if (linked?.openStep !== undefined) linked.badStep = true
-      if (linked) linked.endSeq = event.seq
+      if (linked) linked.end = event
       const reason = event.data.reason
       turns.set(event.data.turn, {kind: reason.kind,
         ...(reason.kind === 'aborted' ? {cancelKind: reason.reason.kind,
@@ -442,25 +476,46 @@ export function createNativeInboxHistoryOwner(
         || !Number.isSafeInteger(count) || count < 0 || splice.start + count > queue.length) {invalid = true; return}
       for (const [index, entry] of queue.slice(splice.start, splice.start + count).entries()) {
         if (splice.outcome === 'canceled') entry.cancelledSeq = event.seq
-        else {entry.claimSeq = event.seq; entry.claimIndex = index; entry.turn = openTurn}
+        else {
+          entry.claimSeq = event.seq; entry.claimIndex = index; entry.turn = openTurn
+          if(published.association(entry.ref))entry.userTurn=openTurn
+          if(openTurn!==undefined) {
+            const claimed=claimedEntriesByTurn.get(openTurn)
+            if(claimed)claimed.push(entry)
+            else claimedEntriesByTurn.set(openTurn,[entry])
+          }
+        }
       }
-      const inserted = splice.inserted.map(message => {
-        const ref = {sessionId, insertSeq: event.seq, messageId: message.id, messageSha256: nativeInputSha256(message)}
+      const insertedDigests=splice.inserted.map(nativeInputSha256)
+      published.append(event,insertedDigests)
+      const inserted = splice.inserted.map((message,index) => {
+        const ref = {sessionId, insertSeq: event.seq, messageId: message.id, messageSha256: insertedDigests[index]!}
         const entry: Entry = {ref, message, inherited: event.seq < inheritedBoundary}
+        const publication=published.association(ref)
+        if(publication)entry.userSeq=publication.userSeq
         if (entries.has(refKey(ref))) invalid = true
         entries.set(refKey(ref), entry)
         const sameId = entriesByMessageId.get(ref.messageId)
         if (sameId) sameId.push(entry)
         else entriesByMessageId.set(ref.messageId, [entry])
+        const source=message.source
+        if(source.kind==='user'&&'rpcId' in source&&typeof source.rpcId==='string') {
+          const sameRequest=entriesByPromptRequest.get(source.rpcId)
+          if(sameRequest)sameRequest.push(entry)
+          else entriesByPromptRequest.set(source.rpcId,[entry])
+        }
         return entry
       })
       queue.splice(splice.start, count, ...inserted)
       const ids = [...queues['next-turn'], ...queues['next-step']].map(entry => entry.message.id)
       if (new Set(ids).size !== ids.length) invalid = true
     } else if (event.type === 'user/message') {
+      const source=event.data.source
+      if(source.kind==='user'&&'rpcId' in source&&typeof source.rpcId==='string')visiblePromptRequests.add(source.rpcId)
       if (openTurn !== undefined) turnsWithUsers.add(openTurn)
       const sameId = entriesByMessageId.get(event.data.id) ?? []
       const fingerprint = nativeInputSha256(event.data)
+      published.append(event,[fingerprint])
       for (const entry of sameId) if (entry.ref.messageSha256 !== fingerprint) entry.conflict = true
       const matching = sameId.filter(entry => entry.ref.messageSha256 === fingerprint)
       if (matching.length > 1) for (const entry of matching) entry.conflict = true
@@ -497,8 +552,8 @@ export function createNativeInboxHistoryOwner(
       current = previous
     }
     if (!current.proposalMatches || current.firstStepStartSeq === undefined) return undefined
-    const original = [...entries.values()].filter(entry => entry.turn === current.turn
-      && entry.claimSeq !== undefined && entry.claimSeq > current.startSeq && entry.claimSeq < current.firstStepStartSeq!)
+    const original = (claimedEntriesByTurn.get(current.turn)??[]).filter(entry =>
+      entry.claimSeq !== undefined && entry.claimSeq > current.startSeq && entry.claimSeq < current.firstStepStartSeq!)
       .sort((left, right) => left.claimSeq! - right.claimSeq! || left.claimIndex! - right.claimIndex!)
     if (!sameRefs(original.map(entry => entry.ref), marker.refs)) return undefined
     if (original.length !== marker.refs.length || original.some(entry => entry.inherited || entry.conflict
@@ -519,16 +574,16 @@ export function createNativeInboxHistoryOwner(
       const marker = linked.marker
       if (invalid || !marker || marker.mode !== 'claim' || !linked.proposalMatches
         || linked.startSeq < inheritedBoundary || linked.badStep || linked.firstStepStartSeq !== undefined
-        || linked.endSeq === undefined || !turns.get(linked.turn)?.preAdmission
+        || linked.end === undefined || !turns.get(linked.turn)?.preAdmission
         || marker.workSha256 !== workSha256 || !sameRefs(marker.refs, refs)) continue
-      const claimed = [...entries.values()].filter(entry => entry.turn === linked.turn
-        && entry.claimSeq !== undefined && entry.claimSeq > linked.startSeq && entry.claimSeq < linked.endSeq!)
+      const claimed = (claimedEntriesByTurn.get(linked.turn)??[]).filter(entry =>
+        entry.claimSeq !== undefined && entry.claimSeq > linked.startSeq && entry.claimSeq < linked.end!.seq)
         .sort((left, right) => left.claimSeq! - right.claimSeq! || left.claimIndex! - right.claimIndex!)
       if (!sameRefs(claimed.map(entry => entry.ref), refs) || claimed.some(entry => entry.inherited || entry.conflict
-        || entry.cancelledSeq !== undefined || entry.userSeq !== undefined)) continue
+        || entry.cancelledSeq !== undefined || entry.userSeq !== undefined&&!published.association(entry.ref))) continue
       return {status: 'refused-before-first-step', refusal: {schemaVersion: 1, kind: 'refused-before-first-step',
         sessionId, workSha256, preparation: marker.preparation, refs: marker.refs, actualTurn: linked.turn,
-        startSeq: linked.startSeq, endSeq: linked.endSeq,
+        startSeq: linked.startSeq, endSeq: linked.end.seq,
         claimSpliceSeqs: [...new Set(claimed.map(entry => entry.claimSeq!))]}}
     }
     const proof = lastStartSeq === undefined ? undefined : proofAt(lastStartSeq)
@@ -559,7 +614,9 @@ export function createNativeInboxHistoryOwner(
     const entryStart = entry.turn === undefined ? undefined : turnStarts.get(entry.turn)
     const linked = entryStart === undefined ? undefined : linkedTurns.get(entryStart)
     if (linked?.present && !linked.marker) return {status: 'unknown', ref, code: 'INPUT_LINK_METADATA_UNKNOWN'}
-    if (entry.userSeq !== undefined) return {status: 'admitted', ref, userSeq: entry.userSeq, turn: entry.userTurn}
+    const publication=published.association(ref)
+    if (entry.userSeq !== undefined&&(!publication||entry.claimSeq!==undefined))return {status:'admitted',ref,
+      userSeq:entry.userSeq,turn:publication?entry.turn:entry.userTurn,...publication?{published:publication}:{}}
     if (entry.cancelledSeq !== undefined) return {status: 'cancelled', ref, cancelSeq: entry.cancelledSeq}
     for (const target of ['next-turn', 'next-step'] as const) {
       const index = queues[target].indexOf(entry)
@@ -584,9 +641,17 @@ export function createNativeInboxHistoryOwner(
     }
     return {status: 'unknown', ref, code: 'INPUT_CLOSED_WITHOUT_ADMISSION_PROOF', closedReason}
   }
-  const history: NativeInboxHistory = {get revision() {return revision}, pending: queues, ownership, durableWork, linkReceipt(startSeq) {
+  const history: NativeInboxHistory = {get revision() {return revision}, pending: queues, ownership, durableWork,published,
+    hasPromptRequest(requestId) {
+      return visiblePromptRequests.has(requestId)||(entriesByPromptRequest.get(requestId)??[])
+        .some(entry=>entry.cancelledSeq===undefined)
+    },linkReceipt(startSeq) {
     if (lastStartSeq !== startSeq) return undefined
     return proofAt(startSeq)?.receipt
+  }, completedTurn(startSeq) {
+    const linked=linkedTurns.get(startSeq)
+    if(invalid||lastStartSeq!==startSeq||!linked?.end||turns.get(linked.turn)?.kind!=='completed')return undefined
+    return linked.end
   }, resumeLinked(receipt) {
     const lookup = durableWork(receipt)
     if (lookup.status !== 'recoverable' || nativeInputSha256(lookup.receipt) !== nativeInputSha256(receipt)) return undefined
@@ -617,7 +682,7 @@ export function createNativeInboxHistoryOwner(
     if (new Set(turnsOwned).size !== 1) return undefined
     // Resume the complete original claimed work, never a convenient subset.
     const turn = turnsOwned[0]!
-    const original = [...entries.values()].filter(entry => entry.turn === turn)
+    const original = [...(claimedEntriesByTurn.get(turn)??[])]
       .sort((left, right) => left.claimSeq! - right.claimSeq! || left.claimIndex! - right.claimIndex!)
     if (original.length !== refs.length || original.some((entry, index) => refKey(entry.ref) !== refKey(refs[index]))) return undefined
     return {turn, messages: original.map(entry => structuredClone(entry.message))}

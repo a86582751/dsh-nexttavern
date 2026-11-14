@@ -3,4 +3,4 @@ export type {
   TokenMeterConfig, TokenMeasurementBaseline, TokenMeasurement, TokenSurfaceNode,
 } from '@deepseek-ai/dsh-token-meter'
 
-export type {TokenRequestMeasurement} from '@deepseek-ai/dsh-llm'
+export type {TokenRequestMeasurement} from 'dsh-nexttavern-native-llm'

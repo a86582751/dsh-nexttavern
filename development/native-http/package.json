@@ -1,0 +1,18 @@
+{
+  "name": "dsh-nexttavern-native-http",
+  "version": "0.3.0-dev.1",
+  "private": true,
+  "type": "module",
+  "description": "NextTavern product-owned HTTP/1 transport using the official Host proxy policy",
+  "license": "GPL-3.0-only",
+  "main": "lib/index.js",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {"types": "./src/index.ts", "default": "./lib/index.js"},
+    "./package.json": "./package.json"
+  },
+  "files": ["src", "lib", "LICENSE"],
+  "dependencies": {"undici": "8.11.0"},
+  "bundleDependencies": ["undici"],
+  "peerDependencies": {"@deepseek-ai/dsh-http-proxy": "0.1.7-rc.2"}
+}

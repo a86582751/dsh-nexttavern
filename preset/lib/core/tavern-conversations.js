@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/src/core/tavern-conversations.ts; edit the TypeScript source.
 import { createHash } from 'node:crypto';
-const kinds = new Set(['regenerate', 'player-edit', 'player-edit-send', 'edit', 'delete-user', 'prepare-clean-branch']);
+const kinds = new Set(['regenerate', 'player-edit', 'player-edit-send', 'edit', 'delete-user', 'prepare-clean-branch', 'opening-variant']);
 const copy = (value) => structuredClone(value);
 const id = (value) => {
     if (typeof value !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/.test(value) || ['__proto__', 'constructor', 'prototype'].includes(value))

@@ -6,7 +6,7 @@
  * @module @deepseek-ai/dsh-subagent/projection
  */
 import { z } from 'zod';
-import { SessionSeq } from '@deepseek-ai/dsh-session';
+import { SessionSeq } from 'dsh-nexttavern-native-session';
 import { foldSubagentDescriptor } from "./descriptor.js";
 const activeIntervalSchema = z.object({
     since: z.number().int().nonnegative(),

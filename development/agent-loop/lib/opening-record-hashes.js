@@ -4,7 +4,7 @@
  * reconstructed from a checksum. Player hashes remain in their old module. */
 import { createHash } from 'node:crypto';
 import { types as utilTypes } from 'node:util';
-import { nativeOpeningDataV1, nativeOpeningCanonicalV1, NativeOpeningRecordFailureV1, NATIVE_OPENING_RECORD_BOUNDS_V1, validateNativeOpeningInvocationV1 as shapeInvocation, validateNativeOpeningRequestAttemptV1 as shapeAttempt, validateNativeGeneratedOpeningReceiptV1 as shapeReceipt, validateNativeOpeningClosingAckV1 as shapeAck } from '@deepseek-ai/dsh-session/surface';
+import { nativeOpeningDataV1, nativeOpeningCanonicalV1, NativeOpeningRecordFailureV1, NATIVE_OPENING_RECORD_BOUNDS_V1, validateNativeOpeningInvocationV1 as shapeInvocation, validateNativeOpeningRequestAttemptV1 as shapeAttempt, validateNativeGeneratedOpeningReceiptV1 as shapeReceipt, validateNativeOpeningClosingAckV1 as shapeAck } from 'dsh-nexttavern-native-session/surface';
 /** Proxies are not plain Native data even when they mimic descriptors. Walk
  * before the browser-safe copier; it then owns getter/cycle/budget refusal. */
 function refuseProxies(value) {

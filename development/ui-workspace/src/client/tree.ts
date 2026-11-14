@@ -10,7 +10,7 @@ import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-
 import type {
   SessionStatusSnapshot,
 } from '@deepseek-ai/dsh-client-ui-session/client'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionId } from 'dsh-nexttavern-native-session/types'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
 

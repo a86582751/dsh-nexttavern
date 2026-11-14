@@ -1,6 +1,11 @@
+import {after as afterNativeDependencies} from 'node:test'
+import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
 import assert from 'node:assert/strict'
-import { inlineTaskInstruction, inlineTaskMessages, taskPhaseMessage, awaitTaskAdmissions, InlinePending, tavernTaskToolBoundary } from '../lib/core/tavern-tasks.js'
-import {maintenancePrompt,maintenanceTaskInputs} from '../lib/core/tavern-task-context.js'
+
+const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'])
+afterNativeDependencies(removeOwnedNativeDependencies)
+const { inlineTaskInstruction, inlineTaskMessages, taskPhaseMessage, awaitTaskAdmissions, InlinePending, tavernTaskToolBoundary }=await import('../lib/core/tavern-tasks.js')
+const {maintenancePrompt,maintenanceTaskInputs}=await import('../lib/core/tavern-task-context.js')
 {
  const admitted=[]
  const first=Promise.resolve().then(()=>{admitted.push('first');throw new InlinePending('first')})

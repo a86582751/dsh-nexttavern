@@ -36,6 +36,7 @@ export interface RubyTaskV1 {
   readonly outputConstant:boolean
   readonly outputDisable:boolean
   readonly selective:boolean
+  readonly selectiveKeysEnabled:boolean
   readonly selectiveKeys:readonly string[]
   readonly noRecursion:boolean
   readonly position:number
@@ -47,6 +48,10 @@ export interface RubyTaskV1 {
   readonly useOutputs:readonly string[]
   readonly issues:readonly RubyIssueV1[]
 }
+export interface RubyGenerationOptionsV1 {
+  readonly temperature?:number
+  readonly maxTokens?:number
+}
 export interface RubyConfigurationV1 {
   readonly schemaVersion:1
   readonly encoding:'ruby-static-configuration-data-v1'
@@ -54,12 +59,15 @@ export interface RubyConfigurationV1 {
   readonly status:'empty'|'supported-static'|'unsupported'
   readonly activePresetId:string
   readonly charName:string
+  readonly summaryProvider:string
+  readonly summaryProviderStatus:'disabled'|'unavailable-raw-text'
   readonly customContentTags:readonly string[]
   readonly referencePool:readonly RubyReferenceV1[]
   readonly tasks:readonly RubyTaskV1[]
   /** Null marks the unavailable default message asset when a producer is enabled. */
   readonly messageItems:readonly RubyMessageItemV1[]|null
   readonly cycleLength:number
+  readonly generation?:RubyGenerationOptionsV1
   readonly issues:readonly RubyIssueV1[]
   readonly requestsPerEligibleTask:1
 }
@@ -105,6 +113,12 @@ export interface RubyWorldbookV1 {
   /** Namespace ref records a negative lookup as well as a present entry. */
   readonly ref:RubySourceRefV1
   readonly entries:readonly RubyWorldbookEntryV1[]
+}
+/** The owner supplies only accepted preceding publications from this batch. */
+export interface RubyAcceptedOutputValueV1 {
+  readonly outputVarName:string
+  readonly content:string
+  readonly ref:RubySourceRefV1
 }
 export interface RubyInputWindowV1 {
   readonly schemaVersion:1
@@ -160,9 +174,9 @@ export interface RubyPreparedOutputV1 {
     readonly position:number
     readonly depth?:number
     readonly order:number
-    readonly selective?:true
+    readonly selective:boolean
     readonly selectiveLogic?:0
-    readonly secondaryKeys?:readonly string[]
+    readonly secondaryKeys:readonly string[]
   }
   /** Proposed only. Core applies this after its durable publication succeeds. */
   readonly bookmark:{readonly taskKey:string;readonly ordinal:number}

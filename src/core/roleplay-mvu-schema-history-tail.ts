@@ -9,8 +9,6 @@ import {validateSchemaJournalRecord,validateSchemaSourceCut,schemaJournalKey,sch
   from './roleplay-mvu-schema-journal.js'
 import {schemaOriginalProgramSha256} from './roleplay-mvu-schema-source.js'
 import {schemaExecutionProgramSha256,schemaExecutionServerTailSha256} from './roleplay-mvu-schema-replay.js'
-import {validateSchemaEvaluationInputV2,validateSchemaGuestOutputV2} from './tavern-mvu-schema-runner-v2.js'
-import {validateSchemaEvaluationInputV3,validateSchemaGuestOutputV3} from './tavern-mvu-schema-runner-v3.js'
 import {validateSchemaEvaluationInputV4,validateSchemaGuestOutputForProgramV4} from './tavern-mvu-schema-runner-v4.js'
 import {validateMvuExecutableProgramV4} from './tavern-mvu-schema-program-v4.js'
 import {sealMvuSchemaStoryFact,validateMvuSchemaNumericalSnapshot,validateMvuSchemaStoryPlan,
@@ -22,18 +20,19 @@ import {validateMvuSchemaPlayerPlan,readMvuSchemaPlayerPlanFacts,mvuSchemaPlayer
   mvuSchemaPlayerSettlement,mvuSchemaPlayerSettlementKey,mvuSchemaPlayerCompletionKey,
   validateMvuSchemaPlayerEvent,validateMvuSchemaPlayerSettlement,validateMvuSchemaPlayerCompletion,
   MVU_SCHEMA_PLAYER_PHASES} from './roleplay-mvu-schema-player-types.js'
-import type {SessionEvent} from '@deepseek-ai/dsh-session'
+import type {SessionEvent} from 'dsh-nexttavern-native-session'
 import type {SchemaJournalReady,SchemaJournalStepFacts,SourceNativeCutFacts} from './roleplay-mvu-schema-journal.js'
 import type {SchemaFrozenOriginal,SchemaStorySourceFrame} from './roleplay-mvu-schema-source.js'
 import type {SchemaExecutionAssociation,SchemaExecutionSelector} from './roleplay-mvu-schema-replay.js'
 import type {SchemaEvaluationInput,SchemaGuestOutput,SchemaAuthorProgram} from './roleplay-mvu-schema-executor-types.js'
 import type {MvuSchemaNumericalSnapshotV2,MvuSchemaStoryPlan,MvuSchemaStoryPhaseFact,
-  MvuSchemaStoryReducerBridge,MvuSchemaStoryPlanV6,MvuSchemaStoryPlanV10} from './roleplay-mvu-schema-story-types.js'
-import type {MvuSchemaPlayerPlanV1,MvuSchemaPlayerPhaseFact,MvuSchemaPlayerPlanV5} from './roleplay-mvu-schema-player-types.js'
+  MvuSchemaStoryReducerBridge,MvuSchemaStoryPlanV6,MvuSchemaStoryPlanV10,MvuSchemaStoryPlanV12} from './roleplay-mvu-schema-story-types.js'
+import type {MvuSchemaPlayerPlanV1,MvuSchemaPlayerPhaseFact,MvuSchemaPlayerPlanV5,MvuSchemaPlayerPlanV10} from './roleplay-mvu-schema-player-types.js'
 import type {MvuSchemaUnpublishedStoryPlanFacts} from './roleplay-mvu-schema-prefix-facts.js'
 import type {WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {MvuInheritedMessageEditProtocol} from './roleplay-mvu-prefix-facts.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
+import type {MvuScopeReadRefV2} from './tavern-mvu-scope-view-v2.js'
 
 export interface MvuSchemaUnpublishedTailRequest {
   sessionId:string
@@ -55,6 +54,9 @@ export interface MvuSchemaUnpublishedTailDeps {
   verifyFrozenFrame(original:SchemaFrozenOriginal,frame:SchemaStorySourceFrame):boolean
   /** Core supplies the fully proven publication fold preceding this tail. */
   scopeFrameAt(frame:SchemaStorySourceFrame,cut:SourceNativeCutFacts):MvuScopeReadFrameV1
+  /** Reference-protocol plans retain only a scope reference; Core resolves it
+   * against the same proven fold chronologically. */
+  verifyScopeRef(reference:MvuScopeReadRefV2,frame:SchemaStorySourceFrame,cut:SourceNativeCutFacts,logicalCut?:number):void
   associationAt(index:number):SchemaExecutionAssociation
 }
 type Candidate={kind:'story';plan:MvuSchemaStoryPlan;key:string}
@@ -75,14 +77,14 @@ function own(input:unknown,key:string):unknown {
 function baseOf(candidate:Candidate) {
   return candidate.kind==='story'?candidate.plan.base:candidate.plan.operation.base
 }
-function versionOf(candidate:Candidate):1|2|3|4 {
-  return candidate.kind==='story'?candidate.plan.schemaVersion===2?1:candidate.plan.executorVersion
-    :candidate.plan.schemaVersion===1?1:candidate.plan.executorVersion
+function versionOf(candidate:Candidate):4 {
+  return candidate.plan.executorVersion
 }
-function hostPlanOf(candidate:Candidate):MvuSchemaStoryPlanV6|MvuSchemaStoryPlanV10|MvuSchemaPlayerPlanV5|undefined {
-  return candidate.kind==='story'?([6,10].includes(candidate.plan.schemaVersion)
-    ?candidate.plan as MvuSchemaStoryPlanV6|MvuSchemaStoryPlanV10:undefined)
-    :candidate.plan.schemaVersion===5?candidate.plan:undefined
+function hostPlanOf(candidate:Candidate):MvuSchemaStoryPlanV6|MvuSchemaStoryPlanV10|MvuSchemaStoryPlanV12
+  |MvuSchemaPlayerPlanV5|MvuSchemaPlayerPlanV10|undefined {
+  return candidate.kind==='story'?([6,10,12].includes(candidate.plan.schemaVersion)
+    ?candidate.plan as MvuSchemaStoryPlanV6|MvuSchemaStoryPlanV10|MvuSchemaStoryPlanV12:undefined)
+    :candidate.plan.schemaVersion===5||candidate.plan.schemaVersion===10?candidate.plan:undefined
 }
 function candidatePlans(request:MvuSchemaUnpublishedTailRequest,deps:MvuSchemaUnpublishedTailDeps,
   first:SchemaJournalStepFacts):Candidate[] {
@@ -143,7 +145,8 @@ function provePair(request:MvuSchemaUnpublishedTailRequest,deps:MvuSchemaUnpubli
     ||!same(step.completion.dispatch,step.dispatchRef)||!same(step.dispatch.epoch,request.ready.epochRef)
     ||!same(step.completionRef,{key:schemaJournalKey(step.completion),sha256:step.completion.recordSha256})
     ||!same(step.completion.dispatchMarker,step.dispatchMarker)
-    ||step.dispatch.ordinal!==request.ordinal+index+1||step.step.ordinal!==request.ordinal+index+1
+    ||step.dispatch.ordinal!==request.ordinal+index+1
+    ||step.step.ordinal!==(request.ready.executionBaseline?.length??0)+request.ordinal+index+1
     ||step.completion.step.frameSha256!==recordSha256(step.step.frame)
     ||!same(step.step.frame,step.dispatch.requestedStep.frame)
     ||step.step.eventId!==selector.batchId||step.step.eventId!==step.dispatch.requestedStep.eventId
@@ -187,11 +190,8 @@ function provePair(request:MvuSchemaUnpublishedTailRequest,deps:MvuSchemaUnpubli
   return association
 }
 function proveOutput(input:SchemaEvaluationInput,output:SchemaGuestOutput,program:SchemaAuthorProgram):void {
-  if(input.schemaVersion===4)validateSchemaGuestOutputForProgramV4(output,validateMvuExecutableProgramV4(program),
+  validateSchemaGuestOutputForProgramV4(output,validateMvuExecutableProgramV4(program),
     validateSchemaEvaluationInputV4(input))
-  else if(input.schemaVersion===3)validateSchemaGuestOutputV3(output,validateSchemaEvaluationInputV3(input))
-  else if(input.schemaVersion===2)validateSchemaGuestOutputV2(output,validateSchemaEvaluationInputV2(input))
-  // V1's closed output shape was checked by validateSchemaJournalRecord.
 }
 function storyPublication(candidate:Extract<Candidate,{kind:'story'}>,facts:MvuSchemaUnpublishedStoryPlanFacts,
   phases:readonly MvuSchemaStoryPhaseFact[],reducer:MvuSchemaStoryReducerBridge|null,
@@ -273,12 +273,13 @@ export function verifyMvuSchemaUnpublishedTail(request:MvuSchemaUnpublishedTailR
         ||!same(original.preparation.host,ready.epoch.host))fail()
     }else {
       if(original.schemaVersion!==1)fail()
-      if(original.preparation.schemaVersion!==1&&!same(original.preparation.executor,
+      if(!same(original.preparation.executor,
         {compiler:execution.program.compiler,bridge:execution.program.bridge,
           libraries:execution.program.libraries,runner:execution.runner}))fail()
     }
     proveCut(request,plan.initialCut,plan.initialCut,plan.currentFrame,plan.selectors[0]!,first.dispatchMarker.seq)
-    if(version>=3&&(!('scopeReadFrame' in plan)
+    const referenced='scopeReadRef' in plan
+    if(!referenced&&(!('scopeReadFrame' in plan)
       ||!same(plan.scopeReadFrame,deps.scopeFrameAt(plan.currentFrame,plan.initialCut))))fail()
     let storyFacts:MvuSchemaUnpublishedStoryPlanFacts|undefined
     if(candidate.kind==='story') {
@@ -305,9 +306,13 @@ export function verifyMvuSchemaUnpublishedTail(request:MvuSchemaUnpublishedTailR
     for(const [index,step] of remaining.entries()) {
       if(terminated)fail()
       const association=provePair(request,deps,candidate,index,step)
-      const read=version>=3?deps.scopeFrameAt(plan.currentFrame,step.dispatch.sourceNativeCut):undefined
-      const input=candidate.kind==='story'?mvuSchemaStoryPhaseInput(candidate.plan,index,storyPhases,reducer,read)
-        :mvuSchemaPlayerPhaseInput(candidate.plan,index,playerPhases,read)
+      const requested=step.step.frame.input
+      const reference=referenced&&requested.schemaVersion===4?requested.scopeReadRef:undefined
+      if(reference)deps.verifyScopeRef(reference,plan.currentFrame,step.dispatch.sourceNativeCut,
+        'logicalNativeCut' in plan?plan.logicalNativeCut:undefined)
+      const read=!referenced?deps.scopeFrameAt(plan.currentFrame,step.dispatch.sourceNativeCut):undefined
+      const input=candidate.kind==='story'?mvuSchemaStoryPhaseInput(candidate.plan,index,storyPhases,reducer,read,reference)
+        :mvuSchemaPlayerPhaseInput(candidate.plan,index,playerPhases,read,reference)
       if(!same(input,step.step.frame.input))fail()
       proveOutput(input,step.step.output,execution.program)
       if(candidate.kind==='story') {

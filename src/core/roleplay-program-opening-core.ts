@@ -1,9 +1,9 @@
 /** Core's actual table, Session and Phase-A readers for program openings.
  * Saved records are evidence; the original live readers own all currency. */
-import {nativeInputSha256,validateNativeOpeningInvocationV1} from '@deepseek-ai/dsh-agent-loop'
-import type {Session} from '@deepseek-ai/dsh-session'
+import {nativeInputSha256,validateNativeOpeningInvocationV1} from 'dsh-nexttavern-native-agent-loop'
+import type {Session} from 'dsh-nexttavern-native-session'
 import type {NativeOpeningIdentityV1,NativeOpeningOwnerIdentityV1,NativeProgrammaticOpeningAgentV1}
-  from '@deepseek-ai/dsh-agent-loop'
+  from 'dsh-nexttavern-native-agent-loop'
 import {recordSha256,keyOf} from './roleplay-data.js'
 import {createRoleplayPromptOpeningSourceV1} from './roleplay-prompt-opening-source.js'
 import type {PromptOpeningSourceDepsV1} from './roleplay-prompt-opening-source-types.js'
@@ -19,6 +19,8 @@ import {createProgramOpeningNativeFactsV1,validateProgramOpeningSeedV1,validateP
 import {createProgramAbsenceOpeningClosureV1} from './roleplay-program-absence-inheritance-data.js'
 import type {ProgramAbsenceOpeningClosureDataV1} from './roleplay-program-absence-inheritance-data.js'
 import type {RoleplayOpeningMaterialRecordV1} from './roleplay-opening-material.js'
+import {roleplayMaterialPreparationJournalOwnerV1,readRoleplayMaterialPreparationJournalRowV1}
+  from './roleplay-input-material.js'
 import {createProgramDerivedOpeningClosureV1} from './roleplay-mvu-prefix-ledger.js'
 import {openingIntentKey} from './roleplay-opening-selection.js'
 import {mvuInitializationEventKey,mvuInitializationHeadKey} from './roleplay-mvu-initialization.js'
@@ -133,6 +135,18 @@ export function createRoleplayProgramOpeningCoreV1(deps:Dependencies) {
         const prior=rows.get(row.key)
         if(prior&&!same(prior.value,row.value))fail('PROGRAM_OPENING_HISTORICAL_PHASE_A_CHANGED')
         rows.set(row.key,row)
+      }
+      if(payload.materialPreparationJournalRefs!==undefined) {
+        if(!Array.isArray(payload.materialPreparationJournalRefs))fail('PROGRAM_OPENING_HISTORICAL_JOURNAL_CHANGED')
+        const owner=roleplayMaterialPreparationJournalOwnerV1(snapshot.value)
+        for(const ref of payload.materialPreparationJournalRefs) {
+          if(!object(ref)||typeof ref.key!=='string'||typeof ref.sha256!=='string') {
+            fail('PROGRAM_OPENING_HISTORICAL_JOURNAL_CHANGED')
+          }
+          const row=exactRow(ref.key,ref.sha256)
+          readRoleplayMaterialPreparationJournalRowV1(row.value,{key:row.key,snapshotKey:snapshot.key,owner})
+          rows.set(row.key,row)
+        }
       }
     }
     return [...rows.values()]

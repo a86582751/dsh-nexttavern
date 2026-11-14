@@ -6,6 +6,7 @@ import { recordSha256 } from './roleplay-data.js';
 import { schemaTextSha256 } from './tavern-mvu-schema-data.js';
 import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 import { resolveTavernLoreContentTextV1 } from './tavern-lore-compiler.mjs';
+import { createTavernSourceEntryResolverV1 } from './tavern-source-render-catalog.mjs';
 import { promptFreeze, promptInitialEntryV1, TAVERN_PROMPT_VARIABLE_BOUNDS_V1 } from './roleplay-tavern-prompt-variables-data.js';
 /** This is the actual owned Native feature policy, not a capture of a running
  * ST extension's mutable registry/settings. Basic card regex is a different
@@ -20,6 +21,7 @@ export const TAVERN_PROMPT_INITIAL_NATIVE_POLICY_V1 = promptFreeze({ schemaVersi
     catalogPolicy: 'complete-source-primary-original-ordinal-v1',
     titlePolicy: 'fixed-character-book-comment-or-empty-v1',
     decoratorPolicy: 'fixed-importer-no-preparsed-inline-current-content-v1',
+    standalonePolicy: 'fixed-formal-special-entries-excluded-from-normal-world-info-v1',
     diagnosticPolicy: 'initial-fields-independent-of-lore-matching-eligibility-v2',
     initialWorkOwner: 'prepareRoleplayTavernPromptVariablesV1',
     runtimeModelRequests: { normal: 0, retry: 0, fallback: 0 } });
@@ -137,7 +139,7 @@ export function captureRoleplayTavernInitialCatalogV1(input) {
     const membership = plan.currentNativeMembership;
     const policySha256 = membership ? TAVERN_PROMPT_INITIAL_MEMBERSHIP_POLICY_SHA256_V1
         : TAVERN_PROMPT_INITIAL_NATIVE_POLICY_SHA256_V1;
-    const originalEntries = membership ? new Map(source.original.primary.entries.map(row => [row.ref.entryPointer, row])) : undefined;
+    const resolveEntry = createTavernSourceEntryResolverV1(source, plan);
     const versionSha256 = recordSha256({ sourceSha256: source.sourceSha256, planSha256: plan.planSha256, policySha256 });
     const ownerId = source.sessionId + '/prompt-initial-source';
     const settingsRef = ref(ownerId, policySha256, { schemaVersion: 1, encoding: 'owned-native-prompt-initial-settings-ref-v1',
@@ -152,11 +154,10 @@ export function captureRoleplayTavernInitialCatalogV1(input) {
         actualPrimaryEntryCount: source.original.primary.entries.length, policySha256,
         ...(membership ? { currentNativeMembershipSha256: plan.currentNativeMembershipSha256, actualCurrentEntryCount: plan.entries.length } : {}) });
     const receiptEntries = [];
+    const standaloneExclusionEntryIds = [];
     const entries = plan.entries.map((entry, ordinal) => {
         assertCurrent();
-        const member = membership?.members[ordinal], identity = entry.currentNativeMember?.identity;
-        const original = member ? identity?.kind === 'original' ? originalEntries.get(identity.rawEntryPointer) : undefined
-            : source.original.primary.entries[ordinal];
+        const { member, original } = resolveEntry(entry), identity = entry.currentNativeMember?.identity;
         if (!member) {
             if (!original || entry.ordinal !== ordinal || entry.sourceKey !== original.entryKey
                 || entry.sourcePointer !== original.ref.entryPointer || entry.rawEntrySha256 !== original.ref.entrySha256) {
@@ -185,6 +186,8 @@ export function captureRoleplayTavernInitialCatalogV1(input) {
             currentSemantic: semantic, currentSemanticSha256, contentPointer: resolved.pointer, content: resolved.text,
             contentSha256: resolved.contentSha256, decorators: null, provenance };
         const selected = promptInitialEntryV1(row, false);
+        if (selected.special)
+            standaloneExclusionEntryIds.push(entry.entryId);
         receiptEntries.push({ ordinal, entryId: entry.entryId, rawEntryPointer: entry.sourcePointer,
             rawEntrySha256: entry.rawEntrySha256, upstreamUid: entry.upstreamUid, disposition: entry.disposition,
             entryPlanSha256: entry.entryPlanSha256, title: row.title, titlePolicy: 'fixed-character-book-comment-or-empty-v1',
@@ -215,5 +218,5 @@ export function captureRoleplayTavernInitialCatalogV1(input) {
     const data = promptFreeze(cloneRoleplayTavernLoreDataV1({ catalog, receipt }, TAVERN_PROMPT_VARIABLE_BOUNDS_V1.outputBytes));
     assertCurrent();
     assertion.call(input);
-    return Object.freeze({ ...data, policySha256, assertCurrent });
+    return Object.freeze({ ...data, standaloneExclusionEntryIds: Object.freeze(standaloneExclusionEntryIds), policySha256, assertCurrent });
 }

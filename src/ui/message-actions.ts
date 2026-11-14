@@ -647,7 +647,7 @@ export function createToastController(documentRef: Document) {
         current = null;
     };
     const managerHost = () => {
-        const dialogs = [...documentRef.querySelectorAll?.<HTMLDialogElement>('dialog.dsh-rp-dialog[open]') ?? []];
+        const dialogs = [...documentRef.querySelectorAll?.<HTMLDialogElement>('dialog[open]') ?? []];
         return dialogs.findLast?.(dialog => {
             try {
                 return dialog.matches?.(':modal');

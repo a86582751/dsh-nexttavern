@@ -3,16 +3,13 @@
  * a valid hash is data integrity and does not prove historical execution. */
 import {createHash} from 'node:crypto'
 import {types} from 'node:util'
-import {recordSha256} from './roleplay-data.js'
+import {recordSha256,stableJson} from './roleplay-data.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import type {MvuJsonObject,MvuJsonValue} from './tavern-mvu-initvar.js'
-import type {MvuSchemaProgram,MvuSchemaImplementationIdentity,MvuSchemaLibraryIdentity,
-  MvuSchemaAuthorScript,MvuSchemaSourceBinding} from './tavern-mvu-schema-types.js'
 
 const forbidden=new Set(['__proto__','constructor','prototype'])
 const own=(value:object,key:string)=>Object.prototype.hasOwnProperty.call(value,key)
 function fail(code:string):never {throw Error(code)}
-const hash=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
 const object=(value:unknown):value is MvuJsonObject=>value!==null&&typeof value==='object'&&!Array.isArray(value)
 const executionCloneBounds=Object.freeze({bytes:16_777_216,
   nodes:MVU_SCHEMA_BOUNDS.evaluationNodes,depth:MVU_SCHEMA_BOUNDS.evaluationDepth,
@@ -37,6 +34,7 @@ function cloneBudget(maxBytes:number,recordBounds:SchemaRecordBounds|undefined,
 }
 
 interface SchemaCloneSummary {bytes:number;nodes:number}
+interface SchemaMaterialCloneSummary extends SchemaCloneSummary {sha256:string}
 interface SchemaMaterialClone {
   replace(value:unknown):MvuJsonValue
 }
@@ -54,7 +52,8 @@ function materialSlot(descriptors:DataDescriptors,source:boolean):boolean {
   const input=descriptors.input?.value
   if(input&&typeof input==='object'&&!types.isProxy(input)) {
     const encoding=Object.getOwnPropertyDescriptor(input,'encoding')?.value
-    return encoding==='native-mvu-author-schema-phase-input-v4'
+    return (encoding==='native-mvu-author-schema-phase-input-v4'
+      ||encoding==='native-mvu-author-schema-phase-input-v4-scope-ref-v2')
       &&descriptors.ownerSessionId!==undefined&&descriptors.sourceNativeCutSha256!==undefined
   }
   return false
@@ -67,7 +66,7 @@ function authorDataSlot(key:string):boolean {
   return authorDataSlots.has(key)
 }
 function clone(input:unknown,maxBytes:number,maxDepth:number,maxNodes:number,
-  materials?:SchemaMaterialClone,summary?:SchemaCloneSummary,maxArrayLength:number=MVU_SCHEMA_BOUNDS.arrayLength):MvuJsonValue {
+  materials?:SchemaMaterialClone,summary?:SchemaMaterialCloneSummary,maxArrayLength:number=MVU_SCHEMA_BOUNDS.arrayLength):MvuJsonValue {
   const ancestors=new Set<object>()
   let nodes=0,bytes=0
   const count=(value:string)=>{
@@ -126,9 +125,16 @@ function clone(input:unknown,maxBytes:number,maxDepth:number,maxNodes:number,
     return result
   }
   const result=visit(input,0)
-  const serializedBytes=Buffer.byteLength(JSON.stringify(result),'utf8')
+  // Source capture needs both its exact JSON budget and stable record hash.
+  // Ordering changes no JSON byte count; reuse the full canonical encoding
+  // for those two facts instead of serializing the Source a second time.
+  const serialized=summary?stableJson(result)!:JSON.stringify(result)
+  const serializedBytes=Buffer.byteLength(serialized,'utf8')
   if(serializedBytes>maxBytes)fail('SCHEMA_DATA_BYTE_LIMIT')
-  if(summary){summary.bytes=serializedBytes;summary.nodes=nodes}
+  if(summary) {
+    summary.bytes=serializedBytes;summary.nodes=nodes
+    summary.sha256=createHash('sha256').update(serialized,'utf8').digest('hex')
+  }
   return result
 }
 
@@ -156,6 +162,22 @@ export interface SchemaMaterialDataV4 extends SchemaCloneSummary {
   readonly sha256:string
   readonly value:MvuJsonObject
 }
+/** A live realm keeps only these compact facts, never historical frames or
+ * Source values. The cold sequence owner fills a fresh sink while parsing. */
+export interface SchemaMaterialBudgetV4 extends SchemaCloneSummary {readonly hashes:Set<string>}
+export type SchemaMaterialBudgetDeltaV4=Pick<SchemaMaterialDataV4,'sha256'|'bytes'|'nodes'>
+export function createSchemaMaterialBudgetV4():SchemaMaterialBudgetV4 {
+  return {hashes:new Set<string>(),bytes:0,nodes:0}
+}
+/** The requested frame's codec already owns immutable material and its exact
+ * summary. Check a candidate without changing the accepted realm's budget. */
+export function schemaMaterialBudgetDeltaV4(budget:SchemaMaterialBudgetV4,material:unknown):SchemaMaterialBudgetDeltaV4|undefined {
+  const owned=captureSchemaMaterialV4(material)
+  if(budget.hashes.has(owned.sha256))return undefined
+  if(budget.bytes+owned.bytes>sourceMaterialBounds.bytes)fail('SCHEMA_DATA_BYTE_LIMIT')
+  if(budget.nodes+owned.nodes>sourceMaterialBounds.nodes)fail('SCHEMA_DATA_NODE_LIMIT')
+  return {sha256:owned.sha256,bytes:owned.bytes,nodes:owned.nodes}
+}
 // Only DATA parsed and deeply frozen by this owner can bypass another JSON
 // traversal. Neither this cache nor a material SHA grants Source/Native authority.
 const ownedMaterialsV4=new WeakMap<object,SchemaMaterialDataV4>()
@@ -170,11 +192,11 @@ function freezeDataV4(input:unknown,seen=new Set<object>()):void {
 export function captureSchemaMaterialV4(input:unknown):Readonly<SchemaMaterialDataV4> {
   const owned=input&&typeof input==='object'?ownedMaterialsV4.get(input):undefined
   if(owned)return owned
-  const summary={bytes:0,nodes:0}
+  const summary={bytes:0,nodes:0,sha256:''}
   const value=clone(input,sourceMaterialBounds.bytes,sourceMaterialBounds.depth,sourceMaterialBounds.nodes,
     undefined,summary)
   if(!object(value))fail('SCHEMA_ROOT_OBJECT_REQUIRED')
-  const data=Object.freeze({...summary,value,sha256:recordSha256(value)})
+  const data=Object.freeze({...summary,value})
   freezeDataV4(value)
   if(value&&typeof value==='object')ownedMaterialsV4.set(value,data)
   return data
@@ -187,18 +209,37 @@ export function packSchemaEnvelopeV4<T>(input:T,maxBytes:number,
 }
 function packMaterialEnvelopeV4<T>(input:T,maxBytes:number,
   recordBounds:SchemaRecordBounds|undefined,
-  maximum:SchemaCloneMaximum):SchemaMaterialEnvelopeV4<T> {
+  maximum:SchemaCloneMaximum,captured?:WeakMap<object,SchemaMaterialDataV4>,
+  canonical?:Map<string,SchemaMaterialDataV4>,aggregate?:SchemaCloneSummary,
+  materialHashes?:Set<string>):SchemaMaterialEnvelopeV4<T> {
   const limits=cloneBudget(maxBytes,recordBounds,maximum)
   const dictionary=new Map<string,SchemaMaterialDataV4>(),identities=new WeakMap<object,string>()
   let bytes=0,nodes=0
   const data=clone(input,maxBytes,limits.depth,limits.nodes,{replace:raw=>{
     const existing=raw&&typeof raw==='object'?identities.get(raw):undefined
     if(existing)return existing
-    const material=captureSchemaMaterialV4(raw)
+    let material=raw&&typeof raw==='object'?captured?.get(raw):undefined
+    if(!material) {
+      const fresh=captureSchemaMaterialV4(raw)
+      material=canonical?.get(fresh.sha256)
+      if(!material) {
+        material=fresh
+        if(aggregate) {
+          aggregate.bytes+=material.bytes;aggregate.nodes+=material.nodes
+          if(aggregate.bytes>sourceMaterialBounds.bytes)fail('SCHEMA_DATA_BYTE_LIMIT')
+          if(aggregate.nodes>sourceMaterialBounds.nodes)fail('SCHEMA_DATA_NODE_LIMIT')
+        }
+        canonical?.set(material.sha256,material)
+        materialHashes?.add(material.sha256)
+      }
+      if(raw&&typeof raw==='object')captured?.set(raw,material)
+    }
     if(!dictionary.has(material.sha256)) {
-      bytes+=material.bytes;nodes+=material.nodes
-      if(bytes>sourceMaterialBounds.bytes)fail('SCHEMA_DATA_BYTE_LIMIT')
-      if(nodes>sourceMaterialBounds.nodes)fail('SCHEMA_DATA_NODE_LIMIT')
+      if(!aggregate) {
+        bytes+=material.bytes;nodes+=material.nodes
+        if(bytes>sourceMaterialBounds.bytes)fail('SCHEMA_DATA_BYTE_LIMIT')
+        if(nodes>sourceMaterialBounds.nodes)fail('SCHEMA_DATA_NODE_LIMIT')
+      }
       dictionary.set(material.sha256,material)
     }
     if(raw&&typeof raw==='object')identities.set(raw,material.sha256)
@@ -227,18 +268,18 @@ function restoreMaterialsV4<T>(data:T,materials:ReadonlyMap<string,MvuJsonValue>
 /** Decodes the private transport before the usual logical contract checks.
  * Persisted records and all logical hashes still contain their full material. */
 export function unpackSchemaEnvelopeV4<T>(input:SchemaMaterialEnvelopeV4<T>,maxBytes:number,
-  recordBounds?:SchemaRecordBounds):T {
+  recordBounds?:SchemaRecordBounds,identity?:Map<string,MvuJsonValue>):T {
   if(input.schemaVersion!==1||input.encoding!=='native-mvu-private-material-envelope-v4') {
     fail('SCHEMA_MATERIAL_ENVELOPE_VERSION')
   }
   const limits=cloneBudget(maxBytes,recordBounds,executionCloneBounds)
   const data=clone(input.data,maxBytes,limits.depth,limits.nodes,undefined,undefined,limits.arrayLength) as T
-  const materials=new Map<string,MvuJsonValue>()
+  const materials=identity??new Map<string,MvuJsonValue>()
   let bytes=0,nodes=0
   for(const row of input.materials) {
+    if(materials.has(row.sha256))continue
     const material=captureSchemaMaterialV4(row.value)
     if(row.sha256!==material.sha256)fail('SCHEMA_MATERIAL_REFERENCE_MISMATCH')
-    if(materials.has(row.sha256))continue
     bytes+=material.bytes;nodes+=material.nodes
     if(bytes>sourceMaterialBounds.bytes)fail('SCHEMA_DATA_BYTE_LIMIT')
     if(nodes>sourceMaterialBounds.nodes)fail('SCHEMA_DATA_NODE_LIMIT')
@@ -251,6 +292,73 @@ export function cloneSchemaEnvelopeV4<T>(input:T,maxBytes:number,
   recordBounds?:SchemaRecordBounds):T {
   const packed=packSchemaEnvelopeV4(input,maxBytes,recordBounds)
   return restoreMaterialsV4(packed.data,new Map(packed.materials.map(row=>[row.sha256,row.value])))
+}
+/** One synchronous trace parser owns this cloner. It cannot outlive that
+ * parse or be reused across a mutable caller boundary. Repeated full Source
+ * objects are captured once; each frame keeps its own existing DATA budget. */
+export function schemaEnvelopeSequenceClonerV4(budget?:SchemaMaterialBudgetV4) {
+  return envelopeSequenceClonerV4(executionCloneBounds,budget)
+}
+/** A Journal cut owns one descriptor material dictionary across its records.
+ * Metadata is bounded per row; unique Source bytes/nodes retain the original
+ * whole-cut 64 MiB/524288 budget and same-SHA object sharing. */
+export function schemaDescriptorEnvelopeSequenceClonerV4() {
+  return envelopeSequenceClonerV4(descriptorCloneBounds)
+}
+function envelopeSequenceClonerV4(maximum:SchemaCloneMaximum,budget?:SchemaMaterialBudgetV4) {
+  const captured=new WeakMap<object,SchemaMaterialDataV4>(),canonical=new Map<string,SchemaMaterialDataV4>()
+  const aggregate=budget??{bytes:0,nodes:0}
+  return <T>(input:T,maxBytes:number,recordBounds?:SchemaRecordBounds):T=>{
+    const packed=packMaterialEnvelopeV4(input,maxBytes,recordBounds,maximum,captured,canonical,aggregate,budget?.hashes)
+    return restoreMaterialsV4(packed.data,new Map(packed.materials.map(row=>[row.sha256,row.value])))
+  }
+}
+/** One live Worker transport owns this sender and its receiver's material
+ * dictionary. Full Source bytes cross that channel once per actual SHA; later
+ * frames carry references to those already owned bytes, never identity claims
+ * inferred from a Native cut, Source version or abbreviated history digest. */
+export function schemaEnvelopeWireSenderV4() {
+  const captured=new WeakMap<object,SchemaMaterialDataV4>(),canonical=new Map<string,SchemaMaterialDataV4>()
+  const aggregate={bytes:0,nodes:0}
+  const sent=new Set<string>()
+  return <T>(input:T,maxBytes:number,recordBounds?:SchemaRecordBounds):SchemaMaterialEnvelopeV4<T>=>{
+    const packed=packMaterialEnvelopeV4(input,maxBytes,recordBounds,executionCloneBounds,captured,canonical,aggregate)
+    const materials=packed.materials.filter(row=>!sent.has(row.sha256))
+    for(const row of materials)sent.add(row.sha256)
+    return {...packed,materials}
+  }
+}
+/** Split only explicitly sequence-owned fields before cloning metadata. Each
+ * returned field still needs its own DATA parser; no aggregate history budget
+ * is substituted for the per-frame execution contract. Accessors and proxies
+ * retain the ordinary JSON boundary without invoking authored properties. */
+export function splitSchemaEnvelopeV4(input:unknown,fields:readonly string[],maxBytes:number,
+  recordBounds?:SchemaRecordBounds):{header:Record<string,unknown>;fields:Record<string,unknown>} {
+  if(!input||typeof input!=='object'||Array.isArray(input)||types.isProxy(input))fail('SCHEMA_DATA_INVALID')
+  const descriptors=Object.getOwnPropertyDescriptors(input),values:Record<string,unknown>={}
+  for(const key of fields) {
+    const descriptor=descriptors[key]
+    if(!descriptor||!own(descriptor,'value'))fail('SCHEMA_DATA_INVALID')
+    values[key]=descriptor.value
+    descriptors[key]={...descriptor,value:null}
+  }
+  return {header:cloneSchemaEnvelopeV4(Object.create(Object.getPrototypeOf(input),descriptors),maxBytes,recordBounds),
+    fields:values}
+}
+/** The historical sequence itself has no frame-sized item-count limit. Its
+ * elements remain independently bounded and parsed by their execution owner. */
+export function schemaSequenceItemsV4(input:unknown):readonly unknown[] {
+  if(!Array.isArray(input)||types.isProxy(input))fail('SCHEMA_DATA_INVALID')
+  const descriptors=Object.getOwnPropertyDescriptors(input) as Record<string,PropertyDescriptor>
+  const length=descriptors.length!.value as number
+  if(Reflect.ownKeys(descriptors).length!==length+1)fail('SCHEMA_DATA_INVALID')
+  const result:unknown[]=[]
+  for(let index=0;index<length;index++) {
+    const descriptor=descriptors[String(index)]
+    if(!descriptor||!own(descriptor,'value'))fail('SCHEMA_DATA_INVALID')
+    result.push(descriptor.value)
+  }
+  return result
 }
 /** Host descriptors keep their existing metadata depth while using the same
  * full Source owner as the v4 execution transport. */
@@ -267,90 +375,4 @@ export function cloneSchemaValues(input:unknown):MvuJsonObject {
 export function schemaTextSha256(text:string):string {
   if(typeof text!=='string')fail('SCHEMA_TEXT_REQUIRED')
   return createHash('sha256').update(text,'utf8').digest('hex')
-}
-
-function exact(value:object,keys:readonly string[]):void {
-  const present=Object.keys(value)
-  if(present.length!==keys.length||present.some(key=>!keys.includes(key)))fail('SCHEMA_RECORD_SHAPE')
-}
-function text(value:unknown,max:number):value is string {
-  return typeof value==='string'&&value.length>0&&Buffer.byteLength(value,'utf8')<=max
-}
-function implementation(value:unknown,compiler=false):asserts value is MvuSchemaImplementationIdentity {
-  if(!object(value))fail('SCHEMA_IMPLEMENTATION_INVALID')
-  exact(value,compiler?['id','version','implementationSha256','typescriptVersion']:['id','version','implementationSha256'])
-  if(typeof value.id!=='string'||!/^[A-Za-z0-9._-]{1,128}$/.test(value.id)
-    ||typeof value.version!=='number'||!Number.isSafeInteger(value.version)||value.version<1
-    ||!hash(value.implementationSha256)||compiler&&value.typescriptVersion!=='5.9.3')fail('SCHEMA_IMPLEMENTATION_INVALID')
-}
-function library(value:unknown):asserts value is unknown & MvuSchemaLibraryIdentity {
-  if(!object(value))fail('SCHEMA_LIBRARY_INVALID')
-  exact(value,['kind','packageName','version','bundleSha256','globalName'])
-  if(!['zod','lodash'].includes(String(value.kind))||!text(value.packageName,256)||!text(value.version,128)
-    ||!hash(value.bundleSha256)||typeof value.globalName!=='string'||!/^[A-Za-z_$][\w$]{0,127}$/.test(value.globalName)
-    ||forbidden.has(value.globalName))fail('SCHEMA_LIBRARY_INVALID')
-}
-function source(value:unknown):asserts value is unknown & MvuSchemaSourceBinding {
-  if(!object(value))fail('SCHEMA_SOURCE_INVALID')
-  exact(value,['ownerSessionId','importId','sourceSha256','importRecordSha256','sourceSnapshotSha256','material','materialSha256'])
-  if(!text(value.ownerSessionId,256)||!text(value.importId,256)||!hash(value.sourceSha256)
-    ||!hash(value.importRecordSha256)||!hash(value.sourceSnapshotSha256)||!hash(value.materialSha256)
-    ||!object(value.material)||recordSha256(value.material)!==value.materialSha256)fail('SCHEMA_SOURCE_INVALID')
-}
-function script(value:unknown,libraries:readonly MvuSchemaLibraryIdentity[],bridge:MvuSchemaImplementationIdentity,
-  compiled:boolean):asserts value is unknown & MvuSchemaAuthorScript {
-  if(!object(value))fail('SCHEMA_SCRIPT_INVALID')
-  exact(value,['identity','pointer','enabled','source','sourceSha256','imports',
-    ...(compiled?['javascript','javascriptSha256']:[])])
-  if(!text(value.identity,256)||typeof value.pointer!=='string'||Buffer.byteLength(value.pointer,'utf8')>4096
-    ||value.pointer!==''&&!value.pointer.startsWith('/')||typeof value.enabled!=='boolean'
-    ||typeof value.source!=='string'||Buffer.byteLength(value.source,'utf8')>MVU_SCHEMA_BOUNDS.sourceBytes
-    ||!hash(value.sourceSha256)||schemaTextSha256(value.source)!==value.sourceSha256
-    ||!Array.isArray(value.imports)||value.imports.length>128)fail('SCHEMA_SCRIPT_INVALID')
-  const specifiers=new Set<string>()
-  for(const binding of value.imports) {
-    if(!object(binding))fail('SCHEMA_IMPORT_INVALID')
-    exact(binding,['specifier','kind','implementationSha256'])
-    if(!text(binding.specifier,4096)||!['zod','lodash','schema-bridge'].includes(String(binding.kind))
-      ||!hash(binding.implementationSha256)||specifiers.has(binding.specifier))fail('SCHEMA_IMPORT_INVALID')
-    specifiers.add(binding.specifier)
-    const expected=binding.kind==='schema-bridge'?bridge.implementationSha256
-      :libraries.find(item=>item.kind===binding.kind)?.bundleSha256
-    if(!expected||binding.implementationSha256!==expected)fail('SCHEMA_IMPORT_CLOSURE')
-  }
-  if(compiled&&(typeof value.javascript!=='string'||!hash(value.javascriptSha256)
-    ||schemaTextSha256(value.javascript)!==value.javascriptSha256))fail('SCHEMA_COMPILED_SCRIPT_INVALID')
-}
-
-/** Exact metadata validation, kept separate from the compiler's actual replay. */
-export function validateSchemaProgram(input:unknown):MvuSchemaProgram {
-  const value=cloneSchemaData(input,MVU_SCHEMA_BOUNDS.programBytes)
-  if(!object(value))fail('SCHEMA_PROGRAM_INVALID')
-  exact(value,['schemaVersion','encoding','compiler','source','scripts','libraries','bridge','programSha256'])
-  if(value.schemaVersion!==1||value.encoding!=='native-mvu-author-schema-program-v1'||!hash(value.programSha256)) {
-    fail('SCHEMA_PROGRAM_INVALID')
-  }
-  implementation(value.compiler,true);implementation(value.bridge);source(value.source)
-  if(!Array.isArray(value.libraries)||value.libraries.length>2)fail('SCHEMA_LIBRARY_INVALID')
-  const kinds=new Set<string>(),globals=new Set<string>()
-  const validatedLibraries:MvuSchemaLibraryIdentity[]=[]
-  for(const item of value.libraries) {
-    library(item)
-    if(kinds.has(item.kind)||globals.has(item.globalName))fail('SCHEMA_LIBRARY_DUPLICATE')
-    kinds.add(item.kind);globals.add(item.globalName)
-    validatedLibraries.push(item)
-  }
-  if(!Array.isArray(value.scripts)||!value.scripts.length||value.scripts.length>MVU_SCHEMA_BOUNDS.scripts)fail('SCHEMA_SCRIPT_LIMIT')
-  const identities=new Set<string>()
-  let sourceBytes=0
-  for(const item of value.scripts) {
-    script(item,validatedLibraries,value.bridge,true)
-    if(identities.has(item.identity))fail('SCHEMA_SCRIPT_DUPLICATE')
-    identities.add(item.identity)
-    sourceBytes+=Buffer.byteLength(item.source,'utf8')
-    if(sourceBytes>MVU_SCHEMA_BOUNDS.sourceBytes)fail('SCHEMA_SOURCE_LIMIT')
-  }
-  const {programSha256,...descriptor}=value
-  if(recordSha256(descriptor)!==programSha256)fail('SCHEMA_PROGRAM_HASH')
-  return value as unknown as MvuSchemaProgram
 }

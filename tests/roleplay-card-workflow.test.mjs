@@ -3,12 +3,10 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { testTempRoot } from '../lib/operations/test-temp.mjs'
-import { createCardWorkflows } from '../lib/core/roleplay-card-workflow.js'
-import {InlinePending} from '../lib/core/tavern-tasks.js'
-import {freezeNativeCardConversionV1,materializeNativeCardConversionV1} from '../lib/core/native-card-conversion.js'
 import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
 import {installMvuNativeDataTestDependencies} from './mvu-native-data-test-dependencies-fixture.mts'
 
+let createCardWorkflows,InlinePending,freezeNativeCardConversionV1,materializeNativeCardConversionV1
 const hashBytes=bytes=>createHash('sha256').update(bytes).digest('hex')
 const deferred=()=>Promise.withResolvers()
 function exportFixture(workspace,overrides={}) {
@@ -41,6 +39,16 @@ const removeDependencies=installSchemaTestDependencies()
 let removeNativeDependencies
 try {
   removeNativeDependencies=await installMvuNativeDataTestDependencies()
+  // ESM links static imports before setup. Load the canonical generated graph
+  // only after its actual Native DATA dependencies have been installed.
+  const [workflow,tasks,conversion]=await Promise.all([
+    import('../lib/core/roleplay-card-workflow.js'),import('../lib/core/tavern-tasks.js'),
+    import('../lib/core/native-card-conversion.js'),
+  ])
+  createCardWorkflows=workflow.createCardWorkflows
+  InlinePending=tasks.InlinePending
+  freezeNativeCardConversionV1=conversion.freezeNativeCardConversionV1
+  materializeNativeCardConversionV1=conversion.materializeNativeCardConversionV1
   const {driveNativeCardConversionV1}=await import('../lib/core/native-card-conversion-driver.js')
   writeFileSync(join(workspace,'card.json'),JSON.stringify({name:'Concurrent'}))
   const branch=new Map()
@@ -253,7 +261,7 @@ try {
       workflowGeneration:failed.generation,exportId:'late-export'},{resourceId:'late-resource'}),/失效/)
   }
   {
-    const authored={spec:'nexttavern_card',spec_version:'1.0',data:{name:'Self native independent export',
+    const authored={spec:'nexttavern_card',spec_version:'1.2',data:{name:'Self native independent export',
       cards:[{name:'Explicit character',content:'SELF_NATIVE_CHARACTER'}],worldbook:[],rules:{core:'SELF_NATIVE_CORE'}},archive:{}}
     const original=freezeNativeCardConversionV1(authored)
     const classification=snapshot=>({characters:[{id:'self-character',name:'Explicit character'}],
@@ -262,13 +270,13 @@ try {
         ...(unit.pointer.includes('/cards/')?{characterId:'self-character'}:{})}))})
     const converted=materializeNativeCardConversionV1(original,classification(original))
     const invalidated=structuredClone(converted)
-    invalidated.data.compatibility.authorExecution.rules.core+=' SELF_AUTHOR_EDIT'
+    invalidated.data.rules.core+=' SELF_AUTHOR_EDIT'
     for(const document of [authored,converted,invalidated]) {
       const snapshot=freezeNativeCardConversionV1(document),shouldClassify=document===invalidated
       let failArchive=shouldClassify,classifications=0,archives=0,checkpoint
       let f
       f=exportFixture(workspace,{
-        captureExportStartSource:()=>({sha256:snapshot.sourceSha256,conversionSnapshot:snapshot,
+        captureExportStartSource:()=>({sha256:hashBytes(JSON.stringify(snapshot.document)),conversionSnapshot:snapshot,
           nativeAuthoring:true,assertCurrent(){}}),
         modelPolicy:{resolve:()=>{f.calls.resolve++;return {execution:'inline',main:f.selection.main,actualRoute:f.selection.main}}},
         nativeTask:async options=>{classifications++;assert.equal(options.executionPolicy,'independent');
@@ -288,7 +296,7 @@ try {
       const job=await f.workflows.beginCardWorkflow(f.session,'card-export',undefined,undefined,undefined,
         undefined,'original',undefined,'independent')
       assert.equal(job.execution,shouldClassify?'spawn':'deterministic')
-      assert.equal(f.calls.resolve,shouldClassify?1:0,'Native 1.0 and valid 1.1 preserve zero classification route requests')
+      assert.equal(f.calls.resolve,shouldClassify?1:0,'authored and valid classified Native cards need no classification route request')
       await f.workflows.resumeCardWorkflows(f.session)
       const key=f.workflows.cardWorkflowKey(job.id)
       if(shouldClassify) {
@@ -306,5 +314,42 @@ try {
       assert.equal(classifications,shouldClassify?1:0);assert.equal(f.calls.steer,0)
     }
   }
-  console.log('independent-card-workflow=ok (policy conflict, deterministic 1.0/valid 1.1, invalid 1.1 classification, checkpoint/retry/cold, no story steering)')
+  {
+    const authored={spec:'nexttavern_card',spec_version:'1.2',data:{name:'Metadata export',
+      cards:[{content:'SELF_UNCHANGED_PERSONA'}],worldbook:[],rules:{},
+      extensions:{RubyAnalyzer:{activePresetId:'first'}}},archive:{}}
+    const original=freezeNativeCardConversionV1(authored)
+    let document=materializeNativeCardConversionV1(original,{characters:[],assignments:original.units.map(unit=>({
+      sourceId:unit.id,startLine:1,endLine:unit.lineCount,target:'other',
+    }))})
+    const outputs=[]
+    const f=exportFixture(workspace,{
+      captureExportStartSource:()=>{
+        const snapshot=freezeNativeCardConversionV1(document)
+        return {sha256:hashBytes(JSON.stringify(snapshot.document)),conversionSnapshot:snapshot,
+          nativeAuthoring:true,assertCurrent(){}}
+      },
+      driveNativeConversion:async(_session,job)=>{
+        const output=await driveNativeCardConversionV1({snapshot:job.conversionSnapshot,
+          nativeAuthoring:job.nativeAuthoring,progress:async()=>{},checkpoint:async()=>{},
+          classify:async()=>{throw Error('unchanged author coordinates must not be reclassified')}})
+        outputs.push(output)
+        return {resourceId:'self-metadata-export-'+outputs.length}
+      },
+    })
+    const first=await f.workflows.beginCardWorkflow(f.session,'card-convert')
+    document=structuredClone(document)
+    document.data.extensions.RubyAnalyzer.activePresetId='second'
+    assert.equal(freezeNativeCardConversionV1(document).sourceSha256,original.sourceSha256)
+    await assert.rejects(f.workflows.beginCardWorkflow(f.session,'card-convert'),/不同来源版本/)
+    await f.workflows.resumeCardWorkflows(f.session)
+    assert.equal(outputs[0].data.extensions.RubyAnalyzer.activePresetId,'first')
+    const next=await f.workflows.beginCardWorkflow(f.session,'card-convert')
+    assert.notEqual(next.source.sha256,first.source.sha256)
+    await f.workflows.resumeCardWorkflows(f.session)
+    assert.equal(outputs[1].data.extensions.RubyAnalyzer.activePresetId,'second')
+    assert.deepEqual(outputs[1].classification,outputs[0].classification)
+    assert.equal(f.calls.resolve,0);assert.equal(f.calls.native,0)
+  }
+  console.log('independent-card-workflow=ok (policy conflict, authored/valid classification, stale classification, metadata identity, checkpoint/retry/cold, no story steering)')
 } finally {removeNativeDependencies?.();removeDependencies();rmSync(workspace,{recursive:true,force:true})}
