@@ -110,9 +110,11 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     const start=match?position(match[1]!):0,end=match?position(match[2]??match[1]!):-1
     const result=rows.filter(row=>!!match&&row.index>=Math.min(start,end)&&row.index<=Math.max(start,end)
       &&options.hide_state!=='hidden'&&(!options.role||options.role==='all'||row.role===options.role))
-      .map(row=>({message_id:row.index,role:row.role,message:row.message,is_hidden:false,
-        data:clone(messageData().forMessage(row).values),...options.include_swipes&&row.variants
-          ?{...clone(row.variants),swipes_data:clone(messageData().swipeData(row))}:{}}))
+      .map(row=>({message_id:row.index,role:row.role,is_hidden:false,
+        ...options.include_swipes&&row.variants
+          ?{swipe_id:row.variants.swipe_id,swipes:clone(row.variants.swipes),
+            swipes_data:clone(messageData().swipeData(row))}
+          :{message:row.message,data:clone(messageData().forMessage(row).values)}}))
     explicitScope=scope
     for(const object of messageObjects(result))if(object&&typeof object==='object')reads.set(object,scope)
     return result
@@ -121,13 +123,11 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     const scopes=new Set(messageObjects(rows).map(object=>object&&typeof object==='object'?reads.get(object):undefined)
       .filter(value=>value!==undefined))
     if(scopes.size>1)throw Error('AUTHOR_NATIVE_MIXED_READ_BASIS')
-    const body=messageData().normalizeBodyRows(rows),operation=body&&!body.message.variants?'message-body':'opening-variants',
-      selected=body?[{message_id:body.message_id,message:body.text}]:rows
-    const work=request(operation,{rows:selected,refresh:options.refresh??'affected'},scopes.values().next().value??explicitScope)
-    return operation==='message-body'?work.then(result=>{
+    return request('set-chat-messages',{rows,refresh:options.refresh??'affected'},
+      scopes.values().next().value??explicitScope).then(result=>{
       if(result.kind==='refused'||result.kind==='unknown')throw Error(result.code)
       return result
-    }):work
+    })
   }
   const variableWriters=createVariableWriters((options:any)=>{
     const type=options.type??'chat',readScope=scope

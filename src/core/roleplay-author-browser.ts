@@ -23,7 +23,8 @@ import type {AuthorBrowserPreparationFacts,BrowserGenerationOutput} from './role
 import type {AuthorInjectionCleanupV1} from 'dsh-nexttavern-session-format/author-injection-cleanup'
 import {createRoleplayAuthorBrowserGeneration} from './roleplay-author-browser-generation.js'
 import type {AuthorScriptResourceReaderV1} from './roleplay-author-script-resources.js'
-import type {AuthorNativeCommandRequestV1,AuthorNativeCommandResultV1} from './roleplay-author-commands.js'
+import type {AuthorNativeCommandRequestV1,AuthorNativeCommandResultV1,AuthorNativeCommandSourceControlsV1}
+  from './roleplay-author-commands.js'
 import type {PrepareAuthorNativeMvuHook} from './author-native-mvu-hook-types.js'
 import type {AuthorMessageBodyRequestV1,AuthorMessageEditInputV1,AuthorMessageEditResultV1}
   from './roleplay-author-message-edit-types.js'
@@ -67,7 +68,7 @@ interface Dependencies {
   generateRaw?(sid:string,program:AuthorNativeProgramV1,realm:AuthorNativeRealmV1,request:AuthorNativeGenerateRawRequestV1,
     current:()=>boolean,signal:AbortSignal):Promise<BrowserGeneratedTaskV2>
   commands?(sid:string,origin:string,request:AuthorNativeCommandRequestV1,current:()=>boolean,
-    signal:AbortSignal):Promise<AuthorNativeCommandResultV1>
+    signal:AbortSignal,controls?:AuthorNativeCommandSourceControlsV1):Promise<AuthorNativeCommandResultV1>
   /** The retained attachment supplies its admitted program and actual Source
    * lifetime. Production Core must connect the canonical key Core here. */
   mutateAuthorNamespace?(sid:string,program:AuthorNativeProgramV1,realm:AuthorNativeRealmV1,
@@ -167,7 +168,8 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     // These are the owning producers' existing identities. Polling an unchanged
     // cut must not manufacture a new write revision and stale an in-flight read.
     const identity=JSON.stringify([data.scopeFrame.frameSha256,data.ordinaryChat.root,data.ordinaryPublicationSeq,
-      data.worldbook?.dataSha256,data.personas?.dataSha256,data.readonlyPreset?.fingerprint,numerical.kind,numerical.canEdit,
+      data.worldbook?.dataSha256,data.personas?.dataSha256,data.readonlyPreset?.fingerprint,
+      data.messages[0]?.variants?.setSha256,numerical.kind,numerical.canEdit,
       'editBlockCode' in numerical?numerical.editBlockCode:'code' in numerical?numerical.code:undefined])
     if(value.lastSnapshot&&value.snapshotIdentity===identity
       &&value.lastSnapshot.avatarPaths?.user===data.avatarPaths?.user
@@ -329,12 +331,22 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     if(input.action==='execute-commands') {
       const realm=nativeRealm(value,input.realmId)
       if(!deps.commands)return {ok:false,code:'AUTHOR_NATIVE_COMMANDS_UNAVAILABLE'}
-      const sourceCurrent=originalSourceLifetime(value)
+      let sourceCurrent=originalSourceLifetime(value)
+      let publishedSnapshot:AuthorBrowserSnapshot|undefined
+      const capturePublication=value.generationQueue?.sourceDataFor(realm.realmId)
       const result=await deps.commands(session.id,
-        `helper:${value.program.programSha256}:${realm.realmId}`,input.request,sourceCurrent,signal)
+        `helper:${value.program.programSha256}:${realm.realmId}`,input.request,()=>sourceCurrent(),signal,{
+          writeCurrent:()=>!signal.aborted&&value.ownerCurrent(),
+          async published() {
+            publishedSnapshot=await adoptCommittedFacts(value,sourceCurrent,'source-data')
+            if(!publishedSnapshot)fail('BROWSER_ATTACHMENT_REVOKED')
+            sourceCurrent=originalSourceLifetime(value)
+          },
+          ...(capturePublication?{capturePublication}:{}),
+        })
       // Publication may invalidate old DATA. Its real receipt remains valid;
       // only the original live Source can adopt a successor for this realm.
-      try {const refreshed=await adoptCommittedFacts(value,sourceCurrent)
+      try {const refreshed=result.refreshRequired?await adoptCommittedFacts(value,sourceCurrent):publishedSnapshot
         return {ok:true,kind:'commands-executed',result,...refreshed?{snapshot:refreshed}:{}}
       }catch{return {ok:true,kind:'commands-executed',result}}
     }

@@ -26,11 +26,7 @@ export interface AuthorPromptOpeningFactsV1 {
   readonly ordinaryVariants?:null|{readonly variant_ids:readonly string[];readonly activeVariantId:string}
   /** Only the actual selected-card-copy owner supplies this association.
    * Generated prose and later message edits have no author-candidate swipes. */
-  readonly copiedCandidates:null|{
-    readonly source:'native-author-copy-opening-candidates-v1'
-    readonly swipes:readonly string[]
-    readonly swipe_id:number
-  }
+  readonly copiedCandidates:PromptCapturedMessageV1['variants']
 }
 
 /** Index identity DATA once; body versions and author swipe positions never

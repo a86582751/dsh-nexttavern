@@ -484,6 +484,7 @@ export function createRoleplayOpeningVariantCore(deps:Dependencies) {
             const snapshot=permission.capture.snapshot,first=snapshot.messages[0],origin=permission.capture.openingMessage
             if(snapshot.readRevision!==request.readRevision||snapshot.numerical.kind!=='schema-ready'
               ||snapshot.numerical.expected.stateSnapshotSha256!==basis.base.stateSnapshotSha256
+              ||first?.variants?.setSha256!==basis.publication.openingVariants?.setRef.sha256
               ||!first||first.messageId!==origin.messageId||first.messageVersionSha256!==origin.messageVersionSha256
               ||snapshot.messages.length!==1)fail('OPENING_VARIANT_READ_BASIS_CHANGED')
           }
@@ -522,7 +523,8 @@ export function createRoleplayOpeningVariantCore(deps:Dependencies) {
     if(!selected)return {swipes_data:initial.swipes.map((_text,index)=>index===initial.swipe_id
       ?{...variables,schema:'没有用别管这个'}:null),swipe_id:initial.swipe_id}
     const set=readSet(sid,selected.setRef)
-    return {swipes_data:initial.swipes.map((_text,index)=>set.entries.find(entry=>entry.index===index)?.pack??null),
+    return {setSha256:selected.setRef.sha256,
+      swipes_data:initial.swipes.map((_text,index)=>set.entries.find(entry=>entry.index===index)?.pack??null),
       swipe_id:set.entries.find(entry=>entry.id===selected.activeVariantId)!.index}
   }
   function readAddresses(sid:string,message:OpeningVariantMessageV1,selectedIndex:number) {

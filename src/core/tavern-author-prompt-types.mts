@@ -24,6 +24,7 @@ export interface PromptCapturedMessageV1 {
   readonly ordinary?:AuthorMessageOrdinaryV1
   readonly variants:null|{readonly source:'native-author-copy-opening-candidates-v1';
     readonly swipes:readonly string[];readonly swipe_id:number;
+    readonly setSha256?:string;
     readonly swipes_data?:readonly (MvuJsonObject|null)[]}
 }
 export interface PromptCaptureV1 {

@@ -191,7 +191,8 @@ export interface MvuSchemaStoryCoreDeps {
   authorChat?:CanonicalAuthorChatStateV1
   captureOrdinaryChatNamespace?(sid:string):{namespace:AuthorChatNamespaceV3;current():boolean}
   readOpeningVariantPacks?(sid:string,initial:{readonly swipes:readonly string[];readonly swipe_id:number},
-    variables:MvuJsonObject):{readonly swipes_data:readonly (MvuJsonObject|null)[];readonly swipe_id:number}
+    variables:MvuJsonObject):{readonly swipes_data:readonly (MvuJsonObject|null)[];readonly swipe_id:number;
+      readonly setSha256?:string}
   readOpeningVariantAddresses?(sid:string,message:OpeningVariantMessageV1,selectedIndex:number):{
     readonly variant_ids:readonly string[];readonly activeVariantId:string;readonly swipe_id:number}
   branch:Table
@@ -3791,7 +3792,14 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(!native?.scripts.some(script=>script.enabled))return {data,current,ordinaryMessageView}
     // Every helper callback consumes the same actual opening and ordinary
     // namespace cut. Its browser registry decides which events are registered.
-    const opening=captureAuthorOpening(view,frame,seq=>cut?cut.at(seq):raw()[seq])
+    // Generation callbacks retain this exact read after completion. Include
+    // the bank owner's current packs and identity, as the browser read does.
+    const openingFacts=captureAuthorOpening(view,frame,seq=>cut?cut.at(seq):raw()[seq]),
+      variables=frame.messages.find(row=>row.messageId===openingFacts.messageId)?.variables,
+      copied=openingFacts.copiedCandidates,
+      packs=copied&&variables?.kind==='available'
+        ?deps.readOpeningVariantPacks?.(sid,copied,variables.variables):undefined,
+      opening=packs?{...openingFacts,copiedCandidates:{...copied!,...packs}}:openingFacts
     ordinary=captureOrdinaryChat(sid,ordinaryChat,frame.messages,opening,seq=>scopeOwnerForSeq(facts,seq),frame.frameSha256)
     const context=view.frame.material.openingContext as {user:string;user_gender?:string},
       authorBrowserV3:AuthorBrowserPreparationFactsV3={program:native,opening,scopes:frame,

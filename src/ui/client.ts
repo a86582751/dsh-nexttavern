@@ -497,6 +497,7 @@ export function apply(ctx: ClientContext) {
             if (detail?.sessionId && detail.sessionId !== sessionId) return;
             if (detail?.action === 'configure-story-model') setTab('models')
             else if (detail?.action === 'configure-adaptation-model') setTab('card-adaptation')
+            else if (detail?.action === 'configure-ruby-analysis') setTab('ruby-analysis')
           }
           window.addEventListener(
             'dsh-roleplay-needs-config',
@@ -686,7 +687,8 @@ export function apply(ctx: ClientContext) {
       const detail = (event as CustomEvent).detail;
       if (detail?.forwarded || !detail?.sessionId) return;
       const requestedTab=detail.action==='configure-story-model'?'models'
-        :detail.action==='configure-adaptation-model'?'card-adaptation':null;
+        :detail.action==='configure-adaptation-model'?'card-adaptation'
+          :detail.action==='configure-ruby-analysis'?'ruby-analysis':null;
       if(!requestedTab)return;
       if (managerState.open) {
         managerState.requestedTab = requestedTab;

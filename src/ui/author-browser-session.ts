@@ -225,8 +225,12 @@ export function createAuthorBrowserSession(options:{
                 const reply=await transport({action:'execute-commands',binding:target,realmId:row.realmId,
                     request:{operationId:request.operationId,command:data.command}},_signal);
                 if(reply.kind!=='commands-executed')throw Error('AUTHOR_NATIVE_COMMAND_ACK_UNKNOWN');
-                adopt(reply.snapshot,expectedOwner);
-                return response(reply.result,row.realmId);
+                if(reply.snapshot||reply.result.refreshRequired||reply.result.steps.some(step=>
+                    step.kind==='ruby'&&step.sourceDataPublished))adopt(reply.snapshot,expectedOwner);
+                if(reply.result.steps.some(step=>step.kind==='ruby'&&step.action==='panel'))
+                    window.dispatchEvent(new CustomEvent('dsh-roleplay-needs-config',{
+                        detail:{sessionId:target.sessionId,action:'configure-ruby-analysis'}}));
+                return reply.snapshot?response(reply.result,row.realmId):{value:reply.result};
             }
             if(request.operation==='resource-read'){
                 const script=realmSnapshot(captured!,row.realmId).context?.script as any;
@@ -244,9 +248,11 @@ export function createAuthorBrowserSession(options:{
                 return {value:reply.value};
             }
             const basis=readBasis(request.readScope);
-            if(request.operation==='message-body'){
-                const selected=createAuthorNativeMessageVariables(basis.snapshot).normalizeBodyRows(data.rows);
-                if(!selected||selected.message.variants)throw Error('AUTHOR_NATIVE_MESSAGE_BODY_TARGET_UNAVAILABLE');
+            const messagePlan=request.operation==='set-chat-messages'
+                ?createAuthorNativeMessageVariables(basis.snapshot).planSetChatMessages(data.rows):undefined;
+            if(messagePlan?.kind==='unchanged')return response({kind:'unchanged',operationId:request.operationId},row.realmId);
+            if(messagePlan?.kind==='body'){
+                const selected=messagePlan;
                 const message=selected.message,wire:AuthorMessageBodyRequestV1={schemaVersion:1,
                     operationId:request.operationId,readRevision:basis.snapshot.readRevision,
                     expected:{sessionId:basis.snapshot.basis.sessionId,seq:message.nativeSeq!,messageId:message.messageId,
@@ -327,9 +333,9 @@ export function createAuthorBrowserSession(options:{
                 const warning=record(()=>store.recordPersona(envelope,result.reply.result));
                 adopt(result.reply.snapshot,expectedOwner);notify({...lastStatus,code:warning});return response(result.reply,row.realmId);
             }
-            if(request.operation==='opening-variants'){
+            if(messagePlan?.kind==='opening'){
                 const envelope=store.beginOpening(target,row.realmId,{operationId:request.operationId,
-                    readRevision:basis.snapshot.readRevision,rows:data.rows,refresh:data.refresh});notify();
+                    readRevision:basis.snapshot.readRevision,rows:[messagePlan.row],refresh:data.refresh});notify();
                 let result:Extract<AuthorBrowserReply,{kind:'opening-variants-mutated'}>;
                 try{const reply=await transport({action:'mutate-opening-variants',binding:target,realmId:row.realmId,
                     read:basis.read,request:envelope.request});

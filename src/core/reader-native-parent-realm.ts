@@ -37,7 +37,9 @@ function readerNativeParentBootstrap():void {
     for(const name of data.sdkGlobals??['getVariables','getAllVariables','getCurrentMessageId','getLastMessageId','getChatMessages','setChatMessages',
       'waitGlobalInitialized','getTavernRegexes','updateVariablesWith','replaceVariables','insertOrAssignVariables','insertVariables','deleteVariable',
       'triggerSlash','eventOn','eventOnce','eventMakeFirst','eventMakeLast','eventRemoveListener',
-      'eventEmit','eventEmitAndWait','errorCatched','SillyTavern','Mvu'])
+      'eventClearEvent','eventClearListener','eventClearAll','eventEmit','eventEmitAndWait',
+      'getLoadedPresetName','getPreset','getWorldbookNames','getCurrentCharPrimaryLorebook','getWorldbook','getCharWorldbookNames',
+      'errorCatched','SillyTavern','Mvu'])
       Object.defineProperty(realm,name,{configurable:true,get:()=>(frame.contentWindow as any)?.[name]})
     frame.addEventListener('load',()=>frame.contentWindow!.postMessage({op:'connect',channel},location.origin,[port]),{once:true})
     frame.srcdoc=data.html

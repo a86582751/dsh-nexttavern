@@ -60,7 +60,8 @@ export function createRoleplayAuthorBrowser(deps) {
         // These are the owning producers' existing identities. Polling an unchanged
         // cut must not manufacture a new write revision and stale an in-flight read.
         const identity = JSON.stringify([data.scopeFrame.frameSha256, data.ordinaryChat.root, data.ordinaryPublicationSeq,
-            data.worldbook?.dataSha256, data.personas?.dataSha256, data.readonlyPreset?.fingerprint, numerical.kind, numerical.canEdit,
+            data.worldbook?.dataSha256, data.personas?.dataSha256, data.readonlyPreset?.fingerprint,
+            data.messages[0]?.variants?.setSha256, numerical.kind, numerical.canEdit,
             'editBlockCode' in numerical ? numerical.editBlockCode : 'code' in numerical ? numerical.code : undefined]);
         if (value.lastSnapshot && value.snapshotIdentity === identity
             && value.lastSnapshot.avatarPaths?.user === data.avatarPaths?.user
@@ -247,12 +248,23 @@ export function createRoleplayAuthorBrowser(deps) {
             const realm = nativeRealm(value, input.realmId);
             if (!deps.commands)
                 return { ok: false, code: 'AUTHOR_NATIVE_COMMANDS_UNAVAILABLE' };
-            const sourceCurrent = originalSourceLifetime(value);
-            const result = await deps.commands(session.id, `helper:${value.program.programSha256}:${realm.realmId}`, input.request, sourceCurrent, signal);
+            let sourceCurrent = originalSourceLifetime(value);
+            let publishedSnapshot;
+            const capturePublication = value.generationQueue?.sourceDataFor(realm.realmId);
+            const result = await deps.commands(session.id, `helper:${value.program.programSha256}:${realm.realmId}`, input.request, () => sourceCurrent(), signal, {
+                writeCurrent: () => !signal.aborted && value.ownerCurrent(),
+                async published() {
+                    publishedSnapshot = await adoptCommittedFacts(value, sourceCurrent, 'source-data');
+                    if (!publishedSnapshot)
+                        fail('BROWSER_ATTACHMENT_REVOKED');
+                    sourceCurrent = originalSourceLifetime(value);
+                },
+                ...(capturePublication ? { capturePublication } : {}),
+            });
             // Publication may invalidate old DATA. Its real receipt remains valid;
             // only the original live Source can adopt a successor for this realm.
             try {
-                const refreshed = await adoptCommittedFacts(value, sourceCurrent);
+                const refreshed = result.refreshRequired ? await adoptCommittedFacts(value, sourceCurrent) : publishedSnapshot;
                 return { ok: true, kind: 'commands-executed', result, ...refreshed ? { snapshot: refreshed } : {} };
             }
             catch {

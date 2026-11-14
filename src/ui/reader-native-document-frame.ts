@@ -136,9 +136,11 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
     const first=position(match[1]),end=position(match[2]??match[1])
     const result=rows.filter((row:any)=>row.index>=Math.min(first,end)&&row.index<=Math.max(first,end)
       &&(!options.role||options.role==='all'||row.role===options.role)).map((row:any)=>({
-      message_id:row.index,role:row.role,message:row.message,is_hidden:false,data:clone(messageData().forMessage(row).values),
+      message_id:row.index,role:row.role,is_hidden:false,
       ...options.include_swipes&&row.variants
-        ?{...clone(row.variants),swipes_data:clone(messageData().swipeData(row))}:{}}))
+        ?{swipe_id:row.variants.swipe_id,swipes:clone(row.variants.swipes),
+          swipes_data:clone(messageData().swipeData(row))}
+        :{message:row.message,data:clone(messageData().forMessage(row).values)}}))
     lastExplicitReadScope=snapshotReadScope
     for(const object of messageObjects(result))if(object&&typeof object==='object')readScopes.set(object,snapshotReadScope)
     return result
@@ -148,11 +150,10 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
       .filter(scope=>scope!==undefined))
     if(scopes.size>1)throw Error('READER_MIXED_READ_BASIS')
     const readScope=scopes.values().next().value??lastExplicitReadScope
-    const body=messageData().normalizeBodyRows(rows),op=body&&!body.message.variants?'message-body':'opening-variants'
-    const reply:any=await request(op,{operationId:crypto.randomUUID(),
-      readScope,rows:body?[{message_id:body.message_id,message:body.text}]:rows,refresh:options.refresh??'affected'})
+    const reply:any=await request('set-chat-messages',{operationId:crypto.randomUUID(),
+      readScope,rows,refresh:options.refresh??'affected'})
     if(reply.result.kind!=='committed'&&reply.result.kind!=='unchanged')throw Error(reply.result.code)
-    if(op==='message-body')return reply.result
+    if(reply.mutationKind==='body'||reply.mutationKind==='unchanged')return reply.result
     if(reply.snapshot){snapshot=reply.snapshot;snapshotReadScope=reply.readScope;updateAvatarStyles()}
     else {active=false;events.dispose()}
   }
@@ -181,6 +182,9 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
   realm.eventMakeFirst=events.makeFirst
   realm.eventMakeLast=events.makeLast
   realm.eventRemoveListener=events.remove
+  realm.eventClearEvent=events.clearEvent
+  realm.eventClearListener=events.clearListener
+  realm.eventClearAll=events.clearAll
   realm.eventEmit=(name:string,...args:any[])=>emit(name,args)
   realm.eventEmitAndWait=(name:string,...args:any[])=>events.emitAndWait(name,args)
   realm.errorCatched=(fn:Function)=>(...args:any[])=>fn(...args)
@@ -205,7 +209,7 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
           operationId=ordinary&&(ordinary.kind==='committed'||ordinary.kind==='replayed')?entry.operationId
             :result?.kind==='committed'?result.operationId:result?.operation
             &&result.operation.outcome!=='unknown'?result.operation.operationId
-            :result?.steps?.at(-1)?.receipt.operationId
+            :result?.steps?.at(-1)?.receipt?.operationId
         if(operationId)queueMicrotask(()=>send({op:'receipt-observed',id:data.id,operationId}))
       }
     }
@@ -339,7 +343,7 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
         if(receipt?.operationId&&receipt.operationId===data.operationId){
           requestKeys.get(row.frame)!.delete(data.id);finishReceipt(key!,'observed')
         }
-      }else if(data.op==='opening-variants'||data.op==='message-body'||data.op==='mutate-namespace'
+      }else if(data.op==='set-chat-messages'||data.op==='mutate-namespace'
         ||data.op==='numerical-replace'||data.op==='execute-commands'){
         // Reuse the existing pending/ACK owner. The author cannot supply a
         // different document principal or promote worldbook output to writer.
@@ -359,6 +363,13 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
               throw Error('READER_NATIVE_WRITE_UNAVAILABLE')
             if(data.payload.readScope!==row.readScope)throw Error('READER_READ_BASIS_CHANGED')
             const {readScope:_scope,...request}=data.payload
+            const messagePlan=data.op==='set-chat-messages'
+              ?createAuthorNativeMessageVariables(row.snapshot).planSetChatMessages(request.rows):undefined
+            if(messagePlan?.kind==='unchanged'){
+              send(row,{op:'reply',id:data.id,payload:{result:{kind:'unchanged',operationId:request.operationId},
+                mutationKind:'unchanged'}})
+              keys!.delete(data.id);finishReceipt(key,'none');return
+            }
             let reply:ReaderOpeningVariantReplyV1|ReaderNumericalReplyV1|ReaderCommandReplyV1|ReaderMessageBodyReplyV1
               |ReaderOrdinaryNamespaceReplyV1,
               operationId:string|undefined
@@ -367,10 +378,9 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
               reply=await options.host.mutateNamespace(binding as ReaderRegexDocumentBindingV1,documentPlanSha256,
                 {...request,readRevision:row.readRevision},abort.signal)
               if(reply.reply.kind!=='no-update')operationId=request.operationId
-            }else if(data.op==='message-body') {
+            }else if(messagePlan?.kind==='body') {
               if(!options.host.mutateMessageBody)throw Error('READER_MESSAGE_BODY_WRITE_UNAVAILABLE')
-              const selected=createAuthorNativeMessageVariables(row.snapshot).normalizeBodyRows(request.rows)
-              if(!selected||selected.message.variants)throw Error('AUTHOR_NATIVE_MESSAGE_TARGET_UNAVAILABLE')
+              const selected=messagePlan
               const message=selected.message
               reply=await options.host.mutateMessageBody(binding as ReaderRegexDocumentBindingV1,documentPlanSha256,
                 {schemaVersion:1,operationId:request.operationId,readRevision:row.readRevision,
@@ -382,7 +392,10 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
               if(!options.host.executeCommands)throw Error('READER_NATIVE_COMMANDS_UNAVAILABLE')
               const commands=await options.host.executeCommands(binding as ReaderRegexDocumentBindingV1,
                 documentPlanSha256,{operationId:request.operationId,command:request.command},abort.signal)
-              reply=commands;operationId=commands.result.steps.at(-1)?.receipt.operationId
+              if(commands.result.steps.some(step=>step.kind==='ruby'&&step.action==='panel'))
+                window.dispatchEvent(new CustomEvent('dsh-roleplay-needs-config',{
+                  detail:{sessionId:binding.sessionId,action:'configure-ruby-analysis'}}))
+              reply=commands;operationId=commands.result.steps.at(-1)?.receipt?.operationId
             }else if(data.op==='numerical-replace') {
               if(!options.host.replaceNumerical)throw Error('READER_NUMERICAL_WRITE_UNAVAILABLE')
               const operation:MvuPlayerEditRequest={schemaVersion:1,sessionId:binding.sessionId,
@@ -395,7 +408,8 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
                 operationId=numerical.result.operation.operationId
             }else {
               const opening=await options.host.mutateOpeningVariants(binding as ReaderRegexDocumentBindingV1,documentPlanSha256,
-                {...request,readRevision:row.readRevision},abort.signal)
+                {...request,rows:messagePlan?.kind==='opening'?[messagePlan.row]:request.rows,
+                  readRevision:row.readRevision},abort.signal)
               reply=opening
               if(opening.result.kind==='committed')operationId=opening.result.operationId
             }
@@ -408,7 +422,7 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
               },settings.receiptObservationDeadlineMs??5000)
             }
             const readScope='snapshot' in reply&&reply.snapshot?adoptReadScope(row,reply.snapshot):undefined
-            send(row,{op:'reply',id:data.id,payload:{...reply,readScope}})
+            send(row,{op:'reply',id:data.id,payload:{...reply,readScope,mutationKind:messagePlan?.kind}})
             if(!operationId){keys!.delete(data.id);finishReceipt(key,'none')}
           }catch(error){
             if(receipt.operationId){
