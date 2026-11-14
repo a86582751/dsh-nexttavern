@@ -1,5 +1,5 @@
 import path from 'node:path'
-import {changedFiles, relativeFile} from './quality-context.mjs'
+import {changedFilesWithStatus, relativeFile} from './quality-context.mjs'
 import type {CheckContext, CheckModule, CheckPlan, CheckRequest, CheckTask} from './quality-types.mjs'
 
 function matches(value: string, pattern: string): boolean {
@@ -29,15 +29,19 @@ export function makePlan(context: CheckContext, request: CheckRequest): CheckPla
   }
   const command = request.command || 'changed'
   if (['changed', 'file', 'syntax', 'types'].includes(command)) {
+    const changes = !request.targets.length && command !== 'types' ? changedFilesWithStatus(context, request.base) : undefined
     result.files = request.targets.length ? request.targets.map(file => relativeFile(context, file))
-      : command === 'types' ? [] : changedFiles(context, request.base)
+      : changes?.files ?? []
     if (command === 'file' && !result.files.length) throw Error('file requires at least one path')
     if (command === 'types') {
       add('types', 'strict full project configuration; no files are written or packaged')
     } else if (command === 'syntax') {if (result.files.length) add('syntax', 'syntax only; not a type or behavior proof')}
     else for (const file of result.files) {
-      if (/\.(?:md|txt)$/.test(file)) {add('docs', file); continue}
       const artifact = context.mapping.artifacts.find(item => item.source === file || item.aliases?.includes(file))
+      // Retired paths have no current owner. Git supplies deletion evidence;
+      // explicit paths and all surviving changes still require registration.
+      if (!artifact && changes?.deletedFiles.has(file)) continue
+      if (/\.(?:md|txt)$/.test(file)) {add('docs', file); continue}
       const direct = artifact && context.registry.tasks.filter(task => task.artifact === artifact.id)
       if (direct?.length) {
         const heavy = direct.filter(task => task.heavy)
