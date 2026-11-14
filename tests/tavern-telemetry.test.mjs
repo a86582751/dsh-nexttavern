@@ -1,7 +1,6 @@
 import {after as afterNativeDependencies} from 'node:test'
 import assert from 'node:assert/strict'
 import {ownedPackages,installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
-import {loadChatCardSource} from './chat-card-controller-fixture.mts'
 import {createTestDirectory,cleanupTestDirectory} from '../src/operations/test-temp.mts'
 
 const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'])
@@ -18,11 +17,11 @@ class IdentityTable extends Map {
 // exercise the automatic consumer. The detached public parser remains the
 // reference for full-history output and final turn/step attribution.
 {
- const directory=createTestDirectory('telemetry-native-domain-'),native=await ownedPackages([],[],{localSession:true})
+ const directory=createTestDirectory('telemetry-native-domain-'),native=await ownedPackages([],[],{localSession:true,storageJson:'maintained'})
  const {Session,SessionId}=await native.load('@deepseek-ai/dsh-session')
  const {DomainFacility}=await native.load('@deepseek-ai/dsh-storage-domain')
  const {z}=await native.load('zod')
- const {JsonStorageBackend}=await loadChatCardSource('compat/storage-json/src/index.ts',directory,native.require)
+ const {JsonStorageBackend}=await native.load('dsh-nexttavern-native-storage-json')
  const backend=new JsonStorageBackend(directory+'/storage'),sessions=new Map(),prefixes=['tavern_job__','tavern_cardjob__','tavern_novel__']
  const input=createRoleplayInputStateOwner({domainName:'roleplay',session:id=>sessions.get(id),agent:()=>undefined,active:()=>true})
  const facility=new DomainFacility({storage:{backend:{get:()=>backend}},logger:{warn(){},error(){}},

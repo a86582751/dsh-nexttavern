@@ -386,7 +386,8 @@ for(const background of [false,true]) {
  assert.equal(admitted.length,1,'inline work publishes its durable admission before yielding')
  assert.equal(admitted[0].id,job.id);assert.equal(admitted[0].generation,job.generation);assert.equal(admitted[0].execution,'inline')
  assert.equal(children.length,0,'inline admission does not start a native child');assert.equal(resolves,1);assert.equal(taskAgents.get(session.id),agent)
- assert.equal(job.source.preparationId,'prep-one');assert.equal(job.source.events[0].hash,sha256('visible'))
+ assert.equal(job.source.preparationId,undefined,'notes bind completed history independently of foreground preparation')
+ assert.equal(job.source.inputPreparation,undefined);assert.equal(job.source.events[0].hash,sha256('visible'))
  assert.equal(branch.get(session.id+'__task-memory-resume').source.taskId,job.id)
  instruction='current instruction'
  await new Promise(resolve=>setTimeout(resolve,10))
@@ -395,7 +396,17 @@ for(const background of [false,true]) {
  assert.equal(resolves,1);assert.equal(host.tavernTasks.list(session).length,1,'prompt nonce does not change durable identity')
  agent.status='running'
  await branch.put(session.id+'__task-preparation',{id:'prep-two',sessionId:session.id,status:'preparing'})
- await assert.rejects(host.tavernTasks.submit({session,id:job.id,generation:job.generation,value:'notes'}),/过期|失效|stale|来源/)
+ await host.tavernTasks.submit({session,id:job.id,generation:job.generation,value:'notes'})
+ assert.equal(host.tavernTasks.list(session).find(task=>task.id===job.id).result,'notes',
+  'a newer foreground preparation does not revoke a notes result for unchanged completed history')
+ await assert.rejects(host.nativeTask({...first,user:'Another notes request for the captured history.'}),{code:'TAVERN_INLINE_PENDING'})
+ const pendingNotes=host.tavernTasks.list(session).find(task=>task.kind==='memory'&&task.id!==job.id)
+ assert.ok(pendingNotes)
+ const originalText=session.events[0].data.content[0].text
+ session.events[0].data.content[0].text='Changed completed story evidence'
+ await assert.rejects(host.tavernTasks.submit({session,id:pendingNotes.id,generation:pendingNotes.generation,value:'stale notes'}),
+  /过期|失效|stale|来源/,'changed history still invalidates the captured notes source')
+ session.events[0].data.content[0].text=originalText
  const resumeKey=session.id+'__task-memory-resume',saved=structuredClone(branch.get(resumeKey))
  maintenance.set(session.id,{kind:'notes',state:'waiting-main'})
  await assert.rejects(host.resumeMemoryWork(session,agent),/resume failed/)
