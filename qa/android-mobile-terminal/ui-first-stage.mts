@@ -1247,6 +1247,7 @@ async function configureAndIndexOnlineMemory(eventsFile:string):Promise<MemoryUi
   await pressManagerTab(['记忆']);
   // modeScope initializes to session; this flow never selects the global scope.
   await press(['B 语义 / Semantic']);
+  await observeSemanticModeControl('after-mode-click');
   const auto=await semanticPanelControl(['自动更新语义索引 / Auto-update semantic index'],
     node=>node.class==='android.widget.CheckBox');
   // Fresh profile defaults to indexing disabled; provider/mode writes do not enable it.
@@ -1264,16 +1265,46 @@ async function configureAndIndexOnlineMemory(eventsFile:string):Promise<MemoryUi
 /** The standard command row joins its fixed title `memory` and summary in
  * one Android TextView. Keep full JSON parsing; CSS ellipsis is not permission
  * to accept a truncated result, and an offscreen row must be publicly revealed. */
-function memoryResults(visibleOnly=true):{node:Node;result:Record<string,any>}[] {
-  const records=new Map<string,{node:Node;result:Record<string,any>}>();
+function parsedMemoryResults(visibleOnly=true):{node:Node;result:Record<string,any>;textLength:number}[] {
+  const records=new Map<string,{node:Node;result:Record<string,any>;textLength:number}>();
   for(const node of memoryTexts().filter(node=>!visibleOnly||visibleBounds(node))) {
     let text=node.text!.trim();
     if(text.startsWith('memory{'))text=text.slice('memory'.length);
     if(!text.startsWith('{'))continue;
     let value:Record<string,any>;try {value=JSON.parse(text)}catch{continue}
-    if(value.requestedMode==='semantic'&&Array.isArray(value.entries))records.set(text,{node,result:value});
+    if(value&&Array.isArray(value.entries))records.set(text,{node,result:value,textLength:node.text!.length});
   }
   return [...records.values()];
+}
+function memoryResults(visibleOnly=true):{node:Node;result:Record<string,any>}[] {
+  return parsedMemoryResults(visibleOnly).filter(({result})=>result.requestedMode==='semantic');
+}
+let memoryCommandEmbeddingBaseline:number|null=null;
+/** Only allowlisted modes and aggregate counts leave the synthetic UI reader. */
+function memoryCommandFailureFacts():Record<string,unknown> {
+  const mode=(value:unknown)=>value===undefined?null:
+    ['keyword','semantic','hybrid'].includes(value as string)?value:'unrecognized';
+  const parsed=parsedMemoryResults(false);
+  return {parsedResultCount:parsed.length,results:parsed.slice(0,4).map(({result,textLength})=>({
+    mode:mode(result.mode),requestedMode:mode(result.requestedMode),
+    fallbackPresent:Object.hasOwn(result,'fallback'),entriesCount:result.entries.length,textLength,
+  })),freshEmbeddingHttpCompletions:memoryCommandEmbeddingBaseline===null?null:
+    completedMemoryAfter(fixtureEvents,memoryCommandEmbeddingBaseline).length};
+}
+/** Read the observed mode control only; missing AX selection metadata is not a failure. */
+async function observeSemanticModeControl(moment:'after-mode-click'|'after-restart'):Promise<void> {
+  let matches:Node[]=[];
+  await until(()=>{
+    matches=current.filter(node=>node.package===pkg&&inWebView(node)
+      &&named(node,['B 语义 / Semantic'])&&button(node));
+    requireUi(matches.length<=1,'MEMORY_MODE_READBACK_NOT_UNIQUE');
+    return matches.length===1;
+  },30,'MEMORY_MODE_READBACK_NOT_EXPOSED');
+  const node=matches[0],flag=(name:string)=>node[name]==='true'?true:node[name]==='false'?false:null;
+  emit('observed',{interaction:'memory-mode-control-readback',moment,
+    class:/^android\.(?:widget|view)\.[A-Za-z]+$/.test(node.class)?node.class:'unrecognized',
+    checked:flag('checked'),selected:flag('selected'),enabled:flag('enabled'),
+    busyOrDataPending:node.enabled==='false',selectionQualified:false});
 }
 /** Run ONLY once and AFTER existing card/chat/paced gates, in a fresh task profile.
  * This is the FIRST memory search in that scripted profile, deliberately after
@@ -1287,7 +1318,11 @@ async function onlineMemoryRestartAndRecall(eventsFile:string,expectedSource=fix
   ensureMemoryFixtureLoopback();
   await reopenNamedConversation();
   if(memoryOnly)await requireMemorySeedConversation();else await requirePersistedConversation();
-  await openEmbeddingMemoryPanel();const after=await observeOnlineMemoryIndex();
+  await openManager();await pressManagerTab(['记忆']);
+  await observeSemanticModeControl('after-restart');
+  await pressManagerTab(['Embedding 模型设置']);
+  await until(()=>has(['新增接入 / New provider']),30,'EMBEDDING_PANEL_NOT_EXPOSED');
+  const after=await observeOnlineMemoryIndex();
   requireUi(after.fingerprintPrefix===before.fingerprintPrefix&&after.vectors===before.vectors
     &&after.sources===before.sources&&after.covered===before.covered,'MEMORY_INDEX_OR_FINGERPRINT_PREFIX_CHANGED_ON_REOPEN');
   // Do not reapply mode/index flags: fresh semantic query proves effective saved mode.
@@ -1295,6 +1330,7 @@ async function onlineMemoryRestartAndRecall(eventsFile:string,expectedSource=fix
   await closeWebDialog();await hideSidebar();await readySnapshot();
   requireUi(memoryResults(false).length===0,'FIRST_MEMORY_SEARCH_PRECONDITION_NOT_MET');
   const embeddingBaseline=maxMemoryFixture(eventsFile),chatBaseline=maxFixtureRequest(eventsFile);
+  memoryCommandEmbeddingBaseline=embeddingBaseline;
   stage='fresh-semantic-memory-slash-after-restart';
   const composers=current.filter(node=>node.package===pkg&&node.class==='android.widget.EditText'
     &&inWebView(node)&&node.enabled!=='false'&&visibleBounds(node));
@@ -1411,6 +1447,10 @@ try {
   }
 }catch(error) {
   const failedWait=waitReceipt(),failedSnapshot=lastSnapshotReceipt();
+  if(stage==='fresh-semantic-memory-slash-after-restart') {
+    try{emit('observed',{interaction:'memory-command-failure-state',...memoryCommandFailureFacts()})}
+    catch{/* Diagnostics must not replace the original UI failure. */}
+  }
   // Replace the same approved form PNG only before any API key was entered.
   // It may contain the fixed synthetic route/loopback URL, never credentials.
   if(stage==='create-fixture-provider'&&!providerKeyInputStarted) {
