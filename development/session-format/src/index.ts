@@ -4,7 +4,8 @@ import type {Session, SessionEvent, SessionSeq} from 'dsh-nexttavern-native-sess
 import {foldSurface} from 'dsh-nexttavern-native-session/surface'
 import {MESSAGE_EDIT_EVENT, assertMessageEdit, editMessageText, messageEditProjection,
   type MessageEdit,type MessageEditOperationV1} from './projection.js'
-export type {MessageEditOperationV1,ReaderMessageEditOriginV1} from './projection.js'
+export type {MessageEditOperationV1,ReaderMessageEditOriginV1,ReaderRegexProducerV1,MessageEditPatchV3,
+  MessageEditOrdinaryReplacementV3} from './projection.js'
 import {mvuPlayerMarkers} from './mvu-player-marker.js'
 import {mvuSchemaMarkers} from './mvu-schema-marker.js'
 import {authorInjectionCleanupMarkers,authorInjectionDeclarationMarkers} from './author-injection-cleanup.js'
@@ -91,8 +92,12 @@ export function appendMessageEdit(
   text: string,
   sourceMaterial?:MessageSourceMaterialV1,
   operation?:MessageEditOperationV1,
+  patch?:import('./projection.js').MessageEditPatchV3,
+  bodyChanged=true,
 ): SessionEvent<'roleplay/message-edit'> {
   const metadata=operation?{operation}:{}
+  if(patch)return session.append(MESSAGE_EDIT_EVENT,{schemaVersion:3,targetSeq,...identity,text,patch,bodyChanged,
+    ...sourceMaterial?{sourceMaterial}:{},...metadata})
   if(sourceMaterial) {
     return session.append(MESSAGE_EDIT_EVENT,{schemaVersion:2,targetSeq,...identity,text,sourceMaterial,...metadata})
   }

@@ -6,6 +6,9 @@ import {deepFreeze} from '@deepseek-ai/dsh-util-values'
 
 export const MESSAGE_EDIT_EVENT = 'roleplay/message-edit'
 
+export type ReaderRegexProducerV1={schemaVersion:1;kind:'preset';id:string;policyFingerprint:string}
+  |{schemaVersion:1;kind:'regex-library';id:string;policyFingerprint:string;
+    binding:{scope:'global'|'conversation'|'preset';id:string|null}}
 export interface ReaderMessageEditOriginV1 {
   principal:'reader-regex-document'
   sourceRecordSessionId:string
@@ -15,6 +18,7 @@ export interface ReaderMessageEditOriginV1 {
   htmlSha256:string
   htmlSpan:{start:number;end:number}
   carrier:{seq:number;messageId:string}
+  producer?:ReaderRegexProducerV1
 }
 export interface MessageEditOperationV1 {
   schemaVersion:1
@@ -38,7 +42,34 @@ export interface MessageEditV2 extends Omit<MessageEditV1,'schemaVersion'> {
   schemaVersion:2
   sourceMaterial:MessageSourceMaterialV1
 }
-export type MessageEdit=MessageEditV1|MessageEditV2
+export type MessageEditJsonValue=string|number|boolean|null|MessageEditJsonValue[]|{[key:string]:MessageEditJsonValue}
+export interface MessageEditOrdinaryReplacementV3 {
+  readonly namespace:{readonly schemaVersion:3;readonly sessionId:string;
+    readonly importIncarnation:{readonly sourceRecordSessionId:string;readonly importId:string;
+      readonly transactionId:string;readonly activationSha256:string}|null;
+    readonly target:{readonly kind:'message';readonly identity:{readonly ownerSessionId:string;
+      readonly nativeSeq:number;readonly messageId:string;
+      readonly variant:{readonly kind:'native-canonical'}|{readonly kind:'opening-variant';readonly id:string}}}}
+  readonly previous:{readonly key:string;readonly sha256:string}|null
+  readonly fenceRoot:{readonly namespace:MessageEditOrdinaryReplacementV3['namespace'];
+    readonly head:{readonly key:string;readonly sha256:string}|null;
+    readonly base:{readonly key:string;readonly sha256:string}|null}
+  readonly variables:Readonly<Record<string,MessageEditJsonValue>>
+}
+/** One accepted Native cut carries all fields of a selected-page mutation. */
+export interface MessageEditPatchV3 {
+  readonly variant?:{readonly kind:'native-canonical'}|{readonly kind:'opening-variant';readonly id:string}
+  readonly metadata?:{readonly name?:string;readonly is_hidden?:boolean}
+  readonly extra?:Readonly<Record<string,MessageEditJsonValue>>
+  readonly ordinary?:MessageEditOrdinaryReplacementV3
+}
+export interface MessageEditV3 extends Omit<MessageEditV1,'schemaVersion'> {
+  schemaVersion:3
+  bodyChanged:boolean
+  patch:MessageEditPatchV3
+  sourceMaterial?:MessageSourceMaterialV1
+}
+export type MessageEdit=MessageEditV1|MessageEditV2|MessageEditV3
 
 declare module 'dsh-nexttavern-native-session/types' {
   interface SessionEventMap {
@@ -51,14 +82,35 @@ declare module 'dsh-nexttavern-native-session/types' {
 export function assertMessageEdit(value: unknown): asserts value is MessageEdit {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw Error('Invalid message edit payload')
   const data = value as Record<string, unknown>
-  const material=data['sourceMaterial'] as MessageSourceMaterialV1|undefined,version2=data.schemaVersion===2
-  const fields=Object.keys(data).filter(key=>key!=='operation').sort().join(',')
+  const material=data['sourceMaterial'] as MessageSourceMaterialV1|undefined,version2=data.schemaVersion===2,
+    version3=data.schemaVersion===3
+  const fields=Object.keys(data).filter(key=>key!=='operation'
+    &&!(version3&&['patch','sourceMaterial','bodyChanged'].includes(key))).sort().join(',')
   if (fields !== (version2?'messageId,role,schemaVersion,sourceMaterial,targetSeq,text'
     :'messageId,role,schemaVersion,targetSeq,text')
-    || data.schemaVersion !== 1&&!version2 || !Number.isSafeInteger(data.targetSeq) || Number(data.targetSeq) < 0
+    || data.schemaVersion !== 1&&!version2&&!version3 || !Number.isSafeInteger(data.targetSeq) || Number(data.targetSeq) < 0
     || Object.is(data.targetSeq, -0) || typeof data.messageId !== 'string' || data.messageId.length === 0
     || (data.role !== 'assistant' && data.role !== 'user') || typeof data.text !== 'string'
     || data.text.length > 1_000_000) throw Error('Unsupported or malformed message edit')
+  if(version3) {
+    const patch=data.patch as MessageEditPatchV3|undefined,object=(value:unknown)=>
+      !!value&&typeof value==='object'&&!Array.isArray(value)
+    if(typeof data.bodyChanged!=='boolean'||!object(patch)||Object.keys(patch!).some(key=>!['variant','metadata','extra','ordinary'].includes(key))
+      ||patch!.metadata!==undefined&&(!object(patch!.metadata)
+        ||Object.keys(patch!.metadata).some(key=>!['name','is_hidden'].includes(key))
+        ||patch!.metadata.name!==undefined&&typeof patch!.metadata.name!=='string'
+        ||patch!.metadata.is_hidden!==undefined&&typeof patch!.metadata.is_hidden!=='boolean')
+      ||patch!.extra!==undefined&&!object(patch!.extra)
+      ||patch!.variant!==undefined&&(patch!.variant.kind!=='native-canonical'
+        &&(patch!.variant.kind!=='opening-variant'||typeof patch!.variant.id!=='string'||!patch!.variant.id)))
+      throw Error('Invalid message edit patch')
+    const ordinary=patch!.ordinary
+    if(ordinary!==undefined&&(!object(ordinary)||!object(ordinary.namespace)||ordinary.namespace.schemaVersion!==3
+      ||ordinary.namespace.target?.kind!=='message'||ordinary.namespace.target.identity.nativeSeq!==data.targetSeq
+      ||ordinary.namespace.target.identity.messageId!==data.messageId||!object(ordinary.fenceRoot)
+      ||!object(ordinary.variables)||Object.hasOwn(ordinary.variables,'stat_data')))
+      throw Error('Invalid message edit ordinary replacement')
+  }
   if(Object.hasOwn(data,'operation')) {
     const operation=data.operation as MessageEditOperationV1|undefined,origin=operation?.origin,
       hash=(value:unknown)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value),
@@ -83,7 +135,7 @@ export function assertMessageEdit(value: unknown): asserts value is MessageEdit 
     }else if(Object.keys(origin).sort().join(',')!=='groupId,importId,rawSha256,realmId,sourceRecordSessionId'
       ||!name(origin.realmId)||!name(origin.groupId))throw Error('Unsupported or malformed message edit operation')
   }
-  if(version2&&(!material||typeof material!=='object'||Array.isArray(material)
+  if((version2||version3&&material!==undefined)&&(!material||typeof material!=='object'||Array.isArray(material)
     ||Object.keys(material).sort().join(',')!=='effectiveContentSha256,encoding,producerReceipt,rawSource,schemaVersion'
     ||material.schemaVersion!==1||material.encoding!=='native-message-source-material-v1'
     ||!Array.isArray(material.rawSource)||typeof material.effectiveContentSha256!=='string'
@@ -97,6 +149,14 @@ export function assertMessageEdit(value: unknown): asserts value is MessageEdit 
 export function editMessageText(message: Message, edit: MessageEdit): Message {
   if (message.role !== edit.role || message.id !== edit.messageId) throw Error('Message edit identity mismatch')
   if (message.role !== 'assistant' && message.role !== 'user') throw Error('Message is not editable')
+  const patch=edit.schemaVersion===3?edit.patch:undefined
+  const previous=message.authorMetadata
+  const extra=patch?.extra===undefined?{}:patch.variant?.kind==='opening-variant'
+    ?{variantExtras:{...previous?.variantExtras,[patch.variant.id]:patch.extra}}:{extra:patch.extra}
+  const authorMetadata=patch?.metadata||patch?.extra!==undefined
+    ?{...previous,...patch.metadata,...extra}:previous
+  if(edit.schemaVersion===3&&!edit.bodyChanged)
+    return deepFreeze({...message,...authorMetadata?{authorMetadata}:{}})
   const content: Array<(typeof message.content)[number]> = []
   let inserted = false
   for (const block of message.content) {
@@ -108,7 +168,8 @@ export function editMessageText(message: Message, edit: MessageEdit): Message {
   }
   if (!inserted) content.unshift({type: 'text', text: edit.text})
   const {sourceMaterial:_previousMaterial,...original}=message
-  return deepFreeze({...original,content,...edit.schemaVersion===2?{sourceMaterial:edit.sourceMaterial}:{}})
+  return deepFreeze({...original,content,...authorMetadata?{authorMetadata}:{},
+    ...edit.schemaVersion===2||edit.schemaVersion===3&&edit.sourceMaterial?{sourceMaterial:edit.sourceMaterial}:{}})
 }
 
 export const messageEditProjection: SessionMessageProjection<'roleplay/message-edit'> = {

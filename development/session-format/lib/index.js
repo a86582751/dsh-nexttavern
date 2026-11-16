@@ -42,8 +42,11 @@ export function projectMessageEditPrefix(events) {
     };
 }
 /** Append a required edit synchronously; callers own branch locks and derived-state invalidation. */
-export function appendMessageEdit(session, targetSeq, identity, text, sourceMaterial, operation) {
+export function appendMessageEdit(session, targetSeq, identity, text, sourceMaterial, operation, patch, bodyChanged = true) {
     const metadata = operation ? { operation } : {};
+    if (patch)
+        return session.append(MESSAGE_EDIT_EVENT, { schemaVersion: 3, targetSeq, ...identity, text, patch, bodyChanged,
+            ...sourceMaterial ? { sourceMaterial } : {}, ...metadata });
     if (sourceMaterial) {
         return session.append(MESSAGE_EDIT_EVENT, { schemaVersion: 2, targetSeq, ...identity, text, sourceMaterial, ...metadata });
     }

@@ -7,15 +7,34 @@ export function assertMessageEdit(value) {
     if (typeof value !== 'object' || value === null || Array.isArray(value))
         throw Error('Invalid message edit payload');
     const data = value;
-    const material = data['sourceMaterial'], version2 = data.schemaVersion === 2;
-    const fields = Object.keys(data).filter(key => key !== 'operation').sort().join(',');
+    const material = data['sourceMaterial'], version2 = data.schemaVersion === 2, version3 = data.schemaVersion === 3;
+    const fields = Object.keys(data).filter(key => key !== 'operation'
+        && !(version3 && ['patch', 'sourceMaterial', 'bodyChanged'].includes(key))).sort().join(',');
     if (fields !== (version2 ? 'messageId,role,schemaVersion,sourceMaterial,targetSeq,text'
         : 'messageId,role,schemaVersion,targetSeq,text')
-        || data.schemaVersion !== 1 && !version2 || !Number.isSafeInteger(data.targetSeq) || Number(data.targetSeq) < 0
+        || data.schemaVersion !== 1 && !version2 && !version3 || !Number.isSafeInteger(data.targetSeq) || Number(data.targetSeq) < 0
         || Object.is(data.targetSeq, -0) || typeof data.messageId !== 'string' || data.messageId.length === 0
         || (data.role !== 'assistant' && data.role !== 'user') || typeof data.text !== 'string'
         || data.text.length > 1_000_000)
         throw Error('Unsupported or malformed message edit');
+    if (version3) {
+        const patch = data.patch, object = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
+        if (typeof data.bodyChanged !== 'boolean' || !object(patch) || Object.keys(patch).some(key => !['variant', 'metadata', 'extra', 'ordinary'].includes(key))
+            || patch.metadata !== undefined && (!object(patch.metadata)
+                || Object.keys(patch.metadata).some(key => !['name', 'is_hidden'].includes(key))
+                || patch.metadata.name !== undefined && typeof patch.metadata.name !== 'string'
+                || patch.metadata.is_hidden !== undefined && typeof patch.metadata.is_hidden !== 'boolean')
+            || patch.extra !== undefined && !object(patch.extra)
+            || patch.variant !== undefined && (patch.variant.kind !== 'native-canonical'
+                && (patch.variant.kind !== 'opening-variant' || typeof patch.variant.id !== 'string' || !patch.variant.id)))
+            throw Error('Invalid message edit patch');
+        const ordinary = patch.ordinary;
+        if (ordinary !== undefined && (!object(ordinary) || !object(ordinary.namespace) || ordinary.namespace.schemaVersion !== 3
+            || ordinary.namespace.target?.kind !== 'message' || ordinary.namespace.target.identity.nativeSeq !== data.targetSeq
+            || ordinary.namespace.target.identity.messageId !== data.messageId || !object(ordinary.fenceRoot)
+            || !object(ordinary.variables) || Object.hasOwn(ordinary.variables, 'stat_data')))
+            throw Error('Invalid message edit ordinary replacement');
+    }
     if (Object.hasOwn(data, 'operation')) {
         const operation = data.operation, origin = operation?.origin, hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value), name = (value) => typeof value === 'string' && value.length > 0;
         if (!operation || typeof operation !== 'object' || Array.isArray(operation)
@@ -40,7 +59,7 @@ export function assertMessageEdit(value) {
             || !name(origin.realmId) || !name(origin.groupId))
             throw Error('Unsupported or malformed message edit operation');
     }
-    if (version2 && (!material || typeof material !== 'object' || Array.isArray(material)
+    if ((version2 || version3 && material !== undefined) && (!material || typeof material !== 'object' || Array.isArray(material)
         || Object.keys(material).sort().join(',') !== 'effectiveContentSha256,encoding,producerReceipt,rawSource,schemaVersion'
         || material.schemaVersion !== 1 || material.encoding !== 'native-message-source-material-v1'
         || !Array.isArray(material.rawSource) || typeof material.effectiveContentSha256 !== 'string'
@@ -55,6 +74,14 @@ export function editMessageText(message, edit) {
         throw Error('Message edit identity mismatch');
     if (message.role !== 'assistant' && message.role !== 'user')
         throw Error('Message is not editable');
+    const patch = edit.schemaVersion === 3 ? edit.patch : undefined;
+    const previous = message.authorMetadata;
+    const extra = patch?.extra === undefined ? {} : patch.variant?.kind === 'opening-variant'
+        ? { variantExtras: { ...previous?.variantExtras, [patch.variant.id]: patch.extra } } : { extra: patch.extra };
+    const authorMetadata = patch?.metadata || patch?.extra !== undefined
+        ? { ...previous, ...patch.metadata, ...extra } : previous;
+    if (edit.schemaVersion === 3 && !edit.bodyChanged)
+        return deepFreeze({ ...message, ...authorMetadata ? { authorMetadata } : {} });
     const content = [];
     let inserted = false;
     for (const block of message.content) {
@@ -68,7 +95,8 @@ export function editMessageText(message, edit) {
     if (!inserted)
         content.unshift({ type: 'text', text: edit.text });
     const { sourceMaterial: _previousMaterial, ...original } = message;
-    return deepFreeze({ ...original, content, ...edit.schemaVersion === 2 ? { sourceMaterial: edit.sourceMaterial } : {} });
+    return deepFreeze({ ...original, content, ...authorMetadata ? { authorMetadata } : {},
+        ...edit.schemaVersion === 2 || edit.schemaVersion === 3 && edit.sourceMaterial ? { sourceMaterial: edit.sourceMaterial } : {} });
 }
 export const messageEditProjection = {
     type: MESSAGE_EDIT_EVENT,

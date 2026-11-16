@@ -578,7 +578,7 @@ export class Session {
             if (!event)
                 throw Error('SESSION_REQUEST_PREVIEW_SURFACE');
             const message = this.deriveEventMessage(event);
-            if (message)
+            if (message && message.authorMetadata?.is_hidden !== true)
                 messageNodes.push({ seq, message });
         }
         if (messageNodes.length > 4096)

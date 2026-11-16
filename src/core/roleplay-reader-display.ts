@@ -15,6 +15,7 @@ import {eventsOf,surfaceEntries} from './roleplay-context.js'
 import type {ContextMessage,ContextSession} from './roleplay-context.js'
 import type {WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {RoleplayInputStateOwner} from './roleplay-input-state.js'
+import type {Message} from 'dsh-nexttavern-native-llm'
 import type {createRoleplayTavernLoreSourceV1} from './roleplay-tavern-lore-source.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
@@ -211,10 +212,13 @@ export function capturePlainReaderDocumentFacts(read:ReaderDocumentSourceRead,
     messages=entries.slice(start).map((entry,index)=>{
       const event=events[entry.seq]!,message=(session.deriveEventMessage?.(event)
         ??(entry.kind==='assistant'?event.data?.message:event.data)) as ContextMessage
-      const ownerSessionId=ordinary.nativeOwnerForSeq(entry.seq),
+      const ownerSessionId=ordinary.nativeOwnerForSeq(entry.seq),metadata=message.authorMetadata as Message['authorMetadata'],
         raw=read.selectedMessageFacts?.(message),version=raw?.messageVersionSha256??recordSha256(message)
       return {index,ownerSessionId,nativeSeq:entry.seq,messageId:entry.messageId,
         messageVersionSha256:version,role:entry.kind,
+        ...metadata?.name!==undefined?{name:metadata.name}:{},
+        ...metadata?.is_hidden!==undefined?{is_hidden:metadata.is_hidden}:{},
+        ...metadata?.extra?{extra:metadata.extra as AuthorMessageMetadataV1['extra']}:{},
         message:raw?.text??textOf(message.content),variables,
         variants:entry.messageId===opening.messageId&&version===originalOpeningVersion?opening.copiedCandidates??null:null}
     }),

@@ -647,7 +647,8 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                             const history = 'fullHistory' in chatClock ? chatClock.fullHistory() : chatClock, names = source.current.openingContext.context;
                             context = { user: names.user, char: names.char, messages: history.scanRows.map(row => ({
                                     messageId: row.id, role: row.role, content: row.text, mes: row.text, is_user: row.role === 'user',
-                                    name: row.role === 'user' ? names.user : names.char
+                                    name: row.authorMetadata?.name ?? (row.role === 'user' ? names.user : names.char),
+                                    is_hidden: row.authorMetadata?.is_hidden ?? false, extra: row.authorMetadata?.extra ?? {}
                                 })) };
                         }
                         return context;
@@ -715,10 +716,11 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
             if (typeof context.user !== 'string' || typeof context.char !== 'string')
                 fail('INPUT_MATERIAL_OPENING_NAMES_UNAVAILABLE');
             const scanDepth = Math.max(settings.scanDepth, settings.minimumActivations > 0
-                ? settings.minimumActivationDepthMax > 0 ? settings.minimumActivationDepthMax + 1 : 1000 : 0, ...compilation.plan.entries.map(entry => entry.semanticOverrides.scanDepth ?? 0)), scanRows = 'recentScanRows' in chatClock ? chatClock.recentScanRows(Math.min(1000, scanDepth)) : chatClock.scanRows, visibleMessages = [...scanRows].reverse().map(row => {
+                ? settings.minimumActivationDepthMax > 0 ? settings.minimumActivationDepthMax + 1 : 1000 : 0, ...compilation.plan.entries.map(entry => entry.semanticOverrides.scanDepth ?? 0)), scanRows = 'recentScanRows' in chatClock ? chatClock.recentScanRows(Math.min(1000, scanDepth)) : chatClock.scanRows, visibleMessages = [...scanRows].reverse()
+                .filter(row => row.authorMetadata?.is_hidden !== true).map(row => {
                 if (row.role !== 'user' && row.role !== 'assistant')
                     fail('INPUT_MATERIAL_STORY_ROLE_CHANGED');
-                const text = row.text, speakerName = row.role === 'user' ? context.user : context.char, scanText = settings.includeNames ? `${speakerName}: ${text}` : text;
+                const text = row.text, speakerName = row.authorMetadata?.name ?? (row.role === 'user' ? context.user : context.char), scanText = settings.includeNames ? `${speakerName}: ${text}` : text;
                 return { messageId: row.id, versionSha256: row.messageSha256, role: row.role, speakerName, text, textSha256: sha256(text),
                     scanPolicy: 'owner-captured-st-message-string-v1', scanText, scanTextSha256: sha256(scanText) };
             });
