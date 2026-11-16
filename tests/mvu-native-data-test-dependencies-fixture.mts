@@ -19,7 +19,7 @@ export async function installMvuNativeDataTestDependencies() {
       opening=fileURLToPath(new URL('../development/agent-loop/src/opening-record-hashes.ts',import.meta.url)),
       material=fileURLToPath(new URL('../development/agent-loop/src/request-material.ts',import.meta.url)),
       surface=fileURLToPath(new URL('../development/session/src/surface.ts',import.meta.url)),
-      generationEffects=fileURLToPath(new URL('../compat/session-format/src/author-generation-effects.ts',import.meta.url)),
+      generationEffects=fileURLToPath(new URL('../development/session-format/src/author-generation-effects.ts',import.meta.url)),
       peer=path.join(directory,'native-pure-data.mjs'),
       generatedCore=new URL('../lib/core/',import.meta.url).href
     const result=await build({stdin:{contents:[
