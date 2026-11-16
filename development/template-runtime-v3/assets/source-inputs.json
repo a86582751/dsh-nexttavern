@@ -24,7 +24,7 @@
       {
         "artifact": "roleplay-record-json-typescript",
         "path": "src/core/roleplay-record-json.ts",
-        "sha256": "cacc74ab3281dd0fc2507d8be80d364111e9be5f466a75480f36f21c8a803a7d"
+        "sha256": "0e28cf1af82e289af0fbf2cc5b5da4520381f394ff2ddd794c76b0ed2c84f444"
       },
       {
         "artifact": "roleplay-userinfo-typescript",
@@ -81,7 +81,7 @@
       {
         "artifact": "roleplay-record-json-typescript",
         "path": "src/core/roleplay-record-json.ts",
-        "sha256": "cacc74ab3281dd0fc2507d8be80d364111e9be5f466a75480f36f21c8a803a7d"
+        "sha256": "0e28cf1af82e289af0fbf2cc5b5da4520381f394ff2ddd794c76b0ed2c84f444"
       },
       {
         "artifact": "roleplay-userinfo-typescript",
