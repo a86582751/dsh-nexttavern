@@ -3850,6 +3850,12 @@ export async function apply(ctx, config = {}) {
                 return typeof id === 'string' && mvuOpening.hasSchemaOpening(id) ? mvuOpening.submitSchemaPlayer(input) : mvuPlayer.submit(input);
             } }, observe: observeNumericalState });
     const authorDialogContent = createRoleplayAuthorDialogContentV1({ inputState, branch: T.branch,
+        worldbookVector, namedWorldInfo: ejsNamedWorldInfo, prepareAuthorDialogRoute,
+        presets: communityPresets, variables: communityVariables, authorChat: authorChatState, ejsPrograms,
+        persona: communityAccountPersona,
+        executeNativeFilter: executeAuthorFilter,
+        retireNativeFilters: retireNativeFilterReferences,
+        books: authorContext, forkBookId: authorContext.forkBookId,
         captureStoryText,
         captureContentExecution: (id, plan) => {
             const captured = rubyOwner?.snapshot(id);
@@ -3858,8 +3864,10 @@ export async function apply(ctx, config = {}) {
         },
         source: tavernSource, edits: tavernLoreEdits, session: id => ctx.sessions.get(id),
         projections: () => ctx.sessions.messageProjections, schemaScopes: mvuOpening.captureSchemaPromptScopes,
+        plainScopes: readNonnumericalPromptScopes,
         captureOrdinaryChat: namespace => authorChatState.captureNamespaceV3(namespace),
         preflight: async (sid, signal) => {
+            await authorGenerationEffects.settle(sid, signal);
             await mvuOpening.preflightSchema(sid, signal);
             await rubyOwner?.restoreHeads(sid, signal);
         },

@@ -1,9 +1,22 @@
 /** Frozen original dialogue request DATA. Native transport policy remains
  * with TaskHost: this module neither creates a provider nor invents user input. */
 import {recordSha256} from './roleplay-data.js'
+import type {TaskSelection} from './tavern-task-types.js'
+import {freezeAuthorWorldbookDataV1} from './roleplay-author-worldbook-journal.js'
 import type {AuthorChatNamespaceV3,AuthorChatNamespaceRootV3}
   from './roleplay-author-chat-state-types.js'
 import type {TavernLoreOrdinaryExecutionEvidenceV1} from './tavern-lore-ordinary-preparation.mjs'
+import type {RequestMessage,RequestLocalSamplingV1,ToolSchema,AssistantMessage,FinishReason,AssistantResponseDetailsV1}
+  from 'dsh-nexttavern-native-llm'
+import type {NativeAuthorGenerationCheckpointV1,NativeAuthorGenerationCompletionV1,NativeAuthorGenerationStreamV1}
+  from 'dsh-nexttavern-native-agent-loop'
+export interface AuthorDialogMaterialV1 {
+  readonly snapshot:{readonly key:string;readonly sha256:string}
+  readonly plan:{readonly key:string;readonly sha256:string}
+  readonly captureSha256:string
+}
+export interface AuthorDialogCallV1 extends RequestLocalSamplingV1 {readonly tools?:readonly ToolSchema[]}
+export interface AuthorDialogPresentationV1 {readonly stream:boolean;readonly silence:boolean;readonly returnReasoning:boolean}
 export interface AuthorDialogTaskRefV1 {
   readonly taskId:string
   readonly generation:string
@@ -20,17 +33,13 @@ export interface AuthorDialogChatAddress {
  * variable declaration or synthetic target key grants a model request. */
 export interface AdmittedAuthorDialogTarget {
   readonly binding:AuthorDialogChatAddress
+  readonly effects:'source'|'readonly'
+  readonly libraryReads:readonly import('./author-native-helper-types.js').AuthorNativeResolvedLibraryReadV1[]
+  invokeFilter?(descriptor:import('./author-native-helper-types.js').AuthorNativeGenerationFilterV1,
+    consumer:'scan'|'chat'):Promise<{readonly accepted:boolean;
+      readonly libraryReads:readonly import('./author-native-helper-types.js').AuthorNativeResolvedLibraryReadV1[]}>
 }
 
-export const AUTHOR_DIALOG_HOST_SLOTS_V1=['world_info_before','char_description',
-  'char_personality','scenario','world_info_after'] as const
-export type AuthorDialogHostSlotV1=typeof AUTHOR_DIALOG_HOST_SLOTS_V1[number]
-export interface AuthorDialogSystemSlotV1 {
-  readonly role:'system'
-  readonly slot:AuthorDialogHostSlotV1|'dynamic-system'
-  readonly text:string
-  readonly sourceSha256:string
-}
 export interface AuthorDialogPromptV1 {
   readonly schemaVersion:1
   readonly encoding:'native-author-dialog-frozen-prompt-v1'
@@ -38,12 +47,14 @@ export interface AuthorDialogPromptV1 {
   readonly binding:AuthorDialogChatAddress
   readonly root:AuthorChatNamespaceRootV3
   readonly operationId:string
-  /** Preserve the original six ordered system slots. Dynamic system already
-   * contains its form input; no additional user phase is declared here. */
-  readonly orderedSystem:readonly AuthorDialogSystemSlotV1[]
+  readonly generationId:string
+  readonly mode:'preset'|'raw'
+  readonly orderedMessages:readonly RequestMessage[]
+  readonly call:AuthorDialogCallV1
+  readonly presentation:AuthorDialogPresentationV1
+  readonly material:AuthorDialogMaterialV1
+  readonly selection?:TaskSelection
   readonly ordinaryPreparationEvidence?:TavernLoreOrdinaryExecutionEvidenceV1
-  readonly shouldSilence:true
-  readonly maxChatHistory:0
   readonly promptSha256:string
 }
 export interface AuthorDialogResultV1 {
@@ -56,6 +67,10 @@ export interface AuthorDialogResultV1 {
   readonly promptSha256:string
   readonly task:AuthorDialogTaskRefV1
   readonly text:string
+  readonly message?:AssistantMessage
+  readonly finishReason?:FinishReason
+  readonly details?:AssistantResponseDetailsV1
+  readonly native?:NativeAuthorGenerationCompletionV1
 }
 export interface AuthorDialogNativeCompletionV1 {
   readonly schemaVersion:1
@@ -65,26 +80,23 @@ export interface AuthorDialogNativeCompletionV1 {
   readonly childSessionId:string
   readonly promptPlanSha256:string
   readonly resultSha256:string
-}
-/** Match SystemPrompt.renderPrompt: empty sections are dropped, surviving
- * text is joined with two newlines, with no further interpolation. */
-export function authorDialogSystemPrefixV1(prompt:AuthorDialogPromptV1):string {
-  return prompt.orderedSystem.slice(0,5).map(slot=>slot.text).filter(text=>text.length>0).join('\n\n')
+  readonly native:NativeAuthorGenerationCompletionV1
 }
 export function freezeAuthorDialogPromptV1(input:{binding:AuthorDialogChatAddress;
   root:AuthorChatNamespaceRootV3;operationId:string;
-  hostSlots:Readonly<Record<AuthorDialogHostSlotV1,{text:string;sourceSha256:string}>>;
-  dynamicSystem:{text:string;sourceSha256:string};
+  generationId?:string;mode?:'preset'|'raw';orderedMessages:readonly RequestMessage[];
+  call?:AuthorDialogCallV1;presentation?:AuthorDialogPresentationV1;material:AuthorDialogMaterialV1;
+  selection?:TaskSelection;
   ordinaryPreparationEvidence?:TavernLoreOrdinaryExecutionEvidenceV1}):AuthorDialogPromptV1 {
-  const orderedSystem=Object.freeze([
-    ...AUTHOR_DIALOG_HOST_SLOTS_V1.map(slot=>Object.freeze({role:'system' as const,slot,...input.hostSlots[slot]})),
-    Object.freeze({role:'system' as const,slot:'dynamic-system' as const,...input.dynamicSystem}),
-  ])
   const body={schemaVersion:1 as const,encoding:'native-author-dialog-frozen-prompt-v1' as const,
     authority:'consumer-data-only' as const,binding:Object.freeze({...input.binding}),
     root:input.root,
-    operationId:input.operationId,orderedSystem,
+    operationId:input.operationId,generationId:input.generationId??input.operationId,mode:input.mode??'raw',
+    orderedMessages:Object.freeze(structuredClone(input.orderedMessages)),call:Object.freeze(structuredClone(input.call??{})),
+    presentation:Object.freeze({...input.presentation??{stream:false,silence:true,returnReasoning:false}}),
+    material:input.material,
+    ...input.selection?{selection:structuredClone(input.selection)}:{},
     ...input.ordinaryPreparationEvidence?{ordinaryPreparationEvidence:input.ordinaryPreparationEvidence}:{},
-    shouldSilence:true as const,maxChatHistory:0 as const}
-  return Object.freeze({...body,promptSha256:recordSha256(body)})
+    }
+  return freezeAuthorWorldbookDataV1({...body,promptSha256:recordSha256(body)})
 }
