@@ -41,7 +41,7 @@ export function createAuthorNativeEventOwner<T>(hooks:AuthorNativeEventHooks<T>)
     return {stop:()=>remove(event,callback)}
   }
   const current=(row:Listener)=>active&&groups.get(row.event)?.listeners.get(row.callback)===row
-  async function emit(event:string,args:readonly unknown[],selected?:(data:T)=>boolean):Promise<T[]> {
+  async function emit(event:string,args:readonly unknown[],selected?:(data:T)=>boolean,rejectErrors=false):Promise<T[]> {
     const invoked:T[]=[]
     // Additions and moves affect the next emission. A removal cancels a
     // listener still waiting in this emission, including a once re-entry.
@@ -50,7 +50,10 @@ export function createAuthorNativeEventOwner<T>(hooks:AuthorNativeEventHooks<T>)
       const data=row.data
       if(row.once)remove(event,row.callback)
       invoked.push(data)
-      try {hooks.beforeInvoke?.(data);await row.callback(...args)}catch(error){hooks.report(error)}
+      try {hooks.beforeInvoke?.(data);await row.callback(...args)}catch(error){
+        if(rejectErrors)throw error
+        hooks.report(error)
+      }
     }
     return invoked
   }
@@ -77,7 +80,8 @@ export function createAuthorNativeEventOwner<T>(hooks:AuthorNativeEventHooks<T>)
     once:(event:string,callback:Function)=>subscribe(event,callback,true,'normal'),
     makeFirst:(event:string,callback:Function)=>subscribe(event,callback,false,'first'),
     makeLast:(event:string,callback:Function)=>subscribe(event,callback,false,'last'),
-    remove,emit,emitAndWait,clearEvent,clearListener,clearAll,
+    remove,emit,request:(event:string,args:readonly unknown[])=>emit(event,args,undefined,true),
+    emitAndWait,clearEvent,clearListener,clearAll,
     registrations:()=>[...groups.values()].flatMap(group=>group.order.map(row=>row.data)),
     dispose(){clearAll();active=false},
   }

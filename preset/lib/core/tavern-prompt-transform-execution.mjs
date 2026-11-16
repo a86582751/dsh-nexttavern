@@ -1,25 +1,12 @@
 // Generated from runtime/alpha3/src/core/tavern-prompt-transform-execution.mts; edit the TypeScript source.
+import { createTavernPromptTextKernelV1 } from './tavern-prompt-text-kernel.mjs';
 import { createHash } from 'node:crypto';
 import { stringify as stringifyYaml } from 'yaml';
 import { communityMacroLiteral, createCommunityMacroRandom } from './community-preset-macros.js';
-import { recordSha256, sha256, stableJson } from './roleplay-data.js';
+import { recordSha256, stableJson, sha256 } from './roleplay-data.js';
 import { schemaTextSha256 } from './tavern-mvu-schema-data.js';
 import { createTavernPromptTransformOutputV1 } from './tavern-prompt-transform-output.mjs';
 import { TAVERN_PROMPT_TRANSFORM_LIMITS_V1 as LIMITS, TAVERN_PROMPT_POST_ORDER_V1, TAVERN_PROMPT_CARD_ORDER_V1, TAVERN_PROMPT_INSTRUCT_ORDER_V1 } from './tavern-prompt-transform-types.mjs';
-const legacyAliases = [['<USER>', 'user'], ['<BOT>', 'char'], ['<CHAR>', 'char'],
-    ['<CHARIFNOTGROUP>', 'group'], ['<GROUP>', 'group']];
-/** Negative syntax test shares the literal alias grammar with execution. */
-export function hasTavernPromptMacroSyntaxV1(text) {
-    if (text.includes('{{'))
-        return true;
-    const lower = text.toLowerCase();
-    return legacyAliases.some(([pattern]) => lower.includes(pattern.toLowerCase()));
-}
-/** Channel applicability is independent of the current text and rule order. */
-export function tavernPromptRegexAppliesToChannelV1(rule, channel) {
-    return channel === 'display' ? rule.markdownOnly : channel === 'prompt' ? rule.promptOnly :
-        !rule.markdownOnly && !rule.promptOnly;
-}
 class Refusal extends Error {
     diagnostic;
     constructor(diagnostic) {
@@ -27,426 +14,31 @@ class Refusal extends Error {
         this.diagnostic = diagnostic;
     }
 }
-const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-/** Macro ordering, entropy and bounded replacements have one implementation.
- * The owning transform or EJS host retains its own read and work budgets. */
-export function createTavernPromptMacroProjectorV1(macro, deps) {
-    const { issue, recordRead, budget } = deps, { job, work } = budget;
-    const random = macro.random ? createCommunityMacroRandom(macro.random.seed, macro.random.pickSeed) : null;
-    const deferredMacros = new Set(macro.deferredMacros ?? []);
-    const namedOutletsDeferred = macro.deferredMacroFamilies?.includes('ejs-named-queue-outlet') === true;
-    const collect = (binding) => {
-        if (binding.key === 'model' && binding.value === null)
-            issue('PROMPT_TRANSFORM_BINDING_MISSING', 'model');
-        recordRead(binding.read);
-        return binding.value ?? '';
-    };
-    const helperScope = (scopeName) => macro.variableScopes?.[scopeName] ?? null;
-    const helperVariable = (scopeName, path, token) => {
-        const scope = helperScope(scopeName);
-        if (!scope) {
-            issue('PROMPT_TRANSFORM_BINDING_MISSING', token);
-            return null;
-        }
-        const entities = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" };
-        const key = path.replace(/&(?:amp|lt|gt|quot|#39);/g, entity => entities[entity]);
-        const parts = [];
-        if (Object.hasOwn(scope.values, key))
-            parts.push(key);
-        else {
-            if (key.startsWith('.'))
-                parts.push('');
-            key.replace(/[^.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|$))/g, (part, number, quote, quoted) => {
-                parts.push(quote ? quoted.replace(/\\(\\)?/g, '$1') : number ?? part);
-                return part;
-            });
-        }
-        let value = parts.length ? scope.values : null, present = parts.length > 0;
-        for (const part of parts) {
-            if (value === null || !Object.hasOwn(Object(value), part)) {
-                present = false;
-                value = null;
-                break;
-            }
-            value = Object(value)[part];
-        }
-        recordRead({ kind: 'variable', purpose: 'read', scope: scope.scope, ownerId: scope.ownerId, key, present,
-            versionSha256: scope.versionSha256, valueSha256: present ? recordSha256(value) : null, entryId: null, sourcePointer: null });
-        // JS-Slash-Runner removes private keys only within the selected subtree;
-        // arrays (including [value, description]) remain ordinary authored data.
-        const withoutPrivate = (item) => {
-            if (Array.isArray(item))
-                return item.map(withoutPrivate);
-            if (item && typeof item === 'object')
-                return Object.fromEntries(Object.entries(item)
-                    .filter(([name]) => !name.startsWith('$')).map(([name, child]) => [name, withoutPrivate(child)]));
-            return item;
-        };
-        return withoutPrivate(value);
-    };
-    const env = (override) => {
-        const values = [];
-        const merge = (binding) => {
-            const index = values.findIndex(v => v.key === binding.key);
-            if (index < 0)
-                values.push(binding);
-            else
-                values[index] = binding;
-        };
-        if (macro.card)
-            for (const name of TAVERN_PROMPT_CARD_ORDER_V1)
-                merge(macro.card.find(b => b.key === name));
-        const n = override ?? macro.names;
-        for (const name of ['user', 'char', 'charIfNotGroup', 'group', 'groupNotMuted', 'notChar', 'model'])
-            merge(n[name]);
-        // Object.assign and registered macro population replace in place while
-        // preserving the original insertion position of an existing name.
-        for (const row of macro.dynamic)
-            merge(row);
-        for (const row of macro.registered)
-            merge(row);
-        return values;
-    };
-    const baseEnv = env(null);
-    const advance = (regex, text) => {
-        const i = regex.lastIndex;
-        regex.lastIndex = i + (regex.unicode && i < text.length && (text.codePointAt(i) ?? 0) > 0xffff ? 2 : 1);
-    };
-    /** Own every exec and output chunk. No native replace constructs an unbounded
-     * result before its cap; empty global matches advance by actual UTF-16 width. */
-    const replace = (text, regex, callback, untrusted = false) => {
-        work(text.length);
-        regex.lastIndex = 0;
-        let cursor = 0, size = 0;
-        const parts = [];
-        const add = (part) => {
-            size += part.length;
-            budget.output(size);
-            work(part.length);
-            parts.push(part);
-        };
-        for (;;) {
-            const m = regex.exec(text);
-            if (!m) {
-                // A zero-match scan already owns its input work. Reuse the exact
-                // string instead of rebuilding and charging an unchanged output.
-                if (parts.length === 0) {
-                    budget.output(text.length);
-                    return text;
-                }
-                break;
-            }
-            job();
-            if (untrusted)
-                budget.match();
-            add(text.slice(cursor, m.index));
-            add(callback(m));
-            cursor = m.index + m[0].length;
-            if (!regex.global)
-                break;
-            if (!m[0].length)
-                advance(regex, text);
-        }
-        add(text.slice(cursor));
-        return parts.join('');
-    };
-    const recognized = (token, environment) => {
-        const name = token.toLowerCase();
-        return environment.some(b => b.key.toLowerCase() === name) || TAVERN_PROMPT_POST_ORDER_V1.some(n => n.toLowerCase() === name)
-            || TAVERN_PROMPT_INSTRUCT_ORDER_V1.some(n => n.toLowerCase().split('|').includes(name))
-            || ['newline', 'trim', 'noop', 'space', 'input'].includes(name)
-            || /^(getvar|getglobalvar|outlet)::.+$/.test(name) || /^reverse:.+$/.test(name) || name.startsWith('//')
-            || /^(get|format)_(message|chat|character|preset|global)_variable::/.test(name);
-    };
-    const macros = (text, override = null, post = value => value, trace) => {
-        let offset = 0;
-        let spans = trace ? trace.parts.filter(part => part.text.length || part.origin.kind !== 'literal').map(part => {
-            const span = { length: part.text.length, source: 0, offset, display: part.origin };
-            offset += part.text.length;
-            return span;
-        }) : [{ length: text.length, source: 0, offset: 0 }];
-        const finish = (value) => {
-            if (trace) {
-                let cursor = 0;
-                const parts = [];
-                for (const span of spans) {
-                    const origin = span.display, text = value.slice(cursor, cursor + span.length);
-                    cursor += span.length;
-                    const part = origin.kind === 'macro' ? { ...origin, text } : { kind: origin.kind, text };
-                    const prior = parts.at(-1);
-                    if (prior && prior.kind === part.kind && (part.kind !== 'macro' || prior.kind === 'macro'
-                        && prior.sourceSpan.start === part.sourceSpan.start && prior.sourceSpan.end === part.sourceSpan.end))
-                        parts[parts.length - 1] = { ...prior, text: prior.text + text };
-                    else
-                        parts.push(part);
-                }
-                trace.complete(parts);
-            }
-            return value;
-        };
-        if (!text)
-            return finish('');
-        if (macro.engine !== 'legacy') {
-            issue('PROMPT_TRANSFORM_MACRO_ENGINE_UNSUPPORTED', 'experimental');
-            return finish(text);
-        }
-        if (!text.includes('<') && !text.includes('{{'))
-            return finish(text);
-        const environment = override ? env(override) : baseEnv;
-        const get = (key) => environment.find(b => b.key === key);
-        let result = text;
-        let matchedOrigin = 0;
-        /** Preserve copied UTF-16 spans. Insertions carry their source location as
-         * a structured path, so an injected pick cannot steal a literal's offset.
-         * Tracking runs only for captured entropy or opt-in display provenance. */
-        const substitute = (current, regex, callback) => {
-            if (!random && !trace)
-                return replace(current, regex, callback);
-            const next = [];
-            let cursor = 0, index = 0, start = 0, changed = false;
-            const append = (span) => {
-                if (!span.length && (!trace || span.display?.kind === 'literal'))
-                    return;
-                const previous = next.at(-1);
-                if (!trace && previous && previous.source === span.source && previous.offset + previous.length === span.offset)
-                    previous.length += span.length;
-                else
-                    next.push(span);
-            };
-            const consume = (end, copy, boundary = true) => {
-                while (cursor < end || boundary && spans[index]?.length === 0) {
-                    const span = spans[index], inside = cursor - start, length = Math.min(end - cursor, span.length - inside);
-                    // Empty DATA is still a boundary between Source fragments. Keep its
-                    // provenance when a later replacement consumes surrounding text.
-                    if (copy || span.length === 0)
-                        append({ length, source: span.source, offset: span.offset + inside,
-                            ...trace ? { display: span.display.kind === 'literal'
-                                    ? { kind: 'literal', start: span.display.start + inside } : span.display } : {} });
-                    cursor += length;
-                    if (cursor === start + span.length) {
-                        start = cursor;
-                        index++;
-                    }
-                }
-            };
-            const output = replace(current, regex, m => {
-                changed = true;
-                consume(m.index, true);
-                const span = spans[index], inside = m.index - start;
-                matchedOrigin = typeof span.source === 'number' ? span.source + span.offset + inside :
-                    [...span.source, span.offset + inside];
-                let display;
-                if (trace) {
-                    let position = m.index, partIndex = index, partStart = start, sourceStart, sourceEnd = 0;
-                    let root, captured = false;
-                    while (position < m.index + m[0].length) {
-                        const part = spans[partIndex], origin = part.display, within = position - partStart, length = Math.min(m.index + m[0].length - position, part.length - within);
-                        if (!part.length) {
-                            captured = true;
-                            partIndex++;
-                            continue;
-                        }
-                        if (origin.kind === 'capture')
-                            captured = true;
-                        else if (origin.kind === 'macro') {
-                            if (sourceStart !== undefined || root && root !== origin)
-                                captured = true;
-                            root = origin;
-                        }
-                        else {
-                            const from = origin.start + within;
-                            if (root || sourceStart !== undefined && from !== sourceEnd)
-                                captured = true;
-                            sourceStart ??= from;
-                            sourceEnd = from + length;
-                        }
-                        position += length;
-                        partStart += part.length;
-                        partIndex++;
-                    }
-                    if (captured || sourceStart === undefined && !root)
-                        display = { kind: 'capture' };
-                    else if (root)
-                        display = root;
-                    else {
-                        const tokenStart = m[0].indexOf('{{'), tokenEnd = m[0].lastIndexOf('}}');
-                        const from = sourceStart + (tokenStart < 0 ? 0 : tokenStart), end = tokenStart < 0 ? sourceEnd : sourceStart + tokenEnd + 2;
-                        display = { kind: 'macro', sourceText: trace.sourceText.slice(from, end), sourceSpan: { start: from, end } };
-                    }
-                }
-                const replacement = callback(m);
-                const copiedStart = next.length;
-                consume(m.index + m[0].length, replacement === m[0], false);
-                if (trace && replacement === m[0])
-                    for (let i = copiedStart; i < next.length; i++)
-                        if (next[i].length)
-                            next[i].display = display;
-                if (replacement !== m[0])
-                    append({ length: replacement.length,
-                        source: typeof matchedOrigin === 'number' ? [matchedOrigin] : matchedOrigin, offset: 0, ...trace ? { display } : {} });
-                return replacement;
-            });
-            if (changed) {
-                consume(current.length, true);
-                spans = next;
-            }
-            return output;
-        };
-        const fixed = (current, regex, binding, post, token) => substitute(current, regex, m => {
-            if (!binding) {
-                issue('PROMPT_TRANSFORM_BINDING_MISSING', token);
-                return m[0];
-            }
-            return post(collect(binding));
-        });
-        let literalSource, literalText = '';
-        const hasLiteral = (tokens) => {
-            // Reuse only this stage's current text. Earlier substitutions can insert
-            // later aliases, so a changed result always refreshes this derived value.
-            if (literalSource !== result) {
-                literalSource = result;
-                literalText = result.toLowerCase();
-            }
-            return tokens.some(token => literalText.includes(token.toLowerCase()));
-        };
-        for (const [pattern, key] of legacyAliases) {
-            if (hasLiteral([pattern]))
-                result = fixed(result, new RegExp(pattern, 'gi'), get(key), post, key);
-        }
-        if (!result.includes('{{'))
-            return finish(result);
-        if (result.includes('{{'))
-            result = substitute(result, /{{roll[ : ]([^}]+)}}/gi, m => {
-                if (!random) {
-                    issue('PROMPT_TRANSFORM_MACRO_UNSUPPORTED', m[0]);
-                    return m[0];
-                }
-                try {
-                    return post(random.roll(m[1]));
-                }
-                catch {
-                    issue('PROMPT_TRANSFORM_MACRO_UNSUPPORTED', m[0]);
-                    return m[0];
-                }
-            });
-        for (const key of TAVERN_PROMPT_INSTRUCT_ORDER_V1) {
-            if (!result.includes('{{'))
-                break;
-            if (!hasLiteral(key.split('|').map(alias => `{{${alias}}}`)))
-                continue;
-            result = fixed(result, new RegExp('{{(' + key + ')}}', 'gi'), macro.instruct.find(b => b.key === key), post, key);
-        }
-        // Read-only subset of getVariableMacros in its real pre-env position.
-        // Mutation macros and clock/random command forms have no side effects here.
-        if (result.includes('{{'))
-            replace(result, /{{(?:setvar|addvar|incvar|decvar|setglobalvar|addglobalvar|incglobalvar|decglobalvar)::[^}]*}}/gi, m => {
-                issue('PROMPT_TRANSFORM_MACRO_UNSUPPORTED', m[0]);
-                return m[0];
-            });
-        for (const [name, bindings] of [['getvar', macro.localVariables], ['getglobalvar', macro.globalVariables]]) {
-            if (result.includes('{{'))
-                result = substitute(result, new RegExp('{{' + name + '::([^}]+)}}', 'gi'), m => {
-                    const key = m[1].trim(), resolved = deps.variable?.(name === 'getvar' ? 'chat' : 'global', key);
-                    if (resolved !== undefined)
-                        return post(resolved.value);
-                    const binding = bindings.find(b => b.key === key);
-                    if (!binding) {
-                        issue('PROMPT_TRANSFORM_BINDING_MISSING', m[0]);
-                        return m[0];
-                    }
-                    return post(collect(binding));
-                });
-        }
-        if (result.includes('{{'))
-            result = substitute(result, /{{(?:newline|space)}}/gi, m => post(communityMacroLiteral(m[0].slice(2, -2))));
-        if (result.includes('{{'))
-            result = substitute(result, /(?:\r?\n)*{{trim}}(?:\r?\n)*/gi, () => post(''));
-        if (result.includes('{{'))
-            result = substitute(result, /{{noop}}/gi, m => post(communityMacroLiteral(m[0].slice(2, -2))));
-        if (hasLiteral(['{{input}}']))
-            result = fixed(result, /{{input}}/gi, macro.input, post, 'input');
-        for (const row of environment) {
-            if (!result.includes('{{'))
-                break;
-            // Arbitrary registered Unicode keys retain the exact non-u /i matching
-            // relation; lowercase literal lookup is equivalent only for ASCII keys.
-            if (!/[^\x00-\x7f]/.test(row.key) && !hasLiteral([`{{${row.key}}}`]))
-                continue;
-            result = fixed(result, new RegExp('{{' + escape(row.key) + '}}', 'gi'), row, post, row.key);
-        }
-        // Reverse/comment occur between the ID aliases and clock aliases in ST.
-        const postValue = (name) => {
-            if (hasLiteral([`{{${name}}}`]))
-                result = fixed(result, new RegExp('{{' + name + '}}', 'gi'), macro.post.find(b => b.key === name), post, name);
-        };
-        for (const name of TAVERN_PROMPT_POST_ORDER_V1.slice(0, 15))
-            postValue(name);
-        if (result.includes('{{'))
-            result = substitute(result, /{{reverse:(.+?)}}/gi, m => post(communityMacroLiteral(m[0].slice(2, -2))));
-        if (result.includes('{{'))
-            result = substitute(result, /\{\{\/\/([\s\S]*?)\}\}/gm, () => post(''));
-        for (const name of TAVERN_PROMPT_POST_ORDER_V1.slice(15))
-            postValue(name);
-        // Outlet strings are inserted only here, after all environment macros.
-        // They are never recursively expanded and never appended automatically.
-        if (result.includes('{{'))
-            result = substitute(result, /{{outlet::(.+?)}}/gi, m => {
-                const binding = macro.outlets.find(b => b.key === m[1].trim());
-                if (!binding) {
-                    issue('PROMPT_TRANSFORM_BINDING_MISSING', m[0]);
-                    return m[0];
-                }
-                return post(collect(binding));
-            });
-        // ST random/pick run after outlets. Their seed is captured, never ambient.
-        for (const name of ['random', 'pick']) {
-            if (!hasLiteral(['{{' + name]))
-                continue;
-            if (result.includes('{{'))
-                result = substitute(result, new RegExp('{{' + name + '\\s?::?([^}]+)}}', 'gi'), m => {
-                    if (!random) {
-                        issue('PROMPT_TRANSFORM_MACRO_UNSUPPORTED', m[0]);
-                        return m[0];
-                    }
-                    return post(random.choose(m[1], text, matchedOrigin, name === 'pick'));
-                });
-        }
-        // These helper macros run after ordinary ST substitution. Paths may be
-        // introduced by an alias or regex, so the Worker reads the frozen owner
-        // directly rather than requiring a pre-enumerated list of macro tokens.
-        if (result.includes('{{'))
-            result = substitute(result, /{{get_(message|chat|character|preset|global)_variable::(.*?)}}/gi, m => {
-                const scope = m[1].toLowerCase();
-                const value = helperVariable(scope, m[2], m[0]);
-                return post(typeof value === 'string' ? value : JSON.stringify(value));
-            });
-        if (result.includes('{{')) {
-            const before = result;
-            let previousEnd = 0, prefix = '';
-            result = substitute(before, /{{format_(message|chat|character|preset|global)_variable::(.*?)}}/gi, m => {
-                const gap = before.slice(previousEnd, m.index), lineStart = Math.max(gap.lastIndexOf('\n'), gap.lastIndexOf('\r'), gap.lastIndexOf('\u2028'), gap.lastIndexOf('\u2029')) + 1;
-                prefix = lineStart ? gap.slice(lineStart) : prefix + gap;
-                const scope = m[1].toLowerCase();
-                const value = helperVariable(scope, m[2], m[0]), formatted = typeof value === 'string' ? value :
-                    stringifyYaml(value, { blockQuote: 'literal' }).trimEnd();
-                const replacement = formatted.replaceAll('\n', '\n' + ' '.repeat(prefix.length));
-                // Upstream's recursive prefix retains earlier formatted newlines on
-                // the same original line; the next macro counts that complete prefix.
-                prefix += replacement;
-                previousEnd = m.index + m[0].length;
-                return post(replacement);
-            });
-        }
-        if (result.includes('{{'))
-            replace(result, /{{([\s\S]*?)}}/g, m => {
-                if (!recognized(m[1], environment) && !deferredMacros.has(m[1])
-                    && !(namedOutletsDeferred && /^outletPromptsInjected:[^{}]+$/.test(m[1])))
-                    issue('PROMPT_TRANSFORM_MACRO_UNSUPPORTED', m[0]);
-                return m[0];
-            });
-        return finish(result);
-    };
-    return { project: macros, replace };
+const textKernel = createTavernPromptTextKernelV1({ recordSha256, stringifyYaml,
+    createRandom: createCommunityMacroRandom, literal: communityMacroLiteral,
+    cardOrder: TAVERN_PROMPT_CARD_ORDER_V1, postOrder: TAVERN_PROMPT_POST_ORDER_V1,
+    instructOrder: TAVERN_PROMPT_INSTRUCT_ORDER_V1 });
+export const hasTavernPromptMacroSyntaxV1 = textKernel.hasMacroSyntax;
+export const tavernPromptRegexAppliesToChannelV1 = textKernel.appliesToChannel;
+export const createTavernPromptMacroProjectorV1 = textKernel.createMacroProjector;
+export const formatTavernPromptTextV1 = textKernel.format;
+export const compileTavernPromptRegexV1 = textKernel.compileRegex;
+/** Regex trim uses the selected speaker. Explicit names belong to the message
+ * version; absent names retain their actual captured persona/card fallback. */
+export function captureTavernMessageMacrosV1(macros, message) {
+    const fallback = message.nameSource === 'user' ? macros.names.user :
+        message.nameSource === 'character' ? macros.names.char : undefined, read = fallback?.read ?? {
+        kind: 'variable', purpose: 'read', scope: 'message', ownerId: message.messageId, key: 'name', present: true,
+        versionSha256: message.messageVersionSha256, valueSha256: recordSha256(message.name), entryId: null, sourcePointer: null
+    }, name = { key: 'char', value: message.name, valueSha256: sha256(message.name), read };
+    return { ...macros, characterOverrides: [{ name: message.name, names: { ...macros.names, char: name } }] };
+}
+export function countInputChars(input) {
+    if (typeof input === 'string')
+        return input.length;
+    if (!input || typeof input !== 'object')
+        return 0;
+    return Object.entries(input).reduce((sum, [key, value]) => sum + key.length + countInputChars(value), 0);
 }
 function run(data) {
     const { input } = data, macro = input.macros;
@@ -599,25 +191,10 @@ function run(data) {
     let macros = promptProjector.project, replace = promptProjector.replace;
     const trimNames = () => entry?.characterOverride === null || !entry ? null :
         macro.characterOverrides.find(row => row.name === entry.characterOverride).names;
-    const sanitizeRegexMacro = (text) => text.replace(/[\n\r\t\v\f\0.^$*+?{}[\]\\/|()]/gs, s => {
-        const controls = { '\n': '\\n', '\r': '\\r', '\t': '\\t', '\v': '\\v', '\f': '\\f', '\0': '\\0' };
-        return controls[s] ?? '\\' + s;
-    });
-    /** Fixed upstream regexFromString algorithm, including its flag fallback.
-     * Only this worker parses/compiles third-party findRegex strings. */
+    const sanitizeRegexMacro = textKernel.sanitizeRegexMacro;
     const compile = (source) => {
         limit('patternChars', source.length);
-        try {
-            const match = source.match(/(\/?)(.+)\1([a-z]*)/i);
-            if (!match)
-                return null;
-            if (match[3] && !/^(?!.*?(.).*?\1)[gmixXsuUAJ]+$/.test(match[3]))
-                return new RegExp(source);
-            return new RegExp(match[2], match[3]);
-        }
-        catch {
-            return null;
-        }
+        return textKernel.compileRegex(source);
     };
     const getCompiled = (current) => {
         const cacheKey = current.substituteRegex !== 0 && displaySeed !== undefined
@@ -655,42 +232,8 @@ function run(data) {
             issue(diagnostic.code, diagnostic.macro);
         return value;
     };
-    const eligible = (current, text) => {
-        if (input.regexDisabled)
-            return 'regex-disabled';
-        if (!current.allowed)
-            return 'not-allowed';
-        if (current.disabled)
-            return 'disabled';
-        if (!text)
-            return 'empty-input';
-        if (!tavernPromptRegexAppliesToChannelV1(current, entry.channel))
-            return 'channel';
-        if (entry.isEdit && !current.runOnEdit)
-            return 'edit';
-        if (entry.depth !== null) {
-            if (current.minDepth !== null && current.minDepth >= -1 && entry.depth < current.minDepth)
-                return 'min-depth';
-            if (current.maxDepth !== null && current.maxDepth >= 0 && entry.depth > current.maxDepth)
-                return 'max-depth';
-        }
-        if (!current.placement.includes(entry.placement))
-            return 'placement';
-        if (!current.findRegex)
-            return 'empty-find';
-        return null;
-    };
-    const filter = (text, current) => {
-        let result = text;
-        for (const trim of current.trimStrings) {
-            job();
-            const sub = macros(trim, trimNames());
-            // ST replaceAll(literal, '') includes JS's empty-string behavior (no-op).
-            if (sub)
-                result = replace(result, new RegExp(escape(sub), 'g'), () => '');
-        }
-        return result;
-    };
+    const eligible = (current, text) => textKernel.regexSkipReason(current, text, entry, input.regexDisabled);
+    const filter = (text, current) => textKernel.trimCapture(text, current, value => macros(value, trimNames()), replace, job);
     const regexStage = (text, receipts, encodings) => {
         let result = text;
         // Immutable rule identity belongs to this batch. Encode it only when a
@@ -769,26 +312,7 @@ function run(data) {
                 };
                 let templateCursor = 0;
                 const substituted = replace(replacement, /\$(\d+)|\$<([^>]+)>/g, token => {
-                    let capture;
-                    if (token[1]) {
-                        const n = Number(token[1]);
-                        // ST's callback arguments also expose offset/input/groups. Preserve
-                        // string and falsey cases; a truthy number/object would throw in its
-                        // trim helper and receives an explicit domain refusal here.
-                        if (n < m.length)
-                            capture = m[n];
-                        else if (n === m.length)
-                            capture = m.index;
-                        else if (n === m.length + 1)
-                            capture = result;
-                        else if (n === m.length + 2 && m.groups)
-                            capture = m.groups;
-                    }
-                    else
-                        capture = m.groups?.[token[2]];
-                    const value = !capture ? '' : typeof capture === 'string' ? filter(capture, current) : token[0];
-                    if (capture && typeof capture !== 'string')
-                        issue('PROMPT_TRANSFORM_CAPTURE_UNSUPPORTED', token[0]);
+                    const value = textKernel.captureValue(token, m, result, capture => filter(capture, current), issue);
                     if (prior) {
                         literal(templateCursor, token.index);
                         initialParts.push({ text: value, origin: { kind: 'capture' } });

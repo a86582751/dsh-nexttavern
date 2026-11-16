@@ -1049,6 +1049,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
           randomSeed:authorBrowser.capture.randomSeed,captureSha256:authorBrowser.capture.captureSha256,
           invocationId:authorBrowser.output.invocationId,programSha256:authorBrowser.output.programSha256,
           outputSha256:authorBrowser.output.outputSha256,callbacksExecuted:authorBrowser.output.callbacksExecuted,
+          ...authorBrowser.output.libraryReads?.length?{libraryReads:authorBrowser.output.libraryReads}:{},
         }:undefined
       const finishMaterial=()=>{
         injections.advanceRegex({boundary:'prompt-complete',phaseId:`${attemptId}:${scope.step}`})

@@ -398,16 +398,17 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
       if(!deps.mutatePrompts)return {ok:false,code:'AUTHOR_NATIVE_INJECTION_UNAVAILABLE'}
       const sourceCurrent=originalSourceLifetime(value)
       const reply=await deps.mutatePrompts({sessionId:value.binding.sessionId,program:value.program,realm,
-        binding:value.binding,request:input.request,current:sourceCurrent,signal})
+        binding:value.binding,request:input.request,current:sourceCurrent,signal,
+        libraryReads:value.libraryReads.resolve((input.request.libraryReads??[]).map(read=>({realmId:realm.realmId,read})))})
       let refreshed:AuthorBrowserSnapshot|undefined
       try{refreshed=await adoptCommittedFacts(value,sourceCurrent)}catch{}
       return {ok:true,kind:'prompts-mutated',...reply,...refreshed?{snapshot:refreshed}:{}}
-    }
-    if(input.action==='filter-complete') {
+    })
+    if(input.action==='filter-complete')return withAttachment(input.binding,async(session,value)=>{
       value.generationQueue!.completeFilter(input.result)
       return {ok:true,kind:'generation-acknowledged'}
-    }
-    if(input.action==='cleanup-prompts') {
+    },{serialize:false})
+    if(input.action==='cleanup-prompts')return withAttachment(input.binding,async(session,value)=>{
       const program=value.program,request=input.request,resource=request.resource
       if(!deps.cleanupPrompts)
         return {ok:false,code:'BROWSER_PROMPT_CLEANUP_UNAVAILABLE'}

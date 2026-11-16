@@ -7,7 +7,12 @@ import {createAuthorNativeEventOwner} from './author-native-events.js'
 import {createAuthorNativeScriptButtonCatalog,type AuthorNativeButtonScriptV1} from './author-native-script-buttons.js'
 import {createAuthorNativeMvuHookGraph} from '../core/author-native-mvu-hook-graph.js'
 import {createAuthorNativeMessageVariables} from '../core/author-native-message-variables.js'
-import {createAuthorNativeCurrentRegex} from '../core/author-native-current-regex.js'
+import {createAuthorNativeCurrentRegex,createAuthorNativeFormatterV1} from '../core/author-native-current-regex.js'
+import {TAVERN_PROMPT_TRANSFORM_LIMITS_V1} from '../core/tavern-prompt-transform-types.mjs'
+import {communityDefaultPresetDataV1} from '../core/community-preset-types.js'
+import type {CommunityAuthorPresetCatalogV1,CommunityPresetDataV1} from '../core/community-preset-types.js'
+import type {AuthorCharacterLibraryPacketV1} from '../core/roleplay-author-character-library.js'
+import type {AuthorNativeLibraryReadV1} from '../core/author-native-helper-types.js'
 import {createAuthorNativeVariableWriters} from '../core/author-native-variable-writers.js'
 import type {AuthorNativeProgramV1} from '../core/author-native-program.mjs'
 import type {AuthorNativeHelperSnapshotV1,AuthorNativeHelperRealmBindingV1,AuthorNativeHelperHostV1,
@@ -82,7 +87,7 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
   const retireFilters=(ids:readonly string[])=>{for(const id of ids)filters.delete(id)}
   const mutatePrompts=(mutation:unknown)=>{
     const operationId=crypto.randomUUID()
-    const work=request('mutate-prompts',{resource,mutation},scope,operationId)
+    const work=request('mutate-prompts',{resource,mutation,libraryReads:[...libraryReads.values()]},scope,operationId)
       .then(reply=>retireFilters(reply?.retiredFilterCallbackIds??[]))
     void work.catch(report)
     return operationId

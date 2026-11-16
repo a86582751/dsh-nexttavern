@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import {boundedRegexMatch,boundedSTRegexReplace,ST_REGEX_LIMITS,worldbookRegex} from '../lib/core/bounded-regex.js'
+import {boundedRegexMatch,boundedSTRegexReplace,boundedNativeRegexBatchV1,ST_REGEX_LIMITS,worldbookRegex} from '../lib/core/bounded-regex.js'
 assert.deepEqual((await boundedRegexMatch([worldbookRegex('/LIGHT/i')],'lighthouse')).matches,[true])
 assert.deepEqual((await boundedRegexMatch([{pattern:'[',flags:''}],'text')).matches,[false])
 assert.equal((await boundedRegexMatch([{pattern:'x'.repeat(513),flags:''}],'x')).reason,'limit')
@@ -38,4 +38,26 @@ const hostileReplace=await boundedSTRegexReplace({pattern:'(a+)+$',flags:'',repl
 assert.equal(hostileReplace.reason,'timeout')
 assert.equal(hostileReplace.limit,'deadlineMs')
 assert.equal((await boundedSTRegexReplace({pattern:'a',flags:'',replacement:'b'},'a')).ok,true)
-console.log('bounded-regex=ok (worker deadline, input/pattern budget, responsive host, retry)')
+const captures=await boundedNativeRegexBatchV1({kind:'capture-first',
+  inputs:['<BODY> first </BODY><text>second</text>','<body>again</body>'],
+  patterns:[{pattern:'<(body)[^>]*>([\\s\\S]*?)</(body)>',flags:'i'},{pattern:'[',flags:''}]})
+assert.deepEqual(captures,{ok:true,texts:['BODY','body']},'capture numbering and lazy first-match compilation stay native')
+assert.deepEqual(await boundedNativeRegexBatchV1({kind:'capture-first',inputs:['unchanged'],
+  patterns:[{pattern:'<body>([\\s\\S]*?)</body>',flags:'i'}]}),{ok:true,texts:['unchanged']})
+assert.deepEqual(await boundedNativeRegexBatchV1({kind:'capture-first',inputs:['unmatched'],
+  patterns:[{pattern:'<body>([\\s\\S]*?)</body>',flags:'i'},{pattern:'[',flags:''}]}),
+  {ok:false,reason:'invalid-rule'})
+assert.deepEqual(await boundedNativeRegexBatchV1({kind:'replace-sequence',input:'{{ref.alpha}} {{ref.beta}} {{next}}',
+  rules:[{pattern:'\\{\\{ref\\.(?<part>alpha|beta)\\}\\}',flags:'g',replacement:'[$01:$<part>:$<missing>:$$]'},
+    {pattern:'\\{\\{next\\}\\}',flags:'g',replacement:'done'}]}),
+  {ok:true,texts:['[alpha:alpha::$] [beta:beta::$] done']})
+const largeReplacement='x'.repeat(200_000)
+assert.deepEqual(await boundedNativeRegexBatchV1({kind:'replace-sequence',input:'{{body}}',
+  rules:[{pattern:'\\{\\{body\\}\\}',flags:'g',replacement:largeReplacement}]}),
+  {ok:true,texts:[largeReplacement]})
+const nativeTimeout=await boundedNativeRegexBatchV1({kind:'capture-first',inputs:['a'.repeat(20000)+'!'],
+  patterns:[{pattern:'((a+)+)$',flags:''}]})
+assert.equal(nativeTimeout.ok,false);assert.equal(nativeTimeout.reason,'timeout')
+assert.deepEqual(await boundedNativeRegexBatchV1({kind:'replace-sequence',input:'a',
+  rules:[{pattern:'a',flags:'',replacement:'b'}]}),{ok:true,texts:['b']})
+console.log('bounded-regex=ok (worker deadline, native capture/substitution, input/pattern budget, responsive host, retry)')

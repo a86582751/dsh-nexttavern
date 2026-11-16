@@ -5,21 +5,36 @@ import type {TavernPromptBindingV1,TavernPromptMacroSnapshotV1,TavernPromptRegex
 import type {CommunityPresetPolicy,CommunityRegexOrigin} from './community-presets.js'
 import type {CommunityRegexRule,CommunityJson} from './community-preset-types.js'
 import {TAVERN_PROMPT_TRANSFORM_LIMITS_V1} from './tavern-prompt-transform-types.mjs'
+import type {ReaderRegexProducerV1} from 'dsh-nexttavern-session-format'
+
+export interface CommunityRegexSourceV1 {
+  readonly ordinal:number
+  readonly descriptor:CommunityRegexRule['raw']
+  readonly producer:ReaderRegexProducerV1
+}
 
 export function communityRegexRules(policy:CommunityPresetPolicy,
-  scoped:readonly TavernPromptRegexRuleV1[]=[]):TavernPromptRegexRuleV1[] {
+  scoped:readonly TavernPromptRegexRuleV1[]=[],
+  captureSource?:(rule:TavernPromptRegexRuleV1,source:CommunityRegexSourceV1)=>void):TavernPromptRegexRuleV1[] {
   const rules:TavernPromptRegexRuleV1[]=[]
-  const append=(source:readonly CommunityRegexRule[],origin:CommunityRegexOrigin,owner:string)=>{
-    for(const [index,rule] of source.entries())rules.push({id:`${owner}:${index}:${rule.id}`,
-      sourcePointer:`/community/${owner}/${index}`,sourceSnapshotSha256:policy.fingerprint,origin,allowed:true,
-      disabled:rule.disabled,findRegex:rule.findRegex,replaceString:rule.replaceString,trimStrings:rule.trimStrings,
-      placement:rule.placement as TavernPromptRegexRuleV1['placement'],promptOnly:rule.promptOnly,
-      markdownOnly:rule.markdownOnly,runOnEdit:rule.runOnEdit,minDepth:rule.minDepth,maxDepth:rule.maxDepth,
-      substituteRegex:rule.substituteRegex as 0|1|2})
+  const append=(source:readonly CommunityRegexRule[],origin:CommunityRegexOrigin,owner:string,
+    binding?:Extract<ReaderRegexProducerV1,{kind:'regex-library'}>['binding'])=>{
+    for(const [index,rule] of source.entries()){
+      const effective:TavernPromptRegexRuleV1={id:`${owner}:${index}:${rule.id}`,
+        sourcePointer:`/community/${owner}/${index}`,sourceSnapshotSha256:policy.fingerprint,origin,allowed:true,
+        disabled:rule.disabled,findRegex:rule.findRegex,replaceString:rule.replaceString,trimStrings:rule.trimStrings,
+        placement:rule.placement as TavernPromptRegexRuleV1['placement'],promptOnly:rule.promptOnly,
+        markdownOnly:rule.markdownOnly,runOnEdit:rule.runOnEdit,minDepth:rule.minDepth,maxDepth:rule.maxDepth,
+        substituteRegex:rule.substituteRegex as 0|1|2}
+      rules.push(effective)
+      captureSource?.(effective,{ordinal:index,descriptor:rule.raw,producer:binding
+        ?{schemaVersion:1,kind:'regex-library',id:owner,binding:{...binding},policyFingerprint:policy.fingerprint}
+        :{schemaVersion:1,kind:'preset',id:owner,policyFingerprint:policy.fingerprint}})
+    }
   }
   if(policy.preset)append(policy.preset.regexes,'preset',policy.preset.id)
   for(const library of policy.regexes)append(library.rules,library.binding.scope==='preset'?'preset':
-    library.binding.scope==='conversation'?'scoped':'global',library.id)
+    library.binding.scope==='conversation'?'scoped':'global',library.id,library.binding)
   rules.push(...scoped.map(rule=>({...rule,id:`card:${rule.id}`})))
   return rules.sort((a,b)=>policy.regexOrder.indexOf(a.origin)-policy.regexOrder.indexOf(b.origin))
 }

@@ -22,6 +22,7 @@ import { registerSideChat, pageSideMaterial } from './roleplay-side-chat.js';
 import { mvuPlayerEditExpectedV1 } from './roleplay-mvu-player-expected.js';
 import { publishSideChatBridge } from './roleplay-side-chat-bridge.js';
 import { createCommunityPresets } from './community-presets.js';
+import { normalizeCommunityRegexes, communityTavernRegexDto, communityRegexesFromTavernDto, communityTavernRegexRawV1 } from './community-preset-import.js';
 import { createCommunityPresetVariables } from './community-preset-variables.js';
 import { createCommunityPresetSettlement } from './community-preset-settlement.js';
 import { communityRegexMacros, communityRegexRules } from './community-regex.js';
@@ -37,7 +38,7 @@ import { captureRoleplayTavernMaterialHistoryV1 } from './roleplay-tavern-materi
 import { captureNativeTavernInjectionDefinitionV1, captureRoleplayTavernInjectionDefinitionsV1 } from './roleplay-tavern-injection-definitions.js';
 import { produceCommunityPresetCardMaterialV1, produceCommunityNativeCardMaterialV1 } from './community-preset-card-material.js';
 import { produceAuthorContributionDataV1 } from './roleplay-author-contributions.js';
-import { captureRoleplayTavernScopedRegexV1 } from './roleplay-tavern-prompt-macros.js';
+import { captureRoleplayTavernScopedRegexV1, produceRoleplayTavernMacroSnapshotV1 } from './roleplay-tavern-prompt-macros.js';
 import { selectedMainRoute } from './tavern-model-policy.js';
 import { decodeTavernCard } from './tavern-card.js';
 import { readTavernCardMacroFields } from './nexttavern-card.js';
@@ -3441,6 +3442,31 @@ export async function apply(ctx, config = {}) {
         withSourceLock: (id, work, signal) => withImportLock(id, 'ruby-command-source', work, signal) });
     const ejsPrograms = createRoleplayTavernEjsPrograms({ loadRuntime: (engine, signal) => mvuOpening.templateEjsRuntime(engine, signal) });
     ctx.effect(() => () => ejsPrograms.dispose(), 'roleplay: retained EJS programs lifetime');
+    const executeAuthorFilter = async (input, signal, sourceData) => {
+        if (!authorBrowser)
+            throw Error('INPUT_MATERIAL_NATIVE_FILTER_UNAVAILABLE');
+        const { reference, ...request } = input, binding = reference.binding, session = ctx.sessions.get(binding.sessionId);
+        if (!session)
+            throw Error('AUTHOR_NATIVE_COMMAND_SESSION_UNAVAILABLE');
+        const captured = await authorBrowser.handle({ action: 'capture', binding }, signal);
+        if (!captured.ok || captured.kind !== 'snapshot')
+            throw Error(captured.ok ? 'AUTHOR_NATIVE_FILTER_SNAPSHOT_UNAVAILABLE' : captured.code);
+        const snapshot = captured.snapshot, from = Number(session.seq), output = await authorBrowser.invokeFilter(binding, { ...request, realmId: reference.realmId,
+            resource: reference.resource, filterCallbackId: reference.filterCallbackId,
+            snapshot, readScope: `native-filter:${request.operationId}` }, signal, sourceData);
+        let changed = false;
+        // Only events appended while this actual callback held the channel can
+        // require a material successor. Existing history remains owner DATA.
+        for (let seq = from; seq < Number(session.seq); seq++) {
+            const event = session.eventAt(seq);
+            if (event.type === 'roleplay/author-injection-declaration' || event.type === 'roleplay/author-injection-cleanup'
+                || event.type === 'roleplay/author-chat-root')
+                changed = true;
+        }
+        return { accepted: output.accepted, changed, actualReadBasis: { generation: snapshot.generation, readRevision: snapshot.readRevision,
+                basis: snapshot.basis, scopeFrameSha256: snapshot.scopeFrame.frameSha256,
+                ...output.libraryReads.length ? { libraryReads: output.libraryReads } : {} } };
+    };
     const tavernMaterial = createRoleplayTavernPromptMaterialV1({ branch: T.branch, inputState, settlement: communitySettlement,
         captureStoryText,
         personas: captureNativePersonasV1,
@@ -3486,30 +3512,7 @@ export async function apply(ctx, config = {}) {
                 throw Error('BROWSER_GENERATION_READER_UNAVAILABLE');
             return authorBrowser.invokeGeneration(sid, program, capture, facts, signal, sourceData);
         },
-        executeAuthorFilter: async (input, signal, sourceData) => {
-            if (!authorBrowser)
-                throw Error('INPUT_MATERIAL_NATIVE_FILTER_UNAVAILABLE');
-            const { reference, ...request } = input, binding = reference.binding, session = ctx.sessions.get(binding.sessionId);
-            if (!session)
-                throw Error('AUTHOR_NATIVE_COMMAND_SESSION_UNAVAILABLE');
-            const captured = await authorBrowser.handle({ action: 'capture', binding }, signal);
-            if (!captured.ok || captured.kind !== 'snapshot')
-                throw Error(captured.ok ? 'AUTHOR_NATIVE_FILTER_SNAPSHOT_UNAVAILABLE' : captured.code);
-            const snapshot = captured.snapshot, from = Number(session.seq), accepted = await authorBrowser.invokeFilter(binding, { ...request, realmId: reference.realmId,
-                resource: reference.resource, filterCallbackId: reference.filterCallbackId,
-                snapshot, readScope: `native-filter:${request.operationId}` }, signal, sourceData);
-            let changed = false;
-            // Read only the actual delta which completed while this callback held
-            // the channel. No second registry hash or whole-history notification scan.
-            for (let seq = from; seq < Number(session.seq); seq++) {
-                const event = session.eventAt(seq);
-                if (event.type === 'roleplay/author-injection-declaration' || event.type === 'roleplay/author-injection-cleanup'
-                    || event.type === 'roleplay/author-chat-root')
-                    changed = true;
-            }
-            return { accepted, changed, actualReadBasis: { generation: snapshot.generation, readRevision: snapshot.readRevision,
-                    basis: snapshot.basis, scopeFrameSha256: snapshot.scopeFrame.frameSha256 } };
-        },
+        executeAuthorFilter,
         retireNativeFilters: retireNativeFilterReferences,
         openingPreparation: (native, scope, source) => {
             if (!programOpening)

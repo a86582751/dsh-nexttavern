@@ -62,6 +62,16 @@ export interface STRegexRule {
   readonly replacement: string
 }
 
+/** Raw ECMAScript regex operations. Callers supply sources and flags directly,
+ * without ST's slash parser, capture macros or replacement rewriting. */
+export type NativeRegexBatchV1 =
+  | {readonly kind:'capture-first';readonly inputs:readonly string[];
+    readonly patterns:readonly {readonly pattern:string;readonly flags:string}[]}
+  | {readonly kind:'replace-sequence';readonly input:string;readonly rules:readonly STRegexRule[]}
+export type NativeRegexBatchResultV1 =
+  | {readonly ok:true;readonly texts:readonly string[]}
+  | {readonly ok:false;readonly reason:STRegexFailureReason}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
 
@@ -132,6 +142,72 @@ for(;;){const match=regex.exec(input);if(!match)break;
 }
 if(!add(input.slice(cursor))){fail('limit','outputChars',length);return}
 parentPort.postMessage({ok:true,text:parts.join(''),matches});})();`
+
+const nativeBatchWorkerCode = `(function(){const {parentPort,workerData}=require('node:worker_threads');
+const {batch,outputChars}=workerData;
+const compiled=new Map();
+let invalid=false;
+function regex(rule,index){
+  if(compiled.has(index))return compiled.get(index);
+  try{const value=new RegExp(rule.pattern,rule.flags);compiled.set(index,value);return value}
+  catch(error){invalid=true;throw error}
+}
+try{
+  let texts;
+  if(batch.kind==='capture-first'){
+    texts=batch.inputs.map(text=>{
+      for(let index=0;index<batch.patterns.length;index++){
+        const pattern=regex(batch.patterns[index],index);pattern.lastIndex=0;
+        const match=pattern.exec(text);
+        if(match)return match[1].trim();
+      }
+      return text;
+    });
+  }else{
+    let text=batch.input;
+    for(let index=0;index<batch.rules.length;index++){
+      const rule=batch.rules[index];
+      text=text.replace(regex(rule,index),rule.replacement);
+    }
+    if(text.length>outputChars){parentPort.postMessage({ok:false,reason:'limit'});return}
+    texts=[text];
+  }
+  parentPort.postMessage({ok:true,texts});
+}catch{parentPort.postMessage({ok:false,reason:invalid?'invalid-rule':'worker'})}})();`
+
+/** One window or ordered substitution runs in one bounded worker. Native string
+ * replacement preserves every ECMAScript capture and replacement token. */
+export async function boundedNativeRegexBatchV1(batch:NativeRegexBatchV1):Promise<NativeRegexBatchResultV1> {
+  const rules=batch.kind==='capture-first'?batch.patterns:batch.rules,
+    texts=batch.kind==='capture-first'?batch.inputs:[batch.input],
+    inputChars=texts.reduce((sum,text)=>sum+text.length,0)+rules.reduce((sum,rule)=>sum+rule.pattern.length,0)
+      +(batch.kind==='replace-sequence'?batch.rules.reduce((sum,rule)=>sum+rule.replacement.length,0):0)
+  if(inputChars>TAVERN_PROMPT_TRANSFORM_LIMITS_V1.inputChars
+    ||rules.some(rule=>rule.pattern.length>ST_REGEX_LIMITS.patternChars))return {ok:false,reason:'limit'}
+  if(replacementActive>=ST_REGEX_LIMITS.concurrentWorkers)return {ok:false,reason:'busy'}
+  replacementActive++
+  let worker:Worker|undefined
+  try {
+    return await new Promise<NativeRegexBatchResultV1>(resolve=>{
+      let settled=false
+      const done=(value:NativeRegexBatchResultV1)=>{
+        if(settled)return
+        settled=true;clearTimeout(timer);resolve(value)
+      }
+      const timer=setTimeout(()=>done({ok:false,reason:'timeout'}),ST_REGEX_LIMITS.deadlineMs)
+      try {
+        worker=new Worker(nativeBatchWorkerCode,{eval:true,
+          workerData:{batch,outputChars:ST_REGEX_LIMITS.outputChars},
+          resourceLimits:{maxOldGenerationSizeMb:32,stackSizeMb:2}})
+        worker.once('message',done)
+        worker.once('error',()=>done({ok:false,reason:'worker'}))
+        worker.once('exit',()=>done({ok:false,reason:'worker'}))
+      }catch{done({ok:false,reason:'worker'})}
+    })
+  }finally{
+    try{if(worker)await worker.terminate()}finally{replacementActive--}
+  }
+}
 
 const stFailure = (reason: STRegexFailureReason, limit: STRegexLimit | null = null,
   observed: number | null = null): STRegexResult => ({ ok: false, reason, limit, observed,
