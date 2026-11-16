@@ -19,6 +19,7 @@ import {materializeTavernEffectiveBookV1} from './roleplay-tavern-lore-edits-dat
 import {produceCommunityPresetCardMaterialV1,projectCapturedStRuleTextV1,projectCapturedStOpeningTextV1}
   from './community-preset-card-material.js'
 import type {CommunityPresetCardMaterialV1} from './community-preset-card-material.js'
+import type {TavernEjsCurrentCharacterSupplierV1} from './tavern-template-ejs-host-types.mjs'
 
 interface SourceDependencies {
   readonly tables:AuthorTables&{status:AuthorTable}
@@ -106,6 +107,25 @@ function assemblePromptSourceData(captured:TavernLoreEditSourceDataCaptureV1,edi
 }
 
 type CapturedCharacterSource=Extract<ReturnType<typeof captureRoleplayTavernPromptSourceDataV1>,{kind:'captured-data'}>
+/** Identity reuses the actual immutable producers. Complete character DATA is
+ * materialized only by a getter and retained by the existing read journal. */
+export function captureTavernEjsCurrentCharacterV1(captured:CapturedCharacterSource,
+  mapping:CommunityPresetCardMaterialV1|undefined,policyFingerprint:string|null):TavernEjsCurrentCharacterSupplierV1 {
+  const primary=captured.bookContext?.primary
+  let value:ReturnType<TavernEjsCurrentCharacterSupplierV1['read']>|undefined
+  return {reference:{schemaVersion:1,encoding:'ejs-current-character-reference-v1',
+    sourceSnapshotSha256:captured.source.sourceSha256,editsDataSha256:captured.edits.dataSha256,policyFingerprint,
+    primaryBook:captured.bookContext===undefined?{kind:'source-fallback'}:primary
+      ?{kind:'captured',address:primary.address,content:primary.content,metadata:primary.metadata}:{kind:'absent'}},
+    read(){
+      if(value)return value
+      const projected=projectCapturedTavernCharacterDataV1(captured,mapping)
+      value=projected.kind==='available'?{sourcePointer:'/data',
+        sourceSnapshotSha256:projected.identity.sourceSnapshotSha256,data:projected.character}
+        :{unavailable:projected.kind==='unavailable'?projected.code:'COMMUNITY_CARD_MAPPING_REQUIRED'}
+      return value
+    }}
+}
 export type CapturedTavernCharacterDataV1={readonly schemaVersion:1;readonly kind:'available';
   readonly identity:{readonly sessionId:string;readonly sourceRecordSessionId:string;readonly importId:string;
     readonly sourceSnapshotSha256:string;readonly materialSha256:string};

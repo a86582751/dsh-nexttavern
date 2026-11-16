@@ -47,7 +47,7 @@ export interface ReaderNarrativeHtmlV1 {
 }
 interface Dependencies {
   readonly readCaptured?:TavernEjsReadSupplierV1
-  readonly currentCharacter?:()=>import('./tavern-template-ejs-host-types.mjs').TavernEjsHostCapture['currentCharacter']
+  readonly currentCharacterReference?:import('./tavern-template-ejs-host-types.mjs').TavernEjsHostCapture['currentCharacterReference']
   readonly generationModel?:import('./tavern-template-ejs-host-types.mjs').TavernEjsHostCapture['generationModel']
   readonly catalog:TavernSourceRenderCatalogV1
   readonly rows:readonly ReaderRegexDocumentMessageV1[]
@@ -97,14 +97,14 @@ export async function prepareReaderWorldbookV1(deps:Dependencies) {
       return result.output
     }})
   const loreSha256=recordSha256(lore),worldInfoSettings=resolveCapturedTavernPromptSettingsV1(catalog.source),
-    currentCharacter=deps.currentCharacter?.(),
+    currentCharacterReference=deps.currentCharacterReference,
     shared=createReaderWorldbookSharedCaptureV1({source:catalog.source,snapshot:facts.data,lore,macros:deps.macros,
       rules:deps.helperRules,scriptOrder:deps.scriptOrder}),
     targets=deps.rows.map((row,index)=>{
     const target=createReaderWorldbookTargetCaptureV1({source:catalog.source,snapshot:facts.data,row,
       clockEpochMs:deps.clockEpochMs(row)!,lore,loreSha256,worldInfo,worldInfoSettings,
       macros:deps.macros,presetCatalog:facts.presetCatalog,rules:deps.helperRules,scriptOrder:deps.scriptOrder,
-      currentCharacter,generationModel:deps.generationModel,shared})
+      currentCharacterReference,generationModel:deps.generationModel,shared})
     if(target.kind==='unsupported')diagnose(index,target.code)
     return target
   })

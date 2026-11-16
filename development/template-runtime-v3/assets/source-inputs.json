@@ -136,12 +136,12 @@
       {
         "artifact": "tavern-template-ejs-host-typescript",
         "path": "src/core/tavern-template-ejs-host.mts",
-        "sha256": "10c0ffe582daab457a528ec0a6f5bb169f5a01c620a048610db8d854f92e4ee2"
+        "sha256": "85d42bb8717bdd15e6d559c5dfbb2b5ced7271a00aded0ec60668e81984b15e8"
       },
       {
         "artifact": "tavern-template-ejs-replay-typescript",
         "path": "src/core/tavern-template-ejs-replay.mts",
-        "sha256": "c728ae61e4dfae1c9c0ffeede89ad1fd26dc935a09b44b9fde490c3a7822b5be"
+        "sha256": "ef2ff945d5035d3e4554e7467ace3eca0de206a032f6a6fa64e519ae2dad64d6"
       },
       {
         "artifact": "tavern-template-ejs-runtime-types-typescript",

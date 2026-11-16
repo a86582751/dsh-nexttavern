@@ -10,7 +10,7 @@ import {recordSha256,sha256,textOf} from './roleplay-data.js'
 import type {RoleplayInputSourceDataWindowV1} from './roleplay-input-preparation.js'
 import {createStableRoleplayFence} from './roleplay-context.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
-import {captureRoleplayTavernPromptSourceDataV1,projectCapturedTavernCharacterDataV1} from './roleplay-tavern-prompt-source.js'
+import {captureRoleplayTavernPromptSourceDataV1,captureTavernEjsCurrentCharacterV1} from './roleplay-tavern-prompt-source.js'
 import {createTavernSourceRenderCatalogV1,tavernSourceTemplateActivationV1} from './tavern-source-render-catalog.mjs'
 import {captureRoleplayTavernPromptScopesV1} from './roleplay-tavern-prompt-scopes.js'
 import type {TavernActualSchemaPromptScopesV1,TavernActualSchemaPromptScopesV2,TavernActualSchemaPromptScopesV3,TavernActualNonnumericalPromptScopesV1,
@@ -275,7 +275,8 @@ function captureAuthorFields(captured:Exclude<ReturnType<typeof captureRoleplayT
       {pointer:'/native/current-author/examples',text:exampleEnabled?remaining.examplesText:''}]
   const extensions=captured.cardData.extensions as Readonly<Record<string,unknown>>|undefined,
     cardRegexes=normalizeCommunityRegexes(extensions?.regex_scripts).map(communityTavernRegexDto)
-  return {cardMaterial,mapped,currentCardFields,markerInputs,remainingParts,authorInputs,cardRegexes}
+  return {cardMaterial,mapped,currentCardFields,markerInputs,remainingParts,authorInputs,cardRegexes,
+    policyFingerprint:policy?.fingerprint??null}
 }
 /** Main and Reader borrow the same Source/edit/compile read. The surrounding
  * consumer retains its own async lifetime, variable capture and permissions. */
@@ -740,7 +741,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       })
       const model=deps.community?.modelName(scope.session.id),preparedRoute=model?{model,configSha256:recordSha256({model})}:undefined
       const {cardMaterial,mapped,currentCardFields,markerInputs,remainingParts,authorInputs}=authorFields
-      let currentCharacter:ReturnType<typeof projectCapturedTavernCharacterDataV1>|undefined
+      const currentCharacter=captureTavernEjsCurrentCharacterV1(captured,cardMaterial,authorFields.policyFingerprint)
       let helperMessages:TavernEjsHostCapture['helperMessages']
       if(cardMaterial?.kind==='mapping-required')fail('COMMUNITY_CARD_MAPPING_REQUIRED')
       const sharedBindings=sharedVariableScopes
@@ -849,14 +850,9 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       const ejs=generation.ejs.collector.beginPlan(ordinaryStage,{
         shared:sharedStage,
         readCaptured:deps.ejs.namedWorldInfo?.({sessionId:scope.session.id,source,rules,
-          scriptOrder:communityPolicy?.regexOrder,assertCurrent}),
+          scriptOrder:communityPolicy?.regexOrder,currentCharacter,assertCurrent}),
         generationModel:()=>preparedRoute?{model:preparedRoute.model,source:'prepared-generation'}:undefined,
-        currentCharacter:()=>{
-          const projected=currentCharacter??=projectCapturedTavernCharacterDataV1(captured,cardMaterial)
-          return projected.kind==='available'?{sourcePointer:'/data',
-            sourceSnapshotSha256:projected.identity.sourceSnapshotSha256,data:projected.character}
-            :{unavailable:projected.kind==='unavailable'?projected.code:'COMMUNITY_CARD_MAPPING_REQUIRED'}
-        },
+        currentCharacterReference:currentCharacter.reference,
         helperMessages:()=>{
           if(helperMessages)return helperMessages
           const history='fullHistory' in chatClock?chatClock.fullHistory():chatClock,

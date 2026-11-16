@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/src/core/roleplay-author-dialog-content.ts; edit the TypeScript source.
 import { recordSha256, sha256 } from './roleplay-data.js';
-import { captureRoleplayTavernPromptSourceDataV1, projectCapturedTavernCharacterDataV1 } from './roleplay-tavern-prompt-source.js';
+import { captureRoleplayTavernPromptSourceDataV1, captureTavernEjsCurrentCharacterV1 } from './roleplay-tavern-prompt-source.js';
 import { captureRoleplayTavernPromptScopesV1 } from './roleplay-tavern-prompt-scopes.js';
 import { captureReadonlyAuthorDialogChatClockV1 } from './roleplay-tavern-chat-clock.js';
 import { captureRoleplayTavernMaterialHistoryV1 } from './roleplay-tavern-material-history.js';
@@ -313,18 +313,13 @@ export function createRoleplayAuthorDialogContentV1(deps) {
                 resources: snapshot => snapshot.lore.map(row => ({ id: row.key, loreKey: row.key, sourcePointer: row.sourcePointer,
                     sourceSnapshotSha256: row.sourceSnapshotSha256, contentSha256: row.contentSha256, text: row.content })) });
             let injections;
-            let currentCharacter;
+            const currentCharacter = captureTavernEjsCurrentCharacterV1(captured, cardMaterial, communityPolicy.fingerprint);
             let helperMessages;
             const ejs = collector.beginPlan(ordinaryStage, { shared: sharedStage, namedQueues: () => injections.namedQueues(),
                 generationModel: () => ({ model: selection.actualRoute.model, source: 'prepared-generation' }),
                 readCaptured: deps.namedWorldInfo?.({ sessionId: sid, source, rules,
-                    scriptOrder: communityPolicy.regexOrder, assertCurrent }),
-                currentCharacter: () => {
-                    const projected = currentCharacter ??= projectCapturedTavernCharacterDataV1(captured, cardMaterial);
-                    return projected.kind === 'available' ? { sourcePointer: '/data',
-                        sourceSnapshotSha256: projected.identity.sourceSnapshotSha256, data: projected.character }
-                        : { unavailable: projected.kind === 'unavailable' ? projected.code : 'COMMUNITY_CARD_MAPPING_REQUIRED' };
-                },
+                    scriptOrder: communityPolicy.regexOrder, currentCharacter, assertCurrent }),
+                currentCharacterReference: currentCharacter.reference,
                 helperMessages: () => helperMessages ??= ({
                     rules,
                     scriptOrder: communityPolicy.regexOrder,

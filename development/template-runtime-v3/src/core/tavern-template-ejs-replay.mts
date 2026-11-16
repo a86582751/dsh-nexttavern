@@ -50,7 +50,7 @@ const limited=(text:string,maximum:number)=>{
 const phaseCapture=(input:TavernEjsPhaseCapture):TavernEjsPhaseCapture=>({
   snapshot:input.snapshot,resources:input.resources,macros:input.macros,
   ...(input.helperMessages===undefined?{}:{helperMessages:input.helperMessages}),
-  ...(input.currentCharacter===undefined?{}:{currentCharacter:input.currentCharacter}),
+  ...(input.currentCharacterReference===undefined?{}:{currentCharacterReference:input.currentCharacterReference}),
   ...(input.initialBinding===undefined?{}:{initialBinding:input.initialBinding}),
   ...(input.ordinaryNamespace===undefined?{}:{ordinaryNamespace:input.ordinaryNamespace}),
   ...(input.ordinaryMessageView===undefined?{}:{ordinaryMessageView:input.ordinaryMessageView}),

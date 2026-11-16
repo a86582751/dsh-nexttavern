@@ -33,6 +33,7 @@ export type TavernEjsReadSupplierFactoryV1=(input:{
   readonly source:TavernLoreSourceDataV1
   readonly rules:TavernPromptTransformInputV1['rules']
   readonly scriptOrder?:TavernPromptTransformInputV1['scriptOrder']
+  readonly currentCharacter?:import('./tavern-template-ejs-host-types.mjs').TavernEjsCurrentCharacterSupplierV1
   assertCurrent():void
 })=>TavernEjsReadSupplierV1
 
@@ -70,7 +71,7 @@ export function createRoleplayTavernEjsPreparation(deps:Dependencies) {
     ordinaryMessageView?:()=>TavernEjsHostCapture['ordinaryMessageView']|Promise<TavernEjsHostCapture['ordinaryMessageView']>
     presetCatalog?:()=>TavernEjsHostCapture['presetCatalog']
     helperMessages?:()=>TavernEjsHostCapture['helperMessages']
-    currentCharacter?:()=>TavernEjsHostCapture['currentCharacter']
+    currentCharacterReference?:TavernEjsHostCapture['currentCharacterReference']
     generationModel?:()=>TavernEjsHostCapture['generationModel']
     readCaptured?:TavernEjsReadSupplierV1
   }){
@@ -83,7 +84,7 @@ export function createRoleplayTavernEjsPreparation(deps:Dependencies) {
     }
     const capture=async(snapshot:TavernTemplateFrozenSnapshotV1,macros:TavernPromptMacroSnapshotV1)=>{
       const ordinaryMessageView=await options?.ordinaryMessageView?.(),presetCatalog=options?.presetCatalog?.(),
-        helperMessages=options?.helperMessages?.(),currentCharacter=options?.currentCharacter?.(),
+        helperMessages=options?.helperMessages?.(),
         generationModel=options?.generationModel?.()
       if(!initialBinding)initialBinding=snapshot.scopes.find(row=>row.scope==='initial')
       return {snapshot,macros:options?.shared?.macros(macros)??macros,
@@ -94,7 +95,7 @@ export function createRoleplayTavernEjsPreparation(deps:Dependencies) {
       ...ordinaryMessageView?{ordinaryMessageView}:{},
       ...presetCatalog?{presetCatalog}:{},
       ...helperMessages?{helperMessages}:{},
-      ...currentCharacter?{currentCharacter}:{},
+      ...options?.currentCharacterReference?{currentCharacterReference:options.currentCharacterReference}:{},
       ...generationModel?{generationModel}:{},
       ordinaryNamespace:{root:ordinary.initialRoot,values:ordinary.values}}
     }

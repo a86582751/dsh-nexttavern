@@ -106,7 +106,7 @@ export function createReaderWorldbookTargetCaptureV1(input) {
     const frozen = { ...body, snapshotSha256: recordSha256(body) }, shared = input.shared ?? createReaderWorldbookSharedCaptureV1(input), { names } = shared;
     const targetMacros = { ...macros, variableScopes: { ...macros.variableScopes, message: messageScope ?? null } };
     return { kind: 'captured', policy, target, capture: { snapshot: frozen, macros: targetMacros,
-            ...input.currentCharacter ? { currentCharacter: input.currentCharacter } : {},
+            ...input.currentCharacterReference ? { currentCharacterReference: input.currentCharacterReference } : {},
             ...input.generationModel ? { generationModel: input.generationModel } : {},
             ...shared.helperMessages ? { helperMessages: { ...shared.helperMessages,
                     rows: shared.helperMessages.rows.map(item => ({ ...item, depth: target.depth + target.index - item.index })) } } : {},

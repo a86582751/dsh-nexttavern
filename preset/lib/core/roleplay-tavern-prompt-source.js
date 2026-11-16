@@ -85,6 +85,25 @@ function assemblePromptSourceData(captured, edited, sessionId, includeCardStyle,
         record: contributionInput.activeImport, decoded: contributionInput.rawDecoded,
         cardData, avatarPath: readCapturedTavernAvatarV1(captured) };
 }
+/** Identity reuses the actual immutable producers. Complete character DATA is
+ * materialized only by a getter and retained by the existing read journal. */
+export function captureTavernEjsCurrentCharacterV1(captured, mapping, policyFingerprint) {
+    const primary = captured.bookContext?.primary;
+    let value;
+    return { reference: { schemaVersion: 1, encoding: 'ejs-current-character-reference-v1',
+            sourceSnapshotSha256: captured.source.sourceSha256, editsDataSha256: captured.edits.dataSha256, policyFingerprint,
+            primaryBook: captured.bookContext === undefined ? { kind: 'source-fallback' } : primary
+                ? { kind: 'captured', address: primary.address, content: primary.content, metadata: primary.metadata } : { kind: 'absent' } },
+        read() {
+            if (value)
+                return value;
+            const projected = projectCapturedTavernCharacterDataV1(captured, mapping);
+            value = projected.kind === 'available' ? { sourcePointer: '/data',
+                sourceSnapshotSha256: projected.identity.sourceSnapshotSha256, data: projected.character }
+                : { unavailable: projected.kind === 'unavailable' ? projected.code : 'COMMUNITY_CARD_MAPPING_REQUIRED' };
+            return value;
+        } };
+}
 /** Complete current character DATA from one already captured Source cut. */
 export function projectCapturedTavernCharacterDataV1(captured, mapping) {
     if (captured.decoded.format === 'json-nexttavern-v1')

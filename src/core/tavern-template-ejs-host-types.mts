@@ -57,7 +57,23 @@ export interface TavernEjsNamedWorldInfoCaptureV1 {
 export type TavernEjsCurrentCharacterV1={readonly sourcePointer:string;readonly sourceSnapshotSha256:string;
   readonly data:Readonly<Record<string,unknown>>}
   |{readonly unavailable:'NATIVE_CHARACTER_MAPPING_REQUIRED'|'COMMUNITY_CARD_MAPPING_REQUIRED'}
+export interface TavernEjsCurrentCharacterReferenceV1 {
+  readonly schemaVersion:1
+  readonly encoding:'ejs-current-character-reference-v1'
+  readonly sourceSnapshotSha256:string
+  readonly editsDataSha256:string
+  readonly policyFingerprint:string|null
+  readonly primaryBook:{readonly kind:'source-fallback'|'absent'}|{readonly kind:'captured';
+    readonly address:import('./roleplay-author-worldbook-types.js').AuthorWorldbookAddressV1;
+    readonly content:import('./roleplay-author-worldbook-types.js').AuthorWorldbookRefV1;
+    readonly metadata:import('./roleplay-author-worldbook-types.js').AuthorWorldbookRefV1}
+}
+export interface TavernEjsCurrentCharacterSupplierV1 {
+  readonly reference:TavernEjsCurrentCharacterReferenceV1
+  read():TavernEjsCurrentCharacterV1
+}
 export type TavernEjsCapturedReadRequestV1={readonly kind:'named-world-info';readonly name:string}
+  |{readonly kind:'current-character'}
   |{readonly kind:'character-directory'}
   |{readonly kind:'character-data';readonly characterId:string}
 export type TavernEjsCapturedReadResultV1=
@@ -82,7 +98,7 @@ export type TavernEjsPresetCatalogV1={readonly kind:'none';readonly fingerprint:
     readonly prompts:readonly {readonly name:string;readonly content:string;readonly sourcePointer:string}[]}
 export interface TavernEjsHostCapture {
   readonly helperMessages?:TavernEjsCapturedMessagesV1
-  readonly currentCharacter?:TavernEjsCurrentCharacterV1
+  readonly currentCharacterReference?:TavernEjsCurrentCharacterReferenceV1
   readonly generationModel?:{readonly model:string;readonly source:'prepared-generation'|'configured-reader'}
   /** Request-local InitialVariables stage, owned by the current preparation. */
   readonly initialBinding?:TavernTemplateScopeBindingV1

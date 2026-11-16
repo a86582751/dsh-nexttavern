@@ -16,7 +16,7 @@ export interface ReaderWorldbookTargetCaptureInputV1 {
   readonly shared?:ReaderWorldbookSharedCaptureV1
   readonly rules?:NonNullable<TavernEjsHostCapture['helperMessages']>['rules']
   readonly scriptOrder?:NonNullable<TavernEjsHostCapture['helperMessages']>['scriptOrder']
-  readonly currentCharacter?:TavernEjsHostCapture['currentCharacter']
+  readonly currentCharacterReference?:TavernEjsHostCapture['currentCharacterReference']
   readonly generationModel?:TavernEjsHostCapture['generationModel']
   readonly source:TavernLoreSourceDataV1
   readonly snapshot:ReaderRegexDocumentReadFactsV1['data']
@@ -142,7 +142,7 @@ export function createReaderWorldbookTargetCaptureV1(input:ReaderWorldbookTarget
     shared=input.shared??createReaderWorldbookSharedCaptureV1(input),{names}=shared
   const targetMacros={...macros,variableScopes:{...macros.variableScopes,message:messageScope??null}}
   return {kind:'captured',policy,target,capture:{snapshot:frozen,macros:targetMacros,
-    ...input.currentCharacter?{currentCharacter:input.currentCharacter}:{},
+    ...input.currentCharacterReference?{currentCharacterReference:input.currentCharacterReference}:{},
     ...input.generationModel?{generationModel:input.generationModel}:{},
     ...shared.helperMessages?{helperMessages:{...shared.helperMessages,
       rows:shared.helperMessages.rows.map(item=>({...item,depth:target.depth+target.index-item.index}))}}:{},

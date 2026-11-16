@@ -65,7 +65,8 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
   let ordinary=capture.ordinaryNamespace?structuredClone(capture.ordinaryNamespace):undefined
   let messageView=capture.ordinaryMessageView?structuredClone(capture.ordinaryMessageView):undefined
   let presetCatalog=capture.presetCatalog
-  let helperMessages=capture.helperMessages,currentCharacter=capture.currentCharacter
+  let helperMessages=capture.helperMessages,currentCharacterReference=capture.currentCharacterReference
+  let currentCharacter:import('./tavern-template-ejs-host-types.mjs').TavernEjsCurrentCharacterV1|undefined
   type ChatRead=NonNullable<TavernEjsHostOutput['chatReads']>[number]
   const chatRegexes=new Map<string,RegExp|null>()
   const presetHashes=new Map<number,{readonly text:string;readonly sha256:string}>()
@@ -486,7 +487,16 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
     }
     finally{deadline+=(deps.parkedMs?.()??0)-parked}
   }
-  const availableCharacter=(value:TavernEjsHostCapture['currentCharacter'])=>{
+  const readCurrentCharacter=()=>{
+    if(!currentCharacterReference)throw Error('TEMPLATE_CURRENT_CHARACTER_CAPTURE_REQUIRED')
+    if(!currentCharacter) {
+      const result=capturedRead({kind:'current-character'})
+      if(result.kind!=='character-data')throw Error('TEMPLATE_CAPTURED_READ_CHANGED')
+      currentCharacter=result.value
+    }
+    return currentCharacter
+  }
+  const availableCharacter=(value:import('./tavern-template-ejs-host-types.mjs').TavernEjsCurrentCharacterV1|undefined)=>{
     if(!value)throw Error('TEMPLATE_CURRENT_CHARACTER_CAPTURE_REQUIRED')
     if('unavailable' in value) {
       recordFault(value.unavailable)
@@ -550,7 +560,7 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
       return context.newString(JSON.stringify(text))
     }
     if(kind==='current-character') {
-      return context.newString(JSON.stringify(availableCharacter(currentCharacter).data))
+      return context.newString(JSON.stringify(availableCharacter(readCurrentCharacter()).data))
     }
     if(kind==='character-template') {
       const row:TavernEjsResource={id:'character-template',sourcePointer:pointer+'/character-template',
@@ -559,7 +569,7 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
     }
     if(kind==='character-result') {
       const result=JSON.parse(key) as {characterId:string|null;name:string;text:string},value=result.name,
-        selected=availableCharacter(result.characterId===null?currentCharacter:characters.get(result.characterId))
+        selected=availableCharacter(result.characterId===null?readCurrentCharacter():characters.get(result.characterId))
       const valueSha256=schemaTextSha256(value),binding={key:'char',value,valueSha256,read:{
           kind:'variable' as const,purpose:'read' as const,scope:'card' as const,
           ownerId:result.characterId??snapshot.sessionId,key:'name',present:true,
@@ -979,7 +989,8 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
           cacheValues=undefined
           namedQueues=namedCapture(nextCapture.namedPromptQueues)
           presetCatalog=nextCapture.presetCatalog
-          helperMessages=nextCapture.helperMessages;currentCharacter=nextCapture.currentCharacter
+          helperMessages=nextCapture.helperMessages;currentCharacterReference=nextCapture.currentCharacterReference
+          currentCharacter=undefined
           macros=nextCapture.macros;macroProjector=undefined
           overlay.clear();globalOverlay.clear()
         }

@@ -54,7 +54,7 @@ import {nativeCommunityDisplayRule} from './community-preset-display.js'
 import type {CommunityPresetPolicy} from './community-presets.js'
 import type {CommunityJson} from './community-preset-types.js'
 import type {createRoleplayTavernPromptMaterialV1} from './roleplay-tavern-prompt.js'
-import {projectCapturedTavernCharacterDataV1} from './roleplay-tavern-prompt-source.js'
+import {captureTavernEjsCurrentCharacterV1} from './roleplay-tavern-prompt-source.js'
 import type {TavernEjsReadSupplierFactoryV1} from './roleplay-tavern-ejs-preparation.js'
 import {prepareReaderWorldbookV1,projectReaderWorldbookDocumentsV1}
   from './roleplay-reader-worldbook.js'
@@ -776,18 +776,14 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       for(const [index] of selected.rows.entries())renderDiagnostics.set(index,[{code}])
     }
     if(read.data.sourceCatalog&&deps.templateRuntime)try {
+      const author=read.data.authorRead?.data,
+        currentCharacter=author?.kind==='author-data'?captureTavernEjsCurrentCharacterV1(
+          author.captured,author.authorFields.cardMaterial,author.authorFields.policyFingerprint):undefined
       worldbook=await prepareReaderWorldbookV1({catalog:read.data.sourceCatalog,rows:selected.rows,macros,rules,
         ...modelRoute?{generationModel:{model:modelRoute.model,source:'configured-reader' as const}}:{},
         readCaptured:deps.namedWorldInfo?.({sessionId:sid,source,rules:read.data.helperRules,
-          scriptOrder:policy?.regexOrder,assertCurrent:current}),
-        helperRules:read.data.helperRules,currentCharacter:()=>{
-          const author=read.data.authorRead?.data
-          if(author?.kind!=='author-data')return
-          const projected=projectCapturedTavernCharacterDataV1(author.captured,author.authorFields.cardMaterial)
-          if(projected.kind==='available')return {sourcePointer:'/data',
-            sourceSnapshotSha256:projected.identity.sourceSnapshotSha256,data:projected.character}
-          return {unavailable:projected.kind==='unavailable'?projected.code:'COMMUNITY_CARD_MAPPING_REQUIRED'}
-        },
+          scriptOrder:policy?.regexOrder,currentCharacter,assertCurrent:current}),
+        helperRules:read.data.helperRules,currentCharacterReference:currentCharacter?.reference,
         scriptOrder:policy?.regexOrder,signal,assertCurrent:current,facts:documentFacts,
         clockEpochMs:row=>selected.events[row.seq]?.time,runtime:engine=>deps.templateRuntime!(signal,engine),
         regexInputs,phaseId})
