@@ -52,6 +52,7 @@ interface Dependencies extends SourceDeps {
   includeCardStyle(sid:string):boolean
   withSourceLock<T>(sid:string,work:()=>Promise<T>,signal:AbortSignal):Promise<T>
   loadEjs(signal:AbortSignal):Promise<TavernEjsRuntime>
+  readonly namedWorldInfo?:TavernEjsReadSupplierFactoryV1
   inheritedTiming(sid:string,source:TimedDeps['source'],assertCurrent:()=>void)
     :{sourceLineage:NonNullable<TimedDeps['sourceLineage']>;
       inheritedHistory:NonNullable<TimedDeps['inheritedHistory']>;assertCurrent():void}|undefined
@@ -100,7 +101,7 @@ export function createRoleplayAuthorDialogContentV1(deps:Dependencies) {
           events:()=>session.snapshotEvents(),projections:deps.projections,assertOwnerCurrent:assertOwner}),
         inherited=deps.inheritedTiming(sid,captured.source,assertOwner),
         timed=captureRoleplayTavernTimedHistoryV2({sessionId:sid,source:captured.source,compilation:captured.compilation,
-          inputState:deps.inputState,table:deps.branch,
+          inputState:deps.inputState,table:deps.branch,forkBookId:deps.forkBookId,
           ownHistory:history,clock,projections:deps.projections(),sourceLineage:inherited?.sourceLineage,
           inheritedHistory:inherited?.inheritedHistory,assertOwnerCurrent:assertOwner,
           assertSourceLineageCurrent:()=>inherited?.assertCurrent()})

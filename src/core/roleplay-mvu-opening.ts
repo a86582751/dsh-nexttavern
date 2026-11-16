@@ -54,6 +54,8 @@ interface ReadTable {get(key:string):unknown;entries():Iterable<[string,unknown]
 interface WritableTable extends ReadTable {put(key:string,value:unknown):Promise<unknown>}
 export interface MvuOpeningDependencies {
   readAuthorCapture?:MvuSourceDeps['readAuthorCapture']
+  readFrozenAuthorBook?:MvuSourceDeps['readFrozenAuthorBook']
+  includeCardStyle?(sid:string):boolean
   inputState:RoleplayInputStateOwner
   tables:Record<'cards' | 'worldbook' | 'rules' | 'opening',ReadTable> & Record<'branch' | 'status',WritableTable>
   session(sessionId:string):ReadBranchSession | undefined
@@ -110,6 +112,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     session:deps.session,branchReady:deps.branchReady,nativeCurrent:native.current})
   const sourceDeps:MvuSourceDeps={
     readAuthorCapture:deps.readAuthorCapture,
+    readFrozenAuthorBook:deps.readFrozenAuthorBook,
     readActivePointer:id => deps.tables.branch.get(deps.importActiveKey(id)),
     readImportRecord:(id,importId) => deps.tables.branch.get(deps.importRecordKey(id,importId)),
     readRow:(table,key) => deps.tables[table].get(key),

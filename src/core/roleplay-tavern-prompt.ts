@@ -141,6 +141,7 @@ interface Dependencies extends SourceDependencies {
     readonly programs:ReturnType<typeof createRoleplayTavernEjsPrograms>
     readonly state:ReturnType<typeof createCanonicalAuthorChatStateV1>
     load(signal:AbortSignal):Promise<TavernEjsRuntime>
+    readonly namedWorldInfo?:TavernEjsReadSupplierFactoryV1
   }
   projections():readonly SessionMessageProjection[]
   /** Uses the existing selected-window continuity policy and real internal
@@ -458,7 +459,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
           projections:deps.projections(),assertOwnerCurrent:assertSignal}),inheritedTiming=deps.inheritedTiming(scope,source,assertSignal,
             author.captured.sourceLineage),
           timed=captureRoleplayTavernTimedHistoryV2({sessionId:scope.session.id,source,compilation,ownHistory:materialHistory,
-            inputState:deps.inputState,table:deps.branch,
+            inputState:deps.inputState,table:deps.branch,forkBookId:deps.forkBookId,
             inheritedHistory:inheritedTiming?.inheritedHistory,sourceLineage:inheritedTiming?.sourceLineage,
             clock:chatClock,projections:deps.projections(),assertOwnerCurrent:assertSignal,
             assertSourceLineageCurrent:()=>inheritedTiming?.assertCurrent()})

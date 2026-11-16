@@ -2821,7 +2821,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     readAuthorCapture:id=>{
       const captured=tavernSource.capture(id)
       if(captured.kind!=='captured-data')return undefined
-      return tavernLoreEdits.captureAuthorData(captured)
+      return authorContext.captureAuthorData(captured)
+    },
+    readFrozenAuthorBook:input=>{
+      if(input.profileId!==authorProfile.profileId)throw Error('AUTHOR_WORLDBOOK_PROFILE_MISMATCH')
+      return authorContext.resolveFrozenBook(input)
     },
     inheritedNativeObservation,readInheritedPromptTemplateSource,
     readSourceInheritance:id=>tavernSourceInheritance.readCommittedSourceInheritance(id),
@@ -3520,7 +3524,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   const tavernMaterial=createRoleplayTavernPromptMaterialV1({branch:T.branch,inputState,settlement:communitySettlement,
     captureStoryText,
     personas:captureNativePersonasV1,
-    ejs:{programs:ejsPrograms,state:authorChatState,load:signal=>mvuOpening.templateEjsRuntime(undefined,signal)},
+    ejs:{programs:ejsPrograms,state:authorChatState,namedWorldInfo:ejsNamedWorldInfo,
+      load:signal=>mvuOpening.templateEjsRuntime(undefined,signal)},
     community:{presets:communityPresets,variables:communityVariables,persona:communityAccountPersona,
       modelName:id=>selectedMainRoute(ctx.sessions.get(id),taskAgents.get(id),ctx.agentDefaultModel.currentSelection()).model,
       aliases:communityAliases},
@@ -4394,8 +4399,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       if(!facts)return undefined
       const book=await authorWorldbooks.capture(id)
       if(!facts.current()||book&&!book.current())throw Error('READER_WORLDBOOK_SCOPE_CHANGED')
-      let worldbook:Omit<import('./roleplay-author-worldbook-data.js').AuthorNamedWorldbookDataV2,'members'>|undefined
-      if(book){const {members:_,...data}=book.data;worldbook=data}
+      const worldbook=book?.data
       const readonlyPreset=communityPresets.readonlyPreset(id),captured=facts,
         author=tavernMaterial.captureAuthorSource(id),account=author.data.personas,
         selected=account?.data.profiles.find(row=>row.avatar_id===account.data.selectedId),

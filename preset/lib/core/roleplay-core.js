@@ -2663,7 +2663,12 @@ export async function apply(ctx, config = {}) {
             const captured = tavernSource.capture(id);
             if (captured.kind !== 'captured-data')
                 return undefined;
-            return tavernLoreEdits.captureAuthorData(captured);
+            return authorContext.captureAuthorData(captured);
+        },
+        readFrozenAuthorBook: input => {
+            if (input.profileId !== authorProfile.profileId)
+                throw Error('AUTHOR_WORLDBOOK_PROFILE_MISMATCH');
+            return authorContext.resolveFrozenBook(input);
         },
         inheritedNativeObservation, readInheritedPromptTemplateSource,
         readSourceInheritance: id => tavernSourceInheritance.readCommittedSourceInheritance(id),
@@ -3439,7 +3444,8 @@ export async function apply(ctx, config = {}) {
     const tavernMaterial = createRoleplayTavernPromptMaterialV1({ branch: T.branch, inputState, settlement: communitySettlement,
         captureStoryText,
         personas: captureNativePersonasV1,
-        ejs: { programs: ejsPrograms, state: authorChatState, load: signal => mvuOpening.templateEjsRuntime(undefined, signal) },
+        ejs: { programs: ejsPrograms, state: authorChatState, namedWorldInfo: ejsNamedWorldInfo,
+            load: signal => mvuOpening.templateEjsRuntime(undefined, signal) },
         community: { presets: communityPresets, variables: communityVariables, persona: communityAccountPersona,
             modelName: id => selectedMainRoute(ctx.sessions.get(id), taskAgents.get(id), ctx.agentDefaultModel.currentSelection()).model,
             aliases: communityAliases },

@@ -1,7 +1,7 @@
 /** Source-owned metadata and formal lifecycle projection. Target macros and
  * execution stay with the consumer; this module never opens a prompt stage. */
-import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
-import {resolveTavernLoreContentTextV1} from './tavern-lore-compiler.mjs'
+import {ST_LORE_ENTRY_DEFAULTS_V1,ST_LORE_POSITION_V1,ST_LORE_ROLE_V1,ST_LORE_LOGIC_V1} from './tavern-lore-fixed-profile.mjs'
+import {resolveTavernLoreContentTextV1,compileAuthorWorldbookV1} from './tavern-lore-compiler.mjs'
 import {parseTavernEntryDecoratorsV1,tavernEntryRendersInPhaseV1} from './roleplay-tavern-prompt-variables-data.js'
 import type {TavernLorePlanV1,TavernLoreEntryPlanV1,TavernLoreSemanticEntryV1}
   from './tavern-lore-plan-types.mjs'
@@ -9,20 +9,40 @@ import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.j
 import type {TavernLoreEvaluationCompositionV1} from './tavern-lore-derived.mjs'
 import type {TavernPromptMacroSnapshotV1,TavernPromptTransformEntryV1,TavernPromptTransformOutputV1,TavernPromptProjectionV1}
   from './tavern-prompt-transform-types.mjs'
-import type {TavernTemplateLoreBindingV1} from './tavern-template-types.mjs'
+import type {TavernTemplateLoreBindingV1,TavernTemplateWorldInfoEntryV1,TavernTemplateWorldInfoCatalogV1,
+  TavernTemplateActivationProposalV1}
+  from './tavern-template-types.mjs'
+import {nativeNamedWorldbookEntryToWireV1} from './tavern-named-worldbook-data.js'
+import {authorWorldbookHelperEntryV1} from './roleplay-author-worldbook-data.js'
+import type {NativeNamedWorldbookEntryDataV1} from './tavern-named-worldbook-data.js'
+import type {TavernLoreTemplateActivationV1} from './tavern-lore-evaluator-types.mjs'
+import {schemaTextSha256} from './tavern-mvu-schema-data.js'
+import type {AuthorWorldbookCaptureV1} from './roleplay-author-worldbook-types.js'
+import type {TavernEjsNamedWorldInfoCaptureV1} from './tavern-template-ejs-host-types.mjs'
 
 /** The compiled membership owns current order. An introduced member has no
  * immutable original; an original member keeps its actual archive address.
  * Consumers retain their existing admission/error contracts, without another
  * full-plan validation or hash of these already captured rows. */
 export function createTavernSourceEntryResolverV1(source:TavernLoreSourceDataV1,plan:TavernLorePlanV1) {
+  if(plan.boundBooks) {
+    const books=new Map(plan.boundBooks.map(book=>[book.plan.bookId,book.plan]))
+    return (entry:TavernLoreEntryPlanV1)=>{
+      const local=books.get(entry.bookId!),member=local?.currentNativeMembership?.members[entry.localOrdinal!]
+      return {member,original:undefined,raw:member?.rawEntry,
+        bookId:entry.bookId!,world:local?.source.encoding==='author-worldbook-source-reference-v1'?local.source.name:''}
+    }
+  }
   const membership=plan.currentNativeMembership,
-    originals=membership?new Map(source.original.primary.entries.map(row=>[row.ref.entryPointer,row])):undefined
+    originals=membership&&plan.source.encoding!=='author-worldbook-source-reference-v1'
+      ?new Map(source.original.primary.entries.map(row=>[row.ref.entryPointer,row])):undefined
   return (entry:TavernLoreEntryPlanV1)=>{
     const member=membership?.members[entry.ordinal],identity=entry.currentNativeMember?.identity,
-      original=member?identity?.kind==='original'?originals!.get(identity.rawEntryPointer):undefined
+      original=member?identity?.kind==='original'?originals?.get(identity.rawEntryPointer):undefined
         :source.original.primary.entries[entry.ordinal]
-    return {member,original,raw:member?.rawEntry??original?.value}
+    return {member,original,raw:member?.rawEntry??original?.value,bookId:plan.bookId,
+      world:plan.source.encoding==='author-worldbook-source-reference-v1'?plan.source.name:
+        typeof source.original.primary.value?.name==='string'?source.original.primary.value.name:`native-primary-${plan.bookId}`}
   }
 }
 
@@ -42,7 +62,7 @@ export function createTavernSourceRenderCatalogV1(input:{readonly source:TavernL
       formal=parseTavernEntryDecoratorsV1({content:resolved.text,decorators:null,title,
         currentSemantic:{enabled:semantic.enabled}},input.invertEnabled??false),
       uid=entry.upstreamUid.origin==='explicit'?Number(entry.upstreamUid.value):Number.NaN
-    return {entry,raw,original,member,resolved,semantic,uid,formal}
+    return {entry,raw,original,member,resolved,semantic,uid,formal,bookId:joined.bookId,world:joined.world}
   }
   type Entry=ReturnType<typeof createEntry>
   const before:Entry[]=[],after:Entry[]=[],indexedBefore=new Map<number,Entry[]>(),indexedAfter=new Map<number,Entry[]>(),
@@ -90,7 +110,8 @@ export function createTavernSourceRenderCatalogV1(input:{readonly source:TavernL
   const generateLoaders:{readonly before:readonly Entry[];readonly after:readonly Entry[];
     readonly indexedBefore:ReadonlyMap<number,readonly Entry[]>;readonly indexedAfter:ReadonlyMap<number,readonly Entry[]>}=
     {before,after,indexedBefore,indexedAfter}
-  const world=typeof source.original.primary.value?.name==='string'?source.original.primary.value.name:
+  const world=plan.source.encoding==='author-worldbook-source-reference-v1'?plan.source.name:
+    typeof source.original.primary.value?.name==='string'?source.original.primary.value.name:
     `native-primary-${plan.bookId}`
   return {source,plan,entries,entryById,ordinaryFormalEntries,world,generateLoaders,hasFormalRenderEntries:entries.some(({formal,raw})=>
     tavernEntryRendersInPhaseV1(typeof raw.comment==='string'?raw.comment:'',formal.names,'before')
@@ -98,6 +119,76 @@ export function createTavernSourceRenderCatalogV1(input:{readonly source:TavernL
 }
 export type TavernSourceRenderCatalogV1=ReturnType<typeof createTavernSourceRenderCatalogV1>
 export type TavernSourceRenderCatalogEntryV1=TavernSourceRenderCatalogV1['entries'][number]
+const sourcePrograms=new WeakMap<TavernSourceRenderCatalogEntryV1,NonNullable<TavernLoreTemplateActivationV1['sourceProgram']>>()
+export function tavernSourceEntryProgramV1(row:TavernSourceRenderCatalogEntryV1) {
+  let program=sourcePrograms.get(row)
+  if(!program) {
+    program=Object.freeze({bodyOffset:row.formal.bodyOffset,
+      contentSha256:row.formal.bodyOffset===0?row.resolved.contentSha256:schemaTextSha256(row.formal.body)})
+    sourcePrograms.set(row,program)
+  }
+  return program
+}
+/** Actual Source identity and parsed body are retained by this one supplier.
+ * The guest supplies only the desired mode and opaque captured entry key. */
+export function tavernSourceTemplateActivationV1(catalog:TavernSourceRenderCatalogV1,
+  proposal:Pick<TavernTemplateActivationProposalV1,'entryId'|'mode'>):TavernLoreTemplateActivationV1 {
+  const row=catalog.entryById.get(proposal.entryId)
+  if(!row)throw Error('INPUT_MATERIAL_ACTIVATION_CHANGED')
+  return {entryId:row.entry.entryId,rawEntrySha256:row.entry.rawEntrySha256,
+    ...proposal.mode?{mode:proposal.mode,sourceProgram:tavernSourceEntryProgramV1(row)}:{}}
+}
+
+/** The compiler owns imported UID fallback and effective current controls.
+ * Raw extensions remain the actual imported fields instead of a reconstruction. */
+function worldInfoEntry(row:TavernSourceRenderCatalogEntryV1,semantic:TavernLoreSemanticEntryV1,world:string|undefined)
+  :TavernTemplateWorldInfoEntryV1|undefined {
+  const uid=Number(row.entry.upstreamUid.value)
+  const raw=row.raw as NativeNamedWorldbookEntryDataV1
+  if(world===undefined||row.entry.upstreamUid.origin==='invalid'||!Number.isSafeInteger(uid)||uid<0)return
+  // Optional metadata uses the same DTO producer as an explicit Helper read.
+  // A projection failure leaves raw getwi text available and metadata absent.
+  try {
+    const wire=row.member?authorWorldbookHelperEntryV1(row.member):nativeNamedWorldbookEntryToWireV1(raw,{uid})
+    return {uid,world,comment:typeof raw.comment==='string'?raw.comment:'',content:row.formal.body,
+      decorators:[...row.formal.names],key:[...semantic.primaryKeys],keysecondary:[...semantic.secondaryKeys],
+      disable:!semantic.enabled,constant:semantic.constant,vectorized:semantic.vectorized,
+      selective:semantic.selective,selectiveLogic:ST_LORE_LOGIC_V1.indexOf(semantic.selectiveLogic),addMemo:wire.addMemo,
+      order:semantic.order,position:ST_LORE_POSITION_V1.indexOf(semantic.position),role:ST_LORE_ROLE_V1.indexOf(semantic.role),
+      depth:semantic.depth,excludeRecursion:semantic.excludeRecursion,preventRecursion:semantic.preventRecursion,
+      delayUntilRecursion:semantic.delayUntilRecursion,probability:semantic.probability,useProbability:semantic.useProbability,
+      group:semantic.group,groupOverride:semantic.groupOverride,groupWeight:semantic.groupWeight,
+      scanDepth:semantic.scanDepth,caseSensitive:semantic.caseSensitive,matchWholeWords:semantic.matchWholeWords,
+      useGroupScoring:semantic.useGroupScoring,automationId:semantic.automationId,displayIndex:semantic.displayIndex,
+      sticky:semantic.sticky,cooldown:semantic.cooldown,delay:semantic.delay,ignoreBudget:semantic.ignoreBudget,
+      outletName:semantic.outletName,triggers:[...semantic.triggers],extensions:structuredClone(raw.extensions??{}),
+      characterFilter:structuredClone(wire.characterFilter),characterFilterNames:[...wire.characterFilter.names],
+      characterFilterTags:[...wire.characterFilter.tags],characterFilterExclude:wire.characterFilter.isExclude,
+      matchPersonaDescription:semantic.matchPersonaDescription,matchCharacterDescription:semantic.matchCharacterDescription,
+      matchCharacterPersonality:semantic.matchCharacterPersonality,matchCharacterDepthPrompt:semantic.matchCharacterDepthPrompt,
+      matchScenario:semantic.matchScenario,matchCreatorNotes:semantic.matchCreatorNotes,
+      ...wire.extra?{extra:structuredClone(wire.extra)}:{}}
+  }catch {return undefined}
+}
+function worldInfoCatalog(catalog:TavernSourceRenderCatalogV1,authorsNoteDepth:number):TavernTemplateWorldInfoCatalogV1 {
+  const plan=catalog.plan,books=plan.boundBooks?.flatMap(({plan:book})=>
+    book.source.encoding==='author-worldbook-source-reference-v1'?[{bookId:book.bookId,world:book.source.name}]:[])
+    ??(plan.source.encoding==='author-worldbook-source-reference-v1'?[{bookId:plan.bookId,world:plan.source.name}]:
+      typeof catalog.source.original.primary.value?.name==='string'
+      ?[{bookId:plan.bookId,world:catalog.source.original.primary.value.name}]:[]),
+    bindings={character:[] as string[],global:[] as string[],persona:null,characterExtra:[] as string[],chat:null as string|null}
+  if(plan.source.encoding==='author-worldbook-collection-source-reference-v1') {
+    for(const {selection} of plan.source.bindings) {
+      if(selection.kind==='character') {
+        if(selection.primary!==null)bindings.character.push(selection.primary)
+        bindings.characterExtra.push(...selection.additional)
+      }else if(selection.kind==='profile')bindings.global.push(...selection.enabled)
+      else bindings.chat=selection.bookId
+    }
+  }else if(books.length&&plan.source.encoding!=='author-worldbook-source-reference-v1')bindings.character.push(plan.bookId)
+  return {schemaVersion:1,encoding:'source-world-info-catalog-v1',books,bindings,
+    defaultBookId:bindings.character[0]??bindings.persona??bindings.chat,authorsNoteDepth}
+}
 
 /** This is lookup/render order, separate from the lore evaluator's admission
  * order. NaN UIDs deliberately fall through to the actual Source ordinal. */
@@ -124,8 +215,8 @@ export async function projectTavernSourceRenderEntriesV1(input:{readonly catalog
   transform(entries:readonly TavernPromptTransformEntryV1[],macros:TavernPromptMacroSnapshotV1)
     :Promise<TavernPromptTransformOutputV1>}):Promise<ReadonlyMap<string,TavernPromptProjectionV1>> {
   const {source,plan}=input.catalog,
-    output=await input.transform(input.entries.map(({entry,resolved,formal})=>({
-      key:entry.entryId,bookId:entry.sourcePointer.startsWith('derived:')?null:plan.bookId,entryId:entry.entryId,
+    output=await input.transform(input.entries.map(({entry,resolved,formal,bookId})=>({
+      key:entry.entryId,bookId:entry.sourcePointer.startsWith('derived:')?null:bookId,entryId:entry.entryId,
       sourcePointer:resolved.pointer,sourceSnapshotSha256:source.sourceSha256,
       rawText:formal.body,storyText:'',inputText:formal.body,pipeline:'regex-only',channel:'source',placement:5,
       depth:null,isEdit:false,characterOverride:null,required:false})),input.macros)
@@ -136,21 +227,41 @@ export async function projectTavernSourceRenderLoreV1(input:{readonly catalog:Ta
   readonly evaluationComposition?:TavernLoreEvaluationCompositionV1;
   transform(entries:readonly TavernPromptTransformEntryV1[],macros:TavernPromptMacroSnapshotV1)
     :Promise<TavernPromptTransformOutputV1>}) :Promise<{readonly lore:readonly TavernTemplateLoreBindingV1[];
+      readonly worldInfo:TavernTemplateWorldInfoCatalogV1;
       readonly byEntryId:ReadonlyMap<string,TavernPromptProjectionV1>}> {
   const {catalog}=input,{source,plan}=catalog,
     ordered=orderTavernSourceRenderCatalogV1(catalog,input.authorsNoteDepth),
     projections=await projectTavernSourceRenderEntriesV1({catalog,entries:ordered,macros:input.macros,transform:input.transform}),
     overrides=input.evaluationComposition?.ref?new Map(input.evaluationComposition.entries
       .flatMap(entry=>'semantic' in entry?[[entry.entryId,entry.semantic] as const]:[])):undefined
-  const lore=ordered.map(({entry,raw,semantic,uid})=>{
+  const lore=ordered.map(row=>{
+    const {entry,raw,semantic,uid,bookId,world}=row,effective=overrides?.get(entry.entryId)??semantic,
+      actualWorld=plan.boundBooks?world:plan.source.encoding==='author-worldbook-source-reference-v1'?plan.source.name:
+        typeof source.original.primary.value?.name==='string'?source.original.primary.value.name:undefined,
+      metadata=worldInfoEntry(row,effective,actualWorld)
     const projection=projections.get(entry.entryId)!
-    return {key:entry.entryId,bookId:plan.bookId,entryId:entry.entryId,sourcePointer:projection.sourcePointer,
+    return {key:entry.entryId,bookId,entryId:entry.entryId,sourcePointer:projection.sourcePointer,
       sourceSnapshotSha256:source.sourceSha256,content:projection.outputText,contentSha256:projection.outputSha256,
-      activationAllowed:(overrides?.get(entry.entryId)??semantic).enabled&&entry.disposition==='eligible-semantic-data',
-      lookup:{world:catalog.world,title:typeof raw.comment==='string'?raw.comment:'',
+      activationAllowed:effective.enabled&&entry.disposition==='eligible-semantic-data',
+      ...metadata?{worldInfo:metadata}:{},
+      lookup:{world,title:typeof raw.comment==='string'?raw.comment:'',
         uid:Number.isSafeInteger(uid)&&uid>=0?uid:null},
       ...projection.deferredDiagnostics.length?{readDiagnostic:{code:projection.deferredDiagnostics[0]!.code,
         projectionSha256:projection.projectionSha256}}:{}}
   })
-  return {lore,byEntryId:projections}
+  return {lore,worldInfo:worldInfoCatalog(catalog,input.authorsNoteDepth),byEntryId:projections}
+}
+
+/** An explicit read projects only its captured book. The caller retains the
+ * existing read basis and bound-book snapshot, including their permissions. */
+export async function projectCapturedNamedTavernWorldbookV1(input:{readonly source:TavernLoreSourceDataV1;
+  readonly book:AuthorWorldbookCaptureV1;readonly authorsNoteDepth:number;readonly macros:TavernPromptMacroSnapshotV1;
+  transform(entries:readonly TavernPromptTransformEntryV1[],macros:TavernPromptMacroSnapshotV1)
+    :Promise<TavernPromptTransformOutputV1>}):Promise<TavernEjsNamedWorldInfoCaptureV1> {
+  const {book}=input,{plan}=compileAuthorWorldbookV1(book),
+    catalog=createTavernSourceRenderCatalogV1({source:input.source,plan}),
+    {lore}=await projectTavernSourceRenderLoreV1({...input,catalog})
+  return {schemaVersion:1,encoding:'source-named-worldbook-projection-v1',book:{
+    profileId:book.address.profileId,bookId:book.address.bookId,name:book.name,revision:book.revision,
+    contentRef:book.content,metadataRef:book.metadata},lore}
 }

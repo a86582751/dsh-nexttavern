@@ -61,6 +61,9 @@ import type {TavernEjsRuntime} from './tavern-template-ejs-runtime-types.mjs'
 import type {ReaderWorldbookDocumentOriginV1} from './reader-regex-document-types.mjs'
 import type {CaptureRoleplayStoryText} from './roleplay-story-text.js'
 import type {CanonicalChatMessageFacts} from '../memory/memory-history.js'
+import type {AuthorNamedWorldbookData} from './roleplay-author-worldbook-data.js'
+import type {AuthorWorldbookHelperCaptureV1} from './roleplay-author-worldbook-types.js'
+import type {ReaderWorldbookReadRequestV1} from './reader-regex-document-types.mjs'
 
 export type ReaderDisplayFragment={readonly kind:'text';readonly text:string}|{
   readonly kind:'author-document'
@@ -492,6 +495,19 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
     return {result,...snapshot?{snapshot}:{},
       ...result.operation.outcome==='updated'&&!result.operation.replayed
         ?{sourceEvents:[{type:'nexttavern_numerical_updated',args:[]}]}:{}}
+  }
+  async function readWorldbook(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
+    request:ReaderWorldbookReadRequestV1,signal:AbortSignal):Promise<AuthorWorldbookHelperCaptureV1> {
+    signal.throwIfAborted()
+    const value=bindings.get(binding.browserSessionId)
+    if(!value||!sameBinding(value.binding,binding)||!bindingCurrent(value))fail('READER_BINDING_REVOKED')
+    if(!value.program.documents.some(plan=>plan.documentPlanSha256===documentPlanSha256)||!deps.readWorldbook)
+      fail('AUTHOR_WORLDBOOK_READ_UNAVAILABLE')
+    const basis=value.snapshot.worldbook
+    if(!basis||value.snapshot.readRevision!==request.readRevision||basis.dataSha256!==request.expectedDataSha256)
+      fail('READER_READ_BASIS_CHANGED')
+    const current=()=>!signal.aborted&&!disposed&&bindings.get(binding.browserSessionId)===value&&value.sourceCurrent()
+    return deps.readWorldbook(binding.sessionId,request.name,basis,current,signal)
   }
   async function executeCommands(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
     request:AuthorNativeCommandRequestV1,signal:AbortSignal):Promise<ReaderCommandReplyV1> {
