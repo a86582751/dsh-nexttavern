@@ -13,12 +13,13 @@ import {createOpeningVariantContinuationReader,openingVariantActivationPacketKey
 import type {OpeningVariantActivationPacketV1,OpeningVariantActivationSeedV1}
   from './roleplay-opening-variant-activation.js'
 import {createOpeningVariantDataReader,openingVariantArchiveKey} from './roleplay-opening-variant-activation.js'
-import {validateOpeningVariantSet,validateOpeningVariantReplacementPlan,openingVariantReplacementSelector}
+import {validateOpeningVariantSet,validateOpeningVariantReplacementPlan,openingVariantReplacementSelector,
+  openingVariantReplacementExecutionCut,openingVariantReplacementInput}
   from './roleplay-opening-variant-types.js'
 import type {OpeningVariantMessageV1,OpeningVariantMutationRequestV1,OpeningVariantReplacementPlanV1,
   OpeningVariantReplacementPhaseV1,OpeningVariantSetV1} from './roleplay-opening-variant-types.js'
 import {createRoleplayMvuSchemaJournal,schemaEpochExecution,isAuthorHostJournalReadyV5,
-  schemaJournalFrontierSha256,schemaJournalServerTailSha256,schemaJournalHostFrontierSha256}
+  schemaJournalFrontierSha256,schemaJournalServerTailSha256,schemaJournalHostFrontierSha256,schemaNativeCutSha256}
   from './roleplay-mvu-schema-journal.js'
 import type {SchemaJournalReady,SchemaJournalLiveReady,SchemaJournalRef,SourceNativeCutFacts}
   from './roleplay-mvu-schema-journal.js'
@@ -149,13 +150,28 @@ export function createRoleplayOpeningVariantCore(deps:Dependencies) {
       if(admitting&&(boundary.stage!=='captured'||scope.requestedStep!==owner.scope.requestedStep
         ||scope.sourceNativeCut!==owner.scope.sourceNativeCut))return false
       check(owner)
-      const native=events(owner.session),cut=owner.plan.initialCut.nativeCut
+      const native=events(owner.session),cut=scope.sourceNativeCut.nativeCut
       for(const [index,ref] of [boundary.dispatchMarker,boundary.completionMarker].entries())
         if(ref&&(ref.seq!==cut+index||recordSha256(native[ref.seq])!==ref.sha256))return false
       if(native.length!==cut+(boundary.completionMarker?2:boundary.dispatchMarker?1:0))return false
       if(admitting)owner.scope=scope
       return true
     }catch {return false}
+  }
+  function assertExecutionCut(owner:Owner,plan:OpeningVariantReplacementPlanV1,cut:SourceNativeCutFacts):void {
+    const initial=plan.initialCut,native=events(owner.session),
+      history=deps.inputState.nativeHistory,actual=history?.cut?.<SessionEvent>(owner.session),
+      prefix=(length:number)=>actual?.prefixSha256(length)??schemaNativeCutSha256(native,length,history?.prefixes),
+      savedPrefix=prefix(initial.nativeCut)
+    if(savedPrefix!==initial.nativePrefixSha256)fail('OPENING_VARIANT_BASIS_CHANGED')
+    if(cut.nativeCut!==initial.nativeCut) {
+      openingVariantReplacementExecutionCut(plan,cut)
+      const boundary=native[initial.nativeCut]
+      if(owner.session.firstLiveSeq<initial.nativeCut||boundary?.type!=='session/end-seed'
+        ||Object.keys(boundary.data).length!==0)fail('OPENING_VARIANT_BASIS_CHANGED')
+    }
+    const executionPrefix=cut.nativeCut===initial.nativeCut?savedPrefix:prefix(cut.nativeCut)
+    if(executionPrefix!==cut.nativePrefixSha256)fail('OPENING_VARIANT_BASIS_CHANGED')
   }
   async function runtime(owner:Owner) {
     if(owner.runtime)return owner.runtime
@@ -292,14 +308,18 @@ export function createRoleplayOpeningVariantCore(deps:Dependencies) {
           loadFrame:execution.loadFrame as Extract<typeof execution.loadFrame,{encoding?:never}>}
     // Journal owns the effective execution tail. Native cold restoration can
     // append its seed boundary after this already completed phase.
+    const cut=step.dispatch.sourceNativeCut
+    assertExecutionCut(owner,plan,cut)
     if(index!==full.steps.length-1
-      ||!same(step.step.frame.input,plan.input)||!same(step.dispatch.sourceNativeCut,plan.initialCut)
+      ||!same(step.step.frame.input,openingVariantReplacementInput(plan,cut))
       ||step.step.output.kind!=='accepted')fail('OPENING_VARIANT_RECOVERY_UNPROVEN')
     const result=await runner.evaluateTrace(execution.program,input,owner.signal)
     check(owner)
     if(result.kind!=='evaluated-trace'||result.evaluation.records.at(-1)?.stepSha256!==step.step.stepSha256)
       fail('OPENING_VARIANT_RECOVERY_UNPROVEN')
-    return owner.recovered={phase:'external-pack-replacement',input:plan.input,association:association(full,index),output:step.step.output}
+    return owner.recovered={phase:'external-pack-replacement',input:step.step.frame.input,
+      ...cut.nativeCut!==plan.initialCut.nativeCut?{executionCut:cut}:{},
+      association:association(full,index),output:step.step.output}
   }
   async function executeActive(owner:Owner,plan:OpeningVariantReplacementPlanV1) {
     check(owner);owner.plan=plan
@@ -309,13 +329,18 @@ export function createRoleplayOpeningVariantCore(deps:Dependencies) {
       index=rows.findIndex(row=>row.dispatch.batchId===selector.batchId)
     if(index>=0)return recoverPhase(owner,plan,ready,index)
     const expected=owner.operation?(owner.operation.publicationAbsent?undefined:owner.operation.rawPublication):owner.basis.publication.raw
-    if(!same(deps.status.get(owner.basis.publication.key),expected)
-      ||events(owner.session).length!==plan.initialCut.nativeCut)fail('OPENING_VARIANT_BASIS_CHANGED')
+    if(!same(deps.status.get(owner.basis.publication.key),expected))fail('OPENING_VARIANT_BASIS_CHANGED')
+    const native=events(owner.session),nativeCut=native.length,history=deps.inputState.nativeHistory,
+      cut=nativeCut===plan.initialCut.nativeCut?plan.initialCut:Object.freeze({...plan.initialCut,nativeCut,
+        nativePrefixSha256:history?.cut?.<SessionEvent>(owner.session).prefixSha256(nativeCut)
+          ??schemaNativeCutSha256(native,nativeCut,history?.prefixes)})
+    assertExecutionCut(owner,plan,cut)
+    const input=openingVariantReplacementInput(plan,cut)
     const replay=await driver(owner),scope:SchemaOwnedScope={owner:owner.token,incarnation:owner.agent,
       session:owner.session,signal:owner.signal,authorInput:schemaOriginalReplayCompilationInput(owner.basis.original),
       realmEpoch:plan.realmEpoch,loadFrame:schemaEpochExecution(ready.epoch).loadFrame,inheritedCut:owner.basis.inheritedCut,
-      sourceNativeCut:plan.initialCut,requestedStep:schemaTraceRequestedStep(selector.batchId,
-        {ownerSessionId:owner.session.id,sourceNativeCutSha256:recordSha256(plan.initialCut),material:owner.basis.frame.material},plan.input),
+      sourceNativeCut:cut,requestedStep:schemaTraceRequestedStep(selector.batchId,
+        {ownerSessionId:owner.session.id,sourceNativeCutSha256:recordSha256(cut),material:owner.basis.frame.material},input),
       journalCut:ready,compiledProgram:isAuthorHostJournalReadyV5(ready)?ready.epoch.program:schemaEpochExecution(ready.epoch).program}
     if(owner.basis.inheritedReady)Object.defineProperty(scope,'inheritedReady',{value:owner.basis.inheritedReady})
     Object.defineProperty(scope,'captureJournal',{value:()=>captureJournal(owner)})
@@ -325,7 +350,8 @@ export function createRoleplayOpeningVariantCore(deps:Dependencies) {
     if(result.kind!=='completed')fail(result.code)
     if(result.output.kind!=='accepted')fail('OPENING_VARIANT_REPLACEMENT_REFUSED')
     owner.live=result
-    return {phase:'external-pack-replacement' as const,input:plan.input,association:result.association,output:result.output}
+    return {phase:'external-pack-replacement' as const,input,
+      ...cut.nativeCut!==plan.initialCut.nativeCut?{executionCut:cut}:{},association:result.association,output:result.output}
   }
   async function withPublication<T>(owner:Owner,phase:OpeningVariantReplacementPhaseV1,work:()=>Promise<T>) {
     check(owner)
@@ -452,15 +478,21 @@ export function createRoleplayOpeningVariantCore(deps:Dependencies) {
     ...(deps.activatePrepared?{activatePrepared:async(handoff:OpeningVariantActivationHandoff,authority:object)=>{
       const permission=permissions.get(authority),sid=handoff.operation.sessionId
       if(!permission)fail('OPENING_VARIANT_PERMISSION_REVOKED')
+      let parentBasis:Basis|undefined
       const authorizeParent=()=>deps.withSourceLock(sid,async()=>{
         const session=deps.session(sid)
         if(disposed||!session||!deps.active(session)||!deps.agent(session)
           ||permission.kind==='reader'&&!permission.capture.sourceCurrent())fail('OPENING_VARIANT_PERMISSION_REVOKED')
         permission.signal?.throwIfAborted()
-        const basis=deps.story.captureOpeningVariantBasis(sid,handoff.operation.nativeCut)
+        const basis=parentBasis??=deps.story.captureOpeningVariantBasis(sid,handoff.operation.nativeCut)
         basis.current()
-        const expected=handoff.operation.publicationAbsent?undefined:handoff.operation.rawPublication
-        if(events(session).length!==handoff.operation.nativeCut
+        // Native appends one empty resume boundary after the saved prefix.
+        // Later restores retain it. Neither changes the operation's inputs.
+        const expected=handoff.operation.publicationAbsent?undefined:handoff.operation.rawPublication,
+          native=events(session),cut=handoff.operation.nativeCut,resume=native[cut],
+          unchanged=native.length===cut||native.length===cut+1&&session.firstLiveSeq>=cut
+            &&resume?.type==='session/end-seed'&&Object.keys(resume.data).length===0
+        if(!unchanged
           ||basis.base.stateSnapshotSha256!==handoff.operation.base.stateSnapshotSha256
           ||!same(deps.status.get(handoff.operation.publicationKey),expected))fail('OPENING_VARIANT_BASIS_CHANGED')
       })

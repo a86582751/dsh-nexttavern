@@ -220,7 +220,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
   let schemaPlayer:ReturnType<typeof createRoleplayMvuSchemaPlayerCore>|undefined
   let schemaVariants:ReturnType<typeof createRoleplayOpeningVariantCore>|undefined
   function createSchemaStory(completion:Pick<MvuSchemaStoryCoreDeps,'closingView'|'verifyNative'|'verifyConsumedScope'|'readCanonical'
-    |'readConsumedCanonical'|'awaitOwnedCompletion'|'authorChat'|'captureOrdinaryChatNamespace'|'readOrdinaryScopeForkBases'
+    |'readConsumedCanonical'|'awaitOwnedCompletion'|'authorChat'|'captureOrdinaryChatNamespace'|'readOrdinaryScopeFork'
     |'maintenanceCompletion'|'recoverTaskEdit'>) {
     if(!schemaCore||!deps.schema)return undefined
     const schemaSource=createRoleplayMvuSchemaSource({...sourceDeps,inputState:deps.inputState,scopeStore},

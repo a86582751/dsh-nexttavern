@@ -20,6 +20,7 @@ import {inheritanceDataV1,inheritanceDataSha256V1,inheritanceFailV1,inheritanceS
   tavernSourceMigrationKeyV1,tavernSourceProgramAbsenceOpeningKeyV1,tavernSourceFrozenPromptScopeKeyV1,
   TavernSourceInheritanceFailureV1,TAVERN_SOURCE_INHERITANCE_BOUNDS_V1}
   from './roleplay-tavern-source-inheritance-data.js'
+import {tavernSourceOrdinaryScopeBirthKeyV1} from './roleplay-tavern-source-inheritance-data.js'
 import type {ForkPreparationOperation} from './roleplay-worldline-types.js'
 import type {ForkReservation} from './roleplay-branch-routes-types.js'
 import type {TavernSourceInheritanceDepsV1,TavernSourceInheritanceOwnerV1,TavernSourcePreparedV1,
@@ -219,6 +220,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     }else if(p.originalAbsenceProof!==null)inheritanceFailV1('SOURCE_INHERITANCE_ORIGINAL_CHANGED')
   }
   function assertPreparedOpening(p:TavernSourcePreparedV1,budget:TavernSourceReadBudgetV1) {
+    if(p.authorChatScopeBirthV1!==undefined)store.readRef(p.authorChatScopeBirthV1.recordRef,budget)
     if(p.frozenProgramAbsenceOpeningV1!==undefined) {
       const frozen=validateFrozenProgramAbsenceOpeningV1(p.frozenProgramAbsenceOpeningV1)
       if(p.frozenNonNumericalOpeningV1!==undefined||!deps.assertProgramAbsenceOpening)
@@ -341,7 +343,8 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         :{kind:'native-fork',seedLength,parentInheritedEventCount:inherited,
           prefixEncoding:'record-sha256-native-events-prefix-v1',prefixSha256:recordSha256(events.slice(0,seedLength))}
       if(nativeCut.seedLength!==seedLength)inheritanceFailV1('SOURCE_INHERITANCE_NATIVE_CHANGED')
-      const authorChatScopeForkBasesV1=deps.captureAuthorChatScopeForkBasesV1?.(parent,child,operation.operationId,nativeCut,source)
+      const scopeFork=deps.captureAuthorChatScopeForkV1?.(parent,child,operation.operationId,nativeCut,source),
+        authorChatScopeForkBasesV1=scopeFork?.bases
       const authorChatForkBasesV3=deps.captureAuthorChatForkBasesV3?.(parent,child,operation.operationId,nativeCut,source,
         authorChatScopeForkBasesV1)
       const authorContextForkV1=deps.captureAuthorContextFork?.(source)
@@ -370,6 +373,8 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         inheritanceFailV1('SOURCE_INHERITANCE_OPENING_UNAVAILABLE')
       const frozenOpening=await store.freezeNonNumericalOpening(parent,child,nativeCut,capturedOpening)
       const frozenProgramAbsence=await store.freezeProgramAbsenceOpening(parent,child,nativeCut,capturedProgramAbsence)
+      const authorChatScopeBirthV1=scopeFork===undefined?undefined:
+        await store.freezeOrdinaryScopeBirth(parent,child,operation.operationId,nativeCut,scopeFork.entries)
       const p:TavernSourcePreparedV1=sealInheritanceDataV1({schemaVersion:1 as const,
         encoding:'native-tavern-source-inheritance-prepared-v1',origin:'core-reservation',operationId:operation.operationId,
         operationKey:`fork-op-${operation.operationId}`,anchorSha256:recordSha256({...operation.anchor,expectedSeedLength:seedLength}),
@@ -383,6 +388,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         ...(authorChatForkBasesV3===undefined?{}:{authorChatForkBasesV3}),
         ...(authorContextForkV1===undefined?{}:{authorContextForkV1}),
         ...(authorChatScopeForkBasesV1===undefined?{}:{authorChatScopeForkBasesV1}),
+        ...(authorChatScopeBirthV1===undefined?{}:{authorChatScopeBirthV1}),
         ...(frozenNativeCardConversionSeed===undefined?{}:{frozenNativeCardConversionSeedV1:frozenNativeCardConversionSeed}),
         ...(frozenCharacterPrivateV1===undefined?{}:{frozenCharacterPrivateV1})},'preparedSha256')
       assertPreparedData(p)
@@ -488,6 +494,11 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       validatedRecords.push(inheritanceFreezeV1({...row,value:actual as Readonly<Record<string,unknown>>}));return true
     }
     owned(pRef.key,p,true)
+    if(p.authorChatScopeBirthV1!==undefined)owned(tavernSourceOrdinaryScopeBirthKeyV1(sid),p.authorChatScopeBirthV1.record,true)
+    else {
+      const row=observe('branch',tavernSourceOrdinaryScopeBirthKeyV1(sid))
+      if(!row.exists)missingRecords.push(row)
+    }
     const frozen=p.frozenProgramAbsenceOpeningV1,legacy=p.frozenNonNumericalOpeningV1,
       archiveKey=tavernSourceProgramAbsenceOpeningKeyV1(sid),scopeKey=tavernSourceFrozenPromptScopeKeyV1(sid)
     if(frozen?.kind==='program-absence')owned(archiveKey,frozen.record,true)

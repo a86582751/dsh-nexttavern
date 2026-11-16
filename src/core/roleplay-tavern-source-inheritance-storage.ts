@@ -8,6 +8,9 @@ import {inheritanceDataV1,inheritanceFailV1,inheritanceSameV1,inheritanceObjectV
   from './roleplay-tavern-source-inheritance-data.js'
 import {validateFrozenPromptScopeRecordV1,validateFrozenNonNumericalOpeningV1,tavernSourceFrozenPromptScopeKeyV1}
   from './roleplay-tavern-source-inheritance-data.js'
+import {validateAuthorChatScopeBirthRecordV1,tavernSourceOrdinaryScopeBirthKeyV1}
+  from './roleplay-tavern-source-inheritance-data.js'
+import type {AuthorChatScopeBirthEntryV1,TavernSourcePreparedV1} from './roleplay-tavern-source-inheritance-types.js'
 import {validateTavernSourceProgramAbsenceOpeningRecordV1,validateFrozenProgramAbsenceOpeningV1,
   assertFrozenProgramAbsenceOpeningCutV1,tavernSourceProgramAbsenceOpeningKeyV1,validatePreparedInheritanceV1}
   from './roleplay-tavern-source-inheritance-data.js'
@@ -282,6 +285,7 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
       case tavernSourceMaterialBaselineKeyV1(owner):value=validateTavernSourceMaterialBaselineV1(raw);break
       case tavernSourceMigrationKeyV1(owner):value=validateTavernSourceLegacyMigrationRecordV1(raw);break
       case tavernSourceFrozenPromptScopeKeyV1(owner):value=validateFrozenPromptScopeRecordV1(raw);break
+      case tavernSourceOrdinaryScopeBirthKeyV1(owner):value=validateAuthorChatScopeBirthRecordV1(raw);break
       case tavernSourceProgramAbsenceOpeningKeyV1(owner):
         value=validateTavernSourceProgramAbsenceOpeningRecordV1(raw);break
       default:
@@ -457,6 +461,16 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
         policy:settings?'parent-settings-then-explicit-child-fields':'exact-static-copy'} as TavernSourceStaticWriteV1
     })
   }
+  async function freezeOrdinaryScopeBirth(parent:string,child:string,operationId:string,cut:TavernSourceNativeCutV1,
+    entries:readonly AuthorChatScopeBirthEntryV1[]):Promise<TavernSourcePreparedV1['authorChatScopeBirthV1']> {
+    if(!entries.some(entry=>entry.scopeRef!==null))return undefined
+    const record=validateAuthorChatScopeBirthRecordV1(sealInheritanceDataV1({schemaVersion:1,
+      encoding:'native-mvu-ordinary-scope-birth-v1',authority:'consumer-data-only',childSessionId:child,
+      parentSessionId:parent,operationId,nativeCut:cut,entries},'recordSha256')),
+      recordRef=inheritanceRefV1(tavernSourceOrdinaryScopeBirthKeyV1(child),record)
+    await putExact('branch',recordRef.key,record)
+    return {record,recordRef}
+  }
   async function freezeNonNumericalOpening(parent:string,child:string,cut:TavernSourceNativeCutV1,
     input:TavernSourceFrozenNonNumericalOpeningCaptureV1|undefined):Promise<TavernSourceFrozenNonNumericalOpeningV1|undefined> {
     if(input===undefined)return undefined
@@ -505,5 +519,5 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
   }
   return {readRow,inventory,readKey,readRef,putExact,native,numerical,
     original,assertOriginal,publications,writesFor,
-    freezeNonNumericalOpening,freezeProgramAbsenceOpening}
+    freezeOrdinaryScopeBirth,freezeNonNumericalOpening,freezeProgramAbsenceOpening}
 }

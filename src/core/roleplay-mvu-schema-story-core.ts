@@ -85,7 +85,8 @@ import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {CanonicalAuthorChatStateV1} from './roleplay-author-chat-state.js'
 import type {AuthorChatNamespaceV3,AuthorChatRefV1,AuthorChatScopeBasesV1}
   from './roleplay-author-chat-state-types.js'
-import type {AuthorChatScopeForkBaseV1} from './roleplay-tavern-source-inheritance-types.js'
+import type {AuthorChatScopeForkBaseV1,AuthorChatScopeBirthEntryV1,AuthorChatScopeBirthRecordV1}
+  from './roleplay-tavern-source-inheritance-types.js'
 import {applyNumericalOrdinaryScopePublication,applyMessageEditOrdinaryScopePublication,
   createMessageEditOrdinaryReader} from './roleplay-mvu-ordinary-scope-bases.js'
 import type {NumericalOrdinaryPublicationV1} from './roleplay-mvu-ordinary-scope-bases.js'
@@ -210,7 +211,8 @@ export interface MvuSchemaStoryCoreDeps {
   authorChat?:CanonicalAuthorChatStateV1
   includeCardStyle?(sid:string):boolean
   captureOrdinaryChatNamespace?(sid:string):{namespace:AuthorChatNamespaceV3;current():boolean}
-  readOrdinaryScopeForkBases?(sid:string,subjectSessionId?:string):readonly AuthorChatScopeForkBaseV1[]
+  readOrdinaryScopeFork?(sid:string,subjectSessionId?:string):{
+    readonly bases:readonly AuthorChatScopeForkBaseV1[];readonly birth?:AuthorChatScopeBirthRecordV1}
   readOpeningVariantPacks?(sid:string,initial:{readonly swipes:readonly string[];readonly swipe_id:number},
     variables:MvuJsonObject):{readonly swipes_data:readonly (MvuJsonObject|null)[];readonly swipe_id:number;
       readonly setSha256?:string}
@@ -653,17 +655,27 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     hash:recordSha256,useProof:proof=>deps.inputState.useClosedDataProof(proof)})
   function ordinaryIndexFor(session:Session,initial?:NumericalOrdinaryScopeFacts,
     forkBases:readonly AuthorChatScopeForkBaseV1[]=[],
-    equivalent?:NonNullable<Parameters<typeof ordinaryScopeIndex>[2]>['equivalent']) {
+    equivalent?:NonNullable<Parameters<typeof ordinaryScopeIndex>[2]>['equivalent'],
+    resolveFork:(namespace:AuthorChatNamespaceV3,ref:AuthorChatRefV1)=>AuthorChatScopeBasesV1=resolveOrdinaryScopeBases) {
     return ordinaryScopeIndex(initial,forkBases,{at:(from,through)=>messageOrdinaryEdits.at(session,through,from)
       .filter(edit=>edit.replacement.namespace.sessionId===session.id),
-      equivalent,resolveFork:resolveOrdinaryScopeBases})
+      equivalent,resolveFork})
   }
   const plainOrdinaryIndexes=new WeakMap<Session,{owner:object;through:number;index:ReturnType<typeof ordinaryScopeIndex>}>()
   function plainOrdinaryAt(session:Session,length:number):NumericalOrdinaryScopeFacts {
     const cut=deps.inputState.nativeHistory?.cut?.<SessionEvent>(session)??sessionHistoryCut<SessionEvent>(session)
     let owned=plainOrdinaryIndexes.get(session)
     if(!owned||owned.owner!==cut.owner||length<owned.through) {
-      owned={owner:cut.owner,through:0,index:ordinaryIndexFor(session,undefined,deps.readOrdinaryScopeForkBases?.(session.id))}
+      const fork=deps.readOrdinaryScopeFork?.(session.id),forkBases=fork?.bases,
+        genesis=forkBases?.length?deps.readDerivedGenesis?.(session.id):undefined,
+        inherited=genesis?inheritedScopeFacts(genesis,all(session)):undefined
+      // A zero local cut still has the Source-selected birth references. Resolve
+      // those exact refs from the child's verified prefix without importing its
+      // inherited Native frontier or any later ordinary current values.
+      owned={owner:cut.owner,through:0,index:ordinaryIndexFor(session,undefined,forkBases,undefined,
+        (namespace,ref)=>inherited?.ordinary?.references.get(ordinaryReferenceKey(namespace,ref))
+          ??birthScopeBases(fork?.birth,namespace,ref)
+          ??resolveOrdinaryScopeBases(namespace,ref))}
       if(length===cut.length)plainOrdinaryIndexes.set(session,owned)
     }
     const facts=owned.index.through(length)
@@ -1095,10 +1107,23 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(message?.type!=='assistant/message'||message.data.message.id!==native.messageId
       ||recordSha256(message)!==native.messageVersion.eventSha256||end?.type!=='turn/end'
       ||end.data.turn!==native.turn||end.data.reason.kind!=='completed')fail('OPENING_VARIANT_NATIVE_UNPROVEN')
-    return {...found,original:deps.source.readOpeningVariantOriginal(found.donor)}
+    return {...found,message,original:deps.source.readOpeningVariantOriginal(found.donor)}
+  }
+  const birthScopeIndexes=new WeakMap<AuthorChatScopeBirthRecordV1,ReadonlyMap<string,AuthorChatScopeBasesV1>>()
+  function birthScopeBases(birth:AuthorChatScopeBirthRecordV1|undefined,namespace:AuthorChatNamespaceV3,
+    ref:AuthorChatRefV1):AuthorChatScopeBasesV1|undefined {
+    if(!birth)return
+    let index=birthScopeIndexes.get(birth)
+    if(!index) {
+      index=new Map(birth.entries.filter(entry=>entry.scopeRef).map(entry=>[
+        ordinaryReferenceKey(entry.originNamespace,entry.scopeRef!),{ref:entry.scopeRef,reset:entry.reset,
+          keys:new Map(entry.keys.map(({key,...value})=>[key,value]))}]))
+      birthScopeIndexes.set(birth,index)
+    }
+    return index.get(ordinaryReferenceKey(namespace,ref))
   }
   function scopesForActivation(found:NonNullable<ReturnType<typeof activationFor>>,
-    events:readonly SessionEvent[]):ScopeFacts {
+    events:readonly SessionEvent[],subjectSessionId=found.seed.sessionId):ScopeFacts {
     const {seed,original,baseline,continuation}=found,native=seed.event.native,raw=events[native.assistantSeq]!,
       snapshot=schemaOriginalSnapshot(original),source=schemaScopeSource(snapshot,seed.sessionId)
     if(raw.type!=='assistant/message')fail('OPENING_VARIANT_NATIVE_UNPROVEN')
@@ -1118,14 +1143,16 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
           :input.scopeReadFrame!.scopes.chat
       chat=schemaScopeReowner(historicalChat,schemaScopeOwner(source,'chat'))
     }
-    return {chat,currentMessageCarrier:{kind:'message',ownerSessionId:seed.sessionId,nativeSeq:native.assistantSeq,
+    const fork=deps.readOrdinaryScopeFork?.(seed.sessionId,subjectSessionId),
+      ordinary=ordinaryScopeIndex(undefined,fork?.bases,{at:()=>[],resolveFork:(namespace,ref)=>
+        birthScopeBases(fork?.birth,namespace,ref)??resolveOrdinaryScopeBases(namespace,ref)}).snapshot()
+    return {chat,ordinary,currentMessageCarrier:{kind:'message',ownerSessionId:seed.sessionId,nativeSeq:native.assistantSeq,
         messageId:native.messageId,messageVersionSha256:versionSha256},
       messages:new Map([[schemaScopeMessageKey(seed.sessionId,native.assistantSeq,native.messageId,versionSha256),values]]),
       owners:[{sessionId:seed.sessionId,fromSeq:0,throughSeq:null}],
       updateChat}
   }
-  function scopesForDerived(genesis:MvuSchemaDerivedGenesis,events:readonly SessionEvent[],
-    subjectSessionId=genesis.sessionId):ScopeFacts|undefined {
+  function inheritedScopeFacts(genesis:MvuSchemaDerivedGenesis,events:readonly SessionEvent[]):ScopeFacts {
     const recovered=genesis.inheritedReady&&recoveredPrefixes.get(genesis.inheritedReady)
     let facts:ScopeFacts
     if(recovered) {
@@ -1144,13 +1171,18 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       }
       facts=cached.facts
     }
+    return facts
+  }
+  function scopesForDerived(genesis:MvuSchemaDerivedGenesis,events:readonly SessionEvent[],
+    subjectSessionId=genesis.sessionId):ScopeFacts|undefined {
+    const facts=inheritedScopeFacts(genesis,events)
     const cut=genesis.inheritedCut.nativeCut
     // Normal Native input claims extend the child's own log without changing
     // its published state identity. Parent tails cannot extend into that child.
     const ancestors=facts.owners.filter(range=>range.fromSeq<cut).map(range=>({...range,
       throughSeq:range.throughSeq===null?cut:Math.min(range.throughSeq,cut)}))
     const ordinary=ordinaryScopeIndex(facts.ordinary,
-      deps.readOrdinaryScopeForkBases?.(genesis.sessionId,subjectSessionId)).snapshot()
+      deps.readOrdinaryScopeFork?.(genesis.sessionId,subjectSessionId)?.bases).snapshot()
     return {...facts,ordinary,messages:new Map(facts.messages),currentMessageCarrier:null,owners:[...ancestors,
       {sessionId:genesis.sessionId,fromSeq:cut,throughSeq:null}]}
   }
@@ -1200,6 +1232,16 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       dispatch:step.dispatchRef,completion:step.completionRef,dispatchMarker:step.dispatchMarker,
       completionMarker:step.completionMarker,tailSha256:step.step.stepSha256,frontierSha256,
       outputSha256:recordSha256(step.step.output)}
+  }
+  function verifyOpeningVariantResume(event:HistoricalEvent,events:readonly SessionEvent[]|SessionHistoryCut<SessionEvent>) {
+    if(!isOpeningVariantEvent(event)||!event.phases[0].executionCut)return
+    const saved=event.plan.initialCut,marker='prefixSha256' in events?events.at(saved.nativeCut):events[saved.nativeCut],
+      prefix='prefixSha256' in events?events.prefixSha256(saved.nativeCut)
+        :schemaNativeCutSha256(events,saved.nativeCut,deps.inputState.nativeHistory?.prefixes)
+    // The journal proves the real dispatch cut. Its one extra event must be
+    // Native's resume boundary over the exact prefix frozen by the saved plan.
+    if(marker?.type!=='session/end-seed'||Object.keys(marker.data).length!==0
+      ||prefix!==saved.nativePrefixSha256)fail('OPENING_VARIANT_NATIVE_UNPROVEN')
   }
   function verifyStoryBrowserJournal(event:HistoricalEvent,ready:JournalRead):void {
     if(!('browser' in event)||!event.browser)return
@@ -1854,6 +1896,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       } else {
         closure=closedStory(event)
       }
+      verifyOpeningVariantResume(event,events)
       verifyStoryBrowserJournal(event,ready)
       for(const phase of mvuSchemaStoryExecutionPhases(event)) {
         const actualAssociation=associationAt(sid,events,ready,ordinal),step=ready.steps[ordinal++]!,association=phase.association
@@ -2248,6 +2291,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         const joined=joinMvuSchemaPlayerCompletedEvent(prefixInputs.branch,prefixInputs.status,event,cut)
         closure={operation:joined.operation,plan:joined.plan,event,settlement:joined.settlement,completion:joined.completion}
       }
+      verifyOpeningVariantResume(event,cut)
       verifyStoryBrowserJournal(event,ready)
       for(const [offset,phase]of mvuSchemaStoryExecutionPhases(event).entries()) {
         const index=ordinal+offset,step=ready.steps.at(index),actual=associationAt(sid,cut,ready,index)
@@ -2524,7 +2568,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
           ready=selected
         }else ready=journal.validateFrozenReady(prefix.journal,events)
         ordinal=0;initial=snapshot({...activation.seed.snapshot,sourceSha256:prefix.sourceSha256})
-        scopeSeed=scopesForActivation(activation,events);displaySeed=[]
+        scopeSeed=scopesForActivation(activation,events,subjectSessionId);displaySeed=[]
       }else {
         if(!genesis||genesis.sessionId!==sid||genesis.basisKey!==prefix.seed.basisKey
           ||genesis.basisSha256!==prefix.seed.basisSha256||!same(genesis.original,prefix.original)
@@ -4106,24 +4150,31 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     deps.status.get(mvuStateCurrentHeadKey(sid))
     return read.data.history
   }
-  function captureOrdinaryScopeForkBases(parent:string,child:string,nativeCut:number,
-    namespaceOwner:AuthorChatNamespaceV3):readonly AuthorChatScopeForkBaseV1[] {
+  function captureOrdinaryScopeFork(parent:string,child:string,nativeCut:number,
+    namespaceOwner:AuthorChatNamespaceV3):{
+      readonly bases:readonly AuthorChatScopeForkBaseV1[];readonly entries:readonly AuthorChatScopeBirthEntryV1[]} {
     const session=deps.session(parent)
     if(!session)fail('AUTHOR_CHAT_NATIVE_CUT_UNAVAILABLE')
     const opening=deps.status.get(mvuInitializationHeadKey(parent)) as {encoding?:string}|undefined
     const schema=views.has(parent)||opening?.encoding==='mvu-schema-opening-head-v3'||!!deps.readDerivedGenesis?.(parent)
       ||deps.status.get(openingVariantActivationEventKey(parent))!==undefined
-    const ordinary=schema?factual(session,nativeCut,true).readScopes?.ordinary:plainOrdinaryAt(session,nativeCut)
-    if(!ordinary)return []
-    const bases:AuthorChatScopeForkBaseV1[]=[],sourceKey=ordinaryNamespaceKey(namespaceOwner)
+    // An empty inherited prefix has no numerical opening to prove. Its ordinary
+    // fold still carries any earlier frozen namespace bases owned by this session.
+    const ordinary=schema&&nativeCut>0?factual(session,nativeCut,true).readScopes?.ordinary:plainOrdinaryAt(session,nativeCut)
+    const bases:AuthorChatScopeForkBaseV1[]=[],entries:AuthorChatScopeBirthEntryV1[]=[],
+      sourceKey=ordinaryNamespaceKey(namespaceOwner)
+    if(!ordinary)return {bases,entries}
     for(const [key,namespace] of ordinary.namespaces) {
       if(namespace.sessionId!==parent
         ||ordinaryNamespaceKey({...namespace,target:undefined})!==sourceKey)continue
       const scope=ordinary.current.get(key)
       if(!scope)continue
-      bases.push({schemaVersion:1,namespace:{...namespace,sessionId:child},originNamespace:namespace,scopeRef:scope.ref})
+      const base:AuthorChatScopeForkBaseV1={schemaVersion:1,namespace:{...namespace,sessionId:child},
+        originNamespace:namespace,scopeRef:scope.ref}
+      bases.push(base)
+      entries.push({...base,reset:scope.reset,keys:[...scope.keys].map(([key,value])=>({key,...value}))})
     }
-    return bases
+    return {bases,entries}
   }
   function captureOrdinaryScopeBases(namespace:AuthorChatNamespaceV3):AuthorChatScopeBasesV1 {
     if(namespace.target?.kind==='script')return emptyOrdinaryScopeBases
@@ -4237,7 +4288,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     const session=deps.session(sid),view=views.get(sid)
     if(!session||!currentSession(session)||!deps.agent(session))fail('OPENING_VARIANT_SESSION_INACTIVE')
     const history=nativeCut===undefined?view&&viewCurrent(view)?view.history:undefined
-      :factual(session,nativeCut,true,true)
+      :factual(session,nativeCut,true,false)
     if(!history?.readScopes)fail('OPENING_VARIANT_BASIS_UNAVAILABLE')
     const frame=deps.source.captureFrame(history.original,sid),agent=deps.agent(session)!,
       check=()=>{
@@ -5011,7 +5062,10 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       const anchor=schemaOpeningNativeAnchor(native)
       if(anchor.turnEndSeq<nativeCut)candidates.set(anchor.assistantSeq,{realm:preparation.realmEpoch,anchor})
     }
-    if(!inventory.length&&!inherited&&!candidates.size)return undefined
+    const activationSeed=openingArchivesFor(sid).readSeed(sid),
+      activation=activationSeed&&activationSeed.seed.event.native.turnEndSeq<nativeCut
+        ?activationFor(sid,events,activationSeed.ref):undefined
+    if(!inventory.length&&!inherited&&!candidates.size&&!activation)return undefined
     const cut=deps.inputState.nativeHistory?.cut?.<SessionEvent>(session),projections=deps.projections?.()
     if(!cut||cut.source!=='native'||!projections)fail('SCHEMA_STORY_CANONICAL_OWNER_REQUIRED')
     const selected=readTavernCanonicalChatAtCutV1(sid,cut,nativeCut,projections),
@@ -5020,6 +5074,16 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       if(entry.messageFacts)inheritedTargets.add(settledMessageKey({seq:entry.row.seq,messageId:entry.row.messageId as string,
         versionSha256:entry.messageFacts.messageVersionSha256}))
     let floor:number|undefined=inherited?session.inheritedEventCount:undefined
+    if(activation) {
+      // A literal activation owns a separate opening receipt and historical
+      // donor. Its completed Native cut proves this body without an ordinary
+      // opening-choice row or a later Story terminal.
+      const native=activation.seed.event.native,target={seq:native.assistantSeq,messageId:native.messageId,
+        versionSha256:recordSha256(activation.message.data.message)},key=settledMessageKey(target)
+      closed.add(key)
+      index.set(key,{target,message_content:activation.packet.renderedText,eventSha256:activation.seed.event.eventSha256})
+      floor??=native.assistantSeq
+    }
     const opening=(candidate:NonNullable<ReturnType<typeof candidates.get>>)=>{
       const root=readOpeningRoot(sid,events,candidate.realm),anchor=schemaOpeningNativeAnchor(root.native)
       if(!same(anchor,candidate.anchor)||anchor.turnEndSeq>=nativeCut)fail('SCHEMA_OPENING_RECORD_INVALID')
@@ -5164,7 +5228,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     }catch{coldFact?.dispose();return undefined}
   }
   return {preflight,readCompletedOpening,adoptPublishedPlayer,captureAuthorDataPublicationBasis,
-    captureOrdinaryScopeBases,resolveOrdinaryScopeBases,captureOrdinaryScopeForkBases,
+    captureOrdinaryScopeBases,resolveOrdinaryScopeBases,captureOrdinaryScopeFork,
     observation,readSnapshot,readSchemaObservation,supportsMaintenance,checkTextEdit,
     taskEditFacts,taskArtifact,taskEditResolved,
     captureReaderDisplayScopes,capturePromptScopes,captureBrowserFacts,captureReaderDocumentFacts,

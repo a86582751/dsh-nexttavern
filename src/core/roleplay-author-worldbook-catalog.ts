@@ -111,10 +111,21 @@ export function createRoleplayAuthorWorldbookCatalogV1(deps:AuthorWorldbookCatal
     },undefined,deps.completionWriter)
   const contents=new Map<string,ReturnType<typeof makeContent>>()
   const captured=new Map<string,AuthorWorldbookCaptureV1>()
+  const descriptorReaders=new Map<string,()=>AuthorWorldbookDescriptorV1|undefined>()
   let catalogData:{head:AuthorWorldbookRefV1|null;data:AuthorWorldbookCatalogCaptureV1}|undefined
   function descriptor(bookId:string,includeDeleted=false) {
-    const state=catalog.capture().state
-    const selected=state.books.get(bookId)??(includeDeleted?state.deleted.get(bookId):undefined)
+    const key=(includeDeleted?'retained:':'current:')+bookId
+    let read=descriptorReaders.get(key)
+    if(!read) {
+      read=()=>{
+        const state=catalog.capture().state
+        return state.books.get(bookId)??(includeDeleted?state.deleted.get(bookId):undefined)
+      }
+      // Repeated Source DATA refreshes consume the same selected fact. They
+      // must not add another lasting identity subscription for this book.
+      descriptorReaders.set(key,read)
+    }
+    const selected=deps.readSelectedData?deps.readSelectedData(read):read()
     if(!selected)throw Error('AUTHOR_WORLDBOOK_NOT_FOUND')
     return selected
   }

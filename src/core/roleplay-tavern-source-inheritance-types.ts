@@ -11,7 +11,7 @@ import type {LoreEditJournalV1} from './roleplay-tavern-lore-edits-journal.js'
 import type {PromptTemplateOnlyInheritedSourceInputV2} from './roleplay-prompt-template-only-types.js'
 import type {ProgramAbsenceOpeningClosureV1} from './roleplay-program-absence-inheritance-data.js'
 import type {ProgramAbsenceInventoryV1} from './roleplay-program-absence-inventory.js'
-import type {AuthorChatForkBaseV3,AuthorChatRefV1,AuthorChatNamespaceV3} from './roleplay-author-chat-state-types.js'
+import type {AuthorChatForkBaseV3,AuthorChatRefV1,AuthorChatNamespaceV3,AuthorChatScopeBasesV1} from './roleplay-author-chat-state-types.js'
 import type {NativeCardConversionForkSeedV1} from './native-card-advanced.js'
 
 export type TavernSourceStaticTableV1='cards'|'worldbook'|'rules'|'opening'|'status'|'branch'
@@ -258,6 +258,23 @@ export interface AuthorChatScopeForkBaseV1 {
   readonly originNamespace:AuthorChatNamespaceV3
   readonly scopeRef:AuthorChatRefV1|null
 }
+/** Finite facts supplied by the numerical owner's accepted ordinary fold. */
+type AuthorChatScopeBirthKeyV1=AuthorChatScopeBasesV1['keys'] extends ReadonlyMap<string,infer V>?V:never
+export interface AuthorChatScopeBirthEntryV1 extends AuthorChatScopeForkBaseV1 {
+  readonly reset:AuthorChatScopeBasesV1['reset']
+  readonly keys:readonly ({readonly key:string}&AuthorChatScopeBirthKeyV1)[]
+}
+export interface AuthorChatScopeBirthRecordV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-mvu-ordinary-scope-birth-v1'
+  readonly authority:'consumer-data-only'
+  readonly childSessionId:string
+  readonly parentSessionId:string
+  readonly operationId:string
+  readonly nativeCut:TavernSourceNativeCutV1
+  readonly entries:readonly AuthorChatScopeBirthEntryV1[]
+  readonly recordSha256:string
+}
 export interface TavernSourcePreparedV1 {
   readonly authorContextForkV1?:import('./roleplay-author-source-context.js').AuthorContextForkV1
   readonly frozenCharacterPrivateV1?:import('./roleplay-character-private.js').CharacterPrivateForkV1
@@ -283,6 +300,7 @@ export interface TavernSourcePreparedV1 {
   readonly frozenProgramAbsenceOpeningV1?:TavernSourceFrozenProgramAbsenceOpeningV1
   readonly authorChatForkBasesV3?:readonly AuthorChatForkBaseV3[]
   readonly authorChatScopeForkBasesV1?:readonly AuthorChatScopeForkBaseV1[]
+  readonly authorChatScopeBirthV1?:{readonly record:AuthorChatScopeBirthRecordV1;readonly recordRef:TavernSourceInheritanceRefV1}
   readonly frozenNativeCardConversionSeedV1?:NativeCardConversionForkSeedV1
   readonly ancestors:readonly TavernSourceInheritanceLayerRefV1[]
   readonly preparedSha256:string
@@ -392,8 +410,9 @@ export interface TavernSourceInheritanceDepsV1 {
     cut:TavernSourceNativeCutV1,sourceRows:TavernSourceOwnedRowFactsV1,
     closedOpening?:TavernSourceProgramAbsenceObservationV1)=>TavernSourceProgramAbsenceObservationV1|void
   /** Ordinary namespaces are captured at the same locked Source reservation. */
-  readonly captureAuthorChatScopeForkBasesV1?:(parentSessionId:string,childSessionId:string,
-    operationId:string,cut:TavernSourceNativeCutV1,source:TavernLoreSourceDataV1)=>readonly AuthorChatScopeForkBaseV1[]|undefined
+  readonly captureAuthorChatScopeForkV1?:(parentSessionId:string,childSessionId:string,
+    operationId:string,cut:TavernSourceNativeCutV1,source:TavernLoreSourceDataV1)=>{
+      readonly bases:readonly AuthorChatScopeForkBaseV1[];readonly entries:readonly AuthorChatScopeBirthEntryV1[]}|undefined
   readonly captureAuthorChatForkBasesV3?:(parentSessionId:string,childSessionId:string,
     operationId:string,cut:TavernSourceNativeCutV1,source:TavernLoreSourceDataV1,
     scopeForkBases?:readonly AuthorChatScopeForkBaseV1[])=>readonly AuthorChatForkBaseV3[]|undefined

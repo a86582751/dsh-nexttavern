@@ -92,6 +92,7 @@ export const tavernSourceEditSlotKeyV1 = (identitySha) => `tavern_loreedit_v1__$
 export const tavernSourceMigrationKeyV1 = (sid) => `${sid}__tavern-source-migration-v1`;
 export const tavernSourceFrozenPromptScopeKeyV1 = (sid) => `${sid}__tavern-source-frozen-prompt-scope-v1`;
 export const tavernSourceProgramAbsenceOpeningKeyV1 = (sid) => `${sid}__tavern-source-program-absence-opening-v1`;
+export const tavernSourceOrdinaryScopeBirthKeyV1 = (sid) => `${sid}__mvu-ordinary-scope-birth-v1`;
 /** Parse inert migration data without entering Source or performing migration.
  * Consumers must separately join its binding to an actual closed Source. */
 export function validateTavernSourceLegacyMigrationRecordV1(raw) {
@@ -115,7 +116,8 @@ export function validateTavernSourceLegacyMigrationRecordV1(raw) {
 export function tavernSourceOwnedRecordKeysV1(sid) {
     return new Set([tavernSourcePreparedKeyV1(sid), tavernSourceApplyKeyV1(sid), tavernSourceCommitKeyV1(sid),
         tavernSourceReadyKeyV1(sid), tavernSourceEditBaselineKeyV1(sid), tavernSourceMaterialBaselineKeyV1(sid),
-        tavernSourceMigrationKeyV1(sid), tavernSourceFrozenPromptScopeKeyV1(sid), tavernSourceProgramAbsenceOpeningKeyV1(sid)]);
+        tavernSourceMigrationKeyV1(sid), tavernSourceFrozenPromptScopeKeyV1(sid), tavernSourceProgramAbsenceOpeningKeyV1(sid),
+        tavernSourceOrdinaryScopeBirthKeyV1(sid)]);
 }
 export const inheritanceRefV1 = (key, value) => ({ key, sha256: inheritanceDataSha256V1(value) });
 export function validateInheritanceRefV1(raw, key) {
@@ -141,6 +143,47 @@ function sealed(raw, encoding, hashKey, fields, optional = []) {
 }
 export function sealInheritanceDataV1(body, hashKey) {
     return inheritanceFreezeV1({ ...body, [hashKey]: recordSha256(body) });
+}
+export function validateAuthorChatScopeBirthRecordV1(raw) {
+    const value = sealed(raw, 'native-mvu-ordinary-scope-birth-v1', 'recordSha256', ['authority', 'childSessionId', 'parentSessionId', 'operationId', 'nativeCut', 'entries']);
+    if (value.authority !== 'consumer-data-only' || !inheritanceIdV1(value.childSessionId)
+        || !inheritanceIdV1(value.parentSessionId) || value.childSessionId === value.parentSessionId
+        || !inheritanceIdV1(value.operationId) || !Array.isArray(value.entries))
+        inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
+    validateInheritanceCutV1(value.nativeCut);
+    for (const entry of value.entries) {
+        inheritanceExactV1(entry, ['schemaVersion', 'namespace', 'originNamespace', 'scopeRef', 'reset', 'keys']);
+        if (entry.schemaVersion !== 1 || !inheritanceObjectV1(entry.namespace) || !inheritanceObjectV1(entry.originNamespace)
+            || entry.namespace.schemaVersion !== 3 || entry.originNamespace.schemaVersion !== 3
+            || entry.namespace.sessionId !== value.childSessionId || !Array.isArray(entry.keys))
+            inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
+        if (entry.scopeRef !== null)
+            validateInheritanceRefV1(entry.scopeRef);
+        const fence = (raw) => {
+            inheritanceExactV1(raw, ['namespace', 'head', 'base']);
+            if (!inheritanceObjectV1(raw.namespace) || raw.namespace.schemaVersion !== 3)
+                inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
+            if (raw.head !== null)
+                validateInheritanceRefV1(raw.head);
+            if (raw.base !== null)
+                validateInheritanceRefV1(raw.base);
+        };
+        if (entry.reset !== null) {
+            inheritanceExactV1(entry.reset, ['ref', 'fenceRoot', 'variables']);
+            validateInheritanceRefV1(entry.reset.ref);
+            fence(entry.reset.fenceRoot);
+            if (!inheritanceObjectV1(entry.reset.variables))
+                inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
+        }
+        for (const key of entry.keys) {
+            inheritanceExactV1(key, ['key', 'ref', 'fenceRoot', 'exists', 'value']);
+            if (typeof key.key !== 'string' || typeof key.exists !== 'boolean')
+                inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
+            validateInheritanceRefV1(key.ref);
+            fence(key.fenceRoot);
+        }
+    }
+    return rememberParsedDataV1(value);
 }
 /** Shared strict parser for the actual persisted scope envelope. The facts
  * retain their original owner; this row's child address is storage provenance. */
@@ -491,7 +534,7 @@ export function validatePreparedInheritanceV1(raw) {
         'parentNumericalSource', 'originalBinding', 'originalAbsenceProof', 'parentInventory', 'parentInventorySha256', 'childPointer',
         'editLayers', 'materialPublications', 'ancestors'], [
         'frozenNonNumericalOpeningV1', 'frozenProgramAbsenceOpeningV1',
-        'authorChatForkBasesV3', 'authorChatScopeForkBasesV1', 'authorContextForkV1', 'frozenNativeCardConversionSeedV1', 'frozenCharacterPrivateV1'
+        'authorChatForkBasesV3', 'authorChatScopeForkBasesV1', 'authorChatScopeBirthV1', 'authorContextForkV1', 'frozenNativeCardConversionSeedV1', 'frozenCharacterPrivateV1'
     ]);
     if (value.origin !== 'core-reservation' || !inheritanceIdV1(value.operationId) || value.operationKey !== `fork-op-${value.operationId}`
         || !inheritanceIdV1(value.parentSessionId) || !inheritanceIdV1(value.childSessionId) || value.parentSessionId === value.childSessionId
@@ -580,6 +623,18 @@ export function validatePreparedInheritanceV1(raw) {
                     inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
             }
         }
+    }
+    if (value.authorChatScopeBirthV1 !== undefined) {
+        const birth = value.authorChatScopeBirthV1;
+        inheritanceExactV1(birth, ['record', 'recordRef']);
+        const record = validateAuthorChatScopeBirthRecordV1(birth.record);
+        validateInheritanceRefV1(birth.recordRef, tavernSourceOrdinaryScopeBirthKeyV1(value.childSessionId));
+        const selections = record.entries.map(({ reset: _reset, keys: _keys, ...selection }) => selection);
+        if (record.parentSessionId !== value.parentSessionId || record.childSessionId !== value.childSessionId
+            || record.operationId !== value.operationId || !inheritanceSameV1(record.nativeCut, value.nativeCut)
+            || birth.recordRef.sha256 !== inheritanceDataSha256V1(record)
+            || !inheritanceSameV1(selections, value.authorChatScopeForkBasesV1))
+            inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
     }
     if (Object.hasOwn(value, 'frozenNonNumericalOpeningV1') && Object.hasOwn(value, 'frozenProgramAbsenceOpeningV1'))
         inheritanceFailV1('SOURCE_INHERITANCE_OPENING_INVALID');

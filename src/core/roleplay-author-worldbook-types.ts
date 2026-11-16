@@ -106,6 +106,8 @@ export interface AuthorWorldbookDependenciesV1 {
 export interface AuthorWorldbookCatalogDependenciesV1 extends AuthorWorldbookDependenciesV1 {
   /** Private current Domain/profile lifecycle, independent of Source admission. */
   readonly completionWriter:AuthorWorldbookWriterV1
+  /** Tracks the selected immutable descriptor through shared catalog changes. */
+  readSelectedData?<T>(reader:()=>T):T
 }
 export interface AuthorWorldbookReceiptV1 {
   readonly schemaVersion:1

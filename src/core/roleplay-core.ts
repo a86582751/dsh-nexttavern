@@ -1089,6 +1089,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   const authorProfileCurrent=()=>!sourceReadOwnerClosed
     &&readAuthorProfileIdentityV1(T.branch)?.profileId===authorProfile.profileId
   const authorWorldbookCatalog=createRoleplayAuthorWorldbookCatalogV1({table:T.branch,profile:authorProfile,
+    readSelectedData:inputState.readSelectedData,
     beforePersistentWrite:address=>authorCharacterLibrary?.dirtyWorldbooks(address),
     completionWriter:{
       owns:owner=>owner.kind==='catalog'&&owner.profileId===authorProfile.profileId,
@@ -1328,11 +1329,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     withSourceLock:(id,work)=>withImportLock(id,'tavern-source-inheritance',work),
     readNativeSession:id=>mvuAncestry.readNativeObservation(id),readOpeningContext:openingContextBinding,
     captureNonNumericalOpening,assertNonNumericalOpening,captureProgramAbsenceOpening,assertProgramAbsenceOpening,
-    captureAuthorChatScopeForkBasesV1:(parent,child,_operationId,nativeCut,source)=>{
+    captureAuthorChatScopeForkV1:(parent,child,_operationId,nativeCut,source)=>{
       if(nativeCut.kind==='reserved-fresh-branch')return undefined
       const record=T.branch.get(importRecordKey(source.sourceRecordSessionId,source.original.activePointer.importId)) as ImportRecord,
         namespace=promptProgramSourceOrdinaryNamespaceV3(source,record)
-      return schemaStory?.captureOrdinaryScopeForkBases(parent,child,nativeCut.seedLength,namespace)
+      return schemaStory?.captureOrdinaryScopeFork(parent,child,nativeCut.seedLength,namespace)
     },
     captureAuthorChatForkBasesV3:(parent,child,operationId,nativeCut,source,scopeForkBases)=>{
       if(nativeCut.kind==='reserved-fresh-branch')return undefined
@@ -3663,13 +3664,14 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   schemaStory=mvuOpening.createSchemaStory({
     authorChat:authorChatState,
     captureOrdinaryChatNamespace,
-    readOrdinaryScopeForkBases:(sid,subject=sid)=>{
-      if(T.branch.get(tavernSourcePreparedKeyV1(sid))===undefined)return []
+    readOrdinaryScopeFork:(sid,subject=sid)=>{
+      if(T.branch.get(tavernSourcePreparedKeyV1(sid))===undefined)return {bases:[]}
       // An ancestor's immutable fork bases belong to the live child's verified
       // lineage. Reading it as a subject would require its inactive Agent.
       const transaction=sid===subject?tavernSourceInheritance.readCommittedStaticSourceInheritance(sid)
         :tavernSourceInheritance.readCommittedSourceLineage(subject).ancestors.find(row=>row.prepared.childSessionId===sid)
-      return transaction?.prepared.authorChatScopeForkBasesV1??[]
+      return {bases:transaction?.prepared.authorChatScopeForkBasesV1??[],
+        birth:transaction?.prepared.authorChatScopeBirthV1?.record}
     },
     closingView:(lease,scope)=>inputOwner?.readClosingView(lease,scope),
     verifyConsumedScope:scope=>{
