@@ -3,6 +3,7 @@
  * Retained compiled DATA never reconstructs an attachment after Core disposal. */
 import { randomUUID } from 'node:crypto';
 import { jsonResponse } from './roleplay-state.js';
+import { sameAuthorWorldbookRefV1 } from './roleplay-author-worldbook-journal.js';
 import { createRoleplayAuthorBrowserGeneration } from './roleplay-author-browser-generation.js';
 import { authorMessageBodyRequestValid } from './roleplay-author-message-edit-types.js';
 import { createAuthorNativeMessageVariables } from './author-native-message-variables.js';
@@ -339,7 +340,7 @@ export function createRoleplayAuthorBrowser(deps) {
             // while fresh DATA is being captured, just like an author-key receipt.
             if (removesPrompts)
                 try {
-                    await adoptCommittedFacts(value, sourceCurrent);
+                    refreshed = await adoptCommittedFacts(value, sourceCurrent);
                 }
                 catch { }
             return { ok: true, kind: 'prompts-cleaned' };

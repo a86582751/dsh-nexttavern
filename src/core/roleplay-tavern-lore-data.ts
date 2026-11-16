@@ -107,11 +107,12 @@ export function cloneRoleplayTavernLoreDataV1<T>(data:T,maxBytes:number=TAVERN_L
       let fields=0
       for(const key of names) {
         const descriptor=descriptors[key]!
-        if(!Object.hasOwn(descriptor,'value')||!descriptor.enumerable
-          ||['__proto__','prototype','constructor'].includes(key))fail('LORE_DATA_INVALID')
+        if(!Object.hasOwn(descriptor,'value')||!descriptor.enumerable)fail('LORE_DATA_INVALID')
         if(descriptor.value===undefined)continue
         if(fields++)count(1)
-        text(key);count(1);values[key]=visit(descriptor.value,depth+1)
+        text(key);count(1)
+        Object.defineProperty(values,key,{value:visit(descriptor.value,depth+1),
+          enumerable:true,writable:true,configurable:true})
       }
       result=values
     }

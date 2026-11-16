@@ -18,8 +18,8 @@ import {createAuthorReaderSurface} from '../core/tavern-author-reader-surface.js
 import type {AuthorReaderSurface,AuthorReaderSurfaceLayout} from '../core/tavern-author-reader-surface.js';
 import type {AuthorNativeComposerAccessV1} from '../core/author-native-helper-types.js';
 import {mountStaticAuthorDocument} from './author-runtime.js';
-import type {AuthorBrowserWorldbookPendingV2,AuthorBrowserPersonaPendingV1,
-    MessageBodyPendingV1} from './author-browser-pending.js';
+import type {AuthorBrowserWorldbookPendingV3,AuthorBrowserPersonaPendingV1,
+    MessageBodyPendingV1,AuthorBrowserCharacterLibraryPendingV1} from './author-browser-pending.js';
 import type {AuthorBrowserOrdinaryPending} from './author-browser-ordinary-pending.js';
 import type {createSessionImages} from './session-images.js';
 import {createReaderCommunityCache,createCommunityOptionsRenderer,COMMUNITY_READER_CSS} from './reader-community.js';
@@ -969,9 +969,9 @@ React,
             renderReaderActions(actionProps(part, sessionId)));
         };
 
-        const renderWorldbookOperation = (operation: AuthorBrowserWorldbookPendingV2) => {
+        const renderWorldbookOperation = (operation: AuthorBrowserWorldbookPendingV3) => {
             let outcome: string;
-            if (operation.result?.kind === 'edited-data') {
+            if (operation.result?.kind === 'committed') {
                 outcome = `已保存，修订 ${operation.result.receipt.revision}。`;
             } else if (operation.state === 'terminal' && operation.code === 'AUTHOR_WORLDBOOK_OPERATION_NOT_RECORDED') {
                 outcome = '这次修改尚未提交，无法恢复；请重新打开交互视图后再修改。';

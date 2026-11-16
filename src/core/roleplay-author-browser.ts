@@ -7,7 +7,9 @@ import type {AuthorNativeBindingV1 as BrowserBindingV1} from './author-native-he
 import type {MvuPlayerEditResponse} from './roleplay-mvu-player-types.js'
 import type {AuthorBrowserRequest,AuthorBrowserReply,AuthorBrowserSnapshot,
   AuthorBrowserWriteProgram,AuthorNativeNamespaceRequestV1,AuthorNativeGenerateRawRequestV1,
-  AuthorNativeWorldbookRequestV1,AuthorNativePersonaRequestV1} from './roleplay-author-browser-types.js'
+  AuthorNativeWorldbookRequestV1,AuthorNativeWorldbookManagementRequestV1,
+  AuthorNativePersonaRequestV1,AuthorNativeCharacterLibraryMutationV1,
+  AuthorNativeCharacterLibraryMutationResultV1} from './roleplay-author-browser-types.js'
 import type {AuthorNativeProgramV1,AuthorNativeRealmV1} from './author-native-program.mjs'
 import type {AuthorOpeningVariantCaptureV1,OpeningVariantMutationRequestV1}
   from './roleplay-opening-variant-types.js'
@@ -17,7 +19,9 @@ import type {AuthorNativeGeneratedTaskV1 as BrowserGeneratedTaskV2,
   AuthorNativePersonaReplyV1 as BrowserPersonaMutationReplyV2,
   AuthorNativeNamespaceReplyV1 as BrowserOrdinaryNamespaceReplyV3} from './roleplay-author-browser-types.js'
 import type {AuthorNamedWorldbookData} from './roleplay-author-worldbook-data.js'
-import type {TavernLoreMutationRetryLocatorV1} from './roleplay-tavern-lore-edits-types.js'
+import type {AuthorWorldbookRetryLocatorV1} from './roleplay-author-worldbook-data.js'
+import type {AuthorWorldbookHelperCaptureV1} from './roleplay-author-worldbook-types.js'
+import {sameAuthorWorldbookRefV1} from './roleplay-author-worldbook-journal.js'
 import type {PromptCaptureV1} from './tavern-author-prompt-types.mjs'
 import type {AuthorBrowserPreparationFacts,BrowserGenerationOutput} from './roleplay-author-browser-generation-types.js'
 import type {AuthorInjectionCleanupV1} from 'dsh-nexttavern-session-format/author-injection-cleanup'
@@ -91,8 +95,14 @@ interface Dependencies {
     basis:AuthorNamedWorldbookData,originalOwnerCurrent:()=>boolean,signal:AbortSignal,
     capturePublication?:()=>ReturnType<RoleplayInputSourceDataWindowV1['begin']>):
       Promise<Omit<BrowserWorldbookMutationReplyV2,'snapshot'>>
+  manageWorldbook?(sid:string,program:AuthorBrowserWriteProgram,request:AuthorNativeWorldbookManagementRequestV1,
+    basis:AuthorNamedWorldbookData,originalOwnerCurrent:()=>boolean,signal:AbortSignal,
+    capturePublication?:()=>ReturnType<RoleplayInputSourceDataWindowV1['begin']>):
+      Promise<Omit<BrowserWorldbookMutationReplyV2,'snapshot'>>
+  readWorldbook?(sid:string,name:string,basis:AuthorNamedWorldbookData,current:()=>boolean,signal:AbortSignal):
+    Promise<AuthorWorldbookHelperCaptureV1>
   retryWorldbook?(sid:string,operationId:string,current:()=>boolean,signal:AbortSignal,
-    locator?:TavernLoreMutationRetryLocatorV1):
+    locator?:AuthorWorldbookRetryLocatorV1):
     Promise<BrowserWorldbookMutationReplyV2['result']>
   mutatePersona?(sid:string,program:AuthorBrowserWriteProgram,realm:AuthorNativeRealmV1,request:AuthorNativePersonaRequestV1,
     originalOwnerCurrent:()=>boolean,signal:AbortSignal,
@@ -256,8 +266,8 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
       // This is the parent operator's explicit recovery. Its durable receipt
       // grants no readiness or continuation to the stopped author realm.
       return {ok:true,kind:'worldbook-retried',result:await deps.retryWorldbook(session.id,input.operationId,owner,signal,input.locator)}
-    }
-    if(input.action==='retry-persona') {
+    })
+    if(input.action==='retry-persona')return withSession(input.sessionId,async session=>{
       const owner=deps.captureOwner(session.id)
       if(!owner||!deps.retryPersona)return {ok:false,code:'NATIVE_PERSONA_UNAVAILABLE'}
       // Account receipts survive a stopped Worker. Manual lookup does not
@@ -456,25 +466,70 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
         const refreshed=await adoptCommittedFacts(value,sourceCurrent,'source-data')
         return {ok:true,kind:'persona-mutated',reply:{result,...refreshed?{snapshot:refreshed}:{}}}
       }catch{return {ok:true,kind:'persona-mutated',reply:{result}}}
-    }
-    if(input.action==='mutate-worldbook') {
-      const program=value.program,basis=value.facts.worldbook
-      if(!basis||!deps.mutateWorldbook)
-        return {ok:false,code:'AUTHOR_WORLDBOOK_UNAVAILABLE'}
+    })
+    if(input.action==='read-worldbook')return withAttachment(input.binding,async(session,value)=>{
+      nativeRealm(value,input.realmId)
+      const snapshot=input.read.kind==='generation'?value.generationQueue?.snapshotFor(input.read.invocationId)
+        :value.lastSnapshot?.readRevision===input.read.readRevision?value.lastSnapshot:undefined,
+        basis=snapshot?.worldbook
+      if(!basis||!deps.readWorldbook||basis.dataSha256!==input.expectedDataSha256)
+        return {ok:false,code:'AUTHOR_WORLDBOOK_STALE_BASE'}
+      return {ok:true,kind:'worldbook-read',book:await deps.readWorldbook(session.id,input.name,basis,
+        originalSourceLifetime(value),signal)}
+    })
+    if(input.action==='mutate-worldbook')return withAttachment(input.binding,async(session,value)=>{
+      const program=value.program,snapshot=input.request.read.kind==='generation'
+        ?value.generationQueue?.snapshotFor(input.request.read.invocationId)
+        :value.lastSnapshot?.readRevision===input.request.read.readRevision?value.lastSnapshot:undefined,
+        basis=snapshot?.worldbook
+      if(!deps.mutateWorldbook)return {ok:false,code:'AUTHOR_WORLDBOOK_UNAVAILABLE'}
+      if(!basis)return {ok:false,code:'AUTHOR_WORLDBOOK_STALE_BASE'}
       nativeRealm(value,input.request.realmId)
       const sourceCurrent=originalSourceLifetime(value)
       if(!sourceCurrent())return fail('BROWSER_ATTACHMENT_REVOKED')
       // The existing journal owns Source/head publication under its FIFO.
       // Its own writes must not turn a captured DATA proof into writer Stop.
-      const reply=await deps.mutateWorldbook(session.id,program,input.request,basis,value.ownerCurrent,signal,
+      const reply=await deps.mutateWorldbook(session.id,program,input.request,basis,sourceCurrent,signal,
         value.generationQueue?.sourceDataFor(input.request.realmId))
-      if(reply.result.kind!=='edited-data')return {ok:true,kind:'worldbook-mutated',reply}
+      if(reply.result.kind!=='committed')return {ok:true,kind:'worldbook-mutated',reply}
       try {
         const refreshed=await adoptCommittedFacts(value,sourceCurrent,'source-data')
-        return {ok:true,kind:'worldbook-mutated',reply:{...reply,...refreshed?{snapshot:refreshed}:{}}}
+        let currentBook=refreshed?.worldbook?.books.find(book=>book.address.bookId===reply.target?.bookId)
+        if(!currentBook&&refreshed?.worldbook&&deps.readWorldbook&&reply.target)
+          currentBook=await deps.readWorldbook(session.id,input.request.name,refreshed.worldbook,sourceCurrent,signal)
+        // Another session can publish this shared book while our snapshot is
+        // refreshing. A committed reply grants cache/write basis only when its
+        // exact book refs belong to the snapshot adopted by this realm.
+        const worldbookReadCurrent=currentBook&&reply.target
+          &&currentBook.address.bookId===reply.target.bookId
+          &&sameAuthorWorldbookRefV1(currentBook.content,reply.target.contentRef)
+          &&sameAuthorWorldbookRefV1(currentBook.metadata,reply.target.metadataRef)
+        return {ok:true,kind:'worldbook-mutated',reply:{...reply,...refreshed?{snapshot:refreshed}:{},
+          ...worldbookReadCurrent?{worldbookReadCurrent:true as const}:{}}}
       }catch{return {ok:true,kind:'worldbook-mutated',reply}}
-    }
-    if(input.action==='read-source-resource') {
+    })
+    if(input.action==='manage-worldbook')return withAttachment(input.binding,async(session,value)=>{
+      const program=value.program,snapshot=input.request.read.kind==='generation'
+        ?value.generationQueue?.snapshotFor(input.request.read.invocationId)
+        :value.lastSnapshot?.readRevision===input.request.read.readRevision?value.lastSnapshot:undefined,
+        basis=snapshot?.worldbook
+      if(!deps.manageWorldbook)return {ok:false,code:'AUTHOR_WORLDBOOK_UNAVAILABLE'}
+      if(!basis)return {ok:false,code:'AUTHOR_WORLDBOOK_STALE_BASE'}
+      nativeRealm(value,input.request.realmId)
+      const sourceCurrent=originalSourceLifetime(value)
+      if(!sourceCurrent())return fail('BROWSER_ATTACHMENT_REVOKED')
+      const reply=await deps.manageWorldbook(session.id,program,input.request,basis,sourceCurrent,signal,
+        value.generationQueue?.sourceDataFor(input.request.realmId))
+      if(reply.result.kind!=='committed')return {ok:true,kind:'worldbook-managed',reply}
+      try {
+        const refreshed=await adoptCommittedFacts(value,sourceCurrent,'source-data')
+        if(refreshed?.worldbook&&deps.readWorldbook&&reply.target&&input.request.mutation.kind==='create-book'
+          &&!refreshed.worldbook.books.some(book=>book.address.bookId===reply.target!.bookId))
+          await deps.readWorldbook(session.id,input.request.mutation.name,refreshed.worldbook,originalSourceLifetime(value),signal)
+        return {ok:true,kind:'worldbook-managed',reply:{...reply,...refreshed?{snapshot:refreshed}:{}}}
+      }catch{return {ok:true,kind:'worldbook-managed',reply}}
+    })
+    if(input.action==='read-source-resource')return withAttachment(input.binding,async(session,value)=>{
       if(!value.resources)return {ok:false,code:'AUTHOR_SCRIPT_RESOURCE_UNAVAILABLE'}
       nativeRealm(value,input.request.realmId)
       // This read is synchronous after the attachment's live Source/Session/Stop

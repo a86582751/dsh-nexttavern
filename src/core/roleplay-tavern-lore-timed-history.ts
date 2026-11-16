@@ -4,8 +4,9 @@ import {nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
 import {recordSha256} from './roleplay-data.js'
 import {captureRoleplayTavernMaterialHistoryV1,isTavernHistoryTextOnlyMaterialV1} from './roleplay-tavern-material-history.js'
 import {validateTavernLoreSnapshotV1} from './tavern-lore-snapshot.mjs'
-import {validateTavernLoreCompilationV1} from './tavern-lore-compiler.mjs'
+import {validateTavernLoreCompilationV1,tavernLoreConsumerSourceV1} from './tavern-lore-compiler.mjs'
 import {TavernLoreTimedStateV1} from './tavern-lore-timed.mjs'
+import {TavernLoreTemplateFeedbackStateV1} from './tavern-lore-template-feedback.mjs'
 import {composeTavernLoreEvaluationV1,validateTavernLoreDerivedSnapshotV1,
   tavernLoreEvaluationSemanticV1,applyTavernLoreOrdinaryPreparationV1,createTavernLoreSourceEligibilityV1}
   from './tavern-lore-derived.mjs'
@@ -36,10 +37,12 @@ function freeze<T>(value:T):T {
   if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value)}
   return value
 }
-const identity=(source:TavernLoreEvaluatorInputV1['compilation']['plan']['source'])=>
-  ({sessionId:source.ownerSessionId,sourceRecordSessionId:source.sourceRecordSessionId,importId:source.importId,
+const identity=(reference:TavernLoreEvaluatorInputV1['compilation']['plan']['source'])=>{
+  const source=tavernLoreConsumerSourceV1(reference)
+  return {sessionId:source.ownerSessionId,sourceRecordSessionId:source.sourceRecordSessionId,importId:source.importId,
     rawSha256:source.rawSourceSha256,documentSha256:source.documentSha256,
-    bookPointer:source.bookPointer,bookSha256:source.bookValueSha256})
+    bookPointer:source.bookPointer,bookSha256:source.bookValueSha256}
+}
 
 export type TavernTimedPublicationV1=ReturnType<typeof captureRoleplayTavernMaterialHistoryV1>['publications'][number]
 /** Shared historical verification preserves the original owner/address and
@@ -47,6 +50,7 @@ export type TavernTimedPublicationV1=ReturnType<typeof captureRoleplayTavernMate
 export function readTavernTimedPublicationV1(publication:TavernTimedPublicationV1,ownerSessionId:string) {
   const {event,snapshot:snapshotRow,plan:planRow}=publication,
     snapshotPayload=snapshotRow.payload,planPayload=planRow.payload
+  if(event.type!=='request/material')fail('INPUT_MATERIAL_TIMED_TAVERN_RECORD_UNAVAILABLE')
   if(!object(planPayload.promptPlan)||!object(snapshotPayload.tavernEvaluationInput))
     fail('INPUT_MATERIAL_TIMED_TAVERN_RECORD_UNAVAILABLE')
   const input=snapshotPayload.tavernEvaluationInput as unknown as TavernLoreEvaluatorInputV1,
@@ -69,8 +73,8 @@ export function readTavernTimedPublicationV1(publication:TavernTimedPublicationV
     ||!same(plan.composition??null,composition.ref??null))
     fail('INPUT_MATERIAL_TIMED_PLAN_BINDING_INVALID')
   return {publication,input,compilation,composition,snapshot,plan,sourceIdentity:identity(compilation.plan.source),
-    planKey:`${event.data.plan.key}:${event.data.plan.sha256}`,
-    attemptKey:`${ownerSessionId}:${plan.attemptId}:${event.data.step}`}
+    planKey:`${publication.material.plan.key}:${publication.material.plan.sha256}`,
+    attemptKey:`${ownerSessionId}:${plan.attemptId}:${publication.material.step}`}
 }
 export function replayTavernTimedPublicationV1(read:ReturnType<typeof readTavernTimedPublicationV1>,
   revision:number,intervals:readonly Interval[]) {
@@ -88,15 +92,33 @@ export function replayTavernTimedPublicationV1(read:ReturnType<typeof readTavern
   const sourceEligibility=createTavernLoreSourceEligibilityV1(compilation),
     exclusions=new Set(snapshot.standaloneExclusions?.entryIds??[])
   const entries=new Map(composition.entries.map(entry=>{
-    const semantic=tavernLoreEvaluationSemanticV1(entry)
+    const semantic=tavernLoreEvaluationSemanticV1(entry),sourceEligible=sourceEligibility(entry)
     return [entry.entryId,{entry,semantic:exclusions.has(entry.entryId)?{...semantic,enabled:false}:semantic,
-      eligible:sourceEligibility(entry)}] as const
+      eligible:sourceEligible,sourceEligible}] as const
   }))
+  let replay:TavernLoreTimedStateV1|undefined
+  const feedback=new TavernLoreTemplateFeedbackStateV1(composition,snapshot,entries,()=>{},undefined,undefined,
+    compilation,entryId=>replay?.changed(entryId))
+  for(const activation of composition.ordinaryPreparation?.activationProposals??[])feedback.activation(activation)
+  for(const change of composition.ordinaryPreparation?.changes??[])if(change.forceActivation) {
+    const entry=entries.get(change.entryId)?.entry
+    if(!entry)fail('INPUT_MATERIAL_TIMED_ACTION_INVALID')
+    feedback.activation({entryId:entry.entryId,rawEntrySha256:entry.rawEntrySha256})
+  }
+  for(const row of snapshot.injectionFeedback??[])if(row.loop===0&&row.stage==='before-initial')
+    for(const activation of row.activationProposals)feedback.activation(activation)
+  replay=new TavernLoreTimedStateV1(timed,entries)
+  // Source callbacks can change an entry after the first timed read. Preserve
+  // actual selected receipt order, then each loop's after-selected scan hook.
+  const phases=[...(snapshot.activationFeedback??[]).map(row=>({loop:row.request.loop,phase:0,proposals:row.activationProposals})),
+    ...(snapshot.injectionFeedback??[]).filter(row=>row.stage==='after-selected')
+      .map(row=>({loop:row.loop,phase:1,proposals:row.activationProposals}))]
+    .sort((left,right)=>left.loop-right.loop||left.phase-right.phase)
+  for(const phase of phases)for(const activation of phase.proposals)feedback.activation(activation)
   for(const id of plan.activatedEntryIds) {
     const entry=entries.get(id)
     if(!entry?.eligible||!entry.semantic.enabled)fail('INPUT_MATERIAL_TIMED_ACTION_INVALID')
   }
-  const replay=new TavernLoreTimedStateV1(timed,entries)
   replay.activated(plan.activatedEntryIds)
   if(!same(replay.actions,proposal.actions)
     ||proposal.disposition!==(replay.actions.length?'proposed-consumer-data-only':'empty-no-timed-effects'))
@@ -126,7 +148,8 @@ export function captureRoleplayTavernTimedHistoryV1(deps:Dependencies,chatIndex:
     documentSha256:deps.source.original.documentSha256,bookPointer:deps.source.original.primary.bookPointer,
     bookSha256:deps.source.original.primary.bookSha256}
   for(const publication of history.publications) {
-    if(isTavernHistoryTextOnlyMaterialV1(publication))continue
+    if(isTavernHistoryTextOnlyMaterialV1(publication)
+      ||publication.snapshot.encoding==='core-author-generation-material-record-v1')continue
     const read=readTavernTimedPublicationV1(publication,deps.sessionId),{event}=publication
     if(!same(read.sourceIdentity,actualIdentity))continue
     if(seenPlans.has(read.planKey))continue
@@ -137,8 +160,8 @@ export function captureRoleplayTavernTimedHistoryV1(deps:Dependencies,chatIndex:
     for(const action of replayTavernTimedPublicationV1(read,revision,[...intervals.values()]))
       applyTavernTimedActionV1(intervals,action)
     revision++
-    publications.push({seq:event.seq,materialSha256:nativeInputSha256(event),snapshot:event.data.snapshot,
-      plan:event.data.plan,attemptId:read.plan.attemptId,revision})
+    publications.push({seq:event.seq,materialSha256:nativeInputSha256(event),snapshot:publication.material.snapshot,
+      plan:publication.material.plan,attemptId:read.plan.attemptId,revision})
   }
   const timed:TavernLoreBranchTimedInputV1=freeze({schemaVersion:1,encoding:'owned-st-branch-timed-input-v1',
     branchId:deps.sessionId,revision,chatIndex,intervals:[...intervals.values()]})

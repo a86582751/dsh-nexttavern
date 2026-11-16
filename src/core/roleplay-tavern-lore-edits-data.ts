@@ -91,7 +91,19 @@ export function validateMvuEffectiveLoreSourceV1(value:MvuEffectiveLoreSourceV1)
     if(!object(input))fail('JOURNAL_SCHEMA_INVALID')
     exact(input,['baselineRef','slotRef'],'JOURNAL_SCHEMA_INVALID');ref(input.baselineRef);ref(input.slotRef)
   }
-  if(value.kind==='legacy-rows')exact(value,common,'JOURNAL_SCHEMA_INVALID')
+  if(value.kind==='catalog-collection') {
+    exact(value,[...common,'profileId','primaryBookId','books','bindings'],'JOURNAL_SCHEMA_INVALID')
+    if(typeof value.profileId!=='string'||!value.profileId
+      ||value.primaryBookId!==null&&typeof value.primaryBookId!=='string'
+      ||!Array.isArray(value.books)||!Array.isArray(value.bindings))fail('JOURNAL_SCHEMA_INVALID')
+    for(const book of value.books) {
+      if(!object(book))fail('JOURNAL_SCHEMA_INVALID')
+      exact(book,['bookId','contentRef','metadataRef','binding'],'JOURNAL_SCHEMA_INVALID')
+      if(typeof book.bookId!=='string'||!book.bookId
+        ||typeof book.binding!=='string'||!['global','primary','additional','chat'].includes(book.binding))fail('JOURNAL_SCHEMA_INVALID')
+      ref(book.contentRef);ref(book.metadataRef)
+    }
+  }else if(value.kind==='legacy-rows')exact(value,common,'JOURNAL_SCHEMA_INVALID')
   else if(value.kind==='inherited') {
     exact(value,[...common,'baselineRef','slotRef'],'JOURNAL_SCHEMA_INVALID');ref(value.baselineRef);ref(value.slotRef)
   }else if(value.kind==='published') {
@@ -205,6 +217,11 @@ export function authorMetadataRequestData(raw:unknown):TavernAuthorMetadataMutat
     ||value.expectedRevision<0||value.expectedRevision>TAVERN_LORE_EDITS_BOUNDS_V1.events
     ||!object(value.mutation))fail('REQUEST_INVALID')
   const mutation=value.mutation
+  if(mutation.kind==='character-regexes-replace') {
+    exact(mutation,['kind','rules'],'REQUEST_INVALID')
+    if(!Array.isArray(mutation.rules)||!mutation.rules.every(object))fail('REQUEST_INVALID')
+    return value as unknown as TavernAuthorMetadataMutationRequestV1
+  }
   exact(mutation,['kind','extension','set',...Object.hasOwn(mutation,'remove')?['remove']:[]],'REQUEST_INVALID')
   if(mutation.kind!=='extension-fields'||typeof mutation.extension!=='string'||!mutation.extension.length
     ||!object(mutation.set)||mutation.remove!==undefined&&(!Array.isArray(mutation.remove)

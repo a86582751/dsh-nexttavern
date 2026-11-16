@@ -21,6 +21,11 @@ export interface TavernLoreEditsDepsV1 {
   readonly source:{capture(sessionId:string):TavernLoreSourceCaptureV1;current(source:TavernLoreSourceDataV1):boolean;
     captureCurrent?:ReturnType<typeof import('./roleplay-tavern-lore-source.js').createRoleplayTavernLoreSourceV1>['captureCurrent']}
   readonly withSourceLock:<T>(sessionId:string,work:()=>T|PromiseLike<T>)=>Promise<T>
+  /** The journal supplies only its canonical published event. The callback's
+   * actual Domain/profile owner completes namespace registration on replay. */
+  readonly authorMetadataPublished?:(event:TavernAuthorMetadataEventV1)=>void|Promise<void>
+  /** Process projections become dirty before a put whose ACK can be lost. */
+  readonly authorMetadataChanging?:(source:TavernLoreSourceDataV1)=>void
 }
 export interface TavernLoreEditRequestV1 {
   readonly sessionId:string
@@ -81,11 +86,24 @@ export type MvuEffectiveLoreSourceV1={
   readonly headRef:TavernLoreEditHeadRefV1&{readonly exists:true}
   readonly eventRefs:readonly TavernLoreEditRefV1[]
   readonly inherited?:{readonly baselineRef:TavernSourceInheritanceRefV1;readonly slotRef:TavernSourceInheritanceRefV1}
-}|{readonly kind:'inherited';readonly baselineRef:TavernSourceInheritanceRefV1;readonly slotRef:TavernSourceInheritanceRefV1})
+}|{readonly kind:'inherited';readonly baselineRef:TavernSourceInheritanceRefV1;readonly slotRef:TavernSourceInheritanceRefV1}
+|{readonly kind:'catalog-collection';readonly profileId:string;readonly primaryBookId:string|null;
+  readonly books:readonly {
+    readonly bookId:string
+    readonly contentRef:import('./roleplay-author-worldbook-types.js').AuthorWorldbookRefV1
+    readonly metadataRef:import('./roleplay-author-worldbook-types.js').AuthorWorldbookRefV1
+    readonly binding:'global'|'primary'|'additional'|'chat'
+  }[]
+  readonly bindings:readonly import('./roleplay-author-worldbook-types.js').AuthorWorldbookBindingCaptureV1[]})
+export interface MvuAuthorBoundBookV1 {
+  readonly book:import('./roleplay-author-worldbook-types.js').AuthorWorldbookCaptureV1
+  readonly binding:'global'|'primary'|'additional'|'chat'
+}
 export interface MvuAuthorCaptureV1 {
   readonly captured:TavernLoreEditSourceDataCaptureV1
   readonly book:Record<string,unknown>|undefined
   readonly effectiveLore?:MvuEffectiveLoreSourceV1
+  readonly books?:readonly MvuAuthorBoundBookV1[]
 }
 /** Admitted immutable import and historical rows supplied by numerical Source.
  * This is an author-book input, never a fabricated full Lore Source capture. */

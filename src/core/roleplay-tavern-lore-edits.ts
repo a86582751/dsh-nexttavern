@@ -21,7 +21,8 @@ import type {TavernLoreEditsDepsV1,TavernLoreJournalEventV2,TavernLoreJournalRes
   TavernLoreEditSourceDataCaptureV1,TavernLoreMutationRetryLocatorV1,TavernLoreMutationRetryResultV2,
   TavernLoreEditorSelectionV1,TavernLoreEditPageObservationV1,MvuAuthorCaptureV1,MvuEffectiveLoreSourceV1,
   MvuFrozenEffectiveLoreInputV1,TavernLoreAuthorBookSourceV1,TavernSourceJournalRequestV1,
-  TavernAuthorMetadataObservationV1,TavernAuthorMetadataMutationResultV1,TavernAuthorMetadataRetryResultV1}
+  TavernAuthorMetadataObservationV1,TavernAuthorMetadataMutationResultV1,TavernAuthorMetadataRetryResultV1,
+  TavernAuthorMetadataEventV1}
   from './roleplay-tavern-lore-edits-types.js'
 export type * from './roleplay-tavern-lore-edits-types.js'
 export {TAVERN_LORE_EDITS_BOUNDS_V1} from './roleplay-tavern-lore-edits-data.js'
@@ -145,6 +146,22 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
     if(journal.pending)pendingFailure(journal.pending)
     return {source,legacy,journal}
   }
+  /** Import activation transfers this one published membership cut to the
+   * catalog. Current reads subsequently use its registered content owner. */
+  function captureAdoptionSeed(captured:TavernLoreEditSourceDataCaptureV1) {
+    const {source,legacy,journal}=sourceJournal(captured,{})
+    if(source.original.primary.value===null)return null
+    // Adoption transfers the complete current book even before its first edit.
+    const published=publishedAuthorBookDataV1(source,journal,legacy.overlay,true),
+      membership=published.currentNativeMembership
+    if(!membership)fail('FIELDS_INVALID')
+    const {entries:_entries,...bookData}=source.original.primary.value,
+      name=typeof bookData.name==='string'&&bookData.name.length?bookData.name
+        :String(captured.contributionInput.rawDecoded.data.name||'Worldbook')
+    return {name,seed:{kind:'membership' as const,membership,bookData:bookData as import('./tavern-mvu-initvar.js').MvuJsonObject},
+      ...journal.headRef.exists?{effectiveCutRef:{key:journal.headRef.key,sha256:journal.headRef.sha256 as string}}
+        :journal.inherited?{effectiveCutRef:journal.inherited.baselineRef}:{}}
+  }
   /** Raw author JSON needs published fields and their provenance, without
    * building a semantic editor view or acquiring another Source reader. */
   function observeJournalDataWithLegacyData(captured:TavernLoreEditSourceDataCaptureV1,
@@ -250,6 +267,15 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
     }
   }
   type SourcePublicationResult=TavernLoreJournalResultV2|TavernAuthorMetadataMutationResultV1
+  async function registerPublishedMetadata(event:TavernAuthorMetadataEventV1) {
+    try {await deps.authorMetadataPublished!(event)}
+    catch {
+      // The metadata event/head are already durable. Retain that exact event's
+      // existing recovery anchor until its derived registration can finish.
+      throw new LoreEditFailureV1({code:'WRITE_UNKNOWN',detail:'author-extension-registration-pending',
+        recovery:{...pendingRecovery(event),phase:'readback'}})
+    }
+  }
   function publicationResult(event:TavernLoreJournalEventV2,source:TavernLoreSourceDataV1,journal:LoreEditJournalV1,
     editorBaseOverlay?:TavernLoreCurrentNativeOverlayV1,authorSource?:TavernLoreEditSourceDataCaptureV1):SourcePublicationResult {
     if(event.schemaVersion===4) {
@@ -286,9 +312,9 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
       if(request.expectedSourceSha256!==source.sourceSha256)fail('SOURCE_CHANGED')
       if(journal.pending&&journal.pending!==existing)pendingFailure(journal.pending)
       if(existing&&journal.published.some(event=>event.request.operationId===request.operationId)) {
-        const result=publicationResult(existing,source,journal,editorBaseOverlay,authorSource)
         checkpoint(source,journal,callerCurrent)
-        return result
+        if(existing.schemaVersion===4&&deps.authorMetadataPublished)await registerPublishedMetadata(existing)
+        return publicationResult(existing,source,journal,editorBaseOverlay,authorSource)
       }
       if(request.expectedRevision!==journal.head.revision)fail('REVISION_MISMATCH')
       if(!('mutation' in request))validateFields(source,request)
@@ -327,6 +353,7 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
         nextHeadRef:publication.headRef}
       checkpoint(source,journal,callerCurrent)
       const published=!existing?observePublication?.():undefined
+      if(event.schemaVersion===4)deps.authorMetadataChanging?.(source)
       if(!existing) {
         if(deps.branch.get(key)!==undefined)fail('HEAD_CHANGED')
         // First write is immutable intent; readers must refuse this intermediate
@@ -341,6 +368,7 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
       // Publication is already durable. Deliver its actual receipt even if the
       // caller was stopped during put; attachment continuation belongs to Core.
       const actual=checkpoint(source,publication)
+      if(event.schemaVersion===4&&deps.authorMetadataPublished)await registerPublishedMetadata(event)
       const result=publicationResult(event,source,actual,editorBaseOverlay,authorSource)
       checkpoint(source,actual)
       // Failure to adopt Source for Main cannot turn this committed edit into
@@ -392,13 +420,14 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
     :Promise<TavernLoreMutationRetryResultV2|TavernAuthorMetadataRetryResultV1> {
     let recovery:TavernLoreEditRecoveryAnchorV1|undefined
     try {
-      return await deps.withSourceLock<TavernLoreMutationRetryResultV2|TavernAuthorMetadataRetryResultV1>(sid,()=>{
+      return await deps.withSourceLock<TavernLoreMutationRetryResultV2|TavernAuthorMetadataRetryResultV1>(sid,async()=>{
         if(!callerCurrent())fail('SOURCE_CHANGED')
         sessionId(sid);operationIdData(operationId)
         const located=locator?readMutationOperationV1(deps,sid,operationId,locator):undefined
         if(located?.kind==='not-recorded')fail('OPERATION_NOT_RECORDED')
         if(located?.kind==='published') {
           if((located.event.schemaVersion===4)!==metadata)fail('REQUEST_INVALID')
+          if(located.event.schemaVersion===4&&deps.authorMetadataPublished)await registerPublishedMetadata(located.event)
           // This is an immutable journal fact, even after a different import
           // became active. It grants no Source DATA, attachment or continuation.
           return freeze({schemaVersion:1 as const,kind:'edited-data' as const,receipt:receiptOf(located.event)})
@@ -424,6 +453,6 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
     }catch(error){return refusal(error,recovery)}
   }
   return {observe,captureCurrentData:observe,observeSourceData,observeSourcePage,observeSourceDataWithLegacyData,
-    observeJournalDataWithLegacyData,captureAuthorData,current,edit,mutate,retryMutation,observeCurrent,
+    observeJournalDataWithLegacyData,captureAuthorData,captureAdoptionSeed,current,edit,mutate,retryMutation,observeCurrent,
     observeAuthorMetadataData,mutateAuthorMetadata,retryAuthorMetadata}
 }

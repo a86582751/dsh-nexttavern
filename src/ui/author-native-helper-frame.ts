@@ -67,6 +67,9 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
   frameChanges.observe(frame,{attributes:true,attributeFilter:['style','height']})
   const queued:object[]=[],pending=new Map<number,{resolve(value:any):void;reject(error:Error):void}>()
   const reads=new WeakMap<object,string>()
+  // A committed value can survive loss of the parent's current read scope.
+  // Track the snapshot actually adopted with that reply, rather than its value's optional snapshot.
+  const repliesWithSnapshot=new WeakSet<object>()
   let invocation:{id:string;effects:any[];callbackId:string}|undefined
   let mutableHook:{diagnostics:AuthorNativeMvuHookDiagnostic[];callbackId:string}|undefined
   const send=(message:object)=>{if(port)port.postMessage(message);else queued.push(message)}
@@ -181,32 +184,93 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     if(!value)throw Error('AUTHOR_NATIVE_WORLDBOOK_UNAVAILABLE')
     return value
   }
-  const dataReads=new WeakMap<object,{dataSha256:string;readScope:string}>()
-  const bookBasis=()=>({dataSha256:books()?.dataSha256,readScope:scope})
-  const readBook=(name:string)=>{
-    const entries=clone(book(name).entries),basis=bookBasis()
+  const bookBasis=(value:any)=>({dataSha256:books()?.dataSha256,readScope:scope,
+    target:{bookId:value.address.bookId,contentRef:value.content,metadataRef:value.metadata}})
+  const dataReads=new WeakMap<object,ReturnType<typeof bookBasis>|null>()
+  const capturedBook=async(name:string)=>{
+    await presetBarrier
+    const originalScope=scope,value=await book(name)
+    if(scope!==originalScope)throw Error('AUTHOR_NATIVE_READ_BASIS_CHANGED')
+    return {value,basis:bookBasis(value)}
+  }
+  const readBook=async(name:string)=>{
+    const {value,basis}=await capturedBook(name),entries=clone(value.entries)
     dataReads.set(entries,basis)
     for(const entry of entries)dataReads.set(entry,basis)
     return entries
   }
-  const mutateBook=async(name:string,mutation:any,basis=bookBasis())=>{
+  const mutateBook=async(name:string,mutation:any,basis:ReturnType<typeof bookBasis>)=>{
     const reply=await request('worldbook-mutate',{
-      name,mutation,expectedDataSha256:basis.dataSha256},basis.readScope)
+      name,mutation,expectedDataSha256:basis.dataSha256,target:basis.target},basis.readScope)
     if(reply.result.kind==='refused')throw Error(reply.result.diagnostics[0]?.code??'AUTHOR_WORLDBOOK_MUTATION_REFUSED')
+    if(reply.readError||!reply.worldbookReadCurrent&&!repliesWithSnapshot.has(reply))invalidateBook(name)
+    if(reply.readError)throw Error(reply.readError.code,{cause:{result:reply.result,readError:reply.readError}})
+    let currentBasis:ReturnType<typeof bookBasis>|null=null
+    if(reply.worldbookReadCurrent&&reply.target&&reply.worldbook) {
+      syncBookScope();staleBookSnapshots.delete(name)
+      const actual={name,address:{bookId:reply.target.bookId},content:reply.target.contentRef,
+        metadata:reply.target.metadataRef,entries:reply.worldbook}
+      loadedBooks.set(name,actual)
+      currentBasis=bookBasis(actual)
+    }
+    // Operation outcomes describe the accepted event. A later shared-book
+    // version can be a current read while those historical rows stay stale.
+    const event=reply.result.receipt?.event,content=reply.target?.contentRef
+    const outcomeBasis=currentBasis&&event?.key===content?.key&&event?.sha256===content?.sha256?currentBasis:null
+    for(const [rows,read] of [[reply.worldbook,currentBasis],[reply.new_entries,outcomeBasis],
+      [reply.deleted_entries,outcomeBasis]])if(rows) {
+      dataReads.set(rows,read)
+      for(const entry of rows)dataReads.set(entry,read)
+    }
     return reply
   }
   const retainedBookBasis=(entries:unknown[])=>{
     const captured=dataReads.get(entries)
+    if(captured===null)throw Error('AUTHOR_NATIVE_READ_BASIS_CHANGED')
     if(captured)return captured
     let basis:ReturnType<typeof bookBasis>|undefined
     for(const entry of entries){
       const read=entry&&typeof entry==='object'?dataReads.get(entry):undefined
+      if(read===null)throw Error('AUTHOR_NATIVE_READ_BASIS_CHANGED')
       if(!read)continue
-      if(basis&&(read.dataSha256!==basis.dataSha256||read.readScope!==basis.readScope))
+      if(basis&&(read.dataSha256!==basis.dataSha256||read.readScope!==basis.readScope
+        ||read.target.bookId!==basis.target.bookId))
         throw Error('AUTHOR_NATIVE_MIXED_READ_BASIS')
       basis=read
     }
-    return basis??bookBasis()
+    return basis
+  }
+  const manageBooks=async(mutation:any,basis?:{dataSha256:string;readScope:string})=>{
+    await presetBarrier
+    const captured=basis??{dataSha256:books()?.dataSha256,readScope:scope}
+    const reply=await request('worldbook-manage',{mutation,expectedDataSha256:captured.dataSha256},captured.readScope)
+    if(reply.result.kind==='refused')throw Error(reply.result.diagnostics[0]?.code??'AUTHOR_WORLDBOOK_MUTATION_REFUSED')
+    if(reply.readError||!repliesWithSnapshot.has(reply))invalidateBook(mutation.name)
+    if(reply.readError)throw Error(reply.readError.code,{cause:{result:reply.result,readError:reply.readError}})
+    return reply
+  }
+  const currentCharacter=(selector:string)=>{
+    if(selector!=='current')throw Error('AUTHOR_NATIVE_CURRENT_CHARACTER_REQUIRED')
+  }
+  const currentChat=(selector:string)=>{
+    if(selector!=='current')throw Error('AUTHOR_NATIVE_CURRENT_CHAT_REQUIRED')
+  }
+  const bindBooks=async(kind:'profile'|'character'|'chat',names:any)=>{
+    await presetBarrier
+    const data=books(),binding=data?.bindings.find((value:any)=>value.owner.kind===kind)
+    if(!binding)throw Error('AUTHOR_NATIVE_WORLDBOOK_BINDING_UNAVAILABLE')
+    const catalog=new Map<string,string>(data.catalog.books.map((value:any)=>[value.name,value.address.bookId])),
+      id=(name:string)=>{
+        const bookId=catalog.get(name)
+        if(bookId===undefined)throw Error('AUTHOR_NATIVE_WORLDBOOK_UNAVAILABLE')
+        return bookId
+      }
+    let selection:any
+    if(kind==='profile')selection={kind,enabled:names.map(id)}
+    else if(kind==='character')selection={kind,primary:names.primary===null?null:id(names.primary),
+      additional:names.additional.map(id)}
+    else selection={kind,bookId:id(names)}
+    await manageBooks({kind:'bind-books',target:{owner:binding.owner,head:binding.head},selection})
   }
   const personas=()=>snapshot.personas as any
   const personaId=(id='current')=>id==='current'?personas()?.selectedId:id
@@ -255,21 +319,78 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
       return request('resource-read',{resource:address?{kind:'self-script-data',script}:{kind:'script-data',identity}})
     },
     getWorldbookNames:()=>clone(books()?.names??[]),
-    getCurrentCharPrimaryLorebook:()=>books()?.primaryName,
+    getGlobalWorldbookNames:()=>clone(books()?.globalNames??[]),
+    getCharWorldbookNames:(selector='current')=>{
+      if(selector!==undefined&&selector!=='current'){
+        characterRead(selector,'bindings')
+        const selection=namedCharacter(selector).binding.selection
+        if(selection.kind!=='character')throw Error('AUTHOR_NATIVE_CHARACTER_BINDING_UNAVAILABLE')
+        const name=(id:string|null)=>id===null?null:characterLibrary!.catalog.names.find(book=>book.bookId===id)?.name??null
+        return {primary:name(selection.primary),additional:selection.additional.flatMap(id=>{
+          const value=name(id);return value===null?[]:[value]
+        })}
+      }
+      currentCharacter(selector)
+      return clone(books()?.characterNames??{primary:null,additional:[]})
+    },
+    getChatWorldbookName:(selector:string)=>{currentChat(selector);return books()?.chatName??null},
+    rebindGlobalWorldbooks:async(names:string[])=>bindBooks('profile',names),
+    rebindCharWorldbooks:async(selector:string,names:{primary:string|null;additional:string[]})=>{
+      if(selector!==undefined&&selector!=='current'){
+        characterRead(selector,'bindings')
+        const entry=namedCharacter(selector),epoch=characterLibrary!.epoch,
+          bookId=(name:string)=>{
+            const book=characterLibrary!.catalog.names.find(book=>book.name===name)
+            if(!book)throw Error('AUTHOR_NATIVE_WORLDBOOK_UNAVAILABLE')
+            return book.bookId
+          },selection={kind:'character',primary:names.primary===null?null:bookId(names.primary),additional:names.additional.map(bookId)}
+        await request('named-character-worldbook-bind',{epoch,target:entry.registration,
+          ownerSessionId:entry.registration.locator.ownerSessionId,expectedHead:entry.binding.head,selection})
+          .then(acceptCharacterWrite)
+        return
+      }
+      currentCharacter(selector);await bindBooks('character',names)
+    },
+    rebindChatWorldbook:async(selector:string,name:string)=>{currentChat(selector);await bindBooks('chat',name)},
+    getCurrentCharPrimaryLorebook:()=>books()?.primaryName??null,
     getWorldbook:async(name:string)=>readBook(name),
+    createWorldbook:async(name:string,entries:unknown[]=[])=>{
+      await presetBarrier
+      if(books()?.names.includes(name))return false
+      await manageBooks({kind:'create-book',name,entries})
+      return true
+    },
+    createOrReplaceWorldbook:async(name:string,entries:unknown[]=[])=>{
+      await presetBarrier
+      if(!books()?.names.includes(name)) {
+        await manageBooks({kind:'create-book',name,entries})
+        return true
+      }
+      const basis=retainedBookBasis(entries)??(await capturedBook(name)).basis
+      await mutateBook(name,{kind:'replace-worldbook',entries},basis)
+      return false
+    },
+    deleteWorldbook:async(name:string)=>{
+      await presetBarrier
+      if(!books()?.names.includes(name))return false
+      const {basis}=await capturedBook(name)
+      await manageBooks({kind:'delete-book',name,target:basis.target},basis)
+      return true
+    },
     replaceWorldbook:async(name:string,entries:unknown[])=>{
-      await mutateBook(name,{kind:'replace-worldbook',entries},retainedBookBasis(entries))
+      const basis=retainedBookBasis(entries)??(await capturedBook(name)).basis
+      await mutateBook(name,{kind:'replace-worldbook',entries},basis)
     },
     updateWorldbookWith:async(name:string,updater:Function)=>{
-      const basis=bookBasis(),entries=await updater(readBook(name))
+      const current=await readBook(name),basis=dataReads.get(current)!,entries=await updater(current)
       return (await mutateBook(name,{kind:'replace-worldbook',entries},basis)).worldbook
     },createWorldbookEntries:async(name:string,entries:unknown[])=>{
-      const reply=await mutateBook(name,{kind:'create-entries',entries})
+      const {basis}=await capturedBook(name),reply=await mutateBook(name,{kind:'create-entries',entries},basis)
       return {worldbook:reply.worldbook,new_entries:reply.new_entries}
     },
     deleteWorldbookEntries:async(name:string,predicate:Function)=>{
-      const reply=await mutateBook(name,{kind:'delete-entries',
-        uids:clone(book(name).entries).filter(predicate).map((row:any)=>row.uid)})
+      const current=await readBook(name),basis=dataReads.get(current)!,reply=await mutateBook(name,{kind:'delete-entries',
+        uids:current.filter(predicate).map((row:any)=>row.uid)},basis)
       return {worldbook:reply.worldbook,deleted_entries:reply.deleted_entries}
     },
     getPersonaIds:()=>personas()?.profiles.map((row:any)=>row.avatar_id)??[],

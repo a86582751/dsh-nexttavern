@@ -116,7 +116,7 @@ function versionMap(value:unknown,pointer:string):Record<string,string> {
   const result:Record<string,string>={}
   for(const [key,version] of Object.entries(value)) {
     if(!ID.test(key)||!isHash(version))fail('MEMBERSHIP_INVALID',pointer)
-    result[key]=version
+    Object.defineProperty(result,key,{value:version,enumerable:true,writable:true,configurable:true})
   }
   return result
 }

@@ -1,5 +1,4 @@
-import type {TavernLoreEditRequestV1} from '../core/roleplay-tavern-lore-edits-types.js'
-import type {TavernLoreEditorRequestV1,TavernLoreEditorFieldsMutationV2,TavernLoreEditorReceiptV1}
+import type {TavernLoreEditorRequestV1,TavernLoreEditorReceiptV1}
   from '../core/roleplay-tavern-lore-editor-types.js'
 import type {TavernLoreMemberIdentityV1} from '../core/roleplay-tavern-lore-membership.js'
 import type {TavernLoreCurrentNativeFieldsV1} from '../core/tavern-lore-plan-types.mjs'
@@ -106,36 +105,31 @@ function canonicalMemberIdentity(raw:unknown):TavernLoreMemberIdentityV1 {
 }
 function canonicalRequest(raw:unknown):TavernLoreEditorRequestV1 {
   if(!object(raw))fail('LORE_EDITOR_REQUEST_INVALID')
-  const mutation=raw.schemaVersion===2
-  exact(raw,mutation?['schemaVersion','encoding','sessionId','expectedSourceSha256','expectedRevision','operationId','mutation']:
-    ['sessionId','expectedSourceSha256','expectedRevision','operationId','rawEntryPointer','rawEntrySha256','fields'])
-  if(typeof raw.sessionId!=='string'||!SID.test(raw.sessionId)||typeof raw.operationId!=='string'||!SID.test(raw.operationId)
+  exact(raw,['schemaVersion','encoding','sessionId','expectedSourceSha256','bookId','expectedContent',
+    'expectedMetadata','operationId','mutation'])
+  if(raw.schemaVersion!==3||raw.encoding!=='author-worldbook-editor-request-v3'
+    ||typeof raw.sessionId!=='string'||!SID.test(raw.sessionId)||typeof raw.bookId!=='string'||!raw.bookId
+    ||typeof raw.operationId!=='string'||!SID.test(raw.operationId)
     ||typeof raw.expectedSourceSha256!=='string'||!HASH.test(raw.expectedSourceSha256)
-    ||typeof raw.expectedRevision!=='number'||!Number.isSafeInteger(raw.expectedRevision)
-    ||raw.expectedRevision<0||raw.expectedRevision>256)fail('LORE_EDITOR_REQUEST_INVALID')
-  let fieldInput=raw.fields,target:TavernLoreMemberIdentityV1|undefined
-  if(mutation) {
-    if(raw.encoding!=='tavern-lore-mutation-request-v2'||!object(raw.mutation))fail('LORE_EDITOR_REQUEST_INVALID')
-    exact(raw.mutation,['kind','target','fields'])
-    if(raw.mutation.kind!=='fields')fail('LORE_EDITOR_REQUEST_INVALID')
-    target=canonicalMemberIdentity(raw.mutation.target);fieldInput=raw.mutation.fields
-  }else if(typeof raw.rawEntrySha256!=='string'||!HASH.test(raw.rawEntrySha256)
-    ||typeof raw.rawEntryPointer!=='string'||!raw.rawEntryPointer.startsWith('/')
-    ||bytes(raw.rawEntryPointer)>4096||/[\x00-\x1f]/.test(raw.rawEntryPointer))fail('LORE_EDITOR_REQUEST_INVALID')
+    ||!object(raw.mutation)||raw.mutation.kind!=='fields')fail('LORE_EDITOR_REQUEST_INVALID')
+  const ref=(input:unknown)=>{
+    if(!object(input))fail('LORE_EDITOR_REQUEST_INVALID')
+    exact(input,['key','sha256'])
+    if(typeof input.key!=='string'||!input.key||typeof input.sha256!=='string'||!HASH.test(input.sha256))
+      fail('LORE_EDITOR_REQUEST_INVALID')
+    return {key:input.key,sha256:input.sha256}
+  }
+  exact(raw.mutation,['kind','target','fields'])
+  const target=canonicalMemberIdentity(raw.mutation.target),fieldInput=raw.mutation.fields
   if(!object(fieldInput)||!Object.keys(fieldInput).length)fail('LORE_EDITOR_REQUEST_INVALID')
   for(const [key,value] of Object.entries(fieldInput))validateTavernLoreEditorFieldV1(key,value)
   const fields:Record<string,unknown>={}
   for(const key of fieldOrder)if(Object.hasOwn(fieldInput,key))fields[key]=fieldInput[key]
-  const basis={sessionId:raw.sessionId,expectedSourceSha256:raw.expectedSourceSha256,
-    expectedRevision:raw.expectedRevision,operationId:raw.operationId}
-  return freeze(target?{schemaVersion:2 as const,encoding:'tavern-lore-mutation-request-v2' as const,...basis,
-    mutation:{kind:'fields' as const,target,fields:fields as TavernLoreCurrentNativeFieldsV1}}:
-    {...basis,rawEntryPointer:raw.rawEntryPointer as string,rawEntrySha256:raw.rawEntrySha256 as string,
-      fields:fields as TavernLoreCurrentNativeFieldsV1})
+  return freeze({schemaVersion:3,encoding:'author-worldbook-editor-request-v3',sessionId:raw.sessionId,
+    expectedSourceSha256:raw.expectedSourceSha256,bookId:raw.bookId,expectedContent:ref(raw.expectedContent),
+    expectedMetadata:ref(raw.expectedMetadata),operationId:raw.operationId,
+    mutation:{kind:'fields',target,fields:fields as TavernLoreCurrentNativeFieldsV1}})
 }
-export function canonicalTavernLoreEditRequestV1(request:TavernLoreEditRequestV1):TavernLoreEditRequestV1
-export function canonicalTavernLoreEditRequestV1(request:TavernLoreEditorFieldsMutationV2):TavernLoreEditorFieldsMutationV2
-export function canonicalTavernLoreEditRequestV1(request:TavernLoreEditorRequestV1):TavernLoreEditorRequestV1
 export function canonicalTavernLoreEditRequestV1(request:TavernLoreEditorRequestV1):TavernLoreEditorRequestV1 {
   return canonicalRequest(parse(JSON.stringify(request),LORE_EDITOR_REQUEST_BYTES_V1))
 }
@@ -156,8 +150,8 @@ export async function tavernLoreEditPayloadSha256V1(request:TavernLoreEditorRequ
   return Array.from(new Uint8Array(digest),value=>value.toString(16).padStart(2,'0')).join('')
 }
 export interface TavernLoreEditorPendingV1 {
-  readonly schemaVersion:1
-  readonly encoding:'tavern-lore-editor-pending-v1'
+  readonly schemaVersion:3
+  readonly encoding:'author-worldbook-editor-pending-v3'
   readonly sessionId:string
   readonly operationId:string
   readonly request:TavernLoreEditorRequestV1
@@ -167,12 +161,12 @@ export interface TavernLoreEditorPendingV1 {
 export type TavernLoreEditorStorageV1=Pick<Storage,'getItem'|'setItem'|'removeItem'>
 const storageKey=(sid:string):string=>{
   if(!SID.test(sid))fail('LORE_EDITOR_SESSION_INVALID')
-  return 'nexttavern-lore-pending-v1:'+sid
+  return 'nexttavern-worldbook-editor-pending-v3:'+sid
 }
 export function createTavernLoreEditorPendingV1(request:TavernLoreEditorRequestV1,payloadSha256:string):TavernLoreEditorPendingV1 {
   if(!HASH.test(payloadSha256))fail('LORE_EDITOR_PENDING_HASH')
   const canonical=canonicalTavernLoreEditRequestV1(request)
-  return freeze({schemaVersion:1,encoding:'tavern-lore-editor-pending-v1',sessionId:canonical.sessionId,
+  return freeze({schemaVersion:3,encoding:'author-worldbook-editor-pending-v3',sessionId:canonical.sessionId,
     operationId:canonical.operationId,request:canonical,body:JSON.stringify(canonical),payloadSha256})
 }
 export async function readTavernLoreEditorPendingV1(storage:TavernLoreEditorStorageV1,
@@ -182,7 +176,7 @@ export async function readTavernLoreEditorPendingV1(storage:TavernLoreEditorStor
   const x=parse(raw,LORE_EDITOR_PENDING_BYTES_V1)
   if(!object(x))fail('LORE_EDITOR_PENDING_INVALID')
   exact(x,['schemaVersion','encoding','sessionId','operationId','request','body','payloadSha256'])
-  if(x.schemaVersion!==1||x.encoding!=='tavern-lore-editor-pending-v1'||x.sessionId!==sid
+  if(x.schemaVersion!==3||x.encoding!=='author-worldbook-editor-pending-v3'||x.sessionId!==sid
     ||typeof x.body!=='string'||typeof x.payloadSha256!=='string'||!HASH.test(x.payloadSha256))fail('LORE_EDITOR_PENDING_INVALID')
   const request=canonicalRequest(x.request)
   if(request.sessionId!==sid||x.operationId!==request.operationId||JSON.stringify(request)!==x.body
@@ -205,10 +199,8 @@ export function clearTavernLoreEditorPendingV1(storage:TavernLoreEditorStorageV1
   if(storage.getItem(key)!==null)fail('LORE_EDITOR_PENDING_READBACK')
 }
 export function tavernLoreReceiptMatchesV1(receipt:TavernLoreEditorReceiptV1,pending:TavernLoreEditorPendingV1):boolean {
-  if(receipt.authority!=='consumer-data-only'||receipt.operationId!==pending.operationId
-    ||receipt.payloadSha256!==pending.payloadSha256||receipt.editSourceSha256!==pending.request.expectedSourceSha256
-    ||receipt.revision!==pending.request.expectedRevision+1)return false
-  if('mutation' in pending.request)return receipt.schemaVersion===2&&receipt.encoding==='tavern-lore-mutation-receipt-v2'
-  return receipt.schemaVersion===1&&receipt.encoding==='tavern-lore-edit-receipt-v1'
-    &&receipt.rawEntryPointer===pending.request.rawEntryPointer&&receipt.rawEntrySha256===pending.request.rawEntrySha256
+  const publication=receipt.publication
+  return receipt.requestSha256===pending.payloadSha256&&publication?.schemaVersion===1
+    &&publication.operationId===pending.operationId&&publication.owner.kind==='book'
+    &&publication.owner.address.bookId===pending.request.bookId
 }

@@ -137,8 +137,8 @@ export function applyTavernLoreMemberFieldsV1(data:TavernLoreMembershipDataV1,
  * the unchanged original archive. No ancestor's mutable head is consulted. */
 export function foldTavernLorePublishedMembershipV2(source:TavernLoreMembershipSourceV1,
   rows:readonly {eventRef:TavernLoreEditRefV1;request:TavernLoreJournalRequestV2}[],
-  legacy?:TavernLoreCurrentNativeOverlayV1):TavernLoreMembershipDataV1|undefined {
-  if(!rows.some(row=>'mutation' in row.request))return undefined
+  legacy?:TavernLoreCurrentNativeOverlayV1,includeUnchanged=false):TavernLoreMembershipDataV1|undefined {
+  if(!includeUnchanged&&!rows.some(row=>'mutation' in row.request))return undefined
   let data=originalTavernLoreMembershipFromSourceV1(source)
   for(const entry of legacy?.entries??[])data=applyTavernLoreMemberFieldsV1(data,
     {kind:'original',rawEntryPointer:entry.rawEntryPointer,rawEntrySha256:entry.rawEntrySha256},entry.fields)

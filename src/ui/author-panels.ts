@@ -9,6 +9,7 @@ import {
 } from './panel-state.js';
 import type { PanelDraft } from './panel-state.js';
 import {createTavernLoreEditorPanelV1} from './tavern-lore-editor.js';
+import {createWorldbookLibraryPanelV1} from './worldbook-library.js';
 const errorMessage = (error: unknown) => error && typeof error === 'object' && 'message' in error ? error.message : error;
 interface RecordVersions extends Record<string, unknown> {
     cards?: Record<string, unknown>;
@@ -151,6 +152,7 @@ interface AuthorDependencies {
 }
 export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidateState, saveState, runMaintenance, jsonFetch, toast }: AuthorDependencies) {
     const TavernLoreEditorPanel=createTavernLoreEditorPanelV1({React,jsonFetch,toast});
+    const WorldbookLibraryPanel=createWorldbookLibraryPanelV1({React,jsonFetch,storage:()=>globalThis.sessionStorage});
     const btn = (
         label: ReactAPI.ReactNode,
         onClick: ReactAPI.MouseEventHandler<HTMLButtonElement>,
@@ -511,6 +513,7 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
     function WorldbookPanel(props: PanelProps) {
         const { scope, visible } = props;
         const sessionId = scope?.sessionId;
+        const [loreRefresh,setLoreRefresh]=React.useState(0);
         const [worldbookView, setWorldbookView] = React.useState<{
             sessionId: string | undefined;
             kind: 'supplemental' | 'structured';
@@ -631,9 +634,13 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
             disabled: saving || !sessionId, 'aria-pressed': structured
         }));
         if (!visible) return null;
-        if (structured) return React.createElement(React.Fragment, null, modes,
-            React.createElement(TavernLoreEditorPanel, { scope, visible }));
-        return React.createElement(PanelShell, {
+        const library=sessionId?React.createElement(WorldbookLibraryPanel,{
+            sessionId,onSaved:()=>invalidateState(sessionId),
+            onBindingsSaved:()=>{if(structured)setLoreRefresh(value=>value+1);}
+        }):null;
+        const content=structured
+            ?React.createElement(TavernLoreEditorPanel, { scope, visible,refreshVersion:loreRefresh })
+            :React.createElement(PanelShell, {
             title: '世界书',
             visible,
             sessionId,
@@ -642,7 +649,7 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
             extra: btn('＋ 新增', () => startEdit('new'), {
                 disabled: saving
             }),
-        }, modes, React.createElement('p', {
+        }, React.createElement('p', {
             className: 'dsh-rp-muted'
         }, 'SillyTavern 原卡条目的内容、启用和常驻状态，请在上方「结构化世界书」中编辑。'
             + '此处保留补充条目和旧记录视图；旧记录可能不含结构化编辑后的修改。'), editing
@@ -712,6 +719,7 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
                 : React.createElement('div', {
                     className: 'dsh-rp-muted'
                 }, '（暂无条目；点击「＋ 新增」或让 AI 用 rp_worldbook_add 写入）'));
+        return React.createElement(React.Fragment,null,modes,library,content);
     }
     // ── 角色卡面板 ──
     function CardsPanel(props: PanelProps) {
