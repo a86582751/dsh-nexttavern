@@ -600,9 +600,10 @@ function validateStoryPlanUncached<T extends MvuSchemaStoryPlan>(input:T):T {
     ||frame.sessionId!==value.base.sessionId||!same(value.candidate,{schemaVersion:1,kind:'mvu-196'}))fail()
   const first=value.selectors[0],ordinary=deriveMvuSchemaStorySelectors(scope,canonical,value.realmEpoch)
   validateSchemaSourceCut(value.initialCut)
+  // Running cuts retain Native's Stop sequence. Completion currency carries
+  // its owner's independent revocation generation, including refused inputs.
   if(value.initialCut.sessionId!==value.base.sessionId||value.initialCut.ownerSessionId!==value.base.sessionId
     ||value.initialCut.nativeCut<=canonical.seq||value.initialCut.nativeCut<value.base.schemaFrontier.nativeCut
-    ||value.initialCut.stopGeneration!==scope.stopGeneration
     ||value.initialCut.sourceSnapshotSha256!==frame.snapshotSha256||value.initialCut.materialSha256!==frame.materialSha256
     ||value.selectors.length!==1||!first||first.sessionId!==value.base.sessionId
     ||!same(value.initialCut.anchor,ordinary[0]!.anchor)||!same(first.anchor,value.initialCut.anchor))fail()
