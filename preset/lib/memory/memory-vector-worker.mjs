@@ -36,15 +36,17 @@ const hash = (value) => createHash('sha256').update(value).digest('hex');
 const spaces = new Map();
 let sourceCheckSerial = 0;
 const sourceChecks = new Map();
-function sourceActive(owner) {
+function sourceActive(owner, book) {
     const id = ++sourceCheckSerial;
     return new Promise(resolve => {
         const timer = setTimeout(() => { sourceChecks.delete(id); resolve(false); }, 2000);
         sourceChecks.set(id, allowed => { clearTimeout(timer); sourceChecks.delete(id); resolve(allowed); });
-        process.send?.({ sourceCheck: { id, owner } });
+        process.send?.({ sourceCheck: { id, owner, ...book ? { book } : {} } });
     });
 }
 const queryCache = new Map();
+const requests = new Map();
+const pendingQueries = new Map();
 const legacySpaceOf = (p, workspace) => hash(JSON.stringify([1, workspace, p.kind, p.protocol, p.baseUrl, p.model, p.dimensions, 'catalog-v1', 'story-v1', 'chunk480-overlap80']));
 const familyOf = (p) => hash(JSON.stringify([p.kind, p.protocol, p.baseUrl, p.model]));
 function chunking(p) {
@@ -61,8 +63,10 @@ const embeddingOf = (p) => {
     return { schemaVersion: 1, embedding_model: m?.repo ?? p.model, embedding_revision: m?.revision ?? (p.embeddingRevision || 'provider-managed'), dimensions: p.dimensions, task: 'document',
         pooling: m ? (m.pooling === 'average' ? 'mean' : m.pooling.replaceAll('_', '-')) : 'provider-defined', documentPrefix: m?.documentPrefix ?? online?.documentPrefix ?? (m?.id === 'e5-small' ? 'passage: ' : ''),
         query: { task: 'query', prefix: m?.queryPrefix ?? online?.queryPrefix ?? '' }, dtype: m?.dtype ?? (m ? 'q8' : 'provider-defined'), runtime: m ? `${m.runtime ?? 'transformers'}:${LOCAL_RUNTIME_VERSION}` : 'online', modelFile: m?.onnxFile, cpuQuantization: m?.x64QuantPrecision ? 'u8u8-safe' : undefined,
-        inputProfile: online?.version, normalization: online?.normalization,
-        preprocessing: { version: 'story-v1', chunkChars: chunks.chars, overlapChars: chunks.overlap, maxTokens: m ? localTokenBudget(p.model, p.localMaxTokens) : null, ...(m ? { segmentation: 'tokenizer-scalar-v1', modelMaxTokens: m.maxInputTokens, addSpecialTokens: true, truncation: false } : {}) } };
+        inputProfile: p.inputProfile ?? online?.version, normalization: online?.normalization,
+        preprocessing: p.inputProfile === 'worldbook-entry-v1'
+            ? { version: 'worldbook-entry-v1', maxTokens: m ? localTokenBudget(p.model, p.localMaxTokens) : null, truncation: false }
+            : { version: 'story-v1', chunkChars: chunks.chars, overlapChars: chunks.overlap, maxTokens: m ? localTokenBudget(p.model, p.localMaxTokens) : null, ...(m ? { segmentation: 'tokenizer-scalar-v1', modelMaxTokens: m.maxInputTokens, addSpecialTokens: true, truncation: false } : {}) } };
 };
 function sourceRanges(p, workspace, source) {
     if (p.kind === 'online') {
@@ -306,16 +310,20 @@ const record = (call) => {
     db.prepare('INSERT OR REPLACE INTO calls VALUES(?,?)').run(call.id, JSON.stringify(call));
     process.send?.({ call });
 };
-async function encode(p, texts, purpose, workspace, session, timeout) {
+async function encode(p, texts, purpose, workspace, session, timeout, options = {}) {
+    options.signal?.throwIfAborted();
     if (p.kind === 'online')
-        return onlineEmbedding(p, texts, purpose, workspace, session, record, timeout);
+        return onlineEmbedding(p, texts, purpose, workspace, session, record, timeout, options);
     return withLocalModel(async () => {
         // Keep the old model's RSS ceiling until its inference and disposal finish.
         // Test/query/index requests share this lane, so another request cannot lower it mid-call.
         if (localModel !== p.model)
             await unloadLocal();
         localModel = p.model;
-        return validateVectors(await localRequest('encode', { modelId: p.model, texts, purpose, localMaxTokens: localTokenBudget(p.model, p.localMaxTokens) }, timeout), texts.length, p.dimensions);
+        options.signal?.throwIfAborted();
+        const result = validateVectors(await localRequest('encode', { modelId: p.model, texts, purpose, localMaxTokens: localTokenBudget(p.model, p.localMaxTokens) }, timeout), texts.length, p.dimensions);
+        options.signal?.throwIfAborted();
+        return result;
     });
 }
 let pumping = false;
@@ -333,7 +341,17 @@ async function pump() {
             const rows = db.prepare("SELECT key,text,owner FROM jobs WHERE workspace=? AND space=? AND status='queued' LIMIT ?").all(workspace, space, largeLocal ? 1 : 4);
             if (!rows.length)
                 continue;
-            const batch = rows.filter(r => r.owner === rows[0].owner);
+            let batch = rows.filter(r => r.owner === rows[0].owner);
+            if (config.provider.inputProfile === 'worldbook-entry-v1') {
+                const allowed = await authorizedWorldbookKeys(workspace, batch.map(row => row.key));
+                for (const row of batch)
+                    if (!allowed.has(row.key))
+                        db.prepare("UPDATE jobs SET status='failed',error='世界书来源已删除或变化' WHERE workspace=? AND space=? AND key=?")
+                            .run(workspace, space, row.key);
+                batch = batch.filter(row => allowed.has(row.key));
+                if (!batch.length)
+                    continue;
+            }
             if (config.guardOwner && !(await sourceActive(config.guardOwner))) {
                 config.enabled = false;
                 continue;
@@ -462,7 +480,61 @@ function progress(workspace, sources = []) {
     }
     return { ...(config ? indexIdentity(config.provider, workspace) : {}), enabled: config?.enabled === true, vectors: db.prepare('SELECT COUNT(*) AS n FROM vectors WHERE space=?').get(space).n, sources: sources.length, covered, pending: counts.queued ?? 0, running: counts.running ?? 0, failed: counts.failed ?? 0, unknown: counts.unknown ?? 0, bytes: statSync(join(home, 'vectors.sqlite')).size, lastError: planFailures[0]?.error ?? db.prepare('SELECT error FROM jobs WHERE workspace=? AND space=? AND error IS NOT NULL LIMIT 1').get(workspace, space)?.error ?? null };
 }
-async function dispatch(message) {
+function worldbookProgress(workspace, candidates) {
+    const config = spaces.get(workspace);
+    if (!config)
+        return { sources: 0, covered: 0, pending: 0, running: 0, failed: 0, unknown: 0 };
+    const space = spaceOf(config.provider, workspace), counts = {};
+    if (candidates) {
+        const contents = new Map();
+        for (const source of candidates)
+            contents.set(source.contentSha256, (contents.get(source.contentSha256) ?? 0) + 1);
+        let covered = 0, lastError;
+        for (const [key, members] of contents) {
+            if (db.prepare('SELECT 1 FROM vectors WHERE space=? AND key=?').get(space, key)) {
+                covered += members;
+                continue;
+            }
+            const job = db.prepare('SELECT status,error FROM jobs WHERE workspace=? AND space=? AND key=?')
+                .get(workspace, space, key);
+            const status = job?.status ?? 'queued';
+            counts[status] = (counts[status] ?? 0) + 1;
+            lastError ??= job?.error ?? undefined;
+        }
+        return { fingerprint: space, sources: candidates.length, covered, pending: counts.queued ?? 0, running: counts.running ?? 0,
+            failed: counts.failed ?? 0, unknown: counts.unknown ?? 0, ...lastError ? { lastError } : {} };
+    }
+    for (const row of db.prepare('SELECT status,COUNT(*) AS n FROM jobs WHERE workspace=? AND space=? AND key IN (SELECT key FROM sources WHERE workspace=?) GROUP BY status')
+        .all(workspace, space, workspace))
+        counts[row.status] = row.n;
+    const sources = db.prepare('SELECT COUNT(*) AS n FROM sources WHERE workspace=?').get(workspace).n, covered = db.prepare('SELECT COUNT(*) AS n FROM sources s JOIN vectors v ON s.key=v.key AND v.space=? WHERE s.workspace=?')
+        .get(space, workspace).n, error = db.prepare('SELECT error FROM jobs WHERE workspace=? AND space=? AND error IS NOT NULL AND key IN (SELECT key FROM sources WHERE workspace=?) LIMIT 1')
+        .get(workspace, space, workspace);
+    return { fingerprint: space, sources, covered, pending: counts.queued ?? 0, running: counts.running ?? 0,
+        failed: counts.failed ?? 0, unknown: counts.unknown ?? 0, ...error ? { lastError: error.error } : {} };
+}
+async function authorizedWorldbookKeys(workspace, keys) {
+    const checks = new Map(), allowed = new Set();
+    for (const key of keys) {
+        const refs = db.prepare('SELECT session,id FROM sources WHERE workspace=? AND key=?').all(workspace, key);
+        for (const ref of refs) {
+            const bookVersion = JSON.parse(ref.id)[0], identity = JSON.stringify([ref.session, bookVersion]);
+            let current = checks.get(identity);
+            if (!current) {
+                current = sourceActive('', { bookId: ref.session, bookVersion });
+                checks.set(identity, current);
+            }
+            if (await current) {
+                allowed.add(key);
+                break;
+            }
+            db.prepare('DELETE FROM sources WHERE workspace=? AND session=? AND id=?').run(workspace, ref.session, ref.id);
+            spaces.get(workspace)?.worldbookBooks?.delete(ref.session);
+        }
+    }
+    return allowed;
+}
+async function dispatch(message, signal) {
     const workspace = message.workspace ?? '';
     if (['sync', 'status', 'query'].includes(message.action))
         importLegacy(message);
@@ -486,6 +558,139 @@ async function dispatch(message) {
         if (message.provider?.kind !== 'local')
             releaseUnusedLocal();
         return true;
+    }
+    if (message.action === 'worldbook-sync') {
+        const config = spaces.get(workspace);
+        if (!config)
+            throw Error('世界书向量来源未配置');
+        const space = spaceOf(config.provider, workspace), sources = message.worldbookSources ?? [], books = new Map();
+        for (const source of sources) {
+            let entries = books.get(source.bookId);
+            if (!entries) {
+                entries = [];
+                books.set(source.bookId, entries);
+            }
+            entries.push(source);
+        }
+        const changed = new Map();
+        for (const [book, entries] of books) {
+            const previous = config.worldbookBooks?.get(book);
+            if (previous?.length === entries.length && previous.every((entry, index) => entry.bookVersion === entries[index].bookVersion
+                && entry.id === entries[index].id && entry.contentSha256 === entries[index].contentSha256))
+                continue;
+            changed.set(book, entries);
+        }
+        if (!changed.size)
+            return worldbookProgress(workspace, sources);
+        db.exec('BEGIN');
+        try {
+            // This capture supplies its currently bound books. Other conversations
+            // in the profile may still authorize a different book's references.
+            for (const [book, entries] of changed) {
+                const stored = db.prepare('SELECT id,key FROM sources WHERE workspace=? AND session=?').all(workspace, book), identities = new Map(entries.map(entry => [JSON.stringify([entry.bookVersion, entry.id]), entry.contentSha256]));
+                if (stored.length === entries.length && stored.every(row => identities.get(row.id) === row.key))
+                    continue;
+                db.prepare('DELETE FROM sources WHERE workspace=? AND session=?').run(workspace, book);
+                for (const entry of entries) {
+                    db.prepare('INSERT INTO sources VALUES(?,?,?,?,?,?,?)').run(workspace, book, JSON.stringify([entry.bookVersion, entry.id]), entry.id, 0, entry.contentSha256, 0);
+                }
+            }
+            db.prepare("DELETE FROM jobs WHERE workspace=? AND status='queued' AND key NOT IN (SELECT key FROM sources WHERE workspace=?)").run(workspace, workspace);
+            for (const entries of changed.values())
+                for (const entry of entries)
+                    if (!db.prepare('SELECT 1 FROM vectors WHERE space=? AND key=?').get(space, entry.contentSha256))
+                        db.prepare("INSERT OR IGNORE INTO jobs VALUES(?,?,?,?,?,'queued',NULL)").run(workspace, space, entry.contentSha256, message.sessionId, entry.text);
+            db.exec('COMMIT');
+            const retained = config.worldbookBooks ??= new Map();
+            for (const [book, entries] of changed)
+                retained.set(book, entries);
+        }
+        catch (error) {
+            db.exec('ROLLBACK');
+            throw error;
+        }
+        return worldbookProgress(workspace, sources);
+    }
+    if (message.action === 'worldbook-status')
+        return worldbookProgress(workspace);
+    if (message.action === 'worldbook-clear') {
+        const cleared = await dispatch({ action: 'clear-index', workspace }, signal);
+        db.prepare('DELETE FROM sources WHERE workspace=?').run(workspace);
+        return cleared;
+    }
+    if (message.action === 'worldbook-retry') {
+        const config = spaces.get(workspace);
+        if (!config)
+            throw Error('世界书向量来源未配置');
+        const space = spaceOf(config.provider, workspace), rows = db.prepare("SELECT key FROM jobs WHERE workspace=? AND space=? AND status IN ('failed','unknown') AND key IN (SELECT key FROM sources WHERE workspace=?)")
+            .all(workspace, space, workspace), allowed = await authorizedWorldbookKeys(workspace, rows.map(row => row.key));
+        for (const key of allowed)
+            db.prepare("UPDATE jobs SET status='queued',error=NULL WHERE workspace=? AND space=? AND key=?").run(workspace, space, key);
+        return worldbookProgress(workspace);
+    }
+    if (message.action === 'worldbook-query') {
+        const p = spaces.get(workspace).provider, space = spaceOf(p, workspace), queryHash = hash(message.query), epoch = indexEpochs.get(workspace) ?? 0, cacheKey = space + ':' + queryHash, callId = hash(JSON.stringify([message.callId, space, queryHash])), vectorKey = 'query:' + callId;
+        let query = queryCache.get(cacheKey);
+        const saved = db.prepare('SELECT data FROM vectors WHERE space=? AND key=?').get(space, vectorKey);
+        if (!query && saved)
+            query = Array.from(new Float32Array(saved.data.buffer, saved.data.byteOffset, saved.data.byteLength / 4));
+        if (!query) {
+            let pending = pendingQueries.get(callId);
+            if (!pending) {
+                if (db.prepare('SELECT 1 FROM calls WHERE id=?').get(callId))
+                    throw Error('世界书查询结果未知或失败，不能自动重发');
+                pending = (async () => {
+                    const call = { schemaVersion: 1, id: callId, ownerSessionId: message.sessionId ?? null, workspaceId: workspace,
+                        provider: p.name, model: p.model, purpose: 'query', startedAt: Date.now(), completedAt: Date.now(), status: 'unknown',
+                        inputTokens: null, totalTokens: null, providerUsage: {} };
+                    if (p.kind === 'local')
+                        record(call);
+                    try {
+                        const vector = (await encode(p, [message.query], 'query', workspace, message.sessionId, 30000, { signal, callId }))[0];
+                        signal?.throwIfAborted();
+                        if ((indexEpochs.get(workspace) ?? 0) !== epoch)
+                            throw Error('世界书索引已清空，丢弃过期查询');
+                        db.prepare('INSERT OR REPLACE INTO vectors VALUES(?,?,?)').run(space, vectorKey, Buffer.from(Float32Array.from(vector).buffer));
+                        call.status = 'completed';
+                        return vector;
+                    }
+                    finally {
+                        if (p.kind === 'local') {
+                            call.completedAt = Date.now();
+                            record(call);
+                        }
+                    }
+                })();
+                pendingQueries.set(callId, pending);
+                void pending.finally(() => pendingQueries.delete(callId)).catch(() => { });
+            }
+            query = await pending;
+        }
+        signal?.throwIfAborted();
+        if ((indexEpochs.get(workspace) ?? 0) !== epoch)
+            throw Error('世界书索引已清空，丢弃过期查询');
+        queryCache.set(cacheKey, query);
+        if (queryCache.size > 128)
+            queryCache.delete(queryCache.keys().next().value);
+        const scored = new Map();
+        for (const source of message.worldbookSources ?? []) {
+            if (scored.has(source.contentSha256))
+                continue;
+            const saved = db.prepare('SELECT data FROM vectors WHERE space=? AND key=?').get(space, source.contentSha256);
+            if (!saved)
+                throw Error('世界书索引尚未完成');
+            const vector = new Float32Array(saved.data.buffer, saved.data.byteOffset, saved.data.byteLength / 4);
+            if (vector.length !== query.length)
+                throw Error('世界书向量维度无效');
+            let score = 0;
+            for (let index = 0; index < vector.length; index++)
+                score += vector[index] * query[index];
+            scored.set(source.contentSha256, score);
+        }
+        const selected = new Map([...scored].filter(([, score]) => score >= (message.threshold ?? 0.25))
+            .sort((a, b) => b[1] - a[1]).slice(0, message.limit ?? 5));
+        return (message.worldbookSources ?? []).filter(source => selected.has(source.contentSha256))
+            .map(source => ({ id: source.id, contentSha256: source.contentSha256, score: selected.get(source.contentSha256) }));
     }
     if (message.action === 'clear-index') {
         const current = spaces.get(workspace);
@@ -610,13 +815,22 @@ async function dispatch(message) {
     throw Error('未知向量操作');
 }
 process.on('message', (raw) => {
+    const cancel = raw;
+    if (cancel.cancelId) {
+        requests.get(cancel.cancelId)?.abort();
+        return;
+    }
     const guard = raw;
     if (guard.sourceCheckId) {
         sourceChecks.get(guard.sourceCheckId)?.(guard.allowed === true);
         return;
     }
     const { id, ...message } = raw;
-    void dispatch(message).then(result => process.send?.({ id, result }), error => process.send?.({ id, error: String(error.message).slice(0, 200), code: ['EMBEDDING_INDEX_STALE', 'EMBEDDING_INDEX_INVALID'].includes(error.code) ? error.code : undefined }));
+    const controller = new AbortController();
+    requests.set(id, controller);
+    void dispatch(message, controller.signal).then(result => { if (!controller.signal.aborted)
+        process.send?.({ id, result }); }, error => process.send?.({ id, error: String(error.message).slice(0, 200), code: ['EMBEDDING_INDEX_STALE', 'EMBEDDING_INDEX_INVALID'].includes(error.code) ? error.code : undefined }))
+        .finally(() => requests.delete(id));
 });
 process.on('disconnect', () => { local?.kill(); downloader?.kill(); db.close(); process.exit(0); });
 for (const row of db.prepare('SELECT data FROM calls').all())

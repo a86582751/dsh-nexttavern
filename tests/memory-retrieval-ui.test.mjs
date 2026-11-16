@@ -27,6 +27,45 @@ const inputs=(node)=>walk(node).filter(n=>n?.type==='input')
 const select=(node,value)=>walk(node).find(n=>n?.type==='select'&&n.props.value===value)
 const base=(revision=1,extra={})=>({ok:true,revision,mode:'keyword',scope:'session',indexEnabled:false,autoIndexNewConversations:false,autoRebuildLocalOnRetrieval:false,chunkChars:480,effectiveChunkChars:480,activeProviderId:null,providers:[],catalog:[],progress:{vectors:0,sources:0,covered:0,pending:0,running:0,failed:0,unknown:0,bytes:0},modelList:{ids:[],fetchedAt:null,error:null},...extra})
 
+{
+  const worldRunner=hooks(), posts=[]
+  let reply=base(20,{worldbook:{enabled:false,enabledForAll:false,topK:5,threshold:0.25,queryMessages:2,
+    revision:1,providerId:null,status:'disabled'}})
+  let finishPost
+  const fetch=async(url,init)=>{
+    if(!init)return reply
+    posts.push(JSON.parse(init.body))
+    return new Promise(resolve=>{finishPost=resolve})
+  }
+  const {WorldbookPanel}=createMemoryRetrievalPanel({React:worldRunner.React,jsonFetch:fetch,toast(){}})
+  worldRunner.mount(WorldbookPanel,{sessionId:'world-story'});await worldRunner.flush()
+  assert(textOf(worldRunner.seat).includes('尚未选择 Embedding 模型'))
+  assert.equal(button(worldRunner.seat,'重试世界书索引').props.disabled,true)
+  assert.equal(posts.length,0)
+  const fieldInput=label=>walk(walk(worldRunner.seat).find(n=>n?.type==='label'&&textOf(n).includes(label)))
+    .find(n=>n?.type==='input'||n?.type==='select')
+  fieldInput('启用世界书语义检索').props.onChange({target:{checked:true}});await worldRunner.flush()
+  fieldInput('检索条目范围').props.onChange({target:{value:'all'}});await worldRunner.flush()
+  fieldInput('全局召回条数').props.onChange({target:{value:'8'}});await worldRunner.flush()
+  fieldInput('相似度阈值').props.onChange({target:{value:'0.4'}});await worldRunner.flush()
+  fieldInput('最近消息查询条数').props.onChange({target:{value:'3'}});await worldRunner.flush()
+  button(worldRunner.seat,'保存世界书检索设置').props.onClick();await worldRunner.flush()
+  assert.deepEqual(posts[0],{sessionId:'world-story',expectedRevision:20,action:'worldbook-settings',
+    worldbook:{enabled:true,enabledForAll:true,topK:8,threshold:0.4,queryMessages:3}})
+  assert.equal(button(worldRunner.seat,'保存世界书检索设置').props.disabled,true)
+  assert(textOf(walk(worldRunner.seat).find(n=>n?.props?.role==='status')).includes('正在处理世界书'))
+  reply=base(21,{worldbook:{...posts[0].worldbook,revision:2,providerId:null,status:'unavailable',reason:'no-active-provider'}})
+  finishPost(reply);await worldRunner.flush()
+  assert(textOf(worldRunner.seat).includes('世界书检索设置已保存'))
+  assert(textOf(worldRunner.seat).includes('no-active-provider'))
+  button(worldRunner.seat,'清理世界书索引').props.onClick();await worldRunner.flush()
+  assert(textOf(worldRunner.seat).includes('当前 profile 的世界书向量索引'))
+  button(worldRunner.seat,'确认').props.onClick();await worldRunner.flush()
+  assert.equal(posts.at(-1).indexAction,'clear')
+  finishPost({ok:false,error:'世界书索引清理失败'});await worldRunner.flush()
+  assert(textOf(walk(worldRunner.seat).find(n=>n?.props?.role==='alert')).includes('世界书索引清理失败'))
+}
+
 let calls=[];let queuedGets=[];let confirmationPending=[];let confirmationOutcome=true;const confirmationPosts=[];const configNotices=[]
 const jsonFetch=async(url,init)=>{
   const body=init?.body?JSON.parse(init.body):null;calls.push({url,body})

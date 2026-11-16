@@ -1,4 +1,16 @@
 export type RetrievalMode = 'keyword' | 'semantic' | 'hybrid'
+export interface WorldbookVectorSettingsV1 {
+  enabled:boolean; enabledForAll:boolean; topK:number; threshold:number; queryMessages:number
+}
+export interface WorldbookVectorSourceV1 {
+  id:string; bookId:string; bookVersion:string; contentSha256:string; text:string
+}
+export interface WorldbookVectorResultV1 {
+  schemaVersion:1; status:'disabled'|'ready'|'pending'|'unavailable'; settings:WorldbookVectorSettingsV1
+  settingsRevision:number; providerId:string|null; fingerprint:string|null; querySha256:string
+  hits:readonly {id:string;contentSha256:string;score:number}[]
+  progress?:Record<string,unknown>; reason?:string
+}
 export interface EmbeddingProvider {
   id: string; name: string; kind: 'online' | 'local'; protocol: 'openai' | 'dashscope-text' | 'dashscope-multimodal'
   baseUrl: string; model: string; dimensions: number | null; ready: boolean; revision: string; error?: string
@@ -7,6 +19,7 @@ export interface EmbeddingProvider {
   chunkChars?:number
   /** Total local encoder input including task prefix and special tokens. */
   localMaxTokens?:number
+  inputProfile?:'worldbook-entry-v1'
 }
 export interface VectorSource {
   id: string; sessionId: string; seq: number; role: string; text: string; hash: string
@@ -32,4 +45,7 @@ export interface WorkerRequest {
   /** Server-authorized immutable original library; never used for plot memory. */
   sharedOriginal?: boolean
   currentSpaceOnly?: boolean
+  worldbookSources?:readonly WorldbookVectorSourceV1[]
+  callId?:string
+  threshold?:number
 }

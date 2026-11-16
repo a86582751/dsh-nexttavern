@@ -27,8 +27,10 @@ export function validateVectors(value: unknown, expectedCount: number, dimension
     return vector.map((v: number) => v / norm)
   })
 }
-export async function onlineEmbedding(provider: EmbeddingProvider, input: string[], purpose: EmbeddingCall['purpose'], workspaceId: string, ownerSessionId: string | null, record: (call: EmbeddingCall) => void, timeoutMs: number) {
-  const call: EmbeddingCall = {schemaVersion: 1, id: randomUUID(), ownerSessionId, workspaceId, provider: provider.name, model: provider.model,
+export async function onlineEmbedding(provider: EmbeddingProvider, input: string[], purpose: EmbeddingCall['purpose'], workspaceId: string, ownerSessionId: string | null, record: (call: EmbeddingCall) => void, timeoutMs: number,
+  options:{signal?:AbortSignal;callId?:string}={}) {
+  options.signal?.throwIfAborted()
+  const call: EmbeddingCall = {schemaVersion: 1, id: options.callId??randomUUID(), ownerSessionId, workspaceId, provider: provider.name, model: provider.model,
     purpose, startedAt: Date.now(), completedAt: Date.now(), status: 'unknown', inputTokens: null, totalTokens: null, providerUsage: {}}
   record(call) // Durable attempt before transport: crash/timeout is unknown, never silently retried.
   let received = false
@@ -46,7 +48,8 @@ export async function onlineEmbedding(provider: EmbeddingProvider, input: string
       body = {model: provider.model, input: multimodal ? {contents: input.map(text => ({text}))} : {texts: input}}
       if (provider.requestedDimensions && provider.model !== 'tongyi-embedding-vision-flash') body.parameters = {dimension: provider.requestedDimensions}
     }
-    const response = await fetch(url, {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${provider.apiKey}`}, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs)})
+    const signal=options.signal?AbortSignal.any([options.signal,AbortSignal.timeout(timeoutMs)]):AbortSignal.timeout(timeoutMs)
+    const response = await fetch(url, {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${provider.apiKey}`}, body: JSON.stringify(body), signal})
     const payload = await boundedJSON(response); received = true
     call.requestId = String(payload.request_id ?? response.headers.get('x-request-id') ?? '').slice(0, 200)
     const usage = payload.usage && typeof payload.usage === 'object' ? payload.usage as Record<string, unknown> : {}

@@ -46,8 +46,9 @@ export function validateVectors(value, expectedCount, dimensions) {
         return vector.map((v) => v / norm);
     });
 }
-export async function onlineEmbedding(provider, input, purpose, workspaceId, ownerSessionId, record, timeoutMs) {
-    const call = { schemaVersion: 1, id: randomUUID(), ownerSessionId, workspaceId, provider: provider.name, model: provider.model,
+export async function onlineEmbedding(provider, input, purpose, workspaceId, ownerSessionId, record, timeoutMs, options = {}) {
+    options.signal?.throwIfAborted();
+    const call = { schemaVersion: 1, id: options.callId ?? randomUUID(), ownerSessionId, workspaceId, provider: provider.name, model: provider.model,
         purpose, startedAt: Date.now(), completedAt: Date.now(), status: 'unknown', inputTokens: null, totalTokens: null, providerUsage: {} };
     record(call); // Durable attempt before transport: crash/timeout is unknown, never silently retried.
     let received = false;
@@ -70,7 +71,8 @@ export async function onlineEmbedding(provider, input, purpose, workspaceId, own
             if (provider.requestedDimensions && provider.model !== 'tongyi-embedding-vision-flash')
                 body.parameters = { dimension: provider.requestedDimensions };
         }
-        const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${provider.apiKey}` }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
+        const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
+        const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${provider.apiKey}` }, body: JSON.stringify(body), signal });
         const payload = await boundedJSON(response);
         received = true;
         call.requestId = String(payload.request_id ?? response.headers.get('x-request-id') ?? '').slice(0, 200);

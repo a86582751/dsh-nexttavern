@@ -135,6 +135,7 @@ export function createManagementPanels({
             h('section',{className:'dsh-rp-item'},h('h4',null,'动态世界书与模板'),
                 h('p',null,'编辑条目正文、触发条件与 EJS 模板；原作者的条件与执行顺序继续保留。'),
                 btn('打开结构化世界书',()=>navigate('tavern-lore')),btn('编辑人物设定',()=>navigate('cards')),
+                btn('世界书语义检索',()=>navigate('worldbook-retrieval')),
                 btn('编辑核心设定',()=>navigate('core-rules'))),
             h('section',{className:'dsh-rp-item'},h('h4',null,'数值、分析与作者前端'),
                 h('p',null,'MVU 数值在状态栏查看和编辑。Ruby 分析、作者脚本和交互前端沿用卡内声明及各自的操作入口。'),

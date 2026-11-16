@@ -246,6 +246,12 @@ export interface CanonicalChatEntry {
   /** Optional immutable-message facts supplied by the actual Native owner. */
   readonly messageFacts?:CanonicalChatMessageFacts
 }
+export interface CanonicalChatChange {
+  readonly seq:number
+  readonly item:CanonicalChatEntry|undefined
+  readonly previous:CanonicalChatEntry|undefined
+  readonly previousIndex:number|undefined
+}
 export interface CanonicalChatCut {
   readonly nativeCut:number
   readonly length:number
@@ -329,7 +335,7 @@ export function createSelectedCanonicalChatCursor(options:{
     selected=new Set<number>(),order=new Map<number,number>(),indices=new Map<number,number>(),
     entries=new Map<number,{message:unknown;item:CanonicalChatEntry}>(),canonical=new Map<number,number>()
   const roots:(ChatTree|undefined)[]=[undefined],versions:number[]=[0],
-    changes:{seq:number;item:CanonicalChatEntry|undefined}[]=[]
+    changes:CanonicalChatChange[]=[]
   function turnOf(event:StoryEvent|undefined,seen=new Set<number>()):number|null {
     if(!event||seen.has(event.seq))return null
     const cached=originalTurns.get(event.seq)
@@ -376,7 +382,7 @@ export function createSelectedCanonicalChatCursor(options:{
     return event.data?.interrupted!==true&&canonical.get(Number(event.data?.turn))===seq?item:undefined
   }
   function setRow(seq:number,item:CanonicalChatEntry|undefined) {
-    const index=indices.get(seq)
+    const index=indices.get(seq),previous=index===undefined?undefined:chatAt(root,index)
     if(index!==undefined) {
       if(chatAt(root,index)===item)return
       root=chatSplice(root,index,1,item?[item]:[])
@@ -393,7 +399,7 @@ export function createSelectedCanonicalChatCursor(options:{
       if(position<chatSize(root))for(const [key,prior]of indices)if(prior>=position)indices.set(key,prior+1)
       root=chatSplice(root,position,0,[item]);indices.set(seq,position)
     }else return
-    changes.push({seq,item})
+    changes.push({seq,item,previous,previousIndex:index})
   }
   function refreshTurn(turn:number|null,dirty:Set<number>) {
     if(turn===null){for(const seq of byTurn.get(null)??[])dirty.add(seq);return}
@@ -426,9 +432,11 @@ export function createSelectedCanonicalChatCursor(options:{
       &&old[old.length-1-suffix]===target[target.length-1-suffix])suffix++
     if(prefix===old.length&&prefix===target.length)return
     const next=new Map(target.map(item=>[item.row.seq,item]))
-    for(const item of old)if(!next.has(item.row.seq))changes.push({seq:item.row.seq,item:undefined})
+    for(const [index,item]of old.entries())if(!next.has(item.row.seq))changes.push({seq:item.row.seq,item:undefined,
+      previous:item,previousIndex:index})
     const previous=new Map(old.map(item=>[item.row.seq,item]))
-    for(const item of target)if(previous.get(item.row.seq)!==item)changes.push({seq:item.row.seq,item})
+    for(const item of target)if(previous.get(item.row.seq)!==item)changes.push({seq:item.row.seq,item,
+      previous:previous.get(item.row.seq),previousIndex:indices.get(item.row.seq)})
     root=chatSplice(root,prefix,old.length-prefix-suffix,target.slice(prefix,target.length-suffix))
     indices.clear();for(const [index,item]of target.entries())indices.set(item.row.seq,index)
   }
@@ -550,11 +558,14 @@ export function createSelectedCanonicalChatCursor(options:{
           return seq!==undefined&&seq<nativeCut?seq:undefined
         }})
     },
-    changes(from:number,through:number):readonly {seq:number;item:CanonicalChatEntry|undefined}[] {
+    changes(from:number,through:number):readonly CanonicalChatChange[] {
       if(from<0||through<from||through>surface.length)throw Error('CANONICAL_CHAT_CUT_INVALID')
-      const latest=new Map<number,CanonicalChatEntry|undefined>()
-      for(let index=versions[from]!;index<versions[through]!;index++){const change=changes[index]!;latest.set(change.seq,change.item)}
-      return [...latest].map(([seq,item])=>({seq,item}))
+      const latest=new Map<number,CanonicalChatChange>()
+      for(let index=versions[from]!;index<versions[through]!;index++){
+        const change=changes[index]!,first=latest.get(change.seq)
+        latest.set(change.seq,first?{...change,previous:first.previous,previousIndex:first.previousIndex}:change)
+      }
+      return [...latest.values()]
     },
     /** Current selected DATA after atCut; retained cut views keep their own root. */
     currentPosition(seq:number):number|undefined {return indices.get(seq)},

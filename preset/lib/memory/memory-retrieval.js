@@ -19,6 +19,8 @@ function eligible(session) {
     return preset === 'roleplay' && session.header?.origin !== 'subagent';
 }
 const initial = () => ({
+    worldbook: { enabled: false, enabledForAll: false, topK: 5, threshold: 0.25, queryMessages: 2 },
+    worldbookRevision: 0,
     schemaVersion: 1,
     revision: 0,
     adaptationRevision: 0,
@@ -248,7 +250,8 @@ export function createMemoryRetrieval(deps) {
     const secret = (p, cfg) => ({
         ...p, chunkChars: cfg.chunkChars, apiKey: existsSync(keyPath(p.id)) ? readFileSync(keyPath(p.id), 'utf8') : undefined
     });
-    function request(message, timeout = 10000) {
+    function request(message, timeout = 10000, signal) {
+        signal?.throwIfAborted();
         if (disposed)
             return Promise.reject(Error('检索服务已关闭'));
         if (!worker) {
@@ -262,10 +265,12 @@ export function createMemoryRetrieval(deps) {
                 const message = raw;
                 const guard = raw;
                 if (guard.sourceCheck) {
-                    const owner = deps.session(guard.sourceCheck.owner);
+                    const owner = guard.sourceCheck.book ? undefined : deps.session(guard.sourceCheck.owner);
                     let allowed = false;
                     try {
-                        allowed = !!owner && !disposed && deps.active(owner);
+                        allowed = !disposed && (guard.sourceCheck.book
+                            ? deps.worldbookSourceCurrent?.(guard.sourceCheck.book.bookId, guard.sourceCheck.book.bookVersion) === true
+                            : !!owner && deps.active(owner));
                     }
                     catch {
                     }
@@ -303,13 +308,23 @@ export function createMemoryRetrieval(deps) {
         }
         const id = ++serial;
         return new Promise((resolve, reject) => {
+            const abort = () => {
+                waiting.delete(id);
+                clearTimeout(timer);
+                worker?.send({ cancelId: id });
+                reject(signal?.reason ?? Error('向量请求已取消'));
+            };
+            const finish = () => signal?.removeEventListener('abort', abort);
             const timer = setTimeout(() => {
                 waiting.delete(id);
+                finish();
+                worker?.send({ cancelId: id });
                 reject(Error('检索服务超时'));
             }, timeout);
             waiting.set(id, {
-                resolve, reject, timer
+                resolve(value) { finish(); resolve(value); }, reject(error) { finish(); reject(error); }, timer
             });
+            signal?.addEventListener('abort', abort, { once: true });
             worker.send({
                 id, ...message
             });
@@ -450,7 +465,10 @@ export function createMemoryRetrieval(deps) {
                 sources: vectorSources(session, selectedRetrievalRowsSnapshot(session, deps.captureStoryText))
             });
         }
+        if (worker && deps.worldbookProfileId && configured.has(worldbookWorkspace()))
+            await worldbookIndex(session, 'status');
         return {
+            worldbook: worldbookView(cfg),
             revision: cfg.revision,
             chunkChars: cfg.chunkChars,
             effectiveChunkChars: cfg.chunkChars,
@@ -551,9 +569,28 @@ export function createMemoryRetrieval(deps) {
             if (body.expectedRevision !== (body.action === 'activate-adaptation-provider' ? cfg.adaptationRevision : cfg.revision))
                 throw Error('检索设置已更新，请刷新后重试');
             const action = String(body.action), ws = workspace(session), id = String(body.providerId ?? '');
+            if (action === 'worldbook-index') {
+                await worldbookIndex(session, body.indexAction);
+                return view(session);
+            }
             const priorStory = cfg.activeProviderId, priorNovel = cfg.adaptationProviderId;
             const provider = cfg.providers.find(p => p.id === id);
-            if (action === 'mode') {
+            if (action === 'worldbook-settings') {
+                const next = body.worldbook;
+                if (!next || typeof next.enabled !== 'boolean' || typeof next.enabledForAll !== 'boolean'
+                    || !Number.isSafeInteger(next.topK) || next.topK < 1
+                    || !Number.isFinite(next.threshold) || next.threshold < -1 || next.threshold > 1
+                    || !Number.isSafeInteger(next.queryMessages) || next.queryMessages < 1)
+                    throw Error('世界书向量设置无效');
+                const selected = { enabled: next.enabled, enabledForAll: next.enabledForAll, topK: next.topK,
+                    threshold: next.threshold, queryMessages: next.queryMessages };
+                if (selected.enabled !== cfg.worldbook.enabled || selected.enabledForAll !== cfg.worldbook.enabledForAll
+                    || selected.topK !== cfg.worldbook.topK || selected.threshold !== cfg.worldbook.threshold
+                    || selected.queryMessages !== cfg.worldbook.queryMessages)
+                    cfg.worldbookRevision++;
+                cfg.worldbook = selected;
+            }
+            else if (action === 'mode') {
                 if (!MODE.includes(String(body.mode)))
                     throw Error('检索模式无效');
                 if (body.scope === 'global') {
@@ -732,7 +769,7 @@ export function createMemoryRetrieval(deps) {
                                 throw Error(`模型列表 HTTP ${response.status}`);
                             const data = await boundedJSON(response, 2 * 1024 ** 2);
                             const ids = [
-                                ...new Set((Array.isArray(data.data) ? data.data : []).map(r => typeof r === 'object' && r ? String(r.id ?? '') : '').filter(id => id.length <= 200 && id.toLowerCase().includes('embedding')))
+                                ...new Set((Array.isArray(data.data) ? data.data : []).map(r => typeof r === 'object' && r ? String(r.id ?? '').trim() : '').filter(id => id.length > 0 && id.length <= 200))
                             ].slice(0, 1000);
                             modelLists.set(id, {
                                 ids, fetchedAt: Date.now()
@@ -785,9 +822,12 @@ export function createMemoryRetrieval(deps) {
             await deps.table.put(SETTINGS, cfg);
             if (worker)
                 for (const [key, kind] of workspaceKinds)
-                    if (kind === 'story' ? storyChanged : novelChanged) {
+                    if (kind === 'story' ? storyChanged : kind === 'novel' ? novelChanged
+                        : action === 'worldbook-settings' || action === 'activate-provider' || providerChanged && editedId === priorStory) {
                         configurationEpochs.set(key, (configurationEpochs.get(key) ?? 0) + 1);
                         configured.delete(key);
+                        if (kind === 'worldbook')
+                            worldbookResults.delete(key);
                         await request({
                             action: 'reset', workspace: key
                         });
@@ -1121,6 +1161,123 @@ export function createMemoryRetrieval(deps) {
         }
         return run();
     }
+    const worldbookResults = new Map();
+    const worldbookWorkspace = () => {
+        const profile = deps.worldbookProfileId?.();
+        if (!profile)
+            throw Error('世界书向量 profile 不可用');
+        return hash(`worldbook-profile-v1:${profile}`);
+    };
+    function worldbookView(cfg) {
+        const provider = cfg.providers.find(value => value.id === cfg.activeProviderId), prior = deps.worldbookProfileId ? worldbookResults.get(worldbookWorkspace()) : undefined;
+        return { ...cfg.worldbook, revision: cfg.worldbookRevision, providerId: cfg.activeProviderId,
+            status: !cfg.worldbook.enabled ? 'disabled' : !provider?.ready ? 'unavailable' : prior?.status ?? 'pending',
+            ...prior?.progress ? { progress: prior.progress } : {},
+            ...!provider?.ready ? { reason: 'Embedding 未就绪' } : prior?.reason ? { reason: prior.reason } : {} };
+    }
+    function worldbookConfiguration() {
+        const cfg = settings(), revision = cfg.worldbookRevision, providerId = cfg.activeProviderId, providerRevision = cfg.providers.find(p => p.id === providerId)?.revision;
+        return { settings: cfg.worldbook, revision, providerId, current() {
+                const current = deps.table.get(SETTINGS);
+                return !disposed && (current?.worldbookRevision ?? 0) === revision && (current?.activeProviderId ?? null) === providerId
+                    && current?.providers.find(p => p.id === providerId)?.revision === providerRevision;
+            } };
+    }
+    async function configureWorldbookWorkspace(session, signal) {
+        await migration;
+        signal?.throwIfAborted();
+        const cfg = settings(), provider = cfg.providers.find(value => value.id === cfg.activeProviderId), ws = worldbookWorkspace();
+        if (!provider?.ready)
+            throw Error('Embedding 未就绪');
+        const projected = { ...secret(provider, cfg), inputProfile: 'worldbook-entry-v1' }, generation = hash(JSON.stringify([provider.id, provider.revision, provider.dimensions, provider.localMaxTokens,
+            cfg.worldbook.enabled, 'worldbook-entry-v1']));
+        workspaceKinds.set(ws, 'worldbook');
+        if (configured.get(ws) !== generation) {
+            await request({ action: 'configure', workspace: ws, provider: projected, generation, enabled: cfg.worldbook.enabled,
+                sharedOriginal: true }, 10000, signal);
+            if (settings().activeProviderId !== provider.id || settings().worldbookRevision !== cfg.worldbookRevision)
+                throw new DOMException('世界书向量配置已变化', 'AbortError');
+            configured.set(ws, generation);
+        }
+        return { cfg, provider, ws };
+    }
+    async function worldbook(session, input) {
+        await migration;
+        const cfg = settings(), configuration = worldbookConfiguration(), result = { schemaVersion: 1,
+            status: cfg.worldbook.enabled ? 'pending' : 'disabled', settings: cfg.worldbook, settingsRevision: cfg.worldbookRevision,
+            providerId: cfg.activeProviderId, fingerprint: null, querySha256: hash(input.query), hits: [] };
+        const current = () => {
+            input.signal.throwIfAborted();
+            if (!deps.active(session) || !input.current() || !configuration.current())
+                throw new DOMException('世界书向量来源已撤销', 'AbortError');
+        };
+        current();
+        if (!cfg.worldbook.enabled)
+            return result;
+        const ws = worldbookWorkspace();
+        try {
+            await configureWorldbookWorkspace(session, input.signal);
+            current();
+            const progress = await request({ action: 'worldbook-sync', workspace: ws, worldbookSources: input.sources,
+                sessionId: session.id }, 30000, input.signal);
+            current();
+            result.progress = progress;
+            result.fingerprint = progress.fingerprint;
+            if (Number(progress.failed) || Number(progress.unknown)) {
+                result.status = 'unavailable';
+                result.reason = String(progress.lastError ?? '世界书索引失败或结果未知，请显式重试');
+            }
+            else if (Number(progress.covered) !== input.sources.length)
+                result.status = 'pending';
+            else {
+                if (input.sources.length && input.query.trim())
+                    result.hits = await request({ action: 'worldbook-query', workspace: ws,
+                        worldbookSources: input.sources, query: input.query, callId: input.operationId, sessionId: session.id,
+                        limit: cfg.worldbook.topK, threshold: cfg.worldbook.threshold }, 35000, input.signal);
+                result.status = 'ready';
+            }
+            current();
+        }
+        catch (error) {
+            current();
+            if (error.name === 'AbortError')
+                throw error;
+            result.status = 'unavailable';
+            result.reason = String(error.message);
+        }
+        worldbookResults.set(ws, result);
+        return result;
+    }
+    async function worldbookIndex(session, action, signal) {
+        const ws = worldbookWorkspace();
+        let progress;
+        switch (action) {
+            case 'clear':
+                await request({ action: 'worldbook-clear', workspace: ws }, 30000, signal);
+                configured.delete(ws);
+                worldbookResults.delete(ws);
+                return { cleared: true };
+            case 'retry':
+                await configureWorldbookWorkspace(session, signal);
+                progress = await request({ action: 'worldbook-retry', workspace: ws }, 30000, signal);
+                break;
+            case 'status':
+                if (!worker || !configured.has(ws))
+                    return worldbookView(settings());
+                progress = await request({ action: 'worldbook-status', workspace: ws }, 10000, signal);
+                break;
+            default: throw Error('世界书向量索引操作无效');
+        }
+        const cfg = settings(), prior = worldbookResults.get(ws);
+        worldbookResults.set(ws, { schemaVersion: 1, settings: cfg.worldbook, settingsRevision: cfg.worldbookRevision,
+            providerId: cfg.activeProviderId, fingerprint: progress.fingerprint ?? null,
+            querySha256: prior?.querySha256 ?? hash(''), hits: [], progress,
+            status: Number(progress.failed) || Number(progress.unknown) ? 'unavailable'
+                : Number(progress.pending) || Number(progress.running) || Number(progress.covered) !== Number(progress.sources) ? 'pending'
+                    : prior?.status === 'unavailable' && action === 'status' ? 'unavailable' : 'ready',
+            ...prior?.reason && action === 'status' ? { reason: prior.reason } : {} });
+        return worldbookView(cfg);
+    }
     function dispose() {
         disposed = true;
         clearTimeout(restoreTimer);
@@ -1147,6 +1304,9 @@ export function createMemoryRetrieval(deps) {
         backfill,
         dispose,
         adaptation,
+        worldbook,
+        worldbookConfiguration,
+        worldbookIndex,
         created,
         rebuildConfirmation,
         pendingRebuilds,

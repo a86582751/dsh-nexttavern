@@ -213,6 +213,7 @@ type MaterialInvocation={readonly kind:'player';readonly scope:RoleplayInputMate
   |{readonly kind:'program-opening';readonly scope:RoleplayOpeningMaterialScopeV1;
     readonly native:NativeOpeningMaterialPrepareInputV1}
 interface TavernGenerationMemo {
+  worldbookVector?:import('./roleplay-worldbook-vector.js').RoleplayWorldbookVectorMemoV1
   readonly attemptId:string
   readonly seed:string
   readonly clockEpochMs:number
@@ -926,6 +927,24 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
           attempt:initialAttempt,timed:timed.timed,
           ...derived?{execution:createRoleplayTavernDerivedContentExecutionV1(compilation.plan,derived)}:{},
           settings,visibleMessages,scanMessageCount:chatClock.data.chatIndex,macrosFor,currentCardFields,
+          ...deps.worldbookVector?{worldbookVector:{access:deps.worldbookVector,
+            operationId:`${attemptId}:worldbook`,
+            basisSha256:recordSha256({selection:native.selected.sha256,
+              state:scopeData.stateSnapshotSha256,ordinaryPublicationSeq}),
+            memo:generation.worldbookVector??={},
+            messages:count=>{
+              const messages:import('./roleplay-worldbook-vector.js').RoleplayWorldbookVectorMessageV1[]=[]
+              for(let index=storyRows.length-1;index>=0&&messages.length<count;index--) {
+                const row=storyRows[index]!
+                if(row.message.authorMetadata?.is_hidden===true)continue
+                const settled=row.eventSeq===null?undefined:storyText?.blocks(row.eventSeq,row.message,row.messageSha256),
+                  text=row.message.content.flatMap((block,index)=>block.type==='text'
+                    ?[settled?.get(index)??block.text]:[]).join('\n')
+                if(text.trim())messages.push({kind:'native',messageId:row.id,versionSha256:row.messageSha256,
+                  role:row.role as 'user'|'assistant',text:projectHistoryText(row.id,text)})
+              }
+              return messages
+            }}}:{},
           beforeLore:async({render,bindings})=>{
             invocationMacros=macrosFor(bindings)
             generateLoader=createRoleplayTavernGenerateLoaderV1({catalog:sourceCatalog,lookup:render.snapshot.lore,

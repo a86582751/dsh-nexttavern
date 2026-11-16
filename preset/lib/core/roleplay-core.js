@@ -1932,6 +1932,17 @@ export async function apply(ctx, config = {}) {
         normalizeStatusOption
     });
     const retrieval = createMemoryRetrieval({
+        worldbookProfileId: () => authorProfile.profileId,
+        worldbookSourceCurrent: (bookId, bookVersion) => {
+            if (!authorProfileCurrent())
+                return false;
+            try {
+                return authorWorldbookCatalog.captureBook(bookId).content.sha256 === bookVersion;
+            }
+            catch {
+                return false;
+            }
+        },
         captureStoryText,
         table: T.branch,
         record: call => telemetry.recordEmbedding(call),
@@ -1949,6 +1960,15 @@ export async function apply(ctx, config = {}) {
         readStoryEvidenceAt: storyEntryReader.readStoryEvidenceAt, captureStoryText,
         ownsStoryMemoryCompletion: (id) => mvuOpening.hasSchemaOpening(id) });
     ctx.effect(() => () => retrieval.dispose(), 'roleplay: retrieval lifetime');
+    const worldbookVector = {
+        configuration: retrieval.worldbookConfiguration,
+        query: (sessionId, input) => {
+            const session = ctx.sessions.get(sessionId);
+            if (!session)
+                throw Error('SESSION_NOT_FOUND');
+            return retrieval.worldbook(session, input);
+        }
+    };
     ctx.on('session/created', session => retrieval.created(session), { global: true });
     ctx.on('session/event', async (session, event) => {
         if (['turn/end', 'user/message', 'compaction/end', 'roleplay/message-edit'].includes(event.type)) {

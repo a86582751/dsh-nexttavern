@@ -466,7 +466,8 @@ export function apply(ctx: ClientContext) {
           jsonFetch,
           toast
         })
-    const { MemoryPanel: MemoryRetrievalMemoryPanel, EmbeddingPanel, RebuildPrompt } = createMemoryRetrievalPanel({ React, jsonFetch, toast })
+    const { MemoryPanel: MemoryRetrievalMemoryPanel, EmbeddingPanel,
+      WorldbookPanel: WorldbookRetrievalPanel, RebuildPrompt } = createMemoryRetrievalPanel({ React, jsonFetch, toast })
     const CardAdaptationPanel = createCardAdaptationPanel({ React, jsonFetch, toast, confirmWithDialog })
 
     const panelTabs: [string, string, ReactAPI.ComponentType<{ scope?: { sessionId: string }; visible?: boolean }>][] = [
@@ -604,6 +605,7 @@ export function apply(ctx: ClientContext) {
         ['card-import', '角色卡导入'],
         ['models', '模型'],
         ['embedding', 'Embedding 模型设置'],
+        ['worldbook-retrieval', '世界书语义检索'],
         ['ruby-analysis', 'Ruby额外分析'],
         ['usage', '使用统计'],
         ['export', '导出'],
@@ -654,6 +656,8 @@ export function apply(ctx: ClientContext) {
             return React.createElement(ModelPanel, { key: `${sessionId}:models`, sessionId })
           case 'embedding':
             return React.createElement(EmbeddingPanel, { key: `${sessionId}:embedding`, sessionId })
+          case 'worldbook-retrieval':
+            return React.createElement(WorldbookRetrievalPanel, { key: `${sessionId}:worldbook-retrieval`, sessionId })
           case 'ruby-analysis':
             return React.createElement(RubyAnalysisPanel, { key: `${sessionId}:ruby-analysis`, sessionId })
           case 'resources':
