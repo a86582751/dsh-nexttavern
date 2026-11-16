@@ -2,7 +2,7 @@
 
 [返回首页](README.md) · [正式版本更新日志](CHANGELOG.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
-最后整理：**2026-11-15**。**0.3 正在开发，正式发行版本仍为 0.2.9-rc.4，发布日期待定。** 本页介绍开发线的新能力与进展。
+最后整理于 **2026-11-16**。**0.3 正在开发，正式发行版本仍为 0.2.9-rc.4，发布日期待定。** 本页介绍开发线的新能力与进展。
 
 ## 让人物、页面和玩法一起进入故事
 
@@ -74,6 +74,18 @@ Native 卡使用 `nexttavern_card` JSON 文档。它用栏目声明内容和用�
 这些能力已接入开发线，接下来会在连续故事中检验人物行为、记忆修订和场外活动的实际体验。启用角色记忆后，新剧情会增加共享感知整理；场外活动按实际参与人数调用模型，相关开关、模型和用量可在面板管理。
 
 ## 按日期记录
+
+### 11 月 16 日补齐世界书管理与预设工作值
+
+世界书管理增加独立 JSON 导入及 profile、角色和聊天绑定。Helper 与 Reader 使用各自需要的世界书资料，提交后的读取故障保留原操作凭据，重复 UID 原始条目的整书替换保留各自来源身份。预设控件从当前所选范围读取工作值，全局与对话覆盖分别保存；声明式 profile 模块、参数与响应设置接入实际请求消费者。
+
+本批修复了数值提交后的权限误撤销、EJS 在 pending 消息上的变量缓存，以及世界书提交后继续读取旧过滤器快照的问题。Source 回归与受控 Core 消费者已有分项通过结果，当前候选安装、真实卡玩法、自然创作与新进程恢复继续验证。0.3 尚未发布。
+
+**English**
+
+The Worldbook manager adds standalone JSON import with profile, character and chat bindings. Helper and Reader consume their corresponding Worldbook data. Postcommit read failures retain the original operation receipt, and full replacements preserve the source identities of original entries sharing a UID. Preset controls use the selected scope's working values, with global and conversation overrides saved independently. Declared profile modules, parameters and response settings reach the actual request consumers.
+
+This batch also fixes a permission revocation after numerical commits, EJS variable-cache reconstruction around pending messages, and stale filter reads after Worldbook commits. Scoped Source regressions and controlled Core consumers have passing results. Current-candidate installation, real-card play, natural authoring and new-process recovery remain under validation. Version 0.3 remains unreleased.
 
 ### 11 月 15 日：补齐 Ruby 请求设置与 Reader 消息操作
 
