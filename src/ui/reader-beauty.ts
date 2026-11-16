@@ -120,7 +120,7 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
             if (stale()) return;
             let response: ReaderDisplayResponse | undefined, displayError: unknown;
             let phase:ReaderRenderPhaseBindingV1|undefined;
-            const completedHtml=new Map<string,{whole?:string;fragments:string[]}>();
+            const completedHtml=new Map<string,{whole?:string;slots:string[]}>();
             try {
             if (display && messages.length) {
                 try { response = await display.read(display.sessionId, messages, controller.signal); }
@@ -148,13 +148,16 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
                 const result=await display.renderHtml({binding:phase,rows},controller.signal);
                 if(stale())return;
                 for(const [index,row] of response.rows.entries()){
-                    const slots=result.narrative.filter(slot=>slot.row===index),fragments:string[]=[];
+                    const slots=result.narrative.filter(slot=>slot.row===index),narrativeHtml:string[]=[];
                     let whole:string|undefined;
                     for(const slot of slots){
                         const html=sanitizeReaderNarrativeHtml(slot.html);
-                        if(slot.fragmentIndex===null)whole=html;else fragments.push(html);
+                        if(slot.fragmentIndex===null)whole=html;
+                        // Worldbook AFTER documents can add final fragments to a whole-row response.
+                        // Keep its completed HTML in text-slot order for that final layout.
+                        narrativeHtml.push(html);
                     }
-                    completedHtml.set(row.seq+':'+row.messageId,{whole,fragments});
+                    completedHtml.set(row.seq+':'+row.messageId,{whole,slots:narrativeHtml});
                 }
                 response=result.display;
             }catch(error){displayError=error;response=undefined;}
@@ -239,7 +242,7 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
                             } else {
                                 const raw = fragment.kind === 'text' ? fragment.text : fragment.parts.map(part => part.text).join('');
                                 const html = fragment.kind==='text'&&completed
-                                    ?completed.fragments[narrativeIndex++]??''
+                                    ?completed.slots[narrativeIndex++]??''
                                     :previous?.kind === 'text' ? previous.html:await renderAsync(raw, rules, runBeautyRegex);
                                 fragments.push({kind: 'text', html});readerFragments.push({kind: 'text', html});
                                 narrativeHtml.push(html);
