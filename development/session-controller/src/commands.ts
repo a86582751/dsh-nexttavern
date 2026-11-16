@@ -1,4 +1,4 @@
-import type {BeforeForkPublish,BeforeFirstForkPublish,ForkBeforeFirstRequest} from './fork-reservation.js'
+import type {BeforeForkPublish,BeforeFirstForkPublish,ForkBeforeFirstRequest,OrdinaryForkPreparation} from './fork-reservation.js'
 /** Session commands whose activation policy is explicit at each Remote method. */
 
 import { modelAvailable } from './catalog.js'
@@ -93,6 +93,17 @@ function latestCompletedPrefixBoundary(events: readonly SessionEvent[]): Session
 /** Implements Session business commands delegated by the Session Controller Remote service. */
 export class SessionCommandController {
   private readonly userSourceOperations=new Map<Agent,{operation:UserSourceOperation;abort:AbortController}>()
+  private ordinaryForkPreparation:OrdinaryForkPreparation|undefined
+
+  /** The product owner freezes its private Domain before Native publishes
+   * an ordinary child. Its registration does not change the requested cut. */
+  registerOrdinaryForkPreparation(prepare:OrdinaryForkPreparation):()=>void {
+    if(this.ordinaryForkPreparation)throw Error('ORDINARY_FORK_OWNER_ALREADY_REGISTERED')
+    this.ordinaryForkPreparation=prepare
+    return ()=>{
+      if(this.ordinaryForkPreparation===prepare)this.ordinaryForkPreparation=undefined
+    }
+  }
 
   registerUserSourceOperation(agent:Agent,operation:UserSourceOperation):()=>void {
     if(this.ctx.agents.get(agent.id)!==agent||this.userSourceOperations.has(agent))throw Error('USER_SOURCE_OWNER_UNAVAILABLE')
@@ -338,8 +349,11 @@ export class SessionCommandController {
     const composition = await this.agents.composeAgent(this.agents.presetForObservation(source))
     // Rejection leaves no child allocation. The caller owns reconciliation if
     // later creation or workspace attachment fails after durable reservation.
-    await beforePublish?.({sourceSessionId: source.header.id, childSessionId: childId, seedLength: cut})
-    return this.publishFork(source.header,seed,cut,childId,composition,workspace)
+    const reservation={sourceSessionId:source.header.id,childSessionId:childId,seedLength:cut}
+    let afterCreate:void|(()=>void|Promise<void>)=undefined
+    if(beforePublish)await beforePublish(reservation)
+    else afterCreate=await this.ordinaryForkPreparation?.(reservation)
+    return this.publishFork(source.header,seed,cut,childId,composition,workspace,afterCreate)
   }
 
   /** Empty-prefix forks retain real lineage while owning every child event. */
@@ -400,7 +414,7 @@ export class SessionCommandController {
 
   private async publishFork(source:SessionHeader,seed:readonly SessionEvent[],cut:ReturnType<typeof SessionLogOffset>,
     childId:SessionId,composition:Awaited<ReturnType<ApiSessionAgentController['composeAgent']>>,
-    workspace:Workspace|undefined):Promise<SessionForkValue> {
+    workspace:Workspace|undefined,afterCreate?:void|(()=>void|Promise<void>)):Promise<SessionForkValue> {
     try {
       const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
       await this.ctx.agents.create({
@@ -425,6 +439,7 @@ export class SessionCommandController {
         {},
       )
     }
+    if(afterCreate)await afterCreate()
     await this.attachForkWorkspace(workspace,childId)
     return {sessionId:childId}
   }

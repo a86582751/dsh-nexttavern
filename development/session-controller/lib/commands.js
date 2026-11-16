@@ -92,6 +92,18 @@ export class SessionCommandController {
     agents;
     defaultCwd;
     userSourceOperations = new Map();
+    ordinaryForkPreparation;
+    /** The product owner freezes its private Domain before Native publishes
+     * an ordinary child. Its registration does not change the requested cut. */
+    registerOrdinaryForkPreparation(prepare) {
+        if (this.ordinaryForkPreparation)
+            throw Error('ORDINARY_FORK_OWNER_ALREADY_REGISTERED');
+        this.ordinaryForkPreparation = prepare;
+        return () => {
+            if (this.ordinaryForkPreparation === prepare)
+                this.ordinaryForkPreparation = undefined;
+        };
+    }
     registerUserSourceOperation(agent, operation) {
         if (this.ctx.agents.get(agent.id) !== agent || this.userSourceOperations.has(agent))
             throw Error('USER_SOURCE_OWNER_UNAVAILABLE');
@@ -336,8 +348,13 @@ export class SessionCommandController {
             const composition = await this.agents.composeAgent(this.agents.presetForObservation(source));
             // Rejection leaves no child allocation. The caller owns reconciliation if
             // later creation or workspace attachment fails after durable reservation.
-            await beforePublish?.({ sourceSessionId: source.header.id, childSessionId: childId, seedLength: cut });
-            return this.publishFork(source.header, seed, cut, childId, composition, workspace);
+            const reservation = { sourceSessionId: source.header.id, childSessionId: childId, seedLength: cut };
+            let afterCreate = undefined;
+            if (beforePublish)
+                await beforePublish(reservation);
+            else
+                afterCreate = await this.ordinaryForkPreparation?.(reservation);
+            return this.publishFork(source.header, seed, cut, childId, composition, workspace, afterCreate);
         }
         catch (e_1) {
             env_1.error = e_1;
@@ -414,7 +431,7 @@ export class SessionCommandController {
             throw error;
         }
     }
-    async publishFork(source, seed, cut, childId, composition, workspace) {
+    async publishFork(source, seed, cut, childId, composition, workspace, afterCreate) {
         try {
             const { provider, model } = this.ctx.agentDefaultModel.currentSelection();
             await this.ctx.agents.create({
@@ -436,6 +453,8 @@ export class SessionCommandController {
         catch (error) {
             throw new RemoteError('gateway/internal', `failed to fork session "${source.id}": ${String(error)}`, {});
         }
+        if (afterCreate)
+            await afterCreate();
         await this.attachForkWorkspace(workspace, childId);
         return { sessionId: childId };
     }

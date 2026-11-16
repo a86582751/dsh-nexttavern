@@ -97,6 +97,8 @@ export type CoreContext = {
     readonly messageProjections:readonly import('dsh-nexttavern-native-session').SessionMessageProjection[]}
   agents?: {list(): readonly CoreAgent[]}
   sessionController: {
+    registerOrdinaryForkPreparation(prepare:(reservation:import('./roleplay-branch-routes-types.js').ForkReservation)
+      =>Promise<void|(()=>Promise<void>)>):()=>void
     forkBeforeFirstPrepared?(request:{sessionId:string;resume?:import('./roleplay-opening-variant-activation.js').OpeningVariantForkReservation},
       beforePublish:(reservation:import('./roleplay-opening-variant-activation.js').OpeningVariantForkReservation)=>Promise<void>)
       :PromiseLike<{sessionId:string}>

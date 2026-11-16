@@ -1,4 +1,4 @@
-import type {BeforeForkPublish,BeforeFirstForkPublish,ForkBeforeFirstRequest} from './fork-reservation.js'
+import type {BeforeForkPublish,BeforeFirstForkPublish,ForkBeforeFirstRequest,OrdinaryForkPreparation} from './fork-reservation.js'
 /** Session Remote owner: cold reads, explicit Agent commands, and live control state. */
 
 import { hostname } from 'node:os'
@@ -71,7 +71,7 @@ import type {
 
 export type * from './types.js'
 export type {BeforeForkPublish,ForkReservation,BeforeFirstForkPublish,ForkBeforeFirstRequest,
-  ForkBeforeFirstReservation} from './fork-reservation.js'
+  ForkBeforeFirstReservation,OrdinaryForkPreparation} from './fork-reservation.js'
 export { ApiSessionNotFound } from './agent.js'
 export { SessionFileReferences, SessionSkillCatalog } from '@deepseek-ai/dsh-api-session-controller'
 
@@ -429,6 +429,11 @@ export class SessionController extends TypertRemoteService {
   @Remote('fork')
   fork(request: SessionForkRequest): Promise<SessionForkValue> {
     return this.commands.fork(request)
+  }
+
+  /** Local product preparation, retaining the ordinary Native event cut. */
+  registerOrdinaryForkPreparation(prepare:OrdinaryForkPreparation):()=>void {
+    return this.commands.registerOrdinaryForkPreparation(prepare)
   }
 
   /** Reserve lineage before native publication; deliberately not a Remote endpoint. */

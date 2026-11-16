@@ -483,6 +483,10 @@ let SessionController = (() => {
         fork(request) {
             return this.commands.fork(request);
         }
+        /** Local product preparation, retaining the ordinary Native event cut. */
+        registerOrdinaryForkPreparation(prepare) {
+            return this.commands.registerOrdinaryForkPreparation(prepare);
+        }
         /** Reserve lineage before native publication; deliberately not a Remote endpoint. */
         forkPrepared(request, beforePublish) {
             if (typeof beforePublish !== 'function')
