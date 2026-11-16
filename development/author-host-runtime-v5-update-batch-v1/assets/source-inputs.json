@@ -20,12 +20,12 @@
       {
         "artifact": "author-native-mvu-hook-graph-typescript",
         "path": "src/core/author-native-mvu-hook-graph.ts",
-        "sha256": "983d5e7401a6c50593637c1437128d5afedca56406b87802371af48c2bec51e9"
+        "sha256": "0a808508162599a1f611d7877345dc54c2f59c8c8f874f64bebd3d87f772d65e"
       },
       {
         "artifact": "author-native-mvu-hook-types-typescript",
         "path": "src/core/author-native-mvu-hook-types.ts",
-        "sha256": "d29597ca589292edcdcd75329a735f596094af8883c36e797af16fc9be058169"
+        "sha256": "04cf2c27563738aa75841c12170e30601756668de67765455efc65a5d6b1a76c"
       },
       {
         "artifact": "author-native-program-typescript",

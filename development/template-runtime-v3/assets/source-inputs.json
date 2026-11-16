@@ -66,7 +66,7 @@
       {
         "artifact": "community-preset-macros-typescript",
         "path": "src/core/community-preset-macros.ts",
-        "sha256": "573f0853c70d6f58ba37613a0f387206a71e4bc0bc1e800d899bb9ae5e0c28aa"
+        "sha256": "bdd876353bef14e87bb93fed99f5bbea421c389e4267d4ea78b47528e225fdf0"
       },
       {
         "artifact": "community-preset-profile-runtime-typescript",
@@ -101,12 +101,12 @@
       {
         "artifact": "tavern-prompt-text-kernel-typescript",
         "path": "src/core/tavern-prompt-text-kernel.mts",
-        "sha256": "2f87291988eba2a0cd358937c5bb73e0a5c669ad27f6b1c95eef9017e2814663"
+        "sha256": "f8df37fd8885829262530943479e89af559869f691bde620855ed383bf8d3fe5"
       },
       {
         "artifact": "tavern-prompt-transform-execution-typescript",
         "path": "src/core/tavern-prompt-transform-execution.mts",
-        "sha256": "7c11e2ac2a05fb5680d9205d98db45a93bdefb4b8408495efc99114164842f6b"
+        "sha256": "75c3280b7bcdb643ca4abf10abb52f11b98c30037ab7734812d199916af27880"
       },
       {
         "artifact": "tavern-prompt-transform-output-typescript",
