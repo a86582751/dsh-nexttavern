@@ -1,20 +1,50 @@
 import type {AuthorNativeBindingV1} from '../core/author-native-helper-types.js';
-import type {AuthorNativeSaveRequestV1,AuthorNativeWorldbookRequestV1,AuthorNativePersonaRequestV1,
+import type {AuthorNativeSaveRequestV1,AuthorNativeWorldbookRequestV1,AuthorNativeWorldbookManagementRequestV1,
+    AuthorNativePersonaRequestV1,
     AuthorNativeWorldbookReplyV1,AuthorNativePersonaReplyV1}
     from '../core/roleplay-author-browser-types.js';
-import type {MvuPlayerEditRequest,MvuPlayerEditResponse} from '../core/roleplay-mvu-player-types.js';
+import type {MvuPlayerEditRequest,MvuPlayerEditResponse,MvuPlayerValuesEditRequest,MvuPlayerEnvelopeEditRequest}
+    from '../core/roleplay-mvu-player-types.js';
 
-import type {TavernLoreMutationRetryLocatorV1}
-    from '../core/roleplay-tavern-lore-edits-types.js';
+import type {AuthorWorldbookRetryLocatorV1}
+    from '../core/roleplay-author-worldbook-data.js';
 import type {ReaderRegexDocumentBindingV1,ReaderOpeningVariantResultV1}
     from '../core/reader-regex-document-types.mjs';
 import type {OpeningVariantMutationRequestV1} from '../core/roleplay-opening-variant-types.js';
 import type {AuthorMessageBodyRequestV1,AuthorMessageEditResultV1,ReaderMessageEditOriginV1} from '../core/roleplay-author-message-edit-types.js';
+import type {CommunityAuthorPresetOperationV1,CommunityAuthorPresetResultV1} from '../core/community-preset-types.js';
+import type {AuthorNativeCharacterLibraryMutationV1,AuthorNativeCharacterLibraryMutationResultV1}
+    from '../core/roleplay-author-browser-types.js';
+
+export interface AuthorBrowserCharacterLibraryPendingV1 {
+    readonly schemaVersion:1;
+    readonly encoding:'author-native-character-library-pending-v1';
+    readonly binding:AuthorNativeBindingV1;
+    readonly operation:AuthorNativeCharacterLibraryMutationV1;
+    readonly state:'pending'|'unknown'|'terminal';
+    readonly result?:AuthorNativeCharacterLibraryMutationResultV1;
+    readonly code?:string;
+}
+const characterLibraryKey=(sid:string)=>'nexttavern.author-native.character-library-pending.v1:'+sid;
+const terminalCharacterLibraryResult=(result:AuthorNativeCharacterLibraryMutationResultV1)=>
+    result.kind==='committed'||result.kind==='edited-data'||result.diagnostics.some(diagnostic=>
+        diagnostic.code==='OPERATION_NOT_RECORDED'||diagnostic.code==='AUTHOR_WORLDBOOK_OPERATION_NOT_RECORDED');
+
+export interface AuthorBrowserPresetPendingV1 {
+    readonly schemaVersion:1;
+    readonly encoding:'author-native-preset-pending-v1';
+    readonly binding:AuthorNativeBindingV1;
+    readonly operation:CommunityAuthorPresetOperationV1;
+    readonly state:'pending'|'unknown'|'terminal';
+    readonly result?:CommunityAuthorPresetResultV1;
+    readonly code?:string;
+}
+const presetKey=(sid:string)=>'nexttavern.author-native.preset-pending.v1:'+sid;
 
 type WorldbookResult = AuthorNativeWorldbookReplyV1['result'];
-export interface AuthorBrowserWorldbookPendingV2 {
-    schemaVersion: 2;
-    encoding: 'nexttavern-author-browser-worldbook-pending-v2';
+export interface AuthorBrowserWorldbookPendingV3 {
+    schemaVersion: 3;
+    encoding: 'nexttavern-author-browser-worldbook-pending-v3';
     binding: AuthorNativeBindingV1;
     sessionId: string;
     operationId: string;
@@ -22,35 +52,34 @@ export interface AuthorBrowserWorldbookPendingV2 {
     state: 'pending' | 'unknown' | 'terminal';
     result?: WorldbookResult;
     code?: string;
-    scope: AuthorBrowserWorldbookPendingScopeV2;
+    scope: AuthorWorldbookRetryLocatorV1;
 }
-export type AuthorBrowserWorldbookPendingScopeV2={kind:'known-namespace';identitySha256:string};
-interface WorldbookPendingCollectionV2 {
-    schemaVersion: 2;
-    encoding: 'nexttavern-author-browser-worldbook-operations-v2';
+interface WorldbookPendingCollectionV3 {
+    schemaVersion: 3;
+    encoding: 'nexttavern-author-browser-worldbook-operations-v3';
     sessionId: string;
-    operations: AuthorBrowserWorldbookPendingV2[];
+    operations: AuthorBrowserWorldbookPendingV3[];
 }
 // Native helper outboxes are separate from unpublished VM test records.
 const worldbookKey = (sessionId: string) => 'nexttavern.author-native.worldbook-pending.v1:' + sessionId;
-export const terminalWorldbookReceipt = (result: WorldbookResult) => result.kind === 'edited-data'
-    || result.diagnostics.some(value => value.code === 'OPERATION_NOT_RECORDED');
-function worldbookResultScope(result?: WorldbookResult): AuthorBrowserWorldbookPendingScopeV2 | undefined {
-    if (result?.kind === 'edited-data') return {kind: 'known-namespace', identitySha256: result.receipt.identitySha256};
+export const terminalWorldbookReceipt = (result: WorldbookResult) => result.kind === 'committed'
+    || result.diagnostics.some(value => value.code === 'AUTHOR_WORLDBOOK_OPERATION_NOT_RECORDED');
+function worldbookResultScope(result?: WorldbookResult): AuthorWorldbookRetryLocatorV1 | undefined {
+    if (result?.kind === 'committed') {
+        return result.receipt.owner;
+    }
     if (result?.kind !== 'refused') return;
     const recovery = result.diagnostics.find(value => value.recovery)?.recovery;
-    if (recovery) return {kind: 'known-namespace', identitySha256: recovery.identitySha256};
+    return recovery;
 }
-export function worldbookPendingRetryLocator(envelope: AuthorBrowserWorldbookPendingV2):
-    TavernLoreMutationRetryLocatorV1 | undefined {
-    const scope = envelope.scope;
-    return {identitySha256:scope.identitySha256};
+export function worldbookPendingRetryLocator(envelope: AuthorBrowserWorldbookPendingV3):AuthorWorldbookRetryLocatorV1 {
+    return envelope.scope;
 }
-export function worldbookPendingBlocksNamespace(envelope: AuthorBrowserWorldbookPendingV2,
-    identitySha256: string | undefined): boolean {
+export function worldbookPendingBlocksNamespace(envelope: AuthorBrowserWorldbookPendingV3,
+    profileId: string | undefined): boolean {
     if (envelope.state === 'terminal') return false;
     const scope = envelope.scope;
-    return scope.identitySha256 === identitySha256;
+    return (scope.kind==='book'?scope.address.profileId:scope.profileId)===profileId;
 }
 
 type PersonaResult = AuthorNativePersonaReplyV1['result'];
@@ -87,7 +116,9 @@ export interface NumericalPendingV2 {
     receipt?: Pick<MvuPlayerEditResponse, 'ok' | 'operation' | 'code' | 'error'>;
 }
 const key = (sessionId: string) => 'nexttavern.author-native.numerical-pending.v1:' + sessionId;
-export type AuthorNativeNumericalRequestV1=AuthorNativeSaveRequestV1&Pick<MvuPlayerEditRequest,'expected'|'values'|'target'>;
+export type AuthorNativeNumericalRequestV1=AuthorNativeSaveRequestV1&(
+    (Pick<MvuPlayerValuesEditRequest,'expected'|'values'|'target'>&{action?:'replace-values'})
+    |Pick<MvuPlayerEnvelopeEditRequest,'action'|'expected'|'envelope'|'target'>);
 export const terminalBrowserReceipt = (result: MvuPlayerEditResponse) =>
     result.operation?.outcome === 'updated' || result.operation?.outcome === 'no-update'
     || result.operation?.outcome === 'refused';
@@ -148,6 +179,58 @@ interface AuthorNativeMessagePendingCollectionV1 {
 }
 
 export function createAuthorBrowserPendingStore(storage: Pick<Storage, 'getItem' | 'setItem'>) {
+    function readCharacterLibrary(sid:string):AuthorBrowserCharacterLibraryPendingV1[] {
+        const bytes=storage.getItem(characterLibraryKey(sid));
+        return bytes?JSON.parse(bytes):[];
+    }
+    function beginCharacterLibrary(binding:AuthorNativeBindingV1,
+        request:AuthorNativeCharacterLibraryMutationV1['request'],kind:AuthorNativeCharacterLibraryMutationV1['kind']) {
+        const rows=readCharacterLibrary(binding.sessionId),previous=rows.find(row=>
+            row.operation.kind===kind&&row.operation.request.operationId===request.operationId);
+        if(previous)return previous;
+        const envelope:AuthorBrowserCharacterLibraryPendingV1={schemaVersion:1,
+            encoding:'author-native-character-library-pending-v1',binding,
+            operation:{kind,request} as AuthorNativeCharacterLibraryMutationV1,state:'pending'};
+        storage.setItem(characterLibraryKey(binding.sessionId),JSON.stringify([
+            ...rows.filter(row=>row.state!=='terminal'),envelope]));
+        return readCharacterLibrary(binding.sessionId).find(row=>
+            row.operation.kind===kind&&row.operation.request.operationId===request.operationId)!;
+    }
+    function recordCharacterLibrary(envelope:AuthorBrowserCharacterLibraryPendingV1,
+        result?:AuthorNativeCharacterLibraryMutationResultV1,code?:string) {
+        const rows=readCharacterLibrary(envelope.binding.sessionId),index=rows.findIndex(row=>
+            row.operation.kind===envelope.operation.kind
+            &&row.operation.request.operationId===envelope.operation.request.operationId),previous=rows[index];
+        if(!previous||previous.state==='terminal')return previous??envelope;
+        const next:AuthorBrowserCharacterLibraryPendingV1={...envelope,
+            state:result&&terminalCharacterLibraryResult(result)?'terminal':'unknown',result,code};
+        rows[index]=next;
+        storage.setItem(characterLibraryKey(envelope.binding.sessionId),JSON.stringify(rows));
+        return next;
+    }
+    function readPresets(sid:string):AuthorBrowserPresetPendingV1[] {
+        const bytes=storage.getItem(presetKey(sid));
+        return bytes?JSON.parse(bytes):[];
+    }
+    function beginPreset(binding:AuthorNativeBindingV1,operation:CommunityAuthorPresetOperationV1):AuthorBrowserPresetPendingV1 {
+        const rows=readPresets(binding.sessionId),previous=rows.find(row=>row.operation.operationId===operation.operationId);
+        if(previous)return previous;
+        const envelope:AuthorBrowserPresetPendingV1={schemaVersion:1,encoding:'author-native-preset-pending-v1',
+            binding,operation,state:'pending'};
+        storage.setItem(presetKey(binding.sessionId),JSON.stringify([...rows.filter(row=>row.state!=='terminal'),envelope]));
+        return readPresets(binding.sessionId).find(row=>row.operation.operationId===operation.operationId)!;
+    }
+    function recordPreset(envelope:AuthorBrowserPresetPendingV1,result?:CommunityAuthorPresetResultV1,code?:string,
+        outcome:'unknown'|'refused'='unknown') {
+        const rows=readPresets(envelope.binding.sessionId),index=rows.findIndex(row=>
+            row.operation.operationId===envelope.operation.operationId),previous=rows[index];
+        if(!previous)return envelope;
+        if(previous.state==='terminal')return previous;
+        const next:AuthorBrowserPresetPendingV1={...envelope,state:result||outcome==='refused'?'terminal':'unknown',result,code};
+        rows[index]=next;
+        storage.setItem(presetKey(envelope.binding.sessionId),JSON.stringify(rows));
+        return next;
+    }
     function readMessageOperations(sid:string):AuthorNativeMessagePendingCollectionV1 {
         const bytes=storage.getItem(openingKey(sid));
         if(!bytes)return {schemaVersion:1,encoding:'author-native-message-operations-v1',messageBodies:[]};
@@ -283,7 +366,9 @@ export function createAuthorBrowserPendingStore(storage: Pick<Storage, 'getItem'
             origin:{kind:'helper',binding,child: {requestId: request.requestId, generation: request.generation,
                 readRevision: request.readRevision, realmId: request.realmId}},
             operation: {schemaVersion: 1, sessionId: binding.sessionId, operationId,
-                action: 'replace-values', expected: request.expected, values: request.values,
+                ...request.action==='replace-envelope'?{action:'replace-envelope',envelope:request.envelope}
+                    :{action:'replace-values',values:request.values},
+                expected: request.expected,
                 ...request.target?{target:request.target}:{}},
             state: 'pending',
         });
@@ -307,46 +392,55 @@ export function createAuthorBrowserPendingStore(storage: Pick<Storage, 'getItem'
         }
         return next;
     }
-    function readWorldbooks(sessionId: string): AuthorBrowserWorldbookPendingV2[] {
+    function readWorldbooks(sessionId: string): AuthorBrowserWorldbookPendingV3[] {
         const bytes = storage.getItem(worldbookKey(sessionId));
         if (!bytes) return [];
-        const collection = JSON.parse(bytes) as WorldbookPendingCollectionV2;
-        if (collection.schemaVersion !== 2 || collection.encoding !== 'nexttavern-author-browser-worldbook-operations-v2'
+        const collection = JSON.parse(bytes) as WorldbookPendingCollectionV3;
+        if (collection.schemaVersion !== 3 || collection.encoding !== 'nexttavern-author-browser-worldbook-operations-v3'
             ||collection.sessionId!==sessionId) {
             throw Error('BROWSER_WORLDBOOK_PENDING_FORMAT_UNSUPPORTED');
         }
         return collection.operations;
     }
-    function writeWorldbooks(sessionId: string, operations: AuthorBrowserWorldbookPendingV2[]) {
-        const collection: WorldbookPendingCollectionV2 = {schemaVersion: 2,
-            encoding: 'nexttavern-author-browser-worldbook-operations-v2', sessionId, operations};
+    function writeWorldbooks(sessionId: string, operations: AuthorBrowserWorldbookPendingV3[]) {
+        const collection: WorldbookPendingCollectionV3 = {schemaVersion: 3,
+            encoding: 'nexttavern-author-browser-worldbook-operations-v3', sessionId, operations};
         storage.setItem(worldbookKey(sessionId), JSON.stringify(collection));
     }
-    function beginWorldbook(binding: AuthorNativeBindingV1, request: AuthorNativeWorldbookRequestV1, identitySha256: string) {
+    function beginWorldbook(binding: AuthorNativeBindingV1,
+        request: AuthorNativeWorldbookRequestV1 | AuthorNativeWorldbookManagementRequestV1, profileId: string) {
         const operations = readWorldbooks(binding.sessionId);
         const previous = operations.find(value => value.operationId === request.operationId);
         if (previous) return previous;
-        const envelope: AuthorBrowserWorldbookPendingV2 = {schemaVersion: 2,
-            encoding: 'nexttavern-author-browser-worldbook-pending-v2', binding,
-            sessionId: binding.sessionId, operationId: request.operationId, name: request.name, state: 'pending',
-            scope: {kind: 'known-namespace', identitySha256}};
+        let scope:AuthorWorldbookRetryLocatorV1,name:string;
+        if('target' in request) {
+            scope={kind:'book',address:{profileId,bookId:request.target.bookId}};name=request.name;
+        } else if(request.mutation.kind==='bind-books') {
+            scope={kind:'bindings',profileId,owner:request.mutation.target.owner};
+            name=request.mutation.target.owner.kind+' worldbooks';
+        } else {
+            scope={kind:'catalog',profileId};name=request.mutation.name;
+        }
+        const envelope: AuthorBrowserWorldbookPendingV3 = {schemaVersion: 3,
+            encoding: 'nexttavern-author-browser-worldbook-pending-v3', binding,
+            sessionId: binding.sessionId, operationId: request.operationId, name, state: 'pending',scope};
         // Save the actual captured namespace before dispatch. An address is
         // DATA for the journal owner; it grants no Source or realm permission.
         writeWorldbooks(binding.sessionId, [...operations, envelope]);
         return envelope;
     }
-    function recordWorldbook(envelope: AuthorBrowserWorldbookPendingV2, result?: WorldbookResult, code?: string) {
+    function recordWorldbook(envelope: AuthorBrowserWorldbookPendingV3, result?: WorldbookResult, code?: string) {
         const operations = readWorldbooks(envelope.sessionId);
         const index = operations.findIndex(value => value.operationId === envelope.operationId);
         const previous = operations[index] ?? envelope;
         if (previous.state === 'terminal' && (!result
-            || previous.result?.kind === 'edited-data' && result.kind !== 'edited-data')) return previous;
+            || previous.result?.kind === 'committed' && result.kind !== 'committed')) return previous;
         const observedScope = worldbookResultScope(result);
         const hasAnchor = worldbookResultScope(previous.result) !== undefined;
         const keptResult = hasAnchor && result?.kind === 'refused' && !observedScope
             && !terminalWorldbookReceipt(result) ? previous.result : result ?? previous.result;
         const scope=observedScope??previous.scope;
-        const next: AuthorBrowserWorldbookPendingV2 = {...previous, scope,
+        const next: AuthorBrowserWorldbookPendingV3 = {...previous, scope,
             state: result && terminalWorldbookReceipt(result) ? 'terminal' : 'unknown',
             result: keptResult, code};
         if (index === -1) operations.push(next);
@@ -396,7 +490,8 @@ export function createAuthorBrowserPendingStore(storage: Pick<Storage, 'getItem'
         writePersonas(envelope.sessionId, operations);
         return next;
     }
-    return {read, begin, beginReaderNumerical, record,
+    return {read, begin, beginReaderNumerical, record,readPresets,beginPreset,recordPreset,
+        readCharacterLibrary,beginCharacterLibrary,recordCharacterLibrary,
         readBodies,beginBody,readReaderBodies,beginReaderBody,recordBody,
         readOpening,beginOpening,recordOpening,releaseOpening,readReader,beginReader,recordReader,releaseReader,
         readWorldbooks, beginWorldbook, recordWorldbook,
@@ -405,6 +500,9 @@ export function createAuthorBrowserPendingStore(storage: Pick<Storage, 'getItem'
 
 export function pendingBrowserRequest(envelope: NumericalPendingV2): AuthorNativeNumericalRequestV1 {
     if(envelope.origin.kind!=='helper')throw Error('NUMERICAL_PENDING_HELPER_ORIGIN_REQUIRED');
-    return {...envelope.origin.child, expected: envelope.operation.expected, values: envelope.operation.values,
+    const operation=envelope.operation;
+    return {...envelope.origin.child,expected:operation.expected,
+        ...operation.action==='replace-envelope'?{action:'replace-envelope',envelope:operation.envelope}
+            :{action:'replace-values',values:operation.values},
         ...envelope.operation.target?{target:envelope.operation.target}:{}};
 }

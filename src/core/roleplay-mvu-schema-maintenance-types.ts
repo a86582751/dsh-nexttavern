@@ -3,7 +3,10 @@
 import {recordSha256} from './roleplay-data.js'
 import {taskHash} from './tavern-task-primitives.js'
 import {normalizeStatusOption} from './roleplay-status-presentation.js'
-import type {MvuUpdateCandidateV2,MvuUpdateOperationV2} from './roleplay-mvu-update-v2.js'
+import {assertMvu196CommandsV1} from './tavern-mvu-update-protocol-v1.js'
+import type {AuthorNativeMvuCommandInfo} from './author-native-mvu-hook-types.js'
+import type {SchemaJournalRef} from './roleplay-mvu-schema-journal.js'
+import type {SchemaExecutionAssociation} from './roleplay-mvu-schema-replay.js'
 import type {InputPreparationCurrency,RoleplayNewInputWorkV1} from './roleplay-input-preparation.js'
 import type {InputCompletionScope} from './roleplay-input-completion.js'
 import type {MvuSchemaNumericalSnapshotV2,MvuSchemaStoryCanonical} from './roleplay-mvu-schema-story-types.js'
@@ -33,11 +36,12 @@ export interface MvuSchemaMaintenanceBasisV1 {
   readonly canonical:Omit<MvuSchemaStoryCanonical,'narrative'>
   readonly baseStateSnapshotSha256:string
   readonly material:TavernSourceMaterialPublicationV1
+  readonly prepared:{readonly start:SchemaJournalRef;readonly phase:SchemaExecutionAssociation}
   readonly candidateKind:'parsed'|'no-update'
   readonly basisSha256:string
 }
 export type MvuSchemaMaintenanceVariableCandidateV1=
-  | {readonly kind:'patch';readonly operations:readonly MvuUpdateOperationV2[]}
+  | {readonly kind:'commands';readonly commands:readonly AuthorNativeMvuCommandInfo[]}
   | {readonly kind:'unchanged'}
 export interface MvuSchemaMaintenanceResultV1 {
   readonly schemaVersion:1
@@ -84,8 +88,8 @@ function exact(value:unknown,required:readonly string[],optional:readonly string
   if(!object(value)||required.some(key=>!Object.hasOwn(value,key))
     ||Object.keys(value).some(key=>!required.includes(key)&&!optional.includes(key)))throw Error('SCHEMA_MAINTENANCE_RESULT_INVALID')
 }
-/** The tool boundary owns proposal DATA and usable options. Command semantics
- * and normalization belong to the original phase-zero reducer/schema owner. */
+/** The Task boundary owns proposal DATA and usable options. The one fixed
+ * updater owns argument evaluation, operation semantics and schema acceptance. */
 export function normalizeMvuSchemaMaintenanceResultV1(raw:unknown,candidateKind:'parsed'|'no-update'):MvuSchemaMaintenanceResultV1 {
   if(!object(raw)||raw.schemaVersion!==1||!Array.isArray(raw.options))
     throw Error('SCHEMA_MAINTENANCE_OPTIONS_INVALID')
@@ -99,35 +103,21 @@ export function normalizeMvuSchemaMaintenanceResultV1(raw:unknown,candidateKind:
   if(proposal.kind==='unchanged') {
     return {schemaVersion:1,variableCandidate:{kind:'unchanged'},options}
   }
-  if(proposal.kind!=='patch')throw Error('SCHEMA_MAINTENANCE_CANDIDATE_INVALID')
-  if(!Array.isArray(proposal.operations)||!proposal.operations.length)throw Error('SCHEMA_MAINTENANCE_PATCH_EMPTY')
-  if(proposal.operations.some(value=>!object(value)
-    ||!(value.kind==='jsonpatch'&&object(value.operation)||value.kind==='legacy'&&object(value.command))))
-    throw Error('SCHEMA_MAINTENANCE_COMMAND_SHAPE_INVALID')
-  const operations=proposal.operations as MvuUpdateOperationV2[]
-  return {schemaVersion:1,variableCandidate:{kind:'patch',operations},options}
+  if(proposal.kind!=='commands')throw Error('SCHEMA_MAINTENANCE_CANDIDATE_INVALID')
+  assertMvu196CommandsV1(proposal.commands)
+  if(!proposal.commands.length)throw Error('SCHEMA_MAINTENANCE_COMMANDS_EMPTY')
+  return {schemaVersion:1,variableCandidate:{kind:'commands',commands:proposal.commands},options}
 }
-/** Only completed task command proposal DATA reaches this construction. No reducer,
- * schema callback or text wrapper runs before the real command phase. */
-export function mvuSchemaMaintenanceTaskCandidate(result:MvuSchemaMaintenanceResultV1):MvuUpdateCandidateV2 {
-  const proposal=result.variableCandidate
-  if(!proposal)throw Error('SCHEMA_MAINTENANCE_CANDIDATE_MISSING')
-  if(proposal.kind==='unchanged')return {kind:'no-update',schemaVersion:2,protocol:'native-mvu-update-v2'}
-  const descriptor={schemaVersion:2 as const,protocol:'native-mvu-update-v2' as const,
-    errorPolicy:'atomic-refusal' as const,operations:proposal.operations}
-  return {kind:'parsed',...descriptor,candidateSha256:recordSha256(descriptor)}
-}
-/** Historical v10 interpretation is sealed here. It never asks a hot Tavern
- * job to become current and never grants a child its ancestor's task lease. */
+/** This sealed result never asks a hot Tavern job to become current and never
+ * grants a child its ancestor's task or execution permission. */
 export function validateMvuSchemaMaintenanceCandidateSourceV1(source:MvuSchemaMaintenanceCandidateSourceV1,
-  input:{scope:InputCompletionScope;canonical:MvuSchemaStoryCanonical;base:MvuSchemaNumericalSnapshotV2;
-    canonicalCandidate:MvuUpdateCandidateV2}):void {
+  input:{scope:InputCompletionScope;canonical:MvuSchemaStoryCanonical;base:MvuSchemaNumericalSnapshotV2}):void {
   exact(source,['schemaVersion','encoding','kind','admission','basis','task','result'])
-  const {admission,basis,task,result}=source,{scope,canonical,base,canonicalCandidate}=input
+  const {admission,basis,task,result}=source,{scope,canonical,base}=input
   exact(admission,['schemaVersion','encoding','sessionId','preparationId','credentialSha256',
     'receiptGeneration','refs','source','admissionSha256'])
   exact(basis,['schemaVersion','encoding','sessionId','admissionSha256','currency','workSha256','turn',
-    'canonical','baseStateSnapshotSha256','material','candidateKind','basisSha256'])
+    'canonical','baseStateSnapshotSha256','material','prepared','candidateKind','basisSha256'])
   exact(task,['taskId','generation','resultHash','actualRoute','execution'])
   exact(result,['schemaVersion','options'],['variableCandidate'])
   const {admissionSha256,...admissionBody}=admission,{basisSha256,...basisBody}=basis,
@@ -148,9 +138,14 @@ export function validateMvuSchemaMaintenanceCandidateSourceV1(source:MvuSchemaMa
     ||typeof task.taskId!=='string'||!task.taskId||typeof task.generation!=='string'||!task.generation
     ||task.resultHash!==taskHash(result)||!['inline','spawn'].includes(task.execution)
     ||result.schemaVersion!==1||!Array.isArray(result.options)||!result.options.length
-    ||source.kind==='canonical'&&(basis.candidateKind!=='parsed'||canonicalCandidate.kind!=='parsed'
+    ||source.kind==='canonical'&&(basis.candidateKind!=='parsed'
       ||result.variableCandidate!==undefined)
-    ||source.kind==='task-result'&&(basis.candidateKind!=='no-update'||canonicalCandidate.kind!=='no-update'
+    ||source.kind==='task-result'&&(basis.candidateKind!=='no-update'
       ||!result.variableCandidate)
     ||!['canonical','task-result'].includes(source.kind))throw Error('SCHEMA_MAINTENANCE_SOURCE_UNPROVEN')
+  if(source.kind==='task-result') {
+    const proposal=result.variableCandidate!
+    if(proposal.kind==='commands')assertMvu196CommandsV1(proposal.commands)
+    else if(proposal.kind!=='unchanged')throw Error('SCHEMA_MAINTENANCE_SOURCE_UNPROVEN')
+  }
 }

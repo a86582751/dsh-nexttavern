@@ -3,6 +3,7 @@
 import {createHash,type Hash} from 'node:crypto'
 import {types} from 'node:util'
 import {recordSha256,stableJson} from './roleplay-data.js'
+import {AUTHOR_NATIVE_MVU_HOOK_EVENTS} from './author-native-mvu-hook-types.js'
 import type {SessionHistoryReader,SessionHistoryCut} from './session-history.js'
 import {cloneSchemaDescriptorEnvelopeV4,cloneSchemaValues,schemaDescriptorEnvelopeSequenceClonerV4}
   from './tavern-mvu-schema-data.js'
@@ -474,12 +475,12 @@ function validateClonedSchemaJournalRecord(row:SchemaJournalRecord):SchemaJourna
       ||request.sessionId!==row.sessionId||identity.binding.sessionId!==row.sessionId
       ||identity.binding.programSha256!==identity.programSha256
       ||row.sourceNativeCut.sessionId!==row.sessionId||!hash(request.planSha256)||!hash(identity.programSha256)
-      ||!['command-parsed','update-ended','before-message-update'].includes(request.stage)
+      ||!Object.hasOwn(AUTHOR_NATIVE_MVU_HOOK_EVENTS,request.stage)
       ||!Array.isArray(identity.registrations)||!identity.registrations.length)fail('SCHEMA_BROWSER_DISPATCH_INVALID')
   } else if(isSchemaBrowserCompletion(row)) {
     exact(row,[...common,'batchId','dispatch','dispatchMarker','result'])
     ref(row.dispatch);markerRef(row.dispatchMarker)
-    if(!id(row.batchId)||!['command-parsed','update-ended','before-message-update'].includes(row.result.stage)
+    if(!id(row.batchId)||!Object.hasOwn(AUTHOR_NATIVE_MVU_HOOK_EVENTS,row.result.stage)
       ||!Array.isArray(row.result.diagnostics))fail('SCHEMA_BROWSER_COMPLETION_INVALID')
   } else if(isUnavailable(row)) {
     exact(row,[...common,'batchId','dispatch','sourceNativeCut','code',

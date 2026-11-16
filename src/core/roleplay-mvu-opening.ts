@@ -22,7 +22,7 @@ import {mvuInitializationHeadKey} from './roleplay-mvu-initialization.js'
 import type {MvuSchemaCoreDeps} from './roleplay-mvu-schema-core.js'
 import type {mvuPlayerMarkers} from 'dsh-nexttavern-session-format/mvu-player-marker'
 import type {MvuStateObservation} from './roleplay-mvu-player-types.js'
-import type {SchemaOpeningSelectionAdapter} from './roleplay-mvu-schema-opening-types.js'
+import type {SchemaOpeningSelectionAdapter,SchemaOpeningRootFacts} from './roleplay-mvu-schema-opening-types.js'
 import type {Session,SessionEvent} from 'dsh-nexttavern-native-session'
 import type {MvuSourceDeps} from './roleplay-mvu-source.js'
 import type {MvuOpeningIdentity} from './roleplay-mvu-initialization.js'
@@ -215,7 +215,8 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
   let schemaPlayer:ReturnType<typeof createRoleplayMvuSchemaPlayerCore>|undefined
   let schemaVariants:ReturnType<typeof createRoleplayOpeningVariantCore>|undefined
   function createSchemaStory(completion:Pick<MvuSchemaStoryCoreDeps,'closingView'|'verifyNative'|'verifyConsumedScope'|'readCanonical'
-    |'readConsumedCanonical'|'awaitOwnedCompletion'|'authorChat'|'captureOrdinaryChatNamespace'|'maintenanceCompletion'|'recoverTaskEdit'>) {
+    |'readConsumedCanonical'|'awaitOwnedCompletion'|'authorChat'|'captureOrdinaryChatNamespace'|'readOrdinaryScopeForkBases'
+    |'maintenanceCompletion'|'recoverTaskEdit'>) {
     if(!schemaCore||!deps.schema)return undefined
     const schemaSource=createRoleplayMvuSchemaSource({...sourceDeps,inputState:deps.inputState,scopeStore},
       deps.schema.markers,events=>deps.messageEdits.projectPrefix(events))
@@ -635,7 +636,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     createSchemaSelection,hasSchemaOpening,readSchemaInitialization,
     createSchemaStory,readSchemaSnapshot:(id:string)=>schemaStory?.readSnapshot(id),
     readSchemaObservation:(id:string)=>schemaStory?.readSchemaObservation(id),
-    captureSettledStoryMessages:(id:string,selection?:{nativeCut:number})=>schemaStory?.captureSettledStoryMessages(id,selection),
+    captureSettledStoryMessages:(id:string,selection?:{nativeCut:number;historical?:true})=>schemaStory?.captureSettledStoryMessages(id,selection),
     captureReaderDisplayScopes:(id:string)=>schemaStory?.captureReaderDisplayScopes(id),
     captureSchemaPromptScopes,
     captureSchemaBrowserFacts:(id:string)=>schemaStory?.captureBrowserFacts(id)??Promise.resolve(undefined),

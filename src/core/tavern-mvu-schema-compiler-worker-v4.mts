@@ -10,8 +10,7 @@ import {validateSchemaCompilationCodeV4, validateSchemaCompiledCodeV4, validateS
   from './tavern-mvu-schema-program-v4.js'
 import type {CompilationCodeV4, ServerCandidateCodePartitionV4} from './tavern-mvu-schema-program-v4.js'
 import type {MvuSchemaDiagnostic} from './tavern-mvu-schema-types.js'
-import type {WorkerOwnedSchemaAstAdmission,AuthorExecutionPlanV1,RegisteredCommandPolicyBindingV1,
-  InitializationWriteBindingV1, ExecutionPlanScriptV1}
+import type {WorkerOwnedSchemaAstAdmission,AuthorExecutionPlanV1,RegisteredCommandPolicyBindingV1,ExecutionPlanScriptV1}
   from './tavern-mvu-author-execution-types-v4.mjs'
 
 const same = (a: unknown, b: unknown) => recordSha256(a) === recordSha256(b)
@@ -31,8 +30,7 @@ function compile(): CompilationCodeV4 | ServerCandidateCodePartitionV4 {
   const input = validateSchemaCompilationCodeV4(message.input)
   if (partition && input.executionPlan !== null) throw Error('MVU_SCHEMA_V4_CANDIDATE_EXPECTED_PLAN_FORBIDDEN')
   const compiledByIdentity = new Map<string, {rawDescriptorSha256: string; javascript: string;
-    commandPolicyBindings:readonly RegisteredCommandPolicyBindingV1[];
-    initializationWriteBindings:readonly InitializationWriteBindingV1[]}>()
+    commandPolicyBindings:readonly RegisteredCommandPolicyBindingV1[]}>()
   const schemaDiagnostics = new Map<string, MvuSchemaDiagnostic>()
   // This closure is constructed inside the trusted worker. No admission result
   // is serialized into workerData, accepted from an author, or borrowed from
@@ -48,7 +46,7 @@ function compile(): CompilationCodeV4 | ServerCandidateCodePartitionV4 {
       const result = compileSchemaAstV4(script, input, sourceFile, checker,ordinal,facts)
       if (result.kind !== 'schema') return {kind: 'not-schema', diagnosticCodes: ['MVU_SCHEMA_REGISTRATION_INTENT_MISSING']}
       compiledByIdentity.set(script.identity, {rawDescriptorSha256: recordSha256(script), javascript: result.javascript,
-        commandPolicyBindings:result.commandPolicyBindings,initializationWriteBindings:result.initializationWriteBindings})
+        commandPolicyBindings:result.commandPolicyBindings})
       return {kind: 'accepted-schema', admittedSourceSha256: script.sourceSha256,
         statementSpans: sourceFile.statements.map(node => ({start: node.getFullStart(), end: node.end}))}
     } catch (error) {
@@ -86,13 +84,8 @@ function compile(): CompilationCodeV4 | ServerCandidateCodePartitionV4 {
     bindings:selectedScripts.flatMap(script=>compiledByIdentity.get(script.identity)?.commandPolicyBindings??[])
       .map(binding=>({...binding,policy:'schema-update-batch-atomic-v1' as const}))}
   const commandPolicyProfile={...profileBody,profileSha256:recordSha256(profileBody)}
-  const initializationWriteBindings=selectedScripts.flatMap(script=>
-    compiledByIdentity.get(script.identity)?.initializationWriteBindings??[])
-  const initializationWriteBody={schemaVersion:1 as const,
-    encoding:'native-mvu-chat-initialization-write-profile-v1' as const,bindings:initializationWriteBindings}
   const {executionPlanSha256:_priorPlan,...classifiedBody}=classified
-  const planBody={...classifiedBody,commandPolicyProfile,...initializationWriteBindings.length
-    ?{initializationWriteProfile:{...initializationWriteBody,profileSha256:recordSha256(initializationWriteBody)}}:{}}
+  const planBody={...classifiedBody,commandPolicyProfile}
   const executionPlan:AuthorExecutionPlanV1={...planBody,executionPlanSha256:recordSha256(planBody)}
   const unsupported = executionPlan.scripts.find(row => row.enabled && row.classification === 'unsupported')
   if (unsupported) throw new WorkerRefusalV4(schemaDiagnostics.get(unsupported.identity) ?? {

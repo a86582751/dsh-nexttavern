@@ -11,8 +11,7 @@ import type {MvuSchemaExecutionProgramV4} from './tavern-mvu-schema-program-v4.j
 import type {MvuExecutableProgramV4} from './tavern-mvu-owned-state-types-v1.mjs'
 import {createSchemaMaterialBudgetV4,schemaMaterialBudgetDeltaV4} from './tavern-mvu-schema-data.js'
 import type {SchemaMaterialEnvelopeV4,SchemaMaterialBudgetV4,SchemaMaterialBudgetDeltaV4} from './tavern-mvu-schema-data.js'
-import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
-import {isKnownSchemaUpdateRejectionV2,validateSchemaUpdateCommandsV2} from './tavern-mvu-schema-update-effects-v2.js'
+import {MVU_SCHEMA_BOUNDS,MVU_SCHEMA_LIBRARY_PINS} from './tavern-mvu-schema-types.js'
 import {validateMvuScopeReadFrameV1} from './tavern-mvu-scope-read.js'
 import type {MvuScopeReadFrameV1,MvuScopeReadViewV2,MvuScopedScriptV1} from './tavern-mvu-scope-read-types.js'
 import {createMvuScopeViewResolverV2,validateMvuScopeReadRefV2} from './tavern-mvu-scope-view-v2.js'
@@ -24,8 +23,12 @@ import type {MvuSchemaRunnerV4,MvuSchemaRunnerDepsV4,MvuSchemaEvaluationInputV4,
   MvuSchemaTraceEvaluationV4,MvuSchemaTraceFrameV4,MvuSchemaTraceEvaluationStepV4,
   MvuSchemaTraceRequestedStepV4,MvuSchemaDiagnosticV4,MvuSchemaNextRunResultV4,
   MvuSchemaManualRequestedStepV4,MvuSchemaManualRunV4,MvuSchemaOpenManualRunResultV4} from './tavern-mvu-schema-types-v4.js'
+import type {MvuSchemaTrialInputV4,MvuSchemaTrialResumeV4,MvuSchemaTrialResultV4,MvuSchemaTrialOutputV4,
+  MvuSchemaTrialRunV4,MvuSchemaOpenTrialResultV4} from './tavern-mvu-schema-types-v4.js'
 import type {MvuSchemaTraceStepRecordV4,MvuSchemaRealmLoadFrameV4,MvuSchemaOwnedPrefixReaderV4,MvuSchemaScopeReferenceReaderV2}
   from './tavern-mvu-schema-types-v4.js'
+import {assertMvu196UpdateInputV1,assertMvu196UpdateProgressV1,assertMvu196ContextWritesV1}
+  from './tavern-mvu-update-protocol-v1.js'
 
 const scopeInputProtocols=Object.freeze(['full-frame-v1','scope-ref-v2'] as const)
 
@@ -53,7 +56,11 @@ export type MvuSchemaWorkerRequestV4=({
   program:MvuSchemaWorkerProgramV4
   input:MvuSchemaEvaluationInputV4
   libraries?:readonly MvuSchemaLibraryBytes[]
-}|{program:MvuSchemaWorkerProgramV4;trace:MvuSchemaWorkerTraceInputV4;
+}|{program:MvuSchemaWorkerProgramV4;input:MvuSchemaTrialInputV4;
+  libraries?:readonly MvuSchemaLibraryBytes[];response:'trial-stream'}
+|{program:null;registration:'none';input:MvuSchemaTrialInputV4;
+  libraries:readonly MvuSchemaLibraryBytes[];response:'trial-stream'}
+|{program:MvuSchemaWorkerProgramV4;trace:MvuSchemaWorkerTraceInputV4;
   libraries?:readonly MvuSchemaLibraryBytes[];response?:'next'|'manual'}
   |{program:MvuSchemaWorkerProgramV4;loadFrame:WorkerMaterialFrameV4<MvuSchemaRealmLoadFrameV4>;
     libraries?:readonly MvuSchemaLibraryBytes[];response:'hot'|'manual-stream'}) & {scopeObjects?:readonly MvuScopeReadObjectV2[]}
@@ -68,12 +75,13 @@ export type MvuSchemaWorkerEvaluationResponseV4={kind:'output';json:string}|{kin
   |{kind:'next-output';json:string}
   |{kind:'unavailable';code:string}
 export type MvuSchemaManualWorkerMessageV4=({kind:'advance';step:MvuSchemaManualRequestedStepV4}
+  |{kind:'trial-advance';input:MvuSchemaEvaluationInputV4}
   |{kind:'hot-advance';step:SchemaMaterialEnvelopeV4<MvuSchemaWorkerTraceInputV4['requestedStep']>}
   |{kind:'hot-replay';step:SchemaMaterialEnvelopeV4<MvuSchemaWorkerTraceInputV4['prefix'][number]>}|{kind:'close'}) &
   {scopeObjects?:readonly MvuScopeReadObjectV2[]}
 export type MvuSchemaManualWorkerResponseV4={kind:'manual-phase';json:string}
   |{kind:'hot-ready'}|{kind:'hot-replayed';stepSha256:string}
-  |{kind:'manual-closed';cleanup:'completed';result?:Extract<MvuSchemaWorkerEvaluationResponseV4,{kind:'next-output'|'unavailable'}>}
+  |{kind:'manual-closed';cleanup:'completed';result?:Extract<MvuSchemaWorkerEvaluationResponseV4,{kind:'output'|'next-output'|'unavailable'}>}
   |{kind:'manual-closed';cleanup:'failed';code:string}
 export type MvuSchemaWorkerResponseV4=MvuSchemaWorkerEvaluationResponseV4|MvuSchemaManualWorkerResponseV4
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
@@ -111,19 +119,19 @@ export function validateSchemaEvaluationInputV4(input:unknown,program?:MvuExecut
 }
 function evaluationInputData(value:MvuSchemaEvaluationInputV4,program?:MvuExecutableProgramV4):MvuSchemaEvaluationInputV4 {
   const references=value.encoding==='native-mvu-author-schema-phase-input-v4-scope-ref-v2'
-  exact(value,['schemaVersion','encoding','commandsEncoding','errorPolicy','phase','base','values','commands',
-    'context',references?'scopeReadRef':'scopeReadFrame','clockEpochMs','randomSeed'])
+  exact(value,['schemaVersion','encoding','errorPolicy','phase','base','values',
+    'context',references?'scopeReadRef':'scopeReadFrame','clockEpochMs','randomSeed',
+    ...(Object.hasOwn(value,'update')?['update']:[])])
   const object=(v:unknown)=>v!==null&&typeof v==='object'&&!Array.isArray(v)
   if(value.schemaVersion!==4||!references&&value.encoding!=='native-mvu-author-schema-phase-input-v4'
-    ||value.commandsEncoding!=='native-mvu-update-operations-v2'
     ||!['atomic-refusal','registered-command-policy-v1','update-batch-atomic-v1'].includes(value.errorPolicy)
-    ||!['initialization','command-parsed','commands-parsed','update-ended','manual-replacement',
-      'external-pack-replacement','hook-reconcile'].includes(value.phase)
+    ||!['initialization','manual-replacement','external-pack-replacement','update-core'].includes(value.phase)
     ||value.base!==null&&!object(value.base)||!object(value.values)||!object(value.context)
-    ||!Array.isArray(value.commands)||!Number.isSafeInteger(value.clockEpochMs)
+    ||!Number.isSafeInteger(value.clockEpochMs)
     ||typeof value.randomSeed!=='string'||!value.randomSeed.length||value.randomSeed.length>256)throw Error('SCHEMA_INPUT_INVALID')
-  value.commands=validateSchemaUpdateCommandsV2(value.commands)
-  if(value.phase!=='command-parsed'&&value.commands.length)throw Error('SCHEMA_COMMANDS_UNSUPPORTED')
+  if(value.phase==='update-core') {
+    assertMvu196UpdateInputV1(value.update)
+  }else if(Object.hasOwn(value,'update'))throw Error('SCHEMA_INPUT_INVALID')
   value.values=cloneSchemaValues(value.values)
   if(value.base!==null)value.base=cloneSchemaValues(value.base)
   if(Object.hasOwn(value.context,'stat_data'))throw Error('SCHEMA_CONTEXT_INVALID')
@@ -181,110 +189,87 @@ export function validateSchemaGuestOutputV4(raw:unknown,input?:MvuSchemaEvaluati
 }
 function parseGuestOutputV4(raw:unknown):MvuSchemaGuestOutputV4 {
   const output=cloneSchemaData(raw,MVU_SCHEMA_BOUNDS.outputBytes) as MvuSchemaGuestOutputV4
-  const wire=['schemaVersion','encoding','commandsEncoding','errorPolicy','executionPlanSha256']
+  const wire=['schemaVersion','encoding','errorPolicy','executionPlanSha256']
   if(!output||output.schemaVersion!==4||output.encoding!=='native-mvu-author-schema-phase-output-v4'
-    ||output.commandsEncoding!=='native-mvu-update-operations-v2'
     ||!['atomic-refusal','registered-command-policy-v1','update-batch-atomic-v1'].includes(output.errorPolicy)
     ||!hash(output.executionPlanSha256)) {
     throw Error('SCHEMA_OUTPUT_INVALID')
   }
+  parseOutputBodyV4(output,wire,output.errorPolicy)
+  return output
+}
+function parseOutputBodyV4(output:MvuSchemaGuestOutputV4|MvuSchemaTrialOutputV4,wire:readonly string[],
+  errorPolicy:string):void {
   if(output.kind==='accepted') {
-    exact(output,[...wire,'kind','values','commands','context','registrations',
-      ...(output.errorPolicy==='registered-command-policy-v1'?['discarded']:[])])
-    if(!output.values||typeof output.values!=='object'||Array.isArray(output.values)||!Array.isArray(output.commands)
-      ||output.commands.length!==0
+    exact(output,[...wire,'kind','values','context','registrations',
+      ...(Object.hasOwn(output,'contextWrites')?['contextWrites']:[]),
+      ...(Object.hasOwn(output,'update')?['update']:[])])
+    if(!output.values||typeof output.values!=='object'||Array.isArray(output.values)
       ||!Number.isSafeInteger(output.registrations)||output.registrations<0||output.registrations>MVU_SCHEMA_BOUNDS.scripts) {
       throw Error('SCHEMA_OUTPUT_INVALID')
     }
     output.values=cloneSchemaValues(output.values)
     if(!output.context||typeof output.context!=='object'||Array.isArray(output.context)
       ||Object.hasOwn(output.context,'stat_data'))throw Error('SCHEMA_CONTEXT_INVALID')
-    if(output.errorPolicy==='registered-command-policy-v1') {
-      if(!Array.isArray(output.discarded)||output.discarded.length>64)throw Error('SCHEMA_OUTPUT_INVALID')
-      parseSchemaDiagnosticListV4(output.discarded,true,true,output.registrations)
-    }
+    if('contextWrites' in output)assertMvu196ContextWritesV1(output.contextWrites)
+    if(Object.hasOwn(output,'update'))assertMvu196UpdateProgressV1(output.update)
   } else if(output.kind==='refused') {
     exact(output,[...wire,'kind','diagnostics'])
-    if(!Array.isArray(output.diagnostics)||!output.diagnostics.length||output.diagnostics.length>64)throw Error('SCHEMA_OUTPUT_INVALID')
-    parseSchemaDiagnosticListV4(output.diagnostics,output.errorPolicy==='registered-command-policy-v1',false,
-      undefined,output.errorPolicy==='update-batch-atomic-v1')
+    if(!Array.isArray(output.diagnostics))throw Error('SCHEMA_OUTPUT_INVALID')
+    for(const diagnostic of output.diagnostics) {
+      parseSchemaDiagnosticV4(diagnostic)
+      if(diagnostic.code==='SCHEMA_UPDATE_BATCH_VALIDATION_FAILED'
+        &&errorPolicy!=='update-batch-atomic-v1')throw Error('SCHEMA_OUTPUT_INVALID')
+    }
   } else throw Error('SCHEMA_OUTPUT_INVALID')
+}
+/** Unregistered trials have no execution receipt or durable program identity. */
+export function validateUnregisteredTrialOutputV4(raw:unknown,input:MvuSchemaEvaluationInputV4):MvuSchemaTrialOutputV4 {
+  const output=cloneSchemaData(raw,MVU_SCHEMA_BOUNDS.outputBytes) as MvuSchemaTrialOutputV4
+  if(!output||typeof output!=='object')throw Error('SCHEMA_OUTPUT_INVALID')
+  parseOutputBodyV4(output,[],'atomic-refusal')
+  assertOutputInputBindingsV4(output,input)
+  if(output.kind==='accepted'&&output.registrations!==0)throw Error('SCHEMA_REGISTRATION_INVALID')
   return output
 }
-/** Refusals and final C discards share the existing diagnostic wire. Only a
- * registered command phase may carry several stable rejected-command rows. */
-function parseSchemaDiagnosticListV4(diagnostics:readonly MvuSchemaDiagnosticV4[],
-  registered:boolean,discarded:boolean,registrations?:number,batch=false) {
-  const index=(value:unknown,max=64)=>Number.isSafeInteger(value)&&typeof value==='number'&&value>=0&&value<max
-  let previousCommand=-1
-  let failedRegistrationCount:number|undefined
-  for(const item of diagnostics) {
-      if(registered&&'commandIndex' in item) {
-        if(item.commandIndex<=previousCommand)throw Error('SCHEMA_OUTPUT_INVALID')
-        previousCommand=item.commandIndex
-      }
-      if(item.code==='SCHEMA_SCOPE_READ_FAILED') {
-        exact(item,['code','scriptPointer','readCode'])
-        if(discarded||diagnostics.length!==1||typeof item.scriptPointer!=='string'
-          ||Buffer.byteLength(item.scriptPointer,'utf8')>4096||item.scriptPointer!==''&&!item.scriptPointer.startsWith('/')
-          ||typeof item.readCode!=='string'||!(/^(?:SCHEMA_|SCOPE_READ_)[A-Z_]+$/.test(item.readCode)
-            ||['SCOPE_SOURCE_UNAVAILABLE','MESSAGE_STATE_UNAVAILABLE'].includes(item.readCode)))throw Error('SCHEMA_OUTPUT_INVALID')
-      } else if(item.code==='STATE_ONLY_UPDATE_OPERATION_REJECTED') {
-        exact(item,['code','commandIndex','updateCode',...(Object.hasOwn(item,'pointer')?['pointer']:[])])
-        if(!index(item.commandIndex)
-          ||discarded||!isKnownSchemaUpdateRejectionV2(item.updateCode)||diagnostics.length!==1
-          ||item.pointer!==undefined&&(typeof item.pointer!=='string'
-            ||Buffer.byteLength(item.pointer,'utf8')>MVU_SCHEMA_BOUNDS.valuesBytes))throw Error('SCHEMA_OUTPUT_INVALID')
-      } else if(item.code==='SCHEMA_UPDATE_BATCH_OPERATION_REJECTED') {
-        exact(item,['code','commandIndex','updateCode',...(Object.hasOwn(item,'pointer')?['pointer']:[])])
-        if(!batch||discarded||diagnostics.length!==1||!index(item.commandIndex)
-          ||!isKnownSchemaUpdateRejectionV2(item.updateCode)
-          ||item.pointer!==undefined&&(typeof item.pointer!=='string'
-            ||Buffer.byteLength(item.pointer,'utf8')>MVU_SCHEMA_BOUNDS.valuesBytes))throw Error('SCHEMA_OUTPUT_INVALID')
-      } else if(item.code==='SCHEMA_UPDATE_BATCH_VALIDATION_FAILED') {
-        exact(item,['code','registrationIndex'])
-        if(!batch||discarded||diagnostics.length!==1||!index(item.registrationIndex))throw Error('SCHEMA_OUTPUT_INVALID')
-      } else if(item.code==='SCHEMA_UPDATE_OPERATION_REJECTED') {
-        exact(item,['code','commandIndex','registrationIndex','updateCode',...(Object.hasOwn(item,'pointer')?['pointer']:[])])
-        if(batch||!index(item.commandIndex)||!index(item.registrationIndex,registrations??64)
-          ||!isKnownSchemaUpdateRejectionV2(item.updateCode)||!registered&&diagnostics.length!==1
-          ||item.pointer!==undefined&&(typeof item.pointer!=='string'
-            ||Buffer.byteLength(item.pointer,'utf8')>MVU_SCHEMA_BOUNDS.valuesBytes))throw Error('SCHEMA_OUTPUT_INVALID')
-      } else if(item.code==='SCHEMA_VALIDATION_FAILED') {
-        if('commandIndex' in item) {
-          exact(item,['code','commandIndex','failedRegistrationIndexes'])
-          if(batch||!index(item.commandIndex)||!registered&&item.commandIndex<=previousCommand
-            ||!Array.isArray(item.failedRegistrationIndexes)||!item.failedRegistrationIndexes.length
-            ||item.failedRegistrationIndexes.length>64)throw Error('SCHEMA_OUTPUT_INVALID')
-          if(!registered)previousCommand=item.commandIndex
-          // Every registration saw this still-unconsumed command in order.
-          if(item.failedRegistrationIndexes.some((value:unknown,position:number)=>value!==position))throw Error('SCHEMA_OUTPUT_INVALID')
-          failedRegistrationCount??=item.failedRegistrationIndexes.length
-          if(item.failedRegistrationIndexes.length!==failedRegistrationCount)throw Error('SCHEMA_OUTPUT_INVALID')
-        } else {
-          exact(item,['code','registrationIndex'])
-          if(discarded||!index(item.registrationIndex)||diagnostics.length!==1)throw Error('SCHEMA_OUTPUT_INVALID')
-        }
-      } else throw Error('SCHEMA_OUTPUT_INVALID')
-  }
+function publicTrialOutput(output:MvuSchemaGuestOutputV4|MvuSchemaTrialOutputV4):MvuSchemaTrialOutputV4 {
+  if(output.kind==='refused')return {kind:'refused',diagnostics:output.diagnostics}
+  return {kind:'accepted',values:output.values,context:output.context,registrations:output.registrations,
+    ...output.update?{update:output.update}:{}}
 }
-function assertOutputInputBindingsV4(output:MvuSchemaGuestOutputV4,input:MvuSchemaEvaluationInputV4):void {
-  let diagnostics:readonly MvuSchemaDiagnosticV4[]
+function parseSchemaDiagnosticV4(item:MvuSchemaDiagnosticV4) {
+  const index=(value:unknown)=>Number.isSafeInteger(value)&&typeof value==='number'&&value>=0&&value<MVU_SCHEMA_BOUNDS.scripts
+  if(item.code==='SCHEMA_SCOPE_READ_FAILED') {
+    exact(item,['code','scriptPointer','readCode'])
+    if(typeof item.scriptPointer!=='string'
+      ||Buffer.byteLength(item.scriptPointer,'utf8')>4096||item.scriptPointer!==''&&!item.scriptPointer.startsWith('/')
+      ||typeof item.readCode!=='string'||!(/^(?:SCHEMA_|SCOPE_READ_)[A-Z_]+$/.test(item.readCode)
+        ||['SCOPE_SOURCE_UNAVAILABLE','MESSAGE_STATE_UNAVAILABLE'].includes(item.readCode)))throw Error('SCHEMA_OUTPUT_INVALID')
+  } else if(item.code==='SCHEMA_UPDATE_COMPUTATION_FAILED') {
+    exact(item,['code','commandIndex','message'])
+    if(!Number.isSafeInteger(item.commandIndex)||item.commandIndex<0||typeof item.message!=='string')throw Error('SCHEMA_OUTPUT_INVALID')
+  } else if(item.code==='SCHEMA_UPDATE_BATCH_VALIDATION_FAILED'||item.code==='SCHEMA_VALIDATION_FAILED') {
+    exact(item,['code','registrationIndex'])
+    if(!index(item.registrationIndex))throw Error('SCHEMA_OUTPUT_INVALID')
+  } else throw Error('SCHEMA_OUTPUT_INVALID')
+}
+function assertOutputInputBindingsV4(output:MvuSchemaGuestOutputV4|MvuSchemaTrialOutputV4,input:MvuSchemaEvaluationInputV4):void {
   if(output.kind==='accepted') {
-    if(output.errorPolicy!=='registered-command-policy-v1')return
-    if(input.phase!=='command-parsed'&&output.discarded.length)throw Error('SCHEMA_OUTPUT_INVALID')
-    diagnostics=output.discarded
-  }else diagnostics=output.diagnostics
-  for(const item of diagnostics) {
+    if(input.phase==='update-core') {
+      if(!input.update||!output.update||input.update.updateId!==output.update.updateId)throw Error('SCHEMA_OUTPUT_INVALID')
+      if(output.update.kind!=='complete'&&output.update.yieldOrdinal!==
+        (input.update.encoding==='native-mvu-196-update-start-v1'?0:input.update.yieldOrdinal+1))throw Error('SCHEMA_OUTPUT_INVALID')
+    }else if(Object.hasOwn(output,'update'))throw Error('SCHEMA_OUTPUT_INVALID')
+    return
+  }
+  for(const item of output.diagnostics) {
     if(item.code==='SCHEMA_SCOPE_READ_FAILED') {
       if(input.encoding==='native-mvu-author-schema-phase-input-v4'
         &&!input.scopeReadFrame.scripts.some(script=>script.pointer===item.scriptPointer))throw Error('SCHEMA_OUTPUT_INVALID')
-    }else if('commandIndex' in item) {
-      if(input.phase!=='command-parsed'||item.commandIndex>=input.commands.length)throw Error('SCHEMA_OUTPUT_INVALID')
-    }else if(item.code==='SCHEMA_UPDATE_BATCH_VALIDATION_FAILED') {
-      if(input.phase!=='command-parsed'||!input.commands.length)throw Error('SCHEMA_OUTPUT_INVALID')
+    }else if(item.code==='SCHEMA_UPDATE_COMPUTATION_FAILED'||item.code==='SCHEMA_UPDATE_BATCH_VALIDATION_FAILED') {
+      if(input.phase!=='update-core')throw Error('SCHEMA_OUTPUT_INVALID')
     }else if(item.code==='SCHEMA_VALIDATION_FAILED'
-      &&!['initialization','manual-replacement'].includes(input.phase))throw Error('SCHEMA_OUTPUT_INVALID')
+      &&!['initialization','manual-replacement','update-core'].includes(input.phase))throw Error('SCHEMA_OUTPUT_INVALID')
   }
 }
 /** Reading data does not authorize 0REG. Every current capture and historical
@@ -318,17 +303,15 @@ export function assertSchemaGuestOutputBindingsV4(output:MvuSchemaGuestOutputV4,
     const validRegistrations=stateOnly?output.registrations===0:
       enabledServerSchema>0&&output.registrations>=enabledServerSchema
     if(!validRegistrations)throw Error('SCHEMA_REGISTRATION_MISSING')
-    if(stateOnly&&output.errorPolicy==='registered-command-policy-v1'&&output.discarded.length)throw Error('SCHEMA_OUTPUT_INVALID')
   } else for(const item of output.diagnostics) {
-    if(item.code==='STATE_ONLY_UPDATE_OPERATION_REJECTED'?!stateOnly:
-      stateOnly&&item.code!=='SCHEMA_SCOPE_READ_FAILED')throw Error('SCHEMA_OUTPUT_INVALID')
+    if(stateOnly&&item.code!=='SCHEMA_SCOPE_READ_FAILED')throw Error('SCHEMA_OUTPUT_INVALID')
   }
 }
-function outputData(json:string):MvuSchemaGuestOutputV4 {
+function outputData<T extends MvuSchemaGuestOutputV4|MvuSchemaTrialOutputV4=MvuSchemaGuestOutputV4>(json:string):T {
   if(typeof json!=='string'||Buffer.byteLength(json,'utf8')>MVU_SCHEMA_BOUNDS.outputBytes)throw Error('SCHEMA_OUTPUT_LIMIT')
   // The private worker checked fresh guest semantics before emitting these
   // isolated JSON bytes. Parent decoding does not re-own that validation.
-  return JSON.parse(json) as MvuSchemaGuestOutputV4
+  return JSON.parse(json) as T
 }
 function workerMessageData(message:unknown):MvuSchemaWorkerResponseV4 {
   if(message&&typeof message==='object'&&Object.getOwnPropertyDescriptor(message,'json')) {
@@ -380,8 +363,8 @@ function traceInputData(program:MvuExecutableProgramV4,input:unknown,deadline?:n
     throw Error('SCHEMA_TRACE_FRAME_INVALID')
   }
   const initial=evaluationInputData({schemaVersion:4,...schemaPhaseScopeFromLoadV4(load),
-    commandsEncoding:'native-mvu-update-operations-v2',errorPolicy:schemaPhaseErrorPolicyForProgramV4(program),
-    phase:'initialization',base:null,values:load.values,commands:[],
+    errorPolicy:schemaPhaseErrorPolicyForProgramV4(program),
+    phase:'initialization',base:null,values:load.values,
     context:load.context,clockEpochMs:load.clockEpochMs,randomSeed:load.randomSeed},program)
   load.values=initial.values;load.context=initial.context
   if(initial.encoding==='native-mvu-author-schema-phase-input-v4') {
@@ -422,7 +405,7 @@ export function validateSchemaTraceInputV4(program:MvuExecutableProgramV4,input:
 }
 const safeCode=(code:unknown,fallback:string)=>typeof code==='string'&&/^SCHEMA_[A-Z_]+$/.test(code)?code:fallback
 interface ScopeBindingV2 {read:MvuSchemaScopeReferenceReaderV2}
-function scopeTransportV2(program:MvuExecutableProgramV4,binding?:ScopeBindingV2,realmEpoch?:string) {
+function scopeTransportV2(program:MvuExecutableProgramV4|null,binding?:ScopeBindingV2,realmEpoch?:string) {
   let resolver:ReturnType<typeof createMvuScopeViewResolverV2>|undefined,baseKey:string|undefined
   return {
     capture(input:MvuSchemaEvaluationInputV4|MvuSchemaRealmLoadFrameV4,
@@ -439,7 +422,7 @@ function scopeTransportV2(program:MvuExecutableProgramV4,binding?:ScopeBindingV2
       if(frame&&frame.sourceNativeCutSha256!==reference.sourceNativeCutSha256)throw Error('SCHEMA_SCOPE_BINDING_MISMATCH')
       const resolved=resolver!.resolve(reference)
       if(realmEpoch!==undefined&&resolved.realmEpoch!==realmEpoch)throw Error('SCHEMA_SCOPE_BINDING_MISMATCH')
-      validateSchemaScopeProgramViewV2(program,resolved.view,resolved.scripts(),frame,load)
+      if(program)validateSchemaScopeProgramViewV2(program,resolved.view,resolved.scripts(),frame,load)
       return resolved.readObjects
     },
     dispose(){resolver=undefined;baseKey=undefined},
@@ -463,11 +446,11 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
     exact(stateLoader,['id','version','implementationSha256'])
     if(!same(stateLoader,deriveOwnedStateLoaderIdentityV4(bridge)))throw Error('SCHEMA_STATE_LOADER_UNAVAILABLE')
     if(identity.quickjsVersion!=='0.32.0'||identity.version!==4||bridge.version!==4)throw Error('SCHEMA_IMPLEMENTATION_UNAVAILABLE')
-    if(libraries.length!==2||new Set(libraries.map(library=>library.kind)).size!==2)throw Error('SCHEMA_LIBRARY_UNAVAILABLE')
+    if(libraries.length!==3||new Set(libraries.map(library=>library.kind)).size!==3)throw Error('SCHEMA_LIBRARY_UNAVAILABLE')
     for(const library of libraries) {
       exact(library,['kind','packageName','version','bundleSha256','globalName','code'])
-      if(library.packageName!==library.kind||library.version!==(library.kind==='zod'?'4.4.3':'4.18.1')
-        ||!['zod','lodash'].includes(library.kind)||!/^[A-Za-z_$][A-Za-z0-9_$]{0,127}$/.test(library.globalName)
+      const pin=MVU_SCHEMA_LIBRARY_PINS[library.kind]
+      if(!pin||library.packageName!==pin.packageName||library.version!==pin.version||library.globalName!==pin.globalName
         ||schemaTextSha256(library.code)!==library.bundleSha256)throw Error('SCHEMA_LIBRARY_UNAVAILABLE')
       const {code:_code,...libraryIdentity}=library
       libraryIdentities.push(libraryIdentity)
@@ -496,10 +479,10 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
   function packWorkerRequest(request:MvuSchemaWorkerInputV4) {
     const stateOnly=schemaExecutionViewV4(request.program).stateOnly
     const program=stateOnly?{...request.program,source:withoutMaterial(request.program.source)}:request.program
-    let payload:MvuSchemaWorkerRequestV4=stateOnly?{...request,program}:{...request,program,libraries}
+    let payload:MvuSchemaWorkerRequestV4={...request,program,libraries}
     if(stateOnly&&'trace' in request) {
       const trace=request.trace
-      payload={...request,program,trace:{...trace,loadFrame:withoutMaterial(trace.loadFrame),
+      payload={...request,program,libraries,trace:{...trace,loadFrame:withoutMaterial(trace.loadFrame),
         prefix:trace.prefix.map(step=>({...step,frame:withoutMaterial(step.frame)})),
         requestedStep:{...trace.requestedStep,frame:withoutMaterial(trace.requestedStep.frame)}}}
     }
@@ -736,25 +719,53 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
     return startLiveRun(program,{realmEpoch:parsed.input.realmEpoch,loadFrame:parsed.input.loadFrame,prefix:parsed.input.prefix,
       requestedStep:parsed.input.requestedStep,loadAnchorSha256:parsed.loadAnchorSha256},signal,hot,deadline,closeAfterFirst,scopeBinding)
   }
-  async function startLiveRun(program:MvuExecutableProgramV4,
-    {realmEpoch,loadFrame,prefix:replayPrefix,requestedStep:requested,loadAnchorSha256}:{
-      realmEpoch:string;
-      loadFrame:MvuSchemaRealmLoadFrameV4;prefix:readonly MvuSchemaTraceStepRecordV4[];
-      requestedStep:MvuSchemaTraceRequestedStepV4;loadAnchorSha256:string},
+  async function openTrial(program:MvuExecutableProgramV4|null,input:MvuSchemaTrialInputV4,
+    signal?:AbortSignal,scopeBinding?:ScopeBindingV2):Promise<MvuSchemaOpenTrialResultV4> {
+    const blocked=preflight(signal)
+    if(blocked)return blocked
+    let checkedProgram:MvuExecutableProgramV4|null,checkedInput:MvuSchemaTrialInputV4
+    try {
+      checkedProgram=program===null?null:programData(program)
+      checkedInput=validateSchemaEvaluationInputV4(input,checkedProgram??undefined) as MvuSchemaTrialInputV4
+      if(checkedInput.phase!=='update-core'||checkedInput.update.encoding!=='native-mvu-196-update-start-v1'
+        ||checkedInput.update.maintenance)throw Error('SCHEMA_TRIAL_INPUT_INVALID')
+      if(checkedProgram&&checkedInput.scopeReadFrame)validateSchemaScopeProgramFrameV4(checkedProgram,checkedInput.scopeReadFrame)
+    }catch(error){return unavailable(safeCode(error instanceof Error?error.message:undefined,'SCHEMA_TRIAL_INPUT_INVALID'))}
+    return startLiveRun(checkedProgram,{trial:checkedInput},signal,false,performance.now()+MVU_SCHEMA_BOUNDS.parentDeadlineMs,
+      false,scopeBinding)
+  }
+  async function startLiveRun(program:MvuExecutableProgramV4,setup:{realmEpoch:string;loadFrame:MvuSchemaRealmLoadFrameV4;prefix:readonly MvuSchemaTraceStepRecordV4[];
+    requestedStep:MvuSchemaTraceRequestedStepV4;loadAnchorSha256:string},
     signal:AbortSignal|undefined,hot:boolean,deadline:number,closeAfterFirst:boolean,
-    scopeBinding?:ScopeBindingV2):Promise<MvuSchemaOpenManualRunResultV4> {
-    const stateOnly=schemaExecutionViewV4(program).stateOnly
+    scopeBinding?:ScopeBindingV2):Promise<MvuSchemaOpenManualRunResultV4>
+  async function startLiveRun(program:MvuExecutableProgramV4|null,setup:{trial:MvuSchemaTrialInputV4},
+    signal:AbortSignal|undefined,hot:boolean,deadline:number,closeAfterFirst:boolean,
+    scopeBinding?:ScopeBindingV2):Promise<MvuSchemaOpenTrialResultV4>
+  async function startLiveRun(program:MvuExecutableProgramV4|null,setup:{realmEpoch:string;loadFrame:MvuSchemaRealmLoadFrameV4;prefix:readonly MvuSchemaTraceStepRecordV4[];
+    requestedStep:MvuSchemaTraceRequestedStepV4;loadAnchorSha256:string}|{trial:MvuSchemaTrialInputV4},
+    signal:AbortSignal|undefined,hot:boolean,deadline:number,closeAfterFirst:boolean,
+    scopeBinding?:ScopeBindingV2):Promise<MvuSchemaOpenManualRunResultV4|MvuSchemaOpenTrialResultV4> {
+    const trial='trial' in setup?setup.trial:undefined,manual='trial' in setup?undefined:setup,
+      realmEpoch=manual?.realmEpoch,loadFrame=manual?.loadFrame,loadAnchorSha256=manual?.loadAnchorSha256
+    let replayPrefix=manual?.prefix??[],requested=manual?.requestedStep,
+      trialInput:MvuSchemaEvaluationInputV4|undefined=trial
+    type LiveResult=MvuSchemaNextRunResultV4|MvuSchemaTrialResultV4
+    const stateOnly=program===null||schemaExecutionViewV4(program).stateOnly
     const manualProgram=hot?null:program
     const sendEnvelope=schemaEnvelopeWireSenderV4()
     const scopes=scopeTransportV2(program,scopeBinding,realmEpoch)
-    let wire:MvuSchemaHotWorkerSeedV4
+    let wire:MvuSchemaHotWorkerSeedV4|SchemaMaterialEnvelopeV4<MvuSchemaWorkerRequestV4>
     try {
-      wire={kind:'live-open',mode:hot?'hot':'manual-stream',
-        header:sendEnvelope({program:stateOnly?{...program,source:withoutMaterial(program.source)}:program,
-          ...stateOnly?{}:{libraries}},
+      wire=trial?sendEnvelope({...program===null?{program:null,registration:'none' as const}:
+        {program:stateOnly?{...program,source:withoutMaterial(program.source)}:program},
+        input:trial,response:'trial-stream',libraries,...trial.scopeReadRef?{scopeObjects:scopes.capture(trial)}:{}},
+        2*MVU_SCHEMA_BOUNDS.programBytes+MVU_SCHEMA_BOUNDS.inputBytes,evaluationBounds)
+        :{kind:'live-open',mode:hot?'hot':'manual-stream',
+        header:sendEnvelope({program:stateOnly?{...program!,source:withoutMaterial(program!.source)}:program!,
+          libraries},
           2*MVU_SCHEMA_BOUNDS.programBytes,evaluationBounds),
-        load:sendEnvelope(stateOnly?withoutMaterial(loadFrame):loadFrame,MVU_SCHEMA_BOUNDS.inputBytes),
-        ...loadFrame.scopeReadRef?{scopeObjects:scopes.capture(loadFrame,loadFrame,true)}:{}}
+        load:sendEnvelope(stateOnly?withoutMaterial(loadFrame!):loadFrame!,MVU_SCHEMA_BOUNDS.inputBytes),
+        ...loadFrame!.scopeReadRef?{scopeObjects:scopes.capture(loadFrame!,loadFrame,true)}:{}}
     }catch(error) {scopes.dispose();return unavailable(safeCode(error instanceof Error?error.message:undefined,'SCHEMA_DATA_INVALID'))}
     let worker:Worker
     try {deps.beforeWorkerLoad?.()}catch(error) {scopes.dispose();throw error}
@@ -763,12 +774,12 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
         resourceLimits:{maxOldGenerationSizeMb:256,stackSizeMb:4}})
     }catch {scopes.dispose();return unavailable('SCHEMA_WORKER_UNAVAILABLE')}
 
-    const material=hot?undefined:requested.frame.material
+    const material=hot?undefined:requested?.frame.material
     let ordinal=replayPrefix.length+1
     let previous=replayPrefix.at(-1)?.stepSha256??loadAnchorSha256
     let state:'processing'|'parked'|'closing'|'closed'='processing'
     let ownerSignal:AbortSignal|undefined,stopResult:RunnerFailure|undefined,closeFault:Error|undefined
-    let pending=Promise.withResolvers<MvuSchemaNextRunResultV4>()
+    let pending=Promise.withResolvers<LiveResult>()
     const first=pending.promise,done=Promise.withResolvers<void>()
     type CloseReceipt=Extract<MvuSchemaManualWorkerResponseV4,{kind:'manual-closed'}>
     const receipt=Promise.withResolvers<CloseReceipt|undefined>()
@@ -796,9 +807,9 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
           // evaluateTrace's outer owner retains its own evaluation input.
           replayPrefix=[]
           message={kind:'hot-advance',step:sendEnvelope(stateOnly?
-            {...requested,frame:withoutMaterial(requested.frame)}:requested,MVU_SCHEMA_BOUNDS.inputBytes)}
+            {...requested!,frame:withoutMaterial(requested!.frame)}:requested!,MVU_SCHEMA_BOUNDS.inputBytes)}
         }
-        const target=historical??requested
+        const target=historical??requested!
         if(target.frame.input.scopeReadRef)message.scopeObjects=scopes.capture(target.frame.input,target.frame)
       }catch(error) {
         forceClose(unavailable(safeCode(error instanceof Error?error.message:undefined,'SCHEMA_DATA_INVALID')));return
@@ -855,9 +866,13 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
       const waiting=pending
       void finishClose().then(()=>{
         if(stopResult){waiting.resolve(stopResult);return}
-        if(result?.kind==='next-output') {
+        if(trial&&result?.kind==='output') {
+          try {waiting.resolve({kind:'evaluated-trial',
+            output:publicTrialOutput(outputData<MvuSchemaGuestOutputV4|MvuSchemaTrialOutputV4>(result.json))})}
+          catch{waiting.resolve(unavailable('SCHEMA_OUTPUT_INVALID'))}
+        }else if(result?.kind==='next-output') {
           try {
-            const record=traceRecord(requested,ordinal,previous,outputData(result.json))
+            const record=traceRecord(requested!,ordinal,previous!,outputData(result.json))
             waiting.resolve({kind:'evaluated-next',record})
           }catch(error) {waiting.resolve(unavailable(safeCode(error instanceof Error?error.message:undefined,
             'SCHEMA_TRACE_OUTPUT_INVALID')))}
@@ -895,17 +910,19 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
         const value=workerMessageData(message) as MvuSchemaManualWorkerResponseV4
         if(value.kind==='hot-ready') {
           exact(value,['kind'])
-          sendStreamStep()
+          if(trial)postMessage({kind:'trial-advance',input:trialInput!})
+          else sendStreamStep()
         }else if(value.kind==='hot-replayed') {
           exact(value,['kind','stepSha256'])
           if(value.stepSha256!==expectedReplaySha256)throw Error('SCHEMA_TRACE_PREFIX_MISMATCH')
           replayIndex++;sendStreamStep()
         }else if(value.kind==='manual-phase') {
           exact(value,['kind','json'])
-          const output=outputData(value.json),record=traceRecord(requested,ordinal,previous,output)
+          const trialOutput=trial?publicTrialOutput(outputData<MvuSchemaGuestOutputV4|MvuSchemaTrialOutputV4>(value.json)):undefined,
+            output=trial?undefined:outputData(value.json),record=trial?undefined:traceRecord(requested!,ordinal,previous!,output!)
           if(coldExpired()){forceClose(unavailable('SCHEMA_COLD_REPLAY_TIMEOUT'));return}
           if(processingExpired()){forceClose(unavailable('SCHEMA_HARD_TIMEOUT'));return}
-          pauseProcessing();state='parked';previous=record.stepSha256
+          pauseProcessing();state='parked';if(record)previous=record.stepSha256
           if(!closeAfterFirst)finishColdRecovery()
           if(hot) {
             worker.unref()
@@ -913,7 +930,7 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
             // cancellation signal must not own a later, unrelated phase.
             ownerSignal?.removeEventListener('abort',abort);ownerSignal=undefined
           }
-          pending.resolve({kind:'evaluated-next',record})
+          pending.resolve(trial?{kind:'evaluated-trial',output:trialOutput!}:{kind:'evaluated-next',record:record!})
         }else if(value.kind==='manual-closed') {
           if(value.cleanup==='completed')exact(value,['kind','cleanup',...(value.result?['result']:[])])
           else if(value.cleanup==='failed')exact(value,['kind','cleanup','code'])
@@ -933,39 +950,59 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
     })
     worker.once('error',()=>forceClose(unavailable('SCHEMA_WORKER_UNAVAILABLE')))
     worker.once('exit',()=>{if(!receivedClose)forceClose(unavailable('SCHEMA_WORKER_EXIT'))})
-    const run:MvuSchemaManualRunV4={
+    let trialAdvance:{ordinal:number;sha256:string;result:Promise<LiveResult>}|undefined
+    const run:{
+      advance(step:MvuSchemaManualRequestedStepV4|MvuSchemaTrialResumeV4,nextSignal?:AbortSignal):Promise<LiveResult>
+      close():Promise<void>
+    }={
       async advance(step,nextSignal) {
+        if(trial) {
+          if(state==='closing'||state==='closed')return stopResult??unavailable('SCHEMA_TRIAL_CLOSED')
+          if(signal?.aborted||nextSignal?.aborted){await requestClose(cancelled()).catch(()=>undefined);return cancelled()}
+          const update=step as MvuSchemaTrialResumeV4
+          if(update.encoding!=='native-mvu-196-update-resume-v1')return unavailable('SCHEMA_TRIAL_INPUT_INVALID')
+          if(trialAdvance?.ordinal===update.yieldOrdinal) {
+            return trialAdvance.sha256===recordSha256(update)?trialAdvance.result:unavailable('SCHEMA_UPDATE_CONTINUATION_INVALID')
+          }
+        }
         if(state!=='parked')return closeFault?unavailable(safeCode(closeFault.message,'SCHEMA_WORKER_CLEANUP')):
           stopResult??unavailable('SCHEMA_MANUAL_RUN_CLOSED')
-        let fresh:MvuSchemaManualRequestedStepV4|MvuSchemaTraceRequestedStepV4
+        let fresh:MvuSchemaManualRequestedStepV4|MvuSchemaTraceRequestedStepV4|undefined
+        let trialUpdate:MvuSchemaTrialResumeV4|undefined
         try {
           // A hot run is private to evaluateNext, whose parser already owns
           // this complete frame. The public manual entry still owns its DATA.
-          fresh=hot?step:cloneSchemaData(step,MVU_SCHEMA_BOUNDS.inputBytes) as MvuSchemaManualRequestedStepV4
-          if(!hot) {
-            exact(fresh,['eventId','frame']);exact(fresh.frame,['ownerSessionId','sourceNativeCutSha256','input'])
-            if(!identifier(fresh.eventId)||!identifier(fresh.frame.ownerSessionId)||!hash(fresh.frame.sourceNativeCutSha256)) {
+          if(trial){
+            trialUpdate=cloneSchemaData(step,MVU_SCHEMA_BOUNDS.inputBytes) as MvuSchemaTrialResumeV4
+            assertMvu196UpdateInputV1(trialUpdate)
+            trialInput={...trial,update:trialUpdate}
+          }else fresh=hot?step as MvuSchemaManualRequestedStepV4:cloneSchemaData(step,MVU_SCHEMA_BOUNDS.inputBytes) as MvuSchemaManualRequestedStepV4
+          if(!trial&&!hot) {
+            exact(fresh!,['eventId','frame']);exact(fresh!.frame,['ownerSessionId','sourceNativeCutSha256','input'])
+            if(!identifier(fresh!.eventId)||!identifier(fresh!.frame.ownerSessionId)||!hash(fresh!.frame.sourceNativeCutSha256)) {
               throw Error('SCHEMA_TRACE_FRAME_INVALID')
             }
-            fresh.frame.input=evaluationInputData(fresh.frame.input,manualProgram!)
-            if(fresh.frame.input.encoding==='native-mvu-author-schema-phase-input-v4') {
-              validateSchemaScopeProgramFrameV4(manualProgram!,fresh.frame.input.scopeReadFrame,fresh.frame)
+            fresh!.frame.input=evaluationInputData(fresh!.frame.input,manualProgram!)
+            if(fresh!.frame.input.encoding==='native-mvu-author-schema-phase-input-v4') {
+              validateSchemaScopeProgramFrameV4(manualProgram!,fresh!.frame.input.scopeReadFrame,fresh!.frame)
             }
           }
         }catch(error) {return unavailable(safeCode(error instanceof Error?error.message:undefined,'SCHEMA_TRACE_INPUT_INVALID'))}
-        pending=Promise.withResolvers<MvuSchemaNextRunResultV4>()
+        pending=Promise.withResolvers<LiveResult>()
         const result=pending.promise
-        bindSignal(nextSignal)
+        if(trialUpdate)trialAdvance={ordinal:trialUpdate.yieldOrdinal,sha256:recordSha256(trialUpdate),result}
+        const advanceSignal=trial&&signal&&nextSignal?AbortSignal.any([signal,nextSignal]):nextSignal??(trial?signal:undefined)
+        bindSignal(advanceSignal)
         if(state==='parked') {
-          requested={eventId:fresh.eventId,frame:{...fresh.frame,material:hot?
-            (fresh as MvuSchemaTraceRequestedStepV4).frame.material:material!}};ordinal++
+          if(!trial){requested={eventId:fresh!.eventId,frame:{...fresh!.frame,material:hot?
+            (fresh as MvuSchemaTraceRequestedStepV4).frame.material:material!}};ordinal++}
           if(hot)activeMs=0
           state='processing';startProcessing()
           let message:MvuSchemaManualWorkerMessageV4
-          try {message=hot?{kind:'hot-advance',step:sendEnvelope(stateOnly?
-            {...requested,frame:withoutMaterial(requested.frame)}:requested,MVU_SCHEMA_BOUNDS.inputBytes)}:
-            {kind:'advance',step:fresh}
-            if(requested.frame.input.scopeReadRef)message.scopeObjects=scopes.capture(requested.frame.input,requested.frame)
+          try {message=trial?{kind:'trial-advance',input:trialInput!}:hot?{kind:'hot-advance',step:sendEnvelope(stateOnly?
+            {...requested!,frame:withoutMaterial(requested!.frame)}:requested!,MVU_SCHEMA_BOUNDS.inputBytes)}:
+            {kind:'advance',step:fresh!}
+            if(!trial&&requested!.frame.input.scopeReadRef)message.scopeObjects=scopes.capture(requested!.frame.input,requested!.frame)
           }
           catch(error) {
             forceClose(unavailable(safeCode(error instanceof Error?error.message:undefined,'SCHEMA_DATA_INVALID')))
@@ -978,10 +1015,11 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
       close:()=>requestClose(),
     }
     active.set(worker,{finish:()=>{void requestClose(unavailable('SCHEMA_RUNNER_DISPOSED')).catch(()=>undefined)},closed:done.promise})
-    coldTimer=setTimeout(()=>forceClose(unavailable('SCHEMA_COLD_REPLAY_TIMEOUT')),Math.max(0,deadline-performance.now()))
+    if(!trial)coldTimer=setTimeout(()=>forceClose(unavailable('SCHEMA_COLD_REPLAY_TIMEOUT')),Math.max(0,deadline-performance.now()))
     startProcessing();bindSignal(signal)
     const result=await first
-    return result.kind==='evaluated-next'?{kind:'opened-manual-run',run,record:result.record}:result
+    if(result.kind==='evaluated-trial')return {kind:'opened-trial',run:run as MvuSchemaTrialRunV4,output:result.output}
+    return result.kind==='evaluated-next'?{kind:'opened-manual-run',run:run as MvuSchemaManualRunV4,record:result.record}:result
   }
   async function verifyEvaluation(program:MvuExecutableProgramV4,evaluation:MvuSchemaEvaluationV4,signal?:AbortSignal,
     scopeBinding?:ScopeBindingV2) {
@@ -1037,7 +1075,7 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
       } catch {return false}
   }
   const runner:MvuSchemaRunnerV4={identity,scopeInputProtocols,
-    evaluate,evaluateTrace,evaluateNext,openManualRun,verifyEvaluation,verifyTrace,
+    evaluate,evaluateTrace,evaluateNext,openManualRun,openTrial,verifyEvaluation,verifyTrace,
     bindOwnedNext(reader) {
       return {evaluateNext:(program,input,signal)=>evaluateNextInput(program,input,signal,reader)}
     },
@@ -1048,6 +1086,7 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
         evaluateTrace:(program,input,signal)=>evaluateTrace(program,input,signal,binding),
         evaluateNext:(program,input,signal)=>evaluateNextInput(program,input,signal,undefined,binding),
         openManualRun:(program,input,signal)=>openManualRun(program,input,signal,binding),
+        openTrial:(program,input,signal)=>openTrial(program,input,signal,binding),
         verifyEvaluation:(program,evaluation,signal)=>verifyEvaluation(program,evaluation,signal,binding),
         verifyTrace:(program,evaluation,signal)=>verifyTrace(program,evaluation,signal,binding),
         bindOwnedNext:reader=>({evaluateNext:(program,input,signal)=>evaluateNextInput(program,input,signal,reader,binding)}),

@@ -6,13 +6,14 @@ import { schemaPhaseErrorPolicyForProgramV4 } from './tavern-mvu-schema-program-
 import { mvuStateCurrentHeadKey } from './roleplay-mvu-state.js';
 import { mvuNumericalPublicationMatches } from './roleplay-mvu-numerical-publication.js';
 import { createOpeningVariantContinuationReader, createOpeningVariantDataReader } from './roleplay-opening-variant-activation.js';
-import { createRoleplayMvuSchemaJournal, freezeSchemaJournalData, schemaEpochExecution, isAuthorHostJournalReadyV5, schemaNativeCutSha256, schemaJournalServerTailSha256, schemaJournalHostFrontierSha256 } from './roleplay-mvu-schema-journal.js';
-import { createRoleplayMvuSchemaReplay, schemaExecutionServerTailSha256, schemaExecutionHostFrontierSha256 } from './roleplay-mvu-schema-replay.js';
+import { createRoleplayMvuSchemaJournal, freezeSchemaJournalData, schemaEpochExecution, schemaNativeCutSha256, schemaJournalServerTailSha256, schemaJournalHostFrontierSha256 } from './roleplay-mvu-schema-journal.js';
+import { schemaExecutionServerTailSha256, schemaExecutionHostFrontierSha256 } from './roleplay-mvu-schema-replay.js';
 import { schemaTraceRequestedStep } from './roleplay-mvu-schema-executor-types.js';
 import { schemaOriginalReplayCompilationInput } from './roleplay-mvu-schema-source.js';
 import { createRoleplayMvuSchemaPlayer } from './roleplay-mvu-schema-player.js';
-import { readMvuSchemaPlayerRequest, makeMvuSchemaPlayerOperation, validateMvuSchemaPlayerOperation, verifyMvuSchemaPlayerMarker, mvuSchemaPlayerOperationKey, mvuSchemaPlayerCompletionKey, mvuSchemaPlayerPlanKey, mvuSchemaPlayerRefusalKey, mvuSchemaPlayerEventKey, mvuSchemaPlayerSettlementKey, makeMvuSchemaPlayerCompletion, makeMvuSchemaPlayerRefusal, validateMvuSchemaPlayerRefusal, readMvuSchemaPlayerCompletedFacts, MVU_SCHEMA_PLAYER_PHASES } from './roleplay-mvu-schema-player-types.js';
-import { schemaScopeReadFactsEqual, schemaScopeMessageTargetEqual } from './roleplay-mvu-schema-scope-facts.js';
+import { readMvuSchemaPlayerRequest, makeMvuSchemaPlayerOperation, validateMvuSchemaPlayerOperation, verifyMvuSchemaPlayerMarker, mvuSchemaPlayerOperationKey, mvuSchemaPlayerCompletionKey, mvuSchemaPlayerPlanKey, mvuSchemaPlayerRefusalKey, mvuSchemaPlayerEventKey, mvuSchemaPlayerSettlementKey, makeMvuSchemaPlayerCompletion, makeMvuSchemaPlayerRefusal, validateMvuSchemaPlayerRefusal, readMvuSchemaPlayerCompletedFacts, mvuSchemaPlayerPhases } from './roleplay-mvu-schema-player-types.js';
+import { mvuPlayerRequestValues } from './roleplay-mvu-player-facts.js';
+import { schemaScopeMessageTargetEqual } from './roleplay-mvu-schema-scope-facts.js';
 import { createMvuScopeReadRefV2 } from './tavern-mvu-scope-view-v2.js';
 import { sessionHistoryCut } from './session-history.js';
 const same = (a, b) => recordSha256(a) === recordSha256(b);
@@ -96,11 +97,15 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
             if (rows.length > 4096)
                 return { code: 'SCHEMA_PLAYER_HISTORY_UNPROVEN', completedByEventKey };
             const operations = rows.filter(([key]) => key.startsWith(`${prefix}operation-`));
-            const publishedKeys = new Set();
+            const publishedKeys = new Set(), allowedKeys = new Set();
             for (const [key, row] of operations) {
                 const operation = validateMvuSchemaPlayerOperation(row);
                 if (key !== mvuSchemaPlayerOperationKey(sid, operation.operationId) || operation.sessionId !== sid)
                     fail('SCHEMA_PLAYER_HISTORY_UNPROVEN');
+                allowedKeys.add(key);
+                allowedKeys.add(mvuSchemaPlayerCompletionKey(sid, operation.operationId));
+                allowedKeys.add(mvuSchemaPlayerPlanKey(sid, operation.operationId));
+                allowedKeys.add(mvuSchemaPlayerRefusalKey(sid, operation.operationId));
                 const refusal = deps.branch.get(mvuSchemaPlayerRefusalKey(sid, operation.operationId));
                 if (refusal !== undefined) {
                     validateMvuSchemaPlayerRefusal(refusal, operation);
@@ -118,8 +123,7 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
                 }
             }
             for (const [key] of rows)
-                if (!operations.some(([, row]) => [mvuSchemaPlayerOperationKey(sid, row.operationId), mvuSchemaPlayerCompletionKey(sid, row.operationId), mvuSchemaPlayerPlanKey(sid, row.operationId),
-                    mvuSchemaPlayerRefusalKey(sid, row.operationId)].includes(key)))
+                if (!allowedKeys.has(key))
                     fail('SCHEMA_PLAYER_HISTORY_UNPROVEN');
             const statusPrefix = `${sid}__mvu-state-schema-player-`;
             for (const [key] of deps.status.entriesPrefix?.(statusPrefix) ?? deps.status.entries(statusPrefix))
@@ -148,7 +152,8 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
         return pendingCode(sid);
     }
     function stateRows(sid) {
-        return [...deps.status.entries()].filter(([key]) => key.startsWith(`${sid}__mvu-`)
+        const prefix = `${sid}__mvu-`;
+        return [...(deps.status.entriesPrefix?.(prefix) ?? deps.status.entries(prefix))].filter(([key]) => key.startsWith(prefix)
             && !key.startsWith(`${sid}__mvu-schema-`));
     }
     function rowsCurrent(owner) {
@@ -201,12 +206,16 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
                 || !deps.source.frameCurrent(owner.basis.original, owner.basis.frame) || !rowsCurrent(owner)
                 || !same(deps.branch.get(mvuSchemaPlayerOperationKey(sid, owner.operation.operationId)), owner.operation))
                 return false;
+            if (owner.operation.request.action === 'replace-envelope' && owner.operation.ordinaryScopes) {
+                // Own leaf publication advances numerical refs. Ordinary roots remain
+                // this operation's original fence through the final settlement write.
+                if (!owner.basis.ordinaryPublicationCurrent(owner.operation.ordinaryScopes))
+                    return false;
+            }
             const marker = markerFor(owner.operation, reservation.session);
             if (!marker)
                 return false;
             verifyMvuSchemaPlayerMarker(owner.operation, marker, nativeCut(reservation.session));
-            if (owner.plan.schemaVersion !== 10 && !schemaScopeReadFactsEqual(owner.plan.scopeReadFrame, owner.basis.scopeReadFrame(owner.plan.initialCut)))
-                return false;
             if (owner.publication && nativeCut(reservation.session).length !== owner.publication.event.frontier.nativeCut)
                 return false;
             return same(owner.plan.marker, { seq: marker.seq, sha256: recordSha256(marker) });
@@ -253,16 +262,13 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
         }
     }
     async function engine(basis) {
-        const ready = basis.ready, { program, runner } = schemaEpochExecution(ready.epoch);
-        const tuple = isAuthorHostJournalReadyV5(ready) ? ready.epoch.server.executor :
-            { compiler: program.compiler, bridge: program.bridge, libraries: program.libraries, runner };
-        const host = isAuthorHostJournalReadyV5(ready) ? ready.epoch.host : undefined;
+        const ready = basis.ready, tuple = ready.epoch.server.executor, host = ready.epoch.host;
         const runtime = await deps.protectedRuntime(tuple, host);
         if (disposed)
             fail('SCHEMA_RUNTIME_DISPOSED');
-        if (host && (!('host' in runtime) || runtime.executorVersion !== 4 || !same(runtime.host.identity, host)
+        if (!('host' in runtime) || runtime.executorVersion !== 4 || !same(runtime.host.identity, host)
             || runtime.implementationKey !== recordSha256(host) || !same(tuple, { compiler: runtime.compiler.identity,
-            bridge: runtime.bridge, libraries: runtime.libraries, runner: runtime.runner.identity, stateLoader: runtime.stateLoader }))) {
+            bridge: runtime.bridge, libraries: runtime.libraries, runner: runtime.runner.identity, stateLoader: runtime.stateLoader })) {
             fail('SCHEMA_IMPLEMENTATION_CHANGED');
         }
         let driver = drivers.get(runtime.implementationKey);
@@ -284,8 +290,7 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
                     // The real maintenance callback already holds the one Source lock.
                     return action();
                 } };
-            driver = 'host' in runtime ? runtime.host.createReplay(bindings) : createRoleplayMvuSchemaReplay({ ...bindings,
-                compiler: runtime.compiler, runner: runtime.runner, executorVersion: runtime.executorVersion });
+            driver = runtime.host.createReplay(bindings);
             drivers.set(runtime.implementationKey, driver);
         }
         return driver;
@@ -306,7 +311,7 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
             const owner = tokens.get(token);
             if (!owner || !ownerCurrent(owner))
                 return { kind: 'blocked', code: 'SCHEMA_PLAYER_PERMISSION_REVOKED' };
-            const index = MVU_SCHEMA_PLAYER_PHASES.indexOf(phase);
+            const index = mvuSchemaPlayerPhases(plan.operation.request).indexOf(phase);
             if (index !== owner.associations.length)
                 fail('SCHEMA_PLAYER_PHASE_ORDER');
             const selector = plan.selectors[index], session = owner.reservation.session, actual = nativeCut(session);
@@ -316,31 +321,15 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
             const ready = readJournal();
             if (ready.kind !== 'ready')
                 fail(ready.code);
-            const executorVersion = ready.epoch.schemaVersion === 5 ? 4 : ready.epoch.schemaVersion;
-            if (executorVersion !== plan.executorVersion)
-                fail('SCHEMA_EXECUTOR_VERSION_MISMATCH');
-            let capturedInput = input;
-            {
-                if (input.scopeReadRef) {
-                    if (plan.schemaVersion !== 10 || ready.epoch.encoding !== 'native-mvu-schema-epoch-v5-scope-ref-v2') {
-                        fail('SCHEMA_SCOPE_BASIS_UNPROVEN');
-                    }
-                    const expected = createMvuScopeReadRefV2({ baseRef: plan.scopeReadRef.baseRef, tailRef: plan.scopeReadRef.tailRef,
-                        sourceNativeCutSha256: recordSha256(cut) });
-                    if (input.scopeReadRef.baseRef.sha256 !== expected.baseRef.sha256
-                        || input.scopeReadRef.tailRef.sha256 !== expected.tailRef.sha256)
-                        fail('SCHEMA_SCOPE_BASIS_UNPROVEN');
-                    capturedInput = Object.freeze({ ...input, scopeReadRef: expected });
-                }
-                else {
-                    if (plan.schemaVersion === 10 || !input.scopeReadFrame)
-                        fail('SCHEMA_SCOPE_BASIS_UNPROVEN');
-                    const expected = owner.basis.scopeReadFrame(cut);
-                    if (!schemaScopeReadFactsEqual(expected, plan.scopeReadFrame))
-                        fail('SCHEMA_SCOPE_BASIS_UNPROVEN');
-                    capturedInput = Object.freeze({ ...input, scopeReadFrame: freezeSchemaJournalData(expected) });
-                }
-            }
+            if (input.encoding !== 'native-mvu-author-schema-phase-input-v4-scope-ref-v2'
+                || ready.epoch.encoding !== 'native-mvu-schema-epoch-v5-scope-ref-v2')
+                fail('SCHEMA_SCOPE_BASIS_UNPROVEN');
+            const expected = createMvuScopeReadRefV2({ baseRef: plan.scopeReadRef.baseRef, tailRef: plan.scopeReadRef.tailRef,
+                sourceNativeCutSha256: recordSha256(cut) });
+            if (input.scopeReadRef.baseRef.sha256 !== expected.baseRef.sha256
+                || input.scopeReadRef.tailRef.sha256 !== expected.tailRef.sha256)
+                fail('SCHEMA_SCOPE_BASIS_UNPROVEN');
+            const capturedInput = Object.freeze({ ...input, scopeReadRef: expected });
             // Source/Journal already own the large immutable material and Original.
             // Capture only this phase's new input and wrappers before compiler awaits.
             const requestedStep = schemaTraceRequestedStep(selector.batchId, { ownerSessionId: session.id, sourceNativeCutSha256: recordSha256(cut), material: owner.basis.frame.material }, capturedInput);
@@ -425,8 +414,7 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
     }
     async function response(request, outcome, replayed, code, event) {
         const last = event?.phases.at(-1)?.output;
-        const refusalCode = last?.kind === 'refused' ? last.diagnostics[0]?.code : event?.commandRefusal?.code
-            ?? (event?.reducer?.result.kind === 'rejected' ? event.reducer.result.code : undefined);
+        const refusalCode = last?.kind === 'refused' ? last.diagnostics[0]?.code : undefined;
         return { ok: !code, numericalState: await deps.observe(request.sessionId), operation: { operationId: request.operationId,
                 payloadSha256: recordSha256(request), outcome, replayed, ...(refusalCode ? { refusalCode } : {}) }, ...(code ? { code, error: code } : {}) };
     }
@@ -530,7 +518,7 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
                                 refusedBeforeAdmission = true;
                                 fail('MVU_PLAYER_STALE_BASE');
                             }
-                            operation = makeMvuSchemaPlayerOperation(request, basis.base);
+                            operation = makeMvuSchemaPlayerOperation(request, basis.base, basis.ordinaryPublication(request));
                             if (events(session).at(-1)?.seq !== request.expected.observedNativeSeq) {
                                 refusedBeforeAdmission = true;
                                 fail('MVU_PLAYER_STALE_NATIVE');
@@ -545,7 +533,8 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
                                 sessionId: sid, operationId: request.operationId, requestSha256: operation.requestSha256,
                                 operationSha256: operation.operationSha256, sourceSha256: operation.base.sourceSha256,
                                 rootSha256: recordSha256(operation.base.root), baseSnapshotSha256: operation.base.stateSnapshotSha256,
-                                replacementValuesSha256: recordSha256(request.values), observedNativeSeq: request.expected.observedNativeSeq });
+                                replacementValuesSha256: recordSha256(mvuPlayerRequestValues(request)),
+                                observedNativeSeq: request.expected.observedNativeSeq });
                             if (!await deps.flush(session))
                                 fail('MVU_PLAYER_WRITE_UNKNOWN');
                             signal.throwIfAborted();
@@ -556,15 +545,13 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
                                 stopGeneration: 'notice' in agent.lookupInputStop() ? agent.lookupInputStop().notice.stopSequence : 0,
                                 anchor: { kind: 'manual', operationId: request.operationId, requestSha256: operation.requestSha256,
                                     observedNativeSeq: request.expected.observedNativeSeq } };
-                            const ready = basis.ready, executorVersion = ready.epoch.schemaVersion === 5 ? 4 : ready.epoch.schemaVersion;
-                            const errorPolicy = isAuthorHostJournalReadyV5(ready)
-                                ? schemaPhaseErrorPolicyForProgramV4(ready.epoch.program.serverProgram) : undefined;
-                            const scopeReadRef = basis.scopeReadRef ? await basis.scopeReadRef(initialCut) : undefined;
+                            const ready = basis.ready, errorPolicy = schemaPhaseErrorPolicyForProgramV4(ready.epoch.program.serverProgram);
+                            const scopeReadRef = await basis.scopeReadRef(initialCut);
                             if (!reservation.inSource || reservation.abort.signal.aborted)
                                 fail('SCHEMA_PLAYER_PERMISSION_REVOKED');
-                            const plan = transaction.makePlan(operation, { seq: marker.seq, sha256: recordSha256(marker) }, frame, initialCut, marker.time, executorVersion, !scopeReadRef ? basis.scopeReadFrame(initialCut) : undefined, isAuthorHostJournalReadyV5(ready) ? { epoch: ready.epochRef,
+                            const plan = transaction.makePlan(operation, { seq: marker.seq, sha256: recordSha256(marker) }, frame, initialCut, marker.time, { epoch: ready.epochRef,
                                 serverProgramSha256: ready.epoch.program.serverProgram.programSha256,
-                                ...(errorPolicy && errorPolicy !== 'atomic-refusal' ? { errorPolicy } : {}) } : undefined, scopeReadRef);
+                                ...(errorPolicy !== 'atomic-refusal' ? { errorPolicy } : {}) }, scopeReadRef);
                             await putExact(mvuSchemaPlayerPlanKey(sid, operation.operationId), plan);
                             const owner = { reservation, basis, operation, plan, token: Object.freeze({}),
                                 baseline: basis.closedHistoryProof ? new Map() : new Map(stateRows(sid).map(([key, row]) => [key, recordSha256(row)])), associations: [] };

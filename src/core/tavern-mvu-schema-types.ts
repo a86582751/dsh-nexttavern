@@ -15,7 +15,7 @@ export interface MvuSchemaImplementationIdentity {
   implementationSha256:string
 }
 export interface MvuSchemaLibraryIdentity {
-  kind:'zod'|'lodash'
+  kind:'zod'|'lodash'|'mvu-196'
   packageName:string
   version:string
   bundleSha256:string
@@ -23,6 +23,11 @@ export interface MvuSchemaLibraryIdentity {
   globalName:string
 }
 export interface MvuSchemaLibraryBytes extends MvuSchemaLibraryIdentity {code:string}
+export const MVU_SCHEMA_LIBRARY_PINS=Object.freeze({
+  zod:{packageName:'zod',version:'4.4.3',globalName:'z'},
+  lodash:{packageName:'lodash',version:'4.18.1',globalName:'_'},
+  'mvu-196':{packageName:'nexttavern-mvu-196-core',version:'0.196.0-d03b7dc8',globalName:'NextTavernMvu196'},
+})
 export interface MvuSchemaImportBinding {
   specifier:string
   kind:MvuSchemaDependencyKind
@@ -58,10 +63,8 @@ export interface MvuSchemaDiagnostic {
   /** No original author code, values, stack or arbitrary guest message. */
   issuePath?:readonly (string|number)[]
 }
-/** The Core driver fixes the supported helper event order. A phase is not an
- * instruction to execute model text; only parsed JSON commands cross here. */
-export type MvuSchemaPhase='initialization'|'command-parsed'|'commands-parsed'
-  |'update-ended'|'manual-replacement'|'external-pack-replacement'|'hook-reconcile'
+/** Guest phases are distinct from the updater's Browser event stages. */
+export type MvuSchemaPhase='initialization'|'manual-replacement'|'external-pack-replacement'|'update-core'
 /** Realm/cut fields are comparison data supplied by Core, never capabilities.
  * Core must prove the load boundary and complete execution journal, including
  * attempts that changed closures without a successful numerical commit. */

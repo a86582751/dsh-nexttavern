@@ -6,8 +6,7 @@ import type * as TypeScript from 'typescript'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import {C_SCHEMA_IMPORT_POLICY_V4} from './tavern-mvu-schema-program-v4.js'
 import type {MvuSchemaDiagnostic} from './tavern-mvu-schema-types.js'
-import type {MvuSchemaCompilationInputV4, RawAuthorScriptV4,RegisteredCommandPolicyBindingV1,
-  InitializationWriteBindingV1}
+import type {MvuSchemaCompilationInputV4, RawAuthorScriptV4,RegisteredCommandPolicyBindingV1}
   from './tavern-mvu-author-execution-types-v4.mjs'
 
 export class SchemaAstRefusalV4 extends Error {
@@ -225,8 +224,7 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
   input: Pick<MvuSchemaCompilationInputV4,'bridge'|'libraries'>,
   file: TypeScript.SourceFile, checker: TypeScript.TypeChecker,ordinal:number,
   facts?: BoundSchemaAstFactsV4): {
-    kind: 'schema'; javascript: string;commandPolicyBindings:readonly RegisteredCommandPolicyBindingV1[];
-    initializationWriteBindings:readonly InitializationWriteBindingV1[]}
+    kind: 'schema'; javascript: string;commandPolicyBindings:readonly RegisteredCommandPolicyBindingV1[]}
     | {kind: 'not-schema'} {
   if (ts.version !== '5.9.3' || input.bridge.version !== 4 || file.text !== script.source) {
     fail('MVU_SCHEMA_V4_AST_IDENTITY', script, file)
@@ -237,26 +235,6 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
     const libraries = new Map(input.libraries.map(item => [item.kind, item.bundleSha256]))
     const redirects = new Map<TypeScript.Node, TypeScript.Expression>()
     const commandPolicyBindings:RegisteredCommandPolicyBindingV1[]=[]
-    const initializationWriteBindings:InitializationWriteBindingV1[]=[]
-    const literalName=(name:TypeScript.PropertyName)=>ts.isIdentifier(name)||ts.isStringLiteral(name)?name.text:undefined
-    const initializationWrite=(call:TypeScript.CallExpression)=>{
-      const payload=call.arguments[0],option=call.arguments[1]
-      const field=payload&&ts.isObjectLiteralExpression(payload)&&payload.properties.length===1
-        ?payload.properties[0]:undefined
-      const type=option&&ts.isObjectLiteralExpression(option)&&option.properties.length===1
-        ?option.properties[0]:undefined
-      if(call.arguments.length!==2||call.typeArguments?.length||call.questionDotToken
-        ||!field||!(ts.isPropertyAssignment(field)||ts.isShorthandPropertyAssignment(field))
-        ||literalName(field.name)!=='stat_data'
-        ||ts.isShorthandPropertyAssignment(field)&&field.objectAssignmentInitializer
-        ||!type||!ts.isPropertyAssignment(type)||literalName(type.name)!=='type'
-        ||!ts.isStringLiteral(type.initializer)||type.initializer.text!=='chat') {
-        fail('MVU_SCHEMA_INITIALIZATION_WRITE_UNSUPPORTED',script,file,call)
-      }
-      initializationWriteBindings.push({scriptOrdinal:ordinal,scriptIdentity:script.identity,
-        sourceSha256:script.sourceSha256,sourceSpan:{start:call.getStart(file),end:call.end},
-        capability:'insert-or-assign-chat-stat-data-v1'})
-    }
     const policyBinding=(specifier:string,node:TypeScript.Node,
       fields:Pick<RegisteredCommandPolicyBindingV1,'importKind'|'importedName'|'localName'>)=>{
       commandPolicyBindings.push({scriptOrdinal:ordinal,scriptIdentity:script.identity,
@@ -323,19 +301,6 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
         }
       }
       if (ts.isImportTypeNode(node)) fail('MVU_SCHEMA_IMPORT_TYPE_UNSUPPORTED', script, file, node)
-      if(ts.isIdentifier(node)&&node.text==='insertOrAssignVariables'&&!isNameOnly(node)
-        &&!checker.getSymbolAtLocation(node)) {
-        const parent=node.parent
-        if(ts.isCallExpression(parent)&&parent.expression===node)initializationWrite(parent)
-        else if(!ts.isTypeOfExpression(parent)||parent.expression!==node) {
-          fail('MVU_SCHEMA_INITIALIZATION_WRITE_UNSUPPORTED',script,file,node)
-        }
-      }
-      if(ts.isPropertyAccessExpression(node)&&node.name.text==='insertOrAssignVariables'
-        &&ts.isIdentifier(node.expression)&&node.expression.text==='globalThis'
-        &&!checker.getSymbolAtLocation(node.expression)) {
-        fail('MVU_SCHEMA_INITIALIZATION_WRITE_UNSUPPORTED',script,file,node)
-      }
       if (ts.isMetaProperty(node) || node.kind === ts.SyntaxKind.WithStatement) fail('MVU_SCHEMA_HOST_ACCESS', script, file, node)
       const ownGlobal = ts.isIdentifier(node) && node.text === 'globalThis'
       if (ts.isIdentifier(node) && !isNameOnly(node) && hostNames.has(node.text) && !ownGlobal
@@ -369,8 +334,7 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
       fail('MVU_SCHEMA_TYPESCRIPT_TRANSPILE', script, file)
     }
     commandPolicyBindings.sort((left,right)=>left.sourceSpan.start-right.sourceSpan.start)
-    initializationWriteBindings.sort((left,right)=>left.sourceSpan.start-right.sourceSpan.start)
-    return {kind: 'schema', javascript: result.outputText,commandPolicyBindings,initializationWriteBindings}
+    return {kind: 'schema', javascript: result.outputText,commandPolicyBindings}
   } catch (error) {
     if (error instanceof RangeError) fail('MVU_SCHEMA_SYNTAX_DEPTH_LIMIT', script, file)
     throw error

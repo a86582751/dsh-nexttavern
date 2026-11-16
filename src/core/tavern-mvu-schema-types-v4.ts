@@ -1,34 +1,32 @@
 /** V4 binds every guest output to the actual worker-recomputed execution plan.
  * Native loader descriptors remain provenance and never enter QuickJS. */
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
-import type {MvuUpdateOperationV2} from './roleplay-mvu-update-v2.js'
-import type {MvuSchemaDiagnostic,MvuSchemaPhase,MvuSchemaRunnerIdentity,
+import type {MvuSchemaDiagnostic,MvuSchemaRunnerIdentity,
   MvuSchemaRunnerDeps,MvuSchemaRealmReadBinding,MvuSchemaImplementationIdentity} from './tavern-mvu-schema-types.js'
 import type {MvuExecutableProgramV4} from './tavern-mvu-owned-state-types-v1.mjs'
-import type {MvuSchemaDiagnosticV2} from './tavern-mvu-schema-types-v2.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 import type {MvuScopeReadRefV2,MvuScopeObjectRefV2} from './tavern-mvu-scope-view-v2.js'
+import type {AuthorNativeMvuContextWritesV1} from './author-native-mvu-hook-types.js'
+import type {Mvu196UpdateInputV1,Mvu196UpdateProgressV1} from './tavern-mvu-update-protocol-v1.js'
 
-export type MvuSchemaDiagnosticV4=MvuSchemaDiagnosticV2
+export type MvuSchemaDiagnosticV4=
+  | {code:'SCHEMA_VALIDATION_FAILED';registrationIndex:number}
   | {code:'SCHEMA_SCOPE_READ_FAILED';scriptPointer:string;readCode:string}
-  | {code:'STATE_ONLY_UPDATE_OPERATION_REJECTED';commandIndex:number;updateCode:string;pointer?:string}
-  | {code:'SCHEMA_UPDATE_BATCH_OPERATION_REJECTED';commandIndex:number;updateCode:string;pointer?:string}
   | {code:'SCHEMA_UPDATE_BATCH_VALIDATION_FAILED';registrationIndex:number}
-export type MvuSchemaDiscardedDiagnosticV4=Extract<MvuSchemaDiagnosticV2,{commandIndex:number}>
+  | {code:'SCHEMA_UPDATE_COMPUTATION_FAILED';commandIndex:number;message:string}
 export type MvuSchemaPhaseErrorPolicyV4='atomic-refusal'|'registered-command-policy-v1'|'update-batch-atomic-v1'
 interface MvuSchemaEvaluationFieldsV4 {
   schemaVersion:4
-  commandsEncoding:'native-mvu-update-operations-v2'
   errorPolicy:MvuSchemaPhaseErrorPolicyV4
   /** external-pack-replacement adopts the owner's exact values/context in the
    * existing realm. Acceptance of that phase does not claim schema parsing. */
-  phase:MvuSchemaPhase
+  phase:'initialization'|'manual-replacement'|'external-pack-replacement'|'update-core'
   base:MvuJsonObject|null
   values:MvuJsonObject
-  commands:readonly MvuUpdateOperationV2[]
   context:MvuJsonObject
   clockEpochMs:number
   randomSeed:string
+  update?:Mvu196UpdateInputV1
 }
 export type MvuSchemaEvaluationInputV4=MvuSchemaEvaluationFieldsV4 & (
   | {encoding:'native-mvu-author-schema-phase-input-v4';scopeReadFrame:MvuScopeReadFrameV1;scopeReadRef?:never}
@@ -36,22 +34,19 @@ export type MvuSchemaEvaluationInputV4=MvuSchemaEvaluationFieldsV4 & (
 interface PhaseOutputV4 {
   schemaVersion:4
   encoding:'native-mvu-author-schema-phase-output-v4'
-  commandsEncoding:'native-mvu-update-operations-v2'
   executionPlanSha256:string
 }
 interface AcceptedPhaseOutputV4 {
   kind:'accepted'
   values:MvuJsonObject
-  commands:readonly MvuUpdateOperationV2[]
   context:MvuJsonObject
   registrations:number
+  contextWrites?:AuthorNativeMvuContextWritesV1
+  update?:Mvu196UpdateProgressV1
 }
-export type MvuSchemaGuestOutputV4=PhaseOutputV4 & (
-  | ({errorPolicy:'atomic-refusal'|'update-batch-atomic-v1'} & (AcceptedPhaseOutputV4
-      | {kind:'refused';diagnostics:readonly MvuSchemaDiagnosticV4[]}))
-  | ({errorPolicy:'registered-command-policy-v1'} & (
-      (AcceptedPhaseOutputV4 & {discarded:readonly MvuSchemaDiscardedDiagnosticV4[]})
-      | {kind:'refused';diagnostics:readonly MvuSchemaDiagnosticV4[]})))
+export type MvuSchemaGuestOutputV4=PhaseOutputV4 & {errorPolicy:MvuSchemaPhaseErrorPolicyV4} & (
+  | AcceptedPhaseOutputV4
+  | {kind:'refused';diagnostics:readonly MvuSchemaDiagnosticV4[]})
 export interface MvuSchemaEvaluationV4 {
   schemaVersion:4
   encoding:'native-mvu-author-schema-evaluation-v4'
@@ -142,7 +137,22 @@ export interface MvuSchemaManualRunV4 {
 export type MvuSchemaOpenManualRunResultV4={kind:'opened-manual-run';run:MvuSchemaManualRunV4;
   record:MvuSchemaTraceCompactStepRecordV4}
   | {kind:'unavailable'|'cancelled';diagnostics:readonly MvuSchemaDiagnostic[]}
+/** Ephemeral update DATA. It carries no Native cut, trace or publication ID. */
+export type MvuSchemaTrialInputV4=MvuSchemaEvaluationInputV4&{phase:'update-core';
+  update:Extract<Mvu196UpdateInputV1,{encoding:'native-mvu-196-update-start-v1'}>}
+export type MvuSchemaTrialResumeV4=Extract<Mvu196UpdateInputV1,{encoding:'native-mvu-196-update-resume-v1'}>
+export type MvuSchemaTrialOutputV4=Omit<AcceptedPhaseOutputV4,'contextWrites'>
+  |{kind:'refused';diagnostics:readonly MvuSchemaDiagnosticV4[]}
+export type MvuSchemaTrialResultV4={kind:'evaluated-trial';output:MvuSchemaTrialOutputV4}
+  |{kind:'unavailable'|'cancelled';diagnostics:readonly MvuSchemaDiagnostic[]}
+export interface MvuSchemaTrialRunV4 {
+  advance(update:MvuSchemaTrialResumeV4,signal?:AbortSignal):Promise<MvuSchemaTrialResultV4>
+  close():Promise<void>
+}
+export type MvuSchemaOpenTrialResultV4={kind:'opened-trial';run:MvuSchemaTrialRunV4;output:MvuSchemaTrialOutputV4}
+  |{kind:'unavailable'|'cancelled';diagnostics:readonly MvuSchemaDiagnostic[]}
 export interface MvuSchemaRunnerV4 {
+  openTrial?(program:MvuExecutableProgramV4|null,input:MvuSchemaTrialInputV4,signal?:AbortSignal):Promise<MvuSchemaOpenTrialResultV4>
   readonly identity:MvuSchemaRunnerIdentity
   readonly scopeInputProtocols?:readonly ('full-frame-v1'|'scope-ref-v2')[]
   bindScopeReferencesV2?(read:MvuSchemaScopeReferenceReaderV2):MvuSchemaRunnerV4

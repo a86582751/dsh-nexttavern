@@ -475,5 +475,5 @@ export function createMvuScopeViewResolverV2(deps) {
             throw error;
         }
     }
-    return Object.freeze({ resolve });
+    return Object.freeze({ resolve, view });
 }

@@ -5,60 +5,109 @@ import { recordSha256 } from './roleplay-data.js';
 import { mvuStateCurrentHeadKey } from './roleplay-mvu-state.js';
 import { createMvuNumericalPublicationOwner, mvuNumericalPublicationMatches } from './roleplay-mvu-numerical-publication.js';
 import { validateSchemaEvaluationInputV4 } from './tavern-mvu-schema-runner-v4.js';
-import { validateMvuScopeReadFrameV1 } from './tavern-mvu-scope-read.js';
 import { validateMvuScopeReadRefV2 } from './tavern-mvu-scope-view-v2.js';
 import { schemaScopeReadFactsEqual } from './roleplay-mvu-schema-scope-facts.js';
-import { mvuSchemaMaintenanceTaskCandidate } from './roleplay-mvu-schema-maintenance-types.js';
-import { freezeMvuSchemaStoryData, sealMvuSchemaStoryFact, validateMvuSchemaStoryPlan, parseMvuSchemaStoryCandidateV2, validateMvuSchemaNumericalSnapshot, validateMvuSchemaStoryEvent, validateMvuSchemaStorySettlement, deriveMvuSchemaStorySelectors, mvuSchemaStoryPhaseInput, mvuSchemaStoryReducerBridge, mvuSchemaStoryEvent, mvuSchemaStoryHead, mvuSchemaStorySettlement, mvuSchemaStoryEventKey, mvuSchemaStorySettlementKey, MVU_SCHEMA_STORY_PHASES, schemaStoryCode, schemaScopeReadRefFactsEqualV2 } from './roleplay-mvu-schema-story-types.js';
-import { parseMvuSchemaStoryCandidateData, mvuSchemaStoryCommandInfos, mvuSchemaStoryVariables, mvuSchemaStoryVariableParts, mvuSchemaStoryReconcileInput } from './roleplay-mvu-schema-story-types.js';
+import { freezeMvuSchemaStoryData, sealMvuSchemaStoryFact, validateMvuSchemaStoryPlan, validateMvuSchemaNumericalSnapshot, validateMvuSchemaStoryEvent, validateMvuSchemaStorySettlement, deriveMvuSchemaStorySelectors, mvuSchemaStoryPhaseInput, mvuSchemaStoryEvent, mvuSchemaStoryHead, mvuSchemaStorySettlement, mvuSchemaStoryEventKey, mvuSchemaStorySettlementKey, schemaStoryCode, schemaScopeReadRefFactsEqualV2, mvuSchemaStoryVariables, mvuSchemaStoryContextWrites, mvuSchemaStorySelector, mvuSchemaStoryExecutionId } from './roleplay-mvu-schema-story-types.js';
 const same = (a, b) => recordSha256(a) === recordSha256(b);
 const codeOf = (error) => schemaStoryCode(error instanceof Error ? error.message : undefined);
 function fail(code) { throw Error(code); }
+export function createMvu196StoryExecutionState(plan) {
+    return { phases: [], hooks: [], finalizedMessage: plan.canonical.narrative };
+}
+function executionBrowser(state) {
+    return state.hooks.length ? { schemaVersion: 1, hooks: state.hooks, finalizedMessage: state.finalizedMessage } : undefined;
+}
+/** Live Work and closing owners use this same advancement. The caller grants
+ * each dispatch and retains the actual evidence across the ownership handoff. */
+export async function advanceMvu196StoryExecution(plan, state, callbacks, stopAtNativeCommands = false) {
+    const executionId = mvuSchemaStoryExecutionId(plan), sessionId = plan.schemaVersion === 14 ? plan.execution.sessionId : plan.base.sessionId;
+    for (;;) {
+        callbacks.check();
+        const previous = state.phases.at(-1)?.output;
+        if (previous?.kind === 'refused')
+            return { kind: 'refused' };
+        if (previous?.kind === 'accepted' && 'update' in previous) {
+            if (previous.update?.kind === 'complete')
+                return { kind: 'complete' };
+            if (stopAtNativeCommands && previous.update?.kind === 'native-commands-ready')
+                return { kind: 'native-commands-ready', progress: previous.update };
+            if (previous.update?.kind === 'yield' && state.hooks.at(-1)?.request.yieldOrdinal !== previous.update.yieldOrdinal) {
+                const progress = previous.update;
+                const hook = await callbacks.executeHook?.({ sessionId, planSha256: executionId,
+                    target: { kind: 'message', ownerSessionId: plan.base.sessionId, nativeSeq: plan.canonical.seq,
+                        messageId: plan.canonical.messageId, messageVersionSha256: plan.canonical.versionSha256 },
+                    stage: progress.stage, yieldOrdinal: progress.yieldOrdinal, payload: { graph: progress.graph } });
+                callbacks.check();
+                if (hook)
+                    state.hooks.push(hook);
+            }
+        }
+        const index = state.phases.length, interests = callbacks.readInterests(), browser = executionBrowser(state), input = mvuSchemaStoryPhaseInput(plan, index, state.phases, undefined, undefined, browser, interests);
+        const result = await callbacks.executePhase(input);
+        callbacks.check();
+        if (result.kind !== 'completed')
+            return { kind: 'unknown', code: schemaStoryCode(result.code) };
+        if (!result.evidence || !result.capturedInput)
+            fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
+        const actual = validateSchemaEvaluationInputV4(result.capturedInput), selector = mvuSchemaStorySelector(plan, index);
+        if (plan.schemaVersion === 14) {
+            if (actual.encoding !== 'native-mvu-author-schema-phase-input-v4'
+                || !schemaScopeReadFactsEqual(actual.scopeReadFrame, plan.scopeReadFrame)
+                || actual.scopeReadFrame.sourceNativeCutSha256 !== result.association.sourceNativeCutSha256)
+                fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
+        }
+        else if (actual.encoding !== 'native-mvu-author-schema-phase-input-v4-scope-ref-v2'
+            || !schemaScopeReadRefFactsEqualV2(actual.scopeReadRef, plan.scopeReadRef)
+            || actual.scopeReadRef.sourceNativeCutSha256 !== result.association.sourceNativeCutSha256)
+            fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
+        if (result.association.batchId !== selector.batchId
+            || !same(actual, mvuSchemaStoryPhaseInput(plan, index, state.phases, actual.scopeReadFrame, actual.scopeReadRef, browser, interests, undefined, actual.update?.encoding === 'native-mvu-196-update-start-v1' ? actual.update.macros : undefined)))
+            fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
+        state.lastLive = result;
+        state.phases.push(freezeMvuSchemaStoryData({ phase: 'update-core', input: actual,
+            association: result.association, output: result.output }));
+        if (result.output.kind === 'refused')
+            return { kind: 'refused' };
+        const progress = 'update' in result.output ? result.output.update : undefined;
+        if (!progress || progress.updateId !== executionId)
+            fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
+        if (progress.kind === 'complete')
+            return { kind: 'complete' };
+        if (progress.kind === 'native-commands-ready') {
+            if (stopAtNativeCommands)
+                return { kind: 'native-commands-ready', progress };
+            continue;
+        }
+    }
+}
 export function createRoleplayMvuSchemaStory(deps) {
     const publicationOwner = createMvuNumericalPublicationOwner(deps.table);
     // A partial attempt is never retried in this owner. Remounts are gated by
     // Root's exact pending terminal ledger and journal, not this process-local set.
     const attempted = new Set();
-    function makePlan(scope, canonical, base, currentFrame, realmEpoch, programSha256, initialCut, clockEpochMs = 0, executorVersion = 4, scopeReadFrame, hostEpoch, maintenance, scopeReadRef) {
-        const input = freezeMvuSchemaStoryData({ scope, canonical, base, currentFrame, realmEpoch, programSha256, initialCut, clockEpochMs });
-        scope = input.scope;
-        canonical = input.canonical;
-        base = input.base;
-        currentFrame = input.currentFrame;
-        realmEpoch = input.realmEpoch;
-        programSha256 = input.programSha256;
-        initialCut = input.initialCut;
-        clockEpochMs = input.clockEpochMs;
-        if (scopeReadRef && !hostEpoch)
+    function makePlan(scope, canonical, base, currentFrame, realmEpoch, programSha256, initialCut, clockEpochMs = 0, executorVersion = 4, scopeReadFrame = undefined, hostEpoch, maintenance, scopeReadRef, executionStartData) {
+        if (scopeReadFrame !== undefined)
+            fail('SCHEMA_SCOPE_REFERENCE_REQUIRED');
+        if (!hostEpoch)
             fail('SCHEMA_SCOPE_REFERENCE_HOST_REQUIRED');
-        if (scopeReadRef && scopeReadFrame)
-            fail('SCHEMA_SCOPE_REFERENCE_PLAN_CONFLICT');
-        if (!scopeReadFrame && !scopeReadRef)
+        if (!scopeReadRef)
             fail('SCHEMA_SCOPE_READ_REQUIRED');
-        if (maintenance && !hostEpoch)
-            fail('SCHEMA_MAINTENANCE_HOST_REQUIRED');
-        const suffix = { currentFrame, realmEpoch, programSha256, initialCut, clockEpochMs, randomSeed: recordSha256({ scope, canonical }),
-            selectors: deriveMvuSchemaStorySelectors(scope, canonical, realmEpoch),
-            ...parseMvuSchemaStoryCandidateData(canonical.narrative, hostEpoch ? 'analysis-alias-rfc6902-members-v1' : undefined) };
-        const body = scopeReadRef ? freezeMvuSchemaStoryData({ schemaVersion: 12,
-            encoding: 'native-mvu-schema-story-plan-v12-scope-ref-v2', executorVersion,
-            scope, canonical, base: validateMvuSchemaNumericalSnapshot(base), epoch: hostEpoch.epoch,
-            serverProgramSha256: hostEpoch.serverProgramSha256, parserPolicy: 'analysis-alias-rfc6902-members-v1',
-            ...(hostEpoch.errorPolicy ? { errorPolicy: hostEpoch.errorPolicy } : {}),
-            ...suffix, candidate: maintenance?.kind === 'task-result' ? mvuSchemaMaintenanceTaskCandidate(maintenance.result) : suffix.candidate,
-            ...maintenance ? { maintenance } : {}, scopeReadRef: validateMvuScopeReadRefV2(scopeReadRef) }) :
-            freezeMvuSchemaStoryData({
-                ...(hostEpoch ? { ...(maintenance ? { schemaVersion: 10, encoding: 'native-mvu-schema-story-plan-v10',
-                        maintenance } : { schemaVersion: 6, encoding: 'native-mvu-schema-story-plan-v6' }),
-                    epoch: hostEpoch.epoch, serverProgramSha256: hostEpoch.serverProgramSha256,
-                    parserPolicy: 'analysis-alias-rfc6902-members-v1',
-                    ...(hostEpoch.errorPolicy ? { errorPolicy: hostEpoch.errorPolicy } : {}) } :
-                    { schemaVersion: 5, encoding: 'native-mvu-schema-story-plan-v5' }),
-                executorVersion, scope, canonical, base: validateMvuSchemaNumericalSnapshot(base),
-                scopeReadFrame: validateMvuScopeReadFrameV1(scopeReadFrame), ...suffix,
-                candidate: maintenance?.kind === 'task-result' ? mvuSchemaMaintenanceTaskCandidate(maintenance.result) : suffix.candidate
-            });
-        return validateMvuSchemaStoryPlan(sealMvuSchemaStoryFact(body, 'planSha256'));
+        let execution = { executorVersion, canonical, base: validateMvuSchemaNumericalSnapshot(base), currentFrame,
+            realmEpoch, programSha256, initialCut, clockEpochMs, randomSeed: recordSha256({ scope, canonical }),
+            selectors: deriveMvuSchemaStorySelectors(scope, canonical, realmEpoch), epoch: hostEpoch.epoch,
+            serverProgramSha256: hostEpoch.serverProgramSha256, scopeReadRef: validateMvuScopeReadRefV2(scopeReadRef),
+            ...hostEpoch.errorPolicy ? { errorPolicy: hostEpoch.errorPolicy } : {} };
+        if (executionStartData) {
+            const { start, ref } = executionStartData;
+            if (ref.sha256 !== start.startSha256 || !same(scope.currency, start.work.currency)
+                || !same(scope.receipt.checkpoint, start.work.checkpoint) || !same(canonical, start.canonical) || !same(base, start.base))
+                fail('SCHEMA_STORY_START_CHANGED');
+            const { schemaVersion: _version, encoding: _encoding, work: _work, startSha256: _hash, ...started } = start;
+            execution = started;
+        }
+        return validateMvuSchemaStoryPlan(sealMvuSchemaStoryFact({ ...execution, schemaVersion: 13,
+            encoding: 'native-mvu-196-story-plan-v1', scope, candidate: { schemaVersion: 1, kind: 'mvu-196' },
+            ...maintenance ? { maintenance } : {}, ...executionStartData ? { executionStart: executionStartData.ref } : {} }, 'planSha256'));
     }
     function read(key) {
         const value = deps.table.get(key);
@@ -146,131 +195,53 @@ export function createRoleplayMvuSchemaStory(deps) {
             const publication = publicationOwner.read(plan.base.sessionId);
             if (!mvuNumericalPublicationMatches(publication.raw, plan.base.currentHead))
                 fail('SCHEMA_STORY_BASE_CHANGED');
-            if (plan.candidate.kind === 'rejected')
-                fail('SCHEMA_STORY_CANDIDATE_REJECTED');
+            const existing = deps.existingExecution?.(plan, closing);
+            if (plan.executionStart && !existing)
+                fail('SCHEMA_STORY_EXECUTION_START_UNAVAILABLE');
+            const execution = existing ?? createMvu196StoryExecutionState(plan);
+            spent = execution.phases.length > 0 || execution.hooks.length > 0;
             attempted.add(plan.planSha256);
-            const phases = [];
-            const hooks = [];
-            let reconcile, finalizedMessage = plan.canonical.narrative;
-            const browser = () => hooks.length
-                ? { schemaVersion: 1, hooks, ...reconcile ? { reconcile } : {}, finalizedMessage } : undefined;
-            const target = { kind: 'message', ownerSessionId: plan.base.sessionId, nativeSeq: plan.canonical.seq,
-                messageId: plan.canonical.messageId, messageVersionSha256: plan.canonical.versionSha256 };
-            const hook = async (request) => {
-                if (!deps.executeHook)
-                    return undefined;
-                checkClosing(closing, scope, plan);
-                checkBase(scope, plan);
+            const check = () => { checkClosing(closing, scope, plan); checkBase(scope, plan); };
+            const executeHook = deps.executeHook ? async (request) => {
                 const previousSpent = spent;
                 spent = true;
                 const result = await deps.executeHook(plan, request, closing);
-                checkClosing(closing, scope, plan);
-                checkBase(scope, plan);
-                if (result)
-                    hooks.push(result);
-                else
+                if (!result)
                     spent = previousSpent;
                 return result;
-            };
-            if (deps.executeHook) {
-                // Unsupported structured operations are rejected only if a matching
-                // COMMAND callback exists; preparation sends no Browser challenge.
-                let commands = [];
-                try {
-                    commands = mvuSchemaStoryCommandInfos(plan);
-                }
-                catch { /* The Core preparation checks matching registrations before rejecting. */ }
-                await hook({ sessionId: plan.base.sessionId, planSha256: plan.planSha256, target, stage: 'command-parsed',
-                    payload: { variables: mvuSchemaStoryVariables(plan.base.values, plan.base.context), commands,
-                        message_content: plan.canonical.narrative } });
-            }
-            let reducer = null, lastLive;
-            for (const [index, phase] of MVU_SCHEMA_STORY_PHASES.entries()) {
-                checkClosing(closing, scope, plan);
-                checkBase(scope, plan);
-                if (index === 2 && phases[1]?.output.kind === 'accepted') {
-                    const previous = phases[1].output, ended = await hook({ sessionId: plan.base.sessionId, planSha256: plan.planSha256, target,
-                        stage: 'update-ended', payload: { variables: mvuSchemaStoryVariables(previous.values, previous.context),
-                            variables_before_update: mvuSchemaStoryVariables(plan.base.values, plan.base.context) } });
-                    if (ended?.result.stage === 'update-ended'
-                        && !same(mvuSchemaStoryVariableParts(ended.result.output.variables).values, previous.values)) {
-                        if (!deps.executeReconcile)
-                            fail('SCHEMA_STORY_RECONCILE_UNAVAILABLE');
-                        spent = true;
-                        const reconciliation = await deps.executeReconcile(plan, mvuSchemaStoryReconcileInput(plan, phases[1], ended), closing);
-                        checkClosing(closing, scope, plan);
-                        if (reconciliation.kind !== 'completed')
-                            fail('SCHEMA_STORY_RECONCILE_FAILED');
-                        reconcile = freezeMvuSchemaStoryData({ phase: 'hook-reconcile', input: reconciliation.capturedInput,
-                            association: reconciliation.association, output: reconciliation.output });
-                        lastLive = reconciliation;
-                        if (reconciliation.output.kind === 'refused')
-                            break;
-                    }
-                }
-                const input = mvuSchemaStoryPhaseInput(plan, index, phases, reducer, undefined, undefined, browser());
-                // Spending is recorded before await: a cancellation/throw after actual
-                // dispatch must keep the original anchor and never become a refusal.
-                spent = true;
-                const result = await deps.executePhase(plan, phase, input, closing);
-                checkClosing(closing, scope, plan);
-                if (result.kind !== 'completed')
-                    return { kind: 'unknown', code: schemaStoryCode(result.code) };
-                if (!result.evidence || typeof result.evidence !== 'object')
-                    fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
-                let capturedInput = input;
-                if (plan.schemaVersion === 12) {
-                    if (!result.capturedInput)
-                        fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
-                    const actual = validateSchemaEvaluationInputV4(result.capturedInput);
-                    if (actual.encoding !== 'native-mvu-author-schema-phase-input-v4-scope-ref-v2'
-                        || !schemaScopeReadRefFactsEqualV2(actual.scopeReadRef, plan.scopeReadRef)
-                        || actual.scopeReadRef.sourceNativeCutSha256 !== result.association.sourceNativeCutSha256
-                        || !same(actual, mvuSchemaStoryPhaseInput(plan, index, phases, reducer, undefined, actual.scopeReadRef, browser()))) {
-                        fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
-                    }
-                    capturedInput = actual;
-                }
-                else {
-                    if (!result.capturedInput)
-                        fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
-                    const actual = validateSchemaEvaluationInputV4(result.capturedInput);
-                    if (actual.encoding !== 'native-mvu-author-schema-phase-input-v4')
-                        fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
-                    if (!schemaScopeReadFactsEqual(actual.scopeReadFrame, plan.scopeReadFrame)
-                        || actual.scopeReadFrame.sourceNativeCutSha256 !== result.association.sourceNativeCutSha256
-                        || !same(actual, mvuSchemaStoryPhaseInput(plan, index, phases, reducer, actual.scopeReadFrame, undefined, browser()))) {
-                        fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
-                    }
-                    capturedInput = actual;
-                }
-                // The private evidence is kept only in this invocation. Durable phase
-                // facts contain its association/output, never the evidence object.
-                lastLive = result;
-                phases.push(freezeMvuSchemaStoryData({ phase, input: capturedInput, association: result.association, output: result.output }));
-                if (result.output.kind === 'refused')
-                    break;
-                if (index === 0) {
-                    reducer = mvuSchemaStoryReducerBridge(phases[0]);
-                    if (reducer.result.kind === 'rejected')
-                        break;
-                }
-            }
+            } : undefined;
+            const advanced = await advanceMvu196StoryExecution(plan, execution, { check,
+                readInterests: () => deps.readHookInterests?.(plan, closing) ?? [],
+                executePhase: input => {
+                    spent = true;
+                    return deps.executePhase(plan, 'update-core', input, closing);
+                }, executeHook });
+            if (advanced.kind === 'unknown')
+                return advanced;
+            if (advanced.kind === 'native-commands-ready')
+                fail('SCHEMA_STORY_MAINTENANCE_UNRESOLVED');
+            const lastLive = execution.lastLive;
             if (!lastLive)
                 fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
-            if (phases.length === 3 && lastLive.output.kind === 'accepted') {
-                const output = lastLive.output, before = await hook({ sessionId: plan.base.sessionId, planSha256: plan.planSha256, target,
-                    stage: 'before-message-update', payload: { context: { variables: mvuSchemaStoryVariables(output.values, output.context),
-                            message_content: plan.canonical.narrative } } });
-                if (before?.result.stage === 'before-message-update')
-                    finalizedMessage = before.result.output.context.message_content;
+            if (lastLive.output.kind === 'accepted') {
+                check();
+                const output = lastLive.output, before = await executeHook?.({ sessionId: plan.base.sessionId,
+                    planSha256: mvuSchemaStoryExecutionId(plan), stage: 'before-message-update',
+                    target: { kind: 'message', ownerSessionId: plan.base.sessionId, nativeSeq: plan.canonical.seq,
+                        messageId: plan.canonical.messageId, messageVersionSha256: plan.canonical.versionSha256 },
+                    payload: { context: { variables: mvuSchemaStoryVariables(output.values, output.context), message_content: plan.canonical.narrative } } });
+                check();
+                if (before) {
+                    execution.hooks.push(before);
+                    if (before.result.stage === 'before-message-update')
+                        execution.finalizedMessage = before.result.output.context.message_content;
+                }
             }
-            const event = validateMvuSchemaStoryEvent(mvuSchemaStoryEvent(plan, phases, reducer, browser()));
-            const head = mvuSchemaStoryHead(event), settlement = mvuSchemaStorySettlement(event);
-            const eventKey = mvuSchemaStoryEventKey(event.sessionId, event.eventId);
-            const headKey = mvuStateCurrentHeadKey(event.sessionId);
-            const settlementKey = mvuSchemaStorySettlementKey(event.sessionId, plan.planSha256);
+            const phases = execution.phases, browser = () => executionBrowser(execution);
             return await deps.withPublicationBoundary(closing, lastLive, async () => {
+                // Hooks may have completed ordinary writes. Freeze their actual fence
+                // under the same publication lease that seals and publishes this event.
+                const browserExecution = browser(), ordinaryScopes = deps.captureOrdinaryPublication?.(closing, plan, mvuSchemaStoryContextWrites(phases, browserExecution)), event = validateMvuSchemaStoryEvent(mvuSchemaStoryEvent(plan, phases, browserExecution, ordinaryScopes)), head = mvuSchemaStoryHead(event), settlement = mvuSchemaStorySettlement(event), eventKey = mvuSchemaStoryEventKey(event.sessionId, event.eventId), headKey = mvuStateCurrentHeadKey(event.sessionId), settlementKey = mvuSchemaStorySettlementKey(event.sessionId, plan.planSha256);
                 function check(stage) {
                     checkClosing(closing, scope, plan);
                     if (!deps.checkPublication(closing, lastLive, { plan, event, head, settlement, stage }))

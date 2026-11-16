@@ -386,5 +386,5 @@ export function createMvuScopeViewResolverV2(deps:{read(ref:MvuScopeObjectRefV2)
       throw error
     }
   }
-  return Object.freeze({resolve})
+  return Object.freeze({resolve,view})
 }

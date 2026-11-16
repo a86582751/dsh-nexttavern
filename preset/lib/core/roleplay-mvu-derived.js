@@ -8,9 +8,8 @@ import { openingIntentKey } from './roleplay-opening-selection.js';
 import { mvuInitializationEventKey, mvuInitializationHeadKey, verifyFrozenMvuInitializationFacts } from './roleplay-mvu-initialization.js';
 import { createRoleplayMvuLineage } from './roleplay-mvu-lineage.js';
 import { createRoleplayMvuFrozenLineage } from './roleplay-mvu-frozen-lineage.js';
-import { createRoleplayMvuPrefixLedger, validateProgramDerivedOpeningClosureV1, programDerivedGenesisSnapshotV1, programDerivedOpeningFloorSeqV1 } from './roleplay-mvu-prefix-ledger.js';
-export { createProgramDerivedOpeningClosureV1, validateProgramDerivedOpeningClosureV1 } from './roleplay-mvu-prefix-ledger.js';
-import { formatInheritedMvuPromptFactsV1, formatInheritedMvuPromptFactsV2, MvuPromptFactsRefusal } from './roleplay-mvu-prompt-numerical-facts.js';
+import { createRoleplayMvuPrefixLedger } from './roleplay-mvu-prefix-ledger.js';
+import { formatInheritedMvuPromptFactsV1, MvuPromptFactsRefusal } from './roleplay-mvu-prompt-numerical-facts.js';
 import { nativeInputSha256 } from 'dsh-nexttavern-native-agent-loop';
 export const mvuDerivedPreparedKey = (sid) => `${sid}__mvu-derived-prepared`;
 export const mvuDerivedBasisKey = (sid) => `${sid}__mvu-derived-basis`;
@@ -21,11 +20,6 @@ const same = (a, b) => recordSha256(a) === recordSha256(b);
 const id = (v) => typeof v === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(v);
 function fail(code) { throw new Error(code); }
 function preparedVersion(prepared) {
-    if ('programEvent' in prepared.genesis)
-        return prepared.schemaVersion === 4
-            && prepared.encoding === 'native-program-mvu-derived-prepared-v4'
-            && prepared.genesisFact.kind === 'program-opening' && prepared.ledger?.schemaVersion === 3
-            && prepared.ledger.encoding === 'native-program-mvu-prefix-ledger-proof-v3';
     return prepared.schemaVersion === 1 && prepared.encoding === 'native-mvu-derived-prepared-v1'
         && prepared.ledger?.schemaVersion === 1 && prepared.ledger.encoding === 'native-mvu-prefix-ledger-proof-v1'
         || prepared.schemaVersion === 2 && prepared.encoding === 'native-mvu-derived-prepared-v2'
@@ -38,12 +32,10 @@ function basisVersion(basis) {
     return preparedVersion(basis.prepared) && (basis.schemaVersion === 1 && basis.encoding === 'native-mvu-derived-basis-v1'
         && basis.prepared.schemaVersion === 1 || basis.schemaVersion === 2 && basis.encoding === 'native-mvu-derived-basis-v2'
         && basis.prepared.schemaVersion === 2 || basis.schemaVersion === 3 && basis.encoding === 'native-mvu-derived-basis-v3'
-        && basis.prepared.schemaVersion === 3 && basis.source.schemaVersion === 2
-        || basis.schemaVersion === 4 && basis.encoding === 'native-program-mvu-derived-basis-v4'
-            && basis.prepared.schemaVersion === 4 && basis.source.schemaVersion === 2);
+        && basis.prepared.schemaVersion === 3 && basis.source.schemaVersion === 2);
 }
 function frozenPrepared(prepared) {
-    return prepared.schemaVersion === 3 || prepared.schemaVersion === 4;
+    return prepared.schemaVersion === 3;
 }
 /** Domain evidence is bounded plain JSON. Inspect before cloning/hashing so a
  * forged descriptor cannot execute accessors or disappear during serialization. */
@@ -113,9 +105,8 @@ export function createRoleplayMvuDerived(deps) {
     const ledger = createRoleplayMvuPrefixLedger({ branch: deps.branch, status: deps.status,
         verifySettlementFacts: input => deps.state().verifyConsumedSettlementFacts(input),
         verifyManualSettlementFacts: input => deps.state().verifyConsumedManualSettlementFacts(input),
-        readProjectedCanonical: (events, turn) => readMvuPrefixCanonical(events, turn, deps.projectPrefix), editProtocol: deps.editProtocol,
-        ...deps.readProgramGenesisAtCut ? { readProgramGenesisAtCut: deps.readProgramGenesisAtCut } : {} });
-    const promptCollection = () => ({ prefixes: [], openings: [], programOpenings: [], layers: [], byPrepared: new Map() });
+        readProjectedCanonical: (events, turn) => readMvuPrefixCanonical(events, turn, deps.projectPrefix), editProtocol: deps.editProtocol });
+    const promptCollection = () => ({ prefixes: [], openings: [], layers: [], byPrepared: new Map() });
     function prefix(session, cut) {
         const events = eventsOf(session);
         if (!Number.isSafeInteger(cut) || cut < 1 || cut > events.length || events.some((e, i) => e.seq !== i))
@@ -192,67 +183,7 @@ export function createRoleplayMvuDerived(deps) {
                     } } : {} });
         return valid;
     }
-    function readProgramAtCut(genesis, events, ownerInheritedEventCount, successorSourcePreparedRef) {
-        if (typeof deps.readProgramGenesisAtCut !== 'function')
-            fail('DERIVED_PROGRAM_ROOT_READER_REQUIRED');
-        const result = deps.readProgramGenesisAtCut({ genesis, ownerSessionId: genesis.sessionId,
-            ownerInheritedEventCount, events, successorSourcePreparedRef });
-        if (result.kind === 'blocked')
-            fail(result.code);
-        if (result.kind !== 'verified-program-opening' || typeof result.assertCurrent !== 'function')
-            fail('DERIVED_PROGRAM_ROOT_READER_UNPROVEN');
-        result.assertCurrent();
-        const closure = validateProgramDerivedOpeningClosureV1(result.closure, genesis, result.native);
-        if (programDerivedOpeningFloorSeqV1(result.native) < ownerInheritedEventCount
-            || programDerivedOpeningFloorSeqV1(result.native) >= events.length)
-            fail('DERIVED_PROGRAM_GENESIS_OUTSIDE_CUT');
-        return { closure, native: result.native, assertCurrent: result.assertCurrent };
-    }
-    function programCurrent(prepared, input, prompt) {
-        const actual = readProgramAtCut(prepared.genesis, input, prepared.parentInheritedEventCount, prepared.sourcePreparedRef), fact = prepared.genesisFact, packet = actual.closure.data;
-        exact(fact, ['kind', 'eventKey', 'headKey', 'closureSha256']);
-        if (fact.kind !== 'program-opening' || fact.eventKey !== packet.genesisEventRef.key || fact.headKey !== packet.genesisHeadRef.key
-            || fact.closureSha256 !== actual.closure.closureSha256 || !same(prepared.genesisClosure, actual.closure))
-            return false;
-        const native = actual.native, seq = native.production === 'selected-card-copy' ? native.receipt.assistantSeq :
-            native.receipt.terminalOutput.eventRef.seq, events = input, event = events[seq], message = event?.data?.message;
-        if (event?.type !== 'assistant/message' || !message || !Array.isArray(message.content))
-            return false;
-        if (message.content.some(block => block.type === 'text' && typeof block.text !== 'string'))
-            return false;
-        const narrative = message.content.filter(block => block.type === 'text').map(block => block.text).join(''), canonical = { seq, messageId: String(message.id), versionSha256: nativeInputSha256(message), narrativeSha256: sha256(narrative) }, nativeEventRecordSha256 = native.production === 'selected-card-copy' ? recordSha256(event) : nativeInputSha256(event);
-        if (native.production === 'selected-card-copy') {
-            if (native.receipt.messageId !== canonical.messageId || native.receipt.messageVersion.eventSha256 !== nativeEventRecordSha256
-                || native.receipt.renderedSha256 !== canonical.narrativeSha256 || packet.input.source.selected.renderedText !== narrative)
-                return false;
-        }
-        else if (!same(native.canonical, { seq, messageId: canonical.messageId, versionSha256: canonical.versionSha256, narrative })
-            || native.receipt.terminalOutput.eventRef.sha256 !== nativeEventRecordSha256)
-            return false;
-        const surface = deps.projectPrefix(events), projected = surface.projectedMessageAt(seq) ?? message;
-        if (!surface.nodes.includes(seq) || nativeInputSha256(projected) !== canonical.versionSha256
-            || events.some(row => row.type === 'roleplay/message-edit' && row.data?.['targetSeq'] === seq))
-            return false;
-        actual.assertCurrent();
-        if (prompt) {
-            const row = (ref, table) => ({ table, key: ref.key, recordSha256: ref.sha256 });
-            const publication = { genesis: prepared.genesis, snapshot: prepared.initial, canonical, nativeEventRecordSha256,
-                packets: { seed: packet.seed, input: packet.input, plan: packet.planRecord, intent: packet.intent },
-                closureRef: { table: 'branch', key: mvuDerivedPreparedKey(prepared.childSessionId),
-                    recordSha256: recordSha256(prepared), fieldPointer: '/genesisClosure' },
-                refs: { seed: row(packet.refs.seed, 'branch'), input: row(packet.refs.input, 'branch'), plan: row(packet.refs.plan, 'branch'),
-                    intent: row(packet.refs.intent, 'branch'), genesisEvent: row(packet.genesisEventRef, 'status'),
-                    genesisHead: row(packet.genesisHeadRef, 'status') } };
-            // Complete closure validation above and the prompt formatter below own
-            // these data checks. Avoid recursively remapping the immutable JSON and
-            // legacy mutable import-array declarations at this internal handoff.
-            prompt.programOpenings.push(publication);
-        }
-        return true;
-    }
     function genesisCurrent(prepared, events, seen, subjectSessionId, successor, prompt) {
-        if (prepared.schemaVersion === 4)
-            return programCurrent(prepared, events, prompt);
         if (prepared.genesisFact.kind === 'opening')
             return openingCurrent(prepared, events, prompt);
         if (prepared.genesisFact.kind !== 'derived')
@@ -285,12 +216,7 @@ export function createRoleplayMvuDerived(deps) {
                 || bindingSha256 !== recordSha256(bindingBody)
                 || prepared.prefixClosureRef.key !== prefixClosureKey(prepared.childSessionId, prepared.prefixClosureRef.closureSha256))
                 fail('DERIVED_FROZEN_SOURCE_CHANGED');
-            if (prepared.schemaVersion === 4) {
-                if (prepared.genesisClosure.kind !== 'program-opening'
-                    || prepared.genesisFact.closureSha256 !== prepared.genesisClosure.closureSha256)
-                    fail('DERIVED_PROGRAM_CLOSURE_CHANGED');
-            }
-            else if (prepared.genesisFact.kind === 'opening') {
+            if (prepared.genesisFact.kind === 'opening') {
                 if (prepared.genesisClosure.kind !== 'opening')
                     fail('DERIVED_OPENING_OWNER_UNPROVEN');
                 exact(prepared.genesisClosure, ['kind', 'intent', 'intentSha256']);
@@ -314,9 +240,7 @@ export function createRoleplayMvuDerived(deps) {
             fail('DERIVED_BASIS_UNPROVEN');
         const g = prepared.genesis;
         let expectedInitial;
-        if ('programEvent' in g)
-            expectedInitial = programDerivedGenesisSnapshotV1(g);
-        else {
+        {
             const head = 'initHead' in g ? g.initHead : g.derivedHead, values = 'initEvent' in g ? g.initEvent.plan.values : g.derivedEvent.values, root = 'initEvent' in g ? { initEventId: g.initEvent.eventId, initEventSha256: g.initEvent.eventSha256,
                 initHeadSha256: recordSha256(head), planSha256: g.initEvent.plan.planSha256 } : { schemaVersion: 1,
                 encoding: 'native-mvu-derived-state-root-v1', derivedEventId: g.derivedEvent.eventId,
@@ -331,10 +255,7 @@ export function createRoleplayMvuDerived(deps) {
             fail('DERIVED_INITIAL_BASIS_INVALID');
         const request = { ownerSessionId: prepared.parentSessionId,
             ownerInheritedEventCount: prepared.parentInheritedEventCount, events, sourceSha256: prepared.parentSourceSha256,
-            genesis: prepared.initial, ...prepared.schemaVersion === 4 ? {
-                programOpening: { genesis: prepared.genesis, closure: prepared.genesisClosure,
-                    native: prepared.genesisClosure.data.intent.nativeReceipt }, successorSourcePreparedRef: prepared.sourcePreparedRef
-            } : {} };
+            genesis: prepared.initial };
         let current, facts;
         if (frozenPrepared(prepared)) {
             const closure = deps.branch.get(prepared.prefixClosureRef.key);
@@ -437,28 +358,16 @@ export function createRoleplayMvuDerived(deps) {
                     || !same(deps.readSourceDescriptor(owner.id), source.parentDescriptor))
                     fail('DERIVED_FROZEN_SOURCE_CHANGED');
             }
-            if ('programEvent' in g && !source)
-                fail('DERIVED_PROGRAM_FROZEN_SOURCE_REQUIRED');
-            const program = 'programEvent' in g && source
-                ? readProgramAtCut(g, events, owner.inheritedEventCount, source.ref) : undefined;
-            if (program && 'programEvent' in g && !same(initial.snapshot, programDerivedGenesisSnapshotV1(g)))
-                fail('DERIVED_PROGRAM_INITIAL_BASIS_CHANGED');
             const request = { ownerSessionId: owner.id, ownerInheritedEventCount: owner.inheritedEventCount,
-                events: events, sourceSha256, genesis: initial.snapshot,
-                ...program && 'programEvent' in g && source ? { programOpening: { genesis: g, closure: program.closure, native: program.native },
-                    successorSourcePreparedRef: source.ref } : {} }, frozen = source ? ledger.captureFrozen(request) : undefined, captured = frozen ?? ledger.capture(request);
+                events: events, sourceSha256, genesis: initial.snapshot }, frozen = source ? ledger.captureFrozen(request) : undefined, captured = frozen ?? ledger.capture(request);
             if (captured.kind !== 'ready')
                 fail(captured.code);
-            const prior = program ? { kind: 'program-opening', eventKey: program.closure.data.genesisEventRef.key,
-                headKey: program.closure.data.genesisHeadRef.key, closureSha256: program.closure.closureSha256 } :
-                'initEvent' in g ? openingFact(g) : (() => {
-                    if ('programEvent' in g)
-                        fail('DERIVED_PROGRAM_CLOSURE_REQUIRED');
-                    const basis = deps.branch.get(mvuDerivedBasisKey(owner.id));
-                    if (!basis)
-                        fail('DERIVED_PARENT_BASIS_UNPROVEN');
-                    return { kind: 'derived', basisKey: mvuDerivedBasisKey(owner.id), basisSha256: basis.basisSha256 };
-                })();
+            const prior = 'initEvent' in g ? openingFact(g) : (() => {
+                const basis = deps.branch.get(mvuDerivedBasisKey(owner.id));
+                if (!basis)
+                    fail('DERIVED_PARENT_BASIS_UNPROVEN');
+                return { kind: 'derived', basisKey: mvuDerivedBasisKey(owner.id), basisSha256: basis.basisSha256 };
+            })();
             const fields = {
                 operationId: operation.operationId, anchorSha256: recordSha256(operation.anchor), parentSessionId: owner.id,
                 childSessionId: reservation.childSessionId, seedLength: reservation.seedLength,
@@ -470,20 +379,15 @@ export function createRoleplayMvuDerived(deps) {
                     fail('DERIVED_PREFIX_CLOSURE_CHANGED');
                 const prefixClosureRef = await putPrefixClosure(reservation.childSessionId, frozen.closure);
                 frozen.assertCurrent();
-                program?.assertCurrent();
-                const bindingBody = { operationId: operation.operationId, anchor: data(operation.anchor), reservation: data(reservation) }, forkReservationBinding = { ...bindingBody, bindingSha256: recordSha256(bindingBody) }, genesisClosure = program ? program.closure : prior.kind === 'opening' ? { kind: 'opening',
-                    intent: data(deps.branch.get(prior.intentKey)), intentSha256: prior.intentSha256 } : prior, version = program ? { schemaVersion: 4, encoding: 'native-program-mvu-derived-prepared-v4' } :
-                    { schemaVersion: 3, encoding: 'native-mvu-derived-prepared-v3' }, body = { ...version, ...fields,
+                const bindingBody = { operationId: operation.operationId, anchor: data(operation.anchor), reservation: data(reservation) }, forkReservationBinding = { ...bindingBody, bindingSha256: recordSha256(bindingBody) }, genesisClosure = prior.kind === 'opening' ? { kind: 'opening',
+                    intent: data(deps.branch.get(prior.intentKey)), intentSha256: prior.intentSha256 } : prior, version = { schemaVersion: 3, encoding: 'native-mvu-derived-prepared-v3' }, body = { ...version, ...fields,
                     ledger: captured.proof, sourcePreparedRef: source.ref, parentNumericDescriptorSha256: source.parentSourceSha256,
                     prefixClosureRef, forkReservationBinding, genesisClosure };
                 if (deps.readSourceSha256(owner.id) !== sourceSha256
                     || !same(deps.readSourceDescriptor(owner.id), source.parentDescriptor))
                     fail('DERIVED_FROZEN_SOURCE_CHANGED');
-                if (program && captured.proof.schemaVersion !== 3)
-                    fail('DERIVED_PROGRAM_LEDGER_REQUIRED');
                 await putExact(deps.branch, mvuDerivedPreparedKey(reservation.childSessionId), { ...body, preparedSha256: recordSha256(body) });
                 frozen.assertCurrent();
-                program?.assertCurrent();
                 return;
             }
             const body = captured.proof.schemaVersion === 1
@@ -505,10 +409,8 @@ export function createRoleplayMvuDerived(deps) {
     }
     function sourceMatchesGenesis(basis) {
         const g = basis.prepared.genesis, original = basis.source.originalImport;
-        if ('initEvent' in g || 'programEvent' in g) {
-            // Source identity remains the original author/import inventory. A
-            // generated terminal body is separately bound by the program closure.
-            const source = 'programEvent' in g ? g.programEvent.plan.source.source : g.initEvent.plan.identity.source;
+        if ('initEvent' in g) {
+            const source = g.initEvent.plan.identity.source;
             return source.sourceRecordSessionId === original.ownerSessionId && source.importId === original.importId
                 && source.rawSha256 === original.rawSha256 && source.normalizedSha256 === original.normalizedSha256
                 && source.coverageSha256 === original.coverageSha256 && source.transactionId === original.transactionId;
@@ -648,15 +550,6 @@ export function createRoleplayMvuDerived(deps) {
                 || sha256(textOf(message.content)) !== canonical.narrativeSha256)
                 return false;
         }
-        if (facts.schemaVersion === 2)
-            for (const row of facts.programOpeningPublications) {
-                const canonical = row.canonical, event = events[canonical.seq], message = surface.projectedMessageAt(canonical.seq) ?? event?.data?.message;
-                if (!surface.nodes.includes(canonical.seq) || event?.type !== 'assistant/message' || !message
-                    || String(message.id) !== canonical.messageId || nativeInputSha256(message) !== canonical.versionSha256
-                    || !Array.isArray(message.content) || message.content.some(block => block.type === 'text' && typeof block.text !== 'string')
-                    || sha256(message.content.filter(block => block.type === 'text').map(block => block.text).join('')) !== canonical.narrativeSha256)
-                    return false;
-            }
         return true;
     }
     function promptInheritedData(sid, session) {
@@ -667,8 +560,7 @@ export function createRoleplayMvuDerived(deps) {
         if (!g || !layer)
             fail(prompt.failure ?? 'PROMPT_NUMERICAL_INHERITED_UNAVAILABLE');
         const input = { childSessionId: sid, genesis: g, source: layer.source,
-            layers: prompt.layers, prefixes: prompt.prefixes, openings: prompt.openings }, facts = prompt.programOpenings.length ? formatInheritedMvuPromptFactsV2({ ...input, programOpenings: prompt.programOpenings })
-            : formatInheritedMvuPromptFactsV1(input);
+            layers: prompt.layers, prefixes: prompt.prefixes, openings: prompt.openings }, facts = formatInheritedMvuPromptFactsV1(input);
         if (deps.session(sid) !== session || !promptMessagesCurrent(session, facts))
             fail('PROMPT_NUMERICAL_MESSAGE_CHANGED');
         return facts;
@@ -715,14 +607,8 @@ export function createRoleplayMvuDerived(deps) {
             if (frozenPrepared(prepared)) {
                 if (source.schemaVersion !== 2)
                     fail('DERIVED_FROZEN_SOURCE_OWNER_UNAVAILABLE');
-                if (prepared.schemaVersion === 4) {
-                    const descriptor = { schemaVersion: 4, encoding: 'native-program-mvu-derived-basis-v4', prepared, source };
-                    basis = { ...descriptor, basisSha256: recordSha256(descriptor) };
-                }
-                else {
-                    const descriptor = { schemaVersion: 3, encoding: 'native-mvu-derived-basis-v3', prepared, source };
-                    basis = { ...descriptor, basisSha256: recordSha256(descriptor) };
-                }
+                const descriptor = { schemaVersion: 3, encoding: 'native-mvu-derived-basis-v3', prepared, source };
+                basis = { ...descriptor, basisSha256: recordSha256(descriptor) };
             }
             else {
                 if (source.schemaVersion !== 1)

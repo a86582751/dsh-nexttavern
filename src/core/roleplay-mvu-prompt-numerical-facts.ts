@@ -14,16 +14,6 @@ import type {MvuDerivedSourceProofUnion} from './roleplay-mvu-frozen-lineage.js'
 import type {OpeningSource} from './roleplay-opening-selection.js'
 import type {MvuInitializationEvent,MvuInitializationHead} from './roleplay-mvu-initialization.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
-import {validateProgramMvuGenesisFactsV1} from './roleplay-program-genesis-data.js'
-import type {VerifiedMvuProgramGenesis} from './roleplay-program-genesis-types.js'
-import {mvuInitializationEventKey,mvuInitializationHeadKey} from './roleplay-mvu-initialization.js'
-import {programOpeningSeedKeyV1,programOpeningInputKeyV1,programOpeningPlanKeyV1,
-  validateProgramOpeningSeedV1,validateProgramOpeningInputV1,validateProgramOpeningPlanRecordV1,
-  validateOpeningIntentV7} from './roleplay-program-opening-records.js'
-import type {ProgramOpeningIntentSeedV1,ProgramOpeningInputPacketV1,ProgramOpeningPlanRecordV1,OpeningIntentV7}
-  from './roleplay-program-opening-records.js'
-import {openingIntentKey} from './roleplay-opening-selection.js'
-
 // Recursive JSON is already purpose-cloned and deeply frozen at runtime.
 // Keep its type as a readonly index to avoid infinitely expanding the JSON
 // union while comparing factual snapshots; outer protocol fields stay readonly.
@@ -92,29 +82,6 @@ export interface MvuPromptLocalNumericalFactsV1 {
     readonly nativeEventRecordSha256:string;readonly renderedTextSha256:string}|null
   readonly sourceIdentity:{readonly kind:'opening';readonly original:Immutable<OpeningSource>}
     |{readonly kind:'derived-basis';readonly basisSha256:string;readonly derivedEventSha256:string}
-  readonly currentSnapshot:Immutable<MvuNumericalSnapshot>
-  readonly snapshots:readonly Immutable<MvuNumericalSnapshot>[]
-  readonly storyPublications:readonly MvuPromptStoryPublicationV1[]
-  readonly manualPublications:readonly MvuPromptManualPublicationV1[]
-  readonly inventory:MvuPromptInventoryV1
-  readonly factsSha256:string
-}
-/** Explicit program protocol. Its full genesis retains the actual plan's
- * Source/raw calculation/basis, Native envelope, embedded opening settlement
- * and final values. This packet is readonly evidence, never a renderer token. */
-export interface MvuPromptLocalNumericalFactsV2 {
-  readonly schemaVersion:2
-  readonly encoding:'native-program-json-prompt-numerical-facts-v2'
-  readonly authority:'consumer-data-only'
-  readonly sessionId:string
-  readonly numericalSourceSha256:string
-  readonly genesis:Immutable<VerifiedMvuProgramGenesis>
-  readonly genesisSnapshotSha256:string
-  readonly genesisMessageRef:{readonly ownerSessionId:string;readonly seq:number;readonly messageId:string;
-    readonly nativeEventRecordSha256:string;readonly renderedTextSha256:string}
-  readonly sourceIdentity:{readonly kind:'program-opening';readonly original:Immutable<OpeningSource>;
-    readonly sourceProofSha256:string;readonly basisSha256:string;readonly planSha256:string}
-  readonly genesisRefs:{readonly event:MvuPromptRowRefV1;readonly head:MvuPromptRowRefV1}
   readonly currentSnapshot:Immutable<MvuNumericalSnapshot>
   readonly snapshots:readonly Immutable<MvuNumericalSnapshot>[]
   readonly storyPublications:readonly MvuPromptStoryPublicationV1[]
@@ -208,53 +175,6 @@ export interface MvuPromptValidatedOpeningInputV1 {
   readonly nativeEventRecordSha256:string
   readonly intent:MvuPromptRowRefV1
   readonly historical?:{readonly event:MvuPromptRowRefV1;readonly head:MvuPromptRowRefV1}
-}
-
-/** An actual reader supplies original packet refs separately from the frozen
- * prepared archive ref. Neither checksum authorizes a historical lookup. */
-export interface MvuPromptProgramOpeningRefsV1 {
-  readonly seed:MvuPromptRowRefV1
-  readonly input:MvuPromptRowRefV1
-  readonly plan:MvuPromptRowRefV1
-  readonly intent:MvuPromptRowRefV1
-  readonly genesisEvent:MvuPromptRowRefV1
-  readonly genesisHead:MvuPromptRowRefV1
-}
-export interface MvuPromptValidatedProgramOpeningInputV1 {
-  readonly genesis:Immutable<VerifiedMvuProgramGenesis>
-  readonly snapshot:MvuNumericalSnapshot
-  readonly canonical:MvuStateTerminalIntent['canonical']
-  readonly nativeEventRecordSha256:string
-  readonly closureRef:MvuPromptRowRefV1
-  readonly refs:MvuPromptProgramOpeningRefsV1
-  readonly packets:{readonly seed:Immutable<ProgramOpeningIntentSeedV1>;readonly input:Immutable<ProgramOpeningInputPacketV1>;
-    readonly plan:Immutable<ProgramOpeningPlanRecordV1>;readonly intent:Immutable<OpeningIntentV7>}
-}
-export interface MvuPromptProgramOpeningPublicationV1 {
-  readonly kind:'program-opening'
-  readonly ownerSessionId:string
-  readonly numericalSourceSha256:string
-  readonly canonical:Immutable<MvuStateTerminalIntent['canonical']>
-  readonly nativeEventRecordSha256:string
-  readonly genesis:Immutable<VerifiedMvuProgramGenesis>
-  readonly snapshot:Immutable<MvuNumericalSnapshot>
-  readonly source:Immutable<VerifiedMvuProgramGenesis['programEvent']['plan']['source']>
-  readonly basis:Immutable<VerifiedMvuProgramGenesis['programEvent']['plan']['basis']>
-  readonly native:Immutable<VerifiedMvuProgramGenesis['programEvent']['native']>
-  readonly openingSettlement:Immutable<VerifiedMvuProgramGenesis['programEvent']['openingSettlement']>
-  readonly originalPacketRefs:MvuPromptProgramOpeningRefsV1
-  readonly originalPackets:MvuPromptValidatedProgramOpeningInputV1['packets']
-  readonly archiveProvenance:MvuPromptRowRefV1
-  readonly resultSnapshotSha256:string
-}
-/** This third domain keeps the existing initialization/copy publication
- * grammar distinct from a protected program opening and its terminal body. */
-export interface MvuPromptInheritedNumericalFactsV2 extends Omit<MvuPromptInheritedNumericalFactsV1,
-  'schemaVersion'|'encoding'|'factsSha256'> {
-  readonly schemaVersion:2
-  readonly encoding:'native-program-json-prompt-inherited-facts-v2'
-  readonly programOpeningPublications:readonly MvuPromptProgramOpeningPublicationV1[]
-  readonly factsSha256:string
 }
 
 /** Facts use one bounded detached pool, not a fresh values copy per no-update
@@ -439,45 +359,6 @@ export function formatLocalMvuPromptFactsV1(input:LocalFoldFacts&{genesis:Genesi
       [...rows].map(([key,value])=>({table:'status' as const,key,recordSha256:recordSha256(value)})))}
   return frozenFacts({...body,factsSha256:recordSha256(body)})
 }
-export function formatLocalMvuPromptFactsV2(input:LocalFoldFacts&{genesis:VerifiedMvuProgramGenesis})
-  :MvuPromptLocalNumericalFactsV2 {
-  const {state,states,rows}=input,
-    genesis=validateProgramMvuGenesisFactsV1(input.genesis.programEvent,input.genesis.programHead),
-    event=genesis.programEvent,head=genesis.programHead,plan=event.plan,
-    initial=input.genesisSnapshot
-  if(!equal(genesis,input.genesis)||genesis.sessionId!==state.sessionId
-    ||!initial||initial.sessionId!==genesis.sessionId||initial.sourceSha256!==genesis.sourceSha256
-    ||!equal(initial.currentHead,head)||!equal(initial.values,event.finalValues)
-    ||initial.valuesSha256!==event.valuesSha256||!('encoding' in initial.root)
-    ||initial.root.encoding!=='native-program-mvu-state-root-v1'
-    ||initial.root.programEventId!==event.eventId||initial.root.programEventSha256!==event.eventSha256
-    ||initial.root.programHeadSha256!==recordSha256(head)||initial.root.planSha256!==plan.planSha256
-    ||!equal(state.root,initial.root))fail('PROMPT_NUMERICAL_PROGRAM_GENESIS_INVALID')
-  const {stories,manuals}=localPublications(input),native=event.native,
-    messageRef=native.production==='selected-card-copy'
-      ?{ownerSessionId:genesis.sessionId,seq:native.receipt.assistantSeq,messageId:native.receipt.messageId,
-        nativeEventRecordSha256:native.receipt.messageVersion.eventSha256,
-        renderedTextSha256:native.receipt.renderedSha256}
-      :{ownerSessionId:genesis.sessionId,seq:native.receipt.terminalOutput.eventRef.seq,
-        messageId:native.receipt.terminalOutput.messageId,
-        nativeEventRecordSha256:native.receipt.terminalOutput.eventRef.sha256,
-        renderedTextSha256:native.receipt.terminalOutput.textSha256}
-  // The actual state reader has joined these persisted status records before
-  // handing us its fold. Formatting their refs creates no new table ownership.
-  const genesisRefs={event:{table:'status' as const,
-    key:mvuInitializationEventKey(genesis.sessionId,event.eventId),recordSha256:recordSha256(event)},
-    head:{table:'status' as const,key:mvuInitializationHeadKey(genesis.sessionId),recordSha256:recordSha256(head)}}
-  const body={schemaVersion:2 as const,encoding:'native-program-json-prompt-numerical-facts-v2' as const,
-    authority:'consumer-data-only' as const,sessionId:state.sessionId,numericalSourceSha256:state.sourceSha256,
-    genesis,genesisSnapshotSha256:initial.stateSnapshotSha256,genesisMessageRef:messageRef,
-    sourceIdentity:{kind:'program-opening' as const,original:plan.source.source,
-      sourceProofSha256:plan.source.proofSha256,basisSha256:plan.basis.basisSha256,planSha256:plan.planSha256},
-    genesisRefs,currentSnapshot:state,snapshots:snapshots([...states.values()]),storyPublications:uniqueStories(stories),
-    manualPublications:uniqueManual(manuals),inventory:inventory('complete-owned-current-status',[
-      genesisRefs.event,genesisRefs.head,
-      ...[...rows].map(([key,value])=>({table:'status' as const,key,recordSha256:recordSha256(value)}))])}
-  return frozenFacts({...body,factsSha256:recordSha256(body)})
-}
 export function formatPrefixMvuPromptFactsV1(input:{proof:MvuPrefixLedgerProof;genesis:MvuNumericalSnapshot;
   stories:readonly MvuPromptValidatedStoryInputV1[];manuals:readonly MvuPromptValidatedManualInputV1[];
   rows:readonly MvuPromptRowRefV1[]}):MvuPromptPrefixNumericalFactsV1 {
@@ -531,134 +412,4 @@ export function formatInheritedMvuPromptFactsV1(input:{childSessionId:string;gen
     manualPublications:uniqueManual(input.prefixes.flatMap(row=>row.manualPublications)),
     inventory:inventory('closed-inherited-numerical-cut',inventoryRows)}
   return frozenFacts({...body,factsSha256:recordSha256(body)})
-}
-
-function programRowRef(ref:MvuPromptRowRefV1,table:MvuPromptRowRefV1['table'],key:string,value:unknown) {
-  if(ref.table!==table||ref.key!==key||ref.recordSha256!==recordSha256(value)
-    ||Object.hasOwn(ref,'fieldPointer')||!equal(Object.keys(ref).sort(),['key','recordSha256','table'])) {
-    fail('PROMPT_NUMERICAL_PROGRAM_PACKET_REF_INVALID')
-  }
-}
-/** This is a bounded data join. The actual callback has already proved the
- * frozen prepared row, original Native cut and exact current message version. */
-function programOpening(input:MvuPromptValidatedProgramOpeningInputV1):MvuPromptProgramOpeningPublicationV1 {
-  const row=frozenFacts<unknown>(input) as MvuPromptValidatedProgramOpeningInputV1,
-    genesis=validateProgramMvuGenesisFactsV1(row.genesis.programEvent,row.genesis.programHead),
-    event=genesis.programEvent,head=genesis.programHead,plan=event.plan,
-    seed=validateProgramOpeningSeedV1(row.packets.seed),packet=validateProgramOpeningInputV1(row.packets.input,seed),
-    planRecord=validateProgramOpeningPlanRecordV1(row.packets.plan,seed,packet),
-    intent=validateOpeningIntentV7(row.packets.intent,{seed,input:packet,planRecord,
-      genesis:{programEvent:event,programHead:head}}),snapshot=row.snapshot,canonical=row.canonical,root=snapshot.root
-  snapshots([snapshot])
-  if(!equal(genesis,row.genesis)||!equal(planRecord.plan,plan)||intent.status!=='completed'
-    ||genesis.sessionId!==snapshot.sessionId||genesis.sourceSha256!==snapshot.sourceSha256
-    ||snapshot.schemaVersion!==1||snapshot.encoding!=='native-mvu-state-snapshot-v1'
-    ||snapshot.revision!==1||!equal(snapshot.currentHead,head)||!equal(snapshot.values,event.finalValues)
-    ||snapshot.valuesSha256!==event.valuesSha256||!('encoding' in root)
-    ||root.encoding!=='native-program-mvu-state-root-v1'||root.programEventId!==event.eventId
-    ||root.programEventSha256!==event.eventSha256||root.programHeadSha256!==recordSha256(head)
-    ||root.planSha256!==plan.planSha256||!Number.isSafeInteger(canonical.seq)||canonical.seq<0
-    ||typeof canonical.messageId!=='string'||!canonical.messageId
-    ||!['versionSha256','narrativeSha256'].every(key=>/^[a-f0-9]{64}$/.test(canonical[key as keyof typeof canonical] as string))
-    ||!/^[a-f0-9]{64}$/.test(row.nativeEventRecordSha256))fail('PROMPT_NUMERICAL_PROGRAM_OPENING_INVALID')
-  const native=event.native
-  if(native.production==='selected-card-copy') {
-    if(native.receipt.assistantSeq!==canonical.seq||native.receipt.messageId!==canonical.messageId
-      ||native.receipt.messageVersion.eventSha256!==row.nativeEventRecordSha256
-      ||native.receipt.renderedSha256!==canonical.narrativeSha256
-      ||sha256(packet.source.selected.renderedText)!==canonical.narrativeSha256) {
-      fail('PROMPT_NUMERICAL_PROGRAM_CANONICAL_INVALID')
-    }
-  }else {
-    const terminal=native.receipt.terminalOutput,body=native.canonical
-    if(terminal.eventRef.seq!==canonical.seq||terminal.messageId!==canonical.messageId
-      ||terminal.eventRef.sha256!==row.nativeEventRecordSha256||terminal.textSha256!==canonical.narrativeSha256
-      ||body.seq!==canonical.seq||body.messageId!==canonical.messageId||body.versionSha256!==canonical.versionSha256
-      ||sha256(body.narrative)!==canonical.narrativeSha256)fail('PROMPT_NUMERICAL_PROGRAM_CANONICAL_INVALID')
-  }
-  const refs=row.refs,sid=genesis.sessionId,op=seed.operationId
-  if(!equal(Object.keys(refs).sort(),['genesisEvent','genesisHead','input','intent','plan','seed'])
-    ||!equal(Object.keys(canonical).sort(),['messageId','narrativeSha256','seq','versionSha256'])) {
-    fail('PROMPT_NUMERICAL_PROGRAM_PACKET_REF_INVALID')
-  }
-  programRowRef(refs.seed,'branch',programOpeningSeedKeyV1(sid,op),seed)
-  programRowRef(refs.input,'branch',programOpeningInputKeyV1(sid,op),packet)
-  programRowRef(refs.plan,'branch',programOpeningPlanKeyV1(sid,op),planRecord)
-  programRowRef(refs.intent,'branch',openingIntentKey(sid,seed.source.importId),intent)
-  programRowRef(refs.genesisEvent,'status',mvuInitializationEventKey(sid,event.eventId),event)
-  programRowRef(refs.genesisHead,'status',mvuInitializationHeadKey(sid),head)
-  if(!equal(plan.identity.intentRef,{key:refs.seed.key,sha256:refs.seed.recordSha256})
-    ||!equal(plan.identity.inputRef,{key:refs.input.key,sha256:refs.input.recordSha256})
-    ||!equal(intent.planRef,{key:refs.plan.key,sha256:refs.plan.recordSha256})
-    ||row.closureRef.table!=='branch'||row.closureRef.fieldPointer!=='/genesisClosure'
-    ||!row.closureRef.key.endsWith('__mvu-derived-prepared')||!/^[a-f0-9]{64}$/.test(row.closureRef.recordSha256)
-    ||!equal(Object.keys(row.closureRef).sort(),['fieldPointer','key','recordSha256','table'])) {
-    fail('PROMPT_NUMERICAL_PROGRAM_PACKET_REF_INVALID')
-  }
-  const publication={kind:'program-opening' as const,ownerSessionId:sid,numericalSourceSha256:genesis.sourceSha256,
-    canonical,nativeEventRecordSha256:row.nativeEventRecordSha256,genesis,snapshot,source:plan.source,basis:plan.basis,
-    native,openingSettlement:event.openingSettlement,originalPacketRefs:refs,originalPackets:{seed,input:packet,plan:planRecord,intent},
-    archiveProvenance:row.closureRef,resultSnapshotSha256:snapshot.stateSnapshotSha256}
-  // Packet members already carry their immutable public types. Reapplying the
-  // recursive mapped type to the inferred full version union exceeds TS depth.
-  return frozenFacts<unknown>(publication) as MvuPromptProgramOpeningPublicationV1
-}
-/** Pure packet validation reused by the scope consumer. This function neither
- * reads historical rows nor treats the serialized archive ref as currency. */
-export function validateMvuPromptProgramOpeningPublicationV1(value:unknown):MvuPromptProgramOpeningPublicationV1 {
-  const row=frozenFacts(value) as MvuPromptProgramOpeningPublicationV1,
-    checked=programOpening({genesis:row.genesis,snapshot:row.snapshot,canonical:row.canonical,
-      nativeEventRecordSha256:row.nativeEventRecordSha256,closureRef:row.archiveProvenance,
-      refs:row.originalPacketRefs,packets:row.originalPackets})
-  if(!equal(row,checked))fail('PROMPT_NUMERICAL_PROGRAM_OPENING_INVALID')
-  return checked
-}
-export interface MvuPromptInheritedFormatInputV2 {
-  readonly childSessionId:string
-  readonly genesis:VerifiedMvuDerivedGenesis
-  readonly source:MvuDerivedSourceProofUnion
-  readonly layers:readonly MvuPromptInheritedLayerV1[]
-  readonly prefixes:readonly MvuPromptPrefixNumericalFactsV1[]
-  readonly openings:readonly MvuPromptValidatedOpeningInputV1[]
-  readonly programOpenings:readonly MvuPromptValidatedProgramOpeningInputV1[]
-}
-export function formatInheritedMvuPromptFactsV2(input:MvuPromptInheritedFormatInputV2):MvuPromptInheritedNumericalFactsV2 {
-  if(!input.programOpenings.length||input.programOpenings.length>MVU_PROMPT_FACTS_BOUNDS.publications) {
-    fail('PROMPT_NUMERICAL_PROGRAM_INHERITED_INVALID')
-  }
-  // Reuse the old detached fold without changing its grammar or hash body.
-  const previous=formatInheritedMvuPromptFactsV1(input),programs=input.programOpenings.map(programOpening),
-    known=new Set(previous.openingPublications.map(row=>
-      `${row.ownerSessionId}:${row.canonical.seq}:${row.canonical.versionSha256}`)),original=input.source.originalImport
-  for(const row of programs) {
-    const identity=row.source.program.importTuple,key=`${row.ownerSessionId}:${row.canonical.seq}:${row.canonical.versionSha256}`,
-      layer=input.layers.find(item=>item.prepared.table===row.archiveProvenance.table
-        &&item.prepared.key===row.archiveProvenance.key&&item.prepared.recordSha256===row.archiveProvenance.recordSha256),
-      prefix=input.prefixes.find(item=>item.ownerSessionId===row.ownerSessionId
-        &&item.genesisSnapshotSha256===row.resultSnapshotSha256&&row.canonical.seq<item.inheritedPrefixLength)
-    if(known.has(key)||previous.storyPublications.some(item=>item.ownerSessionId===row.ownerSessionId
-      &&item.canonical.seq===row.canonical.seq&&item.canonical.versionSha256===row.canonical.versionSha256)) {
-      fail('PROMPT_NUMERICAL_FACT_CONFLICT')
-    }
-    known.add(key)
-    if(!layer||layer.parentSessionId!==row.ownerSessionId||!prefix
-      ||!prefix.snapshots.some(item=>equal(item,row.snapshot))
-      ||identity.sourceRecordSessionId!==original.ownerSessionId||identity.importId!==original.importId
-      ||identity.rawSha256!==original.rawSha256||identity.normalizedSha256!==original.normalizedSha256
-      ||identity.transactionId!==original.transactionId||identity.coverageSha256!==original.coverageSha256
-      ||identity.importRecordRef.sha256!==original.recordSha256
-      ||recordSha256(identity.originalActivation)!==original.activationSha256) {
-      fail('PROMPT_NUMERICAL_PROGRAM_INHERITED_INVALID')
-    }
-  }
-  if(previous.openingPublications.length+previous.storyPublications.length+programs.length>
-    MVU_PROMPT_FACTS_BOUNDS.publications)fail('PROMPT_NUMERICAL_FACTS_LIMIT')
-  const {schemaVersion:_version,encoding:_encoding,factsSha256:_hash,...body}=previous,
-    output={...body,schemaVersion:2 as const,encoding:'native-program-json-prompt-inherited-facts-v2' as const,
-      snapshots:snapshots([...body.snapshots,...programs.map(row=>row.snapshot)]),
-      programOpeningPublications:programs.sort((left,right)=>left.canonical.seq-right.canonical.seq
-        ||(left.ownerSessionId===right.ownerSessionId?0:left.ownerSessionId<right.ownerSessionId?-1:1)),
-      inventory:inventory('closed-inherited-numerical-cut',[...body.inventory.rows,
-        ...programs.flatMap(row=>[...Object.values(row.originalPacketRefs),row.archiveProvenance])])}
-  return frozenFacts<unknown>({...output,factsSha256:recordSha256(output)}) as MvuPromptInheritedNumericalFactsV2
 }

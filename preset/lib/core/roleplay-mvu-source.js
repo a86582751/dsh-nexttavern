@@ -4,7 +4,6 @@ import { recordSha256 } from './roleplay-data.js';
 import { assertImportRecordIntegrity, importCoverage } from './roleplay-import-record.js';
 import { compileTavernOpeningCandidates } from './tavern-card.js';
 import { selectNativeMvuInitializationPolicy } from './tavern-mvu-initvar.js';
-import { parseMvuUpdateRegionV2, parseMvuUpdateAnalysisAliasRegionV2 } from './roleplay-mvu-update-v2.js';
 import { NATIVE_MVU_SOURCE_POLICY, isNativeMvuSourcePolicy, isNativeMvuYamlSourcePolicy } from './roleplay-mvu-source-policy.js';
 import { cloneSchemaData, schemaTextSha256, captureSchemaMaterialV4 } from './tavern-mvu-schema-data.js';
 export { NATIVE_MVU_SOURCE_POLICY, NATIVE_MVU_YAML_SOURCE_POLICY, isNativeMvuSourcePolicy, isNativeMvuYamlSourcePolicy } from './roleplay-mvu-source-policy.js';
@@ -14,6 +13,7 @@ const idPattern = /^[a-zA-Z0-9_-]{1,128}$/;
 const keyPattern = /^[a-zA-Z0-9_-]{1,256}$/;
 const MAX_BYTES = 1_048_576;
 const MAX_ROWS = 4096;
+const openingMacroInputs = new WeakMap();
 class SourceFailure extends Error {
     diagnostic;
     constructor(diagnostic) {
@@ -176,7 +176,7 @@ function extensions(value, pointer, authorSchema = false) {
         if (typeof depth.prompt !== 'string' || !Number.isSafeInteger(depth.depth) || Number(depth.depth) < 0
             || !['system', 'user', 'assistant'].includes(String(depth.role)))
             fail('EXTENSION_UNSUPPORTED', pointer, value);
-        if (initSyntax(depth.prompt) || stateSyntax(depth.prompt))
+        if (!authorSchema && (initSyntax(depth.prompt) || stateSyntax(depth.prompt)))
             fail('STATE_SYNTAX_UNSUPPORTED', pointer, value);
     }
 }
@@ -200,26 +200,107 @@ export function assertMvuNonSchemaSourceExtensionsV1(value, pointer) {
     }
     extensions(value, pointer);
 }
+const schemaInitializations = new WeakMap();
+function classifyInitialization(captured, authorSchema) {
+    const known = authorSchema ? schemaInitializations.get(captured) : undefined;
+    if (known)
+        return known;
+    // The opening updater consumes the selected original greeting. The full
+    // catalog stays in the author snapshot and fresh Native basis.
+    const candidates = authorSchema
+        ? captured.candidates.filter(candidate => candidate.index === captured.snapshot.selected.index)
+        : captured.candidates;
+    const { data, context, snapshot } = captured, nativeCard = captured.document.spec === 'nexttavern_card', book = data.character_book;
+    const entries = [], books = [], initBudget = { nodes: 0, bytes: 0 };
+    const inputs = captured.books?.map(({ book, binding }) => ({ identity: book.address.bookId, binding,
+        sourcePointer: `/books/${pointerPart(book.address.bookId)}`, sourceSha256: book.content.sha256,
+        members: book.membership.members.map((member, index) => ({ raw: member.rawEntry,
+            identity: recordSha256({ bookId: book.address.bookId, member: member.identity }),
+            pointer: `/books/${pointerPart(book.address.bookId)}/members/${index}/rawEntry` })) }))
+        ?? (book === undefined ? [] : [{ identity: 'embedded-primary', binding: 'primary',
+                sourcePointer: snapshot.bindings.primary.pointer, sourceSha256: snapshot.bindings.primary.sha256,
+                members: isObject(book) && (Array.isArray(book.entries) || nativeCard && isObject(book.entries))
+                    ? Object.entries(book.entries).map(([key, raw], index) => ({ raw, identity: `entry-${index}`,
+                        pointer: `${snapshot.bindings.primary.pointer}/entries/${pointerPart(key)}` })) : null }]);
+    for (const input of inputs) {
+        const local = [];
+        if (input.members === null)
+            fail('FIELD_UNSUPPORTED', '/data/character_book', book);
+        for (const { raw, pointer, identity } of input.members) {
+            if (!isObject(raw))
+                continue;
+            const comment = typeof raw.comment === 'string' ? raw.comment : '';
+            if (!comment.toLowerCase().includes('[initvar]')) {
+                // Ordinary lore belongs to the Prompt/compiler owner.
+                if (typeof raw.content === 'string' && initSyntax(raw.content))
+                    fail('INITVAR_OUTSIDE_BINDING', pointer, raw.content);
+                continue;
+            }
+            if (typeof raw.content !== 'string')
+                fail('FIELD_UNSUPPORTED', pointer);
+            boundedData(raw.content, 'FIELD_UNSUPPORTED', pointer, initBudget);
+            requireKeys(raw, ['id', 'name', 'comment', 'content', 'keys', 'key', 'secondary_keys', 'keysecondary', 'enabled', 'disable',
+                'constant', 'selective', 'case_sensitive', 'use_regex', 'insertion_order', 'order', 'position', 'extensions'], pointer, 'FIELD_UNSUPPORTED');
+            for (const key of ['enabled', 'disable', 'constant', 'selective', 'case_sensitive', 'use_regex']) {
+                if (raw[key] !== undefined && typeof raw[key] !== 'boolean')
+                    fail('FIELD_UNSUPPORTED', pointer);
+            }
+            for (const key of ['keys', 'key', 'secondary_keys', 'keysecondary'])
+                if (raw[key] !== undefined
+                    && (!Array.isArray(raw[key]) || raw[key].some(item => typeof item !== 'string'))) {
+                    fail('FIELD_UNSUPPORTED', pointer);
+                }
+            for (const key of ['name', 'position'])
+                if (raw[key] !== undefined && typeof raw[key] !== 'string')
+                    fail('FIELD_UNSUPPORTED', pointer);
+            if (raw.id !== undefined && typeof raw.id !== 'string' && typeof raw.id !== 'number')
+                fail('FIELD_UNSUPPORTED', pointer);
+            for (const key of ['insertion_order', 'order'])
+                if (raw[key] !== undefined
+                    && (typeof raw[key] !== 'number' || !Number.isFinite(raw[key])))
+                    fail('FIELD_UNSUPPORTED', pointer);
+            if ([raw.content, raw.comment, raw.name].some(value => typeof value === 'string' && stateSyntax(value))) {
+                fail('STATE_SYNTAX_UNSUPPORTED', pointer);
+            }
+            const rendered = render(raw.content, context, true);
+            local.push({ identity, sourcePointer: pointer, comment,
+                enabled: raw.enabled !== false && raw.disable !== true, content: raw.content, contentSha256: sha(raw.content),
+                renderedContent: rendered, renderedContentSha256: sha(rendered) });
+        }
+        entries.push(...local);
+        books.push({ identity: input.identity, binding: input.binding, sourcePointer: input.sourcePointer,
+            sourceSha256: input.sourceSha256, entries: local });
+    }
+    const selection = selectNativeMvuInitializationPolicy({ books,
+        swipes: candidates.map(item => ({ rawOpening: item.rawText, renderedOpening: item.renderedText,
+            ...(item.materialization ? { materialization: item.materialization } : {}) })) });
+    if (selection.kind === 'unsupported')
+        fail('INITVAR_INVALID', selection.diagnostics[0].pointer);
+    const classification = { entries, books, candidates, hasInit: selection.hasInitialization, policy: selection.policy };
+    if (authorSchema)
+        schemaInitializations.set(captured, classification);
+    return classification;
+}
 const authorFieldNames = ['name', 'description', 'personality', 'scenario', 'mes_example', 'system_prompt',
     'post_history_instructions'];
 function authorFields(captured) {
     if (captured.document.spec !== 'nexttavern_card')
         return authorFieldNames.map(key => ({ key,
-            pointer: `/data/${key}`, value: captured.data[key], schemaOwned: ['description', 'personality', 'scenario'].includes(key) }));
+            pointer: `/data/${key}`, value: captured.data[key], schemaOwned: key !== 'name' }));
     const author = captured.data, aliases = author.compatibility?.sillytavernMacroFields;
     // These retain the community fields' declared roles. Actual execution cards
     // are already checked by the common captured-row pass below, including its
     // schema content-owner exemption.
     return authorFieldNames.map(key => ({ key, pointer: key === 'name' ? '/data/name'
             : `/data/compatibility/sillytavernMacroFields/${key}`, value: key === 'name' ? author.name : aliases?.[key],
-        schemaOwned: ['description', 'personality', 'scenario'].includes(key) }));
+        schemaOwned: key !== 'name' }));
 }
 /** Core owns the existing source/import lock. All reads are synchronous; this
  * module neither acquires a second lock nor writes any Domain/native record. */
 function captureSource(deps, sessionId, selectedIndex, currentMaterial = false, authorMaterial = false) {
     if (!idPattern.test(sessionId) || !Number.isSafeInteger(selectedIndex) || selectedIndex < 0)
         fail('REQUEST_INVALID', '');
-    const packet = authorMaterial ? deps.readAuthorCapture?.(sessionId) : undefined, owned = packet?.captured, input = owned?.contributionInput;
+    const packet = deps.readAuthorCapture?.(sessionId), owned = packet?.captured, input = owned?.contributionInput;
     const frozen = authorMaterial ? deps.readFrozenEffectiveLore : undefined;
     const materialCurrent = currentMaterial || !!packet?.effectiveLore || !!frozen;
     const pointer = (input?.activePointer ?? deps.readActivePointer(sessionId));
@@ -350,10 +431,10 @@ function captureSource(deps, sessionId, selectedIndex, currentMaterial = false, 
         if (typeof value !== 'string' || value.length > 512)
             fail('MACRO_UNSUPPORTED', '/macros');
     }
-    const effective = packet?.effectiveLore ? { book: packet.book, effectiveLore: packet.effectiveLore }
+    const effective = packet?.effectiveLore ? { book: packet.book, books: packet.books, effectiveLore: packet.effectiveLore }
         : frozen?.({ sessionId, pointer, record, decoded, worldbook,
             rows: rows.map(row => ({ ref: row.ref, value: row.ref.exists ? row.value : null })) });
-    if (effective) {
+    if (effective && effective.effectiveLore.kind !== 'catalog-collection') {
         const data = { ...decoded.data, ...effective.book === undefined ? {} : { character_book: effective.book } };
         if (effective.book === undefined)
             delete data.character_book;
@@ -370,7 +451,8 @@ function captureSource(deps, sessionId, selectedIndex, currentMaterial = false, 
         coverageSha256: pointer.coverageSha256, pointer: { ...pointer } };
     const root = decoded.document.data === decoded.data ? '/data' : '';
     const used = JSON.stringify(nativeCard ? decoded.data : decoded.document).includes('{{')
-        || rows.some(item => JSON.stringify(item.value ?? null).includes('{{'));
+        || rows.some(item => JSON.stringify(item.value ?? null).includes('{{'))
+        || (effective?.books?.some(({ book }) => book.membership.members.some(member => typeof member.rawEntry.content === 'string' && member.rawEntry.content.includes('{{'))) ?? false);
     const membership = { cards, worldbook, rules: versions.rules, settings: versions.settings };
     const content = {
         schemaVersion: 1, encoding: 'native-mvu-source-snapshot-v1', policy: NATIVE_MVU_SOURCE_POLICY,
@@ -393,7 +475,9 @@ function captureSource(deps, sessionId, selectedIndex, currentMaterial = false, 
         ...effective ? { effectiveLore: effective.effectiveLore } : {},
     };
     return { snapshot: { ...content, snapshotSha256: recordSha256(content) }, document: decoded.document,
-        data: decoded.data, context: context.context, candidates, rows, activationRows, ...owned ? { ownedRows: true } : {} };
+        data: decoded.data, context: context.context, candidates, rows, activationRows,
+        ...effective?.books ? { books: effective.books } : {},
+        ...owned ? { ownedRows: true, macroInput: { source: owned.source, cardData: input.rawDecoded.data } } : {} };
 }
 /** Freezes producer-owned DATA; execution envelopes retain their own budgets. */
 function freezeAuthorSourceData(value) {
@@ -409,18 +493,12 @@ function freezeAuthorSourceData(value) {
 function authorSourceOf(captured, current) {
     try {
         const extension = captured.data.extensions;
-        if (extension === undefined)
-            return { kind: 'absent' };
-        if (!isObject(extension))
+        if (extension !== undefined && !isObject(extension))
             fail('EXTENSION_UNSUPPORTED', '/extensions');
-        const helper = extension.tavern_helper;
-        if (helper === undefined)
-            return { kind: 'absent' };
-        if (!isObject(helper))
+        const helper = extension?.tavern_helper;
+        if (helper !== undefined && !isObject(helper))
             fail('EXTENSION_UNSUPPORTED', '/extensions/tavern_helper');
-        if (helper.scripts === undefined)
-            return { kind: 'absent' };
-        if (!Array.isArray(helper.scripts)) {
+        if (helper?.scripts !== undefined && !Array.isArray(helper.scripts)) {
             fail('FIELD_UNSUPPORTED', '/extensions/tavern_helper/scripts');
         }
         const root = captured.document.data === captured.data ? '/data' : '';
@@ -434,7 +512,8 @@ function authorSourceOf(captured, current) {
             scripts.push({ identity: `script-${scripts.length}`, pointer, enabled: parentEnabled && raw.enabled, source: raw.content,
                 sourceSha256: schemaTextSha256(raw.content) });
         };
-        helper.scripts.forEach((raw, index) => {
+        const rawScripts = (helper?.scripts ?? []);
+        rawScripts.forEach((raw, index) => {
             const pointer = `${root}/extensions/tavern_helper/scripts/${index}`;
             // Standard TH folders contain Script leaves. Keep every leaf in source
             // order, even when disabled; only the execution flag inherits the folder
@@ -447,7 +526,7 @@ function authorSourceOf(captured, current) {
             else
                 leaf(raw, pointer, true);
         });
-        if (!scripts.length)
+        if (!scripts.some(script => script.enabled) && !classifyInitialization(captured, true).hasInit)
             return { kind: 'absent' };
         const { policy: _policy, encoding: _encoding, snapshotSha256: _sha, ...scope } = captured.snapshot;
         const snapshotBody = { ...scope, encoding: 'native-mvu-author-source-snapshot-v1',
@@ -468,11 +547,15 @@ function authorSourceOf(captured, current) {
         if (current)
             return { kind: 'author-material', source: Object.freeze({
                     snapshot: freezeAuthorSourceData(snapshot), scripts: freezeAuthorSourceData(scripts),
-                    material: owned?.value ?? freezeAuthorSourceData(material), materialSha256
+                    material: owned?.value ?? freezeAuthorSourceData(material), materialSha256,
+                    ...captured.macroInput ? { macroInput: captured.macroInput } : {}
                 }) };
         const body = { schemaVersion: 1, encoding: 'native-mvu-author-source-v1',
             snapshot, scripts, material, materialSha256 };
-        return { kind: 'author-source', source: freezeAuthorSourceData({ ...body, authorSourceSha256: recordSha256(body) }) };
+        const source = freezeAuthorSourceData({ ...body, authorSourceSha256: recordSha256(body) });
+        if (captured.macroInput)
+            openingMacroInputs.set(source, captured.macroInput);
+        return { kind: 'author-source', source };
     }
     catch (error) {
         return { kind: 'unsupported', diagnostics: [error instanceof SourceFailure
@@ -509,37 +592,7 @@ export function createRoleplayMvuSource(deps) {
     const captureAuthor = (sessionId, selectedIndex) => deps.captureOriginal
         ? deps.captureOriginal(sessionId, `mvu-author-material:${selectedIndex}`, () => captureSource(deps, sessionId, selectedIndex, false, true)).data
         : captureSource(deps, sessionId, selectedIndex, false, true);
-    function openingSyntax(candidate, allowUpdate, initialization, allowAnalysisAlias) {
-        if (initialization)
-            return stateSyntax(initialization.rawOutside) || stateSyntax(initialization.renderedOutside)
-                ? 'unsupported' : 'none';
-        if (!allowUpdate)
-            return stateSyntax(candidate.rawText) ? 'unsupported' : 'none';
-        const parse = allowAnalysisAlias ? parseMvuUpdateAnalysisAliasRegionV2 : parseMvuUpdateRegionV2;
-        const raw = parse(candidate.rawText, { openingText: true }), rendered = parse(candidate.renderedText, { openingText: true });
-        if (raw.candidate.kind === 'rejected' || rendered.candidate.kind === 'rejected') {
-            fail('STATE_SYNTAX_UNSUPPORTED', candidate.sourcePointer, candidate.rawText);
-        }
-        if (raw.candidate.kind !== rendered.candidate.kind)
-            fail('MACRO_UNSUPPORTED', candidate.sourcePointer);
-        if (stateSyntax(raw.outside))
-            return 'unsupported';
-        if (raw.candidate.kind !== 'parsed')
-            return 'none';
-        const analysisAlias = 'analysisAlias' in raw && raw.analysisAlias === true
-            || 'analysisAlias' in rendered && rendered.analysisAlias === true;
-        return analysisAlias ? 'update-alias' : 'update';
-    }
-    const classify = (captured, authorSchema = false, recordedInitSource) => {
-        // Schema opening initialization consumes one selected greeting. The capture
-        // retains the complete catalog for original Source and fresh-basis binding.
-        // Historical multi-greeting descriptors retain their recorded all-catalog scope.
-        const candidates = authorSchema && !(recordedInitSource && recordedInitSource.swipes.length > 1)
-            ? captured.candidates.filter(candidate => candidate.index === captured.snapshot.selected.index)
-            : captured.candidates;
-        const allowUpdate = authorSchema && (!recordedInitSource || recordedInitSource.schemaVersion === 2
-            || recordedInitSource.schemaVersion === 3);
-        const allowAnalysisAlias = authorSchema && (!recordedInitSource || recordedInitSource.schemaVersion === 3);
+    const classify = (captured, authorSchema = false) => {
         const { data, context, snapshot } = captured;
         const nativeCard = captured.document.spec === 'nexttavern_card';
         // The decoder owns the complete envelope, including compatibility mirrors
@@ -553,7 +606,7 @@ export function createRoleplayMvuSource(deps) {
                 fail('FIELD_UNSUPPORTED', '/data');
         extensions(data.extensions, '/data/extensions', authorSchema);
         const depthPrompt = data.extensions?.depth_prompt;
-        if (depthPrompt)
+        if (depthPrompt && !authorSchema)
             render(depthPrompt.prompt, context, false);
         // creator_notes is retained archive DATA, not a runtime initialization field.
         for (const { pointer, value, schemaOwned } of authorFields(captured)) {
@@ -570,79 +623,18 @@ export function createRoleplayMvuSource(deps) {
                 fail('STATE_SYNTAX_UNSUPPORTED', pointer, value);
             render(value, context, false);
         }
-        const book = data.character_book;
-        const entries = [];
-        const initBudget = { nodes: 0, bytes: 0 };
-        if (book !== undefined) {
-            if (!isObject(book) || !(Array.isArray(book.entries) || nativeCard && isObject(book.entries))) {
-                fail('FIELD_UNSUPPORTED', '/data/character_book', book);
-            }
-            for (const [index, [key, raw]] of Object.entries(book.entries).entries()) {
-                const pointer = `${snapshot.bindings.primary.pointer}/entries/${pointerPart(key)}`;
-                if (!isObject(raw))
+        const initialization = classifyInitialization(captured, authorSchema), { entries, candidates } = initialization;
+        let openingInit = false;
+        if (!authorSchema)
+            for (const candidate of candidates) {
+                if (nativeCard && candidate.materialization === 'materialized')
                     continue;
-                const comment = typeof raw.comment === 'string' ? raw.comment : '';
-                const isInit = comment.toLowerCase().includes('[initvar]');
-                if (!isInit) {
-                    // Ordinary lore, including templates and opaque metadata, belongs to
-                    // the Prompt/compiler owner. It cannot declare numerical state here.
-                    if (typeof raw.content === 'string' && initSyntax(raw.content))
-                        fail('INITVAR_OUTSIDE_BINDING', pointer, raw.content);
-                    continue;
-                }
-                if (typeof raw.content !== 'string')
-                    fail('FIELD_UNSUPPORTED', pointer);
-                boundedData(raw.content, 'FIELD_UNSUPPORTED', pointer, initBudget);
-                requireKeys(raw, ['id', 'name', 'comment', 'content', 'keys', 'key', 'secondary_keys', 'keysecondary', 'enabled', 'disable',
-                    'constant', 'selective', 'case_sensitive', 'use_regex', 'insertion_order', 'order', 'position', 'extensions'], pointer, 'FIELD_UNSUPPORTED');
-                for (const key of ['enabled', 'disable', 'constant', 'selective', 'case_sensitive', 'use_regex']) {
-                    if (raw[key] !== undefined && typeof raw[key] !== 'boolean')
-                        fail('FIELD_UNSUPPORTED', pointer);
-                }
-                for (const key of ['keys', 'key', 'secondary_keys', 'keysecondary'])
-                    if (raw[key] !== undefined
-                        && (!Array.isArray(raw[key]) || raw[key].some(item => typeof item !== 'string'))) {
-                        fail('FIELD_UNSUPPORTED', pointer);
-                    }
-                for (const key of ['name', 'position'])
-                    if (raw[key] !== undefined && typeof raw[key] !== 'string') {
-                        fail('FIELD_UNSUPPORTED', pointer);
-                    }
-                if (raw.id !== undefined && typeof raw.id !== 'string' && typeof raw.id !== 'number')
-                    fail('FIELD_UNSUPPORTED', pointer);
-                for (const key of ['insertion_order', 'order'])
-                    if (raw[key] !== undefined
-                        && (typeof raw[key] !== 'number' || !Number.isFinite(raw[key])))
-                        fail('FIELD_UNSUPPORTED', pointer);
-                if ([raw.content, raw.comment, raw.name].some(value => typeof value === 'string' && stateSyntax(value))) {
-                    fail('STATE_SYNTAX_UNSUPPORTED', pointer);
-                }
-                const rendered = render(raw.content, context, true);
-                entries.push({ identity: `entry-${index}`, sourcePointer: pointer, comment,
-                    enabled: raw.enabled !== false && raw.disable !== true, content: raw.content, contentSha256: sha(raw.content),
-                    renderedContent: rendered, renderedContentSha256: sha(rendered) });
+                if (stateSyntax(candidate.rawText))
+                    fail('STATE_SYNTAX_UNSUPPORTED', candidate.sourcePointer, candidate.rawText);
+                if (openingBlocks(candidate.renderedText, candidate.sourcePointer))
+                    openingInit = true;
+                render(candidate.rawText, context, entries.length > 0 || openingInit);
             }
-        }
-        const selection = selectNativeMvuInitializationPolicy({ books: [{ entries }],
-            swipes: candidates.map(item => ({ rawOpening: item.rawText, renderedOpening: item.renderedText,
-                ...(item.materialization ? { materialization: item.materialization } : {}) })) });
-        if (selection.kind === 'unsupported')
-            fail('INITVAR_INVALID', selection.diagnostics[0].pointer);
-        let openingInit = false, openingUpdate = false;
-        let openingParserPolicy = recordedInitSource?.schemaVersion === 3 ? recordedInitSource.parserPolicy : undefined;
-        for (const [index, candidate] of candidates.entries()) {
-            if (nativeCard && candidate.materialization === 'materialized')
-                continue;
-            const syntax = openingSyntax(candidate, allowUpdate, authorSchema ? selection.openingInitialization[index] : null, allowAnalysisAlias);
-            if (syntax === 'unsupported')
-                fail('STATE_SYNTAX_UNSUPPORTED', candidate.sourcePointer, candidate.rawText);
-            openingUpdate = syntax === 'update' || syntax === 'update-alias';
-            if (syntax === 'update-alias')
-                openingParserPolicy = 'analysis-alias-v1';
-            if (openingBlocks(candidate.renderedText, candidate.sourcePointer))
-                openingInit = true;
-            render(candidate.rawText, context, entries.length > 0 || openingInit);
-        }
         // The immutable decoder inputs above own the original card fields and
         // InitVar declarations. A verified original rules row can also contain
         // ordinary constant lore; its templates belong to the Prompt owner.
@@ -676,7 +668,7 @@ export function createRoleplayMvuSource(deps) {
                 continue;
             // The selected raw greeting owns this initialization. Its hash-bound activated
             // opening copy is retained Source material, not a second init interpreter.
-            if (ref.table === 'opening' && original && (openingUpdate || openingInit || selectedMaterialized))
+            if (ref.table === 'opening' && original && (authorSchema || openingInit || selectedMaterialized))
                 continue;
             for (const field of fields) {
                 const text = value[field];
@@ -689,7 +681,7 @@ export function createRoleplayMvuSource(deps) {
                     fail('INITVAR_OUTSIDE_BINDING', '/settings', text);
             }
         }
-        return { entries, candidates, hasInit: entries.length > 0 || openingInit, policy: selection.policy, openingUpdate, openingParserPolicy };
+        return initialization;
     };
     const fresh = (snapshot) => {
         const observed = deps.readFreshNativeBasis(snapshot.source.sessionId, snapshot.swipes);
@@ -753,20 +745,19 @@ export function createRoleplayMvuSource(deps) {
             if (!same(captured.snapshot.source, request.catalog.source) || !same(captured.candidates, request.catalog.candidates)
                 || !same(selected, request.candidate))
                 fail('SOURCE_CHANGED', '/selected');
-            const { entries, hasInit, policy } = classify(captured);
+            const { entries, books, hasInit, policy } = classify(captured);
             const snapshot = withPolicy(captured.snapshot, policy);
             if (!hasInit) {
                 const proof = { schemaVersion: 1, encoding: 'native-mvu-absence-scope-proof-v1',
                     reason: 'closed-native-scope-no-initialization', sourceSnapshot: snapshot };
                 return { schemaVersion: 1, kind: 'legacy-v2', absenceScopeProof: { ...proof, proofSha256: recordSha256(proof) } };
             }
-            if (!snapshot.bindings.primary || !entries.length)
+            if (!books.length || !entries.length)
                 fail('PRIMARY_REQUIRED', '/bindings/primary');
             const { proof, facts } = fresh(snapshot);
             return { schemaVersion: 1, kind: 'native-json', candidate: { schemaVersion: 1, encoding: 'native-mvu-json-source-candidate-v1',
                     policy, sourceSnapshot: snapshot, freshNativeBasisProof: proof,
-                    books: [{ identity: 'embedded-primary', binding: 'primary', sourcePointer: snapshot.bindings.primary.pointer,
-                            sourceSha256: snapshot.bindings.primary.sha256, entries }], bookStatData: structuredClone(facts.basis.bookStatData),
+                    books, bookStatData: structuredClone(facts.basis.bookStatData),
                     initializedBooks: [], messageIndex: 0, selectedSwipeIdentity: `swipe-${request.candidate.index}`,
                     swipes: captured.candidates.map((item, index) => ({ identity: `swipe-${item.index}`, sourcePointer: item.sourcePointer,
                         sourceSha256: item.sourceSha256, rawOpening: item.rawText, renderedOpening: item.renderedText,
@@ -808,22 +799,15 @@ export function createRoleplayMvuSource(deps) {
                         ? error.diagnostic : { code: 'SOURCE_INVALID', pointer: '/source' }] };
         }
     }
-    function schemaOpeningData(captured, recordedInitSource) {
+    function schemaOpeningData(captured) {
         const author = deps.captureOriginal
             ? readAuthorSource(captured.snapshot.source.sessionId, captured.snapshot.selected.index) : authorSourceOf(captured);
         if (author.kind !== 'author-source')
             return author;
-        if (!author.source.scripts.some(script => script.enabled))
-            return { kind: 'absent' };
-        const { entries, candidates, policy, openingUpdate, openingParserPolicy } = classify(captured, true, recordedInitSource);
-        const primary = captured.snapshot.bindings.primary;
-        const version = openingParserPolicy ? { schemaVersion: 3, encoding: 'native-mvu-schema-opening-init-source-v3',
-            parserPolicy: openingParserPolicy } : openingUpdate ? { schemaVersion: 2, encoding: 'native-mvu-schema-opening-init-source-v2' }
-            : { schemaVersion: 1, encoding: 'native-mvu-schema-opening-init-source-v1' };
-        const body = { ...version,
+        const { books, candidates, policy } = classify(captured, true);
+        const body = { schemaVersion: 1, encoding: 'native-mvu-schema-opening-init-source-v1',
             grammar: isNativeMvuYamlSourcePolicy(policy) ? 'yaml-1.2-json-data-v1' : 'strict-json-object-v1',
-            books: primary ? [{ identity: 'embedded-primary', binding: 'primary', sourcePointer: primary.pointer,
-                    sourceSha256: primary.sha256, entries }] : [],
+            books,
             bookStatData: {}, initializedBooks: [], messageIndex: 0,
             selectedSwipeIdentity: `swipe-${captured.snapshot.selected.index}`,
             swipes: candidates.map(item => ({ identity: `swipe-${item.index}`, sourcePointer: item.sourcePointer,
@@ -833,18 +817,11 @@ export function createRoleplayMvuSource(deps) {
         const initSource = { ...body, initSourceSha256: recordSha256(body) };
         return { kind: 'schema-opening-data', authorSource: author.source, initSource };
     }
-    function captureSchemaOpeningData(sessionId, selectedIndex, recordedInitSource) {
-        const compute = () => schemaOpeningData(captureAuthor(sessionId, selectedIndex), recordedInitSource);
+    function captureSchemaOpeningData(sessionId, selectedIndex) {
+        const compute = () => schemaOpeningData(captureAuthor(sessionId, selectedIndex));
         if (!deps.captureOriginal)
             return compute();
-        // Historical descriptors select all greetings and/or the older literal
-        // grammar. Their two semantic choices are distinct Original read slots.
-        const allGreetings = !!recordedInitSource && recordedInitSource.swipes.length > 1, allowUpdate = !recordedInitSource || recordedInitSource.schemaVersion === 2 || recordedInitSource.schemaVersion === 3;
-        // A retained v3 currency read must not select the version of a fresh
-        // preparation after Source changes. Retained v1/v2 keep their old slots.
-        const policySlot = !recordedInitSource ? ':analysis-alias-v1:fresh'
-            : recordedInitSource.schemaVersion === 3 ? ':analysis-alias-v1' : '';
-        return deps.captureOriginal(sessionId, `mvu-schema-opening:${selectedIndex}:${allGreetings}:${allowUpdate}${policySlot}`, () => {
+        return deps.captureOriginal(sessionId, `mvu-schema-opening:${selectedIndex}`, () => {
             const data = compute();
             if (data.kind !== 'schema-opening-data')
                 return freezeAuthorSourceData(data);
@@ -854,9 +831,9 @@ export function createRoleplayMvuSource(deps) {
     }
     /** Original raw descriptors only: no fresh-basis observation, numerical
      * capability, Native owner or publication side effect is created here. */
-    function readSchemaOpeningData(sessionId, selectedIndex, recordedInitSource) {
+    function readSchemaOpeningData(sessionId, selectedIndex) {
         try {
-            return captureSchemaOpeningData(sessionId, selectedIndex, recordedInitSource);
+            return captureSchemaOpeningData(sessionId, selectedIndex);
         }
         catch (error) {
             return { kind: 'unsupported', diagnostics: [error instanceof SourceFailure
@@ -892,7 +869,7 @@ export function createRoleplayMvuSource(deps) {
                 if (author.kind !== 'author-source' || author.source.authorSourceSha256 !== expected.authorSourceSha256)
                     return false;
             }
-            const data = captureSchemaOpeningData(expected.sourceSnapshot.source.sessionId, expected.sourceSnapshot.selected.index, expected.initSource);
+            const data = captureSchemaOpeningData(expected.sourceSnapshot.source.sessionId, expected.sourceSnapshot.selected.index);
             if (data.kind !== 'schema-opening-data')
                 return false;
             // The actual Original owner already owns parsing, immutable DATA and its
@@ -922,5 +899,6 @@ export function createRoleplayMvuSource(deps) {
         }
     }
     return { produce, current, readAuthorSource, authorSourceCurrent, readSchemaOpeningData,
+        openingMacroInput: (author) => openingMacroInputs.get(author),
         readSchemaOpeningSource, schemaOpeningSourceCurrent };
 }

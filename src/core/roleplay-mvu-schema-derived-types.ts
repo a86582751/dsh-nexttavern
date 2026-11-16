@@ -4,14 +4,14 @@ import {recordSha256} from './roleplay-data.js'
 import {COMBINED_AUTHOR_DATA_BOUNDS_V8} from './tavern-author-combined-types-v8.mjs'
 import {sealMvuSchemaStoryFact,validateMvuSchemaNumericalSnapshot}
   from './roleplay-mvu-schema-story-types.js'
-import {validateMvuSchemaOpeningIntent,validateMvuSchemaOpeningEvent,validateMvuSchemaOpeningHead}
+import {validateSchemaOpeningRootFacts}
   from './roleplay-mvu-schema-opening-types.js'
 import {validateMvuDerivedSourceProof} from './roleplay-mvu-lineage.js'
 import {validateMvuDerivedSourceProofUnion,validateMvuPreparedSourceRefV1} from './roleplay-mvu-frozen-lineage.js'
 import {freezeImmutableSchemaDescriptorDataV4} from './roleplay-mvu-schema-descriptor-data.js'
 import {inheritanceFreezeV1} from './roleplay-tavern-source-inheritance-data.js'
 import {schemaOriginalProgramSha256,schemaOriginalSnapshot} from './roleplay-mvu-schema-source.js'
-import type {OpeningIntentV5,MvuSchemaOpeningEventV2,MvuSchemaOpeningHeadV2} from './roleplay-mvu-schema-opening-types.js'
+import type {SchemaOpeningRootFacts} from './roleplay-mvu-schema-opening-types.js'
 import type {SchemaFrozenOriginal} from './roleplay-mvu-schema-source.js'
 import type {SchemaJournalFrozenCut,SchemaJournalReady} from './roleplay-mvu-schema-journal.js'
 import type {MvuSchemaNumericalSnapshotV2,MvuSchemaDerivedHeadV1,MvuSchemaStoryFrontier}
@@ -19,14 +19,14 @@ import type {MvuSchemaNumericalSnapshotV2,MvuSchemaDerivedHeadV1,MvuSchemaStoryF
 import type {MvuDerivedSourceProof} from './roleplay-mvu-lineage.js'
 import type {MvuDerivedSourceProofV2,MvuDerivedSourceProofV3} from './roleplay-mvu-frozen-lineage.js'
 import type {TavernSourceFrozenRefV1} from './roleplay-tavern-source-inheritance-types.js'
-import type {ForkOperation} from './roleplay-worldline-types.js'
+import type {ForkPreparationOperation} from './roleplay-worldline-types.js'
 import type {ForkReservation} from './roleplay-branch-routes-types.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {SchemaJournalRef} from './roleplay-mvu-schema-journal.js'
 import type {MvuOpeningVariantSelectionV1} from './roleplay-mvu-numerical-publication.js'
 
 export type MvuSchemaPrefixSeed=
-  | {kind:'opening';intent:OpeningIntentV5;event:MvuSchemaOpeningEventV2;head:MvuSchemaOpeningHeadV2}
+  | ({kind:'opening'}&SchemaOpeningRootFacts)
   | {kind:'derived';basisKey:string;basisSha256:string}
   | {kind:'activation';activationRef:SchemaJournalRef}
 export interface MvuSchemaFrozenPrefixV1 {
@@ -71,7 +71,7 @@ export interface MvuSchemaDerivedPreparedV2 extends Omit<MvuSchemaDerivedPrepare
   sourcePreparedRef:TavernSourceFrozenRefV1
   parentNumericDescriptorSha256:string
   prefixClosureRef:{key:string;sha256:string;closureSha256:string}
-  forkReservationBinding:{operationId:string;anchor:ForkOperation['anchor'];reservation:ForkReservation;bindingSha256:string}
+  forkReservationBinding:{operationId:string;anchor:ForkPreparationOperation['anchor'];reservation:ForkReservation;bindingSha256:string}
 }
 export interface MvuSchemaDerivedBasisV2 {
   schemaVersion:2
@@ -235,15 +235,9 @@ function validateFrozenPrefixFields(prefix:MvuSchemaFrozenPrefixV1):MvuSchemaFro
     if(!hash(item.planSha256)||!hash(item.closureSha256))fail()
   }
   if(prefix.seed.kind==='opening') {
-    exact(prefix.seed,['kind','intent','event','head'])
-    validateMvuSchemaOpeningIntent(prefix.seed.intent)
-    validateMvuSchemaOpeningEvent(prefix.seed.event)
-    validateMvuSchemaOpeningHead(prefix.seed.head)
+    exact(prefix.seed,['kind','intent','preparation','plan','native','event','head'])
+    validateSchemaOpeningRootFacts(prefix.seed)
     if(prefix.inheritedEventCount!==0||initial.root.derived)fail()
-    if(prefix.original.schemaVersion===5) {
-      const preparationVersion=prefix.seed.intent.preparation.schemaVersion,planVersion=prefix.seed.event.plan.schemaVersion
-      if(!(preparationVersion===5&&planVersion===7||preparationVersion===6&&planVersion===8))fail()
-    }
   }else if(prefix.seed.kind==='derived') {
     exact(prefix.seed,['kind','basisKey','basisSha256'])
     if(prefix.seed.basisKey!==mvuSchemaDerivedBasisKey(prefix.sessionId)||!hash(prefix.seed.basisSha256)

@@ -96,11 +96,6 @@ function basisValid(input:MvuEditBasisFacts):MvuEditBasisFacts {
   const root=basis.root
   if('openingEventId' in root) {
     try {validateMvuSchemaStoryRoot(root)}catch {fail('NUMERICAL_EDIT_BASIS_UNKNOWN')}
-  }else if('encoding' in root&&root.encoding==='native-program-mvu-state-root-v1') {
-    exact(root,['schemaVersion','encoding','programEventId','programEventSha256','programHeadSha256','planSha256'])
-    if(root.schemaVersion!==1||![root.programEventId,root.programEventSha256,root.programHeadSha256,root.planSha256].every(hash)) {
-      fail('NUMERICAL_EDIT_BASIS_UNKNOWN')
-    }
   }else if('encoding' in root) {
     exact(root,['schemaVersion','encoding','derivedEventId','derivedEventSha256','derivedHeadSha256','basisSha256'])
     if(root.schemaVersion!==1||root.encoding!=='native-mvu-derived-state-root-v1'
@@ -135,7 +130,8 @@ export function createRoleplayMvuEditFacts(deps:MvuEditFactsDeps) {
   }
   function editIdentity(edit:StoryEvent,events:readonly StoryEvent[]) {
     const data=edit.data
-    if(edit.type!=='roleplay/message-edit'||!data||data.schemaVersion!==1||!seq(edit.seq)||edit.ignorable
+    if(edit.type!=='roleplay/message-edit'||!data
+      ||data.schemaVersion!==1&&data.schemaVersion!==2&&data.schemaVersion!==3||!seq(edit.seq)||edit.ignorable
       ||!seq(data.targetSeq)||data.targetSeq>=edit.seq||typeof data.text!=='string'||data.text.length>1000000
       ||!['assistant','user'].includes(String(data.role))||typeof data.messageId!=='string'
       ||!data.messageId.length||data.messageId.length>1024)fail('NUMERICAL_EDIT_IDENTITY_INVALID')

@@ -12,7 +12,7 @@ import { sourceLiteralReaderCss } from './roleplay-reader-style-parser.mjs';
 import { eventsOf, surfaceEntries } from './roleplay-context.js';
 import { produceRoleplayTavernMacroSnapshotV1, captureRoleplayTavernScopedRegexV1, captureTavernPromptModelBindingV1 } from './roleplay-tavern-prompt-macros.js';
 import { applyTavernPromptTransformsV1 } from './tavern-prompt-transform.mjs';
-import { projectReaderNarrativeDisplay } from './roleplay-reader-narrative-display.js';
+import { projectReaderNarrativeDisplay, createReaderMvuDisplayScope } from './roleplay-reader-narrative-display.js';
 import { readerRegexDocumentHtmlSpan } from './reader-source-document-data.mjs';
 import { authorMessageBodyRequestValid } from './roleplay-author-message-edit-types.js';
 import { createMvuScopeReadFrameV1 } from './tavern-mvu-scope-read.js';
@@ -110,7 +110,7 @@ function documentVariables(facts, program) {
     }
     return [...targets.values()];
 }
-function acceptedScope(row, updates) {
+function acceptedScope(row, updates, displayText = row.rawText) {
     const matches = updates.filter(update => update.canonical.seq === row.seq && update.canonical.messageId === row.messageId);
     if (matches.length !== 1)
         return;
@@ -118,10 +118,7 @@ function acceptedScope(row, updates) {
     if (update.canonical.versionSha256 !== row.messageVersionSha256
         || update.canonical.narrativeSha256 !== sha256(row.rawText))
         return;
-    const start = row.rawText.indexOf('<UpdateVariable>'), close = row.rawText.indexOf('</UpdateVariable>');
-    if (start < 0 || close < start)
-        return;
-    return { role: 'assistant', protocol: update.protocol, acceptedRange: { start, end: close + '</UpdateVariable>'.length } };
+    return createReaderMvuDisplayScope(row.rawText, update.protocol, displayText);
 }
 export function createRoleplayReaderDisplay(deps) {
     const bindings = new Map();
@@ -593,14 +590,8 @@ export function createRoleplayReaderDisplay(deps) {
                 authority: 'consumer-data-only', sourceSnapshotSha256: source.sourceSha256, regexDisabled: false, macros, rules,
                 ...policy ? { scriptOrder: policy.regexOrder } : {},
                 entries: selected.rows.map(row => {
-                    let scope = acceptedScope(row, scopes?.displayUpdates ?? []);
-                    if (scope && row.effectiveText !== row.rawText) {
-                        // Only the exact accepted protocol block may stay hidden after an
-                        // author moves surrounding prose. New hook-authored blocks are data.
-                        const block = row.rawText.slice(scope.acceptedRange.start, scope.acceptedRange.end), start = row.effectiveText.indexOf(block);
-                        scope = start < 0 ? undefined : { ...scope, acceptedRange: { start, end: start + block.length } };
-                    }
-                    const storyText = projectReaderNarrativeDisplay(row.effectiveText, scope);
+                    const scope = row.role === 'assistant' ? acceptedScope(row, scopes?.displayUpdates ?? [], row.effectiveText) : undefined;
+                    const storyText = row.role === 'assistant' ? projectReaderNarrativeDisplay(row.effectiveText, scope) : row.effectiveText;
                     return { key: `reader:${row.seq}:${row.messageId}:${row.messageVersionSha256}`, bookId: null, entryId: null,
                         sourcePointer: `/native/messages/${row.seq}`, sourceSnapshotSha256: source.sourceSha256,
                         rawText: row.rawText, storyText, inputText: storyText, pipeline: 'regex-only', channel: 'display', placement: row.role === 'user' ? 1 : 2,

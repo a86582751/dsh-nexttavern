@@ -155,7 +155,6 @@ import { registerSessionTools, registerSessionCommands } from './roleplay-sessio
 import { simpleTool, registerTaskTools, createTaskSubmissionBindings } from './roleplay-task-tools.js';
 import { createRoleplayState, captureRoleplaySourceRecordVersionsV1, jsonResponse } from './roleplay-state.js';
 import { createRoleplayMvuSchemaTaskEdits } from './roleplay-mvu-schema-task-edit.js';
-import { parseMvuSchemaStoryCandidateV2 } from './roleplay-mvu-schema-story-types.js';
 import { registerRoleplayDiagnosis } from './roleplay-diagnosis.js';
 import { registerCardAuthoring, registerDraftCheck } from './roleplay-authoring.js';
 import { registerAdaptationTools } from './card-adaptation-tools.js';
@@ -2683,6 +2682,13 @@ export async function apply(ctx, config = {}) {
     let authorBrowser;
     const mvuOpening = createRoleplayMvuOpening({ tables: T, inputState, session: id => ctx.sessions.get(id),
         prepareMvuHook: (request, signal) => authorBrowser?.prepareHook(request, signal) ?? Promise.resolve(undefined),
+        awaitBrowserSource: (sid, program, signal) => {
+            if (!authorBrowser)
+                throw Error('BROWSER_GENERATION_READER_REQUIRED');
+            return authorBrowser.awaitReader(sid, program, signal, !!programOpening?.capturePendingSource(sid));
+        },
+        readMvuHookInterests: sid => authorBrowser?.hookInterests(sid) ?? [],
+        includeCardStyle: sid => narrativePresets.policy(sid).effective.mode !== 'system',
         openingVariantModelSelection: sid => {
             const session = ctx.sessions.get(sid);
             if (!session)
@@ -3339,9 +3345,18 @@ export async function apply(ctx, config = {}) {
             }
         }
     }
-    const schemaStory = mvuOpening.createSchemaStory({
+    schemaStory = mvuOpening.createSchemaStory({
         authorChat: authorChatState,
         captureOrdinaryChatNamespace,
+        readOrdinaryScopeForkBases: (sid, subject = sid) => {
+            if (T.branch.get(tavernSourcePreparedKeyV1(sid)) === undefined)
+                return [];
+            // An ancestor's immutable fork bases belong to the live child's verified
+            // lineage. Reading it as a subject would require its inactive Agent.
+            const transaction = sid === subject ? tavernSourceInheritance.readCommittedStaticSourceInheritance(sid)
+                : tavernSourceInheritance.readCommittedSourceLineage(subject).ancestors.find(row => row.prepared.childSessionId === sid);
+            return transaction?.prepared.authorChatScopeForkBasesV1 ?? [];
+        },
         closingView: (lease, scope) => inputOwner?.readClosingView(lease, scope),
         verifyConsumedScope: scope => {
             const proof = inputOwner?.captureConsumedScopeProof(scope);
@@ -3392,8 +3407,7 @@ export async function apply(ctx, config = {}) {
             if (!await ctx.sessions.flush(session)) {
                 throw Error('SCHEMA_TASK_EDIT_FLUSH_UNKNOWN');
             }
-        },
-        parse: text => parseMvuSchemaStoryCandidateV2(text, 'analysis-alias-rfc6902-members-v1') });
+        } });
     schemaMaintenance = createRoleplayMvuSchemaMaintenance({ table: T.branch,
         eligible: id => schemaStory?.supportsMaintenance(id) === true,
         work: (session, turn) => {
@@ -3404,7 +3418,17 @@ export async function apply(ctx, config = {}) {
                 lookup.status !== 'none' && lookup.checkpoint.actualTurn === turn ? lookup.checkpoint : undefined;
             return checkpoint ? inputOwner?.readSchemaStoryWork(session.id, checkpoint) : undefined;
         },
-        base: work => schemaStory?.captureMaintenanceBase(work.sessionId, work.currency),
+        executionOwner: (session, turn, signal) => {
+            const agent = taskAgents.get(session.id);
+            if (!agent || ctx.get('agentLoop')?.getInputAdmissionAgent(agent) !== agent
+                || ctx.sessions.get(session.id) !== session)
+                return;
+            return inputBindings.get(agent)?.captureSchemaStoryExecutionOwner(turn, signal);
+        }, prepareCommands: (work, canonical) => {
+            if (!schemaStory)
+                throw Error('SCHEMA_RUNTIME_UNAVAILABLE');
+            return schemaStory.prepareMaintenanceCommands(work, canonical);
+        },
         material: (session, event, work) => {
             const read = materialReadScope(session.id), events = read.events(), turn = Number(event.data?.turn), step = Number(event.data?.step), material = events.findLast(row => row.type === 'request/material' && row.data.turn === turn && row.data.step === step
                 && row.seq < event.seq && row.seq >= work.checkpoint.startSeq);

@@ -5,16 +5,17 @@ import {canonicalAssistantForTurn} from './roleplay-context.js'
 import {maintenancePrompt,InlinePending} from './tavern-task-context.js'
 import {isInlinePending,untilAborted} from './tavern-task-primitives.js'
 import {taskCancellation} from './roleplay-decision.js'
-import {parseMvuSchemaStoryCandidateV2} from './roleplay-mvu-schema-story-types.js'
 import {mvuSchemaMaintenanceAdmissionKey,mvuSchemaMaintenanceBasisKey,mvuSchemaMaintenanceTaskKey,
   sealMvuSchemaMaintenanceData,normalizeMvuSchemaMaintenanceResultV1} from './roleplay-mvu-schema-maintenance-types.js'
 import type {MvuSchemaMaintenanceAdmissionV1,MvuSchemaMaintenanceBasisV1,MvuSchemaMaintenanceResultV1,
   MvuSchemaMaintenanceCandidateSourceV1,MvuSchemaMaintenanceTaskBindingV1,MvuSchemaMaintenanceDecisionV1}
   from './roleplay-mvu-schema-maintenance-types.js'
-import type {RoleplayNewInputWorkV1,RoleplaySchemaStoryWorkV1,InputSourceObservation} from './roleplay-input-preparation.js'
+import type {RoleplayNewInputWorkV1,RoleplaySchemaStoryWorkV1,RoleplaySchemaStoryExecutionOwnerV1,
+  InputSourceObservation} from './roleplay-input-preparation.js'
 import type {InputCompletionScope} from './roleplay-input-completion.js'
-import type {MvuSchemaNumericalSnapshotV2,MvuSchemaStoryCanonical,MvuSchemaStoryParserPolicy}
+import type {MvuSchemaNumericalSnapshotV2,MvuSchemaStoryCanonical}
   from './roleplay-mvu-schema-story-types.js'
+import type {AuthorNativeMvuCommandInfo} from './author-native-mvu-hook-types.js'
 import type {StatusCancellation} from './roleplay-status-types.js'
 import type {ContextSession,ContextEvent} from './roleplay-context.js'
 import type {HostAgent,NativeTaskInput} from './roleplay-task-host-types.js'
@@ -34,7 +35,10 @@ interface Dependencies {
   table:Table
   eligible(sessionId:string):boolean
   work(session:ContextSession,turn:number):RoleplaySchemaStoryWorkV1|undefined
-  base(work:RoleplaySchemaStoryWorkV1):{base:MvuSchemaNumericalSnapshotV2;parserPolicy?:MvuSchemaStoryParserPolicy}|undefined
+  executionOwner(session:ContextSession,turn:number,signal:AbortSignal):RoleplaySchemaStoryExecutionOwnerV1|undefined
+  prepareCommands(owner:RoleplaySchemaStoryExecutionOwnerV1,canonical:MvuSchemaStoryCanonical):Promise<{
+    base:MvuSchemaNumericalSnapshotV2;prepared:MvuSchemaMaintenanceBasisV1['prepared'];
+    commands:readonly AuthorNativeMvuCommandInfo[]}>
   material(session:ContextSession,event:ContextEvent,work:RoleplaySchemaStoryWorkV1):MvuSchemaMaintenancePublishedMaterialV1
   selection(session:ContextSession,agent?:HostAgent):PromiseLike<TaskSelection>
   request(input:NativeTaskInput<MvuSchemaMaintenanceResultV1>):Promise<MvuSchemaMaintenanceResultV1>
@@ -104,33 +108,37 @@ export function createRoleplayMvuSchemaMaintenance(deps:Dependencies) {
     const work=deps.work(session,Number(event.data?.turn))
     return !!work&&!!readAdmission(work)
   }
-  async function captureBasis(session:ContextSession,event:ContextEvent) {
+  async function captureBasis(session:ContextSession,event:ContextEvent,signal?:AbortSignal) {
     if(canonicalAssistantForTurn(session,event.data?.turn)?.seq!==event.seq)fail('SCHEMA_MAINTENANCE_CANONICAL_CHANGED')
     const work=deps.work(session,Number(event.data?.turn)),body=canonical(event)
     if(!work)fail('SCHEMA_MAINTENANCE_WORK_UNPROVEN')
     const admission=readAdmission(work)
     if(!admission)fail('SCHEMA_MAINTENANCE_ADMISSION_MISSING')
-    const schema=deps.base(work)
-    if(!schema)fail('SCHEMA_MAINTENANCE_BASE_UNPROVEN')
-    const candidate=parseMvuSchemaStoryCandidateV2(body.narrative,schema.parserPolicy)
-    if(candidate.kind==='rejected')fail('SCHEMA_STORY_CANDIDATE_REJECTED')
+    const snapshot=work.currency.snapshot&&deps.table.get(work.currency.snapshot.key) as
+      {numericalState?:MvuSchemaNumericalSnapshotV2}|undefined,base=snapshot?.numericalState
+    if(!base)fail('SCHEMA_MAINTENANCE_BASE_UNPROVEN')
     const prior=readBasis(session.id,event.seq)
     if(prior) {
       const {narrative:_text,...reference}=body
       if(!same(prior.canonical,reference)||!same(prior.currency,work.currency)
-        ||prior.baseStateSnapshotSha256!==schema.base.stateSnapshotSha256)fail('SCHEMA_MAINTENANCE_BASIS_CHANGED')
+        ||prior.baseStateSnapshotSha256!==base.stateSnapshotSha256)fail('SCHEMA_MAINTENANCE_BASIS_CHANGED')
       // The immutable published material is selected by the sealed original
       // ref, rather than whichever later maintenance step is now most recent.
-      return {work,admission,basis:prior,body,base:schema.base,material:deps.material(session,event,work)}
+      return {work,admission,basis:prior,body,base,material:deps.material(session,event,work)}
     }
+    const owner=signal&&deps.executionOwner(session,Number(event.data?.turn),signal)
+    if(!owner||!same(owner.work,work))fail('SCHEMA_MAINTENANCE_WORK_UNPROVEN')
+    const update=await deps.prepareCommands(owner,body)
+    if(!owner.current())fail('SCHEMA_MAINTENANCE_WORK_REVOKED')
     const material=deps.material(session,event,work),{narrative:_text,...reference}=body
     const basis=sealMvuSchemaMaintenanceData({schemaVersion:1 as const,
       encoding:'native-mvu-schema-maintenance-basis-v1' as const,sessionId:session.id,
       admissionSha256:admission.admissionSha256,currency:work.currency,workSha256:work.checkpoint.workSha256,
-      turn:work.checkpoint.actualTurn,canonical:reference,baseStateSnapshotSha256:schema.base.stateSnapshotSha256,
-      material:material.reference,candidateKind:candidate.kind},'basisSha256')
+      turn:work.checkpoint.actualTurn,canonical:reference,baseStateSnapshotSha256:update.base.stateSnapshotSha256,
+      material:material.reference,prepared:update.prepared,
+      candidateKind:update.commands.length?'parsed' as const:'no-update' as const},'basisSha256')
     await putExact(mvuSchemaMaintenanceBasisKey(session.id,event.seq),basis)
-    return {work,admission,basis,body,base:schema.base,material}
+    return {work,admission,basis,body,base:update.base,material}
   }
   function taskBinding(sessionId:string,seq:number):MvuSchemaMaintenanceTaskBindingV1|undefined {
     return deps.table.get(mvuSchemaMaintenanceTaskKey(sessionId,seq)) as MvuSchemaMaintenanceTaskBindingV1|undefined
@@ -170,7 +178,7 @@ export function createRoleplayMvuSchemaMaintenance(deps:Dependencies) {
           return {kind:'schema-maintenance',state:'completed'}
         }catch(error) {if(!isInlinePending(error))throw error}
       }
-      const capture=await captureBasis(session,event),{basis,base,body,material}=capture,
+      const capture=await captureBasis(session,event,signal),{basis,base,body,material}=capture,
         selection=await deps.selection(session,agent)
       const context={authorGroups:material.authorGroups,finalLore:material.finalLore,
         currentValues:base.values,completedStory:body.narrative}
@@ -178,10 +186,11 @@ export function createRoleplayMvuSchemaMaintenance(deps:Dependencies) {
         ?'正文已经包含有效变量更新候选，本任务不得再推断或输出 variableCandidate，只输出 '
           +'{"schemaVersion":1,"options":[{"label":"行动","heart":false,"description":"可选简述"}]}。'
         :'正文没有变量更新容器。本任务必须根据真实作者规则、当前 values 和已经发生的正文明确结算：'
-          +'需要变化时输出 {"schemaVersion":1,"variableCandidate":{"kind":"patch","operations":['
-          +'{"kind":"jsonpatch","operation":{"op":"replace","path":"/真实路径","value":"真实值"}}]},'
+          +'需要变化时输出 {"schemaVersion":1,"variableCandidate":{"kind":"commands","commands":['
+          +'{"type":"set","full_match":"_.set(\\"hp\\",8);","args":["hp","8"],"reason":"已发生的原因"}]},'
           +'"options":[{"label":"行动","heart":false,"description":"可选简述"}]}；'
-          +'operations 必须非空，可使用已声明的 normalized JSONPatch/legacy 命令。'
+          +'commands 必须非空，type 使用 set/add/insert/delete，args 为原始参数字符串数组，'
+          +'路径参数不加引号，数值、字符串或对象参数使用固定 MVU 的字面量／表达式语法。'
           +'确实没有变化时必须显式使用 "variableCandidate":{"kind":"unchanged"}。'
           +'不可省略 candidate，不以 options/fields/时间描述代替变量候选。'
       const request:NativeTaskInput<MvuSchemaMaintenanceResultV1>={session,agent,kind:'schema-maintenance',format:'json',system,

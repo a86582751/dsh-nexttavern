@@ -1,4 +1,4 @@
-/** Trusted worker owns the VM, atomic v2 updates and sealed v4 scope reads.
+/** Trusted worker owns the VM, fixed-core updates and sealed v4 scope reads.
  * Guests see JSON copies and pinned libraries, never Node handles or write owners. */
 import {parentPort,workerData} from 'node:worker_threads'
 import {createRequire} from 'node:module'
@@ -8,32 +8,31 @@ import {newQuickJSWASMModuleFromVariant} from 'quickjs-emscripten-core'
 import variant from '@jitl/quickjs-wasmfile-release-sync'
 import ts from 'dsh-nexttavern-typescript-runtime'
 import type * as TypeScript from 'typescript'
-import {reduceSchemaUpdateOperationV2,mergeSchemaUpdateValuesV2,
-  reduceSchemaUpdateBatchV2,mergeSchemaUpdateBatchValuesV2} from './tavern-mvu-schema-update-effects-v2.js'
+import {mergeMvuSchemaValues} from './tavern-mvu-schema-values-merge.js'
+import type {MvuSchemaMutationEffectV1} from './tavern-mvu-schema-values-merge.js'
 import {recordSha256} from './roleplay-data.js'
-import {cloneSchemaData,unpackSchemaEnvelopeV4,cloneSchemaValues,schemaTextSha256} from './tavern-mvu-schema-data.js'
+import {cloneSchemaData,unpackSchemaEnvelopeV4} from './tavern-mvu-schema-data.js'
 import type {SchemaMaterialEnvelopeV4} from './tavern-mvu-schema-data.js'
 import {schemaPhaseErrorPolicyForProgramV4,schemaExecutionViewV4} from './tavern-mvu-schema-program-v4.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import type {MvuSchemaLibraryBytes} from './tavern-mvu-schema-types.js'
-import {validateSchemaGuestOutputForParsedProgramV4,schemaPhaseScopeFromLoadV4} from './tavern-mvu-schema-runner-v4.js'
+import {validateSchemaGuestOutputForParsedProgramV4,validateUnregisteredTrialOutputV4,schemaPhaseScopeFromLoadV4}
+  from './tavern-mvu-schema-runner-v4.js'
 import {createMvuScopeReaderV1,createMvuScopeReaderV2,readMvuVariable,MvuScopeReadError} from './tavern-mvu-scope-read.js'
 import {createMvuScopeViewResolverV2} from './tavern-mvu-scope-view-v2.js'
 import type {MvuScopeReadObjectV2,MvuScopeObjectRefV2} from './tavern-mvu-scope-view-v2.js'
 import type {MvuScopedScriptV1} from './tavern-mvu-scope-read-types.js'
-import type {MvuUpdateOperationV2} from './roleplay-mvu-update-v2.js'
-import type {MvuSchemaCleanupEffectV2} from './tavern-mvu-schema-update-effects-v2.js'
 import type {MvuJsonObject,MvuJsonValue} from './tavern-mvu-initvar.js'
 import type {QuickJSContext,QuickJSHandle,QuickJSRuntime} from 'quickjs-emscripten-core'
 import type {MvuSchemaWorkerRequestV4,MvuSchemaWorkerTraceInputV4,MvuSchemaWorkerEvaluationResponseV4,
   MvuSchemaManualWorkerMessageV4,MvuSchemaManualWorkerResponseV4} from './tavern-mvu-schema-runner-v4.js'
 import type {MvuSchemaHotWorkerSeedV4,MvuSchemaScopeWorkerSeedV2} from './tavern-mvu-schema-runner-v4.js'
-import type {MvuSchemaEvaluationInputV4,MvuSchemaGuestOutputV4} from './tavern-mvu-schema-types-v4.js'
+import type {MvuSchemaEvaluationInputV4,MvuSchemaGuestOutputV4,MvuSchemaTrialOutputV4} from './tavern-mvu-schema-types-v4.js'
 
 const require=createRequire(import.meta.url)
 const MAX_JOBS=1024
 const scopedNames=['getVariables','getAllVariables','getMvuData','getMvuVariable','getvar',
-  'Mvu','registerMvuSchema','$','jQuery','readSchemaSource','waitGlobalInitialized','globalThis'] as const
+  'Mvu','registerMvuSchema','$','jQuery','readSchemaSource','waitGlobalInitialized','globalThis','insertOrAssignVariables'] as const
 const unavailable=(code:string):Extract<MvuSchemaWorkerEvaluationResponseV4,{kind:'unavailable'}>=>({kind:'unavailable',code})
 interface ManualWorkerInboxV4 {
   park(json:string):Promise<MvuSchemaManualWorkerMessageV4>
@@ -99,7 +98,7 @@ function peerVersions():boolean {
 /** Module-local namespace references survive every async continuation. The
  * checker binds only this source: no host libraries, dependency resolution or
  * execution. Local names and property keys remain the author's own bindings. */
-function bindAuthorScope(javascript:string,filename:string,moduleName:string,initializationWrite=false):string {
+function bindAuthorScope(javascript:string,filename:string,moduleName:string):string {
   const file=ts.createSourceFile(filename,javascript,ts.ScriptTarget.ES2023,true,ts.ScriptKind.JS)
   if((file as TypeScript.SourceFile&{parseDiagnostics:readonly TypeScript.Diagnostic[]}).parseDiagnostics.length) {
     throw new GuestRefusal('SCHEMA_SCOPE_TRANSFORM_INVALID')
@@ -124,7 +123,6 @@ function bindAuthorScope(javascript:string,filename:string,moduleName:string,ini
   let namespace='__nativeMvuScope'
   while(identifiers.has(namespace))namespace+='_' 
   const bound=new Set<string>(scopedNames)
-  if(initializationWrite)bound.add('insertOrAssignVariables')
   const free=(node:TypeScript.Identifier)=>!checker.getSymbolAtLocation(node)?.declarations?.length
   const nameOnly=(node:TypeScript.Identifier)=>{
     const parent=node.parent
@@ -189,8 +187,7 @@ const DETERMINISM=String.raw`(wire=>{
  * Proxy is unavailable to author code, and serialization never calls toJSON,
  * getters, valueOf or a guest object's iterator. Input strings are VM values,
  * not concatenated source. The controller handles stay private to this worker. */
-const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,reduceOperation,mergeOperation,
-  reduceBatch,mergeBatch,readOperation)=>{
+const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,mergeValues,readOperation)=>{
   'use strict';
   const G=globalThis,O=Object,A=Array,Jparse=JSON.parse,Jstring=JSON.stringify,apply=Reflect.apply;
   const descriptors=O.getOwnPropertyDescriptors,keys=O.keys,symbols=O.getOwnPropertySymbols,proto=O.getPrototypeOf;
@@ -207,9 +204,9 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,r
     ZodObject=z.ZodObject;looseObject=z.looseObject;
   }
   const registrations=[],readyCallbacks=[];
-  let values=input.values,commands=input.commands,metadata=input.context;
-  const initializationWriters=plan.initializationWriteScriptIds||[];
-  let initializationWriteOpen=true,initializationWriteFault=false,initializationCandidate;
+  let values=input.values,metadata=input.context;
+  const initializationWriters=new Set();
+  let initializationWriteOpen=true,initializationWriteFault,initializationCandidate;
   let initializationHandoffPending=true;
   let scopeFault;
   const fail=code=>{throw code;};
@@ -274,8 +271,8 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,r
     if(success.value!==true)fail('SCHEMA_SCHEMA_RESULT_INVALID');
     return numerical(result.data);
   }
-  const outputWire={schemaVersion:4,encoding:'native-mvu-author-schema-phase-output-v4',
-    commandsEncoding:'native-mvu-update-operations-v2',errorPolicy:plan.errorPolicy,
+  const outputWire=plan.unregisteredTrial?{}:{schemaVersion:4,encoding:'native-mvu-author-schema-phase-output-v4',
+    errorPolicy:plan.errorPolicy,
     executionPlanSha256:plan.executionPlanSha256};
   const refused=diagnostics=>encode({...outputWire,kind:'refused',diagnostics:scopeFault?[scopeFault]:diagnostics});
   function registerMvuSchema(owner,registration,policy){
@@ -335,22 +332,28 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,r
     let owner;
     for(const script of scripts)if(script.scriptId===scriptId){owner=script;break;}
     if(!owner)fail('SCHEMA_SCOPE_OWNER_UNAVAILABLE');
-    const initializationWrite=initializationWriters.indexOf(scriptId)>=0;
     function getVariables(option){
       const fields=option===undefined?{}:{option:optionData(option)};
       const current=scopeCall(owner,'variables',()=>fields);
-      if(!initializationWrite||option!==undefined&&fields.option.type!=='chat')return current;
+      if(!initializationWriters.has(scriptId)||option!==undefined&&fields.option.type!=='chat')return current;
       // The published scope owns outer metadata (including initialized books).
       // Only stat_data follows the current VM candidate; this is no write lease.
       return frozen({...current,stat_data:clone(values)});
     }
-    function insertOrAssignVariables(data){
-      if(!initializationWriteOpen||input.phase!=='initialization'){
-        initializationWriteFault=true;fail('SCHEMA_INITIALIZATION_WRITE_PHASE_UNSUPPORTED');}
-      const incoming=numerical(clone(data).stat_data);
-      values=numerical(lodash.mergeWith({},values,incoming,(_before,after)=>array(after)?after:undefined));
-      initializationCandidate=values;
-      return getVariables({type:'chat'});
+    function insertOrAssignVariables(data,option){
+      try {
+        if(!initializationWriteOpen||input.phase!=='initialization')fail('SCHEMA_INITIALIZATION_WRITE_PHASE_UNSUPPORTED');
+        const payload=clone(data),options=option===undefined?{type:'chat'}:clone(option);
+        if(arguments.length>2||!payload||typeof payload!=='object'||array(payload)
+          ||keys(payload).length!==1||!own(payload,'stat_data')
+          ||!options||typeof options!=='object'||array(options)
+          ||keys(options).length!==1||options.type!=='chat')fail('SCHEMA_INITIALIZATION_WRITE_UNSUPPORTED');
+        const incoming=numerical(payload.stat_data);
+        values=numerical(lodash.mergeWith({},values,incoming,(_before,after)=>array(after)?after:undefined));
+        initializationCandidate=values;
+        initializationWriters.add(scriptId);
+        return getVariables({type:'chat'});
+      }catch(code){initializationWriteFault=typeof code==='string'?code:'SCHEMA_INITIALIZATION_WRITE_UNSUPPORTED';throw code;}
     }
     function getAllVariables(){if(arguments.length)fail('SCHEMA_READ_UNSUPPORTED');return scopeCall(owner,'all',{});}
     function getMvuVariable(data,path,options){
@@ -363,7 +366,7 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,r
     const bound=freeze({getVariables,getAllVariables,getMvuData:getVariables,getMvuVariable,getvar,Mvu:mvu,
       registerMvuSchema:registration=>registerMvuSchema(owner,registration,registrationPolicy),$:jq,jQuery:jq,
       readSchemaSource:readSource,waitGlobalInitialized:async name=>{if(name!=='Mvu')fail('SCHEMA_HOST_UNAVAILABLE');},
-      ...initializationWrite?{insertOrAssignVariables}:{}});
+      insertOrAssignVariables});
     // The facade contains only VM intrinsics and this owner's functions. Its
     // methods close over owner; dynamic lookups and extracted aliases cannot
     // inherit another script's most recent callback or module-load context.
@@ -374,12 +377,60 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,r
     define(facade,'globalThis',{value:facade,enumerable:true});freeze(facade);
     return freeze({...bound,globalThis:facade});
   }
+  let updateController,updateNamespace;
+  const updateRefusal={};let updateRefusalWire;
+  function installUpdateLibrary(namespace,rawLodash){
+      updateNamespace=namespace;lodash=rawLodash.default||rawLodash;
+      const nil=()=>{};
+      const core=namespace.createMvu196Core({lodash,parseString:namespace.parseMvu196StructuredValue,
+        substituteMacros:()=>input.update.macros?.expandedMessage??input.update.message,
+        translate:(key,parameters)=>key+Jstring(parameters||{}),
+        diagnostics:{info:nil,warn:nil,error:nil,log:nil}});
+      updateController=namespace.createMvu196UpdateController(core,plan.stateOnly?{publicTrial:plan.trial||undefined}:{
+        publicTrial:plan.trial||undefined,
+        executionMode:'zod-managed',
+        afterCommands(frame){
+          if(frame.firstError){
+            updateRefusalWire=refused([{code:'SCHEMA_UPDATE_COMPUTATION_FAILED',
+              commandIndex:frame.firstError.commandIndex,message:frame.firstError.message}]);
+            throw updateRefusal;
+          }
+          // The one operation body has already computed this batch and emitted
+          // its real SINGLE callbacks. Schema merge consumes its actual effects;
+          // it never interprets or runs those canonical commands a second time.
+          const collector=frame.internalData,
+            before={...frame.before.stat_data},candidate={...frame.variables.stat_data};
+          delete before.$internal;delete candidate.$internal;
+          let next=candidate,basis=before;
+          for(let registration=0;registration<registrations.length;registration++){
+            const parsed=parse(schemaFor(registrations[registration]),next);
+            if(parsed===null){
+              updateRefusalWire=refused([{code:plan.errorPolicy==='update-batch-atomic-v1'
+                ?'SCHEMA_UPDATE_BATCH_VALIDATION_FAILED':'SCHEMA_VALIDATION_FAILED',registrationIndex:registration}]);
+              throw updateRefusal;
+            }
+            const merged=Jparse(mergeValues(encode({schemaVersion:1,
+              encoding:'native-mvu-schema-values-merge-v1',before:basis,candidate:next,parsed,
+              mutationEffects:frame.mutationEffects},8388608)));
+            if(merged.kind!=='merged')fail('SCHEMA_VALUES_MERGE_FAILED');
+            next=merged.values;basis=next;
+          }
+          frame.variables.stat_data={...next,$internal:collector};
+        },
+        endedForZod(frame){
+          frame.variables.schema='native-zod-schema';
+          delete frame.variables.display_data;delete frame.variables.delta_data;
+          return {schemaVersion:1,kind:'keys',keys:['schema','display_data','delta_data']};
+        }
+      });
+  }
   return {
     capabilities,
-    initializationWriteError(){return initializationWriteFault?'SCHEMA_INITIALIZATION_WRITE_PHASE_UNSUPPORTED':undefined;},
+    installUpdateLibrary,
+    initializationWriteError(){return initializationWriteFault;},
     source(){return source;},
     material(wire){return frozen(Jparse(wire));},
-    frame(wire,material){input=Jparse(wire);values=input.values;commands=input.commands;metadata=input.context;
+    frame(wire,material){input=Jparse(wire);values=input.values;metadata=input.context;
       // Loading the guest prepared one candidate. Hand it to the actual initial
       // event once; replayed commands and manual replacements own their values.
       if(initializationHandoffPending){
@@ -398,126 +449,55 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,r
       // adopted this owner's values/context without rebuilding the live realm.
       // Keep registrations and closures, but run none of their phase callbacks.
       if(input.phase==='external-pack-replacement')return encode({...outputWire,kind:'accepted',
-        values:numerical(values),commands:clone(commands),context:clone(metadata),registrations:registrations.length,
-        ...(plan.errorPolicy==='registered-command-policy-v1'?{discarded:[]}: {})});
+        values:numerical(values),context:clone(metadata),registrations:registrations.length});
       registrationBoundary();
-      let discarded=[];
-      if(plan.stateOnly){
-        // The actual v4 plan selects this branch. No raw loader or author code
-        // runs here, and no identity schema is manufactured. A rejection emits
-        // no candidate values, so the owner can only retain the whole batch base.
-        if(input.phase==='command-parsed'){
-          for(let commandIndex=0;commandIndex<commands.length;commandIndex++){
-            const reduced=Jparse(reduceOperation(encode({schemaVersion:2,
-              encoding:'native-mvu-schema-reduce-one-input-v2',values,
-              operation:commands[commandIndex]},8388608)));
-            if(reduced.schemaVersion!==2||reduced.encoding!=='native-mvu-schema-reduce-one-output-v2'){
-              fail('SCHEMA_UPDATE_CALLBACK_FAILED');}
-            if(reduced.kind==='rejected')return refused([{code:'STATE_ONLY_UPDATE_OPERATION_REJECTED',
-              commandIndex,updateCode:reduced.code,...(own(reduced,'pointer')?{pointer:reduced.pointer}:{})}]);
-            if(reduced.kind!=='prepared')fail('SCHEMA_UPDATE_CALLBACK_FAILED');
-            values=numerical(reduced.values);
-          }
-          commands=[];
-        }else if(input.phase==='commands-parsed')commands=[];
-        else if(input.phase==='update-ended'){delete metadata.display_data;delete metadata.delta_data;}
-        else if(input.phase!=='initialization'&&input.phase!=='manual-replacement'&&input.phase!=='hook-reconcile')fail('SCHEMA_PHASE_UNSUPPORTED');
-        return encode({...outputWire,kind:'accepted',values:numerical(values),commands:clone(commands),
-          context:clone(metadata),registrations:0,
-          ...(plan.errorPolicy==='registered-command-policy-v1'?{discarded}: {})});
+      let contextWrites;
+      if(input.phase==='update-core'){
+        if(!updateController)installUpdateLibrary(updateNamespace,lodash);
+        const result=updateController.advance(input.update,{...metadata,stat_data:values});
+        values=result.variables.stat_data;
+        metadata={...result.variables};delete metadata.stat_data;
+        return encode({...outputWire,kind:'accepted',values:numerical(values),context:clone(metadata),
+          registrations:registrations.length,...(plan.unregisteredTrial?{}:{contextWrites:result.contextWrites}),update:result.update});
       }
-      if(input.phase==='initialization'||input.phase==='manual-replacement'||input.phase==='hook-reconcile') {
+      if(plan.stateOnly){
+        if(input.phase==='manual-replacement'){
+          const changed=keys(metadata).filter(key=>key==='display_data'||key==='delta_data');
+          delete metadata.display_data;delete metadata.delta_data;
+          contextWrites={schemaVersion:1,kind:'keys',keys:changed};
+        }
+        else if(input.phase!=='initialization')fail('SCHEMA_PHASE_UNSUPPORTED');
+        return encode({...outputWire,kind:'accepted',values:numerical(values),
+          context:clone(metadata),registrations:0,...(contextWrites?{contextWrites}:{})});
+      }
+      if(input.phase==='initialization'||input.phase==='manual-replacement') {
         for(let index=0;index<registrations.length;index++){
           const parsed=parse(schemaFor(registrations[index]),values);
           if(parsed===null)return refused([{code:'SCHEMA_VALIDATION_FAILED',registrationIndex:index}]);
-          if(input.phase==='manual-replacement'||input.phase==='hook-reconcile')values=parsed;
+          if(input.phase==='manual-replacement')values=parsed;
           else{const merged=clone(values),names=keys(parsed);
             for(let field=0;field<names.length;field++)define(merged,names[field],{value:parsed[names[field]],enumerable:true,writable:true,configurable:true});
             values=numerical(merged);}
         }
-      }else if(input.phase==='command-parsed'&&plan.errorPolicy==='update-batch-atomic-v1') {
-        if(commands.length){
-          const reduced=Jparse(reduceBatch(encode({schemaVersion:2,
-            encoding:'native-mvu-schema-reduce-batch-input-v2',values,operations:commands},8388608)));
-          if(reduced.kind==='rejected')return refused([{code:'SCHEMA_UPDATE_BATCH_OPERATION_REJECTED',
-            commandIndex:reduced.operationIndex,updateCode:reduced.code,
-            ...(own(reduced,'pointer')?{pointer:reduced.pointer}:{})}]);
-          if(reduced.kind!=='prepared')fail('SCHEMA_UPDATE_CALLBACK_FAILED');
-          let candidate=numerical(reduced.values),basis=values;
-          for(let registration=0;registration<registrations.length;registration++){
-            const parsed=parse(schemaFor(registrations[registration]),candidate);
-            if(parsed===null)return refused([{code:'SCHEMA_UPDATE_BATCH_VALIDATION_FAILED',registrationIndex:registration}]);
-            const merged=Jparse(mergeBatch(encode({schemaVersion:2,
-              encoding:'native-mvu-schema-merge-batch-input-v2',before:basis,reduced:candidate,
-              parsed,cleanupEffects:reduced.cleanupEffects},8388608)));
-            if(merged.kind!=='merged')fail('SCHEMA_COMMAND_CLEANUP_FAILED');
-            candidate=numerical(merged.values);basis=candidate;
-          }
-          values=candidate;
+        if(input.phase==='manual-replacement'){
+          const changed=keys(metadata).filter(key=>key==='display_data'||key==='delta_data');
+          if(metadata.schema!=='native-zod-schema')changed.push('schema');
+          metadata.schema='native-zod-schema';delete metadata.display_data;delete metadata.delta_data;
+          contextWrites={schemaVersion:1,kind:'keys',keys:changed};
         }
-        commands=[];
-      }else if(input.phase==='command-parsed') {
-        // Indices belong to this original phase array, not a shrinking list or
-        // descriptor equality. Identical commands remain distinguishable.
-        let pending=[];
-        for(let index=0;index<commands.length;index++)apply(push,pending,[
-          {operation:commands[index],commandIndex:index,failedRegistrationIndexes:[],atomic:false,rejection:null}]);
-        for(let registration=0;registration<registrations.length;registration++) {
-          const schema=schemaFor(registrations[registration]),remaining=[];
-          for(let index=0;index<pending.length;index++) {
-            const item=pending[index],wire=encode({schemaVersion:2,
-              encoding:'native-mvu-schema-reduce-one-input-v2',values,operation:item.operation},8388608);
-            const reduced=Jparse(reduceOperation(wire));
-            if(reduced.schemaVersion!==2||reduced.encoding!=='native-mvu-schema-reduce-one-output-v2') {
-              fail('SCHEMA_UPDATE_CALLBACK_FAILED');}
-            if(reduced.kind==='rejected'){
-              const rejection={code:'SCHEMA_UPDATE_OPERATION_REJECTED',commandIndex:item.commandIndex,
-                registrationIndex:registration,updateCode:reduced.code,
-                ...(own(reduced,'pointer')?{pointer:reduced.pointer}:{})};
-              if(plan.errorPolicy!=='registered-command-policy-v1')return refused([rejection]);
-              item.atomic=item.atomic||registrations[registration].policy!=='stagedog-command-discard-v1';
-              if(!item.rejection)item.rejection=rejection;
-              apply(push,item.failedRegistrationIndexes,[registration]);apply(push,remaining,[item]);continue;
-            }
-            if(reduced.kind!=='prepared')fail('SCHEMA_UPDATE_CALLBACK_FAILED');
-            const parsed=parse(schema,reduced.values);
-            if(parsed===null){
-              item.atomic=item.atomic||registrations[registration].policy!=='stagedog-command-discard-v1';
-              apply(push,item.failedRegistrationIndexes,[registration]);apply(push,remaining,[item]);continue;
-            }
-            const merged=Jparse(mergeOperation(encode({schemaVersion:2,
-              encoding:'native-mvu-schema-merge-one-input-v2',before:values,reduced:reduced.values,
-              parsed,cleanupEffect:reduced.cleanupEffect},8388608)));
-            if(merged.schemaVersion!==2||merged.encoding!=='native-mvu-schema-merge-one-output-v2'
-              ||merged.kind!=='merged')fail('SCHEMA_COMMAND_CLEANUP_FAILED');
-            values=numerical(merged.values);
-          }
-          pending=remaining;
-        }
-        if(pending.length){const diagnostics=[];let atomicPending=false;
-          for(let index=0;index<pending.length;index++){const item=pending[index];
-            atomicPending=atomicPending||item.atomic;
-            apply(push,diagnostics,[item.rejection||{code:'SCHEMA_VALIDATION_FAILED',commandIndex:item.commandIndex,
-              failedRegistrationIndexes:item.failedRegistrationIndexes}]);}
-          // A later registration can still accept an earlier pending command.
-          // Only the final pending set decides atomic refusal versus C discard.
-          if(plan.errorPolicy!=='registered-command-policy-v1'||atomicPending)return refused(diagnostics);
-          discarded=diagnostics;}
-        commands=[];
-      }else if(input.phase==='commands-parsed')commands=[];
-      else if(input.phase==='update-ended'){
-        // Owned opaque placeholder: equivalent metadata behavior, not copied
-        // helper bytes and never a schema descriptor or publication authority.
-        metadata.schema='native-zod-schema';delete metadata.display_data;delete metadata.delta_data;
       }else fail('SCHEMA_PHASE_UNSUPPORTED');
       if(scopeFault)return refused([scopeFault]);
-      return encode({...outputWire,kind:'accepted',values:numerical(values),commands:clone(commands),
+      return encode({...outputWire,kind:'accepted',values:numerical(values),
         context:clone(metadata),registrations:registrations.length,
-        ...(plan.errorPolicy==='registered-command-policy-v1'?{discarded}: {})});
+        ...(contextWrites?{contextWrites}:{})});
+      } catch(error){
+        if(error!==updateRefusal)throw error;
+        updateController=undefined;
+        return updateRefusalWire;
       } finally {
         // Schema callbacks can catch a forbidden write during parse. The VM
         // owner's sticky fault must govern every result, including early refusals.
-        if(initializationWriteFault)fail('SCHEMA_INITIALIZATION_WRITE_PHASE_UNSUPPORTED');
+        if(initializationWriteFault)fail(initializationWriteFault);
       }
     },
     encode,
@@ -531,37 +511,40 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
   // The private parent parsed and bound the complete program and phase inputs
   // before transfer. This worker owns fresh guest output and replay semantics.
   const program=request.program
-  const view=schemaExecutionViewV4(program)
-  const {initializationWriters,serverScripts,stateOnly,scripts}=view
-  const schemaPlan=program.encoding==='native-mvu-author-schema-program-v2'?program.executionPlan:null
+  const view=program===null?{stateOnly:true,serverScripts:[],scripts:[],
+    executionPlanSha256:undefined}:schemaExecutionViewV4(program)
+  const {serverScripts,stateOnly,scripts}=view
+  const schemaPlan=program?.encoding==='native-mvu-author-schema-program-v2'?program.executionPlan:null
+  const errorPolicy=program===null?'atomic-refusal':schemaPhaseErrorPolicyForProgramV4(program)
   if(!stateOnly&&!serverScripts.length)return unavailable('SCHEMA_REGISTRATION_MISSING')
   const trace='trace' in request?request.trace:undefined
+  const trial='response' in request&&request.response==='trial-stream'
   const loadFrame=trace?.loadFrame??('loadFrame' in request?request.loadFrame:undefined)
-  const stream='response' in request&&(request.response==='hot'||request.response==='manual-stream')
+  const stream='response' in request&&(request.response==='hot'||request.response==='manual-stream'||trial)
   const input:MvuSchemaEvaluationInputV4=loadFrame?{schemaVersion:4,...schemaPhaseScopeFromLoadV4(loadFrame),
-    commandsEncoding:'native-mvu-update-operations-v2',
-    errorPolicy:schemaPhaseErrorPolicyForProgramV4(program),
+    errorPolicy,
     phase:'initialization',base:null,values:loadFrame.values,
-    commands:[],context:loadFrame.context,
+    context:loadFrame.context,
     clockEpochMs:loadFrame.clockEpochMs,randomSeed:loadFrame.randomSeed}:
-    (request as Extract<MvuSchemaWorkerRequestV4,{input:unknown}>).input
-  let libraries:readonly MvuSchemaLibraryBytes[]=[]
-  if(!stateOnly) {
-    libraries=cloneSchemaData(request.libraries!,MVU_SCHEMA_BOUNDS.programBytes)
-    for(const library of libraries)if(schemaTextSha256(library.code)!==library.bundleSha256) {
-      return {kind:'unavailable',code:'SCHEMA_LIBRARY_UNAVAILABLE'}
-    }
-  }
+    trial?(()=>{
+      const {update:_update,...registrationInput}=(request as Extract<MvuSchemaWorkerRequestV4,{response:'trial-stream'}>).input
+      // Registration loading is private to this trial. Its initialization
+      // candidate is discarded by frame() before the original clone is used.
+      return {...registrationInput,phase:'initialization' as const}
+    })():(request as Extract<MvuSchemaWorkerRequestV4,{input:unknown}>).input
+  // The parent admitted these exact library identities and bytes before transfer.
+  const libraries=request.libraries!
   const quickjs=await newQuickJSWASMModuleFromVariant(variant)
   const runtime=quickjs.newRuntime()
   runtime.setMemoryLimit(MVU_SCHEMA_BOUNDS.vmMemoryBytes)
   runtime.setMaxStackSize(MVU_SCHEMA_BOUNDS.vmStackBytes)
   const deadline=Date.now()+MVU_SCHEMA_BOUNDS.vmDeadlineMs
-  let workMs=0,workStarted=0,workDepth=0
-  // Parked operations charge actual VM work. Ordinary hot Story phases get
-  // their own original phase budget; a manual operation retains its total.
-  const expired=()=>manual?workMs+(workDepth?performance.now()-workStarted:0)>=MVU_SCHEMA_BOUNDS.vmDeadlineMs:
-    Date.now()>=deadline
+  let workMs=0,workStarted=0,workDepth=0,updateBudgetActive=false
+  // Each update retains one VM-work budget across its real suspensions.
+  // Parked Native waits do not contribute to the manual/update work clock.
+  const expired=()=>manual||updateBudgetActive
+    ?workMs+(workDepth?performance.now()-workStarted:0)>=MVU_SCHEMA_BOUNDS.vmDeadlineMs
+    :Date.now()>=deadline
   let timedOut=false,denied=false,callbackFault:string|undefined
   function guestWork<T>(operation:()=>T):T {
     if(!workDepth){
@@ -574,7 +557,7 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
   const budget={jobs:0}
   runtime.setInterruptHandler(()=>{if(expired())timedOut=true;return timedOut})
   const context=runtime.newContext(),owned:QuickJSHandle[]=[]
-  if(manual) {
+  {
     type CallArguments=[func:QuickJSHandle,thisVal:QuickJSHandle,args?:QuickJSHandle[]]
       |[func:QuickJSHandle,thisVal:QuickJSHandle,...args:QuickJSHandle[]]
     const evaluate=context.evalCode.bind(context)
@@ -621,68 +604,31 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
     const inputHandle=context.newString(JSON.stringify(input));owned.push(inputHandle)
     const determinism=checked(context.evalCode(DETERMINISM,'trusted-clock.js'));owned.push(determinism)
     const clockFrame=checked(context.callFunction(determinism,context.undefined,inputHandle));owned.push(clockFrame)
-    if(!stateOnly)for(const library of libraries)checked(context.evalCode(library.code,`trusted-${library.kind}.js`)).dispose()
-    const callbackPayload=(wireHandle:QuickJSHandle,encoding:string,fields:readonly string[]):Record<string,unknown>=>{
+    if(!stateOnly)for(const library of libraries.filter(library=>library.kind!=='mvu-196')) {
+      checked(context.evalCode(library.code,`trusted-${library.kind}.js`)).dispose()
+    }
+    const mergePayload=(wireHandle:QuickJSHandle):Record<string,unknown>=>{
       if(context.typeof(wireHandle)!=='string')throw Error('SCHEMA_CALLBACK_INPUT_INVALID')
       const wire=context.getString(wireHandle)
       if(Buffer.byteLength(wire,'utf8')>MVU_SCHEMA_BOUNDS.inputBytes)throw Error('SCHEMA_CALLBACK_INPUT_INVALID')
       const payload=cloneSchemaData(JSON.parse(wire),MVU_SCHEMA_BOUNDS.inputBytes) as Record<string,unknown>
-      if(!payload||typeof payload!=='object'||Array.isArray(payload)||payload.schemaVersion!==2
-        ||payload.encoding!==encoding||Object.keys(payload).length!==fields.length
+      const fields=['schemaVersion','encoding','before','candidate','parsed','mutationEffects']
+      if(!payload||typeof payload!=='object'||Array.isArray(payload)||payload.schemaVersion!==1
+        ||payload.encoding!=='native-mvu-schema-values-merge-v1'||Object.keys(payload).length!==fields.length
         ||Object.keys(payload).some(key=>!fields.includes(key)))throw Error('SCHEMA_CALLBACK_INPUT_INVALID')
       return payload
     }
-    const reduce=context.newFunction('nativeMvuReduceV2',wireHandle=>{
+    const mergeValues=context.newFunction('nativeMvuSchemaValuesMergeV1',wireHandle=>{
       try {
-        const payload=callbackPayload(wireHandle,'native-mvu-schema-reduce-one-input-v2',
-          ['schemaVersion','encoding','values','operation'])
-        const base=cloneSchemaValues(payload.values)
-        const result=reduceSchemaUpdateOperationV2(base,payload.operation as MvuUpdateOperationV2)
-        return context.newString(JSON.stringify({schemaVersion:2,encoding:'native-mvu-schema-reduce-one-output-v2',...result}))
-      } catch(error) {
-        callbackFault=error instanceof Error&&error.message==='SCHEMA_UPDATE_INPUT_UNKNOWN'?
-          'SCHEMA_UPDATE_INPUT_UNKNOWN':'SCHEMA_UPDATE_CALLBACK_FAILED'
-        return context.newString(JSON.stringify({schemaVersion:2,encoding:'native-mvu-schema-reduce-one-output-v2',
-          kind:'unavailable',code:callbackFault}))
-      }
-    });owned.push(reduce)
-    const merge=context.newFunction('nativeMvuMergeV2',wireHandle=>{
-      try {
-        const payload=callbackPayload(wireHandle,'native-mvu-schema-merge-one-input-v2',
-          ['schemaVersion','encoding','before','reduced','parsed','cleanupEffect'])
-        const values=mergeSchemaUpdateValuesV2(payload.before as MvuJsonObject,payload.reduced as MvuJsonObject,
-          payload.parsed as MvuJsonObject,payload.cleanupEffect as MvuSchemaCleanupEffectV2)
-        return context.newString(JSON.stringify({schemaVersion:2,encoding:'native-mvu-schema-merge-one-output-v2',kind:'merged',values}))
-      } catch {
-        callbackFault='SCHEMA_COMMAND_CLEANUP_FAILED'
-        return context.newString(JSON.stringify({schemaVersion:2,encoding:'native-mvu-schema-merge-one-output-v2',
-          kind:'unavailable',code:callbackFault}))
-      }
-    });owned.push(merge)
-    const reduceBatch=context.newFunction('nativeMvuReduceBatchV2',wireHandle=>{
-      try {
-        const payload=callbackPayload(wireHandle,'native-mvu-schema-reduce-batch-input-v2',
-          ['schemaVersion','encoding','values','operations'])
-        const result=reduceSchemaUpdateBatchV2(payload.values as MvuJsonObject,payload.operations as MvuUpdateOperationV2[])
-        return context.newString(JSON.stringify(result))
-      } catch(error) {
-        callbackFault=error instanceof Error&&error.message==='SCHEMA_UPDATE_INPUT_UNKNOWN'?
-          'SCHEMA_UPDATE_INPUT_UNKNOWN':'SCHEMA_UPDATE_CALLBACK_FAILED'
-        return context.newString(JSON.stringify({kind:'unavailable',code:callbackFault}))
-      }
-    });owned.push(reduceBatch)
-    const mergeBatch=context.newFunction('nativeMvuMergeBatchV2',wireHandle=>{
-      try {
-        const payload=callbackPayload(wireHandle,'native-mvu-schema-merge-batch-input-v2',
-          ['schemaVersion','encoding','before','reduced','parsed','cleanupEffects'])
-        const values=mergeSchemaUpdateBatchValuesV2(payload.before as MvuJsonObject,payload.reduced as MvuJsonObject,
-          payload.parsed as MvuJsonObject,payload.cleanupEffects as MvuSchemaCleanupEffectV2[])
+        const payload=mergePayload(wireHandle)
+        const values=mergeMvuSchemaValues(payload.before as MvuJsonObject,payload.candidate as MvuJsonObject,
+          payload.parsed as MvuJsonObject,payload.mutationEffects as MvuSchemaMutationEffectV1[])
         return context.newString(JSON.stringify({kind:'merged',values}))
       } catch {
-        callbackFault='SCHEMA_COMMAND_CLEANUP_FAILED'
+        callbackFault='SCHEMA_VALUES_MERGE_FAILED'
         return context.newString(JSON.stringify({kind:'unavailable',code:callbackFault}))
       }
-    });owned.push(mergeBatch)
+    });owned.push(mergeValues)
     const read=context.newFunction('nativeMvuReadScopeV1',wireHandle=>{
       try {
         if(context.typeof(wireHandle)!=='string')throw new MvuScopeReadError('SCOPE_READ_REQUEST_INVALID')
@@ -714,22 +660,22 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
     // Parent projection omits material only for state-only execution; author
     // programs retain complete Source for this branch and later material use.
     const material=stateOnly?context.undefined:
-      context.newString(JSON.stringify(loadFrame?.material??program.source.material!))
+      context.newString(JSON.stringify(loadFrame?.material??program!.source.material!))
     const names=stateOnly?context.undefined:
       context.newString(JSON.stringify(Object.fromEntries(libraries.map(library=>[library.kind,library.globalName]))))
     const scriptScopes=stateOnly?context.undefined:
       context.newString(JSON.stringify(initialScopes.scripts.map(({scriptId,pointer})=>({scriptId,pointer}))))
     const execution=context.newString(JSON.stringify({executionPlanSha256:view.executionPlanSha256,stateOnly,
-      errorPolicy:schemaPhaseErrorPolicyForProgramV4(program),
-      serverScriptIds:serverScripts.map(({script})=>script.identity),...initializationWriters.size
-        ?{initializationWriteScriptIds:[...initializationWriters]}:{}}))
+      trial,unregisteredTrial:program===null,
+      errorPolicy,
+      serverScriptIds:serverScripts.map(({script})=>script.identity)}))
     if(!stateOnly)owned.push(material,names,scriptScopes)
     owned.push(execution)
     const bootstrap=checked(context.evalCode(BOOTSTRAP,'trusted-schema-bridge.js'));owned.push(bootstrap)
     const controller=checked(context.callFunction(bootstrap,context.undefined,inputHandle,material,names,scriptScopes,
-      execution,reduce,merge,reduceBatch,mergeBatch,read))
+      execution,mergeValues,read))
     owned.push(controller)
-    if(initializationWriters.size) {
+    if(!stateOnly) {
       initializationWriteError=context.getProp(controller,'initializationWriteError')
       owned.push(initializationWriteError)
     }
@@ -742,7 +688,7 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
       // Schema closures retain their complete immutable Source snapshots.
       // State-only phases never read Source, so they prepare no guest material.
       const materials=new Map<object,QuickJSHandle>()
-      const initialMaterial=loadFrame?.material??program.source.material!
+      const initialMaterial=loadFrame?.material??program!.source.material!
       const initialSource=checked(context.callFunction(sourceValue,controller),context)
       materials.set(initialMaterial,initialSource);owned.push(initialSource)
       materialHandle=value=>{
@@ -755,12 +701,12 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
         }finally{wire.dispose()}
       }
     }
-    // State-only phases have no author modules or registrations; their JSON reducer
-    // does not consume schema/lodash guests. Keep those assets with the schema branch.
+    // State-only phases have no author modules or registrations. Their fixed
+    // computational libraries load privately when the first update starts.
     if(!stateOnly) {
       const capabilities=context.getProp(controller,'capabilities');owned.push(capabilities)
       const modules=new Map<string,string>()
-      for(const library of libraries) {
+      for(const library of libraries.filter(library=>library.kind!=='mvu-196')) {
         const handle=context.getProp(context.global,library.globalName)
         let exported:string[]
         try {
@@ -779,8 +725,7 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
         binding.scriptOrdinal,`nexttavern:scope-author-${binding.scriptOrdinal}-stagedog`] as const))
       const scopeLoaderKey='__native_mvu_scope_preload'
       for(const {index,script} of serverScripts) {
-        const names=initializationWriters.has(script.identity)?[...scopedNames,'insertOrAssignVariables']:scopedNames
-        const exports=names.map((name,ordinal)=>
+        const exports=scopedNames.map((name,ordinal)=>
           `const value${ordinal}=owner[${JSON.stringify(name)}];export {value${ordinal} as ${name}};`).join('\n')
         modules.set(scopeModules.get(index)!,`const owner=globalThis[${JSON.stringify(scopeLoaderKey)}];\n${exports}`)
         if(stagedogModules.has(index)) {
@@ -834,39 +779,68 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
       }
       for(const {index,script} of serverScripts) {
         if(expired())throw new GuestRefusal('SCHEMA_VM_TIMEOUT')
-        const filename=`author-${index}.mjs`,source=bindAuthorScope(script.javascript,filename,scopeModules.get(index)!,
-          initializationWriters.has(script.identity))
+        const filename=`author-${index}.mjs`,source=bindAuthorScope(script.javascript,filename,scopeModules.get(index)!)
         const result=checked(context.evalCode(source,filename,{type:'module'}),context)
         try {completed(context,runtime,result,loadFrame?budget:{jobs:0})}finally {result.dispose()}
       }
     }
     const readyResult=checked(context.callFunction(ready,controller),context)
     try {completed(context,runtime,readyResult,loadFrame?budget:{jobs:0})}finally {readyResult.dispose()}
+    let updateLibraryInstalled=false
+    function phaseBudget(current:MvuSchemaEvaluationInputV4){
+      if(current.phase!=='update-core'){updateBudgetActive=false;return}
+      if(current.update!.encoding==='native-mvu-196-update-start-v1'){
+        workMs=0;budget.jobs=0;updateBudgetActive=true
+      }
+    }
+    function prepareUpdate(current:MvuSchemaEvaluationInputV4){
+      if(current.phase!=='update-core')return
+      if(updateLibraryInstalled)return
+      const computational=libraries.find(library=>library.kind==='mvu-196')!
+      const lodashLibrary=libraries.find(library=>library.kind==='lodash')!
+      // The bridge has already fixed its global names. Capture the unchanged
+      // UMD export privately for a state-only VM, and keep the computational
+      // bundle's var local instead of relying on deleting a global var slot.
+      const namespace=checked(context.evalCode(`(()=>{${computational.code}\nreturn ${computational.globalName};})()`,
+        'trusted-mvu-196.js'),context)
+      const lodash=stateOnly?checked(context.evalCode(`(()=>{const module={exports:{}},exports=module.exports;\n`
+        +lodashLibrary.code+'\nreturn module.exports;})()','trusted-lodash.js'),context)
+        :context.getProp(context.global,lodashLibrary.globalName)
+      const install=context.getProp(controller,'installUpdateLibrary')
+      try {
+        checked(context.callFunction(install,controller,namespace,lodash),context).dispose()
+        updateLibraryInstalled=true
+      }finally{install.dispose();lodash.dispose();namespace.dispose()}
+    }
     if(trace||stream) {
       // The load boundary must finish before any historical event exists.
       checked(context.callFunction(loaded,controller),context).dispose()
       const nextOnly='response' in request&&request.response==='next',outputs:string[]=[]
       let responseBytes=2,lastOutput=''
-      function evaluateStep(step:MvuSchemaWorkerTraceInputV4['requestedStep']|MvuSchemaWorkerTraceInputV4['prefix'][number]):
-        {kind:'phase';output:MvuSchemaGuestOutputV4}|Extract<MvuSchemaWorkerEvaluationResponseV4,{kind:'unavailable'}> {
-        if(timedOut||expired())return unavailable('SCHEMA_VM_TIMEOUT')
+      function evaluateStep(step:MvuSchemaWorkerTraceInputV4['requestedStep']|MvuSchemaWorkerTraceInputV4['prefix'][number]
+        |{frame:{input:MvuSchemaEvaluationInputV4;material?:MvuJsonObject}}):
+        {kind:'phase';output:MvuSchemaGuestOutputV4|MvuSchemaTrialOutputV4}|Extract<MvuSchemaWorkerEvaluationResponseV4,{kind:'unavailable'}> {
         const current=step.frame
+        phaseBudget(current.input)
+        if(timedOut||expired())return unavailable('SCHEMA_VM_TIMEOUT')
         const scoped=phaseReaders(current.input)
         readInput=current.input;readers=scoped.readers
         const wire=context.newString(JSON.stringify(current.input))
         try {
           checked(context.callFunction(clockFrame,context.undefined,wire),context).dispose()
+          prepareUpdate(current.input)
           if(stateOnly)checked(context.callFunction(frame,controller,wire),context).dispose()
           else checked(context.callFunction(frame,controller,wire,materialHandle!(current.material!)),context).dispose()
         } finally {wire.dispose()}
-        let output:MvuSchemaGuestOutputV4
+        let output:MvuSchemaGuestOutputV4|MvuSchemaTrialOutputV4
         const handle=checked(context.callFunction(run,controller),context)
         try {
           completed(context,runtime,handle,budget)
           if(context.typeof(handle)!=='string')throw new GuestRefusal('SCHEMA_TRACE_OUTPUT_INVALID')
           const json=context.getString(handle)
           if(Buffer.byteLength(json,'utf8')>MVU_SCHEMA_BOUNDS.outputBytes)throw new GuestRefusal('SCHEMA_OUTPUT_LIMIT')
-          output=validateSchemaGuestOutputForParsedProgramV4(JSON.parse(json),program,current.input)
+          output=program===null?validateUnregisteredTrialOutputV4(JSON.parse(json),current.input):
+            validateSchemaGuestOutputForParsedProgramV4(JSON.parse(json),program,current.input)
         } finally {handle.dispose()}
         if(callbackFault)return unavailable(callbackFault)
         if(timedOut||expired())return unavailable('SCHEMA_VM_TIMEOUT')
@@ -883,6 +857,13 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
         let manualMaterial:MvuJsonObject|undefined,manualForeground=false
         while(next.kind!=='close') {
           stageScopeObjects(next.scopeObjects)
+          if(next.kind==='trial-advance') {
+            if(!trial)return unavailable('SCHEMA_TRIAL_INPUT_INVALID')
+            const phase=evaluateStep({frame:{input:next.input,...program?{material:program.source.material}:{}}})
+            if(phase.kind==='unavailable')return phase
+            if(phase.output.kind!=='accepted')return {kind:'output',json:JSON.stringify(phase.output)}
+            next=await manual!.park(JSON.stringify(phase.output));continue
+          }
           const step=next.kind==='advance'?{eventId:next.step.eventId,frame:{...next.step.frame,material:manualMaterial!}}:
             unpackSchemaEnvelopeV4(next.step,
             next.kind==='hot-replay'?MVU_SCHEMA_BOUNDS.inputBytes+MVU_SCHEMA_BOUNDS.outputBytes+4096:MVU_SCHEMA_BOUNDS.inputBytes,
@@ -893,7 +874,8 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
           // Historical reconstruction is preparation. Once a foreground
           // manual edit starts, its requested phase and every advance share
           // the original cumulative budget, excluding parked Native waits.
-          if(!manualForeground){workMs=0;budget.jobs=0}
+          if(!manualForeground&&(step.frame.input.phase!=='update-core'
+            ||step.frame.input.update!.encoding==='native-mvu-196-update-start-v1')){workMs=0;budget.jobs=0}
           if(next.kind==='hot-advance'&&'response' in request&&request.response==='manual-stream') {
             manualForeground=true;manualMaterial=step.frame.material
           }
@@ -943,6 +925,8 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
       if(timedOut||expired())return {kind:'unavailable',code:'SCHEMA_VM_TIMEOUT'}
       return nextOnly?{kind:'next-output',json:lastOutput}:{kind:'trace-output',json:`[${outputs.join(',')}]`}
     }
+    phaseBudget(input)
+    prepareUpdate(input)
     const output=checked(context.callFunction(run,controller),context)
     try {
       completed(context,runtime,output,{jobs:0})
@@ -954,7 +938,7 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
       if(context.typeof(output)!=='string')return unavailable('SCHEMA_OUTPUT_INVALID')
       const json=context.getString(output)
       if(Buffer.byteLength(json,'utf8')>MVU_SCHEMA_BOUNDS.outputBytes)return unavailable('SCHEMA_OUTPUT_LIMIT')
-      validateSchemaGuestOutputForParsedProgramV4(JSON.parse(json),program,input)
+      validateSchemaGuestOutputForParsedProgramV4(JSON.parse(json),program!,input)
       if(timedOut||expired())return unavailable('SCHEMA_VM_TIMEOUT')
       return {kind:'output',json}
     } finally {output.dispose()}
@@ -998,11 +982,12 @@ if(parentPort) {
       scopeObjects:seed.scopeObjects}:
     unpackSchemaEnvelopeV4(workerData as SchemaMaterialEnvelopeV4<MvuSchemaWorkerRequestV4>,
       2*MVU_SCHEMA_BOUNDS.programBytes+MVU_SCHEMA_BOUNDS.inputBytes,bounds)
-  if('response' in request&&(request.response==='manual'||request.response==='hot'||request.response==='manual-stream')) {
+  if('response' in request&&(request.response==='manual'||request.response==='hot'||request.response==='manual-stream'
+    ||request.response==='trial-stream')) {
     const inbox=manualWorkerInbox()
     evaluateGuest(request,inbox,materialIdentity).then(result=>{
       inbox.dispose()
-      const value:MvuSchemaManualWorkerResponseV4=result.kind==='next-output'||result.kind==='unavailable'?
+      const value:MvuSchemaManualWorkerResponseV4=result.kind==='output'||result.kind==='next-output'||result.kind==='unavailable'?
         {kind:'manual-closed',cleanup:'completed',result}:{kind:'manual-closed',cleanup:'completed'}
       parentPort!.postMessage(value);parentPort!.close()
     },error=>{

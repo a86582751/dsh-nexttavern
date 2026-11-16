@@ -137,6 +137,10 @@ export function createRoleplayMvuSchemaAssetOwner() {
           if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
           return bound.openManualRun!(program,input,signal)
         }:undefined,
+        openTrial:bound.openTrial?async(program,input,signal)=>{
+          if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
+          return bound.openTrial!(program,input,signal)
+        }:undefined,
         async verifyTrace(program,evaluation,signal) {
           if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
           return bound.verifyTrace(program,evaluation,signal)
