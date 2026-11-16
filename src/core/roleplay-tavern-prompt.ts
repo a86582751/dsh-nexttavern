@@ -311,7 +311,10 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
     const read=deps.inputState.captureInput({session:scope.session,signal:scope.signal,
       assertOwnerFactsCurrent:scope.assertOwnerFactsCurrent,outputRows:scope.outputRows},
     ()=>{
-      const storyText=deps.captureStoryText?.(scope.session.id)
+      // Native owns this exact request prefix. Its accepted historical text
+      // remains readable after a new import replaces the live schema Source.
+      const storyText=deps.captureStoryText?.(scope.session.id,{
+        nativeCut:native.selected.boundarySeq+1,historical:true})
       if(!storyText?.hasValues)return {storyText}
       const history=captureRoleplayTavernMaterialHistoryV1({sessionId:scope.session.id,table:deps.branch,inputState:deps.inputState,
         session:scope.session,events:()=>scope.session.snapshotEvents(),projections:deps.projections,

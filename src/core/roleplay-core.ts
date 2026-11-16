@@ -1761,6 +1761,19 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       if(!message||typeof message!=='object')throw Error('AUTHOR_MESSAGE_EDIT_TARGET_UNAVAILABLE')
       return readTavernSelectedMessageFactsV1(message).messageVersionSha256
     },
+    prepareAuthorMessagePatch:(_session,_event,input)=>{
+      const patch=input.patch
+      if(!patch)return
+      assertAuthorMessageOrdinaryBasis(input)
+      const expected=input.ordinaryExpected,variant=expected?.root.namespace.target?.kind==='message'
+        ?expected.root.namespace.target.identity.variant:{kind:'native-canonical' as const}
+      type Ordinary=NonNullable<import('dsh-nexttavern-session-format').MessageEditPatchV3['ordinary']>
+      // These roots come from the retained message group selected by the
+      // Browser/Reader owner, whose broader scope DTO also supports chat.
+      return {variant,...patch.metadata?{metadata:patch.metadata}:{},...patch.extra!==undefined?{extra:patch.extra}:{},
+        ...patch.ordinary!==undefined?{ordinary:{namespace:expected!.root.namespace as Ordinary['namespace'],
+          previous:expected!.scopeRef,fenceRoot:expected!.root as Ordinary['fenceRoot'],variables:patch.ordinary}}:{}}
+    },
     authorTaskEditOptions:(session,event,operationId)=>{
       const artifact=schemaStory?.taskArtifact(session.id,Number(event.seq))
       return {schemaVersion:1,operationId,suffix:'retain',
@@ -3931,6 +3944,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     return replaceAuthorMessageText(session,input,()=>{
       signal.throwIfAborted()
       if(ctx.sessions.get(sid)!==session||!current())throw Error('AUTHOR_MESSAGE_EDIT_SOURCE_CHANGED')
+      if(input.patch&&!ctx.nexttavernMessageEdits.lookupOperation!(session,
+        sessionHistoryCut<ContextEvent>(session),input.operationId))assertAuthorMessageOrdinaryBasis(input)
     })
   }
   authorBrowser=createRoleplayAuthorBrowser({ctx,resolveSession:async id=>{

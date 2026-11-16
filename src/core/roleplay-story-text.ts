@@ -24,9 +24,9 @@ export interface RoleplayStoryTextCapture {
   blocks(seq:number,message:TextMessage,originalVersionSha256?:string):ReadonlyMap<number,string>|undefined
   current():boolean
 }
-export type CaptureRoleplayStoryText=(sessionId:string,options?:{nativeCut:number})=>RoleplayStoryTextCapture|undefined
+export type CaptureRoleplayStoryText=(sessionId:string,options?:{nativeCut:number;historical?:true})=>RoleplayStoryTextCapture|undefined
 
-export function createRoleplayStoryTextReader(capture:(sessionId:string,options?:{nativeCut:number})=>
+export function createRoleplayStoryTextReader(capture:(sessionId:string,options?:{nativeCut:number;historical?:true})=>
   SettledStoryMessageCapture|undefined,messageVersion:(message:TextMessage)=>string=recordSha256):CaptureRoleplayStoryText {
   return (sessionId,options)=>{
     const accepted=capture(sessionId,options)

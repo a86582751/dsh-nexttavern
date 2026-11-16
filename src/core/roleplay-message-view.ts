@@ -11,7 +11,7 @@ export type StorySurfaceOp = 'append' | StorySurfaceReplacement
 interface MessageEvent {
   seq: number
   type: string
-  data?: { content?: unknown; message?: unknown }
+  data?: { content?: unknown; message?: unknown;authorMetadata?:unknown }
 }
 
 export interface StoryViewHeader {
@@ -73,15 +73,18 @@ export function projectStoryEvent<E extends MessageEvent>(session: MessageViewSe
   if (!session.deriveEventMessage || (event.type !== 'user/message' && event.type !== 'assistant/message')) return event
   const message = session.deriveEventMessage(event)
   if (!message || typeof message !== 'object' || !('content' in message) || !Array.isArray(message.content)) return event
+  const authorMetadata='authorMetadata' in message?message.authorMetadata:undefined
   if (event.type === 'user/message') {
-    if (event.data?.content === message.content) return event
-    return Object.freeze({...event, data: Object.freeze({...event.data, content: message.content})})
+    if (event.data?.content === message.content&&event.data?.authorMetadata===authorMetadata) return event
+    return Object.freeze({...event, data: Object.freeze({...event.data, content: message.content,
+      ...authorMetadata?{authorMetadata}:{}})})
   }
   const original = event.data?.message
   if (!original || typeof original !== 'object') return event
-  if ('content' in original && original.content === message.content) return event
+  if ('content' in original && original.content === message.content
+    &&('authorMetadata' in original?original.authorMetadata:undefined)===authorMetadata) return event
   return Object.freeze({...event, data: Object.freeze({...event.data,
-    message: Object.freeze({...original, content: message.content}),
+    message: Object.freeze({...original, content: message.content,...authorMetadata?{authorMetadata}:{}}),
   })})
 }
 

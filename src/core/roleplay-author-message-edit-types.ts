@@ -1,4 +1,10 @@
-import type {MessageEditOperationV1} from 'dsh-nexttavern-session-format'
+import type {MessageEditOperationV1,MessageEditPatchV3} from 'dsh-nexttavern-session-format'
+import type {MvuJsonObject} from './tavern-mvu-initvar.js'
+export interface AuthorMessagePatchRequestV3 {
+  readonly metadata?:MessageEditPatchV3['metadata']
+  readonly extra?:MvuJsonObject
+  readonly ordinary?:MvuJsonObject
+}
 export type {ReaderMessageEditOriginV1} from 'dsh-nexttavern-session-format'
 
 export interface AuthorMessageEditExpectedV1 {
@@ -16,6 +22,7 @@ export interface AuthorMessageBodyRequestV1 {
   readonly readRevision:number
   readonly expected:AuthorMessageEditExpectedV1
   readonly text:string
+  readonly patch?:AuthorMessagePatchRequestV3
   readonly refresh:'none'|'affected'|'all'
 }
 /** One server admission for the fixed browser request; target identity is
@@ -23,7 +30,7 @@ export interface AuthorMessageBodyRequestV1 {
 export function authorMessageBodyRequestValid(request:AuthorMessageBodyRequestV1):boolean {
   return request?.schemaVersion===1&&typeof request.operationId==='string'
     &&/^[A-Za-z0-9_-]{1,128}$/.test(request.operationId)&&typeof request.text==='string'
-    &&!!request.text.trim()&&request.text.length<=1_000_000
+    &&(!!request.text.trim()||request.patch!==undefined)&&request.text.length<=1_000_000
     &&['none','affected','all'].includes(request.refresh)&&!!request.expected
 }
 export interface AuthorMessageEditInputV1 {
@@ -32,6 +39,9 @@ export interface AuthorMessageEditInputV1 {
   readonly expected:AuthorMessageEditExpectedV1
   readonly origin:MessageEditOperationV1['origin']
   readonly text:string
+  readonly patch?:AuthorMessagePatchRequestV3
+  readonly ordinaryExpected?:{readonly root:import('./roleplay-author-chat-state-types.js').AuthorChatNamespaceRootV3;
+    readonly scopeRef:import('./roleplay-author-chat-state-types.js').AuthorChatRefV1|null}
 }
 export interface AuthorMessageEditRefV1 {readonly seq:number;readonly sha256:string}
 export interface AuthorMessageEditReceiptRefV1 {readonly key:string;readonly sha256:string}

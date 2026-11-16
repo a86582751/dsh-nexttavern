@@ -5,6 +5,8 @@ import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 export type AuthorNativeSetChatMessagesPlanV1=
   |{readonly kind:'unchanged'}
   |{readonly kind:'body';readonly message_id:number;readonly text:string;readonly message:PromptCapturedMessageV1}
+  |{readonly kind:'patch';readonly message_id:number;readonly text:string;readonly message:PromptCapturedMessageV1;
+    readonly patch:import('./roleplay-author-message-edit-types.js').AuthorMessagePatchRequestV3}
   |{readonly kind:'opening';readonly row:{readonly message_id:number;readonly swipe_id:number}
     |{readonly message_id:number;readonly swipes_data:readonly (MvuJsonObject|null)[]}}
 
@@ -31,7 +33,7 @@ export function createAuthorNativeMessageVariables(
     return captures.get(key(target))
   }
   const overlay=(base:MvuJsonObject|undefined,capture:AuthorOrdinaryMessageCaptureV1|undefined):MvuJsonObject=>{
-    const values={...base,...capture?.values}
+    const values={...(capture?.replaceOrdinary?{}:base),...capture?.values}
     for(const name of capture?.deletedKeys??[])delete values[name]
     // Numerical presence and value belong solely to the actual MVU row.
     if(base&&Object.hasOwn(base,'stat_data'))values.stat_data=base.stat_data!
@@ -60,6 +62,17 @@ export function createAuthorNativeMessageVariables(
       return base||capture?.exists?overlay(base,capture):null
     })
   }
+  const swipeInfo=(message:PromptCapturedMessageV1)=>message.variants?.swipes_info
+    ??(message.variants?.swipes??[message.message]).map(()=>({extra:{}}))
+  const chatMessage=(message:PromptCapturedMessageV1,includeSwipes=false)=>{
+    const data=forMessage(message).values,variants=message.variants,
+      swipes=variants?.swipes??[message.message],swipes_data=swipeData(message)??[data],
+      common={message_id:message.index,role:message.role,name:message.name??'',
+        is_hidden:message.is_hidden??false,extra:message.extra??{},
+        swipe_id:variants?.swipe_id??0,swipes,swipes_data}
+    return includeSwipes?{...common,swipes_info:swipeInfo(message)}
+      :{...common,message:message.message,data}
+  }
   const object=(value:unknown):value is Record<string,unknown>=>
     value!==null&&typeof value==='object'&&!Array.isArray(value)
   const sameJson=(left:unknown,right:unknown):boolean=>{
@@ -83,7 +96,7 @@ export function createAuthorNativeMessageVariables(
   }
   const isOrdinaryOwned=(capture:AuthorOrdinaryMessageCaptureV1|undefined,name:string)=>{
     if(name==='stat_data'||!capture)return false
-    return Object.hasOwn(capture.values,name)||(capture.deletedKeys?.includes(name)??false)
+    return capture.replaceOrdinary===true||Object.hasOwn(capture.values,name)||(capture.deletedKeys?.includes(name)??false)
   }
   const reconcilePack=(bankPack:MvuJsonObject|null,effective:MvuJsonObject|null,
     next:MvuJsonObject|null,capture:AuthorOrdinaryMessageCaptureV1|undefined):MvuJsonObject|null=>{
@@ -121,13 +134,27 @@ export function createAuthorNativeMessageVariables(
     'swipe_id','swipes','swipes_data','swipes_info','name','extra'])
   const planTarget=(index:number,merged:Record<string,unknown>):AuthorNativeSetChatMessagesPlanV1=>{
     const message=snapshot.messages[index]!
-    if(merged.name!==undefined)throw Error('AUTHOR_NATIVE_MESSAGE_NAME_UNSUPPORTED')
-    if(merged.extra!==undefined)throw Error('AUTHOR_NATIVE_MESSAGE_EXTRA_UNSUPPORTED')
     if(merged.role!==undefined&&merged.role!==message.role)throw Error('AUTHOR_NATIVE_MESSAGE_ROLE_CHANGE_UNSUPPORTED')
-    if(merged.is_hidden!==undefined&&merged.is_hidden!==false)throw Error('AUTHOR_NATIVE_MESSAGE_HIDDEN_UNSUPPORTED')
+    if(merged.name!==undefined&&typeof merged.name!=='string')throw Error('AUTHOR_NATIVE_MESSAGE_NAME_INVALID')
+    if(merged.extra!==undefined&&!object(merged.extra))throw Error('AUTHOR_NATIVE_MESSAGE_EXTRA_INVALID')
+    if(merged.is_hidden!==undefined&&typeof merged.is_hidden!=='boolean')throw Error('AUTHOR_NATIVE_MESSAGE_HIDDEN_INVALID')
+    const metadata={...merged.name!==undefined&&merged.name!==(message.name??'')?{name:merged.name as string}:{},
+      ...merged.is_hidden!==undefined&&merged.is_hidden!==(message.is_hidden??false)?{is_hidden:merged.is_hidden as boolean}:{}}
+    const metadataChanged=Object.keys(metadata).length>0
+    const extraChanged=merged.extra!==undefined&&!sameJson(merged.extra,message.extra??{})
+    const fieldSinglePage=Object.hasOwn(merged,'message')||Object.hasOwn(merged,'data')
+    if((metadataChanged||extraChanged)&&!fieldSinglePage) {
+      const variants=chatMessage(message,true)
+      if(merged.swipe_id!==undefined&&merged.swipe_id!==variants.swipe_id
+        ||merged.swipes!==undefined&&!sameJson(merged.swipes,variants.swipes)
+        ||merged.swipes_data!==undefined&&!sameJson(merged.swipes_data,variants.swipes_data))
+        throw Error('AUTHOR_NATIVE_MESSAGE_MIXED_MUTATION_UNSUPPORTED')
+      if(merged.swipes_info!==undefined&&!sameJson(merged.swipes_info,swipeInfo(message)))
+        throw Error('AUTHOR_NATIVE_MESSAGE_SWIPES_INFO_UNSUPPORTED')
+    }
     // Upstream chooses the single-page branch by field presence, before
     // comparing values. An explicitly undefined field still selects it.
-    const singlePage=Object.hasOwn(merged,'message')||Object.hasOwn(merged,'data')
+    const singlePage=fieldSinglePage||metadataChanged||extraChanged
     if(singlePage){
       if(merged.message!==undefined&&typeof merged.message!=='string')throw Error('AUTHOR_NATIVE_MESSAGE_BODY_INVALID')
       if(merged.data!==undefined&&!object(merged.data))throw Error('AUTHOR_NATIVE_MESSAGE_DATA_INVALID')
@@ -135,7 +162,21 @@ export function createAuthorNativeMessageVariables(
       const bodyChanged=merged.message!==undefined&&merged.message!==message.message
       const currentData=nextData!==undefined?forMessage(message).values:undefined
       const dataChanged=nextData!==undefined&&!sameJson(currentData,nextData)
-      if(!bodyChanged&&!dataChanged)return {kind:'unchanged'}
+      if(!bodyChanged&&!dataChanged&&!metadataChanged&&!extraChanged)return {kind:'unchanged'}
+      const numericalChanged=dataChanged&&!sameJson(currentData?.stat_data,nextData?.stat_data)
+      if(!message.variants||!bodyChanged&&!numericalChanged&&(metadataChanged||extraChanged||dataChanged)) {
+        if(message.nativeSeq===null)throw Error('AUTHOR_NATIVE_MESSAGE_TARGET_UNAVAILABLE')
+        if(numericalChanged)
+          throw Error('AUTHOR_NATIVE_MESSAGE_NUMERICAL_MIXED_UNSUPPORTED')
+        const ordinary=dataChanged?Object.fromEntries(Object.entries(nextData!).filter(([name])=>name!=='stat_data')) as MvuJsonObject:undefined
+        if(dataChanged&&!forMessage(message).capture)throw Error('AUTHOR_NATIVE_MESSAGE_TARGET_UNAVAILABLE')
+        if(metadataChanged||extraChanged||dataChanged)return {kind:'patch',message_id:index,
+          text:merged.message as string|undefined??message.message,message,patch:{
+            ...metadataChanged?{metadata}:{},...extraChanged?{extra:merged.extra as MvuJsonObject}:{},
+            ...ordinary?{ordinary}:{}}}
+        return {kind:'body',message_id:index,text:merged.message as string,message}
+      }
+      if(metadataChanged||extraChanged)throw Error('AUTHOR_NATIVE_MESSAGE_NUMERICAL_MIXED_UNSUPPORTED')
       if(bodyChanged&&dataChanged)throw Error('AUTHOR_NATIVE_MESSAGE_MIXED_MUTATION_UNSUPPORTED')
       if(bodyChanged){
         if(message.variants||message.ordinary?.selectedTarget.identity.variant.kind==='opening-variant')
@@ -153,10 +194,18 @@ export function createAuthorNativeMessageVariables(
       })
       return {kind:'opening',row:{message_id:index,swipes_data:nextPacks}}
     }
-    if(merged.swipes_info!==undefined)throw Error('AUTHOR_NATIVE_MESSAGE_SWIPES_INFO_UNSUPPORTED')
+    if(merged.swipes_info!==undefined&&!sameJson(merged.swipes_info,swipeInfo(message)))
+      throw Error('AUTHOR_NATIVE_MESSAGE_SWIPES_INFO_UNSUPPORTED')
     if(merged.swipe_id===undefined&&merged.swipes===undefined&&merged.swipes_data===undefined)return {kind:'unchanged'}
+    if(!message.variants) {
+      const current=chatMessage(message,true)
+      if((merged.swipe_id===undefined||merged.swipe_id===current.swipe_id)
+        &&(merged.swipes===undefined||sameJson(merged.swipes,current.swipes))
+        &&(merged.swipes_data===undefined||sameJson(merged.swipes_data,current.swipes_data))
+        &&(merged.swipes_info===undefined||sameJson(merged.swipes_info,swipeInfo(message))))return {kind:'unchanged'}
+      throw Error('AUTHOR_NATIVE_MESSAGE_DATA_UNSUPPORTED')
+    }
     const variants=message.variants
-    if(!variants)throw Error('AUTHOR_NATIVE_MESSAGE_VARIANTS_UNAVAILABLE')
     if(merged.swipes!==undefined){
       if(!Array.isArray(merged.swipes)||merged.swipes.some(text=>typeof text!=='string'))
         throw Error('AUTHOR_NATIVE_MESSAGE_SWIPES_INVALID')
@@ -218,5 +267,5 @@ export function createAuthorNativeMessageVariables(
     }
     return selected??{kind:'unchanged'}
   }
-  return {resolve,forMessage,swipeData,planSetChatMessages}
+  return {resolve,forMessage,swipeData,chatMessage,planSetChatMessages}
 }

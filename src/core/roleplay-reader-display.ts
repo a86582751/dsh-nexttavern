@@ -391,11 +391,15 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       &&message.messageId===expected.messageId)
     if(!originalOrigin&&(!row||row.nativeSeq===null||expected.sessionId!==binding.sessionId||row.role!==expected.role
       ||row.messageVersionSha256!==expected.messageVersionSha256))fail('READER_READ_BASIS_CHANGED')
-    if(row?.variants||row?.ordinary?.selectedTarget.identity.variant.kind==='opening-variant')
+    if((row?.variants||row?.ordinary?.selectedTarget.identity.variant.kind==='opening-variant')
+      &&(!request.patch||request.text!==row.message))
       fail('AUTHOR_MESSAGE_EDIT_OPENING_VARIANTS_REQUIRED')
-    const sourceCurrent=()=>!signal.aborted&&!disposed&&bindings.get(binding.browserSessionId)===value&&value.sourceCurrent(),
+    const ordinary=request.patch&&row?createAuthorNativeMessageVariables(value.snapshot).forMessage(row).capture:undefined,
+      sourceCurrent=()=>!signal.aborted&&!disposed&&bindings.get(binding.browserSessionId)===value&&value.sourceCurrent(),
       result=await deps.editMessageBody(binding.sessionId,{schemaVersion:1,operationId:request.operationId,
-        expected:request.expected,text:request.text,origin:originalOrigin??admitted},sourceCurrent,signal)
+        expected:request.expected,text:request.text,...request.patch?{patch:request.patch}:{},
+        ...ordinary?{ordinaryExpected:{root:ordinary.root,scopeRef:ordinary.scopeRef}}:{},
+        origin:originalOrigin??admitted},sourceCurrent,signal)
     // A new body changes document provenance. Receipt delivery precedes the
     // parent's normal Reader recapture; never attach fresh DATA to the old plan.
     if(result.kind==='committed'||result.kind==='unknown'||!value.facts.current())releaseBinding(binding)
@@ -624,18 +628,19 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       const actual=eventsOf(session),entries=surfaceEntries(session),bySeq=new Map(entries.map((entry,index)=>[entry.seq,{entry,index}]))
       const rows=messages.map(ref=>{
         const found=bySeq.get(ref.seq),event=actual[ref.seq]
-        if(!found||found.entry.kind!=='assistant'||found.entry.messageId!==ref.messageId
-          ||event?.type!=='assistant/message')fail('READER_DISPLAY_MESSAGE_UNAVAILABLE')
-        const message=(session.deriveEventMessage?.(event)??event.data?.message) as ContextMessage|undefined
+        if(!found||found.entry.messageId!==ref.messageId
+          ||event?.type!==(found.entry.kind==='user'?'user/message':'assistant/message'))fail('READER_DISPLAY_MESSAGE_UNAVAILABLE')
+        const role=found.entry.kind,
+          message=(session.deriveEventMessage?.(event)??(role==='user'?event.data:event.data?.message)) as ContextMessage|undefined
         if(!message||message.id!==ref.messageId)fail('READER_DISPLAY_MESSAGE_CHANGED')
         const edit=edits.get(ref.seq)
         const raw=nativeMessages?deps.selectedMessageFacts?.(message):undefined,
           rawText=raw?.text??textOf(message.content),messageVersionSha256=raw?.messageVersionSha256??recordSha256(message)
-        return {seq:ref.seq,messageId:ref.messageId,rawText,
-          effectiveText:storyText?.text(ref.seq,message as Parameters<NonNullable<typeof storyText>['text']>[1],rawText,
-            messageVersionSha256)??rawText,
+        return {seq:ref.seq,messageId:ref.messageId,rawText,role,
+          effectiveText:role==='assistant'?storyText?.text(ref.seq,message as Parameters<NonNullable<typeof storyText>['text']>[1],rawText,
+            messageVersionSha256)??rawText:rawText,
           messageVersionSha256,depth:entries.length-found.index-1,
-          isEdit:edit?.data?.role==='assistant'&&edit.data.messageId===ref.messageId}
+          isEdit:edit?.data?.role===role&&edit.data.messageId===ref.messageId}
       })
       return {rows,entries,events:actual,order:entries.map(entry=>({seq:entry.seq,messageId:entry.messageId,kind:entry.kind}))}
     }
@@ -705,7 +710,7 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
         const storyText=projectReaderNarrativeDisplay(row.effectiveText,scope)
         return {key:`reader:${row.seq}:${row.messageId}:${row.messageVersionSha256}`,bookId:null,entryId:null,
           sourcePointer:`/native/messages/${row.seq}`,sourceSnapshotSha256:source.sourceSha256,
-          rawText:row.rawText,storyText,inputText:storyText,pipeline:'regex-only',channel:'display',placement:2,
+          rawText:row.rawText,storyText,inputText:storyText,pipeline:'regex-only',channel:'display',placement:row.role==='user'?1:2,
           depth:row.depth,isEdit:row.isEdit,characterOverride:null,required:true}
       })}
     if(worldbook?.dynamic) {

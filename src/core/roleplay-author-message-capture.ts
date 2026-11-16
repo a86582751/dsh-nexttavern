@@ -16,7 +16,7 @@ export interface AuthorMessageIdentityV1 {
   readonly messageId:string
 }
 export type AuthorMessageMetadataV1=Pick<PromptCapturedMessageV1,
-  'index'|'messageId'|'ownerSessionId'|'nativeSeq'|'messageVersionSha256'|'role'|'variables'> & {
+  'index'|'messageId'|'ownerSessionId'|'nativeSeq'|'messageVersionSha256'|'role'|'variables'|'name'|'is_hidden'|'extra'> & {
     readonly variantVariables?:readonly (MvuJsonObject|null)[]
   }
 export interface AuthorMessageViewV1<T extends AuthorMessageIdentityV1=AuthorMessageMetadataV1> {
