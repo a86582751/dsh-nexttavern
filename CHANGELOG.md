@@ -6,6 +6,16 @@
 
 ## 2026-11-16
 
+### 开发源码与文档的 Reader 与剧情恢复修正（未发布）
+
+- 正确处理原作者 HTML 围栏，正文与后续插入的作者面板同时保留；完整当前人物资料按需读取。
+- 修正普通数据刷新中预留事件失效、拒绝输入后的数值结算，以及未完成剧情阻断状态页的问题；记忆投影复用已取得的历史与笔记结果。
+- 一个实卡路径覆盖建角、连续剧情、页面重生成与新进程数值／记忆恢复。更多作品、完整玩法和 Native 创作／导出往返继续验证。
+
+**English**
+
+Reader handles authored HTML fences and preserves prose when author panels are inserted later. Current character data is read on demand. Fixes cover reserved hooks during data refresh, numerical settlement after refused input, and state access while a Story is unsettled. Memory projection reuses its history and notes. One real-card workflow covers character setup, continued Stories, UI regeneration and new-process numerical/memory recovery. Broader gameplay and Native authoring/export validation continues.
+
 ### 开发源码与文档的世界书管理、预设与恢复修正（未发布）
 
 - 世界书管理增加独立 JSON 导入和 profile、角色、聊天绑定，操作恢复沿用原凭据，重复 UID 原始条目的整书替换保留各自来源身份。

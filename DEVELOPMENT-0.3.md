@@ -75,6 +75,16 @@ Native 卡使用 `nexttavern_card` JSON 文档。它用栏目声明内容和用�
 
 ## 按日期记录
 
+### 11 月 16 日原作者页面、连续剧情与恢复
+
+原作者 HTML 围栏在显示时会正确移除，正文与状态面板可以同时保留。补齐了完整当前人物资料的按需读取，并修正普通数据刷新中预留事件丢失、拒绝输入后下一轮数值结算失败，以及状态恢复时重复读取未完成剧情的问题。
+
+一个实卡路径已验证建角、连续剧情、页面重生成，以及新进程中的数值和记忆恢复。历史剧情正文与四个作者状态面板已在更新后的页面显示，场景按钮能打开当前回合的内容。失败世界线保留原记录，通过正常分支继续游玩。更多作品、完整玩法与 Native 创作和导出往返继续验证。
+
+**English**
+
+Reader preserves story prose alongside author status panels and handles HTML fences in authored pages. Current character data is read on demand. Fixes cover reserved hooks across ordinary data refreshes, numerical settlement after a refused input, and state recovery while a Story remains unsettled. One real-card workflow has scoped results for character setup, continued Stories, UI regeneration, and new-process numerical and memory recovery. Saved prose and four author panels render together, including the current scene control. Failed worldlines retain their history. Broader card coverage, complete gameplay and Native authoring/export round trips remain under validation.
+
 ### 11 月 16 日补齐世界书管理与预设工作值
 
 世界书管理增加独立 JSON 导入及 profile、角色和聊天绑定。Helper 与 Reader 使用各自需要的世界书资料，提交后的读取故障保留原操作凭据，重复 UID 原始条目的整书替换保留各自来源身份。预设控件从当前所选范围读取工作值，全局与对话覆盖分别保存；声明式 profile 模块、参数与响应设置接入实际请求消费者。
