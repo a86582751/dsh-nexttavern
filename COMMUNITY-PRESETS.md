@@ -63,7 +63,7 @@ flowchart LR
 }
 ```
 
-在设置 → “**预设**”中选择生效范围，使用“导入社区预设JSON”，选中条目，再点“应用社区预设”。导入只添加到共享库，不等于已应用。可检查面板显示 `standard`、9 条目、0 正则；实际人物材料取决于当前导入卡的字段映射，空字段不会凭空生成内容。采样默认关闭，因此导入这个文件不会立即把温度改成 0.8。
+在设置 → “**预设**”中选择生效范围，使用“导入社区预设JSON”，选中条目，再点“应用社区预设”。导入只添加到共享库，不等于已应用。可检查面板显示作者身份 `standard`、Native mode `standard`、9 条目、0 正则；实际人物材料取决于当前导入卡的字段映射，空字段不会凭空生成内容。采样默认关闭，因此导入这个文件不会立即把温度改成 0.8。
 
 ### 源文件不等于内部 Schema
 
@@ -75,6 +75,8 @@ flowchart LR
 | 宏变量账本 | chat／global 值与本轮写入 | 作者宏的持久与本轮结算 |
 
 [预设 Schema](https://github.com/a86582751/dsh-nexttavern/blob/main/schema/community-presets.v1.json)、[选择状态 Schema](https://github.com/a86582751/dsh-nexttavern/blob/main/schema/community-preset-state.v1.json)、[变量 Schema](https://github.com/a86582751/dsh-nexttavern/blob/main/schema/community-preset-variables.v1.json)描述内部数据，不能把其中的 `promptOrder` 等字段直接当成 ST 源文件字段。面板“导出社区预设”通过导出器还原社区文件；工具应显式区分两层格式。
+
+`profile.id` 记录作者身份，选择状态中的功能值按这个身份归档。Native mode 取自完整声明解析后的 `transport.kind`。面板将作者身份和执行 mode 分开展示。
 
 ## 3. 条目、排序、功能组和采样
 
@@ -121,17 +123,24 @@ marker 由 **identifier** 识别；把普通条目仅命名为“世界书”不
 | `var_input`／`global_var_input` | 写 chat／global 宏变量，可同时切换声明目标 |
 | Kemini `parameters` | 根据已提取的声明式注册、模板和规则修改参数或建立支持的条目 |
 
-当前识别的 profile 有以下职责；这些名称不是用户随便加一个同名字段即可获得的执行引擎：
+`extensions.nexttavern.profile` 记录作者声明的非空身份字符串。Native mode 取自完整 profile 声明解析出的 `profile.transport.kind`。当前支持的 mode 为：
 
-| profile | 主要原生适配 |
+| `transport.kind` | 主要原生适配 |
 | --- | --- |
 | `standard` | 普通 prompts／order、marker 和宏 |
-| `dream` | 识别的消息分组、静态／动态世界书 outlet 及配置控件；额外总结／修复等模型动作可保留为 deferred |
-| `kemini` | 识别的提示参数控件和函数响应 transport，保留实际客户端工具 |
-| `reborn` | 识别的 SPreset 历史／postscript／响应包装；特定模型与 transport 仍有适配条件 |
+| `dream` | 由显式声明驱动的消息分组、静态／动态世界书 outlet 与配置控件；额外总结／修复等模型动作可保留为 deferred |
+| `kemini` | 识别的提示参数控件和函数响应 transport；保留实际客户端工具，使用作者声明的 `toolName` |
+| `reborn` | 由显式声明驱动的 Native 历史、postscript 与响应包装；`transport.enabled` 控制 transport，`toolName` 可由作者声明 |
 | `izumi` | 识别的分层方案、advice、文本 sanitizer 与声明冲突配置；部分显式动作仍为 deferred |
 
-profile 由导入器识别实际声明和静态配置，不对同名预设的所有版本作保证。Izumi V2 方案包导入只保存 `plans`、`active` 和 `quickSlots`，先预览，再显式应用方案；未定位条目会显示 unresolved，不把缺失目标算作成功。
+没有显式 profile 声明时，普通 `standard` 导入沿标准行为执行。其他作者身份或显式启用 `extensions.nexttavern.extraParameters` 时须提供完整的 DATA 或 module 声明。Dream 与 Reborn 的 Native mode 由完整声明解析；`script.data`、SPreset、扩展和脚本原件保留为源数据。已有且已解析的存储 profile 在导出时会补写其声明，保留原身份、配置与 mode。未知 `transport.kind` 在实际执行时返回 typed unsupported。额外参数还需要声明中实际存在的参数值。`transport.enabled` 明确控制声明的 transport，`toolName` 接受任意非空名称。Native producer 按自身声明的 `response.selection` 选择 `transport` 或 `longest`；response.selection 由 Native producer 按执行模式提供。Reborn 使用 `transport`，Kemini 使用 `longest`，generic mode 默认 `longest`；已保存的 response operation 保留其 selection。当前 Native／JSON-cold／stream 结果只覆盖其记录的限定范围，未覆盖真实 provider、Harness、NativeApp 或完整浏览器兼容。
+Dream reasoning-only recovery 目前只认固定的 `<dream_plot>` 开头。`reasoningExtraction.start_regex` 可以省略或设置为字面 `^<dream_plot>`，`end_regex` 可以省略或为空；任意 start/end 正则、flags 或通用提取逻辑尚未实现，其他配置不会触发 reasoning 文本恢复。
+
+启用 Reborn output preprocessing 后，`outputPreprocessing.headerLabels` 作为字面标签列表使用，匹配不区分大小写。省略此列表时默认识别 `finishReason:` 和 `finishMessage:`；`[]` 会清空列表，不清理任何标签。清理只在普通正文开始前生效，正文里再次出现同样的文本会原样保留。Kemini 与 Reborn 的 Native producer 会将作者声明的非空 `toolName` 放入控制提示和响应 transport。
+
+Izumi sanitizer 的 `exemptNames` 默认是 `[]`；作者可显式提供字面名称作为豁免内容，豁免文字来自声明数据。真实 provider、Harness 与完整浏览器流程尚未覆盖。
+
+面板展示作者身份和解析出的 Native mode。使用包含完整声明的导入或 profile API 更改身份或 mode；声明中的功能组和现有模式开关仍可照常操作。Izumi V2 方案包导入只保存 `plans`、`active` 和 `quickSlots`，先预览，再显式应用方案；未定位条目会显示 unresolved，不把缺失目标算作成功。
 
 ### 采样参数
 
@@ -239,7 +248,7 @@ legacy 行内部先按字段存在的回退关系选值，不会在每个候选�
 | `preset` | 当前 preset 的内嵌正则，以及绑定到该 preset 的独立库 |
 | `scoped` | 当前对话根绑定的库，以及已准入的角色卡 scoped 正则 |
 
-standard／dream 的默认顺序是 **global → preset → scoped**；kemini／reborn／izumi 为 **preset → global → scoped**。在“正则来源顺序”可显式调整，保存到当前选择范围。同一来源内沿有效规则顺序执行，前一个输出是后一个输入；不能仅按文件名或导入时间推测最后文本。绑定 preset 的独立库只随该 preset 生效；正则库也可在没有启用社区预设时独立使用。
+standard／dream 的默认顺序是 **global → preset → scoped**；kemini／reborn／izumi 为 **preset → global → scoped**。服务端按实际 `transport.kind` 解析默认值，并分别发布全局 `globalRegexOrder` 和当前范围有效的 `regexOrder`；UI 使用对应字段显示和保存顺序。同一来源内沿有效规则顺序执行，前一个输出是后一个输入；不能仅按文件名或导入时间推测最后文本。绑定 preset 的独立库只随该 preset 生效；正则库也可在没有启用社区预设时独立使用。
 
 ### 规则字段的精确含义
 
