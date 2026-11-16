@@ -14,6 +14,8 @@ import type {CommunityAuthorPresetCatalogV1,CommunityPresetDataV1} from '../core
 import type {AuthorCharacterLibraryPacketV1} from '../core/roleplay-author-character-library.js'
 import type {AuthorNativeLibraryReadV1} from '../core/author-native-helper-types.js'
 import {createAuthorNativeVariableWriters} from '../core/author-native-variable-writers.js'
+import {createAuthorNativeGenerationApi} from '../core/author-native-generation-api.js'
+import {createAuthorNativeCommandLanguageV1} from '../core/author-native-commands.js'
 import type {AuthorNativeProgramV1} from '../core/author-native-program.mjs'
 import type {AuthorNativeHelperSnapshotV1,AuthorNativeHelperRealmBindingV1,AuthorNativeHelperHostV1,
   AuthorNativeHelperFrameOptionsV1,AuthorNativeHelperFrameControllerV1,AuthorNativeHelperResourceV1,
@@ -552,7 +554,7 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     },
   }
   api.SillyTavern={getContext:api.getContext}
-  api.nextTavern={getNumericalState:()=>clone(snapshot.numerical),
+  api.nextTavern={flushPresetWrites:()=>presetBarrier,getNumericalState:()=>clone(snapshot.numerical),
     replaceNumericalValues:(values:unknown,expected:unknown)=>request('numerical-replace',{values,expected}),
     getComposer:()=>request('composer',{action:'get'}),setComposer:(value:string)=>request('composer',{action:'set',value})}
   api.Mvu=createMvu({snapshot:()=>snapshot,readScope:()=>scope,variables,
@@ -563,7 +565,11 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     // Product libraries and the Mvu facade are installed before Source runs.
     // Their presence does not grant numerical read/write permission.
   }
-  api.event_types=api.tavern_events=clone(snapshot.context?.eventTypes??{})
+  api.event_types=api.tavern_events={...clone(snapshot.context?.eventTypes??{}),GENERATION_STOPPED:'generation_stopped'}
+  api.iframe_events={GENERATION_REQUESTED:'js_generation_requested',GENERATION_STARTED:'js_generation_started',
+    GENERATION_BEFORE_END:'js_generation_before_end',GENERATION_ENDED:'js_generation_ended',
+    STREAM_TOKEN_RECEIVED_FULLY:'js_stream_token_received_fully',STREAM_TOKEN_RECEIVED_INCREMENTALLY:'js_stream_token_received_incrementally',
+    REASONING_TOKEN_RECEIVED_FULLY:'js_reasoning_token_received_fully',REASONING_TOKEN_RECEIVED_INCREMENTALLY:'js_reasoning_token_received_incrementally'}
   Object.assign(realm,api)
   realm.TavernHelper=api
   async function loadSource():Promise<void> {
@@ -785,7 +791,7 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     void loadSource().catch(error=>send({op:'source-error',code:error instanceof Error?error.message:String(error)}))
   }
   addEventListener('message',connect)
-  addEventListener('pagehide',()=>{active=false;port?.close();removeEventListener('message',connect)
+  addEventListener('pagehide',()=>{generation.dispose();active=false;port?.close();removeEventListener('message',connect)
     layout?.dispose();frameChanges.disconnect()
     for(const write of layoutWrites.values())write.reject(Error('AUTHOR_NATIVE_BINDING_REVOKED'))
     layoutWrites.clear()

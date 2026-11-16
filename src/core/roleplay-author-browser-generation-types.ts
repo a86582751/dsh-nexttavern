@@ -1,7 +1,9 @@
+import type {AuthorNativeLifecyclePacketV1} from './author-native-lifecycle.js'
 /** Live Browser generation DATA shares the actual Core preparation capture.
  * Its binding and receipts locate an invocation; the pending Core owner decides
  * whether an execution result may enter the injection registry. */
 import type {AuthorNativeBindingV1 as BrowserBindingV1} from './author-native-helper-types.js'
+import type {AuthorNativeRealmLibraryReadV1,AuthorNativeResolvedLibraryReadV1} from './author-native-helper-types.js'
 import type {AuthorNativeProgramV1,AuthorNativeRealmV1} from './author-native-program.mjs'
 import type {AuthorNativeFilterInvocationV1,AuthorNativeHelperSnapshotV1,AuthorNativeHelperGenerationResultV1,
   AuthorNativeHelperGenerationCallbackV1} from './author-native-helper-types.js'
@@ -21,6 +23,8 @@ export interface AuthorBrowserPreparationFactsV3 {
   readonly persona:AuthorNativeHelperSnapshotV1['persona']
   readonly ordinaryChat:AuthorNativeHelperSnapshotV1['ordinaryChat']
   readonly ordinaryMessages?:AuthorNativeHelperSnapshotV1['ordinaryMessages']
+  readonly sharedScopes?:AuthorNativeHelperSnapshotV1['sharedScopes']
+  readonly preparedSharedScopes?:AuthorNativeHelperSnapshotV1['preparedSharedScopes']
 }
 /** Array order is the guest registry's actual order, including eventMakeFirst.
  * All mutually callable Source units in a realm share its actual principal. */
@@ -55,13 +59,15 @@ export interface BrowserGenerationOutputV3 {
   readonly captureSha256:string
   readonly effects:readonly BrowserEffectV3[]
   readonly callbacksExecuted:number
+  readonly libraryReads?:readonly AuthorNativeResolvedLibraryReadV1[]
   readonly outputSha256:string
 }
 export type BrowserGenerationResultV3={
   readonly kind:'executed'
   readonly binding:BrowserBindingV1
   readonly invocationId:string
-  readonly result:AuthorNativeHelperGenerationResultV1
+  readonly result:Omit<AuthorNativeHelperGenerationResultV1,'libraryReads'>&{
+    readonly libraryReads?:readonly AuthorNativeRealmLibraryReadV1[]}
 }|{
   readonly kind:'refused'|'cancelled'
   readonly binding:BrowserBindingV1
@@ -82,6 +88,7 @@ export interface BrowserMvuHookInvocation {
   readonly binding:BrowserBindingV1
   readonly request:AuthorNativeMvuHookRequest
   readonly registrations:readonly BrowserCallbackRegistration[]
+  readonly snapshot?:AuthorNativeHelperSnapshotV1
 }
 export interface BrowserFilterInvocation extends AuthorNativeFilterInvocationV1 {
   readonly schemaVersion:1;readonly encoding:'author-native-injection-filter-invocation-v1'
@@ -92,9 +99,16 @@ export interface BrowserFilterRetired {
   readonly resource:BrowserPromptResourceV3;readonly ids:readonly string[]
 }
 export type BrowserFilterCompletion={readonly binding:BrowserBindingV1;readonly invocationId:string;readonly operationId:string}&(
-  {readonly kind:'executed';readonly accepted:boolean}|{readonly kind:'refused';readonly code:string})
-export type BrowserAuthorInvocation=BrowserGenerationInvocation|BrowserMvuHookInvocation|BrowserFilterInvocation|BrowserFilterRetired
-export type BrowserMvuHookCompletion={readonly binding:BrowserBindingV1;readonly invocationId:string}&(
+  {readonly kind:'executed';readonly accepted:boolean;readonly libraryReads?:readonly AuthorNativeRealmLibraryReadV1[]}
+  |{readonly kind:'refused';readonly code:string})
+export interface BrowserLifecycleInvocation {
+  readonly encoding:'author-native-lifecycle-invocation-v1'
+  readonly packet:AuthorNativeLifecyclePacketV1
+  readonly snapshot?:AuthorNativeHelperSnapshotV1
+}
+export type BrowserAuthorInvocation=BrowserLifecycleInvocation|BrowserGenerationInvocation|BrowserMvuHookInvocation|BrowserFilterInvocation|BrowserFilterRetired
+export type BrowserMvuHookCompletion={readonly binding:BrowserBindingV1;readonly invocationId:string;
+  readonly registrations?:readonly BrowserCallbackRegistration[]}&(
   |{readonly kind:'executed';readonly callbackIds:readonly string[];readonly result:AuthorNativeMvuHookResult}
   |{readonly kind:'refused';readonly code:string})
 export type BrowserPreparedMvuHookIdentity=AuthorNativeMvuHookIdentity

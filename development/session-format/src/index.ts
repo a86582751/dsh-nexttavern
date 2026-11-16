@@ -10,6 +10,8 @@ import {mvuPlayerMarkers} from './mvu-player-marker.js'
 import {mvuSchemaMarkers} from './mvu-schema-marker.js'
 import {authorInjectionCleanupMarkers,authorInjectionDeclarationMarkers} from './author-injection-cleanup.js'
 import {authorChatRootMarkers} from './author-chat-marker.js'
+import {authorGenerationEffectsMarkers} from './author-generation-effects.js'
+export * from './author-generation-effects.js'
 export {AUTHOR_CHAT_ROOT_EVENT,appendAuthorChatRootMarker,assertAuthorChatRootMarker,
   authorChatRootMarkers} from './author-chat-marker.js'
 export type {AuthorChatRootMarkerV1} from './author-chat-marker.js'
@@ -45,6 +47,7 @@ declare module '@deepseek-ai/cordis' {
     nexttavernAuthorInjectionCleanupMarkers: typeof authorInjectionCleanupMarkers
     nexttavernAuthorInjectionDeclarationMarkers:typeof authorInjectionDeclarationMarkers
     nexttavernAuthorChatRootMarkers:typeof authorChatRootMarkers
+    nexttavernAuthorGenerationEffectsMarkers:typeof authorGenerationEffectsMarkers
   }
 }
 
@@ -66,6 +69,7 @@ export function apply(ctx: Context): void {
   ctx.provide('nexttavernAuthorInjectionCleanupMarkers', authorInjectionCleanupMarkers)
   ctx.provide('nexttavernAuthorInjectionDeclarationMarkers',authorInjectionDeclarationMarkers)
   ctx.provide('nexttavernAuthorChatRootMarkers',authorChatRootMarkers)
+  ctx.provide('nexttavernAuthorGenerationEffectsMarkers',authorGenerationEffectsMarkers)
 }
 
 /** Fold one complete original-seq prefix without borrowing a live Session surface. */

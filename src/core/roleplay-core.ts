@@ -56,6 +56,7 @@ import {captureRoleplayTavernPromptSourceDataV1,projectCapturedTavernCharacterDa
 import {promptProgramSourceOrdinaryNamespaceV3} from './roleplay-prompt-program-source.js'
 import {createRoleplayTavernEjsPrograms} from './roleplay-tavern-ejs-programs.js'
 import {captureCommittedTavernInjectionRegistryV1} from './roleplay-tavern-injections.js'
+import {createRoleplayAuthorGenerationEffectsV1} from './roleplay-author-generation-effects.js'
 import type {TavernNativeFilterReferenceV1} from './roleplay-tavern-injections.js'
 import {captureRoleplayTavernMaterialHistoryV1} from './roleplay-tavern-material-history.js'
 import {captureNativeTavernInjectionDefinitionV1,captureRoleplayTavernInjectionDefinitionsV1}
@@ -1325,6 +1326,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     resolveCurrentCardImport,
     nativeTask,
     requestAuthorDialog,
+    readAuthorDialogOperation,
+    recordAuthorGenerationEffects,
     requestRubyAnalysis,
     requestCharacterBackground,
     readCompletedCharacterBackground,
@@ -2081,6 +2084,18 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       if(!ctx.sessions.get(namespace.sessionId))throw Error('AUTHOR_CHAT_NATIVE_SESSION_UNAVAILABLE')
     },
     withSourceLock:(id,work)=>withImportLock(id,'community-variables',work)})
+  const authorGenerationEffects=createRoleplayAuthorGenerationEffectsV1({
+    variables:communityVariables,branch:T.branch,tasks:{recordAuthorGenerationEffects},
+    sessions:ctx.sessions as unknown as Parameters<typeof createRoleplayAuthorGenerationEffectsV1>[0]['sessions'],
+    sessionQuery:ctx.sessionQuery,
+    withSourceLock:(sid,work,signal)=>withImportLock(sid,'author-generation-effects',work,signal),
+    registry:{assertBaseCurrent(sid,snapshot) {
+      const base=(snapshot as {payload?:{injections?:{baseRegistrySha256?:string}}})
+        ?.payload?.injections?.baseRegistrySha256
+      if(base!==capturePromptRegistry(sid,new AbortController().signal).registrySha256)
+        throw Error('INPUT_MATERIAL_INJECTION_BASE_CHANGED')
+    }},
+  })
   function communityAliases(sid:string) {
     return {user:userValues(sid).name,user_gender:userValues(sid).gender,
       char:String([...T.cards.entries()].filter(([key,card])=>key.startsWith(sid+'__')&&card?.kind!=='user')
@@ -3811,6 +3826,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     observe:(session:CoreSession) => inputState.captureObservation(session.id,()=>
       mvuOpening.readInputObservation(session.id)).data,
     preflightObservation:async(session,signal)=>{
+      await authorGenerationEffects.settle(session.id,signal)
+      await communityPresets.settleAuthorPending()
       await ensureBranch(session)
       // Ruby publishes its owner/task rows before schema captures branch
       // membership. Publishing afterwards would revoke the captured schema
@@ -3919,12 +3936,60 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     const captured=captureOrdinaryChatNamespace(sid)
     return {namespace:captured.namespace,current:()=>current()&&captured.current()}
   }
+  async function admitAuthorGenerationImages(
+    request:import('./roleplay-author-browser-types.js').AuthorNativeGenerateRawRequestV1,signal:AbortSignal) {
+    const admit=async(value:unknown)=>{
+      if(value===undefined)return undefined
+      const uploads=Array.isArray(value)?value:[value]
+      const content=uploads.map(upload=>{
+        if(!upload||typeof upload!=='object'||upload.type!=='image-upload')
+          throw Error('AUTHOR_GENERATION_IMAGE_INGRESS_REQUIRED')
+        return {type:'image' as const,data:upload.data,mediaType:upload.mediaType,
+          ...upload.name===undefined?{}:{name:upload.name}}
+      })
+      signal.throwIfAborted()
+      const admitted=await ctx.attachments.admitPromptContent(content)
+      signal.throwIfAborted()
+      return Array.isArray(value)?admitted:admitted[0]
+    }
+    const rows=async(value:unknown)=>Array.isArray(value)?Promise.all(value.map(async row=>
+      row&&typeof row==='object'&&row.image!==undefined?{...row,image:await admit(row.image)}:row)):value
+    const options=request.options,overrides=options.overrides,
+      history=overrides&&typeof overrides==='object'&&!Array.isArray(overrides)?overrides.chat_history:undefined
+    return {...request,options:{...options,
+      ...options.image===undefined?{}:{image:await admit(options.image)},
+      ...options.ordered_prompts===undefined?{}:{ordered_prompts:await rows(options.ordered_prompts)},
+      ...history&&typeof history==='object'&&!Array.isArray(history)&&history.prompts!==undefined
+        ?{overrides:{...overrides as object,chat_history:{...history,prompts:await rows(history.prompts)}}}:{},
+    }} as import('./roleplay-author-browser-types.js').AuthorNativeGenerateRawRequestV1
+  }
+  function resolveGenerationLibraryReads(sid:string,
+    reads:readonly import('./author-native-helper-types.js').AuthorNativeRealmLibraryReadV1[]) {
+    return reads.flatMap(read=>{
+      const binding=read.attachment
+      if(!binding||binding.sessionId!==sid)throw Error('AUTHOR_NATIVE_LIBRARY_REALM_UNAVAILABLE')
+      const resolved=authorBrowser?.resolveLibraryReads(binding,[read])??readerDisplay.resolveLibraryReads(binding,[read])
+      if(!resolved)throw Error('AUTHOR_NATIVE_LIBRARY_REALM_UNAVAILABLE')
+      return resolved
+    })
+  }
   const authorDialogCore=createRoleplayAuthorBrowserDialogCoreV1({
-    capturePrompt:authorDialogContent.capturePrompt,
-    requestTask:async(sid,prompt,current,signal)=>{
+    capturePrompt:async(sid,target,request,operationId,current,signal)=>authorDialogContent.capturePrompt(
+      sid,target,await admitAuthorGenerationImages(request,signal),operationId,current,signal),
+    restorePrompt:authorDialogContent.restorePrompt,
+    resolveLibraryReads:resolveGenerationLibraryReads,
+    readOperation:(sid,binding,operationId)=>{
+      const session=ctx.sessions.get(sid)
+      return session?readAuthorDialogOperation(session,binding,operationId):undefined
+    },
+    requestTask:async(sid,prompt,current,signal,hooks)=>{
       const session=ctx.sessions.get(sid)
       if(!session)throw Error('AUTHOR_DIALOG_SESSION_INACTIVE')
-      return requestAuthorDialog({session,prompt,current,signal})
+      const {onAccepted,...nativeHooks}=hooks
+      return requestAuthorDialog({session,prompt,current,signal,...nativeHooks,
+        onCheckpoint:checkpoint=>authorGenerationEffects.accept(prompt,checkpoint,
+          async()=>{await hooks.onCheckpoint?.(checkpoint)},current,signal,onAccepted),
+        onTerminal:authorGenerationEffects.terminal})
     },captureCurrent:(sid,_program,current)=>captureBrowserChatSource(sid,current)})
   async function captureOwnedBrowserFacts(sid:string) {
     if(!mvuOpening.hasSchemaOpening(sid))return undefined
@@ -4203,7 +4268,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     },
     submit:(input,current)=>mvuOpening.submitSchemaPlayer(input,current),confirm:mvuOpening.confirmSchemaPlayer,
     mutateOpeningVariants:(capture,request,signal)=>mvuOpening.mutateOpeningVariants(capture,request,signal),
-    generateRaw:authorDialogCore.generateRaw,
+    authorGeneration:authorDialogCore,
     commands:authorCommands,
     releaseOwner:authorDialogCore.releaseOwner})
   ctx.on('session/disposed',session=>authorBrowser?.invalidateSession(session.id),{global:true})

@@ -9,6 +9,7 @@ import { MVU_PLAYER_EDIT_EVENT, assertMvuPlayerEditEvent, assertMvuPlayerMarkerB
 import { MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT, MVU_SCHEMA_REVISION_EVENT, assertMvuSchemaMarkerEvent, assertMvuSchemaHistory, assertMvuSchemaEventVocabulary } from './mvu-schema-marker.js';
 import { AUTHOR_INJECTION_CLEANUP_EVENT, assertAuthorInjectionCleanup, AUTHOR_INJECTION_DECLARATION_EVENT, assertAuthorInjectionDeclaration } from './author-injection-cleanup.js';
 import { AUTHOR_CHAT_ROOT_EVENT, assertAuthorChatRootMarker } from './author-chat-marker.js';
+import { AUTHOR_GENERATION_EFFECTS_EVENT, assertAuthorGenerationEffects } from './author-generation-effects.js';
 import { readNativeAuthorPublicationV1, readNativePublishedTriggerV1 } from 'dsh-nexttavern-native-session/types';
 export * from '@deepseek-ai/dsh-session-persistence';
 export { createNativeV4RelationshipValidator, assertNativeV4Relationships } from './native-v4/validation.js';
@@ -38,6 +39,12 @@ export const validateStoredEvents = (meta, events, location) => {
             if (event.ignorable)
                 throw Error('Message edits cannot be marked ignorable');
             assertMessageEdit(event.data);
+            events[index] = adoptSessionEvent(event);
+        }
+        else if (event.type === AUTHOR_GENERATION_EFFECTS_EVENT) {
+            if (event.ignorable)
+                throw Error('AUTHOR_GENERATION_EFFECTS_NOT_IGNORABLE');
+            assertAuthorGenerationEffects(event.data);
             events[index] = adoptSessionEvent(event);
         }
         else if (event.type === AUTHOR_CHAT_ROOT_EVENT) {

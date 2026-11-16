@@ -216,6 +216,7 @@ export { inspectNativeOpeningGenerationV1, inspectNativeOpeningGenerationObserva
 export { nativeOpeningRecordSha256V1, nativeOpeningInstructionSha256V1, nativeOpeningTextSha256V1, validateNativeOpeningInvocationV1, validateNativeOpeningRequestAttemptV1, validateNativeGeneratedOpeningReceiptV1, validateNativeOpeningClosingAckV1 } from './opening-record-hashes.js';
 export { nativeInputCanonical, nativeInputSha256, inspectNativeInboxHistory } from './input-admission.js';
 export { reconstructNativeRequestMaterialV1, reconstructNativeMaterialSelectedCaptureV2, verifyNativeRequestMaterialHistoryV1, verifyNativeSessionRequestMaterialHistoryV1, NativeRequestMaterialFailure, projectNativeMessageTextV2, projectNativeMaterialTextOutputsV1 } from './request-material.js';
+export { inspectNativeAuthorGenerationV1, inspectNativeAuthorGenerationTerminalV1 } from './author-generation.js';
 /**
  * Context key a launcher sets before any Loader entry mounts
  * (`ctx.provide(CONFIGURED_AGENT_IDENTITIES_KEY, identities)`) to fix

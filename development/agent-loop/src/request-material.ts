@@ -625,9 +625,10 @@ function recordData(value: unknown): NativeRequestMaterialRecord {
   if (data === null || typeof data !== 'object' || Array.isArray(data)) fail('MALFORMED', 'record')
   const version=data['schemaVersion']
   if (!(version===1&&data['encoding']==='native-request-material-v1'
-    ||version===2&&data['encoding']==='native-request-material-v2'))fail('UNKNOWN_VERSION','record')
+    ||version===2&&data['encoding']==='native-request-material-v2'
+    ||version===3&&data['encoding']==='native-request-material-v3'))fail('UNKNOWN_VERSION','record')
   const record = object(data, ['schemaVersion', 'encoding', 'turn', 'step', 'header', 'snapshot', 'plan',
-    'base', 'delta', 'placements', 'outputSha256'], 'record')
+    'base', 'delta', 'placements', 'outputSha256',...version===3?['owner','orderedMessages']:[]], 'record')
   object(record['base'] as Data, ['boundarySeq', 'contentGeneration', 'surfaceNodes', 'messages', 'sha256'], 'record.base')
   object(record['delta'] as Data, ['insertions', 'protectedPrefixLength',...version===2?['messageTextProjections']:[],
     ...Object.hasOwn(record['delta'] as object,'finalTextProjection')?['finalTextProjection']:[],
@@ -907,6 +908,11 @@ function reconstructAgainstSurface(record:NativeRequestMaterialRecord,folded:{
   // Exact turn/step identity is supplied by the historical Native step bracket.
   if (!stepEvent || stepEvent.type !== 'step/start' || stepEvent.data.turn !== record.turn
     || stepEvent.data.step !== record.step) fail('BOUNDARY_MISMATCH', 'record.turnStep')
+  if(record.schemaVersion===3){
+    const messages=ownedData(record.orderedMessages,'record.orderedMessages')
+    if(!Array.isArray(messages)||digest(messages)!==record.outputSha256)fail('MATERIAL_MISMATCH','orderedMessages')
+    return {record,messages:messages as unknown as readonly NativeRequestMessageV1[]}
+  }
   const rebuilt = materialize({turn: record.turn, step: record.step, header: record.header,
     snapshot: record.snapshot, plan: record.plan, boundarySeq: record.base.boundarySeq,
     contentGeneration, surfaceNodes: folded.nodes, baseMessages, baseRefs,

@@ -108,6 +108,7 @@ export class ReactLoopAgent {
     id;
     options;
     session;
+    authorGeneration;
     requestBudget = new NativeRequestBudget();
     pendingMaterialCandidate;
     requestObservation;
@@ -1065,10 +1066,34 @@ export class ReactLoopAgent {
     }
     /** Author content is an already frozen prompt slot, including empty and long text. */
     async generateAuthorDialogAssistant(input) {
-        if (typeof input?.dynamicSystem !== 'string')
-            throw new Error('invalid author dialogue dynamic system');
-        return this.generateNoUserAssistant({ operationId: input.operationId, messageId: input.messageId,
-            instruction: input.dynamicSystem });
+        if (this.authorGeneration)
+            throw Error('AUTHOR_GENERATION_BUSY');
+        if (input.plan.identity.childSessionId !== this.session.id || !input.owner.current())
+            throw Error('AUTHOR_GENERATION_REVOKED');
+        const work = { plan: deepFreeze(input.plan), owner: input.owner };
+        this.authorGeneration = work;
+        try {
+            const result = await this.generateNoUserAssistant({ operationId: work.plan.identity.operationId,
+                messageId: work.plan.identity.messageId, instruction: '' });
+            const events = this.session.snapshotEvents(), assistant = events.findLast(event => event.type === 'assistant/message'
+                && event.data.message.id === work.plan.identity.messageId), end = assistant?.type === 'assistant/message'
+                ? events.findLast(event => event.type === 'turn/end' && event.data.turn === assistant.data.turn) : undefined;
+            if (!work.checkpoint || assistant?.type !== 'assistant/message' || end?.type !== 'turn/end'
+                || !['completed', 'max-tokens'].includes(end.data.reason.kind))
+                return result;
+            if (!await this.ctx.sessions.flush(this.session))
+                return { kind: 'unknown', reason: 'author completion flush is not durable' };
+            const finish = assistant.data.stream?.findLast(record => record.type === 'chunk' && record.chunk.type === 'finish'), completion = { identity: work.plan.identity, materialRef: work.checkpoint.materialRef,
+                assistantRef: { seq: assistant.seq, sha256: nativeInputSha256(assistant) }, turnEndRef: { seq: end.seq, sha256: nativeInputSha256(end) },
+                message: assistant.data.message, finishReason: finish?.type === 'chunk' && finish.chunk.type === 'finish'
+                    ? finish.chunk.reason : { kind: 'stop' } };
+            await work.owner.closing(completion, new AbortController().signal);
+            return { kind: 'committed', turn: assistant.data.turn, messageId: assistant.data.message.id };
+        }
+        finally {
+            if (this.authorGeneration === work)
+                this.authorGeneration = undefined;
+        }
     }
     async generateNoUserAssistant(input) {
         const valid = (value) => typeof value === 'string' && value.length > 0
@@ -2389,6 +2414,13 @@ export class ReactLoopAgent {
             try {
                 // oxlint-disable-next-line typescript/no-non-null-assertion -- every exit assigns a turn ending
                 capturedEnd = this.session.append('turn/end', { turn, reason: turnEnds });
+                const author = this.authorGeneration;
+                if (author?.checkpoint) {
+                    if (!await this.ctx.sessions.flush(this.session))
+                        throw Error('AUTHOR_GENERATION_TERMINAL_FLUSH_UNKNOWN');
+                    await author.owner.terminal({ identity: author.plan.identity, turn,
+                        turnEndRef: { seq: Number(capturedEnd.seq), sha256: nativeInputSha256(capturedEnd) }, reason: capturedEnd.data.reason }, new AbortController().signal);
+                }
             }
             catch (error) {
                 if (requiresCompletion && !currentAdmission?.receipt)
@@ -2482,7 +2514,7 @@ export class ReactLoopAgent {
             const startsRequestSeries = firstAttempt && decision.startsRequestSeries === true;
             const candidate = firstAttempt && this.pendingMaterialCandidate?.decision === decision ? this.pendingMaterialCandidate.planned : undefined;
             this.pendingMaterialCandidate = undefined;
-            let request = candidate ? (candidate.kind === 'material' ? this.commitMaterialRequest(decision, candidate)
+            let request = this.authorGeneration ? await this.buildAuthorGenerationRequest(decision, { config, preparedCall, turn, step, firstAttempt, signal }) : candidate ? (candidate.kind === 'material' ? this.commitMaterialRequest(decision, candidate)
                 : this.commitRequest(candidate)) : this.materialRequestOwner(decision)
                 ? this.buildMaterialRequest(decision, { config, preparedCall, turn, step, firstAttempt, signal }) : undefined;
             if (request === undefined) {
@@ -2532,6 +2564,14 @@ export class ReactLoopAgent {
                 started = true;
                 for await (const chunk of stream) {
                     signal.throwIfAborted();
+                    const author = this.authorGeneration;
+                    if (author) {
+                        if (!author.owner.current())
+                            throw Error('AUTHOR_GENERATION_REVOKED');
+                        if (chunk.type === 'text-delta' || chunk.type === 'reasoning-delta')
+                            author.owner.stream?.({ identity: author.plan.identity,
+                                kind: chunk.type === 'text-delta' ? 'text' : 'reasoning', delta: chunk.text });
+                    }
                     if (observation.firstOutputMs === null && ['text-delta', 'reasoning-delta', 'tool-call-delta'].includes(chunk.type))
                         observation.firstOutputMs = performance.now() - observation.started;
                     live.push(chunk);
@@ -2599,6 +2639,8 @@ export class ReactLoopAgent {
                     catch (settlementError) {
                         throw new AggregateError([failure, settlementError], 'Assistant provider failed and its durable settlement was rejected', { cause: failure });
                     }
+                    if (this.authorGeneration)
+                        throw failure;
                     const action = await this.dispatch.waterfall('agent/request-error', {
                         turn,
                         step,
@@ -2647,6 +2689,8 @@ export class ReactLoopAgent {
                 }, { surfaceOp: 'append' }).seq);
                 if (finish.kind === 'max-tokens')
                     return { kind: 'max-tokens' };
+                if (this.authorGeneration)
+                    return { kind: 'completed' };
                 const toolCalls = message.content.filter(block => block.type === 'tool-call');
                 if (toolCalls.length === 0)
                     return { kind: 'completed' };
@@ -2698,7 +2742,9 @@ export class ReactLoopAgent {
         let config;
         let preparedCall;
         try {
-            preparedCall = await this.loopCtx.llm.prepareCall(proposedConfig, signal);
+            const { tools: authorTools, stop: authorStop, ...authorCall } = this.authorGeneration?.plan.call ?? {};
+            preparedCall = await this.loopCtx.llm.prepareCall(this.authorGeneration ? { ...proposedConfig, ...authorCall,
+                ...authorStop ? { stop: [...authorStop] } : {} } : proposedConfig, signal);
             config = preparedCall.config;
         }
         catch (error) {
@@ -3025,6 +3071,40 @@ export class ReactLoopAgent {
         throw new LlmError(`${category}超过当前模型的可用输入容量（估算 ${measurement.estimate.inputTokens}，可用 ${measurement.capacity.availableInput}）。当前玩家输入和有效设定已保留；请改用上下文更大的模型，或主动调整设定后恢复。`, 'CONTEXT_LENGTH_EXCEEDED');
     }
     /** Preview and price the ordinary path before admitting system/player data. */
+    async buildAuthorGenerationRequest(decision, input) {
+        const work = this.authorGeneration, { plan, owner } = work;
+        if (!owner.current() || work.checkpoint)
+            throw Error('AUTHOR_GENERATION_REVOKED_OR_ALREADY_DISPATCHED');
+        const base = this.buildRequest({ ...decision, assembly: { ...decision.assembly, tools: [...plan.call.tools ?? []] } }, input, true), messages = deepFreeze(structuredClone([...plan.orderedMessages])), request = markAgentLoopRequest(Object.freeze({ ...base, messages, tools: deepFreeze([...plan.call.tools ?? []]) })), projected = input.preparedCall?.projectRequest(request), meter = this.loopCtx.get('tokenMeter'), measurement = projected && meter?.measureRequest ? this.requestBudget.measure(projected, meter) : undefined;
+        if (measurement) {
+            this.assertRequestCapacity(measurement);
+            retainNativeRequestMeasurement(request, measurement);
+        }
+        const selected = this.#captureSelection(undefined, []), header = this.session.requestHeaderBoundary();
+        if (!header)
+            throw Error('AUTHOR_GENERATION_HEADER_MISSING');
+        const baseMessages = selected.messages.map(row => row.message), record = { schemaVersion: 3,
+            encoding: 'native-request-material-v3', turn: input.turn, step: input.step,
+            owner: plan.identity, orderedMessages: messages, header: { seq: Number(header.seq), sha256: nativeInputSha256(header.header) },
+            snapshot: plan.material.snapshot, plan: plan.material.plan,
+            base: { boundarySeq: Number(this.session.seq) - 1, contentGeneration: selected.contentGeneration, surfaceNodes: selected.surfaceNodes,
+                messages: selected.messages.map(row => ({ seq: row.eventSeq, id: row.id, role: row.role, messageSha256: row.messageSha256 })),
+                sha256: nativeInputSha256(baseMessages) }, delta: { insertions: [], protectedPrefixLength: 0 }, placements: [],
+            outputSha256: nativeInputSha256(messages) }, event = this.session.append('request/material', record);
+        if (!await this.ctx.sessions.flush(this.session))
+            throw Error('AUTHOR_GENERATION_MATERIAL_FLUSH_UNKNOWN');
+        const current = () => this.authorGeneration === work && owner.current() && !input.signal.aborted
+            && this.session.eventAt(event.seq) === event && this.session.requestHeaderBoundary()?.seq === header.seq, checkpoint = { identity: plan.identity, headerRef: { seq: Number(header.seq), sha256: nativeInputSha256(this.session.eventAt(header.seq)) },
+            materialRef: { seq: Number(event.seq), sha256: nativeInputSha256(event) }, turn: input.turn, step: input.step, signal: input.signal, current };
+        work.checkpoint = checkpoint;
+        await owner.checkpoint(checkpoint);
+        if (!current())
+            throw Error('AUTHOR_GENERATION_REVOKED');
+        bindNativeRequestMaterial(request, { session: this.session, event, preparedSelection: true,
+            assertOwnerCurrent: () => { if (!current())
+                throw Error('AUTHOR_GENERATION_REVOKED'); } });
+        return request;
+    }
     buildRequest(decision, input, startsRequestSeries) {
         return this.commitRequest(this.planRequest(decision, input, startsRequestSeries));
     }
@@ -3051,7 +3131,7 @@ export class ReactLoopAgent {
         Object.freeze(boundaryMessages);
         const request = markAgentLoopRequest(Object.freeze({ ...envelope.header.config, messages: boundaryMessages,
             toolHistory: preview.toolHistory, ...envelope.header.tools ? { tools: envelope.header.tools } : {}, sessionId: this.session.id, signal }));
-        const projected = preparedCall?.projectRequest(request);
+        const projected = this.authorGeneration ? undefined : preparedCall?.projectRequest(request);
         const meter = this.loopCtx.get('tokenMeter');
         const measurement = projected && meter?.measureRequest ? this.requestBudget.measure(projected, meter) : undefined;
         if (measurement)

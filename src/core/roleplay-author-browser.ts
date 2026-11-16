@@ -79,8 +79,8 @@ interface Dependencies {
   confirm(input:unknown):Promise<MvuPlayerEditResponse>
   mutateOpeningVariants(capture:AuthorOpeningVariantCaptureV1,request:OpeningVariantMutationRequestV1,
     signal:AbortSignal):Promise<OpeningVariantMutationResult>
-  generateRaw?(sid:string,program:AuthorNativeProgramV1,realm:AuthorNativeRealmV1,request:AuthorNativeGenerateRawRequestV1,
-    current:()=>boolean,signal:AbortSignal):Promise<BrowserGeneratedTaskV2>
+  authorGeneration?:Pick<ReturnType<typeof import('./roleplay-author-browser-dialog-core.js').createRoleplayAuthorBrowserDialogCoreV1>,
+    'start'|'next'|'cancel'|'completeFilter'|'generateRaw'>
   commands?(sid:string,origin:string,request:AuthorNativeCommandRequestV1,current:()=>boolean,
     signal:AbortSignal,controls?:AuthorNativeCommandSourceControlsV1):Promise<AuthorNativeCommandResultV1>
   /** The retained attachment supplies its admitted program and actual Source
@@ -587,55 +587,60 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
         return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
       value.generationQueue.completeHook(input.result)
       return {ok:true,kind:'generation-acknowledged'}
-    }
-    if(input.action==='generate-raw') {
-      const program=value.program
-      const realm=nativeRealm(value,input.request.realmId)
-      if(!deps.generateRaw)return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
-      const current=originalSourceLifetime(value)
-      return {ok:true,kind:'generated',result:await deps.generateRaw(
-        session.id,program,realm,input.request,current,signal)}
-    }
-    if(input.action!=='save')return {ok:false,code:'BROWSER_REQUEST_INVALID'}
-    const request=input.request,operation=input.operation
-    nativeRealm(value,request.realmId)
-    if(request.generation!==value.binding.generation
-      ||operation.sessionId!==value.binding.sessionId||operation.schemaVersion!==1||operation.action!=='replace-values') {
-      return {ok:false,code:'BROWSER_NUMERICAL_REQUEST_INVALID'}
-    }
-    // No await lies between this live attachment check and entering the actual
-    // writer. Its own Native reservation/Source boundary decides publication.
-    if(!value.current())return fail('BROWSER_ATTACHMENT_REVOKED')
-    const result=await deps.submit(operation,value.current)
-    // A committed operation survives a later revocation. Return its receipt so
-    // parent storage can confirm it, without publishing readiness to a new realm.
-    if(!value.current())return {ok:true,kind:'saved',result}
-    try {
-      const captured=await snapshot(value)
-      // This signal follows the real numerical writer's new durable update and
-      // the same Source's after-capture. It carries no fabricated MvuData and
-      // does not claim the library's precommit variable-editing callback phase.
-      return {ok:true,kind:'saved',result,snapshot:captured,
-        ...result.operation?.outcome==='updated'&&!result.operation.replayed
-          ?{sourceEvents:[{type:'nexttavern_numerical_updated',args:[]}]}:{}}
-    }
-    catch{return {ok:true,kind:'saved',result}}
-  }
-  function handle(input:AuthorBrowserRequest,signal:AbortSignal=new AbortController().signal):Promise<AuthorBrowserReply> {
-    const binding='binding' in input?input.binding:undefined
-    if(!binding||input.action==='dispose')return handleCurrent(input,signal)
-    const key=binding.browserSessionId,previous=actionQueues.get(key)??Promise.resolve()
-    // A self-authored intent dirties the old facts until its actual receipt is
-    // adopted. Bound reads and writes wait together, then use retained() once.
-    // Long generation calls only wait for admission: holding their queue would
-    // prevent the callback's own RPC or completion from ever being delivered.
-    const result=previous.then(()=>handleCurrent(input,signal))
-    if(input.action==='generation-wait'||input.action==='generation-complete'||input.action==='mvu-hook-complete'||input.action==='filter-complete'||input.action==='generate-raw'
-      ||input.action==='execute-commands')return result
-    const settled=result.then(()=>{},()=>{})
-    actionQueues.set(key,settled)
-    void settled.then(()=>{if(actionQueues.get(key)===settled)actionQueues.delete(key)})
-    return result
+    },{sourceOnly:true,serialize:false})
+    if(input.action==='start-author-generation'||input.action==='author-generation-next'
+      ||input.action==='stop-author-generation'||input.action==='author-generation-filter-result'||input.action==='generate-raw')
+      return withAttachment(input.binding,async(session,value)=>{
+        const program=value.program
+        const realm=nativeRealm(value,input.request.realmId)
+        const generation=deps.authorGeneration
+        if(!generation)return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
+        const current=originalSourceLifetime(value)
+        if(input.action==='start-author-generation')return {ok:true,kind:'generation-started',
+          ...generation.start(session.id,program,realm,input.request,current,signal)}
+        if(input.action==='author-generation-next')return {ok:true,kind:'generation-update',
+          update:await generation.next(session.id,program,realm,input.request.operationId,input.request.cursor,current,signal)}
+        if(input.action==='stop-author-generation')return {ok:true,kind:'generation-stopped',
+          stopped:await generation.cancel(session.id,program,realm,input.request.operationId,current,signal)}
+        if(input.action==='author-generation-filter-result'){
+          generation.completeFilter(session.id,program,realm,input.request.operationId,input.request,current,signal)
+          return {ok:true,kind:'generation-filter-acknowledged'}
+        }
+        return {ok:true,kind:'generated',result:await generation.generateRaw(
+          session.id,program,realm,input.request,current,signal)}
+      },{sourceOnly:input.action!=='generate-raw',serialize:input.action==='start-author-generation'})
+    if(input.action==='save')return withAttachment(input.binding,async(session,value)=>{
+      const request=input.request,operation=input.operation
+      nativeRealm(value,request.realmId)
+      if(request.generation!==value.binding.generation
+        ||operation.sessionId!==value.binding.sessionId||operation.schemaVersion!==1
+        ||!['replace-values','replace-envelope'].includes(operation.action)) {
+        return {ok:false,code:'BROWSER_NUMERICAL_REQUEST_INVALID'}
+      }
+      // No await lies between this live attachment check and entering the actual
+      // writer. Its own Native reservation/Source boundary decides publication.
+      const ordinaryOwner=deps.captureOwner(session.id)
+      if(!ordinaryOwner||!value.current())return fail('BROWSER_ATTACHMENT_REVOKED')
+      // The writer advances its own numerical cut. Keep the actual attachment,
+      // Session/Stop and Source lifetime as permission throughout publication.
+      const sourceLifetime=originalSourceLifetime(value),sourceCurrent=()=>ordinaryOwner()&&sourceLifetime()
+      const result=await deps.submit(operation,sourceCurrent)
+      // A committed operation survives a later revocation. Return its receipt so
+      // parent storage can confirm it, without publishing readiness to a new realm.
+      if(!sourceCurrent())return {ok:true,kind:'saved',result}
+      try {
+        const captured=await adoptCommittedFacts(value,sourceCurrent)
+        if(!captured)return {ok:true,kind:'saved',result}
+        // This signal follows the real numerical writer's new durable update and
+        // the same Source's after-capture. It carries no fabricated MvuData and
+        // does not claim the library's precommit variable-editing callback phase.
+        return {ok:true,kind:'saved',result,snapshot:captured,
+          ...result.operation?.outcome==='updated'&&!result.operation.replayed
+            ?{sourceEvents:[{type:'nexttavern_numerical_updated',args:[]}]}:{}}
+      }
+      catch{return {ok:true,kind:'saved',result}}
+    })
+    return {ok:false,code:'BROWSER_REQUEST_INVALID'}
   }
   deps.ctx.effect(()=>deps.ctx.connection.fetch.register({path:'/api/roleplay/author-browser',
     methods:['POST'],requestBody:'buffered',fetch:async(request:Request)=>{
@@ -650,7 +655,10 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
           'mutate-message-body','confirm-message-body','retry-message-body',
           'mutate-author-namespace','confirm-author-namespace','retry-author-namespace'].includes(input.action)) {
           return jsonResponse(400,{ok:false,code:'BROWSER_REQUEST_INVALID'})
-        }
+        // Image bytes enter the attachment owner's ordinary batch admission.
+        // The numerical edit envelope cap does not describe image uploads.
+        if(input?.action!=='start-author-generation'&&Buffer.byteLength(text,'utf8')>2*1048576)
+          return jsonResponse(413,{ok:false,code:'MVU_PLAYER_DATA_LIMIT'})
         const result=await handle(input,request.signal)
         return jsonResponse(result.ok?200:409,result)
       }catch(error){return jsonResponse(409,{ok:false,code:codeOf(error)})}

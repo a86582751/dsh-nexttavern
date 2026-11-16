@@ -1,3 +1,4 @@
+import type {AuthorNativeLifecycleSubscription} from './author-native-lifecycle.js'
 /** One live attachment owns its waiting Reader and pending preparation call.
  * A long-poll transports the challenge; it never grants Native permission. */
 import {randomUUID} from 'node:crypto'
@@ -6,13 +7,16 @@ import type {RoleplayInputSourceDataWindowV1} from './roleplay-input-preparation
 import type {AuthorNativeBindingV1 as BrowserBindingV1} from './author-native-helper-types.js'
 import type {AuthorNativeProgramV1} from './author-native-program.mjs'
 import type {AuthorNativeHelperSnapshotV1,AuthorNativeFilterInvocationV1} from './author-native-helper-types.js'
+import type {AuthorNativeRealmLibraryReadV1,AuthorNativeResolvedLibraryReadV1} from './author-native-helper-types.js'
 import type {PromptCaptureV1,AuthorPromptInjectionV1} from './tavern-author-prompt-types.mjs'
 import type {BrowserCallbackRegistration,BrowserGenerationInvocation,BrowserGenerationOutput,
   BrowserGenerationResult,BrowserAuthorInvocation,BrowserMvuHookInvocation,BrowserMvuHookCompletion,
   BrowserFilterInvocation,BrowserFilterCompletion,BrowserFilterRetired}
   from './roleplay-author-browser-generation-types.js'
-import type {AuthorNativeMvuHookRequest,AuthorNativeMvuHookResult,AuthorNativeMvuPreparedHook}
+import type {AuthorNativeMvuHookRequest,AuthorNativeMvuHookResult,AuthorNativeMvuPreparedHook,AuthorNativeMvuHookStage}
   from './author-native-mvu-hook-types.js'
+import {AUTHOR_NATIVE_MVU_HOOK_EVENTS} from './author-native-mvu-hook-types.js'
+import type {Mvu196HookStage} from './tavern-mvu-update-protocol-v1.js'
 
 const sameBinding=(left:BrowserBindingV1,right:BrowserBindingV1)=>
   left.browserSessionId===right.browserSessionId&&left.generation===right.generation
@@ -31,26 +35,35 @@ interface Pending {
   reject(error:Error):void
   cleanup():void
 }
+interface FilterResult {
+  readonly accepted:boolean
+  readonly libraryReads:readonly AuthorNativeResolvedLibraryReadV1[]
+}
 
 export function createRoleplayAuthorBrowserGeneration(options:{
   readonly binding:BrowserBindingV1
   readonly program:AuthorNativeProgramV1
+  resolveLibraryReads?(reads:readonly AuthorNativeRealmLibraryReadV1[]):readonly AuthorNativeResolvedLibraryReadV1[]
   current():boolean
+  sourceCurrent?():boolean
+  lifecycle?:AuthorNativeLifecycleSubscription
 }) {
   let closed=false,waiter:Waiter|undefined,pending:Pending|undefined
   let latestRegistrations:readonly BrowserCallbackRegistration[]=[]
   let filterCall:{invocation:BrowserFilterInvocation;sourceData?:RoleplayInputSourceDataWindowV1;
-    resolve(value:boolean):void;reject(error:Error):void;cleanup():void}|undefined
+    resolve(value:FilterResult):void;reject(error:Error):void;cleanup():void}|undefined
   const retired:BrowserFilterRetired[]=[]
   const readerArrivals=new Set<{resolve():void;reject(error:Error):void}>()
   let hook:{readonly invocation:BrowserMvuHookInvocation;readonly reader:Waiter;
     started:boolean;resolve?(result:AuthorNativeMvuHookResult):void;reject?(error:Error):void;cleanup():void}|undefined
   let producedPrompts=false
   const current=()=>!closed&&options.current()
+  const sourceCurrent=()=>!closed&&(options.sourceCurrent?.()??options.current())
   const assertCurrent=()=>{if(!current())fail('BROWSER_ATTACHMENT_REVOKED')}
-  const assertBinding=(binding:BrowserBindingV1)=>{
+  const assertSourceCurrent=()=>{if(!sourceCurrent())fail('BROWSER_ATTACHMENT_REVOKED')}
+  const assertBinding=(binding:BrowserBindingV1,assertOwner=assertCurrent)=>{
     if(!sameBinding(binding,options.binding))fail('BROWSER_ATTACHMENT_REVOKED')
-    assertCurrent()
+    assertOwner()
   }
   const realms=new Map(options.program.realms.map(realm=>[realm.realmId,realm]))
   const admittedOrigin=(row:BrowserCallbackRegistration)=>{
@@ -66,8 +79,8 @@ export function createRoleplayAuthorBrowserGeneration(options:{
     return Object.freeze(accepted)
   }
   function wait(binding:BrowserBindingV1,input:readonly BrowserCallbackRegistration[],
-    signal:AbortSignal):Promise<BrowserAuthorInvocation> {
-    assertBinding(binding)
+    signal:AbortSignal,sourceCursor?:string):Promise<BrowserAuthorInvocation> {
+    assertBinding(binding,assertSourceCurrent)
     signal.throwIfAborted()
     if(waiter||pending||hook?.started||filterCall)fail('BROWSER_GENERATION_BUSY')
     const callbacks=registrations(input)
@@ -77,17 +90,25 @@ export function createRoleplayAuthorBrowserGeneration(options:{
         if(waiter!==value)return
         waiter=undefined;value.cleanup();reject(Error('BROWSER_GENERATION_READER_DISCONNECTED'))
       }
+      let unsubscribe:(()=>void)|undefined
       const value:Waiter={registrations:callbacks,resolve,reject,
-        cleanup:()=>signal.removeEventListener('abort',abort)}
+        cleanup:()=>{signal.removeEventListener('abort',abort);unsubscribe?.()}}
       waiter=value
-      if(retired.length){waiter=undefined;value.cleanup();value.resolve(retired.shift()!)}
       signal.addEventListener('abort',abort,{once:true})
+      if(retired.length){waiter=undefined;value.cleanup();value.resolve(retired.shift()!)}
+      const deliver=()=>{
+        const packet=options.lifecycle?.peek()
+        if(waiter!==value||!packet)return
+        waiter=undefined;value.cleanup();value.resolve({encoding:'author-native-lifecycle-invocation-v1',packet})
+      }
+      options.lifecycle?.peek(sourceCursor)
+      if(waiter===value){unsubscribe=options.lifecycle?.onReady(deliver);deliver()}
       for(const arrival of readerArrivals)arrival.resolve()
       readerArrivals.clear()
     })
   }
   async function invokeFilter(input:AuthorNativeFilterInvocationV1,signal:AbortSignal,
-    sourceData?:RoleplayInputSourceDataWindowV1):Promise<boolean> {
+    sourceData?:RoleplayInputSourceDataWindowV1):Promise<FilterResult> {
     assertCurrent();signal.throwIfAborted()
     if(!realms.has(input.realmId)||input.resource.browserSessionId!==options.binding.browserSessionId
       ||input.resource.generation!==options.binding.generation)fail('AUTHOR_NATIVE_INJECTION_FILTER_SOURCE_CHANGED')
@@ -104,7 +125,7 @@ export function createRoleplayAuthorBrowserGeneration(options:{
     const invocation:BrowserFilterInvocation={...input,schemaVersion:1,
       encoding:'author-native-injection-filter-invocation-v1',invocationId:randomUUID(),binding:options.binding}
     const reader=waiter;waiter=undefined;reader.cleanup()
-    const result=new Promise<boolean>((resolve,reject)=>{
+    const result=new Promise<FilterResult>((resolve,reject)=>{
       const abort=()=>{if(filterCall!==value)return;filterCall=undefined;value.cleanup();reject(Error('BROWSER_GENERATION_CANCELLED'))}
       const value={invocation,sourceData,resolve,reject,cleanup:()=>signal.removeEventListener('abort',abort)}
       filterCall=value;signal.addEventListener('abort',abort,{once:true})
@@ -120,7 +141,8 @@ export function createRoleplayAuthorBrowserGeneration(options:{
     filterCall=undefined;value.cleanup()
     if(result.kind!=='executed'){value.reject(Error(result.code));return}
     if(typeof result.accepted!=='boolean'){value.reject(Error('AUTHOR_NATIVE_INJECTION_FILTER_INVALID_RESULT'));return}
-    value.resolve(result.accepted)
+    try {value.resolve({accepted:result.accepted,libraryReads:options.resolveLibraryReads?.(result.libraryReads??[])??[]})}
+    catch(error){value.reject(error instanceof Error?error:Error('AUTHOR_NATIVE_LIBRARY_READ_UNAVAILABLE'))}
   }
   function retireFilterCallbacks(message:BrowserFilterRetired):void {
     if(waiter&&!pending&&!hook&&!filterCall){const reader=waiter;waiter=undefined;reader.cleanup();reader.resolve(message)}
@@ -151,18 +173,8 @@ export function createRoleplayAuthorBrowserGeneration(options:{
     waiter=undefined;reader.cleanup();reader.resolve(invocation)
     return result
   }
-  const hookEvents={
-    'command-parsed':'mag_command_parsed','update-ended':'mag_variable_update_ended',
-    'before-message-update':'mag_before_message_update',
-  } as const
-  async function prepareHook(request:AuthorNativeMvuHookRequest,signal:AbortSignal)
-    :Promise<AuthorNativeMvuPreparedHook|undefined> {
-    assertCurrent();signal.throwIfAborted()
-    const event=hookEvents[request.stage]
-    if(!latestRegistrations.some(row=>row.event===event))return undefined
-    // The previous completion and the next long-poll cross HTTP separately.
-    // A known listener must wait for that same live Reader, not silently lose
-    // the next MVU stage merely because its poll has not arrived yet.
+  async function awaitReader(signal:AbortSignal):Promise<Waiter> {
+    assertSourceCurrent();signal.throwIfAborted()
     while(!waiter) {
       await new Promise<void>((resolve,reject)=>{
         const abort=()=>{readerArrivals.delete(arrival);reject(Error('BROWSER_GENERATION_CANCELLED'))}
@@ -170,10 +182,22 @@ export function createRoleplayAuthorBrowserGeneration(options:{
           reject:(error:Error)=>{signal.removeEventListener('abort',abort);reject(error)}}
         readerArrivals.add(arrival);signal.addEventListener('abort',abort,{once:true})
       })
-      assertCurrent();signal.throwIfAborted()
+      assertSourceCurrent();signal.throwIfAborted()
     }
+    return waiter
+  }
+  async function prepareHook(request:AuthorNativeMvuHookRequest,signal:AbortSignal)
+    :Promise<AuthorNativeMvuPreparedHook|undefined> {
+    // Native's closing owner supplies this stage's current graph. Its earlier
+    // snapshot may have expired while the same Source realm remains live.
+    assertSourceCurrent();signal.throwIfAborted()
+    const event=AUTHOR_NATIVE_MVU_HOOK_EVENTS[request.stage]
+    if(!latestRegistrations.some(row=>row.event===event))return undefined
+    // The previous completion and the next long-poll cross HTTP separately.
+    // A known listener waits for the same Reader's next admitted poll.
+    const reader=await awaitReader(signal)
     if(pending||hook||filterCall)fail('BROWSER_GENERATION_BUSY')
-    const reader=waiter,callbacks=reader.registrations.filter(row=>row.event===event)
+    const callbacks=reader.registrations.filter(row=>row.event===event)
     if(!callbacks.length)return undefined
     const invocation:BrowserMvuHookInvocation={schemaVersion:1,encoding:'author-native-mvu-hook-invocation-v1',
       invocationId:randomUUID(),binding:options.binding,request,registrations:callbacks}
@@ -189,7 +213,7 @@ export function createRoleplayAuthorBrowserGeneration(options:{
       binding:options.binding,registrations:callbacks.map(row=>({realmId:row.realmId,
         groupId:realms.get(row.realmId)!.groupId,callbackId:row.callbackId,resource:row.resource}))},
       execute:()=>{
-        assertCurrent();signal.throwIfAborted()
+        assertSourceCurrent();signal.throwIfAborted()
         if(hook!==value||waiter!==reader||value.started)fail('BROWSER_GENERATION_INVOCATION_REVOKED')
         value.started=true
         const result=new Promise<AuthorNativeMvuHookResult>((resolve,reject)=>{value.resolve=resolve;value.reject=reject})
@@ -201,7 +225,7 @@ export function createRoleplayAuthorBrowserGeneration(options:{
       }}
   }
   function completeHook(result:BrowserMvuHookCompletion):void {
-    assertBinding(result.binding)
+    assertBinding(result.binding,assertSourceCurrent)
     const value=hook
     if(!value?.started||value.invocation.invocationId!==result.invocationId)
       fail('BROWSER_GENERATION_INVOCATION_REVOKED')
@@ -216,6 +240,7 @@ export function createRoleplayAuthorBrowserGeneration(options:{
       if(index===undefined||index<=previous)return refuse('AUTHOR_NATIVE_MVU_HOOK_OUTPUT_CHANGED')
       previous=index
     }
+    if(result.registrations)latestRegistrations=registrations(result.registrations)
     value.resolve?.(result.result)
   }
   function complete(result:BrowserGenerationResult):void {
@@ -244,8 +269,9 @@ export function createRoleplayAuthorBrowserGeneration(options:{
     // A real callback may remove a later listener during the captured pass.
     // The returned IDs therefore form an ordered subsequence, not a fabricated
     // claim that every callback in the challenge necessarily ran.
-    let effects:BrowserGenerationOutput['effects']
+    let effects:BrowserGenerationOutput['effects'],libraryReads:readonly AuthorNativeResolvedLibraryReadV1[]
     try {
+      libraryReads=options.resolveLibraryReads?.(raw.libraryReads??[])??[]
       effects=raw.effects.map(effect=>{
         const callback=executed.get(effect.callbackId)
         if(!callback)return refuse('BROWSER_GENERATION_OUTPUT_CHANGED')
@@ -276,12 +302,13 @@ export function createRoleplayAuthorBrowserGeneration(options:{
     const body={schemaVersion:1 as const,encoding:'author-native-generation-output-v1' as const,
       authority:'consumer-data-only' as const,invocationId:invocation.invocationId,programSha256:options.program.programSha256,
       captureSha256:invocation.capture.captureSha256,effects:Object.freeze(effects.map(effect=>Object.freeze(effect))),
-      callbacksExecuted:raw.callbackIds.length}
+      callbacksExecuted:raw.callbackIds.length,...libraryReads.length?{libraryReads}:{}}
     const output:BrowserGenerationOutput=Object.freeze({...body,outputSha256:recordSha256(body)})
     producedPrompts ||= output.effects.some(effect=>effect.kind==='inject'&&effect.prompts.length>0)
     pending=undefined;value.cleanup();value.resolve(output)
   }
   function dispose():void {
+    options.lifecycle?.dispose()
     if(closed)return
     closed=true
     const filter=filterCall;filterCall=undefined;filter?.cleanup();filter?.reject(Error('BROWSER_ATTACHMENT_REVOKED'));retired.length=0
@@ -311,7 +338,11 @@ export function createRoleplayAuthorBrowserGeneration(options:{
       const stage=hook;hook=undefined;stage.cleanup();stage.reject?.(Error('BROWSER_GENERATION_RESOURCE_RETIRED'))
     }
   }
-  return {wait,invoke,complete,invokeFilter,completeFilter,retireFilterCallbacks,prepareHook,completeHook,dispose,retireResource,
+  return {wait,awaitReader,invoke,complete,invokeFilter,completeFilter,retireFilterCallbacks,prepareHook,completeHook,dispose,retireResource,
+    hookInterests:():readonly Mvu196HookStage[]=>sourceCurrent()?
+      (Object.keys(AUTHOR_NATIVE_MVU_HOOK_EVENTS) as AuthorNativeMvuHookStage[])
+      .filter((stage):stage is Mvu196HookStage=>stage!=='initialized'&&stage!=='before-message-update'
+        &&latestRegistrations.some(row=>row.event===AUTHOR_NATIVE_MVU_HOOK_EVENTS[stage])):[],
     sourceDataFor:(realmId:string)=>{
       const filter=filterCall
       if(filter?.sourceData&&filter.invocation.realmId===realmId&&current())return ()=>

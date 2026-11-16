@@ -287,6 +287,7 @@ React,
         const readerSurfaceRevisionRef = React.useRef(0);
         const browserObservedStateRef = React.useRef<ReaderState | null>(null);
         const [browserStatus, setBrowserStatus] = React.useState<AuthorBrowserStatus>({kind: 'loading'});
+        const [auxiliaryGenerations,setAuxiliaryGenerations]=React.useState<readonly {generationId:string;silence:boolean}[]>([]);
         const [readerDocumentStatus, setReaderDocumentStatus] = React.useState<ReaderRegexDocumentStatusV1>({kind: 'inactive'});
         const streamLeaseRef = React.useRef<{sessionId: string;turn: number;step: number;} | null>(null);
         readerSessionRef.current = sessionId;
@@ -1092,6 +1093,11 @@ React,
                 React.createElement('button', {type: 'button', onClick: () => void browserControllerRef.current?.confirm()}, '确认保存结果'),
                 React.createElement('button', {type: 'button', onClick: () => void browserControllerRef.current?.retry()}, '重试同一次保存')) : null,
             browserStatus.worldbooks?.map(renderWorldbookOperation),
+            auxiliaryGenerations.filter(row=>!row.silence).map(row=>React.createElement('div',{
+                key:row.generationId,className:'rp-reader-operation',role:'status'},
+                '辅助生成进行中 ',React.createElement('button',{type:'button',onClick:()=>
+                    nativeEventRouteRef.current?.stopGeneration(row.generationId),'aria-label':'停止辅助生成'},'停止'))),
+            browserStatus.characterLibraries?.map(renderCharacterLibraryOperation),
             browserStatus.personas?.map(renderPersonaOperation),
             browserStatus.ordinary?.map(renderOrdinaryOperation),
             readerDocumentStatus.ordinary?.map(renderOrdinaryOperation),

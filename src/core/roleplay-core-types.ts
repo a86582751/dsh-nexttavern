@@ -86,6 +86,7 @@ type CoreConversationCatalog = ReturnType<typeof import('./tavern-conversations.
   & {ready?: PromiseLike<unknown>}
 
 export type CoreContext = {
+  attachments:Pick<import('@deepseek-ai/dsh-attachment').AttachmentStore,'admitPromptContent'>
   nexttavernMessageEdits: WorldlineMessageEdits
   nexttavernMvuPlayerMarkers:typeof import('dsh-nexttavern-session-format/mvu-player-marker').mvuPlayerMarkers
   nexttavernMvuSchemaMarkers:typeof import('dsh-nexttavern-session-format/mvu-schema-marker').mvuSchemaMarkers

@@ -733,7 +733,7 @@ export function createRoleplayReaderDisplay(deps) {
                 }
                 const writerGranted = execution?.program.documents.some(document => document.writes === 'source-regex');
                 if (execution && writerFacts?.sourceCurrent && writerSourceRead
-                    && (deps.mutateOpeningVariants || deps.editMessageBody || deps.mutateNamespace) && writerGranted) {
+                    && ((deps.mutateOpeningVariants || deps.editMessageBody || deps.mutateNamespace) && writerGranted || deps.generation)) {
                     current();
                     if (!writerFacts.current() || !writerFacts.sourceCurrent())
                         fail('READER_REGEX_DOCUMENT_SCOPE_CHANGED');

@@ -33,7 +33,7 @@ export {validateNativeStoryResponseMaterial,reconstructNativeStoryResponseMateri
 
 export { buildForkSeed } from './fork.js'
 export * from './types.js'
-export type {NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecord,
+export type {NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecordV3,NativeRequestMaterialRecord,
   NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2,NativeMaterialDataRefV1,NativeMaterialMessageRefV1,
   NativeMaterialInsertionV1,NativeMaterialPlacementV1,NativeLoreRoleV1,NativeMessageProjectionV1,
   NativeMaterialFinalTextProjectionV1,NativeMaterialTextOutputV1} from './request-material-types.js'

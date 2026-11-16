@@ -33,6 +33,7 @@ import type {ReaderRegexDocumentInputV1,ReaderRegexDocumentReadFactsV1} from './
 import type {ReaderRegexDocumentBindingV1,ReaderRegexDocumentSnapshotV1,ReaderOpeningVariantCaptureV1,
   ReaderOpeningVariantReplyV1,ReaderOpeningVariantResultV1,ReaderNumericalReplyV1} from './reader-regex-document-types.mjs'
 import type {ReaderCommandReplyV1} from './reader-regex-document-types.mjs'
+import type {ReaderAuthorGenerationRequestV1,ReaderAuthorGenerationReplyV1} from './reader-regex-document-types.mjs'
 import type {ReaderOrdinaryNamespaceRequestV1,ReaderOrdinaryNamespaceReplyV1} from './reader-regex-document-types.mjs'
 import type {AuthorNativeCommandRequestV1,AuthorNativeCommandResultV1,AuthorNativeCommandSourceControlsV1}
   from './roleplay-author-commands.js'
@@ -857,7 +858,7 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
     }
     const writerGranted=execution?.program.documents.some(document=>document.writes==='source-regex')
     if(execution&&writerFacts?.sourceCurrent&&writerSourceRead
-      &&(deps.mutateOpeningVariants||deps.editMessageBody||deps.mutateNamespace)&&writerGranted) {
+      &&((deps.mutateOpeningVariants||deps.editMessageBody||deps.mutateNamespace)&&writerGranted||deps.generation)) {
       current()
       if(!writerFacts.current()||!writerFacts.sourceCurrent())fail('READER_REGEX_DOCUMENT_SCOPE_CHANGED')
       const binding:ReaderRegexDocumentBindingV1={principal:'reader-regex-document',sessionId:sid,

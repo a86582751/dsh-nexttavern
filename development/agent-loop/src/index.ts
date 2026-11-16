@@ -276,6 +276,10 @@ export type {NativeInboxHistory} from './input-admission.js'
 export {reconstructNativeRequestMaterialV1,reconstructNativeMaterialSelectedCaptureV2,
   verifyNativeRequestMaterialHistoryV1,verifyNativeSessionRequestMaterialHistoryV1,
   NativeRequestMaterialFailure,projectNativeMessageTextV2,projectNativeMaterialTextOutputsV1} from './request-material.js'
+export {inspectNativeAuthorGenerationV1,inspectNativeAuthorGenerationTerminalV1} from './author-generation.js'
+export type {NativeAuthorGenerationIdentityV1,NativeAuthorGenerationPlanV1,NativeAuthorGenerationCheckpointV1,
+  NativeAuthorGenerationCompletionV1,NativeAuthorGenerationStreamV1,NativeAuthorGenerationOwnerV1,
+  NativeAuthorGenerationTerminalV1} from './author-generation.js'
 export type {NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecord,
   NativeRequestMaterialEventV1} from './request-material.js'
 export type {NativeStoryRequestPolicyV1,NativeStoryMaterialHooksV1,NativeStoryMaterialHooksV2,
