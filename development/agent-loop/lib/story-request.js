@@ -38,10 +38,10 @@ export function materializeNativeStoryResponseV1(blocks, binding) {
     return planNativeStoryResponseMaterialV1(blocks, plan);
 }
 function prepareNativeStoryResponse(blocks, binding) {
-    const transport = binding.policy.response?.transport;
+    const response = binding.policy.response, transport = response?.transport;
     const plan = [];
     if (transport)
-        plan.push({ kind: 'extract-transport', name: transport, selection: transport === 'game_content' ? 'transport' : 'longest' });
+        plan.push({ kind: 'extract-transport', name: transport, selection: response.selection ?? 'longest' });
     let extracted = applyNativeStoryResponseOperationsV1(blocks, plan);
     if (!extracted.some(block => block.type === 'text' && block.text.trim())
         && !extracted.some(block => block.type === 'tool-call') && binding.hooks.recoverText) {
@@ -153,7 +153,7 @@ function transportStreamProjection(binding) {
         }
         if (chunk.type === 'finish' && chunk.reason.kind !== 'error' && chunk.reason.kind !== 'aborted' && bodyIndex !== undefined) {
             const selected = applyNativeStoryResponseOperationsV1(raw, [{ kind: 'extract-transport', name: response.transport,
-                    selection: response.transport === 'game_content' ? 'transport' : 'longest' }]);
+                    selection: response.selection ?? 'longest' }]);
             const body = nativeStoryVisibleTextV1(selected), transform = binding.hooks.createTextTransform?.();
             const text = transform ? transform.push(body) + transform.finish() : body;
             return [{ type: 'block-start', index: bodyIndex, blockType: 'text' }, { type: 'text-delta', index: bodyIndex, text },

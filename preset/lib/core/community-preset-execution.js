@@ -445,7 +445,7 @@ export function createCommunityPresetExecution(input) {
             if (input.policy.effective.applySampling && preset.parameters.stop !== undefined)
                 adaptations.push({ code: 'unsupported-sampling-stop' });
             const story = { schemaVersion: 1,
-                ...toolName ? { response: { transport: toolName } } : {},
+                ...toolName ? { response: { transport: toolName, selection: rebornMode ? 'transport' : 'longest' } } : {},
                 ...input.policy.effective.applySampling ? { sampling: {
                         ...typeof preset.parameters.temperature === 'number' ? { temperature: preset.parameters.temperature } : {},
                         ...typeof preset.parameters.openai_max_tokens === 'number' ? { maxTokens: preset.parameters.openai_max_tokens } : {},

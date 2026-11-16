@@ -432,7 +432,7 @@ export function createCommunityPresetExecution(input:CommunityExecutionInput) {
     if((dream||preset.profile.id==='reborn')&&opaque.length)adaptations.push({code:'opaque-history-kept-native',identifiers:opaque.map(row=>row.id)})
     if(input.policy.effective.applySampling&&preset.parameters.stop!==undefined)adaptations.push({code:'unsupported-sampling-stop'})
     const story:NativeStoryRequestPolicyV1={schemaVersion:1,
-      ...toolName?{response:{transport:toolName}}:{},
+      ...toolName?{response:{transport:toolName,selection:rebornMode?'transport' as const:'longest' as const}}:{},
       ...input.policy.effective.applySampling?{sampling:{
         ...typeof preset.parameters.temperature==='number'?{temperature:preset.parameters.temperature}:{},
         ...typeof preset.parameters.openai_max_tokens==='number'?{maxTokens:preset.parameters.openai_max_tokens}:{},

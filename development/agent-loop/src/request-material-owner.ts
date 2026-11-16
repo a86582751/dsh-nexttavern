@@ -557,9 +557,12 @@ function storyPolicy(value:unknown):NativeStoryRequestPolicyV1 {
   }
   let response:NativeStoryRequestPolicyV1['response']
   if(row['response']!==undefined) {
-    const data=object(row['response'],['transport']),transport=data['transport']
-    if(typeof transport!=='string'||transport!=='game_content'&&!/^emit_complete_response_[a-f0-9]{24}$/.test(transport))return fail()
-    response={transport}
+    const raw=row['response'],fields=['transport',...raw!==null&&typeof raw==='object'
+      &&!utilTypes.isProxy(raw)&&Object.hasOwn(raw,'selection')?['selection']:[]],data=object(raw,fields),
+      transport=data['transport'],selection=data['selection']
+    if(typeof transport!=='string'||!transport.trim()
+      ||selection!==undefined&&selection!=='transport'&&selection!=='longest')return fail()
+    response={transport,...selection===undefined?{}:{selection}}
   }
   return {schemaVersion:1,...sampling?{sampling}:{},...response?{response}:{}}
 }
