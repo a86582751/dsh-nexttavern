@@ -960,7 +960,8 @@ export function apply(ctx: ClientContext) {
         readImmersive,
         runMaintenance,
         toast,
-        jsonFetch
+        jsonFetch,
+        prepareSource
       })
     ctx.effect(() => () => decisionSeat.dispose(), 'roleplay-ui: composer decision seat')
 

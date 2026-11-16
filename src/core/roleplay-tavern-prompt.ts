@@ -120,6 +120,9 @@ export interface TavernOpeningPreparationReadV1 {
   assertCurrent():void
 }
 interface Dependencies extends SourceDependencies {
+  readonly worldbookVector?:import('./roleplay-worldbook-vector.js').RoleplayWorldbookVectorAccessV1
+  forkBookId?:import('./roleplay-author-source-context.js').RoleplayAuthorContextV1['forkBookId']
+  captureSharedScopes?(sessionId:string):import('./author-native-helper-types.js').AuthorNativeHelperSnapshotV1['sharedScopes']
   capturePlainMessageView?(input:{session:RoleplayInputMaterialScopeV1['session'];namespace:AuthorChatNamespaceV3;
     chatClock:TavernCanonicalChatClockCaptureV1|TavernCanonicalChatClockCaptureV2;
     plain:Parameters<typeof captureRoleplayTavernPromptScopesV1>[0]['plain'];
