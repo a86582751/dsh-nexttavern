@@ -4,7 +4,8 @@ import {recordSha256} from './roleplay-data.js'
 import {tavernEntryRendersInPhaseV1} from './roleplay-tavern-prompt-variables-data.js'
 import {projectTavernSourceRenderLoreV1} from './tavern-source-render-catalog.mjs'
 import {applyTavernPromptTransformsV1} from './tavern-prompt-transform.mjs'
-import {createReaderWorldbookTargetCaptureV1} from './roleplay-reader-worldbook-context.js'
+import {createReaderWorldbookTargetCaptureV1,createReaderWorldbookSharedCaptureV1} from './roleplay-reader-worldbook-context.js'
+import {resolveCapturedTavernPromptSettingsV1} from './roleplay-tavern-content.js'
 import {selectReaderWorldbookEntriesV1} from './roleplay-reader-worldbook-entries.js'
 import {renderReaderWorldbookPhaseV1} from './tavern-reader-worldbook-render.mjs'
 import {createRoleplayTavernInjectionRegistryV1} from './roleplay-tavern-injections.js'
@@ -12,6 +13,7 @@ import {materializeTavernEjsJournal} from './roleplay-tavern-ejs-programs.js'
 import type {TavernInjectionDefinitionV1} from './roleplay-tavern-injections.js'
 import type {captureRoleplayTavernMaterialHistoryV1} from './roleplay-tavern-material-history.js'
 import type {TavernEjsResource} from './tavern-template-ejs-host-types.mjs'
+import type {TavernEjsReadSupplierV1} from './roleplay-tavern-ejs-preparation.js'
 import type {TavernEjsReplayEngine,TavernEjsReplayRecord} from './tavern-template-ejs-replay.mjs'
 import type {TavernSourceRenderCatalogV1} from './tavern-source-render-catalog.mjs'
 import type {ReaderRegexDocumentMessageV1,ReaderRegexDocumentReadFactsV1} from './reader-regex-document-types.mjs'
@@ -44,10 +46,14 @@ export interface ReaderNarrativeHtmlV1 {
   readonly html:string
 }
 interface Dependencies {
+  readonly readCaptured?:TavernEjsReadSupplierV1
+  readonly currentCharacter?:()=>import('./tavern-template-ejs-host-types.mjs').TavernEjsHostCapture['currentCharacter']
+  readonly generationModel?:import('./tavern-template-ejs-host-types.mjs').TavernEjsHostCapture['generationModel']
   readonly catalog:TavernSourceRenderCatalogV1
   readonly rows:readonly ReaderRegexDocumentMessageV1[]
   readonly macros:TavernPromptTransformInputV1['macros']
   readonly rules:TavernPromptTransformInputV1['rules']
+  readonly helperRules?:TavernPromptTransformInputV1['rules']
   readonly scriptOrder?:TavernPromptTransformInputV1['scriptOrder']
   readonly signal:AbortSignal
   assertCurrent():void
@@ -80,7 +86,7 @@ export async function prepareReaderWorldbookV1(deps:Dependencies) {
   // injected director-note message, so note-relative ordering uses that actual
   // no-note surface instead of borrowing a Main preparation's note position.
   const authorsNoteDepth=0
-  const {lore}=await projectTavernSourceRenderLoreV1({catalog,authorsNoteDepth,macros:deps.macros,
+  const {lore,worldInfo}=await projectTavernSourceRenderLoreV1({catalog,authorsNoteDepth,macros:deps.macros,
     async transform(entries,macros) {
       const result=await applyTavernPromptTransformsV1({schemaVersion:1,encoding:'owned-tavern-prompt-transform-v1',
         authority:'consumer-data-only',sourceSnapshotSha256:catalog.source.sourceSha256,regexDisabled:false,
@@ -90,9 +96,15 @@ export async function prepareReaderWorldbookV1(deps:Dependencies) {
       if(result.kind!=='transformed')throw Error(result.diagnostics[0]?.code??'READER_WORLDBOOK_CATALOG_UNAVAILABLE')
       return result.output
     }})
-  const loreSha256=recordSha256(lore),targets=deps.rows.map((row,index)=>{
+  const loreSha256=recordSha256(lore),worldInfoSettings=resolveCapturedTavernPromptSettingsV1(catalog.source),
+    currentCharacter=deps.currentCharacter?.(),
+    shared=createReaderWorldbookSharedCaptureV1({source:catalog.source,snapshot:facts.data,lore,macros:deps.macros,
+      rules:deps.helperRules,scriptOrder:deps.scriptOrder}),
+    targets=deps.rows.map((row,index)=>{
     const target=createReaderWorldbookTargetCaptureV1({source:catalog.source,snapshot:facts.data,row,
-      clockEpochMs:deps.clockEpochMs(row)!,lore,loreSha256,macros:deps.macros,presetCatalog:facts.presetCatalog})
+      clockEpochMs:deps.clockEpochMs(row)!,lore,loreSha256,worldInfo,worldInfoSettings,
+      macros:deps.macros,presetCatalog:facts.presetCatalog,rules:deps.helperRules,scriptOrder:deps.scriptOrder,
+      currentCharacter,generationModel:deps.generationModel,shared})
     if(target.kind==='unsupported')diagnose(index,target.code)
     return target
   })
@@ -135,7 +147,8 @@ export async function prepareReaderWorldbookV1(deps:Dependencies) {
       const target=targets.find(row=>row.kind==='captured'&&row.capture.snapshot===input.snapshot)
       if(!target||target.kind!=='captured')throw Error('READER_REGEX_TARGET_CHANGED')
       invocations.push(await program.invoke(input.operationId,{...input.action,
-        ...input.action.kind==='regex'?{consumer:'reader-regex-phase-v1' as const}:{}},target.capture,signal))
+        ...input.action.kind==='regex'?{consumer:'reader-regex-phase-v1' as const}:{}},target.capture,signal,
+        deps.readCaptured?.(target.capture)))
       assertCurrent()
       return {invocations}
     }}):undefined
@@ -158,11 +171,12 @@ export async function prepareReaderWorldbookV1(deps:Dependencies) {
             const definition=dynamic.definitionFor({phase,target:target.target,entries:selected.entries,program:input.resource}),
               id=deps.phaseId+':wi:'+readerProgramOrdinal++,record:TavernEjsReplayRecord={schemaVersion:1,
                 encoding:'ejs-host-full-replay-v1',consumer:input.consumer,engine:(await runtime!).identity,
-                capture:input.capture,resource:input.resource,creation:program.creation,phases:[]}
+                capture:input.capture,resource:input.resource,creation:program.creation,phases:[],
+                ...program.creationReads?{creationReads:program.creationReads}:{}}
             programs.set(id,program)
             try{registry.acceptEjsCreation(id,record,definition,phase==='before'?'initial':'late-author')}
             catch(error){programs.delete(id);throw error}
-          }}:undefined)
+          }}:undefined,deps.readCaptured?.(target.capture))
       deps.assertCurrent()
       if(!facts!.current())throw Error('READER_WORLDBOOK_SCOPE_CHANGED')
       if(result.kind==='refused'){

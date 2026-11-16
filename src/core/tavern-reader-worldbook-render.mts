@@ -4,12 +4,14 @@ import {schemaTextSha256} from './tavern-mvu-schema-data.js'
 import {EJS_READER_RENDER_POLICY_SHA256,EJS_READER_REGEX_PHASE_POLICY_SHA256}
   from './tavern-template-ejs-runtime-types.mjs'
 import type {TavernEjsRuntime,TavernEjsRuntimeInput} from './tavern-template-ejs-runtime-types.mjs'
+import type {TavernEjsCapturedReadOwnerV1} from './tavern-template-ejs-host-types.mjs'
 import type {ReaderWorldbookRenderInputV1,ReaderWorldbookRenderResultV1,ReaderWorldbookRenderFragmentV1,
   ReaderWorldbookRenderOwnerV1}
   from './tavern-reader-worldbook-render-types.mjs'
 
 export async function renderReaderWorldbookPhaseV1(runtime:TavernEjsRuntime,input:ReaderWorldbookRenderInputV1,
-  signal?:AbortSignal,owner?:ReaderWorldbookRenderOwnerV1):Promise<ReaderWorldbookRenderResultV1> {
+  signal?:AbortSignal,owner?:ReaderWorldbookRenderOwnerV1,
+  readCaptured?:TavernEjsCapturedReadOwnerV1):Promise<ReaderWorldbookRenderResultV1> {
   const selected=input.entries.filter(entry=>entry.phase===input.phase&&entry.enabled&&entry.matched)
     .sort((a,b)=>b.effectiveDepth-a.effectiveDepth||a.order-b.order||b.uid-a.uid)
   if(!selected.length)return {kind:'empty',phase:input.phase,target:input.target}
@@ -43,7 +45,7 @@ export async function renderReaderWorldbookPhaseV1(runtime:TavernEjsRuntime,inpu
     // generation buffer. Regex-produced HTML must not become template input.
     generateBuffer:'',reader_world_info:selected.map(row=>row.worldInfo)}}
   const runtimeInput:TavernEjsRuntimeInput={capture,resource:program,consumer:owner?.consumer??'reader-render-v1'},
-    prepared=await runtime.prepare(runtimeInput,signal)
+    prepared=await runtime.prepare(runtimeInput,signal,readCaptured)
   let retained=false
   try {
     const creation=prepared.creation

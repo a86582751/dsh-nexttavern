@@ -13,16 +13,23 @@ import type {MvuScopeVariablesV1} from './tavern-mvu-scope-read-types.js'
 
 export const READER_SELECTED_MESSAGE_CACHE_POLICY_V1='reader-selected-message-cache-v1' as const
 export interface ReaderWorldbookTargetCaptureInputV1 {
+  readonly shared?:ReaderWorldbookSharedCaptureV1
+  readonly rules?:NonNullable<TavernEjsHostCapture['helperMessages']>['rules']
+  readonly scriptOrder?:NonNullable<TavernEjsHostCapture['helperMessages']>['scriptOrder']
+  readonly currentCharacter?:TavernEjsHostCapture['currentCharacter']
+  readonly generationModel?:TavernEjsHostCapture['generationModel']
   readonly source:TavernLoreSourceDataV1
   readonly snapshot:ReaderRegexDocumentReadFactsV1['data']
   readonly row:ReaderRegexDocumentMessageV1
   /** The selected Native event's actual time, supplied by its existing owner. */
   readonly clockEpochMs:number
   readonly lore:readonly TavernTemplateLoreBindingV1[]
+  readonly worldInfo?:TavernTemplateFrozenSnapshotV1['worldInfo']
   /** The read owner can reuse the hash of its unchanged catalogue projection. */
   readonly loreSha256?:string
   readonly macros:TavernPromptMacroSnapshotV1
   readonly presetCatalog?:TavernEjsHostCapture['presetCatalog']
+  readonly worldInfoSettings?:TavernEjsHostCapture['worldInfoSettings']
 }
 export type ReaderWorldbookTargetCaptureV1={readonly kind:'captured';
   readonly policy:typeof READER_SELECTED_MESSAGE_CACHE_POLICY_V1;
@@ -37,6 +44,39 @@ function scopeBinding(scope:TavernTemplateScopeBindingV1['scope'],fact:MvuScopeV
   return {scope,ownerId:fact.provenance.owner.identity,versionSha256:recordSha256(fact.provenance),
     values:fact.variables,valuesSha256:fact.variablesSha256}
 }
+
+/** One captured Reader surface owns the common rows. Target depth and the
+ * selected row's role remain per-target projections of these same facts. */
+export function createReaderWorldbookSharedCaptureV1(input:Pick<ReaderWorldbookTargetCaptureInputV1,
+  'source'|'snapshot'|'lore'|'macros'|'rules'|'scriptOrder'>) {
+  const {source,snapshot,lore,macros}=input,
+    identity=(row:{ownerSessionId:string;nativeSeq:number|null;messageId:string})=>
+      JSON.stringify([row.ownerSessionId,row.nativeSeq,row.messageId]),
+    systemFacts=new Map<string,boolean>()
+  if(input.rules)for(const fact of snapshot.scopeFrame.messages) {
+    const key=identity(fact)
+    if(!systemFacts.has(key))systemFacts.set(key,fact.isSystem)
+  }
+  const names={user:snapshot.persona.name,char:snapshot.character?.name??source.current.openingContext.context.char}
+  const helperMessages=input.rules?{rules:input.rules,...input.scriptOrder?{scriptOrder:input.scriptOrder}:{},
+    rows:snapshot.messages.map(item=>({index:item.index,messageId:item.messageId,
+      messageVersionSha256:item.messageVersionSha256,
+      name:item.name??(item.role==='user'?macros.names.user.value!:macros.names.char.value!),
+      nameSource:item.name!==undefined?'message' as const:item.role==='user'?'user' as const:'character' as const,
+      isUser:item.role==='user',isSystem:systemFacts.get(identity(item))??false,text:item.message}))}:undefined
+  return {names,helperMessages,
+    resources:lore.map(entry=>({id:entry.key,sourcePointer:entry.sourcePointer,
+      sourceSnapshotSha256:entry.sourceSnapshotSha256,contentSha256:entry.contentSha256,
+      text:entry.content,loreKey:entry.key})),
+    contextMessages:snapshot.messages.map(item=>({messageId:item.messageId,role:item.role,
+      content:item.message,mes:item.message,is_user:item.role==='user',
+      name:item.name??(item.role==='user'?names.user:names.char),is_hidden:item.is_hidden??false,extra:item.extra??{}})),
+    ordinaryMessages:snapshot.messages.map(item=>({index:item.index,messageId:item.messageId,
+      ownerSessionId:item.ownerSessionId,nativeSeq:item.nativeSeq,messageVersionSha256:item.messageVersionSha256,
+      role:item.role,variables:item.variables,...item.ordinary?{ordinary:item.ordinary}:{},
+      ...item.variants?.swipes_data?{variantVariables:item.variants.swipes_data}:{}}))}
+}
+type ReaderWorldbookSharedCaptureV1=ReturnType<typeof createReaderWorldbookSharedCaptureV1>
 
 export function createReaderWorldbookTargetCaptureV1(input:ReaderWorldbookTargetCaptureInputV1)
   :ReaderWorldbookTargetCaptureV1 {
@@ -94,27 +134,28 @@ export function createReaderWorldbookTargetCaptureV1(input:ReaderWorldbookTarget
       packageSha256:source.original.documentSha256,sourceSnapshotSha256:source.sourceSha256,
       stateSnapshotSha256:snapshot.basis.numericalSnapshotSha256,defaultVariableScope:'cache' as const,
       scopes,scopesSha256:recordSha256(scopes),lore,loreSha256:input.loreSha256??recordSha256(lore),
+      ...input.worldInfo?{worldInfo:input.worldInfo}:{},
       clockEpochMs,randomSeed,randomSeedSha256:sha256(randomSeed)}
   // These fields come from the authenticated Source/Native owners above. The
   // protected runtime validates its incoming DATA at its execution boundary.
   const frozen:TavernTemplateFrozenSnapshotV1={...body,snapshotSha256:recordSha256(body)},
-    names={user:snapshot.persona.name,char:snapshot.character?.name??source.current.openingContext.context.char}
+    shared=input.shared??createReaderWorldbookSharedCaptureV1(input),{names}=shared
   const targetMacros={...macros,variableScopes:{...macros.variableScopes,message:messageScope??null}}
   return {kind:'captured',policy,target,capture:{snapshot:frozen,macros:targetMacros,
+    ...input.currentCharacter?{currentCharacter:input.currentCharacter}:{},
+    ...input.generationModel?{generationModel:input.generationModel}:{},
+    ...shared.helperMessages?{helperMessages:{...shared.helperMessages,
+      rows:shared.helperMessages.rows.map(item=>({...item,depth:target.depth+target.index-item.index}))}}:{},
     ...input.presetCatalog?{presetCatalog:input.presetCatalog}:{},
-    resources:lore.map(entry=>({id:entry.key,sourcePointer:entry.sourcePointer,
-      sourceSnapshotSha256:entry.sourceSnapshotSha256,contentSha256:entry.contentSha256,
-      text:entry.content,loreKey:entry.key})),
-    context:{user:names.user,char:names.char,messages:snapshot.messages.map(item=>{
-      const role=item===message?target.role:item.role
-      return {messageId:item.messageId,role,content:item.message,mes:item.message,is_user:role==='user',
-        name:role==='user'?names.user:names.char}
+    ...input.worldInfoSettings?{worldInfoSettings:input.worldInfoSettings}:{},
+    resources:shared.resources,
+    context:{user:names.user,char:names.char,messages:shared.contextMessages.map((item,index)=>{
+      if(snapshot.messages[index]!==message)return item
+      const role=target.role
+      return {...item,role,is_user:role==='user',name:message.name??(role==='user'?names.user:names.char)}
     }),message_id:target.index,messageId:target.messageId,
       swipe_id:target.swipeId,depth:target.depth,is_user:target.role==='user',is_system:target.role==='system',
       is_last:target.isLast},ordinaryNamespace:{root:ordinary.root,values:ordinary.values},
-    ordinaryMessageView:{messages:snapshot.messages.map(item=>({index:item.index,messageId:item.messageId,
-      ownerSessionId:item.ownerSessionId,nativeSeq:item.nativeSeq,messageVersionSha256:item.messageVersionSha256,
-      role:item.role,variables:item.variables,...item.ordinary?{ordinary:item.ordinary}:{},
-      ...item.variants?.swipes_data?{variantVariables:item.variants.swipes_data}:{}})),
+    ordinaryMessageView:{messages:shared.ordinaryMessages,
       captures:snapshot.ordinaryMessages??[],current:{message_id:target.index,swipe_id:target.swipeId}}}}
 }
