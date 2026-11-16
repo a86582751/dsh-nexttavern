@@ -610,7 +610,12 @@ export interface RequestMessageTextProjectionV2 {
     readonly target:{readonly id:string;readonly role:'assistant';readonly messageSha256:string};
     readonly textEditsSha256:string}
 }
-export type RequestMessage = Message | RequestUserInput | RequestMaterialMessageV1
+export type RequestOnlyMessageV1={
+  readonly content:readonly (TextBlock|ImageBlock)[]
+  readonly id?:never
+  readonly source?:never
+}&({readonly role:'system'}|{readonly role:'user'}|{readonly role:'assistant'})
+export type RequestMessage = Message | RequestUserInput | RequestMaterialMessageV1|RequestOnlyMessageV1
   | RequestMessageTextProjectionV2 | RequestProjectedMessageV1
 
 /** Logged tool declarations and update identities since the last declaration reset. */

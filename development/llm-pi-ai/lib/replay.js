@@ -181,7 +181,7 @@ export function assertPiRequestProjectionV1(message) {
                 continue;
             const old = original.content[index], current = message.content[index];
             if (marker.originalMessages.length !== 1 || message.role !== 'assistant'
-                || message.source.kind !== 'model' || JSON.stringify(old) !== JSON.stringify(current)) {
+                || message.source?.kind !== 'model' || JSON.stringify(old) !== JSON.stringify(current)) {
                 throw new LlmError('Cannot rewrite provider-signed blocks; use a separate text contribution', 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
             }
         }
@@ -220,10 +220,10 @@ function foreignAssistant(message) {
         // Deliberately never equals a catalog API: model output without replay
         // state and programmatic prose are both provider-neutral history.
         api: 'dsh-foreign',
-        provider: source.kind === 'model' ? source.provider : source.kind === 'request-material-projection'
+        provider: source?.kind === 'model' ? source.provider : source?.kind === 'request-material-projection'
             ? 'dsh-request-material' : 'programmatic',
-        model: source.kind === 'model' ? source.model : source.kind === 'request-material-projection'
-            ? 'dsh-request-material-projection-v2' : source.origin,
+        model: source?.kind === 'model' ? source.model : source?.kind === 'request-material-projection'
+            ? 'dsh-request-material-projection-v2' : source?.origin ?? 'author-generation',
         usage: emptyPiUsage(),
         stopReason: content.some(piece => piece.type === 'toolCall') ? 'toolUse' : 'stop',
         timestamp: 0,
@@ -306,15 +306,15 @@ export function toPiRequestMaterialAssistant(message) {
         usage: emptyPiUsage(), stopReason: 'stop', timestamp: 0 };
 }
 function isRequestMaterialAssistant(message) {
-    return message.source.kind === 'request-material';
+    return message.source?.kind === 'request-material';
 }
 function isProjectedAssistant(message) {
-    return message.source.kind === 'request-material-projection';
+    return message.source?.kind === 'request-material-projection';
 }
 export function toPiAssistant(message, onDegrade) {
     if (isRequestMaterialAssistant(message))
         return toPiRequestMaterialAssistant(message);
-    if (isProjectedAssistant(message))
+    if (isProjectedAssistant(message) || message.source === undefined)
         return foreignAssistant(message);
     const source = message.source;
     if (source.kind !== 'model' || source.replayState === undefined)

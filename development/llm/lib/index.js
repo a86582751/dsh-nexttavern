@@ -791,7 +791,7 @@ let LlmRuntime = (() => {
         /** Remove replay state whose historical route is owned by another adapter. */
         forAdapter(options, adapter) {
             const messages = options.messages.map((message) => {
-                if (message.role !== 'assistant')
+                if (message.role !== 'assistant' || message.source === undefined)
                     return message;
                 const source = message.source;
                 if (source.kind !== 'model')

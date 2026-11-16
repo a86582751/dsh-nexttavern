@@ -197,7 +197,7 @@ function appendSystemOrAssistant(
   onReplayDegrade?: (reason: string) => void,
 ): boolean {
   if (message.role === 'system') {
-    if(message.source.kind==='request-material'){
+    if(message.source?.kind==='request-material'){
       throw new LlmError('pi-ai cannot retain system role at a request-only depth','REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
     }
     // pi-ai has a single systemPrompt slot; a system message that did not

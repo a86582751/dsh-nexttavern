@@ -999,7 +999,7 @@ export class LlmRuntime extends TypertRemoteService {
   /** Remove replay state whose historical route is owned by another adapter. */
   private forAdapter(options: GenerateOptions, adapter: LlmAdapter): GenerateOptions {
     const messages: RequestMessage[] = options.messages.map((message) => {
-      if (message.role !== 'assistant') return message
+      if (message.role !== 'assistant'||message.source===undefined) return message
       const source = message.source
       if (source.kind !== 'model') return message
       if (source.replayState === undefined) return message
