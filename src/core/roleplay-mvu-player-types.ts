@@ -26,6 +26,7 @@ export type MvuStateObservation = {
     displayUpdates?:readonly MvuAcceptedDisplayUpdate[]}
   | {kind:'schema-ready';values:MvuJsonObject;valuesSha256:string;sourceSha256:string;eventId:string;
     hasFinalizedMessages?:boolean;
+    storyTextBlockCode?:string;
     snapshot:MvuSchemaNumericalSnapshotV2;canEdit:boolean;editBlockCode?:string;
     displayUpdates?:readonly MvuAcceptedDisplayUpdate[];
     unavailableExternalAddons?:readonly Extract<CombinedPlanRowV4,{disposition:'external-addon-unavailable'}>[];

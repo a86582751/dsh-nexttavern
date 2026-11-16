@@ -3844,15 +3844,18 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
   function readSchemaObservation(sid:string):{snapshot:MvuSchemaNumericalSnapshotV2;
     displayUpdates:readonly MvuAcceptedDisplayUpdate[];
     hasFinalizedMessages?:boolean;
+    storyTextBlockCode?:string;
     lastTaskResultCanonicalSeq?:number;
     unavailableExternalAddons?:readonly Extract<CombinedPlanRowV4,{disposition:'external-addon-unavailable'}>[];
     commandDiagnostics?:readonly MvuDiscardedCommandObservation[]}|undefined {
     const view=views.get(sid),history=view&&viewCurrent(view)?view.history:undefined
     if(!history)return undefined
-    const epoch=history.ready.epoch,program=epoch.schemaVersion===5?epoch.program:undefined
+    const epoch=history.ready.epoch,program=epoch.schemaVersion===5?epoch.program:undefined,
+      storyTextBlockCode=settledStoryTextBlockCode(view!.session,history,latestCompletedStory(view!.session))
     const unavailableExternalAddons=program?.executionPlan.scripts.filter(row=>row.disposition==='external-addon-unavailable')
     return {snapshot:structuredClone(history.snapshot),displayUpdates:history.displayUpdates??[],
       hasFinalizedMessages:(history.settledMessages?.size??0)>0,
+      ...storyTextBlockCode?{storyTextBlockCode}:{},
       ...history.lastTaskResultCanonicalSeq!==undefined?{lastTaskResultCanonicalSeq:history.lastTaskResultCanonicalSeq}:{},
       ...history.commandDiagnostics.length?{commandDiagnostics:history.commandDiagnostics}:{},
       ...unavailableExternalAddons?.length?{unavailableExternalAddons}:{}}
@@ -4922,7 +4925,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     textCanonicalPointers.set(session,{owner:captured.owner,nativeCut:cut.length,last,provisional})
     return last
   }
-  function assertSettledStoryTextReady(session:Session,history:History,last:CanonicalChatEntry|undefined):void {
+  function settledStoryTextBlockCode(session:Session,history:History,last:CanonicalChatEntry|undefined):string|undefined {
     if(!last)return
     const seed=history.seed,baseline=seed.kind==='opening'?schemaOpeningNativeAnchor(seed.native).assistantSeq
       :seed.kind==='derived'?history.inheritedCut!.nativeCut-1
@@ -4930,11 +4933,15 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(last.row.seq<=Math.max(baseline,history.lastClosedStoryCanonicalSeq??-1))return
     const completion=deps.agent(session)?.lookupInputCompletion()
     if(completion&&completion.status!=='none'&&completion.checkpoint.actualTurn===last.row.turn
-      &&completion.status!=='settled')fail(completion.code??(completion.status==='pending'
-        ?'SCHEMA_STORY_TERMINAL_PENDING':'SCHEMA_STORY_TERMINAL_UNRESOLVED'))
+      &&completion.status!=='settled')return completion.code??(completion.status==='pending'
+        ?'SCHEMA_STORY_TERMINAL_PENDING':'SCHEMA_STORY_TERMINAL_UNRESOLVED')
     // Cold Native lookup has no hot receipt. The selected completed canonical
     // still must belong to this owner's already consumed settled prefix.
-    fail('SCHEMA_STORY_TERMINAL_UNRESOLVED')
+    return 'SCHEMA_STORY_TERMINAL_UNRESOLVED'
+  }
+  function assertSettledStoryTextReady(session:Session,history:History,last:CanonicalChatEntry|undefined):void {
+    const code=settledStoryTextBlockCode(session,history,last)
+    if(code)fail(code)
   }
   /** Read completed publication DATA across all retained author realms. This
    * never selects today's import, restores a numerical head or executes authors. */

@@ -46,10 +46,10 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
   buildForkLookupIndex,reconcileCanonicalPlayerVariants,statusRecoveredSessions,recoverStatusObligations,
   nativeBranchGroupsFor,nativePlayerGroupsFor,assistantMessageId,userForkContext,locatePlayerRecoveryTarget,
   failedForkMembership,isRecoverySourceMember,backfillRecoverySourceMember,importRecordKey,preparationRecordKey,
-  tavernTasks,memoryForContext,cloneContextWindow,contextWindowFor,selectedStatusRecord,selectedStatusGeneration,latestStatusEvent,
+  tavernTasks,contextProjection,cloneContextWindow,contextWindowFor,selectedStatusRecord,selectedStatusGeneration,latestStatusEvent,
   importSummary,chatImportProjection,numericalState,taskArtifact,readerDisplay,readerDocument,readerBeauty,
   readerRenderHtml,readerReleasePhase,
-  readerDisplayContextVersion,communityPresets,readInputDiagnostic,
+  communityPresets,readInputDiagnostic,
   deletedBranchMessageIdsFor,inheritedAssistantMessageIdsFor,
   normalizeDecisionRecord,userValues,svc,resolveRoleplaySession}:StateDependencies) {
   const collectBranchRecords = (session: StateSession) => {
@@ -238,7 +238,11 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
         })
       }
     }
-    const numericalObservation=await numericalState?.(session.id)??null,userinfo=userValues(session.id)
+    const numericalObservation=await numericalState?.(session.id)??null,userinfo=userValues(session.id),
+      deletedBranchMessageIds=deletedBranchMessageIdsFor(session,forkLookup)
+    // These projections share the observed Story cut before origin admission
+    // yields. Their owners retain unavailable context as an explicit result.
+    const {memory,directorNotes,displayContext}=contextProjection(session,numericalObservation,!deletedBranchMessageIds.length)
     // Read the rules and their existing owner digest in one synchronous cut.
     // Origin admission may yield; its response still carries this exact Source.
     const currentRules=T.rules.get(keyOf(session.id,'spec')) as import('./roleplay-import-types.js').RulesRecord|undefined,
@@ -253,7 +257,6 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       if(artifact)anchor.taskArtifact=artifact
     }
     const statusEvent=latestStatusEvent(session)
-    const deletedBranchMessageIds=deletedBranchMessageIdsFor(session,forkLookup)
     return {
       ok: true,
       preset: 'roleplay',
@@ -262,8 +265,8 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       // The state endpoint is also consumed by the Reader UI.  It must expose
       // the same branch-filtered ledger used for prompt assembly; returning the
       // raw head here leaked post-fork parent facts into an unselected child.
-      memory: memoryForContext(session),
-      directorNotes: ctx.get('compaction')?.directorNotes?.(session) ?? null,
+      memory,
+      directorNotes,
       contextWindow: cloneContextWindow(contextWindowFor(session)),
       cards,
       worldbook,
@@ -304,7 +307,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
          rawSha256:activeSourceRecord?.rawSha256??null,normalizedSha256:activeSourceRecord?.normalizedSha256??null,
          transactionId:activeSourceRecord?.activation?.transactionId??null,userinfo,
          // Deleted audit views do not open a live Reader observation.
-         displayContext:deletedBranchMessageIds.length?null:readerDisplayContextVersion?.(session.id)??null})},
+         displayContext})},
       surfaceNodes: surfaceEntries(session).map((entry) => ({
         seq: entry.seq,
         kind: entry.kind,

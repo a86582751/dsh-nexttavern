@@ -1169,6 +1169,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     return capture=>async(request,signal)=>{
       signal.throwIfAborted()
       input.assertCurrent()
+      if(request.kind==='current-character') {
+        if(!input.currentCharacter)throw Error('TEMPLATE_CURRENT_CHARACTER_CAPTURE_REQUIRED')
+        return {schemaVersion:1,kind:'character-data',value:input.currentCharacter.read()}
+      }
       if(request.kind==='character-directory'||request.kind==='character-data') {
         if(!directory) {
           await authorContext.readyCharacters(authorProfileCurrent)
@@ -3440,6 +3444,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     return {...basis,observedNativeSeq:currentNativeSeq,kind:'schema-ready',values:structuredClone(snapshot.values),
       valuesSha256:snapshot.valuesSha256,sourceSha256:snapshot.sourceSha256,eventId:snapshot.currentHead.eventId,
       snapshot,displayUpdates:observation!.displayUpdates,
+      ...observation!.storyTextBlockCode?{storyTextBlockCode:observation!.storyTextBlockCode}:{},
       ...(observation!.lastTaskResultCanonicalSeq!==undefined
         ?{lastTaskResultCanonicalSeq:observation!.lastTaskResultCanonicalSeq}:{}),
       ...observation!.unavailableExternalAddons
@@ -5020,7 +5025,31 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     importRecordKey,
     preparationRecordKey,
     tavernTasks,
-    memoryForContext,
+    contextProjection:(session,numerical,includeReaderDisplay)=>{
+      const id=session.id
+      if(mvuOpening.hasSchemaOpening(id)
+        &&(numerical?.kind!=='schema-ready'||numerical.storyTextBlockCode)) {
+        const numericalCode=numerical&&'code' in numerical?numerical.code:null,
+          storyTextCode=numerical?.kind==='schema-ready'?numerical.storyTextBlockCode:null
+        return {memory:null,directorNotes:null,displayContext:includeReaderDisplay
+          ?recordSha256({kind:numerical?.kind??null,numericalCode,storyTextCode}):null}
+      }
+      // Reuse notes from the scoped projection's owner. The table fallback
+      // continues through the notes service's branch filter.
+      const compaction=ctx.get('compaction'),memory=memoryForContext(session),
+        directorNotes=typeof compaction?.memoryProjection==='function'&&memory&&Object.hasOwn(memory,'directorNotes')
+          ?memory.directorNotes??null:compaction?.directorNotes?.(session)??null
+      let displayContext:string|null=null
+      if(includeReaderDisplay) {
+        const policy=communityPresets.policy(id)
+        displayContext=recordSha256({scopes:readerDisplayScopes(id).data.scopes?.versionSha256??null,
+          cardStyle:narrativePresets.policy(id).effective.mode!=='system',community:policy.fingerprint,
+          variables:policy.preset?communityDisplayVariables(id,policy.preset.id):null,
+          readerRegex:capturePromptRegistry(id,new AbortController().signal).readerRegexBasisSha256,
+          ordinaryPublicationSeq:authorChatNative.latestPublicationSeq(ctx.sessions.get(id)!)})
+      }
+      return {memory,directorNotes,displayContext}
+    },
     cloneContextWindow,
     contextWindowFor,
     selectedStatusRecord,
@@ -5148,14 +5177,6 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         default:
           return {ok:false,code:'READER_DOCUMENT_REQUEST_INVALID'}
       }
-    },
-    readerDisplayContextVersion:id=>{
-      const policy=communityPresets.policy(id)
-      return recordSha256({scopes:readerDisplayScopes(id).data.scopes?.versionSha256??null,
-        cardStyle:narrativePresets.policy(id).effective.mode!=='system',community:policy.fingerprint,
-        variables:policy.preset?communityDisplayVariables(id,policy.preset.id):null,
-        readerRegex:capturePromptRegistry(id,new AbortController().signal).readerRegexBasisSha256,
-        ordinaryPublicationSeq:authorChatNative.latestPublicationSeq(ctx.sessions.get(id)!)})
     },
     communityPresets:communityPresets.summary,
     chatImportProjection:(session,record) => {
