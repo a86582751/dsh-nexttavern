@@ -725,6 +725,8 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       })
       const model=deps.community?.modelName(scope.session.id),preparedRoute=model?{model,configSha256:recordSha256({model})}:undefined
       const {cardMaterial,mapped,currentCardFields,markerInputs,remainingParts,authorInputs}=authorFields
+      let currentCharacter:ReturnType<typeof projectCapturedTavernCharacterDataV1>|undefined
+      let helperMessages:TavernEjsHostCapture['helperMessages']
       if(cardMaterial?.kind==='mapping-required')fail('COMMUNITY_CARD_MAPPING_REQUIRED')
       const sharedBindings=sharedVariableScopes
         ?[sharedVariableScopes.character,sharedVariableScopes.preset]

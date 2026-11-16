@@ -1017,6 +1017,21 @@ React,
                     ?.showCurrentPageWithOrdinaryUnknown(operation.operationId)},'保留记录，显示当前页面'):null);
         };
 
+        const renderCharacterLibraryOperation=(envelope:AuthorBrowserCharacterLibraryPendingV1)=>{
+            const {operation,result}=envelope,request=operation.request,
+                domain=operation.kind==='character-regex-replace'?'角色正则':'角色世界书绑定',
+                outcome=result?.kind==='committed'||result?.kind==='edited-data'
+                    ?`已保存，修订 ${result.receipt.revision}。`
+                    :envelope.state==='terminal'?'原操作未提交，请重新打开交互视图后修改。'
+                        :'保存结果尚未确认，已保留原请求。',
+                detail=result?.kind==='refused'?result.diagnostics.map(row=>row.code).join('、'):envelope.code;
+            return React.createElement('div',{className:'rp-reader-empty',role:'status',key:request.operationId},
+                `${domain} · ${request.target.characterId} · ${request.target.locator.ownerSessionId} · ${request.operationId}。${outcome}`,
+                detail?' '+detail:null,
+                envelope.state!=='terminal'?React.createElement('button',{type:'button',onClick:()=>void browserControllerRef.current
+                    ?.retryCharacterLibrary(request.operationId)},'恢复同一次角色修改'):null);
+        };
+
         const renderPersonaOperation = (operation: AuthorBrowserPersonaPendingV1) => {
             const outcome=operation.result?.kind==='committed'
                 ? operation.result.receipt.result===false

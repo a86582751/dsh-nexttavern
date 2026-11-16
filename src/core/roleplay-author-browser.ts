@@ -45,6 +45,7 @@ import {createAuthorNativeLibraryReadsV1} from './author-native-library-reads.js
 import type {AuthorNativeResolvedLibraryReadV1} from './author-native-helper-types.js'
 
 export interface AuthorBrowserCapturedFactsV3 {
+  readonly characterLibrary?:AuthorCharacterLibraryPacketV1
   readonly program:AuthorNativeProgramV1
   readonly data:Omit<AuthorBrowserSnapshot,'generation'|'readRevision'>
   readonly resources?:AuthorScriptResourceReaderV1
@@ -312,6 +313,9 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
         value.generationQueue=createRoleplayAuthorBrowserGeneration({
           binding,program:facts.program,current:value.current})
       }
+      const catalog=deps.capturePresetLibrary?.(session.id),presetLibrary=catalog&&(created||input.presetRevision!==catalog.revision)?catalog:undefined
+      if(catalog)value.libraryReads.deliverPreset(catalog)
+      if(facts.characterLibrary)value.libraryReads.deliverCharacter(facts.characterLibrary)
       return {ok:true,kind:'attached',attachment:{schemaVersion:1,encoding:'author-native-helper-attachment-v1',
         binding:value.binding,program:value.program,parentOrigins:value.parentOrigins,snapshot:project(value,facts)}}
     }

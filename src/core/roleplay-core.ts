@@ -49,7 +49,7 @@ import type {AuthorNativeCommandRequestV1,AuthorNativeCommandResultV1,
   AuthorNativeCommandSourceControlsV1} from './roleplay-author-commands.js'
 import {createRoleplayRubyCommandsV1} from './roleplay-ruby-commands.js'
 import {registerCommunityPresetRoutes} from './community-preset-routes.js'
-import {captureRoleplayTavernPromptSourceDataV1} from './roleplay-tavern-prompt-source.js'
+import {captureRoleplayTavernPromptSourceDataV1,projectCapturedTavernCharacterDataV1} from './roleplay-tavern-prompt-source.js'
 import {promptProgramSourceOrdinaryNamespaceV3} from './roleplay-prompt-program-source.js'
 import {createRoleplayTavernEjsPrograms} from './roleplay-tavern-ejs-programs.js'
 import {captureCommittedTavernInjectionRegistryV1} from './roleplay-tavern-injections.js'
@@ -1015,6 +1015,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       source.sourceRecordSessionId,source.original.activePointer.importId)) as ImportRecord),
     captureImportSeed:captured=>tavernLoreEdits.captureAdoptionSeed(captured)})
   const tavernLoreEdits=createRoleplayTavernLoreEditsV1({branch:T.branch,source:tavernSource,
+    authorMetadataChanging:source=>authorCharacterLibrary?.dirtySource(source.sessionId),
+    authorMetadataPublished:event=>authorContext.registerMetadataExtension(event,
+      ()=>!sourceReadOwnerClosed&&readAuthorProfileIdentityV1(T.branch)?.profileId===authorProfile.profileId),
     withSourceLock:(id,work)=>withImportLock(id,'tavern-lore-edit',work)})
   function captureNamedCharacterSource(locator:import('./roleplay-author-worldbook-types.js').AuthorWorldbookImportLocatorV1) {
     const read=tavernSource.captureCurrent(locator.ownerSessionId),captured=read.captured
@@ -3921,6 +3924,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       })):{}
     const enrich=(captured:import('./roleplay-author-browser.js').AuthorBrowserCapturedFactsV3)
       :import('./roleplay-author-browser.js').AuthorBrowserCapturedFactsV3=>{
+      const shared=inputState.captureSource(sid,'author-shared-scope-data',()=>authorScopeOwner.capture(sid))
       const namespace=captured.data.ordinaryChat.root.namespace,
         scripts=inputState.captureClosedHistoricalFacts(sid,
           `author-ordinary-script-set:${facts.program.programSha256}:${recordSha256(namespace)}`,()=>
@@ -3930,7 +3934,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
               return [realmId,{...script,ordinary,variables:applyAuthorChatOverlayV3(
                 script.variables as import('./tavern-mvu-initvar.js').MvuJsonObject,ordinary)}]
             })))
-      return {...captured,
+      const formatter=captureAuthorFormatter(sid,captured.data,shared.data,author.data,avatarPaths)
+      return {...captured,characterLibrary,
       ...book?{worldbook:book.data}:{},
       data:{...captured.data,readonlyPreset,avatarPaths,tavernRegexes,
         ordinaryPublicationSeq:authorChatNative.latestPublicationSeq(ctx.sessions.get(sid)!),
@@ -3940,8 +3945,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         const next=captured.captureOrdinarySuccessor!()
         return next?enrich(next):undefined
       }}:{},
-      current:()=>captured.current()&&scripts.current()&&author.current()&&(!book||book.current())
-        &&communityPresets.readonlyPreset(sid)===readonlyPreset}
+      current:()=>captured.current()&&scripts.current()&&shared.current()&&author.current()&&(!book||book.current())
+        &&communityPresets.readonlyPreset(sid)===readonlyPreset&&authorCharacterLibrary!.current(characterLibrary)}
     }
     return enrich(facts)
   }
@@ -4364,6 +4369,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     includeCardStyle:id=>narrativePresets.policy(id).effective.mode!=='system',
     scopes:id=>readerDisplayScopes(id).data.scopes,
     documentFacts:async(id,read)=>{
+      await authorCharacterLibrary!.ready()
+      const characterLibrary=authorCharacterLibrary!.capture(),presetLibrary=communityPresets.authorCatalog(id)
       let facts:Awaited<ReturnType<typeof mvuOpening.captureReaderDocumentFacts>>
       if(mvuOpening.hasSchemaOpening(id))facts=await mvuOpening.captureReaderDocumentFacts(id)
       else {
@@ -4394,15 +4401,18 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         selected=account?.data.profiles.find(row=>row.avatar_id===account.data.selectedId),
         avatarPaths={user:account?.selectedAvatarDataUrl??null,
           character:author.data.kind==='author-data'?author.data.captured.avatarPath:null}
-      const tavernRegexes={global:communityPresets.readonlyGlobalRegexes(id),
-        ...author.data.kind==='author-data'?{character:{name:String(author.data.captured.cardData.name),
-          rules:author.data.authorFields.cardRegexes}}:{}}
-      return {...facts,presetCatalog:communityPresets.ejsPreset(id),data:{...facts.data,readonlyPreset,avatarPaths,tavernRegexes,
+      const character=captureCharacterRegexData(author.data),
+        tavernRegexes={global:communityPresets.readonlyGlobalRegexes(id),...character?{character}:{}}
+      const shared=inputState.captureSource(id,'author-shared-scope-data',()=>authorScopeOwner.capture(id))
+      const formatter=captureAuthorFormatter(id,facts.data,shared.data,author.data,avatarPaths)
+      return {...facts,presetLibrary,characterLibrary,presetCatalog:communityPresets.ejsPreset(id),data:{...facts.data,sharedScopes:shared.data,readonlyPreset,avatarPaths,tavernRegexes,
+        ...formatter?{formatter}:{},
         ordinaryPublicationSeq:authorChatNative.latestPublicationSeq(ctx.sessions.get(id)!),
         ...worldbook?{worldbook}:{},...account?{personas:account.data,
         persona:{...facts.data.persona,avatar:selected?.avatar_id??null}}:{}},
-        current:()=>captured.current()&&author.current()&&(!book||book.current())
-          &&communityPresets.readonlyPreset(id)===readonlyPreset}
+        current:()=>captured.current()&&shared.current()&&author.current()&&(!book||book.current())
+          &&communityPresets.readonlyPreset(id)===readonlyPreset&&communityPresets.authorCatalog(id)===presetLibrary
+          &&authorCharacterLibrary!.current(characterLibrary)}
     },
     templateRuntime:(signal,engine)=>mvuOpening.templateEjsRuntime(engine,signal),
     captureRegexInputs:(sid,source,signal)=>{

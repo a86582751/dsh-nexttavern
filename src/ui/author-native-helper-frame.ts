@@ -273,6 +273,7 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     await manageBooks({kind:'bind-books',target:{owner:binding.owner,head:binding.head},selection})
   }
   const personas=()=>snapshot.personas as any
+  const personaReads=new WeakMap<object,{dataSha256:string;readScope:string}>()
   const personaId=(id='current')=>id==='current'?personas()?.selectedId:id
   const selfScript=()=>{
     const address=snapshot.context?.script as any
@@ -397,7 +398,7 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     getPersonaNames:()=>personas()?.profiles.map((row:any)=>row.name)??[],
     getCurrentPersonaId:()=>personaId(),getPersona:(id:string)=>{
       const persona=clone(personas()?.profiles.find((row:any)=>row.avatar_id===personaId(id)))
-      if(persona)dataReads.set(persona,{dataSha256:personas().dataSha256,readScope:scope})
+      if(persona)personaReads.set(persona,{dataSha256:personas().dataSha256,readScope:scope})
       return persona
     },
     createPersona:async(name:string,persona:unknown={})=>{
@@ -407,7 +408,8 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
       return reply.result.receipt.result
     },
     replacePersona:async(id:string,persona:unknown)=>{
-      const basis=persona&&typeof persona==='object'?dataReads.get(persona):undefined
+      await presetBarrier
+      const basis=persona&&typeof persona==='object'?personaReads.get(persona):undefined
       const reply=await request('persona-mutate',{
         expectedDataSha256:basis?.dataSha256??personas()?.dataSha256,
         mutation:{kind:'replace',id:personaId(id),persona}},basis?.readScope??scope)
