@@ -1,54 +1,27 @@
-/** A private Native start-time activation. Its DTO records declared input;
- * TaskHost and the live parent remain the authorization owners. */
+/** Frozen auxiliary DATA and its separately admitted process-local Native owner. */
 import type {Context} from '@deepseek-ai/cordis'
-
-export interface OwnedAuthorDialogActivationV1 {
+import type {NativeAuthorGenerationPlanV1,NativeAuthorGenerationOwnerV1} from 'dsh-nexttavern-native-agent-loop'
+export interface OwnedAuthorDialogActivationV1 extends NativeAuthorGenerationPlanV1 {
   readonly schemaVersion:1
   readonly encoding:'owned-author-dialog-v1'
-  readonly taskId:string
-  readonly generation:string
-  readonly promptPlanSha256:string
-  readonly operationId:string
-  readonly messageId:string
-  /** Existing SystemPrompt aggregation: five frozen host slots joined with
-   * two newlines. Programmatic generation appends dynamicSystem once. */
-  readonly systemPrefix:string
-  readonly dynamicSystem:string
 }
-
 export function readOwnedAuthorDialogActivationV1(value:unknown):OwnedAuthorDialogActivationV1 {
-  if(!value||typeof value!=='object')throw Error('invalid owned author dialogue activation')
-  const record=value as Record<string,unknown>
-  if(record.schemaVersion!==1||record.encoding!=='owned-author-dialog-v1'
-    ||['taskId','generation','promptPlanSha256','operationId','messageId']
-      .some(key=>typeof record[key]!=='string'||!(record[key] as string).length)
-    ||typeof record.systemPrefix!=='string'||typeof record.dynamicSystem!=='string')throw Error('invalid owned author dialogue activation')
-  return value as OwnedAuthorDialogActivationV1
+  const row=value as OwnedAuthorDialogActivationV1|undefined
+  if(!row||row.schemaVersion!==1||row.encoding!=='owned-author-dialog-v1'
+    ||row.identity?.kind!=='author-generation'||!row.identity.childSessionId||!row.identity.messageId
+    ||!Array.isArray(row.orderedMessages)||!row.call||!row.material)throw Error('invalid owned author generation activation')
+  return row
 }
-
-/** The returned exact disposers are also Cordis scope effects. Child setup
- * rollback and quiescent handle disposal therefore remove both contributions. */
-export function composeOwnedAuthorDialogActivationV1(ctx:Context,activation:OwnedAuthorDialogActivationV1):()=>void {
-  const removePrefix=ctx.systemPrompt.section({name:'deployment:persona-prefix',
-    order:ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
-    text:activation.systemPrefix,interpolate:false,complete:true})
-  let restoreContext:(()=>void)|undefined
-  try{restoreContext=ctx.systemPrompt.suppressRuntimeContext()}
-  catch(error){removePrefix();throw error}
-  return ()=>{restoreContext!();removePrefix()}
+export function composeOwnedAuthorDialogActivationV1(ctx:Context,_activation:OwnedAuthorDialogActivationV1):()=>void {
+  return ctx.systemPrompt.suppressRuntimeContext()
 }
-
-/** The public Agent interface is supplied by upstream; maintained AgentLoop
- * owns this existing no-user operation. This shim checks capability presence
- * instead of pretending an upstream Agent method exists. */
 export interface OwnedAuthorDialogProgrammaticDriverV1 {
-  generateAuthorDialogAssistant?(input:{operationId:string;messageId:string;dynamicSystem:string}):Promise<
+  generateAuthorDialogAssistant?(input:{plan:NativeAuthorGenerationPlanV1;owner:NativeAuthorGenerationOwnerV1}):Promise<
     {kind:'committed';turn:number;messageId:string}|{kind:'busy'}|{kind:'unknown';reason:string}>
 }
 export async function driveOwnedAuthorDialogActivationV1(child:OwnedAuthorDialogProgrammaticDriverV1,
-  activation:OwnedAuthorDialogActivationV1):Promise<void> {
-  if(typeof child.generateAuthorDialogAssistant!=='function')throw Error('owned author dialogue Native driver unavailable')
-  const receipt=await child.generateAuthorDialogAssistant({operationId:activation.operationId,
-    messageId:activation.messageId,dynamicSystem:activation.dynamicSystem})
-  if(receipt.kind!=='committed')throw Error('owned author dialogue generation '+receipt.kind)
+  activation:OwnedAuthorDialogActivationV1,owner:NativeAuthorGenerationOwnerV1):Promise<void> {
+  if(typeof child.generateAuthorDialogAssistant!=='function')throw Error('owned author generation Native driver unavailable')
+  const result=await child.generateAuthorDialogAssistant({plan:activation,owner})
+  if(result.kind!=='committed')throw Error('owned author generation '+result.kind)
 }

@@ -1,36 +1,19 @@
 // Generated from runtime/alpha3/compat/subagent/src/author-dialog-activation.ts; edit the TypeScript source.
 export function readOwnedAuthorDialogActivationV1(value) {
-    if (!value || typeof value !== 'object')
-        throw Error('invalid owned author dialogue activation');
-    const record = value;
-    if (record.schemaVersion !== 1 || record.encoding !== 'owned-author-dialog-v1'
-        || ['taskId', 'generation', 'promptPlanSha256', 'operationId', 'messageId']
-            .some(key => typeof record[key] !== 'string' || !record[key].length)
-        || typeof record.systemPrefix !== 'string' || typeof record.dynamicSystem !== 'string')
-        throw Error('invalid owned author dialogue activation');
-    return value;
+    const row = value;
+    if (!row || row.schemaVersion !== 1 || row.encoding !== 'owned-author-dialog-v1'
+        || row.identity?.kind !== 'author-generation' || !row.identity.childSessionId || !row.identity.messageId
+        || !Array.isArray(row.orderedMessages) || !row.call || !row.material)
+        throw Error('invalid owned author generation activation');
+    return row;
 }
-/** The returned exact disposers are also Cordis scope effects. Child setup
- * rollback and quiescent handle disposal therefore remove both contributions. */
-export function composeOwnedAuthorDialogActivationV1(ctx, activation) {
-    const removePrefix = ctx.systemPrompt.section({ name: 'deployment:persona-prefix',
-        order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
-        text: activation.systemPrefix, interpolate: false, complete: true });
-    let restoreContext;
-    try {
-        restoreContext = ctx.systemPrompt.suppressRuntimeContext();
-    }
-    catch (error) {
-        removePrefix();
-        throw error;
-    }
-    return () => { restoreContext(); removePrefix(); };
+export function composeOwnedAuthorDialogActivationV1(ctx, _activation) {
+    return ctx.systemPrompt.suppressRuntimeContext();
 }
-export async function driveOwnedAuthorDialogActivationV1(child, activation) {
+export async function driveOwnedAuthorDialogActivationV1(child, activation, owner) {
     if (typeof child.generateAuthorDialogAssistant !== 'function')
-        throw Error('owned author dialogue Native driver unavailable');
-    const receipt = await child.generateAuthorDialogAssistant({ operationId: activation.operationId,
-        messageId: activation.messageId, dynamicSystem: activation.dynamicSystem });
-    if (receipt.kind !== 'committed')
-        throw Error('owned author dialogue generation ' + receipt.kind);
+        throw Error('owned author generation Native driver unavailable');
+    const result = await child.generateAuthorDialogAssistant({ plan: activation, owner });
+    if (result.kind !== 'committed')
+        throw Error('owned author generation ' + result.kind);
 }

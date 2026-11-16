@@ -120,7 +120,7 @@ export async function startInProcessRun(
   const parent = request.parent
   const childDepth = resolveChildDepth(parent, request.maxDepth)
 
-  const childId = brandString<SessionId>(randomUUID())
+  const childId = brandString<SessionId>(request.activation?.identity.childSessionId??randomUUID())
   const seed = options.seed
   if(request.activation!==undefined&&seed!==undefined)throw Error('owned author dialogue cannot inherit history')
   const rubyActivation=request.rubyActivation,rubyOwner=options.rubyOwner
@@ -173,6 +173,7 @@ export async function startInProcessRun(
     request.activation,
     rubyChild,
     request.isolatedSystem===undefined?undefined:request.descriptor,
+    request.authorOwner,
   )
 }
 
@@ -190,6 +191,7 @@ function drivePublishedRun(
   activation?:OwnedAuthorDialogActivationV1,
   rubyChild?:OwnedRubyTaskChildV1,
   isolatedDescriptor?:SubagentDescriptorData,
+  authorOwner?:import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationOwnerV1,
 ): SubagentRun {
   const child = handle.agent
   const flags = { cancelled: false }
@@ -210,7 +212,7 @@ function drivePublishedRun(
           child.followup(rubyChild.userMessage)
           await child.whenIdle()
         }else if(activation!==undefined) {
-          await driveOwnedAuthorDialogActivationV1(child as Agent&OwnedAuthorDialogProgrammaticDriverV1,activation)
+          await driveOwnedAuthorDialogActivationV1(child as Agent&OwnedAuthorDialogProgrammaticDriverV1,activation,authorOwner!)
         }else if(isolatedDescriptor!==undefined) {
           const isolated=nativeIsolatedInputCapability(child)
           if(!isolated)throw Error('isolated task Native input capability unavailable')

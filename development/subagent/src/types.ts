@@ -153,6 +153,7 @@ export interface SubagentStartRequest {
   /** Exact system text, without inherited preset sections or runtime context. */
   readonly isolatedSystem?:string
   readonly activation?:OwnedAuthorDialogActivationV1
+  readonly authorOwner?:import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationOwnerV1
   readonly rubyActivation?:OwnedRubyTaskActivationV1
   /** Same-process Core capability, passed separately from durable DATA. */
   readonly rubyOwner?:OwnedRubyTaskOwnerV1

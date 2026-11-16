@@ -569,6 +569,7 @@ export class SubagentRuntime extends TypertRemoteService {
     assertSubagentMaxDepth(request.maxDepth)
     if (request.outputSchema !== undefined) assertObjectJsonSchema(request.outputSchema)
     const activation=request.activation===undefined?undefined:readOwnedAuthorDialogActivationV1(request.activation)
+    if((activation===undefined)!==(request.authorOwner===undefined))throw Error('author generation requires its separate live owner')
     const rubyActivation=request.rubyActivation===undefined?undefined:readOwnedRubyTaskActivationV1(request.rubyActivation)
     if((rubyActivation===undefined)!==(request.rubyOwner===undefined))
       throw Error('owned Ruby task requires separate activation and live owner')

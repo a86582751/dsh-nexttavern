@@ -73,7 +73,7 @@ export async function startInProcessRun(request, options) {
         throw prePublicationAbort();
     const parent = request.parent;
     const childDepth = resolveChildDepth(parent, request.maxDepth);
-    const childId = brandString(randomUUID());
+    const childId = brandString(request.activation?.identity.childSessionId ?? randomUUID());
     const seed = options.seed;
     if (request.activation !== undefined && seed !== undefined)
         throw Error('owned author dialogue cannot inherit history');
@@ -119,13 +119,13 @@ export async function startInProcessRun(request, options) {
         signal: request.signal,
         setup,
     });
-    return drivePublishedRun(handle, request.signal, request.prompt, childId, activationBoundary, structured, request.activation, rubyChild, request.isolatedSystem === undefined ? undefined : request.descriptor);
+    return drivePublishedRun(handle, request.signal, request.prompt, childId, activationBoundary, structured, request.activation, rubyChild, request.isolatedSystem === undefined ? undefined : request.descriptor, request.authorOwner);
 }
 /**
  * Wrap a published child in the single run lifecycle that owns signal handoff,
  * one turn, result settlement, and quiescent disposal.
  */
-function drivePublishedRun(handle, signal, prompt, childId, boundary, structured, activation, rubyChild, isolatedDescriptor) {
+function drivePublishedRun(handle, signal, prompt, childId, boundary, structured, activation, rubyChild, isolatedDescriptor, authorOwner) {
     const child = handle.agent;
     const flags = { cancelled: false };
     const onAbort = () => {
@@ -146,7 +146,7 @@ function drivePublishedRun(handle, signal, prompt, childId, boundary, structured
                     await child.whenIdle();
                 }
                 else if (activation !== undefined) {
-                    await driveOwnedAuthorDialogActivationV1(child, activation);
+                    await driveOwnedAuthorDialogActivationV1(child, activation, authorOwner);
                 }
                 else if (isolatedDescriptor !== undefined) {
                     const isolated = nativeIsolatedInputCapability(child);
