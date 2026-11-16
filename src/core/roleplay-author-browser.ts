@@ -455,8 +455,30 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
         const refreshed=await adoptCommittedFacts(value,sourceCurrent,'ordinary')
         return {ok:true,kind:'author-namespace-mutated',reply,...refreshed?{snapshot:refreshed}:{}}
       }catch {return {ok:true,kind:'author-namespace-mutated',reply}}
-    }
-    if(input.action==='mutate-persona') {
+    },{sourceOnly:true})
+    if(input.action==='mutate-script-buttons')return withAttachment(input.binding,async(session,value)=>{
+      if(!deps.mutateScriptButtons)return {ok:false,code:'AUTHOR_SCRIPT_BUTTON_WRITE_UNAVAILABLE'}
+      const realm=nativeRealm(value,input.request.realmId),sourceCurrent=originalSourceLifetime(value)
+      if(!sourceCurrent())return fail('BROWSER_ATTACHMENT_REVOKED')
+      const basis=value.lastSnapshot?.scriptButtons,request=input.request,publication=value.lastButtonPublication
+      const followsOwnWrite=request.previousOperationId!==undefined
+        &&value.buttonPredecessors?.get(realm.realmId)===request.previousOperationId
+        &&publication&&basis&&publication.sourceSha256===basis.sourceSha256&&publication.revision===basis.revision
+        &&request.expectedSourceSha256===basis.sourceSha256
+      const accepted=followsOwnWrite?{...request,expectedRevision:basis.revision}:request
+      const result=await deps.mutateScriptButtons(session.id,value.program,realm,accepted,value.ownerCurrent,signal,
+        value.generationQueue?.sourceDataFor(realm.realmId))
+      if(result.kind!=='edited-data')return {ok:true,kind:'script-buttons-mutated',result,
+        ...value.current()&&value.lastSnapshot?{snapshot:value.lastSnapshot}:{}}
+      let refreshed:AuthorBrowserSnapshot|undefined
+      try {refreshed=await adoptCommittedFacts(value,sourceCurrent,'source-data')}catch{}
+      if(refreshed?.scriptButtons){
+        (value.buttonPredecessors??=new Map()).set(realm.realmId,request.operationId)
+        value.lastButtonPublication={sourceSha256:refreshed.scriptButtons.sourceSha256,revision:refreshed.scriptButtons.revision}
+      }
+      return {ok:true,kind:'script-buttons-mutated',result,...refreshed?{snapshot:refreshed}:{}}
+    })
+    if(input.action==='mutate-persona')return withAttachment(input.binding,async(session,value)=>{
       const program=value.program
       if(!value.facts.data.personas||!deps.mutatePersona)
         return {ok:false,code:'NATIVE_PERSONA_UNAVAILABLE'}

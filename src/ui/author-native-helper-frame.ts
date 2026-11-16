@@ -298,6 +298,34 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     return address
   }
   const buttonCatalog=createButtons(buttonScripts)
+  let buttonBasis=initial.scriptButtons
+  let pendingButtonWrites=0,lastButtonOperationId:string|undefined
+  const acceptButtons=(value?:AuthorNativeHelperSnapshotV1['scriptButtons'])=>{
+    if(value)buttonBasis=value
+    if(!pendingButtonWrites&&buttonBasis)buttonCatalog.acceptSnapshot(buttonBasis)
+  }
+  acceptButtons()
+  const replaceButtons=(buttons:readonly {name:string;visible:boolean}[]):void=>{
+    if(!active)return
+    const before=buttonCatalog.getScriptButtons(selfScript().id)
+    if(before.length===buttons.length&&before.every((button,index)=>button.name===buttons[index]!.name
+      &&button.visible===buttons[index]!.visible))return
+    const basis=buttonBasis
+    if(!basis)throw Error('AUTHOR_SCRIPT_BUTTON_WRITE_UNAVAILABLE')
+    const next=buttons.map(button=>({name:button.name,visible:button.visible})),operationId=crypto.randomUUID(),
+      previousOperationId=lastButtonOperationId
+    buttonCatalog.replaceScriptButtons(selfScript().id,next)
+    pendingButtonWrites++;lastButtonOperationId=operationId
+    void request('replace-script-buttons',{buttons:next,expectedSourceSha256:basis.sourceSha256,
+      expectedRevision:basis.revision,previousOperationId},scope,operationId).then(result=>{
+      if(result.kind!=='edited-data')throw Error(result.diagnostics?.[0]?.code??'AUTHOR_SCRIPT_BUTTON_SAVE_FAILED')
+    }).catch(report).finally(()=>{pendingButtonWrites--;acceptButtons()})
+  }
+  const updateButtons=(updater:Function):any=>{
+    const result=updater(buttonCatalog.getScriptButtons(selfScript().id))
+    if(result&&typeof result.then==='function')return result.then((buttons:any)=>{replaceButtons(buttons);return buttons})
+    replaceButtons(result);return result
+  }
   const currentPreset=()=>{
     const value=snapshot.readonlyPreset
     if(value?.kind!=='available')throw Error('AUTHOR_NATIVE_CURRENT_PRESET_UNAVAILABLE')
@@ -366,6 +394,24 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     eventEmitAndWait:(event:string,...args:any[])=>events.emitAndWait(event,args),errorCatched:(fn:Function)=>(...args:any[])=>fn(...args),
     generateRaw:async(options:unknown)=>{const value=await request('generate-raw',{options});return value?.text??value},
     triggerSlash:async(command:string)=>{
+      if(createCommands) {
+        const language=createCommands(),operationId=crypto.randomUUID(),pipeline=language.parse(command),
+          result=await language.execute(pipeline,operationId,{
+            assertCurrent(){if(!active)throw Error('AUTHOR_NATIVE_BINDING_REVOKED')},
+            release:async()=>{await request('command-release',{},scope,operationId)},
+            readVariable:(type,key)=>variables({type})[key],
+            async writeVariable(type,key,value,stepId){
+              const current=type==='global'?clone(sharedCapture({type}).values):variables({type})
+              await request('mutate-author-namespace',{nextVariables:{...current,[key]:value},
+                ...type==='global'?{selector:{type}}:{}},scope,stepId)
+            },
+            input:(text,defaultValue,stepId)=>request('command-input',{text,defaultValue},scope,stepId),
+            echo:async(text,stepId)=>{await request('command-echo',{text},scope,stepId)},
+            remote:(step,original,pipe)=>request('execute-commands',{command:'',step,pipe},scope,original),
+          })
+        if(result.kind!=='executed')throw Object.assign(Error(result.code),{result})
+        return result.pipe
+      }
       const result=await request('execute-commands',{command})
       if(result.kind!=='executed')throw Object.assign(Error(result.code),{result})
       return result.pipe
@@ -374,6 +420,12 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     getScriptId:()=>selfScript().id,
     getButtonEvent:(name:string)=>buttonCatalog.getButtonEvent(selfScript().id,name),
     getScriptButtons:()=>buttonCatalog.getScriptButtons(selfScript().id),
+    replaceScriptButtons:replaceButtons,
+    updateScriptButtonsWith:updateButtons,
+    appendInexistentScriptButtons:(buttons:readonly {name:string;visible:boolean}[])=>{
+      updateButtons((existing:{name:string;visible:boolean}[])=>[...existing,
+        ...buttons.filter(button=>!existing.some(row=>row.name===button.name))])
+    },
     getAllEnabledScriptButtons:buttonCatalog.getAllEnabledScriptButtons,
     getScriptData:(identity?:string)=>{
       const address=identity===undefined?selfScript():undefined

@@ -166,6 +166,8 @@ import {createCanonicalAuthorChatStateV1}
 import type {AuthorChatScopeBasesV1} from './roleplay-author-chat-state-types.js'
 import {createRoleplayAuthorChatNativeRoots} from './roleplay-author-chat-native-roots.js'
 import {createRoleplayAuthorBrowserKeyCoreV3} from './roleplay-author-browser-key-core-v3.js'
+import {createRoleplayAuthorScriptButtonsCoreV1,captureAuthorNativeScriptButtons}
+  from './roleplay-author-script-buttons-core.js'
 import {captureAuthorMessageViewV1} from './roleplay-author-message-capture.js'
 import type {TavernActualNonnumericalPromptScopesV1} from './roleplay-tavern-prompt-scopes.js'
 import type {MvuNativeOpeningReceipt} from './roleplay-mvu-initialization.js'
@@ -3988,6 +3990,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     // State2 DATA cut. Reuse that proof across the canonical writer's FIFO.
     captureCurrent:captureBrowserChatSource,
     withSourceLock:(sid,work,signal)=>withImportLock(sid,'author-chat-state',work,signal)})
+  const authorScriptButtons=createRoleplayAuthorScriptButtonsCoreV1({source:tavernSource,edits:tavernLoreEdits,
+    withSourceLock:(sid,work,signal)=>withImportLock(sid,'author-script-buttons',work,signal)})
   function captureAuthorDataPublication(sid:string,
     begin:(()=>ReturnType<import('./roleplay-input-preparation.js').RoleplayInputSourceDataWindowV1['begin']>)|undefined) {
     if(!begin)return undefined
