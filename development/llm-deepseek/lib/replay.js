@@ -39,14 +39,15 @@ export function readReplay(message, model, onDegrade) {
     }
 }
 function validateReplay(message, model) {
-    if (message.source.kind !== 'model' || message.source.replayState === undefined)
+    const source = message.source;
+    if (source?.kind !== 'model' || source.replayState === undefined)
         return undefined;
     const fail = (detail) => { throw new LlmError(`DeepSeek Messages replay: ${detail}`, 'INVALID_REPLAY_STATE'); };
-    const envelope = object(message.source.replayState, 'INVALID_REPLAY_STATE');
+    const envelope = object(source.replayState, 'INVALID_REPLAY_STATE');
     const response = object(envelope.response, 'INVALID_REPLAY_STATE');
     if (response.kind !== 'deepseek-messages' || response.version !== 1)
         return fail('unsupported kind or version');
-    if (response.model !== message.source.model)
+    if (response.model !== source.model)
         return fail('model does not match assistant source model');
     if (!Array.isArray(envelope.blocks) || envelope.blocks.length !== message.content.length)
         return fail('block count mismatch');
