@@ -33,6 +33,16 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
   createCurrentRegex:typeof createAuthorNativeCurrentRegex,createVariableWriters:typeof createAuthorNativeVariableWriters):void {
   const realm=window as any,clone=(value:any)=>value===undefined?undefined:structuredClone(value)
   let snapshot=initial,scope=initialReadScope,explicitScope=initialReadScope,active=true,sequence=0
+  let presetLibrary=initialPresetLibrary,pendingLoadedName:string|undefined,presetBarrier=Promise.resolve()
+  let characterLibrary=initialCharacterLibrary
+  const libraryReads=new Map<string,AuthorNativeLibraryReadV1>()
+  const recordLibraryRead=(read:AuthorNativeLibraryReadV1)=>libraryReads.set(JSON.stringify(read),read)
+  const presetRead=(selector:string,operation:Extract<AuthorNativeLibraryReadV1,{kind:'preset'}>['operation'])=>{
+    if(presetLibrary)recordLibraryRead({kind:'preset',revision:presetLibrary.revision,selector,operation})
+  }
+  const characterRead=(selector:string,operation:'regex'|'bindings')=>{
+    if(characterLibrary)recordLibraryRead({kind:'character',epoch:characterLibrary.epoch,selector,operation})
+  }
   let messageSnapshot=snapshot,messageVariables=createMessageVariables(snapshot)
   const messageData=()=>{
     if(messageSnapshot!==snapshot){messageSnapshot=snapshot;messageVariables=createMessageVariables(snapshot)}
@@ -83,6 +93,8 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     const id=++sequence;pending.set(id,{resolve,reject})
     send({op:'request',id,request:{operationId,operation,payload,readScope}})
   })
+  const request=(operation:string,payload:unknown,readScope=scope,operationId:string=crypto.randomUUID()):Promise<any>=>
+    presetBarrier.then(()=>dispatchRequest(operation,payload,readScope,operationId))
   const filters=new Map<string,Function>()
   const retireFilters=(ids:readonly string[])=>{for(const id of ids)filters.delete(id)}
   const mutatePrompts=(mutation:unknown)=>{
@@ -294,15 +306,60 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
   const api:any={getVariables:variables,getAllVariables:()=>Object.assign({},variables({type:'global'}),
     variables({type:'character'}),variables({type:'script'}),variables()),getChatMessages,setChatMessages,
     getContext:()=>({...clone(snapshot.context),chat:getChatMessages()}),
-    getLoadedPresetName:()=>currentPreset().loadedName,
-    getTavernRegexes:createCurrentRegex(()=>snapshot),
-    getPreset:(name:string)=>{
-      const value=currentPreset()
-      if(name!=='in_use'&&name!==value.loadedName)throw Error('AUTHOR_NATIVE_PRESET_SELECTOR_UNSUPPORTED')
-      return clone(value.preset)
+    getPresetNames:()=>{presetRead('','names');return clone(library().names)},
+    getLoadedPresetName:()=>{presetRead(pendingLoadedName??'in_use','loaded')
+      return pendingLoadedName??(presetLibrary?library().loaded?.name??'':currentPreset().loadedName)},
+    getPreset:readPreset,default_preset:clone(defaultPreset),
+    isPresetSystemPrompt:(prompt:any)=>['main','nsfw','jailbreak','enhanceDefinitions'].includes(prompt.id),
+    isPresetPlaceholderPrompt:(prompt:any)=>['worldInfoBefore','personaDescription','charDescription','charPersonality',
+      'scenario','worldInfoAfter','dialogueExamples','chatHistory'].includes(prompt.id),
+    isPresetNormalPrompt:(prompt:any)=>!api.isPresetSystemPrompt(prompt)&&!api.isPresetPlaceholderPrompt(prompt),
+    loadPreset:(name:string)=>{
+      if(name==='in_use')return false
+      const saved=savedPreset(name)
+      if(!saved)return false
+      pendingLoadedName=name
+      const previous=presetBarrier,operationId=crypto.randomUUID()
+      const work=previous.then(()=>submitPreset({
+        command:{kind:'load',presetId:saved.presetId,name},expectedRevision:library().revision},operationId))
+      presetBarrier=work.then(()=>{if(pendingLoadedName===name)pendingLoadedName=undefined},error=>{
+        pendingLoadedName=undefined;throw error})
+      void presetBarrier.catch(report)
+      return true
     },
+    createPreset:async(name:string,data?:any)=>(await presetCommand(()=>({kind:'create',name,data}))).value,
+    createOrReplacePreset:async(name:string,data?:any)=>(await presetCommand(()=>({kind:'create-or-replace',name,data}))).value,
+    deletePreset:async(name:string)=>(await presetCommand(()=>({kind:'delete',name,presetId:savedPreset(name)?.presetId??null}))).value,
+    renamePreset:async(name:string,newName:string)=>(await presetCommand(()=>({kind:'rename',name,newName,
+      presetId:savedPreset(name)?.presetId??null}))).value,
+    replacePreset:async(name:string,data:any)=>{await replacePreset(name,data)},
+    updatePresetWith:updatePreset,
+    setPreset:(name:string,data:any)=>updatePreset(name,(current:any)=>({
+      prompts:data.prompts??current.prompts,prompts_unused:data.prompts_unused??current.prompts_unused,
+      settings:realm._.defaultsDeep({},clone(data.settings??{}),current.settings),
+      extensions:realm._.defaultsDeep({},clone(data.extensions??{}),current.extensions)})),
+    getTavernRegexes:readRegexes,
+    replaceTavernRegexes:async(rules:any[],options:any)=>{
+      if(options.type==='character')await replaceCharacterRegexes(characterRegexBasis(options),rules)
+      else await presetCommand(()=>regexCommand(rules,options))
+    },
+    updateTavernRegexesWith:async(updater:Function,options:any)=>{
+      await presetBarrier
+      if(options.type==='character'){
+        const basis=characterRegexBasis(options),next=await updater(clone(basis.rules))
+        await replaceCharacterRegexes(basis,next)
+        return next
+      }
+      const revision=library().revision,command=regexCommand([],options),next=await updater(presetRegexes(options))
+      await managePreset({...command,rules:fillRegexNames(next)},revision)
+      return next
+    },
+    formatAsTavernRegexedString:format,
     getLastMessageId:()=>snapshot.messages.length-1,
-    ...variableWriters,
+    ...Object.fromEntries(Object.entries(variableWriters).map(([name,write])=>[name,async(...args:any[])=>{
+      await presetBarrier
+      return (write as Function)(...args)
+    }])),
     eventOn:events.on,eventOnce:events.once,eventMakeFirst:events.makeFirst,eventMakeLast:events.makeLast,
     eventRemoveListener:events.remove,eventClearEvent:events.clearEvent,eventClearListener:events.clearListener,
     eventClearAll:events.clearAll,eventEmit:async(event:string,...args:any[])=>{await emit(event,args)},
@@ -407,6 +464,7 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
       return persona
     },
     createPersona:async(name:string,persona:unknown={})=>{
+      await presetBarrier
       const reply=await request('persona-mutate',{
         expectedDataSha256:personas()?.dataSha256,mutation:{kind:'create',name,persona}})
       if(reply.result.kind==='refused')throw Error(reply.result.code)
@@ -476,6 +534,7 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
       // a mere bridge connection or script fetch is not Source readiness.
       await importModule(url)
     }
+    await presetBarrier
     if(active)send({op:'source-ready'})
   }
   const receive=async(data:any)=>{
@@ -779,14 +838,18 @@ export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNa
   return {started,disposed,hardTermination:'unavailable',
     updateSnapshot(value,scope){snapshot=value;readScope=scope;if(current()&&ready)send({op:'snapshot',snapshot,readScope})},
     dispatchEvent(event,args,_resource,callbackId){if(current())send({op:'event',event,args,callbackId})},
-    async waitForAdmittedSourceWrites(){await Promise.all([...writes.values()].map(row=>row.done))
+    async waitForAdmittedSourceWrites(){await control('flush-preset',{})
+      await Promise.all([...writes.values()].map(row=>row.done))
       if(lostAcknowledgement)throw Error('AUTHOR_NATIVE_ACK_UNOBSERVED')},
     generationCallbacks:()=>control('callbacks',{}) as Promise<readonly AuthorNativeHelperGenerationCallbackV1[]>,
-    invokeGeneration:(invocation,signal)=>control('invoke',{invocation},signal) as Promise<AuthorNativeHelperGenerationResultV1>,
-    invokeFilter:(invocation,signal)=>control('invoke-filter',{invocation},signal) as Promise<boolean>,
+    async invokeGeneration(invocation,signal){await control('flush-preset',{},signal)
+      return control('invoke',{invocation},signal) as Promise<AuthorNativeHelperGenerationResultV1>},
+    async invokeFilter(invocation,signal){await control('flush-preset',{},signal)
+      return control('invoke-filter',{invocation},signal) as ReturnType<AuthorNativeHelperFrameControllerV1['invokeFilter']>},
     retireFilterCallbacks:ids=>{if(current())send({op:'retire-filters',ids})},
-    invokeMvuHook:(invocation,signal)=>control('invoke-mvu-hook',{invocation},signal) as Promise<AuthorNativeHelperMvuHookResultV1>,
-    dispose(){if(!active)return;active=false;abort.abort();unsubscribeLayout?.();ports.port1.close();ports.port2.close();frame.remove()
+    async invokeMvuHook(invocation,signal){await control('flush-preset',{},signal)
+      return control('invoke-mvu-hook',{invocation},signal) as Promise<AuthorNativeHelperMvuHookResultV1>},
+    dispose(){if(!active)return;active=false;eventEndpoint?.dispose();abort.abort();unsubscribeLayout?.();ports.port1.close();ports.port2.close();frame.remove()
       rejectStarted(Error('AUTHOR_NATIVE_BINDING_REVOKED'))
       for(const entry of controls.values())entry.reject(Error('AUTHOR_NATIVE_BINDING_REVOKED'))
       controls.clear();lostAcknowledgement=writes.size>0

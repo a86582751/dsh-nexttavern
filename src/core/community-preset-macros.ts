@@ -1,3 +1,4 @@
+import {createTavernPromptMacroPrimitivesV1} from './tavern-prompt-text-kernel.mjs'
 import {createHash} from 'node:crypto'
 import type {CommunityJson} from './community-preset-types.js'
 import type {TavernOrdinaryPreparationStage} from './roleplay-tavern-ordinary-stage.js'
@@ -18,63 +19,19 @@ export interface CommunityMacroContext {
   global:Record<string,CommunityJson>
   outlets?:Record<string,string>
   ordinary?:Pick<TavernOrdinaryPreparationStage,'values'|'read'|'apply'>
+  shared?:Pick<TavernOrdinaryPreparationStage,'values'|'read'|'apply'>
+  /** A material owner can resolve its additional captured readonly families
+   * at this exact point in the existing left-to-right evaluation. */
+  resolveUnknown?(body:string,rawText:string,offset:number,renderedPrefix:string):string|undefined
 }
 const stringify=(value:CommunityJson|undefined):string=>value==null?'':typeof value==='string'?value:
   typeof value==='object'?JSON.stringify(value):String(value)
 const numeric=(value:CommunityJson|undefined)=>Number(value??0)||0
 
-/** Common inert primitives. Callers retain ordering, scope writes and snapshots. */
-export function communityMacroLiteral(body:string):string|undefined {
-  const name=body.toLowerCase()
-  if(name==='noop'||name==='trim')return ''
-  if(name==='newline')return '\n'
-  if(name==='space')return ' '
-  if(name.startsWith('reverse:'))return Array.from(body.slice(body[8]===':'?9:8)).reverse().join('')
-  return undefined
-}
-
-/** ST legacy list grammar: only comma lists trim, and escaped commas are data. */
-export function communityMacroChoices(source:string):string[] {
-  return source.includes('::')?source.split('::'):
-    source.replace(/\\,/g,'\u0000').split(',').map(value=>value.trim().replaceAll('\u0000',','))
-}
-
-/** Entropy belongs to the captured attempt. Pick belongs to chat/content/offset
- * and never advances that stream. This is NextTavern's replayable RNG, not
- * bit-for-bit seedrandom emulation of ST's browser entropy. */
-export function createCommunityMacroRandom(seed:string,pickSeed=seed) {
-  let ordinal=0
-  const random=()=>createHash('sha256').update(`${seed}:${ordinal++}`).digest().readUInt32LE(0)/0x1_0000_0000
-  return {random,
-    /** Fixed lodash numeric-range semantics using this same captured stream.
-     * Source selection supplies its compiled finite numeric bounds. */
-    range(lower:number,upper:number):number {
-      if(lower>upper)[lower,upper]=[upper,lower]
-      const draw=random()
-      return lower%1||upper%1
-        ?Math.min(lower+draw*(upper-lower+Number.parseFloat('1e-'+(String(draw).length-1))),upper)
-        :lower+Math.floor(draw*(upper-lower+1))
-    },
-    choose(source:string,rawText:string,offset:number|readonly number[],pick:boolean):string {
-      const values=communityMacroChoices(source)
-      const draw=pick?createHash('sha256').update(JSON.stringify([pickSeed,rawText,offset]))
-        .digest().readUInt32LE(0)/0x1_0000_0000:random()
-      return values[Math.floor(draw*values.length)]??''
-    },
-    roll(source:string):string {
-      let formula=source.trim().replace(/^::?/,'').trim()
-      if(/^\d+$/.test(formula))formula=`1d${formula}`
-      const dice=/^(?:(\d+)\s*)?d\s*(\d+)(?:\s*([+-])\s*(\d+))?$/i.exec(formula)
-      if(!dice)throw Error(`不支持的骰子表达式：${formula}`)
-      const count=Number(dice[1]||1),sides=Number(dice[2])
-      if(!Number.isSafeInteger(count)||count<1||count>10_000||!Number.isSafeInteger(sides)||sides<1)
-        throw Error('骰子数量或面数无效')
-      let sum=0
-      for(let index=0;index<count;index++)sum+=Math.floor(random()*sides)+1
-      if(dice[3])sum+=(dice[3]==='-'?-1:1)*Number(dice[4])
-      return String(sum)
-    },get draws(){return ordinal}}
-}
+const macroPrimitives=createTavernPromptMacroPrimitivesV1(text=>createHash('sha256').update(text).digest())
+export const communityMacroLiteral=macroPrimitives.literal
+export const communityMacroChoices=macroPrimitives.choices
+export const createCommunityMacroRandom=macroPrimitives.createRandom
 
 /** Local wall-clock aliases from a captured instant, never an implicit Date.now. */
 export function communityMacroClock(clockEpochMs:number):Record<string,string> {
@@ -89,14 +46,16 @@ export function communityMacroClock(clockEpochMs:number):Record<string,string> {
 /** A bounded syntax walk, not a JS evaluator. One evaluator is shared by the
  * ordered prompt list so assignments and random draws have one chronology. */
 export function createCommunityMacroEvaluator(input:CommunityMacroContext) {
-  const chat=input.ordinary?{}:structuredClone(input.chat),global=structuredClone(input.global),writes:CommunityMacroWrite[]=[]
+  const chat=input.ordinary?{}:structuredClone(input.chat),global=input.shared?{}:structuredClone(input.global),writes:CommunityMacroWrite[]=[]
   const random=createCommunityMacroRandom(input.seed,input.pickSeed)
   function variable(scope:'chat'|'global',key:string):CommunityJson|undefined {
-    return scope==='chat'&&input.ordinary?input.ordinary.read(key):(scope==='chat'?chat:global)[key]
+    const stage=scope==='chat'?input.ordinary:input.shared
+    return stage?stage.read(key):(scope==='chat'?chat:global)[key]
   }
   function write(scope:'chat'|'global',key:string,operation:CommunityMacroWrite['operation'],value:CommunityJson) {
     const values=scope==='chat'?chat:global
-    if(scope==='chat'&&input.ordinary)input.ordinary.apply([operation==='delete'
+    const stage=scope==='chat'?input.ordinary:input.shared
+    if(stage)stage.apply([operation==='delete'
       ?{key,operation}:{key,operation,value}])
     else if(operation==='delete')delete values[key]
     else if(operation==='add')values[key]=numeric(values[key])+numeric(value)
@@ -104,7 +63,7 @@ export function createCommunityMacroEvaluator(input:CommunityMacroContext) {
     else values[key]=value
     writes.push({scope,key,operation,value})
   }
-  function evaluate(body:string,rawText:string,offset:number):string {
+  function evaluate(body:string,rawText:string,offset:number,renderedPrefix:string):string {
     const divider=body.indexOf('::'),name=(divider<0?body:body.slice(0,divider)).trim(),lower=name.toLowerCase()
     const argumentsText=divider<0?'':body.slice(divider+2)
     const next=argumentsText.indexOf('::'),key=(next<0?argumentsText:argumentsText.slice(0,next)).trim()
@@ -145,12 +104,14 @@ export function createCommunityMacroEvaluator(input:CommunityMacroContext) {
     if(alias!==undefined)return input.aliases[alias]!
     // Kemini uses these exact braces as output-format notation, not variables.
     if(['思考内容','正文内容','可能要求的附加内容'].includes(name))return `{{${name}}}`
+    const resolved=input.resolveUnknown?.(body,rawText,offset,renderedPrefix)
+    if(resolved!==undefined)return resolved
     if(/^(?:MEMORY_|VECTOR_MEMORY)/i.test(name))throw Error(`此提示条目依赖尚未接入的外部记忆插件：${name}`)
     throw Error(`尚未支持的社区宏：${name}`)
   }
   function render(text:string,depth=0):string {
     if(depth>128)throw Error('社区宏嵌套过深')
-    let result='',cursor=0,trimNext=false
+    let result='',cursor=0,trimNext=false,renderedPrefix=''
     while(cursor<text.length) {
       let start=text.indexOf('{{',cursor)
       if(start<0){result+=trimNext?text.slice(cursor).replace(/^(?:\r?\n)*/,''):text.slice(cursor);break}
@@ -158,7 +119,11 @@ export function createCommunityMacroEvaluator(input:CommunityMacroContext) {
       // preset's shipped initializer ("{{{setvar::...}}"). Keep that literal.
       while(text[start+2]==='{')start++
       const literal=text.slice(cursor,start)
-      result+=trimNext?literal.replace(/^(?:\r?\n)*/,''):literal
+      const renderedLiteral=trimNext?literal.replace(/^(?:\r?\n)*/,''):literal,
+        lineStart=Math.max(renderedLiteral.lastIndexOf('\n'),renderedLiteral.lastIndexOf('\r'),
+          renderedLiteral.lastIndexOf('\u2028'),renderedLiteral.lastIndexOf('\u2029'))+1
+      result+=renderedLiteral
+      renderedPrefix=lineStart?renderedLiteral.slice(lineStart):renderedPrefix+renderedLiteral
       trimNext=false
       let nesting=1,end=start+2
       while(end<text.length&&nesting) {
@@ -171,12 +136,17 @@ export function createCommunityMacroEvaluator(input:CommunityMacroContext) {
       // Comments are removed before descending: they never perform assignments.
       if(!rawBody.trimStart().startsWith('//')) {
         const body=render(rawBody,depth+1)
-        if(body.trim().toLowerCase()==='trim'){result=result.replace(/(?:\r?\n)*$/,'');trimNext=true}
-        else result+=evaluate(body,text,start)
+        if(body.trim().toLowerCase()==='trim'){
+          result=result.replace(/(?:\r?\n)*$/,'');renderedPrefix=renderedPrefix.replace(/(?:\r?\n)*$/,'');trimNext=true
+        }else {
+          const replacement=evaluate(body,text,start,renderedPrefix)
+          result+=replacement;renderedPrefix+=replacement
+        }
       }
       cursor=end
     }
     return result
   }
-  return {render,get chat(){return input.ordinary?.values??chat},global,writes,get randomDraws(){return random.draws}}
+  return {render,get chat(){return input.ordinary?.values??chat},get global(){return input.shared?.values??global},
+    writes,get randomDraws(){return random.draws}}
 }

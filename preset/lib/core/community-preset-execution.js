@@ -50,15 +50,20 @@ function adviceText(assistant, user, configuration) {
     const split = ending.index + ending[0].length;
     return `${source.slice(0, split).trimEnd()}\n\n<advice>${user}</advice>${source.slice(split).trim() ? '\n\n' + source.slice(split).trim() : ''}`;
 }
-function rebornFragments(role, content) {
+const escapePattern = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function rebornFragments(role, content, userMarker, assistantMarker) {
     const fragments = [];
-    const source = content.replace(/\|用户：(.*?)\|/, '');
+    const source = content;
     let cursor = 0, current = role;
-    for (const match of source.matchAll(/\|(用户|小猫之神)\|/g)) {
+    const markers = [userMarker, assistantMarker].filter(Boolean).sort((a, b) => b.length - a.length);
+    if (!markers.length)
+        return [{ role, text: source.trim() }].filter(part => part.text);
+    const pattern = new RegExp(markers.map(escapePattern).join('|'), 'g');
+    for (const match of source.matchAll(pattern)) {
         const before = source.slice(cursor, match.index).trim();
         if (before)
             fragments.push({ role: current, text: before });
-        current = match[1] === '用户' ? 'user' : 'assistant';
+        current = match[0] === userMarker ? 'user' : 'assistant';
         cursor = match.index + match[0].length;
     }
     const tail = source.slice(cursor).trim();
@@ -67,14 +72,38 @@ function rebornFragments(role, content) {
     return fragments;
 }
 const fake = (role, content) => `{"role":${JSON.stringify(role)},"content":"${content}"}`;
-const modelOpen = '{"role":"model","content":"Pass';
-const soliumbraOpen = (key = 'content') => `{"role":"soliumbra","${key}":"`;
 export function createCommunityPresetExecution(input) {
     const preset = input.policy.preset;
     if (!preset)
         throw Error('社区预设执行需要已选择的预设');
     const features = object(input.policy.effective.features[preset.profile.id]);
-    const configuration = { ...object(preset.profile.configuration[preset.profile.id]), ...features };
+    const baseConfiguration = object(preset.profile.configuration[preset.profile.id]);
+    const configuration = { ...baseConfiguration, ...features };
+    const transport = { ...preset.profile.transport, ...object(configuration.transport) }, toolEnabled = transport.enabled !== false;
+    let dreamMode = false, rebornMode = false, izumiMode = false, toolName = '', controlPrompt = '';
+    switch (preset.profile.transport.kind ?? 'standard') {
+        case 'standard':
+            break;
+        case 'dream':
+            dreamMode = true;
+            break;
+        case 'izumi':
+            izumiMode = true;
+            break;
+        case 'kemini':
+            if (toolEnabled) {
+                toolName = text(transport.toolName) || `emit_complete_response_${sha(input.seed).slice(0, 24)}`;
+                controlPrompt = `Call the \`${toolName}\` function exactly once and put your complete final reply in its \`content\` argument. Do not write any of the final reply outside that call. Use any other available tools normally when they are needed.`;
+            }
+            break;
+        case 'reborn':
+            rebornMode = true;
+            if (toolEnabled)
+                toolName = text(transport.toolName) || 'game_content';
+            break;
+        default:
+            throw Error('COMMUNITY_PROFILE_TRANSPORT_UNSUPPORTED');
+    }
     const outlets = {};
     const macros = createCommunityMacroEvaluator({ seed: input.seed, pickSeed: input.variableAttempt.sessionId, clockEpochMs: input.clockEpochMs,
         aliases: { ...input.aliases, lastUserMessage: input.inputText, input: input.inputText },
@@ -122,13 +151,13 @@ export function createCommunityPresetExecution(input) {
             };
             for (const outlet of layout.layout.outlets)
                 outlets[outlet.name] = outlet.text;
-            const processingBase = object(object(preset.profile.configuration.dream).messageProcessing);
+            const processingBase = object(baseConfiguration.messageProcessing);
             const processingOverrides = object(features.messageProcessing);
             const processing = { ...processingBase, ...processingOverrides,
                 chat_history: { ...object(processingBase.chat_history), ...object(processingOverrides.chat_history) },
                 entry_processing: { ...object(processingBase.entry_processing), ...object(processingOverrides.entry_processing) },
                 delimiter: { ...object(processingBase.delimiter), ...object(processingOverrides.delimiter) } };
-            const dream = preset.profile.id === 'dream' && processing.enabled !== false;
+            const dream = dreamMode && processing.enabled !== false;
             if (dream && object(processing.entry_processing).mode === 'worldbook') {
                 const placementById = new Map();
                 for (const placement of finish.evaluation.placements) {
@@ -164,18 +193,11 @@ export function createCommunityPresetExecution(input) {
                 if (movedIds.size && !metadata.size)
                     adaptations.push({ code: 'dream-lore-without-static-metadata', identifiers: [...movedIds] });
             }
-            const transport = { ...preset.profile.transport, ...object(configuration.transport) };
-            const toolEnabled = transport.enabled !== false
-                && !(preset.profile.id === 'reborn' && /防截断/i.test(input.modelName ?? ''));
-            const toolName = toolEnabled && preset.profile.id === 'kemini' ? `emit_complete_response_${sha(input.seed).slice(0, 24)}`
-                : toolEnabled && preset.profile.id === 'reborn' ? 'game_content' : '';
-            const controlPrompt = toolName && preset.profile.id === 'kemini'
-                ? `Call the \`${toolName}\` function exactly once and put your complete final reply in its \`content\` argument. Do not write any of the final reply outside that call. Use any other available tools normally when they are needed.` : '';
             let controlPlaced = false, examplesConsumed = false, afterHistory = false;
             const head = [], tail = [], chat = [];
             const cardMarkers = new Set(['charDescription', 'charPersonality', 'scenario']);
             for (const [rank, prompt] of prompts.entries()) {
-                if (!toolEnabled && preset.profile.id === 'reborn' && prompt.identifier === transport.promptIdentifier)
+                if (!toolEnabled && rebornMode && prompt.identifier === transport.promptIdentifier)
                     continue;
                 let value = '';
                 if (prompt.marker) {
@@ -278,8 +300,8 @@ export function createCommunityPresetExecution(input) {
             const sanitizer = createCommunitySanitizer(preset.profile, features);
             const strategy = sanitizer.strategy(Number(input.aliases.chatMessageCount ?? input.historyRows.length));
             let adviceRow;
-            if (preset.profile.id === 'izumi') {
-                const advice = { ...object(object(preset.profile.configuration.izumi).advice), ...object(features.advice) };
+            if (izumiMode) {
+                const advice = { ...object(baseConfiguration.advice), ...object(features.advice) };
                 const lastUser = input.historyRows.findLastIndex(row => row.role === 'user');
                 const user = input.historyRows[lastUser], assistant = input.historyRows.slice(0, lastUser).findLast(row => row.role === 'assistant');
                 if (advice.enabled !== false && user && assistant && rowText(user)) {
@@ -360,36 +382,40 @@ export function createCommunityPresetExecution(input) {
                     }
                 }
             }
-            if (preset.profile.id === 'reborn') {
-                const postscript = { ...object(object(preset.profile.configuration.reborn).postscript), ...object(features.postscript) };
+            if (rebornMode) {
+                const postscript = { ...object(baseConfiguration.postscript), ...object(features.postscript) };
                 if (postscript.enabled !== false) {
+                    const configured = (key, fallback) => typeof postscript[key] === 'string' ? postscript[key] : fallback;
+                    const userMarker = configured('userRoleMarker', '|用户|'), assistantMarker = configured('assistantRoleMarker', '|小猫之神|'), assistantRole = configured('fakeAssistantRole', 'soliumbra'), modelRole = configured('modelRole', 'model'), boundary = configured('noConvertMarker', '<|no-convert|>'), thinkingTag = configured('prefillThinkingTag', 'prefill_thinking'), thinkingPattern = thinkingTag ? new RegExp(`<${escapePattern(thinkingTag)}(?:\\s[^>]*)?>([\\s\\S]*?)</${escapePattern(thinkingTag)}>`, 'gi') : null, modelOpen = `{"role":${JSON.stringify(modelRole)},"content":"Pass`, assistantOpen = (key = 'content') => `{"role":${JSON.stringify(assistantRole)},"${key}":"`;
                     const thoughts = [];
-                    const clean = (value) => value.replace(/<prefill_thinking\b[^>]*>([\s\S]*?)<\/prefill_thinking>/gi, (_tag, thinking) => { thoughts.push(thinking.trim()); return ''; }).replaceAll('<|no-convert|>', '');
-                    const hasBoundary = systemText.includes('<|no-convert|>');
+                    const clean = (value) => {
+                        const cleaned = thinkingPattern ? value.replace(thinkingPattern, (_tag, thinking) => { thoughts.push(thinking.trim()); return ''; }) : value;
+                        return boundary ? cleaned.replaceAll(boundary, '') : cleaned;
+                    };
+                    const hasBoundary = !!boundary && systemText.includes(boundary);
                     // Reborn tail rules participate in its pseudo conversation even when
                     // ChatSquash is off; they must not also survive in the system section.
                     const tailSystem = tail.filter(part => part.role === 'system');
                     const headOnly = head.filter(part => part.role === 'system').map(part => part.text).join('\n\n');
                     community.replacementText = hasBoundary ? clean(headOnly) : `<clear>\n[${fake('system', clean(headOnly))},{"role":"fake_system","content":"`;
-                    let open = 'fake_system';
+                    let isAssistantOpen = false;
                     for (const run of historyRuns(input.historyRows, input.selected, insertions, anchoredInsertions)) {
                         let pending = [];
                         const flush = (ending) => {
                             if (!pending.length)
                                 return;
-                            const parts = pending.flatMap(row => rebornFragments(row.role, clean(effectiveText(row))));
+                            const parts = pending.flatMap(row => rebornFragments(row.role, clean(effectiveText(row)), userMarker, assistantMarker));
                             const fragments = [];
-                            if (open) {
-                                if (open === 'soliumbra' && parts[0]?.role === 'assistant')
-                                    fragments.push(parts.shift().text + '"}');
-                                else
-                                    fragments.push('"}');
-                            }
-                            fragments.push(...parts.map(part => fake(part.role === 'assistant' ? 'soliumbra' : part.role, part.text)));
-                            groups.push({ targets: pending.map(rowRef), role: 'assistant', renderedText: fragments.map((part, index) => index === 0 && open ? part : ',' + part).join('') + ',' + modelOpen });
+                            if (isAssistantOpen && parts[0]?.role === 'assistant')
+                                fragments.push(parts.shift().text + '"}');
+                            else
+                                fragments.push('"}');
+                            fragments.push(...parts.map(part => fake(part.role === 'assistant' ? assistantRole : part.role, part.text)));
+                            const conversation = fragments.map((part, index) => index === 0 ? part : ',' + part).join('');
+                            groups.push({ targets: pending.map(rowRef), role: 'assistant', renderedText: conversation + ',' + modelOpen });
                             const last = pending.at(-1), position = input.selected.messages.findIndex(row => row.id === last.id);
                             const depth = input.selected.messages.length - position - 1;
-                            const guide = `"},${soliumbraOpen(ending && !tailSystem.length ? 'reasoning' : 'content')}`;
+                            const guide = `"},${assistantOpen(ending && !tailSystem.length ? 'reasoning' : 'content')}`;
                             if (last.role === 'user') {
                                 // Native may add its runtime-context row after this captured cut.
                                 // The original player anchor keeps the guide beside that user.
@@ -400,7 +426,7 @@ export function createCommunityPresetExecution(input) {
                             }
                             else
                                 add(`community-reborn-guide-${last.id}`, guide, 'user', depth);
-                            open = 'soliumbra';
+                            isAssistantOpen = true;
                             pending = [];
                         };
                         for (const row of run) {
@@ -413,13 +439,13 @@ export function createCommunityPresetExecution(input) {
                     if (tailSystem.length) {
                         const tails = tailSystem.map(part => fake('system', clean(part.text))).join(',');
                         add('community-reborn-tail', `"},${tails},${modelOpen}`, 'assistant', 0);
-                        add('community-reborn-final-guide', `"},${soliumbraOpen('reasoning')}${thoughts.length ? thoughts.join('\n') + '","content":"' : ''}`, 'user', 0);
+                        add('community-reborn-final-guide', `"},${assistantOpen('reasoning')}${thoughts.length ? thoughts.join('\n') + '","content":"' : ''}`, 'user', 0);
                     }
                     else {
                         const guides = [...insertions, ...anchoredInsertions].filter(row => row.contributionRef.startsWith('community-reborn-guide-'));
                         const lastGuide = guides.sort((a, b) => a.stableOrder - b.stableOrder).at(-1);
                         if (lastGuide) {
-                            const renderedText = `"},${soliumbraOpen('reasoning')}${thoughts.length ? thoughts.join('\n') + '","content":"' : ''}`;
+                            const renderedText = `"},${assistantOpen('reasoning')}${thoughts.length ? thoughts.join('\n') + '","content":"' : ''}`;
                             const index = insertions.findIndex(row => row.contributionRef === lastGuide.contributionRef);
                             if (index >= 0)
                                 insertions[index] = { ...insertions[index], renderedText, renderedSha256: sha(renderedText) };
@@ -440,7 +466,7 @@ export function createCommunityPresetExecution(input) {
                 textEdits.push({ target: rowRef(row), blocks: [...blocks].map(([index, text]) => ({ index, text })) });
             }
             const opaque = input.historyRows.filter(row => !plain(row));
-            if ((dream || preset.profile.id === 'reborn') && opaque.length)
+            if ((dream || rebornMode) && opaque.length)
                 adaptations.push({ code: 'opaque-history-kept-native', identifiers: opaque.map(row => row.id) });
             if (input.policy.effective.applySampling && preset.parameters.stop !== undefined)
                 adaptations.push({ code: 'unsupported-sampling-stop' });

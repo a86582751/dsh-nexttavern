@@ -1875,7 +1875,44 @@ export async function apply(ctx, config = {}) {
     // ── systemPrompt：{{user}}/{{user_gender}} 变量 + 角色卡 section ─────────────
     // 优先级：用户信息（设置页填写）> 玩家角色卡名 > 默认「用户」。
     const narrativePresets = createNarrativePresets(T.branch, id => ctx.get('tavernConversations')?.rootOf(id) ?? id);
-    const communityPresets = createCommunityPresets(T.branch, id => ctx.get('tavernConversations')?.rootOf(id) ?? id);
+    const communityPresets = createCommunityPresets(T.branch, id => ctx.get('tavernConversations')?.rootOf(id) ?? id, {
+        async evaluateProfileConfiguration(input) {
+            const runtime = await mvuOpening.templateEjsRuntime();
+            return runtime.evaluateProfileConfiguration(input);
+        },
+        prepare(result) {
+            const scope = result.scopeVariables;
+            if (!scope)
+                return undefined;
+            const address = { schemaVersion: 1, profileId: authorProfile.profileId, scope: 'preset', presetId: scope.presetId }, expectedRoot = authorPersistentScopes.captureRoot(address);
+            if (result.receipt.target?.kind !== 'in-use' && expectedRoot.head)
+                return undefined;
+            return { expectedRoot, values: scope.values,
+                operationId: 'author-preset-variables-' + result.receipt.operationId,
+                cause: { schemaVersion: 1, kind: 'author-preset-content', operationId: result.receipt.operationId,
+                    payloadSha256: result.receipt.payloadSha256 } };
+        },
+        async complete(update) {
+            const expected = update.expectedRoot.address;
+            await authorPersistentScopes.replace(update, {
+                owns: address => address.profileId === authorProfile.profileId && address.scope === 'preset'
+                    && expected.scope === 'preset' && address.presetId === expected.presetId,
+                isCurrent: () => !sourceReadOwnerClosed && readAuthorProfileIdentityV1(T.branch)?.profileId === authorProfile.profileId
+            });
+        }
+    });
+    const authorScopeOwner = createRoleplayAuthorScopeOwnerV1({ profile: authorProfile, scopes: authorPersistentScopes,
+        withPresetMutation: communityPresets.withAuthorRuntime,
+        resolveIdentity: sid => {
+            const source = captureOrdinaryChatNamespace(sid), incarnation = source.namespace.importIncarnation, registration = incarnation ? authorContext.readRegisteredOrigin({ ownerSessionId: sid,
+                sourceRecordSessionId: incarnation.sourceRecordSessionId, importId: incarnation.importId,
+                transactionId: incarnation.transactionId, bookPointer: '/data/character_book' }) : undefined, policy = communityPresets.policy(sid);
+            if (incarnation && !registration)
+                throw Error('AUTHOR_SOURCE_CONTEXT_NOT_READY');
+            return { ...registration ? { characterId: registration.registration.characterId } : {},
+                ...policy.preset ? { presetId: policy.preset.id } : {}, extensionIds: authorContext.registeredExtensions(),
+                current: () => source.current() && communityPresets.policy(sid) === policy };
+        } });
     const communityAccountPersona = () => {
         const data = readNativePersonas(), selected = data.profiles.find(profile => profile.avatar_id === data.selectedId);
         return selected?.description ? [{ key: `account-persona:${selected.avatar_id}`,
@@ -4091,6 +4128,31 @@ export async function apply(ctx, config = {}) {
         mutateAuthorNamespace: authorKeyCore.mutateNamespace,
         confirmAuthorNamespace: authorKeyCore.confirmNamespace,
         retryAuthorNamespace: authorKeyCore.retryNamespace,
+        capturePresetLibrary: communityPresets.authorCatalog,
+        mutatePreset: async (sid, program, realm, operation, current, signal, begin) => {
+            if (operation.origin.profileId !== authorProfile.profileId || operation.origin.sessionId !== sid)
+                throw Error('PRESET_OPERATION_ORIGIN_INVALID');
+            await communityPresets.settleAuthorPending();
+            const prior = communityPresets.recoverAuthorOperation(operation);
+            if (prior)
+                return prior;
+            const origin = { profileId: authorProfile.profileId, sessionId: sid, realmId: realm.realmId, groupId: realm.groupId,
+                sourceRecordSessionId: program.source.sourceRecordSessionId, importId: program.source.importId };
+            if (recordSha256(operation.origin) !== recordSha256(origin))
+                throw Error('PRESET_OPERATION_ORIGIN_INVALID');
+            return withImportLock(sid, 'author-preset', async () => {
+                const assertCurrent = () => {
+                    signal.throwIfAborted();
+                    if (!current())
+                        throw Error('AUTHOR_PRESET_SOURCE_CHANGED');
+                };
+                assertCurrent();
+                const published = captureAuthorDataPublication(sid, begin), result = await communityPresets.manage(sid, operation, assertCurrent);
+                published?.(result.receipt);
+                return result;
+            }, signal);
+        },
+        mutateScriptButtons: (sid, program, realm, request, current, signal, begin) => authorScriptButtons.mutate(sid, program, realm, request, current, signal, () => captureAuthorDataPublication(sid, begin)),
         mutateWorldbook: (sid, _program, request, basis, current, signal, begin) => authorWorldbooks.mutate(sid, request, basis, current, signal, () => captureAuthorDataPublication(sid, begin)),
         manageWorldbook: (sid, _program, request, basis, current, signal, begin) => authorWorldbooks.manage(sid, request, basis, current, signal, () => captureAuthorDataPublication(sid, begin)),
         retryWorldbook: authorWorldbooks.retry,

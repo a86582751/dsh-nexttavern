@@ -1,7 +1,8 @@
 import type {CommunityPresetV1,CommunityPresetControlOption,CommunityPresetPrompt,CommunityJson} from './community-preset-types.js'
 import type {CommunityMacroWrite} from './community-preset-macros.js'
 import {boundedRegexNameMatrix,worldbookRegex} from './bounded-regex.js'
-import {communityBetweenOptions} from './community-preset-types.js'
+import {communityBetweenOptions,communityPresetControlStateV1,communityPresetConfiguredPromptV1,
+  communityPresetParameterSpanV1} from './community-preset-types.js'
 export {communityBetweenOptions} from './community-preset-types.js'
 
 type Data=Record<string,CommunityJson>
@@ -37,9 +38,23 @@ export async function resolveCommunityPresetControls(preset:CommunityPresetV1,im
     option.raw.resolvedRangeBasis=identity(option)
   }
 }
-export function applyCommunityPresetControl(preset:CommunityPresetV1,request:{groupId:string;optionId:string;
-  enabled:boolean;value?:CommunityJson;answers?:Data}) {
-  const next=structuredClone(preset),group=next.profile.groups.find(group=>group.id===request.groupId)
+export interface CommunityPresetControlRequest {
+  groupId:string;optionId:string;enabled:boolean;value?:CommunityJson;answers?:Data
+}
+export function communityPresetControlAnswers(preset:CommunityPresetV1,request:CommunityPresetControlRequest):Data {
+  const group=preset.profile.groups.find(group=>group.id===request.groupId)
+  if(!group)throw Error('功能组不存在')
+  const option=group.options.find(option=>option.id===request.optionId)
+  if(!option)throw Error('功能选项不存在')
+  const answers:Data=Object.assign(Object.create(null),communityPresetControlStateV1(preset),request.answers,object(request.value))
+  if(group.mode==='single'&&request.enabled)for(const other of group.options)if(other!==option)answers[other.id]=false
+  if(option.type!=='parameters')answers[option.id]=request.enabled
+  return answers
+}
+/** The caller supplies detached working content. This owner publishes its control answers with the actual edits. */
+export function applyCommunityPresetControl(next:CommunityPresetV1,request:CommunityPresetControlRequest,
+  predicates:readonly boolean[]=[],answers=communityPresetControlAnswers(next,request)) {
+  const group=next.profile.groups.find(group=>group.id===request.groupId)
   if(!group)throw Error('功能组不存在')
   const option=group.options.find(option=>option.id===request.optionId)
   if(!option)throw Error('功能选项不存在')
@@ -77,73 +92,71 @@ export function applyCommunityPresetControl(preset:CommunityPresetV1,request:{gr
     enable(option.enable,request.enabled)
     if(request.enabled)enable(option.disable,false)
   }
-  if(next.profile.id==='kemini') {
-    const config=object(next.profile.configuration.kemini),registry=list(config.configurablePrompts).map(object)
-    const answers={...request.answers,...object(request.value)}
-    if(option.type!=='parameters')answers[option.id]=request.enabled
-    const findRegistered=(key:string)=>registry.find(item=>item.key===key)
-    const findPrompt=(item:Data)=>{
-      let prompt=next.prompts.find(prompt=>prompt.identifier===item.stableId)
-      if(!prompt)prompt=next.prompts.find(prompt=>strings(item.nameFallbacks).includes(prompt.name))
-      return prompt
+  const config=object(next.profile.configuration[next.profile.id]),registry=list(config.configurablePrompts).map(object),
+    submitted={...request.answers,...object(request.value)}
+  const findRegistered=(key:string)=>registry.find(item=>item.key===key)
+  const findPrompt=(item:Data)=>communityPresetConfiguredPromptV1(next,item)
+  const createPrompt=(item:Data)=>{
+    let prompt=findPrompt(item)
+    if(prompt)return prompt
+    const creation=object(item.createFrom),reference=findPrompt(object(creation.template))
+    if(!reference)return undefined
+    const name=text(creation.name)||text(item.displayName)||text(item.key)
+    const content=typeof creation.initialContent==='string'?creation.initialContent:reference.content
+    prompt={...structuredClone(reference),identifier:text(item.stableId)||`custom-${text(item.key)}`,
+      name,content,enabled:true,unused:false}
+    prompt.raw={...prompt.raw,identifier:prompt.identifier,name,content}
+    next.prompts.push(prompt)
+    const before=findPrompt(object(creation.insertBefore)),after=findPrompt(object(creation.insertAfter))
+    const anchor=before??after??reference,position=next.promptOrder.findIndex(row=>row.identifier===anchor.identifier)
+    next.promptOrder.splice(position<0?next.promptOrder.length:position+(before?0:1),0,{identifier:prompt.identifier,enabled:true})
+    return prompt
+  }
+  const setRegistered=(key:string,enabled:boolean)=>{
+    const item=findRegistered(key)
+    if(!item){toggle(key,enabled);return}
+    const prompt=findPrompt(item)??(enabled?createPrompt(item):undefined)
+    if(prompt)toggle(prompt.identifier,enabled)
+    else unresolved.push(text(item.stableId)||key)
+  }
+  const predicate=(when:Data)=>{
+    if(when.kind==='module-predicate'&&when.schemaVersion===1){
+      const result=predicates[Number(when.index)]
+      if(typeof result!=='boolean')throw Error('COMMUNITY_PROFILE_PREDICATE_UNAVAILABLE')
+      return result
     }
-    const createPrompt=(item:Data)=>{
-      let prompt=findPrompt(item)
-      if(prompt)return prompt
-      const creation=object(item.createFrom),reference=findPrompt(object(creation.template))
-      if(!reference)return undefined
-      const name=text(creation.name)||text(item.displayName)||text(item.key)
-      const content=typeof creation.initialContent==='string'?creation.initialContent:reference.content
-      prompt={...structuredClone(reference),identifier:text(item.stableId)||`custom-${text(item.key)}`,
-        name,content,enabled:true,unused:false}
-      prompt.raw={...prompt.raw,identifier:prompt.identifier,name,content}
-      next.prompts.push(prompt)
-      const before=findPrompt(object(creation.insertBefore)),after=findPrompt(object(creation.insertAfter))
-      const anchor=before??after??reference,position=next.promptOrder.findIndex(row=>row.identifier===anchor.identifier)
-      next.promptOrder.splice(position<0?next.promptOrder.length:position+(before?0:1),0,{identifier:prompt.identifier,enabled:true})
-      return prompt
-    }
-    const setRegistered=(key:string,enabled:boolean)=>{
-      const item=findRegistered(key)
-      if(!item){toggle(key,enabled);return}
-      const prompt=findPrompt(item)??(enabled?createPrompt(item):undefined)
-      if(prompt)toggle(prompt.identifier,enabled)
-      else unresolved.push(text(item.stableId)||key)
-    }
-    const predicate=(when:Data)=>Object.entries(when).every(([key,expected])=>{
+    return Object.entries(when).every(([key,expected])=>{
       if(key==='hasText')return String(answers[text(expected)]??'').trim()!==''
       const actual=answers[key]
       return Array.isArray(expected)?expected.includes(actual??null):actual===expected
     })
-    for(const rule of list(config.configurationRules).map(object)) {
-      if(!predicate(object(rule.when)))continue
-      for(const action of list(rule.actions).map(object)) {
-        if(action.type==='setPromptEnabled')setRegistered(text(action.promptId),action.enabled===true)
-        else if(action.type==='setRegexEnabled') {
-          const item=list(config.configurableRegexes).map(object).find(item=>item.key===action.regexId)
-          for(const regex of next.regexes)if(regex.id===item?.stableId||strings(item?.nameFallbacks).includes(regex.scriptName))regex.disabled=action.enabled!==true
+  }
+  for(const rule of list(config.configurationRules).map(object)) {
+    if(!predicate(object(rule.when)))continue
+    for(const action of list(rule.actions).map(object)) {
+      if(action.type==='setPromptEnabled')setRegistered(text(action.promptId),action.enabled===true)
+      else if(action.type==='setRegexEnabled') {
+        const item=list(config.configurableRegexes).map(object).find(item=>item.key===action.regexId)
+        for(const regex of next.regexes) {
+          if(regex.id===item?.stableId||strings(item?.nameFallbacks).includes(regex.scriptName))regex.disabled=action.enabled!==true
         }
       }
     }
-    for(const item of registry)for(const variable of list(item.variables).map(object)) {
-      const key=text(variable.name)||text(variable.key)
-      if(!Object.hasOwn(answers,key))continue
-      const prompt=findPrompt(item)??createPrompt(item)
-      const value=String(answers[key]??'')
-      if(!prompt)throw Error(`提示词参数无法定位条目或创建模板：${text(item.displayName)||text(item.key)}`)
-      if(variable.wholeContent===true){prompt.content=value;continue}
-      const macroKey=text(variable.variable)||text(variable.id)||key
-      const opener=`{{setvar::${macroKey}::`,start=prompt.content.indexOf(opener)
-      if(start>=0) {
-        let end=start+opener.length,nesting=1
-        while(end<prompt.content.length&&nesting) {
-          if(prompt.content.startsWith('{{',end)){nesting++;end+=2}
-          else if(prompt.content.startsWith('}}',end)){nesting--;end+=2}
-          else end++
-        }
-        prompt.content=prompt.content.slice(0,start)+opener+value+'}}'+prompt.content.slice(end)
-      }else prompt.content+=`\n${opener}${value}}}`
-    }
   }
+  const parameterTargets=option.type==='parameters'?registry.filter(item=>item.key===option.id):registry
+  for(const item of parameterTargets)for(const variable of list(item.variables).map(object)) {
+    const key=text(variable.name)||text(variable.key)
+    if(!Object.hasOwn(submitted,key))continue
+    const prompt=findPrompt(item)??createPrompt(item)
+    const value=String(submitted[key]??'')
+    if(!prompt)throw Error(`提示词参数无法定位条目或创建模板：${text(item.displayName)||text(item.key)}`)
+    if(variable.wholeContent===true){prompt.content=value;continue}
+    const macroKey=text(variable.variable)||text(variable.id)||key
+    const opener=`{{setvar::${macroKey}::`,span=communityPresetParameterSpanV1(prompt.content,macroKey)
+    if(span) {
+      prompt.content=prompt.content.slice(0,span.start)+opener+value+'}}'+prompt.content.slice(span.end)
+    }else prompt.content+=`\n${opener}${value}}}`
+  }
+  next.profile.controlAnswers=answers
   return {preset:next,writes,unresolved:[...new Set(unresolved)]}
 }
