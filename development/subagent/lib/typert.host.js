@@ -248,11 +248,11 @@ export const TYPERT = {
           },
           {
             "name": "OwnedAuthorDialogActivationV1",
-            "declaration": "export interface OwnedAuthorDialogActivationV1 {\n    readonly schemaVersion: 1;\n    readonly encoding: 'owned-author-dialog-v1';\n    readonly taskId: string;\n    readonly generation: string;\n    readonly promptPlanSha256: string;\n    readonly operationId: string;\n    readonly messageId: string;\n    readonly systemPrefix: string;\n    readonly dynamicSystem: string;\n}"
+            "declaration": "export interface OwnedAuthorDialogActivationV1 extends NativeAuthorGenerationPlanV1 {\n    readonly schemaVersion: 1;\n    readonly encoding: 'owned-author-dialog-v1';\n}"
           },
           {
             "name": "OwnedRubyTaskActivationV1",
-            "declaration": "export interface OwnedRubyTaskActivationV1 {\n    readonly schemaVersion: 1;\n    readonly encoding: 'owned-ruby-task-v1';\n    readonly taskId: string;\n    readonly generation: string;\n    readonly promptPlanSha256: string;\n    readonly userMessageId: string;\n    readonly orderedMessages: readonly OwnedRubyTaskMessageV1[];\n    readonly mainInputMessageIndex?: number;\n    readonly temperature?: number;\n}"
+            "declaration": "export interface OwnedRubyTaskActivationV1 {\n    readonly schemaVersion: 1;\n    readonly encoding: 'owned-ruby-task-v1';\n    readonly taskId: string;\n    readonly generation: string;\n    readonly promptPlanSha256: string;\n    readonly userMessageId: string;\n    readonly orderedMessages: readonly OwnedRubyTaskMessageV1[];\n    readonly mainInputMessageIndex?: number;\n    readonly temperature?: number;\n    readonly topP?: number;\n    readonly topK?: number;\n    readonly presencePenalty?: number;\n    readonly frequencyPenalty?: number;\n    readonly reasoningEffort?: 'low' | 'medium' | 'high';\n}"
           },
           {
             "name": "OwnedRubyTaskMessageV1",
@@ -332,7 +332,7 @@ export const TYPERT = {
           },
           {
             "name": "SubagentStartRequest",
-            "declaration": "export interface SubagentStartRequest {\n    readonly isolatedSystem?: string;\n    readonly activation?: OwnedAuthorDialogActivationV1;\n    readonly rubyActivation?: OwnedRubyTaskActivationV1;\n    readonly rubyOwner?: OwnedRubyTaskOwnerV1;\n    readonly label?: string;\n    readonly prompt: ContentBlock[];\n    readonly parent: Agent;\n    readonly signal: AbortSignal;\n    readonly agentOptions?: AgentOptions;\n    readonly outputSchema?: ObjectJsonSchema;\n    readonly maxDepth?: number;\n    readonly toolFilter?: ToolRestriction;\n    readonly persona?: string;\n}"
+            "declaration": "export interface SubagentStartRequest {\n    readonly isolatedSystem?: string;\n    readonly activation?: OwnedAuthorDialogActivationV1;\n    readonly authorOwner?: import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationOwnerV1;\n    readonly rubyActivation?: OwnedRubyTaskActivationV1;\n    readonly rubyOwner?: OwnedRubyTaskOwnerV1;\n    readonly label?: string;\n    readonly prompt: ContentBlock[];\n    readonly parent: Agent;\n    readonly signal: AbortSignal;\n    readonly agentOptions?: AgentOptions;\n    readonly outputSchema?: ObjectJsonSchema;\n    readonly maxDepth?: number;\n    readonly toolFilter?: ToolRestriction;\n    readonly persona?: string;\n}"
           },
           {
             "name": "SubagentStopReason",

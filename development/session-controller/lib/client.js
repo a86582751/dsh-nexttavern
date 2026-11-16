@@ -188,12 +188,44 @@ function dataRef(value, subject) {
     fail(subject);
 }
 function validateNativeRequestMaterialDataV1(value, subject) {
-  const row = record(value, ["schemaVersion", "encoding", "turn", "step", "header", "snapshot", "plan", "base", "delta", "placements", "outputSha256"], subject);
-  const version = row["schemaVersion"];
-  if (!(version === 1 && row["encoding"] === "native-request-material-v1" || version === 2 && row["encoding"] === "native-request-material-v2") || !integer(row["turn"]) || row["turn"] < 1 || !integer(row["step"]) || row["step"] < 1 || !sha(row["outputSha256"]))
+  const version = value?.schemaVersion;
+  const row = record(value, [
+    "schemaVersion",
+    "encoding",
+    "turn",
+    "step",
+    "header",
+    "snapshot",
+    "plan",
+    "base",
+    "delta",
+    "placements",
+    "outputSha256",
+    ...version === 3 ? ["owner", "orderedMessages"] : []
+  ], subject);
+  if (!(version === 1 && row["encoding"] === "native-request-material-v1" || version === 2 && row["encoding"] === "native-request-material-v2" || version === 3 && row["encoding"] === "native-request-material-v3") || !integer(row["turn"]) || row["turn"] < 1 || !integer(row["step"]) || row["step"] < 1 || !sha(row["outputSha256"]))
     fail(subject);
   dataRef(row["snapshot"], subject);
   dataRef(row["plan"], subject);
+  if (version === 3) {
+    const owner = record(row["owner"], [
+      "kind",
+      "taskId",
+      "generation",
+      "operationId",
+      "generationId",
+      "rootSessionId",
+      "childSessionId",
+      "messageId",
+      "planSha256"
+    ], subject);
+    if (owner["kind"] !== "author-generation" || !sha(owner["planSha256"]) || ["taskId", "generation", "operationId", "generationId", "rootSessionId", "childSessionId", "messageId"].some((key) => !identity(owner[key])))
+      fail(subject);
+    for (const message of list(row["orderedMessages"], 4096, subject)) {
+      if (!message || typeof message !== "object" || !["system", "user", "assistant"].includes(String(message.role)) || !Array.isArray(message.content))
+        fail(subject);
+    }
+  }
   const header = record(row["header"], ["seq", "sha256"], subject);
   const base = record(row["base"], ["boundarySeq", "contentGeneration", "surfaceNodes", "messages", "sha256"], subject);
   if (!integer(base["boundarySeq"], 65535) || !integer(base["contentGeneration"]) || !sha(base["sha256"]) || !integer(header["seq"]) || header["seq"] > base["boundarySeq"] || !sha(header["sha256"]))
@@ -231,7 +263,17 @@ function validateNativeRequestMaterialDataV1(value, subject) {
     if (local["schemaVersion"] !== 1)
       fail(subject);
     const raw = local["base"];
-    const base2 = record(raw, ["temperature", "maxTokens", "stop"].filter((key) => Object.hasOwn(raw, key)), subject);
+    const base2 = record(raw, [
+      "temperature",
+      "maxTokens",
+      "stop",
+      "topP",
+      "topK",
+      "frequencyPenalty",
+      "presencePenalty",
+      "toolChoice",
+      "responseFormat"
+    ].filter((key) => Object.hasOwn(raw, key)), subject);
     if (base2["temperature"] !== void 0 && (typeof base2["temperature"] !== "number" || !Number.isFinite(base2["temperature"])))
       fail(subject);
     if (base2["maxTokens"] !== void 0 && (!integer(base2["maxTokens"]) || base2["maxTokens"] < 1))
