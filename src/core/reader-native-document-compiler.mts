@@ -31,8 +31,8 @@ function materializeSourceStrings(source:ReaderSourceDocument,html:string):strin
 }
 
 function sealDocument(origin:ReaderNativeDocumentPlanV1['origin'],html:string,
-  writes:ReaderNativeDocumentPlanV1['writes']):ReaderNativeDocumentPlanV1 {
-  const body={schemaVersion:1 as const,encoding:'reader-native-document-plan-v1' as const,origin,html,writes}
+  writes:ReaderNativeDocumentPlanV1['writes'],attributeData:ReaderNativeDocumentPlanV1['attributeData']=[]):ReaderNativeDocumentPlanV1 {
+  const body={schemaVersion:1 as const,encoding:'reader-native-document-plan-v1' as const,origin,html,writes,attributeData}
   return {...body,documentPlanSha256:recordSha256(body)}
 }
 
@@ -71,7 +71,7 @@ export function compileReaderNativeDocumentsV1(input:ReaderDocumentInputV1):Read
         htmlSha256:original.htmlSha256,htmlUtf8Bytes:original.htmlUtf8Bytes,htmlUtf16Length:original.htmlUtf16Length}
       const source=captureReaderSourceDocumentV1(document.parts,original.source),displaySpan=source.displaySpan
       const html=materializeSourceStrings(source,source.html.slice(displaySpan.start,displaySpan.end))
-      documents.push(sealDocument(origin,html,'source-regex'));documentInputIndices.push(index)
+      documents.push(sealDocument(origin,html,'source-regex',source.attributeData));documentInputIndices.push(index)
     }catch(error){
       const {ordinal,id,pointer,descriptorSha256}=regex
       const code=error instanceof Error&&/^(?:READER_REGEX_DOCUMENT|HTML)_[A-Z0-9_]+$/.test(error.message)

@@ -17,11 +17,22 @@ function readerNativeParentBootstrap():void {
       port.postMessage({op:'parent-error',code:'READER_NATIVE_CREDENTIALLESS_UNAVAILABLE'});port.close();return
     }
     port.onmessage=message=>{
-      if(message.data.op!=='mount')return
+      if(message.data.op!=='mount'&&message.data.op!=='mount-reader')return
       port.onmessage=null
+      if(message.data.op==='mount-reader'&&message.data.attributeData.length){
+        // Classify DATA before any author library can alter browser prototypes.
+        // Custom on-prefixed attributes remain ordinary browser attribute DATA.
+        const inert=document.implementation.createHTMLDocument('')
+        for(const attribute of message.data.attributeData){
+          const element=inert.createElementNS(attribute.namespaceURI,attribute.tagName)
+          if(attribute.name in element){
+            port.postMessage({op:'document-error',code:attribute.failureCode});port.close();return
+          }
+        }
+      }
       mount(message.data,port)
     }
-    port.start();port.postMessage({op:'parent-ready'})
+    port.start();port.postMessage({op:'parent-ready',sourceDataProtocol:1})
   }
   function mount(data:any,port:MessagePort):void {
     for(const javascript of data.libraries){

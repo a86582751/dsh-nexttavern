@@ -8,6 +8,12 @@ import type {ReaderRegexDocumentHostV1,ReaderRegexDocumentRenderV1} from './read
 /** Core captures these bytes from Source or an owned EJS producer. Model
  * display HTML must never be promoted to this contract. DATA slots have already
  * been escaped by the capturing owner; this transport grants no write rights. */
+export interface ReaderNativeAttributeDataV1 {
+  readonly namespaceURI:string
+  readonly tagName:string
+  readonly name:string
+  readonly failureCode:'READER_REGEX_DOCUMENT_MACRO_CONTEXT_UNSUPPORTED'|'READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED'
+}
 export interface ReaderNativeDocumentPlanV1 {
   readonly schemaVersion:1
   readonly encoding:'reader-native-document-plan-v1'
@@ -16,6 +22,7 @@ export interface ReaderNativeDocumentPlanV1 {
   readonly documentPlanSha256:string
   readonly origin:ReaderRegexDocumentOriginV1|ReaderWorldbookDocumentOriginV1
   readonly html:string
+  readonly attributeData:readonly ReaderNativeAttributeDataV1[]
   readonly writes:'source-regex'|'none'
 }
 

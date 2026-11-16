@@ -449,6 +449,7 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
       auxiliary=new Map<string,{documentPlanSha256:string;started:boolean;settled:boolean;
         reservation:ReturnType<typeof eventRoute.reserveGeneration>}>()
     const unmountedDocuments=new Map<string,number>()
+    const renderedDocuments=new Map<string,ReaderNativeDocumentPlanV1>()
     for(const plan of documents){
       const messageId=plan.origin.message.messageId
       unmountedDocuments.set(messageId,(unmountedDocuments.get(messageId)??0)+1)
@@ -475,6 +476,16 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
       bridgeRevoked:new Promise<void>(yes=>{resolveBridgeRevoked=yes}),
       framesRemoved:new Promise<void>(yes=>{resolveFramesRemoved=yes})}
     const current=()=>active&&options.current()
+    function finishDocument(plan:ReaderNativeDocumentPlanV1,rendered:boolean):void {
+      const messageId=plan.origin.message.messageId,remaining=unmountedDocuments.get(messageId)!-1
+      unmountedDocuments.set(messageId,remaining)
+      if(rendered)renderedDocuments.set(messageId,plan)
+      if(remaining===0){
+        const lastRendered=renderedDocuments.get(messageId)
+        if(lastRendered)options.rendered?.(lastRendered)
+      }
+      if([...frames.values()].every(row=>row.ready)){view.clearTimeout(deadline);resolveStarted()}
+    }
     const deadline=view.setTimeout(()=>{if(current()){rejectStarted(Error('READER_NATIVE_STARTUP_DEADLINE'))
       options.failed?.('READER_NATIVE_STARTUP_DEADLINE')}},options.startupDeadlineMs)
     const send=(row:FrameRow,data:object)=>row.port.postMessage(data)
@@ -500,24 +511,33 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
     }
     const receive=(documentPlanSha256:string,row:FrameRow,data:any)=>{
       if(!current()||frames.get(documentPlanSha256)!==row)return
-      if(data.op==='parent-error'){
+      if(data.op==='document-error'){
+        row.eventEndpoint?.dispose();row.observer?.disconnect()
+        row.frame.removeEventListener('load',row.connect)
+        row.port.onmessage=null;row.port.close();row.transferPort.close();row.frame.remove()
+        frames.delete(documentPlanSha256)
+        surface.failDocument(documentPlanSha256,data.code)
+        finishDocument(documents.find(plan=>plan.documentPlanSha256===documentPlanSha256)!,false)
+      }else if(data.op==='parent-error'){
         rejectStarted(Error(data.code));options.failed?.(data.code)
       }else if(data.op==='parent-ready'){
+        if(data.sourceDataProtocol!==1){
+          const code='READER_NATIVE_SOURCE_DATA_PROTOCOL_UNAVAILABLE'
+          rejectStarted(Error(code));options.failed?.(code);return
+        }
         const plan=documents.find(plan=>plan.documentPlanSha256===documentPlanSha256)!
         const html=readerNativeDocumentHtml(plan,row.snapshot,row.channel,libraries,surface.documentLayout.get(),
           row.readScope,true,presetLibrary,characterLibrary)
         const messageIndex=row.snapshot.messages.find(message=>message.messageId===plan.origin.message.messageId)?.index
-        send(row,{op:'mount',html,messageIndex,libraries:libraries.map(library=>library.javascript)})
+        send(row,{op:'mount-reader',html,messageIndex,attributeData:plan.attributeData,
+          libraries:libraries.map(library=>library.javascript)})
       }else if(data.op==='ready'){
         if(row.ready)return
         row.ready=true
         send(row,{op:'snapshot',payload:row.snapshot,readScope:row.readScope})
         send(row,{op:'layout-config',payload:surface.documentLayout.get(),revision:row.layoutRevision})
-        if([...frames.values()].every(row=>row.ready)){view.clearTimeout(deadline);resolveStarted()}
         const plan=documents.find(plan=>plan.documentPlanSha256===documentPlanSha256)!
-        const messageId=plan.origin.message.messageId,remaining=unmountedDocuments.get(messageId)!-1
-        unmountedDocuments.set(messageId,remaining)
-        if(remaining===0)options.rendered?.(plan)
+        finishDocument(plan,true)
       }else if(data.op==='event-ack'){
         const ack=row.eventAcks.get(data.id);row.eventAcks.delete(data.id)
         if(data.error)ack?.reject(Error(data.error));else ack?.resolve(data.value)

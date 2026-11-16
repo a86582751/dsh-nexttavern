@@ -6,9 +6,13 @@ import {sha256} from './roleplay-data.js'
 import type {ReaderRegexDocumentInputV1,ReaderWorldbookDocumentInputV1,ReaderWorldbookProducerFactsV1} from './reader-regex-document-types.mjs'
 import type {ReaderWorldbookRenderResultV1} from './tavern-reader-worldbook-render-types.mjs'
 import type {TavernPromptDisplayPartV1} from './tavern-prompt-transform-types.mjs'
+import type {ReaderNativeAttributeDataV1} from './reader-native-document-types.js'
 
 type Element=DefaultTreeAdapterTypes.Element
+type Attribute=Element['attrs'][number]
 type Text=DefaultTreeAdapterTypes.TextNode
+const htmlNamespace='http://www.w3.org/1999/xhtml',svgNamespace='http://www.w3.org/2000/svg',
+  xlinkNamespace='http://www.w3.org/1999/xlink'
 interface SourceScriptData {
   readonly inlineOrdinal:number
   readonly mode:'classic'|'module'|'data'
@@ -21,6 +25,7 @@ export interface ReaderSourceDocument {
   readonly strings:ReadonlyMap<number,readonly {start:number;end:number;value:string}[]>
   /** Offsets refer to the final HTML document carrier, after ordinary text DATA. */
   readonly scripts:readonly SourceScriptData[]
+  readonly attributeData?:readonly ReaderNativeAttributeDataV1[]
 }
 export interface ReaderSourceTemplateV1 {
   readonly template:string
@@ -78,7 +83,7 @@ function parseSourceData(html:string,captureFences=false) {
     }
     return parent===parser.document&&node.sourceCodeLocation!=null
   }).map(node=>({start:node.sourceCodeLocation!.startOffset,end:node.sourceCodeLocation!.endOffset})):[]
-  return {scripts,texts:ordinaryTexts.map(node=>node.value),hasSourceMarkup,fenceText,
+  return {document:parser.document,scripts,elements,texts:ordinaryTexts.map(node=>node.value),hasSourceMarkup,fenceText,
     markupOffsets:captureFences?elements.flatMap(node=>node.sourceCodeLocation?[node.sourceCodeLocation.startOffset]:[]):[]}
 }
 type TextSpan={start:number;end:number}
@@ -123,6 +128,43 @@ function macroStringExpression(node:import('typescript').StringLiteral|import('t
   return true
 }
 const escape=(text:string)=>text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
+const escapeAttributeData=(text:string)=>text.replace(/[&"'`=<>\s]/g,
+  character=>'&#'+character.codePointAt(0)+';')
+function scriptDependencyAttribute(element:Element,attribute:Attribute):boolean {
+  if(element.tagName!=='script')return false
+  if(element.namespaceURI===htmlNamespace)return !attribute.namespace&&attribute.name==='src'
+  return element.namespaceURI===svgNamespace&&attribute.name==='href'
+    &&(!attribute.namespace||attribute.namespace===xlinkNamespace)
+}
+function executableAttributeData(element:Element,attribute:Attribute,value:string):boolean {
+  const {name,namespace}=attribute,tag=element.tagName,html=element.namespaceURI===htmlNamespace
+  if(scriptDependencyAttribute(element,attribute)||html&&tag==='iframe'&&!namespace&&name==='srcdoc')return true
+  const navigation=html&&!namespace&&(name==='href'&&(tag==='a'||tag==='area')
+    ||name==='src'&&(tag==='iframe'||tag==='frame')||name==='action'&&tag==='form'
+    ||name==='formaction'&&(tag==='button'||tag==='input'))
+    ||element.namespaceURI===svgNamespace&&tag==='a'&&name==='href'&&(!namespace||namespace===xlinkNamespace)
+  if(!navigation)return false
+  try {
+    return new URL(value,'https://reader.invalid/').protocol==='javascript:'
+  }catch {
+    return false
+  }
+}
+function connectedSourceElements(document:DefaultTreeAdapterTypes.Document):Element[] {
+  const elements:Element[]=[],pending=[...document.childNodes].reverse()
+  while(pending.length){
+    const node=pending.pop()!
+    if(!base.isElementNode(node))continue
+    elements.push(node)
+    // Template content has a separate fragment, outside this connected tree.
+    for(let index=node.childNodes.length-1;index>=0;index--)pending.push(node.childNodes[index]!)
+  }
+  return elements
+}
+function programUrlDependsOnBase(value:string):boolean {
+  if(!value.trim())return false
+  try{new URL(value);return false}catch{return true}
+}
 export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplayPartV1[],
   original?:ReaderSourceTemplateV1):ReaderSourceDocument {
   const strings=new Map<number,{start:number;end:number;value:string}[]>()
@@ -140,17 +182,94 @@ export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplay
   const body=marked.slice(span.start,span.end)
   const parsed=parseSourceData(body,/^[ ]{0,3}(?:`{3,}|~{3,})(?:html)?[ \t]*\r?$/im.test(body))
   if(!parsed.hasSourceMarkup)throw Error('READER_REGEX_DOCUMENT_SOURCE_SPAN_UNAVAILABLE')
-  const occurrences=parts.map(()=>0),textParts=new Set<number>()
+  const attributeData:ReaderNativeAttributeDataV1[]=[],attributeChecks=new Set<string>()
+  let baseData:{element:Element;partIndex:number}[]|undefined,
+    baseProgramData:{partIndex:number;bodyStarts:Set<number>}|undefined
+  const occurrences=parts.map(()=>0),textParts=new Set<number>(),attributeParts=new Set<number>(),
+    emptyUnquotedParts=new Set<number>()
   for(const text of parsed.texts)for(const match of text.matchAll(pattern)) {
     const index=Number(match[1]);occurrences[index]=occurrences[index]!+1;textParts.add(index)
   }
-  for(const script of parsed.scripts)if(script.mode!=='data'&&script.javascript.includes(prefix)) {
-    for(const match of script.javascript.matchAll(pattern))if(parts[Number(match[1])]!.kind!=='macro')
+  for(const element of parsed.elements)for(const attribute of element.attrs) {
+    if(!attribute.value.includes(prefix))continue
+    const matches=[...attribute.value.matchAll(pattern)],
+      value=attribute.value.replace(pattern,(_marker:string,index:string)=>parts[Number(index)]!.text),
+      executable=executableAttributeData(element,attribute,value)
+    if(element.namespaceURI===htmlNamespace&&element.tagName==='base'&&!attribute.namespace&&attribute.name==='href')
+      (baseData??=[]).push({element,partIndex:Number(matches[0]![1])})
+    for(const match of matches) {
+      const index=Number(match[1]),part=parts[index]!
+      // HTML attribute encoding preserves the DOM value. Script dependencies
+      // and directly interpreted browser programs retain Source ownership.
+      if(executable)throw Error(part.kind==='macro'
+        ?'READER_REGEX_DOCUMENT_MACRO_CONTEXT_UNSUPPORTED':'READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED')
+      if(!attribute.namespace&&attribute.name.startsWith('on')){
+        const key=element.namespaceURI+'|'+element.tagName+'|'+attribute.name+'|'+part.kind
+        if(!attributeChecks.has(key)){
+          attributeChecks.add(key)
+          attributeData.push({namespaceURI:element.namespaceURI,tagName:element.tagName,name:attribute.name,
+            failureCode:part.kind==='macro'?'READER_REGEX_DOCUMENT_MACRO_CONTEXT_UNSUPPORTED'
+              :'READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED'})
+        }
+      }
+      // Formatting reconstruction can copy one authored attribute into several
+      // DOM elements. Its unique Source marker still denotes one DATA slot.
+      if(!attributeParts.has(index))occurrences[index]=occurrences[index]!+1
+      attributeParts.add(index)
+    }
+    if(value==='') {
+      // Locations retain tokenizer names before parse5 adjusts SVG casing.
+      const name=(attribute.prefix?attribute.prefix+':':'')+attribute.name,
+        location=element.sourceCodeLocation?.attrs?.[name.toLowerCase()],
+        authored=location?body.slice(location.startOffset,location.endOffset):undefined,
+        quote=authored?.slice(authored.indexOf('=')+1).trimStart()[0]
+      // An empty unquoted token would consume the next Source attribute.
+      if(authored&&quote!=='"'&&quote!=="'")emptyUnquotedParts.add(Number(matches[0]![1]))
+    }
+  }
+  if(baseData){
+    const connected=connectedSourceElements(parsed.document),effectiveBase=connected.find(element=>
+      element.namespaceURI===htmlNamespace&&element.tagName==='base'
+        &&element.attrs.some(attribute=>!attribute.namespace&&attribute.name==='href')),
+      selected=baseData.find(row=>row.element===effectiveBase)
+    if(selected)for(const element of connected){
+      // Parser-prepared scripts preceding this base retain their earlier URL.
+      if(element.tagName!=='script'||element.sourceCodeLocation!.startOffset<effectiveBase!.sourceCodeLocation!.startOffset)continue
+      const mode=scriptMode(element)
+      if(mode==='data'||mode==='classic'&&element.namespaceURI===htmlNamespace
+        &&element.attrs.some(attribute=>!attribute.namespace&&attribute.name==='nomodule'))continue
+      const dependency=element.attrs.find(attribute=>scriptDependencyAttribute(element,attribute))
+      if(dependency){
+        if(programUrlDependsOnBase(dependency.value))throw Error(parts[selected.partIndex]!.kind==='macro'
+          ?'READER_REGEX_DOCUMENT_MACRO_CONTEXT_UNSUPPORTED':'READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED')
+      }else{
+        const location=element.sourceCodeLocation!
+        baseProgramData??={partIndex:selected.partIndex,bodyStarts:new Set()}
+        baseProgramData.bodyStarts.add(location.startTag?.endOffset??location.startOffset)
+      }
+    }
+  }
+  for(const script of parsed.scripts){
+    const hasData=script.mode!=='data'&&script.javascript.includes(prefix),
+      basePartIndex=baseProgramData?.bodyStarts.has(script.bodySpan.start)?baseProgramData.partIndex:undefined
+    if(!hasData&&basePartIndex===undefined)continue
+    if(hasData)for(const match of script.javascript.matchAll(pattern))if(parts[Number(match[1])]!.kind!=='macro')
       throw Error('READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED')
     const file=ts.createSourceFile('reader-macro-slots.js',script.javascript,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS)
     const slots:{start:number;end:number;value:string}[]=[]
     const visit=(node:import('typescript').Node):void=>{
-      if((ts.isStringLiteral(node)||ts.isNoSubstitutionTemplateLiteral(node))&&node.text.includes(prefix)) {
+      if(basePartIndex!==undefined){
+        let specifier:import('typescript').Expression|undefined
+        if(ts.isImportDeclaration(node)||ts.isExportDeclaration(node))specifier=node.moduleSpecifier
+        else if(ts.isCallExpression(node)&&node.expression.kind===ts.SyntaxKind.ImportKeyword)specifier=node.arguments[0]
+        while(specifier&&ts.isParenthesizedExpression(specifier))specifier=specifier.expression
+        // Explicit DATA consumption retains the macro-string execution path.
+        if(specifier&&ts.isStringLiteralLike(specifier)&&!specifier.text.includes(prefix)
+          &&(specifier.text.startsWith('/')||specifier.text.startsWith('./')||specifier.text.startsWith('../')))
+          throw Error(parts[basePartIndex]!.kind==='macro'
+            ?'READER_REGEX_DOCUMENT_MACRO_CONTEXT_UNSUPPORTED':'READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED')
+      }
+      if(hasData&&(ts.isStringLiteral(node)||ts.isNoSubstitutionTemplateLiteral(node))&&node.text.includes(prefix)) {
         const expression=macroStringExpression(node)
         const value=node.text.replace(pattern,(_marker:string,indexText:string)=>{
           const index=Number(indexText),part=parts[index]!
@@ -167,7 +286,13 @@ export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplay
   for(const [index,part] of parts.entries())if(part.kind!=='literal'&&occurrences[index]!==1)
     throw Error(part.kind==='macro'?'READER_REGEX_DOCUMENT_MACRO_CONTEXT_UNSUPPORTED'
       :'READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED')
-  const finalParts=parts.map((part,index)=>part.kind==='literal'?part.text:textParts.has(index)?escape(part.text):markers[index]!)
+  const finalParts=parts.map((part,index)=>{
+    if(part.kind==='literal')return part.text
+    if(textParts.has(index))return escape(part.text)
+    if(emptyUnquotedParts.has(index))return '""'
+    if(attributeParts.has(index))return escapeAttributeData(part.text)
+    return markers[index]!
+  })
   // Text DATA changes raw HTML length. Translate the already parsed body spans;
   // JS string offsets stay in parse5's cooked (CRLF-normalized) script text.
   const translate=(offset:number)=>{
@@ -188,7 +313,7 @@ export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplay
   }
   const scripts=parsed.scripts.map(script=>({...script,bodySpan:{
     start:displayed(span.start+script.bodySpan.start),end:displayed(span.start+script.bodySpan.end)}}))
-  return {html,displaySpan,strings,scripts}
+  return {html,displaySpan,strings,scripts,...attributeData.length?{attributeData}:{}}
 }
 
 /** Bind actual pure producer outputs once. All pages from one phase share its
