@@ -34,7 +34,7 @@ export interface ReaderNativeDocumentProfileV1 {
   readonly id:'reader-native-browser'
   readonly version:1
   readonly browser:'supplied'
-  readonly modelRequests:'none'
+  readonly modelRequests:'owned-author-generation'
   readonly writes:'owned-source-regex'
   readonly readSemantics:'live'
   readonly writeBasis:'explicit-message-read'
@@ -55,6 +55,8 @@ export interface ReaderNativeDocumentProgramV1 {
 }
 
 export interface ReaderNativeDocumentExecutionV1 {
+  readonly presetLibrary?:import('./community-preset-types.js').CommunityAuthorPresetCatalogV1
+  readonly characterLibrary?:import('./roleplay-author-character-library.js').AuthorCharacterLibraryPacketV1
   readonly backend:'browser-native-v1'
   readonly program:ReaderNativeDocumentProgramV1
   readonly snapshot:ReaderRegexDocumentSnapshotV1
@@ -83,6 +85,10 @@ export interface ReaderNativeFrameLifecycleV1 {
 
 /** Native Reader bridge contract, independent of AST artifacts and VM frames. */
 export interface ReaderNativeFrameOptionsV1 {
+  readonly presetLibrary?:import('./community-preset-types.js').CommunityAuthorPresetCatalogV1
+  readonly characterLibrary?:import('./roleplay-author-character-library.js').AuthorCharacterLibraryPacketV1
+  readonly eventRoute?:import('./author-native-helper-types.js').AuthorNativeSessionEventRoute
+  rendered?(plan:ReaderNativeDocumentPlanV1):void
   readonly surface?:AuthorReaderSurface
   readonly host?:ReaderRegexDocumentHostV1
   readonly startupDeadlineMs:number
@@ -94,6 +100,8 @@ export interface ReaderNativeFrameOptionsV1 {
   mountStaticDocument(container:HTMLElement,html:string,layout:()=>void):{dispose():void}
 }
 export interface ReaderNativeDocumentFrameControllerV1 {
+  publishPresetLibrary?(packet:import('./community-preset-types.js').CommunityAuthorPresetCatalogV1):void
+  publishCharacterLibrary?(packet:import('./roleplay-author-character-library.js').AuthorCharacterLibraryPacketV1):void
   readonly started:Promise<void>
   readonly disposed:Promise<void>
   readonly lifecycle:ReaderNativeFrameLifecycleV1

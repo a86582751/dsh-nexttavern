@@ -57,7 +57,9 @@ function parseSourceData(html) {
                 bodySpan: { start: span.startTag?.endOffset ?? span.startOffset, end: span.endTag?.startOffset ?? span.endOffset } });
         }
     }
-    return { scripts, texts: texts.filter(node => !activeText.has(node)).map(node => node.value) };
+    const hasSourceMarkup = elements.some(node => node.sourceCodeLocation != null)
+        || parser.document.childNodes.some(base.isDocumentTypeNode);
+    return { scripts, texts: texts.filter(node => !activeText.has(node)).map(node => node.value), hasSourceMarkup };
 }
 function macroStringExpression(node) {
     const parent = node.parent;
@@ -80,16 +82,18 @@ function macroStringExpression(node) {
 const escape = (text) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 export function captureReaderSourceDocumentV1(parts) {
     const strings = new Map();
-    if (parts.every(part => part.kind === 'literal'))
-        return { html: parts.map(part => part.text).join(''), strings, scripts: [] };
+    if (parts.every(part => part.kind === 'literal')) {
+        const html = parts.map(part => part.text).join('');
+        return { html, displaySpan: readerSourceHtmlSpan(html), strings, scripts: [] };
+    }
     const source = parts.map(part => part.kind === 'literal' ? part.text : part.kind === 'macro' ? part.sourceText : '').join('');
     const prefix = '\ue000reader-' + sha256(source) + '-', pattern = new RegExp(prefix + '(\\d+)\ue001', 'g');
     const markers = parts.map((part, index) => part.kind === 'literal' ? null : prefix + index + '\ue001');
     const markedParts = parts.map((part, index) => markers[index] ?? part.text), marked = markedParts.join('');
-    const span = readerRegexDocumentHtmlSpan(marked);
-    if (!span)
-        throw Error('READER_REGEX_DOCUMENT_SOURCE_SPAN_UNAVAILABLE');
+    const span = readerSourceHtmlSpan(marked);
     const parsed = parseSourceData(marked.slice(span.start, span.end));
+    if (!parsed.hasSourceMarkup)
+        throw Error('READER_REGEX_DOCUMENT_SOURCE_SPAN_UNAVAILABLE');
     const occurrences = parts.map(() => 0), textParts = new Set();
     for (const text of parsed.texts)
         for (const match of text.matchAll(pattern)) {
@@ -130,7 +134,7 @@ export function captureReaderSourceDocumentV1(parts) {
             throw Error(part.kind === 'macro' ? 'READER_REGEX_DOCUMENT_MACRO_CONTEXT_UNSUPPORTED'
                 : 'READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED');
     const finalParts = parts.map((part, index) => part.kind === 'literal' ? part.text : textParts.has(index) ? escape(part.text) : markers[index]);
-    const html = finalParts.join(''), displaySpan = readerRegexDocumentHtmlSpan(html);
+    const html = finalParts.join(''), displaySpan = readerSourceHtmlSpan(html);
     // Text DATA changes raw HTML length. Translate the already parsed body spans;
     // JS string offsets stay in parse5's cooked (CRLF-normalized) script text.
     const translate = (offset) => {
@@ -148,7 +152,7 @@ export function captureReaderSourceDocumentV1(parts) {
             start: translate(span.start + script.bodySpan.start) - displaySpan.start,
             end: translate(span.start + script.bodySpan.end) - displaySpan.start
         } }));
-    return { html, strings, scripts };
+    return { html, displaySpan, strings, scripts };
 }
 /** Bind actual pure producer outputs once. All pages from one phase share its
  * captured read facts through the enclosing program, avoiding repeated lore
@@ -172,11 +176,14 @@ export function bindReaderWorldbookDocumentsV1(source, projections) {
     }
     return { schemaVersion: 1, encoding: 'reader-worldbook-document-input-v1', source, producers, documents };
 }
-/** Locate a Source document carrier without repairing or rewriting its bytes.
- * parse5 owns HTML structure, including omitted html/head/body elements. Plain
- * inline formatting keeps its existing Reader path unless Source declares a
- * document or a script requiring the isolated document runtime. */
+/** Locate an author Source carrier without repairing or rewriting its bytes.
+ * parse5 owns fragment structure as well as explicit document roots. Implicit
+ * parser elements alone cannot turn ordinary text into an author document. */
 export function readerRegexDocumentHtmlSpan(template) {
+    const span = readerSourceHtmlSpan(template);
+    return parseSourceData(template.slice(span.start, span.end)).hasSourceMarkup ? span : undefined;
+}
+function readerSourceHtmlSpan(template) {
     let start = template.length - template.trimStart().length, end = template.trimEnd().length;
     const outer = template.slice(start, end), fence = outer.match(/^(`{3,}|~{3,})(?:html)?[ \t]*\r?\n([\s\S]*?)\r?\n\1$/i);
     if (fence) {
@@ -186,7 +193,5 @@ export function readerRegexDocumentHtmlSpan(template) {
         start += body.length - body.trimStart().length;
         end -= body.length - body.trimEnd().length;
     }
-    if (!/<(?:!doctype\s+html(?=[\s>])|(?:html|head|body|script)(?=[\s/>]))/i.test(template.slice(start, end)))
-        return;
     return { start, end };
 }

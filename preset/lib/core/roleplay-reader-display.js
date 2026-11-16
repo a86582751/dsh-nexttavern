@@ -3,7 +3,8 @@
  * Display projections never replace canonical text or own a Native write. */
 import { randomUUID } from 'node:crypto';
 import { createAuthorNativeMessageVariables } from './author-native-message-variables.js';
-import { readerNativeNamespaceCauseV1, readerNativeSourceOriginV1 } from './author-native-origin.js';
+import { createAuthorNativeLibraryReadsV1 } from './author-native-library-reads.js';
+import { AUTHOR_NATIVE_EVENTS_V1, readerNativeNamespaceCauseV1, readerNativeSourceOriginV1 } from './author-native-origin.js';
 import { applyAuthorChatOverlayV3 } from './roleplay-author-chat-state-types.js';
 import { authorSharedScopeCaptureV1, isAuthorSharedScopeOperationV1, authorSharedScopeRootsV1 } from './roleplay-author-scope-owner.js';
 import { createReaderVariablePrefix } from './roleplay-reader-variable-prefix.js';
@@ -71,7 +72,9 @@ export function capturePlainReaderDocumentFacts(read, opening, numerical, ordina
         sourceNativeCutSha256: recordSha256(basis), viewKind: 'script',
         scopes: { chat: unavailable, character: unavailable, global: unavailable }, scripts: [],
         messages: messages.map(({ index, ownerSessionId, nativeSeq, messageId, messageVersionSha256 }) => ({ position: index,
-            ownerSessionId, nativeSeq, messageId, messageVersionSha256, selectedVariant: messageVersionSha256, isSystem: false, variables })) }), context = source.current.openingContext.context;
+            ownerSessionId, nativeSeq, messageId, messageVersionSha256, selectedVariant: messageVersionSha256, isSystem: false, variables })) }), context = source.current.openingContext.context, character = { sourceId: source.original.activePointer.importId, name: String(cardData.name),
+        ...typeof cardData.avatar === 'string' ? { avatar: cardData.avatar } : {} }, capturedContext = { chatId: session.id, name1: context.user, name2: character.name, characterId: 0, characters: [character],
+        eventTypes: AUTHOR_NATIVE_EVENTS_V1 };
     const current = () => opening.current() && ordinary.current(), messageView = ordinary.messageView(messages, { messageId: receipt.messageId,
         originalMessageVersionSha256: originalOpeningVersion,
         copiedCandidates: opening.copiedCandidates ?? null }, basis.nativePrefixSha256, current), actualMessages = messageView.messages, bySeq = new Map(actualMessages.map(message => [message.nativeSeq, message])), variablesFor = createAuthorNativeMessageVariables(messageView), prefix = createReaderVariablePrefix(), positions = new Map(actualMessages.map(message => [message.nativeSeq, message.index]));
@@ -93,8 +96,7 @@ export function capturePlainReaderDocumentFacts(read, opening, numerical, ordina
             ordinaryMessages: messageView.ordinaryMessages,
             numerical: { kind: numerical.kind, code: numerical.code, canEdit: false },
             persona: { name: context.user ?? '', ...context.user_gender !== undefined ? { gender: context.user_gender } : {}, avatar: null },
-            character: { sourceId: source.original.activePointer.importId, name: String(cardData.name),
-                ...typeof cardData.avatar === 'string' ? { avatar: cardData.avatar } : {} }, ordinaryChat: ordinary.data } };
+            character, context: capturedContext, ordinaryChat: ordinary.data } };
 }
 function fail(code) { throw Error(code); }
 /** Only actual compiled documents consume a Reader prefix. Multiple fragments
@@ -463,9 +465,12 @@ export function createRoleplayReaderDisplay(deps) {
         signal.throwIfAborted();
         if (disposed)
             fail('READER_DISPLAY_DISPOSED');
+        await deps.beforeCapture?.(sid, signal);
+        signal.throwIfAborted();
         const session = deps.session(sid);
         if (!session)
             fail('READER_DISPLAY_SESSION_INACTIVE');
+        const modelRoute = deps.configuredMainRoute?.(sid);
         // Keep only author/scopes in the existing Source slot. Native rows and their
         // full canonical depth are fresh for each requested batch, never cached here.
         const read = deps.inputState.captureSource(sid, 'reader-display-author', () => {
@@ -489,7 +494,6 @@ export function createRoleplayReaderDisplay(deps) {
             const adapted = policy ? { ...policy,
                 preset: policy.preset ? { ...policy.preset, regexes: policy.preset.regexes.map(nativeCommunityDisplayRule) } : null,
                 regexes: policy.regexes.map(library => ({ ...library, rules: library.rules.map(nativeCommunityDisplayRule) })) } : undefined;
-            const rules = adapted ? communityRegexRules(adapted, scopedRules) : scopedRules;
             const rawRules = cardData.extensions?.regex_scripts ?? [];
             const documentRules = scopedRules.map((rule, ordinal) => ({
                 ruleId: adapted ? 'card:' + rule.id : rule.id, ordinal, id: typeof rawRules[ordinal].id === 'string'
@@ -723,40 +727,66 @@ export function createRoleplayReaderDisplay(deps) {
                         compilerDiagnostics = [{ code: 'READER_REGEX_DOCUMENT_SCOPE_UNAVAILABLE' }];
                     else {
                         current();
-                        const regex = compileReaderNativeDocumentsV1({ schemaVersion: 1, encoding: 'reader-regex-document-input-v1',
-                            source: documentSource, documents });
-                        const worldbookProjection = projectReaderWorldbookDocumentsV1({ source: documentSource, rows,
-                            projections: worldbookProjections });
-                        const worldbook = compileReaderNativeDocumentsV1(worldbookProjection.bound);
-                        const byLocation = new Map(regex.documentInputIndices.map((inputIndex, index) => {
-                            const location = locations[inputIndex];
-                            return [location.row + ':' + location.fragment, regex.documents[index].documentPlanSha256];
-                        }));
-                        const failedLocations = new Map(regex.documentFailures.map(failure => {
-                            const location = locations[failure.inputIndex];
-                            return [location.row + ':' + location.fragment, failure.diagnostics];
-                        }));
-                        rows = rows.map((row, rowIndex) => ({ ...row, fragments: row.fragments?.map((fragment, fragmentIndex) => fragment.kind === 'author-document' ? { ...fragment, documentPlanSha256: byLocation.get(rowIndex + ':' + fragmentIndex),
-                                documentDiagnostics: failedLocations.get(rowIndex + ':' + fragmentIndex) } : fragment) }));
-                        for (const [index, inputIndex] of worldbook.documentInputIndices.entries())
-                            worldbookProjection.fragments[inputIndex] = { ...worldbookProjection.fragments[inputIndex],
-                                documentPlanSha256: worldbook.documents[index].documentPlanSha256 };
-                        for (const failure of worldbook.documentFailures)
-                            worldbookProjection.fragments[failure.inputIndex] = { ...worldbookProjection.fragments[failure.inputIndex],
-                                documentDiagnostics: failure.diagnostics };
-                        rows = worldbookProjection.append(rows);
-                        const program = createReaderNativeDocumentProgramV1(documentSource, {
-                            documents: [...regex.documents, ...worldbook.documents],
-                            failedDocuments: regex.failedDocuments, failedWorldbookDocuments: worldbook.failedWorldbookDocuments,
-                            worldbookProducers: worldbook.worldbookProducers
-                        });
-                        const groups = [...new Set(program.documents.map(document => document.writes))];
-                        const parentOrigins = await deps.nativeParentOrigins?.(groups) ?? {};
-                        current();
-                        execution = { backend: 'browser-native-v1', program, parentOrigins, snapshot: { ...facts.data,
-                                readerVariables: documentVariables(facts, program), generation: program.programSha256, readRevision: ++readRevision } };
-                        writerFacts = facts;
-                        writerSourceRead = sourceRead;
+                        // The current Source owns variables from its opening onward. Earlier
+                        // Native rows remain readable canonical text, without borrowing that
+                        // Source's message prefix or blocking documents on later rows.
+                        const unavailableRows = new Set();
+                        if (facts.readMessagePrefix) {
+                            const ownedMessages = new Map(facts.data.messages.map(message => [message.nativeSeq, message])), documentRows = new Set([...locations.map(location => location.row), ...worldbookProjections.map(projection => projection.row)]);
+                            for (const rowIndex of documentRows) {
+                                const row = selected.rows[rowIndex], owned = ownedMessages.get(row.seq);
+                                if (!owned)
+                                    unavailableRows.add(rowIndex);
+                                else if (owned.messageId !== row.messageId || owned.messageVersionSha256 !== row.messageVersionSha256)
+                                    fail('READER_VARIABLE_TARGET_UNAVAILABLE');
+                            }
+                            rows = rows.map((row, rowIndex) => {
+                                if (!unavailableRows.has(rowIndex))
+                                    return row;
+                                const { fragments: _fragments, css: _css, ...canonical } = row;
+                                return { ...canonical, displayText: row.rawText,
+                                    renderDiagnostics: [...row.renderDiagnostics ?? [], { code: 'READER_VARIABLE_TARGET_UNAVAILABLE' }] };
+                            });
+                        }
+                        const availableLocations = locations.filter(location => !unavailableRows.has(location.row)), availableDocuments = documents.filter((_document, index) => !unavailableRows.has(locations[index].row)), availableWorldbook = worldbookProjections.filter(projection => !unavailableRows.has(projection.row));
+                        if (availableDocuments.length || availableWorldbook.length) {
+                            const regex = compileReaderNativeDocumentsV1({ schemaVersion: 1, encoding: 'reader-regex-document-input-v1',
+                                source: documentSource, documents: availableDocuments });
+                            const worldbookProjection = projectReaderWorldbookDocumentsV1({ source: documentSource, rows,
+                                projections: availableWorldbook });
+                            const worldbook = compileReaderNativeDocumentsV1(worldbookProjection.bound);
+                            const byLocation = new Map(regex.documentInputIndices.map((inputIndex, index) => {
+                                const location = availableLocations[inputIndex];
+                                return [location.row + ':' + location.fragment, regex.documents[index].documentPlanSha256];
+                            }));
+                            const failedLocations = new Map(regex.documentFailures.map(failure => {
+                                const location = availableLocations[failure.inputIndex];
+                                return [location.row + ':' + location.fragment, failure.diagnostics];
+                            }));
+                            rows = rows.map((row, rowIndex) => ({ ...row, fragments: row.fragments?.map((fragment, fragmentIndex) => fragment.kind === 'author-document' ? { ...fragment, documentPlanSha256: byLocation.get(rowIndex + ':' + fragmentIndex),
+                                    documentDiagnostics: failedLocations.get(rowIndex + ':' + fragmentIndex) } : fragment) }));
+                            for (const [index, inputIndex] of worldbook.documentInputIndices.entries())
+                                worldbookProjection.fragments[inputIndex] = { ...worldbookProjection.fragments[inputIndex],
+                                    documentPlanSha256: worldbook.documents[index].documentPlanSha256 };
+                            for (const failure of worldbook.documentFailures)
+                                worldbookProjection.fragments[failure.inputIndex] = { ...worldbookProjection.fragments[failure.inputIndex],
+                                    documentDiagnostics: failure.diagnostics };
+                            rows = worldbookProjection.append(rows);
+                            const program = createReaderNativeDocumentProgramV1(documentSource, {
+                                documents: [...regex.documents, ...worldbook.documents],
+                                failedDocuments: regex.failedDocuments, failedWorldbookDocuments: worldbook.failedWorldbookDocuments,
+                                worldbookProducers: worldbook.worldbookProducers
+                            });
+                            const groups = [...new Set(program.documents.map(document => document.writes))];
+                            const parentOrigins = await deps.nativeParentOrigins?.(groups) ?? {};
+                            current();
+                            execution = { backend: 'browser-native-v1', program, parentOrigins,
+                                ...facts.presetLibrary ? { presetLibrary: facts.presetLibrary } : {},
+                                ...facts.characterLibrary ? { characterLibrary: facts.characterLibrary } : {}, snapshot: { ...facts.data,
+                                    readerVariables: documentVariables(facts, program), generation: program.programSha256, readRevision: ++readRevision } };
+                            writerFacts = facts;
+                            writerSourceRead = sourceRead;
+                        }
                     }
                 }
                 if (documentDiagnostics?.length) {
@@ -871,7 +901,13 @@ export function createRoleplayReaderDisplay(deps) {
             throw error;
         }
     }
-    return { capture, renderHtml, releasePhase, mutateBinding, mutateMessageBody, mutateNamespace, replaceNumerical, executeCommands, releaseBinding, confirmOperation,
+    function resolveLibraryReads(binding, reads) {
+        const value = bindings.get(binding.browserSessionId);
+        if (!value || !sameBinding(value.binding, binding) || !value.sourceCurrent())
+            return;
+        return value.libraryReads.resolve(reads);
+    }
+    return { capture, renderHtml, releasePhase, waitSourceEvents, closeBinding, mutateBinding, mutateMessageBody, mutateNamespace, replaceNumerical, readWorldbook, executeCommands, generation, mvuTrial, releaseBinding, confirmOperation, resolveLibraryReads,
         invalidateSession(sid) {
             for (const receiver of [...lifecycleBindings.values()])
                 if (receiver.binding.sessionId === sid)

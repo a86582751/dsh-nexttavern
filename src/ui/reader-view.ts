@@ -609,8 +609,8 @@ React,
             displayByMessage.set(key, displayByMessage.has(key) ? null : update);
         }
         const taskFor = (part: ReaderPart): ReaderBeautyTask => {
-            if (part.kind !== 'narrator' || part.transient) return part.text;
-            const accepted = displayByMessage.get(JSON.stringify([part.seq, part.messageId]));
+            if (part.transient || !displayEnabled&&part.kind!=='narrator') return part.text;
+            const accepted = part.kind==='narrator'?displayByMessage.get(JSON.stringify([part.seq, part.messageId])):undefined;
             return {text: part.text, seq: part.seq, messageId: part.messageId,
                 ...(accepted ? {displayUpdate: accepted} : {})};
         };
@@ -621,17 +621,17 @@ React,
             return selected ? surfaceNodesBySeq.size - selected.index - 1 : 0;
         };
         communityCache?.selectScope(communityScope);
-        // Source-backed assistants consume the effective community/card registry
+        // Source-backed messages consume the effective community/card registry
         // once on the server, retaining document and mapped-output provenance.
         const communityTasks=visibleParts.filter(part=>!part.transient&&part.seq!==undefined&&!!part.messageId
-            &&(!displayEnabled||part.kind==='user'))
+            &&!displayEnabled)
             .map(part=>({seq:part.seq!,messageId:part.messageId!,text:part.text,depth:communityDepth(part.seq!)}));
         const communityInput=communityCache?.versionFor(communityTasks)??0;
         React.useEffect(()=>sessionId?communityCache?.run(communityScope,sessionId,communityTasks,()=>refreshBeauty(n=>n+1)):undefined,
             [communityScope,communityInput,communityReload]);
         const projectedParts=visibleParts.map(part=>{
             if(part.transient||part.seq===undefined||!part.messageId||!communityCache
-                ||displayEnabled&&part.kind==='narrator')return part;
+                ||displayEnabled)return part;
             return {...part,text:communityCache.textFor({seq:part.seq,messageId:part.messageId,text:part.text,
                 depth:communityDepth(part.seq)})};
         });
@@ -640,7 +640,7 @@ React,
             return typeof task==='string'?task:{...task,canonicalText:visibleParts[index]!.text};
         });
         // Keep transient stream text out of regex work; it still gets immediate fallback rendering.
-        const beautyTasks = visibleTasks.filter((_, index) => visibleParts[index]!.kind === 'narrator'
+        const beautyTasks = visibleTasks.filter((_, index) => (displayEnabled||visibleParts[index]!.kind === 'narrator')
             && !visibleParts[index]!.transient);
         const readerExecution = beautyCache.execution(beautyTasks);
         const readerAuthorCss = authorCss+'\n'+beautyCache.cssFor(beautyTasks);
@@ -666,14 +666,15 @@ React,
             return html;
         };
         const renderedParts=projectedParts.map((part,index)=>{
-            const display=communityOptionsRef.current!(part.kind==='narrator'
+            const serverDisplay=displayEnabled&&!part.transient;
+            const display=communityOptionsRef.current!(part.kind==='narrator'||serverDisplay
                 ?applyBeauty(visibleTasks[index]!,displayEnabled):userHtml(part.text));
-            return {...visibleParts[index]!,displayText:part.kind==='narrator'
+            return {...visibleParts[index]!,displayText:part.kind==='narrator'||serverDisplay
                 ?beautyCache.textFor(visibleTasks[index]!,displayEnabled):part.text,
                 html:display.html,frameHtml:display.frameHtml,communityOptions:display.options,
-                fragments:part.kind==='narrator'?beautyCache.fragmentsFor(visibleTasks[index]!)?.map(fragment=>
+                fragments:part.kind==='narrator'||serverDisplay?beautyCache.fragmentsFor(visibleTasks[index]!)?.map(fragment=>
                     fragment.kind==='text'?{...fragment,html:communityOptionsRef.current!(fragment.html).html}:fragment):undefined,
-                readerFragments:part.kind==='narrator'?beautyCache.readerFragmentsFor(visibleTasks[index]!):undefined,
+                readerFragments:part.kind==='narrator'||serverDisplay?beautyCache.readerFragmentsFor(visibleTasks[index]!):undefined,
                 nativeUserProjection:part.kind==='user'&&(part.text!==visibleParts[index]!.text||display.options.length>0)};
         });
         if (state !== null && selectedNodes.length === 0) {
@@ -724,12 +725,12 @@ React,
             +(browserUserKeys.length?'\n'+browserUserKeys.map(key=>key+' > .rp-user-line').join(',')
                 +'{display:none!important}':'');
         const readerDocumentPayload = JSON.stringify(renderedParts.filter(part => !part.transient).map(part =>
-            part.kind === 'user' ? {key: readerPartKey(part),kind: part.kind,text: part.text}
+            part.kind === 'user'&&!displayEnabled ? {key: readerPartKey(part),kind: part.kind,text: part.text}
                 : {key: readerPartKey(part),kind: part.kind,html: part.frameHtml,
                     fragments:part.readerFragments?.map(fragment=>fragment.kind==='text'
                         ?{...fragment,html:communityOptionsRef.current!(fragment.html).frameHtml}:fragment)}));
         const readerSurfacePayload = JSON.stringify(renderedParts.map(part =>
-            part.kind === 'user' ? {key: readerPartKey(part),kind: part.kind,text: part.text}
+            part.kind === 'user'&&!displayEnabled ? {key: readerPartKey(part),kind: part.kind,text: part.text}
                 : {key: readerPartKey(part),kind: part.kind,html: part.frameHtml,
                     fragments:part.readerFragments?.map(fragment=>fragment.kind==='text'
                         ?{...fragment,html:communityOptionsRef.current!(fragment.html).frameHtml}:fragment)}));

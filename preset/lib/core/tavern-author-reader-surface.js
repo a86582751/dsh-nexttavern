@@ -281,8 +281,8 @@ export function createAuthorReaderSurface(outer, options) {
             }
         let cursor = root.firstChild;
         for (const part of value.parts) {
-            const fragments = part.kind === 'narrator' && 'fragments' in part ? part.fragments : undefined;
-            const content = part.kind === 'user' ? part.text : fragments ? JSON.stringify(fragments) : part.html;
+            const fragments = 'fragments' in part ? part.fragments : undefined;
+            const content = 'text' in part ? part.text : fragments ? JSON.stringify(fragments) : part.html;
             let row = rows.get(part.key);
             if (!row) {
                 const node = document.createElement('section');
@@ -309,7 +309,7 @@ export function createAuthorReaderSurface(outer, options) {
                 row.fragments = fragments;
                 row.content = content;
             }
-            else if (row.kind === 'narrator' && part.kind === 'narrator' && fragments && row.fragments && row.node.firstChild) {
+            else if (row.kind === part.kind && fragments && row.fragments && row.node.firstChild) {
                 const plans = fragments.flatMap(fragment => fragment.kind === 'reader-document' ? [fragment.documentPlanSha256] : []);
                 if (plans.length === row.documentPlans.length && plans.every((plan, index) => row.documentPlans[index] === plan)) {
                     // Only non-executable siblings change. Retain each document's real
@@ -339,9 +339,9 @@ export function createAuthorReaderSurface(outer, options) {
             }
             if (!row.node.firstChild || row.kind !== part.kind || row.content !== content) {
                 releaseRow(row);
-                const body = document.createElement(part.kind === 'user' ? 'p' : 'div');
+                const body = document.createElement(part.kind === 'user' && 'text' in part ? 'p' : 'div');
                 body.className = part.kind === 'user' ? 'rp-user-line' : 'rp-reader-narrative';
-                if (part.kind === 'user')
+                if ('text' in part)
                     body.textContent = '◈ 你：' + part.text;
                 else if (fragments)
                     for (const fragment of fragments)

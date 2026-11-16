@@ -10,10 +10,10 @@ export interface ReaderNativeLibraryAssetRecipeV1 {
   entryArtifact:string
   outputArtifact:string
   lockArtifact:string
-  dependencies:{yaml:'2.8.1';zod:'4.6.5'}
+  dependencies:{'fast-sha256':'1.3.0';yaml:'2.8.1';zod:'4.6.5'}
   builder:{esbuildVersion:'0.24.2';target:'es2020';format:'iife';platform:'browser';
     minify:true;legalComments:'none'}
-  licenses:readonly {package:'yaml'|'zod';artifact:string}[]
+  licenses:readonly {package:'fast-sha256'|'yaml'|'zod';artifact:string}[]
 }
 export interface ReaderNativeLibraryAssetPlanV1 {
   artifacts:readonly {id:string;source:string;sha256?:string}[]

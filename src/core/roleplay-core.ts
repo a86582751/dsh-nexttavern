@@ -4688,7 +4688,34 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     remoteOriginTemplate:cfg.readerNativeOriginTemplate||undefined})
   const readerBeautyOrigins=new Map<string,{rulesRecordSha256:string;origin:Promise<string>}>()
   ctx.effect(()=>()=>readerNativeOrigin.dispose(),'roleplay: isolated native Reader origin')
-  const readerDisplay=createRoleplayReaderDisplay({inputState,source:tavernSource,
+  const readerDisplay=createRoleplayReaderDisplay({inputState,source:tavernSource,lifecycle:authorLifecycle,
+    namedWorldInfo:ejsNamedWorldInfo,
+    configuredMainRoute:sid=>{
+      const route=selectedMainRoute(ctx.sessions.get(sid),taskAgents.get(sid),ctx.agentDefaultModel.currentSelection())
+      return {model:route.model,configSha256:recordSha256(route)}
+    },
+    generation:async(sid,program,document,request,current,signal)=>{
+      const realm={realmId:'reader:'+document.documentPlanSha256,groupId:document.writes,
+        effects:document.writes==='source-regex'?'source' as const:'readonly' as const}
+      if(request.action==='start'){
+        const {action:_action,...input}=request
+        return {kind:'generation-started',...authorDialogCore.start(sid,program,realm,
+          {...input,realmId:realm.realmId},current,signal)}
+      }
+      if(request.action==='next')return {kind:'generation-update',
+        update:await authorDialogCore.next(sid,program,realm,request.operationId,request.cursor,current,signal)}
+      if(request.action==='stop')return {kind:'generation-stopped',
+        stopped:await authorDialogCore.cancel(sid,program,realm,request.operationId,current,signal)}
+      authorDialogCore.completeFilter(sid,program,realm,request.operationId,request,current,signal)
+      return {kind:'generation-filter-acknowledged'}
+    },releaseGeneration:authorDialogCore.releaseOwner,
+    beforeCapture:async(sid,signal)=>{
+      await authorGenerationEffects.settle(sid,signal)
+      await communityPresets.settleAuthorPending()
+      await authorCharacterLibrary!.ready()
+    },
+    readWorldbook:authorWorldbooks.readHelper,
+    captureSharedScopes:authorScopeOwner.capture,
     selectedMessageFacts:readTavernSelectedMessageFactsV1,
     captureStoryText,
     nativeParentOrigins:async groups=>Object.fromEntries(await Promise.all(groups.map(async group=>
@@ -4757,7 +4784,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         }),accepted=captureCommittedTavernInjectionRegistryV1({sessionId:sid,history,
           signal:new AbortController().signal,retireEjs:ejsPrograms.retire,
           retireNativeFilters:retireNativeFilterReferences}),
-        latest=history.publications.at(-1)?.snapshot
+        latest=history.publications.at(-1)?.material
       // Reader has no Main generation. Its provisional operations use the last
       // accepted material coordinates; an empty accepted history starts at 0.
       return {history,definitions:definitions.definitions,turn:latest?.turn??0,step:latest?.step??0,
@@ -4832,60 +4859,101 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     },
     readerReleasePhase:binding=>readerDisplay.releasePhase(binding),
     readerDocument:async(input,signal)=>{
-      const numericalRecovery=input.action==='confirm-reader-numerical'||input.action==='retry-reader-numerical',
-        bodyMutation=input.action==='mutate-reader-message-body'||input.action==='retry-reader-message-body',
-        namespaceMutation=input.action==='mutate-reader-namespace'||input.action==='retry-reader-namespace'
-      const sid=input.action==='confirm-opening-variants'||input.action==='retry-opening-variants'
-        ||input.action==='confirm-reader-message-body'||input.action==='confirm-reader-namespace'
-        ?input.sessionId:numericalRecovery?input.operation.sessionId:input.binding?.sessionId
-      if(typeof sid!=='string')return {ok:false,code:'READER_DOCUMENT_REQUEST_INVALID'}
-      const session=await resolveRoleplaySession(sid)
-      if(!session)return {ok:false,code:'READER_DOCUMENT_SESSION_UNAVAILABLE'}
-      if(input.action==='release-reader-binding') {
-        readerDisplay.releaseBinding(input.binding)
-        return {ok:true,kind:'reader-binding-released'}
-      }
-        if(!numericalRecovery&&!bodyMutation&&!namespaceMutation&&input.action!=='confirm-reader-namespace'
-        &&input.action!=='save-reader-numerical'&&input.action!=='execute-reader-commands'
-        &&input.action!=='mutate-opening-variants'&&typeof input.operationId!=='string')
-        return {ok:false,code:'OPENING_VARIANT_REQUEST_INVALID'}
-      await awaitImportBarrier(session.id)
-      await ensureBranch(session)
-      if(input.action==='confirm-reader-namespace') {
-        const operation=input.operation,cause=operation.cause as {encoding?:string;principal?:string}|null
-        if(operation.namespace.sessionId!==session.id||cause?.encoding!=='reader-native-namespace-cause-v1'
-          ||cause.principal!=='reader-regex-document')return {ok:false,code:'AUTHOR_CHAT_BINDING_CHANGED'}
-        return {ok:true,kind:'reader-namespace-confirmed',receipt:await authorChatState.confirmOrdinaryBatchV3(operation)}
-      }
-      if(input.action==='mutate-reader-namespace')return {ok:true,kind:'reader-namespace-mutated',
-        ...await readerDisplay.mutateNamespace(input.binding,input.documentPlanSha256,input.request,signal)}
-      if(input.action==='retry-reader-namespace')return {ok:true,kind:'reader-namespace-mutated',
-        ...await readerDisplay.mutateNamespace(input.binding,input.documentPlanSha256,input.operation,signal,true)}
-      if(input.action==='confirm-reader-message-body')return {ok:true,kind:'reader-message-body-confirmed',
-        result:confirmAuthorMessageEdit(session,input.operationId,'reader-regex-document')}
-      if(bodyMutation) {
-        if(input.action==='retry-reader-message-body') {
-          const prior=confirmAuthorMessageEdit(session,input.request.operationId,'reader-regex-document')
-          if(prior.kind==='committed')return {ok:true,kind:'reader-message-body-mutated',result:prior}
-          if(!input.origin)return {ok:false,code:'AUTHOR_MESSAGE_EDIT_REQUEST_INVALID'}
+      type Reply=import('./reader-regex-document-types.mjs').ReaderRegexDocumentReplyV1
+      async function withSession(sid:unknown,
+        run:(session:NonNullable<Awaited<ReturnType<typeof resolveRoleplaySession>>>)=>Promise<Reply>,
+        prepare=true):Promise<Reply> {
+        if(typeof sid!=='string')return {ok:false,code:'READER_DOCUMENT_REQUEST_INVALID'}
+        const session=await resolveRoleplaySession(sid)
+        if(!session)return {ok:false,code:'READER_DOCUMENT_SESSION_UNAVAILABLE'}
+        if(prepare) {
+          await awaitImportBarrier(session.id)
+          await ensureBranch(session)
         }
-        return {ok:true,kind:'reader-message-body-mutated',...await readerDisplay.mutateMessageBody(input.binding,
-          input.documentPlanSha256,input.request,signal,input.action==='retry-reader-message-body'?input.origin:undefined)}
+        return run(session)
       }
-        if(input.action==='execute-reader-commands')return {ok:true,kind:'reader-commands-executed',
-          ...await readerDisplay.executeCommands(input.binding,input.documentPlanSha256,input.request,signal)}
-      if(input.action==='confirm-reader-numerical')return {ok:true,kind:'reader-numerical-saved',
-        result:await mvuOpening.confirmSchemaPlayer(input.operation)}
-      if(input.action==='retry-reader-numerical')return {ok:true,kind:'reader-numerical-saved',
-        result:await mvuOpening.submitSchemaPlayer(input.operation)}
-      if(input.action==='save-reader-numerical')return {ok:true,kind:'reader-numerical-saved',
-        ...await readerDisplay.replaceNumerical(input.binding,input.documentPlanSha256,input.readRevision,input.operation,signal)}
-      if(input.action==='confirm-opening-variants')return {ok:true,kind:'opening-variants-confirmed',
-        result:await readerDisplay.confirmOperation(session.id,input.operationId,signal)}
-      if(input.action==='retry-opening-variants')return {ok:true,kind:'opening-variants-confirmed',
-        result:await mvuOpening.retryOpeningVariants(session.id,input.operationId,signal)}
-      return {ok:true,kind:'opening-variants-mutated',
-        ...await readerDisplay.mutateBinding(input.binding,input.documentPlanSha256,input.request,signal)}
+      if(!input||typeof input!=='object')return {ok:false,code:'READER_DOCUMENT_REQUEST_INVALID'}
+      // Select the actual handler before accessing its session or binding. The
+      // default must never fall through to an opening mutation.
+      switch(input.action) {
+        case 'release-reader-binding':
+          return withSession(input.binding?.sessionId,async()=>{
+            readerDisplay.closeBinding(input.binding)
+            return {ok:true,kind:'reader-binding-released'}
+          },false)
+        case 'wait-source-events':
+          return withSession(input.binding?.sessionId,()=>
+            readerDisplay.waitSourceEvents(input.binding,input.sourceCursor,signal),false)
+        case 'reader-mvu-trial':
+          return withSession(input.binding?.sessionId,async()=>({ok:true,kind:'reader-mvu-trial',
+            result:await readerDisplay.mvuTrial(input.binding,input.documentPlanSha256,input.request,signal)}))
+        case 'reader-generation':
+          return withSession(input.binding?.sessionId,async()=>({ok:true,kind:'reader-generation',
+            result:await readerDisplay.generation(input.binding,input.documentPlanSha256,input.request,signal)}))
+        case 'read-reader-worldbook':
+          return withSession(input.binding?.sessionId,async()=>({ok:true,kind:'reader-worldbook-read',
+            book:await readerDisplay.readWorldbook(input.binding,input.documentPlanSha256,input.request,signal)}))
+        case 'confirm-reader-namespace':
+          return withSession(input.sessionId,async session=>{
+            const operation=input.operation,cause=operation.cause as {encoding?:string;principal?:string}|null
+            if(authorOrdinarySourceNamespaceV1(operation).sessionId!==session.id
+              ||cause?.encoding!=='reader-native-namespace-cause-v1'||cause.principal!=='reader-regex-document')
+              return {ok:false,code:'AUTHOR_CHAT_BINDING_CHANGED'}
+            return {ok:true,kind:'reader-namespace-confirmed',receipt:await authorKeyCore.confirmNamespace(session.id,operation)}
+          })
+        case 'mutate-reader-namespace':
+          return withSession(input.binding?.sessionId,async()=>({ok:true,kind:'reader-namespace-mutated',
+            ...await readerDisplay.mutateNamespace(input.binding,input.documentPlanSha256,input.request,signal)}))
+        case 'retry-reader-namespace':
+          return withSession(input.binding?.sessionId,async()=>({ok:true,kind:'reader-namespace-mutated',
+            ...await readerDisplay.mutateNamespace(input.binding,input.documentPlanSha256,input.operation,signal,true)}))
+        case 'confirm-reader-message-body':
+          return withSession(input.sessionId,async session=>{
+            if(typeof input.operationId!=='string')return {ok:false,code:'OPENING_VARIANT_REQUEST_INVALID'}
+            return {ok:true,kind:'reader-message-body-confirmed',
+              result:confirmAuthorMessageEdit(session,input.operationId,'reader-regex-document')}
+          })
+        case 'mutate-reader-message-body':
+        case 'retry-reader-message-body':
+          return withSession(input.binding?.sessionId,async session=>{
+            if(input.action==='retry-reader-message-body') {
+              const prior=confirmAuthorMessageEdit(session,input.request.operationId,'reader-regex-document')
+              if(prior.kind==='committed')return {ok:true,kind:'reader-message-body-mutated',result:prior}
+              if(!input.origin)return {ok:false,code:'AUTHOR_MESSAGE_EDIT_REQUEST_INVALID'}
+            }
+            return {ok:true,kind:'reader-message-body-mutated',...await readerDisplay.mutateMessageBody(input.binding,
+              input.documentPlanSha256,input.request,signal,input.action==='retry-reader-message-body'?input.origin:undefined)}
+          })
+        case 'execute-reader-commands':
+          return withSession(input.binding?.sessionId,async()=>({ok:true,kind:'reader-commands-executed',
+            ...await readerDisplay.executeCommands(input.binding,input.documentPlanSha256,input.request,signal)}))
+        case 'confirm-reader-numerical':
+          return withSession(input.operation?.sessionId,async()=>({ok:true,kind:'reader-numerical-saved',
+            result:await mvuOpening.confirmSchemaPlayer(input.operation)}))
+        case 'retry-reader-numerical':
+          return withSession(input.operation?.sessionId,async()=>({ok:true,kind:'reader-numerical-saved',
+            result:await mvuOpening.submitSchemaPlayer(input.operation)}))
+        case 'save-reader-numerical':
+          return withSession(input.binding?.sessionId,async()=>({ok:true,kind:'reader-numerical-saved',
+            ...await readerDisplay.replaceNumerical(input.binding,input.documentPlanSha256,input.readRevision,input.operation,signal)}))
+        case 'confirm-opening-variants':
+          return withSession(input.sessionId,async session=>{
+            if(typeof input.operationId!=='string')return {ok:false,code:'OPENING_VARIANT_REQUEST_INVALID'}
+            return {ok:true,kind:'opening-variants-confirmed',
+              result:await readerDisplay.confirmOperation(session.id,input.operationId,signal)}
+          })
+        case 'retry-opening-variants':
+          return withSession(input.sessionId,async session=>{
+            if(typeof input.operationId!=='string')return {ok:false,code:'OPENING_VARIANT_REQUEST_INVALID'}
+            return {ok:true,kind:'opening-variants-confirmed',
+              result:await mvuOpening.retryOpeningVariants(session.id,input.operationId,signal)}
+          })
+        case 'mutate-opening-variants':
+          return withSession(input.binding?.sessionId,async()=>({ok:true,kind:'opening-variants-mutated',
+            ...await readerDisplay.mutateBinding(input.binding,input.documentPlanSha256,input.request,signal)}))
+        default:
+          return {ok:false,code:'READER_DOCUMENT_REQUEST_INVALID'}
+      }
     },
     readerDisplayContextVersion:id=>{
       const policy=communityPresets.policy(id)

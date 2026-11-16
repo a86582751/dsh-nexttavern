@@ -326,16 +326,13 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
                         await readerReleasePhase(body.binding);
                         return jsonResponse(200, { ok: true });
                     }
-                    if (['mutate-opening-variants', 'confirm-opening-variants', 'retry-opening-variants', 'release-reader-binding',
-                        'save-reader-numerical', 'confirm-reader-numerical', 'retry-reader-numerical',
-                        'execute-reader-commands', 'mutate-reader-message-body', 'confirm-reader-message-body',
-                        'retry-reader-message-body', 'mutate-reader-namespace', 'confirm-reader-namespace',
-                        'retry-reader-namespace'].includes(String(body?.action))) {
+                    if (body?.action !== 'reader-display') {
                         if (!readerDocument)
                             return jsonResponse(503, { ok: false, code: 'READER_DOCUMENT_UNAVAILABLE' });
-                        return jsonResponse(200, await readerDocument(body, request.signal));
+                        const result = await readerDocument(body, request.signal);
+                        return jsonResponse(!result.ok && result.code === 'READER_DOCUMENT_REQUEST_INVALID' ? 400 : 200, result);
                     }
-                    if (body?.action !== 'reader-display' || !Array.isArray(body.messages)
+                    if (!Array.isArray(body.messages)
                         || body.messages.some(ref => !ref || typeof ref !== 'object' || !Number.isSafeInteger(ref.seq)
                             || ref.seq < 0 || typeof ref.messageId !== 'string' || !ref.messageId))
                         return jsonResponse(400, { ok: false, code: 'READER_DISPLAY_REQUEST_INVALID', error: 'Reader 消息引用无效' });

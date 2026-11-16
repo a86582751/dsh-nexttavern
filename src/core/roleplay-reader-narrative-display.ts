@@ -1,10 +1,18 @@
+import {scanUpdateMarkup,findUpdateMarkupBlocks} from './tavern-mvu-196/structured-update.js';
+import type {MvuDisplayProtocol} from './roleplay-mvu-display-facts.js';
+
 /** Read-only display qualification, supplied for this exact accepted message.
  * It cannot authorize a reducer or change the canonical message/history. */
-export interface ReaderMvuDisplayScope {
+interface ReaderMvuDisplayRange {readonly start: number;readonly end: number;}
+export type ReaderMvuDisplayScope = {
     readonly role: 'assistant';
     readonly protocol: 'native-jsonpatch-v1' | 'native-mvu-update-v2';
-    readonly acceptedRange: {readonly start: number;readonly end: number;};
-}
+    readonly acceptedRange: ReaderMvuDisplayRange;
+} | {
+    readonly role: 'assistant';
+    readonly protocol: 'mvu-196-d03';
+    readonly acceptedRanges: readonly ReaderMvuDisplayRange[];
+};
 
 const MVU_DISPLAY_TEXT_LIMIT = 1_048_576;
 const MVU_DISPLAY_BLOCK_LIMIT = 65_536;
@@ -44,10 +52,15 @@ function markerAt(text: string, index: number) {
 
 /** References remain readable even if a backend parser accepted their tokens.
  * This scanner owns no DOM, evaluation, request or state-writing capability. */
-function quotedMvuStart(text: string, target: number): boolean {
+function unquotedMvuStarts(text: string, targets: readonly number[]): ReadonlySet<number> {
+    const unquoted = new Set<number>();
     const htmlQuotes: string[] = [];
-    let quote = '', fence = '', fenceLength = 0, lineStart = 0, inspectedHtmlChars = 0;
-    for (let cursor = 0; cursor <= target; cursor++) {
+    let targetIndex = 0, quote = '', fence = '', fenceLength = 0, lineStart = 0, inspectedHtmlChars = 0;
+    let quotedLine = false;
+    const skipThrough = (end: number) => {
+        while (targetIndex < targets.length && targets[targetIndex]! < end) targetIndex++;
+    };
+    for (let cursor = 0; cursor < text.length && targetIndex < targets.length; cursor++) {
         if (cursor === lineStart) {
             const newline = text.indexOf('\n', cursor);
             const lineEnd = newline < 0 ? text.length : newline;
@@ -60,7 +73,7 @@ function quotedMvuStart(text: string, target: number): boolean {
             }
             const fenceLine = first - cursor <= 3 && length >= 3;
             if (fence) {
-                if (target < lineEnd) return true;
+                skipThrough(lineEnd);
                 if (fenceLine && delimiter === fence && length >= fenceLength
                     && !text.slice(first + length, lineEnd).trim()) fence = '';
                 cursor = lineEnd;
@@ -69,7 +82,7 @@ function quotedMvuStart(text: string, target: number): boolean {
                 continue;
             }
             if (fenceLine) {
-                if (target < lineEnd) return true;
+                skipThrough(lineEnd);
                 fence = delimiter!;
                 fenceLength = length;
                 cursor = lineEnd;
@@ -77,26 +90,31 @@ function quotedMvuStart(text: string, target: number): boolean {
                 quote = '';
                 continue;
             }
-            if (target < lineEnd && (text[first] === '>' || first - cursor >= 4)) return true;
+            quotedLine = text[first] === '>' || first - cursor >= 4;
         }
-        if (cursor === target) return htmlQuotes.length > 0 || !!quote || escapedAt(text, cursor);
+        if (cursor === targets[targetIndex]) {
+            if (!quotedLine && !htmlQuotes.length && !quote && !escapedAt(text, cursor)) unquoted.add(cursor);
+            targetIndex++;
+        }
         const char = text[cursor];
         if (char === '\n') {lineStart = cursor + 1;quote = '';continue;}
         if (char === '`' && !escapedAt(text, cursor)) {
             let count = 1;
             while (text[cursor + count] === '`') count++;
             const delimiter = '`'.repeat(count), close = text.indexOf(delimiter, cursor + count);
-            if (close < 0 || target < close + count) return true;
+            if (close < 0) break;
+            skipThrough(close + count);
             const newline = text.slice(cursor, close + count).lastIndexOf('\n');
-            if (newline >= 0) lineStart = cursor + newline + 1;
+            if (newline >= 0) {lineStart = cursor + newline + 1;quotedLine = false;}
             cursor = close + count - 1;
             continue;
         }
         if (text.startsWith('<!--', cursor)) {
             const close = text.indexOf('-->', cursor + 4);
-            if (close < 0 || target < close + 3) return true;
+            if (close < 0) break;
+            skipThrough(close + 3);
             const newline = text.slice(cursor, close + 3).lastIndexOf('\n');
-            if (newline >= 0) lineStart = cursor + newline + 1;
+            if (newline >= 0) {lineStart = cursor + newline + 1;quotedLine = false;}
             cursor = close + 2;
             continue;
         }
@@ -119,15 +137,15 @@ function quotedMvuStart(text: string, target: number): boolean {
                 at++;
             }
             inspectedHtmlChars += at;
-            if (inspectedHtmlChars > MVU_DISPLAY_TEXT_LIMIT * 2) return true;
+            if (inspectedHtmlChars > MVU_DISPLAY_TEXT_LIMIT * 2) break;
             if (name && token[at] === '>') {
-                if (target <= cursor + at) return true;
+                skipThrough(cursor + at + 1);
                 if (MVU_QUOTED_HTML.has(name)) {
                     if (!closing && token[at - 1] !== '/') htmlQuotes.push(name);
                     else if (closing && htmlQuotes.at(-1) === name) htmlQuotes.pop();
                 }
                 const newline = token.slice(0, at + 1).lastIndexOf('\n');
-                if (newline >= 0) lineStart = cursor + newline + 1;
+                if (newline >= 0) {lineStart = cursor + newline + 1;quotedLine = false;}
                 cursor += at;
                 continue;
             }
@@ -140,16 +158,88 @@ function quotedMvuStart(text: string, target: number): boolean {
             if (closingQuote && !escapedAt(text, cursor)) quote = closingQuote;
         }
     }
-    return true;
+    return unquoted;
 }
 
-/** Hide only an exact, uniquely wrapped block already accepted by the owning
- * backend for this message. Semantic acceptance is not recreated in the UI:
- * JSONPatch/legacy values, schema and reducer facts remain backend-owned. */
+function mvu196DisplayRanges(text: string): readonly ReaderMvuDisplayRange[] {
+    const scanned = scanUpdateMarkup(text);
+    const blocks = [...findUpdateMarkupBlocks(text, 'update', scanned),
+        ...findUpdateMarkupBlocks(text, 'patch', scanned)]
+        .filter(block => block.closed && !block.discarded)
+        .sort((left, right) => left.start - right.start || right.end - left.end);
+    // The fixed scanner masks data strings without changing UTF-16 offsets.
+    // Reader reference protection then visits all block starts in one pass.
+    const unquoted = unquotedMvuStarts(scanned.structural, blocks.map(block => block.start));
+    const ranges: ReaderMvuDisplayRange[] = [];
+    let protectedThrough = 0;
+    for (const block of blocks) {
+        // An escaped wrapper quotes its complete payload, including nested
+        // patch tags whose own opening is not individually backslash-escaped.
+        if (block.start < protectedThrough) continue;
+        if (!unquoted.has(block.start)) {protectedThrough = block.end;continue;}
+        const previous = ranges.at(-1);
+        if (previous && block.start <= previous.end) {
+            if (block.end > previous.end) ranges[ranges.length - 1] = {start: previous.start, end: block.end};
+        } else ranges.push({start: block.start, end: block.end});
+    }
+    return ranges;
+}
+
+/** Callers bind the accepted canonical body before deriving this display data.
+ * Rewritten display text receives only exact original block bytes at its own
+ * scanner offsets; canonical offsets never address a different string. */
+export function createReaderMvuDisplayScope(canonicalText: string, protocol: MvuDisplayProtocol,
+    displayText = canonicalText): ReaderMvuDisplayScope | undefined {
+    if (displayText.length > MVU_DISPLAY_TEXT_LIMIT) return;
+    if (protocol === 'mvu-196-d03') {
+        if (canonicalText.length > MVU_DISPLAY_TEXT_LIMIT) return;
+        const canonicalRanges = mvu196DisplayRanges(canonicalText);
+        let acceptedRanges = canonicalRanges;
+        if (displayText !== canonicalText) {
+            const remaining = new Map<string, number>();
+            for (const range of canonicalRanges) {
+                const block = canonicalText.slice(range.start, range.end);
+                remaining.set(block, (remaining.get(block) ?? 0) + 1);
+            }
+            acceptedRanges = mvu196DisplayRanges(displayText).filter(range => {
+                const block = displayText.slice(range.start, range.end), count = remaining.get(block) ?? 0;
+                if (!count) return false;
+                remaining.set(block, count - 1);
+                return true;
+            });
+        }
+        if (!acceptedRanges.length) return;
+        return {role: 'assistant', protocol, acceptedRanges};
+    }
+    if (protocol !== 'native-jsonpatch-v1' && protocol !== 'native-mvu-update-v2') return;
+    const start = canonicalText.indexOf('<UpdateVariable>'), close = canonicalText.indexOf('</UpdateVariable>');
+    if (start < 0 || close < start) return;
+    const block = canonicalText.slice(start, close + '</UpdateVariable>'.length), displayStart = displayText.indexOf(block);
+    if (displayStart < 0) return;
+    return {role: 'assistant', protocol, acceptedRange: {start: displayStart, end: displayStart + block.length}};
+}
+
+/** Project ranges from this message's accepted display data. Legacy scopes
+ * retain their uniquely wrapped block contract. Semantic acceptance and all
+ * state updates remain with the owning backend. */
 export function projectReaderNarrativeDisplay(raw: unknown, scope?: ReaderMvuDisplayScope): string {
     const text = String(raw ?? '');
-    if (!scope || scope.role !== 'assistant' || !['native-jsonpatch-v1', 'native-mvu-update-v2'].includes(scope.protocol)
+    if (!scope || scope.role !== 'assistant'
         || typeof raw !== 'string' || text.length > MVU_DISPLAY_TEXT_LIMIT) return text;
+    if (scope.protocol === 'mvu-196-d03') {
+        if (!Array.isArray(scope.acceptedRanges)) return text;
+        const parts: string[] = [];
+        let cursor = 0;
+        for (const range of scope.acceptedRanges) {
+            if (!range || !Number.isSafeInteger(range.start) || !Number.isSafeInteger(range.end)
+                || range.start < cursor || range.end <= range.start || range.end > text.length) return text;
+            parts.push(text.slice(cursor, range.start));
+            cursor = range.end;
+        }
+        parts.push(text.slice(cursor));
+        return parts.join('');
+    }
+    if (scope.protocol !== 'native-jsonpatch-v1' && scope.protocol !== 'native-mvu-update-v2') return text;
     if (!scope.acceptedRange) return text;
     const {start, end} = scope.acceptedRange;
     if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end <= start || end > text.length
@@ -162,7 +252,7 @@ export function projectReaderNarrativeDisplay(raw: unknown, scope?: ReaderMvuDis
     }
     const first = tags[0], last = tags.at(-1);
     if (!first || !last || first.text !== '<UpdateVariable>' || last.text !== '</UpdateVariable>'
-        || first.start !== start || last.end !== end || quotedMvuStart(text, start)) return text;
+        || first.start !== start || last.end !== end || !unquotedMvuStarts(text, [start]).has(start)) return text;
     const block = text.slice(start, end);
     if (new TextEncoder().encode(block).length > MVU_DISPLAY_BLOCK_LIMIT) return text;
     let body = text.slice(first.end, last.start).trim(), inner = tags.slice(1, -1);
