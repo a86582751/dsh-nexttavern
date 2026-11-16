@@ -447,7 +447,7 @@ export function compileTavernOpeningCandidates(decoded, context = {}) {
         const macros = [];
         let cursor = 0, brokenDelimiter = false;
         const renderedText = materialized ? raw : raw.replace(/\{\{([^{}]*)\}\}/g, (token, name, at) => {
-            if (/\{\{|\}\}/.test(raw.slice(cursor, at)))
+            if (raw.slice(cursor, at).includes('{{'))
                 brokenDelimiter = true;
             const malformed = raw[at - 1] === '{' || raw[at + token.length] === '}' || !name;
             const value = known.has(name) ? context[name] : undefined;
@@ -458,7 +458,7 @@ export function compileTavernOpeningCandidates(decoded, context = {}) {
             return status === 'resolved' ? value : token;
         });
         // A broken delimiter is not a supported token and must never disappear.
-        if (!materialized && (brokenDelimiter || /\{\{|\}\}/.test(raw.slice(cursor))))
+        if (!materialized && (brokenDelimiter || raw.slice(cursor).includes('{{')))
             macros.push({ name: '', status: 'malformed' });
         candidates.push({ index, sourcePointer: native ? index === 0 ? '/data/opening/text'
                 : `/data/opening/catalog/${index - 1}/rawText` : index === 0 ? `${root}/first_mes`
