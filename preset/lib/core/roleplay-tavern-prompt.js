@@ -257,6 +257,10 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                 await deps.community.variables.configure(communityPolicy.preset.id, scope.session.id, communityCapture.data.configurations);
             communityCapture.assertCurrent();
         }
+        if (invocation.kind === 'program-opening') {
+            await deps.initializeOpening?.(invocation.native, invocation.scope);
+            scope.assertOwnerFactsCurrent();
+        }
         const assertOwnerFactsCurrent = scope.assertOwnerFactsCurrent.bind(scope);
         const captureInput = () => deps.withSourceLock(scope.session.id, async () => {
             // Synchronous capture records the real read footprint once. Inner DATA

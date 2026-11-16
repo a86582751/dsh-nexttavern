@@ -72,7 +72,8 @@ interface Dependencies {
   resolveSession(id:unknown):Promise<{id:string}|null|undefined>
   /** Captures the actual Session, Agent, catalog selection and Stop generation. */
   captureOwner(sid:string):(()=>boolean)|undefined
-  captureFacts(sid:string):Promise<AuthorBrowserCapturedFacts|undefined>
+  captureSourceOwner?(sid:string):(()=>boolean)|undefined
+  captureFacts(sid:string,openingIndex?:number):Promise<AuthorBrowserCapturedFacts|undefined>
   acquireParentOrigins(groups:readonly string[]):Promise<Readonly<Record<string,string>>>
   submit(input:unknown,current:()=>boolean):Promise<MvuPlayerEditResponse>
   confirm(input:unknown):Promise<MvuPlayerEditResponse>
@@ -202,7 +203,7 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     return snapshot
   }
   async function snapshot(value:Attachment):Promise<AuthorBrowserSnapshot> {
-    const facts=await deps.captureFacts(value.binding.sessionId)
+    const facts=await deps.captureFacts(value.binding.sessionId,value.openingIndex)
     if(!facts)return fail('BROWSER_PROGRAM_UNAVAILABLE')
     return project(value,facts)
   }
@@ -212,7 +213,7 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     const sourceDataMutation=kind==='source-data'
     if(!value.ownerCurrent()||!sourceDataMutation&&!sourceCurrent())return undefined
     const facts=kind==='ordinary'&&value.facts.captureOrdinarySuccessor
-      ?value.facts.captureOrdinarySuccessor():await deps.captureFacts(value.binding.sessionId)
+      ?value.facts.captureOrdinarySuccessor():await deps.captureFacts(value.binding.sessionId,value.openingIndex)
     if(disposed||attachments.get(value.binding.browserSessionId)!==value||!value.ownerCurrent()
       ||!sourceDataMutation&&!sourceCurrent()||!facts||!facts.current()
       ||facts.program.programSha256!==value.program.programSha256)return undefined
@@ -291,7 +292,7 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     if(input.action==='attach') {
       const owner=deps.captureOwner(session.id)
       if(!owner)return {ok:true,kind:'inactive',code:'BROWSER_SESSION_INACTIVE'}
-      const facts=await deps.captureFacts(session.id)
+      const facts=await deps.captureFacts(session.id,input.openingIndex)
       if(!facts)return {ok:true,kind:'inactive',code:'BROWSER_PROGRAM_UNAVAILABLE'}
       if(!owner()||!facts.current())return fail('BROWSER_ATTACHMENT_REVOKED')
       let value=input.binding?attachments.get(input.binding.browserSessionId):undefined
@@ -374,8 +375,8 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
       try {const refreshed=result.refreshRequired?await adoptCommittedFacts(value,sourceCurrent):publishedSnapshot
         return {ok:true,kind:'commands-executed',result,...refreshed?{snapshot:refreshed}:{}}
       }catch{return {ok:true,kind:'commands-executed',result}}
-    }
-    if(input.action==='mutate-opening-variants') {
+    },{serialize:false})
+    if(input.action==='mutate-opening-variants')return withAttachment(input.binding,async(session,value)=>{
       nativeRealm(value,input.realmId)
       const snapshot=input.read.kind==='generation'?value.generationQueue?.snapshotFor(input.read.invocationId)
         :value.lastSnapshot?.readRevision===input.read.readRevision?value.lastSnapshot:undefined,

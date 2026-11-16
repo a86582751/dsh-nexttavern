@@ -6,7 +6,8 @@ import {spanText} from './roleplay-import-record.js'
 import {captureRoleplayTavernPromptSourceV1,captureRoleplayTavernPromptSourceDataV1}
   from './roleplay-tavern-prompt-source.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
-import {validateTavernLoreCompilationV1,resolveTavernLoreContentTextV1} from './tavern-lore-compiler.mjs'
+import {validateTavernLoreCompilationV1,resolveTavernLoreContentTextV1,tavernLoreConsumerSourceV1}
+  from './tavern-lore-compiler.mjs'
 import {mapPromptProgramAuthorOriginsV1} from './roleplay-prompt-template-only-origins.js'
 import {PROMPT_TEMPLATE_ONLY_FIELDS_V1,PromptTemplateOnlyRefusalV1,partitionPromptTemplateOnlyTextV1}
   from './roleplay-prompt-template-only-data.js'
@@ -46,6 +47,14 @@ export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1=Object.freeze
   book:PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1.book})
 export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256=
   recordSha256(NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1)
+export const PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_V1=Object.freeze({...PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1,
+  encoding:'native-author-prompt-program-source-bound-books-policy-v1',
+  book:'actual-ordered-bound-catalog-books; member-incarnation-and-frozen-content-refs'})
+export const PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_SHA256=recordSha256(PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_V1)
+export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_SHA256=recordSha256({
+  ...NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1,
+  encoding:'native-nexttavern-author-prompt-program-source-bound-books-policy-v1',
+  book:PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_V1.book})
 class ProgramSourceFailure extends Error {
   constructor(readonly code:PromptProgramSourceCodeV1,readonly pointer:string) {super(code)}
 }
@@ -118,6 +127,12 @@ function deniedLeaves(value:unknown,input:{domain:PromptProgramExcludedLeafV1['d
  * named binding substitutes only the actual Source current identity; it never
  * claims that the transformed value is a canonical compiler plan or proof. */
 function semanticPlanBinding(compilation:ReturnType<typeof validateTavernLoreCompilationV1>,sourceIdentitySha256:string) {
+  if(compilation.plan.source.encoding==='author-worldbook-collection-source-reference-v1') {
+    const source=compilation.plan.source
+    return recordSha256({encoding:'author-program-bound-books-semantic-binding-v1',
+      consumerSource:{...source.consumerSource,sourceSnapshotSha256:sourceIdentitySha256},bindings:source.bindings,
+      books:compilation.plan.boundBooks!.map(book=>book.plan.planSha256)})
+  }
   const {planSha256:_,sourceReferenceSha256:__,...plan}=compilation.plan
   const source={...plan.source,sourceSnapshotSha256:sourceIdentitySha256}
   return recordSha256({encoding:'author-program-semantic-compiler-binding-v1',
@@ -150,7 +165,10 @@ function validateInventory(input:unknown):PromptProgramSourceInventoryV1 {
   const value=clone(input)
   const native=object(value)&&object(value.importTuple)&&value.importTuple.format==='json-nexttavern-v1'
   const membership=object(value)&&object(value.book)&&Object.hasOwn(value.book,'currentNativeMembershipSha256')
-  const policySha256=membership?native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256
+  const boundBooks=object(value)&&object(value.book)&&Object.hasOwn(value.book,'boundBooks')
+  const policySha256=boundBooks?native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_SHA256
+    :PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_SHA256
+    :membership?native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256
     :PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256
     :native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256:PROMPT_PROGRAM_SOURCE_POLICY_SHA256
   const keys=['schemaVersion','encoding','authority','policySha256','sessionId','includeCardStyle','importTuple',
@@ -310,7 +328,7 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
     assertOwnerCurrent()
     if(saveData&&!deps.edits.observeJournalDataWithLegacyData)fail('PROGRAM_SOURCE_UNAVAILABLE','/owner/data-reader')
     const captured=saveData?captureRoleplayTavernPromptSourceDataV1({source:deps.source,
-      edits:{observeJournalDataWithLegacyData:deps.edits.observeJournalDataWithLegacyData!}},sessionId,includeCardStyle)
+      edits:{observeJournalDataWithLegacyData:deps.edits.observeJournalDataWithLegacyData!},books:deps.books},sessionId,includeCardStyle)
       :captureRoleplayTavernPromptSourceV1(deps,sessionId,includeCardStyle,assertOwnerCurrent)
     if(captured.kind==='outside-declared-domain') {
       if(captured.reason==='ACTIVE_SOURCE_MISSING'||captured.reason==='LEGACY_SOURCE_OUTSIDE_DOMAIN'
@@ -324,9 +342,10 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
     const mapping=mapPromptProgramAuthorOriginsV1({decoded,record,source})
     const compilation=captured.compilation,plan=compilation.plan
     const membership=plan.currentNativeMembership
-    if(plan.source.sourceSnapshotSha256!==source.sourceSha256||plan.rawBookSha256!==source.original.primary.bookSha256
+    if(tavernLoreConsumerSourceV1(plan.source).sourceSnapshotSha256!==source.sourceSha256
+      ||!plan.boundBooks&&(plan.rawBookSha256!==source.original.primary.bookSha256
       ||!same(plan.rawBook,source.original.primary.value)
-      ||plan.entries.length!==(membership?.members.length??source.original.primary.entries.length)) {
+      ||plan.entries.length!==(membership?.members.length??source.original.primary.entries.length))) {
       fail('PROGRAM_COMPILATION_UNPROVEN','/compilation')
     }
     const sourceIdentitySha256=captured.currentIdentitySha256
@@ -347,9 +366,10 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
       if(linkedBookRows.has(overlay.rawEntry.entryPointer))fail('PROGRAM_COMPILATION_UNPROVEN','/current/entry-duplicate')
       linkedBookRows.set(overlay.rawEntry.entryPointer,overlay.row)
     }
+    const catalogBooks=new Map(plan.boundBooks?.map(book=>[book.plan.bookId,book.plan.source])??[])
     const bookEntries:PromptProgramBookEntryV1[]=plan.entries.map(entry=>{
       const identity=entry.currentNativeMember?.identity
-      const originalAddress=identity?identity.kind==='original'?identity.rawEntryPointer:null:entry.sourcePointer
+      const originalAddress=plan.boundBooks?null:identity?identity.kind==='original'?identity.rawEntryPointer:null:entry.sourcePointer
       const original=originalAddress===null?undefined:rawEntries.get(originalAddress)
       if(originalAddress!==null&&(!original||original.ref.entrySha256!==entry.rawEntrySha256
         ||!membership&&(original.ref.entryOrdinal!==entry.ordinal||typeof original.value.content!=='string'))) {
@@ -368,7 +388,10 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
           original:textInventory(spanText(record,assignment.assignment.sourceSpans),at),
           effective:textInventory(linked.value.content,at),assignment,provenance:'actual-compiler-linked-current-row'}
       }
+      const catalog=catalogBooks.get(entry.bookId!)
       return {entryId:entry.entryId,ordinal:entry.ordinal,sourceKey:entry.sourceKey,originalAddress,
+        ...catalog?.encoding==='author-worldbook-source-reference-v1'?{catalogBook:{profileId:catalog.profileId,
+          bookId:catalog.bookId,contentRef:catalog.contentRef,metadataRef:catalog.metadataRef}}:{},
         rawEntrySha256:entry.rawEntrySha256,contentPointer:pointer,disposition:entry.disposition,
         promptEligibility:entry.disposition==='disabled'?'disabled-never-execute'
           :entry.disposition==='retained-ineligible'||plan.bookDisposition!=='eligible-semantic-data'
@@ -416,7 +439,9 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
     const importTuple=promptProgramSourceImportTupleV1(source,record)
     const native=decoded.format==='json-nexttavern-v1'
     const body={schemaVersion:1 as const,encoding:'native-author-prompt-program-source-inventory-v1' as const,
-      authority:'consumer-data-only' as const,policySha256:membership
+      authority:'consumer-data-only' as const,policySha256:plan.boundBooks
+        ?native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_SHA256:PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_SHA256
+        :membership
         ?native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256:PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256
         :native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256:PROMPT_PROGRAM_SOURCE_POLICY_SHA256,sessionId,includeCardStyle,
       importTuple,sourceCurrentIdentitySha256:sourceIdentitySha256,authorFields,authorGroups,
@@ -427,10 +452,14 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
       regexResources:object(decoded.data.extensions)&&Object.hasOwn(decoded.data.extensions,'regex_scripts')
         ?[{owner:'scoped-transform-and-reader' as const,originalPointer:'/data/extensions/regex_scripts' as const}]:[],bookEntries,
       book:{pointer:plan.source.bookPointer,rawBookSha256:plan.rawBookSha256,bookDisposition:plan.bookDisposition,
+        ...plan.source.encoding==='author-worldbook-collection-source-reference-v1'
+          ?{consumerSource:plan.source.consumerSource}:{},
         compilationSha256:recordSha256(compilation),planSha256:plan.planSha256,
         semanticPlanBindingSha256:semanticPlanBinding(compilation,sourceIdentitySha256),
         currentNativeOverlaySha256:plan.currentNativeOverlaySha256??null,
-        ...(membership?{currentNativeMembershipSha256:plan.currentNativeMembershipSha256!}:{})},
+        ...(membership?{currentNativeMembershipSha256:plan.currentNativeMembershipSha256!}:{}),
+        ...(plan.boundBooks?{boundBooks:plan.boundBooks.map(book=>book.plan.source as
+          import('./tavern-lore-plan-types.mjs').TavernLoreCatalogBookSourceReferenceV1)}:{})},
       currentRows:source.current.rows.map(row=>row.ref),editing:{dataSha256:captured.edits.dataSha256,
         revision:captured.edits.revision,headRef:captured.edits.headRef,journalRefs:captured.edits.journalRefs,
         effectiveOverlaySha256:recordSha256(plan.currentNativeOverlay??null),

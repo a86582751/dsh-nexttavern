@@ -188,9 +188,9 @@ export function createRoleplayProgramAbsenceMutableControlsV1(deps:ProgramAbsenc
         if(!object(scopes)||!object(scopes['input'])||scopes['input']['initialization']!=='absent') {
           fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_NUMERICAL')
         }
-        exact(scopes['initialization'],['kind','markerCount','inventorySha256','initialized'])
+        exact(scopes['initialization'],['kind','markerCount','basisSha256','initialized'])
         if(scopes['initialization']['kind']!=='absent'||scopes['initialization']['markerCount']!==0
-          ||scopes['initialization']['initialized']!==false||!hash(scopes['initialization']['inventorySha256']))fail()
+          ||scopes['initialization']['initialized']!==false||!hash(scopes['initialization']['basisSha256']))fail()
         phaseRef=ref(preparation['snapshotRef']);phaseKind='task-snapshot'
       }else fail()
       const phase=validateRoleplayPhaseABranchRowDataV1(session,phaseRef.key,phaseKind,exactRow(phaseRef))

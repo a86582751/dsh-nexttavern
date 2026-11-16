@@ -5,6 +5,7 @@ import {createCardImportPanel} from './card-import-panel.js';
 import {createNativeCardConversionPanel} from './native-card-conversion-panel.js';
 import {createCardImportRequestJournal} from './card-import-request.js';
 import type {CardImportRequestStorage} from './card-import-request.js';
+import type {PrepareOpeningSource} from './reader-submission-handoff.js';
 import type { PanelDraft } from './panel-state.js';
 import {
     buildModelSettings,
@@ -105,6 +106,7 @@ interface ExportJob {
     };
 }
 interface ManagementDependencies {
+    prepareSource?:PrepareOpeningSource;
     selectMainModel?(sessionId: string, route: {provider: string; model: string}): Promise<void>;
     importRequestStorage?: CardImportRequestStorage;
     uploadFile?(sessionId: string, file: Blob, name: string): Promise<{receiptId: string}>;
@@ -121,7 +123,7 @@ interface ManagementDependencies {
          extra?: ReactAPI.ButtonHTMLAttributes<HTMLButtonElement>): ReactAPI.ReactElement;
 }
 export function createManagementPanels({
-    React, sessionDrafts, jsonFetch, toast, confirmWithDialog, btn, importRequestStorage, uploadFile, selectMainModel,
+    React, sessionDrafts, jsonFetch, toast, confirmWithDialog, btn, importRequestStorage, uploadFile, selectMainModel,prepareSource,
 }: ManagementDependencies) {
 
     const importRequestJournal = createCardImportRequestJournal({storage: importRequestStorage});
@@ -141,7 +143,7 @@ export function createManagementPanels({
             h('section',{className:'dsh-rp-item'},h('h4',null,'图片与背景音乐'),
                 btn('图片、立绘与背景',openImages),btn('背景音乐',openMusic),btn('资源库',()=>navigate('resources'))));
     }
-    const CardImportPanel = createCardImportPanel({React,jsonFetch,toast,confirmWithDialog,
+    const CardImportPanel = createCardImportPanel({React,jsonFetch,toast,confirmWithDialog,prepareSource,
         storage: importRequestStorage,
         uploadFile: uploadFile ?? (async () => {throw new Error('文件上传服务尚未就绪');})});
     const modelListeners=new Set<()=>void>();

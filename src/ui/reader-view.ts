@@ -302,7 +302,12 @@ React,
             historyAnchorRef.current = null;
             if (!sessionId) return;
             if (!isRoleplaySession(sessionId)) return;
-            const readerSubmission=readerHandoff?.mount(sessionId);
+            const readerSubmission=readerHandoff?.mount(sessionId,async index=>{
+                const controller=browserControllerRef.current;
+                if(readerSessionRef.current!==sessionId||!controller)
+                    throw Error('酒馆阅读视图尚未就绪，请打开后再操作。');
+                await controller.prepareSource(index);
+            });
             readerSubmissionRef.current=readerSubmission??null;
             let alive = true;
             const requestedSessionId = sessionId;

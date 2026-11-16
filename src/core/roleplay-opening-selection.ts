@@ -15,6 +15,7 @@ import type {OpeningIntentV5,SchemaOpeningSelectionAdapter,SchemaOpeningRequest}
 import {PROMPT_TEMPLATE_ONLY_CODES_V1,validatePromptTemplateOnlyOpeningIntentV6} from './roleplay-prompt-template-only-data.js'
 import type {OpeningIntentV6,PromptTemplateOnlyCodeV1,
   PromptTemplateOnlySelectionCallbacksV1} from './roleplay-prompt-template-only-types.js'
+import type {OpeningIntentV7} from './roleplay-program-opening-records.js'
 export type {OpeningIntentV6} from './roleplay-prompt-template-only-types.js'
 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
@@ -836,7 +837,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     const completed = await finish(result.finish)
     return completed.status === 'completed' ? completed : {status:'busy', intent:completed}
   }
-  const recover = async (sessionId: string, importId: string): Promise<OpeningIntent | null> => {
+  const recover = async (sessionId: string, importId: string): Promise<OpeningIntent | OpeningIntentV7 | null> => {
     const saved=deps.table.get(openingIntentKey(sessionId,importId)) as OpeningIntent | undefined
     if (saved?.schemaVersion===5) return readIntentVerified(saved.source,'historical')
     if(saved?.schemaVersion===6) {
@@ -875,7 +876,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     })
     return result && 'finish' in result ? finish(result.finish) : result
   }
-  const readIntentVerified = async (source:OpeningSource,purpose?:'historical'):Promise<OpeningIntent|null> => {
+  const readIntentVerified = async (source:OpeningSource,purpose?:'historical'):Promise<OpeningIntent|OpeningIntentV7|null> => {
     const intent=deps.table.get(openingIntentKey(source.sessionId,source.importId)) as OpeningIntent | undefined
     if(intent?.schemaVersion===6) {
       checkIntent(intent,source.sessionId,source.importId)

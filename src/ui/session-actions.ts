@@ -1,5 +1,6 @@
 import type {ConversationCatalog} from './conversation-projection.js'
 import type {ReaderSubmissionHandoff} from './reader-submission-handoff.js'
+import type {PendingOpeningSourceInput} from './pending-opening-source-host.js'
 
 export type SchemaTaskEditMode = 'retain' | 'replace' | 'clear'
 export interface SchemaTaskEditIntent {
@@ -61,6 +62,7 @@ interface ActionDependencies {
   acceptConversations(value: ConversationCatalog): void
   loadConversations(): Promise<unknown>
   readerHandoff?: Pick<ReaderSubmissionHandoff,'capture'>
+  startPendingOpeningSource?(input:PendingOpeningSourceInput):{dispose():void}
   toast(text: string): void
   fetch?: typeof globalThis.fetch
   storage?: Pick<Storage, 'getItem' | 'setItem' | 'key' | 'length'> & Partial<Pick<Storage, 'removeItem'>>
@@ -79,6 +81,7 @@ export function createRoleplayActions({sessionsService,
     acceptConversations,
     loadConversations,
     readerHandoff,
+    startPendingOpeningSource,
     toast,
     fetch=globalThis.fetch,
     storage,
@@ -684,9 +687,12 @@ export function createRoleplayActions({sessionsService,
       const childId = observed.childSessionId
       if (!childId) throw new Error('开场操作缺少会话标识；已停止提交，请核对操作状态')
       if (observed.status === 'pending') {
-        const settled = await waitForBranchOperation(operationId,
-          15 * 60 * 1000,{openingRetryChildId:childId})
-        assertOpeningChild(settled,childId)
+        const sourceHost=startPendingOpeningSource?.({sourceSessionId,childSessionId:childId,operationId})
+        try {
+          const settled = await waitForBranchOperation(operationId,
+            15 * 60 * 1000,{openingRetryChildId:childId})
+          assertOpeningChild(settled,childId)
+        } finally {sourceHost?.dispose()}
       }
       invalidateState(sourceSessionId)
       invalidateState(childId)
@@ -712,33 +718,36 @@ export function createRoleplayActions({sessionsService,
 
     // Once the server may have admitted generation, a lost response is not
     // permission to submit another model request or delete the reserved child.
-    let generated: BranchReply<string> | null = null
+    const sourceHost=startPendingOpeningSource?.({sourceSessionId,childSessionId:childId,operationId})
     try {
-      generated = await branchRequest({
-        action:'generate-opening', operationId, childSessionId:childId,
-      })
-    } catch (error) {
-      if (Number.isFinite(errorDetails(error).status) && Number(errorDetails(error).status) < 500) {
+      let generated: BranchReply<string> | null = null
+      try {
+        generated = await branchRequest({
+          action:'generate-opening', operationId, childSessionId:childId,
+        })
+      } catch (error) {
+        if (Number.isFinite(errorDetails(error).status) && Number(errorDetails(error).status) < 500) {
+          await openSessionPreservingView(sourceSessionId,childId)
+          throw error
+        }
+      }
+      if (generated) assertOpeningChild(generated,childId)
+      try {
+        if (generated?.status !== 'completed') {
+          const settled = await waitForBranchOperation(operationId,
+            15 * 60 * 1000,{openingRetryChildId:childId})
+          assertOpeningChild(settled,childId)
+        }
+        invalidateState(sourceSessionId)
+        invalidateState(childId)
+        await openSessionPreservingView(childId,sourceSessionId)
+        clearIndex()
+        return childId
+      } catch (error) {
         await openSessionPreservingView(sourceSessionId,childId)
         throw error
       }
-    }
-    if (generated) assertOpeningChild(generated,childId)
-    try {
-      if (generated?.status !== 'completed') {
-        const settled = await waitForBranchOperation(operationId,
-          15 * 60 * 1000,{openingRetryChildId:childId})
-        assertOpeningChild(settled,childId)
-      }
-      invalidateState(sourceSessionId)
-      invalidateState(childId)
-      await openSessionPreservingView(childId,sourceSessionId)
-      clearIndex()
-      return childId
-    } catch (error) {
-      await openSessionPreservingView(sourceSessionId,childId)
-      throw error
-    }
+    } finally {sourceHost?.dispose()}
   })
 
   const forkWithoutUserTurn = async ({ sourceSessionId, messageId }: {sourceSessionId: string; messageId?: string}) => {

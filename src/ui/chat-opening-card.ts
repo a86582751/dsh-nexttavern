@@ -1,12 +1,14 @@
 import type * as ReactAPI from 'react'
 import {createOpeningPanel} from './opening-panel.js'
 import type {OpeningSourceView} from './opening-panel.js'
+import type {PrepareOpeningSource} from './reader-submission-handoff.js'
 
 interface ChatOpeningCardDependencies {
   React:typeof ReactAPI
   jsonFetch<T>(url:string,init?:RequestInit):Promise<T>
   toast(text:string):void
   invalidateState(sessionId:string):void
+  prepareSource?:PrepareOpeningSource
 }
 /** A server-confirmed completed chat import owns this window. Upload previews,
  * tool text and resource-library selections cannot create a choice themselves. */
@@ -24,8 +26,8 @@ export function chatOpeningSource(value:unknown):{key:string;source:OpeningSourc
   return {key:`${row.requestId}:${row.importId}:${row.transactionId}`,
     source:{importId:row.importId,rawSha256:row.rawSha256,transactionId:row.transactionId}}
 }
-export function createChatOpeningCard({React,jsonFetch,toast,invalidateState}:ChatOpeningCardDependencies) {
-  const Opening = createOpeningPanel({React,jsonFetch,toast})
+export function createChatOpeningCard({React,jsonFetch,toast,invalidateState,prepareSource}:ChatOpeningCardDependencies) {
+  const Opening = createOpeningPanel({React,jsonFetch,toast,prepareSource})
   return function ChatOpeningCard({sessionId,cardImport,refreshToken}:{
     sessionId:string | null;cardImport:unknown;refreshToken:number
   }) {

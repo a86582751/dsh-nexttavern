@@ -1,4 +1,4 @@
-import type {ForkOperation} from './roleplay-worldline-types.js'
+import type {ForkPreparationOperation} from './roleplay-worldline-types.js'
 import type {ForkReservation} from './roleplay-branch-routes-types.js'
 import type {ImportPointer} from './roleplay-import-types.js'
 import type {TavernOpeningContext} from './tavern-card.js'
@@ -11,7 +11,7 @@ import type {LoreEditJournalV1} from './roleplay-tavern-lore-edits-journal.js'
 import type {PromptTemplateOnlyInheritedSourceInputV2} from './roleplay-prompt-template-only-types.js'
 import type {ProgramAbsenceOpeningClosureV1} from './roleplay-program-absence-inheritance-data.js'
 import type {ProgramAbsenceInventoryV1} from './roleplay-program-absence-inventory.js'
-import type {AuthorChatForkBaseV3,AuthorChatRefV1} from './roleplay-author-chat-state-types.js'
+import type {AuthorChatForkBaseV3,AuthorChatRefV1,AuthorChatNamespaceV3} from './roleplay-author-chat-state-types.js'
 import type {NativeCardConversionForkSeedV1} from './native-card-advanced.js'
 
 export type TavernSourceStaticTableV1='cards'|'worldbook'|'rules'|'opening'|'status'|'branch'
@@ -106,7 +106,7 @@ export interface TavernSourceLegacyCopyV1 {
    * header has no Native parent; parentSessionId names the static Source. */
   readonly freshFirstTurn?:true
 }
-export interface TavernSourceMaterialPublicationV1 {
+interface TavernSourceMaterialPublicationBaseV1 {
   readonly ownerSessionId:string
   readonly nativeSeq:number
   readonly nativeEventSha256:string
@@ -114,6 +114,9 @@ export interface TavernSourceMaterialPublicationV1 {
   readonly planRef:TavernSourceInheritanceRefV1
   readonly nativeRecordSha256:string
 }
+export type TavernSourceMaterialPublicationV1=TavernSourceMaterialPublicationBaseV1&(
+  {readonly kind?:never}|{readonly kind:'author-generation-effects';
+    readonly acceptedRef:import('dsh-nexttavern-session-format').AuthorGenerationEffectsRefV1})
 export interface TavernSourceFrozenPromptScopeRecordV1 {
   readonly schemaVersion:1
   readonly encoding:'native-tavern-frozen-prompt-scope-record-v1'
@@ -247,7 +250,16 @@ export interface TavernSourceMaterialBaselineV1 {
   readonly publications:readonly TavernSourceMaterialPublicationV1[]
   readonly baselineSha256:string
 }
+/** Selected numerical scope provenance frozen alongside ordinary fork roots.
+ * Source's prepared cut binds this DATA; the numerical owner resolves refs. */
+export interface AuthorChatScopeForkBaseV1 {
+  readonly schemaVersion:1
+  readonly namespace:AuthorChatNamespaceV3
+  readonly originNamespace:AuthorChatNamespaceV3
+  readonly scopeRef:AuthorChatRefV1|null
+}
 export interface TavernSourcePreparedV1 {
+  readonly authorContextForkV1?:import('./roleplay-author-source-context.js').AuthorContextForkV1
   readonly frozenCharacterPrivateV1?:import('./roleplay-character-private.js').CharacterPrivateForkV1
   readonly schemaVersion:1
   readonly encoding:'native-tavern-source-inheritance-prepared-v1'
@@ -270,6 +282,7 @@ export interface TavernSourcePreparedV1 {
   readonly frozenNonNumericalOpeningV1?:TavernSourceFrozenNonNumericalOpeningV1
   readonly frozenProgramAbsenceOpeningV1?:TavernSourceFrozenProgramAbsenceOpeningV1
   readonly authorChatForkBasesV3?:readonly AuthorChatForkBaseV3[]
+  readonly authorChatScopeForkBasesV1?:readonly AuthorChatScopeForkBaseV1[]
   readonly frozenNativeCardConversionSeedV1?:NativeCardConversionForkSeedV1
   readonly ancestors:readonly TavernSourceInheritanceLayerRefV1[]
   readonly preparedSha256:string
@@ -379,9 +392,15 @@ export interface TavernSourceInheritanceDepsV1 {
     cut:TavernSourceNativeCutV1,sourceRows:TavernSourceOwnedRowFactsV1,
     closedOpening?:TavernSourceProgramAbsenceObservationV1)=>TavernSourceProgramAbsenceObservationV1|void
   /** Ordinary namespaces are captured at the same locked Source reservation. */
+  readonly captureAuthorChatScopeForkBasesV1?:(parentSessionId:string,childSessionId:string,
+    operationId:string,cut:TavernSourceNativeCutV1,source:TavernLoreSourceDataV1)=>readonly AuthorChatScopeForkBaseV1[]|undefined
   readonly captureAuthorChatForkBasesV3?:(parentSessionId:string,childSessionId:string,
-    operationId:string,cut:TavernSourceNativeCutV1,source:TavernLoreSourceDataV1)=>readonly AuthorChatForkBaseV3[]|undefined
+    operationId:string,cut:TavernSourceNativeCutV1,source:TavernLoreSourceDataV1,
+    scopeForkBases?:readonly AuthorChatScopeForkBaseV1[])=>readonly AuthorChatForkBaseV3[]|undefined
   readonly applyAuthorChatForkBasesV3?:(bases:readonly AuthorChatForkBaseV3[],preparedRef:AuthorChatRefV1,
+    prepared:TavernSourcePreparedV1,sourceCurrent:()=>boolean)=>PromiseLike<unknown>
+  readonly captureAuthorContextFork?:(source:TavernLoreSourceDataV1)=>import('./roleplay-author-source-context.js').AuthorContextForkV1
+  readonly applyAuthorContextFork?:(frozen:import('./roleplay-author-source-context.js').AuthorContextForkV1,
     prepared:TavernSourcePreparedV1,sourceCurrent:()=>boolean)=>PromiseLike<unknown>
   /** Sidecar classification is frozen at the same author cut, but remains
    * outside Source's static inventory and never replaces execution rows. */
@@ -443,7 +462,7 @@ export interface TavernSourceCommittedLineageV1 {
   readonly ancestors:readonly TavernSourceStaticTransactionV1[]
 }
 export interface TavernSourceInheritanceOwnerV1 {
-  prepareSourceInheritance(operation:ForkOperation,reservation:ForkReservation):Promise<TavernSourceInheritancePreparationV1>
+  prepareSourceInheritance(operation:ForkPreparationOperation,reservation:ForkReservation):Promise<TavernSourceInheritancePreparationV1>
   readPreparedFrozenSourceRef(childSessionId:string):TavernSourceFrozenRefV1
   readPreparedSourceInheritance(childSessionId:string):TavernSourcePreparedV1
   readCommittedStaticSourceInheritance(childSessionId:string):TavernSourceStaticTransactionV1

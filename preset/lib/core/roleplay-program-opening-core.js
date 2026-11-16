@@ -8,12 +8,10 @@ import { createRoleplayProgramOpeningBasisV1 } from './roleplay-program-opening-
 import { createRoleplayProgramOpeningV1 } from './roleplay-program-opening.js';
 import { tavernLoreSourceCurrentRowIdentityV1 } from './roleplay-tavern-lore-source.js';
 import { readProgramGeneratedNativeV1, readProgramCardCopyNativeV1 } from './roleplay-program-native-reader.js';
-import { createProgramOpeningNativeFactsV1, validateProgramOpeningSeedV1, validateProgramOpeningInputV1, validateProgramOpeningPlanRecordV1, validateOpeningIntentV7, programOpeningInputKeyV1, programOpeningPlanKeyV1, programOpeningDomainKeyV1, programOpeningRefV1 } from './roleplay-program-opening-records.js';
+import { createProgramOpeningNativeFactsV1, programOpeningInputKeyV1, programOpeningDomainKeyV1, programOpeningRefV1 } from './roleplay-program-opening-records.js';
 import { createProgramAbsenceOpeningClosureV1 } from './roleplay-program-absence-inheritance-data.js';
 import { roleplayMaterialPreparationJournalOwnerV1, readRoleplayMaterialPreparationJournalRowV1 } from './roleplay-input-material.js';
-import { createProgramDerivedOpeningClosureV1 } from './roleplay-mvu-prefix-ledger.js';
 import { openingIntentKey } from './roleplay-opening-selection.js';
-import { mvuInitializationEventKey, mvuInitializationHeadKey } from './roleplay-mvu-initialization.js';
 const same = (a, b) => recordSha256(a) === recordSha256(b);
 const object = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 function fail(code) { throw Error(code); }
@@ -56,6 +54,7 @@ export function createRoleplayProgramOpeningCoreV1(deps) {
             return;
         return { facts: createProgramOpeningNativeFactsV1({ production: 'generated-opening', receipt: actual.receipt,
                 canonical: actual.canonical }, seed, input), closingAcknowledged: !!actual.closingAck,
+            publicationNativeCut: actual.closingAck ? actual.closingAck.ref.seq + 1 : session.seq,
             ...(actual.closingAck ? { ownerReceiptSha256: actual.closingAck.data.ownerReceiptSha256 } : {}) };
     }
     function exactRow(key, sha256) {
@@ -108,6 +107,17 @@ export function createRoleplayProgramOpeningCoreV1(deps) {
             if (!object(payload) || !object(payload.openingPreparation) || !Array.isArray(payload.openingPreparation.ownedBranchRefs)) {
                 fail('PROGRAM_OPENING_HISTORICAL_PHASE_A_MISSING');
             }
+            if (context.schemaOpening) {
+                const section = context.schemaOpening, scope = payload.openingPreparation.scopeFacts, birth = section.preparation.birth, initialized = object(scope) ? scope.initialization : undefined;
+                if (birth.kind !== 'generated' || !object(initialized) || initialized.kind !== 'schema-initialized'
+                    || initialized.preparationSha256 !== section.preparation.preparationSha256
+                    || initialized.executionSha256 !== recordSha256(section.initialization.execution)
+                    || !same(initialized.values, section.initialization.values) || !same(initialized.context, section.initialization.context)
+                    || !same(payload.openingPreparation.snapshotRef, birth.snapshotRef)
+                    || !same(payload.openingPreparation.ownedBranchRefs, birth.phaseARefs)) {
+                    fail('PROGRAM_OPENING_HISTORICAL_INITIALIZATION_CHANGED');
+                }
+            }
             for (const ref of payload.openingPreparation.ownedBranchRefs) {
                 if (!object(ref) || typeof ref.key !== 'string' || typeof ref.sha256 !== 'string') {
                     fail('PROGRAM_OPENING_HISTORICAL_PHASE_A_CHANGED');
@@ -135,7 +145,6 @@ export function createRoleplayProgramOpeningCoreV1(deps) {
         return [...rows.values()];
     }
     const basis = createRoleplayProgramOpeningBasisV1({ tables: deps.tables,
-        readPhaseBControlData: deps.readPhaseBControlData,
         session: sid => deps.session(sid),
         assertSourceCurrent: proof => {
             const session = deps.session(proof.source.sessionId);
@@ -154,48 +163,19 @@ export function createRoleplayProgramOpeningCoreV1(deps) {
             // The flow alone assembles this list from immutable input refs, its live
             // writers and Native-bound historical refs. Recheck every actual value.
             for (const row of rows) {
-                if (!row.key.startsWith(identity.sessionId + '__') || !same(exactRow(row.key).value, row.value)) {
+                const value = deps.tables[row.table ?? 'branch'].get(row.key);
+                if (!row.key.startsWith(identity.sessionId + '__') || !same(value, row.value)) {
                     fail('PROGRAM_OPENING_OWNED_ROW_CHANGED');
                 }
             }
-        }, isNativeCurrent: (plan, envelope) => {
-            const found = flow.read(plan.identity.sessionId);
-            if (found.kind !== 'ready' || !found.intent.nativeReceipt)
-                return false;
-            return same(found.intent.genesisEnvelope, envelope) && flow.nativeCurrent(found.context, found.intent.nativeReceipt, false);
         }, isNativeFactsCurrent: (identity, facts) => flow.nativeFactsCurrent(identity, facts),
         isOpeningInvocationCurrent: (identity, ref) => flow.invocationCurrent(identity, ref) });
     flow = createRoleplayProgramOpeningV1({ ...deps, branch: deps.tables.branch, status: deps.tables.status, source, basis,
         readPhaseA, readNativeFacts, readHistoricalOwnedRows });
-    function captureCompletedClosure(id) {
-        const found = flow.verified(id), genesis = flow.readGenesis(id);
-        if (found.kind !== 'ready' || found.intent.status !== 'completed' || !found.intent.nativeReceipt
-            || !found.context.planRecord || !genesis)
-            return;
-        const { seed, input, planRecord } = found.context, native = found.intent.nativeReceipt, refs = {
-            seed: input.seedRef, input: programOpeningRefV1(programOpeningInputKeyV1(id, seed.operationId), input),
-            plan: programOpeningRefV1(programOpeningPlanKeyV1(id, seed.operationId), planRecord),
-            intent: programOpeningRefV1(openingIntentKey(id, seed.source.importId), found.intent)
-        }, genesisEventRef = programOpeningRefV1(mvuInitializationEventKey(id, genesis.programEvent.eventId), genesis.programEvent), genesisHeadRef = programOpeningRefV1(mvuInitializationHeadKey(id), genesis.programHead), closure = createProgramDerivedOpeningClosureV1({ seed, input, planRecord, intent: found.intent, refs,
-            genesisEventRef, genesisHeadRef }, genesis, native);
-        const assertCurrent = () => {
-            const actual = flow.verified(id);
-            if (actual.kind !== 'ready' || !same(actual.intent, found.intent) || !same(flow.readGenesis(id), genesis))
-                fail('PROGRAM_OPENING_COMPLETED_CLOSURE_CHANGED');
-            for (const ref of Object.values(refs))
-                exactRow(ref.key, ref.sha256);
-            for (const ref of [genesisEventRef, genesisHeadRef]) {
-                if (recordSha256(deps.tables.status.get(ref.key)) !== ref.sha256)
-                    fail('PROGRAM_OPENING_GENESIS_CHANGED');
-            }
-        };
-        assertCurrent();
-        return { closure, assertCurrent };
-    }
     function captureCompletedAbsenceClosure(id) {
         const found = flow.verified(id);
         if (found.kind !== 'ready' || found.intent.status !== 'completed' || !found.intent.nativeReceipt
-            || found.context.planRecord || !found.context.absenceDomain)
+            || found.context.input.initialization === 'schema' || !found.context.absenceDomain)
             return;
         const { seed, input, absenceDomain } = found.context, session = deps.session(id);
         if (!session)
@@ -238,7 +218,7 @@ export function createRoleplayProgramOpeningCoreV1(deps) {
                 fail('PROGRAM_ABSENCE_OPENING_SESSION_CHANGED');
             deps.assertSessionCurrent(session);
             const actual = flow.verified(id);
-            if (actual.kind !== 'ready' || actual.intent.status !== 'completed' || actual.context.planRecord
+            if (actual.kind !== 'ready' || actual.intent.status !== 'completed' || actual.context.input.initialization === 'schema'
                 || !same(actual.intent, found.intent) || !same(actual.context.absenceDomain, absenceDomain)) {
                 fail('PROGRAM_ABSENCE_OPENING_CLOSURE_CHANGED');
             }
@@ -250,5 +230,5 @@ export function createRoleplayProgramOpeningCoreV1(deps) {
         assertCurrent();
         return { closure, assertCurrent };
     }
-    return { ...flow, captureCompletedClosure, captureCompletedAbsenceClosure };
+    return { ...flow, captureCompletedAbsenceClosure };
 }

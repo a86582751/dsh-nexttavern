@@ -146,9 +146,9 @@ export function validateProgramAbsenceOpeningClosureV1(input) {
     exact(data['refs'], ['seed', 'input', 'intent', 'absenceDomain']);
     if (!Array.isArray(data['materialRows']) || data['materialRows'].length > 512)
         fail();
-    const original = input.data, seed = validateProgramOpeningSeedV1(data['seed']), packet = validateProgramOpeningInputV1(data['input'], seed), absenceDomain = validateProgramOpeningAbsentDomainV1(original.absenceDomain, { seed, input: packet }), intent = validateOpeningIntentV7(original.intent, { seed, input: packet, planRecord: null, absenceDomain });
+    const original = input.data, seed = validateProgramOpeningSeedV1(data['seed']), packet = validateProgramOpeningInputV1(data['input'], seed), absenceDomain = validateProgramOpeningAbsentDomainV1(original.absenceDomain, { seed, input: packet }), intent = validateOpeningIntentV7(original.intent, { seed, input: packet, absenceDomain });
     if (seed.sessionId !== value['ownerSessionId'] || packet.initialization !== 'absent' || intent.status !== 'completed'
-        || intent.planRef !== null || Object.hasOwn(intent, 'genesisEnvelope') || !intent.nativeReceipt
+        || !intent.nativeReceipt
         || intent.domainReceipt?.kind !== 'prompt-absence')
         fail();
     const native = validateProgramOpeningNativeFactsV1(original.intent.nativeReceipt, seed, packet);

@@ -1,16 +1,13 @@
-/** Pure identity-only rendering, whole raw/current syntax coverage and the
- * existing raw InitVar calculator. No schema/VM, Native or basis is supplied. */
+/** Pure identity rendering, prompt syntax coverage and original initialization
+ * declarations. The shared Host owner owns initialization parsing and values. */
 import {recordSha256,sha256} from './roleplay-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
-import {compileSchemaMvuInitData,selectNativeMvuInitializationPolicy} from './tavern-mvu-initvar.js'
-import {isNativeMvuYamlSourcePolicy} from './roleplay-mvu-source-policy.js'
 import {assertMvuLiteralSourceTextV1,assertMvuNonSchemaSourceExtensionsV1} from './roleplay-mvu-source.js'
 import {spanText,sourceDescriptor} from './roleplay-import-record.js'
 import {partitionPromptTemplateOnlyTextV1,PromptTemplateOnlyRefusalV1} from './roleplay-prompt-template-only-data.js'
 import type {DecodedTavernCard,TavernOpeningContext,TavernOpeningCandidate} from './tavern-card.js'
 import type {ImportRecord} from './roleplay-import-types.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
-import type {SchemaMvuInitDataSource} from './tavern-mvu-initvar.js'
 import type {PromptProgramSourceInventoryV1,PromptProgramTextV1} from './roleplay-prompt-program-source-types.js'
 import type {PromptOpeningSourceCodeV1,PromptOpeningIdentityRenderingV1,PromptOpeningGreetingBlockV1,
   PromptOpeningGreetingFactsV1,PromptOpeningRawEntryBindingV1,PromptOpeningRawInitBindingV1,
@@ -20,9 +17,8 @@ export const PROMPT_OPENING_SOURCE_POLICY_V1=Object.freeze({schemaVersion:1,
   encoding:'native-prompt-opening-source-policy-v1',source:'actual-own-root-or-committed-reserved-fresh-cut0',
   prompt:'six-author-fields-and-actual-recomputed-book-content; protected-selection-and-renderer-separate',
   identityRendering:'only-actual-three-identity-macros-v1; user,char,user_gender; complete-source-bytes',
-  numeric:'compileSchemaMvuInitData-raw-init-data-v1; existing-selector-strict-JSON-or-JSON-data-YAML',
-  initialization:'immutable-raw-book-init-entries-and-complete-original-greetings; current-prompt-edit-is-not-new-init-data',
-  calculatorBaseline:'explicit-empty-calculation-policy; not-actual-numerical-absence-or-fresh-basis',
+  numeric:'shared-Host-owner-only; original-declarations-carry-no-values',
+  initialization:'immutable-original-declaration-provenance; actual-effective-initSource-owned-by-shared-Host',
   schemaExecution:'none',sourceCurrent:'sole-actual-Source-current-identity; full-audit-refs-retained',
   modelRequests:0,proofBytes:16_777_216,greetings:4096,entries:4096})
 export const PROMPT_OPENING_SOURCE_POLICY_SHA256=recordSha256(PROMPT_OPENING_SOURCE_POLICY_V1)
@@ -33,10 +29,10 @@ export const NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_V1=Object.freeze({...PROMPT
   initialization:'immutable-raw-book-init-entries-and-template-greetings; materialized-prose-never-initializes'})
 export const NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_SHA256=recordSha256(NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_V1)
 export class PromptOpeningSourceFailureV1 extends Error {
-  constructor(readonly code:PromptOpeningSourceCodeV1,readonly pointer:string,readonly calculatorCode?:string) {super(code)}
+  constructor(readonly code:PromptOpeningSourceCodeV1,readonly pointer:string) {super(code)}
 }
-export function openingSourceFail(code:PromptOpeningSourceCodeV1,pointer:string,calculatorCode?:string):never {
-  throw new PromptOpeningSourceFailureV1(code,pointer,calculatorCode)
+export function openingSourceFail(code:PromptOpeningSourceCodeV1,pointer:string):never {
+  throw new PromptOpeningSourceFailureV1(code,pointer)
 }
 export function clonePromptOpeningSourceDataV1<T>(value:T):T {
   try {return cloneRoleplayTavernLoreDataV1(value,PROMPT_OPENING_SOURCE_POLICY_V1.proofBytes)}
@@ -53,10 +49,9 @@ export function openingSourceObject(value:unknown):value is Record<string,unknow
   return value!==null&&typeof value==='object'&&!Array.isArray(value)
 }
 export function promptOpeningInitializationInputBindingV1(program:PromptProgramSourceInventoryV1,
-  data:SchemaMvuInitDataSource,grammarPolicy:PromptOpeningInitializationV1['grammarPolicy'],
   bindings:PromptOpeningRawInitBindingV1):string {
   return recordSha256({encoding:'immutable-raw-opening-init-input-binding-v1',importTuple:program.importTuple,
-    data,grammarPolicy,bindings:{...bindings,
+    bindings:{...bindings,
       rawEntries:bindings.rawEntries.map(({effectivePromptContentSha256:_,...entry})=>{
         if(program.book.currentNativeMembershipSha256===undefined)return entry
         // Current-member audit fields disappear when an original is deleted;
@@ -68,7 +63,7 @@ export function promptOpeningInitializationInputBindingV1(program:PromptProgramS
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
 const escape=(key:string)=>key.replace(/~/g,'~0').replace(/\//g,'~1')
 const initSyntax=(text:string)=>/\[initvar\]|<\/?initvar\b/i.test(text)
-/** A bound raw-data position permits the calculator's InitVar wrappers only.
+/** A declared opening data position permits InitVar wrappers only.
  * This separate guard does not weaken the old Source/classifier or EJS rules. */
 function rawDataSyntax(text:string,pointer:string):void {
   if(/<script\b|<%|%>|\bon[a-z]+\s*=|javascript:|<iframe\b/i.test(text)
@@ -190,70 +185,39 @@ export function readPromptOpeningGreetingFactsV1(candidate:TavernOpeningCandidat
     ...(candidate.materialization?{materialization:candidate.materialization}:{})}
 }
 
-/** Sources are actual private-owner facts supplied by the Source factory.
- * This calculator builder remains inert and never mints an opening proof. */
-export function calculatePromptOpeningRawInitV1(input:{source:TavernLoreSourceDataV1;decoded:DecodedTavernCard;
-  record:ImportRecord;program:PromptProgramSourceInventoryV1;candidates:readonly TavernOpeningCandidate[];
-  selectedIndex:number;context:TavernOpeningContext}):PromptOpeningInitializationV1 {
-  const {source,decoded,record,program,candidates,selectedIndex,context}=input,primary=source.original.primary
+/** Preserve original declarations independently of today's effective initSource. */
+export function capturePromptOpeningDeclarationsV1(input:{source:TavernLoreSourceDataV1;
+  program:PromptProgramSourceInventoryV1;candidates:readonly TavernOpeningCandidate[];
+  context:TavernOpeningContext}):PromptOpeningInitializationV1 {
+  const {source,program,candidates,context}=input,primary=source.original.primary
   const byEntry=new Map(program.bookEntries.map(entry=>[entry.originalAddress,entry] as const))
-  const membership=program.book.currentNativeMembershipSha256!==undefined
-  const rawEntries:PromptOpeningRawEntryBindingV1[]=[],initEntries:SchemaMvuInitDataSource['books'][number]['entries'][number][]=[]
-  let macros=false
+  const hasCurrentBooks=program.book.currentNativeMembershipSha256!==undefined||program.book.boundBooks!==undefined
+  const rawEntries:PromptOpeningRawEntryBindingV1[]=[]
+  let markerCount=0
   for(const raw of primary.entries) {
     const entry=byEntry.get(raw.ref.entryPointer),value=raw.value,pointer=raw.ref.entryPointer
-    if(!membership&&(!entry||!entry.original||entry.rawEntrySha256!==raw.ref.entrySha256)
+    if(!hasCurrentBooks&&(!entry||!entry.original||entry.rawEntrySha256!==raw.ref.entrySha256)
       ||typeof value.content!=='string'||value.comment!==undefined&&typeof value.comment!=='string') {
       openingSourceFail('OPENING_SOURCE_IMPORT_UNPROVEN',pointer)
     }
     const comment=String(value.comment??''),isInitVar=comment.toLowerCase().includes('[initvar]')
     const enabled=value.enabled!==false&&value.disable!==true
-    let rendering:ReturnType<typeof renderPromptOpeningIdentityV1>|null=null
-    if(isInitVar) {
-      // Only the selector marker is privileged in comments. Remaining comment
-      // text keeps the ordinary literal guard, including inert EJS metadata.
-      literal(comment.replace(/\[initvar\]/gi,''),context,pointer+'/comment')
-      rawDataSyntax(value.content,pointer+'/content')
-      rendering=renderPromptOpeningIdentityV1(value.content,context,pointer+'/content',[{start:0,end:value.content.length}])
-      rawDataSyntax(rendering.text,pointer+'/content/rendered')
-      macros||=rendering.facts.used
-      initEntries.push({identity:`entry-${raw.ref.entryOrdinal}`,sourcePointer:pointer,comment,enabled,
-        content:value.content,contentSha256:sha256(value.content),renderedContent:rendering.text,
-        renderedContentSha256:sha256(rendering.text)})
-    }else {
+    if(isInitVar)markerCount++
+    else {
       programText(entry?.original??value.content,pointer+'/content')
       if(entry)programText(entry.effective,pointer+'/content/current')
     }
-    if(isInitVar&&entry)rawDataSyntax(entry.effective.text,pointer+'/content/current')
     rawEntries.push({ordinal:raw.ref.entryOrdinal,entryId:entry?.entryId??null,sourceKey:raw.entryKey,
       sourcePointer:pointer,rawEntrySha256:raw.ref.entrySha256,original:value,isInitVar,enabled,
-      renderedContent:rendering?.text??null,identityRendering:rendering?.facts??null,
       effectivePromptContentSha256:entry?.effective.textSha256??null})
   }
-  // Introduced current text remains ordinary prompt data. It is never added to
-  // immutable raw InitVar entries or granted their calculator syntax scope.
+  // Current text keeps its own prompt origin. Original declarations remain
+  // immutable provenance, while the shared Host captures effective initSource.
   for(const entry of program.bookEntries)if(entry.originalAddress===null) {
     programText(entry.effective,entry.contentPointer+'/current')
   }
   const greetingFacts=candidates.map(candidate=>readPromptOpeningGreetingFactsV1(candidate,context))
-  macros||=greetingFacts.some(greeting=>greeting.identityRendering.used)
-  const books:SchemaMvuInitDataSource['books']=primary.binding==='primary'
-    ?[{identity:'embedded-primary',binding:'primary',sourcePointer:primary.bookPointer,sourceSha256:primary.bookSha256,
-      entries:initEntries}]:[]
-  const swipes:SchemaMvuInitDataSource['swipes']=greetingFacts.map(item=>({identity:`swipe-${item.index}`,
-    sourcePointer:item.sourcePointer,sourceSha256:item.sourceSha256,rawOpening:item.rawText,renderedOpening:item.renderedText,
-    renderedSha256:item.renderedSha256,statData:{},...(item.materialization?{materialization:item.materialization}:{})}))
-  const policy=selectNativeMvuInitializationPolicy({books,swipes})
-  if(policy.kind!=='selected')openingSourceFail('OPENING_SOURCE_INIT_DATA_UNSUPPORTED',
-    policy.diagnostics[0]?.pointer??'/initialization',policy.diagnostics[0]?.code)
-  const descriptor={schemaVersion:1 as const,encoding:'native-mvu-schema-opening-init-source-v1' as const,
-    grammar:isNativeMvuYamlSourcePolicy(policy.policy)?'yaml-1.2-json-data-v1' as const:'strict-json-object-v1' as const,
-    books,bookStatData:{},initializedBooks:[] as [],messageIndex:0 as const,selectedSwipeIdentity:`swipe-${selectedIndex}`,
-    swipes,macros:macros?'verified-identity-rendering' as const:'none' as const}
-  const data:SchemaMvuInitDataSource={...descriptor,initSourceSha256:recordSha256(descriptor)}
-  const calculation=compileSchemaMvuInitData(data)
-  if(calculation.kind!=='parsed')openingSourceFail('OPENING_SOURCE_INIT_DATA_UNSUPPORTED',
-    calculation.diagnostics[0]?.pointer??'/initialization',calculation.diagnostics[0]?.code)
+  markerCount+=greetingFacts.reduce((count,greeting)=>count+greeting.originalInitBlocks.length,0)
   const bindings:PromptOpeningRawInitBindingV1={domain:'immutable-raw-embedded-primary-and-complete-original-greetings',
     bookPresence:primary.binding==='primary'?'actual-primary-book':'actual-proven-book-absence',bookPointer:primary.bookPointer,
     rawBook:primary.value,rawBookSha256:primary.bookSha256,rawEntries,
@@ -262,23 +226,23 @@ export function calculatePromptOpeningRawInitV1(input:{source:TavernLoreSourceDa
     bookInitEntryPointers:rawEntries.filter(entry=>entry.isInitVar).map(entry=>entry.sourcePointer),
     greetingFacts,greetingFactsSha256:recordSha256(greetingFacts),
     originalBookAbsence:primary.binding==='proven-absence'?primary.absenceProof:null,
-    baselinePolicy:'empty-calculation-input-only-not-numerical-absence',otherBindings:'not-authorized-and-not-calculated',
+    baselinePolicy:'original-declarations-only',otherBindings:'not-selected-for-execution',
     schemaExecution:'none'}
-  const common={data,calculation,dataSha256:recordSha256(data),calculationSha256:recordSha256(calculation),
-    inputBindingSha256:promptOpeningInitializationInputBindingV1(program,data,policy.policy,bindings),
-    bindings,grammarPolicy:policy.policy,schemaExecution:'none' as const,calculationPolicy:'raw-init-data-v1' as const}
-  const markerCount=initEntries.length+greetingFacts.reduce((count,greeting)=>count+greeting.originalInitBlocks.length,0)
+  const common={inputBindingSha256:promptOpeningInitializationInputBindingV1(program,bindings),bindings,
+    schemaExecution:'none' as const,descriptorPolicy:'immutable-raw-initialization-declarations-v1' as const}
   return freezePromptOpeningSourceDataV1(clonePromptOpeningSourceDataV1(markerCount>0
     ?{...common,kind:'raw-init-data' as const,markerCount}
     :{...common,kind:'absent' as const,reason:'no-actual-initvar-markers' as const,markerCount:0 as const}))
 }
 
 export function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;decoded:DecodedTavernCard;
-  record:ImportRecord;program:PromptProgramSourceInventoryV1;context:TavernOpeningContext;bindings:PromptOpeningRawInitBindingV1}) {
+  record:ImportRecord;program:PromptProgramSourceInventoryV1;context:TavernOpeningContext;
+  bindings:PromptOpeningRawInitBindingV1;schemaOpening?:boolean}) {
   const {source,decoded,record,program,context,bindings}=input,
     initByPointer=new Map(bindings.rawEntries.filter(entry=>entry.isInitVar).map(entry=>[entry.sourcePointer,entry] as const))
   const native=program.importTuple.format==='json-nexttavern-v1'
   const rawResources=new Set<string>(program.regexResources.map(resource=>resource.originalPointer))
+  if(input.schemaOpening)rawResources.add('/data/extensions/tavern_helper')
   // These are the actual CC book fields read by the compiler's key owner.
   // They are matching/preprocessing input, never an InitVar declaration.
   for(const entry of bindings.rawEntries)if(!entry.isInitVar) {
@@ -310,7 +274,7 @@ export function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSource
   }
   // The native format enumerates all executable author fields below. Its
   // archive and open metadata are portable values, never interpreter input.
-  if(native) {
+  if(native&&!input.schemaOpening) {
     const extensions=decoded.data.extensions,
       helper=openingSourceObject(extensions)?extensions.tavern_helper:undefined,
       scripts=openingSourceObject(helper)?helper.scripts:undefined
@@ -341,9 +305,7 @@ export function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSource
   for(const group of program.authorGroups) {
     if(group.currentFieldOffsets==='same-as-original')for(const part of group.parts) {
       const text=group.original.text.slice(part.start,part.end)
-      if(part.kind==='worldbook-content'&&part.rawEntryPointer&&initByPointer.has(part.rawEntryPointer)) {
-        rawDataSyntax(text,group.groupId)
-      }else {
+      if(!(part.kind==='worldbook-content'&&part.rawEntryPointer&&initByPointer.has(part.rawEntryPointer))) {
         // Use the already-proved complete piece partition, not a matched EJS
         // substring. Each peripheral literal still receives the strict guard.
         const field=program.authorFields.find(field=>field.originalPointer===part.originalPointer)
@@ -365,8 +327,7 @@ export function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSource
   }
   for(const entry of program.bookEntries)if(entry.currentProjection) {
     const init=entry.originalAddress===null?undefined:initByPointer.get(entry.originalAddress)
-    if(init)rawDataSyntax(entry.currentProjection.effective.text,entry.contentPointer+'/current-row')
-    else programText(entry.currentProjection.effective,entry.contentPointer+'/current-row')
+    if(!init)programText(entry.currentProjection.effective,entry.contentPointer+'/current-row')
     allow(entry.currentProjection.row.table,entry.currentProjection.row.key,'/content')
     if(!init) {
       // The same compiler-linked importer row owns its actual key projections.
@@ -385,7 +346,7 @@ export function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSource
       }
     }
   }
-  if(!native&&program.book.currentNativeMembershipSha256!==undefined) {
+  if(!native&&(program.book.currentNativeMembershipSha256!==undefined||program.book.boundBooks!==undefined)) {
     // A deleted journal member can retain its original legacy projection.
     // Importer-owned sourceIndex identifies the archive row; no entry
     // classification or current prompt contribution is reconstructed here.

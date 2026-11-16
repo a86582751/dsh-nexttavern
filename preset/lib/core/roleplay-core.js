@@ -132,7 +132,6 @@ import { createRoleplayProgramAbsenceBranchControlsV1 } from './roleplay-program
 import { createRoleplayProgramAbsenceMutableControlsV1 } from './roleplay-program-absence-mutable-controls.js';
 import { createRoleplayProgramInheritedAbsenceReaderV1, programInheritedAbsenceDomainSha256V1 } from './roleplay-program-inherited-absence.js';
 import { tavernSourceProgramAbsenceOpeningKeyV1, tavernSourcePreparedKeyV1 } from './roleplay-tavern-source-inheritance-data.js';
-import { createProgramOpeningAtCutReaderV1 } from './roleplay-program-opening-history.js';
 import { programOpeningDomainKeyV1, programOpeningInputKeyV1, programOpeningSeedKeyV1, programOpeningRefV1, programOpeningRecordDataV1 } from './roleplay-program-opening-records.js';
 import { captureRoleplayTavernLegacyReadDataV1, classifyRoleplayTavernLegacyWriteTargetV1, classifyRoleplayTavernLegacyWriteTargetsV1 } from './roleplay-tavern-legacy-reading.js';
 import { registerTavernLoreEditorRoutesV1 } from './roleplay-tavern-lore-editor-routes.js';
@@ -1738,15 +1737,7 @@ export async function apply(ctx, config = {}) {
         commitDerivedBasis: async (operation, child) => {
             if (operation.kind === 'opening-variant')
                 return;
-            if (schemaDerived?.required(child.id)) {
-                const actual = ctx.sessions.get(child.id);
-                if (!actual)
-                    throw Error('SCHEMA_DERIVED_SESSION_UNAVAILABLE');
-                await schemaDerived.commit(operation, actual);
-            }
-            else
-                await mvuDerived.commit(operation, child);
-            await rubyOwner?.inherit(operation.anchor.sourceSessionId, child.id, Number(child.inheritedEventCount ?? 0));
+            await commitForkInheritance(operation, child);
         },
         durableSeq,
         canonicalAssistantForTurn,
@@ -2657,30 +2648,11 @@ export async function apply(ctx, config = {}) {
         importActiveKey, importRecordKey, withSourceLock: (id, work) => withImportLock(id, 'mvu-derived', work),
         sourceInheritance: () => tavernSourceInheritance,
         readSourceDescriptor: id => describeRoleplayInputSourceV1(actualInputSourceCapture(id)),
-        readProgramGenesisAtCut: createProgramOpeningAtCutReaderV1({ branch: T.branch,
-            sourceInheritance: () => tavernSourceInheritance,
-            captureCompletedClosure: id => programOpening?.captureCompletedClosure(id),
-            projections: () => ctx.sessions.messageProjections, messageEdits: ctx.nexttavernMessageEdits,
-            observation: (id, count) => {
-                const retained = mvuAncestry.readNativeObservation(id);
-                if (sourceReadOwnerClosed || !retained || count < 0 || count > retained.snapshotEvents().length)
-                    return;
-                const events = retained.snapshotEvents().slice(0, count), prefixSha256 = recordSha256(events), surface = foldSurface(events, ctx.sessions.messageProjections), messageAt = (event) => deriveEventMessage(event, surface.projectedMessages), readView = { id, header: retained.header, inheritedEventCount: retained.inheritedEventCount,
-                    events, surface, deriveEventMessage: messageAt }, deletedMessageIds = deletedBranchMessageIdsFor(readView);
-                const assertCurrent = () => {
-                    const now = mvuAncestry.readNativeObservation(id);
-                    if (sourceReadOwnerClosed || !now || now.inheritedEventCount !== retained.inheritedEventCount
-                        || recordSha256(now.header) !== recordSha256(retained.header) || now.snapshotEvents().length < count
-                        || recordSha256(now.snapshotEvents().slice(0, count)) !== prefixSha256)
-                        throw Error('PROGRAM_HISTORY_NATIVE_CUT_CHANGED');
-                };
-                return { data: { id, header: retained.header, inheritedEventCount: retained.inheritedEventCount, seq: count,
-                        events, surfaceNodes: surface.nodes, deriveEventMessage: messageAt }, deletedMessageIds, assertCurrent };
-            } }),
         readGenesis: id => mvuDerived.required(id) ? mvuDerived.readGenesis(id) : readOwnNumericalGenesis(id), state: () => mvuState });
-    function readOwnNumericalGenesis(id) { return programOpening?.readGenesis(id) ?? mvuOpening.readGenesis(id); }
+    function readOwnNumericalGenesis(id) { return mvuOpening.readGenesis(id); }
     let authorBrowser;
     const mvuOpening = createRoleplayMvuOpening({ tables: T, inputState, session: id => ctx.sessions.get(id),
+        readProgramOpeningRoot: (id, selection) => programOpening?.readSchemaOpening(id, selection),
         prepareMvuHook: (request, signal) => authorBrowser?.prepareHook(request, signal) ?? Promise.resolve(undefined),
         awaitBrowserSource: (sid, program, signal) => {
             if (!authorBrowser)
@@ -2763,7 +2735,7 @@ export async function apply(ctx, config = {}) {
         },
         readNumericalAuthority: id => mvuState.readNumericalAuthority(id),
         readProgramOpeningObservation: (id, sourceSha256) => {
-            const candidate = programOpening?.read(id), found = candidate?.kind === 'ready' && candidate.context.planRecord
+            const candidate = programOpening?.read(id), found = candidate?.kind === 'ready' && candidate.context.input.initialization === 'schema'
                 ? candidate : programOpening?.verified(id);
             if (!found || found.kind === 'outside-domain') {
                 try {
@@ -2783,11 +2755,8 @@ export async function apply(ctx, config = {}) {
                 return { kind: 'management', sourceSha256, reason: found.code };
             if (found.intent.status !== 'completed')
                 return { kind: 'management', sourceSha256, reason: found.intent.diagnosis ?? 'PROGRAM_OPENING_NOT_READY' };
-            if (found.context.planRecord) {
-                const authority = mvuState.readNumericalAuthority(id);
-                return authority.kind === 'ready' ? { kind: 'story', sourceSha256, headRef: { kind: 'numerical-head', sha256: authority.snapshot.headSha256 } }
-                    : { kind: 'management', sourceSha256, reason: authority.code };
-            }
+            if (found.context.input.initialization === 'schema')
+                return;
             return { kind: 'story', sourceSha256, absenceScopeRef: { kind: 'prompt-program-domain',
                     sha256: recordSha256(found.intent.domainReceipt) } };
         },
@@ -2937,9 +2906,7 @@ export async function apply(ctx, config = {}) {
             if (basis.kind === 'ready') {
                 const genesis = mvuDerived.required(id) ? mvuDerived.readGenesis(id) : readOwnNumericalGenesis(id);
                 const editFloorSeq = genesis && 'initEvent' in genesis ? genesis.initEvent.native.turnEndSeq + 1
-                    : genesis && 'programEvent' in genesis ? (genesis.programEvent.native.production === 'generated-opening'
-                        ? genesis.programEvent.native.receipt.turnEndRef.seq + 1 : genesis.programEvent.native.receipt.turnEndSeq + 1)
-                        : ctx.sessions.get(id)?.inheritedEventCount;
+                    : ctx.sessions.get(id)?.inheritedEventCount;
                 if (!Number.isSafeInteger(editFloorSeq) || Number(editFloorSeq) < 0)
                     return { kind: 'unknown' };
                 return { kind: 'verified', sourceSha256: basis.snapshot.sourceSha256, root: basis.snapshot.root, editFloorSeq: editFloorSeq };
@@ -3575,6 +3542,11 @@ export async function apply(ctx, config = {}) {
         },
         executeAuthorFilter,
         retireNativeFilters: retireNativeFilterReferences,
+        initializeOpening: (native, scope) => {
+            if (!programOpening)
+                throw Error('PROGRAM_OPENING_OWNER_UNAVAILABLE');
+            return programOpening.initializeOpening(native, scope);
+        },
         openingPreparation: (native, scope, source) => {
             if (!programOpening)
                 throw Error('PROGRAM_OPENING_OWNER_UNAVAILABLE');
@@ -3596,8 +3568,8 @@ export async function apply(ctx, config = {}) {
             const kept = new Set(retainRoleplayWindowContinuity(scope.session, selected.messages.map(row => row.message), Number.MAX_SAFE_INTEGER));
             return selected.messages.filter(row => kept.has(row.message));
         } });
-    programOpening = createRoleplayProgramOpeningCoreV1({ tables: T,
-        sourceReaders: { tables: T, source: tavernSource, edits: tavernLoreEdits, inputState,
+    programOpening = createRoleplayProgramOpeningCoreV1({ tables: T, generatedOpening: mvuOpening.generatedOpening,
+        sourceReaders: { tables: T, source: tavernSource, edits: tavernLoreEdits, books: authorContext, inputState,
             readImportRecord: (sid, id) => T.branch.get(importRecordKey(sid, id)),
             session: id => ctx.sessions.get(id), readOpeningContext: openingContextBinding,
             sourceInheritance: tavernSourceInheritance },
@@ -3615,9 +3587,9 @@ export async function apply(ctx, config = {}) {
         }, isActualAgent: agent => ctx.get('agentLoop')?.getProgrammaticOpeningAgent(agent) === agent
             && ctx.sessions.get(agent.session.id) === agent.session,
         includeCardStyle: id => narrativePresets.policy(id).effective.mode !== 'system',
-        ownsCombinedOpening: id => {
-            const author = mvuOpening.readAuthorSource(id, 0);
-            return author.kind === 'author-source' && author.source.scripts.some(script => script.enabled);
+        ownsCombinedOpening: (id, index) => {
+            const author = mvuOpening.readAuthorSource(id, index);
+            return author.kind === 'author-source';
         },
         readNumericalSourceSha256: mvuOpening.readSourceSha256, importActiveKey,
         readPreparationFacts: (session, audit) => inputState.readProgramOpeningPreparationFacts(session, audit),
@@ -3626,10 +3598,6 @@ export async function apply(ctx, config = {}) {
         projections: () => ctx.sessions.messageProjections, messageEdits: ctx.nexttavernMessageEdits,
         deletedMessageIds: deletedBranchMessageIdsFor,
         phaseSnapshot: (session, turn) => ensureState(session.id).snapshots.get(turn),
-        readPhaseBControlData: session => {
-            const actual = programAbsenceBranchControls.capture(session);
-            return { rows: actual.rows.filter(row => row.kind === 'phase-b'), assertCurrent: actual.assertCurrent };
-        },
         lookupCopy: async (context) => {
             const found = await ctx.sessionController.resolveAgent(context.seed.sessionId), agent = found?.agent, owned = ctx.get('agentLoop')?.getInputAdmissionAgent(agent), sdk = owned;
             if (!agent || owned !== agent || typeof sdk?.lookupProgrammaticAssistantCommit !== 'function')
@@ -3672,7 +3640,7 @@ export async function apply(ctx, config = {}) {
     }
     function readProgramAbsenceScopes(id) {
         const found = programOpening?.verified(id);
-        if (found?.kind !== 'ready' || found.intent.status !== 'completed' || found.context.planRecord || !found.context.absenceDomain)
+        if (found?.kind !== 'ready' || found.intent.status !== 'completed' || !found.context.absenceDomain)
             return;
         const session = ctx.sessions.get(id);
         if (!session || sourceReadOwnerClosed)
@@ -4236,6 +4204,7 @@ export async function apply(ctx, config = {}) {
             return session;
         }, selection: openingSelection,
         program: programOpening,
+        requiresAuthorBrowser: async (sid, index) => (await mvuOpening.prepareBrowserSource(sid, index)) !== undefined,
         openingContext,
         legacyOpeningAlreadyRequested: (sessionId, importId) => {
             const pointer = T.branch.get(importActiveKey(sessionId));
@@ -5065,6 +5034,69 @@ export async function apply(ctx, config = {}) {
             await T.branch.put(forkOperationKey(operation.operationId), { ...operation,
                 state: 'ready', consumed: true, childSessionId: child.id, groupId: registration.groupId, ordinal: registration.ordinal, registration });
         } });
+    async function commitForkInheritance(operation, child) {
+        if (schemaDerived?.required(child.id)) {
+            const actual = ctx.sessions.get(child.id);
+            if (!actual)
+                throw Error('SCHEMA_DERIVED_SESSION_UNAVAILABLE');
+            await schemaDerived.commit(operation, actual);
+        }
+        else
+            await mvuDerived.commit(operation, child);
+        await rubyOwner?.inherit(operation.anchor.sourceSessionId, child.id, Number(child.inheritedEventCount ?? 0));
+    }
+    async function prepareForkInheritance(operation, reservation) {
+        const parent = reservation.sourceSessionId;
+        if (!mvuOpening.hasSchemaOpening(parent)) {
+            const prepared = await tavernSourceInheritance.prepareSourceInheritance(operation, reservation);
+            await mvuDerived.prepare(operation, reservation);
+            return prepared;
+        }
+        const derived = schemaDerived;
+        if (!derived)
+            throw Error('SCHEMA_DERIVED_RUNTIME_UNAVAILABLE');
+        const captured = await derived.capture(operation, reservation);
+        const prepared = await tavernSourceInheritance.prepareSourceInheritance(operation, reservation);
+        await derived.prepare(operation, reservation, captured);
+        return prepared;
+    }
+    ctx.effect(() => ctx.sessionController.registerOrdinaryForkPreparation(async (reservation) => {
+        const found = await ctx.sessionController.resolveAgent(reservation.sourceSessionId);
+        if (found?.error)
+            throw found.error;
+        const source = found?.agent?.session;
+        if (!source)
+            throw Error('NATIVE_FORK_SOURCE_UNAVAILABLE');
+        await ensureSessionHistory(source);
+        if (!isRoleplaySession(source))
+            return;
+        assertWorkspaceSession(source);
+        const current = () => {
+            if (sourceReadOwnerClosed || ctx.sessions.get(source.id) !== source)
+                throw Error('NATIVE_FORK_SOURCE_CHANGED');
+        };
+        current();
+        const operationId = randomUUID(), operation = { operationId,
+            anchor: { kind: 'native-fork', sourceSessionId: source.id, expectedSeedLength: reservation.seedLength } };
+        // The existing reservation row binds Source and numerical preparation to
+        // Native's exact child/cut. Conversation ownership stays with the child.
+        await T.branch.put(forkOperationKey(operationId), { schemaVersion: 1,
+            encoding: 'native-ordinary-fork-reservation-v1', kind: 'native-fork', ...operation,
+            reservedChildSessionId: reservation.childSessionId, state: 'reserved', createdAt: Date.now(),
+            presentation: { schemaVersion: 1, kind: 'conversation', sourceSessionId: source.id, seedLength: reservation.seedLength } });
+        current();
+        const prepared = await prepareForkInheritance(operation, reservation);
+        current();
+        if (prepared.kind === 'prepared-data')
+            tavernSourceInheritance.assertPreparedParentCurrent(reservation.childSessionId);
+        return async () => {
+            const child = ctx.sessions.get(reservation.childSessionId);
+            if (sourceReadOwnerClosed || !child)
+                throw Error('NATIVE_FORK_CHILD_UNAVAILABLE');
+            await ensureBranch(child);
+            await commitForkInheritance(operation, child);
+        };
+    }), 'roleplay: ordinary Native fork preparation');
     const branchRoutes = registerBranchRoutes({
         readInputRecoveryDiagnostic: id => inputOwner.readRecoveryDiagnostic(id),
         readMainModelSelection: session => {
@@ -5078,14 +5110,16 @@ export async function apply(ctx, config = {}) {
         },
         sourceInheritance: tavernSourceInheritance,
         generateProgramOpening: async (request) => {
-            const captured = await programOpening?.catalog(request.sessionId);
+            const captured = await programOpening?.catalog(request.sessionId, 0, 'generated-opening');
             if (!captured || captured.kind === 'not-applicable')
                 return;
             if (captured.kind === 'refused')
                 return { kind: 'unknown', reason: captured.diagnostics[0]?.code ?? 'PROGRAM_OPENING_SOURCE_REFUSED' };
             const catalog = captured.catalog;
-            const parent = programOpening?.verified(request.operation.anchor.sourceSessionId), originalSha = parent?.kind === 'ready' ? parent.context.input.source.selected.renderedSha256
-                : request.operation.anchor.openingSource?.renderedSha256, selected = catalog.candidates.find(row => sha256(row.renderedText) === originalSha);
+            const parentId = request.operation.anchor.sourceSessionId, parent = programOpening?.verified(parentId), schemaParent = parent?.kind !== 'ready' && mvuOpening.hasSchemaOpening(parentId)
+                ? await mvuOpening.readSchemaInitialization(parentId) : undefined, originalSha = parent?.kind === 'ready' ? parent.context.input.source.selected.renderedSha256
+                : schemaParent?.kind === 'ready' ? schemaParent.intent.renderedSha256
+                    : request.operation.anchor.openingSource?.renderedSha256, selected = catalog.candidates.find(row => sha256(row.renderedText) === originalSha);
             if (!selected)
                 return { kind: 'unknown', reason: 'PROGRAM_OPENING_ORIGINAL_SELECTION_UNPROVEN' };
             const result = await programOpening.run({ sessionId: request.sessionId, index: selected.index,
@@ -5100,21 +5134,7 @@ export async function apply(ctx, config = {}) {
         resolveRoleplaySession,
         cloneBranchRecord,
         releaseWorldlineInheritance: childSessionId => schemaDerived?.releaseReservation(childSessionId),
-        prepareWorldlineInheritance: async (operation, reservation) => {
-            const parent = reservation.sourceSessionId, child = reservation.childSessionId;
-            if (!mvuOpening.hasSchemaOpening(parent)) {
-                const prepared = await tavernSourceInheritance.prepareSourceInheritance(operation, reservation);
-                await mvuDerived.prepare(operation, reservation);
-                return prepared;
-            }
-            const derived = schemaDerived;
-            if (!derived)
-                throw Error('SCHEMA_DERIVED_RUNTIME_UNAVAILABLE');
-            const captured = await derived.capture(operation, reservation);
-            const prepared = await tavernSourceInheritance.prepareSourceInheritance(operation, reservation);
-            await derived.prepare(operation, reservation, captured);
-            return prepared;
-        },
+        prepareWorldlineInheritance: prepareForkInheritance,
         numericalForkBlockCode: id => mvuOpening.hasSchemaOpening(id)
             ? mvuOpening.schemaPlayerMutationBlockCode(ctx.sessions.get(id)) : undefined,
         assertStoryBranchActive,

@@ -172,6 +172,9 @@ interface Dependencies extends SourceDependencies {
    * context refs. This supplier never constructs an Input v2 Work/currency. */
   openingPreparation?(native:NativeOpeningMaterialPrepareInputV1,scope:RoleplayOpeningMaterialScopeV1,
     source:TavernOpeningPreparationSourceDataV1):TavernOpeningPreparationReadV1
+  /** The real Native/Phase-A material boundary can execute Host initialization.
+   * Finish its Source lease before the synchronous InputState capture begins. */
+  initializeOpening?(native:NativeOpeningMaterialPrepareInputV1,scope:RoleplayOpeningMaterialScopeV1):Promise<void>
 }
 const joinHistoryBlock=(messageIndex:number,blockIndex:number)=>`history-${messageIndex}-${blockIndex}`
 type CommunityMaterial=ReturnType<Awaited<ReturnType<typeof prepareCommunityPresetMaterial>>['finish']>
@@ -383,6 +386,10 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       if(communityPolicy?.preset)await deps.community.variables.configure(communityPolicy.preset.id,
         scope.session.id,communityCapture!.data.configurations)
       communityCapture!.assertCurrent()
+    }
+    if(invocation.kind==='program-opening') {
+      await deps.initializeOpening?.(invocation.native,invocation.scope)
+      scope.assertOwnerFactsCurrent()
     }
     const assertOwnerFactsCurrent=scope.assertOwnerFactsCurrent.bind(scope)
     const captureInput=()=>deps.withSourceLock(scope.session.id,async()=>{

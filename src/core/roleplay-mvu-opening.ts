@@ -36,6 +36,7 @@ import {openingVariantActivationSeedKey} from './roleplay-opening-variant-activa
 import type {OpeningVariantActivationHandoff} from './roleplay-opening-variants.js'
 import type {OpeningVariantActivationPacketV1} from './roleplay-opening-variant-activation.js'
 import type {OpeningIntentV6} from './roleplay-prompt-template-only-types.js'
+import type {OpeningIntentV7} from './roleplay-program-opening-records.js'
 import type {MvuNumericalAuthority,VerifiedMvuGenesis} from './roleplay-mvu-state.js'
 import type {MvuSchemaDerivedGenesis} from './roleplay-mvu-schema-derived-types.js'
 import {describeRoleplayInputSourceV1,roleplayInputSourceSha256V1} from './roleplay-input-source-data.js'
@@ -79,6 +80,7 @@ export interface MvuOpeningDependencies {
   legacyImportPending?(sessionId:string):boolean
   readNumericalAuthority?(sessionId:string):MvuNumericalAuthority
   readProgramOpeningObservation?(sessionId:string,sourceSha256:string):InputObservation|undefined
+  readProgramOpeningRoot?(sessionId:string,selection?:{realmEpoch?:string;importId?:string}):SchemaOpeningRootFacts|undefined
   derivedBasisRequired?(sessionId:string):boolean
   schemaDerivedRequired?(sessionId:string):boolean
   readSchemaDerivedGenesis?(sessionId:string):MvuSchemaDerivedGenesis|undefined
@@ -104,7 +106,8 @@ const same = (a:unknown,b:unknown) => recordSha256(a) === recordSha256(b)
 
 /** Binds actual source, numerical ownership and original native acknowledgement for opening selection. */
 export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
-  const readIntent = (sessionId:string,importId:string) => deps.tables.branch.get(openingIntentKey(sessionId,importId)) as OpeningIntent | undefined
+  const readIntent = (sessionId:string,importId:string) =>
+    deps.tables.branch.get(openingIntentKey(sessionId,importId)) as OpeningIntent | undefined
   const native = createRoleplayMvuNative({getSession:deps.session,getInheritedNativeObservation:deps.inheritedNativeObservation,
     readIntent,messageEdits:deps.messageEdits,
     deletedMessageIds:deps.deletedMessageIds,lookup:deps.nativeLookup})
@@ -223,6 +226,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     const common={...deps.schema,branch:deps.tables.branch,status:deps.tables.status,inputState:deps.inputState,
       projections:deps.projections,
       source:schemaSource,scopeStore,session:(id:string)=>deps.session(id) as unknown as Session|undefined,
+      readProgramOpeningRoot:deps.readProgramOpeningRoot,
       sourceSha256:(id:string)=>inputSource(id).sourceSha256,
       protectedRuntime:schemaCore.protectedRuntime,withSourceLock:deps.withSourceLock}
     schemaStory??=createRoleplayMvuSchemaStoryCore({...completion,...common,inputState:deps.inputState,
@@ -274,19 +278,25 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       return schemaStory?.readCompletedOpening(source)??{kind:'blocked',code:'SCHEMA_RUNTIME_UNAVAILABLE'}
     },handles:request=>{
       const author=source.readAuthorSource(request.identity.sessionId,request.identity.index)
-      // Native loader-only v4 Sources take this same opening transaction. The
-      // complete worker plan and real Native receipt determine publication;
-      // routing never relies on registration count or loader import outcome.
-      return author.kind==='author-source'&&author.source.scripts.some(script=>script.enabled)
+      return author.kind==='author-source'
     }}
     return schemaSelection
   }
   function hasSchemaOpening(sessionId:string):boolean {
     const pointer=deps.tables.branch.get(deps.importActiveKey(sessionId)) as {importId?:string}|undefined
-    const intent=pointer?.importId?readIntent(sessionId,pointer.importId):undefined
-    const head=deps.tables.status.get(mvuInitializationHeadKey(sessionId)) as {encoding?:unknown}|undefined
+    const intent=pointer?.importId?deps.tables.branch.get(openingIntentKey(sessionId,pointer.importId)) as
+      OpeningIntent|OpeningIntentV7|undefined:undefined
     return deps.tables.branch.get(openingVariantActivationSeedKey(sessionId))!==undefined
-      ||deps.schemaDerivedRequired?.(sessionId)===true||intent?.schemaVersion===5||head?.encoding==='mvu-schema-opening-head-v2'
+      ||deps.schemaDerivedRequired?.(sessionId)===true||intent?.schemaVersion===5
+      ||intent?.schemaVersion===7&&!!intent.schemaOpening
+  }
+  function browserOpeningSelection(sessionId:string) {
+    const pointer=deps.tables.branch.get(deps.importActiveKey(sessionId)) as {importId?:string}|undefined,
+      intent=pointer?.importId?deps.tables.branch.get(openingIntentKey(sessionId,pointer.importId)) as
+        OpeningIntent|OpeningIntentV7|undefined:undefined
+    if(intent?.schemaVersion===5||intent?.schemaVersion===7&&intent.schemaOpening)
+      return {index:intent.index,pending:intent.status!=='completed'}
+    return undefined
   }
   async function readSchemaInitialization(sessionId:string) {
     if(!schemaSelection)return {kind:'blocked' as const,code:'SCHEMA_RUNTIME_UNAVAILABLE'}

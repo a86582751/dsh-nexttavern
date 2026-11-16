@@ -420,7 +420,15 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
       inheritanceFailV1('SOURCE_INHERITANCE_BUDGET')
     const result=inheritanceDataV1(raw),seen=new Set<string>()
     for(const pub of result) {
-      inheritanceExactV1(pub,['ownerSessionId','nativeSeq','nativeEventSha256','snapshotRef','planRef','nativeRecordSha256'])
+      const auxiliary=pub.kind==='author-generation-effects'
+      inheritanceExactV1(pub,['ownerSessionId','nativeSeq','nativeEventSha256','snapshotRef','planRef','nativeRecordSha256',
+        ...auxiliary?['kind','acceptedRef']:[]])
+      if(auxiliary){
+        inheritanceExactV1(pub.acceptedRef,['seq','sha256'])
+        if(typeof pub.acceptedRef.seq!=='number'||typeof pub.nativeSeq!=='number'
+          ||!Number.isSafeInteger(pub.acceptedRef.seq)||pub.acceptedRef.seq<0||pub.acceptedRef.seq>=pub.nativeSeq
+          ||!inheritanceHashV1(pub.acceptedRef.sha256))inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID')
+      }
       validateInheritanceRefV1(pub.snapshotRef);validateInheritanceRefV1(pub.planRef)
       if(!inheritanceIdV1(pub.ownerSessionId)||typeof pub.nativeSeq!=='number'||!Number.isSafeInteger(pub.nativeSeq)||pub.nativeSeq<0
         ||!inheritanceHashV1(pub.nativeEventSha256)||!inheritanceHashV1(pub.nativeRecordSha256)

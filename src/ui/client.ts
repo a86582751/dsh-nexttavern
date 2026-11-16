@@ -108,6 +108,7 @@ import { createToastController, confirmWithDialog } from './message-actions.js'
 export { createToastController, confirmWithDialog } from './message-actions.js'
 import { createMessageActionComponents } from './message-actions.js'
 import { createRoleplayActions } from './session-actions.js'
+import {createPendingOpeningSourceHost} from './pending-opening-source-host.js'
 import { createReaderSubmissionHandoff } from './reader-submission-handoff.js'
 import { createRoleplayStateStore } from './state-store.js'
 import { updatePanelDraft } from './panel-state.js'
@@ -262,6 +263,11 @@ export function apply(ctx: ClientContext) {
       { name: 'conversation.chat.roleplay-progress', id: 'roleplay-progress', order: 10, inject: sessionId => ({ sessionId }) },
       DeferredPlayerInput))
 
+  const pendingOpeningHosts=new Map<string,{host:ReturnType<typeof createPendingOpeningSourceHost>;leases:number}>()
+  ctx.effect(()=>()=>{
+    for(const {host} of pendingOpeningHosts.values())host.dispose()
+    pendingOpeningHosts.clear()
+  },'roleplay-ui: pending opening Source hosts')
   const { saveState, runMaintenance, replaceMessage, forkAndPrompt, regenerateProgrammaticOpening,
     forkWithoutUserTurn, openNativeBranch, retryBranchMutation, prepareCleanWorldline } = createRoleplayActions(
     {
@@ -276,6 +282,27 @@ export function apply(ctx: ClientContext) {
       acceptConversations,
       loadConversations,
       readerHandoff,
+      startPendingOpeningSource:input=>{
+        const key=JSON.stringify([input.operationId,input.childSessionId])
+        let owned=pendingOpeningHosts.get(key)
+        if(!owned) {
+          const host=createPendingOpeningSourceHost(input,{document,
+            current:()=>resolveActiveSessionId()===input.sourceSessionId,
+            subscribeCurrent:listener=>mainSelection.subscribe(listener),
+            nativeLibraries:READER_NATIVE_DOCUMENT_LIBRARIES,
+            commandUi:{input:(text,defaultValue)=>window.prompt(text,defaultValue)??'',echo:text=>toast(text)},
+            failed:code=>toast(`开场作者脚本失败（${input.operationId}）：${code}`)})
+          owned={host,leases:0};pendingOpeningHosts.set(key,owned);host.start()
+        }
+        const lease=owned
+        lease.leases++
+        let released=false
+        return {dispose(){
+          if(released)return
+          released=true
+          if(--lease.leases===0){lease.host.dispose();if(pendingOpeningHosts.get(key)===lease)pendingOpeningHosts.delete(key)}
+        }}
+      },
       toast
     })
 
@@ -366,10 +393,31 @@ export function apply(ctx: ClientContext) {
       if (!response.ok || data?.ok === false) {
         const error = Object.assign(new Error(data?.error ?? `请求失败 ${response.status}`), {
           status: response.status, code: data?.code, details: data?.details,
+          outcome: data?.outcome, operationId: data?.operationId, receipt: data?.receipt,
         });
         throw error
       }
       return data
+    }
+    const prepareSource=async(sessionId:string,index:number)=>{
+      const reply=await jsonFetch<{requiresAuthorBrowser:boolean}>(
+        `/api/roleplay/openings?sessionId=${encodeURIComponent(sessionId)}&authorIndex=${index}`)
+      if(!reply.requiresAuthorBrowser)return
+      if(readerHandoff.hasReader(sessionId))return readerHandoff.prepareSource(sessionId,index)
+      const operationId=crypto.randomUUID(),key=JSON.stringify([operationId,sessionId])
+      const host=createPendingOpeningSourceHost({sourceSessionId:sessionId,childSessionId:sessionId,operationId},{
+        document,current:()=>resolveActiveSessionId()===sessionId,
+        subscribeCurrent:listener=>mainSelection.subscribe(listener),
+        nativeLibraries:READER_NATIVE_DOCUMENT_LIBRARIES,
+        commandUi:{input:(text,defaultValue)=>window.prompt(text,defaultValue)??'',echo:text=>toast(text)},
+      })
+      pendingOpeningHosts.set(key,{host,leases:1})
+      const close=()=>{host.dispose();pendingOpeningHosts.delete(key)}
+      try {
+        const prepared=await host.prepareOpening(index,readerHandoff)
+        // Keep this Source realm available throughout the select POST's hooks.
+        return {...prepared,close(){prepared.close();close()}}
+      }catch(error){close();throw error}
     }
     const sessionImages = createSessionImages(jsonFetch)
     const sideChat = createSideChat({
@@ -441,6 +489,7 @@ export function apply(ctx: ClientContext) {
           React,
           sessionDrafts,
           jsonFetch,
+          prepareSource,
           toast,
           confirmWithDialog,
           uploadFile,

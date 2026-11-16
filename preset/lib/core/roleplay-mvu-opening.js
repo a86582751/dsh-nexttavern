@@ -155,6 +155,7 @@ export function createRoleplayMvuOpening(deps) {
         const common = { ...deps.schema, branch: deps.tables.branch, status: deps.tables.status, inputState: deps.inputState,
             projections: deps.projections,
             source: schemaSource, scopeStore, session: (id) => deps.session(id),
+            readProgramOpeningRoot: deps.readProgramOpeningRoot,
             sourceSha256: (id) => inputSource(id).sourceSha256,
             protectedRuntime: schemaCore.protectedRuntime, withSourceLock: deps.withSourceLock };
         schemaStory ??= createRoleplayMvuSchemaStoryCore({ ...completion, ...common, inputState: deps.inputState,
@@ -208,19 +209,22 @@ export function createRoleplayMvuOpening(deps) {
                 return schemaStory?.readCompletedOpening(source) ?? { kind: 'blocked', code: 'SCHEMA_RUNTIME_UNAVAILABLE' };
             }, handles: request => {
                 const author = source.readAuthorSource(request.identity.sessionId, request.identity.index);
-                // Native loader-only v4 Sources take this same opening transaction. The
-                // complete worker plan and real Native receipt determine publication;
-                // routing never relies on registration count or loader import outcome.
-                return author.kind === 'author-source' && author.source.scripts.some(script => script.enabled);
+                return author.kind === 'author-source';
             } };
         return schemaSelection;
     }
     function hasSchemaOpening(sessionId) {
         const pointer = deps.tables.branch.get(deps.importActiveKey(sessionId));
-        const intent = pointer?.importId ? readIntent(sessionId, pointer.importId) : undefined;
-        const head = deps.tables.status.get(mvuInitializationHeadKey(sessionId));
+        const intent = pointer?.importId ? deps.tables.branch.get(openingIntentKey(sessionId, pointer.importId)) : undefined;
         return deps.tables.branch.get(openingVariantActivationSeedKey(sessionId)) !== undefined
-            || deps.schemaDerivedRequired?.(sessionId) === true || intent?.schemaVersion === 5 || head?.encoding === 'mvu-schema-opening-head-v2';
+            || deps.schemaDerivedRequired?.(sessionId) === true || intent?.schemaVersion === 5
+            || intent?.schemaVersion === 7 && !!intent.schemaOpening;
+    }
+    function browserOpeningSelection(sessionId) {
+        const pointer = deps.tables.branch.get(deps.importActiveKey(sessionId)), intent = pointer?.importId ? deps.tables.branch.get(openingIntentKey(sessionId, pointer.importId)) : undefined;
+        if (intent?.schemaVersion === 5 || intent?.schemaVersion === 7 && intent.schemaOpening)
+            return { index: intent.index, pending: intent.status !== 'completed' };
+        return undefined;
     }
     async function readSchemaInitialization(sessionId) {
         if (!schemaSelection)

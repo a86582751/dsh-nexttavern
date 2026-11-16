@@ -8,10 +8,9 @@ import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 import { assertProgramOpeningRowDataDescriptorsV1 } from './roleplay-program-opening-row-facts.js';
 import { openingIntentKey } from './roleplay-opening-selection.js';
 import { createRoleplayOpeningMaterialOwnerV1 } from './roleplay-opening-material.js';
-import { createProgramMvuGenesisPublisherV1 } from './roleplay-program-genesis-publisher.js';
-import { programGenesisEventIdV1, validateProgramMvuGenesisFactsV1 } from './roleplay-program-genesis-data.js';
 import { mvuInitializationEventKey, mvuInitializationHeadKey } from './roleplay-mvu-initialization.js';
-import { createProgramOpeningSeedV1, createProgramOpeningInputV1, prepareProgramOpeningPlanRecordV1, createPreparedOpeningIntentV7, createOpeningIntentV7, validateOpeningIntentV7, validateProgramOpeningSeedV1, validateProgramOpeningInputV1, validateProgramOpeningPlanRecordV1, validateProgramOpeningNativeFactsV1, validateProgramOpeningGenesisEnvelopeV1, createProgramOpeningNativeFactsV1, createProgramOpeningGenesisEnvelopeV1, createProgramOpeningAbsentDomainV1, validateProgramOpeningAbsentDomainV1, createProgramOpeningNumericalDomainReceiptV1, createProgramOpeningAbsenceDomainReceiptV1, programOpeningSeedKeyV1, programOpeningInputKeyV1, programOpeningPlanKeyV1, programOpeningDomainKeyV1, programOpeningRefV1, programOpeningRecordDataV1 } from './roleplay-program-opening-records.js';
+import { schemaNativeCutSha256 } from './roleplay-mvu-schema-journal.js';
+import { createProgramOpeningSeedV1, createProgramOpeningInputV1, createPreparedOpeningIntentV7, createOpeningIntentV7, validateOpeningIntentV7, validateProgramOpeningSeedV1, validateProgramOpeningInputV1, validateProgramOpeningSchemaSection, validateProgramOpeningNativeFactsV1, createProgramOpeningNativeFactsV1, createProgramOpeningAbsentDomainV1, validateProgramOpeningAbsentDomainV1, createProgramOpeningNumericalDomainReceiptV1, createProgramOpeningAbsenceDomainReceiptV1, programOpeningSeedKeyV1, programOpeningInputKeyV1, programOpeningDomainKeyV1, programOpeningRefV1, programOpeningRecordDataV1 } from './roleplay-program-opening-records.js';
 const same = (left, right) => recordSha256(left) === recordSha256(right);
 const object = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -20,6 +19,7 @@ const codeOf = (error) => error instanceof Error && /^[A-Z][A-Z0-9_]{0,95}$/.tes
     ? error.message : 'PROGRAM_OPENING_UNKNOWN';
 export function createRoleplayProgramOpeningV1(deps) {
     const disposal = new AbortController(), active = new Map(), running = new Set();
+    const preparedSchemaSources = new Map();
     const recordCaptures = new Map();
     let completedReadCandidate;
     function readRowData(table, key) {
@@ -45,7 +45,7 @@ export function createRoleplayProgramOpeningV1(deps) {
             const session = actualSession(proof.source.sessionId);
             if (deps.includeCardStyle(session.id) !== proof.program.includeCardStyle)
                 return false;
-            const actual = deps.source.capture(session.id, proof.selected.index, proof.program.includeCardStyle, () => deps.assertSessionCurrent(session));
+            const actual = deps.source.capture(session.id, proof.selected.index, proof.program.includeCardStyle, () => deps.assertSessionCurrent(session), undefined, proof.schemaOpeningSourceSha256);
             return actual.kind === 'captured-opening-source' && actual.proof.bindingSha256 === proof.bindingSha256;
         }
         catch {
@@ -85,34 +85,32 @@ export function createRoleplayProgramOpeningV1(deps) {
     function intentKey(context) {
         return openingIntentKey(context.seed.sessionId, context.seed.source.importId);
     }
-    function loadContext(raw) {
+    function loadContext(raw, historical = false) {
         if (!object(raw.seedRef) || !object(raw.inputRef))
             fail('PROGRAM_OPENING_RECORD_INVALID');
-        const seed = validateProgramOpeningSeedV1(exactRef(raw.seedRef)), input = validateProgramOpeningInputV1(exactRef(raw.inputRef), seed), planRecord = raw.planRef === null ? null : object(raw.planRef)
-            ? validateProgramOpeningPlanRecordV1(exactRef(raw.planRef), seed, input)
-            : fail('PROGRAM_OPENING_PLAN_REF_INVALID');
-        const context = { seed, input, planRecord };
-        if (planRecord) {
-            const eventKey = mvuInitializationEventKey(seed.sessionId, programGenesisEventIdV1(planRecord.plan)), headKey = mvuInitializationHeadKey(seed.sessionId), event = readRowData('status', eventKey), eventSha256 = event === undefined ? null : recordSha256(event), head = readRowData('status', headKey), headSha256 = head === undefined ? null : recordSha256(head), publicationRows = [{ table: 'status', key: eventKey, sha256: eventSha256 },
-                { table: 'status', key: headKey, sha256: headSha256 }];
-            if (event !== undefined && head !== undefined) {
-                const genesis = validateProgramMvuGenesisFactsV1(event, head);
-                if (recordSha256(genesis.programEvent) !== eventSha256 || recordSha256(genesis.programHead) !== headSha256)
-                    fail('PROGRAM_OPENING_GENESIS_CHANGED');
-                return { context: { ...context, genesis: programOpeningRecordDataV1({ programEvent: genesis.programEvent, programHead: genesis.programHead }) }, publicationRows };
+        const seed = validateProgramOpeningSeedV1(exactRef(raw.seedRef)), input = validateProgramOpeningInputV1(exactRef(raw.inputRef), seed), context = { seed, input }, publicationRows = [];
+        if (raw.schemaOpening !== undefined) {
+            const schemaOpening = validateProgramOpeningSchemaSection(raw.schemaOpening, context);
+            if (schemaOpening.publication) {
+                const { event, head } = schemaOpening.publication;
+                for (const [key, value] of [[mvuInitializationEventKey(seed.sessionId, event.eventId), event],
+                    [mvuInitializationHeadKey(seed.sessionId), head]]) {
+                    if (historical && key === mvuInitializationHeadKey(seed.sessionId))
+                        continue;
+                    if (!same(readRowData('status', key), value))
+                        fail('PROGRAM_OPENING_SCHEMA_CHANGED');
+                    publicationRows.push({ table: 'status', key, sha256: recordSha256(value) });
+                }
             }
-            return { context, publicationRows };
+            return { context: { ...context, schemaOpening }, publicationRows };
         }
-        else {
-            const key = programOpeningDomainKeyV1(seed.sessionId, seed.operationId), domain = readRowData('branch', key), digest = domain === undefined ? null : recordSha256(domain), publicationRows = [{ table: 'branch', key, sha256: digest }];
-            if (domain !== undefined) {
-                const absenceDomain = validateProgramOpeningAbsentDomainV1(domain, { seed, input });
-                if (recordSha256(absenceDomain) !== digest)
-                    fail('PROGRAM_OPENING_ABSENCE_DOMAIN_CHANGED');
-                return { context: { ...context, absenceDomain }, publicationRows };
-            }
-            return { context, publicationRows };
+        if (input.initialization === 'absent') {
+            const key = programOpeningDomainKeyV1(seed.sessionId, seed.operationId), domain = readRowData('branch', key), digest = domain === undefined ? null : recordSha256(domain);
+            publicationRows.push({ table: 'branch', key, sha256: digest });
+            if (domain !== undefined)
+                return { context: { ...context, absenceDomain: validateProgramOpeningAbsentDomainV1(domain, context) }, publicationRows };
         }
+        return { context, publicationRows };
     }
     function capturedRecords(session, key, raw) {
         const digest = recordSha256(raw), old = recordCaptures.get(session.id);
@@ -131,8 +129,6 @@ export function createRoleplayProgramOpeningV1(deps) {
             const { seed, input } = old.context;
             if (old.intent.nativeReceipt) {
                 const native = validateProgramOpeningNativeFactsV1(raw.nativeReceipt, seed, input);
-                if (old.intent.genesisEnvelope)
-                    validateProgramOpeningGenesisEnvelopeV1(raw.genesisEnvelope, native, old.context);
             }
             if (old.context.absenceDomain) {
                 if (!object(currentAbsenceDomain))
@@ -146,8 +142,6 @@ export function createRoleplayProgramOpeningV1(deps) {
         const loaded = loadContext(raw), context = Object.freeze(loaded.context), intent = validateOpeningIntentV7(raw, context), branchRefs = [context.input.seedRef, identityFor(context).inputRef], rows = loaded.publicationRows;
         if (intent.sessionId !== session.id || key !== openingIntentKey(context.seed.sessionId, context.seed.source.importId))
             fail('PROGRAM_OPENING_IDENTITY_CONFLICT');
-        if (context.planRecord)
-            branchRefs.push(programOpeningRefV1(programOpeningPlanKeyV1(session.id, context.seed.operationId), context.planRecord));
         for (const ref of branchRefs) {
             if (rowSha256('branch', ref.key) !== ref.sha256)
                 fail('PROGRAM_OPENING_REFERENCE_CHANGED');
@@ -241,7 +235,7 @@ export function createRoleplayProgramOpeningV1(deps) {
         const found = readRecordState(id);
         if (found.kind === 'blocked')
             fail(found.code);
-        if (found.kind !== 'ready' || found.context.planRecord || found.intent.status !== 'completed'
+        if (found.kind !== 'ready' || found.context.input.initialization === 'schema' || found.intent.status !== 'completed'
             || !found.context.absenceDomain)
             return Object.freeze([]);
         const { seed, input, absenceDomain } = found.context, rows = [{ key: programOpeningSeedKeyV1(id, seed.operationId), value: seed },
@@ -263,23 +257,18 @@ export function createRoleplayProgramOpeningV1(deps) {
             fail('PROGRAM_OPENING_INTENT_CHANGED');
         exactRef(context.input.seedRef);
         exactRef(identityFor(context).inputRef);
-        if (context.planRecord)
-            exactRef(programOpeningRefV1(programOpeningPlanKeyV1(context.seed.sessionId, context.seed.operationId), context.planRecord));
         const { context: current, intent } = capturedRecords(actualSession(context.seed.sessionId), intentKey(context), raw);
         // These children come from the private bounded validators after every
         // actual stored row was freshly hashed above. Identity only skips comparing
         // the same immutable parsed child to itself; foreign copies take full SHA.
         if (current.seed !== context.seed && !same(current.seed, context.seed)
-            || current.input !== context.input && !same(current.input, context.input)
-            || current.planRecord !== context.planRecord && !same(current.planRecord, context.planRecord)) {
+            || current.input !== context.input && !same(current.input, context.input)) {
             fail('PROGRAM_OPENING_IDENTITY_CONFLICT');
         }
         return intent;
     }
     function ownedRows(context) {
         const rows = [], identity = identityFor(context), refs = [identity.intentRef, identity.inputRef];
-        if (context.planRecord)
-            refs.push(programOpeningRefV1(programOpeningPlanKeyV1(context.seed.sessionId, context.seed.operationId), context.planRecord));
         for (const ref of refs) {
             const value = exactRef(ref);
             if (!object(value))
@@ -290,7 +279,35 @@ export function createRoleplayProgramOpeningV1(deps) {
         rows.push({ key: intentKey(context), value: intent });
         const hot = active.get(context.seed.sessionId);
         if (hot && same(hot.context.input, context.input)) {
-            rows.push(...hot.phaseRows.values(), ...(hot.material?.ownedRows() ?? []));
+            rows.push(...hot.phaseRows.values(), ...(hot.material?.ownedRows() ?? []), ...(hot.schemaHandle?.ownedRows ?? []));
+        }
+        if (context.schemaOpening) {
+            const section = context.schemaOpening, associations = section.publication?.plan.phases.map(phase => phase.execution)
+                ?? [section.initialization.execution];
+            for (const association of associations)
+                for (const ref of [association.epoch, association.dispatch, association.completion]) {
+                    const value = readRowData('status', ref.key);
+                    if (!object(value) || value.recordSha256 !== ref.sha256)
+                        fail('PROGRAM_OPENING_SCHEMA_CHANGED');
+                    rows.push({ table: 'status', key: ref.key, value });
+                }
+            const hooks = [...section.initialization.browser?.hooks ?? [], ...section.publication?.plan.browser?.hooks ?? []];
+            for (const hook of hooks)
+                for (const ref of [hook.journal.dispatchRef, hook.journal.completionRef]) {
+                    const value = readRowData('status', ref.key);
+                    if (!object(value) || value.recordSha256 !== ref.sha256)
+                        fail('PROGRAM_OPENING_SCHEMA_CHANGED');
+                    rows.push({ table: 'status', key: ref.key, value });
+                }
+            if (section.publication)
+                for (const [key, value] of [
+                    [mvuInitializationEventKey(context.seed.sessionId, section.publication.event.eventId), section.publication.event],
+                    [mvuInitializationHeadKey(context.seed.sessionId), section.publication.head]
+                ]) {
+                    if (!same(readRowData('status', key), value))
+                        fail('PROGRAM_OPENING_SCHEMA_CHANGED');
+                    rows.push({ table: 'status', key, value: value });
+                }
         }
         const actual = deps.readNativeFacts(context, intent.committedTurn);
         if (actual)
@@ -303,18 +320,18 @@ export function createRoleplayProgramOpeningV1(deps) {
         }
         const unique = new Map();
         for (const row of rows) {
-            const prior = unique.get(row.key);
+            const address = `${row.table ?? 'branch'}:${row.key}`, prior = unique.get(address);
             if (prior && !same(prior.value, row.value))
                 fail('PROGRAM_OPENING_OWNED_ROW_CONFLICT');
-            unique.set(row.key, row);
+            unique.set(address, row);
         }
         return [...unique.values()];
     }
-    function nativeCurrent(context, facts, requireAck) {
+    function nativeCurrent(context, facts, requireAck, retainedIntent) {
         try {
             const current = deps.readNativeFacts(context, facts.receipt.turn);
             return !!current && same(current.facts, facts) && (!requireAck || facts.production === 'selected-card-copy'
-                || current.closingAcknowledged && current.ownerReceiptSha256 === recordSha256(currentRecords(context).domainReceipt));
+                || current.closingAcknowledged && current.ownerReceiptSha256 === recordSha256((retainedIntent ?? currentRecords(context)).domainReceipt));
         }
         catch {
             return false;
@@ -337,36 +354,6 @@ export function createRoleplayProgramOpeningV1(deps) {
             return false;
         }
     }
-    function openingCurrent(plan, native) {
-        try {
-            const readout = read(plan.identity.sessionId);
-            if (readout.kind !== 'ready' || !readout.context.planRecord || !same(readout.context.planRecord.plan, plan))
-                return false;
-            const intent = currentRecords(readout.context);
-            return ['native-committed', 'domain-blocked', 'completed'].includes(intent.status)
-                && !!intent.nativeReceipt && same(intent.nativeReceipt.receipt, native.receipt)
-                && same(intent.nativeReceipt.canonical, native.canonical);
-        }
-        catch {
-            return false;
-        }
-    }
-    const publisher = createProgramMvuGenesisPublisherV1({ table: { get: key => deps.status.get(key),
-            put: (key, value) => {
-                return deps.status.put(key, value);
-            } }, withSourceLock: deps.withSourceLock,
-        isSourceCurrent: plan => sourceCurrent(plan.source), isOpeningCurrent: openingCurrent,
-        isNativeCurrent: (plan, native) => {
-            const found = read(plan.identity.sessionId);
-            return found.kind === 'ready' && !!found.intent.nativeReceipt && same(found.intent.nativeReceipt.receipt, native.receipt)
-                && nativeCurrent(found.context, found.intent.nativeReceipt, false);
-        },
-        isBasisCurrent: (plan, native, event, head) => {
-            const found = read(plan.identity.sessionId);
-            return found.kind === 'ready' && deps.basis.currentForPublication(plan, native, event, head, ownedRows(found.context));
-        },
-        isHistoricalBasisCurrent: (plan, native) => deps.basis.historicalCurrent(plan, native),
-        lookupNative: async () => ({ status: 'unknown' }) });
     /** Every original write is awaited, even when its acknowledgement fails or
      * cancellation arrives. Exact readback can recover a lost acknowledgement. */
     async function writeExact(key, value, signal) {
@@ -415,13 +402,14 @@ export function createRoleplayProgramOpeningV1(deps) {
             }
             const pointer = deps.branch.get(deps.importActiveKey(request.sessionId)), openingOutputs = [programOpeningSeedKeyV1(request.sessionId, request.operationId),
                 programOpeningInputKeyV1(request.sessionId, request.operationId),
-                programOpeningPlanKeyV1(request.sessionId, request.operationId),
                 programOpeningDomainKeyV1(request.sessionId, request.operationId),
                 ...typeof pointer?.importId === 'string' ? [openingIntentKey(request.sessionId, pointer.importId)] : []]
                 .map(key => ({ table: 'branch', key }));
             // These are this opening writer's exact prospective outputs. Publishing
             // its seed/input/intent cannot invalidate the author DATA it consumed.
-            const captured = deps.source.capture(request.sessionId, request.index, deps.includeCardStyle(request.sessionId), () => deps.assertSessionCurrent(session), openingOutputs);
+            const schemaSource = request.production === 'generated-opening' ? await deps.generatedOpening?.prepareGeneratedSource({
+                sessionId: request.sessionId, operationId: request.operationId, messageId: request.messageId
+            }, request.index) : undefined, captured = deps.source.capture(request.sessionId, request.index, deps.includeCardStyle(request.sessionId), () => deps.assertSessionCurrent(session), openingOutputs, schemaSource?.input.authorSourceSha256 ?? null);
             if (captured.kind === 'not-applicable')
                 return { kind: 'outside-domain' };
             if (captured.kind !== 'captured-opening-source')
@@ -432,15 +420,17 @@ export function createRoleplayProgramOpeningV1(deps) {
             const basis = deps.basis.capture(proof, { sessionId: request.sessionId, operationId: request.operationId,
                 requestedMessageId: request.messageId }), seed = createProgramOpeningSeedV1({ source: proof, basis,
                 operationId: request.operationId, messageId: request.messageId, production: request.production, instruction: request.instruction }), seedRef = programOpeningRefV1(programOpeningSeedKeyV1(request.sessionId, request.operationId), seed), input = createProgramOpeningInputV1({ seed, seedRef, source: proof, basis, instruction: request.instruction,
-                numericalSourceSha256: deps.readNumericalSourceSha256(request.sessionId) }), planRecord = input.initialization === 'raw-init-data' ? prepareProgramOpeningPlanRecordV1({ seed, input }) : null, context = { seed, input, planRecord }, intent = createPreparedOpeningIntentV7(context);
+                numericalSourceSha256: deps.readNumericalSourceSha256(request.sessionId), schemaSource: schemaSource?.input }), context = { seed, input }, intent = createPreparedOpeningIntentV7(context);
             captured.assertCurrent();
             for (const [rowKey, value] of [[seedRef.key, seed], [programOpeningInputKeyV1(request.sessionId, request.operationId), input],
-                ...planRecord ? [[programOpeningPlanKeyV1(request.sessionId, request.operationId), planRecord]] : [], [key, intent]]) {
+                [key, intent]]) {
                 await writeExact(rowKey, value, disposal.signal);
                 captured.assertCurrent();
             }
             if (!deps.basis.currentBefore(basis, proof, identityFor(context), ownedRows(context)))
                 fail('PROGRAM_OPENING_BASIS_CHANGED');
+            if (schemaSource)
+                preparedSchemaSources.set(request.sessionId, { inputSha256: input.inputSha256, source: schemaSource });
             return { kind: 'ready', context, intent };
         });
     }
@@ -449,39 +439,47 @@ export function createRoleplayProgramOpeningV1(deps) {
             const before = currentRecords(context);
             if (before.status === 'completed')
                 return;
+            const schemaOpening = active.get(context.seed.sessionId)?.context.schemaOpening ?? before.schemaOpening ?? context.schemaOpening;
+            if (schemaOpening)
+                context = { ...context, schemaOpening };
             if (before.nativeReceipt) {
                 await updateIntent(context, createOpeningIntentV7({ context, revision: before.revision + 1, status: 'domain-blocked',
-                    nativeReceipt: before.nativeReceipt, committedTurn: before.committedTurn,
-                    ...before.genesisEnvelope ? { genesisEnvelope: before.genesisEnvelope } : {}, diagnosis }), disposal.signal);
+                    nativeReceipt: before.nativeReceipt, committedTurn: before.committedTurn, diagnosis }), disposal.signal);
             }
             else {
                 await updateIntent(context, createOpeningIntentV7({ context, revision: before.revision + 1, status: 'native-unknown', diagnosis }), disposal.signal);
             }
         });
     }
-    async function settle(context, facts, signal) {
-        const envelope = context.planRecord ? createProgramOpeningGenesisEnvelopeV1(facts, context) : undefined;
+    async function settle(context, facts, signal, hot, closing) {
+        let completedContext = context, completedReceipt;
         await deps.withSourceLock(context.seed.sessionId, async () => {
             signal.throwIfAborted();
             if (!sourceCurrent(context.input.source) || !nativeCurrent(context, facts, false))
                 fail('PROGRAM_OPENING_NATIVE_OR_SOURCE_CHANGED');
             const before = currentRecords(context);
-            if (before.status === 'completed')
+            if (before.status === 'completed') {
+                completedReceipt = before.domainReceipt;
                 return;
+            }
             if (before.nativeReceipt && !same(before.nativeReceipt, facts))
                 fail('PROGRAM_OPENING_NATIVE_CHANGED');
-            const next = createOpeningIntentV7({ context, revision: before.revision + 1, status: 'native-committed',
-                nativeReceipt: facts, committedTurn: facts.receipt.turn, ...envelope ? { genesisEnvelope: envelope } : {} });
-            await updateIntent(context, next, signal);
+            await updateIntent(context, createOpeningIntentV7({ context, revision: before.revision + 1, status: 'native-committed',
+                nativeReceipt: facts, committedTurn: facts.receipt.turn }), signal);
         });
-        let completedContext, receipt;
-        if (context.planRecord && envelope) {
-            // Called by Native closing, or by a confirmed copy acknowledgement.
-            // Never wait for the running Native driver while holding this FIFO.
-            const ready = await publisher.publishFromClosing({ plan: context.planRecord.plan, native: envelope, signal });
-            if (ready.kind !== 'ready')
-                fail(ready.code);
-            completedContext = { ...context, genesis: { programEvent: ready.genesis.programEvent, programHead: ready.genesis.programHead } };
+        if (completedReceipt)
+            return completedReceipt;
+        let receipt;
+        if (context.input.initialization === 'schema') {
+            if (!hot?.schemaHandle || !closing || !deps.generatedOpening || facts.production !== 'generated-opening') {
+                fail('PROGRAM_OPENING_ACTUAL_SCHEMA_CLOSING_REQUIRED');
+            }
+            const publication = await deps.generatedOpening.finishGeneratedOpening(hot.schemaHandle, closing, { kind: 'generated', receipt: facts.receipt, canonical: facts.canonical }), schemaOpening = {
+                preparation: publication.preparation, initialization: context.schemaOpening.initialization,
+                publication: { plan: publication.plan, native: publication.native, event: publication.event, head: publication.head }
+            };
+            completedContext = { ...context, schemaOpening };
+            hot.context = completedContext;
             receipt = createProgramOpeningNumericalDomainReceiptV1(facts, completedContext);
         }
         else {
@@ -500,7 +498,7 @@ export function createRoleplayProgramOpeningV1(deps) {
         }
         await deps.withSourceLock(context.seed.sessionId, async () => {
             signal.throwIfAborted();
-            if (!sourceCurrent(context.input.source) || !nativeCurrent(context, facts, false))
+            if (!sourceCurrent(context.input.source) || !nativeCurrent(completedContext, facts, false))
                 fail('PROGRAM_OPENING_NATIVE_OR_SOURCE_CHANGED');
             const before = currentRecords(context);
             if (before.status === 'completed') {
@@ -510,8 +508,7 @@ export function createRoleplayProgramOpeningV1(deps) {
             }
             deps.verifyEjsIntegrity();
             await updateIntent(completedContext, createOpeningIntentV7({ context: completedContext, revision: before.revision + 1,
-                status: 'completed', nativeReceipt: facts, committedTurn: facts.receipt.turn, domainReceipt: receipt,
-                ...envelope ? { genesisEnvelope: envelope } : {} }), signal);
+                status: 'completed', nativeReceipt: facts, committedTurn: facts.receipt.turn, domainReceipt: receipt }), signal);
         });
         return receipt;
     }
@@ -546,7 +543,25 @@ export function createRoleplayProgramOpeningV1(deps) {
             if (!actual || actual.facts.production !== 'generated-opening' || !same(actual.facts.receipt, input.receipt)) {
                 fail('PROGRAM_OPENING_NATIVE_CHANGED');
             }
-            const receipt = await settle(hot.context, actual.facts, signal);
+            const schema = hot.context.schemaOpening, before = currentRecords(hot.context);
+            if (hot.context.input.initialization === 'schema' && before.status !== 'completed' && !hot.schemaHandle) {
+                if (!schema || schema.preparation.birth.kind !== 'generated' || !hot.schemaSource || !deps.generatedOpening
+                    || !same(schema.preparation.birth.owner, input.owner))
+                    fail('PROGRAM_OPENING_ACTUAL_SCHEMA_CLOSING_REQUIRED');
+                deps.readHistoricalOwnedRows(hot.context, actual.facts);
+                // Native alone enters cold-closing-recovery for a completed generated
+                // span. Its live closing callback can consume the accepted init DATA.
+                // An incomplete invocation never reaches this callback.
+                hot.nativeOwner = input.owner;
+                hot.schemaHandle = await deps.generatedOpening.beginGeneratedOpening({ token: hot, session: hot.session, agent: hot.agent,
+                    signal, assertCurrent: () => {
+                        disposal.signal.throwIfAborted();
+                        signal.throwIfAborted();
+                        if (!invocationCurrent(identityFor(hot.context), input.owner.invocationRef))
+                            fail('PROGRAM_OPENING_OWNER_CHANGED');
+                    } }, hot.schemaSource, schema.preparation.birth, schema.initialization);
+            }
+            const receipt = await settle(hot.context, actual.facts, signal, hot, input);
             signal.throwIfAborted();
             return { kind: 'settled', receiptSha256, ownerReceiptSha256: recordSha256(receipt) };
         }
@@ -557,6 +572,56 @@ export function createRoleplayProgramOpeningV1(deps) {
             catch { /* Retain the original Native receipt if the diagnostic write is unknown. */ }
             return { kind: 'unknown', receiptSha256, code: codeOf(error) };
         }
+    }
+    async function initializeOpening(input, scope) {
+        const hot = active.get(scope.session.id);
+        if (!hot || hot.session !== scope.session)
+            fail('PROGRAM_OPENING_ACTUAL_PREPARATION_REQUIRED');
+        assertHotOwnerFacts(hot, input);
+        scope.assertOwnerFactsCurrent();
+        if (hot.context.input.initialization === 'absent')
+            return;
+        if (hot.nativeOwner && !same(hot.nativeOwner, input.owner))
+            fail('PROGRAM_OPENING_NATIVE_IDENTITY_CHANGED');
+        if (hot.initialization)
+            return hot.initialization;
+        hot.nativeOwner = input.owner;
+        hot.initialization = (async () => {
+            if (!hot.schemaSource || !deps.generatedOpening)
+                fail('PROGRAM_OPENING_SCHEMA_RUNTIME_REQUIRED');
+            const birth = await deps.withSourceLock(scope.session.id, async () => {
+                assertHotOwnerFacts(hot, input);
+                scope.assertOwnerFactsCurrent();
+                const phase = deps.readPhaseA(input.owner, scope.session, input.turn);
+                for (const row of phase.ownedRows)
+                    hot.phaseRows.set(row.key, row);
+                if (!sourceCurrent(hot.context.input.source) || !deps.basis.currentDuring(hot.context.input.basis, hot.context.input.source, identityFor(hot.context), input.owner.invocationRef, ownedRows(hot.context))) {
+                    fail('PROGRAM_OPENING_BASIS_CHANGED');
+                }
+                const all = scope.session.snapshotEvents(), birth = { kind: 'generated',
+                    basis: hot.context.input.basis, seedRef: hot.context.input.seedRef, inputRef: identityFor(hot.context).inputRef,
+                    owner: input.owner, turn: input.turn, selectedBaseSha256: input.selected.sha256, snapshotRef: phase.snapshotRef,
+                    phaseARefs: phase.ownedRows.map(row => ({ key: row.key, sha256: recordSha256(row.value) })),
+                    initializationCut: { nativeCut: all.length, nativePrefixSha256: schemaNativeCutSha256(all, all.length) } };
+                return birth;
+            });
+            const handle = await deps.generatedOpening.beginGeneratedOpening({ token: hot, session: hot.session, agent: hot.agent,
+                signal: scope.signal, assertCurrent: () => {
+                    disposal.signal.throwIfAborted();
+                    if (!invocationCurrent(identityFor(hot.context), input.owner.invocationRef))
+                        fail('PROGRAM_OPENING_OWNER_CHANGED');
+                } }, hot.schemaSource, birth);
+            hot.schemaHandle = handle;
+            await deps.withSourceLock(scope.session.id, async () => {
+                scope.assertOwnerFactsCurrent();
+                const before = currentRecords(hot.context), context = { ...hot.context, schemaOpening: { preparation: handle.preparation,
+                        initialization: { execution: handle.initialization, values: handle.values, context: handle.context,
+                            frontier: handle.frontier, ...handle.browser ? { browser: handle.browser } : {} } } };
+                hot.context = context;
+                await updateIntent(context, createOpeningIntentV7({ context, revision: before.revision + 1, status: before.status }), scope.signal);
+            });
+        })();
+        return hot.initialization;
     }
     function openingPreparation(input, scope, currentSource) {
         const hot = active.get(scope.session.id);
@@ -581,10 +646,13 @@ export function createRoleplayProgramOpeningV1(deps) {
                 fail('PROGRAM_OPENING_BASIS_CHANGED');
             return captured;
         });
-        const { seed, input: packet, planRecord } = hot.context, initialization = planRecord ?
-            { kind: 'pending-raw-init-data', planSha256: planRecord.plan.planSha256,
-                initialValues: planRecord.plan.initialValues, initialValuesSha256: planRecord.plan.initialValuesSha256, initialized: false } :
-            { kind: 'absent', markerCount: 0, inventorySha256: packet.basis.numerical.membershipSha256, initialized: false }, body = { schemaVersion: 1, encoding: 'native-program-opening-prompt-scope-read-data-v1',
+        const { seed, input: packet } = hot.context, handle = hot.schemaHandle;
+        if (packet.initialization === 'schema' && !handle)
+            fail('PROGRAM_OPENING_INITIALIZATION_REQUIRED');
+        const initialization = handle ?
+            { kind: 'schema-initialized', preparationSha256: handle.preparation.preparationSha256,
+                executionSha256: recordSha256(handle.initialization), values: handle.values, context: handle.context, initialized: true } :
+            { kind: 'absent', markerCount: 0, basisSha256: packet.basis.basisSha256, initialized: false }, body = { schemaVersion: 1, encoding: 'native-program-opening-prompt-scope-read-data-v1',
             authority: 'consumer-data-only', sessionId: scope.session.id, numericalSourceSha256: packet.numericalSourceSha256,
             sourceProofSha256: packet.source.proofSha256, basisSha256: packet.basis.basisSha256, seed, input: packet,
             seedRef: packet.seedRef, inputRef: identityFor(hot.context).inputRef, nativeOwner: input.owner,
@@ -617,8 +685,14 @@ export function createRoleplayProgramOpeningV1(deps) {
         if (prepared.kind !== 'ready')
             return prepared;
         const context = prepared.context, session = actualSession(request.sessionId);
-        if (prepared.intent.status === 'completed')
-            return verified(request.sessionId);
+        if (prepared.intent.status === 'completed') {
+            const complete = verified(request.sessionId);
+            if (complete.kind === 'ready' || request.production === 'selected-card-copy')
+                return complete;
+            const actual = deps.readNativeFacts(context, prepared.intent.committedTurn);
+            if (!actual || actual.closingAcknowledged)
+                return complete;
+        }
         const signal = disposal.signal;
         try {
             await deps.loadEjs(signal);
@@ -658,6 +732,16 @@ export function createRoleplayProgramOpeningV1(deps) {
             const hot = { session, agent, context, identity: nativeIdentity(context), phaseRows: new Map() };
             active.set(session.id, hot);
             try {
+                if (context.input.schemaSource) {
+                    const cached = preparedSchemaSources.get(session.id);
+                    hot.schemaSource = cached?.inputSha256 === context.input.inputSha256 ? cached.source :
+                        await deps.withSourceLock(session.id, async () => {
+                            const input = context.input.schemaSource;
+                            return deps.generatedOpening?.prepareGeneratedSource(input.identity, context.seed.selected.index, input);
+                        });
+                    if (!hot.schemaSource)
+                        fail('PROGRAM_OPENING_SCHEMA_RUNTIME_REQUIRED');
+                }
                 const inspection = agent.lookupProgrammaticOpening({ operationId: request.operationId, messageId: request.messageId,
                     instruction: context.input.instruction, opening: { schemaVersion: 1, kind: 'programmatic-opening', intentRef: context.input.seedRef } });
                 if (inspection.kind === 'absent' && prepared.intent.status !== 'prepared') {
@@ -681,9 +765,20 @@ export function createRoleplayProgramOpeningV1(deps) {
             }
             finally {
                 hot.unregister?.();
-                await hot.material?.dispose();
-                if (active.get(session.id) === hot)
-                    active.delete(session.id);
+                try {
+                    await hot.material?.dispose();
+                }
+                finally {
+                    try {
+                        if (hot.schemaHandle)
+                            await deps.generatedOpening?.releaseGeneratedOpening(hot.schemaHandle);
+                    }
+                    finally {
+                        preparedSchemaSources.delete(session.id);
+                        if (active.get(session.id) === hot)
+                            active.delete(session.id);
+                    }
+                }
             }
         }
         catch (error) {
@@ -735,22 +830,64 @@ export function createRoleplayProgramOpeningV1(deps) {
             completedReadCandidate = previous;
         }
     }
-    function readGenesis(id) {
-        const found = verified(id);
-        if (found.kind !== 'ready' || found.intent.status !== 'completed'
-            || !found.context.planRecord || !found.context.genesis)
-            return;
-        // verified already joins the fresh event/head, plan, original Native span,
-        // Source and domain receipt/ACK. Convert that same synchronous DATA instead
-        // of entering the publisher and repeating its complete owner checks.
+    function historicalSchemaOpening(id, selection) {
         try {
-            return validateProgramMvuGenesisFactsV1(found.context.genesis.programEvent, found.context.genesis.programHead);
+            const session = actualSession(id), candidates = [], prefix = `${id}__opening-choice-`, rows = selection.importId
+                ? [[openingIntentKey(id, selection.importId), readRowData('branch', openingIntentKey(id, selection.importId))]]
+                : deps.branch.entries(prefix);
+            for (const [key, raw] of rows) {
+                if (!key.startsWith(prefix) || !object(raw) || raw.schemaVersion !== 7 || raw.mode !== 'prompt-program')
+                    continue;
+                const section = raw.schemaOpening;
+                if (selection.realmEpoch && (!object(section) || !object(section.preparation)
+                    || section.preparation.realmEpoch !== selection.realmEpoch))
+                    continue;
+                candidates.push({ key, raw });
+            }
+            if (candidates.length === 0)
+                return { kind: 'outside-domain' };
+            if (candidates.length !== 1)
+                fail('PROGRAM_OPENING_HISTORY_AMBIGUOUS');
+            const { key, raw } = candidates[0], digest = recordSha256(raw), loaded = loadContext(raw, true), context = loaded.context, intent = validateOpeningIntentV7(raw, context), facts = intent.nativeReceipt;
+            if (intent.sessionId !== id || key !== intentKey(context) || intent.status !== 'completed' || !facts) {
+                fail('PROGRAM_OPENING_HISTORY_UNFINISHED');
+            }
+            const basis = context.input.basis, all = session.snapshotEvents(), start = facts.production === 'generated-opening'
+                ? facts.receipt.invocationRef.seq : facts.receipt.turnStartSeq;
+            if (start !== basis.native.eventCount || recordSha256(all.slice(0, start)) !== basis.native.historySha256
+                || !nativeCurrent(context, facts, true, intent) || rowSha256('branch', key) !== digest
+                || loaded.publicationRows.some(row => rowSha256(row.table, row.key) !== row.sha256)) {
+                fail('PROGRAM_OPENING_NATIVE_CHANGED');
+            }
+            // Historical DATA is tied to the original Native span and published
+            // event. Current Source admission remains with the consuming owner.
+            return { kind: 'ready', context, intent };
         }
-        catch {
-            return undefined;
+        catch (error) {
+            return { kind: 'blocked', code: codeOf(error) };
         }
     }
-    return { run, read, verified, readGenesis, openingPreparation, ownedRows, identityFor, sourceCurrent, historicalSourceCurrent, nativeFactsCurrent,
+    function readSchemaOpening(id, selection) {
+        const found = selection ? historicalSchemaOpening(id, selection) : verified(id);
+        if (found.kind !== 'ready' || found.intent.status !== 'completed' || found.intent.domainReceipt?.kind !== 'schema-opening')
+            return;
+        const schema = found.context.schemaOpening, publication = schema?.publication;
+        if (!schema || !publication)
+            return;
+        return { intent: { ...found.intent, status: 'completed' }, preparation: schema.preparation, ...publication };
+    }
+    function capturePendingSource(id) {
+        const hot = active.get(id);
+        if (!hot || hot.context.seed.production !== 'generated-opening')
+            return undefined;
+        // The active execution owns preparation and its cleanup. A reservation
+        // alone grants no Source lifetime, and accepted initialization may replace
+        // hot.context while retaining this same opening operation.
+        return { index: hot.context.seed.selected.index, pending: true,
+            current: () => active.get(id) === hot && !disposal.signal.aborted };
+    }
+    return { run, read, verified, readSchemaOpening, initializeOpening, openingPreparation, ownedRows, identityFor, sourceCurrent, historicalSourceCurrent, nativeFactsCurrent,
+        capturePendingSource,
         readOwnedAbsenceRecordRows,
         invocationCurrent, nativeCurrent,
         ownsAgent: (agent, turn) => {
@@ -767,12 +904,14 @@ export function createRoleplayProgramOpeningV1(deps) {
                 }
             return false;
         },
-        catalog(id) {
+        catalog(id, index = 0, production = 'selected-card-copy') {
             return (async () => deps.withSourceLock(id, async () => {
                 const session = actualSession(id);
-                if (deps.ownsCombinedOpening?.(id))
-                    return { kind: 'not-applicable', reason: 'owned-by-combined-opening' };
-                const captured = deps.source.capture(id, 0, deps.includeCardStyle(id), () => deps.assertSessionCurrent(session));
+                if (deps.ownsCombinedOpening?.(id, index))
+                    return production === 'generated-opening' && deps.generatedOpening
+                        ? { kind: 'applicable', catalog: deps.generatedOpening.catalog(id) }
+                        : { kind: 'not-applicable', reason: 'owned-by-combined-opening' };
+                const captured = deps.source.capture(id, index, deps.includeCardStyle(id), () => deps.assertSessionCurrent(session));
                 return captured.kind === 'captured-opening-source' ? { kind: 'applicable', catalog: captured.proof.catalog }
                     : captured.kind === 'not-applicable' ? captured : { kind: 'refused', diagnostics: captured.diagnostics };
             }))();
@@ -780,6 +919,7 @@ export function createRoleplayProgramOpeningV1(deps) {
         async dispose() {
             disposal.abort(Error('PROGRAM_OPENING_OWNER_DISPOSED'));
             recordCaptures.clear();
+            preparedSchemaSources.clear();
             deps.source.dispose();
             for (const hot of active.values())
                 hot.material?.revoke();

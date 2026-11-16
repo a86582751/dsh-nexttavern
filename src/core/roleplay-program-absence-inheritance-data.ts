@@ -13,7 +13,7 @@ import type {NativeOpeningEventRefV1,NativeOpeningClosingAckV1,NativeGeneratedOp
   from 'dsh-nexttavern-native-agent-loop'
 import type {ProgramOpeningIntentSeedV1,ProgramOpeningInputPacketV1,OpeningIntentV7,
   ProgramOpeningAbsentDomainV1} from './roleplay-program-opening-records.js'
-import type {ProgramGenesisDataRefV1} from './roleplay-program-genesis-types.js'
+import type {ProgramOpeningDataRefV1} from './roleplay-program-opening-records.js'
 import type {RoleplayOpeningMaterialRecordV1} from './roleplay-opening-material.js'
 
 export interface ProgramAbsenceOpeningClosureDataV1 {
@@ -21,11 +21,11 @@ export interface ProgramAbsenceOpeningClosureDataV1 {
   readonly input:ProgramOpeningInputPacketV1
   readonly intent:OpeningIntentV7
   readonly absenceDomain:ProgramOpeningAbsentDomainV1
-  readonly refs:{readonly seed:ProgramGenesisDataRefV1;readonly input:ProgramGenesisDataRefV1;
-    readonly intent:ProgramGenesisDataRefV1;readonly absenceDomain:ProgramGenesisDataRefV1}
+  readonly refs:{readonly seed:ProgramOpeningDataRefV1;readonly input:ProgramOpeningDataRefV1;
+    readonly intent:ProgramOpeningDataRefV1;readonly absenceDomain:ProgramOpeningDataRefV1}
   readonly acknowledgement:null|{readonly generatedReceiptRef:NativeOpeningEventRefV1;
     readonly closingAckRef:NativeOpeningEventRefV1;readonly closingAck:NativeOpeningClosingAckV1}
-  readonly materialRows:readonly {readonly ref:ProgramGenesisDataRefV1;readonly value:RoleplayOpeningMaterialRecordV1}[]
+  readonly materialRows:readonly {readonly ref:ProgramOpeningDataRefV1;readonly value:RoleplayOpeningMaterialRecordV1}[]
 }
 export interface ProgramAbsenceOpeningClosureV1 {
   readonly schemaVersion:1
@@ -49,7 +49,7 @@ function exact(value:unknown,keys:readonly string[]):asserts value is Record<str
   if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==keys.length
     ||keys.some(key=>!Object.hasOwn(value,key)))fail()
 }
-function dataRef(value:unknown,key?:string):asserts value is ProgramGenesisDataRefV1 {
+function dataRef(value:unknown,key?:string):asserts value is ProgramOpeningDataRefV1 {
   exact(value,['key','sha256'])
   if(!id(value['key'],512)||!hash(value['sha256'])||key!==undefined&&value['key']!==key)fail()
 }
@@ -70,7 +70,7 @@ function nativeTransformSpelling(value:unknown):void {
     if(item!==null&&typeof item==='object')pending.push(...Object.values(item))
   }
 }
-function materialRecord(raw:unknown,ref:ProgramGenesisDataRefV1,kind:'snapshot'|'plan',step:number,
+function materialRecord(raw:unknown,ref:ProgramOpeningDataRefV1,kind:'snapshot'|'plan',step:number,
   receipt:NativeGeneratedOpeningReceiptV1,packet:ProgramAbsenceOpeningClosureDataV1,
   original:RoleplayOpeningMaterialRecordV1):RoleplayOpeningMaterialRecordV1 {
   exact(raw,['schemaVersion','encoding','authority','sessionId','identity','seedRef','inputRef','nativeOwner',
@@ -153,9 +153,9 @@ export function validateProgramAbsenceOpeningClosureV1(input:unknown):ProgramAbs
   const original=(input as ProgramAbsenceOpeningClosureV1).data,
     seed=validateProgramOpeningSeedV1(data['seed']),packet=validateProgramOpeningInputV1(data['input'],seed),
     absenceDomain=validateProgramOpeningAbsentDomainV1(original.absenceDomain,{seed,input:packet}),
-    intent=validateOpeningIntentV7(original.intent,{seed,input:packet,planRecord:null,absenceDomain})
+    intent=validateOpeningIntentV7(original.intent,{seed,input:packet,absenceDomain})
   if(seed.sessionId!==value['ownerSessionId']||packet.initialization!=='absent'||intent.status!=='completed'
-    ||intent.planRef!==null||Object.hasOwn(intent,'genesisEnvelope')||!intent.nativeReceipt
+    ||!intent.nativeReceipt
     ||intent.domainReceipt?.kind!=='prompt-absence')fail()
   const native=validateProgramOpeningNativeFactsV1(original.intent.nativeReceipt,seed,packet)
   if(!same(native,absenceDomain.nativeFacts)||!same(native,intent.nativeReceipt))fail()

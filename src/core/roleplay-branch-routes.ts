@@ -273,7 +273,8 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
       await failPendingNativeFork(child, '首条开场模型生成失败')
     }
   }
-  async function openingOutcome(operation: StoredBranchOperation, child: BranchRouteSession | null) {
+  async function openingOutcome(operation: StoredBranchOperation, child: BranchRouteSession | null,
+    generationFailure?:string) {
     const childId = operation.childSessionId ?? operation.reservedChildSessionId ?? null
     if (!operation.groupId || !child) {
       if (operation.state === 'generating' || operation.state === 'waiting-agent') {
@@ -314,7 +315,8 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
         operationState: 'generating', operationId: operation.operationId,
         childSessionId: child.id, registered: true, requestAccepted: true,
         assistantMessageId: null}
-      const reason = member?.failureReason ?? '开场生成结果无法确认；原世界线已保留，请从原开场重新创建分支'
+      const reason = member?.failureReason ?? generationFailure
+        ?? '开场生成结果无法确认；原世界线已保留，请从原开场重新创建分支'
       if (!member?.failed) await failPendingNativeFork(child, reason)
       const failure = {schemaVersion: 1 as const, code: member?.failed
         ? 'OPENING_GENERATION_FAILED' : 'OPENING_GENERATION_UNKNOWN', message: reason, at: Date.now()}
@@ -554,7 +556,8 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
                     state: 'waiting-agent', requestAccepted: false}))
                   return jsonResponse(202, await openingOutcome(operation, child))
                 }
-                return jsonResponse(200, await openingOutcome(operation, child))
+                return jsonResponse(200, await openingOutcome(operation,child,
+                  generation.kind==='unknown'?generation.reason:undefined))
               })
             }
 
@@ -896,9 +899,6 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
             switch (message) {
               case 'SCHEMA_TASK_EDIT_INVALID':
               case 'SCHEMA_TASK_EDIT_TARGET_REQUIRED':
-              case 'SCHEMA_TASK_EDIT_REPLACE_REQUIRED':
-              case 'SCHEMA_TASK_EDIT_UPDATE_REQUIRED':
-              case 'SCHEMA_TASK_EDIT_MALFORMED_UPDATE':
               case 'SCHEMA_USER_EDIT_RECOVERY_INVALID':
                 status = 400
                 break

@@ -28,6 +28,7 @@ interface OpeningRoutesDependencies {
   openingContext(sessionId: string): TavernOpeningContext
   legacyOpeningAlreadyRequested(sessionId: string, importId: string): boolean
   priorOpeningInHistory(session: ContextSession): boolean
+  requiresAuthorBrowser?(sessionId:string,index:number):Promise<boolean>
 }
 
 /** Selection belongs to the active session; the route never accepts source bytes or text from a client. */
@@ -44,6 +45,13 @@ export function registerOpeningRoutes(deps: OpeningRoutesDependencies): void {
         if (!session) return jsonResponse(404,{ok:false,error:'角色扮演会话不存在'})
         const context = openingContext(session.id)
         const catalog = selection.readCatalog(session.id,context)
+        const authorIndex=url.searchParams.get('authorIndex')
+        if(!body&&authorIndex!==null) {
+          const index=Number(authorIndex)
+          if(!Number.isSafeInteger(index)||!catalog.candidates.some(candidate=>candidate.index===index))
+            return jsonResponse(400,{ok:false,error:'无效的开场选择请求'})
+          return jsonResponse(200,{ok:true,requiresAuthorBrowser:await deps.requiresAuthorBrowser?.(session.id,index)??false})
+        }
         const program=deps.program?.verified(session.id)
         if(program?.kind==='blocked')throw Error(program.code)
         const intent = program?.kind==='ready'?program.intent:await selection.readIntentVerified(catalog.source)
@@ -100,13 +108,17 @@ export function registerOpeningRoutes(deps: OpeningRoutesDependencies): void {
           if(result.kind!=='ready')throw Error(result.kind==='blocked'?result.code:'PROGRAM_OPENING_SOURCE_UNAVAILABLE')
           return jsonResponse(result.intent.status==='completed'?200:202,{ok:true,selection:openingView(result.intent)})
         }
+        // The verified owner has already joined this exact completed choice
+        // to its Native receipt. A lost HTTP ACK must not request a new opening.
+        if(intent?.status==='completed'&&intent.operationId===body.operationId&&intent.index===body.index)
+          return jsonResponse(200,{ok:true,selection:openingView(intent)})
         if (legacyDisplayed) return jsonResponse(409,{ok:false,
           error:'该导入已请求旧版模型开场；需先按消息历史明确迁移，避免重复开场'})
         if (priorOpening) return jsonResponse(409,{ok:false,
           error:'当前会话历史已有可见开场或剧情；再次导入或分支继承不会自动写第二条'})
         if (!await canCommit(session.id))
           return jsonResponse(409,{ok:false,error:'当前宿主尚未提供原生零模型开场提交能力'})
-        const programCatalog=await deps.program?.catalog(session.id)
+        const programCatalog=await deps.program?.catalog(session.id,body.index as number)
         if(programCatalog?.kind==='refused')return jsonResponse(409,{ok:false,
           error:programCatalog.diagnostics[0]?.code??'PROGRAM_OPENING_SOURCE_UNAVAILABLE',
           diagnostics:programCatalog.diagnostics})

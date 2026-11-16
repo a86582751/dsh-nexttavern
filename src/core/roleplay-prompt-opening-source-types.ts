@@ -2,9 +2,6 @@
  * initialized state, Native receipt or publication capability is encoded. */
 import type {OpeningSource,OpeningCatalog} from './roleplay-opening-selection.js'
 import type {TavernOpeningContext,TavernOpeningCandidate} from './tavern-card.js'
-import type {SchemaMvuInitDataSource,SchemaMvuInitDataResult}
-  from './tavern-mvu-initvar.js'
-import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
 import type {PromptProgramSourceDepsV1,PromptProgramSourceInventoryV1,PromptProgramSourceNotApplicableV1}
   from './roleplay-prompt-program-source-types.js'
 import type {ReadBranchSession} from './roleplay-worldline-types.js'
@@ -27,12 +24,11 @@ export type PromptOpeningSourceCodeV1='OPENING_SOURCE_UNAVAILABLE'|'OPENING_SOUR
   |'OPENING_SOURCE_RELATION_UNPROVEN'|'OPENING_SOURCE_SELECTION_INVALID'|'OPENING_SOURCE_IMPORT_UNPROVEN'
   |'OPENING_SOURCE_MACRO_UNSUPPORTED'|'OPENING_SOURCE_STATE_SYNTAX_UNSUPPORTED'
   |'OPENING_SOURCE_INITVAR_OUTSIDE_BINDING'|'OPENING_SOURCE_INITVAR_WRAPPER_UNSUPPORTED'
-  |'OPENING_SOURCE_INIT_DATA_UNSUPPORTED'|'OPENING_SOURCE_CURRENT_ORIGIN_UNAVAILABLE'
+  |'OPENING_SOURCE_CURRENT_ORIGIN_UNAVAILABLE'
   |'OPENING_SOURCE_BUDGET'|'OPENING_SOURCE_PROOF_INVALID'
 export interface PromptOpeningSourceDiagnosticV1 {
   readonly code:PromptOpeningSourceCodeV1
   readonly pointer:string
-  readonly calculatorCode?:string
 }
 export interface PromptOpeningIdentityMacroReadV1 {
   readonly name:'user'|'char'|'user_gender'
@@ -80,8 +76,6 @@ export interface PromptOpeningRawEntryBindingV1 {
   readonly original:Readonly<Record<string,unknown>>
   readonly isInitVar:boolean
   readonly enabled:boolean
-  readonly renderedContent:string|null
-  readonly identityRendering:PromptOpeningIdentityRenderingV1|null
   /** Current prompt audit only; deleted originals have no effective content. */
   readonly effectivePromptContentSha256:string|null
 }
@@ -97,22 +91,17 @@ export interface PromptOpeningRawInitBindingV1 {
   readonly greetingFacts:readonly PromptOpeningGreetingFactsV1[]
   readonly greetingFactsSha256:string
   readonly originalBookAbsence:TavernLoreBookAbsenceProofV1|null
-  readonly baselinePolicy:'empty-calculation-input-only-not-numerical-absence'
-  readonly otherBindings:'not-authorized-and-not-calculated'
+  readonly baselinePolicy:'original-declarations-only'
+  readonly otherBindings:'not-selected-for-execution'
   readonly schemaExecution:'none'
 }
-export interface PromptOpeningRawInitCalculationV1 {
-  readonly data:SchemaMvuInitDataSource
-  readonly calculation:Extract<SchemaMvuInitDataResult,{kind:'parsed'}>
-  readonly dataSha256:string
-  readonly calculationSha256:string
+export interface PromptOpeningRawInitDescriptorV1 {
   readonly inputBindingSha256:string
   readonly bindings:PromptOpeningRawInitBindingV1
-  readonly grammarPolicy:NativeMvuSourcePolicy
   readonly schemaExecution:'none'
-  readonly calculationPolicy:'raw-init-data-v1'
+  readonly descriptorPolicy:'immutable-raw-initialization-declarations-v1'
 }
-export type PromptOpeningInitializationV1=PromptOpeningRawInitCalculationV1&(
+export type PromptOpeningInitializationV1=PromptOpeningRawInitDescriptorV1&(
   {readonly kind:'raw-init-data';readonly markerCount:number}
   |{readonly kind:'absent';readonly reason:'no-actual-initvar-markers';readonly markerCount:0})
 interface NativeRelationFactsV1 {
@@ -133,6 +122,9 @@ export type PromptOpeningSourceRelationV1={readonly kind:'own-root-source';reado
     readonly branchMetaRef:TavernLoreSourceDataV1['current']['rows'][number]['ref'];
     readonly inheritance:null;readonly setup:null;readonly legacyCopy:TavernSourceLegacyCopyV1}
 export interface PromptOpeningSourceProofV1 {
+  /** The actual Host Source supplier owns author-script classification.
+   * This inert join requests that domain without granting execution rights. */
+  readonly schemaOpeningSourceSha256:string|null
   readonly schemaVersion:1
   readonly encoding:'native-prompt-opening-source-proof-v1'
   readonly authority:'consumer-data-only'

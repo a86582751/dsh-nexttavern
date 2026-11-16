@@ -3,19 +3,30 @@
 import {recordSha256,sha256} from './roleplay-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {validatePromptOpeningSourceProofV1} from './roleplay-prompt-opening-source.js'
-import {prepareProgramMvuOpeningPlanV3,validateFrozenProgramMvuOpeningPlanV3,
-  validateProgramGenesisNativeEnvelopeV1,validateProgramMvuGenesisFactsV1,programGenesisEventIdV1}
-  from './roleplay-program-genesis-data.js'
+import {validateMvuSchemaOpeningPreparation,validateMvuSchemaOpeningEvent,validateMvuSchemaOpeningHead,
+  mvuSchemaOpeningHead} from './roleplay-mvu-schema-opening-types.js'
 import {validateNativeGeneratedOpeningReceiptV1} from 'dsh-nexttavern-native-agent-loop'
 import type {OpeningSource} from './roleplay-opening-selection.js'
 import type {PromptOpeningSourceProofV1} from './roleplay-prompt-opening-source-types.js'
 import type {ProgramOpeningBasisProofV1} from './roleplay-program-opening-basis-types.js'
-import type {ProgramGenesisDataRefV1,ProgramGenesisIdentityV1,ProgramGenesisNativeEnvelopeV1,
-  FrozenProgramMvuOpeningPlanV3,ProgramMvuGenesisEventV1,ProgramMvuGenesisHeadV1}
-  from './roleplay-program-genesis-types.js'
+import type {MvuSchemaOpeningPreparation,SchemaOpeningRootFacts} from './roleplay-mvu-schema-opening-types.js'
+import type {GeneratedOpeningInitialization} from './roleplay-mvu-schema-core.js'
+import {validateSchemaJournalRecord} from './roleplay-mvu-schema-journal.js'
+import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {MvuNativeOpeningReceipt} from './roleplay-mvu-initialization.js'
 import type {NativeGeneratedOpeningReceiptV1} from 'dsh-nexttavern-native-agent-loop'
 import type {CompletedStoryBody} from './roleplay-mvu-story.js'
+
+export interface ProgramOpeningDataRefV1 {readonly key:string;readonly sha256:string}
+export interface ProgramOpeningIdentityV1 {
+  readonly sessionId:string
+  readonly operationId:string
+  readonly requestedMessageId:string
+  readonly production:'selected-card-copy'|'generated-opening'
+  readonly instructionSha256:string|null
+  readonly intentRef:ProgramOpeningDataRefV1
+  readonly inputRef:ProgramOpeningDataRefV1
+}
 
 export interface ProgramOpeningIntentSeedV1 {
   readonly schemaVersion:1
@@ -25,7 +36,7 @@ export interface ProgramOpeningIntentSeedV1 {
   readonly source:OpeningSource
   readonly operationId:string
   readonly requestedMessageId:string
-  readonly production:ProgramGenesisIdentityV1['production']
+  readonly production:ProgramOpeningIdentityV1['production']
   readonly instructionSha256:string|null
   readonly sourceProofSha256:string
   readonly sourceBindingSha256:string
@@ -39,24 +50,20 @@ export interface ProgramOpeningInputPacketV1 {
   readonly encoding:'native-program-opening-input-packet-v1'
   readonly authority:'consumer-data-only'
   readonly sessionId:string
-  readonly seedRef:ProgramGenesisDataRefV1
+  readonly seedRef:ProgramOpeningDataRefV1
   readonly source:PromptOpeningSourceProofV1
   readonly basis:ProgramOpeningBasisProofV1
   readonly instruction:string|null
-  readonly initialization:'absent'|'raw-init-data'
+  readonly initialization:'absent'|'schema'
+  readonly schemaSource:Omit<MvuSchemaOpeningPreparation,'birth'|'preparationSha256'>|null
   /** Root's existing numerical observation constructor owns this SHA. */
   readonly numericalSourceSha256:string
   readonly inputSha256:string
 }
-export interface ProgramOpeningPlanRecordV1 {
-  readonly schemaVersion:1
-  readonly encoding:'native-program-opening-plan-record-v1'
-  readonly authority:'consumer-data-only'
-  readonly sessionId:string
-  readonly seedRef:ProgramGenesisDataRefV1
-  readonly inputRef:ProgramGenesisDataRefV1
-  readonly plan:FrozenProgramMvuOpeningPlanV3
-  readonly recordSha256:string
+export interface ProgramOpeningSchemaSection {
+  readonly preparation:MvuSchemaOpeningPreparation
+  readonly initialization:GeneratedOpeningInitialization
+  readonly publication?:Pick<SchemaOpeningRootFacts,'plan'|'native'|'event'|'head'>
 }
 export type ProgramOpeningNativeFactsV1=(
   {readonly production:'selected-card-copy';readonly receipt:MvuNativeOpeningReceipt;readonly canonical:null}
@@ -67,9 +74,9 @@ export type ProgramOpeningNativeFactsV1=(
   readonly factsSha256:string
 }
 export type ProgramOpeningDomainReceiptV1=
-  |{readonly kind:'program-genesis';readonly eventId:string;readonly eventSha256:string;readonly headSha256:string;
+  |{readonly kind:'schema-opening';readonly eventId:string;readonly eventSha256:string;readonly headSha256:string;
     readonly planSha256:string;readonly valuesSha256:string}
-  |{readonly kind:'prompt-absence';readonly domainRef:ProgramGenesisDataRefV1;readonly sourceProofSha256:string;
+  |{readonly kind:'prompt-absence';readonly domainRef:ProgramOpeningDataRefV1;readonly sourceProofSha256:string;
     readonly basisSha256:string;readonly nativeFactsSha256:string}
 export interface ProgramOpeningAbsentDomainV1 {
   readonly schemaVersion:1
@@ -78,8 +85,8 @@ export interface ProgramOpeningAbsentDomainV1 {
   readonly sessionId:string
   readonly operationId:string
   readonly requestedMessageId:string
-  readonly seedRef:ProgramGenesisDataRefV1
-  readonly inputRef:ProgramGenesisDataRefV1
+  readonly seedRef:ProgramOpeningDataRefV1
+  readonly inputRef:ProgramOpeningDataRefV1
   readonly sourceProofSha256:string
   readonly sourceBindingSha256:string
   readonly basisSha256:string
@@ -99,14 +106,13 @@ export interface OpeningIntentV7 {
   readonly textRetained:true
   readonly operationId:string
   readonly messageId:string
-  readonly production:ProgramGenesisIdentityV1['production']
+  readonly production:ProgramOpeningIdentityV1['production']
   readonly revision:number
   readonly status:'prepared'|'native-unknown'|'native-committed'|'domain-blocked'|'completed'
-  readonly seedRef:ProgramGenesisDataRefV1
-  readonly inputRef:ProgramGenesisDataRefV1
-  readonly planRef:ProgramGenesisDataRefV1|null
+  readonly seedRef:ProgramOpeningDataRefV1
+  readonly inputRef:ProgramOpeningDataRefV1
+  readonly schemaOpening?:ProgramOpeningSchemaSection
   readonly nativeReceipt?:ProgramOpeningNativeFactsV1
-  readonly genesisEnvelope?:ProgramGenesisNativeEnvelopeV1
   readonly committedTurn?:number
   readonly domainReceipt?:ProgramOpeningDomainReceiptV1
   readonly diagnosis?:string
@@ -131,7 +137,6 @@ const checkedInputs=new WeakMap<ProgramOpeningInputPacketV1,{
 const checkedBases=new WeakMap<ProgramOpeningBasisProofV1,{
   readonly source:PromptOpeningSourceProofV1;readonly sessionId:string
   readonly operationId:string;readonly requestedMessageId:string;readonly dataHashes:BasisDataHashes}>()
-const checkedPlans=new WeakMap<ProgramOpeningPlanRecordV1,RecordBinding>()
 const checkedNativeFacts=new WeakMap<ProgramOpeningNativeFactsV1,RecordBinding>()
 const checkedAbsentDomains=new WeakMap<ProgramOpeningAbsentDomainV1,RecordBinding>()
 function seedWholeSha256(seed:ProgramOpeningIntentSeedV1):string {
@@ -173,14 +178,14 @@ function sealed(value:Record<string,unknown>,key:string):void {
   const {[key]:digest,...body}=value
   if(!hash(digest)||recordSha256(body)!==digest)fail()
 }
-function ref(value:unknown):asserts value is ProgramGenesisDataRefV1 {
+function ref(value:unknown):asserts value is ProgramOpeningDataRefV1 {
   exact(value,['key','sha256']);if(!id(value['key'],512)||!hash(value['sha256']))fail()
 }
 function optionalShape(value:unknown,required:readonly string[],optional:readonly string[]):asserts value is Record<string,unknown> {
   if(!value||typeof value!=='object'||Array.isArray(value)||required.some(key=>!Object.hasOwn(value,key))
     ||Object.keys(value).some(key=>!required.includes(key)&&!optional.includes(key)))fail()
 }
-function instruction(value:unknown,production:ProgramGenesisIdentityV1['production']):string|null {
+function instruction(value:unknown,production:ProgramOpeningIdentityV1['production']):string|null {
   if(production==='selected-card-copy'){if(value!==null)fail();return null}
   if(typeof value!=='string'||!value.trim()||!value.isWellFormed()||Buffer.byteLength(value,'utf8')>65_536)fail()
   return value
@@ -205,45 +210,26 @@ function sourceTuple(value:unknown,sid:string):asserts value is OpeningSource {
 /** Complete inert basis grammar and joins. Actual absence, history, metadata
  * and storage membership must still be proved by Root's private supplier. */
 export function validateProgramOpeningBasisProofV1(input:unknown,rawSource:PromptOpeningSourceProofV1,
-  owned:Pick<ProgramGenesisIdentityV1,'sessionId'|'operationId'|'requestedMessageId'>):ProgramOpeningBasisProofV1 {
+  owned:Pick<ProgramOpeningIdentityV1,'sessionId'|'operationId'|'requestedMessageId'>):ProgramOpeningBasisProofV1 {
   const source=validatePromptOpeningSourceProofV1(rawSource),cached=input!==null&&typeof input==='object'
     ?checkedBases.get(input as ProgramOpeningBasisProofV1):undefined
   if(cached?.source===source&&cached.sessionId===owned.sessionId&&cached.operationId===owned.operationId
     &&cached.requestedMessageId===owned.requestedMessageId)return input as ProgramOpeningBasisProofV1
   const data=programOpeningRecordDataV1(input)
   exact(data,['schemaVersion','encoding','authority','sessionId','ownerSessionId','origin','operationId',
-    'requestedMessageId','sourceBindingSha256','sourceRelation','branch','native','numerical','basisSha256'])
+    'requestedMessageId','sourceBindingSha256','sourceRelation','branch','native','basisSha256'])
   sealed(data,'basisSha256');exact(data['branch'],['metaKey','metaCurrentIdentitySha256','parentSessionId','inheritedEventCount','ready'])
   exact(data['native'],['observedThroughSeq','eventCount','historySha256'])
-  exact(data['numerical'],['statusRows','branchRows','membershipSha256','ownedInitializationCount','opaqueStateCount'])
   if(!id(owned.sessionId,64)||!id(owned.operationId)||!id(owned.requestedMessageId)
     ||data['schemaVersion']!==1||data['encoding']!=='native-program-opening-fresh-basis-proof-v1'
     ||data['authority']!=='consumer-data-only'||data['sessionId']!==owned.sessionId
     ||data['ownerSessionId']!==owned.sessionId||source.source.sessionId!==owned.sessionId
     ||data['operationId']!==owned.operationId||data['requestedMessageId']!==owned.requestedMessageId
     ||data['sourceBindingSha256']!==source.bindingSha256)fail()
-  const branch=data['branch'],native=data['native'],numerical=data['numerical'],sid=owned.sessionId
+  const branch=data['branch'],native=data['native'],sid=owned.sessionId
   if(branch['metaKey']!==`${sid}__meta`||!hash(branch['metaCurrentIdentitySha256'])
     ||branch['parentSessionId']!==null||branch['inheritedEventCount']!==0||branch['ready']!==true
-    ||!count(native['eventCount'])||native['observedThroughSeq']!==native['eventCount']-1||!hash(native['historySha256'])
-    ||!Array.isArray(numerical['statusRows'])||!Array.isArray(numerical['branchRows'])
-    ||numerical['ownedInitializationCount']!==0||numerical['opaqueStateCount']!==0
-    ||!hash(numerical['membershipSha256'])||numerical['membershipSha256']!==recordSha256({
-      statusRows:numerical['statusRows'],branchRows:numerical['branchRows']}))fail()
-  const seen=new Set<string>()
-  for(const [table,rows] of [['status',numerical['statusRows']],['branch',numerical['branchRows']]] as const) {
-    let previous=''
-    for(const row of rows) {
-      exact(row,['table','key','exists','sha256','value'])
-      if(row['table']!==table||!id(row['key'],512)||!row['key'].startsWith(sid+'__')
-        ||row['key']<=previous||typeof row['exists']!=='boolean'||seen.has(table+':'+row['key']))fail()
-      previous=row['key'];seen.add(table+':'+row['key'])
-      if(row['exists']) {
-        if(!row['value']||typeof row['value']!=='object'||Array.isArray(row['value'])
-          ||!hash(row['sha256'])||recordSha256(row['value'])!==row['sha256'])fail()
-      }else if(row['value']!==null||row['sha256']!=='missing')fail()
-    }
-  }
+    ||!count(native['eventCount'])||native['observedThroughSeq']!==native['eventCount']-1||!hash(native['historySha256']))fail()
   const relation=data['sourceRelation']
   if(relation&&typeof relation==='object'&&!Array.isArray(relation)&&(relation as {kind:unknown}).kind==='own-root') {
     exact(relation,['kind','inheritance'])
@@ -276,7 +262,7 @@ export function validateProgramOpeningBasisProofV1(input:unknown,rawSource:Promp
 /** Pure hashes of this parser's exact immutable data, bound to its original
  * parsed Source and identity. No current owner or execution permission is cached. */
 export function programOpeningBasisDataHashesV1(proof:ProgramOpeningBasisProofV1,source:PromptOpeningSourceProofV1,
-  identity:Pick<ProgramGenesisIdentityV1,'sessionId'|'operationId'|'requestedMessageId'>):BasisDataHashes|undefined {
+  identity:Pick<ProgramOpeningIdentityV1,'sessionId'|'operationId'|'requestedMessageId'>):BasisDataHashes|undefined {
   const cached=checkedBases.get(proof)
   if(!cached||cached.source!==source||cached.sessionId!==identity.sessionId
     ||cached.operationId!==identity.operationId||cached.requestedMessageId!==identity.requestedMessageId)return undefined
@@ -294,12 +280,12 @@ export function programOpeningDataSha256V1(value:object):string {
     ownedInput=checkedInputs.get(value as ProgramOpeningInputPacketV1)
   return ownedSeed??ownedInput?.wholeSha256??recordSha256(value)
 }
-export function programOpeningRefV1(key:string,value:object):ProgramGenesisDataRefV1 {
+export function programOpeningRefV1(key:string,value:object):ProgramOpeningDataRefV1 {
   return {key,sha256:programOpeningDataSha256V1(value)}
 }
 
 export function createProgramOpeningSeedV1(input:{source:PromptOpeningSourceProofV1;basis:ProgramOpeningBasisProofV1;
-  operationId:string;messageId:string;production:ProgramGenesisIdentityV1['production'];instruction:string|null}):ProgramOpeningIntentSeedV1 {
+  operationId:string;messageId:string;production:ProgramOpeningIdentityV1['production'];instruction:string|null}):ProgramOpeningIntentSeedV1 {
   const source=validatePromptOpeningSourceProofV1(input.source),selected=source.selected,
     basis=validateProgramOpeningBasisProofV1(input.basis,source,{sessionId:source.source.sessionId,
       operationId:input.operationId,requestedMessageId:input.messageId}),text=instruction(input.instruction,input.production),
@@ -334,13 +320,14 @@ export function validateProgramOpeningSeedV1(input:unknown):ProgramOpeningIntent
   checkedSeeds.set(checked,recordSha256(checked))
   return checked
 }
-export function createProgramOpeningInputV1(input:{seed:ProgramOpeningIntentSeedV1;seedRef:ProgramGenesisDataRefV1;
+export function createProgramOpeningInputV1(input:{seed:ProgramOpeningIntentSeedV1;seedRef:ProgramOpeningDataRefV1;
   source:PromptOpeningSourceProofV1;basis:ProgramOpeningBasisProofV1;instruction:string|null;
-  numericalSourceSha256:string}):ProgramOpeningInputPacketV1 {
+  numericalSourceSha256:string;schemaSource?:ProgramOpeningInputPacketV1['schemaSource']}):ProgramOpeningInputPacketV1 {
   const body={schemaVersion:1 as const,encoding:'native-program-opening-input-packet-v1' as const,
     authority:'consumer-data-only' as const,sessionId:input.seed.sessionId,seedRef:input.seedRef,
     source:input.source,basis:input.basis,instruction:input.instruction,
-    initialization:input.source.initialization.kind,numericalSourceSha256:input.numericalSourceSha256}
+    initialization:input.schemaSource?'schema':'absent',schemaSource:input.schemaSource??null,
+    numericalSourceSha256:input.numericalSourceSha256}
   return validateProgramOpeningInputV1({...body,inputSha256:recordSha256(body)},input.seed)
 }
 export function validateProgramOpeningInputV1(input:unknown,rawSeed:ProgramOpeningIntentSeedV1):ProgramOpeningInputPacketV1 {
@@ -349,7 +336,7 @@ export function validateProgramOpeningInputV1(input:unknown,rawSeed:ProgramOpeni
   if(cached?.seedSha256===seedSha256)return input as ProgramOpeningInputPacketV1
   const data=programOpeningRecordDataV1(input)
   exact(data,['schemaVersion','encoding','authority','sessionId','seedRef','source','basis','instruction',
-    'initialization','numericalSourceSha256','inputSha256'])
+    'initialization','schemaSource','numericalSourceSha256','inputSha256'])
   sealed(data,'inputSha256');ref(data['seedRef'])
   const source=validatePromptOpeningSourceProofV1(data['source']),basis=validateProgramOpeningBasisProofV1(data['basis'],source,
     {sessionId:seed.sessionId,operationId:seed.operationId,requestedMessageId:seed.requestedMessageId})
@@ -360,7 +347,15 @@ export function validateProgramOpeningInputV1(input:unknown,rawSeed:ProgramOpeni
     ||source.bindingSha256!==seed.sourceBindingSha256||recordSha256(source.source)!==recordSha256(seed.source)
     ||basis.basisSha256!==seed.basisSha256||basis.sessionId!==seed.sessionId||basis.operationId!==seed.operationId
     ||basis.requestedMessageId!==seed.requestedMessageId||basis.sourceBindingSha256!==source.bindingSha256
-    ||data['initialization']!==source.initialization.kind||!hash(data['numericalSourceSha256']))fail()
+    ||data['initialization']!==(data['schemaSource']===null?'absent':'schema')||!hash(data['numericalSourceSha256']))fail()
+  if(data['schemaSource']!==null) {
+    const schema=data['schemaSource'] as ProgramOpeningInputPacketV1['schemaSource']
+    if(!schema||schema.schemaVersion!==7||schema.encoding!=='native-author-opening-preparation-v7'
+      ||schema.identity.sessionId!==seed.sessionId||schema.identity.operationId!==seed.operationId
+      ||schema.identity.messageId!==seed.requestedMessageId||!same(schema.identity.source,seed.source)
+      ||schema.identity.index!==seed.selected.index||schema.identity.sourceSha256!==seed.selected.sourceSha256
+      ||schema.identity.renderedSha256!==seed.selected.renderedSha256)fail()
+  }
   const {basisSha256,...basisBody}=basis
   if(recordSha256(basisBody)!==basisSha256||recordSha256(seed.selected)!==recordSha256({
     index:source.selected.index,sourcePointer:source.selected.sourcePointer,sourceSha256:source.selected.sourceSha256,
@@ -375,55 +370,15 @@ export function validateProgramOpeningInputV1(input:unknown,rawSeed:ProgramOpeni
 export interface ProgramOpeningRecordContextV1 {
   readonly seed:ProgramOpeningIntentSeedV1
   readonly input:ProgramOpeningInputPacketV1
-  readonly planRecord:ProgramOpeningPlanRecordV1|null
-  /** Inert original genesis rows supplied by the actual owner, not proof that
-   * they were read from storage. Required for a completed numerical intent. */
-  readonly genesis?:{readonly programEvent:ProgramMvuGenesisEventV1;readonly programHead:ProgramMvuGenesisHeadV1}
+  readonly schemaOpening?:ProgramOpeningSchemaSection
   /** A separate versioned absence domain, never a numerical plan/head. */
   readonly absenceDomain?:ProgramOpeningAbsentDomainV1
 }
-function boundIdentity(seed:ProgramOpeningIntentSeedV1,packet:ProgramOpeningInputPacketV1):ProgramGenesisIdentityV1 {
+function boundIdentity(seed:ProgramOpeningIntentSeedV1,packet:ProgramOpeningInputPacketV1):ProgramOpeningIdentityV1 {
   return {sessionId:seed.sessionId,operationId:seed.operationId,requestedMessageId:seed.requestedMessageId,
     production:seed.production,instructionSha256:seed.instructionSha256,intentRef:packet.seedRef,
     inputRef:programOpeningRefV1(programOpeningInputKeyV1(seed.sessionId,seed.operationId),packet)}
 }
-export function validateProgramOpeningPlanRecordV1(input:unknown,rawSeed:ProgramOpeningIntentSeedV1,
-  rawPacket:ProgramOpeningInputPacketV1):ProgramOpeningPlanRecordV1 {
-  const seed=validateProgramOpeningSeedV1(rawSeed),packet=validateProgramOpeningInputV1(rawPacket,seed),
-    binding=recordBinding(seed,packet),cached=boundRecord(input,checkedPlans,binding)
-  if(cached)return cached
-  const data=programOpeningRecordDataV1(input)
-  exact(data,['schemaVersion','encoding','authority','sessionId','seedRef','inputRef','plan','recordSha256'])
-  sealed(data,'recordSha256');ref(data['seedRef']);ref(data['inputRef'])
-  const plan=validateFrozenProgramMvuOpeningPlanV3(data['plan']),identity=boundIdentity(seed,packet)
-  if(packet.initialization!=='raw-init-data'||data['schemaVersion']!==1
-    ||data['encoding']!=='native-program-opening-plan-record-v1'||data['authority']!=='consumer-data-only'
-    ||data['sessionId']!==seed.sessionId||!same(data['seedRef'],identity.intentRef)
-    ||!same(data['inputRef'],identity.inputRef)||!same(plan.identity,identity)
-    ||plan.sourceSha256!==packet.numericalSourceSha256||!same(plan.source,packet.source)||!same(plan.basis,packet.basis))fail()
-  const checked=parsedChildren(data as unknown as ProgramOpeningPlanRecordV1,{plan})
-  checkedPlans.set(checked,binding)
-  return checked
-}
-/** Seal a caller's already frozen plan with independent seed and input refs.
- * The checksum helper does not claim any referenced row is persisted. */
-export function createProgramOpeningPlanRecordV1(input:{seed:ProgramOpeningIntentSeedV1;
-  input:ProgramOpeningInputPacketV1;plan:FrozenProgramMvuOpeningPlanV3}):ProgramOpeningPlanRecordV1 {
-  const seed=validateProgramOpeningSeedV1(input.seed),packet=validateProgramOpeningInputV1(input.input,seed),
-    identity=boundIdentity(seed,packet),body={schemaVersion:1 as const,
-      encoding:'native-program-opening-plan-record-v1' as const,authority:'consumer-data-only' as const,
-      sessionId:seed.sessionId,seedRef:identity.intentRef,inputRef:identity.inputRef,plan:input.plan}
-  return validateProgramOpeningPlanRecordV1({...body,recordSha256:recordSha256(body)},seed,packet)
-}
-/** Pure convenience preparation; no native callback, write, lock or retry. */
-export function prepareProgramOpeningPlanRecordV1(input:{seed:ProgramOpeningIntentSeedV1;
-  input:ProgramOpeningInputPacketV1}):ProgramOpeningPlanRecordV1 {
-  const seed=validateProgramOpeningSeedV1(input.seed),packet=validateProgramOpeningInputV1(input.input,seed),
-    plan=prepareProgramMvuOpeningPlanV3({identity:boundIdentity(seed,packet),sourceSha256:packet.numericalSourceSha256,
-      source:packet.source,basis:packet.basis})
-  return createProgramOpeningPlanRecordV1({seed,input:packet,plan})
-}
-
 export type ProgramOpeningNativePayloadV1=
   |Omit<Extract<ProgramOpeningNativeFactsV1,{production:'selected-card-copy'}>,
     'schemaVersion'|'encoding'|'factsSha256'>
@@ -487,33 +442,9 @@ export function createProgramOpeningNativeFactsV1(input:ProgramOpeningNativePayl
   return validateProgramOpeningNativeFactsV1({...body,factsSha256:recordSha256(body)},seed,packet)
 }
 
-export function validateProgramOpeningGenesisEnvelopeV1(input:unknown,rawNative:ProgramOpeningNativeFactsV1,
-  context:ProgramOpeningRecordContextV1):ProgramGenesisNativeEnvelopeV1 {
-  const seed=validateProgramOpeningSeedV1(context.seed),packet=validateProgramOpeningInputV1(context.input,seed),
-    native=validateProgramOpeningNativeFactsV1(rawNative,seed,packet)
-  if(packet.initialization!=='raw-init-data'||context.planRecord===null)fail()
-  const record=validateProgramOpeningPlanRecordV1(context.planRecord,seed,packet),
-    data=validateProgramGenesisNativeEnvelopeV1(input,record.plan)
-  if(data.production!==native.production||!same(data.receipt,native.receipt)||!same(data.canonical,native.canonical))fail()
-  return programOpeningRecordDataV1(data)
-}
-export function createProgramOpeningGenesisEnvelopeV1(rawNative:ProgramOpeningNativeFactsV1,
-  context:ProgramOpeningRecordContextV1):ProgramGenesisNativeEnvelopeV1 {
-  const seed=validateProgramOpeningSeedV1(context.seed),packet=validateProgramOpeningInputV1(context.input,seed),
-    native=validateProgramOpeningNativeFactsV1(rawNative,seed,packet)
-  if(packet.initialization!=='raw-init-data'||context.planRecord===null)fail()
-  const record=validateProgramOpeningPlanRecordV1(context.planRecord,seed,packet),
-    body={schemaVersion:1 as const,encoding:'native-program-genesis-native-envelope-v1' as const,
-      production:native.production,receipt:native.receipt,canonical:native.canonical,planSha256:record.plan.planSha256}
-  return validateProgramOpeningGenesisEnvelopeV1({...body,envelopeSha256:recordSha256(body)},native,context)
-}
-
 function recordContext(context:ProgramOpeningRecordContextV1) {
   const seed=validateProgramOpeningSeedV1(context.seed),packet=validateProgramOpeningInputV1(context.input,seed)
-  if(packet.initialization==='absent'&&context.planRecord!==null
-    ||packet.initialization==='raw-init-data'&&context.planRecord===null)fail()
-  const planRecord=context.planRecord===null?null:validateProgramOpeningPlanRecordV1(context.planRecord,seed,packet)
-  return {seed,packet,planRecord,identity:boundIdentity(seed,packet)}
+  return {seed,packet,identity:boundIdentity(seed,packet)}
 }
 export function validateProgramOpeningAbsentDomainV1(input:unknown,
   context:Pick<ProgramOpeningRecordContextV1,'seed'|'input'>):ProgramOpeningAbsentDomainV1 {
@@ -550,23 +481,52 @@ export function createProgramOpeningAbsentDomainV1(input:{seed:ProgramOpeningInt
 }
 /** Exact data receipts, distinct numerical/absence encodings. Storage existence
  * and original Native currency are still caller-owned checks. */
+export function validateProgramOpeningSchemaSection(input:ProgramOpeningSchemaSection,
+  context:Pick<ProgramOpeningRecordContextV1,'seed'|'input'>):ProgramOpeningSchemaSection {
+  const data=programOpeningRecordDataV1(input),{seed,packet}=recordContext(context),
+    preparation=validateMvuSchemaOpeningPreparation(data.preparation),birth=preparation.birth
+  if(packet.initialization!=='schema'||!packet.schemaSource||birth.kind!=='generated'
+    ||!same(birth.seedRef,packet.seedRef)||!same(birth.inputRef,boundIdentity(seed,packet).inputRef)
+    ||!same(birth.basis,packet.basis))fail()
+  const {birth:_birth,preparationSha256:_sha256,...captured}=preparation
+  if(!same(captured,packet.schemaSource)||data.initialization.execution.batchId!==preparation.selector.batchId
+    ||data.initialization.execution.realmEpoch!==preparation.realmEpoch
+    ||data.initialization.execution.sessionId!==seed.sessionId)fail()
+  const initialization=data.initialization,frontier=initialization.frontier
+  if(!frontier||!count(frontier.nativeCut)||!hash(frontier.tailSha256)||!hash(frontier.frontierSha256))fail()
+  if(initialization.browser) {
+    const browser=initialization.browser
+    if(browser.schemaVersion!==1||!Array.isArray(browser.hooks)||browser.finalizedMessage!=='')fail()
+    for(const hook of browser.hooks) {
+      validateSchemaJournalRecord(hook.journal.dispatch)
+      validateSchemaJournalRecord(hook.journal.completion)
+    }
+  }
+  if(data.publication) {
+    const event=validateMvuSchemaOpeningEvent(data.publication.event),head=validateMvuSchemaOpeningHead(data.publication.head)
+    if(!same(event.plan,data.publication.plan)||!same(event.native,data.publication.native)
+      ||!same(head,mvuSchemaOpeningHead(event))||!same(event.plan.birth,birth)
+      ||!same(event.plan.phases[0].execution,data.initialization.execution))fail()
+  }
+  return data
+}
 export function validateProgramOpeningDomainReceiptV1(input:unknown,rawNative:ProgramOpeningNativeFactsV1,
   context:ProgramOpeningRecordContextV1):ProgramOpeningDomainReceiptV1 {
-  const data=programOpeningRecordDataV1(input),{seed,packet,planRecord}=recordContext(context),
+  const data=programOpeningRecordDataV1(input),{seed,packet}=recordContext(context),
     native=validateProgramOpeningNativeFactsV1(rawNative,seed,packet)
-  if(packet.initialization==='raw-init-data') {
+  if(packet.initialization==='schema') {
     exact(data,['kind','eventId','eventSha256','headSha256','planSha256','valuesSha256'])
-    if(data['kind']!=='program-genesis'||planRecord===null||context.genesis===undefined||context.absenceDomain!==undefined)fail()
-    const genesis=validateProgramMvuGenesisFactsV1(context.genesis.programEvent,context.genesis.programHead),
-      event=genesis.programEvent,head=genesis.programHead
-    if(!same(event.plan,planRecord.plan)||!same(event.native.receipt,native.receipt)
-      ||!same(event.native.canonical,native.canonical)||event.native.production!==native.production
-      ||data['eventId']!==programGenesisEventIdV1(planRecord.plan)||data['eventId']!==event.eventId
-      ||data['eventSha256']!==event.eventSha256||data['headSha256']!==recordSha256(head)
-      ||data['planSha256']!==planRecord.plan.planSha256||data['valuesSha256']!==event.valuesSha256)fail()
+    if(data['kind']!=='schema-opening'||!context.schemaOpening||context.absenceDomain!==undefined)fail()
+    const schema=validateProgramOpeningSchemaSection(context.schemaOpening,context),publication=schema.publication
+    if(!publication)fail()
+    const {event,head}=publication
+    if(event.native.kind!=='generated'||native.production!=='generated-opening'
+      ||!same(event.native.receipt,native.receipt)||!same(event.native.canonical,native.canonical)
+      ||data['eventId']!==event.eventId||data['eventSha256']!==event.eventSha256||data['headSha256']!==recordSha256(head)
+      ||data['planSha256']!==event.plan.planSha256||data['valuesSha256']!==event.valuesSha256)fail()
   }else {
     exact(data,['kind','domainRef','sourceProofSha256','basisSha256','nativeFactsSha256']);ref(data['domainRef'])
-    if(data['kind']!=='prompt-absence'||context.genesis!==undefined||context.absenceDomain===undefined)fail()
+    if(data['kind']!=='prompt-absence'||context.schemaOpening!==undefined||context.absenceDomain===undefined)fail()
     const domain=validateProgramOpeningAbsentDomainV1(context.absenceDomain,{seed,input:packet})
     if(data['domainRef'].key!==programOpeningDomainKeyV1(seed.sessionId,seed.operationId)
       ||data['domainRef'].sha256!==recordSha256(domain)||!same(domain.nativeFacts,native)
@@ -576,17 +536,14 @@ export function validateProgramOpeningDomainReceiptV1(input:unknown,rawNative:Pr
   return data as unknown as ProgramOpeningDomainReceiptV1
 }
 export function createProgramOpeningNumericalDomainReceiptV1(rawNative:ProgramOpeningNativeFactsV1,
-  context:ProgramOpeningRecordContextV1):Extract<ProgramOpeningDomainReceiptV1,{kind:'program-genesis'}> {
-  if(context.genesis===undefined)fail()
-  const genesis=validateProgramMvuGenesisFactsV1(context.genesis.programEvent,context.genesis.programHead),
-    event=genesis.programEvent,data={kind:'program-genesis' as const,eventId:event.eventId,
-      eventSha256:event.eventSha256,headSha256:recordSha256(genesis.programHead),planSha256:event.plan.planSha256,
-      valuesSha256:event.valuesSha256}
+  context:ProgramOpeningRecordContextV1):Extract<ProgramOpeningDomainReceiptV1,{kind:'schema-opening'}> {
+  const publication=context.schemaOpening?.publication
+  if(!publication)fail()
+  const {event,head}=publication,data={kind:'schema-opening' as const,eventId:event.eventId,
+    eventSha256:event.eventSha256,headSha256:recordSha256(head),planSha256:event.plan.planSha256,valuesSha256:event.valuesSha256}
   return validateProgramOpeningDomainReceiptV1(data,rawNative,context) as typeof data
 }
-/** The absence writer supplies its separate versioned record reference. This
- * constructor neither manufactures a numerical plan nor writes that record. */
-export function createProgramOpeningAbsenceDomainReceiptV1(domainRef:ProgramGenesisDataRefV1,
+export function createProgramOpeningAbsenceDomainReceiptV1(domainRef:ProgramOpeningDataRefV1,
   rawNative:ProgramOpeningNativeFactsV1,context:ProgramOpeningRecordContextV1)
   :Extract<ProgramOpeningDomainReceiptV1,{kind:'prompt-absence'}> {
   const {seed,packet}=recordContext(context),native=validateProgramOpeningNativeFactsV1(rawNative,seed,packet),
@@ -594,69 +551,58 @@ export function createProgramOpeningAbsenceDomainReceiptV1(domainRef:ProgramGene
       basisSha256:packet.basis.basisSha256,nativeFactsSha256:native.factsSha256}
   return validateProgramOpeningDomainReceiptV1(data,native,context) as typeof data
 }
-
 export function validateOpeningIntentV7(input:unknown,context:ProgramOpeningRecordContextV1):OpeningIntentV7 {
-  const data=programOpeningRecordDataV1(input),{seed,packet,planRecord,identity}=recordContext(context)
+  const data=programOpeningRecordDataV1(input),{seed,packet,identity}=recordContext(context)
   optionalShape(data,['schemaVersion','mode','sessionId','source','index','sourcePointer','sourceSha256','renderedSha256',
-    'renderedText','textRetained','operationId','messageId','production','revision','status','seedRef','inputRef','planRef'],
-    ['nativeReceipt','genesisEnvelope','committedTurn','domainReceipt','diagnosis'])
-  ref(data['seedRef']);ref(data['inputRef']);if(data['planRef']!==null)ref(data['planRef'])
-  const selected=packet.source.selected,expectedPlanRef=planRecord===null?null:
-    programOpeningRefV1(programOpeningPlanKeyV1(seed.sessionId,seed.operationId),planRecord)
+    'renderedText','textRetained','operationId','messageId','production','revision','status','seedRef','inputRef'],
+    ['nativeReceipt','schemaOpening','committedTurn','domainReceipt','diagnosis'])
+  ref(data['seedRef']);ref(data['inputRef'])
+  const selected=packet.source.selected
   if(data['schemaVersion']!==7||data['mode']!=='prompt-program'||data['sessionId']!==seed.sessionId
     ||!same(data['source'],seed.source)||data['index']!==selected.index||data['sourcePointer']!==selected.sourcePointer
     ||data['sourceSha256']!==selected.sourceSha256||data['renderedSha256']!==selected.renderedSha256
     ||data['renderedText']!==selected.renderedText||data['textRetained']!==true
     ||data['operationId']!==seed.operationId||data['messageId']!==seed.requestedMessageId||data['production']!==seed.production
-    ||!count(data['revision'],true)||!same(data['seedRef'],identity.intentRef)||!same(data['inputRef'],identity.inputRef)
-    ||!same(data['planRef'],expectedPlanRef)||!['prepared','native-unknown','native-committed','domain-blocked','completed']
-      .includes(String(data['status'])))fail()
-  if(Object.hasOwn(data,'diagnosis')&&(typeof data['diagnosis']!=='string'||!data['diagnosis'].trim()
-    ||!data['diagnosis'].isWellFormed()||Buffer.byteLength(data['diagnosis'],'utf8')>4096))fail()
+    ||!same(data['seedRef'],identity.intentRef)||!same(data['inputRef'],identity.inputRef)||!count(data['revision'],true)
+    ||!['prepared','native-unknown','native-committed','domain-blocked','completed'].includes(String(data['status']))
+    ||data['diagnosis']!==undefined&&(typeof data['diagnosis']!=='string'||!/^[A-Z][A-Z0-9_]{0,95}$/.test(data['diagnosis'])))fail()
+  if(data['schemaOpening']!==undefined) {
+    const schema=validateProgramOpeningSchemaSection(data['schemaOpening'] as ProgramOpeningSchemaSection,context)
+    if(context.schemaOpening&&!same(schema,context.schemaOpening))fail()
+  }
   const hasNative=Object.hasOwn(data,'nativeReceipt'),hasTurn=Object.hasOwn(data,'committedTurn'),
-    hasEnvelope=Object.hasOwn(data,'genesisEnvelope'),hasDomain=Object.hasOwn(data,'domainReceipt'),status=data['status']
+    hasDomain=Object.hasOwn(data,'domainReceipt'),status=data['status']
   if(status==='prepared'||status==='native-unknown') {
-    if(hasNative||hasTurn||hasEnvelope||hasDomain)fail()
-    // Unknown is a recovery anchor. This pure parser never retries generation.
+    if(hasNative||hasTurn||hasDomain)fail()
     return data as unknown as OpeningIntentV7
   }
   if(!hasNative||!hasTurn||!count(data['committedTurn'],true))fail()
   const native=validateProgramOpeningNativeFactsV1((input as {nativeReceipt:unknown}).nativeReceipt,seed,packet)
   if(data['committedTurn']!==native.receipt.turn)fail()
-  if(packet.initialization==='absent'&&hasEnvelope
-    ||packet.initialization==='raw-init-data'&&(status==='native-committed'||status==='completed')&&!hasEnvelope)fail()
-  if(hasEnvelope) {
-    validateProgramOpeningGenesisEnvelopeV1((input as {genesisEnvelope:unknown}).genesisEnvelope,native,context)
-  }
   if(status==='domain-blocked') {
     if(hasDomain||!Object.hasOwn(data,'diagnosis'))fail()
   }else if(status==='native-committed') {
     if(hasDomain)fail()
   }else {
     if(!hasDomain)fail()
-    const domain=validateProgramOpeningDomainReceiptV1(data['domainReceipt'],native,context)
-    if(domain.kind==='program-genesis'&&hasEnvelope
-      &&!same(data['genesisEnvelope'],context.genesis!.programEvent.native))fail()
+    validateProgramOpeningDomainReceiptV1(data['domainReceipt'],native,
+      {...context,...data['schemaOpening']?{schemaOpening:data['schemaOpening'] as ProgramOpeningSchemaSection}:{}})
   }
   return data as unknown as OpeningIntentV7
 }
-
 export interface CreateOpeningIntentV7Input {
   readonly context:ProgramOpeningRecordContextV1
   readonly revision:number
   readonly status:OpeningIntentV7['status']
   readonly nativeReceipt?:ProgramOpeningNativeFactsV1
-  readonly genesisEnvelope?:ProgramGenesisNativeEnvelopeV1
   readonly committedTurn?:number
   readonly domainReceipt?:ProgramOpeningDomainReceiptV1
   readonly diagnosis?:string
 }
-/** Source selection is always copied from the independent immutable input,
- * never from the generated terminal body or mutable recovery anchor. */
 export function createOpeningIntentV7(input:CreateOpeningIntentV7Input):OpeningIntentV7 {
-  const {seed,packet,planRecord,identity}=recordContext(input.context),selected=packet.source.selected,
+  const {seed,packet,identity}=recordContext(input.context),selected=packet.source.selected,
     extras:Record<string,unknown>={}
-  for(const key of ['nativeReceipt','genesisEnvelope','committedTurn','domainReceipt','diagnosis'] as const) {
+  for(const key of ['nativeReceipt','committedTurn','domainReceipt','diagnosis'] as const) {
     if(Object.hasOwn(input,key))extras[key]=input[key]
   }
   const body={schemaVersion:7,mode:'prompt-program',sessionId:seed.sessionId,source:seed.source,
@@ -664,7 +610,7 @@ export function createOpeningIntentV7(input:CreateOpeningIntentV7Input):OpeningI
     renderedSha256:selected.renderedSha256,renderedText:selected.renderedText,textRetained:true,
     operationId:seed.operationId,messageId:seed.requestedMessageId,production:seed.production,
     revision:input.revision,status:input.status,seedRef:identity.intentRef,inputRef:identity.inputRef,
-    planRef:planRecord===null?null:programOpeningRefV1(programOpeningPlanKeyV1(seed.sessionId,seed.operationId),planRecord),...extras}
+    ...input.context.schemaOpening?{schemaOpening:input.context.schemaOpening}:{},...extras}
   return validateOpeningIntentV7(body,input.context)
 }
 export function createPreparedOpeningIntentV7(context:ProgramOpeningRecordContextV1):OpeningIntentV7 {

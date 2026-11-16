@@ -100,6 +100,8 @@ export interface PromptProgramAuthorGroupV1 extends Omit<PromptProgramAuthorGrou
   readonly effective:PromptProgramTextV1
 }
 export interface PromptProgramBookEntryV1 {
+  readonly catalogBook?:Pick<import('./tavern-lore-plan-types.mjs').TavernLoreCatalogBookSourceReferenceV1,
+    'profileId'|'bookId'|'contentRef'|'metadataRef'>
   readonly entryId:string
   readonly ordinal:number
   readonly sourceKey:string
@@ -175,8 +177,10 @@ export interface PromptProgramSourceInventoryV1 {
   readonly regexResources:readonly PromptProgramRegexResourceV1[]
   readonly bookEntries:readonly PromptProgramBookEntryV1[]
   readonly book:{readonly pointer:string;readonly rawBookSha256:string;readonly bookDisposition:string;
+    readonly consumerSource?:import('./tavern-lore-plan-types.mjs').TavernLoreImportSourceReferenceV1;
     readonly compilationSha256:string;readonly planSha256:string;readonly semanticPlanBindingSha256:string;
-    readonly currentNativeOverlaySha256:string|null;readonly currentNativeMembershipSha256?:string}
+    readonly currentNativeOverlaySha256:string|null;readonly currentNativeMembershipSha256?:string;
+    readonly boundBooks?:readonly import('./tavern-lore-plan-types.mjs').TavernLoreCatalogBookSourceReferenceV1[]}
   readonly currentRows:readonly TavernLoreSourceRowDataV1['ref'][]
   readonly editing:{readonly dataSha256:string;readonly revision:number;readonly headRef:TavernLoreEditsDataV1['headRef'];
     readonly journalRefs:TavernLoreEditsDataV1['journalRefs'];readonly effectiveOverlaySha256:string;

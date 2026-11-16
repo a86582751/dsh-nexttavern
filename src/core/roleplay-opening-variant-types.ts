@@ -132,7 +132,7 @@ const validatePlan=createImmutableDescriptorValidator((input:OpeningVariantRepla
     ||cut.materialSha256!==plan.currentFrame.materialSha256||cut.anchor.kind!=='manual'
     ||cut.anchor.operationId!==plan.operationId||cut.anchor.requestSha256!==plan.requestSha256
     ||cut.anchor.observedNativeSeq!==cut.nativeCut-1||phase.phase!=='external-pack-replacement'
-    ||phase.commands.length||!same(phase.base,base.values))fail()
+    ||!same(phase.base,base.values))fail()
   const scope=phase.scopeReadRef??phase.scopeReadFrame
   if(scope.sourceNativeCutSha256!==recordSha256(cut))fail()
   return plan
