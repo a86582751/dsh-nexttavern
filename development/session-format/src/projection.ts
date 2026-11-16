@@ -125,13 +125,26 @@ export function assertMessageEdit(value: unknown): asserts value is MessageEdit 
     if('principal' in origin) {
       const position=(value:unknown)=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0
       if(origin.principal!=='reader-regex-document'
-        ||Object.keys(origin).sort().join(',')!=='carrier,descriptorSha256,htmlSha256,htmlSpan,importId,principal,rawSha256,sourceRecordSessionId'
+        ||Object.keys(origin).sort().join(',')!==['carrier','descriptorSha256','htmlSha256','htmlSpan','importId','principal',
+          'rawSha256','sourceRecordSessionId',...origin.producer===undefined?[]:['producer']].sort().join(',')
         ||!hash(origin.descriptorSha256)||!hash(origin.htmlSha256)
         ||!origin.htmlSpan||Object.keys(origin.htmlSpan).sort().join(',')!=='end,start'
         ||!position(origin.htmlSpan.start)||!position(origin.htmlSpan.end)||origin.htmlSpan.end<origin.htmlSpan.start
         ||!origin.carrier||Object.keys(origin.carrier).sort().join(',')!=='messageId,seq'
         ||!position(origin.carrier.seq)||!name(origin.carrier.messageId))
         throw Error('Unsupported or malformed Reader message edit origin')
+      if(origin.producer!==undefined){
+        const producer=origin.producer
+        if(!producer||typeof producer!=='object'||producer.schemaVersion!==1||!name(producer.id)||!hash(producer.policyFingerprint)
+          ||!['preset','regex-library'].includes(producer.kind)
+          ||Object.keys(producer).sort().join(',')!==(producer.kind==='preset'
+            ?'id,kind,policyFingerprint,schemaVersion':'binding,id,kind,policyFingerprint,schemaVersion'))
+          throw Error('Unsupported or malformed Reader regex producer')
+        if(producer.kind==='regex-library'&&(!producer.binding
+          ||Object.keys(producer.binding).sort().join(',')!=='id,scope'
+          ||!['global','conversation','preset'].includes(producer.binding.scope)
+          ||producer.binding.id!==null&&!name(producer.binding.id)))throw Error('Unsupported or malformed Reader regex producer')
+      }
     }else if(Object.keys(origin).sort().join(',')!=='groupId,importId,rawSha256,realmId,sourceRecordSessionId'
       ||!name(origin.realmId)||!name(origin.groupId))throw Error('Unsupported or malformed message edit operation')
   }

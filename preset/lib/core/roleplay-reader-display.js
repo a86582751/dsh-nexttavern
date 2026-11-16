@@ -210,6 +210,7 @@ export function createRoleplayReaderDisplay(deps) {
             fail('AUTHOR_MESSAGE_EDIT_REQUEST_INVALID');
         const admitted = readerNativeSourceOriginV1(document.origin);
         if (originalOrigin) {
+            const originalProducer = originalOrigin.producer, currentProducer = admitted.producer;
             // The current literal is a Source-group permission witness. Preserve the
             // original operation provenance and expected message version on retry.
             if (originalOrigin.principal !== admitted.principal
@@ -218,6 +219,11 @@ export function createRoleplayReaderDisplay(deps) {
                 || originalOrigin.descriptorSha256 !== admitted.descriptorSha256 || originalOrigin.htmlSha256 !== admitted.htmlSha256
                 || originalOrigin.htmlSpan.start !== admitted.htmlSpan.start || originalOrigin.htmlSpan.end !== admitted.htmlSpan.end
                 || originalOrigin.carrier.seq !== admitted.carrier.seq || originalOrigin.carrier.messageId !== admitted.carrier.messageId)
+                fail('READER_MESSAGE_BODY_DOCUMENT_CHANGED');
+            if (originalProducer?.schemaVersion !== currentProducer?.schemaVersion || originalProducer?.kind !== currentProducer?.kind
+                || originalProducer?.id !== currentProducer?.id || originalProducer?.policyFingerprint !== currentProducer?.policyFingerprint
+                || originalProducer?.kind === 'regex-library' && (currentProducer?.kind !== 'regex-library'
+                    || originalProducer.binding.scope !== currentProducer.binding.scope || originalProducer.binding.id !== currentProducer.binding.id))
                 fail('READER_MESSAGE_BODY_DOCUMENT_CHANGED');
         }
         else if (request.readRevision !== value.snapshot.readRevision)
@@ -394,6 +400,15 @@ export function createRoleplayReaderDisplay(deps) {
                 regexes: policy.regexes.map(library => ({ ...library, rules: library.rules.map(nativeCommunityDisplayRule) })) } : undefined;
             const rules = adapted ? communityRegexRules(adapted, scopedRules) : scopedRules;
             const rawRules = cardData.extensions?.regex_scripts ?? [];
+            const documentRules = scopedRules.map((rule, ordinal) => ({
+                ruleId: adapted ? 'card:' + rule.id : rule.id, ordinal, id: typeof rawRules[ordinal].id === 'string'
+                    ? rawRules[ordinal].id : rule.id, pointer: rule.sourcePointer,
+                descriptorSha256: recordSha256(rawRules[ordinal]), replacement: rule.replaceString
+            }));
+            const rules = adapted ? communityRegexRules(adapted, scopedRules, (rule, source) => documentRules.push({
+                ruleId: rule.id, ordinal: source.ordinal, id: rule.id, pointer: rule.sourcePointer,
+                descriptorSha256: recordSha256(source.descriptor), replacement: rule.replaceString, producer: source.producer
+            })) : scopedRules;
             const nativeMacros = produceRoleplayTavernMacroSnapshotV1({ source, cardData,
                 includeCardStyle: deps.includeCardStyle(sid), inputText: null, scopes: scopes?.bindings ?? [],
                 presetVariables: policy?.helperVariables,
@@ -416,13 +431,8 @@ export function createRoleplayReaderDisplay(deps) {
             return { source, cardData, sourceIdentitySha256: captured.currentIdentitySha256, scopes, macros, policy, variables,
                 authorRead, sourceCatalog: author?.kind === 'author-data' ? author.sourceCatalog : undefined,
                 literalStyles: new Map(),
-                rules, documentRules: scopedRules.map((rule, ordinal) => ({
-                    ruleId: rules.find(effective => effective.sourcePointer === rule.sourcePointer
-                        && effective.sourceSnapshotSha256 === rule.sourceSnapshotSha256).id,
-                    ordinal, id: typeof rawRules[ordinal].id === 'string'
-                        ? rawRules[ordinal].id : rule.id, pointer: rule.sourcePointer,
-                    descriptorSha256: recordSha256(rawRules[ordinal]), replacement: rule.replaceString
-                })) };
+                helperRules: policy ? communityRegexRules(policy, scopedRules) : scopedRules,
+                rules, documentRules };
         });
         const storyText = deps.captureStoryText?.(sid);
         const current = () => {
@@ -593,9 +603,9 @@ export function createRoleplayReaderDisplay(deps) {
                         if (!('ruleId' in fragment.origin))
                             continue;
                         const origin = fragment.origin, regex = read.data.documentRules.find(rule => rule.ruleId === origin.ruleId);
-                        // This routes Source markup to the complete parser; it grants no script
-                        // permission. Script-free documents retain the existing static owner.
-                        if (!regex || !/<script(?:\s|>)/i.test(regex.replacement))
+                        // Only the matched original card regex supplies this document's Source
+                        // identity. The shared parser handles its markup and DATA slots.
+                        if (!regex)
                             continue;
                         const { seq, messageId, messageVersionSha256, depth, isEdit } = row;
                         documents.push({ regex, message: { seq, messageId, messageVersionSha256, depth, isEdit },
@@ -675,9 +685,17 @@ export function createRoleplayReaderDisplay(deps) {
                     const binding = { principal: 'reader-regex-document', sessionId: sid,
                         browserSessionId: randomUUID(), generation: randomUUID(), programSha256: execution.program.programSha256 };
                     const snapshot = { ...execution.snapshot, generation: binding.generation };
-                    const sourceCurrent = writerFacts.sourceCurrent;
+                    const sourceCurrent = writerFacts.sourceCurrent, communityProducer = execution.program.documents.some(document => document.origin.encoding === 'reader-regex-document-origin-v1'
+                        && document.origin.regex.producer !== undefined), producerCurrent = () => !communityProducer || deps.community?.policy(sid).fingerprint === policy?.fingerprint;
+                    if (!producerCurrent())
+                        fail('READER_REGEX_DOCUMENT_SCOPE_CHANGED');
+                    const libraryReads = createAuthorNativeLibraryReadsV1(execution.program.documents.map(document => 'reader:' + document.documentPlanSha256));
+                    if (execution.presetLibrary)
+                        libraryReads.deliverPreset(execution.presetLibrary);
+                    if (execution.characterLibrary)
+                        libraryReads.deliverCharacter(execution.characterLibrary);
                     bindings.set(binding.browserSessionId, { binding, program: execution.program, sourceRead: writerSourceRead,
-                        sourceCurrent: () => !disposed && sourceCurrent(), facts: writerFacts, snapshot });
+                        sourceCurrent: () => !disposed && sourceCurrent() && producerCurrent(), facts: writerFacts, snapshot, libraryReads });
                     execution = { ...execution, binding, snapshot };
                 }
                 return { ok: true, sessionId: sid, contextRevision,
