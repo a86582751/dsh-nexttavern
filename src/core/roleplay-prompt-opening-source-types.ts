@@ -2,7 +2,7 @@
  * initialized state, Native receipt or publication capability is encoded. */
 import type {OpeningSource,OpeningCatalog} from './roleplay-opening-selection.js'
 import type {TavernOpeningContext,TavernOpeningCandidate} from './tavern-card.js'
-import type {PromptProgramSourceDepsV1,PromptProgramSourceInventoryV1,PromptProgramSourceNotApplicableV1}
+import type {PromptProgramSourceDepsV1,PromptProgramSourceInventoryV2,PromptProgramSourceNotApplicableV1}
   from './roleplay-prompt-program-source-types.js'
 import type {ReadBranchSession} from './roleplay-worldline-types.js'
 import type {TavernSourceInheritanceOwnerV1,TavernSourceInheritanceDescriptorV1,
@@ -131,7 +131,7 @@ export interface PromptOpeningSourceProofV1 {
   readonly policySha256:string
   readonly source:OpeningSource
   readonly sourceRelation:PromptOpeningSourceRelationV1
-  readonly program:PromptProgramSourceInventoryV1
+  readonly program:PromptProgramSourceInventoryV2
   readonly catalog:OpeningCatalog
   readonly catalogSha256:string
   readonly context:{readonly values:TavernOpeningContext;readonly bindingSha256:string;readonly valuesSha256:string;

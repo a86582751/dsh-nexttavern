@@ -8,7 +8,7 @@ import {partitionPromptTemplateOnlyTextV1,PromptTemplateOnlyRefusalV1} from './r
 import type {DecodedTavernCard,TavernOpeningContext,TavernOpeningCandidate} from './tavern-card.js'
 import type {ImportRecord} from './roleplay-import-types.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
-import type {PromptProgramSourceInventoryV1,PromptProgramTextV1} from './roleplay-prompt-program-source-types.js'
+import type {PromptProgramSourceInventoryV2,PromptProgramTextV1} from './roleplay-prompt-program-source-types.js'
 import type {PromptOpeningSourceCodeV1,PromptOpeningIdentityRenderingV1,PromptOpeningGreetingBlockV1,
   PromptOpeningGreetingFactsV1,PromptOpeningRawEntryBindingV1,PromptOpeningRawInitBindingV1,
   PromptOpeningInitializationV1} from './roleplay-prompt-opening-source-types.js'
@@ -48,14 +48,13 @@ export function freezePromptOpeningSourceDataV1<T>(value:T):T {
 export function openingSourceObject(value:unknown):value is Record<string,unknown> {
   return value!==null&&typeof value==='object'&&!Array.isArray(value)
 }
-export function promptOpeningInitializationInputBindingV1(program:PromptProgramSourceInventoryV1,
+export function promptOpeningInitializationInputBindingV1(program:PromptProgramSourceInventoryV2,
   bindings:PromptOpeningRawInitBindingV1):string {
   return recordSha256({encoding:'immutable-raw-opening-init-input-binding-v1',importTuple:program.importTuple,
     bindings:{...bindings,
       rawEntries:bindings.rawEntries.map(({effectivePromptContentSha256:_,...entry})=>{
-        if(program.book.currentNativeMembershipSha256===undefined)return entry
-        // Current-member audit fields disappear when an original is deleted;
-        // immutable archive initialization does not depend on that catalog.
+        // Current entry identities can change when a legacy book first gains
+        // journal membership. Immutable initialization follows the raw entry.
         const {entryId:__,...original}=entry
         return original
       })}})
@@ -187,7 +186,7 @@ export function readPromptOpeningGreetingFactsV1(candidate:TavernOpeningCandidat
 
 /** Preserve original declarations independently of today's effective initSource. */
 export function capturePromptOpeningDeclarationsV1(input:{source:TavernLoreSourceDataV1;
-  program:PromptProgramSourceInventoryV1;candidates:readonly TavernOpeningCandidate[];
+  program:PromptProgramSourceInventoryV2;candidates:readonly TavernOpeningCandidate[];
   context:TavernOpeningContext}):PromptOpeningInitializationV1 {
   const {source,program,candidates,context}=input,primary=source.original.primary
   const byEntry=new Map(program.bookEntries.map(entry=>[entry.originalAddress,entry] as const))
@@ -236,7 +235,7 @@ export function capturePromptOpeningDeclarationsV1(input:{source:TavernLoreSourc
 }
 
 export function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;decoded:DecodedTavernCard;
-  record:ImportRecord;program:PromptProgramSourceInventoryV1;context:TavernOpeningContext;
+  record:ImportRecord;program:PromptProgramSourceInventoryV2;context:TavernOpeningContext;
   bindings:PromptOpeningRawInitBindingV1;schemaOpening?:boolean}) {
   const {source,decoded,record,program,context,bindings}=input,
     initByPointer=new Map(bindings.rawEntries.filter(entry=>entry.isInitVar).map(entry=>[entry.sourcePointer,entry] as const))

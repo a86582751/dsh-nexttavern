@@ -154,13 +154,10 @@ function boundRecord<T extends object>(input:unknown,records:WeakMap<T,RecordBin
   const cached=records.get(input as T)
   return cached?.seedSha256===binding.seedSha256&&cached.inputSha256===binding.inputSha256?input as T:undefined
 }
-/** Reuse independently parsed children only when the exact persisted JSON
- * spelling is unchanged. Both operands are already descriptor-checked and
- * deeply frozen; this helper never reads a raw caller's object or getters. */
+/** Child parsers preserve the checked record's data while returning their
+ * own frozen identities. No current permission is inherited here. */
 function parsedChildren<T extends object>(data:T,children:Partial<T>):T {
-  const result={...data,...children}
-  if(JSON.stringify(result)!==JSON.stringify(data))fail()
-  return Object.freeze(result)
+  return Object.freeze({...data,...children})
 }
 export function programOpeningRecordDataV1<T>(input:T):T {
   const detached=cloneRoleplayTavernLoreDataV1(input),pending:unknown[]=[detached]
@@ -323,12 +320,21 @@ export function validateProgramOpeningSeedV1(input:unknown):ProgramOpeningIntent
 export function createProgramOpeningInputV1(input:{seed:ProgramOpeningIntentSeedV1;seedRef:ProgramOpeningDataRefV1;
   source:PromptOpeningSourceProofV1;basis:ProgramOpeningBasisProofV1;instruction:string|null;
   numericalSourceSha256:string;schemaSource?:ProgramOpeningInputPacketV1['schemaSource']}):ProgramOpeningInputPacketV1 {
-  const body={schemaVersion:1 as const,encoding:'native-program-opening-input-packet-v1' as const,
-    authority:'consumer-data-only' as const,sessionId:input.seed.sessionId,seedRef:input.seedRef,
-    source:input.source,basis:input.basis,instruction:input.instruction,
-    initialization:input.schemaSource?'schema':'absent',schemaSource:input.schemaSource??null,
+  const seed=validateProgramOpeningSeedV1(input.seed),source=validatePromptOpeningSourceProofV1(input.source),
+    basis=validateProgramOpeningBasisProofV1(input.basis,source,{sessionId:seed.sessionId,
+      operationId:seed.operationId,requestedMessageId:seed.requestedMessageId}),
+    detached=programOpeningRecordDataV1({seedRef:input.seedRef,schemaSource:input.schemaSource??null})
+  const body:Omit<ProgramOpeningInputPacketV1,'inputSha256'>={
+    schemaVersion:1,encoding:'native-program-opening-input-packet-v1',authority:'consumer-data-only',
+    sessionId:seed.sessionId,seedRef:detached.seedRef,source,basis,instruction:input.instruction,
+    initialization:detached.schemaSource===null?'absent':'schema',schemaSource:detached.schemaSource,
     numericalSourceSha256:input.numericalSourceSha256}
-  return validateProgramOpeningInputV1({...body,inputSha256:recordSha256(body)},input.seed)
+  // The children have their own parser provenance. Validate their joins before
+  // sealing this producer's row, retaining the registered Source/program tree.
+  checkProgramOpeningInput(body,seed)
+  const checked=Object.freeze({...body,inputSha256:recordSha256(body)})
+  checkedInputs.set(checked,{seedSha256:seedWholeSha256(seed),wholeSha256:recordSha256(checked)})
+  return checked
 }
 export function validateProgramOpeningInputV1(input:unknown,rawSeed:ProgramOpeningIntentSeedV1):ProgramOpeningInputPacketV1 {
   const seed=validateProgramOpeningSeedV1(rawSeed),seedSha256=seedWholeSha256(seed),
@@ -337,13 +343,22 @@ export function validateProgramOpeningInputV1(input:unknown,rawSeed:ProgramOpeni
   const data=programOpeningRecordDataV1(input)
   exact(data,['schemaVersion','encoding','authority','sessionId','seedRef','source','basis','instruction',
     'initialization','schemaSource','numericalSourceSha256','inputSha256'])
-  sealed(data,'inputSha256');ref(data['seedRef'])
+  sealed(data,'inputSha256')
   const source=validatePromptOpeningSourceProofV1(data['source']),basis=validateProgramOpeningBasisProofV1(data['basis'],source,
     {sessionId:seed.sessionId,operationId:seed.operationId,requestedMessageId:seed.requestedMessageId})
+  const checked=parsedChildren(data as unknown as ProgramOpeningInputPacketV1,{source,basis})
+  checkProgramOpeningInput(checked,seed)
+  checkedInputs.set(checked,{seedSha256,wholeSha256:recordSha256(checked)})
+  return checked
+}
+function checkProgramOpeningInput(data:Omit<ProgramOpeningInputPacketV1,'inputSha256'>,
+  seed:ProgramOpeningIntentSeedV1):void {
+  ref(data.seedRef)
+  const {source,basis}=data
   if(data['schemaVersion']!==1||data['encoding']!=='native-program-opening-input-packet-v1'
     ||data['authority']!=='consumer-data-only'||data['sessionId']!==seed.sessionId
     ||data['seedRef'].key!==programOpeningSeedKeyV1(seed.sessionId,seed.operationId)
-    ||data['seedRef'].sha256!==recordSha256(seed)||source.proofSha256!==seed.sourceProofSha256
+    ||data['seedRef'].sha256!==seedWholeSha256(seed)||source.proofSha256!==seed.sourceProofSha256
     ||source.bindingSha256!==seed.sourceBindingSha256||recordSha256(source.source)!==recordSha256(seed.source)
     ||basis.basisSha256!==seed.basisSha256||basis.sessionId!==seed.sessionId||basis.operationId!==seed.operationId
     ||basis.requestedMessageId!==seed.requestedMessageId||basis.sourceBindingSha256!==source.bindingSha256
@@ -356,15 +371,11 @@ export function validateProgramOpeningInputV1(input:unknown,rawSeed:ProgramOpeni
       ||schema.identity.index!==seed.selected.index||schema.identity.sourceSha256!==seed.selected.sourceSha256
       ||schema.identity.renderedSha256!==seed.selected.renderedSha256)fail()
   }
-  const {basisSha256,...basisBody}=basis
-  if(recordSha256(basisBody)!==basisSha256||recordSha256(seed.selected)!==recordSha256({
+  if(recordSha256(seed.selected)!==recordSha256({
     index:source.selected.index,sourcePointer:source.selected.sourcePointer,sourceSha256:source.selected.sourceSha256,
     renderedSha256:source.selected.renderedSha256}))fail()
   const text=instruction(data['instruction'],seed.production)
   if((text===null?null:sha256(text))!==seed.instructionSha256)fail()
-  const checked=parsedChildren(data as unknown as ProgramOpeningInputPacketV1,{source,basis})
-  checkedInputs.set(checked,{seedSha256,wholeSha256:recordSha256(checked)})
-  return checked
 }
 
 export interface ProgramOpeningRecordContextV1 {

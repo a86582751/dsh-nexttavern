@@ -427,13 +427,14 @@ export function createRoleplayProgramOpeningV1(deps:ProgramOpeningDependenciesV1
     }catch{return false}
   }
   /** Every original write is awaited, even when its acknowledgement fails or
-   * cancellation arrives. Exact readback can recover a lost acknowledgement. */
+   * cancellation arrives. Exact readback can recover a lost acknowledgement.
+   * Callers supply the frozen outputs of the seed/input/intent/domain parsers. */
   async function writeExact(key:string,value:Record<string,unknown>,signal:AbortSignal):Promise<void> {
 
     signal.throwIfAborted()
     const before=readRowData('branch',key)
     if(before!==undefined&&!same(before,value))fail('PROGRAM_OPENING_ROW_CONFLICT')
-    if(before===undefined)try {await deps.branch.put(key,programOpeningRecordDataV1(value))}catch(error) {
+    if(before===undefined)try {await deps.branch.put(key,value)}catch(error) {
       if(!same(deps.branch.get(key),value))throw error
     }
     if(!same(deps.branch.get(key),value))fail('PROGRAM_OPENING_WRITE_UNCONFIRMED')
@@ -681,16 +682,19 @@ export function createRoleplayProgramOpeningV1(deps:ProgramOpeningDependenciesV1
     })
     const {seed,input:packet}=hot.context,handle=hot.schemaHandle
     if(packet.initialization==='schema'&&!handle)fail('PROGRAM_OPENING_INITIALIZATION_REQUIRED')
+    // Detach the attempt-owned values once. The parsed seed/input trees are
+    // already immutable and retain their Source/program parser provenance.
     const initialization=handle?
       {kind:'schema-initialized' as const,preparationSha256:handle.preparation.preparationSha256,
         executionSha256:recordSha256(handle.initialization),values:handle.values,context:handle.context,initialized:true as const}:
       {kind:'absent' as const,markerCount:0 as const,basisSha256:packet.basis.basisSha256,initialized:false as const},
+      detached=programOpeningRecordDataV1({nativeOwner:input.owner,initialization,inputRef:identityFor(hot.context).inputRef}),
       body={schemaVersion:1 as const,encoding:'native-program-opening-prompt-scope-read-data-v1' as const,
         authority:'consumer-data-only' as const,sessionId:scope.session.id,numericalSourceSha256:packet.numericalSourceSha256,
         sourceProofSha256:packet.source.proofSha256,basisSha256:packet.basis.basisSha256,seed,input:packet,
-        seedRef:packet.seedRef,inputRef:identityFor(hot.context).inputRef,nativeOwner:input.owner,
-        selectedBaseSha256:input.selected.sha256,inputBindingSha256:packet.inputSha256,initialization},
-      data:TavernPendingOpeningPromptScopeDataV1=programOpeningRecordDataV1({...body,scopeDataSha256:recordSha256(body)}),
+        seedRef:packet.seedRef,inputRef:detached.inputRef,nativeOwner:detached.nativeOwner,
+        selectedBaseSha256:input.selected.sha256,inputBindingSha256:packet.inputSha256,initialization:detached.initialization},
+      data:TavernPendingOpeningPromptScopeDataV1=Object.freeze({...body,scopeDataSha256:recordSha256(body)}),
       check=()=>scope.assertOwnerFactsCurrent(),
       provenance={schemaVersion:1,encoding:'native-program-opening-attempt-ref-v1',seedRef:packet.seedRef,
         inputRef:identityFor(hot.context).inputRef,invocationRef:input.owner.invocationRef,turn:input.turn,step:input.step},

@@ -4,7 +4,7 @@ import {recordSha256,sha256} from './roleplay-data.js'
 import {validateTavernSourceLegacyCopyV1} from './roleplay-tavern-source-inheritance-data.js'
 import {compileTavernOpeningCandidates} from './tavern-card.js'
 import {assertImportRecordIntegrity,projectStructuredImport,readStructuredImportDataV1} from './roleplay-import-record.js'
-import {createRoleplayPromptProgramSourceV1,validatePromptProgramSourceInventoryV1,promptProgramSourceImportTupleV1}
+import {createRoleplayPromptProgramSourceV1,validatePromptProgramSourceInventoryV2,promptProgramSourceImportTupleV1}
   from './roleplay-prompt-program-source.js'
 import {PROMPT_OPENING_SOURCE_POLICY_SHA256,NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_SHA256,PromptOpeningSourceFailureV1,openingSourceFail,
   clonePromptOpeningSourceDataV1,freezePromptOpeningSourceDataV1,openingSourceObject,
@@ -12,7 +12,7 @@ import {PROMPT_OPENING_SOURCE_POLICY_SHA256,NEXTTAVERN_PROMPT_OPENING_SOURCE_POL
   readPromptOpeningGreetingFactsV1}
   from './roleplay-prompt-opening-source-data.js'
 import type {ImportRecord} from './roleplay-import-types.js'
-import type {PromptProgramSourceInventoryV1,PromptProgramTextV1} from './roleplay-prompt-program-source-types.js'
+import type {PromptProgramSourceInventoryV2,PromptProgramTextV1} from './roleplay-prompt-program-source-types.js'
 import type {OpeningSource,OpeningCatalog} from './roleplay-opening-selection.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {PromptOpeningSourceDepsV1,PromptOpeningSourceProofV1,PromptOpeningSourceRelationV1,
@@ -22,14 +22,14 @@ import type {PromptOpeningSourceDepsV1,PromptOpeningSourceProofV1,PromptOpeningS
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
 const hash=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
 const seal=<T>(value:T):T=>freezePromptOpeningSourceDataV1(clonePromptOpeningSourceDataV1(value))
-// Only this parser's detached, deeply frozen successful outputs are reusable.
+// Only this module's constructed or parsed, deeply frozen outputs are reusable.
 // A stored clone, another process or a live Source capture still needs its own
 // validation/current-owner checks; this set supplies no runtime permission.
 const parsedOpeningSourceProofs=new WeakSet<PromptOpeningSourceProofV1>()
 class OpeningSourceNotApplicable extends Error {
   constructor(readonly result:PromptOpeningSourceNotApplicableV1) {super(result.reason)}
 }
-function hasPromptProgram(program:PromptProgramSourceInventoryV1):boolean {
+function hasPromptProgram(program:PromptProgramSourceInventoryV2):boolean {
   const hasProgram=(text:PromptProgramTextV1|null)=>text!==null
     &&(text.tokenization!=='complete-UTF16-partition'||text.segments!.some(part=>part.kind!=='literal'))
   return program.authorFields.some(field=>hasProgram(field.raw)||hasProgram(field.normalized))
@@ -151,7 +151,7 @@ export function validatePromptOpeningSourceProofV1(input:unknown):PromptOpeningS
       ||proofSha256!==recordSha256({bindingSha256,...body})||bindingSha256!==recordSha256(bindingBody(body))) {
       openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/proof/hash')
     }
-    const program=validatePromptProgramSourceInventoryV1(proof.program),tuple=program.importTuple,selected=proof.selected
+    const program=validatePromptProgramSourceInventoryV2(proof.program),tuple=program.importTuple,selected=proof.selected
     exact(proof.source,['sessionId','importId','sourceRecordSessionId','rawSha256','normalizedSha256','transactionId',
       'coverageSha256','pointer'],'/source')
     exact(proof.context,['values','bindingSha256','valuesSha256','policy'],'/context')
@@ -201,7 +201,9 @@ export function validatePromptOpeningSourceProofV1(input:unknown):PromptOpeningS
     validateInitialization(proof.initialization,proof)
     if(proof.initializationInputBindingSha256!==proof.initialization.inputBindingSha256
       ||proof.promptCurrentInputBindingSha256!==program.bindingSha256)openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/inputBindings')
-    const checked=freezePromptOpeningSourceDataV1(proof)
+    // Keep the exact validated child so downstream readers can reuse its DATA
+    // consistency without revalidating a discarded clone of the inventory.
+    const checked=freezePromptOpeningSourceDataV1({...proof,program})
     parsedOpeningSourceProofs.add(checked)
     return checked
   }catch(error) {
@@ -341,7 +343,10 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
         schemaExecution:'none' as const,native:'not-authorized' as const,protectedRenderer:'not-authorized' as const,
         publish:'not-authorized' as const}}
     const bound={...body,bindingSha256:recordSha256(bindingBody(body))}
-    const proof=validatePromptOpeningSourceProofV1({...bound,proofSha256:recordSha256(bound)})
+    // These fields came from the actual Source and declaration owners above.
+    // Parsing this constructed proof would clone and reparse their results.
+    const proof=freezePromptOpeningSourceDataV1({...bound,proofSha256:recordSha256(bound)})
+    parsedOpeningSourceProofs.add(proof)
     if(deps.inputState)return proof
     const
       importRecordSha256=tuple.importRecordRef.sha256,contextSha256=recordSha256(context),
