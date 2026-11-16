@@ -85,6 +85,14 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     return operationId
   }
   const available=(value:any)=>value?.kind==='available'?value.variables:{}
+  const sharedCapture=(options:any)=>{
+    const type=options.type??'chat',scopes=snapshot.sharedScopes,extensions=scopes?.extensions,
+      capture=type==='extension'
+        ?extensions&&Object.hasOwn(extensions,options.extension_id)?extensions[options.extension_id]:undefined
+        :scopes?.[type as 'global'|'character'|'preset']
+    if(!capture)throw Error('AUTHOR_NATIVE_VARIABLE_SCOPE_UNAVAILABLE')
+    return capture
+  }
   const variables=(options:any={type:'chat'})=>{
     const type=options.type??'chat'
     if(type==='chat'){
@@ -94,7 +102,8 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
       for(const key of snapshot.ordinaryChat.deletedKeys??[])delete result[key]
       return result
     }
-    if(type==='global'||type==='character')return clone(available(snapshot.scopeFrame.scopes[type as 'global'|'character']))
+    if(type==='global')return clone(snapshot.preparedSharedScopes?.global?.values??sharedCapture(options).values)
+    if(type==='character'||type==='preset'||type==='extension')return clone(sharedCapture(options).values)
     if(type==='script'){
       const address=selfScript()
       if(address.variables===undefined)throw Error('AUTHOR_NATIVE_SCRIPT_VARIABLES_UNAVAILABLE')
@@ -134,10 +143,12 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
   }
   const variableWriters=createVariableWriters((options:any)=>{
     const type=options.type??'chat',readScope=scope
-    if(type!=='chat'&&type!=='message'&&type!=='script')throw Error('AUTHOR_NATIVE_CHAT_SCOPE_UNSUPPORTED')
+    if(!['chat','message','script','global','character','preset','extension'].includes(type))throw Error('AUTHOR_NATIVE_VARIABLE_SCOPE_UNAVAILABLE')
     const selector=type==='message'?{type:'message' as const,message_id:options.message_id??'latest'}
-      :type==='script'?{type:'script' as const}:undefined
-    const current=selector?.type==='message'?clone(messageData().resolve(selector,true).values):variables(options)
+      :type==='script'?{type:'script' as const}:type==='extension'?{type:'extension' as const,extension_id:options.extension_id}
+        :type==='chat'?undefined:{type}
+    const current=type==='message'?clone(messageData().resolve({type:'message',message_id:options.message_id??'latest'},true).values)
+      :['global','character','preset','extension'].includes(type)?clone(sharedCapture(options).values):variables(options)
     return {variables:current,commit:(nextVariables:any)=>request('mutate-author-namespace',
       {nextVariables,...selector?{selector}:{}},readScope)}
   },()=>realm._)

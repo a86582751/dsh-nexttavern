@@ -586,6 +586,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     userinfo: inputState.table('userinfo',domain.table('userinfo')),
     decision: inputState.table('decision',domain.table('decision')),
   }
+  const authorProfile=await ensureAuthorProfileIdentityV1(T.branch)
+  const authorPersistentScopes=createRoleplayAuthorPersistentScopesV1({table:T.branch,profile:authorProfile})
   const authorChatNative=createRoleplayAuthorChatNativeRoots({
     eventType:ctx.nexttavernAuthorChatRootMarkers.eventType,
     session:id=>ctx.sessions.get(id),cut:session=>sessionHistoryCut(session),
@@ -1954,6 +1956,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       pointer:`/native/account/personas/${encodeURIComponent(selected.avatar_id)}/description`,text:selected.description}]:[]
   }
   const communityVariables=createCommunityPresetVariables(T.branch,{state:authorChatState,
+    profile:authorProfile,scopes:authorPersistentScopes,
     captureNamespace:captureOrdinaryChatNamespace,
     isNamespaceReady:namespace=>ctx.sessions.get(namespace.sessionId)!==undefined,
     readyNamespace:async namespace=>{
@@ -3825,6 +3828,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     return enrich(facts)
   }
   const authorKeyCore=createRoleplayAuthorBrowserKeyCoreV3({state:authorChatState,
+    sharedScopes:authorScopeOwner,
     // The service retains the original Source proof independently of its
     // State2 DATA cut. Reuse that proof across the canonical writer's FIFO.
     captureCurrent:captureBrowserChatSource,

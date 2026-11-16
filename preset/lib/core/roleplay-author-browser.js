@@ -65,6 +65,8 @@ export function createRoleplayAuthorBrowser(deps) {
         // These are the owning producers' existing identities. Polling an unchanged
         // cut must not manufacture a new write revision and stale an in-flight read.
         const identity = JSON.stringify([data.scopeFrame.frameSha256, data.ordinaryChat.root, data.ordinaryPublicationSeq,
+            authorSharedScopeRootsV1(data.sharedScopes),
+            data.scriptButtons?.sourceSha256, data.scriptButtons?.revision,
             data.worldbook?.dataSha256, data.personas?.dataSha256, data.readonlyPreset?.fingerprint,
             data.messages[0]?.variants?.setSha256, numerical.kind, numerical.canEdit,
             'editBlockCode' in numerical ? numerical.editBlockCode : 'code' in numerical ? numerical.code : undefined]);
@@ -555,7 +557,8 @@ export function createRoleplayAuthorBrowser(deps) {
                 generation: value.binding.generation, readRevision: ++value.readRevision,
                 basis: { sessionId: sid, sourceSnapshotSha256: capture.sourceSnapshotSha256, ...facts.basis,
                     nativeCut: capture.nativeCut, nativePrefixSha256: capture.nativePrefixSha256 },
-                scopeFrame: facts.scopes, messages: capture.messages, numerical: facts.numerical,
+                scopeFrame: facts.scopes, sharedScopes: facts.sharedScopes, preparedSharedScopes: facts.preparedSharedScopes,
+                messages: capture.messages, numerical: facts.numerical,
                 persona: facts.persona,
                 ...value.facts.data.personas
                     ? { personas: value.facts.data.personas } : {},

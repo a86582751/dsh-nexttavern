@@ -12,6 +12,7 @@ import type {TavernLoreEvaluationPlanV1} from './tavern-lore-evaluator-types.mjs
 import {createCommunityMacroEvaluator} from './community-preset-macros.js'
 import type {CommunityMacroWrite} from './community-preset-macros.js'
 import type {TavernOrdinaryPreparationStage} from './roleplay-tavern-ordinary-stage.js'
+import type {TavernSharedScopePreparationStageV1} from './roleplay-tavern-shared-scope-stage.js'
 import {createCommunitySanitizer,communityResponseHooks} from './community-preset-response.js'
 
 type Data=Record<string,CommunityJson>
@@ -36,6 +37,7 @@ export interface CommunityExecutionInput {
   policy:CommunityPresetPolicy
   variableAttempt:CommunityVariableAttempt
   ordinary?:TavernOrdinaryPreparationStage
+  shared?:TavernSharedScopePreparationStageV1
   selected:NativeMaterialSelectedBaseV1
   historyRows:readonly Row[]
   seed:string
@@ -128,7 +130,7 @@ export function createCommunityPresetExecution(input:CommunityExecutionInput) {
   const macros=createCommunityMacroEvaluator({seed:input.seed,pickSeed:input.variableAttempt.sessionId,clockEpochMs:input.clockEpochMs,
     aliases:{...input.aliases,lastUserMessage:input.inputText,input:input.inputText},
     chat:input.variableAttempt.chat,global:input.variableAttempt.global,outlets,
-    ordinary:input.ordinary})
+    ordinary:input.ordinary,shared:input.shared})
   const byId=new Map(preset.prompts.map(prompt=>[prompt.identifier,prompt]))
   const prompts=(preset.promptOrder.length?preset.promptOrder.map(row=>byId.get(row.identifier)).filter((p):p is CommunityPresetPrompt=>!!p):preset.prompts)
     .filter(prompt=>prompt.enabled&&!prompt.unused&&!prompt.configurationOnly)

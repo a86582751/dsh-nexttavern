@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { createAuthorNativeMessageVariables } from './author-native-message-variables.js';
 import { readerNativeNamespaceCauseV1, readerNativeSourceOriginV1 } from './author-native-origin.js';
 import { applyAuthorChatOverlayV3 } from './roleplay-author-chat-state-types.js';
+import { authorSharedScopeCaptureV1, isAuthorSharedScopeOperationV1, authorSharedScopeRootsV1 } from './roleplay-author-scope-owner.js';
 import { createReaderVariablePrefix } from './roleplay-reader-variable-prefix.js';
 import { recordSha256, sha256, textOf } from './roleplay-data.js';
 import { sourceLiteralReaderCss } from './roleplay-reader-style-parser.mjs';
@@ -173,7 +174,7 @@ export function createRoleplayReaderDisplay(deps) {
             if (!deps.retryNamespace)
                 fail('READER_NAMESPACE_WRITE_UNAVAILABLE');
             const operation = request;
-            if (operation.namespace.target?.kind === 'script')
+            if (!isAuthorSharedScopeOperationV1(operation) && operation.namespace.target?.kind === 'script')
                 fail('READER_VARIABLE_SCOPE_UNAVAILABLE');
             reply = await deps.retryNamespace(binding.sessionId, operation, cause, sourceCurrent, signal);
         }
@@ -184,11 +185,13 @@ export function createRoleplayReaderDisplay(deps) {
             if (mutation.readRevision !== value.snapshot.readRevision)
                 fail('READER_READ_BASIS_CHANGED');
             const selector = mutation.selector, scope = value.snapshot.scopeFrame.scopes.chat;
-            if (selector && selector.type !== 'message')
-                fail('READER_VARIABLE_SCOPE_UNAVAILABLE');
-            const selected = selector ? createAuthorNativeMessageVariables(value.snapshot).resolve(selector, true) : undefined, capture = selected?.capture ?? value.snapshot.ordinaryChat, previous = selected?.values ?? applyAuthorChatOverlayV3(scope.kind === 'available' ? scope.variables : {}, capture);
-            reply = await deps.mutateNamespace(binding.sessionId, { root: capture.root, previous,
-                nextVariables: mutation.nextVariables, operationId: mutation.operationId, cause }, sourceCurrent, signal);
+            const shared = selector && selector.type !== 'message' ? authorSharedScopeCaptureV1(value.snapshot.sharedScopes, selector) : undefined;
+            const selected = selector?.type === 'message' ? createAuthorNativeMessageVariables(value.snapshot).resolve(selector, true) : undefined, capture = selected?.capture ?? value.snapshot.ordinaryChat, previous = selected?.values ?? applyAuthorChatOverlayV3(scope.kind === 'available' ? scope.variables : {}, capture);
+            const input = shared ? { kind: 'shared-scope', capture: shared,
+                sourceNamespace: value.snapshot.ordinaryChat.root.namespace, nextVariables: mutation.nextVariables,
+                operationId: mutation.operationId, cause } : { root: capture.root, expectedScopeRef: capture.scopeRef, previous,
+                nextVariables: mutation.nextVariables, operationId: mutation.operationId, cause };
+            reply = await deps.mutateNamespace(binding.sessionId, input, sourceCurrent, signal);
         }
         if (reply.kind === 'no-update')
             return { reply, ...bindingCurrent(value) ? { snapshot: value.snapshot } : {} };
@@ -284,14 +287,18 @@ export function createRoleplayReaderDisplay(deps) {
             return;
         }
         try {
-            const facts = await deps.documentFacts?.(binding.sessionId, value.sourceRead);
+            let facts = await deps.documentFacts?.(binding.sessionId, value.sourceRead);
             if (!facts || !facts.current() || !value.sourceCurrent() || disposed
                 || bindings.get(binding.browserSessionId) !== value) {
                 releaseBinding(binding);
                 return;
             }
+            const sharedScopes = deps.captureSharedScopes?.(binding.sessionId);
+            if (sharedScopes)
+                facts = { ...facts, data: { ...facts.data, sharedScopes } };
             const previous = value.snapshot, root = facts.data.ordinaryChat.root, oldRoot = previous.ordinaryChat.root;
             const unchanged = facts.data.scopeFrame.frameSha256 === previous.scopeFrame.frameSha256
+                && JSON.stringify(authorSharedScopeRootsV1(facts.data.sharedScopes)) === JSON.stringify(authorSharedScopeRootsV1(previous.sharedScopes))
                 && facts.data.ordinaryPublicationSeq === previous.ordinaryPublicationSeq
                 && facts.data.worldbook?.dataSha256 === previous.worldbook?.dataSha256
                 && root.head?.sha256 === oldRoot.head?.sha256 && root.base?.sha256 === oldRoot.base?.sha256
@@ -417,7 +424,8 @@ export function createRoleplayReaderDisplay(deps) {
             const cardData = 'contributionInput' in captured ? captured.contributionInput.rawDecoded.data : captured.cardData;
             const scopedRules = captureRoleplayTavernScopedRegexV1(cardData, source.sourceSha256, true);
             const policy = deps.community?.policy(sid);
-            const variables = policy?.preset ? deps.community.variables(sid, policy.preset.id) : undefined;
+            const variables = policy ? deps.community.variables(sid, policy.preset?.id ?? '') : undefined;
+            const sharedScopes = deps.captureSharedScopes?.(sid);
             const adapted = policy ? { ...policy,
                 preset: policy.preset ? { ...policy.preset, regexes: policy.preset.regexes.map(nativeCommunityDisplayRule) } : null,
                 regexes: policy.regexes.map(library => ({ ...library, rules: library.rules.map(nativeCommunityDisplayRule) })) } : undefined;
@@ -452,7 +460,7 @@ export function createRoleplayReaderDisplay(deps) {
                             values: chatValues, valuesSha256: recordSha256(chatValues) },
                         global: { ...currentGlobal, values: globalValues, valuesSha256: recordSha256(globalValues) } } };
             }
-            return { source, cardData, sourceIdentitySha256: captured.currentIdentitySha256, scopes, macros, policy, variables,
+            return { source, cardData, sourceIdentitySha256: captured.currentIdentitySha256, scopes, sharedScopes, macros, policy, variables,
                 authorRead, sourceCatalog: author?.kind === 'author-data' ? author.sourceCatalog : undefined,
                 literalStyles: new Map(),
                 helperRules: policy ? communityRegexRules(policy, scopedRules) : scopedRules,
@@ -525,7 +533,7 @@ export function createRoleplayReaderDisplay(deps) {
             if (scopeSource.sessionId !== sid || scopeSource.sourceRecordSessionId !== source.sourceRecordSessionId
                 || scopeSource.importId !== source.original.activePointer.importId || scopeSource.rawSha256 !== source.original.rawSha256)
                 fail('READER_REGEX_DOCUMENT_SCOPE_SOURCE_CHANGED');
-            return facts;
+            return read.data.sharedScopes ? { ...facts, data: { ...facts.data, sharedScopes: read.data.sharedScopes } } : facts;
         })();
         let worldbook;
         try {
