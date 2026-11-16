@@ -33,6 +33,9 @@ function sourceMetadataSha256(value:unknown):string {
 type Slot='schema'|'source'|'author-identity'|'observation'|'history'|'closed-data'|'control'|'input'|'closing'
 export type RoleplaySourceRead='legacy-author'|'tavern-author'|'input-source'|'program-origin'|'card-export'|'reader-display-author'
   |'author-worldbook'
+  |'author-worldbook-editor'
+  |'author-shared-scope-data'
+  |'author-formatter'
   |'ordinary-chat-source'
   |'community-preset'
   |'source-images'
@@ -41,7 +44,7 @@ export type RoleplaySourceRead='legacy-author'|'tavern-author'|'input-source'|'p
   |'native-card-conversion'
   |'tavern-inheritance'
   |'schema-derived-genesis'
-  |`program-opening:${number}:${boolean}`
+  |`program-opening:${number}:${boolean}:${string}`
 export interface RoleplayInputStateSession {readonly id:string}
 export interface RoleplayInputStateRead<T> {
   readonly data:T
@@ -994,6 +997,22 @@ export function createRoleplayInputStateOwner(deps:{
       markDirty(own);invalidators.clear();own.onInvalidate=undefined;forget(own)
     }}
   }
+  function captureSourceLease<T>(id:string,compute:()=>T) {
+    // A live calculation borrows current Source, including shared Source
+    // reads. Its private frame expires without retiring those shared reads.
+    const outer=capturing
+    let readout:RoleplayInputStateRead<T>
+    capturing=undefined
+    try {readout=read('source',id,'source-lease',compute,false)}finally {capturing=outer}
+    const own=handles.get(readout)!,invalidators=new Set<()=>void>()
+    own.onInvalidate=()=>{for(const notify of invalidators)notify()}
+    return {data:readout.data,current:readout.current,onInvalidated(notify:()=>void) {
+      invalidators.add(notify)
+      return ()=>{invalidators.delete(notify)}
+    },dispose(){
+      markDirty(own);invalidators.clear();own.onInvalidate=undefined;forget(own)
+    }}
+  }
   return {
     table,schemaJournal,schemaHistoryReader,nativeHistory:deps.nativeHistory,
     observeDomainChanges(observe:(change:DomainChanged)=>void) {
@@ -1014,7 +1033,7 @@ export function createRoleplayInputStateOwner(deps:{
      * Main preparation. Each serial task captures its current output inputs. */
     captureRuby:<T>(scope:RoleplayInputStateScope,operationId:string,compute:()=>T)=>
       captureActualOperation(scope,`ruby-analysis:${operationId}`,compute),
-    captureClosing,borrowHistorical,captureClosedData,readPendingVariantFacts,readProgramAbsenceNamespaceFacts,
+    captureClosing,borrowHistorical,captureClosedData,captureSourceLease,readPendingVariantFacts,readProgramAbsenceNamespaceFacts,
     readDataInventory<T>(compute:()=>T):T {
       // The inventory discovers new work. Each selected closed fact captures
       // its own exact reads; the discovery namespace is not a dependency of
@@ -1041,7 +1060,7 @@ export function createRoleplayInputStateOwner(deps:{
       return handle(frame,frame.data as T)
     },
     captureSource:<T>(id:string,kind:RoleplaySourceRead,compute:()=>T,
-      outputs?:RoleplayInputStateScope['outputRows'])=>read('source',id,kind,compute,true,undefined,outputs),
+      outputs?:RoleplayInputStateScope['outputRows'],identity?:string)=>read('source',id,kind,compute,true,identity,outputs),
     captureOriginal:<T>(id:string,identity:string,compute:()=>T)=>
       read('source',id,`schema-original:${identity}`,compute,true),
     captureSourceFrame,

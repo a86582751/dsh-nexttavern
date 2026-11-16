@@ -5,6 +5,10 @@ import { randomUUID } from 'node:crypto';
 import { jsonResponse } from './roleplay-state.js';
 import { createRoleplayAuthorBrowserGeneration } from './roleplay-author-browser-generation.js';
 import { authorMessageBodyRequestValid } from './roleplay-author-message-edit-types.js';
+import { createAuthorNativeMessageVariables } from './author-native-message-variables.js';
+import { authorOrdinarySourceNamespaceV1, authorSharedScopeRootsV1 } from './roleplay-author-scope-owner.js';
+import { CommunityAuthorPresetRefusalV1 } from './community-preset-types.js';
+import { createAuthorNativeLibraryReadsV1 } from './author-native-library-reads.js';
 const sameBinding = (left, right) => left.browserSessionId === right.browserSessionId && left.generation === right.generation
     && left.sessionId === right.sessionId && left.programSha256 === right.programSha256;
 const codeOf = (error) => error instanceof Error && /^[A-Z][A-Z0-9_]{0,95}$/.test(error.message)

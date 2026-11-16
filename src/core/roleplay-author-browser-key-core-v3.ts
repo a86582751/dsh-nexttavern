@@ -1,8 +1,8 @@
-/** The retained native attachment admits one actual realm. State owns namespace
- * revisions, Source FIFO, the immutable operation and its durable receipt. */
+/** The retained native attachment admits one actual realm. Canonical chat and
+ * shared scope owners publish immutable operations and durable receipts. */
 import {authorNativeNamespaceCauseV1} from './author-native-origin.js'
 import {applyAuthorChatOverlayV3,prepareOrdinaryAuthorChatBatchV3} from './roleplay-author-chat-state-types.js'
-import type {AuthorChatNamespaceV3,OrdinaryAuthorChatBatchUpdateV3} from './roleplay-author-chat-state-types.js'
+import type {AuthorChatNamespaceV3} from './roleplay-author-chat-state-types.js'
 import {recordSha256} from './roleplay-data.js'
 import {createAuthorNativeMessageVariables} from './author-native-message-variables.js'
 import type {CanonicalAuthorChatStateV1} from './roleplay-author-chat-state.js'
@@ -11,18 +11,36 @@ import type {AuthorNativeNamespaceRequestV1,AuthorBrowserSnapshot} from './rolep
 import type {AuthorNativeNamespaceReplyV1 as BrowserOrdinaryNamespaceReplyV3} from './roleplay-author-browser-types.js'
 import type {AuthorNativeSelfScriptV1} from './author-native-helper-types.js'
 import type {MvuJsonObject,MvuJsonValue} from './tavern-mvu-initvar.js'
-import type {AuthorChatNamespaceRootV3} from './roleplay-author-chat-state-types.js'
+import type {AuthorChatNamespaceRootV3,AuthorChatRefV1} from './roleplay-author-chat-state-types.js'
+import {authorSharedScopeCaptureV1,isAuthorSharedScopeOperationV1,authorOrdinarySourceNamespaceV1}
+  from './roleplay-author-scope-owner.js'
+import type {RoleplayAuthorScopeOwnerV1,AuthorOrdinaryNamespaceOperationV1}
+  from './roleplay-author-scope-owner.js'
+import type {AuthorPersistentScopeCaptureV1} from './roleplay-author-scope-types.js'
+import type {AuthorNativeNamespaceReceiptV1} from './roleplay-author-browser-types.js'
 
 export interface CapturedOrdinaryNamespaceMutationV1 {
+  readonly expectedScopeRef?:AuthorChatRefV1|null
   readonly root:AuthorChatNamespaceRootV3
   readonly previous:MvuJsonObject
   readonly nextVariables:Readonly<MvuJsonObject>
   readonly operationId:string
   readonly cause:MvuJsonValue
 }
+export interface CapturedSharedScopeMutationV1 {
+  readonly kind:'shared-scope'
+  readonly capture:AuthorPersistentScopeCaptureV1
+  readonly sourceNamespace:AuthorChatNamespaceV3
+  readonly nextVariables:Readonly<MvuJsonObject>
+  readonly operationId:string
+  readonly cause:MvuJsonValue
+}
+export type CapturedAuthorNamespaceMutationV1=CapturedOrdinaryNamespaceMutationV1|CapturedSharedScopeMutationV1
 
 interface Dependencies {
   readonly state:Pick<CanonicalAuthorChatStateV1,'commitOrdinaryBatchV3'>
+    &Partial<Pick<CanonicalAuthorChatStateV1,'confirmOrdinaryBatchV3'>>
+  readonly sharedScopes?:RoleplayAuthorScopeOwnerV1
   /** Captures the actual Source once, excluding canonical State2 output rows
    * from Source membership/head currency. current is the retained attachment's
    * Source/lifecycle proof, not its soon-stale authorChats DATA capture. The
@@ -41,12 +59,16 @@ function ownScript(program:AuthorNativeProgramV1,realm:AuthorNativeRealmV1) {
 
 export function createRoleplayAuthorBrowserKeyCoreV3(deps:Dependencies) {
   let closed=false
-  async function mutateCapturedNamespace(sid:string,input:CapturedOrdinaryNamespaceMutationV1,
+  async function mutateCapturedNamespace(sid:string,input:CapturedAuthorNamespaceMutationV1,
     current:()=>boolean,signal:AbortSignal):Promise<BrowserOrdinaryNamespaceReplyV3> {
     signal.throwIfAborted()
     if(closed||!current())fail('BROWSER_ATTACHMENT_REVOKED')
-    const {previous,nextVariables:next,root,cause}=input
+    const next=input.nextVariables
     if(!next||typeof next!=='object'||Array.isArray(next))fail('BROWSER_CHAT_UPDATE_RESULT_INVALID')
+    const shared='kind' in input&&input.kind==='shared-scope'?input:undefined
+    if(shared)return retryCapturedNamespace(sid,{kind:'shared-scope',sourceNamespace:shared.sourceNamespace,
+      expectedRoot:shared.capture.root,operationId:shared.operationId,values:next,cause:shared.cause},shared.cause,current,signal)
+    const {previous,root,cause,expectedScopeRef}=input as CapturedOrdinaryNamespaceMutationV1
     if(Object.hasOwn(previous,'stat_data')!==Object.hasOwn(next,'stat_data')
       ||Object.hasOwn(previous,'stat_data')&&recordSha256(previous.stat_data)!==recordSha256(next.stat_data))
       fail('AUTHOR_CHAT_NUMERICAL_KEY_RESERVED')
@@ -58,23 +80,27 @@ export function createRoleplayAuthorBrowserKeyCoreV3(deps:Dependencies) {
       signal.throwIfAborted()
       const live=()=>!closed&&!signal.aborted&&source.current()
       if(!live())fail('BROWSER_ATTACHMENT_REVOKED')
-      return deps.state.commitOrdinaryBatchV3(prepareOrdinaryAuthorChatBatchV3(root,next,input.operationId,cause),
+      return deps.state.commitOrdinaryBatchV3(prepareOrdinaryAuthorChatBatchV3(root,next,input.operationId,cause,expectedScopeRef),
         {basisValues,ownsNamespace:()=>true,isCurrent:live})
     },signal)
   }
-  async function retryCapturedNamespace(sid:string,operation:OrdinaryAuthorChatBatchUpdateV3,cause:MvuJsonValue,
+  async function retryCapturedNamespace(sid:string,operation:AuthorOrdinaryNamespaceOperationV1,cause:MvuJsonValue,
     current:()=>boolean,signal:AbortSignal):Promise<BrowserOrdinaryNamespaceReplyV3> {
     signal.throwIfAborted()
     if(closed||!current())fail('BROWSER_ATTACHMENT_REVOKED')
     if(recordSha256(operation.cause)!==recordSha256(cause))fail('AUTHOR_CHAT_RECOVERY_SOURCE_CHANGED')
     const source=await deps.captureCurrent(sid,current)
-    const {target:_target,...sourceNamespace}=operation.namespace
+    const {target:_target,...sourceNamespace}=authorOrdinarySourceNamespaceV1(operation)
     if(recordSha256(source.namespace)!==recordSha256(sourceNamespace))fail('AUTHOR_CHAT_BINDING_CHANGED')
     return deps.withSourceLock(sid,async()=>{
       const live=()=>!closed&&!signal.aborted&&source.current()
       if(!live())fail('BROWSER_ATTACHMENT_REVOKED')
       // Retry consumes State's original immutable operation, never a new diff
       // derived from the currently displayed page or a superseded read basis.
+      if(isAuthorSharedScopeOperationV1(operation)) {
+        if(!deps.sharedScopes)fail('AUTHOR_NATIVE_VARIABLE_SCOPE_UNAVAILABLE')
+        return deps.sharedScopes.replace(sid,operation,live)
+      }
       return deps.state.commitOrdinaryBatchV3(operation,{ownsNamespace:()=>true,isCurrent:live})
     },signal)
   }
@@ -84,6 +110,11 @@ export function createRoleplayAuthorBrowserKeyCoreV3(deps:Dependencies) {
     const cause=authorNativeNamespaceCauseV1(program.programSha256,realm)
     const next=request.nextVariables
     const selector=request.selector,scope=basis.scopeFrame.scopes.chat
+    if(selector&&selector.type!=='script'&&selector.type!=='message') {
+      const capture=authorSharedScopeCaptureV1(basis.sharedScopes,selector)
+      return mutateCapturedNamespace(sid,{kind:'shared-scope',capture,sourceNamespace:basis.ordinaryChat.root.namespace,
+        nextVariables:next,operationId:request.operationId,cause},current,signal)
+    }
     let capture=basis.ordinaryChat,previous
     if(selector?.type==='script') {
       const script=ownScript(program,realm),self=(basis.context?.realmScripts as
@@ -93,20 +124,29 @@ export function createRoleplayAuthorBrowserKeyCoreV3(deps:Dependencies) {
         fail('AUTHOR_NATIVE_SCRIPT_ADDRESS_UNAVAILABLE')
       if(self.variables===undefined)fail('AUTHOR_NATIVE_SCRIPT_VARIABLES_UNAVAILABLE')
       capture=self.ordinary;previous=self.variables
-    }else if(selector) {
+    }else if(selector?.type==='message') {
       const selected=createAuthorNativeMessageVariables(basis).resolve(selector,true)
       capture=selected.capture!;previous=selected.values
     }else previous=applyAuthorChatOverlayV3(scope.kind==='available'?scope.variables:{},capture)
-    return mutateCapturedNamespace(sid,{root:capture.root,previous,nextVariables:next,
+    return mutateCapturedNamespace(sid,{root:capture.root,expectedScopeRef:capture.scopeRef,previous,nextVariables:next,
       operationId:request.operationId,cause},current,signal)
   }
   async function retryNamespace(sid:string,program:AuthorNativeProgramV1,realm:AuthorNativeRealmV1,
-    operation:OrdinaryAuthorChatBatchUpdateV3,current:()=>boolean,
+    operation:AuthorOrdinaryNamespaceOperationV1,current:()=>boolean,
     signal:AbortSignal):Promise<BrowserOrdinaryNamespaceReplyV3> {
-    if(operation.namespace.target?.kind==='script'
+    if(!isAuthorSharedScopeOperationV1(operation)&&operation.namespace.target?.kind==='script'
       &&operation.namespace.target.identity.scriptIdentity!==ownScript(program,realm).identity)
       fail('AUTHOR_CHAT_NAMESPACE_UNAVAILABLE')
     return retryCapturedNamespace(sid,operation,authorNativeNamespaceCauseV1(program.programSha256,realm),current,signal)
   }
-  return {mutateNamespace,retryNamespace,mutateCapturedNamespace,retryCapturedNamespace,dispose:()=>{closed=true}}
+  async function confirmNamespace(sid:string,operation:AuthorOrdinaryNamespaceOperationV1):Promise<AuthorNativeNamespaceReceiptV1> {
+    if(authorOrdinarySourceNamespaceV1(operation).sessionId!==sid)fail('AUTHOR_CHAT_BINDING_CHANGED')
+    if(isAuthorSharedScopeOperationV1(operation)) {
+      if(!deps.sharedScopes)fail('AUTHOR_NATIVE_VARIABLE_SCOPE_UNAVAILABLE')
+      return deps.sharedScopes.lookup(operation)
+    }
+    if(!deps.state.confirmOrdinaryBatchV3)fail('AUTHOR_CHAT_RECOVERY_UNAVAILABLE')
+    return deps.state.confirmOrdinaryBatchV3(operation)
+  }
+  return {mutateNamespace,retryNamespace,mutateCapturedNamespace,retryCapturedNamespace,confirmNamespace,dispose:()=>{closed=true}}
 }

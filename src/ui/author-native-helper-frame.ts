@@ -88,7 +88,9 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
   const variables=(options:any={type:'chat'})=>{
     const type=options.type??'chat'
     if(type==='chat'){
-      const result={...clone(available(snapshot.scopeFrame.scopes.chat)),...clone(snapshot.ordinaryChat.values)}
+      const base=available(snapshot.scopeFrame.scopes.chat),retained=snapshot.ordinaryChat.replaceOrdinary
+        ?Object.hasOwn(base,'stat_data')?{stat_data:base.stat_data}:{}:base
+      const result={...clone(retained),...clone(snapshot.ordinaryChat.values)}
       for(const key of snapshot.ordinaryChat.deletedKeys??[])delete result[key]
       return result
     }

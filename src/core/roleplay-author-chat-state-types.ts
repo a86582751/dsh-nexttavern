@@ -38,6 +38,13 @@ export interface AuthorChatNamespaceRootV3 {
   readonly head:AuthorChatRefV1|null
   readonly base:AuthorChatRefV1|null
 }
+export interface AuthorChatScopeBasesV1 {
+  readonly ref:AuthorChatRefV1|null
+  readonly reset:{readonly ref:AuthorChatRefV1;readonly fenceRoot:AuthorChatNamespaceRootV3;
+    readonly variables:Readonly<Record<string,MvuJsonValue>>}|null
+  readonly keys:ReadonlyMap<string,{readonly ref:AuthorChatRefV1;readonly fenceRoot:AuthorChatNamespaceRootV3;
+    readonly exists:boolean;readonly value:MvuJsonValue|null}>
+}
 export interface AuthorChatNativeCutV3 {
   readonly session:{readonly id:string}
   readonly length:number
@@ -53,6 +60,7 @@ export interface AuthorChatNativeRootsV3 {
   flush(namespace:AuthorChatNamespaceV3):Promise<void>
 }
 export interface AuthorChatCaptureV3 {
+  readonly scopeRef:AuthorChatRefV1|null
   readonly schemaVersion:3
   readonly authority:'consumer-data-only'
   readonly namespace:AuthorChatNamespaceV3
@@ -63,6 +71,7 @@ export interface AuthorChatCaptureV3 {
   readonly value:MvuJsonValue|null
 }
 export interface OrdinaryAuthorChatUpdateV3 {
+  readonly expectedScopeRef?:AuthorChatRefV1|null
   readonly namespace:AuthorChatNamespaceV3
   readonly key:string
   readonly expected:AuthorChatRevisionV1
@@ -76,6 +85,7 @@ export interface OrdinaryAuthorChatOwnerV3 {
   beforeWrite?(row:{readonly key:string;readonly value:object}):()=>void
 }
 export interface OrdinaryAuthorChatBatchUpdateV3 {
+  readonly expectedScopeRef?:AuthorChatRefV1|null
   readonly namespace:AuthorChatNamespaceV3
   readonly expectedRoot:AuthorChatNamespaceRootV3
   readonly operationId:string
@@ -85,9 +95,11 @@ export interface OrdinaryAuthorChatBatchUpdateV3 {
 /** Parent outboxes and the canonical admission serialize this same operation.
  * Numerical DATA is checked by the writer but never enters an ordinary row. */
 export function prepareOrdinaryAuthorChatBatchV3(root:AuthorChatNamespaceRootV3,
-  nextVariables:Readonly<Record<string,MvuJsonValue>>,operationId:string,cause:MvuJsonValue):OrdinaryAuthorChatBatchUpdateV3 {
+  nextVariables:Readonly<Record<string,MvuJsonValue>>,operationId:string,cause:MvuJsonValue,
+  expectedScopeRef?:AuthorChatRefV1|null):OrdinaryAuthorChatBatchUpdateV3 {
   const {stat_data:_reserved,...values}=nextVariables
-  return {namespace:root.namespace,expectedRoot:root,operationId,values,cause}
+  return {namespace:root.namespace,expectedRoot:root,operationId,values,cause,
+    ...expectedScopeRef!==undefined?{expectedScopeRef}:{}}
 }
 export interface OrdinaryAuthorChatBatchOwnerV3 extends OrdinaryAuthorChatOwnerV3 {
   readonly basisValues?:Readonly<Record<string,MvuJsonValue>>
@@ -97,8 +109,10 @@ export type OrdinaryAuthorChatBatchCommitV3=AcceptedAuthorChatCommitV3
 export type OrdinaryAuthorChatBatchReceiptV3=AcceptedAuthorChatReceiptV3
 /** Apply the owner's effective overlay, including explicit deletion of Native fallback. */
 export function applyAuthorChatOverlayV3<T>(base:Readonly<Record<string,T>>,
-  capture:{readonly values:Readonly<Record<string,T>>;readonly deletedKeys?:readonly string[]}):Record<string,T> {
-  const values={...base,...capture.values}
+  capture:{readonly values:Readonly<Record<string,T>>;readonly deletedKeys?:readonly string[];
+    readonly replaceOrdinary?:true}):Record<string,T> {
+  const retained=capture.replaceOrdinary?(Object.hasOwn(base,'stat_data')?{stat_data:base.stat_data!}:{}):base
+  const values:Record<string,T>={...retained,...capture.values}
   for(const key of capture.deletedKeys??[])delete values[key]
   return values
 }
@@ -118,6 +132,7 @@ export type AcceptedAuthorChatWriteV3=
   |{readonly key:string;readonly operation:'set'|'add'|'append';readonly value:MvuJsonValue}
   |{readonly key:string;readonly operation:'delete'}
 export interface AcceptedAuthorChatContributionV3 {
+  readonly expectedScopeRef?:AuthorChatRefV1|null
   readonly namespace:AuthorChatNamespaceV3
   readonly contributionId:string
   readonly attemptId:string

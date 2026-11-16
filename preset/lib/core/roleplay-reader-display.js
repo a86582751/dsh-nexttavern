@@ -439,16 +439,17 @@ export function createRoleplayReaderDisplay(deps) {
                         character: author.captured.avatarPath } } : {},
                 randomSeed: source.sourceSha256, outlets: [], declaredOutlets: [] }).snapshot;
             const communityBindings = variables && policy ? communityRegexMacros({}, variables.chat, variables.global, policy.fingerprint, { preset: policy.helperVariables }) : undefined;
-            // Source owns MVU and native scopes; accepted community values overlay
-            // only their matching chat/global keys without mutating its frozen input.
-            const mergeBindings = (key) => [...new Map([...nativeMacros[key], ...communityBindings[key]].map(binding => [binding.key, binding])).values()];
+            // Native retains numerical chat data. The profile-global owner supplies
+            // the complete global table so ordinary deletions remain absent.
             let macros = nativeMacros;
             if (communityBindings) {
-                const chat = nativeMacros.variableScopes?.chat, global = nativeMacros.variableScopes?.global, currentChat = communityBindings.variableScopes.chat, currentGlobal = communityBindings.variableScopes.global;
-                const chatValues = { ...chat && Object.hasOwn(chat.values, 'stat_data') ? { stat_data: chat.values.stat_data } : {}, ...currentChat.values }, globalValues = { ...global?.values, ...currentGlobal.values };
-                macros = { ...nativeMacros, localVariables: mergeBindings('localVariables'), globalVariables: mergeBindings('globalVariables'),
+                const chat = nativeMacros.variableScopes?.chat, currentChat = communityBindings.variableScopes.chat, currentGlobal = communityBindings.variableScopes.global;
+                const overlay = { deletedKeys: variables?.chatCapture?.deletedKeys, replaceOrdinary: variables?.chatCapture?.replaceOrdinary }, chatValues = applyAuthorChatOverlayV3(chat?.values ?? {}, { ...overlay, values: currentChat.values }), localVariables = Object.values(applyAuthorChatOverlayV3(Object.fromEntries(nativeMacros.localVariables.map(binding => [binding.key, binding])), { ...overlay, values: Object.fromEntries(communityBindings.localVariables.map(binding => [binding.key, binding])) })), globalValues = currentGlobal.values;
+                macros = { ...nativeMacros, localVariables, globalVariables: communityBindings.globalVariables,
                     variableScopes: { ...nativeMacros.variableScopes,
-                        chat: { ...currentChat, values: chatValues, valuesSha256: recordSha256(chatValues) },
+                        chat: { ...currentChat, versionSha256: recordSha256({ base: chat?.versionSha256 ?? null,
+                                ordinary: variables?.chatCapture?.root ?? currentChat.versionSha256 }),
+                            values: chatValues, valuesSha256: recordSha256(chatValues) },
                         global: { ...currentGlobal, values: globalValues, valuesSha256: recordSha256(globalValues) } } };
             }
             return { source, cardData, sourceIdentitySha256: captured.currentIdentitySha256, scopes, macros, policy, variables,

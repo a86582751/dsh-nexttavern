@@ -405,6 +405,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
             messageBindingOrigin:scope.session.header?.isSeeded===false&&scope.session.header.parentSession===undefined
               &&!source.inheritance&&namespace.sessionId===scope.session.id?'complete-current-input':'unknown'}),
           ordinary={schemaVersion:3 as const,authority:'consumer-data-only' as const,
+            scopeRef:ordinaryBasis.scopeRef,
             root:ordinaryBasis.root,exists:ordinaryBasis.exists,values:ordinaryBasis.values,
             ...ordinaryBasis.deletedKeys?{deletedKeys:ordinaryBasis.deletedKeys}:{}}
         // Phase A already chose the actual numerical domain. Reading every
@@ -482,6 +483,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
               replacesAttemptId:outside.ordinaryBasis.priorAttemptId,
               previousHadWrites:outside.ordinaryBasis.priorHasWrites,
               initialRoot:outside.ordinaryBasis.root,values:outside.ordinaryBasis.values,
+              ...outside.ordinaryBasis.scopeRef!==undefined?{expectedScopeRef:outside.ordinaryBasis.scopeRef}:{},
               deletedKeys:outside.ordinaryBasis.deletedKeys,
               priorWrites:outside.ordinaryPrior.writes})
           // The same plain-community generation can be repriced after its
@@ -571,6 +573,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
               attemptId:openingOrdinaryAttemptId??attemptId,replacesAttemptId:initial.ordinaryBasis.priorAttemptId,
               previousHadWrites:initial.ordinaryBasis.priorHasWrites,
               initialRoot:initial.ordinary.root,values:initial.ordinary.values,deletedKeys:initial.ordinary.deletedKeys,
+              ...initial.ordinary.scopeRef!==undefined?{expectedScopeRef:initial.ordinary.scopeRef}:{},
               priorWrites:initial.ordinaryPrior.writes}),
             hookCapture=previous?.hookCapture??produceAuthorPromptCaptureV1({
               history:'fullHistory' in initial.chatClock?initial.chatClock.fullHistory():initial.chatClock,
@@ -578,6 +581,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
               attemptId,clockEpochMs,randomSeed:seed,
               ordinaryMessages:initial.authorBrowserFacts.ordinaryMessages,
               ordinaryChat:{schemaVersion:initial.ordinary.schemaVersion,authority:initial.ordinary.authority,
+                scopeRef:initial.ordinary.scopeRef,
                 root:initial.ordinary.root,exists:initial.ordinary.exists,values:hookStage.values,
                 ...hookStage.deletedKeys?{deletedKeys:hookStage.deletedKeys}:{}}}),
             generation:TavernGenerationMemo=previous??{attemptId,seed,clockEpochMs,hookCapture}
@@ -642,6 +646,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         clockEpochMs=previous?.clockEpochMs??Date.now(),packageSha256=source.original.documentSha256,
         ordinaryStage=createRoleplayTavernOrdinaryStage({inputId,contributionId,attemptId:openingOrdinaryAttemptId??attemptId,
           replacesAttemptId:ordinaryBasis.priorAttemptId,initialRoot:ordinary.root,values:ordinary.values,
+          ...ordinary.scopeRef!==undefined?{expectedScopeRef:ordinary.scopeRef}:{},
           previousHadWrites:ordinaryBasis.priorHasWrites,
           deletedKeys:ordinary.deletedKeys,
           priorWrites:ordinaryPrior.writes}),

@@ -1137,6 +1137,31 @@ export function createRoleplayInputStateOwner(deps) {
                 forget(own);
             } };
     }
+    function captureSourceLease(id, compute) {
+        // A live calculation borrows current Source, including shared Source
+        // reads. Its private frame expires without retiring those shared reads.
+        const outer = capturing;
+        let readout;
+        capturing = undefined;
+        try {
+            readout = read('source', id, 'source-lease', compute, false);
+        }
+        finally {
+            capturing = outer;
+        }
+        const own = handles.get(readout), invalidators = new Set();
+        own.onInvalidate = () => { for (const notify of invalidators)
+            notify(); };
+        return { data: readout.data, current: readout.current, onInvalidated(notify) {
+                invalidators.add(notify);
+                return () => { invalidators.delete(notify); };
+            }, dispose() {
+                markDirty(own);
+                invalidators.clear();
+                own.onInvalidate = undefined;
+                forget(own);
+            } };
+    }
     return {
         table, schemaJournal, schemaHistoryReader, nativeHistory: deps.nativeHistory,
         observeDomainChanges(observe) {
@@ -1155,7 +1180,7 @@ export function createRoleplayInputStateOwner(deps) {
         /** Ruby's Source/configuration and selected prose are independent of the
          * Main preparation. Each serial task captures its current output inputs. */
         captureRuby: (scope, operationId, compute) => captureActualOperation(scope, `ruby-analysis:${operationId}`, compute),
-        captureClosing, borrowHistorical, captureClosedData, readPendingVariantFacts, readProgramAbsenceNamespaceFacts,
+        captureClosing, borrowHistorical, captureClosedData, captureSourceLease, readPendingVariantFacts, readProgramAbsenceNamespaceFacts,
         readDataInventory(compute) {
             // The inventory discovers new work. Each selected closed fact captures
             // its own exact reads; the discovery namespace is not a dependency of
@@ -1189,7 +1214,7 @@ export function createRoleplayInputStateOwner(deps) {
             connect(frame);
             return handle(frame, frame.data);
         },
-        captureSource: (id, kind, compute, outputs) => read('source', id, kind, compute, true, undefined, outputs),
+        captureSource: (id, kind, compute, outputs, identity) => read('source', id, kind, compute, true, identity, outputs),
         captureOriginal: (id, identity, compute) => read('source', id, `schema-original:${identity}`, compute, true),
         captureSourceFrame,
         captureObservation: (id, compute, purpose = 'input-observation') => read('observation', id, purpose, compute, true),

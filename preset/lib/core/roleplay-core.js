@@ -906,7 +906,13 @@ export async function apply(ctx, config = {}) {
         withSourceLock: (id, work) => withImportLock(id, 'tavern-source-inheritance', work),
         readNativeSession: id => mvuAncestry.readNativeObservation(id), readOpeningContext: openingContextBinding,
         captureNonNumericalOpening, assertNonNumericalOpening, captureProgramAbsenceOpening, assertProgramAbsenceOpening,
-        captureAuthorChatForkBasesV3: (parent, child, operationId, nativeCut, source) => {
+        captureAuthorChatScopeForkBasesV1: (parent, child, _operationId, nativeCut, source) => {
+            if (nativeCut.kind === 'reserved-fresh-branch')
+                return undefined;
+            const record = T.branch.get(importRecordKey(source.sourceRecordSessionId, source.original.activePointer.importId)), namespace = promptProgramSourceOrdinaryNamespaceV3(source, record);
+            return schemaStory?.captureOrdinaryScopeForkBases(parent, child, nativeCut.seedLength, namespace);
+        },
+        captureAuthorChatForkBasesV3: (parent, child, operationId, nativeCut, source, scopeForkBases) => {
             if (nativeCut.kind === 'reserved-fresh-branch')
                 return undefined;
             const record = T.branch.get(importRecordKey(source.sourceRecordSessionId, source.original.activePointer.importId));
@@ -916,7 +922,13 @@ export async function apply(ctx, config = {}) {
             const inheritedBases = source.inheritance
                 ? tavernSourceInheritance.readCommittedStaticSourceInheritance(parent).prepared.authorChatForkBasesV3 ?? [] : [], parentRoots = authorChatState.captureNamespaceRootsAtNativeCut({ namespaceOwner: namespace,
                 cut: { session: parentSession, length: nativeCut.seedLength }, inheritedBases }), nativeCutSha256 = recordSha256(nativeCut);
-            return parentRoots.map(parentRoot => authorChatState.freezeForkBaseV3({ parentRoot,
+            const capturedRoots = new Map(parentRoots.map(root => [JSON.stringify(root.namespace), root]));
+            for (const scope of scopeForkBases ?? []) {
+                const parentNamespace = { ...scope.namespace, sessionId: parent }, key = JSON.stringify(parentNamespace);
+                if (!capturedRoots.has(key))
+                    capturedRoots.set(key, authorChatState.captureNamespaceRootAtNativeCut(parentNamespace, { session: parentSession, length: nativeCut.seedLength }));
+            }
+            return [...capturedRoots.values()].map(parentRoot => authorChatState.freezeForkBaseV3({ parentRoot,
                 childNamespace: { ...parentRoot.namespace, sessionId: child }, operationId, nativeCutSha256 }));
         },
         applyAuthorChatForkBasesV3: async (bases, preparedRef, prepared, sourceCurrent) => {
@@ -2775,7 +2787,8 @@ export async function apply(ctx, config = {}) {
         }
     }
     const mvuEdits = createRoleplayMvuEditFacts({ table: T.branch, readSession: id => ctx.sessions.get(id), eventsOf,
-        currentEdits: (session, events) => ctx.nexttavernMessageEdits.current(session, events), readNumericalBasisFacts: editBasisFacts,
+        currentEdits: (session, events) => ctx.nexttavernMessageEdits.current(session, events)
+            .filter(edit => edit.data?.schemaVersion !== 3 || edit.data.bodyChanged !== false), readNumericalBasisFacts: editBasisFacts,
         readPendingVariantFacts: id => inputState.readPendingVariantFacts(id, () => {
             try {
                 const session = ctx.sessions.get(id);
@@ -3920,7 +3933,7 @@ export async function apply(ctx, config = {}) {
             return confirmAuthorMessageEdit(session, operationId);
         },
         mutateAuthorNamespace: authorKeyCore.mutateNamespace,
-        confirmAuthorNamespace: (_sid, operation) => authorChatState.confirmOrdinaryBatchV3(operation),
+        confirmAuthorNamespace: authorKeyCore.confirmNamespace,
         retryAuthorNamespace: authorKeyCore.retryNamespace,
         mutateWorldbook: (sid, _program, request, basis, current, signal, begin) => authorWorldbooks.mutate(sid, request, basis, current, signal, () => captureAuthorDataPublication(sid, begin)),
         retryWorldbook: authorWorldbooks.retry,
@@ -4151,7 +4164,7 @@ export async function apply(ctx, config = {}) {
         captureStoryText,
         nativeParentOrigins: async (groups) => Object.fromEntries(await Promise.all(groups.map(async (group) => [group, (await readerNativeOrigin.acquire()).url]))),
         authorSource: tavernMaterial.captureAuthorSource,
-        community: { policy: communityPresets.policy, variables: communityDisplayVariables },
+        community: { policy: communityPresets.policy, variables: communityVariables.captureDisplay },
         session: id => ctx.sessions.get(id), messageEdits: ctx.nexttavernMessageEdits,
         includeCardStyle: id => narrativePresets.policy(id).effective.mode !== 'system',
         scopes: id => readerDisplayScopes(id).data.scopes,
@@ -4674,7 +4687,7 @@ export async function apply(ctx, config = {}) {
                 role: event.type === 'user/message' ? 'user' : 'assistant',
                 text: textOf(event.data?.message?.content ?? event.data?.content), depth: story.length - index - 1,
                 isEdit: event.type === 'roleplay/message-edit' }));
-            const input = policy.preset ? communityVariables.capture(policy.preset.id, id, 'display', 'display') : null;
+            const input = communityVariables.capture(policy.preset?.id ?? '', id, 'display', 'display');
             const names = source.kind === 'captured-data' ? source.source.current.openingContext.context : null;
             const fields = source.kind === 'captured-data' ? readTavernCardMacroFields(source.contributionInput.rawDecoded.data, source.source.original.decodedFormat) : {}, inputText = messages.findLast(message => message.role === 'user')?.text ?? '';
             return { messages, aliases: { ...Object.fromEntries(Object.entries(fields).filter((entry) => typeof entry[1] === 'string')),

@@ -29,9 +29,16 @@ import type {PrepareAuthorNativeMvuHook} from './author-native-mvu-hook-types.js
 import type {AuthorMessageBodyRequestV1,AuthorMessageEditInputV1,AuthorMessageEditResultV1}
   from './roleplay-author-message-edit-types.js'
 import {authorMessageBodyRequestValid} from './roleplay-author-message-edit-types.js'
-import type {OrdinaryAuthorChatUpdateV3,OrdinaryAuthorChatReceiptV3,
-  OrdinaryAuthorChatBatchUpdateV3,OrdinaryAuthorChatBatchReceiptV3}
-  from './roleplay-author-chat-state-types.js'
+import {createAuthorNativeMessageVariables} from './author-native-message-variables.js'
+import {authorOrdinarySourceNamespaceV1,authorSharedScopeRootsV1} from './roleplay-author-scope-owner.js'
+import type {AuthorOrdinaryNamespaceOperationV1} from './roleplay-author-scope-owner.js'
+import type {AuthorNativeNamespaceReceiptV1} from './roleplay-author-browser-types.js'
+import type {CommunityAuthorPresetCatalogV1,CommunityAuthorPresetOperationV1,CommunityAuthorPresetResultV1}
+  from './community-preset-types.js'
+import {CommunityAuthorPresetRefusalV1} from './community-preset-types.js'
+import type {AuthorCharacterLibraryPacketV1} from './roleplay-author-character-library.js'
+import {createAuthorNativeLibraryReadsV1} from './author-native-library-reads.js'
+import type {AuthorNativeResolvedLibraryReadV1} from './author-native-helper-types.js'
 
 export interface AuthorBrowserCapturedFactsV3 {
   readonly program:AuthorNativeProgramV1
@@ -75,10 +82,10 @@ interface Dependencies {
   mutateAuthorNamespace?(sid:string,program:AuthorNativeProgramV1,realm:AuthorNativeRealmV1,
     request:AuthorNativeNamespaceRequestV1,basis:AuthorBrowserSnapshot,sourceCurrent:()=>boolean,
     signal:AbortSignal):Promise<BrowserOrdinaryNamespaceReplyV3>
-  confirmAuthorNamespace?(sid:string,operation:OrdinaryAuthorChatBatchUpdateV3):
-    OrdinaryAuthorChatBatchReceiptV3|Promise<OrdinaryAuthorChatBatchReceiptV3>
+  confirmAuthorNamespace?(sid:string,operation:AuthorOrdinaryNamespaceOperationV1):
+    AuthorNativeNamespaceReceiptV1|Promise<AuthorNativeNamespaceReceiptV1>
   retryAuthorNamespace?(sid:string,program:AuthorNativeProgramV1,realm:AuthorNativeRealmV1,
-    operation:OrdinaryAuthorChatBatchUpdateV3,
+    operation:AuthorOrdinaryNamespaceOperationV1,
     sourceCurrent:()=>boolean,signal:AbortSignal):Promise<BrowserOrdinaryNamespaceReplyV3>
   mutateWorldbook?(sid:string,program:AuthorBrowserWriteProgram,request:AuthorNativeWorldbookRequestV1,
     basis:AuthorNamedWorldbookData,originalOwnerCurrent:()=>boolean,signal:AbortSignal,
@@ -234,10 +241,10 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     if(input.action==='confirm-message-body') {
       if(!deps.confirmMessageBody)return {ok:false,code:'AUTHOR_MESSAGE_EDIT_OWNER_UNAVAILABLE'}
       return {ok:true,kind:'message-body-confirmed',result:await deps.confirmMessageBody(session.id,input.operationId)}
-    }
-    if(input.action==='confirm-author-namespace') {
+    })
+    if(input.action==='confirm-author-namespace')return withSession(input.sessionId,async session=>{
       if(!deps.confirmAuthorNamespace)return {ok:false,code:'AUTHOR_CHAT_RECOVERY_UNAVAILABLE'}
-      if(input.operation.namespace.sessionId!==session.id)return {ok:false,code:'AUTHOR_CHAT_BINDING_CHANGED'}
+      if(authorOrdinarySourceNamespaceV1(input.operation).sessionId!==session.id)return {ok:false,code:'AUTHOR_CHAT_BINDING_CHANGED'}
       return {ok:true,kind:'author-namespace-confirmed',
         receipt:await deps.confirmAuthorNamespace(session.id,input.operation)}
     }
@@ -402,8 +409,8 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
       // while fresh DATA is being captured, just like an author-key receipt.
       if(removesPrompts)try {await adoptCommittedFacts(value,sourceCurrent)}catch {}
       return {ok:true,kind:'prompts-cleaned'}
-    }
-    if(input.action==='retry-author-namespace') {
+    })
+    if(input.action==='retry-author-namespace')return withAttachment(input.binding,async(session,value)=>{
       if(!deps.retryAuthorNamespace)return {ok:false,code:'AUTHOR_CHAT_RECOVERY_UNAVAILABLE'}
       const sourceCurrent=originalSourceLifetime(value)
       const reply=await deps.retryAuthorNamespace(session.id,value.program,nativeRealm(value,input.realmId),
@@ -412,8 +419,8 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
         const refreshed=await adoptCommittedFacts(value,sourceCurrent,'ordinary')
         return {ok:true,kind:'author-namespace-mutated',reply,...refreshed?{snapshot:refreshed}:{}}
       }catch {return {ok:true,kind:'author-namespace-mutated',reply}}
-    }
-    if(input.action==='mutate-author-namespace') {
+    })
+    if(input.action==='mutate-author-namespace')return withAttachment(input.binding,async(session,value)=>{
       if(!deps.mutateAuthorNamespace)return {ok:false,code:'AUTHOR_CHAT_DECLARATION_UNAVAILABLE'}
       const request=input.request,read=request.read
       const basis=read.kind==='generation'?value.generationQueue?.snapshotFor(read.invocationId)

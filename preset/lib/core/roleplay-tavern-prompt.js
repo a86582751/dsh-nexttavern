@@ -268,6 +268,7 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                     contributionId, attemptId, namespace,
                     messageBindingOrigin: scope.session.header?.isSeeded === false && scope.session.header.parentSession === undefined
                         && !source.inheritance && namespace.sessionId === scope.session.id ? 'complete-current-input' : 'unknown' }), ordinary = { schemaVersion: 3, authority: 'consumer-data-only',
+                    scopeRef: ordinaryBasis.scopeRef,
                     root: ordinaryBasis.root, exists: ordinaryBasis.exists, values: ordinaryBasis.values,
                     ...ordinaryBasis.deletedKeys ? { deletedKeys: ordinaryBasis.deletedKeys } : {} };
                 // Phase A already chose the actual numerical domain. Reading every
@@ -346,6 +347,7 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                         replacesAttemptId: outside.ordinaryBasis.priorAttemptId,
                         previousHadWrites: outside.ordinaryBasis.priorHasWrites,
                         initialRoot: outside.ordinaryBasis.root, values: outside.ordinaryBasis.values,
+                        ...outside.ordinaryBasis.scopeRef !== undefined ? { expectedScopeRef: outside.ordinaryBasis.scopeRef } : {},
                         deletedKeys: outside.ordinaryBasis.deletedKeys,
                         priorWrites: outside.ordinaryPrior.writes });
                     // The same plain-community generation can be repriced after its
@@ -457,6 +459,7 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                     attemptId, clockEpochMs, randomSeed: seed,
                     ordinaryMessages: initial.authorBrowserFacts.ordinaryMessages,
                     ordinaryChat: { schemaVersion: initial.ordinary.schemaVersion, authority: initial.ordinary.authority,
+                        scopeRef: initial.ordinary.scopeRef,
                         root: initial.ordinary.root, exists: initial.ordinary.exists, values: hookStage.values,
                         ...hookStage.deletedKeys ? { deletedKeys: hookStage.deletedKeys } : {} }
                 }), generation = previous ?? { attemptId, seed, clockEpochMs, hookCapture };
@@ -531,6 +534,7 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                 recordSha256({ schemaVersion: 1, encoding: 'native-tavern-attempt-seed-v1',
                     currency: player.currency, sourceSha256: source.sourceSha256, selectedSha256: native.selected.sha256 })), clockEpochMs = previous?.clockEpochMs ?? Date.now(), packageSha256 = source.original.documentSha256, ordinaryStage = createRoleplayTavernOrdinaryStage({ inputId, contributionId, attemptId: openingOrdinaryAttemptId ?? attemptId,
                 replacesAttemptId: ordinaryBasis.priorAttemptId, initialRoot: ordinary.root, values: ordinary.values,
+                ...ordinary.scopeRef !== undefined ? { expectedScopeRef: ordinary.scopeRef } : {},
                 previousHadWrites: ordinaryBasis.priorHasWrites,
                 deletedKeys: ordinary.deletedKeys,
                 priorWrites: ordinaryPrior.writes }), policy = TAVERN_NATIVE_PROMPT_POLICY_V4;

@@ -2,12 +2,14 @@ import type {AuthorNativeBindingV1} from '../core/author-native-helper-types.js'
 import type {ReaderRegexDocumentBindingV1} from '../core/reader-regex-document-types.mjs';
 import type {OrdinaryAuthorChatBatchUpdateV3}
     from '../core/roleplay-author-chat-state-types.js';
+import {isAuthorSharedScopeOperationV1,authorOrdinarySourceNamespaceV1} from '../core/roleplay-author-scope-owner.js';
+import type {AuthorOrdinaryNamespaceOperationV1} from '../core/roleplay-author-scope-owner.js';
 
-interface OrdinaryNamespacePendingV2 {
+interface OrdinaryNamespacePendingV2<TOperation=AuthorOrdinaryNamespaceOperationV1> {
     schemaVersion: 2;
     encoding: 'nexttavern-author-browser-ordinary-pending-v2';
     browserBinding: AuthorNativeBindingV1;
-    operation: OrdinaryAuthorChatBatchUpdateV3;
+    operation: TOperation;
     state: 'pending' | 'unknown';
     code?: string;
     manualReleased?: boolean;
@@ -27,17 +29,20 @@ interface Collection {
     operations: AuthorBrowserOrdinaryPending[];
 }
 const storageKey=(sid:string)=>'nexttavern.author-native.namespace-pending.v1:'+sid;
-type OrdinaryAddress=Pick<OrdinaryAuthorChatBatchUpdateV3,'namespace'>;
+type OrdinaryAddress=Pick<OrdinaryAuthorChatBatchUpdateV3,'namespace'>|AuthorOrdinaryNamespaceOperationV1;
+const sourceNamespace=(operation:OrdinaryAddress)=>'namespace' in operation?operation.namespace:operation.sourceNamespace;
 export function sameOrdinarySource(a:OrdinaryAddress,b:OrdinaryAddress):boolean {
-    const left=a.namespace.importIncarnation,right=b.namespace.importIncarnation;
-    if(a.namespace.sessionId!==b.namespace.sessionId)return false;
+    const aSource=sourceNamespace(a),bSource=sourceNamespace(b),left=aSource.importIncarnation,right=bSource.importIncarnation;
+    if(aSource.sessionId!==bSource.sessionId)return false;
     if(left===null||right===null)return left===right;
     return left.sourceRecordSessionId===right.sourceRecordSessionId&&left.importId===right.importId
         &&left.transactionId===right.transactionId&&left.activationSha256===right.activationSha256;
 }
 export function sameOrdinaryAddress(a:OrdinaryAddress,b:OrdinaryAddress):boolean {
     if(!sameOrdinarySource(a,b))return false;
-    const left=a.namespace.target,right=b.namespace.target;
+    const aShared='kind' in a&&a.kind==='shared-scope',bShared='kind' in b&&b.kind==='shared-scope';
+    if(aShared||bShared)return aShared&&bShared&&JSON.stringify(a.expectedRoot.address)===JSON.stringify(b.expectedRoot.address);
+    const left=sourceNamespace(a).target,right=sourceNamespace(b).target;
     if(!left||!right)return left===right;
     if(left.kind==='script')return right.kind==='script'&&left.identity.scriptIdentity===right.identity.scriptIdentity;
     if(right.kind!=='message')return false;
@@ -52,10 +57,11 @@ export function createAuthorBrowserOrdinaryPendingStore(storage:Pick<Storage,'ge
     // These facts live only in this consumer. A failed local write cannot
     // undo a canonical ACK or the user's decision to display current DATA.
     const acknowledged=new Set<string>(),released=new Set<string>();
-    const identity=(operation:OrdinaryAuthorChatBatchUpdateV3)=>{
-        const namespace=operation.namespace,imported=namespace.importIncarnation;
+    const identity=(operation:AuthorOrdinaryNamespaceOperationV1)=>{
+        const namespace=authorOrdinarySourceNamespaceV1(operation),imported=namespace.importIncarnation;
         return JSON.stringify([namespace.sessionId,imported?[imported.sourceRecordSessionId,imported.importId,
-            imported.transactionId,imported.activationSha256]:null,namespace.target??null,operation.operationId]);
+            imported.transactionId,imported.activationSha256]:null,
+            isAuthorSharedScopeOperationV1(operation)?operation.expectedRoot.address:namespace.target??null,operation.operationId]);
     };
     function stored(sid:string):AuthorBrowserOrdinaryPending[] {
         const bytes=storage.getItem(storageKey(sid));
@@ -85,15 +91,15 @@ export function createAuthorBrowserOrdinaryPendingStore(storage:Pick<Storage,'ge
     }
     function change(envelope:AuthorBrowserOrdinaryPending,
         update:(row:AuthorBrowserOrdinaryPending)=>AuthorBrowserOrdinaryPending|undefined):void {
-        const operation=envelope.operation,rows=stored(operation.namespace.sessionId);
+        const operation=envelope.operation,sid=authorOrdinarySourceNamespaceV1(operation).sessionId,rows=stored(sid);
         const key=identity(operation),index=rows.findIndex(row=>identity(row.operation)===key);
         if(index<0)return;
         const next=update(rows[index]!);
         if(next)rows[index]=next;else rows.splice(index,1);
-        write(operation.namespace.sessionId,rows);
+        write(sid,rows);
     }
     function persist<T extends AuthorBrowserOrdinaryPending>(envelope:T):T {
-            const {operation}=envelope,sid=operation.namespace.sessionId,rows=read(sid);
+            const {operation}=envelope,sid=authorOrdinarySourceNamespaceV1(operation).sessionId,rows=read(sid);
             if(rows.some(row=>!row.manualReleased&&sameOrdinaryAddress(row.operation,operation)))
                 throw Error('AUTHOR_CHAT_CONFIRMATION_REQUIRED');
             rows.push(envelope);
@@ -102,10 +108,10 @@ export function createAuthorBrowserOrdinaryPendingStore(storage:Pick<Storage,'ge
             write(sid,rows);
             return read(sid).at(-1)! as T;
     }
-    function begin(browserBinding:AuthorNativeBindingV1,operation:OrdinaryAuthorChatBatchUpdateV3):AuthorBrowserOrdinaryNamespacePendingV2 {
+    function begin(browserBinding:AuthorNativeBindingV1,operation:AuthorOrdinaryNamespaceOperationV1):AuthorBrowserOrdinaryNamespacePendingV2 {
         return persist({schemaVersion:2,encoding:'nexttavern-author-browser-ordinary-pending-v2',browserBinding,operation,state:'pending'});
     }
-    function beginReader(browserBinding:ReaderRegexDocumentBindingV1,operation:OrdinaryAuthorChatBatchUpdateV3):ReaderOrdinaryNamespacePendingV2 {
+    function beginReader(browserBinding:ReaderRegexDocumentBindingV1,operation:AuthorOrdinaryNamespaceOperationV1):ReaderOrdinaryNamespacePendingV2 {
         return persist({schemaVersion:2,encoding:'nexttavern-author-browser-ordinary-pending-v2',
             principal:'reader-regex-document',browserBinding,operation,state:'pending'});
     }
