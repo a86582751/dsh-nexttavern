@@ -79,9 +79,9 @@ export function readerNativeBeautyBootstrap(channel:string):void {
         const node=document.createElement('section'),actions=document.createElement('div')
         node.className='rp-reader-message';node.dataset.readerKey=part.key;node.dataset.kind=part.kind==='user'?'user':'assistant'
         actions.className='rp-reader-action-space';actions.setAttribute('aria-hidden','true')
-        const body=document.createElement(part.kind==='user'?'p':'div')
+        const body=document.createElement('text' in part?'p':'div')
         body.className=part.kind==='user'?'rp-user-line':'rp-reader-narrative'
-        if(part.kind==='user')body.textContent='◈ 你：'+part.text
+        if('text' in part)body.textContent='◈ 你：'+part.text
         else if(part.fragments)for(const fragment of part.fragments){
           const slot=document.createElement('div')
           if(fragment.kind==='reader-document'){slot.dataset.readerNativeDocument=fragment.documentPlanSha256}

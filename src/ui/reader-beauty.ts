@@ -2,6 +2,7 @@ import { renderReaderNarrative, renderReaderNarrativeAsync, projectReaderNarrati
     sanitizeReaderNarrativeHtml } from './reader-rendering.js';
 import type { ReaderMvuDisplayScope } from './reader-rendering.js';
 import type { MvuAcceptedDisplayUpdate } from '../core/roleplay-mvu-display-facts.js';
+import { createReaderMvuDisplayScope } from '../core/roleplay-reader-narrative-display.js';
 import type { ReaderDisplayMessageRef, ReaderDisplayResponse,ReaderDisplayExecution,
     ReaderRenderHtmlRequestV1,ReaderRenderHtmlReplyV1,ReaderRenderPhaseBindingV1 } from '../core/roleplay-reader-display.js';
 import { runReaderRegex } from './reader-regex.js';
@@ -49,19 +50,15 @@ async function acceptedDisplayScope(task: ReaderBeautyTask): Promise<ReaderMvuDi
         || !canonical || !Number.isSafeInteger(canonical.seq) || canonical.seq < 0
         || canonical.seq !== task.seq || !canonical.messageId || canonical.messageId !== task.messageId
         || !/^[a-f0-9]{64}$/.test(canonical.versionSha256) || !/^[a-f0-9]{64}$/.test(canonical.narrativeSha256)
-        || !['native-jsonpatch-v1', 'native-mvu-update-v2'].includes(update.protocol)) return;
+        || !['native-jsonpatch-v1', 'native-mvu-update-v2', 'mvu-196-d03'].includes(update.protocol)) return;
     const canonicalText=task.canonicalText??task.text;
-    const start = canonicalText.indexOf('<UpdateVariable>'), close = canonicalText.indexOf('</UpdateVariable>');
-    if (start < 0 || close < start || !globalThis.crypto?.subtle) return;
+    if (!globalThis.crypto?.subtle) return;
     // A state response can lag a Native edit. Bind the displayed body before
     // minting a range; absence/failure keeps the complete original visible.
     const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalText));
     const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
     if (hash !== canonical.narrativeSha256) return;
-    const acceptedText=canonicalText.slice(start,close+'</UpdateVariable>'.length),displayStart=task.text.indexOf(acceptedText);
-    if(displayStart<0)return;
-    return {role: 'assistant', protocol: update.protocol,
-        acceptedRange: {start:displayStart, end:displayStart+acceptedText.length}};
+    return createReaderMvuDisplayScope(canonicalText, update.protocol, task.text);
 }
 
 /** Committed-text rendering owns its scope, cancellation fence and bounded cache together. */

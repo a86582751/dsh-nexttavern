@@ -83,14 +83,20 @@ export type ReaderDisplayFragment={readonly kind:'text';readonly text:string}|{
 /** A document is selected from the applied Source template, never from the
  * mixed final text. Captures cannot join literal pieces into a document tag.
  * The DOM owner separately admits their ordinary text slots. */
-export function projectReaderDisplayFragments(text:string,replacements:readonly TavernPromptDisplayReplacementV1[])
+export function projectReaderDisplayFragments(text:string,replacements:readonly TavernPromptDisplayReplacementV1[],
+  sourceMarkup=new Map<string,boolean>())
   :readonly ReaderDisplayFragment[]|undefined {
   const fragments:ReaderDisplayFragment[]=[]
   let cursor=0,documents=0
   for(const replacement of replacements){
     const template=replacement.parts.map(part=>part.kind==='literal'?part.text
       :part.kind==='macro'?part.sourceText:'\ufffc').join('')
-    if(!readerRegexDocumentHtmlSpan(template))continue
+    let hasMarkup=sourceMarkup.get(template)
+    if(hasMarkup===undefined) {
+      hasMarkup=readerRegexDocumentHtmlSpan(template)!==undefined
+      sourceMarkup.set(template,hasMarkup)
+    }
+    if(!hasMarkup)continue
     if(replacement.start>cursor)fragments.push({kind:'text',text:text.slice(cursor,replacement.start)})
     const {ruleId,sourcePointer,sourceSnapshotSha256}=replacement
     fragments.push({kind:'author-document',origin:{ruleId,sourcePointer,sourceSnapshotSha256,
@@ -807,10 +813,11 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       ?await applyTavernPromptTransformsV1(input,{assertCurrent:current,signal,displayProvenance:true}):undefined
     current()
     if(transformed&&transformed.kind!=='transformed')fail(transformed.diagnostics[0]?.code??'READER_DISPLAY_UNAVAILABLE')
+    const sourceMarkup=new Map<string,boolean>()
     let rows:ReaderDisplayRow[]=selected.rows.map((row,index)=>{
       const displayText=transformed?.output.entries[index]!.outputText??input.entries[index]!.inputText,
         replacements=transformed?.displayProvenance?.[index]?.replacements??[],
-        fragments=projectReaderDisplayFragments(displayText,replacements),styles=new Set<string>()
+        fragments=projectReaderDisplayFragments(displayText,replacements,sourceMarkup),styles=new Set<string>()
       for(const replacement of replacements) {
         if(fragments?.some(fragment=>fragment.kind==='author-document'
           &&'displaySpan' in fragment.origin

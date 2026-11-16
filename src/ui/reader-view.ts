@@ -799,8 +799,14 @@ React,
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay'
                 || !readerDocumentContainerRef.current) return;
             const controller = createReaderRegexDocumentSession({sessionId,container: readerDocumentContainerRef.current,nativeLibraries,
+                commandUi:{input:(text,defaultValue)=>window.prompt(text,defaultValue)??'',echo:text=>toast(text)},
+                eventRouter:nativeEventRouteRef.current??undefined,
                 fill: text => fillComposer(text, false),
-                navigate,
+                navigate:(target,intent)=>navigationOwner.navigate(sessionId,target,intent,()=>navigate?.(target)),
+                adopted:snapshot=>{
+                    if(readerSessionRef.current===sessionId&&resolveActiveSessionId()===sessionId)
+                        navigationTargetRef.current?.adopt(snapshot);
+                },
                 requestRecapture:()=>{beautyCache.retryCompilation();reloadReaderCompilation(value=>value+1);},
                 surface: () => readerSurfaceFactoryRef.current!(),
                 current: () => readerSessionRef.current === sessionId && readerDocumentControllerRef.current === controller,
@@ -830,7 +836,14 @@ React,
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay' || !browserContainerRef.current) return;
             const readerSubmission=readerSubmissionRef.current;
             const controller = createAuthorBrowserSession({
-                sessionId, container: browserContainerRef.current,nativeLibraries,navigate,
+                sessionId, container: browserContainerRef.current,nativeLibraries,
+                navigate:(target,intent)=>navigationOwner.navigate(sessionId,target,intent,()=>navigate?.(target)),
+                adopted:snapshot=>{
+                    if(readerSessionRef.current===sessionId&&resolveActiveSessionId()===sessionId)
+                        navigationTargetRef.current?.adopt(snapshot);
+                },
+                commandUi:{input:(text,defaultValue)=>window.prompt(text,defaultValue)??'',echo:text=>toast(text)},
+                eventRouter:nativeEventRouteRef.current??undefined,
                 documentLayout:readerSurfaceFactoryRef.current!().documentLayout,
                 composer:createReaderComposerAccess(document,()=>resolveActiveSessionId()===sessionId),
                 current: () => readerSessionRef.current === sessionId && browserControllerRef.current === controller,

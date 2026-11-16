@@ -24,13 +24,18 @@ import { prepareReaderWorldbookV1, projectReaderWorldbookDocumentsV1 } from './r
 /** A document is selected from the applied Source template, never from the
  * mixed final text. Captures cannot join literal pieces into a document tag.
  * The DOM owner separately admits their ordinary text slots. */
-export function projectReaderDisplayFragments(text, replacements) {
+export function projectReaderDisplayFragments(text, replacements, sourceMarkup = new Map()) {
     const fragments = [];
     let cursor = 0, documents = 0;
     for (const replacement of replacements) {
         const template = replacement.parts.map(part => part.kind === 'literal' ? part.text
             : part.kind === 'macro' ? part.sourceText : '\ufffc').join('');
-        if (!readerRegexDocumentHtmlSpan(template))
+        let hasMarkup = sourceMarkup.get(template);
+        if (hasMarkup === undefined) {
+            hasMarkup = readerRegexDocumentHtmlSpan(template) !== undefined;
+            sourceMarkup.set(template, hasMarkup);
+        }
+        if (!hasMarkup)
             continue;
         if (replacement.start > cursor)
             fragments.push({ kind: 'text', text: text.slice(cursor, replacement.start) });
@@ -124,6 +129,7 @@ function acceptedScope(row, updates, displayText = row.rawText) {
 }
 export function createRoleplayReaderDisplay(deps) {
     const bindings = new Map();
+    const lifecycleBindings = new Map();
     const phases = new Map();
     let disposed = false;
     let readRevision = 0;
@@ -658,8 +664,9 @@ export function createRoleplayReaderDisplay(deps) {
             current();
             if (transformed && transformed.kind !== 'transformed')
                 fail(transformed.diagnostics[0]?.code ?? 'READER_DISPLAY_UNAVAILABLE');
+            const sourceMarkup = new Map();
             let rows = selected.rows.map((row, index) => {
-                const displayText = transformed?.output.entries[index].outputText ?? input.entries[index].inputText, replacements = transformed?.displayProvenance?.[index]?.replacements ?? [], fragments = projectReaderDisplayFragments(displayText, replacements), styles = new Set();
+                const displayText = transformed?.output.entries[index].outputText ?? input.entries[index].inputText, replacements = transformed?.displayProvenance?.[index]?.replacements ?? [], fragments = projectReaderDisplayFragments(displayText, replacements, sourceMarkup), styles = new Set();
                 for (const replacement of replacements) {
                     if (fragments?.some(fragment => fragment.kind === 'author-document'
                         && 'displaySpan' in fragment.origin
