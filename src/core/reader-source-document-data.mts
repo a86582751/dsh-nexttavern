@@ -22,6 +22,11 @@ export interface ReaderSourceDocument {
   /** Offsets refer to the final HTML document carrier, after ordinary text DATA. */
   readonly scripts:readonly SourceScriptData[]
 }
+export interface ReaderSourceTemplateV1 {
+  readonly template:string
+  readonly htmlSpan:{start:number;end:number}|undefined
+  readonly document:ReaderSourceDocument
+}
 const classicMimes=new Set(['text/javascript','application/javascript','text/ecmascript','application/ecmascript',
   'application/x-javascript','application/x-ecmascript','text/javascript1.0','text/javascript1.1',
   'text/javascript1.2','text/javascript1.3','text/javascript1.4','text/javascript1.5','text/jscript','text/livescript',
@@ -33,7 +38,7 @@ function scriptMode(node:Element):SourceScriptData['mode'] {
   const language=node.attrs.find(value=>value.name==='language')?.value.trim().toLowerCase()
   return !language||classicMimes.has('text/'+language)?'classic':'data'
 }
-function parseSourceData(html:string) {
+function parseSourceData(html:string,captureFences=false) {
   const elements:Element[]=[],texts:Text[]=[]
   // Creation order, rather than repaired DOM order, is the existing script ordinal.
   const adapter:TreeAdapter<DefaultTreeAdapterMap>={...base,
@@ -64,7 +69,43 @@ function parseSourceData(html:string) {
   }
   const hasSourceMarkup=elements.some(node=>node.sourceCodeLocation!=null)
     ||parser.document.childNodes.some(base.isDocumentTypeNode)
-  return {scripts,texts:texts.filter(node=>!activeText.has(node)).map(node=>node.value),hasSourceMarkup}
+  const ordinaryTexts=texts.filter(node=>!activeText.has(node))
+  const fenceText=captureFences?ordinaryTexts.filter(node=>{
+    let parent=node.parentNode
+    while(parent&&base.isElementNode(parent)) {
+      if(parent.tagName!=='html'&&parent.tagName!=='body')return false
+      parent=parent.parentNode
+    }
+    return parent===parser.document&&node.sourceCodeLocation!=null
+  }).map(node=>({start:node.sourceCodeLocation!.startOffset,end:node.sourceCodeLocation!.endOffset})):[]
+  return {scripts,texts:ordinaryTexts.map(node=>node.value),hasSourceMarkup,fenceText,
+    markupOffsets:captureFences?elements.flatMap(node=>node.sourceCodeLocation?[node.sourceCodeLocation.startOffset]:[]):[]}
+}
+type TextSpan={start:number;end:number}
+/** Fence delimiters belong to Source text outside authored elements. Browser
+ * script/style text and literal code examples keep their original characters. */
+function htmlFenceLines(source:string,parsed:ReturnType<typeof parseSourceData>):TextSpan[] {
+  const removed:TextSpan[]=[]
+  if(!parsed.fenceText.length)return removed
+  let opening:{delimiter:string;html:boolean;start:number;end:number}|undefined
+  for(const line of source.matchAll(/^[ ]{0,3}(`{3,}|~{3,})([^\r\n]*)(?:\r?\n|$)/gm)) {
+    const start=line.index,end=start+line[0].length
+    if(!parsed.fenceText.some(span=>start>=span.start&&end<=span.end))continue
+    const info=line[2]!.trim()
+    if(!opening) {
+      if(line[1]![0]==='`'&&info.includes('`'))continue
+      opening={delimiter:line[1]!,html:!info||info.toLowerCase()==='html',start,end}
+    }else if(!info&&line[1]![0]===opening.delimiter[0]&&line[1]!.length>=opening.delimiter.length) {
+      if(opening.html&&parsed.markupOffsets.some(offset=>offset>=opening!.end&&offset<start))
+        removed.push({start:opening.start,end:opening.end},{start,end})
+      opening=undefined
+    }
+  }
+  return removed
+}
+function removeFenceLines(html:string,lines:readonly TextSpan[]):string {
+  for(const line of [...lines].reverse())html=html.slice(0,line.start)+html.slice(line.end)
+  return html
 }
 function macroStringExpression(node:import('typescript').StringLiteral|import('typescript').NoSubstitutionTemplateLiteral):boolean {
   const parent=node.parent
@@ -82,10 +123,13 @@ function macroStringExpression(node:import('typescript').StringLiteral|import('t
   return true
 }
 const escape=(text:string)=>text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
-export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplayPartV1[]):ReaderSourceDocument {
+export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplayPartV1[],
+  original?:ReaderSourceTemplateV1):ReaderSourceDocument {
   const strings=new Map<number,{start:number;end:number;value:string}[]>()
   if(parts.every(part=>part.kind==='literal')) {
     const html=parts.map(part=>part.text).join('')
+    if(original?.template===html)return original.document
+    if(/^[ ]{0,3}(?:`{3,}|~{3,})(?:html)?[ \t]*\r?$/im.test(html))return captureReaderSourceTemplateV1(html).document
     return {html,displaySpan:readerSourceHtmlSpan(html),strings,scripts:[]}
   }
   const source=parts.map(part=>part.kind==='literal'?part.text:part.kind==='macro'?part.sourceText:'').join('')
@@ -93,7 +137,8 @@ export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplay
   const markers=parts.map((part,index)=>part.kind==='literal'?null:prefix+index+'\ue001')
   const markedParts=parts.map((part,index)=>markers[index]??part.text),marked=markedParts.join('')
   const span=readerSourceHtmlSpan(marked)
-  const parsed=parseSourceData(marked.slice(span.start,span.end))
+  const body=marked.slice(span.start,span.end)
+  const parsed=parseSourceData(body,/^[ ]{0,3}(?:`{3,}|~{3,})(?:html)?[ \t]*\r?$/im.test(body))
   if(!parsed.hasSourceMarkup)throw Error('READER_REGEX_DOCUMENT_SOURCE_SPAN_UNAVAILABLE')
   const occurrences=parts.map(()=>0),textParts=new Set<number>()
   for(const text of parsed.texts)for(const match of text.matchAll(pattern)) {
@@ -123,7 +168,6 @@ export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplay
     throw Error(part.kind==='macro'?'READER_REGEX_DOCUMENT_MACRO_CONTEXT_UNSUPPORTED'
       :'READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED')
   const finalParts=parts.map((part,index)=>part.kind==='literal'?part.text:textParts.has(index)?escape(part.text):markers[index]!)
-  const html=finalParts.join(''),displaySpan=readerSourceHtmlSpan(html)
   // Text DATA changes raw HTML length. Translate the already parsed body spans;
   // JS string offsets stay in parse5's cooked (CRLF-normalized) script text.
   const translate=(offset:number)=>{
@@ -135,9 +179,15 @@ export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplay
     }
     return offset+delta
   }
+  const removed=htmlFenceLines(body,parsed).map(line=>({
+    start:translate(span.start+line.start),end:translate(span.start+line.end)}))
+  const html=removeFenceLines(finalParts.join(''),removed),displaySpan=readerSourceHtmlSpan(html)
+  const displayed=(offset:number)=>{
+    const raw=translate(offset)
+    return raw-removed.reduce((length,line)=>length+(line.end<=raw?line.end-line.start:0),0)-displaySpan.start
+  }
   const scripts=parsed.scripts.map(script=>({...script,bodySpan:{
-    start:translate(span.start+script.bodySpan.start)-displaySpan.start,
-    end:translate(span.start+script.bodySpan.end)-displaySpan.start}}))
+    start:displayed(span.start+script.bodySpan.start),end:displayed(span.start+script.bodySpan.end)}}))
   return {html,displaySpan,strings,scripts}
 }
 
@@ -169,8 +219,17 @@ export function bindReaderWorldbookDocumentsV1(source:ReaderRegexDocumentInputV1
  * parse5 owns fragment structure as well as explicit document roots. Implicit
  * parser elements alone cannot turn ordinary text into an author document. */
 export function readerRegexDocumentHtmlSpan(template:string):{start:number;end:number}|undefined {
-  const span=readerSourceHtmlSpan(template)
-  return parseSourceData(template.slice(span.start,span.end)).hasSourceMarkup?span:undefined
+  return captureReaderSourceTemplateV1(template).htmlSpan
+}
+/** One Source parse owns both admission identity and its literal display.
+ * Callers retain this fact alongside their existing replacement inventory. */
+export function captureReaderSourceTemplateV1(template:string):ReaderSourceTemplateV1 {
+  const span=readerSourceHtmlSpan(template),body=template.slice(span.start,span.end),
+    parsed=parseSourceData(body,/^[ ]{0,3}(?:`{3,}|~{3,})(?:html)?[ \t]*\r?$/im.test(body)),
+    removed=htmlFenceLines(body,parsed).map(line=>({start:span.start+line.start,end:span.start+line.end})),
+    html=removeFenceLines(template,removed)
+  return {template,htmlSpan:parsed.hasSourceMarkup?span:undefined,
+    document:{html,displaySpan:readerSourceHtmlSpan(html),strings:new Map(),scripts:[]}}
 }
 function readerSourceHtmlSpan(template:string):{start:number;end:number} {
   let start=template.length-template.trimStart().length,end=template.trimEnd().length

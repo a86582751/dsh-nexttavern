@@ -2,8 +2,8 @@
  * shapes. Existing Source/DATA capture remains the sole template boundary. */
 import {recordSha256,sha256} from './roleplay-data.js'
 import {captureReaderSourceDocumentV1} from './reader-source-document-data.mjs'
-import {readerRegexDocumentHtmlSpan} from './reader-source-document-data.mjs'
-import type {ReaderSourceDocument} from './reader-source-document-data.mjs'
+import {captureReaderSourceTemplateV1} from './reader-source-document-data.mjs'
+import type {ReaderSourceDocument,ReaderSourceTemplateV1} from './reader-source-document-data.mjs'
 import type {ReaderDocumentInputV1,ReaderRegexDocumentSourceV1,ReaderRegexDocumentOriginV1,
   ReaderRegexDocumentFailureV1} from './reader-regex-document-types.mjs'
 import type {ReaderNativeDocumentPlanV1,ReaderNativeDocumentCompilationV1,ReaderNativeDocumentProgramV1,
@@ -49,16 +49,17 @@ export function compileReaderNativeDocumentsV1(input:ReaderDocumentInputV1):Read
   const sourceByReplacement=new Map<string,{
     replacementSha256:string;htmlSpan:{start:number;end:number};htmlSha256:string;
     htmlUtf8Bytes:number;htmlUtf16Length:number
+    source:ReaderSourceTemplateV1
   }>()
   for(const [index,document] of input.documents.entries()){
     const {regex,message}=document
     try{
       let original=sourceByReplacement.get(regex.replacement)
       if(!original) {
-        const htmlSpan=readerRegexDocumentHtmlSpan(regex.replacement)
+        const source=captureReaderSourceTemplateV1(regex.replacement),htmlSpan=source.htmlSpan
         if(!htmlSpan)throw Error('READER_REGEX_DOCUMENT_SOURCE_SPAN_UNAVAILABLE')
         const originalHtml=regex.replacement.slice(htmlSpan.start,htmlSpan.end),replacementSha256=sha256(regex.replacement)
-        original={replacementSha256,htmlSpan,
+        original={replacementSha256,htmlSpan,source,
           htmlSha256:htmlSpan.start===0&&htmlSpan.end===regex.replacement.length?replacementSha256:sha256(originalHtml),
           htmlUtf8Bytes:Buffer.byteLength(originalHtml,'utf8'),htmlUtf16Length:originalHtml.length}
         sourceByReplacement.set(regex.replacement,original)
@@ -68,7 +69,7 @@ export function compileReaderNativeDocumentsV1(input:ReaderDocumentInputV1):Read
           ...regex.producer?{producer:regex.producer}:{},
           replacementSha256:original.replacementSha256,htmlSpan:original.htmlSpan},message,replacementSpan:document.replacementSpan,
         htmlSha256:original.htmlSha256,htmlUtf8Bytes:original.htmlUtf8Bytes,htmlUtf16Length:original.htmlUtf16Length}
-      const source=captureReaderSourceDocumentV1(document.parts),displaySpan=source.displaySpan
+      const source=captureReaderSourceDocumentV1(document.parts,original.source),displaySpan=source.displaySpan
       const html=materializeSourceStrings(source,source.html.slice(displaySpan.start,displaySpan.end))
       documents.push(sealDocument(origin,html,'source-regex'));documentInputIndices.push(index)
     }catch(error){
