@@ -32,7 +32,14 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
   importModule:(url:string)=>Promise<unknown>,createMvu:typeof createAuthorNativeMvuApi,
   createEvents:typeof createAuthorNativeEventOwner,createButtons:typeof createAuthorNativeScriptButtonCatalog,
   buttonScripts:readonly AuthorNativeButtonScriptV1[],createMessageVariables:typeof createAuthorNativeMessageVariables,
-  createCurrentRegex:typeof createAuthorNativeCurrentRegex,createVariableWriters:typeof createAuthorNativeVariableWriters):void {
+  createCurrentRegex:typeof createAuthorNativeCurrentRegex,createVariableWriters:typeof createAuthorNativeVariableWriters,
+  routeEvents=false,createHookGraph?:typeof createAuthorNativeMvuHookGraph,
+  initialPresetLibrary?:CommunityAuthorPresetCatalogV1,defaultPreset?:CommunityPresetDataV1,
+  createFormatter?:typeof createAuthorNativeFormatterV1,formatterLimits?:typeof TAVERN_PROMPT_TRANSFORM_LIMITS_V1,
+  initialCharacterLibrary?:AuthorCharacterLibraryPacketV1,createGeneration?:typeof createAuthorNativeGenerationApi,
+  createCommands?:typeof createAuthorNativeCommandLanguageV1,
+  createTrialEvents?:typeof createAuthorNativeMvuTrialEvents,
+  hookEvents:typeof AUTHOR_NATIVE_MVU_HOOK_EVENTS=AUTHOR_NATIVE_MVU_HOOK_EVENTS):void {
   const realm=window as any,clone=(value:any)=>value===undefined?undefined:structuredClone(value)
   let snapshot=initial,scope=initialReadScope,explicitScope=initialReadScope,active=true,sequence=0
   let presetLibrary=initialPresetLibrary,pendingLoadedName:string|undefined,presetBarrier=Promise.resolve()
@@ -90,10 +97,11 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
   let invocation:{id:string;effects:any[];callbackId:string}|undefined
   let mutableHook:{diagnostics:AuthorNativeMvuHookDiagnostic[];callbackId:string}|undefined
   const send=(message:object)=>{if(port)port.postMessage(message);else queued.push(message)}
-  const request=(operation:string,payload:unknown,readScope=scope,operationId=crypto.randomUUID()):Promise<any>=>new Promise((resolve,reject)=>{
+  const dispatchRequest=(operation:string,payload:unknown,readScope:string,operationId:string):Promise<any>=>new Promise((resolve,reject)=>{
     if(!active){reject(Error('AUTHOR_NATIVE_BINDING_REVOKED'));return}
     const id=++sequence;pending.set(id,{resolve,reject})
-    send({op:'request',id,request:{operationId,operation,payload,readScope}})
+    try {send({op:'request',id,request:{operationId,operation,payload,readScope}})}
+    catch(error){pending.delete(id);reject(error)}
   })
   const request=(operation:string,payload:unknown,readScope=scope,operationId:string=crypto.randomUUID()):Promise<any>=>
     presetBarrier.then(()=>dispatchRequest(operation,payload,readScope,operationId))
@@ -198,9 +206,30 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     return invoked.map(registration=>registration.callbackId)
   }
   const books=()=>snapshot.worldbook as any
-  const book=(name:string)=>{
-    const data=books(),value=data?.primaryName===name?data:undefined
-    if(!value)throw Error('AUTHOR_NATIVE_WORLDBOOK_UNAVAILABLE')
+  const generation=createGeneration!({realmId,current:()=>active,
+    request:(operation,payload,operationId)=>['stop-author-generation','stop-all-author-generations','generation-release',
+      'author-generation-next','invoke-author-generation-filter','author-generation-filter-result'].includes(operation)
+      ?dispatchRequest(operation,payload,scope,operationId):request(operation,payload,scope,operationId),filters,
+    emit:(event,args)=>routeEvents?request('emit-event',{event,args}):emit(event,args)})
+  let bookReadScope=scope
+  const loadedBooks=new Map<string,any>()
+  const staleBookSnapshots=new Set<string>()
+  const syncBookScope=()=>{
+    if(bookReadScope!==scope){bookReadScope=scope;loadedBooks.clear();staleBookSnapshots.clear()}
+  }
+  const invalidateBook=(name:string)=>{
+    syncBookScope();loadedBooks.delete(name);staleBookSnapshots.add(name)
+  }
+  const book=async(name:string)=>{
+    await presetBarrier
+    syncBookScope()
+    const data=books(),stale=staleBookSnapshots.has(name)
+    if(!stale&&!data?.names.includes(name))throw Error('AUTHOR_NATIVE_WORLDBOOK_UNAVAILABLE')
+    const frozen=stale?undefined:loadedBooks.get(name)??data?.books.find((value:any)=>value.name===name)
+    if(frozen?.entries)return frozen
+    const originalScope=scope,value=await request('worldbook-read',{name,expectedDataSha256:data.dataSha256},originalScope)
+    if(scope!==originalScope)throw Error('AUTHOR_NATIVE_READ_BASIS_CHANGED')
+    loadedBooks.set(name,value);staleBookSnapshots.delete(name)
     return value
   }
   const bookBasis=(value:any)=>({dataSha256:books()?.dataSha256,readScope:scope,
@@ -333,6 +362,136 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     if(value?.kind!=='available')throw Error('AUTHOR_NATIVE_CURRENT_PRESET_UNAVAILABLE')
     return value
   }
+  const library=()=>{
+    if(!presetLibrary)throw Error('AUTHOR_NATIVE_PRESET_LIBRARY_UNAVAILABLE')
+    return presetLibrary
+  }
+  const savedPreset=(name:string)=>library().presets.find(row=>row.name===name)
+  const presetTarget=(name:string)=>{
+    if(name==='in_use')return {kind:'in-use',conversationId:library().conversationId}
+    const saved=savedPreset(name)
+    if(!saved)throw Error('AUTHOR_NATIVE_PRESET_SELECTOR_UNSUPPORTED')
+    return {kind:'saved',presetId:saved.presetId}
+  }
+  const readPreset=(name:string,operation:'value'|'regex'='value')=>{
+    presetRead(name==='in_use'&&pendingLoadedName?pendingLoadedName:name,operation)
+    if(presetLibrary){
+      let value:CommunityPresetDataV1|undefined
+      if(name==='in_use')value=pendingLoadedName?savedPreset(pendingLoadedName)?.data:library().current.data
+      else value=savedPreset(name)?.data
+      if(!value)throw Error('AUTHOR_NATIVE_PRESET_SELECTOR_UNSUPPORTED')
+      return clone(value)
+    }
+    const value=currentPreset()
+    if(name!=='in_use'&&name!==value.loadedName)throw Error('AUTHOR_NATIVE_PRESET_SELECTOR_UNSUPPORTED')
+    return clone(value.preset)
+  }
+  const submitPreset=(payload:any,operationId:string)=>dispatchRequest('preset-manage',payload,scope,operationId).then(result=>{
+    if(result?.kind==='refused')throw Error(result.code)
+    return result
+  })
+  const managePreset=(command:any,expectedRevision:number)=>{
+    const payload=clone({command,expectedRevision}),operationId=crypto.randomUUID()
+    const work=presetBarrier.then(()=>submitPreset(payload,operationId))
+    presetBarrier=work.then(()=>{})
+    void presetBarrier.catch(()=>{})
+    return work
+  }
+  const presetCommand=async(build:()=>any)=>{
+    await presetBarrier
+    const revision=library().revision
+    return managePreset(build(),revision)
+  }
+  const replacePreset=async(name:string,data:any)=>{
+    await presetBarrier
+    const target=presetTarget(name),revision=library().revision
+    return managePreset({kind:'replace',target,data},revision)
+  }
+  const updatePreset=async(name:string,updater:Function)=>{
+    await presetBarrier
+    const target=presetTarget(name),revision=library().revision,value=readPreset(name)
+    const next=await updater(value)
+    const result=await managePreset({kind:'replace',target,data:next},revision)
+    return clone(result.data)
+  }
+  const presetRegexes=(options:any)=>{
+    if(options.type==='global'){presetRead('', 'global-regex');return clone(library().globalRegexes)}
+    if(options.type==='preset')return clone(readPreset(options.name??'in_use','regex').extensions.regex_scripts??[])
+    throw Error('AUTHOR_NATIVE_REGEX_SELECTOR_UNSUPPORTED')
+  }
+  const fillRegexNames=(rules:any[])=>{
+    for(const rule of rules)if(rule.script_name==='')rule.script_name='未命名-'+rule.id
+    return rules
+  }
+  const regexCommand=(rules:any[],options:any)=>{
+    fillRegexNames(rules)
+    if(options.type==='global')return {kind:'replace-global-regexes',rules}
+    if(options.type==='preset')return {kind:'replace-preset-regexes',target:presetTarget(options.name??'in_use'),rules}
+    throw Error('AUTHOR_NATIVE_REGEX_SELECTOR_UNSUPPORTED')
+  }
+  const namedCharacter=(name:string)=>{
+    if(!characterLibrary)throw Error('AUTHOR_NATIVE_CHARACTER_LIBRARY_UNAVAILABLE')
+    const key=name.toLowerCase(),entry=characterLibrary.entries.find(row=>
+      row.descriptor.name.toLowerCase()===key||row.descriptor.avatar?.toLowerCase()===key)
+    if(!entry)throw Error('AUTHOR_NATIVE_CHARACTER_SELECTOR_UNSUPPORTED')
+    return entry
+  }
+  const currentRegexes=createCurrentRegex(()=>({...snapshot,characterLibrary,
+    ...presetLibrary?{tavernRegexes:{...snapshot.tavernRegexes,global:library().globalRegexes}}:{}}))
+  const readRegexes=(options:any={})=>{
+    if(options.type==='character'&&options.name!==undefined&&options.name!=='current')
+      characterRead(options.name,'regex')
+    if(presetLibrary&&options.type==='preset')return presetRegexes(options)
+    if(options.type==='global'||options.type===undefined&&(options.scope??'all')!=='character')presetRead('','global-regex')
+    return currentRegexes(options)
+  }
+  const characterRegexBasis=(options:any)=>{
+    const name=options.name??'current'
+    if(name==='current'){
+      const current=snapshot.tavernRegexes?.character,metadata=current?.metadata
+      if(!current||!metadata)throw Error('AUTHOR_NATIVE_CHARACTER_METADATA_UNAVAILABLE')
+      return {target:metadata.registration,ownerSessionId:metadata.registration.locator.ownerSessionId,
+        identitySha256:metadata.identitySha256,expectedSourceSha256:metadata.sourceSha256,
+        expectedRevision:metadata.revision,rules:clone(current.rules)}
+    }
+    characterRead(name,'regex')
+    const entry=namedCharacter(name)
+    return {epoch:characterLibrary!.epoch,target:entry.registration,ownerSessionId:entry.registration.locator.ownerSessionId,
+      identitySha256:entry.regex.identitySha256,
+      expectedSourceSha256:entry.regex.sourceSha256,expectedRevision:entry.regex.revision,rules:clone(entry.regex.rules)}
+  }
+  const acceptCharacterWrite=(value:any)=>{
+    if(value?.kind==='refused')throw Error(value.diagnostics?.[0]?.code??value.code??'AUTHOR_NATIVE_CHARACTER_WRITE_REFUSED')
+    return value
+  }
+  const replaceCharacterRegexes=(basis:ReturnType<typeof characterRegexBasis>,rules:any[])=>
+    request('character-regex-replace',{...basis,rules:fillRegexNames(clone(rules))}).then(acceptCharacterWrite)
+  let formatter:ReturnType<typeof createAuthorNativeFormatterV1>|undefined
+  const format=(...args:Parameters<ReturnType<typeof createAuthorNativeFormatterV1>>)=>{
+    if(!active)throw Error('AUTHOR_NATIVE_BINDING_REVOKED')
+    if(!formatter){
+      const kernel=realm.__nextTavernPromptTextKernelV1
+      if(!kernel||!createFormatter||!formatterLimits)throw Error('AUTHOR_NATIVE_FORMATTER_UNAVAILABLE')
+      formatter=createFormatter(context=>{
+        const captured=snapshot.formatter
+        if(!captured)return {}
+        const row=context?.depth===null||context?.depth===undefined
+          ?snapshot.messages.findLast(message=>message.variables.kind==='available'||messageData().forMessage(message).capture?.exists)
+          :snapshot.messages[snapshot.messages.length-context.depth-1]
+        const data=messageData().forMessage(row),message=row?{scope:'message' as const,ownerId:row.ownerSessionId+':'+row.messageId,
+          versionSha256:kernel.recordSha256({messageVersionSha256:row.messageVersionSha256,ordinaryRoot:data.capture?.root??null}),
+          values:data.values,valuesSha256:kernel.recordSha256(data.values)}:null
+        return {formatter:{...captured,macros:{...captured.macros,
+          variableScopes:{...captured.macros.variableScopes,message,
+            ...snapshot.preparedSharedScopes?.global?{global:snapshot.preparedSharedScopes.global}:{}}}}}
+      },kernel,formatterLimits,(type,key)=>{
+        const values=variables({type})
+        const value=values[key]
+        return {value:value===undefined?'':typeof value==='string'?value:JSON.stringify(value)}
+      })
+    }
+    return formatter(...args)
+  }
   const api:any={getVariables:variables,getAllVariables:()=>Object.assign({},variables({type:'global'}),
     variables({type:'character'}),variables({type:'script'}),variables()),getChatMessages,setChatMessages,
     getContext:()=>({...clone(snapshot.context),chat:getChatMessages()}),
@@ -392,9 +551,20 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     }])),
     eventOn:events.on,eventOnce:events.once,eventMakeFirst:events.makeFirst,eventMakeLast:events.makeLast,
     eventRemoveListener:events.remove,eventClearEvent:events.clearEvent,eventClearListener:events.clearListener,
-    eventClearAll:events.clearAll,eventEmit:async(event:string,...args:any[])=>{await emit(event,args)},
-    eventEmitAndWait:(event:string,...args:any[])=>events.emitAndWait(event,args),errorCatched:(fn:Function)=>(...args:any[])=>fn(...args),
-    generateRaw:async(options:unknown)=>{const value=await request('generate-raw',{options});return value?.text??value},
+    eventClearAll:events.clearAll,eventEmit:async(event:string,...args:any[])=>{
+      if(!active)return
+      if(!routeEvents){await emit(event,args);return}
+      await request('emit-event',{event,args})
+    },
+    eventEmitAndWait:(event:string,...args:any[])=>{
+      events.emitAndWait(event,args)
+      if(!active||!routeEvents)return
+      void request('emit-event',{event,args,excludeSelf:true}).catch(report)
+    },errorCatched:(fn:Function)=>(...args:any[])=>fn(...args),
+    generate:generation.generate,generateRaw:generation.generateRaw,
+    placeholder_prompt_default_order:generation.placeholder_prompt_default_order,
+    builtin_prompt_default_order:generation.builtin_prompt_default_order,
+    stopGenerationById:generation.stopGenerationById,stopAllGeneration:generation.stopAllGeneration,
     triggerSlash:async(command:string)=>{
       if(createCommands) {
         const language=createCommands(),operationId=crypto.randomUUID(),pipeline=language.parse(command),
@@ -603,12 +773,47 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
       layoutRevision=data.revision;layoutConfig=data.config;layout?.update(layoutConfig,data.explicit)
     }else if(data.op==='reply'){
       const entry=pending.get(data.id);pending.delete(data.id)
-      if(data.error)entry?.reject(Error(data.error))
-      else {if(data.reply.snapshot){snapshot=data.reply.snapshot;scope=data.reply.readScope??scope;updateAvatarStyles()}
+      if(data.error){entry?.reject(Error(data.error));send({op:'ack-observed',id:data.id})}
+      else {if(data.reply.presetLibrary)presetLibrary=data.reply.presetLibrary
+        if(data.reply.characterLibrary)characterLibrary=data.reply.characterLibrary
+        if(data.reply.snapshot){snapshot=data.reply.snapshot;scope=data.reply.readScope??scope;updateAvatarStyles()
+          if(data.reply.value&&typeof data.reply.value==='object')repliesWithSnapshot.add(data.reply.value)
+          acceptButtons(data.reply.snapshot.scriptButtons)}
         entry?.resolve(data.reply.value);send({op:'ack-observed',id:data.id})}
-    }else if(data.op==='snapshot'){snapshot=data.snapshot;scope=data.readScope;updateAvatarStyles()}
-    else if(data.op==='event')await emit(data.event,data.args,data.callbackId?[data.callbackId]:undefined)
+    }else if(data.op==='preset-library'){presetLibrary=data.catalog}
+    else if(data.op==='character-library'){characterLibrary=data.packet}
+    else if(data.op==='snapshot'){snapshot=data.snapshot;scope=data.readScope;updateAvatarStyles();acceptButtons(data.snapshot.scriptButtons)}
+    else if(data.op==='event'){
+      await presetBarrier
+      if(data.requested){
+        if(data.event==='js_generation_requested'){
+          generation.beginRequested(data.operationId);data.args[2]=generation.decode(data.args[2])
+        }
+        await events.request(data.event,data.args)
+        if(data.event==='js_generation_requested')data.args[2]=generation.encode(data.args[2],data.args[0],data.operationId,true)
+      }
+      else await emit(data.event,data.args,data.callbackId?[data.callbackId]:undefined)
+      if(data.id)send({op:'control-reply',id:data.id,value:data.args})
+    }
+    else if(data.op==='generation-cancel')generation.stopLocal(data.operationId)
+    else if(data.op==='generation-invoke-filter'){
+      const accepted=await generation.invokeFilter(data.callbackId,data.operationId)
+      send({op:'control-reply',id:data.id,value:{accepted}})
+    }
+    else if(data.op==='generation-release-filters')generation.releaseFilters(data.operationId,data.ids)
+    else if(data.op==='mvu-trial-interests')send({op:'control-reply',id:data.id,value:trialEvents?.interests()??[]})
+    else if(data.op==='mvu-trial-hook'){
+      if(!trialEvents)throw Error('AUTHOR_NATIVE_MVU_TRIAL_UNAVAILABLE')
+      const graph=await trialEvents.invoke(data.stage,data.graph)
+      send({op:'control-reply',id:data.id,value:graph})
+    }
     else if(data.op==='callbacks')send({op:'control-reply',id:data.id,value:events.registrations()})
+    else if(data.op==='library-reads')send({op:'control-reply',id:data.id,value:{libraryReads:[...libraryReads.values()],
+      ...presetLibrary?{presetRevision:presetLibrary.revision}:{},...characterLibrary?{characterEpoch:characterLibrary.epoch}:{}}})
+    else if(data.op==='flush-preset'){
+      try {await presetBarrier;send({op:'control-reply',id:data.id})}
+      catch(error){send({op:'control-reply',id:data.id,error:error instanceof Error?error.message:String(error)})}
+    }
     else if(data.op==='invoke'){
       const input=data.invocation as AuthorNativeHelperGenerationInvocationV1
       if(invocation||mutableHook)throw Error('AUTHOR_NATIVE_GENERATION_BUSY')
@@ -616,7 +821,7 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
       invocation={id:input.invocationId,effects:[],callbackId:''}
       try {const callbackIds=await emit(input.event,input.args,input.callbackIds)
         send({op:'control-reply',id:data.id,value:{invocationId:input.invocationId,
-          callbackIds,effects:invocation.effects}})
+          callbackIds,effects:invocation.effects,libraryReads:[...libraryReads.values()]}})
       }finally{invocation=undefined}
     }else if(data.op==='invoke-filter'){
       const input=data.invocation,callback=filters.get(input.filterCallbackId)
@@ -624,7 +829,7 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
         if(!callback)throw Error('AUTHOR_NATIVE_INJECTION_FILTER_RETIRED')
         const accepted=await callback()
         if(typeof accepted!=='boolean')throw Error('AUTHOR_NATIVE_INJECTION_FILTER_INVALID_RESULT')
-        send({op:'control-reply',id:data.id,value:accepted})
+        send({op:'control-reply',id:data.id,value:{accepted,libraryReads:[...libraryReads.values()]}})
       }catch(error){send({op:'control-reply',id:data.id,error:error instanceof Error?error.message:String(error)})}
     }else if(data.op==='retire-filters'){retireFilters(data.ids)
     }else if(data.op==='invoke-mvu-hook'){
@@ -804,7 +1009,8 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
 const json=(value:unknown)=>JSON.stringify(value).replaceAll('<','\\u003c')
 export function authorNativeHelperHtml(program:AuthorNativeProgramV1,binding:AuthorNativeHelperRealmBindingV1,
   snapshot:AuthorNativeHelperSnapshotV1,readScope:string,channel:string,resource:AuthorNativeHelperResourceV1,
-  libraries:readonly {readonly javascript:string}[]=[],layoutConfig:ReaderDocumentLayoutConfig={mode:'auto',viewportHeight:600}):string {
+  libraries:readonly {readonly javascript:string}[]=[],layoutConfig:ReaderDocumentLayoutConfig={mode:'auto',viewportHeight:600},
+  routeEvents=false,presetLibrary?:CommunityAuthorPresetCatalogV1,characterLibrary?:AuthorCharacterLibraryPacketV1):string {
   return '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="'
     +READER_NATIVE_RESOURCE_CSP+'"><meta name="referrer" content="no-referrer"><style>body{margin:0}</style>'
     +'<script>('+authorNativeHelperBootstrap.toString()+')('
@@ -818,7 +1024,11 @@ export function authorNativeHelperHtml(program:AuthorNativeProgramV1,binding:Aut
     +createAuthorNativeScriptButtonCatalog.toString()+'),'+json(program.scripts.map(
       ({scriptId,identity,realmId,enabled,button,name})=>({scriptId,identity,realmId,enabled,button,name})))
     +',('+createAuthorNativeMessageVariables.toString()+'),('+createAuthorNativeCurrentRegex.toString()+'),('
-    +createAuthorNativeVariableWriters.toString()+'))</script>'
+    +createAuthorNativeVariableWriters.toString()+'),'+json(routeEvents)+',('+createAuthorNativeMvuHookGraph.toString()+'),'
+    +(presetLibrary?json(presetLibrary):'undefined')+','+json(communityDefaultPresetDataV1())+',('
+    +createAuthorNativeFormatterV1.toString()+'),'+json(TAVERN_PROMPT_TRANSFORM_LIMITS_V1)+','
+    +(characterLibrary?json(characterLibrary):'undefined')+',('+createAuthorNativeGenerationApi.toString()+'),('
+    +createAuthorNativeCommandLanguageV1.toString()+'),('+createAuthorNativeMvuTrialEvents.toString()+'),'+json(AUTHOR_NATIVE_MVU_HOOK_EVENTS)+')</script>'
 }
 
 export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNativeProgramV1,
@@ -828,28 +1038,61 @@ export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNa
   const channel=crypto.randomUUID(),ports=new view.MessageChannel(),abort=new AbortController()
   let active=true,ready=false,sequence=0,lostAcknowledgement=false
   let resolveStarted!:()=>void,rejectStarted!:(error:Error)=>void,resolveDisposed!:()=>void
-  let snapshot=initial.snapshot,readScope=initial.readScope,layoutRevision=0
+  let snapshot=initial.snapshot,readScope=initial.readScope,layoutRevision=0,presetLibrary=options.presetLibrary
+  let characterLibrary=options.characterLibrary
   const layoutConfig=()=>options.documentLayout?.get()??{mode:'auto' as const,viewportHeight:view.innerHeight}
   const started=new Promise<void>((yes,no)=>{resolveStarted=yes;rejectStarted=no});void started.catch(()=>{})
   const disposed=new Promise<void>(yes=>{resolveDisposed=yes})
   const controls=new Map<number,{resolve(value:any):void;reject(error:Error):void}>()
+  let eventEndpoint:ReturnType<NonNullable<AuthorNativeHelperFrameOptionsV1['eventRoute']>['register']>|undefined
   const writes=new Map<number,{done:Promise<void>;finish():void}>()
+  const finishWrite=(id:number,unobserved=false)=>{
+    const write=writes.get(id)
+    if(!write)return
+    lostAcknowledgement ||= unobserved
+    writes.delete(id);write.finish()
+  }
   const send=(message:object)=>ports.port1.postMessage(message)
   const current=()=>active&&options.current()
   ports.port1.onmessage=event=>{
     if(!current())return
     const data=event.data
     if(data.op==='parent-ready')send({op:'mount',html:authorNativeHelperHtml(program,binding,snapshot,readScope,channel,
-      options.resource,options.libraries,layoutConfig()),libraries:options.libraries?.map(row=>row.javascript)??[],messageIndex:0,
+      options.resource,options.libraries,layoutConfig(),!!options.eventRoute,presetLibrary,characterLibrary),
+      libraries:options.libraries?.map(row=>row.javascript)??[],messageIndex:0,
       sdkGlobals:['getVariables','getAllVariables','getContext','getLastMessageId','getChatMessages','setChatMessages','updateVariablesWith','triggerSlash',
         'replaceVariables','insertOrAssignVariables','insertVariables','deleteVariable','eventOn','eventOnce','eventMakeFirst','eventMakeLast','eventRemoveListener',
         'eventEmit','eventEmitAndWait','eventClearEvent','eventClearListener','eventClearAll',
-        'generateRaw','getResource','getScriptId','getScriptData','getButtonEvent','getScriptButtons','getAllEnabledScriptButtons',
-        'getWorldbookNames','getWorldbook','replaceWorldbook','updateWorldbookWith','getTavernRegexes',
+        'generate','generateRaw','stopGenerationById','stopAllGeneration','placeholder_prompt_default_order','builtin_prompt_default_order',
+        'getResource','getScriptId','getScriptData','getButtonEvent','getScriptButtons','getAllEnabledScriptButtons',
+        'replaceScriptButtons','updateScriptButtonsWith','appendInexistentScriptButtons',
+        'getPresetNames','getLoadedPresetName','getPreset','loadPreset','createPreset','createOrReplacePreset','deletePreset',
+        'renamePreset','replacePreset','updatePresetWith','setPreset','default_preset','isPresetNormalPrompt',
+        'isPresetSystemPrompt','isPresetPlaceholderPrompt','replaceTavernRegexes','updateTavernRegexesWith','formatAsTavernRegexedString',
+        'getWorldbookNames','getGlobalWorldbookNames','getCharWorldbookNames','getChatWorldbookName',
+        'rebindGlobalWorldbooks','rebindCharWorldbooks','rebindChatWorldbook','createWorldbook',
+        'createOrReplaceWorldbook','deleteWorldbook','getWorldbook','replaceWorldbook','updateWorldbookWith','getTavernRegexes',
         'createWorldbookEntries','deleteWorldbookEntries','getCurrentCharPrimaryLorebook','getPersonaIds','getPersonaNames',
         'getCurrentPersonaId','getPersona','createPersona','replacePersona','injectPrompts','uninjectPrompts','SillyTavern',
-        'nextTavern','Mvu','waitGlobalInitialized','event_types','tavern_events','errorCatched','TavernHelper']})
+        'nextTavern','Mvu','waitGlobalInitialized','event_types','tavern_events','iframe_events','errorCatched','TavernHelper']})
     else if(data.op==='parent-error'){rejectStarted(Error(data.code));options.failed?.(data.code)}
+    else if(data.op==='bridge-ready'){
+      eventEndpoint=options.eventRoute?.register((event,args,requested,operationId)=>new Promise<readonly unknown[]>((resolve,reject)=>{
+        const id=++sequence;controls.set(id,{resolve,reject});send({op:'event',id,event,args,requested,operationId})
+      }),current,{realmId:binding.realmId,attachment:options.attachment,async invokeFilter(callbackId,operationId,consumer){
+        await control('flush-preset',{},abort.signal)
+        const result=await control('generation-invoke-filter',{callbackId,operationId,consumer},abort.signal) as {accepted:boolean}
+        return result.accepted
+      },async trialInterests(){
+        return await control('mvu-trial-interests',{},abort.signal) as readonly import('../core/tavern-mvu-update-protocol-v1.js').Mvu196HookStage[]
+      },async invokeTrialHook(stage,graph){
+        return await control('mvu-trial-hook',{stage,graph},abort.signal) as import('../core/author-native-mvu-hook-graph.js').AuthorNativeMvuHookGraphV1
+      },async captureLibraryReads(){
+        const result=await control('library-reads',{}) as {libraryReads:readonly AuthorNativeLibraryReadV1[]}
+        return result.libraryReads
+      },retireFilters:(operationId,ids)=>send({op:'generation-release-filters',operationId,ids}),
+      cancel:operationId=>send({op:'generation-cancel',operationId})})
+    }
     else if(data.op==='source-ready'){ready=true;resolveStarted();send({op:'snapshot',snapshot,readScope})
       send({op:'layout-config',revision:layoutRevision,config:layoutConfig()})}
     else if(data.op==='source-error'){rejectStarted(Error(data.code));options.failed?.(data.code)}
@@ -860,16 +1103,43 @@ export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNa
     }else if(data.op==='control-reply'){
       const entry=controls.get(data.id);controls.delete(data.id)
       if(data.error)entry?.reject(Error(data.error));else entry?.resolve(data.value)
-    }else if(data.op==='ack-observed'){writes.get(data.id)?.finish();writes.delete(data.id)}
+    }else if(data.op==='ack-observed')finishWrite(data.id)
     else if(data.op==='request'){
-      let finish!:()=>void
-      writes.set(data.id,{done:new Promise<void>(yes=>{finish=yes}),finish:()=>finish()})
+      if(data.request.operation==='generation-requested'){
+        const args=data.request.payload.args,delivery=eventEndpoint?eventEndpoint.transform('js_generation_requested',args,data.request.operationId):
+          new Promise<readonly unknown[]>((resolve,reject)=>{
+            const id=++sequence;controls.set(id,{resolve,reject});send({op:'event',id,event:'js_generation_requested',args,
+              requested:true,operationId:data.request.operationId})
+          })
+        void delivery.then(value=>{if(current())send({op:'reply',id:data.id,reply:{value}})},error=>{
+          if(current())send({op:'reply',id:data.id,error:error instanceof Error?error.message:String(error)})
+        })
+        return
+      }
+      if(data.request.operation==='emit-event'){
+        const {event,args,excludeSelf}=data.request.payload
+        const delivery=eventEndpoint?eventEndpoint.emit(event,args,excludeSelf)
+          :excludeSelf?Promise.resolve():new Promise<void>((resolve,reject)=>{
+            const id=++sequence;controls.set(id,{resolve:()=>resolve(),reject});send({op:'event',id,event,args})
+          })
+        void delivery.then(()=>{if(current())send({op:'reply',id:data.id,reply:{}})},error=>{
+          if(current())send({op:'reply',id:data.id,error:error instanceof Error?error.message:String(error)})
+        })
+        return
+      }
       // The binding is captured by Main; no child realm or group field is used.
-      void host.request(binding,data.request,abort.signal).then(reply=>{
+      // The actual request owner notifies only when its write branch starts.
+      const sourceWriteStarted=()=>{
+        let finish!:()=>void
+        writes.set(data.id,{done:new Promise<void>(yes=>{finish=yes}),finish:()=>finish()})
+      }
+      void host.request(binding,data.request,abort.signal,sourceWriteStarted).then(reply=>{
         if(current())send({op:'reply',id:data.id,reply})
-      },error=>{if(current())send({op:'reply',id:data.id,error:error instanceof Error?error.message:String(error)})
-        if(data.request.operation==='mutate-prompts')lostAcknowledgement=true
-        writes.get(data.id)?.finish();writes.delete(data.id)})
+        else finishWrite(data.id,true)
+      },error=>{
+        if(current())send({op:'reply',id:data.id,error:error instanceof Error?error.message:String(error)})
+        else finishWrite(data.id,true)
+      })
     }else if(data.op==='diagnostic')options.failed?.(data.code)
   }
   ports.port1.start()
@@ -894,6 +1164,10 @@ export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNa
     })
   }
   return {started,disposed,hardTermination:'unavailable',
+    cancelGeneration:operationId=>{if(current())send({op:'generation-cancel',operationId})},
+    updatePresetLibrary(catalog){presetLibrary=catalog;if(current())send({op:'preset-library',catalog})},
+    updateCharacterLibrary(packet){characterLibrary=packet;if(current())send({op:'character-library',packet})},
+    captureLibraryReads:()=>control('library-reads',{}) as ReturnType<AuthorNativeHelperFrameControllerV1['captureLibraryReads']>,
     updateSnapshot(value,scope){snapshot=value;readScope=scope;if(current()&&ready)send({op:'snapshot',snapshot,readScope})},
     dispatchEvent(event,args,_resource,callbackId){if(current())send({op:'event',event,args,callbackId})},
     async waitForAdmittedSourceWrites(){await control('flush-preset',{})
@@ -910,6 +1184,6 @@ export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNa
     dispose(){if(!active)return;active=false;eventEndpoint?.dispose();abort.abort();unsubscribeLayout?.();ports.port1.close();ports.port2.close();frame.remove()
       rejectStarted(Error('AUTHOR_NATIVE_BINDING_REVOKED'))
       for(const entry of controls.values())entry.reject(Error('AUTHOR_NATIVE_BINDING_REVOKED'))
-      controls.clear();lostAcknowledgement=writes.size>0
+      controls.clear();lostAcknowledgement ||= writes.size>0
       for(const row of writes.values())row.finish();writes.clear();resolveDisposed()}}
 }

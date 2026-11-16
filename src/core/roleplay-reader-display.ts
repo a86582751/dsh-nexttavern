@@ -1,3 +1,4 @@
+import type {AuthorNativeLifecyclePublisher,AuthorNativeLifecycleSubscription} from './author-native-lifecycle.js'
 /** Reader consumes current author DATA and selected committed Native messages.
  * Display projections never replace canonical text or own a Native write. */
 import {randomUUID} from 'node:crypto'
@@ -297,6 +298,8 @@ function acceptedScope(row:Omit<ReaderDisplayRow,'displayText'>,
 }
 export function createRoleplayReaderDisplay(deps:Dependencies) {
   const bindings=new Map<string,ReaderBinding>()
+  const lifecycleBindings=new Map<string,{binding:ReaderRegexDocumentBindingV1;
+    current():boolean;subscription:AuthorNativeLifecycleSubscription}>()
   const phases=new Map<string,{binding:ReaderRenderPhaseBindingV1;
     complete(request:ReaderRenderHtmlRequestV1,signal:AbortSignal):Promise<ReaderRenderHtmlReplyV1>;
     dispose():Promise<void>}>()
@@ -319,7 +322,41 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
     &&left.generation===right.generation&&left.sessionId===right.sessionId&&left.programSha256===right.programSha256
   function releaseBinding(binding:ReaderRegexDocumentBindingV1):void {
     const value=bindings.get(binding.browserSessionId)
-    if(value&&sameBinding(value.binding,binding))bindings.delete(binding.browserSessionId)
+    if(value&&sameBinding(value.binding,binding)){
+      deps.releaseMvuTrials?.(value)
+      if(value.generationCurrent)deps.releaseGeneration?.(value.generationCurrent)
+      bindings.delete(binding.browserSessionId)
+    }
+    const receiver=lifecycleBindings.get(binding.browserSessionId)
+    if(receiver&&sameBinding(receiver.binding,binding)){
+      receiver.subscription.dispose();lifecycleBindings.delete(binding.browserSessionId)
+    }
+  }
+  const closeBinding=releaseBinding
+  async function waitSourceEvents(binding:ReaderRegexDocumentBindingV1,sourceCursor:string|undefined,signal:AbortSignal){
+    if(!deps.lifecycle)fail('READER_SOURCE_EVENTS_UNAVAILABLE')
+    let receiver=lifecycleBindings.get(binding.browserSessionId)
+    if(!receiver){
+      const value=bindings.get(binding.browserSessionId),session=deps.session(binding.sessionId)
+      if(!value||!session||!sameBinding(value.binding,binding)||!value.sourceCurrent()) {
+        closeBinding(binding);fail('READER_BINDING_REVOKED')
+      }
+      receiver={binding,subscription:deps.lifecycle.subscribe(binding.sessionId),
+        current:()=>!disposed&&bindings.get(binding.browserSessionId)===value
+          &&deps.session(binding.sessionId)===session&&value.sourceCurrent()}
+      lifecycleBindings.set(binding.browserSessionId,receiver)
+    }
+    if(!sameBinding(receiver.binding,binding)||!receiver.current()){
+      closeBinding(binding);fail('READER_BINDING_REVOKED')
+    }
+    let packet:Awaited<ReturnType<typeof receiver.subscription.wait>>
+    try {packet=await receiver.subscription.wait(sourceCursor,signal)}
+    catch(error) {
+      if(!receiver.current()){closeBinding(binding);fail('READER_BINDING_REVOKED')}
+      throw error
+    }
+    if(!receiver.current()){closeBinding(binding);fail('READER_BINDING_REVOKED')}
+    return {ok:true as const,kind:'source-events' as const,packet}
   }
   function bindingCurrent(value:ReaderBinding):boolean {
     return !disposed&&bindings.get(value.binding.browserSessionId)===value&&value.sourceCurrent()&&value.facts.current()
@@ -931,8 +968,14 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
   }
   return {capture,renderHtml,releasePhase,mutateBinding,mutateMessageBody,mutateNamespace,replaceNumerical,executeCommands,releaseBinding,confirmOperation,
     invalidateSession(sid:string){
+      for(const receiver of [...lifecycleBindings.values()])if(receiver.binding.sessionId===sid)closeBinding(receiver.binding)
       for(const value of bindings.values())if(value.binding.sessionId===sid)releaseBinding(value.binding)
       for(const value of phases.values())if(value.binding.sessionId===sid)void releasePhase(value.binding)
     },
-    dispose(){disposed=true;bindings.clear();for(const value of [...phases.values()])void releasePhase(value.binding)}}
+    dispose(){disposed=true
+      for(const receiver of lifecycleBindings.values())receiver.subscription.dispose()
+      lifecycleBindings.clear()
+      for(const value of [...bindings.values()])releaseBinding(value.binding)
+      for(const value of [...phases.values()])void releasePhase(value.binding)
+    }}
 }

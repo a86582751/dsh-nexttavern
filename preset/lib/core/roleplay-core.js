@@ -472,7 +472,98 @@ export async function apply(ctx, config = {}) {
         flush: session => ctx.sessions.flush(session), useProof: inputState.useClosedDataProof
     });
     ctx.on('session/event', authorChatNative.accept, { global: true });
-    const authorChatState = createCanonicalAuthorChatStateV1({ table: T.branch, roots: authorChatNative.roots });
+    const sourceLifecycleStates = new WeakMap();
+    function sourceLifecycleCapture(session, through) {
+        const prior = sourceLifecycleStates.get(session), cut = sessionHistoryCut(session, through), captured = readTavernCanonicalChatChangesV1(session.id, cut, ctx.sessions.messageProjections, prior);
+        const state = prior && !captured.cold ? prior : { owner: captured.owner, nativeCut: cut.length,
+            pending: new Map() };
+        state.owner = captured.owner;
+        state.nativeCut = cut.length;
+        sourceLifecycleStates.set(session, state);
+        return { state, captured };
+    }
+    const authorLifecycle = createAuthorNativeLifecyclePublisher({ beforeSubscribe: id => {
+            const session = ctx.sessions.get(id);
+            if (session && !sourceLifecycleStates.has(session))
+                sourceLifecycleCapture(session);
+        }, afterUnsubscribe: id => {
+            const session = ctx.sessions.get(id);
+            if (session)
+                sourceLifecycleStates.delete(session);
+        } });
+    function publishSourceLifecycle(session, cause, events) {
+        if (!events.length)
+            return;
+        // The real Native event is the cursor. No new durable receipt is created.
+        authorLifecycle.publish(session.id, { token: JSON.stringify([session.id, cause.seq, cause.type, events.map(event => event.type)]), events });
+    }
+    function sourceLifecycleEvents(change, position) {
+        const index = change.item ? position : change.previousIndex;
+        if (index === undefined)
+            return [];
+        if (change.item && change.previous)
+            return [
+                { type: AUTHOR_NATIVE_EVENTS_V1.MESSAGE_EDITED, args: [index] },
+                { type: AUTHOR_NATIVE_EVENTS_V1.MESSAGE_UPDATED, args: [index] },
+            ];
+        const type = !change.item ? AUTHOR_NATIVE_EVENTS_V1.MESSAGE_DELETED : change.item.row.role === 'user'
+            ? AUTHOR_NATIVE_EVENTS_V1.MESSAGE_SENT : AUTHOR_NATIVE_EVENTS_V1.MESSAGE_RECEIVED;
+        return [{ type, args: [index] }];
+    }
+    function acceptSourceLifecycle(session, cause) {
+        if (sourceReadOwnerClosed || !sourceLifecycleStates.has(session)
+            || ctx.sessions.get(session.id) !== session || !isRoleplaySession(session))
+            return;
+        const { state, captured } = sourceLifecycleCapture(session, Number(cause.seq) + 1), events = [];
+        if (captured.cold)
+            return { state, captured };
+        for (const change of captured.changes) {
+            const pending = state.pending.get(change.seq), actual = pending
+                ? { ...change, previous: pending.change.previous, previousIndex: pending.change.previousIndex } : change;
+            // A provisional assistant can leave selection before its actual closure.
+            if (!actual.item && !actual.previous) {
+                state.pending.delete(change.seq);
+                continue;
+            }
+            if (actual.item?.row.role === 'assistant' || actual.previous && cause.type === 'roleplay/message-edit') {
+                state.pending.set(change.seq, { change: actual, cause });
+                continue;
+            }
+            state.pending.delete(change.seq);
+            events.push(...sourceLifecycleEvents(actual, captured.position(change.seq)));
+        }
+        publishSourceLifecycle(session, cause, events);
+        return { state, captured };
+    }
+    function releaseSourceLifecycle(session, cause, eligible, read) {
+        if (sourceReadOwnerClosed || !sourceLifecycleStates.has(session)
+            || ctx.sessions.get(session.id) !== session || !isRoleplaySession(session))
+            return;
+        // Native publishes append observers synchronously. The real completion
+        // callback follows its flush, so all pending deltas already have their cause.
+        const { state, captured } = read ?? sourceLifecycleCapture(session);
+        const events = [];
+        for (const [seq, pending] of state.pending) {
+            if (!eligible(pending))
+                continue;
+            state.pending.delete(seq);
+            events.push(...sourceLifecycleEvents(pending.change, captured.position(seq)));
+        }
+        publishSourceLifecycle(session, cause, events);
+    }
+    ctx.on('session/disposed', session => sourceLifecycleStates.delete(session), { global: true });
+    ctx.effect(() => () => authorLifecycle.dispose(), 'roleplay: Native author source lifecycle');
+    let schemaStory;
+    const emptyNumericalScopeBases = { ref: null, reset: null, keys: new Map() }, authorChatState = createCanonicalAuthorChatStateV1({ table: T.branch, roots: authorChatNative.roots, scopeBases: {
+            capture: namespace => schemaStory?.captureOrdinaryScopeBases(namespace) ?? emptyNumericalScopeBases,
+            resolve: (namespace, ref) => {
+                if (!ref)
+                    return emptyNumericalScopeBases;
+                if (!schemaStory)
+                    throw Error('AUTHOR_CHAT_SCOPE_UNAVAILABLE');
+                return schemaStory.resolveOrdinaryScopeBases(namespace, ref);
+            }
+        } });
     function captureOrdinaryChatNamespace(sid) {
         // Source owns the live import permission. The immutable namespace is DATA
         // supplied separately from State's mutable root and its exact read cut.
@@ -1714,6 +1805,9 @@ export async function apply(ctx, config = {}) {
         reconcileNumericalEdit: async (id, editSeq) => {
             await mvuOpening.reconcileSchemaStoryEdit(id, editSeq);
             await schemaTaskEdits.complete(id, editSeq, schemaStory?.taskEditResolved(id, editSeq) === true);
+            const session = ctx.sessions.get(id), edit = session && sessionHistoryCut(session).at(editSeq);
+            if (session && edit)
+                releaseSourceLifecycle(session, edit, pending => pending.cause.seq === editSeq && !!pending.change.previous);
         },
         confirmUnchangedNumericalEdit: id => mvuEdits.confirmNoEdit(id),
         flushEdits: async (session) => {
@@ -3723,6 +3817,10 @@ export async function apply(ctx, config = {}) {
             const session = ctx.sessions.get(work.sessionId);
             if (!session)
                 return;
+            const ended = sessionHistoryCut(session).at(receipt.turnEndSeq);
+            if (ended)
+                releaseSourceLifecycle(session, ended, ({ change }) => !change.previous && change.item?.row.role === 'assistant'
+                    && change.item.row.turn === receipt.checkpoint.actualTurn);
             if (mvuOpening.hasSchemaOpening(work.sessionId)) {
                 // Native has received the numerical settled ACK here. This method only
                 // schedules the existing notes worker; it never awaits a summary model.
@@ -3932,10 +4030,75 @@ export async function apply(ctx, config = {}) {
                 onTerminal: authorGenerationEffects.terminal });
         }, captureCurrent: (sid, _program, current) => captureBrowserChatSource(sid, current)
     });
-    async function captureOwnedBrowserFacts(sid) {
-        if (!mvuOpening.hasSchemaOpening(sid))
+    function captureAuthorFormatter(sid, data, shared, author, avatarPaths) {
+        if (author.kind !== 'author-data')
             return undefined;
-        const facts = await mvuOpening.captureSchemaBrowserFacts(sid);
+        const basis = data.basis, purpose = `author-formatter:${basis.materialSha256}:${basis.numericalSnapshotSha256}`
+            + `:${basis.nativeCut}:${basis.nativePrefixSha256}`;
+        return inputState.captureSource(sid, 'author-formatter', () => {
+            const captured = author.captured, source = captured.source, policy = communityPresets.policy(sid);
+            function binding(scope, ownerId, version, values, valuesSha256) {
+                return { scope, ownerId, versionSha256: recordSha256(version), values, valuesSha256: valuesSha256 ?? recordSha256(values) };
+            }
+            function sharedBinding(scope) {
+                const value = shared[scope];
+                return value ? binding(scope === 'character' ? 'card' : scope, recordSha256(value.root.address), value.root, value.values, value.valuesSha256) : null;
+            }
+            const chatBase = data.scopeFrame.scopes.chat, chatValues = applyAuthorChatOverlayV3(chatBase.kind === 'available' ? chatBase.variables : {}, data.ordinaryChat), chat = binding('chat', sid, { frame: data.scopeFrame.frameSha256, ordinary: data.ordinaryChat.root }, chatValues), global = sharedBinding('global'), character = sharedBinding('character'), preset = sharedBinding('preset'), selectedMessage = createAuthorNativeMessageVariables(data).resolve({ type: 'message' }), message = selectedMessage.message ? binding('message', selectedMessage.message.messageId, { message: selectedMessage.message.messageVersionSha256, ordinary: selectedMessage.capture?.root ?? null }, selectedMessage.values) : null, scopes = [chat, ...[global, character, preset].filter((value) => value !== null)], session = ctx.sessions.get(sid), agent = session && ctx.agents?.list().find(row => row.session === session), route = agent ? selectedMainRoute(agent.session, agent, ctx.agentDefaultModel.currentSelection()) : undefined, macros = produceRoleplayTavernMacroSnapshotV1({ source, cardData: captured.cardData,
+                includeCardStyle: author.includeCardStyle, inputText: null, scopes, outlets: [], declaredOutlets: [],
+                variableScopes: { chat, global, character, preset, message }, avatarPaths, currentCardFields: author.authorFields.currentCardFields,
+                clockEpochMs: Date.now(), randomSeed: randomUUID(),
+                ...route ? { preparedRoute: { model: route.model, configSha256: recordSha256(route) } } : {} }).snapshot, rules = communityRegexRules(policy, captureRoleplayTavernScopedRegexV1(captured.cardData, source.sourceSha256, true));
+            return { macros, rules, regexDisabled: false };
+        }, undefined, purpose).data;
+    }
+    function captureCharacterRegexData(author) {
+        if (author.kind !== 'author-data')
+            return undefined;
+        const captured = author.captured, registration = authorContext.readRegistration(captured.source)?.registration;
+        return { name: String(captured.cardData.name), rules: author.authorFields.cardRegexes,
+            ...registration ? { metadata: { registration, identitySha256: captured.edits.identitySha256,
+                    sourceSha256: captured.source.sourceSha256, revision: captured.edits.revision } } : {} };
+    }
+    async function capturePreOpeningBrowserFacts(sid, index) {
+        const source = await mvuOpening.prepareBrowserSource(sid, index), session = ctx.sessions.get(sid), agent = ctx.agents?.list().find(row => row.session === session);
+        if (!source || !session || !agent)
+            return undefined;
+        const nativeOwner = ctx.get('agentLoop')?.getInputAdmissionAgent(agent);
+        if (nativeOwner !== agent)
+            return undefined;
+        const stopSha256 = recordSha256(nativeOwner.lookupInputStop()), namespace = captureOrdinaryChatNamespace(sid), author = source.author, context = author.material.openingContext, card = author.material.card, characterData = card.data, character = { sourceId: author.snapshot.source.importId, name: String(characterData.name),
+            ...typeof characterData.avatar === 'string' ? { avatar: characterData.avatar } : {} };
+        const ownerCurrent = () => !sourceReadOwnerClosed && ctx.sessions.get(sid) === session
+            && ctx.get('agentLoop')?.getInputAdmissionAgent(agent) === nativeOwner
+            && recordSha256(nativeOwner.lookupInputStop()) === stopSha256;
+        // Hook journal markers do not change the pre-opening numerical read.
+        // Its Source frame stays at this cut while ordinary successors refresh
+        // only the namespace owned by the ordinary writer.
+        const cut = sessionHistoryCut(session), numerical = { kind: 'blocked',
+            code: 'SCHEMA_OPENING_UNINITIALIZED', canEdit: false }, basis = { sessionId: sid, sourceSnapshotSha256: author.snapshot.snapshotSha256, materialSha256: author.materialSha256,
+            numericalSnapshotSha256: recordSha256(numerical), nativeCut: cut.length, nativePrefixSha256: cut.prefixSha256(cut.length) }, scopeFrame = buildSchemaScopeReadFrame(schemaScopeSource(author.snapshot), recordSha256(basis), author.scripts, { kind: 'unavailable', code: 'SCOPE_SOURCE_UNAVAILABLE' }, []);
+        const capture = () => {
+            const ordinary = inputState.captureClosedHistoricalFacts(sid, `author-pre-opening-chat:${recordSha256(namespace.namespace)}`, () => authorChatState.captureNamespaceV3(namespace.namespace)), current = () => ownerCurrent() && source.current() && namespace.current() && ordinary.current();
+            return { program: source.program, resources: source.resources, sourceCurrent: () => ownerCurrent() && source.current(), current,
+                data: { schemaVersion: 1, encoding: 'author-native-helper-snapshot-v1', basis, scopeFrame, messages: [], numerical,
+                    ordinaryChat: ordinary.data, ordinaryMessages: [], ordinaryPublicationSeq: null,
+                    persona: { name: context.user, ...context.user_gender === undefined ? {} : { gender: context.user_gender }, avatar: null }, character,
+                    context: { chatId: sid, name1: context.user, name2: character.name, characterId: 0, characters: [character], eventTypes: AUTHOR_NATIVE_EVENTS_V1 } },
+                captureOrdinarySuccessor: () => ownerCurrent() && source.current() && namespace.current() ? capture() : undefined };
+        };
+        const facts = capture();
+        if (!facts.current())
+            throw Error('SCHEMA_BROWSER_FACTS_CHANGED');
+        return facts;
+    }
+    async function captureOwnedBrowserFacts(sid, openingIndex) {
+        await authorGenerationEffects.settle(sid, new AbortController().signal);
+        await communityPresets.settleAuthorPending();
+        await authorCharacterLibrary.ready();
+        const characterLibrary = authorCharacterLibrary.capture();
+        const pending = programOpening?.capturePendingSource(sid), selection = pending ?? mvuOpening.browserOpeningSelection(sid), facts = mvuOpening.hasSchemaOpening(sid) && !selection?.pending ? await mvuOpening.captureSchemaBrowserFacts(sid)
+            : await capturePreOpeningBrowserFacts(sid, pending?.index ?? openingIndex ?? selection?.index ?? 0);
         if (!facts)
             return facts;
         const book = await authorWorldbooks.capture(sid);
@@ -3976,7 +4139,7 @@ export async function apply(ctx, config = {}) {
             const formatter = captureAuthorFormatter(sid, captured.data, shared.data, author.data, avatarPaths);
             return { ...captured, characterLibrary,
                 ...book ? { worldbook: book.data } : {},
-                data: { ...captured.data, readonlyPreset, avatarPaths, tavernRegexes,
+                data: { ...captured.data, sharedScopes: shared.data, readonlyPreset, avatarPaths, tavernRegexes, ...formatter ? { formatter } : {}, ...scriptButtons ? { scriptButtons } : {},
                     ordinaryPublicationSeq: authorChatNative.latestPublicationSeq(ctx.sessions.get(sid)),
                     context: { ...captured.data.context, realmScripts: scripts.data }, ...worldbook ? { worldbook } : {}, ...personas ? { personas,
                         persona: { ...captured.data.persona, avatar: selected?.avatar_id ?? null } } : {} },
@@ -4122,32 +4285,35 @@ export async function apply(ctx, config = {}) {
                 assertAuthorMessageOrdinaryBasis(input);
         });
     }
-    authorBrowser = createRoleplayAuthorBrowser({ ctx, resolveSession: async (id) => {
+    function captureAuthorBrowserOwner(sid, sourceOnly = false) {
+        const session = ctx.sessions.get(sid), catalog = ctx.get('tavernConversations');
+        const agent = ctx.agents?.list().find(row => row.session === session);
+        const actual = agent && ctx.get('agentLoop')?.getInputAdmissionAgent(agent);
+        const selected = catalog?.selectionOf(sid), pending = sourceOnly ? programOpening?.capturePendingSource(sid) : undefined;
+        if (!session || !agent || actual !== agent || !storyBranchIsActive(session)
+            || selected && selected.activeSessionId !== sid && !pending)
+            return undefined;
+        const nativeOwner = actual;
+        const cwd = session.header?.cwd, selection = selected
+            ? `${selected.root}:${selected.activeSessionId}:${selected.revision}` : sid;
+        const stopSha256 = recordSha256(nativeOwner.lookupInputStop());
+        return () => {
+            const now = ctx.get('tavernConversations'), choice = now?.selectionOf(sid);
+            return !sourceReadOwnerClosed && (!pending || pending.current())
+                && ctx.sessions.get(sid) === session && session.header?.cwd === cwd
+                && ctx.agents?.list().includes(agent) === true && ctx.get('agentLoop')?.getInputAdmissionAgent(agent) === actual
+                && storyBranchIsActive(session) && now === catalog
+                && (choice ? `${choice.root}:${choice.activeSessionId}:${choice.revision}` : sid) === selection
+                && recordSha256(nativeOwner.lookupInputStop()) === stopSha256;
+        };
+    }
+    authorBrowser = createRoleplayAuthorBrowser({ ctx, lifecycle: authorLifecycle, resolveSession: async (id) => {
             const session = await resolveRoleplaySession(id);
             if (session)
                 await ensureBranch(session);
             return session;
-        }, captureOwner: sid => {
-            const session = ctx.sessions.get(sid), catalog = ctx.get('tavernConversations');
-            const agent = ctx.agents?.list().find(row => row.session === session);
-            const actual = agent && ctx.get('agentLoop')?.getInputAdmissionAgent(agent);
-            const selected = catalog?.selectionOf(sid);
-            if (!session || !agent || actual !== agent || !storyBranchIsActive(session)
-                || selected && selected.activeSessionId !== sid)
-                return undefined;
-            const nativeOwner = actual;
-            const cwd = session.header?.cwd, selection = selected
-                ? `${selected.root}:${selected.activeSessionId}:${selected.revision}` : sid;
-            const stopSha256 = recordSha256(nativeOwner.lookupInputStop());
-            return () => {
-                const now = ctx.get('tavernConversations'), choice = now?.selectionOf(sid);
-                return !sourceReadOwnerClosed && ctx.sessions.get(sid) === session && session.header?.cwd === cwd
-                    && ctx.agents?.list().includes(agent) === true && ctx.get('agentLoop')?.getInputAdmissionAgent(agent) === actual
-                    && storyBranchIsActive(session) && now === catalog
-                    && (choice ? `${choice.root}:${choice.activeSessionId}:${choice.revision}` : sid) === selection
-                    && recordSha256(nativeOwner.lookupInputStop()) === stopSha256;
-            };
-        }, captureFacts: captureOwnedBrowserFacts,
+        }, captureOwner: sid => captureAuthorBrowserOwner(sid), captureSourceOwner: sid => captureAuthorBrowserOwner(sid, true),
+        captureFacts: captureOwnedBrowserFacts, mutateCharacterLibrary, retryCharacterLibrary,
         acquireParentOrigins: async (groups) => Object.fromEntries(await Promise.all(groups.map(async (group) => [group, (await readerNativeOrigin.acquire()).url]))),
         cleanupPrompts: record => {
             const session = ctx.sessions.get(record.sessionId);
@@ -4240,6 +4406,20 @@ export async function apply(ctx, config = {}) {
         authorGeneration: authorDialogCore,
         commands: authorCommands,
         releaseOwner: authorDialogCore.releaseOwner });
+    ctx.on('session/event', (session, event) => {
+        const read = acceptSourceLifecycle(session, event);
+        if (read && event.type === 'turn/end' && event.data?.reason?.kind !== 'completed') {
+            for (const [seq, pending] of read.state.pending)
+                if (!pending.change.previous
+                    && pending.change.item?.row.turn === Number(event.data?.turn))
+                    read.state.pending.delete(seq);
+        }
+        // Numerical and character workflows publish after their settled ACK above.
+        if (read && event.type === 'turn/end' && event.data?.reason?.kind === 'completed'
+            && !mvuOpening.hasSchemaOpening(session.id) && !characterPrivate?.enabled(session.id))
+            releaseSourceLifecycle(session, event, ({ change }) => !change.previous && change.item?.row.role === 'assistant'
+                && change.item.row.turn === Number(event.data?.turn), read);
+    }, { global: true });
     ctx.on('session/disposed', session => authorBrowser?.invalidateSession(session.id), { global: true });
     ctx.effect(() => () => { authorBrowser?.dispose(); authorDialogCore.dispose(); authorKeyCore.dispose(); }, 'roleplay: owned browser lifetime');
     const resolveWorldbookManagementScope = async (id) => {

@@ -149,8 +149,54 @@ export function createRoleplayReaderDisplay(deps) {
         && left.generation === right.generation && left.sessionId === right.sessionId && left.programSha256 === right.programSha256;
     function releaseBinding(binding) {
         const value = bindings.get(binding.browserSessionId);
-        if (value && sameBinding(value.binding, binding))
+        if (value && sameBinding(value.binding, binding)) {
+            deps.releaseMvuTrials?.(value);
+            if (value.generationCurrent)
+                deps.releaseGeneration?.(value.generationCurrent);
             bindings.delete(binding.browserSessionId);
+        }
+        const receiver = lifecycleBindings.get(binding.browserSessionId);
+        if (receiver && sameBinding(receiver.binding, binding)) {
+            receiver.subscription.dispose();
+            lifecycleBindings.delete(binding.browserSessionId);
+        }
+    }
+    const closeBinding = releaseBinding;
+    async function waitSourceEvents(binding, sourceCursor, signal) {
+        if (!deps.lifecycle)
+            fail('READER_SOURCE_EVENTS_UNAVAILABLE');
+        let receiver = lifecycleBindings.get(binding.browserSessionId);
+        if (!receiver) {
+            const value = bindings.get(binding.browserSessionId), session = deps.session(binding.sessionId);
+            if (!value || !session || !sameBinding(value.binding, binding) || !value.sourceCurrent()) {
+                closeBinding(binding);
+                fail('READER_BINDING_REVOKED');
+            }
+            receiver = { binding, subscription: deps.lifecycle.subscribe(binding.sessionId),
+                current: () => !disposed && bindings.get(binding.browserSessionId) === value
+                    && deps.session(binding.sessionId) === session && value.sourceCurrent() };
+            lifecycleBindings.set(binding.browserSessionId, receiver);
+        }
+        if (!sameBinding(receiver.binding, binding) || !receiver.current()) {
+            closeBinding(binding);
+            fail('READER_BINDING_REVOKED');
+        }
+        let packet;
+        try {
+            packet = await receiver.subscription.wait(sourceCursor, signal);
+        }
+        catch (error) {
+            if (!receiver.current()) {
+                closeBinding(binding);
+                fail('READER_BINDING_REVOKED');
+            }
+            throw error;
+        }
+        if (!receiver.current()) {
+            closeBinding(binding);
+            fail('READER_BINDING_REVOKED');
+        }
+        return { ok: true, kind: 'source-events', packet };
     }
     function bindingCurrent(value) {
         return !disposed && bindings.get(value.binding.browserSessionId) === value && value.sourceCurrent() && value.facts.current();
@@ -827,6 +873,9 @@ export function createRoleplayReaderDisplay(deps) {
     }
     return { capture, renderHtml, releasePhase, mutateBinding, mutateMessageBody, mutateNamespace, replaceNumerical, executeCommands, releaseBinding, confirmOperation,
         invalidateSession(sid) {
+            for (const receiver of [...lifecycleBindings.values()])
+                if (receiver.binding.sessionId === sid)
+                    closeBinding(receiver.binding);
             for (const value of bindings.values())
                 if (value.binding.sessionId === sid)
                     releaseBinding(value.binding);
@@ -834,6 +883,14 @@ export function createRoleplayReaderDisplay(deps) {
                 if (value.binding.sessionId === sid)
                     void releasePhase(value.binding);
         },
-        dispose() { disposed = true; bindings.clear(); for (const value of [...phases.values()])
-            void releasePhase(value.binding); } };
+        dispose() {
+            disposed = true;
+            for (const receiver of lifecycleBindings.values())
+                receiver.subscription.dispose();
+            lifecycleBindings.clear();
+            for (const value of [...bindings.values()])
+                releaseBinding(value.binding);
+            for (const value of [...phases.values()])
+                void releasePhase(value.binding);
+        } };
 }

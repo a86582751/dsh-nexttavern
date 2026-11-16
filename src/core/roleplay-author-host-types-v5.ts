@@ -9,7 +9,7 @@ import type {MvuSchemaRealmLoadFrameV4,MvuSchemaTraceRequestedStepV4,MvuSchemaTr
 import type {SourceNativeCutFacts,SchemaExecutionAnchor,SchemaJournalRef,SchemaNativeMarkerRef}
   from './roleplay-mvu-schema-journal.js'
 import type {MvuSchemaOpeningPreparationFields} from './roleplay-mvu-schema-opening-types.js'
-import type {SchemaMvuInitDataSourceV2,SchemaMvuInitDataSourceV3} from './tavern-mvu-initvar.js'
+import type {SchemaMvuInitDataSource} from './tavern-mvu-initvar.js'
 import type {SchemaExecutionSelector} from './roleplay-mvu-schema-replay.js'
 import type {AuthorNativeMvuHookRequest,AuthorNativeMvuHookIdentity,AuthorNativeMvuHookResult}
   from './author-native-mvu-hook-types.js'
@@ -26,25 +26,16 @@ export interface AuthorServerExecutorV4 {
   readonly stateLoader:MvuSchemaProgramV4['stateLoader']
   readonly runner:MvuSchemaRunnerIdentity&{readonly version:4}
 }
-export interface AuthorOpeningPreparationV5 extends Omit<MvuSchemaOpeningPreparationFields,
-  'preparationSha256'> {
-  readonly schemaVersion:5
-  readonly encoding:'native-author-opening-preparation-v5'
+export interface AuthorOpeningPreparationV6 extends Omit<MvuSchemaOpeningPreparationFields,'initSource'> {
+  readonly schemaVersion:7
+  readonly encoding:'native-author-opening-preparation-v7'
   readonly host:AuthorHostIdentityV5
   readonly compilation:CombinedCompilationInput
-  readonly preparationSha256:string
-}
-export interface AuthorOpeningPreparationV6 extends Omit<AuthorOpeningPreparationV5,
-  'schemaVersion'|'encoding'|'initSource'> {
-  readonly schemaVersion:6
-  readonly encoding:'native-author-opening-preparation-v6'
-  readonly initSource:SchemaMvuInitDataSourceV2|SchemaMvuInitDataSourceV3
+  readonly initSource:SchemaMvuInitDataSource
   /** The first selector retains the realm's original load provenance. */
   readonly phaseSelectors:readonly [
     {readonly phase:'initialization';readonly selector:SchemaExecutionSelector},
-    {readonly phase:'command-parsed';readonly selector:SchemaExecutionSelector},
-    {readonly phase:'commands-parsed';readonly selector:SchemaExecutionSelector},
-    {readonly phase:'update-ended';readonly selector:SchemaExecutionSelector},
+    {readonly phase:'update-core';readonly selector:SchemaExecutionSelector},
   ]
 }
 export interface AuthorFrozenOriginalV5 {
@@ -52,7 +43,7 @@ export interface AuthorFrozenOriginalV5 {
   readonly encoding:'native-author-frozen-original-v5'
   readonly sessionId:string
   /** One preparation owns the frozen snapshot and the complete input. */
-  readonly preparation:AuthorOpeningPreparationV5|AuthorOpeningPreparationV6
+  readonly preparation:AuthorOpeningPreparationV6
   readonly combinedProgramSha256:string
   /** Small projection metadata from the same checked epoch. Complete raw
    * descriptors remain in preparation; scope reads never infer membership. */

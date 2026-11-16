@@ -644,7 +644,18 @@ export function createRoleplayMvuOpening(deps) {
             }
         },
         readAuthorSource: source.readAuthorSource, authorSourceCurrent: source.authorSourceCurrent,
-        createSchemaSelection, hasSchemaOpening, readSchemaInitialization,
+        prepareBrowserSource: (id, index) => schemaCore?.prepareBrowserSource(id, index) ?? Promise.resolve(undefined),
+        prepareTrialSource: (...args) => {
+            if (!schemaCore)
+                throw Error('SCHEMA_RUNTIME_UNAVAILABLE');
+            return schemaCore.prepareTrialSource(...args);
+        },
+        createSchemaSelection, hasSchemaOpening, browserOpeningSelection, readSchemaInitialization,
+        generatedOpening: schemaCore ? {
+            catalog: deps.catalog,
+            prepareGeneratedSource: schemaCore.prepareGeneratedSource, beginGeneratedOpening: schemaCore.beginGeneratedOpening,
+            finishGeneratedOpening: schemaCore.finishGeneratedOpening, releaseGeneratedOpening: schemaCore.releaseGeneratedOpening
+        } : undefined,
         createSchemaStory, readSchemaSnapshot: (id) => schemaStory?.readSnapshot(id),
         readSchemaObservation: (id) => schemaStory?.readSchemaObservation(id),
         captureSettledStoryMessages: (id, selection) => schemaStory?.captureSettledStoryMessages(id, selection),

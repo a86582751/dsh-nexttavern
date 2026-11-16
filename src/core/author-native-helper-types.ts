@@ -4,10 +4,30 @@ import type {MvuJsonObject,MvuJsonValue} from './tavern-mvu-initvar.js'
 import type {MvuMessageTargetV1,MvuPlayerEditExpected} from './roleplay-mvu-player-types.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 import type {PromptCapturedMessageV1} from './tavern-author-prompt-types.mjs'
-import type {AuthorNamedWorldbookDataV1,AuthorNamedWorldbookDataV2} from './roleplay-author-worldbook-data.js'
+import type {AuthorNamedWorldbookDataV3} from './roleplay-author-worldbook-data.js'
 import type {NativePersonaDataV1,NativeBrowserCharacterV1} from './roleplay-native-persona-types.js'
 import type {CanonicalAuthorChatStateV1} from './roleplay-author-chat-state.js'
 import type {AuthorNativeMvuHookRequest,AuthorNativeMvuHookResult} from './author-native-mvu-hook-types.js'
+import type {AuthorCharacterLibraryPacketV1} from './roleplay-author-character-library.js'
+
+export type AuthorNativeLibraryReadV1=
+  |{readonly kind:'preset';readonly revision:number;readonly selector:string;
+    readonly operation:'value'|'names'|'loaded'|'regex'|'global-regex'}
+  |{readonly kind:'character';readonly epoch:string;readonly selector:string;readonly operation:'regex'|'bindings'}
+export interface AuthorNativeRealmLibraryReadV1 {
+  readonly realmId:string
+  readonly attachment?:AuthorNativeBindingV1|import('./reader-regex-document-types.mjs').ReaderRegexDocumentBindingV1
+  readonly read:AuthorNativeLibraryReadV1
+}
+export interface AuthorNativeResolvedLibraryReadV1 extends AuthorNativeRealmLibraryReadV1 {
+  /** DATA resolved from the exact packet delivered to this realm. */
+  readonly value:unknown
+}
+export interface AuthorNativeLibraryReadCaptureV1 {
+  readonly libraryReads:readonly AuthorNativeLibraryReadV1[]
+  readonly presetRevision?:number
+  readonly characterEpoch?:string
+}
 
 export interface AuthorNativeBindingV1 {
   readonly browserSessionId:string
@@ -25,6 +45,7 @@ export interface AuthorNativeDiagnosticV1 {
   readonly feature?:string
 }
 export interface AuthorNativeChatMessageSnapshotV1 {
+  readonly authorMetadata?:import('dsh-nexttavern-native-llm/types').Message['authorMetadata']
   readonly position:number
   readonly ownerSessionId:string
   readonly nativeSeq:number
@@ -45,9 +66,23 @@ export type AuthorNativeTavernRegexV1=Readonly<Record<string,MvuJsonValue>>
  * An absent scope means unavailable; an owned empty catalogue is an empty list. */
 export interface AuthorNativeCurrentTavernRegexesV1 {
   readonly global?:readonly AuthorNativeTavernRegexV1[]
-  readonly character?:{readonly name:string;readonly rules:readonly AuthorNativeTavernRegexV1[]}
+  readonly character?:{readonly name:string;readonly rules:readonly AuthorNativeTavernRegexV1[];
+    readonly metadata?:{readonly registration:import('./roleplay-author-source-context.js').AuthorSourceContextRegistrationV1;
+      readonly identitySha256:string;readonly sourceSha256:string;readonly revision:number}}
 }
 export interface AuthorNativeSnapshotDataV1 {
+  readonly context?:Readonly<Record<string,unknown>>
+  readonly formatter?:{
+    readonly macros:import('./tavern-prompt-transform-types.mjs').TavernPromptMacroSnapshotV1
+    readonly rules:readonly import('./tavern-prompt-transform-types.mjs').TavernPromptRegexRuleV1[]
+    readonly regexDisabled:boolean
+  }
+  /** Frozen preparation read projection. Ordinary writers use sharedScopes. */
+  readonly preparedSharedScopes?:{
+    readonly global?:import('./tavern-template-types.mjs').TavernTemplateScopeBindingV1
+  }
+  readonly sharedScopes?:import('./roleplay-author-scope-owner.js').AuthorSharedScopeSnapshotsV1
+  readonly scriptButtons?:AuthorNativeScriptButtonsSnapshotV1
   readonly readonlyPreset?:import('./community-presets.js').CommunityReadonlyPresetV1
   readonly tavernRegexes?:AuthorNativeCurrentTavernRegexesV1
   /** Loadable owner-selected DATA for opaque realms; persona/card avatar IDs
@@ -62,12 +97,26 @@ export interface AuthorNativeSnapshotDataV1 {
   readonly messages:readonly PromptCapturedMessageV1[]
   readonly numerical:AuthorNativeNumericalSnapshotV1
   readonly persona:{readonly name:string;readonly gender?:string;readonly avatar:string|null}
-  readonly worldbook?:Omit<AuthorNamedWorldbookDataV1,'members'>|Omit<AuthorNamedWorldbookDataV2,'members'>
+  readonly worldbook?:AuthorNamedWorldbookDataV3
   readonly personas?:NativePersonaDataV1
   readonly character?:NativeBrowserCharacterV1
   readonly ordinaryChat:ReturnType<CanonicalAuthorChatStateV1['captureNamespaceV3']>
   readonly ordinaryMessages?:readonly import('./tavern-author-prompt-types.mjs').AuthorOrdinaryMessageCaptureV1[]
   readonly ordinaryPublicationSeq?:number|null
+}
+export interface AuthorNativeScriptButtonsSnapshotV1 {
+  readonly sourceSha256:string
+  readonly revision:number
+  readonly scripts:readonly {readonly scriptId:string;readonly enabled:boolean;
+    readonly buttons:readonly {readonly name:string;readonly visible:boolean}[]}[]
+}
+export interface AuthorNativeScriptButtonsRequestV1 {
+  readonly operationId:string
+  readonly realmId:string
+  readonly expectedSourceSha256:string
+  readonly expectedRevision:number
+  readonly previousOperationId?:string
+  readonly buttons:readonly {readonly name:string;readonly visible:boolean}[]
 }
 export interface AuthorNativeComposerAccessV1 {
   read():string
@@ -83,7 +132,6 @@ export interface AuthorNativeSourceEventV1 {
 export interface AuthorNativeHelperSnapshotV1 extends AuthorNativeSnapshotDataV1 {
   readonly schemaVersion:1
   readonly encoding:'author-native-helper-snapshot-v1'
-  readonly context?:Readonly<Record<string,unknown>>
 }
 /** Effective ordinary data for the actual single enabled script in a realm.
  * Source resource reads retain their separate immutable descriptor DATA. */
@@ -108,15 +156,20 @@ export interface AuthorNativeHelperRequestV1 {
   readonly readScope?:string
 }
 export interface AuthorNativeHelperReplyV1 {
+  readonly presetLibrary?:import('./community-preset-types.js').CommunityAuthorPresetCatalogV1
   readonly value?:unknown
   readonly snapshot?:AuthorNativeHelperSnapshotV1
   readonly readScope?:string
 }
 export interface AuthorNativeHelperHostV1 {
   request(binding:AuthorNativeHelperRealmBindingV1,request:AuthorNativeHelperRequestV1,
-    signal:AbortSignal):Promise<AuthorNativeHelperReplyV1>
+    signal:AbortSignal,sourceWriteStarted?:()=>void):Promise<AuthorNativeHelperReplyV1>
 }
 export interface AuthorNativeHelperFrameOptionsV1 {
+  readonly attachment?:AuthorNativeBindingV1
+  readonly presetLibrary?:import('./community-preset-types.js').CommunityAuthorPresetCatalogV1
+  readonly characterLibrary?:AuthorCharacterLibraryPacketV1
+  readonly eventRoute?:AuthorNativeSessionEventRoute
   readonly parentOrigin:string
   readonly resource:AuthorNativeHelperResourceV1
   readonly documentLayout?:ReaderDocumentLayoutSettings
@@ -124,7 +177,44 @@ export interface AuthorNativeHelperFrameOptionsV1 {
   current():boolean
   failed?(code:string):void
 }
+/** Ephemeral delivery for the currently attached native realms. */
+export interface AuthorNativeSessionEventRoute {
+  register(deliver:(event:string,args:readonly unknown[],requested?:boolean,operationId?:string)=>Promise<readonly unknown[]|void>,current:()=>boolean,
+    generationOwner?:{readonly realmId:string;
+      readonly attachment?:AuthorNativeBindingV1|import('./reader-regex-document-types.mjs').ReaderRegexDocumentBindingV1;
+      invokeFilter(callbackId:string,operationId:string,consumer:'scan'|'chat'):Promise<boolean>;
+      trialInterests?():Promise<readonly import('./tavern-mvu-update-protocol-v1.js').Mvu196HookStage[]>;
+      invokeTrialHook?(stage:import('./tavern-mvu-update-protocol-v1.js').Mvu196HookStage,
+        graph:import('./author-native-mvu-hook-graph.js').AuthorNativeMvuHookGraphV1)
+        :Promise<import('./author-native-mvu-hook-graph.js').AuthorNativeMvuHookGraphV1>;
+      captureLibraryReads():Promise<readonly AuthorNativeLibraryReadV1[]>;
+      retireFilters(generationId:string,ids:readonly string[]):void;cancel(operationId:string):void}):{
+    emit(event:string,args:readonly unknown[],excludeSelf?:boolean):Promise<void>
+    transform(event:string,args:readonly unknown[],operationId?:string):Promise<readonly unknown[]>
+    dispose():void
+  }
+  emit(event:string,args:readonly unknown[]):Promise<void>
+  transform(event:string,args:readonly unknown[],operationId?:string):Promise<readonly unknown[]>
+  captureMvuTrialHooks():Promise<import('../ui/author-native-mvu-trial.js').AuthorNativeMvuTrialHooksV1>
+  invokeGenerationFilter(descriptor:AuthorNativeGenerationFilterV1,operationId:string,consumer:'scan'|'chat'):Promise<boolean>
+  retireGenerationFilters(generationId:string,descriptors:readonly AuthorNativeGenerationFilterV1[]):void
+  captureGenerationLibraryReads():Promise<readonly AuthorNativeRealmLibraryReadV1[]>
+  reserveGeneration(input:{readonly generationId:string;readonly operationId:string;readonly silence:boolean;
+    cancel():void|Promise<void>}):{current():boolean;release():void;cancel():boolean;setSilence(value:boolean):void}
+  stopGeneration(generationId:string):boolean
+  stopAllGenerations():boolean
+  generationStatus():readonly {readonly generationId:string;readonly silence:boolean}[]
+  subscribeGenerations(listener:()=>void):()=>void
+  dispose():void
+}
+export interface AuthorNativeGenerationFilterV1 {
+  readonly kind:'author-generation-filter';readonly realmId:string;readonly callbackId:string;readonly generationId:string;readonly operationId:string
+}
 export interface AuthorNativeHelperFrameControllerV1 {
+  cancelGeneration(operationId:string):void
+  captureLibraryReads():Promise<AuthorNativeLibraryReadCaptureV1>
+  updateCharacterLibrary?(packet:AuthorCharacterLibraryPacketV1):void
+  updatePresetLibrary?(catalog:import('./community-preset-types.js').CommunityAuthorPresetCatalogV1):void
   readonly started:Promise<void>
   readonly disposed:Promise<void>
   readonly hardTermination:'unavailable'
@@ -134,7 +224,8 @@ export interface AuthorNativeHelperFrameControllerV1 {
   generationCallbacks():Promise<readonly AuthorNativeHelperGenerationCallbackV1[]>
   invokeGeneration(invocation:AuthorNativeHelperGenerationInvocationV1,
     signal:AbortSignal):Promise<AuthorNativeHelperGenerationResultV1>
-  invokeFilter(invocation:AuthorNativeFilterInvocationV1,signal:AbortSignal):Promise<boolean>
+  invokeFilter(invocation:AuthorNativeFilterInvocationV1,signal:AbortSignal):Promise<{
+    readonly accepted:boolean;readonly libraryReads?:readonly AuthorNativeLibraryReadV1[]}>
   retireFilterCallbacks(ids:readonly string[]):void
   invokeMvuHook(invocation:{readonly invocationId:string;readonly request:AuthorNativeMvuHookRequest;
     readonly callbackIds:readonly string[]},signal:AbortSignal):Promise<AuthorNativeHelperMvuHookResultV1>
@@ -146,6 +237,7 @@ export interface AuthorNativeInjectionPromptV1 {
   readonly filterCallbackId?:string
 }
 export interface AuthorNativePromptMutationRequestV1 {
+  readonly libraryReads?:readonly AuthorNativeLibraryReadV1[]
   readonly operationId:string;readonly realmId:string;readonly resource:AuthorNativeHelperResourceV1
   readonly mutation:{readonly kind:'register';readonly prompts:readonly AuthorNativeInjectionPromptV1[];readonly once:boolean}
     |{readonly kind:'remove-ids';readonly ids:readonly string[];readonly registrationOperationId?:string}
@@ -187,6 +279,7 @@ export interface AuthorNativeHelperGenerationResultV1 {
   readonly invocationId:string
   readonly callbackIds:readonly string[]
   readonly effects:readonly AuthorNativeHelperGenerationEffectV1[]
+  readonly libraryReads?:readonly AuthorNativeLibraryReadV1[]
 }
 export type AuthorNativeHelperProgramV1=AuthorNativeProgramV1
 export interface AuthorNativeHelperMvuHookResultV1 {

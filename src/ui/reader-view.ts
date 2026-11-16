@@ -13,6 +13,7 @@ import type { ActivityState, ActivityComponents } from './activity-view.js';
 import { normalizeConversationNodes, readerNodeSeq, readerMessageId, readerText, readerTime, usageTokens, formatReaderTime } from './reader-model.js';
 import { scopeReaderCss, READER_BASE_CSS,renderReaderNarrative } from './reader-rendering.js';
 import {createAuthorBrowserSession,type AuthorBrowserStatus} from './author-browser-session.js';
+import {createAuthorNativeSessionEventRouter,createAuthorNativeNavigationOwner} from './author-native-session-events.js';
 import {createReaderRegexDocumentSession,type ReaderRegexDocumentStatusV1} from './reader-regex-document-session.js';
 import {createAuthorReaderSurface} from '../core/tavern-author-reader-surface.js';
 import type {AuthorReaderSurface,AuthorReaderSurfaceLayout} from '../core/tavern-author-reader-surface.js';
@@ -184,6 +185,7 @@ React,
      frontendSettings = createReaderFrontendSettings(),
      navigate
 }: ReaderDependencies) {
+    const navigationOwner=createAuthorNativeNavigationOwner();
     const noopSnapshotHook = () => null;
     const actionProps = (part: ReaderPart, sessionId: string): ReaderActionProps => ({
         sessionId, kind: part.kind, text: part.text, time: part.time,
@@ -270,6 +272,8 @@ React,
         const historyRequestRef = React.useRef<object | null>(null);
         const historyAnchorRef = React.useRef<HistoryAnchor | null>(null);
         const readerSessionRef = React.useRef(sessionId);
+        const navigationTargetRef=React.useRef<ReturnType<typeof navigationOwner.select>|null>(null);
+        const nativeEventRouteRef=React.useRef<ReturnType<typeof createAuthorNativeSessionEventRouter>|null>(null);
         const stateRequestRef = React.useRef(0);
         const browserContainerRef = React.useRef<HTMLDivElement>(null);
         const browserControllerRef = React.useRef<ReturnType<typeof createAuthorBrowserSession> | null>(null);
@@ -781,6 +785,16 @@ React,
             return ()=>observer.disconnect();
         }, [actualSharedFramed,activeReaderLayout,readerSurfacePayload]);
         React.useEffect(() => {
+            const route=createAuthorNativeSessionEventRouter();nativeEventRouteRef.current=route;
+            const target=sessionId&&resolveActiveSessionId()===sessionId?navigationOwner.select(sessionId,route,
+                ()=>readerSessionRef.current===sessionId&&resolveActiveSessionId()===sessionId):null;
+            navigationTargetRef.current=target;
+            const unsubscribe=route.subscribeGenerations(()=>setAuxiliaryGenerations(route.generationStatus()));
+            setAuxiliaryGenerations([]);
+            return ()=>{target?.dispose();unsubscribe();route.dispose();
+                if(nativeEventRouteRef.current===route)nativeEventRouteRef.current=null;};
+        },[sessionId]);
+        React.useEffect(() => {
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay'
                 || !readerDocumentContainerRef.current) return;
             const controller = createReaderRegexDocumentSession({sessionId,container: readerDocumentContainerRef.current,nativeLibraries,
@@ -839,6 +853,10 @@ React,
                 void browserControllerRef.current?.refresh();
             }
         }, [state, sessionId]);
+        React.useEffect(()=>{
+            readerDocumentControllerRef.current?.setSourceEventsEnabled(
+                browserStatus.kind==='inactive'||browserStatus.kind==='failed');
+        },[sessionId,browserStatus.kind,readerExecution]);
         // Native history prepends must not push the paragraph under the pointer
         // off-screen. Keep a DOM row anchor, not a scrollHeight approximation:
         // author HTML can change height after the response arrives.

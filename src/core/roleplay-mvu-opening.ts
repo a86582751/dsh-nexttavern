@@ -89,6 +89,8 @@ export interface MvuOpeningDependencies {
   recoverSchemaRevisionPrefix?:MvuSchemaStoryCoreDeps['recoverRevisionPrefix']
   readSchemaEditInvalidation?:MvuSchemaStoryCoreDeps['readEditInvalidation']
   prepareMvuHook?:import('./author-native-mvu-hook-types.js').PrepareAuthorNativeMvuHook
+  awaitBrowserSource?(sessionId:string,programSha256:string,signal:AbortSignal):Promise<void>
+  readMvuHookInterests?(sessionId:string):readonly import('./tavern-mvu-update-protocol-v1.js').Mvu196HookStage[]
   /** Private actual product/Native owner. No persisted capability satisfies it. */
   promptTemplateRuntime?:PromptTemplateOnlyRuntimeOwnerV1
   /** Private frozen inheritance reader for the independent v2 domain. It
@@ -643,7 +645,16 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       }catch{return undefined}
     },
     readAuthorSource:source.readAuthorSource,authorSourceCurrent:source.authorSourceCurrent,
-    createSchemaSelection,hasSchemaOpening,readSchemaInitialization,
+    prepareBrowserSource:(id:string,index:number)=>schemaCore?.prepareBrowserSource(id,index)??Promise.resolve(undefined),
+    prepareTrialSource:(...args:Parameters<ReturnType<typeof createRoleplayMvuSchemaCore>['prepareTrialSource']>)=>{
+      if(!schemaCore)throw Error('SCHEMA_RUNTIME_UNAVAILABLE')
+      return schemaCore.prepareTrialSource(...args)
+    },
+    createSchemaSelection,hasSchemaOpening,browserOpeningSelection,readSchemaInitialization,
+    generatedOpening:schemaCore?{
+      catalog:deps.catalog,
+      prepareGeneratedSource:schemaCore.prepareGeneratedSource,beginGeneratedOpening:schemaCore.beginGeneratedOpening,
+      finishGeneratedOpening:schemaCore.finishGeneratedOpening,releaseGeneratedOpening:schemaCore.releaseGeneratedOpening}:undefined,
     createSchemaStory,readSchemaSnapshot:(id:string)=>schemaStory?.readSnapshot(id),
     readSchemaObservation:(id:string)=>schemaStory?.readSchemaObservation(id),
     captureSettledStoryMessages:(id:string,selection?:{nativeCut:number;historical?:true})=>schemaStory?.captureSettledStoryMessages(id,selection),

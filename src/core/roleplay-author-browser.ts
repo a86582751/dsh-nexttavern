@@ -1,3 +1,4 @@
+import type {AuthorNativeLifecyclePublisher} from './author-native-lifecycle.js'
 /** Core owns attachment lifetime; the existing Native player owns every write.
  * Retained compiled DATA never reconstructs an attachment after Core disposal. */
 import {randomUUID} from 'node:crypto'
@@ -61,6 +62,21 @@ export interface AuthorBrowserCapturedFactsV3 {
 }
 export type AuthorBrowserCapturedFacts=AuthorBrowserCapturedFactsV3
 interface Dependencies {
+  mvuTrial?:ReturnType<typeof import('./roleplay-author-mvu-trial.js').createRoleplayAuthorMvuTrialsV1>['handle']
+  releaseMvuTrials?(owner:object):void
+  mutateCharacterLibrary?(sid:string,operation:AuthorNativeCharacterLibraryMutationV1,current:()=>boolean,
+    signal:AbortSignal):Promise<AuthorNativeCharacterLibraryMutationResultV1>
+  retryCharacterLibrary?(sid:string,operation:AuthorNativeCharacterLibraryMutationV1,current:()=>boolean,
+    signal:AbortSignal):Promise<AuthorNativeCharacterLibraryMutationResultV1>
+  capturePresetLibrary?(sid:string):CommunityAuthorPresetCatalogV1
+  mutatePreset?(sid:string,program:AuthorNativeProgramV1,realm:AuthorNativeRealmV1,
+    operation:CommunityAuthorPresetOperationV1,originalCurrent:()=>boolean,signal:AbortSignal,
+    capturePublication?:()=>ReturnType<RoleplayInputSourceDataWindowV1['begin']>):Promise<CommunityAuthorPresetResultV1>
+  lifecycle?:AuthorNativeLifecyclePublisher
+  mutateScriptButtons?(sid:string,program:AuthorNativeProgramV1,realm:AuthorNativeRealmV1,
+    request:import('./author-native-helper-types.js').AuthorNativeScriptButtonsRequestV1,current:()=>boolean,
+    signal:AbortSignal,capturePublication?:()=>ReturnType<RoleplayInputSourceDataWindowV1['begin']>):
+      Promise<import('./roleplay-tavern-lore-edits-types.js').TavernAuthorMetadataMutationResultV1>
   editMessageBody?(sid:string,input:AuthorMessageEditInputV1,current:()=>boolean,signal:AbortSignal)
     :Promise<AuthorMessageEditResultV1>
   confirmMessageBody?(sid:string,operationId:string):Promise<AuthorMessageEditResultV1>|AuthorMessageEditResultV1
@@ -115,6 +131,10 @@ interface Dependencies {
   cleanupPrompts?(record:AuthorInjectionCleanupV1):void
 }
 interface Attachment {
+  readonly openingIndex?:number
+  readonly libraryReads:ReturnType<typeof createAuthorNativeLibraryReadsV1>
+  buttonPredecessors?:Map<string,string>
+  lastButtonPublication?:{sourceSha256:string;revision:number}
   readonly binding:BrowserBindingV1
   readonly program:AuthorNativeProgramV1
   readonly parentOrigins:Readonly<Record<string,string>>
@@ -130,7 +150,7 @@ interface Attachment {
   lastSnapshot?:AuthorBrowserSnapshot
   generationQueue?:ReturnType<typeof createRoleplayAuthorBrowserGeneration>
 }
-interface WaitingGeneration {
+interface WaitingReader {
   readonly sessionId:string
   readonly programSha256:string
   start(value:Attachment):void
@@ -145,12 +165,15 @@ const codeOf=(error:unknown)=>error instanceof Error&&/^[A-Z][A-Z0-9_]{0,95}$/.t
 export function createRoleplayAuthorBrowser(deps:Dependencies) {
   const attachments=new Map<string,Attachment>()
   const actionQueues=new Map<string,Promise<void>>()
-  const waitingGenerations=new Set<WaitingGeneration>()
+  const waitingGenerations=new Set<WaitingReader>()
+  const waitingSourceReaders=new Set<WaitingReader>()
   let disposed=false
   const fail=(code:string):never=>{throw Error(code)}
   const revoke=(value:Attachment)=>{
     deps.releaseMvuTrials?.(value)
     for(const waiting of waitingGenerations)if(waiting.sessionId===value.binding.sessionId
+      &&waiting.programSha256===value.program.programSha256)waiting.stop('BROWSER_ATTACHMENT_REVOKED')
+    for(const waiting of waitingSourceReaders)if(waiting.sessionId===value.binding.sessionId
       &&waiting.programSha256===value.program.programSha256)waiting.stop('BROWSER_ATTACHMENT_REVOKED')
     if(deps.cleanupPrompts) {
       deps.cleanupPrompts?.({schemaVersion:1,encoding:'native-author-injection-cleanup-v1',
@@ -162,10 +185,10 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     deps.releaseOwner?.(value.current)
     if(value.sourceLifetime)deps.releaseOwner?.(value.sourceLifetime)
   }
-  function retained(binding:BrowserBindingV1):Attachment {
+  function retained(binding:BrowserBindingV1,sourceOnly=false):Attachment {
     const value=attachments.get(binding.browserSessionId)
     if(!value||!sameBinding(value.binding,binding))return fail('BROWSER_ATTACHMENT_REVOKED')
-    if(!value.current()) {
+    if(!(sourceOnly?originalSourceLifetime(value)():value.current())) {
       revoke(value)
       return fail('BROWSER_ATTACHMENT_REVOKED')
     }
@@ -217,8 +240,9 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     if(disposed||attachments.get(value.binding.browserSessionId)!==value||!value.ownerCurrent()
       ||!sourceDataMutation&&!sourceCurrent()||!facts||!facts.current()
       ||facts.program.programSha256!==value.program.programSha256)return undefined
-    // Only the actual successful writer calls this path. External changes must
-    // pass retained(), whose old DATA currency still revokes the attachment.
+    // Successful writers and real MVU callback delivery use this path. The
+    // callback's ordinary successor refreshes its read cut while preserving
+    // the captured numerical cut. Other reads still pass retained().
     // Book/persona writers deliberately change their own DATA cut. Their actual
     // committed receipt may adopt fresh DATA for the exact same program/realm;
     // it cannot survive Stop, import, helper bytes or layout changes. Other
@@ -239,20 +263,54 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     return value.sourceLifetime=()=>!disposed&&attachments.get(value.binding.browserSessionId)===value
       &&value.ownerCurrent()&&facts.sourceCurrent()
   }
-  async function handleCurrent(input:AuthorBrowserRequest,signal:AbortSignal):Promise<AuthorBrowserReply> {
-    if(disposed)return {ok:false,code:'BROWSER_ATTACHMENT_REVOKED'}
-    if(input.action==='dispose') {
+  function runAction(binding:BrowserBindingV1|undefined,work:()=>Promise<AuthorBrowserReply>,serialize=true)
+    :Promise<AuthorBrowserReply> {
+    const invoke=async():Promise<AuthorBrowserReply>=>{
+      if(disposed)return {ok:false,code:'BROWSER_ATTACHMENT_REVOKED'}
+      const key=binding?.browserSessionId,before=key?attachments.get(key)?.facts.characterLibrary:undefined,
+        reply=await work(),after=key?attachments.get(key)?.facts.characterLibrary:undefined
+      if(reply.ok&&after&&after!==before) {
+        attachments.get(key!)!.libraryReads.deliverCharacter(after)
+        return {...reply,characterLibrary:after}
+      }
+      return reply
+    }
+    if(!binding)return invoke()
+    const key=binding.browserSessionId,previous=actionQueues.get(key)??Promise.resolve(),result=previous.then(invoke)
+    // A matched branch chooses its actual queue policy. Long calls wait for
+    // prior admission, then release the lane for their own RPC/completion.
+    if(!serialize)return result
+    const settled=result.then(()=>{},()=>{})
+    actionQueues.set(key,settled)
+    void settled.then(()=>{if(actionQueues.get(key)===settled)actionQueues.delete(key)})
+    return result
+  }
+  function withSession(sid:unknown,work:(session:{id:string})=>Promise<AuthorBrowserReply>,
+    binding?:BrowserBindingV1,serialize=true):Promise<AuthorBrowserReply> {
+    return runAction(binding,async()=>{
+      const session=await deps.resolveSession(sid)
+      if(!session)return {ok:false,code:'MVU_PLAYER_SESSION_INACTIVE'}
+      return work(session)
+    },serialize)
+  }
+  function withAttachment(binding:BrowserBindingV1,work:(session:{id:string},value:Attachment)=>Promise<AuthorBrowserReply>,
+    policy:{sourceOnly?:boolean;serialize?:boolean}={}):Promise<AuthorBrowserReply> {
+    return withSession(binding.sessionId,async session=>work(session,retained(binding,policy.sourceOnly)),
+      binding,policy.serialize)
+  }
+  async function handle(input:AuthorBrowserRequest,signal:AbortSignal=new AbortController().signal):Promise<AuthorBrowserReply> {
+    if(input.action==='dispose')return runAction(undefined,async()=>{
       const old=attachments.get(input.binding.browserSessionId)
       if(old&&sameBinding(old.binding,input.binding))revoke(old)
       return {ok:true,kind:'disposed'}
-    }
-    const sid=input.action==='attach'||input.action==='retry-worldbook'||input.action==='retry-persona'
-      ||input.action==='confirm-author-namespace'||input.action==='confirm-message-body'
-      ?input.sessionId:input.action==='confirm'||input.action==='retry'
-      ?input.operation.sessionId:input.binding.sessionId
-    const session=await deps.resolveSession(sid)
-    if(!session)return {ok:false,code:'MVU_PLAYER_SESSION_INACTIVE'}
-    if(input.action==='confirm-message-body') {
+    })
+    if(input.action==='retry-character-library')return withSession(input.sessionId,async session=>{
+      const owner=deps.captureOwner(session.id)
+      if(!owner||!deps.retryCharacterLibrary)return {ok:false,code:'AUTHOR_CHARACTER_LIBRARY_UNAVAILABLE'}
+      return {ok:true,kind:'character-library-mutated',value:await deps.retryCharacterLibrary(
+        session.id,input.operation,owner,signal)}
+    })
+    if(input.action==='confirm-message-body')return withSession(input.sessionId,async session=>{
       if(!deps.confirmMessageBody)return {ok:false,code:'AUTHOR_MESSAGE_EDIT_OWNER_UNAVAILABLE'}
       return {ok:true,kind:'message-body-confirmed',result:await deps.confirmMessageBody(session.id,input.operationId)}
     })
@@ -261,8 +319,8 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
       if(authorOrdinarySourceNamespaceV1(input.operation).sessionId!==session.id)return {ok:false,code:'AUTHOR_CHAT_BINDING_CHANGED'}
       return {ok:true,kind:'author-namespace-confirmed',
         receipt:await deps.confirmAuthorNamespace(session.id,input.operation)}
-    }
-    if(input.action==='retry-worldbook') {
+    })
+    if(input.action==='retry-worldbook')return withSession(input.sessionId,async session=>{
       const owner=deps.captureOwner(session.id)
       if(!owner||!deps.retryWorldbook)return {ok:false,code:'AUTHOR_WORLDBOOK_UNAVAILABLE'}
       // This is the parent operator's explicit recovery. Its durable receipt
@@ -275,86 +333,170 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
       // Account receipts survive a stopped Worker. Manual lookup does not
       // apply a missing operation or restore the original author callback.
       return {ok:true,kind:'persona-retried',result:deps.retryPersona(session.id,input.operationId,owner,signal)}
-    }
-    if(input.action==='confirm') {
+    })
+    if(input.action==='confirm')return withSession(input.operation.sessionId,async session=>{
       // A page reload only asks the existing player for durable facts. Absence
       // of an operation cannot enter submit's new-operation reservation path.
       return {ok:true,kind:'confirmed',result:await deps.confirm(input.operation)}
-    }
-    if(input.action==='retry') {
+    })
+    if(input.action==='retry')return withSession(input.operation.sessionId,async session=>{
       // This is the parent's explicit manual recovery command, using the same
       // Native player as the ordinary numerical editor. A lost child realm is
       // not an authority source; the actual Session/Agent and writer own it.
       const owner=deps.captureOwner(session.id)
       if(!owner)return {ok:false,code:'MVU_PLAYER_SESSION_INACTIVE'}
       return {ok:true,kind:'saved',result:await deps.submit(input.operation,owner)}
-    }
-    if(input.action==='attach') {
-      const owner=deps.captureOwner(session.id)
+    })
+    if(input.action==='attach')return withSession(input.sessionId,async session=>{
+      const owner=deps.captureSourceOwner?deps.captureSourceOwner(session.id):deps.captureOwner(session.id)
       if(!owner)return {ok:true,kind:'inactive',code:'BROWSER_SESSION_INACTIVE'}
       const facts=await deps.captureFacts(session.id,input.openingIndex)
       if(!facts)return {ok:true,kind:'inactive',code:'BROWSER_PROGRAM_UNAVAILABLE'}
       if(!owner()||!facts.current())return fail('BROWSER_ATTACHMENT_REVOKED')
-      let value=input.binding?attachments.get(input.binding.browserSessionId):undefined
+      let value=input.binding?attachments.get(input.binding.browserSessionId):undefined,created=false
       if(value&&(value.binding.sessionId!==session.id||!sameBinding(value.binding,input.binding!)||!value.current()
         ||value.program.programSha256!==facts.program.programSha256)) {
         revoke(value)
         value=undefined
       }
       if(!value) {
+        created=true
         const binding={browserSessionId:randomUUID(),generation:randomUUID(),sessionId:session.id,
           programSha256:facts.program.programSha256}
         const parentOrigins=await deps.acquireParentOrigins([...new Set(facts.program.realms.map(realm=>realm.groupId))])
-        value={binding,program:facts.program,parentOrigins,realms:new Map(facts.program.realms.map(realm=>[realm.realmId,realm])),
+        value={binding,program:facts.program,openingIndex:input.openingIndex,parentOrigins,
+          realms:new Map(facts.program.realms.map(realm=>[realm.realmId,realm])),
+          libraryReads:createAuthorNativeLibraryReadsV1(facts.program.realms.map(realm=>realm.realmId)),
           readRevision:0,facts,ownerCurrent:owner,
           resources:facts.resources,
           current:()=>!disposed&&value!==undefined&&attachments.get(binding.browserSessionId)===value
             &&value.ownerCurrent()&&value.facts.current()}
         attachments.set(binding.browserSessionId,value)
         value.generationQueue=createRoleplayAuthorBrowserGeneration({
-          binding,program:facts.program,current:value.current})
+          binding,program:facts.program,current:value.current,
+          resolveLibraryReads:value.libraryReads.resolve,
+          lifecycle:deps.lifecycle?.subscribe(session.id),sourceCurrent:originalSourceLifetime(value)})
       }
       const catalog=deps.capturePresetLibrary?.(session.id),presetLibrary=catalog&&(created||input.presetRevision!==catalog.revision)?catalog:undefined
       if(catalog)value.libraryReads.deliverPreset(catalog)
       if(facts.characterLibrary)value.libraryReads.deliverCharacter(facts.characterLibrary)
       return {ok:true,kind:'attached',attachment:{schemaVersion:1,encoding:'author-native-helper-attachment-v1',
-        binding:value.binding,program:value.program,parentOrigins:value.parentOrigins,snapshot:project(value,facts)}}
+        binding:value.binding,program:value.program,parentOrigins:value.parentOrigins,snapshot:project(value,facts),
+        ...facts.characterLibrary&&(created||input.characterEpoch!==facts.characterLibrary.epoch)
+          ?{characterLibrary:facts.characterLibrary}:{},
+        ...presetLibrary?{presetLibrary}:{}}}
+    },input.binding)
+    if(input.action==='mvu-trial') {
+      if(input.request.action==='close')return runAction(input.binding,async()=>{
+        const value=attachments.get(input.binding.browserSessionId)
+        const result=value&&sameBinding(value.binding,input.binding)&&deps.mvuTrial&&value.lastSnapshot
+          ?await deps.mvuTrial(value,value.binding.sessionId,value.lastSnapshot,input.request,()=>false,signal)
+          :{kind:'closed' as const}
+        return {ok:true,kind:'mvu-trial',result}
+      })
+      return withAttachment(input.binding,async(session,value)=>{
+        nativeRealm(value,input.realmId)
+        if(!deps.mvuTrial||!value.lastSnapshot)return {ok:false,code:'AUTHOR_NATIVE_MVU_TRIAL_UNAVAILABLE'}
+        return {ok:true,kind:'mvu-trial',result:await deps.mvuTrial(value,session.id,value.lastSnapshot,
+          input.request,originalSourceLifetime(value),signal)}
+      },{sourceOnly:true})
     }
-    const value=retained(input.binding)
-    if(input.action==='mutate-message-body'||input.action==='retry-message-body') {
-      if(!deps.editMessageBody)return {ok:false,code:'AUTHOR_MESSAGE_EDIT_OWNER_UNAVAILABLE'}
-      const realm=nativeRealm(value,input.realmId),request:AuthorMessageBodyRequestV1=input.request
-      if(!authorMessageBodyRequestValid(request))return {ok:false,code:'AUTHOR_MESSAGE_EDIT_REQUEST_INVALID'}
-      if(input.action==='mutate-message-body') {
-        const snapshot=input.read.kind==='generation'?value.generationQueue?.snapshotFor(input.read.invocationId)
-          :value.lastSnapshot?.readRevision===input.read.readRevision?value.lastSnapshot:undefined,
-          expected=request.expected,row=snapshot?.messages.find(message=>message.nativeSeq===expected.seq
-            &&message.messageId===expected.messageId)
-        if(!snapshot||snapshot.readRevision!==request.readRevision||!row||row.nativeSeq===null
-          ||expected.sessionId!==session.id||row.role!==expected.role
-          ||row.messageVersionSha256!==expected.messageVersionSha256)return {ok:false,code:'READER_READ_BASIS_CHANGED'}
-        if(row.variants||row.ordinary?.selectedTarget.identity.variant.kind==='opening-variant')
-          return {ok:false,code:'AUTHOR_MESSAGE_EDIT_OPENING_VARIANTS_REQUIRED'}
-      }else {
-        if(input.sourceProgramSha256!==value.program.programSha256)
-          return {ok:false,code:'AUTHOR_MESSAGE_EDIT_SOURCE_CHANGED'}
-        const row=value.lastSnapshot?.messages.find(message=>message.nativeSeq===request.expected.seq
-          &&message.messageId===request.expected.messageId)
-        if(row?.variants||row?.ordinary?.selectedTarget.identity.variant.kind==='opening-variant')
-          return {ok:false,code:'AUTHOR_MESSAGE_EDIT_OPENING_VARIANTS_REQUIRED'}
+    if(input.action==='ack-library-reads')return withAttachment(input.binding,async(session,value)=>{
+      value.libraryReads.resolve(input.captures.flatMap(capture=>capture.libraryReads.map(read=>({realmId:capture.realmId,read}))))
+      value.libraryReads.releaseDeliveredHistory({
+        presetRevisions:input.captures.flatMap(capture=>capture.presetRevision===undefined?[]:[capture.presetRevision]),
+        characterEpochs:input.captures.flatMap(capture=>capture.characterEpoch===undefined?[]:[capture.characterEpoch])})
+      return {ok:true,kind:'library-reads-acknowledged'}
+    })
+    if(input.action==='character-regex-replace'||input.action==='named-character-worldbook-bind')
+      return withAttachment(input.binding,async(session,value)=>{
+        if(!deps.mutateCharacterLibrary)return {ok:false,code:'AUTHOR_CHARACTER_LIBRARY_UNAVAILABLE'}
+        const request=input.request,packet=value.facts.characterLibrary,
+          entry=packet?.entries.find(candidate=>candidate.registration.locator.ownerSessionId===request.ownerSessionId),
+          current=input.action==='character-regex-replace'&&request.epoch===undefined
+            ?value.facts.data.tavernRegexes?.character?.metadata:undefined,
+          registration=current?.registration??entry?.registration
+        nativeRealm(value,request.realmId)
+        if(!registration||request.target.sha256!==registration.sha256
+          ||request.ownerSessionId!==registration.locator.ownerSessionId
+          ||!current&&request.epoch!==packet?.epoch)return fail('AUTHOR_CHARACTER_LIBRARY_READ_CHANGED')
+        if(input.action==='character-regex-replace') {
+          const metadata=current??entry!.regex,regexRequest=input.request
+          if(regexRequest.expectedSourceSha256!==metadata.sourceSha256||regexRequest.expectedRevision!==metadata.revision
+            ||regexRequest.identitySha256!==metadata.identitySha256)return fail('AUTHOR_CHARACTER_LIBRARY_READ_CHANGED')
+        }else if(!sameAuthorWorldbookRefV1(input.request.expectedHead,entry!.binding.head))
+          return fail('AUTHOR_CHARACTER_LIBRARY_READ_CHANGED')
+        const sourceCurrent=originalSourceLifetime(value),operation=input.action==='character-regex-replace'
+          ?{kind:input.action,request:{...input.request,target:registration}} as const
+          :{kind:input.action,request:{...input.request,target:registration}} as const,
+          result=await deps.mutateCharacterLibrary(session.id,operation,sourceCurrent,signal)
+        let snapshot:AuthorBrowserSnapshot|undefined
+        if(result.kind==='committed'||result.kind==='edited-data')
+          try {snapshot=await adoptCommittedFacts(value,sourceCurrent,'source-data')}catch{}
+        return {ok:true,kind:'character-library-mutated',value:result,...snapshot?{snapshot}:{}}
+      })
+    if(input.action==='manage-preset')return withAttachment(input.binding,async(session,value)=>{
+      if(!deps.mutatePreset||!deps.capturePresetLibrary)return {ok:false,code:'AUTHOR_NATIVE_PRESET_UNAVAILABLE'}
+      const realm=nativeRealm(value,input.realmId),sourceCurrent=originalSourceLifetime(value)
+      let result:CommunityAuthorPresetResultV1
+      try {result=await deps.mutatePreset(session.id,value.program,realm,input.operation,sourceCurrent,signal,
+        value.generationQueue?.sourceDataFor(realm.realmId))}
+      catch(error) {
+        if(error instanceof CommunityAuthorPresetRefusalV1)return {ok:true,kind:'preset-refused',
+          operationId:error.operationId,code:error.code}
+        throw error
       }
-      const sourceCurrent=originalSourceLifetime(value),source=value.program.source,
-        result=await deps.editMessageBody(session.id,{schemaVersion:1,operationId:request.operationId,
-          expected:request.expected,text:request.text,origin:{sourceRecordSessionId:source.sourceRecordSessionId,
-            importId:source.importId,rawSha256:source.sourceSha256,realmId:realm.realmId,groupId:realm.groupId}},sourceCurrent,signal)
-      if(result.kind!=='committed'&&result.kind!=='unchanged')return {ok:true,kind:'message-body-mutated',result}
-      if(result.kind==='unchanged')return {ok:true,kind:'message-body-mutated',result,
-        ...value.current()&&value.lastSnapshot?{snapshot:value.lastSnapshot}:{}}
-      try {const snapshot=await adoptCommittedFacts(value,sourceCurrent)
-        return {ok:true,kind:'message-body-mutated',result,...snapshot?{snapshot}:{}}
-      }catch{return {ok:true,kind:'message-body-mutated',result}}
-    }
-    if(input.action==='execute-commands') {
+      let snapshot:AuthorBrowserSnapshot|undefined
+      try {snapshot=await adoptCommittedFacts(value,sourceCurrent,'source-data')}catch{}
+      const catalog=deps.capturePresetLibrary(session.id)
+      value.libraryReads.deliverPreset(catalog)
+      return {ok:true,kind:'preset-managed',result,catalog,...snapshot?{snapshot}:{}}
+    })
+    if(input.action==='mutate-message-body'||input.action==='retry-message-body')
+      return withAttachment(input.binding,async(session,value)=>{
+        if(!deps.editMessageBody)return {ok:false,code:'AUTHOR_MESSAGE_EDIT_OWNER_UNAVAILABLE'}
+        const realm=nativeRealm(value,input.realmId),request:AuthorMessageBodyRequestV1=input.request
+        if(!authorMessageBodyRequestValid(request))return {ok:false,code:'AUTHOR_MESSAGE_EDIT_REQUEST_INVALID'}
+        let selectedSnapshot:AuthorBrowserSnapshot|undefined
+        if(input.action==='mutate-message-body') {
+          const snapshot=input.read.kind==='generation'?value.generationQueue?.snapshotFor(input.read.invocationId)
+            :value.lastSnapshot?.readRevision===input.read.readRevision?value.lastSnapshot:undefined,
+            expected=request.expected,row=snapshot?.messages.find(message=>message.nativeSeq===expected.seq
+              &&message.messageId===expected.messageId)
+          if(!snapshot||snapshot.readRevision!==request.readRevision||!row||row.nativeSeq===null
+            ||expected.sessionId!==session.id||row.role!==expected.role
+            ||row.messageVersionSha256!==expected.messageVersionSha256)return {ok:false,code:'READER_READ_BASIS_CHANGED'}
+          selectedSnapshot=snapshot
+          if((row.variants||row.ordinary?.selectedTarget.identity.variant.kind==='opening-variant')
+            &&(!request.patch||request.text!==row.message))
+            return {ok:false,code:'AUTHOR_MESSAGE_EDIT_OPENING_VARIANTS_REQUIRED'}
+        }else {
+          if(input.sourceProgramSha256!==value.program.programSha256)
+            return {ok:false,code:'AUTHOR_MESSAGE_EDIT_SOURCE_CHANGED'}
+          const row=value.lastSnapshot?.messages.find(message=>message.nativeSeq===request.expected.seq
+            &&message.messageId===request.expected.messageId)
+          selectedSnapshot=value.lastSnapshot
+          if((row?.variants||row?.ordinary?.selectedTarget.identity.variant.kind==='opening-variant')
+            &&(!request.patch||request.text!==row.message))
+            return {ok:false,code:'AUTHOR_MESSAGE_EDIT_OPENING_VARIANTS_REQUIRED'}
+        }
+        const row=selectedSnapshot?.messages.find(message=>message.nativeSeq===request.expected.seq
+          &&message.messageId===request.expected.messageId),
+          ordinary=request.patch&&selectedSnapshot&&row?createAuthorNativeMessageVariables(selectedSnapshot).forMessage(row).capture:undefined,
+          sourceCurrent=originalSourceLifetime(value),source=value.program.source,
+          result=await deps.editMessageBody(session.id,{schemaVersion:1,operationId:request.operationId,
+            expected:request.expected,text:request.text,...request.patch?{patch:request.patch}:{},
+            ...ordinary?{ordinaryExpected:{root:ordinary.root,scopeRef:ordinary.scopeRef}}:{},
+            origin:{sourceRecordSessionId:source.sourceRecordSessionId,
+              importId:source.importId,rawSha256:source.sourceSha256,realmId:realm.realmId,groupId:realm.groupId}},sourceCurrent,signal)
+        if(result.kind!=='committed'&&result.kind!=='unchanged')return {ok:true,kind:'message-body-mutated',result}
+        if(result.kind==='unchanged')return {ok:true,kind:'message-body-mutated',result,
+          ...value.current()&&value.lastSnapshot?{snapshot:value.lastSnapshot}:{}}
+        try {const snapshot=await adoptCommittedFacts(value,sourceCurrent)
+          return {ok:true,kind:'message-body-mutated',result,...snapshot?{snapshot}:{}}
+        }catch{return {ok:true,kind:'message-body-mutated',result}}
+      })
+    if(input.action==='execute-commands')return withAttachment(input.binding,async(session,value)=>{
       const realm=nativeRealm(value,input.realmId)
       if(!deps.commands)return {ok:false,code:'AUTHOR_NATIVE_COMMANDS_UNAVAILABLE'}
       let sourceCurrent=originalSourceLifetime(value)
@@ -391,8 +533,8 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
       try {const refreshed=await adoptCommittedFacts(value,sourceCurrent)
         return {ok:true,kind:'opening-variants-mutated',result,...refreshed?{snapshot:refreshed}:{}}
       }catch{return {ok:true,kind:'opening-variants-mutated',result}}
-    }
-    if(input.action==='mutate-prompts') {
+    })
+    if(input.action==='mutate-prompts')return withAttachment(input.binding,async(session,value)=>{
       const realm=nativeRealm(value,input.request.realmId),resource=input.request.resource
       if(resource.browserSessionId!==value.binding.browserSessionId||resource.generation!==value.binding.generation)
         return {ok:false,code:'BROWSER_ATTACHMENT_REVOKED'}
@@ -563,20 +705,33 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
       // This read is synchronous after the attachment's live Source/Session/Stop
       // check. Resource addressing never creates a second permission owner.
       return {ok:true,kind:'source-resource',value:value.resources.read(input.request)}
-    }
-    if(input.action==='capture')return {ok:true,kind:'snapshot',snapshot:await snapshot(value)}
-    if(input.action==='generation-wait') {
+    })
+    if(input.action==='capture')return withAttachment(input.binding,async(_session,value)=>
+      ({ok:true,kind:'snapshot',snapshot:await snapshot(value)}))
+    if(input.action==='generation-wait')return withAttachment(input.binding,async(session,value)=>{
       if(!value.generationQueue)return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
-      const reader=value.generationQueue.wait(input.binding,input.registrations,signal)
+      const reader=value.generationQueue.wait(input.binding,input.registrations,signal,input.sourceCursor)
       // wait() installs the real Reader synchronously. Hand it to one matching
       // preparation now, before an asynchronous readiness notification can race.
       const waiting=[...waitingGenerations].find(row=>row.sessionId===value.binding.sessionId
         &&row.programSha256===value.program.programSha256)
       if(value.generationQueue.hasReader())waiting?.start(value)
+      for(const source of waitingSourceReaders)if(source.sessionId===value.binding.sessionId
+        &&source.programSha256===value.program.programSha256)source.start(value)
       const invocation=await reader
+      if(invocation.encoding==='author-native-lifecycle-invocation-v1'){
+        const snapshot=await adoptCommittedFacts(value,originalSourceLifetime(value))
+        if(!snapshot)fail('BROWSER_ATTACHMENT_REVOKED')
+        return {ok:true,kind:'generation-invocation',invocation:{...invocation,snapshot}}
+      }
+      if(invocation.encoding==='author-native-mvu-hook-invocation-v1'){
+        const snapshot=await adoptCommittedFacts(value,originalSourceLifetime(value),'ordinary')
+        if(!snapshot)fail('BROWSER_ATTACHMENT_REVOKED')
+        return {ok:true,kind:'generation-invocation',invocation:{...invocation,snapshot}}
+      }
       return {ok:true,kind:'generation-invocation',invocation}
-    }
-    if(input.action==='generation-complete') {
+    },{sourceOnly:true,serialize:false})
+    if(input.action==='generation-complete')return withAttachment(input.binding,async(session,value)=>{
       if(!sameBinding(input.binding,input.result.binding)||!value.generationQueue)
         return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
       value.generationQueue.complete(input.result)
@@ -646,25 +801,21 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     methods:['POST'],requestBody:'buffered',fetch:async(request:Request)=>{
       try {
         const text=await request.text()
-        if(Buffer.byteLength(text,'utf8')>2*1048576)return jsonResponse(413,{ok:false,code:'MVU_PLAYER_DATA_LIMIT'})
         let input:AuthorBrowserRequest
         try{input=JSON.parse(text)}catch{return jsonResponse(400,{ok:false,code:'BROWSER_REQUEST_INVALID'})}
-        if(!input||!['attach','capture','save','confirm','retry','dispose','mutate-opening-variants','generation-wait','generation-complete',
-          'mvu-hook-complete','generate-raw','execute-commands','read-source-resource','mutate-worldbook','retry-worldbook',
-          'mutate-persona','retry-persona','cleanup-prompts','mutate-prompts','filter-complete',
-          'mutate-message-body','confirm-message-body','retry-message-body',
-          'mutate-author-namespace','confirm-author-namespace','retry-author-namespace'].includes(input.action)) {
+        if(!input||typeof input!=='object'||Array.isArray(input))
           return jsonResponse(400,{ok:false,code:'BROWSER_REQUEST_INVALID'})
         // Image bytes enter the attachment owner's ordinary batch admission.
         // The numerical edit envelope cap does not describe image uploads.
         if(input?.action!=='start-author-generation'&&Buffer.byteLength(text,'utf8')>2*1048576)
           return jsonResponse(413,{ok:false,code:'MVU_PLAYER_DATA_LIMIT'})
         const result=await handle(input,request.signal)
-        return jsonResponse(result.ok?200:409,result)
+        return jsonResponse(result.ok?200:result.code==='BROWSER_REQUEST_INVALID'?400:409,result)
       }catch(error){return jsonResponse(409,{ok:false,code:codeOf(error)})}
     }}),'roleplay: owned author browser attachment')
   const invalidateSession=(sid:string)=>{
     for(const waiting of waitingGenerations)if(waiting.sessionId===sid)waiting.stop('BROWSER_ATTACHMENT_REVOKED')
+    for(const waiting of waitingSourceReaders)if(waiting.sessionId===sid)waiting.stop('BROWSER_ATTACHMENT_REVOKED')
     for(const value of attachments.values())if(value.binding.sessionId===sid)revoke(value)
   }
   async function invokeGeneration(sid:string,program:AuthorNativeProgramV1,capture:PromptCaptureV1,
@@ -706,7 +857,7 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
         return true
       }
       const abort=()=>waiting.stop('BROWSER_GENERATION_CANCELLED')
-      const waiting:WaitingGeneration={sessionId:sid,programSha256:program.programSha256,
+      const waiting:WaitingReader={sessionId:sid,programSha256:program.programSha256,
         start(value) {
           if(!cleanup())return
           try {resolve(invoke(value))}catch(error){reject(error)}
@@ -723,8 +874,32 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     })
   }
   const prepareHook:PrepareAuthorNativeMvuHook=async(request,signal)=>{
-    const value=[...attachments.values()].find(row=>row.binding.sessionId===request.sessionId&&row.current())
+    const value=[...attachments.values()].find(row=>row.binding.sessionId===request.sessionId&&originalSourceLifetime(row)())
     return value?.generationQueue?.prepareHook(request,signal)
+  }
+  const awaitReader=async(sid:string,programSha256:string,signal:AbortSignal,waitForAttachment=false)=>{
+    const value=[...attachments.values()].find(row=>row.binding.sessionId===sid
+      &&row.program.programSha256===programSha256&&originalSourceLifetime(row)())
+    if(value?.generationQueue){await value.generationQueue.awaitReader(signal);return}
+    if(!waitForAttachment)return fail('BROWSER_GENERATION_READER_REQUIRED')
+    if(disposed)return fail('BROWSER_ATTACHMENT_REVOKED')
+    await new Promise<void>((resolve,reject)=>{
+      const cleanup=()=>{
+        if(!waitingSourceReaders.delete(waiting))return false
+        signal.removeEventListener('abort',abort)
+        return true
+      }
+      const abort=()=>waiting.stop('BROWSER_GENERATION_CANCELLED')
+      const waiting:WaitingReader={sessionId:sid,programSha256,
+        start(attached){
+          if(!cleanup())return
+          attached.generationQueue!.awaitReader(signal).then(()=>resolve(),reject)
+        },
+        stop(code){if(cleanup())reject(Error(code))}}
+      waitingSourceReaders.add(waiting)
+      signal.addEventListener('abort',abort,{once:true})
+      if(signal.aborted)abort()
+    })
   }
   const invokeFilter=(binding:BrowserBindingV1,input:import('./author-native-helper-types.js').AuthorNativeFilterInvocationV1,
     signal:AbortSignal,sourceData?:RoleplayInputSourceDataWindowV1)=>retained(binding).generationQueue!.invokeFilter(input,signal,sourceData)
@@ -738,9 +913,17 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     nativeRealm(value,realmId)
     value.generationQueue!.retireFilterCallbacks({encoding:'author-native-injection-filter-retired-v1',realmId,resource,ids})
   }
-  return {handle,invokeGeneration,invokeFilter,retireFilterCallbacks,prepareHook,invalidateSession,dispose:()=>{
+  const hookInterests=(sid:string)=>[...attachments.values()].find(row=>row.binding.sessionId===sid&&originalSourceLifetime(row)())
+    ?.generationQueue?.hookInterests()??[]
+  function resolveLibraryReads(binding:BrowserBindingV1,reads:readonly import('./author-native-helper-types.js').AuthorNativeRealmLibraryReadV1[]) {
+    const value=attachments.get(binding.browserSessionId)
+    if(!value||!sameBinding(value.binding,binding)||!originalSourceLifetime(value)())return
+    return value.libraryReads.resolve(reads)
+  }
+  return {handle,invokeGeneration,invokeFilter,retireFilterCallbacks,prepareHook,awaitReader,hookInterests,invalidateSession,resolveLibraryReads,dispose:()=>{
     disposed=true
     for(const waiting of waitingGenerations)waiting.stop('BROWSER_ATTACHMENT_REVOKED')
+    for(const waiting of waitingSourceReaders)waiting.stop('BROWSER_ATTACHMENT_REVOKED')
     for(const value of attachments.values())revoke(value)
   }}
 }
