@@ -19,11 +19,37 @@ export interface TavernTemplateLoreBindingV1 {
   readonly content:string
   readonly contentSha256:string
   readonly activationAllowed:boolean
+  /** Detached fixed WorldInfoEntry DATA from the same raw/current Source row. */
+  readonly worldInfo?:TavernTemplateWorldInfoEntryV1
   /** Fixed primary-book lookup order is the array order. Repeated comments are
    * retained; getwi selects the first actual matching entry. */
   readonly lookup?:{readonly world:string;readonly title:string;readonly uid:number|null}
   /** Catalog staging never grants admission to unsupported transformed text. */
   readonly readDiagnostic?:{readonly code:string;readonly projectionSha256:string}
+}
+export interface TavernTemplateWorldInfoEntryV1 extends MvuJsonObject {
+  uid:number
+  world:string
+  comment:string
+  content:string
+  decorators:string[]
+  key:string[]
+  keysecondary:string[]
+  disable:boolean
+  constant:boolean
+  vectorized:boolean
+  order:number
+  position:number
+  depth:number
+}
+export interface TavernTemplateWorldInfoCatalogV1 {
+  readonly schemaVersion:1
+  readonly encoding:'source-world-info-catalog-v1'
+  readonly books:readonly {readonly bookId:string;readonly world:string}[]
+  readonly bindings:{readonly character:readonly string[];readonly global:readonly string[];
+    readonly persona:string|null;readonly characterExtra:readonly string[];readonly chat:string|null}
+  readonly defaultBookId:string|null
+  readonly authorsNoteDepth:number
 }
 export interface TavernTemplateFrozenSnapshotV1 {
   readonly schemaVersion:1
@@ -42,6 +68,7 @@ export interface TavernTemplateFrozenSnapshotV1 {
   readonly scopesSha256:string
   readonly lore:readonly TavernTemplateLoreBindingV1[]
   readonly loreSha256:string
+  readonly worldInfo?:TavernTemplateWorldInfoCatalogV1
   readonly clockEpochMs:number
   readonly randomSeed:string
   readonly randomSeedSha256:string
@@ -49,7 +76,7 @@ export interface TavernTemplateFrozenSnapshotV1 {
 }
 export interface TavernTemplateReadV1 {
   readonly kind:'variable'|'lore'
-  readonly purpose:'read'|'activation-proposal'
+  readonly purpose:'read'|'metadata-read'|'activation-proposal'
   readonly scope:TavernTemplateScopeV1|null
   readonly ownerId:string|null
   readonly key:string|null
@@ -71,6 +98,9 @@ export interface TavernTemplateActivationProposalV1 {
   readonly branchId:string
   readonly turnId:string
   readonly attemptId:string
+  /** The fixed public helper enables its overlay; force also overrides the
+   * entry's timed, recursion, grouping and budget controls in the evaluator. */
+  readonly mode?:'world-info'|'force-world-info'
 }
 export interface TavernTemplateDiagnosticV1 {
   readonly schemaVersion:1

@@ -1,10 +1,27 @@
-import type {TavernTemplateFrozenSnapshotV1,TavernTemplateReadV1,
+import type {TavernTemplateFrozenSnapshotV1,TavernTemplateReadV1,TavernTemplateScopeBindingV1,
   TavernTemplateActivationProposalV1,TavernTemplateInjectionEffectV1} from './tavern-template-types.mjs'
 import type {AuthorChatNamespaceRootV3,AuthorMessageTargetV3} from './roleplay-author-chat-state-types.js'
 import type {AuthorMessageViewV1} from './roleplay-author-message-capture.js'
 import type {AuthorOrdinaryMessageCaptureV1} from './tavern-author-prompt-types.mjs'
 import type {MvuJsonValue} from './tavern-mvu-initvar.js'
-import type {TavernPromptMacroSnapshotV1,TavernPromptTransformDiagnosticV1} from './tavern-prompt-transform-types.mjs'
+import type {TavernPromptMacroSnapshotV1,TavernPromptTransformDiagnosticV1,TavernPromptTransformInputV1} from './tavern-prompt-transform-types.mjs'
+
+export interface TavernEjsCapturedMessageV1 {
+  readonly index:number
+  readonly messageId:string
+  readonly messageVersionSha256:string
+  readonly depth:number
+  readonly name:string
+  readonly nameSource?:'message'|'user'|'character'
+  readonly isUser:boolean
+  readonly isSystem:boolean
+  readonly text:string
+}
+export interface TavernEjsCapturedMessagesV1 {
+  readonly rows:readonly TavernEjsCapturedMessageV1[]
+  readonly rules:TavernPromptTransformInputV1['rules']
+  readonly scriptOrder?:TavernPromptTransformInputV1['scriptOrder']
+}
 
 export interface TavernEjsVariableReadOptions {
   scope?:string;index?:string;indexPath?:boolean;noCache?:boolean;withMsg?:unknown
@@ -30,6 +47,33 @@ export interface TavernEjsResource {
    * Ordinary EJS partials retain their literal-source include contract. */
   readonly loreKey?:string
 }
+export interface TavernEjsNamedWorldInfoCaptureV1 {
+  readonly schemaVersion:1
+  readonly encoding:'source-named-worldbook-projection-v1'
+  readonly book:{readonly profileId:string;readonly bookId:string;readonly name:string;readonly revision:number;
+    readonly contentRef:{readonly key:string;readonly sha256:string};readonly metadataRef:{readonly key:string;readonly sha256:string}}
+  readonly lore:readonly import('./tavern-template-types.mjs').TavernTemplateLoreBindingV1[]
+}
+export type TavernEjsCurrentCharacterV1={readonly sourcePointer:string;readonly sourceSnapshotSha256:string;
+  readonly data:Readonly<Record<string,unknown>>}
+  |{readonly unavailable:'NATIVE_CHARACTER_MAPPING_REQUIRED'|'COMMUNITY_CARD_MAPPING_REQUIRED'}
+export type TavernEjsCapturedReadRequestV1={readonly kind:'named-world-info';readonly name:string}
+  |{readonly kind:'character-directory'}
+  |{readonly kind:'character-data';readonly characterId:string}
+export type TavernEjsCapturedReadResultV1=
+  |{readonly schemaVersion:1;readonly kind:'found';readonly value:TavernEjsNamedWorldInfoCaptureV1}
+  |{readonly schemaVersion:1;readonly kind:'not-found';readonly catalog:{readonly profileId:string;
+    readonly head:{readonly key:string;readonly sha256:string}|null;readonly revision:number}}
+  |{readonly schemaVersion:1;readonly kind:'character-directory';readonly currentCharacterId:string;
+    readonly entries:readonly {readonly characterId:string;readonly name:string}[]}
+  |{readonly schemaVersion:1;readonly kind:'character-data';readonly value:TavernEjsCurrentCharacterV1}
+export interface TavernEjsCapturedReadRecordV1 {
+  readonly schemaVersion:1
+  readonly encoding:'ejs-captured-read-v1'
+  readonly request:TavernEjsCapturedReadRequestV1
+  readonly result:TavernEjsCapturedReadResultV1
+}
+export type TavernEjsCapturedReadOwnerV1=(request:TavernEjsCapturedReadRequestV1,signal:AbortSignal)=>Promise<TavernEjsCapturedReadResultV1>
 export type TavernEjsNamedPromptQueuesV1=readonly {readonly key:string;readonly entries:readonly {
   readonly uid:string;readonly prompt:string;readonly order:number;readonly sticky:number}[]}[]
 export type TavernEjsPresetCatalogV1={readonly kind:'none';readonly fingerprint:string}
@@ -37,7 +81,13 @@ export type TavernEjsPresetCatalogV1={readonly kind:'none';readonly fingerprint:
     /** Current effective content in the imported prompts array's original order. */
     readonly prompts:readonly {readonly name:string;readonly content:string;readonly sourcePointer:string}[]}
 export interface TavernEjsHostCapture {
+  readonly helperMessages?:TavernEjsCapturedMessagesV1
+  readonly currentCharacter?:TavernEjsCurrentCharacterV1
+  readonly generationModel?:{readonly model:string;readonly source:'prepared-generation'|'configured-reader'}
+  /** Request-local InitialVariables stage, owned by the current preparation. */
+  readonly initialBinding?:TavernTemplateScopeBindingV1
   readonly presetCatalog?:TavernEjsPresetCatalogV1
+  readonly worldInfoSettings?:{readonly caseSensitive:boolean;readonly matchWholeWords:boolean;readonly useGroupScoring:boolean}
   readonly ordinaryMessageView?:{
     readonly messages:AuthorMessageViewV1['messages']
     readonly captures:readonly AuthorOrdinaryMessageCaptureV1[]
@@ -56,7 +106,7 @@ export interface TavernEjsHostCapture {
 }
 /** Dynamic helper basis. Captured messages/lexical context remain with their
  * actual creation closure and are not rewritten by a later phase. */
-export type TavernEjsPhaseCapture=Omit<TavernEjsHostCapture,'context'>
+export type TavernEjsPhaseCapture=Omit<TavernEjsHostCapture,'context'|'generationModel'>
 export interface TavernEjsHostDiagnostic {
   readonly helper?:string
   readonly code:string
@@ -106,6 +156,8 @@ export interface TavernEjsHostOutput {
   readonly reads:readonly TavernTemplateReadV1[]
   readonly resourceReads:readonly {readonly id:string;readonly sourcePointer:string;
     readonly sourceSnapshotSha256:string;readonly contentSha256:string}[]
+  readonly chatReads?:readonly {readonly index:number;readonly messageId:string;readonly messageVersionSha256:string;
+    readonly inputSha256:string;readonly outputSha256:string}[]
   readonly activations:readonly TavernTemplateActivationProposalV1[]
   readonly injections:readonly TavernTemplateInjectionEffectV1[]
   readonly regexEffects?:readonly TavernEjsRegexEffectV1[]
@@ -117,9 +169,9 @@ export interface TavernEjsHostOutput {
     readonly keys:readonly string[];readonly readAll:boolean}[]
   readonly ordinaryWrites:readonly (
     |{readonly ordinal:number;readonly key:string;readonly value:MvuJsonValue;
-      readonly operation?:'set';readonly messageTarget?:AuthorMessageTargetV3}
+      readonly operation?:'set';readonly messageTarget?:AuthorMessageTargetV3;readonly scope?:'global'|'initial'}
     |{readonly ordinal:number;readonly key:string;readonly operation:'delete';
-      readonly messageTarget?:AuthorMessageTargetV3})[]
+      readonly messageTarget?:AuthorMessageTargetV3;readonly scope?:'global'|'initial'})[]
 }
 export type TavernEjsHostResult={readonly kind:'rendered';readonly output:TavernEjsHostOutput}
   |{readonly kind:'refused';readonly diagnostic:TavernEjsHostDiagnostic}
