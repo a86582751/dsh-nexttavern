@@ -202,6 +202,9 @@ export interface CardImportDependencies {
   /** Frozen upload identity from the attachment owner; null for workspace requests. */
   readOriginalImportFile?(session:ImportSession,requestId:string):import('./roleplay-card-attachment.js').ArchivedOriginalFile|null
   inputTransition?: ImportInputTransition
+  /** Source activation completes its registered current content owners before
+   * the Native input owner captures the new Source publication. */
+  afterSourceActivated?(session:ImportSession,record:ImportRecord,pointer:ImportPointer):Promise<void>
   resolveCurrentCardImport?(session:ImportSession,exec:ImportExec):OwnedCardImportWorkflow|undefined
   /** Read-only Native prose and provenance; never a story execution grant. */
   readNativeOpeningExport?(session:ImportSession):NativeCardOpeningExportReadV1

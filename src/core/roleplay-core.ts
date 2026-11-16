@@ -22,7 +22,7 @@ import type {AuthorMessageEditInputV1} from './roleplay-author-message-edit-type
 import {applyAuthorChatOverlayV3} from './roleplay-author-chat-state-types.js'
 import {randomUUID} from 'node:crypto'
 import type { TaskAgent } from './tavern-task-types.js'
-import type { ImportRecord,CardImportDependencies,ImportSession } from './roleplay-import-types.js'
+import type { ImportRecord,ImportPointer,CardImportDependencies,ImportSession } from './roleplay-import-types.js'
 import {captureNextTavernCardDocumentV1,captureNextTavernAuthorDataV1} from './roleplay-native-card-export.js'
 import {captureNativeCardConversionV1,captureNativeCardResourceConversionV1,driveNativeCardConversionV1} from './native-card-conversion-driver.js'
 import {materializeNativeCardConversionV1} from './native-card-conversion.js'
@@ -1565,7 +1565,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     if(sourceReadOwnerClosed||!actual||(actual as unknown)!==session||!actual.header
       ||!isRoleplaySession(actual)||!storyBranchIsActive(actual))throw Error('CARD_EXPORT_START_SESSION_CHANGED')
     return inputState.captureSource(session.id,'card-export',()=>{
-      const lore=captureRoleplayTavernLoreExportDataV1({source:tavernSource,edits:tavernLoreEdits},session.id)
+      const lore=captureRoleplayTavernLoreExportDataV1({source:tavernSource,edits:tavernLoreEdits,books:authorContext},session.id)
       if(lore.kind==='blocked')throw Error(lore.code)
       // The structured Source/journal owner already hashes these current author
       // fields and their inheritance. Legacy MD keeps its existing three tables.
@@ -1590,7 +1590,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       }
       assertCurrent()
       const document=captureNextTavernCardDocumentV1({tables:T,
-        source:sourceCapture?{capture:()=>sourceCapture}:tavernSource,edits:tavernLoreEdits,
+        source:sourceCapture?{capture:()=>sourceCapture}:tavernSource,edits:tavernLoreEdits,books:authorContext,
         readOpening:captured=>readNativeOpeningForExport!(session,captured),readTransport:record=>{
           const envelope=record.sourceEnvelope!
           if(envelope.schemaVersion!==2)throw Error('CARD_EXPORT_ARCHIVE_VERSION_INVALID')

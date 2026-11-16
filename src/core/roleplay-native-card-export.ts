@@ -2,11 +2,12 @@
 import {keyOf,cloneRecord,recordSha256} from './roleplay-data.js'
 import {compileTavernOpeningCandidates} from './tavern-card.js'
 import type {DecodedTavernCard} from './tavern-card.js'
-import {readStructuredImportDataV1,spanText} from './roleplay-import-record.js'
+import {readStructuredImportDataV1} from './roleplay-import-record.js'
 import {portableNextTavernAuthorFields,isNextTavernCardDocument,nextTavernCardSourceIdV1,
   NEXTTAVERN_ST_MACRO_FIELDS,isNativeTavernCardDocument,readNativeNextTavernAuthorExtensionV1,
   readTavernCardArchiveV1,mergeNativeTavernCardExportV1} from './nexttavern-card.js'
 import {materializeTavernEffectiveBookV1} from './roleplay-tavern-lore-edits-data.js'
+import {materializeAuthorWorldbookCaptureV1} from './roleplay-author-source-context.js'
 import {materializeAuthorMetadataExtensionsV1} from './roleplay-tavern-source-author-metadata.js'
 import type {NextTavernCardDocument,NextTavernCardData,NextTavernAuthorRow,
   NextTavernCardExportDocument} from './nexttavern-card.js'
@@ -15,12 +16,15 @@ import {readCapturedTavernCoverV1} from './roleplay-tavern-lore-source.js'
 import type {createRoleplayTavernLoreEditsV1} from './roleplay-tavern-lore-edits.js'
 import type {NativeCardOpeningExportReadV1} from './roleplay-card-export-opening.js'
 import type {ImportRecord,ImportPointer} from './roleplay-import-types.js'
+import {projectCapturedStRuleTextV1,projectCapturedStOpeningTextV1} from './community-preset-card-material.js'
 
 interface Table {get(key:string):unknown;entries():Iterable<[string,unknown]>}
 interface AuthorDataDependencies {
   readonly tables:Record<'cards'|'worldbook'|'rules'|'status'|'opening'|'branch',Table>
   readonly source:{capture(id:string):TavernLoreSourceCaptureV1}
   readonly edits:Pick<ReturnType<typeof createRoleplayTavernLoreEditsV1>,'observeJournalDataWithLegacyData'>
+  readonly books?:{capture(source:import('./roleplay-tavern-lore-source-types.js').TavernLoreSourceDataV1):
+    Pick<import('./roleplay-author-source-context.js').AuthorSourceContextCaptureV1,'primary'>}
 }
 interface Dependencies extends AuthorDataDependencies {
   readonly readOpening:(capture:TavernLoreSourceCaptureV1)=>NativeCardOpeningExportReadV1
@@ -100,7 +104,6 @@ export function captureNextTavernAuthorDataV1(deps:AuthorDataDependencies,id:str
   let book=(captured.kind==='captured-data'?undefined:cloneRecord(decoded?.data.character_book)) as NextTavernCardData['character_book']
   const ruleRow=T.rules.get(keyOf(id,'spec')) as Record<string,unknown>|undefined
   let rules=authorFields(ruleRow)
-  const editedRuleFields=(ruleRow?.editedFrom as {ruleFields?:string[]}|undefined)?.ruleFields??[]
   let journalDataSha256:string|undefined
   if(captured.kind==='captured-data') {
     const {observed,legacy}=deps.edits.observeJournalDataWithLegacyData(captured,{suppressBookConstants:true})
@@ -117,15 +120,18 @@ export function captureNextTavernAuthorDataV1(deps:AuthorDataDependencies,id:str
       // retain their physical author bytes in portable DATA; current edits keep
       // their literal text. Explicit core ownership also preserves same-value edits.
       if(legacy!.contributions.coreData.kind==='legacy-projection')rules.core=String(decoded.data.scenario??'')
-      for(const [rule,field,target] of stRuleFields) {
-        if(rule==='core')continue // Core's independent/legacy ownership was settled above.
-        const spans=original.assignments.filter(assignment=>assignment.target===target)
-          .flatMap(assignment=>assignment.sourceSpans).sort((left,right)=>left.startLine-right.startLine)
-        if(!editedRuleFields.includes(rule)&&rules[rule]===spanText(original,spans))rules[rule]=String(decoded.data[field]??'')
+      for(const [rule] of stRuleFields) {
+        if(rule==='core'||rules[rule]===undefined)continue // Core's independent/legacy ownership was settled above.
+        rules[rule]=projectCapturedStRuleTextV1(original,decoded.data,ruleRow,rule)
       }
     }
     for(const key of legacy!.linkedRowKeys)skip.add(key)
-    book=materializeTavernEffectiveBookV1(captured.source,observed.data,legacy!.overlay) as NextTavernCardData['character_book']
+    const catalog=deps.books?.capture(captured.source)
+    book=(catalog?catalog.primary?materializeAuthorWorldbookCaptureV1(catalog.primary):undefined
+      :materializeTavernEffectiveBookV1(captured.source,observed.data,legacy!.overlay)) as NextTavernCardData['character_book']
+    if(catalog)journalDataSha256=recordSha256({metadata:journalDataSha256,
+      primary:catalog.primary?{bookId:catalog.primary.address.bookId,
+        contentRef:catalog.primary.content,metadataRef:catalog.primary.metadata}:null})
   }
   const cardId=native?nextTavernCardSourceIdV1(native):undefined
   const rows=(table:Table,target:'card'|'worldbook')=>{
@@ -203,13 +209,7 @@ function captureCurrentDocument(deps:Dependencies,id:string) {
   let selectedAuthorOpening:ReturnType<typeof compileTavernOpeningCandidates>[number]|undefined
   let currentTemplate=String(object(scene)
     ?scene.text??native?.data.opening?.text??'':native?.data.opening?.text??'')
-  if(!native&&decoded&&original&&object(scene)&&scene.importId===original.importId) {
-    const spans=original.assignments.filter(assignment=>assignment.target==='opening')
-      .flatMap(assignment=>assignment.sourceSpans).sort((left,right)=>left.startLine-right.startLine)
-    // The unselected scene is an import projection; portable templates retain
-    // their author bytes rather than normalized assignment separators.
-    if(currentTemplate===spanText(original,spans))currentTemplate=String(decoded.data.first_mes??'')
-  }
+  if(!native&&decoded&&original&&object(scene))currentTemplate=projectCapturedStOpeningTextV1(original,decoded.data,scene)
   // Retain all other author choices by identity:
   // two deliberately identical options are still two different choices. A
   // later author edit must not be removed as though it were the old selection.

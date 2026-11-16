@@ -116,8 +116,6 @@ function parseJson(bytes, maximumBytes = CARD_LIMITS.jsonBytes) {
         if (!value || typeof value !== 'object')
             return;
         for (const key of Object.keys(value)) {
-            if (['__proto__', 'constructor', 'prototype'].includes(key))
-                fail('角色卡包含不允许的对象字段 key');
             walk(value[key]);
         }
     };
@@ -538,7 +536,7 @@ function compileTavernExtensionInventoryVersion(decoded, schemaVersion) {
         const value = extensions[key];
         const sourcePointer = `${root}/extensions/${pointerSegment(key)}`;
         const valueType = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
-        const match = known[key];
+        const match = Object.hasOwn(known, key) ? known[key] : undefined;
         const manualTrigger = key === 'risuai' && object(value) && Array.isArray(value.triggerscript)
             && value.triggerscript.some(item => object(item) && item.type === 'manual');
         const capability = key === 'risuai' && !manualTrigger ? 'unknown' : match?.capability ?? 'unknown';

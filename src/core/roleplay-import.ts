@@ -204,8 +204,9 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
   };
   const commitInputActivation = async (session: ImportSession, record: ImportRecord, pointer: ImportPointer,
     transaction?: ImportRecord['transaction']) => {
-    if (!deps.inputTransition) return null;
     try {
+      await deps.afterSourceActivated?.(session,record,pointer);
+      if (!deps.inputTransition) return null;
       const result = await deps.inputTransition.commitActivation(session,record,pointer,transaction);
       return result.kind === 'acknowledged' ? null : {ok:false,activationCommitted:true,inputPermissionUnknown:true,
         code:result.code,error:'角色卡设定已保存，但本轮输入权限确认未完成；请重新发送后续操作。'};
