@@ -1,8 +1,11 @@
+import {AUTHOR_NATIVE_MVU_HOOK_EVENTS} from '../core/author-native-mvu-hook-types.js'
 import {READER_NATIVE_RESOURCE_CSP} from '../core/reader-native-parent-realm.js'
 import {createReaderDocumentLayoutRealm,type ReaderDocumentLayoutConfig} from '../core/tavern-author-reader-document-layout.js'
 import {createAuthorNativeMvuApi} from './author-native-mvu-sdk.js'
+import {createAuthorNativeMvuTrialEvents} from './author-native-mvu-trial.js'
 import {createAuthorNativeEventOwner} from './author-native-events.js'
 import {createAuthorNativeScriptButtonCatalog,type AuthorNativeButtonScriptV1} from './author-native-script-buttons.js'
+import {createAuthorNativeMvuHookGraph} from '../core/author-native-mvu-hook-graph.js'
 import {createAuthorNativeMessageVariables} from '../core/author-native-message-variables.js'
 import {createAuthorNativeCurrentRegex} from '../core/author-native-current-regex.js'
 import {createAuthorNativeVariableWriters} from '../core/author-native-variable-writers.js'
@@ -154,6 +157,7 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
       if(mutableHook)mutableHook.callbackId=registration.callbackId
     },report,
   })
+  const trialEvents=createTrialEvents?.(createHookGraph!,events.registrations,events.request,hookEvents)
   const emit=async(event:string,args:readonly unknown[],callbackIds?:readonly string[])=>{
     const invoked=await events.emit(event,args,callbackIds?registration=>callbackIds.includes(registration.callbackId):undefined)
     return invoked.map(registration=>registration.callbackId)
@@ -301,7 +305,8 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     replaceNumericalValues:(values:unknown,expected:unknown)=>request('numerical-replace',{values,expected}),
     getComposer:()=>request('composer',{action:'get'}),setComposer:(value:string)=>request('composer',{action:'set',value})}
   api.Mvu=createMvu({snapshot:()=>snapshot,readScope:()=>scope,variables,
-    replace:(value,readScope)=>request('numerical-replace',value,readScope)})
+    parse:(message,oldData)=>request('parse-mvu-message',{message,oldData,trialId:crypto.randomUUID()}),
+    replace:(value,readScope)=>request('numerical-replace',value,readScope)},hookEvents)
   api.waitGlobalInitialized=async(name:string)=>{
     if(!Object.hasOwn(realm,name))throw Error('AUTHOR_NATIVE_GLOBAL_UNAVAILABLE')
     // Product libraries and the Mvu facade are installed before Source runs.
@@ -368,17 +373,151 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
       if(invocation||mutableHook)throw Error('AUTHOR_NATIVE_GENERATION_BUSY')
       const input=data.invocation as {invocationId:string;request:AuthorNativeMvuHookRequest;callbackIds:readonly string[]},
         payload=input.request.payload as any,stage=input.request.stage
-      const event=stage==='command-parsed'?'mag_command_parsed':stage==='update-ended'
-        ?'mag_variable_update_ended':'mag_before_message_update'
-      const args=stage==='command-parsed'?[payload.variables,payload.commands,payload.message_content]
-        :stage==='update-ended'?[payload.variables,payload.variables_before_update]:[payload.context]
+      const event=hookEvents[stage]
+      const writes=new Set<string>(),owners=new WeakMap<object,Set<string>>(),roots=new WeakSet<object>(),
+        proxies=new WeakMap<object,any>(),originals=new WeakMap<object,any>(),overlayOwners=new WeakMap<object,Set<string>>()
+      const readView=payload.readVariables?.appliedWrites?.kind==='replace'?undefined:payload.readVariables,
+        shadow=new Set<string>(readView?.appliedWrites?.keys??[]),deleted=new Set<string>(readView?.deletedKeys??[])
+      let overlayRoot:Record<string,any>|undefined
+      let replaced=false
+      const object=(value:any):value is Record<string,any>=>value!==null&&typeof value==='object'
+      const unwrap=(value:any):any=>object(value)?originals.get(value)??value:value
+      const link=(value:any,key:string,index=owners):void=>{
+        const raw=unwrap(value)
+        if(!object(raw))return
+        let keys=index.get(raw)
+        if(!keys){keys=new Set();index.set(raw,keys)}
+        if(keys.has(key))return
+        keys.add(key)
+        for(const child of Object.values(raw))link(child,key,index)
+      }
+      const root=(value:any):any=>{
+        const raw=unwrap(value)
+        if(object(raw)&&!roots.has(raw)){
+          roots.add(raw)
+          for(const key of Object.keys(raw))link(raw[key],key)
+        }
+        return wrap(raw)
+      }
+      function changed(raw:object,key:PropertyKey,value?:any):void {
+        // The ordinary object joins the canonical graph only after an author
+        // mutates it. Shared descendants promote every owning top-level key.
+        if(!replaced&&overlayRoot)for(const owner of overlayOwners.get(raw)??[]){
+          if(shadow.has(owner))continue
+          Reflect.set(overlayRoot,owner,readView.values[owner],overlayRoot)
+          shadow.add(owner);writes.add(owner);link(readView.values[owner],owner)
+        }
+        if(roots.has(raw)&&typeof key==='string'){shadow.add(key);writes.add(key);link(value,key)}
+        for(const owner of owners.get(raw)??[]){writes.add(owner);link(value,owner)}
+      }
+      function overlaid(raw:object,key:PropertyKey):key is string {
+        return raw===overlayRoot&&!replaced&&typeof key==='string'&&!shadow.has(key)
+          &&(deleted.has(key)||Object.hasOwn(readView.values,key))
+      }
+      function wrap(value:any):any {
+        const raw=unwrap(value)
+        if(!object(raw))return raw
+        let proxy=proxies.get(raw)
+        if(proxy)return proxy
+        proxy=new Proxy(raw,{
+          get(target,key){
+            if(overlaid(target,key))return deleted.has(key)?undefined:wrap(readView.values[key])
+            const value=Reflect.get(target,key,target),descriptor=Reflect.getOwnPropertyDescriptor(target,key)
+            // Proxy invariants require the exact value of a frozen data slot.
+            if(descriptor?.configurable===false&&descriptor.writable===false)return value
+            return wrap(value)
+          },
+          getOwnPropertyDescriptor(target,key){
+            if(overlaid(target,key))return deleted.has(key)?undefined:
+              {value:wrap(readView.values[key]),writable:true,enumerable:true,configurable:true}
+            const descriptor=Reflect.getOwnPropertyDescriptor(target,key)
+            if(!descriptor||!('value' in descriptor)
+              ||descriptor.configurable===false&&descriptor.writable===false)return descriptor
+            return {...descriptor,value:wrap(descriptor.value)}
+          },
+          has(target,key){return overlaid(target,key)?!deleted.has(key):Reflect.has(target,key)},
+          ownKeys(target){
+            if(target!==overlayRoot||replaced)return Reflect.ownKeys(target)
+            const keys=new Set(Reflect.ownKeys(target))
+            for(const key of Object.keys(readView.values))if(!shadow.has(key))keys.add(key)
+            for(const key of deleted)if(!shadow.has(key))keys.delete(key)
+            return [...keys]
+          },
+          set(target,key,value){
+            const plain=unwrap(value),accepted=Reflect.set(target,key,plain,target)
+            if(accepted)changed(target,key,plain)
+            return accepted
+          },
+          deleteProperty(target,key){
+            const accepted=Reflect.deleteProperty(target,key)
+            if(accepted)changed(target,key)
+            return accepted
+          },
+          defineProperty(target,key,descriptor){
+            const next='value' in descriptor?{...descriptor,value:unwrap(descriptor.value)}:descriptor,
+              accepted=Reflect.defineProperty(target,key,next)
+            if(accepted)changed(target,key,'value' in next?next.value:undefined)
+            return accepted
+          },
+        })
+        proxies.set(raw,proxy);originals.set(proxy,raw)
+        return proxy
+      }
+      // Tracking owns no cloned baseline. Only result containers containing
+      // retained proxy references need materializing for MessagePort transport.
+      const transported=new WeakMap<object,any>()
+      function plain(value:any):any {
+        const raw=unwrap(value)
+        if(!object(raw))return raw
+        if(transported.has(raw))return transported.get(raw)
+        let copy:any=raw
+        transported.set(raw,raw)
+        for(const key of Object.keys(raw)){
+          const child=raw[key],next=plain(child)
+          if(next===child)continue
+          if(copy===raw){copy=Array.isArray(raw)?raw.slice():{...raw};transported.set(raw,copy)}
+          copy[key]=next
+        }
+        return copy
+      }
+      const graph=payload.graph?createHookGraph!():undefined,graphRoots=graph?.materialize(payload.graph)
+      const canonical=graphRoots?graphRoots[0]:stage==='before-message-update'?payload.context.variables:payload.variables
+      if(readView){
+        overlayRoot=canonical
+        for(const key of Object.keys(readView.values))if(!shadow.has(key)&&!deleted.has(key)){
+          link(readView.values[key],key,overlayOwners)
+        }
+      }
+      const variables=root(canonical)
+      const context=stage==='before-message-update'?new Proxy(payload.context,{
+        get(target,key){return key==='variables'?root(target.variables):Reflect.get(target,key,target)},
+        set(target,key,value){
+          const accepted=Reflect.set(target,key,unwrap(value),target)
+          if(accepted&&key==='variables'){replaced=true;root(target.variables)}
+          return accepted
+        },
+        defineProperty(target,key,descriptor){
+          const next='value' in descriptor?{...descriptor,value:unwrap(descriptor.value)}:descriptor,
+            accepted=Reflect.defineProperty(target,key,next)
+          if(accepted&&key==='variables'){replaced=true;root(target.variables)}
+          return accepted
+        },
+        deleteProperty(target,key){const accepted=Reflect.deleteProperty(target,key)
+          if(accepted&&key==='variables')replaced=true
+          return accepted},
+      }):undefined
+      const args=stage==='initialized'?[variables,graphRoots![1]]
+        :graphRoots?wrap(graphRoots[2]):stage==='command-parsed'?[variables,payload.commands,payload.message_content]
+        :stage==='update-ended'?[variables,payload.variables_before_update]:[context]
       mutableHook={diagnostics:[],callbackId:''}
       try {
-        const callbackIds=await emit(event,args,input.callbackIds),output=stage==='command-parsed'
+        const callbackIds=await emit(event,args,input.callbackIds),output=graph&&graphRoots
+          ?{graph:graph.capture(graphRoots,unwrap)}:stage==='command-parsed'
           ?{variables:payload.variables,commands:payload.commands}:stage==='update-ended'
             ?{variables:payload.variables}:{context:payload.context}
         send({op:'control-reply',id:data.id,value:{invocationId:input.invocationId,callbackIds,
-          result:{stage,output,diagnostics:mutableHook.diagnostics}}})
+          result:{stage,output:graph?output:plain(output),diagnostics:mutableHook.diagnostics,
+            contextWrites:replaced?{schemaVersion:1,kind:'replace'}:{schemaVersion:1,kind:'keys',keys:[...writes]}}}})
       }finally{mutableHook=undefined}
     }
   }

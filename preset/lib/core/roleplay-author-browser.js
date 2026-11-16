@@ -16,6 +16,7 @@ export function createRoleplayAuthorBrowser(deps) {
     let disposed = false;
     const fail = (code) => { throw Error(code); };
     const revoke = (value) => {
+        deps.releaseMvuTrials?.(value);
         for (const waiting of waitingGenerations)
             if (waiting.sessionId === value.binding.sessionId
                 && waiting.programSha256 === value.program.programSha256)

@@ -3970,7 +3970,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     capturePromptRegistry(input.sessionId,input.signal)
     return {}
   },input.signal),
-    editMessageBody:editAuthorMessageBody,
+    editMessageBody:editAuthorMessageBody,mvuTrial:authorMvuTrials.handle,releaseMvuTrials:authorMvuTrials.releaseOwner,
     confirmMessageBody:(sid,operationId)=>{
       const session=ctx.sessions.get(sid)
       if(!session)throw Error('AUTHOR_MESSAGE_EDIT_SESSION_UNAVAILABLE')
@@ -4284,7 +4284,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     mutateOpeningVariants:(capture,request,signal)=>mvuOpening.mutateOpeningVariants(capture,request,signal),
     confirmOpeningVariants:(sid,operationId)=>Promise.resolve(mvuOpening.confirmOpeningVariants(sid,operationId)),
     replaceNumerical:(operation,current)=>mvuOpening.submitSchemaPlayer(operation,current),commands:authorCommands,
-    editMessageBody:editAuthorMessageBody,
+    editMessageBody:editAuthorMessageBody,mvuTrial:authorMvuTrials.handle,releaseMvuTrials:authorMvuTrials.releaseOwner,
     mutateNamespace:authorKeyCore.mutateCapturedNamespace,
     retryNamespace:authorKeyCore.retryCapturedNamespace})
   const releaseReaderBindings=inputState.observeSessionRelease(id=>{

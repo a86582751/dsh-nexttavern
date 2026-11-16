@@ -2,7 +2,6 @@
 import { createHash } from 'node:crypto';
 import { NATIVE_MVU_SOURCE_POLICY, NATIVE_MVU_YAML_SOURCE_POLICY, isNativeMvuSourcePolicy, isNativeMvuYamlSourcePolicy, nativeMvuPayloadGrammar } from './roleplay-mvu-source-policy.js';
 import { parseMvuYamlData } from './tavern-mvu-yaml.js';
-import { parseMvuUpdateRegionV2, parseMvuUpdateV2, parseMvuUpdateAnalysisAliasRegionV2 } from './roleplay-mvu-update-v2.js';
 const BOUNDS = {
     inputBytes: 1048576, outputBytes: 1048576, depth: 32, descriptorDepth: 48,
     nodes: 32000, arrayLength: 4096, numberMagnitude: 9007199254740991,
@@ -14,7 +13,6 @@ const DIALECTS = {
         commit: 'b42817925d0391c15fa242a8238d2bbe28eb6319' },
     D: { sha256: 'dcdbd5b0b837439d90fd0f783bedc1453fa6b8583d9d6a41f16f53a48e3b6dc3' },
 };
-const FORBIDDEN = new Set(['__proto__', 'prototype', 'constructor']);
 const AUTHOR_SCHEMA = new Set(['$meta', '$schema', '$template', '$required', '$default']);
 const sha = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
@@ -95,12 +93,13 @@ function finiteJson(value, pointer, aggregate, depthLimit = BOUNDS.depth) {
                 stringBytes += Buffer.byteLength(key, 'utf8');
                 if (stringBytes > BOUNDS.inputBytes)
                     reject('BYTE_LIMIT', pointer);
-                if (FORBIDDEN.has(key))
-                    reject('PROTOTYPE_KEY', path);
                 const descriptor = descriptors[key];
                 if (!descriptor.enumerable || !own(descriptor, 'value'))
                     reject('NON_JSON_VALUE', path);
-                result[key] = visit(descriptor.value, `${path}/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`, depth + 1);
+                Object.defineProperty(result, key, {
+                    value: visit(descriptor.value, `${path}/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`, depth + 1),
+                    enumerable: true, writable: true, configurable: true
+                });
             }
         }
         ancestors.delete(object);
@@ -121,8 +120,6 @@ function exact(value, required, optional, pointer) {
 function identifier(value, pointer) {
     if (typeof value !== 'string' || !value.length || value.length > 256 || /[\u0000-\u001f]/.test(value))
         reject('IDENTITY', pointer);
-    if (FORBIDDEN.has(value))
-        reject('PROTOTYPE_KEY', pointer);
 }
 function hash(value, pointer) {
     if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value))
@@ -181,7 +178,6 @@ function validateCalculation(input) {
     if (!Array.isArray(input.books) || !Array.isArray(input.swipes) || !Array.isArray(input.initializedBooks)) {
         reject('DESCRIPTOR_SHAPE', '');
     }
-    let phase = 0;
     let primaries = 0;
     const bookSources = new Map();
     for (const [index, book] of input.books.entries()) {
@@ -189,10 +185,9 @@ function validateCalculation(input) {
         exact(book, ['identity', 'binding', 'sourceSha256', 'entries'], [], pointer);
         identifier(book.identity, pointer);
         hash(book.sourceSha256, pointer);
-        const next = ['global', 'primary', 'additional'].indexOf(book.binding);
-        if (next < phase || next < 0 || (next === 1 && ++primaries > 1))
+        if (!['global', 'primary', 'additional', 'chat'].includes(book.binding)
+            || book.binding === 'primary' && ++primaries > 1)
             reject('BOOK_ORDER', pointer);
-        phase = next;
         if (!Array.isArray(book.entries))
             reject('DESCRIPTOR_SHAPE', pointer);
         const inventory = `${book.sourceSha256}:${canonical(book.entries)}`;
@@ -265,12 +260,14 @@ function sourceIdentity(value) {
 function merge(left, right) {
     for (const key of Object.keys(right)) {
         const incoming = right[key];
+        const prior = own(left, key) ? left[key] : undefined;
         // Lodash may retain array objects when merging an object RHS. That non-JSON shape is outside this subset.
-        if (isObject(incoming) && Array.isArray(left[key]))
+        if (isObject(incoming) && Array.isArray(prior))
             reject('MERGE_SHAPE_UNSUPPORTED', '/merge');
-        left[key] = isObject(incoming)
-            ? merge(isObject(left[key]) ? left[key] : {}, incoming)
+        const value = isObject(incoming)
+            ? merge(isObject(prior) ? prior : {}, incoming)
             : structuredClone(incoming);
+        Object.defineProperty(left, key, { value, enumerable: true, writable: true, configurable: true });
     }
     return left;
 }
@@ -389,20 +386,20 @@ function initializationUpdateOutside(text, spans) {
     const end = text.indexOf('</UpdateVariable>', cursor);
     if (end < 0 || text.slice(cursor, end).trim())
         return null;
-    const outside = text.slice(0, start) + text.slice(end + '</UpdateVariable>'.length);
-    return parseMvuUpdateRegionV2(outside, { openingText: true }).candidate.kind === 'no-update' ? outside : null;
+    return text.slice(0, start) + text.slice(end + '</UpdateVariable>'.length);
 }
 /** The actual source owner and compiler share this selector and the same pinned
  * wrappers. Only entries used by InitVar and extracted greeting blocks count;
  * ordinary prose and unrelated YAML-looking colons cannot choose a policy. */
 export function selectNativeMvuInitializationPolicy(input) {
     try {
-        let yaml = false;
+        let yaml = false, hasInitialization = false;
         const openingInitialization = [];
         for (const book of input.books)
             for (const entry of book.entries) {
                 if (!entry.comment.toLowerCase().includes('[initvar]'))
                     continue;
+                hasInitialization = true;
                 const rawHeader = {}, expandedHeader = {};
                 const raw = extractEntry(entry.content, rawHeader);
                 const expanded = extractEntry(entry.renderedContent, expandedHeader);
@@ -416,6 +413,7 @@ export function selectNativeMvuInitializationPolicy(input) {
             const rawHeaders = [], expandedHeaders = [];
             const rawSpans = [], expandedSpans = [];
             const raw = extractGreetingPayloads(swipe.rawOpening, `/swipes/${index}`, rawHeaders, rawSpans);
+            hasInitialization ||= raw.length > 0;
             const expanded = extractGreetingPayloads(swipe.renderedOpening, `/swipes/${index}`, expandedHeaders, expandedSpans);
             if (raw.length !== expanded.length)
                 reject('MACRO_BINDING', `/swipes/${index}`);
@@ -427,7 +425,8 @@ export function selectNativeMvuInitializationPolicy(input) {
                 yaml ||= nativeMvuPayloadGrammar(text, expandedHeaders[block], rawHeaders[block], raw[block]) === 'yaml';
             }
         }
-        return { kind: 'selected', policy: yaml ? NATIVE_MVU_YAML_SOURCE_POLICY : NATIVE_MVU_SOURCE_POLICY, openingInitialization };
+        return { kind: 'selected', policy: yaml ? NATIVE_MVU_YAML_SOURCE_POLICY : NATIVE_MVU_SOURCE_POLICY,
+            hasInitialization, openingInitialization };
     }
     catch (error) {
         return { kind: 'unsupported', diagnostics: [error instanceof Refusal ? { code: error.code, pointer: error.pointer }
@@ -510,7 +509,7 @@ function loadBooks(input, starting, seen, context) {
     }
     return { statData, dataSha256: dataHash(statData), initializedBooks: [...initialized], books };
 }
-function calculate(safe, existing, nativePolicy, openingUpdateDeferred = false, openingInitialization) {
+function calculate(safe, existing, nativePolicy, updatesOwnedByCaller = false, openingInitialization) {
     const base = existing.bookStatData;
     const context = { macros: safe.capabilities.macros, nodes: 0, cache: new Map(),
         ...(nativePolicy && isNativeMvuYamlSourcePolicy(nativePolicy) ? { yaml: true } : {}) };
@@ -520,7 +519,7 @@ function calculate(safe, existing, nativePolicy, openingUpdateDeferred = false, 
         + Buffer.byteLength(canonical(existing), 'utf8');
     for (const [index, swipe] of safe.swipes.entries()) {
         const updateSource = openingInitialization?.[index]?.rawOutside ?? swipe.rawOpening;
-        if (!openingUpdateDeferred && swipe.materialization !== 'materialized'
+        if (!updatesOwnedByCaller && swipe.materialization !== 'materialized'
             && /<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(updateSource)) {
             reject('OPENING_UPDATE_UNSUPPORTED', `/swipes/${index}`);
         }
@@ -540,9 +539,7 @@ function calculate(safe, existing, nativePolicy, openingUpdateDeferred = false, 
         let books = [];
         if (blocks.length) {
             const primary = safe.books.find(book => book.binding === 'primary')?.identity;
-            if (!primary)
-                reject('PRIMARY_BINDING_UNKNOWN', `/swipes/${index}`);
-            const reloaded = loadBooks(safe, replacement, [primary], context);
+            const reloaded = loadBooks(safe, replacement, primary ? [primary] : [], context);
             statData = reloaded.statData;
             initializedBooks = reloaded.initializedBooks;
             books = reloaded.books;
@@ -710,16 +707,12 @@ export function compileSchemaMvuInitData(input) {
             reject('MACRO_CAPABILITY', '/macros');
         if (!Array.isArray(checked.books) || !Array.isArray(checked.swipes))
             reject('DESCRIPTOR_SHAPE', '');
-        if (checked.books.length > 1)
-            reject('PRIMARY_BINDING_UNKNOWN', '/books');
         if (!Array.isArray(checked.initializedBooks) || checked.initializedBooks.length || checked.messageIndex !== 0
             || dataHash(jsonObject(checked.bookStatData, '/bookStatData')) !== dataHash({}))
             reject('FRESH_BASIS', '/bookStatData');
         for (const [index, book] of checked.books.entries()) {
             const pointer = `/books/${index}`;
             exact(book, ['identity', 'binding', 'sourcePointer', 'sourceSha256', 'entries'], [], pointer);
-            if (book.binding !== 'primary')
-                reject('PRIMARY_BINDING_UNKNOWN', pointer);
             identifier(book.sourcePointer, `${pointer}/sourcePointer`);
             if (!Array.isArray(book.entries))
                 reject('DESCRIPTOR_SHAPE', pointer);
@@ -749,32 +742,20 @@ export function compileSchemaMvuInitData(input) {
         const selectedPolicy = selectNativeMvuInitializationPolicy(source);
         if (selectedPolicy.kind === 'unsupported')
             reject(selectedPolicy.diagnostics[0].code, selectedPolicy.diagnostics[0].pointer);
-        let openingUpdate;
-        const deferredUpdate = source.schemaVersion === 2 || source.schemaVersion === 3;
-        if (deferredUpdate) {
-            if (source.swipes.length !== 1 || source.swipes[0].identity !== source.selectedSwipeIdentity)
-                reject('FRESH_BASIS', '/swipes');
-            const candidate = source.schemaVersion === 3
-                ? parseMvuUpdateAnalysisAliasRegionV2(source.swipes[0].renderedOpening).candidate
-                : parseMvuUpdateV2(source.swipes[0].renderedOpening);
-            if (candidate.kind !== 'parsed')
-                reject(candidate.kind === 'rejected' ? candidate.code : 'OPENING_UPDATE_REQUIRED', '/swipes/0');
-            openingUpdate = candidate;
-        }
         const { safe, existing } = prepareCalculationData(source);
         const grammar = isNativeMvuYamlSourcePolicy(selectedPolicy.policy) ? 'yaml-1.2-json-data-v1' : 'strict-json-object-v1';
         if (grammar !== source.grammar)
             reject('INIT_GRAMMAR', '/grammar');
-        const { baseline, swipes } = calculate(safe, existing, selectedPolicy.policy, deferredUpdate, selectedPolicy.openingInitialization);
+        const { baseline, swipes } = calculate(safe, existing, selectedPolicy.policy, true, selectedPolicy.openingInitialization);
         const selected = swipes.find(swipe => swipe.identity === source.selectedSwipeIdentity);
         const initialized = {};
         for (const identity of selected.initializedBooks)
             initialized[identity] = true;
-        // Owned context metadata; this is not an author schema or a grant. The
-        // schema runner supplies its own placeholder only at update-ended.
+        // Initialization owns the book metadata. The updater supplies schema and
+        // display metadata when it processes the original selected opening.
         const context = { initialized_lorebooks: initialized };
         const content = { kind: 'parsed', values: structuredClone(selected.statData), valuesSha256: selected.dataSha256,
-            context, baseline, swipes, initSourceSha256: source.initSourceSha256, ...(openingUpdate ? { openingUpdate } : {}) };
+            context, baseline, swipes, initSourceSha256: source.initSourceSha256 };
         try {
             finiteJson(content, '/result', undefined, BOUNDS.descriptorDepth);
         }
@@ -829,7 +810,17 @@ export function compileNativeMvuInitSources(input) {
         for (const value of [freshNativeBasisProof.branch.metaSha256, freshNativeBasisProof.numerical.eventMembershipSha256,
             freshNativeBasisProof.native.historyVersionSha256, freshNativeBasisProof.factsSha256])
             hash(value, '/freshNativeBasisProof');
-        if (candidate.books.length !== 1 || candidate.books[0].binding !== 'primary'
+        const catalog = sourceSnapshot.effectiveLore?.kind === 'catalog-collection' ? sourceSnapshot.effectiveLore : undefined;
+        if (catalog) {
+            if (candidate.books.length !== catalog.books.length || candidate.books.some((book, index) => {
+                const ref = catalog.books[index];
+                return book.identity !== ref.bookId || book.binding !== ref.binding
+                    || book.sourcePointer !== `/books/${ref.bookId.replace(/~/g, '~0').replace(/\//g, '~1')}`
+                    || book.sourceSha256 !== ref.contentRef.sha256;
+            }))
+                reject('PRIMARY_BINDING_UNKNOWN', '/books');
+        }
+        else if (candidate.books.length !== 1 || candidate.books[0].binding !== 'primary'
             || sourceSnapshot.bindings.global.length || sourceSnapshot.bindings.additional.length
             || !sourceSnapshot.bindings.primary
             || candidate.books[0].sourcePointer !== sourceSnapshot.bindings.primary.pointer

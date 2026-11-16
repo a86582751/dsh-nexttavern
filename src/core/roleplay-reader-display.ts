@@ -500,6 +500,29 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
     const snapshot=result.refreshRequired?await adoptCommittedData(value):publishedSnapshot
     return {result,...snapshot?{snapshot}:{}}
   }
+  async function mvuTrial(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
+    request:import('./roleplay-author-mvu-trial.js').AuthorMvuTrialRequestV1,signal:AbortSignal)
+    :Promise<import('./roleplay-author-mvu-trial.js').AuthorMvuTrialReplyV1> {
+    const value=bindings.get(binding.browserSessionId)
+    if(!value||!sameBinding(value.binding,binding)) {
+      if(request.action==='close')return {kind:'closed'}
+      fail('READER_BINDING_REVOKED')
+    }
+    const document=value.program.documents.find(plan=>plan.documentPlanSha256===documentPlanSha256)
+    if(!document||!deps.mvuTrial)fail('AUTHOR_NATIVE_MVU_TRIAL_UNAVAILABLE')
+    return deps.mvuTrial(value,binding.sessionId,value.snapshot,request,
+      ()=>!disposed&&bindings.get(binding.browserSessionId)===value&&value.sourceCurrent(),signal)
+  }
+  async function generation(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
+    request:ReaderAuthorGenerationRequestV1,signal:AbortSignal):Promise<ReaderAuthorGenerationReplyV1> {
+    signal.throwIfAborted()
+    const value=bindings.get(binding.browserSessionId)
+    if(!value||!sameBinding(value.binding,binding)||!value.sourceCurrent())fail('READER_BINDING_REVOKED')
+    const document=value.program.documents.find(plan=>plan.documentPlanSha256===documentPlanSha256)
+    if(!document||!deps.generation)fail('AUTHOR_GENERATION_UNAVAILABLE')
+    value.generationCurrent??=()=>!disposed&&bindings.get(binding.browserSessionId)===value&&value.sourceCurrent()
+    return deps.generation(binding.sessionId,value.program,document,request,value.generationCurrent,signal)
+  }
   async function confirmOperation(sessionId:string,operationId:string,signal:AbortSignal):Promise<ReaderOpeningVariantResultV1> {
     if(!deps.confirmOpeningVariants)fail('READER_OPENING_VARIANTS_RECOVERY_UNAVAILABLE')
     return deps.confirmOpeningVariants(sessionId,operationId,signal)

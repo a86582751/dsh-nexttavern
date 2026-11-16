@@ -130,6 +130,7 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
   let disposed=false
   const fail=(code:string):never=>{throw Error(code)}
   const revoke=(value:Attachment)=>{
+    deps.releaseMvuTrials?.(value)
     for(const waiting of waitingGenerations)if(waiting.sessionId===value.binding.sessionId
       &&waiting.programSha256===value.program.programSha256)waiting.stop('BROWSER_ATTACHMENT_REVOKED')
     if(deps.cleanupPrompts) {
@@ -488,8 +489,8 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
         return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
       value.generationQueue.complete(input.result)
       return {ok:true,kind:'generation-acknowledged'}
-    }
-    if(input.action==='mvu-hook-complete') {
+    },{serialize:false})
+    if(input.action==='mvu-hook-complete')return withAttachment(input.binding,async(session,value)=>{
       if(!sameBinding(input.binding,input.result.binding)||!value.generationQueue)
         return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
       value.generationQueue.completeHook(input.result)

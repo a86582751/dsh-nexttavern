@@ -102,11 +102,14 @@ export async function createMvuSchemaRuntimeV4(deps) {
         for (const entry of entries)
             if (!entry.startsWith('dist/') || !schemaAssetPath(entry))
                 throw failure();
-        if (descriptor.guests.length !== 2 || new Set(descriptor.guests.map(guest => guest.kind)).size !== 2)
+        if (descriptor.guests.length !== 3 || new Set(descriptor.guests.map(guest => guest.kind)).size !== 3)
             throw failure();
         const libraries = descriptor.guests.map(guest => {
-            if (guest.packageName !== guest.kind || guest.version !== (guest.kind === 'zod' ? '4.4.3' : '4.18.1')
-                || guest.globalName !== (guest.kind === 'zod' ? 'z' : '_'))
+            const expected = guest.kind === 'zod' ? { name: 'zod', version: '4.4.3', global: 'z' }
+                : guest.kind === 'lodash' ? { name: 'lodash', version: '4.18.1', global: '_' }
+                    : guest.kind === 'mvu-196' ? { name: 'nexttavern-mvu-196-core', version: '0.196.0-d03b7dc8', global: 'NextTavernMvu196' } : undefined;
+            if (!expected || guest.packageName !== expected.name || guest.version !== expected.version
+                || guest.globalName !== expected.global)
                 throw failure();
             const code = fs.readFileSync(pathname(root, guest.path), 'utf8');
             if (schemaAssetSha(code) !== guest.sha256 || !pin.files.some(file => file.path === guest.licensePath))
@@ -156,13 +159,13 @@ export async function createMvuSchemaRuntimeV4(deps) {
             }
         };
         const actualCompiler = compiler, actualRunner = runner;
-        const openManualRun = (selected) => async (program, input, signal) => {
+        const guardedLive = async (action) => {
             let opened;
             try {
                 current();
-                const result = await selected.openManualRun(program, input, signal);
-                if (result.kind === 'opened-manual-run')
-                    opened = result;
+                const result = await action();
+                if ('run' in result)
+                    opened = result.run;
                 current();
                 // This live resource owns its actually loaded Worker. Later advances
                 // consume new Native frames without rescanning the protected package.
@@ -171,7 +174,7 @@ export async function createMvuSchemaRuntimeV4(deps) {
             catch {
                 if (opened)
                     try {
-                        await opened.run.close();
+                        await opened.close();
                     }
                     catch {
                         return { kind: 'unavailable', diagnostics: [{ code: 'SCHEMA_WORKER_CLEANUP' }] };
@@ -179,8 +182,9 @@ export async function createMvuSchemaRuntimeV4(deps) {
                 return unavailable;
             }
         };
-        const guardedRunner = (selected) => ({ identity: selected.identity,
-            scopeInputProtocols: selected.scopeInputProtocols,
+        // Preserve the actual runner interface. These overrides decorate package
+        // lifetime and live-resource cleanup rather than re-declare capabilities.
+        const guardedRunner = (selected) => ({ ...selected,
             bindScopeReferencesV2: selected.bindScopeReferencesV2 ? read => {
                 current();
                 return guardedRunner(selected.bindScopeReferencesV2(read));
@@ -194,7 +198,8 @@ export async function createMvuSchemaRuntimeV4(deps) {
             verifyEvaluation: (program, evaluation, signal) => guarded(() => selected.verifyEvaluation(program, evaluation, signal), false),
             evaluateTrace: (program, input, signal) => guarded(() => selected.evaluateTrace(program, input, signal), unavailable),
             evaluateNext: (program, input, signal) => guarded(() => selected.evaluateNext(program, input, signal), unavailable),
-            openManualRun: openManualRun(selected),
+            openManualRun: selected.openManualRun ? (program, input, signal) => guardedLive(() => selected.openManualRun(program, input, signal)) : undefined,
+            openTrial: selected.openTrial ? (program, input, signal) => guardedLive(() => selected.openTrial(program, input, signal)) : undefined,
             verifyTrace: (program, evaluation, signal) => guarded(() => selected.verifyTrace(program, evaluation, signal), false),
             dispose: () => selected.dispose() });
         return { libraries: Object.freeze(libraries.map(({ code: _code, ...library }) => Object.freeze(library))), bridge, stateLoader,

@@ -197,7 +197,13 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     })
   }
   const schemaCore=deps.schema?createRoleplayMvuSchemaCore({...deps.schema,branch:deps.tables.branch,
+    includeCardStyle:deps.includeCardStyle,
+    awaitBrowserSource:deps.awaitBrowserSource,
+    prepareHook:deps.prepareMvuHook,readHookInterests:deps.readMvuHookInterests,
     status:deps.tables.status,recordOwner:deps.inputState.schemaJournal,nativeHistory:deps.inputState.nativeHistory,source,scopeStore,
+    live:{session:id=>deps.session(id),observeDomainChanges:deps.inputState.observeDomainChanges,
+      captureClosedData:deps.inputState.captureClosedData,readDataInventory:deps.inputState.readDataInventory},
+    readProgramOpeningRoot:deps.readProgramOpeningRoot,
     session:id=>deps.session(id) as unknown as Session|undefined,
     withSourceLock:deps.withSourceLock,projectPrefix:events=>deps.messageEdits.projectPrefix(events),
     nativeRead:(identity,turn)=>native.read(identity,turn)}):undefined
@@ -217,6 +223,8 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       protectedRuntime:schemaCore.protectedRuntime,withSourceLock:deps.withSourceLock}
     schemaStory??=createRoleplayMvuSchemaStoryCore({...completion,...common,inputState:deps.inputState,
       prepareHook:deps.prepareMvuHook,
+      readHookInterests:deps.readMvuHookInterests,
+      includeCardStyle:deps.includeCardStyle,
       manualPendingCode:(id:string)=>schemaVariants?.pendingCode(id)??schemaPlayer?.pendingCode(id),
       captureManualLedger:(id:string)=>{
         const ledger=schemaPlayer?.captureLedger(id),code=schemaVariants?.pendingCode(id)

@@ -11,7 +11,7 @@ export const SCHEMA_RUNTIME_PINS=Object.freeze({'quickjs-emscripten-core':'0.32.
 export type SchemaRuntimeRole='provider'|'compiler'|'compiler-worker'|'runner'|'runner-worker'
 export interface SchemaRuntimeFile {path:string;sha256:string}
 export interface SchemaRuntimeGuest {
-  kind:'zod'|'lodash';packageName:string;version:string;globalName:string;path:string;sha256:string;licensePath:string
+  kind:'zod'|'lodash'|'mvu-196';packageName:string;version:string;globalName:string;path:string;sha256:string;licensePath:string
 }
 export interface SchemaRuntimeDescriptor {
   schemaVersion:2
