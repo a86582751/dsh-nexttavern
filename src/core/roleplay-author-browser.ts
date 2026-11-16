@@ -200,7 +200,7 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     return realm
   }
   function project(value:Attachment,facts:AuthorBrowserCapturedFacts):AuthorBrowserSnapshot {
-    if(!value.current()||!facts.current()||facts.program.programSha256!==value.program.programSha256) {
+    if(!originalSourceLifetime(value)()||!facts.current()||facts.program.programSha256!==value.program.programSha256) {
       return fail('BROWSER_ATTACHMENT_REVOKED')
     }
     // A later ordinary write must derive its ACK from this delivered cut.
@@ -354,7 +354,9 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
       if(!facts)return {ok:true,kind:'inactive',code:'BROWSER_PROGRAM_UNAVAILABLE'}
       if(!owner()||!facts.current())return fail('BROWSER_ATTACHMENT_REVOKED')
       let value=input.binding?attachments.get(input.binding.browserSessionId):undefined,created=false
-      if(value&&(value.binding.sessionId!==session.id||!sameBinding(value.binding,input.binding!)||!value.current()
+      // Ordinary publications expire delivered DATA while registered callbacks
+      // retain their Source lifetime through this refresh.
+      if(value&&(value.binding.sessionId!==session.id||!sameBinding(value.binding,input.binding!)||!originalSourceLifetime(value)()
         ||value.program.programSha256!==facts.program.programSha256)) {
         revoke(value)
         value=undefined
