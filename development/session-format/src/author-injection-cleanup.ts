@@ -33,6 +33,8 @@ export interface AuthorInjectionPromptV1 {
   readonly filterCallbackId?:string
 }
 export interface AuthorInjectionDeclarationV1 {
+  /** Owner-resolved DATA used by this registration, including startup reads. */
+  readonly libraryReads?:readonly {readonly realmId:string;readonly read:object;readonly value:unknown}[]
   readonly schemaVersion:1
   readonly encoding:'native-author-injection-declaration-v1'
   readonly sessionId:string

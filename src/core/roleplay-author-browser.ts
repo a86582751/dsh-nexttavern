@@ -54,6 +54,7 @@ interface Dependencies {
   confirmMessageBody?(sid:string,operationId:string):Promise<AuthorMessageEditResultV1>|AuthorMessageEditResultV1
   mutatePrompts?(input:{sessionId:string;program:AuthorNativeProgramV1;realm:AuthorNativeRealmV1;
     binding:BrowserBindingV1;request:import('./author-native-helper-types.js').AuthorNativePromptMutationRequestV1;
+    libraryReads:readonly AuthorNativeResolvedLibraryReadV1[];
     current:()=>boolean;signal:AbortSignal}):Promise<{retiredFilterCallbackIds?:readonly string[]}>
   ctx:{effect(work:()=>unknown,label?:string):unknown;connection:{fetch:{register(route:unknown):unknown}}}
   resolveSession(id:unknown):Promise<{id:string}|null|undefined>
@@ -583,6 +584,7 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
           ?{worldbook:value.facts.data.worldbook}:{},
         ...value.facts.data.avatarPaths?{avatarPaths:value.facts.data.avatarPaths}:{},
         ...value.facts.data.tavernRegexes?{tavernRegexes:value.facts.data.tavernRegexes}:{},
+        ...value.facts.data.formatter?{formatter:value.facts.data.formatter}:{},
         ...value.facts.data.readonlyPreset?{readonlyPreset:value.facts.data.readonlyPreset}:{}}
       const snapshot:AuthorBrowserSnapshot={...common,schemaVersion:1,encoding:'author-native-helper-snapshot-v1',
         ordinaryChat:facts.ordinaryChat,...facts.ordinaryMessages?{ordinaryMessages:facts.ordinaryMessages}:{},
