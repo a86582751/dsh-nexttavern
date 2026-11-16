@@ -175,7 +175,10 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
   function effectiveHistory(session:MemorySession,view=captureMemoryStoryText(session,getEngine()?.captureStoryText)) {
     return view.rows(selectedStoryHistorySnapshot(session))
   }
-  function notesForSession(session:MemorySession,record:unknown,entries=effectiveHistory(session)) {
+  function notesForSession(session:MemorySession,record:unknown,
+    entries?:ReturnType<typeof effectiveHistory>) {
+    if(record==null)return null
+    entries??=effectiveHistory(session)
     return directorNotesForBranch(record,session,entries,memoryStorySourceKeys(entries))
   }
   function cadenceForSession(session:MemorySession) {
@@ -184,11 +187,10 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
       Number(engine?.settings?.(session.id)?.autoNotesEveryTurns)||cfg.autoNotesEveryTurns,
       entries,memoryStorySourceKeys(entries))
   }
-  function memoryForSession(session: MemorySession,storyText?:MemoryStoryTextView)
-    : (MemoryRecordProjection & { directorNotes: ReturnType<typeof directorNotesForBranch> }) | null {
+  function memoryLedgerForSession(session: MemorySession,
+    checkpoint=checkpointSummaryFromSurface(session)): MemoryRecordProjection | null {
     const engine = getEngine()
     const storedRecord = engine?.memoryHead?.(session.id) ?? null
-    const checkpoint = checkpointSummaryFromSurface(session)
     const projected = filterMemoryRecordForBranch(storedRecord, session, checkpoint)
     if (!projected) return null
 
@@ -207,8 +209,14 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     return {
       ...projected,
       archives,
-      directorNotes: notesForSession(session,projected,effectiveHistory(session,storyText)),
     }
+  }
+
+  function memoryForSession(session: MemorySession,storyText?:MemoryStoryTextView)
+    : (MemoryRecordProjection & { directorNotes: ReturnType<typeof directorNotesForBranch> }) | null {
+    const projected=memoryLedgerForSession(session)
+    if(!projected)return null
+    return {...projected,directorNotes:notesForSession(session,projected,effectiveHistory(session,storyText))}
   }
 
 
@@ -300,20 +308,20 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     },
     memoryProjection(session: MemorySession | null | undefined) {
       if (!session || !isRoleplaySession(session)) return null
-      const storyText=captureMemoryStoryText(session,getEngine()?.captureStoryText)
-      const projected = memoryForSession(session,storyText)
+      const checkpoint = checkpointSummaryFromSurface(session)
+      const projected = memoryLedgerForSession(session,checkpoint)
       if (!projected) return null
+      const storyText=captureMemoryStoryText(session,getEngine()?.captureStoryText)
       const history = effectiveHistory(session,storyText)
       const live = new Set([...surfaceSeqsOf(session), ...history.map(entry => entry.seq)])
       const scoped = (items: readonly Record<string, unknown>[]) => (Array.isArray(items) ? items : []).filter(item => {
         const seq = provenanceSeqOf(item)
         return seq !== null && live.has(seq)
       })
-      const checkpoint = checkpointSummaryFromSurface(session)
       return { ...projected, summary: checkpoint?.text ?? '',
         deltas: scoped(projected.deltas), pendingConfirmations: scoped(projected.pendingConfirmations),
         archiveDigests: scoped(projected.archiveDigests),
-        directorNotes: notesForSession(session,getEngine()?.memoryHead?.(session.id),history) }
+        directorNotes: notesForSession(session,projected,history) }
     },
     async prepareForTurn(agent: MemoryAgent, signal?: AbortSignal) {
       const session = agent?.session
