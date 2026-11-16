@@ -6,6 +6,8 @@ import { produceRoleplayTavernMacroSnapshotV1 } from './roleplay-tavern-prompt-m
 import { applyTavernPromptTransformsV1 } from './tavern-prompt-transform.mjs';
 import { readRubyConfigurationV1, RUBY_BUILTIN_REFERENCES_V1 } from './roleplay-ruby-config.js';
 import { findRubyEntryV1 } from './roleplay-ruby-input.js';
+import { createTavernSourceEntryResolverV1 } from './tavern-source-render-catalog.mjs';
+import { namedWorldbookKeyToWireV1 } from './tavern-named-worldbook-data.js';
 export function createRoleplayRubyCaptureV1(deps) {
     function configurationSummary(id) {
         return deps.inputState.captureObservation(id, () => {
@@ -50,7 +52,7 @@ export function createRoleplayRubyCaptureV1(deps) {
             // The synchronous Source supplier is already captured. Consumers reuse
             // it rather than rebuilding a book merely to discover no Ruby producer.
             const includeCardStyle = deps.includeCardStyle(id), captured = captureRoleplayTavernPromptSourceDataV1({
-                source: { capture: () => original }, edits: deps.edits
+                source: { capture: () => original }, edits: deps.edits, books: deps.books
             }, id, includeCardStyle);
             if (captured.kind === 'outside-declared-domain')
                 return undefined;
@@ -59,27 +61,39 @@ export function createRoleplayRubyCaptureV1(deps) {
                 ref: { ownerId: id, sourcePath: `native/messages/${row.id}`, version: row.messageSha256 },
                 seq: row.seq, messageId: row.id, messageVersion: row.messageSha256, role: row.role,
                 speakerName: row.role === 'user' ? context.user ?? '' : actualCharName, text: clock.scanRows[index].text
-            })) ?? [], entries = compilation.plan.entries.map(planEntry => {
-                // The compiler's current directory owns membership and raw order.
-                // Iterating the archive would resurrect removed prompts and hide new ones.
-                const member = planEntry.currentNativeMember
-                    ? compilation.plan.currentNativeMembership.members[planEntry.ordinal] : undefined, archived = member ? undefined : source.original.primary.entries.find(entry => entry.ref.entryPointer === planEntry.sourcePointer), rawEntry = member?.rawEntry ?? archived.value, rawRef = member ? { entryPointer: planEntry.sourcePointer, entrySha256: planEntry.currentNativeMember.rawEntrySha256 } : archived.ref, content = planEntry.semanticOverrides.content, text = content?.currentNative?.text ?? (typeof rawEntry.content === 'string' ? rawEntry.content : ''), keys = planEntry.semanticOverrides.primaryKeys ?? (Array.isArray(rawEntry.keys)
-                    ? rawEntry.keys.filter((key) => typeof key === 'string') : []);
-                return { ref: { ownerId: source.sourceRecordSessionId, sourcePath: planEntry.sourcePointer,
-                        version: recordSha256({ rawEntry: rawRef, keys, text }) }, keys, resolvedContent: text,
-                    uid: member?.uid ?? planEntry.upstreamUid.value ?? planEntry.ordinal,
-                    comment: typeof rawEntry.comment === 'string' ? rawEntry.comment : typeof rawEntry.name === 'string' ? rawEntry.name : '',
-                    disabled: planEntry.disposition === 'disabled', constant: planEntry.semanticOverrides.constant ?? !!rawEntry.constant };
-            }), book = { ref: { ownerId: id, sourcePath: source.original.primary.bookPointer,
-                    version: recordSha256(entries) }, entries }, declaredOutlets = compilation.plan.entries.flatMap(entry => entry.semanticOverrides.outletName ? [entry.semanticOverrides.outletName] : []);
+            })) ?? [], bookContext = captured.bookContext, primary = bookContext?.primary, resolveEntry = createTavernSourceEntryResolverV1(source, compilation.plan), bookRecords = new Map();
+            const recordsFor = (actual) => {
+                const key = actual?.address.bookId ?? compilation.plan.bookId, previous = bookRecords.get(key);
+                if (previous)
+                    return previous;
+                const selected = compilation.plan.boundBooks ? compilation.plan.entries.filter(entry => entry.bookId === actual?.address.bookId)
+                    : compilation.plan.entries, records = selected.map(planEntry => {
+                    // The shared resolver joins local book ordinals to their captured
+                    // owner. Collection ordinals never index a single membership array.
+                    const { member, raw } = resolveEntry(planEntry), rawEntry = raw, content = planEntry.semanticOverrides.content, text = content?.currentNative?.text ?? (typeof rawEntry.content === 'string' ? rawEntry.content : ''), rawKeys = Array.isArray(rawEntry.keys) ? rawEntry.keys.filter((key) => typeof key === 'string') : [], keys = planEntry.semanticOverrides.primaryKeys ?? (member ? rawKeys.map(namedWorldbookKeyToWireV1) : rawKeys), enabled = planEntry.semanticOverrides.enabled ?? (member ? !!rawEntry.enabled : planEntry.disposition !== 'disabled');
+                    return { ref: { ownerId: actual?.address.profileId ?? source.sourceRecordSessionId, sourcePath: planEntry.sourcePointer,
+                            version: planEntry.entryPlanSha256 }, keys, resolvedContent: text,
+                        uid: member?.uid ?? planEntry.upstreamUid.value ?? planEntry.ordinal,
+                        comment: typeof rawEntry.comment === 'string' ? rawEntry.comment
+                            : typeof rawEntry.name === 'string' ? rawEntry.name : '',
+                        disabled: !enabled, constant: planEntry.semanticOverrides.constant ?? !!rawEntry.constant };
+                });
+                bookRecords.set(key, records);
+                return records;
+            };
+            const entries = bookContext && !primary ? [] : recordsFor(primary), characterBinding = bookContext?.bindings.find(binding => binding.owner.kind === 'character'), primaryPlan = primary ? compilation.plan.boundBooks?.find(book => book.plan.bookId === primary.address.bookId)?.plan : undefined, book = { ref: { ownerId: primary?.address.profileId ?? id,
+                    sourcePath: primary ? primaryPlan.source.bookPointer : bookContext
+                        ? characterBinding?.head?.key ?? bookContext.registrationRef.key : source.original.primary.bookPointer,
+                    version: primary ? recordSha256({ content: primary.content, metadata: primary.metadata }) : compilation.plan.planSha256 }, entries }, declaredOutlets = compilation.plan.entries.flatMap(entry => entry.semanticOverrides.outletName ? [entry.semanticOverrides.outletName] : []);
             // Identity covers the actual rule/config and explicit lookup content.
             // Session-local Source references remain separate, permitting a fork to
             // inherit accepted output without rewriting the immutable original.
             const sourceIdentitySha256 = recordSha256({ configuration: raw ?? null, entries: entries.map(entry => ({
                     keys: entry.keys, text: entry.resolvedContent
                 })), context });
-            return { configuration, actualCharName, messages, book, records: entries,
-                primaryName: typeof source.original.primary.value?.name === 'string' ? source.original.primary.value.name : null,
+            return { configuration, actualCharName, messages, book, records: entries, bookContext, recordsFor,
+                primaryName: bookContext ? primary?.name ?? null :
+                    typeof source.original.primary.value?.name === 'string' ? source.original.primary.value.name : null,
                 macroInput: { source, cardData, includeCardStyle, inputText: null, scopes: [], outlets: [], declaredOutlets },
                 sourceIdentitySha256,
                 sourceSnapshotSha256: source.sourceSha256 };
@@ -90,10 +104,28 @@ export function createRoleplayRubyCaptureV1(deps) {
         }
         try {
             const data = read.data;
+            let worldbookRead;
+            const readBook = async (name) => {
+                read.assertCurrent();
+                const bound = data.bookContext?.books.find(book => book.name === name);
+                if (bound)
+                    return { name: bound.name, book: bound, records: data.recordsFor(bound) };
+                if (!deps.worldbooks)
+                    return undefined;
+                const actual = await (worldbookRead ??= deps.worldbooks.capture(id));
+                read.assertCurrent();
+                actual.assertCurrent();
+                if (actual.data.sourceSha256 !== data.sourceSnapshotSha256)
+                    throw Error('RUBY_SOURCE_CHANGED');
+                if (!actual.data.names.includes(name))
+                    return undefined;
+                const current = () => read.current() && actual.current(), book = await deps.worldbooks.read(id, name, actual.data, current, signal);
+                read.assertCurrent();
+                actual.assertCurrent();
+                return { name: book.name, book, records: readCatalogRubyEntries(book) };
+            };
             const makeMacros = () => ({ ...produceRoleplayTavernMacroSnapshotV1(data.macroInput).snapshot,
-                deferredMacros: [...new Set(['CHAR_NAME', 'recentMessages',
-                        ...data.configuration.referencePool.map(reference => reference.varName),
-                        ...data.configuration.tasks.flatMap(task => [task.outputVarName, ...task.useReferences, ...task.useOutputs])])] });
+                preserveUnknownMacros: true });
             async function transformEntries(selectedEntries, macros, sourcePath) {
                 const transformed = await applyTavernPromptTransformsV1({ schemaVersion: 1,
                     encoding: 'owned-tavern-prompt-transform-v1', authority: 'consumer-data-only',
@@ -155,7 +187,7 @@ export function createRoleplayRubyCaptureV1(deps) {
             };
             return { session, configuration: data.configuration, sourceIdentitySha256: data.sourceIdentitySha256,
                 actualCharName: data.actualCharName, messages: data.messages, characterBook: data.book, resolveInputBooks,
-                primaryName: data.primaryName, records: data.records, resolveEntryContent,
+                primaryName: data.primaryName, records: data.records, readBook, resolveEntryContent,
                 assertCurrent: read.assertCurrent, current: read.current, release: read.release };
         }
         catch (error) {
@@ -164,4 +196,18 @@ export function createRoleplayRubyCaptureV1(deps) {
         }
     }
     return { capture, configurationSummary };
+}
+/** Explicit console lookups consume raw member fields without requiring the
+ * full Helper DTO's position controls. Unselected content stays inert. */
+function readCatalogRubyEntries(book) {
+    const pointer = '/books/' + book.address.bookId.replaceAll('~', '~0').replaceAll('/', '~1'), version = recordSha256({ content: book.content, metadata: book.metadata });
+    return book.membership.members.map((member, index) => ({ member, index }))
+        .sort((a, b) => a.member.displayIndex - b.member.displayIndex).map(({ member, index }) => {
+        const raw = member.rawEntry;
+        return { ref: { ownerId: book.address.profileId, sourcePath: `${pointer}/members/${index}/rawEntry`,
+                version: recordSha256({ version, identity: member.identity }) }, uid: member.uid,
+            keys: Array.isArray(raw.keys) ? raw.keys.filter((key) => typeof key === 'string').map(namedWorldbookKeyToWireV1) : [],
+            comment: typeof raw.comment === 'string' ? raw.comment : typeof raw.name === 'string' ? raw.name : '',
+            resolvedContent: typeof raw.content === 'string' ? raw.content : '', disabled: !raw.enabled, constant: !!raw.constant };
+    });
 }

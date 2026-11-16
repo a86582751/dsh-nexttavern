@@ -3,7 +3,7 @@
 import {createHash} from 'node:crypto'
 import type {Context} from '@deepseek-ai/cordis'
 import {brandString} from '@deepseek-ai/dsh-brand'
-import {freezeMessage,type MessageId,type UserMessage} from 'dsh-nexttavern-native-llm'
+import {freezeMessage,ReasoningEffortId,type MessageId,type UserMessage} from 'dsh-nexttavern-native-llm'
 import {nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
 import type {NativeInputAdmissionAgentV2,NativeInputAdmissionHookV2,NativeInputAdmissionCheckV2,
   NativeRequestMaterialOwnerV1,NativeOwnedMaterialAnchoredInsertionV1}
@@ -116,8 +116,14 @@ export function composeOwnedRubyTaskActivationV1(ctx:Context,child:NativeInputAd
     for(const remove of cleanup.reverse())remove()
   }
   try{
-    if(activation.temperature!==undefined)cleanup.push(ctx.on('agent/request',async(_input,next)=>({
-      ...await next(),temperature:activation.temperature,
+    cleanup.push(ctx.on('agent/request',async(_input,next)=>({
+      ...await next(),
+      ...(activation.temperature===undefined?{}:{temperature:activation.temperature}),
+      ...(activation.topP===undefined?{}:{topP:activation.topP}),
+      ...(activation.topK===undefined?{}:{topK:activation.topK}),
+      ...(activation.presencePenalty===undefined?{}:{presencePenalty:activation.presencePenalty}),
+      ...(activation.frequencyPenalty===undefined?{}:{frequencyPenalty:activation.frequencyPenalty}),
+      ...(activation.reasoningEffort===undefined?{}:{reasoningEffort:ReasoningEffortId(activation.reasoningEffort)}),
     })))
     // Workspace instructions belong to the inherited Main preset. Remove its
     // post-step contribution before Native selects this task's frozen input;

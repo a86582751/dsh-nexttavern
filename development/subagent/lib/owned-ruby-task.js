@@ -34,5 +34,10 @@ export function readOwnedRubyTaskActivationV1(value) {
         promptPlanSha256: row.promptPlanSha256, userMessageId: row.userMessageId,
         orderedMessages: Object.freeze(orderedMessages),
         ...(row.temperature === undefined ? {} : { temperature: row.temperature }),
+        ...(row.topP === undefined ? {} : { topP: row.topP }),
+        ...(row.topK === undefined ? {} : { topK: row.topK }),
+        ...(row.presencePenalty === undefined ? {} : { presencePenalty: row.presencePenalty }),
+        ...(row.frequencyPenalty === undefined ? {} : { frequencyPenalty: row.frequencyPenalty }),
+        ...(row.reasoningEffort === undefined ? {} : { reasoningEffort: row.reasoningEffort }),
         ...(indexed ? { mainInputMessageIndex: row.mainInputMessageIndex } : {}) });
 }

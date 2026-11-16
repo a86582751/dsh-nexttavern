@@ -6,7 +6,6 @@ import { TaskValidationError, taskValidationFailure, FAILURE_LABELS, taskFailure
 import { PURPOSES, selectedMainRoute, createModelPolicy } from './tavern-model-policy.js';
 export { TaskValidationError, taskValidationFailure, FAILURE_LABELS, taskFailureDetails, withTavernLock, nativeTaskOutputBudget, PURPOSES, selectedMainRoute, createModelPolicy };
 import { storedTask, executableTask, taskObject } from './tavern-task-types.js';
-import { authorDialogSystemPrefixV1 } from './roleplay-author-dialog.js';
 const copy = (value) => value == null ? value : structuredClone(value);
 function batchEntries(raw, field) {
     if (raw == null)
@@ -36,7 +35,7 @@ const privateCharacterTask = (kind) => kind === 'character' || kind === 'charact
  * a future main-loop step: it persists and yields InlinePending to the stage
  * controller. Only native, independently executing children may be awaited.
  */
-export function createTavernTasks({ table, policy, subagents, isCurrent = () => true, isHistoricalResultCurrent, canPublishResult, observeRecords }) {
+export function createTavernTasks({ table, policy, subagents, isCurrent = () => true, isHistoricalResultCurrent, canPublishResult, observeRecords, inspectAuthorGeneration }) {
     const nativeResults = new WeakMap();
     const nativeResult = (id, generation) => { const token = {}; nativeResults.set(token, { id, generation }); return token; };
     const liveHistoricalResult = (session, job) => job.background === true && job.status === 'running'
@@ -405,7 +404,7 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
             const job = ownedRecord(session, id);
             if (job.status === 'completed')
                 return job;
-            const next = { ...job, status: 'cancelled', generation: randomUUID(), updatedAt: Date.now() };
+            const next = { ...job, status: 'cancelled', generation: job.kind === 'author-dialog' ? job.generation : randomUUID(), updatedAt: Date.now() };
             await table.put(keyOf(id), next);
             return next;
         });
@@ -470,10 +469,13 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
                 promptPlanSha256: String(taskObject(job.input.rubyTask)?.promptPlanSha256), resultSha256: resultHash,
                 nativeCompletedWork: rubyCompleted.receipt,
             } : undefined;
+            if (job.kind === 'author-dialog' && !job.authorNativeResult)
+                throw Error('AUTHOR_NATIVE_COMPLETION_REQUIRED');
             const authorDialogCompletion = job.kind === 'author-dialog' ? {
                 schemaVersion: 1, encoding: 'native-author-dialog-completion-v1',
                 taskId: id, generation, childSessionId: String(job.childSessionId),
                 promptPlanSha256: String(taskObject(job.input?.authorDialog)?.promptSha256), resultSha256: resultHash,
+                native: job.authorNativeResult,
             } : undefined;
             await table.put(keyOf(id), { ...job, status: 'completed', result: copy(result), resultHash,
                 ...(authorDialogCompletion ? { authorDialogCompletion } : {}), progress: { done: 1, total: 1 },
@@ -504,7 +506,7 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
         // A restart may be followed by newer canonical prose before idle recovery.
         // Rebuild that batch from the new snapshot instead of leaving an orphaned
         // old "running" row forever. Live in-process work is never superseded here.
-        if (spec.background || isolatedCompaction)
+        if ((spec.background || isolatedCompaction) && !authorDialog)
             for (const previous of list(session)) {
                 const obsoleteCompaction = isolatedCompaction && previous.kind === 'memory'
                     && previous.input?.taskStage === 'compaction' && !terminal.has(previous.status);
@@ -544,16 +546,30 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
             if (found?.execution === 'spawn' && found.status === 'running' && !running.has(id) && !admissions.has(id)) {
                 // A started Ruby child may have spent its sole request before restart.
                 // Keep that unknown outcome for explicit retry instead of spending again.
-                found = independent
-                    ? { ...found, status: 'failed', error: 'INDEPENDENT_TASK_COMPLETION_UNKNOWN',
-                        failure: { code: 'INDEPENDENT_TASK_COMPLETION_UNKNOWN' }, failedAt: Date.now(), updatedAt: Date.now() }
-                    : rubyTask
-                        ? { ...found, status: 'failed', error: 'RUBY_NATIVE_COMPLETION_UNKNOWN',
-                            failure: { code: 'RUBY_NATIVE_COMPLETION_UNKNOWN' }, failedAt: Date.now(), updatedAt: Date.now() }
-                        : found.background || isolatedCompaction
-                            ? { ...found, generation: randomUUID(), status: 'queued', recoveredAt: Date.now(), updatedAt: Date.now() }
-                            : { ...found, generation: randomUUID(), execution: 'inline', actualRoute: copy(found.main), status: 'queued',
-                                fallback: { from: found.actualRoute, reason: 'runtime-restart', at: Date.now() }, updatedAt: Date.now() };
+                const inspected = authorDialog && (!found.authorNativeResult || !found.authorNativeTerminal)
+                    ? await inspectAuthorGeneration?.(found) : undefined, recovered = authorDialog ? found.authorNativeResult ?? inspected?.completion : undefined;
+                if (inspected?.terminal)
+                    found = { ...found, authorNativeTerminal: inspected.terminal };
+                if (recovered) {
+                    const resultHash = taskHash(recovered);
+                    found = { ...found, status: 'completed', result: recovered, resultHash, authorNativeResult: recovered,
+                        authorDialogCompletion: { schemaVersion: 1, encoding: 'native-author-dialog-completion-v1', taskId: found.id,
+                            generation: found.generation, childSessionId: recovered.identity.childSessionId, promptPlanSha256: authorDialog.promptSha256,
+                            resultSha256: resultHash, native: recovered }, updatedAt: Date.now() };
+                }
+                else
+                    found = authorDialog
+                        ? { ...found, status: 'failed', error: 'AUTHOR_NATIVE_COMPLETION_UNKNOWN', failure: { code: 'AUTHOR_NATIVE_COMPLETION_UNKNOWN' }, updatedAt: Date.now() }
+                        : independent
+                            ? { ...found, status: 'failed', error: 'INDEPENDENT_TASK_COMPLETION_UNKNOWN',
+                                failure: { code: 'INDEPENDENT_TASK_COMPLETION_UNKNOWN' }, failedAt: Date.now(), updatedAt: Date.now() }
+                            : rubyTask
+                                ? { ...found, status: 'failed', error: 'RUBY_NATIVE_COMPLETION_UNKNOWN',
+                                    failure: { code: 'RUBY_NATIVE_COMPLETION_UNKNOWN' }, failedAt: Date.now(), updatedAt: Date.now() }
+                                : found.background || isolatedCompaction
+                                    ? { ...found, generation: randomUUID(), status: 'queued', recoveredAt: Date.now(), updatedAt: Date.now() }
+                                    : { ...found, generation: randomUUID(), execution: 'inline', actualRoute: copy(found.main), status: 'queued',
+                                        fallback: { from: found.actualRoute, reason: 'runtime-restart', at: Date.now() }, updatedAt: Date.now() };
                 await table.put(key, found);
             }
             if (!found) {
@@ -583,6 +599,15 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
         // Inline tools consume this registration, never a phase label or pending
         // workflow selected independently of the Native task that requested them.
         validators.set(id, { spec, generation: job.generation, validate: spec.validate ?? (value => value) });
+        if (authorDialog && job.authorNativeTerminal && !job.authorEffectsTerminalRef) {
+            const terminalRef = await spec.authorOwner?.terminal?.(job.authorNativeTerminal, new AbortController().signal);
+            if (terminalRef)
+                await lock(id, async () => {
+                    const live = owned(session, id);
+                    if (live.generation === job.generation)
+                        await table.put(key, { ...live, authorEffectsTerminalRef: terminalRef });
+                });
+        }
         if (!await isCurrent(session, job) && !(job.status === 'completed' && await isHistoricalResultCurrent?.(session, job))) {
             await lock(id, async () => { await table.put(key, { ...owned(session, id), status: 'stale', updatedAt: Date.now() }); });
             throw new Error('任务来源已变化');
@@ -634,14 +659,82 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
                 if (live.generation !== job.generation || terminal.has(live.status))
                     throw new Error('任务已取消或失效');
                 ac.signal.throwIfAborted();
+                const authorExecution = authorDialog ? live.authorExecution ?? { childSessionId: randomUUID(), messageId: randomUUID() } : undefined;
+                if (authorExecution)
+                    await lock(id, async () => {
+                        const actual = owned(session, id);
+                        if (actual.generation !== job.generation || terminal.has(actual.status))
+                            throw Error('AUTHOR_GENERATION_REVOKED');
+                        await table.put(key, { ...actual, authorExecution, status: 'running', startedAt: Date.now(), childSessionId: authorExecution.childSessionId });
+                    });
                 const activation = authorDialog ? { schemaVersion: 1, encoding: 'owned-author-dialog-v1',
-                    taskId: id, generation: job.generation, promptPlanSha256: authorDialog.promptSha256,
-                    operationId: `author-dialog-${id}-${job.generation}`, messageId: randomUUID(),
-                    systemPrefix: authorDialogSystemPrefixV1(authorDialog), dynamicSystem: authorDialog.orderedSystem[5].text } : undefined;
+                    identity: { kind: 'author-generation', taskId: id, generation: job.generation, operationId: authorDialog.operationId,
+                        generationId: authorDialog.generationId, rootSessionId: session.id, childSessionId: authorExecution.childSessionId,
+                        messageId: authorExecution.messageId, planSha256: authorDialog.promptSha256 },
+                    orderedMessages: authorDialog.orderedMessages, call: authorDialog.call, material: authorDialog.material } : undefined;
+                const authorOwner = activation ? {
+                    current: () => {
+                        const actual = owned(session, id);
+                        return actual.generation === job.generation && !terminal.has(actual.status) && !ac.signal.aborted
+                            && spec.authorOwner?.current() === true;
+                    },
+                    async checkpoint(input) {
+                        await lock(id, async () => {
+                            const actual = owned(session, id);
+                            if (actual.generation !== job.generation || terminal.has(actual.status))
+                                throw Error('AUTHOR_GENERATION_REVOKED');
+                            const { signal: checkpointSignal, current, ...receipt } = input;
+                            await table.put(key, { ...actual, authorNativeCheckpoint: receipt, updatedAt: Date.now() });
+                        });
+                        const recordEffects = async (receipt) => {
+                            await lock(id, async () => {
+                                const actual = owned(session, id);
+                                if (actual.generation !== job.generation)
+                                    throw Error('AUTHOR_GENERATION_REVOKED');
+                                if (actual.authorEffects?.acceptedRef.sha256 === receipt.acceptedRef.sha256
+                                    && actual.authorEffects.settledRef?.sha256 === receipt.settledRef?.sha256)
+                                    return;
+                                await table.put(key, { ...actual, authorEffects: receipt, updatedAt: Date.now() });
+                            });
+                        };
+                        const receipt = await spec.authorOwner?.checkpoint({ ...input, recordEffects });
+                        if (receipt)
+                            await recordEffects(receipt);
+                    },
+                    async closing(result) {
+                        await lock(id, async () => {
+                            const actual = owned(session, id);
+                            if (actual.authorExecution?.childSessionId !== result.identity.childSessionId)
+                                throw Error('AUTHOR_GENERATION_CHILD_CHANGED');
+                            await table.put(key, { ...actual, authorNativeResult: result, updatedAt: Date.now() });
+                        });
+                    },
+                    async terminal(proof, terminalSignal) {
+                        await lock(id, async () => {
+                            const actual = owned(session, id);
+                            if (actual.generation !== job.generation || actual.childSessionId !== proof.identity.childSessionId)
+                                throw Error('AUTHOR_GENERATION_CHILD_CHANGED');
+                            await table.put(key, { ...actual, authorNativeTerminal: proof, updatedAt: Date.now() });
+                        });
+                        const terminalRef = await spec.authorOwner?.terminal?.(proof, terminalSignal);
+                        if (terminalRef)
+                            await lock(id, async () => {
+                                const actual = owned(session, id);
+                                if (actual.generation === job.generation)
+                                    await table.put(key, { ...actual, authorEffectsTerminalRef: terminalRef });
+                            });
+                    },
+                    stream: spec.authorOwner?.stream,
+                } : undefined;
                 const rubyActivation = rubyTask ? { schemaVersion: 1, encoding: 'owned-ruby-task-v1',
                     taskId: id, generation: job.generation, promptPlanSha256: rubyTask.promptPlanSha256,
                     userMessageId: randomUUID(), orderedMessages: rubyTask.orderedMessages,
                     ...(rubyTask.temperature === undefined ? {} : { temperature: rubyTask.temperature }),
+                    ...(rubyTask.topP === undefined ? {} : { topP: rubyTask.topP }),
+                    ...(rubyTask.topK === undefined ? {} : { topK: rubyTask.topK }),
+                    ...(rubyTask.presencePenalty === undefined ? {} : { presencePenalty: rubyTask.presencePenalty }),
+                    ...(rubyTask.frequencyPenalty === undefined ? {} : { frequencyPenalty: rubyTask.frequencyPenalty }),
+                    ...(rubyTask.reasoningEffort === undefined ? {} : { reasoningEffort: rubyTask.reasoningEffort }),
                     ...(rubyTask.mainInputMessageIndex === undefined ? {} : { mainInputMessageIndex: rubyTask.mainInputMessageIndex }) } : undefined;
                 const rootRubyOwner = rubyTask?.createOwner(copy(job));
                 const rubyOwner = rootRubyOwner ? { ...rootRubyOwner,
@@ -691,7 +784,7 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
                 const starting = Promise.resolve(subagents.start('spawn', { parent: agent, signal: ac.signal,
                     agentOptions: { ...job.actualRoute, ...job.generationOptions, tavernTaskId: id }, maxDepth: 1,
                     toolFilter: { allow: spec.tools ?? [] }, label: `Tavern:${id}:${job.generation}`,
-                    ...(rubyActivation ? { rubyActivation, rubyOwner, prompt: [] } : activation ? { activation, prompt: [] } : characterBackground ? {
+                    ...(rubyActivation ? { rubyActivation, rubyOwner, prompt: [] } : activation ? { activation, authorOwner, prompt: [] } : characterBackground ? {
                         isolatedSystem: String(input.system),
                         prompt: [{ type: 'text', text: String(input.user) }],
                     } : {
@@ -708,6 +801,12 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
                     await table.put(key, { ...live, status: 'running', childSessionId: child.id, startedAt: Date.now() }); });
                 const result = await untilAborted(child.result, ac.signal);
                 ac.signal.throwIfAborted();
+                if (authorDialog) {
+                    const actual = owned(session, id);
+                    if (!actual.authorNativeResult)
+                        throw Error('AUTHOR_NATIVE_COMPLETION_UNKNOWN');
+                    return await submit({ session, id, generation: job.generation, value: actual.authorNativeResult }, nativeResult(id, job.generation));
+                }
                 if (result.stopReason !== 'completed') {
                     // Preserve the native terminal failure details for retries.
                     const end = sessionEvents(child.localAgent?.session).findLast(e => e.type === 'turn/end');
@@ -789,6 +888,19 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
         return { task: assertCurrent(), assertCurrent };
     }
     return { list, request, submit, holdBatch, resolveRegisteredCardImport,
+        async recordAuthorGenerationEffects(session, id, generation, progress, terminalRef) {
+            await lock(id, async () => {
+                const job = owned(session, id);
+                if (job.kind !== 'author-dialog' || job.generation !== generation)
+                    throw Error('AUTHOR_GENERATION_EFFECTS_JOB_CHANGED');
+                if (job.authorEffects?.acceptedRef.sha256 === progress.acceptedRef.sha256
+                    && job.authorEffects.settledRef?.sha256 === progress.settledRef?.sha256
+                    && (!terminalRef || job.authorEffectsTerminalRef?.sha256 === terminalRef.sha256))
+                    return;
+                await table.put(keyOf(id), { ...job, authorEffects: progress,
+                    ...terminalRef ? { authorEffectsTerminalRef: terminalRef } : {}, updatedAt: Date.now() });
+            });
+        },
         active: (session) => activeRecords(session, true),
         /** Current DATA for a visible context's referenced task. Missing or foreign
          * records preserve the context; this read grants no publication authority. */
@@ -804,8 +916,13 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
                 if (!await isCurrent(session, job)
                     && !await liveHistoricalResult(session, owned(session, job.id))) {
                     const admission = admissions.get(job.id), control = controllers.get(job.id);
-                    await lock(job.id, async () => { const live = ownedRecord(session, job.id); if (!terminal.has(live.status))
-                        await table.put(keyOf(job.id), { ...live, status: 'stale', generation: randomUUID(), updatedAt: Date.now() }); });
+                    await lock(job.id, async () => {
+                        const live = ownedRecord(session, job.id);
+                        if (!terminal.has(live.status))
+                            await table.put(keyOf(job.id), {
+                                ...live, status: 'stale', generation: live.kind === 'author-dialog' ? live.generation : randomUUID(), updatedAt: Date.now()
+                            });
+                    });
                     if (control?.generation === job.generation)
                         abortControl(session, job.id, control);
                     if (admission && admission.generation === job.generation)
@@ -839,6 +956,8 @@ export function createTavernTasks({ table, policy, subagents, isCurrent = () => 
                 const job = publicRecord(session, id);
                 if (job.status === 'completed')
                     return job;
+                if (job.kind === 'author-dialog')
+                    throw Error('AUTHOR_GENERATION_NEW_OPERATION_REQUIRED');
                 if (!await isCurrent(session, job))
                     throw new Error('来源已变化，需要新快照');
                 const next = { ...job, status: 'queued', generation: randomUUID(), validationFailures: 0, error: null, failure: null, failedAt: null, updatedAt: Date.now() };

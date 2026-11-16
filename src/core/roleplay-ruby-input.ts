@@ -2,6 +2,7 @@
  * runPipeline; worldbook.js findEntry/readEntry/writeOutputEntry; jailbreak.js
  * buildMessages. Storage, ST macro resolution and publication belong to Core. */
 import {RUBY_BUILTIN_REFERENCES_V1} from './roleplay-ruby-config.js'
+import {boundedNativeRegexBatchV1} from './bounded-regex.js'
 import type {RubyAcceptedOutputValueV1,RubyAnalysisWindowDecisionV1,RubyConfigurationV1,RubyInputDecisionV1,RubyInputWindowV1,
   RubyMessageItemV1,RubyPreparedInputV1,RubyPreparedOutputV1,RubySelectedMessageV1,RubySourceRefV1,
   RubyTaskV1,RubyTriggerV1,RubyWorldbookEntryV1,RubyWorldbookV1} from './roleplay-ruby-types.js'
@@ -10,55 +11,35 @@ export const RUBY_INCREMENTAL_READ_POLICY_V1={schemaVersion:1 as const,maxAiRepl
   defaultContentTags:['content','maintext','text','body','message'] as const,
   removedBlocks:['statusblock','options','other','thinking'] as const}
 
-// The fixed caller treats these author fields as regex source. This module
-// supports literal fields; pattern-dependent configurations need the isolated
-// regex owner instead of executing dynamic author patterns in the main thread.
-const rubyPatternMetacharacters=/[\\^$.*+?()[\]{}|]/
 const removedBlockPatterns=[/<\s*statusblock\b[\s\S]*?<\s*\/\s*statusblock\s*>/ig,
   /<\s*options\b[\s\S]*?<\s*\/\s*options\s*>/ig,
   /<\s*other\b[\s\S]*?<\s*\/\s*other\s*>/ig,
   /<\s*thinking\b[\s\S]*?<\s*\/\s*thinking\s*>/ig]
 
-// The caller uses non-Unicode /i matching. Fold single UTF-16 units without
-// changing offsets; lowercasing a whole string can expand an author character.
-function rubyCaseInsensitiveText(text:string):string {
-  let folded=''
-  for(let index=0;index<text.length;index++) {
-    const unit=text[index]!,upper=unit.toUpperCase()
-    folded+=upper.length===1&&!(unit.charCodeAt(0)>=128&&upper.charCodeAt(0)<128)?upper:unit
-  }
-  return folded
+function cleanText(text:string):string {
+  for(const pattern of removedBlockPatterns)text=text.replace(pattern,'')
+  return text.replace(/<!--[\s\S]*?-->/g,'').trim()
 }
-function readableText(text:string,tags:readonly string[]):string {
-  let extracted=text
-  const folded=rubyCaseInsensitiveText(text)
-  for(const tag of [...tags,...RUBY_INCREMENTAL_READ_POLICY_V1.defaultContentTags]) {
-    const tagKey=rubyCaseInsensitiveText(tag),opening=`<${tagKey}`,start=folded.indexOf(opening)
-    if(start<0)continue
-    const bodyStart=folded.indexOf('>',start+opening.length)+1
-    if(bodyStart===0)continue
-    const end=folded.indexOf(`</${tagKey}>`,bodyStart)
-    if(end>=0){extracted=text.slice(bodyStart,end).trim();break}
-  }
-  for(const pattern of removedBlockPatterns)extracted=extracted.replace(pattern,'')
-  return extracted.replace(/<!--[\s\S]*?-->/g,'').trim()
-}
-export function readRubyIncrementalWindowV1(messages:readonly RubySelectedMessageV1[],bookmark:number,
-  customTags:readonly string[],charName:string):RubyInputWindowV1 {
+export async function readRubyIncrementalWindowV1(messages:readonly RubySelectedMessageV1[],bookmark:number,
+  customTags:readonly string[],charName:string):Promise<RubyInputWindowV1> {
   const count=messages.filter(message=>message.role==='assistant').length
   if(count<=0)return {schemaVersion:1,encoding:'ruby-incremental-input-data-v1',
     startOrdinal:0,endOrdinal:0,count:0,messages:[],scanText:''}
   const startOrdinal=Math.max(bookmark>0?bookmark+1:1,count-RUBY_INCREMENTAL_READ_POLICY_V1.maxAiReplies+1)
   if(startOrdinal>count)return {schemaVersion:1,encoding:'ruby-incremental-input-data-v1',
     startOrdinal,endOrdinal:count,count:0,messages:[],scanText:''}
-  if(customTags.some(tag=>rubyPatternMetacharacters.test(tag)))
-    throw new Error('RUBY_CONTENT_TAG_PATTERN_UNSUPPORTED')
   let start=0,ordinal=0
   if(startOrdinal>1)for(let index=0;index<messages.length;index++) {
     if(messages[index]!.role==='assistant'&&++ordinal===startOrdinal-1){start=index+1;break}
   }
-  const selected=messages.slice(start),lines=selected.flatMap(message=>{
-    const text=readableText(message.text,customTags)
+  const selected=messages.slice(start),nonempty=selected.filter(message=>message.text),
+    extracted=await boundedNativeRegexBatchV1({kind:'capture-first',
+    inputs:nonempty.map(message=>message.text),
+    patterns:[...customTags,...RUBY_INCREMENTAL_READ_POLICY_V1.defaultContentTags]
+      .map(tag=>({pattern:`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`,flags:'i'}))})
+  if(!extracted.ok)throw Error('RUBY_CONTENT_TAG_REGEX_'+extracted.reason.toUpperCase().replaceAll('-','_'))
+  const lines=nonempty.flatMap((message,index)=>{
+    const text=cleanText(extracted.texts[index]!)
     return text?[`【${message.role==='user'?'{{user}}':message.speakerName||charName}】${text}`]:[]
   })
   return {schemaVersion:1,encoding:'ruby-incremental-input-data-v1',startOrdinal,endOrdinal:count,
@@ -119,18 +100,18 @@ export interface RubyInputPreparationV1 {
   readonly acceptedOutputs?:readonly RubyAcceptedOutputValueV1[]
   readonly windowDecision?:Extract<RubyAnalysisWindowDecisionV1,{readonly kind:'eligible'}>
 }
-export function prepareRubyAnalysisWindowV1(input:Pick<RubyInputPreparationV1,
-  'configuration'|'task'|'bookmark'|'messages'|'actualCharName'|'mode'>):RubyAnalysisWindowDecisionV1 {
+export async function prepareRubyAnalysisWindowV1(input:Pick<RubyInputPreparationV1,
+  'configuration'|'task'|'bookmark'|'messages'|'actualCharName'|'mode'>):Promise<RubyAnalysisWindowDecisionV1> {
   const {configuration,task}=input
   if(configuration.status==='unsupported')return {kind:'unsupported',issues:configuration.issues,normalRequests:0}
   const charName=configuration.charName||input.actualCharName||'角色'
   let window:RubyInputWindowV1
   try {
-    window=readRubyIncrementalWindowV1(input.messages,input.bookmark,configuration.customContentTags,charName)
+    window=await readRubyIncrementalWindowV1(input.messages,input.bookmark,configuration.customContentTags,charName)
     if(input.mode==='manual'&&(window.count===0||!window.scanText))
-      window=readRubyIncrementalWindowV1(input.messages,0,configuration.customContentTags,charName)
+      window=await readRubyIncrementalWindowV1(input.messages,0,configuration.customContentTags,charName)
   }
-  catch {return {kind:'unsupported',issues:[{code:'RUBY_CONTENT_TAG_PATTERN_UNSUPPORTED',
+  catch(error) {return {kind:'unsupported',issues:[{code:(error as Error).message,
     sourcePath:configuration.source.sourcePath+'/customContentTags'}],normalRequests:0}}
   if(window.count===0||!window.scanText)return {kind:'skipped',reason:'no-new-text',taskKey:task.taskKey,window,normalRequests:0}
   const scan=input.mode==='manual'?{run:true,matched:[]}:rubyKeywordScanV1(task,window.scanText)
@@ -139,9 +120,9 @@ export function prepareRubyAnalysisWindowV1(input:Pick<RubyInputPreparationV1,
     sourcePath:task.sourcePath+'/promptKey'}],normalRequests:0}
   return {kind:'eligible',window,matchedKeywords:scan.matched}
 }
-export function prepareRubyAnalysisInputV1(input:RubyInputPreparationV1):RubyInputDecisionV1 {
+export async function prepareRubyAnalysisInputV1(input:RubyInputPreparationV1):Promise<RubyInputDecisionV1> {
   const {configuration,task,trigger}=input,
-    decision=input.windowDecision??prepareRubyAnalysisWindowV1(input)
+    decision=input.windowDecision??await prepareRubyAnalysisWindowV1(input)
   if(decision.kind!=='eligible')return decision
   const {window,matchedKeywords}=decision,charName=configuration.charName||input.actualCharName||'角色'
   const prompt=readRubyEntryV1(input.characterBook,input.chatBook,task.promptKey,false)
@@ -209,15 +190,14 @@ export function prepareRubyAnalysisInputV1(input:RubyInputPreparationV1):RubyInp
       +'（硬性约束：分析输出必须取材于上方正文的实际剧情；后文任务指令中的"示范/示例"仅用于说明格式与颗粒度，禁止把示例中的具体部位、项目、情节、数值当作分析结果输出）')
   }
   if(sections.length)assembled.push('【历史分析参考（需根据上方正文更新，勿照搬）】\n'+sections.join('\n\n'))
-  let userPrompt=assembled.length?`${assembled.join('\n\n')}\n\n[任务指令]\n${prompt.content}`:prompt.content
-  for(const [key,value] of Object.entries(variables)) {
-    if(rubyPatternMetacharacters.test(key))return {kind:'unsupported',issues:[{
-      code:'RUBY_TEMPLATE_VARIABLE_PATTERN_UNSUPPORTED',sourcePath:task.sourcePath}],normalRequests:0}
-    // String replacement preserves the caller's $$/$&/$`/$' expansion. A
-    // callback or split/join would silently change reference/output content.
-    userPrompt=userPrompt.replaceAll(`{{${key}}}`,value||'（未设定）')
-  }
-  const sequence=rubyMessageSequence(task.displayName,userPrompt,messageItems)
+  const userPrompt=assembled.length?`${assembled.join('\n\n')}\n\n[任务指令]\n${prompt.content}`:prompt.content,
+    substituted=await boundedNativeRegexBatchV1({kind:'replace-sequence',input:userPrompt,
+      rules:Object.entries(variables).map(([key,value])=>({pattern:`\\{\\{${key}\\}\\}`,flags:'g',
+        replacement:value||'（未设定）'}))})
+  if(!substituted.ok)return {kind:'unsupported',issues:[{
+    code:'RUBY_TEMPLATE_VARIABLE_REGEX_'+substituted.reason.toUpperCase().replaceAll('-','_'),
+    sourcePath:task.sourcePath}],normalRequests:0}
+  const sequence=rubyMessageSequence(task.displayName,substituted.texts[0]!,messageItems)
   return {kind:'prepared',input:{schemaVersion:1,encoding:'ruby-analysis-input-data-v1',
     configuration:configuration.source,taskKey:task.taskKey,trigger,window,matchedKeywords,
     promptRef:prompt.entry!.ref,referenceRefs:[...prompt.refs,...referenceRefs],outputRefs,truncatedBodyChars,

@@ -20,6 +20,12 @@ function controls(node,disabled=false,out=[]){if(Array.isArray(node))node.forEac
 function panels(r,jsonFetch,drafts=new Map(),options={}){return createManagementPanels({React:r.React,jsonFetch,sessionDrafts:drafts,toast(){},confirmWithDialog:async()=>true,btn:(label,onClick,extra)=>r.React.createElement('button',{onClick,...extra},label),...options})}
 const modelReply={catalog:[],main:{provider:'p',model:'main'},global:{revision:1},session:{revision:1},effective:{}}
 {
+ const r=hooks(), destinations=[]
+ r.mount(panels(r,async()=>({})).AdvancedPanel,{navigate:tab=>destinations.push(tab),openImages(){},openMusic(){}})
+ button(r,'世界书语义检索').props.onClick()
+ assert.deepEqual(destinations,['worldbook-retrieval'])
+}
+{
  const ruby=hooks(),drafts=new Map(),posts=[]
  const otherDraft={dirty:true,baseRevision:1,settings:{allMain:false,routes:{memory:{provider:'p',model:'unsaved'}}}}
  drafts.set('story:models-session',otherDraft)

@@ -19,6 +19,11 @@ export interface OwnedRubyTaskActivationV1 {
   /** Index of the one inserted Native input, distinct from optional user items. */
   readonly mainInputMessageIndex?:number
   readonly temperature?:number
+  readonly topP?:number
+  readonly topK?:number
+  readonly presencePenalty?:number
+  readonly frequencyPenalty?:number
+  readonly reasoningEffort?:'low'|'medium'|'high'
 }
 export interface OwnedRubyTaskOwnerV1 {
   readonly preparation:NativePreparationReceiptV1
@@ -66,5 +71,10 @@ export function readOwnedRubyTaskActivationV1(value:unknown):OwnedRubyTaskActiva
     promptPlanSha256:row.promptPlanSha256 as string,userMessageId:row.userMessageId as string,
     orderedMessages:Object.freeze(orderedMessages),
     ...(row.temperature===undefined?{}:{temperature:row.temperature as number}),
+    ...(row.topP===undefined?{}:{topP:row.topP as number}),
+    ...(row.topK===undefined?{}:{topK:row.topK as number}),
+    ...(row.presencePenalty===undefined?{}:{presencePenalty:row.presencePenalty as number}),
+    ...(row.frequencyPenalty===undefined?{}:{frequencyPenalty:row.frequencyPenalty as number}),
+    ...(row.reasoningEffort===undefined?{}:{reasoningEffort:row.reasoningEffort as OwnedRubyTaskActivationV1['reasoningEffort']}),
     ...(indexed?{mainInputMessageIndex:row.mainInputMessageIndex as number}:{})})
 }

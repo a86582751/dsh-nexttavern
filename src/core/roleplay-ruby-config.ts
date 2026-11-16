@@ -67,13 +67,13 @@ interface GenerationNumberRule {
 }
 const TEMPERATURE_RULE:GenerationNumberRule={min:0,max:2}
 const MAX_TOKENS_RULE:GenerationNumberRule={min:1,max:Infinity}
-const UNSUPPORTED_GENERATION_NUMBER_RULES:readonly (readonly [string,GenerationNumberRule])[]=[
-  ['top_p',{min:0,max:1,exclusiveMin:true}],
-  ['top_k',{min:1,max:1000}],
-  ['presence_penalty',{min:-2,max:2}],
-  ['frequency_penalty',{min:-2,max:2}],
+const GENERATION_NUMBER_RULES:readonly (readonly [string,
+  'topP'|'topK'|'presencePenalty'|'frequencyPenalty',GenerationNumberRule])[]=[
+  ['top_p','topP',{min:0,max:1,exclusiveMin:true}],
+  ['top_k','topK',{min:1,max:1000}],
+  ['presence_penalty','presencePenalty',{min:-2,max:2}],
+  ['frequency_penalty','frequencyPenalty',{min:-2,max:2}],
 ]
-const REASONING_EFFORT_VALUES=new Set(['low','medium','high'])
 
 function generationNumber(value:unknown,rule:GenerationNumberRule):number|undefined {
   const parsed=Number(value)
@@ -83,8 +83,8 @@ function generationNumber(value:unknown,rule:GenerationNumberRule):number|undefi
 }
 
 /** Normalizes upstream `gen` rules from RUBY/src/config.js sanitizeGenParams and ai.js:
- * only `enabled === true` applies, valid temperature/safe-integer max_tokens map to Native,
- * invalid values are dropped, and other valid upstream choices emit field-level issues. */
+ * only `enabled === true` applies. Invalid values are dropped and valid controls
+ * reach Native, whose exact model/adapter owns route support. */
 function readGenerationOptions(rawGen:unknown,genPath:string,issues:RubyIssueV1[]):RubyGenerationOptionsV1|undefined {
   const gen=object(rawGen)
   if(gen.enabled!==true)return undefined
@@ -95,19 +95,17 @@ function readGenerationOptions(rawGen:unknown,genPath:string,issues:RubyIssueV1[
     if(Number.isSafeInteger(rawMaxTokens))maxTokens=rawMaxTokens
     else issues.push(issue('RUBY_GENERATION_OPTION_UNSUPPORTED',`${genPath}/max_tokens`))
   }
-  for(const [field,rule] of UNSUPPORTED_GENERATION_NUMBER_RULES) {
-    if(generationNumber(gen[field],rule)!==undefined) {
-      issues.push(issue('RUBY_GENERATION_OPTION_UNSUPPORTED',`${genPath}/${field}`))
-    }
-  }
-  if(REASONING_EFFORT_VALUES.has(String(gen.reasoning_effort))) {
-    issues.push(issue('RUBY_GENERATION_OPTION_UNSUPPORTED',`${genPath}/reasoning_effort`))
-  }
-  if(temperature===undefined&&maxTokens===undefined)return undefined
-  return {
+  const options:{-readonly [K in keyof RubyGenerationOptionsV1]:RubyGenerationOptionsV1[K]}={
     ...(temperature!==undefined?{temperature}:{}),
     ...(maxTokens!==undefined?{maxTokens}:{}),
   }
+  for(const [field,target,rule] of GENERATION_NUMBER_RULES) {
+    const value=generationNumber(gen[field],rule)
+    if(value!==undefined)options[target]=value
+  }
+  const effort=String(gen.reasoning_effort)
+  if(effort==='low'||effort==='medium'||effort==='high')options.reasoningEffort=effort
+  return Object.keys(options).length?options:undefined
 }
 
 export function readRubyConfigurationV1(raw:unknown,source:RubySourceRefV1):RubyConfigurationV1 {

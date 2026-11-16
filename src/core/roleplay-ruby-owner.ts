@@ -28,6 +28,7 @@ const runKey=(run:Pick<RubyRunV1,'trigger'|'invocation'>)=>run.invocation
   ?manualRunKey(run.invocation.operationId,run.invocation.ordinal):recordSha256(run.trigger)
 interface Dependencies {
   readonly table:{get(key:string):unknown;entries():Iterable<[string,unknown]>;
+    entriesPrefix?(prefix:string):Iterable<[string,unknown]>;
     put(key:string,value:unknown):PromiseLike<unknown>}
   capture(sid:string,signal:AbortSignal,options?:{includeEmpty:true}):Promise<RubySourceCaptureV1|undefined>
   request(input:{capture:RubySourceCaptureV1;prompt:RubyAnalysisPromptV1;signal:AbortSignal;
@@ -218,15 +219,16 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
           throw Error('RUBY_RETRY_INPUT_CHANGED')
         input=storedInput;promptPlanSha256=run.promptPlanSha256
       }else {
-        const windowDecision=prepareRubyAnalysisWindowV1({configuration:capture.configuration,task:run.task,
+        const windowDecision=await prepareRubyAnalysisWindowV1({configuration:capture.configuration,task:run.task,
           bookmark:previous.cursor.bookmarks[run.task.taskKey]??0,messages:capture.messages,
           actualCharName:capture.actualCharName,...run.invocation?{mode:'manual' as const}:{}})
+        assertCurrent()
         let decision:RubyInputDecisionV1
         if(windowDecision.kind!=='eligible')decision=windowDecision
         else {
           const books=await capture.resolveInputBooks(run.task,chatBook(sid,previous,published))
           decision=books.kind==='unsupported'?{kind:'unsupported',issues:books.issues,normalRequests:0}
-            :prepareRubyAnalysisInputV1({configuration:capture.configuration,task:run.task,trigger:run.trigger,
+            :await prepareRubyAnalysisInputV1({configuration:capture.configuration,task:run.task,trigger:run.trigger,
               bookmark:previous.cursor.bookmarks[run.task.taskKey]??0,messages:capture.messages,
               characterBook:books.characterBook,chatBook:books.chatBook,
               actualCharName:capture.actualCharName,windowDecision,
@@ -634,8 +636,9 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
       if(settings)await deps.table.put(rubyEnablementKeyV1(childId),settings)
       if(!capture)return
       const messages=rows(capture.messages),count=countAi(messages),outputs:Record<string,RubyOutputHeadV1>={}
-      for(const [key,raw] of deps.table.entries()) {
-        if(!key.startsWith(keyOf(parentId,'ruby-output-v1-')))continue
+      const prefix=keyOf(parentId,'ruby-output-v1-')
+      for(const [key,raw] of deps.table.entriesPrefix?.(prefix)??deps.table.entries()) {
+        if(!key.startsWith(prefix))continue
         const value=raw as RubyPublishedOutputV1
         if(value.sourceIdentitySha256!==capture.sourceIdentitySha256||value.output.sourceOrdinal>count
           ||!inputStillSelected(value,messages))continue
