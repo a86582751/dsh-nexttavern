@@ -58,6 +58,12 @@ export function toPiReplayState(message, requestedModel = message.model) {
     };
     return {
         response,
+        details: { ...message.responseId === undefined ? {} : { responseId: message.responseId },
+            blocks: message.content.map(block => block.type === 'text' ? { type: 'text',
+                ...block.textSignature === undefined ? {} : { signature: block.textSignature } } : block.type === 'thinking'
+                ? { type: 'reasoning', ...block.thinkingSignature === undefined ? {} : { signature: block.thinkingSignature },
+                    ...block.redacted === undefined ? {} : { redacted: block.redacted } }
+                : { type: 'tool-call', ...block.thoughtSignature === undefined ? {} : { signature: block.thoughtSignature } }) },
         blocks: message.content.map((block) => {
             switch (block.type) {
                 case 'text': return {

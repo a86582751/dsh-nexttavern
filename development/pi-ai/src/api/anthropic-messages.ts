@@ -214,6 +214,11 @@ function defaultSupportsToolReferences(model: Model<"anthropic-messages">): bool
 }
 
 export interface AnthropicOptions extends StreamOptions {
+	topP?: number;
+	topK?: number;
+	/** Anthropic Messages has no frequency/presence penalty request fields. */
+	frequencyPenalty?: number;
+	presencePenalty?: number;
 	/**
 	 * Enable extended thinking.
 	 * For adaptive thinking models: the model decides when/how much to think.
@@ -852,15 +857,22 @@ function mapThinkingLevelToEffort(
 	}
 }
 
-export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOptions> = (
+export type AnthropicSimpleOptions = SimpleStreamOptions & Pick<AnthropicOptions,
+	"topP" | "topK" | "frequencyPenalty" | "presencePenalty">;
+
+export const streamSimple: StreamFunction<"anthropic-messages", AnthropicSimpleOptions> = (
 	model: Model<"anthropic-messages">,
 	context: Context,
-	options?: SimpleStreamOptions,
+	options?: AnthropicSimpleOptions,
 ): AssistantMessageEventStream => {
 	assertRequestAuth(model.provider, options?.apiKey, options?.headers);
 
 	const base = {
 		...buildBaseOptions(model, context, options, options?.apiKey),
+		topP: options?.topP,
+		topK: options?.topK,
+		frequencyPenalty: options?.frequencyPenalty,
+		presencePenalty: options?.presencePenalty,
 		toolChoice: options?.toolChoice,
 	} satisfies AnthropicOptions;
 	if (!options?.reasoning) {
@@ -1055,6 +1067,11 @@ function buildParams(
 		model.compat?.supportsMidConvoEffort === true ? model.provider : undefined,
 	);
 	const activeEffort = options?.effort ?? "high";
+	for (const field of ["frequencyPenalty", "presencePenalty"] as const) {
+		if (options?.[field] !== undefined) {
+			throw new Error(`UNSUPPORTED_OPTION: anthropic-messages does not support ${field}`);
+		}
+	}
 	const betaFeatures = getBetaFeatures(model, context, isOAuthToken, options);
 	const params: MessageCreateParamsStreaming = {
 		model: model.id,
@@ -1064,6 +1081,8 @@ function buildParams(
 				: converted.messages,
 		max_tokens: options?.maxTokens ?? model.maxTokens,
 		stream: true,
+		...(options?.topP !== undefined ? { top_p: options.topP } : {}),
+		...(options?.topK !== undefined ? { top_k: options.topK } : {}),
 		...(betaFeatures.length > 0 ? { betas: betaFeatures } : {}),
 	};
 

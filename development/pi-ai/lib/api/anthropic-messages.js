@@ -666,6 +666,10 @@ export const streamSimple = (model, context, options) => {
     assertRequestAuth(model.provider, options?.apiKey, options?.headers);
     const base = {
         ...buildBaseOptions(model, context, options, options?.apiKey),
+        topP: options?.topP,
+        topK: options?.topK,
+        frequencyPenalty: options?.frequencyPenalty,
+        presencePenalty: options?.presencePenalty,
         toolChoice: options?.toolChoice,
     };
     if (!options?.reasoning) {
@@ -798,6 +802,11 @@ function buildParams(model, context, isOAuthToken, options) {
     const deferredToolNames = new Set(deferredTools.map((tool) => normalizeToolName(tool.name)));
     const converted = convertMessages(transformedMessages, isOAuthToken, cacheControl, compat.allowEmptySignature, deferredToolNames, normalizeToolName, model.compat?.supportsMidConvoEffort === true ? model.provider : undefined);
     const activeEffort = options?.effort ?? "high";
+    for (const field of ["frequencyPenalty", "presencePenalty"]) {
+        if (options?.[field] !== undefined) {
+            throw new Error(`UNSUPPORTED_OPTION: anthropic-messages does not support ${field}`);
+        }
+    }
     const betaFeatures = getBetaFeatures(model, context, isOAuthToken, options);
     const params = {
         model: model.id,
@@ -806,6 +815,8 @@ function buildParams(model, context, isOAuthToken, options) {
             : converted.messages,
         max_tokens: options?.maxTokens ?? model.maxTokens,
         stream: true,
+        ...(options?.topP !== undefined ? { top_p: options.topP } : {}),
+        ...(options?.topK !== undefined ? { top_k: options.topK } : {}),
         ...(betaFeatures.length > 0 ? { betas: betaFeatures } : {}),
     };
     // For OAuth tokens, we MUST include Claude Code identity

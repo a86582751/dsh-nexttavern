@@ -240,6 +240,10 @@ export const streamSimple = (model, context, options) => {
     }
     const base = {
         ...buildBaseOptions(model, context, options, apiKey),
+        topP: options?.topP,
+        topK: options?.topK,
+        frequencyPenalty: options?.frequencyPenalty,
+        presencePenalty: options?.presencePenalty,
         toolChoice: options?.toolChoice,
     };
     if (!options?.reasoning) {
@@ -289,6 +293,14 @@ function buildParams(model, context, options = {}) {
     if (options.maxTokens !== undefined) {
         generationConfig.maxOutputTokens = options.maxTokens;
     }
+    if (options.topP !== undefined)
+        generationConfig.topP = options.topP;
+    if (options.topK !== undefined)
+        generationConfig.topK = options.topK;
+    if (options.frequencyPenalty !== undefined)
+        generationConfig.frequencyPenalty = options.frequencyPenalty;
+    if (options.presencePenalty !== undefined)
+        generationConfig.presencePenalty = options.presencePenalty;
     const supportsStrictMode = supportsGoogleStrictToolSampling(model.id);
     const functionCallingMode = context.tools?.length
         ? resolveGoogleFunctionCallingMode(context.tools, options.toolChoice, supportsStrictMode)

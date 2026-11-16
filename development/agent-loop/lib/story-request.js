@@ -1,17 +1,15 @@
 // Generated from runtime/alpha3/compat/agent-loop/src/story-request.ts; edit the TypeScript source.
 import { applyNativeStoryResponseOperationsV1, planNativeStoryResponseMaterialV1, nativeStoryResponseSha256V1, nativeStoryVisibleTextV1 } from 'dsh-nexttavern-native-session';
 export function nativeStorySamplingConfigV1(config, policy) {
-    const sampling = policy.sampling;
-    return { ...config, ...sampling?.temperature === undefined ? {} : { temperature: sampling.temperature },
-        ...sampling?.maxTokens === undefined ? {} : { maxTokens: sampling.maxTokens },
-        ...sampling?.stop === undefined ? {} : { stop: [...sampling.stop] } };
+    const { stop, ...sampling } = policy.sampling ?? {};
+    return { ...config, ...sampling, ...stop === undefined ? {} : { stop: [...stop] } };
 }
 export function nativeStorySamplingBaseV1(config) {
-    return { schemaVersion: 1, base: { ...config.temperature === undefined ? {} : { temperature: config.temperature },
-            ...config.maxTokens === undefined ? {} : { maxTokens: config.maxTokens }, ...config.stop === undefined ? {} : { stop: [...config.stop] } } };
+    const { provider, model, reasoningEffort, ...sampling } = config;
+    return { schemaVersion: 1, base: { ...sampling, ...config.stop === undefined ? {} : { stop: [...config.stop] } } };
 }
 export function restoreNativeStorySamplingV1(config, sampling) {
-    const { temperature: _temperature, maxTokens: _maxTokens, stop: _stop, ...route } = config;
+    const { temperature: _temperature, maxTokens: _maxTokens, stop: _stop, topP: _topP, topK: _topK, frequencyPenalty: _frequency, presencePenalty: _presence, toolChoice: _toolChoice, responseFormat: _responseFormat, ...route } = config;
     const { stop, ...base } = sampling.base;
     return { ...route, ...base, ...stop ? { stop: [...stop] } : {} };
 }

@@ -6,10 +6,27 @@ import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { type OrderedCompletionsInputV1, type OrderedCompletionsInputV2, type OrderedCompletionsTraceReceiptV1, type OrderedCompletionsTraceReceiptV2 } from "./openai-ordered-input.js";
 export interface OpenAICompletionsOptions extends StreamOptions {
     toolChoice?: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption;
+    topP?: number;
+    /** This API has no declared top-k capability. Explicit requests are refused. */
+    topK?: number;
+    frequencyPenalty?: number;
+    presencePenalty?: number;
+    stop?: string[];
+    responseFormat?: {
+        readonly type: "json_schema";
+        readonly jsonSchema: {
+            readonly name: string;
+            readonly description?: string;
+            readonly strict?: boolean;
+            readonly schema: Record<string, unknown>;
+        };
+    };
     reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
     /** Token budgets per thinking level. Used when `compat.thinkingTokenBudgetField` or `compat.supportsThinkingTokenBudget` is set, or by `{ "$var": "thinking.budget" }`. */
     thinkingBudgets?: ThinkingBudgets;
 }
+/** The owned completions serializer accepts its complete typed tool choice. */
+export type OpenAICompletionsSimpleOptions = Omit<SimpleStreamOptions, "toolChoice"> & Pick<OpenAICompletionsOptions, "toolChoice" | "topP" | "topK" | "frequencyPenalty" | "presencePenalty" | "stop" | "responseFormat">;
 /** The key is already resolved by the existing owning adapter. This protocol
  * entry performs no Models auth, ambient credential lookup or Native admission. */
 export interface OrderedCompletionsOptionsV1 extends OpenAICompletionsOptions {
@@ -46,6 +63,6 @@ export declare const stream: StreamFunction<"openai-completions", OpenAICompleti
  * Context/Message and all other provider protocols keep their existing shape. */
 export declare function streamOrderedCompletions(model: Model<"openai-completions">, input: OrderedCompletionsInputV1, options: OrderedCompletionsOptionsV1): AssistantMessageEventStream;
 export declare function streamOrderedCompletionsV2(model: Model<"openai-completions">, input: OrderedCompletionsInputV2, options: OrderedCompletionsOptionsV2): AssistantMessageEventStream;
-export declare const streamSimple: StreamFunction<"openai-completions", SimpleStreamOptions>;
+export declare const streamSimple: StreamFunction<"openai-completions", OpenAICompletionsSimpleOptions>;
 export declare function convertMessages(model: Model<"openai-completions">, context: Context, compat: ResolvedOpenAICompletionsCompat, options?: ConvertCompletionsMessagesOptions): ChatCompletionMessageParam[];
 export {};

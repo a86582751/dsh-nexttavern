@@ -91,6 +91,12 @@ export function toPiReplayState(message: AssistantMessage, requestedModel = mess
   }
   return {
     response,
+    details:{...message.responseId===undefined?{}:{responseId:message.responseId},
+      blocks:message.content.map(block=>block.type==='text'?{type:'text' as const,
+        ...block.textSignature===undefined?{}:{signature:block.textSignature}}:block.type==='thinking'
+        ?{type:'reasoning' as const,...block.thinkingSignature===undefined?{}:{signature:block.thinkingSignature},
+          ...block.redacted===undefined?{}:{redacted:block.redacted}}
+        :{type:'tool-call' as const,...block.thoughtSignature===undefined?{}:{signature:block.thoughtSignature}})},
     blocks: message.content.map((block): PiAiReplayBlock => {
       switch (block.type) {
         case 'text': return {

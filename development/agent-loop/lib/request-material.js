@@ -360,7 +360,8 @@ function resolveStructure(input) {
         if (local.schemaVersion !== 1)
             fail('UNKNOWN_VERSION', 'requestLocalSampling');
         const base = local.base;
-        object(base, ['temperature', 'maxTokens', 'stop'].filter(key => Object.hasOwn(base, key)), 'requestLocalSampling.base');
+        object(base, ['temperature', 'maxTokens', 'stop', 'topP', 'topK', 'frequencyPenalty', 'presencePenalty',
+            'toolChoice', 'responseFormat'].filter(key => Object.hasOwn(base, key)), 'requestLocalSampling.base');
         if (base.temperature !== undefined && !Number.isFinite(base.temperature)
             || base.maxTokens !== undefined && (!safeInt(base.maxTokens) || base.maxTokens < 1)
             || base.stop !== undefined && list(base.stop, 128, 'requestLocalSampling.stop').some(value => typeof value !== 'string')) {

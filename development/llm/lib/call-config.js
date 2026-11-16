@@ -1,11 +1,12 @@
 // Generated from runtime/alpha3/compat/llm/src/call-config.ts; edit the TypeScript source.
 /**
  * Conversation call configuration and freeze utilities. Provider routing,
- * model, reasoning effort, and sampling values are request-header state that
+ * model, reasoning effort, sampling and response controls are request-header state that
  * can affect cache reuse; request waterfalls replace them and the loop logs
  * changed snapshots instead of allowing silent per-call drift.
  * @module dsh-llm/call-config
  */
+import { deepEqualJson } from '@deepseek-ai/dsh-util-values';
 import { isAgentLoopRequest } from './host-abi.js';
 export { isAgentLoopRequest, markAgentLoopRequest } from './host-abi.js';
 /** A material owner's synchronous assertion, associated with exact request
@@ -17,14 +18,20 @@ const AGENT_LOOP_REQUEST_GUARDS = new WeakMap();
  * logged header snapshot) or the held one restated.
  * @param a - one configuration.
  * @param b - the other.
- * @returns whether every field (including the `stop` list, element-wise) matches.
+ * @returns whether all controls match, with ordered stops and key-order-independent JSON data.
  */
 export function callConfigEquals(a, b) {
     if (a.provider !== b.provider
         || a.model !== b.model
         || a.reasoningEffort !== b.reasoningEffort
         || a.temperature !== b.temperature
-        || a.maxTokens !== b.maxTokens)
+        || a.maxTokens !== b.maxTokens
+        || a.topP !== b.topP
+        || a.topK !== b.topK
+        || a.frequencyPenalty !== b.frequencyPenalty
+        || a.presencePenalty !== b.presencePenalty
+        || !deepEqualJson(a.toolChoice, b.toolChoice)
+        || !deepEqualJson(a.responseFormat, b.responseFormat))
         return false;
     if (a.stop === undefined || b.stop === undefined)
         return a.stop === b.stop;

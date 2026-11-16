@@ -1,6 +1,7 @@
 /** Built-in durable request/material vocabulary. Browser-safe validation runs
  * after Session's JSON snapshot. Hash/fold verification is Native-owned; these
  * data references grant neither a current input owner nor replay permission. */
+import type {RequestMessage,RequestLocalSamplingV1} from 'dsh-nexttavern-native-llm'
 export type NativeLoreRoleV1='system'|'user'|'assistant'
 export interface NativeMaterialDataRefV1 {readonly key:string;readonly sha256:string}
 export interface NativeMaterialMessageRefV1 {
@@ -31,7 +32,7 @@ export interface NativeMessageProjectionV1 {
 }
 export interface NativeRequestLocalSamplingV1 {
   readonly schemaVersion:1
-  readonly base:{readonly temperature?:number;readonly maxTokens?:number;readonly stop?:readonly string[]}
+  readonly base:RequestLocalSamplingV1
 }
 /** Last request-text substitutions at Native's resolved transport coordinates.
  * The structure and original sources remain in this same material record. */
@@ -130,7 +131,8 @@ export function validateNativeRequestMaterialDataV1(value:unknown,subject:string
     const local=record(delta['requestLocalSampling'],['schemaVersion','base'],subject)
     if(local['schemaVersion']!==1)fail(subject)
     const raw=local['base'] as Record<string,unknown>
-    const base=record(raw,['temperature','maxTokens','stop'].filter(key=>Object.hasOwn(raw,key)),subject)
+    const base=record(raw,['temperature','maxTokens','stop','topP','topK','frequencyPenalty','presencePenalty',
+      'toolChoice','responseFormat'].filter(key=>Object.hasOwn(raw,key)),subject)
     if(base['temperature']!==undefined&&(typeof base['temperature']!=='number'||!Number.isFinite(base['temperature'])))fail(subject)
     if(base['maxTokens']!==undefined&&(!integer(base['maxTokens'])||base['maxTokens']<1))fail(subject)
     if(base['stop']!==undefined&&list(base['stop'],128,subject).some(value=>typeof value!=='string'))fail(subject)

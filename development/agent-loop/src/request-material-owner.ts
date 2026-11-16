@@ -546,12 +546,13 @@ function storyPolicy(value:unknown):NativeStoryRequestPolicyV1 {
   if(row['schemaVersion']!==1)return fail()
   let sampling:NativeStoryRequestPolicyV1['sampling']
   if(row['sampling']!==undefined) {
-    const raw=row['sampling'],keys=['temperature','maxTokens','stop'].filter(field=>raw!==null&&typeof raw==='object'
+    const raw=row['sampling'],keys=['temperature','maxTokens','stop','topP','topK','frequencyPenalty','presencePenalty',
+      'toolChoice','responseFormat'].filter(field=>raw!==null&&typeof raw==='object'
       &&!utilTypes.isProxy(raw)&&Object.hasOwn(raw,field))
     const data=object(raw,keys),temperature=data['temperature'],maxTokens=data['maxTokens']
     if(temperature!==undefined&&(typeof temperature!=='number'||!Number.isFinite(temperature)))return fail()
     if(maxTokens!==undefined&&(typeof maxTokens!=='number'||!Number.isSafeInteger(maxTokens)||maxTokens<1))return fail()
-    sampling={...temperature===undefined?{}:{temperature:temperature as number},...maxTokens===undefined?{}:{maxTokens:maxTokens as number},
+    sampling={...data,...temperature===undefined?{}:{temperature:temperature as number},...maxTokens===undefined?{}:{maxTokens:maxTokens as number},
       ...data['stop']===undefined?{}:{stop:array(data['stop'],128).map(value=>text(value,65_536))}}
   }
   let response:NativeStoryRequestPolicyV1['response']

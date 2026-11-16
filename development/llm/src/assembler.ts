@@ -145,7 +145,9 @@ export class BlockAssembler {
       blocks,
       replay: kept === undefined || blocks.length === all.length
         ? envelope
-        : { response: envelope.response, blocks: envelope.blocks.filter((_, position) => kept[position]) },
+        : { response: envelope.response, blocks: envelope.blocks.filter((_, position) => kept[position]),
+          ...envelope.details?{details:{...envelope.details,
+            blocks:envelope.details.blocks.filter((_,position)=>kept[position])}}:{} },
     }
   }
 

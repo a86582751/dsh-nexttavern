@@ -39,6 +39,10 @@ import {
 import { buildBaseOptions } from "./simple-options.js";
 
 export interface GoogleOptions extends StreamOptions {
+	topP?: number;
+	topK?: number;
+	frequencyPenalty?: number;
+	presencePenalty?: number;
 	toolChoice?: "auto" | "none" | "any";
 	thinking?: {
 		enabled: boolean;
@@ -46,6 +50,9 @@ export interface GoogleOptions extends StreamOptions {
 		level?: GoogleApiThinkingLevel;
 	};
 }
+
+export type GoogleSimpleOptions = SimpleStreamOptions & Pick<GoogleOptions,
+	"topP" | "topK" | "frequencyPenalty" | "presencePenalty">;
 
 // Counter for generating unique tool call IDs
 let toolCallCounter = 0;
@@ -296,10 +303,10 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
 	return stream;
 };
 
-export const streamSimple: StreamFunction<"google-generative-ai", SimpleStreamOptions> = (
+export const streamSimple: StreamFunction<"google-generative-ai", GoogleSimpleOptions> = (
 	model: Model<"google-generative-ai">,
 	context: Context,
-	options?: SimpleStreamOptions,
+	options?: GoogleSimpleOptions,
 ): AssistantMessageEventStream => {
 	const apiKey = options?.apiKey;
 	if (!apiKey) {
@@ -308,6 +315,10 @@ export const streamSimple: StreamFunction<"google-generative-ai", SimpleStreamOp
 
 	const base = {
 		...buildBaseOptions(model, context, options, apiKey),
+		topP: options?.topP,
+		topK: options?.topK,
+		frequencyPenalty: options?.frequencyPenalty,
+		presencePenalty: options?.presencePenalty,
 		toolChoice: options?.toolChoice,
 	} satisfies GoogleOptions;
 	if (!options?.reasoning) {
@@ -372,6 +383,10 @@ function buildParams(
 	if (options.maxTokens !== undefined) {
 		generationConfig.maxOutputTokens = options.maxTokens;
 	}
+	if (options.topP !== undefined) generationConfig.topP = options.topP;
+	if (options.topK !== undefined) generationConfig.topK = options.topK;
+	if (options.frequencyPenalty !== undefined) generationConfig.frequencyPenalty = options.frequencyPenalty;
+	if (options.presencePenalty !== undefined) generationConfig.presencePenalty = options.presencePenalty;
 
 	const supportsStrictMode = supportsGoogleStrictToolSampling(model.id);
 	const functionCallingMode = context.tools?.length

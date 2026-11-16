@@ -64,7 +64,8 @@ export function validateNativeRequestMaterialDataV1(value, subject) {
         if (local['schemaVersion'] !== 1)
             fail(subject);
         const raw = local['base'];
-        const base = record(raw, ['temperature', 'maxTokens', 'stop'].filter(key => Object.hasOwn(raw, key)), subject);
+        const base = record(raw, ['temperature', 'maxTokens', 'stop', 'topP', 'topK', 'frequencyPenalty', 'presencePenalty',
+            'toolChoice', 'responseFormat'].filter(key => Object.hasOwn(raw, key)), subject);
         if (base['temperature'] !== undefined && (typeof base['temperature'] !== 'number' || !Number.isFinite(base['temperature'])))
             fail(subject);
         if (base['maxTokens'] !== undefined && (!integer(base['maxTokens']) || base['maxTokens'] < 1))

@@ -63,6 +63,8 @@ import { toPiContext,toOrderedCompletionsInputV1,toOrderedCompletionsInputV2 } f
 import type {PiImageRequestContext} from './context.js'
 import type {OrderedCompletionsInputV1,OrderedCompletionsTraceReceiptV1,
   OrderedCompletionsInputV2,OrderedCompletionsTraceReceiptV2} from 'dsh-nexttavern-pi-ai/api/openai-ordered-input'
+import type {OpenAICompletionsSimpleOptions} from 'dsh-nexttavern-pi-ai/api/openai-completions'
+import type {OpenAIResponsesSimpleOptions} from 'dsh-nexttavern-pi-ai/api/openai-responses'
 import { createModels, getSupportedThinkingLevels } from './models.js'
 import { toStreamChunks } from './stream.js'
 import {catalogProvider} from './catalog.js'
@@ -406,9 +408,6 @@ export class PiAiAdapter extends LlmAdapter {
     options: GenerateOptions,
     snapshot: PiAiSnapshot,
   ): AsyncIterable<StreamChunk> {
-    if (options.stop !== undefined) {
-      throw new LlmError('llm-pi-ai does not support GenerateOptions.stop', 'UNSUPPORTED_OPTION')
-    }
     // One capture per stream call, taken before any await: the profile, the
     // model descriptor, and the collection all come from the same immutable
     // snapshot, and the credential freezes with them. A configuration change
@@ -416,6 +415,20 @@ export class PiAiAdapter extends LlmAdapter {
     // the one it started with and the next call picks up the new one.
     const profile = this.profileOf(snapshot, options.provider)
     const model = this.modelOf(snapshot, options.provider, options.model)
+    if(model.api==='google-generative-ai'||model.api==='anthropic-messages'){
+      for(const field of ['toolChoice','responseFormat','stop'] as const){
+        if(options[field]!==undefined)throw new LlmError(
+          `llm-pi-ai has no typed ${field} mapping for API "${model.api}"`,
+          field==='stop'?'UNSUPPORTED_OPTION':'UNIMPLEMENTED_OPTION')
+      }
+    }else if(model.api!=='openai-completions'&&model.api!=='openai-responses'){
+      for(const field of ['topP','topK','frequencyPenalty','presencePenalty','toolChoice','responseFormat','stop'] as const){
+        if(options[field]!==undefined){
+          const code=field==='topK'||field==='stop'?'UNSUPPORTED_OPTION':'UNIMPLEMENTED_OPTION'
+          throw new LlmError(`llm-pi-ai has no typed ${field} mapping for API "${model.api}"`,code)
+        }
+      }
+    }
     const ordered=profile.requestMaterialSerialization!==undefined
     const supported=ordered?await this.orderedModelSupported(profile,model):supportsRequestMaterialText(profile,model)
     if(ordered&&!supported){
@@ -480,19 +493,33 @@ export class PiAiAdapter extends LlmAdapter {
         watchdog.signal.throwIfAborted()
         return transportFetch(input,init)
       }
-      const streamOptions:SimpleStreamOptions={
+      const streamOptions:OpenAICompletionsSimpleOptions={
         ...profileOptions(profile, reasoning, apiKey),
         fetch:guardedTransportFetch,
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
+        ...options.topP===undefined?{}:{topP:options.topP},
+        ...options.topK===undefined?{}:{topK:options.topK},
+        ...options.frequencyPenalty===undefined?{}:{frequencyPenalty:options.frequencyPenalty},
+        ...options.presencePenalty===undefined?{}:{presencePenalty:options.presencePenalty},
+        ...options.toolChoice===undefined?{}:{toolChoice:options.toolChoice},
+        ...options.responseFormat===undefined?{}:{responseFormat:options.responseFormat},
+        ...options.stop===undefined?{}:{stop:options.stop},
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
         signal: watchdog.signal,
         // Profile headers are deployment-owned; attribution names are
         // Harness-owned and therefore win collisions.
         headers: requestHeaders(profile.headers),
       }
+      const providerOptions:OpenAICompletionsSimpleOptions|OpenAIResponsesSimpleOptions=model.api==='openai-responses'
+        ?{...streamOptions,toolChoice:typeof options.toolChoice==='object'
+          ?{type:'function',name:options.toolChoice.function.name}:options.toolChoice}
+        :streamOptions
       const events=orderedInput===undefined
-        ?snapshot.models.streamSimple(model,context as NonNullable<typeof context>,streamOptions)
+        // Models forwards these options unchanged. Its upstream simple type
+        // only names auto/none; the owned protocol entries handle the wider
+        // typed choice without bypassing Models' real credential resolution.
+        ?snapshot.models.streamSimple(model,context as NonNullable<typeof context>,providerOptions as SimpleStreamOptions)
         :await this.orderedStream(model,orderedInput,streamOptions,apiKey,assertCurrent)
       const iterator = toStreamChunks(events, model.contextWindow, options.signal, model.id)[Symbol.asyncIterator]()
       let exhausted = false
@@ -533,7 +560,7 @@ export class PiAiAdapter extends LlmAdapter {
   /** The same captured route and credential reach the owned ordered entry.
    * Lazy import cannot revoke the final guard or select another profile. */
   private async orderedStream(model:Model<Api>,input:OrderedCompletionsInputV1|OrderedCompletionsInputV2,
-    options:SimpleStreamOptions,apiKey:string|undefined,assertCurrent:()=>void){
+    options:OpenAICompletionsSimpleOptions,apiKey:string|undefined,assertCurrent:()=>void){
     if(model.api!=='openai-completions'||apiKey===undefined||!apiKey.trim()){
       throw new LlmError('ordered chat requires its resolved credential','MISSING_CREDENTIAL')
     }

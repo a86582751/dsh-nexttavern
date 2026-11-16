@@ -501,6 +501,8 @@ export interface LlmResolvedModelInfo extends LlmModelInfo {
  * with stored content without reading either half.
  */
 export interface ReplayEnvelope {
+  /** Adapter-projected public details, aligned with the emitted content. */
+  details?:AssistantResponseDetailsV1
   /** Response-level adapter-private metadata (ids, native stop reason). */
   response: unknown
   /**
@@ -512,6 +514,13 @@ export interface ReplayEnvelope {
    * assembly unchanged.
    */
   blocks?: readonly unknown[]
+}
+export interface AssistantResponseDetailsV1 {
+  readonly responseId?:string
+  readonly blocks:readonly (
+    |{readonly type:'text';readonly signature?:string}
+    |{readonly type:'reasoning';readonly signature?:string;readonly redacted?:boolean}
+    |{readonly type:'tool-call';readonly signature?:string})[]
 }
 
 /**
@@ -617,13 +626,39 @@ export interface ToolHistory {
   }[]
 }
 
-/** A single model request, fully assembled. */
-export interface RequestLocalSamplingV1 {
+/** Provider-neutral selection of the response's tool call. */
+export type LlmToolChoice = 'auto' | 'none' | 'required'
+  | {readonly type:'function';readonly function:{readonly name:string}}
+
+/** Provider-neutral structured response request. The adapter owns wire names. */
+export interface LlmResponseFormat {
+  readonly type:'json_schema'
+  readonly jsonSchema:{
+    readonly name:string
+    readonly description?:string
+    readonly strict?:boolean
+    readonly schema:Record<string,unknown>
+  }
+}
+
+/** Explicit controls shared by request headers and request-local overrides. */
+export interface LlmGenerationOptions {
+  readonly topP?:number
+  readonly topK?:number
+  readonly frequencyPenalty?:number
+  readonly presencePenalty?:number
+  readonly toolChoice?:LlmToolChoice
+  readonly responseFormat?:LlmResponseFormat
+}
+
+/** A request-local override retains the same provider-neutral call vocabulary. */
+export interface RequestLocalSamplingV1 extends LlmGenerationOptions {
   readonly temperature?:number
   readonly maxTokens?:number
   readonly stop?:readonly string[]
 }
-export interface GenerateOptions {
+/** A single model request, fully assembled. */
+export interface GenerateOptions extends LlmGenerationOptions {
   /** Registered provider route selecting the adapter instance. */
   provider: string
   model: string
