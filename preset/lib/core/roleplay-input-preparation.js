@@ -1544,6 +1544,32 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
                 return currencyOf(hot);
             },
             currentStep() { return currentStep && !stepCurrency(currentStep) ? currentStep : undefined; },
+            captureSchemaStoryExecutionOwner(turn, signal) {
+                const work = hot, entry = currentStep && steps.get(currentStep);
+                if (!work || !entry || entry.work !== work || entry.signal !== signal
+                    || entry.generation !== work.attemptGeneration || work.attempt?.turn !== turn
+                    || !work.attempt.prepared || !work.checkpoint || work.checkpoint.actualTurn !== turn
+                    || work.source.kind !== 'story' || work.source.headRef?.kind !== 'schema-head' || work.transition)
+                    return undefined;
+                const currency = currencyOf(work), checkpoint = clone(work.checkpoint);
+                const current = () => {
+                    const latest = currentStep && steps.get(currentStep);
+                    // Inline maintenance replaces the step token while retaining this
+                    // Work, attempt and Native turn signal. A later turn cannot borrow it.
+                    return !signal.aborted && agent.status === 'running' && agent.session === actualSession
+                        && sessionOwners.get(sid) === agent && owners.get(agent) === binding
+                        && latest?.work === work && latest.signal === signal && latest.generation === currency.attemptGeneration
+                        && work.status === 'active' && work.attempt?.prepared === true && work.attempt.turn === turn && !work.transition
+                        && !baseFactsCurrency(work) && equal(currencyOf(work), currency) && equal(work.checkpoint, checkpoint);
+                };
+                // Mint against the published Source once. During schema dispatch its
+                // owner checks Source/frame and published head directly, while this
+                // callback retains Native Work authority across its own pending rows.
+                if (!current() || baseCurrency(work) || !checkpointAssociation(checkpoint))
+                    return undefined;
+                return Object.freeze({ session: actualSession, signal, current, work: Object.freeze({ sessionId: sid,
+                        workKey: key(work), currency: clone(currency), refs: clone(work.refs), checkpoint: clone(checkpoint) }) });
+            },
             withCurrentMaterial(step, read) { return materialOwner?.withCurrent(step, read); },
             releaseMaterialStep(turn, step) { materialOwner?.releaseStep(turn, step); },
             readClaimedMaintenanceInput() { return claimedMaintenance; },

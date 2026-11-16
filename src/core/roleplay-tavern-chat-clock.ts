@@ -38,7 +38,8 @@ export interface TavernCanonicalChatClockV1 {
 }
 export interface TavernCanonicalChatClockCaptureV1 {
   readonly data:TavernCanonicalChatClockV1
-  readonly scanRows:readonly {id:string;role:'user'|'assistant';messageSha256:string;text:string}[]
+  readonly scanRows:readonly {id:string;role:'user'|'assistant';messageSha256:string;text:string;
+    authorMetadata?:NativeMaterialSelectedBaseV1['messages'][number]['message']['authorMetadata']}[]
   assertCurrent():void
 }
 /** Compact persisted evidence still describes the exact ordered V1 membership.
@@ -287,12 +288,13 @@ export function captureReadonlyAuthorDialogChatClockV1(input:{
     sessionId:input.session.id,nativeCut:length,nativePrefixSha256:prefixAt(nativeCut,raw,length),
     rows:refs,pendingRows:[],chatIndex:rows.length,membershipSha256:recordSha256(refs)}
   const data=freeze({...body,clockSha256:recordSha256(body)}),
-    messages=cloneRoleplayTavernLoreDataV1(rows.map(({ref,message})=>({origin:'surface' as const,eventSeq:ref.seq,id:ref.id,
+    messages=cloneRoleplayTavernLoreDataV1(rows.filter(row=>row.message.authorMetadata?.is_hidden!==true).map(({ref,message})=>({origin:'surface' as const,eventSeq:ref.seq,id:ref.id,
       role:ref.role,messageSha256:ref.messageSha256,message})),8_388_608),
     cut={schemaVersion:1,encoding:'native-author-dialog-readonly-message-cut-v1',authority:'consumer-data-only',
       sessionId:input.session.id,nativeCut:length,nativePrefixSha256:data.nativePrefixSha256,messages}
   return {data,selected:freeze({messages,sha256:recordSha256(cut)}),
     scanRows:freeze(rows.map(({ref,text,message})=>({id:ref.id,role:ref.role,messageSha256:ref.messageSha256,
+      ...message.authorMetadata?{authorMetadata:message.authorMetadata}:{},
       text:ref.seq===null?text:input.storyText?.text(ref.seq,message,text,ref.messageSha256)??text}))),
     assertCurrent:()=>{input.assertOwnerCurrent()
       if(input.storyText&&!input.storyText.current())fail('INPUT_MATERIAL_STORY_TEXT_CHANGED')}}
@@ -311,7 +313,8 @@ export function captureTavernCanonicalChatClockV1(input:{
   const indexed=nativeCut?.source==='native'&&input.projections
     ?canonicalAt(session.id,nativeCut,nativeCut.length,input.projections):undefined,
     rows=indexed?clockRows(indexed.view):selectedRows(session as unknown as StorySession,raw(),event=>session.deriveEventMessage(event)),
-    ids=new Set(rows.map(row=>row.ref.id)),pending:{ref:ClockRowV1;text:string}[]=[]
+    ids=new Set(rows.map(row=>row.ref.id)),pending:{ref:ClockRowV1;text:string;
+      message?:NativeMaterialSelectedBaseV1['messages'][number]['message']}[]=[]
   for(const row of selected.messages)if(row.origin==='pending-decision'&&row.role==='user') {
     const source=(row.message as {source?:{kind?:string}}).source
     if(source?.kind!=='user')continue
@@ -319,7 +322,8 @@ export function captureTavernCanonicalChatClockV1(input:{
     if(row.eventSeq!==null||nativeInputSha256(row.message)!==row.messageSha256)fail()
     ids.add(row.id)
     const text=textOf(row.message.content)
-    if(text.trim())pending.push({ref:{seq:null,id:row.id,role:'user',messageSha256:row.messageSha256,textSha256:sha256(text)},text})
+    if(text.trim())pending.push({ref:{seq:null,id:row.id,role:'user',messageSha256:row.messageSha256,textSha256:sha256(text)},
+      text,message:row.message})
   }
   const length=nativeCut?.length??raw().length,
     body={schemaVersion:1 as const,encoding:'native-canonical-story-chat-clock-v1' as const,
@@ -331,7 +335,8 @@ export function captureTavernCanonicalChatClockV1(input:{
   const data=freeze(cloneRoleplayTavernLoreDataV1({...body,clockSha256:recordSha256(body)},8_388_608)),
     scanRows=freeze([...rows.map(row=>({...row,text:row.ref.seq===null?row.text
       :input.storyText?.text(row.ref.seq,row.message,row.text,row.ref.messageSha256)??row.text})),...pending]
-      .map(({ref,text})=>({id:ref.id,role:ref.role,messageSha256:ref.messageSha256,text})))
+      .map(({ref,text,message})=>({id:ref.id,role:ref.role,messageSha256:ref.messageSha256,text,
+        ...message?.authorMetadata?{authorMetadata:message.authorMetadata}:{}})))
   let verifiedThrough=length,admitted=new Map<string,number>()
   const baseBySeq=new Map(rows.map(row=>[row.ref.seq!,row.ref])),pendingById=new Map(pending.map(row=>[row.ref.id,row.ref]))
   const assertCurrent=()=>{
@@ -414,7 +419,8 @@ export function captureTavernCanonicalChatClockV2(input:Parameters<typeof captur
     for(let position=start;position<data.chatIndex;position++) {
       const {ref,text:originalText,message}=rowAt(position),text=ref.seq===null?originalText
         :input.storyText?.text(ref.seq,message,originalText,ref.messageSha256)??originalText
-      rows.push({id:ref.id,role:ref.role,messageSha256:ref.messageSha256,text})
+      rows.push({id:ref.id,role:ref.role,messageSha256:ref.messageSha256,text,
+        ...message.authorMetadata?{authorMetadata:message.authorMetadata}:{}})
     }
     return Object.freeze(rows)
   }

@@ -10,8 +10,8 @@ import {recordSha256,sha256,textOf} from './roleplay-data.js'
 import type {RoleplayInputSourceDataWindowV1} from './roleplay-input-preparation.js'
 import {createStableRoleplayFence} from './roleplay-context.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
-import {captureRoleplayTavernPromptSourceDataV1} from './roleplay-tavern-prompt-source.js'
-import {createTavernSourceRenderCatalogV1} from './tavern-source-render-catalog.mjs'
+import {captureRoleplayTavernPromptSourceDataV1,projectCapturedTavernCharacterDataV1} from './roleplay-tavern-prompt-source.js'
+import {createTavernSourceRenderCatalogV1,tavernSourceTemplateActivationV1} from './tavern-source-render-catalog.mjs'
 import {captureRoleplayTavernPromptScopesV1} from './roleplay-tavern-prompt-scopes.js'
 import type {TavernActualSchemaPromptScopesV1,TavernActualSchemaPromptScopesV2,TavernActualSchemaPromptScopesV3,TavernActualNonnumericalPromptScopesV1,
   TavernActualNumericalPromptScopesV1} from './roleplay-tavern-prompt-scopes.js'
@@ -30,6 +30,7 @@ import {createRoleplayTavernInjectionRegistryV1,createTavernNativeInjectionConsu
 import type {TavernNativeFilterReferenceV1,TavernNativeFilterResultV1,TavernNativeInjectionConsumptionV1}
   from './roleplay-tavern-injections.js'
 import {createRoleplayTavernEjsPreparation} from './roleplay-tavern-ejs-preparation.js'
+import type {TavernEjsReadSupplierFactoryV1} from './roleplay-tavern-ejs-preparation.js'
 import {createRoleplayTavernGenerateLoaderV1} from './roleplay-tavern-generate-loader.js'
 import type {createRoleplayTavernEjsPrograms} from './roleplay-tavern-ejs-programs.js'
 import type {createCanonicalAuthorChatStateV1,CanonicalAuthorChatStateV1} from './roleplay-author-chat-state.js'
@@ -666,8 +667,10 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       const {captured,opening,player,playerSnapshot,snapshot,storyRows,
         scopeData,materialHistory,chatClock,timed,authorBrowserFacts,storyText,
         includeCardStyle,authorPolicy,authorPolicySha256,accountPersona,personas,sourceCatalog,authorFields,derived,ordinary,
-        ordinaryBasis,ordinaryPrior,inputId,contributionId,ordinaryPublicationSeq}=inputData,
+        ordinaryBasis,ordinaryPrior,inputId,contributionId,ordinaryPublicationSeq,sharedScope,variableAttempt,
+        currentSharedScopes,sharedVariableScopes}=inputData,
         {source,compilation,original,residual}=captured,
+        settings=resolveCapturedTavernPromptSettingsV1(source),
         assertInputCurrent=()=>{
           // The lore evaluator returns DATA refusals for callback errors. Keep
           // this owner's actual replan signal across that result boundary,
@@ -808,7 +811,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         const collector=createRoleplayTavernEjsPreparation({
           identity:{preparationId:attemptId,attemptGeneration:`${attemptId}:${scope.step}`,
             scriptIdentity:recordSha256(definitions.definitions),sourceSnapshotSha256:source.sourceSha256},
-          programs:deps.ejs.programs,
+          programs:deps.ejs.programs,worldInfoSettings:settings,
           get context(){
             if(!context) {
               const history='fullHistory' in chatClock?chatClock.fullHistory():chatClock,
@@ -833,6 +836,28 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       let injections:ReturnType<typeof createRoleplayTavernInjectionRegistryV1>
       const captureNativeCut=deps.inputState.nativeHistory?.cut
       const ejs=generation.ejs.collector.beginPlan(ordinaryStage,{
+        shared:sharedStage,
+        readCaptured:deps.ejs.namedWorldInfo?.({sessionId:scope.session.id,source,rules,
+          scriptOrder:communityPolicy?.regexOrder,assertCurrent}),
+        generationModel:()=>preparedRoute?{model:preparedRoute.model,source:'prepared-generation'}:undefined,
+        currentCharacter:()=>{
+          const projected=currentCharacter??=projectCapturedTavernCharacterDataV1(captured,cardMaterial)
+          return projected.kind==='available'?{sourcePointer:'/data',
+            sourceSnapshotSha256:projected.identity.sourceSnapshotSha256,data:projected.character}
+            :{unavailable:projected.kind==='unavailable'?projected.code:'COMMUNITY_CARD_MAPPING_REQUIRED'}
+        },
+        helperMessages:()=>{
+          if(helperMessages)return helperMessages
+          const history='fullHistory' in chatClock?chatClock.fullHistory():chatClock,
+            names=source.current.openingContext.context
+          return helperMessages={rules,...communityPolicy?{scriptOrder:communityPolicy.regexOrder}:{},
+            rows:history.scanRows.map((row,index)=>({index,messageId:row.id,
+              messageVersionSha256:row.messageSha256,depth:history.scanRows.length-index-1,
+              name:row.authorMetadata?.name??(row.role==='user'?names.user!:names.char!),
+              nameSource:row.authorMetadata?.name!==undefined?'message' as const:
+                row.role==='user'?'user' as const:'character' as const,
+              isUser:row.role==='user',isSystem:false,text:row.text}))}
+        },
         presetCatalog:()=>deps.community?.presets.ejsPreset(scope.session.id,communityPolicy),
         namedQueues:()=>injections.namedQueues(),
         ordinaryMessageView:async()=>{
@@ -873,7 +898,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         provenance:factRef(`${scope.session.id}:actual-input-attempt`,recordSha256(player!.currency),{
           schemaVersion:1,encoding:'actual-Core-prompt-variable-attempt-v1',currency:player!.currency,
           preparation:player!.preparation,turn:scope.turn,step:scope.step,policySha256:recordSha256(policy)})}
-      const settings=resolveCapturedTavernPromptSettingsV1(source),context=source.current.openingContext.context
+      const context=source.current.openingContext.context
       if(typeof context.user!=='string'||typeof context.char!=='string')fail('INPUT_MATERIAL_OPENING_NAMES_UNAVAILABLE')
       const scanDepth=Math.max(settings.scanDepth,settings.minimumActivations>0
         ?settings.minimumActivationDepthMax>0?settings.minimumActivationDepthMax+1:1000:0,
@@ -904,7 +929,8 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
             await generateLoader.startBefore()
           },
           renderInput:{source,plan:compilation.plan,sourceCatalog,macros,rules,scopes:initialBindings,
-            ejs:{identity:generation.ejs.identity,macros:ejs.macros,execute:async input=>{
+            ejs:{identity:generation.ejs.identity,macros:ejs.macros,
+              getInitialValues:ejs.getInitialValues,bindInitial:ejs.bindInitial,execute:async input=>{
               const record=await ejs.execute(input)
               injections.acceptEjsCreation(ejs.creationId(record),record,input.definition,input.phase)
               return record
@@ -936,7 +962,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
               const entry=compilation.plan.entries.find(row=>row.entryId===proposal.entryId)
               if(!entry||proposal.sourceSnapshotSha256!==source.sourceSha256||proposal.branchId!==scope.session.id
                 ||proposal.turnId!==turnId||proposal.attemptId!==attemptId)fail('INPUT_MATERIAL_INJECTION_ACTIVATION_CHANGED')
-              return {entryId:entry.entryId,rawEntrySha256:entry.rawEntrySha256}
+              return tavernSourceTemplateActivationV1(sourceCatalog,proposal)
             })
             return {contributions:texts.map(row=>({identity:row.key,text:row.text,textSha256:row.textSha256})),activationProposals}
           }})})

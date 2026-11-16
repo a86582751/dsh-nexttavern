@@ -20,12 +20,16 @@ export interface PromptCapturedMessageV1 {
   readonly messageVersionSha256:string
   readonly role:'user'|'assistant'
   readonly message:string
+  readonly name?:string
+  readonly is_hidden?:boolean
+  readonly extra?:MvuJsonObject
   readonly variables:MvuScopeVariablesV1
   readonly ordinary?:AuthorMessageOrdinaryV1
   readonly variants:null|{readonly source:'native-author-copy-opening-candidates-v1';
     readonly swipes:readonly string[];readonly swipe_id:number;
     readonly setSha256?:string;
-    readonly swipes_data?:readonly (MvuJsonObject|null)[]}
+    readonly swipes_data?:readonly (MvuJsonObject|null)[];
+    readonly swipes_info?:readonly {readonly extra:MvuJsonObject}[]}
 }
 export interface PromptCaptureV1 {
   readonly schemaVersion:1

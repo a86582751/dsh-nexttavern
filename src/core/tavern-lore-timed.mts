@@ -8,7 +8,9 @@ export function tavernLoreEntrySemanticSha256V1(semantic:TavernLoreSemanticEntry
   // Origin/head refs describe provenance, not changed runtime semantics. Timers
   // survive unrelated bookkeeping and expire on actual effective edits.
   const {content,...fields}=semantic
-  return recordSha256({...fields,content:{kind:content.kind,pointer:content.pointer,contentSha256:content.contentSha256}})
+  // A catalog fork copies the member into a new book address. That pointer
+  // changes provenance while the copied content and controls remain equal.
+  return recordSha256({...fields,content:{kind:content.kind,contentSha256:content.contentSha256}})
 }
 export interface LoreTimedEntryV1 {
   entry:Pick<TavernLoreEntryPlanV1,'entryId'|'rawEntrySha256'>
@@ -25,21 +27,30 @@ export class TavernLoreTimedStateV1 {
     for(const row of input.intervals)this.rows[row.kind].set(row.entryId,row)
     // Fixed source checks sticky first: expiry starts a protected cooldown that
     // must be visible when cooldown is checked during this same evaluation.
-    for(const kind of ['sticky','cooldown'] as const)for(const row of [...this.rows[kind].values()]) {
-      const item=entries.get(row.entryId)
-      if(input.chatIndex<=row.start&&!row.protected){this.clear(row,'chat-not-advanced');continue}
-      if(!item||!item.semantic.enabled||!item.eligible){this.clear(row,'entry-unavailable');continue}
-      if(item.entry.rawEntrySha256!==row.rawEntrySha256
-        ||tavernLoreEntrySemanticSha256V1(item.semantic)!==row.entrySemanticSha256) {
-        this.clear(row,'entry-edited');continue
-      }
-      if(!item.semantic[kind]){this.clear(row,'control-cleared');continue}
-      if(input.chatIndex>=row.end) {
-        this.clear(row,'expired')
-        if(kind==='sticky'&&item.semantic.cooldown)this.set(item,'cooldown',true,'sticky-ended-cooldown-protected',true)
-        continue
-      }
-      this.active[kind].add(row.entryId)
+    for(const kind of ['sticky','cooldown'] as const)for(const row of [...this.rows[kind].values()])this.reconcile(row)
+  }
+  private reconcile(row:Interval):void {
+    const item=this.entries.get(row.entryId),kind=row.kind,input=this.input
+    if(input.chatIndex<=row.start&&!row.protected){this.clear(row,'chat-not-advanced');return}
+    if(!item||!item.semantic.enabled||!item.eligible){this.clear(row,'entry-unavailable');return}
+    if(item.entry.rawEntrySha256!==row.rawEntrySha256
+      ||tavernLoreEntrySemanticSha256V1(item.semantic)!==row.entrySemanticSha256) {
+      this.clear(row,'entry-edited');return
+    }
+    if(!item.semantic[kind]){this.clear(row,'control-cleared');return}
+    if(input.chatIndex>=row.end) {
+      this.clear(row,'expired')
+      if(kind==='sticky'&&item.semantic.cooldown)this.set(item,'cooldown',true,'sticky-ended-cooldown-protected',true)
+      return
+    }
+    this.active[kind].add(row.entryId)
+  }
+  /** An actual activation overlay changes one entry's controls. Reconcile its
+   * existing intervals before the next candidate consumes timed state. */
+  changed(entryId:string):void {
+    for(const kind of ['sticky','cooldown'] as const) {
+      const row=this.rows[kind].get(entryId)
+      if(row)this.reconcile(row)
     }
   }
   private clear(row:Interval,reason:TavernLoreTimedActionV1['reason']):void {

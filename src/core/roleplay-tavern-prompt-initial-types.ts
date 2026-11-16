@@ -60,6 +60,8 @@ export interface TavernPromptInitialCatalogLegacyReceiptV1 {
   readonly completeOriginalEntryCount:number
   readonly completeCurrentEntryCount?:number
   readonly currentNativeMembershipSha256?:string
+  readonly boundBooksSourceSha256?:string
+  readonly boundBookCount?:number
   readonly selectedInitialEntryIds:readonly string[]
   readonly entries:readonly TavernPromptInitialCatalogEntryReceiptV1[]
   readonly diagnostics:readonly TavernLoreDiagnosticV1[]

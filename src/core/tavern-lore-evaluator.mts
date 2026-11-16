@@ -2,9 +2,8 @@ import {recordSha256} from './roleplay-data.js'
 import {types} from 'node:util'
 import {schemaTextSha256} from './tavern-mvu-schema-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
-import {validateTavernLoreCompilationV1} from './tavern-lore-compiler.mjs'
+import {tavernLoreConsumerSourceV1,validateTavernLoreCompilationV1} from './tavern-lore-compiler.mjs'
 import {composeTavernLoreEvaluationV1,isTavernLoreDerivedEntryV1,tavernLoreEvaluationSemanticV1,
-  resolveTavernLoreEvaluationContentV1,
   validateTavernLoreDerivedSnapshotV1,applyTavernLoreOrdinaryPreparationV1,createTavernLoreSourceEligibilityV1}
   from './tavern-lore-derived.mjs'
 import {validateTavernLoreOrdinaryPreparationV1} from './tavern-lore-ordinary-preparation.mjs'
@@ -168,12 +167,13 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
     ||snapshot.tokenizer.implementationSha256!==producer.implementationSha256
     ||snapshot.tokenizer.method!==producer.method||snapshot.tokenizer.counts.length!==0))refuse('LORE_TOKEN_PRODUCER_MISMATCH')
   if(snapshot.compilerPlanSha256!==plan.planSha256||snapshot.sourceReferenceSha256!==plan.sourceReferenceSha256
-    ||snapshot.sourceSnapshotSha256!==plan.source.sourceSnapshotSha256)refuse('LORE_EVALUATOR_SOURCE_MISMATCH')
+    ||snapshot.sourceSnapshotSha256!==tavernLoreConsumerSourceV1(plan.source).sourceSnapshotSha256)refuse('LORE_EVALUATOR_SOURCE_MISMATCH')
   const eligible=sourceEligibility??createTavernLoreSourceEligibilityV1(compilation)
   const standaloneExclusions=new Set(snapshot.standaloneExclusions?.entryIds??[])
   const items=composition.entries.map(entry=>{
-    const semantic=tavernLoreEvaluationSemanticV1(entry)
-    return {entry,semantic:standaloneExclusions.has(entry.entryId)?{...semantic,enabled:false}:semantic,eligible:eligible(entry)}
+    const semantic=tavernLoreEvaluationSemanticV1(entry),sourceEligible=eligible(entry)
+    return {entry,semantic:standaloneExclusions.has(entry.entryId)?{...semantic,enabled:false}:semantic,
+      eligible:sourceEligible,sourceEligible}
   })
   for(const item of items)if(!item.semantic.enabled&&!('origin' in item.entry)) {
     const invalidEnabled=item.entry.diagnosticIndexes.some(index=>{
@@ -185,26 +185,42 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
       &&row.disposition==='current-native-origin'&&row.valueSha256===recordSha256(false))
     if(invalidEnabled&&!explicitlyDisabled)refuse('LORE_COMPILER_INPUT_INELIGIBLE',item.entry.entryId)
   }
-  if(plan.bookDisposition!=='eligible-semantic-data'
-    &&items.some(item=>!isTavernLoreDerivedEntryV1(item.entry)&&item.semantic.enabled))refuse('LORE_COMPILER_INPUT_INELIGIBLE')
   const diagnostics:{code:string;entryId:string}[]=[]
   const decisions:Mutable<TavernLoreEntryDecisionV1>[]=items.map(({entry,semantic})=>({
     entryId:entry.entryId,rawEntrySha256:entry.rawEntrySha256,decision:'disabled',primaryMatches:[],secondaryMatches:[],
     groupScore:0,probabilityRoll:null,sourceContentSha256:semantic.content?.contentSha256??null,
     effectiveContentSha256:semantic.content?.contentSha256??null}))
-  for(const item of items)if(item.semantic.enabled) {
-    if(!item.eligible)refuse('LORE_COMPILER_INPUT_INELIGIBLE',item.entry.entryId)
-    if(item.semantic.automationId||item.semantic.triggers.length)refuse('LORE_ENTRY_CONTROL_UNSUPPORTED',item.entry.entryId)
-    if(item.semantic.vectorized)diagnostics.push({code:'LORE_VECTORIZED_KEYWORD_FALLBACK',entryId:item.entry.entryId})
-  }
   const byId=new Map(items.map(item=>[item.entry.entryId,item] as const))
-  const timed=new TavernLoreTimedStateV1(snapshot.timed,byId),buffer=new TavernLoreScanBufferV1(snapshot)
-  const templates=new TavernLoreTemplateFeedbackStateV1(composition,snapshot,byId,checkpoint,templateProducer,producer?.signal)
+  const buffer=new TavernLoreScanBufferV1(snapshot)
+  let timed:TavernLoreTimedStateV1|undefined
+  const templates=new TavernLoreTemplateFeedbackStateV1(composition,snapshot,byId,checkpoint,templateProducer,producer?.signal,
+    compilation,entryId=>{
+      timed?.changed(entryId)
+      if(!admitted.has(entryId)) {
+        const item=byId.get(entryId)!,decision=decisions[item.entry.ordinal]!
+        decision.sourceContentSha256=item.semantic.content.contentSha256
+        decision.effectiveContentSha256=item.semantic.content.contentSha256
+      }
+    })
   const matcher=new TavernLoreBoundedMatcherV1(checkpoint),activated:Candidate[]=[],admitted=new Set<string>()
   const failedProbability=new Set<string>(),queued=new Set<string>(),feedbackSeen=new Set<string>()
   const externalActivations=new Set<string>(),standaloneSelected=new Set<string>()
+  if(snapshot.vectorSelection?.result.status==='ready') {
+    const selection=snapshot.vectorSelection,result=selection.result,
+      hits=new Map(result.hits.map(hit=>[hit.id,hit])),
+      originals=new Map(plan.entries.map(entry=>[entry.entryId,entry]))
+    for(const activation of selection.activations) {
+      const item=byId.get(activation.entryId),original=originals.get(activation.entryId),hit=hits.get(activation.entryId)
+      if(!item||!original||original.rawEntrySha256!==activation.rawEntrySha256
+        ||!hit||hit.contentSha256!==tavernLoreEvaluationSemanticV1(original).content.contentSha256)
+        refuse('LORE_VECTOR_SOURCE_MISMATCH',activation.entryId)
+      if(item.semantic.enabled&&item.eligible)externalActivations.add(activation.entryId)
+    }
+  }
   for(const proposal of composition.ordinaryPreparation?.activationProposals??[]) {
-    templates.activation(proposal);externalActivations.add(proposal.entryId)
+    templates.activation(proposal)
+    if(!proposal.mode)externalActivations.add(proposal.entryId)
+    else externalActivations.delete(proposal.entryId)
   }
   for(const change of composition.ordinaryPreparation?.changes??[])if(change.forceActivation) {
     const entry=byId.get(change.entryId)!.entry,proposal={entryId:entry.entryId,rawEntrySha256:entry.rawEntrySha256}
@@ -213,7 +229,17 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
   const initialInjection=await boundary(()=>templates.scan(0,'initial','before-initial'))
   checkpoint()
   for(const contribution of initialInjection.contributions)buffer.inject(contribution.text)
-  for(const proposal of initialInjection.activationProposals)externalActivations.add(proposal.entryId)
+  for(const proposal of initialInjection.activationProposals) {
+    if(!proposal.mode)externalActivations.add(proposal.entryId)
+    else externalActivations.delete(proposal.entryId)
+  }
+  if(plan.bookDisposition!=='eligible-semantic-data'
+    &&items.some(item=>!isTavernLoreDerivedEntryV1(item.entry)&&item.semantic.enabled))refuse('LORE_COMPILER_INPUT_INELIGIBLE')
+  for(const item of items)if(item.semantic.enabled) {
+    if(!item.eligible)refuse('LORE_COMPILER_INPUT_INELIGIBLE',item.entry.entryId)
+    if(item.semantic.automationId||item.semantic.triggers.length)refuse('LORE_ENTRY_CONTROL_UNSUPPORTED',item.entry.entryId)
+  }
+  timed=new TavernLoreTimedStateV1(snapshot.timed,byId)
   const counts=new Map(snapshot.tokenizer.counts.map(row=>[row.textSha256,row.tokens]))
   let countWorkBytes=0,renderedBytes=0,consumed=0,overflowed=false,cumulative='',loop=0
   const count=async(text:string):Promise<number>=>{
@@ -272,7 +298,7 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
         if(!secondaryPass(semantic,secondary)){decision.decision='secondary-unmatched';continue}
       }
       decision.primaryMatches=primary;decision.secondaryMatches=secondary;decision.groupScore=score(semantic,primary,secondary)
-      candidates.push({entry,semantic,text:'',sticky,decision})
+      candidates.push({entry,get semantic(){return item.semantic},text:'',get sticky(){return timed!.sticky(entry.entryId)},decision})
     }
     // Constants/sticky/forced activations bypass key admission but group scoring
     // still scans their keys when any member enables that fixed group policy.
@@ -321,7 +347,11 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
           ?'already-seen':feedbackSeen.has(proposal.entryId)?'duplicate':'queued'
         feedback.push({entryId:proposal.entryId,disposition})
         feedbackSeen.add(proposal.entryId)
-        if(disposition==='queued'){queued.add(proposal.entryId);externalActivations.add(proposal.entryId)}
+        if(disposition==='queued'){
+          queued.add(proposal.entryId)
+          if(proposal.mode)externalActivations.delete(proposal.entryId)
+          else externalActivations.add(proposal.entryId)
+        }
       }
       // Count each pass's newContent separately from the recursive base text.
       // Keep an overflow candidate in newContent for later ignoreBudget queries.
@@ -331,7 +361,8 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
       if(!item.semantic.ignoreBudget&&consumed>=snapshot.settings.budgetTokens) {
         overflowed=true;item.decision.decision='budget-excluded';continue
       }
-      item.decision.decision='activated';activated.push(item);admitted.add(item.entry.entryId);newIds.push(item.entry.entryId)
+      item.decision.decision='activated';activated.push({...item,semantic:item.semantic,sticky:item.sticky})
+      admitted.add(item.entry.entryId);newIds.push(item.entry.entryId)
       queued.delete(item.entry.entryId)
     }
     const injection=await boundary(()=>templates.scan(loop,scanState,'after-selected'))
@@ -342,7 +373,11 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
         ||failedProbability.has(proposal.entryId)
         ?'already-seen':feedbackSeen.has(proposal.entryId)?'duplicate':'queued'
       feedback.push({entryId:proposal.entryId,disposition});feedbackSeen.add(proposal.entryId)
-      if(disposition==='queued'){queued.add(proposal.entryId);externalActivations.add(proposal.entryId)}
+      if(disposition==='queued'){
+        queued.add(proposal.entryId)
+        if(proposal.mode)externalActivations.delete(proposal.entryId)
+        else externalActivations.add(proposal.entryId)
+      }
     }
     const recursing=grouped.filter(item=>!failedProbability.has(item.entry.entryId)&&!item.semantic.preventRecursion)
     let next=nextLoreScanStateV1({snapshot,buffer,state:scanState,overflowed,recursingEntries:recursing.length,
@@ -359,7 +394,7 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
         // successfulNewEntries. This is raw scan input, never VM execution,
         // a rendered receipt, a final activation or a placement.
         if(!overflowed)refuse('LORE_RECURSION_SOURCE_UNPROVEN',item.entry.entryId)
-        const raw=resolveTavernLoreEvaluationContentV1(composition,item.semantic.content.pointer)
+        const raw=templates.content(item.entry,item.semantic)
         scanOnly.push({entryId:item.entry.entryId,pointer:raw.pointer,contentSha256:raw.contentSha256,
           disposition:'scan-only-after-overflow',loop})
         return raw.text

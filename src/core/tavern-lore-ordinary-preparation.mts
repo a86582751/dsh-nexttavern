@@ -1,9 +1,10 @@
 /** Actual Source template preparation DATA. This packet belongs to one render
  * audit and never supplies an author, numerical or Ruby-completion authority. */
 import {recordSha256} from './roleplay-data.js'
-import {freezeLoreData,LORE_EVALUATOR_POLICY_V1} from './tavern-lore-snapshot.mjs'
+import {freezeLoreData,LORE_EVALUATOR_POLICY_V1,validateTavernLoreTemplateActivationV1} from './tavern-lore-snapshot.mjs'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {refuse} from './tavern-lore-match.mjs'
+import {tavernLoreConsumerSourceV1} from './tavern-lore-compiler.mjs'
 import type {TavernLoreTemplateActivationV1} from './tavern-lore-evaluator-types.mjs'
 import type {TavernLorePlanV1} from './tavern-lore-plan-types.mjs'
 import type {TavernEjsHostOutput,TavernEjsResource} from './tavern-template-ejs-host-types.mjs'
@@ -113,12 +114,14 @@ export function validateTavernLoreOrdinaryPreparationV1(input:unknown,plan:Taver
   const packet=cloneRoleplayTavernLoreDataV1(input,LORE_EVALUATOR_POLICY_V1.bounds.snapshotBytes,
     {nodes:100000,depth:48}) as unknown as TavernLoreOrdinaryPreparationV1
   if(!packet||packet.schemaVersion!==1||packet.encoding!=='owned-st-lore-ordinary-preparation-v1'
-    ||packet.compilerPlanSha256!==plan.planSha256||packet.sourceSnapshotSha256!==plan.source.sourceSnapshotSha256
+    ||packet.compilerPlanSha256!==plan.planSha256
+    ||packet.sourceSnapshotSha256!==tavernLoreConsumerSourceV1(plan.source).sourceSnapshotSha256
     ||typeof packet.phaseId!=='string'||typeof packet.snapshotSha256!=='string'
     ||!Array.isArray(packet.changes)||!Array.isArray(packet.activationProposals))refuse('LORE_ORDINARY_PREPARATION_INVALID')
   const {preparationSha256,...body}=packet
   if(recordSha256(body)!==preparationSha256)refuse('LORE_ORDINARY_PREPARATION_HASH')
   for(const change of packet.changes)if(plan.entries[change.ordinal]?.entryId!==change.entryId)
     refuse('LORE_ORDINARY_SOURCE_CHANGED',change.entryId)
+  for(const proposal of packet.activationProposals)validateTavernLoreTemplateActivationV1(proposal)
   return freezeLoreData(packet)
 }

@@ -1,7 +1,8 @@
 /** Owns the phase chain around the independent protected template runtime.
  * Macro/regex receipts retain raw text; guest output is rendered exactly once. */
 import {recordSha256,sha256} from './roleplay-data.js'
-import {createTavernSourceRenderCatalogV1,projectTavernSourceRenderLoreV1,projectTavernSourceRenderEntriesV1}
+import {createTavernSourceRenderCatalogV1,projectTavernSourceRenderLoreV1,projectTavernSourceRenderEntriesV1,
+  tavernSourceTemplateActivationV1,tavernSourceEntryProgramV1}
   from './tavern-source-render-catalog.mjs'
 import type {TavernSourceRenderCatalogV1} from './tavern-source-render-catalog.mjs'
 import {applyTavernPromptTransformsV1,assertTavernPromptProjectionReadyV1} from './tavern-prompt-transform.mjs'
@@ -20,6 +21,7 @@ import type {TavernEjsReplayRecord} from './tavern-template-ejs-replay.mjs'
 import type {TavernEjsRuntimeIdentity} from './tavern-template-ejs-runtime-types.mjs'
 import {hasTavernPromptMacroSyntaxV1} from './tavern-prompt-transform-execution.mjs'
 import {ST_LORE_POSITION_V1,ST_LORE_ROLE_V1} from './tavern-lore-fixed-profile.mjs'
+import {tavernLoreConsumerSourceV1} from './tavern-lore-compiler.mjs'
 import type {TavernSourceRenderCatalogEntryV1} from './tavern-source-render-catalog.mjs'
 import type {TavernGenerateLoaderPhaseV1,TavernGenerateLoaderCallV1,TavernGenerateLoaderEntryResultV1}
   from './roleplay-tavern-generate-loader.js'
@@ -80,6 +82,8 @@ interface Dependencies {
     /** The owner supplies this phase's staged ordinary values. Equal base and
      * staged state retain the same snapshot identity for key projection reuse. */
     macros(base:TavernPromptMacroSnapshotV1):TavernPromptMacroSnapshotV1
+    getInitialValues?(base:TavernTemplateScopeBindingV1):Readonly<MvuJsonObject>
+    bindInitial?(binding:TavernTemplateScopeBindingV1):void
     execute(input:TavernPromptEjsExecutionV1):Promise<TavernEjsReplayRecord>
   }
   readonly definitionFor:(pointer:string,entryId:string|undefined)=>TavernInjectionDefinitionV1
@@ -111,7 +115,8 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
   const ownerCheckpoint=()=>{checkpoint();deps.assertCurrent()}
   ownerCheckpoint()
   if(basis.sessionId!==source.sessionId||basis.branchId!==source.sessionId
-    ||basis.sourceSnapshotSha256!==source.sourceSha256||plan.source.sourceSnapshotSha256!==source.sourceSha256
+    ||basis.sourceSnapshotSha256!==source.sourceSha256
+    ||tavernLoreConsumerSourceV1(plan.source).sourceSnapshotSha256!==source.sourceSha256
     ||!Number.isSafeInteger(deps.authorsNoteDepth)||deps.authorsNoteDepth<0)fail('INPUT_MATERIAL_RENDER_SOURCE_CHANGED')
   const sourceCatalog=deps.sourceCatalog??createTavernSourceRenderCatalogV1({source,plan})
   const currentMacros=(base=deps.macros)=>deps.ejs.macros(base)
@@ -130,20 +135,21 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
     transforms.push({...metadata,entries:fullEntries.map(({rawText:_raw,storyText:_story,inputText:_input,...entry})=>entry)})
     return result.output
   }
+  const entryBooks=new Map(plan.entries.map(entry=>[entry.entryId,entry.bookId??plan.bookId]))
   const row=(key:string,pointer:string,text:string,pipeline:TavernPromptTransformEntryV1['pipeline'],
     channel:TavernPromptTransformEntryV1['channel'],required:boolean,entryId:string|null,
     placement:TavernPromptTransformEntryV1['placement']=5,depth:number|null=null):TavernPromptTransformEntryV1=>
-    ({key,bookId:entryId&&!pointer.startsWith('derived:')?plan.bookId:null,entryId,
+    ({key,bookId:entryId&&!pointer.startsWith('derived:')?entryBooks.get(entryId)??null:null,entryId,
       sourcePointer:pointer,sourceSnapshotSha256:source.sourceSha256,
       rawText:text,storyText:'',inputText:text,pipeline,channel,placement,depth,isEdit:false,
       characterOverride:null,required})
   const evaluationComposition:TavernLoreEvaluationCompositionV1=deps.evaluationComposition
       ??Object.freeze({sourcePlan:plan,entries:plan.entries,planSha256:plan.planSha256}),sourceMacros=currentMacros(),
-    {lore,byEntryId:sourceProjections}=await projectTavernSourceRenderLoreV1({catalog:sourceCatalog,
+    {lore,worldInfo,byEntryId:sourceProjections}=await projectTavernSourceRenderLoreV1({catalog:sourceCatalog,
       authorsNoteDepth:deps.authorsNoteDepth,macros:sourceMacros,evaluationComposition,transform})
   const snapshotBody={schemaVersion:1 as const,encoding:'owned-template-frozen-snapshot-v1' as const,
     authority:'consumer-data-only' as const,...basis,defaultVariableScope:'cache' as const,scopes:deps.scopes,
-    scopesSha256:recordSha256(deps.scopes),lore,loreSha256:recordSha256(lore),randomSeedSha256:sha256(basis.randomSeed)}
+    scopesSha256:recordSha256(deps.scopes),lore,loreSha256:recordSha256(lore),worldInfo,randomSeedSha256:sha256(basis.randomSeed)}
   let snapshot=validateTemplateSnapshotV1({...snapshotBody,snapshotSha256:recordSha256(snapshotBody)})
   let variablesBound=false,standaloneStarted=false
   let ordinaryPreparation:TavernLoreOrdinaryPreparationV1|undefined
@@ -238,18 +244,20 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
     assertCurrent:checkpoint,async render(request:TavernLoreSelectedTemplateRequestV1) {
       standaloneStarted=true
       const row=sourceCatalog.entryById.get(request.entryId),entry=row?.entry,change=ordinaryChanges.get(request.entryId),
-        program=change?.program,text=program?row!.formal.body:row?.resolved.text,
+        program=request.activationMode&&row?tavernSourceEntryProgramV1(row):change?.program,
+        text=program?row!.formal.body:row?.resolved.text,
         contentSha256=program?.contentSha256??row?.resolved.contentSha256
       if(!entry||entry.rawEntrySha256!==request.rawEntrySha256||request.compilerPlanSha256!==plan.planSha256
         ||request.attemptId!==basis.attemptId||request.text!==text||request.rawContentSha256!==contentSha256)
         fail('INPUT_MATERIAL_TEMPLATE_SELECTION_CHANGED')
-      const authorText=program?.private?'<% await (async()=>{%>'+request.text+'<%})(); %>':request.text,
+      const authorText=!request.activationMode&&program&&'private' in program&&program.private
+        ?'<% await (async()=>{%>'+request.text+'<%})(); %>':request.text,
         output=await render(entry.sourcePointer+'/content',authorText,{entryId:entry.entryId,phase:'lore-selected'})
       const activationProposals=output.activationProposals.map(proposal=>{
         const target=sourceCatalog.entryById.get(proposal.entryId)?.entry
         if(!target||proposal.sourceSnapshotSha256!==source.sourceSha256||proposal.branchId!==source.sessionId
           ||proposal.turnId!==basis.turnId||proposal.attemptId!==basis.attemptId)fail('INPUT_MATERIAL_ACTIVATION_CHANGED')
-        return {entryId:target.entryId,rawEntrySha256:target.rawEntrySha256}
+        return tavernSourceTemplateActivationV1(sourceCatalog,proposal)
       })
       return {receipt:{pointer:request.pointer,rawContentSha256:request.rawContentSha256,
         renderedText:output.renderedText,renderedSha256:output.renderedTextSha256,rendererIdentity:identity,
@@ -258,7 +266,7 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
           {kind:'state' as const,identity:'actual-frozen-template-scopes',versionSha256:basis.stateSnapshotSha256,
             valueSha256:snapshot.scopesSha256}]},activationProposals}
     }})
-  return {get snapshot(){return snapshot},evaluationComposition,loreProducer,render,
+  return {get snapshot(){return snapshot},sourceCatalog,evaluationComposition,loreProducer,render,
     async prepareOrdinaryWorldInfo(input:{readonly phaseId:string;readonly baseMacros:TavernPromptMacroSnapshotV1;
       readonly sourceEligibility:ReturnType<typeof createTavernLoreSourceEligibilityV1>})
       :Promise<TavernLoreOrdinaryPreparationV1|undefined> {
@@ -268,7 +276,7 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
           const entry=sourceCatalog.entryById.get(proposal.entryId)?.entry
           if(!entry||proposal.sourceSnapshotSha256!==source.sourceSha256||proposal.branchId!==source.sessionId
             ||proposal.turnId!==basis.turnId||proposal.attemptId!==basis.attemptId)fail('INPUT_MATERIAL_ACTIVATION_CHANGED')
-          activationProposals.push({entryId:entry.entryId,rawEntrySha256:entry.rawEntrySha256})
+          activationProposals.push(tavernSourceTemplateActivationV1(sourceCatalog,proposal))
         }
       }
       const field=async(entry:TavernSourceRenderCatalogEntryV1,name:string,pointer:string,text:string)
@@ -451,6 +459,8 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
       checkpoint()
       if(variablesBound||standaloneStarted)fail('INPUT_MATERIAL_VARIABLE_PHASE_CHANGED')
       variablesBound=true
+      const initial=scopes.find(binding=>binding.scope==='initial')
+      if(initial)deps.ejs.bindInitial?.(initial)
       scopeSets.push({scopes:snapshot.scopes,scopesSha256:snapshot.scopesSha256,
         snapshotSha256:snapshot.snapshotSha256})
       scopeSetIds.add(snapshot.scopesSha256)

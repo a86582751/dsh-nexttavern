@@ -10,7 +10,7 @@ import { createReaderVariablePrefix } from './roleplay-reader-variable-prefix.js
 import { recordSha256, sha256, textOf } from './roleplay-data.js';
 import { sourceLiteralReaderCss } from './roleplay-reader-style-parser.mjs';
 import { eventsOf, surfaceEntries } from './roleplay-context.js';
-import { produceRoleplayTavernMacroSnapshotV1, captureRoleplayTavernScopedRegexV1 } from './roleplay-tavern-prompt-macros.js';
+import { produceRoleplayTavernMacroSnapshotV1, captureRoleplayTavernScopedRegexV1, captureTavernPromptModelBindingV1 } from './roleplay-tavern-prompt-macros.js';
 import { applyTavernPromptTransformsV1 } from './tavern-prompt-transform.mjs';
 import { projectReaderNarrativeDisplay } from './roleplay-reader-narrative-display.js';
 import { readerRegexDocumentHtmlSpan } from './reader-source-document-data.mjs';
@@ -18,6 +18,7 @@ import { authorMessageBodyRequestValid } from './roleplay-author-message-edit-ty
 import { createMvuScopeReadFrameV1 } from './tavern-mvu-scope-read.js';
 import { communityRegexRules, communityRegexMacros } from './community-regex.js';
 import { nativeCommunityDisplayRule } from './community-preset-display.js';
+import { projectCapturedTavernCharacterDataV1 } from './roleplay-tavern-prompt-source.js';
 import { prepareReaderWorldbookV1, projectReaderWorldbookDocumentsV1 } from './roleplay-reader-worldbook.js';
 /** A document is selected from the applied Source template, never from the
  * mixed final text. Captures cannot join literal pieces into a document tag.
@@ -512,10 +513,12 @@ export function createRoleplayReaderDisplay(deps) {
             });
             return { rows, entries, events: actual, order: entries.map(entry => ({ seq: entry.seq, messageId: entry.messageId, kind: entry.kind })) };
         };
-        const selected = select(), { source, scopes, macros, rules, policy, variables } = read.data;
+        const selected = select(), { source, scopes, rules, policy, variables } = read.data, macros = modelRoute ? { ...read.data.macros, names: { ...read.data.macros.names,
+                model: captureTavernPromptModelBindingV1(source, modelRoute) } } : read.data.macros;
         const regexInputs = await deps.captureRegexInputs?.(sid, source, signal);
         current();
         const contextRevision = recordSha256({ source: read.data.sourceIdentitySha256,
+            model: macros.names.model.read.versionSha256,
             avatars: read.data.macros.dynamic.filter(row => row.key === 'userAvatarPath' || row.key === 'charAvatarPath')
                 .map(row => row.valueSha256), regex: regexInputs?.basisSha256 ?? null,
             scopes: scopes?.versionSha256 ?? null, community: policy ? { fingerprint: policy.fingerprint, variables } : null, order: selected.order,
@@ -566,6 +569,19 @@ export function createRoleplayReaderDisplay(deps) {
             if (read.data.sourceCatalog && deps.templateRuntime)
                 try {
                     worldbook = await prepareReaderWorldbookV1({ catalog: read.data.sourceCatalog, rows: selected.rows, macros, rules,
+                        ...modelRoute ? { generationModel: { model: modelRoute.model, source: 'configured-reader' } } : {},
+                        readCaptured: deps.namedWorldInfo?.({ sessionId: sid, source, rules: read.data.helperRules,
+                            scriptOrder: policy?.regexOrder, assertCurrent: current }),
+                        helperRules: read.data.helperRules, currentCharacter: () => {
+                            const author = read.data.authorRead?.data;
+                            if (author?.kind !== 'author-data')
+                                return;
+                            const projected = projectCapturedTavernCharacterDataV1(author.captured, author.authorFields.cardMaterial);
+                            if (projected.kind === 'available')
+                                return { sourcePointer: '/data',
+                                    sourceSnapshotSha256: projected.identity.sourceSnapshotSha256, data: projected.character };
+                            return { unavailable: projected.kind === 'unavailable' ? projected.code : 'COMMUNITY_CARD_MAPPING_REQUIRED' };
+                        },
                         scriptOrder: policy?.regexOrder, signal, assertCurrent: current, facts: documentFacts,
                         clockEpochMs: row => selected.events[row.seq]?.time, runtime: engine => deps.templateRuntime(signal, engine),
                         regexInputs, phaseId });

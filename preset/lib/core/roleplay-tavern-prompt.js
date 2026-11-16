@@ -6,8 +6,8 @@ import { assertNativeRequestMaterialSelectionV1, nativeInputSha256, projectNativ
 import { recordSha256, sha256, textOf } from './roleplay-data.js';
 import { createStableRoleplayFence } from './roleplay-context.js';
 import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
-import { captureRoleplayTavernPromptSourceDataV1 } from './roleplay-tavern-prompt-source.js';
-import { createTavernSourceRenderCatalogV1 } from './tavern-source-render-catalog.mjs';
+import { captureRoleplayTavernPromptSourceDataV1, projectCapturedTavernCharacterDataV1 } from './roleplay-tavern-prompt-source.js';
+import { createTavernSourceRenderCatalogV1, tavernSourceTemplateActivationV1 } from './tavern-source-render-catalog.mjs';
 import { captureRoleplayTavernPromptScopesV1 } from './roleplay-tavern-prompt-scopes.js';
 import { captureRoleplayTavernTimedHistoryV2 } from './roleplay-tavern-lore-timed-lineage.js';
 import { captureTavernCanonicalChatClockV2 } from './roleplay-tavern-chat-clock.js';
@@ -680,7 +680,7 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                 const collector = createRoleplayTavernEjsPreparation({
                     identity: { preparationId: attemptId, attemptGeneration: `${attemptId}:${scope.step}`,
                         scriptIdentity: recordSha256(definitions.definitions), sourceSnapshotSha256: source.sourceSha256 },
-                    programs: deps.ejs.programs,
+                    programs: deps.ejs.programs, worldInfoSettings: settings,
                     get context() {
                         if (!context) {
                             const history = 'fullHistory' in chatClock ? chatClock.fullHistory() : chatClock, names = source.current.openingContext.context;
@@ -706,6 +706,28 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
             let injections;
             const captureNativeCut = deps.inputState.nativeHistory?.cut;
             const ejs = generation.ejs.collector.beginPlan(ordinaryStage, {
+                shared: sharedStage,
+                readCaptured: deps.ejs.namedWorldInfo?.({ sessionId: scope.session.id, source, rules,
+                    scriptOrder: communityPolicy?.regexOrder, assertCurrent }),
+                generationModel: () => preparedRoute ? { model: preparedRoute.model, source: 'prepared-generation' } : undefined,
+                currentCharacter: () => {
+                    const projected = currentCharacter ??= projectCapturedTavernCharacterDataV1(captured, cardMaterial);
+                    return projected.kind === 'available' ? { sourcePointer: '/data',
+                        sourceSnapshotSha256: projected.identity.sourceSnapshotSha256, data: projected.character }
+                        : { unavailable: projected.kind === 'unavailable' ? projected.code : 'COMMUNITY_CARD_MAPPING_REQUIRED' };
+                },
+                helperMessages: () => {
+                    if (helperMessages)
+                        return helperMessages;
+                    const history = 'fullHistory' in chatClock ? chatClock.fullHistory() : chatClock, names = source.current.openingContext.context;
+                    return helperMessages = { rules, ...communityPolicy ? { scriptOrder: communityPolicy.regexOrder } : {},
+                        rows: history.scanRows.map((row, index) => ({ index, messageId: row.id,
+                            messageVersionSha256: row.messageSha256, depth: history.scanRows.length - index - 1,
+                            name: row.authorMetadata?.name ?? (row.role === 'user' ? names.user : names.char),
+                            nameSource: row.authorMetadata?.name !== undefined ? 'message' :
+                                row.role === 'user' ? 'user' : 'character',
+                            isUser: row.role === 'user', isSystem: false, text: row.text })) };
+                },
                 presetCatalog: () => deps.community?.presets.ejsPreset(scope.session.id, communityPolicy),
                 namedQueues: () => injections.namedQueues(),
                 ordinaryMessageView: async () => {
@@ -751,7 +773,7 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                     schemaVersion: 1, encoding: 'actual-Core-prompt-variable-attempt-v1', currency: player.currency,
                     preparation: player.preparation, turn: scope.turn, step: scope.step, policySha256: recordSha256(policy)
                 }) };
-            const settings = resolveCapturedTavernPromptSettingsV1(source), context = source.current.openingContext.context;
+            const context = source.current.openingContext.context;
             if (typeof context.user !== 'string' || typeof context.char !== 'string')
                 fail('INPUT_MATERIAL_OPENING_NAMES_UNAVAILABLE');
             const scanDepth = Math.max(settings.scanDepth, settings.minimumActivations > 0
@@ -779,7 +801,8 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                     await generateLoader.startBefore();
                 },
                 renderInput: { source, plan: compilation.plan, sourceCatalog, macros, rules, scopes: initialBindings,
-                    ejs: { identity: generation.ejs.identity, macros: ejs.macros, execute: async (input) => {
+                    ejs: { identity: generation.ejs.identity, macros: ejs.macros,
+                        getInitialValues: ejs.getInitialValues, bindInitial: ejs.bindInitial, execute: async (input) => {
                             const record = await ejs.execute(input);
                             injections.acceptEjsCreation(ejs.creationId(record), record, input.definition, input.phase);
                             return record;
@@ -817,7 +840,7 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                             if (!entry || proposal.sourceSnapshotSha256 !== source.sourceSha256 || proposal.branchId !== scope.session.id
                                 || proposal.turnId !== turnId || proposal.attemptId !== attemptId)
                                 fail('INPUT_MATERIAL_INJECTION_ACTIVATION_CHANGED');
-                            return { entryId: entry.entryId, rawEntrySha256: entry.rawEntrySha256 };
+                            return tavernSourceTemplateActivationV1(sourceCatalog, proposal);
                         });
                         return { contributions: texts.map(row => ({ identity: row.key, text: row.text, textSha256: row.textSha256 })), activationProposals };
                     } }) });

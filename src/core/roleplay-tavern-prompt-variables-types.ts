@@ -162,6 +162,10 @@ export interface TavernPromptInitialRenderOutputV1 {
 export interface TavernPromptVariableProducerV1 {
   assertCurrent():void
   readonly signal?:AbortSignal
+  /** Current preparation scratch after render, before returned JSON is merged. */
+  getInitialValues?(base:TavernTemplateScopeBindingV1):Readonly<MvuJsonObject>
+  /** Accept exactly the source producer's newly merged binding in order. */
+  bindInitial?(binding:TavernTemplateScopeBindingV1):void
   renderInitial(request:TavernPromptInitialRenderRequestV1,signal?:AbortSignal):
     TavernPromptInitialRenderOutputV1|Promise<TavernPromptInitialRenderOutputV1>
 }

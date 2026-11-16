@@ -37,17 +37,18 @@ export function createRoleplayTavernEjsPrograms(deps) {
         // Worker teardown, which never executes author callbacks or effects.
         void entry.program.dispose().catch(() => { });
     }
-    async function prepare(programInstanceId, input, generationId, signal) {
+    async function prepare(programInstanceId, input, generationId, signal, readCaptured) {
         const prior = entries.get(programInstanceId);
         if (prior && prior.generationId === generationId)
             return { program: prior.program, creation: prior.creation };
         if (prior)
             retire(programInstanceId);
         const runtime = await deps.loadRuntime(undefined, signal);
-        const program = await runtime.prepare(input, signal);
+        const program = await runtime.prepare(input, signal, readCaptured);
         const engine = structuredClone(runtime.identity);
         const creation = { schemaVersion: 1, encoding: 'ejs-host-full-replay-v1', engine,
-            capture: structuredClone(input.capture), resource: structuredClone(input.resource), creation: program.creation, phases: [] };
+            capture: structuredClone(input.capture), resource: structuredClone(input.resource), creation: program.creation,
+            ...program.creationReads?.length ? { creationReads: program.creationReads } : {}, phases: [] };
         const entry = { program, creation, generationId, head: tavernEjsCreationHead(creation), cut: null, operations: new Map() };
         entries.set(programInstanceId, entry);
         return { program, creation };
@@ -73,7 +74,7 @@ export function createRoleplayTavernEjsPrograms(deps) {
         const invocations = [];
         async function run(operationId, action, capture) {
             const before = entry.head;
-            const result = await entry.program.invoke(operationId, action, capture, input.signal);
+            const result = await entry.program.invoke(operationId, action, capture, input.signal, input.readCaptured);
             if (result.delta && !entry.operations.has(operationId)) {
                 entry.cut = appendTavernEjsJournal(entry.head, entry.cut, result.delta);
                 entry.head = entry.cut.head;

@@ -235,11 +235,12 @@ export function captureReadonlyAuthorDialogChatClockV1(input) {
         authority: 'consumer-data-only', policy: 'actual-completed-canonical-prose-without-request-selection-v1',
         sessionId: input.session.id, nativeCut: length, nativePrefixSha256: prefixAt(nativeCut, raw, length),
         rows: refs, pendingRows: [], chatIndex: rows.length, membershipSha256: recordSha256(refs) };
-    const data = freeze({ ...body, clockSha256: recordSha256(body) }), messages = cloneRoleplayTavernLoreDataV1(rows.map(({ ref, message }) => ({ origin: 'surface', eventSeq: ref.seq, id: ref.id,
+    const data = freeze({ ...body, clockSha256: recordSha256(body) }), messages = cloneRoleplayTavernLoreDataV1(rows.filter(row => row.message.authorMetadata?.is_hidden !== true).map(({ ref, message }) => ({ origin: 'surface', eventSeq: ref.seq, id: ref.id,
         role: ref.role, messageSha256: ref.messageSha256, message })), 8_388_608), cut = { schemaVersion: 1, encoding: 'native-author-dialog-readonly-message-cut-v1', authority: 'consumer-data-only',
         sessionId: input.session.id, nativeCut: length, nativePrefixSha256: data.nativePrefixSha256, messages };
     return { data, selected: freeze({ messages, sha256: recordSha256(cut) }),
         scanRows: freeze(rows.map(({ ref, text, message }) => ({ id: ref.id, role: ref.role, messageSha256: ref.messageSha256,
+            ...message.authorMetadata ? { authorMetadata: message.authorMetadata } : {},
             text: ref.seq === null ? text : input.storyText?.text(ref.seq, message, text, ref.messageSha256) ?? text }))),
         assertCurrent: () => {
             input.assertOwnerCurrent();
@@ -268,7 +269,8 @@ export function captureTavernCanonicalChatClockV1(input) {
             ids.add(row.id);
             const text = textOf(row.message.content);
             if (text.trim())
-                pending.push({ ref: { seq: null, id: row.id, role: 'user', messageSha256: row.messageSha256, textSha256: sha256(text) }, text });
+                pending.push({ ref: { seq: null, id: row.id, role: 'user', messageSha256: row.messageSha256, textSha256: sha256(text) },
+                    text, message: row.message });
         }
     const length = nativeCut?.length ?? raw().length, body = { schemaVersion: 1, encoding: 'native-canonical-story-chat-clock-v1',
         authority: 'consumer-data-only', policy: 'canonical-completed-prose-and-selected-real-player-inputs-v1',
@@ -278,7 +280,8 @@ export function captureTavernCanonicalChatClockV1(input) {
         membershipSha256: recordSha256([...rows.map(row => row.ref), ...pending.map(row => row.ref)]) };
     const data = freeze(cloneRoleplayTavernLoreDataV1({ ...body, clockSha256: recordSha256(body) }, 8_388_608)), scanRows = freeze([...rows.map(row => ({ ...row, text: row.ref.seq === null ? row.text
                 : input.storyText?.text(row.ref.seq, row.message, row.text, row.ref.messageSha256) ?? row.text })), ...pending]
-        .map(({ ref, text }) => ({ id: ref.id, role: ref.role, messageSha256: ref.messageSha256, text })));
+        .map(({ ref, text, message }) => ({ id: ref.id, role: ref.role, messageSha256: ref.messageSha256, text,
+        ...message?.authorMetadata ? { authorMetadata: message.authorMetadata } : {} })));
     let verifiedThrough = length, admitted = new Map();
     const baseBySeq = new Map(rows.map(row => [row.ref.seq, row.ref])), pendingById = new Map(pending.map(row => [row.ref.id, row.ref]));
     const assertCurrent = () => {
@@ -388,7 +391,8 @@ export function captureTavernCanonicalChatClockV2(input) {
         for (let position = start; position < data.chatIndex; position++) {
             const { ref, text: originalText, message } = rowAt(position), text = ref.seq === null ? originalText
                 : input.storyText?.text(ref.seq, message, originalText, ref.messageSha256) ?? originalText;
-            rows.push({ id: ref.id, role: ref.role, messageSha256: ref.messageSha256, text });
+            rows.push({ id: ref.id, role: ref.role, messageSha256: ref.messageSha256, text,
+                ...message.authorMetadata ? { authorMetadata: message.authorMetadata } : {} });
         }
         return Object.freeze(rows);
     };

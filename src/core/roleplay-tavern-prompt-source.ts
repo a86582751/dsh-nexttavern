@@ -1,6 +1,6 @@
 /** Captures the actual current import and editing journal, then removes only
  * provenance-proven legacy duplication from the ordinary author producer. */
-import {recordSha256} from './roleplay-data.js'
+import {recordSha256,cloneRecord} from './roleplay-data.js'
 import {resolveCapturedLegacyContributionDataV1} from './roleplay-tavern-lore-contributions.js'
 import {produceRoleplayTavernCurrentLegacyOverlayV1,composeRoleplayTavernCurrentOverlayV1}
   from './roleplay-tavern-current-overlay.js'
@@ -14,6 +14,11 @@ import type {createRoleplayTavernLoreSourceV1} from './roleplay-tavern-lore-sour
 import {readCapturedTavernAvatarV1} from './roleplay-tavern-lore-source.js'
 import type {createRoleplayTavernLoreEditsV1} from './roleplay-tavern-lore-edits.js'
 import {materializeAuthorMetadataExtensionsV1} from './roleplay-tavern-source-author-metadata.js'
+import {materializeAuthorWorldbookCaptureV1} from './roleplay-author-source-context.js'
+import {materializeTavernEffectiveBookV1} from './roleplay-tavern-lore-edits-data.js'
+import {produceCommunityPresetCardMaterialV1,projectCapturedStRuleTextV1,projectCapturedStOpeningTextV1}
+  from './community-preset-card-material.js'
+import type {CommunityPresetCardMaterialV1} from './community-preset-card-material.js'
 
 interface SourceDependencies {
   readonly tables:AuthorTables&{status:AuthorTable}
@@ -21,10 +26,12 @@ interface SourceDependencies {
     captureCurrent?:ReturnType<typeof createRoleplayTavernLoreSourceV1>['captureCurrent']}
   readonly edits:{observe(sessionId:string):TavernLoreEditObservationV1;current(data:TavernLoreEditsDataV1):boolean;
     observeCurrent?:ReturnType<typeof createRoleplayTavernLoreEditsV1>['observeCurrent']}
+  readonly books?:Pick<import('./roleplay-author-source-context.js').RoleplayAuthorContextV1,'captureCompilation'|'capture'>
 }
 interface SourceDataDependencies {
   readonly source:Pick<SourceDependencies['source'],'capture'>
   readonly edits:Pick<ReturnType<typeof createRoleplayTavernLoreEditsV1>,'observeJournalDataWithLegacyData'>
+  readonly books?:SourceDependencies['books']
 }
 function fail(code:string):never {throw Error(code)}
 const freeze=<T>(value:T):T=>{
@@ -51,11 +58,11 @@ function sourceAuthorTables(source:TavernLoreSourceDataV1):AuthorTables&{status:
 }
 function assemblePromptSourceData(captured:TavernLoreEditSourceDataCaptureV1,edited:TavernLoreEditsDataV1,
   sessionId:string,includeCardStyle:boolean,tables:AuthorTables&{status:AuthorTable},
-  legacy:ReturnType<typeof produceRoleplayTavernCurrentLegacyOverlayV1>) {
+  legacy:ReturnType<typeof produceRoleplayTavernCurrentLegacyOverlayV1>,books?:SourceDependencies['books']) {
   const {source,currentIdentitySha256,contributionInput}=captured
   const first=legacy.contributions,
-    linkedRows=new Set(legacy.linkedRowKeys),overlay=composeRoleplayTavernCurrentOverlayV1(legacy.overlay,edited.overlay)
-  const compilation=compileTavernLoreBookV1({schemaVersion:1,encoding:'st-character-book-compilation-input-v1',
+    linkedRows=new Set(legacy.linkedRowKeys),bookCapture=books?.captureCompilation(source)
+  const compilation=bookCapture?.compilation??compileTavernLoreBookV1({schemaVersion:1,encoding:'st-character-book-compilation-input-v1',
     source:{schemaVersion:1,encoding:'st-character-book-source-reference-v1',ownerSessionId:sessionId,
       sourceRecordSessionId:source.sourceRecordSessionId,importId:source.original.activePointer.importId,
       rawSourceSha256:source.original.rawSha256,importRecordSha256:source.original.importRecordRef.sha256,
@@ -68,7 +75,7 @@ function assemblePromptSourceData(captured:TavernLoreEditSourceDataCaptureV1,edi
       ...(source.original.primary.binding==='proven-absence'
         ?{bookPresence:'proven-absence' as const,absenceProof:source.original.primary.absenceProof}:{})},
     book:source.original.primary.value,
-    currentNativeOverlay:overlay,
+    currentNativeOverlay:composeRoleplayTavernCurrentOverlayV1(legacy.overlay,edited.overlay),
     ...(edited.currentNativeMembership?{currentNativeMembership:edited.currentNativeMembership}:{})})
   if(compilation.kind!=='compiled')fail(compilation.diagnostics[0]?.code??'INPUT_MATERIAL_LORE_COMPILATION_REFUSED')
   const suppressRawEntryPointers=first.overlays.filter(item=>item.kind==='constant-current-overlay-missing')
@@ -88,11 +95,51 @@ function assemblePromptSourceData(captured:TavernLoreEditSourceDataCaptureV1,edi
     suppressAlwaysOn:contributions.directAlwaysOn.map(item=>({key:item.ref.key,sha256:item.ref.sha256})),
     splitExamples:true,nativeLoreReadPolicy:'automatic'})
   const originalCardData=freeze(contributionInput.rawDecoded.data),
-    cardData:typeof originalCardData=edited.authorMetadataOverlay?.extensions.length?Object.freeze({...originalCardData,
+    cardData:typeof originalCardData=edited.authorMetadataOverlay&&(edited.authorMetadataOverlay.extensions.length
+      ||edited.authorMetadataOverlay.regexScripts!==undefined)?Object.freeze({...originalCardData,
       extensions:materializeAuthorMetadataExtensionsV1(originalCardData.extensions,edited.authorMetadataOverlay)}):originalCardData
-  return {kind:'captured-data' as const,source,currentIdentitySha256,edits:edited,compilation,contributions,original,residual,
+  return {kind:'captured-data' as const,source,currentIdentitySha256,edits:edited,legacyOverlay:legacy.overlay,
+    compilation,contributions,original,residual,
+    ...bookCapture?{bookContext:bookCapture.context}:{},
     record:contributionInput.activeImport,decoded:contributionInput.rawDecoded,
     cardData,avatarPath:readCapturedTavernAvatarV1(captured)}
+}
+
+type CapturedCharacterSource=Extract<ReturnType<typeof captureRoleplayTavernPromptSourceDataV1>,{kind:'captured-data'}>
+export type CapturedTavernCharacterDataV1={readonly schemaVersion:1;readonly kind:'available';
+  readonly identity:{readonly sessionId:string;readonly sourceRecordSessionId:string;readonly importId:string;
+    readonly sourceSnapshotSha256:string;readonly materialSha256:string};
+  readonly character:Readonly<Record<string,unknown>>&{readonly data:Readonly<Record<string,unknown>>}}
+  |{readonly schemaVersion:1;readonly kind:'mapping-required';readonly mapping:Extract<CommunityPresetCardMaterialV1,{kind:'mapping-required'}>}
+  |{readonly schemaVersion:1;readonly kind:'unavailable';readonly code:'NATIVE_CHARACTER_MAPPING_REQUIRED'}
+
+/** Complete current character DATA from one already captured Source cut. */
+export function projectCapturedTavernCharacterDataV1(captured:CapturedCharacterSource,
+  mapping?:CommunityPresetCardMaterialV1):CapturedTavernCharacterDataV1 {
+  if(captured.decoded.format==='json-nexttavern-v1')return {schemaVersion:1,kind:'unavailable',code:'NATIVE_CHARACTER_MAPPING_REQUIRED'}
+  const material=mapping??produceCommunityPresetCardMaterialV1({captured})
+  if(material.kind==='mapping-required')return {schemaVersion:1,kind:'mapping-required',mapping:material}
+  const {source,record,decoded}=captured,data:Record<string,unknown>=cloneRecord(captured.cardData),
+    rows=new Map(source.current.rows.map(row=>[row.ref.table+':'+row.ref.key,row.value])),
+    rules=rows.get('rules:'+source.sessionId+'__spec') as AuthorRecord|undefined,
+    scene=rows.get('opening:'+source.sessionId+'__scene') as AuthorRecord|undefined
+  data.name=decoded.data.name
+  data.description=material.markers.charDescription.map(part=>part.text).join('')
+  data.personality=material.markers.charPersonality.map(part=>part.text).join('')
+  data.scenario=material.markers.scenario.map(part=>part.text).join('')
+  data.mes_example=projectCapturedStRuleTextV1(record,decoded.data,rules,'style')
+  data.system_prompt=projectCapturedStRuleTextV1(record,decoded.data,rules,'narrative')
+  data.post_history_instructions=projectCapturedStRuleTextV1(record,decoded.data,rules,'reply')
+  data.first_mes=projectCapturedStOpeningTextV1(record,decoded.data,scene)
+  const book=captured.bookContext?captured.bookContext.primary
+    ?materializeAuthorWorldbookCaptureV1(captured.bookContext.primary):undefined
+    :materializeTavernEffectiveBookV1(source,captured.edits,captured.legacyOverlay)
+  if(book===undefined)delete data.character_book
+  else data.character_book=cloneRecord(book)
+  if(captured.avatarPath!==null)data.avatar=captured.avatarPath
+  return {schemaVersion:1,kind:'available',identity:{sessionId:source.sessionId,sourceRecordSessionId:source.sourceRecordSessionId,
+    importId:source.original.activePointer.importId,sourceSnapshotSha256:source.sourceSha256,
+    materialSha256:source.current.materialSha256},character:{...data,data}}
 }
 
 /** Synchronous DATA supplier for the actual input Owner under its Source lock.
@@ -108,7 +155,7 @@ export function captureRoleplayTavernPromptSourceDataV1(deps:SourceDataDependenc
   const {observed:edited,legacy}=deps.edits.observeJournalDataWithLegacyData(captured)
   if(edited.kind!=='captured-data')fail(edited.diagnostics[0]?.code??'INPUT_MATERIAL_EDIT_UNAVAILABLE')
   const assembled=assemblePromptSourceData(captured,edited.data,sessionId,includeCardStyle,
-    sourceAuthorTables(captured.source),legacy!)
+    sourceAuthorTables(captured.source),legacy!,deps.books)
   return {...assembled,...(captured.sourceLineage?{sourceLineage:captured.sourceLineage}:{})}
 }
 
@@ -126,13 +173,14 @@ export function captureRoleplayTavernPromptSourceV1(deps:SourceDependencies,sess
   // owner-supplied identities without hashing their complete DATA again.
   if(source.sourceSha256!==edited.data.source.sourceSha256)fail('INPUT_MATERIAL_EDIT_SOURCE_CHANGED')
   const legacy=produceRoleplayTavernCurrentLegacyOverlayV1(captured.contributionInput),
-    data=assemblePromptSourceData(captured,edited.data,sessionId,includeCardStyle,deps.tables,legacy),original=data.original
+    data=assemblePromptSourceData(captured,edited.data,sessionId,includeCardStyle,deps.tables,legacy,deps.books),original=data.original
   const assertCurrent=()=>{
     assertOwnerCurrent()
     if(liveSource)liveSource.assertCurrent()
     else if(!deps.source.current(source))fail('INPUT_MATERIAL_SOURCE_CHANGED')
     if(liveEdits)liveEdits.assertCurrent()
     else if(!deps.edits.current(edited.data))fail('INPUT_MATERIAL_SOURCE_CHANGED')
+    if(data.bookContext&&deps.books?.capture(source)!==data.bookContext)fail('INPUT_MATERIAL_SOURCE_CHANGED')
     const now=produceAuthorContributionDataV1(deps.tables,sessionId,includeCardStyle)
     if(now.dataSha256!==original.dataSha256)fail('INPUT_MATERIAL_AUTHOR_CHANGED')
   }

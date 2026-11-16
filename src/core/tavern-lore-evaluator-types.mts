@@ -7,7 +7,7 @@ import type {TavernLoreOrdinaryPreparationV1} from './tavern-lore-ordinary-prepa
 /** Every identity is supplied by the real capture owner. This is data, never a
  * current-state assertion, lease, Native permission or provider receipt. */
 export interface TavernLoreFrozenSettingsV1 {
-  readonly policy:'owned-st-single-book-initial-scan-v1'|'owned-st-single-book-scan-feedback-v1'
+  readonly policy:'owned-st-bound-books-initial-scan-v1'|'owned-st-bound-books-scan-feedback-v1'
   readonly provenance:'actual-runtime-settings'|'explicit-native-fallback-v1'
   readonly caseSensitive:boolean
   readonly matchWholeWords:boolean
@@ -18,7 +18,7 @@ export interface TavernLoreFrozenSettingsV1 {
   readonly minimumActivationDepthMax:number
   readonly maxRecursionSteps:number
   readonly includeNames:boolean
-  readonly characterStrategy:'single-character-book-v1'
+  readonly characterStrategy:'ordered-bound-worldbooks-v1'
   readonly budgetTokens:number
   readonly contentTransformPolicy:'no-world-info-output-regex-v1'
   /** V1 leaves angle-only legacy keys literal; V2 renders those aliases too. */
@@ -38,6 +38,15 @@ export interface TavernLoreVisibleMessageV1 {
   readonly scanPolicy:'owner-captured-st-message-string-v1'
   readonly scanText:string
   readonly scanTextSha256:string
+}
+export interface TavernLoreVectorSelectionV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-worldbook-vector-selection-v1'
+  readonly sourceSnapshotSha256:string
+  readonly messages:readonly {readonly kind:'native'|'request';readonly messageId:string;readonly versionSha256:string;
+    readonly projectionSha256:string}[]
+  readonly result:import('../memory/memory-retrieval-types.js').WorldbookVectorResultV1
+  readonly activations:readonly {readonly entryId:string;readonly rawEntrySha256:string;readonly score:number}[]
 }
 export interface TavernLoreFrozenReadV1 {
   readonly kind:'state'|'source'|'message'|'settings'
@@ -78,7 +87,12 @@ export interface TavernLoreTimedActionV1 {
     |'sticky-ended-cooldown-protected'|'activation'
 }
 export type TavernLoreScanStateV1='initial'|'recursion'|'minimum-activations'
-export interface TavernLoreTemplateActivationV1 {readonly entryId:string;readonly rawEntrySha256:string}
+export interface TavernLoreTemplateActivationV1 {
+  readonly entryId:string
+  readonly rawEntrySha256:string
+  readonly mode?:'world-info'|'force-world-info'
+  readonly sourceProgram?:{readonly bodyOffset:number;readonly contentSha256:string}
+}
 export interface TavernLoreSelectedTemplateRequestV1 {
   readonly schemaVersion:1
   readonly encoding:'owned-st-lore-selected-template-request-v1'
@@ -93,6 +107,7 @@ export interface TavernLoreSelectedTemplateRequestV1 {
   readonly loop:number
   readonly state:TavernLoreScanStateV1
   readonly selectionSha256:string
+  readonly activationMode?:TavernLoreTemplateActivationV1['mode']
 }
 export interface TavernLoreTemplateFeedbackV1 {
   readonly request:TavernLoreSelectedTemplateRequestV1
@@ -196,6 +211,7 @@ export interface TavernLoreFrozenSnapshotV1 {
   readonly activationFeedbackSha256?:string
   readonly injectionFeedback?:readonly TavernLoreInjectionFeedbackV1[]
   readonly injectionFeedbackSha256?:string
+  readonly vectorSelection?:TavernLoreVectorSelectionV1
   readonly snapshotSha256:string
 }
 export interface TavernLoreEvaluatorInputV1 {

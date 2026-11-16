@@ -14,8 +14,7 @@ import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.j
 import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
 import type {TavernPromptVariableRefV1,TavernPromptVariableObjectFactV1,TavernPromptVariableScopeFactV1,
   TavernPromptMessageHistoryV1,TavernPromptMessageVariablesFactV1} from './roleplay-tavern-prompt-variables-types.js'
-import type {MvuPromptLocalNumericalFactsV1,MvuPromptLocalNumericalFactsV2,MvuPromptInheritedNumericalFactsV1,
-  MvuPromptInheritedNumericalFactsV2,MvuPromptProgramOpeningPublicationV1}
+import type {MvuPromptLocalNumericalFactsV1,MvuPromptInheritedNumericalFactsV1}
   from './roleplay-mvu-prompt-numerical-facts.js'
 import type {TavernActualPendingOpeningPromptScopesV1,TavernPendingOpeningPromptScopeDataV1,
   TavernActualProgramAbsencePromptScopesV1,TavernProgramAbsencePromptScopeDataV1,
@@ -53,15 +52,14 @@ export const TAVERN_NATIVE_SCOPE_ADAPTER_POLICY_V1=Object.freeze({schemaVersion:
 export const TAVERN_SELECTED_SCOPE_ADAPTER_POLICY_V2=Object.freeze({...TAVERN_NATIVE_SCOPE_ADAPTER_POLICY_V1,
   schemaVersion:2,encoding:'native-selected-readonly-prompt-scope-adapter-policy-v2',
   schema:'completed-actual-source-bound-selected-MVU-scope-data; exact-selected-base; independent-current-closure'})
-/** Kept separate so old completed v1 receipts retain their exact policy hash. */
+/** The pending Program consumer receives the shared Host initialization. */
 export const TAVERN_PROGRAM_SCOPE_ADAPTER_POLICY_V1=Object.freeze({schemaVersion:1,
   encoding:'native-program-readonly-prompt-scope-adapter-policy-v1',
-  settled:'actual-program-genesis-and-current-fold; immutable-import-tuple; exact-Native-message-version',
   pending:'actual-private-Source-basis-input-seed-Native-phase-current-closure; consumer-data-only',
-  initial:'raw-InitVar-data-calculation-readonly-preview; initialized-false; no-head-or-snapshot',
+  initial:'accepted-Host5-initialization-values-and-context; initialized-true; unpublished-opening',
   absent:'closed-fresh-basis-readonly-empty-namespace; initialized-false',
   message:'actual-selected-story-prefix; readonly-uninitialized-before-publication',
-  script:'no-actual-executing-script-supplier',schemaExecution:'none'})
+  script:'no-actual-executing-script-supplier',schemaExecution:'shared-Host5-when-initialized'})
 /** Independent policy preserves all existing v1/pending/numeric policy hashes. */
 export const TAVERN_PROGRAM_ABSENCE_SCOPE_ADAPTER_POLICY_V1=Object.freeze({schemaVersion:1,
   encoding:'native-program-absence-readonly-prompt-scope-adapter-policy-v1',
@@ -70,14 +68,6 @@ export const TAVERN_PROGRAM_ABSENCE_SCOPE_ADAPTER_POLICY_V1=Object.freeze({schem
   native:'original-copy-or-generated-receipt; exact-related-visible-message-version; absence-from-cut-is-not-deletion',
   variables:'readonly-empty-global-chat-card; selected-message-uninitialized; no-numerical-state-or-schema',
   script:'no-actual-executing-script-supplier',schemaExecution:'none'})
-/** Only the new inherited third domain selects this policy; previous bodies
- * keep their original adapter hashes. Archive provenance is not permission. */
-export const TAVERN_PROGRAM_INHERITED_SCOPE_ADAPTER_POLICY_V1=Object.freeze({schemaVersion:1,
-  encoding:'native-program-inherited-readonly-prompt-scope-adapter-policy-v1',
-  settled:'actual-derived-fold-and-frozen-program-genesis; original-packets-separate-from-child-archive',
-  source:'complete-original-import-tuple; actual-closed-Source-and-numerical-cut-owner',
-  message:'exact-Native-original-copy-or-generated-terminal-version; inherited-revision1-final-values',
-  absentFromCut:'no-deletion-or-initialization-claim',schemaExecution:'none'})
 /** Readonly inherited absence keeps every earlier policy body unchanged. */
 export const TAVERN_PROGRAM_INHERITED_ABSENCE_SCOPE_ADAPTER_POLICY_V1=Object.freeze({schemaVersion:1,
   encoding:'native-program-inherited-absence-readonly-prompt-scope-adapter-policy-v1',
@@ -119,8 +109,8 @@ export interface TavernActualPromptDomainScopesV1 {
 export type TavernActualNonnumericalPromptScopesV1=TavernActualPlainPromptScopesV1|TavernActualPromptDomainScopesV1
   |TavernActualProgramAbsencePromptScopesV1|TavernActualProgramInheritedAbsencePromptScopesV1
 export interface TavernActualNumericalPromptScopesV1 {
-  readonly data:{readonly local:MvuPromptLocalNumericalFactsV1|MvuPromptLocalNumericalFactsV2;
-    readonly inherited:MvuPromptInheritedNumericalFactsV1|MvuPromptInheritedNumericalFactsV2|null}
+  readonly data:{readonly local:MvuPromptLocalNumericalFactsV1;
+    readonly inherited:MvuPromptInheritedNumericalFactsV1|null}
 }
 function fail(code:string):never {throw Error(code)}
 const freeze=<T>(value:T):T=>{
@@ -223,68 +213,6 @@ function programAbsenceMessageJoins(data:Pick<TavernProgramAbsencePromptScopeDat
   }
   return joined
 }
-function joinProgramInheritedNumericalSource(data:MvuPromptInheritedNumericalFactsV2,
-  local:MvuPromptLocalNumericalFactsV1,source:TavernLoreSourceDataV1):void {
-  const original=data.originalImport,tuple=source.original
-  // The numerical producers own replay and its frozen DATA. This consumer
-  // joins that result to today's independently captured author Source.
-  if(data.childSessionId!==source.sessionId||data.source.childSessionId!==source.sessionId
-    ||!('derivedEvent' in local.genesis)||recordSha256(data.genesis)!==recordSha256(local.genesis)
-    ||original.ownerSessionId!==source.sourceRecordSessionId||original.importId!==tuple.activePointer.importId
-    ||original.rawSha256!==tuple.rawSha256||original.normalizedSha256!==tuple.normalizedSha256
-    ||original.transactionId!==tuple.transactionId||original.coverageSha256!==tuple.coverageSha256
-    ||original.recordSha256!==tuple.importRecordRef.sha256) {
-    fail('INPUT_MATERIAL_PROGRAM_INHERITED_NUMERICAL_SOURCE_MISMATCH')
-  }
-}
-/** All related visible outputs are checked, even those outside the story
- * filter. Only the actual terminal/copy publication gains message variables. */
-function programInheritedMessageJoins(programs:readonly MvuPromptProgramOpeningPublicationV1[],selected:TavernPromptSelectedMessagesV1) {
-  const joined=new Map<NativeMaterialSelectedBaseV1['messages'][number],MvuPromptProgramOpeningPublicationV1>(),
-    seen=new Set<string>()
-  for(const publication of programs)for(const row of selected.messages) {
-    const native=publication.native,seed=publication.originalPackets.seed,packet=publication.originalPackets.input,
-      opMatch=row.message.source.kind==='programmatic'&&'operationId' in row.message.source
-        &&row.message.source.operationId===seed.operationId
-    if(native.production==='selected-card-copy') {
-      const receipt=native.receipt
-      if(row.id!==receipt.messageId&&row.eventSeq!==receipt.assistantSeq&&!opMatch)continue
-      const expectedSource={kind:'programmatic',schemaVersion:1,producer:'dsh-nexttavern',
-        origin:`card-opening:${seed.source.importId}`,operationId:seed.operationId},identity=`${row.id}:${row.eventSeq}`
-      if(seen.has(identity)||row.id!==receipt.messageId||String(row.message.id)!==row.id
-        ||row.role!=='assistant'||row.message.role!=='assistant'||row.origin!=='surface'||row.eventSeq!==receipt.assistantSeq
-        ||nativeInputSha256(row.message)!==row.messageSha256||recordSha256(row.message.source)!==recordSha256(expectedSource)
-        ||recordSha256(row.message.content)!==recordSha256([{type:'text',text:packet.source.selected.renderedText}])
-        ||recordSha256(row.message)!==publication.canonical.versionSha256
-        ||sha256(packet.source.selected.renderedText)!==publication.canonical.narrativeSha256) {
-        fail('INPUT_MATERIAL_PROGRAM_INHERITED_COPY_MESSAGE_MISMATCH')
-      }
-      seen.add(identity);joined.set(row,publication)
-    }else {
-      const matches=native.receipt.outputs.filter(output=>output.messageId===row.id||output.eventRef.seq===row.eventSeq)
-      if(!matches.length&&!opMatch)continue
-      if(matches.length!==1)fail('INPUT_MATERIAL_PROGRAM_INHERITED_GENERATED_MESSAGE_AMBIGUOUS')
-      const output=matches[0]!,identity=`${row.id}:${row.eventSeq}`,
-        text=row.message.content.filter(block=>block.type==='text').map(block=>block.text).join('')
-      if(seen.has(identity)||row.id!==output.messageId||String(row.message.id)!==row.id
-        ||row.role!=='assistant'||row.message.role!=='assistant'||row.origin!=='surface'||row.eventSeq!==output.eventRef.seq
-        ||row.message.source.kind!=='model'||row.messageSha256!==output.messageSha256
-        ||nativeInputSha256(row.message)!==output.messageSha256||sha256(text)!==output.textSha256) {
-        fail('INPUT_MATERIAL_PROGRAM_INHERITED_GENERATED_MESSAGE_MISMATCH')
-      }
-      seen.add(identity)
-      if(output.messageId===native.receipt.terminalOutput.messageId) {
-        if(recordSha256(row.message)!==publication.canonical.versionSha256) {
-          fail('INPUT_MATERIAL_PROGRAM_INHERITED_GENERATED_CANONICAL_MISMATCH')
-        }
-        joined.set(row,publication)
-      }
-    }
-  }
-  return joined
-}
-/** InputState's actual opening supplier owns seed/input/basis/plan auditing.
- * Consumption joins the captured Source and exact selected cut once. */
 function pendingOpeningData(input:TavernActualPendingOpeningPromptScopesV1,
   source:TavernLoreSourceDataV1,selected:TavernPromptSelectedMessagesV1,
   currentIdentitySha256:string):TavernPendingOpeningPromptScopeDataV1 {
@@ -359,30 +287,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
     const tuple={sourceRecordSessionId:source.sourceRecordSessionId,importId:source.original.activePointer.importId,
       rawSha256:source.original.rawSha256,normalizedSha256:source.original.normalizedSha256,
       transactionId:source.original.transactionId,coverageSha256:source.original.coverageSha256}
-    if(local.schemaVersion===2) {
-      const identity=local.sourceIdentity,original=identity.original,
-        imported=local.genesis.programEvent.plan.source.program.importTuple
-      if(original.sessionId!==source.sessionId
-        ||Object.entries(tuple).some(([key,value])=>original[key as keyof typeof original]!==value)
-        ||imported.ownerSessionId!==source.sessionId||imported.sourceRecordSessionId!==source.sourceRecordSessionId
-        ||imported.importRecordRef.sha256!==source.original.importRecordRef.sha256
-        ||imported.documentSha256!==source.original.documentSha256||imported.dataSha256!==source.original.dataSha256) {
-        fail('INPUT_MATERIAL_PROGRAM_NUMERICAL_SCOPE_SOURCE_MISMATCH')
-      }
-      evidence.push({schemaVersion:2,encoding:'native-program-json-prompt-numerical-fact-read-v2',
-        authority:'consumer-data-only',local,inherited:null,join:{tuple,loreSourceSha256:source.sourceSha256,
-          numericalSourceSha256:local.numericalSourceSha256,sourceProofSha256:identity.sourceProofSha256,
-          basisSha256:identity.basisSha256,planSha256:identity.planSha256}})
-    }else if(inherited?.schemaVersion===2) {
-      joinProgramInheritedNumericalSource(inherited,local,source)
-      evidence.push({schemaVersion:2,encoding:'native-program-json-prompt-inherited-fact-read-v2',
-        authority:'consumer-data-only',local,inherited,join:{tuple,loreSourceSha256:source.sourceSha256,
-          numericalSourceSha256:local.numericalSourceSha256,
-          programOpenings:inherited.programOpeningPublications.map(row=>({ownerSessionId:row.ownerSessionId,
-            sourceProofSha256:row.source.proofSha256,basisSha256:row.basis.basisSha256,
-            planSha256:row.genesis.programEvent.plan.planSha256,originalPacketRefs:row.originalPacketRefs,
-            archiveProvenance:row.archiveProvenance}))}})
-    }else if(local.sourceIdentity.kind==='opening') {
+    if(local.sourceIdentity.kind==='opening') {
       const original=local.sourceIdentity.original
       if(original.sessionId!==source.sessionId||Object.entries(tuple).some(([key,value])=>
         original[key as keyof typeof original]!==value))fail('INPUT_MATERIAL_NUMERICAL_SCOPE_SOURCE_MISMATCH')
@@ -399,7 +304,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
         fail('INPUT_MATERIAL_NUMERICAL_SCOPE_SOURCE_MISMATCH')
     }
     stateSnapshotSha256=local.currentSnapshot.stateSnapshotSha256
-    if(local.schemaVersion===1&&inherited?.schemaVersion!==2)evidence.push({schemaVersion:1,encoding:'native-json-prompt-numerical-fact-read-v1',
+    evidence.push({schemaVersion:1,encoding:'native-json-prompt-numerical-fact-read-v1',
       authority:'consumer-data-only',local,inherited,join:{tuple,loreSourceSha256:source.sourceSha256,
         numericalSourceSha256:local.numericalSourceSha256}})
   }else if(input.plain) {
@@ -431,14 +336,11 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
   }
   const policy=programInheritedAbsence?TAVERN_PROGRAM_INHERITED_ABSENCE_SCOPE_ADAPTER_POLICY_V1:
     programAbsence?TAVERN_PROGRAM_ABSENCE_SCOPE_ADAPTER_POLICY_V1:
-    numerical?.inherited?.schemaVersion===2?TAVERN_PROGRAM_INHERITED_SCOPE_ADAPTER_POLICY_V1:
-    opening||numerical?.local.schemaVersion===2?TAVERN_PROGRAM_SCOPE_ADAPTER_POLICY_V1:
+    opening?TAVERN_PROGRAM_SCOPE_ADAPTER_POLICY_V1:
     selectedData?TAVERN_SELECTED_SCOPE_ADAPTER_POLICY_V2:TAVERN_NATIVE_SCOPE_ADAPTER_POLICY_V1,
     policySha256=recordSha256(policy),
     absenceJoins=programAbsence?programAbsenceMessageJoins(programAbsence,selected)
-      :programInheritedAbsence?programAbsenceMessageJoins(programInheritedAbsence,selected,true):undefined,
-    inheritedProgramJoins=numerical?.inherited?.schemaVersion===2
-      ?programInheritedMessageJoins(numerical.inherited.programOpeningPublications,selected):undefined
+      :programInheritedAbsence?programAbsenceMessageJoins(programInheritedAbsence,selected,true):undefined
   const settledAbsenceRef=(scope:string,messageRef?:TavernPromptVariableRefV1,nativeMessageJoin?:unknown)=>{
     if(!programAbsence)fail('INPUT_MATERIAL_PROGRAM_ABSENCE_SCOPE_FACT_MISSING')
     const domain=programAbsence.absenceDomain
@@ -473,7 +375,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
   const pendingRef=(scope:string,messageRef?:TavernPromptVariableRefV1)=>{
     if(!opening)fail('INPUT_MATERIAL_OPENING_SCOPE_FACT_MISSING')
     return ref(`${owner}:${scope}`,opening.scopeDataSha256,{schemaVersion:1,
-      encoding:'native-program-opening-readonly-preview-ref-v1',scope,initialized:false,
+      encoding:'native-program-opening-readonly-preview-ref-v1',scope,initialized:opening.initialization.initialized,
       sourceProofSha256:opening.sourceProofSha256,basisSha256:opening.basisSha256,
       numericalSourceSha256:opening.numericalSourceSha256,seedRef:opening.seedRef,inputRef:opening.inputRef,
       inputBindingSha256:opening.inputBindingSha256,initializationKind:opening.initialization.kind,
@@ -511,8 +413,8 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
   }
   if(opening) {
     scopes.push({scope:'global',fact:{kind:'absent',provenance:pendingRef('global')}})
-    if(opening.initialization.kind==='pending-raw-init-data') {
-      const values=cloneRoleplayTavernLoreDataV1({stat_data:opening.initialization.initialValues},1_048_576)
+    if(opening.initialization.kind==='schema-initialized') {
+      const values=cloneRoleplayTavernLoreDataV1({...opening.initialization.context,stat_data:opening.initialization.values},1_048_576)
       scopes.push({scope:'chat',fact:{kind:'values',values,valuesSha256:recordSha256(values),provenance:pendingRef('chat')}})
       missing('card','no actual initialized character-scope supplier for the pending program opening')
     }else {
@@ -674,23 +576,17 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
       active={kind:'absent',provenance};initializedRef=provenance
     }else if(numerical) {
       const matches=storyVersions?.get(messageVersionSha256)??[],openings=openingVersions?.get(messageVersionSha256)??[],
-        programOpening=inheritedProgramJoins?.get(row),localOpening=numerical.local.genesisMessageRef,
+        localOpening=numerical.local.genesisMessageRef,
         isLocalOpening=localOpening?.messageId===row.id&&localOpening.seq===row.eventSeq
           &&localOpening.renderedTextSha256===sha256(textOf(row.message.content))
-          &&(numerical.local.schemaVersion===1||row.role==='assistant'&&row.origin==='surface'
-            &&(numerical.local.genesis.programEvent.native.production==='selected-card-copy'
-              ||row.messageSha256===numerical.local.genesis.programEvent.native.receipt.terminalOutput.messageSha256))
-      if(matches.length+openings.length+(programOpening?1:0)+(isLocalOpening?1:0)>1)fail('INPUT_MATERIAL_SCOPE_MESSAGE_AMBIGUOUS')
-      const publication=matches[0]??openings[0]??programOpening
+
+      if(matches.length+openings.length+(isLocalOpening?1:0)>1)fail('INPUT_MATERIAL_SCOPE_MESSAGE_AMBIGUOUS')
+      const publication=matches[0]??openings[0]
       if(publication||isLocalOpening) {
         initialized=true
         active=numericalValues(publication?.resultSnapshotSha256??numerical.local.genesisSnapshotSha256,
           {messageRef,publication:publication?{kind:publication.kind,ownerSessionId:publication.ownerSessionId,
-            canonical:publication.canonical,publicationSha256:recordSha256(publication),
-            ...(publication.kind==='program-opening'?{originalPacketRefs:publication.originalPacketRefs,
-              archiveProvenance:publication.archiveProvenance,sourceProofSha256:publication.source.proofSha256,
-              basisSha256:publication.basis.basisSha256,planSha256:publication.genesis.programEvent.plan.planSha256,
-              settlementSha256:publication.openingSettlement.settlementSha256}:{})}:localOpening},'message')
+            canonical:publication.canonical,publicationSha256:recordSha256(publication)}:localOpening},'message')
         initializedRef=active.provenance
       }else if(row.role==='user'||row.origin==='pending-decision') {
         // This closed writer protocol publishes numeric values only with an

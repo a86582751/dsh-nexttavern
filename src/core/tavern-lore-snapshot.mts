@@ -23,7 +23,7 @@ export function freezeLoreData<T>(value:T):T {
   return value
 }
 export const LORE_EVALUATOR_POLICY_V1=freezeLoreData({schemaVersion:1,
-  id:'owned-st-single-book-scan-feedback-v1',upstreamCommit:'06bde939fb1e9c4c8d8641d810f0a916b5bce127',
+  id:'owned-st-bound-books-scan-feedback-v1',upstreamCommit:'06bde939fb1e9c4c8d8641d810f0a916b5bce127',
   domain:'single-embedded-character-book; bounded-declared-template-activation-feedback; no-author-callback',
   scan:'ascending-depth; owner-captured-scan-string; trim; U+0001-newline-boundaries; recursion-and-min-depth-skew',
   ordering:'order-desc-then-source-ordinal; placement-reverse-except-outlet',
@@ -42,6 +42,18 @@ export const LORE_EVALUATOR_POLICY_V1=freezeLoreData({schemaVersion:1,
 })
 export const LORE_EVALUATOR_POLICY_SHA256=recordSha256(LORE_EVALUATOR_POLICY_V1)
 
+export function validateTavernLoreTemplateActivationV1(value:unknown):void {
+  const mode=object(value)&&Object.hasOwn(value,'mode')
+  exact(value,['entryId','rawEntrySha256',...mode?['mode','sourceProgram']:[]])
+  if(!text(value.entryId)||!isSha(value.rawEntrySha256))refuse('LORE_FEEDBACK_INVALID')
+  if(mode) {
+    if(value.mode!=='world-info'&&value.mode!=='force-world-info')refuse('LORE_FEEDBACK_INVALID')
+    exact(value.sourceProgram,['bodyOffset','contentSha256'])
+    if(!integer(value.sourceProgram.bodyOffset,LORE_EVALUATOR_POLICY_V1.bounds.contentBytes)
+      ||!isSha(value.sourceProgram.contentSha256))refuse('LORE_FEEDBACK_INVALID')
+  }
+}
+
 /** Hashes bind the supplied input, never prove the actual branch/currentness. */
 export function validateTavernLoreSnapshotV1(input:unknown):TavernLoreFrozenSnapshotV1 {
   const value=cloneSchemaData(input,LORE_EVALUATOR_POLICY_V1.bounds.snapshotBytes,{nodes:100000,depth:48})
@@ -49,6 +61,7 @@ export function validateTavernLoreSnapshotV1(input:unknown):TavernLoreFrozenSnap
   const hasInjections=object(value)&&Object.hasOwn(value,'injectionFeedback')
   const hasScanHistory=object(value)&&Object.hasOwn(value,'scanHistory')
   const hasExclusions=object(value)&&Object.hasOwn(value,'standaloneExclusions')
+  const hasVectors=object(value)&&Object.hasOwn(value,'vectorSelection')
   exact(value,['schemaVersion','encoding','authority','sessionId','branchId','revision','turnId','attemptId',
     'sourceSnapshotSha256','stateSnapshotSha256','sourceReferenceSha256','packageSha256','compilerPlanSha256',
     'visibleMessages','messagesSha256','settings','settingsSha256','seed','seedSha256','globalScanData',
@@ -56,6 +69,7 @@ export function validateTavernLoreSnapshotV1(input:unknown):TavernLoreFrozenSnap
     'renderedTextsSha256','snapshotSha256',
     ...(hasScanHistory?['scanHistory']:[]),
     ...(hasExclusions?['standaloneExclusions']:[]),
+    ...(hasVectors?['vectorSelection']:[]),
     ...(hasFeedback?['activationFeedback','activationFeedbackSha256']:[]),
     ...(hasInjections?['injectionFeedback','injectionFeedbackSha256']:[])])
   if(value.schemaVersion!==1||value.encoding!=='owned-st-lore-frozen-snapshot-v1'
@@ -68,9 +82,9 @@ export function validateTavernLoreSnapshotV1(input:unknown):TavernLoreFrozenSnap
   exact(settings,['policy','provenance','caseSensitive','matchWholeWords','scanDepth','useGroupScoring',
     'recursiveScanning','minimumActivations','minimumActivationDepthMax','maxRecursionSteps','includeNames',
     'characterStrategy','budgetTokens','contentTransformPolicy','macroPolicy','seedPolicy','budgetPolicy'])
-  if(!['owned-st-single-book-initial-scan-v1','owned-st-single-book-scan-feedback-v1'].includes(String(settings.policy))
+  if(!['owned-st-bound-books-initial-scan-v1','owned-st-bound-books-scan-feedback-v1'].includes(String(settings.policy))
     ||!['actual-runtime-settings','explicit-native-fallback-v1'].includes(String(settings.provenance))
-    ||settings.characterStrategy!=='single-character-book-v1'
+    ||settings.characterStrategy!=='ordered-bound-worldbooks-v1'
     ||settings.contentTransformPolicy!=='no-world-info-output-regex-v1'
     ||!['frozen-rendered-receipt-or-marker-free-v1','frozen-key-alias-receipt-v2'].includes(String(settings.macroPolicy))
     ||settings.seedPolicy!=='sha256-counter-domain-separated-v1'
@@ -83,6 +97,43 @@ export function validateTavernLoreSnapshotV1(input:unknown):TavernLoreFrozenSnap
   }
   if(!integer(settings.budgetTokens,10_000_000))refuse('LORE_SETTINGS_VALUE')
   if(!Array.isArray(value.visibleMessages)||value.visibleMessages.length>1000)refuse('LORE_MESSAGES_LIMIT')
+  if(hasVectors) {
+    const selection=value.vectorSelection
+    exact(selection,['schemaVersion','encoding','sourceSnapshotSha256','messages','result','activations'])
+    if(selection.schemaVersion!==1||selection.encoding!=='native-worldbook-vector-selection-v1'
+      ||selection.sourceSnapshotSha256!==value.sourceSnapshotSha256||!Array.isArray(selection.messages)
+      ||!Array.isArray(selection.activations))refuse('LORE_VECTOR_SELECTION_INVALID')
+    for(const row of selection.messages) {
+      exact(row,['kind','messageId','versionSha256','projectionSha256'])
+      if((row.kind!=='native'&&row.kind!=='request')||!text(row.messageId)||!isSha(row.versionSha256)||!isSha(row.projectionSha256))
+        refuse('LORE_VECTOR_SELECTION_INVALID')
+    }
+    const result=selection.result
+    if(!object(result)||result.schemaVersion!==1
+      ||!['disabled','ready','pending','unavailable'].includes(String(result.status))
+      ||!object(result.settings)||typeof result.settings.enabled!=='boolean'
+      ||!integer(result.settingsRevision)||!(result.providerId===null||text(result.providerId))
+      ||!(result.fingerprint===null||isSha(result.fingerprint))||!isSha(result.querySha256)
+      ||!Array.isArray(result.hits))refuse('LORE_VECTOR_SELECTION_INVALID')
+    const hits=new Map<string,Data>()
+    for(const hit of result.hits) {
+      exact(hit,['id','contentSha256','score'])
+      if(!isSha(hit.id)||!isSha(hit.contentSha256)||typeof hit.score!=='number'||!Number.isFinite(hit.score)
+        ||hits.has(hit.id))refuse('LORE_VECTOR_SELECTION_INVALID')
+      hits.set(hit.id,hit)
+    }
+    if(result.status==='ready'&&!result.settings.enabled
+      ||result.status!=='ready'&&(selection.activations.length||hits.size))refuse('LORE_VECTOR_SELECTION_INVALID')
+    const activated=new Set<string>()
+    for(const activation of selection.activations) {
+      exact(activation,['entryId','rawEntrySha256','score'])
+      const hit=hits.get(String(activation.entryId))
+      if(!isSha(activation.entryId)||!isSha(activation.rawEntrySha256)||!hit
+        ||activation.score!==hit.score||activated.has(activation.entryId))refuse('LORE_VECTOR_SELECTION_INVALID')
+      activated.add(activation.entryId)
+    }
+    if(activated.size!==hits.size)refuse('LORE_VECTOR_SELECTION_INVALID')
+  }
   if(hasExclusions) {
     const exclusions=value.standaloneExclusions
     exact(exclusions,['schemaVersion','encoding','entryIds'])
@@ -137,7 +188,8 @@ export function validateTavernLoreSnapshotV1(input:unknown):TavernLoreFrozenSnap
       exact(row,['request','renderedSha256','activationProposals','feedbackSha256'])
       const request=row.request
       exact(request,['schemaVersion','encoding','entryId','rawEntrySha256','entrySemanticSha256','pointer',
-        'rawContentSha256','text','attemptId','compilerPlanSha256','loop','state','selectionSha256'])
+        'rawContentSha256','text','attemptId','compilerPlanSha256','loop','state','selectionSha256',
+        ...object(request)&&Object.hasOwn(request,'activationMode')?['activationMode']:[]])
       if(request.schemaVersion!==1||request.encoding!=='owned-st-lore-selected-template-request-v1'
         ||!isSha(request.entryId)||feedbackEntries.has(request.entryId)||!isSha(request.rawEntrySha256)
         ||!isSha(request.entrySemanticSha256)||!text(request.pointer,4096)||!request.pointer.startsWith('/')
@@ -146,9 +198,11 @@ export function validateTavernLoreSnapshotV1(input:unknown):TavernLoreFrozenSnap
         ||!integer(request.loop,LORE_EVALUATOR_POLICY_V1.bounds.scanSteps)||request.loop<1
         ||!['initial','recursion','minimum-activations'].includes(String(request.state))||!isSha(request.selectionSha256)
         ||!isSha(row.renderedSha256)||!Array.isArray(row.activationProposals))refuse('LORE_FEEDBACK_INVALID')
+      if(Object.hasOwn(request,'activationMode')&&request.activationMode!=='world-info'
+        &&request.activationMode!=='force-world-info')refuse('LORE_FEEDBACK_INVALID')
       feedbackEntries.add(request.entryId)
       for(const proposal of row.activationProposals) {
-        exact(proposal,['entryId','rawEntrySha256'])
+        validateTavernLoreTemplateActivationV1(proposal)
         if(!isSha(proposal.entryId)||!isSha(proposal.rawEntrySha256))refuse('LORE_FEEDBACK_INVALID')
         if(++proposals>LORE_EVALUATOR_POLICY_V1.bounds.feedbackProposals)refuse('LORE_FEEDBACK_LIMIT')
       }
@@ -231,7 +285,7 @@ export function validateTavernLoreSnapshotV1(input:unknown):TavernLoreFrozenSnap
         if(bytes>2_000_000)refuse('LORE_INJECTED_SCAN_TEXT_LIMIT')
       }
       for(const proposal of row.activationProposals) {
-        exact(proposal,['entryId','rawEntrySha256'])
+        validateTavernLoreTemplateActivationV1(proposal)
         if(!text(proposal.entryId)||!isSha(proposal.rawEntrySha256))refuse('LORE_INJECTION_FEEDBACK_INVALID')
       }
       const {feedbackSha256,...body}=row

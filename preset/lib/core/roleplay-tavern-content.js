@@ -13,13 +13,14 @@ import { createRoleplayTavernTokenCountV1 } from './roleplay-tavern-token-count.
 import { prepareOwnedTavernLoreWithOwnerV1 } from './tavern-lore-evaluator.mjs';
 import { applyTavernLoreOrdinaryPreparationV1, createTavernLoreSourceEligibilityV1 } from './tavern-lore-derived.mjs';
 import { validateTavernLoreSnapshotV1 } from './tavern-lore-snapshot.mjs';
+import { prepareRoleplayWorldbookVectorsV1 } from './roleplay-worldbook-vector.js';
 /** Native has no ST global settings store. Archived character-book settings
  * remain importer metadata; absent session overrides use this content policy. */
 export const TAVERN_NATIVE_PROMPT_SETTINGS_V1 = Object.freeze({
-    policy: 'owned-st-single-book-scan-feedback-v1', provenance: 'explicit-native-fallback-v1',
+    policy: 'owned-st-bound-books-scan-feedback-v1', provenance: 'explicit-native-fallback-v1',
     caseSensitive: false, matchWholeWords: false, scanDepth: 2, useGroupScoring: false, recursiveScanning: true,
     minimumActivations: 0, minimumActivationDepthMax: 0, maxRecursionSteps: 32, includeNames: true,
-    characterStrategy: 'single-character-book-v1', budgetTokens: 2048,
+    characterStrategy: 'ordered-bound-worldbooks-v1', budgetTokens: 2048,
     contentTransformPolicy: 'no-world-info-output-regex-v1', macroPolicy: 'frozen-key-alias-receipt-v2',
     seedPolicy: 'sha256-counter-domain-separated-v1', budgetPolicy: 'frozen-cumulative-token-ledger-st-gte-v1'
 });
@@ -45,6 +46,7 @@ export async function prepareRoleplayTavernContentV1(deps) {
     const initialCatalog = captureRoleplayTavernInitialCatalogV1({ source, plan: compilation.plan,
         assertCurrent: assertSignal, signal });
     const variableProducer = { signal, assertCurrent,
+        getInitialValues: renderInput.ejs.getInitialValues, bindInitial: renderInput.ejs.bindInitial,
         async renderInitial(request) {
             assertCurrent();
             const bindings = [...request.readonlyScopes, request.initialSoFar];
@@ -93,6 +95,11 @@ export async function prepareRoleplayTavernContentV1(deps) {
         baseMacros: deps.macrosFor(bindings), sourceEligibility }), composition = ordinaryPreparation
         ? applyTavernLoreOrdinaryPreparationV1(render.evaluationComposition, ordinaryPreparation) : render.evaluationComposition;
     assertCurrent();
+    const vectorSelection = deps.worldbookVector ? await prepareRoleplayWorldbookVectorsV1({
+        ...deps.worldbookVector, catalog: render.sourceCatalog, signal, current: assertCurrent,
+        eligible: sourceEligibility, project: rows => render.transformInjectionContent(rows, deps.macrosFor(bindings))
+    }) : undefined;
+    assertCurrent();
     const tokenCount = createRoleplayTavernTokenCountV1(assertSignal, signal), card = captured.cardData, text = (value) => typeof value === 'string' ? value : '', aliases = readTavernCardMacroFields(card, source.original.decodedFormat), macros = renderInput.macros, globalScanData = { personaDescription: macros.card?.find(value => value.key === 'persona')?.value ?? '',
         characterDescription: deps.currentCardFields?.description ?? text(aliases.description),
         characterPersonality: deps.currentCardFields?.personality ?? text(aliases.personality),
@@ -106,6 +113,7 @@ export async function prepareRoleplayTavernContentV1(deps) {
         sourceSnapshotSha256: source.sourceSha256, stateSnapshotSha256: scopeData.stateSnapshotSha256,
         sourceReferenceSha256: compilation.plan.sourceReferenceSha256, packageSha256: basis.packageSha256,
         compilerPlanSha256: compilation.plan.planSha256, visibleMessages: deps.visibleMessages,
+        ...vectorSelection ? { vectorSelection } : {},
         ...deps.scanMessageCount !== undefined ? { scanHistory: { schemaVersion: 1,
                 encoding: 'owned-lore-scan-history-range-v1', messageCount: deps.scanMessageCount } } : {},
         messagesSha256: recordSha256(deps.visibleMessages), settings, settingsSha256: recordSha256(settings),

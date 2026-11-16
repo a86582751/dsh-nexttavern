@@ -54,7 +54,32 @@ export interface TavernLoreAbsentSourceReferenceV1 extends TavernLorePresentSour
   readonly bookPresence:'proven-absence'
   readonly absenceProof:TavernLoreBookAbsenceProofV1
 }
-export type TavernLoreSourceReferenceV1=TavernLorePresentSourceReferenceV1|TavernLoreAbsentSourceReferenceV1
+export type TavernLoreImportSourceReferenceV1=TavernLorePresentSourceReferenceV1|TavernLoreAbsentSourceReferenceV1
+/** Catalog content has its own identity. The consuming chat/import is retained
+ * only on the collection that evaluates its bound books together. */
+export interface TavernLoreCatalogBookSourceReferenceV1 {
+  readonly schemaVersion:1
+  readonly encoding:'author-worldbook-source-reference-v1'
+  readonly profileId:string
+  readonly bookId:string
+  readonly name:string
+  readonly metadataRef:import('./roleplay-author-worldbook-types.js').AuthorWorldbookRefV1
+  readonly contentRef:import('./roleplay-author-worldbook-types.js').AuthorWorldbookRefV1
+  readonly sourceSnapshotSha256:string
+  readonly bookPointer:string
+  readonly sourceFormat:'author-worldbook'
+}
+export interface TavernLoreCatalogCollectionSourceReferenceV1 {
+  readonly schemaVersion:1
+  readonly encoding:'author-worldbook-collection-source-reference-v1'
+  readonly consumerSource:TavernLoreImportSourceReferenceV1
+  readonly bindings:readonly import('./roleplay-author-worldbook-types.js').AuthorWorldbookBindingCaptureV1[]
+  readonly sourceSnapshotSha256:string
+  readonly bookPointer:'/books'
+  readonly sourceFormat:'author-worldbook-collection'
+}
+export type TavernLoreSourceReferenceV1=TavernLoreImportSourceReferenceV1
+  |TavernLoreCatalogBookSourceReferenceV1|TavernLoreCatalogCollectionSourceReferenceV1
 export interface TavernLoreCompilationInputV1 {
   readonly schemaVersion:1
   readonly encoding:'st-character-book-compilation-input-v1'
@@ -101,7 +126,8 @@ export interface TavernLoreSourceContentReferenceV1 {
   }
 }
 export type TavernLoreContentReferenceV1=TavernLoreSourceContentReferenceV1|TavernLoreFrozenDerivedContentReferenceV1
-  |TavernLoreOrdinarySourceContentReferenceV1
+  |TavernLoreOrdinarySourceContentReferenceV1|{readonly kind:'template-activated-source-text';readonly pointer:string;
+    readonly contentSha256:string;readonly currentNative?:never}
 /** Null scan/match controls require the actual frozen runtime setting. They
  * never mean the startup globals from a different ST installation. */
 export interface TavernLoreSemanticEntryV1 {
@@ -177,6 +203,8 @@ export interface TavernLoreRetainedDeclarationsV1 {
 export interface TavernLoreEntryPlanV1 {
   readonly entryId:string
   readonly ordinal:number
+  readonly bookId?:string
+  readonly localOrdinal?:number
   readonly sourceKey:string
   readonly sourcePointer:string
   readonly rawEntrySha256:string
@@ -225,6 +253,10 @@ export interface TavernLorePlanV1 {
    * Content references never duplicate or execute this text in a prompt. */
   readonly rawBook:MvuJsonObject|null
   readonly rawBookSha256:string
+  /** Local plans retain their actual book DATA and member pointers. The flat
+   * entries provide one scan, recursion, ordering and token-budget domain. */
+  readonly boundBooks?:readonly Extract<TavernLoreCompilationV1,{kind:'compiled'}>[]
+  readonly catalogContentPlanSha256?:string
   /** Present only for a real absence. rawBook stays null; no imported object is invented. */
   readonly ownedEmptyPlan?:{readonly origin:'program-owned-empty-from-proven-absence';
     readonly absenceProofSha256:string;readonly bookPointer:'/data/character_book';readonly rawBookValue:null}
@@ -234,7 +266,7 @@ export interface TavernLorePlanV1 {
   readonly currentNativeMembershipSha256?:string
   readonly bookDisposition:'eligible-semantic-data'|'retained-ineligible'
   readonly collection:{readonly kind:'source-array'|'source-object'|'object-retained-unsupported'|'proven-absent-book'
-    |'current-native-membership';readonly count:number}
+    |'current-native-membership'|'bound-worldbooks';readonly count:number}
   readonly bookMetadata:readonly TavernLoreMetadataReferenceV1[]
   readonly declaredBookSettings:{readonly disposition:'not-applied-by-fixed-importer';
     readonly scanDepth?:number;readonly tokenBudget?:number;readonly recursiveScanning?:boolean}

@@ -13,6 +13,7 @@ import {prepareOwnedTavernLoreWithOwnerV1} from './tavern-lore-evaluator.mjs'
 import {applyTavernLoreOrdinaryPreparationV1,createTavernLoreSourceEligibilityV1} from './tavern-lore-derived.mjs'
 import type {TavernLoreEvaluationCompositionV1} from './tavern-lore-derived.mjs'
 import {validateTavernLoreSnapshotV1} from './tavern-lore-snapshot.mjs'
+import {prepareRoleplayWorldbookVectorsV1} from './roleplay-worldbook-vector.js'
 import type {captureRoleplayTavernPromptSourceDataV1} from './roleplay-tavern-prompt-source.js'
 import type {captureRoleplayTavernPromptScopesV1} from './roleplay-tavern-prompt-scopes.js'
 import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
@@ -26,10 +27,10 @@ import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 /** Native has no ST global settings store. Archived character-book settings
  * remain importer metadata; absent session overrides use this content policy. */
 export const TAVERN_NATIVE_PROMPT_SETTINGS_V1:Readonly<TavernLoreFrozenSettingsV1>=Object.freeze({
-  policy:'owned-st-single-book-scan-feedback-v1',provenance:'explicit-native-fallback-v1',
+  policy:'owned-st-bound-books-scan-feedback-v1',provenance:'explicit-native-fallback-v1',
   caseSensitive:false,matchWholeWords:false,scanDepth:2,useGroupScoring:false,recursiveScanning:true,
   minimumActivations:0,minimumActivationDepthMax:0,maxRecursionSteps:32,includeNames:true,
-  characterStrategy:'single-character-book-v1',budgetTokens:2048,
+  characterStrategy:'ordered-bound-worldbooks-v1',budgetTokens:2048,
   contentTransformPolicy:'no-world-info-output-regex-v1',macroPolicy:'frozen-key-alias-receipt-v2',
   seedPolicy:'sha256-counter-domain-separated-v1',budgetPolicy:'frozen-cumulative-token-ledger-st-gte-v1'})
 
@@ -72,6 +73,8 @@ interface Dependencies {
   readonly currentCardFields?:Readonly<Record<'description'|'personality'|'scenario'|'persona',string>>
   readonly renderInput:RenderInput
   readonly execution?:TavernContentExecutionV1
+  readonly worldbookVector?:Omit<Parameters<typeof prepareRoleplayWorldbookVectorsV1>[0],
+    'catalog'|'signal'|'current'|'eligible'|'project'>
   macrosFor(scopes:readonly TavernTemplateScopeBindingV1[],
     outlets?:readonly {name:string;text:string;versionSha256:string}[]):TavernPromptMacroSnapshotV1
   /** Main supplies its registry scan consumer. Readonly dialogue omits it;
@@ -93,6 +96,7 @@ export async function prepareRoleplayTavernContentV1(deps:Dependencies) {
   const initialCatalog=captureRoleplayTavernInitialCatalogV1({source,plan:compilation.plan,
     assertCurrent:assertSignal,signal})
   const variableProducer:import('./roleplay-tavern-prompt-variables-types.js').TavernPromptVariableProducerV1={signal,assertCurrent,
+    getInitialValues:renderInput.ejs.getInitialValues,bindInitial:renderInput.ejs.bindInitial,
     async renderInitial(request:import('./roleplay-tavern-prompt-variables-types.js').TavernPromptInitialRenderRequestV1) {
       assertCurrent()
       const bindings=[...request.readonlyScopes,request.initialSoFar]
@@ -137,6 +141,10 @@ export async function prepareRoleplayTavernContentV1(deps:Dependencies) {
     composition=ordinaryPreparation
       ?applyTavernLoreOrdinaryPreparationV1(render.evaluationComposition,ordinaryPreparation):render.evaluationComposition
   assertCurrent()
+  const vectorSelection=deps.worldbookVector?await prepareRoleplayWorldbookVectorsV1({
+    ...deps.worldbookVector,catalog:render.sourceCatalog,signal,current:assertCurrent,
+    eligible:sourceEligibility,project:rows=>render.transformInjectionContent(rows,deps.macrosFor(bindings))}):undefined
+  assertCurrent()
   const tokenCount=createRoleplayTavernTokenCountV1(assertSignal,signal),card=captured.cardData,
     text=(value:unknown)=>typeof value==='string'?value:'',
     aliases=readTavernCardMacroFields(card,source.original.decodedFormat),macros=renderInput.macros,
@@ -153,6 +161,7 @@ export async function prepareRoleplayTavernContentV1(deps:Dependencies) {
     sourceSnapshotSha256:source.sourceSha256,stateSnapshotSha256:scopeData.stateSnapshotSha256,
     sourceReferenceSha256:compilation.plan.sourceReferenceSha256,packageSha256:basis.packageSha256,
     compilerPlanSha256:compilation.plan.planSha256,visibleMessages:deps.visibleMessages,
+    ...vectorSelection?{vectorSelection}:{},
     ...deps.scanMessageCount!==undefined?{scanHistory:{schemaVersion:1 as const,
       encoding:'owned-lore-scan-history-range-v1' as const,messageCount:deps.scanMessageCount}}:{},
     messagesSha256:recordSha256(deps.visibleMessages),settings,settingsSha256:recordSha256(settings),
