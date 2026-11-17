@@ -267,7 +267,7 @@ export function createAuthorExecutionPlannerV1(owned: PlannerOwnedDependenciesV1
         coverage: null, loaderImports: [], diagnosticCodes: [], evidence: 'disabled-source-retained'}
       const parsed = parse(script, candidate)
       if(candidate) {
-        // The schema owner claims only an actual registration. Its invalid
+        // The schema owner claims a registration capability dependency. Its invalid
         // registrations still fail here; unrelated browser syntax never needs
         // this executor's complete AST profile to reach the native realm.
         const schema=privateOwned.admitSchemaAst?.({script,ordinal,sourceFile:parsed.file,checker:parsed.checker,
@@ -307,7 +307,7 @@ export function createAuthorExecutionPlannerV1(owned: PlannerOwnedDependenciesV1
           coverage: null, loaderImports: [], diagnosticCodes: ['LOCAL_BROWSER_AUDIT_NOT_PUBLIC_AST_ADMISSION'],
           evidence: 'local-audit-only'}
       }
-      let stateLiteralImport = false, stateArrayImport = false, schemaReference = false, browserHost = false
+      let stateLiteralImport = false, stateArrayImport = false, schemaReference = false
       const stateArraySymbols = new Set<TypeScript.Symbol>()
       walk(parsed.file, node => {
         if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
@@ -328,8 +328,6 @@ export function createAuthorExecutionPlannerV1(owned: PlannerOwnedDependenciesV1
         }
         if (ts.isForOfStatement(node) && ts.isIdentifier(node.expression)
           && stateArraySymbols.has(parsed.checker.getSymbolAtLocation(node.expression)!)) stateArrayImport = true
-        if (ts.isIdentifier(node) && ['window', 'parent', 'document', 'setTimeout'].includes(node.text)
-          && !parsed.checker.getSymbolAtLocation(node)) browserHost = true
       })
       // Schema import-only scripts must not be mistaken for a state loader.
       // Native recognition is attempted only for a real fixed state import or
@@ -341,12 +339,10 @@ export function createAuthorExecutionPlannerV1(owned: PlannerOwnedDependenciesV1
         if (sites) return {...base, classification: 'native-state-loader', disposition: 'native-owned',
           coverage: coverage(parsed.file, script.sourceSha256, parsed.nodeCount),
           loaderImports: sites, diagnosticCodes: [], evidence: 'complete-loader-ast'}
-        reject(browserHost ? 'EXECUTION_BROWSER_BOOTSTRAP_DEFERRED_AST_UNPROVEN'
-          : 'EXECUTION_STATE_LOADER_COMPLETE_SHAPE_UNSUPPORTED')
+        reject('EXECUTION_STATE_LOADER_COMPLETE_SHAPE_UNSUPPORTED')
       }
-      // Candidate admission asks the worker's canonical schema owner whether
-      // this AST is claimed before its gates can reject ordinary browser code.
-      if (browserHost && !candidate) reject('EXECUTION_BROWSER_SCRIPT_DEFERRED_AST_UNPROVEN')
+      // The canonical schema owner resolves declarations in the direct compiler.
+      // The guest decides whether a referenced runtime capability exists.
       const schema = privateOwned.admitSchemaAst?.({script, ordinal,
         sourceFile: parsed.file, checker: parsed.checker,
         ...parsed.budgetFailure ? {budgetFailure: parsed.budgetFailure} : {}})
