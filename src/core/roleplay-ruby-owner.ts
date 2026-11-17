@@ -19,6 +19,7 @@ import {prepareRubyAnalysisInputV1,prepareRubyAnalysisOutputV1,prepareRubyAnalys
   RUBY_INCREMENTAL_READ_POLICY_V1} from './roleplay-ruby-input.js'
 import {initializeRubyCursorV1,scheduleRubyTasksV1,advanceRubyBookmarkAfterPublicationV1,
   reconcileRubyDeletionV1} from './roleplay-ruby-scheduler.js'
+import type {RoleplayExtensionFailureV1} from './roleplay-extension-types.js'
 
 export const rubyOwnerStateKeyV1=(sid:string)=>keyOf(sid,'ruby-owner-v1')
 export const rubyEnablementKeyV1=(sid:string)=>keyOf(sid,'ruby-enablement-v1')
@@ -80,7 +81,19 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
   const knownOutputs=new Map<string,RubyPublishedOutputV1>()
   // Owner writes replace this immutable map. Reuse its index on unchanged hot
   // status reads; cold/new durable state builds it once, without result bodies.
-  const runIndexes=new WeakMap<RubyOwnerStateV1['runs'],[string,RubyRunV1][]>()
+  interface RunIndex {
+    rows:[string,RubyRunV1][]
+    failureSource?:string
+    failureConfiguration?:RubyOwnerStateV1['configuration']
+    failures?:readonly RoleplayExtensionFailureV1[]
+  }
+  const runIndexes=new WeakMap<RubyOwnerStateV1['runs'],RunIndex>()
+  const noFailures:readonly RoleplayExtensionFailureV1[]=[]
+  function runIndex(actual:RubyOwnerStateV1):RunIndex {
+    let index=runIndexes.get(actual.runs)
+    if(!index){index={rows:Object.entries(actual.runs)};runIndexes.set(actual.runs,index)}
+    return index
+  }
   let disposed=false
   const enabled=(sid:string)=>(deps.table.get(rubyEnablementKeyV1(sid)) as RubyEnablementV1|undefined)?.enabled!==false
   const state=(sid:string)=>deps.table.get(rubyOwnerStateKeyV1(sid)) as RubyOwnerStateV1|undefined
@@ -333,13 +346,15 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
       const capture=await deps.capture(sid,signal)
       if(!capture) {
         const previous=state(sid)
-        if(previous&&Object.keys(previous.outputs).length)await deps.withSourceLock(sid,async()=>{
-          assertAlive(sid,signal)
-          await deps.table.put(rubyOwnerStateKeyV1(sid),freeze({...previous,revision:previous.revision+1,
-            outputs:{},runs:Object.fromEntries(Object.entries(previous.runs).filter(([,run])=>run.invocation)),
-            configuration:{status:'empty',issues:[],cycleLength:0},
-            sourceIdentitySha256:recordSha256({producer:'none'})}))
-        },signal)
+        if(previous&&(previous.configuration.status!=='empty'||Object.keys(previous.outputs).length)) {
+          await deps.withSourceLock(sid,async()=>{
+            assertAlive(sid,signal)
+            await deps.table.put(rubyOwnerStateKeyV1(sid),freeze({...previous,revision:previous.revision+1,
+              outputs:{},runs:Object.fromEntries(Object.entries(previous.runs).filter(([,run])=>run.invocation)),
+              configuration:{status:'empty',issues:[],cycleLength:0},
+              sourceIdentitySha256:recordSha256({producer:'none'})}))
+          },signal)
+        }
         return
       }
       let due:readonly RubyRunV1[]=[]
@@ -580,8 +595,7 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
   }
   function status(sid:string,page?:{offset:number;limit:number}) {
     const actual=state(sid),settings=deps.table.get(rubyEnablementKeyV1(sid)) as RubyEnablementV1|undefined
-    let allRuns=actual?runIndexes.get(actual.runs):undefined
-    if(!allRuns){allRuns=Object.entries(actual?.runs??{});if(actual)runIndexes.set(actual.runs,allRuns)}
+    const allRuns=actual?runIndex(actual).rows:[]
     const total=allRuns.length,
       limit=page?Math.max(1,Math.floor(page.limit)):total,
       offset=page?Math.min(Math.max(0,Math.floor(page.offset)),Math.max(0,Math.ceil(total/limit)-1)*limit):0,
@@ -605,6 +619,39 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
         interrupted:run.status==='queued'&&!running.has(sid),
         injectionTarget:run.status==='published'?(run.task.outputKey?'derived-worldbook':'owner-output'):undefined})),
       affectedCapability:'Ruby动态分析与输出世界书；关闭后保留已完成记录并停止注入'}
+  }
+  function extensionFailures(sid:string):readonly RoleplayExtensionFailureV1[] {
+    if(!enabled(sid))return noFailures
+    const actual=state(sid)
+    if(!actual)return noFailures
+    const index=runIndex(actual),sourceRevision=actual.sourceIdentitySha256
+    if(index.failureSource===sourceRevision&&index.failureConfiguration===actual.configuration&&index.failures)
+      return index.failures
+    const failures:RoleplayExtensionFailureV1[]=actual.configuration.issues.map(issue=>({
+      schemaVersion:1,sessionId:sid,id:JSON.stringify(['configuration',sourceRevision,issue.sourcePath,issue.code]),
+      extension:'ruby',code:issue.code,phase:'configuration',sourceRevision,sourcePointer:issue.sourcePath,
+      impact:'partial',
+    }))
+    const manualSources=new Map(index.rows.flatMap(([,run])=>run.manualBatch
+      ?[[run.manualBatch.request.operationId,run.manualBatch.sourceIdentitySha256] as const]:[]))
+    for(const [key,run] of index.rows) {
+      if(run.status!=='failed'&&run.status!=='unsupported')continue
+      // Reconciliation discards automatic runs on Source replacement. Manual
+      // receipts survive it, so their original batch or saved plan must prove
+      // membership before a historical failure becomes a current notification.
+      if(run.invocation) {
+        const batchSource=manualSources.get(run.invocation.operationId),
+          plan=batchSource===undefined&&run.promptRef
+            ?deps.table.get(run.promptRef.key) as RubyOrderedMessagePlanV1|undefined:undefined
+        if((batchSource??plan?.sourceIdentitySha256)!==sourceRevision)continue
+      }
+      const code=run.reason??'RUBY_ANALYSIS_FAILED'
+      failures.push({schemaVersion:1,sessionId:sid,id:JSON.stringify(['run',key,code]),
+        extension:'ruby',code,phase:'analysis',sourceRevision,sourcePointer:run.task.sourcePath,
+        taskId:run.taskId??run.execution?.id,impact:'partial'})
+    }
+    index.failureSource=sourceRevision;index.failureConfiguration=actual.configuration;index.failures=failures
+    return failures
   }
   /** Explicit detail read; status never loads every saved result body. */
   function result(sid:string,key:string) {
@@ -669,5 +716,6 @@ export function createRoleplayRubyOwnerV1(deps:Dependencies) {
     sources.clear();sourceViews.clear()
     knownOutputs.clear()
   }
-  return {settle,run,confirmRun,readEntries,snapshot,setEnabled,rearm,retry,status,result,restoreHeads,inherit,dispose}
+  return {settle,run,confirmRun,readEntries,snapshot,setEnabled,rearm,retry,status,extensionFailures,
+    result,restoreHeads,inherit,dispose}
 }

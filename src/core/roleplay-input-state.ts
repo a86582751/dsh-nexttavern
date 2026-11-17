@@ -42,6 +42,7 @@ export type RoleplaySourceRead='legacy-author'|'tavern-author'|'input-source'|'p
   |'source-music'
   |'card-avatar'
   |'native-card-conversion'
+  |'text-only-source'
   |'tavern-inheritance'
   |'schema-derived-genesis'
   |`program-opening:${number}:${boolean}:${string}`

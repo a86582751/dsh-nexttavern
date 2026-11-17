@@ -71,6 +71,12 @@ export function createSideChat({React, Menu, sessions, jsonFetch, confirm}: Depe
   let size: {width: number; height: number} | null = null
   let maximized = false
   const listeners = new Set<() => void>()
+  const drafts = new Map<string, string>()
+  const DraftOwner = React.createContext<string | null>(null)
+  const setDraft = (sessionId: string, text: string) => {
+    drafts.set(sessionId, text)
+    for (const notify of listeners) notify()
+  }
   const setOpen = (value: boolean) => {
     opened = value
     for (const notify of listeners) notify()
@@ -119,14 +125,17 @@ export function createSideChat({React, Menu, sessions, jsonFetch, confirm}: Depe
           stroke: 'currentColor', strokeWidth: 1.5, 'aria-hidden': true}, h('path', {d: 'm5 6 3 3 3-3'})))})
   }
 
-  function Composer({binding, controls, pending, content}: {
+  function Composer({binding, controls, pending, content, ownerSessionId}: {
     binding: SideChatNativeBinding; controls: ReactAPI.ReactNode
-    pending: boolean; content: ReactAPI.ReactNode
+    pending: boolean; content: ReactAPI.ReactNode; ownerSessionId: string
   }) {
     const session = binding.session
     const state = React.useSyncExternalStore(notify=>session.subscribe(notify),
       ()=>session.getSnapshot(),()=>session.getSnapshot())
-    const [text, setText] = React.useState('')
+    const text = React.useSyncExternalStore(subscribe,
+      () => drafts.get(ownerSessionId) ?? '', () => '')
+    const setText = (value: string | ((previous: string) => string)) =>
+      setDraft(ownerSessionId, typeof value === 'function' ? value(drafts.get(ownerSessionId) ?? '') : value)
     const [sending, setSending] = React.useState(false)
     const [error, setError] = React.useState('')
     const input = React.useRef<HTMLTextAreaElement>(null)
@@ -179,6 +188,7 @@ export function createSideChat({React, Menu, sessions, jsonFetch, confirm}: Depe
       : renderSlot('conversation.session', {view: 'chat'})
   }
   function Session({binding, controls, sessionId, useSessionStatus, renderFactorySlot}: ScopedSessionProps) {
+    const ownerSessionId = React.useContext(DraftOwner) ?? sessionId
     const pending = useSessionStatus(snapshot => snapshot.get(sessionId)?.pendingInteraction)
     // The factory is the sole owner of conversation.session. Its local Views
     // component inherits that render share; the side-chat registration must not
@@ -186,7 +196,7 @@ export function createSideChat({React, Menu, sessions, jsonFetch, confirm}: Depe
     const content = renderFactorySlot('conversation.content', {
       variant: 'embedded', phase: 'active', hero: false,
     }, {slots: {views: NativeViews, widthControls: EmptyNativeView}})
-    return h(Composer, {binding, controls, pending: !!pending, content})
+    return h(Composer, {binding, controls, pending: !!pending, content, ownerSessionId})
   }
 
   function NativeView({sessionId, controls, scope}: {
@@ -462,7 +472,7 @@ export function createSideChat({React, Menu, sessions, jsonFetch, confirm}: Depe
         onSelect: id => {
           if (id !== binding.permissionPreset) void configure({permissionPreset: id as SideChatBinding['permissionPreset']})
         }})) : null
-    return h('section', {ref: panel, id: 'dsh-rp-side-chat', className: 'dsh-rp-side-chat', role: 'dialog',
+    return h(DraftOwner.Provider, {value: sessionId}, h('section', {ref: panel, id: 'dsh-rp-side-chat', className: 'dsh-rp-side-chat', role: 'dialog',
       'aria-label': '酒馆侧聊', 'data-side-maximized': isMaximized || undefined, tabIndex: -1,
       onKeyDown: (event: ReactAPI.KeyboardEvent) => {
         // Native pending composers handle their own Escape first. Keeping this
@@ -480,7 +490,12 @@ export function createSideChat({React, Menu, sessions, jsonFetch, confirm}: Depe
         !binding ? h('button', {type: 'button', onClick: () => setRetry(value => value + 1)}, '重试') : null) : null,
       binding?.sideSessionId ? h(NativeView, {key: binding.sideSessionId, sessionId: binding.sideSessionId, controls, scope})
         : !error ? h('div', {className: 'dsh-rp-side-loading', role: 'status'}, busy ? '正在重置侧聊…' : '正在打开侧聊…') : null,
-      h('button', {type: 'button', className: 'dsh-rp-side-resize', 'aria-label': '调整侧聊大小', ...resizeProps}, icon('resize')))
+      h('button', {type: 'button', className: 'dsh-rp-side-resize', 'aria-label': '调整侧聊大小', ...resizeProps}, icon('resize'))))
   }
-  return {Panel, Session, useOpen, setOpen, toggle: () => setOpen(!opened)}
+  return {Panel, Session, useOpen, setOpen, toggle: () => setOpen(!opened),
+    openWithDraft(sessionId: string, text: string) {
+      const previous = drafts.get(sessionId) ?? ''
+      setDraft(sessionId, previous ? previous + '\n\n' + text : text)
+      setOpen(true)
+    }}
 }

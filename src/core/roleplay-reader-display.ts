@@ -188,6 +188,7 @@ interface Dependencies {
   captureRegexInputs?(sid:string,source:TavernLoreSourceDataV1,signal:AbortSignal):ReaderRegexInputsV1|Promise<ReaderRegexInputsV1>
   documentFacts?(id:string,read:ReaderDocumentSourceRead):Promise<ReaderRegexDocumentReadFactsV1|undefined>
   nativeParentOrigins?(groups:readonly ('source-regex'|'none')[]):Promise<ReaderNativeDocumentExecutionV1['parentOrigins']>
+  captureAuthorScene?(sessionId:string):Promise<import('./author-native-helper-types.js').AuthorNativeSceneV1|undefined>
   mutateOpeningVariants?(capture:ReaderOpeningVariantCaptureV1,request:OpeningVariantMutationRequestV1,
     signal:AbortSignal):Promise<ReaderOpeningVariantResultV1>
   confirmOpeningVariants?(sessionId:string,operationId:string,signal:AbortSignal):Promise<ReaderOpeningVariantResultV1>
@@ -915,8 +916,10 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
             worldbookProducers:worldbook.worldbookProducers})
           const groups=[...new Set(program.documents.map(document=>document.writes))]
           const parentOrigins=await deps.nativeParentOrigins?.(groups)??{}
+          const authorScene=groups.includes('source-regex')?await deps.captureAuthorScene?.(sid):undefined
           current()
           execution={backend:'browser-native-v1',program,parentOrigins,
+            ...authorScene?{authorScene}:{},
             ...facts.presetLibrary?{presetLibrary:facts.presetLibrary}:{},
             ...facts.characterLibrary?{characterLibrary:facts.characterLibrary}:{},snapshot:{...facts.data,
             readerVariables:documentVariables(facts,program),generation:program.programSha256,readRevision:++readRevision}}

@@ -10,31 +10,91 @@ export const READER_NATIVE_RESOURCE_CSP="default-src 'none'; script-src 'unsafe-
 function readerNativeParentBootstrap():void {
   const channel=new URLSearchParams(location.hash.slice(1)).get('channel')
   const connect=(event:MessageEvent)=>{
-    if(event.data?.op!=='connect-parent'||event.data.channel!==channel||!event.ports[0])return
+    if(!['connect-parent','connect-scene'].includes(event.data?.op)||event.data.channel!==channel||!event.ports[0])return
     removeEventListener('message',connect)
     const port=event.ports[0]
     if((window as any).credentialless!==true){
       port.postMessage({op:'parent-error',code:'READER_NATIVE_CREDENTIALLESS_UNAVAILABLE'});port.close();return
     }
+    if(event.data.op==='connect-scene'){scene(port);return}
     port.onmessage=message=>{
       if(message.data.op!=='mount'&&message.data.op!=='mount-reader')return
       port.onmessage=null
-      if(message.data.op==='mount-reader'&&message.data.attributeData.length){
-        // Classify DATA before any author library can alter browser prototypes.
-        // Custom on-prefixed attributes remain ordinary browser attribute DATA.
-        const inert=document.implementation.createHTMLDocument('')
-        for(const attribute of message.data.attributeData){
-          const element=inert.createElementNS(attribute.namespaceURI,attribute.tagName)
-          if(attribute.name in element){
-            port.postMessage({op:'document-error',code:attribute.failureCode});port.close();return
-          }
-        }
-      }
-      mount(message.data,port)
+      mount(message.data,port,channel!)
     }
     port.start();port.postMessage({op:'parent-ready',sourceDataProtocol:1})
   }
-  function mount(data:any,port:MessagePort):void {
+  function scene(control:MessagePort):void {
+    document.body.style.isolation='isolate'
+    const children=new Map<string,{node:HTMLElement;frame:HTMLElement;port?:MessagePort}>()
+    const pending=new Map<string,MessagePort>()
+    const libraries=new Set<string>()
+    control.onmessage=event=>{
+      const data=event.data
+      if(data.op==='scene-attach'){
+        const bridge=event.ports[0]
+        if(!bridge)return
+        pending.set(data.id,bridge)
+        bridge.onmessage=message=>{
+          if(pending.get(data.id)!==bridge)return
+          if(message.data.op!=='mount'&&message.data.op!=='mount-reader')return
+          bridge.onmessage=null;pending.delete(data.id)
+          const payload=message.data
+          const fresh=(payload.libraries??[]).filter((javascript:string)=>!libraries.has(javascript))
+          for(const javascript of fresh)libraries.add(javascript)
+          const mounted=mount({...payload,libraries:fresh,sdkGlobals:[],helper:data.kind==='helper'},bridge,data.channel)
+          mounted.node.dataset.authorSceneChild=data.id
+          mounted.node.style.visibility='hidden'
+          if(data.kind==='reader')mounted.node.style.zIndex='1'
+          children.set(data.id,{...mounted,port:bridge})
+          control.postMessage({op:'scene-attached',id:data.id})
+        }
+        bridge.start();bridge.postMessage({op:'parent-ready',sourceDataProtocol:1})
+      }else if(data.op==='scene-external'){
+        const bridge=event.ports[0]
+        if(!bridge)return
+        const frame=document.createElement('iframe')
+        frame.setAttribute('credentialless','');frame.sandbox.add('allow-scripts','allow-same-origin')
+        frame.referrerPolicy='no-referrer';frame.style.cssText='display:block;position:absolute;border:0;width:100%;height:1px'
+        frame.style.zIndex=data.kind==='background'?'-1':'1'
+        frame.style.visibility='hidden'
+        if(data.kind==='background')frame.dataset.authorSceneBackground='true'
+        const url=new URL(data.url);url.hash=new URLSearchParams({channel:data.channel}).toString()
+        frame.addEventListener('load',()=>frame.contentWindow!.postMessage({op:'connect-parent',channel:data.channel},url.origin,[bridge]),{once:true})
+        frame.src=url.href;document.body.append(frame);children.set(data.id,{node:frame,frame,port:bridge})
+        control.postMessage({op:'scene-attached',id:data.id})
+      }else if(data.op==='scene-error'){
+        const previous=children.get(data.id)
+        previous?.port?.close();previous?.node.remove()
+        const node=document.createElement('p');node.setAttribute('role','alert')
+        node.textContent='作者文档不可用：'+data.code+'。请修复失败文档后刷新视图。'
+        node.style.cssText='position:absolute;margin:0;z-index:1'
+        node.style.visibility='hidden'
+        document.body.append(node);children.set(data.id,{node,frame:node})
+        control.postMessage({op:'scene-attached',id:data.id})
+      }else if(data.op==='scene-box'){
+        const child=children.get(data.id)
+        if(!child)return
+        child.node.style.visibility=data.box?'visible':'hidden'
+        if(!data.box)return
+        const {top,left,width,height}=data.box
+        child.node.style.position='absolute';child.node.style.top=top+'px';child.node.style.left=left+'px'
+        child.node.style.width=child.frame.dataset.authorSceneBackground?'100%':width+'px'
+        if(!child.node.dataset.authorSceneChild)child.frame.style.height=height+'px'
+      }else if(data.op==='scene-size'){
+        const child=children.get(data.childId)
+        if(child)child.frame.style.height=Math.ceil(data.height)+'px'
+        requestAnimationFrame(()=>control.postMessage({op:'scene-sized',id:data.id}))
+      }else if(data.op==='scene-remove'){
+        const waiting=pending.get(data.id)
+        if(waiting){waiting.onmessage=null;waiting.close();pending.delete(data.id)}
+        const child=children.get(data.id)
+        child?.port?.close();child?.node.remove();children.delete(data.id)
+      }else if(data.op==='scene-height')document.body.style.minHeight=data.height+'px'
+    }
+    control.start();control.postMessage({op:'scene-ready',sourceDataProtocol:1})
+  }
+  function mount(data:any,port:MessagePort,childChannel:string):{node:HTMLElement;frame:HTMLIFrameElement} {
     for(const javascript of data.libraries){
       const script=document.createElement('script');script.textContent=javascript;document.head.appendChild(script)
     }
@@ -56,9 +116,11 @@ function readerNativeParentBootstrap():void {
       'getGlobalWorldbookNames','getCharWorldbookNames','getChatWorldbookName',
       'errorCatched','SillyTavern','Mvu'])
       Object.defineProperty(realm,name,{configurable:true,get:()=>(frame.contentWindow as any)?.[name]})
-    frame.addEventListener('load',()=>frame.contentWindow!.postMessage({op:'connect',channel},location.origin,[port]),{once:true})
+    frame.addEventListener('load',()=>frame.contentWindow!.postMessage({op:'connect',channel:childChannel},location.origin,[port]),{once:true})
     frame.srcdoc=data.html
+    if(data.helper){frame.hidden=true;frame.style.display='none';document.body.appendChild(frame);return {node:frame,frame}}
     content.appendChild(frame);message.appendChild(content);document.body.appendChild(message)
+    return {node:message,frame}
   }
   addEventListener('message',connect)
 }

@@ -35,6 +35,13 @@ export interface AuthorNativeBindingV1 {
   readonly sessionId:string
   readonly programSha256:string
 }
+/** Current Source grouping for one visible author DOM. Each child keeps its
+ * own attachment and writer authority. This identity grants neither. */
+export interface AuthorNativeSceneV1 {
+  readonly identity:string
+  readonly permissionGroup:'author-source'
+  readonly parentOrigin:string
+}
 export interface AuthorNativeDiagnosticV1 {
   readonly code:string
   readonly scriptIdentity?:string

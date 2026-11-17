@@ -1,4 +1,7 @@
 import {createAuthorNativeHelperFrame} from './author-native-helper-frame.js';
+import type {AuthorDomScene} from './author-dom-scene.js';
+import type {RoleplayExtensionFailureV1} from '../core/roleplay-extension-types.js';
+import type {AuthorNativeSceneV1} from '../core/author-native-helper-types.js';
 import {mountAuthorNativeScriptButtons} from './author-native-script-buttons.js';
 import type {AuthorNativeHelperFrameControllerV1,AuthorNativeHelperGenerationCallbackV1,
     AuthorNativeHelperHostV1,AuthorNativeHelperReplyV1,AuthorNativeHelperRequestV1,
@@ -88,6 +91,9 @@ export function createAuthorBrowserSession(options:{
     documentLayout?:ReaderDocumentLayoutSettings;
     eventRouter?:import('../core/author-native-helper-types.js').AuthorNativeSessionEventRoute;
     createFrame?:typeof createAuthorNativeHelperFrame;
+    scene?(source:AuthorNativeSceneV1):Promise<AuthorDomScene>;
+    releaseScene?(scene:AuthorDomScene):void;
+    reportExtensionFailure?(failure:RoleplayExtensionFailureV1):unknown;
 }) {
     const transport=async(request:AuthorBrowserRequest,signal?:AbortSignal)=>{
         const reply=await(options.transport??authorBrowserTransport)(request,signal);
@@ -116,8 +122,17 @@ export function createAuthorBrowserSession(options:{
     let buttons:ReturnType<typeof mountAuthorNativeScriptButtons>|undefined;
     let buttonProgram:AuthorNativeProgramV1|undefined;
     const realms=new Map<string,NativeRealm>(),registrations:AuthorNativeHelperGenerationCallbackV1[]=[];
+    let sceneLease:AuthorDomScene|undefined;
     const recoveries=new Map<string,Promise<void>>();
     const current=()=>active&&options.current();
+    const diagnostics=new Map<string,()=>void>();
+    const clearDiagnostics=()=>{for(const release of diagnostics.values())release();diagnostics.clear();};
+    const reportExtensionFailure=(failure:RoleplayExtensionFailureV1)=>{
+        const key=failure.id+':'+failure.sourceRevision+':'+failure.code;
+        if(diagnostics.has(key))return;
+        const release=options.reportExtensionFailure?.(failure);
+        if(typeof release==='function')diagnostics.set(key,()=>{release();});
+    };
     let preparationState:ReaderPreparationState={kind:'starting'};
     const preparation=(value:ReaderPreparationState)=>{preparationState=value;options.preparation?.(value);};
     const hasFrame=()=>realms.size>0;
@@ -144,6 +159,7 @@ export function createAuthorBrowserSession(options:{
         owner=undefined;ready=false;captured=undefined;currentSnapshotScope='';presetLibrary=undefined;characterLibrary=undefined;
         for(const row of realms.values())row.controller?.dispose();
         realms.clear();registrations.length=0;options.container.replaceChildren();
+        if(sceneLease){options.releaseScene?.(sceneLease);sceneLease=undefined;}
         if(binding)release(binding);
         binding=undefined;
     }
@@ -810,7 +826,7 @@ export function createAuthorBrowserSession(options:{
             if(reply.kind==='attached'&&!sameBinding(binding,reply.attachment.binding))release(reply.attachment.binding);
             refreshAgain=true;return;
         }
-        if(reply.kind==='inactive'){revoke();preparation({kind:'not-required'});notify({kind:'inactive',code:reply.code});return;}
+        if(reply.kind==='inactive'){clearDiagnostics();revoke();preparation({kind:'not-required'});notify({kind:'inactive',code:reply.code});return;}
         if(reply.kind!=='attached')throw Error('BROWSER_ATTACHMENT_UNAVAILABLE');
         let attachment:AuthorBrowserAttachment=reply.attachment;
         for(const envelope of store.readPresets(options.sessionId).filter(row=>row.state!=='terminal')){
@@ -859,11 +875,14 @@ export function createAuthorBrowserSession(options:{
         // A same binding without a frame is still retained by Core. Do not
         // dispose it while mounting the new native windows for that binding.
         if(sameBinding(binding,attachment.binding))binding=undefined;
-        revoke();binding=attachment.binding;captured=attachment.snapshot;presetLibrary=attachment.presetLibrary;
+        clearDiagnostics();revoke();binding=attachment.binding;captured=attachment.snapshot;presetLibrary=attachment.presetLibrary;
         characterLibrary=attachment.characterLibrary;
         const expectedOwner={};owner=expectedOwner;currentSnapshotScope=crypto.randomUUID();
         buttonProgram=attachment.program;
         const target=binding,host=createHost(expectedOwner,target,attachment.program),controllers:AuthorNativeHelperFrameControllerV1[]=[];
+        const scene=attachment.authorScene?await options.scene?.(attachment.authorScene):undefined;
+        if(!current()||owner!==expectedOwner){if(scene)options.releaseScene?.(scene);return;}
+        sceneLease=scene;
         notify({kind:'starting'});preparation({kind:'starting'});
         try{for(const address of attachment.program.realms){
             if(!attachment.program.scripts.some(script=>script.enabled&&script.realmId===address.realmId))continue;
@@ -873,6 +892,8 @@ export function createAuthorBrowserSession(options:{
             const controller=(options.createFrame??createAuthorNativeHelperFrame)(options.container,attachment.program,address,
                 {snapshot:realmSnapshot(captured,address.realmId),readScope:currentSnapshotScope},host,{
                     parentOrigin:attachment.parentOrigins[address.groupId]!,resource:row.resource,
+                    scene:address.groupId==='author-helper'?scene:undefined,
+                    reportExtensionFailure,
                     eventRoute:eventRouter,attachment:target,
                     documentLayout:options.documentLayout,libraries:options.nativeLibraries,
                     presetLibrary,characterLibrary,
@@ -1083,6 +1104,6 @@ export function createAuthorBrowserSession(options:{
             notify({...lastStatus,code:warning});await refresh();
         },
         hasFrame,
-        dispose(){if(!active)return;active=false;revoke();if(!options.eventRouter)eventRouter.dispose();},
+        dispose(){if(!active)return;active=false;clearDiagnostics();revoke();if(!options.eventRouter)eventRouter.dispose();},
     };
 }

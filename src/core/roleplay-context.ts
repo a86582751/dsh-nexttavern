@@ -165,12 +165,15 @@ export function surfaceEvents(session: ContextSession) {
 // process. Bound memoization without changing rendered bytes on eviction.
 export const promptSafeAuthorText = (text: unknown) => String(text).replace(/\{\{(?:user|user_gender|char)\}\}|\{\{|\}\}/g,
   token => token==='{{'?'⟦':token==='}}'?'⟧':token)
-export function createStableRoleplayFence() {
+export function createStableRoleplayFence(options:{interpolate?:boolean}={}) {
   const entries=new Map<string, string>();let size=0
   return (body: string,kind: string)=>{
     const key=sha256(`${kind}\0${body}`),cached=entries.get(key)
     if(cached){entries.delete(key);entries.set(key,cached);return cached}
-    const fenced=fenceCardContent(promptSafeAuthorText(body),kind,{stable:true})
+    // Literal Native replacements already disable interpolation. Preserve
+    // their published tokens instead of escaping them a second time.
+    const text=options.interpolate===false?body:promptSafeAuthorText(body),
+      fenced=fenceCardContent(text,kind,{stable:true})
     entries.set(key,fenced);size+=fenced.length
     while(entries.size>64||size>8_000_000){const oldest=entries.keys().next().value!;size-=entries.get(oldest)!.length;entries.delete(oldest)}
     return fenced

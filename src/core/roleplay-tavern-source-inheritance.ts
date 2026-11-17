@@ -866,6 +866,25 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       return {kind:'refused' as const,code:failure.code,missingEvidence:failure.missingEvidence}
     }
   }
+  function readCommittedParentSessionId(sid:string):string|undefined {
+    if(consumerSource?.prepared.childSessionId===sid)return consumerSource.prepared.parentSessionId
+    const meta=branch.get(`${sid}__meta`)
+    if(!inheritanceObjectV1(meta)||meta.inheritanceState!=='ready'
+      ||!inheritanceObjectV1(meta.sourceInheritance))return
+    const key=tavernSourceReadyKeyV1(sid),budget=sourceReadBudgetV1(),
+      ready=store.readKey(key,budget) as TavernSourceReadyV1,
+      readyRef={key,sha256:budget.refs.get(key)!.sha256}
+    if(ready.childSessionId!==sid
+      ||!inheritanceSameV1(meta.sourceInheritance,{...ready.binding,readyRef}))
+      inheritanceFailV1('SOURCE_INHERITANCE_NOT_READY')
+    // Publication already bound this parent to the closed transaction. Settings
+    // use that historical relationship without reopening its execution scope.
+    const parent=ready.metadata.inheritedFrom??ready.metadata.freshBranchFrom
+    if(typeof parent!=='string'||meta.inheritedFrom!==ready.metadata.inheritedFrom
+      ||meta.freshBranchFrom!==ready.metadata.freshBranchFrom)
+      inheritanceFailV1('SOURCE_INHERITANCE_NOT_READY')
+    return parent
+  }
   function inspectLegacyActual(sid:string) {
     const facts={meta:store.readRow('branch',`${sid}__meta`),pointer:store.readRow('branch',`${sid}__import-active`),
       inventory:store.inventory(sid),records:['prepared','apply','commit','ready','edit-baseline','material-baseline']
@@ -949,7 +968,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
   return {prepareSourceInheritance,readPreparedSourceInheritance,assertOwnedRowFactsCurrent,withOwnedRowFacts,
     readPreparedFrozenSourceRef:sid=>frozenInheritanceRefV1(readPreparedSourceInheritance(sid)),
     readCommittedStaticSourceInheritance:sid=>readStatic(sid,true),
-    readCommittedSourceLineage,
+    readCommittedSourceLineage,readCommittedParentSessionId,
     readFrozenParent:(ref:TavernSourceInheritanceRefV1,subjectSessionId?:string)=>{
       assertNoRowFactsReentry()
       const budget=sourceReadBudgetV1(),p=validatePreparedInheritanceV1(store.readRef(ref,budget)),

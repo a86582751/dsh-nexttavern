@@ -485,6 +485,8 @@ export interface TavernSourceInheritanceOwnerV1 {
   readPreparedFrozenSourceRef(childSessionId:string):TavernSourceFrozenRefV1
   readPreparedSourceInheritance(childSessionId:string):TavernSourcePreparedV1
   readCommittedStaticSourceInheritance(childSessionId:string):TavernSourceStaticTransactionV1
+  /** Historical configuration DATA from the published Source transaction. */
+  readCommittedParentSessionId(childSessionId:string):string|undefined
   readCommittedSourceLineage(childSessionId:string,consume?:(lineage:TavernSourceCommittedLineageV1,
     sourceRows:TavernSourceOwnedRowFactsV1,opening:TavernSourceProgramAbsenceObservationV1|undefined)=>void)
     :TavernSourceCommittedLineageV1

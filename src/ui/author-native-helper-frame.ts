@@ -1,4 +1,6 @@
 import {AUTHOR_NATIVE_MVU_HOOK_EVENTS} from '../core/author-native-mvu-hook-types.js'
+import type {AuthorDomScene} from './author-dom-scene.js'
+import type {RoleplayExtensionFailureV1} from '../core/roleplay-extension-types.js'
 import {READER_NATIVE_RESOURCE_CSP} from '../core/reader-native-parent-realm.js'
 import {createReaderDocumentLayoutRealm,type ReaderDocumentLayoutConfig} from '../core/tavern-author-reader-document-layout.js'
 import {createAuthorNativeMvuApi} from './author-native-mvu-sdk.js'
@@ -41,7 +43,7 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
   createTrialEvents?:typeof createAuthorNativeMvuTrialEvents,
   hookEvents:typeof AUTHOR_NATIVE_MVU_HOOK_EVENTS=AUTHOR_NATIVE_MVU_HOOK_EVENTS):void {
   const realm=window as any,clone=(value:any)=>value===undefined?undefined:structuredClone(value)
-  let snapshot=initial,scope=initialReadScope,explicitScope=initialReadScope,active=true,sequence=0
+  let snapshot=initial,scope=initialReadScope,explicitScope=initialReadScope,active=true,sequence=0,sourceLoaded=false
   let presetLibrary=initialPresetLibrary,pendingLoadedName:string|undefined,presetBarrier=Promise.resolve()
   let characterLibrary=initialCharacterLibrary
   const libraryReads=new Map<string,AuthorNativeLibraryReadV1>()
@@ -492,9 +494,18 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     }
     return formatter(...args)
   }
+  const setChatMessage=(fields:Parameters<ReturnType<typeof createAuthorNativeMessageVariables>['legacySetChatMessage']>[0],
+    messageId:number,options:Parameters<ReturnType<typeof createAuthorNativeMessageVariables>['legacySetChatMessage']>[2]={})=>{
+    const update=messageData().legacySetChatMessage(fields,messageId,options,(text,index)=>(
+      realm.__nextTavernPromptTextKernelV1?.hasMacroSyntax(text)??text.includes('{{'))
+      ?format(text,snapshot.messages[index]?.role==='user'?'user_input':'ai_output','prompt',
+        {depth:snapshot.messages.length-index-1,macrosOnly:true}):text)
+    for(const row of update.rows)reads.set(row,scope)
+    return setChatMessages(update.rows,{refresh:update.refresh})
+  }
   const api:any={getVariables:variables,getAllVariables:()=>Object.assign({},variables({type:'global'}),
-    variables({type:'character'}),variables({type:'script'}),variables()),getChatMessages,setChatMessages,
-    getContext:()=>({...clone(snapshot.context),chat:getChatMessages()}),
+    variables({type:'character'}),variables({type:'script'}),variables()),getChatMessages,setChatMessages,setChatMessage,
+    getContext:()=>({...clone(snapshot.context),chat:getChatMessages(),setChatMessage}),
     getPresetNames:()=>{presetRead('','names');return clone(library().names)},
     getLoadedPresetName:()=>{presetRead(pendingLoadedName??'in_use','loaded')
       return pendingLoadedName??(presetLibrary?library().loaded?.name??'':currentPreset().loadedName)},
@@ -763,7 +774,7 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
       await importModule(url)
     }
     await presetBarrier
-    if(active)send({op:'source-ready'})
+    if(active){sourceLoaded=true;send({op:'source-ready'})}
   }
   const receive=async(data:any)=>{
     if(data.op==='layout-height-ack'){
@@ -996,6 +1007,9 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     void loadSource().catch(error=>send({op:'source-error',code:error instanceof Error?error.message:String(error)}))
   }
   addEventListener('message',connect)
+  addEventListener('error',(event:ErrorEvent)=>{
+    if(active&&sourceLoaded&&event.error)send({op:'diagnostic',code:event.message,line:event.lineno,column:event.colno})
+  })
   addEventListener('pagehide',()=>{generation.dispose();active=false;port?.close();removeEventListener('message',connect)
     layout?.dispose();frameChanges.disconnect()
     for(const write of layoutWrites.values())write.reject(Error('AUTHOR_NATIVE_BINDING_REVOKED'))
@@ -1033,8 +1047,9 @@ export function authorNativeHelperHtml(program:AuthorNativeProgramV1,binding:Aut
 
 export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNativeProgramV1,
   binding:AuthorNativeHelperRealmBindingV1,initial:{snapshot:AuthorNativeHelperSnapshotV1;readScope:string},
-  host:AuthorNativeHelperHostV1,options:AuthorNativeHelperFrameOptionsV1):AuthorNativeHelperFrameControllerV1 {
-  const view=outer.ownerDocument.defaultView!,frame=outer.ownerDocument.createElement('iframe')
+  host:AuthorNativeHelperHostV1,options:AuthorNativeHelperFrameOptionsV1&{scene?:AuthorDomScene;
+    reportExtensionFailure?(failure:RoleplayExtensionFailureV1):void}):AuthorNativeHelperFrameControllerV1 {
+  const view=outer.ownerDocument.defaultView!,frame=options.scene?undefined:outer.ownerDocument.createElement('iframe')
   const channel=crypto.randomUUID(),ports=new view.MessageChannel(),abort=new AbortController()
   let active=true,ready=false,sequence=0,lostAcknowledgement=false
   let resolveStarted!:()=>void,rejectStarted!:(error:Error)=>void,resolveDisposed!:()=>void
@@ -1054,6 +1069,15 @@ export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNa
   }
   const send=(message:object)=>ports.port1.postMessage(message)
   const current=()=>active&&options.current()
+  const reportFailure=(code:string,impact:RoleplayExtensionFailureV1['impact'],location?:{line?:number;column?:number})=>{
+    if(impact==='partial'&&['AUTHOR_GENERATION_CANCELLED','AUTHOR_NATIVE_INVOCATION_ABORTED','ABORTED'].includes(code))return
+    if(code==='AUTHOR_NATIVE_BINDING_REVOKED')impact='story-paused'
+    const scripts=program.scripts.filter(script=>script.realmId===binding.realmId&&script.enabled)
+    const script=scripts.length===1?scripts[0]:undefined
+    options.reportExtensionFailure?.({schemaVersion:1,sessionId:options.attachment?.sessionId??snapshot.basis?.sessionId??'',
+      id:binding.realmId+':'+code,extension:'author-script',code,phase:ready?'callback':'startup',
+      sourceRevision:program.programSha256,impact,sourcePointer:script?.pointer,scriptIdentity:script?.identity,reason:code,...location})
+  }
   ports.port1.onmessage=event=>{
     if(!current())return
     const data=event.data
@@ -1075,7 +1099,7 @@ export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNa
         'createWorldbookEntries','deleteWorldbookEntries','getCurrentCharPrimaryLorebook','getPersonaIds','getPersonaNames',
         'getCurrentPersonaId','getPersona','createPersona','replacePersona','injectPrompts','uninjectPrompts','SillyTavern',
         'nextTavern','Mvu','waitGlobalInitialized','event_types','tavern_events','iframe_events','errorCatched','TavernHelper']})
-    else if(data.op==='parent-error'){rejectStarted(Error(data.code));options.failed?.(data.code)}
+    else if(data.op==='parent-error'){reportFailure(data.code,'story-paused');rejectStarted(Error(data.code));options.failed?.(data.code)}
     else if(data.op==='bridge-ready'){
       eventEndpoint=options.eventRoute?.register((event,args,requested,operationId)=>new Promise<readonly unknown[]>((resolve,reject)=>{
         const id=++sequence;controls.set(id,{resolve,reject});send({op:'event',id,event,args,requested,operationId})
@@ -1095,10 +1119,10 @@ export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNa
     }
     else if(data.op==='source-ready'){ready=true;resolveStarted();send({op:'snapshot',snapshot,readScope})
       send({op:'layout-config',revision:layoutRevision,config:layoutConfig()})}
-    else if(data.op==='source-error'){rejectStarted(Error(data.code));options.failed?.(data.code)}
+    else if(data.op==='source-error'){reportFailure(data.code,'story-paused');rejectStarted(Error(data.code));options.failed?.(data.code)}
     else if(data.op==='layout-height'){
       if(data.revision!==layoutRevision){send({op:'layout-height-ack',id:data.id,error:'AUTHOR_NATIVE_LAYOUT_SUPERSEDED'});return}
-      frame.style.height=`${Math.ceil(data.height)}px`
+      if(frame)frame.style.height=`${Math.ceil(data.height)}px`
       view.requestAnimationFrame(()=>{if(current())send({op:'layout-height-ack',id:data.id})})
     }else if(data.op==='control-reply'){
       const entry=controls.get(data.id);controls.delete(data.id)
@@ -1140,18 +1164,19 @@ export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNa
         if(current())send({op:'reply',id:data.id,error:error instanceof Error?error.message:String(error)})
         else finishWrite(data.id,true)
       })
-    }else if(data.op==='diagnostic')options.failed?.(data.code)
+    }else if(data.op==='diagnostic')reportFailure(data.code,'partial',{line:data.line,column:data.column})
   }
   ports.port1.start()
-  frame.setAttribute('credentialless','');frame.sandbox.add('allow-scripts','allow-same-origin')
+  if(frame){frame.setAttribute('credentialless','');frame.sandbox.add('allow-scripts','allow-same-origin')}
   const unsubscribeLayout=options.documentLayout?.subscribe(explicit=>{
     layoutRevision++;if(current())send({op:'layout-config',revision:layoutRevision,config:layoutConfig(),explicit})
   })
-  frame.title='作者原生助手';frame.style.cssText='display:block;width:100%;height:1px;border:0'
+  if(frame){frame.title='作者原生助手';frame.style.cssText='display:block;width:100%;height:1px;border:0'}
   const parent=new URL(options.parentOrigin);parent.hash=new URLSearchParams({channel}).toString()
-  frame.addEventListener('load',()=>{if(current())frame.contentWindow!.postMessage({op:'connect-parent',channel},
+  frame?.addEventListener('load',()=>{if(current())frame.contentWindow!.postMessage({op:'connect-parent',channel},
     parent.origin,[ports.port2])},{once:true})
-  frame.src=parent.href;outer.appendChild(frame)
+  const sceneChild=options.scene?.mount({id:'helper:'+binding.realmId,kind:'helper',channel,port:ports.port2})
+  if(frame){frame.src=parent.href;outer.appendChild(frame)}
   const control=async(op:string,payload:object,signal?:AbortSignal):Promise<any>=>{
     await started
     if(!current()||signal?.aborted)throw Error('AUTHOR_NATIVE_BINDING_REVOKED')
@@ -1181,7 +1206,7 @@ export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNa
     retireFilterCallbacks:ids=>{if(current())send({op:'retire-filters',ids})},
     async invokeMvuHook(invocation,signal){await control('flush-preset',{},signal)
       return control('invoke-mvu-hook',{invocation},signal) as Promise<AuthorNativeHelperMvuHookResultV1>},
-    dispose(){if(!active)return;active=false;eventEndpoint?.dispose();abort.abort();unsubscribeLayout?.();ports.port1.close();ports.port2.close();frame.remove()
+    dispose(){if(!active)return;active=false;eventEndpoint?.dispose();abort.abort();unsubscribeLayout?.();ports.port1.close();ports.port2.close();sceneChild?.dispose();frame?.remove()
       rejectStarted(Error('AUTHOR_NATIVE_BINDING_REVOKED'))
       for(const entry of controls.values())entry.reject(Error('AUTHOR_NATIVE_BINDING_REVOKED'))
       controls.clear();lostAcknowledgement ||= writes.size>0

@@ -16,7 +16,7 @@ import type {TavernTemplateFrozenSnapshotV1,TavernTemplateScopeBindingV1,TavernT
 import type {TavernLoreTemplateProducerV1,TavernLoreSelectedTemplateRequestV1} from './tavern-lore-evaluator-types.mjs'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernInjectionDefinitionV1} from './roleplay-tavern-injections.js'
-import type {TavernEjsResource} from './tavern-template-ejs-host-types.mjs'
+import type {TavernEjsResource,TavernEjsHostDiagnostic} from './tavern-template-ejs-host-types.mjs'
 import type {TavernEjsReplayRecord} from './tavern-template-ejs-replay.mjs'
 import type {TavernEjsRuntimeIdentity} from './tavern-template-ejs-runtime-types.mjs'
 import {hasTavernPromptMacroSyntaxV1} from './tavern-prompt-transform-execution.mjs'
@@ -42,7 +42,8 @@ export const TAVERN_NATIVE_RENDER_POLICY_V1=Object.freeze({schemaVersion:1,
   output:'complete-bounded-guest-result-before-consumption; literal-output-markers-inert',
   generateLoaders:'formal-buckets; selected-subset-depth; condition-previous-context; macro-worldinfo-regex-EJS; native-transport-index',
   scope:'explicit-frozen-owner-bindings; unavailable-default-refuses-on-read',
-  cache:'invocation-output-never-replaces-another-entry-standalone-receipt'})
+  cache:'invocation-output-never-replaces-another-entry-standalone-receipt',
+  failedResource:'retain-refused-execution; omit-its-output-and-effects; keep-independent-resources'})
 export const TAVERN_NATIVE_RENDER_POLICY_SHA256=recordSha256(TAVERN_NATIVE_RENDER_POLICY_V1)
 type SnapshotBasis=Pick<TavernTemplateFrozenSnapshotV1,'sessionId'|'branchId'|'revision'|'turnId'|'attemptId'
   |'packageSha256'|'sourceSnapshotSha256'|'stateSnapshotSha256'|'clockEpochMs'|'randomSeed'>
@@ -51,6 +52,7 @@ export interface TavernPromptRenderResultV1 {
   readonly renderedTextSha256:string
   readonly activationProposals:readonly TavernTemplateActivationProposalV1[]
   readonly readDependencies:readonly TavernTemplateReadV1[]
+  readonly failure?:{readonly diagnostic:TavernEjsHostDiagnostic;readonly executionIndex:number}
 }
 export interface TavernPromptEjsExecutionV1 {
   readonly snapshot:TavernTemplateFrozenSnapshotV1
@@ -68,6 +70,7 @@ interface Dependencies {
   readonly evaluationComposition?:TavernLoreEvaluationCompositionV1
   readonly macros:TavernPromptMacroSnapshotV1
   readonly rules:readonly TavernPromptRegexRuleV1[]
+  readonly literalText?:boolean
   readonly scriptOrder?:readonly ('global'|'preset'|'scoped')[]
   readonly scopes:readonly TavernTemplateScopeBindingV1[]
   readonly basis:SnapshotBasis
@@ -101,6 +104,7 @@ function freeze<T>(value:T):T {
   return value
 }
 type RenderExecution={
+  readonly skipped?:true
   readonly ordinaryField?:{readonly phaseId:string;readonly entryId:string;readonly field:string}
   readonly macroProjectionSha256?:string
   readonly conditionResult?:{readonly passed:boolean;readonly outputSha256:string}
@@ -125,7 +129,9 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
     ownerCheckpoint()
     const result=await applyTavernPromptTransformsV1({schemaVersion:1,encoding:'owned-tavern-prompt-transform-v1',
       authority:'consumer-data-only',sourceSnapshotSha256:source.sourceSha256,regexDisabled:false,
-      macros,rules,entries:rows,...deps.scriptOrder?{scriptOrder:deps.scriptOrder}:{}},{assertCurrent:checkpoint,signal})
+      macros,rules:deps.literalText?[]:rules,
+      entries:deps.literalText?rows.map(entry=>({...entry,pipeline:'regex-only' as const})):rows,
+      ...deps.scriptOrder?{scriptOrder:deps.scriptOrder}:{}},{assertCurrent:checkpoint,signal})
     ownerCheckpoint()
     if(result.kind!=='transformed')fail(result.diagnostics[0]?.code??'INPUT_MATERIAL_PROMPT_TRANSFORM_REFUSED')
     const {entries:fullEntries,...metadata}=result.output
@@ -161,7 +167,7 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
       readonly phaseId:string;readonly entryId:string;readonly field:string};readonly generateLoader?:{
       readonly phase:TavernGenerateLoaderPhaseV1;readonly callId:string;readonly entryId:string;readonly step:'condition'|'body'}})
     :Promise<TavernPromptRenderResultV1>=>{
-    if(!resource.text.includes('<%')) {
+    if(deps.literalText||!resource.text.includes('<%')) {
       const literal={renderedText:resource.text,renderedTextSha256:resource.contentSha256,
         activationProposals:[],readDependencies:[],nestedRenders:[]}
       const {text:_text,...resourceRef}=resource
@@ -174,7 +180,12 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
     const record=await deps.ejs.execute({snapshot:actualSnapshot,resource,macros,definition:definition(),phase,
       ...context?{context}:{}})
     ownerCheckpoint()
-    if(record.creation.kind!=='rendered')fail(record.creation.diagnostic.code)
+    if(record.creation.kind!=='rendered') {
+      const executionIndex=executions.length
+      executions.push(freeze({kind:'protected-ejs-runtime',record,...evidence,skipped:true}))
+      return {renderedText:'',renderedTextSha256:sha256(''),activationProposals:[],readDependencies:[],
+        failure:{diagnostic:record.creation.diagnostic,executionIndex}}
+    }
     const output=record.creation.output,renderedTextSha256=sha256(output.renderedText)
     executions.push(freeze({kind:'protected-ejs-runtime',record,...evidence,
       ...evidence.ordinaryField?.field==='condition'?{conditionResult:{
@@ -279,11 +290,14 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
           activationProposals.push(tavernSourceTemplateActivationV1(sourceCatalog,proposal))
         }
       }
+      const failedField=Symbol('unavailable ordinary EJS field')
+      let unavailableExecutionIndex=0
       const field=async(entry:TavernSourceRenderCatalogEntryV1,name:string,pointer:string,text:string)
         :Promise<TavernLoreOrdinaryPreparedTextV1>=>{
         const executionIndex=executions.length,result=await render(pointer,text,{entryId:entry.entry.entryId,
           macros:input.baseMacros,phase:'ordinary-preprocess',resourceId:`${input.phaseId}:${entry.entry.entryId}:${name}`,
           ordinaryField:{phaseId:input.phaseId,entryId:entry.entry.entryId,field:name}})
+        if(result.failure){unavailableExecutionIndex=result.failure.executionIndex;throw failedField}
         accept(result.activationProposals)
         return {text:result.renderedText,textSha256:result.renderedTextSha256,executionIndex}
       }
@@ -305,6 +319,11 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
               ()=>deps.definitionFor(row.resolved.pointer,entry.entryId),'ordinary-condition',undefined,
               {ordinaryField:{phaseId:input.phaseId,entryId:entry.entryId,field:'condition'}})
           condition={executionIndex};accept(output.activationProposals)
+          if(output.failure){
+            const change:TavernLoreOrdinaryFormalChangeV1={entryId:entry.entryId,ordinal:entry.ordinal,
+              admission:'extension-failed',unavailable:{executionIndex}}
+            changes.push(change);ordinaryChanges.set(entry.entryId,change);continue
+          }
           if(output.renderedText==='false'){
             const change:TavernLoreOrdinaryFormalChangeV1={entryId:entry.entryId,ordinal:entry.ordinal,
               condition,admission:'condition-excluded'}
@@ -316,17 +335,24 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
           program={bodyOffset:formal.bodyOffset,contentSha256:early.inputSha256,
             private:enabled&&!preprocess&&has('@@private')}
         let preprocessed:TavernLoreOrdinaryFormalChangeV1['preprocessed']
-        if(preprocess){
-          const macros=currentMacros(input.baseMacros),projection=macros===sourceMacros?early:
-            (await projectTavernSourceRenderEntriesV1({catalog:sourceCatalog,entries:[row],macros,transform})).get(entry.entryId)!
-          assertTavernPromptProjectionReadyV1(projection)
-          const body=await field(row,'body',row.resolved.pointer,projection.outputText),
-            primaryKeys:TavernLoreOrdinaryPreparedTextV1[]=[],secondaryKeys:TavernLoreOrdinaryPreparedTextV1[]=[]
-          for(const [key,text] of semantic.primaryKeys.entries())
-            primaryKeys.push(await field(row,`primary-key:${key}`,`${entry.sourcePointer}/@primaryKeys/${key}`,text))
-          for(const [key,text] of semantic.secondaryKeys.entries())
-            secondaryKeys.push(await field(row,`secondary-key:${key}`,`${entry.sourcePointer}/@secondaryKeys/${key}`,text))
-          preprocessed={body,primaryKeys,secondaryKeys}
+        try {
+          if(preprocess){
+            const macros=currentMacros(input.baseMacros),projection=macros===sourceMacros?early:
+              (await projectTavernSourceRenderEntriesV1({catalog:sourceCatalog,entries:[row],macros,transform})).get(entry.entryId)!
+            assertTavernPromptProjectionReadyV1(projection)
+            const body=await field(row,'body',row.resolved.pointer,projection.outputText),
+              primaryKeys:TavernLoreOrdinaryPreparedTextV1[]=[],secondaryKeys:TavernLoreOrdinaryPreparedTextV1[]=[]
+            for(const [key,text] of semantic.primaryKeys.entries())
+              primaryKeys.push(await field(row,`primary-key:${key}`,`${entry.sourcePointer}/@primaryKeys/${key}`,text))
+            for(const [key,text] of semantic.secondaryKeys.entries())
+              secondaryKeys.push(await field(row,`secondary-key:${key}`,`${entry.sourcePointer}/@secondaryKeys/${key}`,text))
+            preprocessed={body,primaryKeys,secondaryKeys}
+          }
+        }catch(error){
+          if(error!==failedField)throw error
+          const change:TavernLoreOrdinaryFormalChangeV1={entryId:entry.entryId,ordinal:entry.ordinal,
+            admission:'extension-failed',unavailable:{executionIndex:unavailableExecutionIndex}}
+          changes.push(change);ordinaryChanges.set(entry.entryId,change);continue
         }
         const change:TavernLoreOrdinaryFormalChangeV1={entryId:entry.entryId,ordinal:entry.ordinal,
           ...condition?{condition}:{},...has('@@dont_activate')?{admission:'dont-activate' as const}:
@@ -369,6 +395,11 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
         entries.push(Object.freeze({entryId:row.entry.entryId,ordinal:row.entry.ordinal,
           sourcePointer:row.entry.sourcePointer,rawEntrySha256:row.entry.rawEntrySha256,
           contentPointer:row.resolved.pointer,contentSha256:row.resolved.contentSha256}))
+        if(change.unavailable){
+          const index=change.unavailable.executionIndex,execution=executions[index]!
+          if(execution.kind==='protected-ejs-runtime'&&execution.record.creation.kind==='refused')
+            append(index,Object.freeze({kind:'unavailable',diagnostic:execution.record.creation.diagnostic}))
+        }
         if(change.condition){
           const index=change.condition.executionIndex
           append(index,Object.freeze({kind:'condition',...executions[index]!.conditionResult!}))
@@ -403,7 +434,7 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
           contentSha256:sha256(text),text},output=await executeResource(resource,snapshot,macros,definition,
             call.phase,call.previousContext,{generateLoader:evidence('condition')})
         if(output.activationProposals.length)fail('INPUT_MATERIAL_GENERATE_LOADER_ACTIVATION_UNSUPPORTED')
-        if(output.renderedText==='false')return {renderedText:'',context:call.previousContext}
+        if(output.failure||output.renderedText==='false')return {renderedText:'',context:call.previousContext}
       }
       const projection=(await transform([row(`generate-loader-${executions.length}`,pointer,entry.formal.body,
         'macro-only','source',true,entryId)],currentMacros(baseMacros),[])).entries[0]!
@@ -507,6 +538,7 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
       return projected.map((item,index)=>changed[index]!.text===item.text?item:{...item,
         text:changed[index]!.text,outputSha256:sha256(changed[index]!.text)})
     },audit:()=>freeze({schemaVersion:1,encoding:'native-tavern-render-chain-audit-v1',authority:'consumer-data-only',
+      ...deps.literalText?{execution:'literal'}:{},
       policySha256:TAVERN_NATIVE_RENDER_POLICY_SHA256,snapshot,scopeSets:[...scopeSets],
       transforms:[...transforms],executions:[...executions]}),
     assertCurrent:ownerCheckpoint}

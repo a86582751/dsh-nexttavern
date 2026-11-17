@@ -1,6 +1,7 @@
 import {READER_NATIVE_RESOURCE_CSP} from '../core/reader-native-parent-realm.js'
 import type {ReaderNativeBeautyExecutionV1,ReaderNativeBeautyLayoutV1} from '../core/reader-native-beauty-types.js'
 import type {ReaderRegexDocumentRenderV1} from '../core/reader-regex-document-types.mjs'
+import type {AuthorDomScene,AuthorDomSceneChild} from './author-dom-scene.js'
 
 /** The published Native beauty API is a function body receiving root/fill.
  * It is separate from TavernHelper module descriptors and has no Core port. */
@@ -113,7 +114,7 @@ export function readerNativeBeautyBootstrap(channel:string):void {
       if(data.op==='render'){
         actionHeights=data.actionHeights;documentHeights=data.documentHeights;render(data.render)
         if(!started){started=true
-          try{const result=new Function('root','fill',data.source.javascript).call(window,root,fill)
+          try{const result=data.source?new Function('root','fill',data.source.javascript).call(window,root,fill):undefined
             if(typeof result==='function')cleanup=result
           }catch(error){send({op:'source-error',code:error instanceof Error?error.message:String(error)})}
           schedule()
@@ -130,20 +131,24 @@ const html=(channel:string)=>'<!doctype html><meta charset="utf-8"><meta http-eq
   +READER_NATIVE_RESOURCE_CSP+'"><meta name="referrer" content="no-referrer"><body><script>('
   +readerNativeBeautyBootstrap.toString()+')('+JSON.stringify(channel)+')</script></body>'
 
-export function createReaderNativeBeautyFrame(container:HTMLElement,execution:ReaderNativeBeautyExecutionV1,options:{
+export function createReaderNativeBeautyFrame(container:HTMLElement,execution:ReaderNativeBeautyExecutionV1|undefined,options:{
   current():boolean;fill(text:string):void;layout(value:ReaderNativeBeautyLayoutV1):void;failed(code:string):void
+  scene?:AuthorDomScene
 }) {
   const view=container.ownerDocument.defaultView!
   let active=true,frame:HTMLIFrameElement|undefined,port:MessagePort|undefined,ready=false,runKey=''
   let startupTimer:number|undefined
+  let sceneChild:AuthorDomSceneChild|undefined
   let latest:ReaderRegexDocumentRenderV1|undefined,actionHeights:Readonly<Record<string,number>>={},documentHeights:Readonly<Record<string,number>>={}
-  const publish=()=>{if(ready&&latest)port!.postMessage({op:'render',render:latest,source:execution.source,actionHeights,documentHeights})}
-  const retire=()=>{view.clearTimeout(startupTimer);ready=false;port?.close();port=undefined;frame?.remove();frame=undefined}
+  const publish=()=>{if(ready&&latest)port!.postMessage({op:'render',render:latest,source:execution?.source,actionHeights,documentHeights})}
+  const retire=()=>{view.clearTimeout(startupTimer);ready=false;port?.close();port=undefined;sceneChild?.dispose();sceneChild=undefined;frame?.remove();frame=undefined}
   function mount():void {
     retire();const channel=crypto.randomUUID(),ports=new view.MessageChannel()
-    const child=container.ownerDocument.createElement('iframe');frame=child;port=ports.port1
+    const child=options.scene?undefined:container.ownerDocument.createElement('iframe');frame=child;port=ports.port1
+    if(child){
     child.title='作者排版美化';child.style.cssText='display:block;width:100%;height:1px;border:0'
     child.setAttribute('credentialless','');child.sandbox.add('allow-scripts','allow-same-origin')
+    }
     const ownPort=ports.port1,current=()=>active&&options.current()&&port===ownPort&&frame===child
     startupTimer=view.setTimeout(()=>{if(current())options.failed('READER_BEAUTY_STARTUP_UNAVAILABLE')},15000)
     ownPort.onmessage=event=>{
@@ -154,18 +159,25 @@ export function createReaderNativeBeautyFrame(container:HTMLElement,execution:Re
       else if(data.op==='layout'){
         if(data.value.revision!==latest?.renderRevision)return
         view.clearTimeout(startupTimer)
-        child.style.height=Math.max(1,data.value.height)+'px';options.layout(data.value)
+        if(child)child.style.height=Math.max(1,data.value.height)+'px';options.layout(data.value)
+        sceneChild?.box({top:0,left:0,width:options.scene!.frame.getBoundingClientRect().width,height:Math.max(1,data.value.height)})
       }else if(data.op==='fill')options.fill(data.text)
       else if(data.op==='source-error'||data.op==='parent-error')options.failed(data.code)
     };ownPort.start()
-    const parent=new URL(execution.parentOrigin);parent.hash=new URLSearchParams({channel}).toString()
-    child.addEventListener('load',()=>{if(current())child.contentWindow!.postMessage({op:'connect-parent',channel},parent.origin,[ports.port2])},{once:true})
-    child.src=parent.href;container.append(child)
+    if(options.scene){
+      sceneChild=options.scene.mount({id:'reader-background',kind:'background',channel,port:ports.port2,
+        url:execution?.parentOrigin??options.scene.parentOrigin})
+      sceneChild.box({top:0,left:0,width:options.scene.frame.getBoundingClientRect().width,height:1})
+      return
+    }
+    const parent=new URL(execution!.parentOrigin);parent.hash=new URLSearchParams({channel}).toString()
+    child!.addEventListener('load',()=>{if(current())child!.contentWindow!.postMessage({op:'connect-parent',channel},parent.origin,[ports.port2])},{once:true})
+    child!.src=parent.href;container.append(child!)
   }
   return {
     render(value:ReaderRegexDocumentRenderV1,key:string){
       latest=value
-      if(!frame||runKey!==key){runKey=key;mount()}else publish()
+      if(!port||runKey!==key){runKey=key;mount()}else publish()
     },
     slots(actions:Readonly<Record<string,number>>,documents:Readonly<Record<string,number>>){
       if(actionHeights===actions&&documentHeights===documents)return

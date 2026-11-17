@@ -64,10 +64,10 @@ export function produceRoleplayTavernLayoutV1(input) {
         || recordSha256(original.rows) !== recordSha256(residual.rows)
         || nativeInputSha256(native.finalAssembly) !== native.assemblySha256)
         fail('INPUT_MATERIAL_LAYOUT_SOURCE_CHANGED');
-    const fence = createStableRoleplayFence();
+    const originalFence = createStableRoleplayFence(), fence = createStableRoleplayFence({ interpolate: false });
     const originalTexts = {
-        'roleplay:cards': original.cardsText.trim() ? fence(original.cardsText, 'card') : '',
-        'roleplay:rules': original.rulesText ? fence(original.rulesText, 'rules') : '',
+        'roleplay:cards': original.cardsText.trim() ? originalFence(original.cardsText, 'card') : '',
+        'roleplay:rules': original.rulesText ? originalFence(original.rulesText, 'rules') : '',
     };
     const requiredSections = [];
     const sectionHashes = new Map(), positions = [];

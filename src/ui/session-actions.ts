@@ -770,8 +770,16 @@ export function createRoleplayActions({sessionsService,
     return childId
   }
 
-  const openNativeBranch = async (member: {sessionId?: string} | null | undefined) => {
+  const openNativeBranch = async (member: {sessionId?: string;draftText?:string} | null | undefined) => {
     if (!member?.sessionId) return
+    if(member.draftText) {
+      try {
+        const key=`dsh.conversation.${member.sessionId}`,saved=JSON.parse(localStorage.getItem(key)??'{}')
+        if(!saved.draft)localStorage.setItem(key,JSON.stringify({...saved,draft:member.draftText}))
+      } catch {
+        toast('草稿暂时未能填入。可返回原世界线的故障记录再次恢复。')
+      }
+    }
     await openSessionPreservingView(member.sessionId)
   }
 

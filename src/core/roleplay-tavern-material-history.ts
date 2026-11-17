@@ -12,6 +12,7 @@ import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import type {TavernSourceMaterialPublicationV1} from './roleplay-tavern-source-inheritance-types.js'
 import type {CommunityExecutionRecord} from './community-preset-execution.js'
 import type {TavernNativeFinalLoreTextV1} from './roleplay-tavern-layout.js'
+import type {TavernPublishedAuthorProseV1} from './roleplay-tavern-prompt-types.js'
 import {roleplayOpeningMaterialKeysV1} from './roleplay-opening-material.js'
 import type {RoleplayOpeningMaterialRecordV1,RoleplayOpeningMaterialDataRefV1} from './roleplay-opening-material.js'
 import {programOpeningInputKeyV1,validateProgramOpeningSeedV1,
@@ -444,7 +445,7 @@ export function collectRoleplayTavernPublishedAuthorMaterialV1(
   const transform=publication.plan.payload.nativeTransform as Pick<NativeRequestMaterialTransformV1,
     'sections'|'insertions'|'anchoredInsertions'>|undefined,
     prompt=publication.plan.payload.promptPlan as {finalLore?:readonly TavernNativeFinalLoreTextV1[];
-      community?:CommunityExecutionRecord}|undefined,
+      community?:CommunityExecutionRecord;cardProse?:TavernPublishedAuthorProseV1}|undefined,
     audit=publication.snapshot.payload.injectionAudit as {consumers?:readonly {
       consumer:'scan'|'chat';results:readonly {registrationSha256:string;accepted:boolean}[]
     }[]}|undefined
@@ -466,7 +467,7 @@ export function collectRoleplayTavernPublishedAuthorMaterialV1(
   for(const row of [...transform.insertions,...(transform.anchoredInsertions??[])]) {
     if(authoredRefs.has(row.contributionRef))authorGroups.push({id:row.contributionRef,text:row.renderedText})
   }
-  return {authorGroups,finalLore:prompt.finalLore}
+  return {authorGroups,cardProse:prompt.cardProse,finalLore:prompt.finalLore}
 }
 
 /** Native-only text projections belong to the common publication history, but

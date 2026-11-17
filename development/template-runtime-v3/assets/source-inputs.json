@@ -131,7 +131,7 @@
       {
         "artifact": "tavern-template-ejs-host-guest-typescript",
         "path": "src/core/tavern-template-ejs-host-guest.mts",
-        "sha256": "bf73c39fde3f1bd82642a400429fccfc3ad1055f4ebca03767d8d9e0314e0ee9"
+        "sha256": "25c6d0e95a4c1cceb0da6f74abc95ac1ac9bfe9665f8a76e2dce07c233016c14"
       },
       {
         "artifact": "tavern-template-ejs-host-typescript",

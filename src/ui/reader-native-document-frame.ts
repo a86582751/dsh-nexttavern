@@ -2,6 +2,8 @@ import {AUTHOR_NATIVE_MVU_HOOK_EVENTS} from '../core/author-native-mvu-hook-type
 import {createAuthorReaderSurface} from '../core/tavern-author-reader-surface.js'
 import {createReaderDocumentLayoutRealm,type ReaderDocumentLayoutConfig} from '../core/tavern-author-reader-document-layout.js'
 import {READER_NATIVE_RESOURCE_CSP} from '../core/reader-native-parent-realm.js'
+import type {AuthorDomScene,AuthorDomSceneChild} from './author-dom-scene.js'
+import type {RoleplayExtensionFailureV1} from '../core/roleplay-extension-types.js'
 import {createAuthorNativeMvuApi} from './author-native-mvu-sdk.js'
 import {createAuthorNativeMvuTrialEvents,runAuthorNativeMvuTrial} from './author-native-mvu-trial.js'
 import {createAuthorNativeMvuHookGraph} from '../core/author-native-mvu-hook-graph.js'
@@ -25,7 +27,7 @@ import {createAuthorNativeSessionEventRouter} from './author-native-session-even
 export type {ReaderNativeDocumentFrameControllerV1} from '../core/reader-native-document-types.js'
 export type ReaderNativeFrameFactoryV1=(outer:HTMLIFrameElement,
   binding:Omit<ReaderRegexDocumentBindingV1,'principal'>,program:{readonly programSha256:string},
-  options:ReaderNativeFrameOptionsV1)=>ReaderNativeDocumentFrameControllerV1
+  options:ReaderNativeFrameOptionsV1&{reportExtensionFailure?(failure:RoleplayExtensionFailureV1):void})=>ReaderNativeDocumentFrameControllerV1
 
 /** Runs only inside an opaque author frame. It exposes captured reads and
  * typed asynchronous Native writers, never application DOM or credentials. */
@@ -42,7 +44,15 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
   createTrialEvents?:typeof createAuthorNativeMvuTrialEvents,createHookGraph?:typeof createAuthorNativeMvuHookGraph,
   hookEvents:typeof AUTHOR_NATIVE_MVU_HOOK_EVENTS=AUTHOR_NATIVE_MVU_HOOK_EVENTS):void {
   const realm=window as any
-  let snapshot:any=initial,active=true,sequence=0
+  const actualFrame=window.frameElement as HTMLIFrameElement
+  let ownFrameHeight=actualFrame?.style.height,authorPaused=false
+  const frameObserver=actualFrame?new MutationObserver(records=>{
+    if(!records.some(record=>record.attributeName==='height')&&actualFrame.style.height===ownFrameHeight)return
+    ownFrameHeight=actualFrame.style.height;authorPaused=true;layout?.pause()
+    send({op:'author-height',height:actualFrame.getBoundingClientRect().height})
+  }):undefined
+  frameObserver?.observe(actualFrame,{attributes:true,attributeFilter:['style','height']})
+  let snapshot:any=initial,active=true,sequence=0,documentReady=false
   let presetLibrary=initialPresetLibrary,characterLibrary=initialCharacterLibrary
   const libraryReads=new Map<string,AuthorNativeLibraryReadV1>(),filters=new Map<string,Function>()
   const presetRead=(selector:string,operation:Extract<AuthorNativeLibraryReadV1,{kind:'preset'}>['operation'])=>{
@@ -266,6 +276,15 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
     if(reply.snapshot){snapshot=reply.snapshot;snapshotReadScope=reply.readScope;updateAvatarStyles()}
     else {active=false;events.dispose()}
   }
+  realm.setChatMessage=(fields:Parameters<ReturnType<typeof createAuthorNativeMessageVariables>['legacySetChatMessage']>[0],
+    messageId:number,options:Parameters<ReturnType<typeof createAuthorNativeMessageVariables>['legacySetChatMessage']>[2]={})=>{
+    const update=messageData().legacySetChatMessage(fields,messageId,options,(text,index)=>(
+      realm.__nextTavernPromptTextKernelV1?.hasMacroSyntax(text)??text.includes('{{'))
+      ?realm.formatAsTavernRegexedString(text,snapshot.messages[index]?.role==='user'?'user_input':'ai_output','prompt',
+        {depth:snapshot.messages.length-index-1,macrosOnly:true}):text)
+    for(const row of update.rows)readScopes.set(row,snapshotReadScope)
+    return realm.setChatMessages(update.rows,{refresh:update.refresh})
+  }
   realm.triggerSlash=async(command:string)=>{
     if(createCommands) {
       const language=createCommands(),operationId=crypto.randomUUID(),pipeline=language.parse(command),
@@ -331,11 +350,13 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
       code:error instanceof Error?error.message:String(error)}))
   }
   realm.errorCatched=(fn:Function)=>(...args:any[])=>fn(...args)
-  realm.SillyTavern={getContext:()=>({...clone(snapshot.context),chat:realm.getChatMessages(),Mvu:realm.Mvu})}
+  realm.SillyTavern={getContext:()=>({...clone(snapshot.context),chat:realm.getChatMessages(),Mvu:realm.Mvu,
+    setChatMessage:realm.setChatMessage})}
   const receive=(event:MessageEvent)=>{
     if(!active)return
     const data=event.data
     if(data.op==='layout-config'){
+      if(data.explicit)authorPaused=false
       layoutRevision=data.revision;layoutConfig=data.payload;layout?.update(layoutConfig,data.explicit)
     }else if(data.op==='layout-pause')layout?.pause()
     else if(data.op==='layout-height-ack'){
@@ -386,8 +407,12 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
     outgoing.length=0
   }
   addEventListener('message',connect)
+  addEventListener('error',(event:ErrorEvent)=>{
+    if(active&&event.error)send({op:documentReady?'diagnostic':'document-error',code:event.message,line:event.lineno,column:event.colno})
+  })
   addEventListener('pagehide',()=>{
     generation.dispose();active=false;events.dispose();removeEventListener('message',connect)
+    frameObserver?.disconnect()
     if(port){port.onmessage=null;port.close()}
     outgoing.length=0
     layout?.dispose()
@@ -398,10 +423,12 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
   },{once:true})
   addEventListener('DOMContentLoaded',()=>{
     layout=createLayout(document,layoutConfig,height=>new Promise<void>((resolve,reject)=>{
+      ownFrameHeight=Math.ceil(height)+'px';actualFrame.style.height=ownFrameHeight
       const id=++sequence;layoutWrites.set(id,{resolve,reject})
       send({op:'layout-height',id,revision:layoutRevision,payload:{height}})
     }))
-    send({op:'ready'})
+    if(authorPaused)layout.pause()
+    documentReady=true;send({op:'ready'})
   },{once:true})
 }
 
@@ -434,14 +461,15 @@ export function readerNativeDocumentHtml(plan:ReaderNativeDocumentPlanV1,snapsho
 export function createReaderNativeDocumentFrameFactory(documents:readonly ReaderNativeDocumentPlanV1[],
   libraries:readonly ReaderNativeLibraryV1[]=[],settings:{parentOrigins:ReaderNativeDocumentExecutionV1['parentOrigins'];
     receiptObservationDeadlineMs?:number;viewportHeightPx?:number;
-    commandUi?:import('../core/author-native-commands.js').AuthorNativeCommandUiV1}):ReaderNativeFrameFactoryV1 {
+    commandUi?:import('../core/author-native-commands.js').AuthorNativeCommandUiV1;scene?:Promise<AuthorDomScene>}):ReaderNativeFrameFactoryV1 {
   return (outer,binding,program,options)=>{
     interface FrameRow {
-      frame:HTMLIFrameElement;channel:string;ready:boolean;readScope:string;readRevision:number;snapshot:ReaderRegexDocumentSnapshotV1;
+      frame:HTMLElement;channel:string;ready:boolean;readScope:string;readRevision:number;snapshot:ReaderRegexDocumentSnapshotV1;
       ownHeight:string;layoutPaused:boolean;layoutRevision:number;observer?:MutationObserver;
       port:MessagePort;transferPort:MessagePort;connect():void
       eventEndpoint?:ReturnType<NonNullable<ReaderNativeFrameOptionsV1['eventRoute']>['register']>
       eventAcks:Map<number,{resolve(value:unknown):void;reject(error:Error):void}>
+      sceneChild?:AuthorDomSceneChild
     }
     const view=outer.ownerDocument.defaultView!,abort=new AbortController(),frames=new Map<string,FrameRow>()
     const commandInteractions=new Map<string,Promise<unknown>>()
@@ -455,7 +483,7 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
       unmountedDocuments.set(messageId,(unmountedDocuments.get(messageId)??0)+1)
     }
     interface Receipt {
-      readonly frame:HTMLIFrameElement
+      readonly frame:HTMLElement
       readonly done:Promise<ReaderNativeReceiptObservationV1>
       finish(value:ReaderNativeReceiptObservationV1):void
       operationId?:string
@@ -464,6 +492,7 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
     const writes=new Map<object,Receipt>()
     let unobservedReceipt=false,observedReceipt=false
     const surface=options.surface??createAuthorReaderSurface(outer,{current:options.current,
+      sessionId:binding.sessionId,reportExtensionFailure:options.reportExtensionFailure,
       layout:options.layout,mountStaticDocument:options.mountStaticDocument,nativeDocuments:true})
     let active=true,booted=false,eventSequence=0,snapshot:ReaderRegexDocumentSnapshotV1|undefined
     let presetLibrary=options.presetLibrary,characterLibrary=options.characterLibrary
@@ -476,6 +505,16 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
       bridgeRevoked:new Promise<void>(yes=>{resolveBridgeRevoked=yes}),
       framesRemoved:new Promise<void>(yes=>{resolveFramesRemoved=yes})}
     const current=()=>active&&options.current()
+    const reportFailure=(code:string,plan:ReaderNativeDocumentPlanV1|undefined,impact:RoleplayExtensionFailureV1['impact'],
+      location?:{line?:number;column?:number})=>{
+      if(impact==='partial'&&['AUTHOR_GENERATION_CANCELLED','ABORTED'].includes(code))return
+      if(code==='READER_BINDING_REVOKED')impact='story-paused'
+      options.reportExtensionFailure?.({schemaVersion:1,sessionId:binding.sessionId,id:(plan?.documentPlanSha256??'reader')+':'+code,
+        extension:'reader',code,phase:'document',sourceRevision:program.programSha256,impact,
+        sourcePointer:plan?.origin.encoding==='reader-regex-document-origin-v1'?plan.origin.regex?.pointer:undefined,
+        scriptIdentity:plan?.origin.encoding==='reader-regex-document-origin-v1'?plan.origin.regex?.id:undefined,
+        messageId:plan?.origin.message.messageId,reason:code,...location})
+    }
     function finishDocument(plan:ReaderNativeDocumentPlanV1,rendered:boolean):void {
       const messageId=plan.origin.message.messageId,remaining=unmountedDocuments.get(messageId)!-1
       unmountedDocuments.set(messageId,remaining)
@@ -487,6 +526,7 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
       if([...frames.values()].every(row=>row.ready)){view.clearTimeout(deadline);resolveStarted()}
     }
     const deadline=view.setTimeout(()=>{if(current()){rejectStarted(Error('READER_NATIVE_STARTUP_DEADLINE'))
+      reportFailure('READER_NATIVE_STARTUP_DEADLINE',undefined,'story-paused')
       options.failed?.('READER_NATIVE_STARTUP_DEADLINE')}},options.startupDeadlineMs)
     const send=(row:FrameRow,data:object)=>row.port.postMessage(data)
     function adoptReadScope(row:FrameRow,value:ReaderRegexDocumentSnapshotV1):string {
@@ -494,8 +534,8 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
       if(row.readRevision!==value.readRevision){row.readRevision=value.readRevision;row.readScope=crypto.randomUUID()}
       return row.readScope
     }
-    const receiptKey=(frame:HTMLIFrameElement,id:number)=>({frame,id})
-    const requestKeys=new Map<HTMLIFrameElement,Map<number,object>>()
+    const receiptKey=(frame:HTMLElement,id:number)=>({frame,id})
+    const requestKeys=new Map<HTMLElement,Map<number,object>>()
     function finishReceipt(key:object,outcome:ReaderNativeReceiptObservationV1):void {
       const receipt=writes.get(key)
       if(!receipt)return
@@ -509,27 +549,40 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
       if(unobservedReceipt||outcomes.includes('unavailable'))return 'unavailable'
       return observedReceipt||outcomes.includes('observed')?'observed':'none'
     }
-    const receive=(documentPlanSha256:string,row:FrameRow,data:any)=>{
-      if(!current()||frames.get(documentPlanSha256)!==row)return
-      if(data.op==='document-error'){
+    const failDocument=(documentPlanSha256:string,row:FrameRow,code:string,location?:{line?:number;column?:number},
+      impact:RoleplayExtensionFailureV1['impact']='partial')=>{
+        reportFailure(code,documents.find(plan=>plan.documentPlanSha256===documentPlanSha256),impact,location)
         row.eventEndpoint?.dispose();row.observer?.disconnect()
         row.frame.removeEventListener('load',row.connect)
-        row.port.onmessage=null;row.port.close();row.transferPort.close();row.frame.remove()
+        row.port.onmessage=null;row.port.close();row.transferPort.close();row.sceneChild?.dispose();row.frame.remove()
         frames.delete(documentPlanSha256)
-        surface.failDocument(documentPlanSha256,data.code)
+        surface.failDocument(documentPlanSha256,code)
         finishDocument(documents.find(plan=>plan.documentPlanSha256===documentPlanSha256)!,false)
-      }else if(data.op==='parent-error'){
+    }
+    const receive=(documentPlanSha256:string,row:FrameRow,data:any)=>{
+      if(!current()||frames.get(documentPlanSha256)!==row)return
+      if(data.op==='document-error')failDocument(documentPlanSha256,row,data.code,{line:data.line,column:data.column})
+      else if(data.op==='parent-error'){
+        reportFailure(data.code,documents.find(plan=>plan.documentPlanSha256===documentPlanSha256),'story-paused')
         rejectStarted(Error(data.code));options.failed?.(data.code)
       }else if(data.op==='parent-ready'){
         if(data.sourceDataProtocol!==1){
           const code='READER_NATIVE_SOURCE_DATA_PROTOCOL_UNAVAILABLE'
+          reportFailure(code,documents.find(plan=>plan.documentPlanSha256===documentPlanSha256),'story-paused')
           rejectStarted(Error(code));options.failed?.(code);return
         }
         const plan=documents.find(plan=>plan.documentPlanSha256===documentPlanSha256)!
+        if(plan.attributeData.length){
+          const inert=outer.ownerDocument.implementation.createHTMLDocument('')
+          for(const attribute of plan.attributeData){
+            const element=inert.createElementNS(attribute.namespaceURI,attribute.tagName)
+            if(attribute.name in element){failDocument(documentPlanSha256,row,attribute.failureCode);return}
+          }
+        }
         const html=readerNativeDocumentHtml(plan,row.snapshot,row.channel,libraries,surface.documentLayout.get(),
           row.readScope,true,presetLibrary,characterLibrary)
         const messageIndex=row.snapshot.messages.find(message=>message.messageId===plan.origin.message.messageId)?.index
-        send(row,{op:'mount-reader',html,messageIndex,attributeData:plan.attributeData,
+        send(row,{op:'mount-reader',html,messageIndex,
           libraries:libraries.map(library=>library.javascript)})
       }else if(data.op==='ready'){
         if(row.ready)return
@@ -538,7 +591,10 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
         send(row,{op:'layout-config',payload:surface.documentLayout.get(),revision:row.layoutRevision})
         const plan=documents.find(plan=>plan.documentPlanSha256===documentPlanSha256)!
         finishDocument(plan,true)
+      }else if(data.op==='diagnostic'){
+        reportFailure(data.code,documents.find(plan=>plan.documentPlanSha256===documentPlanSha256),'partial',{line:data.line,column:data.column})
       }else if(data.op==='event-ack'){
+        if(data.error)reportFailure(String(data.error),documents.find(plan=>plan.documentPlanSha256===documentPlanSha256),'partial')
         const ack=row.eventAcks.get(data.id);row.eventAcks.delete(data.id)
         if(data.error)ack?.reject(Error(data.error));else ack?.resolve(data.value)
       }else if(data.op==='parse-mvu-message'){
@@ -620,6 +676,9 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
         void delivery.then(()=>{if(current())send(row,{op:'reply',id:data.id,payload:{}})},error=>{
           if(current())send(row,{op:'reply',id:data.id,error:error instanceof Error?error.message:String(error)})
         })
+      }else if(data.op==='author-height'){
+        row.layoutPaused=true;row.ownHeight=Math.ceil(data.height)+'px';row.frame.style.height=row.ownHeight
+        surface.scheduleLayout()
       }else if(data.op==='layout-height'){
         const height=data.payload?.height
         if(row.layoutPaused||data.revision!==row.layoutRevision){
@@ -627,8 +686,11 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
         }
         row.ownHeight=`${Math.ceil(height)}px`;row.frame.style.height=row.ownHeight
         surface.scheduleLayout()
-        view.requestAnimationFrame(()=>{if(current()&&row.frame.isConnected)
-          send(row,{op:'layout-height-ack',id:data.id})})
+        const applied=row.sceneChild?row.sceneChild.resize(height):new Promise<void>(resolve=>view.requestAnimationFrame(()=>resolve()))
+        void applied.then(()=>{if(current()&&row.frame.isConnected)send(row,{op:'layout-height-ack',id:data.id})},error=>{
+          if(current()&&frames.get(documentPlanSha256)===row)
+            failDocument(documentPlanSha256,row,error instanceof Error?error.message:String(error),undefined,'story-paused')
+        })
       }else if(data.op==='receipt-observed'){
         const key=requestKeys.get(row.frame)?.get(data.id),receipt=key&&writes.get(key)
         if(receipt?.operationId&&receipt.operationId===data.operationId){
@@ -741,6 +803,7 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
               receipt.operationId=operationId
               receipt.timer=view.setTimeout(()=>{
                 keys!.delete(data.id);finishReceipt(key,'unavailable')
+                reportFailure('READER_NATIVE_RECEIPT_UNOBSERVED',plan,'story-paused')
                 options.diagnostic('READER_NATIVE_RECEIPT_UNOBSERVED')
               },settings.receiptObservationDeadlineMs??5000)
             }
@@ -750,6 +813,7 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
           }catch(error){
             if(receipt.operationId){
               keys!.delete(data.id);finishReceipt(key,'unavailable')
+              reportFailure('READER_NATIVE_RECEIPT_UNOBSERVED',plan,'story-paused')
               options.diagnostic('READER_NATIVE_RECEIPT_UNOBSERVED')
             }else{
               if(current())send(row,{op:'reply',id:data.id,error:error instanceof Error?error.message:'READER_NATIVE_WRITE_FAILED'})
@@ -777,9 +841,11 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
       booted=true
       await surface.ready
       if(!current())return
+      const scene=settings.scene?await settings.scene:undefined
+      if(!current())return
       surface.setReaderProgram(program.programSha256+':native-prototype')
       for(const plan of documents){
-        const container=surface.documentContainer(plan.documentPlanSha256),frame=container.ownerDocument.createElement('iframe')
+        const container=surface.documentContainer(plan.documentPlanSha256),frame=container.ownerDocument.createElement(scene?'div':'iframe')
         const ports=new view.MessageChannel()
         const parentUrl=settings.parentOrigins[plan.writes]
         if(!parentUrl)throw Error('READER_NATIVE_PARENT_ORIGIN_UNAVAILABLE')
@@ -788,7 +854,7 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
           ownHeight:'',layoutPaused:false,layoutRevision:0,port:ports.port1,transferPort:ports.port2,eventAcks:new Map(),
           connect(){
             if(current()&&frames.get(plan.documentPlanSha256)===row)
-              frame.contentWindow?.postMessage({channel:row.channel,op:'connect-parent'},new URL(parentUrl).origin,[row.transferPort])
+              (frame as HTMLIFrameElement).contentWindow?.postMessage({channel:row.channel,op:'connect-parent'},new URL(parentUrl).origin,[row.transferPort])
           }}
         frames.set(plan.documentPlanSha256,row)
         row.eventEndpoint=eventRoute.register((event,args,requested,operationId)=>deliverEvent(row,event,args,requested,operationId),
@@ -812,19 +878,26 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
             }),retireFilters:(operationId,ids)=>send(row,{op:'generation-release-filters',operationId,ids}),
             cancel:operationId=>send(row,{op:'generation-cancel',operationId})})
         row.port.onmessage=event=>receive(plan.documentPlanSha256,row,event.data);row.port.start()
-        frame.title='作者原生浏览器文档';frame.sandbox.add('allow-scripts','allow-same-origin')
-        frame.setAttribute('credentialless','');frame.referrerPolicy='no-referrer'
+        frame.title='作者原生浏览器文档'
         frame.style.cssText='display:block;width:100%;border:0'
         row.ownHeight=(settings.viewportHeightPx??surface.documentLayout.get().viewportHeight)+'px';frame.style.height=row.ownHeight
-        row.observer=new view.MutationObserver(records=>{
+        if(!scene){row.observer=new view.MutationObserver(records=>{
           if(records.some(record=>record.attributeName==='height')||frame.style.height!==row.ownHeight){
             row.layoutPaused=true;send(row,{op:'layout-pause'})
           }
         })
-        row.observer.observe(frame,{attributes:true,attributeFilter:['style','height']})
+        row.observer.observe(frame,{attributes:true,attributeFilter:['style','height']})}
         const url=new URL(parentUrl);url.hash=new URLSearchParams({channel:row.channel}).toString()
-        frame.src=url.href
-        frame.addEventListener('load',row.connect,{once:true})
+        if(scene){
+          row.sceneChild=scene.mount({id:plan.documentPlanSha256,kind:'reader',channel:row.channel,port:ports.port2,
+            ...plan.writes==='none'?{url:parentUrl}:{}})
+          frame.style.visibility='hidden'
+        }else{
+          const nativeFrame=frame as HTMLIFrameElement
+          nativeFrame.sandbox.add('allow-scripts','allow-same-origin');nativeFrame.setAttribute('credentialless','');nativeFrame.referrerPolicy='no-referrer'
+          nativeFrame.src=url.href
+          frame.addEventListener('load',row.connect,{once:true})
+        }
         container.replaceChildren(frame)
       }
       if(!documents.length){view.clearTimeout(deadline);resolveStarted()}
@@ -835,11 +908,13 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
       publishCharacterLibrary(packet){characterLibrary=packet
         if(current())for(const row of frames.values())send(row,{op:'character-library',packet})},
       render(value){if(!options.surface)surface.render(value);void mount().catch(error=>{
+        reportFailure('READER_NATIVE_MOUNT_FAILED',undefined,'story-paused')
         rejectStarted(error);options.failed?.('READER_NATIVE_MOUNT_FAILED')})},
       publishSnapshot(value){snapshot=value;for(const row of frames.values()){
         const readScope=adoptReadScope(row,value)
         if(row.ready)send(row,{op:'snapshot',payload:value,readScope})}
         void mount().catch(error=>{
+          reportFailure('READER_NATIVE_MOUNT_FAILED',undefined,'story-paused')
           rejectStarted(error);options.failed?.('READER_NATIVE_MOUNT_FAILED')})},
       async waitForAdmittedSourceWrites(){
         if(await waitForReceiptObservation()==='unavailable')throw Error('READER_NATIVE_RECEIPT_UNOBSERVED')
@@ -849,6 +924,7 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
         for(const job of auxiliary.values())job.reservation.cancel()
         auxiliary.clear()
         active=false;abort.abort();view.clearTimeout(deadline);stopLayout()
+        if(settings.scene)void settings.scene.then(scene=>surface.releaseAuthorScene(scene)).catch(()=>{})
         resolveBridgeRevoked()
         for(const key of writes.keys())finishReceipt(key,'unavailable')
         requestKeys.clear()
@@ -859,7 +935,7 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
           for(const ack of row.eventAcks.values())ack.reject(Error('READER_BINDING_REVOKED'))
           row.eventAcks.clear()
           row.observer?.disconnect();row.frame.removeEventListener('load',row.connect)
-          row.port.onmessage=null;row.port.close();row.transferPort.close();row.frame.remove()
+          row.port.onmessage=null;row.port.close();row.transferPort.close();row.sceneChild?.dispose();row.frame.remove()
         }
         resolveFramesRemoved()
         frames.clear();rejectStarted(Error('READER_BINDING_REVOKED'))

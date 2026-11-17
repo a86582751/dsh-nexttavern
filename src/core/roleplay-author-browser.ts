@@ -91,6 +91,7 @@ interface Dependencies {
   captureSourceOwner?(sid:string):(()=>boolean)|undefined
   captureFacts(sid:string,openingIndex?:number):Promise<AuthorBrowserCapturedFacts|undefined>
   acquireParentOrigins(groups:readonly string[]):Promise<Readonly<Record<string,string>>>
+  captureAuthorScene?(sessionId:string):Promise<import('./author-native-helper-types.js').AuthorNativeSceneV1|undefined>
   submit(input:unknown,current:()=>boolean):Promise<MvuPlayerEditResponse>
   confirm(input:unknown):Promise<MvuPlayerEditResponse>
   mutateOpeningVariants(capture:AuthorOpeningVariantCaptureV1,request:OpeningVariantMutationRequestV1,
@@ -382,8 +383,11 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
       const catalog=deps.capturePresetLibrary?.(session.id),presetLibrary=catalog&&(created||input.presetRevision!==catalog.revision)?catalog:undefined
       if(catalog)value.libraryReads.deliverPreset(catalog)
       if(facts.characterLibrary)value.libraryReads.deliverCharacter(facts.characterLibrary)
+      const authorScene=await deps.captureAuthorScene?.(session.id)
+      if(!originalSourceLifetime(value)()||!facts.current())return fail('BROWSER_ATTACHMENT_REVOKED')
       return {ok:true,kind:'attached',attachment:{schemaVersion:1,encoding:'author-native-helper-attachment-v1',
         binding:value.binding,program:value.program,parentOrigins:value.parentOrigins,snapshot:project(value,facts),
+        ...authorScene?{authorScene}:{},
         ...facts.characterLibrary&&(created||input.characterEpoch!==facts.characterLibrary.epoch)
           ?{characterLibrary:facts.characterLibrary}:{},
         ...presetLibrary?{presetLibrary}:{}}}

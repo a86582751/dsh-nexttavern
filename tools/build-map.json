@@ -9049,6 +9049,54 @@
         "lib/core/community-preset-profile-runtime.mjs",
         "preset/lib/core/community-preset-profile-runtime.mjs"
       ]
+    },
+    {
+      "artifact": "author-dom-scene-generated",
+      "source": "src/ui/author-dom-scene.ts",
+      "banner": "runtime/alpha3/src/ui/author-dom-scene.ts",
+      "primaryOutput": "lib/ui/author-dom-scene.js",
+      "outputs": [
+        "lib/ui/author-dom-scene.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-extension-types-js",
+      "source": "src/core/roleplay-extension-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-extension-types.ts",
+      "primaryOutput": "lib/core/roleplay-extension-types.js",
+      "outputs": [
+        "lib/core/roleplay-extension-types.js",
+        "preset/lib/core/roleplay-extension-types.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-text-only-continuation-js",
+      "source": "src/core/roleplay-text-only-continuation.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-text-only-continuation.ts",
+      "primaryOutput": "lib/core/roleplay-text-only-continuation.js",
+      "outputs": [
+        "lib/core/roleplay-text-only-continuation.js",
+        "preset/lib/core/roleplay-text-only-continuation.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-text-only-source-js",
+      "source": "src/core/roleplay-text-only-source.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-text-only-source.ts",
+      "primaryOutput": "lib/core/roleplay-text-only-source.js",
+      "outputs": [
+        "lib/core/roleplay-text-only-source.js",
+        "preset/lib/core/roleplay-text-only-source.js"
+      ]
+    },
+    {
+      "artifact": "extension-failure-dialog-js",
+      "source": "src/ui/extension-failure-dialog.ts",
+      "banner": "runtime/alpha3/src/ui/extension-failure-dialog.ts",
+      "primaryOutput": "lib/ui/extension-failure-dialog.js",
+      "outputs": [
+        "lib/ui/extension-failure-dialog.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -21547,6 +21595,56 @@
         "id": "community-preset-profile-runtime-mjs",
         "source": "lib/core/community-preset-profile-runtime.mjs",
         "canonicalSource": "runtime/alpha3/lib/core/community-preset-profile-runtime.mjs"
+      },
+      {
+        "id": "author-dom-scene-typescript",
+        "source": "src/ui/author-dom-scene.ts",
+        "canonicalSource": "runtime/alpha3/src/ui/author-dom-scene.ts"
+      },
+      {
+        "id": "author-dom-scene-generated",
+        "source": "lib/ui/author-dom-scene.js",
+        "canonicalSource": "runtime/alpha3/lib/ui/author-dom-scene.js"
+      },
+      {
+        "id": "roleplay-extension-types-typescript",
+        "source": "src/core/roleplay-extension-types.ts",
+        "canonicalSource": "runtime/alpha3/src/core/roleplay-extension-types.ts"
+      },
+      {
+        "id": "roleplay-extension-types-js",
+        "source": "lib/core/roleplay-extension-types.js",
+        "canonicalSource": "runtime/alpha3/lib/core/roleplay-extension-types.js"
+      },
+      {
+        "id": "roleplay-text-only-continuation-typescript",
+        "source": "src/core/roleplay-text-only-continuation.ts",
+        "canonicalSource": "runtime/alpha3/src/core/roleplay-text-only-continuation.ts"
+      },
+      {
+        "id": "roleplay-text-only-continuation-js",
+        "source": "lib/core/roleplay-text-only-continuation.js",
+        "canonicalSource": "runtime/alpha3/lib/core/roleplay-text-only-continuation.js"
+      },
+      {
+        "id": "roleplay-text-only-source-typescript",
+        "source": "src/core/roleplay-text-only-source.ts",
+        "canonicalSource": "runtime/alpha3/src/core/roleplay-text-only-source.ts"
+      },
+      {
+        "id": "roleplay-text-only-source-js",
+        "source": "lib/core/roleplay-text-only-source.js",
+        "canonicalSource": "runtime/alpha3/lib/core/roleplay-text-only-source.js"
+      },
+      {
+        "id": "extension-failure-dialog-typescript",
+        "source": "src/ui/extension-failure-dialog.ts",
+        "canonicalSource": "runtime/alpha3/src/ui/extension-failure-dialog.ts"
+      },
+      {
+        "id": "extension-failure-dialog-js",
+        "source": "lib/ui/extension-failure-dialog.js",
+        "canonicalSource": "runtime/alpha3/lib/ui/extension-failure-dialog.js"
       }
     ],
     "publicRelease": {
@@ -148545,6 +148643,7 @@
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
         "inputs": [
           "src/core/roleplay-tavern-prompt-types.ts",
+          "src/core/community-preset-card-material.ts",
           "src/core/roleplay-author-contributions.ts",
           "src/core/roleplay-tavern-layout.ts",
           "src/core/tavern-lore-plan-types.mts",
@@ -160908,6 +161007,83 @@
           "src/operations/build-typescript.mts"
         ],
         "banner": "runtime/alpha3/src/core/community-preset-profile-runtime.mts"
+      },
+      {
+        "id": "author-dom-scene-build",
+        "kind": "typescript-module",
+        "entry": "src/ui/author-dom-scene.ts",
+        "artifact": "author-dom-scene-generated",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/ui/author-dom-scene.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/src/ui/author-dom-scene.ts"
+      },
+      {
+        "id": "roleplay-extension-types-build",
+        "kind": "typescript-module",
+        "artifact": "roleplay-extension-types-js",
+        "entry": "src/core/roleplay-extension-types.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/roleplay-extension-types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/src/core/roleplay-extension-types.ts"
+      },
+      {
+        "id": "roleplay-text-only-continuation-build",
+        "kind": "typescript-module",
+        "artifact": "roleplay-text-only-continuation-js",
+        "entry": "src/core/roleplay-text-only-continuation.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/roleplay-text-only-continuation.ts",
+          "src/core/roleplay-data.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/src/core/roleplay-text-only-continuation.ts"
+      },
+      {
+        "id": "roleplay-text-only-source-build",
+        "kind": "typescript-module",
+        "artifact": "roleplay-text-only-source-js",
+        "entry": "src/core/roleplay-text-only-source.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/roleplay-text-only-source.ts",
+          "src/core/roleplay-tavern-prompt-types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/src/core/roleplay-text-only-source.ts"
+      },
+      {
+        "id": "extension-failure-dialog-build",
+        "kind": "typescript-module",
+        "artifact": "extension-failure-dialog-js",
+        "entry": "src/ui/extension-failure-dialog.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/ui/extension-failure-dialog.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/src/ui/extension-failure-dialog.ts"
       }
     ],
     "typeScript": {

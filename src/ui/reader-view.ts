@@ -1,4 +1,5 @@
 import { createReaderBeautyCache } from './reader-beauty.js';
+import type {RoleplayExtensionFailureV1} from '../core/roleplay-extension-types.js';
 import type { ReaderBeautyTask, FetchReaderDisplay,FetchReaderRenderHtml,ReleaseReaderPhase } from './reader-beauty.js';
 import type { ReaderDisplayResponse,ReaderRenderHtmlReplyV1 } from '../core/roleplay-reader-display.js';
 import type {ReaderNativeLibraryV1} from '../core/reader-native-document-types.js';
@@ -87,6 +88,7 @@ interface ReaderViewProps {
 }
 type MessageComponents = ReturnType<typeof createMessageActionComponents>;
 interface ReaderDependencies extends Pick<MessageComponents, 'UserActions' | 'AssistantActions' | 'actionIconButton' | 'ICONS'> {
+    reportExtensionFailure?(failure:RoleplayExtensionFailureV1):void;
     React: typeof ReactAPI;
     resolveActiveSessionId(): string | null;
     isRoleplaySession(id: string): boolean;
@@ -147,6 +149,7 @@ React,
      useTavernActivity,
      fetchState,
      jsonFetch,
+     reportExtensionFailure,
      nativeLibraries,
      fetchReaderDisplay = async (sessionId, messages, signal) => {
          const response = await globalThis.fetch('/api/roleplay/state', {
@@ -262,10 +265,11 @@ React,
         const [, refreshBeauty] = React.useState(0);
         const [communityReload,reloadCommunity]=React.useState(0);
         const [readerCompilationReload,reloadReaderCompilation]=React.useState(0);
+        const [sceneSessionId,setSceneSessionId]=React.useState<string|null>(null);
         const beautyCacheRef = React.useRef<ReturnType<typeof createReaderBeautyCache> | null>(null);
-        beautyCacheRef.current ??= createReaderBeautyCache();
+        beautyCacheRef.current ??= createReaderBeautyCache({reportExtensionFailure});
         const communityCacheRef=React.useRef<ReturnType<typeof createReaderCommunityCache>|null>(null);
-        if(jsonFetch)communityCacheRef.current??=createReaderCommunityCache(jsonFetch);
+        if(jsonFetch)communityCacheRef.current??=createReaderCommunityCache(jsonFetch,reportExtensionFailure);
         const communityOptionsRef=React.useRef<ReturnType<typeof createCommunityOptionsRenderer>|null>(null);
         communityOptionsRef.current??=createCommunityOptionsRenderer();
         const communityUserHtmlRef=React.useRef(new Map<string,string>());
@@ -342,6 +346,7 @@ React,
                 load(true);
             });
             return () => { alive = false; stateRequestRef.current++; clearInterval(timer); unsubscribe();
+                beautyCacheRef.current?.dispose();communityCacheRef.current?.dispose();
                 readerSubmission?.dispose();
                 if(readerSubmissionRef.current===readerSubmission)readerSubmissionRef.current=null;
                 window.removeEventListener('dsh-community-preset-changed',communityChanged); };
@@ -439,7 +444,7 @@ React,
             && browserStatus.kind !== 'failed' && browserStatus.kind !== 'inactive';
         const actualReaderFramed = readerDocumentControllerRef.current?.hasFrame() === true
             && readerDocumentStatus.kind !== 'failed' && readerDocumentStatus.kind !== 'inactive';
-        const actualSharedFramed = actualReaderFramed || !!nativeBeauty;
+        const actualSharedFramed = actualReaderFramed || !!nativeBeauty || !!sessionId&&sceneSessionId===sessionId;
         const authorWindow = actualSharedFramed || beautyCache.hasDocuments() || !!beautyCache.execution();
 
         // Collect only the authoritative surface of this Session.  The Chat
@@ -744,7 +749,9 @@ React,
                 const outer = container.ownerDocument.createElement('iframe');
                 outer.className = 'rp-author-guard-frame';outer.title = '作者交互阅读内容';container.append(outer);
                 const created = createAuthorReaderSurface(outer,{
+                    sessionId:sessionId??undefined,reportExtensionFailure,
                     nativeDocuments:true,
+                    sceneChanged:value=>{if(active)setSceneSessionId(value?sessionId:null);},
                     current: () => active && readerSessionRef.current === sessionId && readerSurfaceRef.current === created,
                     layout: value => setReaderSurfaceLayout({surface:created,page:readerSurfacePageRef.current,value}),
                     mountStaticDocument: (node,html,layout) => mountStaticAuthorDocument(node,html,{
@@ -758,6 +765,7 @@ React,
             readerSurfaceFactoryRef.current = acquire;
             return () => {
                 active = false;
+                setSceneSessionId(current=>current===sessionId?null:current);
                 readerDocumentControllerRef.current?.dispose();browserControllerRef.current?.dispose();
                 surface?.dispose();surface?.outer.remove();
                 if (readerSurfaceRef.current === surface) readerSurfaceRef.current = null;
@@ -799,6 +807,7 @@ React,
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay'
                 || !readerDocumentContainerRef.current) return;
             const controller = createReaderRegexDocumentSession({sessionId,container: readerDocumentContainerRef.current,nativeLibraries,
+                reportExtensionFailure,
                 commandUi:{input:(text,defaultValue)=>window.prompt(text,defaultValue)??'',echo:text=>toast(text)},
                 eventRouter:nativeEventRouteRef.current??undefined,
                 fill: text => fillComposer(text, false),
@@ -837,6 +846,7 @@ React,
             const readerSubmission=readerSubmissionRef.current;
             const controller = createAuthorBrowserSession({
                 sessionId, container: browserContainerRef.current,nativeLibraries,
+                reportExtensionFailure,
                 navigate:(target,intent)=>navigationOwner.navigate(sessionId,target,intent,()=>navigate?.(target)),
                 adopted:snapshot=>{
                     if(readerSessionRef.current===sessionId&&resolveActiveSessionId()===sessionId)
@@ -845,6 +855,8 @@ React,
                 commandUi:{input:(text,defaultValue)=>window.prompt(text,defaultValue)??'',echo:text=>toast(text)},
                 eventRouter:nativeEventRouteRef.current??undefined,
                 documentLayout:readerSurfaceFactoryRef.current!().documentLayout,
+                scene:source=>readerSurfaceFactoryRef.current!().authorScene(source),
+                releaseScene:scene=>readerSurfaceFactoryRef.current?.().releaseAuthorScene(scene),
                 composer:createReaderComposerAccess(document,()=>resolveActiveSessionId()===sessionId),
                 current: () => readerSessionRef.current === sessionId && browserControllerRef.current === controller,
                 status: setBrowserStatus,

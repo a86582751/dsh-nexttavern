@@ -13,6 +13,7 @@ import {createReaderNativeDocumentFrameFactory,type ReaderNativeDocumentFrameCon
 import type {ReaderDisplayExecution} from '../core/roleplay-reader-display.js';
 import type {ReaderNativeLibraryV1,ReaderNativeFrameOptionsV1} from '../core/reader-native-document-types.js';
 import type {ReaderNativeFrameFactoryV1} from './reader-native-document-frame.js';
+import type {RoleplayExtensionFailureV1} from '../core/roleplay-extension-types.js';
 import {createAuthorBrowserOrdinaryPendingStore} from './author-browser-ordinary-pending.js';
 import type {ReaderOrdinaryNamespacePendingV2} from './author-browser-ordinary-pending.js';
 import {createAuthorNativeMessageVariables} from '../core/author-native-message-variables.js';
@@ -71,6 +72,7 @@ export function createReaderRegexDocumentSession(options:{
     /** Native frame test seam; the session retains pending/ACK ownership. */
     createFrame?:ReaderNativeFrameFactoryV1;
     nativeLibraries?:readonly ReaderNativeLibraryV1[];
+    reportExtensionFailure?(failure:RoleplayExtensionFailureV1):unknown;
     eventRouter?:import('../core/author-native-helper-types.js').AuthorNativeSessionEventRoute;
 }) {
     const transport=options.transport??readerRegexDocumentTransportV1;
@@ -87,6 +89,14 @@ export function createReaderRegexDocumentSession(options:{
     let queued:{execution:ReaderDisplayExecution;render:ReaderRender}|undefined;
     let recapture:((execution:ReaderDisplayExecution|undefined)=>void)|undefined;
     const current=()=>active&&options.current();
+    const diagnostics=new Map<string,()=>void>();
+    const clearDiagnostics=()=>{for(const release of diagnostics.values())release();diagnostics.clear();};
+    const reportExtensionFailure=(failure:RoleplayExtensionFailureV1)=>{
+        const key=failure.id+':'+failure.sourceRevision+':'+failure.code;
+        if(diagnostics.has(key))return;
+        const release=options.reportExtensionFailure?.(failure);
+        if(typeof release==='function')diagnostics.set(key,()=>{release();});
+    };
     const held=()=>pending&&pending.state!=='terminal'&&!pending.manualReleased
         ||numerical&&numerical.state!=='terminal'||messageBodies.some(row=>row.state!=='terminal')
         ||ordinary.some(row=>!row.manualReleased);
@@ -392,7 +402,7 @@ export function createReaderRegexDocumentSession(options:{
         const key=execution.program.programSha256+':'+execution.backend
             +':'+(execution.binding?.browserSessionId??'readonly')+':'+(execution.binding?.generation??'');
         if(key!==identity||!frame) {
-            revoke();identity=key;
+            clearDiagnostics();revoke();identity=key;
             const owner={};realm=owner;binding=execution.binding;activeExecution=execution;
             startSourceEvents();
             const surface=options.surface?.(),outer=surface?.outer??options.container.ownerDocument.createElement('iframe');
@@ -401,6 +411,7 @@ export function createReaderRegexDocumentSession(options:{
                 generation:execution.snapshot.generation,programSha256:execution.program.programSha256};
             options.status({kind:'starting'});
             const frameOptions:ReaderNativeFrameOptionsV1={
+                ...options.reportExtensionFailure?{reportExtensionFailure}:{},
                 presetLibrary:execution.presetLibrary,characterLibrary:execution.characterLibrary,
                 eventRoute:options.eventRouter,
                 rendered:plan=>{
@@ -428,7 +439,8 @@ export function createReaderRegexDocumentSession(options:{
                 onImages:(pageId,values)=>{if(current()&&realm===owner)options.images?.(owner,pageId,values);},
             };
             const factory=options.createFrame??createReaderNativeDocumentFrameFactory(execution.program.documents,
-                options.nativeLibraries,{parentOrigins:execution.parentOrigins,commandUi:options.commandUi});
+                options.nativeLibraries,{parentOrigins:execution.parentOrigins,commandUi:options.commandUi,
+                  scene:execution.authorScene?surface?.authorScene(execution.authorScene):undefined});
             const controller=factory(outer,target,execution.program,frameOptions);
             frame=controller;
             void controller.started.then(()=>{
@@ -596,7 +608,7 @@ export function createReaderRegexDocumentSession(options:{
             sourceEventsEnabled=enabled;
             if(enabled)startSourceEvents();else{sourceEventsAbort?.abort();sourceEventsAbort=undefined;}
         },
-        invalidate():void {if(active){recapture?.(undefined);recapture=undefined;releaseQueued();revoke();
+        invalidate():void {if(active){clearDiagnostics();recapture?.(undefined);recapture=undefined;releaseQueued();revoke();
             if(held())notifyPending();else notifyInactive();}},
         update(execution:ReaderDisplayExecution,render:ReaderRender):void {
             if(!current())return;
@@ -623,6 +635,6 @@ export function createReaderRegexDocumentSession(options:{
             store.releaseReader(pending);pending={...pending,manualReleased:true};releaseQueued();revoke();
             if(current())notifyInactive();
         },
-        dispose():void {if(!active)return;active=false;recapture?.(undefined);recapture=undefined;releaseQueued();revoke();},
+        dispose():void {if(!active)return;active=false;clearDiagnostics();recapture?.(undefined);recapture=undefined;releaseQueued();revoke();},
     };
 }

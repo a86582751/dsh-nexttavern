@@ -1917,7 +1917,9 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       if(!refs)return null
       const work=table.get(workKey(sessionId,refs)) as Work|undefined
       if(!work)return null
-      return {status:work.status,sourceKind:work.source.kind,
+      return {status:work.status,sourceKind:work.source.kind,preparationId:work.preparationId,
+        completedWorkRequired:work.terminalRequired,
+        attemptGeneration:work.attemptGeneration,sourceSha256:work.source.sourceSha256,
         stop:work.stop?{status:work.stop.status,code:work.stop.code??null}:null}
     },
     readSchemaStoryWork(sessionId:string,checkpoint:NativeDurableInputWorkReceiptV1):RoleplaySchemaStoryWorkV1|undefined {

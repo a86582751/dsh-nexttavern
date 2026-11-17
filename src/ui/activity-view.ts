@@ -1,6 +1,7 @@
 import type * as ReactAPI from 'react'
 import { fetchRoleplayText, startActivityPolling } from './panel-state.js'
 import { readerMessageId } from './reader-model.js'
+import type {RoleplayExtensionFailureV1} from '../core/roleplay-extension-types.js'
 
 export const ACTIVITY_CSS = `
 .rp-activity{display:flex;align-items:center;gap:12px;margin:20px auto;padding:14px 18px;max-width:var(--dsh-chat-content-width,900px);box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:14px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#333);font:inherit;box-shadow:var(--dsw-shadow-lv1,0 2px 8px #00000006)}
@@ -31,6 +32,7 @@ export interface ActivityState extends Record<string, unknown> {
   backgroundJobs?: unknown
   pendingPlayer?: unknown
   protocolFailure?: {code:string;requestDispatched:boolean;recovery:string}
+  extensionFailures?:readonly RoleplayExtensionFailureV1[]
 }
 
 export interface ActivityPresentation {
@@ -138,6 +140,7 @@ export interface ActivityComponentDependencies {
   isRoleplaySession: (sessionId: string) => boolean
   peekState: (sessionId: string) => ActivitySnapshot | null | undefined
     prepareCleanWorldline?(sessionId:string):Promise<{childSessionId:string;refreshWarning?:string}>
+  replaceActivityFailures?(sessionId:string,failures:readonly RoleplayExtensionFailureV1[]):void
 }
 
 export interface ActivityComponents {
@@ -148,11 +151,15 @@ export interface ActivityComponents {
   DeferredPlayerInput: (props: DeferredPlayerProps) => ReactAPI.ReactNode
 }
 
-export function createActivityComponents({ React, isRoleplaySession, peekState, prepareCleanWorldline }: ActivityComponentDependencies): ActivityComponents {
+export function createActivityComponents({ React, isRoleplaySession, peekState, prepareCleanWorldline,
+  replaceActivityFailures }: ActivityComponentDependencies): ActivityComponents {
   const useTavernActivity = (sessionId: string | null | undefined, seed: ActivityState | null = null): ActivityState | null => {
     const [activity, setActivity] = React.useState<ActivityState | null>(null)
     const [running, setRunning] = React.useState(false)
     React.useEffect(() => { setActivity(null); setRunning(false) }, [sessionId])
+    React.useEffect(()=>{
+      if(seed&&seed.sessionId===sessionId)replaceActivityFailures?.(sessionId!,seed.extensionFailures??[])
+    },[sessionId,seed?.extensionFailures])
     React.useEffect(() => {
       if (!sessionId) return
       return startActivityPolling<ActivityState | null>({
@@ -162,7 +169,10 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
           const data: unknown = JSON.parse(raw)
           return response.ok && isRecord(data) && data.sessionId === sessionId && data.schemaVersion === 1 ? data : null
         },
-        receive: data => { setRunning(!!(data && data.running)); if (data) setActivity(data) },
+        receive: data => {
+          setRunning(!!(data && data.running))
+          if(data){setActivity(data);replaceActivityFailures?.(sessionId,data.extensionFailures??[])}
+        },
         // A conversation that is not generating gains nothing from a fast poll,
         // and every attempt is a full round trip that competes with the reader.
         schedule: fn => setInterval(fn, running ? 3000 : 30000),

@@ -303,5 +303,44 @@ export function createAuthorNativeMessageVariables(snapshot) {
         }
         return selected ?? { kind: 'unchanged' };
     };
-    return { resolve, forMessage, swipeData, chatMessage, planSetChatMessages };
+    const legacySetChatMessage = (fields, messageId, options = {}, substitute = (text) => text) => {
+        const refresh = options.refresh ?? 'display_and_render_current';
+        if (refresh === 'display_current')
+            throw Error('AUTHOR_NATIVE_LEGACY_DISPLAY_CURRENT_UNSUPPORTED');
+        if (!['none', 'display_and_render_current', 'all'].includes(refresh))
+            throw Error('AUTHOR_NATIVE_MESSAGE_REFRESH_INVALID');
+        const index = messageId < 0 ? snapshot.messages.length + messageId : messageId, message = snapshot.messages[index];
+        if (!message)
+            throw Error('AUTHOR_NATIVE_MESSAGE_TARGET_UNAVAILABLE');
+        const value = typeof fields === 'string' ? { message: fields } : fields, current = chatMessage(message, true);
+        const selected = current.swipe_id, target = options.swipe_id === undefined || options.swipe_id === 'current' ? selected : options.swipe_id;
+        if (!Number.isInteger(target) || target < 0 || target >= current.swipes.length)
+            throw Error('AUTHOR_NATIVE_MESSAGE_SWIPE_ID_INVALID');
+        const row = { message_id: messageId };
+        const text = value.message === undefined ? undefined : substitute(value.message, index);
+        if (target === selected) {
+            if (text !== undefined)
+                row.message = text;
+            if (value.data !== undefined)
+                row.data = value.data;
+        }
+        else {
+            if (text !== undefined && text !== current.swipes[target]) {
+                const swipes = [...current.swipes];
+                swipes[target] = text;
+                row.swipes = swipes;
+            }
+            if (value.data !== undefined) {
+                const packs = [...current.swipes_data];
+                packs[target] = value.data;
+                row.swipes_data = packs;
+            }
+            // Upstream can write an unselected page without activating it. The
+            // modern owner decides which captured variant edits are supported.
+            if (refresh !== 'none')
+                row.swipe_id = target;
+        }
+        return { rows: [row], refresh: refresh === 'display_and_render_current' ? 'affected' : refresh };
+    };
+    return { resolve, forMessage, swipeData, chatMessage, planSetChatMessages, legacySetChatMessage };
 }

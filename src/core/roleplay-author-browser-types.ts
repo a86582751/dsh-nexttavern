@@ -63,6 +63,7 @@ export interface AuthorBrowserAttachmentV3 {
   readonly program:AuthorNativeProgramV1
   readonly snapshot:AuthorNativeHelperSnapshotV1
   readonly parentOrigins:Readonly<Record<string,string>>
+  readonly authorScene?:import('./author-native-helper-types.js').AuthorNativeSceneV1
   readonly presetLibrary?:CommunityAuthorPresetCatalogV1
   readonly characterLibrary?:AuthorCharacterLibraryPacketV1
 }

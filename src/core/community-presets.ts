@@ -115,6 +115,7 @@ function freezeData<T>(value:T):T {
 /** One owner supplies both preset and independent regex state. Library edits
  * are shared; selection overrides belong to the selected conversation scope. */
 export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:string)=>string,runtime?:{
+  executionEnabled?(sessionId:string):boolean
   evaluateProfileConfiguration?:CommunityProfileEvaluatorV1
   prepare(result:CommunityAuthorPresetResultV1):AuthorPersistentScopeReplaceV1|undefined
   complete(update:AuthorPersistentScopeReplaceV1):Promise<void>
@@ -176,11 +177,16 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
   }
   function buildPolicy(sessionId:string) {
     const state=read(),conversationId=rootOf(sessionId),local=state.conversations[conversationId]??null
-    const effective=local??state.global,stored=state.presets.find(p=>p.id===effective.presetId)??null
-    const preset=effectivePreset(state,effective),globalPreset=local?effectivePreset(state,state.global):preset
-    const libraries=state.regexes.filter(item=>item.binding.scope==='global'
+    const executionEnabled=runtime?.executionEnabled?.(sessionId)!==false,
+      effective=executionEnabled?local??state.global:emptySelection(),
+      stored=state.presets.find(p=>p.id===effective.presetId)??null
+    const preset=effectivePreset(state,effective),globalPreset=!executionEnabled?null:local?effectivePreset(state,state.global):preset
+    // A text-only worldline keeps the real shared library readable. Its
+    // execution policy also excludes future global additions, so disabling a
+    // list of today's regex IDs cannot silently re-enable advanced behavior.
+    const libraries=executionEnabled?state.regexes.filter(item=>item.binding.scope==='global'
       ||item.binding.scope==='conversation'&&item.binding.id===conversationId
-      ||item.binding.scope==='preset'&&item.binding.id===effective.presetId)
+      ||item.binding.scope==='preset'&&item.binding.id===effective.presetId):[]
     const defaultRegexOrder=(value:CommunityPresetV1|null):CommunityRegexOrigin[]=>
       value&&['kemini','reborn','izumi'].includes(String(value.profile.transport.kind))
         ?['preset','global','scoped']:['global','preset','scoped']
@@ -196,7 +202,7 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
       helperVariables={scope:'preset',ownerId:`community:${preset.id}:tavern-helper`,
         versionSha256:recordSha256({presetId:preset.id,revision:preset.contentRevision??preset.source.sha256}),values,valuesSha256}
     }
-    return {revision:state.revision,conversationId,global:state.global,local,effective,preset,globalPreset,
+    return {revision:state.revision,conversationId,executionEnabled,global:state.global,local,effective,preset,globalPreset,
       helperVariables,
       presets:state.presets.map(p=>({id:p.id,name:p.name,profile:p.profile.id,prompts:p.prompts.length,regexes:p.regexes.length})),
       planPack:stored?state.planPacks[stored.id]??null:null,regexes:libraries,regexLibrary:state.regexes,
@@ -207,7 +213,9 @@ export function createCommunityPresets(table:CommunityPresetTable,rootOf:(id:str
     if(source.authorPending)throw Error('COMMUNITY_AUTHOR_OPERATION_PENDING')
     if(source.revision!==policyRevision){policies.clear();catalogs.clear();policyRevision=source.revision}
     let value=policies.get(root)
-    if(!value){value=buildPolicy(sessionId);policies.set(root,value)}
+    if(!value||value.executionEnabled!==(runtime?.executionEnabled?.(sessionId)!==false)) {
+      value=buildPolicy(sessionId);policies.set(root,value)
+    }
     return value
   }
   const readonlyPresets=new WeakMap<ReturnType<typeof buildPolicy>,CommunityReadonlyPresetV1>()

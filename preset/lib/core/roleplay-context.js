@@ -96,7 +96,7 @@ export function surfaceEvents(session) {
 // content-derived fence belongs to this exact content, not to a model step or
 // process. Bound memoization without changing rendered bytes on eviction.
 export const promptSafeAuthorText = (text) => String(text).replace(/\{\{(?:user|user_gender|char)\}\}|\{\{|\}\}/g, token => token === '{{' ? '⟦' : token === '}}' ? '⟧' : token);
-export function createStableRoleplayFence() {
+export function createStableRoleplayFence(options = {}) {
     const entries = new Map();
     let size = 0;
     return (body, kind) => {
@@ -106,7 +106,9 @@ export function createStableRoleplayFence() {
             entries.set(key, cached);
             return cached;
         }
-        const fenced = fenceCardContent(promptSafeAuthorText(body), kind, { stable: true });
+        // Literal Native replacements already disable interpolation. Preserve
+        // their published tokens instead of escaping them a second time.
+        const text = options.interpolate === false ? body : promptSafeAuthorText(body), fenced = fenceCardContent(text, kind, { stable: true });
         entries.set(key, fenced);
         size += fenced.length;
         while (entries.size > 64 || size > 8_000_000) {

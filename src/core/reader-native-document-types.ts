@@ -70,6 +70,7 @@ export interface ReaderNativeDocumentExecutionV1 {
   readonly binding?:ReaderRegexDocumentBindingV1
   /** Permission groups have distinct origins even when they share a Surface. */
   readonly parentOrigins:Readonly<Partial<Record<ReaderNativeDocumentPlanV1['writes'],string>>>
+  readonly authorScene?:import('./author-native-helper-types.js').AuthorNativeSceneV1
 }
 
 /** Frozen product library bytes, executed by the browser in the author realm.

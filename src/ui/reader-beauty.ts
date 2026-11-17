@@ -10,8 +10,10 @@ import type { ReaderRule, SourceTask, FallbackTask, SourceResult, FallbackResult
 import {prepareStaticAuthorDocument, type AuthorFrameFragment} from './author-runtime.js';
 import type {ReaderRegexDocumentRenderFragmentV1}
     from '../core/reader-regex-document-types.mjs';
+import type {RoleplayExtensionFailureV1} from '../core/roleplay-extension-types.js';
 
 interface BeautyRendering {
+    reportExtensionFailure?(failure:RoleplayExtensionFailureV1):unknown;
     renderAsync?: typeof renderReaderNarrativeAsync;
     renderSync?: typeof renderReaderNarrative;
 }
@@ -64,6 +66,7 @@ async function acceptedDisplayScope(task: ReaderBeautyTask): Promise<ReaderMvuDi
 /** Committed-text rendering owns its scope, cancellation fence and bounded cache together. */
 export function createReaderBeautyCache({
 renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
+reportExtensionFailure,
 }: BeautyRendering = {}) {
     const cache = new Map<string, {html: string;text: string;css?: string;error?: string;compilerError?:string;
         fragments?: readonly AuthorFrameFragment[];
@@ -74,6 +77,9 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
     let currentScope = '';
     let cancelActive: (() => void) | undefined;
     let forceRead=false;
+    let diagnosticScope='';
+    const diagnosticReleases=new Map<string,()=>void>();
+    const clearDiagnostics=()=>{for(const release of diagnosticReleases.values())release();diagnosticReleases.clear();};
 
     function selectScope(scope: string) {
         if (currentScope !== scope) {
@@ -90,6 +96,7 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
     function run(scope: string, tasks: readonly ReaderBeautyTask[], rules: ReaderRule[], changed: () => void,
         display?: ReaderDisplayRead) {
         cancelActive?.();
+        if(diagnosticScope!==scope){clearDiagnostics();diagnosticScope=scope;}
         const pending = tasks.filter(task => !cache.has(taskKey(task)));
         // A compiled Reader program owns this complete visible window. Paging
         // must not mix old document plans with a program for only new rows.
@@ -176,6 +183,25 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
             }));
             const acceptedExecution = projections.size === messages.length ? response?.execution : undefined;
             const compilerError=response?.compilerDiagnostics?.map(row=>row.code).join(', ');
+            if(response&&display){
+                clearDiagnostics();
+                const sourceRevision=response.execution?.program.programSha256??response.contextRevision;
+                const report=(phase:string,diagnostics:NonNullable<ReaderDisplayResponse['documentDiagnostics']>,messageId?:string)=>{
+                    for(const diagnostic of diagnostics){
+                        const detail=diagnostic as typeof diagnostic&{helper?:string;reason?:string};
+                        const id=[phase,messageId??'',diagnostic.scriptIdentity??diagnostic.pointer??diagnostic.ordinal??'',diagnostic.code].join(':');
+                        if(diagnosticReleases.has(id))continue;
+                        const release=reportExtensionFailure?.({schemaVersion:1,sessionId:display.sessionId,id,
+                            extension:diagnostic.code.includes('EJS')?'ejs':'reader',code:diagnostic.code,phase,sourceRevision,impact:'partial',
+                            sourcePointer:diagnostic.pointer,scriptIdentity:diagnostic.scriptIdentity,line:diagnostic.line,
+                            column:diagnostic.column,helper:detail.helper,messageId,reason:detail.reason??diagnostic.code});
+                        if(typeof release==='function')diagnosticReleases.set(id,()=>{release();});
+                    }
+                };
+                report('compile',response.compilerDiagnostics??[]);
+                report('document',response.documentDiagnostics??[]);
+                for(const row of response.rows)report('render',row.renderDiagnostics??[],row.messageId);
+            }
             for (const task of tasks) {
                 if (stale()) break;
                 const key = taskKey(task), raw = rawText(task);
@@ -334,6 +360,7 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
         return executionWindowKey === JSON.stringify(messages) ? execution : undefined;
     }
     return { selectScope, run, htmlFor, textFor, cssFor, failed, errors, compilerError,fragmentsFor, hasDocuments, readerFragmentsFor,
+        dispose(){cancelActive?.();clearDiagnostics();},
         retryCompilation(){forceRead=true;},
         execution: executionFor };
 }

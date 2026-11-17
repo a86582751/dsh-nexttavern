@@ -49,7 +49,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
   tavernTasks,contextProjection,cloneContextWindow,contextWindowFor,selectedStatusRecord,selectedStatusGeneration,latestStatusEvent,
   importSummary,chatImportProjection,numericalState,taskArtifact,readerDisplay,readerDocument,readerBeauty,
   readerRenderHtml,readerReleasePhase,
-  communityPresets,readInputDiagnostic,
+  communityPresets,readInputDiagnostic,extensionFailures,
   deletedBranchMessageIdsFor,inheritedAssistantMessageIdsFor,
   normalizeDecisionRecord,userValues,svc,resolveRoleplaySession}:StateDependencies) {
   const collectBranchRecords = (session: StateSession) => {
@@ -67,12 +67,25 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
 
   const recordVersionsFor=(session:Pick<StateSession,'id'>)=>captureRoleplayRecordVersionsV1(T,session.id)
   const readActivity=(session:StateSession)=>{
-    const activity=readRoleplayActivity(session,T.branch.get(preparationRecordKey(session.id)) as StatePreparation,tavernTasks.activity(session))
+    const activity={...readRoleplayActivity(session,T.branch.get(preparationRecordKey(session.id)) as StatePreparation,tavernTasks.activity(session)),
+      extensionFailures:extensionFailures?.(session)??[]}
     if(activity.running||!['aborted','error'].includes(activity.ending??''))return activity
     const events=eventsOf(session),link=activity.turnStartSeq===null?undefined:
       events[activity.turnStartSeq]?.data?.nativeInputLink as NativeInputLinkV1|undefined
     if(!link)return activity
     const diagnostic=readInputDiagnostic?.(session.id,link.refs)
+    const code=diagnostic?.stop?.code
+    const extension=code?.startsWith('TEMPLATE_')||code?.startsWith('LORE_')?'ejs'
+      :code?.startsWith('SCHEMA_')||code?.startsWith('MVU_')?'mvu'
+      :code?.startsWith('RUBY_')?'ruby'
+      :code?.startsWith('AUTHOR_')||code?.startsWith('BROWSER_')?'author-script':undefined
+    if(extension&&diagnostic?.sourceKind==='story'&&['unknown','stopped'].includes(diagnostic.status)) {
+      return {...activity,extensionFailures:[...activity.extensionFailures,{
+        schemaVersion:1,sessionId:session.id,id:`${diagnostic.preparationId}:${diagnostic.attemptGeneration}:${code}`,
+        extension,code:code!,phase:'input-preparation',sourceRevision:diagnostic.sourceSha256,
+        impact:'story-paused',
+      }]}
+    }
     // Only the material owner's pre-dispatch refusal grants this explanation;
     // provider errors and unrelated old failures cannot imply an unsent request.
     if(diagnostic?.sourceKind!=='story'||!['unknown','stopped'].includes(diagnostic.status)

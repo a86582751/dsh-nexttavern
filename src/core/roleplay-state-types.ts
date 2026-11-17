@@ -58,6 +58,7 @@ export interface StateDependencies extends StateWorldlines {
   readerDocument?(request:ReaderRegexDocumentRequestV1,signal:AbortSignal):Promise<ReaderRegexDocumentReplyV1>
   communityPresets?(sessionId:string):{fingerprint:string;presetId:string|null;name:string|null;regexes:number}
   readInputDiagnostic?:ReturnType<typeof import('./roleplay-input-preparation.js').createRoleplayInputPreparation>['readDiagnostic']
+  extensionFailures?(session:StateSession):readonly import('./roleplay-extension-types.js').RoleplayExtensionFailureV1[]
   preparationRecordKey(id: string): string
   tavernTasks: ReturnType<typeof createRoleplayTaskHost>['tavernTasks']
   contextProjection(session:StateSession,numericalState:MvuStateObservation|null,includeReaderDisplay:boolean):{

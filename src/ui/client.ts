@@ -5,6 +5,7 @@ import type * as ReactAPI from 'react'
 import type { SessionList, SessionSummary } from './conversation-projection.js'
 import type { PanelDraft } from './panel-state.js'
 import {createSideChat, type SideChatSessions, type SideChatRenderScope, type SideChatMenu} from './side-chat.js'
+import {createExtensionFailureDialog} from './extension-failure-dialog.js'
 
 type Root = { render(node: ReactAPI.ReactNode): void; unmount(): void }
 type CreateRoot = (element: HTMLElement) => Root
@@ -245,6 +246,23 @@ export function apply(ctx: ClientContext) {
         sessionsService,
         isRoleplaySession
       })
+  let openRepairSideChat: (sessionId: string, draft: string) => void = () => {}
+  const extensionFailureDialog = createExtensionFailureDialog({
+    React, document, currentSessionId: resolveActiveSessionId,
+    repair: (sessionId, draft) => openRepairSideChat(sessionId, draft),
+    openContinuation: async result => {
+      const childSessionId = result.childSessionId
+      if (!childSessionId) return
+      await sessionsService.refresh()
+      await loadConversations()
+      invalidateState(result.sourceSessionId)
+      invalidateState(childSessionId)
+      if (resolveActiveSessionId() !== result.sourceSessionId) return
+      await openNativeBranch({sessionId: childSessionId, draftText: result.draftText})
+      if (result.attachmentCount > 0) toast(`请重新添加 ${result.attachmentCount} 个附件后自行发送草稿`)
+    },
+  })
+  const {reportExtensionFailure,replaceActivityFailures} = extensionFailureDialog
   const {
     useTavernActivity,
     ActivityBanner,
@@ -255,6 +273,7 @@ export function apply(ctx: ClientContext) {
         React,
         isRoleplaySession,
         peekState,
+        replaceActivityFailures,
         prepareCleanWorldline:sessionId=>prepareCleanWorldline(sessionId)
       })
   if (slots !== undefined) slots.inject(
@@ -287,6 +306,7 @@ export function apply(ctx: ClientContext) {
         let owned=pendingOpeningHosts.get(key)
         if(!owned) {
           const host=createPendingOpeningSourceHost(input,{document,
+            reportExtensionFailure,
             current:()=>resolveActiveSessionId()===input.sourceSessionId,
             subscribeCurrent:listener=>mainSelection.subscribe(listener),
             nativeLibraries:READER_NATIVE_DOCUMENT_LIBRARIES,
@@ -406,6 +426,7 @@ export function apply(ctx: ClientContext) {
       if(readerHandoff.hasReader(sessionId))return readerHandoff.prepareSource(sessionId,index)
       const operationId=crypto.randomUUID(),key=JSON.stringify([operationId,sessionId])
       const host=createPendingOpeningSourceHost({sourceSessionId:sessionId,childSessionId:sessionId,operationId},{
+        reportExtensionFailure,
         document,current:()=>resolveActiveSessionId()===sessionId,
         subscribeCurrent:listener=>mainSelection.subscribe(listener),
         nativeLibraries:READER_NATIVE_DOCUMENT_LIBRARIES,
@@ -424,6 +445,14 @@ export function apply(ctx: ClientContext) {
       React, Menu: require('@deepseek-ai/dsh-client-ui-primitives').Menu, sessions: sessionsService, jsonFetch,
       confirm: message => confirmWithDialog(document, message, {title: '重置侧聊', confirmLabel: '重置', cancelLabel: '保留侧聊'}),
     })
+    openRepairSideChat = (sessionId, draft) => {
+      if (resolveActiveSessionId() === sessionId) sideChat.openWithDraft(sessionId, draft)
+    }
+    function ExtensionFailureHost() {
+      const sessionId = useMainSessionId()
+      return sessionId && isRoleplaySession(sessionId)
+        ? React.createElement(extensionFailureDialog.Host, {key: sessionId, sessionId}) : null
+    }
     function SideChatHost(props: {
       SessionProvider: SideChatRenderScope['SessionProvider'];
       renderSlot(name: string, owner: {binding: Parameters<SideChatRenderScope['renderSession']>[0]; controls: ReactAPI.ReactNode}): ReactAPI.ReactNode
@@ -437,6 +466,9 @@ export function apply(ctx: ClientContext) {
         }}) : null
     }
     if (slots !== undefined) {
+      slots.inject('shell.overlay', () => slots.register({
+        name: 'shell.overlay', id: 'roleplay-extension-failure-overlay', order: 36,
+      }, ExtensionFailureHost))
       slots.inject('shell.overlay', () => slots.register({
         name: 'shell.overlay', id: 'roleplay-side-chat-overlay', order: 35,
         children: {'roleplay.side-chat.session': {kind: 'single', scope: 'session'}},
@@ -972,6 +1004,7 @@ export function apply(ctx: ClientContext) {
     const ReaderView = createReaderView(
       {
         React,
+        reportExtensionFailure,
         frontendSettings,
         nativeLibraries:READER_NATIVE_DOCUMENT_LIBRARIES,
         images: sessionImages,

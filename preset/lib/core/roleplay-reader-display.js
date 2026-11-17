@@ -778,8 +778,10 @@ export function createRoleplayReaderDisplay(deps) {
                             });
                             const groups = [...new Set(program.documents.map(document => document.writes))];
                             const parentOrigins = await deps.nativeParentOrigins?.(groups) ?? {};
+                            const authorScene = groups.includes('source-regex') ? await deps.captureAuthorScene?.(sid) : undefined;
                             current();
                             execution = { backend: 'browser-native-v1', program, parentOrigins,
+                                ...authorScene ? { authorScene } : {},
                                 ...facts.presetLibrary ? { presetLibrary: facts.presetLibrary } : {},
                                 ...facts.characterLibrary ? { characterLibrary: facts.characterLibrary } : {}, snapshot: { ...facts.data,
                                     readerVariables: documentVariables(facts, program), generation: program.programSha256, readRevision: ++readRevision } };

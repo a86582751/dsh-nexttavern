@@ -9,7 +9,13 @@ export interface AuthorNativeFormatterDataV1 {
   readonly rules:readonly TavernPromptRegexRuleV1[]
   readonly regexDisabled:boolean
 }
-export interface AuthorNativeFormatterOptionsV1 {readonly depth?:number;readonly character_name?:string}
+export interface AuthorNativeFormatterOptionsV1 {
+  readonly depth?:number
+  readonly character_name?:string
+  /** Legacy message writes substitute macros before handing raw text to the
+   * mutation owner. Display/prompt regexes remain owned by their consumers. */
+  readonly macrosOnly?:boolean
+}
 export type AuthorNativeFormatterSourceV1='user_input'|'ai_output'|'slash_command'|'world_info'|'reasoning'
 export interface AuthorNativeFormatterContextV1 {
   readonly source:AuthorNativeFormatterSourceV1
@@ -40,7 +46,7 @@ export function createAuthorNativeFormatterV1(
         ['char','group','charIfNotGroup','groupNotMuted'].includes(key)
           ?[key,{...binding,value:name,valueSha256:nameSha256!}]:[key,binding])) as typeof macros.names,
       current=name===undefined?macros:{...macros,characterOverrides:[{name,names:names!},...macros.characterOverrides]}
-    const result=kernel.format(text,captured.rules,current,{channel:destination,placement:placements[source],
+    const result=kernel.format(text,options.macrosOnly?[]:captured.rules,current,{channel:destination,placement:placements[source],
       depth,isEdit:false,characterOverride:name??null},{
       issue(code){throw Error(code)},recordRead(){},variable:variables,
       budget:{job(){check('jobs',++jobs)},work(chars){work+=chars;check('workChars',work)},

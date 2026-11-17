@@ -4,6 +4,9 @@ import type {ReaderRegexDocumentRenderV1,ReaderRegexDocumentRenderFragmentV1} fr
 import {createReaderDocumentLayoutSettings,type ReaderDocumentLayoutSettings} from './tavern-author-reader-document-layout.js'
 import {createReaderNativeBeautyFrame} from '../ui/reader-native-beauty-frame.js'
 import type {ReaderNativeBeautyExecutionV1,ReaderNativeBeautyLayoutV1} from './reader-native-beauty-types.js'
+import {createAuthorDomScene,type AuthorDomScene} from '../ui/author-dom-scene.js'
+import type {AuthorNativeSceneV1} from './author-native-helper-types.js'
+import type {RoleplayExtensionFailureV1} from './roleplay-extension-types.js'
 
 export type AuthorReaderSurfaceRender=ReaderRegexDocumentRenderV1
 export interface AuthorReaderSurfaceLayout {
@@ -17,6 +20,8 @@ export interface AuthorReaderSurface {
   readonly ready:Promise<Document>
   render(value:AuthorReaderSurfaceRender):void
   setNativeBeauty(execution:ReaderNativeBeautyExecutionV1|undefined,runKey:string,fill:(text:string)=>void):void
+  authorScene(source:AuthorNativeSceneV1):Promise<AuthorDomScene>
+  releaseAuthorScene(scene:AuthorDomScene):void
   /** True while callers must wait for the next surface layout receipt. */
   setActionHeights(value:Readonly<Record<string,number>>):boolean
   documentContainer(planSha256:string):HTMLElement
@@ -30,6 +35,9 @@ export interface AuthorReaderSurface {
   dispose():void
 }
 interface Options {
+  sessionId?:string
+  reportExtensionFailure?(failure:RoleplayExtensionFailureV1):void|(()=>void)
+  sceneChanged?(active:boolean):void
   nativeDocuments?:boolean
   current():boolean
   layout(value:AuthorReaderSurfaceLayout):void
@@ -55,13 +63,19 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
   let latestRender:AuthorReaderSurfaceRender|undefined,beautyExecution:ReaderNativeBeautyExecutionV1|undefined
   let beautyRunKey='',beautyIdentity='',beautyFill:(text:string)=>void=()=>{}
   let beauty:ReturnType<typeof createReaderNativeBeautyFrame>|undefined,beautyHost:HTMLElement|undefined
+  let releaseBeautyFailure:(()=>void)|undefined
+  let sourceScene:AuthorDomScene|undefined
+  let sceneUsers=0
+  const hasVisibleOwner=()=>!!beautyExecution||!!sourceScene
   let lastDocumentHeights:Readonly<Record<string,number>>={}
   const staticSlots=new Map<HTMLElement,{html:string;view?:{dispose():void}}>()
   let actionHeights:Readonly<Record<string,number>>={}
   let resize:ResizeObserver|undefined,mutation:MutationObserver|undefined
   let helperTail:Promise<void>=Promise.resolve()
   let readerProgram=''
-  const failures=new Map<string,{code:string;node?:HTMLElement;view?:{dispose():void}}>()
+  type Failure={code:string;node?:HTMLElement;view?:{dispose():void};fallback?:{node:HTMLElement;view:{dispose():void}}}
+  const failures=new Map<string,Failure>()
+  let failureRail:HTMLElement|undefined,lastBeautyLayout:ReaderNativeBeautyLayoutV1|undefined,lastRailHeight=0
   let resolveReady!:(document:Document)=>void,rejectReady!:(error:Error)=>void
   const ready=new Promise<Document>((resolve,reject)=>{resolveReady=resolve;rejectReady=reject})
   // The view may close before an Actor begins awaiting its document.
@@ -93,6 +107,29 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
     if(!failure||failure.node===node)return
     failure.view?.dispose();failure.node=node;failure.view=failureView(node,failure.code)
   }
+  function clearFailureFallback(failure:Failure):void {
+    failure.fallback?.view.dispose();failure.fallback?.node.remove();delete failure.fallback
+  }
+  function failureFallback(plan:string,hasSlot:boolean):void {
+    const failure=failures.get(plan)
+    if(!failure)return
+    if(hasSlot||!hasVisibleOwner()){clearFailureFallback(failure);return}
+    if(failure.fallback)return
+    if(!failureRail){
+      failureRail=document!.createElement('div');failureRail.style.cssText='display:flow-root;position:relative;width:100%'
+      document!.body.append(failureRail)
+    }
+    const node=document!.createElement('div');failureRail.append(node)
+    failure.fallback={node,view:failureView(node,failure.code)}
+  }
+  function publishFailureLayout(force=false):void {
+    if(!hasVisibleOwner()||!lastBeautyLayout||lastBeautyLayout.revision!==renderRevision)return
+    const height=Math.ceil(failureRail?.getBoundingClientRect().height??0)
+    if(!force&&height===lastRailHeight)return
+    lastRailHeight=height
+    const total=lastBeautyLayout.height+height
+    outer.style.height=total+'px';options.layout({height:total,renderRevision,rows:lastBeautyLayout.rows})
+  }
   function sameFragmentShape(before:readonly ReaderRegexDocumentRenderFragmentV1[],
     after:readonly ReaderRegexDocumentRenderFragmentV1[]):boolean {
     return before.length===after.length&&before.every((fragment,index)=>{
@@ -107,10 +144,10 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
   function fragmentNode(fragment:ReaderRegexDocumentRenderFragmentV1,row:Row):HTMLElement {
     const node=document!.createElement('div')
     if(fragment.kind==='text'){
-      if(!beautyExecution)node.innerHTML=fragment.html
+      if(!hasVisibleOwner())node.innerHTML=fragment.html
       row.textFragments.push({node,html:fragment.html})
     }else if(fragment.kind==='static-document'){
-      const slot={html:fragment.html,view:!beautyExecution
+      const slot={html:fragment.html,view:!hasVisibleOwner()
         ?options.mountStaticDocument!(node,fragment.html,scheduleLayout):undefined}
       staticSlots.set(node,slot)
       row.staticDocuments.push({dispose(){slot.view?.dispose();staticSlots.delete(node)}})
@@ -129,7 +166,7 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
     layoutFrame=view.requestAnimationFrame(()=>{
       layoutFrame=undefined
       if(!current()||!document)return
-      if(beautyExecution){publishBeautySlots();return}
+      if(hasVisibleOwner()){publishBeautySlots();publishFailureLayout();return}
       const body=document.body,bounds=body.getBoundingClientRect(),top=bounds.top
       // Content bounds can shrink; body.scrollHeight retains the old viewport.
       const height=Math.ceil(Array.from(body.children).reduce((height,element)=>
@@ -149,66 +186,87 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
     lastDocumentHeights=heights;beauty?.slots(actionHeights,heights)
   }
   function beautyLayout(value:ReaderNativeBeautyLayoutV1):void {
-    if(!current()||!beautyExecution||value.revision!==renderRevision)return
+    if(!current()||!hasVisibleOwner()||value.revision!==renderRevision)return
+    lastBeautyLayout=value
+    sourceScene?.height(value.height)
     for(const [plan,node] of containers){
       const slot=value.documents[plan]
-      node.style.visibility=slot?'visible':'hidden'
+      node.style.visibility=slot&&!sourceScene?'visible':'hidden'
       if(slot){node.style.top=slot.top+'px';node.style.left=slot.left+'px';node.style.width=slot.width+'px'}
+      failureFallback(plan,!!slot)
     }
-    outer.style.height=value.height+'px'
-    options.layout({height:value.height,renderRevision,rows:value.rows})
+    // Apply every slot width before measuring the resulting document heights.
+    // Interleaving these reads with the writes forces layout per document.
+    if(sourceScene)for(const [plan,node] of containers){
+      const slot=value.documents[plan]
+      sourceScene.position(plan,slot?{...slot,height:Math.ceil(node.getBoundingClientRect().height)}:undefined)
+    }
+    publishFailureLayout(true)
   }
   function syncBeauty():void {
     if(!document||!root)return
-    if(!beautyExecution&&!beauty)return
+    const execution=beautyExecution,visible=hasVisibleOwner()
     const viewport=root.parentElement!
-    viewport.style.position=beautyExecution?'absolute':'';viewport.style.inset=beautyExecution?'0':''
-    viewport.style.zIndex=beautyExecution?'1':''
-    viewport.style.visibility=beautyExecution?'hidden':''
-    viewport.style.width=beautyExecution?'100%':'';viewport.style.overflow=beautyExecution?'visible':''
-    root.style.visibility=beautyExecution?'hidden':'';root.style.transform=beautyExecution?'none':''
-    root.style.overflow=beautyExecution?'visible':''
+    viewport.style.position=visible?'absolute':'';viewport.style.inset=visible?'0':''
+    viewport.style.zIndex=visible?'1':''
+    viewport.style.visibility=visible?'hidden':''
+    viewport.style.width=visible?'100%':'';viewport.style.overflow=visible?'visible':''
+    root.style.visibility=visible?'hidden':'';root.style.transform=visible?'none':''
+    root.style.overflow=visible?'visible':''
     for(const row of rows.values()){
-      row.node.style.display=beautyExecution?'contents':''
-      row.actions.style.display=beautyExecution?'none':''
+      row.node.style.display=visible?'contents':''
+      row.actions.style.display=visible?'none':''
       const body=row.node.firstElementChild as HTMLElement|undefined
-      if(body)body.style.display=beautyExecution?(row.documentPlans.length?'contents':'none'):''
+      if(body)body.style.display=visible?(row.documentPlans.length?'contents':'none'):''
       for(const fragment of row.fragmentNodes)if(!fragment.dataset.readerRegexDocument)
-        fragment.style.display=beautyExecution?'none':''
+        fragment.style.display=visible?'none':''
     }
     for(const node of containers.values()){
-      node.style.position=beautyExecution?'absolute':''
-      if(!beautyExecution){node.style.visibility='';node.style.top='';node.style.left='';node.style.width=''}
+      node.style.position=visible?'absolute':''
+      if(!visible){node.style.visibility='';node.style.top='';node.style.left='';node.style.width=''}
       else if(!beauty)node.style.visibility='hidden'
     }
-    if(!beautyExecution){beauty?.dispose();beauty=undefined;beautyHost?.remove();beautyHost=undefined;beautyIdentity='';return}
-    const identity=beautyExecution.source.sessionId+'\0'+beautyExecution.source.rulesRecordSha256
+    if(!visible){
+      for(const failure of failures.values())clearFailureFallback(failure)
+      beauty?.dispose();beauty=undefined;beautyHost?.remove();beautyHost=undefined;beautyIdentity='';return
+    }
+    const identity=(execution?.source.sessionId??'')+'\0'+(execution?.source.rulesRecordSha256??'')+'\0'+(sourceScene?.identity??'')
     if(identity!==beautyIdentity||!beauty){
+      releaseBeautyFailure?.();releaseBeautyFailure=undefined
       beauty?.dispose();beautyHost?.remove();beautyIdentity=identity
       beautyHost=document.createElement('div');beautyHost.style.cssText='position:relative;width:100%'
       document.body.append(beautyHost)
-      beauty=createReaderNativeBeautyFrame(beautyHost,beautyExecution,{
+      beauty=createReaderNativeBeautyFrame(beautyHost,execution,{
+        scene:sourceScene,
         current,fill:text=>beautyFill(text),layout:beautyLayout,
         failed:code=>{
-          // Losing the author realm must not erase the canonical Reader body.
-          // Restore the inert surface; this never executes Source JS in Main.
+          releaseBeautyFailure?.();releaseBeautyFailure=undefined
+          // Restore the surviving scene/inert body before retaining its
+          // degradation report: switching renderers releases the old identity.
           setNativeBeauty(undefined,'',beautyFill);scheduleLayout()
+          const release=options.reportExtensionFailure?.({schemaVersion:1,sessionId:options.sessionId??execution?.source.sessionId??'',
+            id:'native-beauty:'+code,extension:'reader',code,phase:'native-beauty',
+            sourceRevision:execution?.source.rulesRecordSha256??sourceScene?.identity??readerProgram,impact:'partial',reason:code})
+          releaseBeautyFailure=typeof release==='function'?release:undefined
           console.warn('[roleplay-reader] Native beauty JS:',code)
         }})
       lastDocumentHeights={}
     }
     publishBeautySlots();beauty.slots(actionHeights,lastDocumentHeights)
-    if(latestRender)beauty.render(latestRender as ReaderRegexDocumentRenderV1,beautyRunKey)
+    if(failureRail)document.body.append(failureRail)
+    if(latestRender)beauty.render(latestRender as ReaderRegexDocumentRenderV1,
+      sourceScene?identity+(beautyExecution?beautyRunKey:''):beautyRunKey)
   }
   function setNativeBeauty(execution:ReaderNativeBeautyExecutionV1|undefined,runKey:string,fill:(text:string)=>void):void {
-    const changed=!!beautyExecution!==!!execution
+    const hadVisibleOwner=hasVisibleOwner()
     const runChanged=beautyRunKey!==runKey||beautyExecution?.source.rulesRecordSha256!==execution?.source.rulesRecordSha256
     beautyExecution=execution;beautyRunKey=runKey;beautyFill=fill
+    const visible=hasVisibleOwner(),changed=hadVisibleOwner!==visible
     if(changed)for(const row of rows.values())for(const fragment of row.textFragments){
-      if(execution)fragment.node.replaceChildren();else fragment.node.innerHTML=fragment.html
+      if(visible)fragment.node.replaceChildren();else fragment.node.innerHTML=fragment.html
     }
     if(changed)for(const [node,slot] of staticSlots){
-      slot.view?.dispose();slot.view=execution?undefined:options.mountStaticDocument!(node,slot.html,scheduleLayout)
+      slot.view?.dispose();slot.view=visible?undefined:options.mountStaticDocument!(node,slot.html,scheduleLayout)
     }
     if(runChanged&&execution){
       for(const node of containers.values())node.style.visibility='hidden'
@@ -219,9 +277,10 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
   function releaseRow(row:Row):void {
     for(const child of row.staticDocuments)child.dispose()
     for(const plan of row.documentPlans){
+      sourceScene?.position(plan,undefined)
       containers.delete(plan)
       const failure=failures.get(plan)
-      if(failure){failure.view?.dispose();delete failure.view;delete failure.node}
+      if(failure){clearFailureFallback(failure);failure.view?.dispose();delete failure.view;delete failure.node}
     }
     row.staticDocuments=[];row.documentPlans=[]
     row.textFragments=[];row.fragments=undefined;row.fragmentNodes=[]
@@ -258,7 +317,7 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
         row.textFragments=[]
         for(const [index,fragment] of fragments.entries())if(fragment.kind==='text'){
           const node=row.fragmentNodes[index]!
-          if(!beautyExecution&&row.fragments[index]!.kind==='text'&&(row.fragments[index] as {html:string}).html!==fragment.html)
+          if(!hasVisibleOwner()&&row.fragments[index]!.kind==='text'&&(row.fragments[index] as {html:string}).html!==fragment.html)
             node.innerHTML=fragment.html
           row.textFragments.push({node,html:fragment.html})
         }
@@ -291,7 +350,7 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
         if('text' in part)body.textContent='◈ 你：'+part.text
         else if(fragments)for(const fragment of fragments)body.appendChild(fragmentNode(fragment,row))
         else {
-          if(!beautyExecution)body.innerHTML=part.html
+          if(!hasVisibleOwner())body.innerHTML=part.html
           row.textFragments.push({node:body,html:part.html})
         }
         row.node.replaceChildren(body,row.actions);row.node.dataset.kind=part.kind==='user'?'user':'assistant'
@@ -322,7 +381,25 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
   outer.setAttribute('sandbox','allow-same-origin allow-forms'+(options.nativeDocuments?' allow-scripts':''))
   outer.style.cssText='display:block;width:100%;height:620px;border:0'
   outer.addEventListener('load',loaded);outer.src='about:blank'
-  return {outer,ready,render,scheduleLayout,documentLayout,setNativeBeauty,async acquireHelperLease(){
+  return {outer,ready,render,scheduleLayout,documentLayout,setNativeBeauty,async authorScene(source){
+    await ready
+    if(!current())throw Error('READER_SURFACE_CLOSED')
+    if(sourceScene?.identity===source.identity&&sourceScene.parentOrigin===source.parentOrigin){sceneUsers++;return sourceScene}
+    beauty?.dispose();beauty=undefined;beautyIdentity='';sourceScene?.dispose()
+    sourceScene=createAuthorDomScene(document!.body,source,code=>console.warn('[roleplay-reader] Author scene:',code))
+    sceneUsers=1
+    options.sceneChanged?.(true)
+    syncBeauty();scheduleLayout();return sourceScene
+  },releaseAuthorScene(scene){
+    if(sourceScene!==scene||--sceneUsers>0)return
+    beauty?.dispose();beauty=undefined;beautyIdentity='';sourceScene.dispose();sourceScene=undefined
+    options.sceneChanged?.(false)
+    if(!beautyExecution){
+      for(const row of rows.values())for(const fragment of row.textFragments)fragment.node.innerHTML=fragment.html
+      for(const [node,slot] of staticSlots)slot.view??=options.mountStaticDocument!(node,slot.html,scheduleLayout)
+    }
+    syncBeauty();scheduleLayout()
+  },async acquireHelperLease(){
     const previous=helperTail
     let unlock!:()=>void
     const released=new Promise<void>(resolve=>{unlock=resolve})
@@ -358,24 +435,32 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
   },documentContainer:plan=>containers.get(plan)!,setReaderProgram(identity) {
     if(readerProgram===identity)return
     readerProgram=identity
-    for(const failure of failures.values()){
+    for(const [plan,failure] of failures){
+      sourceScene?.remove(plan)
+      clearFailureFallback(failure)
       failure.view?.dispose();failure.node?.replaceChildren()
     }
     failures.clear()
   },failDocument(plan,code) {
+    sourceScene?.error(plan,code)
     const node=containers.get(plan)
     if(!current()||!document||failures.get(plan)?.code===code)return
-    failures.get(plan)?.view?.dispose();failures.set(plan,{code})
+    const previous=failures.get(plan)
+    if(previous){clearFailureFallback(previous);previous.view?.dispose()}
+    failures.set(plan,{code})
     if(node)showFailure(plan,node)
     scheduleLayout()
   },dispose() {
     if(!active)return
     active=false;outer.removeEventListener('load',loaded)
-    beauty?.dispose();beautyHost?.remove();beauty=undefined;beautyExecution=undefined
+    releaseBeautyFailure?.();releaseBeautyFailure=undefined
+    if(sourceScene)options.sceneChanged?.(false)
+    beauty?.dispose();beautyHost?.remove();beauty=undefined;beautyExecution=undefined;sourceScene?.dispose();sourceScene=undefined
     resize?.disconnect();mutation?.disconnect()
     if(layoutFrame!==undefined)view.cancelAnimationFrame(layoutFrame)
     for(const row of rows.values())releaseRow(row)
-    for(const failure of failures.values())failure.view?.dispose()
+    for(const failure of failures.values()){clearFailureFallback(failure);failure.view?.dispose()}
+    failureRail?.remove()
     failures.clear()
     rows.clear();containers.clear();pending=undefined
     rejectReady(Error('READER_SURFACE_CLOSED'))

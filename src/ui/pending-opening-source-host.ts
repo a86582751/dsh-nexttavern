@@ -18,6 +18,7 @@ export function createPendingOpeningSourceHost(input:PendingOpeningSourceInput,o
   commandUi:NonNullable<Parameters<typeof createAuthorBrowserSession>[0]['commandUi']>
   failed?(code:string):void
   createSession?:typeof createAuthorBrowserSession
+  reportExtensionFailure?:Parameters<typeof createAuthorBrowserSession>[0]['reportExtensionFailure']
 }) {
   const container=options.document.createElement('div')
   container.dataset.pendingOpeningOperation=input.operationId
@@ -29,6 +30,7 @@ export function createPendingOpeningSourceHost(input:PendingOpeningSourceInput,o
   const current=()=>active&&options.current()
   const controller=(options.createSession??createAuthorBrowserSession)({
     sessionId:input.childSessionId,container,current,nativeLibraries:options.nativeLibraries,
+    reportExtensionFailure:options.reportExtensionFailure,
     commandUi:options.commandUi,preparation:state=>claim?.publish(state),status(value){
       retryAttach=value.kind==='inactive'
         &&(value.code==='BROWSER_SESSION_INACTIVE'||value.code==='BROWSER_PROGRAM_UNAVAILABLE')
