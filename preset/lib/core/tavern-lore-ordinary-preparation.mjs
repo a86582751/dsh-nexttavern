@@ -23,7 +23,7 @@ export function sealTavernLoreOrdinaryPreparationV1(body) {
 /** The untyped replay boundary owns this one bounded packet parse. Hot
  * composition receives the renderer's frozen result directly. */
 export function validateTavernLoreOrdinaryPreparationV1(input, plan) {
-    const packet = cloneRoleplayTavernLoreDataV1(input, LORE_EVALUATOR_POLICY_V1.bounds.snapshotBytes, { nodes: 100000, depth: 48 });
+    const packet = cloneRoleplayTavernLoreDataV1(input, LORE_EVALUATOR_POLICY_V1.bounds.preparationInputBytes, { nodes: 100000, depth: 48 });
     if (!packet || packet.schemaVersion !== 1 || packet.encoding !== 'owned-st-lore-ordinary-preparation-v1'
         || packet.compilerPlanSha256 !== plan.planSha256
         || packet.sourceSnapshotSha256 !== tavernLoreConsumerSourceV1(plan.source).sourceSnapshotSha256

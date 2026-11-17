@@ -4,7 +4,7 @@
 import { recordSha256 } from './roleplay-data.js';
 import { cloneSchemaData, schemaTextSha256 } from './tavern-mvu-schema-data.js';
 import { resolveTavernLoreEvaluationContentV1, isTavernLoreDerivedEntryV1, tavernLoreEvaluationSemanticV1, tavernLoreOriginalEvaluationEntryV1 } from './tavern-lore-derived.mjs';
-import { exact, sealTavernLoreSnapshotV1, LORE_EVALUATOR_POLICY_V1, freezeLoreData } from './tavern-lore-snapshot.mjs';
+import { exact, sealTavernLoreSnapshotV1, LORE_EVALUATOR_POLICY_V1, freezeLoreData, validateTavernLoreRenderedTextV1, validateTavernLoreTemplateFeedbackV1, validateTavernLoreInjectionFeedbackV1 } from './tavern-lore-snapshot.mjs';
 import { refuse } from './tavern-lore-match.mjs';
 import { tavernLoreEntrySemanticSha256V1 } from './tavern-lore-timed.mjs';
 import { hasTavernPromptMacroSyntaxV1 } from './tavern-prompt-transform-execution.mjs';
@@ -23,6 +23,8 @@ export class TavernLoreTemplateFeedbackStateV1 {
     consumed = new Set();
     scanRows = new Map();
     consumedScans = new Set();
+    feedbackProposals = 0;
+    injectedTextBytes = 0;
     activationModes = new Map();
     activatedSources = new Map();
     constructor(composition, snapshot, activationTargets, checkpoint, producer, defaultSignal, compilation, changed) {
@@ -106,12 +108,17 @@ export class TavernLoreTemplateFeedbackStateV1 {
             let receipt = this.receipts.get(pointer);
             if (!receipt && this.producer?.renderKey) {
                 this.checkpoint();
-                const supplied = await this.producer.renderKey({ entryId: entry.entryId, pointer, text }, this.producer.signal ?? this.defaultSignal);
+                const output = await this.producer.renderKey({ entryId: entry.entryId, pointer, text }, this.producer.signal ?? this.defaultSignal);
                 this.checkpoint();
+                const supplied = cloneSchemaData(output, LORE_EVALUATOR_POLICY_V1.bounds.preparationInputBytes, { nodes: 100000, depth: 48 });
+                validateTavernLoreRenderedTextV1(supplied, this.snapshot);
                 if (supplied.pointer !== pointer || supplied.rawContentSha256 !== schemaTextSha256(text)
                     || supplied.rendererIdentity !== this.producer.identity
                     || supplied.rendererImplementationSha256 !== this.producer.implementationSha256)
                     refuse('LORE_KEY_PRODUCER_MISMATCH', entry.entryId);
+                if (this.receipts.size >= LORE_EVALUATOR_POLICY_V1.bounds.renderedTexts)
+                    refuse('LORE_RENDERED_TEXT_LIMIT');
+                freezeLoreData(supplied);
                 this.pendingKeyReceipts.push(supplied);
                 this.receipts.set(pointer, supplied);
                 receipt = supplied;
@@ -131,7 +138,7 @@ export class TavernLoreTemplateFeedbackStateV1 {
             this.checkpoint();
             const result = await this.producer.consumeScan({ loop, state, stage }, this.producer.signal ?? this.defaultSignal);
             this.checkpoint();
-            const output = cloneSchemaData(result, LORE_EVALUATOR_POLICY_V1.bounds.snapshotBytes, { nodes: 100000, depth: 48 });
+            const output = cloneSchemaData(result, LORE_EVALUATOR_POLICY_V1.bounds.preparationInputBytes, { nodes: 100000, depth: 48 });
             exact(output, ['contributions', 'activationProposals']);
             if (Array.isArray(output.contributions) && !output.contributions.length
                 && Array.isArray(output.activationProposals) && !output.activationProposals.length) {
@@ -141,8 +148,12 @@ export class TavernLoreTemplateFeedbackStateV1 {
             const body = { loop, state, stage, contributions: output.contributions, activationProposals: output.activationProposals,
                 producerIdentity: this.producer.identity, producerImplementationSha256: this.producer.implementationSha256 };
             row = { ...body, feedbackSha256: recordSha256(body) };
-            this.snapshot = sealTavernLoreSnapshotV1({ ...this.snapshot, injectionFeedback: [...(this.snapshot.injectionFeedback ?? []), row] });
-            row = this.snapshot.injectionFeedback.at(-1);
+            this.injectedTextBytes += validateTavernLoreInjectionFeedbackV1(row);
+            if (this.injectedTextBytes > 2_000_000)
+                refuse('LORE_INJECTED_SCAN_TEXT_LIMIT');
+            if (this.scanRows.size >= 33)
+                refuse('LORE_INJECTION_FEEDBACK_INVALID');
+            freezeLoreData(row);
             this.scanRows.set(key, row);
         }
         this.consumedScans.add(key);
@@ -226,11 +237,10 @@ export class TavernLoreTemplateFeedbackStateV1 {
             this.checkpoint();
             const result = await this.producer.render(freezeLoreData(request), this.producer.signal ?? this.defaultSignal);
             this.checkpoint();
-            const output = cloneSchemaData(result, LORE_EVALUATOR_POLICY_V1.bounds.snapshotBytes, { nodes: 100000, depth: 48 });
+            const output = cloneSchemaData(result, LORE_EVALUATOR_POLICY_V1.bounds.preparationInputBytes, { nodes: 100000, depth: 48 });
             exact(output, ['receipt', 'activationProposals']);
             const supplied = output.receipt;
-            exact(supplied, ['pointer', 'rawContentSha256', 'renderedText', 'renderedSha256', 'rendererIdentity',
-                'rendererImplementationSha256', 'readDependencies']);
+            validateTavernLoreRenderedTextV1(supplied, this.snapshot);
             if (supplied.rendererIdentity !== this.producer.identity
                 || supplied.rendererImplementationSha256 !== this.producer.implementationSha256
                 || supplied.pointer !== resolved.pointer || supplied.rawContentSha256 !== resolved.contentSha256) {
@@ -239,12 +249,15 @@ export class TavernLoreTemplateFeedbackStateV1 {
             const body = { request, renderedSha256: supplied.renderedSha256,
                 activationProposals: output.activationProposals };
             const row = { ...body, feedbackSha256: recordSha256(body) };
-            // The real snapshot validator checks receipt fields/read dependencies and
-            // the exact feedback shape/bounds before any returned data is consumed.
-            this.snapshot = sealTavernLoreSnapshotV1({ ...this.snapshot,
-                renderedTexts: [...this.snapshot.renderedTexts, supplied], activationFeedback: [...(this.snapshot.activationFeedback ?? []), row] });
-            receipt = this.snapshot.renderedTexts.find(item => item.pointer === resolved.pointer);
-            feedback = this.snapshot.activationFeedback.find(item => item.request.entryId === entry.entryId);
+            this.feedbackProposals += validateTavernLoreTemplateFeedbackV1(row, this.snapshot);
+            if (this.feedbackProposals > LORE_EVALUATOR_POLICY_V1.bounds.feedbackProposals)
+                refuse('LORE_FEEDBACK_LIMIT');
+            if (this.rows.size >= 4096)
+                refuse('LORE_FEEDBACK_INVALID');
+            if (this.receipts.size >= LORE_EVALUATOR_POLICY_V1.bounds.renderedTexts)
+                refuse('LORE_RENDERED_TEXT_LIMIT');
+            receipt = freezeLoreData(supplied);
+            feedback = freezeLoreData(row);
             this.receipts.set(resolved.pointer, receipt);
             this.rows.set(entry.entryId, feedback);
         }
@@ -269,14 +282,20 @@ export class TavernLoreTemplateFeedbackStateV1 {
             refuse('LORE_CONTENT_LIMIT', entry.entryId);
         return { text, proposals };
     }
-    final() {
+    final(tokenizer) {
         if (this.consumed.size !== this.rows.size)
             refuse('LORE_FEEDBACK_UNSELECTED');
         if ([...this.scanRows.keys()].some(key => !this.consumedScans.has(key)))
             refuse('LORE_INJECTION_SCAN_UNCONSUMED');
-        if (this.pendingKeyReceipts.length)
-            return sealTavernLoreSnapshotV1({ ...this.snapshot,
-                renderedTexts: [...this.snapshot.renderedTexts, ...this.pendingKeyReceipts] });
-        return this.snapshot;
+        if (!this.producer && !tokenizer)
+            return this.snapshot;
+        // Only the published result needs an enclosing snapshot digest. New rows
+        // are already validated and frozen before the evaluator consumes them.
+        // Keep selected receipts ahead of key receipts, matching frozen replay.
+        return sealTavernLoreSnapshotV1({ ...this.snapshot, ...tokenizer ? { tokenizer } : {},
+            ...this.producer ? { renderedTexts: [...this.rows.values()].map(row => this.receipts.get(row.request.pointer))
+                    .concat(this.pendingKeyReceipts),
+                ...this.rows.size ? { activationFeedback: [...this.rows.values()] } : {},
+                ...this.scanRows.size ? { injectionFeedback: [...this.scanRows.values()] } : {} } : {} });
     }
 }

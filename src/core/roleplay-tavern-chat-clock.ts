@@ -51,6 +51,7 @@ export interface TavernCanonicalChatClockV2 extends Omit<TavernCanonicalChatCloc
 }
 export interface TavernCanonicalChatClockCaptureV2 {
   readonly data:TavernCanonicalChatClockV2
+  readonly visibleMessageCount:number
   readonly selectedCanonicalAssistantIds:ReadonlySet<string>
   recentScanRows(count:number):TavernCanonicalChatClockCaptureV1['scanRows']
   fullHistory():Pick<TavernCanonicalChatClockCaptureV1,'scanRows'>&{
@@ -108,12 +109,16 @@ export function readTavernSelectedMessageFactsV1(message:object&{readonly conten
   selectedMessageFacts.set(message,facts)
   return facts
 }
-const canonicalReaders=new WeakMap<object,{
-  sessionId:string;definitions:readonly SessionMessageProjection[];cut:SessionHistoryCut<SessionEvent>;
+interface CanonicalReader {
+  definitions:readonly SessionMessageProjection[];cut:SessionHistoryCut<SessionEvent>;
   cursor:ReturnType<typeof createSelectedCanonicalChatCursor>
-}>()
+}
+// A child cut also proves inherited publications under their original Session
+// identity. Those reads must retain separate cursors from the live child.
+const canonicalReaders=new WeakMap<object,Map<string,CanonicalReader>>()
 interface CanonicalClockIndex {
   through:number
+  visiblePositions:number[]
   rows:SelectedClockRow[]
   bySeq:Map<number,CanonicalChatEntry>
   positions:Map<number,number>
@@ -125,6 +130,7 @@ const canonicalIndexes=new WeakMap<object,CanonicalClockIndex>()
 interface CanonicalClockSummary {
   readonly index:CanonicalClockIndex
   readonly count:number
+  readonly visibleCount:number
   readonly hash:ReturnType<typeof createHash>
   readonly duplicateIds:boolean
 }
@@ -133,7 +139,8 @@ function summarizeCanonical(value:ReturnType<typeof canonicalAt>):CanonicalClock
   let summaries=canonicalSummaries.get(value.owner)
   const saved=summaries?.get(value.view.nativeCut)
   if(saved)return saved
-  const index=indexCanonical(value),summary={index,count:value.view.length,hash:index.hash.copy(),duplicateIds:index.duplicateIds}
+  const index=indexCanonical(value),summary={index,count:value.view.length,visibleCount:index.visiblePositions.length,
+    hash:index.hash.copy(),duplicateIds:index.duplicateIds}
   if(!summaries){summaries=new Map();canonicalSummaries.set(value.owner,summaries)}
   summaries.set(value.view.nativeCut,summary)
   return summary
@@ -158,7 +165,7 @@ function indexCanonical(value:ReturnType<typeof canonicalAt>):CanonicalClockInde
     if(index&&view.length!==index.rows.length+appended.length)index=undefined
   }else index=undefined
   if(!index) {
-    index={through:view.nativeCut,rows:[],bySeq:new Map(),positions:new Map(),byId:new Map(),
+    index={through:view.nativeCut,visiblePositions:[],rows:[],bySeq:new Map(),positions:new Map(),byId:new Map(),
       hash:createHash('sha256').update('['),duplicateIds:false}
     appended=[...view.range()]
   }
@@ -175,6 +182,7 @@ function indexCanonical(value:ReturnType<typeof canonicalAt>):CanonicalClockInde
     if(index.rows.length)index.hash.update(',')
     index.hash.update(stableJson(row.ref)!)
     index.rows.push(row)
+    if(row.message.authorMetadata?.is_hidden!==true)index.visiblePositions.push(index.rows.length-1)
   }
   index.through=view.nativeCut
   // An old immutable cut may be read after the live cursor advanced. Its
@@ -192,14 +200,16 @@ export function readTavernCanonicalChatMatchesAtCutV1(sessionId:string,cut:Sessi
 }
 function canonicalAt(sessionId:string,cut:SessionHistoryCut<SessionEvent>,nativeCut:number,
   projections:readonly SessionMessageProjection[]) {
-  let owner=canonicalReaders.get(cut.owner)
-  if(!owner||owner.sessionId!==sessionId||owner.definitions.length!==projections.length
+  let readers=canonicalReaders.get(cut.owner)
+  if(!readers){readers=new Map();canonicalReaders.set(cut.owner,readers)}
+  let owner=readers.get(sessionId)
+  if(!owner||owner.definitions.length!==projections.length
     ||owner.definitions.some((definition,index)=>definition!==projections[index])) {
     let state:NonNullable<typeof owner>|undefined
     const read=()=>state?.cut??cut,cursor=createSelectedCanonicalChatCursor({sessionId,read,
       surface:createSurfaceCursor({read,projections}),messageFacts:readTavernSelectedMessageFactsV1})
-    state={sessionId,definitions:[...projections],cut,cursor}
-    canonicalReaders.set(cut.owner,state);owner=state
+    state={definitions:[...projections],cut,cursor}
+    readers.set(sessionId,state);owner=state
   }else if(cut.length>owner.cut.length)owner.cut=cut
   return {owner,view:owner.cursor.atCut(nativeCut)}
 }
@@ -414,14 +424,14 @@ export function captureTavernCanonicalChatClockV2(input:Parameters<typeof captur
     chatIndex:view.length+pending.length,membershipSha256:membership.update(']').digest('hex')}
   const data=freeze({...body,clockSha256:recordSha256(body)})
   const rowAt=(position:number)=>position<view.length?clockRow(view.at(position)!):pending[position-view.length]!
+  const materializeRow=({ref,text:originalText,message}:Omit<SelectedClockRow,'ref'>&{ref:ClockRowV1})=>{
+    const text=ref.seq===null?originalText:input.storyText?.text(ref.seq,message,originalText,ref.messageSha256)??originalText
+    return {id:ref.id,role:ref.role,messageSha256:ref.messageSha256,text,
+      ...message.authorMetadata?{authorMetadata:message.authorMetadata}:{}}
+  }
   const scanRange=(start:number)=>{
     const rows:TavernCanonicalChatClockCaptureV1['scanRows'][number][]=[]
-    for(let position=start;position<data.chatIndex;position++) {
-      const {ref,text:originalText,message}=rowAt(position),text=ref.seq===null?originalText
-        :input.storyText?.text(ref.seq,message,originalText,ref.messageSha256)??originalText
-      rows.push({id:ref.id,role:ref.role,messageSha256:ref.messageSha256,text,
-        ...message.authorMetadata?{authorMetadata:message.authorMetadata}:{}})
-    }
+    for(let position=start;position<data.chatIndex;position++)rows.push(materializeRow(rowAt(position)))
     return Object.freeze(rows)
   }
   const pendingById=new Map(pending.map(row=>[row.ref.id,row.ref]))
@@ -455,7 +465,20 @@ export function captureTavernCanonicalChatClockV2(input:Parameters<typeof captur
   }
   const selectedCanonicalAssistantIds=new Set(selected.messages.filter(row=>row.role==='assistant'
     &&[...index.byId.get(row.id)?.values()??[]].some(matches=>matches.some(item=>item.row.role==='assistant'))).map(row=>row.id))
-  return {data,assertCurrent,selectedCanonicalAssistantIds,recentScanRows:count=>scanRange(Math.max(0,data.chatIndex-count)),
+  const visiblePending=pending.filter(row=>row.message.authorMetadata?.is_hidden!==true),
+    visibleMessageCount=summary.visibleCount+visiblePending.length
+  return {data,visibleMessageCount,assertCurrent,selectedCanonicalAssistantIds,
+    recentScanRows:count=>{
+      const requested=Math.max(0,count),latestPending=visiblePending.slice(Math.max(0,visiblePending.length-requested)),
+        start=Math.max(0,summary.visibleCount-(requested-latestPending.length)),
+        rows:TavernCanonicalChatClockCaptureV1['scanRows'][number][]=[]
+      // Captured visibility is a prefix of the owner's append-only positions.
+      // Later appends and edit-triggered index rebuilds cannot widen this cut.
+      for(let position=start;position<summary.visibleCount;position++)
+        rows.push(materializeRow(index.rows[index.visiblePositions[position]!]!))
+      rows.push(...latestPending.map(materializeRow))
+      return Object.freeze(rows)
+    },
     fullHistory:()=>({data:{...data,rows:[...view.range()].map(entry=>clockRow(entry).ref)},scanRows:scanRange(0)})}
 }
 export function verifyTavernCanonicalChatClockV1(raw:unknown,sessionId:string,

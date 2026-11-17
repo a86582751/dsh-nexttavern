@@ -8,9 +8,9 @@ import {composeTavernLoreEvaluationV1,isTavernLoreDerivedEntryV1,tavernLoreEvalu
   from './tavern-lore-derived.mjs'
 import {validateTavernLoreOrdinaryPreparationV1} from './tavern-lore-ordinary-preparation.mjs'
 import {LoreEvaluationRefusal,TavernLoreBoundedMatcherV1,refuse} from './tavern-lore-match.mjs'
-import {exact,freezeLoreData,validateTavernLoreSnapshotV1,sealTavernLoreSnapshotV1,
+import {exact,freezeLoreData,validateTavernLoreSnapshotV1,
   LORE_EVALUATOR_POLICY_V1,LORE_EVALUATOR_POLICY_SHA256} from './tavern-lore-snapshot.mjs'
-import {TavernLoreScanBufferV1,nextLoreScanStateV1} from './tavern-lore-scan.mjs'
+import {TavernLoreScanBufferV1,nextLoreScanStateV1,tavernLoreUsesGroupScoringV1} from './tavern-lore-scan.mjs'
 import {TavernLoreTimedStateV1} from './tavern-lore-timed.mjs'
 import {TavernLoreTemplateFeedbackStateV1} from './tavern-lore-template-feedback.mjs'
 import type {TavernLoreSemanticEntryV1} from './tavern-lore-plan-types.mjs'
@@ -266,6 +266,7 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
       termination='configured-step-limit';break
     }
     if(++loop>LORE_EVALUATOR_POLICY_V1.bounds.scanSteps)refuse('LORE_SCAN_STEP_LIMIT')
+    matcher.beginScan()
     const scanState=state,scanDepth=buffer.depth,scanDelayLevel=delayLevel,candidates:Candidate[]=[]
     queued.clear()
     for(const [index,item] of items.entries()) {
@@ -303,9 +304,7 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
     // Constants/sticky/forced activations bypass key admission but group scoring
     // still scans their keys when any member enables that fixed group policy.
     for(const item of candidates)if((item.semantic.constant||item.sticky||externalActivations.has(item.entry.entryId))
-      &&item.semantic.group&&(snapshot.settings.useGroupScoring
-      ||candidates.some(peer=>peer.semantic.useGroupScoring===true&&peer.semantic.group.split(/,\s*/)
-        .some(group=>group&&item.semantic.group.split(/,\s*/).includes(group))))) {
+      &&tavernLoreUsesGroupScoringV1(item.semantic,candidates,snapshot.settings.useGroupScoring)) {
       const haystack=buffer.text(item.semantic,scanState)
       const primaryKeys=await boundary(()=>templates.keys(item.entry,'primaryKeys'))
       const primary=await boundary(()=>matcher.matches(haystack,primaryKeys,
@@ -406,9 +405,8 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
       baseTextSha256:schemaTextSha256(baseText),candidateTextSha256:schemaTextSha256(cumulative),scanOnly,nextState:next.state})
     state=next.state
   }
-  snapshot=templates.final()
-  if(producer)snapshot=sealTavernLoreSnapshotV1({...snapshot,
-    tokenizer:{...snapshot.tokenizer,counts:[...counts].map(([textSha256,tokens])=>({textSha256,tokens}))}})
+  snapshot=templates.final(producer?{...snapshot.tokenizer,
+    counts:[...counts].map(([textSha256,tokens])=>({textSha256,tokens}))}:undefined)
   checkpoint()
   timed.activated(activated.map(item=>item.entry.entryId))
   const placements=placementsOf(activated)

@@ -4,11 +4,8 @@
 import { nativeInputSha256 } from 'dsh-nexttavern-native-agent-loop';
 import { recordSha256 } from './roleplay-data.js';
 import { captureRoleplayTavernMaterialHistoryV1, isTavernHistoryTextOnlyMaterialV1 } from './roleplay-tavern-material-history.js';
-import { validateTavernLoreSnapshotV1 } from './tavern-lore-snapshot.mjs';
 import { validateTavernLoreCompilationV1, tavernLoreConsumerSourceV1 } from './tavern-lore-compiler.mjs';
-import { TavernLoreTimedStateV1 } from './tavern-lore-timed.mjs';
-import { TavernLoreTemplateFeedbackStateV1 } from './tavern-lore-template-feedback.mjs';
-import { composeTavernLoreEvaluationV1, validateTavernLoreDerivedSnapshotV1, tavernLoreEvaluationSemanticV1, applyTavernLoreOrdinaryPreparationV1, createTavernLoreSourceEligibilityV1 } from './tavern-lore-derived.mjs';
+import { composeTavernLoreEvaluationV1, validateTavernLoreDerivedSnapshotV1, applyTavernLoreOrdinaryPreparationV1 } from './tavern-lore-derived.mjs';
 import { validateTavernLoreOrdinaryPreparationV1 } from './tavern-lore-ordinary-preparation.mjs';
 export const TAVERN_NATIVE_TIMED_PUBLICATION_POLICY_V1 = Object.freeze({ schemaVersion: 1,
     encoding: 'native-material-lore-timing-publication-policy-v1',
@@ -47,7 +44,9 @@ export function readTavernTimedPublicationV1(publication, ownerSessionId) {
     if (!object(tavernPlan) || tavernPlan.schemaVersion !== 1 || tavernPlan.encoding !== 'owned-st-lore-evaluation-plan-v1'
         || tavernPlan.authority !== 'consumer-data-only')
         fail('INPUT_MATERIAL_TIMED_TAVERN_RECORD_UNAVAILABLE');
-    const plan = tavernPlan, compilation = validateTavernLoreCompilationV1(input.compilation), snapshot = validateTavernLoreSnapshotV1(input.snapshot), base = composeTavernLoreEvaluationV1(compilation.plan, input.derivedSnapshot
+    // Material capture has bound this exact Core row to the Native event.
+    // Reuse its snapshot, including full history, while checking plan bindings.
+    const plan = tavernPlan, compilation = validateTavernLoreCompilationV1(input.compilation), snapshot = input.snapshot, base = composeTavernLoreEvaluationV1(compilation.plan, input.derivedSnapshot
         ? validateTavernLoreDerivedSnapshotV1(input.derivedSnapshot) : undefined), ordinary = input.ordinaryPreparation ? validateTavernLoreOrdinaryPreparationV1(input.ordinaryPreparation, compilation.plan) : undefined, composition = ordinary ? applyTavernLoreOrdinaryPreparationV1(base, ordinary) : base, { planSha256, ...planBody } = plan;
     if (input.schemaVersion !== 1 || input.encoding !== 'owned-st-lore-evaluator-input-v1'
         || recordSha256(planBody) !== planSha256 || plan.sessionId !== ownerSessionId || plan.branchId !== ownerSessionId
@@ -62,58 +61,16 @@ export function readTavernTimedPublicationV1(publication, ownerSessionId) {
         attemptKey: `${ownerSessionId}:${plan.attemptId}:${publication.material.step}` };
 }
 export function replayTavernTimedPublicationV1(read, revision, intervals) {
-    const { compilation, composition, snapshot, plan } = read, timed = snapshot.timed, proposal = plan.timedProposal, sid = plan.sessionId;
+    const { snapshot, plan } = read, timed = snapshot.timed, proposal = plan.timedProposal, sid = plan.sessionId;
     if (timed.branchId !== sid || timed.revision !== revision || !same(timed.intervals, intervals)
         || proposal.schemaVersion !== 1 || proposal.encoding !== 'owned-st-timed-proposals-v1' || proposal.branchId !== sid
         || proposal.baseRevision !== revision || proposal.baseSha256 !== snapshot.timedSha256 || proposal.chatIndex !== timed.chatIndex
         || !Array.isArray(proposal.actions) || proposal.actions.length > 8192)
         fail('INPUT_MATERIAL_TIMED_BASE_CHANGED');
-    if (!Array.isArray(plan.activatedEntryIds) || plan.activatedEntryIds.length > 4096
-        || new Set(plan.activatedEntryIds).size !== plan.activatedEntryIds.length)
-        fail('INPUT_MATERIAL_TIMED_ACTION_INVALID');
-    // Replay the publication's captured entries, including outputs that have
-    // since been disabled or replaced. Current heads cannot rewrite old timing.
-    const sourceEligibility = createTavernLoreSourceEligibilityV1(compilation), exclusions = new Set(snapshot.standaloneExclusions?.entryIds ?? []);
-    const entries = new Map(composition.entries.map(entry => {
-        const semantic = tavernLoreEvaluationSemanticV1(entry), sourceEligible = sourceEligibility(entry);
-        return [entry.entryId, { entry, semantic: exclusions.has(entry.entryId) ? { ...semantic, enabled: false } : semantic,
-                eligible: sourceEligible, sourceEligible }];
-    }));
-    let replay;
-    const feedback = new TavernLoreTemplateFeedbackStateV1(composition, snapshot, entries, () => { }, undefined, undefined, compilation, entryId => replay?.changed(entryId));
-    for (const activation of composition.ordinaryPreparation?.activationProposals ?? [])
-        feedback.activation(activation);
-    for (const change of composition.ordinaryPreparation?.changes ?? [])
-        if (change.forceActivation) {
-            const entry = entries.get(change.entryId)?.entry;
-            if (!entry)
-                fail('INPUT_MATERIAL_TIMED_ACTION_INVALID');
-            feedback.activation({ entryId: entry.entryId, rawEntrySha256: entry.rawEntrySha256 });
-        }
-    for (const row of snapshot.injectionFeedback ?? [])
-        if (row.loop === 0 && row.stage === 'before-initial')
-            for (const activation of row.activationProposals)
-                feedback.activation(activation);
-    replay = new TavernLoreTimedStateV1(timed, entries);
-    // Source callbacks can change an entry after the first timed read. Preserve
-    // actual selected receipt order, then each loop's after-selected scan hook.
-    const phases = [...(snapshot.activationFeedback ?? []).map(row => ({ loop: row.request.loop, phase: 0, proposals: row.activationProposals })),
-        ...(snapshot.injectionFeedback ?? []).filter(row => row.stage === 'after-selected')
-            .map(row => ({ loop: row.loop, phase: 1, proposals: row.activationProposals }))]
-        .sort((left, right) => left.loop - right.loop || left.phase - right.phase);
-    for (const phase of phases)
-        for (const activation of phase.proposals)
-            feedback.activation(activation);
-    for (const id of plan.activatedEntryIds) {
-        const entry = entries.get(id);
-        if (!entry?.eligible || !entry.semantic.enabled)
-            fail('INPUT_MATERIAL_TIMED_ACTION_INVALID');
-    }
-    replay.activated(plan.activatedEntryIds);
-    if (!same(replay.actions, proposal.actions)
-        || proposal.disposition !== (replay.actions.length ? 'proposed-consumer-data-only' : 'empty-no-timed-effects'))
-        fail('INPUT_MATERIAL_TIMED_ACTION_INVALID');
-    return replay.actions;
+    // The Native-bound producer plan owns the selected entries and final timed
+    // actions. Cold recovery applies their before/after chain through the same
+    // interval owner, without reevaluating old activation or feedback programs.
+    return proposal.actions;
 }
 export function applyTavernTimedActionV1(intervals, action) {
     const key = `${action.entryId}:${action.effect}`, before = intervals.get(key) ?? null;

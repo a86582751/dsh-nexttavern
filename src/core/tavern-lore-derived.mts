@@ -125,7 +125,7 @@ export function sealTavernLoreDerivedSnapshotV1(body:Omit<TavernLoreDerivedSnaps
 /** Only the untyped replay boundary parses again. The owned preparation path
  * consumes its owner's frozen packet directly. Existing evaluator bounds apply. */
 export function validateTavernLoreDerivedSnapshotV1(input:unknown):TavernLoreDerivedSnapshotV1 {
-  const value=cloneRoleplayTavernLoreDataV1(input,LORE_EVALUATOR_POLICY_V1.bounds.snapshotBytes,
+  const value=cloneRoleplayTavernLoreDataV1(input,LORE_EVALUATOR_POLICY_V1.bounds.preparationInputBytes,
     {nodes:100000,depth:48}) as unknown as TavernLoreDerivedSnapshotV1
   exact(value,['schemaVersion','encoding','ownerId','entries','snapshotSha256',
     ...Object.hasOwn(value,'suppressOriginalLookupKeys')?['suppressOriginalLookupKeys']:[]])

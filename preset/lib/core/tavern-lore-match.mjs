@@ -21,16 +21,17 @@ const asciiWord = (char) => !!char && ((char >= 'a' && char <= 'z')
 export class TavernLoreBoundedMatcherV1 {
     assertCurrent;
     valid = new Set();
-    calls = 0;
     workerDispatches = 0;
-    work = 0;
     cache = new Map();
     constructor(assertCurrent = () => { }) {
         this.assertCurrent = assertCurrent;
     }
+    beginScan() {
+        // Match results retain the complete haystack. Only the current scan loop
+        // can reuse them; validated regexes and dispatch budgets span evaluation.
+        this.cache.clear();
+    }
     async matches(text, keys, caseSensitive, wholeWords) {
-        if (text.length > 32768)
-            refuse('LORE_SCAN_TEXT_LIMIT');
         const result = [];
         for (const raw of keys) {
             this.assertCurrent();
@@ -48,11 +49,6 @@ export class TavernLoreBoundedMatcherV1 {
                 result.push(cached);
                 continue;
             }
-            if (++this.calls > 4096)
-                refuse('LORE_MATCH_CALL_LIMIT');
-            this.work += text.length + key.length;
-            if (this.work > 8_000_000)
-                refuse('LORE_MATCH_WORK_LIMIT');
             let matched = false;
             if (key && key.startsWith('/') && key.lastIndexOf('/') > 0) {
                 const rawFlags = key.slice(key.lastIndexOf('/') + 1);

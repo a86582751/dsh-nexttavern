@@ -5,6 +5,11 @@ import type {TavernLoreFrozenSnapshotV1} from './tavern-lore-evaluator-types.mjs
 import type {TavernLoreSemanticEntryV1} from './tavern-lore-plan-types.mjs'
 
 export type LoreScanStateV1='initial'|'recursion'|'minimum-activations'
+export function tavernLoreUsesGroupScoringV1(semantic:TavernLoreSemanticEntryV1,
+  peers:readonly {readonly semantic:TavernLoreSemanticEntryV1}[],useGroupScoring:boolean):boolean {
+  return !!semantic.group&&(useGroupScoring||peers.some(peer=>peer.semantic.useGroupScoring===true
+    &&peer.semantic.group.split(/,\s*/).some(group=>group&&semantic.group.split(/,\s*/).includes(group))))
+}
 export class TavernLoreScanBufferV1 {
   private skew=0
   private readonly recursive:string[]=[]
@@ -55,7 +60,6 @@ export class TavernLoreScanBufferV1 {
     for(const [flag,key] of fields)if(semantic[flag]&&this.snapshot.globalScanData[key])parts.push(this.snapshot.globalScanData[key])
     if(state!=='minimum-activations')parts.push(...this.recursive)
     const text='\u0001'+parts.join('\n\u0001')
-    if(text.length>32768)refuse('LORE_SCAN_TEXT_LIMIT')
     this.texts.set(identity,text)
     return text
   }

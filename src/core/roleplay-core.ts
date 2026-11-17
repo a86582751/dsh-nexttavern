@@ -3492,9 +3492,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       const reference:TavernSourceMaterialPublicationV1={ownerSessionId:session.id,nativeSeq:Number(event.seq),
         nativeEventSha256:nativeInputSha256(event),nativeRecordSha256:nativeInputSha256(event.data),
         snapshotRef:event.data.snapshot,planRef:event.data.plan},
-        published=captureRoleplayTavernMaterialPublicationV1(read,reference)
+        published=captureRoleplayTavernMaterialPublicationV1(read,reference),
+        {authorGroups,finalLore}=collectRoleplayTavernPublishedAuthorMaterialV1(published,read)
       authorMaterial={sourceKey:`native-material:${reference.nativeEventSha256}`,
-        ...collectRoleplayTavernPublishedAuthorMaterialV1(published,read)}
+        authorGroups,finalLore}
     }
     const key=characterBodySourceKey(canonical)
     characterMaterials.accept(session.id,{seq:canonical.seq,key},authorMaterial?.sourceKey as string|undefined)

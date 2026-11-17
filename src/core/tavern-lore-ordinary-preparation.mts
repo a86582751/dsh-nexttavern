@@ -7,7 +7,7 @@ import {refuse} from './tavern-lore-match.mjs'
 import {tavernLoreConsumerSourceV1} from './tavern-lore-compiler.mjs'
 import type {TavernLoreTemplateActivationV1} from './tavern-lore-evaluator-types.mjs'
 import type {TavernLorePlanV1} from './tavern-lore-plan-types.mjs'
-import type {TavernEjsHostOutput,TavernEjsResource} from './tavern-template-ejs-host-types.mjs'
+import type {TavernEjsHostOutput,TavernEjsResource,TavernEjsHostDiagnostic} from './tavern-template-ejs-host-types.mjs'
 import type {TavernEjsRuntimeIdentity} from './tavern-template-ejs-runtime-types.mjs'
 import type {TavernTemplateReadV1} from './tavern-template-types.mjs'
 
@@ -40,7 +40,8 @@ export interface TavernLoreOrdinaryFormalChangeV1 {
   readonly entryId:string
   readonly ordinal:number
   readonly condition?:{readonly executionIndex:number}
-  readonly admission?:'condition-excluded'|'dont-activate'|'force-enabled'
+  readonly admission?:'condition-excluded'|'dont-activate'|'force-enabled'|'extension-failed'
+  readonly unavailable?:{readonly executionIndex:number}
   readonly forceActivation?:true
   readonly program?:{
     readonly bodyOffset:number
@@ -92,6 +93,7 @@ export interface TavernLoreOrdinaryExecutionEvidenceV1 {
     readonly output:{readonly kind:'prepared-text';readonly entryId:string;
       readonly field:'body'|'primaryKeys'|'secondaryKeys';readonly index?:number}
       |{readonly kind:'condition';readonly passed:boolean;readonly outputSha256?:string}
+      |{readonly kind:'unavailable';readonly diagnostic:TavernEjsHostDiagnostic}
     readonly reads?:readonly TavernTemplateReadV1[]
     readonly resourceReads?:TavernEjsHostOutput['resourceReads']
     readonly ordinaryReadFacts?:Pick<TavernEjsHostOutput,
@@ -111,7 +113,7 @@ export function sealTavernLoreOrdinaryPreparationV1(
  * composition receives the renderer's frozen result directly. */
 export function validateTavernLoreOrdinaryPreparationV1(input:unknown,plan:TavernLorePlanV1)
   :TavernLoreOrdinaryPreparationV1 {
-  const packet=cloneRoleplayTavernLoreDataV1(input,LORE_EVALUATOR_POLICY_V1.bounds.snapshotBytes,
+  const packet=cloneRoleplayTavernLoreDataV1(input,LORE_EVALUATOR_POLICY_V1.bounds.preparationInputBytes,
     {nodes:100000,depth:48}) as unknown as TavernLoreOrdinaryPreparationV1
   if(!packet||packet.schemaVersion!==1||packet.encoding!=='owned-st-lore-ordinary-preparation-v1'
     ||packet.compilerPlanSha256!==plan.planSha256
