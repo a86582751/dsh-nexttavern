@@ -504,7 +504,9 @@ export function validateMvuSchemaOpeningHead(input:MvuSchemaOpeningHeadV2):MvuSc
   return head
 }
 export function validateSchemaOpeningRootFacts(input:SchemaOpeningRootFacts):SchemaOpeningRootFacts {
-  const root=freezeMvuSchemaOpeningData(input),preparation=validateMvuSchemaOpeningPreparation(root.preparation),
+  // Each leaf owns its bounded DATA. Cloning this join would charge the same
+  // Source again for every correlated view of the completed opening.
+  const root=input,preparation=validateMvuSchemaOpeningPreparation(root.preparation),
     event=validateMvuSchemaOpeningEvent(root.event),head=validateMvuSchemaOpeningHead(root.head)
   if(root.intent.status!=='completed'||!same(root.plan,event.plan)||!same(root.native,event.native)||!same(head,mvuSchemaOpeningHead(event))
     ||!same(mvuSchemaOpeningIdentity(root.intent),preparation.identity))fail()
