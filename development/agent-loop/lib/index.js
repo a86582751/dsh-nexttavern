@@ -65,6 +65,7 @@ import { inboxProjectionDefinition } from './inbox.js';
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.js';
 export { readNativeRequestMeasurementV1 } from './request-budget.js';
 export { createNativePublishedInputHistory } from './published-input.js';
+export { inspectProgrammaticCommit } from './programmatic-commit.js';
 /** Fiber states that cannot own or serve a new lifecycle. */
 // Cordis 4.0.4 declares FiberState as an ambient const enum and exports no
 // runtime value. Keep its pinned lifecycle codes explicit in this JS output.

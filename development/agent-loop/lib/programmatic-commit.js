@@ -8,8 +8,7 @@ export function programmaticTurnIdentity(input) {
     if (!input || !valid(input.operationId) || !valid(input.messageId) || !input.source
         || input.source.kind !== 'programmatic' || input.source.schemaVersion !== 1
         || input.source.operationId !== input.operationId || !valid(input.source.producer)
-        || !valid(input.source.origin) || typeof input.text !== 'string'
-        || Buffer.byteLength(input.text, 'utf8') > 65_536) {
+        || !valid(input.source.origin) || typeof input.text !== 'string') {
         throw new Error('invalid programmatic assistant commit identity, source, or text');
     }
     return { schemaVersion: 1, operationId: input.operationId, messageId: input.messageId,

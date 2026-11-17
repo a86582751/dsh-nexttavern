@@ -41,6 +41,8 @@ import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.js'
 import type {} from './runtime-context.js'
 export {readNativeRequestMeasurementV1} from './request-budget.js'
 export {createNativePublishedInputHistory} from './published-input.js'
+export {inspectProgrammaticCommit} from './programmatic-commit.js'
+export type {ProgrammaticCommitInput} from './programmatic-commit.js'
 export type {NativeRequestMeasurementV1,RequestComponent,RequestComponents} from './request-budget.js'
 
 /** Fiber states that cannot own or serve a new lifecycle. */
