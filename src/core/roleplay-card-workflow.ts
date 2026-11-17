@@ -246,7 +246,7 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
         },
       })
       const live=T.branch.get(cardWorkflowKey(job.id)) as CardWorkflowJob | undefined
-      if(live?.generation===job.generation&&!['cancelled','stale','failed'].includes(live.status))
+      if(live?.generation===job.generation&&!['completed','cancelled','stale','failed'].includes(live.status))
         await T.branch.put(cardWorkflowKey(job.id),{...live,status:'completed',result,resourceId:result.resourceId,
           progress:{done:1,total:1},completedAt:Date.now()})
     }catch(error){
