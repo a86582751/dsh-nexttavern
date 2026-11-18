@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "mode": "checkout",
-  "sourceCommit": "f75cae5701ae57f55e5773063eafe15de7c79f8e",
+  "sourceCommit": "eabfcb1988346f2ab7ea9726ed44c0467d682ccc",
   "version": "0.3.0-rc.1",
-  "manifestSha256": "dc0ca2a8c8d05fd63fee2b62040a0d84a143406e3575f645a4ce06ca73b7cc67"
+  "manifestSha256": "1c6938ce1a7ac1d1c0ee9f60801eb41a6a367c157f4db5565962506cb0fd1c6a"
 }
