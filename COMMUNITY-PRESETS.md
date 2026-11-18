@@ -1,6 +1,8 @@
 # 社区预设与正则：作者手册
 
-本文面向预设作者、卡作者和第三方工具开发者，说明 **0.3 开发源码中的导入与执行合同**。0.3 尚未正式发布；现有受支持样本的限域结果不等于所有 SillyTavern 预设、脚本插件和模型 provider 都兼容。发行状态见[开发日志](DEVELOPMENT-0.3.md)。
+本文面向预设作者、卡作者和第三方工具开发者，说明 **0.3 开发线的导入与执行合同**。规则的效果跟随实际选择范围、所提供的材料和执行阶段。可玩版进展与能力边界见[开发日志](DEVELOPMENT-0.3.md)。
+
+**English summary.** Select a preset or bind a regex library in the intended scope. Preview the correct channel. `promptOnly` targets material sent to the model, and `markdownOnly` targets Reader display. When both flags are false, the rule applies to source material. Reader keeps the prose readable if a display rule fails. Numerical settlement follows the saved message and the state engine.
 
 快速查阅：[完整预设示例](#2-可导入什么文件) · [条目与功能组](#3-条目排序功能组和采样) · [作用范围](#4-共享库全局与对话范围) · [宏与世界书](#5-宏变量世界书与历史的组装) · [正则参考](#6-正则的导入顺序与字段) · [排错](#7-作者排错顺序与验证边界)
 
@@ -273,7 +275,7 @@ placement 的当前 UI 名称为 1 用户输入、2 模型回复、3 快捷命�
 
 要使用多行匹配，明确写 `m`（改变行首尾锚点）或 `s`（让点匹配换行）。没有 `g` 不表示全量替换。不承诺 PCRE、`x` 等非 JavaScript 语义。查找式中的宏是否展开由 `substituteRegex` 决定，替换模板的宏另按自己的阶段处理。
 
-正则沿隔离 Worker 执行，有输入、输出、匹配与时限等限制。非法表达式可能报告 `PROMPT_TRANSFORM_REGEX_INVALID`，长耗时变换可能被终止；Reader 失败时保留可读原文并提示。缩小匹配范围、改写模式或停用该规则，优于期待刷新能修复同一表达式。
+正则沿隔离 Worker 执行，有输入、输出、匹配与时限等限制。非法表达式可能报告 `PROMPT_TRANSFORM_REGEX_INVALID`，长耗时变换可能被终止。Reader 的美化失败提示会保留可读正文和原生操作；「重试显示」仅重新处理当前显示。规则本身有问题时，先在当前来源和位置预览单条规则，再缩小匹配范围、改写或停用该规则。作者 HTML 文档和已结算的数值更新各有自己的处理流程，正文正则应只匹配它负责的文本。
 
 ## 7. 作者排错顺序与验证边界
 
@@ -286,6 +288,7 @@ placement 的当前 UI 名称为 1 用户输入、2 模型回复、3 快捷命�
 | 采样没变 | applySampling 是否打开；字段是否是已接入的两个数值字段 | 保存未知参数不等于 provider 已使用 |
 | 宏原样出现或报错 | 是否用了未支持宏；是否把 EJS／MVU／外部记忆语法混入社区宏 | 支持的宏由本轮绑定展开；未知依赖明确失败 |
 | 正则预览没变 | 来源绑定、开关、placement、通道标记、深度、模式／flags | 用显示示例先确认单规则，再检查真实链 |
+| Reader 提示部分美化规则未完成 | 先查看错误码与当前范围，再逐条预览参与的显示规则 | 调整规则后用「重试显示」核对同一条正文 |
 | 已编辑消息没有变换 | runOnEdit 是否 false | true 才允许该版本参与变换 |
 | 画面更新但数值没变 | 是否只做了显示替换；MVU 候选是否被接受并提交 | 数值以游戏数值面板及对应提交为准 |
 

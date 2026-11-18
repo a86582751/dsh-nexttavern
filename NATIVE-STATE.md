@@ -1,6 +1,8 @@
 # NextTavern 原生状态系统：MVU 兼容与 Ruby 分析
 
-本文说明 **0.3 开发源码中的状态机制**，供卡作者设计初值、更新规则和可选分析。0.3 尚未正式发布，完整卡玩法、恢复和性能仍在验收；本文的字段和执行说明不代表所有社区 MVU／RUBY 版本均已兼容。发行状态见[开发日志](DEVELOPMENT-0.3.md)，卡文件结构见[原生卡格式](NATIVE-CARD-FORMAT.md)。
+本文说明 **0.3 开发线的状态机制**，供卡作者设计初值、更新规则和可选分析。可玩开发版已验证追加样本中适用的开场初值、首轮结算与冷读。具体模型、卡片和恢复范围见[开发日志](DEVELOPMENT-0.3.md)，卡文件结构见[原生卡格式](NATIVE-CARD-FORMAT.md)。
+
+**English summary.** Choose an opening and check its initial values in **Game Values**. A Story may propose a numerical update. Reader and original-manuscript export omit the protocol block only after the matching message version settles. When a reply shows **Numerical update unsettled**, expand its diagnostic and check the current worldline. A Ruby result becomes material for later Stories through its configured worldbook entry.
 
 快速查阅：[设计定位](#设计定位原生运行机制兼容社区协议与作者能力) · [完整初值卡](#2-给-native-12-卡加入初值) · [回合更新](#3-一回合如何提交数值) · [Schema 与 EJS](#4-schemaejs-与纯数据路径的边界) · [世界线与编辑](#5-世界线编辑重生成与手动修改) · [Ruby 分析](#6-ruby按周期产生分析材料)
 
@@ -247,7 +249,7 @@ registerMvuSchema(z.object({
 
 在状态栏找到“**游戏数值**”，可编辑字段或展开“高级：完整数值 JSON”，再点“保存数值”。回合进行中、来源变化或正文编辑影响未确认时，面板会禁止保存并解释原因。其他操作改变了基线时，用“载入最新值并比较草稿”合并；回应丢失时用“重试上次保存”，它保留同一次保存身份，不会另做一次数值操作。
 
-已接受的更新块可以在 Reader 隐藏，但只在它与当前消息版本及已接受协议相符时隐藏。拒绝、陈旧或仅被引用的块保留线索；显示正则删掉标签不能使候选变成有效数值。正常重开恢复、取消、进程中断后的恢复各有边界，不能用某一次成功恢复推断所有故障都无损。
+Reader 和小说原稿根据当前消息版本与实际结算结果处理协议块。结算成功且来源吻合时，正文省略对应的更新块，原始消息仍可用于追查。Reader 若显示「数值更新未结算」，展开对应诊断，再查看当前世界线的「游戏数值」、操作路径与规则。显示正则只改渲染结果，数值以状态提交为准。正常重开、取消和进程中断分别按各自恢复结果核对。
 
 ## 6. Ruby：按周期产生分析材料
 
@@ -355,6 +357,7 @@ run 的 JSON 结果提供总体 `ok`、`completed`、`failed`、逐任务 `tasks
 | 没有初值／`GENESIS_UNPROVEN` | 是否经导入建立会话；InitVar 是否在主 `character_book`；是否已选有效开场；是否混入未支持作者程序 | 能确认初值后出现游戏数值，而不是从状态栏猜值 |
 | 开场丢了背包字段 | 开场 InitVar 是否只写体力；是否误以为它深合并主书 | 开场替换对象应写全所需字段 |
 | 正文正确，数值没变 | 是否真的输出合法更新；路径是否存在；是否有 test／Schema 拒绝；本轮是否已完成提交 | 接受后才有新面板值 |
+| 「数值更新未结算」 | 展开消息诊断，核对所处世界线、消息版本和实际状态提交 | 已结算后重新读取当前状态，正文省略对应协议块 |
 | `PATH_MISSING`／非法操作 | JSON Pointer、数组顺序、旧式命令路径及是否试图创建缺失父对象 | 修正下一次候选或从有效切点重生成 |
 | 编辑后暂不可保存 | 正文版本与数值依赖是否已经失效 | 按提示从影响之前重生成，不用旧草稿覆盖 |
 | Ruby 没运行 | enabled、周期基线、到期位置、关键词、真实指令 key、配置原因 | skipped 与 unsupported 都有具体原因，无额外模型调用 |
