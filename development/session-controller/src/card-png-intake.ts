@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto'
-import type {AttachmentAdmissionPart, FileAttachmentRef, SaveImageAttachment} from '@deepseek-ai/dsh-attachment'
+import type {AttachmentAdmissionPart, FileAttachmentRef, ImageAttachmentRef, SaveImageAttachment,
+  StoredImageAttachment} from '@deepseek-ai/dsh-attachment'
 
 // Intake only distinguishes card metadata from ordinary imagery. The existing
 // card importer remains the sole owner of parsing, projection and activation.
@@ -102,24 +103,28 @@ export function classifyCardPng(data:Uint8Array):'ordinary-image' | 'card-png' {
 }
 
 interface OriginalStore {
+  readImage(ref:ImageAttachmentRef):Promise<StoredImageAttachment>
   validateImage(input:SaveImageAttachment):Promise<void>
   saveFile(input:{data:Uint8Array;name?:string}):Promise<FileAttachmentRef>
 }
 /** Keep one submitted attachment at one position, including mixed image/file messages. */
-export function prepareCardPngIntake(content:readonly AttachmentAdmissionPart[]) {
+export async function prepareCardPngIntake(content:readonly AttachmentAdmissionPart[], store:OriginalStore) {
   const originals = new Map<number,{data:Buffer;name:string;sha256:string}>()
   let hasImage = false
-  content.forEach((part,index) => {
-    if (part.type !== 'image') return
-    if (part.mediaType !== 'image/png') {hasImage = true;return}
-    const data = canonicalBase64(part.data,LIMITS.bytes)
-    if (classifyCardPng(data) === 'ordinary-image') {hasImage = true;return}
+  for (const [index, part] of content.entries()) {
+    if (part.type !== 'image') continue
+    const metadata = 'attachment' in part ? part.attachment : part
+    if (metadata.mediaType !== 'image/png') {hasImage = true;continue}
+    const data = 'attachment' in part
+      ? Buffer.from((await store.readImage(part.attachment)).data)
+      : canonicalBase64(part.data,LIMITS.bytes)
+    if (classifyCardPng(data) === 'ordinary-image') {hasImage = true;continue}
     // Display names are sanitized by the public file store. The extension is
     // required by the importer, never inferred from a provider filesystem path.
-    const name = part.name?.toLowerCase().endsWith('.png') ? part.name : '角色卡.png'
+    const name = metadata.name?.toLowerCase().endsWith('.png') ? metadata.name : '角色卡.png'
     originals.set(index,{data,name,sha256:createHash('sha256').update(data).digest('hex')})
-  })
-  return {hasImage,async admit(store:OriginalStore):Promise<AttachmentAdmissionPart[]> {
+  }
+  return {hasImage,async admit():Promise<AttachmentAdmissionPart[]> {
     for (const original of originals.values()) await store.validateImage({...original,mediaType:'image/png'})
     const next = [...content]
     for (const [index,original] of originals) {

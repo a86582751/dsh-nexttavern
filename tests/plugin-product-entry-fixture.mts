@@ -223,10 +223,6 @@ async function prepareFixture(root: string, options: FixtureOptions) {
     startedBundles: ['fixture-base','dsh-nexttavern'], overlays: [], telemetryDisabledEnv: undefined}
   const ctx = new Context()
   ctx.baseUrl = pathToFileURL(dir+path.sep).href
-  // Keep boot's global update observer in the fixture's real waterfall chain.
-  ctx.on('internal/update', (_config: unknown, _noSave: boolean, next: () => unknown) => {
-    Promise.resolve(next()).catch(error => ctx.logger.error(error))
-  }, {global: true, prepend: true})
   ctx.provide('profileContext', context)
   ctx.provide('productProbe', {fail: options.fail, ownedReady: ownedReady.promise,
     attempt(owner: string, value: unknown) {attempts.push({owner, value})},

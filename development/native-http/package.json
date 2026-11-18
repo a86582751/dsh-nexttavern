@@ -8,11 +8,24 @@
   "main": "lib/index.js",
   "types": "src/index.ts",
   "exports": {
-    ".": {"types": "./src/index.ts", "default": "./lib/index.js"},
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./lib/index.js"
+    },
     "./package.json": "./package.json"
   },
-  "files": ["src", "lib", "LICENSE"],
-  "dependencies": {"undici": "8.11.0"},
-  "bundleDependencies": ["undici"],
-  "peerDependencies": {"@deepseek-ai/dsh-http-proxy": "0.1.7-rc.2"}
+  "files": [
+    "src",
+    "lib",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "undici": "8.11.0"
+  },
+  "bundleDependencies": [
+    "undici"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/dsh-http-proxy": ">=0.2.2-rc.5"
+  }
 }

@@ -17,19 +17,19 @@
  * the record instead of migrating it. Record keys become path segments, so
  * they must be path-safe (`[a-zA-Z0-9_-]+`); an unsafe key rejects at write.
  *
- * Legacy bootstrap: when the new tree has no document path, a legacy
+ * Legacy bootstrap: when the new tree has no declared table or global document, a legacy
  * whole-unit file `<root>/<name>.json` (the pre-per-record layout) seeds
  * per-record documents, provided its stored unit version is in the accepted
  * set — a legacy file stamped with any other version is left alone and reads
- * as the empty unit. Any new document path, including one whose contents are
- * unreadable or stale, suppresses the bootstrap for the whole unit. The
+ * as the empty unit. A declared table directory, even empty, or a declared
+ * global document suppresses bootstrap for the whole unit. The
  * legacy file is never changed or deleted.
  * @module @deepseek-ai/dsh-storage-json/src/per-record-unit
  */
 import { mkdir, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { StorageError } from '@deepseek-ai/dsh-storage';
-import { writeAtomic } from './atomic.js';
+import { fsyncDirectory, writeAtomic } from './atomic.js';
 import { parseRecord, serializeRecord } from './format.js';
 /** Keys become path segments in this layout; this set is path-safe on every OS. */
 const SAFE_KEY_RE = /^[a-zA-Z0-9_-]+$/;
@@ -73,15 +73,15 @@ async function loadPerRecordState(descriptor, dir) {
         // Missing directory = empty unit; the legacy bootstrap below still runs
         // (the fresh-upgrade shape is exactly an absent new tree).
     }
-    let hasNewDocuments = false;
+    let hasNewState = false;
     // Serialize tables too, so one loadAll does not overlap record read/parse
     // buffers across the domain. The returned snapshot still retains every row.
     for (const entry of entries ?? []) {
         if (entry.isDirectory()) {
             const records = state.tables.get(entry.name);
             if (records !== undefined) {
-                const hasDocuments = await loadTableRecords(records, versions, join(dir, entry.name));
-                hasNewDocuments = hasNewDocuments || hasDocuments;
+                await loadTableRecords(records, versions, join(dir, entry.name));
+                hasNewState = true;
                 continue;
             }
         }
@@ -89,10 +89,10 @@ async function loadPerRecordState(descriptor, dir) {
             const global = await readRecord(join(dir, entry.name), versions);
             if (global !== undefined)
                 state.global = global;
-            hasNewDocuments = true;
+            hasNewState = true;
         }
     }
-    if (!hasNewDocuments)
+    if (!hasNewState)
         await bootstrapLegacyUnit(descriptor, dir, state);
     return state;
 }
@@ -158,12 +158,9 @@ async function bootstrapLegacyUnit(descriptor, dir, state) {
 }
 /**
  * Read one declared table's record documents into `records`.
- * @returns whether the directory contains any `.json` document path,
- * independently of key safety, readability, or stored version.
  */
 async function loadTableRecords(records, versions, dir) {
     const files = await readdir(dir, { withFileTypes: true });
-    const hasDocuments = files.some(file => file.name.endsWith('.json'));
     for (const file of files) {
         if (!file.name.endsWith('.json'))
             continue;
@@ -174,7 +171,6 @@ async function loadTableRecords(records, versions, dir) {
         if (record !== undefined)
             records.set(key, record);
     }
-    return hasDocuments;
 }
 /** Read one record document; a foreign (unreadable or stale) one reads as absent. */
 async function readRecord(path, versions) {
@@ -196,6 +192,7 @@ export class PerRecordJsonUnit {
     dir;
     onClose;
     closed = false;
+    unusable;
     /** In-flight durable writes; close() drains them before releasing the unit. */
     inFlight = new Set();
     constructor(descriptor, dir, onClose) {
@@ -220,10 +217,79 @@ export class PerRecordJsonUnit {
         await this.tracked(this.writeDocument(join(this.tableDir(table), `${key}.json`), value));
     }
     /** Durably delete one record. Idempotent: a missing key is a no-op. */
-    async deleteRecord(table, key) {
+    deleteRecord(table, key) {
+        return this.deleteRecords(table, [key]);
+    }
+    /**
+     * Durably delete many records as one batch. Documents are renamed out of the
+     * readable set first; only after the whole batch is staged are the staged
+     * copies unlinked. A failure while staging restores the documents it moved,
+     * so a rejection normally leaves the batch unapplied. If that restoration
+     * itself fails, the readable or durable state is unknown: the unit rejects with
+     * `unknown-state` and every later operation on it rejects, while `close`
+     * still releases it. Staged directory changes are synced before cleanup on
+     * POSIX, so a resolved deletion remains absent after a crash. Cleanup residue
+     * is not readable (`open` reads `*.json` documents only).
+     */
+    async deleteRecords(table, keys) {
         this.assertOpen();
-        assertSafeKey(this.descriptor.name, key);
-        await this.tracked(rm(join(this.tableDir(table), `${key}.json`), { force: true }));
+        const dir = this.tableDir(table);
+        const unique = [...new Set(keys)];
+        for (const key of unique)
+            assertSafeKey(this.descriptor.name, key);
+        // Track staging, restoration, and cleanup together so close() drains them.
+        await this.tracked(this.removeDocuments(dir, unique));
+    }
+    /**
+     * Remove one batch's documents under a single tracked promise.
+     * @param dir - Declared table directory.
+     * @param keys - Validated, de-duplicated record keys.
+     */
+    async removeDocuments(dir, keys) {
+        const staged = [];
+        try {
+            for (const key of keys) {
+                const from = join(dir, `${key}.json`);
+                const to = `${from}.deleting`;
+                try {
+                    await rename(from, to);
+                }
+                catch (error) {
+                    if (error.code === 'ENOENT')
+                        continue;
+                    throw error;
+                }
+                staged.push({ from, to });
+            }
+            if (staged.length > 0)
+                await fsyncDirectory(dir);
+        }
+        catch (error) {
+            const restoreFailures = [];
+            for (const { from, to } of staged) {
+                try {
+                    await rename(to, from);
+                }
+                catch (restoreError) {
+                    restoreFailures.push(restoreError);
+                }
+            }
+            if (staged.length > 0) {
+                try {
+                    await fsyncDirectory(dir);
+                }
+                catch (restoreError) {
+                    restoreFailures.push(restoreError);
+                }
+            }
+            if (restoreFailures.length === 0)
+                throw error;
+            this.unusable = new StorageError('unknown-state', `unit '${this.descriptor.name}' could not restore a failed batch delete; its state is unknown`, { cause: new AggregateError([error, ...restoreFailures], 'batch delete failed and restoration failed') });
+            throw this.unusable;
+        }
+        // The renames already removed the batch from the readable set; unlinking is
+        // cleanup, and a failed unlink leaves an unreadable file rather than an entry.
+        await Promise.allSettled(staged.map(({ to }) => rm(to, { force: true })));
     }
     /**
      * Move one record's document aside as `<key>.json.bak.<YYYYMMDDHHmm>`. The
@@ -260,6 +326,8 @@ export class PerRecordJsonUnit {
         this.onClose();
     }
     assertOpen() {
+        if (this.unusable)
+            throw this.unusable;
         if (this.closed) {
             throw new StorageError('closed', `unit '${this.descriptor.name}' is closed`);
         }

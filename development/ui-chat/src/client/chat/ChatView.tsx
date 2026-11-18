@@ -3,14 +3,14 @@
 
 import { memo, useCallback, useMemo, useRef, useState, type ComponentProps } from 'react'
 import type {
-  NodeKey, RenderEntry, RenderMessageImages,
+  NodeKey, RenderEntry,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { InboxState } from '@deepseek-ai/dsh-agent/types'
 import type { PendingSubmission } from '@deepseek-ai/dsh-api-session-controller/client'
 import {
   Button, IconChevronDownOutlineRegular, MarkdownDelegateProvider, Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ChatViewSlotProps, OpenFileOptions } from '../contract/slots.ts'
+import type { ChatViewSlotProps, OpenFileOptions, RenderMessageImages } from '../contract/slots.ts'
 import type { ChatSnapshot } from '../contract/snapshot.ts'
 import { PendingSteeringBubble, PendingSubmissionBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
@@ -76,10 +76,10 @@ const ChatNodeList = memo(function ChatNodeList({ entries, useChatGroup, pending
   })
   const pendingRows = pendingInputs.map(item => 'requestId' in item ? (
     <PendingSubmissionBubble key={item.requestId} submission={item}
-      renderMessageImages={seatProps.renderMessageImages} t={seatProps.t} />
+      renderMessageImages={seatProps.renderMessageImages} renderFactorySlot={seatProps.renderFactorySlot} t={seatProps.t} />
   ) : (
     <PendingSteeringBubble key={item.id} content={item.content}
-      renderMessageImages={seatProps.renderMessageImages} t={seatProps.t} />
+      renderMessageImages={seatProps.renderMessageImages} renderFactorySlot={seatProps.renderFactorySlot} t={seatProps.t} />
   ))
   const tail = entries.at(-1)
   const node = tail?.kind === 'node' ? seatProps.nodeStore.get(tail.key) : undefined
@@ -100,7 +100,7 @@ const ChatNodeList = memo(function ChatNodeList({ entries, useChatGroup, pending
 export function ChatView({
   useSession, useChat, useChatNode, useChatNodeProcess, useChatGroup, useConversation, useSessions, useStore, actions, renderSlot,
   sessionId, openFile, openSkill, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions,
-  usePresentation, useProjection, t,
+  usePresentation, useProjection, renderFactorySlot, fileDrag, t,
 }: ChatViewSlotProps) {
   const order = useChat(s => s.order)
   const groupedEntries = useConversation(snapshot => snapshot.views.grouped('chat')?.entries)
@@ -122,12 +122,13 @@ export function ChatView({
   // Workspace root off the session list row: path summaries display relative to it.
   const cwd = useSessions(s => s.byId[sessionId]?.cwd)
   const fileImages = useMemo(() => ({
+    fileDrag,
     resolve: (path: string) => fileMediaUrl(document.baseURI, resolveWorkspacePath(cwd, path)),
     labels: {
       open: t('image.open'), loading: t('image.loading'), failed: t('image.failed'),
       dialog: t('image.dialog'), close: t('image.close'),
     },
-  }), [cwd, t])
+  }), [cwd, fileDrag, t])
   const running = useSession(s => s.running)
   const openState = useSession(s => s.openState)
   const openError = useSession(s => s.openError)
@@ -199,8 +200,8 @@ export function ChatView({
     return [...pending, ...local.values()]
   }, [inboxSteering, pendingSubmissions, visibleSubmissions])
   const renderMessageImages = useCallback<RenderMessageImages>(
-    owner => renderSlot('conversation.message.images', { ...owner, loadImage }),
-    [loadImage, renderSlot],
+    owner => renderFactorySlot('conversation.images.content', { ...owner, loadImage }),
+    [loadImage, renderFactorySlot],
   )
 
   const firstKey = order[0]
@@ -264,6 +265,7 @@ export function ChatView({
                 forkAt={forkAt}
                 loadImage={loadImage}
                 renderMessageImages={renderMessageImages}
+                renderFactorySlot={renderFactorySlot}
                 fileMentions={fileMentions}
                 renderSlot={renderSlot}
                 t={t}

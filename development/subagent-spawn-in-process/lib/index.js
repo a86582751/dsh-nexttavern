@@ -28,6 +28,7 @@ class SpawnInProcessProvider {
         agentOptions: true,
         outputSchema: true,
         depthLimit: true,
+        agentPreset: true,
         toolFilter: true,
         persona: true,
         ownedAuthorDialog: true,
@@ -39,7 +40,7 @@ class SpawnInProcessProvider {
     constructor(name) {
         this.name = name;
     }
-    start(request) {
+    startOwned(request) {
         // Fresh child: no seed. The shared driver mints ids, stamps cwd/lineage/
         // depth, drives the one-shot (including the structured capture when the
         // request carries an outputSchema), and maps the result.

@@ -10,9 +10,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {
   ContinuableCreateSpec,
+  OwnedSubagentProvider,
   ResolvedSubagentStartRequest,
-  SubagentCapabilities,
-  SubagentProvider,
 } from 'dsh-nexttavern-native-subagent'
 import { startInProcessRun } from 'dsh-nexttavern-native-subagent-in-process-driver'
 
@@ -38,11 +37,12 @@ export const Config: z<Config> = z.object({
  * route), and `toolFilter`/`persona` (scoped `restrict()` and a scoped
  * shadowing persona section, applied in the child's creation window).
  */
-class SpawnInProcessProvider implements SubagentProvider {
-  readonly capabilities: SubagentCapabilities = {
+class SpawnInProcessProvider implements OwnedSubagentProvider {
+  readonly capabilities: OwnedSubagentProvider['capabilities'] = {
     agentOptions: true,
     outputSchema: true,
     depthLimit: true,
+    agentPreset: true,
     toolFilter: true,
     persona: true,
     ownedAuthorDialog:true,
@@ -54,7 +54,7 @@ class SpawnInProcessProvider implements SubagentProvider {
 
   constructor(readonly name: string) {}
 
-  start(request: ResolvedSubagentStartRequest) {
+  startOwned(request: ResolvedSubagentStartRequest) {
     // Fresh child: no seed. The shared driver mints ids, stamps cwd/lineage/
     // depth, drives the one-shot (including the structured capture when the
     // request carries an outputSchema), and maps the result.

@@ -328,6 +328,12 @@ export interface LlmConfigurableProvider {
   error?: string
 }
 
+/** Authentication available when no credential reference is configured. */
+export interface LlmNativeAuth {
+  env: readonly string[]
+  oauth: boolean
+}
+
 /**
  * One interrogation of a provider endpoint that configuration has not stored
  * yet. Configuration surfaces send the draft a user is still editing, so the
@@ -387,6 +393,12 @@ export interface LlmDiscoveredModel {
   inputModalities?: readonly ModelModality[]
 }
 
+/** Optional provider-authored label for the model selector. */
+export interface LlmModelBadge {
+  readonly text: import('@deepseek-ai/dsh-package-manifest').LocalizedText
+  readonly tone: 'neutral' | 'info' | 'success' | 'warning'
+}
+
 /** One adapter-discovered model; catalog membership is advisory, not request validation. */
 export interface LlmModelInfo {
   /** Provider route that owns this model entry. */
@@ -397,6 +409,8 @@ export interface LlmModelInfo {
   name: string
   /** Optional user-facing distinction from otherwise similar models. */
   description?: string
+  /** Provider's optional label for discovery, outside the request protocol. */
+  badge?: LlmModelBadge
   /** Accepted request modalities; absent means unknown, while an explicit omission is negative capability. */
   inputModalities?: readonly ModelModality[]
 }
@@ -663,7 +677,7 @@ export interface RequestLocalSamplingV1 extends LlmGenerationOptions {
   readonly stop?:readonly string[]
 }
 /** A single model request, fully assembled. */
-export interface GenerateOptions extends LlmGenerationOptions {
+export interface GenerateOptions<Purpose extends string = 'compaction' | 'session-title'> extends LlmGenerationOptions {
   /** Registered provider route selecting the adapter instance. */
   provider: string
   model: string
@@ -704,5 +718,5 @@ export interface GenerateOptions extends LlmGenerationOptions {
    * map the purpose to model-hidden transport metadata or purpose-specific
    * generation policy. Ordinary conversation requests leave it unset.
    */
-  purpose?: 'compaction' | 'session-title'
+  purpose?: Purpose
 }

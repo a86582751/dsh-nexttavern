@@ -89,7 +89,7 @@ export class SessionManager {
         for (const parentSessionId of this.projectionStores.keys()) {
             const child = this.projectionStores.get(parentSessionId)?.values().subagentCatalog
                 ?.find(entry => entry.id === sessionId);
-            if (child !== undefined) {
+            if (child !== undefined && child.mode !== 'external') {
                 return {
                     parentSessionId,
                     childSessionId: sessionId,
@@ -274,14 +274,20 @@ export class SessionManager {
                 if (controller.signal.aborted)
                     return;
                 if (result.ok) {
-                    if (result.value !== null) {
-                        store.seed({ ...result.value, asOfSeq: sessionSeqCursor(result.value.asOfSeq) });
+                    const value = result.value;
+                    if (value?.kind === 'sequenced') {
+                        store.seed({ values: value.values, asOfSeq: sessionSeqCursor(value.asOfSeq) });
+                    }
+                    else if (value?.kind === 'migration-required') {
+                        store.applyCached(value.values);
                     }
                     else if (store.values() === initialValues) {
                         // A later frame proves existence independently of an earlier missing read.
                         store.clear();
                     }
-                    this.projectionLoads.set(sessionId, { state: 'ready', error: null });
+                    this.projectionLoads.set(sessionId, {
+                        state: value?.kind === 'migration-required' ? 'migration-required' : 'ready', error: null,
+                    });
                 }
                 else {
                     this.projectionLoads.set(sessionId, { state: 'error', error: result.error });
@@ -540,7 +546,10 @@ export class SessionManager {
             this.replaceControlBaseline(frame.value);
             return;
         }
-        this.projectionStore(frame.sessionId).apply(frame.key, frame.value, SessionSeq(frame.seq));
+        const store = this.projectionStore(frame.sessionId);
+        const seq = SessionSeq(frame.seq);
+        for (const change of frame.changes)
+            store.apply(change.key, change.val, seq);
         this.notifier.markDirty();
     }
     replaceControlBaseline(baseline) {

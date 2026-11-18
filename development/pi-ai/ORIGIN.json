@@ -53,14 +53,18 @@
     "Relative runtime imports use generated .js paths; strict index safety retains proven bounds",
     "Four terminal protocol conditions stop reading once the final usage/event is received",
     "Anthropic releases its SSE reader after terminal iteration; cancellation policy remains owned by official alpha.7 adapter",
-    "OpenAI Responses projects typed topP, toolChoice, and JSON Schema options",
-    "No custom transport AbortController, idle timeout, Gemini base URL or authentication patch"
+    "Provider overlays project typed controls and use the adapter-configured fetch for Google",
+    "OpenAI Responses projects typed topP, toolChoice, JSON Schema options and response metadata",
+    "OpenAI Completions serializes request-scoped ordered input through the NextTavern-owned openai-ordered-input module"
+  ],
+  "nextTavernFiles": [
+    "src/api/openai-ordered-input.ts"
   ],
   "fork": {
     "repository": "https://github.com/a86582751/pi",
     "baseCommit": "d981de1229ef899957bbe968bc8dcda02a21f477",
     "currentChangesSynced": false,
-    "currentChangesSyncedNote": "P4 OpenAI Responses Source work has not yet been synced to the fork.",
+    "currentChangesSyncedNote": "The verified fork snapshot predates the maintained Google, OpenAI Completions and Anthropic updates, the OpenAI Responses and ordered-input overlays, and the current package metadata. The NextTavern public source projects these files under development/pi-ai.",
     "previousCompatibilityCommit": "0b1dd4fe31baf343f4a592551056215ca6a12629",
     "branch": "codex/nexttavern-alpha7",
     "compatibilityCommit": "24b38138940509de66e26a511d35db2c2e4d2277",
@@ -68,37 +72,37 @@
     "files": [
       {
         "source": "src/api/google-generative-ai.ts",
-        "forkPath": "packages/ai/src/api/google-generative-ai.ts",
+        "forkPath": "nexttavern-compat/owned-package/src/api/google-generative-ai.ts",
         "sha256": "19df1cfb3227030de56c091b79af8b4292d13432f73c2312dae8e2f080f367e4"
       },
       {
         "source": "src/api/openai-completions.ts",
-        "forkPath": "packages/ai/src/api/openai-completions.ts",
+        "forkPath": "nexttavern-compat/owned-package/src/api/openai-completions.ts",
         "sha256": "2e676f1c0fa3c56378cb3436cdc165d578e8337c3f3d0a4dd4ef06ae5c58981f"
       },
       {
         "source": "src/api/openai-responses-shared.ts",
-        "forkPath": "packages/ai/src/api/openai-responses-shared.ts",
+        "forkPath": "nexttavern-compat/owned-package/src/api/openai-responses-shared.ts",
         "sha256": "89bbed9214dc0bb01835ecb0ba27ecdef9e64089fd8396aaa464cc1e3e5de91d"
       },
       {
         "source": "src/api/anthropic-messages.ts",
-        "forkPath": "packages/ai/src/api/anthropic-messages.ts",
+        "forkPath": "nexttavern-compat/owned-package/src/api/anthropic-messages.ts",
         "sha256": "8a31ffca949f48197f14f053cff6be49469c517ff62acf2ebcd24f0febcdc7f0"
       },
       {
         "source": "src/api/bedrock-converse-stream.ts",
-        "forkPath": "packages/ai/src/api/bedrock-converse-stream.ts",
+        "forkPath": "nexttavern-compat/owned-package/src/api/bedrock-converse-stream.ts",
         "sha256": "17917e575449fff4e15b439564e37398320dcf296f111bf891ed8cc9ed432ab6"
       },
       {
         "source": "src/api/mistral-conversations.ts",
-        "forkPath": "packages/ai/src/api/mistral-conversations.ts",
+        "forkPath": "nexttavern-compat/owned-package/src/api/mistral-conversations.ts",
         "sha256": "4e088b99d79a509b7d977f6aedb9095977a2275a65cee0f1c708dafff5bf06d3"
       },
       {
         "source": "src/api/pi-messages.ts",
-        "forkPath": "packages/ai/src/api/pi-messages.ts",
+        "forkPath": "nexttavern-compat/owned-package/src/api/pi-messages.ts",
         "sha256": "3d2071d20868837397869d2712df6dc5f3e1cd2cec96b4205067420a4efb4c9f"
       }
     ]

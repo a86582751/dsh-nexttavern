@@ -433,7 +433,6 @@ export class SessionCommandController {
     }
     async publishFork(source, seed, cut, childId, composition, workspace, afterCreate) {
         try {
-            const { provider, model } = this.ctx.agentDefaultModel.currentSelection();
             await this.ctx.agents.create({
                 sessionId: childId,
                 seed,
@@ -446,7 +445,7 @@ export class SessionCommandController {
                         ? {}
                         : { agentPreset: composition.agentPreset }),
                 },
-                agentOptions: { provider, model },
+                agentOptions: this.agents.agentOptions(),
                 setup: composition.setup,
             });
         }
@@ -491,22 +490,22 @@ export class SessionCommandController {
             rpcId: request.requestId,
             ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
         };
-        const hasImage = request.content.some(part => part.type === 'image');
+        const admission = resolvePromptFileReceipts(request.content, receiptId => this.ctx.fileUploads.resolve(agent, receiptId));
+        const hasImage = admission.content.some(part => part.type === 'image');
         const admit = async () => {
             try {
                 const env_3 = { stack: [], error: void 0, hasError: false };
                 try {
-                    const admission = resolvePromptFileReceipts(request.content, receiptId => this.ctx.fileUploads.resolve(agent, receiptId));
                     const cards = this.agents.presetForSession(agent.session) === 'roleplay'
-                        ? prepareCardPngIntake(admission.content) : null;
+                        ? await prepareCardPngIntake(admission.content, this.ctx.attachments) : null;
                     if (cards?.hasImage ?? hasImage) {
-                        const current = this.agents.selectionFor(agent).current;
+                        const current = agent.model.current() ?? this.ctx.agentDefaultModel.currentSelection();
                         const model = await this.ctx.llm.resolveModelInfo(current.provider, current.model);
                         if (model.inputModalities !== undefined && !model.inputModalities.includes('image')) {
                             throw new RemoteError('session/attachment-invalid', `Model "${current.model}" does not support image input.`, { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' });
                         }
                     }
-                    const originalContent = cards ? await cards.admit(this.ctx.attachments) : admission.content;
+                    const originalContent = cards ? await cards.admit() : admission.content;
                     const content = await this.ctx.attachments.admitPromptContent(originalContent);
                     if (this.ctx.agents.get(agent.id) !== agent) {
                         throw new RemoteError('session/not-found', `session "${agent.id}" was disposed during prompt admission`, { sessionId: agent.id });
@@ -568,7 +567,7 @@ export class SessionCommandController {
             }
             throw new RemoteError('gateway/internal', `attachment authorization unavailable for session "${request.sessionId}": ${String(error)}`, {});
         }
-        const ref = referencedImage(source.events, String(request.attachmentId));
+        const ref = referencedImage(source.events, String(request.attachment.attachmentId));
         if (ref === undefined) {
             throw new RemoteError('session/attachment-invalid', 'Image is not referenced by this session.', { reason: 'ATTACHMENT_NOT_REFERENCED' });
         }
@@ -744,7 +743,7 @@ function resolvePromptFileReceipts(content, stagedFile) {
             throw new RemoteError('session/attachment-invalid', 'File was not uploaded for this session.', { reason: 'FILE_NOT_STAGED' });
         }
         receiptIds.add(part.receiptId);
-        return { type: 'file', attachment };
+        return attachment;
     });
     return { content: resolved, receiptIds: [...receiptIds] };
 }

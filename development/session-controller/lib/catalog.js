@@ -32,6 +32,7 @@ export async function buildModelCatalog(ctx, defaultSelection = ctx.agentDefault
                     name: model.name,
                     ...(model.description === undefined ? {} : { description: model.description }),
                     ...(reasoning === undefined ? {} : { reasoning }),
+                    ...(model.badge === undefined ? {} : { badge: model.badge }),
                 };
             }));
             return {

@@ -30,13 +30,14 @@
     "jose": "6.1.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.4",
-    "@deepseek-ai/dsh-host-webserver": "0.1.7-rc.2"
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-host-webserver": ">=0.2.2-rc.5"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-host-webserver": "0.1.7-rc.2"
+    "@deepseek-ai/dsh-host-webserver": "0.2.2-rc.5"
   },
   "engines": {
-    "node": "^22.19.0 || >=24.0.0"
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.5"
   }
 }

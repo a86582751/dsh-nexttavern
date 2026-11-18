@@ -54,8 +54,8 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
 import { Context, Service } from '@deepseek-ai/cordis';
 import { randomUUID } from 'node:crypto';
 import z from '@deepseek-ai/schemastery';
-import { z as zod } from 'zod';
 import { brandString } from '@deepseek-ai/dsh-brand';
+import { modelSelectionProjectionDefinition } from '@deepseek-ai/dsh-agent';
 import { errorChain, ReasoningEffortId } from 'dsh-nexttavern-native-llm';
 import { interruptedTurnClosers, SessionLogOffset, SessionPreparation, SessionSeq } from 'dsh-nexttavern-native-session';
 import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence';
@@ -70,55 +70,6 @@ export { inspectProgrammaticCommit } from './programmatic-commit.js';
 // Cordis 4.0.4 declares FiberState as an ambient const enum and exports no
 // runtime value. Keep its pinned lifecycle codes explicit in this JS output.
 const INACTIVE_STATES = new Set([5, 4, 3]);
-const turnBoundaryProjectionSchema = zod.object({
-    openTurnStartSeq: zod.number().int().nonnegative().transform(SessionSeq).nullable(),
-    lastStepStartSeq: zod.number().int().nonnegative().transform(SessionSeq).nullable(),
-    lastStepBoundary: zod.object({
-        kind: zod.union([zod.literal('start'), zod.literal('end')]),
-        seq: zod.number().int().nonnegative().transform(SessionSeq),
-    }).nullable(),
-    lastTurn: zod.number().int().nonnegative(),
-});
-/** Host projection of agent turn and step boundaries. */
-export const turnBoundaryProjectionDefinition = {
-    key: 'turnBoundary',
-    stateVersion: 2,
-    stateSchema: turnBoundaryProjectionSchema,
-    init: () => ({
-        openTurnStartSeq: null,
-        lastStepStartSeq: null,
-        lastStepBoundary: null,
-        lastTurn: 0,
-    }),
-    apply: (state, event) => {
-        switch (event.type) {
-            case 'turn/start':
-                return {
-                    ...state,
-                    openTurnStartSeq: event.seq,
-                    lastTurn: event.data.turn,
-                };
-            case 'turn/end':
-                return {
-                    ...state,
-                    openTurnStartSeq: null,
-                };
-            case 'step/start':
-                return {
-                    ...state,
-                    lastStepStartSeq: event.seq,
-                    lastStepBoundary: { kind: 'start', seq: event.seq },
-                };
-            case 'step/end':
-                return {
-                    ...state,
-                    lastStepBoundary: { kind: 'end', seq: event.seq },
-                };
-            default:
-                return state;
-        }
-    },
-};
 /** Factory-level ownership: live agent teardowns plus config startup work. */
 class FactoryOwnership {
     fiber;
@@ -284,6 +235,8 @@ export class AgentLoop extends Service {
     /** Validated configuration owned by the agent-loop service. */
     config;
     ownership;
+    modelProjection;
+    inboxProjection;
     /** Plain holder prevents Cordis from re-tracing the factory's dependency context through a caller shadow. */
     runtime;
     constructor(ctx, config) {
@@ -293,16 +246,17 @@ export class AgentLoop extends Service {
             maxParallelToolCalls: config.maxParallelToolCalls,
         };
         validateConfiguredAgents(this.config.agents);
-        // Register only after every config validation above has passed, so a
-        // rejected constructor leaves no projection unit behind.
-        ctx.sessionProjections.register(turnBoundaryProjectionDefinition);
-        ctx.sessionProjections.register(inboxProjectionDefinition);
         this.ownership = new FactoryOwnership(ctx.fiber);
         this.runtime = { ctx, admissionAgents: new WeakSet() };
+    }
+    async [Service.init]() {
+        const { ctx } = this.runtime;
+        this.modelProjection = await ctx.sessionProjections.register(modelSelectionProjectionDefinition);
+        this.inboxProjection = await ctx.sessionProjections.register(inboxProjectionDefinition);
         ctx.effect(() => () => this.ownership.dispose(), 'agentLoop.transactions()');
         ctx.effect(() => ctx.agents.setFactory(this), 'agentLoop.setFactory()');
-        ctx.systemPrompt.variable('provider', context => context.agent?.options.provider);
-        ctx.systemPrompt.variable('model', context => context.agent?.options.model);
+        ctx.systemPrompt.variable('provider', context => context.modelSelection?.provider ?? context.agent?.options.provider);
+        ctx.systemPrompt.variable('model', context => context.modelSelection?.model ?? context.agent?.options.model);
         ctx.systemPrompt.variable('cwd', context => context.agent?.session.header.cwd);
         for (const { id, sessionId, cwd, resumeSessionId, ...options } of this.config.agents) {
             const meta = cwd === undefined ? {} : { cwd };
@@ -421,7 +375,7 @@ export class AgentLoop extends Service {
      * BEFORE publication, so a mid-setup unload rolls everything back; `signal`
      * fuses caller cancellation with lifecycle teardown for setup awaits.
      */
-    prepare(ownerCtx, id, options, session, callerSignal, handle, parentAgent) {
+    prepare(ownerCtx, id, options, session, callerSignal, handle) {
         assertAgentOptions(options);
         ownerCtx.fiber.assertActive();
         // Every caller reaches prepare() synchronously from a service method
@@ -515,9 +469,13 @@ export class AgentLoop extends Service {
         })());
         const untrack = this.ownership.track(dispose);
         let unfollowOwner;
+        const projections = {
+            modelSelection: this.modelProjection.readerFor(session),
+            inbox: this.inboxProjection.readerFor(session),
+        };
         try {
             unfollowOwner = ownerCtx.effect(function* () {
-                machine = new ReactLoopAgent(loopCtx, id, options, session);
+                machine = new ReactLoopAgent(loopCtx, id, options, session, projections);
                 machineReady.resolve();
                 yield machine.scope.rawDispose;
                 yield () => {
@@ -564,7 +522,7 @@ export class AgentLoop extends Service {
                         detachSession = agent.ctx.sessions.enter(session);
                         // The mounted backend routes announced live events into the active
                         // write handle by session id; the loop only owns the handle itself.
-                        detachAgent = loopCtx.agents.enter(agent, parentAgent);
+                        detachAgent = loopCtx.agents.enter(agent);
                         // Creation listeners may register admission. The actual registry
                         // owns this instance before announce; rollback removes the brand.
                         this.runtime.admissionAgents.add(agent);
@@ -691,20 +649,20 @@ export class AgentLoop extends Service {
                 preparation[Symbol.dispose]();
                 throw error;
             }
-            return this.setupAndPublish(ownerCtx, options.sessionId, preparation, options.agentOptions ?? {}, options.setup, options.signal, 'startup', stored, options.parentAgent);
+            return this.setupAndPublish(ownerCtx, options.sessionId, preparation, options.agentOptions ?? {}, options.setup, options.signal, 'startup', stored);
         })();
         this.ownership.trackWrapper(published);
         return published;
     }
     /** Prepare one Agent around an acquired Session, run setup, and publish it. */
-    async setupAndPublish(ownerCtx, id, preparation, agentOptions, setup, signal, source, stored, parentAgent) {
+    async setupAndPublish(ownerCtx, id, preparation, agentOptions, setup, signal, source, stored) {
         const env_2 = { stack: [], error: void 0, hasError: false };
         try {
             const ownedPreparation = __addDisposableResource(env_2, preparation, false);
             const session = ownedPreparation.session;
             let prepared;
             try {
-                prepared = this.prepare(ownerCtx, id, agentOptions, session, signal, stored?.handle, parentAgent);
+                prepared = this.prepare(ownerCtx, id, agentOptions, session, signal, stored?.handle);
             }
             catch (error) {
                 await stored?.handle.close().catch(() => { });
@@ -809,7 +767,7 @@ export class AgentLoop extends Service {
                     throw new Error('agent loop is not active');
                 const owned = stored;
                 handle = undefined; // ownership passes to setupAndPublish/prepare
-                return await this.setupAndPublish(ownerCtx, id, preparation, options.agentOptions ?? {}, options.setup, options.signal, 'resume', owned, options.parentAgent);
+                return await this.setupAndPublish(ownerCtx, id, preparation, options.agentOptions ?? {}, options.setup, options.signal, 'resume', owned);
             }
             finally {
                 preparation?.[Symbol.dispose]();

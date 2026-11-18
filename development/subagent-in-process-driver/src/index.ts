@@ -34,12 +34,12 @@ import {
 } from 'dsh-nexttavern-native-subagent'
 import type {
   ResolvedSubagentStartRequest,
-  SubagentDescriptorData,
   SubagentResult,
   SubagentRun,
   SubagentStopReason,
   OwnedAuthorDialogActivationV1,
   OwnedAuthorDialogProgrammaticDriverV1,
+  OwnedRubyTaskActivationV1,
   OwnedRubyTaskOwnerV1,
 } from 'dsh-nexttavern-native-subagent'
 import {
@@ -48,6 +48,13 @@ import {
 } from './structured.ts'
 import {composeOwnedRubyTaskActivationV1} from './ruby-task-child.ts'
 import type {OwnedRubyTaskChildV1} from './ruby-task-child.ts'
+
+declare module 'dsh-nexttavern-native-session' {
+  interface SessionEventMap {
+    'roleplay/author-dialog-activation': OwnedAuthorDialogActivationV1
+    'roleplay/ruby-task-activation': OwnedRubyTaskActivationV1
+  }
+}
 
 export {
   STRUCTURED_OUTPUT_TOOL,
@@ -87,14 +94,20 @@ function prePublicationAbort(): Error {
   return new Error('subagent request was aborted before child publication')
 }
 
-/** Append one one-shot descriptor inside the child's initial turn before its first request. */
-function attachDescriptorAppend(childCtx: Context, descriptor: SubagentDescriptorData): void {
+/** Persist host identity and private input provenance before the first model request. */
+function attachDescriptorAppend(childCtx: Context, request: ResolvedSubagentStartRequest): void {
   let appended = false
   childCtx.on('agent/pre-step', async ({ agent }, next) => {
     const decision = await next()
     if (!appended && decision.kind === 'enter') {
       appended = true
-      agent.session.append('subagent/descriptor', descriptor)
+      agent.session.append('subagent/descriptor', request.descriptor)
+      if (request.activation !== undefined) {
+        agent.session.append('roleplay/author-dialog-activation', request.activation)
+      }
+      if (request.rubyActivation !== undefined) {
+        agent.session.append('roleplay/ruby-task-activation', request.rubyActivation)
+      }
     }
     return decision
   })
@@ -150,19 +163,18 @@ export async function startInProcessRun(
     if (request.outputSchema !== undefined) {
       structured = attachStructuredRuntime(childCtx, request.outputSchema)
     }
-    if(request.isolatedSystem===undefined)attachDescriptorAppend(childCtx, request.descriptor)
+    if(request.isolatedSystem===undefined)attachDescriptorAppend(childCtx, request)
   }
 
-  const handle = await parent.ctx.agents.create({
+  const handle = await parent.ctx.agents.withInitiator(parent, () => parent.ctx.agents.create({
     sessionId: childId,
-    parentAgent: parent,
     meta: childSessionMeta(parent, childDepth, seed !== undefined),
     ...seed !== undefined ? { seed } : {},
     ...seed === undefined ? {} : { inheritedEventCount: activationBoundary },
     agentOptions: resolveChildAgentOptions(parent, request.agentOptions, childDepth),
     signal: request.signal,
     setup,
-  })
+  }))
   return drivePublishedRun(
     handle,
     request.signal,
@@ -190,7 +202,7 @@ function drivePublishedRun(
   structured: StructuredAttachment | undefined,
   activation?:OwnedAuthorDialogActivationV1,
   rubyChild?:OwnedRubyTaskChildV1,
-  isolatedDescriptor?:SubagentDescriptorData,
+  isolatedDescriptor?:ResolvedSubagentStartRequest['descriptor'],
   authorOwner?:import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationOwnerV1,
 ): SubagentRun {
   const child = handle.agent

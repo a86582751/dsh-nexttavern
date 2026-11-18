@@ -38,13 +38,17 @@ export class Session {
     // ---- Window and derived state (all private; the snapshot is the only read API) ----
     baseSeq = SessionLogOffset(0);
     hasMore = false;
+    historyWasPartial = false;
     openState = 'cold';
     openError = null;
     openPromise = null;
     /** Bumped by stream replacement to invalidate an in-flight doOpen. Stale
      *  passes drop all writes once the generation moves on. */
     openGeneration = 0;
-    loadingOlder = false;
+    get loadingOlder() { return this.historyLoadStatus === 'loading'; }
+    historyLoadStatus = 'idle';
+    olderRequest = null;
+    /** Shared low-water target of the running jump loop; null when no jump is paging. */
     /** Shared low-water target of the running jump loop; null when no jump is paging. */
     jumpTargetSeq = null;
     /** The running jump loop's completion, shared by retargeting callers. */
@@ -203,10 +207,8 @@ export class Session {
             // wire type is used; this array is not filtered or reordered.
             const routedContent = content;
             const routed = await this.remote.subagents.prompt({
-                requestId: randomUUID(),
-                parentSessionId: this.address.parentSessionId,
+                requestId: requestId ?? randomUUID(),
                 childSessionId: this.address.childSessionId,
-                mode: 'continuable',
                 delivery: mode,
                 content: routedContent,
                 clientTimeZone: resolvedClientTimeZone(),
@@ -230,13 +232,13 @@ export class Session {
     }
     /**
      * Resolve one image referenced by this session into browser-consumable bytes.
-     * @param attachmentId - opaque id found in the folded session log.
+     * @param attachment - complete image reference found in the folded session log.
      * @returns the authenticated reference and decoded bytes.
      */
-    async readAttachment(attachmentId) {
+    async readAttachment(attachment) {
         const result = await this.remote.session.attachment({
             sessionId: this.sessionId,
-            attachmentId,
+            attachment,
         });
         if (!result.ok)
             return result;
@@ -250,15 +252,13 @@ export class Session {
     }
     /**
      * Stop the active turn while the Host preserves pending inbox work; failures
-     * land in promptError (same error-strip display slot). A subagent address
-     * routes through `subagents.interruptByParent`, whose durable parent-address
-     * authority works without a live parent Agent.
+     * land in promptError. The subagent RPC authorizes the target child session.
      * @returns the cancel result.
      */
     async cancel() {
         const address = this.address;
         const result = address !== undefined
-            ? await this.remote.subagents.interruptByParent(address.childSessionId, address.parentSessionId, 'continuable')
+            ? await this.remote.subagents.interruptByUser(address.childSessionId)
             : await this.remote.session.cancel({ sessionId: this.sessionId });
         if (!result.ok) {
             this.promptError = { op: 'stop', error: result.error };
@@ -310,33 +310,108 @@ export class Session {
         this.openPromise = promise;
         return promise;
     }
-    /** Prepend one Turn-aligned page: at least 50 messages and two Turn starts, capped at 500 messages. */
-    async loadOlder() {
-        if (this.openState !== 'open' || !this.hasMore || this.loadingOlder)
-            return;
+    /** @inheritdoc */
+    async loadOlder(options) {
+        const request = this.prepareOlder();
+        await request?.promise;
+        if (request !== null && this.olderRequest === request
+            && (!options?.deferConsumption || request.page?.entries.length === 0))
+            this.consumeOlder();
+    }
+    prepareOlder() {
+        if (this.olderRequest !== null)
+            return this.olderRequest;
         const events = this.events;
-        if (events === undefined)
-            return;
-        this.loadingOlder = true;
+        if (this.openState !== 'open' || !this.hasMore || this.loadingOlder || events === undefined)
+            return null;
+        const request = {
+            generation: this.openGeneration,
+            beforeSeq: this.baseSeq,
+            page: null,
+            invalidated: false,
+            recovering: false,
+            consuming: false,
+        };
+        this.olderRequest = request;
+        this.historyLoadStatus = 'loading';
         this.notifier.markDirty();
+        request.promise = (async () => {
+            try {
+                await events.prepend({ beforeSeq: request.beforeSeq, ...HISTORY_PAGE_OPTIONS });
+                if (this.olderRequest !== request)
+                    return;
+                if (request.invalidated || request.generation !== this.openGeneration || request.beforeSeq !== this.baseSeq)
+                    return;
+                const page = request.page;
+                const first = page?.entries[0];
+                this.historyLoadStatus = page === null || (first === undefined ? page.hasMore : first.event.seq >= request.beforeSeq)
+                    ? 'error' : 'pendingConsumption';
+            }
+            catch (error) {
+                if (this.olderRequest !== request)
+                    return;
+                request.page = null;
+                this.historyLoadStatus = 'error';
+                if (!isRemoteFailure(error))
+                    console.error('[session-controller] loadOlder failed:', error);
+            }
+            finally {
+                if (this.olderRequest === request) {
+                    if (request.invalidated && this.events === events) {
+                        // A replacement restores the transport cursor before another page uses the visible window.
+                        request.recovering = true;
+                        this.historyLoadStatus = 'loading';
+                        events.restart();
+                    }
+                    else if (this.historyLoadStatus === 'error')
+                        this.olderRequest = null;
+                    this.notifier.markDirty();
+                }
+            }
+        })();
+        return request;
+    }
+    /** @inheritdoc */
+    consumeOlder() {
+        const request = this.olderRequest;
+        if (request === null || request.consuming || this.historyLoadStatus !== 'pendingConsumption' || request.page === null)
+            return false;
+        if (this.openState !== 'open' || request.invalidated || request.generation !== this.openGeneration
+            || request.beforeSeq !== this.baseSeq) {
+            this.clearOlderHistory();
+            return false;
+        }
+        const page = request.page;
+        // Retain the request through synchronous feed notification so subscribers cannot reenter consumption.
+        request.consuming = true;
         try {
-            await events.prepend({
-                beforeSeq: this.baseSeq,
-                ...HISTORY_PAGE_OPTIONS,
-            });
+            this.prependWindow(page.entries, page.hasMore);
+            return true;
         }
         catch (error) {
-            if (!isRemoteFailure(error)) {
-                console.error('[session-controller] loadOlder failed:', error);
-            }
+            if (this.olderRequest === request)
+                this.historyLoadStatus = 'error';
+            throw error;
         }
         finally {
-            this.loadingOlder = false;
+            if (this.olderRequest === request) {
+                this.olderRequest = null;
+                if (this.historyLoadStatus !== 'error')
+                    this.historyLoadStatus = 'idle';
+            }
             this.notifier.markDirty();
         }
     }
+    clearOlderHistory() {
+        this.olderRequest = null;
+        this.historyLoadStatus = this.pendingHistory === null ? 'idle' : 'loading';
+        this.notifier.markDirty();
+    }
     /** Jump loader: page backwards until the window covers seq (see ISession.loadThrough). */
     loadThrough(seq) {
+        this.consumeOlder();
+        if (this.olderRequest !== null)
+            return Promise.resolve();
         if (this.openState !== 'open' || !this.hasMore || this.baseSeq <= seq)
             return Promise.resolve();
         if (this.jumpPromise !== null) {
@@ -360,7 +435,7 @@ export class Session {
         };
         this.pendingHistory = pending;
         this.jumpTargetSeq = seq;
-        this.loadingOlder = true;
+        this.historyLoadStatus = 'loading';
         this.notifier.markDirty();
         // Stale-pass guard (the doOpen pattern): a resync mid-loop replaces the
         // stream generation; this pass then stops instead of paging the new
@@ -368,31 +443,43 @@ export class Session {
         const generation = this.openGeneration;
         this.jumpPromise = (async () => {
             try {
-                while (pending.hasMore && this.jumpTargetSeq !== null && pending.beforeSeq > this.jumpTargetSeq) {
+                while (this.jumpTargetSeq !== null && pending.beforeSeq > this.jumpTargetSeq) {
                     if (generation !== this.openGeneration)
                         return;
                     const before = pending.beforeSeq;
                     await events.prepend({ beforeSeq: before, ...JUMP_PAGE_OPTIONS });
+                    if (generation !== this.openGeneration || this.pendingHistory !== pending)
+                        return;
                     // No-progress guard: an empty or dropped page that still claims more
                     // history must end the loop, not spin it.
-                    if (pending.beforeSeq >= before)
+                    if (pending.beforeSeq >= before) {
+                        if (pending.hasMore)
+                            this.historyLoadStatus = 'error';
+                        return;
+                    }
+                    if (!pending.hasMore)
                         return;
                 }
             }
             catch (error) {
+                if (generation === this.openGeneration && this.pendingHistory === pending)
+                    this.historyLoadStatus = 'error';
                 if (!isRemoteFailure(error)) {
                     console.error('[session-controller] loadThrough failed:', error);
                 }
             }
             finally {
-                this.jumpTargetSeq = null;
-                this.jumpPromise = null;
-                this.pendingHistory = null;
-                this.loadingOlder = false;
-                if (generation === this.openGeneration && pending.pages.length > 0) {
-                    this.prependWindow(pending.pages.reverse().flat(), pending.hasMore);
+                if (this.pendingHistory === pending) {
+                    this.jumpTargetSeq = null;
+                    this.jumpPromise = null;
+                    this.pendingHistory = null;
+                    if (this.historyLoadStatus === 'loading')
+                        this.historyLoadStatus = 'idle';
+                    if (generation === this.openGeneration && pending.pages.length > 0) {
+                        this.prependWindow(pending.pages.reverse().flat(), pending.hasMore);
+                    }
+                    this.notifier.markDirty();
                 }
-                this.notifier.markDirty();
             }
         })();
         return this.jumpPromise;
@@ -404,6 +491,7 @@ export class Session {
         if (this.openState === 'cold')
             return; // never opened: no window to rebuild (doOpen flips to 'loading' synchronously, so cold implies no in-flight open)
         this.openGeneration++;
+        this.clearOlderHistory();
         const events = this.events;
         this.events = undefined;
         await events?.dispose();
@@ -521,6 +609,7 @@ export class Session {
                 this.retireFailedSubmission(requestId);
         }
         this.openGeneration++;
+        this.clearOlderHistory();
         const events = this.events;
         this.events = undefined;
         await events?.dispose();
@@ -569,7 +658,11 @@ export class Session {
                 this.installWindow(change.entries, change.hasMore, change.page.projections === undefined ? undefined : projectionsBaseline(change.page.projections), change.page.assistantStream);
                 return;
             case 'prepend':
-                this.prependWindow(change.entries, change.hasMore);
+                if (this.olderRequest !== null) {
+                    this.olderRequest.page = { entries: change.entries, hasMore: change.hasMore };
+                }
+                else
+                    this.prependWindow(change.entries, change.hasMore);
                 return;
             case 'append':
                 this.publishAssistantEntry(this.assistantStream.acceptDurable(change.entry));
@@ -584,8 +677,15 @@ export class Session {
         // attempts makes a held notification reopen follow once for an atomic
         // page/baseline pair instead of applying it to an unrelated repair cut.
         const visible = this.assistantStream.replace(entries, assistantStream);
+        if (this.olderRequest !== null && this.loadingOlder && !this.olderRequest.recovering) {
+            this.olderRequest.invalidated = true;
+            this.olderRequest.page = null;
+        }
+        else
+            this.clearOlderHistory();
         this.baseSeq = SessionLogOffset(entries[0]?.event.seq ?? 0);
         this.hasMore = hasMore;
+        this.historyWasPartial ||= hasMore;
         if (this.pendingHistory !== null) {
             this.pendingHistory.beforeSeq = this.baseSeq;
             this.pendingHistory.hasMore = hasMore;
@@ -658,6 +758,7 @@ export class Session {
         }
         this.baseSeq = entries[0] === undefined ? this.baseSeq : SessionLogOffset(entries[0].event.seq);
         this.hasMore = hasMore;
+        this.historyWasPartial ||= hasMore;
         this.eventSource.prepend(entries, hasMore);
     }
     /** Append one stream-validated live event. */
@@ -803,6 +904,7 @@ export class Session {
         if (!isRemoteFailure(error))
             throw error;
         this.openGeneration++;
+        this.clearOlderHistory();
         this.events = undefined;
         this.openPromise = null;
         this.openState = 'error';
@@ -828,7 +930,9 @@ export class Session {
             openState: this.openState,
             openError: this.openError,
             hasMore: this.hasMore,
+            historyWasPartial: this.historyWasPartial,
             loadingOlder: this.loadingOlder,
+            historyLoadStatus: this.historyLoadStatus,
             promptError: this.promptError,
             blank: this.blankBit,
             lastAgentError: this.lastAgentError,

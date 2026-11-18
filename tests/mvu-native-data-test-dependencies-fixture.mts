@@ -23,7 +23,7 @@ export async function installMvuNativeDataTestDependencies() {
       peer=path.join(directory,'native-pure-data.mjs'),
       generatedCore=new URL('../lib/core/',import.meta.url).href
     const result=await build({stdin:{contents:[
-      `export {nativeInputCanonical,nativeInputSha256,inspectNativeInboxHistory} from ${JSON.stringify(input)};`,
+      `export {INPUT_ADMISSION_ABORT_REASON,nativeInputCanonical,nativeInputSha256,inspectNativeInboxHistory} from ${JSON.stringify(input)};`,
       `export {reconstructNativeRequestMaterialV1,verifyNativeRequestMaterialHistoryV1,verifyNativeSessionRequestMaterialHistoryV1,projectNativeMaterialTextOutputsV1} from ${JSON.stringify(material)};`,
       `export {createSurfaceCursor,deriveEventMessage,foldSurface} from ${JSON.stringify(surface)};`,
       `export {assertAuthorGenerationEffects} from ${JSON.stringify(generationEffects)};`,

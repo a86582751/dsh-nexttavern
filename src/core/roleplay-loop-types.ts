@@ -12,7 +12,7 @@ import type {PhaseABranchRowFactsWriterV1} from './roleplay-phase-a-row-facts.js
 import type {ForkLookup} from './roleplay-worldline-types.js'
 import type {TaskSubmissionBindings} from './roleplay-task-tools-types.js'
 import type {GenerateOptions,StreamChunk} from 'dsh-nexttavern-native-llm'
-import type {ToolRuntime} from '@deepseek-ai/dsh-tools'
+import type {ToolDefinition} from '@deepseek-ai/dsh-tools'
 import type {SessionMessageProjection} from 'dsh-nexttavern-native-session/surface'
 
 export interface LoopSession extends HostSession {
@@ -53,12 +53,12 @@ export interface LoopPreparation extends Record<string, unknown> {
 }
 export interface LoopState extends CompletionState {lastPreparedTurn: number}
 export interface PromptPart {name: string; [key: string]: unknown}
-export interface PromptAssembly {
+export interface PromptPresentation {
   contexts: PromptPart[]
   sections: PromptPart[]
-  tools: PromptPart[]
   [key: string]: unknown
 }
+type StepToolDefinitions = ReadonlyMap<string, ToolDefinition>
 /** Fields consumed from the pinned native assistant stream contract. */
 export type LoopAssistantStreamFrame =
   | {type:'start';attemptId:string;turn:number;step:number}
@@ -72,17 +72,21 @@ export interface LoopContext {
   on(name:'llm/stream',hook:(options:GenerateOptions,next:()=>AsyncIterable<StreamChunk>)=>AsyncIterable<StreamChunk>,options:{global:boolean}):unknown
   on(name:'agent/request',hook:(payload:{agent:LoopAgent;turn:number;step:number;signal:AbortSignal},next:()=>Promise<unknown>)=>Promise<unknown>):unknown
   on(name:'agent/assistant-stream',hook:(payload:{agent:LoopAgent;frame:LoopAssistantStreamFrame})=>void,options:{global:true}):unknown
+  on(name:'nexttavern/request-first-output',hook:(payload:{agent:LoopAgent;attemptId:string})=>void,options:{global:true}):unknown
   on(name:'session/event',hook:(session:ContextSession,event:ContextEvent)=>void,options:{global:true}):unknown
-  on(name: 'system-prompt/assemble', hook: (assembly: PromptAssembly, context: {agent?: LoopAgent}, next: () => Promise<PromptAssembly>) => Promise<PromptAssembly>, options: {global: boolean}): unknown
+  on(name: 'nexttavern/project-step-tools', hook: (agent: LoopAgent, definitions: StepToolDefinitions,
+    next: () => StepToolDefinitions) => StepToolDefinitions, options: {global: true}): unknown
+  on(name: 'system-prompt/assemble', hook: (assembly: PromptPresentation,
+    context: {agent?: LoopAgent; toolSet?: {view(agent: LoopAgent): StepToolDefinitions}},
+    next: () => Promise<PromptPresentation>) => Promise<PromptPresentation>, options: {global: boolean}): unknown
   on(name: 'agent/pre-step', hook: (payload: LoopPayload, next: () => Promise<StepDecision>) => Promise<StepDecision>): unknown
   on(name: 'agent/turn-stopping', hook: (payload: {agent?: LoopAgent; turn: number; signal?: AbortSignal}) => Promise<void>): unknown
   effect(work: () => unknown, label: string): unknown
-  tools: Partial<Pick<ToolRuntime, 'schemas' | 'get'>> & {
+  tools: {
     guard?(hook: (execution: {agent?: LoopAgent; name: string; arguments?:unknown}) => string | undefined): unknown
   }
   logger?: {warn?(message: string): void; info?(message:string):void}
   get(name: 'compaction'): LoopCompaction | null | undefined
-  get(name: 'ptcRuntime'): LoopPtcRuntime | null | undefined
 }
 type TaskHost = ReturnType<typeof createRoleplayTaskHost>
 export interface LoopDependencies {

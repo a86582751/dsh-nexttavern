@@ -19,6 +19,7 @@
     "src",
     "lib",
     "LICENSE",
+    "LICENSE.firecrawl-anydoc",
     "NOTICE.md"
   ],
   "license": "MIT",
@@ -26,10 +27,10 @@
     "@firecrawl/anydoc": "0.2.4"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.4",
-    "@deepseek-ai/dsh-tools": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-agent": "0.1.7-rc.2"
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-tools": ">=0.2.2-rc.5",
+    "@deepseek-ai/dsh-fs": ">=0.2.2-rc.5",
+    "@deepseek-ai/dsh-agent": ">=0.2.2-rc.5"
   },
   "bundleDependencies": [
     "@firecrawl/anydoc"

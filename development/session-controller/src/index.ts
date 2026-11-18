@@ -13,7 +13,9 @@ import { canOpenNativePath, nativeFileManager, nativeFileApplications, openNativ
 import type { SessionId } from 'dsh-nexttavern-native-session'
 import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
-import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { Remote, RemoteError, TypertRemoteService, type TypertResourceResolveInput } from '@deepseek-ai/dsh-typert-protocol'
+import type {} from '@deepseek-ai/dsh-api-remote-access'
+import { TYPERT } from './typert.js'
 import {
   ApiSessionAgentController,
   inspectApiSession,
@@ -24,17 +26,14 @@ import { SessionControlController } from './control.js'
 import { SessionHistoryController } from './history.js'
 import { SessionFileReferences } from '@deepseek-ai/dsh-api-session-controller'
 import { ApiSessionList } from './list.js'
-import { buildModelCatalog } from '@deepseek-ai/dsh-api-session-controller'
-// The published package re-exports buildModelCatalog but not the credential
-// probe, so that one adapter stays vendored from the same fixed upstream.
-import { hasProviderApiKey } from './catalog.js'
-import { installModelSelectionProjection } from './model-selection-projection.js'
+import { buildModelCatalog, hasProviderApiKey } from './catalog.js'
 import { SessionSkillCatalog } from '@deepseek-ai/dsh-api-session-controller'
 import { SessionMediaReferences } from './media-references.js'
 import { ArchivedSessionGate } from './archived-session-gate.js'
 import type {
   ModelCatalog,
   SessionWorkspacePathApplication,
+  SessionAddress,
   SessionAttachmentRequest,
   SessionAttachmentValue,
   SessionCancelRequest,
@@ -75,7 +74,21 @@ export type {BeforeForkPublish,ForkReservation,BeforeFirstForkPublish,ForkBefore
 export { ApiSessionNotFound } from './agent.js'
 export { SessionFileReferences, SessionSkillCatalog } from '@deepseek-ai/dsh-api-session-controller'
 
-// Keep the official shared Context contract; the owned implementation must satisfy it.
+// Session Remotes use the same request resource rule as the official controller.
+function resolveSessionResource({ args, parameters }: TypertResourceResolveInput): SessionId | undefined {
+  const direct = parameters.find(parameter => parameter.name === 'sessionId' || parameter.wire === 'sessionId')
+  if (direct) return args[direct.wire] as SessionId | undefined
+  for (const parameter of parameters) {
+    const request = args[parameter.wire] as { sessionId?: SessionId; address?: SessionAddress } | undefined
+    if (!request || typeof request !== 'object') continue
+    const { sessionId, address } = request
+    if (sessionId === undefined && address === undefined) continue
+    if (sessionId !== undefined && address !== undefined) throw Error('Session resource request supplies both sessionId and address')
+    if (address) return address.kind === 'session' ? address.sessionId : address.childSessionId
+    return sessionId
+  }
+  return undefined
+}
 
 /** Session Controller deployment policy. */
 export interface Config {
@@ -108,6 +121,7 @@ export class SessionController extends TypertRemoteService {
     'fileUploads',
     'fs',
     'llm',
+    'remoteAccess',
     'sessions',
     'sessionProjections',
     'sessionQuery',
@@ -138,7 +152,15 @@ export class SessionController extends TypertRemoteService {
    */
   constructor(ctx: Context, config: Config, internals: SessionControllerInternals = {}) {
     super(ctx, 'sessionController', { namespace: 'session' })
-    installModelSelectionProjection(ctx)
+    ctx.typert.resources.register('session', { resolve: resolveSessionResource })
+    // The product subtree mounts the owned package by file URL. The host's
+    // Typert loader discovers package-name rows, so this provider owns its
+    // contribution for the same lifetime as the Service backing it.
+    ctx.typert.register({
+      ...TYPERT,
+      invocations: TYPERT.invocations.filter(descriptor => descriptor.service !== 'sessionController'
+        || typeof Reflect.get(SessionController.prototype, descriptor.implementation ?? descriptor.method) === 'function'),
+    })
     this.agents = new ApiSessionAgentController(ctx)
     this.commands = new SessionCommandController(ctx, this.agents, process.cwd())
     ctx.effect(()=>()=>this.commands.disposeUserSourceOperations(),'session-controller: user Source owners')
@@ -194,15 +216,6 @@ export class SessionController extends TypertRemoteService {
       ctx.emit('api-session/error', agent.id, errorChain(error))
     })
     ctx.on('session/event', (session, event) => {
-      if (event.type === 'request/header') {
-        const agent = ctx.agents.get(session.id)
-        if (agent?.session === session) this.agents.consumeSelection(
-          agent,
-          event.data.header.config.provider,
-          event.data.header.config.model,
-          event.data.header.config.reasoningEffort,
-        )
-      }
       if (event.type !== 'user/message' || event.data.source.kind !== 'user') return
       ctx.emit('api-session/activity', session.id, event.time)
     })
@@ -260,7 +273,8 @@ export class SessionController extends TypertRemoteService {
    */
   @Remote('list')
   async list(_request: SessionListRequest, signal: AbortSignal): Promise<SessionListValue> {
-    return { items: await this.listState.list(signal) }
+    const items = await this.listState.list(signal)
+    return { items: items.filter(item => this.ctx.remoteAccess.allows({ kind: 'session', id: item.sessionId })) }
   }
 
   /**
@@ -270,8 +284,9 @@ export class SessionController extends TypertRemoteService {
    * @returns authorized bounded Session search results.
    */
   @Remote('search')
-  search(request: SessionSearchRequest, signal: AbortSignal): Promise<SessionSearchValue> {
-    return this.listState.search(request.query, signal)
+  async search(request: SessionSearchRequest, signal: AbortSignal): Promise<SessionSearchValue> {
+    const result = await this.listState.search(request.query, signal)
+    return { ...result, items: result.items.filter(item => this.ctx.remoteAccess.allows({ kind: 'session', id: item.sessionId })) }
   }
 
   /**
@@ -541,7 +556,8 @@ export class SessionController extends TypertRemoteService {
       if (projections === undefined) {
         throw new RemoteError('session/projections-unavailable', 'Session projections are unavailable', {})
       }
-      return { asOfSeq: projections.asOfSeq, values: projections.values as SessionProjectionValues }
+      return { kind: 'sequenced', asOfSeq: projections.asOfSeq,
+        values: projections.values as SessionProjectionValues }
     } catch (error: unknown) {
       if (error instanceof SessionQueryError && error.code === 'SESSION_QUERY_SESSION_NOT_FOUND') return null
       if (signal.aborted
@@ -559,8 +575,16 @@ export class SessionController extends TypertRemoteService {
    * @returns one complete baseline followed by live replacement frames.
    */
   @Remote({ mode: 'stream' })
-  control(signal: AbortSignal): AsyncIterable<SessionControlFrame> {
-    return this.controlState.control(signal)
+  async *control(signal: AbortSignal): AsyncIterable<SessionControlFrame> {
+    for await (const frame of this.controlState.control(signal)) {
+      if (frame.type === 'baseline') {
+        const projections = Object.fromEntries(Object.entries(frame.value.projections)
+          .filter(([id]) => this.ctx.remoteAccess.allows({ kind: 'session', id: id as SessionId })))
+        yield { type: 'baseline', value: { ...frame.value, projections } }
+      } else if (this.ctx.remoteAccess.allows({ kind: 'session', id: frame.sessionId })) {
+        yield frame
+      }
+    }
   }
 
 

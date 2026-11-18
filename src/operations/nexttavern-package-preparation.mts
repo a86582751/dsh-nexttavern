@@ -1,5 +1,8 @@
 /** Prepare durable owned-package references after the host released its profile writer lock. */
+import type {ProfileContext} from '@deepseek-ai/dsh-app-boot'
 import type {PluginChange} from '@deepseek-ai/dsh-plugin-manager'
+import {runPluginCommand} from '@deepseek-ai/dsh-plugin-manager/operations'
+import {existsSync, readFileSync} from 'node:fs'
 import type {Context} from '@deepseek-ai/cordis'
 import {dirname, join} from 'node:path'
 import {bootstrapBundledPackages, isWriterLockBusy, readBundleIdentity,
@@ -284,6 +287,40 @@ export function createOwnedPackagePreparation(facts: OwnedPackageFacts): Package
       return {state: 'prepared', version}
     },
   })
+}
+
+/** Complete the prepared profile graph when an existing market needs no installation. */
+export async function relinkPreparedReferences(profile: ProfileContext): Promise<'current' | 'linked' | 'lock-busy'> {
+  const receipt = readPreparedProfile(profile.home, profile.name)
+  if (!receipt) throw Error('NextTavern has no prepared package references to relink')
+  const {parse} = await import('yaml')
+  const lockPath = join(profile.dir, 'pnpm-lock.yaml')
+  const staleReference = () => {
+    const lock = existsSync(lockPath) ? parse(readFileSync(lockPath, 'utf8')) : undefined
+    const linked = lock?.importers?.['.']?.dependencies
+    // After preparing a successor, pnpm can still have the old generation
+    // installed under the same name and version. Its importer owns that fact.
+    return [...receipt.references.values()].find(item =>
+      linked?.[item.name]?.specifier !== item.reference
+      || !existsSync(join(profile.dir, 'node_modules', item.name, 'package.json')))
+  }
+  if (!staleReference()) return 'current'
+  try {
+    const result = await runPluginCommand({
+      profile: profile.name, home: profile.home, dir: profile.dir,
+      cwd: profile.cwd, installAnchor: profile.installAnchor,
+    }, ['install'], {
+      ...profile.packageManager, execution: 'service', outputBytes: 8192,
+      activateNewBundles: false, lockWaitMs: LOCK_WAIT_MS, idleTimeoutMs: 120_000,
+    })
+    if (result.exitCode !== 0) throw Error(`NextTavern relink failed; see ${result.logPath}`)
+  } catch (error) {
+    if (isWriterLockBusy(error)) return 'lock-busy'
+    throw error
+  }
+  const stale = staleReference()
+  if (stale) throw Error(`NextTavern package did not relink: ${stale.name}`)
+  return 'linked'
 }
 
 function text(error: unknown): string {

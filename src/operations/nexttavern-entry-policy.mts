@@ -4,6 +4,7 @@ import type {Entry, EntryTree} from '@deepseek-ai/cordis-plugin-loader'
 import * as profileApi from '@deepseek-ai/dsh-app-boot'
 import {isDeepStrictEqual} from 'node:util'
 import {captureNextTavernProfilePlan} from './nexttavern-profile-plan.mjs'
+import {NEXTTAVERN_BUNDLE} from './nexttavern-lifecycle.mjs'
 
 export const PRODUCT_ENTRY = 'nexttavern'
 export type ProfilePlan = ReturnType<typeof captureNextTavernProfilePlan>
@@ -11,7 +12,7 @@ export interface ProductOwner {stop(): Promise<void>; reconcile(): Promise<void>
 export interface CompositionState {
   plan: ProfilePlan
   previousPlan?: ProfilePlan
-  applyHostUpdate?: () => unknown
+  applyHostUpdate?: () => void
   owner?: ProductOwner
   restoring: boolean
   applying: boolean
@@ -28,7 +29,7 @@ export function loaderEntry(ctx: Context): Entry {
 }
 
 export function capture(ctx: Context, patches: unknown): ProfilePlan {
-  if (!ctx.profileContext) throw Error('NextTavern requires the alpha.7 profile context')
+  if (!ctx.profileContext) throw Error('NextTavern requires a Harness profile context')
   const plan = captureNextTavernProfilePlan(ctx.profileContext, profileApi)
   // A file watcher or another writer may already have changed disk. Reject the
   // stale apply instead of combining that disk generation with these entries.
@@ -90,6 +91,8 @@ export function evaluateDisabled(entry: Entry, value: unknown): boolean {
 }
 
 export function productWanted(ctx: Context, state: CompositionState): boolean {
+  // First install preserves the native browser scope until the next process starts.
+  if (!ctx.profileContext.startedBundles.includes(NEXTTAVERN_BUNDLE)) return false
   const row = state.plan.rows.find(candidate => candidate.id === PRODUCT_ENTRY)
   return Boolean(state.plan.selected && row && !evaluateDisabled(loaderEntry(ctx), row.disabled))
 }

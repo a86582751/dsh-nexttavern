@@ -55,7 +55,6 @@ import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 /** Agent activation, composition, and model-selection policy owned by API Session. */
 import { mkdir } from 'node:fs/promises';
 import { installModelSelection } from '@deepseek-ai/dsh-agent';
-import { ReasoningEffortId } from 'dsh-nexttavern-native-llm';
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 /** Cold Session identity absent from persistence. */
@@ -110,8 +109,10 @@ export function hasApiSessionSubagentOwner(ctx, session, agent) {
     const parentId = session.header.parentSession;
     if (parentId === undefined || agent === undefined)
         return false;
-    const parent = ctx.agents.get(parentId);
-    return parent !== undefined && ctx.agents.isOwnedBy(agent.id, parent);
+    // Historical children can have a parent without an explicit origin. Only
+    // their own descriptor distinguishes them from ordinary forked worldlines.
+    const descriptor = agent.session.snapshotEvents().findLast(event => event.type === 'subagent/descriptor' && agent.session.isOwnSeq(event.seq));
+    return descriptor !== undefined;
 }
 /**
  * Build the stable caller-facing subagent ownership rejection.
@@ -166,7 +167,6 @@ export class ApiSessionAgentController {
     ctx;
     resumes = new Map();
     creations = new Map();
-    selections = new WeakMap();
     imageAdmissionChains = new WeakMap();
     /** @param ctx - Host context carrying Agent, model, persistence, and Typert services. */
     constructor(ctx) {
@@ -289,78 +289,9 @@ export class ApiSessionAgentController {
         }
         return agent;
     }
-    /**
-     * Install or return the Session-local model selection used by prompt assembly.
-     * @param agent - live Agent that owns the selection.
-     * @returns the installed mutable selection reference.
-     */
-    selectionFor(agent) {
-        const installed = this.selections.get(agent);
-        if (installed !== undefined)
-            return installed;
-        const projectionState = this.ctx.sessionProjections.stateOf(agent.session, 'modelSelection');
-        if (projectionState === undefined) {
-            throw new Error('api-session: required modelSelection projection is not registered');
-        }
-        let picked = projectionState.pending === null
-            ? undefined
-            : agentModelSelection(projectionState.pending);
-        const defaultModel = this.ctx.agentDefaultModel;
-        const selection = {
-            get current() {
-                if (picked !== undefined)
-                    return picked;
-                const loggedHeader = agent.session.requestHeader();
-                if (loggedHeader === undefined)
-                    return defaultModel.currentSelection();
-                const logged = loggedHeader.config;
-                return {
-                    provider: logged.provider,
-                    model: logged.model,
-                    // An effort the adapter defaulted is not a conversation choice: restoring
-                    // it as one would make an unchanged default read as a request change.
-                    ...(logged.reasoningEffort === undefined
-                        || loggedHeader.adapterDefaults?.reasoningEffort === true
-                        ? {}
-                        : { reasoningEffort: logged.reasoningEffort }),
-                };
-            },
-            set current(next) {
-                picked = next;
-            },
-            consume(provider, model, reasoningEffort) {
-                if (picked?.provider !== provider
-                    || picked.model !== model
-                    || picked.reasoningEffort !== reasoningEffort)
-                    return false;
-                picked = undefined;
-                return true;
-            },
-            assembled: undefined,
-        };
-        installModelSelection(agent.ctx, selection);
-        this.selections.set(agent, selection);
-        return selection;
-    }
-    /**
-     * Commit and cache one validated selection for the next prompt assembly.
-     * @param agent - live Agent that owns the selection.
-     * @param selection - validated selection to record and apply.
-     */
+    /** Record the validated selection through the Agent's durable model owner. */
     selectForNextRequest(agent, selection) {
-        agent.session.append('model/selection', selection);
-        this.selectionFor(agent).current = selection;
-    }
-    /**
-     * Let a matching durable request header retire the execution cache.
-     * @param agent - live Agent whose request was recorded.
-     * @param provider - provider route used by the request.
-     * @param model - provider-owned model used by the request.
-     * @param reasoningEffort - adapter-owned effort used by the request.
-     * @returns whether the pending selection was consumed.
-     */
-    consumeSelection(agent, provider, model, reasoningEffort) {
-        return this.selections.get(agent)?.consume(provider, model, reasoningEffort) ?? false;
+        agent.model.select(selection);
     }
     /**
      * Read the current Agent preset from the Session projection.
@@ -368,7 +299,7 @@ export class ApiSessionAgentController {
      * @returns the current preset, or undefined when the capability is absent.
      */
     presetForSession(session) {
-        return this.ctx.sessionProjections.stateOf(session, 'agentPreset') ?? undefined;
+        return this.ctx.get('agentPresets')?.presetForSession(session) ?? undefined;
     }
     /**
      * Serialize image admission and model selection for one Agent.
@@ -511,12 +442,17 @@ export class ApiSessionAgentController {
             setup: composition.setup,
         })).agent;
     }
+    /** Follow the host default until the Session has a durable choice or used route. */
     agentOptions() {
-        const { provider, model } = this.ctx.agentDefaultModel.currentSelection();
-        return { provider, model };
+        const defaults = this.ctx.agentDefaultModel;
+        return {
+            get provider() { return defaults.currentSelection().provider; },
+            get model() { return defaults.currentSelection().model; },
+            get reasoningEffort() { return defaults.currentSelection().reasoningEffort; },
+        };
     }
     installSelection(agent) {
-        this.selectionFor(agent);
+        installModelSelection(agent.ctx);
     }
     /**
      * Read the current Agent preset from an all-projections observation.
@@ -534,13 +470,4 @@ export class ApiSessionAgentController {
             return;
         throw new ApiSessionPresetConflict(sessionId, requested, existing);
     }
-}
-function agentModelSelection(selection) {
-    return {
-        provider: selection.provider,
-        model: selection.model,
-        ...(selection.reasoningEffort === undefined
-            ? {}
-            : { reasoningEffort: ReasoningEffortId(selection.reasoningEffort) }),
-    };
 }

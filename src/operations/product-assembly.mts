@@ -14,7 +14,6 @@ import {templateEjsRuntimeRecipeV1,materializeTavernTemplateEjsRuntimeDependenci
   type TavernTemplateEjsRuntimeAssetRecipeV1} from './tavern-template-ejs-runtime-assets.mjs'
 import type {AuthorHostRuntimeAssetRecipeV5} from './author-host-runtime-assets.mjs'
 import type {HistoricalRuntimeAssetRebuildV1} from './runtime-asset-source-scope.mjs'
-import type {SubagentTypertRecipeV1} from './subagent-typert-assets.mjs'
 import {makeHostForkProfile,type HostForkProfileDescriptorV1} from './native-fork-host-profile.mjs'
 import {describeCurrentRuntimeComponents,materializeReleasedComponents} from './released-component-assembly.mjs'
 import {readPublishedReleaseCatalog} from './released-component-catalog.mjs'
@@ -32,7 +31,6 @@ interface ProductRecipe {
   templateEjsRuntime?:TavernTemplateEjsRuntimeAssetRecipeV1
   authorHostRuntime?:AuthorHostRuntimeAssetRecipeV5
   historicalRuntimeRebuilds?:readonly HistoricalRuntimeAssetRebuildV1[]
-  subagentTypert?:SubagentTypertRecipeV1
   hostForkProfile?:HostForkProfileDescriptorV1
   packageArtifact: string
   patchArtifact: string
@@ -50,7 +48,7 @@ interface ProductRecipe {
   bundles?: {layout: string}[]
   /** Exact library versions every owned package's ordinary dependencies resolve to. */
   bundleLibraries?: Record<string, string>
-  /** Root SDKs with install hooks travel prebuilt, including their locked runtime graph. */
+  /** Lock-backed SDK closures for the root and protected packages that declare them. */
   rootBundledLibraries?: {libraries: Record<string, string>; lockArtifact: string}
   /**
    * Platform targets the product ships native companions for. A vendored
@@ -90,6 +88,11 @@ export type DevelopmentAssemblyInventory=Omit<ReturnType<typeof assembleProduct>
 export interface DevelopmentAssemblyWrite {path:string;sha256:string;bytes:number}
 export type DevelopmentProjectedFiles=Readonly<Record<string,{sha256:string;bytes?:number}>>
 
+function bundledLibrariesOf(metadata: Metadata, product: ProductRecipe): Record<string,string> {
+  return Object.fromEntries(Object.entries(product.rootBundledLibraries?.libraries??{})
+    .filter(([name])=>metadata.bundleDependencies?.includes(name)))
+}
+
 /** Plan only canonical inputs. Installed/vendor entities are deliberately absent. */
 export function planDevelopmentAssembly(options:{repo:string;plan:ProductAssemblyPlan;
   archives:Record<string,string>;sourceHash(file:string):string}):DevelopmentAssemblyUnit[] {
@@ -111,10 +114,12 @@ export function planDevelopmentAssembly(options:{repo:string;plan:ProductAssembl
   }
   const lock=(id:string,libraries:Record<string,string>)=>bundledLibraryLockFingerprint({lock:readLock(artifact(id)),libraries})
   const units:DevelopmentAssemblyUnit[]=[]
-  const rootLibraries=plan.product.rootBundledLibraries
-  if(rootLibraries&&Object.keys(rootLibraries.libraries).length)units.push({id:'root-libraries',kind:'root-libraries',
+  const sdkRecipe=plan.product.rootBundledLibraries
+  const rootMetadata=json<Metadata>(inside(repo,artifact(plan.product.packageArtifact)))
+  const rootLibraries=bundledLibrariesOf(rootMetadata,plan.product)
+  if(sdkRecipe&&Object.keys(rootLibraries).length)units.push({id:'root-libraries',kind:'root-libraries',
     name:'root-libraries',version:'',target:'node_modules',files:[],dependencyKey:key({
-      libraries:ordered(rootLibraries.libraries),lock:lock(rootLibraries.lockArtifact,rootLibraries.libraries),
+      libraries:ordered(rootLibraries),lock:lock(sdkRecipe.lockArtifact,rootLibraries),
       implementation:implementation('bundled-library-assembly')})})
   for(const row of plan.product.packages) {
     const metadata=json<Metadata>(inside(repo,artifact(row.packageArtifact))),target='node_modules/'+metadata.name
@@ -127,8 +132,7 @@ export function planDevelopmentAssembly(options:{repo:string;plan:ProductAssembl
     const files=new Map(packageSourceFiles(plan,row).map(file=>[file.target,file.source]))
     const overlay=row.assembly?planOwnedDependencyOverlays({repo,id:row.assembly,plan}):undefined
     if(overlay)for(const file of overlay.files)if(!files.has(file.target))files.set(file.target,file.source)
-    const rootOwned=Object.fromEntries(Object.entries(rootLibraries?.libraries??{})
-      .filter(([name])=>metadata.bundleDependencies?.includes(name)))
+    const rootOwned=bundledLibrariesOf(metadata,plan.product)
     const special=[
       {recipe:plan.product.templateEjsRuntime,module:'tavern-template-ejs-runtime-assets'},
     ].find(item=>item.recipe?.packageArtifact===row.packageArtifact)
@@ -136,7 +140,7 @@ export function planDevelopmentAssembly(options:{repo:string;plan:ProductAssembl
     const hasLibraries=dependencies.length>0||Object.keys(rootOwned).length>0
     const dependencyKey=key({dependencies,rootOwned:ordered(rootOwned),platforms:hasLibraries?plan.product.bundlePlatforms:undefined,
       pins:hasLibraries?dependencies.map(([name])=>[name,plan.product.bundleLibraries?.[name]]):undefined,
-      lock:hasLibraries&&rootLibraries?lock(rootLibraries.lockArtifact,Object.fromEntries(dependencies)):undefined,
+      lock:hasLibraries&&sdkRecipe?lock(sdkRecipe.lockArtifact,Object.fromEntries(dependencies)):undefined,
       special:special?{dependencies:ordered(special.recipe!.dependencies),lock:lock(special.recipe!.lockArtifact,special.recipe!.dependencies),
         implementation:implementation(special.module,'bundled-library-assembly')}:undefined,
       assembly:overlay?{recipe:overlay.assembly,lock:readLock(overlay.lockSource).packages?.['node_modules/'+overlay.assembly.upstreamPackage],
@@ -510,8 +514,7 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
     else fs.copyFileSync(inside(repo,file.source),target)
   }
   const rootRecipe = plan.product.rootBundledLibraries
-  const ownedRootLibraries = Object.fromEntries(Object.entries(rootRecipe?.libraries ?? {})
-    .filter(([name]) => pkg.bundleDependencies?.includes(name)))
+  const ownedRootLibraries = bundledLibrariesOf(pkg,plan.product)
   for (const [name, version] of Object.entries(ownedRootLibraries)) {
     if (pkg.dependencies?.[name] !== version || plan.product.bundleLibraries?.[name] !== version) {
       throw Error('Unpinned owned bundled SDK: ' + pkg.name + ' -> ' + name)
@@ -597,7 +600,7 @@ export function assembleProduct(options: {
   const names = owned.map(row => row.pkg.name).sort()
   if (new Set(names).size !== names.length) throw Error('Duplicate product package')
   const declared = Object.keys(metadata.dependencies ?? {}).filter(name => name.startsWith('dsh-nexttavern-')).sort()
-  const rootLibraries = plan.product.rootBundledLibraries?.libraries ?? {}
+  const rootLibraries = bundledLibrariesOf(metadata,plan.product)
   const bundledNames = [...names, ...Object.keys(rootLibraries)].sort()
   if (JSON.stringify(names) !== JSON.stringify(declared)
     || JSON.stringify(bundledNames) !== JSON.stringify([...(metadata.bundleDependencies ?? [])].sort())) {
@@ -752,10 +755,11 @@ export function applyDevelopmentAssembly(options:{
   }
   const {excludedVendoredFiles:_diagnostics,...previous}=options.previousInventory as DevelopmentAssemblyInventory
     &{excludedVendoredFiles?:unknown}
+  const metadata=json<Metadata>(inside(repo,plan.artifacts.find(row=>row.id===plan.product.packageArtifact)!.source))
   const inventory:DevelopmentAssemblyInventory={...previous,packages:[...previous.packages],
     bundles:[...previous.bundles],hostForks:[...previous.hostForks],historicalComponents:[...previous.historicalComponents??[]],
-    productVersion:json<Metadata>(inside(repo,plan.artifacts.find(row=>row.id===plan.product.packageArtifact)!.source)).version,
-    rootBundledLibraries:plan.product.rootBundledLibraries?.libraries??{},
+    productVersion:metadata.version,
+    rootBundledLibraries:bundledLibrariesOf(metadata,plan.product),
     ...(plan.product.hostForkProfile?{hostForkProfile:makeHostForkProfile(plan.product.hostForkProfile,plan.product.hostForks??[])}:{})}
   const priorKeys=options.previousKeys??{}
   const remove=(target:string)=>{options.remove(target);removed.push(target)}
@@ -836,7 +840,7 @@ export function applyDevelopmentAssembly(options:{
       const recipe=plan.product.rootBundledLibraries!
       const lock=plan.artifacts.find(row=>row.id===recipe.lockArtifact)!
       const result=materializeBundledLibraries({libraryRoot:options.libraryRoot??'',moduleRoot:stage,
-        lockFile:inside(repo,lock.source),libraries:recipe.libraries,
+        lockFile:inside(repo,lock.source),libraries:inventory.rootBundledLibraries,
         admit:options.admitVendoredFile??(()=>{throw Error('Root SDKs require public vendor admission')})})
       for(const row of result.packages)fact(inside(stage,row.path),'node_modules/'+row.path,row.files)
       const roots=topRoots(result.packages)

@@ -1,15 +1,16 @@
 /** Product-owned Loader subtree. Native and replacement providers never overlap. */
 import {Service, type Fiber, type FiberState, type Context} from '@deepseek-ai/cordis'
 import {EntryTree, type EntryOptions} from '@deepseek-ai/cordis-plugin-loader'
+import type {} from '@deepseek-ai/dsh-client-connection'
 import {createRequire} from 'node:module'
 import {readFileSync, realpathSync} from 'node:fs'
 import {isAbsolute, relative, sep} from 'node:path'
 import {fileURLToPath, pathToFileURL} from 'node:url'
 import {isDeepStrictEqual} from 'node:util'
-import {capture, composition, loaderEntry, productWanted, providerDisabledExpression,
+import {capture, composition, loaderEntry, PRODUCT_ENTRY, productWanted, providerDisabledExpression,
   type CompositionState, type ProfilePlan} from './nexttavern-entry-policy.mjs'
 import {inspectBundledPackages} from './bundled-package-bootstrap.mjs'
-import {bindPackagePreparation, createOwnedPackagePreparation,
+import {bindPackagePreparation, createOwnedPackagePreparation, relinkPreparedReferences,
   type PackagePreparationScheduler} from './nexttavern-package-preparation.mjs'
 import {createOwnedMarketInstallation} from './nexttavern-market.mjs'
 import {mountSettingsBridge, type RehomedSettingsRow, type SettingsBridge} from './nexttavern-settings-bridge.mjs'
@@ -66,6 +67,7 @@ export default class NextTavernEntry extends EntryTree {
   private settingsBridge?: SettingsBridge
   private preparation?: PackagePreparationScheduler
   private market?: PackagePreparationScheduler
+  private setupStarted = false
 
   constructor(ctx: Context, private config: NextTavernEntryConfig) {
     // Capture before super attaches the product's subtree to its main entry.
@@ -78,15 +80,6 @@ export default class NextTavernEntry extends EntryTree {
     this.state = state
     if (state.owner) throw Error('NextTavern already owns this profile')
     state.owner = this
-    // Bound while this instance owns the profile, so a manager change notice
-    // reaching the host is never left without a schedule.
-    bindPackagePreparation(ctx, this.preparationState())
-    // The market round rides the same notices. It installs a missing upstream
-    // market through the host's own pnpm path, and only after this install's
-    // durable references were prepared, so that one package-manager run also
-    // relinks them.
-    bindPackagePreparation(ctx, this.marketState())
-
     ctx.on('loader/patch-context', (entry, next) => {
       // Include starts new rows before removing old rows. Uninstall may remove
       // the conditional patch entirely, so native startup must drain us first.
@@ -98,11 +91,10 @@ export default class NextTavernEntry extends EntryTree {
     }, {global: true})
 
     const owner = this
-    ctx.on('internal/update', function (candidate, _noSave, next) {
+    ctx.on('internal/update', async function (candidate, next) {
       if (this.entry !== host.ctx.fiber.entry) return next()
-      // Fiber.update does not await waterfall promises. Capture synchronously
-      // and use the product fiber's native restart lifecycle, which Loader and
-      // the official manager actually await and inspect for failure.
+      // Capture before Include applies the proposal. The host awaits this update,
+      // including the product restart and the deferred Include reconciliation.
       const patches = (candidate as {patches?: unknown}).patches
       if (state.applyHostUpdate) throw Error('NextTavern profile update is still running; retry the profile update')
       const proposal = capture(ctx, patches)
@@ -118,7 +110,7 @@ export default class NextTavernEntry extends EntryTree {
         const accepted = {plan:state.plan, patches:state.patches}
         state.plan = proposal
         state.patches = proposal.rows
-        try {return next()} catch (error) {
+        try {return await next()} catch (error) {
           state.plan = accepted.plan
           state.patches = accepted.patches
           throw error
@@ -130,15 +122,20 @@ export default class NextTavernEntry extends EntryTree {
       state.applying = true
       // Defer Include's tree mutation until our old children have drained.
       // Otherwise Include starts an original provider before removing ours.
-      state.applyHostUpdate = next
-      // restart records errors on the fiber; consume this returned promise
-      // because its caller is synchronous, not a second admission channel.
-      void owner.ctx.fiber.restart().catch(() => {})
+      let includeUpdate: Promise<void> | undefined
+      state.applyHostUpdate = () => {
+        includeUpdate = Promise.resolve(next())
+        // Include can reject while the old product is still being disposed.
+        // The enclosing update returns that rejection after the restart settles.
+        void includeUpdate.catch(() => {})
+      }
+      await owner.ctx.fiber.restart()
+      await includeUpdate
     }, {global: true, prepend: true})
   }
 
   /** Child edits belong to this transient subtree, never the profile file. */
-  write(): void {}
+  commit(): void {}
 
   /**
    * The deferred writer for this install's durable package references. It never
@@ -168,11 +165,18 @@ export default class NextTavernEntry extends EntryTree {
    */
   private marketState(): PackagePreparationScheduler {
     if (this.market) return this.market
-    const {name: profile, home, installAnchor} = this.ctx.profileContext
+    const profileContext = this.ctx.profileContext
+    const {name: profile, home, installAnchor} = profileContext
     this.market = createOwnedMarketInstallation({
       productRoot, hostAnchor: installAnchor, home, profile,
       manager: () => this.ctx.get('pluginManager'),
       references: this.preparationState(),
+      relink: async () => {
+        const result = await relinkPreparedReferences(profileContext)
+        const hmr = this.ctx.get('hmr')
+        if (result === 'linked' && hmr) await hmr.runExclusive(() => hmr.reconcileProfile())
+        return result
+      },
       resolvePeerManifest: this.peerManifestResolver(),
       logger: this.ctx.logger,
     })
@@ -236,6 +240,8 @@ export default class NextTavernEntry extends EntryTree {
     }
     while ([...this.entries()].some(entry => !entry.disabled && entry.fiber?.state !== ACTIVE_FIBER_STATE)) {
       const running = new Set([...this.host.entries()].flatMap(entry => {
+        // The host tree also includes this entry's init, which is awaiting reconcile.
+        if (entry.options.id === PRODUCT_ENTRY) return []
         const fiber = entry.fiber
         return fiber?.inertia && !excluded.has(fiber) ? [fiber.inertia] : []
       }))
@@ -298,14 +304,7 @@ export default class NextTavernEntry extends EntryTree {
         await this.hostFiber.await()
         if (this.hostFiber.state !== ACTIVE_FIBER_STATE) throw Error('NextTavern host routes are not active')
       }
-      // Only a fully active product schedules durable package references. The
-      // call returns before any writer-lock wait, so activation never blocks on
-      // another component's transaction. The first activation of this instance
-      // takes the attempt; a re-activation keeps the same one.
-      this.preparationState().schedule()
-      // Deferred as well: a profile that already has a market only records the
-      // reuse, and a missing one is resolved before anything is installed.
-      this.marketState().schedule()
+      this.schedulePackageSetup()
     } catch (error) {
       // A hot reconfiguration failure does not dispose the main entry. Its
       // init-generator cleanup alone cannot restore services in this path.
@@ -318,6 +317,40 @@ export default class NextTavernEntry extends EntryTree {
       }
       throw error
     }
+  }
+
+  private schedulePackageSetup(): void {
+    const schedule = () => {
+      if (this.closing || this.setupStarted) return
+      this.setupStarted = true
+      const preparation = this.preparationState()
+      const market = this.marketState()
+      bindPackagePreparation(this.ctx, preparation)
+      bindPackagePreparation(this.ctx, market)
+      preparation.schedule()
+      market.schedule()
+    }
+    if (this.ctx.profileContext.name !== 'desktop') {
+      schedule()
+      return
+    }
+    // The Desktop shell still reads settings, credentials and account state
+    // after exchanging its launch cookie. Wait for the workspace's session
+    // list or an authenticated Tavern request before recomposing the host.
+    let scheduled = false
+    const afterResponse = () => {
+      if (scheduled) return
+      scheduled = true
+      void dispose()
+      schedule()
+    }
+    const dispose = this.ctx.on('connection/request', (request, response, next) => {
+      const path = request.url?.split('?', 1)[0]
+      if (path === '/api/session/list' || path?.startsWith('/api/roleplay/')) {
+        response.once('finish', afterResponse)
+      }
+      return next()
+    }, {global: true})
   }
 
   async stop(): Promise<void> {

@@ -1,4 +1,8 @@
-NextTavern compatibility candidate derived from DeepSeek Harness llm-pi-ai.
-Original MIT license and attribution are retained. This is not an official
-DeepSeek release. Formal fork source synchronization and full product lifecycle
-verification remain required before distribution. See ORIGIN.json.
+NextTavern's pi-ai adapter derives from DeepSeek Harness llm-pi-ai 0.1.7-rc.2,
+commit 477b4f420553e8a52c2fbccc464d7561b239c443. DeepSeek's original MIT terms
+are in LICENSE.upstream. The adapter targets Harness >=0.2.2-rc.5 and uses
+NextTavern's bundled pi-ai 0.85.1 SDK.
+
+The NextTavern public repository carries the maintained source under
+development/llm-pi-ai. ORIGIN.json records the upstream files, modification
+scope and the separate formal fork synchronization status.

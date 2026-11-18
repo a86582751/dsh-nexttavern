@@ -53,7 +53,7 @@ const ChatNodeList = memo(function ChatNodeList({ entries, useChatGroup, pending
                 return assertNever(entry);
         }
     });
-    const pendingRows = pendingInputs.map(item => 'requestId' in item ? (_jsx(PendingSubmissionBubble, { submission: item, renderMessageImages: seatProps.renderMessageImages, t: seatProps.t }, item.requestId)) : (_jsx(PendingSteeringBubble, { content: item.content, renderMessageImages: seatProps.renderMessageImages, t: seatProps.t }, item.id)));
+    const pendingRows = pendingInputs.map(item => 'requestId' in item ? (_jsx(PendingSubmissionBubble, { submission: item, renderMessageImages: seatProps.renderMessageImages, renderFactorySlot: seatProps.renderFactorySlot, t: seatProps.t }, item.requestId)) : (_jsx(PendingSteeringBubble, { content: item.content, renderMessageImages: seatProps.renderMessageImages, renderFactorySlot: seatProps.renderFactorySlot, t: seatProps.t }, item.id)));
     const tail = entries.at(-1);
     const node = tail?.kind === 'node' ? seatProps.nodeStore.get(tail.key) : undefined;
     // An empty opening control follows one local transcript echo, never steering.
@@ -70,7 +70,7 @@ const ChatNodeList = memo(function ChatNodeList({ entries, useChatGroup, pending
  * The chat view slot entry: pure component over the composed props; each
  * ordered business Node crosses the keyed renderer seat.
  */
-export function ChatView({ useSession, useChat, useChatNode, useChatNodeProcess, useChatGroup, useConversation, useSessions, useStore, actions, renderSlot, sessionId, openFile, openSkill, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions, usePresentation, useProjection, t, }) {
+export function ChatView({ useSession, useChat, useChatNode, useChatNodeProcess, useChatGroup, useConversation, useSessions, useStore, actions, renderSlot, sessionId, openFile, openSkill, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions, usePresentation, useProjection, renderFactorySlot, fileDrag, t, }) {
     const order = useChat(s => s.order);
     const groupedEntries = useConversation(snapshot => snapshot.views.grouped('chat')?.entries);
     const entries = useMemo(() => groupedEntries
@@ -88,12 +88,13 @@ export function ChatView({ useSession, useChat, useChatNode, useChatNodeProcess,
     // Workspace root off the session list row: path summaries display relative to it.
     const cwd = useSessions(s => s.byId[sessionId]?.cwd);
     const fileImages = useMemo(() => ({
+        fileDrag,
         resolve: (path) => fileMediaUrl(document.baseURI, resolveWorkspacePath(cwd, path)),
         labels: {
             open: t('image.open'), loading: t('image.loading'), failed: t('image.failed'),
             dialog: t('image.dialog'), close: t('image.close'),
         },
-    }), [cwd, t]);
+    }), [cwd, fileDrag, t]);
     const running = useSession(s => s.running);
     const openState = useSession(s => s.openState);
     const openError = useSession(s => s.openError);
@@ -155,7 +156,7 @@ export function ChatView({ useSession, useChat, useChatNode, useChatNodeProcess,
         });
         return [...pending, ...local.values()];
     }, [inboxSteering, pendingSubmissions, visibleSubmissions]);
-    const renderMessageImages = useCallback(owner => renderSlot('conversation.message.images', { ...owner, loadImage }), [loadImage, renderSlot]);
+    const renderMessageImages = useCallback(owner => renderFactorySlot('conversation.images.content', { ...owner, loadImage }), [loadImage, renderFactorySlot]);
     const firstKey = order[0];
     const firstSeq = firstKey === undefined ? null : nodeStore.get(firstKey)?.anchorSeq ?? null;
     const lastKey = order.at(-1) ?? null;
@@ -170,7 +171,7 @@ export function ChatView({ useSession, useChat, useChatNode, useChatNodeProcess,
         submissionId: visibleSubmissions.at(-1)?.requestId ?? null,
         loadedTurns: turnNavigationItems,
     });
-    return (_jsxs("div", { className: css.frame, children: [scroll.initialized && (_jsx(TurnNavigator, { items: railItems, activeTurn: scroll.activeTurn, busyTurn: scroll.busyTurn, onNavigate: scroll.navigateToTurn, t: t })), _jsx("div", { className: css.root, "data-chat-following-tail": scroll.followingTail ? '' : undefined, children: _jsx("div", { ref: scroll.listRef, className: css.scroll, children: _jsxs("div", { ref: scroll.columnRef, className: css.column, "data-chat-flow": "", children: [openState === 'loading' && _jsx("div", { className: css.hint, children: t('chat.loadingHistory') }), openState === 'error' && openError !== null && (_jsx("div", { className: css.openError, children: t('chat.loadError', { message: openError.message, code: openError.code }) })), hasMore && (_jsx("div", { className: css.older, children: _jsx("button", { type: "button", disabled: loadingOlder, onClick: scroll.loadEarlier, children: loadingOlder ? t('loading') : t('chat.loadOlder') }) })), _jsx(MarkdownDelegateProvider, { openExternalLink: openExternalLink, openFile: requestOpenFile, fileImages: fileImages, children: _jsx(ChatNodeList, { entries: entries, pendingInputs: pendingInputs, lastInputTurn: lastInputTurn, nodeStore: nodeStore, useChatGroup: useChatGroup, useChatNode: useChatNode, useChatNodeProcess: useChatNodeProcess, usePresentation: usePresentation, useStore: useStore, actions: actions, cwd: cwd, openFile: requestOpenFile, openSkill: openSkill, inspectCall: inspectCall, forkAt: forkAt, loadImage: loadImage, renderMessageImages: renderMessageImages, fileMentions: fileMentions, renderSlot: renderSlot, t: t }) }), renderSlot('conversation.chat.roleplay-progress', { hasNativePending: pendingInputs.length > 0 })] }) }) }), !scroll.followingTail && (_jsx("div", { className: css.toBottomSlot, children: _jsx("button", { type: "button", className: css.toBottom, "aria-label": t('chat.toBottom'), onClick: scroll.returnToBottom, children: _jsx(IconChevronDownOutlineRegular, {}) }) })), fileOpenError !== null && (_jsx(FileOpenErrorDialog, { message: fileOpenError.message, busy: fileOpenBusy, onClose: closeFileOpenError, onRetry: () => { requestOpenFile(fileOpenError.path); }, t: t }))] }));
+    return (_jsxs("div", { className: css.frame, children: [scroll.initialized && (_jsx(TurnNavigator, { items: railItems, activeTurn: scroll.activeTurn, busyTurn: scroll.busyTurn, onNavigate: scroll.navigateToTurn, t: t })), _jsx("div", { className: css.root, "data-chat-following-tail": scroll.followingTail ? '' : undefined, children: _jsx("div", { ref: scroll.listRef, className: css.scroll, children: _jsxs("div", { ref: scroll.columnRef, className: css.column, "data-chat-flow": "", children: [openState === 'loading' && _jsx("div", { className: css.hint, children: t('chat.loadingHistory') }), openState === 'error' && openError !== null && (_jsx("div", { className: css.openError, children: t('chat.loadError', { message: openError.message, code: openError.code }) })), hasMore && (_jsx("div", { className: css.older, children: _jsx("button", { type: "button", disabled: loadingOlder, onClick: scroll.loadEarlier, children: loadingOlder ? t('loading') : t('chat.loadOlder') }) })), _jsx(MarkdownDelegateProvider, { openExternalLink: openExternalLink, openFile: requestOpenFile, fileImages: fileImages, children: _jsx(ChatNodeList, { entries: entries, pendingInputs: pendingInputs, lastInputTurn: lastInputTurn, nodeStore: nodeStore, useChatGroup: useChatGroup, useChatNode: useChatNode, useChatNodeProcess: useChatNodeProcess, usePresentation: usePresentation, useStore: useStore, actions: actions, cwd: cwd, openFile: requestOpenFile, openSkill: openSkill, inspectCall: inspectCall, forkAt: forkAt, loadImage: loadImage, renderMessageImages: renderMessageImages, renderFactorySlot: renderFactorySlot, fileMentions: fileMentions, renderSlot: renderSlot, t: t }) }), renderSlot('conversation.chat.roleplay-progress', { hasNativePending: pendingInputs.length > 0 })] }) }) }), !scroll.followingTail && (_jsx("div", { className: css.toBottomSlot, children: _jsx("button", { type: "button", className: css.toBottom, "aria-label": t('chat.toBottom'), onClick: scroll.returnToBottom, children: _jsx(IconChevronDownOutlineRegular, {}) }) })), fileOpenError !== null && (_jsx(FileOpenErrorDialog, { message: fileOpenError.message, busy: fileOpenBusy, onClose: closeFileOpenError, onRetry: () => { requestOpenFile(fileOpenError.path); }, t: t }))] }));
 }
 /** In-page Host open-path refusal: the wire reason plus a retry of the same path. */
 function FileOpenErrorDialog({ message, busy, onClose, onRetry, t, }) {

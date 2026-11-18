@@ -1,14 +1,15 @@
 // Generated from runtime/alpha3/compat/llm-deepseek-account/src/index.ts; edit the TypeScript source.
 import { ACCOUNT_QUOTA_EXCEEDED_CODE, LlmError, QUOTA_EXCEEDED_CODE } from 'dsh-nexttavern-native-llm';
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment';
-import { plainOptions, resolveAdapterOptions, registerDeepSeekProvider, catalogModelInfo } from 'dsh-nexttavern-native-llm-deepseek';
-import { Config } from '@deepseek-ai/dsh-llm-deepseek-account';
+import { registerDeepSeekProvider, catalogModelInfo } from 'dsh-nexttavern-native-llm-deepseek';
+import { Config, plainAccountOptions, resolveAccountOptions } from '@deepseek-ai/dsh-llm-deepseek-account';
 export { Config } from '@deepseek-ai/dsh-llm-deepseek-account';
 export const name = 'llm-deepseek-account';
 export const inject = ['llm'];
 const PROVIDER = 'deepseek-account';
 export function apply(ctx, config) {
-    const options = () => resolveAdapterOptions(plainOptions(config), launchEnvironmentOf(ctx));
+    const environment = launchEnvironmentOf(ctx);
+    const options = () => resolveAccountOptions(plainAccountOptions(config), environment).protocol;
     options();
     const resolveAuth = async (connection) => {
         const account = ctx.get('deepseekAccount');

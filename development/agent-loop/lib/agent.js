@@ -4,7 +4,7 @@
  * is derived from the session log.
  * @module dsh-agent-loop/agent
  */
-import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent';
+import { AgentModel, agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent';
 import { NativeRequestBudget, retainNativeRequestMeasurement } from './request-budget.js';
 import { LlmError, IMAGE_OFFLOAD_REQUIRED_CODE, createAssistantMessage, createDeveloperMessage, errorChain, freezeMessage, markAgentLoopRequest, } from 'dsh-nexttavern-native-llm';
 import { assertNever, deepFreeze } from '@deepseek-ai/dsh-util-values';
@@ -108,6 +108,7 @@ export class ReactLoopAgent {
     id;
     options;
     session;
+    model;
     authorGeneration;
     requestBudget = new NativeRequestBudget();
     pendingMaterialCandidate;
@@ -165,21 +166,22 @@ export class ReactLoopAgent {
     get inputCompletionBlocked() {
         return this.inputCompletion !== undefined && this.inputCompletion.result.status !== 'settled';
     }
-    constructor(loopCtx, id, options, session) {
+    constructor(loopCtx, id, options, session, projections) {
         this.loopCtx = loopCtx;
         this.id = id;
         this.options = options;
         this.session = session;
+        this.model = new AgentModel(projections.modelSelection, session, options);
         this.requestSurfaceGeneration = session.surface.contentGeneration;
         this.dispatch = agentEvents(loopCtx, this);
         this.scope = createScope(loopCtx, this);
         this.ctx = this.scope.ctx;
-        this.inbox = new ReactLoopInbox(this.ctx.sessionProjections, session, this.dispatch, observe => {
+        this.inbox = new ReactLoopInbox(projections.inbox, session, this.dispatch, observe => {
             this.ctx.on('session/event', (actual, event) => { if (actual === session)
                 observe(event); }, { global: true });
         });
         /* v8 ignore next -- the loop registers its own turnBoundary unit, so the key is always present */
-        const lastTurn = this.loopCtx.sessionProjections.stateOf(session, 'turnBoundary')?.lastTurn ?? 0;
+        const lastTurn = this.loopCtx.agents.turnBoundaryOf(session).lastTurn;
         this.phase = { kind: 'idle', lastTurn };
         this.runtimeContext = new RuntimeContextProjection(this.ctx, session);
         this.systemPrompt = new SystemPromptProjection(session);
@@ -968,7 +970,7 @@ export class ReactLoopAgent {
             if (this.uncertainProgrammaticOperations.has(input.operationId)) {
                 return { kind: 'unknown', reason: 'earlier append stopped before its message boundary' };
             }
-            if (this.loopCtx.sessionProjections.stateOf(this.session, 'turnBoundary')?.openTurnStartSeq != null) {
+            if (this.loopCtx.agents.turnBoundaryOf(this.session).openTurnStartSeq != null) {
                 return { kind: 'unknown', reason: 'session already has an open turn', code: 'PROGRAMMATIC_OPEN_TURN' };
             }
             // Assistant-only transcripts are readable, but a later system prompt
@@ -1041,7 +1043,7 @@ export class ReactLoopAgent {
             if (inspection.kind === 'absent' && this.uncertainProgrammaticOperations.has(input.operationId)) {
                 return { status: 'unknown' };
             }
-            if (this.loopCtx.sessionProjections.stateOf(this.session, 'turnBoundary')?.openTurnStartSeq != null) {
+            if (this.loopCtx.agents.turnBoundaryOf(this.session).openTurnStartSeq != null) {
                 return { status: 'unknown', code: 'PROGRAMMATIC_OPEN_TURN' };
             }
             try {
@@ -1485,12 +1487,11 @@ export class ReactLoopAgent {
                 owned.onEnter();
                 owned.entered = true;
             }
-            const assembly = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, this.phase.abort.signal));
-            this.phase.abort.signal.throwIfAborted();
+            const assembled = await this.assembleStep(this.phase.abort.signal);
             // Registered tools still belong to the child preset. Their Native result
             // messages remain in history, while preset pre-step/inbox additions have
             // no input authority over this one-shot private conversation.
-            return { kind: 'enter', messages: position.step === 1 ? [owned.message] : [], assembly };
+            return { kind: 'enter', messages: position.step === 1 ? [owned.message] : [], ...assembled };
         }
         const activeOpening = this.phase.programmatic?.opening;
         // A readable old assistant-only transcript cannot acquire a later system
@@ -1595,53 +1596,87 @@ export class ReactLoopAgent {
                 throw Error('OPENING_PLAYER_CONTINUATION_REFUSED');
             claimed = this.inbox.claim(target, position.turn);
         }
-        const assembled = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal));
-        const opening = this.phase.programmatic?.opening;
-        const generation = position.step === 1 ? this.phase.programmatic : undefined;
-        const assembly = generation ? { ...assembled, tools: [],
-            // Owned openings carry the invocation in request/material, outside the
-            // persisted player history and separate from the provider's system slot.
-            sections: opening ? assembled.sections : [...assembled.sections,
-                { name: 'programmatic:opening-regenerate', text: generation.instruction, interpolate: false }] } : assembled;
-        signal.throwIfAborted();
-        const sections = renderContextSections(assembly);
-        const context = this.runtimeContext.project(joinContextSections(sections), sections);
-        const phase = this.phase;
-        const inputStep = admission ? { admission, ...position, completedWithoutRequest: false } : undefined;
-        if (inputStep)
-            phase.inputStep = inputStep;
-        let decision;
+        const { assembly: assembled, selection, toolSet } = await this.assembleStep(signal);
         try {
-            decision = await this.dispatch.waterfall('agent/pre-step', { messages: claimed, ...position, signal }, () => Promise.resolve({
-                kind: 'enter',
-                messages: context === undefined ? claimed : [...claimed, context],
-            }));
+            const opening = this.phase.programmatic?.opening;
+            const generation = position.step === 1 ? this.phase.programmatic : undefined;
+            const assembly = generation ? { ...assembled, tools: [],
+                // Owned openings carry the invocation in request/material, outside the
+                // persisted player history and separate from the provider's system slot.
+                sections: opening ? assembled.sections : [...assembled.sections,
+                    { name: 'programmatic:opening-regenerate', text: generation.instruction, interpolate: false }] } : assembled;
+            signal.throwIfAborted();
+            const sections = renderContextSections(assembly);
+            const context = this.runtimeContext.project(joinContextSections(sections), sections);
+            const phase = this.phase;
+            const inputStep = admission ? { admission, ...position, completedWithoutRequest: false } : undefined;
+            if (inputStep)
+                phase.inputStep = inputStep;
+            let decision;
+            try {
+                decision = await this.dispatch.waterfall('agent/pre-step', { messages: claimed, ...position, signal, modelSelection: selection }, () => Promise.resolve({
+                    kind: 'enter',
+                    messages: context === undefined ? claimed : [...claimed, context],
+                }));
+            }
+            finally {
+                delete phase.inputStep;
+            }
+            signal.throwIfAborted();
+            if (inputStep?.completedWithoutRequest) {
+                this.checkInput(inputStep.admission, []);
+                return { kind: 'enter', messages: [], assembly, selection, toolSet, admission: inputStep.admission, completedWithoutRequest: true };
+            }
+            if (decision.kind === 'reject') {
+                toolSet.dispose();
+                return decision;
+            }
+            if (!generation && !opening)
+                return { ...decision, assembly, selection, toolSet, ...admission ? { admission } : {}, completedWithoutRequest: false };
+            if (decision.messages.some(message => message.source.kind === 'user')) {
+                throw new Error('programmatic generation cannot admit a player message');
+            }
+            if (opening && decision.messages.some(message => message.content.some(block => block.type !== 'text')))
+                throw Error('OPENING_NON_TEXT_CONTEXT_UNSUPPORTED');
+            const systemSections = decision.systemSections ?? [];
+            const contextSections = decision.messages.map(message => message.content
+                .filter(block => block.type === 'text').map(block => block.text).join('')).filter(Boolean);
+            const effectiveAssembly = { ...assembly, sections: [...assembly.sections,
+                    ...[...systemSections, ...contextSections].map((content, index) => ({
+                        name: `programmatic:context:${index}`, text: content, interpolate: false,
+                    }))] };
+            return { ...decision, messages: [], assembly: effectiveAssembly, selection, toolSet, completedWithoutRequest: false };
         }
-        finally {
-            delete phase.inputStep;
+        catch (error) {
+            toolSet.dispose();
+            throw error;
         }
-        signal.throwIfAborted();
-        if (inputStep?.completedWithoutRequest) {
-            this.checkInput(inputStep.admission, []);
-            return { kind: 'enter', messages: [], assembly, admission: inputStep.admission, completedWithoutRequest: true };
+    }
+    async assembleStep(signal) {
+        const selection = this.model.current();
+        if (!selection)
+            throw new Error(`agent "${this.id}" has no provider/model selection`);
+        const admitted = await this.loopCtx.tools.resolve({ agent: this, modelSelection: selection, signal });
+        try {
+            const initial = admitted.view(this);
+            const selected = this.ctx.waterfall('nexttavern/project-step-tools', this, initial, () => initial);
+            const toolSet = selected === initial ? admitted : {
+                dispose: () => admitted.dispose(),
+                view: scope => {
+                    const current = admitted.view(scope);
+                    return new Map([...selected].filter(([name]) => current.has(name)));
+                },
+            };
+            const assembly = await this.loopCtx.systemPrompt.assemble({
+                ...assembleContextFor(this, signal), modelSelection: selection, toolSet,
+            });
+            signal.throwIfAborted();
+            return { assembly, selection, toolSet };
         }
-        if (decision.kind === 'reject')
-            return decision;
-        if (!generation && !opening)
-            return { ...decision, assembly, ...admission ? { admission } : {}, completedWithoutRequest: false };
-        if (decision.messages.some(message => message.source.kind === 'user')) {
-            throw new Error('programmatic generation cannot admit a player message');
+        catch (error) {
+            admitted.dispose();
+            throw error;
         }
-        if (opening && decision.messages.some(message => message.content.some(block => block.type !== 'text')))
-            throw Error('OPENING_NON_TEXT_CONTEXT_UNSUPPORTED');
-        const systemSections = decision.systemSections ?? [];
-        const contextSections = decision.messages.map(message => message.content
-            .filter(block => block.type === 'text').map(block => block.text).join('')).filter(Boolean);
-        const effectiveAssembly = { ...assembly, sections: [...assembly.sections,
-                ...[...systemSections, ...contextSections].map((content, index) => ({
-                    name: `programmatic:context:${index}`, text: content, interpolate: false,
-                }))] };
-        return { ...decision, messages: [], assembly: effectiveAssembly, completedWithoutRequest: false };
     }
     /** Whether the assembled tool schemas differ from the logged request header's. */
     toolsChanged(tools) {
@@ -2299,6 +2334,7 @@ export class ReactLoopAgent {
         let target = 'next-turn';
         let currentAdmission = initialAdmission;
         let capturedEnd;
+        let activeToolSet;
         try {
             while (true) {
                 signal.throwIfAborted();
@@ -2308,6 +2344,7 @@ export class ReactLoopAgent {
                     turnEnds = { kind: 'blocked' };
                     return false;
                 }
+                activeToolSet = decision.toolSet;
                 currentAdmission = decision.admission;
                 if (decision.completedWithoutRequest) {
                     turnEnds = { kind: 'completed' };
@@ -2324,7 +2361,7 @@ export class ReactLoopAgent {
                 signal.throwIfAborted();
                 // Empty/no-request exits above spend no material work or records. The
                 // existing Core step and final decision are retained; hooks do not rerun.
-                const prepared = await this.prepareRequest(turn, step, signal);
+                const prepared = await this.prepareRequest(turn, step, signal, decision.selection);
                 if (!phase.programmatic || phase.programmatic.opening)
                     await this.#prepareRequestMaterial(decision, { turn, step }, signal, prepared);
                 signal.throwIfAborted();
@@ -2357,6 +2394,8 @@ export class ReactLoopAgent {
                         turnEnds = stepEnd;
                 }
                 finally {
+                    activeToolSet.dispose();
+                    activeToolSet = undefined;
                     this.#retireSelection();
                     this.session.append('step/end', { turn, step });
                 }
@@ -2392,6 +2431,7 @@ export class ReactLoopAgent {
             this.throwError(error);
         }
         finally {
+            activeToolSet?.dispose();
             this.#retireSelection();
             if (phase.programmatic?.opening && turnEnds?.kind !== 'completed')
                 this.openingDomainCompletion = {
@@ -2505,7 +2545,7 @@ export class ReactLoopAgent {
                 // Reuse sealed text while assigning its final physical Native cut.
                 this.replanMaterialCandidate(decision, { turn, step, signal }, false);
             }
-            const { config, preparedCall } = firstAttempt ? initialPrepared : await this.prepareRequest(turn, step, signal);
+            const { config, preparedCall } = firstAttempt ? initialPrepared : await this.prepareRequest(turn, step, signal, decision.selection);
             // Adapter preparation can await arbitrary work. Recheck before every
             // system/user/header commit and provider stream, including retries.
             const admission = decision.admission;
@@ -2572,8 +2612,12 @@ export class ReactLoopAgent {
                             author.owner.stream?.({ identity: author.plan.identity,
                                 kind: chunk.type === 'text-delta' ? 'text' : 'reasoning', delta: chunk.text });
                     }
-                    if (observation.firstOutputMs === null && ['text-delta', 'reasoning-delta', 'tool-call-delta'].includes(chunk.type))
+                    if (observation.firstOutputMs === null
+                        && (chunk.type === 'text-delta' || chunk.type === 'reasoning-delta' || chunk.type === 'tool-call-delta')) {
                         observation.firstOutputMs = performance.now() - observation.started;
+                        // A Story transport can buffer all output until finish for display.
+                        this.dispatch.emit('nexttavern/request-first-output', { attemptId: live.attemptId });
+                    }
                     live.push(chunk);
                 }
                 signal.throwIfAborted();
@@ -2694,7 +2738,7 @@ export class ReactLoopAgent {
                 const toolCalls = message.content.filter(block => block.type === 'tool-call');
                 if (toolCalls.length === 0)
                     return { kind: 'completed' };
-                const { concluded } = await executeToolCalls(this.loopCtx, turn, step, toolCalls, signal, context => { if (!this.isolatedInput)
+                const { concluded } = await executeToolCalls(this.loopCtx, this, turn, step, toolCalls, signal, decision.toolSet, context => { if (!this.isolatedInput)
                     this.inbox.splice('next-step', this.inbox.nextStep.length, 0, [context]); });
                 return concluded ? { kind: 'completed' } : null;
             }
@@ -2706,7 +2750,7 @@ export class ReactLoopAgent {
         }
     }
     /** Resolve request config and bind its adapter before admitting model-visible input. */
-    async prepareRequest(turn, step, signal) {
+    async prepareRequest(turn, step, signal, selection) {
         const { session } = this;
         // A loop instance starts from its declared route, restoring only an explicit
         // effort owned by that exact model. Later steps re-resolve marked defaults.
@@ -2717,23 +2761,10 @@ export class ReactLoopAgent {
         const baseSampling = lastMaterial?.type === 'request/material' ? lastMaterial.data.delta.requestLocalSampling : undefined;
         const persistedProposal = persistedHeader ? requestProposal(persistedHeader) : undefined;
         const baseProposal = persistedProposal && baseSampling ? restoreNativeStorySamplingV1(persistedProposal, baseSampling) : persistedProposal;
-        const persistedConfig = persistedHeader?.config;
-        const route = { provider: this.options.provider ?? '', model: this.options.model ?? '' };
-        const persistedReasoningEffort = persistedConfig?.provider === route.provider
-            && persistedConfig.model === route.model
-            && persistedHeader?.adapterDefaults?.reasoningEffort !== true
-            ? persistedConfig.reasoningEffort
-            : undefined;
-        const reasoningEffort = this.options.reasoningEffort ?? persistedReasoningEffort;
+        const { provider: _provider, model: _model, reasoningEffort: _effort, ...previousControls } = baseProposal ?? {};
         const maxTokens = this.options.maxTokens;
-        const seedConfig = deepFreeze(structuredClone(this.requestHeaderLogged
-            // oxlint-disable-next-line typescript/no-non-null-assertion -- the instance logged the header it now folds
-            ? baseProposal
-            : {
-                ...route,
-                ...reasoningEffort === undefined ? {} : { reasoningEffort },
-                ...maxTokens === undefined ? {} : { maxTokens },
-            }));
+        const controls = this.requestHeaderLogged ? previousControls : maxTokens === undefined ? {} : { maxTokens };
+        const seedConfig = deepFreeze(structuredClone({ ...controls, ...selection }));
         const proposedConfig = await this.dispatch.waterfall('agent/request', { turn, step, signal }, () => Promise.resolve(seedConfig));
         signal.throwIfAborted();
         if (!proposedConfig.provider || !proposedConfig.model) {

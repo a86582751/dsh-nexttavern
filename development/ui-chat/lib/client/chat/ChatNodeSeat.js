@@ -20,7 +20,7 @@ function turnOf(node) {
  * Policy reads select this seat's own conclusion, so a mode change re-renders
  * only seats whose visibility actually changes.
  */
-export const ChatNodeSeat = memo(function ChatNodeSeat({ nodeKey, groupPart, useChatNode, useChatNodeProcess, usePresentation, cwd, openFile, openSkill, inspectCall, forkAt, loadImage, renderMessageImages, fileMentions, useStore, actions, renderSlot, t, }) {
+export const ChatNodeSeat = memo(function ChatNodeSeat({ nodeKey, groupPart, useChatNode, useChatNodeProcess, usePresentation, cwd, openFile, openSkill, inspectCall, forkAt, loadImage, renderMessageImages, renderFactorySlot, fileMentions, useStore, actions, renderSlot, t, }) {
     const node = useChatNode(nodeKey);
     const routedNode = node;
     const turn = turnOf(routedNode);
@@ -106,11 +106,12 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({ nodeKey, groupPart, use
             forkAt,
             loadImage,
             renderMessageImages,
+            renderFactorySlot,
             fileMentions,
             turnProcess,
         }, [
         node, groupPart, cwd, openFile, openSkill, inspectCall, forkAt,
-        loadImage, renderMessageImages, fileMentions, turnProcess,
+        loadImage, renderMessageImages, renderFactorySlot, fileMentions, turnProcess,
     ]);
     if (routedNode === undefined || owner === null)
         return null;

@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import {renderToolsSdk, renderToolsSdkPy} from '@deepseek-ai/dsh-tools'
 import {ensureSessionHistory} from './session-history.js'
 import {provenImportPreludeAssistants} from './tavern-task-retirement.js'
 import { isSettingManagementCall,createTaskHistoryClassification,inlineTaskEnvelope } from './tavern-task-context.js'
@@ -11,7 +10,7 @@ import { eventsOf, surfaceEvents, surfaceEntries, retireRoleplayContexts, retain
 import { CHARACTER_PERSONA } from './character-cluster.js'
 import { tavernTaskToolBoundary, inlineTaskInstruction, taskPhaseMessage, isInlinePending, inlineTaskMessages, internalTaskSeqs } from './tavern-tasks.js'
 import type { LoopAgent, LoopSession, LoopPreparation, LoopDependencies,
-  PromptAssembly, LoopAssistantStreamFrame } from './roleplay-loop-types.js'
+  LoopAssistantStreamFrame } from './roleplay-loop-types.js'
 import type { DecisionJob } from './roleplay-decision-types.js'
 import type { StoredTask } from './tavern-task-types.js'
 import type { HostSession } from './roleplay-task-host-types.js'
@@ -44,11 +43,14 @@ export function createFirstResponseWatchdog(timeoutMs=90000) {
     },
     observeStream(session:{id:string},frame:LoopAssistantStreamFrame){
       const item=pending.get(session.id);if(!item)return
-      // Native chunk frames carry only attemptId; their start owns turn/step.
+      // Only the stream start carries the turn and step that own this attempt.
       if(frame.type==='start'){
         if(frame.turn===item.turn&&frame.step===item.step)item.attemptId=frame.attemptId
       }else if(frame.attemptId===item.attemptId&&(frame.type==='end'
-        ||frame.type==='chunk'&&['text-delta','reasoning-delta','tool-call-delta','finish'].includes(frame.chunk.type)))clear(session.id)
+        ||frame.type==='chunk'&&frame.chunk.type==='finish'))clear(session.id)
+    },
+    observeFirstOutput(session:{id:string},attemptId:string){
+      if(pending.get(session.id)?.attemptId===attemptId)clear(session.id)
     },
     dispose(){for(const id of pending.keys())clear(id)},
   }
@@ -90,6 +92,9 @@ export function registerRoleplayLoop({
       firstResponse.begin({session:agent.session,cancel:agent.cancel.bind(agent)},frame.turn,frame.step,request.signal)
     }
     firstResponse.observeStream(agent.session,frame)
+  },{global:true})
+  ctx.on('nexttavern/request-first-output',({agent,attemptId})=>{
+    if(requestSignals.get(agent.session)?.agent===agent)firstResponse.observeFirstOutput(agent.session,attemptId)
   },{global:true})
   ctx.on('session/event',(session,event)=>{
     submissionBindings.observe(session,event)
@@ -192,46 +197,30 @@ export function registerRoleplayLoop({
     }
     return {kind:'main',allows:name=>!hidden.has(name)}
   }
-  const projectToolSurface=(assembly:PromptAssembly,agent:LoopAgent,boundary:ToolBoundary,
-    submission?:{description:string;parameters:Record<string,unknown>}):PromptAssembly=>{
-    const code=assembly.tools.some(tool=>tool.name==='run_code')
-    const visible=(name:string)=>name==='run_code'?code:boundary.allows(name)
-    let sections=assembly.sections.filter(section=>!section.name.startsWith('tool:')||visible(section.name.slice(5)))
-    if(!code)sections=sections.filter(section=>section.name!=='tools:sdk'&&section.name!=='tools:ptc-only')
-    if(code&&ctx.tools.schemas&&ctx.tools.get){
-      // Pure PTC advertises only the transport. Its SDK must describe the same
-      // end capabilities that the actual scoped execution guard permits.
-      const schemas=ctx.tools.schemas(agent).filter(tool=>tool.name!=='run_code'&&boundary.allows(tool.name))
-        .map(tool=>({...tool,...tool.name==='rp_task_submit'&&submission?submission:{},
-          output:ctx.tools.get!(tool.name,agent)!.output.schema}))
-      const sdk=ctx.get('ptcRuntime')?.language==='python'?renderToolsSdkPy(schemas):renderToolsSdk(schemas)
-      sections=sections.map(section=>section.name==='tools:sdk'?{...section,text:sdk}:section)
-    }
-    const tools=assembly.tools.filter(tool=>visible(tool.name))
-    if(tools.length===assembly.tools.length&&sections.every((section,index)=>section===assembly.sections[index])
-      &&sections.length===assembly.sections.length)return assembly
-    return {...assembly,tools,sections}
-  }
-  // Native scoped tool registrations (notably `subagent`) are exempt from
-  // inherited toolFilter restrictions. Apply the actual task allowlist to
-  // both the assembled request and execution, including those own-scope tools.
+  // Resolve stage permissions before the host executor describes and binds tools.
+  // Native calls and PTC subcalls consume the same per-step selection.
+  ctx.on('nexttavern/project-step-tools',(agent,_definitions,next)=>{
+    const definitions=next()
+    const boundary=toolBoundary(agent)
+    const maintenance=inputBinding?.(agent)?.readClaimedMaintenanceInput()
+    const semantic=maintenance&&submissionBindings.semanticOnly(maintenance)
+    const submission=maintenance||boundary?.kind==='maintenance'||boundary?.kind==='task'
+      ?{description:semantic?semanticTaskSubmitDescription:legacyTaskSubmitDescription,
+        parameters:semantic?semanticTaskSubmitParameters:legacyTaskSubmitParameters}:undefined
+    if(!boundary&&!submission)return definitions
+    return new Map([...definitions]
+      .filter(([name])=>!boundary||boundary.allows(name))
+      .map(([name,definition])=>[name,name==='rp_task_submit'&&submission?{...definition,...submission}:definition]))
+  },{global:true})
   ctx.on('system-prompt/assemble',async(_assembly,context,next)=>{
     await ensureSessionHistory(context.agent?.session)
-    let assembly=await next()
-    const agent=context.agent,boundary=toolBoundary(agent),
-      maintenance=agent?inputBinding?.(agent)?.readClaimedMaintenanceInput():undefined,
-      semantic=maintenance&&submissionBindings.semanticOnly(maintenance),
-      submission=maintenance||boundary?.kind==='maintenance'||boundary?.kind==='task'
-        ?{description:semantic?semanticTaskSubmitDescription:legacyTaskSubmitDescription,
-        parameters:semantic?semanticTaskSubmitParameters:legacyTaskSubmitParameters}:undefined
-    if(submission) {
-      assembly={...assembly,
-        tools:assembly.tools.map(tool=>tool.name==='rp_task_submit'?{...tool,...submission}:tool),
-        sections:assembly.sections.map(section=>section.name==='tool:rp_task_submit'
-          ?{...section,text:submission.description}:section)}
-    }
+    const assembly=await next()
+    const agent=context.agent,boundary=toolBoundary(agent)
     if(!boundary||!agent)return assembly
-    const projected=projectToolSurface(assembly,agent,boundary,submission)
+    const admitted=context.toolSet?.view(agent)
+    const visible=(name:string)=>admitted?.has(name)??boundary.allows(name)
+    const projected={...assembly,sections:assembly.sections.filter(section=>!section.name.startsWith('tool:')
+      ||visible(section.name.slice(5)))}
     if(boundary.kind==='cluster')return {...projected,contexts:projected.contexts.filter(s=>/^(sandbox|approval):/.test(s.name)),
       sections:[{name:'roleplay:character-persona',text:CHARACTER_PERSONA},...projected.sections.filter(s=>s.name==='tool:rp_history'
         ||s.name==='tools:sdk'||s.name==='tools:ptc-only'||/^(sandbox|approval):/.test(s.name)||s.name==='harness:identity')]}

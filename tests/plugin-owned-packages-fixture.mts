@@ -7,6 +7,15 @@ import {fileURLToPath, pathToFileURL} from 'node:url'
 import path from 'node:path'
 import {createTestDirectory, cleanupTestDirectory} from '../src/operations/test-temp.mts'
 import {copyStorageJsonPackage, type StorageJsonPin} from './roleplay-core-process-storage-fixture.mts'
+import type {Context} from '@deepseek-ai/cordis'
+
+/** Reuse the rc.5 working-directory service required by the official subagent manager. */
+export async function mountNativeWorkingDirectory(ctx:Context,packages:Awaited<ReturnType<typeof ownedPackages>>,
+  directory:string) {
+  if(!ctx.get('fs'))await ctx.plugin((await packages.load('@deepseek-ai/dsh-fs-local')).default,{cwd:directory})
+  const {default:WorkingDirectory}=await packages.load('@deepseek-ai/dsh-working-directory')
+  await ctx.plugin(WorkingDirectory,{defaultDirectory:directory})
+}
 
 // Public development sources use the manifest's development/ package layout;
 // maintenance sources retain compat/. Neither layout is a Harness installation.

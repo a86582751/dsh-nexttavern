@@ -91,13 +91,6 @@
     }
   },
   {
-    "id": "modules",
-    "name": "@deepseek-ai/dsh-client-modules",
-    "disabled": {
-      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
-    }
-  },
-  {
     "id": "llm-deepseek",
     "name": "@deepseek-ai/dsh-llm-deepseek-api-key",
     "disabled": {
@@ -116,6 +109,9 @@
       {
         "id": "nexttavern",
         "name": "dsh-nexttavern",
+        "disabled": {
+          "__jsExpr": "!ctx.profileContext.startedBundles.includes('dsh-nexttavern')"
+        },
         "config": {
           "providers": [
             {
@@ -177,11 +173,6 @@
               "id": "storage-json",
               "original": "@deepseek-ai/dsh-storage-json",
               "replacement": "dsh-nexttavern-native-storage-json"
-            },
-            {
-              "id": "modules",
-              "original": "@deepseek-ai/dsh-client-modules",
-              "replacement": "dsh-nexttavern-native-client-modules"
             },
             {
               "id": "llm-deepseek",

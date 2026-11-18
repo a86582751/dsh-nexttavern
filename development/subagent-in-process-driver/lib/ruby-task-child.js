@@ -144,11 +144,14 @@ export function composeOwnedRubyTaskActivationV1(ctx, child, activation, owner) 
             cleanup.push(ctx.systemPrompt.section({ name: prefixName,
                 order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
                 text: leadingSystem.text, interpolate: false, complete: true }));
-        else
-            cleanup.push(ctx.on('system-prompt/assemble', async (_assembly, _context, next) => ({
-                ...await next(), sections: [],
-            })));
-        cleanup.push(ctx.systemPrompt.suppressRuntimeContext());
+        cleanup.push(ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
+            const assembly = await next();
+            // The working-directory service still enforces its host contract. Its
+            // required model context is outside this task's exact ordered input.
+            return { ...assembly, contexts: [], sections: leadingSystem
+                    ? assembly.sections.filter(section => section.name === prefixName)
+                    : [] };
+        }, { prepend: true }));
         cleanup.push(child.registerInputAdmission(hook));
         ctx.effect(() => dispose);
         return { userMessage };

@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/compat/ui-workspace/src/client/WorkspacePicker.tsx; edit the TypeScript source.
 import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, IconFolderCloseRegular, IconPlusOutlineRegular, Menu, Modal, } from '@deepseek-ai/dsh-client-ui-primitives';
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace';
 import css from './WorkspacePicker.module.css';
@@ -13,7 +13,7 @@ const ADD_WORKSPACE = '::add-workspace';
 export function WorkspacePickFlow({ t, open, anchorRef, useWorkspaces, createWorkspace, useDirectoryFlow, renderDirectoryFlow, onPick, onClose, addOnly = false, onBusyChange, side = 'bottom', selectedId, }) {
     const workspaceSnapshot = useWorkspaces(state => state);
     const workspaces = workspaceSnapshot.items;
-    const getAnchorRect = useCallback(() => anchorRef?.current?.getBoundingClientRect() ?? null, [anchorRef]);
+    const absentAnchor = useRef(null);
     const [errorOpen, setErrorOpen] = useState(false);
     const [modalError, setModalError] = useState(null);
     const [flowOpen, setFlowOpen] = useState(false);
@@ -113,7 +113,7 @@ export function WorkspacePickFlow({ t, open, anchorRef, useWorkspaces, createWor
         }
         onPick(id);
     };
-    return (_jsxs(_Fragment, { children: [_jsx(Menu, { open: open && !addIsTheOnlyEntry && !menuIsEmpty, anchor: null, items: items, ...pinAdd ? { footer: addEntries } : {}, selectedId: selectedId, onSelect: handleSelect, onClose: onClose, side: side, portal: true, getAnchorRect: getAnchorRect }), open && !addIsTheOnlyEntry && !menuIsEmpty && workspaceSnapshot.phase === 'pending' && _jsx("div", { className: css.menuStatus, role: "status", children: t('picker.loading') }), renderDirectoryFlow(flowOwner), _jsx(Modal, { open: errorOpen, onClose: closeModal, closeLabel: t('close'), title: t('folderError.title'), footer: (_jsxs(_Fragment, { children: [_jsx(Button, { variant: "outline", className: css.modalAction, onClick: closeModal, children: t('cancel') }), _jsx(Button, { variant: "primary", className: css.modalAction, disabled: !flowAvailable, onClick: openDirectoryFlow, children: t('folderError.retry') })] })), children: _jsx("div", { className: css.modalError, role: "alert", children: modalError }) })] }));
+    return (_jsxs(_Fragment, { children: [_jsx(Menu, { open: open && !addIsTheOnlyEntry && !menuIsEmpty, anchor: null, items: items, ...pinAdd ? { footer: addEntries } : {}, selectedId: selectedId, onSelect: handleSelect, onClose: onClose, side: side, portal: true, anchorRef: anchorRef ?? absentAnchor }), open && !addIsTheOnlyEntry && !menuIsEmpty && workspaceSnapshot.phase === 'pending' && _jsx("div", { className: css.menuStatus, role: "status", children: t('picker.loading') }), renderDirectoryFlow(flowOwner), _jsx(Modal, { open: errorOpen, onClose: closeModal, closeLabel: t('close'), title: t('folderError.title'), footer: (_jsxs(_Fragment, { children: [_jsx(Button, { variant: "outline", className: css.modalAction, onClick: closeModal, children: t('cancel') }), _jsx(Button, { variant: "primary", className: css.modalAction, disabled: !flowAvailable, onClick: openDirectoryFlow, children: t('folderError.retry') })] })), children: _jsx("div", { className: css.modalError, role: "alert", children: modalError }) })] }));
 }
 /**
  * The conversation empty-state registration: adapts the owner share to the

@@ -9,9 +9,9 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent, ModelSelection as AgentModelSelection } from '@deepseek-ai/dsh-agent'
 import { AttachmentError } from '@deepseek-ai/dsh-attachment'
 import type {
-  AttachmentAdmissionPart, FileAttachmentRef, ImageAttachmentRef,
+  AttachmentAdmissionPart, ImageAttachmentRef,
 } from '@deepseek-ai/dsh-attachment'
-import type { FileUploadReceiptId } from '@deepseek-ai/dsh-client-file-upload/types'
+import type { FileUploadReceiptId, StagedAttachment } from '@deepseek-ai/dsh-client-file-upload/types'
 import type {} from '@deepseek-ai/dsh-client-file-upload'
 import {
   ReasoningEffortId, assistantStreamChunks, createUserMessage, freezeMessage,MessageId,
@@ -416,7 +416,6 @@ export class SessionCommandController {
     childId:SessionId,composition:Awaited<ReturnType<ApiSessionAgentController['composeAgent']>>,
     workspace:Workspace|undefined,afterCreate?:void|(()=>void|Promise<void>)):Promise<SessionForkValue> {
     try {
-      const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
       await this.ctx.agents.create({
         sessionId: childId,
         seed,
@@ -429,7 +428,7 @@ export class SessionCommandController {
             ? {}
             : { agentPreset: composition.agentPreset }),
         },
-        agentOptions: { provider, model },
+        agentOptions: this.agents.agentOptions(),
         setup: composition.setup,
       })
     } catch (error) {
@@ -488,17 +487,15 @@ export class SessionCommandController {
       rpcId: request.requestId,
       ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
     }
-    const hasImage = request.content.some(part => part.type === 'image')
+    const admission = resolvePromptFileReceipts(request.content,
+      receiptId => this.ctx.fileUploads.resolve(agent, receiptId))
+    const hasImage = admission.content.some(part => part.type === 'image')
     const admit = async (): Promise<SessionPromptValue> => {
       try {
-        const admission = resolvePromptFileReceipts(
-          request.content,
-          receiptId => this.ctx.fileUploads.resolve(agent, receiptId),
-        )
         const cards = this.agents.presetForSession(agent.session) === 'roleplay'
-          ? prepareCardPngIntake(admission.content) : null
+          ? await prepareCardPngIntake(admission.content, this.ctx.attachments) : null
         if (cards?.hasImage ?? hasImage) {
-          const current = this.agents.selectionFor(agent).current
+          const current = agent.model.current() ?? this.ctx.agentDefaultModel.currentSelection()
           const model = await this.ctx.llm.resolveModelInfo(current.provider, current.model)
           if (model.inputModalities !== undefined && !model.inputModalities.includes('image')) {
             throw new RemoteError(
@@ -508,7 +505,7 @@ export class SessionCommandController {
             )
           }
         }
-        const originalContent = cards ? await cards.admit(this.ctx.attachments) : admission.content
+        const originalContent = cards ? await cards.admit() : admission.content
         const content = await this.ctx.attachments.admitPromptContent(originalContent)
         if (this.ctx.agents.get(agent.id) !== agent) {
           throw new RemoteError(
@@ -567,7 +564,7 @@ export class SessionCommandController {
         {},
       )
     }
-    const ref = referencedImage(source.events, String(request.attachmentId))
+    const ref = referencedImage(source.events, String(request.attachment.attachmentId))
     if (ref === undefined) {
       throw new RemoteError(
         'session/attachment-invalid',
@@ -752,7 +749,7 @@ export class SessionCommandController {
 
 function resolvePromptFileReceipts(
   content: SessionPromptRequest['content'],
-  stagedFile: (receiptId: FileUploadReceiptId) => FileAttachmentRef | undefined,
+  stagedFile: (receiptId: FileUploadReceiptId) => StagedAttachment | undefined,
 ): { readonly content: AttachmentAdmissionPart[]; readonly receiptIds: readonly FileUploadReceiptId[] } {
   const receiptIds = new Set<FileUploadReceiptId>()
   const resolved = content.map((part): AttachmentAdmissionPart => {
@@ -766,7 +763,7 @@ function resolvePromptFileReceipts(
       )
     }
     receiptIds.add(part.receiptId)
-    return { type: 'file', attachment }
+    return attachment
   })
   return { content: resolved, receiptIds: [...receiptIds] }
 }

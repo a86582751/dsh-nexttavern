@@ -4,14 +4,15 @@ import type { SessionId, SessionSeq } from 'dsh-nexttavern-native-session/types'
 import type {
   CommandNode, CompactionSummaryNode, ConversationLocationDataStore, ConversationTurnDataMap,
   ConversationGroupData, GroupSnapshot,
-  MessageImageLoader, MessageImagesOwnerProps, RenderMessageImages, TurnLocation,
+  MessageImageLoader, MessageImagesOwnerProps, TurnLocation,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {
-  HostObservable, InjectFace, KeyedSnapshotSelectorHook, PropsLocale, PropsRenderSlots, PropsRuntime,
+  HostObservable, InjectFace, KeyedSnapshotSelectorHook, PropsLocale, PropsRenderFactories, PropsRenderSlots, PropsRuntime,
   PropsStore, SlotHookFactory, SnapshotSelectorHook,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
-import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { ReactNode } from 'react'
+import type { FileDragActions, MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { createChatStore } from '../stores.ts'
 import type { ChatPresentationPolicy } from '../presentation-policy.ts'
@@ -164,6 +165,8 @@ export interface ChatNodeInjected {
   }
 }
 
+export type RenderMessageImages = (owner: Omit<MessageImagesOwnerProps, 'loadImage'>) => ReactNode
+
 /** Stable owner currency delivered to a keyed Chat renderer. */
 export interface ChatNodeOwnerProps {
   /** Renderer-owned Node portion selected by the grouping Definition. */
@@ -182,6 +185,7 @@ export interface ChatNodeOwnerProps {
    */
   loadImage: MessageImageLoader
   renderMessageImages: RenderMessageImages
+  renderFactorySlot: PropsRenderFactories['renderFactorySlot']
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
   /** Turn-process state when this Node belongs to a projected Turn. */
   turnProcess?: TurnProcessOwnerProps | undefined
@@ -239,6 +243,7 @@ export interface PerformanceUsageInjected {
 
 /** Business callbacks injected into the Chat view. */
 export interface ChatViewInjected {
+  readonly fileDrag: FileDragActions
   hooks: {
     /** Live presentation policy derived from the accepted work-details mode. */
     presentation: ObservableSnapshot<ChatPresentationPolicy>
@@ -271,6 +276,7 @@ export interface ChatViewInjected {
 /** Full Chat view props. */
 export type ChatViewSlotProps =
   PropsRuntime<'conversation.view'>
+  & PropsRenderFactories
   & PropsRenderSlots<'conversation.chat.node' | 'conversation.message.images' | 'conversation.chat.roleplay-progress'>
   & PropsStore<ChatStore>
   & InjectFace<ChatViewInjected>
