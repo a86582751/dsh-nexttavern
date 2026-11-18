@@ -2,7 +2,13 @@
 
 [返回首页](README.md) · [正式版本更新日志](CHANGELOG.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
-最后整理于 **2026-11-18**。**0.3 正在开发，正式发行版本仍为 0.2.9-rc.4，发布日期待定。** 本页介绍开发线的新能力与进展。
+最后整理于 **2026-11-19**。**0.3 正在开发，正式发行版本仍为 0.2.9-rc.4，发布日期待定。** 本页介绍开发线的新能力与进展。
+
+0.3 候选声明 Harness `>=0.2.2-rc.5`。在 rc.5 上，Web 和官方 Windows 桌面版的单条命令安装均已通过，插件商店的首次安装及重启也已验证。运行中的宿主首次从市场安装后，重启即可启用。已经发布的 0.2.9-rc.4 仍按[正式版安装指南](README.md#安装)使用。
+
+测试者拿到 0.3 候选归档后，可在 Web 环境运行 `dsh plugin --profile web add "file:<候选归档路径>"`。官方 Windows 桌面版用应用随附的 `resources/runtime/cli/bin/dsh.cmd plugin --profile desktop add "file:<候选归档路径>"`。命令使用已核对的本地候选文件，关闭宿主后安装，再启动并检查插件和会话。
+
+0.3 随附的 AnyDoc 解析引擎及原生绑定保留 Firecrawl AnyDoc 0.2.4 的原始 MIT 许可证。随附 Pi AI SDK 基于 0.85.1，适配器与 SDK 的具体来源和修改记录见[第三方声明](NOTICE.md)。
 
 ## 让人物、页面和玩法一起进入故事
 

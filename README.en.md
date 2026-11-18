@@ -8,6 +8,10 @@
 
 > **Installation and host support.** The 0.2.9 release line bundles pinned SDK dependencies for first installation and component relinking. Use [npm dsh-nexttavern](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9-rc.4) or the [v0.2.9-rc.4 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.4). The supported host is Harness 0.1.7-rc.2 / web / Session V4. See [Contributing](CONTRIBUTING.md) for source rebuilding.
 
+> **0.3 development.** The candidate requires Harness `>=0.2.2-rc.5`. Installation through the CLI and plugin store has been verified with rc.5 on Web and official Windows Desktop. A first install from the store into a running host activates on restart. The public listing continues to use the released npm version. [Development progress](DEVELOPMENT-0.3.md)
+
+For an available 0.3 candidate archive, use `dsh plugin --profile web add "file:<archive-path>"` on Web or the bundled `resources/runtime/cli/bin/dsh.cmd plugin --profile desktop add "file:<archive-path>"` on official Windows Desktop. Close the host before using the CLI, then reopen it to check the plugin and session.
+
 > **Migrating from 0.2.5 or another old host requires fresh directories.** Export character cards or novels before installing 0.2.9; old sessions are incompatible and novels lack full session state. 0.2.8 → 0.2.9 keeps the same host and session line; see [update, uninstall and rollback](#update-uninstall-and-rollback).
 
 Sorry for the long wait. The 0.3 goal is broader SillyTavern community-card compatibility, including MVU variables, EJS, RUBY and frontend styling. Connecting them to our own state, structured events and recovery mechanisms has proved harder than expected, and work is accelerating. The rc.4 release retains the distribution and installation fixes and addresses Issue #17; broader 0.3 compatibility remains in development. Thank you for helping us improve it with your feedback.
