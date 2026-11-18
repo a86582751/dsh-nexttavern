@@ -10500,6 +10500,17 @@
       ]
     },
     {
+      "id": "author-dom-controls-typescript",
+      "source": "src/core/author-dom-controls.ts"
+    },
+    {
+      "id": "author-dom-controls-generated",
+      "source": "lib/core/author-dom-controls.js",
+      "aliases": [
+        "preset/lib/core/author-dom-controls.js"
+      ]
+    },
+    {
       "id": "reader-native-parent-realm-typescript",
       "source": "src/core/reader-native-parent-realm.ts"
     },
@@ -12339,6 +12350,111 @@
     {
       "id": "extension-failure-dialog-js",
       "source": "lib/ui/extension-failure-dialog.js"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-common-unicode-js",
+      "source": "build-tools/node_modules/parse5/dist/common/unicode.js",
+      "sha256": "69a0a52be895d2bcf88850beead4a098c5305c0b5669d1e8a0fe26f621ea25c6"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-common-error-codes-js",
+      "source": "build-tools/node_modules/parse5/dist/common/error-codes.js",
+      "sha256": "b38ae5ac4f2a31ce2e1cfeca35cf7b89cc66736cd5be068cc433a3ccaca78be2"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-tokenizer-preprocessor-js",
+      "source": "build-tools/node_modules/parse5/dist/tokenizer/preprocessor.js",
+      "sha256": "12199175a31eb461dcecefa10ce2536c69ab92cdd2a1f67da3ea20b214599ac1"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-common-token-js",
+      "source": "build-tools/node_modules/parse5/dist/common/token.js",
+      "sha256": "52dac9efba3a637771818d633a5cf1df30c7913d05ff23235150c88319ea035a"
+    },
+    {
+      "id": "reader-renderer-vendor-entities-dist-decode-codepoint-js",
+      "source": "build-tools/node_modules/entities/dist/decode-codepoint.js",
+      "sha256": "dddf76e72987697316e647f046b2755dafe16308fe83159969b3155e0ebf3beb"
+    },
+    {
+      "id": "reader-renderer-vendor-entities-dist-internal-decode-shared-js",
+      "source": "build-tools/node_modules/entities/dist/internal/decode-shared.js",
+      "sha256": "cd26388e8ec3fdc2c4b212883e9ae460a4fe6dd37d80d0dacffd6b0087171b6b"
+    },
+    {
+      "id": "reader-renderer-vendor-entities-dist-generated-decode-data-html-js",
+      "source": "build-tools/node_modules/entities/dist/generated/decode-data-html.js",
+      "sha256": "1ff1226550125bb8976dd032b2dcfc37ba311863dbf9ae69b4b16922f5a38ead"
+    },
+    {
+      "id": "reader-renderer-vendor-entities-dist-generated-decode-data-xml-js",
+      "source": "build-tools/node_modules/entities/dist/generated/decode-data-xml.js",
+      "sha256": "e549a5fd573d540a4652c81fab6655f3418c34c1613a30ed245ca017d9a5b730"
+    },
+    {
+      "id": "reader-renderer-vendor-entities-dist-internal-bin-trie-flags-js",
+      "source": "build-tools/node_modules/entities/dist/internal/bin-trie-flags.js",
+      "sha256": "8bb285f9ab41b9fd2525c83902c99b36e7c36da7cb7fa3be574d68f328183de5"
+    },
+    {
+      "id": "reader-renderer-vendor-entities-dist-decode-js",
+      "source": "build-tools/node_modules/entities/dist/decode.js",
+      "sha256": "6ce0048039ae0f9dab6e21dd1309661bcfe7e3beabfab1f15cdd61adb91e20b7"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-common-html-js",
+      "source": "build-tools/node_modules/parse5/dist/common/html.js",
+      "sha256": "e6cf93f387be70ddcd4f2bec67fbeb53161094f6306d834de461ec888a9dab76"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-tokenizer-index-js",
+      "source": "build-tools/node_modules/parse5/dist/tokenizer/index.js",
+      "sha256": "810ebc73056d41c9ed5e4718d0973b87bc90306ca010d0c8533ed81669f58a58"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-parser-open-element-stack-js",
+      "source": "build-tools/node_modules/parse5/dist/parser/open-element-stack.js",
+      "sha256": "fe4b609a572c9aa06fbd45ac53632b3ad565168903f4126a6f98d5a9d1f42999"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-parser-formatting-element-list-js",
+      "source": "build-tools/node_modules/parse5/dist/parser/formatting-element-list.js",
+      "sha256": "a6e04b000b228a0bf7eba4e5462b343ec1e13dbfbe40bce913ade646bbde4461"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-tree-adapters-default-js",
+      "source": "build-tools/node_modules/parse5/dist/tree-adapters/default.js",
+      "sha256": "14b6408b0abb1c041e645644f977db34da280239be8a59a2eb3c9e282e89b7c4"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-common-doctype-js",
+      "source": "build-tools/node_modules/parse5/dist/common/doctype.js",
+      "sha256": "855d8cd764782cdc73003a9847d03ed261c5158f6a6901e563ccd4d3b92c8b16"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-common-foreign-content-js",
+      "source": "build-tools/node_modules/parse5/dist/common/foreign-content.js",
+      "sha256": "129a84a9d04b6050b6896de45a70e1ee468434e19bdd6486e3aef3405d137cac"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-parser-index-js",
+      "source": "build-tools/node_modules/parse5/dist/parser/index.js",
+      "sha256": "23eb8e0f6b45abc36132c08f067899e0e615acbe9069762ba7780a66db78e65d"
+    },
+    {
+      "id": "reader-renderer-vendor-entities-dist-escape-js",
+      "source": "build-tools/node_modules/entities/dist/escape.js",
+      "sha256": "880426162e6e6a1c65cb67cca4824c529c37192b51b0571927a81d33074f7302"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-serializer-index-js",
+      "source": "build-tools/node_modules/parse5/dist/serializer/index.js",
+      "sha256": "bb11a62d05d463bf756814d89227ea889733d3808fe7ebe27cb4f607ed85a4c7"
+    },
+    {
+      "id": "reader-renderer-vendor-parse5-dist-index-js",
+      "source": "build-tools/node_modules/parse5/dist/index.js",
+      "sha256": "b825162aced2e79be8d68d45efb1f89ec34ed4189467195a071a0d7b694a19d4"
     },
     {
       "id": "quality-registry",
@@ -45599,6 +45715,8 @@
         "development/mvu-schema-runtime-v4-update-batch-v1/assets/lodash-4.18.1.js",
         "src/core/reader-native-parent-realm.ts",
         "lib/core/reader-native-parent-realm.js",
+        "src/core/author-dom-controls.ts",
+        "lib/core/author-dom-controls.js",
         "src/core/author-native-program.mts",
         "lib/core/author-native-program.mjs",
         "src/core/author-native-helper-types.ts",
@@ -45659,7 +45777,28 @@
         "lib/ui/author-dom-scene.js",
         "src/ui/extension-failure-dialog.ts",
         "src/core/roleplay-extension-types.ts",
-        "lib/ui/extension-failure-dialog.js"
+        "lib/ui/extension-failure-dialog.js",
+        "build-tools/node_modules/parse5/dist/common/unicode.js",
+        "build-tools/node_modules/parse5/dist/common/error-codes.js",
+        "build-tools/node_modules/parse5/dist/tokenizer/preprocessor.js",
+        "build-tools/node_modules/parse5/dist/common/token.js",
+        "build-tools/node_modules/entities/dist/decode-codepoint.js",
+        "build-tools/node_modules/entities/dist/internal/decode-shared.js",
+        "build-tools/node_modules/entities/dist/generated/decode-data-html.js",
+        "build-tools/node_modules/entities/dist/generated/decode-data-xml.js",
+        "build-tools/node_modules/entities/dist/internal/bin-trie-flags.js",
+        "build-tools/node_modules/entities/dist/decode.js",
+        "build-tools/node_modules/parse5/dist/common/html.js",
+        "build-tools/node_modules/parse5/dist/tokenizer/index.js",
+        "build-tools/node_modules/parse5/dist/parser/open-element-stack.js",
+        "build-tools/node_modules/parse5/dist/parser/formatting-element-list.js",
+        "build-tools/node_modules/parse5/dist/tree-adapters/default.js",
+        "build-tools/node_modules/parse5/dist/common/doctype.js",
+        "build-tools/node_modules/parse5/dist/common/foreign-content.js",
+        "build-tools/node_modules/parse5/dist/parser/index.js",
+        "build-tools/node_modules/entities/dist/escape.js",
+        "build-tools/node_modules/parse5/dist/serializer/index.js",
+        "build-tools/node_modules/parse5/dist/index.js"
       ],
       "browser": {
         "moduleId": "dsh-nexttavern",
@@ -148985,6 +149124,20 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "src/core/reader-source-document-data.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "author-dom-controls-build",
+      "kind": "typescript-module",
+      "entry": "src/core/author-dom-controls.ts",
+      "artifact": "author-dom-controls-generated",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/author-dom-controls.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",

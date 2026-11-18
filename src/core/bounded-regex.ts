@@ -1,6 +1,6 @@
-import { Worker } from 'node:worker_threads'
+import { MessageChannel, receiveMessageOnPort, Worker, type MessagePort } from 'node:worker_threads'
 import type {TavernPromptTransformResultV1,TavernPromptTransformWorkerInputV1,
-  TavernPromptTransformWorkerResultV1} from './tavern-prompt-transform-types.mjs'
+  TavernPromptTransformWorkerResultV1,TavernPromptTransformWorkerCompletionV1} from './tavern-prompt-transform-types.mjs'
 import {TAVERN_PROMPT_TRANSFORM_LIMITS_V1} from './tavern-prompt-transform-types.mjs'
 
 export interface RegexPattern {
@@ -85,20 +85,30 @@ const isRegexPattern = (value: unknown): value is RegexPattern =>
 // enforced by the parent, including parsing/compilation, and destroys the worker.
 let active = 0
 let replacementActive = 0
-const promptTransformIdle:Worker[]=[]
-function forgetIdlePromptTransform(worker:Worker):void {
-  const index=promptTransformIdle.indexOf(worker)
-  if(index>=0)promptTransformIdle.splice(index,1)
-}
-function createPromptTransformWorker():Worker {
-  const worker=new Worker(new URL('./tavern-prompt-transform-worker.mjs',import.meta.url),{
-    resourceLimits:{maxOldGenerationSizeMb:64,stackSizeMb:2},
-  })
-  // Node terminates a worker after its error. This listener only retires idle
-  // references and consumes that error; an active invocation owns termination.
-  worker.once('error',()=>forgetIdlePromptTransform(worker))
-  worker.once('exit',()=>forgetIdlePromptTransform(worker))
-  return worker
+type PromptTransformWorker={readonly worker:Worker;readonly completions:MessagePort}
+const promptTransformIdle:PromptTransformWorker[]=[]
+function createPromptTransformWorker():PromptTransformWorker {
+  const {port1:completions,port2:completionPort}=new MessageChannel()
+  try {
+    const worker=new Worker(new URL('./tavern-prompt-transform-worker.mjs',import.meta.url),{
+      resourceLimits:{maxOldGenerationSizeMb:64,stackSizeMb:2},
+      workerData:{completionPort},transferList:[completionPort],
+    })
+    const entry={worker,completions}
+    // Idle workers have no active caller to handle their error. Exit retires
+    // the worker and its reply channel, including after an active cancellation.
+    worker.once('error',()=>{})
+    worker.once('exit',()=>{
+      const index=promptTransformIdle.indexOf(entry)
+      if(index>=0)promptTransformIdle.splice(index,1)
+      completions.close()
+    })
+    return entry
+  }catch(error) {
+    completions.close()
+    completionPort.close()
+    throw error
+  }
 }
 const workerCode = `const {parentPort,workerData}=require('node:worker_threads');
 const result=workerData.patterns.map(p=>{try{return new RegExp(p.pattern,p.flags).test(workerData.text)}catch{return false}});
@@ -337,8 +347,8 @@ export async function boundedRegexNameMatrix(patterns:readonly RegexPattern[],na
 }
 
 /** One ready worker processes the complete catalog with batch-local state.
- * Active batches share the existing replacement slots. Trusted module startup
- * precedes dispatch; the unchanged deadline covers clone, regex and receipts.
+ * Active batches share the existing replacement slots. The deadline starts
+ * before dispatch and covers input cloning, regex and receipt construction.
  * Cancellation settles once and awaits destruction, so it publishes no output. */
 export async function boundedSTPromptTransformBatchV1(
   data:TavernPromptTransformWorkerInputV1,signal?:AbortSignal,
@@ -350,21 +360,23 @@ export async function boundedSTPromptTransformBatchV1(
   if(replacementActive>=TAVERN_PROMPT_TRANSFORM_LIMITS_V1.concurrentWorkers)
     return failure('PROMPT_TRANSFORM_BUSY')
   replacementActive++
-  let worker:Worker|undefined
+  let poolEntry:PromptTransformWorker|undefined
   let timer:ReturnType<typeof setTimeout>|undefined
   let abort:(()=>void)|undefined
   let reusable=false
   try {
     const result=await new Promise<TavernPromptTransformResultV1>(resolve=>{
       let settled=false
+      let deadlineAt=0
       const done=(value:TavernPromptTransformWorkerResultV1,completed=false):void=>{
         if(settled)return
         settled=true
         reusable=completed
         if(timer)clearTimeout(timer)
-        worker?.off('message',message)
-        worker?.off('error',error)
-        worker?.off('exit',exit)
+        poolEntry?.worker.off('message',dispatch)
+        poolEntry?.worker.off('error',error)
+        poolEntry?.worker.off('exit',exit)
+        poolEntry?.completions.off('message',complete)
         // The Worker preserves admitted entry order and seals the complete
         // projections before sending. Reuse this invocation's original strings.
         const result:TavernPromptTransformResultV1=value.kind==='transformed'
@@ -375,18 +387,23 @@ export async function boundedSTPromptTransformBatchV1(
           :value
         resolve(result)
       }
+      const complete=({completedAt,result}:TavernPromptTransformWorkerCompletionV1):void=>{
+        if(completedAt<=deadlineAt)done(result,true)
+        else done(failure('PROMPT_TRANSFORM_TIMEOUT'))
+      }
       const dispatch=():void=>{
         if(settled)return
-        // Start before postMessage: structured cloning and dispatch are part of
-        // the batch budget, while importing this trusted module is not regex work.
-        timer=setTimeout(()=>done(failure('PROMPT_TRANSFORM_TIMEOUT')),
-          TAVERN_PROMPT_TRANSFORM_LIMITS_V1.deadlineMs)
-        try {worker!.postMessage({...data,projectionTransport:'input-backed'})}
+        const {deadlineMs}=TAVERN_PROMPT_TRANSFORM_LIMITS_V1
+        deadlineAt=performance.now()+deadlineMs
+        timer=setTimeout(()=>{
+          // A busy host can run its timer before the already-queued Worker
+          // callback. Read the completion directly and honor the Worker clock.
+          const queued=receiveMessageOnPort(poolEntry!.completions)
+          if(queued)complete(queued.message as TavernPromptTransformWorkerCompletionV1)
+          else done(failure('PROMPT_TRANSFORM_TIMEOUT'))
+        },deadlineMs)
+        try {poolEntry!.worker.postMessage({...data,projectionTransport:'input-backed'})}
         catch {done(failure('PROMPT_TRANSFORM_WORKER'))}
-      }
-      const message=(value:TavernPromptTransformWorkerResultV1|{kind:'ready'}):void=>{
-        if(value.kind==='ready')dispatch()
-        else done(value,true)
       }
       const error=():void=>done(failure('PROMPT_TRANSFORM_WORKER'))
       const exit=():void=>done(failure('PROMPT_TRANSFORM_WORKER'))
@@ -396,25 +413,27 @@ export async function boundedSTPromptTransformBatchV1(
       // synchronous aborts cannot dispatch work and then publish late output.
       if(signal?.aborted){abort();return}
       try {
-        worker=promptTransformIdle.pop()
-        const ready=worker!==undefined
-        worker??=createPromptTransformWorker()
+        const idle=promptTransformIdle.pop()
+        poolEntry=idle??createPromptTransformWorker()
+        const {worker,completions}=poolEntry
         worker.ref()
-        worker.on('message',message)
         worker.once('error',error)
         worker.once('exit',exit)
-        if(ready)dispatch()
+        completions.on('message',complete)
+        if(idle)dispatch()
+        else worker.once('message',dispatch)
       } catch {done(failure('PROMPT_TRANSFORM_WORKER'))}
     })
-    if(worker&&reusable&&!signal?.aborted) {
-      promptTransformIdle.push(worker)
-      worker.unref()
-      worker=undefined
+    if(poolEntry&&reusable&&!signal?.aborted) {
+      promptTransformIdle.push(poolEntry)
+      poolEntry.completions.unref()
+      poolEntry.worker.unref()
+      poolEntry=undefined
     }
     return signal?.aborted?failure('PROMPT_TRANSFORM_CANCELLED','cancelled'):result
   } finally {
     if(timer)clearTimeout(timer)
     if(abort)signal?.removeEventListener('abort',abort)
-    try {if(worker)await worker.terminate()} finally {replacementActive--}
+    try {if(poolEntry)await poolEntry.worker.terminate()} finally {replacementActive--}
   }
 }

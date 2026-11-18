@@ -11,9 +11,10 @@ import { createReaderVariablePrefix } from './roleplay-reader-variable-prefix.js
 import { recordSha256, sha256, textOf } from './roleplay-data.js';
 import { sourceLiteralReaderCss } from './roleplay-reader-style-parser.mjs';
 import { eventsOf, surfaceEntries } from './roleplay-context.js';
+import { indexMvuDisplayUpdates, matchMvuDisplayUpdate } from './roleplay-mvu-display-facts.js';
 import { produceRoleplayTavernMacroSnapshotV1, captureRoleplayTavernScopedRegexV1, captureTavernPromptModelBindingV1 } from './roleplay-tavern-prompt-macros.js';
 import { applyTavernPromptTransformsV1 } from './tavern-prompt-transform.mjs';
-import { projectReaderNarrativeDisplay, createReaderMvuDisplayScope } from './roleplay-reader-narrative-display.js';
+import { projectReaderNarrativeDisplay, createReaderMvuDisplayScope, projectUnsettledReaderUpdates, projectPendingReaderUpdates, MVU196_STATUS_PLACEHOLDER } from './roleplay-reader-narrative-display.js';
 import { readerRegexDocumentHtmlSpan } from './reader-source-document-data.mjs';
 import { authorMessageBodyRequestValid } from './roleplay-author-message-edit-types.js';
 import { createMvuScopeReadFrameV1 } from './tavern-mvu-scope-read.js';
@@ -117,15 +118,9 @@ function documentVariables(facts, program) {
     }
     return [...targets.values()];
 }
-function acceptedScope(row, updates, displayText = row.rawText) {
-    const matches = updates.filter(update => update.canonical.seq === row.seq && update.canonical.messageId === row.messageId);
-    if (matches.length !== 1)
-        return;
-    const update = matches[0];
-    if (update.canonical.versionSha256 !== row.messageVersionSha256
-        || update.canonical.narrativeSha256 !== sha256(row.rawText))
-        return;
-    return createReaderMvuDisplayScope(row.rawText, update.protocol, displayText);
+function acceptedUpdate(row, updates) {
+    return matchMvuDisplayUpdate(updates, { seq: row.seq, messageId: row.messageId,
+        versionSha256: row.messageVersionSha256, get narrativeSha256() { return sha256(row.rawText); } });
 }
 export function createRoleplayReaderDisplay(deps) {
     const bindings = new Map();
@@ -467,7 +462,7 @@ export function createRoleplayReaderDisplay(deps) {
             fail('READER_OPENING_VARIANTS_RECOVERY_UNAVAILABLE');
         return deps.confirmOpeningVariants(sessionId, operationId, signal);
     }
-    async function capture(sid, messages, signal) {
+    async function capture(sid, messages, signal, schemaReadAvailable = true) {
         signal.throwIfAborted();
         if (disposed)
             fail('READER_DISPLAY_DISPOSED');
@@ -536,7 +531,7 @@ export function createRoleplayReaderDisplay(deps) {
                 helperRules: policy ? communityRegexRules(policy, scopedRules) : scopedRules,
                 rules, documentRules };
         });
-        const storyText = deps.captureStoryText?.(sid);
+        const storyText = schemaReadAvailable ? deps.captureStoryText?.(sid) : undefined;
         const current = () => {
             signal.throwIfAborted();
             read.assertCurrent();
@@ -558,9 +553,10 @@ export function createRoleplayReaderDisplay(deps) {
                 if (!message || message.id !== ref.messageId)
                     fail('READER_DISPLAY_MESSAGE_CHANGED');
                 const edit = edits.get(ref.seq);
-                const raw = nativeMessages ? deps.selectedMessageFacts?.(message) : undefined, rawText = raw?.text ?? textOf(message.content), messageVersionSha256 = raw?.messageVersionSha256 ?? recordSha256(message);
+                const raw = nativeMessages ? deps.selectedMessageFacts?.(message) : undefined, rawText = raw?.text ?? textOf(message.content), messageVersionSha256 = raw?.messageVersionSha256 ?? recordSha256(message), storyMessage = message;
                 return { seq: ref.seq, messageId: ref.messageId, rawText, role,
-                    effectiveText: role === 'assistant' ? storyText?.text(ref.seq, message, rawText, messageVersionSha256) ?? rawText : rawText,
+                    terminalCode: role === 'assistant' ? storyText?.diagnostic?.(ref.seq, storyMessage, messageVersionSha256) : undefined,
+                    effectiveText: role === 'assistant' ? storyText?.text(ref.seq, storyMessage, rawText, messageVersionSha256) ?? rawText : rawText,
                     messageVersionSha256, depth: entries.length - found.index - 1,
                     isEdit: edit?.data?.role === role && edit.data.messageId === ref.messageId };
             });
@@ -575,7 +571,7 @@ export function createRoleplayReaderDisplay(deps) {
             avatars: read.data.macros.dynamic.filter(row => row.key === 'userAvatarPath' || row.key === 'charAvatarPath')
                 .map(row => row.valueSha256), regex: regexInputs?.basisSha256 ?? null,
             scopes: scopes?.versionSha256 ?? null, community: policy ? { fingerprint: policy.fingerprint, variables } : null, order: selected.order,
-            messages: selected.rows.map(({ seq, messageId, messageVersionSha256, depth, isEdit }) => ({ seq, messageId, messageVersionSha256, depth, isEdit })) });
+            messages: selected.rows.map(({ seq, messageId, messageVersionSha256, depth, isEdit, terminalCode }) => ({ seq, messageId, messageVersionSha256, depth, isEdit, terminalCode: terminalCode ?? null })) });
         const phaseId = randomUUID(), phaseController = new AbortController(), requestSignal = signal;
         const abortPhase = () => {
             phaseController.abort(requestSignal.reason);
@@ -610,6 +606,8 @@ export function createRoleplayReaderDisplay(deps) {
         let worldbook;
         try {
             const renderDiagnostics = new Map();
+            const unsettledUpdates = selected.rows.map(row => row.terminalCode
+                ? projectUnsettledReaderUpdates(row.effectiveText, row.terminalCode) : undefined);
             const renderFailure = (error) => {
                 current();
                 const code = error instanceof Error && /^[A-Z][A-Z0-9_]+$/.test(error.message)
@@ -634,15 +632,25 @@ export function createRoleplayReaderDisplay(deps) {
                 catch (error) {
                     renderFailure(error);
                 }
+            const insertedStatusSlots = new Set(), updatesBySeq = indexMvuDisplayUpdates(scopes?.displayUpdates ?? []);
             let input = { schemaVersion: 1, encoding: 'owned-tavern-prompt-transform-v1',
                 authority: 'consumer-data-only', sourceSnapshotSha256: source.sourceSha256, regexDisabled: false, macros, rules,
                 ...policy ? { scriptOrder: policy.regexOrder } : {},
-                entries: selected.rows.map(row => {
-                    const scope = row.role === 'assistant' ? acceptedScope(row, scopes?.displayUpdates ?? [], row.effectiveText) : undefined;
-                    const storyText = row.role === 'assistant' ? projectReaderNarrativeDisplay(row.effectiveText, scope) : row.effectiveText;
+                entries: selected.rows.map((row, index) => {
+                    const unsettled = unsettledUpdates[index], update = row.role === 'assistant' && !unsettled ? acceptedUpdate(row, updatesBySeq.get(row.seq) ?? []) : undefined, scope = update ? createReaderMvuDisplayScope(row.rawText, update.protocol, row.effectiveText) : undefined, pendingSchemaBody = (storyText || !schemaReadAvailable) && row.role === 'assistant' && !scope
+                        && row.effectiveText === row.rawText;
+                    let narrative = unsettled?.narrative ?? (pendingSchemaBody
+                        ? projectPendingReaderUpdates(row.rawText) : projectReaderNarrativeDisplay(row.effectiveText, scope));
+                    // MVU d03 supplies this slot after processing a message with variables.
+                    // Reuse the exact accepted floor and its finalized text in the display channel.
+                    if (update?.protocol === 'mvu-196-d03' && rules.length && row.rawText.length >= 5
+                        && !narrative.includes(MVU196_STATUS_PLACEHOLDER)) {
+                        narrative += '\n\n' + MVU196_STATUS_PLACEHOLDER;
+                        insertedStatusSlots.add(index);
+                    }
                     return { key: `reader:${row.seq}:${row.messageId}:${row.messageVersionSha256}`, bookId: null, entryId: null,
                         sourcePointer: `/native/messages/${row.seq}`, sourceSnapshotSha256: source.sourceSha256,
-                        rawText: row.rawText, storyText, inputText: storyText, pipeline: 'regex-only', channel: 'display', placement: row.role === 'user' ? 1 : 2,
+                        rawText: row.rawText, storyText: narrative, inputText: narrative, pipeline: 'regex-only', channel: 'display', placement: row.role === 'user' ? 1 : 2,
                         depth: row.depth, isEdit: row.isEdit, characterOverride: null, required: true };
                 }) };
             if (worldbook?.dynamic) {
@@ -658,7 +666,11 @@ export function createRoleplayReaderDisplay(deps) {
                 fail(transformed.diagnostics[0]?.code ?? 'READER_DISPLAY_UNAVAILABLE');
             const sourceMarkup = new Map();
             let rows = selected.rows.map((row, index) => {
-                const displayText = transformed?.output.entries[index].outputText ?? input.entries[index].inputText, replacements = transformed?.displayProvenance?.[index]?.replacements ?? [], fragments = projectReaderDisplayFragments(displayText, replacements, sourceMarkup), styles = new Set();
+                const output = transformed?.output.entries[index].outputText ?? input.entries[index].inputText;
+                // A depth/placement rule can leave the display-only suffix unconsumed.
+                const narrative = insertedStatusSlots.has(index) && output.endsWith(MVU196_STATUS_PLACEHOLDER)
+                    ? output.slice(0, -MVU196_STATUS_PLACEHOLDER.length).replace(/\n{1,2}$/, '') : output;
+                const displayText = narrative + (unsettledUpdates[index]?.details ?? ''), replacements = transformed?.displayProvenance?.[index]?.replacements ?? [], fragments = projectReaderDisplayFragments(displayText, replacements, sourceMarkup), styles = new Set();
                 for (const replacement of replacements) {
                     if (fragments?.some(fragment => fragment.kind === 'author-document'
                         && 'displaySpan' in fragment.origin
@@ -679,8 +691,9 @@ export function createRoleplayReaderDisplay(deps) {
                         }
                 }
                 const css = Array.from(styles).join('\n');
-                const { effectiveText: _effectiveText, ...original } = row;
-                return { ...original, displayText, ...fragments ? { fragments } : {}, ...css ? { css } : {} };
+                const { effectiveText: _effectiveText, terminalCode, ...original } = row;
+                return { ...original, displayText, ...terminalCode ? { terminalDiagnostic: { code: terminalCode } } : {},
+                    ...fragments ? { fragments } : {}, ...css ? { css } : {} };
             });
             let execution, documentDiagnostics;
             let worldbookProjections = worldbook?.before ?? [];

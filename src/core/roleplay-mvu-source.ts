@@ -5,7 +5,7 @@ import {compileTavernOpeningCandidates} from './tavern-card.js'
 import type {ImportPointer, ImportRecord} from './roleplay-import-types.js'
 import type {OpeningCatalog, OpeningSource} from './roleplay-opening-selection.js'
 import type {TavernOpeningCandidate, TavernOpeningContext} from './tavern-card.js'
-import {selectNativeMvuInitializationPolicy} from './tavern-mvu-initvar.js'
+import {isFreshNativeBranchBasis,selectNativeMvuInitializationPolicy} from './tavern-mvu-initvar.js'
 import {NATIVE_MVU_SOURCE_POLICY,isNativeMvuSourcePolicy,isNativeMvuYamlSourcePolicy} from './roleplay-mvu-source-policy.js'
 import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
 import {cloneSchemaData,schemaTextSha256,captureSchemaMaterialV4} from './tavern-mvu-schema-data.js'
@@ -112,10 +112,8 @@ export interface FreshNativeBasisFacts {
   encoding: 'native-mvu-fresh-basis-facts-v1'
   sessionId: string
   ownerSessionId: string
-  branch: {
-    metaKey: string; metaSha256: string; inheritance: 'root'; parentSessionId: null
-    inheritedPrefixLength: 0; ready: true
-  }
+  branch: {metaKey:string;metaSha256:string;inheritedPrefixLength:0;ready:true}&(
+    {inheritance:'root';parentSessionId:null}|{inheritance:'opening-variant';parentSessionId:string})
   numerical: {
     headKey: string; headExists: false; eventMembershipSha256: string; eventCount: 0; opaqueStateExists: false
   }
@@ -392,8 +390,11 @@ function classifyInitialization(captured:Captured,authorSchema:boolean):MvuIniti
       if(!isObject(raw))continue
       const comment=typeof raw.comment==='string'?raw.comment:''
       if(!comment.toLowerCase().includes('[initvar]')) {
-        // Ordinary lore belongs to the Prompt/compiler owner.
-        if(typeof raw.content==='string'&&initSyntax(raw.content))fail('INITVAR_OUTSIDE_BINDING',pointer,raw.content)
+        // MVU discovers declarations by comment. In schema mode the prompt
+        // owner can consume ordinary lore that references the InitVar marker.
+        if(!authorSchema&&typeof raw.content==='string'&&initSyntax(raw.content)) {
+          fail('INITVAR_OUTSIDE_BINDING',pointer,raw.content)
+        }
         continue
       }
       if(typeof raw.content!=='string')fail('FIELD_UNSUPPORTED',pointer)
@@ -411,7 +412,10 @@ function classifyInitialization(captured:Captured,authorSchema:boolean):MvuIniti
       if(raw.id!==undefined&&typeof raw.id!=='string'&&typeof raw.id!=='number')fail('FIELD_UNSUPPORTED',pointer)
       for(const key of ['insertion_order','order'])if(raw[key]!==undefined
         &&(typeof raw[key]!=='number'||!Number.isFinite(raw[key])))fail('FIELD_UNSUPPORTED',pointer)
-      if([raw.content,raw.comment,raw.name].some(value=>typeof value==='string'&&stateSyntax(value))) {
+      // The authored initializer parses its payload as bounded data. A YAML
+      // comment or scalar containing syntax-like text cannot execute here.
+      if(!authorSchema&&[raw.content,raw.comment,raw.name].some(value=>
+        typeof value==='string'&&stateSyntax(value))) {
         fail('STATE_SYNTAX_UNSUPPORTED',pointer)
       }
       const rendered=render(raw.content,context,true)
@@ -793,8 +797,7 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
     if (!facts || facts.schemaVersion !== 1 || facts.encoding !== 'native-mvu-fresh-basis-facts-v1'
       || facts.sessionId !== snapshot.source.sessionId || facts.ownerSessionId !== facts.sessionId
       || facts.branch?.metaKey !== `${facts.sessionId}__meta` || !isHash(facts.branch.metaSha256)
-      || facts.branch.inheritance !== 'root' || facts.branch.parentSessionId !== null
-      || facts.branch.inheritedPrefixLength !== 0 || facts.branch.ready !== true
+      || !isFreshNativeBranchBasis(facts.branch,facts.sessionId)
       || facts.numerical?.headExists !== false || facts.numerical.eventCount !== 0 || facts.numerical.opaqueStateExists !== false
       || !idPattern.test(facts.numerical.headKey) || !facts.numerical.headKey.startsWith(`${facts.sessionId}__`)
       || !isHash(facts.numerical.eventMembershipSha256) || !isHash(facts.native?.historyVersionSha256)

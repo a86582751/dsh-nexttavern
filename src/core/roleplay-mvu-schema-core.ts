@@ -315,7 +315,8 @@ export function createRoleplayMvuSchemaCore(deps:MvuSchemaCoreDeps) {
     }
     const proof=birth.freshNativeBasisProof
     return deps.active(session)&&deps.session(session.id)===session&&session.inheritedEventCount===0
-      &&!session.header.parentSession&&recordSha256(deps.branch.get(proof.branch.metaKey))===proof.branch.metaSha256
+      &&(session.header.parentSession??null)===proof.branch.parentSessionId
+      &&recordSha256(deps.branch.get(proof.branch.metaKey))===proof.branch.metaSha256
       &&all.every((event,index)=>event.seq===index)
       &&same(proof.numerical,{headKey:mvuInitializationHeadKey(session.id),headExists:false,
         eventMembershipSha256:recordSha256([]),eventCount:0,opaqueStateExists:false})

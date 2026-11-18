@@ -420,9 +420,9 @@ export function createTavernPromptTextKernelV1(services:TavernPromptTextKernelSe
     return result
   }
   function captureValue(token:RegExpExecArray,match:RegExpExecArray,input:string,
-    filter:(capture:string)=>string,issue:(code:string,token:string)=>void):string {
-    // Fixed callback indexing also exposes offset/input/groups. Preserve its
-    // falsey/string results and diagnose unsupported truthy non-string values.
+    filter:((capture:string)=>string)|undefined,issue:(code:string,token:string)=>void):string {
+    // SillyTavern indexes the replacement callback arguments. An untrimmed
+    // numeric offset is stringified by replaceAll, with offset zero treated as empty.
     let capture:unknown
     if(token[1]) {
       const index=Number(token[1])
@@ -431,9 +431,11 @@ export function createTavernPromptTextKernelV1(services:TavernPromptTextKernelSe
       else if(index===match.length+1)capture=input
       else if(index===match.length+2&&match.groups)capture=match.groups
     }else capture=match.groups?.[token[2]!]
-    const value=!capture?'':typeof capture==='string'?filter(capture):token[0]
-    if(capture&&typeof capture!=='string')issue('PROMPT_TRANSFORM_CAPTURE_UNSUPPORTED',token[0])
-    return value
+    if(!capture)return ''
+    if(typeof capture==='string')return filter?filter(capture):capture
+    if(typeof capture==='number'&&!filter)return String(capture)
+    issue('PROMPT_TRANSFORM_CAPTURE_UNSUPPORTED',token[0])
+    return token[0]
   }
   function format(text:string,rules:readonly TavernPromptRegexRuleV1[],macro:TavernPromptMacroSnapshotV1,
     entry:Pick<TavernPromptTransformEntryV1,'channel'|'isEdit'|'depth'|'placement'|'characterOverride'>,
@@ -455,14 +457,15 @@ export function createTavernPromptTextKernelV1(services:TavernPromptTextKernelSe
       const regex=issueCount===before?(options.compileRegex??compileRegex)(source):null
       if(!regex){if(issueCount===before)issue('PROMPT_TRANSFORM_REGEX_INVALID');continue}
       let replacement:string|undefined
-      const original=result
+      const original=result,filter=rule.trimStrings.length
+        ?(capture:string)=>trimCapture(capture,rule,value=>project(value,override),replace,deps.budget.job)
+        :undefined
       result=replace(original,regex,match=>{
         if(replacement===undefined) {
           deps.replacement(rule.replaceString.length)
           replacement=rule.replaceString.replace(/{{match}}/gi,'$0')
         }
-        const substituted=replace(replacement,/\$(\d+)|\$<([^>]+)>/g,token=>captureValue(token,match,original,
-          capture=>trimCapture(capture,rule,value=>project(value,override),replace,deps.budget.job),issue))
+        const substituted=replace(replacement,/\$(\d+)|\$<([^>]+)>/g,token=>captureValue(token,match,original,filter,issue))
         return project(substituted)
       },true)
     }

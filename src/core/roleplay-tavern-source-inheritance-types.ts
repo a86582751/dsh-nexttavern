@@ -415,7 +415,7 @@ export interface TavernSourceInheritanceDepsV1 {
       readonly bases:readonly AuthorChatScopeForkBaseV1[];readonly entries:readonly AuthorChatScopeBirthEntryV1[]}|undefined
   readonly captureAuthorChatForkBasesV3?:(parentSessionId:string,childSessionId:string,
     operationId:string,cut:TavernSourceNativeCutV1,source:TavernLoreSourceDataV1,
-    scopeForkBases?:readonly AuthorChatScopeForkBaseV1[])=>readonly AuthorChatForkBaseV3[]|undefined
+    scopeForkBases?:readonly AuthorChatScopeForkBaseV1[],carryOpeningChat?:true)=>readonly AuthorChatForkBaseV3[]|undefined
   readonly applyAuthorChatForkBasesV3?:(bases:readonly AuthorChatForkBaseV3[],preparedRef:AuthorChatRefV1,
     prepared:TavernSourcePreparedV1,sourceCurrent:()=>boolean)=>PromiseLike<unknown>
   readonly captureAuthorContextFork?:(source:TavernLoreSourceDataV1)=>import('./roleplay-author-source-context.js').AuthorContextForkV1

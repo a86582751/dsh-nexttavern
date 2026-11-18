@@ -1,5 +1,7 @@
 import type {AuthorNativeSceneV1} from '../core/author-native-helper-types.js'
 
+export interface AuthorSceneControl {readonly id:string;readonly label:string;readonly disabled:boolean}
+
 export interface AuthorDomSceneChild {
   resize(height:number):Promise<void>
   box(value:{top:number;left:number;width:number;height:number}):void
@@ -9,6 +11,9 @@ export interface AuthorDomScene {
   readonly identity:string
   readonly parentOrigin:string
   readonly frame:HTMLIFrameElement
+  getControls():readonly AuthorSceneControl[]
+  subscribeControls(listener:()=>void):()=>void
+  activateControl(id:string):Promise<void>
   mount(value:{id:string;kind:'reader'|'helper'|'background';channel:string;port:MessagePort;url?:string}):AuthorDomSceneChild
   height(value:number):void
   position(id:string,value?:{top:number;left:number;width:number;height:number}):void
@@ -29,6 +34,14 @@ export function createAuthorDomScene(container:HTMLElement,source:AuthorNativeSc
   const boxes=new Map<string,{top:number;left:number;width:number;height:number}|undefined>()
   let height=1
   let sequence=0
+  let controls:readonly AuthorSceneControl[]=[]
+  const controlListeners=new Set<()=>void>()
+  const activations=new Map<number,{resolve():void;reject(error:Error):void}>()
+  const clearControls=(code:string)=>{
+    for(const pending of activations.values())pending.reject(Error(code))
+    activations.clear()
+    if(controls.length){controls=[];for(const listener of controlListeners)listener()}
+  }
   const sizes=new Map<number,{childId:string;resolve():void;reject(error:Error):void}>()
   const cancelSizes=(code:string,childId?:string)=>{
     for(const [id,size] of sizes){
@@ -47,6 +60,7 @@ export function createAuthorDomScene(container:HTMLElement,source:AuthorNativeSc
   }
   const fail=(code:string)=>{
     failureCode=code
+    clearControls(code)
     cancelSizes(code)
     for(const child of pending.values()){child.port.postMessage({op:'parent-error',code});child.port.close()}
     pending.clear();failed(code)
@@ -59,6 +73,13 @@ export function createAuthorDomScene(container:HTMLElement,source:AuthorNativeSc
       ready=true;view.clearTimeout(timeout)
       for(const id of pending.keys())attach(id)
       send({op:'scene-height',height})
+    }else if(data.op==='scene-controls'){
+      controls=data.controls
+      for(const listener of controlListeners)listener()
+    }else if(data.op==='scene-control-result'){
+      const pending=activations.get(data.id)
+      activations.delete(data.id)
+      if(data.code)pending?.reject(Error(data.code));else pending?.resolve()
     }else if(data.op==='scene-attached'){
       const box=boxes.get(data.id)
       if(boxes.has(data.id))send({op:'scene-box',id:data.id,box})
@@ -70,6 +91,12 @@ export function createAuthorDomScene(container:HTMLElement,source:AuthorNativeSc
   frame.addEventListener('load',()=>{if(active)frame.contentWindow!.postMessage({op:'connect-scene',channel},url.origin,[ports.port2])},{once:true})
   frame.src=url.href;container.append(frame)
   return {identity:source.identity,parentOrigin:source.parentOrigin,frame,
+    getControls:()=>controls,
+    subscribeControls(listener){controlListeners.add(listener);return ()=>{controlListeners.delete(listener)}},
+    activateControl(controlId){return new Promise<void>((resolve,reject)=>{
+      if(!active||!ready||failureCode){reject(Error(failureCode??'AUTHOR_SCENE_UNAVAILABLE'));return}
+      const id=++sequence;activations.set(id,{resolve,reject});send({op:'scene-control-activate',id,controlId})
+    })},
     mount(value){
       const {port,...data}=value
       if(failureCode){port.postMessage({op:'parent-error',code:failureCode});port.close()}
@@ -88,6 +115,7 @@ export function createAuthorDomScene(container:HTMLElement,source:AuthorNativeSc
     error(id,code){send({op:'scene-error',id,code})},
     remove(id){cancelSizes('AUTHOR_SCENE_CHILD_REVOKED',id);boxes.delete(id);send({op:'scene-remove',id})},
     dispose(){if(!active)return;active=false;view.clearTimeout(timeout)
+      ports.port1.postMessage({op:'scene-dispose'});clearControls('AUTHOR_SCENE_REVOKED');controlListeners.clear()
       cancelSizes('AUTHOR_SCENE_REVOKED')
       for(const child of pending.values())child.port.close()
       pending.clear();boxes.clear();ports.port1.close();ports.port2.close();frame.remove()},

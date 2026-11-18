@@ -202,9 +202,10 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,m
   const plan=Jparse(planWire);
   let input=Jparse(wire);
   const libraries=plan.stateOnly?undefined:Jparse(libraryWire),scripts=plan.stateOnly?[]:Jparse(scriptWire);
-  let z,lodash,ZodObject,looseObject;
+  let zNamespace,z,lodash,ZodObject,looseObject;
   if(!plan.stateOnly){
-    const zNamespace=G[libraries.zod],rawLodash=G[libraries.lodash];
+    zNamespace=G[libraries.zod];
+    const rawLodash=G[libraries.lodash];
     z=zNamespace.z||zNamespace;lodash=rawLodash.default||rawLodash;
     ZodObject=z.ZodObject;looseObject=z.looseObject;
   }
@@ -298,7 +299,8 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,m
   function ready(owner,callback){if(typeof callback!=='function')fail('SCHEMA_READY_INVALID');
     if(readyCallbacks.length>=64)fail('SCHEMA_JOB_LIMIT');apply(push,readyCallbacks,[{owner,callback}]);}
   const unbound=()=>fail('SCHEMA_SCOPE_OWNER_UNAVAILABLE');
-  const libraryGlobals={z,_:lodash,console:freeze({log(){},info(){},warn(){},error(){}})};
+  // The Helper global is the same Zod namespace used for ESM exports.
+  const libraryGlobals={z:zNamespace,_:lodash,console:freeze({log(){},info(){},warn(){},error(){}})};
   for(const name of keys(libraryGlobals))define(G,name,{value:libraryGlobals[name],writable:false,configurable:false});
   const globals={$:unbound,jQuery:unbound,registerMvuSchema:unbound,getVariables:unbound,
     getAllVariables:unbound,getvar:unbound,getMvuVariable:unbound,getMvuData:unbound,

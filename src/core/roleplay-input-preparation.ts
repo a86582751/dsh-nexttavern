@@ -1918,7 +1918,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       const work=table.get(workKey(sessionId,refs)) as Work|undefined
       if(!work)return null
       return {status:work.status,sourceKind:work.source.kind,preparationId:work.preparationId,
-        completedWorkRequired:work.terminalRequired,
+        completedWorkRequired:work.terminalRequired===true,
         attemptGeneration:work.attemptGeneration,sourceSha256:work.source.sourceSha256,
         stop:work.stop?{status:work.stop.status,code:work.stop.code??null}:null}
     },

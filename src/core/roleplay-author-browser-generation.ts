@@ -23,7 +23,7 @@ const sameBinding=(left:BrowserBindingV1,right:BrowserBindingV1)=>
   &&left.sessionId===right.sessionId&&left.programSha256===right.programSha256
 function fail(code:string):never {throw Error(code)}
 interface Waiter {
-  readonly registrations:readonly BrowserCallbackRegistration[]
+  registrations:readonly BrowserCallbackRegistration[]
   resolve(invocation:BrowserAuthorInvocation):void
   reject(error:Error):void
   cleanup():void
@@ -49,7 +49,7 @@ export function createRoleplayAuthorBrowserGeneration(options:{
   lifecycle?:AuthorNativeLifecycleSubscription
 }) {
   let closed=false,waiter:Waiter|undefined,pending:Pending|undefined
-  let latestRegistrations:readonly BrowserCallbackRegistration[]=[]
+  let latestRegistrations:readonly BrowserCallbackRegistration[]=[],latestRegistrationRevision:number|undefined
   let filterCall:{invocation:BrowserFilterInvocation;sourceData?:RoleplayInputSourceDataWindowV1;
     resolve(value:FilterResult):void;reject(error:Error):void;cleanup():void}|undefined
   const retired:BrowserFilterRetired[]=[]
@@ -78,20 +78,28 @@ export function createRoleplayAuthorBrowserGeneration(options:{
     // The guest registry already applied eventMakeFirst to this exact list.
     return Object.freeze(accepted)
   }
+  function acceptRegistrations(input:readonly BrowserCallbackRegistration[],revision?:number) {
+    if(revision!==undefined&&(!Number.isSafeInteger(revision)||revision<0))
+      fail('BROWSER_GENERATION_REGISTRATION_INVALID')
+    // A poll and an explicit registry update can cross at the transport boundary.
+    if(latestRegistrationRevision!==undefined&&(revision===undefined||revision<=latestRegistrationRevision))return
+    latestRegistrations=registrations(input)
+    latestRegistrationRevision=revision
+    if(waiter)waiter.registrations=latestRegistrations
+  }
   function wait(binding:BrowserBindingV1,input:readonly BrowserCallbackRegistration[],
-    signal:AbortSignal,sourceCursor?:string):Promise<BrowserAuthorInvocation> {
+    signal:AbortSignal,sourceCursor?:string,registrationRevision?:number):Promise<BrowserAuthorInvocation> {
     assertBinding(binding,assertSourceCurrent)
     signal.throwIfAborted()
     if(waiter||pending||hook?.started||filterCall)fail('BROWSER_GENERATION_BUSY')
-    const callbacks=registrations(input)
-    latestRegistrations=callbacks
+    acceptRegistrations(input,registrationRevision)
     return new Promise((resolve,reject)=>{
       const abort=()=>{
         if(waiter!==value)return
         waiter=undefined;value.cleanup();reject(Error('BROWSER_GENERATION_READER_DISCONNECTED'))
       }
       let unsubscribe:(()=>void)|undefined
-      const value:Waiter={registrations:callbacks,resolve,reject,
+      const value:Waiter={registrations:latestRegistrations,resolve,reject,
         cleanup:()=>{signal.removeEventListener('abort',abort);unsubscribe?.()}}
       waiter=value
       signal.addEventListener('abort',abort,{once:true})
@@ -240,7 +248,10 @@ export function createRoleplayAuthorBrowserGeneration(options:{
       if(index===undefined||index<=previous)return refuse('AUTHOR_NATIVE_MVU_HOOK_OUTPUT_CHANGED')
       previous=index
     }
-    if(result.registrations)latestRegistrations=registrations(result.registrations)
+    if(result.registrations) {
+      try {acceptRegistrations(result.registrations,result.registrationRevision)}
+      catch(error){return refuse(error instanceof Error?error.message:'BROWSER_GENERATION_REGISTRATION_INVALID')}
+    }
     value.resolve?.(result.result)
   }
   function complete(result:BrowserGenerationResult):void {
@@ -338,7 +349,12 @@ export function createRoleplayAuthorBrowserGeneration(options:{
       const stage=hook;hook=undefined;stage.cleanup();stage.reject?.(Error('BROWSER_GENERATION_RESOURCE_RETIRED'))
     }
   }
-  return {wait,awaitReader,invoke,complete,invokeFilter,completeFilter,retireFilterCallbacks,prepareHook,completeHook,dispose,retireResource,
+  return {wait,updateRegistrations(binding:BrowserBindingV1,input:readonly BrowserCallbackRegistration[],revision:number) {
+      assertBinding(binding,assertSourceCurrent)
+      if(revision===undefined)fail('BROWSER_GENERATION_REGISTRATION_INVALID')
+      acceptRegistrations(input,revision)
+    },awaitReader,invoke,complete,invokeFilter,completeFilter,retireFilterCallbacks,
+    prepareHook,completeHook,dispose,retireResource,
     hookInterests:():readonly Mvu196HookStage[]=>sourceCurrent()?
       (Object.keys(AUTHOR_NATIVE_MVU_HOOK_EVENTS) as AuthorNativeMvuHookStage[])
       .filter((stage):stage is Mvu196HookStage=>stage!=='initialized'&&stage!=='before-message-update'

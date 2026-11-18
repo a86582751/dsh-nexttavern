@@ -29,7 +29,7 @@ import type {AuthorNativeSourceEventV1} from './author-native-helper-types.js'
 import type {CanonicalChatChange} from '../memory/memory-history.js'
 import type { InheritanceOptions } from './roleplay-inheritance-types.js'
 import type {ForkOperation,ForkPreparationOperation,ReadBranchSession} from './roleplay-worldline-types.js'
-import type {ForkReservation} from './roleplay-branch-routes-types.js'
+import type {ForkReservation,StoredBranchOperation} from './roleplay-branch-routes-types.js'
 import {createOpeningVariantActivation,createOpeningVariantContinuationReader,createOpeningVariantDataReader,
   openingVariantForkOperationId}
   from './roleplay-opening-variant-activation.js'
@@ -145,7 +145,7 @@ export {
 import { resolve } from 'node:path'
 
 import { registerRoleplayImports, importActiveKey, activeOpeningSource } from './roleplay-import.js'
-import {importOriginalSourceKind} from './roleplay-import-record.js'
+import {importOriginalSourceKind,textImportFormat} from './roleplay-import-record.js'
 import {readNativeCardOpeningExportV1} from './roleplay-card-export-opening.js'
 import { provenImportPreludeAssistants } from './tavern-task-retirement.js'
 import { internalTaskSeqs } from './tavern-tasks.js'
@@ -166,11 +166,14 @@ import {createCardAttachmentSources} from './roleplay-card-attachment.js'
 import {createChatCardSources} from './roleplay-chat-card-source.js'
 import {createChatCardNativeContext} from './roleplay-chat-card-context.js'
 import {createRoleplayOpeningSelection,openingIntentKey} from './roleplay-opening-selection.js'
+import {schemaOpeningNativeAnchor} from './roleplay-mvu-schema-opening-types.js'
+import {openingVariantId} from './roleplay-opening-variants.js'
 import type {OpeningIntent, OpeningRejectionCode,OpeningSelectionDeps} from './roleplay-opening-selection.js'
 import {createRoleplayMvuOpening} from './roleplay-mvu-opening.js'
 import {createRoleplayMvuSchemaMaintenance} from './roleplay-mvu-schema-maintenance.js'
 import {createRoleplayMvuState} from './roleplay-mvu-state.js'
-import {acceptedMvuDisplayUpdate,formatMvuDisplayUpdates} from './roleplay-mvu-display-facts.js'
+import {acceptedMvuDisplayUpdate,formatMvuDisplayUpdates,indexMvuDisplayUpdates,matchMvuDisplayUpdate} from './roleplay-mvu-display-facts.js'
+import {createReaderMvuDisplayScope,projectReaderNarrativeDisplay} from './roleplay-reader-narrative-display.js'
 import type {MvuAcceptedDisplayUpdate} from './roleplay-mvu-display-facts.js'
 import {createRoleplayMvuPlayer} from './roleplay-mvu-player.js'
 import type {MvuStateObservation} from './roleplay-mvu-player-types.js'
@@ -735,6 +738,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   }
   let programOpening:ReturnType<typeof createRoleplayProgramOpeningCoreV1>|undefined
   let openingVariantCoordinator:ReturnType<typeof createOpeningVariantActivation>|undefined
+  const pendingOpeningSource=(sid:string)=>programOpening?.capturePendingSource(sid)??openingVariantCoordinator?.capturePendingSource(sid)
   const readOpeningVariantData=createOpeningVariantDataReader(key=>T.branch.get(key),
     (sid,key)=>schemaDerived?.readInheritedOpeningVariantFact(sid,key)),
     openingVariantArchives=new Map<string,ReturnType<typeof createOpeningVariantContinuationReader>>()
@@ -1343,11 +1347,19 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         namespace=promptProgramSourceOrdinaryNamespaceV3(source,record)
       return schemaStory?.captureOrdinaryScopeFork(parent,child,nativeCut.seedLength,namespace)
     },
-    captureAuthorChatForkBasesV3:(parent,child,operationId,nativeCut,source,scopeForkBases)=>{
+    captureAuthorChatForkBasesV3:(parent,child,operationId,nativeCut,source,scopeForkBases,carryOpeningChat)=>{
       if(nativeCut.kind==='reserved-fresh-branch')return undefined
       const record=T.branch.get(importRecordKey(source.sourceRecordSessionId,source.original.activePointer.importId)) as ImportRecord
-      const namespace=promptProgramSourceOrdinaryNamespaceV3(source,record),
-        parentSession=ctx.sessions.get(parent)
+      const namespace=promptProgramSourceOrdinaryNamespaceV3(source,record)
+      if(carryOpeningChat) {
+        // The author may set chat variables before selecting the original greeting.
+        // Its ordinary configuration is part of this opening's Source, even at zero Native cut.
+        const parentRoot=authorChatState.captureNamespaceRootV3(namespace)
+        if(!parentRoot.head&&!parentRoot.base)return
+        return [authorChatState.freezeForkBaseV3({parentRoot,childNamespace:{...namespace,sessionId:child},
+          operationId,nativeCutSha256:recordSha256(nativeCut)})]
+      }
+      const parentSession=ctx.sessions.get(parent)
       if(!parentSession)throw Error('AUTHOR_CHAT_NATIVE_CUT_UNAVAILABLE')
       const inheritedBases=source.inheritance
         ?tavernSourceInheritance.readCommittedStaticSourceInheritance(parent).prepared.authorChatForkBasesV3??[]:[],
@@ -1686,6 +1698,42 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       }
       return engine.storyEvidenceSnapshot(session)
     },
+    narrative: async (session,entries) => {
+      const sid=session.id
+      let updates:readonly MvuAcceptedDisplayUpdate[]|undefined
+      if(mvuOpening.hasSchemaOpening(sid)) {
+        updates=mvuOpening.readSchemaDisplayUpdates(sid)
+        if(!updates) {
+          await ensureBranch(session)
+          await mvuOpening.preflightSchema(sid)
+          updates=mvuOpening.readSchemaDisplayUpdates(sid)
+          if(!updates)throw Error('SCHEMA_STORY_UNPROVEN')
+        }
+      }else if(mvuOpening.hasLegacyNumericalOpening(sid)||mvuDerived.required(sid)) {
+        await ensureBranch(session)
+        const observation=mvuState.readDisplayUpdates(sid)
+        if(observation.kind==='blocked')throw Error(observation.code)
+        updates=observation.displayUpdates
+      }
+      if(!updates?.length)return entries
+      const bySeq=indexMvuDisplayUpdates(updates)
+      const native=session as unknown as NativeSession,cut=sessionHistoryCut<NativeSessionEvent>(native)
+      return entries.map(entry=>{
+        const candidates=bySeq.get(entry.seq)
+        if(!candidates||(entry.role??entry.kind)!=='assistant'||entry.text===undefined)return entry
+        const event=cut.at(entry.seq)
+        if(event?.type!=='assistant/message')return entry
+        const message=native.deriveEventMessage(event)??event.data.message
+        if(typeof message.id!=='string')return entry
+        const facts=readTavernSelectedMessageFactsV1(message)
+        const update=matchMvuDisplayUpdate(candidates,{seq:entry.seq,messageId:message.id,
+          versionSha256:facts.messageVersionSha256,narrativeSha256:facts.textSha256})
+        if(!update)return entry
+        const scope=createReaderMvuDisplayScope(facts.text,update.protocol,entry.text)
+        const text=projectReaderNarrativeDisplay(entry.text,scope)
+        return text===entry.text?entry:{...entry,text}
+      })
+    },
     request: spec => nativeTask({
       ...spec,
       selection: decodeTaskSelection(spec.selection),
@@ -1708,9 +1756,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     },
   })
   async function resumeNovelExports(session: ContextSession,agent: HostAgent | undefined,signal?: AbortSignal) {
-    const resumableJobs = novelExports
-      .list(session)
-      .filter(job => ['queued', 'running', 'waiting-main'].includes(job.status))
+    const resumableJobs = novelExports.list(session,true)
     for (const job of resumableJobs) {
       await novelExports.drive(session, job.id, agent, signal)
     }
@@ -1842,8 +1888,6 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     libraryFor,
     resourceName,
     tavernTasks,
-    taskAgents,
-    ctx
   })
   const chatAttachmentSources = createCardAttachmentSources({T,libraryFor,
     fileUploads:ctx.fileUploads,attachments:ctx.attachments})
@@ -2212,10 +2256,20 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       return {source,operationId:seed.operationId,messageId,seq,turn:native.receipt.turn,
         renderedText:input.source.selected.renderedText,renderedSha256:input.source.selected.renderedSha256}
     },
-    readOpeningVariantSettlement:(session,operationId)=>{
+    readOpeningVariantSettlement:async(session,operationId)=>{
       const activation=readCompletedActivatedOpening(session.id)
-      if(!activation||openingVariantForkOperationId(activation.seed.parentSessionId,activation.seed.operationId)!==operationId)return null
-      const native=activation.seed.event.native
+      if(activation) {
+        if(openingVariantForkOperationId(activation.seed.parentSessionId,activation.seed.operationId)!==operationId)return null
+        const native=activation.seed.event.native
+        return {messageId:native.messageId,seq:native.assistantSeq,turn:native.turn}
+      }
+      const parent=session.header?.parentSession
+      if(!parent||session.inheritedEventCount!==0)return null
+      const verified=await mvuOpening.readSchemaInitialization(session.id)
+      if(verified.kind!=='ready')return null
+      const {intent}=verified
+      if(openingVariantForkOperationId(parent,intent.operationId)!==operationId)return null
+      const native=schemaOpeningNativeAnchor(verified.native)
       return {messageId:native.messageId,seq:native.assistantSeq,turn:native.turn}
     },
     provenanceSeq
@@ -2462,7 +2516,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         && job.source.sha256 === record.rawSha256) {
         // Structured imports use the native opening chooser through every entry
         // point. Their management receipt must not also retain an opening preview.
-        openingChoicePending = job.execution === 'deterministic'
+        openingChoicePending = job.execution === 'deterministic' || textImportFormat(record)!==undefined
         if (!openingChoicePending && job.clientRequestId) {
           assertWorkspaceSession(session)
           openingChoicePending = !!chatAttachmentSources.readChatProof(session,job.clientRequestId)
@@ -2946,12 +3000,13 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         const record=typeof pointer?.importId==='string'?T.branch.get(keyOf(
           typeof pointer.sourceRecordSessionId==='string'?pointer.sourceRecordSessionId:session.id,
           `import-${pointer.importId}`)) as ImportRecord|undefined:undefined;
-        return record?.sourceEnvelope?{kind:'blocked',code:'CARD_EXPORT_OPENING_ACTIVE_SOURCE_INVALID'}:none;
+        return record&&(record.sourceEnvelope||textImportFormat(record))
+          ?{kind:'blocked',code:'CARD_EXPORT_OPENING_ACTIVE_SOURCE_INVALID'}:none;
       }
-      const original=T.branch.get(importRecordKey(active.sourceRecordSessionId,active.importId)) as ImportRecord;
-      // MD keeps its established authoring/export workflow. A structured card
-      // uses its current Source owner, including frozen inherited records.
-      if(!original?.sourceEnvelope)return none;
+      const originalKey=importRecordKey(active.sourceRecordSessionId,active.importId),
+        original=T.branch.get(originalKey) as ImportRecord,
+        classified=!original.sourceEnvelope&&textImportFormat(original)&&active.sourceRecordSessionId===session.id;
+      if(!original.sourceEnvelope&&!classified)return none;
       const ownIntent=T.branch.get(openingIntentKey(session.id,active.importId)),
         hasNativeWork=eventsOf(actual).some(event=>{
           const messageSource=event.data?.message?.source as {origin?:unknown}|undefined,
@@ -2969,6 +3024,21 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       // retained marker or intent instead enters the full factual read below.
       if(ownIntent===undefined&&!hasNativeWork)return none;
       try {
+        const inheritedEventCount=Number(actual.inheritedEventCount??0);
+        type NativeOpeningInput=Parameters<typeof readNativeCardOpeningExportV1>[0];
+        const readNativeOpening=(source:NativeOpeningInput['source'],importRecordRef:NativeOpeningInput['importRecordRef'],
+          inherited?:NativeOpeningInput['inherited'])=>readNativeCardOpeningExportV1({source,branch:T.branch,importRecordRef,
+            observation:{id:session.id,header,inheritedEventCount,
+              events:eventsOf(actual) as unknown as readonly import('dsh-nexttavern-native-session').SessionEvent[],
+              surfaceNodes:[...(actual.surface?.nodes??[])],deriveEventMessage:event=>{
+                if(!actual.deriveEventMessage)throw Error('CARD_EXPORT_OPENING_PROJECTION_UNAVAILABLE');
+                return actual.deriveEventMessage(event as unknown as Parameters<NonNullable<typeof actual.deriveEventMessage>>[0]);
+              }},projections:ctx.sessions.messageProjections,
+            deletedMessageIds:deletedBranchMessageIdsFor(actual),inherited});
+        if(classified) {
+          const {source}=openingSelection.readCatalog(session.id,openingContext(session.id));
+          return readNativeOpening(source,{key:originalKey,sha256:recordSha256(original)});
+        }
         // Source and Native composition consume one synchronous lineage read.
         // Its owner supplies the already closed transaction to Source capture.
         const readOpening=(lineage?:TavernSourceCommittedLineageV1)=>{
@@ -2978,8 +3048,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
             source={sessionId:session.id,importId:active.importId,sourceRecordSessionId:sourceData.sourceRecordSessionId,
               rawSha256:originalSource.rawSha256,normalizedSha256:originalSource.normalizedSha256,
               transactionId:originalSource.transactionId,coverageSha256:originalSource.coverageSha256,
-              pointer:originalSource.activePointer},inheritedEventCount=Number(actual.inheritedEventCount??0);
-          let inherited:Parameters<typeof readNativeCardOpeningExportV1>[0]['inherited'];
+              pointer:originalSource.activePointer};
+          let inherited:NativeOpeningInput['inherited'];
           if(sourceData.inheritance&&inheritedEventCount>0) {
             if(!lineage)throw Error('CARD_EXPORT_OPENING_INHERITED_CUT_CHANGED');
             const current=lineage.current,cut=current.prepared.nativeCut,
@@ -3007,16 +3077,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
               cut:{seedLength:cut.seedLength,prefixEncoding:cut.prefixEncoding,prefixSha256:cut.prefixSha256},
               inheritanceRefs:[...refs].map(([key,sha256])=>({key,sha256}))};
           }
-          const events=eventsOf(actual),nodes=[...(actual.surface?.nodes??[])];
-          return readNativeCardOpeningExportV1({source,branch:T.branch,
-              importRecordRef:{key:originalSource.importRecordRef.key,sha256:originalSource.importRecordRef.sha256},
-              observation:{id:session.id,header,inheritedEventCount,
-                events:events as unknown as readonly import('dsh-nexttavern-native-session').SessionEvent[],
-                surfaceNodes:nodes,deriveEventMessage:event=>{
-                  if(!actual.deriveEventMessage)throw Error('CARD_EXPORT_OPENING_PROJECTION_UNAVAILABLE');
-                  return actual.deriveEventMessage(event as unknown as Parameters<NonNullable<typeof actual.deriveEventMessage>>[0]);
-                }},projections:ctx.sessions.messageProjections,
-              deletedMessageIds:deletedBranchMessageIdsFor(actual),...inherited?{inherited}:{}});
+          return readNativeOpening(source,originalSource.importRecordRef,inherited);
         };
         if(T.branch.get(tavernSourcePreparedKeyV1(session.id))===undefined)return readOpening();
         let result!:ReturnType<typeof readOpening>;
@@ -3100,7 +3161,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     prepareMvuHook:(request,signal)=>authorBrowser?.prepareHook(request,signal)??Promise.resolve(undefined),
     awaitBrowserSource:(sid,program,signal)=>{
       if(!authorBrowser)throw Error('BROWSER_GENERATION_READER_REQUIRED')
-      return authorBrowser.awaitReader(sid,program,signal,!!programOpening?.capturePendingSource(sid))
+      const pending=pendingOpeningSource(sid),requestSignal=pending&&'signal' in pending?pending.signal:undefined
+      return authorBrowser.awaitReader(sid,program,requestSignal?AbortSignal.any([signal,requestSignal]):signal,!!pending)
     },
     readMvuHookInterests:sid=>authorBrowser?.hookInterests(sid)??[],
     includeCardStyle:sid=>narrativePresets.policy(sid).effective.mode!=='system',
@@ -3111,10 +3173,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       return {provider:route.provider,model:route.model,
         ...(typeof route.reasoningEffort==='string'?{reasoningEffort:route.reasoningEffort}:{})}
     },
-    activateOpeningVariant:(handoff,authorizeParent)=>{
+    activateOpeningVariant:(handoff,authorizeParent,signal,resumeSource)=>{
       if(!openingVariantCoordinator)throw Error('OPENING_VARIANT_ACTIVATION_UNAVAILABLE')
-      return openingVariantCoordinator.activate(handoff,authorizeParent)
+      return openingVariantCoordinator.activate(handoff,authorizeParent,signal,resumeSource)
     },
+    readPreparedOpeningVariant:operation=>openingVariantCoordinator?.readPrepared(operation),
     projections:()=>ctx.sessions.messageProjections,
     readAuthorCapture:id=>{
       const captured=tavernSource.capture(id)
@@ -3202,6 +3265,12 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     recoverSchemaRevisionPrefix:input=>schemaDerived!.recoverRevisionPrefix(input),
     readSchemaEditInvalidation:id=>mvuEdits.readInvalidation(id),
     branchReady:id => ensureState(id).branchReady,importActiveKey,importRecordKey,
+    openingVariantParent:sid=>{
+      const {prepared}=tavernSourceInheritance.readCommittedStaticSourceInheritance(sid),
+        operation=T.branch.get(prepared.operationKey) as StoredBranchOperation|undefined
+      return prepared.nativeCut.kind==='native-fork'&&prepared.nativeCut.seedLength===0&&operation?.kind==='opening-variant'
+        &&operation.reservedChildSessionId===sid?prepared.parentSessionId:undefined
+    },
     withSourceLock:(id,work) => withImportLock(id,'mvu-initialization',work),
     recordVersionsFor:id=>captureRoleplaySourceRecordVersionsV1(T,id),
     openingContext:openingContextBinding,
@@ -4376,7 +4445,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     await communityPresets.settleAuthorPending()
     await authorCharacterLibrary!.ready()
     const characterLibrary=authorCharacterLibrary!.capture()
-    const pending=programOpening?.capturePendingSource(sid),selection=pending??mvuOpening.browserOpeningSelection(sid),
+    const pending=pendingOpeningSource(sid),selection=pending??mvuOpening.browserOpeningSelection(sid),
       facts=mvuOpening.hasSchemaOpening(sid)&&!selection?.pending?await mvuOpening.captureSchemaBrowserFacts(sid)
         :await capturePreOpeningBrowserFacts(sid,pending?.index??openingIndex??selection?.index??0)
     if(!facts)return facts
@@ -4582,9 +4651,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     const session=ctx.sessions.get(sid),catalog=ctx.get('tavernConversations')
     const agent=ctx.agents?.list().find(row=>row.session===session)
     const actual=agent&&ctx.get('agentLoop')?.getInputAdmissionAgent(agent)
-    const selected=catalog?.selectionOf(sid),pending=sourceOnly?programOpening?.capturePendingSource(sid):undefined
+    const selected=catalog?.selectionOf(sid),pending=sourceOnly?pendingOpeningSource(sid):undefined
     if(!session||!agent||actual!==agent||!storyBranchIsActive(session)
-      ||selected&&selected.activeSessionId!==sid&&!pending)return undefined
+      ||selected&&selected.activeSessionId!==sid&&!pending
+      ||pending&&'sourceSessionId' in pending&&selected?.activeSessionId!==pending.sourceSessionId)return undefined
     const nativeOwner=actual as NativeInputAdmissionAgentV2
     const cwd=session.header?.cwd,selection=selected
       ?`${selected.root}:${selected.activeSessionId}:${selected.revision}`:sid
@@ -4965,7 +5035,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     readWorldbook:authorWorldbooks.readHelper,
     captureSharedScopes:authorScopeOwner.capture,
     selectedMessageFacts:readTavernSelectedMessageFactsV1,
-    captureStoryText,
+    captureStoryText:createRoleplayStoryTextReader(id=>mvuOpening.captureReaderStoryMessages(id),
+      message=>readTavernSelectedMessageFactsV1(message).messageVersionSha256),
     nativeParentOrigins:async groups=>Object.fromEntries(await Promise.all(groups.map(async group=>
       [group,(await readerNativeOrigin.acquire()).url]))),
     authorSource:tavernMaterial.captureAuthorSource,
@@ -5098,12 +5169,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     preparationRecordKey,
     tavernTasks,
     contextProjection:(session,numerical,includeReaderDisplay)=>{
-      const id=session.id
-      if(mvuOpening.hasSchemaOpening(id)
-        &&(numerical?.kind!=='schema-ready'||numerical.storyTextBlockCode)) {
+      const id=session.id,schemaStory=mvuOpening.hasSchemaOpening(id)
+      if(schemaStory&&(numerical?.kind!=='schema-ready'||numerical.storyTextBlockCode)) {
         const numericalCode=numerical&&'code' in numerical?numerical.code:null,
           storyTextCode=numerical?.kind==='schema-ready'?numerical.storyTextBlockCode:null
-        return {memory:null,directorNotes:null,displayContext:includeReaderDisplay
+        return {memory:null,directorNotes:null,schemaStory,displayContext:includeReaderDisplay
           ?recordSha256({kind:numerical?.kind??null,numericalCode,storyTextCode}):null}
       }
       // Reuse notes from the scoped projection's owner. The table fallback
@@ -5120,7 +5190,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
           readerRegex:capturePromptRegistry(id,new AbortController().signal).readerRegexBasisSha256,
           ordinaryPublicationSeq:authorChatNative.latestPublicationSeq(ctx.sessions.get(id)!)})
       }
-      return {memory,directorNotes,displayContext}
+      return {memory,directorNotes,displayContext,schemaStory}
     },
     cloneContextWindow,
     contextWindowFor,
@@ -5139,11 +5209,13 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     },
     taskArtifact:(id,seq)=>schemaStory?.taskArtifact(id,seq),
     readerDisplay:async(session,messages,signal)=>{
+      let schemaReadAvailable=true
       try {await mvuOpening.preflightSchema(session.id,signal)}catch {
-        // Unavailable numerical scopes must not block pure Source display.
         signal.throwIfAborted()
+        // Pure Source display remains available without retrying a failed schema read.
+        schemaReadAvailable=false
       }
-      return readerDisplay.capture(session.id,messages,signal)
+      return readerDisplay.capture(session.id,messages,signal,schemaReadAvailable)
     },
     readerRenderHtml:async(request,signal)=>{
       const session=await resolveRoleplaySession(request.binding.sessionId)
@@ -5241,7 +5313,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
           return withSession(input.sessionId,async session=>{
             if(typeof input.operationId!=='string')return {ok:false,code:'OPENING_VARIANT_REQUEST_INVALID'}
             return {ok:true,kind:'opening-variants-confirmed',
-              result:await mvuOpening.retryOpeningVariants(session.id,input.operationId,signal)}
+              result:await mvuOpening.retryOpeningVariants(session.id,input.operationId,signal,input.resumeSource===true)}
           })
         case 'mutate-opening-variants':
           return withSession(input.binding?.sessionId,async()=>({ok:true,kind:'opening-variants-mutated',
@@ -5670,6 +5742,25 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         await ctx.sessionController.selectModelForSession({sessionId:child.id,...packet.model})
         if(!await ctx.sessions.flush(actual))throw Error('OPENING_VARIANT_MODEL_FLUSH_UNKNOWN')
       }
+    },
+    requiresBrowserSource:async(sid,index)=>(await mvuOpening.prepareBrowserSource(sid,index))!==undefined,
+    initializeOriginal:async(packet,child)=>{
+      const context=openingContext(child.id),catalog=openingSelection.readCatalog(child.id,context),
+        source=catalog.source,candidate=catalog.candidates.find(row=>row.index===packet.candidateIndex)
+      if(source.importId!==packet.source.importId||source.normalizedSha256!==packet.source.normalizedSha256
+        ||source.transactionId!==packet.source.transactionId||candidate?.renderedText!==packet.renderedText)
+        throw Error('OPENING_VARIANT_SOURCE_UNPROVEN')
+      const selected=await openingSelection.select(child.id,candidate.index,packet.operationId,context)
+      const intent='intent' in selected?selected.intent:selected
+      if(intent.schemaVersion!==5||intent.status!=='completed'||!intent.nativeReceipt)
+        throw Error('OPENING_VARIANT_NATIVE_PENDING')
+      const native=intent.nativeReceipt,opening=child.snapshotEvents()[native.assistantSeq]
+      if(opening?.type!=='assistant/message'||recordSha256(opening)!==native.messageVersion.eventSha256)
+        throw Error('OPENING_VARIANT_NATIVE_UNPROVEN')
+      const key=openingIntentKey(child.id,source.importId),message={ownerSessionId:child.id,
+        nativeSeq:native.assistantSeq,messageId:native.messageId,messageVersionSha256:recordSha256(opening.data.message)},
+        swipe={swipeId:candidate.index,variantId:openingVariantId(source,message,candidate.index,intent.renderedSha256)}
+      return {nativeTurn:native.turn,intentRef:{key,sha256:recordSha256(intent)},swipe}
     },
     readNativeReceipt:(packet,child,turn)=>{
       const observation=inheritedNativeObservation(child.id)

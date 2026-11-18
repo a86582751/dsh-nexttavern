@@ -321,7 +321,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps) {
             if (nativeCut.seedLength !== seedLength)
                 inheritanceFailV1('SOURCE_INHERITANCE_NATIVE_CHANGED');
             const scopeFork = deps.captureAuthorChatScopeForkV1?.(parent, child, operation.operationId, nativeCut, source), authorChatScopeForkBasesV1 = scopeFork?.bases;
-            const authorChatForkBasesV3 = deps.captureAuthorChatForkBasesV3?.(parent, child, operation.operationId, nativeCut, source, authorChatScopeForkBasesV1);
+            const authorChatForkBasesV3 = deps.captureAuthorChatForkBasesV3?.(parent, child, operation.operationId, nativeCut, source, authorChatScopeForkBasesV1, operation.carryOpeningChat);
             const authorContextForkV1 = deps.captureAuthorContextFork?.(source);
             if (authorChatForkBasesV3 !== undefined && !deps.applyAuthorChatForkBasesV3)
                 inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED');

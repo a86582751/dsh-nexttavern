@@ -2,7 +2,7 @@ import { renderReaderNarrative, renderReaderNarrativeAsync, projectReaderNarrati
     sanitizeReaderNarrativeHtml } from './reader-rendering.js';
 import type { ReaderMvuDisplayScope } from './reader-rendering.js';
 import type { MvuAcceptedDisplayUpdate } from '../core/roleplay-mvu-display-facts.js';
-import { createReaderMvuDisplayScope } from '../core/roleplay-reader-narrative-display.js';
+import { createReaderMvuDisplayScope,projectPendingReaderUpdates } from '../core/roleplay-reader-narrative-display.js';
 import type { ReaderDisplayMessageRef, ReaderDisplayResponse,ReaderDisplayExecution,
     ReaderRenderHtmlRequestV1,ReaderRenderHtmlReplyV1,ReaderRenderPhaseBindingV1 } from '../core/roleplay-reader-display.js';
 import { runReaderRegex } from './reader-regex.js';
@@ -35,10 +35,11 @@ export type ReaderBeautyTask = string | {
     readonly seq?: number;
     readonly messageId?: string;
     readonly displayUpdate?: MvuAcceptedDisplayUpdate;
+    readonly schemaOwned?:boolean;
 };
 const rawText = (task: ReaderBeautyTask) => typeof task === 'string' ? task : task.text;
 const taskKey = (task: ReaderBeautyTask) => typeof task === 'string' ? JSON.stringify([task])
-    : JSON.stringify([task.text,task.canonicalText??null, task.seq, task.messageId, task.displayUpdate ?? null]);
+    : JSON.stringify([task.text,task.canonicalText??null, task.seq, task.messageId, task.displayUpdate ?? null,task.schemaOwned??false]);
 const displayRef = (task: ReaderBeautyTask): ReaderDisplayMessageRef | undefined =>
     typeof task !== 'string' && Number.isSafeInteger(task.seq) && Number(task.seq) >= 0 && task.messageId
         ? {seq: task.seq!, messageId: task.messageId} : undefined;
@@ -71,7 +72,9 @@ reportExtensionFailure,
     const cache = new Map<string, {html: string;text: string;css?: string;error?: string;compilerError?:string;
         fragments?: readonly AuthorFrameFragment[];
         readerFragments?: readonly ReaderRegexDocumentRenderFragmentV1[];}>();
-    const fallbackHtml = new Map<string, string>();
+    type Fallback = {schemaOwned:boolean;text:string;html?:string;};
+    const fallbackRows = new Map<string,Fallback>();
+    let streamFallback: {raw:string;value:Fallback;}|undefined;
     let execution: ReaderDisplayExecution | undefined;
     let executionWindowKey: string | undefined;
     let currentScope = '';
@@ -85,12 +88,31 @@ reportExtensionFailure,
         if (currentScope !== scope) {
             cancelActive?.();
             cache.clear();
-            fallbackHtml.clear();
+            fallbackRows.clear();
+            streamFallback=undefined;
             execution = undefined;
             executionWindowKey = undefined;
             currentScope = scope;
             forceRead=false;
         }
+    }
+
+    function fallbackFor(task:ReaderBeautyTask):Fallback {
+        if(typeof task==='string')return {schemaOwned:false,text:task};
+        const {text,schemaOwned=false}=task,committed=displayRef(task)!==undefined;
+        const previous=committed?fallbackRows.get(text):streamFallback?.raw===text?streamFallback.value:undefined;
+        const value=previous?.schemaOwned===schemaOwned?previous:{schemaOwned,
+            text:schemaOwned?projectPendingReaderUpdates(text):text};
+        if(committed) {
+            fallbackRows.delete(text);
+            fallbackRows.set(text,value);
+            while(fallbackRows.size>500)fallbackRows.delete(fallbackRows.keys().next().value!);
+        } else {
+            // The active stream replaces its prefix. Reuse its projection within
+            // one render without retaining every prefix in the history cache.
+            streamFallback={raw:text,value};
+        }
+        return value;
     }
 
     function run(scope: string, tasks: readonly ReaderBeautyTask[], rules: ReaderRule[], changed: () => void,
@@ -131,7 +153,14 @@ reportExtensionFailure,
             try {
             if (display && messages.length) {
                 try { response = await display.read(display.sessionId, messages, controller.signal); }
-                catch (error) { displayError = error; }
+                catch (error) {
+                    // The Worldbook snapshot can advance while this read opens its documents.
+                    // Re-capture it once under the same Reader window and cancellation fence.
+                    if (!stale() && error instanceof Error && error.message==='READER_WORLDBOOK_SCOPE_CHANGED') {
+                        try { response = await display.read(display.sessionId, messages, controller.signal); }
+                        catch (retryError) { displayError = retryError; }
+                    } else displayError = error;
+                }
             }
             phase=response?.phase;
             if (stale()) return;
@@ -204,7 +233,7 @@ reportExtensionFailure,
             }
             for (const task of tasks) {
                 if (stale()) break;
-                const key = taskKey(task), raw = rawText(task);
+                const key = taskKey(task);
                 const ref = displayRef(task);
                 const projection = projections.get(key);
                 const cached = cache.get(key);
@@ -218,8 +247,8 @@ reportExtensionFailure,
                     try { displayScope = await acceptedDisplayScope(task); } catch { }
                 }
                 if (stale()) break;
-                const source = projection ? projection.displayText : raw;
-                const text = projection ? source : projectReaderNarrativeDisplay(raw, displayScope);
+                const text=projection?projection.displayText:displayScope
+                    ?projectReaderNarrativeDisplay(rawText(task),displayScope):fallbackFor(task).text;
                 // A successful read after paging can replace a cached fallback.
                 // Reuse rendered output only while its display input is unchanged.
                 const previousDisplay = cached?.text === text ? cached : undefined;
@@ -229,7 +258,7 @@ reportExtensionFailure,
                     // Executable documents already have their own admitted plans.
                     // Their residual text alone belongs to narrative rendering.
                     value = { text, html: projection?.fragments && acceptedExecution ? ''
-                        : completed?.whole??previousDisplay?.html ?? await renderAsync(source, rules, runBeautyRegex, displayScope),
+                        : completed?.whole??previousDisplay?.html ?? await renderAsync(text, rules, runBeautyRegex),
                         css };
                     if (projection?.fragments) {
                         const fragments: AuthorFrameFragment[] = [];
@@ -280,7 +309,7 @@ reportExtensionFailure,
                     }
                 } catch (error) {
                     value = {
-                        text, html: renderSync(source, [], displayScope),
+                        text, html: renderSync(text, []),
                         css,
 
                         error: String(error && typeof error === 'object' && 'message' in error ? error.message : error),
@@ -320,20 +349,11 @@ reportExtensionFailure,
         // The same eligibility used by run owns this asynchronous Source read.
         // Its first render cannot display raw Native text before that read settles.
         if (displayEnabled && displayRef(task)) return pendingDisplayHtml;
-        const text = rawText(task);
-        // Raw HTML is keyed by its complete text, independently of Source/regex
-        // completion. A fallback must never suppress the pending display task.
-        // String tasks are the growing stream; retaining each prefix would evict history.
-        if (typeof task === 'string') return renderSync(text, []);
-        let html = fallbackHtml.get(text);
-        if (html === undefined) html = renderSync(text, []);
-        else fallbackHtml.delete(text);
-        fallbackHtml.set(text, html);
-        while (fallbackHtml.size > 500) fallbackHtml.delete(fallbackHtml.keys().next().value!);
-        return html;
+        const fallback=fallbackFor(task);
+        return fallback.html??=renderSync(fallback.text,[]);
     };
     const textFor = (task: ReaderBeautyTask, displayEnabled = false) => cache.get(taskKey(task))?.text
-        ?? (displayEnabled && displayRef(task) ? pendingDisplayText : rawText(task));
+        ?? (displayEnabled && displayRef(task) ? pendingDisplayText : fallbackFor(task).text);
     const errors = (tasks: readonly ReaderBeautyTask[]) => Array.from(new Set(tasks
         .map(task=>cache.get(taskKey(task))?.error).filter((code):code is string=>!!code))).join(', ');
     const failed = (tasks: readonly ReaderBeautyTask[]) => !!errors(tasks);

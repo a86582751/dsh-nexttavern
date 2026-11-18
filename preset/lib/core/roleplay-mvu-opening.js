@@ -30,7 +30,7 @@ export function createRoleplayMvuOpening(deps) {
         readIntent, messageEdits: deps.messageEdits,
         deletedMessageIds: deps.deletedMessageIds, lookup: deps.nativeLookup });
     const basis = createRoleplayMvuBasis({ branch: deps.tables.branch, numerical: deps.tables.status,
-        session: deps.session, branchReady: deps.branchReady, nativeCurrent: native.current });
+        session: deps.session, branchReady: deps.branchReady, openingVariantParent: deps.openingVariantParent, nativeCurrent: native.current });
     const sourceDeps = {
         readAuthorCapture: deps.readAuthorCapture,
         readFrozenAuthorBook: deps.readFrozenAuthorBook,
@@ -159,7 +159,7 @@ export function createRoleplayMvuOpening(deps) {
             sourceSha256: (id) => inputSource(id).sourceSha256,
             protectedRuntime: schemaCore.protectedRuntime, withSourceLock: deps.withSourceLock };
         schemaStory ??= createRoleplayMvuSchemaStoryCore({ ...completion, ...common, inputState: deps.inputState,
-            prepareHook: deps.prepareMvuHook,
+            openingVariantParent: deps.openingVariantParent, prepareHook: deps.prepareMvuHook,
             readHookInterests: deps.readMvuHookInterests,
             includeCardStyle: deps.includeCardStyle,
             manualPendingCode: (id) => schemaVariants?.pendingCode(id) ?? schemaPlayer?.pendingCode(id),
@@ -184,6 +184,7 @@ export function createRoleplayMvuOpening(deps) {
             readInheritedOpeningVariantFact: deps.readInheritedOpeningVariantFact });
         schemaVariants ??= createRoleplayOpeningVariantCore({ ...common, story: schemaStory, catalog: deps.catalog,
             activatePrepared: deps.activateOpeningVariant, modelSelection: deps.openingVariantModelSelection,
+            readPreparedActivation: deps.readPreparedOpeningVariant,
             readInheritedOpeningVariantFact: deps.readInheritedOpeningVariantFact });
         return schemaStory;
     }
@@ -317,11 +318,14 @@ export function createRoleplayMvuOpening(deps) {
         const descriptor = describeRoleplayInputSourceV1(captured), sourceSha256 = roleplayInputSourceSha256V1(captured);
         return { pointer, imported, descriptor, sourceSha256 };
     }
+    function hasLegacyNumericalOpening(sessionId) {
+        const pointer = deps.tables.branch.get(deps.importActiveKey(sessionId));
+        const raw = typeof pointer?.importId === 'string' ? readIntent(sessionId, pointer.importId) : undefined;
+        return raw?.schemaVersion === 4 && raw.mode === 'native-json';
+    }
     function readGenesis(sessionId) {
         try {
-            const pointer = deps.tables.branch.get(deps.importActiveKey(sessionId));
-            const raw = typeof pointer?.importId === 'string' ? readIntent(sessionId, pointer.importId) : undefined;
-            if (raw?.schemaVersion === 6)
+            if (!hasLegacyNumericalOpening(sessionId))
                 return;
             const catalog = deps.catalog(sessionId), intent = deps.readOpeningIntent?.(catalog.source);
             if (intent?.schemaVersion !== 4 || intent.status !== 'completed' || intent.mode !== 'native-json' || !intent.initialization)
@@ -585,7 +589,7 @@ export function createRoleplayMvuOpening(deps) {
     }
     return { callbacks, sourceCurrent, readInitialization: initialization.read, nativeCurrent: native.current,
         readNative: (identity, turn) => native.read(identity, turn), readInputObservation,
-        readGenesis, readSourceSha256: (sessionId) => inputSource(sessionId).sourceSha256,
+        readGenesis, hasLegacyNumericalOpening, readSourceSha256: (sessionId) => inputSource(sessionId).sourceSha256,
         readSourceDescriptor: (sessionId) => inputSource(sessionId).descriptor,
         inheritedPromptSource, readInheritedNative: (input) => native.readInheritedFrozen(input),
         readInheritedOpeningSpan: (input) => native.readInheritedOpeningSpan(input),
@@ -658,7 +662,9 @@ export function createRoleplayMvuOpening(deps) {
         } : undefined,
         createSchemaStory, readSchemaSnapshot: (id) => schemaStory?.readSnapshot(id),
         readSchemaObservation: (id) => schemaStory?.readSchemaObservation(id),
+        readSchemaDisplayUpdates: (id) => schemaStory?.readSchemaDisplayUpdates(id),
         captureSettledStoryMessages: (id, selection) => schemaStory?.captureSettledStoryMessages(id, selection),
+        captureReaderStoryMessages: (id) => schemaStory?.captureReaderStoryMessages(id),
         captureReaderDisplayScopes: (id) => schemaStory?.captureReaderDisplayScopes(id),
         captureSchemaPromptScopes,
         captureSchemaBrowserFacts: (id) => schemaStory?.captureBrowserFacts(id) ?? Promise.resolve(undefined),
@@ -670,10 +676,10 @@ export function createRoleplayMvuOpening(deps) {
         },
         confirmOpeningVariants: (sid, operationId) => schemaVariants?.confirm(sid, operationId)
             ?? { kind: 'unknown', operationId, code: 'OPENING_VARIANT_RUNTIME_UNAVAILABLE' },
-        retryOpeningVariants: (sid, operationId, signal) => {
+        retryOpeningVariants: (sid, operationId, signal, resumeSource = false) => {
             if (!schemaVariants)
                 throw Error('OPENING_VARIANT_RUNTIME_UNAVAILABLE');
-            return schemaVariants.retry(sid, operationId, signal);
+            return schemaVariants.retry(sid, operationId, signal, resumeSource);
         },
         publishOpeningVariantActivation: (...args) => {
             if (!schemaVariants)

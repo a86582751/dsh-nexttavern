@@ -64,7 +64,7 @@ interface ReaderState extends StateReply {
     activity?: ActivityState;
     rules?: {beauty?: {regexRules?: ReaderRule[];css?: string;js?: string;};};
     surfaceNodes?: {seq?: number;turn?: number;}[];
-    readerDisplay?: {enabled: boolean;};
+    readerDisplay?: {enabled: boolean;schemaStory?: boolean;};
     readerBeauty?:ReaderNativeBeautyExecutionV1;
     failedTurnRecoveryByTurn?: Record<string, unknown>;
     // Reader consumes only these display fields; numerical snapshots and
@@ -72,6 +72,7 @@ interface ReaderState extends StateReply {
     numericalState?: {
         sessionId: string;
         kind: string;
+        storyTextBlockCode?:string;
         snapshot?: {revision?: number;stateSnapshotSha256?: string;valuesSha256?: string;sourceSha256?: string;};
         displayUpdates?: readonly MvuAcceptedDisplayUpdate[];
     } | null;
@@ -107,6 +108,7 @@ interface ReaderDependencies extends Pick<MessageComponents, 'UserActions' | 'As
     ACTIVITY_CSS: string;
     images?: Pick<ReturnType<typeof createSessionImages>, 'acceptBrowserImages' | 'releaseBrowserImages'>;
     readerHandoff?: Pick<ReaderSubmissionHandoff,'mount'>;
+    startPendingOpeningSource?:import('./pending-opening-source-host.js').StartPendingOpeningSource;
     frontendSettings?: ReaderFrontendSettings;
     navigate?(sessionId:string):Promise<unknown>|void;
 }
@@ -185,6 +187,7 @@ React,
      ACTIVITY_CSS,
      images,
      readerHandoff,
+     startPendingOpeningSource,
      frontendSettings = createReaderFrontendSettings(),
      navigate
 }: ReaderDependencies) {
@@ -433,7 +436,7 @@ React,
         // The selected Source/Native scope owns document fragments and normal
         // beauty results together, including the author frame's history window.
         const beautyScope = sessionId + '\0' + JSON.stringify([rules,state?.communityPresets?.fingerprint, displayEnabled
-            ? [state.surfaceNodes, state.recordVersions,state.displayContext, numerical?.kind,
+            ? [state.surfaceNodes, state.recordVersions,state.displayContext, numerical?.kind,numerical?.storyTextBlockCode,
                 numerical?.snapshot?.revision, numerical?.snapshot?.stateSnapshotSha256,
                 numerical?.snapshot?.valuesSha256, numerical?.snapshot?.sourceSha256]
             : null]);
@@ -614,9 +617,13 @@ React,
             displayByMessage.set(key, displayByMessage.has(key) ? null : update);
         }
         const taskFor = (part: ReaderPart): ReaderBeautyTask => {
-            if (part.transient || !displayEnabled&&part.kind!=='narrator') return part.text;
+            const schemaOwned=part.kind==='narrator'&&state?.sessionId===sessionId
+                &&(state.readerDisplay?.schemaStory===true
+                    ||numerical?.sessionId===sessionId&&numerical.kind==='schema-ready');
+            if (part.transient)return schemaOwned?{text:part.text,schemaOwned:true}:part.text;
+            if (!displayEnabled&&part.kind!=='narrator') return part.text;
             const accepted = part.kind==='narrator'?displayByMessage.get(JSON.stringify([part.seq, part.messageId])):undefined;
-            return {text: part.text, seq: part.seq, messageId: part.messageId,
+            return {text: part.text, seq: part.seq, messageId: part.messageId,...schemaOwned?{schemaOwned:true}:{},
                 ...(accepted ? {displayUpdate: accepted} : {})};
         };
         const communityCache=communityCacheRef.current;
@@ -744,6 +751,7 @@ React,
                 || !readerDocumentContainerRef.current) return;
             const container = readerDocumentContainerRef.current;
             let active = true, surface: AuthorReaderSurface | undefined;
+            let releaseAuthorControls: (() => void) | undefined;
             const acquire = () => {
                 if (surface) return surface;
                 const outer = container.ownerDocument.createElement('iframe');
@@ -751,7 +759,14 @@ React,
                 const created = createAuthorReaderSurface(outer,{
                     sessionId:sessionId??undefined,reportExtensionFailure,
                     nativeDocuments:true,
-                    sceneChanged:value=>{if(active)setSceneSessionId(value?sessionId:null);},
+                    sceneChanged:(value,scene)=>{
+                        releaseAuthorControls?.();releaseAuthorControls=undefined;
+                        if(!active)return;
+                        setSceneSessionId(value?sessionId:null);
+                        if(scene)releaseAuthorControls=frontendSettings.bindAuthorControls(sessionId,{
+                            getSnapshot:scene.getControls,subscribe:scene.subscribeControls,activate:scene.activateControl,
+                        });
+                    },
                     current: () => active && readerSessionRef.current === sessionId && readerSurfaceRef.current === created,
                     layout: value => setReaderSurfaceLayout({surface:created,page:readerSurfacePageRef.current,value}),
                     mountStaticDocument: (node,html,layout) => mountStaticAuthorDocument(node,html,{
@@ -765,6 +780,7 @@ React,
             readerSurfaceFactoryRef.current = acquire;
             return () => {
                 active = false;
+                releaseAuthorControls?.();releaseAuthorControls=undefined;
                 setSceneSessionId(current=>current===sessionId?null:current);
                 readerDocumentControllerRef.current?.dispose();browserControllerRef.current?.dispose();
                 surface?.dispose();surface?.outer.remove();
@@ -807,7 +823,7 @@ React,
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay'
                 || !readerDocumentContainerRef.current) return;
             const controller = createReaderRegexDocumentSession({sessionId,container: readerDocumentContainerRef.current,nativeLibraries,
-                reportExtensionFailure,
+                reportExtensionFailure,startPendingOpeningSource,
                 commandUi:{input:(text,defaultValue)=>window.prompt(text,defaultValue)??'',echo:text=>toast(text)},
                 eventRouter:nativeEventRouteRef.current??undefined,
                 fill: text => fillComposer(text, false),
@@ -846,7 +862,7 @@ React,
             const readerSubmission=readerSubmissionRef.current;
             const controller = createAuthorBrowserSession({
                 sessionId, container: browserContainerRef.current,nativeLibraries,
-                reportExtensionFailure,
+                reportExtensionFailure,startPendingOpeningSource,
                 navigate:(target,intent)=>navigationOwner.navigate(sessionId,target,intent,()=>navigate?.(target)),
                 adopted:snapshot=>{
                     if(readerSessionRef.current===sessionId&&resolveActiveSessionId()===sessionId)
@@ -973,11 +989,9 @@ React,
 .rp-reader-content > .rp-author-frame-host, .rp-reader-content > .rp-reader { width: 100%; flex-shrink: 0; }
 .rp-author-guard-frame { display: block; width: 100%; height: 150px; border: 0; }
 .rp-author-action-layer { position: absolute; inset: 0; pointer-events: none; }
-.rp-author-action-row { position: absolute; left: 0; right: 0; min-height: 32px;
-  padding: 0 clamp(22px, 4.8vw, 72px); box-sizing: border-box; pointer-events: none; }
-.rp-author-action-row .rp-reader-actions { pointer-events: auto; }
 .rp-author-shared-action-row { position: absolute; display: flow-root; box-sizing: border-box;
-  color: var(--rp-reader-ink); pointer-events: auto; }
+  color: var(--rp-reader-ink); }
+.rp-author-shared-action-row :is(button, a[href], .rp-reader-meta) { pointer-events: auto; }
 .rp-author-shared-action-layer { z-index: 1; }
 `;
 

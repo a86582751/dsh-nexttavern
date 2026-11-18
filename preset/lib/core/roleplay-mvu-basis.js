@@ -11,16 +11,25 @@ const opening = (event) => {
 };
 /** Owns the first numerical authority. Historical messages are never interpreted as an empty MVU value. */
 export function createRoleplayMvuBasis(deps) {
-    function root(sessionId) {
-        const session = deps.session(sessionId);
-        const metaKey = `${sessionId}__meta`;
-        const meta = deps.branch.get(metaKey);
-        if (!session || !deps.branchReady(sessionId) || !object(meta)
-            || session.header?.parentSession || !Number.isSafeInteger(session.inheritedEventCount)
-            || session.inheritedEventCount !== 0 || meta.inheritedFrom || meta.freshBranchFrom
+    function owner(sessionId) {
+        const session = deps.session(sessionId), metaKey = `${sessionId}__meta`, meta = deps.branch.get(metaKey);
+        if (!session || !deps.branchReady(sessionId) || !object(meta) || session.inheritedEventCount !== 0
             || meta.truncatedFrom || meta.inheritanceState && meta.inheritanceState !== 'ready')
             return null;
-        return { session, metaKey, metaSha256: recordSha256(meta) };
+        const parent = session.header?.parentSession;
+        const common = { metaKey, metaSha256: recordSha256(meta), inheritedPrefixLength: 0, ready: true };
+        let branch;
+        if (parent) {
+            if (deps.openingVariantParent?.(sessionId) !== parent)
+                return null;
+            branch = { ...common, inheritance: 'opening-variant', parentSessionId: parent };
+        }
+        else {
+            if (meta.inheritedFrom || meta.freshBranchFrom)
+                return null;
+            branch = { ...common, inheritance: 'root', parentSessionId: null };
+        }
+        return { session, branch };
     }
     function rows(sessionId) {
         const prefix = `${sessionId}__mvu-`;
@@ -30,11 +39,11 @@ export function createRoleplayMvuBasis(deps) {
     }
     function fresh(sessionId, swipes) {
         try {
-            const owner = root(sessionId);
-            if (!owner)
+            const basis = owner(sessionId);
+            if (!basis)
                 return { kind: 'unknown' };
             const numericalRows = rows(sessionId);
-            const events = eventsOf(owner.session);
+            const events = eventsOf(basis.session);
             if (numericalRows.length || events.some(opening))
                 return { kind: 'not-fresh' };
             // Capture original full events at a fixed cut. Appending this opening
@@ -44,8 +53,7 @@ export function createRoleplayMvuBasis(deps) {
                 return { kind: 'unknown' };
             return { kind: 'fresh', facts: { schemaVersion: 1, encoding: 'native-mvu-fresh-basis-facts-v1',
                     sessionId, ownerSessionId: sessionId,
-                    branch: { metaKey: owner.metaKey, metaSha256: owner.metaSha256, inheritance: 'root', parentSessionId: null,
-                        inheritedPrefixLength: 0, ready: true },
+                    branch: basis.branch,
                     numerical: { headKey: mvuInitializationHeadKey(sessionId), headExists: false,
                         eventMembershipSha256: recordSha256([]), eventCount: 0, opaqueStateExists: false },
                     native: { observedThroughSeq, historyVersionSha256: recordSha256(events), committedOpeningCount: 0, inheritedMessageCount: 0 },
@@ -58,14 +66,13 @@ export function createRoleplayMvuBasis(deps) {
     function current(plan, receipt, owned) {
         try {
             const proof = plan.freshNativeBasisProof;
-            const owner = root(plan.identity.sessionId);
-            if (!owner || !same(proof.branch, { metaKey: owner.metaKey, metaSha256: owner.metaSha256, inheritance: 'root',
-                parentSessionId: null, inheritedPrefixLength: 0, ready: true }) || !deps.nativeCurrent(receipt)
+            const basis = owner(plan.identity.sessionId);
+            if (!basis || !same(proof.branch, basis.branch) || !deps.nativeCurrent(receipt)
                 || !same(proof.numerical, { headKey: mvuInitializationHeadKey(plan.identity.sessionId), headExists: false,
                     eventMembershipSha256: recordSha256([]), eventCount: 0, opaqueStateExists: false })
                 || proof.native.committedOpeningCount !== 0 || proof.native.inheritedMessageCount !== 0)
                 return false;
-            const events = eventsOf(owner.session);
+            const events = eventsOf(basis.session);
             const cut = proof.native.observedThroughSeq;
             if (!Number.isSafeInteger(cut) || cut < -1 || events.some((event, index) => event.seq !== index)
                 || receipt.turnStartSeq !== cut + 1 || events.at(-1)?.seq !== receipt.turnEndSeq

@@ -250,8 +250,9 @@ export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRolepl
     ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
         await ensureSessionHistory(context.agent?.session);
         let assembly = await next();
-        const agent = context.agent, boundary = toolBoundary(agent), maintenance = agent ? inputBinding?.(agent)?.readClaimedMaintenanceInput() : undefined, semantic = maintenance && submissionBindings.semanticOnly(maintenance), submission = maintenance ? { description: semantic ? semanticTaskSubmitDescription : legacyTaskSubmitDescription,
-            parameters: semantic ? semanticTaskSubmitParameters : legacyTaskSubmitParameters } : undefined;
+        const agent = context.agent, boundary = toolBoundary(agent), maintenance = agent ? inputBinding?.(agent)?.readClaimedMaintenanceInput() : undefined, semantic = maintenance && submissionBindings.semanticOnly(maintenance), submission = maintenance || boundary?.kind === 'maintenance' || boundary?.kind === 'task'
+            ? { description: semantic ? semanticTaskSubmitDescription : legacyTaskSubmitDescription,
+                parameters: semantic ? semanticTaskSubmitParameters : legacyTaskSubmitParameters } : undefined;
         if (submission) {
             assembly = { ...assembly,
                 tools: assembly.tools.map(tool => tool.name === 'rp_task_submit' ? { ...tool, ...submission } : tool),

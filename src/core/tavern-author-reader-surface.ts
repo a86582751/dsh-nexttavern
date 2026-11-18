@@ -37,7 +37,7 @@ export interface AuthorReaderSurface {
 interface Options {
   sessionId?:string
   reportExtensionFailure?(failure:RoleplayExtensionFailureV1):void|(()=>void)
-  sceneChanged?(active:boolean):void
+  sceneChanged?(active:boolean,scene?:AuthorDomScene):void
   nativeDocuments?:boolean
   current():boolean
   layout(value:AuthorReaderSurfaceLayout):void
@@ -127,7 +127,9 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
     const height=Math.ceil(failureRail?.getBoundingClientRect().height??0)
     if(!force&&height===lastRailHeight)return
     lastRailHeight=height
-    const total=lastBeautyLayout.height+height
+    // A live Source can publish DOM asynchronously after an empty layout.
+    // Chromium suspends descendant animation frames inside a zero-height owner.
+    const total=Math.max(1,lastBeautyLayout.height+height)
     outer.style.height=total+'px';options.layout({height:total,renderRevision,rows:lastBeautyLayout.rows})
   }
   function sameFragmentShape(before:readonly ReaderRegexDocumentRenderFragmentV1[],
@@ -230,6 +232,10 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
       for(const failure of failures.values())clearFailureFallback(failure)
       beauty?.dispose();beauty=undefined;beautyHost?.remove();beautyHost=undefined;beautyIdentity='';return
     }
+    // Empty rows can collapse the outer frame while its Source owner survives.
+    // Chromium suspends descendant animation frames at zero viewport height,
+    // so publishing new content needs a viewport until its layout replaces it.
+    if(outer.getBoundingClientRect().height===0)outer.style.height='1px'
     const identity=(execution?.source.sessionId??'')+'\0'+(execution?.source.rulesRecordSha256??'')+'\0'+(sourceScene?.identity??'')
     if(identity!==beautyIdentity||!beauty){
       releaseBeautyFailure?.();releaseBeautyFailure=undefined
@@ -388,7 +394,7 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
     beauty?.dispose();beauty=undefined;beautyIdentity='';sourceScene?.dispose()
     sourceScene=createAuthorDomScene(document!.body,source,code=>console.warn('[roleplay-reader] Author scene:',code))
     sceneUsers=1
-    options.sceneChanged?.(true)
+    options.sceneChanged?.(true,sourceScene)
     syncBeauty();scheduleLayout();return sourceScene
   },releaseAuthorScene(scene){
     if(sourceScene!==scene||--sceneUsers>0)return

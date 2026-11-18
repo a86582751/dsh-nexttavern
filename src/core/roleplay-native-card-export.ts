@@ -2,7 +2,7 @@
 import {keyOf,cloneRecord,recordSha256} from './roleplay-data.js'
 import {compileTavernOpeningCandidates} from './tavern-card.js'
 import type {DecodedTavernCard} from './tavern-card.js'
-import {readStructuredImportDataV1} from './roleplay-import-record.js'
+import {readStructuredImportDataV1,textImportFormat} from './roleplay-import-record.js'
 import {portableNextTavernAuthorFields,isNextTavernCardDocument,nextTavernCardSourceIdV1,
   NEXTTAVERN_ST_MACRO_FIELDS,isNativeTavernCardDocument,readNativeNextTavernAuthorExtensionV1,
   readTavernCardArchiveV1,mergeNativeTavernCardExportV1} from './nexttavern-card.js'
@@ -229,7 +229,7 @@ function captureCurrentDocument(deps:Dependencies,id:string) {
   const openingText=selected.kind==='ready'?selectedAuthorOpening?.rawText??selected.text:currentTemplate
   const materialization=selectedAuthorOpening?selectedAuthorOpening.materialization??'template'
     :selected.kind==='ready'?'materialized':native?.data.opening?.materialization
-      ??(object(scene)?scene.materialization:undefined)??'template'
+      ??(object(scene)?scene.materialization:undefined)??(original&&textImportFormat(original)?'materialized':'template')
   const opening=scene===undefined&&selected.kind==='none'?undefined:{...authorFields(scene),
     text:openingText,materialization,
     ...(catalog!==undefined?{catalog}:{}),

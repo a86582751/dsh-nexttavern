@@ -101,12 +101,12 @@
       {
         "artifact": "tavern-prompt-text-kernel-typescript",
         "path": "src/core/tavern-prompt-text-kernel.mts",
-        "sha256": "f8df37fd8885829262530943479e89af559869f691bde620855ed383bf8d3fe5"
+        "sha256": "ba7a55d713a8e1f8dc262ab53ce0c7bf6d9bb304778fde2b9c2218cf0521db36"
       },
       {
         "artifact": "tavern-prompt-transform-execution-typescript",
         "path": "src/core/tavern-prompt-transform-execution.mts",
-        "sha256": "75c3280b7bcdb643ca4abf10abb52f11b98c30037ab7734812d199916af27880"
+        "sha256": "d9a63791fb6de90a6a4dc1b69e7c8a11a976a59f16d967dd7a579f06dfba5815"
       },
       {
         "artifact": "tavern-prompt-transform-output-typescript",
@@ -116,7 +116,7 @@
       {
         "artifact": "tavern-prompt-transform-types-typescript",
         "path": "src/core/tavern-prompt-transform-types.mts",
-        "sha256": "c17c009ad67142b0814f5bc83d077a990854577f799d72552e3ea50deaabbf9d"
+        "sha256": "32ae4e6c2a467edbc50e88c2f73d2a0f1794ed2e66f9ec82c08823a8a659edd1"
       },
       {
         "artifact": "tavern-template-data-typescript",

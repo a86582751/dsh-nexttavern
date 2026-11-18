@@ -221,7 +221,8 @@ export function registerRoleplayLoop({
     const agent=context.agent,boundary=toolBoundary(agent),
       maintenance=agent?inputBinding?.(agent)?.readClaimedMaintenanceInput():undefined,
       semantic=maintenance&&submissionBindings.semanticOnly(maintenance),
-      submission=maintenance?{description:semantic?semanticTaskSubmitDescription:legacyTaskSubmitDescription,
+      submission=maintenance||boundary?.kind==='maintenance'||boundary?.kind==='task'
+        ?{description:semantic?semanticTaskSubmitDescription:legacyTaskSubmitDescription,
         parameters:semantic?semanticTaskSubmitParameters:legacyTaskSubmitParameters}:undefined
     if(submission) {
       assembly={...assembly,

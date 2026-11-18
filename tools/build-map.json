@@ -8283,6 +8283,16 @@
       ]
     },
     {
+      "artifact": "author-dom-controls-generated",
+      "source": "src/core/author-dom-controls.ts",
+      "banner": "runtime/alpha3/src/core/author-dom-controls.ts",
+      "primaryOutput": "lib/core/author-dom-controls.js",
+      "outputs": [
+        "lib/core/author-dom-controls.js",
+        "preset/lib/core/author-dom-controls.js"
+      ]
+    },
+    {
       "artifact": "reader-native-parent-realm-generated",
       "source": "src/core/reader-native-parent-realm.ts",
       "banner": "runtime/alpha3/src/core/reader-native-parent-realm.ts",
@@ -19847,6 +19857,16 @@
         "canonicalSource": "runtime/alpha3/lib/core/reader-source-document-data.mjs"
       },
       {
+        "id": "author-dom-controls-typescript",
+        "source": "src/core/author-dom-controls.ts",
+        "canonicalSource": "runtime/alpha3/src/core/author-dom-controls.ts"
+      },
+      {
+        "id": "author-dom-controls-generated",
+        "source": "lib/core/author-dom-controls.js",
+        "canonicalSource": "runtime/alpha3/lib/core/author-dom-controls.js"
+      },
+      {
         "id": "reader-native-parent-realm-typescript",
         "source": "src/core/reader-native-parent-realm.ts",
         "canonicalSource": "runtime/alpha3/src/core/reader-native-parent-realm.ts"
@@ -21645,6 +21665,111 @@
         "id": "extension-failure-dialog-js",
         "source": "lib/ui/extension-failure-dialog.js",
         "canonicalSource": "runtime/alpha3/lib/ui/extension-failure-dialog.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-common-unicode-js",
+        "source": "build-tools/node_modules/parse5/dist/common/unicode.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/common/unicode.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-common-error-codes-js",
+        "source": "build-tools/node_modules/parse5/dist/common/error-codes.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/common/error-codes.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-tokenizer-preprocessor-js",
+        "source": "build-tools/node_modules/parse5/dist/tokenizer/preprocessor.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/tokenizer/preprocessor.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-common-token-js",
+        "source": "build-tools/node_modules/parse5/dist/common/token.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/common/token.js"
+      },
+      {
+        "id": "reader-renderer-vendor-entities-dist-decode-codepoint-js",
+        "source": "build-tools/node_modules/entities/dist/decode-codepoint.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/entities/dist/decode-codepoint.js"
+      },
+      {
+        "id": "reader-renderer-vendor-entities-dist-internal-decode-shared-js",
+        "source": "build-tools/node_modules/entities/dist/internal/decode-shared.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/entities/dist/internal/decode-shared.js"
+      },
+      {
+        "id": "reader-renderer-vendor-entities-dist-generated-decode-data-html-js",
+        "source": "build-tools/node_modules/entities/dist/generated/decode-data-html.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/entities/dist/generated/decode-data-html.js"
+      },
+      {
+        "id": "reader-renderer-vendor-entities-dist-generated-decode-data-xml-js",
+        "source": "build-tools/node_modules/entities/dist/generated/decode-data-xml.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/entities/dist/generated/decode-data-xml.js"
+      },
+      {
+        "id": "reader-renderer-vendor-entities-dist-internal-bin-trie-flags-js",
+        "source": "build-tools/node_modules/entities/dist/internal/bin-trie-flags.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/entities/dist/internal/bin-trie-flags.js"
+      },
+      {
+        "id": "reader-renderer-vendor-entities-dist-decode-js",
+        "source": "build-tools/node_modules/entities/dist/decode.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/entities/dist/decode.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-common-html-js",
+        "source": "build-tools/node_modules/parse5/dist/common/html.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/common/html.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-tokenizer-index-js",
+        "source": "build-tools/node_modules/parse5/dist/tokenizer/index.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/tokenizer/index.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-parser-open-element-stack-js",
+        "source": "build-tools/node_modules/parse5/dist/parser/open-element-stack.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/parser/open-element-stack.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-parser-formatting-element-list-js",
+        "source": "build-tools/node_modules/parse5/dist/parser/formatting-element-list.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/parser/formatting-element-list.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-tree-adapters-default-js",
+        "source": "build-tools/node_modules/parse5/dist/tree-adapters/default.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/tree-adapters/default.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-common-doctype-js",
+        "source": "build-tools/node_modules/parse5/dist/common/doctype.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/common/doctype.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-common-foreign-content-js",
+        "source": "build-tools/node_modules/parse5/dist/common/foreign-content.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/common/foreign-content.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-parser-index-js",
+        "source": "build-tools/node_modules/parse5/dist/parser/index.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/parser/index.js"
+      },
+      {
+        "id": "reader-renderer-vendor-entities-dist-escape-js",
+        "source": "build-tools/node_modules/entities/dist/escape.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/entities/dist/escape.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-serializer-index-js",
+        "source": "build-tools/node_modules/parse5/dist/serializer/index.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/serializer/index.js"
+      },
+      {
+        "id": "reader-renderer-vendor-parse5-dist-index-js",
+        "source": "build-tools/node_modules/parse5/dist/index.js",
+        "canonicalSource": "runtime/alpha3/build-tools/node_modules/parse5/dist/index.js"
       }
     ],
     "publicRelease": {
@@ -159370,6 +159495,21 @@
           "src/operations/build-typescript.mts"
         ],
         "banner": "runtime/alpha3/src/core/reader-source-document-data.mts"
+      },
+      {
+        "id": "author-dom-controls-build",
+        "kind": "typescript-module",
+        "entry": "src/core/author-dom-controls.ts",
+        "artifact": "author-dom-controls-generated",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/author-dom-controls.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/src/core/author-dom-controls.ts"
       },
       {
         "id": "reader-native-parent-realm-build",

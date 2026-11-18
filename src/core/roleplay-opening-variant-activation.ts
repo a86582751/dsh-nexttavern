@@ -18,7 +18,8 @@ import type {MvuScopeReadObjectV2} from './tavern-mvu-scope-view-v2.js'
 import type {OpeningVariantContinuationV1} from './roleplay-opening-variant-continuation.js'
 import type {OpeningVariantMessageV1} from './roleplay-opening-variant-types.js'
 import type {OpeningSource} from './roleplay-opening-selection.js'
-import type {OpeningVariantActivationHandoff} from './roleplay-opening-variants.js'
+import type {OpeningVariantActivationHandoff,OpeningVariantNavigation,OpeningVariantOperationV1,OpeningVariantPrepared}
+  from './roleplay-opening-variants.js'
 import type {Session} from 'dsh-nexttavern-native-session'
 import type {NativeProgrammaticOpeningAgentV1} from 'dsh-nexttavern-native-agent-loop'
 import type {StoredBranchOperation} from './roleplay-branch-routes-types.js'
@@ -51,7 +52,7 @@ export interface OpeningVariantActivationPacketV1 {
   readonly candidateIndex:number
   readonly renderedText:string
   readonly renderedSha256:string
-  readonly continuationRef:SchemaJournalRef
+  readonly continuationRef:SchemaJournalRef|null
   readonly model:{readonly provider:string;readonly model:string;readonly reasoningEffort?:string}
   readonly packetSha256:string
 }
@@ -138,9 +139,10 @@ interface OpeningVariantActivationIntentV1 {
   readonly operationId:string
   readonly packetRef:SchemaJournalRef
   readonly reservation:OpeningVariantForkReservation|null
-  readonly phase:'prepared'|'reserved'|'native-committed'|'completed'
+  readonly phase:'prepared'|'reserved'|'source-prepared'|'native-committed'|'completed'
   readonly nativeTurn:number|null
   readonly seedRef:SchemaJournalRef|null
+  readonly swipe?:OpeningVariantNavigation['swipe']
   readonly intentSha256:string
 }
 interface ActivationCoordinatorDependencies {
@@ -154,7 +156,10 @@ interface ActivationCoordinatorDependencies {
   readNativeReceipt(packet:OpeningVariantActivationPacketV1,child:Session,turn:number):MvuNativeOpeningReceipt
   publishChild(packetRef:SchemaJournalRef,packet:OpeningVariantActivationPacketV1,child:Session,
     native:MvuNativeOpeningReceipt,checkReservation:()=>void):Promise<OpeningVariantActivationSeedV1>
-  publishNavigation(operation:StoredBranchOperation,child:Session,seed:OpeningVariantActivationSeedV1):Promise<void>
+  requiresBrowserSource(sessionId:string,index:number):Promise<boolean>
+  initializeOriginal(packet:OpeningVariantActivationPacketV1,child:Session):Promise<{
+    readonly nativeTurn:number;readonly intentRef:SchemaJournalRef;readonly swipe:NonNullable<OpeningVariantNavigation['swipe']>}>
+  publishNavigation(operation:StoredBranchOperation,child:Session):Promise<void>
   reservationCurrent(reservation:OpeningVariantForkReservation,operationId:string):boolean
 }
 function fail():never {throw Error('OPENING_VARIANT_CONTINUATION_UNPROVEN')}
@@ -279,6 +284,9 @@ export function createOpeningVariantContinuationReader(read:(key:string)=>unknow
 export function createOpeningVariantActivation(deps:ActivationCoordinatorDependencies) {
   const intentKey=(sid:string,id:string)=>`${sid}__opening-variant-activation-intent-${id}`
   const operationKey=(id:string)=>`fork-op-${id}`
+  const pendingSources=new Map<string,{
+    readonly sourceSessionId:string;readonly index:number;readonly pending:true;readonly signal?:AbortSignal;current():boolean
+  }>()
   async function put(key:string,value:unknown) {
     try {await deps.branch.put(key,value)}catch { /* Confirm the exact owner output after an ACK loss. */ }
     if(recordSha256(deps.branch.get(key))!==recordSha256(value))throw Error('OPENING_VARIANT_ACTIVATION_WRITE_UNKNOWN')
@@ -291,7 +299,19 @@ export function createOpeningVariantActivation(deps:ActivationCoordinatorDepende
       ||recordSha256(body)!==intentSha256)throw Error('OPENING_VARIANT_ACTIVATION_INTENT_UNPROVEN')
     return intent
   }
-  async function activate(handoff:OpeningVariantActivationHandoff,authorizeParent:()=>Promise<void>) {
+  function preparedOpening(intent:OpeningVariantActivationIntentV1,packet:OpeningVariantActivationPacketV1)
+    :OpeningVariantPrepared {
+    return {kind:'prepared',operationId:packet.operationId,childSessionId:intent.reservation!.childSessionId,index:packet.candidateIndex}
+  }
+  function readPrepared(operation:OpeningVariantOperationV1):OpeningVariantPrepared|undefined {
+    const intent=readIntent(intentKey(operation.sessionId,operation.operationId))
+    if(intent?.phase!=='source-prepared'||!intent.reservation)return
+    const packet=validateOpeningVariantActivationPacket(deps.branch.get(intent.packetRef.key) as OpeningVariantActivationPacketV1)
+    if(recordSha256(packet)!==intent.packetRef.sha256||packet.operationSha256!==operation.operationSha256
+      ||packet.continuationRef!==null)throw Error('OPENING_VARIANT_ACTIVATION_PACKET_UNPROVEN')
+    return preparedOpening(intent,packet)
+  }
+  async function activate(handoff:OpeningVariantActivationHandoff,authorizeParent:()=>Promise<void>,signal?:AbortSignal,resumeSource=false) {
     const {operation,packetRef}=handoff,key=intentKey(operation.sessionId,operation.operationId),
       forkId=openingVariantForkOperationId(operation.sessionId,operation.operationId)
     return deps.withLock(`opening-variant:${operation.sessionId}:${operation.operationId}`,async()=>{
@@ -311,7 +331,7 @@ export function createOpeningVariantActivation(deps:ActivationCoordinatorDepende
         if(!intent.reservation||!intent.seedRef||!deps.reservationCurrent(intent.reservation,forkId)
           ||recordSha256(deps.branch.get(intent.seedRef.key))!==intent.seedRef.sha256)
           throw Error('OPENING_VARIANT_ACTIVATION_COMPLETION_UNPROVEN')
-        return {sessionId:intent.reservation.childSessionId}
+        return {sessionId:intent.reservation.childSessionId,...intent.swipe?{swipe:intent.swipe}:{}}
       }
       const parent=await deps.resolve(packet.parentSessionId)
       if(!parent)throw Error('OPENING_VARIANT_PARENT_UNAVAILABLE')
@@ -323,6 +343,7 @@ export function createOpeningVariantActivation(deps:ActivationCoordinatorDepende
       if(!branch) {
         if(!packet.source.transactionId)throw Error('OPENING_VARIANT_SOURCE_UNPROVEN')
         branch={schemaVersion:2,operationId:forkId,kind:'opening-variant',promptText:'',
+          ...packet.continuationRef===null?{carryOpeningChat:true as const}:{},
           anchor:{sourceSessionId:packet.parentSessionId,sourceAssistantMessageId:packet.opening.messageId,
             sourceAssistantSeq:packet.opening.nativeSeq,sourceAssistantTurn:original.data.turn,
             sourceTurn:original.data.turn,previousTurnEndSeq:null,nativeForkBeforeFirst:true,expectedSeedLength:0,
@@ -353,8 +374,42 @@ export function createOpeningVariantActivation(deps:ActivationCoordinatorDepende
       const actual=await deps.resolve(created.sessionId)
       if(!actual||actual.session.header.parentSession!==packet.parentSessionId||actual.session.inheritedEventCount!==0)
         throw Error('OPENING_VARIANT_CHILD_UNAVAILABLE')
-      await deps.bootstrap(branch,actual.session,packet)
+      const childOperation=branch
+      await deps.bootstrap(childOperation,actual.session,packet)
       await authorizeParent()
+      const checkReservation=()=>{
+        if(!deps.reservationCurrent(reservation,forkId))throw Error('OPENING_VARIANT_RESERVATION_CHANGED')
+      }
+      const complete=async(nativeTurn:number,seedRef:SchemaJournalRef,swipe?:OpeningVariantNavigation['swipe'])=>{
+        await authorizeParent();checkReservation()
+        await deps.publishNavigation(childOperation,actual.session)
+        const {intentSha256:_committed,...committedBody}=intent!
+        intent=sealMvuSchemaStoryFact({...committedBody,phase:'completed' as const,nativeTurn,seedRef,
+          ...swipe?{swipe}:{}},'intentSha256')
+        await put(key,intent)
+        return {sessionId:actual.session.id,...swipe?{swipe}:{}}
+      }
+      if(!packet.continuationRef) {
+        if(intent.phase!=='source-prepared') {
+          if(!await deps.requiresBrowserSource(actual.session.id,packet.candidateIndex)) {
+            const initialized=await deps.initializeOriginal(packet,actual.session)
+            return complete(initialized.nativeTurn,initialized.intentRef,initialized.swipe)
+          }
+          const {intentSha256:_reserved,...reservedBody}=intent
+          intent=sealMvuSchemaStoryFact({...reservedBody,phase:'source-prepared' as const},'intentSha256')
+          await put(key,intent)
+          return preparedOpening(intent,packet)
+        }
+        if(!resumeSource)return preparedOpening(intent,packet)
+        const sid=actual.session.id
+        const source={sourceSessionId:packet.parentSessionId,index:packet.candidateIndex,pending:true as const,signal,
+          current:()=>pendingSources.get(sid)===source&&!signal?.aborted&&deps.reservationCurrent(reservation,forkId)}
+        pendingSources.set(sid,source)
+        try {
+          const initialized=await deps.initializeOriginal(packet,actual.session)
+          return await complete(initialized.nativeTurn,initialized.intentRef,initialized.swipe)
+        }finally{pendingSources.delete(sid)}
+      }
       const literal={operationId:packet.operationId,messageId:`opening-variant-${packet.operationId}`,text:packet.renderedText,
         source:{kind:'programmatic' as const,schemaVersion:1 as const,producer:'dsh-nexttavern',
           origin:`card-opening:${packet.source.importId}`,operationId:packet.operationId}},
@@ -370,19 +425,11 @@ export function createOpeningVariantActivation(deps:ActivationCoordinatorDepende
       const {intentSha256:_prior,...body}=intent
       intent=sealMvuSchemaStoryFact({...body,phase:'native-committed' as const,nativeTurn:turn},'intentSha256')
       await put(key,intent)
-      const native=deps.readNativeReceipt(packet,actual.session,turn),checkReservation=()=>{
-        if(!deps.reservationCurrent(reservation,forkId))throw Error('OPENING_VARIANT_RESERVATION_CHANGED')
-      }
+      const native=deps.readNativeReceipt(packet,actual.session,turn)
       checkReservation();await authorizeParent()
       const seed=await deps.publishChild(packetRef,packet,actual.session,native,checkReservation)
-      await authorizeParent();checkReservation()
-      await deps.publishNavigation(branch,actual.session,seed)
-      const {intentSha256:_committed,...committedBody}=intent
-      intent=sealMvuSchemaStoryFact({...committedBody,phase:'completed' as const,
-        seedRef:{key:openingVariantActivationSeedKey(actual.session.id),sha256:recordSha256(seed)}},'intentSha256')
-      await put(key,intent)
-      return {sessionId:actual.session.id}
+      return complete(turn,{key:openingVariantActivationSeedKey(actual.session.id),sha256:recordSha256(seed)})
     })
   }
-  return {activate}
+  return {activate,readPrepared,capturePendingSource:(sid:string)=>pendingSources.get(sid)}
 }

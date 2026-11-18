@@ -14,6 +14,7 @@ import type {SchemaGuestOutput} from './roleplay-mvu-schema-executor-types.js'
 import type {AuthorOpeningPreparationV6,AuthorHostIdentityV5,AuthorServerExecutorV4,AuthorHostAssociationV5}
   from './roleplay-author-host-types-v5.js'
 import {deriveOwnedStateLoaderIdentityV4} from './tavern-mvu-schema-program-v4.js'
+import {isFreshNativeBranchBasis} from './tavern-mvu-initvar.js'
 import type {MvuJsonObject,SchemaMvuInitDataSource} from './tavern-mvu-initvar.js'
 import type {TavernOpeningCandidate} from './tavern-card.js'
 import type {ProgramOpeningBasisProofV1} from './roleplay-program-opening-basis-types.js'
@@ -321,7 +322,7 @@ function inputFacts(value:Pick<MvuSchemaOpeningPreparation,'identity'|'authorSou
       ||proof.sessionId!==value.identity.sessionId||proof.ownerSessionId!==value.identity.sessionId
       ||!integer(proof.native.observedThroughSeq,-1)||!hash(proof.native.historyVersionSha256)
       ||proof.native.committedOpeningCount!==0||proof.native.inheritedMessageCount!==0
-      ||proof.branch.inheritance!=='root'||proof.branch.parentSessionId!==null||proof.branch.inheritedPrefixLength!==0||proof.branch.ready!==true
+      ||!isFreshNativeBranchBasis(proof.branch,proof.sessionId)
       ||proof.numerical.headExists!==false||proof.numerical.eventCount!==0||proof.numerical.opaqueStateExists!==false
       ||proof.numerical.eventMembershipSha256!==recordSha256([])||proof.branch.metaKey!==`${value.identity.sessionId}__meta`
       ||proof.numerical.headKey!==`${value.identity.sessionId}__mvu-init-head`||!hash(proof.branch.metaSha256)

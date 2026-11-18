@@ -1,3 +1,5 @@
+import {createAuthorDomControls} from './author-dom-controls.js'
+
 /** Browser policy for Source-owned native pages. The credentialless parent
  * supplies an ephemeral network partition before private DATA is delivered. */
 export const READER_NATIVE_RESOURCE_CSP="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' http: https: blob:; "
@@ -7,7 +9,7 @@ export const READER_NATIVE_RESOURCE_CSP="default-src 'none'; script-src 'unsafe-
 
 /** This static shell is served from an origin unique to one Reader permission
  * group. Its child shares that origin, while Main retains every Core port. */
-function readerNativeParentBootstrap():void {
+function readerNativeParentBootstrap(createControls:typeof createAuthorDomControls):void {
   const channel=new URLSearchParams(location.hash.slice(1)).get('channel')
   const connect=(event:MessageEvent)=>{
     if(!['connect-parent','connect-scene'].includes(event.data?.op)||event.data.channel!==channel||!event.ports[0])return
@@ -29,9 +31,29 @@ function readerNativeParentBootstrap():void {
     const children=new Map<string,{node:HTMLElement;frame:HTMLElement;port?:MessagePort}>()
     const pending=new Map<string,MessagePort>()
     const libraries=new Set<string>()
+    const domControls=createControls(rows=>control.postMessage({op:'scene-controls',controls:rows}))
+    const helperFrames=new Map<string,HTMLIFrameElement>()
+    Object.defineProperty(window,'SillyTavern',{configurable:true,get:()=>{
+      for(const frame of helperFrames.values()){
+        const facade=(frame.contentWindow as any)?.SillyTavern
+        if(facade)return facade
+      }
+    }})
+    const releaseChild=(id:string)=>{
+      domControls.releaseFrame(id)
+      const child=children.get(id)
+      helperFrames.delete(id)
+      child?.port?.close();child?.node.remove();children.delete(id)
+    }
+    addEventListener('pagehide',domControls.dispose,{once:true})
     control.onmessage=event=>{
       const data=event.data
-      if(data.op==='scene-attach'){
+      if(data.op==='scene-control-activate'){
+        const code=domControls.activate(data.controlId)
+        control.postMessage({op:'scene-control-result',id:data.id,...(code?{code}:{})})
+      }else if(data.op==='scene-dispose'){
+        domControls.dispose();control.close()
+      }else if(data.op==='scene-attach'){
         const bridge=event.ports[0]
         if(!bridge)return
         pending.set(data.id,bridge)
@@ -42,7 +64,12 @@ function readerNativeParentBootstrap():void {
           const payload=message.data
           const fresh=(payload.libraries??[]).filter((javascript:string)=>!libraries.has(javascript))
           for(const javascript of fresh)libraries.add(javascript)
-          const mounted=mount({...payload,libraries:fresh,sdkGlobals:[],helper:data.kind==='helper'},bridge,data.channel)
+          const helper=data.kind==='helper'
+          const mounted=mount({...payload,libraries:fresh,sdkGlobals:[],helper},bridge,data.channel,
+            frame=>domControls.watchFrame(data.id,frame))
+          // The shared context follows the session's Helper. Reader children
+          // retain their own message-scoped APIs.
+          if(helper)helperFrames.set(data.id,mounted.frame)
           mounted.node.dataset.authorSceneChild=data.id
           mounted.node.style.visibility='hidden'
           if(data.kind==='reader')mounted.node.style.zIndex='1'
@@ -53,6 +80,7 @@ function readerNativeParentBootstrap():void {
       }else if(data.op==='scene-external'){
         const bridge=event.ports[0]
         if(!bridge)return
+        domControls.releaseFrame(data.id)
         const frame=document.createElement('iframe')
         frame.setAttribute('credentialless','');frame.sandbox.add('allow-scripts','allow-same-origin')
         frame.referrerPolicy='no-referrer';frame.style.cssText='display:block;position:absolute;border:0;width:100%;height:1px'
@@ -64,8 +92,7 @@ function readerNativeParentBootstrap():void {
         frame.src=url.href;document.body.append(frame);children.set(data.id,{node:frame,frame,port:bridge})
         control.postMessage({op:'scene-attached',id:data.id})
       }else if(data.op==='scene-error'){
-        const previous=children.get(data.id)
-        previous?.port?.close();previous?.node.remove()
+        releaseChild(data.id)
         const node=document.createElement('p');node.setAttribute('role','alert')
         node.textContent='作者文档不可用：'+data.code+'。请修复失败文档后刷新视图。'
         node.style.cssText='position:absolute;margin:0;z-index:1'
@@ -88,13 +115,13 @@ function readerNativeParentBootstrap():void {
       }else if(data.op==='scene-remove'){
         const waiting=pending.get(data.id)
         if(waiting){waiting.onmessage=null;waiting.close();pending.delete(data.id)}
-        const child=children.get(data.id)
-        child?.port?.close();child?.node.remove();children.delete(data.id)
+        releaseChild(data.id)
       }else if(data.op==='scene-height')document.body.style.minHeight=data.height+'px'
     }
     control.start();control.postMessage({op:'scene-ready',sourceDataProtocol:1})
   }
-  function mount(data:any,port:MessagePort,childChannel:string):{node:HTMLElement;frame:HTMLIFrameElement} {
+  function mount(data:any,port:MessagePort,childChannel:string,observeFrame?:(frame:HTMLIFrameElement)=>void)
+    :{node:HTMLElement;frame:HTMLIFrameElement} {
     for(const javascript of data.libraries){
       const script=document.createElement('script');script.textContent=javascript;document.head.appendChild(script)
     }
@@ -102,6 +129,7 @@ function readerNativeParentBootstrap():void {
     message.className='mes';message.setAttribute('mesid',String(data.messageIndex));content.className='mes_text'
     frame.title='作者浏览器内容';frame.sandbox.add('allow-scripts','allow-same-origin')
     frame.style.cssText='display:block;width:100%;height:100vh;border:0'
+    observeFrame?.(frame)
     const realm=window as any
     // These are the child's finite Tavern SDK objects. No Main object or
     // authenticated fetch function crosses the author origin.
@@ -130,4 +158,4 @@ function readerNativeParentBootstrap():void {
 export const READER_NATIVE_PARENT_SHELL_HTML='<!doctype html><meta charset="utf-8">'
   +'<meta http-equiv="Content-Security-Policy" content="'+READER_NATIVE_RESOURCE_CSP+'">'
   +'<meta name="referrer" content="no-referrer"><style>html,body{margin:0}iframe{border:0}</style>'
-  +'<body><script>('+readerNativeParentBootstrap.toString()+')()</script></body>'
+  +'<body><script>('+readerNativeParentBootstrap.toString()+')('+createAuthorDomControls.toString()+')</script></body>'

@@ -123,6 +123,10 @@ export const terminalBrowserReceipt = (result: MvuPlayerEditResponse) =>
     result.operation?.outcome === 'updated' || result.operation?.outcome === 'no-update'
     || result.operation?.outcome === 'refused';
 
+export function openingVariantSettled(result?:ReaderOpeningVariantResultV1):boolean {
+    return result?.kind==='committed'||result?.kind==='refused';
+}
+
 export interface ReaderOpeningVariantPendingV1 {
     schemaVersion: 1;
     encoding: 'nexttavern-reader-opening-variant-pending-v1';
@@ -259,7 +263,7 @@ export function createAuthorBrowserPendingStore(storage: Pick<Storage, 'getItem'
         const previous=readOpening(envelope.binding.sessionId);
         if(previous?.request.operationId!==envelope.request.operationId)return previous??envelope;
         if(previous.result?.kind==='committed')return previous;
-        const next:AuthorNativeOpeningPendingV1={...envelope,result,state:result&&result.kind!=='unknown'?'terminal':'unknown'};
+        const next:AuthorNativeOpeningPendingV1={...envelope,result,state:openingVariantSettled(result)?'terminal':'unknown'};
         writeMessageOperations(envelope.binding.sessionId,{...readMessageOperations(envelope.binding.sessionId),opening:next});
         return next;
     }
@@ -331,7 +335,7 @@ export function createAuthorBrowserPendingStore(storage: Pick<Storage, 'getItem'
         if (previous && previous.request.operationId !== envelope.request.operationId) return previous;
         if (previous?.request.operationId === envelope.request.operationId && previous.result?.kind === 'committed') return previous;
         const next: ReaderOpeningVariantPendingV1 = {...envelope,
-            state: result && result.kind !== 'unknown' ? 'terminal' : 'unknown',
+            state: openingVariantSettled(result) ? 'terminal' : 'unknown',
             ...(result ? {result} : {}), ...(code ? {code} : {})};
         if (previous?.request.operationId === envelope.request.operationId)
             storage.setItem(readerKey(envelope.binding.sessionId), JSON.stringify(next));

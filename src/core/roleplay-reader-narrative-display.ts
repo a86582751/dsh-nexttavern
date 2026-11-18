@@ -14,6 +14,8 @@ export type ReaderMvuDisplayScope = {
     readonly acceptedRanges: readonly ReaderMvuDisplayRange[];
 };
 
+export const MVU196_STATUS_PLACEHOLDER = '<StatusPlaceHolderImpl/>';
+
 const MVU_DISPLAY_TEXT_LIMIT = 1_048_576;
 const MVU_DISPLAY_BLOCK_LIMIT = 65_536;
 const MVU_DISPLAY_MARKERS = new Set(['updatevariable', 'jsonpatch', 'json_patch', 'analyze', 'analysis']);
@@ -161,11 +163,21 @@ function unquotedMvuStarts(text: string, targets: readonly number[]): ReadonlySe
     return unquoted;
 }
 
-function mvu196DisplayRanges(text: string): readonly ReaderMvuDisplayRange[] {
+function mvu196DisplayRanges(text: string, pending = false): readonly ReaderMvuDisplayRange[] {
+    if (text.length > MVU_DISPLAY_TEXT_LIMIT
+        || !/<\s*(?:updatevariable|variableupdate|update|json_?patch)\b/i.test(text)) return [];
     const scanned = scanUpdateMarkup(text);
-    const blocks = [...findUpdateMarkupBlocks(text, 'update', scanned),
-        ...findUpdateMarkupBlocks(text, 'patch', scanned)]
-        .filter(block => block.closed && !block.discarded)
+    const blocks = [
+        ...findUpdateMarkupBlocks(text, 'update', scanned)
+            .filter(block => pending
+                ? /^(?:\s|\uFEFF)*(?:<\s*(?:analy[sz]e|analysis|json_?patch)\b|\[|_\.|$)/i
+                    .test(text.slice(block.contentStart, block.contentEnd))
+                : block.closed),
+        ...findUpdateMarkupBlocks(text, 'patch', scanned)
+            .filter(block => !block.discarded && (pending
+                ? /^\s*(?:\[|$)/.test(text.slice(block.contentStart, block.contentEnd))
+                : block.closed)),
+    ]
         .sort((left, right) => left.start - right.start || right.end - left.end);
     // The fixed scanner masks data strings without changing UTF-16 offsets.
     // Reader reference protection then visits all block starts in one pass.
@@ -217,6 +229,32 @@ export function createReaderMvuDisplayScope(canonicalText: string, protocol: Mvu
     const block = canonicalText.slice(start, close + '</UpdateVariable>'.length), displayStart = displayText.indexOf(block);
     if (displayStart < 0) return;
     return {role: 'assistant', protocol, acceptedRange: {start: displayStart, end: displayStart + block.length}};
+}
+
+/** During the schema Story handoff the Reader can separate recognizable
+ * transport before the outcome arrives. Native retains the complete body. */
+export function projectPendingReaderUpdates(text:string):string {
+    const acceptedRanges=mvu196DisplayRanges(text,true);
+    if (!acceptedRanges.length) return text;
+    return projectReaderNarrativeDisplay(text,{role:'assistant',protocol:'mvu-196-d03',acceptedRanges});
+}
+
+/** An unresolved terminal exposes its authored update as inspectable text.
+ * Structural markup locates the payload without accepting or executing it. */
+export function projectUnsettledReaderUpdates(text:string,code:string):{narrative:string;details:string} {
+    const ranges=mvu196DisplayRanges(text,true);
+    const escape=(value:string)=>value.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
+        .replaceAll('"','&quot;').replaceAll("'",'&#39;');
+    const narrative:string[]=[],details:string[]=[];
+    let cursor=0;
+    for(const range of ranges) {
+        narrative.push(text.slice(cursor,range.start));
+        details.push('<details><summary>数值更新未结算 · <code>'+escape(code)+'</code></summary><pre>'
+            +escape(text.slice(range.start,range.end))+'</pre></details>');
+        cursor=range.end;
+    }
+    narrative.push(text.slice(cursor));
+    return {narrative:narrative.join(''),details:details.join('')};
 }
 
 /** Project ranges from this message's accepted display data. Legacy scopes

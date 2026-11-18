@@ -26,6 +26,7 @@ export function createSessionCallFold(session: TelemetrySession) {
   }
   let current: TelemetryCallRecord | null = null, route: {provider?: string | null; model?: string | null} = {}, phase = 'narrative'
   let taskPhase:readonly {id?:unknown;kind?:unknown}[]=[]
+  let programmaticCopy=false
   const finish=(time: number | undefined, status?: TelemetryCallRecord['status'], error?: string | null)=>{
     if(!current)return
     if(current.source.startSeq!>=seed)changed.add(current)
@@ -37,10 +38,14 @@ export function createSessionCallFold(session: TelemetrySession) {
     if (typeof e.time !== 'number' || !Number.isFinite(e.time)) return
     const d=e.data??{}
     if(e.type==='turn/start'||e.type==='turn/end')taskPhase=[]
+    // Native marks direct assistant copies on turn/start. Their step is a
+    // durable message commit and never enters the provider request lifecycle.
+    if(e.type==='turn/start')programmaticCopy=!!d.programmatic
     if(e.type==='compaction/summary'&&d.usage&&!d.nativeTask&&e.seq>=seed)add({schemaVersion:1,id:hash([session.id,'compaction',d.compactionId??e.seq]),sessionId:session.id,ownerSessionId:session.id,kind:'compaction',provider:d.provider??null,model:d.model??null,status:'completed',startedAt:e.time,completedAt:e.time,durationMs:null,firstTokenMs:null,usage:usageOf(d.usage),source:{kind:'compaction-summary',sessionId:session.id,startSeq:e.seq,evidenceSeq:e.seq}})
     if(e.type==='request/header'){route=d.header?.config??route;if(current){current.provider=route.provider??null;current.model=route.model??null}}
     if(e.type==='user/message')phase=d.source?.kind==='roleplay-tasks'?(d.source.jobKind??d.source.stage??'maintenance'):'narrative'
     if(e.type==='step/start'||e.type==='llm/retry-started') {
+      if(programmaticCopy)return
       if(current?.status==='running')finish(e.time,'unknown')
       current={schemaVersion:1,id:hash([session.id,e.seq]),sessionId:session.id,ownerSessionId:session.id,
         provider:route.provider??null,model:route.model??null,kind:phase,status:'running',startedAt:e.time,completedAt:null,durationMs:null,firstTokenMs:null,usage:null,

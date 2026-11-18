@@ -243,6 +243,7 @@ export interface MvuSchemaStoryCoreDeps {
   captureManualLedger?(sid:string):import('./roleplay-mvu-schema-player-types.js').MvuSchemaPlayerLedger|undefined
   manualEditBlockCode?(sid:string):string|undefined
   derivedRequired?(sid:string):boolean
+  openingVariantParent?(sid:string):string|undefined
   readDerivedGenesis?(sid:string):MvuSchemaDerivedGenesis|undefined
   readInheritedOpeningVariantFact?(sid:string,key:string):unknown
   captureRevisionPrefix?(sid:string,nativeCut:number):MvuSchemaForkCapture
@@ -264,6 +265,7 @@ export interface SchemaSettledStoryMessagesCapture {
   current():boolean
   hasValues:boolean
   stamp:object
+  diagnostic?(target:SettledStoryMessage['target']):string|undefined
 }
 const settledMessageKey=(target:{seq:number;messageId:string;versionSha256:string})=>
   `${target.seq}:${target.messageId}:${target.versionSha256}`
@@ -2061,6 +2063,12 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     sourceOriginals.set(original.originalSha256,captured)
     return captured
   }
+  function needsDerivedGenesis(session:Session):boolean {
+    if(session.inheritedEventCount)return true
+    const parent=session.header.parentSession
+    if(parent)return deps.openingVariantParent?.(session.id)!==parent
+    return deps.derivedRequired?.(session.id)??false
+  }
   function readOpeningRoot(sid:string,events:readonly SessionEvent[],realmEpoch?:string):SchemaOpeningRootFacts {
     let stored:unknown
     if(realmEpoch) {
@@ -2128,7 +2136,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     const cut=deps.inputState.nativeHistory?.cut?.<SessionEvent>(session)
     if(!historical&&cut?.source==='native'&&(nativeCut===undefined||nativeCut===cut.length)
       &&!reconcileOriginalPlanSha256&&!revisionBases&&!readContext&&!authorizationCandidates) {
-      const history=warmNumerical(session,cut,includeDisplay,captureBasis)
+      const history=warmNumerical(session,cut,captureBasis)
       if(history)return history
     }
     return factualCold(session,nativeCut,historical,includeDisplay,captureBasis,reconcileOriginalPlanSha256,
@@ -2157,8 +2165,10 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       return history.initial
     })
   }
-  function startNumerical(session:Session,cut:SessionHistoryCut<SessionEvent>,includeDisplay:boolean):NumericalCursor|History<SchemaJournalReady> {
-    const history=factualCold(session,cut.length,false,includeDisplay,false,undefined,undefined,undefined,undefined,true),
+  function startNumerical(session:Session,cut:SessionHistoryCut<SessionEvent>):NumericalCursor|History<SchemaJournalReady> {
+    // This cursor serves both input preparation and Reader. The first caller
+    // cannot decide whether later readers receive the accepted floor facts.
+    const history=factualCold(session,cut.length,false,true,false,undefined,undefined,undefined,undefined,true),
       captured=coldNumericalReads.get(history)
     if(!captured)return history
     coldNumericalReads.delete(history)
@@ -2185,11 +2195,11 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       return cursor
     }catch(error){for(const fact of ownedFacts)fact.dispose();throw error}
   }
-  function restartNumerical(session:Session,cut:SessionHistoryCut<SessionEvent>,includeDisplay:boolean):History {
-    const next=startNumerical(session,cut,includeDisplay)
+  function restartNumerical(session:Session,cut:SessionHistoryCut<SessionEvent>):History {
+    const next=startNumerical(session,cut)
     return 'proof' in next?next.history:next
   }
-  function warmNumerical(session:Session,cut:SessionHistoryCut<SessionEvent>,includeDisplay:boolean,captureBasis:boolean):History|undefined {
+  function warmNumerical(session:Session,cut:SessionHistoryCut<SessionEvent>,captureBasis:boolean):History|undefined {
     const sid=session.id
     const ledger=deps.captureManualLedger?.(sid),manualBlock=ledger?ledger.code:deps.manualPendingCode?.(sid)
     if(manualBlock)fail(manualBlock)
@@ -2197,16 +2207,16 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(cursor&&(cursor.session!==session||cursor.owner!==cut.owner||cut.length<cursor.nativeCut||!cursor.proof.current())) {
       releaseNumerical(sid);cursor=undefined
     }
-    if(!cursor)return restartNumerical(session,cut,includeDisplay)
+    if(!cursor)return restartNumerical(session,cut)
     for(const event of cut.range(cursor.nativeCut))if(event.type==='roleplay/message-edit'
       &&(event.data.schemaVersion!==3||event.data.bodyChanged!==false)
       ||event.type===deps.markers.revisionEventType||event.type==='roleplay/author-injection-cleanup') {
-      releaseNumerical(sid);return restartNumerical(session,cut,includeDisplay)
+      releaseNumerical(sid);return restartNumerical(session,cut)
     }
     const ready=journal.captureLive(sid,cursor.history.original.realmEpoch,{inherited:cursor.history.inheritedReady??null,
       executionBaseline:cursor.history.ready.executionBaseline})
     if(ready.kind!=='ready')fail(ready.code)
-    if(!cursor.proof.current()){releaseNumerical(sid);return restartNumerical(session,cut,includeDisplay)}
+    if(!cursor.proof.current()){releaseNumerical(sid);return restartNumerical(session,cut)}
     const pending:ReturnType<typeof eventRows>=[]
     for(const key of cursor.dirty) {
       const raw=prefixInputs.status.get(key)
@@ -2224,7 +2234,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       if(row.event.frontier.nativeCut<=cut.length)pending.push(row)
     }
     pending.sort((a,b)=>a.event.phases[0]!.association.dispatchMarker.seq-b.event.phases[0]!.association.dispatchMarker.seq)
-    try {for(const row of pending){advanceNumerical(cursor,cut,ready,row,includeDisplay);cursor.pending.delete(row.key)}}catch(error) {
+    try {for(const row of pending){advanceNumerical(cursor,cut,ready,row);cursor.pending.delete(row.key)}}catch(error) {
       cursor.semantic.dispose();cursor.semantic=scopeSemantic(session);throw error
     }
     const pendingExecution=cursor.ordinal!==ready.steps.length
@@ -2260,7 +2270,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     return cursor.history
   }
   function advanceNumerical(cursor:NumericalCursor,cut:SessionHistoryCut<SessionEvent>,ready:SchemaJournalLiveReady,
-    row:ReturnType<typeof eventRows>[number],includeDisplay:boolean):void {
+    row:ReturnType<typeof eventRows>[number]):void {
     const event=row.event,sid=cursor.session.id,
       ordinaryInput=cursor.ordinary.through('logicalNativeCut' in event.plan?event.plan.logicalNativeCut:event.plan.initialCut.nativeCut),
       prior=cursor.history.readScopes?historyWith(cursor.history,{readScopes:metadataScopeFacts(cursor.session,
@@ -2339,7 +2349,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     cursor.consumed.set(plan.planSha256,closureSha256);cursor.keys.push(row.key)
     const through=cursor.keys.length
     let keys:readonly string[]|undefined
-    const display=includeDisplay&&event.encoding==='native-mvu-schema-story-event-v2'&&event.outcome!=='refused'
+    const display=event.encoding==='native-mvu-schema-story-event-v2'&&event.outcome!=='refused'
       ?acceptedMvuDisplayUpdate(sid,event.plan.canonical,'mvu-196-d03'):undefined
     for(const step of ready.steps.range(ordinal,ordinal+mvuSchemaStoryExecutionPhases(event).length)) {
       cursor.diagnostics.push(...commandDiagnosticsForStep(step))
@@ -2402,7 +2412,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       ordinal=0;seed={kind:'activation',activationRef:activation.ref}
       scopeSeed=scopesForActivation(activation,events)
       if(includeDisplay)displaySeed=[]
-    }else if(deps.derivedRequired?.(sid)||session.inheritedEventCount||session.header.parentSession) {
+    }else if(needsDerivedGenesis(session)) {
       const genesis=deps.readDerivedGenesis?.(sid)
       if(!genesis||genesis.inheritedCut.nativeCut!==session.inheritedEventCount)fail('SCHEMA_DERIVED_GENESIS_UNPROVEN')
       original=genesis.original
@@ -2872,7 +2882,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     const prefix=all(session).slice(0,selector.nativeCut)
     const revisionBases=prepareRevisionBases(session.id,prefix)
     const sid=session.id,activation=activationFor(sid,prefix),
-      derivedRequired=!activation&&(deps.derivedRequired?.(sid)||session.inheritedEventCount||session.header.parentSession)
+      derivedRequired=!activation&&needsDerivedGenesis(session)
     const derived=derivedRequired?deps.readDerivedGenesis?.(sid):undefined
     let original:SchemaFrozenOriginal,ready:SchemaJournalReady,ordinal=1,initial:MvuSchemaNumericalSnapshotV2|undefined
     let scopeSeed:ScopeFacts|undefined,openingMessage:SettledStoryMessage|undefined
@@ -3885,6 +3895,10 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       operationCount:taskArtifactCommands(source).length}
   }
   const taskEditResolved=(sid:string,editSeq:number)=>views.get(sid)?.history.resolvedEdits.has(editSeq)===true
+  function readSchemaDisplayUpdates(sid:string):readonly MvuAcceptedDisplayUpdate[]|undefined {
+    const view=views.get(sid)
+    return view&&viewCurrent(view)?view.history.displayUpdates??[]:undefined
+  }
   function readSchemaObservation(sid:string):{snapshot:MvuSchemaNumericalSnapshotV2;
     displayUpdates:readonly MvuAcceptedDisplayUpdate[];
     hasFinalizedMessages?:boolean;
@@ -4585,7 +4599,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         if(session.inheritedEventCount!==0||session.header.parentSession!==activation.seed.parentSessionId)return undefined
         return {root:activation.seed.snapshot.root,editFloorSeq:activation.seed.event.native.turnEndSeq+1}
       }
-      if(deps.derivedRequired?.(sid)) {
+      if(needsDerivedGenesis(session)) {
         const genesis=deps.readDerivedGenesis?.(sid)
         return genesis?{root:genesis.snapshot.root,editFloorSeq:genesis.inheritedCut.nativeCut}:undefined
       }
@@ -5124,7 +5138,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     return deps.inputState.captureHistoricalFacts(session.id,`published-story-text:${nativeCut}`,
       ()=>publishedStoryText(session,nativeCut))
   }
-  function captureSettledStoryMessages(sessionId:string,selection?:{nativeCut:number;historical?:true}):SchemaSettledStoryMessagesCapture|undefined {
+  function captureStoryMessages(sessionId:string,selection?:{nativeCut:number;historical?:true},reader=false):SchemaSettledStoryMessagesCapture|undefined {
     const session=deps.session(sessionId)
     if(!session||!currentSession(session))return
     if(selection?.historical&&selection.nativeCut>=session.inheritedEventCount) {
@@ -5159,12 +5173,25 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       index=currentIndex&&pastIndex?{
         get:(key:string)=>currentIndex.get(key)??pastIndex.get(key),size:currentIndex.size+pastIndex.size,
       }:currentIndex??pastIndex
-    assertSettledStoryTextReady(session,selected.history,latestCompletedStory(session))
+    const latest=latestCompletedStory(session),terminalCode=reader?settledStoryTextBlockCode(session,selected.history,latest):undefined
+    if(!reader)assertSettledStoryTextReady(session,selected.history,latest)
     return {read:target=>settledTextAt(session,index,target,nativeCut),hasValues:(index?.size??0)>0,
+      ...reader?{diagnostic:(target:SettledStoryMessage['target'])=>latest&&target.seq===latest.row.seq
+        &&target.messageId===latest.row.messageId&&target.versionSha256===latest.messageFacts?.messageVersionSha256
+        ?terminalCode:undefined}:{},
       current:()=>{
         if(!viewCurrent(selected)||past&&!past.current())return false
+        if(reader)return true
         try {assertSettledStoryTextReady(session,selected.history,latestCompletedStory(session));return true}catch{return false}
       },stamp:index??view.history}
+  }
+  function captureSettledStoryMessages(sessionId:string,selection?:{nativeCut:number;historical?:true}) {
+    return captureStoryMessages(sessionId,selection)
+  }
+  function captureReaderStoryMessages(sessionId:string) {
+    // Reader can present the exact Native target while its terminal is unresolved.
+    // Accepted bodies and Source currency still come from the existing read owner.
+    return captureStoryMessages(sessionId,undefined,true)
   }
   function settledTextAt(session:Session,index:Pick<ReadonlyMap<string,SettledStoryMessage>,'get'>|undefined,
     target:SettledStoryMessage['target'],cut:number) {
@@ -5231,12 +5258,12 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     captureOrdinaryScopeBases,resolveOrdinaryScopeBases,captureOrdinaryScopeFork,
     observation,readSnapshot,readSchemaObservation,supportsMaintenance,checkTextEdit,
     taskEditFacts,taskArtifact,taskEditResolved,
-    captureReaderDisplayScopes,capturePromptScopes,captureBrowserFacts,captureReaderDocumentFacts,
+    readSchemaDisplayUpdates,captureReaderDisplayScopes,capturePromptScopes,captureBrowserFacts,captureReaderDocumentFacts,
     readEditBasis,captureManualBasis,captureOpeningVariantBasis,captureHistoricalCut,borrowHistoricalCut,
     captureForkPrefix,captureRevisionForkPrefix,recoverForkPrefix,verifyForkPrefix,captureFrozenForkPrefix,captureAncestorForkPrefix,
     recoverFrozenForkPrefix,verifyFrozenForkPrefix,
     prepareMaintenanceCommands,prepareCompletion,releaseClosing,verifyConsumed,captureConsumedProof,
-    readSettledStoryMessage,captureSettledStoryMessages,
+    readSettledStoryMessage,captureSettledStoryMessages,captureReaderStoryMessages,
     reconcileAcceptedEdit,
     reconcileExistingUserEditRecovery,
     publishCompletion:(scope:InputCompletionScope,plan:MvuSchemaStoryPlanV13,closing?:object)=>closing

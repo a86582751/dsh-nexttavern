@@ -132,7 +132,7 @@ interface Dependencies {
   cleanupPrompts?(record:AuthorInjectionCleanupV1):void
 }
 interface Attachment {
-  readonly openingIndex?:number
+  openingIndex?:number
   readonly libraryReads:ReturnType<typeof createAuthorNativeLibraryReadsV1>
   buttonPredecessors?:Map<string,string>
   lastButtonPublication?:{sourceSha256:string;revision:number}
@@ -375,18 +375,23 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
           current:()=>!disposed&&value!==undefined&&attachments.get(binding.browserSessionId)===value
             &&value.ownerCurrent()&&value.facts.current()}
         attachments.set(binding.browserSessionId,value)
-        value.generationQueue=createRoleplayAuthorBrowserGeneration({
-          binding,program:facts.program,current:value.current,
-          resolveLibraryReads:value.libraryReads.resolve,
-          lifecycle:deps.lifecycle?.subscribe(session.id),sourceCurrent:originalSourceLifetime(value)})
+        const attached=value
+        // A committed worldbook or persona successor may replace the DATA cut.
+        // The queue keeps the same attachment and reads its admitted lifetime.
+        attached.generationQueue=createRoleplayAuthorBrowserGeneration({
+          binding,program:facts.program,current:attached.current,
+          resolveLibraryReads:attached.libraryReads.resolve,
+          lifecycle:deps.lifecycle?.subscribe(session.id),sourceCurrent:()=>originalSourceLifetime(attached)()})
       }
       const catalog=deps.capturePresetLibrary?.(session.id),presetLibrary=catalog&&(created||input.presetRevision!==catalog.revision)?catalog:undefined
       if(catalog)value.libraryReads.deliverPreset(catalog)
       if(facts.characterLibrary)value.libraryReads.deliverCharacter(facts.characterLibrary)
       const authorScene=await deps.captureAuthorScene?.(session.id)
       if(!originalSourceLifetime(value)()||!facts.current())return fail('BROWSER_ATTACHMENT_REVOKED')
+      const attachedSnapshot=project(value,facts)
+      value.openingIndex=input.openingIndex
       return {ok:true,kind:'attached',attachment:{schemaVersion:1,encoding:'author-native-helper-attachment-v1',
-        binding:value.binding,program:value.program,parentOrigins:value.parentOrigins,snapshot:project(value,facts),
+        binding:value.binding,program:value.program,parentOrigins:value.parentOrigins,snapshot:attachedSnapshot,
         ...authorScene?{authorScene}:{},
         ...facts.characterLibrary&&(created||input.characterEpoch!==facts.characterLibrary.epoch)
           ?{characterLibrary:facts.characterLibrary}:{},
@@ -650,9 +655,11 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
         basis=snapshot?.worldbook
       if(!basis||!deps.readWorldbook||basis.dataSha256!==input.expectedDataSha256)
         return {ok:false,code:'AUTHOR_WORLDBOOK_STALE_BASE'}
+      // Worldbook has its own exact read basis. A new message cut, including
+      // an opening reservation, does not invalidate that book or its Source.
       return {ok:true,kind:'worldbook-read',book:await deps.readWorldbook(session.id,input.name,basis,
         originalSourceLifetime(value),signal)}
-    })
+    },{sourceOnly:true})
     if(input.action==='mutate-worldbook')return withAttachment(input.binding,async(session,value)=>{
       const program=value.program,snapshot=input.request.read.kind==='generation'
         ?value.generationQueue?.snapshotFor(input.request.read.invocationId)
@@ -683,7 +690,7 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
         return {ok:true,kind:'worldbook-mutated',reply:{...reply,...refreshed?{snapshot:refreshed}:{},
           ...worldbookReadCurrent?{worldbookReadCurrent:true as const}:{}}}
       }catch{return {ok:true,kind:'worldbook-mutated',reply}}
-    })
+    },{sourceOnly:true})
     if(input.action==='manage-worldbook')return withAttachment(input.binding,async(session,value)=>{
       const program=value.program,snapshot=input.request.read.kind==='generation'
         ?value.generationQueue?.snapshotFor(input.request.read.invocationId)
@@ -714,9 +721,14 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     })
     if(input.action==='capture')return withAttachment(input.binding,async(_session,value)=>
       ({ok:true,kind:'snapshot',snapshot:await snapshot(value)}))
+    if(input.action==='generation-registrations')return withAttachment(input.binding,async(_session,value)=>{
+      if(!value.generationQueue)return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
+      value.generationQueue.updateRegistrations(input.binding,input.registrations,input.registrationRevision)
+      return {ok:true,kind:'generation-acknowledged'}
+    },{sourceOnly:true,serialize:false})
     if(input.action==='generation-wait')return withAttachment(input.binding,async(session,value)=>{
       if(!value.generationQueue)return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
-      const reader=value.generationQueue.wait(input.binding,input.registrations,signal,input.sourceCursor)
+      const reader=value.generationQueue.wait(input.binding,input.registrations,signal,input.sourceCursor,input.registrationRevision)
       // wait() installs the real Reader synchronously. Hand it to one matching
       // preparation now, before an asynchronous readiness notification can race.
       const waiting=[...waitingGenerations].find(row=>row.sessionId===value.binding.sessionId

@@ -310,7 +310,8 @@ export function createRoleplayOpeningVariantCore(deps) {
         const selected = owner.basis.publication.openingVariants, currentSet = selected ? readSet(sid, selected.setRef) : undefined, candidates = catalog.candidates.map((candidate, index) => ({ index, renderedText: candidate.renderedText,
             renderedSha256: sha256(candidate.renderedText) })), activeIndex = selected ? currentSet.entries.find(row => row.id === selected.activeVariantId).index
             : catalog.candidates.findIndex(candidate => candidate.index === identity.index), currentPacks = candidates.map(candidate => currentSet?.entries.find(row => row.index === candidate.index)?.pack ??
-            (candidate.index === activeIndex ? { ...owner.basis.base.context, schema: '没有用别管这个', stat_data: owner.basis.base.values } : null)), activeCandidate = candidates.find(row => row.index === activeIndex);
+            (candidate.index === activeIndex ? { schema: '没有用别管这个', ...owner.basis.base.context,
+                stat_data: owner.basis.base.values } : null)), activeCandidate = candidates.find(row => row.index === activeIndex);
         return owner.context = { sid, source, message, candidates, base: owner.basis.base, publication: owner.basis.publication,
             activeVariantId: selected?.activeVariantId ?? openingVariantId(source, message, activeIndex, activeCandidate.renderedSha256),
             currentSet, currentPacks };
@@ -332,13 +333,14 @@ export function createRoleplayOpeningVariantCore(deps) {
     async function prepareActivation(owner, operation, set) {
         check(owner);
         const entry = set.entries.find(row => row.id === operation.activeVariantId), candidate = entry && readContext(owner).candidates.find(row => row.index === entry.index);
-        if (!entry?.continuation || !entry.pack || !candidate)
-            fail('OPENING_VARIANT_NOT_INITIALIZED');
-        const { donor, continuation } = readerFor(owner.session.id).capture(entry.continuation), output = continuation.record.output;
-        if (donor.original.originalSha256 !== owner.basis.original.originalSha256 || output.kind !== 'accepted'
-            || !same(output.values, entry.pack.stat_data) || !same(output.context, packContext(entry.pack))
-            || candidate.renderedSha256 !== entry.renderedSha256)
+        if (!entry || !candidate || candidate.renderedSha256 !== entry.renderedSha256)
             fail('OPENING_VARIANT_CONTINUATION_UNPROVEN');
+        if (entry.continuation) {
+            const { donor, continuation } = readerFor(owner.session.id).capture(entry.continuation), output = continuation.record.output;
+            if (!entry.pack || donor.original.originalSha256 !== owner.basis.original.originalSha256 || output.kind !== 'accepted'
+                || !same(output.values, entry.pack.stat_data) || !same(output.context, packContext(entry.pack)))
+                fail('OPENING_VARIANT_CONTINUATION_UNPROVEN');
+        }
         if (!deps.modelSelection)
             fail('OPENING_VARIANT_MODEL_OWNER_UNAVAILABLE');
         const packet = validateOpeningVariantActivationPacket(sealMvuSchemaStoryFact({ schemaVersion: 1,
@@ -351,6 +353,9 @@ export function createRoleplayOpeningVariantCore(deps) {
         return { key, sha256: recordSha256(packet) };
     }
     async function publishActivation(packetRef, packet, sid, native, checkReservation) {
+        const continuationRef = packet.continuationRef;
+        if (!continuationRef)
+            fail('OPENING_VARIANT_CONTINUATION_UNPROVEN');
         const session = deps.session(sid), agent = session && deps.agent(session);
         if (!session || !agent)
             fail('OPENING_VARIANT_CHILD_UNAVAILABLE');
@@ -372,7 +377,7 @@ export function createRoleplayOpeningVariantCore(deps) {
             const parentReader = readerFor(packet.parentSessionId), graph = parentReader.captureSet(packet.setRef), archive = sealMvuSchemaStoryFact({ schemaVersion: 1, encoding: 'native-opening-variant-archive-v1',
                 sessionId: sid, records: [{ ref: packetRef, value: packet }, ...graph.records] }, 'archiveSha256');
             await retainActivation(deps.branch, openingVariantArchiveKey(sid), archive, current);
-            const { donor, continuation, baseline } = readerFor(sid).capture(packet.continuationRef), output = continuation.record.output;
+            const { donor, continuation, baseline } = readerFor(sid).capture(continuationRef), output = continuation.record.output;
             if (output.kind !== 'accepted')
                 fail('OPENING_VARIANT_CONTINUATION_UNPROVEN');
             const original = deps.source.readOpeningVariantOriginal(donor), frame = deps.source.captureFrame(original, sid), checkSource = () => { current(); if (!deps.source.frameCurrent(original, frame))
@@ -383,7 +388,7 @@ export function createRoleplayOpeningVariantCore(deps) {
             const sourceSha256 = deps.sourceSha256(sid), frontier = { nativeCut: native.turnEndSeq + 1,
                 tailSha256: schemaJournalServerTailSha256(ready), frontierSha256: schemaJournalHostFrontierSha256(ready) }, event = sealMvuSchemaStoryFact({ schemaVersion: 1, encoding: 'native-opening-variant-activation-event-v1',
                 sessionId: sid, parentSessionId: packet.parentSessionId, operationId: packet.operationId, packetRef,
-                continuationRef: packet.continuationRef, sourceSha256, realmEpoch: original.realmEpoch,
+                continuationRef, sourceSha256, realmEpoch: original.realmEpoch,
                 programSha256: donor.snapshot.root.programSha256,
                 eventId: recordSha256({ sessionId: sid, packetRef, native }), native, values: output.values,
                 valuesSha256: recordSha256(output.values), context: output.context, frontier }, 'eventSha256'), head = { schemaVersion: 1, encoding: 'native-opening-variant-activation-head-v1',
@@ -406,29 +411,54 @@ export function createRoleplayOpeningVariantCore(deps) {
         }));
     }
     const bank = createRoleplayOpeningVariants({ branch: deps.branch, status: deps.status, publication,
+        readPreparedActivation: deps.readPreparedActivation,
         ...(deps.activatePrepared ? { activatePrepared: async (handoff, authority) => {
                 const permission = permissions.get(authority), sid = handoff.operation.sessionId;
                 if (!permission)
                     fail('OPENING_VARIANT_PERMISSION_REVOKED');
-                let parentBasis;
+                const resumingSource = permission.kind === 'retry' && permission.resumeSource;
+                let parentBasis, parentStopSha256, refreshedParent = false;
                 const authorizeParent = () => deps.withSourceLock(sid, async () => {
-                    const session = deps.session(sid);
-                    if (disposed || !session || !deps.active(session) || !deps.agent(session)
+                    const session = deps.session(sid), agent = session && deps.agent(session);
+                    if (disposed || !session || !deps.active(session) || !agent
                         || permission.kind === 'reader' && !permission.capture.sourceCurrent())
                         fail('OPENING_VARIANT_PERMISSION_REVOKED');
                     permission.signal?.throwIfAborted();
-                    const basis = parentBasis ??= deps.story.captureOpeningVariantBasis(sid, handoff.operation.nativeCut);
-                    basis.current();
+                    if (resumingSource) {
+                        const stopSha256 = recordSha256(agent.lookupInputStop());
+                        parentStopSha256 ??= stopSha256;
+                        if (stopSha256 !== parentStopSha256)
+                            fail('OPENING_VARIANT_PERMISSION_REVOKED');
+                    }
+                    const { nativeCut } = handoff.operation;
+                    if (!parentBasis)
+                        parentBasis = deps.story.captureOpeningVariantBasis(sid, nativeCut);
+                    else
+                        try {
+                            parentBasis.current();
+                        }
+                        catch (error) {
+                            if (!resumingSource || refreshedParent || parentBasis.session !== session || parentBasis.agent !== agent
+                                || !(error instanceof Error) || error.message !== 'OPENING_VARIANT_SOURCE_CHANGED')
+                                throw error;
+                            // A prepared child owns its execution. A concurrent book publication
+                            // can replace the parent's Source material without changing this cut.
+                            const refreshed = deps.story.captureOpeningVariantBasis(sid, nativeCut);
+                            if (refreshed.original.originalSha256 !== parentBasis.original.originalSha256)
+                                fail('OPENING_VARIANT_BASIS_CHANGED');
+                            parentBasis = refreshed;
+                            refreshedParent = true;
+                        }
                     // Native appends one empty resume boundary after the saved prefix.
                     // Later restores retain it. Neither changes the operation's inputs.
                     const expected = handoff.operation.publicationAbsent ? undefined : handoff.operation.rawPublication, native = events(session), cut = handoff.operation.nativeCut, resume = native[cut], unchanged = native.length === cut || native.length === cut + 1 && session.firstLiveSeq >= cut
                         && resume?.type === 'session/end-seed' && Object.keys(resume.data).length === 0;
                     if (!unchanged
-                        || basis.base.stateSnapshotSha256 !== handoff.operation.base.stateSnapshotSha256
+                        || parentBasis.base.stateSnapshotSha256 !== handoff.operation.base.stateSnapshotSha256
                         || !same(deps.status.get(handoff.operation.publicationKey), expected))
                         fail('OPENING_VARIANT_BASIS_CHANGED');
                 });
-                return deps.activatePrepared(handoff, authorizeParent);
+                return deps.activatePrepared(handoff, authorizeParent, permission.signal, permission.kind === 'retry' && permission.resumeSource);
             } } : {}),
         async withTransaction(sid, request, operation, authority, work) {
             const permission = permissions.get(authority), session = deps.session(sid);
@@ -493,9 +523,9 @@ export function createRoleplayOpeningVariantCore(deps) {
             permissions.delete(authority);
         }
     }
-    async function retry(sid, operationId, signal) {
+    async function retry(sid, operationId, signal, resumeSource = false) {
         const authority = Object.freeze({});
-        permissions.set(authority, { kind: 'retry', signal });
+        permissions.set(authority, { kind: 'retry', signal, resumeSource });
         try {
             return await bank.retry(sid, operationId, authority);
         }
@@ -507,7 +537,7 @@ export function createRoleplayOpeningVariantCore(deps) {
         const selected = publication.read(sid).openingVariants;
         if (!selected)
             return { swipes_data: initial.swipes.map((_text, index) => index === initial.swipe_id
-                    ? { ...variables, schema: '没有用别管这个' } : null), swipe_id: initial.swipe_id };
+                    ? { schema: '没有用别管这个', ...variables } : null), swipe_id: initial.swipe_id };
         const set = readSet(sid, selected.setRef);
         return { setSha256: selected.setRef.sha256,
             swipes_data: initial.swipes.map((_text, index) => set.entries.find(entry => entry.index === index)?.pack ?? null),

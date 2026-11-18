@@ -93,8 +93,7 @@ export interface ForkGroup {
   createdAt: number
   updatedAt: number
 }
-export interface ForkOperation {
-  operationId: string
+export interface ForkOperation extends Pick<ForkPreparationOperation,'operationId'|'carryOpeningChat'> {
   requestId?: string
   anchor: ForkAnchor
   kind: string
@@ -110,6 +109,7 @@ export interface NativeForkPreparationAnchor {
 export interface ForkPreparationOperation {
   operationId:string
   anchor:ForkAnchor|NativeForkPreparationAnchor
+  carryOpeningChat?:true
 }
 export interface BranchRecord extends Partial<ForkGroup> {
   childSessionId?: string
@@ -245,9 +245,9 @@ export interface WorldlineDependencies {
   readProgramOpeningSettlement?(session:ReadBranchSession,operationId:string,messageId:string):{
     messageId:string;seq:number;turn:number
   } | null | undefined
-  readOpeningVariantSettlement?(session:ReadBranchSession,operationId:string):{
+  readOpeningVariantSettlement?(session:ReadBranchSession,operationId:string):Promise<{
     messageId:string;seq:number;turn:number
-  } | null
+  } | null>
   resolveRoleplaySession(id: string): Promise<BranchSession | null | undefined>
   isRoleplaySession(session: BranchSession): boolean
   ensureState(id: string): { branchReady: boolean }

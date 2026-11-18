@@ -109,7 +109,7 @@ import { createToastController, confirmWithDialog } from './message-actions.js'
 export { createToastController, confirmWithDialog } from './message-actions.js'
 import { createMessageActionComponents } from './message-actions.js'
 import { createRoleplayActions } from './session-actions.js'
-import {createPendingOpeningSourceHost} from './pending-opening-source-host.js'
+import {createPendingOpeningSourceHost,type StartPendingOpeningSource} from './pending-opening-source-host.js'
 import { createReaderSubmissionHandoff } from './reader-submission-handoff.js'
 import { createRoleplayStateStore } from './state-store.js'
 import { updatePanelDraft } from './panel-state.js'
@@ -287,6 +287,28 @@ export function apply(ctx: ClientContext) {
     for(const {host} of pendingOpeningHosts.values())host.dispose()
     pendingOpeningHosts.clear()
   },'roleplay-ui: pending opening Source hosts')
+  const startPendingOpeningSource:StartPendingOpeningSource=input=>{
+    const key=JSON.stringify([input.operationId,input.childSessionId])
+    let owned=pendingOpeningHosts.get(key)
+    if(!owned) {
+      const host=createPendingOpeningSourceHost(input,{document,
+        reportExtensionFailure,
+        current:()=>resolveActiveSessionId()===input.sourceSessionId,
+        subscribeCurrent:listener=>mainSelection.subscribe(listener),
+        nativeLibraries:READER_NATIVE_DOCUMENT_LIBRARIES,
+        commandUi:{input:(text,defaultValue)=>window.prompt(text,defaultValue)??'',echo:text=>toast(text)},
+        failed:code=>toast(`开场作者脚本失败（${input.operationId}）：${code}`)})
+      owned={host,leases:0};pendingOpeningHosts.set(key,owned);host.start()
+    }
+    const lease=owned
+    lease.leases++
+    let released=false
+    return {signal:lease.host.signal,dispose(){
+      if(released)return
+      released=true
+      if(--lease.leases===0){lease.host.dispose();if(pendingOpeningHosts.get(key)===lease)pendingOpeningHosts.delete(key)}
+    }}
+  }
   const { saveState, runMaintenance, replaceMessage, forkAndPrompt, regenerateProgrammaticOpening,
     forkWithoutUserTurn, openNativeBranch, retryBranchMutation, prepareCleanWorldline } = createRoleplayActions(
     {
@@ -301,28 +323,7 @@ export function apply(ctx: ClientContext) {
       acceptConversations,
       loadConversations,
       readerHandoff,
-      startPendingOpeningSource:input=>{
-        const key=JSON.stringify([input.operationId,input.childSessionId])
-        let owned=pendingOpeningHosts.get(key)
-        if(!owned) {
-          const host=createPendingOpeningSourceHost(input,{document,
-            reportExtensionFailure,
-            current:()=>resolveActiveSessionId()===input.sourceSessionId,
-            subscribeCurrent:listener=>mainSelection.subscribe(listener),
-            nativeLibraries:READER_NATIVE_DOCUMENT_LIBRARIES,
-            commandUi:{input:(text,defaultValue)=>window.prompt(text,defaultValue)??'',echo:text=>toast(text)},
-            failed:code=>toast(`开场作者脚本失败（${input.operationId}）：${code}`)})
-          owned={host,leases:0};pendingOpeningHosts.set(key,owned);host.start()
-        }
-        const lease=owned
-        lease.leases++
-        let released=false
-        return {dispose(){
-          if(released)return
-          released=true
-          if(--lease.leases===0){lease.host.dispose();if(pendingOpeningHosts.get(key)===lease)pendingOpeningHosts.delete(key)}
-        }}
-      },
+      startPendingOpeningSource,
       toast
     })
 
@@ -1009,6 +1010,7 @@ export function apply(ctx: ClientContext) {
         nativeLibraries:READER_NATIVE_DOCUMENT_LIBRARIES,
         images: sessionImages,
         readerHandoff,
+        startPendingOpeningSource,
         navigate: sessionId => openNativeBranch({sessionId}),
         resolveActiveSessionId,
         isRoleplaySession,
@@ -1100,6 +1102,7 @@ export function apply(ctx: ClientContext) {
       if (sid !== lastSessionId) {
         sessionBgm.setSession(sid)
         sessionImages.setSession(sid)
+        frontendSettings.setSession(sid)
         lastSessionId = sid
         if (sid) syncImmersive(sid)
         else document.body.classList.remove('rp-immersive')

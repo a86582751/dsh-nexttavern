@@ -15,7 +15,7 @@ export const semanticTaskSubmitDescription='提交当前维护请求的状态或
 export const semanticTaskSubmitParameters={type:'object',properties:{
   kind:{type:'string',enum:['status','decision']},result:{},
 },required:['kind','result'],additionalProperties:false}
-export const legacyTaskSubmitDescription='提交角色卡、小说或记忆维护任务的结果。id 与 generation 使用当前真实任务提供的值，result 严格遵循该任务的结果契约。'
+export const legacyTaskSubmitDescription='提交当前维护任务的结果。id 与 generation 使用任务提供的值，result 遵循该任务的结果契约。'
 export const legacyTaskSubmitParameters={type:'object',properties:{id:{type:'string'},generation:{type:'string'},result:{}},
   required:['id','generation','result'],additionalProperties:false}
 

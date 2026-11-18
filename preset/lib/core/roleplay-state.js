@@ -241,7 +241,7 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
         const numericalObservation = await numericalState?.(session.id) ?? null, userinfo = userValues(session.id), deletedBranchMessageIds = deletedBranchMessageIdsFor(session, forkLookup);
         // These projections share the observed Story cut before origin admission
         // yields. Their owners retain unavailable context as an explicit result.
-        const { memory, directorNotes, displayContext } = contextProjection(session, numericalObservation, !deletedBranchMessageIds.length);
+        const { memory, directorNotes, displayContext, schemaStory } = contextProjection(session, numericalObservation, !deletedBranchMessageIds.length);
         // Read the rules and their existing owner digest in one synchronous cut.
         // Origin admission may yield; its response still carries this exact Source.
         const currentRules = T.rules.get(keyOf(session.id, 'spec')), recordVersions = recordVersionsFor(session), summary = activeImportRecord ? importSummary(activeImportRecord, currentRules ?? undefined) : null, { authorCoreData, ...cardSummary } = summary ?? {}, beautyJavascript = String(currentRules?.beauty?.js ?? ''), nativeBeauty = readerBeauty && beautyJavascript.trim() ? await readerBeauty({ schemaVersion: 1,
@@ -274,7 +274,8 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
             numericalState: numericalObservation,
             readerDisplay: { enabled: (activeSourceRecord?.extensionInventory?.entries
                     .some(entry => entry.key === 'regex_scripts' && entry.valueType === 'array') ?? false)
-                    || numericalObservation?.kind === 'schema-ready' && numericalObservation.hasFinalizedMessages === true },
+                    || numericalObservation?.kind === 'schema-ready' && numericalObservation.hasFinalizedMessages === true,
+                ...schemaStory ? { schemaStory: true } : {} },
             ...nativeBeauty ? { readerBeauty: nativeBeauty } : {},
             communityPresets: communityPresets?.(session.id) ?? null,
             rules: currentRules ? { ...currentRules, ...authorCoreData

@@ -50,7 +50,8 @@ export function registerOpeningRoutes(deps: OpeningRoutesDependencies): void {
           const index=Number(authorIndex)
           if(!Number.isSafeInteger(index)||!catalog.candidates.some(candidate=>candidate.index===index))
             return jsonResponse(400,{ok:false,error:'无效的开场选择请求'})
-          return jsonResponse(200,{ok:true,requiresAuthorBrowser:await deps.requiresAuthorBrowser?.(session.id,index)??false})
+          const requiresAuthorBrowser=!catalog.classifiedText&&await deps.requiresAuthorBrowser?.(session.id,index)===true
+          return jsonResponse(200,{ok:true,requiresAuthorBrowser})
         }
         const program=deps.program?.verified(session.id)
         if(program?.kind==='blocked')throw Error(program.code)
@@ -58,7 +59,7 @@ export function registerOpeningRoutes(deps: OpeningRoutesDependencies): void {
         const legacyDisplayed = legacyOpeningAlreadyRequested(session.id,catalog.source.importId)
         const priorOpening = priorOpeningInHistory(session)
         if (!body) return jsonResponse(200,{ok:true,
-          available:!legacyDisplayed && !priorOpening && await canCommit(session.id),
+          available:catalog.candidates.length>0 && !legacyDisplayed && !priorOpening && await canCommit(session.id),
           legacyDisplayed,priorOpening,
           source:{importId:catalog.source.importId,
           rawSha256:catalog.source.rawSha256,transactionId:catalog.source.transactionId},
@@ -118,7 +119,7 @@ export function registerOpeningRoutes(deps: OpeningRoutesDependencies): void {
           error:'当前会话历史已有可见开场或剧情；再次导入或分支继承不会自动写第二条'})
         if (!await canCommit(session.id))
           return jsonResponse(409,{ok:false,error:'当前宿主尚未提供原生零模型开场提交能力'})
-        const programCatalog=await deps.program?.catalog(session.id,body.index as number)
+        const programCatalog=catalog.classifiedText?undefined:await deps.program?.catalog(session.id,body.index as number)
         if(programCatalog?.kind==='refused')return jsonResponse(409,{ok:false,
           error:programCatalog.diagnostics[0]?.code??'PROGRAM_OPENING_SOURCE_UNAVAILABLE',
           diagnostics:programCatalog.diagnostics})

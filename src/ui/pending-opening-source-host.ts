@@ -7,6 +7,7 @@ export interface PendingOpeningSourceInput {
   readonly childSessionId:string
   readonly operationId:string
 }
+export type StartPendingOpeningSource=(input:PendingOpeningSourceInput)=>{dispose():void;readonly signal:AbortSignal}
 
 /** The opening operation owns this temporary child Source attachment while
  * the player's selected conversation continues to show its parent. */
@@ -25,6 +26,7 @@ export function createPendingOpeningSourceHost(input:PendingOpeningSourceInput,o
   container.setAttribute('aria-hidden','true')
   container.style.cssText='position:fixed;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none'
   options.document.body.append(container)
+  const lifetime=new AbortController()
   let active=true,started=false,retryAttach=false,timer:ReturnType<typeof setTimeout>|undefined
   let claim:ReturnType<ReaderSubmissionHandoff['mount']>|undefined,unsubscribe:(()=>void)|undefined
   const current=()=>active&&options.current()
@@ -45,7 +47,7 @@ export function createPendingOpeningSourceHost(input:PendingOpeningSourceInput,o
   unsubscribe=options.subscribeCurrent?.(()=>{if(!current())dispose()})
   function dispose() {
     if(!active)return
-    active=false;clearTimeout(timer);unsubscribe?.();claim?.dispose();controller.dispose();container.remove()
+    active=false;lifetime.abort();clearTimeout(timer);unsubscribe?.();claim?.dispose();controller.dispose();container.remove()
   }
   async function refresh() {
     if(!current()){dispose();return}
@@ -62,7 +64,7 @@ export function createPendingOpeningSourceHost(input:PendingOpeningSourceInput,o
     catch {dispose()}
     finally {schedule()}
   }
-  return {refresh,dispose,async prepareOpening(index:number,handoff:ReaderSubmissionHandoff) {
+  return {refresh,dispose,signal:lifetime.signal,async prepareOpening(index:number,handoff:ReaderSubmissionHandoff) {
     claim=handoff.mount(input.childSessionId,selectedIndex=>controller.prepareSource(selectedIndex))
     try {
       const ticket=await handoff.prepareSource(input.childSessionId,index)

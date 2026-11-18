@@ -12,6 +12,7 @@ export interface SettledStoryMessageCapture {
   readonly hasValues:boolean
   read(target:SettledStoryMessageText['target']):SettledStoryMessageText|undefined
   current():boolean
+  diagnostic?(target:SettledStoryMessageText['target']):string|undefined
 }
 interface TextMessage {
   readonly id:string
@@ -23,6 +24,7 @@ export interface RoleplayStoryTextCapture {
   text(seq:number,message:TextMessage,originalText?:string,originalVersionSha256?:string):string
   blocks(seq:number,message:TextMessage,originalVersionSha256?:string):ReadonlyMap<number,string>|undefined
   current():boolean
+  diagnostic?(seq:number,message:TextMessage,originalVersionSha256?:string):string|undefined
 }
 export type CaptureRoleplayStoryText=(sessionId:string,options?:{nativeCut:number;historical?:true})=>RoleplayStoryTextCapture|undefined
 
@@ -53,6 +55,8 @@ export function createRoleplayStoryTextReader(capture:(sessionId:string,options?
           return [[index,text] as const]
         }))
       },current:()=>accepted.current(),
+      ...accepted.diagnostic?{diagnostic:(seq:number,message:TextMessage,versionSha256?:string)=>
+        accepted.diagnostic!({seq,messageId:message.id,versionSha256:versionSha256??messageVersion(message)})}:{},
     }
   }
 }

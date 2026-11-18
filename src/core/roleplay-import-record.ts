@@ -18,6 +18,12 @@ import type {
 } from './roleplay-import-types.js';
 export const IMPORT_NORMALIZER = 'utf8-lf+anydoc-deescape-v2';
 export const NEXTTAVERN_IMPORT_NORMALIZER = 'nexttavern-fields-v1';
+
+export function textImportFormat(record:Pick<ImportRecord,'schemaVersion'|'normalizer'>):'text'|'docx'|undefined {
+  if(record.normalizer!==IMPORT_NORMALIZER)return undefined
+  if(record.schemaVersion===3)return 'text'
+  if(record.schemaVersion===7)return 'docx'
+}
 /** Decode execution data without reading the inert transport archive. */
 export function readStructuredImportDataV1(record:ImportRecord,transportBytes?:Buffer) {
   const envelope=record.sourceEnvelope;
@@ -127,8 +133,8 @@ export const assertImportRecordIntegrity = (record: ImportRecord,
   const structured = (record.schemaVersion === 4 && record.normalizer === 'tavern-fields-v1')
     || (record.schemaVersion === 5 && record.normalizer === 'tavern-fields-v2')
     || (record.schemaVersion === 6 && record.normalizer === NEXTTAVERN_IMPORT_NORMALIZER);
-  const extracted=record.schemaVersion===7&&record.normalizer===IMPORT_NORMALIZER;
-  if (!structured && !extracted && (record.schemaVersion !== 3 || record.normalizer !== IMPORT_NORMALIZER)) {
+  const textFormat=textImportFormat(record),extracted=textFormat==='docx';
+  if (!structured && !textFormat) {
     throw new Error('导入记录版本或规范化器不匹配；请从不可变 raw source 重新 begin');
   }
   const normalizedSource = record.normalizedSource;

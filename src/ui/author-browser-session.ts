@@ -27,7 +27,8 @@ import type {MvuJsonObject} from '../core/tavern-mvu-initvar.js';
 import type {AuthorMessageBodyRequestV1} from '../core/roleplay-author-message-edit-types.js';
 import {createAuthorBrowserOrdinaryPendingStore,sameOrdinarySource} from './author-browser-ordinary-pending.js';
 import {createAuthorNativeMessageVariables} from '../core/author-native-message-variables.js';
-import {createAuthorNativeSessionEventRouter,openingNavigationIntent} from './author-native-session-events.js';
+import {continuePreparedOpening,createAuthorNativeSessionEventRouter,openingNavigationIntent} from './author-native-session-events.js';
+import type {StartPendingOpeningSource} from './pending-opening-source-host.js';
 import type {AuthorNativeNavigationIntent} from './author-native-session-events.js';
 import {runAuthorNativeMvuTrial} from './author-native-mvu-trial.js';
 import type {AuthorNativeGenerationFilterV1} from '../core/author-native-helper-types.js';
@@ -35,7 +36,7 @@ import type {AuthorBrowserOrdinaryPending} from './author-browser-ordinary-pendi
 import {prepareOrdinaryAuthorChatBatchV3} from '../core/roleplay-author-chat-state-types.js';
 import {authorSharedScopeCaptureV1} from '../core/roleplay-author-scope-owner.js';
 import type {AuthorOrdinaryNamespaceOperationV1} from '../core/roleplay-author-scope-owner.js';
-import {createAuthorBrowserPendingStore,terminalBrowserReceipt,worldbookPendingRetryLocator,
+import {createAuthorBrowserPendingStore,openingVariantSettled,terminalBrowserReceipt,worldbookPendingRetryLocator,
     worldbookPendingBlocksNamespace} from './author-browser-pending.js';
 import type {NumericalPendingV2,AuthorBrowserWorldbookPendingV3,AuthorBrowserPersonaPendingV1,
     AuthorNativeOpeningPendingV1,AuthorNativeMessageBodyPendingV1,AuthorBrowserPresetPendingV1,
@@ -84,6 +85,7 @@ export function createAuthorBrowserSession(options:{
     composer?:AuthorNativeComposerAccessV1;
     transport?:AuthorBrowserTransport;
     openingTransport?:ReaderRegexDocumentTransportV1;
+    startPendingOpeningSource?:StartPendingOpeningSource;
     storage?:Pick<Storage,'getItem'|'setItem'>;
     nativeLibraries?:readonly ReaderNativeLibraryV1[];
     navigate?(sessionId:string,intent?:AuthorNativeNavigationIntent):Promise<unknown>|void;
@@ -116,12 +118,13 @@ export function createAuthorBrowserSession(options:{
     let activeGeneration:BrowserGenerationInvocation|undefined,activeGenerationScope='';
     let activeFilter:BrowserFilterInvocation|undefined;
     let refreshing:Promise<void>|undefined,refreshAgain=false,checking:Promise<void>|undefined;
-    let openingIndex:number|undefined,refreshGenerationPoll=false,generationLoopOwner:object|undefined;
+    let openingIndex:number|undefined,generationLoopOwner:object|undefined;
     let generationWait:AbortController|undefined,generationExecuting=false,sequence=0;
     let canonicalRevision=0,lastStatus:AuthorBrowserStatus={kind:'loading'};
     let buttons:ReturnType<typeof mountAuthorNativeScriptButtons>|undefined;
     let buttonProgram:AuthorNativeProgramV1|undefined;
     const realms=new Map<string,NativeRealm>(),registrations:AuthorNativeHelperGenerationCallbackV1[]=[];
+    let registrationRevision=0,mvuHookRegistryStart:number|undefined;
     let sceneLease:AuthorDomScene|undefined;
     const recoveries=new Map<string,Promise<void>>();
     const current=()=>active&&options.current();
@@ -155,7 +158,7 @@ export function createAuthorBrowserSession(options:{
         buttonProgram=undefined;
         generationWait?.abort();generationWait=undefined;generationExecuting=false;
         generationLoopOwner=undefined;
-        activeGeneration=undefined;activeGenerationScope='';activeFilter=undefined;
+        activeGeneration=undefined;activeGenerationScope='';activeFilter=undefined;mvuHookRegistryStart=undefined;
         owner=undefined;ready=false;captured=undefined;currentSnapshotScope='';presetLibrary=undefined;characterLibrary=undefined;
         for(const row of realms.values())row.controller?.dispose();
         realms.clear();registrations.length=0;options.container.replaceChildren();
@@ -246,7 +249,7 @@ export function createAuthorBrowserSession(options:{
         record(()=>ordinaryStore.acknowledge(envelope),'AUTHOR_CHAT_ACK_LOCAL_RECORD_PENDING');
     const unknown=(envelope:AuthorBrowserOrdinaryPending,code:string)=>
         record(()=>ordinaryStore.unknown(envelope,code),'AUTHOR_CHAT_OUTBOX_UPDATE_FAILED');
-    function registryRequest(row:NativeRealm,request:AuthorNativeHelperRequestV1):boolean {
+    function registryRequest(row:NativeRealm,request:AuthorNativeHelperRequestV1,target:AuthorNativeBindingV1,signal:AbortSignal) {
         if(request.operation==='generation-listener-add'){
             const data=(request.payload as {registration:AuthorNativeHelperGenerationCallbackV1}).registration;
             if(data.event!==AUTHOR_NATIVE_EVENTS_V1.GENERATION_AFTER_COMMANDS
@@ -259,30 +262,43 @@ export function createAuthorBrowserSession(options:{
         }else if(request.operation==='generation-listener-remove'){
             const {callbackId}=request.payload as {callbackId:string};
             const index=registrations.findIndex(value=>value.realmId===row.realmId&&value.callbackId===callbackId);
-            if(index>=0)registrations.splice(index,1);
+            if(index<0)return true;
+            registrations.splice(index,1);
         }else return false;
-        if(!generationExecuting)generationWait?.abort();
-        return true;
+        registrationRevision++;
+        // A closing callback can register the next MVU stage. Its completion
+        // carries that fact before Core decides whether to dispatch that stage.
+        if(!ready||!generationLoopOwner||mvuHookRegistryStart!==undefined)return true;
+        return transport({action:'generation-registrations',binding:target,registrationRevision,
+            registrations:[...registrations]},signal).then(reply=>{
+                if(reply.kind!=='generation-acknowledged')throw Error('BROWSER_GENERATION_REGISTRATION_FAILED');
+            });
     }
     function navigateCommitted(row:NativeRealm,result:ReaderOpeningVariantResultV1,expectedOwner:object,
-        original:Snapshot,rows:readonly {message_id:number;swipe_id?:number}[]) {
+        original:Snapshot,rows:readonly {message_id:number;swipe_id?:number}[],sourceTransferred:boolean) {
         if(result.kind!=='committed'||!options.navigate)return;
-        const intent=openingNavigationIntent(result.operationId,result.changed,original.messages,rows);
+        const intent=openingNavigationIntent(result.operationId,result.changed,original.messages,rows,result.navigation?.swipe);
         if(!result.navigation&&!intent.swipe)return;
         const destination=result.navigation?.sessionId??options.sessionId;
         // Return the Host reply first. Navigation observes the actual native
         // ACK; waiting inside the request would wait for its own return.
         void(async()=>{
-            try{await row.controller!.waitForAdmittedSourceWrites();
-                if(current()&&owner===expectedOwner)await options.navigate!(destination,intent);}
-            catch{notify({...lastStatus,code:'AUTHOR_NATIVE_ACK_UNOBSERVED'});}
+            try {
+                if(owner===expectedOwner) {
+                    try {await row.controller!.waitForAdmittedSourceWrites();}
+                    catch(error){if(!sourceTransferred||owner===expectedOwner)throw error;}
+                }
+                if(current()&&(sourceTransferred||owner===expectedOwner))await options.navigate!(destination,intent);
+            }catch{notify({...lastStatus,code:'AUTHOR_NATIVE_ACK_UNOBSERVED'});}
         })();
     }
     function createHost(expectedOwner:object,target:AuthorNativeBindingV1,program:AuthorNativeProgramV1):AuthorNativeHelperHostV1 {
         return {async request(address,request,_signal,sourceWriteStarted){
             if(!current()||owner!==expectedOwner||!sameBinding(binding,target))throw Error('AUTHOR_NATIVE_BINDING_REVOKED');
             const row=realms.get(address.realmId)!;
-            if(registryRequest(row,request))return {};
+            const registry=registryRequest(row,request,target,_signal);
+            if(registry){await registry;return {};}
+
             const data=request.payload as any;
             if(request.operation==='parse-mvu-message'){
                 const hooks=await eventRouter.captureMvuTrialHooks();
@@ -622,14 +638,25 @@ export function createAuthorBrowserSession(options:{
                 const envelope=store.beginOpening(target,row.realmId,{operationId:request.operationId,
                     readRevision:basis.snapshot.readRevision,rows:[messagePlan.row],refresh:data.refresh});notify();
                 sourceWriteStarted?.();
-                let result:Extract<AuthorBrowserReply,{kind:'opening-variants-mutated'}>;
+                let result:Extract<AuthorBrowserReply,{kind:'opening-variants-mutated'}>,sourceTransferred=false;
                 try{const reply=await transport({action:'mutate-opening-variants',binding:target,realmId:row.realmId,
                     read:basis.read,request:envelope.request});
-                    if(reply.kind!=='opening-variants-mutated')throw Error('READER_WRITE_ACK_UNKNOWN');result=reply;
+                    if(reply.kind!=='opening-variants-mutated')throw Error('READER_WRITE_ACK_UNKNOWN');
+                    result=reply;
+                    if(reply.result.kind==='prepared'){
+                        const warning=record(()=>store.recordOpening(envelope,reply.result));
+                        if(warning)throw Error(warning);
+                        // The selected view owns this durable operation and its
+                        // child Source even if a later request revokes the old guest.
+                        sourceTransferred=true;
+                        result={...reply,result:await continuePreparedOpening(options.sessionId,reply.result,
+                            options.startPendingOpeningSource,options.openingTransport??readerRegexDocumentTransportV1)};
+                    }
                 }catch(error){record(()=>store.recordOpening(envelope));revoke();notify({kind:'pending',code:'READER_WRITE_ACK_UNKNOWN'});throw error;}
                 const warning=record(()=>store.recordOpening(envelope,result.result));
                 if(result.snapshot||result.result.kind!=='refused')adopt(result.snapshot,expectedOwner);
-                notify({...lastStatus,code:warning});navigateCommitted(row,result.result,expectedOwner,basis.snapshot,[messagePlan.row]);
+                notify({...lastStatus,code:warning});
+                navigateCommitted(row,result.result,expectedOwner,basis.snapshot,[messagePlan.row],sourceTransferred);
                 return response(result.result,row.realmId);
             }
             throw Error('AUTHOR_NATIVE_OPERATION_UNSUPPORTED');
@@ -685,7 +712,7 @@ export function createAuthorBrowserSession(options:{
                 else throw Error('AUTHOR_NATIVE_MVU_HOOK_OUTPUT_CHANGED');
             }
             return {kind:'executed',binding:target,invocationId:challenge.invocationId,callbackIds,
-                result:resultOf(request),registrations:[...registrations]};
+                result:resultOf(request)};
         }catch(error){return {kind:'refused',binding:target,invocationId:challenge.invocationId,
             code:error instanceof Error?error.message:'AUTHOR_NATIVE_MVU_HOOK_FAILED'};}
     }
@@ -694,7 +721,8 @@ export function createAuthorBrowserSession(options:{
         while(current()&&owner===expectedOwner){
             const wait=new AbortController();generationWait=wait;
             try{
-                const challenge=transport({action:'generation-wait',binding:target,registrations:[...registrations],sourceCursor},wait.signal);
+                const challenge=transport({action:'generation-wait',binding:target,registrations:[...registrations],
+                    registrationRevision,sourceCursor},wait.signal);
                 // Start admission before releasing the Reader's send handoff;
                 // awaiting the challenge itself would deadlock that send.
                 preparation({kind:'waiting'});
@@ -746,9 +774,14 @@ export function createAuthorBrowserSession(options:{
                 if(reply.invocation.encoding==='author-native-mvu-hook-invocation-v1'){
                     if(reply.invocation.snapshot)adopt(reply.invocation.snapshot,expectedOwner);
                     generationExecuting=true;
+                    mvuHookRegistryStart=registrationRevision;
                     const result=await executeMvuHook(reply.invocation,target,wait.signal);
                     if(!current()||owner!==expectedOwner)return;
-                    await transport({action:'mvu-hook-complete',binding:target,result},wait.signal);
+                    const changed=registrationRevision!==mvuHookRegistryStart;
+                    mvuHookRegistryStart=undefined;
+                    const completion=changed&&result.kind==='executed'
+                        ?{...result,registrationRevision,registrations:[...registrations]}:result;
+                    await transport({action:'mvu-hook-complete',binding:target,result:completion},wait.signal);
                     continue;
                 }
                 generationExecuting=true;activeGeneration=reply.invocation;activeGenerationScope=crypto.randomUUID();
@@ -794,11 +827,9 @@ export function createAuthorBrowserSession(options:{
             }finally{if(generationWait===wait){generationWait=undefined;generationExecuting=false;}}
         }
     }
-    function startGenerationLoop(expectedOwner:object,target:AuthorNativeBindingV1,refreshPoll=false) {
+    function startGenerationLoop(expectedOwner:object,target:AuthorNativeBindingV1) {
         if(generationLoopOwner===expectedOwner){
-            // Reuse the loop so its exact wait controller still owns cleanup.
-            // A fresh poll publishes the actual current registration set.
-            if(refreshPoll&&!generationExecuting)generationWait?.abort();
+            if(generationWait&&!generationWait.signal.aborted&&!generationExecuting)preparation({kind:'waiting'});
             return;
         }
         generationLoopOwner=expectedOwner;
@@ -863,7 +894,7 @@ export function createAuthorBrowserSession(options:{
         if(sameBinding(binding,attachment.binding)&&hasFrame()){
             publishPresetLibrary(attachment.presetLibrary);publishCharacterLibrary(attachment.characterLibrary);
             publish(attachment.snapshot);notify({kind:ready?'ready':'starting'});
-            if(owner){startGenerationLoop(owner,attachment.binding,refreshGenerationPoll);refreshGenerationPoll=false;}
+            if(owner)startGenerationLoop(owner,attachment.binding);
             return;
         }
         const book=attachment.snapshot.worldbook;
@@ -911,7 +942,7 @@ export function createAuthorBrowserSession(options:{
             current:()=>current()&&owner===expectedOwner,
             dispatch:(realmId,event)=>realms.get(realmId)?.controller?.dispatchEvent(event,[]),
         });
-        ready=true;notify({kind:'ready'});refreshGenerationPoll=false;startGenerationLoop(expectedOwner,target);
+        ready=true;notify({kind:'ready'});startGenerationLoop(expectedOwner,target);
     }
     function refreshWork():Promise<void> {
         if(!current())return Promise.resolve();
@@ -924,7 +955,7 @@ export function createAuthorBrowserSession(options:{
     }
     function refresh():Promise<void> {return refreshWork().catch(()=>{});}
     async function prepareSource(index:number):Promise<void> {
-        openingIndex=index;refreshGenerationPoll=true;preparation({kind:'starting'});
+        openingIndex=index;preparation({kind:'starting'});
         await refreshWork();
         if(!current()||!ready||!binding||!hasFrame())throw Error('BROWSER_ATTACHMENT_UNAVAILABLE');
         if(preparationState.kind==='blocked'||preparationState.kind==='failed'||preparationState.kind==='not-required')
@@ -1072,15 +1103,22 @@ export function createAuthorBrowserSession(options:{
             try{const reply=await(options.openingTransport??readerRegexDocumentTransportV1)({
                 action:retry?'retry-opening-variants':'confirm-opening-variants',sessionId:options.sessionId,operationId:envelope.request.operationId});
                 if(!reply.ok||reply.kind!=='opening-variants-confirmed')throw Error('READER_WRITE_ACK_UNKNOWN');
-                const warning=record(()=>store.recordOpening(envelope,reply.result));notify({...lastStatus,code:warning});
-                if(reply.result.kind!=='unknown'){
+                let result=reply.result;
+                if(result.kind==='prepared') {
+                    const warning=record(()=>store.recordOpening(envelope,result));
+                    if(warning)throw Error(warning);
+                    result=await continuePreparedOpening(options.sessionId,result,
+                        options.startPendingOpeningSource,options.openingTransport??readerRegexDocumentTransportV1);
+                }
+                const warning=record(()=>store.recordOpening(envelope,result));notify({...lastStatus,code:warning});
+                if(openingVariantSettled(result)){
                     revoke();
-                    if(reply.result.kind==='committed'&&options.navigate) {
-                        const intent=openingNavigationIntent(reply.result.operationId,reply.result.changed,
-                            originalMessages,envelope.request.rows);
-                        if(reply.result.navigation||intent.swipe)
-                            await options.navigate(reply.result.navigation?.sessionId??options.sessionId,intent);
-                        if(!reply.result.navigation)await refresh();
+                    if(result.kind==='committed'&&options.navigate) {
+                        const intent=openingNavigationIntent(result.operationId,result.changed,originalMessages,
+                            envelope.request.rows,result.navigation?.swipe);
+                        if(result.navigation||intent.swipe)
+                            await options.navigate(result.navigation?.sessionId??options.sessionId,intent);
+                        if(!result.navigation)await refresh();
                     } else await refresh();
                 }
             }catch(error){notify({kind:'pending',code:error instanceof Error?error.message:String(error)});}

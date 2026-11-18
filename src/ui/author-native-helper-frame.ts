@@ -42,6 +42,7 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
   createCommands?:typeof createAuthorNativeCommandLanguageV1,
   createTrialEvents?:typeof createAuthorNativeMvuTrialEvents,
   hookEvents:typeof AUTHOR_NATIVE_MVU_HOOK_EVENTS=AUTHOR_NATIVE_MVU_HOOK_EVENTS):void {
+  parent.dispatchEvent(new CustomEvent('nexttavern-author-realm-ready',{detail:window.frameElement}))
   const realm=window as any,clone=(value:any)=>value===undefined?undefined:structuredClone(value)
   let snapshot=initial,scope=initialReadScope,explicitScope=initialReadScope,active=true,sequence=0,sourceLoaded=false
   let presetLibrary=initialPresetLibrary,pendingLoadedName:string|undefined,presetBarrier=Promise.resolve()
@@ -181,8 +182,9 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
         :type==='chat'?undefined:{type}
     const current=type==='message'?clone(messageData().resolve({type:'message',message_id:options.message_id??'latest'},true).values)
       :['global','character','preset','extension'].includes(type)?clone(sharedCapture(options).values):variables(options)
-    return {variables:current,commit:(nextVariables:any)=>request('mutate-author-namespace',
-      {nextVariables,...selector?{selector}:{}},readScope)}
+    const replaceNumerical=type==='chat'?captureChatVariableReplacement():undefined
+    return {variables:current,commit:(nextVariables:any)=>replaceNumerical?.(nextVariables)
+      ||request('mutate-author-namespace',{nextVariables,...selector?{selector}:{}},readScope)}
   },()=>realm._)
   function report(error:unknown):void {
     const code=error instanceof Error?error.message:String(error)
@@ -503,9 +505,17 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
     for(const row of update.rows)reads.set(row,scope)
     return setChatMessages(update.rows,{refresh:update.refresh})
   }
+  const getContext=()=>{
+    const captured=scope
+    const draft=messageData().contextChatDraft(rows=>{
+      for(const row of rows)reads.set(row,captured)
+      return setChatMessages(rows)
+    })
+    return {...clone(snapshot.context),...draft,setChatMessage}
+  }
   const api:any={getVariables:variables,getAllVariables:()=>Object.assign({},variables({type:'global'}),
     variables({type:'character'}),variables({type:'script'}),variables()),getChatMessages,setChatMessages,setChatMessage,
-    getContext:()=>({...clone(snapshot.context),chat:getChatMessages(),setChatMessage}),
+    getContext,
     getPresetNames:()=>{presetRead('','names');return clone(library().names)},
     getLoadedPresetName:()=>{presetRead(pendingLoadedName??'in_use','loaded')
       return pendingLoadedName??(presetLibrary?library().loaded?.name??'':currentPreset().loadedName)},
@@ -738,9 +748,10 @@ export function authorNativeHelperBootstrap(initial:AuthorNativeHelperSnapshotV1
   api.nextTavern={flushPresetWrites:()=>presetBarrier,getNumericalState:()=>clone(snapshot.numerical),
     replaceNumericalValues:(values:unknown,expected:unknown)=>request('numerical-replace',{values,expected}),
     getComposer:()=>request('composer',{action:'get'}),setComposer:(value:string)=>request('composer',{action:'set',value})}
-  api.Mvu=createMvu({snapshot:()=>snapshot,readScope:()=>scope,variables,
+  const {captureChatVariableReplacement,...mvu}=createMvu({snapshot:()=>snapshot,readScope:()=>scope,variables,
     parse:(message,oldData)=>request('parse-mvu-message',{message,oldData,trialId:crypto.randomUUID()}),
     replace:(value,readScope)=>request('numerical-replace',value,readScope)},hookEvents)
+  api.Mvu=mvu
   api.waitGlobalInitialized=async(name:string)=>{
     if(!Object.hasOwn(realm,name))throw Error('AUTHOR_NATIVE_GLOBAL_UNAVAILABLE')
     // Product libraries and the Mvu facade are installed before Source runs.

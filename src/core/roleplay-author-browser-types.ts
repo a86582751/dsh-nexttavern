@@ -169,7 +169,10 @@ export type AuthorBrowserRequest=
   |{action:'confirm';operation:MvuPlayerEditRequest}
   |{action:'retry';operation:MvuPlayerEditRequest}
   |{action:'dispose';binding:AuthorNativeBindingV1}
-  |{action:'generation-wait';binding:AuthorNativeBindingV1;registrations:readonly BrowserCallbackRegistration[];sourceCursor?:string}
+  |{action:'generation-wait';binding:AuthorNativeBindingV1;registrations:readonly BrowserCallbackRegistration[];
+    registrationRevision?:number;sourceCursor?:string}
+  |{action:'generation-registrations';binding:AuthorNativeBindingV1;registrations:readonly BrowserCallbackRegistration[];
+    registrationRevision:number}
   |{action:'generation-complete';binding:AuthorNativeBindingV1;result:BrowserGenerationResult}
   |{action:'mvu-hook-complete';binding:AuthorNativeBindingV1;result:BrowserMvuHookCompletion}
   |{action:'generate-raw';binding:AuthorNativeBindingV1;request:AuthorNativeGenerateRawRequestV1}

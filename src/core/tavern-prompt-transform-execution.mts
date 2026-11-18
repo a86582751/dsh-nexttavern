@@ -231,6 +231,7 @@ function run(data:TavernPromptTransformWorkerInputV1):TavernPromptTransformResul
       let replacement:string|undefined
       const replacementSpans:{start:number;end:number;sourceStart:number}[]=[]
       const original=result,prior=displayReplacements,next:TavernPromptDisplayReplacementV1[]=[]
+      const trim=current.trimStrings.length?(capture:string)=>filter(capture,current):undefined
       let cursor=0,outputCursor=0
       const unchanged=(end:number)=>{
         if(prior)for(const item of prior)if(item.start>=cursor&&item.end<=end)
@@ -273,7 +274,7 @@ function run(data:TavernPromptTransformWorkerInputV1):TavernPromptTransformResul
         }
         let templateCursor=0
         const substituted=replace(replacement,/\$(\d+)|\$<([^>]+)>/g,token=>{
-          const value=textKernel.captureValue(token,m,result,capture=>filter(capture,current),issue)
+          const value=textKernel.captureValue(token,m,result,trim,issue)
           if(prior){
             literal(templateCursor,token.index)
             initialParts.push({text:value,origin:{kind:'capture'}})

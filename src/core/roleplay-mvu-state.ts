@@ -651,10 +651,7 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     try {return {kind: 'ready', snapshot: cloneJson(inspect(sid).state)}}
     catch (error) {return {kind: 'blocked', code: codeOf(error)}}
   }
-  function readNumericalObservation(sid:string):MvuNumericalObservation {
-    let actual:ReturnType<typeof inspect>,state:MvuNumericalSnapshot
-    try {actual=inspect(sid);state=cloneJson(actual.state)}
-    catch(error) {return {kind:'blocked',code:codeOf(error)}}
+  function displayUpdates(sid:string,actual:ReturnType<typeof inspect>):readonly MvuAcceptedDisplayUpdate[] {
     // inspect has already checked all Native/canonical intent, event, reducer,
     // head and settlement facts. Do not reconcile each message a second time.
     const updates:MvuAcceptedDisplayUpdate[]=[]
@@ -671,7 +668,18 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
         updates.push(...captured)
       }
     }catch { /* Optional display data must not change numerical readiness. */ }
-    return {kind:'ready',snapshot:state,displayUpdates:formatMvuDisplayUpdates(updates)}
+    return formatMvuDisplayUpdates(updates)
+  }
+  function readDisplayUpdates(sid:string):Pick<Extract<MvuNumericalObservation,{kind:'ready'}>,'kind'|'displayUpdates'>
+    |Extract<MvuNumericalObservation,{kind:'blocked'}> {
+    try {return {kind:'ready',displayUpdates:displayUpdates(sid,inspect(sid))}}
+    catch(error) {return {kind:'blocked',code:codeOf(error)}}
+  }
+  function readNumericalObservation(sid:string):MvuNumericalObservation {
+    try {
+      const actual=inspect(sid)
+      return {kind:'ready',snapshot:cloneJson(actual.state),displayUpdates:displayUpdates(sid,actual)}
+    }catch(error) {return {kind:'blocked',code:codeOf(error)}}
   }
   function settlementFacts(intent:MvuStateTerminalIntent,
     {state,settlements}:ReturnType<typeof inspect>):MvuStateFacts {
@@ -900,6 +908,6 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
       return {kind:wrote?'unknown':'blocked',code:codeOf(error)}
     }
   }
-  return {readNumericalAuthority,readNumericalObservation,readGenesisAuthority,capturePromptNumericalFacts,publish,reconcileFacts,
+  return {readNumericalAuthority,readNumericalObservation,readDisplayUpdates,readGenesisAuthority,capturePromptNumericalFacts,publish,reconcileFacts,
     verifyConsumedSettlement,verifyConsumedSettlementFacts,publishManual,reconcileManualFacts,verifyConsumedManualSettlementFacts}
 }

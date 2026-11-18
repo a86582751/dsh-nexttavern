@@ -171,8 +171,7 @@ export function createRoleplayRubyCaptureV1(deps:Dependencies) {
         read.assertCurrent();actual.assertCurrent()
         return {name:book.name,book,records:readCatalogRubyEntries(book)}
       }
-      const makeMacros=()=>({...produceRoleplayTavernMacroSnapshotV1(data.macroInput).snapshot,
-        preserveUnknownMacros:true})
+      const makeMacros=()=>produceRoleplayTavernMacroSnapshotV1(data.macroInput).snapshot
       async function transformEntries(selectedEntries:readonly RubyWorldbookEntryV1[],macros:ReturnType<typeof makeMacros>,
         sourcePath:string) {
         const transformed=await applyTavernPromptTransformsV1({schemaVersion:1,

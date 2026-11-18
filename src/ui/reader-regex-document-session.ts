@@ -3,7 +3,7 @@ import type {ReaderRegexDocumentBindingV1,ReaderRegexDocumentRenderV1,
     from '../core/reader-regex-document-types.mjs';
 import type {AuthorReaderSurface} from '../core/tavern-author-reader-surface.js';
 import type {ReaderNativeImageV1,ReaderNativeDocumentPlanV1} from '../core/reader-native-document-types.js';
-import {createAuthorBrowserPendingStore,terminalBrowserReceipt} from './author-browser-pending.js';
+import {createAuthorBrowserPendingStore,openingVariantSettled,terminalBrowserReceipt} from './author-browser-pending.js';
 import type {ReaderOpeningVariantPendingV1,NumericalPendingV2,ReaderMessageBodyPendingV1} from './author-browser-pending.js';
 import type {AuthorMessageEditResultV1,ReaderMessageEditOriginV1} from '../core/roleplay-author-message-edit-types.js';
 import type {MvuPlayerEditResponse} from '../core/roleplay-mvu-player-types.js';
@@ -22,7 +22,8 @@ import {authorSharedScopeCaptureV1} from '../core/roleplay-author-scope-owner.js
 import type {AuthorOrdinaryNamespaceOperationV1} from '../core/roleplay-author-scope-owner.js';
 import {readerNativeNamespaceCauseV1,readerNativeSourceOriginV1} from '../core/author-native-origin.js';
 import {AUTHOR_NATIVE_EVENTS_V1} from '../core/author-native-origin.js';
-import {openingNavigationIntent} from './author-native-session-events.js';
+import {continuePreparedOpening,openingNavigationIntent} from './author-native-session-events.js';
+import type {StartPendingOpeningSource} from './pending-opening-source-host.js';
 import type {AuthorNativeNavigationIntent} from './author-native-session-events.js';
 
 export type ReaderRegexDocumentTransportV1=(request:ReaderRegexDocumentRequestV1,
@@ -60,6 +61,7 @@ export function createReaderRegexDocumentSession(options:{
     status(value:ReaderRegexDocumentStatusV1):void;
     fill(text:string):void;
     navigate?(sessionId:string,intent?:AuthorNativeNavigationIntent):Promise<unknown>|void;
+    startPendingOpeningSource?:StartPendingOpeningSource;
     adopted?(snapshot:ReaderDisplayExecution['snapshot']):void;
     requestRecapture?():void;
     surface?():AuthorReaderSurface;
@@ -86,7 +88,7 @@ export function createReaderRegexDocumentSession(options:{
     let numerical:NumericalPendingV2|undefined;
     let messageBodies:readonly ReaderMessageBodyPendingV1[]=[];
     let ordinary:ReaderOrdinaryNamespacePendingV2[]=[];
-    let queued:{execution:ReaderDisplayExecution;render:ReaderRender}|undefined;
+    let queued:{execution:ReaderDisplayExecution;render:ReaderRender}|null|undefined;
     let recapture:((execution:ReaderDisplayExecution|undefined)=>void)|undefined;
     const current=()=>active&&options.current();
     const diagnostics=new Map<string,()=>void>();
@@ -155,14 +157,14 @@ export function createReaderRegexDocumentSession(options:{
             if(pending?.request.operationId===envelope.request.operationId)pending=recorded;
         }catch {
             if(pending?.request.operationId===envelope.request.operationId)
-                pending={...envelope,result,state:result.kind==='unknown'?'unknown':'terminal'};
+                pending={...envelope,result,state:openingVariantSettled(result)?'terminal':'unknown'};
             return 'READER_PENDING_STORE_FAILED';
         }
     }
     function navigateCommitted(owner:object|undefined,envelope:ReaderOpeningVariantPendingV1,
         result:ReaderOpeningVariantResultV1,messages=activeExecution?.snapshot.messages??[]):void {
         if(result.kind!=='committed'||!options.navigate)return;
-        const intent=openingNavigationIntent(result.operationId,result.changed,messages,envelope.request.rows);
+        const intent=openingNavigationIntent(result.operationId,result.changed,messages,envelope.request.rows,result.navigation?.swipe);
         if(!result.navigation&&!intent.swipe)return;
         const token={},sourceFrame=frame,sessionId=result.navigation?.sessionId??options.sessionId;
         navigation=token;
@@ -367,6 +369,12 @@ export function createReaderRegexDocumentSession(options:{
                         documentPlanSha256,request:envelope.request},signal);
                     if(!result.ok||result.kind!=='opening-variants-mutated')throw Error('READER_WRITE_ACK_UNKNOWN');
                     reply=result;
+                    if(result.result.kind==='prepared'){
+                        const warning=recordResult(envelope,result.result);
+                        if(warning)throw Error(warning);
+                        reply={...result,result:await continuePreparedOpening(options.sessionId,result.result,
+                            options.startPendingOpeningSource,transport,signal)};
+                    }
                 }catch(error) {
                     writing=false;
                     const code=error instanceof Error?error.message:'READER_WRITE_ACK_UNKNOWN';
@@ -458,22 +466,22 @@ export function createReaderRegexDocumentSession(options:{
         if(updating)return;
         updating=true;
         try {
-            while(queued&&current()) {
+            while(queued!==undefined&&current()) {
+                // A display refresh can lose its projection while a Source write is
+                // admitted. Keep its realm until the guest observes the receipt.
+                const visible=frame;
+                if(visible&&await visible.waitForReceiptObservation()==='unavailable'&&current()&&frame===visible) {
+                    options.status({kind:'failed',code:'READER_NATIVE_RECEIPT_UNOBSERVED'});
+                    return;
+                }
+                if(navigation||!current()||queued===undefined)break;
                 if(held()) {
-                    if(!writing&&frame) {await frame.waitForReceiptObservation();if(current())revoke();}
+                    if(!writing&&frame)revoke();
                     notifyPending();break;
                 }
-                // Only an admitted Source callback pins the old scene. Actor
-                // Promise settlements and Host completions remain runnable.
-                if(frame) {
-                    if(await frame.waitForReceiptObservation()==='unavailable') {
-                        if(current())options.status({kind:'failed',code:'READER_NATIVE_RECEIPT_UNOBSERVED'});
-                        return;
-                    }
-                }
-                if(navigation)break;
-                if(!current()||!queued)break;
-                const next=queued;queued=undefined;apply(next.execution,next.render);
+                const next=queued;queued=undefined;
+                if(next)apply(next.execution,next.render);
+                else {revoke();notifyInactive();}
             }
         }finally {updating=false;}
     }
@@ -486,9 +494,15 @@ export function createReaderRegexDocumentSession(options:{
         try {
             const reply=await transport({action,sessionId:options.sessionId,operationId:envelope.request.operationId});
             if(!reply.ok||reply.kind!=='opening-variants-confirmed')throw Error('READER_WRITE_ACK_UNKNOWN');
-            code=recordResult(envelope,reply.result)??(reply.result.kind==='unknown'?reply.result.code:undefined);
-            navigateCommitted(owner,envelope,reply.result);
-            return pending?.request.operationId===envelope.request.operationId&&reply.result.kind!=='unknown';
+            let result=reply.result;
+            if(result.kind==='prepared') {
+                const warning=recordResult(envelope,result);
+                if(warning)throw Error(warning);
+                result=await continuePreparedOpening(options.sessionId,result,options.startPendingOpeningSource,transport);
+            }
+            code=recordResult(envelope,result)??(result.kind==='unknown'?result.code:undefined);
+            navigateCommitted(owner,envelope,result);
+            return pending?.request.operationId===envelope.request.operationId&&openingVariantSettled(result);
         }catch(error) {
             code=error instanceof Error?error.message:'READER_WRITE_ACK_UNKNOWN';
             return false;
@@ -608,8 +622,15 @@ export function createReaderRegexDocumentSession(options:{
             sourceEventsEnabled=enabled;
             if(enabled)startSourceEvents();else{sourceEventsAbort?.abort();sourceEventsAbort=undefined;}
         },
-        invalidate():void {if(active){clearDiagnostics();recapture?.(undefined);recapture=undefined;releaseQueued();revoke();
-            if(held())notifyPending();else notifyInactive();}},
+        invalidate():void {
+            if(!active)return;
+            clearDiagnostics();recapture?.(undefined);recapture=undefined;releaseQueued();
+            if(frame&&(writing||navigation)) {
+                queued=null;void drainUpdates();return;
+            }
+            revoke();
+            if(held())notifyPending();else notifyInactive();
+        },
         update(execution:ReaderDisplayExecution,render:ReaderRender):void {
             if(!current())return;
             if(queued?.execution.binding&&(!execution.binding||!sameBinding(execution.binding,queued.execution.binding))

@@ -1,5 +1,5 @@
 // Generated from runtime/alpha3/src/core/bounded-regex.ts; edit the TypeScript source.
-import { Worker } from 'node:worker_threads';
+import { MessageChannel, receiveMessageOnPort, Worker } from 'node:worker_threads';
 import { TAVERN_PROMPT_TRANSFORM_LIMITS_V1 } from './tavern-prompt-transform-types.mjs';
 export const ST_REGEX_LIMITS = Object.freeze({
     inputChars: 2_000_000,
@@ -18,20 +18,30 @@ const isRegexPattern = (value) => isRecord(value) && typeof value.pattern === 's
 let active = 0;
 let replacementActive = 0;
 const promptTransformIdle = [];
-function forgetIdlePromptTransform(worker) {
-    const index = promptTransformIdle.indexOf(worker);
-    if (index >= 0)
-        promptTransformIdle.splice(index, 1);
-}
 function createPromptTransformWorker() {
-    const worker = new Worker(new URL('./tavern-prompt-transform-worker.mjs', import.meta.url), {
-        resourceLimits: { maxOldGenerationSizeMb: 64, stackSizeMb: 2 },
-    });
-    // Node terminates a worker after its error. This listener only retires idle
-    // references and consumes that error; an active invocation owns termination.
-    worker.once('error', () => forgetIdlePromptTransform(worker));
-    worker.once('exit', () => forgetIdlePromptTransform(worker));
-    return worker;
+    const { port1: completions, port2: completionPort } = new MessageChannel();
+    try {
+        const worker = new Worker(new URL('./tavern-prompt-transform-worker.mjs', import.meta.url), {
+            resourceLimits: { maxOldGenerationSizeMb: 64, stackSizeMb: 2 },
+            workerData: { completionPort }, transferList: [completionPort],
+        });
+        const entry = { worker, completions };
+        // Idle workers have no active caller to handle their error. Exit retires
+        // the worker and its reply channel, including after an active cancellation.
+        worker.once('error', () => { });
+        worker.once('exit', () => {
+            const index = promptTransformIdle.indexOf(entry);
+            if (index >= 0)
+                promptTransformIdle.splice(index, 1);
+            completions.close();
+        });
+        return entry;
+    }
+    catch (error) {
+        completions.close();
+        completionPort.close();
+        throw error;
+    }
 }
 const workerCode = `const {parentPort,workerData}=require('node:worker_threads');
 const result=workerData.patterns.map(p=>{try{return new RegExp(p.pattern,p.flags).test(workerData.text)}catch{return false}});
@@ -296,8 +306,8 @@ export async function boundedRegexNameMatrix(patterns, names) {
     }
 }
 /** One ready worker processes the complete catalog with batch-local state.
- * Active batches share the existing replacement slots. Trusted module startup
- * precedes dispatch; the unchanged deadline covers clone, regex and receipts.
+ * Active batches share the existing replacement slots. The deadline starts
+ * before dispatch and covers input cloning, regex and receipt construction.
  * Cancellation settles once and awaits destruction, so it publishes no output. */
 export async function boundedSTPromptTransformBatchV1(data, signal) {
     const failure = (code, kind = 'refused') => ({
@@ -308,13 +318,14 @@ export async function boundedSTPromptTransformBatchV1(data, signal) {
     if (replacementActive >= TAVERN_PROMPT_TRANSFORM_LIMITS_V1.concurrentWorkers)
         return failure('PROMPT_TRANSFORM_BUSY');
     replacementActive++;
-    let worker;
+    let poolEntry;
     let timer;
     let abort;
     let reusable = false;
     try {
         const result = await new Promise(resolve => {
             let settled = false;
+            let deadlineAt = 0;
             const done = (value, completed = false) => {
                 if (settled)
                     return;
@@ -322,9 +333,10 @@ export async function boundedSTPromptTransformBatchV1(data, signal) {
                 reusable = completed;
                 if (timer)
                     clearTimeout(timer);
-                worker?.off('message', message);
-                worker?.off('error', error);
-                worker?.off('exit', exit);
+                poolEntry?.worker.off('message', dispatch);
+                poolEntry?.worker.off('error', error);
+                poolEntry?.worker.off('exit', exit);
+                poolEntry?.completions.off('message', complete);
                 // The Worker preserves admitted entry order and seals the complete
                 // projections before sending. Reuse this invocation's original strings.
                 const result = value.kind === 'transformed'
@@ -335,24 +347,32 @@ export async function boundedSTPromptTransformBatchV1(data, signal) {
                     : value;
                 resolve(result);
             };
+            const complete = ({ completedAt, result }) => {
+                if (completedAt <= deadlineAt)
+                    done(result, true);
+                else
+                    done(failure('PROMPT_TRANSFORM_TIMEOUT'));
+            };
             const dispatch = () => {
                 if (settled)
                     return;
-                // Start before postMessage: structured cloning and dispatch are part of
-                // the batch budget, while importing this trusted module is not regex work.
-                timer = setTimeout(() => done(failure('PROMPT_TRANSFORM_TIMEOUT')), TAVERN_PROMPT_TRANSFORM_LIMITS_V1.deadlineMs);
+                const { deadlineMs } = TAVERN_PROMPT_TRANSFORM_LIMITS_V1;
+                deadlineAt = performance.now() + deadlineMs;
+                timer = setTimeout(() => {
+                    // A busy host can run its timer before the already-queued Worker
+                    // callback. Read the completion directly and honor the Worker clock.
+                    const queued = receiveMessageOnPort(poolEntry.completions);
+                    if (queued)
+                        complete(queued.message);
+                    else
+                        done(failure('PROMPT_TRANSFORM_TIMEOUT'));
+                }, deadlineMs);
                 try {
-                    worker.postMessage({ ...data, projectionTransport: 'input-backed' });
+                    poolEntry.worker.postMessage({ ...data, projectionTransport: 'input-backed' });
                 }
                 catch {
                     done(failure('PROMPT_TRANSFORM_WORKER'));
                 }
-            };
-            const message = (value) => {
-                if (value.kind === 'ready')
-                    dispatch();
-                else
-                    done(value, true);
             };
             const error = () => done(failure('PROMPT_TRANSFORM_WORKER'));
             const exit = () => done(failure('PROMPT_TRANSFORM_WORKER'));
@@ -365,24 +385,27 @@ export async function boundedSTPromptTransformBatchV1(data, signal) {
                 return;
             }
             try {
-                worker = promptTransformIdle.pop();
-                const ready = worker !== undefined;
-                worker ??= createPromptTransformWorker();
+                const idle = promptTransformIdle.pop();
+                poolEntry = idle ?? createPromptTransformWorker();
+                const { worker, completions } = poolEntry;
                 worker.ref();
-                worker.on('message', message);
                 worker.once('error', error);
                 worker.once('exit', exit);
-                if (ready)
+                completions.on('message', complete);
+                if (idle)
                     dispatch();
+                else
+                    worker.once('message', dispatch);
             }
             catch {
                 done(failure('PROMPT_TRANSFORM_WORKER'));
             }
         });
-        if (worker && reusable && !signal?.aborted) {
-            promptTransformIdle.push(worker);
-            worker.unref();
-            worker = undefined;
+        if (poolEntry && reusable && !signal?.aborted) {
+            promptTransformIdle.push(poolEntry);
+            poolEntry.completions.unref();
+            poolEntry.worker.unref();
+            poolEntry = undefined;
         }
         return signal?.aborted ? failure('PROMPT_TRANSFORM_CANCELLED', 'cancelled') : result;
     }
@@ -392,8 +415,8 @@ export async function boundedSTPromptTransformBatchV1(data, signal) {
         if (abort)
             signal?.removeEventListener('abort', abort);
         try {
-            if (worker)
-                await worker.terminate();
+            if (poolEntry)
+                await poolEntry.worker.terminate();
         }
         finally {
             replacementActive--;

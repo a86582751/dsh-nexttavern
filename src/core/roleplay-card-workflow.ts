@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { keyOf, cloneRecord, sha256, recordSha256 } from './roleplay-data.js'
-import { fenceCardContent } from './tavern-card.js'
 import {resolveImportSource} from './roleplay-import-record.js'
-import { isInlinePending, taskPhaseMessage } from './tavern-tasks.js'
+import { isInlinePending } from './tavern-tasks.js'
 import { assertWorkspaceSession, type ContextSession } from './roleplay-context.js'
 import {nativeCardConversionIsDeterministicV1} from './native-card-conversion.js'
 import type { CardWorkflowDependencies, CardWorkflowSession, CardWorkflowAgent, CardWorkflowRecord, CardWorkflowJob, CardWorkflowResult } from './roleplay-card-workflow-types.js'
@@ -10,7 +9,7 @@ import type {TaskExecutionPolicy} from './tavern-task-types.js'
 
 export function createCardWorkflows(deps: CardWorkflowDependencies) {
   const { T, storyBranchIsActive, modelPolicy, statusFixedContext, nativeTask, driveStructuredImport,
-    CARD_CLASSIFICATION_GUIDE, archiveImported, libraryFor, resourceName, tavernTasks, taskAgents, ctx } = deps
+    CARD_CLASSIFICATION_GUIDE, archiveImported, libraryFor, resourceName, tavernTasks } = deps
   const cardWorkflowKey=(id: string)=>`tavern_cardjob__${id}`
   // UI requests and the main loop can resume the same durable job at once.
   // Keep one in-process driver per generation; a restart still resumes from storage.
@@ -272,18 +271,6 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
       try {await tavernTasks.submit({session,id:task.id,generation:task.generation!,value:{finished:true}})}catch{}
     }
     await T.branch.put(cardWorkflowKey(job.id),{...job,status:'completed',result,resourceId:result.resourceId,progress:{done:1,total:1},completedAt:Date.now()})
-    // Structured cards wait for an explicit, durable native opening choice.
-    // Markdown keeps its established model-led opening until that path migrates.
-    if(job.kind==='card-import'&&job.execution!=='deterministic'&&!job.openingRequested) {
-      const opening=T.opening.get(keyOf(session.id,'scene'))?.text
-      if(opening) {
-        const main=taskAgents.get(session.id)??(await ctx.sessionController.resolveAgent?.(session.id))?.agent
-        if(typeof main?.steer==='function') {
-          main.steer(taskPhaseMessage('story',`角色卡已完整读入并激活。现在完整展示作者原始开场，不附导入回执、不改写、不提前续写：\n${fenceCardContent(opening,'opening')}`,{openingImportId:record.importId}))
-          await T.branch.put(cardWorkflowKey(job.id),{...T.branch.get(cardWorkflowKey(job.id)) as CardWorkflowJob | undefined,openingRequested:true})
-        }
-      }
-    }
   }
   return { cardWorkflowKey, cardWorkflows, activeCardWorkflow, assertCardWorkflow, beginCardWorkflow,
     resumeCardWorkflows,controlCardWorkflow,completeCardWorkflow }

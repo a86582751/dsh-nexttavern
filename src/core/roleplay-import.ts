@@ -1422,10 +1422,6 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                 return {
                   ok: false, error: `import 当前状态为 ${String(record.status)}，不能激活`
                 };
-              if (![3, 4, 5, 6].includes(record.schemaVersion))
-                return {
-                  ok: false, error: '旧版 staging 记录缺少全文审阅证明；请重新执行 rp_card_import_begin'
-                };
               try {
                 assertAssignmentBudget(record.assignments ?? []);
                 assertReferenceBudget(record, record.assignments ?? []);

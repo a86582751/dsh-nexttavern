@@ -65,6 +65,15 @@ export function createAuthorNativeMessageVariables(snapshot) {
         return includeSwipes ? { ...common, swipes_info: swipeInfo(message) }
             : { ...common, message: message.message, data };
     };
+    /** SillyTavern context uses raw message field names. Its variables array
+     * retains every swipe, while TavernHelper exposes the selected DATA DTO. */
+    const contextChatMessage = (message) => {
+        const row = chatMessage(message);
+        return { name: row.name, mes: message.message, is_user: message.role === 'user', is_system: row.is_hidden,
+            extra: row.extra, swipe_id: row.swipe_id, swipes: row.swipes,
+            swipe_info: message.variants?.swipes_info?.map(info => info.extra) ?? [row.extra],
+            variables: row.swipes_data };
+    };
     const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
     const sameJson = (left, right) => {
         if (left === right)
@@ -92,6 +101,50 @@ export function createAuthorNativeMessageVariables(snapshot) {
                 return false;
         }
         return true;
+    };
+    /** Raw SillyTavern chat edits are drafts. Save through the same captured
+     * message operations as Tavern Helper, so switching an opening uses its
+     * actual text, initialization, and navigation receipts. */
+    const contextChatDraft = (commit) => {
+        const baseline = snapshot.messages.map(contextChatMessage), chat = structuredClone(baseline);
+        async function saveChat() {
+            if (chat.length !== baseline.length)
+                throw Error('AUTHOR_NATIVE_CONTEXT_CHAT_SHAPE_UNSUPPORTED');
+            const rows = [];
+            for (const [index, current] of baseline.entries()) {
+                const draft = chat[index];
+                if (!object(draft))
+                    throw Error('AUTHOR_NATIVE_CONTEXT_CHAT_SHAPE_UNSUPPORTED');
+                const { mes, name, extra, is_system, swipe_id, swipes, ...retained } = draft;
+                const { mes: oldText, name: oldName, extra: oldExtra, is_system: oldHidden, swipe_id: oldSwipe, swipes: oldSwipes, ...previous } = current;
+                if (!sameJson(retained, previous))
+                    throw Error('AUTHOR_NATIVE_CONTEXT_CHAT_DATA_UNSUPPORTED');
+                const metadataChanged = name !== oldName || is_system !== oldHidden || !sameJson(extra, oldExtra);
+                const row = { message_id: index };
+                if (swipe_id !== oldSwipe) {
+                    // Some clients mirror the current body into its swipe before selecting
+                    // another original. That already committed body needs no extra write.
+                    const stored = [...oldSwipes];
+                    stored[oldSwipe] = oldText;
+                    if (!Number.isInteger(swipe_id) || swipe_id < 0 || swipe_id >= oldSwipes.length || mes !== oldSwipes[swipe_id]
+                        || metadataChanged || !sameJson(swipes, oldSwipes) && !sameJson(swipes, stored))
+                        throw Error('AUTHOR_NATIVE_CONTEXT_CHAT_SWIPE_UNSUPPORTED');
+                    rows.push({ ...row, swipe_id });
+                    continue;
+                }
+                if (!sameJson(swipes, oldSwipes)) {
+                    const mirrored = [...oldSwipes];
+                    mirrored[oldSwipe] = mes;
+                    if (!sameJson(swipes, mirrored))
+                        throw Error('AUTHOR_NATIVE_MESSAGE_OPENING_SWIPES_UNSUPPORTED');
+                }
+                if (mes !== oldText || metadataChanged)
+                    rows.push({ ...row, message: mes, name, extra, is_hidden: is_system });
+            }
+            if (rows.length)
+                return commit(rows);
+        }
+        return { chat, saveChat };
     };
     const isOrdinaryOwned = (capture, name) => {
         if (name === 'stat_data' || !capture)
@@ -342,5 +395,5 @@ export function createAuthorNativeMessageVariables(snapshot) {
         }
         return { rows: [row], refresh: refresh === 'display_and_render_current' ? 'affected' : refresh };
     };
-    return { resolve, forMessage, swipeData, chatMessage, planSetChatMessages, legacySetChatMessage };
+    return { resolve, forMessage, swipeData, chatMessage, contextChatMessage, contextChatDraft, planSetChatMessages, legacySetChatMessage };
 }

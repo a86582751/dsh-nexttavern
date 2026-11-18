@@ -228,6 +228,11 @@ export type TavernPromptTransformWorkerResultV1={readonly kind:'transformed';rea
     Omit<TavernPromptProjectionV1,'rawText'|'storyText'|'inputText'>[]};
     readonly displayProvenance?:readonly TavernPromptDisplayProvenanceV1[]}
   |Extract<TavernPromptTransformResultV1,{readonly kind:'refused'|'cancelled'}>
+/** Pool reply, using the same monotonic process clock as the caller. */
+export interface TavernPromptTransformWorkerCompletionV1 {
+  readonly completedAt:number
+  readonly result:TavernPromptTransformWorkerResultV1
+}
 export interface TavernPromptTransformDependenciesV1 {
   /** Actual owner assertion is retained by reference outside the data snapshot.
    * It must be synchronous. Replay hashes never replace this check. */

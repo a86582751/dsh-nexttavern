@@ -184,7 +184,7 @@ function jsonData(root:unknown):MvuJsonObject {
 
 /** Synchronous, size-bounded library parsing; not a wall-clock interruption
  * boundary. A future hostile-code runner must supply its own hard deadline. */
-export function parseMvuYamlData(text:string):MvuYamlDataResult {
+export function parseMvuYamlData(text:string,mode:'strict'|'legacy-mvu-opening'='strict'):MvuYamlDataResult {
   try {
     if(typeof text!=='string')refuse('YAML_INPUT_TYPE')
     if(Buffer.byteLength(text,'utf8')>MVU_YAML_BOUNDS.inputBytes)refuse('YAML_INPUT_BYTE_LIMIT')
@@ -195,7 +195,10 @@ export function parseMvuYamlData(text:string):MvuYamlDataResult {
     const documents=[...composer.compose(syntax(text),true,text.length)]
     if(documents.length!==1)refuse('YAML_MULTIPLE_DOCUMENTS')
     const document=documents[0]!
-    if(document.errors.length||document.warnings.length)refuse('YAML_SYNTAX_INVALID')
+    // Pinned MVU consumes the composed document for an inline InitVar block.
+    // Reuse the recovered key while keeping the bounded JSON projection.
+    if(document.warnings.length||document.errors.some(error=>
+      mode==='strict'||error.code!=='MULTILINE_IMPLICIT_KEY'))refuse('YAML_SYNTAX_INVALID')
     if(document.directives.yaml.version!=='1.2')refuse('YAML_VERSION_UNSUPPORTED')
     return {kind:'parsed',data:jsonData(document.contents),parserPolicy:'yaml-1.2-json-data-v1'}
   } catch(error) {

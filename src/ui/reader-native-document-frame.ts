@@ -43,6 +43,7 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
   createCommands?:typeof createAuthorNativeCommandLanguageV1,
   createTrialEvents?:typeof createAuthorNativeMvuTrialEvents,createHookGraph?:typeof createAuthorNativeMvuHookGraph,
   hookEvents:typeof AUTHOR_NATIVE_MVU_HOOK_EVENTS=AUTHOR_NATIVE_MVU_HOOK_EVENTS):void {
+  parent.dispatchEvent(new CustomEvent('nexttavern-author-realm-ready',{detail:window.frameElement}))
   const realm=window as any
   const actualFrame=window.frameElement as HTMLIFrameElement
   let ownFrameHeight=actualFrame?.style.height,authorPaused=false
@@ -230,7 +231,10 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
       :type==='extension'?{type:'extension' as const,extension_id:options.extension_id}:type==='chat'?undefined:{type}
     const current=type==='message'?clone(messageData().resolve({type:'message',message_id:options.message_id??'latest'},true).values)
       :['global','character','preset','extension'].includes(type)?clone(sharedCapture(options).values):variables(options)
+    const replaceNumerical=type==='chat'?captureChatVariableReplacement():undefined
     return {variables:current,commit:async(nextVariables:any)=>{
+      const numerical=replaceNumerical?.(nextVariables)
+      if(numerical)return numerical
       const reply:any=await request('mutate-namespace',{readScope,operationId:crypto.randomUUID(),
         nextVariables,...selector?{selector}:{}})
       if(reply.snapshot){snapshot=reply.snapshot;snapshotReadScope=reply.readScope;updateAvatarStyles()}
@@ -315,7 +319,7 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
     if(reply.result.kind!=='executed')throw Object.assign(Error(reply.result.code),{result:reply.result})
     return reply.result.pipe
   }
-  realm.Mvu=createMvu({snapshot:()=>snapshot,readScope:()=>snapshotReadScope,variables,
+  const {captureChatVariableReplacement,...mvu}=createMvu({snapshot:()=>snapshot,readScope:()=>snapshotReadScope,variables,
     parse:(message,oldData)=>request('parse-mvu-message',{message,oldData,trialId:crypto.randomUUID()}) as Promise<import('../core/tavern-mvu-initvar.js').MvuJsonObject>,
     replace:async(value,readScope)=>{
       const reply:any=await request('numerical-replace',{...value,readScope,operationId:crypto.randomUUID()})
@@ -326,6 +330,7 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
       for(const event of reply.sourceEvents??[])await emit(event.type,event.args)
       return reply.result
     }},hookEvents)
+  realm.Mvu=mvu
   realm.waitGlobalInitialized=async(name:string)=>{
     if(!Object.hasOwn(realm,name))throw Error('READER_GLOBAL_UNAVAILABLE')
     // Library installation is separate from numerical readiness and permission.
@@ -350,8 +355,14 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
       code:error instanceof Error?error.message:String(error)}))
   }
   realm.errorCatched=(fn:Function)=>(...args:any[])=>fn(...args)
-  realm.SillyTavern={getContext:()=>({...clone(snapshot.context),chat:realm.getChatMessages(),Mvu:realm.Mvu,
-    setChatMessage:realm.setChatMessage})}
+  realm.SillyTavern={getContext:()=>{
+    const captured=snapshotReadScope
+    const draft=messageData().contextChatDraft(rows=>{
+      for(const row of rows)readScopes.set(row,captured)
+      return realm.setChatMessages(rows)
+    })
+    return {...clone(snapshot.context),...draft,Mvu:realm.Mvu,setChatMessage:realm.setChatMessage}
+  }}
   const receive=(event:MessageEvent)=>{
     if(!active)return
     const data=event.data
@@ -403,6 +414,7 @@ function readerNativeBootstrap(initial:ReaderRegexDocumentSnapshotV1,channel:str
     if(!active||port||event.data?.channel!==channel||event.data.op!=='connect'||!event.ports[0])return
     port=event.ports[0];removeEventListener('message',connect)
     port.onmessage=receive;port.start()
+    port.postMessage({op:'connected'})
     for(const data of outgoing)port.postMessage(data)
     outgoing.length=0
   }
@@ -464,7 +476,8 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
     commandUi?:import('../core/author-native-commands.js').AuthorNativeCommandUiV1;scene?:Promise<AuthorDomScene>}):ReaderNativeFrameFactoryV1 {
   return (outer,binding,program,options)=>{
     interface FrameRow {
-      frame:HTMLElement;channel:string;ready:boolean;readScope:string;readRevision:number;snapshot:ReaderRegexDocumentSnapshotV1;
+      frame:HTMLElement;channel:string;connected:boolean;ready:boolean
+      readScope:string;readRevision:number;snapshot:ReaderRegexDocumentSnapshotV1;
       ownHeight:string;layoutPaused:boolean;layoutRevision:number;observer?:MutationObserver;
       port:MessagePort;transferPort:MessagePort;connect():void
       eventEndpoint?:ReturnType<NonNullable<ReaderNativeFrameOptionsV1['eventRoute']>['register']>
@@ -549,19 +562,31 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
       if(unobservedReceipt||outcomes.includes('unavailable'))return 'unavailable'
       return observedReceipt||outcomes.includes('observed')?'observed':'none'
     }
+    function releaseFrame(row:FrameRow):void {
+      row.eventEndpoint?.dispose()
+      // Retire pending deliveries as well as the port so surviving realms can still receive the event.
+      for(const ack of row.eventAcks.values())ack.reject(Error('READER_BINDING_REVOKED'))
+      row.eventAcks.clear()
+      row.observer?.disconnect()
+      row.frame.removeEventListener('load',row.connect)
+      row.port.onmessage=null
+      row.port.close()
+      row.transferPort.close()
+      row.sceneChild?.dispose()
+      row.frame.remove()
+    }
     const failDocument=(documentPlanSha256:string,row:FrameRow,code:string,location?:{line?:number;column?:number},
       impact:RoleplayExtensionFailureV1['impact']='partial')=>{
         reportFailure(code,documents.find(plan=>plan.documentPlanSha256===documentPlanSha256),impact,location)
-        row.eventEndpoint?.dispose();row.observer?.disconnect()
-        row.frame.removeEventListener('load',row.connect)
-        row.port.onmessage=null;row.port.close();row.transferPort.close();row.sceneChild?.dispose();row.frame.remove()
         frames.delete(documentPlanSha256)
+        releaseFrame(row)
         surface.failDocument(documentPlanSha256,code)
         finishDocument(documents.find(plan=>plan.documentPlanSha256===documentPlanSha256)!,false)
     }
     const receive=(documentPlanSha256:string,row:FrameRow,data:any)=>{
       if(!current()||frames.get(documentPlanSha256)!==row)return
-      if(data.op==='document-error')failDocument(documentPlanSha256,row,data.code,{line:data.line,column:data.column})
+      if(data.op==='connected')row.connected=true
+      else if(data.op==='document-error')failDocument(documentPlanSha256,row,data.code,{line:data.line,column:data.column})
       else if(data.op==='parent-error'){
         reportFailure(data.code,documents.find(plan=>plan.documentPlanSha256===documentPlanSha256),'story-paused')
         rejectStarted(Error(data.code));options.failed?.(data.code)
@@ -849,7 +874,8 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
         const ports=new view.MessageChannel()
         const parentUrl=settings.parentOrigins[plan.writes]
         if(!parentUrl)throw Error('READER_NATIVE_PARENT_ORIGIN_UNAVAILABLE')
-        const row:FrameRow={frame,channel:crypto.randomUUID(),ready:false,readScope:crypto.randomUUID(),readRevision:snapshot!.readRevision,
+        const row:FrameRow={frame,channel:crypto.randomUUID(),connected:false,ready:false,
+          readScope:crypto.randomUUID(),readRevision:snapshot!.readRevision,
           snapshot:snapshot!,
           ownHeight:'',layoutPaused:false,layoutRevision:0,port:ports.port1,transferPort:ports.port2,eventAcks:new Map(),
           connect(){
@@ -857,8 +883,10 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
               (frame as HTMLIFrameElement).contentWindow?.postMessage({channel:row.channel,op:'connect-parent'},new URL(parentUrl).origin,[row.transferPort])
           }}
         frames.set(plan.documentPlanSha256,row)
+        // The parent shell only accepts mount until it transfers the port to the author document.
         row.eventEndpoint=eventRoute.register((event,args,requested,operationId)=>deliverEvent(row,event,args,requested,operationId),
-          ()=>current()&&frames.get(plan.documentPlanSha256)===row,{realmId:'reader:'+plan.documentPlanSha256,attachment:binding,
+          ()=>current()&&row.connected&&frames.get(plan.documentPlanSha256)===row,
+          {realmId:'reader:'+plan.documentPlanSha256,attachment:binding,
             trialInterests:()=>new Promise((resolve,reject)=>{
               const id=++eventSequence;row.eventAcks.set(id,{resolve:value=>resolve(value as readonly import('../core/tavern-mvu-update-protocol-v1.js').Mvu196HookStage[]),reject})
               send(row,{op:'mvu-trial-interests',id})
@@ -930,13 +958,7 @@ export function createReaderNativeDocumentFrameFactory(documents:readonly Reader
         requestKeys.clear()
         // Revokes the bridge immediately; physical CPU termination is NOT
         // promised by DOM removal. The browser probe measures that separately.
-        for(const row of frames.values()){
-          row.eventEndpoint?.dispose()
-          for(const ack of row.eventAcks.values())ack.reject(Error('READER_BINDING_REVOKED'))
-          row.eventAcks.clear()
-          row.observer?.disconnect();row.frame.removeEventListener('load',row.connect)
-          row.port.onmessage=null;row.port.close();row.transferPort.close();row.sceneChild?.dispose();row.frame.remove()
-        }
+        for(const row of frames.values())releaseFrame(row)
         resolveFramesRemoved()
         frames.clear();rejectStarted(Error('READER_BINDING_REVOKED'))
         if(!options.eventRoute)eventRoute.dispose()

@@ -130,9 +130,7 @@ export interface ReaderRegexDocumentReadFactsV1 {
 export interface ReaderRegexDocumentBindingV1 extends AuthorNativeBindingV1 {
   readonly principal:'reader-regex-document'
 }
-export type ReaderOpeningVariantResultV1={readonly kind:'committed';readonly operationId:string;
-  readonly replayed:boolean;readonly changed:boolean;readonly navigation?:{readonly sessionId:string}}
-  |{readonly kind:'refused'|'unknown';readonly operationId:string;readonly code:string}
+export type ReaderOpeningVariantResultV1=import('./roleplay-opening-variants.js').OpeningVariantMutationResult
 /** Passed privately from the Reader owner to the canonical mutation owner. */
 export interface ReaderOpeningVariantCaptureV1 extends AuthorOpeningVariantCaptureV1 {
   readonly binding:ReaderRegexDocumentBindingV1
@@ -198,7 +196,7 @@ export type ReaderRegexDocumentRequestV1=
     readonly documentPlanSha256:string;readonly request:OpeningVariantMutationRequestV1}
   |{readonly action:'release-reader-binding';readonly binding:ReaderRegexDocumentBindingV1}
   |{readonly action:'confirm-opening-variants';readonly sessionId:string;readonly operationId:string}
-  |{readonly action:'retry-opening-variants';readonly sessionId:string;readonly operationId:string}
+  |{readonly action:'retry-opening-variants';readonly sessionId:string;readonly operationId:string;readonly resumeSource?:true}
   |{readonly action:'save-reader-numerical';readonly binding:ReaderRegexDocumentBindingV1;
     readonly documentPlanSha256:string;readonly readRevision:number;readonly operation:MvuPlayerEditRequest}
   |{readonly action:'confirm-reader-numerical';readonly operation:MvuPlayerEditRequest}

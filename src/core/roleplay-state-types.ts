@@ -65,6 +65,7 @@ export interface StateDependencies extends StateWorldlines {
     memory:unknown
     directorNotes:unknown
     displayContext:string|null
+    schemaStory?:boolean
   }
   contextWindowFor(session: StateSession): Record<string, unknown> | null | undefined
   cloneContextWindow<T extends object>(record: T | null | undefined): T | null

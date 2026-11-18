@@ -108,7 +108,7 @@ export interface BrowserLifecycleInvocation {
 }
 export type BrowserAuthorInvocation=BrowserLifecycleInvocation|BrowserGenerationInvocation|BrowserMvuHookInvocation|BrowserFilterInvocation|BrowserFilterRetired
 export type BrowserMvuHookCompletion={readonly binding:BrowserBindingV1;readonly invocationId:string;
-  readonly registrations?:readonly BrowserCallbackRegistration[]}&(
+  readonly registrations?:readonly BrowserCallbackRegistration[];readonly registrationRevision?:number}&(
   |{readonly kind:'executed';readonly callbackIds:readonly string[];readonly result:AuthorNativeMvuHookResult}
   |{readonly kind:'refused';readonly code:string})
 export type BrowserPreparedMvuHookIdentity=AuthorNativeMvuHookIdentity

@@ -87,6 +87,23 @@ function parseSourceData(html:string,captureFences=false) {
     markupOffsets:captureFences?elements.flatMap(node=>node.sourceCodeLocation?[node.sourceCodeLocation.startOffset]:[]):[]}
 }
 type TextSpan={start:number;end:number}
+
+/** Some authored regex replacements transport a whole HTML page as encoded
+ * code. Only the Source carrier owns that page; ordinary code examples and
+ * pre elements inside an existing document retain their literal semantics. */
+function sourceCodeDocument(parsed:ReturnType<typeof parseSourceData>):string|undefined {
+  const explicitRoot=(value:ReturnType<typeof parseSourceData>)=>value.document.childNodes.some(base.isDocumentTypeNode)
+    ||value.elements.some(node=>node.tagName==='html'&&node.sourceCodeLocation!=null)
+  if(explicitRoot(parsed))return
+  const children=(node:Element)=>node.childNodes.filter(child=>!base.isTextNode(child)||child.value.trim()!=='')
+  const body=parsed.elements.find(node=>node.tagName==='body'),outer=body&&children(body)
+  if(outer?.length!==1||!base.isElementNode(outer[0]!)||outer[0]!.tagName!=='pre')return
+  const content=children(outer[0]!),code=content[0]
+  if(content.length!==1||!code||!base.isElementNode(code)||code.tagName!=='code'
+    ||!code.childNodes.every(base.isTextNode))return
+  const html=code.childNodes.map(node=>(node as Text).value).join('')
+  return explicitRoot(parseSourceData(html))?html:undefined
+}
 /** Fence delimiters belong to Source text outside authored elements. Browser
  * script/style text and literal code examples keep their original characters. */
 function htmlFenceLines(source:string,parsed:ReturnType<typeof parseSourceData>):TextSpan[] {
@@ -181,6 +198,20 @@ export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplay
   const span=readerSourceHtmlSpan(marked)
   const body=marked.slice(span.start,span.end)
   const parsed=parseSourceData(body,/^[ ]{0,3}(?:`{3,}|~{3,})(?:html)?[ \t]*\r?$/im.test(body))
+  const transported=sourceCodeDocument(parsed)
+  if(transported!==undefined) {
+    // Reuse the existing DATA markers through the transport decode. The
+    // ordinary Source parser then decides their text/attribute/JS contexts.
+    const decoded:TavernPromptDisplayPartV1[]=[]
+    let cursor=0
+    for(const match of transported.matchAll(pattern)) {
+      if(match.index>cursor)decoded.push({kind:'literal',text:transported.slice(cursor,match.index)})
+      decoded.push(parts[Number(match[1])]!)
+      cursor=match.index+match[0].length
+    }
+    if(cursor<transported.length)decoded.push({kind:'literal',text:transported.slice(cursor)})
+    return captureReaderSourceDocumentV1(decoded)
+  }
   if(!parsed.hasSourceMarkup)throw Error('READER_REGEX_DOCUMENT_SOURCE_SPAN_UNAVAILABLE')
   const attributeData:ReaderNativeAttributeDataV1[]=[],attributeChecks=new Set<string>()
   let baseData:{element:Element;partIndex:number}[]|undefined,
@@ -351,8 +382,9 @@ export function readerRegexDocumentHtmlSpan(template:string):{start:number;end:n
 export function captureReaderSourceTemplateV1(template:string):ReaderSourceTemplateV1 {
   const span=readerSourceHtmlSpan(template),body=template.slice(span.start,span.end),
     parsed=parseSourceData(body,/^[ ]{0,3}(?:`{3,}|~{3,})(?:html)?[ \t]*\r?$/im.test(body)),
+    transported=sourceCodeDocument(parsed),
     removed=htmlFenceLines(body,parsed).map(line=>({start:span.start+line.start,end:span.start+line.end})),
-    html=removeFenceLines(template,removed)
+    html=transported??removeFenceLines(template,removed)
   return {template,htmlSpan:parsed.hasSourceMarkup?span:undefined,
     document:{html,displaySpan:readerSourceHtmlSpan(html),strings:new Map(),scripts:[]}}
 }

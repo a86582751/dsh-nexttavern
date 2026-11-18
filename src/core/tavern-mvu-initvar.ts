@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto'
 import {NATIVE_MVU_SOURCE_POLICY,NATIVE_MVU_YAML_SOURCE_POLICY,isNativeMvuSourcePolicy,
   isNativeMvuYamlSourcePolicy,nativeMvuPayloadGrammar} from './roleplay-mvu-source-policy.js'
 import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
-import type {NativeMvuJsonCandidate} from './roleplay-mvu-source.js'
+import type {FreshNativeBasisFacts,NativeMvuJsonCandidate} from './roleplay-mvu-source.js'
 import {parseMvuYamlData} from './tavern-mvu-yaml.js'
 
 export type MvuJsonValue = null | boolean | number | string | MvuJsonValue[] | MvuJsonObject
@@ -541,6 +541,12 @@ function initializationUpdateOutside(text:string,spans:readonly GreetingPayloadS
 /** The actual source owner and compiler share this selector and the same pinned
  * wrappers. Only entries used by InitVar and extracted greeting blocks count;
  * ordinary prose and unrelated YAML-looking colons cannot choose a policy. */
+export function isFreshNativeBranchBasis(branch:FreshNativeBasisFacts['branch'],sessionId:string):boolean {
+  return branch.inheritedPrefixLength===0&&branch.ready===true&&(branch.inheritance==='root'?branch.parentSessionId===null:
+    branch.inheritance==='opening-variant'&&typeof branch.parentSessionId==='string'&&!!branch.parentSessionId
+    &&branch.parentSessionId!==sessionId)
+}
+
 export function selectNativeMvuInitializationPolicy(input:{
   books:readonly {entries:readonly {comment:string;content:string;renderedContent:string}[]}[]
   swipes:readonly {rawOpening:string;renderedOpening:string;materialization?:'template'|'materialized'}[]
@@ -598,7 +604,8 @@ function hasClosedMacro(text: string): boolean {
   return start >= 0 && text.indexOf('}}', start + 2) >= 0
 }
 function payload(text: string, rendered: MvuInitRenderedPayload | undefined,
-  context: PayloadContext, pointer: string,grammar:'json'|'yaml'='json'): ParsedPayload {
+  context: PayloadContext, pointer: string,grammar:'json'|'yaml'='json',
+  yamlMode:'strict'|'legacy-mvu-opening'='strict'): ParsedPayload {
   const cached = context.cache.get(pointer)
   if (cached) return cached
   const macros = context.macros
@@ -612,7 +619,7 @@ function payload(text: string, rendered: MvuInitRenderedPayload | undefined,
   if (hasClosedMacro(parseText)) reject('MACRO_UNSUPPORTED', pointer)
   let parsed: unknown
   if(context.yaml&&grammar==='yaml') {
-    const result=parseMvuYamlData(parseText)
+    const result=parseMvuYamlData(parseText,yamlMode)
     if(result.kind==='rejected')reject(result.code,pointer+(result.pointer??''))
     parsed=result.data
   } else try { parsed = JSON.parse(parseText) } catch { reject('NON_STRICT_JSON', pointer) }
@@ -682,7 +689,7 @@ function calculate(safe: MvuCalculationInput, existing: MvuInitBasis,nativePolic
     for (const [blockIndex, match] of matches.entries()) {
       const parsed = payload(match, swipe.renderedBlocks?.[blockIndex], context,
         `/swipes/${index}/blocks/${blockIndex}`,context.yaml?nativeMvuPayloadGrammar(swipe.renderedBlocks?.[blockIndex]?.text??match,
-          headers[blockIndex],headers[blockIndex],match):'json')
+          headers[blockIndex],headers[blockIndex],match):'json',updatesOwnedByCaller?'legacy-mvu-opening':'strict')
       replacement = merge(replacement, parsed.data)
       blocks.push({payloadSha256: parsed.payloadSha256, renderedSha256: parsed.renderedSha256, dataSha256: parsed.dataSha256})
     }
@@ -931,8 +938,7 @@ export function compileNativeMvuInitSources(input: NativeMvuJsonCandidate): Nati
     const {sourceSnapshot, freshNativeBasisProof} = candidate
     const sourceSession = sourceSnapshot.source.sessionId
     if (freshNativeBasisProof.sessionId !== sourceSession || freshNativeBasisProof.ownerSessionId !== sourceSession
-      || freshNativeBasisProof.branch.inheritance !== 'root' || freshNativeBasisProof.branch.parentSessionId !== null
-      || freshNativeBasisProof.branch.inheritedPrefixLength !== 0 || freshNativeBasisProof.branch.ready !== true
+      || !isFreshNativeBranchBasis(freshNativeBasisProof.branch,sourceSession)
       || freshNativeBasisProof.numerical.headExists !== false || freshNativeBasisProof.numerical.eventCount !== 0
       || freshNativeBasisProof.numerical.opaqueStateExists !== false
       || freshNativeBasisProof.native.committedOpeningCount !== 0 || freshNativeBasisProof.native.inheritedMessageCount !== 0

@@ -255,7 +255,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       deletedBranchMessageIds=deletedBranchMessageIdsFor(session,forkLookup)
     // These projections share the observed Story cut before origin admission
     // yields. Their owners retain unavailable context as an explicit result.
-    const {memory,directorNotes,displayContext}=contextProjection(session,numericalObservation,!deletedBranchMessageIds.length)
+    const {memory,directorNotes,displayContext,schemaStory}=contextProjection(session,numericalObservation,!deletedBranchMessageIds.length)
     // Read the rules and their existing owner digest in one synchronous cut.
     // Origin admission may yield; its response still carries this exact Source.
     const currentRules=T.rules.get(keyOf(session.id,'spec')) as import('./roleplay-import-types.js').RulesRecord|undefined,
@@ -291,7 +291,8 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       numericalState:numericalObservation,
       readerDisplay:{enabled:(activeSourceRecord?.extensionInventory?.entries
         .some(entry=>entry.key==='regex_scripts'&&entry.valueType==='array')??false)
-        ||numericalObservation?.kind==='schema-ready'&&numericalObservation.hasFinalizedMessages===true},
+        ||numericalObservation?.kind==='schema-ready'&&numericalObservation.hasFinalizedMessages===true,
+        ...schemaStory?{schemaStory:true}:{} },
       ...nativeBeauty?{readerBeauty:nativeBeauty}:{},
       communityPresets:communityPresets?.(session.id)??null,
       rules:currentRules?{...currentRules,...authorCoreData

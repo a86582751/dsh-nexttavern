@@ -1,6 +1,7 @@
 import {AUTHOR_NATIVE_MVU_HOOK_EVENTS} from '../core/author-native-mvu-hook-types.js'
 import type {AuthorNativeSnapshotDataV1} from '../core/author-native-helper-types.js'
-import type {MvuPlayerEditExpected,MvuMessageTargetV1} from '../core/roleplay-mvu-player-types.js'
+import type {MvuPlayerEditExpected,MvuMessageTargetV1,MvuPlayerEditResponse}
+  from '../core/roleplay-mvu-player-types.js'
 import type {MvuJsonObject} from '../core/tavern-mvu-initvar.js'
 
 export interface AuthorNativeMvuWriteV1 {
@@ -22,7 +23,7 @@ export function createAuthorNativeMvuApi(options:{
   readScope():string
   variables(options:unknown):unknown
   parse?(message:string,oldData:MvuJsonObject):Promise<MvuJsonObject>
-  replace(value:AuthorNativeMvuWriteV1,readScope:string):Promise<{ok:boolean;code?:string}>
+  replace(value:AuthorNativeMvuWriteV1,readScope:string):Promise<MvuPlayerEditResponse>
 },hookEvents:typeof AUTHOR_NATIVE_MVU_HOOK_EVENTS=AUTHOR_NATIVE_MVU_HOOK_EVENTS) {
   const retained=new WeakMap<object,MvuReadBasis>(),reads=new Map<string,MvuReadBasis>()
   let messageReadKey:string|undefined
@@ -64,9 +65,20 @@ export function createAuthorNativeMvuApi(options:{
     if(left===right)return true
     if(!left||!right||typeof left!=='object'||typeof right!=='object')return false
     if(Array.isArray(left)!==Array.isArray(right))return false
-    const keys=Object.keys(left),other=right as Record<string,unknown>
-    return keys.length===Object.keys(other).length&&keys.every(key=>Object.hasOwn(other,key)
-      &&same((left as Record<string,unknown>)[key],other[key]))
+    const record=left as Record<string,unknown>,other=right as Record<string,unknown>
+    const keys=Object.keys(record).filter(key=>record[key]!==undefined)
+    return keys.length===Object.keys(other).filter(key=>other[key]!==undefined).length
+      &&keys.every(key=>Object.hasOwn(other,key)&&same(record[key],other[key]))
+  }
+  const replaceAtBasis=async(envelope:MvuJsonObject,selected:{scope:'chat'|'message';target?:MvuMessageTargetV1},
+    basis:MvuReadBasis):Promise<void>=>{
+    if(selected.scope==='message'&&!selected.target)throw Error('AUTHOR_NATIVE_MVU_MESSAGE_UNAVAILABLE')
+    if(basis.numerical.kind!=='ready'&&basis.numerical.kind!=='schema-ready')
+      throw Error('AUTHOR_NATIVE_MVU_NOT_READY')
+    const result=await options.replace({action:'replace-envelope',envelope,expected:basis.numerical.expected,
+      ...selected.target?{target:selected.target}:{}},basis.readScope)
+    if(!result.ok||result.operation?.outcome==='refused')
+      throw Error(result.code??result.operation?.refusalCode??'AUTHOR_NATIVE_MVU_REPLACEMENT_REFUSED')
   }
   const api={events:{VARIABLE_INITIALIZED:hookEvents['initialized'],
     VARIABLE_UPDATE_STARTED:hookEvents['update-started'],COMMAND_PARSED:hookEvents['command-parsed'],
@@ -81,14 +93,18 @@ export function createAuthorNativeMvuApi(options:{
     },
     async replaceMvuData(data:any,input:any={type:'chat'}):Promise<void> {
       const selected=selection(input)
-      if(selected.scope==='message'&&!selected.target)throw Error('AUTHOR_NATIVE_MVU_MESSAGE_UNAVAILABLE')
       const basis=retained.get(data)??reads.get(selected.key)??{
         readScope:options.readScope(),numerical:options.snapshot().numerical}
-      if(basis.numerical.kind!=='ready'&&basis.numerical.kind!=='schema-ready')
-        throw Error('AUTHOR_NATIVE_MVU_NOT_READY')
-      const result=await options.replace({action:'replace-envelope',envelope:data,expected:basis.numerical.expected,
-        ...selected.target?{target:selected.target}:{}},basis.readScope)
-      if(!result.ok)throw Error(result.code??'AUTHOR_NATIVE_MVU_REPLACEMENT_REFUSED')
+      await replaceAtBasis(data,selected,basis)
+    },
+    /** The envelope owner replaces chat context together with the numbers.
+     * Message variables keep the ordinary per-message writer. */
+    captureChatVariableReplacement() {
+      const snapshot=options.snapshot(),chat=snapshot.scopeFrame.scopes.chat
+      const previousStatData=chat?.kind==='available'?chat.variables.stat_data:undefined
+      const basis={readScope:options.readScope(),numerical:snapshot.numerical}
+      return (next:MvuJsonObject):false|Promise<void>=>same(previousStatData,next.stat_data)
+        ?false:replaceAtBasis(next,{scope:'chat'},basis)
     }}
   return api
 }

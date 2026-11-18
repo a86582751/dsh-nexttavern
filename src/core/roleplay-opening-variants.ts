@@ -77,15 +77,28 @@ export interface OpeningVariantActivationHandoff {
   readonly packetRef:SchemaJournalRef
   readonly replayed:boolean
 }
+export interface OpeningVariantPrepared {
+  readonly kind:'prepared'
+  readonly operationId:string
+  readonly childSessionId:string
+  readonly index:number
+}
+export interface OpeningVariantNavigation {
+  readonly sessionId:string
+  readonly swipe?:{readonly variantId:string;readonly swipeId:number}
+}
+export type OpeningVariantActivationResult=OpeningVariantNavigation|OpeningVariantPrepared
 export type OpeningVariantMutationResult=
+  |OpeningVariantPrepared
   |{readonly kind:'committed';readonly operationId:string;readonly replayed:boolean;readonly changed:boolean;
-    readonly navigation?:{readonly sessionId:string}}
+    readonly navigation?:OpeningVariantNavigation}
   |{readonly kind:'refused'|'unknown';readonly operationId:string;readonly code:string}
 export interface OpeningVariantsDeps {
   readonly branch:OpeningVariantBankTable
   readonly status:OpeningVariantBankTable
   readonly publication?:Pick<ReturnType<typeof createMvuNumericalPublicationOwner>,'replaceVariants'>
-  activatePrepared?(handoff:OpeningVariantActivationHandoff,authority:object):Promise<{sessionId:string}>
+  activatePrepared?(handoff:OpeningVariantActivationHandoff,authority:object):Promise<OpeningVariantActivationResult>
+  readPreparedActivation?(operation:OpeningVariantOperationV1):OpeningVariantPrepared|undefined
   withTransaction<T>(sid:string,request:OpeningVariantMutationRequestV1,
     existingOperation:OpeningVariantOperationV1|undefined,authority:object,
     work:(context:OpeningVariantTransactionContext)=>Promise<T>):Promise<T>
@@ -118,7 +131,7 @@ interface OpeningVariantBankCompletionV1 {
   readonly setRef:SchemaJournalRef
   readonly activeVariantId:string
   readonly changed:boolean
-  readonly navigation:{readonly sessionId:string}|null
+  readonly navigation:OpeningVariantNavigation|null
   readonly completionSha256:string
 }
 const same=isDeepStrictEqual
@@ -240,7 +253,7 @@ export function createRoleplayOpeningVariants(deps:OpeningVariantsDeps) {
     try {
       const operation=readOperation(sid,id)
       if(!operation)return {kind:'refused',operationId:id,code:'OPENING_VARIANT_OPERATION_ABSENT'}
-      return completed(operation)??{kind:'unknown',operationId:id,code:'OPENING_VARIANT_PENDING'}
+      return completed(operation)??deps.readPreparedActivation?.(operation)??{kind:'unknown',operationId:id,code:'OPENING_VARIANT_PENDING'}
     }catch(error){return {kind:'unknown',operationId:id,code:codeOf(error,'OPENING_VARIANT_CONFIRM_UNKNOWN')}}
   }
   function pendingCode(sid:string):string|undefined {
@@ -291,7 +304,7 @@ export function createRoleplayOpeningVariants(deps:OpeningVariantsDeps) {
     return {sessionId:operation.sessionId,key:operation.publicationKey,
       raw:operation.publicationAbsent?undefined:operation.rawPublication,leaf:operation.base.currentHead,openingVariants:null}
   }
-  async function completeBank(operation:OpeningVariantOperationV1,navigation:{sessionId:string}|null=null):Promise<void> {
+  async function completeBank(operation:OpeningVariantOperationV1,navigation:OpeningVariantNavigation|null=null):Promise<void> {
     const completion=sealMvuSchemaStoryFact({schemaVersion:1 as const,encoding:'native-opening-variant-bank-completion-v1' as const,
       sessionId:operation.sessionId,operationId:operation.operationId,operationSha256:operation.operationSha256,
       setRef:operation.setRef,activeVariantId:operation.activeVariantId,changed:operation.changed,navigation},'completionSha256')
@@ -343,6 +356,7 @@ export function createRoleplayOpeningVariants(deps:OpeningVariantsDeps) {
       // Child creation may acquire its own Source/Agent owners. It starts only
       // after the parent transaction has returned the immutable handoff.
       const navigation=await deps.activatePrepared(result,authority)
+      if('kind' in navigation)return navigation
       return await deps.withTransaction<OpeningVariantMutationResult>(operation.sessionId,operation.request,operation,
         authority,async context=>{
           checkBasis(context,operation)
@@ -363,10 +377,8 @@ export function createRoleplayOpeningVariants(deps:OpeningVariantsDeps) {
     if(!active)fail('OPENING_VARIANT_INDEX_INVALID')
     if(mode==='packs'&&!initialized(packs[activeIndex]??null))fail('OPENING_VARIANT_ACTIVE_PACK_REQUIRED')
     const changed=mode==='activate'?activeIndex!==current.swipe_id:!same(packs,current.swipes_data)
-    if(changed&&mode==='activate') {
-      if(!initialized(packs[activeIndex]??null)||!active.prior?.continuation)fail('OPENING_VARIANT_NOT_INITIALIZED')
-      if(!context.prepareActivation||!deps.activatePrepared)fail('OPENING_VARIANT_ACTIVATION_UNAVAILABLE')
-    }
+    if(changed&&mode==='activate'&&(!context.prepareActivation||!deps.activatePrepared))
+      fail('OPENING_VARIANT_ACTIVATION_UNAVAILABLE')
     const facts:{key:string;fact:OpeningVariantContinuationV1}[]=[],nextEntries=[]
     for(const entry of entries) {
       const index=entry.candidate.index,pack=packs[index]??null,old=current.swipes_data[index]??null
@@ -406,14 +418,14 @@ export function createRoleplayOpeningVariants(deps:OpeningVariantsDeps) {
       const request=requestData(input),requestSha256=recordSha256(request),existing=readOperation(sid,request.operationId)
       if(existing) {
         if(existing.requestSha256!==requestSha256)return {kind:'refused',operationId,code:'OPENING_VARIANT_OPERATION_CONFLICT'}
-        return completed(existing)??{kind:'unknown',operationId,code:'OPENING_VARIANT_PENDING'}
+        return confirm(sid,operationId)
       }
       const result=await deps.withTransaction<OpeningVariantMutationResult|OpeningVariantActivationHandoff>(
         sid,request,undefined,authority,async context=>{
         const raced=readOperation(sid,request.operationId)
         if(raced) {
           if(raced.requestSha256!==requestSha256)return {kind:'refused',operationId,code:'OPENING_VARIANT_OPERATION_CONFLICT'}
-          return completed(raced)??{kind:'unknown',operationId,code:'OPENING_VARIANT_PENDING'}
+          return confirm(sid,operationId)
         }
         const blocked=pendingCode(sid)
         if(blocked)return {kind:'refused',operationId,code:blocked}

@@ -17,6 +17,7 @@ export const TAVERN_NATIVE_MACRO_POLICY_V1 = Object.freeze({ schemaVersion: 1,
     characterFields: 'activated-raw-card-trimmed; native-card-style-selection-gates-prompt-and-jailbreak',
     examples: 'ordered-chat-start-blocks; no-instruct-mode', persona: 'actual-current-user-card-content',
     variables: 'explicit-read-only-captured-scopes', model: 'unresolved-route-refuses-only-on-read',
+    unknownTokens: 'literal-after-registered-replacement',
     clock: 'captured-attempt-local-wall-clock-en-US', random: 'captured-attempt-stream; stable-chat-content-offset-pick',
     regex: 'owned-scoped-raw-card-rules; imported-allow-decision; no-global-or-preset-registry',
     outlets: 'phase-captured-values-or-catalog-proven-negative-read',
@@ -88,8 +89,10 @@ export function produceRoleplayTavernMacroSnapshotV1(input) {
     // Ordinary ST getvar/getglobalvar macros continue reading flat string bindings in
     // localVariables/globalVariables; structured helper get/format_*_variable macros
     // read exclusively from variableScopes.
+    // The legacy evaluator only replaces registered macros. Unmatched tokens
+    // remain author text, while explicit effect and binding checks still apply.
     const snapshot = { schemaVersion: 1, engine: 'legacy', authority: 'consumer-data-only',
-        sourceSnapshotSha256: basis, names, card: TAVERN_PROMPT_CARD_ORDER_V1.map(key => binding(key, cardAliases[key], cardAliases[key])),
+        preserveUnknownMacros: true, sourceSnapshotSha256: basis, names, card: TAVERN_PROMPT_CARD_ORDER_V1.map(key => binding(key, cardAliases[key], cardAliases[key])),
         ...input.randomSeed === undefined ? {} : { random: { seed: input.randomSeed, pickSeed: source.sessionId } },
         input: binding('input', input.inputText), instruct: [],
         dynamic: [binding('user_gender', context.user_gender ?? null, context.user_gender ?? null, source.current.openingContext.bindingSha256),

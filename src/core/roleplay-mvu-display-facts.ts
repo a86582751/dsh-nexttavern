@@ -26,6 +26,28 @@ export function acceptedMvuDisplayUpdate(ownerSessionId: string,
     ownerSessionId, canonical: Object.freeze({seq: canonical.seq, messageId: canonical.messageId,
       versionSha256: canonical.versionSha256, narrativeSha256: canonical.narrativeSha256}), protocol})
 }
+export function indexMvuDisplayUpdates(updates: readonly MvuAcceptedDisplayUpdate[]) {
+  const bySeq = new Map<number, MvuAcceptedDisplayUpdate[]>()
+  for (const update of updates) {
+    const seq = update.canonical.seq
+    const related = bySeq.get(seq)
+    if (related) related.push(update)
+    else bySeq.set(seq, [update])
+  }
+  return bySeq
+}
+export function matchMvuDisplayUpdate(updates: readonly MvuAcceptedDisplayUpdate[],
+  target: MvuAcceptedDisplayUpdate['canonical']): MvuAcceptedDisplayUpdate | undefined {
+  let match: MvuAcceptedDisplayUpdate | undefined
+  for (const update of updates) {
+    const item = update.canonical
+    if (item.seq !== target.seq || item.messageId !== target.messageId) continue
+    if (match || item.versionSha256 !== target.versionSha256 || item.narrativeSha256 !== target.narrativeSha256) return
+    match = update
+  }
+  return match
+}
+
 /** Ambiguous identities omit hints; display formatting can never make the
  * original authority/fork/recovery contract fail or select a guessed version. */
 export function formatMvuDisplayUpdates(inputs: readonly MvuAcceptedDisplayUpdate[]): readonly MvuAcceptedDisplayUpdate[] {

@@ -488,8 +488,8 @@ export function createTavernPromptTextKernelV1(services) {
         return result;
     }
     function captureValue(token, match, input, filter, issue) {
-        // Fixed callback indexing also exposes offset/input/groups. Preserve its
-        // falsey/string results and diagnose unsupported truthy non-string values.
+        // SillyTavern indexes the replacement callback arguments. An untrimmed
+        // numeric offset is stringified by replaceAll, with offset zero treated as empty.
         let capture;
         if (token[1]) {
             const index = Number(token[1]);
@@ -504,10 +504,14 @@ export function createTavernPromptTextKernelV1(services) {
         }
         else
             capture = match.groups?.[token[2]];
-        const value = !capture ? '' : typeof capture === 'string' ? filter(capture) : token[0];
-        if (capture && typeof capture !== 'string')
-            issue('PROMPT_TRANSFORM_CAPTURE_UNSUPPORTED', token[0]);
-        return value;
+        if (!capture)
+            return '';
+        if (typeof capture === 'string')
+            return filter ? filter(capture) : capture;
+        if (typeof capture === 'number' && !filter)
+            return String(capture);
+        issue('PROMPT_TRANSFORM_CAPTURE_UNSUPPORTED', token[0]);
+        return token[0];
     }
     function format(text, rules, macro, entry, deps, regexDisabled = false, options = {}) {
         let issueCount = 0;
@@ -527,13 +531,15 @@ export function createTavernPromptTextKernelV1(services) {
                 continue;
             }
             let replacement;
-            const original = result;
+            const original = result, filter = rule.trimStrings.length
+                ? (capture) => trimCapture(capture, rule, value => project(value, override), replace, deps.budget.job)
+                : undefined;
             result = replace(original, regex, match => {
                 if (replacement === undefined) {
                     deps.replacement(rule.replaceString.length);
                     replacement = rule.replaceString.replace(/{{match}}/gi, '$0');
                 }
-                const substituted = replace(replacement, /\$(\d+)|\$<([^>]+)>/g, token => captureValue(token, match, original, capture => trimCapture(capture, rule, value => project(value, override), replace, deps.budget.job), issue));
+                const substituted = replace(replacement, /\$(\d+)|\$<([^>]+)>/g, token => captureValue(token, match, original, filter, issue));
                 return project(substituted);
             }, true);
         }

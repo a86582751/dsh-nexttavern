@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto'
 import {compileTavernOpeningCandidates} from './tavern-card.js'
-import {readStructuredImportDataV1} from './roleplay-import-record.js'
+import {readStructuredImportDataV1,spanText,textImportFormat} from './roleplay-import-record.js'
 import type {TavernOpeningCandidate, TavernOpeningContext} from './tavern-card.js'
 import type {ImportPointer, ImportRecord} from './roleplay-import-types.js'
 import {recordSha256} from './roleplay-data.js'
@@ -34,7 +34,12 @@ export interface OpeningSource {
   readonly coverageSha256: string
   readonly pointer: ImportPointer
 }
-export interface OpeningCatalog { readonly source: OpeningSource; readonly candidates: readonly TavernOpeningCandidate[] }
+export interface OpeningCatalog {
+  readonly source: OpeningSource
+  readonly candidates: readonly TavernOpeningCandidate[]
+  readonly classifiedText?: true
+}
+const classifiedOpeningPointer='/assignments/opening'
 export type OpeningRejectionCode = 'PROGRAMMATIC_IDENTITY_CONFLICT' | 'PROGRAMMATIC_OPEN_TURN'
   | 'PROGRAMMATIC_MISSING_SYSTEM_HEAD' | 'PROGRAMMATIC_UNATTRIBUTED_FAILURE'
   | 'PROGRAMMATIC_INCOMPLETE_TURN'
@@ -421,17 +426,28 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     const record = deps.table.get(deps.importRecordKey(sourceRecordSessionId, pointer.importId)) as ImportRecord | undefined
     if (!record || record.status !== 'active' || record.importId !== pointer.importId
       || record.normalizedSha256 !== pointer.normalizedSha256 || !record.activation
-      || record.activation.transactionId !== pointer.transactionId || !validHash(record.rawSha256)
-      || !record.sourceEnvelope)
+      || record.activation.transactionId !== pointer.transactionId || !validHash(record.rawSha256))
       throw new Error('active import record 与 pointer 不匹配')
-    const {decoded,provenance}=readStructuredImportDataV1(record)
-    const envelope=record.sourceEnvelope
-    if(envelope.schemaVersion===1?decoded.sourceSha256!==record.rawSha256||envelope.sourceSha256!==record.rawSha256
-      :decoded.sourceSha256!==envelope.executionSha256||provenance.transportSha256!==envelope.transportSha256)
-      throw new Error('sourceEnvelope 来源校验失败')
     const source: OpeningSource = {sessionId, importId:pointer.importId, sourceRecordSessionId,
       rawSha256:record.rawSha256, normalizedSha256:record.normalizedSha256,
       transactionId:pointer.transactionId, coverageSha256:pointer.coverageSha256, pointer:{...pointer}}
+    const envelope=record.sourceEnvelope
+    if(!envelope) {
+      if(!textImportFormat(record))throw Error('结构化角色卡缺少原件')
+      // The completed classification already owns the exact source spans.
+      const spans=(record.assignments??[]).filter(assignment=>assignment.target==='opening')
+        .flatMap(assignment=>assignment.sourceSpans)
+        .sort((left,right)=>left.startLine-right.startLine||left.endLine-right.endLine)
+      const text=spanText(record,spans)
+      return {source,classifiedText:true,candidates:text.trim()?[{
+        index:0,label:'作者开场',sourcePointer:classifiedOpeningPointer,sourceSha256:hash(text),
+        rawText:text,renderedText:text,materialization:'materialized',macros:[],
+      }]:[]}
+    }
+    const {decoded,provenance}=readStructuredImportDataV1(record)
+    if(envelope.schemaVersion===1?decoded.sourceSha256!==record.rawSha256||envelope.sourceSha256!==record.rawSha256
+      :decoded.sourceSha256!==envelope.executionSha256||provenance.transportSha256!==envelope.transportSha256)
+      throw new Error('sourceEnvelope 来源校验失败')
     return {source, candidates:compileTavernOpeningCandidates(decoded, context)}
   }
   const current = (source: OpeningSource) => {
@@ -491,12 +507,17 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
   }
   const committedResult = (intent: OwnedOpeningIntent): OwnedOpeningIntent | FinishWork => intent.schemaVersion !== 2
     ? {finish: structuredClone(intent)} : intent
-  const legacyAllowed = (intent: OpeningIntentV2): boolean => {
+  const legacyAllowed = (intent: OpeningIntentV2, selected?: OpeningCatalog): boolean => {
+    if(intent.sourcePointer===classifiedOpeningPointer) {
+      const catalog=selected??readCatalog(intent.sessionId),candidate=catalog.candidates[intent.index]
+      return catalog.classifiedText===true&&sameRecord(catalog.source,intent.source)
+        &&candidate?.sourceSha256===intent.sourceSha256&&candidate.sourceSha256===intent.renderedSha256
+    }
     if (!deps.legacyPendingAllowed) return true
     try { return deps.legacyPendingAllowed(intent) === true } catch { return false }
   }
-  const append = async (key: string, intent: OwnedOpeningIntent): Promise<LockedResult> => {
-    if (intent.schemaVersion === 2 && !legacyAllowed(intent)) return {status:'busy',intent:{...intent,status:'unknown'}}
+  const append = async (key: string, intent: OwnedOpeningIntent, catalog: OpeningCatalog): Promise<LockedResult> => {
+    if (intent.schemaVersion === 2 && !legacyAllowed(intent,catalog)) return {status:'busy',intent:{...intent,status:'unknown'}}
     if (intent.schemaVersion !== 2 && !sourceCurrent(intent)) return {status:'busy',intent:blockedProjection(intent,'SOURCE_CHANGED')}
     if(intent.schemaVersion===6&&!runtimeCurrent(intent)) {
       return {status:'busy',intent:blockedProjection(intent,'PROMPT_TEMPLATE_RUNTIME_REQUIRED')}
@@ -691,12 +712,14 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       if (!/^[a-zA-Z0-9_-]{1,128}$/.test(operationId)) throw new Error('无效的 operationId')
       const catalog=readCatalog(sessionId,context),candidate=catalog.candidates.find(item=>item.index===index)
       if (!candidate) throw new Error('开场候选不存在')
-      const request:SchemaOpeningRequest={catalog,candidate,renderedText:candidate.renderedText,
-        identity:{sessionId,source:catalog.source,index,sourcePointer:candidate.sourcePointer,
-          sourceSha256:candidate.sourceSha256,renderedSha256:hash(candidate.renderedText),operationId,
-          messageId:`opening-${hash(`${sessionId}\0${catalog.source.importId}\0${operationId}`).slice(0,32)}`}}
-      const previous=deps.table.get(openingIntentKey(sessionId,catalog.source.importId)) as OpeningIntent | undefined
-      if (previous?.schemaVersion===5 || deps.schemaOpening.handles(request)) return deps.schemaOpening.select(request)
+      if (!catalog.classifiedText) {
+        const request:SchemaOpeningRequest={catalog,candidate,renderedText:candidate.renderedText,
+          identity:{sessionId,source:catalog.source,index,sourcePointer:candidate.sourcePointer,
+            sourceSha256:candidate.sourceSha256,renderedSha256:hash(candidate.renderedText),operationId,
+            messageId:`opening-${hash(`${sessionId}\0${catalog.source.importId}\0${operationId}`).slice(0,32)}`}}
+        const previous=deps.table.get(openingIntentKey(sessionId,catalog.source.importId)) as OpeningIntent | undefined
+        if (previous?.schemaVersion===5 || deps.schemaOpening.handles(request)) return deps.schemaOpening.select(request)
+      }
     }
     let historicalTemplatePreflight:OpeningInitializationCode|null=null
     const pointer=deps.table.get(deps.importActiveKey(sessionId)) as ImportPointer|undefined,
@@ -746,7 +769,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
             const {initializationCode:_code,rejectionCode:_rejection,...retained}=previous
             const pending:OpeningIntentV6={...retained,status:'pending',revision:previous.revision+1}
             await deps.table.put(key,pending)
-            return append(key,pending)
+            return append(key,pending,catalog)
           }
         }
         if (previous.schemaVersion !== 2) {
@@ -769,7 +792,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
         }
         if (found.status === 'committed') return committedResult(await complete(key, previous, found.turn!))
         if (found.status === 'absent' && current(previous.source))
-          return append(key, previous)
+          return append(key, previous,catalog)
         if (!current(previous.source)) return {status:'busy',intent:previous}
         return {status:'busy', intent:await diagnose(key,previous,found)}
       }
@@ -781,7 +804,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
         messageId:`opening-${hash(`${sessionId}\0${catalog.source.importId}\0${operationId}`).slice(0,32)}`,
         operationId, revision:1}
       let intent: OwnedOpeningIntent
-      if (!initializationEnabled) intent = {schemaVersion:2, ...identity, status:'pending'}
+      if (!initializationEnabled||catalog.classifiedText) intent = {schemaVersion:2, ...identity, status:'pending'}
       else {
         let preparation: OpeningInitializationPreparation | undefined
         let code: OpeningInitializationCode = 'PREPARE_FAILED'
@@ -831,7 +854,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       }
       await deps.table.put(key, intent)
       if (!current(catalog.source)) throw new Error('active import pointer 已失效；意图已保留')
-      return append(key, intent)
+      return append(key, intent,catalog)
     })
     if (!('finish' in result)) return result
     const completed = await finish(result.finish)

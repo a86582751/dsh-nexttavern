@@ -1,17 +1,36 @@
 import type {AuthorNativeSessionEventRoute} from '../core/author-native-helper-types.js'
 import type {PromptCapturedMessageV1} from '../core/tavern-author-prompt-types.mjs'
 import {AUTHOR_NATIVE_EVENTS_V1} from '../core/author-native-origin.js'
+import type {OpeningVariantMutationResult,OpeningVariantPrepared} from '../core/roleplay-opening-variants.js'
+import type {StartPendingOpeningSource} from './pending-opening-source-host.js'
+import type {ReaderRegexDocumentTransportV1} from './reader-regex-document-session.js'
 
 export interface AuthorNativeNavigationIntent {
   readonly operationId:string
   readonly swipe?:{readonly variantId:string;readonly swipeId:number}
 }
 export function openingNavigationIntent(operationId:string,changed:boolean,
-  messages:readonly PromptCapturedMessageV1[],rows:readonly {message_id:number;swipe_id?:number}[]):AuthorNativeNavigationIntent {
+  messages:readonly PromptCapturedMessageV1[],rows:readonly {message_id:number;swipe_id?:number}[],
+  destinationSwipe?:AuthorNativeNavigationIntent['swipe']):AuthorNativeNavigationIntent {
+  if(destinationSwipe)return {operationId,swipe:destinationSwipe}
   const row=rows.find(row=>row.swipe_id!==undefined),message=row&&messages.find(message=>message.index===row.message_id)
   const variant=row&&message?.ordinary?.variants[row.swipe_id!]?.identity.variant
   return {operationId,...changed&&row&&message?.variants&&row.swipe_id!==message.variants.swipe_id
     &&variant?.kind==='opening-variant'?{swipe:{variantId:variant.id,swipeId:row.swipe_id!}}:{}}
+}
+
+export async function continuePreparedOpening(sourceSessionId:string,prepared:OpeningVariantPrepared,
+  startSource:StartPendingOpeningSource|undefined,transport:ReaderRegexDocumentTransportV1,signal?:AbortSignal)
+  :Promise<OpeningVariantMutationResult> {
+  const {childSessionId,operationId}=prepared
+  if(!startSource)return {kind:'unknown',operationId,code:'OPENING_VARIANT_SOURCE_UNAVAILABLE'}
+  const host=startSource({sourceSessionId,childSessionId,operationId})
+  try {
+    const reply=await transport({action:'retry-opening-variants',sessionId:sourceSessionId,operationId,resumeSource:true},
+      signal?AbortSignal.any([signal,host.signal]):host.signal)
+    if(!reply.ok||reply.kind!=='opening-variants-confirmed')throw Error('READER_WRITE_ACK_UNKNOWN')
+    return reply.result
+  }finally{host.dispose()}
 }
 
 /** The selected view completes a transition after its actual target adoption.

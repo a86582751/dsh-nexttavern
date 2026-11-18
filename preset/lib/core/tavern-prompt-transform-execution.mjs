@@ -263,6 +263,7 @@ function run(data) {
             let replacement;
             const replacementSpans = [];
             const original = result, prior = displayReplacements, next = [];
+            const trim = current.trimStrings.length ? (capture) => filter(capture, current) : undefined;
             let cursor = 0, outputCursor = 0;
             const unchanged = (end) => {
                 if (prior)
@@ -312,7 +313,7 @@ function run(data) {
                 };
                 let templateCursor = 0;
                 const substituted = replace(replacement, /\$(\d+)|\$<([^>]+)>/g, token => {
-                    const value = textKernel.captureValue(token, m, result, capture => filter(capture, current), issue);
+                    const value = textKernel.captureValue(token, m, result, trim, issue);
                     if (prior) {
                         literal(templateCursor, token.index);
                         initialParts.push({ text: value, origin: { kind: 'capture' } });
