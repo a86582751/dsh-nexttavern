@@ -75,13 +75,13 @@ Native 卡使用 `nexttavern_card` JSON 文档。它用栏目声明内容和用�
 
 ## 按日期记录
 
-### 11 月 18 日完成可玩版原卡抽测
+### 11 月 18 日可玩开发版验收
 
-五张追加原卡沿各自的作者开场进入剧情，分别检查了适用的数值、状态栏、终端等交互。对两张真实模型续写的样本，重启宿主后的首次原稿导出保留了已核对的正文。导出过程由程序处理，未增加模型请求。
+五张追加原卡沿各自的作者开场进入剧情，分别检查了适用的数值、状态栏、终端等交互。对两张真实模型续写的样本，重启宿主后的首次原稿导出保留了已核对的正文。导出过程由程序处理，未增加模型请求。Native 1.2 已走通创作、当前编辑、导出与回导。DOCX 使用作者原文开场，该正文后续编辑后也已在新会话回导验证。debug CLI 对齐当前世界线原稿、卡片导入导出和隔离侧聊诊断。
 
 **English**
 
-Five additional original cards reached a first Story from their authored openings. Checks covered each card's applicable features, including numerical state, status displays and author terminals. Two cards played with a live model also passed original-manuscript export as their first operation after a host restart. The exported prose matched the verified text, and exports made no additional model requests. Native authoring and export workflow checks are continuing for the playable 0.3 development build.
+Five additional original cards reached a first Story from their authored openings. Checks covered each card's applicable features, including numerical state, status displays and author terminals. Two cards played with a live model also passed original-manuscript export as their first operation after a host restart. The exported prose matched the verified text, and exports made no additional model requests. The playable development build also passed a Native 1.2 authoring, current-edit, export and reimport workflow. A DOCX opening kept its authored text, and a later edit survived export and reimport into a fresh session. The debug CLI follows the same manuscript, card and isolated side-chat workflows.
 
 ### 11 月 16 日原作者页面、连续剧情与恢复
 
@@ -285,8 +285,8 @@ Ruby 辅助分析走通了人工重试、启停、刷新及不同进程恢复的
 ## 接下来会继续展示什么
 
 1. **作者按钮与分析面板的联动。** 继续验证 RUBY 读取、执行、方案选择和页面刷新在真实卡中的体验，保留失败原因与实际任务结果。
-2. **更多真实作品的持续游玩。** 更新测试版本，依次验证首批十张及第二批随机十张，连同编辑、分支、保存和重开一起体验。
-3. **从原稿到可分享角色卡。** 完成自然 Native 写卡、小说改编及 Markdown／DOCX 完整导入的实测，再核对修改后卡片与新剧情的导出。
+2. **更多真实作品的持续游玩。** 在已通过的五张追加样本之外，继续积累连续剧情、编辑、分支及恢复的证据。
+3. **长文本创作。** 继续验证更长篇的选择、改编与整理导出，以及高级社区能力。
 
 ## 专题阅读
 

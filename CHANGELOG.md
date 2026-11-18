@@ -4,6 +4,20 @@
 
 本页合并重复流水，保留用户可见变化、迁移要求和验证限制。完整清理前记录见 [2026-10-24 历史快照](https://github.com/a86582751/dsh-nexttavern/blob/d84a35c41189846faaca5643a88a1949fcff776d/CHANGELOG.md)，可追溯原始测试数字、失败记录和候选演变。
 
+## 2026-11-18
+
+### 0.3 可玩开发线
+
+- 五张追加原卡走通作者开场和第一轮剧情，并验证各自适用的终端、状态栏、数值或续玩操作。
+- 「前端设置」可直接打开已识别的作者终端。变量更新已结算时，酒馆和小说原稿使用清洁正文。
+- Native 1.2 创作、当前编辑、卡片导出和回导已实测。DOCX 开场保留作者原文，编辑后导出与重新导入均保留修改。debug CLI 可导出当前世界线原稿及执行隔离侧聊。
+
+**English**
+
+Five additional community cards reached a first Story from their authored openings, with checks for each card's applicable interactions. Frontend Settings can open supported author terminals directly. Reader and original-manuscript export omit settled variable updates. Native 1.2 authoring, editing, export and reimport were tested. A DOCX opening retained the authored text and its later edit through the Native round trip. The debug CLI supports current-worldline manuscript export and isolated side chat.
+
+详细覆盖见 [0.3 开发日志](DEVELOPMENT-0.3.md)。正式发行版本为 0.2.9-rc.4。
+
 ## 2026-11-16
 
 ### 开发源码与文档的 Reader 与剧情恢复修正（未发布）
