@@ -126,6 +126,11 @@ valid, but may require semantic classification otherwise. Use
 it uses the existing model workflow to organize card Markdown or novel chapters.
 The selected mode is included in the jobs POST and in `--dry-run` output.
 
+Side chat uses an independent Native session. Read its `sideSessionId` from
+`/api/roleplay/side-chat?sessionId=MAIN_ID`, then add `--no-wake` to `send`
+and `history` when addressing that ID. This sends each operation straight to
+the Native session without invoking the main Tavern's wake route.
+
 `sessions` and `resolve` use native session metadata, projected on-server before
 SSH transfer: only IDs, title/preset/model, status, workspace and parent fields.
 Match titles or ID prefixes with `--query`; `--cursor` and `--limit` bound output.
