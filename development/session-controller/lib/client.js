@@ -137,6 +137,8 @@ var KNOWN_SESSION_EVENT_TYPES = /* @__PURE__ */ new Set([
   "request/context",
   "request/header",
   "request/material",
+  "roleplay/author-dialog-activation",
+  "roleplay/ruby-task-activation",
   "sandbox/mode",
   "schedule/change",
   "session-log-deepseek/delivery-accepted",

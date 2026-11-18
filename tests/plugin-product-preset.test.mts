@@ -13,10 +13,11 @@ const require = createRequire(new URL('../build-tools/package.json', import.meta
 const load = (name: string) => import(pathToFileURL(require.resolve('@deepseek-ai/'+name)).href)
 const {default: SessionStore} = await load('dsh-session')
 const {default: Projections} = await load('dsh-session-projection')
+const {default: AgentRegistry} = await load('dsh-agent')
 const {default: TypertRegistry} = await load('dsh-typert-registry')
 const {default: SystemPrompt} = await load('dsh-system-prompt')
 const {createScope} = await load('dsh-scope')
-const {default: PresetRegistry, livePresetMounts, standingMountFor} = await load('dsh-agent-preset-registry')
+const {default: PresetRegistry} = await load('dsh-agent-preset-registry')
 const {default: AgentPreset} = await load('dsh-agent-preset')
 const {entryListSchema} = await load('cordis-plugin-include')
 const yaml = createRequire(require.resolve('@deepseek-ai/cordis-plugin-include'))('js-yaml')
@@ -98,12 +99,13 @@ function presetFixture(conflict = false, pathProbe?: Record<string, unknown>, co
       coreProbe.presetFile = path.join(productRoot, 'preset/agent.cordis.yml')
       coreProbe.before = fs.readFileSync(coreProbe.presetFile)
     }
-    return {rows: [declaration], peers: {'@deepseek-ai/dsh-agent-preset': '0.1.7-rc.2'},
+    return {rows: [declaration], peers: {'@deepseek-ai/dsh-agent-preset': '>=0.2.2-rc.5'},
       async initialize(ctx: any) {
         if (pathProbe) ctx.on('nexttavern/preset-path', (value: object) => Object.assign(pathProbe, value))
         if (coreProbe) ctx.on('nexttavern/core-config', (value: Record<string, unknown>) => coreProbe.received.push(value))
         await ctx.plugin(SessionStore)
         await ctx.plugin(Projections)
+        await ctx.plugin(AgentRegistry)
         await ctx.plugin(TypertRegistry)
         await ctx.plugin(SystemPrompt, {includeHarnessIdentity: false, includeRuntimeContext: false, persona: ''})
         // rc.2 retired the mode-selection switch; a profile patch that still carries
@@ -128,19 +130,22 @@ test('ordinary product declaration retains registry policy and live Agents acros
     assert.equal((await f.ctx.agentPresets.list()).find((p: any) => p.id === 'roleplay')?.name, 'NextTavern')
     assert.equal(roleplay.broken, undefined)
     await Promise.all([f.ctx.agentPresets.mount(a.ctx, 'roleplay'), f.ctx.agentPresets.mount(b.ctx, 'roleplay')])
-    const original = standingMountFor(a.ctx)?.fiber
-    assert.ok(original)
-    assert.equal(original, standingMountFor(b.ctx)?.fiber)
-    assert.equal(livePresetMounts(f.ctx.fiber).filter((m: any) => m.presetId === 'roleplay').length, 1)
+    const registry = f.ctx.agentPresets
+    const roleplayRevisions = () => registry.inspectCompositions().filter((row: any) => row.id === 'roleplay')
+    assert.equal(registry.composedPreset(a.ctx), 'roleplay')
+    assert.equal(registry.composedPreset(b.ctx), 'roleplay')
+    assert.equal(roleplayRevisions().length, 1, 'both agents share the published composition')
     await f.update([{id: 'nexttavern', disabled: true}])
     assert.equal((await f.ctx.agentPresets.list()).some((p: any) => p.id === 'roleplay'), false)
-    assert.equal(standingMountFor(a.ctx)?.fiber, original, 'live Agents retain their declared generation')
+    assert.equal(registry.composedPreset(a.ctx), 'roleplay', 'a live agent retains the retired composition')
+    assert.equal(roleplayRevisions().length, 1)
     assert.equal(f.ctx.agentPresets.defaultId, 'custom')
     await f.update([])
     const c = createScope(f.ctx, {})
     try {
       await f.ctx.agentPresets.mount(c.ctx, 'roleplay')
-      assert.notEqual(standingMountFor(c.ctx)?.fiber, original, 'new Agents use the re-enabled declaration')
+      assert.equal(registry.composedPreset(c.ctx), 'roleplay')
+      assert.equal(roleplayRevisions().length, 2, 're-enabling creates a new composition while the retired one is held')
     } finally { await c.dispose() }
   } finally { await a.dispose(); await b.dispose(); await f.close() }
 })

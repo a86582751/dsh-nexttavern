@@ -46,7 +46,7 @@ const load = (name: string) => import(pathToFileURL(require.resolve(`@deepseek-a
 const {Context} = await load('cordis')
 const {default: Sessions} = await load('dsh-session')
 const {default: Query} = await load('dsh-session-query')
-const {default: Persistence} = await load('dsh-session-persistence-jsonl')
+const persistence = await load('dsh-session-persistence-jsonl')
 const {default: Projections} = await load('dsh-session-projection')
 class PointQuery extends Query {
   async searchSessions() {throw Error('Outside this test')}
@@ -62,7 +62,7 @@ async function fixture() {
   try {
     await ctx.plugin(Sessions)
     await ctx.plugin(Projections)
-    await ctx.plugin(Persistence, {root: directory, compression: 'none'})
+    await ctx.plugin(persistence, {root: directory, compression: 'none'})
     await ctx.plugin(PointQuery)
   } catch (error) {await ctx.fiber.dispose(); cleanupTestDirectory(directory); throw error}
   const observe = async (id: string, options: any) => {

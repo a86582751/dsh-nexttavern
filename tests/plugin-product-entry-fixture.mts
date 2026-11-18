@@ -99,6 +99,7 @@ async function prepareFixture(root: string, options: FixtureOptions) {
     ['nexttavern-profile-plan', new URL('../lib/operations/nexttavern-profile-plan.mjs', import.meta.url)],
     ['nexttavern-lifecycle', new URL('../lib/operations/nexttavern-lifecycle.mjs', import.meta.url)],
     ['bundled-package-bootstrap', new URL('../lib/operations/bundled-package-bootstrap.mjs', import.meta.url)],
+    ['released-component-types', new URL('../lib/operations/released-component-types.mjs', import.meta.url)],
     ['nexttavern-package-preparation', new URL('../lib/operations/nexttavern-package-preparation.mjs', import.meta.url)],
     ['nexttavern-market', new URL('../lib/operations/nexttavern-market.mjs', import.meta.url)],
     ['protected-packages', new URL('../lib/operations/protected-packages.mjs', import.meta.url)],
