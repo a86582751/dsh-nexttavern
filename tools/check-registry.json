@@ -4371,6 +4371,7 @@
         "compiler"
       ],
       "inputs": [
+        "mvu-schema-test-dependencies-fixture-contract",
         "card-adaptation-context-typescript",
         "card-export-projection-typescript",
         "card-export-typescript",
@@ -5176,6 +5177,7 @@
         "jsdom"
       ],
       "inputs": [
+        "mvu-schema-test-dependencies-fixture-contract",
         "card-adaptation-context-typescript",
         "card-export-projection-typescript",
         "card-export-typescript",
@@ -12409,6 +12411,7 @@
         "compiler"
       ],
       "inputs": [
+        "mvu-schema-test-dependencies-fixture-contract",
         "card-adaptation-context-typescript",
         "card-export-projection-typescript",
         "card-export-typescript",
@@ -16107,7 +16110,9 @@
       "requires": [
         "compiler"
       ],
-      "inputs": []
+      "inputs": [
+        "mvu-schema-test-dependencies-fixture-contract"
+      ]
     },
     {
       "id": "test:card-character-map.test.mts",

@@ -1,5 +1,9 @@
 // Card JavaScript must never run with the page's DOM, globals or fill callback.
 import assert from 'node:assert/strict'
+import {after} from 'node:test'
+import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
+
+after(installSchemaTestDependencies())
 
 let touched = 0
 const root = {ownerDocument: {defaultView: globalThis}}
