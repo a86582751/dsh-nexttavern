@@ -20,6 +20,22 @@ No existing feature is declared removed. Local embeddings and other unqualified 
 remain explicit open capabilities, not implied support. The evidence below
 does not establish arm64 runtime compatibility or full G0.
 
+## 0.3.0-rc.1 Android preview preparation
+
+The Android branch follows the public RC1 tag and packages the pinned
+Harness `0.2.2-rc.5`. Its ARM64 application ID remains
+`app.nexttavern.android` (Android 11+, API 30); RC1 uses version code 2.
+The separately named x86 diagnostic app and temporary CI key are not
+distribution inputs. An existing build signed with another key cannot be
+updated in place by Android; back up game data before considering removal.
+
+The workflow builds an unsigned ARM64 candidate for separate release
+signing. Build/ABI checks do not prove device execution. The x86_64 KVM
+workflow exercises a separately packaged diagnostic build; its evidence
+cannot qualify ARM64, full G0, or behavior against live providers. Check
+the GitHub Release and its Android-specific validation notes for the
+actual downloadable files and current qualification.
+
 ## November 14 integration maintenance
 
 This update integrates public `main` at `952dcf7` (maintained-source provenance
@@ -223,8 +239,8 @@ node android/tools/prepare-product.mjs --repo "$PWD" --out "$P" --abi "$ABI" \
   --pi-ai-archive "$INPUTS/earendil-works__pi-ai-0.85.1.tgz"
 ```
 
-The current public plan declares 26 owned packages, two Host overrides,
-and one skin. The overrides are `@deepseek-ai/dsh-attachment-local@0.1.7-rc.2`
+The RC1 Android plan declares 25 owned packages, two Host overrides,
+and one skin. The overrides are `@deepseek-ai/dsh-attachment-local@0.2.2-rc.5`
 and the maintained `node-addon-system@0.1.2` Android atomic publication wrapper,
 retaining upstream flock behavior. The attachment override
 stops its upload-directory durability walk at the installer-supplied app-data

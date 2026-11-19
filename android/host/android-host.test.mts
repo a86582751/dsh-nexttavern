@@ -94,7 +94,7 @@ test('activation is nonblocking; READY waits for actual product readiness and us
   f.product.resolve()
   await tick()
   assert.deepEqual(f.records, [{ protocol: PROTOCOL, generation: 'current-generation', pid: process.pid,
-    event: 'READY', url: 'http://127.0.0.1:41327/?token=private-test-token', hostVersion: '0.1.7-rc.2' }])
+    event: 'READY', url: 'http://127.0.0.1:41327/?token=private-test-token', hostVersion: '0.2.2-rc.5' }])
   assert.equal(f.consoleLines.length, 0)
 }))
 
