@@ -1,6 +1,6 @@
 # Changelog
 
-按日期倒序，同日按主题合并。**开发源码、文档发布与产品发行分别标明**；旧条目中的版本、计划和验证范围均指当日状态，不能作为当前支持承诺。0.3 仍在开发，当前详情见 [0.3 开发日志](DEVELOPMENT-0.3.md)。
+按日期倒序，同日按主题合并。**开发源码、文档发布与产品发行分别标明**。旧条目中的版本、计划和验证范围均指当日状态。0.3.0-rc.1 已发布，兼容范围与验收见 [0.3 开发日志](DEVELOPMENT-0.3.md)。
 
 本页合并重复流水，保留用户可见变化、迁移要求和验证限制。完整清理前记录见 [2026-10-24 历史快照](https://github.com/a86582751/dsh-nexttavern/blob/d84a35c41189846faaca5643a88a1949fcff776d/CHANGELOG.md)，可追溯原始测试数字、失败记录和候选演变。
 
@@ -9,9 +9,9 @@
 ### v0.3.0-rc.1
 
 - 公开发布首个 0.3 候选版。最低支持 DeepSeek Harness 0.2.2-rc.5，覆盖 Web 与官方 Windows Desktop。0.2.x 玩家先导出资料，再使用独立目录。
-- 社区卡可预览作者开场，呈现兼容的正文美化、状态栏、作者界面和多媒体。独立世界书、社区预设、Native 1.2 以及 EJS、MVU、Ruby 的支持范围见作者手册。
+- 社区原卡可选择作者开场，打开卡内建角、状态栏或终端。MVU 数值随剧情结算并随世界线恢复，Ruby 分析可按开局、轮次或关键词触发并供后续剧情引用。独立世界书支持绑定和触发，社区 JSON 预设可按全局或会话应用。EJS 与 Native 1.2 的入口也已补充。[0.3 能力与使用入口](README.md#核心能力)
 - 侧边聊天、导演笔记、混合检索和世界线导出服务于长篇。修复保存模型供应商时的白屏、Vertex 传输冲突及正文嵌套滚动。
-- The first public 0.3 release candidate brings authored openings, supported author interfaces, structured Worldbooks, community presets, Native 1.2, and long-form tools to Harness 0.2.2-rc.5 and newer. See the [release notes](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) for installation and migration.
+- The first public 0.3 candidate brings authored openings, interactive author pages, persistent MVU state, scheduled Ruby analysis, standalone Worldbooks, EJS, community presets, and Native 1.2 to Harness 0.2.2-rc.5 and newer. [What’s new](README.en.md#whats-new-in-03) · [Installation and migration](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1)
 
 - 开发版修复共享阅读区把主题内边距加到可用宽度之外的问题。官方主题和酒馆主题下均可用外层滚动阅读长正文。
 - The development build fits themed Reader padding within the available width. Long prose scrolls in the main reading area with either the official or Tavern theme.

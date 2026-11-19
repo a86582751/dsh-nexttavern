@@ -2,27 +2,31 @@
 
 [简体中文](README.md) · **English**
 
-**NextTavern is a long-form roleplay plugin for DeepSeek Harness.** Play from a community card’s authored opening, use Worldbooks and memory to carry details across a story, then branch the worldline or export the manuscript and your own character card.
+**NextTavern is a long-form roleplay plugin for DeepSeek Harness.** Import a community card, choose an authored opening, and play through the card’s own interface in Tavern. State, Worldbooks, and analysis can carry changes into later scenes. Branch from a saved point or export the manuscript and your character card.
 
 **0.3.0-rc.1** · **DeepSeek Harness 0.2.2-rc.5** or newer · Web / official Windows Desktop · GPL-3.0-only
 
-[GitHub release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) · [Install](#one-click-install) · [Get started](#getting-started) · [Website](https://a86582751.github.io/dsh-nexttavern/) · [Changelog](CHANGELOG.md) · [Screenshots](SCREENSHOTS.md) · [Report an issue](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
+[GitHub release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) · [Install](#one-click-install) · [What’s new](#whats-new-in-03) · [Capabilities](#capabilities) · [Get started](#getting-started) · [Website](https://a86582751.github.io/dsh-nexttavern/) · [Changelog](CHANGELOG.md) · [Screenshots](SCREENSHOTS.md) · [Report an issue](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
 ![NextTavern 0.3 home with the bundled skin enabled](screenshots/v03-cover.webp)
 
 ## What’s new in 0.3
 
-| What you want to do | Where to start |
+NextTavern 0.2.9 could already import community cards, preserve the original, consult Worldbooks, render static styling, and apply built-in writing styles. Version 0.3 brings authored openings, interactive pages, state changes, and analysis into the story workflow. On a card with character creation, pick an opening, complete the card’s setup, and continue on that worldline.
+
+| What changed in 0.3 | What you can do |
 | --- | --- |
-| Play a community card | Upload an original PNG or JSON. Preview and select an opening, then use the card’s supported Reader styling, status panels, interactive pages and media. |
-| Organize settings and presets | Import structured Worldbooks and bind them to a profile, character or chat. Community presets organize prompt entries, feature groups, sampling settings and regex rules. |
-| Continue a long story | Director notes, compaction and retrieval draw from the story text. Use side chat to discuss the plot and settings while keeping the main story under your control. |
-| Create and share | Native 1.2 packages characters, openings, author assets and workflows. Export the current card, the original import, or a manuscript from a selected worldline. |
-| Configure models and author workflows | Supported EJS, MVU and Ruby workflows work with native state. Choose separate models for story, memory and auxiliary tasks. Compatibility depends on the card’s APIs and selected model provider. |
+| [Community card import and authored openings](#community-card-import-and-authored-openings) | Preview the default and alternate openings. Play the chosen text with your player name and the values defined for that opening. |
+| [Author interfaces and interaction](#author-interfaces-and-interaction) | Use a card’s character creation form, choice buttons, and status panels in Tavern. Reopen recognized floating interfaces from Frontend Settings. |
+| [MVU game state](#mvu-game-state) | Let items, relationships, and attributes change with the story. Branch from a saved point, inspect the resulting values, or edit them directly. |
+| [Ruby extra analysis](#ruby-extra-analysis) | Schedule analysis by story turn and keywords. Reuse published results in later scenes, or run a task and switch presets from Tavern Management. |
+| [Structured Worldbooks and EJS](#structured-worldbooks-and-ejs) | Import a standalone Worldbook and bind it to a profile, character, or chat. Use triggers and templates to choose what the model sees this turn. |
+| [Community presets and regex](#community-presets-and-regex) | Import community JSON presets and arrange prompts, feature groups, macros, and regex rules at the global or conversation level. |
+| [Native authoring, worldlines, and side chat](#native-authoring-worldlines-and-side-chat) | Edit and share cards in Native 1.2, discuss or revise the setting in side chat, then continue the story and export the selected worldline’s manuscript. |
+
+The playable 0.3 build was tested with five additional original community cards, from authored opening through the first story turn. Checks covered the features each card used, including numerical state, status panels, author terminals, and continued play. Compatibility depends on the card’s APIs, external resources, and model provider. [Development and real-card testing](DEVELOPMENT-0.3.md)
 
 When moving from 0.2.x, keep the original environment, export the cards or manuscripts you need, and use a fresh home and workspace. [Migration and rollback](#update-uninstall-and-rollback)
-
-Card authors can read the [community-card and Worldbook guide](COMMUNITY-CARDS.md), [Native 1.2 and EJS guide](NATIVE-CARD-FORMAT.md), [state, MVU and Ruby guide](NATIVE-STATE.md), and [community presets and regex guide](COMMUNITY-PRESETS.md). See the [reference-card index](preset/reference/README.md) for two complete examples.
 
 ## One-click install
 
@@ -92,26 +96,50 @@ After import, select an authored opening and open the Tavern tab for the card’
 
 ## Capabilities
 
-| Capability | What you get |
+### Community card import and authored openings
+
+Import an original SillyTavern or TauriTavern PNG or JSON. NextTavern saves the uploaded file and brings the characters, embedded lore, opening choices, and supported author extensions into the session. Once selected, the author’s text becomes the first Story with the matching initial values and identity macros. The import report shows which extensions were recognized. [Community card guide](COMMUNITY-CARDS.md)
+
+### Author interfaces and interaction
+
+Use author-built forms, status panels, or terminals beside the story in Tavern. Reader executes author HTML, CSS, and JavaScript in an isolated browser environment. Supported Helper APIs connect buttons to story input, variables, characters, or Worldbooks. Pictures and audio depend on the author’s resource links. Frontend Settings can reopen recognized floating interfaces. [Author pages and script support](COMMUNITY-CARDS.md)
+
+![An author-built interactive interface running in Tavern](screenshots/v03-author-interface.webp)
+
+### MVU game state
+
+A card can set different starting stamina for each opening, then use supported MVU updates and schemas to change it as the story progresses. Committed attributes, items, and relationships carry forward to the next turn. A branch takes its values from the selected point, and reopening restores its committed state. You can inspect or edit the current values in the status panel. Settled update blocks are omitted from Reader prose and manuscript exports. [State initialization, updates, and recovery](NATIVE-STATE.md)
+
+![An authored MVU status panel shown with story prose](screenshots/v03-mvu.webp)
+
+### Ruby extra analysis
+
+Cards can declare startup tasks, turn positions, keywords, prompts, and output targets through supported `RubyAnalyzer` settings. A task reads the relevant story text, then can publish a successful result to the chat Worldbook for later scenes. Use Ruby Extra Analysis in Tavern Management to run an enabled task, switch presets, or view the result. Analysis runs as a separate model task. [Ruby scheduling and commands](NATIVE-STATE.md)
+
+![The Ruby Extra Analysis panel in Tavern Management](screenshots/v03-ruby.webp)
+
+### Structured Worldbooks and EJS
+
+Import a standalone SillyTavern Worldbook or edit structured entries from an imported card. Bind books to a profile, character, or chat. Authors can make entries constant, trigger them by keyword, chain related entries, and set ordering, insertion position, or budget. Supported EJS templates can read variables and Worldbooks when preparing dynamic text for the current turn. [Worldbooks and triggers](COMMUNITY-CARDS.md) · [Native card and EJS guide](NATIVE-CARD-FORMAT.md)
+
+### Community presets and regex
+
+Import a community JSON preset and arrange prompt text, order, feature groups, macros, history, and regex rules. Apply it globally or to a particular conversation. Sampling settings have a separate switch. Native writing styles retain system, blended, and card modes. Request regex changes material sent to the model. Display regex changes what the reader sees while keeping the source history available. [Community preset and regex guide](COMMUNITY-PRESETS.md)
+
+### Native authoring, worldlines, and side chat
+
+**Native 1.2** keeps characters, openings, Worldbooks, rules, and author settings in one document. Create a card in conversation or adapt source material, then export the edited card for a fresh session. The original upload remains separately available. [Interactive authoring](#interactive-authoring) · [Complete reference cards](preset/reference/README.md)
+
+**Side chat** can consult current characters, Worldbooks, story, and state. Discuss the next scene or explicitly save a change to the setting, then resume the main story. Branches retain their own story state and memory. Export a manuscript from the selected worldline. [Worldlines](#worldlines-and-branching) · [Manuscript and card export](#from-character-card-to-a-novel-you-can-take-away)
+
+### Long-form tools
+
+| Capability | Where to look |
 | --- | --- |
-| **One-click install** | One official plugin command installs the product and required components; Windows/Linux portable-runtime installers are also available. Old-version migration uses fresh directories. |
-| **SillyTavern / TauriTavern card import** | PNG `chara`/`ccv3` and JSON v1/v2/v3 cards, originals preserved, embedded worldbooks included. |
-| **Frozen settings + hard-cut window + director notes + hybrid retrieval** | Frozen settings injected every turn, never compacted; the window keeps recent complete prose and its tail; background notes carry a source hash and a worldline anchor; history recall in keyword, semantic or hybrid mode. |
-| **Style presets** | A dedicated presets page, scoped to the current conversation, a designated conversation or globally, three style modes, 16 built-in styles and 200 custom slots. |
-| **Long text to character card** | Read a long TXT as a playable card: intensive or coarse reading, source frozen with hashes, every research note traceable to the text, its own semantic index. |
-| **Embedding management** | Online: DashScope, OpenAI-compatible endpoints and OpenAI official. Local: BGE small zh, Qwen3-Embedding 0.6B, Jina Nano / Small INT8, Nomic q8 — no key and no network. |
-| **Multi-model collaboration** | Route prose and memory, card reading and writing, status, decisions and novel export to the models you choose. |
-| **Character agent cluster** | Major characters reason in separate contexts about language, behaviour and intent; the main agent reconciles them into the story. Per-character model overrides. |
-| **Decision card and status bar** | Action suggestions live in a standalone, collapsible, draggable decision card; the author's status HTML/CSS survives import, generation and restore. |
-| **Self-owned skin** | The first own skin, day and night themes, whole interface redrawn from one token set; installed but off by default. |
-| **Worldlines** | Regenerate, edit-and-send and switch versions inside one conversation; an explicit branch creates a new conversation. |
-| **Custom writing rules** | Manage core settings, characters, worldbook, story guidance, style and rules separately, controlling viewpoint, pacing, character knowledge and reply shape. |
-| **On-demand worldbook reading** | The main agent consults locations, factions and background details when the scene needs them, as a queryable reference rather than a fixed dump. |
-| **HTML/CSS reading presentation** | Card HTML/CSS, status templates and regex rules shape the reading view; prose streams while it is written, and author scripts run in a restricted environment. |
-| **One-click novel export** | Turn a chosen worldline into a novel manuscript, or export the full character card; results land in the resource library. |
-| **Resource library** | Cards, story files and exports in one place, sorted by time or name, refreshable and downloadable. |
-| **Interactive character creation** | Start from an idea and build world, cast, opening, style and layout in conversation, checked against twelve completeness items. |
-| **Usage and cache statistics** | Requests, input/output tokens, cache, speed and known cost by session, provider or model, including regenerations, embedding calls and failed attempts. |
+| **Memory and retrieval** | Fixed settings, recent full prose, and source-linked director notes form the story context. Recall older scenes by keyword, semantic, or hybrid search. [Memory](#memory-system) · [Embeddings](#embeddings) |
+| **Character perspectives** | Give key characters their own model or memory perspective. Review character records and optionally enable off-screen reasoning. [Character cluster](#character-cluster) |
+| **Models, reading, and usage** | Pick models per task, see requests, cache activity, and known cost, and use the Tavern skin, status bar, and decision card. [Usage](#usage-statistics) · [Status and decisions](#status-bar-and-decision-card) · [Amber skin](#the-bundled-skin) |
+| **Installation, adaptation, and resources** | Use the official plugin command or a portable Windows or Linux installer. Adapt long text into a card with intensive or coarse reading, and retrieve source files and exports from the resource library. [Install](#one-click-install) · [Long-text adaptation](#long-text-to-character-card) |
 
 ## Memory system
 

@@ -21,7 +21,7 @@ export const site = {
     // 看板娘头像与新手账排版共同组成网站品牌；素材来源见 art/README.md。
     brandMark: { mark: 'brand-mark.webp', word: 'brand-word.webp', wordAlt: 'NextTavern' },
     lang: 'zh-CN',
-    description: 'dsh-NextTavern 使用文档：一键安装、角色卡导入、记忆系统、预设与文风、世界线分支、小说导出与公网访问。',
+    description: 'dsh-NextTavern 0.3 使用文档。导入社区角色卡，体验作者开场与交互前端，使用 MVU 数值、Ruby 分析、结构化世界书和社区预设。',
     keywords: ['DSH', 'DeepSeek Harness', '角色扮演', '酒馆', 'SillyTavern', 'NextTavern'],
     repoUrl: 'https://github.com/a86582751/dsh-nexttavern',
     releasesUrl: 'https://github.com/a86582751/dsh-nexttavern/releases',
@@ -69,7 +69,7 @@ export const site = {
             { file: 'character-atlas.webp', theme: 'feature', alt: '不同角色各自书写、共同构成故事的角色集群概念插画' },
             { file: 'character-atlas-night.webp', theme: 'feature-night', alt: '夜间酒馆中不同角色的视角交织成共同的故事' }
         ],
-        lead: '带上一张角色卡，走进一个值得停留的世界。让 AI 查阅设定、整理记忆、推演人物；你掌握故事的方向，把每一次相遇写成下一章。',
+        lead: '选一段作者开场，在卡片自己的界面里建立角色。让数值和世界书随剧情变化，沿这条世界线续写，也可以从已保存的情节另开分支。',
         primary: { label: '开始你的故事', href: '#install' },
         secondary: { label: '翻开使用手册', href: 'quickstart.html' },
         facts: [
@@ -108,57 +108,51 @@ export const site = {
     features: [
         {
             icon: 'cards',
-            title: '从作者开场进入故事',
-            text: '导入 SillyTavern 或 TauriTavern 的原始 PNG／JSON 卡，选择作者开场，查看支持的交互界面、状态栏和正文美化。',
-            href: 'quickstart.html'
-        },
-        {
-            icon: 'memory',
-            title: '长篇不丢细节',
-            text: '固定设定不压缩、硬切窗口保留尾部正文、可追溯导演笔记，再加关键词／语义／混合三种历史召回。',
-            href: 'memory.html'
-        },
-        {
-            icon: 'palette',
-            title: '预设与文风',
-            text: '独立预设页，作用范围可选，三种文风模式与 16 种自带文风，200 个自定义槽位。',
-            href: 'presets.html'
-        },
-        {
-            icon: 'book',
-            title: '长文本转角色卡',
-            text: '把整部长篇读成一张可玩的卡：精读／粗读两档、原文冻结与哈希、每条笔记都能对上原文。',
-            href: 'card-adaptation.html'
-        },
-        {
-            icon: 'agents',
-            title: '多模型与角色集群',
-            text: '正文、记忆、读卡、状态、决策、导出各自路由到不同模型；主要角色可独立推演再由主代理协调。',
-            href: 'character-cluster.html'
-        },
-        {
-            icon: 'branch',
-            title: '世界线与分支',
-            text: '重新生成与修改后发送形成同对话世界线；也可显式分支到新对话，历史与来源都可追溯。',
-            href: 'worldlines.html'
-        },
-        {
-            icon: 'export',
-            title: '把故事带走',
-            text: '选定世界线导出小说稿，也能导出完整角色卡；结果进入资源库随时下载。',
-            href: 'export.html'
+            title: '社区卡导入与作者开场',
+            text: '导入原始 PNG／JSON 卡，预览作者给出的开场。选择后直接读作者原文，载入该开场的初值。',
+            href: 'capabilities.html#社区卡导入与作者开场'
         },
         {
             icon: 'skin',
-            title: '自有皮肤与阅读体验',
-            text: '整套界面重绘的琥珀皮肤，日间／夜间双主题；卡片自带 HTML/CSS 与状态栏模板同样保留。',
-            href: 'skin.html'
+            title: '作者前端与交互',
+            text: '在酒馆操作作者写的建角表单、终端与状态栏。接入受支持 Helper 接口的按钮可以推进剧情或更新设定。',
+            href: 'capabilities.html#作者前端与交互'
         },
         {
-            icon: 'install',
-            title: '一键安装与公网访问',
-            text: '官方一条插件命令整合安装，另有 Windows 与 Linux 便携运行时入口；公网访问按指南显式配置。',
-            href: 'install-windows.html'
+            icon: 'branch',
+            title: 'MVU 数值状态机',
+            text: '体力、物品和人物关系随剧情结算。打开历史分支或重启时，继续使用对应世界线保存的数值。',
+            href: 'capabilities.html#mvu-数值状态机'
+        },
+        {
+            icon: 'memory',
+            title: 'Ruby 额外分析',
+            text: '按开局、轮次或关键词运行分析，让结果供后续剧情使用。玩家也能手动运行任务、切换方案和查看结果。',
+            href: 'capabilities.html#ruby-额外分析'
+        },
+        {
+            icon: 'book',
+            title: '结构化世界书与 EJS',
+            text: '独立导入世界书，按全局、角色或聊天绑定。用触发规则与作者模板安排本轮剧情读到的设定。',
+            href: 'capabilities.html#结构化世界书与-ejs'
+        },
+        {
+            icon: 'palette',
+            title: '社区预设与正则',
+            text: '导入社区 JSON 预设，安排提示词、顺序、功能组、宏和正则。可为所有故事设默认值，也可为单个对话选方案。',
+            href: 'capabilities.html#社区预设与正则'
+        },
+        {
+            icon: 'export',
+            title: 'Native 1.2 卡片创作',
+            text: '在对话中创作或编辑一张卡，将人物、开场、世界书、规则和作者配置一起保存。可导出当前卡到新会话。',
+            href: 'capabilities.html#原生创作世界线与侧边聊天'
+        },
+        {
+            icon: 'agents',
+            title: '侧边聊天',
+            text: '在独立对话里讨论下一幕、查人物资料或明确保存设定，再回主剧情续写。',
+            href: 'development-0.3.html#侧边聊天给灵感和修改留一个专门的位置'
         }
     ],
     showcase: {

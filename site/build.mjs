@@ -975,10 +975,10 @@ function landingPage() {
         '<a class="text-link" href="' + chapter.href + '">' + chapter.label + ' <span>↗</span></a></div>',
         '</article>'
     ].join('\n')).join('\n');
-    const extraFeatures = site.features.filter(feature => !['memory', 'branch', 'agents'].includes(feature.icon)).map(feature => [
-        '<a class="field-entry" href="' + feature.href + '"><span class="field-icon">' + icon(feature.icon) + '</span>',
+    const releaseFeatures = site.features.map(feature => [
+        '<a class="field-entry" href="' + escapeHtml(feature.href) + '"><span class="field-icon">' + icon(feature.icon) + '</span>',
         '<span><b>' + escapeHtml(feature.title) + '</b><span>' +
-            feature.text.replace(/`([^`]+)`/g, '$1') + '</span></span><span class="entry-arrow">↗</span></a>'
+            escapeHtml(feature.text) + '</span></span><span class="entry-arrow">↗</span></a>'
     ].join('')).join('\n');
     const docMap = site.groups.map((group, index) => [
         '<section class="map-column"><p class="eyebrow">CHAPTER / ' + String(index + 1).padStart(2, '0') + '</p>',
@@ -1004,15 +1004,17 @@ function landingPage() {
         '</figure><span class="hero-coordinate" aria-hidden="true">A NEW CHAPTER AWAITS · EST. 2026</span></section>',
         '<div class="edition-strip"><div><span class="edition-label">旅人告示</span><a href="changelog.html">最新发行 <b>v' +
             escapeHtml(site.releaseVersion) + '</b> <span>↗</span></a></div><p>' + escapeHtml(site.developmentLine) +
+            ' · <a href="#whats-new">0.3 新变化 ↓</a>' +
             ' · <a href="' + site.releasesUrl + '/tag/v' + escapeHtml(site.releaseVersion) + '">下载与发行说明 ↗</a></p></div>',
+        '<section class="journal-section field-section" id="whats-new"><div class="section-heading compact">',
+        '<h2>0.3 新变化</h2>',
+        '<p>从选作者开场，到操作卡内界面、结算数值，再把这些变化带进后续剧情。</p></div>',
+        '<div class="field-list">' + releaseFeatures + '</div>',
+        '<a class="text-link field-all" href="capabilities.html">查看完整能力与支持范围 <span>↗</span></a></section>',
         '<section class="journal-section chapters-section" id="chapters"><div class="section-heading">',
         '<p class="eyebrow">THE STORY KEEPS UNFOLDING</p><h2>不止是对话。<br>是一段可以走下去的故事。</h2>',
         '<p>NextTavern 把原生 Agent Loop 带进长篇角色扮演。<br>让世界有来处，让选择有去向，让人物有自己的声音。</p></div>',
         chapters, '</section>',
-        '<section class="journal-section field-section"><div class="section-heading compact">',
-        '<p class="eyebrow">PACK YOUR JOURNEY</p><h2>也为你的旅途，备好这些。</h2>',
-        '<p>从一张角色卡，到一部可以带走的小说。</p></div><div class="field-list">' + extraFeatures + '</div>',
-        '<a class="text-link field-all" href="capabilities.html">查看完整能力与支持范围 <span>↗</span></a></section>',
         '<section class="journal-section install-section" id="install"><div class="install-intro">',
         '<p class="eyebrow">BEGIN YOUR NEXT CHAPTER</p><h2>旅程的第一步，<br>从这里开始。</h2>',
         '<p>选一个安装方式，准备好模型 API，再带上你喜欢的角色卡。</p>',
