@@ -63,14 +63,13 @@ dsh web --host 127.0.0.1
 
 ### Android
 
-**目标是一个独立安装、点开就能用的 Android APK，让酒馆直接运行在手机上。** 不需要 root，也不以安装 Termux、Ubuntu 或 PRoot 作为使用前提；这不是让手机远程连接一台必须常开的电脑。
+首个 Android 预览包面向 **Android 11 及以上的 ARM64 手机**（`arm64-v8a`）。[下载 APK](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-0.3.0-rc.1-android-arm64.apk) · [SHA-256 校验](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-0.3.0-rc.1-android-arm64.apk.sha256) · [本包源码](https://github.com/a86582751/dsh-nexttavern/tree/f23fe34609ca88eb7fbe15c0e1656cf0c8355f45)。
 
-- **怎么实现：** 用原生 Android 外壳管理启动、停止和应用生命周期，内置可直接运行于 Android 的独立 Node.js（Bionic）引擎，再用 WebView 显示现有酒馆界面。我们会继续适配手机操作，但不是把整套界面重写成原生 Android 控件。
-- **本机运行不等于离线 AI：** 目标是让引擎和故事数据留在手机本地；生成故事仍需配置自己的在线模型服务与 API Key。除非另有明确支持，不代表手机内置了可离线使用的大模型。
-- **现在做到哪了：** 已完成首轮安装包构建，并在硬件加速的 Android 模拟器中启动本地引擎、显示应用页面。角色卡导入、完整对话、数据保存与重启恢复等关键体验仍在逐项验证，**目前还没有面向普通玩家发布、可下载即玩的 Android APK**。目标优先支持 ARM64 手机；模拟器通过不代表已经完成真机适配。
-- **后台运行的边界：** Android 的省电策略和后台限制仍然存在，不承诺锁屏或切到其他应用后全天候持续运行；后台行为与恢复体验还需继续验证。
+无需 root、Termux、Ubuntu 或常开的电脑。应用内置 Harness 运行时，故事数据保存在手机上；生成故事仍需在应用里配置自己的在线模型服务和 API Key。
 
-想看后续进展，可以关注 [`android/mobile-terminal` 开发分支](https://github.com/a86582751/dsh-nexttavern/tree/android/mobile-terminal)。详细介绍见 [Android 手机端路线](DEVELOPMENT-ANDROID.md)。本节其余安装说明仍针对现有桌面／服务器版本，不是 Android APK 的安装步骤。
+ARM64 包已完成构建、签名和静态校验。x86_64 模拟器使用模拟服务验证了启动、自定义模型配置、流式聊天、嵌入建索引及重启后的语义检索；**尚无 ARM64 真机或真实模型验收**。建议预留约 2 GB 空间。若手机装过不同签名的内部测试包，不能直接覆盖；请先从旧版导出角色卡和作品或备份数据，再决定是否卸载。Android 后台限制仍可能中断运行。
+
+Android 源码在 [`android/mobile-terminal` 分支](https://github.com/a86582751/dsh-nexttavern/tree/android/mobile-terminal)独立维护。[Android 开发说明](https://github.com/a86582751/dsh-nexttavern/blob/android/mobile-terminal/DEVELOPMENT-ANDROID.md)
 
 ### 安装与模型费用
 
