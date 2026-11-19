@@ -559,7 +559,6 @@ const ffmpeg = optimize ? toolPath('ffmpeg') : null;
 const ffprobe = ffmpeg ? toolPath('ffprobe') : null;
 
 function optimizeImage(source: string, target: string, maxWidth: number) {
-  const png = target.replace(/\.webp$/i, '') + '.png';
   fs.mkdirSync(path.dirname(target), { recursive: true });
   if (ffmpeg) {
     try {
@@ -569,13 +568,14 @@ function optimizeImage(source: string, target: string, maxWidth: number) {
         '-c:v', 'libwebp', '-quality', '82', '-compression_level', '4',
         target
       ], { stdio: ['ignore', 'ignore', 'pipe'] });
-      return true;
+      return target;
     } catch (error) {
       warnings.push('ffmpeg could not convert ' + source + ': copying the original instead');
     }
   }
-  copyFile(source, png);
-  return false;
+  const original = target.replace(/\.webp$/i, path.extname(source));
+  copyFile(source, original);
+  return original;
 }
 
 function imageSize(file: string) {
@@ -607,9 +607,9 @@ function prepareMedia(sourcePaths: string[]) {
       continue;
     }
     const target = path.join(outDir, webp);
-    const converted = optimizeImage(source, target, src.startsWith('images/') ? 2000 : 1600);
-    const finalUrl = converted ? webp : webp.replace(/\.webp$/, '.png');
-    const size = imageSize(path.join(outDir, finalUrl));
+    const output = optimizeImage(source, target, src.startsWith('images/') ? 2000 : 1600);
+    const finalUrl = 'assets/media/' + path.basename(output);
+    const size = imageSize(output);
     mediaRecords.set(src, { url: finalUrl, ...(size ?? {}) });
   }
 }
@@ -796,7 +796,7 @@ function sidebar(activeId: string) {
     '  <p class="sidebar-title">文档目录</p>',
     groups,
     '  <div class="sidebar-footer">',
-    '    <p>当前发行 <b>' + escapeHtml(site.releaseVersion) + '</b>，GitHub 与 npm latest 同步。<br>0.3 开发中，尚未发布。</p>',
+    '    <p>当前发行 <b>' + escapeHtml(site.releaseVersion) + '</b><br>' + escapeHtml(site.harnessLine) + '</p>',
     '    <p><a href="' + site.repoUrl + '" target="_blank" rel="noopener noreferrer">GitHub 仓库 ↗</a></p>',
     '  </div>',
     '</aside>'
@@ -1086,7 +1086,8 @@ function landingPage() {
     '<span class="tape tape-one" aria-hidden="true"></span><span class="tape tape-two" aria-hidden="true"></span>',
     '</figure><span class="hero-coordinate" aria-hidden="true">A NEW CHAPTER AWAITS · EST. 2026</span></section>',
     '<div class="edition-strip"><div><span class="edition-label">旅人告示</span><a href="changelog.html">最新发行 <b>v' +
-      escapeHtml(site.releaseVersion) + '</b> <span>↗</span></a></div><p><a href="development-0.3.html">0.3 开发进展 <span>↗</span></a> · 开发中，尚未发布</p></div>',
+      escapeHtml(site.releaseVersion) + '</b> <span>↗</span></a></div><p>' + escapeHtml(site.developmentLine) +
+      ' · <a href="' + site.releasesUrl + '/tag/v' + escapeHtml(site.releaseVersion) + '">下载与发行说明 ↗</a></p></div>',
     '<section class="journal-section chapters-section" id="chapters"><div class="section-heading">',
     '<p class="eyebrow">THE STORY KEEPS UNFOLDING</p><h2>不止是对话。<br>是一段可以走下去的故事。</h2>',
     '<p>NextTavern 把原生 Agent Loop 带进长篇角色扮演。<br>让世界有来处，让选择有去向，让人物有自己的声音。</p></div>',
@@ -1107,9 +1108,10 @@ function landingPage() {
     '<p class="eyebrow">THE TRAVELER’S HANDBOOK</p><h2>一本手册，随时翻阅。</h2>',
     '<p>按你现在想做的事，找到下一页。</p></div><div class="doc-map">' + docMap + '</div></section>',
     '<section class="journal-section screenshot-invitation"><span class="viewfinder" aria-hidden="true">' + icon('skin') + '</span>',
-    '<div><p class="eyebrow">A GLIMPSE INSIDE</p><h2>故事之外，看看酒馆的模样。</h2>',
-    '<p>游玩、记忆、世界线与日夜主题的实机截图，收在单独一册。</p></div>',
-    '<a class="button ghost" href="screenshots.html">翻开截图集 <span>↗</span></a></section>',
+    '<div><h2>' + escapeHtml(site.showcase.title) + '</h2><p>' + escapeHtml(site.showcase.lead) + '</p></div>',
+    '<a class="button ghost" href="' + site.showcase.link.href + '">' + escapeHtml(site.showcase.link.label) + ' <span>↗</span></a>',
+    '<img class="release-preview" src="' + mediaRecords.get(site.showcase.cover.src)!.url + '" alt="' +
+      escapeHtml(site.showcase.cover.alt) + '" loading="lazy" decoding="async"></section>',
     '<p class="closing-line">故事未完。我们，下一页见。<span>✦</span></p></main>',
     '<div class="home-mobile-nav">' + sidebar('index') + '</div>'
   ].join('\n');
@@ -1123,7 +1125,7 @@ function landingPage() {
 /* ------------------------------------------------------------------ run */
 
 function collectImageSources() {
-  const sources = new Set<string>();
+  const sources = new Set<string>([site.showcase.cover.src]);
 
   for (const page of allPages) {
     const markdown = bodyFor(page);

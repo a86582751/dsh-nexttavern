@@ -2,6 +2,25 @@
 
 维护者提供并授权用于仓库展示。截图包含个人主题、模型配置和示例故事，不代表默认安装外观或性能承诺；主题素材不随安装器配置。导出截图裁去本机路径栏。
 
+## 0.3 实机截图
+
+### 社区卡开场与作者界面
+
+![导入社区卡后选择作者开场](screenshots/v03-openings.webp)
+![酒馆内运行的作者互动界面与多媒体](screenshots/v03-author-interface.webp)
+
+### 正文美化、MVU 状态栏与 Ruby
+
+![作者正则美化后的剧情正文](screenshots/v03-prose.webp)
+![剧情正文下方的 MVU 状态栏](screenshots/v03-mvu.webp)
+![酒馆管理中的 Ruby 分析设置](screenshots/v03-ruby.webp)
+
+### 侧边聊天、结构化世界书与社区预设
+
+![侧边聊天与主故事同屏](screenshots/v03-side-chat.webp)
+![结构化世界书条目的编辑设置](screenshots/v03-worldbook.webp)
+![社区预设管理与导入](screenshots/v03-presets.webp)
+
 ## 沉浸式阅读体验
 
 ![沉浸式阅读体验](screenshots/immersive.png)

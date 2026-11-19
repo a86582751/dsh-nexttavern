@@ -6,6 +6,13 @@
 
 ## 2026-11-20
 
+### v0.3.0-rc.1
+
+- 公开发布首个 0.3 候选版。最低支持 DeepSeek Harness 0.2.2-rc.5，覆盖 Web 与官方 Windows Desktop。0.2.x 玩家先导出资料，再使用独立目录。
+- 社区卡可预览作者开场，呈现兼容的正文美化、状态栏、作者界面和多媒体。独立世界书、社区预设、Native 1.2 以及 EJS、MVU、Ruby 的支持范围见作者手册。
+- 侧边聊天、导演笔记、混合检索和世界线导出服务于长篇。修复保存模型供应商时的白屏、Vertex 传输冲突及正文嵌套滚动。
+- The first public 0.3 release candidate brings authored openings, supported author interfaces, structured Worldbooks, community presets, Native 1.2, and long-form tools to Harness 0.2.2-rc.5 and newer. See the [release notes](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) for installation and migration.
+
 - 开发版修复共享阅读区把主题内边距加到可用宽度之外的问题。官方主题和酒馆主题下均可用外层滚动阅读长正文。
 - The development build fits themed Reader padding within the available width. Long prose scrolls in the main reading area with either the official or Tavern theme.
 

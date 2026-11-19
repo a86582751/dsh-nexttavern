@@ -21,9 +21,9 @@ export const site = {
     issuesUrl: 'https://github.com/a86582751/dsh-nexttavern/issues/new/choose',
     licenseName: 'GPL-3.0-only',
     licenseUrl: 'https://github.com/a86582751/dsh-nexttavern/blob/main/LICENSE',
-    releaseVersion: '0.2.9-rc.4',
-    developmentLine: '0.3 开发中，抱歉让大家久等了',
-    harnessLine: 'DeepSeek Harness 0.1.7-rc.2',
+    releaseVersion: '0.3.0-rc.1',
+    developmentLine: '0.3 首个公开候选版',
+    harnessLine: 'DeepSeek Harness 0.2.2-rc.5+',
     hero: {
         eyebrow: 'NEXT TAVERN · 你的下一段冒险',
         title: '是非真伪，选择无关错对',
@@ -66,26 +66,26 @@ export const site = {
         primary: { label: '开始你的故事', href: '#install' },
         secondary: { label: '翻开使用手册', href: 'quickstart.html' },
         facts: [
-            { label: '最新发行', value: '0.2.9-rc.4' },
+            { label: '最新发行', value: '0.3.0-rc.1' },
             { label: '运行宿主', value: 'DeepSeek Harness' },
             { label: '许可证', value: 'GPL-3.0-only' }
         ]
     },
     quickInstall: {
         title: '一条命令开始',
-        lead: 'GitHub 与 npm latest 均为 0.2.9-rc.4。此版修复长会话请求超限后的压缩恢复，以及持续推理被误判超时；保留 rc.3 的安装改进和慢模型首响应等待设置。先安装 Harness 0.1.7-rc.2，再从正式 npm 包 dsh-nexttavern 安装 web 酒馆；从 0.2.5 迁移时先导出并使用新目录。',
+        lead: '需要 DeepSeek Harness 0.2.2-rc.5 或更新版本，支持 Web 和官方 Windows Desktop。从 0.2.x 迁移时，先导出卡片或小说，再使用新的 home 和工作区。',
         tabs: [
             {
                 id: 'manual',
                 label: '官方插件安装',
-                note: 'Node.js 24+；第三方市场目录仍待同步，请使用正式 npm 包名。所需组件随包准备，皮肤默认关闭。',
+                note: 'Web CLI 需要 Node.js 24.9+。已有兼容宿主可直接运行第二行。官方 Windows Desktop 可在插件设置中安装，首次安装后重启。',
                 primary: { label: '目录与恢复步骤', href: 'manual-install.html' },
-                code: 'npm install -g @deepseek-ai/dsh@0.1.7-rc.2\ndsh plugin --profile web add dsh-nexttavern\ndsh web --host 127.0.0.1'
+                code: 'npm install -g @deepseek-ai/dsh@0.2.2-rc.5\ndsh plugin --profile web add dsh-nexttavern@0.3.0-rc.1\ndsh web --host 127.0.0.1'
             },
             {
                 id: 'windows',
                 label: 'Windows',
-                note: '0.2.9-rc.4 延续安装／就绪修复并修复 Issue #17。请选新目录；ARM64 真机仍未验证。',
+                note: '便携安装器准备独立 Web 环境。选择 x64 或 ARM64 版本，迁移时使用新目录。',
                 primary: { label: 'Windows 安装指南', href: 'install-windows.html' },
                 code: 'NextTavern-Setup.exe'
             },
@@ -94,15 +94,15 @@ export const site = {
                 label: 'Linux',
                 note: '自包含脚本，x86_64 与 aarch64（glibc），不需要 root，也不需要包管理器。',
                 primary: { label: 'Linux 安装指南', href: 'install-linux.html' },
-                code: 'curl -fsSLO https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup.sh\nsh NextTavern-Setup.sh --root "$HOME/NextTavern-0.2.9-rc.4"'
+                code: 'curl -fsSLO https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup.sh\nsh NextTavern-Setup.sh --root "$HOME/NextTavern-0.3"'
             }
         ]
     },
     features: [
         {
             icon: 'cards',
-            title: '卡片即开即用',
-            text: '直接读取 SillyTavern / TauriTavern 的 PNG `chara`／`ccv3` 与 JSON v1／v2／v3 人物卡，内嵌世界书一并保留。',
+            title: '从作者开场进入故事',
+            text: '导入 SillyTavern 或 TauriTavern 的原始 PNG／JSON 卡，选择作者开场，查看支持的交互界面、状态栏和正文美化。',
             href: 'quickstart.html'
         },
         {
@@ -155,9 +155,10 @@ export const site = {
         }
     ],
     showcase: {
-        title: '看一眼实际体验',
+        title: '0.3 酒馆实机',
         lead: '截图由维护者提供，包含个人主题与示例故事，不代表默认安装外观。',
         link: { label: '全部截图', href: 'screenshots.html' },
+        cover: { src: 'screenshots/v03-author-interface.webp', alt: '酒馆内运行的作者互动界面与多媒体' },
         items: [
             { src: 'screenshots/play.png', title: '沉浸式游玩', caption: '正文、状态栏与决策卡' },
             { src: 'screenshots/worldlines.png', title: '世界线与分支', caption: '同一对话里管理版本与分支' },

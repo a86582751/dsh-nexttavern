@@ -1,15 +1,9 @@
 # Contributing
 
-The current 0.2.9-rc.4 release targets Harness `0.1.7-rc.2` / web with Session V4.
-It includes the unified plugin, maintained TypeScript sources and generated
-modules. The GitHub `main` branch may also carry unfinished 0.3 SillyTavern
-compatibility work; use tag `v0.2.9-rc.4` to reproduce this release and read
-[CHANGELOG](CHANGELOG.md) for its validation boundaries.
-
-The 0.2.9 release line fixes installation and distribution; rc.4 also repairs request-pressure recovery and first-response timeout handling. Use the
-official npm package `dsh-nexttavern` or its Release archive for installation;
-source rebuilding is a contributor workflow. The third-party market catalog
-needs a separate update and is not a declaration of supported hosts.
+NextTavern `0.3.0-rc.1` requires Harness `0.2.2-rc.5` or newer and covers Web and
+official Windows Desktop. Install it from npm or GitHub Releases. For a release
+rebuild, use the complete public source archive or tag `v0.3.0-rc.1`; the `main`
+branch continues to change. See [CHANGELOG](CHANGELOG.md) for version details.
 
 This package carries TypeScript/MTS sources and their generated JavaScript/MJS so contributors can verify the files it ships. Its local mapping is `tools/build-map.json`; the quality registry and projection map are `tools/check-registry.json` and `tools/check-map.json`.
 
@@ -57,7 +51,6 @@ This public tree cannot prove a live DeepSeek Harness load, production deploymen
 
 ## Reporting
 
-Bugs and install problems should distinguish the current 0.2.9 release line
-(`0.1.7-rc.2`) from the unfinished 0.3 development work, and
-include the operating system and install method (Release tarball, one-click
-installer or npm).
+For bugs and installation problems, include the NextTavern and Harness versions,
+host profile, operating system, and installation method (Release archive,
+portable installer or npm).

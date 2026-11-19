@@ -1152,6 +1152,7 @@ body {
 .screenshot-invitation .eyebrow { margin-bottom: 8px; }
 .screenshot-invitation h2 { margin: 0 0 10px; font: 500 23px/1.6 var(--font-serif); color: var(--text-strong); }
 .screenshot-invitation p:last-child { color: var(--muted); font-size: 11px; margin: 0; }
+.release-preview { grid-column: 1 / -1; display: block; width: 100%; height: auto; border-radius: 12px; }
 .viewfinder { display: grid; place-items: center; width: 65px; height: 65px; border: 1px solid var(--sage);
   transform: rotate(-6deg); color: var(--sage); border-radius: 50%; }
 .viewfinder svg { width: 36px; height: 36px; }
@@ -1697,6 +1698,7 @@ body {
   .screenshot-invitation { display: block; padding: 25px; margin-top: 0; }
   .screenshot-invitation h2 { font-size: 21px; }
   .screenshot-invitation .button { margin-top: 23px; }
+  .release-preview { margin-top: 24px; }
   .screenshot-invitation p:last-child { font-size: 14px; }
   .text-link { min-height: 44px; font-size: 13px; }
   .nav-group-label, .nav-links a { font-size: 13px; min-height: 44px; }
