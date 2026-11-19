@@ -6,6 +6,8 @@
 
 ## 2026-11-19
 
+- 统一酒馆管理的世界书、预设和角色集群页面。世界书可滚动到末尾，导入与绑定有独立入口。预设的选中标签和文件按钮保持清晰对比，角色集群的运行开关、人物名单与私有资料更容易查找。
+- Tavern Management now uses consistent controls across Worldbook, Presets, and Character Cluster. Worldbook scrolls through its full content and has a dedicated import and binding view. Preset tabs and file controls use readable contrast, and Character Cluster separates runtime settings from the roster and private character details.
 - 开发版按每次剧情实际需要组装消息。渠道明确拒绝角色或位置时，恢复卡显示原因，并提供切换渠道和直接打开干净世界线的操作。玩家确认后发送保留的输入。
 - Story requests are assembled with the message roles and positions each turn uses. An explicit provider rejection shows the reason and offers a channel change and direct access to the prepared worldline. The player chooses when to send the retained input.
 - 修复桌面模型供应商保存时误重启酒馆的问题。已挂载的供应商直接接收设置更新，会话界面保持可用。
