@@ -101,7 +101,8 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       attachmentCount:messages.reduce((total,message)=>total+(message.content??[]).filter(block=>block.type==='image').length,0),
       time:events[link.refs[0]!.insertSeq]?.time}:activity.pendingPlayer
     return {...activity,stage:'paused',pendingPlayer,
-      protocolFailure:{...providerFailure,requestDispatched:true,recovery:'clean-worldline'}}
+      protocolFailure:{...providerFailure,requestDispatched:true,recovery:'clean-worldline',
+        attemptId:`${diagnostic.preparationId}:${diagnostic.attemptGeneration}`}}
   }
   const readRoleplayState = async (session: StateSession) => {
     await awaitImportBarrier(session.id)

@@ -274,7 +274,7 @@ export function apply(ctx: ClientContext) {
         isRoleplaySession,
         peekState,
         replaceActivityFailures,
-        prepareCleanWorldline:sessionId=>prepareCleanWorldline(sessionId),
+        prepareCleanWorldline:(sessionId,recoveryKey)=>prepareCleanWorldline(sessionId,recoveryKey),
         readCleanWorldline:sessionId=>readCleanWorldline(sessionId),
         openPreparedWorldline:async(childSessionId,sourceSessionId)=>{
           if(resolveActiveSessionId()!==sourceSessionId)throw Error('请回到原世界线后重试。')

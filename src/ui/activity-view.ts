@@ -31,7 +31,7 @@ export interface ActivityState extends Record<string, unknown> {
   sessionId?: unknown
   backgroundJobs?: unknown
   pendingPlayer?: unknown
-  protocolFailure?: {code:string;requestDispatched:boolean;recovery:string;reason?:string}
+  protocolFailure?: {code:string;requestDispatched:boolean;recovery:string;reason?:string;attemptId?:string}
   extensionFailures?:readonly RoleplayExtensionFailureV1[]
 }
 
@@ -139,7 +139,7 @@ export interface ActivityComponentDependencies {
   React: typeof ReactAPI
   isRoleplaySession: (sessionId: string) => boolean
   peekState: (sessionId: string) => ActivitySnapshot | null | undefined
-  prepareCleanWorldline?(sessionId:string):Promise<{childSessionId:string;refreshWarning?:string}>
+  prepareCleanWorldline?(sessionId:string,recoveryKey:string):Promise<{childSessionId:string;refreshWarning?:string}>
   readCleanWorldline?(sessionId:string):Promise<{childSessionId?:string;error?:string}|null>
   openPreparedWorldline?(childSessionId:string,sourceSessionId:string):Promise<void>
   replaceActivityFailures?(sessionId:string,failures:readonly RoleplayExtensionFailureV1[]):void
@@ -201,7 +201,7 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
     const recoverySession=activity&&typeof activity.sessionId==='string'&&!activity.running
       &&failure?.requestDispatched&&failure.recovery==='clean-worldline'
       ?activity.sessionId:null
-    const key=`${recoverySession}:${pending?.messageId??''}`
+    const key=`${recoverySession}:${failure?.attemptId??pending?.messageId??''}`
     React.useEffect(()=>{
       if(!recoverySession||!readCleanWorldline)return
       let cancelled=false
@@ -248,7 +248,7 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
               setPreparation({key,status:'preparing'})
               await copy()
               try {
-                const result=await prepareCleanWorldline(sessionId)
+                const result=await prepareCleanWorldline(sessionId,key)
                 setPreparation({key,status:'ready',...result})
               }catch(error) {
                 setPreparation({key,status:(error as {operationStateUnknown?:boolean})?.operationStateUnknown?'unknown':'failed',

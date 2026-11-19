@@ -12,6 +12,7 @@ const cleanBranchBusinessFailures=new Set([
   'CLEAN_BRANCH_FAILED_INPUT_REQUIRED','CLEAN_BRANCH_COMPLETED_BOUNDARY_MISSING','CLEAN_BRANCH_DIAGNOSIS_CHANGED',
   'CLEAN_BRANCH_OPERATION_UNAVAILABLE','CLEAN_BRANCH_OPERATION_ID_REQUIRED','CLEAN_BRANCH_OPERATION_CHANGED',
   'CLEAN_BRANCH_FROZEN_SOURCE_UNAVAILABLE','CLEAN_BRANCH_CHILD_UNAVAILABLE','CLEAN_BRANCH_MODEL_OWNER_UNAVAILABLE',
+  'CLEAN_BRANCH_INPUT_CHANGED',
 ])
 
 export function registerBranchRoutes(deps: BranchRoutesDependencies) {
@@ -141,17 +142,27 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
   }
   async function inspectCleanBranch(sessionId:string):Promise<CleanBranchInspection> {
     const observed=await captureCleanInspection(sessionId)
+    const existing=existingCleanOperation(sessionId,observed.diagnostic)
+    if(existing?.clean)return {ok:true,branchId:sessionId,operationId:existing.operationId,
+      revision:existing.clean.expectedRevision,selectionRevision:existing.clean.selectionRevision,
+      diagnostic:existing.clean.diagnostic,completedBoundary:{
+        turn:existing.anchor.sourceTurn,turnEndSeq:existing.anchor.previousTurnEndSeq!,
+      },model:existing.clean.model}
     return {ok:true,branchId:observed.source.id,operationId:randomUUID(),revision:observed.revision,
       selectionRevision:observed.selectionRevision,diagnostic:observed.diagnostic,
       completedBoundary:observed.completedBoundary,model:observed.model}
   }
+  const sameFailedInput=(saved:CleanBranchInspection['diagnostic']|undefined,
+    current:CleanBranchInspection['diagnostic']|null|undefined)=>
+    !!current&&current.sourceKind==='story'&&['unknown','stopped'].includes(current.status)
+    &&saved?.preparationId===current.preparationId&&saved.attemptGeneration===current.attemptGeneration
+
   function existingCleanOperation(sessionId:string,diagnostic:CleanBranchInspection['diagnostic']) {
     const catalog=ctx.get('tavernConversations')
     let existing:StoredBranchOperation|undefined
     catalog?.findChildOperation(sessionId,'prepare-clean-branch',operationId=>{
       const operation=readOperation(forkOperationKey(operationId))
-      const failure=operation?.clean?.diagnostic
-      if(failure?.preparationId!==diagnostic.preparationId||failure?.attemptGeneration!==diagnostic.attemptGeneration
+      if(!sameFailedInput(operation?.clean?.diagnostic,diagnostic)
         ||operation?.state==='failed'||operation?.state==='aborted')return false
       existing=operation
       return true
@@ -195,6 +206,9 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
       if(operation) {
         if(operation.kind!=='prepare-clean-branch'||operation.anchor.sourceSessionId!==request.sessionId
           ||operation.clean?.expectedRevision!==request.expectedRevision)throw Error('CLEAN_BRANCH_OPERATION_CHANGED')
+        if(operation.reservedChildSessionId
+          &&!sameFailedInput(operation.clean.diagnostic,deps.readInputRecoveryDiagnostic?.(request.sessionId)))
+          throw Error('CLEAN_BRANCH_INPUT_CHANGED')
       }
       // Reservation freezes Source and the Native cut. Only a new reservation
       // must still match live diagnosis; resumption uses its saved DATA/model.

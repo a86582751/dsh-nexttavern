@@ -153,6 +153,19 @@ const registration={operationId:'operation',childSessionId:'child',requestId:'re
   assert.equal(h.calls.filter(body=>body.action==='inspect-clean-branch').length,1)
 }
 {
+  let inspections=0
+  const h=actionHarness(body=>{
+    if(body.action==='inspect-clean-branch')return {ok:true,operationId:`attempt-${++inspections}`,revision:'observed'}
+    if(body.action==='clean-branch-status')return {ok:true,status:'prepared',childSessionId:'old-child'}
+    assert.equal(body.action,'prepare-clean-branch')
+    return body.operationId==='attempt-1'?{http:409,ok:false,error:'CLEAN_BRANCH_CHILD_UNAVAILABLE'}:
+      {ok:true,status:'ready',childSessionId:'new-child'}
+  })
+  await assert.rejects(h.controller.prepareCleanWorldline('source','source:first'),error=>error.operationStateUnknown===true)
+  assert.deepEqual(await h.controller.prepareCleanWorldline('source','source:second'),{childSessionId:'new-child'})
+  assert.equal(inspections,2,'a newer failed input uses a fresh inspection in the same parent session')
+}
+{
   let preparations=0
   const h=actionHarness(body=>{
     if(body.action==='inspect-clean-branch')return {ok:true,operationId:'clean-operation',revision:'observed-revision'}

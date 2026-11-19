@@ -524,6 +524,7 @@ await test('clean branch owner retains frozen preparation across lost acknowledg
     assert.equal(pending.status,'prepared')
     assert.equal(pending.operationId,first.operationId)
     assert.equal(pending.expectedRevision,first.revision)
+    assert.equal((await f.api.inspectCleanBranch(f.parentId)).operationId,first.operationId)
     const ready=await (await prepare(second)).json()
     assert.equal(ready.status,'ready');assert.equal(ready.childSessionId,f.childId)
     assert.equal(f.calls.native,1,'overlapping buttons must resume the one reserved child after a business failure')
@@ -532,6 +533,9 @@ await test('clean branch owner retains frozen preparation across lost acknowledg
     assert.equal(restored.childSessionId,f.childId);assert.equal(restored.status,'ready')
     f.diagnostic.attemptGeneration++
     assert.equal((await (await post({action:'current-clean-branch-status'})).json()).status,null)
+    await assert.rejects(f.api.prepareCleanBranch({sessionId:f.parentId,operationId:first.operationId,
+      expectedRevision:first.revision},f.guard),/CLEAN_BRANCH_INPUT_CHANGED/)
+    assert.notEqual((await f.api.inspectCleanBranch(f.parentId)).operationId,first.operationId)
   }
   {
     const f=fixture()

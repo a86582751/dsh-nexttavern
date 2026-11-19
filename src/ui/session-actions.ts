@@ -224,21 +224,18 @@ export function createRoleplayActions({sessionsService,
   // Keep an unresolved write's identity across button retries. A lost response
   // must never be interpreted as permission to reserve another child.
   const cleanPreparations=new Map<string,{operationId:string;revision:string}>()
-  const rememberCleanPreparation = (sessionId:string,status:BranchResult) => {
+  const rememberCleanPreparation = (recoveryKey:string,status:BranchResult) => {
     if(status.status==='prepared'&&status.operationId&&status.expectedRevision)
-      cleanPreparations.set(sessionId,{operationId:status.operationId,revision:status.expectedRevision})
+      cleanPreparations.set(recoveryKey,{operationId:status.operationId,revision:status.expectedRevision})
   }
   const readCleanWorldline = async (sessionId:string) => {
     const status=await branchRequest({action:'current-clean-branch-status',sessionId})
     if(status.status==='ready'&&status.childSessionId)return {childSessionId:status.childSessionId}
-    if(status.status==='prepared'){
-      rememberCleanPreparation(sessionId,status)
-      return {error:status.error??'干净世界线尚未就绪，原输入仍保留。'}
-    }
+    if(status.status==='prepared')return {error:status.error??'干净世界线尚未就绪，原输入仍保留。'}
     return null
   }
-  const prepareCleanWorldline = (sessionId:string) => withSession(sessionId,async()=>{
-    let inspection=cleanPreparations.get(sessionId)
+  const prepareCleanWorldline = (sessionId:string,recoveryKey=sessionId) => withSession(sessionId,async()=>{
+    let inspection=cleanPreparations.get(recoveryKey)
     if(!inspection) {
       try{
         const observed=await branchRequest({action:'inspect-clean-branch',sessionId})
@@ -249,7 +246,7 @@ export function createRoleplayActions({sessionsService,
           throw new Error('当前世界线尚无已完成回合。请保留输入，切换兼容渠道后新建对话并重新载入角色卡。')
         throw error
       }
-      cleanPreparations.set(sessionId,inspection)
+      cleanPreparations.set(recoveryKey,inspection)
     }
     // The server owns diagnosis, source capture and child reservation. Retrying
     // a lost response keeps this operation identity; it never replays the input.
@@ -258,6 +255,10 @@ export function createRoleplayActions({sessionsService,
       prepared=await retryBranchMutation({action:'prepare-clean-branch',sessionId,
         operationId:inspection.operationId,expectedRevision:inspection.revision})
     }catch(error) {
+      if(errorDetails(error).message==='CLEAN_BRANCH_INPUT_CHANGED') {
+        cleanPreparations.delete(recoveryKey)
+        throw new Error('失败回合已变化。请从当前恢复卡重新准备。')
+      }
       // The read can recover a ready child even when every write response was
       // lost. A business failure can also leave a reserved child to resume.
       try {prepared=await branchRequest({action:'clean-branch-status',sessionId,operationId:inspection.operationId})}
@@ -267,17 +268,17 @@ export function createRoleplayActions({sessionsService,
           const current=await branchRequest({action:'current-clean-branch-status',sessionId}).catch(()=>null)
           if(current?.status==='ready'||current?.status==='prepared')prepared=current
           else if(current&&Number(errorDetails(error).status)<500) {
-            cleanPreparations.delete(sessionId)
+            cleanPreparations.delete(recoveryKey)
             throw error
           }
         }
       }
       if(prepared.status==='failed') {
-        cleanPreparations.delete(sessionId)
+        cleanPreparations.delete(recoveryKey)
         throw new Error(prepared.error??'干净世界线准备已失败。原输入仍保留，可以重新准备。')
       }
       if(prepared.status!=='ready') {
-        rememberCleanPreparation(sessionId,prepared)
+        rememberCleanPreparation(recoveryKey,prepared)
         const unknown:ActionError=new Error('准备结果尚未确认。可点击重试同一操作，原输入仍保留：'+String(errorDetails(error).message??error))
         unknown.operationStateUnknown=true
         throw unknown
@@ -285,7 +286,7 @@ export function createRoleplayActions({sessionsService,
     }
     if(prepared.status!=='ready'||!prepared.childSessionId)
       throw new Error(prepared.error??'干净世界线尚未就绪。原输入仍保留，请稍后重试。')
-    cleanPreparations.delete(sessionId)
+    cleanPreparations.delete(recoveryKey)
     let refreshWarning:string|undefined
     try{
       await sessionsService.refresh()
