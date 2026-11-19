@@ -322,6 +322,7 @@ async function until(predicate:()=>boolean,seconds:number,code:string):Promise<v
 }
 const ready=['本地服务运行中'];
 const settings=['设置','Settings'];
+const accountMenu=['账号菜单','Account menu'];
 const sidebar=['打开侧边栏','Open sidebar'];
 const webChrome=[...settings,...sidebar,'新建会话','New session'];
 const addProvider=['添加模型提供商','Add model provider'];
@@ -1416,23 +1417,38 @@ try {
   await until(()=>{if(onboarding())return false;return has(webChrome)},180,'WEBVIEW_APP_CONTROLS_NOT_EXPOSED');
   emit('passed');labels();
   stage='open-host-settings';
-  let sidebarRequested=false,settingsRequested=false,modelsRequested=false;
+  let sidebarRequested=false,accountRequested=false,settingsRequested=false,modelsRequested=false;
+  const hostControls=(names:string[])=>matches(names,true)
+    .filter(node=>node.package===pkg&&inWebView(node)&&visibleBounds(node));
+  const tapHostNavigation=(action:string,node:Node)=>{
+    emit('observed',{interaction:'host-settings-navigation',action,bounds:visibleBounds(node)});
+    tapNode(node);
+  };
   await until(()=>{
     // The Host can mount onboarding after its navigation chrome is visible.
-    // A modal may have intercepted the previous touch; resume the visible path
-    // after it is dismissed rather than treating that touch as completed work.
+    // Never advance an underlying navigation latch while a modal owns input.
     if(onboarding()) {
-      sidebarRequested=false;settingsRequested=false;modelsRequested=false;return false;
+      sidebarRequested=false;accountRequested=false;settingsRequested=false;modelsRequested=false;
+      return false;
     }
-    if(current.some(node=>node.package===pkg && button(node) && named(node,addProvider)))return true;
-    if(!modelsRequested && matches(['模型','Models'],true).length===1) {
-      tap(['模型','Models']);modelsRequested=true;return false;
+    if(hostControls(addProvider).length===1)return true;
+    const models=hostControls(['模型','Models']);
+    if(settingsRequested&&!modelsRequested&&models.length===1) {
+      tapHostNavigation('models',models[0]);modelsRequested=true;return false;
     }
-    if(!settingsRequested && matches(settings,true).length===1) {
-      tap(settings);settingsRequested=true;return false;
+    // Pinned rc.5 AccountMenu lists Settings as a real menu command, not a
+    // sidebar footer peer. Do not open Feedback or Sign in while signed out.
+    const setting=hostControls(settings);
+    if(accountRequested&&!settingsRequested&&setting.length===1) {
+      tapHostNavigation('settings',setting[0]);settingsRequested=true;return false;
     }
-    if(!sidebarRequested && !settingsRequested && matches(sidebar,true).length===1) {
-      tap(sidebar);sidebarRequested=true;
+    const account=hostControls(accountMenu);
+    if(!accountRequested&&!settingsRequested&&account.length===1) {
+      tapHostNavigation('account-menu',account[0]);accountRequested=true;return false;
+    }
+    const sidebarControls=hostControls(sidebar);
+    if(!sidebarRequested&&!accountRequested&&!settingsRequested&&sidebarControls.length===1) {
+      tapHostNavigation('sidebar',sidebarControls[0]);sidebarRequested=true;
     }
     return false;
   },180,'MODEL_DIRECTORY_NOT_READY_OR_LAYOUT_CLIPPED');
