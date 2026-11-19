@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { createRoleplayActions } from '../lib/ui/session-actions.js'
+import { installSchemaTestDependencies } from './mvu-schema-test-dependencies-fixture.mts'
 import { resolveConversationExecution } from '../lib/ui/conversation-projection.js'
 import { createConversationPresentation } from '../lib/ui/conversation-presentation.js'
 const source=['../lib/ui/client.js','../lib/ui/conversation-presentation.js'].map(file=>fs.readFileSync(new URL(file,import.meta.url),'utf8')).join('\n')
@@ -88,6 +89,42 @@ function actionHarness(handler, options={}) {
 }
 const registration={operationId:'operation',childSessionId:'child',requestId:'request',promptText:'story'}
 {
+  const closeDependencies=installSchemaTestDependencies()
+  let createActivityComponents
+  try {({createActivityComponents}=await import('../lib/ui/activity-view.js'))}
+  finally {closeDependencies()}
+  const h=actionHarness(body=>{
+    if(body.action==='inspect-clean-branch')return {ok:true,operationId:'clean-operation',revision:'observed'}
+    if(body.action==='prepare-clean-branch')return {ok:true,status:'ready',childSessionId:'clean-child'}
+    assert.equal(body.action,'select-worldline')
+    assert.equal(body.sessionId,'clean-child')
+    return {ok:true}
+  })
+  const state=[]
+  let hook=0
+  const React={createElement:(type,props,...children)=>({type,props,children}),useEffect:()=>{},
+    useState:value=>{const index=hook++;if(!(index in state))state[index]=value
+      return [state[index],next=>{state[index]=typeof next==='function'?next(state[index]):next}]}}
+  const {ActivityBanner}=createActivityComponents({React,isRoleplaySession:()=>true,peekState:()=>null,
+    prepareCleanWorldline:h.controller.prepareCleanWorldline,
+    openPreparedWorldline:h.controller.openSessionPreservingView})
+  const render=()=>{
+    hook=0
+    const banner=ActivityBanner({activity:{sessionId:'source',running:false,protocolFailure:{
+      code:'REQUEST_MATERIAL_ROLE_POSITION_REJECTED',requestDispatched:true,recovery:'clean-worldline',
+      reason:'System messages must be first'}}})
+    return banner.children.find(node=>node?.props?.className==='rp-protocol-failure-actions').children
+  }
+  const button=(label)=>render().find(node=>node?.type==='button'&&node.children.includes(label))
+  assert.equal(button('切换到新世界线'),undefined)
+  await button('准备干净世界线').props.onClick()
+  assert.ok(!h.events.some(event=>event[0]==='open'))
+  assert.ok(button('切换到新世界线'),'recovery presents a direct navigation button when the child is ready')
+  await button('切换到新世界线').props.onClick()
+  assert.deepEqual(h.events.filter(event=>event[0]==='open'),[['open','clean-child']])
+  assert.ok(!h.events.some(event=>event[0]==='prompt'||event[0]==='begin'),'opening never resends a pending input')
+}
+{
   let preparations=0
   const h=actionHarness(body=>{
     if(body.action==='inspect-clean-branch')return {ok:true,operationId:'clean-operation',revision:'observed-revision'}
@@ -114,7 +151,7 @@ const registration={operationId:'operation',childSessionId:'child',requestId:'re
     return confirmed?{ok:true,status:'ready',childSessionId:'retained-child'}:{http:500,ok:false,error:'CLEAN_BRANCH_MODEL_FLUSH_FAILED'}
   })
   await assert.rejects(h.controller.prepareCleanWorldline('source'),error=>
-    error.operationStateUnknown===true&&/先核对世界线列表.*重试同一操作/.test(error.message))
+    error.operationStateUnknown===true&&/重试同一操作.*原输入仍保留/.test(error.message))
   assert.equal(attempts,4)
   confirmed=true
   assert.deepEqual(await h.controller.prepareCleanWorldline('source'),{childSessionId:'retained-child'})

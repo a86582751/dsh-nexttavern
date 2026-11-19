@@ -254,23 +254,23 @@ export function createRoleplayActions({sessionsService,
       catch(statusError) {prepared=(errorDetails(statusError).payload as BranchResult|null)??{}}
       if(prepared.status==='failed') {
         cleanPreparations.delete(sessionId)
-        throw new Error(prepared.error??'干净世界线准备已失败。请保留输入并核对世界线列表后重新准备。')
+        throw new Error(prepared.error??'干净世界线准备已失败。原输入仍保留，可以重新准备。')
       }
       if(prepared.status!=='ready') {
-        const unknown:ActionError=new Error('准备结果尚未确认。请先核对世界线列表，再点击重试同一操作；原输入仍保留：'+String(errorDetails(error).message??error))
+        const unknown:ActionError=new Error('准备结果尚未确认。可点击重试同一操作，原输入仍保留：'+String(errorDetails(error).message??error))
         unknown.operationStateUnknown=true
         throw unknown
       }
     }
     if(prepared.status!=='ready'||!prepared.childSessionId)
-      throw new Error(prepared.error??'干净世界线尚未就绪，请保留输入并稍后核对世界线列表')
+      throw new Error(prepared.error??'干净世界线尚未就绪。原输入仍保留，请稍后重试。')
     cleanPreparations.delete(sessionId)
     let refreshWarning:string|undefined
     try{
       await sessionsService.refresh()
       await loadConversations()
     }catch{
-      refreshWarning='干净世界线已准备，但列表刷新失败。请刷新世界线列表或页面后切换，无需再次准备。'
+      refreshWarning='干净世界线已准备，世界线列表刷新失败。仍可直接切换。'
     }
     invalidateState(sessionId)
     invalidateState(prepared.childSessionId)

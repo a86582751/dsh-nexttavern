@@ -70,10 +70,10 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
                         impact: 'story-paused',
                     }] };
         }
-        // Only the material owner's pre-dispatch refusal grants this explanation;
-        // provider errors and unrelated old failures cannot imply an unsent request.
+        // Only a captured provider rejection offers the channel-switch card.
+        const providerFailure = activity.providerRoleRejection;
         if (diagnostic?.sourceKind !== 'story' || !['unknown', 'stopped'].includes(diagnostic.status)
-            || diagnostic.stop?.code !== 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
+            || !providerFailure)
             return activity;
         // These refs already belong to the current refused work. Read only their
         // exact inbox insertions: a before-first-step refusal has no user/message.
@@ -86,7 +86,7 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
             attachmentCount: messages.reduce((total, message) => total + (message.content ?? []).filter(block => block.type === 'image').length, 0),
             time: events[link.refs[0].insertSeq]?.time } : activity.pendingPlayer;
         return { ...activity, stage: 'paused', pendingPlayer,
-            protocolFailure: { code: diagnostic.stop.code, requestDispatched: false, recovery: 'clean-worldline' } };
+            protocolFailure: { ...providerFailure, requestDispatched: true, recovery: 'clean-worldline' } };
     };
     const readRoleplayState = async (session) => {
         await awaitImportBarrier(session.id);

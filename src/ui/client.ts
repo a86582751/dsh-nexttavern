@@ -274,7 +274,11 @@ export function apply(ctx: ClientContext) {
         isRoleplaySession,
         peekState,
         replaceActivityFailures,
-        prepareCleanWorldline:sessionId=>prepareCleanWorldline(sessionId)
+        prepareCleanWorldline:sessionId=>prepareCleanWorldline(sessionId),
+        openPreparedWorldline:async(childSessionId,sourceSessionId)=>{
+          if(resolveActiveSessionId()!==sourceSessionId)throw Error('请回到原世界线后重试。')
+          await openSessionPreservingView(childSessionId,sourceSessionId)
+        }
       })
   if (slots !== undefined) slots.inject(
     'conversation.chat.roleplay-progress',
@@ -310,7 +314,7 @@ export function apply(ctx: ClientContext) {
     }}
   }
   const { saveState, runMaintenance, replaceMessage, forkAndPrompt, regenerateProgrammaticOpening,
-    forkWithoutUserTurn, openNativeBranch, retryBranchMutation, prepareCleanWorldline } = createRoleplayActions(
+    forkWithoutUserTurn, openNativeBranch, retryBranchMutation, prepareCleanWorldline, openSessionPreservingView } = createRoleplayActions(
     {
       sessionsService,
       workspacesService,
@@ -776,7 +780,7 @@ export function apply(ctx: ClientContext) {
         :detail.action==='configure-adaptation-model'?'card-adaptation'
           :detail.action==='configure-ruby-analysis'?'ruby-analysis':null;
       if(!requestedTab)return;
-      if (managerState.open) {
+      if (managerState.open && managerState.sessionId === detail.sessionId) {
         managerState.requestedTab = requestedTab;
         managerState.requestedFocusNonce = (managerState.requestedFocusNonce ?? 0) + 1;
         renderManager();

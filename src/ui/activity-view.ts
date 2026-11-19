@@ -31,7 +31,7 @@ export interface ActivityState extends Record<string, unknown> {
   sessionId?: unknown
   backgroundJobs?: unknown
   pendingPlayer?: unknown
-  protocolFailure?: {code:string;requestDispatched:boolean;recovery:string}
+  protocolFailure?: {code:string;requestDispatched:boolean;recovery:string;reason?:string}
   extensionFailures?:readonly RoleplayExtensionFailureV1[]
 }
 
@@ -140,6 +140,7 @@ export interface ActivityComponentDependencies {
   isRoleplaySession: (sessionId: string) => boolean
   peekState: (sessionId: string) => ActivitySnapshot | null | undefined
     prepareCleanWorldline?(sessionId:string):Promise<{childSessionId:string;refreshWarning?:string}>
+    openPreparedWorldline?(childSessionId:string,sourceSessionId:string):Promise<void>
   replaceActivityFailures?(sessionId:string,failures:readonly RoleplayExtensionFailureV1[]):void
 }
 
@@ -151,7 +152,7 @@ export interface ActivityComponents {
   DeferredPlayerInput: (props: DeferredPlayerProps) => ReactAPI.ReactNode
 }
 
-export function createActivityComponents({ React, isRoleplaySession, peekState, prepareCleanWorldline,
+export function createActivityComponents({ React, isRoleplaySession, peekState, prepareCleanWorldline, openPreparedWorldline,
   replaceActivityFailures }: ActivityComponentDependencies): ActivityComponents {
   const useTavernActivity = (sessionId: string | null | undefined, seed: ActivityState | null = null): ActivityState | null => {
     const [activity, setActivity] = React.useState<ActivityState | null>(null)
@@ -185,7 +186,8 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
     const [now, setNow] = React.useState(Date.now())
     const [copyResult, setCopyResult] = React.useState('')
     const [preparation, setPreparation] = React.useState<{
-      key:string;status:'preparing'|'ready'|'failed'|'unknown';error?:string;refreshWarning?:string
+      key:string;status:'preparing'|'ready'|'opening'|'failed'|'unknown';error?:string
+      childSessionId?:string;refreshWarning?:string
     }|null>(null)
     React.useEffect(() => {
       if (!activity?.running) return
@@ -195,38 +197,56 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
     const pending=isRecord(activity?.pendingPlayer)?activity.pendingPlayer as PendingPlayer:null
     React.useEffect(()=>setCopyResult(''),[activity?.sessionId,pending?.text])
     const failure=activity?.protocolFailure
-    if(activity&&!activity.running&&failure?.code==='REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED'
-      &&failure.requestDispatched===false&&failure.recovery==='clean-worldline') {
+    if(activity&&!activity.running&&failure?.requestDispatched&&failure.recovery==='clean-worldline') {
       const configure=(action:string)=>window.dispatchEvent(new CustomEvent('dsh-roleplay-needs-config',{
         detail:{sessionId:activity.sessionId,action},
       }))
-      const key=`${activity.sessionId}:${pending?.messageId??''}`,current=preparation?.key===key?preparation:null
+      const sessionId=String(activity.sessionId)
+      const key=`${sessionId}:${pending?.messageId??''}`,current=preparation?.key===key?preparation:null
+      const prepared=Boolean(current?.childSessionId)
+      const open=async()=>{
+        if(!openPreparedWorldline||!current?.childSessionId||current.status!=='ready')return
+        setPreparation({...current,status:'opening',error:undefined})
+        try {
+          await openPreparedWorldline(current.childSessionId,sessionId)
+          setPreparation(value=>value?.key===key?{...value,status:'ready'}:value)
+        } catch(error) {
+          const message=error instanceof Error?error.message:String(error)
+          setPreparation(value=>value?.key===key?{...value,status:'ready',error:message}:value)
+        }
+      }
       const copy=async()=>{
         if(!pending?.text)return
         try {await navigator.clipboard.writeText(pending.text);setCopyResult('文字输入已复制')}
         catch {setCopyResult('复制失败，请手动复制上方保留的输入')}
       }
       return React.createElement('div',{className:'rp-activity rp-protocol-failure',role:'alert'},
-        React.createElement('strong',null,'建议切换到 Chat Completions 协议的兼容渠道。本次剧情请求尚未发往模型。'),
-        React.createElement('p',null,'该回合使用的渠道无法保留剧情需要的消息角色和插入位置，失败输入和原世界线已保留。切换渠道不会自动重发。'),
-        React.createElement('p',null,'请以模型面板的角色与位置能力提示为准，仅修改 URL 不一定兼容。先切换主模型，再准备干净世界线；准备完成后，到世界线列表手动切换，粘贴保留的文字并明确发送，附件需重新添加。'),
+        React.createElement('strong',null,'上次使用的渠道拒绝了剧情所需的消息角色或插入位置。'),
+        failure.reason?React.createElement('p',null,failure.reason):null,
+        React.createElement('p',null,'输入和原世界线已保留。切换渠道后可以手动继续。'),
+        React.createElement('p',null,prepared
+          ?'切换后可粘贴保留的文字并发送，附件需重新添加。'
+          :'请在模型面板为当前对话选择其他渠道，再准备干净世界线。'),
         React.createElement('div',{className:'rp-protocol-failure-actions'},
           React.createElement('button',{type:'button',className:'dsh-rp-btn',onClick:()=>configure('configure-story-model')},'切换主模型渠道'),
           prepareCleanWorldline?React.createElement('button',{type:'button',className:'dsh-rp-btn',
-            disabled:current?.status==='preparing'||current?.status==='ready',onClick:async()=>{
-              if(current?.status==='preparing'||current?.status==='ready')return
+            disabled:current?.status==='preparing'||prepared,onClick:async()=>{
+              if(current?.status==='preparing'||prepared)return
               setPreparation({key,status:'preparing'})
               await copy()
               try {
-                const prepared=await prepareCleanWorldline(String(activity.sessionId))
-                setPreparation({key,status:'ready',refreshWarning:prepared.refreshWarning})
+                const result=await prepareCleanWorldline(sessionId)
+                setPreparation({key,status:'ready',...result})
               }catch(error) {
                 setPreparation({key,status:(error as {operationStateUnknown?:boolean})?.operationStateUnknown?'unknown':'failed',
                   error:error instanceof Error?error.message:String(error)})
               }
             }},current?.status==='preparing'?'正在准备…':current?.status==='unknown'?'重试同一准备操作':'准备干净世界线'):null,
-          pending?.text?React.createElement('button',{type:'button',className:'dsh-rp-btn',onClick:copy},'复制保留的文字输入'):null),
-        current?.status==='ready'?React.createElement('p',{role:'status'},'干净世界线已准备。请到世界线列表手动切换，再粘贴输入并发送；尚未发送模型请求。'):null,
+          pending?.text?React.createElement('button',{type:'button',className:'dsh-rp-btn',onClick:copy},'复制保留的文字输入'):null,
+          prepared&&openPreparedWorldline?React.createElement('button',{type:'button',className:'dsh-rp-btn',
+            disabled:current?.status==='opening',onClick:open},current?.status==='opening'?'正在切换…':'切换到新世界线'):null),
+        prepared?React.createElement('p',{role:'status'},'干净世界线已准备，尚未发送模型请求。'):null,
+        current?.status==='ready'&&current.error?React.createElement('p',{role:'alert'},'切换失败，可重试切换。'+current.error):null,
         current?.refreshWarning?React.createElement('p',{role:'alert'},current.refreshWarning):null,
         current?.status==='failed'?React.createElement('p',{role:'alert'},'准备未完成，原输入仍保留：'+current.error):null,
         current?.status==='unknown'?React.createElement('p',{role:'alert'},current.error):null,

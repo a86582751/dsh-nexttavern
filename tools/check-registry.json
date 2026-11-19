@@ -15801,7 +15801,10 @@
       "requires": [
         "compiler"
       ],
-      "inputs": []
+      "inputs": [
+        "activity-view",
+        "mvu-schema-test-dependencies-fixture-contract"
+      ]
     },
     {
       "id": "test:reader-author-js.test.mjs",
