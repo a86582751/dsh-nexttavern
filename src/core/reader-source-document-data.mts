@@ -147,19 +147,44 @@ function macroStringExpression(node:import('typescript').StringLiteral|import('t
 const escape=(text:string)=>text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
 const proseContainers=new Set(['article','aside','blockquote','body','div','main','section'])
 const proseElements=new Set(['p','br','b','em','i','s','small','strong','sub','sup','u'])
+const literalContainers=new Set(['code','pre','listing','plaintext','xmp'])
+
+function acceptsProse(node:Text,document:DefaultTreeAdapterTypes.Document):boolean {
+  let parent=node.parentNode
+  if(!parent||!base.isElementNode(parent)||parent.namespaceURI!==htmlNamespace||!proseContainers.has(parent.tagName))return false
+  while(parent&&base.isElementNode(parent)){
+    if(literalContainers.has(parent.tagName))return false
+    parent=parent.parentNode
+  }
+  return parent===document
+}
 
 // Paragraph formatting is display DATA. Only attribute-free paragraphs and
 // inline text formatting can supply elements to a prose slot.
 function capturedProse(text:string):string|undefined {
   if(!/<p[\t\n\f\r ]*>/i.test(text))return
-  const fragment=parseFragment(text),pending=[...fragment.childNodes]
+  const fragment=parseFragment(text,{sourceCodeLocationInfo:true}),pending=[...fragment.childNodes]
+  const tags:{startOffset:number;endOffset:number}[]=[]
   if(!pending.some(node=>base.isElementNode(node)&&node.tagName==='p'))return
   while(pending.length){
     const node=pending.pop()!
     if(base.isTextNode(node))continue
     if(!base.isElementNode(node)||node.namespaceURI!==htmlNamespace||node.attrs.length||!proseElements.has(node.tagName))return
+    const {startTag,endTag}=node.sourceCodeLocation??{}
+    if(!startTag||text[startTag.startOffset+1]==='/')return
+    tags.push(startTag)
+    if(endTag)tags.push(endTag)
     for(const child of node.childNodes)pending.push(child)
   }
+  // HTML recovery may discard unmatched tags. Preserve those as literal DATA
+  // instead of silently dropping them during serialization.
+  const unparsedTag=/<[!/?a-z]/i
+  let cursor=0
+  for(const tag of tags.sort((a,b)=>a.startOffset-b.startOffset)){
+    if(unparsedTag.test(text.slice(cursor,tag.startOffset)))return
+    cursor=tag.endOffset
+  }
+  if(unparsedTag.test(text.slice(cursor)))return
   return serialize(fragment)
 }
 const escapeAttributeData=(text:string)=>text.replace(/[&"'`=<>\s]/g,
@@ -237,9 +262,7 @@ export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplay
     emptyUnquotedParts=new Set<number>(),proseParts=new Set<number>()
   for(const node of parsed.texts)for(const match of node.value.matchAll(pattern)) {
     const index=Number(match[1]);occurrences[index]=occurrences[index]!+1;textParts.add(index)
-    const parent=node.parentNode
-    if(parts[index]!.kind==='capture'&&node.value.trim()===match[0]&&parent&&base.isElementNode(parent)
-      &&parent.namespaceURI===htmlNamespace&&proseContainers.has(parent.tagName))proseParts.add(index)
+    if(parts[index]!.kind==='capture'&&node.value.trim()===match[0]&&acceptsProse(node,parsed.document))proseParts.add(index)
   }
   for(const element of parsed.elements)for(const attribute of element.attrs) {
     if(!attribute.value.includes(prefix))continue

@@ -143,12 +143,25 @@ function macroStringExpression(node) {
 const escape = (text) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 const proseContainers = new Set(['article', 'aside', 'blockquote', 'body', 'div', 'main', 'section']);
 const proseElements = new Set(['p', 'br', 'b', 'em', 'i', 's', 'small', 'strong', 'sub', 'sup', 'u']);
+const literalContainers = new Set(['code', 'pre', 'listing', 'plaintext', 'xmp']);
+function acceptsProse(node, document) {
+    let parent = node.parentNode;
+    if (!parent || !base.isElementNode(parent) || parent.namespaceURI !== htmlNamespace || !proseContainers.has(parent.tagName))
+        return false;
+    while (parent && base.isElementNode(parent)) {
+        if (literalContainers.has(parent.tagName))
+            return false;
+        parent = parent.parentNode;
+    }
+    return parent === document;
+}
 // Paragraph formatting is display DATA. Only attribute-free paragraphs and
 // inline text formatting can supply elements to a prose slot.
 function capturedProse(text) {
     if (!/<p[\t\n\f\r ]*>/i.test(text))
         return;
-    const fragment = parseFragment(text), pending = [...fragment.childNodes];
+    const fragment = parseFragment(text, { sourceCodeLocationInfo: true }), pending = [...fragment.childNodes];
+    const tags = [];
     if (!pending.some(node => base.isElementNode(node) && node.tagName === 'p'))
         return;
     while (pending.length) {
@@ -157,9 +170,26 @@ function capturedProse(text) {
             continue;
         if (!base.isElementNode(node) || node.namespaceURI !== htmlNamespace || node.attrs.length || !proseElements.has(node.tagName))
             return;
+        const { startTag, endTag } = node.sourceCodeLocation ?? {};
+        if (!startTag || text[startTag.startOffset + 1] === '/')
+            return;
+        tags.push(startTag);
+        if (endTag)
+            tags.push(endTag);
         for (const child of node.childNodes)
             pending.push(child);
     }
+    // HTML recovery may discard unmatched tags. Preserve those as literal DATA
+    // instead of silently dropping them during serialization.
+    const unparsedTag = /<[!/?a-z]/i;
+    let cursor = 0;
+    for (const tag of tags.sort((a, b) => a.startOffset - b.startOffset)) {
+        if (unparsedTag.test(text.slice(cursor, tag.startOffset)))
+            return;
+        cursor = tag.endOffset;
+    }
+    if (unparsedTag.test(text.slice(cursor)))
+        return;
     return serialize(fragment);
 }
 const escapeAttributeData = (text) => text.replace(/[&"'`=<>\s]/g, character => '&#' + character.codePointAt(0) + ';');
@@ -255,9 +285,7 @@ export function captureReaderSourceDocumentV1(parts, original) {
             const index = Number(match[1]);
             occurrences[index] = occurrences[index] + 1;
             textParts.add(index);
-            const parent = node.parentNode;
-            if (parts[index].kind === 'capture' && node.value.trim() === match[0] && parent && base.isElementNode(parent)
-                && parent.namespaceURI === htmlNamespace && proseContainers.has(parent.tagName))
+            if (parts[index].kind === 'capture' && node.value.trim() === match[0] && acceptsProse(node, parsed.document))
                 proseParts.add(index);
         }
     for (const element of parsed.elements)

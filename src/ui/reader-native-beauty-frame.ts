@@ -6,7 +6,8 @@ import type {AuthorDomScene,AuthorDomSceneChild} from './author-dom-scene.js'
 /** The published Native beauty API is a function body receiving root/fill.
  * It is separate from TavernHelper module descriptors and has no Core port. */
 export function readerNativeBeautyBootstrap(channel:string,sharedDom=false):void {
-  let port:MessagePort|undefined,revision=0,active=true,scheduled=false,started=false
+  let port:MessagePort|undefined,revision=0,active=true,started=false,measuredHeight=0
+  let layoutFrame:number|undefined,layoutTimer:number|undefined
   let cleanup:(()=>void)|undefined
   // The default Reader body belongs to the author scene. Helper scripts can
   // find and bind its real nodes using the same parent-document API as upstream.
@@ -20,8 +21,13 @@ export function readerNativeBeautyBootstrap(channel:string,sharedDom=false):void
   const documents=new Map<string,HTMLElement>(),staticViews:{dispose():void}[]=[]
   let actionHeights:Readonly<Record<string,number>>={},documentHeights:Readonly<Record<string,number>>={}
   const send=(value:object)=>{if(active)port?.postMessage(value)}
+  const cancelMeasure=()=>{
+    if(layoutFrame!==undefined)readerWindow.cancelAnimationFrame(layoutFrame)
+    readerWindow.clearTimeout(layoutTimer)
+    layoutFrame=undefined;layoutTimer=undefined
+  }
   const measure=()=>{
-    scheduled=false;if(!active)return
+    cancelMeasure();if(!active)return
     const origin=root.getBoundingClientRect(),body=host.getBoundingClientRect()
     const box=(node:HTMLElement)=>{const rect=node.getBoundingClientRect()
       return {top:rect.top-body.top,left:rect.left-body.left,width:rect.width}}
@@ -32,11 +38,23 @@ export function readerNativeBeautyBootstrap(channel:string,sharedDom=false):void
     }
     const rowBoxes=Object.fromEntries([...rows].filter(([,row])=>present(row.actions)).map(([key,row])=>[key,box(row.actions)]))
     const documentBoxes=Object.fromEntries([...documents].filter(([,node])=>present(node)).map(([key,node])=>[key,box(node)]))
-    const height=Math.ceil(Math.max(origin.bottom-body.top,...Array.from(host.children,
+    measuredHeight=Math.ceil(Math.max(origin.bottom-body.top,...Array.from(host.children,
       node=>node.getBoundingClientRect().bottom-body.top),0))
-    send({op:'layout',value:{revision,height,rows:rowBoxes,documents:documentBoxes}})
+    send({op:'layout',value:{revision,height:measuredHeight,rows:rowBoxes,documents:documentBoxes}})
   }
-  const schedule=()=>{if(!active||scheduled)return;scheduled=true;readerWindow.requestAnimationFrame(measure)}
+  const schedule=()=>{
+    if(!active||layoutFrame!==undefined)return
+    layoutFrame=readerWindow.requestAnimationFrame(measure)
+    // Offscreen author frames can receive slot updates without a paint.
+    layoutTimer=readerWindow.setTimeout(measure,100)
+  }
+  const layoutAfterUpdate=()=>{
+    if(measuredHeight>1){schedule();return}
+    // A clipped or still-empty Reader can receive content before Chromium
+    // resumes animation frames inside the author scene.
+    mutation.takeRecords()
+    measure()
+  }
   const fill=(value:unknown)=>send({op:'fill',text:String(value??'')})
   const fillClick=(event:Event)=>{
     const target=event.target as Element|null,button=target?.closest<HTMLElement>('[data-community-option],.f')
@@ -110,7 +128,7 @@ export function readerNativeBeautyBootstrap(channel:string,sharedDom=false):void
     }
     resizeSlots()
   }
-  const finish=()=>{if(!active)return;active=false;resize.disconnect();mutation.disconnect()
+  const finish=()=>{if(!active)return;active=false;cancelMeasure();resize.disconnect();mutation.disconnect()
     for(const view of staticViews)view.dispose()
     try{cleanup?.()}finally{cleanup=undefined;viewport.remove();sheet.remove();port?.close()}}
   const connect=(event:MessageEvent)=>{
@@ -124,13 +142,10 @@ export function readerNativeBeautyBootstrap(channel:string,sharedDom=false):void
           try{const result=data.source?new Function('root','fill',data.source.javascript).call(window,root,fill):undefined
             if(typeof result==='function')cleanup=result
           }catch(error){send({op:'source-error',code:error instanceof Error?error.message:String(error)})}
-          // A clipped Reader can receive its render before Chromium schedules
-          // animation frames inside the author scene.
-          mutation.takeRecords()
-          measure()
-        }else schedule()
+        }
+        layoutAfterUpdate()
       }else if(data.op==='slots'){
-        actionHeights=data.actionHeights;documentHeights=data.documentHeights;resizeSlots();schedule()
+        actionHeights=data.actionHeights;documentHeights=data.documentHeights;resizeSlots();layoutAfterUpdate()
       }
     };port.start();send({op:'ready'})
   }
