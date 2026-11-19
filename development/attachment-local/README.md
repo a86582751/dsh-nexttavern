@@ -1,7 +1,7 @@
 # Maintained local attachment store
 
-Pinned `@deepseek-ai/dsh-attachment-local`0.1.7-rc.2, official commit
-`477b4f420553e8a52c2fbccc464d7561b239c443`. MIT notices and original file hashes are in
+Pinned `@deepseek-ai/dsh-attachment-local`0.2.2-rc.5, official commit
+`9c2670d3bce5275e0d1610272958121af87787bb`. MIT notices and original file hashes are in
 `LICENSE.upstream` and `ORIGIN.json`. This private same-name Host override is not an upstream release.
 
 Android's native launcher passes canonical installer-owned `ApplicationInfo.dataDir` as

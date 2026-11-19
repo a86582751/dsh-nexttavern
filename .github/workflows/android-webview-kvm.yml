@@ -88,8 +88,22 @@ jobs:
           MOBILE_QA_WORK: ${{ runner.temp }}/nexttavern-arm64
           MOBILE_QA_ARM64_UNSIGNED: ${{ runner.temp }}/nexttavern-arm64-unsigned.apk
         run: |
-          sdkmanager --install 'platforms;android-36' 'build-tools;36.0.0'
-          MOBILE_QA_SDK="$ANDROID_HOME" bash qa/android-mobile-terminal/run-mobile.sh prepare-arm64
+          export JAVA_HOME="${JAVA_HOME_17_X64:?}"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          sdk="$RUNNER_TEMP/nexttavern-arm64-sdk"
+          mkdir -p "$sdk/platforms" "$sdk/build-tools"
+          cd "$sdk"
+          curl -fsSL --retry 2 --retry-all-errors --connect-timeout 30 --max-time 300 https://dl.google.com/android/repository/platform-36_r02.zip -o platform.zip
+          echo '2c1a80dd4d9f7d0e6dd336ec603d9b5c55a6f576  platform.zip' | sha1sum -c -
+          curl -fsSL --retry 2 --retry-all-errors --connect-timeout 30 --max-time 300 https://dl.google.com/android/repository/build-tools_r36_linux.zip -o build-tools.zip
+          echo 'b0b6376977657e8ad9b969bacf4093601da2c6fb  build-tools.zip' | sha1sum -c -
+          mkdir platform-extract build-tools-extract
+          unzip -q platform.zip -d platform-extract
+          unzip -q build-tools.zip -d build-tools-extract
+          mv platform-extract/* "$sdk/platforms/android-36"
+          mv build-tools-extract/* "$sdk/build-tools/36.0.0"
+          cd "$GITHUB_WORKSPACE"
+          MOBILE_QA_SDK="$sdk" bash qa/android-mobile-terminal/run-mobile.sh prepare-arm64
           cd "$RUNNER_TEMP"
           sha256sum nexttavern-arm64-unsigned.apk > nexttavern-arm64-unsigned.sha256
       - name: Retain only the unsigned public-input candidate and checksum

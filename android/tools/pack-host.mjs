@@ -165,18 +165,18 @@ function plan(options) {
             reserve(name, installed(profile, name, boundaries));
     }
     const cli = installed(harness, '@deepseek-ai/dsh', boundaries);
-    if (json(path.join(cli, 'package.json')).version !== '0.1.7-rc.2')
-        throw new Error('Host version differs from pinned 0.1.7-rc.2');
+    if (json(path.join(cli, 'package.json')).version !== '0.2.2-rc.5')
+        throw new Error('Host version differs from pinned 0.2.2-rc.5');
     reserve('@deepseek-ai/dsh', cli);
-    // Stock sharp 0.35.4 requires this raw WASM fallback by name, but does not
+    // Stock sharp 0.35.5 requires this raw WASM fallback by name, but does not
     // declare it as an optional edge. This is the one explicit pinned fallback.
     const wasm = installed(profile, '@img/sharp-wasm32', boundaries);
-    if (json(path.join(wasm, 'package.json')).version !== '0.35.4')
-        throw new Error('Sharp WASM fallback differs from pinned 0.35.4');
+    if (json(path.join(wasm, 'package.json')).version !== '0.35.5')
+        throw new Error('Sharp WASM fallback differs from pinned 0.35.5');
     reserve('@img/sharp-wasm32', wasm);
     const bridgeName = `node-addon-require-builtin-android-${options.abi}`;
     placements.set(prefix(bridgeName), { relative: prefix(bridgeName), generated: true, metadata: {
-            name: bridgeName, version: '0.1.6', main: 'index.cjs', type: 'commonjs', os: ['android'], cpu: [options.abi],
+            name: bridgeName, version: '0.1.9', main: 'index.cjs', type: 'commonjs', os: ['android'], cpu: [options.abi],
         } });
     const visited = new Set();
     const sourceRow = (owner, name) => {
@@ -241,7 +241,16 @@ function plan(options) {
                 continue;
             }
             const range = optional[name] ?? owner.metadata.dependencies?.[name] ?? peers[name];
-            if (semver.validRange(range) && !semver.satisfies(pkg.version, range, { includePrerelease: true })) {
+            // rc.5 pins a pre-Android Koffi; the Android Harness lock deliberately
+            // overrides that exact upstream dependency to the reviewed ABI-bearing
+            // release. The exception is limited to this pin and its target companion.
+            const companion = '@koromix/koffi-android-' + options.abi;
+            const androidKoffiOverride = name === 'koffi' && range === '3.1.1' && pkg.version === '3.3.1'
+                && pin?.version === '3.3.1' && !!pin.integrity
+                && pkg.optionalDependencies?.[companion] === '3.3.1'
+                && lock.packages['node_modules/' + companion]?.version === '3.3.1'
+                && !!lock.packages['node_modules/' + companion]?.integrity;
+            if (!androidKoffiOverride && semver.validRange(range) && !semver.satisfies(pkg.version, range, { includePrerelease: true })) {
                 throw new Error(`Installed runtime version differs: ${owner.metadata.name} needs ${name}@${range}, got ${pkg.version}`);
             }
             visit(place(owner, name, source));
@@ -251,7 +260,7 @@ function plan(options) {
         visit(placement);
     return { harness, product, installedProduct, profile, metadata, inventoried, aliases,
         placements: [...placements.values()].sort((a, b) => a.relative.localeCompare(b.relative)),
-        inventorySha256: digest(inventory), harnessLockSha256: digest(lockBytes), excluded, hostVersion: '0.1.7-rc.2' };
+        inventorySha256: digest(inventory), harnessLockSha256: digest(lockBytes), excluded, hostVersion: '0.2.2-rc.5' };
 }
 /** Read-only graph admission, useful while the emulator owns the heavy budget. */
 export function inspectHostGraph(options) {

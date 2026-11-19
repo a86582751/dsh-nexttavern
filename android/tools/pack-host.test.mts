@@ -26,8 +26,8 @@ async function fixture(run:(f:{harness:string;product:string;profile:string;out:
     if(base===harness)rows['node_modules/'+name]=metadata
   }
   try {
-    await write(path.join(harness,'package.json'),JSON.stringify({name:'host-fixture',private:true,dependencies:{'@deepseek-ai/dsh':'0.1.7-rc.2'}}))
-    await pkg(harness,'@deepseek-ai/dsh','0.1.7-rc.2',{dependencies:{helper:'1.0.0',dupe:'1.0.0','node-addon-require-builtin':'0.1.6','node-pty':'1.2.0-beta.15'}})
+    await write(path.join(harness,'package.json'),JSON.stringify({name:'host-fixture',private:true,dependencies:{'@deepseek-ai/dsh':'0.2.2-rc.5'}}))
+    await pkg(harness,'@deepseek-ai/dsh','0.2.2-rc.5',{dependencies:{helper:'1.0.0',dupe:'1.0.0','node-addon-require-builtin':'0.1.9','node-pty':'1.2.0-beta.15'}})
     await pkg(harness,'helper','1.0.0',{optionalDependencies:{'linux-only':'1.0.0','android-only':'1.0.0'},
       peerDependencies:{'absent-optional-peer':'1.0.0'},peerDependenciesMeta:{'absent-optional-peer':{optional:true}}},
       {'runtime.node.js':'fixture node.js sidecar','runtime.wasm':'fixture wasm','versions.json':'{}'})
@@ -35,11 +35,11 @@ async function fixture(run:(f:{harness:string;product:string;profile:string;out:
     await pkg(profile,'dupe','2.0.0')
     await pkg(harness,'linux-only','1.0.0',{os:['linux']},{'linux.node':'not an Android capability'})
     await pkg(harness,'android-only','1.0.0',{os:['android'],cpu:['x64']})
-    await pkg(harness,'node-addon-require-builtin','0.1.6',{dependencies:{'node-addon-native-custom-loader':'0.1.6'},
-      optionalDependencies:{'native-linux':'0.1.6'}})
-    await pkg(harness,'node-addon-native-custom-loader','0.1.6')
-    await pkg(harness,'native-linux','0.1.6',{os:['linux']})
-    await pkg(harness,'@img/sharp-wasm32','0.35.4',{dependencies:{'@emnapi/runtime':'^1.11.3'}},{'lib/sharp.wasm':'raw wasm fallback'})
+    await pkg(harness,'node-addon-require-builtin','0.1.9',{dependencies:{'node-addon-native-custom-loader':'0.1.9'},
+      optionalDependencies:{'native-linux':'0.1.9'}})
+    await pkg(harness,'node-addon-native-custom-loader','0.1.9')
+    await pkg(harness,'native-linux','0.1.9',{os:['linux']})
+    await pkg(harness,'@img/sharp-wasm32','0.35.5',{dependencies:{'@emnapi/runtime':'^1.11.3'}},{'lib/sharp.wasm':'raw wasm fallback'})
     await pkg(harness,'@emnapi/runtime','1.11.3',{dependencies:{tslib:'^2.8.1'}})
     await pkg(harness,'tslib','2.8.1')
     await pkg(harness,'dshmarket','1.0.0')
@@ -191,7 +191,7 @@ test('missing official profile install or unexpected user patch blocks packing i
   await write(inventoryFile,JSON.stringify(inventory))
   const patch=(names:string[])=>JSON.stringify([{insert:names.map(id=>({id,disabled:true}))}])
   await write(path.join(f.profile,'cordis.patch.yml'),patch(labels))
-  assert.equal(inspectHostGraph(options).hostVersion,'0.1.7-rc.2')
+  assert.equal(inspectHostGraph(options).hostVersion,'0.2.2-rc.5')
   for(const invalid of ['', '[]', '# claims were removed\n', patch(labels.slice(1)),patch([...labels,'unknown']),patch([...labels.slice(1),labels[1]]),
     patch(labels).replace('"disabled":true','"disabled":false'),patch(labels).replace('"disabled":true','"disabled":true,"config":{}')]) {
     await write(path.join(f.profile,'cordis.patch.yml'),invalid)
@@ -264,3 +264,24 @@ test('publication interruption preserves a coherent old generation or blocks ava
     }
   } finally {await fs.rm(directory,{recursive:true,force:true})}
 })
+
+test('Koffi override requires the exact Android companion of the pinned release',async()=>fixture(async f=>{
+  const root=path.join(f.harness,'node_modules')
+  const lockFile=path.join(f.harness,'package-lock.json')
+  const lock=JSON.parse(await fs.readFile(lockFile,'utf8'))
+  const helper=path.join(root,'helper/package.json')
+  const owner=JSON.parse(await fs.readFile(helper,'utf8'))
+  owner.dependencies={koffi:'3.1.1'}
+  await write(helper,JSON.stringify(owner))
+  const koffi={name:'koffi',version:'3.3.1',optionalDependencies:{'@koromix/koffi-android-x64':'3.3.1'}}
+  const androidKoffi={name:'@koromix/koffi-android-x64',version:'3.3.1',os:['android'],cpu:['x64']}
+  await write(path.join(root,'koffi/package.json'),JSON.stringify(koffi))
+  lock.packages['node_modules/koffi']={...koffi,integrity:'fixture'}
+  const options={harnessRoot:f.harness,productRoot:f.product,out:f.out,abi:'x64' as const}
+  await write(lockFile,JSON.stringify(lock))
+  assert.throws(()=>inspectHostGraph(options),/needs koffi@3\.1\.1, got 3\.3\.1/)
+  await write(path.join(root,androidKoffi.name,'package.json'),JSON.stringify(androidKoffi))
+  lock.packages['node_modules/@koromix/koffi-android-x64']={...androidKoffi,integrity:'fixture'}
+  await write(lockFile,JSON.stringify(lock))
+  assert.ok(inspectHostGraph(options).packages.some(row=>row.name==='koffi'&&row.version==='3.3.1'))
+}))

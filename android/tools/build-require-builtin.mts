@@ -11,8 +11,8 @@ const ndk = process.env.ANDROID_NDK_HOME
 if (!ndk || !(await readFile(join(ndk, 'source.properties'), 'utf8')).includes('Pkg.Revision = 28.2.13676358')) {
   throw new Error('Set ANDROID_NDK_HOME to pinned NDK 28.2.13676358')
 }
-const commit = 'ed3747ea17f5f2b332d218c6c54e2effa3e9babb'
-const archiveHash = '7d19c4965e73142685f976fb40390f8d3bb8bd943ff7588e63efe4c440638bf3'
+const commit = 'a58d3599a2e551d7d706d1ff796c9fd4bbaff63c'
+const archiveHash = '286616f15e4f12013988e45ad27a69b4968a9f059c8bd351e412505230577948'
 const apiIntegrity = 'ekZMeaaIzSQTSpr7X2X3iJM7lTzgnx8ahAG9pJfT/7+14mlEM8ZYQ9cgCDvSSRbReFK0oHli3WrZdCiRsgAT9Q=='
 await mkdir(cache, {recursive:true})
 async function archive(name:string, url:string, algorithm:'sha256'|'sha512', expected:string, encoding:'hex'|'base64') {
@@ -24,7 +24,7 @@ async function archive(name:string, url:string, algorithm:'sha256'|'sha512', exp
   if(createHash(algorithm).update(await readFile(file)).digest(encoding) !== expected) throw new Error('Native source integrity mismatch: '+name)
   return file
 }
-const sourceArchive = await archive('require-builtin-0.1.6.tgz',
+const sourceArchive = await archive('require-builtin-0.1.9.tgz',
   'https://codeload.github.com/deepseek-ai/dsh-node-addon-require-builtin/tar.gz/'+commit, 'sha256',archiveHash,'hex')
 const apiArchive = await archive('node-addon-api-8.9.0.tgz',
   'https://registry.npmjs.org/node-addon-api/-/node-addon-api-8.9.0.tgz','sha512',apiIntegrity,'base64')
@@ -35,18 +35,12 @@ for(const [tar, target] of [[sourceArchive,source],[apiArchive,api]]) {
   execFileSync('tar',['-xzf',tar!,'--strip-components=1','-C',target!])
 }
 const native = join(source,'packages/native/src')
-// Android uses these existing AArch64/SysV architecture readers. All original
-// image/pointer/getter/smoke validation remains mandatory and fails closed.
-for(const file of ['runtime_context/platform.cc','runtime_probe/platform.cc']) {
-  const pathname = join(native,file)
-  const bytes = await readFile(pathname,'utf8')
-  await writeFile(pathname,bytes.replaceAll('defined(__linux__) && defined(__GLIBC__) &&',
-    'defined(__linux__) && (defined(__GLIBC__) || defined(__ANDROID__)) &&'))
-}
-const architectures = ['darwin_arm64','darwin_x64','linux_glibc_arm64','linux_glibc_x64','win32_arm64','win32_x64','win32_ia32']
+// This upstream version dispatches Linux architecture readers independent of libc.
+// Build its exact sources unchanged for Bionic; runtime validation remains required.
+const architectures = ['darwin_arm64','darwin_x64','linux_arm64','linux_x64','win32_arm64','win32_x64','win32_ia32']
 const sources = [
   'node_api_addon.cc','debug_trace.cc','native_types.cc','runtime_symbol.cc','require_builtin_probe.cc','runtime_compat_napi.cc',
-  'runtime_context/helper.cc','runtime_context/platform.cc','runtime_context/runtime_profile.cc','runtime_context/runtime_profile_napi.cc',
+  'runtime_context/helper.cc','runtime_context/embedder_data.cc','runtime_context/platform.cc','runtime_context/runtime_profile.cc','runtime_context/runtime_profile_napi.cc',
   ...architectures.map(name=>'runtime_context/'+name+'.cc'),
   'runtime_probe/helper.cc','runtime_probe/platform.cc','runtime_probe/getter_decoder.cc','runtime_probe/posix.cc','runtime_probe/win32_common.cc',
   ...architectures.map(name=>'runtime_probe/'+name+'.cc'),
@@ -69,7 +63,7 @@ await copyFile(join(source,'LICENSE'),join(notices,'require-builtin-LICENSE'))
 await copyFile(join(api,'LICENSE.md'),join(notices,'node-addon-api-LICENSE'))
 await mkdir(join(root,'artifacts'),{recursive:true})
 await writeFile(join(root,'artifacts/require-builtin-build.json'),JSON.stringify({schemaVersion:1,
-  version:'0.1.6',commit,sourceSha256:archiveHash,nodeAddonApi:'8.9.0',ndk:'28.2.13676358',
-  patch:'Explicit Android dispatch to existing architecture readers; no guessed offsets or disabled validation',
+  version:'0.1.9',commit,sourceSha256:archiveHash,nodeAddonApi:'8.9.0',ndk:'28.2.13676358',
+  patch:'None; upstream Linux architecture dispatch, compiled with Android NDK',
   outputs,runtimeVerified:false},null,2)+'\n')
 console.log('Built Bionic internals addon. Each packaged Node/ABI still requires execution validation.')

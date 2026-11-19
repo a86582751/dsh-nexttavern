@@ -158116,13 +158116,13 @@
         "schemaVersion": 1,
         "encoding": "owned-native-host-fork-profile-v1",
         "id": "nexttavern-owned-author-dialog-v1",
-        "hostVersion": "0.1.7-rc.2",
+        "hostVersion": "0.2.2-rc.5",
         "activation": "manual-only"
       },
       "hostForks": [
         {
           "name": "@deepseek-ai/dsh-attachment-local",
-          "version": "0.1.7-rc.2",
+          "version": "0.2.2-rc.5",
           "source": "development/attachment-local",
           "target": "host-overrides/@deepseek-ai/dsh-attachment-local"
         },

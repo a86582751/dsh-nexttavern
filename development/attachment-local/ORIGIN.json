@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "package": "@deepseek-ai/dsh-attachment-local",
   "upstreamPackage": "@deepseek-ai/dsh-attachment-local",
-  "upstreamVersion": "0.1.7-rc.2",
+  "upstreamVersion": "0.2.2-rc.5",
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
-  "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+  "commit": "9c2670d3bce5275e0d1610272958121af87787bb",
   "license": "MIT",
   "files": [
     {
@@ -29,7 +29,7 @@
     },
     {
       "upstream": "packages/attachment/attachment-local/src/index.ts",
-      "upstreamSha256": "1a1d3fda491bbb0789447e6f9ab92840d6652eff8d68fbccc2a4307ccc5f9f8b",
+      "upstreamSha256": "4e2a7e494100253fc4d1107e99dc7e7459fec9d42b77e8e377af28bf59d3a7ac",
       "source": "src/index.ts"
     },
     {
@@ -49,12 +49,12 @@
     },
     {
       "upstream": "packages/attachment/attachment-local/src/store.ts",
-      "upstreamSha256": "4b627d534da3cdd8c7b8e3ca68656e25c8d46563bcf3971f50231c162deb1fa6",
+      "upstreamSha256": "d685538bd4c16272141d3cb45d472341d45c3f0e2d51c2edf20075a3773b8177",
       "source": "src/store.ts"
     },
     {
       "upstream": "packages/attachment/attachment-local/package.json",
-      "upstreamSha256": "19f6f9cf14c9a8a0c0ff68d462dd731bca2df690a24a620a431bc104f512a914",
+      "upstreamSha256": "d8a221ce8c315430431b1b1f42db2aa3c9d938da6155132a6c111441808d1be0",
       "source": "package.json"
     },
     {

@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/src/operations/native-fork-host-profile.mts; edit the TypeScript source.
 /** Host payload membership belongs to the assembly recipes; activation remains manual. */
-export const HOST_VERSION = '0.1.7-rc.2';
+export const HOST_VERSION = '0.2.2-rc.5';
 /** The native helper is a separately pinned release, not a DSH cohort package. */
 export function hostForkPolicy(name) {
     if (name === '@deepseek-ai/node-addon-system')
