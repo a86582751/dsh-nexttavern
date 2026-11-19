@@ -1035,12 +1035,21 @@ const json=(value:unknown)=>JSON.stringify(value).replaceAll('<','\\u003c')
 export function authorNativeHelperHtml(program:AuthorNativeProgramV1,binding:AuthorNativeHelperRealmBindingV1,
   snapshot:AuthorNativeHelperSnapshotV1,readScope:string,channel:string,resource:AuthorNativeHelperResourceV1,
   libraries:readonly {readonly javascript:string}[]=[],layoutConfig:ReaderDocumentLayoutConfig={mode:'auto',viewportHeight:600},
-  routeEvents=false,presetLibrary?:CommunityAuthorPresetCatalogV1,characterLibrary?:AuthorCharacterLibraryPacketV1):string {
+  routeEvents=false,presetLibrary?:CommunityAuthorPresetCatalogV1,characterLibrary?:AuthorCharacterLibraryPacketV1,
+  sceneTopOffsets?:Readonly<Record<number,readonly number[]>>):string {
+  const scripts=program.scripts.filter(row=>row.enabled&&row.realmId===binding.realmId).map(row=>{
+    const offsets=sceneTopOffsets?.[row.originalOrdinal]
+    if(!offsets)return {javascript:row.javascript}
+    const parts:string[]=[]
+    let cursor=0
+    for(const start of offsets){parts.push(row.javascript.slice(cursor,start),'parent');cursor=start+3}
+    parts.push(row.javascript.slice(cursor))
+    return {javascript:parts.join('')}
+  })
   return '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="'
     +READER_NATIVE_RESOURCE_CSP+'"><meta name="referrer" content="no-referrer"><style>body{margin:0}</style>'
     +'<script>('+authorNativeHelperBootstrap.toString()+')('
-    +[snapshot,readScope,channel,binding.realmId,resource,
-      program.scripts.filter(row=>row.enabled&&row.realmId===binding.realmId).map(({javascript})=>({javascript})),libraries]
+    +[snapshot,readScope,channel,binding.realmId,resource,scripts,libraries]
       .map(json).join(',')+',('+createReaderDocumentLayoutRealm.toString()+'),'+json(layoutConfig)
     // Keep this native JS import expression at the HTML serialization boundary.
     // TypeScript rewrites variable imports using a module-scoped helper; that
@@ -1059,6 +1068,7 @@ export function authorNativeHelperHtml(program:AuthorNativeProgramV1,binding:Aut
 export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNativeProgramV1,
   binding:AuthorNativeHelperRealmBindingV1,initial:{snapshot:AuthorNativeHelperSnapshotV1;readScope:string},
   host:AuthorNativeHelperHostV1,options:AuthorNativeHelperFrameOptionsV1&{scene?:AuthorDomScene;
+    sceneTopOffsets?:Readonly<Record<number,readonly number[]>>;
     reportExtensionFailure?(failure:RoleplayExtensionFailureV1):void}):AuthorNativeHelperFrameControllerV1 {
   const view=outer.ownerDocument.defaultView!,frame=options.scene?undefined:outer.ownerDocument.createElement('iframe')
   const channel=crypto.randomUUID(),ports=new view.MessageChannel(),abort=new AbortController()
@@ -1093,7 +1103,8 @@ export function createAuthorNativeHelperFrame(outer:HTMLElement,program:AuthorNa
     if(!current())return
     const data=event.data
     if(data.op==='parent-ready')send({op:'mount',html:authorNativeHelperHtml(program,binding,snapshot,readScope,channel,
-      options.resource,options.libraries,layoutConfig(),!!options.eventRoute,presetLibrary,characterLibrary),
+      options.resource,options.libraries,layoutConfig(),!!options.eventRoute,presetLibrary,characterLibrary,
+      options.scene?options.sceneTopOffsets:undefined),
       libraries:options.libraries?.map(row=>row.javascript)??[],messageIndex:0,
       sdkGlobals:['getVariables','getAllVariables','getContext','getLastMessageId','getChatMessages','setChatMessages','updateVariablesWith','triggerSlash',
         'replaceVariables','insertOrAssignVariables','insertVariables','deleteVariable','eventOn','eventOnce','eventMakeFirst','eventMakeLast','eventRemoveListener',

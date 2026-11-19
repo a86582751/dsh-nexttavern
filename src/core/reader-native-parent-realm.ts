@@ -31,7 +31,8 @@ function readerNativeParentBootstrap(createControls:typeof createAuthorDomContro
     const children=new Map<string,{node:HTMLElement;frame:HTMLElement;port?:MessagePort}>()
     const pending=new Map<string,MessagePort>()
     const libraries=new Set<string>()
-    const domControls=createControls(rows=>control.postMessage({op:'scene-controls',controls:rows}))
+    const domControls=createControls(rows=>control.postMessage({op:'scene-controls',controls:rows}),
+      active=>control.postMessage({op:'scene-viewport',active}))
     const helperFrames=new Map<string,HTMLIFrameElement>()
     Object.defineProperty(window,'SillyTavern',{configurable:true,get:()=>{
       for(const frame of helperFrames.values()){

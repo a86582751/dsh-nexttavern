@@ -65,6 +65,7 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
   let beauty:ReturnType<typeof createReaderNativeBeautyFrame>|undefined,beautyHost:HTMLElement|undefined
   let releaseBeautyFailure:(()=>void)|undefined
   let sourceScene:AuthorDomScene|undefined
+  let authorViewportActive=false
   let sceneUsers=0
   const hasVisibleOwner=()=>!!beautyExecution||!!sourceScene
   let lastDocumentHeights:Readonly<Record<string,number>>={}
@@ -123,15 +124,32 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
     failure.fallback={node,view:failureView(node,failure.code)}
   }
   function publishFailureLayout(force=false):void {
-    if(!hasVisibleOwner()||!lastBeautyLayout||lastBeautyLayout.revision!==renderRevision)return
+    if(!hasVisibleOwner())return
+    const layout=lastBeautyLayout
+    const viewportHeight=authorViewportActive?documentLayout.get().viewportHeight:0
+    if(!layout||layout.revision!==renderRevision){
+      if(sourceScene){
+        const sceneHeight=Math.max(1,layout?.height??0,viewportHeight)
+        sourceScene.height(sceneHeight)
+        outer.style.height=sceneHeight+lastRailHeight+'px'
+      }
+      return
+    }
     const height=Math.ceil(failureRail?.getBoundingClientRect().height??0)
     if(!force&&height===lastRailHeight)return
     lastRailHeight=height
     // A live Source can publish DOM asynchronously after an empty layout.
     // Chromium suspends descendant animation frames inside a zero-height owner.
-    const total=Math.max(1,lastBeautyLayout.height+height)
-    outer.style.height=total+'px';options.layout({height:total,renderRevision,rows:lastBeautyLayout.rows})
+    // A fixed author frontend takes its viewport from the scene iframe. Its
+    // height must stay usable even before the worldline has any story rows.
+    const sceneHeight=Math.max(layout.height,viewportHeight)
+    sourceScene?.height(sceneHeight)
+    const total=Math.max(1,sceneHeight+height)
+    outer.style.height=total+'px';options.layout({height:total,renderRevision,rows:layout.rows})
   }
+  const releaseDocumentLayout=documentLayout.subscribe(()=>{
+    if(authorViewportActive)publishFailureLayout(true)
+  })
   function sameFragmentShape(before:readonly ReaderRegexDocumentRenderFragmentV1[],
     after:readonly ReaderRegexDocumentRenderFragmentV1[]):boolean {
     return before.length===after.length&&before.every((fragment,index)=>{
@@ -190,7 +208,6 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
   function beautyLayout(value:ReaderNativeBeautyLayoutV1):void {
     if(!current()||!hasVisibleOwner()||value.revision!==renderRevision)return
     lastBeautyLayout=value
-    sourceScene?.height(value.height)
     for(const [plan,node] of containers){
       const slot=value.documents[plan]
       node.style.visibility=slot&&!sourceScene?'visible':'hidden'
@@ -392,13 +409,16 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
     if(!current())throw Error('READER_SURFACE_CLOSED')
     if(sourceScene?.identity===source.identity&&sourceScene.parentOrigin===source.parentOrigin){sceneUsers++;return sourceScene}
     beauty?.dispose();beauty=undefined;beautyIdentity='';sourceScene?.dispose()
-    sourceScene=createAuthorDomScene(document!.body,source,code=>console.warn('[roleplay-reader] Author scene:',code))
+    authorViewportActive=false
+    sourceScene=createAuthorDomScene(document!.body,source,code=>console.warn('[roleplay-reader] Author scene:',code),active=>{
+      authorViewportActive=active;publishFailureLayout(true)
+    })
     sceneUsers=1
     options.sceneChanged?.(true,sourceScene)
     syncBeauty();scheduleLayout();return sourceScene
   },releaseAuthorScene(scene){
     if(sourceScene!==scene||--sceneUsers>0)return
-    beauty?.dispose();beauty=undefined;beautyIdentity='';sourceScene.dispose();sourceScene=undefined
+    beauty?.dispose();beauty=undefined;beautyIdentity='';sourceScene.dispose();sourceScene=undefined;authorViewportActive=false
     options.sceneChanged?.(false)
     if(!beautyExecution){
       for(const row of rows.values())for(const fragment of row.textFragments)fragment.node.innerHTML=fragment.html
@@ -458,7 +478,7 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
     scheduleLayout()
   },dispose() {
     if(!active)return
-    active=false;outer.removeEventListener('load',loaded)
+    active=false;outer.removeEventListener('load',loaded);releaseDocumentLayout()
     releaseBeautyFailure?.();releaseBeautyFailure=undefined
     if(sourceScene)options.sceneChanged?.(false)
     beauty?.dispose();beautyHost?.remove();beauty=undefined;beautyExecution=undefined;sourceScene?.dispose();sourceScene=undefined

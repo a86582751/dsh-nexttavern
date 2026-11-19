@@ -25,7 +25,7 @@ export interface AuthorDomScene {
 /** The current UI attachment owns the browser partition. Core supplies its
  * grouping identity, while every child retains its independent business port. */
 export function createAuthorDomScene(container:HTMLElement,source:AuthorNativeSceneV1,
-  failed:(code:string)=>void):AuthorDomScene {
+  failed:(code:string)=>void,viewportChanged?:(active:boolean)=>void):AuthorDomScene {
   const view=container.ownerDocument.defaultView!,frame=container.ownerDocument.createElement('iframe')
   const channel=crypto.randomUUID(),ports=new view.MessageChannel()
   let active=true,ready=false
@@ -76,6 +76,8 @@ export function createAuthorDomScene(container:HTMLElement,source:AuthorNativeSc
     }else if(data.op==='scene-controls'){
       controls=data.controls
       for(const listener of controlListeners)listener()
+    }else if(data.op==='scene-viewport'){
+      viewportChanged?.(data.active===true)
     }else if(data.op==='scene-control-result'){
       const pending=activations.get(data.id)
       activations.delete(data.id)
@@ -110,7 +112,7 @@ export function createAuthorDomScene(container:HTMLElement,source:AuthorNativeSc
           pending.get(value.id)?.port.close();pending.delete(value.id)
           send({op:'scene-remove',id:value.id})}}
     },
-    height(value){height=value;frame.style.height=Math.max(1,value)+'px';send({op:'scene-height',height:value})},
+    height(value){if(height===value)return;height=value;frame.style.height=Math.max(1,value)+'px';send({op:'scene-height',height:value})},
     position(id,box){boxes.set(id,box);send({op:'scene-box',id,box})},
     error(id,code){send({op:'scene-error',id,code})},
     remove(id){cancelSizes('AUTHOR_SCENE_CHILD_REVOKED',id);boxes.delete(id);send({op:'scene-remove',id})},

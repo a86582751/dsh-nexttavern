@@ -12,6 +12,7 @@ import type {AuthorBrowserRequest,AuthorBrowserReply,AuthorBrowserSnapshot,
   AuthorNativePersonaRequestV1,AuthorNativeCharacterLibraryMutationV1,
   AuthorNativeCharacterLibraryMutationResultV1} from './roleplay-author-browser-types.js'
 import type {AuthorNativeProgramV1,AuthorNativeRealmV1} from './author-native-program.mjs'
+import ts from 'dsh-nexttavern-typescript-runtime'
 import type {AuthorOpeningVariantCaptureV1,OpeningVariantMutationRequestV1}
   from './roleplay-opening-variant-types.js'
 import type {OpeningVariantMutationResult} from './roleplay-opening-variants.js'
@@ -44,6 +45,55 @@ import {CommunityAuthorPresetRefusalV1} from './community-preset-types.js'
 import type {AuthorCharacterLibraryPacketV1} from './roleplay-author-character-library.js'
 import {createAuthorNativeLibraryReadsV1} from './author-native-library-reads.js'
 import type {AuthorNativeResolvedLibraryReadV1} from './author-native-helper-types.js'
+
+const sceneTopOffsets=new WeakMap<AuthorNativeProgramV1,Readonly<Record<number,readonly number[]>>>()
+
+/** Legacy Helper modules use the Tavern window as their top-level DOM. Only
+ * the isolated same-origin author scene can supply that window. Keep Original
+ * bytes and module scope intact, and project the static member reads for mount. */
+function authorSceneTopOffsetsV1(program:AuthorNativeProgramV1):Readonly<Record<number,readonly number[]>> {
+  const cached=sceneTopOffsets.get(program)
+  if(cached)return cached
+  const offsets:Record<number,number[]>={}
+  const helperRealms=new Set(program.realms.filter(realm=>realm.groupId==='author-helper').map(realm=>realm.realmId))
+  for(const script of program.scripts){
+    if(!script.enabled||!helperRealms.has(script.realmId)||!script.javascript.includes('top'))continue
+    const source=script.javascript,name='tavern-helper.mjs'
+    const file=ts.createSourceFile(name,source,ts.ScriptTarget.ESNext,true,ts.ScriptKind.JS)
+    const candidates:{receiver:import('typescript').Identifier;start:number}[]=[]
+    const isWindowName=(value:string)=>value==='window'||value==='self'||value==='globalThis'
+    const windowReceiver=(node:import('typescript').Expression):import('typescript').Identifier|undefined=>{
+      if(ts.isParenthesizedExpression(node))return windowReceiver(node.expression)
+      if(ts.isPropertyAccessExpression(node)&&isWindowName(node.name.text))return windowReceiver(node.expression)
+      if(ts.isIdentifier(node)&&isWindowName(node.text))return node
+    }
+    const visit=(node:import('typescript').Node):void=>{
+      if(ts.isPropertyAccessExpression(node)||ts.isElementAccessExpression(node)){
+        const property=ts.isPropertyAccessExpression(node)?node.name:
+          ts.isStringLiteralLike(node.argumentExpression)?node.argumentExpression:undefined
+        if(property?.text==='top'){
+          const receiver=windowReceiver(node.expression)
+          const start=property.getStart(file)+(ts.isIdentifier(property)?0:1)
+          if(receiver&&source.slice(start,start+3)==='top')candidates.push({receiver,start})
+        }
+      }
+      ts.forEachChild(node,visit)
+    }
+    visit(file)
+    if(!candidates.length)continue
+    const options={allowJs:true,noLib:true,noResolve:true,target:ts.ScriptTarget.ESNext,module:ts.ModuleKind.ESNext}
+    const host:import('typescript').CompilerHost={getSourceFile:path=>path===name?file:undefined,
+      getDefaultLibFileName:()=>'',writeFile:()=>{},getCurrentDirectory:()=>'',getDirectories:()=>[],
+      fileExists:path=>path===name,readFile:path=>path===name?source:undefined,getCanonicalFileName:path=>path,
+      useCaseSensitiveFileNames:()=>true,getNewLine:()=>'\n'}
+    const checker=ts.createProgram([name],options,host).getTypeChecker()
+    const positions=candidates.filter(({receiver})=>!checker.getSymbolAtLocation(receiver)?.declarations?.length)
+      .map(({start})=>start)
+    if(positions.length)offsets[script.originalOrdinal]=positions.sort((a,b)=>a-b)
+  }
+  sceneTopOffsets.set(program,offsets)
+  return offsets
+}
 
 export interface AuthorBrowserCapturedFactsV3 {
   readonly characterLibrary?:AuthorCharacterLibraryPacketV1
@@ -389,10 +439,12 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
       const authorScene=await deps.captureAuthorScene?.(session.id)
       if(!originalSourceLifetime(value)()||!facts.current())return fail('BROWSER_ATTACHMENT_REVOKED')
       const attachedSnapshot=project(value,facts)
+      const sceneTopOffsets=authorScene?authorSceneTopOffsetsV1(value.program):undefined
       value.openingIndex=input.openingIndex
       return {ok:true,kind:'attached',attachment:{schemaVersion:1,encoding:'author-native-helper-attachment-v1',
         binding:value.binding,program:value.program,parentOrigins:value.parentOrigins,snapshot:attachedSnapshot,
         ...authorScene?{authorScene}:{},
+        ...sceneTopOffsets&&Object.keys(sceneTopOffsets).length?{sceneTopOffsets}:{},
         ...facts.characterLibrary&&(created||input.characterEpoch!==facts.characterLibrary.epoch)
           ?{characterLibrary:facts.characterLibrary}:{},
         ...presetLibrary?{presetLibrary}:{}}}

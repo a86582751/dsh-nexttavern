@@ -1,9 +1,32 @@
 /** Owns Source DOM control discovery and one finite primary-press transaction.
  * Serialized into the isolated parent shell, with no Main or Core references. */
-export function createAuthorDomControls(publish:(controls:{id:string;label:string;disabled:boolean}[])=>void) {
+export function createAuthorDomControls(publish:(controls:{id:string;label:string;disabled:boolean}[])=>void,
+  publishViewport?:(active:boolean)=>void) {
   const controls=new Map<Element,string>(),elements=new Map<string,Element>()
   const descriptions=new Map<string,{id:string;label:string;disabled:boolean}>()
   const shadowRoots=new Set<ShadowRoot>()
+  const viewportFrames=new Set<HTMLIFrameElement>()
+  let viewportActive=false,viewportCheck:number|undefined
+  const refreshViewport=()=>{
+    viewportCheck=undefined
+    let next=false
+    for(const frame of viewportFrames){
+      if(!frame.isConnected){viewportFrames.delete(frame);continue}
+      if(next)continue
+      const css=getComputedStyle(frame)
+      if(css.position!=='fixed'||css.visibility!=='visible'||css.pointerEvents==='none')continue
+      const viewportHeight=/^100(?:%|[dls]?vh)$/.test(frame.style.height)
+        ||frame.computedStyleMap?.().get('height')?.toString()==='100%'
+      if(!viewportHeight)continue
+      const {top,left,right,bottom}=frame.getBoundingClientRect()
+      if(right>left&&bottom>top&&top<=1&&left<=1&&right>=innerWidth-1&&bottom>=innerHeight-1)next=true
+    }
+    if(next===viewportActive)return
+    viewportActive=next;publishViewport?.(next)
+  }
+  const scheduleViewport=()=>{
+    if(viewportCheck===undefined&&viewportFrames.size)viewportCheck=requestAnimationFrame(refreshViewport)
+  }
   let active=true
   const listenerFacts=new WeakMap<Element,{type:string;callback:EventListenerOrEventListenerObject;capture:boolean;
     effective:EventListenerOrEventListenerObject;abort?:()=>void;signal?:AbortSignal}[]>()
@@ -139,6 +162,9 @@ export function createAuthorDomControls(publish:(controls:{id:string;label:strin
     let stylesheet=false
     const visit=(element:Element)=>{
       if(element.matches('style,link'))stylesheet=true
+      if(publishViewport&&element.localName==='iframe'&&!element.closest('[data-author-scene-child]')){
+        viewportFrames.add(element as HTMLIFrameElement)
+      }
       register(element)
       const shadow=element.shadowRoot
       if(shadow&&owned(element)&&!shadowRoots.has(shadow)){
@@ -174,9 +200,11 @@ export function createAuthorDomControls(publish:(controls:{id:string;label:strin
     if(changed)publishControls()
   }
   observer=new MutationObserver(records=>{
+    let viewportChanged=false
     for(const record of records){
       if(record.type==='childList'){
         let stylesheet=false
+        const frameCount=viewportFrames.size
         for(const node of record.addedNodes){stylesheet=discover(node)||stylesheet;changedLabelSubtree(node)}
         for(const node of record.removedNodes){
           changedLabelSubtree(node)
@@ -184,6 +212,8 @@ export function createAuthorDomControls(publish:(controls:{id:string;label:strin
         }
         if(stylesheet)
           for(const element of controls.keys())changedControls.add(element)
+        if(frameCount!==viewportFrames.size||stylesheet
+          ||[...viewportFrames].some(frame=>!frame.isConnected))viewportChanged=true
       }
       const target=record.target.nodeType===1?record.target as Element
         :record.target.nodeType===11?(record.target as ShadowRoot).host:record.target.parentElement
@@ -199,8 +229,15 @@ export function createAuthorDomControls(publish:(controls:{id:string;label:strin
       if(record.type==='attributes'&&record.attributeName==='id')
         for(const dependents of labelReferences.values())for(const element of dependents)changedControls.add(element)
       // Stylesheets can change fixed positioning outside their own subtree.
-      if(target.closest('style')||target.tagName==='LINK')
+      if(target.closest('style')||target.tagName==='LINK'){
+        viewportChanged=true
         for(const element of controls.keys())changedControls.add(element)
+      }
+      if(record.type==='attributes'&&!viewportChanged)
+        for(const frame of viewportFrames){
+          for(let node:Element|null=frame;node;node=composedParent(node))if(node===target){viewportChanged=true;break}
+          if(viewportChanged)break
+        }
     }
     const removedElements=records.some(record=>record.type==='childList'&&[...record.removedNodes].some(node=>node.nodeType===1))
     if(removedElements)for(const element of controls.keys())if(!owned(element))changedControls.add(element)
@@ -211,9 +248,11 @@ export function createAuthorDomControls(publish:(controls:{id:string;label:strin
       for(const root of shadowRoots)observer.observe(root,observation)
     }
     refreshControls()
+    if(viewportChanged)scheduleViewport()
   })
   observer.observe(document.documentElement,observation)
   discover(document.documentElement);refreshControls()
+  if(publishViewport){scheduleViewport();addEventListener('resize',scheduleViewport)}
   const eventChanged=(element:Element)=>{if(active&&(controls.has(element)||owned(element))){register(element);refreshControls()}}
   type ListenerFact=NonNullable<ReturnType<typeof listenerFacts.get>>[number]
   const retire=(element:Element,fact:ListenerFact)=>{
@@ -386,6 +425,9 @@ export function createAuthorDomControls(publish:(controls:{id:string;label:strin
   addEventListener('nexttavern-author-realm-ready',earlyRealm)
   const dispose=()=>{
     active=false;observer.disconnect();removeEventListener('nexttavern-author-realm-ready',earlyRealm)
+    removeEventListener('resize',scheduleViewport)
+    if(viewportCheck!==undefined)cancelAnimationFrame(viewportCheck)
+    viewportFrames.clear()
     if(press){press.pending=undefined;processCapture();press=undefined}
     for(const [listener,signal] of abortSubscriptions)signal.deref()?.removeEventListener('abort',listener)
     abortSubscriptions.clear();controls.clear();elements.clear();descriptions.clear();changedControls.clear()

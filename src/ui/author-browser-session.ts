@@ -924,6 +924,7 @@ export function createAuthorBrowserSession(options:{
                 {snapshot:realmSnapshot(captured,address.realmId),readScope:currentSnapshotScope},host,{
                     parentOrigin:attachment.parentOrigins[address.groupId]!,resource:row.resource,
                     scene:address.groupId==='author-helper'?scene:undefined,
+                    sceneTopOffsets:attachment.sceneTopOffsets,
                     reportExtensionFailure,
                     eventRoute:eventRouter,attachment:target,
                     documentLayout:options.documentLayout,libraries:options.nativeLibraries,

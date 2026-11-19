@@ -6,6 +6,8 @@
 
 ## 2026-11-19
 
+- 随视口伸缩的全屏作者前端在短开场可用完整阅读区，关闭后恢复正文布局。引用酒馆顶层窗口的兼容作者模块可在隔离场景中启动。世界书初始变量的空集合可以恢复缺失的分隔空格。桌面侧停靠状态栏的折叠按钮避开系统标题栏。
+- Responsive full-viewport author interfaces can use the available reading area during short openings. Closing them restores the story layout. Legacy Helper modules can mount in the isolated author scene. Worldbook initializers recover missing separators before empty YAML collections. The docked status panel clears the desktop title bar.
 - 聊天附件导入后随会话完成刷新开场选择。开场里的 `{{user}}` 使用已选玩家名称，兼容旧桌面 profile 的用户信息。世界书标题的首尾空白可以正常随卡导入和选择开场。默认 Reader 允许作者脚本绑定开场里的表单挂载点，正则匹配位置可以作为作者文档的字符串数据。导出角色卡时保留在分支里编辑过的继承开场。
 - Opening choices refresh when a chat-attachment import turn finishes. The `{{user}}` macro uses the selected player name, including profiles saved by older desktop builds. Worldbook titles with surrounding whitespace no longer block opening selection. The default Reader lets author scripts mount forms in an opening and accepts regex match offsets as document string data. Card exports retain inherited openings edited in a worldline branch.
 - 酒馆发送后立即显示准备进度。追更时跟随正文，向上回看时保留阅读位置。后台导演笔记默认超时五分钟，输出遵循模型限制；笔记、压缩与检索排除数值更新和状态栏占位符。剧情语义查询每条正文取最佳分块，空索引直接使用关键词。

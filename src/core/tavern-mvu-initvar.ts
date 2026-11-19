@@ -3,7 +3,7 @@ import {NATIVE_MVU_SOURCE_POLICY,NATIVE_MVU_YAML_SOURCE_POLICY,isNativeMvuSource
   isNativeMvuYamlSourcePolicy,nativeMvuPayloadGrammar} from './roleplay-mvu-source-policy.js'
 import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
 import type {FreshNativeBasisFacts,NativeMvuJsonCandidate} from './roleplay-mvu-source.js'
-import {parseMvuYamlData} from './tavern-mvu-yaml.js'
+import {parseMvuYamlData,type MvuYamlMode} from './tavern-mvu-yaml.js'
 
 export type MvuJsonValue = null | boolean | number | string | MvuJsonValue[] | MvuJsonObject
 export interface MvuJsonObject { [key: string]: MvuJsonValue }
@@ -605,7 +605,7 @@ function hasClosedMacro(text: string): boolean {
 }
 function payload(text: string, rendered: MvuInitRenderedPayload | undefined,
   context: PayloadContext, pointer: string,grammar:'json'|'yaml'='json',
-  yamlMode:'strict'|'legacy-mvu-opening'='strict'): ParsedPayload {
+  yamlMode:MvuYamlMode='strict'): ParsedPayload {
   const cached = context.cache.get(pointer)
   if (cached) return cached
   const macros = context.macros
@@ -650,7 +650,8 @@ function loadBooks(input: MvuCalculationInput, starting: MvuJsonObject, seen: st
         const metadata:{header?:string}={}
         const text=extractEntry(entry.content,metadata)
         parsed=payload(text,entry.rendered,context,pointer,
-          context.yaml?nativeMvuPayloadGrammar(entry.rendered?.text??text,metadata.header,metadata.header,text):'json')
+          context.yaml?nativeMvuPayloadGrammar(entry.rendered?.text??text,metadata.header,metadata.header,text):'json',
+          'legacy-mvu-book')
       }
       parsed.contentSha256 ??= sha(entry.content)
       merged = merge(merged, parsed.data)

@@ -1,10 +1,42 @@
 // Generated from runtime/alpha3/src/core/author-dom-controls.ts; edit the TypeScript source.
 /** Owns Source DOM control discovery and one finite primary-press transaction.
  * Serialized into the isolated parent shell, with no Main or Core references. */
-export function createAuthorDomControls(publish) {
+export function createAuthorDomControls(publish, publishViewport) {
     const controls = new Map(), elements = new Map();
     const descriptions = new Map();
     const shadowRoots = new Set();
+    const viewportFrames = new Set();
+    let viewportActive = false, viewportCheck;
+    const refreshViewport = () => {
+        viewportCheck = undefined;
+        let next = false;
+        for (const frame of viewportFrames) {
+            if (!frame.isConnected) {
+                viewportFrames.delete(frame);
+                continue;
+            }
+            if (next)
+                continue;
+            const css = getComputedStyle(frame);
+            if (css.position !== 'fixed' || css.visibility !== 'visible' || css.pointerEvents === 'none')
+                continue;
+            const viewportHeight = /^100(?:%|[dls]?vh)$/.test(frame.style.height)
+                || frame.computedStyleMap?.().get('height')?.toString() === '100%';
+            if (!viewportHeight)
+                continue;
+            const { top, left, right, bottom } = frame.getBoundingClientRect();
+            if (right > left && bottom > top && top <= 1 && left <= 1 && right >= innerWidth - 1 && bottom >= innerHeight - 1)
+                next = true;
+        }
+        if (next === viewportActive)
+            return;
+        viewportActive = next;
+        publishViewport?.(next);
+    };
+    const scheduleViewport = () => {
+        if (viewportCheck === undefined && viewportFrames.size)
+            viewportCheck = requestAnimationFrame(refreshViewport);
+    };
     let active = true;
     const listenerFacts = new WeakMap();
     // Detached child documents may disappear while the Source scene stays alive.
@@ -183,6 +215,9 @@ export function createAuthorDomControls(publish) {
         const visit = (element) => {
             if (element.matches('style,link'))
                 stylesheet = true;
+            if (publishViewport && element.localName === 'iframe' && !element.closest('[data-author-scene-child]')) {
+                viewportFrames.add(element);
+            }
             register(element);
             const shadow = element.shadowRoot;
             if (shadow && owned(element) && !shadowRoots.has(shadow)) {
@@ -239,9 +274,11 @@ export function createAuthorDomControls(publish) {
             publishControls();
     };
     observer = new MutationObserver(records => {
+        let viewportChanged = false;
         for (const record of records) {
             if (record.type === 'childList') {
                 let stylesheet = false;
+                const frameCount = viewportFrames.size;
                 for (const node of record.addedNodes) {
                     stylesheet = discover(node) || stylesheet;
                     changedLabelSubtree(node);
@@ -254,6 +291,9 @@ export function createAuthorDomControls(publish) {
                 if (stylesheet)
                     for (const element of controls.keys())
                         changedControls.add(element);
+                if (frameCount !== viewportFrames.size || stylesheet
+                    || [...viewportFrames].some(frame => !frame.isConnected))
+                    viewportChanged = true;
             }
             const target = record.target.nodeType === 1 ? record.target
                 : record.target.nodeType === 11 ? record.target.host : record.target.parentElement;
@@ -277,9 +317,21 @@ export function createAuthorDomControls(publish) {
                     for (const element of dependents)
                         changedControls.add(element);
             // Stylesheets can change fixed positioning outside their own subtree.
-            if (target.closest('style') || target.tagName === 'LINK')
+            if (target.closest('style') || target.tagName === 'LINK') {
+                viewportChanged = true;
                 for (const element of controls.keys())
                     changedControls.add(element);
+            }
+            if (record.type === 'attributes' && !viewportChanged)
+                for (const frame of viewportFrames) {
+                    for (let node = frame; node; node = composedParent(node))
+                        if (node === target) {
+                            viewportChanged = true;
+                            break;
+                        }
+                    if (viewportChanged)
+                        break;
+                }
         }
         const removedElements = records.some(record => record.type === 'childList' && [...record.removedNodes].some(node => node.nodeType === 1));
         if (removedElements)
@@ -298,10 +350,16 @@ export function createAuthorDomControls(publish) {
                 observer.observe(root, observation);
         }
         refreshControls();
+        if (viewportChanged)
+            scheduleViewport();
     });
     observer.observe(document.documentElement, observation);
     discover(document.documentElement);
     refreshControls();
+    if (publishViewport) {
+        scheduleViewport();
+        addEventListener('resize', scheduleViewport);
+    }
     const eventChanged = (element) => { if (active && (controls.has(element) || owned(element))) {
         register(element);
         refreshControls();
@@ -533,6 +591,10 @@ export function createAuthorDomControls(publish) {
         active = false;
         observer.disconnect();
         removeEventListener('nexttavern-author-realm-ready', earlyRealm);
+        removeEventListener('resize', scheduleViewport);
+        if (viewportCheck !== undefined)
+            cancelAnimationFrame(viewportCheck);
+        viewportFrames.clear();
         if (press) {
             press.pending = undefined;
             processCapture();
