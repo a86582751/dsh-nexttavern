@@ -6,6 +6,10 @@
 
 ## 2026-11-19
 
+- 开发版按每次剧情实际需要组装消息。渠道明确拒绝角色或位置时，恢复卡显示原因，并提供切换渠道和直接打开干净世界线的操作。玩家确认后发送保留的输入。
+- Story requests are assembled with the message roles and positions each turn uses. An explicit provider rejection shows the reason and offers a channel change and direct access to the prepared worldline. The player chooses when to send the retained input.
+- 修复桌面模型供应商保存时误重启酒馆的问题。已挂载的供应商直接接收设置更新，会话界面保持可用。
+- Saving a model provider in Desktop applies the settings to the mounted provider and keeps the conversation UI active.
 - 核对 0.2.9 三个 RC 的修复。0.3 恢复 Windows／Linux 便携候选的原生插件安装路径，宿主清单和锁由便携配方携带，插件归档继续使用瘦身布局。便携安装中断后可切换下载源并重试。剧情首响应以模型首次输出为准，规范正文可以随后显示。
 - The 0.3 portable setup restores native plugin installation on Windows and Linux. Setup recipes carry the locked host inputs and install the same slim plugin archive. An interrupted setup can retry with a different download source. The story deadline observes the provider’s first output while formatted story text may appear later.
 
