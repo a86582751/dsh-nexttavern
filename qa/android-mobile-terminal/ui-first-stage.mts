@@ -812,10 +812,22 @@ async function prepareRoleplaySessionAndCardPage(openCardPage=true):Promise<void
   captureApprovedScreenshot('model-routing');
   await until(()=>visibleNamed(mainRouteNames,node=>node.class==='android.widget.Spinner'||button(node)).length===1,30,'TAVERN_MAIN_MODEL_SELECTOR_NOT_EXPOSED');
   await press(mainRouteNames,node=>node.class==='android.widget.Spinner'||button(node));
-  // Source builds <label-or-model> · <provider> — <capability summary>.
-  const routeOption=(node:Node)=>menuOption(node)&&node.text?.startsWith(fixtureId+' · '+fixtureId+' — ');
-  await until(()=>current.filter(node=>node.package===pkg&&routeOption(node)&&visibleBounds(node)).length===1,30,'FIXTURE_ROUTE_OPTION_NOT_EXPOSED');
-  tapNode(current.find(node=>node.package===pkg&&routeOption(node)&&visibleBounds(node))!);
+  // RC1 management-panels.ts renders <label-or-model> · <provider>.
+  // The real native select popup exposes this exact CheckedTextView, without
+  // the earlier capability suffix. Qualify both the model and provider.
+  const fixtureOptionText=fixtureId+' · '+fixtureId;
+  let routeOption:Node|undefined;
+  await until(()=>{
+    const visible=current.filter(node=>node.package===pkg&&menuOption(node)
+      &&named(node,[fixtureOptionText])&&node.enabled!=='false'&&visibleBounds(node));
+    requireUi(visible.length<=1,'FIXTURE_ROUTE_OPTION_AMBIGUOUS');
+    routeOption=visible[0];return Boolean(routeOption);
+  },30,'FIXTURE_ROUTE_OPTION_NOT_EXPOSED');
+  tapNode(routeOption!);
+  // Native picker closes asynchronously; require the product to enable the
+  // separate confirmation button before attempting its one semantic click.
+  await until(()=>current.some(node=>node.package===pkg&&inWebView(node)
+    &&named(node,['切换当前对话主模型'])&&button(node)&&node.enabled!=='false'),20,'FIXTURE_ROUTE_CHOICE_NOT_APPLIED_TO_PANEL');
   await press(['切换当前对话主模型']);
   await until(()=>current.some(node=>node.package===pkg&&node.text===
     '主模型已切换；不会自动发送或重发。若有失败输入，请按聊天中的恢复提示操作。'),60,'MAIN_MODEL_SWITCH_NOT_CONFIRMED');
