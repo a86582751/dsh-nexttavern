@@ -237,8 +237,8 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
       error&&h('div',{role:'alert',className:'dsh-rp-error'},error,draft?'；本地草稿保留，可刷新版本后重试。':''),
       !policy&&h('p',{role:'status'},busy?'正在读取社区预设…':'暂无社区预设数据'),
       h('div',panel('selection'),showSelection&&h(React.Fragment,null,
-      h('label',{className:'dsh-rp-preset-upload'},h('strong',null,'导入社区预设 JSON'),
-        h('span',{className:'dsh-rp-muted'},'选择 .json 文件；导入后会保存在共享预设库。'),
+      h('label',{className:'dsh-rp-management-upload'},h('strong',null,'导入社区预设 JSON'),
+        h('span',{className:'dsh-rp-muted'},'导入后保存在共享预设库。'),
         h('input',{type:'file',accept:'.json,application/json','aria-label':'导入社区预设JSON',
           disabled:working||!!draft||!policy,onChange:(event:ReactAPI.ChangeEvent<HTMLInputElement>)=>{
             const file=event.target.files?.[0];event.target.value='';void importFile(file)
@@ -307,7 +307,8 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
           workingPreset!.profile.actions.length>0&&h('ul',null,workingPreset!.profile.actions.map(action=>h('li',{key:action.id},`${action.id}：后续接入（${action.reason}）`))),
           nativeMode==='izumi'&&h('fieldset',{disabled:working||!!draft||!canManagePlans},h('legend',null,'Izumi分层方案'),
             !canManagePlans&&h('p',{className:'dsh-rp-muted'},'当前对话采用的预设与所选预设不同，分层方案暂不可编辑。'),
-            h('label',null,'导入Izumi方案包',h('input',{type:'file',accept:'.json,application/json','aria-label':'导入Izumi方案包',
+            h('label',null,'导入Izumi方案包',h('input',{type:'file',
+              accept:'.json,application/json','aria-label':'导入Izumi方案包',
               onChange:(event:ReactAPI.ChangeEvent<HTMLInputElement>)=>{const file=event.target.files?.[0];event.target.value='';void importFile(file,true)}})),
             h('p',{className:'dsh-rp-muted'},'导入仅保存方案与active记录；预览后显式应用。'),
             pack?.plans.map(plan=>checkbox(`${plan.name}（${plan.layer}${plan.section?'/'+plan.section:''}）`,chosenPlans.includes(plan.id),

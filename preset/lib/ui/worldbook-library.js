@@ -1,6 +1,14 @@
 // Generated from runtime/alpha3/src/ui/worldbook-library.ts; edit the TypeScript source.
 const path = '/api/roleplay/worldbooks';
 const storageKey = (sid) => 'nexttavern-worldbook-library-pending-v1:' + sid;
+export function hasWorldbookLibraryRecoveryV1(sessionId) {
+    try {
+        return globalThis.sessionStorage.getItem(storageKey(sessionId)) !== null;
+    }
+    catch {
+        return false;
+    }
+}
 const storedRequest = (body) => '{"schemaVersion":1,"request":' + body + '}';
 const empty = (sessionId) => ({ sessionId, library: null, loading: false, saving: false,
     pending: null, storageBlocked: false, error: null, receipt: null, feedback: null });
@@ -251,9 +259,9 @@ export function createWorldbookLibraryPanelV1(deps) {
                     onChange: (event) => update({ ...selection, bookId: event.target.value || null })
                 }, ...options('无聊天世界书', selection.bookId)));
             }
-            return h('fieldset', { key: selection.kind, disabled: busy, style: { minWidth: 0 }, 'data-worldbook-binding': selection.kind }, h('legend', null, selection.kind === 'profile' ? '全局世界书' : selection.kind === 'character' ? '当前角色世界书' : '当前聊天世界书'), controls);
+            return h('fieldset', { key: selection.kind, disabled: busy, className: 'dsh-rp-worldbook-binding', 'data-worldbook-binding': selection.kind }, h('legend', null, selection.kind === 'profile' ? '全局世界书' : selection.kind === 'character' ? '当前角色世界书' : '当前聊天世界书'), controls);
         };
-        return h('section', { 'aria-label': '世界书库', 'data-worldbook-library': sessionId }, h('h4', null, '世界书库'), h('label', { className: 'dsh-rp-field' }, '导入 SillyTavern 世界书 JSON', h('input', {
+        return h('section', { 'aria-label': '世界书库', 'data-worldbook-library': sessionId, className: 'dsh-rp-worldbook-library' }, h('header', { className: 'dsh-rp-item-head' }, h('h4', { className: 'dsh-rp-section-title' }, '导入与绑定'), h('button', { type: 'button', className: 'dsh-rp-btn', disabled: state.loading || state.saving, onClick: guarded(controller.reload) }, '刷新世界书库')), h('label', { className: 'dsh-rp-management-upload' }, '导入 SillyTavern 世界书 JSON', h('input', {
             type: 'file', accept: '.json,application/json', disabled: busy || !state.library,
             onChange: (event) => {
                 const file = event.target.files?.[0];
@@ -261,8 +269,9 @@ export function createWorldbookLibraryPanelV1(deps) {
                 if (file)
                     guarded(() => controller.importFile(file))();
             }
-        })), h('p', { className: 'dsh-rp-muted' }, '导入后在下方选择绑定范围。全局设置用于当前 profile，聊天设置用于当前会话。'), state.loading || state.saving ? h('p', { role: 'status' }, state.saving ? '正在保存世界书操作…' : '正在读取世界书库…') : null, state.error ? h('p', { role: 'alert', className: 'dsh-rp-error' }, state.error) : null, state.storageBlocked ? h('button', { type: 'button', className: 'dsh-rp-btn', disabled: state.saving,
-            onClick: guarded(controller.clearInvalidRecovery) }, '清除无效恢复记录') : null, state.feedback ? h('p', { role: 'status' }, state.feedback) : null, state.pending ? h('div', { className: 'dsh-rp-item' }, h('p', null, '世界书操作待确认 · ' + state.pending.operationId), h('button', { type: 'button', className: 'dsh-rp-btn', disabled: state.saving, onClick: guarded(controller.recover) }, '恢复本次世界书操作')) : null, state.pending && state.receipt ? h('pre', { className: 'dsh-rp-muted', 'aria-label': '世界书操作持久凭据',
-            style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, JSON.stringify(state.receipt, null, 2)) : null, h('button', { type: 'button', className: 'dsh-rp-btn', disabled: state.loading || state.saving, onClick: guarded(controller.reload) }, '刷新世界书库'), state.library ? h(React.Fragment, null, h('p', { className: 'dsh-rp-muted' }, books.length ? `已收录 ${books.length} 本世界书` : '尚未导入世界书'), ...books.map(book => h('div', { className: 'dsh-rp-item', key: book.address.bookId }, book.name)), ...bindings.map(renderBinding)) : null);
+        })), h('p', { className: 'dsh-rp-muted' }, '导入后，选择在哪些范围使用。全局设置适用于当前 DSH 配置。'), state.loading || state.saving ? h('p', { role: 'status' }, state.saving ? '正在保存世界书操作…' : '正在读取世界书库…') : null, state.error ? h('p', { role: 'alert', className: 'dsh-rp-error' }, state.error) : null, state.storageBlocked ? h('button', { type: 'button', className: 'dsh-rp-btn', disabled: state.saving,
+            onClick: guarded(controller.clearInvalidRecovery) }, '清除无效恢复记录') : null, state.feedback ? h('p', { role: 'status' }, state.feedback) : null, state.pending ? h('div', { className: 'dsh-rp-item' }, h('p', null, '世界书操作待确认 · ' + state.pending.operationId), h('button', { type: 'button', className: 'dsh-rp-btn', disabled: state.saving, onClick: guarded(controller.recover) }, '恢复本次世界书操作')) : null, state.pending && state.receipt ? h('details', null, h('summary', null, '查看操作凭据'), h('pre', { className: 'dsh-rp-muted', 'aria-label': '世界书操作持久凭据',
+            style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, JSON.stringify(state.receipt, null, 2))) : null, state.library ? h(React.Fragment, null, h('div', { className: 'dsh-rp-worldbook-bindings' }, ...bindings.map(renderBinding)), books.length ? h('details', null, h('summary', null, `已收录 ${books.length} 本世界书`), h('div', { className: 'dsh-rp-worldbook-books' }, ...books.map(book => h('div', { key: book.address.bookId }, book.name)))) :
+            h('p', { className: 'dsh-rp-muted' }, '尚未导入世界书')) : null);
     };
 }

@@ -9,7 +9,7 @@ import {
 } from './panel-state.js';
 import type { PanelDraft } from './panel-state.js';
 import {createTavernLoreEditorPanelV1} from './tavern-lore-editor.js';
-import {createWorldbookLibraryPanelV1} from './worldbook-library.js';
+import {createWorldbookLibraryPanelV1, hasWorldbookLibraryRecoveryV1} from './worldbook-library.js';
 const errorMessage = (error: unknown) => error && typeof error === 'object' && 'message' in error ? error.message : error;
 interface RecordVersions extends Record<string, unknown> {
     cards?: Record<string, unknown>;
@@ -156,7 +156,7 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
     const btn = (
         label: ReactAPI.ReactNode,
         onClick: ReactAPI.MouseEventHandler<HTMLButtonElement>,
-        extra: ReactAPI.ButtonHTMLAttributes<HTMLButtonElement> = {}
+        extra: ReactAPI.ButtonHTMLAttributes<HTMLButtonElement> & ReactAPI.Attributes = {}
     ) => React.createElement('button', {
         type: 'button', className: 'dsh-rp-btn', onClick, ...extra
     }, label);
@@ -513,15 +513,21 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
     function WorldbookPanel(props: PanelProps) {
         const { scope, visible } = props;
         const sessionId = scope?.sessionId;
-        const [loreRefresh,setLoreRefresh]=React.useState(0);
+        const [loreRefresh, setLoreRefresh] = React.useState(0);
+        const scrollPanel = React.useRef<HTMLElement>(null);
         const [worldbookView, setWorldbookView] = React.useState<{
             sessionId: string | undefined;
-            kind: 'supplemental' | 'structured';
-        }>({ sessionId, kind: 'supplemental' });
+            kind: 'supplemental' | 'structured' | 'library';
+            visitedLibrary: boolean;
+            visitedStructured: boolean;
+        }>(() => {
+            const recovering = !!sessionId && hasWorldbookLibraryRecoveryV1(sessionId);
+            return {sessionId, kind: recovering ? 'library' : 'supplemental', visitedLibrary: recovering, visitedStructured: false};
+        });
         // The manager keys panels by Session. This render guard also hides the
         // previous editor before effects if another caller keeps the panel mounted.
-        const structured = worldbookView.sessionId === sessionId && worldbookView.kind === 'structured';
-        const { data, error, refresh } = useRoleplayState(sessionId, structured ? false : visible);
+        const view = worldbookView.sessionId === sessionId ? worldbookView.kind : 'supplemental';
+        const { data, error, refresh } = useRoleplayState(sessionId, view === 'supplemental' && visible);
         const [editing, setEditing] = React.useState<WorldbookEntry | WorldbookForm | 'new' | null>(null);
         const [formValue, setFormState] = React.useState<WorldbookForm | null>(null);
         // Editing and form are initialized together before these controls mount.
@@ -626,22 +632,32 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
             value: value ?? '',
             onChange: (e: ReactAPI.ChangeEvent<HTMLInputElement>) => onChange(e.target.value)
         }));
-        const modes = React.createElement('div', {
-            className: 'dsh-rp-row', role: 'group', 'aria-label': '世界书管理方式'
-        }, btn('补充条目 / 旧记录', () => setWorldbookView({ sessionId, kind: 'supplemental' }), {
-            disabled: saving || !sessionId, 'aria-pressed': !structured
-        }), btn('结构化世界书', () => setWorldbookView({ sessionId, kind: 'structured' }), {
-            disabled: saving || !sessionId, 'aria-pressed': structured
-        }));
         if (!visible) return null;
-        const library=sessionId?React.createElement(WorldbookLibraryPanel,{
-            sessionId,onSaved:()=>invalidateState(sessionId),
-            onBindingsSaved:()=>{if(structured)setLoreRefresh(value=>value+1);}
-        }):null;
-        const content=structured
-            ?React.createElement(TavernLoreEditorPanel, { scope, visible,refreshVersion:loreRefresh })
-            :React.createElement(PanelShell, {
-            title: '世界书',
+        const modes = React.createElement('div', {
+            className: 'dsh-rp-subtabs', role: 'group', 'aria-label': '世界书管理方式'
+        }, ([['supplemental', '补充条目'], ['structured', '结构化世界书'], ['library', '世界书库']] as const)
+            .map(([kind, label]) => btn(label, () => {
+                if (scrollPanel.current) scrollPanel.current.scrollTop = 0;
+                setWorldbookView(previous => ({
+                    sessionId, kind,
+                    visitedLibrary: kind === 'library' || previous.sessionId === sessionId && previous.visitedLibrary,
+                    visitedStructured: kind === 'structured' || previous.sessionId === sessionId && previous.visitedStructured
+                }));
+            }, {
+                key: kind, disabled: saving || !sessionId, 'aria-pressed': view === kind
+            })));
+        const library = sessionId && worldbookView.sessionId === sessionId && worldbookView.visitedLibrary
+            ? React.createElement('div', {hidden: view !== 'library', key: sessionId},
+                React.createElement(WorldbookLibraryPanel, {
+                    sessionId, onSaved: () => invalidateState(sessionId), onBindingsSaved: () => setLoreRefresh(value => value + 1)
+                }))
+            : null;
+        const structured = worldbookView.sessionId === sessionId && worldbookView.visitedStructured
+            ? React.createElement('div', {hidden: view !== 'structured', key: 'structured:' + sessionId},
+                React.createElement(TavernLoreEditorPanel, {scope, visible, refreshVersion: loreRefresh}))
+            : null;
+        const content=view==='supplemental' ? React.createElement(PanelShell, {
+            title: '补充条目与旧记录',
             visible,
             sessionId,
             error,
@@ -651,8 +667,7 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
             }),
         }, React.createElement('p', {
             className: 'dsh-rp-muted'
-        }, 'SillyTavern 原卡条目的内容、启用和常驻状态，请在上方「结构化世界书」中编辑。'
-            + '此处保留补充条目和旧记录视图；旧记录可能不含结构化编辑后的修改。'), editing
+        }, '在这里添加补充资料。原卡条目的内容、启用和常驻状态可在「结构化世界书」中编辑。'), editing
             ? React.createElement('fieldset', {
                 disabled: saving, style: {
                     border: 0, padding: 0, margin: 0
@@ -718,8 +733,11 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
                 }, btn('编辑', () => startEdit(e)), btn('删除', () => remove(e.id)))))
                 : React.createElement('div', {
                     className: 'dsh-rp-muted'
-                }, '（暂无条目；点击「＋ 新增」或让 AI 用 rp_worldbook_add 写入）'));
-        return React.createElement(React.Fragment,null,modes,library,content);
+                }, '暂无补充条目。点击「＋ 新增」添加。')) : null;
+        return React.createElement('section', {
+            ref: scrollPanel, className: 'dsh-rp-panel dsh-rp-management-page dsh-rp-worldbook',
+            'aria-label': '世界书', tabIndex: 0
+        }, React.createElement('h3', {className: 'dsh-rp-management-title'}, '世界书'), modes, library, structured, content);
     }
     // ── 角色卡面板 ──
     function CardsPanel(props: PanelProps) {
