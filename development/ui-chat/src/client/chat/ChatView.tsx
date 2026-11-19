@@ -100,7 +100,7 @@ const ChatNodeList = memo(function ChatNodeList({ entries, useChatGroup, pending
 export function ChatView({
   useSession, useChat, useChatNode, useChatNodeProcess, useChatGroup, useConversation, useSessions, useStore, actions, renderSlot,
   sessionId, openFile, openSkill, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions,
-  usePresentation, useProjection, renderFactorySlot, fileDrag, t,
+  usePresentation, useProjection, renderFactorySlot, fileDrag, openView, t,
 }: ChatViewSlotProps) {
   const order = useChat(s => s.order)
   const groupedEntries = useConversation(snapshot => snapshot.views.grouped('chat')?.entries)
@@ -271,7 +271,7 @@ export function ChatView({
                 t={t}
               />
             </MarkdownDelegateProvider>
-          {renderSlot('conversation.chat.roleplay-progress', {hasNativePending: pendingInputs.length > 0})}
+          {renderSlot('conversation.chat.roleplay-progress', {hasNativePending: pendingInputs.length > 0, openView})}
             {/* No pending placeholders: questions (ui-user-questions) and approvals
                 (ApprovalPanel) both take over the composer, so a flow card would
                 double-render the same wait. */}

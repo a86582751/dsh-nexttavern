@@ -336,7 +336,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.chat.assistant-actions': { kind: 'list'; scope: 'session'; owner: AssistantActionOwnerProps }
     /** Ordered actions for one user message; the entry receives its durable seq and projected text. */
     'conversation.chat.user-actions': { kind: 'list'; scope: 'session'; owner: UserActionOwnerProps }
-    'conversation.chat.roleplay-progress': { kind: 'list'; scope: 'session'; owner: {hasNativePending: boolean} }
+    'conversation.chat.roleplay-progress': { kind: 'list'; scope: 'session'; owner: {
+      hasNativePending: boolean
+      openView?(view:string,focus:string):void
+    } }
     /** A failed Turn has no durable assistant message identity to give ordinary message plugins. */
     'conversation.chat.roleplay-failure-actions': { kind: 'list'; scope: 'session'; owner: {turn: number; text: string} }
     /**

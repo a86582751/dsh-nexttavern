@@ -6,6 +6,8 @@
 
 ## 2026-11-19
 
+- 如果剧情准备时酒馆的作者脚本视图尚未打开，对话页会保留输入并提供「打开酒馆」操作。等作者界面就绪后，玩家可以手动发送保留的文字。
+- When story preparation needs the Tavern reader for author scripts, Chat keeps the input and offers Open Tavern. Players can resend the retained text after the author interface loads.
 - 修复开发版通过 Google Vertex AI 发送对话和剧情时报自定义传输错误。请求由 Vertex SDK 发出，主动取消和流空闲超时继续生效。
 - Google Vertex AI chat and story requests in the development build use the Vertex SDK transport and retain cancellation and stream idle timeouts.
 - 统一酒馆管理的世界书、预设和角色集群页面。世界书可滚动到末尾，导入与绑定有独立入口。预设的选中标签和文件按钮保持清晰对比，角色集群的运行开关、人物名单与私有资料更容易查找。

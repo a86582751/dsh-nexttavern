@@ -31,6 +31,7 @@ export interface ActivityState extends Record<string, unknown> {
   sessionId?: unknown
   backgroundJobs?: unknown
   pendingPlayer?: unknown
+  readerRequired?: boolean
   protocolFailure?: {code:string;requestDispatched:boolean;recovery:string;reason?:string;attemptId?:string}
   extensionFailures?:readonly RoleplayExtensionFailureV1[]
 }
@@ -132,6 +133,7 @@ interface ChatSnapshot extends Record<string, unknown> {
 interface DeferredPlayerProps {
   sessionId: string
   hasNativePending?: boolean
+  openView?(view:string,focus:string):void
   useChat?: (selector: (state: ChatSnapshot | null | undefined) => ChatSnapshot | null | undefined) => ChatSnapshot | null | undefined
 }
 
@@ -147,7 +149,7 @@ export interface ActivityComponentDependencies {
 
 export interface ActivityComponents {
   useTavernActivity: (sessionId: string | null | undefined, seed?: ActivityState | null) => ActivityState | null
-  ActivityBanner: (props: { activity?: ActivityState | null }) => ReactAPI.ReactNode
+  ActivityBanner: (props: { activity?: ActivityState | null; openReader?():void }) => ReactAPI.ReactNode
   BackgroundNotesBanner: (props: { activity?: ActivityState | null; sessionId?: string | null }) => ReactAPI.ReactNode
   pendingPlayerBubble: (activity?: ActivityState | null, nodes?: readonly ChatNode[], hasNativePending?: boolean) => ReactAPI.ReactNode
   DeferredPlayerInput: (props: DeferredPlayerProps) => ReactAPI.ReactNode
@@ -183,7 +185,7 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
     return activity?.sessionId === sessionId ? activity : seed?.sessionId === sessionId ? seed : null
   }
 
-  const ActivityBanner = ({ activity }: { activity?: ActivityState | null }): ReactAPI.ReactNode => {
+  const ActivityBanner:ActivityComponents['ActivityBanner'] = ({ activity, openReader }) => {
     const [now, setNow] = React.useState(Date.now())
     const [copyResult, setCopyResult] = React.useState('')
     const [preparation, setPreparation] = React.useState<{
@@ -197,6 +199,12 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
     }, [activity?.running])
     const pending=isRecord(activity?.pendingPlayer)?activity.pendingPlayer as PendingPlayer:null
     React.useEffect(()=>setCopyResult(''),[activity?.sessionId,pending?.text])
+    const copy=async()=>{
+      if(!pending?.text)return
+      try {await navigator.clipboard.writeText(pending.text);setCopyResult('文字输入已复制')}
+      catch {setCopyResult('复制失败，请手动复制上方保留的输入')}
+    }
+    const copyButton=pending?.text?React.createElement('button',{type:'button',className:'dsh-rp-btn',onClick:copy},'复制保留的文字输入'):null
     const failure=activity?.protocolFailure
     const recoverySession=activity&&typeof activity.sessionId==='string'&&!activity.running
       &&failure?.requestDispatched&&failure.recovery==='clean-worldline'
@@ -211,6 +219,16 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
       }).catch(()=>{})
       return ()=>{cancelled=true}
     },[recoverySession,key])
+    if(activity?.readerRequired&&!activity.running) {
+      return React.createElement('div',{className:'rp-activity rp-protocol-failure',role:'status'},
+        React.createElement('strong',null,'请在酒馆继续剧情'),
+        React.createElement('p',null,'这张卡需要酒馆的作者脚本才能准备剧情。输入已保留，模型请求尚未发送。'),
+        React.createElement('p',null,openReader?'打开酒馆后，可粘贴保留的文字并手动发送。':'作者界面就绪后，可粘贴保留的文字并手动发送。'),
+        React.createElement('div',{className:'rp-protocol-failure-actions'},
+          openReader?React.createElement('button',{type:'button',className:'dsh-rp-btn',onClick:openReader},'打开酒馆'):null,
+          copyButton),
+        copyResult?React.createElement('small',{role:'status'},copyResult):null)
+    }
     if(recoverySession&&failure) {
       const configure=(action:string)=>window.dispatchEvent(new CustomEvent('dsh-roleplay-needs-config',{
         detail:{sessionId:recoverySession,action},
@@ -227,11 +245,6 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
           const message=error instanceof Error?error.message:String(error)
           setPreparation(value=>value?.key===key?{...value,status:'ready',error:message}:value)
         }
-      }
-      const copy=async()=>{
-        if(!pending?.text)return
-        try {await navigator.clipboard.writeText(pending.text);setCopyResult('文字输入已复制')}
-        catch {setCopyResult('复制失败，请手动复制上方保留的输入')}
       }
       return React.createElement('div',{className:'rp-activity rp-protocol-failure',role:'alert'},
         React.createElement('strong',null,'上次使用的渠道拒绝了剧情所需的消息角色或插入位置。'),
@@ -255,7 +268,7 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
                   error:error instanceof Error?error.message:String(error)})
               }
             }},current?.status==='preparing'?'正在准备…':current?.status==='unknown'?'重试同一准备操作':'准备干净世界线'):null,
-          pending?.text?React.createElement('button',{type:'button',className:'dsh-rp-btn',onClick:copy},'复制保留的文字输入'):null,
+          copyButton,
           prepared&&openPreparedWorldline?React.createElement('button',{type:'button',className:'dsh-rp-btn',
             disabled:current?.status==='opening',onClick:open},current?.status==='opening'?'正在切换…':'切换到新世界线'):null),
         prepared?React.createElement('p',{role:'status'},'干净世界线已准备，尚未发送模型请求。'):null,
@@ -309,7 +322,8 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
       : []
     return React.createElement(React.Fragment, null, React.createElement('style', null, ACTIVITY_CSS),
       pendingPlayerBubble(activity, nodes, props.hasNativePending),
-      activity?.protocolFailure?React.createElement(ActivityBanner,{activity}):null)
+      activity?.protocolFailure||activity?.readerRequired?React.createElement(ActivityBanner,{activity,
+        openReader:props.openView?()=>props.openView?.('roleplay-reader','author-source'):undefined}):null)
   }
 
   return { useTavernActivity, ActivityBanner, BackgroundNotesBanner, pendingPlayerBubble, DeferredPlayerInput }

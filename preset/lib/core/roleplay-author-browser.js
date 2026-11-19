@@ -872,7 +872,8 @@ export function createRoleplayAuthorBrowser(deps) {
                 signal.removeEventListener('abort', abort);
                 return true;
             };
-            const abort = () => waiting.stop('BROWSER_GENERATION_CANCELLED');
+            const abort = () => waiting.stop(codeOf(signal.reason) === 'INPUT_MATERIAL_PREPARATION_DEADLINE'
+                ? 'BROWSER_GENERATION_READER_REQUIRED' : 'BROWSER_GENERATION_CANCELLED');
             const waiting = { sessionId: sid, programSha256: program.programSha256,
                 start(value) {
                     if (!cleanup())
