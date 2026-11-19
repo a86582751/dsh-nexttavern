@@ -90,8 +90,9 @@ export function readerNativeBeautyBootstrap(channel:string,sharedDom=false):void
   const render=(value:ReaderRegexDocumentRenderV1)=>{
     revision=value.renderRevision
     const css=value.css+(sharedDom?'':'\nhtml,body{margin:0;overflow:hidden}')
-      // Keep trailing paragraph margins inside the box we report.
-      +'.rp-reader-view{width:100%;min-height:0;overflow:visible;display:flow-root}'
+      // Fit the themed padding inside the frame, and keep paragraph margins
+      // inside the box we report to the outer Reader.
+      +'.rp-reader-view{width:100%;box-sizing:border-box;min-height:0;overflow:visible;display:flow-root}'
       +'.rp-reader{width:100%;max-width:none}'
     if(sheet.textContent!==css)sheet.textContent=css
     const next=new Set(value.parts.map(part=>part.key))

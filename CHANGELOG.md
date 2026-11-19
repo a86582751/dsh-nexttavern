@@ -4,6 +4,11 @@
 
 本页合并重复流水，保留用户可见变化、迁移要求和验证限制。完整清理前记录见 [2026-10-24 历史快照](https://github.com/a86582751/dsh-nexttavern/blob/d84a35c41189846faaca5643a88a1949fcff776d/CHANGELOG.md)，可追溯原始测试数字、失败记录和候选演变。
 
+## 2026-11-20
+
+- 开发版修复共享阅读区把主题内边距加到可用宽度之外的问题。官方主题和酒馆主题下均可用外层滚动阅读长正文。
+- The development build fits themed Reader padding within the available width. Long prose scrolls in the main reading area with either the official or Tavern theme.
+
 ## 2026-11-19
 
 - 酒馆正文只用外层滚动，独立作者页面仍可自行滚动。修复部分正则正文显示 HTML 段落标签和画面外启动时阅读布局超时。响应式全屏作者页面在短窗口里保留可滚到的操作空间。
