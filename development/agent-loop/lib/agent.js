@@ -6,7 +6,7 @@
  */
 import { AgentModel, agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent';
 import { NativeRequestBudget, retainNativeRequestMeasurement } from './request-budget.js';
-import { LlmError, IMAGE_OFFLOAD_REQUIRED_CODE, createAssistantMessage, createDeveloperMessage, errorChain, freezeMessage, markAgentLoopRequest, } from 'dsh-nexttavern-native-llm';
+import { LlmError, REQUEST_MATERIAL_ROLE_POSITION_REJECTED, IMAGE_OFFLOAD_REQUIRED_CODE, createAssistantMessage, createDeveloperMessage, errorChain, freezeMessage, markAgentLoopRequest, } from 'dsh-nexttavern-native-llm';
 import { assertNever, deepFreeze } from '@deepseek-ai/dsh-util-values';
 import { brandString } from '@deepseek-ai/dsh-brand';
 import { inspectProgrammaticCommit, programmaticTurnIdentity } from './programmatic-commit.js';
@@ -2428,6 +2428,11 @@ export class ReactLoopAgent {
                     ? error.failure
                     : { message: errorChain(error), code: 'UNKNOWN' },
             };
+            // A request that reached the server can be a normal admission rather
+            // than completion-gated work. Its owner still needs a recovery anchor.
+            if (turnEnds.error.code === REQUEST_MATERIAL_ROLE_POSITION_REJECTED && currentAdmission) {
+                this.blockInput(currentAdmission.registration, turnEnds.error.code, 'final', currentAdmission.proposal, currentAdmission.claim);
+            }
             this.throwError(error);
         }
         finally {

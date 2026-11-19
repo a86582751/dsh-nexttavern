@@ -41,11 +41,12 @@ export const REQUEST_MATERIAL_ROLE_POSITION_REJECTED = 'REQUEST_MATERIAL_ROLE_PO
 export function isRequestMaterialRoleRejection(status, detail) {
     if (status !== 400 && status !== 422)
         return false;
-    return /\bsystem (?:messages?|roles?)\b[^\r\n]{0,55}\b(?:first|initial|start|beginning|not (?:supported|allowed|permitted)|unsupported)\b/i.test(detail)
-        || /\b(?:unsupported|unexpected|invalid|not (?:support|allow|accept))\b[^\r\n]{0,48}\b(?:role\b[^\r\n]{0,24}\bsystem\b|system (?:messages?|roles?))\b/i.test(detail)
+    return /\bsystem (?:messages?|roles?|prompts?)\b[^\r\n]{0,55}\b(?:first|initial|start|beginning|index 0|not (?:supported|allowed|permitted)|unsupported)\b/i.test(detail)
+        || /\b(?:unsupported|unexpected|invalid|not (?:support|allow|accept))\b[^\r\n]{0,48}\b(?:role\b[^\r\n]{0,24}\bsystem\b|system (?:messages?|roles?|prompts?))\b/i.test(detail)
         || /\b(?:role|roles)\b[^\r\n]{0,48}\b(?:must alternate|must be one of|must be either|not (?:supported|allowed|permitted))\b/i.test(detail)
-        || /\bmessages(?:\[\d+\]|\.\d+)\.role\b/i.test(detail)
-            && /\b(?:unsupported|invalid|not (?:supported|allowed|permitted))\b/i.test(detail);
+        || /\bmessages must alternate (?:between )?(?:user|assistant|model)\b/i.test(detail)
+        || /\bvalid role\s*:\s*(?:user|assistant|model)\b/i.test(detail)
+        || /\b(?:contents|messages|input)(?:\[\d+\]|\.\d+)\.role\b[^\r\n]{0,60}\b(?:input should be|not a valid|invalid|unsupported|expected)\b/i.test(detail);
 }
 /** Structured codes and plain phrases that explicitly name a context bound being exceeded. */
 const STRUCTURED_CONTEXT_OVERFLOW = new RegExp(String.raw `(?:^|[^a-z0-9])context[\s_-](?:length|window)[\s_-]`

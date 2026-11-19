@@ -24,6 +24,7 @@ import {NativeRequestBudget,retainNativeRequestMeasurement} from './request-budg
 import type {NativeRequestMeasurementV1,NativeRequestMeter} from './request-budget.js'
 import {
   LlmError,
+  REQUEST_MATERIAL_ROLE_POSITION_REJECTED,
   IMAGE_OFFLOAD_REQUIRED_CODE,
   createAssistantMessage,
   createDeveloperMessage,
@@ -2384,6 +2385,12 @@ export class ReactLoopAgent implements Agent {
         error: error instanceof LlmError
           ? error.failure
           : { message: errorChain(error), code: 'UNKNOWN' },
+      }
+      // A request that reached the server can be a normal admission rather
+      // than completion-gated work. Its owner still needs a recovery anchor.
+      if (turnEnds.error.code === REQUEST_MATERIAL_ROLE_POSITION_REJECTED && currentAdmission) {
+        this.blockInput(currentAdmission.registration, turnEnds.error.code, 'final',
+          currentAdmission.proposal, currentAdmission.claim)
       }
       this.throwError(error)
     } finally {

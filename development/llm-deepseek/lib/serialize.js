@@ -75,8 +75,8 @@ export function serialize(options, connection, history, images, access, onReplay
     const messages = [];
     let historySystem;
     let activeSystem;
-    const materialSystem = [];
-    const systemSnapshot = () => [options.system, activeSystem, ...materialSystem].filter(Boolean).join('\n\n');
+    let materialSystem = '';
+    const systemSnapshot = () => [options.system, activeSystem, materialSystem].filter(Boolean).join('\n\n');
     const systemUpdates = [];
     // Harness admits system updates before user input. Messages places the same
     // update after that user/tool-result turn and before the next assistant.
@@ -111,10 +111,11 @@ export function serialize(options, connection, history, images, access, onReplay
             const text = texts.flatMap(block => block.type === 'text' ? [block.text] : []).join('');
             if (message.source?.kind === 'request-material') {
                 flushSystemUpdates();
-                materialSystem.push(text);
+                if (inHistory)
+                    materialSystem = materialSystem ? `${materialSystem}\n\n${text}` : text;
                 // Messages reads the latest update as a full prompt. Preserve both
                 // the active instructions and this exact boundary between turns.
-                messages.push({ role: 'system', content: [{ type: 'text', text: systemSnapshot() }] });
+                messages.push({ role: 'system', content: [{ type: 'text', text: inHistory ? systemSnapshot() : text }] });
                 continue;
             }
             activeSystem = text;

@@ -161,11 +161,11 @@ interface SystemPromptSplit {
  */
 function splitSystemPrompt(options: GenerateOptions): SystemPromptSplit {
   if (options.system !== undefined) return { systemPrompt: options.system, messages: options.messages }
-  const [first, ...rest] = options.messages
+  const first=options.messages[0]
   if (first?.role !== 'system'||first.source?.kind==='request-material')
     return { systemPrompt: undefined, messages: options.messages }
   const text = flattenText(first)
-  return { systemPrompt: text.length > 0 ? text : undefined, messages: rest }
+  return { systemPrompt: text.length > 0 ? text : undefined, messages: options.messages.slice(1) }
 }
 
 /** Assemble the request-level pi-ai context envelope shared by both conversion paths. */
@@ -351,7 +351,8 @@ async function toPiContextWithImages(
 export function positionRequestSystemMessages(payload:unknown,markers:ReadonlyMap<string,string>):unknown {
   if(payload&&typeof payload==='object'&&'context' in payload&&payload.context&&typeof payload.context==='object')
     return {...payload,context:positionRequestSystemMessages(payload.context,markers)}
-  if(payload&&typeof payload==='object')for(const [field,collection] of Object.entries(payload)){
+  if(payload&&typeof payload==='object')for(const field of ['messages','contents','input'] as const){
+    const collection=(payload as Record<string,unknown>)[field]
     if(!Array.isArray(collection))continue
     const seen=new Set<string>()
     const replace=(value:unknown):string|undefined=>{

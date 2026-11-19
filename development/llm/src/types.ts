@@ -481,9 +481,9 @@ export type SystemPromptUpdate = 'in-history'
  */
 export type ToolUpdate = 'in-history' | 'addition-only'
 
-/** Adapter promise for new request-only text at a selected logical boundary.
- * Missing metadata is unsupported. This is independent of replacement of the
- * whole system prompt and does not claim that the model obeys the text. */
+/** Adapter metadata about request-only text at a selected logical boundary.
+ * Serialization and remote acceptance are checked by the actual request.
+ * Whole-system-prompt replacement is an independent capability. */
 export interface RequestMaterialTextCapabilityV1 {
   readonly schemaVersion:1
   readonly user:'role-and-position'|'unsupported'

@@ -117,11 +117,11 @@ function toolsOf(options) {
 function splitSystemPrompt(options) {
     if (options.system !== undefined)
         return { systemPrompt: options.system, messages: options.messages };
-    const [first, ...rest] = options.messages;
+    const first = options.messages[0];
     if (first?.role !== 'system' || first.source?.kind === 'request-material')
         return { systemPrompt: undefined, messages: options.messages };
     const text = flattenText(first);
-    return { systemPrompt: text.length > 0 ? text : undefined, messages: rest };
+    return { systemPrompt: text.length > 0 ? text : undefined, messages: options.messages.slice(1) };
 }
 function piContext(systemPrompt, options, messages, requestSystemMessages) {
     const tools = toolsOf(options);
@@ -220,7 +220,8 @@ export function positionRequestSystemMessages(payload, markers) {
     if (payload && typeof payload === 'object' && 'context' in payload && payload.context && typeof payload.context === 'object')
         return { ...payload, context: positionRequestSystemMessages(payload.context, markers) };
     if (payload && typeof payload === 'object')
-        for (const [field, collection] of Object.entries(payload)) {
+        for (const field of ['messages', 'contents', 'input']) {
+            const collection = payload[field];
             if (!Array.isArray(collection))
                 continue;
             const seen = new Set();

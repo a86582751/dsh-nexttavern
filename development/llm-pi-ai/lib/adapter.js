@@ -430,15 +430,14 @@ export class PiAiAdapter extends LlmAdapter {
                 let responseStatus;
                 // SDK auth, lazy API loading and payload hooks may await afterwards.
                 // Each HTTP delegation checks the same owner immediately before fetch.
-                const guardedTransportFetch = async (input, init) => {
+                const guardedTransportFetch = (input, init) => {
                     if (guardedTransport)
                         assertCurrent();
                     watchdog.signal.throwIfAborted();
                     if (!payloadReady)
                         throw new LlmError('The provider has no history payload projection', 'REQUEST_MATERIAL_SERIALIZATION_UNAVAILABLE');
-                    const response = await transportFetch(input, init);
-                    responseStatus = response.status;
-                    return response;
+                    const response = transportFetch(input, init);
+                    return hasMaterial ? response.then(result => { responseStatus = result.status; return result; }) : response;
                 };
                 const streamOptions = {
                     ...profileOptions(profile, reasoning, apiKey),
