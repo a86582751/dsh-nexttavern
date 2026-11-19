@@ -187,7 +187,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
     let child: TaskChild | undefined
     try {
       const starting=Promise.resolve(subagents!.start('spawn',{parent:active[0]!.spec.agent,signal:ac.signal,
-        agentOptions:{...active[0]!.job.actualRoute,...(totalTokens?{maxTokens:totalTokens}:{}),tavernTaskId:active[0]!.job.id},maxDepth:1,
+        agentOptions:{...active[0]!.job.actualRoute,maxTokens:totalTokens||undefined,tavernTaskId:active[0]!.job.id},maxDepth:1,
         toolFilter:{allow:active[0]!.spec.tools??[]},label:`Tavern:${active[0]!.job.id}:${active[0]!.job.generation}`,
         persona:'你是酒馆的专用维护助手。只处理收到的冻结来源和任务，不续写剧情，不创建子代理。'+(active.length>1?'必须按 outputContract 分别返回每项结果。':''),
         prompt:[{type:'text',text:JSON.stringify(batchPrompt(active))}]}))
@@ -373,6 +373,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
   }
   async function request(spec: TaskSpec<S,A>): Promise<unknown> {
     const {session,agent,kind,source,input,signal}=spec
+    const backgroundNotes=kind==='memory'&&spec.background===true&&input.taskStage==='background-notes'
     const isolatedCompaction=kind==='memory'&&input.taskStage==='compaction'
     const independent=spec.executionPolicy==='independent'
     const authorDialog=kind==='author-dialog'&&input?.taskStage==='author-dialog-submit'?spec.authorDialog:undefined
@@ -382,7 +383,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       throw Error('AUTHOR_DIALOG_OWNED_PLAN_REQUIRED')
     if(kind==='ruby-analysis'&&(!rubyTask||spec.background!==true||spec.format!=='text'))
       throw Error('RUBY_OWNED_PLAN_REQUIRED')
-    if(spec.background===true&&!((kind==='memory'&&input?.taskStage==='background-notes')
+    if(spec.background===true&&!(backgroundNotes
       ||(kind==='setting-repair'&&input?.taskStage==='setting-repair')||authorDialog||rubyTask||characterBackground))
       throw new Error('该任务用途不允许独立同模型子代理')
     if (Number(agent?.options?.subagentDepth)>0) throw new Error('辅助子代理不能递归调度酒馆任务')
@@ -391,7 +392,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
     // A restart may be followed by newer canonical prose before idle recovery.
     // Rebuild that batch from the new snapshot instead of leaving an orphaned
     // old "running" row forever. Live in-process work is never superseded here.
-    if((spec.background||isolatedCompaction)&&!authorDialog)for(const previous of list(session)) {
+    if((spec.background||isolatedCompaction)&&!authorDialog)for(const previous of activeRecords(session,true)) {
       const obsoleteCompaction=isolatedCompaction&&previous.kind==='memory'
         &&previous.input?.taskStage==='compaction'&&!terminal.has(previous.status)
       const interruptedBackground=spec.background&&previous.background&&previous.status==='running'
@@ -621,9 +622,10 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
           },
         }:undefined
         const starting=Promise.resolve(subagents!.start('spawn',{parent:agent,signal:ac.signal,
-          agentOptions:{...job.actualRoute,...job.generationOptions,tavernTaskId:id},maxDepth:1,
+          agentOptions:{...job.actualRoute,maxTokens:backgroundNotes?undefined:job.generationOptions?.maxTokens,tavernTaskId:id},maxDepth:1,
           toolFilter:{allow:spec.tools??[]},label:`Tavern:${id}:${job.generation}`,
-          ...(rubyActivation?{rubyActivation,rubyOwner,prompt:[]}:activation?{activation,authorOwner,prompt:[]}:characterBackground?{
+          ...(rubyActivation?{rubyActivation,rubyOwner,prompt:[]}:activation?{activation,authorOwner,prompt:[]}
+            :characterBackground||backgroundNotes||isolatedCompaction?{
             isolatedSystem:String(input.system),
             prompt:[{type:'text' as const,text:String(input.user)}],
           }:{

@@ -28,6 +28,7 @@ if(db.prepare('SELECT 1 FROM conversation_scope WHERE version<>1 LIMIT 1').get()
 // Only offsets are persisted; authoritative text stays in the caller's selected source projection.
 db.exec('CREATE TABLE IF NOT EXISTS local_chunk_plans(workspace TEXT,space TEXT,session TEXT,rowid TEXT,version INTEGER,sourceHash TEXT,ranges TEXT,error TEXT,PRIMARY KEY(workspace,space,session,rowid))')
 if(db.prepare('SELECT 1 FROM local_chunk_plans WHERE version<>1 LIMIT 1').get())throw Error('Unsupported local chunk plan schema')
+db.exec('CREATE INDEX IF NOT EXISTS local_chunk_plan_content ON local_chunk_plans(workspace,space,sourceHash) WHERE error IS NULL')
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const spaces = new Map<string, {provider: EmbeddingProvider; generation: string; enabled: boolean; guardOwner?:string; sharedOriginal?:boolean;
   worldbookBooks?:Map<string,readonly WorldbookVectorSourceV1[]>}>()
@@ -63,10 +64,13 @@ const embeddingOf=(p:EmbeddingProvider)=>{
       ?{version:'worldbook-entry-v1',maxTokens:m?localTokenBudget(p.model,p.localMaxTokens):null,truncation:false}
       :{version:'story-v1',chunkChars:chunks.chars,overlapChars:chunks.overlap,maxTokens:m?localTokenBudget(p.model,p.localMaxTokens):null,...(m?{segmentation:'tokenizer-scalar-v1',modelMaxTokens:m.maxInputTokens,addSpecialTokens:true,truncation:false}:{})}}
 }
-function sourceRanges(p:EmbeddingProvider,workspace:string,source:VectorSource):LocalTextRange[]|null {
+function sourceRanges(p:EmbeddingProvider,workspace:string,source:VectorSource,sourceHash?:string):LocalTextRange[]|null {
   if(p.kind==='online'){const chunks=chunking(p),result=[];for(let offset=0;offset<source.text.length;offset+=chunks.stride)result.push({offset,end:Math.min(source.text.length,offset+chunks.chars)});return result}
-  const saved=db.prepare('SELECT sourceHash,ranges,error FROM local_chunk_plans WHERE workspace=? AND space=? AND session=? AND rowid=?').get(workspace,spaceOf(p,workspace),source.sessionId,source.id) as {sourceHash:string;ranges:string;error:string|null}|undefined
-  if(!saved||saved.error||saved.sourceHash!==hash(source.text))return null
+  // Offsets depend only on the exact text and embedding recipe. Candidates
+  // remain the caller's selected rows, even when a sibling calculated the plan.
+  const saved=db.prepare('SELECT ranges FROM local_chunk_plans WHERE workspace=? AND space=? AND sourceHash=? AND error IS NULL LIMIT 1')
+    .get(workspace,spaceOf(p,workspace),sourceHash??hash(source.text)) as {ranges:string}|undefined
+  if(!saved)return null
   let ranges:LocalTextRange[]
   const invalid=(message:string)=>Object.assign(Error(message),{code:'EMBEDDING_INDEX_INVALID'})
   try{ranges=JSON.parse(saved.ranges) as LocalTextRange[]}catch{throw invalid('本地来源区间计划格式损坏')}
@@ -101,7 +105,9 @@ function importLegacy(message:WorkerRequest){
   const workspace=message.workspace!,legacy=message.legacyWorkspace,p=message.provider??spaces.get(workspace)?.provider
   if(!legacy||legacy===workspace||!p||!message.sources?.length||db.prepare('SELECT 1 FROM conversation_scope WHERE workspace=? AND legacyBlocked=1').get(workspace))return
   registerSpace(p,legacy)
-  const old=db.prepare('SELECT space,family,recipe FROM spaces WHERE workspace=?').all(legacy) as {space:string;family:string;recipe:string}[]
+  const old=db.prepare('SELECT space,family,recipe FROM spaces s WHERE workspace=? AND EXISTS(SELECT 1 FROM vectors v WHERE v.space=s.space)')
+    .all(legacy) as {space:string;family:string;recipe:string}[]
+  if(!old.length)return
   const current=spaceOf(p,workspace),family=familyOf(p),find=db.prepare('SELECT data FROM vectors WHERE space=? AND key=?'),insert=db.prepare('INSERT OR IGNORE INTO vectors VALUES(?,?,?)')
   db.exec('BEGIN')
   try{
@@ -280,33 +286,46 @@ async function pump() {
   } finally {pumping = false}
 }
 const timer = setInterval(()=>{void pump()},250); timer.unref()
-async function sync(workspace: string, sources: VectorSource[],billingSession?:string) {
+async function sync(workspace: string, sources: VectorSource[],billingSession?:string,retry=false,reportSourceFailure=true) {
   const config = spaces.get(workspace); if (!config) return
   const chunks=chunking(config.provider)
   if(!config.sharedOriginal&&staleIndex(config.provider,workspace))return
   const space = spaceOf(config.provider,workspace)
-  const epoch=indexEpochs.get(workspace)??0,plans=new Map<VectorSource,LocalTextRange[]>()
+  const epoch=indexEpochs.get(workspace)??0
+  const plans=new Map<VectorSource,{sourceHash:string;ranges:LocalTextRange[]}>()
+  let firstFailure:unknown
+  const current=()=>spaces.get(workspace)===config&&(indexEpochs.get(workspace)??0)===epoch
   for(const source of sources){
-    let ranges=sourceRanges(config.provider,workspace,source)
-    if(!ranges)try{ranges=await withLocalModel(async()=>{
-      if(localModel!==config.provider.model)await unloadLocal()
-      localModel=config.provider.model
-      const result=await localRequest('split',{modelId:config.provider.model,texts:[source.text],chunkChars:chunks.chars,localMaxTokens:localTokenBudget(config.provider.model,config.provider.localMaxTokens)}) as LocalTextRange[][]
-      return result[0]!
-    })}catch(error){
-      if(spaces.get(workspace)===config&&(indexEpochs.get(workspace)??0)===epoch)db.prepare('INSERT OR REPLACE INTO local_chunk_plans VALUES(?,?,?,?,1,?,NULL,?)').run(workspace,space,source.sessionId,source.id,hash(source.text),String((error as Error).message).slice(0,160))
-      throw error
+    const sourceHash=config.provider.kind==='local'?hash(source.text):source.hash
+    try {
+      let ranges=sourceRanges(config.provider,workspace,source,sourceHash)
+      if(!ranges){
+        if(!retry&&db.prepare('SELECT 1 FROM local_chunk_plans WHERE workspace=? AND space=? AND session=? AND rowid=? AND sourceHash=? AND error IS NOT NULL')
+          .get(workspace,space,source.sessionId,source.id,sourceHash))continue
+        ranges=await withLocalModel(async()=>{
+          if(localModel!==config.provider.model)await unloadLocal()
+          localModel=config.provider.model
+          const result=await localRequest('split',{modelId:config.provider.model,texts:[source.text],chunkChars:chunks.chars,localMaxTokens:localTokenBudget(config.provider.model,config.provider.localMaxTokens)}) as LocalTextRange[][]
+          return result[0]!
+        })
+      }
+      plans.set(source,{sourceHash,ranges})
+    }catch(error){
+      if(!current()||config.provider.kind!=='local')throw error
+      db.prepare('INSERT OR REPLACE INTO local_chunk_plans VALUES(?,?,?,?,1,?,NULL,?)')
+        .run(workspace,space,source.sessionId,source.id,sourceHash,String((error as Error).message).slice(0,160))
+      firstFailure??=error
     }
-    if(spaces.get(workspace)!==config||(indexEpochs.get(workspace)??0)!==epoch)throw Error('索引配置已变化，丢弃过期分段')
-    plans.set(source,ranges)
+    if(!current())throw Error('索引配置已变化，丢弃过期分段')
   }
+  if(!plans.size){if(firstFailure&&reportSourceFailure)throw firstFailure;return}
   db.exec('BEGIN')
   try {
-    for (const source of sources) {
+    for (const [source,{sourceHash,ranges}] of plans) {
       // Replace references for this exact durable row, never mutate raw history or other worlds.
       db.prepare('DELETE FROM sources WHERE workspace=? AND session=? AND rowid=?').run(workspace,source.sessionId,source.id)
-      if(config.provider.kind==='local')db.prepare('INSERT OR REPLACE INTO local_chunk_plans VALUES(?,?,?,?,1,?,?,NULL)').run(workspace,space,source.sessionId,source.id,hash(source.text),JSON.stringify(plans.get(source)))
-      for (const {offset,end} of plans.get(source)!) {
+      if(config.provider.kind==='local')db.prepare('INSERT OR REPLACE INTO local_chunk_plans VALUES(?,?,?,?,1,?,?,NULL)').run(workspace,space,source.sessionId,source.id,sourceHash,JSON.stringify(ranges))
+      for (const {offset,end} of ranges) {
         const text=source.text.slice(offset,end); if (!text.trim()) continue
         const key=hash(`${source.role}\n${text}`), id=hash(`${source.id}:${source.hash}:${offset}`)
         db.prepare('INSERT OR REPLACE INTO sources VALUES(?,?,?,?,?,?,?)').run(workspace,source.sessionId,id,source.id,source.seq,key,offset)
@@ -315,6 +334,7 @@ async function sync(workspace: string, sources: VectorSource[],billingSession?:s
     }
     db.exec('COMMIT')
   } catch(error) {db.exec('ROLLBACK');throw error}
+  if(firstFailure&&reportSourceFailure)throw firstFailure
 }
 function progress(workspace: string, sources: VectorSource[] = []) {
   const config=spaces.get(workspace),space=config?spaceOf(config.provider,workspace):''
@@ -500,40 +520,68 @@ async function dispatch(message: WorkerRequest,signal?:AbortSignal): Promise<unk
     return {clearedSpaces:targets.length}
   }
   if(message.action==='import-original'){importOriginal(message);return true}
-  if(message.action==='sync'){await sync(workspace,message.sources??[],message.sessionId);return progress(workspace,message.sources)}
+  if(message.action==='sync'){
+    await sync(workspace,message.sources??[],message.sessionId,false,message.includeProgress!==false)
+    return message.includeProgress===false?true:progress(workspace,message.sources)
+  }
   if(message.action==='status') {
     if (existsSync(localStateFile)) {try {catalog=JSON.parse(readFileSync(localStateFile,'utf8')) as Record<string,unknown>[]}catch{}}
     return {progress:progress(workspace,message.sources),catalog,rss:process.memoryUsage().rss}
   }
   if(message.action==='calls') return db.prepare('SELECT data FROM calls').all().map(row=>JSON.parse(String(row.data)))
-  if(message.action==='retry') {const config=spaces.get(workspace);if(!config)throw Error('没有启用的向量来源');db.prepare("UPDATE jobs SET status='queued',error=NULL WHERE workspace=? AND space=? AND status IN ('failed','unknown')").run(workspace,spaceOf(config.provider,workspace));if(message.sources?.length)await sync(workspace,message.sources);return true}
+  if(message.action==='retry') {
+    const config=spaces.get(workspace)
+    if(!config)throw Error('没有启用的向量来源')
+    const space=spaceOf(config.provider,workspace)
+    db.prepare("UPDATE jobs SET status='queued',error=NULL WHERE workspace=? AND space=? AND status IN ('failed','unknown')").run(workspace,space)
+    if(message.sources?.length)await sync(workspace,message.sources,undefined,true)
+    else db.prepare('DELETE FROM local_chunk_plans WHERE workspace=? AND space=? AND error IS NOT NULL').run(workspace,space)
+    return true
+  }
   if(message.action==='test') return {dimensions:(await encode(message.provider!,['她把旧姓藏在信封后。','She hid her former surname behind the envelope.'],'test',workspace,null,30000))[0]!.length}
   if(['download-model','pause-download','delete-model','catalog'].includes(message.action)){
     if(message.action==='delete-model')await withLocalModel(async()=>{if(localModel===message.modelId)await unloadLocal()})
     return catalogRequest(message.action,message.modelId)
   }
   if(message.action==='query') {
+    if(!message.query?.trim())return []
     const p=message.provider!,space=spaceOf(p,workspace),sources=message.sources??[]
     if(staleIndex(p,workspace))throw Object.assign(Error('Embedding 配置已变化，索引已过期（stale），请重建向量数据库'),{code:'EMBEDDING_INDEX_STALE'})
     registerSpace(p,workspace);const epoch=indexEpochs.get(workspace)??0
     const cacheKey=space+':'+hash(`${p.revision}:${message.query}`)
-    let query=queryCache.get(cacheKey)
-    if(!query){query=(await encode(p,[message.query!],'query',workspace,message.sessionId!,3000))[0]!;if((indexEpochs.get(workspace)??0)!==epoch)throw Error('向量索引已清空或重建，请重新查询');queryCache.set(cacheKey,query);if(queryCache.size>128)queryCache.delete(queryCache.keys().next().value!)}
-    else {queryCache.delete(cacheKey);queryCache.set(cacheKey,query)}
+    let query: number[]|undefined
     const hits:{id:string;offset:number;score:number}[]=[]
-    const seen=new Map<string,number>()
+    const seen=new Map<string,number|null>()
+    const findVector=db.prepare('SELECT data FROM vectors WHERE space=? AND key=?')
     // Authorize candidates BEFORE top-k. Unselected sibling entries never participate.
-    for(const source of sources)for(const {offset,end} of sourceRanges(p,workspace,source)??[]){
-      const row={key:hash(`${source.role}\n${source.text.slice(offset,end)}`),offset}
-      let score=seen.get(row.key)
-      if(score===undefined){const stored=db.prepare('SELECT data FROM vectors WHERE space=? AND key=?').get(space,row.key) as {data:Uint8Array}|undefined;if(!stored)continue
-        const invalid=()=>Object.assign(Error('已保存向量的数据格式或维度无效，请重建索引'),{code:'EMBEDDING_INDEX_INVALID'})
-        if(stored.data.byteLength!==query.length*4)throw invalid()
-        let data:Float32Array;try{data=new Float32Array(stored.data.buffer,stored.data.byteOffset,stored.data.byteLength/4)}catch{throw invalid()}
-        if(data.some(value=>!Number.isFinite(value)))throw invalid()
-        score=0;for(let i=0;i<data.length;i++)score+=data[i]!*query[i]!;seen.set(row.key,score)
+    for(const source of sources){
+      let best: (typeof hits)[number]|undefined
+      for(const {offset,end} of sourceRanges(p,workspace,source)??[]){
+        const key=hash(`${source.role}\n${source.text.slice(offset,end)}`)
+        let score=seen.get(key)
+        if(score===undefined){
+          const stored=findVector.get(space,key) as {data:Uint8Array}|undefined
+          if(!stored){seen.set(key,null);continue}
+          if(!query){
+            query=queryCache.get(cacheKey)??(await encode(p,[message.query!],'query',workspace,message.sessionId!,3000))[0]!
+            if((indexEpochs.get(workspace)??0)!==epoch)throw Error('向量索引已清空或重建，请重新查询')
+            queryCache.delete(cacheKey);queryCache.set(cacheKey,query)
+            if(queryCache.size>128)queryCache.delete(queryCache.keys().next().value!)
+          }
+          const invalid=()=>Object.assign(Error('已保存向量的数据格式或维度无效，请重建索引'),{code:'EMBEDDING_INDEX_INVALID'})
+          if(stored.data.byteLength!==query.length*4)throw invalid()
+          let data:Float32Array
+          try{data=new Float32Array(stored.data.buffer,stored.data.byteOffset,stored.data.byteLength/4)}catch{throw invalid()}
+          if(data.some(value=>!Number.isFinite(value)))throw invalid()
+          score=0;for(let i=0;i<data.length;i++)score+=data[i]!*query[i]!
+          seen.set(key,score)
+        }
+        if(score===null)continue
+        const hit={id:source.id,offset,score}
+        if(!message.groupBySource)hits.push(hit)
+        else if(!best||score>best.score)best=hit
       }
-      hits.push({id:source.id,offset:row.offset,score})
+      if(best)hits.push(best)
     }
     return hits.sort((a,b)=>b.score-a.score).slice(0,message.limit??24)
   }

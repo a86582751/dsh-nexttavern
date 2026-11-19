@@ -163,20 +163,25 @@ function unquotedMvuStarts(text: string, targets: readonly number[]): ReadonlySe
     return unquoted;
 }
 
-function mvu196DisplayRanges(text: string, pending = false): readonly ReaderMvuDisplayRange[] {
-    if (text.length > MVU_DISPLAY_TEXT_LIMIT
-        || !/<\s*(?:updatevariable|variableupdate|update|json_?patch)\b/i.test(text)) return [];
+function mvu196DisplayRanges(text: string, mode: 'accepted' | 'stream' | 'complete' = 'accepted'): readonly ReaderMvuDisplayRange[] {
+    if (text.length > MVU_DISPLAY_TEXT_LIMIT) return [];
+    const placeholders = mode === 'complete' ? Array.from(text.matchAll(/<StatusPlaceHolderImpl\s*\/>/gi),
+        match => ({start:match.index,end:match.index+match[0].length})) : [];
+    if (!/<\s*(?:updatevariable|variableupdate|update|json_?patch)\b/i.test(text)) {
+        if (!placeholders.length) return [];
+        const unquoted = unquotedMvuStarts(text, placeholders.map(block => block.start));
+        return placeholders.filter(block => unquoted.has(block.start));
+    }
     const scanned = scanUpdateMarkup(text);
     const blocks = [
         ...findUpdateMarkupBlocks(text, 'update', scanned)
-            .filter(block => pending
-                ? /^(?:\s|\uFEFF)*(?:<\s*(?:analy[sz]e|analysis|json_?patch)\b|\[|_\.|$)/i
-                    .test(text.slice(block.contentStart, block.contentEnd))
-                : block.closed),
+            .filter(block => mode !== 'stream' ? block.closed
+                : /^(?:\s|\uFEFF)*(?:<\s*(?:analy[sz]e|analysis|json_?patch)\b|\[|_\.|$)/i
+                    .test(text.slice(block.contentStart, block.contentEnd))),
         ...findUpdateMarkupBlocks(text, 'patch', scanned)
-            .filter(block => !block.discarded && (pending
-                ? /^\s*(?:\[|$)/.test(text.slice(block.contentStart, block.contentEnd))
-                : block.closed)),
+            .filter(block => !block.discarded && (mode !== 'stream' ? block.closed
+                : /^\s*(?:\[|$)/.test(text.slice(block.contentStart, block.contentEnd)))),
+        ...placeholders,
     ]
         .sort((left, right) => left.start - right.start || right.end - left.end);
     // The fixed scanner masks data strings without changing UTF-16 offsets.
@@ -234,15 +239,20 @@ export function createReaderMvuDisplayScope(canonicalText: string, protocol: Mvu
 /** During the schema Story handoff the Reader can separate recognizable
  * transport before the outcome arrives. Native retains the complete body. */
 export function projectPendingReaderUpdates(text:string):string {
-    const acceptedRanges=mvu196DisplayRanges(text,true);
+    const acceptedRanges=mvu196DisplayRanges(text,'stream');
     if (!acceptedRanges.length) return text;
     return projectReaderNarrativeDisplay(text,{role:'assistant',protocol:'mvu-196-d03',acceptedRanges});
+}
+
+/** Complete transport and UI placeholders, with offsets in the source prose. */
+export function storyProseOmissions(text: string): readonly ReaderMvuDisplayRange[] {
+    return mvu196DisplayRanges(text, 'complete');
 }
 
 /** An unresolved terminal exposes its authored update as inspectable text.
  * Structural markup locates the payload without accepting or executing it. */
 export function projectUnsettledReaderUpdates(text:string,code:string):{narrative:string;details:string} {
-    const ranges=mvu196DisplayRanges(text,true);
+    const ranges=mvu196DisplayRanges(text,'stream');
     const escape=(value:string)=>value.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
         .replaceAll('"','&quot;').replaceAll("'",'&#39;');
     const narrative:string[]=[],details:string[]=[];

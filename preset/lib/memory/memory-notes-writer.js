@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { selectedStoryHistorySnapshot, directorNotesForBranch, storyCadenceSlots } from './memory-history.js';
 import { scopedLedgerItems } from './memory-provenance.js';
-import { captureMemoryStoryText, memoryStorySourceKeys } from './memory-story-text.js';
+import { captureMemoryStoryText, cleanStoryText, memoryStorySourceKeys } from './memory-story-text.js';
 export function createDirectorNotesWriter(options) {
     const { config: cfg, getEngine, branchSettings, assertBranchActive, isRoleplaySession, inspectCompactionState, summarizeDetailed } = options;
     const notesBusy = new Set();
@@ -62,7 +62,7 @@ export function createDirectorNotesWriter(options) {
             let previous = force ? '' : (existing?.text ?? '');
             const settings = branchSettings(session);
             const batchChars = Math.max(10000, Number(settings?.notesBatchChars ?? cfg.notesBatchChars) || 100000);
-            const maxTokens = Math.max(1024, Number(settings?.maxSummaryTokens ?? cfg.maxSummaryTokens) || 16384);
+            const maxTokens = background ? undefined : Math.max(1024, Number(settings?.maxSummaryTokens ?? cfg.maxSummaryTokens) || 16384);
             const timeoutMs = automatic
                 ? Math.max(1000, Number(settings?.autoNotesTimeoutMs ?? cfg.autoNotesTimeoutMs) || 300000)
                 : Math.max(30000, Number(settings?.summaryTimeoutMs ?? cfg.summaryTimeoutMs) || 300000);
@@ -71,16 +71,19 @@ export function createDirectorNotesWriter(options) {
             let batches = 0;
             while (processed < entries.length) {
                 signal?.throwIfAborted?.();
-                const batch = [];
+                const batch = [], prose = [];
                 let chars = 0;
                 while (processed + batch.length < entries.length) {
                     const entry = entries[processed + batch.length];
-                    if (batch.length && batch.at(-1).turn !== entry.turn && chars + entry.text.length > batchChars)
+                    const user = entry.role === 'user';
+                    const text = user ? entry.text : cleanStoryText(entry.text).text;
+                    if (batch.length && batch.at(-1).turn !== entry.turn && chars + text.length > batchChars)
                         break;
                     batch.push(entry);
-                    chars += entry.text.length;
+                    prose.push(`[${user ? '用户' : '叙事者'} · turn:${entry.turn} · seq:${entry.seq}]\n${text}`);
+                    chars += text.length;
                 }
-                const sourceText = batch.map((entry) => `[${entry.role === 'user' ? '用户' : '叙事者'} · turn:${entry.turn} · seq:${entry.seq}]\n${entry.text}`).join('\n\n');
+                const sourceText = prose.join('\n\n');
                 const appendDelta = Boolean(previous) && !force;
                 const updateStart = processed;
                 const result = await summarizeDetailed({ session, previousSummary: previous, sourceText, lockedText, maxTokens, timeoutMs, signal, appendDelta,

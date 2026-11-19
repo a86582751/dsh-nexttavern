@@ -39,6 +39,8 @@ export interface LocalModel {
 export interface WorkerRequest {
   action: string; workspace?: string; provider?: EmbeddingProvider; sources?: VectorSource[]; query?: string
   sessionId?: string; modelId?: string; enabled?: boolean; limit?: number; generation?: string
+  groupBySource?: boolean
+  includeProgress?: boolean
   guardOwner?: string
   expectedFingerprint?: string
   legacyWorkspace?: string

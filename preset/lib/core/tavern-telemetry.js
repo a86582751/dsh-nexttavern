@@ -748,7 +748,8 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
                 startedAt: j.startedAt ?? j.createdAt,
                 completedAt: j.completedAt ?? null,
                 durationMs: j.completedAt ? j.completedAt - (j.startedAt ?? j.createdAt) : null,
-                error: j.error ? '任务失败，请重试或查看关联模型调用' : null,
+                error: j.failure?.category === 'truncated' ? FAILURE_LABELS.truncated
+                    : j.error ? '任务失败，请重试或查看关联模型调用' : null,
                 progress: j.progress,
                 fallback: publicFallback(j),
                 source: {

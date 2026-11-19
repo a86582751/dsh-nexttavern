@@ -172,7 +172,7 @@ export function createMemoryRetrieval(deps) {
         await request(message);
         if ((configurationEpochs.get(ws) ?? 0) !== epoch)
             throw Error('向量模型设置已变化，请重试');
-        configured.set(ws, generation);
+        configured.set(ws, { generation });
     }
     const delayed = new Map();
     function modeFor(session, cfg) {
@@ -228,11 +228,13 @@ export function createMemoryRetrieval(deps) {
     }
     /** Native announce also fires on load: use durable birth time and decisions, never first observation. */
     async function created(session) {
+        if (session.header?.parentSession)
+            return changed(session);
         await ensureSessionHistory(session);
         const run = mutation.catch(() => {
         }).then(async () => {
             await migration;
-            if (disposed || !session.header?.cwd || session.header.parentSession || !eligible(session))
+            if (disposed || !session.header?.cwd || !eligible(session))
                 return;
             const cfg = settings();
             if (!cfg.autoIndexNewConversations || cfg.autoIndexNewSince === null || !Number.isFinite(session.header.createdAt)
@@ -348,7 +350,7 @@ export function createMemoryRetrieval(deps) {
             return {
                 cfg, ws, provider, generation
             };
-        if (configured.get(ws) !== generation)
+        if (configured.get(ws)?.generation !== generation)
             await setConfiguration(ws, {
                 action: 'configure', workspace: ws, provider: provider?.ready ? secret(provider, cfg) : undefined, enabled, generation
             }, generation);
@@ -364,10 +366,23 @@ export function createMemoryRetrieval(deps) {
         if (!sessionEnabled(cfg, session) || !cfg.activeProviderId)
             return;
         await configure(session);
+        const configuration = configured.get(ws);
+        if (!configuration)
+            return;
+        const bySession = configuration.indexed ??= new WeakMap();
+        let indexed = bySession.get(session);
+        if (!indexed)
+            bySession.set(session, indexed = new WeakSet());
         const rows = selectedRetrievalRowsSnapshot(session, deps.captureStoryText);
+        const pending = rows.filter(row => !row.unresolved && !indexed.has(row));
+        if (!pending.length)
+            return;
         await request({
-            action: 'sync', workspace: ws, legacyWorkspace: pathWorkspace(session), sources: vectorSources(session, rows)
+            action: 'sync', workspace: ws, legacyWorkspace: pathWorkspace(session),
+            sources: vectorSources(session, pending), includeProgress: false
         }, 30000);
+        for (const row of pending)
+            indexed.add(row);
     }
     async function changed(session) {
         // Most notifications cannot be indexed. Keep this cheap gate ahead of
@@ -390,10 +405,17 @@ export function createMemoryRetrieval(deps) {
         if (pending)
             return pending;
         const scan = (async () => {
-            await sync(session);
+            let initialFailure;
+            try {
+                await sync(session);
+            }
+            catch (error) {
+                initialFailure = error;
+            }
             for (const item of await deps.list?.() ?? []) {
                 const header = item.header;
-                if (!header?.id || !header.cwd || resolve(header.cwd) !== resolve(session.header.cwd) || header.origin === 'subagent'
+                if (!header?.id || header.id === session.id || !header.cwd || resolve(header.cwd) !== resolve(session.header.cwd)
+                    || header.origin === 'subagent'
                     || header.agentPreset !== 'roleplay')
                     continue;
                 if (disposed || !sessionEnabled(settings(), session))
@@ -412,9 +434,10 @@ export function createMemoryRetrieval(deps) {
                     if (snapshot)
                         await sync(snapshot.view ?? retrievalColdSession(header.id, snapshot.session, snapshot.events));
                 }
-                catch { /* Invalid source remains absent; never guess its worldline. */
-                }
+                catch { /* Invalid source remains absent; never guess its worldline. */ }
             }
+            if (initialFailure)
+                throw initialFailure;
         })();
         scans.set(ws, scan);
         try {
@@ -520,7 +543,7 @@ export function createMemoryRetrieval(deps) {
         const cfg = settings(), ws = workspace(session), provider = cfg.providers.find(p => p.id === cfg.activeProviderId), enabled = sessionEnabled(cfg, session);
         const generation = hash(JSON.stringify([provider?.revision, provider?.ready, provider?.dimensions, enabled, cfg.chunkChars]));
         let progress = null;
-        if (worker && configured.get(ws) === generation) {
+        if (worker && configured.get(ws)?.generation === generation) {
             try {
                 const reply = await request({
                     action: 'status', workspace: ws, sources: vectorSources(session, selectedRetrievalRowsSnapshot(session, deps.captureStoryText))
@@ -749,6 +772,9 @@ export function createMemoryRetrieval(deps) {
                 await request({
                     action: 'retry', workspace: ws
                 });
+                const configuration = configured.get(ws);
+                if (configuration)
+                    configuration.indexed = undefined;
             }
             else if (action === 'refresh-models') {
                 if (!provider || provider.kind !== 'online')
@@ -933,6 +959,7 @@ export function createMemoryRetrieval(deps) {
                 sessionId: session.id,
                 query: p.kind === 'local' ? String(options.query) : String(options.query).slice(0, 4000),
                 sources: vectorSources(session, rows.slice(0, before)),
+                groupBySource: true,
                 limit: 24
             }, 4000);
             if (!deps.active(session)
@@ -955,12 +982,9 @@ export function createMemoryRetrieval(deps) {
                 };
             }
             const ranked = new Map();
-            hits.forEach((h, i) => {
-                if (!ranked.has(h.id))
-                    ranked.set(h.id, {
-                        score: 1 / (60 + i + 1), offset: h.offset, semanticScore: h.score
-                    });
-            });
+            hits.forEach((h, i) => ranked.set(h.id, {
+                score: 1 / (60 + i + 1), offset: h.offset, semanticScore: h.score
+            }));
             const lexical = queryRetrievalRows(rows, session.id, {
                 ...options, limit: 24, maxChars: 60000
             });
@@ -1110,7 +1134,7 @@ export function createMemoryRetrieval(deps) {
                 }, 30000);
                 configured.delete(ws);
             }
-            if (action === 'index' || action === 'retry' || configured.get(ws) !== generation)
+            if (action === 'index' || action === 'retry' || configured.get(ws)?.generation !== generation)
                 await setConfiguration(ws, {
                     action: 'configure',
                     workspace: ws,
@@ -1192,12 +1216,12 @@ export function createMemoryRetrieval(deps) {
         const projected = { ...secret(provider, cfg), inputProfile: 'worldbook-entry-v1' }, generation = hash(JSON.stringify([provider.id, provider.revision, provider.dimensions, provider.localMaxTokens,
             cfg.worldbook.enabled, 'worldbook-entry-v1']));
         workspaceKinds.set(ws, 'worldbook');
-        if (configured.get(ws) !== generation) {
+        if (configured.get(ws)?.generation !== generation) {
             await request({ action: 'configure', workspace: ws, provider: projected, generation, enabled: cfg.worldbook.enabled,
                 sharedOriginal: true }, 10000, signal);
             if (settings().activeProviderId !== provider.id || settings().worldbookRevision !== cfg.worldbookRevision)
                 throw new DOMException('世界书向量配置已变化', 'AbortError');
-            configured.set(ws, generation);
+            configured.set(ws, { generation });
         }
         return { cfg, provider, ws };
     }

@@ -4,7 +4,7 @@ import { surfaceSeqsOf, contentOfEvent, importManagementInputs, isStoryEvent, is
 import { validateDetailedSummary, type SummaryOptions, type SummaryResult } from './memory-summary.js'
 import { projectStoryEvent, type StorySurfaceReplacement } from '../core/roleplay-message-view.js'
 import {sessionEvents} from '../core/session-history.js'
-import {captureMemoryStoryText,memoryStorySourceKeys,type MemoryStoryTextView} from './memory-story-text.js'
+import {captureMemoryStoryText,cleanStoryText,memoryStorySourceKeys,type MemoryStoryTextView} from './memory-story-text.js'
 import type {CaptureRoleplayStoryText} from '../core/roleplay-story-text.js'
 
 export interface CompactionEvent extends StoryEvent {
@@ -333,8 +333,9 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
       const original = log[seq]
       const event = original ? projectStoryEvent(session, original) : undefined
       if (!isStoryEvent(event)) return ''
-      const role = event.type === 'user/message' ? '用户' : '叙事者'
-      return `\n[${role} · seq:${seq}]\n${storyText.text(seq,textOf(contentOfEvent(event)))}`
+      const user = event.type === 'user/message'
+      const text = storyText.text(seq,textOf(contentOfEvent(event)))
+      return `\n[${user ? '用户' : '叙事者'} · seq:${seq}]\n${user ? text : cleanStoryText(text).text}`
     }).filter(Boolean).join('\n')
   }
 

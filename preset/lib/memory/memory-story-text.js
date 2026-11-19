@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import { selectedStoryHistorySnapshot, historySourceKeys, queryStoryHistory, readStoryHistory, importManagementInputs } from './memory-history.js';
 import { projectStoryEvent } from '../core/roleplay-message-view.js';
+import { storyProseOmissions } from '../core/roleplay-reader-narrative-display.js';
 import { sessionEvents, sessionHistoryCut } from '../core/session-history.js';
 const effectiveRows = new WeakMap();
 const effectiveSourceKeys = new WeakMap();
@@ -59,7 +60,6 @@ export function memoryStorySourceKeys(entries) {
     });
 }
 const retrievalSnapshots = new WeakMap();
-const cleanedRows = new WeakMap();
 const ownedRetrievalRows = new WeakSet();
 const ownedRetrievalSnapshots = new WeakSet();
 const rowHashes = new WeakMap();
@@ -152,12 +152,23 @@ function emit(out, spans, value, start, end) {
         spans.push({ start, end });
 }
 /** Deterministic HTML/CSS projection. Spans are source UTF-16 intervals per output code unit. */
-export function cleanStoryText(text) {
+export function cleanStoryText(text, role = 'assistant') {
     const source = String(text ?? ''), out = [], spans = [];
+    const omissions = role === 'assistant' ? storyProseOmissions(source) : [];
+    let omitted = 0;
     let unresolved = false, i = 0, suppressed = 0;
     let fence = source.indexOf('```');
+    const inline = /(?<!`)`{1,2}(?!`)/g;
+    let code = inline.exec(source)?.index ?? -1;
     const stack = [];
     while (i < source.length) {
+        while (omissions[omitted] && omissions[omitted].end <= i)
+            omitted++;
+        const exclusion = omissions[omitted];
+        if (exclusion && exclusion.start <= i) {
+            i = exclusion.end;
+            continue;
+        }
         if (source.startsWith('```', i) && (i === 0 || source[i - 1] === '\n')) {
             const lineEnd = source.indexOf('\n', i + 3), headerEnd = lineEnd < 0 ? source.length : lineEnd;
             const marker = source.slice(i + 3, headerEnd).trim().toLowerCase();
@@ -176,6 +187,18 @@ export function cleanStoryText(text) {
             if (suppressed === 0)
                 emit(out, spans, '```', i, i + 3);
             i += 3;
+            continue;
+        }
+        if (i === code) {
+            let end = i + 1;
+            while (source[end] === '`')
+                end++;
+            const delimiter = source.slice(i, end), close = source.indexOf(delimiter, end);
+            if (close >= 0 && !source.slice(end, close).includes('\n'))
+                end = close + delimiter.length;
+            if (suppressed === 0)
+                emit(out, spans, source.slice(i, end), i, end);
+            i = end;
             continue;
         }
         if (source[i] === '<') {
@@ -212,7 +235,7 @@ export function cleanStoryText(text) {
             }
             const classMatch = rawTag.match(/(?:class|id|data-[\w-]+)\s*=\s*["']([^"']*)/i);
             // The native author protocol puts state operations in this control container.
-            const known = name === 'updatevariable' || knownContainers.test(name)
+            const known = name === 'updatevariable' || name === 'statusplaceholderimpl' || knownContainers.test(name)
                 || Boolean(classMatch && /(?:status|decision|details|state|\bst-card\b)/i.test(classMatch[1]));
             if (known) {
                 if (!isClose && !/\/\s*$/.test(rawTag)) {
@@ -241,8 +264,13 @@ export function cleanStoryText(text) {
         // Reuse both the next position and a failed search while consuming tags.
         if (fence >= 0 && fence < i)
             fence = source.indexOf('```', i);
-        const next = source.indexOf('<', i), nextFence = fence >= 0 && (fence === 0 || source[fence - 1] === '\n') ? fence : -1;
-        const candidates = [next, nextFence].filter(value => value >= 0), end = candidates.length ? Math.min(...candidates) : source.length;
+        if (code >= 0 && code < i) {
+            inline.lastIndex = i;
+            code = inline.exec(source)?.index ?? -1;
+        }
+        const next = source.indexOf('<', i);
+        const nextFence = fence >= 0 && (fence === 0 || source[fence - 1] === '\n') ? fence : source.length;
+        const end = Math.min(next < 0 ? source.length : next, nextFence, code < 0 ? source.length : code);
         if (suppressed === 0)
             emit(out, spans, source.slice(i, end), i, end);
         i = end;
@@ -261,21 +289,29 @@ export function selectedRetrievalRowsSnapshot(session, captureStoryText) {
     if (cached?.history === history && cached.events === events && cached.id === session.id
         && cached.storyText.capture === storyText.capture)
         return cached.rows;
+    const bySeq = new Map();
+    const project = (row, source) => {
+        const prior = cached?.bySeq.get(row.seq);
+        if (prior?.raw === source.raw && prior.unresolved === source.unresolved
+            && prior.row.id === row.id && prior.row.turn === row.turn && prior.row.role === row.role
+            && prior.row.messageId === row.messageId && prior.row.time === row.time) {
+            bySeq.set(row.seq, prior);
+            return [prior.row];
+        }
+        const cleaned = cleanStoryText(source.raw, row.role);
+        if (!cleaned.text)
+            return [];
+        const effective = ownRetrievalRow({ ...row, text: cleaned.text, rawText: source.raw,
+            spans: cleaned.spans, unresolved: source.unresolved || cleaned.unresolved });
+        bySeq.set(row.seq, { ...source, row: effective });
+        return [effective];
+    };
     const selected = history.flatMap(row => {
         const source = rawTextFor(session, row, events[row.seq] ?? null);
         if (!source.raw)
             return [];
         source.raw = storyText.text(row.seq, source.raw);
-        const prior = cleanedRows.get(row);
-        if (prior?.raw === source.raw && prior.unresolved === source.unresolved)
-            return [prior.row];
-        const cleaned = cleanStoryText(source.raw);
-        if (!cleaned.text)
-            return [];
-        const effective = ownRetrievalRow({ ...row, text: cleaned.text, rawText: source.raw, spans: cleaned.spans,
-            unresolved: source.unresolved || cleaned.unresolved });
-        cleanedRows.set(row, { raw: source.raw, unresolved: source.unresolved, row: effective });
-        return [effective];
+        return project(row, source);
     });
     const endedTurns = new Set(events.filter(event => event?.type === 'turn/end').map(event => Number(event.data?.turn)));
     const management = importManagementInputs(session, events);
@@ -290,10 +326,7 @@ export function selectedRetrievalRowsSnapshot(session, captureStoryText) {
         const source = rawTextFor(session, row, event);
         if (!source.raw)
             return [];
-        const cleaned = cleanStoryText(source.raw);
-        if (!cleaned.text)
-            return [];
-        return [{ ...row, text: cleaned.text, rawText: source.raw, spans: cleaned.spans, unresolved: source.unresolved || cleaned.unresolved }];
+        return project(row, source);
     });
     extra.sort((left, right) => visibleIndex.get(left.seq) - visibleIndex.get(right.seq));
     const merged = [];
@@ -310,7 +343,7 @@ export function selectedRetrievalRowsSnapshot(session, captureStoryText) {
         merged.push(extra[cursor++]);
     const rows = Object.freeze(merged.map(ownRetrievalRow));
     ownedRetrievalSnapshots.add(rows);
-    retrievalSnapshots.set(session, { events, history, id: session.id, rows, storyText });
+    retrievalSnapshots.set(session, { events, history, id: session.id, rows, bySeq, storyText });
     return rows;
 }
 /** Raw-history consumers retain the original query/read contract. The normal
