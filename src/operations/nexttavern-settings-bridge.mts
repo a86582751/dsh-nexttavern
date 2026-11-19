@@ -29,6 +29,7 @@
  * and an adapter that forwarded that value would break the caller's release.
  */
 import type {Context} from '@deepseek-ai/cordis'
+import type {Entry} from '@deepseek-ai/cordis-plugin-loader'
 import {isDeepStrictEqual} from 'node:util'
 
 /** One replaced provider row as the product mounted it. */
@@ -37,10 +38,7 @@ export interface RehomedSettingsRow {
   id: string
   /** Module specifier the profile declares for that id. */
   declared: string
-  entry: {
-    options: {id: string; name: string}
-    fiber?: {state: number} | undefined
-  }
+  entry: Entry
 }
 
 /** The narrow surface of the host `configEditor` service this adapter uses. */
@@ -53,8 +51,8 @@ interface ConfigEditor {
 /** Installed adapter; `close` stops advertising synchronously. */
 export interface SettingsBridge {
   close(): void
-  /** Match the precise config produced by an in-progress official Settings write. */
-  isWriting(entry: RehomedSettingsRow['entry'], config: unknown): boolean
+  /** Prepare the mounted entry update for the config produced by the official write. */
+  providerUpdate(entry: Entry, config: unknown): (() => Promise<void>) | undefined
   /** Release the adapter fiber; safe to call after the fiber already unloaded. */
   dispose(): Promise<void>
 }
@@ -67,7 +65,7 @@ export interface SettingsBridge {
  */
 export function mountSettingsBridge(ctx: Context, rows: () => RehomedSettingsRow[]): SettingsBridge {
   let closed = false
-  const pending = new Map<RehomedSettingsRow['entry'], Record<string, unknown>>()
+  const pending = new Map<Entry, {config: Record<string, unknown>; replacement: string}>()
   const fiber = ctx.inject(['configEditor'], (editorCtx) => {
     if (closed) return
     const editor = editorCtx.get('configEditor') as ConfigEditor | undefined
@@ -88,9 +86,7 @@ export function mountSettingsBridge(ctx: Context, rows: () => RehomedSettingsRow
       if (closed) return address()
       const owned = mounted()
       const addressable = address().filter(entry => !owned.has(entry.options.id))
-      for (const row of owned.values()) {
-        if (!addressable.some(entry => entry.options.id === row.id)) addressable.push(row.entry)
-      }
+      for (const row of owned.values()) addressable.push(row.entry)
       return addressable
     }
     const edit = async function edit(entry: RehomedSettingsRow['entry'],
@@ -107,7 +103,7 @@ export function mountSettingsBridge(ctx: Context, rows: () => RehomedSettingsRow
         try {
           return await write(entry, (current, inherited) => {
             const config = change(current, inherited)
-            pending.set(entry, config)
+            pending.set(entry, {config, replacement})
             return config
           })
         } finally {
@@ -124,9 +120,16 @@ export function mountSettingsBridge(ctx: Context, rows: () => RehomedSettingsRow
   let releasing: Promise<void> | undefined
   return {
     close() {closed = true},
-    isWriting(entry, config) {
+    providerUpdate(entry, config) {
       const draft = pending.get(entry)
-      return !closed && draft !== undefined && isDeepStrictEqual(draft, config ?? {})
+      if (closed || !draft || !isDeepStrictEqual(draft.config, config ?? {})) return
+      return async () => {
+        // The editor still owns the profile alias while reconcile runs.
+        // Loader must resolve the mounted module if this update remounts it.
+        const declared = entry.options.name
+        entry.options.name = draft.replacement
+        try { await entry.update({config}) } finally { entry.options.name = declared }
+      }
     },
     dispose() {
       // The entry fiber unloads the adapter alongside its own children, so a

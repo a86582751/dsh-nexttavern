@@ -1,6 +1,6 @@
 /** Product-owned Loader subtree. Native and replacement providers never overlap. */
 import {Service, type Fiber, type FiberState, type Context} from '@deepseek-ai/cordis'
-import {EntryTree, type Entry, type EntryOptions} from '@deepseek-ai/cordis-plugin-loader'
+import {EntryTree, type EntryOptions} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import {createRequire} from 'node:module'
 import {readFileSync, realpathSync} from 'node:fs'
@@ -105,7 +105,7 @@ export default class NextTavernEntry extends EntryTree {
       })
       const before = ownedIntent(state.plan)
       const after = ownedIntent(proposal)
-      const updates: {entry: Entry; config: unknown}[] = []
+      const updates: (() => Promise<void>)[] = []
       const canUpdate = before.selected === after.selected && isDeepStrictEqual(before.product, after.product)
         && after.providers.every((provider, index) => {
           const previous = before.providers[index]
@@ -115,8 +115,9 @@ export default class NextTavernEntry extends EntryTree {
           const {config: _config, ...previousRow} = previous.row
           if (!isDeepStrictEqual(nextRow, previousRow)) return false
           const entry = [...owner.entries()].find(row => row.options.id === nextRow.id)
-          if (!entry || !owner.settingsBridge?.isWriting(entry, incoming)) return false
-          updates.push({entry, config: incoming})
+          const update = entry && owner.settingsBridge?.providerUpdate(entry, incoming)
+          if (!update) return false
+          updates.push(update)
           return true
         })
       if (canUpdate) {
@@ -126,17 +127,16 @@ export default class NextTavernEntry extends EntryTree {
         const accepted = {plan:state.plan, patches:state.patches}
         state.plan = proposal
         state.patches = proposal.rows
-        try {
-          const result = await next()
-          // Official Settings only edits volatile fields. Apply its validated
-          // value to the mounted child through the same Loader entry API.
-          for (const {entry, config} of updates) await entry.update({config})
-          return result
-        } catch (error) {
+        let result
+        try {result = await next()} catch (error) {
           state.plan = accepted.plan
           state.patches = accepted.patches
           throw error
         }
+        // Keep the new plan if a mounted update fails after Include committed.
+        // ConfigEditor restores the file and reconciles against that committed plan.
+        for (const update of updates) await update()
+        return result
       }
       state.previousPlan = state.plan
       state.plan = proposal
