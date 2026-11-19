@@ -378,8 +378,9 @@ export class PiAiAdapter extends LlmAdapter {
             }
             const { hasMaterial, hasSystem } = assertMaterialPlacement(options);
             // Even an empty insertion delta has a live material owner and residual
-            // section changes. Every supported route keeps that guard through fetch.
+            // section changes.
             const guardedTransport = hasMaterial || supported;
+            const usesNativeTransport = model.api === 'google-vertex';
             const transportFetch = this.config.fetch ?? globalThis.fetch;
             const assertCurrent = () => {
                 options.signal?.throwIfAborted();
@@ -441,10 +442,13 @@ export class PiAiAdapter extends LlmAdapter {
                 };
                 const streamOptions = {
                     ...profileOptions(profile, reasoning, apiKey),
-                    fetch: guardedTransportFetch,
+                    // Vertex's SDK owns HTTP (including ADC). Keep the current-request
+                    // check at its payload hook and pass the same watchdog signal below.
+                    ...usesNativeTransport ? {} : { fetch: guardedTransportFetch },
                     ...hasMaterial ? { onResponse: (response) => { responseStatus = response.status; } } : {},
-                    ...ordered || !hasMaterial ? {} : { onPayload: (payload) => {
+                    ...ordered || !(hasMaterial || usesNativeTransport && guardedTransport) ? {} : { onPayload: (payload) => {
                             assertCurrent();
+                            watchdog.signal.throwIfAborted();
                             if (!markers)
                                 return undefined;
                             const result = positionRequestSystemMessages(payload, markers);
