@@ -78,7 +78,10 @@ interface ReaderState extends StateReply {
     } | null;
 }
 interface ChatSnapshot {order?: string[];nodes?: {get(key: string): ReaderNode | undefined;};}
-interface ReaderSessionSnapshot {loadingOlder?: boolean;hasMore?: boolean;}
+interface ReaderSessionSnapshot {
+    loadingOlder?: boolean;hasMore?: boolean;running?: boolean;
+    pendingSubmissions?: readonly {requestId: string; placement: string}[];
+}
 interface ReaderViewProps {
     sessionId?: string;scope?: {sessionId?: string;};
     useChat?(selector: (value: ChatSnapshot) => ChatSnapshot): ChatSnapshot;
@@ -264,7 +267,11 @@ React,
             notify();
         }), []);
         const readerDocumentMode = React.useSyncExternalStore(subscribeDocumentLayout, frontendSettings.getMode, frontendSettings.getMode);
-        const activity = useTavernActivity(sessionId, state?.activity);
+        const useSession = props.useSession ?? noopSnapshotHook;
+        const historySnapshot = useSession(value => value);
+        const submissionId = historySnapshot?.pendingSubmissions?.findLast(item => item.placement !== 'queued')?.requestId;
+        const nativeBusy = Boolean(submissionId || historySnapshot?.running);
+        const activity = useTavernActivity(sessionId, state?.activity, nativeBusy);
         const [, refreshBeauty] = React.useState(0);
         const [communityReload,reloadCommunity]=React.useState(0);
         const [readerCompilationReload,reloadReaderCompilation]=React.useState(0);
@@ -378,21 +385,35 @@ React,
         const snapshot = useConv((value) => value) ?? props.snapshot ?? props.conversation ?? null;
         const readerRef = React.useRef<HTMLDivElement>(null);
         const scrollRef = React.useRef<HTMLDivElement>(null);
+        const contentRef = React.useRef<HTMLDivElement>(null);
+        const feedbackRef = React.useRef<HTMLDivElement>(null);
+        const followingTail = React.useRef(false);
         const [readerViewportHeight, setReaderViewportHeight] = React.useState<number | null>(null);
         React.useLayoutEffect(() => {
             const scroller = scrollRef.current;
-            if (!scroller) return;
+            const content = contentRef.current;
+            const feedback = feedbackRef.current;
+            if (!scroller || !content || !feedback) return;
             // Only the host's available content box drives document viewports.
             // Measuring author scrollHeight here would feed 100vh back into itself.
             const observer = new scroller.ownerDocument.defaultView!.ResizeObserver(entries => {
-                const height = entries[0]!.contentRect.height;
-                if (height > 0) setReaderViewportHeight(height);
+                const viewport = entries.find(entry => entry.target === scroller);
+                if (viewport && viewport.contentRect.height > 0) setReaderViewportHeight(viewport.contentRect.height);
+                if (followingTail.current) scroller.scrollTop = scroller.scrollHeight;
             });
             observer.observe(scroller);
-            return () => observer.disconnect();
+            observer.observe(content);
+            observer.observe(feedback);
+            return () => { observer.disconnect(); followingTail.current = false; };
         }, [sessionId, state?.sessionId, state?.preset]);
-        const useSession = props.useSession ?? noopSnapshotHook;
-        const historySnapshot = useSession(value => value);
+        React.useLayoutEffect(() => {
+            const scroller = scrollRef.current;
+            if (!submissionId || !scroller) return;
+            historyAnchorRef.current = null;
+            setReaderStart(null);
+            followingTail.current = true;
+            scroller.scrollTop = scroller.scrollHeight;
+        }, [sessionId, state?.sessionId, submissionId]);
         // Paging can outlive a view switch, so retain its exact Session through
         // the native pager's completion. Rendering belongs to the slot owner.
         const loadOlder = sessionId ? () => sessionsService.using(sessionId,
@@ -912,6 +933,7 @@ React,
 
         const holdHistoryAnchor = (resetIfMissing = false, layoutChanged = false) => {
             const scroller = scrollRef.current;
+            followingTail.current = false;
             const viewportTop = scroller?.getBoundingClientRect().top ?? 0;
             const anchor = scroller
                 && Array.from(scroller.querySelectorAll('[data-reader-key]'))
@@ -973,6 +995,7 @@ React,
         const requestLatest = () => {
             if (historyBusy || historyRequestRef.current) return;
             historyAnchorRef.current = null;
+            followingTail.current = false;
             if (scrollRef.current) scrollRef.current.scrollTop = 0;
             setHistoryError(null);
             setReaderStart(null);
@@ -984,8 +1007,10 @@ React,
         // appearing as unlayered author CSS. Inline styles from the card remain
         // authoritative as usual.
         const scopedCss = scopeReaderCss(readerDefaultCss) + '\n' + scopeReaderCss(readerAuthorCss) + `
+.rp-reader-view { overflow-anchor: none; }
 .rp-author-frame-host { position: relative; width: min(1500px, 100%); align-self: center; overflow: hidden; }
 .rp-reader-content { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+.rp-reader-feedback { width: min(1500px, 100%); flex-shrink: 0; }
 .rp-reader-content > .rp-author-frame-host, .rp-reader-content > .rp-reader { width: 100%; flex-shrink: 0; }
 .rp-author-guard-frame { display: block; width: 100%; height: 150px; border: 0; }
 .rp-author-action-layer { position: absolute; inset: 0; pointer-events: none; }
@@ -1137,7 +1162,14 @@ React,
 
                 ref: scrollRef,
 
+                onScroll: (event) => {
+                    const viewport = event.currentTarget;
+                    followingTail.current = readerStart === null && !historyAnchorRef.current
+                        && viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 32;
+                },
+
                 onWheel: (event) => {
+                    if (event.deltaY < 0) followingTail.current = false;
                     // Saves, layout and latest navigation also scroll this view.
                     // Only an explicit upward gesture requests an earlier page.
                     if (event.deltaY < 0 && event.currentTarget.scrollTop < 140 && !historyError) void requestOlder();
@@ -1253,7 +1285,7 @@ React,
                 ? React.createElement('div', { className: 'rp-reader-empty' }, '暂无可阅读的正文')
                 : null,
 
-            React.createElement('div', {className: 'rp-reader-content',
+            React.createElement('div', {className: 'rp-reader-content', ref:contentRef,
                 style: {width: '100%', maxWidth: '1500px'}},
             React.createElement('div', {className: 'rp-author-frame-host', ref: browserContainerRef,
                 style: {display: actualBrowserFramed ? undefined : 'none'}}),
@@ -1281,9 +1313,9 @@ React,
                     key: `${part.kind}:${part.seq ?? index}:${part.messageId ?? ''}`,
                 })))),
 
-            pendingPlayerBubble(activity, nodes),
-
-            React.createElement(ActivityBanner, { activity })
+            React.createElement('div', {className:'rp-reader-feedback',ref:feedbackRef},
+                pendingPlayerBubble(activity, nodes),
+                React.createElement(ActivityBanner, {activity, awaitingActivity:nativeBusy}))
 
         );
     }

@@ -149,8 +149,8 @@ export interface ActivityComponentDependencies {
 }
 
 export interface ActivityComponents {
-  useTavernActivity: (sessionId: string | null | undefined, seed?: ActivityState | null) => ActivityState | null
-  ActivityBanner: (props: { activity?: ActivityState | null; openReader?():void }) => ReactAPI.ReactNode
+  useTavernActivity: (sessionId: string | null | undefined, seed?: ActivityState | null, nativeBusy?: boolean) => ActivityState | null
+  ActivityBanner: (props: { activity?: ActivityState | null; awaitingActivity?: boolean; openReader?():void }) => ReactAPI.ReactNode
   BackgroundNotesBanner: (props: { activity?: ActivityState | null; sessionId?: string | null }) => ReactAPI.ReactNode
   pendingPlayerBubble: (activity?: ActivityState | null, nodes?: readonly ChatNode[], hasNativePending?: boolean) => ReactAPI.ReactNode
   DeferredPlayerInput: (props: DeferredPlayerProps) => ReactAPI.ReactNode
@@ -158,13 +158,14 @@ export interface ActivityComponents {
 
 export function createActivityComponents({ React, isRoleplaySession, peekState, prepareCleanWorldline, readCleanWorldline, openPreparedWorldline,
   replaceActivityFailures }: ActivityComponentDependencies): ActivityComponents {
-  const useTavernActivity = (sessionId: string | null | undefined, seed: ActivityState | null = null): ActivityState | null => {
+  const useTavernActivity: ActivityComponents['useTavernActivity'] = (sessionId, seed = null, nativeBusy = false) => {
     const [activity, setActivity] = React.useState<ActivityState | null>(null)
     const [running, setRunning] = React.useState(false)
     React.useEffect(() => { setActivity(null); setRunning(false) }, [sessionId])
     React.useEffect(()=>{
       if(seed&&seed.sessionId===sessionId)replaceActivityFailures?.(sessionId!,seed.extensionFailures??[])
     },[sessionId,seed?.extensionFailures])
+    const pollFast = nativeBusy || running
     React.useEffect(() => {
       if (!sessionId) return
       return startActivityPolling<ActivityState | null>({
@@ -180,13 +181,13 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
         },
         // A conversation that is not generating gains nothing from a fast poll,
         // and every attempt is a full round trip that competes with the reader.
-        schedule: fn => setInterval(fn, running ? 3000 : 30000),
+        schedule: fn => setInterval(fn, pollFast ? 3000 : 30000),
       })
-    }, [sessionId, running])
+    }, [sessionId, pollFast])
     return activity?.sessionId === sessionId ? activity : seed?.sessionId === sessionId ? seed : null
   }
 
-  const ActivityBanner:ActivityComponents['ActivityBanner'] = ({ activity, openReader }) => {
+  const ActivityBanner:ActivityComponents['ActivityBanner'] = ({ activity, awaitingActivity, openReader }) => {
     const [now, setNow] = React.useState(Date.now())
     const [copyResult, setCopyResult] = React.useState('')
     const [preparation, setPreparation] = React.useState<{
@@ -220,7 +221,7 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
       }).catch(()=>{})
       return ()=>{cancelled=true}
     },[recoverySession,key])
-    if(activity?.readerRequired&&!activity.running) {
+    if(activity?.readerRequired&&!activity.running&&!awaitingActivity) {
       return React.createElement('div',{className:'rp-activity rp-protocol-failure',role:'status'},
         React.createElement('strong',null,'请在酒馆继续剧情'),
         React.createElement('p',null,'这张卡需要酒馆的作者脚本才能准备剧情。这次准备尚未发出剧情请求。'),
@@ -231,7 +232,7 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
           copyButton),
         copyResult?React.createElement('small',{role:'status'},copyResult):null)
     }
-    if(recoverySession&&failure) {
+    if(recoverySession&&failure&&!awaitingActivity) {
       const configure=(action:string)=>window.dispatchEvent(new CustomEvent('dsh-roleplay-needs-config',{
         detail:{sessionId:recoverySession,action},
       }))
@@ -281,11 +282,13 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
         copyResult?React.createElement('small',{role:'status'},copyResult):null,
         React.createElement('small',null,failure.code))
     }
-    const value = tavernActivityPresentation(activity, now)
+    const waiting = awaitingActivity && !activity?.running
+    const value = waiting ? { text: '正在准备剧情…', label: '已提交输入', seconds: null }
+      : tavernActivityPresentation(activity, now)
     return value ? React.createElement('div', { className: 'rp-activity', role: 'status', 'aria-live': 'polite' },
       React.createElement('span', { className: 'rp-activity-whale', 'aria-hidden': true }, '🐋'),
       React.createElement('span', null, React.createElement('strong', null, value.text), React.createElement('small', null, value.label)),
-      React.createElement('time', { 'aria-hidden': true }, `${value.seconds}s`)) : null
+      value.seconds !== null ? React.createElement('time', { 'aria-hidden': true }, `${value.seconds}s`) : null) : null
   }
 
   const BackgroundNotesBanner = ({ activity, sessionId }: { activity?: ActivityState | null; sessionId?: string | null }): ReactAPI.ReactNode => {
