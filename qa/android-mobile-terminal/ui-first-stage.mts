@@ -1418,6 +1418,10 @@ try {
   emit('passed');labels();
   stage='open-host-settings';
   let sidebarRequested=false,accountRequested=false,settingsRequested=false,modelsRequested=false;
+  const settingsDialog=(node:Node)=>node.package===pkg&&node.class==='android.app.Dialog'
+    &&named(node,settings)&&inWebView(node)&&visibleBounds(node);
+  const providerTargets=()=>current.filter(node=>node.package===pkg&&button(node)&&named(node,addProvider)
+    &&node.enabled!=='false'&&ancestors(node).some(settingsDialog));
   const hostControls=(names:string[])=>matches(names,true)
     .filter(node=>node.package===pkg&&inWebView(node)&&visibleBounds(node));
   const tapHostNavigation=(action:string,node:Node)=>{
@@ -1431,7 +1435,9 @@ try {
       sidebarRequested=false;accountRequested=false;settingsRequested=false;modelsRequested=false;
       return false;
     }
-    if(hostControls(addProvider).length===1)return true;
+    const provider=providerTargets();
+    requireUi(provider.length<=1,'HOST_MODELS_ADD_PROVIDER_NOT_UNIQUE');
+    if(modelsRequested&&provider.length===1)return true;
     const models=hostControls(['模型','Models']);
     if(settingsRequested&&!modelsRequested&&models.length===1) {
       tapHostNavigation('models',models[0]);modelsRequested=true;return false;
@@ -1452,6 +1458,33 @@ try {
     }
     return false;
   },180,'MODEL_DIRECTORY_NOT_READY_OR_LAYOUT_CLIPPED');
+  stage='reveal-host-add-provider';
+  let modelsScrolled=false;
+  const introLabels=['填入各提供商的 API 密钥即可使用其模型。',
+    'Enter your API keys to use models from the following providers.'];
+  await until(()=>{
+    const provider=providerTargets();
+    requireUi(provider.length<=1,'HOST_MODELS_ADD_PROVIDER_NOT_UNIQUE');
+    const target=provider[0];
+    if(target&&visibleBounds(target))return true;
+    if(!target||modelsScrolled)return false;
+    const owner=ancestors(target).find(settingsDialog);
+    if(!owner)return false;
+    const intro=current.find(node=>node.package===pkg&&named(node,introLabels)
+      &&ancestors(node).includes(owner)&&visibleBounds(node));
+    if(!intro)return false;
+    const shell=visibleBounds(owner)!,copy=visibleBounds(intro)!;
+    // Settings uses a sticky header and its own vertical body. Stay inside
+    // this Models body (not Navigation beneath it, or the horizontal tabs).
+    const top=Math.max(shell[1]+1,copy[1]),bottom=shell[3]-18;
+    requireUi(bottom-top>=160,'HOST_MODELS_SCROLL_REGION_NOT_VISIBLE');
+    const x=Math.round((shell[0]+shell[2])/2);
+    const from=Math.round(bottom-16),to=Math.round(top+18);
+    emit('observed',{interaction:'host-models-content-scroll',from:[x,from],to:[x,to]});
+    command('shell','input','swipe',String(x),String(from),String(x),String(to),'460');
+    modelsScrolled=true;return false;
+  },45,'HOST_MODELS_ADD_PROVIDER_NOT_VISIBLE');
+  emit('passed',{scope:'models-add-provider-visible',scrolled:modelsScrolled});
   stage='host-models-page';
   labels();
   if(memoryOnly) {
