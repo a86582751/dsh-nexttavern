@@ -380,7 +380,7 @@ function interactOnboarding(step:string,names:string[]):void {
   onboardingSwipes.set(step,count+1);emit('observed',{interaction:'onboarding-scroll',step,attempt:count+1});
 }
 function onboarding():boolean {
-  const steps=[{step:'notice',titles:['内测声明','Internal Testing Notice'],actions:['继续','Continue']},
+  const steps=[{step:'notice',titles:['预览版说明','Preview Notice'],actions:['继续','Continue']},
     {step:'key',titles:['添加一个 API Key 开始使用','Add an API key to get started'],actions:['稍后配置','Configure later']}];
   for(const item of steps) {
     const touch=onboardingTouches.get(item.step);
