@@ -1,6 +1,6 @@
 /** Product-owned Loader subtree. Native and replacement providers never overlap. */
 import {Service, type Fiber, type FiberState, type Context} from '@deepseek-ai/cordis'
-import {EntryTree, type EntryOptions} from '@deepseek-ai/cordis-plugin-loader'
+import {EntryTree, type Entry, type EntryOptions} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import {createRequire} from 'node:module'
 import {readFileSync, realpathSync} from 'node:fs'
@@ -103,14 +103,36 @@ export default class NextTavernEntry extends EntryTree {
         product: plan.rows.find(row => row.id === loaderEntry(owner.ctx).options.id),
         providers: owner.config.providers.map(provider => plan.provider({id:provider.id,module:provider.original})),
       })
-      if (isDeepStrictEqual(ownedIntent(state.plan), ownedIntent(proposal))) {
+      const before = ownedIntent(state.plan)
+      const after = ownedIntent(proposal)
+      const updates: {entry: Entry; config: unknown}[] = []
+      const canUpdate = before.selected === after.selected && isDeepStrictEqual(before.product, after.product)
+        && after.providers.every((provider, index) => {
+          const previous = before.providers[index]
+          if (isDeepStrictEqual(provider, previous)) return true
+          if (!provider || !previous || !isDeepStrictEqual(provider.ancestors, previous.ancestors)) return false
+          const {config: incoming, ...nextRow} = provider.row
+          const {config: _config, ...previousRow} = previous.row
+          if (!isDeepStrictEqual(nextRow, previousRow)) return false
+          const entry = [...owner.entries()].find(row => row.options.id === nextRow.id)
+          if (!entry || !owner.settingsBridge?.isWriting(entry, incoming)) return false
+          updates.push({entry, config: incoming})
+          return true
+        })
+      if (canUpdate) {
         // Native settings saves also update Include. Keep unrelated rows on
         // that normal path so a welcome/theme edit cannot revoke live Session
         // RPCs and browser scope adapters by restarting the entire product.
         const accepted = {plan:state.plan, patches:state.patches}
         state.plan = proposal
         state.patches = proposal.rows
-        try {return await next()} catch (error) {
+        try {
+          const result = await next()
+          // Official Settings only edits volatile fields. Apply its validated
+          // value to the mounted child through the same Loader entry API.
+          for (const {entry, config} of updates) await entry.update({config})
+          return result
+        } catch (error) {
           state.plan = accepted.plan
           state.patches = accepted.patches
           throw error

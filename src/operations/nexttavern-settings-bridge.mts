@@ -29,6 +29,7 @@
  * and an adapter that forwarded that value would break the caller's release.
  */
 import type {Context} from '@deepseek-ai/cordis'
+import {isDeepStrictEqual} from 'node:util'
 
 /** One replaced provider row as the product mounted it. */
 export interface RehomedSettingsRow {
@@ -52,6 +53,8 @@ interface ConfigEditor {
 /** Installed adapter; `close` stops advertising synchronously. */
 export interface SettingsBridge {
   close(): void
+  /** Match the precise config produced by an in-progress official Settings write. */
+  isWriting(entry: RehomedSettingsRow['entry'], config: unknown): boolean
   /** Release the adapter fiber; safe to call after the fiber already unloaded. */
   dispose(): Promise<void>
 }
@@ -64,6 +67,7 @@ export interface SettingsBridge {
  */
 export function mountSettingsBridge(ctx: Context, rows: () => RehomedSettingsRow[]): SettingsBridge {
   let closed = false
+  const pending = new Map<RehomedSettingsRow['entry'], Record<string, unknown>>()
   const fiber = ctx.inject(['configEditor'], (editorCtx) => {
     if (closed) return
     const editor = editorCtx.get('configEditor') as ConfigEditor | undefined
@@ -92,7 +96,7 @@ export function mountSettingsBridge(ctx: Context, rows: () => RehomedSettingsRow
     const edit = async function edit(entry: RehomedSettingsRow['entry'],
       change: (current: Record<string, unknown>, inherited: Record<string, unknown>) => Record<string, unknown>) {
       const row = closed ? undefined : mounted().get(entry.options.id)
-      if (!row || row.entry !== entry || row.declared === entry.options.name) return write(entry, change)
+      if (!row || row.entry !== entry) return write(entry, change)
       // The host reads the row's own specifier after several awaits. Serialize
       // per id so a concurrent writer can neither observe the profile
       // specifier nor lose it, and always restore the mounted module.
@@ -100,7 +104,16 @@ export function mountSettingsBridge(ctx: Context, rows: () => RehomedSettingsRow
       const next = previous.then(async () => {
         const replacement = entry.options.name
         entry.options.name = row.declared
-        try { return await write(entry, change) } finally { entry.options.name = replacement }
+        try {
+          return await write(entry, (current, inherited) => {
+            const config = change(current, inherited)
+            pending.set(entry, config)
+            return config
+          })
+        } finally {
+          pending.delete(entry)
+          entry.options.name = replacement
+        }
       })
       writes.set(row.id, next.catch(() => undefined))
       return next
@@ -111,6 +124,10 @@ export function mountSettingsBridge(ctx: Context, rows: () => RehomedSettingsRow
   let releasing: Promise<void> | undefined
   return {
     close() {closed = true},
+    isWriting(entry, config) {
+      const draft = pending.get(entry)
+      return !closed && draft !== undefined && isDeepStrictEqual(draft, config ?? {})
+    },
     dispose() {
       // The entry fiber unloads the adapter alongside its own children, so a
       // shutdown may reach here first or second. Always hand back a promise.

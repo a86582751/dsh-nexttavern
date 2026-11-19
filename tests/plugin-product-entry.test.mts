@@ -185,6 +185,28 @@ test('a replaced provider keeps an official settings namespace and its own profi
   } finally {await f.close()}
 })
 
+test('saving a replaced provider through Settings preserves the running host and provider',async t=>{
+  if(await nativeCase(t.name,import.meta.url))return
+  const f=await fixture({settings:true,hostMode:'active'})
+  try {
+    const namespace=()=>f.ctx.settings.describe().find((row:{ns:string})=>row.ns==='meter')
+    const graph=f.graph(), provider=f.ctx.get('entryProbe'), host=f.ctx.get('hostRoutes')
+    const before=f.changes.slice()
+    await f.ctx.settings.mutate('meter',[{op:'set',path:['value'],value:'saved-live'}],namespace().revision)
+    await f.ctx.loader.await()
+    assert.equal(f.ctx.get('entryProbe'),provider,'a settings save must not unmount the running provider')
+    assert.equal(f.ctx.get('hostRoutes'),host,'a settings save must not revoke the running host')
+    assert.equal(provider.value,'saved-live')
+    assert.deepEqual(f.changes,before,'a settings save must not restart any product component')
+    assert.deepEqual(f.graph(),graph)
+    const persisted=f.profileRows()
+    await assert.rejects(f.ctx.settings.mutate('meter',[{op:'set',path:['value'],value:[] }],namespace().revision))
+    assert.equal(provider.value,'saved-live')
+    assert.deepEqual(f.profileRows(),persisted)
+    assert.deepEqual(f.changes,before,'a refused save must preserve the accepted running graph')
+  }finally{await f.close()}
+})
+
 test('product activation failure releases resources and fails startup explicitly', async t => {
   if (await nativeCase(t.name, import.meta.url)) return
   await assert.rejects(fixture({fail:true}), causedBy('owned provider failed'))
