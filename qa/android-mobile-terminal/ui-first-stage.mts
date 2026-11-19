@@ -554,6 +554,18 @@ function focusInput(node:Node):void {
     helperError:output.match(/^INSTRUMENTATION_RESULT: error=([A-Z_]{1,80})\r?$/m)?.[1]??null});
   requireUi(/^INSTRUMENTATION_CODE: -1\r?$/m.test(output)&&accepted&&count==='1','ACCESSIBILITY_FOCUS_NOT_ACCEPTED');
 }
+const memoryQueryCommand='/memory search '+EMBEDDING_QUERY;
+/** A pinned Host slash chip and its argument are separate inline AX spans.
+ * Require the exact command name and entire argument, with only a bounded
+ * space/layout run at their single boundary. No normalization of any other
+ * draft or of the command's argument. */
+function memoryChipAxSeparator(actual:string):string|null {
+  const token='/memory', args='search '+EMBEDDING_QUERY;
+  if(!actual.startsWith(token)||!actual.endsWith(args))return null;
+  const separator=actual.slice(token.length,-args.length);
+  if(!/^[ \u00a0\n\u200b]{1,2}$/u.test(separator)||!/[ \u00a0\n]/u.test(separator))return null;
+  return [...separator].map(char=>char.codePointAt(0)!.toString(16)).join('+');
+}
 async function typeAscii(node:Node,value:string,field='synthetic-composer'):Promise<void> {
   // Observe actual input focus after the public semantic focus request.
   // All values are fixed synthetic ASCII, but never emit input contents.
@@ -576,8 +588,11 @@ async function typeAscii(node:Node,value:string,field='synthetic-composer'):Prom
   const found=focused();
   requireUi(found.length===1,'EXPECTED_FIELD_FOCUS_LOST');
   const actual=found[0].text??'',password=found[0].password==='true';
-  const matchesExpected=password?actual.length===value.length:actual===value;
+  const chipSeparator=field==='synthetic-memory-command'&&value===memoryQueryCommand&&!password
+    ?memoryChipAxSeparator(actual):null;
+  const matchesExpected=password?actual.length===value.length:actual===value||chipSeparator!==null;
   emit('observed',{interaction:'input-readback',field,password,matchesExpected,
+    ...(chipSeparator!==null?{slashChipAxSeparator:chipSeparator}:{}),
     expectedLength:value.length,observedLength:actual.length,
     ...(!password?{firstDifference:[...value].findIndex((char,index)=>actual[index]!==char),
       asciiLowercaseRoute:/^[a-z][a-z0-9-]*$/.test(actual)}:{})});
@@ -1381,7 +1396,7 @@ async function onlineMemoryRestartAndRecall(eventsFile:string,expectedSource=fix
   const composers=current.filter(node=>node.package===pkg&&node.class==='android.widget.EditText'
     &&inWebView(node)&&node.enabled!=='false'&&visibleBounds(node));
   requireUi(composers.length===1,'MEMORY_SLASH_COMPOSER_NOT_UNIQUE');
-  await typeAscii(composers[0],'/memory search '+EMBEDDING_QUERY);
+  await typeAscii(composers[0],memoryQueryCommand,'synthetic-memory-command');
   await press(['发送消息','Send message']); // One actual slash command, no paid chat turn.
   let outcome:{node:Node;result:Record<string,any>}|undefined;
   await until(()=>{
