@@ -6,7 +6,7 @@
 
 **0.3.0-rc.1** · **DeepSeek Harness 0.2.2-rc.5** or newer · Web / official Windows Desktop · GPL-3.0-only
 
-[Install](#one-click-install) · [Get started](#getting-started) · [Website](https://a86582751.github.io/dsh-nexttavern/) · [Changelog](CHANGELOG.md) · [Screenshots](SCREENSHOTS.md) · [Report an issue](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
+[GitHub release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) · [Install](#one-click-install) · [Get started](#getting-started) · [Website](https://a86582751.github.io/dsh-nexttavern/) · [Changelog](CHANGELOG.md) · [Screenshots](SCREENSHOTS.md) · [Report an issue](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
 ![NextTavern 0.3 home with the bundled skin enabled](screenshots/v03-cover.webp)
 
@@ -34,6 +34,8 @@ dsh web --host 127.0.0.1
 ```
 
 For a first Web install, use Node.js **24.9+** and install the host with `npm install -g @deepseek-ai/dsh@0.2.2-rc.5`.
+
+If your npm registry has not picked up this version yet, download `dsh-nexttavern.tgz` from the [GitHub release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) and follow the [local archive steps](#manual-install).
 
 **Official Windows Desktop.** Install `dsh-nexttavern` through the host’s plugin settings. Restart after a first installation into a running app. For the bundled CLI, close the app first and run this command from its installation directory:
 

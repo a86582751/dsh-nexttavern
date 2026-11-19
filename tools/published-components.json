@@ -1,4 +1,302 @@
 {
   "schemaVersion": 1,
-  "releases": []
+  "releases": [
+    {
+      "schemaVersion": 1,
+      "packageName": "dsh-nexttavern",
+      "version": "0.3.0-rc.1",
+      "sourceCommit": "88c907e9c9009072f4a35fac0602d1c05848e733",
+      "archive": {
+        "url": "https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/dsh-nexttavern.tgz",
+        "sha256": "0bed57a059a1ead0e6e6a066c7ff9b4af10f35697b932cbcaccf5d1504df2ba0",
+        "bytes": 47141692,
+        "rootPrefix": "package/",
+        "inventoryPath": "package/nexttavern.dependencies.json"
+      },
+      "publication": {
+        "kind": "github",
+        "metadataUrl": "https://api.github.com/repos/a86582751/dsh-nexttavern/releases/tags/v0.3.0-rc.1",
+        "repository": "a86582751/dsh-nexttavern",
+        "tag": "v0.3.0-rc.1",
+        "releaseId": 451651404,
+        "assetId": 768510757,
+        "publishedAt": "2026-11-19T17:22:24Z",
+        "assetDigest": "sha256:0bed57a059a1ead0e6e6a066c7ff9b4af10f35697b932cbcaccf5d1504df2ba0"
+      },
+      "components": [
+        {
+          "name": "dsh-nexttavern-anydoc",
+          "version": "0.1.0-nexttavern.4",
+          "generation": "2005c9a458149e7c1cf201307da14b466855a54f7e0f62f01fcf14ba8353d600",
+          "archivePath": "package/node_modules/dsh-nexttavern-anydoc/"
+        },
+        {
+          "name": "dsh-nexttavern-llm-pi-ai",
+          "version": "0.3.0-dev.1",
+          "generation": "1bbeacda4edf5fe79180a3d56782d7923d2847117983205805b1a384fe28f9b8",
+          "archivePath": "package/node_modules/dsh-nexttavern-llm-pi-ai/"
+        },
+        {
+          "name": "dsh-nexttavern-pi-ai",
+          "version": "0.3.0-dev.1",
+          "generation": "2fe3cc6e0347d6b80163ccc885261166bce12352b7ac3d30552616d698f96f17",
+          "archivePath": "package/node_modules/dsh-nexttavern-pi-ai/"
+        },
+        {
+          "name": "dsh-nexttavern-presets",
+          "version": "0.3.0-dev.1",
+          "generation": "f0e3fe1e221c081acb769ddbbc9b6d1ef0f99c1fa5ffc97b0485f6ae212bc0c3",
+          "archivePath": "package/node_modules/dsh-nexttavern-presets/"
+        },
+        {
+          "name": "dsh-nexttavern-session-controller",
+          "version": "0.3.0-dev.1",
+          "generation": "8fc8ad2ef7c7b70851bd51c0d0a0c5ae466990691322d3447cddcebe63d61966",
+          "archivePath": "package/node_modules/dsh-nexttavern-session-controller/"
+        },
+        {
+          "name": "dsh-nexttavern-session-format",
+          "version": "0.3.0-dev.1",
+          "generation": "2641799d0daa1c8123a3a5f66f6ed20f6ac8892e2eba493c71feabf5dff2ff0d",
+          "archivePath": "package/node_modules/dsh-nexttavern-session-format/"
+        },
+        {
+          "name": "dsh-nexttavern-session-persistence-jsonl",
+          "version": "0.3.0-dev.1",
+          "generation": "d2aa507faa5020cfdbed8a9daff07f087a8a2996f217de9cbd5a59fd744337f3",
+          "archivePath": "package/node_modules/dsh-nexttavern-session-persistence-jsonl/"
+        },
+        {
+          "name": "dsh-nexttavern-token-meter",
+          "version": "0.3.0-dev.1",
+          "generation": "9ecc24062c7acd22306e21f80f46b203091d7c3d02efcbc5b1fab9db106498a2",
+          "archivePath": "package/node_modules/dsh-nexttavern-token-meter/"
+        },
+        {
+          "name": "dsh-nexttavern-ui-chat",
+          "version": "0.1.7-rc.2-nexttavern.1",
+          "generation": "ebedcc694a0cc2bcdf5de6ad1f8ad4c7d5732c40ceb96e5d3946b413dac02f59",
+          "archivePath": "package/node_modules/dsh-nexttavern-ui-chat/"
+        },
+        {
+          "name": "dsh-nexttavern-ui-workspace",
+          "version": "0.1.7-rc.2-nexttavern.1",
+          "generation": "b0346fb7ae560a3ca8e1cab1efa6c2e63258cd759fb03ec6edefdd9bc2413de2",
+          "archivePath": "package/node_modules/dsh-nexttavern-ui-workspace/"
+        },
+        {
+          "name": "dsh-nexttavern-mvu-schema-runtime-v4-update-batch-v1",
+          "version": "0.4.0",
+          "generation": "205159d80a46b9ce62edb8adaba6388772ab0f93b5d867fa0b46a56bf9046d37",
+          "archivePath": "package/node_modules/dsh-nexttavern-mvu-schema-runtime-v4-update-batch-v1/"
+        },
+        {
+          "name": "dsh-nexttavern-author-host-runtime-v5-update-batch-v1",
+          "version": "0.6.0",
+          "generation": "0a3a4a0e8f4cdb7bee11402ea6ed4a8d098c5ee935966cec77580e95a4358623",
+          "archivePath": "package/node_modules/dsh-nexttavern-author-host-runtime-v5-update-batch-v1/"
+        },
+        {
+          "name": "dsh-nexttavern-typescript-runtime",
+          "version": "0.1.0",
+          "generation": "173cd61d89d92e2ad2c7a4628bce935fec097f3109f5d4f7c4d83a69731d9c63",
+          "archivePath": "package/node_modules/dsh-nexttavern-typescript-runtime/"
+        },
+        {
+          "name": "dsh-nexttavern-template-runtime-v3",
+          "version": "0.1.0",
+          "generation": "19d26d72badd953d75e84722c33fcf9073a7396ff1723cf4d5456e0372aa267a",
+          "archivePath": "package/node_modules/dsh-nexttavern-template-runtime-v3/"
+        },
+        {
+          "name": "dsh-nexttavern-native-llm",
+          "version": "0.3.0-dev.1",
+          "generation": "dfe99e63b43f43de47acee0df286bcc7cf49a0eb00ffbfc6ae2684f4a0a98088",
+          "archivePath": "package/node_modules/dsh-nexttavern-native-llm/"
+        },
+        {
+          "name": "dsh-nexttavern-native-session",
+          "version": "0.3.0-dev.1",
+          "generation": "f00783af09b54ef1e1b2a1209957dc3490ab39403b4c6bd17cf43523713a6f72",
+          "archivePath": "package/node_modules/dsh-nexttavern-native-session/"
+        },
+        {
+          "name": "dsh-nexttavern-native-agent-loop",
+          "version": "0.3.0-dev.1",
+          "generation": "5f3b90bafb2d11378b8bab76421f748727fa70a7a02e86d06725e614915b05f5",
+          "archivePath": "package/node_modules/dsh-nexttavern-native-agent-loop/"
+        },
+        {
+          "name": "dsh-nexttavern-native-subagent",
+          "version": "0.3.0-dev.1",
+          "generation": "e9e37f5b79592c508fccad73faec1a5b833e8d07ab546d8806ff1f946ef57308",
+          "archivePath": "package/node_modules/dsh-nexttavern-native-subagent/"
+        },
+        {
+          "name": "dsh-nexttavern-native-subagent-in-process-driver",
+          "version": "0.3.0-dev.1",
+          "generation": "c091988c5e2b0f9e446fcb77f80fa3f10324aab11d710d7b858a2f9cce148cf5",
+          "archivePath": "package/node_modules/dsh-nexttavern-native-subagent-in-process-driver/"
+        },
+        {
+          "name": "dsh-nexttavern-native-subagent-spawn-in-process",
+          "version": "0.3.0-dev.1",
+          "generation": "83bdf8d47fa3c9b494a4d20834bb36dc6f84a0a5219d0fdec6a4ec14132aaeab",
+          "archivePath": "package/node_modules/dsh-nexttavern-native-subagent-spawn-in-process/"
+        },
+        {
+          "name": "dsh-nexttavern-native-storage-json",
+          "version": "0.3.0-dev.1",
+          "generation": "026b95de25d6e5699d34d1e5078115ad104be32b13dfa6e9ade9709ae0ad12db",
+          "archivePath": "package/node_modules/dsh-nexttavern-native-storage-json/"
+        },
+        {
+          "name": "dsh-nexttavern-native-llm-deepseek",
+          "version": "0.3.0-dev.1",
+          "generation": "d4f4f74c137c6c8a9b6d17de05dc77d2f4755de4287d285abaaa61400660c943",
+          "archivePath": "package/node_modules/dsh-nexttavern-native-llm-deepseek/"
+        },
+        {
+          "name": "dsh-nexttavern-native-llm-deepseek-api-key",
+          "version": "0.3.0-dev.1",
+          "generation": "f3693a5dd59037e812c61abddeb253bb13c63e0a0dabf24fae05b70477bf5997",
+          "archivePath": "package/node_modules/dsh-nexttavern-native-llm-deepseek-api-key/"
+        },
+        {
+          "name": "dsh-nexttavern-native-llm-deepseek-account",
+          "version": "0.3.0-dev.1",
+          "generation": "0b4ccf8419427d8986b25490784c5e7e75fde4ca2f19c4ea982d38a832b68723",
+          "archivePath": "package/node_modules/dsh-nexttavern-native-llm-deepseek-account/"
+        },
+        {
+          "name": "dsh-nexttavern-native-http",
+          "version": "0.3.0-dev.1",
+          "generation": "4baebdc6383ccde412e7e3543815e1121a4a48ec0c79d29e3c05ba977973cfed",
+          "archivePath": "package/node_modules/dsh-nexttavern-native-http/"
+        }
+      ],
+      "runtime": {
+        "schemaVersion": 1,
+        "components": [
+          {
+            "name": "dsh-nexttavern-typescript-runtime",
+            "version": "0.1.0",
+            "generation": "173cd61d89d92e2ad2c7a4628bce935fec097f3109f5d4f7c4d83a69731d9c63",
+            "factory": "typescript-v1",
+            "dependencies": {}
+          },
+          {
+            "name": "dsh-nexttavern-mvu-schema-runtime-v4-update-batch-v1",
+            "version": "0.4.0",
+            "generation": "205159d80a46b9ce62edb8adaba6388772ab0f93b5d867fa0b46a56bf9046d37",
+            "factory": "schema-v4-shared-typescript",
+            "dependencies": {
+              "typescript": {
+                "name": "dsh-nexttavern-typescript-runtime",
+                "generation": "173cd61d89d92e2ad2c7a4628bce935fec097f3109f5d4f7c4d83a69731d9c63"
+              }
+            },
+            "context": "dfa53f43639347f09c9af6730cd1fa382567725f5a9a13560e75b028b3d70a1f"
+          },
+          {
+            "name": "dsh-nexttavern-author-host-runtime-v5-update-batch-v1",
+            "version": "0.6.0",
+            "generation": "0a3a4a0e8f4cdb7bee11402ea6ed4a8d098c5ee935966cec77580e95a4358623",
+            "factory": "host-v5",
+            "dependencies": {}
+          },
+          {
+            "name": "dsh-nexttavern-template-runtime-v3",
+            "version": "0.1.0",
+            "generation": "19d26d72badd953d75e84722c33fcf9073a7396ff1723cf4d5456e0372aa267a",
+            "factory": "template-ejs-v1",
+            "dependencies": {}
+          }
+        ],
+        "roles": {
+          "typescript": {
+            "name": "dsh-nexttavern-typescript-runtime",
+            "generation": "173cd61d89d92e2ad2c7a4628bce935fec097f3109f5d4f7c4d83a69731d9c63"
+          },
+          "schema": {
+            "name": "dsh-nexttavern-mvu-schema-runtime-v4-update-batch-v1",
+            "generation": "205159d80a46b9ce62edb8adaba6388772ab0f93b5d867fa0b46a56bf9046d37",
+            "context": "dfa53f43639347f09c9af6730cd1fa382567725f5a9a13560e75b028b3d70a1f"
+          },
+          "host": {
+            "name": "dsh-nexttavern-author-host-runtime-v5-update-batch-v1",
+            "generation": "0a3a4a0e8f4cdb7bee11402ea6ed4a8d098c5ee935966cec77580e95a4358623"
+          },
+          "templateEjs": {
+            "name": "dsh-nexttavern-template-runtime-v3",
+            "generation": "19d26d72badd953d75e84722c33fcf9073a7396ff1723cf4d5456e0372aa267a"
+          }
+        },
+        "identities": {
+          "server": {
+            "compiler": {
+              "id": "native-mvu-schema-compiler",
+              "version": 4,
+              "typescriptVersion": "5.9.3",
+              "implementationSha256": "3f7c0ca082daceadd4f21141ffcbc61928ac98316193a0d02e273922bc221b94"
+            },
+            "bridge": {
+              "id": "native-mvu-schema-bridge",
+              "version": 4,
+              "implementationSha256": "8cf3ae36876d6823016d00c960cc1d29f566a3462a5ce2e640423c49746852c1"
+            },
+            "libraries": [
+              {
+                "kind": "zod",
+                "packageName": "zod",
+                "version": "4.4.3",
+                "globalName": "z",
+                "bundleSha256": "91ab8819b443ba593a897f2b127bf87ba324d21d2579c3fdff6a4e4bb1e1ae4c"
+              },
+              {
+                "kind": "lodash",
+                "packageName": "lodash",
+                "version": "4.18.1",
+                "globalName": "_",
+                "bundleSha256": "a8d7e6291ad80256f976ace90824a71018d2f706992c9107b20bdced97bee27b"
+              },
+              {
+                "kind": "mvu-196",
+                "packageName": "nexttavern-mvu-196-core",
+                "version": "0.196.0-d03b7dc8",
+                "globalName": "NextTavernMvu196",
+                "bundleSha256": "317e0b8cf78a8c9d17294ccee57e5df2390070600e5ea537bba0e0374409db38"
+              }
+            ],
+            "stateLoader": {
+              "id": "native-mvu-state-loader",
+              "version": 4,
+              "implementationSha256": "b4e220bdc9947f93e3facf49d385fbf1c059a33f0c284128191a2b3f4897b266"
+            },
+            "runner": {
+              "id": "native-mvu-schema-runner",
+              "version": 4,
+              "quickjsVersion": "0.32.0",
+              "implementationSha256": "e4869ff6392c2481e21795c316e037421eded6385721fbba6058c79481e80eeb"
+            }
+          },
+          "host": {
+            "id": "native-author-host",
+            "version": 5,
+            "implementationSha256": "b2532e232667cbe7f8a99c8edde2ec1f49b49f3e28946b334f7189aa32cc2215"
+          },
+          "templateEjs": {
+            "schemaVersion": 1,
+            "encoding": "owned-ejs-template-engine-v1",
+            "factory": "template-ejs-v1",
+            "packageName": "dsh-nexttavern-template-runtime-v3",
+            "version": "0.1.0",
+            "protectedGeneration": "19d26d72badd953d75e84722c33fcf9073a7396ff1723cf4d5456e0372aa267a",
+            "policySha256": "86c464df827366d1120686663cbb035df5283fb064fdf3003324130c56ff38b3",
+            "implementationSha256": "9d6fe5331944e56c39d2d0ffe700c00d6100c3c8b42517efcc2d133677625d09"
+          }
+        }
+      }
+    }
+  ]
 }

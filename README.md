@@ -6,7 +6,7 @@
 
 **0.3.0-rc.1** · 最低 **DeepSeek Harness 0.2.2-rc.5** · Web / 官方 Windows Desktop · GPL-3.0-only
 
-[下载安装](#一键安装) · [开始体验](#开始体验) · [官网](https://a86582751.github.io/dsh-nexttavern/) · [更新日志](CHANGELOG.md) · [截图集](SCREENSHOTS.md) · [Android 路线](#android) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
+[GitHub 发行包](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) · [下载安装](#一键安装) · [开始体验](#开始体验) · [官网](https://a86582751.github.io/dsh-nexttavern/) · [更新日志](CHANGELOG.md) · [截图集](SCREENSHOTS.md) · [Android 路线](#android) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
 ![NextTavern 0.3 的酒馆主页，启用自有皮肤](screenshots/v03-cover.webp)
 
@@ -34,6 +34,8 @@ dsh web --host 127.0.0.1
 ```
 
 首次使用 Web，请先准备 Node.js **24.9+** 与宿主 `npm install -g @deepseek-ai/dsh@0.2.2-rc.5`。
+
+如果 npm 源尚未同步，可从 [GitHub 发行页](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) 下载 `dsh-nexttavern.tgz`，按[本地归档安装](#安装)操作。
 
 **官方 Windows Desktop。** 使用宿主的插件设置安装 `dsh-nexttavern`。运行中首次安装后重启。也可以先关闭应用，在安装目录用随附 CLI 执行：
 
