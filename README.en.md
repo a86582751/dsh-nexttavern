@@ -24,7 +24,7 @@ NextTavern 0.2.9 could already import community cards, preserve the original, co
 | [Community presets and regex](#community-presets-and-regex) | Import community JSON presets and arrange prompts, feature groups, macros, and regex rules at the global or conversation level. |
 | [Native authoring, worldlines, and side chat](#native-authoring-worldlines-and-side-chat) | Edit and share cards in Native 1.2, discuss or revise the setting in side chat, then continue the story and export the selected worldline’s manuscript. |
 
-The playable 0.3 build was tested with five additional original community cards, from authored opening through the first story turn. Checks covered the features each card used, including numerical state, status panels, author terminals, and continued play. Compatibility depends on the card’s APIs, external resources, and model provider. [Development and real-card testing](DEVELOPMENT-0.3.md)
+After the refactor, we ran targeted checks on two randomly selected batches of ten original community cards each. Five additional cards all reached a first story turn from their authored openings, with checks for applicable features such as numerical state, status panels, author terminals, and continued play. Further hands-on testing in the official Desktop app led to fixes and follow-up checks for opening confirmation, character creation screens, and reading layouts. Compatibility depends on the card’s APIs, external resources, and model provider. [Real-card testing coverage](DEVELOPMENT-0.3.md#实卡测试覆盖)
 
 When moving from 0.2.x, keep the original environment, export the cards or manuscripts you need, and use a fresh home and workspace. [Migration and rollback](#update-uninstall-and-rollback)
 
