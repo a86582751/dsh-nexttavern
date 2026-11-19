@@ -327,9 +327,10 @@ const webChrome=[...settings,...sidebar,'新建会话','New session'];
 const addProvider=['添加模型提供商','Add model provider'];
 const onboardingTouches=new Map<string,{geometry:string;taps:number;tapGeometry?:string;dismissed?:boolean}>();
 const onboardingSwipes=new Map<string,number>();
-function interactOnboarding(step:string,names:string[]):void {
+function interactOnboarding(step:string,names:string[],targetDialog?:Node):void {
   const actions=current.filter(node=>node.package===pkg && node.class==='android.widget.Button'
-    && names.some(name=>node.text===name||node['content-desc']===name) && node.enabled!=='false');
+    && names.some(name=>node.text===name||node['content-desc']===name) && node.enabled!=='false'
+    && (!targetDialog||ancestors(node).includes(targetDialog)));
   if(actions.length!==1)return;
   // Android can expose both native and document WebView nodes. Ownership
   // comes from this button's actual modal/document ancestry, not global counts.
@@ -364,7 +365,7 @@ function interactOnboarding(step:string,names:string[]):void {
     const visible=[Math.max(box[0],action[0]),Math.max(box[1],action[1]),Math.min(box[2],action[2]),Math.min(box[3],action[3])];
     if(visible[2]>visible[0] && visible[3]>visible[1]) {
       emit('observed',{interaction:'onboarding-dismissal-touch',step,attempt:touch.taps+1,
-        action:step==='key'?'configure-later':'continue',target:visible,dialog,view,
+        action:step==='account'?'close':step==='key'?'configure-later':'continue',target:visible,dialog,view,
         imeExposed:current.some(node=>/\.inputmethod\./.test(node.package))});
       command('shell','input','tap',String(Math.round((visible[0]+visible[2])/2)),String(Math.round((visible[1]+visible[3])/2)));
       touch.taps++;touch.tapGeometry=geometry;return;
@@ -382,6 +383,17 @@ function interactOnboarding(step:string,names:string[]):void {
 function onboarding():boolean {
   const steps=[{step:'notice',titles:['预览版说明','Preview Notice'],actions:['继续','Continue']},
     {step:'key',titles:['添加一个 API Key 开始使用','Add an API key to get started'],actions:['稍后配置','Configure later']}];
+  // rc.5's account plugin owns a distinct Get started modal. Only use the
+  // Close button belonging to that actual WebView dialog; backdrop taps can
+  // dismiss the modal without opening the sidebar and strand the test.
+  const accountTitles=['开始使用','Get started'];
+  const accountDialog=current.find(node=>node.package===pkg&&node.class==='android.app.Dialog'
+    &&accountTitles.some(title=>node.text===title||node['content-desc']===title)
+    &&ancestors(node).some(parent=>parent.package===pkg&&parent.class==='android.webkit.WebView'));
+  const accountTouch=onboardingTouches.get('account');
+  if(!accountDialog&&accountTouch?.taps&&!accountTouch.dismissed) {
+    accountTouch.dismissed=true;emit('observed',{interaction:'onboarding-dismissed',step:'account'});
+  }
   for(const item of steps) {
     const touch=onboardingTouches.get(item.step);
     if(!has(item.titles) && touch?.taps && !touch.dismissed) {
@@ -390,6 +402,10 @@ function onboarding():boolean {
   }
   for(const item of steps)if(has(item.titles)) {
     interactOnboarding(item.step,item.actions);return true;
+  }
+  if(accountDialog) {
+    if(accountTouch?.dismissed)onboardingTouches.delete('account');
+    interactOnboarding('account',['关闭','Close'],accountDialog);return true;
   }
   return false;
 }
@@ -1032,7 +1048,7 @@ async function ordinaryNativeStop():Promise<void> {
 }
 async function reopenNamedConversation():Promise<void> {
   // Native READY precedes the new authenticated origin's asynchronous page load.
-  await until(()=>has(webChrome),180,'RESTART_WEBVIEW_APP_CONTROLS_NOT_EXPOSED');
+  await until(()=>!onboarding()&&has(webChrome),180,'RESTART_WEBVIEW_APP_CONTROLS_NOT_EXPOSED');
   await showSidebar();
   // The real treeitem aggregates its title and relative timestamp. One fresh
   // test conversation is required; never choose an arbitrary row or hidden ID.
