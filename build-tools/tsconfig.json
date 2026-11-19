@@ -136,12 +136,6 @@
       "dsh-nexttavern-native-llm-deepseek/*": [
         "../development/llm-deepseek/src/*.ts"
       ],
-      "dsh-nexttavern-native-client-modules": [
-        "../development/client-modules/src/index.ts"
-      ],
-      "dsh-nexttavern-native-client-modules/*": [
-        "../development/client-modules/src/*.ts"
-      ],
       "dsh-nexttavern-native-llm-deepseek-api-key": [
         "../development/llm-deepseek-api-key/src/index.ts"
       ],

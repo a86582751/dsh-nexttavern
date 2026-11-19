@@ -5,7 +5,7 @@ name: verify
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, android/mobile-terminal]
   workflow_dispatch:
     inputs:
       base:

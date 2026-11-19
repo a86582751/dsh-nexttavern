@@ -33,6 +33,10 @@ export function createCanonicalRuntimeSourceFiles(options:{repo:string;
         importer:physicalByLogical.get(args.importer)??args.importer,resolveDir:args.resolveDir,
         pluginData:{canonicalResolution:true}})
       if(result.external||result.errors.length)return result
+      // Browser-field exclusions carry esbuild's internal disabled-module flag.
+      // Let its normal resolver retain that flag instead of returning a path
+      // such as "crypto" as though it named a physical source file.
+      if(result.namespace!=='file')return
       return {...result,path:logicalFile(fs.realpathSync(result.path))}
     })
     build.onLoad({filter:/.*/,namespace:'file'},args=>{
@@ -145,6 +149,7 @@ export function createRuntimeAssetSourceScopeV1(options:{repo:string;
         importer:physicalImporter,resolveDir:importer?path.dirname(physicalImporter):args.resolveDir,
         pluginData:{runtimeAssetSourceResolution:true}})
       if(result.external||result.errors.length)return result
+      if(result.namespace!=='file')return
       const registered=sourceFiles.get(path.resolve(result.path))
       return registered?{...result,path:entry(registered.id)}:result
     })

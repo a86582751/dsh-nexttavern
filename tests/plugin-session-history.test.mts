@@ -21,7 +21,7 @@ const nativeHook=registerHooks({resolve(specifier,context,next){
 after(()=>{nativeHook.deregister();nativePeers.close()})
 const {createSessionHistory,ensureSessionHistory,sessionEvents,sessionHistoryCut,sessionNativePrefixSha256}=
   await import('../lib/core/session-history.js')
-const {recordSha256}=await import('../lib/core/roleplay-data.js')
+const {recordSha256,sha256}=await import('../lib/core/roleplay-data.js')
 const {foldSessionCalls}=await import('../lib/core/tavern-telemetry-fold.js')
 const {createTelemetry}=await import('../lib/core/tavern-telemetry.js')
 const encoderDirectory=createTestDirectory('session-history-native-encoder-')
@@ -46,7 +46,7 @@ const load = (name: string) => import(pathToFileURL(require.resolve(`@deepseek-a
 const {Context} = await load('cordis')
 const {default: Sessions} = await load('dsh-session')
 const {default: Query} = await load('dsh-session-query')
-const {default: Persistence} = await load('dsh-session-persistence-jsonl')
+const persistence = await load('dsh-session-persistence-jsonl')
 const {default: Projections} = await load('dsh-session-projection')
 class PointQuery extends Query {
   async searchSessions() {throw Error('Outside this test')}
@@ -62,7 +62,7 @@ async function fixture() {
   try {
     await ctx.plugin(Sessions)
     await ctx.plugin(Projections)
-    await ctx.plugin(Persistence, {root: directory, compression: 'none'})
+    await ctx.plugin(persistence, {root: directory, compression: 'none'})
     await ctx.plugin(PointQuery)
   } catch (error) {await ctx.fiber.dispose(); cleanupTestDirectory(directory); throw error}
   const observe = async (id: string, options: any) => {
@@ -317,6 +317,35 @@ test('inherited native events remain readable but never create a second telemetr
     await telemetry.sync()
     assert.equal(telemetry.calls().length, 1, 'cold corpus inheritedEventCount is outside the header too')
   } finally {await f.close()}
+})
+
+test('durable author copies do not inherit the previous model route in the usage ledger',()=>{
+  const session={id:'copied-opening'}
+  const route={provider:'fixture',model:'model'}
+  const openingText='第一段。',messageId='author-opening'
+  const source={schemaVersion:1,operationId:'author-copy',producer:'dsh-nexttavern',origin:'card-opening:document'}
+  const records=[
+    {type:'turn/start',data:{turn:1}},
+    {type:'step/start',data:{turn:1,step:1}},
+    {type:'request/header',data:{header:{config:route}}},
+    {type:'step/end',data:{turn:1,step:1}},
+    {type:'turn/end',data:{turn:1,reason:{kind:'completed'}}},
+    {type:'turn/start',data:{turn:2,programmatic:{...source,messageId,textSha256:sha256(openingText)}}},
+    {type:'step/start',data:{turn:2,step:1}},
+    {type:'assistant/message',data:{turn:2,step:1,stream:[],message:{id:messageId,
+      role:'assistant',source:{...source,kind:'programmatic'},content:[{type:'text',text:openingText}]}}},
+    {type:'step/end',data:{turn:2,step:1}},
+    {type:'turn/end',data:{turn:2,reason:{kind:'completed'}}},
+    {type:'turn/start',data:{turn:3}},
+    {type:'step/start',data:{turn:3,step:1}},
+    {type:'request/header',data:{header:{config:route}}},
+    {type:'step/end',data:{turn:3,step:1}},
+    {type:'turn/end',data:{turn:3,reason:{kind:'completed'}}},
+  ].map((record,seq)=>({...record,seq,time:1000+seq}))
+  const observed=foldSessionCalls({...session,events:records})
+  assert.deepEqual(observed.map(row=>[row.source.turn,row.provider,row.model]),[
+    [1,route.provider,route.model],[3,route.provider,route.model],
+  ])
 })
 
 test('native Agent cold activation waits for history and Controller restart rebuilds the instance', async () => {

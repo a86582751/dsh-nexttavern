@@ -176,10 +176,6 @@ export function createRoleplayInheritance(deps: InheritanceDependencies) {
             if (parentScene && beforeSeed(parentScene.updatedAtSeq ?? parentScene.atSeq)) {
               await T.scene.put(keyOf(session.id, 'current'), cloneBranchRecord(parentScene))
             }
-            const parentPanel = T.status.get(keyOf(parent, 'panel'))
-            if (parentPanel && beforeSeed(parentPanel.atSeq ?? parentPanel.updatedAtSeq)) {
-              await T.status.put(keyOf(session.id, 'panel'), cloneBranchRecord(parentPanel))
-            }
             // 待选择决策属于父分支的下一步 UI，不继承到已经开始重生/编辑的
             // 子分支；子分支正文落定后 Phase B 会生成自己的决策卡。
             for (const [k, v] of T.rolls.entries()) {
@@ -225,11 +221,11 @@ export function createRoleplayInheritance(deps: InheritanceDependencies) {
         // The inherited panel reads the committed Source for its fixed context.
         // Publish its copied author data before deriving panel ownership.
         if(pendingSourceReady)await deps.sourceInheritance!.publishSourceInheritanceReady(session.id,pendingSourceReady)
-        // Native cloning copies a parent's durable panel, including its owner.
-        // Rebind only an unchanged, proven prefix within this child's seed.
-        // Also repairs ready records written by versions that copied the row
-        // verbatim; no model call or parent-state mutation is needed.
+        // A parent's panel is a candidate until its child identity is derived.
+        // Publishing the parent identity in the child namespace would make
+        // the Source read below reject that unfinished output.
         const inheritedPanel = T.status.get(keyOf(session.id, 'panel'))
+          ??(parent?T.status.get(keyOf(parent, 'panel')):undefined)
         if (parent && inheritedPanel?.sessionId === parent && inheritedPanel.provenance && !inheritedPanel.stale
           && Number.isSafeInteger(session.inheritedEventCount) && Number(inheritedPanel.atSeq) < Number(session.inheritedEventCount)) {
           const event = eventsOf(session).find(item => item.seq === inheritedPanel.atSeq)

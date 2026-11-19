@@ -7,7 +7,7 @@
  * must stub); implementation-internal entry points (history staging, wire-frame
  * dispatch) stay on the class, invisible out here.
  */
-import type { AttachmentIdType, FileAttachmentRef, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { FileAttachmentRef, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MessageId } from 'dsh-nexttavern-native-llm/brand'
 import type { SessionId, SessionSeq } from 'dsh-nexttavern-native-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
@@ -96,7 +96,7 @@ export interface ISession {
    * @returns the authenticated reference and decoded bytes.
    */
   readAttachment(
-    attachmentId: AttachmentIdType,
+    attachment: ImageAttachmentRef,
   ): Promise<RemoteResult<{ attachment: ImageAttachmentRef; data: Uint8Array }>>
   /**
    * Apply one edit, remove, or Steer action to a still-pending queue occurrence.
@@ -124,7 +124,9 @@ export interface ISession {
    * exhaustion even when those minima cannot be met. Publish one prepend.
    * @returns completion; failures land in snapshot.openState/loadingOlder.
    */
-  loadOlder(): Promise<void>
+  loadOlder(options?: {deferConsumption?: boolean}): Promise<void>
+  /** Publish the prepared page if it still belongs to this history window. */
+  consumeOlder(): boolean
   /**
    * Page history backwards until the window covers `seq` (inclusive) — the
    * turn-jump loader. Repeated calls while a jump is paging lower its shared

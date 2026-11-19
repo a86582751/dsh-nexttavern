@@ -7,6 +7,8 @@ import { createImmutableDescriptorValidator } from './roleplay-mvu-schema-descri
 import { validateSchemaSourceCut } from './roleplay-mvu-schema-journal.js';
 import { validateSchemaStorySourceFrame } from './roleplay-mvu-schema-source.js';
 import { validateSchemaEvaluationInputV4, validateSchemaGuestOutputV4 } from './tavern-mvu-schema-runner-v4.js';
+import { rebindSchemaScopeReadFrame } from './roleplay-mvu-schema-scope-facts.js';
+import { createMvuScopeReadRefV2 } from './tavern-mvu-scope-view-v2.js';
 import { schemaExecutionServerTailSha256, schemaExecutionHostFrontierSha256 } from './roleplay-mvu-schema-replay.js';
 const same = (left, right) => left === right || recordSha256(left) === recordSha256(right);
 const fail = () => { throw Error('OPENING_VARIANT_REPLACEMENT_INVALID'); };
@@ -37,7 +39,7 @@ const validatePlan = createImmutableDescriptorValidator((input) => {
         || cut.materialSha256 !== plan.currentFrame.materialSha256 || cut.anchor.kind !== 'manual'
         || cut.anchor.operationId !== plan.operationId || cut.anchor.requestSha256 !== plan.requestSha256
         || cut.anchor.observedNativeSeq !== cut.nativeCut - 1 || phase.phase !== 'external-pack-replacement'
-        || phase.commands.length || !same(phase.base, base.values))
+        || !same(phase.base, base.values))
         fail();
     const scope = phase.scopeReadRef ?? phase.scopeReadFrame;
     if (scope.sourceNativeCutSha256 !== recordSha256(cut))
@@ -45,6 +47,27 @@ const validatePlan = createImmutableDescriptorValidator((input) => {
     return plan;
 });
 export const validateOpeningVariantReplacementPlan = validatePlan;
+/** A restart changes the dispatch position, while the saved operation retains
+ * its original inputs. Native owners separately prove the boundary and prefix. */
+export function openingVariantReplacementExecutionCut(plan, executionCut) {
+    if (!executionCut)
+        return plan.initialCut;
+    const cut = validateSchemaSourceCut(executionCut), expected = { ...plan.initialCut,
+        nativeCut: cut.nativeCut, nativePrefixSha256: cut.nativePrefixSha256 };
+    if (cut.nativeCut !== plan.initialCut.nativeCut + 1 || !same(cut, expected))
+        fail();
+    return cut;
+}
+export function openingVariantReplacementInput(plan, cut) {
+    const hash = recordSha256(cut), input = plan.input;
+    if (hash === recordSha256(plan.initialCut))
+        return input;
+    if (input.scopeReadRef)
+        return Object.freeze({ ...input, scopeReadRef: createMvuScopeReadRefV2({
+                baseRef: input.scopeReadRef.baseRef, tailRef: input.scopeReadRef.tailRef, sourceNativeCutSha256: hash
+            }) });
+    return Object.freeze({ ...input, scopeReadFrame: rebindSchemaScopeReadFrame(input.scopeReadFrame, hash) });
+}
 export function openingVariantReplacementHead(event) {
     return { schemaVersion: 1, encoding: 'native-mvu-opening-variant-head-v1', sessionId: event.sessionId,
         sourceSha256: event.sourceSha256, root: event.plan.base.root, revision: event.revision, eventId: event.eventId,
@@ -68,15 +91,16 @@ export function openingVariantReplacementEvent(plan, phase) {
 }
 export const validateOpeningVariantReplacementEvent = createImmutableDescriptorValidator((input) => {
     const event = freezeMvuSchemaStoryData(input), plan = validatePlan(event.plan), phase = event.phases[0], { eventSha256, ...body } = event;
+    const cut = openingVariantReplacementExecutionCut(plan, phase?.executionCut);
     if (event.schemaVersion !== 1 || event.encoding !== 'native-opening-variant-replacement-event-v1'
         || event.phases.length !== 1 || phase?.phase !== 'external-pack-replacement'
-        || !same(phase.input, plan.input) || phase.output.kind !== 'accepted')
+        || !same(phase.input, openingVariantReplacementInput(plan, cut)) || phase.output.kind !== 'accepted')
         fail();
     validateSchemaGuestOutputV4(phase.output, phase.input);
     const association = phase.association, selector = openingVariantReplacementSelector(plan);
     if (association.sessionId !== plan.sessionId || association.realmEpoch !== plan.realmEpoch
         || association.batchId !== selector.batchId || !same(association.anchor, selector.anchor)
-        || association.sourceNativeCutSha256 !== recordSha256(plan.initialCut)
+        || association.sourceNativeCutSha256 !== recordSha256(cut)
         || !same(phase.output.values, plan.input.values) || !same(phase.output.context, plan.input.context)
         || recordSha256(body) !== eventSha256 || event.sessionId !== plan.sessionId
         || event.sourceSha256 !== plan.base.sourceSha256 || event.revision !== plan.base.revision + 1

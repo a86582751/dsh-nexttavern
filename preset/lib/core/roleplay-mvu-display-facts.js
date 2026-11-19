@@ -5,11 +5,35 @@ export function acceptedMvuDisplayUpdate(ownerSessionId, canonical, protocol) {
     if (!identifier(ownerSessionId) || !identifier(canonical.messageId)
         || !Number.isSafeInteger(canonical.seq) || canonical.seq < 0
         || !hash(canonical.versionSha256) || !hash(canonical.narrativeSha256)
-        || !['native-jsonpatch-v1', 'native-mvu-update-v2'].includes(protocol))
+        || !['native-jsonpatch-v1', 'native-mvu-update-v2', 'mvu-196-d03'].includes(protocol))
         return undefined;
     return Object.freeze({ schemaVersion: 1, encoding: 'native-mvu-accepted-display-update-v1',
         ownerSessionId, canonical: Object.freeze({ seq: canonical.seq, messageId: canonical.messageId,
             versionSha256: canonical.versionSha256, narrativeSha256: canonical.narrativeSha256 }), protocol });
+}
+export function indexMvuDisplayUpdates(updates) {
+    const bySeq = new Map();
+    for (const update of updates) {
+        const seq = update.canonical.seq;
+        const related = bySeq.get(seq);
+        if (related)
+            related.push(update);
+        else
+            bySeq.set(seq, [update]);
+    }
+    return bySeq;
+}
+export function matchMvuDisplayUpdate(updates, target) {
+    let match;
+    for (const update of updates) {
+        const item = update.canonical;
+        if (item.seq !== target.seq || item.messageId !== target.messageId)
+            continue;
+        if (match || item.versionSha256 !== target.versionSha256 || item.narrativeSha256 !== target.narrativeSha256)
+            return;
+        match = update;
+    }
+    return match;
 }
 /** Ambiguous identities omit hints; display formatting can never make the
  * original authority/fork/recovery contract fail or select a guessed version. */

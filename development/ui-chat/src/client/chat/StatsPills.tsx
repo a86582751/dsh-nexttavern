@@ -17,7 +17,7 @@ import type { ChatSnapshot } from '../contract/snapshot.ts'
 import { formatTokensPerSecond } from './message-chrome.ts'
 import { assistantStepReading } from '../contract/turn-metrics.ts'
 import { formatCacheHitPercent, formatExactTokens, formatTokens } from './token-format.ts'
-import { MEASURE_STYLE, useStatDialog } from './stat-dialog.ts'
+import { useStatDialog } from './stat-dialog.ts'
 import css from './StatsPills.module.css'
 import dialogCss from './stat-dialog.module.css'
 
@@ -139,7 +139,7 @@ function TimePill({ stats, t, dialog }: {
   t: ChatViewSlotProps['t']
   dialog: PillDialog
 }) {
-  const { open, setOpen, rootRef, panelRef, pos } = useStatDialog(dialog)
+  const { open, setOpen, rootRef, panelRef, anchorName } = useStatDialog(dialog)
   const counts = t('stats.counts', { turns: stats.turns, steps: stats.steps })
   const tps = stats.decodeMs > 0
     ? t('message.tokensPerSecond', {
@@ -170,7 +170,7 @@ function TimePill({ stats, t, dialog }: {
     )
   }
   return (
-    <span ref={rootRef} className={css.anchor}>
+    <span ref={rootRef} style={{ anchorName }} className={css.anchor}>
       <button
         type="button"
         className={css.pill}
@@ -188,7 +188,7 @@ function TimePill({ stats, t, dialog }: {
           className={dialogCss.panel}
           role="dialog"
           aria-label={t('stats.dialog.title')}
-          style={pos ?? MEASURE_STYLE}
+          style={{ positionAnchor: anchorName }}
         >
           <div className={dialogCss.title}>
             <span className={dialogCss.titleLabel}>
@@ -237,14 +237,14 @@ function UsagePill({ usage, t, dialog }: {
   t: ChatViewSlotProps['t']
   dialog: PillDialog
 }) {
-  const { open, setOpen, rootRef, panelRef, pos } = useStatDialog(dialog)
+  const { open, setOpen, rootRef, panelRef, anchorName } = useStatDialog(dialog)
   // Same aggregate as the Turn pill's totalTokens: every prompt-side billing bucket plus output.
   const total = billedInputTokens(usage) + usage.outputTokens
   const totalText = t('message.turnUsage.count', { count: formatTokens(total, t) })
   const cacheHit = cacheHitPercent(usage)
   const cacheHitText = cacheHit !== null ? t('stats.cacheHit', { percent: cacheHit }) : null
   return (
-    <span ref={rootRef} className={css.anchor}>
+    <span ref={rootRef} style={{ anchorName }} className={css.anchor}>
       <button
         type="button"
         className={css.pill}
@@ -270,7 +270,7 @@ function UsagePill({ usage, t, dialog }: {
           className={dialogCss.panel}
           role="dialog"
           aria-label={t('stats.dialog.usageTitle')}
-          style={pos ?? MEASURE_STYLE}
+          style={{ positionAnchor: anchorName }}
         >
           <div className={dialogCss.title}>
             <span className={dialogCss.titleLabel}>

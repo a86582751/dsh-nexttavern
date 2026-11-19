@@ -95,7 +95,8 @@ export function createRoleplayMvuSchemaOpening(deps:SchemaOpeningDeps) {
       }
       if(!sourceCurrent(intent))fail('SOURCE_CHANGED')
       if(verified.kind!=='verified')fail(schemaOpeningCode(verified.code))
-      return {kind:'ready',intent,event,head}
+      return {kind:'ready',intent:{...intent,status:'completed'},preparation:intent.preparation,
+        plan:intent.initialization!,native:event.native,event,head}
     } catch(error) {
       const code=codeOf(error)
       return {kind:'blocked',code,...(intent?{intent:project(intent,code)}:{})}
@@ -104,7 +105,7 @@ export function createRoleplayMvuSchemaOpening(deps:SchemaOpeningDeps) {
   async function existing(intent:OpeningIntentV5):Promise<SchemaOpeningSelectResult> {
     if(intent.status==='completed') {
       const ready=await readVerified(intent.source)
-      return ready.kind==='ready'?ready.intent:{status:'busy',intent:ready.intent??project(intent,ready.code)}
+      return ready.kind==='ready'?intent:{status:'busy',intent:ready.intent??project(intent,ready.code)}
     }
     return {status:'busy',intent:project(intent,intent.initializationCode??'SCHEMA_OPENING_INCOMPLETE')}
   }
@@ -112,10 +113,10 @@ export function createRoleplayMvuSchemaOpening(deps:SchemaOpeningDeps) {
     const plan=validateMvuSchemaOpeningPlan(live.plan)
     if(live.kind!=='prepared'||!live.evidence||typeof live.evidence!=='object'||live.output.kind!=='accepted'
       ||!same(plan.execution,live.association)||plan.execution.outputSha256!==recordSha256(live.output)
-      ||!same(plan.values,live.output.values)||!same(plan.identity,intent.preparation.identity))fail('SCHEMA_OPENING_EXECUTION_INVALID')
+      ||!same(plan.identity,intent.preparation.identity))fail('SCHEMA_OPENING_EXECUTION_INVALID')
     // The plan must freeze precisely the producer's persisted inputs, not a
     // later current Source or a different initialization/basis descriptor.
-    for(const key of ['authorSourceSha256','sourceSnapshot','initSource','freshNativeBasisProof'] as const) {
+    for(const key of ['authorSourceSha256','sourceSnapshot','initSource','birth'] as const) {
       if(!same(plan[key],intent.preparation[key]))fail('SCHEMA_OPENING_EXECUTION_INVALID')
     }
     return plan
@@ -236,7 +237,7 @@ export function createRoleplayMvuSchemaOpening(deps:SchemaOpeningDeps) {
       return {status:'busy',intent:project(intent,codeOf(error))}
     } finally {
       active.delete(identity.sessionId)
-      if(live)deps.releaseExecution(live)
+      if(live)await deps.releaseExecution(live)
     }
   }
   return {select,readIntent,readVerified}

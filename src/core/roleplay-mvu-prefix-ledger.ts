@@ -19,16 +19,6 @@ import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
 import type {NativeDurableInputWorkReceiptV1, NativeInputRef, NativePreparationReceiptV1}
   from 'dsh-nexttavern-native-agent-loop'
 import type {MvuNumericalSnapshot, MvuStateTerminalIntent, MvuStatePublisherSettlement,MvuStateUpdatePreparation} from './roleplay-mvu-state.js'
-import {validateProgramMvuGenesisFactsV1,cloneProgramGenesisDataV1} from './roleplay-program-genesis-data.js'
-import type {VerifiedMvuProgramGenesis,ProgramGenesisDataRefV1} from './roleplay-program-genesis-types.js'
-import {validateProgramOpeningSeedV1,validateProgramOpeningInputV1,validateProgramOpeningPlanRecordV1,
-  validateOpeningIntentV7,validateProgramOpeningNativeFactsV1,validateProgramOpeningGenesisEnvelopeV1,
-  programOpeningSeedKeyV1,programOpeningInputKeyV1,programOpeningPlanKeyV1} from './roleplay-program-opening-records.js'
-import type {ProgramOpeningIntentSeedV1,ProgramOpeningInputPacketV1,ProgramOpeningPlanRecordV1,
-  OpeningIntentV7,ProgramOpeningNativeFactsV1} from './roleplay-program-opening-records.js'
-import {openingIntentKey} from './roleplay-opening-selection.js'
-import {mvuInitializationEventKey,mvuInitializationHeadKey} from './roleplay-mvu-initialization.js'
-import type {TavernSourceFrozenRefV1} from './roleplay-tavern-source-inheritance-types.js'
 
 const NAMESPACE = 'nexttavern.roleplay.input.v2'
 export interface MvuPrefixLedgerTable {get(key: string): unknown; entries(): Iterable<[string, unknown]>}
@@ -38,41 +28,6 @@ export interface MvuPrefixSettlementFactsInput {
   proposal: MvuStateUpdatePreparation
   settlement: unknown
 }
-export interface ProgramDerivedOpeningClosureDataV1 {
-  readonly seed:ProgramOpeningIntentSeedV1
-  readonly input:ProgramOpeningInputPacketV1
-  readonly planRecord:ProgramOpeningPlanRecordV1
-  readonly intent:OpeningIntentV7
-  readonly refs:{readonly seed:ProgramGenesisDataRefV1;readonly input:ProgramGenesisDataRefV1;
-    readonly plan:ProgramGenesisDataRefV1;readonly intent:ProgramGenesisDataRefV1}
-  readonly genesisEventRef:ProgramGenesisDataRefV1
-  readonly genesisHeadRef:ProgramGenesisDataRefV1
-}
-/** Complete immutable original records, never a live Source/Native lease. */
-export interface ProgramDerivedOpeningClosureV1 {
-  readonly schemaVersion:1
-  readonly encoding:'native-program-derived-opening-closure-v1'
-  readonly authority:'consumer-data-only'
-  readonly kind:'program-opening'
-  readonly data:ProgramDerivedOpeningClosureDataV1
-  readonly closureSha256:string
-}
-export interface ProgramDerivedOpeningAtCutRequestV1 {
-  readonly genesis:VerifiedMvuProgramGenesis
-  readonly ownerSessionId:string
-  readonly ownerInheritedEventCount:number
-  readonly events:readonly MvuInheritedPrefixEvent[]
-  readonly successorSourcePreparedRef?:TavernSourceFrozenRefV1
-}
-export type ProgramDerivedOpeningAtCutReadV1={readonly kind:'verified-program-opening';
-  readonly closure:ProgramDerivedOpeningClosureV1;readonly native:ProgramOpeningNativeFactsV1;
-  readonly assertCurrent:()=>void}|{readonly kind:'blocked';readonly code:string}
-export type ProgramDerivedOpeningAtCutReaderV1=(request:ProgramDerivedOpeningAtCutRequestV1)=>ProgramDerivedOpeningAtCutReadV1
-export interface MvuProgramPrefixOpeningInputV1 {
-  readonly genesis:VerifiedMvuProgramGenesis
-  readonly closure:ProgramDerivedOpeningClosureV1
-  readonly native:ProgramOpeningNativeFactsV1
-}
 export interface MvuPrefixLedgerDeps {
   branch: MvuPrefixLedgerTable
   status: MvuPrefixLedgerTable
@@ -81,8 +36,6 @@ export interface MvuPrefixLedgerDeps {
   verifyManualSettlementFacts?(input: MvuConsumedManualSettlementFactsInput): boolean
   readProjectedCanonical: MvuInheritedCompletedFactDeps['readProjectedCanonical']
   editProtocol?:MvuInheritedCompletedFactDeps['editProtocol']
-  /** Root's actual retained cut/official projection/frozen Source reader. */
-  readProgramGenesisAtCut?:ProgramDerivedOpeningAtCutReaderV1
 }
 export interface MvuPrefixLedgerRequest {
   ownerSessionId: string
@@ -91,8 +44,6 @@ export interface MvuPrefixLedgerRequest {
   sourceSha256: string
   /** Actual producer-verified revision-one authority, never the parent's latest head. */
   genesis: MvuNumericalSnapshot
-  programOpening?:MvuProgramPrefixOpeningInputV1
-  successorSourcePreparedRef?:TavernSourceFrozenRefV1
 }
 export interface MvuPrefixLedgerRowRef {key: string; sha256: string}
 export interface MvuPrefixLedgerStep {
@@ -142,15 +93,7 @@ export interface MvuPrefixLedgerProofV2 extends MvuPrefixLedgerProofFields {
   encoding: 'native-mvu-prefix-ledger-proof-v2'
   steps: readonly MvuPrefixLedgerStepV2[]
 }
-export interface MvuPrefixLedgerProofV3 extends MvuPrefixLedgerProofFields {
-  readonly schemaVersion:3
-  readonly encoding:'native-program-mvu-prefix-ledger-proof-v3'
-  readonly steps:readonly MvuPrefixLedgerStepV2[]
-  readonly programOpening:{readonly closureSha256:string;readonly nativeFactsSha256:string;
-    readonly planSha256:string;readonly genesisEventRef:ProgramGenesisDataRefV1;
-    readonly genesisHeadRef:ProgramGenesisDataRefV1;readonly editFloorSeq:number}
-}
-export type MvuPrefixLedgerProof = MvuPrefixLedgerProofV1 | MvuPrefixLedgerProofV2 | MvuPrefixLedgerProofV3
+export type MvuPrefixLedgerProof = MvuPrefixLedgerProofV1 | MvuPrefixLedgerProofV2
 export type MvuPrefixLedgerResult = {kind: 'ready'; proof: MvuPrefixLedgerProof} | {kind: 'blocked'; code: string}
 export type MvuPrefixPromptFactsResult={kind:'ready';proof:MvuPrefixLedgerProof;facts:MvuPromptPrefixNumericalFactsV1}
   |{kind:'blocked';code:string}
@@ -160,8 +103,7 @@ export interface MvuPrefixInputClosureV1 {
   readonly authority:'consumer-data-only'
   readonly request:{readonly ownerSessionId:string;readonly ownerInheritedEventCount:number;
     readonly prefixLength:number;readonly prefixSha256:string;readonly sourceSha256:string;
-    readonly genesisSnapshotSha256:string;readonly programOpeningSha256?:string;
-    readonly successorSourcePreparedRefSha256?:string}
+    readonly genesisSnapshotSha256:string}
   readonly tables:readonly {readonly table:'branch'|'status';readonly membership:readonly string[];
     readonly rows:readonly {readonly key:string;readonly exists:boolean;readonly sha256:string;
       readonly value:unknown}[]}[]
@@ -327,75 +269,6 @@ function freeze<T>(value: T): T {
 
 /** Strict packet/ref joins are consumer validation. The actual cut, projection,
  * immutable predecessor Source and table-read provenance remain Root-owned. */
-function readProgramDerivedOpeningClosureV1(input:unknown,suppliedGenesis:VerifiedMvuProgramGenesis,
-  suppliedNative:ProgramOpeningNativeFactsV1,seal:boolean):ProgramDerivedOpeningClosureV1 {
-  const closure=cloneProgramGenesisDataV1(input),
-    genesis=validateProgramMvuGenesisFactsV1(suppliedGenesis.programEvent,suppliedGenesis.programHead)
-  exact(closure,['schemaVersion','encoding','authority','kind','data','closureSha256'])
-  const {closureSha256,...body}=closure
-  if(closure.schemaVersion!==1||closure.encoding!=='native-program-derived-opening-closure-v1'
-    ||closure.authority!=='consumer-data-only'||closure.kind!=='program-opening'
-    ||!hash(closureSha256)||!seal&&recordSha256(body)!==closureSha256||!same(genesis,suppliedGenesis))
-    fail('PREFIX_PROGRAM_CLOSURE_INVALID')
-  exact(closure.data,['seed','input','planRecord','intent','refs','genesisEventRef','genesisHeadRef'])
-  const packet=closure.data,seed=validateProgramOpeningSeedV1(packet.seed),
-    sourceInput=validateProgramOpeningInputV1(packet.input,seed),
-    planRecord=validateProgramOpeningPlanRecordV1(packet.planRecord,seed,sourceInput),
-    context={seed,input:sourceInput,planRecord,
-      genesis:{programEvent:genesis.programEvent,programHead:genesis.programHead}},
-    intent=validateOpeningIntentV7(packet.intent,context),
-    native=validateProgramOpeningNativeFactsV1(suppliedNative,seed,sourceInput),sid=genesis.sessionId
-  exact(packet.refs,['seed','input','plan','intent'])
-  const records=[['seed',seed,programOpeningSeedKeyV1(sid,seed.operationId)],
-    ['input',sourceInput,programOpeningInputKeyV1(sid,seed.operationId)],
-    ['plan',planRecord,programOpeningPlanKeyV1(sid,seed.operationId)],
-    ['intent',intent,openingIntentKey(sid,seed.source.importId)]] as const
-  for(const [name,value,key] of records) {
-    const ref=packet.refs[name]
-    exact(ref,['key','sha256'])
-    if(ref.key!==key||ref.sha256!==recordSha256(value))fail('PREFIX_PROGRAM_PACKET_REF_CHANGED')
-  }
-  for(const [ref,value,key] of [
-    [packet.genesisEventRef,genesis.programEvent,mvuInitializationEventKey(sid,genesis.programEvent.eventId)],
-    [packet.genesisHeadRef,genesis.programHead,mvuInitializationHeadKey(sid)]] as const) {
-    exact(ref,['key','sha256'])
-    if(ref.key!==key||ref.sha256!==recordSha256(value))fail('PREFIX_PROGRAM_GENESIS_REF_CHANGED')
-  }
-  if(intent.status!=='completed'||!intent.nativeReceipt||!intent.genesisEnvelope
-    ||seed.sessionId!==sid||sourceInput.numericalSourceSha256!==genesis.sourceSha256
-    ||!same(planRecord.plan,genesis.programEvent.plan)||!same(intent.nativeReceipt,native)
-    ||!same(intent.genesisEnvelope,genesis.programEvent.native))fail('PREFIX_PROGRAM_OPENING_UNCLOSED')
-  validateProgramOpeningGenesisEnvelopeV1(genesis.programEvent.native,native,context)
-  if(seal)return Object.freeze({...body,closureSha256:recordSha256(body)}) as unknown as ProgramDerivedOpeningClosureV1
-  return closure as unknown as ProgramDerivedOpeningClosureV1
-}
-export function validateProgramDerivedOpeningClosureV1(input:unknown,genesis:VerifiedMvuProgramGenesis,
-  native:ProgramOpeningNativeFactsV1):ProgramDerivedOpeningClosureV1 {
-  return readProgramDerivedOpeningClosureV1(input,genesis,native,false)
-}
-/** Root may seal its actual read packet; this constructor grants no current
- * Source/cut, original-row provenance, dispatch or publication permission. */
-export function createProgramDerivedOpeningClosureV1(data:ProgramDerivedOpeningClosureDataV1,
-  genesis:VerifiedMvuProgramGenesis,native:ProgramOpeningNativeFactsV1):ProgramDerivedOpeningClosureV1 {
-  const body={schemaVersion:1 as const,encoding:'native-program-derived-opening-closure-v1' as const,
-    authority:'consumer-data-only' as const,kind:'program-opening' as const,data}
-  return readProgramDerivedOpeningClosureV1({...body,closureSha256:'0'.repeat(64)},genesis,native,true)
-}
-export function programDerivedGenesisSnapshotV1(supplied:VerifiedMvuProgramGenesis):MvuNumericalSnapshot {
-  const genesis=validateProgramMvuGenesisFactsV1(supplied.programEvent,supplied.programHead)
-  if(!same(genesis,supplied))fail('PREFIX_PROGRAM_GENESIS_INVALID')
-  const event=genesis.programEvent,head=genesis.programHead,
-    root={schemaVersion:1 as const,encoding:'native-program-mvu-state-root-v1' as const,
-      programEventId:event.eventId,programEventSha256:event.eventSha256,
-      programHeadSha256:recordSha256(head),planSha256:event.plan.planSha256},
-    body={schemaVersion:1 as const,encoding:'native-mvu-state-snapshot-v1' as const,
-      sessionId:genesis.sessionId,sourceSha256:genesis.sourceSha256,root,currentHead:head,revision:1,
-      headSha256:recordSha256(head),values:event.finalValues,valuesSha256:event.valuesSha256}
-  return cloneProgramGenesisDataV1({...body,stateSnapshotSha256:recordSha256(body)})
-}
-export const programDerivedOpeningFloorSeqV1=(native:ProgramOpeningNativeFactsV1)=>
-  native.production==='selected-card-copy'?native.receipt.turnEndSeq:native.receipt.turnEndRef.seq
-
 export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
   type Captured={kind:'ready';proof:MvuPrefixLedgerProof;facts?:MvuPromptPrefixNumericalFactsV1}
     |Extract<MvuPrefixLedgerResult,{kind:'blocked'}>
@@ -404,46 +277,19 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
   function captureCore(request: MvuPrefixLedgerRequest,collect:boolean):Captured {
     try {
       inspect(request, 16_777_216)
-      exact(request, ['ownerSessionId', 'ownerInheritedEventCount', 'events', 'sourceSha256', 'genesis'],
-        ['programOpening','successorSourcePreparedRef'])
+      exact(request, ['ownerSessionId', 'ownerInheritedEventCount', 'events', 'sourceSha256', 'genesis'])
       const sid = request.ownerSessionId, cut = request.events.length
       if (!id(sid) || !hash(request.sourceSha256) || !integer(request.ownerInheritedEventCount)
         || !Array.isArray(request.events) || cut > 100_000 || request.ownerInheritedEventCount > cut
         || request.events.some((event, index) => event.seq !== index || typeof event.type !== 'string')) fail('PREFIX_REQUEST_INVALID')
       snapshotValid(request.genesis, sid, request.genesis.sourceSha256)
       if (request.genesis.revision !== 1) fail('GENESIS_REQUIRED')
-      let programRead:Extract<ProgramDerivedOpeningAtCutReadV1,{kind:'verified-program-opening'}>|undefined,
-        programClosure:ProgramDerivedOpeningClosureV1|undefined,programFloor=-1
-      const programRoot='encoding' in request.genesis.root
-        &&request.genesis.root.encoding==='native-program-mvu-state-root-v1'
-      if(programRoot) {
-        if(!request.programOpening||typeof deps.readProgramGenesisAtCut!=='function')
-          fail('PREFIX_PROGRAM_GENESIS_READER_REQUIRED')
-        exact(request.programOpening,['genesis','closure','native'])
-        const opening=request.programOpening,result=deps.readProgramGenesisAtCut({genesis:opening.genesis,
-          ownerSessionId:sid,ownerInheritedEventCount:request.ownerInheritedEventCount,events:request.events,
-          ...request.successorSourcePreparedRef?{successorSourcePreparedRef:request.successorSourcePreparedRef}:{}})
-        if(result.kind==='blocked')fail(result.code)
-        if(result.kind!=='verified-program-opening'||typeof result.assertCurrent!=='function')
-          fail('PREFIX_PROGRAM_GENESIS_READER_UNPROVEN')
-        result.assertCurrent()
-        programClosure=validateProgramDerivedOpeningClosureV1(result.closure,opening.genesis,result.native)
-        if(!same(programClosure,opening.closure)||!same(result.native,opening.native)
-          ||opening.genesis.sessionId!==sid
-          ||!same(programDerivedGenesisSnapshotV1(opening.genesis),request.genesis))
-          fail('PREFIX_PROGRAM_GENESIS_CHANGED')
-        programFloor=programDerivedOpeningFloorSeqV1(result.native)
-        if(!integer(programFloor)||programFloor<request.ownerInheritedEventCount||programFloor>=cut)
-          fail('PREFIX_PROGRAM_GENESIS_OUTSIDE_CUT')
-        programRead=result
-      }else if(request.programOpening||request.successorSourcePreparedRef)fail('PREFIX_PROGRAM_ROOT_INVALID')
       const factStories:MvuPromptValidatedStoryInputV1[]=[],factManuals:MvuPromptValidatedManualInputV1[]=[]
       const factRows:MvuPromptRowRefV1[]=[]
       const factRef=(table:'branch'|'status',row:MvuPrefixLedgerRowRef)=>{
         factRows.push({table,key:row.key,recordSha256:row.sha256})
       }
       const completed=(proof:MvuPrefixLedgerProof):Captured=>{
-        programRead?.assertCurrent()
         return collect?{kind:'ready',proof,
           facts:formatPrefixMvuPromptFactsV1({proof,genesis:request.genesis,
             stories:factStories,manuals:factManuals,rows:factRows})}:{kind:'ready',proof}
@@ -456,15 +302,6 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         if(!captured.has(rowKey))inspect(value)
         if (observed !== undefined && !same(value, observed)) fail('LEDGER_READBACK_CHANGED')
         return value
-      }
-      if(programClosure&&request.programOpening) {
-        // Root selects actual first-owner or archived predecessor records.
-        // Never replace that closed packet with today's ancestor table rows.
-        // The v4 preparation and closure request hash bind the complete packet.
-        const {data}=programClosure
-        if(collect)for(const [table,ref] of [
-          ['branch',data.refs.seed],['branch',data.refs.input],['branch',data.refs.plan],['branch',data.refs.intent],
-          ['status',data.genesisEventRef],['status',data.genesisHeadRef]] as const)factRef(table,ref)
       }
       for (const [rowKey, row] of deps.branch.entries()) {
         if (!rowKey.startsWith(ownPrefix(sid)) && !rowKey.startsWith(`${sid}__mvu-player-operation-`)
@@ -624,11 +461,6 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
       for (const entry of timeline) {
         if (entry.seq <= previousSeq) fail('PREFIX_TIMELINE_COLLISION')
         previousSeq = entry.seq
-        // Program revision one already includes its one sealed opening-body
-        // settlement. A later story/manual consumer must start after that turn.
-        if(programRead&&(entry.seq<=programFloor||entry.kind==='story'
-          &&entry.item.terminal.scope.receipt.checkpoint.startSeq<=programFloor))
-          fail('PREFIX_PROGRAM_GENESIS_REPLAY_REFUSED')
         if (entry.kind === 'player') {
           const {operation, completion, intent, base, settlement, result} = entry.item
           snapshotValid(base, sid, intent.sourceSha256)
@@ -762,17 +594,6 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         steps.push(step); mixedSteps.push({kind: 'story', ...step}); current = result
       }
       current=projectSnapshotSource(current,request.sourceSha256)
-      if(programClosure&&programRead&&request.programOpening) {
-        const body={schemaVersion:3 as const,encoding:'native-program-mvu-prefix-ledger-proof-v3' as const,
-          ownerSessionId:sid,ownerInheritedEventCount:request.ownerInheritedEventCount,inheritedPrefixLength:cut,
-          historyPrefixSha256:recordSha256(request.events),sourceSha256:request.sourceSha256,
-          genesisSnapshotSha256:request.genesis.stateSnapshotSha256,steps:mixedSteps,numericalSnapshot:current,
-          programOpening:{closureSha256:programClosure.closureSha256,nativeFactsSha256:programRead.native.factsSha256,
-            planSha256:request.programOpening.genesis.programEvent.plan.planSha256,
-            genesisEventRef:programClosure.data.genesisEventRef,genesisHeadRef:programClosure.data.genesisHeadRef,
-            editFloorSeq:programFloor}}
-        return completed(freeze(structuredClone({...body,proofSha256:recordSha256(body)})))
-      }
       if (players.length) {
         const body = {schemaVersion: 2 as const, encoding: 'native-mvu-prefix-ledger-proof-v2' as const,
           ownerSessionId: sid, ownerInheritedEventCount: request.ownerInheritedEventCount, inheritedPrefixLength: cut,
@@ -803,9 +624,7 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
   const closureRequest=(request:MvuPrefixLedgerRequest)=>({ownerSessionId:request.ownerSessionId,
     ownerInheritedEventCount:request.ownerInheritedEventCount,prefixLength:request.events.length,
     prefixSha256:recordSha256(request.events),sourceSha256:request.sourceSha256,
-    genesisSnapshotSha256:request.genesis.stateSnapshotSha256,
-    ...request.programOpening?{programOpeningSha256:recordSha256(request.programOpening)}:{},
-    ...request.successorSourcePreparedRef?{successorSourcePreparedRefSha256:recordSha256(request.successorSourcePreparedRef)}:{}})
+    genesisSnapshotSha256:request.genesis.stateSnapshotSha256})
   const enumeratedKey=(table:'branch'|'status',sid:string,key:string)=>table==='branch'
     ?key.startsWith(ownPrefix(sid))||key.startsWith(`${sid}__mvu-player-operation-`)
       ||key.startsWith(`${sid}__mvu-player-complete-`)

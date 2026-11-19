@@ -1,23 +1,20 @@
-/** Actual Source/Native relationship readers plus a pure raw-data calculator.
+/** Actual Source/Native relationship readers plus original declarations.
  * Root separately owns fresh basis, protected execution, intent and publication. */
 import {recordSha256,sha256} from './roleplay-data.js'
 import {validateTavernSourceLegacyCopyV1} from './roleplay-tavern-source-inheritance-data.js'
 import {compileTavernOpeningCandidates} from './tavern-card.js'
 import {assertImportRecordIntegrity,projectStructuredImport,readStructuredImportDataV1} from './roleplay-import-record.js'
-import {compileSchemaMvuInitData,selectNativeMvuInitializationPolicy} from './tavern-mvu-initvar.js'
-import {isNativeMvuYamlSourcePolicy} from './roleplay-mvu-source-policy.js'
-import {createRoleplayPromptProgramSourceV1,validatePromptProgramSourceInventoryV1,promptProgramSourceImportTupleV1}
+import {createRoleplayPromptProgramSourceV1,validatePromptProgramSourceInventoryV2,promptProgramSourceImportTupleV1}
   from './roleplay-prompt-program-source.js'
 import {PROMPT_OPENING_SOURCE_POLICY_SHA256,NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_SHA256,PromptOpeningSourceFailureV1,openingSourceFail,
   clonePromptOpeningSourceDataV1,freezePromptOpeningSourceDataV1,openingSourceObject,
-  calculatePromptOpeningRawInitV1,inspectPromptOpeningWholeSourceV1,promptOpeningInitializationInputBindingV1,
-  renderPromptOpeningIdentityV1,readPromptOpeningGreetingFactsV1}
+  capturePromptOpeningDeclarationsV1,inspectPromptOpeningWholeSourceV1,promptOpeningInitializationInputBindingV1,
+  readPromptOpeningGreetingFactsV1}
   from './roleplay-prompt-opening-source-data.js'
 import type {ImportRecord} from './roleplay-import-types.js'
-import type {PromptProgramSourceInventoryV1,PromptProgramTextV1} from './roleplay-prompt-program-source-types.js'
+import type {PromptProgramSourceInventoryV2,PromptProgramTextV1} from './roleplay-prompt-program-source-types.js'
 import type {OpeningSource,OpeningCatalog} from './roleplay-opening-selection.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
-import type {SchemaMvuInitDataSource} from './tavern-mvu-initvar.js'
 import type {PromptOpeningSourceDepsV1,PromptOpeningSourceProofV1,PromptOpeningSourceRelationV1,
   PromptOpeningSourceCaptureV1,PromptOpeningInitializationV1,PromptOpeningGreetingFactsV1,PromptOpeningSourceNotApplicableV1}
   from './roleplay-prompt-opening-source-types.js'
@@ -25,14 +22,14 @@ import type {PromptOpeningSourceDepsV1,PromptOpeningSourceProofV1,PromptOpeningS
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
 const hash=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
 const seal=<T>(value:T):T=>freezePromptOpeningSourceDataV1(clonePromptOpeningSourceDataV1(value))
-// Only this parser's detached, deeply frozen successful outputs are reusable.
+// Only this module's constructed or parsed, deeply frozen outputs are reusable.
 // A stored clone, another process or a live Source capture still needs its own
 // validation/current-owner checks; this set supplies no runtime permission.
 const parsedOpeningSourceProofs=new WeakSet<PromptOpeningSourceProofV1>()
 class OpeningSourceNotApplicable extends Error {
   constructor(readonly result:PromptOpeningSourceNotApplicableV1) {super(result.reason)}
 }
-function hasPromptProgram(program:PromptProgramSourceInventoryV1):boolean {
+function hasPromptProgram(program:PromptProgramSourceInventoryV2):boolean {
   const hasProgram=(text:PromptProgramTextV1|null)=>text!==null
     &&(text.tokenization!=='complete-UTF16-partition'||text.segments!.some(part=>part.kind!=='literal'))
   return program.authorFields.some(field=>hasProgram(field.raw)||hasProgram(field.normalized))
@@ -57,24 +54,22 @@ function bindingBody(body:Omit<PromptOpeningSourceProofV1,'bindingSha256'|'proof
 }
 function validateInitialization(initialization:PromptOpeningInitializationV1,proof:PromptOpeningSourceProofV1):void {
   const value=initialization,bindings=value.bindings
-  const membership=proof.program.book.currentNativeMembershipSha256!==undefined
+  const hasCurrentBooks=proof.program.book.currentNativeMembershipSha256!==undefined||proof.program.book.boundBooks!==undefined
   exact(value,value.kind==='absent'
-    ?['kind','reason','markerCount','data','calculation','dataSha256','calculationSha256','inputBindingSha256',
-      'bindings','grammarPolicy','schemaExecution','calculationPolicy']
-    :['kind','markerCount','data','calculation','dataSha256','calculationSha256','inputBindingSha256',
-      'bindings','grammarPolicy','schemaExecution','calculationPolicy'],'/initialization')
+    ?['kind','reason','markerCount','inputBindingSha256','bindings','schemaExecution','descriptorPolicy']
+    :['kind','markerCount','inputBindingSha256','bindings','schemaExecution','descriptorPolicy'],'/initialization')
   exact(bindings,['domain','bookPresence','bookPointer','rawBook','rawBookSha256','rawEntries','entryOrderSha256',
     'bookInitEntryPointers','greetingFacts','greetingFactsSha256','originalBookAbsence','baselinePolicy','otherBindings',
     'schemaExecution'],'/initialization/bindings')
-  if(value.schemaExecution!=='none'||value.calculationPolicy!=='raw-init-data-v1'
+  if(value.schemaExecution!=='none'||value.descriptorPolicy!=='immutable-raw-initialization-declarations-v1'
     ||bindings.domain!=='immutable-raw-embedded-primary-and-complete-original-greetings'
-    ||bindings.bookPointer!=='/data/character_book'||bindings.baselinePolicy!=='empty-calculation-input-only-not-numerical-absence'
-    ||bindings.otherBindings!=='not-authorized-and-not-calculated'||bindings.schemaExecution!=='none'
+    ||bindings.bookPointer!=='/data/character_book'||bindings.baselinePolicy!=='original-declarations-only'
+    ||bindings.otherBindings!=='not-selected-for-execution'||bindings.schemaExecution!=='none'
     ||!Array.isArray(bindings.rawEntries)||bindings.rawEntries.length>4096
     ||!Array.isArray(bindings.greetingFacts)||bindings.greetingFacts.length>4096
     ||recordSha256(bindings.rawBook)!==bindings.rawBookSha256
-    ||bindings.rawBookSha256!==proof.program.book.rawBookSha256
-    ||!membership&&bindings.rawEntries.length!==proof.program.bookEntries.length)openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/bindings')
+    ||bindings.rawBookSha256!==(proof.program.book.consumerSource?.bookValueSha256??proof.program.book.rawBookSha256)
+    ||!hasCurrentBooks&&bindings.rawEntries.length!==proof.program.bookEntries.length)openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/bindings')
   const rawBook=bindings.rawBook,rawContainer=rawBook?.entries
   const actualEntries=Array.isArray(rawContainer)?rawContainer.map((entry,index)=>[String(index),entry] as const)
     :openingSourceObject(rawContainer)?Object.entries(rawContainer):[]
@@ -83,16 +78,15 @@ function validateInitialization(initialization:PromptOpeningInitializationV1,pro
       ||actualEntries.length!==bindings.rawEntries.length)openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/rawBook')
   }else if(bindings.bookPresence!=='actual-proven-book-absence'||rawBook!==null||bindings.rawEntries.length
     ||!bindings.originalBookAbsence)openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/bookAbsence')
-  const initEntries:SchemaMvuInitDataSource['books'][number]['entries'][number][]=[]
-  let macros=false
+  let markerCount=0
   for(const [index,entry] of bindings.rawEntries.entries()) {
     exact(entry,['ordinal','entryId','sourceKey','sourcePointer','rawEntrySha256','original','isInitVar','enabled',
-      'renderedContent','identityRendering','effectivePromptContentSha256'],'/rawEntries/'+index)
+      'effectivePromptContentSha256'],'/rawEntries/'+index)
     const original=entry.original,actual=actualEntries[index],
       programEntry=proof.program.bookEntries.find(item=>item.originalAddress===entry.sourcePointer)
     if(!openingSourceObject(original)||!actual||actual[0]!==entry.sourceKey||!same(actual[1],original)
       ||entry.ordinal!==index||!same(original,actual[1])||recordSha256(original)!==entry.rawEntrySha256
-      ||(membership
+      ||(hasCurrentBooks
         ?entry.entryId!==(programEntry?.entryId??null)
           ||entry.effectivePromptContentSha256!==(programEntry?.effective.textSha256??null)
         :!programEntry||programEntry.entryId!==entry.entryId||programEntry.sourceKey!==entry.sourceKey
@@ -105,19 +99,7 @@ function validateInitialization(initialization:PromptOpeningInitializationV1,pro
       ||entry.enabled!==(original.enabled!==false&&original.disable!==true)) {
       openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/rawEntries/'+index)
     }
-    if(entry.isInitVar) {
-      const rendered=renderPromptOpeningIdentityV1(original.content,proof.context.values,entry.sourcePointer,
-        [{start:0,end:original.content.length}])
-      if(entry.renderedContent!==rendered.text||!same(entry.identityRendering,rendered.facts)) {
-        openingSourceFail('OPENING_SOURCE_PROOF_INVALID',entry.sourcePointer)
-      }
-      macros||=rendered.facts.used
-      initEntries.push({identity:`entry-${index}`,sourcePointer:entry.sourcePointer,comment:String(original.comment??''),
-        enabled:entry.enabled,content:original.content,contentSha256:sha256(original.content),renderedContent:rendered.text,
-        renderedContentSha256:sha256(rendered.text)})
-    }else if(entry.renderedContent!==null||entry.identityRendering!==null) {
-      openingSourceFail('OPENING_SOURCE_PROOF_INVALID',entry.sourcePointer)
-    }
+    if(entry.isInitVar)markerCount++
   }
   if(!same(bindings.bookInitEntryPointers,bindings.rawEntries.filter(entry=>entry.isInitVar).map(entry=>entry.sourcePointer))
     ||bindings.entryOrderSha256!==recordSha256(bindings.rawEntries.map(entry=>({ordinal:entry.ordinal,
@@ -139,53 +121,37 @@ function validateInitialization(initialization:PromptOpeningInitializationV1,pro
     if(!candidate||!same(greeting,readPromptOpeningGreetingFactsV1(candidate,proof.context.values))) {
       openingSourceFail('OPENING_SOURCE_PROOF_INVALID',greeting.sourcePointer)
     }
-    macros||=greeting.identityRendering.used
+    markerCount+=greeting.originalInitBlocks.length
   }
-  const books:SchemaMvuInitDataSource['books']=bindings.bookPresence==='actual-primary-book'
-    ?[{identity:'embedded-primary',binding:'primary',sourcePointer:bindings.bookPointer,
-      sourceSha256:bindings.rawBookSha256,entries:initEntries}]:[]
-  const swipes:SchemaMvuInitDataSource['swipes']=greetings.map(greeting=>({identity:`swipe-${greeting.index}`,
-    sourcePointer:greeting.sourcePointer,sourceSha256:greeting.sourceSha256,rawOpening:greeting.rawText,
-    renderedOpening:greeting.renderedText,renderedSha256:greeting.renderedSha256,statData:{},
-    ...(greeting.materialization?{materialization:greeting.materialization}:{})}))
-  const policy=selectNativeMvuInitializationPolicy({books,swipes})
-  if(policy.kind!=='selected'||!same(policy.policy,value.grammarPolicy))openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/grammarPolicy')
-  const descriptor={schemaVersion:1 as const,encoding:'native-mvu-schema-opening-init-source-v1' as const,
-    grammar:isNativeMvuYamlSourcePolicy(policy.policy)?'yaml-1.2-json-data-v1' as const:'strict-json-object-v1' as const,
-    books,bookStatData:{},initializedBooks:[],messageIndex:0,selectedSwipeIdentity:`swipe-${proof.selected.index}`,
-    swipes,macros:macros?'verified-identity-rendering' as const:'none' as const}
-  if(!same(value.data,{...descriptor,initSourceSha256:recordSha256(descriptor)})
-    ||value.dataSha256!==recordSha256(value.data)||value.calculationSha256!==recordSha256(value.calculation)
-    ||!same(compileSchemaMvuInitData(value.data),value.calculation)||value.calculation.kind!=='parsed'
-    ||value.inputBindingSha256!==promptOpeningInitializationInputBindingV1(proof.program,value.data,value.grammarPolicy,bindings)) {
-    openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/initialization/calculation')
+  if(value.inputBindingSha256!==promptOpeningInitializationInputBindingV1(proof.program,bindings)) {
+    openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/initialization/declarations')
   }
-  const markerCount=initEntries.length+bindings.greetingFacts.reduce((sum,greeting)=>sum+greeting.originalInitBlocks.length,0)
   if(value.markerCount!==markerCount||markerCount>0&&value.kind!=='raw-init-data'
     ||markerCount===0&&(value.kind!=='absent'||value.reason!=='no-actual-initvar-markers')) {
     openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/initialization/kind')
   }
 }
 /** Stored consistency only. Readers must also call the actual owner's current
- * predicate; a checksum or calculator result grants no runtime capability. */
+ * predicate; declaration integrity grants no runtime capability. */
 export function validatePromptOpeningSourceProofV1(input:unknown):PromptOpeningSourceProofV1 {
   try {
     if(input!==null&&typeof input==='object'&&parsedOpeningSourceProofs.has(input as PromptOpeningSourceProofV1)) {
       return input as PromptOpeningSourceProofV1
     }
     const value=clonePromptOpeningSourceDataV1(input)
-    exact(value,['schemaVersion','encoding','authority','policySha256','source','sourceRelation','program','catalog',
+    exact(value,['schemaVersion','encoding','authority','policySha256','schemaOpeningSourceSha256','source','sourceRelation','program','catalog',
       'catalogSha256','context','selected','initialization','initializationInputBindingSha256',
       'promptCurrentInputBindingSha256','authorityLimits','bindingSha256','proofSha256'],'/proof')
     const proof=value as unknown as PromptOpeningSourceProofV1
     const {proofSha256,bindingSha256,...body}=proof
     if(proof.schemaVersion!==1||proof.encoding!=='native-prompt-opening-source-proof-v1'
+      ||proof.schemaOpeningSourceSha256!==null&&!hash(proof.schemaOpeningSourceSha256)
       ||proof.authority!=='consumer-data-only'||proof.policySha256!==(proof.program?.importTuple?.format==='json-nexttavern-v1'
         ?NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_SHA256:PROMPT_OPENING_SOURCE_POLICY_SHA256)
       ||proofSha256!==recordSha256({bindingSha256,...body})||bindingSha256!==recordSha256(bindingBody(body))) {
       openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/proof/hash')
     }
-    const program=validatePromptProgramSourceInventoryV1(proof.program),tuple=program.importTuple,selected=proof.selected
+    const program=validatePromptProgramSourceInventoryV2(proof.program),tuple=program.importTuple,selected=proof.selected
     exact(proof.source,['sessionId','importId','sourceRecordSessionId','rawSha256','normalizedSha256','transactionId',
       'coverageSha256','pointer'],'/source')
     exact(proof.context,['values','bindingSha256','valuesSha256','policy'],'/context')
@@ -235,7 +201,9 @@ export function validatePromptOpeningSourceProofV1(input:unknown):PromptOpeningS
     validateInitialization(proof.initialization,proof)
     if(proof.initializationInputBindingSha256!==proof.initialization.inputBindingSha256
       ||proof.promptCurrentInputBindingSha256!==program.bindingSha256)openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/inputBindings')
-    const checked=freezePromptOpeningSourceDataV1(proof)
+    // Keep the exact validated child so downstream readers can reuse its DATA
+    // consistency without revalidating a discarded clone of the inventory.
+    const checked=freezePromptOpeningSourceDataV1({...proof,program})
     parsedOpeningSourceProofs.add(checked)
     return checked
   }catch(error) {
@@ -310,7 +278,8 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
         nativeSetupSha256:recordSha256(apply.nativeSetup)}})
   }
   function read(sid:string,index:number,style:boolean,assertOwnerCurrent:()=>void,
-    saveCapture?:(proof:PromptOpeningSourceProofV1,live:LiveCapture)=>void):PromptOpeningSourceProofV1 {
+    saveCapture?:(proof:PromptOpeningSourceProofV1,live:LiveCapture)=>void,
+    schemaOpeningSourceSha256:string|null=null):PromptOpeningSourceProofV1 {
     if(closed)openingSourceFail('OPENING_SOURCE_CHANGED','/owner/disposed')
     assertOwnerCurrent()
     if(!sid||!Number.isSafeInteger(index)||index<0||typeof style!=='boolean') {
@@ -351,16 +320,17 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
     const catalog:OpeningCatalog={source:openingSource,candidates:compileTavernOpeningCandidates(decoded,context.context)},
       candidate=catalog.candidates.find(item=>item.index===index)
     if(!candidate)openingSourceFail('OPENING_SOURCE_SELECTION_INVALID','/selection')
-    const sourceRelation=readRelation(source),initialization=calculatePromptOpeningRawInitV1({source,decoded,record,program,
-      candidates:catalog.candidates,selectedIndex:index,context:context.context})
+    const sourceRelation=readRelation(source),initialization=capturePromptOpeningDeclarationsV1({source,program,
+      candidates:catalog.candidates,context:context.context})
     // Literal inputs remain with the existing plain owner. This decision uses
-    // the actual prompt partitions and this already calculated raw-init input;
+    // the actual prompt partitions and captured original declarations;
     // it neither treats a refusal as absence nor runs another classifier.
-    if(!hasPromptProgram(program)&&initialization.kind==='absent')throw new OpeningSourceNotApplicable(
+    if(schemaOpeningSourceSha256===null&&!hasPromptProgram(program)&&initialization.kind==='absent')throw new OpeningSourceNotApplicable(
       {kind:'not-applicable',reason:'no-program-or-raw-init'})
-    inspectPromptOpeningWholeSourceV1({source,decoded,record,program,context:context.context,bindings:initialization.bindings})
+    inspectPromptOpeningWholeSourceV1({source,decoded,record,program,context:context.context,
+      bindings:initialization.bindings,schemaOpening:schemaOpeningSourceSha256!==null})
     const body={schemaVersion:1 as const,encoding:'native-prompt-opening-source-proof-v1' as const,
-      authority:'consumer-data-only' as const,policySha256:tuple.format==='json-nexttavern-v1'
+      authority:'consumer-data-only' as const,schemaOpeningSourceSha256,policySha256:tuple.format==='json-nexttavern-v1'
         ?NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_SHA256:PROMPT_OPENING_SOURCE_POLICY_SHA256,
       source:openingSource,sourceRelation,program,catalog,catalogSha256:recordSha256(catalog),
       context:{values:context.context,bindingSha256:context.bindingSha256,valuesSha256:recordSha256(context.context),
@@ -373,7 +343,10 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
         schemaExecution:'none' as const,native:'not-authorized' as const,protectedRenderer:'not-authorized' as const,
         publish:'not-authorized' as const}}
     const bound={...body,bindingSha256:recordSha256(bindingBody(body))}
-    const proof=validatePromptOpeningSourceProofV1({...bound,proofSha256:recordSha256(bound)})
+    // These fields came from the actual Source and declaration owners above.
+    // Parsing this constructed proof would clone and reparse their results.
+    const proof=freezePromptOpeningSourceDataV1({...bound,proofSha256:recordSha256(bound)})
+    parsedOpeningSourceProofs.add(proof)
     if(deps.inputState)return proof
     const
       importRecordSha256=tuple.importRecordRef.sha256,contextSha256=recordSha256(context),
@@ -400,7 +373,7 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
     const assertCurrent=()=>{
       assertReaderOwners();assertOwnerCurrent()
       // Same producer-owned Source/edit footprint as the program inventory.
-      // Decode, catalog and raw calculator are pure results from that complete
+      // Decode, catalog and declarations are pure results from that complete
       // first validation; the actual Session/setup reader remains live.
       if('assertCurrent' in supplied)supplied.assertCurrent()
       if(recordSha256(deps.readImportRecord(source.sourceRecordSessionId,tuple.importId))!==importRecordSha256
@@ -417,12 +390,13 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
   }
   function capture(sessionId:string,selectedIndex:number,includeCardStyle:boolean,
     assertOwnerCurrent:()=>void,
-    outputs?:Parameters<NonNullable<PromptOpeningSourceDepsV1['inputState']>['captureSource']>[3])
+    outputs?:Parameters<NonNullable<PromptOpeningSourceDepsV1['inputState']>['captureSource']>[3],
+    schemaOpeningSourceSha256:string|null=null)
     :PromptOpeningSourceCaptureV1 {
     try {
       if(deps.inputState) {
-        const owned=deps.inputState.captureSource(sessionId,`program-opening:${selectedIndex}:${includeCardStyle}`,
-          ()=>read(sessionId,selectedIndex,includeCardStyle,assertOwnerCurrent),outputs)
+        const owned=deps.inputState.captureSource(sessionId,`program-opening:${selectedIndex}:${includeCardStyle}:${schemaOpeningSourceSha256??'absence'}`,
+          ()=>read(sessionId,selectedIndex,includeCardStyle,assertOwnerCurrent,undefined,schemaOpeningSourceSha256),outputs)
         const assertOwnerFactsCurrent=()=>{
           if(closed)openingSourceFail('OPENING_SOURCE_CHANGED','/owner/disposed')
           assertOwnerCurrent()
@@ -430,7 +404,8 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
         return {kind:'captured-opening-source',proof:owned.data,assertOwnerFactsCurrent,
           assertCurrent:()=>{assertOwnerFactsCurrent();owned.assertCurrent()}}
       }
-      const proof=read(sessionId,selectedIndex,includeCardStyle,assertOwnerCurrent,(owned,currency)=>captures.set(owned,currency)),
+      const proof=read(sessionId,selectedIndex,includeCardStyle,assertOwnerCurrent,
+        (owned,currency)=>captures.set(owned,currency),schemaOpeningSourceSha256),
         live=captures.get(proof)
       if(!live)openingSourceFail('OPENING_SOURCE_UNAVAILABLE','/capture')
       return {kind:'captured-opening-source',proof,assertCurrent:live.assertCurrent,
@@ -438,7 +413,7 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
     }catch(error) {
       if(error instanceof OpeningSourceNotApplicable)return seal(error.result)
       const diagnostic=error instanceof PromptOpeningSourceFailureV1
-        ?{code:error.code,pointer:error.pointer,...(error.calculatorCode?{calculatorCode:error.calculatorCode}:{})}
+        ?{code:error.code,pointer:error.pointer}
         :{code:'OPENING_SOURCE_UNAVAILABLE' as const,pointer:'/source'}
       return seal({kind:'refused',authority:'none',diagnostics:[diagnostic]})
     }
@@ -447,7 +422,8 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
     try {
       const proof=validatePromptOpeningSourceProofV1(input)
       if(deps.inputState) {
-        const actual=capture(proof.source.sessionId,proof.selected.index,proof.program.includeCardStyle,assertOwnerCurrent)
+        const actual=capture(proof.source.sessionId,proof.selected.index,proof.program.includeCardStyle,assertOwnerCurrent,
+          undefined,proof.schemaOpeningSourceSha256)
         return actual.kind==='captured-opening-source'&&actual.proof.bindingSha256===proof.bindingSha256
       }
       return read(proof.source.sessionId,proof.selected.index,proof.program.includeCardStyle,assertOwnerCurrent)

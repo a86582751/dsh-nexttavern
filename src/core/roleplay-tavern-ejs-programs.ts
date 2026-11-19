@@ -4,7 +4,7 @@ import {recordSha256} from './roleplay-data.js'
 import type {TavernEjsReplayEngine,TavernEjsReplayRecord,TavernEjsReplayDelta} from './tavern-template-ejs-replay.mjs'
 import type {TavernEjsRuntime,TavernEjsRuntimeInput,TavernEjsRuntimeProgram,
   TavernEjsRuntimeAction,TavernEjsRuntimeInvocation} from './tavern-template-ejs-runtime-types.mjs'
-import type {TavernEjsPhaseCapture} from './tavern-template-ejs-host-types.mjs'
+import type {TavernEjsPhaseCapture,TavernEjsCapturedReadOwnerV1} from './tavern-template-ejs-host-types.mjs'
 
 export interface TavernEjsJournalCut {
   readonly head:string
@@ -50,6 +50,7 @@ export interface TavernEjsProgramInvocation {
   readonly capture?:TavernEjsPhaseCapture
   readonly nativeDisposals:readonly TavernEjsNativeDisposal[]
   readonly signal:AbortSignal
+  readonly readCaptured?:TavernEjsCapturedReadOwnerV1
 }
 interface Entry {
   readonly program:TavernEjsRuntimeProgram
@@ -71,15 +72,17 @@ export function createRoleplayTavernEjsPrograms(deps:{
     // Worker teardown, which never executes author callbacks or effects.
     void entry.program.dispose().catch(()=>{})
   }
-  async function prepare(programInstanceId:string,input:TavernEjsRuntimeInput,generationId:string,signal:AbortSignal) {
+  async function prepare(programInstanceId:string,input:TavernEjsRuntimeInput,generationId:string,signal:AbortSignal,
+    readCaptured?:TavernEjsCapturedReadOwnerV1) {
     const prior=entries.get(programInstanceId)
     if(prior&&prior.generationId===generationId)return {program:prior.program,creation:prior.creation}
     if(prior)retire(programInstanceId)
     const runtime=await deps.loadRuntime(undefined,signal)
-    const program=await runtime.prepare(input,signal)
+    const program=await runtime.prepare(input,signal,readCaptured)
     const engine=structuredClone(runtime.identity)
     const creation:TavernEjsReplayRecord={schemaVersion:1,encoding:'ejs-host-full-replay-v1',engine,
-      capture:structuredClone(input.capture),resource:structuredClone(input.resource),creation:program.creation,phases:[]}
+      capture:structuredClone(input.capture),resource:structuredClone(input.resource),creation:program.creation,
+      ...program.creationReads?.length?{creationReads:program.creationReads}:{},phases:[]}
     const entry:Entry={program,creation,generationId,head:tavernEjsCreationHead(creation),cut:null,operations:new Map()}
     entries.set(programInstanceId,entry)
     return {program,creation}
@@ -105,7 +108,7 @@ export function createRoleplayTavernEjsPrograms(deps:{
     const invocations:TavernEjsRuntimeInvocation[]=[]
     async function run(operationId:string,action:TavernEjsRuntimeAction,capture?:TavernEjsPhaseCapture) {
       const before=entry!.head
-      const result=await entry!.program.invoke(operationId,action,capture,input.signal)
+      const result=await entry!.program.invoke(operationId,action,capture,input.signal,input.readCaptured)
       if(result.delta&&!entry!.operations.has(operationId)) {
         entry!.cut=appendTavernEjsJournal(entry!.head,entry!.cut,result.delta)
         entry!.head=entry!.cut.head

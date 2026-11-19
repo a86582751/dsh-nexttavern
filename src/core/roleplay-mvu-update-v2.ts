@@ -260,49 +260,88 @@ function command(type:string,path:string[],args:MvuJsonValue[]):MvuLegacyCommand
   if(type!=='delete'&&args.length<1)reject('LEGACY_ARGUMENT_COUNT')
   return {type,path,args:args.map(value=>clone(value))}
 }
-const markup=/<\/?\s*(?:UpdateVariable|JSONPatch|json_patch|Analyze|Analysis)\b/i
-const updateMarkup=/<\/?\s*(?:UpdateVariable|JSONPatch|json_patch)\b/i
 const invocation=/\b_\s*\.\s*[a-zA-Z]+\s*\(/
-function bodyOf(narrative:string,region?:{outside?:string;openingText?:true;bodyStart?:number}):string|undefined {
+interface UpdateToken {kind:'update'|'patch';closing:boolean;start:number;end:number}
+/** Fixed MVU v0.196 structural semantics over the supported literal grammar.
+ * Keep UTF-16 positions while hiding reasoning. Quotes/comments own their
+ * contents, so tag-shaped data cannot change the surrounding block structure. */
+function scanUpdate(narrative:string) {
+  const visible=narrative.split(''),tokens:UpdateToken[]=[],thoughts:string[]=[]
+  let quote='',depth=0
+  const hide=(start:number,end:number)=>{
+    for(let i=start;i<end;i++)if(narrative[i]!=='\r'&&narrative[i]!=='\n')visible[i]=' '
+  }
+  for(let i=0;i<narrative.length;i++) {
+    const char=narrative[i]!
+    if(thoughts.length) {
+      const tag=char==='<'?/^<(\/?)\s*(think|thinking|reasoning|analysis|analyze)\b[^>]*>/i.exec(narrative.slice(i)):null
+      if(tag) {
+        const name=tag[2]!.toLowerCase()
+        if(tag[1]&&thoughts.at(-1)===name)thoughts.pop()
+        else if(!tag[1])thoughts.push(name)
+        hide(i,i+tag[0].length);i+=tag[0].length-1
+      }else hide(i,i+1)
+      continue
+    }
+    if(quote) {
+      if(char==='\\')i++
+      else if(char===quote)quote=''
+      continue
+    }
+    if(depth&&narrative.startsWith('//',i)) {
+      const end=narrative.indexOf('\n',i)
+      i=end<0?narrative.length:end-1
+      continue
+    }
+    if(depth&&narrative.startsWith('/*',i)) {
+      const end=narrative.indexOf('*/',i+2)
+      i=end<0?narrative.length:end+1
+      continue
+    }
+    if(depth&&(char==='"'||char==="'"||char==='`')){quote=char;continue}
+    if(char!=='<')continue
+    const tag=/^<(\/?)\s*(updatevariable|variableupdate|update|json_?patch|think|thinking|reasoning|analysis|analyze)\b[^>]*>/i
+      .exec(narrative.slice(i))
+    if(!tag)continue
+    const name=tag[2]!.toLowerCase(),end=i+tag[0].length
+    if(/^(think|thinking|reasoning|analysis|analyze)$/.test(name)) {
+      if(!tag[1])thoughts.push(name)
+      hide(i,end)
+    }else {
+      const kind=name.startsWith('json')?'patch':'update',closing=!!tag[1]
+      tokens.push({kind,closing,start:i,end})
+      depth=Math.max(0,depth+(closing?-1:1))
+    }
+    i=end-1
+  }
+  return {visible:visible.join(''),tokens}
+}
+function bodiesOf(narrative:string) {
   if(typeof narrative!=='string')reject('NARRATIVE_TYPE')
   if(Buffer.byteLength(narrative,'utf8')>B.dataBytes)reject('NARRATIVE_BYTE_LIMIT')
-  // Source greetings may contain literal analysis text without declaring an
-  // update. Story protocol parsing still requires its complete container.
-  if(region?.openingText&&!updateMarkup.test(narrative)&&!invocation.test(narrative))return
-  if(!markup.test(narrative)) {
-    if(invocation.test(narrative))reject('UPDATE_CONTAINER_REQUIRED')
-    return
+  const scanned=scanUpdate(narrative),bodies:{text:string;start:number}[]=[],outside:string[]=[]
+  let opening:UpdateToken|undefined,cursor=0
+  for(const token of scanned.tokens) {
+    if(token.kind!=='update') {
+      if(!opening)reject('STRAY_UPDATE_MARKUP')
+      continue
+    }
+    if(!token.closing) {
+      if(opening)reject('AMBIGUOUS_UPDATE_CONTAINER')
+      outside.push(scanned.visible.slice(cursor,token.start));opening=token
+    }else {
+      if(!opening)reject('UPDATE_CONTAINER_FORMAT')
+      if(Buffer.byteLength(narrative.slice(opening.start,token.end),'utf8')>B.blockBytes)reject('UPDATE_BLOCK_BYTE_LIMIT')
+      bodies.push({text:scanned.visible.slice(opening.end,token.start),start:opening.end})
+      cursor=token.end;opening=undefined
+    }
   }
-  const tags:{text:string;index:number}[]=[]
-  let cursor=0
-  while(cursor<narrative.length) {
-    const index=narrative.indexOf('<',cursor)
-    if(index<0)break
-    cursor=index+1
-    if(!/^<\/?UpdateVariable\b/i.test(narrative.slice(index,index+32)))continue
-    const close=narrative.indexOf('>',cursor)
-    if(close<0)reject('UPDATE_CONTAINER_FORMAT')
-    tags.push({text:narrative.slice(index,close+1),index});cursor=close+1
-    if(tags.length>2)reject('AMBIGUOUS_UPDATE_CONTAINER')
-  }
-  if(tags.length!==2||tags[0]!.text!=='<UpdateVariable>'||tags[1]!.text!=='</UpdateVariable>')reject('UPDATE_CONTAINER_FORMAT')
-  const start=tags[0]!.index,end=tags[1]!.index+tags[1]!.text.length,block=narrative.slice(start,end)
-  if(Buffer.byteLength(block,'utf8')>B.blockBytes)reject('UPDATE_BLOCK_BYTE_LIMIT')
-  const outside=narrative.slice(0,start)+narrative.slice(end)
-  if(markup.test(outside)||invocation.test(outside))reject('STRAY_UPDATE_MARKUP')
-  if(region)region.outside=outside
-  const rawBody=block.slice(16,-17)
-  let body=rawBody.trim(),bodyStart=start+16+rawBody.length-rawBody.trimStart().length
-  if(body.startsWith('<Analyze>')) {
-    const close=body.indexOf('</Analyze>')
-    if(close<0)reject('ANALYZE_FORMAT')
-    if(/<\/?[A-Za-z]/.test(body.slice(9,close)))reject('NESTED_UPDATE_MARKUP')
-    const remainder=body.slice(close+10)
-    bodyStart+=close+10+remainder.length-remainder.trimStart().length
-    body=remainder.trim()
-  }
-  if(region)region.bodyStart=bodyStart
-  return body
+  if(opening)reject('UPDATE_CONTAINER_FORMAT')
+  outside.push(scanned.visible.slice(cursor))
+  const remainder=outside.join('')
+  if(/<\/?\s*(?:updatevariable|variableupdate|update|json_?patch)\b/i.test(remainder))reject('UPDATE_CONTAINER_FORMAT')
+  if(invocation.test(remainder))reject(bodies.length?'STRAY_UPDATE_MARKUP':'UPDATE_CONTAINER_REQUIRED')
+  return {bodies,outside:remainder}
 }
 function jsonOperation(raw:unknown,options?:MvuUpdateParseOptionsV2):MvuUpdateOperationV2 {
   const value=clone(raw,B.dataDepth+1)
@@ -336,30 +375,8 @@ function jsonOperation(raw:unknown,options?:MvuUpdateParseOptionsV2):MvuUpdateOp
   // execution remains the unchanged old pure reducer, including all failures.
   return {kind:'jsonpatch',operation}
 }
-function operationsOf(body:string,options?:MvuUpdateParseOptionsV2,syntax?:MvuCommandSyntaxV1[],bodyStart=0):MvuUpdateOperationV2[] {
-  if(body.startsWith('<JSONPatch>')) {
-    if(!body.endsWith('</JSONPatch>'))reject('UPDATE_CONTENT_UNSUPPORTED')
-    const text=body.slice(11,-12)
-    if(Buffer.byteLength(text,'utf8')>B.jsonBytes)reject('JSON_BYTE_LIMIT')
-    if(markup.test(text))reject('NESTED_UPDATE_MARKUP')
-    const reader=new Literals(text,!!syntax),raw=reader.value()
-    reader.whitespace();if(reader.offset!==text.length)reject('NON_LITERAL_JSON')
-    if(!Array.isArray(raw))reject('PATCH_ARRAY_REQUIRED')
-    if(!raw.length)reject('EMPTY_PATCH')
-    if(raw.length>B.operations)reject('OPERATION_LIMIT')
-    if(syntax)for(const [index,item] of reader.elements.entries()) {
-      const operation=raw[index],offset=bodyStart+11
-      syntax.push({kind:'jsonpatch',start:offset+item.start,end:offset+item.end,type:object(operation)?String(operation.op):'',
-        ...object(operation)&&typeof operation.path==='string'?{path:operation.path}:{},
-        ...object(operation)&&typeof operation.from==='string'?{from:operation.from}:{},
-        args:[item.fields.get('value')].filter((span):span is {start:number;end:number}=>!!span)
-          .map(span=>({start:offset+span.start,end:offset+span.end}))})
-    }
-    return raw.map((value,index)=>{
-      try{return jsonOperation(value,options)}catch(error){throw error instanceof Refusal?
-        new Refusal(error.code,error.pointer,index):error}
-    })
-  }
+function operationsOf(body:string,options?:MvuUpdateParseOptionsV2,syntax?:MvuCommandSyntaxV1[],bodyStart=0,
+  operationStart=0):MvuUpdateOperationV2[] {
   const reader=new Literals(body),result:MvuUpdateOperationV2[]=[]
   while(reader.offset<body.length) {
     reader.whitespace()
@@ -368,9 +385,42 @@ function operationsOf(body:string,options?:MvuUpdateParseOptionsV2,syntax?:MvuCo
       continue
     }
     if(reader.offset===body.length)break
-    const index=result.length
+    const index=operationStart+result.length
     try {
       if(index>=B.operations)reject('OPERATION_LIMIT')
+      const patch=/^<\s*json_?patch\b[^>]*>/i.exec(body.slice(reader.offset))
+      if(patch) {
+        reader.offset+=patch[0].length
+        const patchStart=reader.offset
+        const patchReader=new Literals(body.slice(patchStart),!!syntax),raw=patchReader.value()
+        patchReader.whitespace()
+        reader.offset=patchStart+patchReader.offset
+        const close=/^<\/\s*json_?patch\b[^>]*>/i.exec(body.slice(reader.offset))
+        if(!close)reject('UPDATE_CONTENT_UNSUPPORTED')
+        if(Buffer.byteLength(body.slice(patchStart,reader.offset),'utf8')>B.jsonBytes)reject('JSON_BYTE_LIMIT')
+        reader.offset+=close[0].length
+        if(!Array.isArray(raw))reject('PATCH_ARRAY_REQUIRED')
+        if(!raw.length)reject('EMPTY_PATCH')
+        for(const [patchIndex,value] of raw.entries()) {
+          const operationIndex=index+patchIndex
+          try {
+            if(operationIndex>=B.operations)reject('OPERATION_LIMIT')
+            result.push(jsonOperation(value,options))
+          }catch(error) {
+            throw error instanceof Refusal?new Refusal(error.code,error.pointer,operationIndex):error
+          }
+        }
+        if(syntax)for(const [patchIndex,item] of patchReader.elements.entries()) {
+          const operation=raw[patchIndex],offset=bodyStart+patchStart
+          syntax.push({kind:'jsonpatch',start:offset+item.start,end:offset+item.end,
+            type:object(operation)?String(operation.op):'',
+            ...object(operation)&&typeof operation.path==='string'?{path:operation.path}:{},
+            ...object(operation)&&typeof operation.from==='string'?{from:operation.from}:{},
+            args:[item.fields.get('value')].filter((span):span is {start:number;end:number}=>!!span)
+              .map(span=>({start:offset+span.start,end:offset+span.end}))})
+        }
+        continue
+      }
       const commandStart=reader.offset,argSpans:{start:number;end:number}[]=[]
       if(!body.startsWith('_.',reader.offset))reject('LEGACY_COMMAND_FORMAT')
       reader.offset+=2;const start=reader.offset
@@ -400,7 +450,7 @@ function operationsOf(body:string,options?:MvuUpdateParseOptionsV2,syntax?:MvuCo
         syntax.push({kind:'legacy',start:bodyStart+commandStart,end:bodyStart+reader.offset,type,
           args:argSpans,...reason?{reason}:{}})
       }
-    } catch(error) {throw error instanceof Refusal?new Refusal(error.code,error.pointer,index):error}
+    } catch(error) {throw error instanceof Refusal?new Refusal(error.code,error.pointer,error.operationIndex??index):error}
   }
   if(!result.length)reject('EMPTY_UPDATE')
   return result
@@ -574,21 +624,21 @@ function applyLegacy(root:MvuJsonObject,cmd:MvuLegacyCommandV2):MvuJsonObject {
 export function parseMvuUpdateRegionV2(narrative:string,options?:MvuUpdateParseOptionsV2&{openingText?:true}):
   {candidate:MvuUpdateCandidateV2;outside:string;syntax?:MvuCommandSyntaxCaptureV1} {
   try {
-    const region:{outside?:string;openingText?:true;bodyStart?:number}={...options},body=bodyOf(narrative,region)
-    if(body===undefined)return {candidate:{kind:'no-update',...version},outside:narrative}
-    const syntax:MvuCommandSyntaxV1[]=[],operations=operationPackage(operationsOf(body,options,syntax,region.bodyStart)),descriptor={...policy,operations}
-    return {candidate:{kind:'parsed',...descriptor,candidateSha256:recordSha256(descriptor)},outside:region.outside!,syntax:{commands:syntax}}
+    const region=bodiesOf(narrative)
+    if(!region.bodies.length)return {candidate:{kind:'no-update',...version},outside:region.outside}
+    const syntax:MvuCommandSyntaxV1[]=[],parsed:MvuUpdateOperationV2[]=[]
+    for(const body of region.bodies)parsed.push(...operationsOf(body.text,options,syntax,body.start,parsed.length))
+    const operations=operationPackage(parsed),descriptor={...policy,operations}
+    return {candidate:{kind:'parsed',...descriptor,candidateSha256:recordSha256(descriptor)},outside:region.outside,syntax:{commands:syntax}}
   } catch(error){return {candidate:rejected(error),outside:narrative}}
 }
-/** Explicit current-owner policy. The base parser and historical callers keep
- * their strict grammar; only a matching leading analysis pair is commentary. */
+/** Retain the Source policy marker while the scanner owns reasoning aliases.
+ * Parsing original bytes also preserves tag-shaped data inside patch values. */
 export function parseMvuUpdateAnalysisAliasRegionV2(narrative:string,
   options?:MvuUpdateParseOptionsV2&{openingText?:true}):
   ReturnType<typeof parseMvuUpdateRegionV2>&{analysisAlias:boolean} {
-  // Preserve the original ASCII lengths and leave Source/canonical bytes raw.
-  const text=narrative.replace(/(<UpdateVariable>\s*)<(analysis|Analysis)>([\s\S]*?)<\/\2>/,
-    (_match,prefix:string,_tag:string,content:string)=>`${prefix}<Analyze> ${content} </Analyze>`)
-  return {...parseMvuUpdateRegionV2(text,options),analysisAlias:text!==narrative}
+  const analysisAlias=/<UpdateVariable>\s*<(analysis|Analysis)>[\s\S]*?<\/\1>/.test(narrative)
+  return {...parseMvuUpdateRegionV2(narrative,options),analysisAlias}
 }
 export function parseMvuUpdateV2(narrative:string,options?:MvuUpdateParseOptionsV2):MvuUpdateCandidateV2 {
   return parseMvuUpdateRegionV2(narrative,options).candidate

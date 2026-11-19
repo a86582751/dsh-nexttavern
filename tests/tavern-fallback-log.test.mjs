@@ -1,9 +1,11 @@
 import {after as afterNativeDependencies} from 'node:test'
 import {installOwnedNativeTestDependencies} from './plugin-owned-packages-fixture.mts'
+import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
 import assert from 'node:assert/strict'
 
 const removeOwnedNativeDependencies=await installOwnedNativeTestDependencies(['session'],true)
 afterNativeDependencies(removeOwnedNativeDependencies)
+afterNativeDependencies(installSchemaTestDependencies())
 const { createTavernTasks, InlinePending, taskFailureDetails }=await import('../lib/core/tavern-tasks.js')
 const { createTelemetry }=await import('../lib/core/tavern-telemetry.js')
 const { formatFallbackText }=await import('../lib/ui/client.js')

@@ -9,6 +9,7 @@ const cleanBranchBusinessFailures = new Set([
     'CLEAN_BRANCH_FAILED_INPUT_REQUIRED', 'CLEAN_BRANCH_COMPLETED_BOUNDARY_MISSING', 'CLEAN_BRANCH_DIAGNOSIS_CHANGED',
     'CLEAN_BRANCH_OPERATION_UNAVAILABLE', 'CLEAN_BRANCH_OPERATION_ID_REQUIRED', 'CLEAN_BRANCH_OPERATION_CHANGED',
     'CLEAN_BRANCH_FROZEN_SOURCE_UNAVAILABLE', 'CLEAN_BRANCH_CHILD_UNAVAILABLE', 'CLEAN_BRANCH_MODEL_OWNER_UNAVAILABLE',
+    'CLEAN_BRANCH_INPUT_CHANGED',
 ]);
 export function registerBranchRoutes(deps) {
     const { ctx, T, resolveRoleplaySession, cloneBranchRecord, assertStoryBranchActive, withForkMutationLock, forkOperationKey, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userForkContext, locatePlayerRecoveryTarget, assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, reconcileNativeFork, failPendingNativeFork, replaceAssistantText, replaceUserText, recoverPlayerSave, prepareWorldlineInheritance, releaseWorldlineInheritance, numericalForkBlockCode } = deps;
@@ -146,33 +147,65 @@ export function registerBranchRoutes(deps) {
     }
     async function inspectCleanBranch(sessionId) {
         const observed = await captureCleanInspection(sessionId);
+        const existing = existingCleanOperation(sessionId, observed.diagnostic);
+        if (existing?.clean)
+            return { ok: true, branchId: sessionId, operationId: existing.operationId,
+                revision: existing.clean.expectedRevision, selectionRevision: existing.clean.selectionRevision,
+                diagnostic: existing.clean.diagnostic, completedBoundary: {
+                    turn: existing.anchor.sourceTurn, turnEndSeq: existing.anchor.previousTurnEndSeq,
+                }, model: existing.clean.model };
         return { ok: true, branchId: observed.source.id, operationId: randomUUID(), revision: observed.revision,
             selectionRevision: observed.selectionRevision, diagnostic: observed.diagnostic,
             completedBoundary: observed.completedBoundary, model: observed.model };
+    }
+    const sameFailedInput = (saved, current) => !!current && current.sourceKind === 'story' && ['unknown', 'stopped'].includes(current.status)
+        && saved?.preparationId === current.preparationId && saved.attemptGeneration === current.attemptGeneration;
+    function existingCleanOperation(sessionId, diagnostic) {
+        const catalog = ctx.get('tavernConversations');
+        let existing;
+        catalog?.findChildOperation(sessionId, 'prepare-clean-branch', operationId => {
+            const operation = readOperation(forkOperationKey(operationId));
+            if (!sameFailedInput(operation?.clean?.diagnostic, diagnostic)
+                || operation?.state === 'failed' || operation?.state === 'aborted')
+                return false;
+            existing = operation;
+            return true;
+        });
+        return existing;
     }
     async function cleanBranchStatus(sessionId, operationId, options) {
         const operation = readOperation(forkOperationKey(operationId)), catalog = ctx.get('tavernConversations');
         if (!operation || operation.kind !== 'prepare-clean-branch' || !operation.clean || !catalog
             || catalog.rootOf(sessionId) !== catalog.rootOf(operation.anchor.sourceSessionId))
             throw Error('CLEAN_BRANCH_OPERATION_UNAVAILABLE');
-        return { ok: operation.state !== 'failed' && operation.state !== 'aborted', kind: 'prepare-clean-branch', operationId,
-            sourceSessionId: operation.anchor.sourceSessionId,
+        return { ok: operation.state !== 'failed' && operation.state !== 'aborted', kind: 'prepare-clean-branch', operationId: operation.operationId,
+            sourceSessionId: operation.anchor.sourceSessionId, expectedRevision: operation.clean.expectedRevision,
             childSessionId: operation.childSessionId ?? operation.reservedChildSessionId ?? null,
             status: operation.state === 'ready' ? 'ready' : ['failed', 'aborted'].includes(operation.state ?? '') ? 'failed' : 'prepared',
             requiresPlayerInput: true, error: operation.failureReason ?? null,
             ...options?.includeConversations === false ? {} : { conversations: catalog.snapshot() } };
     }
+    async function currentCleanBranchStatus(sessionId) {
+        await ctx.get('tavernConversations')?.ready;
+        const diagnostic = deps.readInputRecoveryDiagnostic?.(sessionId);
+        const operation = diagnostic && existingCleanOperation(sessionId, diagnostic);
+        return operation ? cleanBranchStatus(sessionId, operation.operationId, { includeConversations: false }) :
+            { ok: true, status: null };
+    }
     async function prepareCleanBranch(request, callerCurrent, options) {
         if (!/^[a-zA-Z0-9_-]{1,128}$/.test(request.operationId) || !request.expectedRevision)
             throw Error('CLEAN_BRANCH_OPERATION_ID_REQUIRED');
-        return withForkMutationLock(`operation:${request.operationId}`, async () => {
+        return withForkMutationLock(`clean-branch:${request.sessionId}`, async () => {
             callerCurrent();
-            const key = forkOperationKey(request.operationId);
+            let key = forkOperationKey(request.operationId);
             let operation = readOperation(key), observed;
             if (operation) {
                 if (operation.kind !== 'prepare-clean-branch' || operation.anchor.sourceSessionId !== request.sessionId
                     || operation.clean?.expectedRevision !== request.expectedRevision)
                     throw Error('CLEAN_BRANCH_OPERATION_CHANGED');
+                if (operation.reservedChildSessionId
+                    && !sameFailedInput(operation.clean.diagnostic, deps.readInputRecoveryDiagnostic?.(request.sessionId)))
+                    throw Error('CLEAN_BRANCH_INPUT_CHANGED');
             }
             // Reservation freezes Source and the Native cut. Only a new reservation
             // must still match live diagnosis; resumption uses its saved DATA/model.
@@ -180,7 +213,21 @@ export function registerBranchRoutes(deps) {
                 observed = await captureCleanInspection(request.sessionId);
                 if (observed.revision !== request.expectedRevision)
                     throw Error('CLEAN_BRANCH_DIAGNOSIS_CHANGED');
+                const existing = existingCleanOperation(request.sessionId, observed.diagnostic);
+                if (existing) {
+                    operation = existing;
+                    key = forkOperationKey(existing.operationId);
+                    observed = undefined;
+                }
             }
+            const status = (operationId) => options?.includeConversations === false
+                ? cleanBranchStatus(request.sessionId, operationId, options) : cleanBranchStatus(request.sessionId, operationId);
+            if (operation?.state === 'ready')
+                return status(operation.operationId);
+            const selectModel = ctx.sessionController.selectModelForSession?.bind(ctx.sessionController);
+            const readMainModel = deps.readMainModelSelection;
+            if (!selectModel || !readMainModel)
+                throw Error('CLEAN_BRANCH_MODEL_OWNER_UNAVAILABLE');
             if (!operation) {
                 const facts = observed;
                 operation = { schemaVersion: 2, operationId: request.operationId, kind: 'prepare-clean-branch', promptText: '',
@@ -196,12 +243,8 @@ export function registerBranchRoutes(deps) {
             try {
                 // Clean preparation only consumes the child identity. The chosen
                 // public view is assembled once after bootstrap/model publication.
-                const created = await createWorldline(request.operationId, callerCurrent, observed?.assertBeforeReserve, false);
+                const created = await createWorldline(operation.operationId, callerCurrent, observed?.assertBeforeReserve, false);
                 operation = readOperation(key);
-                if (operation.state === 'ready')
-                    return options?.includeConversations === false
-                        ? cleanBranchStatus(request.sessionId, request.operationId, options)
-                        : cleanBranchStatus(request.sessionId, request.operationId);
                 const child = await resolveRoleplaySession(created.childSessionId);
                 if (!child)
                     throw Error('CLEAN_BRANCH_CHILD_UNAVAILABLE');
@@ -212,12 +255,10 @@ export function registerBranchRoutes(deps) {
                         clean: { ...current.clean, bootstrapComplete: true } }));
                 }
                 if (!operation.clean.modelCopied) {
-                    if (!ctx.sessionController.selectModelForSession || !deps.readMainModelSelection)
-                        throw Error('CLEAN_BRANCH_MODEL_OWNER_UNAVAILABLE');
                     callerCurrent();
                     const model = operation.clean.model;
-                    if (recordSha256(deps.readMainModelSelection(child)) !== recordSha256(model))
-                        await ctx.sessionController.selectModelForSession({ sessionId: child.id, ...model });
+                    if (recordSha256(readMainModel(child)) !== recordSha256(model))
+                        await selectModel({ sessionId: child.id, ...model });
                     if (!await ctx.sessions.flush(child))
                         throw Error('CLEAN_BRANCH_MODEL_FLUSH_FAILED');
                     operation = await updateOperation(key, current => ({ ...current, state: 'preparing-clean',
@@ -227,8 +268,7 @@ export function registerBranchRoutes(deps) {
                 callerCurrent();
                 await updateOperation(key, current => ({ ...current, state: 'ready', consumed: true, childSessionId: child.id,
                     failure: null, failureReason: null, readyAt: Date.now() }));
-                return options?.includeConversations === false ? cleanBranchStatus(request.sessionId, request.operationId, options)
-                    : cleanBranchStatus(request.sessionId, request.operationId);
+                return status(operation.operationId);
             }
             catch (error) {
                 const current = readOperation(key);
@@ -280,7 +320,7 @@ export function registerBranchRoutes(deps) {
             await failPendingNativeFork(child, '首条开场模型生成失败');
         }
     }
-    async function openingOutcome(operation, child) {
+    async function openingOutcome(operation, child, generationFailure) {
         const childId = operation.childSessionId ?? operation.reservedChildSessionId ?? null;
         if (!operation.groupId || !child) {
             if (operation.state === 'generating' || operation.state === 'waiting-agent') {
@@ -323,7 +363,8 @@ export function registerBranchRoutes(deps) {
                     operationState: 'generating', operationId: operation.operationId,
                     childSessionId: child.id, registered: true, requestAccepted: true,
                     assistantMessageId: null };
-            const reason = member?.failureReason ?? '开场生成结果无法确认；原世界线已保留，请从原开场重新创建分支';
+            const reason = member?.failureReason ?? generationFailure
+                ?? '开场生成结果无法确认；原世界线已保留，请从原开场重新创建分支';
             if (!member?.failed)
                 await failPendingNativeFork(child, reason);
             const failure = { schemaVersion: 1, code: member?.failed
@@ -347,6 +388,8 @@ export function registerBranchRoutes(deps) {
                 const action = String(body?.action ?? '');
                 if (action === 'inspect-clean-branch')
                     return jsonResponse(200, await inspectCleanBranch(String(body.sessionId ?? '')));
+                if (action === 'current-clean-branch-status')
+                    return jsonResponse(200, await currentCleanBranchStatus(String(body.sessionId ?? '')));
                 if (action === 'prepare-clean-branch')
                     return jsonResponse(200, await prepareCleanBranch({
                         sessionId: String(body.sessionId ?? ''), operationId: String(body.operationId ?? ''),
@@ -572,7 +615,7 @@ export function registerBranchRoutes(deps) {
                                 state: 'waiting-agent', requestAccepted: false }));
                             return jsonResponse(202, await openingOutcome(operation, child));
                         }
-                        return jsonResponse(200, await openingOutcome(operation, child));
+                        return jsonResponse(200, await openingOutcome(operation, child, generation.kind === 'unknown' ? generation.reason : undefined));
                     });
                 }
                 if (action === 'register') {
@@ -939,9 +982,6 @@ export function registerBranchRoutes(deps) {
                 switch (message) {
                     case 'SCHEMA_TASK_EDIT_INVALID':
                     case 'SCHEMA_TASK_EDIT_TARGET_REQUIRED':
-                    case 'SCHEMA_TASK_EDIT_REPLACE_REQUIRED':
-                    case 'SCHEMA_TASK_EDIT_UPDATE_REQUIRED':
-                    case 'SCHEMA_TASK_EDIT_MALFORMED_UPDATE':
                     case 'SCHEMA_USER_EDIT_RECOVERY_INVALID':
                         status = 400;
                         break;

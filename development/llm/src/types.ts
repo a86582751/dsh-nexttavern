@@ -328,6 +328,12 @@ export interface LlmConfigurableProvider {
   error?: string
 }
 
+/** Authentication available when no credential reference is configured. */
+export interface LlmNativeAuth {
+  env: readonly string[]
+  oauth: boolean
+}
+
 /**
  * One interrogation of a provider endpoint that configuration has not stored
  * yet. Configuration surfaces send the draft a user is still editing, so the
@@ -387,6 +393,12 @@ export interface LlmDiscoveredModel {
   inputModalities?: readonly ModelModality[]
 }
 
+/** Optional provider-authored label for the model selector. */
+export interface LlmModelBadge {
+  readonly text: import('@deepseek-ai/dsh-package-manifest').LocalizedText
+  readonly tone: 'neutral' | 'info' | 'success' | 'warning'
+}
+
 /** One adapter-discovered model; catalog membership is advisory, not request validation. */
 export interface LlmModelInfo {
   /** Provider route that owns this model entry. */
@@ -397,6 +409,8 @@ export interface LlmModelInfo {
   name: string
   /** Optional user-facing distinction from otherwise similar models. */
   description?: string
+  /** Provider's optional label for discovery, outside the request protocol. */
+  badge?: LlmModelBadge
   /** Accepted request modalities; absent means unknown, while an explicit omission is negative capability. */
   inputModalities?: readonly ModelModality[]
 }
@@ -467,9 +481,9 @@ export type SystemPromptUpdate = 'in-history'
  */
 export type ToolUpdate = 'in-history' | 'addition-only'
 
-/** Adapter promise for new request-only text at a selected logical boundary.
- * Missing metadata is unsupported. This is independent of replacement of the
- * whole system prompt and does not claim that the model obeys the text. */
+/** Adapter metadata about request-only text at a selected logical boundary.
+ * Serialization and remote acceptance are checked by the actual request.
+ * Whole-system-prompt replacement is an independent capability. */
 export interface RequestMaterialTextCapabilityV1 {
   readonly schemaVersion:1
   readonly user:'role-and-position'|'unsupported'
@@ -501,6 +515,8 @@ export interface LlmResolvedModelInfo extends LlmModelInfo {
  * with stored content without reading either half.
  */
 export interface ReplayEnvelope {
+  /** Adapter-projected public details, aligned with the emitted content. */
+  details?:AssistantResponseDetailsV1
   /** Response-level adapter-private metadata (ids, native stop reason). */
   response: unknown
   /**
@@ -512,6 +528,13 @@ export interface ReplayEnvelope {
    * assembly unchanged.
    */
   blocks?: readonly unknown[]
+}
+export interface AssistantResponseDetailsV1 {
+  readonly responseId?:string
+  readonly blocks:readonly (
+    |{readonly type:'text';readonly signature?:string}
+    |{readonly type:'reasoning';readonly signature?:string;readonly redacted?:boolean}
+    |{readonly type:'tool-call';readonly signature?:string})[]
 }
 
 /**
@@ -601,7 +624,12 @@ export interface RequestMessageTextProjectionV2 {
     readonly target:{readonly id:string;readonly role:'assistant';readonly messageSha256:string};
     readonly textEditsSha256:string}
 }
-export type RequestMessage = Message | RequestUserInput | RequestMaterialMessageV1
+export type RequestOnlyMessageV1={
+  readonly content:readonly (TextBlock|ImageBlock)[]
+  readonly id?:never
+  readonly source?:never
+}&({readonly role:'system'}|{readonly role:'user'}|{readonly role:'assistant'})
+export type RequestMessage = Message | RequestUserInput | RequestMaterialMessageV1|RequestOnlyMessageV1
   | RequestMessageTextProjectionV2 | RequestProjectedMessageV1
 
 /** Logged tool declarations and update identities since the last declaration reset. */
@@ -617,13 +645,39 @@ export interface ToolHistory {
   }[]
 }
 
-/** A single model request, fully assembled. */
-export interface RequestLocalSamplingV1 {
+/** Provider-neutral selection of the response's tool call. */
+export type LlmToolChoice = 'auto' | 'none' | 'required'
+  | {readonly type:'function';readonly function:{readonly name:string}}
+
+/** Provider-neutral structured response request. The adapter owns wire names. */
+export interface LlmResponseFormat {
+  readonly type:'json_schema'
+  readonly jsonSchema:{
+    readonly name:string
+    readonly description?:string
+    readonly strict?:boolean
+    readonly schema:Record<string,unknown>
+  }
+}
+
+/** Explicit controls shared by request headers and request-local overrides. */
+export interface LlmGenerationOptions {
+  readonly topP?:number
+  readonly topK?:number
+  readonly frequencyPenalty?:number
+  readonly presencePenalty?:number
+  readonly toolChoice?:LlmToolChoice
+  readonly responseFormat?:LlmResponseFormat
+}
+
+/** A request-local override retains the same provider-neutral call vocabulary. */
+export interface RequestLocalSamplingV1 extends LlmGenerationOptions {
   readonly temperature?:number
   readonly maxTokens?:number
   readonly stop?:readonly string[]
 }
-export interface GenerateOptions {
+/** A single model request, fully assembled. */
+export interface GenerateOptions<Purpose extends string = 'compaction' | 'session-title'> extends LlmGenerationOptions {
   /** Registered provider route selecting the adapter instance. */
   provider: string
   model: string
@@ -664,5 +718,5 @@ export interface GenerateOptions {
    * map the purpose to model-hidden transport metadata or purpose-specific
    * generation policy. Ordinary conversation requests leave it unset.
    */
-  purpose?: 'compaction' | 'session-title'
+  purpose?: Purpose
 }

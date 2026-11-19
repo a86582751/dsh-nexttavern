@@ -4,6 +4,7 @@
 import { recordSha256 } from './roleplay-data.js';
 import { taskHash } from './tavern-task-primitives.js';
 import { normalizeStatusOption } from './roleplay-status-presentation.js';
+import { assertMvu196CommandsV1 } from './tavern-mvu-update-protocol-v1.js';
 export const mvuSchemaMaintenanceAdmissionKey = (sid, preparationId) => `${sid}__mvu-schema-maintenance-admission-${preparationId}`;
 export const mvuSchemaMaintenanceBasisKey = (sid, seq) => `${sid}__mvu-schema-maintenance-basis-${seq}`;
 export const mvuSchemaMaintenanceTaskKey = (sid, seq) => `${sid}__mvu-schema-maintenance-task-${seq}`;
@@ -16,16 +17,17 @@ function exact(value, required, optional = []) {
         || Object.keys(value).some(key => !required.includes(key) && !optional.includes(key)))
         throw Error('SCHEMA_MAINTENANCE_RESULT_INVALID');
 }
-/** The tool boundary owns proposal DATA and usable options. Command semantics
- * and normalization belong to the original phase-zero reducer/schema owner. */
+/** The Task boundary owns proposal DATA and usable options. The one fixed
+ * updater owns argument evaluation, operation semantics and schema acceptance. */
 export function normalizeMvuSchemaMaintenanceResultV1(raw, candidateKind) {
-    if (!object(raw) || raw.schemaVersion !== 1 || !Array.isArray(raw.options))
-        throw Error('SCHEMA_MAINTENANCE_OPTIONS_INVALID');
-    const options = raw.options.map(normalizeStatusOption).filter(value => value.label).slice(0, 3)
+    if (!object(raw) || raw.schemaVersion !== 1)
+        throw Error('SCHEMA_MAINTENANCE_RESULT_INVALID');
+    // Decisions are optional UI. The variable proposal still goes through the
+    // fixed updater and cannot be accepted on the strength of any option.
+    const options = (Array.isArray(raw.options) ? raw.options : []).map(normalizeStatusOption)
+        .filter(value => value.label).slice(0, 3)
         .map(value => ({ label: value.label.slice(0, 60), heart: value.heart === true,
         ...value.description ? { description: value.description.slice(0, 120) } : {} }));
-    if (!options.length)
-        throw Error('SCHEMA_MAINTENANCE_OPTIONS_INVALID');
     if (candidateKind === 'parsed')
         return { schemaVersion: 1, options };
     const proposal = raw.variableCandidate;
@@ -34,37 +36,27 @@ export function normalizeMvuSchemaMaintenanceResultV1(raw, candidateKind) {
     if (proposal.kind === 'unchanged') {
         return { schemaVersion: 1, variableCandidate: { kind: 'unchanged' }, options };
     }
-    if (proposal.kind !== 'patch')
+    if (proposal.kind !== 'commands')
         throw Error('SCHEMA_MAINTENANCE_CANDIDATE_INVALID');
-    if (!Array.isArray(proposal.operations) || !proposal.operations.length)
-        throw Error('SCHEMA_MAINTENANCE_PATCH_EMPTY');
-    if (proposal.operations.some(value => !object(value)
-        || !(value.kind === 'jsonpatch' && object(value.operation) || value.kind === 'legacy' && object(value.command))))
-        throw Error('SCHEMA_MAINTENANCE_COMMAND_SHAPE_INVALID');
-    const operations = proposal.operations;
-    return { schemaVersion: 1, variableCandidate: { kind: 'patch', operations }, options };
+    // Task JSON can carry literal values directly. The updater also accepts
+    // existing argument expressions, so retain strings and encode typed literals.
+    const commands = Array.isArray(proposal.commands) ? proposal.commands.map(command => object(command) && Array.isArray(command.args)
+        ? { ...command, args: command.args.map(arg => typeof arg === 'string' ? arg : JSON.stringify(arg)) }
+        : command) : proposal.commands;
+    assertMvu196CommandsV1(commands);
+    if (!commands.length)
+        throw Error('SCHEMA_MAINTENANCE_COMMANDS_EMPTY');
+    return { schemaVersion: 1, variableCandidate: { kind: 'commands', commands }, options };
 }
-/** Only completed task command proposal DATA reaches this construction. No reducer,
- * schema callback or text wrapper runs before the real command phase. */
-export function mvuSchemaMaintenanceTaskCandidate(result) {
-    const proposal = result.variableCandidate;
-    if (!proposal)
-        throw Error('SCHEMA_MAINTENANCE_CANDIDATE_MISSING');
-    if (proposal.kind === 'unchanged')
-        return { kind: 'no-update', schemaVersion: 2, protocol: 'native-mvu-update-v2' };
-    const descriptor = { schemaVersion: 2, protocol: 'native-mvu-update-v2',
-        errorPolicy: 'atomic-refusal', operations: proposal.operations };
-    return { kind: 'parsed', ...descriptor, candidateSha256: recordSha256(descriptor) };
-}
-/** Historical v10 interpretation is sealed here. It never asks a hot Tavern
- * job to become current and never grants a child its ancestor's task lease. */
+/** This sealed result never asks a hot Tavern job to become current and never
+ * grants a child its ancestor's task or execution permission. */
 export function validateMvuSchemaMaintenanceCandidateSourceV1(source, input) {
     exact(source, ['schemaVersion', 'encoding', 'kind', 'admission', 'basis', 'task', 'result']);
-    const { admission, basis, task, result } = source, { scope, canonical, base, canonicalCandidate } = input;
+    const { admission, basis, task, result } = source, { scope, canonical, base } = input;
     exact(admission, ['schemaVersion', 'encoding', 'sessionId', 'preparationId', 'credentialSha256',
         'receiptGeneration', 'refs', 'source', 'admissionSha256']);
     exact(basis, ['schemaVersion', 'encoding', 'sessionId', 'admissionSha256', 'currency', 'workSha256', 'turn',
-        'canonical', 'baseStateSnapshotSha256', 'material', 'candidateKind', 'basisSha256']);
+        'canonical', 'baseStateSnapshotSha256', 'material', 'prepared', 'candidateKind', 'basisSha256']);
     exact(task, ['taskId', 'generation', 'resultHash', 'actualRoute', 'execution']);
     exact(result, ['schemaVersion', 'options'], ['variableCandidate']);
     const { admissionSha256, ...admissionBody } = admission, { basisSha256, ...basisBody } = basis, { narrative: _narrative, ...canonicalRef } = canonical;
@@ -83,11 +75,18 @@ export function validateMvuSchemaMaintenanceCandidateSourceV1(source, input) {
         || basis.baseStateSnapshotSha256 !== base.stateSnapshotSha256
         || typeof task.taskId !== 'string' || !task.taskId || typeof task.generation !== 'string' || !task.generation
         || task.resultHash !== taskHash(result) || !['inline', 'spawn'].includes(task.execution)
-        || result.schemaVersion !== 1 || !Array.isArray(result.options) || !result.options.length
-        || source.kind === 'canonical' && (basis.candidateKind !== 'parsed' || canonicalCandidate.kind !== 'parsed'
+        || result.schemaVersion !== 1 || !Array.isArray(result.options)
+        || source.kind === 'canonical' && (basis.candidateKind !== 'parsed'
             || result.variableCandidate !== undefined)
-        || source.kind === 'task-result' && (basis.candidateKind !== 'no-update' || canonicalCandidate.kind !== 'no-update'
+        || source.kind === 'task-result' && (basis.candidateKind !== 'no-update'
             || !result.variableCandidate)
         || !['canonical', 'task-result'].includes(source.kind))
         throw Error('SCHEMA_MAINTENANCE_SOURCE_UNPROVEN');
+    if (source.kind === 'task-result') {
+        const proposal = result.variableCandidate;
+        if (proposal.kind === 'commands')
+            assertMvu196CommandsV1(proposal.commands);
+        else if (proposal.kind !== 'unchanged')
+            throw Error('SCHEMA_MAINTENANCE_SOURCE_UNPROVEN');
+    }
 }

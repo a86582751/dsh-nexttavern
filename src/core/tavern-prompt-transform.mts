@@ -2,6 +2,9 @@ import {cloneSchemaData,schemaTextSha256} from './tavern-mvu-schema-data.js'
 import {recordSha256} from './roleplay-data.js'
 import {boundedSTPromptTransformBatchV1} from './bounded-regex.js'
 import {executeTavernPromptTransformsV1,hasTavernPromptMacroSyntaxV1} from './tavern-prompt-transform-execution.mjs'
+import {countInputChars} from './tavern-prompt-transform-execution.mjs'
+import {TAVERN_PROMPT_TRANSFORM_POLICY_V1} from './tavern-prompt-transform-types.mjs'
+export {TAVERN_PROMPT_TRANSFORM_POLICY_V1} from './tavern-prompt-transform-types.mjs'
 export {tavernPromptRegexAppliesToChannelV1} from './tavern-prompt-transform-execution.mjs'
 import {TAVERN_PROMPT_TRANSFORM_LIMITS_V1 as LIMITS,TAVERN_PROMPT_CARD_ORDER_V1,
   TAVERN_PROMPT_POST_ORDER_V1,TAVERN_PROMPT_INSTRUCT_ORDER_V1,
@@ -17,22 +20,6 @@ const readScopes=['card','chat','message','script','global','initial','cache','p
 const helperScopeKinds:Readonly<Record<TavernPromptHelperVariableScopeV1,readonly string[]>>={
   message:['message'],chat:['chat'],character:['card'],preset:['preset'],global:['global'],
 }
-export const TAVERN_PROMPT_TRANSFORM_POLICY_V1=frozen({schemaVersion:1,
-  encoding:'owned-st-legacy-prompt-transform-policy-v1',upstreamCommit:'06bde939fb1e9c4c8d8641d810f0a916b5bce127',
-  unit:'utf16-code-units',limits:LIMITS,macroEngine:'legacy-frozen-read-only',
-  random:'captured-attempt-sha256-stream; pick-chat-content-offset; no-ambient-entropy',
-  scriptOrder:['global','preset','scoped'],capture:'st-callback-full-numeric-and-named-trim-macro',
-  unknown:'selected-refusal-catalog-deferred',outlet:'explicit-read-only-macro-consumption',
-  messageHelpers:{upstreamCommit:'519599bc68247d8e759cc844a983f8f5252941a8',
-    scopes:TAVERN_PROMPT_HELPER_VARIABLE_SCOPES_V1,
-    macros:['get_message_variable','format_message_variable','get_chat_variable','format_chat_variable',
-      'get_character_variable','format_character_variable','get_preset_variable','format_preset_variable',
-      'get_global_variable','format_global_variable'],
-    values:'owned-captured-scopes; path-read; omit-private-subtree',
-    format:'literal-block-YAML; expanded-inline-prefix-indentation'},
-  pipelines:['macro-only','regex-only','macro-then-regex','regex-then-macro'],
-  authority:'consumer-data-only',additionalModelRequests:{normal:0,retry:0,fallback:0},
-})
 export class TavernPromptTransformErrorV1 extends Error {
   readonly diagnostic:TavernPromptTransformDiagnosticV1
   constructor(code:string,limit:TavernPromptTransformDiagnosticV1['limit']=null) {
@@ -98,12 +85,12 @@ function scopeBinding(scope:unknown,allowed:readonly string[]):void {
   text(scope.ownerId)
 }
 function macroSnapshot(x:unknown):asserts x is TavernPromptMacroSnapshotV1 {
-  const deferred=object(x)&&Object.hasOwn(x,'deferredMacros'),
+  const preserveUnknown=object(x)&&Object.hasOwn(x,'preserveUnknownMacros'),
     deferredFamilies=object(x)&&Object.hasOwn(x,'deferredMacroFamilies'),
     variableScopes=object(x)&&Object.hasOwn(x,'variableScopes'),
     random=object(x)&&Object.hasOwn(x,'random')
   exact(x,['schemaVersion','engine','authority','sourceSnapshotSha256','names','card','input','instruct','dynamic','registered',
-    'localVariables','globalVariables','outlets','post','characterOverrides',...deferred?['deferredMacros']:[],
+    'localVariables','globalVariables','outlets','post','characterOverrides',...preserveUnknown?['preserveUnknownMacros']:[],
     ...variableScopes?['variableScopes']:[],...random?['random']:[],...deferredFamilies?['deferredMacroFamilies']:[]])
   if(x.schemaVersion!==1||!member(x.engine,['legacy','experimental'])
     ||x.authority!=='consumer-data-only'||!hash(x.sourceSnapshotSha256))fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
@@ -113,7 +100,7 @@ function macroSnapshot(x:unknown):asserts x is TavernPromptMacroSnapshotV1 {
   // above retain that explicit negative fact, including its null hashes.
   if(x.input.key!=='input')fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
   for(const key of ['instruct','dynamic','registered','localVariables','globalVariables','outlets','post'])bindings(x[key])
-  if(deferred){list(x.deferredMacros);for(const name of x.deferredMacros)text(name,256)}
+  if(preserveUnknown&&typeof x.preserveUnknownMacros!=='boolean')fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
   if(deferredFamilies){list(x.deferredMacroFamilies,1)
     if(x.deferredMacroFamilies.some(name=>name!=='ejs-named-queue-outlet'))fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')}
   if(variableScopes) {
@@ -245,11 +232,6 @@ export async function applyTavernPromptTransformsV1(value:unknown,
     schemaVersion:1,code:'PROMPT_TRANSFORM_CANCELLED',entryKey:null,ruleId:null,macro:null,limit:null,
   }]})
   return frozen(result)
-}
-function countInputChars(input:unknown):number {
-  if(typeof input==='string')return input.length
-  if(!input||typeof input!=='object')return 0
-  return Object.entries(input).reduce((sum,[key,value])=>sum+key.length+countInputChars(value),0)
 }
 /** Data-integrity admission only. Caller's actual Source/current owner must
  * still authorize consuming the matching entry; this function cannot do so. */

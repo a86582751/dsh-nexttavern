@@ -33,6 +33,7 @@ export function createRoleplayStoryTextReader(capture, messageVersion = recordSh
                     return [[index, text]];
                 }));
             }, current: () => accepted.current(),
+            ...accepted.diagnostic ? { diagnostic: (seq, message, versionSha256) => accepted.diagnostic({ seq, messageId: message.id, versionSha256: versionSha256 ?? messageVersion(message) }) } : {},
         };
     };
 }

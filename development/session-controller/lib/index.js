@@ -94,22 +94,39 @@ import { errorChain, ReasoningEffortId } from 'dsh-nexttavern-native-llm';
 import { canOpenNativePath, nativeFileManager, nativeFileApplications, openNativeFileApplication, openNativeAssociatedPath, revealNativePath } from '@deepseek-ai/dsh-native-command';
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query';
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
+import { TYPERT } from './typert.js';
 import { ApiSessionAgentController, inspectApiSession, } from './agent.js';
 import { SessionCommandController } from './commands.js';
 import { SessionControlController } from './control.js';
 import { SessionHistoryController } from './history.js';
 import { SessionFileReferences } from '@deepseek-ai/dsh-api-session-controller';
 import { ApiSessionList } from './list.js';
-import { buildModelCatalog } from '@deepseek-ai/dsh-api-session-controller';
-// The published package re-exports buildModelCatalog but not the credential
-// probe, so that one adapter stays vendored from the same fixed upstream.
-import { hasProviderApiKey } from './catalog.js';
-import { installModelSelectionProjection } from './model-selection-projection.js';
+import { buildModelCatalog, hasProviderApiKey } from './catalog.js';
 import { SessionSkillCatalog } from '@deepseek-ai/dsh-api-session-controller';
 import { SessionMediaReferences } from './media-references.js';
 import { ArchivedSessionGate } from './archived-session-gate.js';
 export { ApiSessionNotFound } from './agent.js';
 export { SessionFileReferences, SessionSkillCatalog } from '@deepseek-ai/dsh-api-session-controller';
+// Session Remotes use the same request resource rule as the official controller.
+function resolveSessionResource({ args, parameters }) {
+    const direct = parameters.find(parameter => parameter.name === 'sessionId' || parameter.wire === 'sessionId');
+    if (direct)
+        return args[direct.wire];
+    for (const parameter of parameters) {
+        const request = args[parameter.wire];
+        if (!request || typeof request !== 'object')
+            continue;
+        const { sessionId, address } = request;
+        if (sessionId === undefined && address === undefined)
+            continue;
+        if (sessionId !== undefined && address !== undefined)
+            throw Error('Session resource request supplies both sessionId and address');
+        if (address)
+            return address.kind === 'session' ? address.sessionId : address.childSessionId;
+        return sessionId;
+    }
+    return undefined;
+}
 /** Host service backing the generated `ctx.remote.session` namespace. */
 let SessionController = (() => {
     let _classSuper = TypertRemoteService;
@@ -185,6 +202,7 @@ let SessionController = (() => {
             'fileUploads',
             'fs',
             'llm',
+            'remoteAccess',
             'sessions',
             'sessionProjections',
             'sessionQuery',
@@ -212,7 +230,15 @@ let SessionController = (() => {
          */
         constructor(ctx, config, internals = {}) {
             super(ctx, 'sessionController', { namespace: 'session' });
-            installModelSelectionProjection(ctx);
+            ctx.typert.resources.register('session', { resolve: resolveSessionResource });
+            // The product subtree mounts the owned package by file URL. The host's
+            // Typert loader discovers package-name rows, so this provider owns its
+            // contribution for the same lifetime as the Service backing it.
+            ctx.typert.register({
+                ...TYPERT,
+                invocations: TYPERT.invocations.filter(descriptor => descriptor.service !== 'sessionController'
+                    || typeof Reflect.get(SessionController.prototype, descriptor.implementation ?? descriptor.method) === 'function'),
+            });
             this.agents = new ApiSessionAgentController(ctx);
             this.commands = new SessionCommandController(ctx, this.agents, process.cwd());
             ctx.effect(() => () => this.commands.disposeUserSourceOperations(), 'session-controller: user Source owners');
@@ -268,11 +294,6 @@ let SessionController = (() => {
                 ctx.emit('api-session/error', agent.id, errorChain(error));
             });
             ctx.on('session/event', (session, event) => {
-                if (event.type === 'request/header') {
-                    const agent = ctx.agents.get(session.id);
-                    if (agent?.session === session)
-                        this.agents.consumeSelection(agent, event.data.header.config.provider, event.data.header.config.model, event.data.header.config.reasoningEffort);
-                }
                 if (event.type !== 'user/message' || event.data.source.kind !== 'user')
                     return;
                 ctx.emit('api-session/activity', session.id, event.time);
@@ -334,7 +355,8 @@ let SessionController = (() => {
          * @returns visible Session summaries ordered by activity.
          */
         async list(_request, signal) {
-            return { items: await this.listState.list(signal) };
+            const items = await this.listState.list(signal);
+            return { items: items.filter(item => this.ctx.remoteAccess.allows({ kind: 'session', id: item.sessionId })) };
         }
         /**
          * Search visible Session content without resuming an Agent.
@@ -342,8 +364,9 @@ let SessionController = (() => {
          * @param signal - cancellation for list and search reads.
          * @returns authorized bounded Session search results.
          */
-        search(request, signal) {
-            return this.listState.search(request.query, signal);
+        async search(request, signal) {
+            const result = await this.listState.search(request.query, signal);
+            return { ...result, items: result.items.filter(item => this.ctx.remoteAccess.allows({ kind: 'session', id: item.sessionId })) };
         }
         /**
          * Create or idempotently adopt one ordinary Session.
@@ -483,6 +506,10 @@ let SessionController = (() => {
         fork(request) {
             return this.commands.fork(request);
         }
+        /** Local product preparation, retaining the ordinary Native event cut. */
+        registerOrdinaryForkPreparation(prepare) {
+            return this.commands.registerOrdinaryForkPreparation(prepare);
+        }
         /** Reserve lineage before native publication; deliberately not a Remote endpoint. */
         forkPrepared(request, beforePublish) {
             if (typeof beforePublish !== 'function')
@@ -575,7 +602,8 @@ let SessionController = (() => {
                     if (projections === undefined) {
                         throw new RemoteError('session/projections-unavailable', 'Session projections are unavailable', {});
                     }
-                    return { asOfSeq: projections.asOfSeq, values: projections.values };
+                    return { kind: 'sequenced', asOfSeq: projections.asOfSeq,
+                        values: projections.values };
                 }
                 catch (e_2) {
                     env_2.error = e_2;
@@ -602,8 +630,17 @@ let SessionController = (() => {
          * @param signal - cancellation owned by the Remote stream carrier.
          * @returns one complete baseline followed by live replacement frames.
          */
-        control(signal) {
-            return this.controlState.control(signal);
+        async *control(signal) {
+            for await (const frame of this.controlState.control(signal)) {
+                if (frame.type === 'baseline') {
+                    const projections = Object.fromEntries(Object.entries(frame.value.projections)
+                        .filter(([id]) => this.ctx.remoteAccess.allows({ kind: 'session', id: id })));
+                    yield { type: 'baseline', value: { ...frame.value, projections } };
+                }
+                else if (this.ctx.remoteAccess.allows({ kind: 'session', id: frame.sessionId })) {
+                    yield frame;
+                }
+            }
         }
     };
 })();

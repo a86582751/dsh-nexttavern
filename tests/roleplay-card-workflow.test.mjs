@@ -108,6 +108,22 @@ try {
   assert.equal(concurrent[0].id,concurrent[1].id,'concurrent starts share one stored identity')
 
   {
+    let completed
+    const f=exportFixture(workspace,{driveStructuredImport:async(_session,job)=>{
+      const result={importId:'completed-import',resourceId:'completed-resource'}
+      await f.workflows.completeCardWorkflow(f.session,{workflowId:job.id,importId:result.importId,
+        status:'active',rawSha256:job.source.sha256},result)
+      completed=structuredClone(f.branch.get(f.workflows.cardWorkflowKey(job.id)))
+      await new Promise(resolve=>setTimeout(resolve,5))
+      return result
+    }})
+    const job=await f.workflows.beginCardWorkflow(f.session,'card-import','card.json',undefined,'completed-receipt')
+    await f.workflows.resumeCardWorkflows(f.session)
+    const replay=await f.workflows.beginCardWorkflow(f.session,'card-import','card.json',undefined,'completed-receipt')
+    assert.deepEqual(replay,completed,'the outer driver and resumed request retain the first completed receipt')
+  }
+
+  {
     const f=exportFixture(workspace)
     const exported=await f.beginExport()
     assert.equal(exported.source.sha256,f.sha256,'export uses captured edit DATA, independent of strict story Source')

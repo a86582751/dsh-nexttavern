@@ -170,6 +170,7 @@ export function createOpeningVariantContinuationReader(read) {
 export function createOpeningVariantActivation(deps) {
     const intentKey = (sid, id) => `${sid}__opening-variant-activation-intent-${id}`;
     const operationKey = (id) => `fork-op-${id}`;
+    const pendingSources = new Map();
     async function put(key, value) {
         try {
             await deps.branch.put(key, value);
@@ -188,7 +189,20 @@ export function createOpeningVariantActivation(deps) {
             throw Error('OPENING_VARIANT_ACTIVATION_INTENT_UNPROVEN');
         return intent;
     }
-    async function activate(handoff, authorizeParent) {
+    function preparedOpening(intent, packet) {
+        return { kind: 'prepared', operationId: packet.operationId, childSessionId: intent.reservation.childSessionId, index: packet.candidateIndex };
+    }
+    function readPrepared(operation) {
+        const intent = readIntent(intentKey(operation.sessionId, operation.operationId));
+        if (intent?.phase !== 'source-prepared' || !intent.reservation)
+            return;
+        const packet = validateOpeningVariantActivationPacket(deps.branch.get(intent.packetRef.key));
+        if (recordSha256(packet) !== intent.packetRef.sha256 || packet.operationSha256 !== operation.operationSha256
+            || packet.continuationRef !== null)
+            throw Error('OPENING_VARIANT_ACTIVATION_PACKET_UNPROVEN');
+        return preparedOpening(intent, packet);
+    }
+    async function activate(handoff, authorizeParent, signal, resumeSource = false) {
         const { operation, packetRef } = handoff, key = intentKey(operation.sessionId, operation.operationId), forkId = openingVariantForkOperationId(operation.sessionId, operation.operationId);
         return deps.withLock(`opening-variant:${operation.sessionId}:${operation.operationId}`, async () => {
             await authorizeParent();
@@ -208,7 +222,7 @@ export function createOpeningVariantActivation(deps) {
                 if (!intent.reservation || !intent.seedRef || !deps.reservationCurrent(intent.reservation, forkId)
                     || recordSha256(deps.branch.get(intent.seedRef.key)) !== intent.seedRef.sha256)
                     throw Error('OPENING_VARIANT_ACTIVATION_COMPLETION_UNPROVEN');
-                return { sessionId: intent.reservation.childSessionId };
+                return { sessionId: intent.reservation.childSessionId, ...intent.swipe ? { swipe: intent.swipe } : {} };
             }
             const parent = await deps.resolve(packet.parentSessionId);
             if (!parent)
@@ -222,6 +236,7 @@ export function createOpeningVariantActivation(deps) {
                 if (!packet.source.transactionId)
                     throw Error('OPENING_VARIANT_SOURCE_UNPROVEN');
                 branch = { schemaVersion: 2, operationId: forkId, kind: 'opening-variant', promptText: '',
+                    ...packet.continuationRef === null ? { carryOpeningChat: true } : {},
                     anchor: { sourceSessionId: packet.parentSessionId, sourceAssistantMessageId: packet.opening.messageId,
                         sourceAssistantSeq: packet.opening.nativeSeq, sourceAssistantTurn: original.data.turn,
                         sourceTurn: original.data.turn, previousTurnEndSeq: null, nativeForkBeforeFirst: true, expectedSeedLength: 0,
@@ -253,8 +268,48 @@ export function createOpeningVariantActivation(deps) {
             const actual = await deps.resolve(created.sessionId);
             if (!actual || actual.session.header.parentSession !== packet.parentSessionId || actual.session.inheritedEventCount !== 0)
                 throw Error('OPENING_VARIANT_CHILD_UNAVAILABLE');
-            await deps.bootstrap(branch, actual.session, packet);
+            const childOperation = branch;
+            await deps.bootstrap(childOperation, actual.session, packet);
             await authorizeParent();
+            const checkReservation = () => {
+                if (!deps.reservationCurrent(reservation, forkId))
+                    throw Error('OPENING_VARIANT_RESERVATION_CHANGED');
+            };
+            const complete = async (nativeTurn, seedRef, swipe) => {
+                await authorizeParent();
+                checkReservation();
+                await deps.publishNavigation(childOperation, actual.session);
+                const { intentSha256: _committed, ...committedBody } = intent;
+                intent = sealMvuSchemaStoryFact({ ...committedBody, phase: 'completed', nativeTurn, seedRef,
+                    ...swipe ? { swipe } : {} }, 'intentSha256');
+                await put(key, intent);
+                return { sessionId: actual.session.id, ...swipe ? { swipe } : {} };
+            };
+            if (!packet.continuationRef) {
+                if (intent.phase !== 'source-prepared') {
+                    if (!await deps.requiresBrowserSource(actual.session.id, packet.candidateIndex)) {
+                        const initialized = await deps.initializeOriginal(packet, actual.session);
+                        return complete(initialized.nativeTurn, initialized.intentRef, initialized.swipe);
+                    }
+                    const { intentSha256: _reserved, ...reservedBody } = intent;
+                    intent = sealMvuSchemaStoryFact({ ...reservedBody, phase: 'source-prepared' }, 'intentSha256');
+                    await put(key, intent);
+                    return preparedOpening(intent, packet);
+                }
+                if (!resumeSource)
+                    return preparedOpening(intent, packet);
+                const sid = actual.session.id;
+                const source = { sourceSessionId: packet.parentSessionId, index: packet.candidateIndex, pending: true, signal,
+                    current: () => pendingSources.get(sid) === source && !signal?.aborted && deps.reservationCurrent(reservation, forkId) };
+                pendingSources.set(sid, source);
+                try {
+                    const initialized = await deps.initializeOriginal(packet, actual.session);
+                    return await complete(initialized.nativeTurn, initialized.intentRef, initialized.swipe);
+                }
+                finally {
+                    pendingSources.delete(sid);
+                }
+            }
             const literal = { operationId: packet.operationId, messageId: `opening-variant-${packet.operationId}`, text: packet.renderedText,
                 source: { kind: 'programmatic', schemaVersion: 1, producer: 'dsh-nexttavern',
                     origin: `card-opening:${packet.source.importId}`, operationId: packet.operationId } }, lookup = await actual.agent.lookupProgrammaticAssistantCommit(literal);
@@ -272,22 +327,12 @@ export function createOpeningVariantActivation(deps) {
             const { intentSha256: _prior, ...body } = intent;
             intent = sealMvuSchemaStoryFact({ ...body, phase: 'native-committed', nativeTurn: turn }, 'intentSha256');
             await put(key, intent);
-            const native = deps.readNativeReceipt(packet, actual.session, turn), checkReservation = () => {
-                if (!deps.reservationCurrent(reservation, forkId))
-                    throw Error('OPENING_VARIANT_RESERVATION_CHANGED');
-            };
+            const native = deps.readNativeReceipt(packet, actual.session, turn);
             checkReservation();
             await authorizeParent();
             const seed = await deps.publishChild(packetRef, packet, actual.session, native, checkReservation);
-            await authorizeParent();
-            checkReservation();
-            await deps.publishNavigation(branch, actual.session, seed);
-            const { intentSha256: _committed, ...committedBody } = intent;
-            intent = sealMvuSchemaStoryFact({ ...committedBody, phase: 'completed',
-                seedRef: { key: openingVariantActivationSeedKey(actual.session.id), sha256: recordSha256(seed) } }, 'intentSha256');
-            await put(key, intent);
-            return { sessionId: actual.session.id };
+            return complete(turn, { key: openingVariantActivationSeedKey(actual.session.id), sha256: recordSha256(seed) });
         });
     }
-    return { activate };
+    return { activate, readPrepared, capturePendingSource: (sid) => pendingSources.get(sid) };
 }

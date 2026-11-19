@@ -30,7 +30,7 @@ const CHAT_NODE_INJECT = {
 /** Services required by the Chat target and its presentation registrations. */
 export const inject = [
     'slots', 'sessions', 'uiWorkspace', 'uiSession', 'uiConversation', 'locale',
-    'configForms', 'remote', 'remote.session', 'sidebarRight',
+    'configForms', 'remote', 'remote.session', 'sidebarRight', 'fileDrag',
 ];
 /**
  * Mount all Chat-owned contributions.
@@ -170,6 +170,7 @@ export function apply(ctx) {
                 const conversation = ctx.uiConversation.binding(binding);
                 return {
                     hooks: { presentation },
+                    fileDrag: ctx.fileDrag.actions,
                     keyedHooks: {
                         chatNode: key => chat.getSnapshot().nodes.source(key),
                         chatNodeProcess: key => chat.getSnapshot().nodes.processSource(key),

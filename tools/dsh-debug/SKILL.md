@@ -18,9 +18,10 @@ before the first business GET: do not run `doctor`, `state`, or open the browser
 first. Read the exact session directly with `mvu-state --no-wake` or
 `state --no-wake` so diagnostics do not prewarm the host.
 Canonical operations source remains in the DSH maintenance repository.
-The maintained source is CLI 1.8.0 for the current 0.3 development line and
-fixed Harness 0.1.7-rc.2 contract. `alpha3` names this repository source tree,
-not the host version. Check `dsh-debug --version` before using newer commands.
+The maintained source is CLI 1.8.0 for the 0.3 development line. On Harness
+0.2.2-rc.5, `create` and `state --no-wake` have been verified on Web and official
+Windows Desktop. The Web test used the owner cookie issued at launch. Check
+`dsh-debug --version` before using newer commands.
 The target is selectable: `init --ssh-host ... --ssh-key ... [--ssh-port N]`
 keeps the remote contract, and `init --target local [--host H] [--scheme S]
 --port PORT [--cookie-file FILE] --dsh-home DIR --harness-root DIR` runs the

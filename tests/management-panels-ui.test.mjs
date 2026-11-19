@@ -20,6 +20,12 @@ function controls(node,disabled=false,out=[]){if(Array.isArray(node))node.forEac
 function panels(r,jsonFetch,drafts=new Map(),options={}){return createManagementPanels({React:r.React,jsonFetch,sessionDrafts:drafts,toast(){},confirmWithDialog:async()=>true,btn:(label,onClick,extra)=>r.React.createElement('button',{onClick,...extra},label),...options})}
 const modelReply={catalog:[],main:{provider:'p',model:'main'},global:{revision:1},session:{revision:1},effective:{}}
 {
+ const r=hooks(), destinations=[]
+ r.mount(panels(r,async()=>({})).AdvancedPanel,{navigate:tab=>destinations.push(tab),openImages(){},openMusic(){}})
+ button(r,'世界书语义检索').props.onClick()
+ assert.deepEqual(destinations,['worldbook-retrieval'])
+}
+{
  const ruby=hooks(),drafts=new Map(),posts=[]
  const otherDraft={dirty:true,baseRevision:1,settings:{allMain:false,routes:{memory:{provider:'p',model:'unsaved'}}}}
  drafts.set('story:models-session',otherDraft)
@@ -148,14 +154,14 @@ for(const fault of [
     selectMainModel:async(sessionId,route)=>{selections.push({sessionId,route});main=compatible}
   })
   r.mount(p.ModelPanel,{sessionId:'story'});await r.flush()
-  assert.match(text(r.seat),/不支持.*助手.*系统.*位置/,'default Messages route explains its actual limitations')
+  assert.match(text(r.seat),/渠道是否接受由实际响应决定/)
   const choose=nodes(r.seat).find(n=>n?.type==='select'&&n.props['aria-label']==='当前对话主模型')
   assert.ok(choose,'the roleplay panel can choose the actual main route without YAML')
   choose.props.onChange({target:{value:'relay-chat\u0000deepseek-flash'}});await r.flush()
   assert.deepEqual(selections,[],'choosing a route does not silently dispatch or save it')
   await button(r,'切换当前对话主模型').props.onClick();await r.flush()
   assert.deepEqual(selections,[{sessionId:'story',route:{provider:'relay-chat',model:'deepseek-flash'}}])
-  assert.match(text(r.seat),/支持全部消息角色与位置/)
+  assert.doesNotMatch(text(r.seat),/不支持.*消息的位置插入|已确认支持全部角色/)
   assert.match(text(r.seat),/切换.*不会自动重发/)
   assert.ok(requests.every(({init})=>!init),'main selection uses the host selection operation, not auxiliary-purpose policy')
   r.unmount()

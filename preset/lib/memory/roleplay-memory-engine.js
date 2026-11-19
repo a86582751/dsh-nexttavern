@@ -113,17 +113,19 @@ export async function apply(ctx, config = {}) {
     function effectiveHistory(session, view = captureMemoryStoryText(session, getEngine()?.captureStoryText)) {
         return view.rows(selectedStoryHistorySnapshot(session));
     }
-    function notesForSession(session, record, entries = effectiveHistory(session)) {
+    function notesForSession(session, record, entries) {
+        if (record == null)
+            return null;
+        entries ??= effectiveHistory(session);
         return directorNotesForBranch(record, session, entries, memoryStorySourceKeys(entries));
     }
     function cadenceForSession(session) {
         const engine = getEngine(), entries = effectiveHistory(session);
         return memoryNotesCadence(session, engine?.memoryHead?.(session.id), Number(engine?.settings?.(session.id)?.autoNotesEveryTurns) || cfg.autoNotesEveryTurns, entries, memoryStorySourceKeys(entries));
     }
-    function memoryForSession(session, storyText) {
+    function memoryLedgerForSession(session, checkpoint = checkpointSummaryFromSurface(session)) {
         const engine = getEngine();
         const storedRecord = engine?.memoryHead?.(session.id) ?? null;
-        const checkpoint = checkpointSummaryFromSurface(session);
         const projected = filterMemoryRecordForBranch(storedRecord, session, checkpoint);
         if (!projected)
             return null;
@@ -142,8 +144,13 @@ export async function apply(ctx, config = {}) {
         return {
             ...projected,
             archives,
-            directorNotes: notesForSession(session, projected, effectiveHistory(session, storyText)),
         };
+    }
+    function memoryForSession(session, storyText) {
+        const projected = memoryLedgerForSession(session);
+        if (!projected)
+            return null;
+        return { ...projected, directorNotes: notesForSession(session, projected, effectiveHistory(session, storyText)) };
     }
     const summarizeDetailed = createMemorySummarizer(ctx, { agreementElements: 1 });
     // ── compaction 服务 ────────────────────────────────────────────────────────
@@ -246,21 +253,21 @@ export async function apply(ctx, config = {}) {
         memoryProjection(session) {
             if (!session || !isRoleplaySession(session))
                 return null;
-            const storyText = captureMemoryStoryText(session, getEngine()?.captureStoryText);
-            const projected = memoryForSession(session, storyText);
+            const checkpoint = checkpointSummaryFromSurface(session);
+            const projected = memoryLedgerForSession(session, checkpoint);
             if (!projected)
                 return null;
+            const storyText = captureMemoryStoryText(session, getEngine()?.captureStoryText);
             const history = effectiveHistory(session, storyText);
             const live = new Set([...surfaceSeqsOf(session), ...history.map(entry => entry.seq)]);
             const scoped = (items) => (Array.isArray(items) ? items : []).filter(item => {
                 const seq = provenanceSeqOf(item);
                 return seq !== null && live.has(seq);
             });
-            const checkpoint = checkpointSummaryFromSurface(session);
             return { ...projected, summary: checkpoint?.text ?? '',
                 deltas: scoped(projected.deltas), pendingConfirmations: scoped(projected.pendingConfirmations),
                 archiveDigests: scoped(projected.archiveDigests),
-                directorNotes: notesForSession(session, getEngine()?.memoryHead?.(session.id), history) };
+                directorNotes: notesForSession(session, projected, history) };
         },
         async prepareForTurn(agent, signal) {
             const session = agent?.session;

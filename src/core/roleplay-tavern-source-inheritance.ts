@@ -20,7 +20,8 @@ import {inheritanceDataV1,inheritanceDataSha256V1,inheritanceFailV1,inheritanceS
   tavernSourceMigrationKeyV1,tavernSourceProgramAbsenceOpeningKeyV1,tavernSourceFrozenPromptScopeKeyV1,
   TavernSourceInheritanceFailureV1,TAVERN_SOURCE_INHERITANCE_BOUNDS_V1}
   from './roleplay-tavern-source-inheritance-data.js'
-import type {ForkOperation} from './roleplay-worldline-types.js'
+import {tavernSourceOrdinaryScopeBirthKeyV1} from './roleplay-tavern-source-inheritance-data.js'
+import type {ForkPreparationOperation} from './roleplay-worldline-types.js'
 import type {ForkReservation} from './roleplay-branch-routes-types.js'
 import type {TavernSourceInheritanceDepsV1,TavernSourceInheritanceOwnerV1,TavernSourcePreparedV1,
   TavernSourceApplyIntentV1,TavernSourceNativeCutV1,TavernSourceCommitV1,TavernSourceReadyV1,
@@ -219,6 +220,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     }else if(p.originalAbsenceProof!==null)inheritanceFailV1('SOURCE_INHERITANCE_ORIGINAL_CHANGED')
   }
   function assertPreparedOpening(p:TavernSourcePreparedV1,budget:TavernSourceReadBudgetV1) {
+    if(p.authorChatScopeBirthV1!==undefined)store.readRef(p.authorChatScopeBirthV1.recordRef,budget)
     if(p.frozenProgramAbsenceOpeningV1!==undefined) {
       const frozen=validateFrozenProgramAbsenceOpeningV1(p.frozenProgramAbsenceOpeningV1)
       if(p.frozenNonNumericalOpeningV1!==undefined||!deps.assertProgramAbsenceOpening)
@@ -301,7 +303,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       })
     }
   }
-  async function prepareSourceInheritance(operation:ForkOperation,reservation:ForkReservation) {
+  async function prepareSourceInheritance(operation:ForkPreparationOperation,reservation:ForkReservation) {
     const {sourceSessionId:parent,childSessionId:child,seedLength}=reservation
     if(operation.anchor.sourceSessionId!==parent||parent===child||!Number.isSafeInteger(seedLength)||seedLength<0)
       inheritanceFailV1('SOURCE_INHERITANCE_OPERATION_CHANGED')
@@ -333,13 +335,19 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         inherited=Number(native.inheritedEventCount)
       if(!Number.isSafeInteger(inherited)||inherited<0||seedLength>events.length)
         inheritanceFailV1('SOURCE_INHERITANCE_NATIVE_CHANGED')
-      const nativeCut:TavernSourceNativeCutV1=operation.anchor.previousTurnEndSeq===null&&!operation.anchor.nativeForkBeforeFirst
+      const anchor=operation.anchor,
+        freshBranch=!('kind' in anchor)&&anchor.previousTurnEndSeq===null&&!anchor.nativeForkBeforeFirst
+      const nativeCut:TavernSourceNativeCutV1=freshBranch
         ?{kind:'reserved-fresh-branch',seedLength:0,parentInheritedEventCount:inherited,
           prefixEncoding:'record-sha256-native-events-prefix-v1',prefixSha256:recordSha256([])}
         :{kind:'native-fork',seedLength,parentInheritedEventCount:inherited,
           prefixEncoding:'record-sha256-native-events-prefix-v1',prefixSha256:recordSha256(events.slice(0,seedLength))}
       if(nativeCut.seedLength!==seedLength)inheritanceFailV1('SOURCE_INHERITANCE_NATIVE_CHANGED')
-      const authorChatForkBasesV3=deps.captureAuthorChatForkBasesV3?.(parent,child,operation.operationId,nativeCut,source)
+      const scopeFork=deps.captureAuthorChatScopeForkV1?.(parent,child,operation.operationId,nativeCut,source),
+        authorChatScopeForkBasesV1=scopeFork?.bases
+      const authorChatForkBasesV3=deps.captureAuthorChatForkBasesV3?.(parent,child,operation.operationId,nativeCut,source,
+        authorChatScopeForkBasesV1,operation.carryOpeningChat)
+      const authorContextForkV1=deps.captureAuthorContextFork?.(source)
       if(authorChatForkBasesV3!==undefined&&!deps.applyAuthorChatForkBasesV3)
         inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
       const frozenNativeCardConversionSeed=deps.captureNativeCardConversionForkSeed?.(parent)
@@ -365,6 +373,8 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         inheritanceFailV1('SOURCE_INHERITANCE_OPENING_UNAVAILABLE')
       const frozenOpening=await store.freezeNonNumericalOpening(parent,child,nativeCut,capturedOpening)
       const frozenProgramAbsence=await store.freezeProgramAbsenceOpening(parent,child,nativeCut,capturedProgramAbsence)
+      const authorChatScopeBirthV1=scopeFork===undefined?undefined:
+        await store.freezeOrdinaryScopeBirth(parent,child,operation.operationId,nativeCut,scopeFork.entries)
       const p:TavernSourcePreparedV1=sealInheritanceDataV1({schemaVersion:1 as const,
         encoding:'native-tavern-source-inheritance-prepared-v1',origin:'core-reservation',operationId:operation.operationId,
         operationKey:`fork-op-${operation.operationId}`,anchorSha256:recordSha256({...operation.anchor,expectedSeedLength:seedLength}),
@@ -376,6 +386,9 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         materialPublications,ancestors,...(frozenOpening===undefined?{}:{frozenNonNumericalOpeningV1:frozenOpening}),
         ...(frozenProgramAbsence===undefined?{}:{frozenProgramAbsenceOpeningV1:frozenProgramAbsence}),
         ...(authorChatForkBasesV3===undefined?{}:{authorChatForkBasesV3}),
+        ...(authorContextForkV1===undefined?{}:{authorContextForkV1}),
+        ...(authorChatScopeForkBasesV1===undefined?{}:{authorChatScopeForkBasesV1}),
+        ...(authorChatScopeBirthV1===undefined?{}:{authorChatScopeBirthV1}),
         ...(frozenNativeCardConversionSeed===undefined?{}:{frozenNativeCardConversionSeedV1:frozenNativeCardConversionSeed}),
         ...(frozenCharacterPrivateV1===undefined?{}:{frozenCharacterPrivateV1})},'preparedSha256')
       assertPreparedData(p)
@@ -481,6 +494,11 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       validatedRecords.push(inheritanceFreezeV1({...row,value:actual as Readonly<Record<string,unknown>>}));return true
     }
     owned(pRef.key,p,true)
+    if(p.authorChatScopeBirthV1!==undefined)owned(tavernSourceOrdinaryScopeBirthKeyV1(sid),p.authorChatScopeBirthV1.record,true)
+    else {
+      const row=observe('branch',tavernSourceOrdinaryScopeBirthKeyV1(sid))
+      if(!row.exists)missingRecords.push(row)
+    }
     const frozen=p.frozenProgramAbsenceOpeningV1,legacy=p.frozenNonNumericalOpeningV1,
       archiveKey=tavernSourceProgramAbsenceOpeningKeyV1(sid),scopeKey=tavernSourceFrozenPromptScopeKeyV1(sid)
     if(frozen?.kind==='program-absence')owned(archiveKey,frozen.record,true)
@@ -777,7 +795,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       await store.putExact('branch',materialRef.key,material)
       if(!inheritanceSameV1(store.inventory(sid),a.writes.map(write=>write.next)))
         inheritanceFailV1('SOURCE_INHERITANCE_CHILD_CONFLICT')
-      if(p.authorChatForkBasesV3!==undefined||p.frozenNativeCardConversionSeedV1!==undefined
+      if(p.authorChatForkBasesV3!==undefined||p.authorContextForkV1!==undefined||p.frozenNativeCardConversionSeedV1!==undefined
         ||p.frozenCharacterPrivateV1!==undefined) {
         const sourceCurrent=()=>{
           try{assertOperation(p);assertChildNative(p,a);return true}catch{return false}
@@ -785,6 +803,10 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         if(p.authorChatForkBasesV3!==undefined) {
           if(!deps.applyAuthorChatForkBasesV3)inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
           await deps.applyAuthorChatForkBasesV3(p.authorChatForkBasesV3,pRef,p,sourceCurrent)
+        }
+        if(p.authorContextForkV1!==undefined) {
+          if(!deps.applyAuthorContextFork)inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
+          await deps.applyAuthorContextFork(p.authorContextForkV1,p,sourceCurrent)
         }
         if(p.frozenNativeCardConversionSeedV1!==undefined) {
           if(!deps.applyNativeCardConversionForkSeed)inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
@@ -843,6 +865,25 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         new TavernSourceInheritanceFailureV1('SOURCE_INHERITANCE_INVALID')
       return {kind:'refused' as const,code:failure.code,missingEvidence:failure.missingEvidence}
     }
+  }
+  function readCommittedParentSessionId(sid:string):string|undefined {
+    if(consumerSource?.prepared.childSessionId===sid)return consumerSource.prepared.parentSessionId
+    const meta=branch.get(`${sid}__meta`)
+    if(!inheritanceObjectV1(meta)||meta.inheritanceState!=='ready'
+      ||!inheritanceObjectV1(meta.sourceInheritance))return
+    const key=tavernSourceReadyKeyV1(sid),budget=sourceReadBudgetV1(),
+      ready=store.readKey(key,budget) as TavernSourceReadyV1,
+      readyRef={key,sha256:budget.refs.get(key)!.sha256}
+    if(ready.childSessionId!==sid
+      ||!inheritanceSameV1(meta.sourceInheritance,{...ready.binding,readyRef}))
+      inheritanceFailV1('SOURCE_INHERITANCE_NOT_READY')
+    // Publication already bound this parent to the closed transaction. Settings
+    // use that historical relationship without reopening its execution scope.
+    const parent=ready.metadata.inheritedFrom??ready.metadata.freshBranchFrom
+    if(typeof parent!=='string'||meta.inheritedFrom!==ready.metadata.inheritedFrom
+      ||meta.freshBranchFrom!==ready.metadata.freshBranchFrom)
+      inheritanceFailV1('SOURCE_INHERITANCE_NOT_READY')
+    return parent
   }
   function inspectLegacyActual(sid:string) {
     const facts={meta:store.readRow('branch',`${sid}__meta`),pointer:store.readRow('branch',`${sid}__import-active`),
@@ -927,7 +968,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
   return {prepareSourceInheritance,readPreparedSourceInheritance,assertOwnedRowFactsCurrent,withOwnedRowFacts,
     readPreparedFrozenSourceRef:sid=>frozenInheritanceRefV1(readPreparedSourceInheritance(sid)),
     readCommittedStaticSourceInheritance:sid=>readStatic(sid,true),
-    readCommittedSourceLineage,
+    readCommittedSourceLineage,readCommittedParentSessionId,
     readFrozenParent:(ref:TavernSourceInheritanceRefV1,subjectSessionId?:string)=>{
       assertNoRowFactsReentry()
       const budget=sourceReadBudgetV1(),p=validatePreparedInheritanceV1(store.readRef(ref,budget)),

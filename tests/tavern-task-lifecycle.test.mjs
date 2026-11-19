@@ -419,7 +419,10 @@ for(const background of [false,true]) {
   selection:{execution:'inline',main:route,actualRoute:route},maxTokens:321,tools:['rp_history'],timeoutMs:1000,
   onAdmission:job=>backgroundAdmissions.push(job),onResult:job=>delivered.push(job)})
  assert.equal(backgroundResult,'background notes');assert.equal(children.length,1)
- assert.equal(children[0].parent,agent);assert.equal(children[0].agentOptions.maxTokens,321);assert.deepEqual(children[0].toolFilter.allow,['rp_history'])
+ assert.equal(children[0].parent,agent)
+ assert.ok(Object.hasOwn(children[0].agentOptions,'maxTokens'))
+ assert.equal(children[0].agentOptions.maxTokens,undefined,'background notes clear the old task output ceiling')
+ assert.deepEqual(children[0].toolFilter.allow,['rp_history'])
  assert.equal(backgroundAdmissions.length,1);assert.equal(backgroundAdmissions[0].id,delivered[0].id);assert.equal(delivered[0].status,'completed')
  assert.equal(delivered[0].source.preparationId,undefined,'background memory is not fenced to foreground preparation')
  assert.equal(delivered[0].input.taskStage,'background-notes')

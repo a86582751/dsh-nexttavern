@@ -16,7 +16,9 @@
       "additionalProperties": {"$ref": "community-presets.v1.json#/$defs/planPack"}
     },
     "regexes": {"type": "array", "items": {"$ref": "#/$defs/regexLibraryEntry"}},
-    "configurationWrites": {"type": "array", "items": {"$ref": "#/$defs/configurationWrite"}}
+    "configurationWrites": {"type": "array", "items": {"$ref": "#/$defs/configurationWrite"}},
+    "authorOperations": {"type": "object", "additionalProperties": {"$ref": "#/$defs/authorOperationReceipt"}},
+    "authorPending": {"$ref": "#/$defs/authorPending"}
   },
   "$defs": {
     "json": {"$ref": "community-presets.v1.json#/$defs/json"},
@@ -32,12 +34,57 @@
       "type": "object",
       "additionalProperties": {"type": "string"}
     },
+    "authorPending": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "operationId", "update"],
+      "properties": {
+        "schemaVersion": {"const": 1},
+        "operationId": {"type": "string"},
+        "update": {
+          "type": "object", "additionalProperties": false,
+          "required": ["expectedRoot", "operationId", "values", "cause"],
+          "properties": {
+            "operationId": {"type": "string"},
+            "values": {"$ref": "#/$defs/jsonRecord"},
+            "cause": {"$ref": "#/$defs/json"},
+            "expectedRoot": {
+              "type": "object", "additionalProperties": false,
+              "required": ["address", "head"],
+              "properties": {
+                "address": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["schemaVersion", "profileId", "scope", "presetId"],
+                  "properties": {
+                    "schemaVersion": {"const": 1},
+                    "profileId": {"type": "string"},
+                    "scope": {"const": "preset"},
+                    "presetId": {"type": "string"}
+                  }
+                },
+                "head": {
+                  "oneOf": [
+                    {"type": "null"},
+                    {"type": "object", "additionalProperties": false,
+                      "required": ["key", "sha256"],
+                      "properties": {
+                        "key": {"type": "string"},
+                        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+                      }}
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "selection": {
       "type": "object",
       "additionalProperties": false,
       "required": ["presetId", "applySampling", "prompts", "features", "regexes", "regexOrder", "contents"],
       "properties": {
         "presetId": {"type": ["string", "null"]},
+        "current": {"$ref": "community-presets.v1.json"},
         "applySampling": {"type": "boolean"},
         "prompts": {"$ref": "#/$defs/booleanRecord"},
         "features": {"$ref": "#/$defs/jsonRecord"},
@@ -55,6 +102,45 @@
           ]
         },
         "contents": {"$ref": "#/$defs/stringRecord"}
+      }
+    },
+    "authorOperationReceipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "operationId", "payloadSha256", "origin", "target", "result", "assignedIds", "revision"],
+      "properties": {
+        "schemaVersion": {"const": 1},
+        "operationId": {"type": "string"},
+        "payloadSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "origin": {
+          "type": "object", "additionalProperties": false,
+          "required": ["profileId", "sessionId", "realmId", "groupId", "sourceRecordSessionId", "importId"],
+          "properties": {
+            "profileId": {"type": "string"}, "sessionId": {"type": "string"},
+            "realmId": {"type": "string"}, "groupId": {"type": "string"},
+            "sourceRecordSessionId": {"type": ["string", "null"]}, "importId": {"type": ["string", "null"]}
+          }
+        },
+        "target": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "object", "additionalProperties": false, "required": ["kind", "presetId"],
+              "properties": {"kind": {"const": "saved"}, "presetId": {"type": "string"}}},
+            {"type": "object", "additionalProperties": false, "required": ["kind", "conversationId", "presetId"],
+              "properties": {"kind": {"const": "in-use"}, "conversationId": {"type": "string"}, "presetId": {"type": "string"}}},
+            {"type": "object", "additionalProperties": false, "required": ["kind"],
+              "properties": {"kind": {"const": "global-regexes"}}}
+          ]
+        },
+        "result": {
+          "oneOf": [
+            {"type": "object", "additionalProperties": false, "required": ["kind", "value"],
+              "properties": {"kind": {"const": "boolean"}, "value": {"type": "boolean"}}},
+            {"type": "object", "additionalProperties": false, "required": ["kind"],
+              "properties": {"kind": {"const": "void"}}}
+          ]
+        },
+        "assignedIds": {"$ref": "#/$defs/stringRecord"},
+        "revision": {"type": "integer", "minimum": 0}
       }
     },
     "regexLibraryEntry": {

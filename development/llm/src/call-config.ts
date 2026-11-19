@@ -1,13 +1,14 @@
 /**
  * Conversation call configuration and freeze utilities. Provider routing,
- * model, reasoning effort, and sampling values are request-header state that
+ * model, reasoning effort, sampling and response controls are request-header state that
  * can affect cache reuse; request waterfalls replace them and the loop logs
  * changed snapshots instead of allowing silent per-call drift.
  * @module dsh-llm/call-config
  */
 
-import type { GenerateOptions } from './types.js'
+import type { GenerateOptions,LlmGenerationOptions } from './types.js'
 import type { ReasoningEffortId } from './brand.js'
+import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import { isAgentLoopRequest } from './host-abi.js'
 export { isAgentLoopRequest, markAgentLoopRequest } from './host-abi.js'
 
@@ -18,12 +19,12 @@ const AGENT_LOOP_REQUEST_GUARDS=new WeakMap<GenerateOptions,()=>void>()
 // TODO(call-config-shape): Revisit which fields are epoch-level for cache reuse
 // and where provider-specific request options belong.
 /**
- * Provider, model, reasoning effort, and sampling scalars of one conversation's
+ * Provider, model, reasoning effort, sampling and response controls of one conversation's
  * requests. Every field maps 1:1 onto the same-named `GenerateOptions` field;
  * the loop builds requests from the logged header rather than accepting these
  * per call.
  */
-export interface LlmCallConfig {
+export interface LlmCallConfig extends LlmGenerationOptions {
   provider: string
   model: string
   reasoningEffort?: ReasoningEffortId
@@ -47,7 +48,7 @@ export interface LlmCallConfigAdapterDefaults {
  * logged header snapshot) or the held one restated.
  * @param a - one configuration.
  * @param b - the other.
- * @returns whether every field (including the `stop` list, element-wise) matches.
+ * @returns whether all controls match, with ordered stops and key-order-independent JSON data.
  */
 export function callConfigEquals(a: LlmCallConfig, b: LlmCallConfig): boolean {
   if (
@@ -56,6 +57,12 @@ export function callConfigEquals(a: LlmCallConfig, b: LlmCallConfig): boolean {
     || a.reasoningEffort !== b.reasoningEffort
     || a.temperature !== b.temperature
     || a.maxTokens !== b.maxTokens
+    || a.topP !== b.topP
+    || a.topK !== b.topK
+    || a.frequencyPenalty !== b.frequencyPenalty
+    || a.presencePenalty !== b.presencePenalty
+    || !deepEqualJson(a.toolChoice,b.toolChoice)
+    || !deepEqualJson(a.responseFormat,b.responseFormat)
   ) return false
   if (a.stop === undefined || b.stop === undefined) return a.stop === b.stop
   return a.stop.length === b.stop.length && a.stop.every((s, i) => s === b.stop?.[i])

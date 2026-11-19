@@ -80,6 +80,9 @@ export function serialize(
   })
   const messages: WireMessage[] = []
   let historySystem: string | undefined
+  let activeSystem: string | undefined
+  let materialSystem=''
+  const systemSnapshot=()=>[options.system,activeSystem,materialSystem].filter(Boolean).join('\n\n')
   const systemUpdates: WireMessage[] = []
   // Harness admits system updates before user input. Messages places the same
   // update after that user/tool-result turn and before the next assistant.
@@ -108,9 +111,18 @@ export function serialize(
       const texts = message.content.filter(block => block.type === 'text')
       if (texts.length !== message.content.length) return unsupported('non-text system message')
       const text = texts.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
+      if(message.source?.kind==='request-material'){
+        flushSystemUpdates()
+        if(inHistory)materialSystem=materialSystem?`${materialSystem}\n\n${text}`:text
+        // Messages reads the latest update as a full prompt. Preserve both
+        // the active instructions and this exact boundary between turns.
+        messages.push({role:'system',content:[{type:'text',text:inHistory?systemSnapshot():text}]})
+        continue
+      }
+      activeSystem=text
       if (inHistory && messages.length > 0) {
         if (text.length === 0) return unsupported('empty in-history system update')
-        systemUpdates.push({ role: 'system', content: [{ type: 'text', text }] })
+        systemUpdates.push({ role: 'system', content: [{ type: 'text', text:materialSystem.length?systemSnapshot():text }] })
       } else {
         historySystem = text
       }

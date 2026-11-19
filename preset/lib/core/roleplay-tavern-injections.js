@@ -6,6 +6,7 @@ import { nativeInputSha256 } from 'dsh-nexttavern-native-agent-loop';
 import { createHash } from 'node:crypto';
 import { recordSha256, stableJson } from './roleplay-data.js';
 import { appendTavernEjsJournal, tavernEjsCreationHead } from './roleplay-tavern-ejs-programs.js';
+import { AUTHOR_GENERATION_EFFECTS_EVENT } from 'dsh-nexttavern-session-format';
 export const TAVERN_NATIVE_INJECTION_POLICY_V6 = Object.freeze({ schemaVersion: 6,
     encoding: 'native-author-injection-registry-policy-v6', authority: 'consumer-data-only',
     owner: 'session-branch-logical-Source-program; same-owner-ID-replacement',
@@ -107,6 +108,7 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
     let archiveBytes = 0, phaseOrdinal = 0, revision = 0, scanPasses = 0, scanConsumerOrdinal = 0;
     const visitedPasses = new Set();
     let declarations = new Map();
+    let auxiliaryOperationId = deps.auxiliaryOperationId;
     const checkpoint = () => deps.signal.throwIfAborted();
     let checkedNativeThrough = deps.history.nativeCut?.length ?? deps.history.events.length, registryChanged = false;
     const ownerCheckpoint = () => {
@@ -117,10 +119,16 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             // Registry currency belongs here, rather than invalidating every input
             // frame (including the still-valid Native Phase A) on an ordinary ACK.
             // Each actual appended event is considered at most once by this read.
-            for (const event of cut.range(checkedNativeThrough))
-                if (event.type === 'roleplay/author-injection-declaration'
-                    || event.type === 'roleplay/author-injection-cleanup')
+            for (const event of cut.range(checkedNativeThrough)) {
+                if (event.type === 'roleplay/author-injection-declaration' || event.type === 'roleplay/author-injection-cleanup')
                     registryChanged = true;
+                else if (event.type === AUTHOR_GENERATION_EFFECTS_EVENT) {
+                    const marker = event.data, accepted = marker.kind === 'accepted' ? event : cut.at(marker.acceptedRef.seq);
+                    if (accepted?.type === AUTHOR_GENERATION_EFFECTS_EVENT && accepted.data.kind === 'accepted'
+                        && accepted.data.effects === 'source' && accepted.data.identity.operationId !== deps.auxiliaryOperationId)
+                        registryChanged = true;
+                }
+            }
             checkedNativeThrough = cut.length;
             if (registryChanged)
                 fail('INPUT_MATERIAL_INJECTION_CAPTURE_CHANGED');
@@ -202,7 +210,8 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             else if (effect.kind === 'batch-created') {
                 if (effect.batchOrdinal !== p.nextBatch++)
                     fail('INPUT_MATERIAL_INJECTION_EFFECT_ORDER');
-                p.batches.set(effect.batchOrdinal, { ids: effect.ids, once: effect.once, deleted: false, armedTurn: turn });
+                p.batches.set(effect.batchOrdinal, { ids: effect.ids, once: effect.once, deleted: false, armedTurn: turn,
+                    ...effect.once && auxiliaryOperationId ? { auxiliaryOperationId } : {} });
             }
             else if (effect.kind === 'register') {
                 const { prompt } = effect, batch = p.batches.get(prompt.batchOrdinal);
@@ -294,14 +303,15 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
                 const batchOrdinal = p.nextBatch++;
                 if (effect.once)
                     p.batches.set(batchOrdinal, { ids: effect.prompts.map(prompt => prompt.id), once: true,
-                        deleted: false, armedTurn: turn });
+                        deleted: false, armedTurn: turn, ...auxiliaryOperationId ? { auxiliaryOperationId } : {} });
                 const origin = { realmId: effect.realmId, groupId: effect.groupId, callbackId: effect.callbackId, resource: effect.resource };
                 for (const [promptOrdinal, prompt] of effect.prompts.entries()) {
                     const registrationSha256 = recordSha256({ programInstanceId: row.programInstanceId,
                         outputSha256: row.output.outputSha256, effectOrdinal, promptOrdinal });
                     prompts.set(keyOf(owner, prompt.id), { owner, programInstanceId: row.programInstanceId,
                         registrationSha256, prompt, origin, once: effect.once, batchOrdinal,
-                        nativeProgramSha256: row.output.programSha256 });
+                        nativeProgramSha256: row.output.programSha256,
+                        ...row.output.libraryReads?.length ? { libraryReads: row.output.libraryReads } : {} });
                     if (prompts.size > TAVERN_NATIVE_INJECTION_POLICY_V6.bounds.prompts)
                         fail('INPUT_MATERIAL_INJECTION_PROMPT_LIMIT');
                 }
@@ -381,7 +391,8 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
         for (const [ordinal, prompt] of record.mutation.prompts.entries()) {
             prompts.set(keyOf(owner, prompt.id), { owner, programInstanceId, nativeProgramSha256: record.programSha256,
                 registrationSha256: recordSha256({ operationId: record.operationId, programInstanceId, ordinal }),
-                prompt, origin, once: record.mutation.once, batchOrdinal });
+                prompt, origin, once: record.mutation.once, batchOrdinal,
+                ...record.libraryReads?.length ? { libraryReads: record.libraryReads } : {} });
         }
         if (programs.size > TAVERN_NATIVE_INJECTION_POLICY_V6.bounds.programs)
             fail('INPUT_MATERIAL_INJECTION_PROGRAM_LIMIT');
@@ -481,6 +492,8 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
                 if (!batch || batch.armedTurn !== 0)
                     fail('INPUT_MATERIAL_INJECTION_EFFECT_ORDER');
                 batch.armedTurn = turn;
+                if (auxiliaryOperationId)
+                    batch.auxiliaryOperationId = auxiliaryOperationId;
             }
             revision++;
         }
@@ -526,6 +539,7 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
         || committed.publicationLength > sequence.length))
         committed = undefined;
     const publishedPlans = committed?.publishedPlans ?? new Map();
+    const auxiliaryTerminals = new Map(committed?.auxiliaryTerminals);
     if (committed) {
         deps.history.assertCurrent();
         const advancing = committed.nativeLength !== nativeCut.length;
@@ -546,6 +560,15 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
         length: deps.history.publications.length, at: (index) => deps.history.publications[index]
     };
     const events = reusable ? nativeCut.range(committed?.nativeLength ?? 0, nativeCut.length) : deps.history.events;
+    const disposeAuxiliary = (proof) => {
+        const actualRef = { childSessionId: proof.identity.childSessionId, taskId: proof.identity.taskId,
+            generation: proof.identity.generation, operationId: proof.identity.operationId,
+            seq: proof.turnEndRef.seq, eventSha256: proof.turnEndRef.sha256, turn: proof.turn, reason: proof.reason };
+        for (const [id, p] of programs)
+            dispose(id, [...p.batches].filter(([, batch]) => batch.once && !batch.deleted
+                && batch.auxiliaryOperationId === proof.identity.operationId).map(([ordinal]) => ordinal), 'terminal', actualRef);
+        pruneUnreferencedPrograms();
+    };
     for (const event of events) {
         const candidate = publications.at(publicationCursor), publication = candidate?.event.seq === event.seq ? candidate : undefined;
         if (publication)
@@ -557,16 +580,19 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             if (!transaction || !same(transaction.transactionSha256, expected))
                 fail('INPUT_MATERIAL_INJECTION_PLAN_BINDING');
             exact(transaction, ['schemaVersion', 'encoding', 'authority', 'sessionId', 'turn', 'step', 'attemptId', 'policySha256',
-                'baseRegistrySha256', 'operations', 'finalRegistrySha256', 'transactionSha256']);
+                'baseRegistrySha256', 'operations', 'finalRegistrySha256', 'transactionSha256',
+                ...transaction.auxiliaryOperationId === undefined ? [] : ['auxiliaryOperationId']]);
             const { transactionSha256, ...body } = transaction;
             if (transaction.schemaVersion !== 6 || transaction.encoding !== 'native-author-injection-transaction-v6'
                 || transaction.authority !== 'consumer-data-only' || transaction.sessionId !== deps.sessionId
-                || transaction.turn !== publication.event.data.turn || transaction.step !== publication.event.data.step
+                || (publication.auxiliary ? transaction.turn !== 0 || transaction.step !== 0
+                    : transaction.turn !== publication.material.turn || transaction.step !== publication.material.step)
+                || transaction.auxiliaryOperationId !== publication.auxiliary?.accepted.data.identity.operationId
                 || transaction.policySha256 !== policySha256V6
                 || !id(transaction.attemptId) || recordSha256(body) !== transactionSha256
                 || !Array.isArray(transaction.operations) || transaction.operations.length > 1024)
                 fail('INPUT_MATERIAL_INJECTION_TRANSACTION_INVALID');
-            const planKey = `${publication.event.data.plan.key}:${publication.event.data.plan.sha256}`;
+            const planKey = `${publication.material.plan.key}:${publication.material.plan.sha256}`;
             const firstNativeSeq = publishedPlans.get(planKey);
             // The map may include successfully folded events from a later attempt
             // whose remaining tail failed. The retained Native cut is the committed
@@ -576,6 +602,7 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
                 continue;
             if (stateSha256() !== transaction.baseRegistrySha256)
                 fail('INPUT_MATERIAL_INJECTION_BASE_CHANGED');
+            auxiliaryOperationId = transaction.auxiliaryOperationId;
             for (const operation of transaction.operations)
                 applyOperation(operation, transaction.turn);
             pruneUnreferencedPrograms();
@@ -583,6 +610,13 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
                 fail('INPUT_MATERIAL_INJECTION_FINAL_CHANGED');
             if (firstNativeSeq === undefined || firstNativeSeq > Number(event.seq))
                 publishedPlans.set(planKey, Number(event.seq));
+            if (auxiliaryOperationId) {
+                const proof = auxiliaryTerminals.get(auxiliaryOperationId);
+                if (proof) {
+                    disposeAuxiliary(proof);
+                    auxiliaryTerminals.delete(auxiliaryOperationId);
+                }
+            }
         }
         else if (event.type === 'roleplay/author-injection-declaration') {
             applyNativeDeclaration(event.data);
@@ -592,14 +626,28 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             // Restoring its DATA removes prompts; it grants no live realm rights.
             applyNativeCleanup(event.data);
         }
+        else if (event.type === AUTHOR_GENERATION_EFFECTS_EVENT && event.data.kind === 'terminal') {
+            const proof = event.data.terminal;
+            const accepted = nativeCut?.at(event.data.acceptedRef.seq) ?? deps.history.events[event.data.acceptedRef.seq];
+            if (accepted?.type === AUTHOR_GENERATION_EFFECTS_EVENT && accepted.data.kind === 'accepted'
+                && accepted.data.effects === 'source') {
+                const planKey = `${accepted.data.planRef.key}:${accepted.data.planRef.sha256}`;
+                if (publishedPlans.has(planKey))
+                    disposeAuxiliary(proof);
+                else
+                    auxiliaryTerminals.set(proof.identity.operationId, proof);
+            }
+        }
         else if (event.type === 'turn/end') {
             const actualRef = { seq: Number(event.seq), eventSha256: nativeInputSha256(event), turn: event.data.turn, reason: event.data.reason };
             for (const [id, p] of programs)
                 dispose(id, [...p.batches].filter(([, batch]) => batch.once && !batch.deleted
-                    && batch.armedTurn === event.data.turn).map(([ordinal]) => ordinal), 'terminal', actualRef);
+                    && !batch.auxiliaryOperationId && batch.armedTurn === event.data.turn).map(([ordinal]) => ordinal), 'terminal', actualRef);
             pruneUnreferencedPrograms();
         }
     }
+    auxiliaryOperationId = deps.auxiliaryOperationId;
+    const registrySha256 = committed?.revision === revision ? committed.registrySha256 : stateSha256();
     // Preserve the exact canonical array digest, without retaining or
     // serializing all terminal receipts in every new Main audit.
     for (const disposal of disposalEvidence) {
@@ -629,7 +677,7 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
         // Current Source closures and all provisional effects start below it.
         ownerMemo.set(deps.sessionId, { nativeLength: nativeCut.length, publicationLength: publicationCursor,
             programs, prompts, named, regex, regexBoundaries, readerRegexBasisSha256, readerRegexPrograms,
-            publishedPlans, declarations, archiveBytes, revision,
+            publishedPlans, declarations, archiveBytes, revision, registrySha256, auxiliaryTerminals,
             disposalCount, disposalDigest });
     }
     const acceptedPrograms = programs, acceptedPrompts = prompts, acceptedDeclarations = declarations;
@@ -659,6 +707,7 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
     }
     const nativeRows = () => [...acceptedPrompts.values()].filter(row => !!row.origin);
     const committedView = {
+        registrySha256,
         readerRegexBasisSha256,
         regexRows: () => [...acceptedRegex.values()],
         declaration: (operationId) => acceptedDeclarations.get(operationId),
@@ -698,7 +747,7 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
         regex = new Map(regex);
         regexBoundaries = new Map(regexBoundaries);
     }
-    const baseRegistrySha256 = deps.committedOnly ? '' : stateSha256();
+    const baseRegistrySha256 = deps.committedOnly ? '' : registrySha256;
     const historySummary = () => {
         if (deps.history.evidenceSummary)
             return deps.history.evidenceSummary;
@@ -706,6 +755,32 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
         return { ...evidence, coreRefsCount: coreRefs.length, coreRefsSha256: recordSha256(coreRefs) };
     };
     const append = (operation) => {
+        if (deps.assertMutationAllowed) {
+            let mutation = true;
+            if (operation.kind === 'ejs-creation') {
+                const creation = operation.record.creation;
+                mutation = creation.kind === 'rendered' && !!(creation.output.injections.length || creation.output.regexEffects?.length);
+            }
+            else if (operation.kind === 'ejs-invocation') {
+                const result = operation.delta.action.result;
+                mutation = result.kind === 'evaluated' && !!(result.output.injections.length || result.output.regexEffects?.length);
+            }
+            else if (operation.kind === 'native-creation' || operation.kind === 'native-generation') {
+                mutation = operation.output.effects.length > 0;
+            }
+            else if (operation.kind === 'regex-boundary') {
+                const boundary = operation.boundary;
+                mutation = [...regex.values()].some(({ descriptor }) => descriptor.mode === 'basic' && boundary !== 'generation-start'
+                    || descriptor.mode === 'message' && boundary === 'generation-start'
+                    || descriptor.mode === 'generate' && boundary === 'prompt-complete');
+            }
+            else if (operation.kind === 'named-advance')
+                mutation = named.size > 0;
+            else if (operation.kind === 'native-arm-once')
+                mutation = operation.batchOrdinals.length > 0;
+            if (mutation)
+                deps.assertMutationAllowed();
+        }
         if (operations.length >= 1024)
             fail('INPUT_MATERIAL_INJECTION_OPERATION_LIMIT');
         applyOperation(operation, deps.turn);
@@ -862,6 +937,10 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             const passIdentity = consumer === 'scan' ? `scan:${scanConsumerOrdinal++}` : 'chat:0';
             visitedPasses.add(passIdentity);
             const fresh = [...prompts.values()].filter(row => consumer === 'scan' ? row.prompt.should_scan : row.prompt.position === 'in_chat')
+                .filter(row => {
+                const batchOrdinal = row.origin ? row.batchOrdinal : row.prompt.batchOrdinal, batch = programs.get(row.programInstanceId)?.batches.get(batchOrdinal);
+                return !batch?.once || !batch.auxiliaryOperationId || batch.auxiliaryOperationId === deps.auxiliaryOperationId;
+            })
                 .filter(row => consumer !== 'scan' || !consumedScan.has(row.registrationSha256));
             let pass = deps.nativeConsumption?.passes.get(passIdentity);
             if (!pass && deps.nativeConsumption) {
@@ -885,9 +964,12 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             if (consumer === 'scan' && selected.length && ++scanPasses > 32)
                 fail('INPUT_MATERIAL_INJECTION_SCAN_LIMIT');
             const accepted = [];
+            const libraryReads = new Map();
             const results = [];
             const activationProposals = [];
             for (const row of selected) {
+                for (const read of row.libraryReads ?? [])
+                    libraryReads.set(JSON.stringify([read.realmId, read.read]), read);
                 if (consumer === 'scan')
                     consumedScan.add(row.registrationSha256);
                 let include = true;
@@ -950,7 +1032,8 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             }
             consumerEvidence.push(freeze({ schemaVersion: 1, encoding: 'native-injection-consumer-cut-v1',
                 authority: 'consumer-data-only', consumer, snapshotSha256: snapshot.snapshotSha256,
-                selectedRegistrationSha256s: selected.map(row => row.registrationSha256), results, registryAfterSha256: stateSha256() }));
+                selectedRegistrationSha256s: selected.map(row => row.registrationSha256), results,
+                ...libraryReads.size ? { libraryReads: [...libraryReads.values()] } : {}, registryAfterSha256: stateSha256() }));
             ownerCheckpoint();
             return freeze({ prompts: accepted, activationProposals });
         },
@@ -966,14 +1049,16 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
                 flushRetiredFilters(references);
             for (const [programInstanceId, p] of programs)
                 if (p.kind === 'native') {
-                    const batchOrdinals = [...p.batches].filter(([, batch]) => batch.armedTurn === 0).map(([ordinal]) => ordinal);
+                    const batchOrdinals = [...p.batches].filter(([, batch]) => batch.armedTurn === 0 && !batch.auxiliaryOperationId)
+                        .map(([ordinal]) => ordinal);
                     if (batchOrdinals.length)
                         append({ kind: 'native-arm-once', programInstanceId, batchOrdinals });
                 }
             pruneUnreferencedPrograms();
             const body = { schemaVersion: 6, encoding: 'native-author-injection-transaction-v6',
                 authority: 'consumer-data-only', sessionId: deps.sessionId, turn: deps.turn, step: deps.step,
-                attemptId: deps.attemptId, policySha256: policySha256V6, baseRegistrySha256, finalRegistrySha256: stateSha256(),
+                attemptId: deps.attemptId, ...deps.auxiliaryOperationId ? { auxiliaryOperationId: deps.auxiliaryOperationId } : {},
+                policySha256: policySha256V6, baseRegistrySha256, finalRegistrySha256: stateSha256(),
                 operations: [...operations] };
             return freeze({ ...body, transactionSha256: recordSha256(body) });
         },

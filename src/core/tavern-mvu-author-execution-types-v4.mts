@@ -90,21 +90,6 @@ export interface UpdateBatchCommandPolicyProfileV1 {
   readonly bindings:readonly UpdateBatchCommandPolicyBindingV1[]
   readonly profileSha256:string
 }
-export interface InitializationWriteBindingV1 {
-  readonly scriptOrdinal:number
-  readonly scriptIdentity:string
-  readonly sourceSha256:string
-  readonly sourceSpan:AstSpanV1
-  readonly capability:'insert-or-assign-chat-stat-data-v1'
-}
-/** Only an actual helper call opts its script into initialization writes.
- * Absence preserves the retained module bindings and execution-plan bytes. */
-export interface InitializationWriteProfileV1 {
-  readonly schemaVersion:1
-  readonly encoding:'native-mvu-chat-initialization-write-profile-v1'
-  readonly bindings:readonly InitializationWriteBindingV1[]
-  readonly profileSha256:string
-}
 export interface AuthorExecutionPlanV1 {
   readonly schemaVersion: 1
   readonly encoding: 'native-mvu-author-execution-plan-v1'
@@ -129,7 +114,6 @@ export interface AuthorExecutionPlanV1 {
   readonly containsLocalAuditEvidence: boolean
   /** Absent in retained atomic plans; no historical shape or hash is upgraded. */
   readonly commandPolicyProfile?:RegisteredCommandPolicyProfileV1|UpdateBatchCommandPolicyProfileV1
-  readonly initializationWriteProfile?:InitializationWriteProfileV1
   readonly executionPlanSha256: string
 }
 export interface MvuSchemaCompilationInputV4 {

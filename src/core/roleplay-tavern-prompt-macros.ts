@@ -3,18 +3,27 @@
 import {recordSha256,sha256} from './roleplay-data.js'
 import {communityMacroClock} from './community-preset-macros.js'
 import {readTavernCardMacroFields} from './nexttavern-card.js'
-import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {TAVERN_PROMPT_CARD_ORDER_V1} from './tavern-prompt-transform-types.mjs'
 import type {TavernPromptBindingV1,TavernPromptHelperVariableScopesV1,TavernPromptMacroSnapshotV1,
   TavernPromptNamesV1,TavernPromptRegexRuleV1} from './tavern-prompt-transform-types.mjs'
 import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 
+export function captureTavernPromptModelBindingV1(source:Pick<TavernLoreSourceDataV1,'sessionId'|'sourceSha256'>,
+  route?:{model:string;configSha256:string}):TavernPromptBindingV1 {
+  const value=route?.model??null
+  return {key:'model',value,valueSha256:value===null?null:sha256(value),read:{kind:'variable',purpose:'read',scope:'card',
+    ownerId:`${source.sessionId}:native-card`,key:'model',present:value!==null,
+    versionSha256:route?.configSha256??recordSha256({schemaVersion:1,encoding:'native-route-unresolved-v1',source:source.sourceSha256}),
+    valueSha256:value===null?null:recordSha256(value),entryId:null,sourcePointer:null}}
+}
+
 export const TAVERN_NATIVE_MACRO_POLICY_V1=Object.freeze({schemaVersion:1,
   encoding:'native-card-prompt-macro-policy-v1',group:'single-activated-character',
   characterFields:'activated-raw-card-trimmed; native-card-style-selection-gates-prompt-and-jailbreak',
   examples:'ordered-chat-start-blocks; no-instruct-mode',persona:'actual-current-user-card-content',
   variables:'explicit-read-only-captured-scopes',model:'unresolved-route-refuses-only-on-read',
+  unknownTokens:'literal-after-registered-replacement',
   clock:'captured-attempt-local-wall-clock-en-US',random:'captured-attempt-stream; stable-chat-content-offset-pick',
   regex:'owned-scoped-raw-card-rules; imported-allow-decision; no-global-or-preset-registry',
   outlets:'phase-captured-values-or-catalog-proven-negative-read',
@@ -31,6 +40,8 @@ const frozen=<T>(value:T):T=>{
   return value
 }
 const object=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value)
+
+export {captureTavernMessageMacrosV1} from './tavern-prompt-transform-execution.mjs'
 export function produceRoleplayTavernMacroSnapshotV1(input:{
   source:TavernLoreSourceDataV1;cardData:Readonly<Record<string,unknown>>;includeCardStyle:boolean;
   /** Null means this actual Native opening has no current player input. */
@@ -52,7 +63,7 @@ export function produceRoleplayTavernMacroSnapshotV1(input:{
   currentCardFields?:Readonly<Record<'description'|'personality'|'scenario'|'persona',string>>;
   avatarPaths?:{readonly user:string|null;readonly character:string|null};
 }) {
-  const {source,includeCardStyle,scopes}=input,card=cloneRoleplayTavernLoreDataV1(input.cardData,8_388_608),
+  const {source,includeCardStyle,scopes}=input,card=input.cardData,
     explicitScopes=input.variableScopes,
     messageScope=explicitScopes?.message!==undefined?explicitScopes.message
       :input.messageVariables!==undefined?input.messageVariables:null,
@@ -78,8 +89,7 @@ export function produceRoleplayTavernMacroSnapshotV1(input:{
       char:binding('char',char,char,source.current.openingContext.bindingSha256),
       group:binding('group',char),charIfNotGroup:binding('charIfNotGroup',char),
       groupNotMuted:binding('groupNotMuted',char),notChar:binding('notChar',user),
-      model:binding('model',input.preparedRoute?.model??null,input.preparedRoute?.model??null,
-        input.preparedRoute?.configSha256??recordSha256({schemaVersion:1,encoding:'native-route-unresolved-v1',source:basis}))}
+      model:captureTavernPromptModelBindingV1(source,input.preparedRoute)}
   const userRow=source.current.rows.find(row=>row.ref.table==='cards'&&row.ref.key===`${source.sessionId}__user`)
   const aliases=readTavernCardMacroFields(card,source.original.decodedFormat)
   const persona=text(userRow?.value?.content).trim(),examples=text(aliases.mes_example).trim()
@@ -113,8 +123,10 @@ export function produceRoleplayTavernMacroSnapshotV1(input:{
   // Ordinary ST getvar/getglobalvar macros continue reading flat string bindings in
   // localVariables/globalVariables; structured helper get/format_*_variable macros
   // read exclusively from variableScopes.
+  // The legacy evaluator only replaces registered macros. Unmatched tokens
+  // remain author text, while explicit effect and binding checks still apply.
   const snapshot:TavernPromptMacroSnapshotV1={schemaVersion:1,engine:'legacy',authority:'consumer-data-only',
-    sourceSnapshotSha256:basis,names,card:TAVERN_PROMPT_CARD_ORDER_V1.map(key=>binding(key,cardAliases[key]!,cardAliases[key])),
+    preserveUnknownMacros:true,sourceSnapshotSha256:basis,names,card:TAVERN_PROMPT_CARD_ORDER_V1.map(key=>binding(key,cardAliases[key]!,cardAliases[key])),
     ...input.randomSeed===undefined?{}:{random:{seed:input.randomSeed,pickSeed:source.sessionId}},
     input:binding('input',input.inputText),instruct:[],
     dynamic:[binding('user_gender',context.user_gender??null,

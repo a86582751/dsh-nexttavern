@@ -8,7 +8,7 @@ import {createRequire,registerHooks} from 'node:module'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {createTestDirectory,cleanupTestDirectory} from '../src/operations/test-temp.mts'
 
-const nativeDataSpecifier=/^dsh-nexttavern-native-(?:agent-loop|session(?:\/surface)?)$/
+const nativeDataSpecifier=/^dsh-nexttavern-(?:native-(?:agent-loop|session(?:\/surface)?)|session-format)$/
 
 export async function installMvuNativeDataTestDependencies() {
   const directory=createTestDirectory('mvu-native-data-')
@@ -19,12 +19,14 @@ export async function installMvuNativeDataTestDependencies() {
       opening=fileURLToPath(new URL('../development/agent-loop/src/opening-record-hashes.ts',import.meta.url)),
       material=fileURLToPath(new URL('../development/agent-loop/src/request-material.ts',import.meta.url)),
       surface=fileURLToPath(new URL('../development/session/src/surface.ts',import.meta.url)),
+      generationEffects=fileURLToPath(new URL('../development/session-format/src/author-generation-effects.ts',import.meta.url)),
       peer=path.join(directory,'native-pure-data.mjs'),
       generatedCore=new URL('../lib/core/',import.meta.url).href
     const result=await build({stdin:{contents:[
-      `export {nativeInputCanonical,nativeInputSha256,inspectNativeInboxHistory} from ${JSON.stringify(input)};`,
+      `export {INPUT_ADMISSION_ABORT_REASON,nativeInputCanonical,nativeInputSha256,inspectNativeInboxHistory} from ${JSON.stringify(input)};`,
       `export {reconstructNativeRequestMaterialV1,verifyNativeRequestMaterialHistoryV1,verifyNativeSessionRequestMaterialHistoryV1,projectNativeMaterialTextOutputsV1} from ${JSON.stringify(material)};`,
       `export {createSurfaceCursor,deriveEventMessage,foldSurface} from ${JSON.stringify(surface)};`,
+      `export {assertAuthorGenerationEffects} from ${JSON.stringify(generationEffects)};`,
       `export {validateNativeOpeningInvocationV1,validateNativeGeneratedOpeningReceiptV1,validateNativeOpeningClosingAckV1,validateNativeOpeningRequestAttemptV1}`+
         ` from ${JSON.stringify(opening)};`,
     ].join('\n'),resolveDir:fileURLToPath(new URL('../',import.meta.url)),sourcefile:'mvu-native-pure-data-entry.ts'},

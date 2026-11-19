@@ -39,7 +39,8 @@ type ContextBreakdownState = z.infer<typeof contextBreakdownStateSchema>
  */
 export const contextBreakdownProjectionDefinition = {
   key: 'contextBreakdown',
-  stateVersion: 6,
+  // Harness rc.5 uses version 6 for a different, systems-based state schema.
+  stateVersion: 7,
   stateSchema: contextBreakdownStateSchema,
   init: (): ContextBreakdownState => ({
     nodes: [],

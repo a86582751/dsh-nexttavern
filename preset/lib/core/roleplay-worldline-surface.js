@@ -318,6 +318,16 @@ export function createWorldlineSurface(deps, forks) {
         if (expected.sessionId !== session.id || Number(event.seq) !== expected.seq || role !== expected.role || id !== expected.messageId
             || !deps.readMessageVersion || deps.readMessageVersion(session, event) !== expected.messageVersionSha256)
             throw Error('AUTHOR_MESSAGE_EDIT_VERSION_CHANGED');
+        if (author.input.patch?.metadata?.is_hidden === true) {
+            const content = role === 'assistant' ? event.data?.message?.content : event.data?.content;
+            if (content?.some((block) => block.type === 'tool-call'))
+                throw Error('AUTHOR_MESSAGE_EDIT_HIDDEN_TOOL_PAIR_UNSUPPORTED');
+        }
+        if (author.input.patch) {
+            if (!deps.prepareAuthorMessagePatch)
+                throw Error('AUTHOR_MESSAGE_EDIT_PATCH_OWNER_UNAVAILABLE');
+            author.patch = deps.prepareAuthorMessagePatch(session, event, author.input);
+        }
     }
     /** Called under the same fork lock as a new edit. A known operation may
      * finish its own effects, but must never overwrite a later edit. */
@@ -341,7 +351,10 @@ export function createWorldlineSurface(deps, forks) {
             return true;
         }
         author.assertSourceCurrent();
-        await deps.recoverNumericalTextEdit?.(session, author.assertSourceCurrent);
+        author.patch = edit.data?.schemaVersion === 3
+            ? edit.data.patch : undefined;
+        if (edit.data?.bodyChanged !== false)
+            await deps.recoverNumericalTextEdit?.(session, author.assertSourceCurrent);
         const event = visibleSurfaceEvent(session, candidate => Number(candidate.seq) === Number(edit.data?.targetSeq));
         if (!event)
             throw Error('AUTHOR_MESSAGE_EDIT_TARGET_UNAVAILABLE');
@@ -350,9 +363,10 @@ export function createWorldlineSurface(deps, forks) {
     }
     async function replaceAuthorMessageText(session, input, assertSourceCurrent) {
         let result;
+        const { ordinaryExpected: _ordinaryExpected, ...request } = input;
         const author = { input, operation: { schemaVersion: 1,
                 encoding: 'native-author-message-edit-operation-v1', operationId: input.operationId,
-                requestSha256: recordSha256(input), expectedMessageVersionSha256: input.expected.messageVersionSha256, origin: input.origin },
+                requestSha256: recordSha256(request), expectedMessageVersionSha256: input.expected.messageVersionSha256, origin: input.origin },
             assertSourceCurrent, complete: value => { result = value; } };
         try {
             if (input.expected.role === 'assistant')
@@ -377,13 +391,15 @@ export function createWorldlineSurface(deps, forks) {
         const messageId = String(role === 'assistant' ? event.data?.message?.id ?? '' : event.data?.id ?? '');
         const currentText = textOf(role === 'assistant' ? event.data?.message?.content : event.data?.content);
         const changed = currentText !== text;
-        if (options.author && !options.repair && !changed) {
+        const patch = options.author?.patch;
+        const patchChanged = !!patch && (!!patch.metadata || patch.extra !== undefined || patch.ordinary !== undefined);
+        if (options.author && !options.repair && !changed && !patchChanged) {
             // An unchanged acknowledgement is current DATA, not a historical edit.
             options.author.complete({ kind: 'unchanged', operationId: options.author.input.operationId });
             return { changed: false, editSeq: null, recovered: false };
         }
         const taskIntent = options.preparedTaskEdit === undefined
-            ? options.schemaTaskEdit && (changed || role === 'assistant')
+            ? options.schemaTaskEdit && (changed || role === 'assistant' && !patchChanged)
                 ? await deps.prepareNumericalTextEdit?.(session, event, text, options.schemaTaskEdit) : undefined
             : options.preparedTaskEdit;
         const priorEdit = options.author ? messageEdits.lookupTarget(session, editCut(session), targetSeq)
@@ -393,7 +409,8 @@ export function createWorldlineSurface(deps, forks) {
         if (!taskIntent && !changed && priorEdit && priorEdit.seq < (session.inheritedEventCount ?? 0)) {
             return { changed: false, editSeq: Number(priorEdit.seq), inherited: true, recovered: false };
         }
-        if (!taskIntent && (changed || priorEdit && !editEffectsCommitted(session, priorEdit))) {
+        const bodyEffects = changed || options.repair && priorEdit?.data?.bodyChanged !== false;
+        if (bodyEffects && !taskIntent && (changed || priorEdit && !editEffectsCommitted(session, priorEdit))) {
             // Shared users are admitted before variant publication; task edits reuse
             // their prepared intent, and durable Native repair keeps its admission.
             if (role === 'assistant' && changed && !options.repair && !options.schemaTaskEdit)
@@ -401,10 +418,10 @@ export function createWorldlineSurface(deps, forks) {
             options.author?.assertSourceCurrent();
             beginNumericalEdit?.(session.id);
         }
-        const append = () => messageEdits.append(session, targetSeq, { role, messageId }, text, undefined, options.author?.operation);
+        const append = () => messageEdits.append(session, targetSeq, { role, messageId }, text, undefined, options.author?.operation, patch, changed);
         const edit = taskIntent
             ? await deps.appendNumericalTextEdit(session, taskIntent, append, options.author?.assertSourceCurrent)
-            : changed
+            : changed || patchChanged && !options.repair
                 ? append()
                 : priorEdit;
         if (!edit)
@@ -421,8 +438,11 @@ export function createWorldlineSurface(deps, forks) {
         if (!committed && !taskIntent)
             await flushEdits(session);
         let numericalFailure;
+        // DATA-only edits have the same Native receipt and retry contract, while
+        // numerical invalidation belongs only to an actual body replacement.
         try {
-            await persistNumericalEdit?.(session.id, editSeq);
+            if (bodyEffects)
+                await persistNumericalEdit?.(session.id, editSeq);
         }
         catch (error) {
             numericalFailure = { error };
@@ -431,16 +451,17 @@ export function createWorldlineSurface(deps, forks) {
         // write is unknown. That unknown remains a separate fail-closed gate; a
         // state-entry repair can read panels without pretending the denial exists.
         if (!committed) {
-            await invalidateDerivedStoryState(session, { fromSeq: targetSeq, reason });
+            if (bodyEffects)
+                await invalidateDerivedStoryState(session, { fromSeq: targetSeq, reason });
             await T.branch.put(receiptKey, {
                 schemaVersion: 1, state: 'committed', role, targetSeq, editSeq, textSha256: sha256(text), committedAt: Date.now(),
             });
         }
         if (numericalFailure && !options.repair)
             throw numericalFailure.error;
-        if (!numericalFailure)
+        if (!numericalFailure && bodyEffects)
             await reconcileNumericalEdit?.(session.id, editSeq);
-        if (options.author && !numericalFailure && deps.authorEditResolved?.(session.id, editSeq) !== false) {
+        if (options.author && !numericalFailure && (!bodyEffects || deps.authorEditResolved?.(session.id, editSeq) !== false)) {
             const receipt = editReceipt(session, edit);
             // Preserve the revision owner's actual completion before a later edit
             // replaces its live view. Cold confirmation reads this same exact row.

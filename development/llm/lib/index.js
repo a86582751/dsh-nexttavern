@@ -730,7 +730,13 @@ let LlmRuntime = (() => {
                         const derived = this.resolveCallWithInfo({ ...currentConfig,
                             ...sampling.temperature === undefined ? {} : { temperature: sampling.temperature },
                             ...sampling.maxTokens === undefined ? {} : { maxTokens: sampling.maxTokens },
-                            ...sampling.stop === undefined ? {} : { stop: [...sampling.stop] } }, modelInfo);
+                            ...sampling.stop === undefined ? {} : { stop: [...sampling.stop] },
+                            ...sampling.topP === undefined ? {} : { topP: sampling.topP },
+                            ...sampling.topK === undefined ? {} : { topK: sampling.topK },
+                            ...sampling.frequencyPenalty === undefined ? {} : { frequencyPenalty: sampling.frequencyPenalty },
+                            ...sampling.presencePenalty === undefined ? {} : { presencePenalty: sampling.presencePenalty },
+                            ...sampling.toolChoice === undefined ? {} : { toolChoice: sampling.toolChoice },
+                            ...sampling.responseFormat === undefined ? {} : { responseFormat: sampling.responseFormat } }, modelInfo);
                         const { maxTokens, ...defaults } = currentDefaults;
                         return prepared(deepFreeze(structuredClone(derived.config)), deepFreeze(sampling.maxTokens === undefined ? currentDefaults : defaults));
                     },
@@ -785,7 +791,7 @@ let LlmRuntime = (() => {
         /** Remove replay state whose historical route is owned by another adapter. */
         forAdapter(options, adapter) {
             const messages = options.messages.map((message) => {
-                if (message.role !== 'assistant')
+                if (message.role !== 'assistant' || message.source === undefined)
                     return message;
                 const source = message.source;
                 if (source.kind !== 'model')

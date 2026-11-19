@@ -93,12 +93,23 @@ export interface ForkGroup {
   createdAt: number
   updatedAt: number
 }
-export interface ForkOperation {
-  operationId: string
+export interface ForkOperation extends Pick<ForkPreparationOperation,'operationId'|'carryOpeningChat'> {
   requestId?: string
   anchor: ForkAnchor
   kind: string
   promptText: string
+}
+/** Ordinary Native forks retain their exact prefix without an RP turn anchor. */
+export interface NativeForkPreparationAnchor {
+  kind:'native-fork'
+  sourceSessionId:string
+  expectedSeedLength:number
+  openingOnly?:never
+}
+export interface ForkPreparationOperation {
+  operationId:string
+  anchor:ForkAnchor|NativeForkPreparationAnchor
+  carryOpeningChat?:true
 }
 export interface BranchRecord extends Partial<ForkGroup> {
   childSessionId?: string
@@ -152,7 +163,8 @@ export interface WorldlinePrefixProjection {
 }
 export interface WorldlineMessageEdits extends MvuInheritedMessageEditProtocol {
   append(session: BranchSession, targetSeq: number, identity: {role: 'user' | 'assistant'; messageId: string}, text: string,
-    sourceMaterial?:MessageSourceMaterialV1,operation?:MessageEditOperationV1): StoryEvent
+    sourceMaterial?:MessageSourceMaterialV1,operation?:MessageEditOperationV1,
+    patch?:import('dsh-nexttavern-session-format').MessageEditPatchV3,bodyChanged?:boolean): StoryEvent
   latest(events: readonly StoryEvent[], targetSeq: number): StoryEvent | null
   current(session: ReadBranchSession,
     events:{readonly length:number;at(seq:number):StoryEvent|undefined}): readonly StoryEvent[]
@@ -164,12 +176,16 @@ export interface WorldlineMessageEdits extends MvuInheritedMessageEditProtocol {
     targetSeq:number):StoryEvent|undefined
 }
 export interface WorldlineAuthorEditAdmissionV1 {
+  patch?:import('dsh-nexttavern-session-format').MessageEditPatchV3
   readonly input:AuthorMessageEditInputV1
   readonly operation:MessageEditOperationV1
   assertSourceCurrent():void
   complete(result:AuthorMessageEditResultV1):void
 }
 export interface WorldlineDependencies {
+  /** Runs under the actual target admission lock, before any Native append. */
+  prepareAuthorMessagePatch?(session:BranchSession,event:StoryEvent,input:AuthorMessageEditInputV1)
+    :import('dsh-nexttavern-session-format').MessageEditPatchV3|undefined
   /** Reuse the message owner’s version, including opaque Native fields. */
   readMessageVersion?(session:ReadBranchSession,event:StoryEvent):string
   authorTaskEditOptions?(session:BranchSession,event:StoryEvent,operationId:string)
@@ -229,9 +245,9 @@ export interface WorldlineDependencies {
   readProgramOpeningSettlement?(session:ReadBranchSession,operationId:string,messageId:string):{
     messageId:string;seq:number;turn:number
   } | null | undefined
-  readOpeningVariantSettlement?(session:ReadBranchSession,operationId:string):{
+  readOpeningVariantSettlement?(session:ReadBranchSession,operationId:string):Promise<{
     messageId:string;seq:number;turn:number
-  } | null
+  } | null>
   resolveRoleplaySession(id: string): Promise<BranchSession | null | undefined>
   isRoleplaySession(session: BranchSession): boolean
   ensureState(id: string): { branchReady: boolean }

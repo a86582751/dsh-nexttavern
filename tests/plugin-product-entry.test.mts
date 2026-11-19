@@ -188,6 +188,77 @@ test('a replaced provider keeps an official settings namespace and its own profi
   } finally {await f.close()}
 })
 
+test('saving a replaced provider through Settings preserves the running host and provider',async t=>{
+  if(await nativeCase(t.name,import.meta.url))return
+  const f=await fixture({settings:true,hostMode:'active'})
+  try {
+    const namespace=()=>f.ctx.settings.describe().find((row:{ns:string})=>row.ns==='meter')
+    const graph=f.graph(), provider=f.ctx.get('entryProbe'), host=f.ctx.get('hostRoutes')
+    const before=f.changes.slice()
+    await f.ctx.settings.mutate('meter',[{op:'set',path:['value'],value:'saved-live'}],namespace().revision)
+    await f.ctx.loader.await()
+    assert.equal(f.ctx.get('entryProbe'),provider,'a settings save must not unmount the running provider')
+    assert.equal(f.ctx.get('hostRoutes'),host,'a settings save must not revoke the running host')
+    assert.equal(provider.value,'saved-live')
+    assert.deepEqual(f.changes,before,'a settings save must not restart any product component')
+    assert.deepEqual(f.graph(),graph)
+    const persisted=f.profileRows()
+    await assert.rejects(f.ctx.settings.mutate('meter',[{op:'set',path:['value'],value:[] }],namespace().revision))
+    assert.equal(provider.value,'saved-live')
+    assert.deepEqual(f.profileRows(),persisted)
+    assert.deepEqual(f.changes,before,'a refused save must preserve the accepted running graph')
+  }finally{await f.close()}
+})
+
+test('an ordinary provider edit reloads the replacement module',async t=>{
+  if(await nativeCase(t.name,import.meta.url))return
+  const f=await fixture({settings:true})
+  try {
+    const entry=f.ctx.configEditor.entries().find((row:any)=>row.options.id==='meter')
+    const replacement=entry.options.name
+    const update=entry.update.bind(entry)
+    entry.update=(proposal:any)=>{
+      assert.equal(entry.options.name,replacement,'Loader must use the mounted module identity during an ordinary edit')
+      return update(proposal)
+    }
+    await f.ctx.configEditor.edit(entry,(config:any)=>({...config,service:'ordinaryProbe'}))
+    await f.ctx.loader.await()
+    assert.deepEqual({...f.ctx.get('ordinaryProbe')},{owner:'owned',value:'original'})
+    assert.equal(entry.options.name,replacement)
+    assert.deepEqual(f.changes,['start:owned','stop:owned','start:owned'])
+    assert.deepEqual(f.graph(),['fixture-owned-provider'])
+  }finally{await f.close()}
+})
+
+test('a provider update failure rolls back the accepted profile and live configuration',async t=>{
+  if(await nativeCase(t.name,import.meta.url))return
+  const f=await fixture({settings:true,hostMode:'active'})
+  try {
+    const namespace=()=>f.ctx.settings.describe().find((row:{ns:string})=>row.ns==='meter')
+    await f.ctx.settings.mutate('meter',[{op:'set',path:['value'],value:'accepted'}],namespace().revision)
+    const graph=f.graph(), persisted=f.profileRows()
+    const entry=f.ctx.configEditor.entries().find((row:any)=>row.options.id==='meter')
+    const update=entry.update.bind(entry)
+    let applied=false
+    entry.update=async (proposal:any)=>{
+      await update(proposal)
+      if(proposal.config?.value==='cannot-complete') {
+        assert.equal(f.ctx.get('entryProbe').value,'cannot-complete')
+        applied=true
+        throw Error('provider update could not complete')
+      }
+    }
+    await assert.rejects(f.ctx.settings.mutate('meter',[{op:'set',path:['value'],value:'cannot-complete'}],namespace().revision),
+      causedBy('provider update could not complete'))
+    assert.equal(applied,true,'the failure takes place after the provider accepted the new volatile value')
+    assert.deepEqual(f.profileRows(),persisted)
+    assert.deepEqual({...f.ctx.get('entryProbe')},{owner:'owned',value:'accepted'})
+    assert.deepEqual(f.graph(),graph)
+    await f.ctx.settings.mutate('meter',[{op:'set',path:['value'],value:'next-save'}],namespace().revision)
+    assert.equal(f.ctx.get('entryProbe').value,'next-save')
+  }finally{await f.close()}
+})
+
 test('product activation failure releases resources and fails startup explicitly', async t => {
   if (await nativeCase(t.name, import.meta.url)) return
   await assert.rejects(fixture({fail:true}), causedBy('owned provider failed'))

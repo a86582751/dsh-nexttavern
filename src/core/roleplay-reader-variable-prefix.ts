@@ -3,13 +3,13 @@
 import type {ReaderMessageVariableTargetV1} from './reader-regex-document-types.mjs'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
+import {applyAuthorChatOverlayV3} from './roleplay-author-chat-state-types.js'
 
 export function readerVariableBase(scopes:MvuScopeReadFrameV1['scopes'],
-  ordinary:{readonly values:Readonly<MvuJsonObject>;readonly deletedKeys?:readonly string[]}):MvuJsonObject {
+  ordinary:{readonly values:Readonly<MvuJsonObject>;readonly deletedKeys?:readonly string[];
+    readonly replaceOrdinary?:true}):MvuJsonObject {
   const values=(scope:MvuScopeReadFrameV1['scopes']['chat'])=>scope.kind==='available'?scope.variables:{}
-  const result={...values(scopes.global),...values(scopes.character),...values(scopes.chat),...ordinary.values}
-  for(const key of ordinary.deletedKeys??[])delete result[key]
-  return result
+  return applyAuthorChatOverlayV3(values(scopes.chat),ordinary)
 }
 
 export interface ReaderVariableContribution {

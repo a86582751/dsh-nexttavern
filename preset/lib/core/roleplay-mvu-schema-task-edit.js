@@ -110,19 +110,12 @@ export function createRoleplayMvuSchemaTaskEdits(deps) {
                 basis: { nativeCut: facts.nativeCut, sourceSha256: facts.sourceSha256, headSha256: facts.headSha256 } };
             return validateSchemaTaskEditIntent({ ...body, intentSha256: recordSha256(body) });
         }
-        const parsed = target.role === 'assistant' ? deps.parse(target.text) : undefined;
-        if (parsed?.kind === 'rejected')
-            throw Error('SCHEMA_TASK_EDIT_MALFORMED_UPDATE');
         const own = facts.artifacts.find(row => row.canonicalSeq === target.seq);
         if (own && !options.target)
             throw Error('SCHEMA_TASK_EDIT_TARGET_REQUIRED');
         if (options.target && (!own || own.sourceEventRef.sha256 !== options.target.expectedArtifactSha256))
             throw Error('SCHEMA_TASK_EDIT_ARTIFACT_CHANGED');
         const mode = options.target?.mode ?? 'retain';
-        if (own && mode !== 'replace' && parsed?.kind !== 'no-update')
-            throw Error('SCHEMA_TASK_EDIT_REPLACE_REQUIRED');
-        if (own && mode === 'replace' && parsed?.kind !== 'parsed')
-            throw Error('SCHEMA_TASK_EDIT_UPDATE_REQUIRED');
         const body = { schemaVersion: 1, encoding: 'native-mvu-schema-task-edit-intent-v1',
             sessionId: session.id, operationId: options.operationId, requestSha256, target, options,
             artifacts: facts.artifacts.map(artifact => ({ canonicalSeq: artifact.canonicalSeq, artifact,

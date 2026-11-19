@@ -19,8 +19,8 @@ cleanup() {
   if ((result!=0)); then
     printf 'MOBILE_FAILED_PHASE=%s EXIT=%s\n' "$phase" "$result"
     # Preparation has only fixed public inputs, no running Host/authentication.
-    if [[ "$mode" == prepare && -f "$work/build.log" ]]; then tail -n 20 "$work/build.log"; fi
-    if [[ "$mode" == prepare && -f "$work/prepare-host.log" ]]; then tail -n 20 "$work/prepare-host.log"; fi
+    if [[ "$mode" == prepare* && -f "$work/build.log" ]]; then tail -n 20 "$work/build.log"; fi
+    if [[ "$mode" == prepare* && -f "$work/prepare-host.log" ]]; then tail -n 20 "$work/prepare-host.log"; fi
   fi
   exit "$result"
 }
@@ -30,7 +30,9 @@ export ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk" ANDROID_NDK_HOME="$sdk/ndk/28
 apk="$work/mobile-x64-release.apk"
 probe_apk="$work/probe-x64-kvm.apk"
 hierarchy_apk="$work/hierarchy.apk"
-if [[ "${1:-}" == prepare ]]; then
+if [[ "${1:-}" == prepare || "${1:-}" == prepare-arm64 ]]; then
+  abi=x64; runtime_cache=runtime-inputs-x64
+  if [[ "$1" == prepare-arm64 ]]; then abi=arm64; runtime_cache=runtime-inputs; fi
   phase=PINNED_BUILD_TOOLS
   node --version
   [[ "$(node --version)" == v24.22.1 ]]
@@ -73,13 +75,13 @@ NODE
   node --test android/host/host-launch.test.mts android/tools/pack-host.test.mts >> "$work/build.log" 2>&1
   bash android/mobile/tools/test-core.sh >> "$work/build.log" 2>&1
   printf 'ANDROID_PUBLICATION_RECOVERY_AND_SERVICE_REGRESSIONS_PASSED\n'
-  phase=TARGET_X64_RUNTIME_AND_ADDONS
-  node android/tools/prepare-runtime.mts --abi x64 >> "$work/build.log" 2>&1
-  node android/tools/build-flock.mts --abi x64 >> "$work/build.log" 2>&1
-  node android/tools/build-require-builtin.mjs "$repo/android/artifacts/runtime-inputs-x64" >> "$work/build.log" 2>&1
-  printf 'X64_BIONIC_RUNTIME_AND_REAL_ADDONS_BUILT\n'
+  phase=TARGET_RUNTIME_AND_ADDONS
+  node android/tools/prepare-runtime.mts --abi "$abi" >> "$work/build.log" 2>&1
+  node android/tools/build-flock.mts --abi "$abi" >> "$work/build.log" 2>&1
+  node android/tools/build-require-builtin.mjs "$repo/android/artifacts/$runtime_cache" >> "$work/build.log" 2>&1
+  printf '%s_BIONIC_RUNTIME_AND_REAL_ADDONS_BUILT\n' "${abi^^}"
   phase=PUBLIC_PRODUCT_AND_OFFICIAL_PROFILE
-  node qa/android-mobile-terminal/prepare-host.mts "$repo" "$work" >> "$work/build.log" 2>&1
+  node qa/android-mobile-terminal/prepare-host.mts "$repo" "$work" "$abi" >> "$work/build.log" 2>&1
   printf 'PUBLIC_PRODUCT_PROFILE_AND_PACK_COMPLETE\n'
   phase=NONDEBUG_X64_APK_BUILD
   cat > "$work/runner-build.gradle" <<'GRADLE'
@@ -87,6 +89,15 @@ gradle.beforeProject { project ->
     project.layout.buildDirectory.set(new File(System.getenv('MOBILE_QA_WORK'), 'mobile/gradle-build/' + project.name))
 }
 GRADLE
+  if [[ "$abi" == arm64 ]]; then
+    phase=NONDEBUG_ARM64_UNSIGNED_APK_BUILD
+    (cd android && ./gradlew --no-daemon --init-script "$work/runner-build.gradle" :mobile:assembleArm64Release) >> "$work/build.log" 2>&1
+    candidate="$work/gradle-build/mobile/outputs/apk/arm64/release/mobile-arm64-release-unsigned.apk"
+    "$sdk/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$candidate" >> "$work/build.log" 2>&1
+    install -m 600 -- "$candidate" "${MOBILE_QA_ARM64_UNSIGNED:?}"
+    printf 'NONDEBUG_ARM64_UNSIGNED_APK_BUILT_NOT_RUNTIME_QUALIFICATION\n'
+    exit 0
+  fi
   (cd android && ./gradlew --no-daemon --init-script "$work/runner-build.gradle" :mobile:assembleX86DiagnosticRelease) >> "$work/build.log" 2>&1
   "$JAVA_HOME/bin/keytool" -genkeypair -noprompt -keystore "$work/preview.p12" -storetype PKCS12 \
     -storepass android -keypass android -alias preview -keyalg RSA -keysize 2048 -validity 30 \

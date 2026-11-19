@@ -8,6 +8,12 @@ import type {ReaderRegexDocumentHostV1,ReaderRegexDocumentRenderV1} from './read
 /** Core captures these bytes from Source or an owned EJS producer. Model
  * display HTML must never be promoted to this contract. DATA slots have already
  * been escaped by the capturing owner; this transport grants no write rights. */
+export interface ReaderNativeAttributeDataV1 {
+  readonly namespaceURI:string
+  readonly tagName:string
+  readonly name:string
+  readonly failureCode:'READER_REGEX_DOCUMENT_MACRO_CONTEXT_UNSUPPORTED'|'READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED'
+}
 export interface ReaderNativeDocumentPlanV1 {
   readonly schemaVersion:1
   readonly encoding:'reader-native-document-plan-v1'
@@ -16,6 +22,7 @@ export interface ReaderNativeDocumentPlanV1 {
   readonly documentPlanSha256:string
   readonly origin:ReaderRegexDocumentOriginV1|ReaderWorldbookDocumentOriginV1
   readonly html:string
+  readonly attributeData:readonly ReaderNativeAttributeDataV1[]
   readonly writes:'source-regex'|'none'
 }
 
@@ -34,7 +41,7 @@ export interface ReaderNativeDocumentProfileV1 {
   readonly id:'reader-native-browser'
   readonly version:1
   readonly browser:'supplied'
-  readonly modelRequests:'none'
+  readonly modelRequests:'owned-author-generation'
   readonly writes:'owned-source-regex'
   readonly readSemantics:'live'
   readonly writeBasis:'explicit-message-read'
@@ -55,12 +62,15 @@ export interface ReaderNativeDocumentProgramV1 {
 }
 
 export interface ReaderNativeDocumentExecutionV1 {
+  readonly presetLibrary?:import('./community-preset-types.js').CommunityAuthorPresetCatalogV1
+  readonly characterLibrary?:import('./roleplay-author-character-library.js').AuthorCharacterLibraryPacketV1
   readonly backend:'browser-native-v1'
   readonly program:ReaderNativeDocumentProgramV1
   readonly snapshot:ReaderRegexDocumentSnapshotV1
   readonly binding?:ReaderRegexDocumentBindingV1
   /** Permission groups have distinct origins even when they share a Surface. */
   readonly parentOrigins:Readonly<Partial<Record<ReaderNativeDocumentPlanV1['writes'],string>>>
+  readonly authorScene?:import('./author-native-helper-types.js').AuthorNativeSceneV1
 }
 
 /** Frozen product library bytes, executed by the browser in the author realm.
@@ -83,6 +93,10 @@ export interface ReaderNativeFrameLifecycleV1 {
 
 /** Native Reader bridge contract, independent of AST artifacts and VM frames. */
 export interface ReaderNativeFrameOptionsV1 {
+  readonly presetLibrary?:import('./community-preset-types.js').CommunityAuthorPresetCatalogV1
+  readonly characterLibrary?:import('./roleplay-author-character-library.js').AuthorCharacterLibraryPacketV1
+  readonly eventRoute?:import('./author-native-helper-types.js').AuthorNativeSessionEventRoute
+  rendered?(plan:ReaderNativeDocumentPlanV1):void
   readonly surface?:AuthorReaderSurface
   readonly host?:ReaderRegexDocumentHostV1
   readonly startupDeadlineMs:number
@@ -94,6 +108,8 @@ export interface ReaderNativeFrameOptionsV1 {
   mountStaticDocument(container:HTMLElement,html:string,layout:()=>void):{dispose():void}
 }
 export interface ReaderNativeDocumentFrameControllerV1 {
+  publishPresetLibrary?(packet:import('./community-preset-types.js').CommunityAuthorPresetCatalogV1):void
+  publishCharacterLibrary?(packet:import('./roleplay-author-character-library.js').AuthorCharacterLibraryPacketV1):void
   readonly started:Promise<void>
   readonly disposed:Promise<void>
   readonly lifecycle:ReaderNativeFrameLifecycleV1

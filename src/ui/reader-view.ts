@@ -1,4 +1,5 @@
 import { createReaderBeautyCache } from './reader-beauty.js';
+import type {RoleplayExtensionFailureV1} from '../core/roleplay-extension-types.js';
 import type { ReaderBeautyTask, FetchReaderDisplay,FetchReaderRenderHtml,ReleaseReaderPhase } from './reader-beauty.js';
 import type { ReaderDisplayResponse,ReaderRenderHtmlReplyV1 } from '../core/roleplay-reader-display.js';
 import type {ReaderNativeLibraryV1} from '../core/reader-native-document-types.js';
@@ -13,13 +14,14 @@ import type { ActivityState, ActivityComponents } from './activity-view.js';
 import { normalizeConversationNodes, readerNodeSeq, readerMessageId, readerText, readerTime, usageTokens, formatReaderTime } from './reader-model.js';
 import { scopeReaderCss, READER_BASE_CSS,renderReaderNarrative } from './reader-rendering.js';
 import {createAuthorBrowserSession,type AuthorBrowserStatus} from './author-browser-session.js';
+import {createAuthorNativeSessionEventRouter,createAuthorNativeNavigationOwner} from './author-native-session-events.js';
 import {createReaderRegexDocumentSession,type ReaderRegexDocumentStatusV1} from './reader-regex-document-session.js';
 import {createAuthorReaderSurface} from '../core/tavern-author-reader-surface.js';
 import type {AuthorReaderSurface,AuthorReaderSurfaceLayout} from '../core/tavern-author-reader-surface.js';
 import type {AuthorNativeComposerAccessV1} from '../core/author-native-helper-types.js';
 import {mountStaticAuthorDocument} from './author-runtime.js';
-import type {AuthorBrowserWorldbookPendingV2,AuthorBrowserPersonaPendingV1,
-    MessageBodyPendingV1} from './author-browser-pending.js';
+import type {AuthorBrowserWorldbookPendingV3,AuthorBrowserPersonaPendingV1,
+    MessageBodyPendingV1,AuthorBrowserCharacterLibraryPendingV1} from './author-browser-pending.js';
 import type {AuthorBrowserOrdinaryPending} from './author-browser-ordinary-pending.js';
 import type {createSessionImages} from './session-images.js';
 import {createReaderCommunityCache,createCommunityOptionsRenderer,COMMUNITY_READER_CSS} from './reader-community.js';
@@ -62,7 +64,7 @@ interface ReaderState extends StateReply {
     activity?: ActivityState;
     rules?: {beauty?: {regexRules?: ReaderRule[];css?: string;js?: string;};};
     surfaceNodes?: {seq?: number;turn?: number;}[];
-    readerDisplay?: {enabled: boolean;};
+    readerDisplay?: {enabled: boolean;schemaStory?: boolean;};
     readerBeauty?:ReaderNativeBeautyExecutionV1;
     failedTurnRecoveryByTurn?: Record<string, unknown>;
     // Reader consumes only these display fields; numerical snapshots and
@@ -70,12 +72,16 @@ interface ReaderState extends StateReply {
     numericalState?: {
         sessionId: string;
         kind: string;
+        storyTextBlockCode?:string;
         snapshot?: {revision?: number;stateSnapshotSha256?: string;valuesSha256?: string;sourceSha256?: string;};
         displayUpdates?: readonly MvuAcceptedDisplayUpdate[];
     } | null;
 }
 interface ChatSnapshot {order?: string[];nodes?: {get(key: string): ReaderNode | undefined;};}
-interface ReaderSessionSnapshot {loadingOlder?: boolean;hasMore?: boolean;}
+interface ReaderSessionSnapshot {
+    loadingOlder?: boolean;hasMore?: boolean;running?: boolean;
+    pendingSubmissions?: readonly {requestId: string; placement: string}[];
+}
 interface ReaderViewProps {
     sessionId?: string;scope?: {sessionId?: string;};
     useChat?(selector: (value: ChatSnapshot) => ChatSnapshot): ChatSnapshot;
@@ -86,6 +92,7 @@ interface ReaderViewProps {
 }
 type MessageComponents = ReturnType<typeof createMessageActionComponents>;
 interface ReaderDependencies extends Pick<MessageComponents, 'UserActions' | 'AssistantActions' | 'actionIconButton' | 'ICONS'> {
+    reportExtensionFailure?(failure:RoleplayExtensionFailureV1):void;
     React: typeof ReactAPI;
     resolveActiveSessionId(): string | null;
     isRoleplaySession(id: string): boolean;
@@ -104,6 +111,7 @@ interface ReaderDependencies extends Pick<MessageComponents, 'UserActions' | 'As
     ACTIVITY_CSS: string;
     images?: Pick<ReturnType<typeof createSessionImages>, 'acceptBrowserImages' | 'releaseBrowserImages'>;
     readerHandoff?: Pick<ReaderSubmissionHandoff,'mount'>;
+    startPendingOpeningSource?:import('./pending-opening-source-host.js').StartPendingOpeningSource;
     frontendSettings?: ReaderFrontendSettings;
     navigate?(sessionId:string):Promise<unknown>|void;
 }
@@ -146,6 +154,7 @@ React,
      useTavernActivity,
      fetchState,
      jsonFetch,
+     reportExtensionFailure,
      nativeLibraries,
      fetchReaderDisplay = async (sessionId, messages, signal) => {
          const response = await globalThis.fetch('/api/roleplay/state', {
@@ -181,9 +190,11 @@ React,
      ACTIVITY_CSS,
      images,
      readerHandoff,
+     startPendingOpeningSource,
      frontendSettings = createReaderFrontendSettings(),
      navigate
 }: ReaderDependencies) {
+    const navigationOwner=createAuthorNativeNavigationOwner();
     const noopSnapshotHook = () => null;
     const actionProps = (part: ReaderPart, sessionId: string): ReaderActionProps => ({
         sessionId, kind: part.kind, text: part.text, time: part.time,
@@ -256,20 +267,27 @@ React,
             notify();
         }), []);
         const readerDocumentMode = React.useSyncExternalStore(subscribeDocumentLayout, frontendSettings.getMode, frontendSettings.getMode);
-        const activity = useTavernActivity(sessionId, state?.activity);
+        const useSession = props.useSession ?? noopSnapshotHook;
+        const historySnapshot = useSession(value => value);
+        const submissionId = historySnapshot?.pendingSubmissions?.findLast(item => item.placement !== 'queued')?.requestId;
+        const nativeBusy = Boolean(submissionId || historySnapshot?.running);
+        const activity = useTavernActivity(sessionId, state?.activity, nativeBusy);
         const [, refreshBeauty] = React.useState(0);
         const [communityReload,reloadCommunity]=React.useState(0);
         const [readerCompilationReload,reloadReaderCompilation]=React.useState(0);
+        const [sceneSessionId,setSceneSessionId]=React.useState<string|null>(null);
         const beautyCacheRef = React.useRef<ReturnType<typeof createReaderBeautyCache> | null>(null);
-        beautyCacheRef.current ??= createReaderBeautyCache();
+        beautyCacheRef.current ??= createReaderBeautyCache({reportExtensionFailure});
         const communityCacheRef=React.useRef<ReturnType<typeof createReaderCommunityCache>|null>(null);
-        if(jsonFetch)communityCacheRef.current??=createReaderCommunityCache(jsonFetch);
+        if(jsonFetch)communityCacheRef.current??=createReaderCommunityCache(jsonFetch,reportExtensionFailure);
         const communityOptionsRef=React.useRef<ReturnType<typeof createCommunityOptionsRenderer>|null>(null);
         communityOptionsRef.current??=createCommunityOptionsRenderer();
         const communityUserHtmlRef=React.useRef(new Map<string,string>());
         const historyRequestRef = React.useRef<object | null>(null);
         const historyAnchorRef = React.useRef<HistoryAnchor | null>(null);
         const readerSessionRef = React.useRef(sessionId);
+        const navigationTargetRef=React.useRef<ReturnType<typeof navigationOwner.select>|null>(null);
+        const nativeEventRouteRef=React.useRef<ReturnType<typeof createAuthorNativeSessionEventRouter>|null>(null);
         const stateRequestRef = React.useRef(0);
         const browserContainerRef = React.useRef<HTMLDivElement>(null);
         const browserControllerRef = React.useRef<ReturnType<typeof createAuthorBrowserSession> | null>(null);
@@ -287,6 +305,7 @@ React,
         const readerSurfaceRevisionRef = React.useRef(0);
         const browserObservedStateRef = React.useRef<ReaderState | null>(null);
         const [browserStatus, setBrowserStatus] = React.useState<AuthorBrowserStatus>({kind: 'loading'});
+        const [auxiliaryGenerations,setAuxiliaryGenerations]=React.useState<readonly {generationId:string;silence:boolean}[]>([]);
         const [readerDocumentStatus, setReaderDocumentStatus] = React.useState<ReaderRegexDocumentStatusV1>({kind: 'inactive'});
         const streamLeaseRef = React.useRef<{sessionId: string;turn: number;step: number;} | null>(null);
         readerSessionRef.current = sessionId;
@@ -302,7 +321,12 @@ React,
             historyAnchorRef.current = null;
             if (!sessionId) return;
             if (!isRoleplaySession(sessionId)) return;
-            const readerSubmission=readerHandoff?.mount(sessionId);
+            const readerSubmission=readerHandoff?.mount(sessionId,async index=>{
+                const controller=browserControllerRef.current;
+                if(readerSessionRef.current!==sessionId||!controller)
+                    throw Error('酒馆阅读视图尚未就绪，请打开后再操作。');
+                await controller.prepareSource(index);
+            });
             readerSubmissionRef.current=readerSubmission??null;
             let alive = true;
             const requestedSessionId = sessionId;
@@ -332,6 +356,7 @@ React,
                 load(true);
             });
             return () => { alive = false; stateRequestRef.current++; clearInterval(timer); unsubscribe();
+                beautyCacheRef.current?.dispose();communityCacheRef.current?.dispose();
                 readerSubmission?.dispose();
                 if(readerSubmissionRef.current===readerSubmission)readerSubmissionRef.current=null;
                 window.removeEventListener('dsh-community-preset-changed',communityChanged); };
@@ -360,21 +385,35 @@ React,
         const snapshot = useConv((value) => value) ?? props.snapshot ?? props.conversation ?? null;
         const readerRef = React.useRef<HTMLDivElement>(null);
         const scrollRef = React.useRef<HTMLDivElement>(null);
+        const contentRef = React.useRef<HTMLDivElement>(null);
+        const feedbackRef = React.useRef<HTMLDivElement>(null);
+        const followingTail = React.useRef(false);
         const [readerViewportHeight, setReaderViewportHeight] = React.useState<number | null>(null);
         React.useLayoutEffect(() => {
             const scroller = scrollRef.current;
-            if (!scroller) return;
+            const content = contentRef.current;
+            const feedback = feedbackRef.current;
+            if (!scroller || !content || !feedback) return;
             // Only the host's available content box drives document viewports.
             // Measuring author scrollHeight here would feed 100vh back into itself.
             const observer = new scroller.ownerDocument.defaultView!.ResizeObserver(entries => {
-                const height = entries[0]!.contentRect.height;
-                if (height > 0) setReaderViewportHeight(height);
+                const viewport = entries.find(entry => entry.target === scroller);
+                if (viewport && viewport.contentRect.height > 0) setReaderViewportHeight(viewport.contentRect.height);
+                if (followingTail.current) scroller.scrollTop = scroller.scrollHeight;
             });
             observer.observe(scroller);
-            return () => observer.disconnect();
+            observer.observe(content);
+            observer.observe(feedback);
+            return () => { observer.disconnect(); followingTail.current = false; };
         }, [sessionId, state?.sessionId, state?.preset]);
-        const useSession = props.useSession ?? noopSnapshotHook;
-        const historySnapshot = useSession(value => value);
+        React.useLayoutEffect(() => {
+            const scroller = scrollRef.current;
+            if (!submissionId || !scroller) return;
+            historyAnchorRef.current = null;
+            setReaderStart(null);
+            followingTail.current = true;
+            scroller.scrollTop = scroller.scrollHeight;
+        }, [sessionId, state?.sessionId, submissionId]);
         // Paging can outlive a view switch, so retain its exact Session through
         // the native pager's completion. Rendering belongs to the slot owner.
         const loadOlder = sessionId ? () => sessionsService.using(sessionId,
@@ -418,7 +457,7 @@ React,
         // The selected Source/Native scope owns document fragments and normal
         // beauty results together, including the author frame's history window.
         const beautyScope = sessionId + '\0' + JSON.stringify([rules,state?.communityPresets?.fingerprint, displayEnabled
-            ? [state.surfaceNodes, state.recordVersions,state.displayContext, numerical?.kind,
+            ? [state.surfaceNodes, state.recordVersions,state.displayContext, numerical?.kind,numerical?.storyTextBlockCode,
                 numerical?.snapshot?.revision, numerical?.snapshot?.stateSnapshotSha256,
                 numerical?.snapshot?.valuesSha256, numerical?.snapshot?.sourceSha256]
             : null]);
@@ -429,7 +468,7 @@ React,
             && browserStatus.kind !== 'failed' && browserStatus.kind !== 'inactive';
         const actualReaderFramed = readerDocumentControllerRef.current?.hasFrame() === true
             && readerDocumentStatus.kind !== 'failed' && readerDocumentStatus.kind !== 'inactive';
-        const actualSharedFramed = actualReaderFramed || !!nativeBeauty;
+        const actualSharedFramed = actualReaderFramed || !!nativeBeauty || !!sessionId&&sceneSessionId===sessionId;
         const authorWindow = actualSharedFramed || beautyCache.hasDocuments() || !!beautyCache.execution();
 
         // Collect only the authoritative surface of this Session.  The Chat
@@ -599,9 +638,13 @@ React,
             displayByMessage.set(key, displayByMessage.has(key) ? null : update);
         }
         const taskFor = (part: ReaderPart): ReaderBeautyTask => {
-            if (part.kind !== 'narrator' || part.transient) return part.text;
-            const accepted = displayByMessage.get(JSON.stringify([part.seq, part.messageId]));
-            return {text: part.text, seq: part.seq, messageId: part.messageId,
+            const schemaOwned=part.kind==='narrator'&&state?.sessionId===sessionId
+                &&(state.readerDisplay?.schemaStory===true
+                    ||numerical?.sessionId===sessionId&&numerical.kind==='schema-ready');
+            if (part.transient)return schemaOwned?{text:part.text,schemaOwned:true}:part.text;
+            if (!displayEnabled&&part.kind!=='narrator') return part.text;
+            const accepted = part.kind==='narrator'?displayByMessage.get(JSON.stringify([part.seq, part.messageId])):undefined;
+            return {text: part.text, seq: part.seq, messageId: part.messageId,...schemaOwned?{schemaOwned:true}:{},
                 ...(accepted ? {displayUpdate: accepted} : {})};
         };
         const communityCache=communityCacheRef.current;
@@ -611,17 +654,17 @@ React,
             return selected ? surfaceNodesBySeq.size - selected.index - 1 : 0;
         };
         communityCache?.selectScope(communityScope);
-        // Source-backed assistants consume the effective community/card registry
+        // Source-backed messages consume the effective community/card registry
         // once on the server, retaining document and mapped-output provenance.
         const communityTasks=visibleParts.filter(part=>!part.transient&&part.seq!==undefined&&!!part.messageId
-            &&(!displayEnabled||part.kind==='user'))
+            &&!displayEnabled)
             .map(part=>({seq:part.seq!,messageId:part.messageId!,text:part.text,depth:communityDepth(part.seq!)}));
         const communityInput=communityCache?.versionFor(communityTasks)??0;
         React.useEffect(()=>sessionId?communityCache?.run(communityScope,sessionId,communityTasks,()=>refreshBeauty(n=>n+1)):undefined,
             [communityScope,communityInput,communityReload]);
         const projectedParts=visibleParts.map(part=>{
             if(part.transient||part.seq===undefined||!part.messageId||!communityCache
-                ||displayEnabled&&part.kind==='narrator')return part;
+                ||displayEnabled)return part;
             return {...part,text:communityCache.textFor({seq:part.seq,messageId:part.messageId,text:part.text,
                 depth:communityDepth(part.seq)})};
         });
@@ -630,7 +673,7 @@ React,
             return typeof task==='string'?task:{...task,canonicalText:visibleParts[index]!.text};
         });
         // Keep transient stream text out of regex work; it still gets immediate fallback rendering.
-        const beautyTasks = visibleTasks.filter((_, index) => visibleParts[index]!.kind === 'narrator'
+        const beautyTasks = visibleTasks.filter((_, index) => (displayEnabled||visibleParts[index]!.kind === 'narrator')
             && !visibleParts[index]!.transient);
         const readerExecution = beautyCache.execution(beautyTasks);
         const readerAuthorCss = authorCss+'\n'+beautyCache.cssFor(beautyTasks);
@@ -656,14 +699,15 @@ React,
             return html;
         };
         const renderedParts=projectedParts.map((part,index)=>{
-            const display=communityOptionsRef.current!(part.kind==='narrator'
+            const serverDisplay=displayEnabled&&!part.transient;
+            const display=communityOptionsRef.current!(part.kind==='narrator'||serverDisplay
                 ?applyBeauty(visibleTasks[index]!,displayEnabled):userHtml(part.text));
-            return {...visibleParts[index]!,displayText:part.kind==='narrator'
+            return {...visibleParts[index]!,displayText:part.kind==='narrator'||serverDisplay
                 ?beautyCache.textFor(visibleTasks[index]!,displayEnabled):part.text,
                 html:display.html,frameHtml:display.frameHtml,communityOptions:display.options,
-                fragments:part.kind==='narrator'?beautyCache.fragmentsFor(visibleTasks[index]!)?.map(fragment=>
+                fragments:part.kind==='narrator'||serverDisplay?beautyCache.fragmentsFor(visibleTasks[index]!)?.map(fragment=>
                     fragment.kind==='text'?{...fragment,html:communityOptionsRef.current!(fragment.html).html}:fragment):undefined,
-                readerFragments:part.kind==='narrator'?beautyCache.readerFragmentsFor(visibleTasks[index]!):undefined,
+                readerFragments:part.kind==='narrator'||serverDisplay?beautyCache.readerFragmentsFor(visibleTasks[index]!):undefined,
                 nativeUserProjection:part.kind==='user'&&(part.text!==visibleParts[index]!.text||display.options.length>0)};
         });
         if (state !== null && selectedNodes.length === 0) {
@@ -714,12 +758,12 @@ React,
             +(browserUserKeys.length?'\n'+browserUserKeys.map(key=>key+' > .rp-user-line').join(',')
                 +'{display:none!important}':'');
         const readerDocumentPayload = JSON.stringify(renderedParts.filter(part => !part.transient).map(part =>
-            part.kind === 'user' ? {key: readerPartKey(part),kind: part.kind,text: part.text}
+            part.kind === 'user'&&!displayEnabled ? {key: readerPartKey(part),kind: part.kind,text: part.text}
                 : {key: readerPartKey(part),kind: part.kind,html: part.frameHtml,
                     fragments:part.readerFragments?.map(fragment=>fragment.kind==='text'
                         ?{...fragment,html:communityOptionsRef.current!(fragment.html).frameHtml}:fragment)}));
         const readerSurfacePayload = JSON.stringify(renderedParts.map(part =>
-            part.kind === 'user' ? {key: readerPartKey(part),kind: part.kind,text: part.text}
+            part.kind === 'user'&&!displayEnabled ? {key: readerPartKey(part),kind: part.kind,text: part.text}
                 : {key: readerPartKey(part),kind: part.kind,html: part.frameHtml,
                     fragments:part.readerFragments?.map(fragment=>fragment.kind==='text'
                         ?{...fragment,html:communityOptionsRef.current!(fragment.html).frameHtml}:fragment)}));
@@ -728,12 +772,22 @@ React,
                 || !readerDocumentContainerRef.current) return;
             const container = readerDocumentContainerRef.current;
             let active = true, surface: AuthorReaderSurface | undefined;
+            let releaseAuthorControls: (() => void) | undefined;
             const acquire = () => {
                 if (surface) return surface;
                 const outer = container.ownerDocument.createElement('iframe');
                 outer.className = 'rp-author-guard-frame';outer.title = '作者交互阅读内容';container.append(outer);
                 const created = createAuthorReaderSurface(outer,{
+                    sessionId:sessionId??undefined,reportExtensionFailure,
                     nativeDocuments:true,
+                    sceneChanged:(value,scene)=>{
+                        releaseAuthorControls?.();releaseAuthorControls=undefined;
+                        if(!active)return;
+                        setSceneSessionId(value?sessionId:null);
+                        if(scene)releaseAuthorControls=frontendSettings.bindAuthorControls(sessionId,{
+                            getSnapshot:scene.getControls,subscribe:scene.subscribeControls,activate:scene.activateControl,
+                        });
+                    },
                     current: () => active && readerSessionRef.current === sessionId && readerSurfaceRef.current === created,
                     layout: value => setReaderSurfaceLayout({surface:created,page:readerSurfacePageRef.current,value}),
                     mountStaticDocument: (node,html,layout) => mountStaticAuthorDocument(node,html,{
@@ -747,6 +801,8 @@ React,
             readerSurfaceFactoryRef.current = acquire;
             return () => {
                 active = false;
+                releaseAuthorControls?.();releaseAuthorControls=undefined;
+                setSceneSessionId(current=>current===sessionId?null:current);
                 readerDocumentControllerRef.current?.dispose();browserControllerRef.current?.dispose();
                 surface?.dispose();surface?.outer.remove();
                 if (readerSurfaceRef.current === surface) readerSurfaceRef.current = null;
@@ -775,11 +831,28 @@ React,
             return ()=>observer.disconnect();
         }, [actualSharedFramed,activeReaderLayout,readerSurfacePayload]);
         React.useEffect(() => {
+            const route=createAuthorNativeSessionEventRouter();nativeEventRouteRef.current=route;
+            const target=sessionId&&resolveActiveSessionId()===sessionId?navigationOwner.select(sessionId,route,
+                ()=>readerSessionRef.current===sessionId&&resolveActiveSessionId()===sessionId):null;
+            navigationTargetRef.current=target;
+            const unsubscribe=route.subscribeGenerations(()=>setAuxiliaryGenerations(route.generationStatus()));
+            setAuxiliaryGenerations([]);
+            return ()=>{target?.dispose();unsubscribe();route.dispose();
+                if(nativeEventRouteRef.current===route)nativeEventRouteRef.current=null;};
+        },[sessionId]);
+        React.useEffect(() => {
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay'
                 || !readerDocumentContainerRef.current) return;
             const controller = createReaderRegexDocumentSession({sessionId,container: readerDocumentContainerRef.current,nativeLibraries,
+                reportExtensionFailure,startPendingOpeningSource,
+                commandUi:{input:(text,defaultValue)=>window.prompt(text,defaultValue)??'',echo:text=>toast(text)},
+                eventRouter:nativeEventRouteRef.current??undefined,
                 fill: text => fillComposer(text, false),
-                navigate,
+                navigate:(target,intent)=>navigationOwner.navigate(sessionId,target,intent,()=>navigate?.(target)),
+                adopted:snapshot=>{
+                    if(readerSessionRef.current===sessionId&&resolveActiveSessionId()===sessionId)
+                        navigationTargetRef.current?.adopt(snapshot);
+                },
                 requestRecapture:()=>{beautyCache.retryCompilation();reloadReaderCompilation(value=>value+1);},
                 surface: () => readerSurfaceFactoryRef.current!(),
                 current: () => readerSessionRef.current === sessionId && readerDocumentControllerRef.current === controller,
@@ -809,8 +882,18 @@ React,
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay' || !browserContainerRef.current) return;
             const readerSubmission=readerSubmissionRef.current;
             const controller = createAuthorBrowserSession({
-                sessionId, container: browserContainerRef.current,nativeLibraries,navigate,
+                sessionId, container: browserContainerRef.current,nativeLibraries,
+                reportExtensionFailure,startPendingOpeningSource,
+                navigate:(target,intent)=>navigationOwner.navigate(sessionId,target,intent,()=>navigate?.(target)),
+                adopted:snapshot=>{
+                    if(readerSessionRef.current===sessionId&&resolveActiveSessionId()===sessionId)
+                        navigationTargetRef.current?.adopt(snapshot);
+                },
+                commandUi:{input:(text,defaultValue)=>window.prompt(text,defaultValue)??'',echo:text=>toast(text)},
+                eventRouter:nativeEventRouteRef.current??undefined,
                 documentLayout:readerSurfaceFactoryRef.current!().documentLayout,
+                scene:source=>readerSurfaceFactoryRef.current!().authorScene(source),
+                releaseScene:scene=>readerSurfaceFactoryRef.current?.().releaseAuthorScene(scene),
                 composer:createReaderComposerAccess(document,()=>resolveActiveSessionId()===sessionId),
                 current: () => readerSessionRef.current === sessionId && browserControllerRef.current === controller,
                 status: setBrowserStatus,
@@ -833,6 +916,10 @@ React,
                 void browserControllerRef.current?.refresh();
             }
         }, [state, sessionId]);
+        React.useEffect(()=>{
+            readerDocumentControllerRef.current?.setSourceEventsEnabled(
+                browserStatus.kind==='inactive'||browserStatus.kind==='failed');
+        },[sessionId,browserStatus.kind,readerExecution]);
         // Native history prepends must not push the paragraph under the pointer
         // off-screen. Keep a DOM row anchor, not a scrollHeight approximation:
         // author HTML can change height after the response arrives.
@@ -846,6 +933,7 @@ React,
 
         const holdHistoryAnchor = (resetIfMissing = false, layoutChanged = false) => {
             const scroller = scrollRef.current;
+            followingTail.current = false;
             const viewportTop = scroller?.getBoundingClientRect().top ?? 0;
             const anchor = scroller
                 && Array.from(scroller.querySelectorAll('[data-reader-key]'))
@@ -907,6 +995,7 @@ React,
         const requestLatest = () => {
             if (historyBusy || historyRequestRef.current) return;
             historyAnchorRef.current = null;
+            followingTail.current = false;
             if (scrollRef.current) scrollRef.current.scrollTop = 0;
             setHistoryError(null);
             setReaderStart(null);
@@ -918,16 +1007,16 @@ React,
         // appearing as unlayered author CSS. Inline styles from the card remain
         // authoritative as usual.
         const scopedCss = scopeReaderCss(readerDefaultCss) + '\n' + scopeReaderCss(readerAuthorCss) + `
+.rp-reader-view { overflow-anchor: none; }
 .rp-author-frame-host { position: relative; width: min(1500px, 100%); align-self: center; overflow: hidden; }
 .rp-reader-content { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+.rp-reader-feedback { width: min(1500px, 100%); flex-shrink: 0; }
 .rp-reader-content > .rp-author-frame-host, .rp-reader-content > .rp-reader { width: 100%; flex-shrink: 0; }
 .rp-author-guard-frame { display: block; width: 100%; height: 150px; border: 0; }
 .rp-author-action-layer { position: absolute; inset: 0; pointer-events: none; }
-.rp-author-action-row { position: absolute; left: 0; right: 0; min-height: 32px;
-  padding: 0 clamp(22px, 4.8vw, 72px); box-sizing: border-box; pointer-events: none; }
-.rp-author-action-row .rp-reader-actions { pointer-events: auto; }
 .rp-author-shared-action-row { position: absolute; display: flow-root; box-sizing: border-box;
-  color: var(--rp-reader-ink); pointer-events: auto; }
+  color: var(--rp-reader-ink); }
+.rp-author-shared-action-row :is(button, a[href], .rp-reader-meta) { pointer-events: auto; }
 .rp-author-shared-action-layer { z-index: 1; }
 `;
 
@@ -969,9 +1058,9 @@ React,
             renderReaderActions(actionProps(part, sessionId)));
         };
 
-        const renderWorldbookOperation = (operation: AuthorBrowserWorldbookPendingV2) => {
+        const renderWorldbookOperation = (operation: AuthorBrowserWorldbookPendingV3) => {
             let outcome: string;
-            if (operation.result?.kind === 'edited-data') {
+            if (operation.result?.kind === 'committed') {
                 outcome = `已保存，修订 ${operation.result.receipt.revision}。`;
             } else if (operation.state === 'terminal' && operation.code === 'AUTHOR_WORLDBOOK_OPERATION_NOT_RECORDED') {
                 outcome = '这次修改尚未提交，无法恢复；请重新打开交互视图后再修改。';
@@ -1017,6 +1106,21 @@ React,
                     ?.showCurrentPageWithOrdinaryUnknown(operation.operationId)},'保留记录，显示当前页面'):null);
         };
 
+        const renderCharacterLibraryOperation=(envelope:AuthorBrowserCharacterLibraryPendingV1)=>{
+            const {operation,result}=envelope,request=operation.request,
+                domain=operation.kind==='character-regex-replace'?'角色正则':'角色世界书绑定',
+                outcome=result?.kind==='committed'||result?.kind==='edited-data'
+                    ?`已保存，修订 ${result.receipt.revision}。`
+                    :envelope.state==='terminal'?'原操作未提交，请重新打开交互视图后修改。'
+                        :'保存结果尚未确认，已保留原请求。',
+                detail=result?.kind==='refused'?result.diagnostics.map(row=>row.code).join('、'):envelope.code;
+            return React.createElement('div',{className:'rp-reader-empty',role:'status',key:request.operationId},
+                `${domain} · ${request.target.characterId} · ${request.target.locator.ownerSessionId} · ${request.operationId}。${outcome}`,
+                detail?' '+detail:null,
+                envelope.state!=='terminal'?React.createElement('button',{type:'button',onClick:()=>void browserControllerRef.current
+                    ?.retryCharacterLibrary(request.operationId)},'恢复同一次角色修改'):null);
+        };
+
         const renderPersonaOperation = (operation: AuthorBrowserPersonaPendingV1) => {
             const outcome=operation.result?.kind==='committed'
                 ? operation.result.receipt.result===false
@@ -1058,7 +1162,14 @@ React,
 
                 ref: scrollRef,
 
+                onScroll: (event) => {
+                    const viewport = event.currentTarget;
+                    followingTail.current = readerStart === null && !historyAnchorRef.current
+                        && viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 32;
+                },
+
                 onWheel: (event) => {
+                    if (event.deltaY < 0) followingTail.current = false;
                     // Saves, layout and latest navigation also scroll this view.
                     // Only an explicit upward gesture requests an earlier page.
                     if (event.deltaY < 0 && event.currentTarget.scrollTop < 140 && !historyError) void requestOlder();
@@ -1072,6 +1183,11 @@ React,
                 React.createElement('button', {type: 'button', onClick: () => void browserControllerRef.current?.confirm()}, '确认保存结果'),
                 React.createElement('button', {type: 'button', onClick: () => void browserControllerRef.current?.retry()}, '重试同一次保存')) : null,
             browserStatus.worldbooks?.map(renderWorldbookOperation),
+            auxiliaryGenerations.filter(row=>!row.silence).map(row=>React.createElement('div',{
+                key:row.generationId,className:'rp-reader-operation',role:'status'},
+                '辅助生成进行中 ',React.createElement('button',{type:'button',onClick:()=>
+                    nativeEventRouteRef.current?.stopGeneration(row.generationId),'aria-label':'停止辅助生成'},'停止'))),
+            browserStatus.characterLibraries?.map(renderCharacterLibraryOperation),
             browserStatus.personas?.map(renderPersonaOperation),
             browserStatus.ordinary?.map(renderOrdinaryOperation),
             readerDocumentStatus.ordinary?.map(renderOrdinaryOperation),
@@ -1169,7 +1285,7 @@ React,
                 ? React.createElement('div', { className: 'rp-reader-empty' }, '暂无可阅读的正文')
                 : null,
 
-            React.createElement('div', {className: 'rp-reader-content',
+            React.createElement('div', {className: 'rp-reader-content', ref:contentRef,
                 style: {width: '100%', maxWidth: '1500px'}},
             React.createElement('div', {className: 'rp-author-frame-host', ref: browserContainerRef,
                 style: {display: actualBrowserFramed ? undefined : 'none'}}),
@@ -1197,9 +1313,9 @@ React,
                     key: `${part.kind}:${part.seq ?? index}:${part.messageId ?? ''}`,
                 })))),
 
-            pendingPlayerBubble(activity, nodes),
-
-            React.createElement(ActivityBanner, { activity })
+            React.createElement('div', {className:'rp-reader-feedback',ref:feedbackRef},
+                pendingPlayerBubble(activity, nodes),
+                React.createElement(ActivityBanner, {activity, awaitingActivity:nativeBusy}))
 
         );
     }

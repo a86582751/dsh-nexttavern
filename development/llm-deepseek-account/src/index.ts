@@ -4,10 +4,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import { ACCOUNT_QUOTA_EXCEEDED_CODE, LlmError, QUOTA_EXCEEDED_CODE } from 'dsh-nexttavern-native-llm'
 import type {} from '@deepseek-ai/dsh-deepseek-account'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
-import { plainOptions, resolveAdapterOptions, registerDeepSeekProvider, catalogModelInfo } from 'dsh-nexttavern-native-llm-deepseek'
+import { registerDeepSeekProvider, catalogModelInfo } from 'dsh-nexttavern-native-llm-deepseek'
 import type { DeepSeekRequestAuth, ResolvedDeepSeekOptions } from 'dsh-nexttavern-native-llm-deepseek'
 
-import { Config } from '@deepseek-ai/dsh-llm-deepseek-account'
+import { Config, plainAccountOptions, resolveAccountOptions } from '@deepseek-ai/dsh-llm-deepseek-account'
 export { Config } from '@deepseek-ai/dsh-llm-deepseek-account'
 export const name = 'llm-deepseek-account'
 export const inject = ['llm']
@@ -15,7 +15,8 @@ export const inject = ['llm']
 const PROVIDER = 'deepseek-account'
 
 export function apply(ctx: Context, config: Config): void {
-  const options = () => resolveAdapterOptions(plainOptions(config), launchEnvironmentOf(ctx))
+  const environment = launchEnvironmentOf(ctx)
+  const options = () => resolveAccountOptions(plainAccountOptions(config), environment).protocol
   options()
   const resolveAuth = async (connection: ResolvedDeepSeekOptions): Promise<DeepSeekRequestAuth> => {
     const account = ctx.get('deepseekAccount')

@@ -4,6 +4,7 @@
 import type {QuickJSHandle,QuickJSWASMModule} from 'quickjs-emscripten-core'
 import {createHash} from 'node:crypto'
 import lodash from 'nexttavern-mvu-lodash'
+import {recordSha256} from './roleplay-data.js'
 import {schemaTextSha256} from './tavern-mvu-schema-data.js'
 import {createTavernEjsSourceCompiler,TavernEjsCompileError,type TavernEjsCompilerLibrary}
   from './tavern-template-ejs-compiler.mjs'
@@ -12,7 +13,10 @@ import {TEMPLATE_LIMITS_V1,validateTemplateSnapshotV1,templateVariableValueV1,te
   templateActivationV1,TemplateRefusalV1,validateTemplateInjectionEffectsV1}
   from './tavern-template-data.mjs'
 import {templateVariablePathV1} from './tavern-template-data.mjs'
-import {createTavernPromptMacroProjectorV1} from './tavern-prompt-transform-execution.mjs'
+import {createTavernPromptMacroProjectorV1,formatTavernPromptTextV1,compileTavernPromptRegexV1,
+  captureTavernMessageMacrosV1}
+  from './tavern-prompt-transform-execution.mjs'
+import type {TavernPromptMacroProjectorDependenciesV1} from './tavern-prompt-transform-execution.mjs'
 import {TAVERN_PROMPT_TRANSFORM_LIMITS_V1 as macroLimits} from './tavern-prompt-transform-types.mjs'
 import type {TavernTemplateReadV1,TavernTemplateActivationProposalV1,
   TavernTemplateInjectionEffectV1} from './tavern-template-types.mjs'
@@ -30,7 +34,9 @@ import type {AuthorOrdinaryMessageCaptureV1} from './tavern-author-prompt-types.
 /** The admitted component supplies its fixed compiler/module, not request data.
  * A host is one captured preparation and its actual injection closure lifetime.
  * No filesystem resolution, persistent state writes or provider publication. */
-export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:TavernEjsCompilerLibrary;lodashGuestSource?:string},
+export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:TavernEjsCompilerLibrary;lodashGuestSource?:string;
+  readCaptured?:(request:import('./tavern-template-ejs-host-types.mjs').TavernEjsCapturedReadRequestV1)=>
+    import('./tavern-template-ejs-host-types.mjs').TavernEjsCapturedReadResultV1;parkedMs?:()=>number},
   capture:TavernEjsHostCapture,consumer?:TavernEjsConsumer):TavernEjsHost {
   if(consumer!==undefined&&consumer!=='reader-render-v1'&&consumer!=='reader-regex-phase-v1') {
     throw Error('TEMPLATE_CONSUMER_UNSUPPORTED')
@@ -49,10 +55,20 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
     packageSha256:snapshot.packageSha256}
   const compile=createTavernEjsSourceCompiler(deps.compiler)
   let resources=new Map(capture.resources.map(row=>[row.id,{...row}]))
-  let lore=new Map(snapshot.lore.map(row=>[row.key,row]))
+  let lore=new Map(snapshot.lore.map(row=>[row.key,row])),worldInfoSettings=capture.worldInfoSettings
+  const privateLore=new Map<string,TavernEjsHostCapture['snapshot']['lore'][number]>()
+  const privateResources=new Map<string,TavernEjsResource>()
+  const namedBooks=new Map<string,import('./tavern-template-ejs-host-types.mjs').TavernEjsCapturedReadResultV1>()
+  let characterDirectory:Extract<import('./tavern-template-ejs-host-types.mjs').TavernEjsCapturedReadResultV1,
+    {kind:'character-directory'}>|undefined
+  const characters=new Map<string,import('./tavern-template-ejs-host-types.mjs').TavernEjsCurrentCharacterV1>()
   let ordinary=capture.ordinaryNamespace?structuredClone(capture.ordinaryNamespace):undefined
   let messageView=capture.ordinaryMessageView?structuredClone(capture.ordinaryMessageView):undefined
   let presetCatalog=capture.presetCatalog
+  let helperMessages=capture.helperMessages,currentCharacterReference=capture.currentCharacterReference
+  let currentCharacter:import('./tavern-template-ejs-host-types.mjs').TavernEjsCurrentCharacterV1|undefined
+  type ChatRead=NonNullable<TavernEjsHostOutput['chatReads']>[number]
+  const chatRegexes=new Map<string,RegExp|null>()
   const presetHashes=new Map<number,{readonly text:string;readonly sha256:string}>()
   const namedCapture=(queues:TavernEjsHostCapture['namedPromptQueues'])=>queues===undefined?undefined:
     new Map(queues.map(queue=>[queue.key,new Map(queue.entries.map(entry=>[entry.uid,{...entry}]))]))
@@ -64,14 +80,22 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
   let macros=capture.macros,macroProjector:ReturnType<typeof createTavernPromptMacroProjectorV1>|undefined
   let macroPointer='',macroJobs=0,macroWorkChars=0,macroMatches=0
   const overlay=new Map<string,unknown>()
+  const globalOverlay=new Map<string,unknown>()
+  const initialOverlay=new Map<string,unknown>()
+  let initialBinding=capture.initialBinding??snapshot.scopes.find(row=>row.scope==='initial')
+  let stagedInitial=capture.initialBinding!==undefined
   const deleted=Symbol('ordinary-deleted'),cacheOverlay=new Map<string,unknown>(),messageOverlay=new Map<string,Map<string,unknown>>()
-  let cacheRebuilt=false
+  let cacheRebuilt=stagedInitial&&initialBinding?.valuesSha256!==snapshot.scopes.find(row=>row.scope==='initial')?.valuesSha256
+  let cacheValues:Record<string,unknown>|undefined,previousMessageIndex:number|undefined
   type MessageTarget=AuthorMessageTargetV3
   type MessageSelector={id?:number;role?:'user'|'assistant'|'system'|'any';swipe_id?:number}
   const targetKey=(target:MessageTarget)=>JSON.stringify(target.identity)
   let messageCaptures=new Map<string,AuthorOrdinaryMessageCaptureV1>()
-  const indexMessages=()=>{messageCaptures=new Map((messageView?.captures??[]).flatMap(row=>
-    row.root.namespace.target?[[targetKey(row.root.namespace.target as MessageTarget),row] as const]:[]))}
+  const indexMessages=()=>{
+    previousMessageIndex=undefined
+    messageCaptures=new Map((messageView?.captures??[]).flatMap(row=>
+      row.root.namespace.target?[[targetKey(row.root.namespace.target as MessageTarget),row] as const]:[]))
+  }
   indexMessages()
   const messageAt=(index:number,swipe?:number)=>{
     const row=messageView?.messages[index],targets=row?.ordinary?.variants??[],selected=row?.ordinary?.selectedTarget,
@@ -98,6 +122,13 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
       return values
     }}
   }
+  const previousInitializedMessageIndex=()=>{
+    if(previousMessageIndex!==undefined)return previousMessageIndex
+    const rows=messageView?.messages??[],last=Math.min(messageView?.current?.message_id??rows.length-1,rows.length-1)
+    previousMessageIndex=-1
+    for(let index=last;index>=0;index--)if(messageAt(index).exists){previousMessageIndex=index;break}
+    return previousMessageIndex
+  }
   const selectMessage=(selector:MessageSelector|undefined,getter:boolean)=>{
     if(!messageView)throw Error('TEMPLATE_MESSAGE_SELECTOR_UNAVAILABLE')
     const rows=messageView.messages,current=messageView.current
@@ -105,27 +136,44 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
     if(selector?.id!==undefined)index=selector.id<0?rows.length+selector.id:selector.id
     else if(selector?.role!==undefined)index=rows.findLastIndex((row,position)=>
       (selector.role==='any'||row.role===selector.role)&&(!getter||messageAt(position).exists))
-    else if(getter) {
-      const last=current===null?rows.length-1:current.message_id
-      index=rows.slice(0,last+1).findLastIndex((_row,position)=>messageAt(position).exists)
-    }else index=current?.message_id??-1
+    else if(getter)index=previousInitializedMessageIndex()
+    else index=current?.message_id??-1
     return messageAt(index,selector?.swipe_id??current?.swipe_id)
   }
   const assignOverlay=(values:Record<string,unknown>,changes:ReadonlyMap<string,unknown>)=>{
     for(const [key,value] of changes){if(value===deleted)delete values[key];else values[key]=value}
     return values
   }
+  const globalBinding=()=>macros.variableScopes?.global??snapshot.scopes.find(row=>row.scope==='global')
+  const globalValues=()=>assignOverlay({...globalBinding()?.values},globalOverlay)
+  const initialValues=()=>assignOverlay({...initialBinding?.values},initialOverlay)
   const rebuildCache=()=>{
-    const values:Record<string,unknown>={}
-    if(cacheRebuilt&&messageView?.current) {
-      for(const scope of ['global','initial','chat'])Object.assign(values,snapshot.scopes.find(row=>row.scope===scope)?.values)
+    if(cacheValues)return cacheValues
+    const values:Record<string,unknown>=Object.create(null),cache=snapshot.scopes.find(row=>row.scope==='cache')?.values
+    if(cacheRebuilt&&(messageView?.current||globalOverlay.size||initialOverlay.size||stagedInitial)) {
+      Object.assign(values,globalValues())
+      Object.assign(values,initialValues(),snapshot.scopes.find(row=>row.scope==='chat')?.values)
       Object.assign(values,ordinary?.values);assignOverlay(values,overlay)
-      Object.assign(values,messageAt(messageView.current.message_id,messageView.current.swipe_id).values)
+      // The admitted player row can be uninitialized. Cache reconstruction
+      // uses the previous initialized row's own selected swipe. Explicit
+      // withMsg getters keep the fixed upstream environment-swipe semantics.
+      if(messageView)Object.assign(values,messageAt(previousInitializedMessageIndex()).values)
+      else Object.assign(values,snapshot.scopes.find(row=>row.scope==='message')?.values)
+      // Prompt preparation owns these attempt counters. Rebuilding variable
+      // layers retains that captured basis before this invocation's overlay.
+      for(const key of ['_trace_id','_modify_id'])if(cache&&Object.hasOwn(cache,key))values[key]=cache[key]
+      // Numerical edits are already resolved by the prompt cache owner.
+      // Ordinary VM writes cannot replace this read-only current-state fact.
+      if(cache&&Object.hasOwn(cache,'stat_data'))values.stat_data=cache.stat_data
     }else {
-      Object.assign(values,snapshot.scopes.find(row=>row.scope==='cache')?.values,ordinary?.values)
+      Object.assign(values,globalBinding()?.values,cache,ordinary?.values)
       assignOverlay(values,overlay)
     }
-    return values
+    return cacheValues=assignOverlay(values,cacheOverlay)
+  }
+  const resetCache=()=>{
+    if(cacheOverlay.size||!cacheRebuilt)cacheValues=undefined
+    cacheOverlay.clear();cacheRebuilt=true
   }
   const compiled=new Map<string,Map<string,{source:string;sourceBytes:number;compiledBytes:number;contentSha256:string}>>()
   const runtime=deps.quickjs.newRuntime()
@@ -139,7 +187,8 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
   const reads:TavernTemplateReadV1[]=[],readKeys=new Set<string>()
   const dependencyRows=new Map<string,TavernTemplateReadV1>()
   const resourceReads=new Map<string,TavernEjsHostOutput['resourceReads'][number]>()
-  const activations:TavernTemplateActivationProposalV1[]=[],activationKeys=new Set<string>()
+  const chatReads=new Map<number,ChatRead>()
+  const activations:TavernTemplateActivationProposalV1[]=[],activationKeys=new Map<string,number>()
   const effects:TavernTemplateInjectionEffectV1[]=[]
   const regexEffects:TavernEjsRegexEffectV1[]=[]
   const ordinaryReads=new Set<string>()
@@ -204,12 +253,16 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
   }
   const noteRead=(kind:TavernTemplateReadV1['kind'],key:string|null,scope:string|null,
     purpose:TavernTemplateReadV1['purpose'])=>{
+    // The shared stage already owns this certified binding. Reuse its whole
+    // dependency instead of hashing staged values for each nested helper read.
+    if(kind==='variable'&&(scope==='global'&&macros.variableScopes?.global||scope==='initial'&&initialBinding))key=null
     const identity=JSON.stringify([kind,scope,key,purpose])
     if(readKeys.has(identity))return
     if(kind==='variable'&&key!==null&&readKeys.has(JSON.stringify([kind,scope,null,purpose])))return
     let row=dependencyRows.get(identity)
     if(!row){
-      const binding=kind==='variable'&&key===null?snapshot.scopes.find(item=>item.scope===scope):undefined
+      const binding=kind==='variable'&&key===null
+        ?scope==='global'?globalBinding():scope==='initial'?initialBinding:snapshot.scopes.find(item=>item.scope===scope):undefined
       // This host's snapshot is already validated. A whole-binding read uses
       // its exact certified hash; no second serialization of the entire map.
       row=binding?{kind,purpose,scope:binding.scope,ownerId:binding.ownerId,key,present:true,
@@ -223,29 +276,36 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
     fault??={code,sourcePointer:macroPointer,macro:token,limit}
     throw Error('TEMPLATE_EJS_MACRO_REFUSED')
   }
-  const macroLimit=(field:'jobs'|'workChars'|'outputChars'|'matches',observed:number)=>{
+  const macroLimit=(field:'jobs'|'workChars'|'outputChars'|'matches'|'patternChars'|'replacementChars',observed:number)=>{
     if(observed>macroLimits[field])macroFault('PROMPT_TRANSFORM_LIMIT',null,
       {field,observed,maximum:macroLimits[field]})
   }
+  const macroVariable:NonNullable<TavernPromptMacroProjectorDependenciesV1['variable']>=(scope,key)=>{
+    if(scope==='global'&&globalBinding()) {
+      const selected=readVariable(key,{scope:'global'})
+      const value=selected.present?selected.value:null
+      return {value:value==null?'':typeof value==='object'?JSON.stringify(value):String(value)}
+    }
+    if(scope!=='chat'||!ordinary)return undefined
+    noteOrdinary(key)
+    if(!ordinaryHas(key))return undefined
+    const value=ordinaryValue(key)
+    if(value===deleted)return {value:''}
+    return {value:value==null?'':typeof value==='object'?JSON.stringify(value):String(value)}
+  }
+  const macroDependencies:TavernPromptMacroProjectorDependenciesV1={
+    issue:macroFault,recordRead:retainRead,variable:macroVariable,budget:{
+      job:()=>macroLimit('jobs',++macroJobs),
+      work:chars=>{macroWorkChars+=chars;macroLimit('workChars',macroWorkChars)},
+      output:chars=>macroLimit('outputChars',chars),match:()=>macroLimit('matches',++macroMatches)}}
   const projectLoreMacros=(row:Pick<TavernEjsResource,'sourcePointer'|'text'>)=>{
     macroPointer=row.sourcePointer
-    macroProjector??=createTavernPromptMacroProjectorV1(macros,{
-      issue:macroFault,recordRead:retainRead,budget:{
-        job:()=>macroLimit('jobs',++macroJobs),
-        work:chars=>{macroWorkChars+=chars;macroLimit('workChars',macroWorkChars)},
-        output:chars=>macroLimit('outputChars',chars),match:()=>macroLimit('matches',++macroMatches)},
-      variable:(scope,key)=>{
-        if(scope!=='chat'||!ordinary)return undefined
-        noteOrdinary(key)
-        if(!ordinaryHas(key))return undefined
-        const value=ordinaryValue(key)
-        if(value===deleted)return {value:''}
-        return {value:value==null?'':typeof value==='object'?JSON.stringify(value):String(value)}
-      }})
+    macroProjector??=createTavernPromptMacroProjectorV1(macros,macroDependencies)
     return macroProjector.project(row.text)
   }
   const compileResource=(row:TavernEjsResource,projectMacros=false,ownedContentSha256?:string)=>{
-    if(row.sourceSnapshotSha256!==snapshot.sourceSnapshotSha256)throw Error('TEMPLATE_SOURCE_CHANGED')
+    if(row.sourceSnapshotSha256!==snapshot.sourceSnapshotSha256&&!privateResources.has(row.id)&&!privateLore.has(row.id))
+      throw Error('TEMPLATE_SOURCE_CHANGED')
     if(++evaluations>limits.templateEvaluations)throw Error('TEMPLATE_EVALUATION_LIMIT')
     const text=projectMacros?projectLoreMacros(row):row.text
     if(!reader&&text.length>limits.sourceChars)throw Error('TEMPLATE_SOURCE_LIMIT')
@@ -279,7 +339,7 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
     owned.push(handle);return handle
   }
   const readVariable=(key:string|null,options:TavernEjsVariableReadOptions):{present:boolean;value:unknown}=>{
-    if(options.noCache){cacheOverlay.clear();cacheRebuilt=true}
+    if(options.noCache)resetCache()
     const selected=options.scope??'cache'
     // Fixed ST-Prompt-Template's unselected message scope deliberately reads
     // its merged cache. withMsg is the distinct message/swipe selector and
@@ -291,6 +351,18 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
     let actual:{present:boolean;value:unknown}
     const binding=snapshot.scopes.find(row=>row.scope===scope)
     const literal=key!==null&&binding!==undefined&&Object.hasOwn(binding.values,key)
+    const noteVariableRead=()=>{
+      if(!options.literalOnly||key===null){noteRead('variable',key,scope,'read');return}
+      // Property-map reads also accept literal keys outside getvar's path
+      // grammar. Reuse the certified binding for those keys and for presence
+      // checks, including after a cache refresh.
+      if(!literal||options.presenceOnly){noteRead('variable',null,scope,'read');return}
+      try {noteRead('variable',key,scope,'read')}
+      catch(error){
+        if(!(error instanceof TemplateRefusalV1)||error.diagnostic.code!=='TEMPLATE_VARIABLE_PATH_INVALID')throw error
+        noteRead('variable',null,scope,'read')
+      }
+    }
     // Complete literal keys precede nested paths across both captured layers.
     // Absent ordinary keys are dependencies too: a future literal can change
     // which layer/path this same helper resolves.
@@ -304,18 +376,30 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
       }
     }
     const ordinaryKey=parts[0]
-    const readValues=(values:Record<string,unknown>,available=true)=>{
-      if(!available)return {present:false,value:null}
-      if(key===null)return {present:true,value:values}
-      const path=Object.hasOwn(values,key)||options.literalOnly?[key]:templateVariablePathV1(key)
+    const readValues=(values:Record<string,unknown>,changes?:ReadonlyMap<string,unknown>)=>{
+      if(key===null)return {present:true,value:changes?assignOverlay({...values},changes):values}
+      const path=Object.hasOwn(values,key)||changes?.has(key)||options.literalOnly?[key]:templateVariablePathV1(key)
       let value:unknown=values
-      for(const part of path){
+      for(const [index,part] of path.entries()){
+        if(index===0&&changes?.has(part)) {
+          value=changes.get(part)
+          if(value===deleted)return {present:false,value:null}
+          continue
+        }
         if(value===null||typeof value!=='object'||!Object.hasOwn(value,part))return {present:false,value:null}
         value=(value as Record<string,unknown>)[part]
       }
       return {present:true,value}
     }
-    if(selected==='message'&&options.withMsg!==undefined) {
+    if(scope==='global') {
+      if(!globalBinding())throw Error('TEMPLATE_SCOPE_UNAVAILABLE')
+      noteVariableRead()
+      actual=readValues(globalBinding()!.values,globalOverlay)
+    }else if(scope==='initial') {
+      if(!initialBinding)throw Error('TEMPLATE_SCOPE_UNAVAILABLE')
+      noteVariableRead()
+      actual=readValues(initialBinding.values,initialOverlay)
+    }else if(selected==='message'&&options.withMsg!==undefined) {
       const target=selectMessage(options.withMsg as MessageSelector,true)
       if(target.target)noteMessageRead(target.target,key)
       if(!target.exists)actual={present:false,value:null}
@@ -336,12 +420,12 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
     }else if(scope==='cache'&&(cacheRebuilt||cacheOverlay.size)) {
       if(key===null){if(ordinary)ordinaryReadAll=true}
       else if(ordinary&&ordinaryHas(key))noteOrdinary(key)
-      noteRead('variable',key,scope,'read')
-      if(messageView?.current){
-        const current=messageAt(messageView.current.message_id,messageView.current.swipe_id)
+      noteVariableRead()
+      if(messageView){
+        const current=messageAt(previousInitializedMessageIndex())
         if(current.target)noteMessageRead(current.target,key)
       }
-      actual=readValues(assignOverlay(rebuildCache(),cacheOverlay))
+      actual=readValues(rebuildCache())
     }else if(ordinaryKey!==undefined&&ordinaryHas(ordinaryKey)){
       const value=ordinaryValue(ordinaryKey)
       actual=value===deleted?{present:false,value:null}:{present:true,value}
@@ -354,17 +438,7 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
     }else if(options.literalOnly&&key!==null){
       if(!binding)throw Error('TEMPLATE_SCOPE_UNAVAILABLE')
       actual=literal?{present:true,value:binding.values[key]}:{present:false,value:null}
-      // variables is a property map, not getvar's path API. An absent literal
-      // (or a literal outside the old path grammar) depends on the certified
-      // binding; that receipt neither materializes its values nor invents a
-      // path read whose result differs from this actual property lookup.
-      if(literal&&!options.presenceOnly){
-        try {noteRead('variable',key,scope,'read')}
-        catch(error){
-          if(!(error instanceof TemplateRefusalV1)||error.diagnostic.code!=='TEMPLATE_VARIABLE_PATH_INVALID')throw error
-          noteRead('variable',null,scope,'read')
-        }
-      }else noteRead('variable',null,scope,'read')
+      noteVariableRead()
     }else{
       noteRead('variable',key,scope,'read')
       actual=templateVariableValueV1(snapshot,key,scope)
@@ -403,13 +477,130 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
     const options=JSON.parse(wire) as TavernEjsVariableReadOptions,result=readVariable(key,options)
     return context.newString(JSON.stringify(options.presenceOnly?{present:result.present}:result))
   })
+  const capturedRead=(request:import('./tavern-template-ejs-host-types.mjs').TavernEjsCapturedReadRequestV1)=>{
+    if(!deps.readCaptured)throw Error('TEMPLATE_CAPTURED_READ_UNAVAILABLE')
+    const parked=deps.parkedMs?.()??0
+    try{return deps.readCaptured(request)}
+    catch(error){
+      if(error instanceof Error&&/^[A-Z][A-Z0-9_]+$/.test(error.message))recordFault(error.message)
+      throw error
+    }
+    finally{deadline+=(deps.parkedMs?.()??0)-parked}
+  }
+  const readCurrentCharacter=()=>{
+    if(!currentCharacterReference)throw Error('TEMPLATE_CURRENT_CHARACTER_CAPTURE_REQUIRED')
+    if(!currentCharacter) {
+      const result=capturedRead({kind:'current-character'})
+      if(result.kind!=='character-data')throw Error('TEMPLATE_CAPTURED_READ_CHANGED')
+      currentCharacter=result.value
+    }
+    return currentCharacter
+  }
+  const availableCharacter=(value:import('./tavern-template-ejs-host-types.mjs').TavernEjsCurrentCharacterV1|undefined)=>{
+    if(!value)throw Error('TEMPLATE_CURRENT_CHARACTER_CAPTURE_REQUIRED')
+    if('unavailable' in value) {
+      recordFault(value.unavailable)
+      throw Error(value.unavailable)
+    }
+    return value
+  }
   const open=native('captured-template-resource',(kindHandle,keyHandle)=>{
     const kind=context.getString(kindHandle!),key=context.getString(keyHandle!)
     if(Buffer.byteLength(key,'utf8')>limits.helperArgumentBytes)throw Error('TEMPLATE_HELPER_LIMIT')
     let row:TavernEjsResource|undefined,projectMacros=kind==='lore',ownedContentSha256:string|undefined
+    if(kind==='named-world-info') {
+      let result=namedBooks.get(key)
+      if(!result) {
+        result=capturedRead({kind:'named-world-info',name:key})
+        namedBooks.set(key,result)
+        if(result.kind==='found') {
+          for(const entry of result.value.lore){
+            privateLore.set(entry.key,entry)
+            privateResources.set(entry.key,{id:entry.key,loreKey:entry.key,sourcePointer:entry.sourcePointer,
+              sourceSnapshotSha256:entry.sourceSnapshotSha256,contentSha256:entry.contentSha256,text:entry.content})
+          }
+        }
+      }
+      if(result.kind!=='found'&&result.kind!=='not-found')throw Error('TEMPLATE_CAPTURED_READ_CHANGED')
+      return context.newString(JSON.stringify(result.kind==='not-found'?[]:result.value.lore.map(entry=>({
+        key:entry.key,bookId:entry.bookId,lookup:entry.lookup,worldInfo:entry.worldInfo}))))
+    }
+    if(kind==='character-directory') {
+      if(!characterDirectory) {
+        const result=capturedRead({kind:'character-directory'})
+        if(result.kind!=='character-directory')throw Error('TEMPLATE_CAPTURED_READ_CHANGED')
+        characterDirectory=result
+      }
+      return context.newString(JSON.stringify(characterDirectory))
+    }
+    if(kind==='character-data') {
+      let value=characters.get(key)
+      if(!value) {
+        const result=capturedRead({kind:'character-data',characterId:key})
+        if(result.kind!=='character-data')throw Error('TEMPLATE_CAPTURED_READ_CHANGED')
+        value=result.value;characters.set(key,value)
+      }
+      return context.newString(JSON.stringify(availableCharacter(value).data))
+    }
+    if(kind==='chat-message') {
+      if(!helperMessages)throw Error('TEMPLATE_CHAT_CAPTURE_REQUIRED')
+      const index=Number(key),message=helperMessages.rows.find(item=>item.index===index)
+      if(!message)throw Error('TEMPLATE_CHAT_MESSAGE_UNAVAILABLE')
+      macroPointer=`/messages/${message.index}`
+      const text=formatTavernPromptTextV1(message.text,helperMessages.rules,captureTavernMessageMacrosV1(macros,message),
+        {channel:'prompt',placement:message.isUser?1:2,depth:message.depth,isEdit:false,characterOverride:message.name},
+        {...macroDependencies,pattern:chars=>macroLimit('patternChars',chars),
+          replacement:chars=>macroLimit('replacementChars',chars)},false,{finalNames:'default',compileRegex:source=>{
+          if(!chatRegexes.has(source))chatRegexes.set(source,compileTavernPromptRegexV1(source))
+          return chatRegexes.get(source)!
+        }})
+      chatReads.set(index,{index:message.index,messageId:message.messageId,
+        messageVersionSha256:message.messageVersionSha256,
+        inputSha256:schemaTextSha256(message.text),outputSha256:schemaTextSha256(text)})
+      return context.newString(JSON.stringify(text))
+    }
+    if(kind==='current-character') {
+      return context.newString(JSON.stringify(availableCharacter(readCurrentCharacter()).data))
+    }
+    if(kind==='character-template') {
+      const row:TavernEjsResource={id:'character-template',sourcePointer:pointer+'/character-template',
+        sourceSnapshotSha256:snapshot.sourceSnapshotSha256,text:key,contentSha256:schemaTextSha256(key)}
+      return context.newString(JSON.stringify(compileResource(row,false,row.contentSha256)))
+    }
+    if(kind==='character-result') {
+      const result=JSON.parse(key) as {characterId:string|null;name:string;text:string},value=result.name,
+        selected=availableCharacter(result.characterId===null?readCurrentCharacter():characters.get(result.characterId))
+      const valueSha256=schemaTextSha256(value),binding={key:'char',value,valueSha256,read:{
+          kind:'variable' as const,purpose:'read' as const,scope:'card' as const,
+          ownerId:result.characterId??snapshot.sessionId,key:'name',present:true,
+          versionSha256:selected.sourceSnapshotSha256,valueSha256:recordSha256(value),
+          entryId:null,sourcePointer:selected.sourcePointer+'/name'}},
+        names={...macros.names,char:binding,group:{...binding,key:'group'},
+          charIfNotGroup:{...binding,key:'charIfNotGroup'},groupNotMuted:{...binding,key:'groupNotMuted'}},
+        characterMacros={...macros,names,card:null,preserveUnknownMacros:true}
+      macroPointer=pointer
+      return context.newString(JSON.stringify(createTavernPromptMacroProjectorV1(characterMacros,macroDependencies)
+        .project(result.text)))
+    }
     if(kind==='preset-merge-library') {
       if(!deps.lodashGuestSource)throw Error('TEMPLATE_PRESET_LIBRARY_UNAVAILABLE')
       return context.newString(JSON.stringify(deps.lodashGuestSource))
+    }
+    if(kind==='world-info-catalog') {
+      if(!snapshot.worldInfo)throw Error('TEMPLATE_WORLD_INFO_CAPTURE_REQUIRED')
+      noteRead('lore',null,null,'metadata-read')
+      return context.newString(JSON.stringify(snapshot.worldInfo))
+    }
+    if(kind==='world-info-settings') {
+      if(!worldInfoSettings)throw Error('TEMPLATE_WORLD_INFO_SETTINGS_REQUIRED')
+      return context.newString(JSON.stringify(worldInfoSettings))
+    }
+    if(kind==='world-info-macro')return context.newString(JSON.stringify(projectLoreMacros({sourcePointer:pointer,text:key})))
+    if(kind==='world-info-entry') {
+      if(!privateLore.has(key)||lore.has(key))noteRead('lore',key,null,'metadata-read')
+      const entry=lore.get(key)??privateLore.get(key)
+      if(entry&&!entry.worldInfo)throw Error('TEMPLATE_WORLD_INFO_ENTRY_UNAVAILABLE')
+      return context.newString(JSON.stringify(entry?.worldInfo??null))
     }
     if(kind==='preset'||kind==='preset-content'||kind==='preset-result') {
       if(!presetCatalog)throw Error('TEMPLATE_PRESET_CAPTURE_REQUIRED')
@@ -429,20 +620,22 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
           sourceSnapshotSha256:row.sourceSnapshotSha256,contentSha256:row.contentSha256})
       }
       if(kind==='preset-content')return context.newString(JSON.stringify(entry?.content||null))
+    }else if(kind==='missing-named-lore'){
+      return context.newString('null')
     }else if(kind==='missing-lore'){
       noteRead('lore','missing-query-'+schemaTextSha256(key),null,'read')
     }else if(kind==='lore'){
-      noteRead('lore',key,null,'read')
-      const entry=lore.get(key)
+      if(!privateLore.has(key)||lore.has(key))noteRead('lore',key,null,'read')
+      const entry=lore.get(key)??privateLore.get(key)
       if(entry?.readDiagnostic){recordFault(entry.readDiagnostic.code,entry.sourcePointer);return context.undefined}
       if(entry)row={id:entry.key,sourcePointer:entry.sourcePointer,sourceSnapshotSha256:entry.sourceSnapshotSha256,
         contentSha256:entry.contentSha256,text:entry.content}
     }else if(kind==='include'){
-      row=resources.get(key)
+      row=resources.get(key)??privateResources.get(key)
       if(row&&!resourceReads.has(key))resourceReads.set(key,{id:row.id,sourcePointer:row.sourcePointer,
         sourceSnapshotSha256:row.sourceSnapshotSha256,contentSha256:row.contentSha256})
       if(row?.loreKey!==undefined) {
-        const entry=lore.get(row.loreKey)
+        const entry=lore.get(row.loreKey)??privateLore.get(row.loreKey)
         if(!entry)throw Error('TEMPLATE_INCLUDE_UNAVAILABLE')
         if(entry.readDiagnostic){recordFault(entry.readDiagnostic.code,entry.sourcePointer);return context.undefined}
         row={...row,sourcePointer:entry.sourcePointer,sourceSnapshotSha256:entry.sourceSnapshotSha256,
@@ -453,16 +646,20 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
     else throw Error('TEMPLATE_RESOURCE_KIND')
     return context.newString(JSON.stringify(row?compileResource(row,projectMacros,ownedContentSha256):null))
   })
-  const activate=native('captured-worldbook-activation',(keyHandle)=>{
+  const activate=native('captured-worldbook-activation',(keyHandle,modeHandle)=>{
     refuseEffect('activateWI')
-    const key=context.getString(keyHandle!)
+    const key=context.getString(keyHandle!),mode=modeHandle&&context.typeof(modeHandle)==='string'
+      ?context.getString(modeHandle) as TavernTemplateActivationProposalV1['mode']:undefined
+    if(mode!==undefined&&mode!=='world-info'&&mode!=='force-world-info')throw Error('TEMPLATE_ACTIVATION_MODE_INVALID')
+    if(privateLore.has(key)&&!lore.has(key))throw Error('TEMPLATE_ACTIVATION_NOT_ALLOWED')
     noteRead('lore',key,null,'activation-proposal')
-    const proposal=templateActivationV1(snapshot,key)
+    const proposal=templateActivationV1(snapshot,key,mode)
     if(!proposal){recordFault('TEMPLATE_ACTIVATION_NOT_ALLOWED');return context.false}
-    if(!activationKeys.has(proposal.entryId)){
+    const previous=activationKeys.get(proposal.entryId)
+    if(previous===undefined){
       if(activations.length>=limits.activationProposals)throw Error('TEMPLATE_ACTIVATION_LIMIT')
-      activationKeys.add(proposal.entryId);activations.push(proposal)
-    }
+      activationKeys.set(proposal.entryId,activations.length);activations.push(proposal)
+    }else activations[previous]=proposal
     return context.true
   })
   const emit=native('staged-template-injection',(wireHandle)=>{
@@ -508,16 +705,16 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
     const options=JSON.parse(optionsWire) as TavernEjsVariableWriteOptions
     if(!options||typeof options!=='object'||Array.isArray(options)
       ||Object.keys(options).some(name=>!['scope','results','withMsg','noCache','operation','index','indexPath','flags','merge','dryRun'].includes(name))
-      ||options.scope!==undefined&&!['local','chat','message','cache'].includes(options.scope)
+      ||options.scope!==undefined&&!['local','chat','message','cache','global','initial'].includes(options.scope)
       ||options.results!==undefined&&options.results!=='old'&&options.results!=='new'&&options.results!=='fullcache'){
       throw Error('TEMPLATE_HELPER_UNSUPPORTED')
     }
-    if(options.noCache){cacheOverlay.clear();cacheRebuilt=true}
+    if(options.noCache)resetCache()
     const parts=templateVariablePathV1(key),top=parts[0]!
     if(top==='stat_data')throw Error('TEMPLATE_NUMERICAL_OWNER_REQUIRED')
     // Main's owned preparation is not an ST global dry-run. The option permits
     // writes in ST dry-runs; it never grants this Host or Reader new authority.
-    const cache=assignOverlay(rebuildCache(),cacheOverlay),
+    const cache=rebuildCache(),
       pathFor=(values:object,name:string,parsed:string[])=>Object.hasOwn(values,name)?[name]:parsed,
       lookup=(values:unknown,path:readonly string[])=>{
       let current:unknown=values
@@ -543,10 +740,13 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
       if(options.flags==='nxs'&&selected.present||options.flags==='xxs'&&!selected.present)
         return context.newString('{"present":false}')
     }
-    const cacheOnly=options.scope==='cache',message=options.scope===undefined||options.scope==='message'
+    const globalTarget=options.scope==='global',initialTarget=options.scope==='initial',cacheOnly=options.scope==='cache',
+      message=options.scope===undefined||options.scope==='message'
       ?selectMessage(options.withMsg as MessageSelector|undefined,false):undefined
     if(message&&!message.captured)throw Error('TEMPLATE_MESSAGE_TARGET_UNAVAILABLE')
-    if(!cacheOnly&&!message&&!ordinary)throw Error('TEMPLATE_VARIABLE_NAMESPACE_REQUIRED')
+    if(globalTarget&&!globalBinding())throw Error('TEMPLATE_SCOPE_UNAVAILABLE')
+    if(initialTarget&&!initialBinding)throw Error('TEMPLATE_SCOPE_UNAVAILABLE')
+    if(!globalTarget&&!initialTarget&&!cacheOnly&&!message&&!ordinary)throw Error('TEMPLATE_VARIABLE_NAMESPACE_REQUIRED')
     let value:unknown=options.operation==='delete'?undefined:JSON.parse(wire)
     if(options.merge) {
       const before=old.present?old.value:undefined
@@ -577,33 +777,42 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
     // The cache always changes first, even for writes to a historical message.
     cacheOverlay.set(cached.top,cached.next)
     if(!cacheOnly) {
-      const targetValues=message?.values??assignOverlay({...snapshot.scopes.find(row=>row.scope==='chat')?.values,...ordinary!.values},overlay),
+      const targetValues=globalTarget?globalValues():initialTarget?initialValues():message?.values??
+          assignOverlay({...snapshot.scopes.find(row=>row.scope==='chat')?.values,...ordinary!.values},overlay),
         previous=lookup(targetValues,pathFor(targetValues,key,parts)),
         targetValue=indexed?message&&!options.withMsg?cachedValue:
           mutateIndex(JSON.parse(String(previous.value||'{}'))):value,
         next=replacement(targetValues,targetValue)
       if(next.top==='stat_data')throw Error('TEMPLATE_NUMERICAL_OWNER_REQUIRED')
       if(message?.target)noteMessageRead(message.target,next.top)
+      else if(globalTarget)noteRead('variable',next.top,'global','read')
+      else if(initialTarget)noteRead('variable',next.top,'initial','read')
       else noteOrdinary(next.top)
       if(effects.length+ordinaryWrites.length+regexEffects.length>=limits.injectionEffects)throw Error('TEMPLATE_EFFECT_LIMIT')
-      const effect={ordinal:ordinaryWrites.length,key:next.top,...message?.target?{messageTarget:message.target}:{},
+      const effect={ordinal:ordinaryWrites.length,key:next.top,...globalTarget?{scope:'global' as const}:
+          initialTarget?{scope:'initial' as const}:{},
+        ...message?.target?{messageTarget:message.target}:{},
         ...next.next===deleted?{operation:'delete' as const}:{...message?{operation:'set' as const}:{},
           value:next.next as import('./tavern-mvu-initvar.js').MvuJsonValue}}
       charge(JSON.stringify(effect));ordinaryWrites.push(effect)
       if(message?.target){
         const identity=targetKey(message.target),changes=messageOverlay.get(identity)??new Map<string,unknown>()
         changes.set(next.top,next.next);messageOverlay.set(identity,changes)
+        previousMessageIndex=undefined
         const current=messageView?.current
         if(indexed&&current&&message.row?.index===current.message_id
           &&targetKey(message.target)===targetKey(messageAt(current.message_id,current.swipe_id).target!)){
           cached=replacement(cache,targetValue);cacheOverlay.set(cached.top,cached.next)
         }
-      }else overlay.set(next.top,next.next)
+      }else if(globalTarget)globalOverlay.set(next.top,next.next)
+      else if(initialTarget)initialOverlay.set(next.top,next.next)
+      else overlay.set(next.top,next.next)
     }
-    const currentCache=assignOverlay(rebuildCache(),cacheOverlay)
-    cacheOverlay.set('_modify_id',(currentCache._modify_id as number)+1||1)
+    cacheValues=undefined
+    const previousModify=cacheOverlay.has('_modify_id')?cacheOverlay.get('_modify_id'):cache._modify_id
+    cacheOverlay.set('_modify_id',(previousModify===deleted?NaN:previousModify as number)+1||1)
     const result=options.results==='old'?old:options.results==='fullcache'
-      ?{present:true,value:assignOverlay(rebuildCache(),cacheOverlay)}:{present:!remove,value:remove?null:value}
+      ?{present:true,value:rebuildCache()}:{present:!remove,value:remove?null:value}
     return context.newString(JSON.stringify(result))
   })
   const fail=native('template-helper-failure',(codeHandle,pointerHandle,lineHandle,helperHandle)=>{
@@ -621,7 +830,13 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
   // The guest only selects lore keys. Variables, full source text and owner
   // resources stay here; sending them too would duplicate the frozen capture
   // without granting any functionality to the guest.
-  const guestCatalog=()=>({snapshot:{lore:snapshot.lore.map(row=>({key:row.key,lookup:row.lookup}))},
+  const guestCatalog=()=>({snapshot:{worldInfoAvailable:snapshot.worldInfo!==undefined
+    &&(snapshot.worldInfo.books.length>0||snapshot.lore.length===0),
+    lore:snapshot.lore.map(row=>({key:row.key,bookId:row.bookId,lookup:row.lookup,
+      ...row.worldInfo?{worldInfo:{uid:row.worldInfo.uid,world:row.worldInfo.world,comment:row.worldInfo.comment,
+        position:row.worldInfo.position,depth:row.worldInfo.depth,order:row.worldInfo.order}}:{}}))},
+    ...helperMessages?{chatRows:helperMessages.rows.map(row=>({index:row.index,isUser:row.isUser,isSystem:row.isSystem}))}:{},
+    ...capture.generationModel?{generationModel:capture.generationModel}:{},
     ...presetCatalog?{presetCatalog:{kind:presetCatalog.kind,prompts:presetCatalog.kind==='available'
       ?presetCatalog.prompts.map((row,index)=>({index,name:row.name})):[]}}:{}})
   try {
@@ -726,6 +941,7 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
           recordFault('TEMPLATE_OUTPUT_LIMIT');throw Error()
         }
         const output:TavernEjsHostOutput={basis:basis(),renderedText:text,reads:[...reads],resourceReads:[...resourceReads.values()],
+          ...chatReads.size?{chatReads:[...chatReads.values()]}:{},
           ...reader?{consumerPolicy:consumerPolicy()}:{},
           activations:[...activations],injections:[...effects],
           ...(regexEffects.length?{regexEffects:[...regexEffects]}:{}),
@@ -749,6 +965,7 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
         begin()
         if(!creation||creation.result.kind!=='rendered')throw Error('TEMPLATE_CREATION_REQUIRED')
         reads.length=0;readKeys.clear();resourceReads.clear();ordinaryReads.clear();ordinaryReadAll=false;activationKeys.clear()
+        chatReads.clear()
         messageReads.clear();messageReadCount=0
         if(nextCapture){
           const next=validateTemplateSnapshotV1(nextCapture.snapshot)
@@ -761,13 +978,21 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
           dependencyRows.clear()
           resources=new Map(nextCapture.resources.map(row=>[row.id,{...row}]))
           lore=new Map(snapshot.lore.map(row=>[row.key,row]))
+          privateLore.clear();privateResources.clear();namedBooks.clear();characters.clear();characterDirectory=undefined
+          worldInfoSettings=nextCapture.worldInfoSettings
           ordinary=nextCapture.ordinaryNamespace?structuredClone(nextCapture.ordinaryNamespace):undefined
           messageView=nextCapture.ordinaryMessageView?structuredClone(nextCapture.ordinaryMessageView):undefined
-          indexMessages();messageOverlay.clear();cacheOverlay.clear();cacheRebuilt=false
+          initialBinding=nextCapture.initialBinding??snapshot.scopes.find(row=>row.scope==='initial')
+          stagedInitial=nextCapture.initialBinding!==undefined
+          indexMessages();messageOverlay.clear();cacheOverlay.clear();initialOverlay.clear()
+          cacheRebuilt=stagedInitial&&initialBinding?.valuesSha256!==snapshot.scopes.find(row=>row.scope==='initial')?.valuesSha256
+          cacheValues=undefined
           namedQueues=namedCapture(nextCapture.namedPromptQueues)
           presetCatalog=nextCapture.presetCatalog
+          helperMessages=nextCapture.helperMessages;currentCharacterReference=nextCapture.currentCharacterReference
+          currentCharacter=undefined
           macros=nextCapture.macros;macroProjector=undefined
-          overlay.clear()
+          overlay.clear();globalOverlay.clear()
         }
         const value=call(invoke,[JSON.stringify(action),JSON.stringify(nextCapture?guestCatalog():null)])
         let result:{accepted:boolean|null;regexResults?:readonly TavernEjsRegexResultV1[]}
@@ -775,6 +1000,7 @@ export function createTavernEjsHost(deps:{quickjs:QuickJSWASMModule;compiler:Tav
         return publicPacket({kind:'evaluated' as const,accepted:result.accepted,output:{
           ...effectConsumer?{consumerPolicy:consumerPolicy()}:{},
           basis:basis(),reads:[...reads],resourceReads:[...resourceReads.values()],
+          ...chatReads.size?{chatReads:[...chatReads.values()]}:{},
           activations:activations.slice(activationStart),injections:effects.slice(start),
           ...(regexEffects.length>regexStart?{regexEffects:regexEffects.slice(regexStart)}:{}),
           ...(result.regexResults===undefined?{}:{regexResults:result.regexResults}),

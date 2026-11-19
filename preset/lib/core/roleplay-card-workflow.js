@@ -1,13 +1,12 @@
 // Generated from runtime/alpha3/src/core/roleplay-card-workflow.ts; edit the TypeScript source.
 import { randomUUID } from 'node:crypto';
 import { keyOf, cloneRecord, sha256, recordSha256 } from './roleplay-data.js';
-import { fenceCardContent } from './tavern-card.js';
 import { resolveImportSource } from './roleplay-import-record.js';
-import { isInlinePending, taskPhaseMessage } from './tavern-tasks.js';
+import { isInlinePending } from './tavern-tasks.js';
 import { assertWorkspaceSession } from './roleplay-context.js';
 import { nativeCardConversionIsDeterministicV1 } from './native-card-conversion.js';
 export function createCardWorkflows(deps) {
-    const { T, storyBranchIsActive, modelPolicy, statusFixedContext, nativeTask, driveStructuredImport, CARD_CLASSIFICATION_GUIDE, archiveImported, libraryFor, resourceName, tavernTasks, taskAgents, ctx } = deps;
+    const { T, storyBranchIsActive, modelPolicy, statusFixedContext, nativeTask, driveStructuredImport, CARD_CLASSIFICATION_GUIDE, archiveImported, libraryFor, resourceName, tavernTasks } = deps;
     const cardWorkflowKey = (id) => `tavern_cardjob__${id}`;
     // UI requests and the main loop can resume the same durable job at once.
     // Keep one in-process driver per generation; a restart still resumes from storage.
@@ -287,7 +286,7 @@ export function createCardWorkflows(deps) {
                         },
                     });
             const live = T.branch.get(cardWorkflowKey(job.id));
-            if (live?.generation === job.generation && !['cancelled', 'stale', 'failed'].includes(live.status))
+            if (live?.generation === job.generation && !['completed', 'cancelled', 'stale', 'failed'].includes(live.status))
                 await T.branch.put(cardWorkflowKey(job.id), { ...live, status: 'completed', result, resourceId: result.resourceId,
                     progress: { done: 1, total: 1 }, completedAt: Date.now() });
         }
@@ -326,18 +325,6 @@ export function createCardWorkflows(deps) {
             catch { }
         }
         await T.branch.put(cardWorkflowKey(job.id), { ...job, status: 'completed', result, resourceId: result.resourceId, progress: { done: 1, total: 1 }, completedAt: Date.now() });
-        // Structured cards wait for an explicit, durable native opening choice.
-        // Markdown keeps its established model-led opening until that path migrates.
-        if (job.kind === 'card-import' && job.execution !== 'deterministic' && !job.openingRequested) {
-            const opening = T.opening.get(keyOf(session.id, 'scene'))?.text;
-            if (opening) {
-                const main = taskAgents.get(session.id) ?? (await ctx.sessionController.resolveAgent?.(session.id))?.agent;
-                if (typeof main?.steer === 'function') {
-                    main.steer(taskPhaseMessage('story', `角色卡已完整读入并激活。现在完整展示作者原始开场，不附导入回执、不改写、不提前续写：\n${fenceCardContent(opening, 'opening')}`, { openingImportId: record.importId }));
-                    await T.branch.put(cardWorkflowKey(job.id), { ...T.branch.get(cardWorkflowKey(job.id)), openingRequested: true });
-                }
-            }
-        }
     }
     return { cardWorkflowKey, cardWorkflows, activeCardWorkflow, assertCardWorkflow, beginCardWorkflow,
         resumeCardWorkflows, controlCardWorkflow, completeCardWorkflow };

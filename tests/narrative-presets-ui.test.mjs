@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
-import {createPresetPanel,presetConversationChoices} from '../lib/ui/preset-panel.js'
-import {createNarrativePresets,BLANK_PRESET} from '../lib/core/narrative-presets.js'
+import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
+import {installMvuNativeDataTestDependencies} from './mvu-native-data-test-dependencies-fixture.mts'
+
+const releaseSchemaDependencies=installSchemaTestDependencies()
+process.once('exit',releaseSchemaDependencies)
+const releaseNativeDataDependencies=await installMvuNativeDataTestDependencies()
+process.once('exit',releaseNativeDataDependencies)
+const {createPresetPanel,presetConversationChoices}=await import('../lib/ui/preset-panel.js')
+const {createNarrativePresets,BLANK_PRESET}=await import('../lib/core/narrative-presets.js')
 
 const catalog={schemaVersion:1,worldlines:{'fork-a':{conversationId:'a',status:'ready'}},conversations:{a:{activeSessionId:'fork-a'}}}
 assert.deepEqual(presetConversationChoices({ids:['a','fork-a','b','background-subagent','standard'],byId:{a:{title:'First story'},'fork-a':{},b:{displayTitle:'Second story',parentId:'source-root'},'background-subagent':{title:'{"taskId":"maintenance"}',origin:'subagent',parentId:'a',projectionValues:{agentPreset:'roleplay'}},standard:{}}},catalog,id=>['a','b','background-subagent'].includes(id)),[{id:'fork-a',label:'First story'},{id:'b',label:'Second story'}],'native root metadata works before active fork metadata hydrates; subagent origins are excluded while a parent-linked independent clone remains visible')

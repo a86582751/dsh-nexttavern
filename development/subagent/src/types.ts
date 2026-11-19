@@ -14,7 +14,7 @@ import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock, MessageId } from 'dsh-nexttavern-native-llm'
 import type { SessionEvent, SessionId } from 'dsh-nexttavern-native-session'
 import type { ObjectJsonSchema, ToolRestriction } from '@deepseek-ai/dsh-tools'
-import type { SubagentDescriptorData } from './descriptor.ts'
+import type { OneShotSubagentDescriptorData } from '@deepseek-ai/dsh-subagent'
 import type {OwnedAuthorDialogActivationV1} from './author-dialog-activation.ts'
 import type {OwnedRubyTaskActivationV1,OwnedRubyTaskOwnerV1} from './owned-ruby-task.ts'
 
@@ -59,14 +59,7 @@ export interface ContinuableStart {
   readonly messageId: MessageId
 }
 
-/**
- * Authority under which one interrupt request is admitted. `user` carries the
- * durable direct-parent address a human client presented; `ancestor` carries
- * the exact live Agent object whose recorded lineage must contain the caller.
- */
-export type SubagentInterruptAuthority =
-  | { readonly kind: 'user'; readonly parentSessionId: SessionId }
-  | { readonly kind: 'ancestor'; readonly agent: Agent }
+export type { SubagentInterruptAuthority } from '@deepseek-ai/dsh-subagent'
 
 /** Options for one model-authored message between adjacent Agents. */
 export interface SubagentSendMessageOptions {
@@ -80,6 +73,7 @@ export interface SubagentSendMessageOptions {
  * payload, so an observer sees the same vocabulary for both.
  */
 export interface SubagentRunInfo {
+  readonly parentSessionId: SessionId
   /** Unique identity shared with the paired terminal event. */
   readonly runId: SubagentRunId
   /**
@@ -99,15 +93,7 @@ export interface SubagentRunInfo {
  * Observe-only outcome detail for a settled subagent run, carried by
  * `subagent/end` and paired with one {@link SubagentRunInfo} by `runId`.
  */
-export interface SubagentRunEndInfo {
-  /** Unique identity shared with the paired start event. */
-  readonly runId: SubagentRunId
-  /** The same provider name carried by the paired start event. */
-  readonly provider: string
-  /** The child agent's id. */
-  readonly id: SessionId
-  /** Snapshot of whether `SubagentRun.localAgent` was present when start fulfilled. */
-  readonly local: boolean
+export interface SubagentRunEndInfo extends SubagentRunInfo {
   /** The terminal stop reason. */
   readonly stopReason: SubagentResult['stopReason']
   /**
@@ -153,6 +139,7 @@ export interface SubagentStartRequest {
   /** Exact system text, without inherited preset sections or runtime context. */
   readonly isolatedSystem?:string
   readonly activation?:OwnedAuthorDialogActivationV1
+  readonly authorOwner?:import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationOwnerV1
   readonly rubyActivation?:OwnedRubyTaskActivationV1
   /** Same-process Core capability, passed separately from durable DATA. */
   readonly rubyOwner?:OwnedRubyTaskOwnerV1
@@ -219,7 +206,7 @@ export interface SubagentStartRequest {
  */
 export interface ResolvedSubagentStartRequest extends SubagentStartRequest {
   /** Detached descriptor a session-backed provider persists in the child log. */
-  readonly descriptor: SubagentDescriptorData
+  readonly descriptor: OneShotSubagentDescriptorData
 }
 
 /**

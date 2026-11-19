@@ -1,11 +1,15 @@
+import type {AuthorNativeLifecyclePublisher,AuthorNativeLifecycleSubscription} from './author-native-lifecycle.js'
 /** Reader consumes current author DATA and selected committed Native messages.
  * Display projections never replace canonical text or own a Native write. */
 import {randomUUID} from 'node:crypto'
 import {createAuthorNativeMessageVariables} from './author-native-message-variables.js'
-import {readerNativeNamespaceCauseV1,readerNativeSourceOriginV1} from './author-native-origin.js'
+import {createAuthorNativeLibraryReadsV1} from './author-native-library-reads.js'
+import type {AuthorNativeBindingV1,AuthorNativeRealmLibraryReadV1} from './author-native-helper-types.js'
+import {AUTHOR_NATIVE_EVENTS_V1,readerNativeNamespaceCauseV1,readerNativeSourceOriginV1} from './author-native-origin.js'
 import {applyAuthorChatOverlayV3} from './roleplay-author-chat-state-types.js'
-import type {OrdinaryAuthorChatBatchUpdateV3} from './roleplay-author-chat-state-types.js'
-import type {CapturedOrdinaryNamespaceMutationV1} from './roleplay-author-browser-key-core-v3.js'
+import type {CapturedAuthorNamespaceMutationV1} from './roleplay-author-browser-key-core-v3.js'
+import {authorSharedScopeCaptureV1,isAuthorSharedScopeOperationV1,authorSharedScopeRootsV1} from './roleplay-author-scope-owner.js'
+import type {AuthorSharedScopeSnapshotsV1,AuthorOrdinaryNamespaceOperationV1} from './roleplay-author-scope-owner.js'
 import {createReaderVariablePrefix} from './roleplay-reader-variable-prefix.js'
 import type {AuthorMessageMetadataV1,AuthorMessageViewV1} from './roleplay-author-message-capture.js'
 import type {AuthorPromptOpeningFactsV1} from './roleplay-author-prompt-capture.js'
@@ -15,22 +19,24 @@ import {eventsOf,surfaceEntries} from './roleplay-context.js'
 import type {ContextMessage,ContextSession} from './roleplay-context.js'
 import type {WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {RoleplayInputStateOwner} from './roleplay-input-state.js'
+import type {Message} from 'dsh-nexttavern-native-llm'
 import type {createRoleplayTavernLoreSourceV1} from './roleplay-tavern-lore-source.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
 import type {MvuScopeSourceIdentityV1} from './tavern-mvu-scope-read-types.js'
-import type {MvuAcceptedDisplayUpdate} from './roleplay-mvu-display-facts.js'
-import {produceRoleplayTavernMacroSnapshotV1,captureRoleplayTavernScopedRegexV1}
+import {indexMvuDisplayUpdates,matchMvuDisplayUpdate,type MvuAcceptedDisplayUpdate} from './roleplay-mvu-display-facts.js'
+import {produceRoleplayTavernMacroSnapshotV1,captureRoleplayTavernScopedRegexV1,captureTavernPromptModelBindingV1}
   from './roleplay-tavern-prompt-macros.js'
 import {applyTavernPromptTransformsV1} from './tavern-prompt-transform.mjs'
-import {projectReaderNarrativeDisplay} from './roleplay-reader-narrative-display.js'
-import type {ReaderMvuDisplayScope} from './roleplay-reader-narrative-display.js'
+import {projectReaderNarrativeDisplay,createReaderMvuDisplayScope,projectUnsettledReaderUpdates,
+  projectPendingReaderUpdates,MVU196_STATUS_PLACEHOLDER} from './roleplay-reader-narrative-display.js'
 import type {TavernPromptTransformInputV1,TavernPromptDisplayPartV1,
   TavernPromptDisplayReplacementV1} from './tavern-prompt-transform-types.mjs'
 import type {ReaderRegexDocumentInputV1,ReaderRegexDocumentReadFactsV1} from './reader-regex-document-types.mjs'
 import type {ReaderRegexDocumentBindingV1,ReaderRegexDocumentSnapshotV1,ReaderOpeningVariantCaptureV1,
   ReaderOpeningVariantReplyV1,ReaderOpeningVariantResultV1,ReaderNumericalReplyV1} from './reader-regex-document-types.mjs'
 import type {ReaderCommandReplyV1} from './reader-regex-document-types.mjs'
+import type {ReaderAuthorGenerationRequestV1,ReaderAuthorGenerationReplyV1} from './reader-regex-document-types.mjs'
 import type {ReaderOrdinaryNamespaceRequestV1,ReaderOrdinaryNamespaceReplyV1} from './reader-regex-document-types.mjs'
 import type {AuthorNativeCommandRequestV1,AuthorNativeCommandResultV1,AuthorNativeCommandSourceControlsV1}
   from './roleplay-author-commands.js'
@@ -48,6 +54,8 @@ import {nativeCommunityDisplayRule} from './community-preset-display.js'
 import type {CommunityPresetPolicy} from './community-presets.js'
 import type {CommunityJson} from './community-preset-types.js'
 import type {createRoleplayTavernPromptMaterialV1} from './roleplay-tavern-prompt.js'
+import {captureTavernEjsCurrentCharacterV1} from './roleplay-tavern-prompt-source.js'
+import type {TavernEjsReadSupplierFactoryV1} from './roleplay-tavern-ejs-preparation.js'
 import {prepareReaderWorldbookV1,projectReaderWorldbookDocumentsV1}
   from './roleplay-reader-worldbook.js'
 import type {ReaderRegexInputsV1,ReaderNarrativeHtmlV1,ReaderWorldbookProjectionV1}
@@ -59,6 +67,9 @@ import type {TavernEjsRuntime} from './tavern-template-ejs-runtime-types.mjs'
 import type {ReaderWorldbookDocumentOriginV1} from './reader-regex-document-types.mjs'
 import type {CaptureRoleplayStoryText} from './roleplay-story-text.js'
 import type {CanonicalChatMessageFacts} from '../memory/memory-history.js'
+import type {AuthorNamedWorldbookData} from './roleplay-author-worldbook-data.js'
+import type {AuthorWorldbookHelperCaptureV1} from './roleplay-author-worldbook-types.js'
+import type {ReaderWorldbookReadRequestV1} from './reader-regex-document-types.mjs'
 
 export type ReaderDisplayFragment={readonly kind:'text';readonly text:string}|{
   readonly kind:'author-document'
@@ -72,14 +83,20 @@ export type ReaderDisplayFragment={readonly kind:'text';readonly text:string}|{
 /** A document is selected from the applied Source template, never from the
  * mixed final text. Captures cannot join literal pieces into a document tag.
  * The DOM owner separately admits their ordinary text slots. */
-export function projectReaderDisplayFragments(text:string,replacements:readonly TavernPromptDisplayReplacementV1[])
+export function projectReaderDisplayFragments(text:string,replacements:readonly TavernPromptDisplayReplacementV1[],
+  sourceMarkup=new Map<string,boolean>())
   :readonly ReaderDisplayFragment[]|undefined {
   const fragments:ReaderDisplayFragment[]=[]
   let cursor=0,documents=0
   for(const replacement of replacements){
     const template=replacement.parts.map(part=>part.kind==='literal'?part.text
       :part.kind==='macro'?part.sourceText:'\ufffc').join('')
-    if(!readerRegexDocumentHtmlSpan(template))continue
+    let hasMarkup=sourceMarkup.get(template)
+    if(hasMarkup===undefined) {
+      hasMarkup=readerRegexDocumentHtmlSpan(template)!==undefined
+      sourceMarkup.set(template,hasMarkup)
+    }
+    if(!hasMarkup)continue
     if(replacement.start>cursor)fragments.push({kind:'text',text:text.slice(cursor,replacement.start)})
     const {ruleId,sourcePointer,sourceSnapshotSha256}=replacement
     fragments.push({kind:'author-document',origin:{ruleId,sourcePointer,sourceSnapshotSha256,
@@ -97,6 +114,7 @@ export interface ReaderDisplayMessageRef {
 }
 export type ReaderDisplayExecution=ReaderNativeDocumentExecutionV1
 export interface ReaderDisplayRow extends ReaderDisplayMessageRef {
+  readonly role?:'user'|'assistant'
   readonly rawText:string
   readonly messageVersionSha256:string
   readonly depth:number
@@ -105,6 +123,8 @@ export interface ReaderDisplayRow extends ReaderDisplayMessageRef {
   readonly fragments?:readonly ReaderDisplayFragment[]
   /** Ephemeral CSS from matched Source literals, never mixed model text. */
   readonly css?:string
+  /** Native/schema terminal status is independent of successful display rendering. */
+  readonly terminalDiagnostic?:AuthorNativeDiagnosticV1
   readonly renderDiagnostics?:readonly AuthorNativeDiagnosticV1[]
 }
 export interface ReaderDisplayResponse {
@@ -143,6 +163,17 @@ export interface ReaderDisplayScopes {
   readonly displayUpdates:readonly MvuAcceptedDisplayUpdate[]
 }
 interface Dependencies {
+  configuredMainRoute?(sid:string):{model:string;configSha256:string}
+  mvuTrial?:ReturnType<typeof import('./roleplay-author-mvu-trial.js').createRoleplayAuthorMvuTrialsV1>['handle']
+  releaseMvuTrials?(owner:object):void
+  generation?(sid:string,program:ReaderNativeDocumentProgramV1,
+    document:ReaderNativeDocumentProgramV1['documents'][number],request:ReaderAuthorGenerationRequestV1,
+    current:()=>boolean,signal:AbortSignal):Promise<ReaderAuthorGenerationReplyV1>
+  releaseGeneration?(current:()=>boolean):void
+  beforeCapture?(sessionId:string,signal:AbortSignal):Promise<void>
+  readWorldbook?(sid:string,name:string,basis:AuthorNamedWorldbookData,current:()=>boolean,signal:AbortSignal):
+    Promise<AuthorWorldbookHelperCaptureV1>
+  lifecycle?:AuthorNativeLifecyclePublisher
   captureStoryText?:CaptureRoleplayStoryText
   selectedMessageFacts?(message:object&{readonly content?:unknown}):CanonicalChatMessageFacts
   readonly inputState:RoleplayInputStateOwner
@@ -153,25 +184,30 @@ interface Dependencies {
   includeCardStyle(id:string):boolean
   /** Core's shared observation supplies current positive/negative scope DATA. */
   scopes(id:string,source:TavernLoreSourceDataV1):ReaderDisplayScopes|undefined
+  captureSharedScopes?(id:string):AuthorSharedScopeSnapshotsV1
   templateRuntime?(signal:AbortSignal,engine?:TavernEjsReplayEngine):Promise<TavernEjsRuntime>
+  readonly namedWorldInfo?:TavernEjsReadSupplierFactoryV1
   captureRegexInputs?(sid:string,source:TavernLoreSourceDataV1,signal:AbortSignal):ReaderRegexInputsV1|Promise<ReaderRegexInputsV1>
   documentFacts?(id:string,read:ReaderDocumentSourceRead):Promise<ReaderRegexDocumentReadFactsV1|undefined>
   nativeParentOrigins?(groups:readonly ('source-regex'|'none')[]):Promise<ReaderNativeDocumentExecutionV1['parentOrigins']>
+  captureAuthorScene?(sessionId:string):Promise<import('./author-native-helper-types.js').AuthorNativeSceneV1|undefined>
   mutateOpeningVariants?(capture:ReaderOpeningVariantCaptureV1,request:OpeningVariantMutationRequestV1,
     signal:AbortSignal):Promise<ReaderOpeningVariantResultV1>
   confirmOpeningVariants?(sessionId:string,operationId:string,signal:AbortSignal):Promise<ReaderOpeningVariantResultV1>
   replaceNumerical?(operation:MvuPlayerEditRequest,current:()=>boolean):Promise<MvuPlayerEditResponse>
   editMessageBody?(sid:string,input:AuthorMessageEditInputV1,current:()=>boolean,signal:AbortSignal):Promise<AuthorMessageEditResultV1>
-  mutateNamespace?(sid:string,input:CapturedOrdinaryNamespaceMutationV1,current:()=>boolean,
+  mutateNamespace?(sid:string,input:CapturedAuthorNamespaceMutationV1,current:()=>boolean,
     signal:AbortSignal):Promise<ReaderOrdinaryNamespaceReplyV1['reply']>
-  retryNamespace?(sid:string,operation:OrdinaryAuthorChatBatchUpdateV3,
+  retryNamespace?(sid:string,operation:AuthorOrdinaryNamespaceOperationV1,
     cause:ReturnType<typeof readerNativeNamespaceCauseV1>,current:()=>boolean,
     signal:AbortSignal):Promise<ReaderOrdinaryNamespaceReplyV1['reply']>
   commands?(sid:string,origin:string,request:AuthorNativeCommandRequestV1,current:()=>boolean,
     signal:AbortSignal,controls?:AuthorNativeCommandSourceControlsV1):Promise<AuthorNativeCommandResultV1>
   readonly community?:{
     policy(id:string):CommunityPresetPolicy
-    variables(id:string,presetId:string):{chat:Record<string,CommunityJson>;global:Record<string,CommunityJson>}
+    variables(id:string,presetId:string):{chat:Record<string,CommunityJson>;global:Record<string,CommunityJson>;
+      chatCapture?:{readonly root:import('./roleplay-author-chat-state-types.js').AuthorChatNamespaceRootV3;
+        readonly deletedKeys?:readonly string[];readonly replaceOrdinary?:true}}
   }
 }
 interface ReaderDocumentSourceRead {
@@ -188,6 +224,8 @@ interface ReaderBinding {
   readonly program:ReaderNativeDocumentProgramV1
   readonly sourceRead:ReaderDocumentSourceRead
   readonly sourceCurrent:()=>boolean
+  generationCurrent?:()=>boolean
+  readonly libraryReads:ReturnType<typeof createAuthorNativeLibraryReadsV1>
   facts:ReaderRegexDocumentReadFactsV1
   snapshot:ReaderRegexDocumentSnapshotV1
 }
@@ -211,10 +249,13 @@ export function capturePlainReaderDocumentFacts(read:ReaderDocumentSourceRead,
     messages=entries.slice(start).map((entry,index)=>{
       const event=events[entry.seq]!,message=(session.deriveEventMessage?.(event)
         ??(entry.kind==='assistant'?event.data?.message:event.data)) as ContextMessage
-      const ownerSessionId=ordinary.nativeOwnerForSeq(entry.seq),
+      const ownerSessionId=ordinary.nativeOwnerForSeq(entry.seq),metadata=message.authorMetadata as Message['authorMetadata'],
         raw=read.selectedMessageFacts?.(message),version=raw?.messageVersionSha256??recordSha256(message)
       return {index,ownerSessionId,nativeSeq:entry.seq,messageId:entry.messageId,
         messageVersionSha256:version,role:entry.kind,
+        ...metadata?.name!==undefined?{name:metadata.name}:{},
+        ...metadata?.is_hidden!==undefined?{is_hidden:metadata.is_hidden}:{},
+        ...metadata?.extra?{extra:metadata.extra as AuthorMessageMetadataV1['extra']}:{},
         message:raw?.text??textOf(message.content),variables,
         variants:entry.messageId===opening.messageId&&version===originalOpeningVersion?opening.copiedCandidates??null:null}
     }),
@@ -230,7 +271,11 @@ export function capturePlainReaderDocumentFacts(read:ReaderDocumentSourceRead,
       scopes:{chat:unavailable,character:unavailable,global:unavailable},scripts:[],
       messages:messages.map(({index,ownerSessionId,nativeSeq,messageId,messageVersionSha256})=>({position:index,
         ownerSessionId,nativeSeq,messageId,messageVersionSha256,selectedVariant:messageVersionSha256,isSystem:false,variables}))}),
-    context=source.current.openingContext.context
+    context=source.current.openingContext.context,
+    character={sourceId:source.original.activePointer.importId,name:String(cardData.name),
+      ...typeof cardData.avatar==='string'?{avatar:cardData.avatar}:{}},
+    capturedContext={chatId:session.id,name1:context.user,name2:character.name,characterId:0,characters:[character],
+      eventTypes:AUTHOR_NATIVE_EVENTS_V1}
   const current=()=>opening.current()&&ordinary.current(),
     messageView=ordinary.messageView(messages,{messageId:receipt.messageId,
       originalMessageVersionSha256:originalOpeningVersion,
@@ -255,8 +300,7 @@ export function capturePlainReaderDocumentFacts(read:ReaderDocumentSourceRead,
       ordinaryMessages:messageView.ordinaryMessages,
       numerical:{kind:numerical.kind,code:numerical.code,canEdit:false},
       persona:{name:context.user??'',...context.user_gender!==undefined?{gender:context.user_gender}:{},avatar:null},
-      character:{sourceId:source.original.activePointer.importId,name:String(cardData.name),
-        ...typeof cardData.avatar==='string'?{avatar:cardData.avatar}:{}},ordinaryChat:ordinary.data}}
+      character,context:capturedContext,ordinaryChat:ordinary.data}}
 }
 function fail(code:string):never {throw Error(code)}
 /** Only actual compiled documents consume a Reader prefix. Multiple fragments
@@ -271,19 +315,15 @@ function documentVariables(facts:ReaderRegexDocumentReadFactsV1,program:ReaderNa
   }
   return [...targets.values()]
 }
-function acceptedScope(row:Omit<ReaderDisplayRow,'displayText'>,
-  updates:readonly MvuAcceptedDisplayUpdate[]):ReaderMvuDisplayScope|undefined {
-  const matches=updates.filter(update=>update.canonical.seq===row.seq&&update.canonical.messageId===row.messageId)
-  if(matches.length!==1)return
-  const update=matches[0]!
-  if(update.canonical.versionSha256!==row.messageVersionSha256
-    ||update.canonical.narrativeSha256!==sha256(row.rawText))return
-  const start=row.rawText.indexOf('<UpdateVariable>'),close=row.rawText.indexOf('</UpdateVariable>')
-  if(start<0||close<start)return
-  return {role:'assistant',protocol:update.protocol,acceptedRange:{start,end:close+'</UpdateVariable>'.length}}
+function acceptedUpdate(row:Omit<ReaderDisplayRow,'displayText'>,
+  updates:readonly MvuAcceptedDisplayUpdate[]):MvuAcceptedDisplayUpdate|undefined {
+  return matchMvuDisplayUpdate(updates,{seq:row.seq,messageId:row.messageId,
+    versionSha256:row.messageVersionSha256,get narrativeSha256(){return sha256(row.rawText)}})
 }
 export function createRoleplayReaderDisplay(deps:Dependencies) {
   const bindings=new Map<string,ReaderBinding>()
+  const lifecycleBindings=new Map<string,{binding:ReaderRegexDocumentBindingV1;
+    current():boolean;subscription:AuthorNativeLifecycleSubscription}>()
   const phases=new Map<string,{binding:ReaderRenderPhaseBindingV1;
     complete(request:ReaderRenderHtmlRequestV1,signal:AbortSignal):Promise<ReaderRenderHtmlReplyV1>;
     dispose():Promise<void>}>()
@@ -306,13 +346,47 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
     &&left.generation===right.generation&&left.sessionId===right.sessionId&&left.programSha256===right.programSha256
   function releaseBinding(binding:ReaderRegexDocumentBindingV1):void {
     const value=bindings.get(binding.browserSessionId)
-    if(value&&sameBinding(value.binding,binding))bindings.delete(binding.browserSessionId)
+    if(value&&sameBinding(value.binding,binding)){
+      deps.releaseMvuTrials?.(value)
+      if(value.generationCurrent)deps.releaseGeneration?.(value.generationCurrent)
+      bindings.delete(binding.browserSessionId)
+    }
+    const receiver=lifecycleBindings.get(binding.browserSessionId)
+    if(receiver&&sameBinding(receiver.binding,binding)){
+      receiver.subscription.dispose();lifecycleBindings.delete(binding.browserSessionId)
+    }
+  }
+  const closeBinding=releaseBinding
+  async function waitSourceEvents(binding:ReaderRegexDocumentBindingV1,sourceCursor:string|undefined,signal:AbortSignal){
+    if(!deps.lifecycle)fail('READER_SOURCE_EVENTS_UNAVAILABLE')
+    let receiver=lifecycleBindings.get(binding.browserSessionId)
+    if(!receiver){
+      const value=bindings.get(binding.browserSessionId),session=deps.session(binding.sessionId)
+      if(!value||!session||!sameBinding(value.binding,binding)||!value.sourceCurrent()) {
+        closeBinding(binding);fail('READER_BINDING_REVOKED')
+      }
+      receiver={binding,subscription:deps.lifecycle.subscribe(binding.sessionId),
+        current:()=>!disposed&&bindings.get(binding.browserSessionId)===value
+          &&deps.session(binding.sessionId)===session&&value.sourceCurrent()}
+      lifecycleBindings.set(binding.browserSessionId,receiver)
+    }
+    if(!sameBinding(receiver.binding,binding)||!receiver.current()){
+      closeBinding(binding);fail('READER_BINDING_REVOKED')
+    }
+    let packet:Awaited<ReturnType<typeof receiver.subscription.wait>>
+    try {packet=await receiver.subscription.wait(sourceCursor,signal)}
+    catch(error) {
+      if(!receiver.current()){closeBinding(binding);fail('READER_BINDING_REVOKED')}
+      throw error
+    }
+    if(!receiver.current()){closeBinding(binding);fail('READER_BINDING_REVOKED')}
+    return {ok:true as const,kind:'source-events' as const,packet}
   }
   function bindingCurrent(value:ReaderBinding):boolean {
     return !disposed&&bindings.get(value.binding.browserSessionId)===value&&value.sourceCurrent()&&value.facts.current()
   }
   async function mutateNamespace(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
-    request:ReaderOrdinaryNamespaceRequestV1|OrdinaryAuthorChatBatchUpdateV3,signal:AbortSignal,
+    request:ReaderOrdinaryNamespaceRequestV1|AuthorOrdinaryNamespaceOperationV1,signal:AbortSignal,
     retry=false):Promise<ReaderOrdinaryNamespaceReplyV1> {
     signal.throwIfAborted()
     const value=bindings.get(binding.browserSessionId)
@@ -327,20 +401,23 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
     let reply:ReaderOrdinaryNamespaceReplyV1['reply']
     if(retry) {
       if(!deps.retryNamespace)fail('READER_NAMESPACE_WRITE_UNAVAILABLE')
-      const operation=request as OrdinaryAuthorChatBatchUpdateV3
-      if(operation.namespace.target?.kind==='script')fail('READER_VARIABLE_SCOPE_UNAVAILABLE')
+      const operation=request as AuthorOrdinaryNamespaceOperationV1
+      if(!isAuthorSharedScopeOperationV1(operation)&&operation.namespace.target?.kind==='script')fail('READER_VARIABLE_SCOPE_UNAVAILABLE')
       reply=await deps.retryNamespace(binding.sessionId,operation,cause,sourceCurrent,signal)
     }else {
       if(!deps.mutateNamespace)fail('READER_NAMESPACE_WRITE_UNAVAILABLE')
       const mutation=request as ReaderOrdinaryNamespaceRequestV1
       if(mutation.readRevision!==value.snapshot.readRevision)fail('READER_READ_BASIS_CHANGED')
       const selector=mutation.selector,scope=value.snapshot.scopeFrame.scopes.chat
-      if(selector&&selector.type!=='message')fail('READER_VARIABLE_SCOPE_UNAVAILABLE')
-      const selected=selector?createAuthorNativeMessageVariables(value.snapshot).resolve(selector,true):undefined,
+      const shared=selector&&selector.type!=='message'?authorSharedScopeCaptureV1(value.snapshot.sharedScopes,selector):undefined
+      const selected=selector?.type==='message'?createAuthorNativeMessageVariables(value.snapshot).resolve(selector,true):undefined,
         capture=selected?.capture??value.snapshot.ordinaryChat,
         previous=selected?.values??applyAuthorChatOverlayV3(scope.kind==='available'?scope.variables:{},capture)
-      reply=await deps.mutateNamespace(binding.sessionId,{root:capture.root,previous,
-        nextVariables:mutation.nextVariables,operationId:mutation.operationId,cause},sourceCurrent,signal)
+      const input:CapturedAuthorNamespaceMutationV1=shared?{kind:'shared-scope',capture:shared,
+        sourceNamespace:value.snapshot.ordinaryChat.root.namespace,nextVariables:mutation.nextVariables,
+        operationId:mutation.operationId,cause}:{root:capture.root,expectedScopeRef:capture.scopeRef,previous,
+        nextVariables:mutation.nextVariables,operationId:mutation.operationId,cause}
+      reply=await deps.mutateNamespace(binding.sessionId,input,sourceCurrent,signal)
     }
     if(reply.kind==='no-update')return {reply,...bindingCurrent(value)?{snapshot:value.snapshot}:{}}
     const snapshot=await adoptCommittedData(value)
@@ -360,6 +437,7 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
     if(!authorMessageBodyRequestValid(request))fail('AUTHOR_MESSAGE_EDIT_REQUEST_INVALID')
     const admitted=readerNativeSourceOriginV1(document.origin)
     if(originalOrigin) {
+      const originalProducer=originalOrigin.producer,currentProducer=admitted.producer
       // The current literal is a Source-group permission witness. Preserve the
       // original operation provenance and expected message version on retry.
       if(originalOrigin.principal!==admitted.principal
@@ -369,16 +447,25 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
         ||originalOrigin.htmlSpan.start!==admitted.htmlSpan.start||originalOrigin.htmlSpan.end!==admitted.htmlSpan.end
         ||originalOrigin.carrier.seq!==admitted.carrier.seq||originalOrigin.carrier.messageId!==admitted.carrier.messageId)
         fail('READER_MESSAGE_BODY_DOCUMENT_CHANGED')
+      if(originalProducer?.schemaVersion!==currentProducer?.schemaVersion||originalProducer?.kind!==currentProducer?.kind
+        ||originalProducer?.id!==currentProducer?.id||originalProducer?.policyFingerprint!==currentProducer?.policyFingerprint
+        ||originalProducer?.kind==='regex-library'&&(currentProducer?.kind!=='regex-library'
+          ||originalProducer.binding.scope!==currentProducer.binding.scope||originalProducer.binding.id!==currentProducer.binding.id))
+        fail('READER_MESSAGE_BODY_DOCUMENT_CHANGED')
     }else if(request.readRevision!==value.snapshot.readRevision)fail('READER_READ_BASIS_CHANGED')
     const expected=request.expected,row=value.snapshot.messages.find(message=>message.nativeSeq===expected.seq
       &&message.messageId===expected.messageId)
     if(!originalOrigin&&(!row||row.nativeSeq===null||expected.sessionId!==binding.sessionId||row.role!==expected.role
       ||row.messageVersionSha256!==expected.messageVersionSha256))fail('READER_READ_BASIS_CHANGED')
-    if(row?.variants||row?.ordinary?.selectedTarget.identity.variant.kind==='opening-variant')
+    if((row?.variants||row?.ordinary?.selectedTarget.identity.variant.kind==='opening-variant')
+      &&(!request.patch||request.text!==row.message))
       fail('AUTHOR_MESSAGE_EDIT_OPENING_VARIANTS_REQUIRED')
-    const sourceCurrent=()=>!signal.aborted&&!disposed&&bindings.get(binding.browserSessionId)===value&&value.sourceCurrent(),
+    const ordinary=request.patch&&row?createAuthorNativeMessageVariables(value.snapshot).forMessage(row).capture:undefined,
+      sourceCurrent=()=>!signal.aborted&&!disposed&&bindings.get(binding.browserSessionId)===value&&value.sourceCurrent(),
       result=await deps.editMessageBody(binding.sessionId,{schemaVersion:1,operationId:request.operationId,
-        expected:request.expected,text:request.text,origin:originalOrigin??admitted},sourceCurrent,signal)
+        expected:request.expected,text:request.text,...request.patch?{patch:request.patch}:{},
+        ...ordinary?{ordinaryExpected:{root:ordinary.root,scopeRef:ordinary.scopeRef}}:{},
+        origin:originalOrigin??admitted},sourceCurrent,signal)
     // A new body changes document provenance. Receipt delivery precedes the
     // parent's normal Reader recapture; never attach fresh DATA to the old plan.
     if(result.kind==='committed'||result.kind==='unknown'||!value.facts.current())releaseBinding(binding)
@@ -422,11 +509,14 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       releaseBinding(binding);return
     }
     try {
-      const facts=await deps.documentFacts?.(binding.sessionId,value.sourceRead)
+      let facts=await deps.documentFacts?.(binding.sessionId,value.sourceRead)
       if(!facts||!facts.current()||!value.sourceCurrent()||disposed
         ||bindings.get(binding.browserSessionId)!==value) {releaseBinding(binding);return}
+      const sharedScopes=deps.captureSharedScopes?.(binding.sessionId)
+      if(sharedScopes)facts={...facts,data:{...facts.data,sharedScopes}}
       const previous=value.snapshot,root=facts.data.ordinaryChat.root,oldRoot=previous.ordinaryChat.root
       const unchanged=facts.data.scopeFrame.frameSha256===previous.scopeFrame.frameSha256
+        &&JSON.stringify(authorSharedScopeRootsV1(facts.data.sharedScopes))===JSON.stringify(authorSharedScopeRootsV1(previous.sharedScopes))
         &&facts.data.ordinaryPublicationSeq===previous.ordinaryPublicationSeq
         &&facts.data.worldbook?.dataSha256===previous.worldbook?.dataSha256
         &&root.head?.sha256===oldRoot.head?.sha256&&root.base?.sha256===oldRoot.base?.sha256
@@ -469,6 +559,19 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       ...result.operation.outcome==='updated'&&!result.operation.replayed
         ?{sourceEvents:[{type:'nexttavern_numerical_updated',args:[]}]}:{}}
   }
+  async function readWorldbook(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
+    request:ReaderWorldbookReadRequestV1,signal:AbortSignal):Promise<AuthorWorldbookHelperCaptureV1> {
+    signal.throwIfAborted()
+    const value=bindings.get(binding.browserSessionId)
+    if(!value||!sameBinding(value.binding,binding)||!bindingCurrent(value))fail('READER_BINDING_REVOKED')
+    if(!value.program.documents.some(plan=>plan.documentPlanSha256===documentPlanSha256)||!deps.readWorldbook)
+      fail('AUTHOR_WORLDBOOK_READ_UNAVAILABLE')
+    const basis=value.snapshot.worldbook
+    if(!basis||value.snapshot.readRevision!==request.readRevision||basis.dataSha256!==request.expectedDataSha256)
+      fail('READER_READ_BASIS_CHANGED')
+    const current=()=>!signal.aborted&&!disposed&&bindings.get(binding.browserSessionId)===value&&value.sourceCurrent()
+    return deps.readWorldbook(binding.sessionId,request.name,basis,current,signal)
+  }
   async function executeCommands(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
     request:AuthorNativeCommandRequestV1,signal:AbortSignal):Promise<ReaderCommandReplyV1> {
     signal.throwIfAborted()
@@ -490,16 +593,43 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
     const snapshot=result.refreshRequired?await adoptCommittedData(value):publishedSnapshot
     return {result,...snapshot?{snapshot}:{}}
   }
+  async function mvuTrial(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
+    request:import('./roleplay-author-mvu-trial.js').AuthorMvuTrialRequestV1,signal:AbortSignal)
+    :Promise<import('./roleplay-author-mvu-trial.js').AuthorMvuTrialReplyV1> {
+    const value=bindings.get(binding.browserSessionId)
+    if(!value||!sameBinding(value.binding,binding)) {
+      if(request.action==='close')return {kind:'closed'}
+      fail('READER_BINDING_REVOKED')
+    }
+    const document=value.program.documents.find(plan=>plan.documentPlanSha256===documentPlanSha256)
+    if(!document||!deps.mvuTrial)fail('AUTHOR_NATIVE_MVU_TRIAL_UNAVAILABLE')
+    return deps.mvuTrial(value,binding.sessionId,value.snapshot,request,
+      ()=>!disposed&&bindings.get(binding.browserSessionId)===value&&value.sourceCurrent(),signal)
+  }
+  async function generation(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
+    request:ReaderAuthorGenerationRequestV1,signal:AbortSignal):Promise<ReaderAuthorGenerationReplyV1> {
+    signal.throwIfAborted()
+    const value=bindings.get(binding.browserSessionId)
+    if(!value||!sameBinding(value.binding,binding)||!value.sourceCurrent())fail('READER_BINDING_REVOKED')
+    const document=value.program.documents.find(plan=>plan.documentPlanSha256===documentPlanSha256)
+    if(!document||!deps.generation)fail('AUTHOR_GENERATION_UNAVAILABLE')
+    value.generationCurrent??=()=>!disposed&&bindings.get(binding.browserSessionId)===value&&value.sourceCurrent()
+    return deps.generation(binding.sessionId,value.program,document,request,value.generationCurrent,signal)
+  }
   async function confirmOperation(sessionId:string,operationId:string,signal:AbortSignal):Promise<ReaderOpeningVariantResultV1> {
     if(!deps.confirmOpeningVariants)fail('READER_OPENING_VARIANTS_RECOVERY_UNAVAILABLE')
     return deps.confirmOpeningVariants(sessionId,operationId,signal)
   }
-  async function capture(sid:string,messages:readonly ReaderDisplayMessageRef[],signal:AbortSignal)
+  async function capture(sid:string,messages:readonly ReaderDisplayMessageRef[],signal:AbortSignal,
+    schemaReadAvailable=true)
     :Promise<ReaderDisplayResponse> {
     signal.throwIfAborted()
     if(disposed)fail('READER_DISPLAY_DISPOSED')
+    await deps.beforeCapture?.(sid,signal)
+    signal.throwIfAborted()
     const session=deps.session(sid)
     if(!session)fail('READER_DISPLAY_SESSION_INACTIVE')
+    const modelRoute=deps.configuredMainRoute?.(sid)
     // Keep only author/scopes in the existing Source slot. Native rows and their
     // full canonical depth are fresh for each requested batch, never cached here.
     const read=deps.inputState.captureSource(sid,'reader-display-author',()=>{
@@ -518,12 +648,19 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       const cardData='contributionInput' in captured?captured.contributionInput.rawDecoded.data:captured.cardData
       const scopedRules=captureRoleplayTavernScopedRegexV1(cardData,source.sourceSha256,true)
       const policy=deps.community?.policy(sid)
-      const variables=policy?.preset?deps.community!.variables(sid,policy.preset.id):undefined
+      const variables=policy?deps.community!.variables(sid,policy.preset?.id??''):undefined
+      const sharedScopes=deps.captureSharedScopes?.(sid)
       const adapted=policy?{...policy,
         preset:policy.preset?{...policy.preset,regexes:policy.preset.regexes.map(nativeCommunityDisplayRule)}:null,
         regexes:policy.regexes.map(library=>({...library,rules:library.rules.map(nativeCommunityDisplayRule)}))}:undefined
-      const rules=adapted?communityRegexRules(adapted,scopedRules):scopedRules
       const rawRules=(cardData.extensions as {regex_scripts?:readonly Record<string,unknown>[]} |undefined)?.regex_scripts??[]
+      const documentRules:(ReaderRegexDocumentInputV1['documents'][number]['regex']&{ruleId:string})[]=scopedRules.map((rule,ordinal)=>({
+        ruleId:adapted?'card:'+rule.id:rule.id,ordinal,id:typeof rawRules[ordinal]!.id==='string'
+          ?rawRules[ordinal]!.id as string:rule.id,pointer:rule.sourcePointer,
+        descriptorSha256:recordSha256(rawRules[ordinal]),replacement:rule.replaceString}))
+      const rules=adapted?communityRegexRules(adapted,scopedRules,(rule,source)=>documentRules.push({
+        ruleId:rule.id,ordinal:source.ordinal,id:rule.id,pointer:rule.sourcePointer,
+        descriptorSha256:recordSha256(source.descriptor),replacement:rule.replaceString,producer:source.producer})):scopedRules
       const nativeMacros=produceRoleplayTavernMacroSnapshotV1({source,cardData,
           includeCardStyle:deps.includeCardStyle(sid),inputText:null,scopes:scopes?.bindings??[],
           presetVariables:policy?.helperVariables,
@@ -532,32 +669,32 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
           randomSeed:source.sourceSha256,outlets:[],declaredOutlets:[]}).snapshot
       const communityBindings=variables&&policy?communityRegexMacros({},variables.chat,variables.global,policy.fingerprint,
         {preset:policy.helperVariables}):undefined
-      // Source owns MVU and native scopes; accepted community values overlay
-      // only their matching chat/global keys without mutating its frozen input.
-      const mergeBindings=(key:'localVariables'|'globalVariables')=>[...new Map(
-        [...nativeMacros[key],...communityBindings![key]].map(binding=>[binding.key,binding])).values()]
+      // Native retains numerical chat data. The profile-global owner supplies
+      // the complete global table so ordinary deletions remain absent.
       let macros=nativeMacros
       if(communityBindings) {
-        const chat=nativeMacros.variableScopes?.chat,global=nativeMacros.variableScopes?.global,
+        const chat=nativeMacros.variableScopes?.chat,
           currentChat=communityBindings.variableScopes!.chat!,currentGlobal=communityBindings.variableScopes!.global!
-        const chatValues={...chat&&Object.hasOwn(chat.values,'stat_data')?{stat_data:chat.values.stat_data}:{},...currentChat.values},
-          globalValues={...global?.values,...currentGlobal.values}
-        macros={...nativeMacros,localVariables:mergeBindings('localVariables'),globalVariables:mergeBindings('globalVariables'),
+        const overlay={deletedKeys:variables?.chatCapture?.deletedKeys,replaceOrdinary:variables?.chatCapture?.replaceOrdinary},
+          chatValues=applyAuthorChatOverlayV3(chat?.values??{},{...overlay,values:currentChat.values}),
+          localVariables=Object.values(applyAuthorChatOverlayV3(
+            Object.fromEntries(nativeMacros.localVariables.map(binding=>[binding.key,binding])),
+            {...overlay,values:Object.fromEntries(communityBindings.localVariables.map(binding=>[binding.key,binding]))})),
+          globalValues=currentGlobal.values
+        macros={...nativeMacros,localVariables,globalVariables:communityBindings.globalVariables,
           variableScopes:{...nativeMacros.variableScopes,
-            chat:{...currentChat,values:chatValues,valuesSha256:recordSha256(chatValues)},
+            chat:{...currentChat,versionSha256:recordSha256({base:chat?.versionSha256??null,
+              ordinary:variables?.chatCapture?.root??currentChat.versionSha256}),
+              values:chatValues,valuesSha256:recordSha256(chatValues)},
             global:{...currentGlobal,values:globalValues,valuesSha256:recordSha256(globalValues)}}}
       }
-      return {source,cardData,sourceIdentitySha256:captured.currentIdentitySha256,scopes,macros,policy,variables,
+      return {source,cardData,sourceIdentitySha256:captured.currentIdentitySha256,scopes,sharedScopes,macros,policy,variables,
         authorRead,sourceCatalog:author?.kind==='author-data'?author.sourceCatalog:undefined,
         literalStyles:new Map<string,string>(),
-        rules,documentRules:scopedRules.map((rule,ordinal)=>({
-          ruleId:rules.find(effective=>effective.sourcePointer===rule.sourcePointer
-            &&effective.sourceSnapshotSha256===rule.sourceSnapshotSha256)!.id,
-          ordinal,id:typeof rawRules[ordinal]!.id==='string'
-          ?rawRules[ordinal]!.id as string:rule.id,pointer:rule.sourcePointer,
-          descriptorSha256:recordSha256(rawRules[ordinal]),replacement:rule.replaceString}))}
+        helperRules:policy?communityRegexRules(policy,scopedRules):scopedRules,
+        rules,documentRules}
     })
-    const storyText=deps.captureStoryText?.(sid)
+    const storyText=schemaReadAvailable?deps.captureStoryText?.(sid):undefined
     const current=()=>{
       signal.throwIfAborted()
       read.assertCurrent()
@@ -573,30 +710,37 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       const actual=eventsOf(session),entries=surfaceEntries(session),bySeq=new Map(entries.map((entry,index)=>[entry.seq,{entry,index}]))
       const rows=messages.map(ref=>{
         const found=bySeq.get(ref.seq),event=actual[ref.seq]
-        if(!found||found.entry.kind!=='assistant'||found.entry.messageId!==ref.messageId
-          ||event?.type!=='assistant/message')fail('READER_DISPLAY_MESSAGE_UNAVAILABLE')
-        const message=(session.deriveEventMessage?.(event)??event.data?.message) as ContextMessage|undefined
+        if(!found||found.entry.messageId!==ref.messageId
+          ||event?.type!==(found.entry.kind==='user'?'user/message':'assistant/message'))fail('READER_DISPLAY_MESSAGE_UNAVAILABLE')
+        const role=found.entry.kind,
+          message=(session.deriveEventMessage?.(event)??(role==='user'?event.data:event.data?.message)) as ContextMessage|undefined
         if(!message||message.id!==ref.messageId)fail('READER_DISPLAY_MESSAGE_CHANGED')
         const edit=edits.get(ref.seq)
         const raw=nativeMessages?deps.selectedMessageFacts?.(message):undefined,
-          rawText=raw?.text??textOf(message.content),messageVersionSha256=raw?.messageVersionSha256??recordSha256(message)
-        return {seq:ref.seq,messageId:ref.messageId,rawText,
-          effectiveText:storyText?.text(ref.seq,message as Parameters<NonNullable<typeof storyText>['text']>[1],rawText,
-            messageVersionSha256)??rawText,
+          rawText=raw?.text??textOf(message.content),messageVersionSha256=raw?.messageVersionSha256??recordSha256(message),
+          storyMessage=message as Parameters<NonNullable<typeof storyText>['text']>[1]
+        return {seq:ref.seq,messageId:ref.messageId,rawText,role,
+          terminalCode:role==='assistant'?storyText?.diagnostic?.(ref.seq,storyMessage,
+            messageVersionSha256):undefined,
+          effectiveText:role==='assistant'?storyText?.text(ref.seq,storyMessage,rawText,
+            messageVersionSha256)??rawText:rawText,
           messageVersionSha256,depth:entries.length-found.index-1,
-          isEdit:edit?.data?.role==='assistant'&&edit.data.messageId===ref.messageId}
+          isEdit:edit?.data?.role===role&&edit.data.messageId===ref.messageId}
       })
       return {rows,entries,events:actual,order:entries.map(entry=>({seq:entry.seq,messageId:entry.messageId,kind:entry.kind}))}
     }
-    const selected=select(),{source,scopes,macros,rules,policy,variables}=read.data
+    const selected=select(),{source,scopes,rules,policy,variables}=read.data,
+      macros=modelRoute?{...read.data.macros,names:{...read.data.macros.names,
+        model:captureTavernPromptModelBindingV1(source,modelRoute)}}:read.data.macros
     const regexInputs=await deps.captureRegexInputs?.(sid,source,signal)
     current()
     const contextRevision=recordSha256({source:read.data.sourceIdentitySha256,
+      model:macros.names.model.read.versionSha256,
       avatars:read.data.macros.dynamic.filter(row=>row.key==='userAvatarPath'||row.key==='charAvatarPath')
         .map(row=>row.valueSha256),regex:regexInputs?.basisSha256??null,
       scopes:scopes?.versionSha256??null,community:policy?{fingerprint:policy.fingerprint,variables}:null,order:selected.order,
-      messages:selected.rows.map(({seq,messageId,messageVersionSha256,depth,isEdit})=>
-        ({seq,messageId,messageVersionSha256,depth,isEdit}))})
+      messages:selected.rows.map(({seq,messageId,messageVersionSha256,depth,isEdit,terminalCode})=>
+        ({seq,messageId,messageVersionSha256,depth,isEdit,terminalCode:terminalCode??null}))})
     const phaseId=randomUUID(),phaseController=new AbortController(),requestSignal=signal
     const abortPhase=()=>{
       phaseController.abort(requestSignal.reason)
@@ -622,11 +766,13 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       if(scopeSource.sessionId!==sid||scopeSource.sourceRecordSessionId!==source.sourceRecordSessionId
         ||scopeSource.importId!==source.original.activePointer.importId||scopeSource.rawSha256!==source.original.rawSha256)
         fail('READER_REGEX_DOCUMENT_SCOPE_SOURCE_CHANGED')
-      return facts
+      return read.data.sharedScopes?{...facts,data:{...facts.data,sharedScopes:read.data.sharedScopes}}:facts
     })()
     let worldbook:Awaited<ReturnType<typeof prepareReaderWorldbookV1>>
     try {
     const renderDiagnostics=new Map<number,readonly AuthorNativeDiagnosticV1[]>()
+    const unsettledUpdates=selected.rows.map(row=>row.terminalCode
+      ?projectUnsettledReaderUpdates(row.effectiveText,row.terminalCode):undefined)
     const renderFailure=(error:unknown)=>{
       current()
       const code=error instanceof Error&&/^[A-Z][A-Z0-9_]+$/.test(error.message)
@@ -635,26 +781,41 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       for(const [index] of selected.rows.entries())renderDiagnostics.set(index,[{code}])
     }
     if(read.data.sourceCatalog&&deps.templateRuntime)try {
+      const author=read.data.authorRead?.data,
+        currentCharacter=author?.kind==='author-data'?captureTavernEjsCurrentCharacterV1(
+          author.captured,author.authorFields.cardMaterial,author.authorFields.policyFingerprint):undefined
       worldbook=await prepareReaderWorldbookV1({catalog:read.data.sourceCatalog,rows:selected.rows,macros,rules,
+        ...modelRoute?{generationModel:{model:modelRoute.model,source:'configured-reader' as const}}:{},
+        readCaptured:deps.namedWorldInfo?.({sessionId:sid,source,rules:read.data.helperRules,
+          scriptOrder:policy?.regexOrder,currentCharacter,assertCurrent:current}),
+        helperRules:read.data.helperRules,currentCharacterReference:currentCharacter?.reference,
         scriptOrder:policy?.regexOrder,signal,assertCurrent:current,facts:documentFacts,
         clockEpochMs:row=>selected.events[row.seq]?.time,runtime:engine=>deps.templateRuntime!(signal,engine),
         regexInputs,phaseId})
     }catch(error){renderFailure(error)}
+    const insertedStatusSlots=new Set<number>(),
+      updatesBySeq=indexMvuDisplayUpdates(scopes?.displayUpdates??[])
     let input:TavernPromptTransformInputV1={schemaVersion:1,encoding:'owned-tavern-prompt-transform-v1',
       authority:'consumer-data-only',sourceSnapshotSha256:source.sourceSha256,regexDisabled:false,macros,rules,
       ...policy?{scriptOrder:policy.regexOrder}:{},
-      entries:selected.rows.map(row=>{
-        let scope=acceptedScope(row,scopes?.displayUpdates??[])
-        if(scope&&row.effectiveText!==row.rawText){
-          // Only the exact accepted protocol block may stay hidden after an
-          // author moves surrounding prose. New hook-authored blocks are data.
-          const block=row.rawText.slice(scope.acceptedRange.start,scope.acceptedRange.end),start=row.effectiveText.indexOf(block)
-          scope=start<0?undefined:{...scope,acceptedRange:{start,end:start+block.length}}
+      entries:selected.rows.map((row,index)=>{
+        const unsettled=unsettledUpdates[index],
+          update=row.role==='assistant'&&!unsettled?acceptedUpdate(row,updatesBySeq.get(row.seq)??[]):undefined,
+          scope=update?createReaderMvuDisplayScope(row.rawText,update.protocol,row.effectiveText):undefined,
+          pendingSchemaBody=(storyText||!schemaReadAvailable)&&row.role==='assistant'&&!scope
+            &&row.effectiveText===row.rawText
+        let narrative=unsettled?.narrative??(pendingSchemaBody
+          ?projectPendingReaderUpdates(row.rawText):projectReaderNarrativeDisplay(row.effectiveText,scope))
+        // MVU d03 supplies this slot after processing a message with variables.
+        // Reuse the exact accepted floor and its finalized text in the display channel.
+        if(update?.protocol==='mvu-196-d03'&&rules.length&&row.rawText.length>=5
+          &&!narrative.includes(MVU196_STATUS_PLACEHOLDER)) {
+          narrative+='\n\n'+MVU196_STATUS_PLACEHOLDER
+          insertedStatusSlots.add(index)
         }
-        const storyText=projectReaderNarrativeDisplay(row.effectiveText,scope)
         return {key:`reader:${row.seq}:${row.messageId}:${row.messageVersionSha256}`,bookId:null,entryId:null,
           sourcePointer:`/native/messages/${row.seq}`,sourceSnapshotSha256:source.sourceSha256,
-          rawText:row.rawText,storyText,inputText:storyText,pipeline:'regex-only',channel:'display',placement:2,
+          rawText:row.rawText,storyText:narrative,inputText:narrative,pipeline:'regex-only',channel:'display',placement:row.role==='user'?1:2,
           depth:row.depth,isEdit:row.isEdit,characterOverride:null,required:true}
       })}
     if(worldbook?.dynamic) {
@@ -667,10 +828,15 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       ?await applyTavernPromptTransformsV1(input,{assertCurrent:current,signal,displayProvenance:true}):undefined
     current()
     if(transformed&&transformed.kind!=='transformed')fail(transformed.diagnostics[0]?.code??'READER_DISPLAY_UNAVAILABLE')
+    const sourceMarkup=new Map<string,boolean>()
     let rows:ReaderDisplayRow[]=selected.rows.map((row,index)=>{
-      const displayText=transformed?.output.entries[index]!.outputText??input.entries[index]!.inputText,
+      const output=transformed?.output.entries[index]!.outputText??input.entries[index]!.inputText
+      // A depth/placement rule can leave the display-only suffix unconsumed.
+      const narrative=insertedStatusSlots.has(index)&&output.endsWith(MVU196_STATUS_PLACEHOLDER)
+        ?output.slice(0,-MVU196_STATUS_PLACEHOLDER.length).replace(/\n{1,2}$/,''):output
+      const displayText=narrative+(unsettledUpdates[index]?.details??''),
         replacements=transformed?.displayProvenance?.[index]?.replacements??[],
-        fragments=projectReaderDisplayFragments(displayText,replacements),styles=new Set<string>()
+        fragments=projectReaderDisplayFragments(displayText,replacements,sourceMarkup),styles=new Set<string>()
       for(const replacement of replacements) {
         if(fragments?.some(fragment=>fragment.kind==='author-document'
           &&'displaySpan' in fragment.origin
@@ -682,8 +848,9 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
         }
       }
       const css=Array.from(styles).join('\n')
-      const {effectiveText:_effectiveText,...original}=row
-      return {...original,displayText,...fragments?{fragments}:{},...css?{css}:{}}
+      const {effectiveText:_effectiveText,terminalCode,...original}=row
+      return {...original,displayText,...terminalCode?{terminalDiagnostic:{code:terminalCode}}:{},
+        ...fragments?{fragments}:{},...css?{css}:{}}
     })
     let execution:ReaderDisplayExecution|undefined,documentDiagnostics:readonly AuthorNativeDiagnosticV1[]|undefined
     let worldbookProjections=worldbook?.before??[]
@@ -701,9 +868,9 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       if(fragment.kind!=='author-document')continue
       if(!('ruleId' in fragment.origin))continue
       const origin=fragment.origin,regex=read.data.documentRules.find(rule=>rule.ruleId===origin.ruleId)
-      // This routes Source markup to the complete parser; it grants no script
-      // permission. Script-free documents retain the existing static owner.
-      if(!regex||!/<script(?:\s|>)/i.test(regex.replacement))continue
+      // Only the matched original card regex supplies this document's Source
+      // identity. The shared parser handles its markup and DATA slots.
+      if(!regex)continue
       const {seq,messageId,messageVersionSha256,depth,isEdit}=row
       documents.push({regex,message:{seq,messageId,messageVersionSha256,depth,isEdit},
         replacementSpan:fragment.origin.displaySpan,parts:fragment.parts})
@@ -719,39 +886,68 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       if(!facts)compilerDiagnostics=[{code:'READER_REGEX_DOCUMENT_SCOPE_UNAVAILABLE'}]
       else {
         current()
-        const regex=compileReaderNativeDocumentsV1({schemaVersion:1,encoding:'reader-regex-document-input-v1',
-          source:documentSource,documents})
-        const worldbookProjection=projectReaderWorldbookDocumentsV1({source:documentSource,rows,
-          projections:worldbookProjections})
-        const worldbook=compileReaderNativeDocumentsV1(worldbookProjection.bound)
-        const byLocation=new Map(regex.documentInputIndices.map((inputIndex,index)=>{
-          const location=locations[inputIndex]!
-          return [location.row+':'+location.fragment,regex.documents[index]!.documentPlanSha256]
-        }))
-        const failedLocations=new Map(regex.documentFailures.map(failure=>{
-          const location=locations[failure.inputIndex]!
-          return [location.row+':'+location.fragment,failure.diagnostics]
-        }))
-        rows=rows.map((row,rowIndex)=>({...row,fragments:row.fragments?.map((fragment,fragmentIndex)=>
-          fragment.kind==='author-document'?{...fragment,documentPlanSha256:byLocation.get(rowIndex+':'+fragmentIndex),
-            documentDiagnostics:failedLocations.get(rowIndex+':'+fragmentIndex)}:fragment)}))
-        for(const [index,inputIndex] of worldbook.documentInputIndices.entries())
-          worldbookProjection.fragments[inputIndex]={...worldbookProjection.fragments[inputIndex]!,
-            documentPlanSha256:worldbook.documents[index]!.documentPlanSha256}
-        for(const failure of worldbook.documentFailures)
-          worldbookProjection.fragments[failure.inputIndex]={...worldbookProjection.fragments[failure.inputIndex]!,
-            documentDiagnostics:failure.diagnostics}
-        rows=worldbookProjection.append(rows)
-        const program=createReaderNativeDocumentProgramV1(documentSource,{
-          documents:[...regex.documents,...worldbook.documents],
-          failedDocuments:regex.failedDocuments,failedWorldbookDocuments:worldbook.failedWorldbookDocuments,
-          worldbookProducers:worldbook.worldbookProducers})
-        const groups=[...new Set(program.documents.map(document=>document.writes))]
-        const parentOrigins=await deps.nativeParentOrigins?.(groups)??{}
-        current()
-        execution={backend:'browser-native-v1',program,parentOrigins,snapshot:{...facts.data,
-          readerVariables:documentVariables(facts,program),generation:program.programSha256,readRevision:++readRevision}}
-        writerFacts=facts;writerSourceRead=sourceRead
+        // The current Source owns variables from its opening onward. Earlier
+        // Native rows remain readable canonical text, without borrowing that
+        // Source's message prefix or blocking documents on later rows.
+        const unavailableRows=new Set<number>()
+        if(facts.readMessagePrefix) {
+          const ownedMessages=new Map(facts.data.messages.map(message=>[message.nativeSeq,message])),
+            documentRows=new Set([...locations.map(location=>location.row),...worldbookProjections.map(projection=>projection.row)])
+          for(const rowIndex of documentRows) {
+            const row=selected.rows[rowIndex]!,owned=ownedMessages.get(row.seq)
+            if(!owned)unavailableRows.add(rowIndex)
+            else if(owned.messageId!==row.messageId||owned.messageVersionSha256!==row.messageVersionSha256)
+              fail('READER_VARIABLE_TARGET_UNAVAILABLE')
+          }
+          rows=rows.map((row,rowIndex)=>{
+            if(!unavailableRows.has(rowIndex))return row
+            const {fragments:_fragments,css:_css,...canonical}=row
+            return {...canonical,displayText:row.rawText,
+              renderDiagnostics:[...row.renderDiagnostics??[],{code:'READER_VARIABLE_TARGET_UNAVAILABLE'}]}
+          })
+        }
+        const availableLocations=locations.filter(location=>!unavailableRows.has(location.row)),
+          availableDocuments=documents.filter((_document,index)=>!unavailableRows.has(locations[index]!.row)),
+          availableWorldbook=worldbookProjections.filter(projection=>!unavailableRows.has(projection.row))
+        if(availableDocuments.length||availableWorldbook.length) {
+          const regex=compileReaderNativeDocumentsV1({schemaVersion:1,encoding:'reader-regex-document-input-v1',
+            source:documentSource,documents:availableDocuments})
+          const worldbookProjection=projectReaderWorldbookDocumentsV1({source:documentSource,rows,
+            projections:availableWorldbook})
+          const worldbook=compileReaderNativeDocumentsV1(worldbookProjection.bound)
+          const byLocation=new Map(regex.documentInputIndices.map((inputIndex,index)=>{
+            const location=availableLocations[inputIndex]!
+            return [location.row+':'+location.fragment,regex.documents[index]!.documentPlanSha256]
+          }))
+          const failedLocations=new Map(regex.documentFailures.map(failure=>{
+            const location=availableLocations[failure.inputIndex]!
+            return [location.row+':'+location.fragment,failure.diagnostics]
+          }))
+          rows=rows.map((row,rowIndex)=>({...row,fragments:row.fragments?.map((fragment,fragmentIndex)=>
+            fragment.kind==='author-document'?{...fragment,documentPlanSha256:byLocation.get(rowIndex+':'+fragmentIndex),
+              documentDiagnostics:failedLocations.get(rowIndex+':'+fragmentIndex)}:fragment)}))
+          for(const [index,inputIndex] of worldbook.documentInputIndices.entries())
+            worldbookProjection.fragments[inputIndex]={...worldbookProjection.fragments[inputIndex]!,
+              documentPlanSha256:worldbook.documents[index]!.documentPlanSha256}
+          for(const failure of worldbook.documentFailures)
+            worldbookProjection.fragments[failure.inputIndex]={...worldbookProjection.fragments[failure.inputIndex]!,
+              documentDiagnostics:failure.diagnostics}
+          rows=worldbookProjection.append(rows)
+          const program=createReaderNativeDocumentProgramV1(documentSource,{
+            documents:[...regex.documents,...worldbook.documents],
+            failedDocuments:regex.failedDocuments,failedWorldbookDocuments:worldbook.failedWorldbookDocuments,
+            worldbookProducers:worldbook.worldbookProducers})
+          const groups=[...new Set(program.documents.map(document=>document.writes))]
+          const parentOrigins=await deps.nativeParentOrigins?.(groups)??{}
+          const authorScene=groups.includes('source-regex')?await deps.captureAuthorScene?.(sid):undefined
+          current()
+          execution={backend:'browser-native-v1',program,parentOrigins,
+            ...authorScene?{authorScene}:{},
+            ...facts.presetLibrary?{presetLibrary:facts.presetLibrary}:{},
+            ...facts.characterLibrary?{characterLibrary:facts.characterLibrary}:{},snapshot:{...facts.data,
+            readerVariables:documentVariables(facts,program),generation:program.programSha256,readRevision:++readRevision}}
+          writerFacts=facts;writerSourceRead=sourceRead
+        }
       }
     }
     if(documentDiagnostics?.length) {
@@ -776,15 +972,23 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
     }
     const writerGranted=execution?.program.documents.some(document=>document.writes==='source-regex')
     if(execution&&writerFacts?.sourceCurrent&&writerSourceRead
-      &&(deps.mutateOpeningVariants||deps.editMessageBody||deps.mutateNamespace)&&writerGranted) {
+      &&((deps.mutateOpeningVariants||deps.editMessageBody||deps.mutateNamespace)&&writerGranted||deps.generation)) {
       current()
       if(!writerFacts.current()||!writerFacts.sourceCurrent())fail('READER_REGEX_DOCUMENT_SCOPE_CHANGED')
       const binding:ReaderRegexDocumentBindingV1={principal:'reader-regex-document',sessionId:sid,
         browserSessionId:randomUUID(),generation:randomUUID(),programSha256:execution.program.programSha256}
       const snapshot={...execution.snapshot,generation:binding.generation}
-      const sourceCurrent=writerFacts.sourceCurrent
+      const sourceCurrent=writerFacts.sourceCurrent,
+        communityProducer=execution.program.documents.some(document=>document.origin.encoding==='reader-regex-document-origin-v1'
+          &&document.origin.regex.producer!==undefined),
+        producerCurrent=()=>!communityProducer||deps.community?.policy(sid).fingerprint===policy?.fingerprint
+      if(!producerCurrent())fail('READER_REGEX_DOCUMENT_SCOPE_CHANGED')
+      const libraryReads=createAuthorNativeLibraryReadsV1(execution.program.documents.map(
+        document=>'reader:'+document.documentPlanSha256))
+      if(execution.presetLibrary)libraryReads.deliverPreset(execution.presetLibrary)
+      if(execution.characterLibrary)libraryReads.deliverCharacter(execution.characterLibrary)
       bindings.set(binding.browserSessionId,{binding,program:execution.program,sourceRead:writerSourceRead,
-        sourceCurrent:()=>!disposed&&sourceCurrent(),facts:writerFacts,snapshot})
+        sourceCurrent:()=>!disposed&&sourceCurrent()&&producerCurrent(),facts:writerFacts,snapshot,libraryReads})
       execution={...execution,binding,snapshot}
     }
     return {ok:true,sessionId:sid,contextRevision,
@@ -839,10 +1043,21 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       throw error
     }
   }
-  return {capture,renderHtml,releasePhase,mutateBinding,mutateMessageBody,mutateNamespace,replaceNumerical,executeCommands,releaseBinding,confirmOperation,
+  function resolveLibraryReads(binding:AuthorNativeBindingV1,reads:readonly AuthorNativeRealmLibraryReadV1[]) {
+    const value=bindings.get(binding.browserSessionId)
+    if(!value||!sameBinding(value.binding,binding as ReaderRegexDocumentBindingV1)||!value.sourceCurrent())return
+    return value.libraryReads.resolve(reads)
+  }
+  return {capture,renderHtml,releasePhase,waitSourceEvents,closeBinding,mutateBinding,mutateMessageBody,mutateNamespace,replaceNumerical,readWorldbook,executeCommands,generation,mvuTrial,releaseBinding,confirmOperation,resolveLibraryReads,
     invalidateSession(sid:string){
+      for(const receiver of [...lifecycleBindings.values()])if(receiver.binding.sessionId===sid)closeBinding(receiver.binding)
       for(const value of bindings.values())if(value.binding.sessionId===sid)releaseBinding(value.binding)
       for(const value of phases.values())if(value.binding.sessionId===sid)void releasePhase(value.binding)
     },
-    dispose(){disposed=true;bindings.clear();for(const value of [...phases.values()])void releasePhase(value.binding)}}
+    dispose(){disposed=true
+      for(const receiver of lifecycleBindings.values())receiver.subscription.dispose()
+      lifecycleBindings.clear()
+      for(const value of [...bindings.values()])releaseBinding(value.binding)
+      for(const value of [...phases.values()])void releasePhase(value.binding)
+    }}
 }

@@ -31,14 +31,11 @@ export const stream = (model, context, options) => {
             timestamp: Date.now(),
         };
         try {
-            if (options?.fetch && options.fetch !== globalThis.fetch) {
-                throw new Error("Custom fetch is not supported by the Google Generative AI adapter");
-            }
             const apiKey = options?.apiKey;
             if (!apiKey) {
                 throw new Error(`No API key for provider: ${model.provider}`);
             }
-            const client = createClient(model, apiKey, options?.headers);
+            const client = createClient(model, apiKey, options?.headers, options?.fetch);
             let params = buildParams(model, context, options);
             const nextParams = await options?.onPayload?.(params, model);
             if (nextParams !== undefined) {
@@ -240,6 +237,10 @@ export const streamSimple = (model, context, options) => {
     }
     const base = {
         ...buildBaseOptions(model, context, options, apiKey),
+        topP: options?.topP,
+        topK: options?.topK,
+        frequencyPenalty: options?.frequencyPenalty,
+        presencePenalty: options?.presencePenalty,
         toolChoice: options?.toolChoice,
     };
     if (!options?.reasoning) {
@@ -265,7 +266,7 @@ export const streamSimple = (model, context, options) => {
         },
     });
 };
-function createClient(model, apiKey, optionsHeaders) {
+function createClient(model, apiKey, optionsHeaders, customFetch) {
     const httpOptions = {};
     if (model.baseUrl) {
         httpOptions.baseUrl = model.baseUrl;
@@ -275,10 +276,18 @@ function createClient(model, apiKey, optionsHeaders) {
     if (headers) {
         httpOptions.headers = headers;
     }
-    return new GoogleGenAI({
+    const client = new GoogleGenAI({
         apiKey,
         httpOptions: Object.keys(httpOptions).length > 0 ? httpOptions : undefined,
     });
+    if (customFetch) {
+        // Pinned GenAI 1.52.0 exposes no Models fetch option. Its instance apiCall
+        // is a single fetch here, since this owner does not enable SDK retries.
+        // Leave SDK request conversion, signals and response parsing in place.
+        const transport = client;
+        transport.apiClient.apiCall = async (url, init) => customFetch(url, init);
+    }
+    return client;
 }
 function buildParams(model, context, options = {}) {
     const contents = convertMessages(model, context);
@@ -289,6 +298,14 @@ function buildParams(model, context, options = {}) {
     if (options.maxTokens !== undefined) {
         generationConfig.maxOutputTokens = options.maxTokens;
     }
+    if (options.topP !== undefined)
+        generationConfig.topP = options.topP;
+    if (options.topK !== undefined)
+        generationConfig.topK = options.topK;
+    if (options.frequencyPenalty !== undefined)
+        generationConfig.frequencyPenalty = options.frequencyPenalty;
+    if (options.presencePenalty !== undefined)
+        generationConfig.presencePenalty = options.presencePenalty;
     const supportsStrictMode = supportsGoogleStrictToolSampling(model.id);
     const functionCallingMode = context.tools?.length
         ? resolveGoogleFunctionCallingMode(context.tools, options.toolChoice, supportsStrictMode)

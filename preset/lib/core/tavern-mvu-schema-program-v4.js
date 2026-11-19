@@ -88,7 +88,7 @@ export function pinnedCSchemaImportBindingsV4(rawBridge) {
 }
 function library(value) {
     exact(value, ['kind', 'packageName', 'version', 'bundleSha256', 'globalName']);
-    if (!['zod', 'lodash'].includes(String(value.kind)) || !text(value.packageName, 256)
+    if (!['zod', 'lodash', 'mvu-196'].includes(String(value.kind)) || !text(value.packageName, 256)
         || !text(value.version, 128) || !hash(value.bundleSha256) || typeof value.globalName !== 'string'
         || !/^[A-Za-z_$][\w$]{0,127}$/.test(value.globalName)
         || ['__proto__', 'constructor', 'prototype'].includes(value.globalName))
@@ -168,8 +168,7 @@ function checksum(value, key, code) {
 function executionPlan(raw, scripts, stateLoader, compiled) {
     exact(raw, ['schemaVersion', 'encoding', 'classifier', 'dependencyPolicySha256', 'scripts', 'summary',
         'zeroRegistrationPolicy', 'rawExecutionPolicy', 'containsLocalAuditEvidence', 'executionPlanSha256',
-        ...(object(raw) && Object.hasOwn(raw, 'commandPolicyProfile') ? ['commandPolicyProfile'] : []),
-        ...(object(raw) && Object.hasOwn(raw, 'initializationWriteProfile') ? ['initializationWriteProfile'] : [])]);
+        ...(object(raw) && Object.hasOwn(raw, 'commandPolicyProfile') ? ['commandPolicyProfile'] : [])]);
     if (raw.schemaVersion !== 1 || raw.encoding !== 'native-mvu-author-execution-plan-v1'
         || raw.dependencyPolicySha256 !== FIXED_STATE_LOADER_POLICY_SHA256
         || raw.zeroRegistrationPolicy !== 'forbid-if-any-enabled-server-schema'
@@ -331,25 +330,6 @@ function executionPlan(raw, scripts, stateLoader, compiled) {
         }
         checksum(profile, 'profileSha256', 'SCHEMA_V4_COMMAND_POLICY_HASH');
     }
-    if (Object.hasOwn(raw, 'initializationWriteProfile')) {
-        const profile = raw.initializationWriteProfile;
-        exact(profile, ['schemaVersion', 'encoding', 'bindings', 'profileSha256']);
-        if (profile.schemaVersion !== 1 || profile.encoding !== 'native-mvu-chat-initialization-write-profile-v1'
-            || !Array.isArray(profile.bindings))
-            fail('SCHEMA_V4_INITIALIZATION_WRITE_PROFILE');
-        for (const item of profile.bindings) {
-            exact(item, ['scriptOrdinal', 'scriptIdentity', 'sourceSha256', 'sourceSpan', 'capability']);
-            if (!integer(item.scriptOrdinal, 0, scripts.length - 1))
-                fail('SCHEMA_V4_INITIALIZATION_WRITE_BINDING');
-            const original = scripts[item.scriptOrdinal], row = raw.scripts[item.scriptOrdinal];
-            if (!original.enabled || row.classification !== 'server-schema' || item.scriptIdentity !== original.identity
-                || item.sourceSha256 !== original.sourceSha256 || item.capability !== 'insert-or-assign-chat-stat-data-v1') {
-                fail('SCHEMA_V4_INITIALIZATION_WRITE_BINDING');
-            }
-            span(item.sourceSpan, original.source.length);
-        }
-        checksum(profile, 'profileSha256', 'SCHEMA_V4_INITIALIZATION_WRITE_HASH');
-    }
     checksum(raw, 'executionPlanSha256', 'SCHEMA_V4_EXECUTION_PLAN_HASH');
 }
 /** A compiled program already owns this decision. Callers derive the phase
@@ -369,8 +349,7 @@ function buildSchemaExecutionViewV4(program) {
         errorPolicy: schemaPhaseErrorPolicyForProgramV4(program), scripts,
         serverScripts: scripts.map((script, index) => ({ script, index })).filter(({ index }) => serverOrdinals.has(index)),
         enabledServerSchema: plan?.summary.enabledServerSchema ?? 0,
-        stateOnly: owned || plan.summary.enabledServerSchema === 0 && plan.summary.enabledNativeLoaders > 0,
-        initializationWriters: new Set(plan?.initializationWriteProfile?.bindings.map(binding => binding.scriptIdentity) ?? []) };
+        stateOnly: owned || plan.summary.enabledServerSchema === 0 && plan.summary.enabledNativeLoaders > 0 };
 }
 const executionViews = new WeakMap();
 export function schemaExecutionViewV4(program) {
@@ -388,7 +367,7 @@ function compilationCode(value, compiled) {
     implementation(value.stateLoader);
     if (!same(value.stateLoader, deriveOwnedStateLoaderIdentityV4(value.bridge)))
         fail('SCHEMA_V4_STATE_LOADER_IDENTITY');
-    if (!Array.isArray(value.libraries) || value.libraries.length > 2)
+    if (!Array.isArray(value.libraries) || value.libraries.length > 3)
         fail('SCHEMA_V4_LIBRARY_INVALID');
     const kinds = new Set(), globals = new Set(), libraries = [];
     for (const item of value.libraries) {
@@ -399,7 +378,7 @@ function compilationCode(value, compiled) {
         globals.add(item.globalName);
         libraries.push(item);
     }
-    if (!Array.isArray(value.scripts) || !value.scripts.length || value.scripts.length > MVU_SCHEMA_BOUNDS.scripts) {
+    if (!Array.isArray(value.scripts) || compiled && !value.scripts.length || value.scripts.length > MVU_SCHEMA_BOUNDS.scripts) {
         fail('SCHEMA_V4_SCRIPT_LIMIT');
     }
     const identities = new Set(), pointers = new Set(), scripts = [];
@@ -480,7 +459,7 @@ export function validateOwnedMvuStateProgramV1(input) {
     implementation(value.stateLoader);
     if (!same(value.stateLoader, deriveOwnedStateLoaderIdentityV4(value.bridge)))
         fail('SCHEMA_V4_STATE_LOADER_IDENTITY');
-    if (!Array.isArray(value.libraries) || value.libraries.length > 2)
+    if (!Array.isArray(value.libraries) || value.libraries.length > 3)
         fail('SCHEMA_V4_LIBRARY_INVALID');
     const kinds = new Set(), globals = new Set();
     for (const item of value.libraries) {

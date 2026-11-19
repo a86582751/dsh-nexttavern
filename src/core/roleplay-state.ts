@@ -46,10 +46,10 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
   buildForkLookupIndex,reconcileCanonicalPlayerVariants,statusRecoveredSessions,recoverStatusObligations,
   nativeBranchGroupsFor,nativePlayerGroupsFor,assistantMessageId,userForkContext,locatePlayerRecoveryTarget,
   failedForkMembership,isRecoverySourceMember,backfillRecoverySourceMember,importRecordKey,preparationRecordKey,
-  tavernTasks,memoryForContext,cloneContextWindow,contextWindowFor,selectedStatusRecord,selectedStatusGeneration,latestStatusEvent,
+  tavernTasks,contextProjection,cloneContextWindow,contextWindowFor,selectedStatusRecord,selectedStatusGeneration,latestStatusEvent,
   importSummary,chatImportProjection,numericalState,taskArtifact,readerDisplay,readerDocument,readerBeauty,
   readerRenderHtml,readerReleasePhase,
-  readerDisplayContextVersion,communityPresets,readInputDiagnostic,
+  communityPresets,readInputDiagnostic,extensionFailures,
   deletedBranchMessageIdsFor,inheritedAssistantMessageIdsFor,
   normalizeDecisionRecord,userValues,svc,resolveRoleplaySession}:StateDependencies) {
   const collectBranchRecords = (session: StateSession) => {
@@ -67,16 +67,30 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
 
   const recordVersionsFor=(session:Pick<StateSession,'id'>)=>captureRoleplayRecordVersionsV1(T,session.id)
   const readActivity=(session:StateSession)=>{
-    const activity=readRoleplayActivity(session,T.branch.get(preparationRecordKey(session.id)) as StatePreparation,tavernTasks.activity(session))
+    const activity={...readRoleplayActivity(session,T.branch.get(preparationRecordKey(session.id)) as StatePreparation,tavernTasks.activity(session)),
+      extensionFailures:extensionFailures?.(session)??[]}
     if(activity.running||!['aborted','error'].includes(activity.ending??''))return activity
     const events=eventsOf(session),link=activity.turnStartSeq===null?undefined:
       events[activity.turnStartSeq]?.data?.nativeInputLink as NativeInputLinkV1|undefined
     if(!link)return activity
     const diagnostic=readInputDiagnostic?.(session.id,link.refs)
-    // Only the material owner's pre-dispatch refusal grants this explanation;
-    // provider errors and unrelated old failures cannot imply an unsent request.
-    if(diagnostic?.sourceKind!=='story'||!['unknown','stopped'].includes(diagnostic.status)
-      ||diagnostic.stop?.code!=='REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')return activity
+    if(diagnostic?.sourceKind!=='story'||!['unknown','stopped'].includes(diagnostic.status))return activity
+    const code=diagnostic?.stop?.code
+    const readerRequired=code==='BROWSER_GENERATION_READER_REQUIRED'
+    const extension=code?.startsWith('TEMPLATE_')||code?.startsWith('LORE_')?'ejs'
+      :code?.startsWith('SCHEMA_')||code?.startsWith('MVU_')?'mvu'
+      :code?.startsWith('RUBY_')?'ruby'
+      :code?.startsWith('AUTHOR_')||code?.startsWith('BROWSER_')?'author-script':undefined
+    if(extension&&!readerRequired) {
+      return {...activity,extensionFailures:[...activity.extensionFailures,{
+        schemaVersion:1,sessionId:session.id,id:`${diagnostic.preparationId}:${diagnostic.attemptGeneration}:${code}`,
+        extension,code:code!,phase:'input-preparation',sourceRevision:diagnostic.sourceSha256,
+        impact:'story-paused',
+      }]}
+    }
+    // Only a captured provider rejection offers the channel-switch card.
+    const providerFailure=activity.providerRoleRejection
+    if(!readerRequired&&!providerFailure)return activity
     // These refs already belong to the current refused work. Read only their
     // exact inbox insertions: a before-first-step refusal has no user/message.
     const messages=link.refs.flatMap(ref=>{
@@ -87,8 +101,10 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       text:messages.map(message=>textOf(message.content)).filter(Boolean).join('\n\n'),
       attachmentCount:messages.reduce((total,message)=>total+(message.content??[]).filter(block=>block.type==='image').length,0),
       time:events[link.refs[0]!.insertSeq]?.time}:activity.pendingPlayer
+    if(readerRequired)return {...activity,stage:'paused',pendingPlayer,readerRequired:true}
     return {...activity,stage:'paused',pendingPlayer,
-      protocolFailure:{code:diagnostic.stop.code,requestDispatched:false,recovery:'clean-worldline'}}
+      protocolFailure:{...providerFailure,requestDispatched:true,recovery:'clean-worldline',
+        attemptId:`${diagnostic.preparationId}:${diagnostic.attemptGeneration}`}}
   }
   const readRoleplayState = async (session: StateSession) => {
     await awaitImportBarrier(session.id)
@@ -238,7 +254,11 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
         })
       }
     }
-    const numericalObservation=await numericalState?.(session.id)??null,userinfo=userValues(session.id)
+    const numericalObservation=await numericalState?.(session.id)??null,userinfo=userValues(session.id),
+      deletedBranchMessageIds=deletedBranchMessageIdsFor(session,forkLookup)
+    // These projections share the observed Story cut before origin admission
+    // yields. Their owners retain unavailable context as an explicit result.
+    const {memory,directorNotes,displayContext,schemaStory}=contextProjection(session,numericalObservation,!deletedBranchMessageIds.length)
     // Read the rules and their existing owner digest in one synchronous cut.
     // Origin admission may yield; its response still carries this exact Source.
     const currentRules=T.rules.get(keyOf(session.id,'spec')) as import('./roleplay-import-types.js').RulesRecord|undefined,
@@ -253,7 +273,6 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       if(artifact)anchor.taskArtifact=artifact
     }
     const statusEvent=latestStatusEvent(session)
-    const deletedBranchMessageIds=deletedBranchMessageIdsFor(session,forkLookup)
     return {
       ok: true,
       preset: 'roleplay',
@@ -262,8 +281,8 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       // The state endpoint is also consumed by the Reader UI.  It must expose
       // the same branch-filtered ledger used for prompt assembly; returning the
       // raw head here leaked post-fork parent facts into an unselected child.
-      memory: memoryForContext(session),
-      directorNotes: ctx.get('compaction')?.directorNotes?.(session) ?? null,
+      memory,
+      directorNotes,
       contextWindow: cloneContextWindow(contextWindowFor(session)),
       cards,
       worldbook,
@@ -275,7 +294,8 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       numericalState:numericalObservation,
       readerDisplay:{enabled:(activeSourceRecord?.extensionInventory?.entries
         .some(entry=>entry.key==='regex_scripts'&&entry.valueType==='array')??false)
-        ||numericalObservation?.kind==='schema-ready'&&numericalObservation.hasFinalizedMessages===true},
+        ||numericalObservation?.kind==='schema-ready'&&numericalObservation.hasFinalizedMessages===true,
+        ...schemaStory?{schemaStory:true}:{} },
       ...nativeBeauty?{readerBeauty:nativeBeauty}:{},
       communityPresets:communityPresets?.(session.id)??null,
       rules:currentRules?{...currentRules,...authorCoreData
@@ -304,7 +324,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
          rawSha256:activeSourceRecord?.rawSha256??null,normalizedSha256:activeSourceRecord?.normalizedSha256??null,
          transactionId:activeSourceRecord?.activation?.transactionId??null,userinfo,
          // Deleted audit views do not open a live Reader observation.
-         displayContext:deletedBranchMessageIds.length?null:readerDisplayContextVersion?.(session.id)??null})},
+         displayContext})},
       surfaceNodes: surfaceEntries(session).map((entry) => ({
         seq: entry.seq,
         kind: entry.kind,
@@ -340,15 +360,13 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
                  await readerReleasePhase((body as unknown as {binding:import('./roleplay-reader-display.js').ReaderRenderPhaseBindingV1}).binding)
                  return jsonResponse(200,{ok:true})
                }
-               if(['mutate-opening-variants','confirm-opening-variants','retry-opening-variants','release-reader-binding',
-                 'save-reader-numerical','confirm-reader-numerical','retry-reader-numerical',
-                 'execute-reader-commands','mutate-reader-message-body','confirm-reader-message-body',
-                 'retry-reader-message-body','mutate-reader-namespace','confirm-reader-namespace',
-                 'retry-reader-namespace'].includes(String(body?.action))) {
+               if(body?.action!=='reader-display') {
                  if(!readerDocument)return jsonResponse(503,{ok:false,code:'READER_DOCUMENT_UNAVAILABLE'})
-                 return jsonResponse(200,await readerDocument(body as import('./reader-regex-document-types.mjs').ReaderRegexDocumentRequestV1,request.signal))
+                 const result=await readerDocument(
+                   body as import('./reader-regex-document-types.mjs').ReaderRegexDocumentRequestV1,request.signal)
+                 return jsonResponse(!result.ok&&result.code==='READER_DOCUMENT_REQUEST_INVALID'?400:200,result)
                }
-               if(body?.action!=='reader-display'||!Array.isArray(body.messages)
+               if(!Array.isArray(body.messages)
                  ||body.messages.some(ref=>!ref||typeof ref!=='object'||!Number.isSafeInteger(ref.seq)
                    ||ref.seq<0||typeof ref.messageId!=='string'||!ref.messageId))
                  return jsonResponse(400,{ok:false,code:'READER_DISPLAY_REQUEST_INVALID',error:'Reader 消息引用无效'})

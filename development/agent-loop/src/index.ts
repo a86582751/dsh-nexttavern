@@ -10,7 +10,6 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import type { FiberState } from '@deepseek-ai/cordis'
 import { randomUUID } from 'node:crypto'
 import z from '@deepseek-ai/schemastery'
-import { z as zod } from 'zod'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type {
   Agent,
@@ -21,15 +20,17 @@ import type {
   CreateAgentOptions,
   ResumeAgentOptions,
   SessionStartSource,
-  TurnBoundaryProjection,
+  InboxState,
+  ModelSelectionProjectionState,
 } from '@deepseek-ai/dsh-agent'
+import { modelSelectionProjectionDefinition } from '@deepseek-ai/dsh-agent'
 import { errorChain, ReasoningEffortId } from 'dsh-nexttavern-native-llm'
 import { interruptedTurnClosers, SessionLogOffset, SessionPreparation, SessionSeq } from 'dsh-nexttavern-native-session'
 import type { Session, SessionHeader, SessionId } from 'dsh-nexttavern-native-session'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-session-projection'
-import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
+import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionHandle, SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { ReactLoopAgent, nativeInputAdmissionCapability } from './agent.js'
@@ -41,63 +42,14 @@ import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.js'
 import type {} from './runtime-context.js'
 export {readNativeRequestMeasurementV1} from './request-budget.js'
 export {createNativePublishedInputHistory} from './published-input.js'
+export {inspectProgrammaticCommit} from './programmatic-commit.js'
+export type {ProgrammaticCommitInput} from './programmatic-commit.js'
 export type {NativeRequestMeasurementV1,RequestComponent,RequestComponents} from './request-budget.js'
 
 /** Fiber states that cannot own or serve a new lifecycle. */
 // Cordis 4.0.4 declares FiberState as an ambient const enum and exports no
 // runtime value. Keep its pinned lifecycle codes explicit in this JS output.
 const INACTIVE_STATES: ReadonlySet<FiberState> = new Set([5, 4, 3])
-
-const turnBoundaryProjectionSchema: zod.ZodType<TurnBoundaryProjection> = zod.object({
-  openTurnStartSeq: zod.number().int().nonnegative().transform(SessionSeq).nullable(),
-  lastStepStartSeq: zod.number().int().nonnegative().transform(SessionSeq).nullable(),
-  lastStepBoundary: zod.object({
-    kind: zod.union([zod.literal('start'), zod.literal('end')]),
-    seq: zod.number().int().nonnegative().transform(SessionSeq),
-  }).nullable(),
-  lastTurn: zod.number().int().nonnegative(),
-})
-
-/** Host projection of agent turn and step boundaries. */
-export const turnBoundaryProjectionDefinition = {
-  key: 'turnBoundary',
-  stateVersion: 2,
-  stateSchema: turnBoundaryProjectionSchema,
-  init: () => ({
-    openTurnStartSeq: null,
-    lastStepStartSeq: null,
-    lastStepBoundary: null,
-    lastTurn: 0,
-  }),
-  apply: (state, event) => {
-    switch (event.type) {
-      case 'turn/start':
-        return {
-          ...state,
-          openTurnStartSeq: event.seq,
-          lastTurn: event.data.turn,
-        }
-      case 'turn/end':
-        return {
-          ...state,
-          openTurnStartSeq: null,
-        }
-      case 'step/start':
-        return {
-          ...state,
-          lastStepStartSeq: event.seq,
-          lastStepBoundary: { kind: 'start', seq: event.seq },
-        }
-      case 'step/end':
-        return {
-          ...state,
-          lastStepBoundary: { kind: 'end', seq: event.seq },
-        }
-      default:
-        return state
-    }
-  },
-} satisfies ProjectionDefinition<'turnBoundary', TurnBoundaryProjection>
 
 /** Factory-level ownership: live agent teardowns plus config startup work. */
 class FactoryOwnership {
@@ -276,6 +228,10 @@ export type {NativeInboxHistory} from './input-admission.js'
 export {reconstructNativeRequestMaterialV1,reconstructNativeMaterialSelectedCaptureV2,
   verifyNativeRequestMaterialHistoryV1,verifyNativeSessionRequestMaterialHistoryV1,
   NativeRequestMaterialFailure,projectNativeMessageTextV2,projectNativeMaterialTextOutputsV1} from './request-material.js'
+export {inspectNativeAuthorGenerationV1,inspectNativeAuthorGenerationTerminalV1} from './author-generation.js'
+export type {NativeAuthorGenerationIdentityV1,NativeAuthorGenerationPlanV1,NativeAuthorGenerationCheckpointV1,
+  NativeAuthorGenerationCompletionV1,NativeAuthorGenerationStreamV1,NativeAuthorGenerationOwnerV1,
+  NativeAuthorGenerationTerminalV1} from './author-generation.js'
 export type {NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecord,
   NativeRequestMaterialEventV1} from './request-material.js'
 export type {NativeStoryRequestPolicyV1,NativeStoryMaterialHooksV1,NativeStoryMaterialHooksV2,
@@ -401,6 +357,8 @@ export class AgentLoop extends Service implements AgentFactory {
   /** Validated configuration owned by the agent-loop service. */
   readonly config: Config
   private readonly ownership: FactoryOwnership
+  private modelProjection!: ProjectionHandle<ModelSelectionProjectionState>
+  private inboxProjection!: ProjectionHandle<InboxState>
   /** Plain holder prevents Cordis from re-tracing the factory's dependency context through a caller shadow. */
   private readonly runtime: { ctx: Context; admissionAgents: WeakSet<ReactLoopAgent> }
 
@@ -412,16 +370,18 @@ export class AgentLoop extends Service implements AgentFactory {
       maxParallelToolCalls: config.maxParallelToolCalls,
     }
     validateConfiguredAgents(this.config.agents)
-    // Register only after every config validation above has passed, so a
-    // rejected constructor leaves no projection unit behind.
-    ctx.sessionProjections.register(turnBoundaryProjectionDefinition)
-    ctx.sessionProjections.register(inboxProjectionDefinition)
     this.ownership = new FactoryOwnership(ctx.fiber)
     this.runtime = { ctx, admissionAgents: new WeakSet() }
+  }
+
+  async [Service.init](): Promise<void> {
+    const {ctx} = this.runtime
+    this.modelProjection = await ctx.sessionProjections.register(modelSelectionProjectionDefinition)
+    this.inboxProjection = await ctx.sessionProjections.register(inboxProjectionDefinition)
     ctx.effect(() => () => this.ownership.dispose(), 'agentLoop.transactions()')
     ctx.effect(() => ctx.agents.setFactory(this), 'agentLoop.setFactory()')
-    ctx.systemPrompt.variable('provider', context => context.agent?.options.provider)
-    ctx.systemPrompt.variable('model', context => context.agent?.options.model)
+    ctx.systemPrompt.variable('provider', context => context.modelSelection?.provider ?? context.agent?.options.provider)
+    ctx.systemPrompt.variable('model', context => context.modelSelection?.model ?? context.agent?.options.model)
     ctx.systemPrompt.variable('cwd', context => context.agent?.session.header.cwd)
 
     for (const { id, sessionId, cwd, resumeSessionId, ...options } of this.config.agents) {
@@ -554,7 +514,6 @@ export class AgentLoop extends Service implements AgentFactory {
     session: Session,
     callerSignal?: AbortSignal,
     handle?: SessionHandle,
-    parentAgent?: Agent,
   ): PreparedAgent {
     assertAgentOptions(options)
     ownerCtx.fiber.assertActive()
@@ -643,9 +602,13 @@ export class AgentLoop extends Service implements AgentFactory {
     })())
     const untrack = this.ownership.track(dispose)
     let unfollowOwner: () => Promise<void> | void
+    const projections = {
+      modelSelection: this.modelProjection.readerFor(session),
+      inbox: this.inboxProjection.readerFor(session),
+    }
     try {
       unfollowOwner = ownerCtx.effect(function* () {
-        machine = new ReactLoopAgent(loopCtx, id, options, session)
+        machine = new ReactLoopAgent(loopCtx, id, options, session, projections)
         machineReady.resolve()
         yield machine.scope.rawDispose
         yield () => {
@@ -690,7 +653,7 @@ export class AgentLoop extends Service implements AgentFactory {
             detachSession = agent.ctx.sessions.enter(session)
             // The mounted backend routes announced live events into the active
             // write handle by session id; the loop only owns the handle itself.
-            detachAgent = loopCtx.agents.enter(agent, parentAgent)
+            detachAgent = loopCtx.agents.enter(agent)
             // Creation listeners may register admission. The actual registry
             // owns this instance before announce; rollback removes the brand.
             this.runtime.admissionAgents.add(agent)
@@ -818,7 +781,6 @@ export class AgentLoop extends Service implements AgentFactory {
         options.signal,
         'startup',
         stored,
-        options.parentAgent,
       )
     })()
     this.ownership.trackWrapper(published)
@@ -835,13 +797,12 @@ export class AgentLoop extends Service implements AgentFactory {
     signal: AbortSignal | undefined,
     source: SessionStartSource,
     stored?: StoredSession,
-    parentAgent?: Agent,
   ): Promise<AgentHandle> {
     using ownedPreparation = preparation
     const session = ownedPreparation.session
     let prepared: PreparedAgent
     try {
-      prepared = this.prepare(ownerCtx, id, agentOptions, session, signal, stored?.handle, parentAgent)
+      prepared = this.prepare(ownerCtx, id, agentOptions, session, signal, stored?.handle)
     } catch (error: unknown) {
       await stored?.handle.close().catch(() => {})
       throw error
@@ -953,7 +914,6 @@ export class AgentLoop extends Service implements AgentFactory {
           options.signal,
           'resume',
           owned,
-          options.parentAgent,
         )
       } finally {
         preparation?.[Symbol.dispose]()

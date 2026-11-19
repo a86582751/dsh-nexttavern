@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 import type { EventEmitter } from 'node:events'
 import type {
@@ -16,8 +17,20 @@ export function onUserInfoChanged(listener: () => void): () => void {
   return () => { userInfoEvents.off(USER_INFO_CHANGED, changed) }
 }
 
-export const userInfoPath = (): string => process.env.DSH_ROLEPLAY_USERINFO_PATH ??
-  join(process.env.DSH_HOME ?? join(process.env.HOME ?? '.', '.dsh'), 'roleplay-userinfo.json')
+export function userInfoPath(): string {
+  if (process.env.DSH_ROLEPLAY_USERINFO_PATH !== undefined) return process.env.DSH_ROLEPLAY_USERINFO_PATH
+  const configured = process.env.DSH_HOME
+  const root = configured?.trim() ? configured : join(homedir(), '.dsh')
+  const home = resolve(/^~(?:[\\/]|$)/.test(root) ? join(homedir(), root.slice(2)) : root)
+  const file = join(home, 'roleplay-userinfo.json'), cwd = process.cwd()
+  // Older Desktop launches without HOME wrote relative to their profile.
+  // Recover only from the current Harness profile, never from a workspace.
+  if (relative(join(home, 'profiles'), dirname(cwd)) === '' && !existsSync(file)) {
+    const legacy = join(cwd, '.dsh', 'roleplay-userinfo.json')
+    if (existsSync(legacy)) return legacy
+  }
+  return file
+}
 
 type RecordValue = Record<string, unknown>
 interface OwnedAvatar {

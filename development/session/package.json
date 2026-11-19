@@ -44,12 +44,11 @@
   ],
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/dsh-scope": "0.1.7-rc.2",
-    "@deepseek-ai/cordis": "4.0.4",
-    "@deepseek-ai/dsh-invariants": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-typert-protocol": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-brand": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-util-values": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-scope": ">=0.2.2-rc.5",
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.2.2-rc.5",
+    "@deepseek-ai/dsh-brand": ">=0.2.2-rc.5",
+    "@deepseek-ai/dsh-util-values": ">=0.2.2-rc.5",
     "dsh-nexttavern-native-llm": "0.3.0-dev.1"
   }
 }

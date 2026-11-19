@@ -4,6 +4,67 @@
 
 本页合并重复流水，保留用户可见变化、迁移要求和验证限制。完整清理前记录见 [2026-10-24 历史快照](https://github.com/a86582751/dsh-nexttavern/blob/d84a35c41189846faaca5643a88a1949fcff776d/CHANGELOG.md)，可追溯原始测试数字、失败记录和候选演变。
 
+## 2026-11-20
+
+- 开发版修复共享阅读区把主题内边距加到可用宽度之外的问题。官方主题和酒馆主题下均可用外层滚动阅读长正文。
+- The development build fits themed Reader padding within the available width. Long prose scrolls in the main reading area with either the official or Tavern theme.
+
+## 2026-11-19
+
+- 酒馆正文只用外层滚动，独立作者页面仍可自行滚动。修复部分正则正文显示 HTML 段落标签和画面外启动时阅读布局超时。响应式全屏作者页面在短窗口里保留可滚到的操作空间。
+- The Tavern scrolls prose in the main reading area while independent author pages can retain their own scrolling. Fixed escaped prose paragraphs and a layout startup timeout when the Reader is offscreen. Responsive full-screen author pages keep their controls reachable in short windows.
+- 随视口伸缩的全屏作者前端在短开场可用完整阅读区，关闭后恢复正文布局。引用酒馆顶层窗口的兼容作者模块可在隔离场景中启动。世界书初始变量的空集合可以恢复缺失的分隔空格。桌面侧停靠状态栏的折叠按钮避开系统标题栏。
+- Responsive full-viewport author interfaces can use the available reading area during short openings. Closing them restores the story layout. Legacy Helper modules can mount in the isolated author scene. Worldbook initializers recover missing separators before empty YAML collections. The docked status panel clears the desktop title bar.
+- 聊天附件导入后随会话完成刷新开场选择。开场里的 `{{user}}` 使用已选玩家名称，兼容旧桌面 profile 的用户信息。世界书标题的首尾空白可以正常随卡导入和选择开场。默认 Reader 允许作者脚本绑定开场里的表单挂载点，正则匹配位置可以作为作者文档的字符串数据。导出角色卡时保留在分支里编辑过的继承开场。
+- Opening choices refresh when a chat-attachment import turn finishes. The `{{user}}` macro uses the selected player name, including profiles saved by older desktop builds. Worldbook titles with surrounding whitespace no longer block opening selection. The default Reader lets author scripts mount forms in an opening and accepts regex match offsets as document string data. Card exports retain inherited openings edited in a worldline branch.
+- 酒馆发送后立即显示准备进度。追更时跟随正文，向上回看时保留阅读位置。后台导演笔记默认超时五分钟，输出遵循模型限制；笔记、压缩与检索排除数值更新和状态栏占位符。剧情语义查询每条正文取最佳分块，空索引直接使用关键词。
+- Tavern shows feedback immediately after sending, follows new prose at the tail, and keeps the reading position when you scroll back. Director notes default to a five-minute timeout and use the selected model’s output limit. Notes, compaction, and retrieval omit numerical updates and status placeholders. Semantic story search ranks each message by its best chunk and falls back to keyword search when the index has no candidates.
+- 如果剧情准备时酒馆的作者脚本视图尚未打开，对话页会保留输入并提供「打开酒馆」操作。等作者界面就绪后，玩家可以手动发送保留的文字。
+- When story preparation needs the Tavern reader for author scripts, Chat keeps the input and offers Open Tavern. Players can resend the retained text after the author interface loads.
+- 修复开发版通过 Google Vertex AI 发送对话和剧情时报自定义传输错误。请求由 Vertex SDK 发出，主动取消和流空闲超时继续生效。
+- Google Vertex AI chat and story requests in the development build use the Vertex SDK transport and retain cancellation and stream idle timeouts.
+- 统一酒馆管理的世界书、预设和角色集群页面。世界书可滚动到末尾，导入与绑定有独立入口。预设的选中标签和文件按钮保持清晰对比，角色集群的运行开关、人物名单与私有资料更容易查找。
+- Tavern Management now uses consistent controls across Worldbook, Presets, and Character Cluster. Worldbook scrolls through its full content and has a dedicated import and binding view. Preset tabs and file controls use readable contrast, and Character Cluster separates runtime settings from the roster and private character details.
+- 开发版按每次剧情实际需要组装消息。渠道明确拒绝角色或位置时，恢复卡显示原因，并提供切换渠道和直接打开干净世界线的操作。玩家确认后发送保留的输入。
+- Story requests are assembled with the message roles and positions each turn uses. An explicit provider rejection shows the reason and offers a channel change and direct access to the prepared worldline. The player chooses when to send the retained input.
+- 修复桌面模型供应商保存时误重启酒馆的问题。已挂载的供应商直接接收设置更新，会话界面保持可用。
+- Saving a model provider in Desktop applies the settings to the mounted provider and keeps the conversation UI active.
+- 核对 0.2.9 三个 RC 的修复。0.3 恢复 Windows／Linux 便携候选的原生插件安装路径，宿主清单和锁由便携配方携带，插件归档继续使用瘦身布局。便携安装中断后可切换下载源并重试。剧情首响应以模型首次输出为准，规范正文可以随后显示。
+- The 0.3 portable setup restores native plugin installation on Windows and Linux. Setup recipes carry the locked host inputs and install the same slim plugin archive. An interrupted setup can retry with a different download source. The story deadline observes the provider’s first output while formatted story text may appear later.
+
+## 2026-11-18
+
+### 0.3 可玩开发线
+
+- 五张追加原卡走通作者开场和第一轮剧情，并验证各自适用的终端、状态栏、数值或续玩操作。
+- 「前端设置」可直接打开已识别的作者终端。变量更新已结算时，酒馆和小说原稿使用清洁正文。
+- Native 1.2 创作、当前编辑、卡片导出和回导已实测。DOCX 开场保留作者原文，编辑后导出与重新导入均保留修改。debug CLI 可导出当前世界线原稿及执行隔离侧聊。
+
+**English**
+
+Five additional community cards reached a first Story from their authored openings, with checks for each card's applicable interactions. Frontend Settings can open supported author terminals directly. Reader and original-manuscript export omit settled variable updates. Native 1.2 authoring, editing, export and reimport were tested. A DOCX opening retained the authored text and its later edit through the Native round trip. The debug CLI supports current-worldline manuscript export and isolated side chat.
+
+详细覆盖见 [0.3 开发日志](DEVELOPMENT-0.3.md)。正式发行版本为 0.2.9-rc.4。
+
+## 2026-11-16
+
+### 开发源码与文档的 Reader 与剧情恢复修正（未发布）
+
+- 正确处理原作者 HTML 围栏，正文与后续插入的作者面板同时保留；完整当前人物资料按需读取。
+- 修正普通数据刷新中预留事件失效、拒绝输入后的数值结算，以及未完成剧情阻断状态页的问题；记忆投影复用已取得的历史与笔记结果。
+- 一个实卡路径覆盖建角、连续剧情、页面重生成与新进程数值／记忆恢复。更多作品、完整玩法和 Native 创作／导出往返继续验证。
+
+**English**
+
+Reader handles authored HTML fences and preserves prose when author panels are inserted later. Current character data is read on demand. Fixes cover reserved hooks during data refresh, numerical settlement after refused input, and state access while a Story is unsettled. Memory projection reuses its history and notes. One real-card workflow covers character setup, continued Stories, UI regeneration and new-process numerical/memory recovery. Broader gameplay and Native authoring/export validation continues.
+
+### 开发源码与文档的世界书管理、预设与恢复修正（未发布）
+
+- 世界书管理增加独立 JSON 导入和 profile、角色、聊天绑定，操作恢复沿用原凭据，重复 UID 原始条目的整书替换保留各自来源身份。
+- 社区预设控件读取所选范围的工作值，声明式 profile 模块、参数和响应设置接入实际请求链。
+- 修正数值提交后的权限误撤销、pending 消息的 EJS 变量缓存，以及世界书提交后的旧过滤器读取依据。
+- Source 回归和受控 Core 消费者有分项通过结果。当前候选安装、真实卡玩法、自然创作与新进程恢复仍在验证，完整进展见[开发日志](DEVELOPMENT-0.3.md)。
+
 ## 2026-11-15
 
 ### 开发源码与文档 — Ruby 请求设置与 Reader 消息操作（未发布）

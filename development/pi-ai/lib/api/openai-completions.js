@@ -692,9 +692,16 @@ function executeCompletions(model, input, options) {
 }
 export const streamSimple = (model, context, options) => {
     getClientApiKey(model.provider, options?.apiKey, options?.headers);
+    const { toolChoice, ...simpleOptions } = options ?? {};
     const base = {
-        ...buildBaseOptions(model, context, options, options?.apiKey),
-        toolChoice: options?.toolChoice,
+        ...buildBaseOptions(model, context, simpleOptions, options?.apiKey),
+        toolChoice,
+        topP: options?.topP,
+        topK: options?.topK,
+        frequencyPenalty: options?.frequencyPenalty,
+        presencePenalty: options?.presencePenalty,
+        stop: options?.stop,
+        responseFormat: options?.responseFormat,
     };
     const clampedReasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
     const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
@@ -745,6 +752,16 @@ function createClient(model, input, apiKey, optionsHeaders, fetch, sessionId, co
 function buildParams(model, input, options, compat = getCompat(model), cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env)) {
     const messages = input.messages;
     const cacheControl = getCompatCacheControl(compat, cacheRetention);
+    if (options?.topK !== undefined) {
+        throw new Error("UNSUPPORTED_OPTION: openai-completions has no declared topK support");
+    }
+    if (options?.responseFormat !== undefined && compat.thinkingFormat === "deepseek") {
+        throw new Error("UNSUPPORTED_OPTION: DeepSeek Chat Completions does not support json_schema responseFormat");
+    }
+    if (compat.thinkingFormat === "deepseek"
+        && (options?.frequencyPenalty !== undefined || options?.presencePenalty !== undefined)) {
+        throw new Error("UNSUPPORTED_OPTION: DeepSeek Chat Completions frequencyPenalty and presencePenalty have no effect");
+    }
     const params = {
         model: model.id,
         messages,
@@ -787,9 +804,6 @@ function buildParams(model, input, options, compat = getCompat(model), cacheRete
     }
     if (cacheControl) {
         applyAnthropicCacheControl(messages, params.tools, cacheControl);
-    }
-    if (options?.toolChoice) {
-        params.tool_choice = options.toolChoice;
     }
     if (compat.vllmPriority !== undefined) {
         params.priority = compat.vllmPriority;
@@ -922,9 +936,29 @@ function buildParams(model, input, options, compat = getCompat(model), cacheRete
             params.providerOptions = { gateway: gatewayOptions };
         }
     }
-    // Last so custom keys override the named request fields.
+    // Existing provider defaults remain available to ordinary Context callers.
     if (options?.samplingParams) {
         Object.assign(params, options.samplingParams);
+    }
+    // Explicit typed controls retain the call/header values even when a catalog
+    // model carries a sampling default for the same provider field.
+    if (options?.topP !== undefined) {
+        params.top_p = options.topP;
+    }
+    if (options?.frequencyPenalty !== undefined) {
+        params.frequency_penalty = options.frequencyPenalty;
+    }
+    if (options?.presencePenalty !== undefined) {
+        params.presence_penalty = options.presencePenalty;
+    }
+    if (options?.stop !== undefined) {
+        params.stop = options.stop;
+    }
+    if (options?.toolChoice !== undefined) {
+        params.tool_choice = options.toolChoice;
+    }
+    if (options?.responseFormat !== undefined) {
+        params.response_format = { type: "json_schema", json_schema: options.responseFormat.jsonSchema };
     }
     return params;
 }

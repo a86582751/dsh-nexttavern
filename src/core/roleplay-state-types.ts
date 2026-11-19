@@ -10,6 +10,7 @@ import type {ReaderDisplayMessageRef,ReaderDisplayResponse,ReaderRenderHtmlReque
   ReaderRenderPhaseBindingV1} from './roleplay-reader-display.js'
 import type {ReaderNativeBeautySourceV1,ReaderNativeBeautyExecutionV1} from './reader-native-beauty-types.js'
 import type {ReaderRegexDocumentRequestV1,ReaderRegexDocumentReplyV1} from './reader-regex-document-types.mjs'
+import type {MvuStateObservation} from './roleplay-mvu-player-types.js'
 
 export type StateSession = ContextSession & BranchSession
 export interface StateRecord extends Record<string, unknown> {
@@ -55,12 +56,17 @@ export interface StateDependencies extends StateWorldlines {
   readerReleasePhase?(binding:ReaderRenderPhaseBindingV1):Promise<void>
   readerBeauty?(source:ReaderNativeBeautySourceV1):Promise<ReaderNativeBeautyExecutionV1>
   readerDocument?(request:ReaderRegexDocumentRequestV1,signal:AbortSignal):Promise<ReaderRegexDocumentReplyV1>
-  readerDisplayContextVersion?(sessionId:string):string
   communityPresets?(sessionId:string):{fingerprint:string;presetId:string|null;name:string|null;regexes:number}
   readInputDiagnostic?:ReturnType<typeof import('./roleplay-input-preparation.js').createRoleplayInputPreparation>['readDiagnostic']
+  extensionFailures?(session:StateSession):readonly import('./roleplay-extension-types.js').RoleplayExtensionFailureV1[]
   preparationRecordKey(id: string): string
   tavernTasks: ReturnType<typeof createRoleplayTaskHost>['tavernTasks']
-  memoryForContext(session: StateSession): unknown
+  contextProjection(session:StateSession,numericalState:MvuStateObservation|null,includeReaderDisplay:boolean):{
+    memory:unknown
+    directorNotes:unknown
+    displayContext:string|null
+    schemaStory?:boolean
+  }
   contextWindowFor(session: StateSession): Record<string, unknown> | null | undefined
   cloneContextWindow<T extends object>(record: T | null | undefined): T | null
   userValues(id: string): {name: string; gender: string}

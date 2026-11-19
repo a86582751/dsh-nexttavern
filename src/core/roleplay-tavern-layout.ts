@@ -82,10 +82,10 @@ export function produceRoleplayTavernLayoutV1(input:LayoutInput) {
     ||original.includeCardStyle!==residual.includeCardStyle
     ||recordSha256(original.rows)!==recordSha256(residual.rows)
     ||nativeInputSha256(native.finalAssembly)!==native.assemblySha256)fail('INPUT_MATERIAL_LAYOUT_SOURCE_CHANGED')
-  const fence=createStableRoleplayFence()
+  const originalFence=createStableRoleplayFence(),fence=createStableRoleplayFence({interpolate:false})
   const originalTexts:Record<string,string>={
-    'roleplay:cards':original.cardsText.trim()?fence(original.cardsText,'card'):'',
-    'roleplay:rules':original.rulesText?fence(original.rulesText,'rules'):'',
+    'roleplay:cards':original.cardsText.trim()?originalFence(original.cardsText,'card'):'',
+    'roleplay:rules':original.rulesText?originalFence(original.rulesText,'rules'):'',
   }
   const requiredSections:NativeRequestMaterialTransformV1['requiredSections'][number][]=[]
   const sectionHashes=new Map<string,string>(),positions:number[]=[]
@@ -119,6 +119,9 @@ export function produceRoleplayTavernLayoutV1(input:LayoutInput) {
       const texts=slotTexts.get(name)??[];texts.push(rendered.text);slotTexts.set(name,texts)
       continue
     }
+    // A template can render only separators. Preserve its author evidence,
+    // but leave the empty standalone message out of the Native request.
+    if(!rendered.text.trim())continue
     const common={contributionRef:`lore-${placement.entryId}`,sourceSha256:placement.sourceContentSha256,
       renderedText:rendered.text,renderedSha256:rendered.outputSha256,stableOrder}
     if(placement.position==='at-chat-depth') {
@@ -134,7 +137,7 @@ export function produceRoleplayTavernLayoutV1(input:LayoutInput) {
   }
   for(const [index,injected] of (input.injected??[]).entries()) {
     if(sha256(injected.renderedText)!==injected.renderedSha256)fail('INPUT_MATERIAL_INJECTION_RENDER_CHANGED')
-    if(injected.renderedText)insertions.push({...injected,stableOrder:evaluation.placements.length+index})
+    if(injected.renderedText.trim())insertions.push({...injected,stableOrder:evaluation.placements.length+index})
   }
   const body=input.renderedAuthor
   const replacementTexts:Record<string,string>={

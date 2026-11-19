@@ -92,6 +92,18 @@ export class SessionCommandController {
     agents;
     defaultCwd;
     userSourceOperations = new Map();
+    ordinaryForkPreparation;
+    /** The product owner freezes its private Domain before Native publishes
+     * an ordinary child. Its registration does not change the requested cut. */
+    registerOrdinaryForkPreparation(prepare) {
+        if (this.ordinaryForkPreparation)
+            throw Error('ORDINARY_FORK_OWNER_ALREADY_REGISTERED');
+        this.ordinaryForkPreparation = prepare;
+        return () => {
+            if (this.ordinaryForkPreparation === prepare)
+                this.ordinaryForkPreparation = undefined;
+        };
+    }
     registerUserSourceOperation(agent, operation) {
         if (this.ctx.agents.get(agent.id) !== agent || this.userSourceOperations.has(agent))
             throw Error('USER_SOURCE_OWNER_UNAVAILABLE');
@@ -336,8 +348,13 @@ export class SessionCommandController {
             const composition = await this.agents.composeAgent(this.agents.presetForObservation(source));
             // Rejection leaves no child allocation. The caller owns reconciliation if
             // later creation or workspace attachment fails after durable reservation.
-            await beforePublish?.({ sourceSessionId: source.header.id, childSessionId: childId, seedLength: cut });
-            return this.publishFork(source.header, seed, cut, childId, composition, workspace);
+            const reservation = { sourceSessionId: source.header.id, childSessionId: childId, seedLength: cut };
+            let afterCreate = undefined;
+            if (beforePublish)
+                await beforePublish(reservation);
+            else
+                afterCreate = await this.ordinaryForkPreparation?.(reservation);
+            return this.publishFork(source.header, seed, cut, childId, composition, workspace, afterCreate);
         }
         catch (e_1) {
             env_1.error = e_1;
@@ -414,9 +431,8 @@ export class SessionCommandController {
             throw error;
         }
     }
-    async publishFork(source, seed, cut, childId, composition, workspace) {
+    async publishFork(source, seed, cut, childId, composition, workspace, afterCreate) {
         try {
-            const { provider, model } = this.ctx.agentDefaultModel.currentSelection();
             await this.ctx.agents.create({
                 sessionId: childId,
                 seed,
@@ -429,13 +445,15 @@ export class SessionCommandController {
                         ? {}
                         : { agentPreset: composition.agentPreset }),
                 },
-                agentOptions: { provider, model },
+                agentOptions: this.agents.agentOptions(),
                 setup: composition.setup,
             });
         }
         catch (error) {
             throw new RemoteError('gateway/internal', `failed to fork session "${source.id}": ${String(error)}`, {});
         }
+        if (afterCreate)
+            await afterCreate();
         await this.attachForkWorkspace(workspace, childId);
         return { sessionId: childId };
     }
@@ -472,22 +490,22 @@ export class SessionCommandController {
             rpcId: request.requestId,
             ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
         };
-        const hasImage = request.content.some(part => part.type === 'image');
+        const admission = resolvePromptFileReceipts(request.content, receiptId => this.ctx.fileUploads.resolve(agent, receiptId));
+        const hasImage = admission.content.some(part => part.type === 'image');
         const admit = async () => {
             try {
                 const env_3 = { stack: [], error: void 0, hasError: false };
                 try {
-                    const admission = resolvePromptFileReceipts(request.content, receiptId => this.ctx.fileUploads.resolve(agent, receiptId));
                     const cards = this.agents.presetForSession(agent.session) === 'roleplay'
-                        ? prepareCardPngIntake(admission.content) : null;
+                        ? await prepareCardPngIntake(admission.content, this.ctx.attachments) : null;
                     if (cards?.hasImage ?? hasImage) {
-                        const current = this.agents.selectionFor(agent).current;
+                        const current = agent.model.current() ?? this.ctx.agentDefaultModel.currentSelection();
                         const model = await this.ctx.llm.resolveModelInfo(current.provider, current.model);
                         if (model.inputModalities !== undefined && !model.inputModalities.includes('image')) {
                             throw new RemoteError('session/attachment-invalid', `Model "${current.model}" does not support image input.`, { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' });
                         }
                     }
-                    const originalContent = cards ? await cards.admit(this.ctx.attachments) : admission.content;
+                    const originalContent = cards ? await cards.admit() : admission.content;
                     const content = await this.ctx.attachments.admitPromptContent(originalContent);
                     if (this.ctx.agents.get(agent.id) !== agent) {
                         throw new RemoteError('session/not-found', `session "${agent.id}" was disposed during prompt admission`, { sessionId: agent.id });
@@ -549,7 +567,7 @@ export class SessionCommandController {
             }
             throw new RemoteError('gateway/internal', `attachment authorization unavailable for session "${request.sessionId}": ${String(error)}`, {});
         }
-        const ref = referencedImage(source.events, String(request.attachmentId));
+        const ref = referencedImage(source.events, String(request.attachment.attachmentId));
         if (ref === undefined) {
             throw new RemoteError('session/attachment-invalid', 'Image is not referenced by this session.', { reason: 'ATTACHMENT_NOT_REFERENCED' });
         }
@@ -725,7 +743,7 @@ function resolvePromptFileReceipts(content, stagedFile) {
             throw new RemoteError('session/attachment-invalid', 'File was not uploaded for this session.', { reason: 'FILE_NOT_STAGED' });
         }
         receiptIds.add(part.receiptId);
-        return { type: 'file', attachment };
+        return attachment;
     });
     return { content: resolved, receiptIds: [...receiptIds] };
 }

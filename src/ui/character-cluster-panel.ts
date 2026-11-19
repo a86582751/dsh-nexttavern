@@ -66,18 +66,21 @@ export function createCharacterOffscreenRunsPanel({React, jsonFetch}: {React: ty
       return () => {alive = false}
     }, [sessionId, offset, refresh])
     const data = snapshot?.sessionId === sessionId && snapshot.offset === offset ? snapshot.data : null
-    return h('section', {'aria-label': '场外运行记录'}, h('h4', null, '场外运行记录'),
-      h('p', null, '结果只发布到本人的私有记忆；查看和刷新不启动或重放任务。'),
-      error && h('p', {role: 'alert'}, error),
-      h('button', {type: 'button', onClick: () => setRefresh(value => value + 1)}, '刷新场外记录'),
+    return h('section', {'aria-label': '场外运行记录',className:'dsh-rp-item rp-cluster-settings'},
+      h('h4', {className:'dsh-rp-section-title'}, '场外运行记录'),
+      h('p', {className:'dsh-rp-muted'}, '结果只写入该人物的私有记忆。'),
+      error && h('p', {role: 'alert',className:'dsh-rp-error'}, error),
+      h('button', {type: 'button',className:'dsh-rp-btn',onClick: () => setRefresh(value => value + 1)}, '刷新场外记录'),
       !data ? h('p', null, '加载场外记录…') : h(React.Fragment, null,
         !data.runs.length && h('p', null, '尚无场外运行记录。'),
         ...data.runs.map(run => h('section', {key: run.id},
           h('h5', null, `${run.name} · ${run.status}`), run.reason && h('p', null, run.reason),
           run.publicationId && h('p', null, '已保存私有发布记录'),
-          h('button', {type: 'button', onClick: () => selectCharacter(run.characterId)}, '查看本人记忆'))),
-        offset > 0 && h('button', {type: 'button', onClick: () => setOffset(Math.max(0, offset - 20))}, '上一页场外记录'),
-        data.nextOffset !== null && h('button', {type: 'button', onClick: () => setOffset(data.nextOffset!)}, '下一页场外记录')))
+          h('button', {type: 'button',className:'dsh-rp-btn',onClick: () => selectCharacter(run.characterId)}, '查看本人记忆'))),
+        offset > 0 && h('button', {type: 'button',className:'dsh-rp-btn',
+          onClick: () => setOffset(Math.max(0, offset - 20))}, '上一页场外记录'),
+        data.nextOffset !== null && h('button', {type: 'button',className:'dsh-rp-btn',
+          onClick: () => setOffset(data.nextOffset!)}, '下一页场外记录')))
   }
 }
 interface Dependencies {
@@ -216,38 +219,48 @@ export function createCharacterClusterPanel({React, sessionDrafts, api,
       event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role=tab]')[next]?.focus()
     }
     const button = (text: string, click: () => unknown, disabled = false) =>
-      h('button', {type: 'button', onClick: click, disabled}, text)
-    return h('section', {className: 'rp-character-panel'},
-      h('header', null, h('h3', null, '角色集群'), h('p', null, `当前世界线：${sessionId}`),
-        h('label', null, h('input', {type: 'checkbox', checked: loadedBranch === sessionId && enabled, disabled: busy || loadedBranch !== sessionId,
-          onChange: (event: ReactAPI.ChangeEvent<HTMLInputElement>) => {
-            const next = event.target.checked
-            void act(async () => {await api.setEnabled(sessionId, next); if (currentBranch.current === sessionId) setEnabled(next)})
-          }}), '运行角色集群'),
-        h('p', null, '玩家管理视角。查看和修订不会让其他角色知情。关闭运行仍可编辑资料。'),
-        h('p', null, '首次开启为静态人物发起共享初始化；动态人物等待首轮已发表材料。随后每条新接受正文进行一次共享感知。开启场外推理后，每批另有 0..K 次角色请求，按实际模型计费。')),
-      error && h('p', {role: 'alert'}, error),
-      loadedBranch === sessionId && perception?.retryable && h('section', {'aria-label': '共享感知恢复'},
+      h('button', {type: 'button', className:'dsh-rp-btn', onClick: click, disabled}, text)
+    const matchingCharacters=visibleCharacters.filter(character=>character.name.includes(query))
+    return h('section', {className: 'dsh-rp-panel dsh-rp-management-page rp-character-panel', 'aria-label': '角色集群'},
+      h('h3', {className:'dsh-rp-management-title'}, '角色集群'),
+      h('section', {className:'dsh-rp-item rp-character-run'},
+        h('div', {className:'rp-character-run-row'},
+          h('div', null,h('h4', {className:'dsh-rp-section-title'}, '当前世界线'),
+            h('p', {className:'dsh-rp-muted'}, '可查看和修订私有资料。启用后的自动推理按模型用量计费。')),
+          h('label', {className:'rp-character-toggle'},
+            h('input', {type: 'checkbox', checked: loadedBranch === sessionId && enabled, disabled: busy || loadedBranch !== sessionId,
+              onChange: (event: ReactAPI.ChangeEvent<HTMLInputElement>) => {
+                const next = event.target.checked
+                void act(async () => {await api.setEnabled(sessionId, next); if (currentBranch.current === sessionId) setEnabled(next)})
+              }}), '运行角色集群')),
+        h('details', {className:'rp-character-run-help'}, h('summary', null, '运行与计费'),
+          h('p', {className:'dsh-rp-muted'}, '首次开启时初始化已有静态人物。动态人物在剧情发表后加入。后续每条已接受正文触发一次共享感知。开启场外推理后，可能增加角色模型请求，按实际用量计费。'))),
+      error && h('p', {role: 'alert', className:'dsh-rp-error'}, error),
+      loadedBranch === sessionId && perception?.retryable && h('section', {'aria-label': '共享感知恢复',className:'dsh-rp-item'},
         perception.reason && h('p', {role: 'alert'}, perception.reason),
         button('重新请求共享感知（按模型计费）', () => act(() => api.retryPerception(sessionId)), busy || !enabled)),
-      h('div', {role: 'tablist', 'aria-label': '角色集群分类'}, ...tabs.map((label, index) => h('button', {
-        key: label, id: `${prefix}-tab-${index}`, role: 'tab', type: 'button', 'aria-selected': tab === index,
+      h('div', {role: 'tablist', 'aria-label': '角色集群分类',className:'dsh-rp-subtabs'}, ...tabs.map((label, index) => h('button', {
+        key: label, id: `${prefix}-tab-${index}`, role: 'tab', type: 'button', className:'dsh-rp-btn', 'aria-selected': tab === index,
         'aria-controls': `${prefix}-panel-${index}`, tabIndex: tab === index ? 0 : -1,
         onClick: () => setTab(index), onKeyDown: (event: ReactAPI.KeyboardEvent<HTMLButtonElement>) => keyDown(event, index),
       }, label))),
-      h('div', {id: `${prefix}-panel-${tab}`, role: 'tabpanel', 'aria-labelledby': `${prefix}-tab-${tab}`},
+      h('div', {id: `${prefix}-panel-${tab}`, role: 'tabpanel', className:'rp-character-tab', 'aria-labelledby': `${prefix}-tab-${tab}`},
         tab === 1 ? h(React.Fragment, null, renderOffscreenSettings(sessionId), renderOffscreenRuns(sessionId, select))
-          : tab === 2 ? h(React.Fragment, null, h('h4', null, '全局默认模型'), renderModels(sessionId, 'global'),
-            h('h4', null, '当前对话人物覆盖'), renderModels(sessionId, 'session'))
+          : tab === 2 ? h(React.Fragment, null, renderModels(sessionId, 'global'), renderModels(sessionId, 'session'))
             : h('div', {className: `rp-character-columns${selected ? ' has-selection' : ''}`},
-              h('aside', {'aria-label': '人物名单'}, h('input', {type: 'search', value: query, placeholder: '搜索人物',
+              h('aside', {'aria-label': '人物名单'}, h('h4', {className:'dsh-rp-section-title'}, '人物名单'),
+                h('input', {type: 'search', value: query, placeholder: '搜索人物',
                 'aria-label': '搜索人物', onChange: (event: ReactAPI.ChangeEvent<HTMLInputElement>) => setQuery(event.target.value)}),
-              ...visibleCharacters.filter(character => character.name.includes(query)).map(character => h('div', {key: character.id},
-                button(`${character.name} · ${character.state}`, () => select(character.id)))),
-              !visibleCharacters.length && h('p', null, '尚无可管理的人物。')),
+              ...matchingCharacters.map(character => h('button', {key:character.id,type:'button',
+                className:'dsh-rp-btn rp-character-picker','aria-pressed':selected===character.id,
+                'aria-label':`${character.name} · ${character.state}`,onClick:()=>select(character.id)},
+                h('span',null,character.name),h('small',{className:'dsh-rp-muted'},character.state))),
+              !matchingCharacters.length && h('p', {className:'dsh-rp-muted'},
+                visibleCharacters.length ? '没有符合搜索条件的人物。' : '尚无可管理的人物。')),
               h('article', null, selected && button('返回名单', () => setSelected('')),
-                !selected ? h('p', null, '选择人物，按需加载资料与记忆。') : !detail ? h('p', null, '资料加载中；未保存内容仍在草稿中。')
-                  : h(React.Fragment, null, h('h4', null, characters.find(character => character.id === selected)?.name ?? selected),
+                !selected ? h('p', {className:'rp-character-placeholder'}, visibleCharacters.length ? '选择人物以查看资料和记忆。' : '载入含人物资料的角色卡，或在剧情中引入人物。')
+                  : !detail ? h('p', {role:'status',className:'dsh-rp-muted'}, '正在加载资料。未保存内容仍在草稿中。')
+                  : h(React.Fragment, null, h('h4', {className:'dsh-rp-section-title'}, characters.find(character => character.id === selected)?.name ?? selected),
                     h('h5', null, '当前私有人格（只读）'), h('p', null, detail.view.persona),
                     detail.authorEditorUrl && h('a', {href: detail.authorEditorUrl}, '打开设定编辑器'),
                     !detail.view.ready && h('p', null, '缺少已确认的私有人格或知情材料，角色建议暂不可用。'),
@@ -263,8 +276,9 @@ export function createCharacterClusterPanel({React, sessionDrafts, api,
                         busy || missing || detailUnavailable || !['active', 'disabled'].includes(status)))),
                     !detail.history.length && h('p', null, '尚无角色私有记忆；打开页面不会自动回填历史。'),
                     offset > 0 && button('上一页', () => setOffset(Math.max(0, offset - 20))),
-                    detail.nextOffset !== null && button('下一页', () => setOffset(detail.nextOffset!)))),
-                draft && h('section', {'aria-label': '未保存修订'}, h('h4', null, '未保存修订'),
+                    detail.nextOffset !== null && button('下一页', () => setOffset(detail.nextOffset!))),
+                draft && h('section', {'aria-label': '未保存修订',className:'dsh-rp-item rp-character-draft'},
+                  h('h4', {className:'dsh-rp-section-title'}, '未保存修订'),
                   h('select', {value: draft.category, disabled: missing || invalidTarget, 'aria-label': '记录类别',
                     onChange: (event: ReactAPI.ChangeEvent<HTMLSelectElement>) => change({category: event.target.value as EditDraft['category']})},
                   ...Object.entries(categoryLabels).map(([value, label]) => h('option', {key: value, value}, label))),
@@ -281,6 +295,6 @@ export function createCharacterClusterPanel({React, sessionDrafts, api,
                   invalidTarget && button('选择修订文字以复制', () => {draftText.current?.focus(); draftText.current?.select()}),
                   detailUnavailable && h('p', null, '暂时无法确认人物资料。草稿保留，可选中复制；恢复读取后再保存。'),
                   button('保存', () => save(), busy || missing || conflict || invalidTarget || detailUnavailable || !draft.dirty || !draft.text.trim() || !detail),
-                  button('取消修订', () => {sessionDrafts.delete(draftKey); redraw()}, busy)))))
+                  button('取消修订', () => {sessionDrafts.delete(draftKey); redraw()}, busy))))))
   }
 }

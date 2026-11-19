@@ -1,10 +1,10 @@
 import type * as ReactAPI from 'react';
-import type {RequestMaterialTextCapabilityV1} from 'dsh-nexttavern-native-llm';
 import { fetchRoleplayText, updatePanelDraft } from './panel-state.js';
 import {createCardImportPanel} from './card-import-panel.js';
 import {createNativeCardConversionPanel} from './native-card-conversion-panel.js';
 import {createCardImportRequestJournal} from './card-import-request.js';
 import type {CardImportRequestStorage} from './card-import-request.js';
+import type {PrepareOpeningSource} from './reader-submission-handoff.js';
 import type { PanelDraft } from './panel-state.js';
 import {
     buildModelSettings,
@@ -21,7 +21,6 @@ export interface ModelRoute {
 }
 interface ModelCatalogEntry extends ModelRoute {
     label?: string;
-    requestMaterialText?: RequestMaterialTextCapabilityV1;
     reasoning?: {
         efforts?: {
             id: string;
@@ -105,6 +104,7 @@ interface ExportJob {
     };
 }
 interface ManagementDependencies {
+    prepareSource?:PrepareOpeningSource;
     selectMainModel?(sessionId: string, route: {provider: string; model: string}): Promise<void>;
     importRequestStorage?: CardImportRequestStorage;
     uploadFile?(sessionId: string, file: Blob, name: string): Promise<{receiptId: string}>;
@@ -121,7 +121,7 @@ interface ManagementDependencies {
          extra?: ReactAPI.ButtonHTMLAttributes<HTMLButtonElement>): ReactAPI.ReactElement;
 }
 export function createManagementPanels({
-    React, sessionDrafts, jsonFetch, toast, confirmWithDialog, btn, importRequestStorage, uploadFile, selectMainModel,
+    React, sessionDrafts, jsonFetch, toast, confirmWithDialog, btn, importRequestStorage, uploadFile, selectMainModel,prepareSource,
 }: ManagementDependencies) {
 
     const importRequestJournal = createCardImportRequestJournal({storage: importRequestStorage});
@@ -133,6 +133,7 @@ export function createManagementPanels({
             h('section',{className:'dsh-rp-item'},h('h4',null,'动态世界书与模板'),
                 h('p',null,'编辑条目正文、触发条件与 EJS 模板；原作者的条件与执行顺序继续保留。'),
                 btn('打开结构化世界书',()=>navigate('tavern-lore')),btn('编辑人物设定',()=>navigate('cards')),
+                btn('世界书语义检索',()=>navigate('worldbook-retrieval')),
                 btn('编辑核心设定',()=>navigate('core-rules'))),
             h('section',{className:'dsh-rp-item'},h('h4',null,'数值、分析与作者前端'),
                 h('p',null,'MVU 数值在状态栏查看和编辑。Ruby 分析、作者脚本和交互前端沿用卡内声明及各自的操作入口。'),
@@ -141,7 +142,7 @@ export function createManagementPanels({
             h('section',{className:'dsh-rp-item'},h('h4',null,'图片与背景音乐'),
                 btn('图片、立绘与背景',openImages),btn('背景音乐',openMusic),btn('资源库',()=>navigate('resources'))));
     }
-    const CardImportPanel = createCardImportPanel({React,jsonFetch,toast,confirmWithDialog,
+    const CardImportPanel = createCardImportPanel({React,jsonFetch,toast,confirmWithDialog,prepareSource,
         storage: importRequestStorage,
         uploadFile: uploadFile ?? (async () => {throw new Error('文件上传服务尚未就绪');})});
     const modelListeners=new Set<()=>void>();
@@ -284,21 +285,7 @@ export function createManagementPanels({
         const purposeUsesMain=effectivePurposeRoute.provider===mainRoute.provider&&effectivePurposeRoute.model===mainRoute.model;
         const purposeEffort=(purposeUsesMain?mainRoute:effectivePurposeRoute).reasoningEffort??'模型默认';
         const currentMain=catalog.find(route=>route.provider===mainRoute.provider&&route.model===mainRoute.model);
-        const fullSupport=(route:ModelCatalogEntry)=>{
-            const capability=route.requestMaterialText;
-            return capability!==undefined
-                &&[capability.user,capability.assistant,capability.systemAtDepth].every(value=>value==='role-and-position');
-        };
-        const supportLabel=(route:ModelCatalogEntry)=>{
-            if(fullSupport(route))return '支持全部消息角色与位置';
-            const capability=route.requestMaterialText;
-            if(!capability)return '角色与位置能力未确认';
-            const unsupported=[['用户',capability.user],['助手',capability.assistant],['系统',capability.systemAtDepth]]
-                .filter(([,value])=>value!=='role-and-position').map(([label])=>label);
-            return `不支持${unsupported.join('、')}消息的位置插入`;
-        };
         const selectedMainValue=mainChoice||routeValue(mainRoute);
-        const compatible=catalog.filter(fullSupport);
         const changeMain=async()=>{
             const route=parseRoute(selectedMainValue);
             if(!route||!selectMainModel||saving)return;
@@ -332,24 +319,18 @@ export function createManagementPanels({
         !purpose?React.createElement('section',{className:'dsh-rp-item','aria-label':'剧情主模型与协议兼容性'},
             React.createElement('h4',null,'剧情主模型'),
             React.createElement('p',{className:'dsh-rp-muted'},
-                '当前卡或预设可能要求在历史中插入用户、助手或系统消息。能力取决于渠道的协议适配，与 DeepSeek 的名称或 Key 来源无关。'),
-            React.createElement('p',{role:'status',className:currentMain&&fullSupport(currentMain)?'dsh-rp-muted':'dsh-rp-error'},
-                currentMain?supportLabel(currentMain):'当前渠道的消息角色与位置能力未确认。'),
+                '酒馆按每回合需要的消息角色与位置组装剧情。渠道是否接受由实际响应决定。'),
             React.createElement('label',{className:'dsh-rp-row'},'当前对话主模型',React.createElement('select',{
                 className:'dsh-rp-input','aria-label':'当前对话主模型',value:selectedMainValue,
                 disabled:!selectMainModel,
                 onChange:(event:ReactAPI.ChangeEvent<HTMLSelectElement>)=>setMainChoice(event.target.value)
             },!currentMain?React.createElement('option',{value:routeValue(mainRoute)},mainRoute.model??'请选择渠道'):null,
             catalog.map(route=>React.createElement('option',{key:routeValue(route),value:routeValue(route)},
-                `${route.label??route.model} · ${route.provider} — ${supportLabel(route)}`)))),
+                `${route.label??route.model} · ${route.provider}`)))),
             React.createElement('button',{className:'dsh-rp-btn',disabled:!selectMainModel
                 ||selectedMainValue===routeValue(mainRoute),onClick:changeMain},'切换当前对话主模型'),
             mainStatus?React.createElement('p',{className:'dsh-rp-muted',role:'status'},mainStatus):null,
             React.createElement('p',{className:'dsh-rp-muted'},'切换仅影响当前对话，不会自动重发。发生协议拒绝时，请按聊天中的失败提示恢复后再发送。'),
-            compatible.length?React.createElement('p',{className:'dsh-rp-muted'},
-                '可选兼容渠道：'+compatible.map(route=>`${route.label??route.model}（${route.provider}）`).join('、'))
-                :React.createElement('p',{className:'dsh-rp-muted'},
-                    '当前目录没有已确认支持全部角色与位置的渠道。请在宿主模型设置中添加服务商提供的 OpenAI Chat Completions 渠道（/chat/completions），并确认启用了酒馆的有序消息适配。仅改 URL 不能保证兼容；登录型或自建反代未提供该协议时，请联系提供方或切换渠道。'),
             !selectMainModel?React.createElement('p',{className:'dsh-rp-muted'},'当前宿主未提供模型切换接口，请使用聊天输入区的模型选择器。'):null):null,
         data.capability&&(data.capability.reason||data.capability.state!=='ready')
             ?React.createElement('p',{className:'dsh-rp-muted'},data.capability.reason

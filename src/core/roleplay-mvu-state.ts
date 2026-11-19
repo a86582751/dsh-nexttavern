@@ -14,15 +14,12 @@ import {cloneMvuPlayerReplacement,mvuPlayerEventFor,mvuPlayerHeadFor,mvuPlayerSe
 import type {MvuPlayerStateIntent,MvuPlayerStateUpdateEvent,MvuPlayerStateCurrentHead,
   MvuPlayerStatePublisherSettlement,MvuPlayerStateFacts,MvuPlayerStatePublication,MvuPlayerStateReplacement,
   MvuConsumedManualSettlementFactsInput} from './roleplay-mvu-player-records.js'
-import {formatLocalMvuPromptFactsV1,formatLocalMvuPromptFactsV2,MvuPromptFactsRefusal}
+import {formatLocalMvuPromptFactsV1,MvuPromptFactsRefusal}
   from './roleplay-mvu-prompt-numerical-facts.js'
-import type {MvuPromptFactCaptureV1,MvuPromptLocalNumericalFactsV1,MvuPromptLocalNumericalFactsV2}
+import type {MvuPromptFactCaptureV1,MvuPromptLocalNumericalFactsV1}
   from './roleplay-mvu-prompt-numerical-facts.js'
-import {validateProgramMvuGenesisFactsV1,ProgramGenesisDataFailureV1} from './roleplay-program-genesis-data.js'
-import type {VerifiedMvuProgramGenesis,ProgramMvuGenesisHeadV1} from './roleplay-program-genesis-types.js'
 import {acceptedMvuDisplayUpdate,formatMvuDisplayUpdates} from './roleplay-mvu-display-facts.js'
 import type {MvuAcceptedDisplayUpdate} from './roleplay-mvu-display-facts.js'
-export type {VerifiedMvuProgramGenesis} from './roleplay-program-genesis-types.js'
 
 export interface VerifiedMvuGenesis {
   sessionId: string
@@ -74,16 +71,8 @@ export interface MvuDerivedStateRoot {
   derivedHeadSha256: string
   basisSha256: string
 }
-export interface MvuProgramStateRoot {
-  schemaVersion:1
-  encoding:'native-program-mvu-state-root-v1'
-  programEventId:string
-  programEventSha256:string
-  programHeadSha256:string
-  planSha256:string
-}
-export type MvuStateRoot = MvuOpeningStateRoot | MvuDerivedStateRoot | MvuProgramStateRoot
-export type StateGenesis = VerifiedMvuGenesis | VerifiedMvuDerivedGenesis | VerifiedMvuProgramGenesis
+export type MvuStateRoot = MvuOpeningStateRoot | MvuDerivedStateRoot
+export type StateGenesis = VerifiedMvuGenesis | VerifiedMvuDerivedGenesis
 export interface MvuStateCurrentHead {
   schemaVersion: 1
   encoding: 'native-mvu-state-current-head-v1'
@@ -96,7 +85,7 @@ export interface MvuStateCurrentHead {
   valuesSha256: string
   intentSha256: string
 }
-export type MvuNumericalHead = MvuInitializationHead | MvuDerivedGenesisHead | ProgramMvuGenesisHeadV1
+export type MvuNumericalHead = MvuInitializationHead | MvuDerivedGenesisHead
   | MvuStateCurrentHead | MvuPlayerStateCurrentHead
 export interface MvuStateBase {
   root: MvuStateRoot
@@ -293,12 +282,6 @@ function keys(value: unknown, expected: string[]): void {
 }
 function rootValid(root: MvuStateRoot): void {
   if ('encoding' in root) {
-    if(root.encoding==='native-program-mvu-state-root-v1') {
-      keys(root,['schemaVersion','encoding','programEventId','programEventSha256','programHeadSha256','planSha256'])
-      if(root.schemaVersion!==1
-        ||![root.programEventId,root.programEventSha256,root.programHeadSha256,root.planSha256].every(hash))fail('ROOT_INVALID')
-      return
-    }
     keys(root, ['schemaVersion', 'encoding', 'derivedEventId', 'derivedEventSha256', 'derivedHeadSha256', 'basisSha256'])
     if (root.schemaVersion !== 1 || root.encoding !== 'native-mvu-derived-state-root-v1'
       || ![root.derivedEventId, root.derivedEventSha256, root.derivedHeadSha256, root.basisSha256].every(hash)) fail('ROOT_INVALID')
@@ -323,13 +306,6 @@ function headValid(head: MvuNumericalHead, sid: string, root: MvuStateRoot): voi
       || head.eventId !== root.derivedEventId || head.eventSha256 !== root.derivedEventSha256
       || head.basisSha256 !== root.basisSha256 || !hash(head.valuesSha256)
       || recordSha256(head) !== root.derivedHeadSha256) fail('HEAD_INVALID')
-  } else if(head.encoding==='native-program-mvu-genesis-head-v1') {
-    if(!('encoding' in root)||root.encoding!=='native-program-mvu-state-root-v1')fail('HEAD_INVALID')
-    keys(head,['schemaVersion','encoding','sessionId','eventId','revision','eventSha256','planSha256','valuesSha256'])
-    if(head.schemaVersion!==1||head.revision!==1||head.sessionId!==sid
-      ||head.eventId!==root.programEventId||head.eventSha256!==root.programEventSha256
-      ||head.planSha256!==root.planSha256||!hash(head.valuesSha256)
-      ||recordSha256(head)!==root.programHeadSha256)fail('HEAD_INVALID')
   } else {
     const player=head.encoding==='native-mvu-state-current-head-v2'
     keys(head, ['schemaVersion', 'encoding', 'sessionId', 'sourceSha256', 'root', 'revision',
@@ -477,27 +453,6 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     const supplied = deps.readGenesis(sid)
     if (!supplied) fail('GENESIS_UNPROVEN')
     const g = cloneJson(supplied)
-    if('programEvent' in g) {
-      keys(g,['sessionId','sourceSha256','programEvent','programHead'])
-      // The writer's validated final values already include the one generated
-      // opening-body settlement. Never reapply that body as a story terminal,
-      // and never reinterpret a copied raw opening as an update proposal.
-      const actual=validateProgramMvuGenesisFactsV1(g.programEvent,g.programHead)
-      if(actual.sessionId!==sid||!hash(g.sourceSha256)||!same(actual,g))fail('GENESIS_INVALID')
-      const persistedEvent=deps.table.get(mvuInitializationEventKey(sid,actual.programEvent.eventId)),
-        persistedHead=deps.table.get(mvuInitializationHeadKey(sid))
-      if(persistedEvent===undefined||persistedHead===undefined
-        ||!same(cloneJson(persistedEvent),actual.programEvent)||!same(cloneJson(persistedHead),actual.programHead)) {
-        fail('PROGRAM_GENESIS_RECORD_MISSING_OR_CHANGED')
-      }
-      const event=actual.programEvent,head=actual.programHead,
-        root:MvuProgramStateRoot={schemaVersion:1,encoding:'native-program-mvu-state-root-v1',
-          programEventId:event.eventId,programEventSha256:event.eventSha256,
-          programHeadSha256:recordSha256(head),planSha256:event.plan.planSha256}
-      rootValid(root);headValid(head,sid,root)
-      if(head.valuesSha256!==event.valuesSha256||event.valuesSha256!==recordSha256(event.finalValues))fail('GENESIS_INVALID')
-      return {genesis:actual,state:snapshot(head,event.finalValues,sid,actual.sourceSha256,root)}
-    }
     if ('derivedEvent' in g) {
       keys(g, ['sessionId', 'sourceSha256', 'derivedEvent', 'derivedHead'])
       const event = g.derivedEvent, head = g.derivedHead
@@ -674,17 +629,16 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     return {state,settlements,settlementSnapshots,genesis:capturedGenesis.genesis,genesisSnapshot:initial,states,rows}
   }
   const codeOf = (error: unknown) => error instanceof StateRefusal||error instanceof MvuPlayerDataRefusal
-    ||error instanceof MvuPromptFactsRefusal||error instanceof ProgramGenesisDataFailureV1
+    ||error instanceof MvuPromptFactsRefusal
     ? error.code : 'READ_OR_PERMISSION_UNKNOWN'
   /** A single existing inspect owns all numerical verification/replay. The
    * formatter only associates its already-verified settlements with snapshots.
    * No-update rows matter even when the latest head is unchanged. */
-  function formatPromptFacts(actual:ReturnType<typeof inspect>):MvuPromptLocalNumericalFactsV1|MvuPromptLocalNumericalFactsV2 {
-    if('programEvent' in actual.genesis)return formatLocalMvuPromptFactsV2({...actual,genesis:actual.genesis})
+  function formatPromptFacts(actual:ReturnType<typeof inspect>):MvuPromptLocalNumericalFactsV1 {
     return formatLocalMvuPromptFactsV1({...actual,genesis:actual.genesis})
   }
   function capturePromptNumericalFacts(sid:string)
-    :MvuPromptFactCaptureV1<MvuPromptLocalNumericalFactsV1|MvuPromptLocalNumericalFactsV2> {
+    :MvuPromptFactCaptureV1<MvuPromptLocalNumericalFactsV1> {
     try {
       const owner=deps.capturePromptFactsOwner?.(sid)
       if(!owner||!owner())fail('PROMPT_NUMERICAL_OWNER_UNAVAILABLE')
@@ -697,10 +651,7 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     try {return {kind: 'ready', snapshot: cloneJson(inspect(sid).state)}}
     catch (error) {return {kind: 'blocked', code: codeOf(error)}}
   }
-  function readNumericalObservation(sid:string):MvuNumericalObservation {
-    let actual:ReturnType<typeof inspect>,state:MvuNumericalSnapshot
-    try {actual=inspect(sid);state=cloneJson(actual.state)}
-    catch(error) {return {kind:'blocked',code:codeOf(error)}}
+  function displayUpdates(sid:string,actual:ReturnType<typeof inspect>):readonly MvuAcceptedDisplayUpdate[] {
     // inspect has already checked all Native/canonical intent, event, reducer,
     // head and settlement facts. Do not reconcile each message a second time.
     const updates:MvuAcceptedDisplayUpdate[]=[]
@@ -717,7 +668,18 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
         updates.push(...captured)
       }
     }catch { /* Optional display data must not change numerical readiness. */ }
-    return {kind:'ready',snapshot:state,displayUpdates:formatMvuDisplayUpdates(updates)}
+    return formatMvuDisplayUpdates(updates)
+  }
+  function readDisplayUpdates(sid:string):Pick<Extract<MvuNumericalObservation,{kind:'ready'}>,'kind'|'displayUpdates'>
+    |Extract<MvuNumericalObservation,{kind:'blocked'}> {
+    try {return {kind:'ready',displayUpdates:displayUpdates(sid,inspect(sid))}}
+    catch(error) {return {kind:'blocked',code:codeOf(error)}}
+  }
+  function readNumericalObservation(sid:string):MvuNumericalObservation {
+    try {
+      const actual=inspect(sid)
+      return {kind:'ready',snapshot:cloneJson(actual.state),displayUpdates:displayUpdates(sid,actual)}
+    }catch(error) {return {kind:'blocked',code:codeOf(error)}}
   }
   function settlementFacts(intent:MvuStateTerminalIntent,
     {state,settlements}:ReturnType<typeof inspect>):MvuStateFacts {
@@ -946,6 +908,6 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
       return {kind:wrote?'unknown':'blocked',code:codeOf(error)}
     }
   }
-  return {readNumericalAuthority,readNumericalObservation,readGenesisAuthority,capturePromptNumericalFacts,publish,reconcileFacts,
+  return {readNumericalAuthority,readNumericalObservation,readDisplayUpdates,readGenesisAuthority,capturePromptNumericalFacts,publish,reconcileFacts,
     verifyConsumedSettlement,verifyConsumedSettlementFacts,publishManual,reconcileManualFacts,verifyConsumedManualSettlementFacts}
 }

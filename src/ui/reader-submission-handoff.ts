@@ -15,6 +15,7 @@ export interface ReaderSubmissionTicket {
   consume<T>(dispatch: () => T): T
   close(): void
 }
+export type PrepareOpeningSource=(sessionId:string,index:number)=>Promise<ReaderSubmissionTicket|undefined>
 
 interface Selection {
   getSnapshot(): {key?: string}
@@ -25,6 +26,7 @@ interface MountedReader {
   sessionId: string
   active: boolean
   state: ReaderPreparationState
+  prepareSource?(index:number):Promise<void>
 }
 
 /** Owns only the local handoff before Native prompt admission. Reader leases
@@ -43,8 +45,12 @@ export function createReaderSubmissionHandoff(selection: Selection) {
     for (const ticket of tickets) ticket.selected()
   })
 
-  return {
-    capture(sourceSessionId: string): ReaderSubmissionTicket {
+  const handoff = {
+    hasReader(sessionId:string):boolean {
+      const reader=readers.get(sessionId)
+      return selected()===sessionId&&reader?.active===true&&typeof reader.prepareSource==='function'
+    },
+    capture(sourceSessionId: string, requireWaiting=false): ReaderSubmissionTicket {
       const source = readers.get(sourceSessionId)
       if (selected() !== sourceSessionId || !source?.active) {
         throw Error('酒馆阅读视图尚未就绪，请打开后再操作。')
@@ -66,7 +72,7 @@ export function createReaderSubmissionHandoff(selection: Selection) {
       const changed = (reader: MountedReader) => {
         if (reader !== child || failure || closed || forwarded) return
         const state = reader.state
-        if (state.kind === 'waiting' || state.kind === 'not-required') {
+        if (state.kind === 'waiting' || !requireWaiting && state.kind === 'not-required') {
           ready = true
           for (const waiter of waiters) waiter.resolve()
           waiters.clear()
@@ -126,13 +132,30 @@ export function createReaderSubmissionHandoff(selection: Selection) {
         },
       }
     },
-    mount(sessionId: string): ReaderSubmissionClaim {
+    async prepareSource(sessionId:string,index:number):Promise<ReaderSubmissionTicket> {
+      const reader=readers.get(sessionId)
+      if(selected()!==sessionId||!reader?.active||!reader.prepareSource)
+        throw Error('酒馆阅读视图尚未就绪，请打开后再操作。')
+      reader.state={kind:'starting'}
+      for(const ticket of tickets)ticket.changed(reader)
+      const ticket=handoff.capture(sessionId,true)
+      try {
+        await reader.prepareSource(index)
+        ticket.assertActive()
+        if((reader.state as ReaderPreparationState).kind==='not-required')
+          throw Error('作者交互尚未就绪，请重新核对当前开场。')
+        ticket.arm(sessionId)
+        await ticket.wait()
+        return ticket
+      }catch(error){ticket.close();throw error}
+    },
+    mount(sessionId: string,prepareSource?:(index:number)=>Promise<void>): ReaderSubmissionClaim {
       const previous = readers.get(sessionId)
       if (previous) {
         previous.active = false
         for (const ticket of tickets) ticket.released(previous)
       }
-      const reader: MountedReader = {sessionId, active: true, state: {kind: 'starting'}}
+      const reader: MountedReader = {sessionId, active: true, state: {kind: 'starting'},prepareSource}
       readers.set(sessionId, reader)
       for (const ticket of tickets) ticket.mounted(reader)
       return {
@@ -157,6 +180,7 @@ export function createReaderSubmissionHandoff(selection: Selection) {
       readers.clear()
     },
   }
+  return handoff
 }
 
 export type ReaderSubmissionHandoff = ReturnType<typeof createReaderSubmissionHandoff>

@@ -236,7 +236,8 @@ export function publishedJournalData(source:TavernLoreSourceDataV1,journal:LoreE
     authority:'consumer-data-only' as const,sessionId:source.sessionId,source,identity:journal.identity,
     identitySha256:journal.identitySha256,revision:journal.head.revision,head:journal.head,
     headRef:journal.headRef,journalRefs,journalSha256,overlay,
-    ...(journal.authorMetadataOverlay?.extensions.length?{authorMetadataOverlay:journal.authorMetadataOverlay}:{}),
+    ...(journal.authorMetadataOverlay&&(journal.authorMetadataOverlay.extensions.length
+      ||journal.authorMetadataOverlay.regexScripts!==undefined)?{authorMetadataOverlay:journal.authorMetadataOverlay}:{}),
     ...(currentNativeMembership?{currentNativeMembership}:{}),...journal.inherited?{inheritance:{
       baselineRef:journal.inherited.baselineRef,slotRef:journal.inherited.slotRef,
       baselineSha256:journal.inherited.baseline.baselineSha256,
@@ -245,7 +246,7 @@ export function publishedJournalData(source:TavernLoreSourceDataV1,journal:LoreE
 }
 /** Both live capture and frozen cuts use this exact fields/membership fold. */
 export function publishedAuthorBookDataV1(source:TavernLoreAuthorBookSourceV1,journal:LoreEditJournalV1,
-  legacy?:TavernLoreCurrentNativeOverlayV1) {
+  legacy?:TavernLoreCurrentNativeOverlayV1,includeUnchangedMembership=false) {
   if(journal.pending)fail('PENDING_INTENT')
   const edited=new Map<string,EditAccumulationV1>()
   for(const event of journal.published) {
@@ -286,7 +287,7 @@ export function publishedAuthorBookDataV1(source:TavernLoreAuthorBookSourceV1,jo
   const rows=allRows.filter((row):row is {eventRef:TavernLoreEditRefV1;request:TavernLoreJournalRequestV2}=>
     !isAuthorMetadataRequestV1(row.request))
   let currentNativeMembership:ReturnType<typeof foldTavernLorePublishedMembershipV2>
-  try {currentNativeMembership=foldTavernLorePublishedMembershipV2(source,rows,legacy)}
+  try {currentNativeMembership=foldTavernLorePublishedMembershipV2(source,rows,legacy,includeUnchangedMembership)}
   catch(error) {fail(error instanceof Error&&error.message==='TAVERN_LORE_MEMBER_TARGET_MISSING'
     ?'ENTRY_LINK_INVALID':'FIELDS_INVALID',error instanceof Error?error.message:undefined)}
   return {overlay,currentNativeMembership,journalRefs,journalSha256}

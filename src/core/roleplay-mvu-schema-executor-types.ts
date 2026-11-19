@@ -1,8 +1,9 @@
 /** The admitted catalog binds each V4 epoch to its actual implementation. */
 import {cloneSchemaData} from './tavern-mvu-schema-data.js'
 import {validateMvuExecutableProgramV4} from './tavern-mvu-schema-program-v4.js'
+import {MVU_SCHEMA_LIBRARY_PINS} from './tavern-mvu-schema-types.js'
 import type {MvuSchemaRunnerIdentity,MvuSchemaCompilerIdentity,MvuSchemaImplementationIdentity,
-  MvuSchemaLibraryIdentity,MvuSchemaPhase,MvuSchemaRealmReadBinding} from './tavern-mvu-schema-types.js'
+  MvuSchemaLibraryIdentity,MvuSchemaRealmReadBinding} from './tavern-mvu-schema-types.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {MvuExecutableProgramV4} from './tavern-mvu-owned-state-types-v1.mjs'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
@@ -39,6 +40,8 @@ export interface SchemaCompiler {
 /** Only the catalog creates the adapter, with a version check before invoking
  * the real runner. Widening this host interface never widens either guest ABI. */
 export interface SchemaTraceRunner {
+  openTrial?(program:SchemaAuthorProgram|null,input:import('./tavern-mvu-schema-types-v4.js').MvuSchemaTrialInputV4,
+    signal?:AbortSignal):Promise<import('./tavern-mvu-schema-types-v4.js').MvuSchemaOpenTrialResultV4>
   readonly identity:MvuSchemaRunnerIdentity
   readonly scopeInputProtocols?:readonly ('full-frame-v1'|'scope-ref-v2')[]
   bindScopeReferencesV2?(read:import('./tavern-mvu-schema-types-v4.js').MvuSchemaScopeReferenceReaderV2):SchemaTraceRunner
@@ -96,13 +99,13 @@ export function validateSchemaExecutorIdentityTuple(input:unknown):SchemaExecuto
   }
   if(tuple.compiler.version!==tuple.runner.version||tuple.bridge.version!==tuple.runner.version
     ||tuple.compiler.typescriptVersion!=='5.9.3'||tuple.runner.quickjsVersion!=='0.32.0'
-    ||!Array.isArray(tuple.libraries)||tuple.libraries.length!==2
-    ||new Set(tuple.libraries.map(library=>library.kind)).size!==2)fail()
+    ||!Array.isArray(tuple.libraries)||tuple.libraries.length!==3
+    ||new Set(tuple.libraries.map(library=>library.kind)).size!==3)fail()
   for(const library of tuple.libraries) {
     exact(library,['kind','packageName','version','bundleSha256','globalName'])
-    if(!['zod','lodash'].includes(library.kind)||library.packageName!==library.kind
-      ||library.version!==(library.kind==='zod'?'4.4.3':'4.18.1')
-      ||library.globalName!==(library.kind==='zod'?'z':'_')||!/^[a-f0-9]{64}$/.test(library.bundleSha256))fail()
+    const pin=MVU_SCHEMA_LIBRARY_PINS[library.kind]
+    if(!pin||library.packageName!==pin.packageName||library.version!==pin.version
+      ||library.globalName!==pin.globalName||!/^[a-f0-9]{64}$/.test(library.bundleSha256))fail()
   }
   return tuple
 }
@@ -111,15 +114,15 @@ export function validateSchemaExecutorIdentityTuple(input:unknown):SchemaExecuto
  * adoption, use external-pack-replacement with the prior canonical base and
  * donor values/context. Acceptance records raw adoption, not schema parsing. */
 export function schemaEmptyPhaseInput(version:SchemaExecutorVersion,
-  phase:MvuSchemaPhase,base:MvuJsonObject|null,values:MvuJsonObject,
+  phase:Exclude<SchemaEvaluationInput['phase'],'update-core'>,base:MvuJsonObject|null,values:MvuJsonObject,
   context:MvuJsonObject,clockEpochMs:number,randomSeed:string,scopeReadFrame?:MvuScopeReadFrameV1,
   errorPolicy:MvuSchemaPhaseErrorPolicyV4='atomic-refusal',scopeReadRef?:MvuScopeReadRefV2):SchemaEvaluationInput {
-  const body={phase,base,values,commands:[],context,clockEpochMs,randomSeed}
+  const body={phase,base,values,context,clockEpochMs,randomSeed}
   if(scopeReadRef)return {schemaVersion:version,encoding:'native-mvu-author-schema-phase-input-v4-scope-ref-v2',
-    commandsEncoding:'native-mvu-update-operations-v2',errorPolicy,...body,scopeReadRef}
+    errorPolicy,...body,scopeReadRef}
   if(!scopeReadFrame)throw Error('SCHEMA_SCOPE_READ_REQUIRED')
   return {schemaVersion:version,encoding:'native-mvu-author-schema-phase-input-v4',
-    commandsEncoding:'native-mvu-update-operations-v2',errorPolicy,...body,scopeReadFrame}
+    errorPolicy,...body,scopeReadFrame}
 }
 
 export function schemaRealmLoadFrame(version:SchemaExecutorVersion,binding:MvuSchemaRealmReadBinding,

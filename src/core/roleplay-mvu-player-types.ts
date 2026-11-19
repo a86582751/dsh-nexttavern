@@ -26,6 +26,7 @@ export type MvuStateObservation = {
     displayUpdates?:readonly MvuAcceptedDisplayUpdate[]}
   | {kind:'schema-ready';values:MvuJsonObject;valuesSha256:string;sourceSha256:string;eventId:string;
     hasFinalizedMessages?:boolean;
+    storyTextBlockCode?:string;
     snapshot:MvuSchemaNumericalSnapshotV2;canEdit:boolean;editBlockCode?:string;
     displayUpdates?:readonly MvuAcceptedDisplayUpdate[];
     unavailableExternalAddons?:readonly Extract<CombinedPlanRowV4,{disposition:'external-addon-unavailable'}>[];
@@ -53,15 +54,23 @@ export interface MvuMessageTargetV1 {
   readonly messageVersionSha256:string
 }
 
-export interface MvuPlayerEditRequest {
+interface MvuPlayerEditRequestBase {
   schemaVersion: 1
   sessionId: string
   operationId: string
-  action: 'replace-values'
   expected: MvuPlayerEditExpected
-  values: MvuJsonObject
   target?: MvuMessageTargetV1
 }
+
+export interface MvuPlayerValuesEditRequest extends MvuPlayerEditRequestBase {
+  action:'replace-values'
+  values:MvuJsonObject
+}
+export interface MvuPlayerEnvelopeEditRequest extends MvuPlayerEditRequestBase {
+  action:'replace-envelope'
+  envelope:MvuJsonObject
+}
+export type MvuPlayerEditRequest=MvuPlayerValuesEditRequest|MvuPlayerEnvelopeEditRequest
 
 export interface MvuPlayerEditResponse {
   ok: boolean

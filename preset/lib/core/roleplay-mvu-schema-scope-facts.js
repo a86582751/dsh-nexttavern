@@ -8,6 +8,7 @@ import { selectedCanonicalChatHistory } from '../memory/memory-history.js';
 import { cloneSchemaData } from './tavern-mvu-schema-data.js';
 import { compileSchemaMvuInitData } from './tavern-mvu-initvar.js';
 import { createMvuScopeReadFrameV1, validateMvuScopeReadFrameV1 } from './tavern-mvu-scope-read.js';
+import { openingInitializationCut, openingFreshBasisSha256 } from './roleplay-mvu-schema-opening-types.js';
 const scopePolicy = { schemaVersion: 1, id: 'native-mvu-published-scope-policy-v1',
     initializationChat: 'configured-book-baseline', storyChat: 'configured-message-publication', manualScope: 'chat-and-explicit-current-message',
     newMessage: 'empty-until-publication', otherScopes: 'session-source-owned-empty' };
@@ -120,12 +121,12 @@ export function schemaScopeSource(snapshot, sessionId = snapshot.source.sessionI
 export function schemaScopeInitialChat(preparation, material, originalCut, source = schemaScopeSource(preparation.sourceSnapshot), initialData) {
     const owner = schemaScopeOwner(source, 'chat');
     const configuration = schemaScopeConfiguration(preparation.sourceSnapshot, material);
-    const parsed = initialData ?? compileSchemaMvuInitData(preparation.initSource);
+    const parsed = initialData ?? compileSchemaMvuInitData(preparation.initSource), initialCut = openingInitializationCut(preparation);
     if (parsed.kind !== 'parsed' || originalCut.sessionId !== preparation.identity.sessionId
         || originalCut.ownerSessionId !== preparation.identity.sessionId || originalCut.materialSha256 !== recordSha256(material)
         || originalCut.sourceSnapshotSha256 !== preparation.sourceSnapshot.snapshotSha256
-        || originalCut.nativePrefixSha256 !== preparation.freshNativeBasisProof.native.historyVersionSha256
-        || originalCut.nativeCut !== preparation.freshNativeBasisProof.native.observedThroughSeq + 1
+        || originalCut.nativePrefixSha256 !== initialCut.nativePrefixSha256
+        || originalCut.nativeCut !== initialCut.nativeCut
         || !same(originalCut.anchor, preparation.selector.anchor))
         fail('SCHEMA_SCOPE_BASELINE_UNPROVEN');
     if (!configuration.updateChat)
@@ -138,7 +139,7 @@ export function schemaScopeInitialChat(preparation, material, originalCut, sourc
             kind: 'initialization-baseline', owner, initialization: { ownerSessionId: preparation.identity.sessionId,
                 operationId: preparation.identity.operationId, preparationSha256: preparation.preparationSha256,
                 initSourceSha256: preparation.initSource.initSourceSha256, sourceSnapshotSha256: preparation.sourceSnapshot.snapshotSha256,
-                freshBasisProofSha256: preparation.freshNativeBasisProof.proofSha256,
+                freshBasisProofSha256: openingFreshBasisSha256(preparation),
                 initialSourceNativeCutSha256: recordSha256(originalCut), policySha256: MVU_SCHEMA_SCOPE_POLICY_V1.sha256,
                 configurationSha256: configuration.configurationSha256, baselineSha256: recordSha256(baseline),
                 valuesSha256: baseline.dataSha256 }

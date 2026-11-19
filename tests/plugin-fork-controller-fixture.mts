@@ -11,19 +11,24 @@ const {Context} = await load('cordis')
 const {default: Loader} = await load('cordis-plugin-loader')
 const {default: SessionStore, buildForkSeed, SessionSeq} = await load('dsh-session')
 const {default: SessionProjectionRegistry} = await load('dsh-session-projection')
-const {default: JsonlSessionPersistence} = await load('dsh-session-persistence-jsonl')
+const persistence = await load('dsh-session-persistence-jsonl')
+const JsonlSessionPersistence = persistence.default ?? persistence
 const {default: AgentRegistry, agentEvents, assembleContextFor} = await load('dsh-agent')
 const {default: AgentLoop} = await load('dsh-agent-loop')
 const {default: SessionQueryEngine} = await load('dsh-session-query')
 const {default: TypertRegistry} = await load('dsh-typert-registry')
+const {default: RemoteAccess} = await load('dsh-api-remote-access')
 const {default: SystemPrompt, renderPrompt} = await load('dsh-system-prompt')
 const {default: ToolRuntime} = await load('dsh-tools')
+const toolExecutor = await load('dsh-tool-executor-native')
+const NativeToolExecutor = toolExecutor.default ?? toolExecutor
 const {default: LlmRuntime} = await load('dsh-llm')
 const {default: LocalFileSystem} = await load('dsh-fs-local')
 const {default: AgentDefaultModel} = await load('dsh-agent-default-model')
 const {default: AgentPresets} = await load('dsh-agent-preset-registry')
 const {default: AgentPreset} = await load('dsh-agent-preset')
 const {default: SessionController} = await load('dsh-api-session-controller')
+const {default: Gateway} = await load('dsh-api-gateway')
 
 /** Use native observation/leases/projections; searching is outside this probe. */
 class PointQuery extends SessionQueryEngine {
@@ -72,9 +77,11 @@ export async function prepareControllerHost(ctx: any, options: {
   }
   await ctx.plugin(PointQuery)
   await ctx.plugin(TypertRegistry)
+  await ctx.plugin(RemoteAccess)
   await ctx.plugin(SystemPrompt, {includeHarnessIdentity: false,
     includeRuntimeContext: options.includeRuntimeContext ?? false, persona: ''})
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(options.nativeServices?.llm.default ?? LlmRuntime)
   await ctx.plugin(LocalFileSystem, {cwd: options.directory})
   await ctx.plugin(AgentRegistry)
@@ -158,11 +165,9 @@ export async function controllerFixture(options: {
 
   try {
     ctx.on('agent/created', ({agent}: any) => published.push(agent.id))
-    // Observe registrations forward through Cordis's event, without reading
-    // private hook arrays or reaching through a dispatch context's inject scope.
-    // Each fixture controls its Agent creation; initial host hooks are excluded.
+    // Observe native model-selection registration through Cordis's public event.
     ctx.on('internal/listener', (event: string) => {
-      if (event !== 'system-prompt/assemble' && event !== 'agent/request') return
+      if (event !== 'agent/pre-step') return
       registrations.push({event})
     })
     await ctx.plugin(Loader)
@@ -179,6 +184,7 @@ export async function controllerFixture(options: {
     writePreset = preparedHost.writePreset
     uploadResolverCount = preparedHost.uploadResolverCount
     saveDefaultModel = preparedHost.saveDefaultModel
+    if (Controller === SessionController && !options.controllerPackage) await ctx.plugin(Gateway)
     await startController()
     registrations.length = 0
   } catch (error) {
@@ -205,18 +211,20 @@ export async function controllerFixture(options: {
     uploadResolverCount,
     stopController, startController,
     async stage(id: string, selection?: {provider: string; model: string; reasoningEffort?: string}) {
-      const source = ctx.sessions.prepare(`source-${id}`, {meta: {cwd: dir, agentPreset: 'probe'}})
+      const source = ctx.sessions.create(`source-${id}`, {meta: {cwd: dir, agentPreset: 'probe'}})
       source.append('turn/start', {turn: 1})
       source.append('turn/end', {turn: 1, reason: {kind: 'completed'}})
       if (selection) source.append('model/selection', selection)
       return stageFrom(id, source)
     },
     async requestSelection(agent: any, afterAssembly?: () => Promise<void>) {
-      const assembly = await ctx.systemPrompt.assemble(assembleContextFor(agent))
+      const modelSelection = agent.model.current()
+      assert.ok(modelSelection, 'the native loop requires a route before preparing a step')
+      const assembly = await ctx.systemPrompt.assemble({...assembleContextFor(agent), modelSelection})
       await afterAssembly?.()
       const request = await agentEvents(ctx, agent).waterfall('agent/request', {
-        config: {provider: 'unselected', model: 'unselected', reasoningEffort: 'inherited'},
-      }, async () => ({provider: 'unselected', model: 'unselected', reasoningEffort: 'inherited'}))
+        turn: 1, step: 1, signal: new AbortController().signal,
+      }, async () => modelSelection)
       return {request, prompt: renderPrompt(assembly), assembly}
     },
     async close() {

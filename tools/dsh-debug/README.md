@@ -1,9 +1,10 @@
 # dsh-debug 1.8.0
 
-Python 3.14 stdlib CLI for the current 0.3 development line, targeting the fixed
-DSH 0.1.7-rc.2 REST + Connection RPC contract. `alpha3` is this repository's
-source-tree label, not a Harness version; the credential adapter retains the
-documented legacy `.credentials.yaml` / `~/.dsh` fallback layout.
+Python 3.14 stdlib CLI for the current 0.3 development line. On Harness
+`0.2.2-rc.5`, `create` and `state --no-wake` have been verified on Web and
+official Windows Desktop. The Web test used the owner cookie issued at launch.
+The credential adapter retains the documented legacy `.credentials.yaml` and
+`~/.dsh` layout.
 Install with PowerShell `-File install.ps1` beside this file.
 This copies a durable command into `~/.local/bin`, adds it to the user PATH and
 keeps its worker in `~/.dsh-debug/lib`. Re-run after source changes.
@@ -125,6 +126,11 @@ valid, but may require semantic classification otherwise. Use
 `--mode organized` only when explicitly requesting semantic reorganization:
 it uses the existing model workflow to organize card Markdown or novel chapters.
 The selected mode is included in the jobs POST and in `--dry-run` output.
+
+Side chat uses an independent Native session. Read its `sideSessionId` from
+`/api/roleplay/side-chat?sessionId=MAIN_ID`, then add `--no-wake` to `send`
+and `history` when addressing that ID. This sends each operation straight to
+the Native session without invoking the main Tavern's wake route.
 
 `sessions` and `resolve` use native session metadata, projected on-server before
 SSH transfer: only IDs, title/preset/model, status, workspace and parent fields.
@@ -470,9 +476,9 @@ localStorage behavior; those still require browser verification.
   global persona fields (`name`, `gender`).
 - Native cookie auth remains mandatory; no CSRF bypass/header changes.
 
-### Harness 0.1.7-rc.2 contract
+### Commands introduced on Harness 0.1.7-rc.2
 
-The CLI 1.8 source targets the fixed Harness `0.1.7-rc.2` contract. It adds
+CLI 1.8 introduced
 REST-backed community preset/regex, card-conversion, resource, and filtered
 usage/log commands; the existing direct Connection RPC shapes (`session/page`,
 `session/prompt`, `session/fork`, `session/selectModel`, `session/list`,

@@ -231,7 +231,8 @@ export function publishedJournalData(source, journal, legacy) {
         authority: 'consumer-data-only', sessionId: source.sessionId, source, identity: journal.identity,
         identitySha256: journal.identitySha256, revision: journal.head.revision, head: journal.head,
         headRef: journal.headRef, journalRefs, journalSha256, overlay,
-        ...(journal.authorMetadataOverlay?.extensions.length ? { authorMetadataOverlay: journal.authorMetadataOverlay } : {}),
+        ...(journal.authorMetadataOverlay && (journal.authorMetadataOverlay.extensions.length
+            || journal.authorMetadataOverlay.regexScripts !== undefined) ? { authorMetadataOverlay: journal.authorMetadataOverlay } : {}),
         ...(currentNativeMembership ? { currentNativeMembership } : {}), ...journal.inherited ? { inheritance: {
                 baselineRef: journal.inherited.baselineRef, slotRef: journal.inherited.slotRef,
                 baselineSha256: journal.inherited.baseline.baselineSha256,
@@ -240,7 +241,7 @@ export function publishedJournalData(source, journal, legacy) {
     return freeze({ ...body, dataSha256: recordSha256(body) });
 }
 /** Both live capture and frozen cuts use this exact fields/membership fold. */
-export function publishedAuthorBookDataV1(source, journal, legacy) {
+export function publishedAuthorBookDataV1(source, journal, legacy, includeUnchangedMembership = false) {
     if (journal.pending)
         fail('PENDING_INTENT');
     const edited = new Map();
@@ -288,7 +289,7 @@ export function publishedAuthorBookDataV1(source, journal, legacy) {
     const rows = allRows.filter((row) => !isAuthorMetadataRequestV1(row.request));
     let currentNativeMembership;
     try {
-        currentNativeMembership = foldTavernLorePublishedMembershipV2(source, rows, legacy);
+        currentNativeMembership = foldTavernLorePublishedMembershipV2(source, rows, legacy, includeUnchangedMembership);
     }
     catch (error) {
         fail(error instanceof Error && error.message === 'TAVERN_LORE_MEMBER_TARGET_MISSING'

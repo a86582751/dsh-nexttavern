@@ -29,9 +29,9 @@
   ],
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/dsh-storage": "0.1.7-rc.2",
-    "@deepseek-ai/cordis": "4.0.4",
-    "@deepseek-ai/schemastery": "3.18.4"
+    "@deepseek-ai/dsh-storage": ">=0.2.2-rc.5",
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/schemastery": "^3.19.0"
   },
   "dependencies": {},
   "private": true

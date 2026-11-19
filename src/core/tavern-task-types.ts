@@ -16,11 +16,11 @@ export interface RubyTaskNativeCompletionV1 {
   readonly resultSha256:string
   readonly nativeCompletedWork:NativeCompletedInputWorkReceiptV1
 }
-export interface RubyTaskSpecV1 {
+export interface RubyTaskSpecV1 extends Pick<OwnedRubyTaskActivationV1,
+  'temperature'|'topP'|'topK'|'presencePenalty'|'frequencyPenalty'|'reasoningEffort'> {
   readonly promptPlanSha256:string
   readonly orderedMessages:readonly OwnedRubyTaskMessageV1[]
   readonly mainInputMessageIndex?:number
-  readonly temperature?:number
   /** Called only after the actual durable Tavern job owns id/generation. */
   createOwner(job:TaskJob):OwnedRubyTaskOwnerV1
 }
@@ -31,6 +31,12 @@ export interface TaskRoute {provider: string; model: string; reasoningEffort?: u
 export type TaskStatus = 'queued' | 'running' | 'waiting-main' | 'completed' | 'failed' | 'cancelled' | 'stale'
 export type TaskExecutionPolicy = 'independent'
 export interface StoredTask {
+  authorExecution?:{readonly childSessionId:string;readonly messageId:string}
+  authorNativeCheckpoint?:Omit<import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationCheckpointV1,'signal'|'current'>
+  authorNativeResult?:import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationCompletionV1
+  authorNativeTerminal?:import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationTerminalV1
+  authorEffects?:import('dsh-nexttavern-session-format').AuthorGenerationEffectsProgressV1
+  authorEffectsTerminalRef?:import('dsh-nexttavern-session-format').AuthorGenerationEffectsRefV1
   authorDialogCompletion?:AuthorDialogNativeCompletionV1
   rubyTaskCompletion?:RubyTaskNativeCompletionV1
   rubyNativeCompletedWork?:{readonly generation:string;readonly receipt:NativeCompletedInputWorkReceiptV1}
@@ -81,6 +87,14 @@ export interface TaskSpec<S, A> {
   executionPolicy?: TaskExecutionPolicy
   /** Only the actual Author dialog owner supplies this frozen plan. */
   authorDialog?:AuthorDialogPromptV1
+  authorOwner?:{
+    current():boolean
+    checkpoint(input:import('./roleplay-task-host-types.js').AuthorDialogCheckpointV1)
+      :Promise<void|import('dsh-nexttavern-session-format').AuthorGenerationEffectsReceiptV1>
+    terminal?(input:import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationTerminalV1,signal:AbortSignal)
+      :Promise<void|import('dsh-nexttavern-session-format').AuthorGenerationEffectsRefV1>
+    stream?(input:import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationStreamV1):void
+  }
   rubyTask?:RubyTaskSpecV1
   session: S
   agent?: A
@@ -122,6 +136,9 @@ export interface TaskOptions<S, A> {
   }
   /** Actual Domain row changes, including writes by other owners. */
   observeRecords?(observe:(change:import('@deepseek-ai/dsh-storage-domain').DomainChanged)=>void):()=>void
+  inspectAuthorGeneration?(job:TaskJob):Promise<{
+    completion?:import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationCompletionV1;
+    terminal?:import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationTerminalV1}|undefined>
   policy: {resolve(session: S, kind: string, agent?: A): TaskSelection | PromiseLike<TaskSelection>}
   subagents?: {start(mode: 'spawn', request: {
     parent?: A
@@ -134,6 +151,7 @@ export interface TaskOptions<S, A> {
     isolatedSystem?: string
     prompt: {type: 'text'; text: string}[]
     activation?:OwnedAuthorDialogActivationV1
+    authorOwner?:import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationOwnerV1
     rubyActivation?:OwnedRubyTaskActivationV1
     rubyOwner?:OwnedRubyTaskOwnerV1
   }): TaskChild | PromiseLike<TaskChild>}

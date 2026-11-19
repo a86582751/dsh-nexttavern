@@ -1,5 +1,6 @@
 import type * as ReactAPI from 'react'
 import type {OpeningRejectionCode,OpeningInitializationCode} from '../core/roleplay-opening-selection.js'
+import type {PrepareOpeningSource,ReaderSubmissionTicket} from './reader-submission-handoff.js'
 
 interface OpeningCandidate {
   index: number
@@ -33,6 +34,7 @@ interface OpeningPanelDependencies {
   React: typeof ReactAPI
   jsonFetch<T>(url:string,init?:RequestInit):Promise<T>
   toast(text:string):void
+  prepareSource?:PrepareOpeningSource
 }
 
 const rejectionMessage = (code: OpeningRejectionCode | undefined): string | null => {
@@ -64,7 +66,7 @@ const selectionMessage = (selection: NonNullable<OpeningReply['selection']>): st
   return rejectionMessage(selection.rejectionCode) ?? '开场提交待确认；使用同一次操作核对，不会重复生成。'
 }
 
-export function createOpeningPanel({React,jsonFetch,toast}:OpeningPanelDependencies) {
+export function createOpeningPanel({React,jsonFetch,toast,prepareSource}:OpeningPanelDependencies) {
   return function OpeningPanel({sessionId,refreshToken,presentation='panel',expectedSource,onCompleted,onDismiss}:OpeningPanelProps) {
     const [data,setData] = React.useState<OpeningReply | null>(null)
     const [index,setIndex] = React.useState(0)
@@ -97,6 +99,12 @@ export function createOpeningPanel({React,jsonFetch,toast}:OpeningPanelDependenc
       return () => {ticket.current++}
     },[load,refreshToken])
     if (!data) return error ? React.createElement('p',{className:'dsh-rp-error',role:'alert'},error) : null
+    if (data.candidates.length===0) {
+      if(presentation==='card')return null
+      const message=data.priorOpening?'开场已写入当前会话，可在酒馆中查看。'
+        :data.legacyDisplayed?'已提交开场，可在酒馆中查看生成进度。':'这份角色卡没有可选开场。'
+      return React.createElement('p',{className:'dsh-rp-muted'},message)
+    }
     if (presentation === 'card' && data.selection?.status === 'completed') return null
     const selected = data.candidates.find(candidate => candidate.index === index)
     const fixed = data.selection
@@ -110,12 +118,16 @@ export function createOpeningPanel({React,jsonFetch,toast}:OpeningPanelDependenc
       inFlight.current = true
       const mutationTicket = ticket.current
       setBusy(true)
+      let prepared:ReaderSubmissionTicket|undefined
       try {
         const operationId = fixed?.operationId ?? crypto.randomUUID()
-        const reply = await jsonFetch<{selection:NonNullable<OpeningReply['selection']>}>(
+        prepared=await prepareSource?.(sessionId,selected.index)
+        if(mutationTicket!==ticket.current)return
+        const dispatch=()=>jsonFetch<{selection:NonNullable<OpeningReply['selection']>}>(
           '/api/roleplay/openings',{method:'POST',headers:{'content-type':'application/json'},
             body:JSON.stringify({sessionId,action:'select',index:selected.index,
               expectedRenderedSha256:selected.renderedSha256,operationId,...(expectedSource ? {expectedSource} : {})})})
+        const reply=await(prepared?prepared.consume(dispatch):dispatch())
         if (mutationTicket !== ticket.current) return
         toast(selectionMessage(reply.selection))
         if (reply.selection.status === 'completed') onCompleted?.()
@@ -124,7 +136,7 @@ export function createOpeningPanel({React,jsonFetch,toast}:OpeningPanelDependenc
         if (mutationTicket !== ticket.current) return
         toast('开场选择失败：' + String((cause as Error).message ?? cause))
         await load(true)
-      } finally {inFlight.current = false;setBusy(false)}
+      } finally {prepared?.close();inFlight.current = false;setBusy(false)}
     }
     const recover = async () => {
       if (inFlight.current) return

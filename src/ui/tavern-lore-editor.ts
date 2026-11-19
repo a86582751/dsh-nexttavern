@@ -14,6 +14,9 @@ interface Draft {
   readonly entryId:string
   readonly sourceSha256:string
   readonly revision:number
+  readonly bookId:NonNullable<TavernLoreEditorDataV1['bookId']>
+  readonly contentRef:NonNullable<TavernLoreEditorDataV1['contentRef']>
+  readonly metadataRef:NonNullable<TavernLoreEditorDataV1['metadataRef']>
   readonly rawEntryPointer:string
   readonly rawEntrySha256:string
   readonly currentNativeMember?:TavernLoreEditorEntryV1['currentNativeMember']
@@ -52,7 +55,7 @@ function editorOf(reply:unknown,sid:string):TavernLoreEditorDataV1|null {
   if(editor.authority!=='consumer-data-only'||editor.sessionId!==sid||typeof editor.sourceSha256!=='string'
     ||!HASH.test(editor.sourceSha256)||typeof editor.dataSha256!=='string'||!HASH.test(editor.dataSha256)
     ||typeof editor.revision!=='number'||!Number.isSafeInteger(editor.revision)||editor.revision<0
-    ||editor.revision>256||!Array.isArray(editor.entries)||editor.entries.length>4096)return null
+    ||!Array.isArray(editor.entries)||editor.entries.length>4096)return null
   const seen=new Set<string>()
   for(const row of editor.entries) {
     if(!object(row)||typeof row.entryId!=='string'||seen.has(row.entryId)||typeof row.rawEntryPointer!=='string'
@@ -76,19 +79,10 @@ function failureOf(error:unknown):TavernLoreEditorFailureDetailsV1|null {
 }
 function draftFor(editor:TavernLoreEditorDataV1,row:TavernLoreEditorEntryV1):Draft {
   return {entryId:row.entryId,sourceSha256:editor.sourceSha256,revision:editor.revision,
+    bookId:editor.bookId!,contentRef:editor.contentRef!,metadataRef:editor.metadataRef!,
     rawEntryPointer:row.rawEntryPointer,rawEntrySha256:row.rawEntrySha256,
     ...(row.currentNativeMember?{currentNativeMember:row.currentNativeMember}:{}),
     values:{...row.semantic,content:row.contentText},changes:{},raw:{},errors:{}}
-}
-function pendingEntryMatches(pending:TavernLoreEditorPendingV1,row:TavernLoreEditorEntryV1):boolean {
-  const request=pending.request
-  if(!('mutation' in request))return row.rawEntryPointer===request.rawEntryPointer
-    &&row.rawEntrySha256===request.rawEntrySha256
-  const target=request.mutation.target,actual=row.currentNativeMember?.identity
-  if(target.kind==='original')return actual?.kind==='original'
-    &&actual.rawEntryPointer===target.rawEntryPointer&&actual.rawEntrySha256===target.rawEntrySha256
-  return actual?.kind==='introduced'&&actual.eventRef.key===target.eventRef.key
-    &&actual.eventRef.sha256===target.eventRef.sha256&&actual.ordinal===target.ordinal
 }
 /** Client selection owns display and response lifetimes only. All mutation
  * authority remains in the actual route supplier and append-only store. */
@@ -138,26 +132,22 @@ export function createTavernLoreEditorControllerV1(deps:ControllerDependencies) 
       const editor=editorOf(reply,sid)
       if(!editor){publish({error:'世界书数据与当前会话不一致，请重新加载',editor:null});return}
       const pending=state.pending,original=state.draft
-      const staleDraft=!!original&&(original.sourceSha256!==editor.sourceSha256||original.revision!==editor.revision
+      const staleDraft=!!original&&(original.sourceSha256!==editor.sourceSha256||original.bookId!==editor.bookId
+        ||original.contentRef.sha256!==editor.contentRef?.sha256||original.metadataRef.sha256!==editor.metadataRef?.sha256
         ||!editor.entries.some(row=>row.entryId===original.entryId&&row.rawEntrySha256===original.rawEntrySha256))
       const canRecover=!!pending&&pending.request.expectedSourceSha256===editor.sourceSha256
-        &&editor.revision>=pending.request.expectedRevision&&editor.entries.some(row=>pendingEntryMatches(pending,row))
+        &&pending.request.bookId===editor.bookId
       publish({editor,staleDraft,canRecover,error:state.storageBlocked?state.error:
         pending?(canRecover?'本次请求仍需服务端确认；可恢复原请求':'Source 或条目版本已变化；原请求已保留，请重新加载并核对'):
-          staleDraft?'Source 或 revision 已变化，请重新载入条目后编辑':null,failureDetails:null})
+          staleDraft?'Source 或世界书版本已变化，请重新载入条目后编辑':null,failureDetails:null})
     } catch(error) {
       if(!live(sid,captured)||readRun!==run||signal.aborted)return
       if(!storageReady) {
         publish({editor:null,storageBlocked:true,error:'恢复记录无效或无法安全读取；记录未删除，本面板保持只读'})
         return
       }
-      const details=failureOf(error),pending=state.pending
-      const serverPending=details?.refusal?.diagnostics.find(d=>d.code==='PENDING_INTENT')?.pending
-      const canRecover=!!pending&&serverPending?.operationId===pending.operationId
-        &&serverPending.payloadSha256===pending.payloadSha256
-      publish({editor:null,failureDetails:details,canRecover,error:serverPending
-        ?canRecover?'服务端保留本次待确认记录；可恢复原请求':'服务端存在另一待确认操作；请先核对锚点，不能创建新操作'
-        :'暂时无法读取结构化世界书，请重新加载'})
+      publish({editor:null,failureDetails:failureOf(error),canRecover:false,
+        error:'暂时无法读取结构化世界书，请重新加载'})
     } finally {
       if(live(sid,captured)&&readRun===run)publish({loading:false})
     }
@@ -219,10 +209,10 @@ export function createTavernLoreEditorControllerV1(deps:ControllerDependencies) 
       }
       const details=failureOf(error)
       if(firstAttempt&&details?.outcome==='no-write'&&!details.receipt
-        &&!details.refusal?.diagnostics.some(d=>d.pending||d.recovery)) {
+        &&!details.refusal?.diagnostics.some(d=>d.recovery||d.code==='AUTHOR_WORLDBOOK_OPERATION_CONFLICT')) {
         try {clearTavernLoreEditorPendingV1(deps.storage(),pending)
           publish({pending:null,failureDetails:details,error:failureMessage(details),
-            staleDraft:details.refusal?.diagnostics.some(d=>['SOURCE_CHANGED','REVISION_MISMATCH','ENTRY_LINK_INVALID'].includes(d.code))??false})
+            staleDraft:details.refusal?.diagnostics.some(d=>['SOURCE_CHANGED','AUTHOR_WORLDBOOK_HEAD_CHANGED','TAVERN_LORE_MEMBER_TARGET_MISSING'].includes(d.code))??false})
         } catch {publish({storageBlocked:true,error:'未写入，但恢复记录无法安全清理；请保留记录并重新加载'})}
       } else publish({failureDetails:details,error:failureMessage(details)})
     } finally {if(live(sid,captured))publish({saving:false})}
@@ -233,12 +223,11 @@ export function createTavernLoreEditorControllerV1(deps:ControllerDependencies) 
       ||Object.keys(draft.errors).length||!Object.keys(draft.changes).length)return
     publish({saving:true,error:null})
     try {
-      const basis={sessionId:sid,expectedSourceSha256:draft.sourceSha256,
-        expectedRevision:draft.revision,operationId:deps.operationId?.()??'lore-'+globalThis.crypto.randomUUID()}
-      const request=canonicalTavernLoreEditRequestV1(draft.currentNativeMember
-        ?{schemaVersion:2,encoding:'tavern-lore-mutation-request-v2',...basis,
-          mutation:{kind:'fields',target:draft.currentNativeMember.identity,fields:draft.changes}}
-        :{...basis,rawEntryPointer:draft.rawEntryPointer,rawEntrySha256:draft.rawEntrySha256,fields:draft.changes})
+      const request=canonicalTavernLoreEditRequestV1({schemaVersion:3,encoding:'author-worldbook-editor-request-v3',
+        sessionId:sid,expectedSourceSha256:draft.sourceSha256,bookId:draft.bookId,
+        expectedContent:draft.contentRef,expectedMetadata:draft.metadataRef,
+        operationId:deps.operationId?.()??'lore-'+globalThis.crypto.randomUUID(),
+        mutation:{kind:'fields',target:draft.currentNativeMember!.identity,fields:draft.changes}})
       const payloadSha256=await tavernLoreEditPayloadSha256V1(request)
       if(!live(sid,captured))return
       const pending=createTavernLoreEditorPendingV1(request,payloadSha256)
@@ -274,7 +263,7 @@ interface PanelDependencies {
 }
 export function createTavernLoreEditorPanelV1(deps:PanelDependencies) {
   const {React}=deps
-  function TavernLoreEditorPanel({scope,visible}:{scope?:{sessionId:string};visible?:boolean}) {
+  function TavernLoreEditorPanel({scope,visible,refreshVersion=0}:{scope?:{sessionId:string};visible?:boolean;refreshVersion?:number}) {
     const sid=scope?.sessionId??null
     const renderedSid=React.useRef(sid);renderedSid.current=sid
     const [controller]=React.useState(()=>createTavernLoreEditorControllerV1({jsonFetch:deps.jsonFetch,
@@ -285,6 +274,12 @@ export function createTavernLoreEditorPanelV1(deps:PanelDependencies) {
     React.useEffect(()=>{void controller.selectSession(visible===false?null:sid)
       return ()=>{void controller.selectSession(null)}
     },[controller,sid,visible])
+    const previousRefresh=React.useRef(refreshVersion)
+    React.useEffect(()=>{
+      if(previousRefresh.current===refreshVersion)return
+      previousRefresh.current=refreshVersion
+      void controller.reload()
+    },[controller,refreshVersion])
     if(visible===false)return null
     const guarded=(action:()=>void|Promise<void>)=>()=>{
       if(renderedSid.current===sid&&controller.getState().sessionId===sid)void action()
@@ -296,10 +291,8 @@ export function createTavernLoreEditorPanelV1(deps:PanelDependencies) {
     let pendingLabel='',pendingFields:TavernLoreCurrentNativeFieldsV1|undefined
     if(pending) {
       const request=pending.request
-      if('mutation' in request) {
-        pendingFields=request.mutation.fields
-        pendingLabel=request.mutation.target.kind==='original'?request.mutation.target.rawEntryPointer:'已新增条目'
-      }else {pendingFields=request.fields;pendingLabel=request.rawEntryPointer}
+      pendingFields=request.mutation.fields
+      pendingLabel=request.mutation.target.kind==='original'?request.mutation.target.rawEntryPointer:'已新增条目'
     }
     const blocked=state.saving||!!pending||state.staleDraft||state.storageBlocked
     const edit=(key:string,value:unknown,text?:string):void=>{
@@ -336,7 +329,7 @@ export function createTavernLoreEditorPanelV1(deps:PanelDependencies) {
       }}))
     const textField=(key:string)=>field(key,React.createElement('input',{className:'dsh-rp-input',value:raw(key),
       'data-lore-field':key,onChange:(event:ReactAPI.ChangeEvent<HTMLInputElement>)=>edit(key,event.target.value)}))
-    const anchor=state.failureDetails?.refusal?.diagnostics.find(d=>d.recovery||d.pending)
+    const anchor=state.failureDetails?.refusal?.diagnostics.find(d=>d.recovery)
     return React.createElement('section',{className:'dsh-rp-panel','data-tavern-lore-editor':sid??'',
       'aria-label':'结构化世界书编辑'},React.createElement('div',{className:'dsh-rp-row'},
       React.createElement('h4',{style:{flex:1,margin:0}},'结构化世界书'),button('重新加载',controller.reload,state.loading||state.saving)),
@@ -348,11 +341,11 @@ export function createTavernLoreEditorPanelV1(deps:PanelDependencies) {
         React.createElement('p',null,'本次保存尚未确认。保留原请求，不创建另一操作。'),
         React.createElement('pre',{className:'dsh-rp-muted',style:{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}},
           `操作 ${pending.operationId}\npayload ${pending.payloadSha256}\nSource ${pending.request.expectedSourceSha256}`
-          +`\nrevision ${pending.request.expectedRevision}\n条目 ${pendingLabel}`),
+          +`\n世界书 ${pending.request.bookId}\n条目 ${pendingLabel}`),
         React.createElement('textarea',{className:'dsh-rp-textarea',readOnly:true,value:JSON.stringify(pendingFields,null,2),
           'aria-label':'待确认修改内容'}),button('恢复本次保存',controller.recover,!state.canRecover||state.loading||state.saving||state.storageBlocked)):null,
       anchor?React.createElement('pre',{className:'dsh-rp-muted',style:{whiteSpace:'pre-wrap',overflowWrap:'anywhere'},
-        'aria-label':'服务端恢复锚点'},JSON.stringify(anchor.recovery??anchor.pending,null,2)):null,
+        'aria-label':'服务端恢复锚点'},JSON.stringify(anchor.recovery,null,2)):null,
       state.failureDetails?.receipt?React.createElement('pre',{className:'dsh-rp-muted','aria-label':'待确认保存凭据'},
         JSON.stringify(state.failureDetails.receipt,null,2)):null,
       state.editor?React.createElement('div',{className:'dsh-rp-row'},React.createElement('select',{

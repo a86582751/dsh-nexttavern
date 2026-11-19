@@ -15,6 +15,7 @@ import type {
   RequestImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
 import type { Context as PiContext, ImageContent, Message as PiMessage, TextContent, Tool as PiTool } from 'dsh-nexttavern-pi-ai'
+import {randomUUID} from 'node:crypto'
 import { toPiAssistant,assertPiRequestProjectionV1 } from './replay.js'
 import { requestImageDimensions } from '@deepseek-ai/dsh-attachment'
 import { DEFAULT_REQUEST_IMAGE_MAX_BYTES, DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET } from './config.js'
@@ -160,18 +161,25 @@ interface SystemPromptSplit {
  */
 function splitSystemPrompt(options: GenerateOptions): SystemPromptSplit {
   if (options.system !== undefined) return { systemPrompt: options.system, messages: options.messages }
-  const [first, ...rest] = options.messages
-  if (first?.role !== 'system') return { systemPrompt: undefined, messages: options.messages }
+  const first=options.messages[0]
+  if (first?.role !== 'system'||first.source?.kind==='request-material')
+    return { systemPrompt: undefined, messages: options.messages }
   const text = flattenText(first)
-  return { systemPrompt: text.length > 0 ? text : undefined, messages: rest }
+  return { systemPrompt: text.length > 0 ? text : undefined, messages: options.messages.slice(1) }
 }
 
 /** Assemble the request-level pi-ai context envelope shared by both conversion paths. */
-function piContext(systemPrompt: string | undefined, options: GenerateOptions, messages: PiMessage[]): PiContext {
+export interface PiRequestContext extends PiContext {
+  requestSystemMessages?:ReadonlyMap<string,string>
+}
+
+function piContext(systemPrompt: string | undefined, options: GenerateOptions, messages: PiMessage[],
+  requestSystemMessages?:ReadonlyMap<string,string>): PiRequestContext {
   const tools = toolsOf(options)
   return {
     ...systemPrompt !== undefined ? { systemPrompt } : {},
     messages,
+    ...requestSystemMessages?.size?{requestSystemMessages}:{},
     ...tools !== undefined && tools.length > 0 ? { tools } : {},
   }
 }
@@ -195,14 +203,23 @@ function appendSystemOrAssistant(
   messages: PiMessage[],
   toolNames: Map<ToolCallId, string>,
   onReplayDegrade?: (reason: string) => void,
+  requestSystemMessages?:Map<string,string>,
 ): boolean {
   if (message.role === 'system') {
-    if(message.source.kind==='request-material'){
-      throw new LlmError('pi-ai cannot retain system role at a request-only depth','REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
+    const text=flattenText(message)
+    if(message.source?.kind==='request-material'){
+      if(!requestSystemMessages)
+        throw new LlmError('pi-ai cannot retain system role at a request-only depth','REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
+      // The existing serializer owns replay and tool handling. The transport
+      // hook replaces this opaque text before any model request may leave.
+      const marker=`__nexttavern_system_${randomUUID()}__`
+      requestSystemMessages.set(marker,text)
+      messages.push({role:'user',content:marker,timestamp:0})
+      return true
     }
     // pi-ai has a single systemPrompt slot; a system message that did not
     // supply it folds into a user message to preserve order.
-    messages.push({ role: 'user', content: flattenText(message), timestamp: 0 })
+    messages.push({role:'user',content:text,timestamp:0})
     return true
   }
   if (message.role === 'assistant') {
@@ -212,23 +229,25 @@ function appendSystemOrAssistant(
   return false
 }
 
-function textOnlyContext(options: GenerateOptions, onReplayDegrade?: (reason: string) => void): PiContext {
+function textOnlyContext(options: GenerateOptions, onReplayDegrade?: (reason: string) => void,
+  systemAtDepth=false): PiRequestContext {
   assertSupportedHistory(options.messages)
   const split = splitSystemPrompt(options)
   const toolNames = new Map<ToolCallId, string>()
   const messages: PiMessage[] = []
+  const requestSystemMessages=systemAtDepth?new Map<string,string>():undefined
   for (const message of split.messages) {
     if (contentHasImage(message.content)) {
       throw new LlmError('pi-ai image conversion requires the durable attachment service', 'UNSUPPORTED_CONTENT')
     }
-    if (appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade)) continue
+    if (appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade,requestSystemMessages)) continue
     if (message.role === 'tool') {
       messages.push(toolResultOf(message, toolNames, flattenText(message)))
       continue
     }
     messages.push({ role: 'user', content: flattenText(message), timestamp: 0 })
   }
-  return piContext(split.systemPrompt, options, messages)
+  return piContext(split.systemPrompt, options, messages,requestSystemMessages)
 }
 
 /** Inputs that bind deterministic request images to one current tool execution world. */
@@ -269,7 +288,8 @@ export function toPiContext(
   options: GenerateOptions,
   images?: undefined,
   onReplayDegrade?: (reason: string) => void,
-): PiContext
+  systemAtDepth?:boolean,
+): PiRequestContext
 /**
  * Convert harness history to a pi-ai Context while resolving durable images.
  * Tool result names are recovered from preceding assistant tool calls. Image
@@ -286,22 +306,25 @@ export function toPiContext(
   options: GenerateOptions,
   images: PiImageRequestContext,
   onReplayDegrade?: (reason: string) => void,
-): Promise<PiContext>
+  systemAtDepth?:boolean,
+): Promise<PiRequestContext>
 export function toPiContext(
   options: GenerateOptions,
   images?: PiImageRequestContext,
   onReplayDegrade?: (reason: string) => void,
-): PiContext | Promise<PiContext> {
+  systemAtDepth=false,
+): PiRequestContext | Promise<PiRequestContext> {
   return images === undefined
-    ? textOnlyContext(options, onReplayDegrade)
-    : toPiContextWithImages(options, images, onReplayDegrade)
+    ? textOnlyContext(options, onReplayDegrade,systemAtDepth)
+    : toPiContextWithImages(options, images, onReplayDegrade,systemAtDepth)
 }
 
 async function toPiContextWithImages(
   options: GenerateOptions,
   images: PiImageRequestContext,
   onReplayDegrade?: (reason: string) => void,
-): Promise<PiContext> {
+  systemAtDepth=false,
+): Promise<PiRequestContext> {
   assertSupportedHistory(options.messages)
   const split=splitSystemPrompt(options)
   const prepared=await prepareImageHistory(split.messages,options.signal,images)
@@ -309,9 +332,10 @@ async function toPiContextWithImages(
   const {resolveImageAccess}=images
   const toolNames = new Map<ToolCallId, string>()
   const messages: PiMessage[] = []
+  const requestSystemMessages=systemAtDepth?new Map<string,string>():undefined
 
   for (const message of exactMessages) {
-    if (appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade)) continue
+    if (appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade,requestSystemMessages)) continue
     if (message.role === 'tool') {
       messages.push(toolResultOf(message, toolNames, userContent(message.content, requestImages, resolveImageAccess)))
       continue
@@ -320,7 +344,51 @@ async function toPiContextWithImages(
     messages.push({ role: 'user', content, timestamp: 0 })
   }
 
-  return piContext(split.systemPrompt, options, messages)
+  return piContext(split.systemPrompt, options, messages,requestSystemMessages)
+}
+
+/** Restore exact system messages in the protocol's finished request body. */
+export function positionRequestSystemMessages(payload:unknown,markers:ReadonlyMap<string,string>):unknown {
+  if(payload&&typeof payload==='object'&&'context' in payload&&payload.context&&typeof payload.context==='object')
+    return {...payload,context:positionRequestSystemMessages(payload.context,markers)}
+  if(payload&&typeof payload==='object')for(const field of ['messages','contents','input'] as const){
+    const collection=(payload as Record<string,unknown>)[field]
+    if(!Array.isArray(collection))continue
+    const seen=new Set<string>()
+    const replace=(value:unknown):string|undefined=>{
+      if(typeof value!=='string'||!markers.has(value))return undefined
+      if(seen.has(value))throw new LlmError('The provider serializer duplicated a request message','REQUEST_MATERIAL_SERIALIZATION_UNAVAILABLE')
+      seen.add(value)
+      return markers.get(value)
+    }
+    const output=collection.flatMap((item:unknown)=>{
+      if(!item||typeof item!=='object')return [item]
+      const message=item as Record<string,unknown>
+      if(message.role!=='user')return [message]
+      const key='parts' in message?'parts':'content'
+      const content=message[key]
+      if(typeof content==='string'){
+        const text=replace(content)
+        return [text===undefined?message:{...message,role:'system',[key]:text}]
+      }
+      if(!Array.isArray(content))return [message]
+      const ordered:Record<string,unknown>[]=[]
+      let start=0
+      for(const [index,part] of content.entries()){
+        const text=replace(part?.text)
+        if(text===undefined)continue
+        if(index>start)ordered.push({...message,[key]:content.slice(start,index)})
+        ordered.push({...message,role:'system',[key]:[{...part,text}]})
+        start=index+1
+      }
+      if(start===0)return [message]
+      if(start<content.length)ordered.push({...message,[key]:content.slice(start)})
+      return ordered
+    })
+    if(seen.size===markers.size)return {...payload,[field]:output}
+  }
+  throw new LlmError('The provider serializer did not retain the history location of a system message',
+    'REQUEST_MATERIAL_SERIALIZATION_UNAVAILABLE')
 }
 
 /** Shared controlled image preparation. Each serializer keeps its own ordered

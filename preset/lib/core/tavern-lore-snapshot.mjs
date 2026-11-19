@@ -14,7 +14,7 @@ const text = (value, max = 256) => typeof value === 'string' && value.length > 0
 const integer = (value, max = Number.MAX_SAFE_INTEGER) => typeof value === 'number'
     && Number.isSafeInteger(value) && value >= 0 && value <= max;
 export function freezeLoreData(value) {
-    if (value && typeof value === 'object') {
+    if (value && typeof value === 'object' && !Object.isFrozen(value)) {
         for (const child of Object.values(value))
             freezeLoreData(child);
         Object.freeze(value);
@@ -22,7 +22,7 @@ export function freezeLoreData(value) {
     return value;
 }
 export const LORE_EVALUATOR_POLICY_V1 = freezeLoreData({ schemaVersion: 1,
-    id: 'owned-st-single-book-scan-feedback-v1', upstreamCommit: '06bde939fb1e9c4c8d8641d810f0a916b5bce127',
+    id: 'owned-st-bound-books-scan-feedback-v1', upstreamCommit: '06bde939fb1e9c4c8d8641d810f0a916b5bce127',
     domain: 'single-embedded-character-book; bounded-declared-template-activation-feedback; no-author-callback',
     scan: 'ascending-depth; owner-captured-scan-string; trim; U+0001-newline-boundaries; recursion-and-min-depth-skew',
     ordering: 'order-desc-then-source-ordinal; placement-reverse-except-outlet',
@@ -35,18 +35,127 @@ export const LORE_EVALUATOR_POLICY_V1 = freezeLoreData({ schemaVersion: 1,
     feedback: 'declared-entry-activation-only; duplicates-dedupe; nested-frame-audit-owned-by-Root',
     injectedScan: 'owned-registry-captured-phase; serial-actual-filters; scan-text-excluded-from-WI-token-budget; frozen-replay',
     unsupported: ['decorators', 'world-info-content-regex', 'automation', 'trigger-filter'],
-    bounds: { inputBytes: 16_777_216, snapshotBytes: 4_194_304, outputBytes: 8_388_608,
-        messages: 1000, scanChars: 32768, renderedTexts: 4096, tokenCounts: 4096, contentBytes: 2_000_000,
+    bounds: { inputBytes: 16_777_216, snapshotInputBytes: 4_194_304, preparationInputBytes: 4_194_304, outputBytes: 8_388_608,
+        messages: 1000, renderedTexts: 4096, tokenCounts: 4096, contentBytes: 2_000_000,
         regexWorkerDispatches: 128, scanSteps: 2048, feedbackProposals: 8192 },
 });
 export const LORE_EVALUATOR_POLICY_SHA256 = recordSha256(LORE_EVALUATOR_POLICY_V1);
+export function validateTavernLoreTemplateActivationV1(value) {
+    const mode = object(value) && Object.hasOwn(value, 'mode');
+    exact(value, ['entryId', 'rawEntrySha256', ...mode ? ['mode', 'sourceProgram'] : []]);
+    if (!text(value.entryId) || !isSha(value.rawEntrySha256))
+        refuse('LORE_FEEDBACK_INVALID');
+    if (mode) {
+        if (value.mode !== 'world-info' && value.mode !== 'force-world-info')
+            refuse('LORE_FEEDBACK_INVALID');
+        exact(value.sourceProgram, ['bodyOffset', 'contentSha256']);
+        if (!integer(value.sourceProgram.bodyOffset, LORE_EVALUATOR_POLICY_V1.bounds.contentBytes)
+            || !isSha(value.sourceProgram.contentSha256))
+            refuse('LORE_FEEDBACK_INVALID');
+    }
+}
+/** A new renderer receipt is checked against the already captured owner data. */
+export function validateTavernLoreRenderedTextV1(row, snapshot) {
+    exact(row, ['pointer', 'rawContentSha256', 'renderedText', 'renderedSha256', 'rendererIdentity',
+        'rendererImplementationSha256', 'readDependencies']);
+    if (!text(row.pointer, 4096) || !row.pointer.startsWith('/')
+        || !isSha(row.rawContentSha256) || typeof row.renderedText !== 'string' || !isSha(row.renderedSha256)
+        || schemaTextSha256(row.renderedText) !== row.renderedSha256 || !text(row.rendererIdentity)
+        || !isSha(row.rendererImplementationSha256) || !Array.isArray(row.readDependencies)
+        || row.readDependencies.length > 128)
+        refuse('LORE_RENDERED_TEXT_INVALID');
+    const deps = new Set();
+    for (const dep of row.readDependencies) {
+        exact(dep, ['kind', 'identity', 'versionSha256', 'valueSha256']);
+        if (!['state', 'source', 'message', 'settings'].includes(String(dep.kind)) || !text(dep.identity)
+            || !isSha(dep.versionSha256) || !isSha(dep.valueSha256))
+            refuse('LORE_TEMPLATE_DEPENDENCY_INVALID');
+        const identity = `${dep.kind}:${dep.identity}`;
+        if (deps.has(identity))
+            refuse('LORE_TEMPLATE_DEPENDENCY_DUPLICATE');
+        deps.add(identity);
+        if (dep.kind === 'state' && dep.versionSha256 !== snapshot.stateSnapshotSha256
+            || dep.kind === 'source' && dep.versionSha256 !== snapshot.sourceSnapshotSha256
+            || dep.kind === 'settings' && (dep.versionSha256 !== snapshot.settingsSha256 || dep.valueSha256 !== snapshot.settingsSha256)) {
+            refuse('LORE_TEMPLATE_DEPENDENCY_MISMATCH');
+        }
+        if (dep.kind === 'message') {
+            const message = snapshot.visibleMessages.find(item => item.messageId === dep.identity);
+            if (!message || dep.versionSha256 !== message.versionSha256 || dep.valueSha256 !== message.textSha256) {
+                refuse('LORE_TEMPLATE_DEPENDENCY_MISMATCH');
+            }
+        }
+    }
+}
+/** Returns the new row's proposal count for the feedback owner's total. */
+export function validateTavernLoreTemplateFeedbackV1(row, snapshot) {
+    exact(row, ['request', 'renderedSha256', 'activationProposals', 'feedbackSha256']);
+    const request = row.request;
+    exact(request, ['schemaVersion', 'encoding', 'entryId', 'rawEntrySha256', 'entrySemanticSha256', 'pointer',
+        'rawContentSha256', 'text', 'attemptId', 'compilerPlanSha256', 'loop', 'state', 'selectionSha256',
+        ...object(request) && Object.hasOwn(request, 'activationMode') ? ['activationMode'] : []]);
+    if (request.schemaVersion !== 1 || request.encoding !== 'owned-st-lore-selected-template-request-v1'
+        || !isSha(request.entryId) || !isSha(request.rawEntrySha256)
+        || !isSha(request.entrySemanticSha256) || !text(request.pointer, 4096) || !request.pointer.startsWith('/')
+        || typeof request.text !== 'string' || schemaTextSha256(request.text) !== request.rawContentSha256
+        || request.attemptId !== snapshot.attemptId || request.compilerPlanSha256 !== snapshot.compilerPlanSha256
+        || !integer(request.loop, LORE_EVALUATOR_POLICY_V1.bounds.scanSteps) || request.loop < 1
+        || !['initial', 'recursion', 'minimum-activations'].includes(String(request.state)) || !isSha(request.selectionSha256)
+        || !isSha(row.renderedSha256) || !Array.isArray(row.activationProposals))
+        refuse('LORE_FEEDBACK_INVALID');
+    if (Object.hasOwn(request, 'activationMode') && request.activationMode !== 'world-info'
+        && request.activationMode !== 'force-world-info')
+        refuse('LORE_FEEDBACK_INVALID');
+    for (const proposal of row.activationProposals) {
+        validateTavernLoreTemplateActivationV1(proposal);
+        if (!isSha(proposal.entryId) || !isSha(proposal.rawEntrySha256))
+            refuse('LORE_FEEDBACK_INVALID');
+    }
+    const { feedbackSha256, ...body } = row;
+    if (recordSha256(body) !== feedbackSha256)
+        refuse('LORE_FEEDBACK_HASH');
+    return row.activationProposals.length;
+}
+/** Returns only this new scan row's text bytes for the owner's cumulative cap. */
+export function validateTavernLoreInjectionFeedbackV1(row) {
+    exact(row, ['loop', 'state', 'stage', 'contributions', 'activationProposals', 'producerIdentity',
+        'producerImplementationSha256', 'feedbackSha256']);
+    if (!integer(row.loop) || row.loop > 2048 || typeof row.state !== 'string' || typeof row.stage !== 'string'
+        || !['initial', 'recursion', 'minimum-activations'].includes(row.state)
+        || !['before-initial', 'after-selected'].includes(row.stage)
+        || row.stage === 'before-initial' && (row.loop !== 0 || row.state !== 'initial')
+        || !text(row.producerIdentity) || !isSha(row.producerImplementationSha256)
+        || !Array.isArray(row.contributions) || row.contributions.length > 512
+        || !Array.isArray(row.activationProposals) || row.activationProposals.length > 4096)
+        refuse('LORE_INJECTION_FEEDBACK_INVALID');
+    const identities = new Set();
+    let bytes = 0;
+    for (const contribution of row.contributions) {
+        exact(contribution, ['identity', 'text', 'textSha256']);
+        if (!text(contribution.identity) || identities.has(contribution.identity) || typeof contribution.text !== 'string'
+            || !isSha(contribution.textSha256) || schemaTextSha256(contribution.text) !== contribution.textSha256)
+            refuse('LORE_INJECTION_FEEDBACK_INVALID');
+        identities.add(contribution.identity);
+        bytes += Buffer.byteLength(contribution.text, 'utf8');
+    }
+    for (const proposal of row.activationProposals) {
+        validateTavernLoreTemplateActivationV1(proposal);
+        if (!text(proposal.entryId) || !isSha(proposal.rawEntrySha256))
+            refuse('LORE_INJECTION_FEEDBACK_INVALID');
+    }
+    const { feedbackSha256, ...body } = row;
+    if (!isSha(feedbackSha256) || recordSha256(body) !== feedbackSha256)
+        refuse('LORE_INJECTION_FEEDBACK_INVALID');
+    return bytes;
+}
 /** Hashes bind the supplied input, never prove the actual branch/currentness. */
 export function validateTavernLoreSnapshotV1(input) {
-    const value = cloneSchemaData(input, LORE_EVALUATOR_POLICY_V1.bounds.snapshotBytes, { nodes: 100000, depth: 48 });
+    const value = cloneSchemaData(input, LORE_EVALUATOR_POLICY_V1.bounds.snapshotInputBytes, { nodes: 100000, depth: 48 });
     const hasFeedback = object(value) && Object.hasOwn(value, 'activationFeedback');
     const hasInjections = object(value) && Object.hasOwn(value, 'injectionFeedback');
     const hasScanHistory = object(value) && Object.hasOwn(value, 'scanHistory');
     const hasExclusions = object(value) && Object.hasOwn(value, 'standaloneExclusions');
+    const hasVectors = object(value) && Object.hasOwn(value, 'vectorSelection');
     exact(value, ['schemaVersion', 'encoding', 'authority', 'sessionId', 'branchId', 'revision', 'turnId', 'attemptId',
         'sourceSnapshotSha256', 'stateSnapshotSha256', 'sourceReferenceSha256', 'packageSha256', 'compilerPlanSha256',
         'visibleMessages', 'messagesSha256', 'settings', 'settingsSha256', 'seed', 'seedSha256', 'globalScanData',
@@ -54,6 +163,7 @@ export function validateTavernLoreSnapshotV1(input) {
         'renderedTextsSha256', 'snapshotSha256',
         ...(hasScanHistory ? ['scanHistory'] : []),
         ...(hasExclusions ? ['standaloneExclusions'] : []),
+        ...(hasVectors ? ['vectorSelection'] : []),
         ...(hasFeedback ? ['activationFeedback', 'activationFeedbackSha256'] : []),
         ...(hasInjections ? ['injectionFeedback', 'injectionFeedbackSha256'] : [])]);
     if (value.schemaVersion !== 1 || value.encoding !== 'owned-st-lore-frozen-snapshot-v1'
@@ -71,9 +181,9 @@ export function validateTavernLoreSnapshotV1(input) {
     exact(settings, ['policy', 'provenance', 'caseSensitive', 'matchWholeWords', 'scanDepth', 'useGroupScoring',
         'recursiveScanning', 'minimumActivations', 'minimumActivationDepthMax', 'maxRecursionSteps', 'includeNames',
         'characterStrategy', 'budgetTokens', 'contentTransformPolicy', 'macroPolicy', 'seedPolicy', 'budgetPolicy']);
-    if (!['owned-st-single-book-initial-scan-v1', 'owned-st-single-book-scan-feedback-v1'].includes(String(settings.policy))
+    if (!['owned-st-bound-books-initial-scan-v1', 'owned-st-bound-books-scan-feedback-v1'].includes(String(settings.policy))
         || !['actual-runtime-settings', 'explicit-native-fallback-v1'].includes(String(settings.provenance))
-        || settings.characterStrategy !== 'single-character-book-v1'
+        || settings.characterStrategy !== 'ordered-bound-worldbooks-v1'
         || settings.contentTransformPolicy !== 'no-world-info-output-regex-v1'
         || !['frozen-rendered-receipt-or-marker-free-v1', 'frozen-key-alias-receipt-v2'].includes(String(settings.macroPolicy))
         || settings.seedPolicy !== 'sha256-counter-domain-separated-v1'
@@ -91,6 +201,49 @@ export function validateTavernLoreSnapshotV1(input) {
         refuse('LORE_SETTINGS_VALUE');
     if (!Array.isArray(value.visibleMessages) || value.visibleMessages.length > 1000)
         refuse('LORE_MESSAGES_LIMIT');
+    if (hasVectors) {
+        const selection = value.vectorSelection;
+        exact(selection, ['schemaVersion', 'encoding', 'sourceSnapshotSha256', 'messages', 'result', 'activations']);
+        if (selection.schemaVersion !== 1 || selection.encoding !== 'native-worldbook-vector-selection-v1'
+            || selection.sourceSnapshotSha256 !== value.sourceSnapshotSha256 || !Array.isArray(selection.messages)
+            || !Array.isArray(selection.activations))
+            refuse('LORE_VECTOR_SELECTION_INVALID');
+        for (const row of selection.messages) {
+            exact(row, ['kind', 'messageId', 'versionSha256', 'projectionSha256']);
+            if ((row.kind !== 'native' && row.kind !== 'request') || !text(row.messageId) || !isSha(row.versionSha256) || !isSha(row.projectionSha256))
+                refuse('LORE_VECTOR_SELECTION_INVALID');
+        }
+        const result = selection.result;
+        if (!object(result) || result.schemaVersion !== 1
+            || !['disabled', 'ready', 'pending', 'unavailable'].includes(String(result.status))
+            || !object(result.settings) || typeof result.settings.enabled !== 'boolean'
+            || !integer(result.settingsRevision) || !(result.providerId === null || text(result.providerId))
+            || !(result.fingerprint === null || isSha(result.fingerprint)) || !isSha(result.querySha256)
+            || !Array.isArray(result.hits))
+            refuse('LORE_VECTOR_SELECTION_INVALID');
+        const hits = new Map();
+        for (const hit of result.hits) {
+            exact(hit, ['id', 'contentSha256', 'score']);
+            if (!isSha(hit.id) || !isSha(hit.contentSha256) || typeof hit.score !== 'number' || !Number.isFinite(hit.score)
+                || hits.has(hit.id))
+                refuse('LORE_VECTOR_SELECTION_INVALID');
+            hits.set(hit.id, hit);
+        }
+        if (result.status === 'ready' && !result.settings.enabled
+            || result.status !== 'ready' && (selection.activations.length || hits.size))
+            refuse('LORE_VECTOR_SELECTION_INVALID');
+        const activated = new Set();
+        for (const activation of selection.activations) {
+            exact(activation, ['entryId', 'rawEntrySha256', 'score']);
+            const hit = hits.get(String(activation.entryId));
+            if (!isSha(activation.entryId) || !isSha(activation.rawEntrySha256) || !hit
+                || activation.score !== hit.score || activated.has(activation.entryId))
+                refuse('LORE_VECTOR_SELECTION_INVALID');
+            activated.add(activation.entryId);
+        }
+        if (activated.size !== hits.size)
+            refuse('LORE_VECTOR_SELECTION_INVALID');
+    }
     if (hasExclusions) {
         const exclusions = value.standaloneExclusions;
         exact(exclusions, ['schemaVersion', 'encoding', 'entryIds']);
@@ -149,30 +302,13 @@ export function validateTavernLoreSnapshotV1(input) {
         const feedbackEntries = new Set();
         let proposals = 0;
         for (const row of value.activationFeedback) {
-            exact(row, ['request', 'renderedSha256', 'activationProposals', 'feedbackSha256']);
-            const request = row.request;
-            exact(request, ['schemaVersion', 'encoding', 'entryId', 'rawEntrySha256', 'entrySemanticSha256', 'pointer',
-                'rawContentSha256', 'text', 'attemptId', 'compilerPlanSha256', 'loop', 'state', 'selectionSha256']);
-            if (request.schemaVersion !== 1 || request.encoding !== 'owned-st-lore-selected-template-request-v1'
-                || !isSha(request.entryId) || feedbackEntries.has(request.entryId) || !isSha(request.rawEntrySha256)
-                || !isSha(request.entrySemanticSha256) || !text(request.pointer, 4096) || !request.pointer.startsWith('/')
-                || typeof request.text !== 'string' || schemaTextSha256(request.text) !== request.rawContentSha256
-                || request.attemptId !== value.attemptId || request.compilerPlanSha256 !== value.compilerPlanSha256
-                || !integer(request.loop, LORE_EVALUATOR_POLICY_V1.bounds.scanSteps) || request.loop < 1
-                || !['initial', 'recursion', 'minimum-activations'].includes(String(request.state)) || !isSha(request.selectionSha256)
-                || !isSha(row.renderedSha256) || !Array.isArray(row.activationProposals))
+            proposals += validateTavernLoreTemplateFeedbackV1(row, value);
+            const entryId = row.request.entryId;
+            if (feedbackEntries.has(entryId))
                 refuse('LORE_FEEDBACK_INVALID');
-            feedbackEntries.add(request.entryId);
-            for (const proposal of row.activationProposals) {
-                exact(proposal, ['entryId', 'rawEntrySha256']);
-                if (!isSha(proposal.entryId) || !isSha(proposal.rawEntrySha256))
-                    refuse('LORE_FEEDBACK_INVALID');
-                if (++proposals > LORE_EVALUATOR_POLICY_V1.bounds.feedbackProposals)
-                    refuse('LORE_FEEDBACK_LIMIT');
-            }
-            const { feedbackSha256, ...body } = row;
-            if (recordSha256(body) !== feedbackSha256)
-                refuse('LORE_FEEDBACK_HASH');
+            feedbackEntries.add(entryId);
+            if (proposals > LORE_EVALUATOR_POLICY_V1.bounds.feedbackProposals)
+                refuse('LORE_FEEDBACK_LIMIT');
         }
     }
     const tokenizer = value.tokenizer;
@@ -194,37 +330,10 @@ export function validateTavernLoreSnapshotV1(input) {
         refuse('LORE_RENDERED_TEXT_LIMIT');
     const renderedPointers = new Set();
     for (const row of value.renderedTexts) {
-        exact(row, ['pointer', 'rawContentSha256', 'renderedText', 'renderedSha256', 'rendererIdentity',
-            'rendererImplementationSha256', 'readDependencies']);
-        if (!text(row.pointer, 4096) || !row.pointer.startsWith('/') || renderedPointers.has(row.pointer)
-            || !isSha(row.rawContentSha256) || typeof row.renderedText !== 'string' || !isSha(row.renderedSha256)
-            || schemaTextSha256(row.renderedText) !== row.renderedSha256 || !text(row.rendererIdentity)
-            || !isSha(row.rendererImplementationSha256) || !Array.isArray(row.readDependencies)
-            || row.readDependencies.length > 128)
+        validateTavernLoreRenderedTextV1(row, value);
+        if (renderedPointers.has(row.pointer))
             refuse('LORE_RENDERED_TEXT_INVALID');
         renderedPointers.add(row.pointer);
-        const deps = new Set();
-        for (const dep of row.readDependencies) {
-            exact(dep, ['kind', 'identity', 'versionSha256', 'valueSha256']);
-            if (!['state', 'source', 'message', 'settings'].includes(String(dep.kind)) || !text(dep.identity)
-                || !isSha(dep.versionSha256) || !isSha(dep.valueSha256))
-                refuse('LORE_TEMPLATE_DEPENDENCY_INVALID');
-            const identity = `${dep.kind}:${dep.identity}`;
-            if (deps.has(identity))
-                refuse('LORE_TEMPLATE_DEPENDENCY_DUPLICATE');
-            deps.add(identity);
-            if (dep.kind === 'state' && dep.versionSha256 !== value.stateSnapshotSha256
-                || dep.kind === 'source' && dep.versionSha256 !== value.sourceSnapshotSha256
-                || dep.kind === 'settings' && (dep.versionSha256 !== value.settingsSha256 || dep.valueSha256 !== value.settingsSha256)) {
-                refuse('LORE_TEMPLATE_DEPENDENCY_MISMATCH');
-            }
-            if (dep.kind === 'message') {
-                const message = value.visibleMessages.find(item => object(item) && item.messageId === dep.identity);
-                if (!message || dep.versionSha256 !== message.versionSha256 || dep.valueSha256 !== message.textSha256) {
-                    refuse('LORE_TEMPLATE_DEPENDENCY_MISMATCH');
-                }
-            }
-        }
     }
     if (hasInjections) {
         if (!Array.isArray(value.injectionFeedback) || value.injectionFeedback.length > 33
@@ -233,37 +342,13 @@ export function validateTavernLoreSnapshotV1(input) {
         const seen = new Set();
         let bytes = 0;
         for (const row of value.injectionFeedback) {
-            exact(row, ['loop', 'state', 'stage', 'contributions', 'activationProposals', 'producerIdentity',
-                'producerImplementationSha256', 'feedbackSha256']);
-            const key = `${row.loop}:${row.stage}`;
-            if (!integer(row.loop) || row.loop > 2048 || typeof row.state !== 'string' || typeof row.stage !== 'string'
-                || !['initial', 'recursion', 'minimum-activations'].includes(row.state)
-                || !['before-initial', 'after-selected'].includes(row.stage) || seen.has(key)
-                || row.stage === 'before-initial' && (row.loop !== 0 || row.state !== 'initial')
-                || !text(row.producerIdentity) || !isSha(row.producerImplementationSha256)
-                || !Array.isArray(row.contributions) || row.contributions.length > 512
-                || !Array.isArray(row.activationProposals) || row.activationProposals.length > 4096)
+            bytes += validateTavernLoreInjectionFeedbackV1(row);
+            const feedback = row, key = `${feedback.loop}:${feedback.stage}`;
+            if (seen.has(key))
                 refuse('LORE_INJECTION_FEEDBACK_INVALID');
             seen.add(key);
-            const identities = new Set();
-            for (const contribution of row.contributions) {
-                exact(contribution, ['identity', 'text', 'textSha256']);
-                if (!text(contribution.identity) || identities.has(contribution.identity) || typeof contribution.text !== 'string'
-                    || !isSha(contribution.textSha256) || schemaTextSha256(contribution.text) !== contribution.textSha256)
-                    refuse('LORE_INJECTION_FEEDBACK_INVALID');
-                identities.add(contribution.identity);
-                bytes += Buffer.byteLength(contribution.text, 'utf8');
-                if (bytes > 2_000_000)
-                    refuse('LORE_INJECTED_SCAN_TEXT_LIMIT');
-            }
-            for (const proposal of row.activationProposals) {
-                exact(proposal, ['entryId', 'rawEntrySha256']);
-                if (!text(proposal.entryId) || !isSha(proposal.rawEntrySha256))
-                    refuse('LORE_INJECTION_FEEDBACK_INVALID');
-            }
-            const { feedbackSha256, ...body } = row;
-            if (!isSha(feedbackSha256) || recordSha256(body) !== feedbackSha256)
-                refuse('LORE_INJECTION_FEEDBACK_INVALID');
+            if (bytes > 2_000_000)
+                refuse('LORE_INJECTED_SCAN_TEXT_LIMIT');
         }
     }
     if (!text(value.seed, 4096) || schemaTextSha256(value.seed) !== value.seedSha256)
@@ -284,5 +369,7 @@ export function sealTavernLoreSnapshotV1(input) {
     const body = { ...basis, tokenizerSha256: recordSha256(input.tokenizer), renderedTextsSha256: recordSha256(input.renderedTexts),
         ...(input.activationFeedback ? { activationFeedbackSha256: recordSha256(input.activationFeedback) } : {}),
         ...(input.injectionFeedback ? { injectionFeedbackSha256: recordSha256(input.injectionFeedback) } : {}) };
-    return validateTavernLoreSnapshotV1({ ...body, snapshotSha256: recordSha256(body) });
+    // Typed owners have already captured history and validated new producer
+    // packets. Only the changed ledgers and the enclosing publication are sealed.
+    return freezeLoreData({ ...body, snapshotSha256: recordSha256(body) });
 }

@@ -258,7 +258,8 @@ def parse(argv):
         if command == 'export':
             p.add_argument('--kind', choices=['card-export', 'novel-export'], required=True)
             p.add_argument('--mode', choices=['original', 'organized'], default='original',
-                           help=('original (default): card JSON or current-worldline Markdown without model requests; '
+                           help=('original (default): current-worldline Markdown without model requests, or card JSON '
+                                 'which may require model classification; '
                                  'organized: explicitly reorganize content using a model'))
         if command == 'job-action':
             p.add_argument('--job-id', required=True)

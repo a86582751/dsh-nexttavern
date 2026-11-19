@@ -3,7 +3,7 @@ import type {ReaderRegexDocumentBindingV1,ReaderRegexDocumentRenderV1,
     from '../core/reader-regex-document-types.mjs';
 import type {AuthorReaderSurface} from '../core/tavern-author-reader-surface.js';
 import type {ReaderNativeImageV1,ReaderNativeDocumentPlanV1} from '../core/reader-native-document-types.js';
-import {createAuthorBrowserPendingStore,terminalBrowserReceipt} from './author-browser-pending.js';
+import {createAuthorBrowserPendingStore,openingVariantSettled,terminalBrowserReceipt} from './author-browser-pending.js';
 import type {ReaderOpeningVariantPendingV1,NumericalPendingV2,ReaderMessageBodyPendingV1} from './author-browser-pending.js';
 import type {AuthorMessageEditResultV1,ReaderMessageEditOriginV1} from '../core/roleplay-author-message-edit-types.js';
 import type {MvuPlayerEditResponse} from '../core/roleplay-mvu-player-types.js';
@@ -13,11 +13,18 @@ import {createReaderNativeDocumentFrameFactory,type ReaderNativeDocumentFrameCon
 import type {ReaderDisplayExecution} from '../core/roleplay-reader-display.js';
 import type {ReaderNativeLibraryV1,ReaderNativeFrameOptionsV1} from '../core/reader-native-document-types.js';
 import type {ReaderNativeFrameFactoryV1} from './reader-native-document-frame.js';
+import type {RoleplayExtensionFailureV1} from '../core/roleplay-extension-types.js';
 import {createAuthorBrowserOrdinaryPendingStore} from './author-browser-ordinary-pending.js';
 import type {ReaderOrdinaryNamespacePendingV2} from './author-browser-ordinary-pending.js';
 import {createAuthorNativeMessageVariables} from '../core/author-native-message-variables.js';
 import {prepareOrdinaryAuthorChatBatchV3} from '../core/roleplay-author-chat-state-types.js';
+import {authorSharedScopeCaptureV1} from '../core/roleplay-author-scope-owner.js';
+import type {AuthorOrdinaryNamespaceOperationV1} from '../core/roleplay-author-scope-owner.js';
 import {readerNativeNamespaceCauseV1,readerNativeSourceOriginV1} from '../core/author-native-origin.js';
+import {AUTHOR_NATIVE_EVENTS_V1} from '../core/author-native-origin.js';
+import {continuePreparedOpening,openingNavigationIntent} from './author-native-session-events.js';
+import type {StartPendingOpeningSource} from './pending-opening-source-host.js';
+import type {AuthorNativeNavigationIntent} from './author-native-session-events.js';
 
 export type ReaderRegexDocumentTransportV1=(request:ReaderRegexDocumentRequestV1,
     signal?:AbortSignal)=>Promise<ReaderRegexDocumentReplyV1>;
@@ -47,12 +54,15 @@ const sameBinding=(left:ReaderRegexDocumentBindingV1|undefined,right:ReaderRegex
 /** Core supplies the independent Reader principal. The parent persists each
  * original operation before dispatch and owns confirmation after realm loss. */
 export function createReaderRegexDocumentSession(options:{
+    commandUi?:import('../core/author-native-commands.js').AuthorNativeCommandUiV1;
     sessionId:string;
     container:HTMLElement;
     current():boolean;
     status(value:ReaderRegexDocumentStatusV1):void;
     fill(text:string):void;
-    navigate?(sessionId:string):Promise<unknown>|void;
+    navigate?(sessionId:string,intent?:AuthorNativeNavigationIntent):Promise<unknown>|void;
+    startPendingOpeningSource?:StartPendingOpeningSource;
+    adopted?(snapshot:ReaderDisplayExecution['snapshot']):void;
     requestRecapture?():void;
     surface?():AuthorReaderSurface;
     images?(owner:object,pageId:string,images:readonly ReaderNativeImageV1[]):void;
@@ -64,27 +74,40 @@ export function createReaderRegexDocumentSession(options:{
     /** Native frame test seam; the session retains pending/ACK ownership. */
     createFrame?:ReaderNativeFrameFactoryV1;
     nativeLibraries?:readonly ReaderNativeLibraryV1[];
+    reportExtensionFailure?(failure:RoleplayExtensionFailureV1):unknown;
+    eventRouter?:import('../core/author-native-helper-types.js').AuthorNativeSessionEventRoute;
 }) {
     const transport=options.transport??readerRegexDocumentTransportV1;
     const store=options.pendingStore??createAuthorBrowserPendingStore(options.container.ownerDocument.defaultView!.localStorage);
     const ordinaryStore=options.ordinaryStore??createAuthorBrowserOrdinaryPendingStore(options.container.ownerDocument.defaultView!.localStorage);
     let active=true,revision=0,identity='',updating=false,recovering=false,writing=false;
+    let sourceEventsEnabled=false,sourceEventsAbort:AbortController|undefined;
     let navigation:object|undefined;
     let frame:ReaderNativeDocumentFrameControllerV1|undefined,realm:object|undefined,retiredRealm:object|undefined;
     let binding:ReaderRegexDocumentBindingV1|undefined,pending:ReaderOpeningVariantPendingV1|undefined;
     let numerical:NumericalPendingV2|undefined;
     let messageBodies:readonly ReaderMessageBodyPendingV1[]=[];
     let ordinary:ReaderOrdinaryNamespacePendingV2[]=[];
-    let queued:{execution:ReaderDisplayExecution;render:ReaderRender}|undefined;
+    let queued:{execution:ReaderDisplayExecution;render:ReaderRender}|null|undefined;
     let recapture:((execution:ReaderDisplayExecution|undefined)=>void)|undefined;
     const current=()=>active&&options.current();
+    const diagnostics=new Map<string,()=>void>();
+    const clearDiagnostics=()=>{for(const release of diagnostics.values())release();diagnostics.clear();};
+    const reportExtensionFailure=(failure:RoleplayExtensionFailureV1)=>{
+        const key=failure.id+':'+failure.sourceRevision+':'+failure.code;
+        if(diagnostics.has(key))return;
+        const release=options.reportExtensionFailure?.(failure);
+        if(typeof release==='function')diagnostics.set(key,()=>{release();});
+    };
     const held=()=>pending&&pending.state!=='terminal'&&!pending.manualReleased
         ||numerical&&numerical.state!=='terminal'||messageBodies.some(row=>row.state!=='terminal')
         ||ordinary.some(row=>!row.manualReleased);
     const notifyPending=(code?:string)=>options.status({kind:'pending',pending,
         numerical:numerical?.state!=='terminal'?numerical:undefined,
         messageBodies,ordinary,busy:recovering||writing,...code?{code}:{}});
-    const notifyReady=()=>options.status({kind:'ready',messageBodies,ordinary});
+    let frameReady=false;
+    const notifyReady=()=>{options.status({kind:'ready',messageBodies,ordinary});
+        if(frameReady&&activeExecution)options.adopted?.(activeExecution.snapshot);};
     const notifyInactive=()=>options.status({kind:'inactive',messageBodies,ordinary});
     function recordOrdinary(envelope:ReaderOrdinaryNamespacePendingV2,acknowledged:boolean,code?:string):string|undefined {
         try {
@@ -134,14 +157,16 @@ export function createReaderRegexDocumentSession(options:{
             if(pending?.request.operationId===envelope.request.operationId)pending=recorded;
         }catch {
             if(pending?.request.operationId===envelope.request.operationId)
-                pending={...envelope,result,state:result.kind==='unknown'?'unknown':'terminal'};
+                pending={...envelope,result,state:openingVariantSettled(result)?'terminal':'unknown'};
             return 'READER_PENDING_STORE_FAILED';
         }
     }
     function navigateCommitted(owner:object|undefined,envelope:ReaderOpeningVariantPendingV1,
-        result:ReaderOpeningVariantResultV1):void {
-        if(result.kind!=='committed'||!result.navigation||!options.navigate)return;
-        const token={},sourceFrame=frame,sessionId=result.navigation.sessionId;
+        result:ReaderOpeningVariantResultV1,messages=activeExecution?.snapshot.messages??[]):void {
+        if(result.kind!=='committed'||!options.navigate)return;
+        const intent=openingNavigationIntent(result.operationId,result.changed,messages,envelope.request.rows,result.navigation?.swipe);
+        if(!result.navigation&&!intent.swipe)return;
+        const token={},sourceFrame=frame,sessionId=result.navigation?.sessionId??options.sessionId;
         navigation=token;
         // The Host reply must settle before Source can finish its callback.
         // Register this wait without awaiting it from the Host request itself.
@@ -161,8 +186,9 @@ export function createReaderRegexDocumentSession(options:{
                 if(owner&&retiredRealm===owner)await sourceFrame?.disposed;
                 if(!current()||!(realm===owner||owner&&retiredRealm===owner)||navigation!==token
                     ||pending?.request.operationId!==envelope.request.operationId
-                    ||pending.result?.kind!=='committed'||pending.result.navigation?.sessionId!==sessionId)return;
-                await options.navigate!(sessionId);
+                    ||pending.result?.kind!=='committed'
+                    ||(pending.result.navigation?.sessionId??options.sessionId)!==sessionId)return;
+                await options.navigate!(sessionId,intent);
             }catch(error) {
                 if(current()&&(realm===owner||owner&&retiredRealm===owner)&&navigation===token)
                     notifyPending(error instanceof Error?error.message:'READER_NAVIGATION_FAILED');
@@ -178,7 +204,41 @@ export function createReaderRegexDocumentSession(options:{
         if(queued?.execution.binding&&!sameBinding(binding,queued.execution.binding))release(queued.execution.binding);
         queued=undefined;
     }
+    function startSourceEvents():void {
+        if(!sourceEventsEnabled||sourceEventsAbort||!binding||!current())return;
+        const target=binding,abort=new AbortController();sourceEventsAbort=abort;
+        void(async()=>{
+            let sourceCursor:string|undefined,transportFailures=0,lifecycleDelivery=Promise.resolve();
+            while(current()&&sourceEventsEnabled&&sameBinding(binding,target)&&!abort.signal.aborted){
+                let reply:ReaderRegexDocumentReplyV1;
+                try{reply=await transport({action:'wait-source-events',binding:target,sourceCursor},abort.signal);}
+                catch(error){if(error instanceof TypeError&&!abort.signal.aborted&&transportFailures++===0)continue;throw error;}
+                transportFailures=0;
+                if(!reply.ok||reply.kind!=='source-events')throw Error('READER_SOURCE_EVENTS_UNAVAILABLE');
+                if(reply.packet.token===sourceCursor)continue;
+                sourceCursor=reply.packet.token;
+                const packet=reply.packet;
+                // Re-enter the read-only wait before an author callback can
+                // await a new Story. Event delivery never owns a writer slot.
+                queueMicrotask(()=>{lifecycleDelivery=lifecycleDelivery.then(async()=>{
+                    await frame?.started;
+                    if(!current()||abort.signal.aborted)return;
+                    for(const event of packet.events)await options.eventRouter?.emit(event.type,event.args);
+                }).catch(error=>{if(current()&&!abort.signal.aborted)options.status({kind:'ready',code:String(error)});});});
+            }
+        })().catch(error=>{
+            if(!current()||abort.signal.aborted)return;
+            const code=error instanceof Error?error.message:String(error);
+            if(code==='READER_BINDING_REVOKED') {
+                revoke();
+                options.status({kind:'inactive',code});
+                options.requestRecapture?.();
+            }else options.status({kind:'ready',code});
+        }).finally(()=>{if(sourceEventsAbort===abort)sourceEventsAbort=undefined;});
+    }
     function revoke(committedOwner?:object):void {
+        frameReady=false;
+        sourceEventsAbort?.abort();sourceEventsAbort=undefined;
         retiredRealm=committedOwner;
         frame?.dispose();frame=undefined;
         if(realm)options.releaseImages?.(realm);
@@ -199,10 +259,15 @@ export function createReaderRegexDocumentSession(options:{
                 const plan=activeExecution.program.documents.find(row=>row.documentPlanSha256===documentPlanSha256);
                 if(!plan||plan.writes!=='source-regex'||plan.origin.encoding!=='reader-regex-document-origin-v1')
                     throw Error('READER_NAMESPACE_WRITE_UNAVAILABLE');
-                const capture=request.selector?createAuthorNativeMessageVariables(snapshot).resolve(request.selector,true).capture!
+                const shared=request.selector&&request.selector.type!=='message'
+                    ?authorSharedScopeCaptureV1(snapshot.sharedScopes,request.selector):undefined;
+                const capture=request.selector?.type==='message'?createAuthorNativeMessageVariables(snapshot).resolve(request.selector,true).capture!
                     :snapshot.ordinaryChat;
-                const envelope=ordinaryStore.beginReader(target,prepareOrdinaryAuthorChatBatchV3(capture.root,request.nextVariables,
-                    request.operationId,readerNativeNamespaceCauseV1(plan.origin)));
+                const cause=readerNativeNamespaceCauseV1(plan.origin),
+                    operation:AuthorOrdinaryNamespaceOperationV1=shared?{kind:'shared-scope',sourceNamespace:snapshot.ordinaryChat.root.namespace,
+                        expectedRoot:shared.root,operationId:request.operationId,values:request.nextVariables,cause}
+                        :prepareOrdinaryAuthorChatBatchV3(capture.root,request.nextVariables,request.operationId,cause,capture.scopeRef),
+                    envelope=ordinaryStore.beginReader(target,operation);
                 ordinary=ordinaryStore.readReader(options.sessionId);writing=true;notifyPending();
                 try {
                     const reply=await transport({action:'mutate-reader-namespace',binding:target,documentPlanSha256,request},signal);
@@ -239,6 +304,26 @@ export function createReaderRegexDocumentSession(options:{
                 }
             },
             closeBinding:async value=>{await transport({action:'release-reader-binding',binding:value});},
+            async mvuTrial(value,documentPlanSha256,request,signal) {
+                if(request.action!=='close'&&(!current()||realm!==owner||!sameBinding(binding,value)))
+                    throw Error('READER_BINDING_REVOKED');
+                const reply=await transport({action:'reader-mvu-trial',binding:value,documentPlanSha256,request},
+                    request.action==='close'?undefined:signal);
+                if(!reply.ok||reply.kind!=='reader-mvu-trial')throw Error('AUTHOR_NATIVE_MVU_TRIAL_UNAVAILABLE');
+                return reply.result;
+            },
+            async generation(value,documentPlanSha256,request,signal) {
+                if(!current()||realm!==owner||!sameBinding(binding,value))throw Error('READER_BINDING_REVOKED');
+                const reply=await transport({action:'reader-generation',binding:target,documentPlanSha256,request},signal);
+                if(!reply.ok||reply.kind!=='reader-generation')throw Error('AUTHOR_GENERATION_UNAVAILABLE');
+                return reply.result;
+            },
+            async readWorldbook(value,documentPlanSha256,request,signal) {
+                if(!current()||realm!==owner||!sameBinding(binding,value))throw Error('READER_BINDING_REVOKED');
+                const reply=await transport({action:'read-reader-worldbook',binding:target,documentPlanSha256,request},signal);
+                if(!reply.ok||reply.kind!=='reader-worldbook-read')throw Error('AUTHOR_WORLDBOOK_READ_UNAVAILABLE');
+                return reply.book;
+            },
             async executeCommands(value,documentPlanSha256,request,signal) {
                 if(!current()||realm!==owner||!sameBinding(binding,value))throw Error('READER_BINDING_REVOKED');
                 const reply=await transport({action:'execute-reader-commands',binding:target,documentPlanSha256,request},signal);
@@ -274,6 +359,7 @@ export function createReaderRegexDocumentSession(options:{
                 return reply;
             },
             async mutateOpeningVariants(value,documentPlanSha256,request,signal) {
+                const navigationMessages=activeExecution?.snapshot.messages??[];
                 if(!current()||realm!==owner||!sameBinding(binding,value))throw Error('READER_BINDING_REVOKED');
                 const envelope=store.beginReader(target,documentPlanSha256,request);
                 pending=envelope;writing=true;notifyPending();
@@ -283,6 +369,12 @@ export function createReaderRegexDocumentSession(options:{
                         documentPlanSha256,request:envelope.request},signal);
                     if(!result.ok||result.kind!=='opening-variants-mutated')throw Error('READER_WRITE_ACK_UNKNOWN');
                     reply=result;
+                    if(result.result.kind==='prepared'){
+                        const warning=recordResult(envelope,result.result);
+                        if(warning)throw Error(warning);
+                        reply={...result,result:await continuePreparedOpening(options.sessionId,result.result,
+                            options.startPendingOpeningSource,transport,signal)};
+                    }
                 }catch(error) {
                     writing=false;
                     const code=error instanceof Error?error.message:'READER_WRITE_ACK_UNKNOWN';
@@ -306,7 +398,7 @@ export function createReaderRegexDocumentSession(options:{
                     if(storageCode)notifyPending(storageCode);
                     else notifyReady();
                 }
-                navigateCommitted(owner,envelope,reply.result);
+                navigateCommitted(owner,envelope,reply.result,navigationMessages);
                 return {result:reply.result,...reply.snapshot?{snapshot:reply.snapshot}:{}};
             },
         };
@@ -318,14 +410,29 @@ export function createReaderRegexDocumentSession(options:{
         const key=execution.program.programSha256+':'+execution.backend
             +':'+(execution.binding?.browserSessionId??'readonly')+':'+(execution.binding?.generation??'');
         if(key!==identity||!frame) {
-            revoke();identity=key;
+            clearDiagnostics();revoke();identity=key;
             const owner={};realm=owner;binding=execution.binding;activeExecution=execution;
+            startSourceEvents();
             const surface=options.surface?.(),outer=surface?.outer??options.container.ownerDocument.createElement('iframe');
             if(!surface){outer.className='rp-author-guard-frame';outer.title='作者正则阅读文档';options.container.append(outer);}
             const target=execution.binding??{sessionId:options.sessionId,browserSessionId:crypto.randomUUID(),
                 generation:execution.snapshot.generation,programSha256:execution.program.programSha256};
             options.status({kind:'starting'});
             const frameOptions:ReaderNativeFrameOptionsV1={
+                ...options.reportExtensionFailure?{reportExtensionFailure}:{},
+                presetLibrary:execution.presetLibrary,characterLibrary:execution.characterLibrary,
+                eventRoute:options.eventRouter,
+                rendered:plan=>{
+                    if(!current()||realm!==owner)return;
+                    const message=activeExecution?.snapshot.messages.find(row=>row.messageId===plan.origin.message.messageId
+                        &&row.nativeSeq===plan.origin.message.seq);
+                    if(!message)return;
+                    const event=message.role==='user'?AUTHOR_NATIVE_EVENTS_V1.USER_MESSAGE_RENDERED
+                        :AUTHOR_NATIVE_EVENTS_V1.CHARACTER_MESSAGE_RENDERED;
+                    void options.eventRouter?.emit(event,[message.index]).catch(error=>{
+                        if(current()&&realm===owner)options.status({kind:'ready',code:String(error)});
+                    });
+                },
                 surface,...execution.binding?{host:host(owner,execution.binding)}:{},
                 current:()=>current()&&realm===owner,
                 mountStaticDocument:(container,html,layout)=>mountStaticAuthorDocument(container,html,{
@@ -340,37 +447,41 @@ export function createReaderRegexDocumentSession(options:{
                 onImages:(pageId,values)=>{if(current()&&realm===owner)options.images?.(owner,pageId,values);},
             };
             const factory=options.createFrame??createReaderNativeDocumentFrameFactory(execution.program.documents,
-                options.nativeLibraries,{parentOrigins:execution.parentOrigins});
+                options.nativeLibraries,{parentOrigins:execution.parentOrigins,commandUi:options.commandUi,
+                  scene:execution.authorScene?surface?.authorScene(execution.authorScene):undefined});
             const controller=factory(outer,target,execution.program,frameOptions);
             frame=controller;
             void controller.started.then(()=>{
-                if(current()&&realm===owner){if(held())notifyPending();else notifyReady();}
+                if(current()&&realm===owner){frameReady=true;if(held())notifyPending();else notifyReady();startSourceEvents();}
             }).catch(()=>{});
         }
         activeExecution=execution;
+        if(execution.presetLibrary)frame.publishPresetLibrary?.(execution.presetLibrary);
+        if(execution.characterLibrary)frame.publishCharacterLibrary?.(execution.characterLibrary);
         frame.render({...render,css:scopeReaderCss(render.css),renderRevision:++revision});
         frame.publishSnapshot(execution.snapshot);
+        if(frameReady)notifyReady();
     }
     async function drainUpdates():Promise<void> {
         if(updating)return;
         updating=true;
         try {
-            while(queued&&current()) {
+            while(queued!==undefined&&current()) {
+                // A display refresh can lose its projection while a Source write is
+                // admitted. Keep its realm until the guest observes the receipt.
+                const visible=frame;
+                if(visible&&await visible.waitForReceiptObservation()==='unavailable'&&current()&&frame===visible) {
+                    options.status({kind:'failed',code:'READER_NATIVE_RECEIPT_UNOBSERVED'});
+                    return;
+                }
+                if(navigation||!current()||queued===undefined)break;
                 if(held()) {
-                    if(!writing&&frame) {await frame.waitForReceiptObservation();if(current())revoke();}
+                    if(!writing&&frame)revoke();
                     notifyPending();break;
                 }
-                // Only an admitted Source callback pins the old scene. Actor
-                // Promise settlements and Host completions remain runnable.
-                if(frame) {
-                    if(await frame.waitForReceiptObservation()==='unavailable') {
-                        if(current())options.status({kind:'failed',code:'READER_NATIVE_RECEIPT_UNOBSERVED'});
-                        return;
-                    }
-                }
-                if(navigation)break;
-                if(!current()||!queued)break;
-                const next=queued;queued=undefined;apply(next.execution,next.render);
+                const next=queued;queued=undefined;
+                if(next)apply(next.execution,next.render);
+                else {revoke();notifyInactive();}
             }
         }finally {updating=false;}
     }
@@ -383,9 +494,15 @@ export function createReaderRegexDocumentSession(options:{
         try {
             const reply=await transport({action,sessionId:options.sessionId,operationId:envelope.request.operationId});
             if(!reply.ok||reply.kind!=='opening-variants-confirmed')throw Error('READER_WRITE_ACK_UNKNOWN');
-            code=recordResult(envelope,reply.result)??(reply.result.kind==='unknown'?reply.result.code:undefined);
-            navigateCommitted(owner,envelope,reply.result);
-            return pending?.request.operationId===envelope.request.operationId&&reply.result.kind!=='unknown';
+            let result=reply.result;
+            if(result.kind==='prepared') {
+                const warning=recordResult(envelope,result);
+                if(warning)throw Error(warning);
+                result=await continuePreparedOpening(options.sessionId,result,options.startPendingOpeningSource,transport);
+            }
+            code=recordResult(envelope,result)??(result.kind==='unknown'?result.code:undefined);
+            navigateCommitted(owner,envelope,result);
+            return pending?.request.operationId===envelope.request.operationId&&openingVariantSettled(result);
         }catch(error) {
             code=error instanceof Error?error.message:'READER_WRITE_ACK_UNKNOWN';
             return false;
@@ -501,8 +618,19 @@ export function createReaderRegexDocumentSession(options:{
     });
     return {
         hasFrame:()=>!!frame,
-        invalidate():void {if(active){recapture?.(undefined);recapture=undefined;releaseQueued();revoke();
-            if(held())notifyPending();else notifyInactive();}},
+        setSourceEventsEnabled(enabled:boolean):void {
+            sourceEventsEnabled=enabled;
+            if(enabled)startSourceEvents();else{sourceEventsAbort?.abort();sourceEventsAbort=undefined;}
+        },
+        invalidate():void {
+            if(!active)return;
+            clearDiagnostics();recapture?.(undefined);recapture=undefined;releaseQueued();
+            if(frame&&(writing||navigation)) {
+                queued=null;void drainUpdates();return;
+            }
+            revoke();
+            if(held())notifyPending();else notifyInactive();
+        },
         update(execution:ReaderDisplayExecution,render:ReaderRender):void {
             if(!current())return;
             if(queued?.execution.binding&&(!execution.binding||!sameBinding(execution.binding,queued.execution.binding))
@@ -528,6 +656,6 @@ export function createReaderRegexDocumentSession(options:{
             store.releaseReader(pending);pending={...pending,manualReleased:true};releaseQueued();revoke();
             if(current())notifyInactive();
         },
-        dispose():void {if(!active)return;active=false;recapture?.(undefined);recapture=undefined;releaseQueued();revoke();},
+        dispose():void {if(!active)return;active=false;clearDiagnostics();recapture?.(undefined);recapture=undefined;releaseQueued();revoke();},
     };
 }

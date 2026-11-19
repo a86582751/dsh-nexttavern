@@ -11,6 +11,7 @@ export const MVU_YAML_BOUNDS = Object.freeze({
 export type MvuYamlDataResult =
   | {kind:'parsed'; data:MvuJsonObject; parserPolicy:'yaml-1.2-json-data-v1'}
   | {kind:'rejected'; code:string; pointer?:string}
+export type MvuYamlMode='strict'|'legacy-mvu-opening'|'legacy-mvu-book'
 class YamlRefusal extends Error {
   constructor(readonly code:string, readonly pointer?:string) {super(code)}
 }
@@ -184,7 +185,7 @@ function jsonData(root:unknown):MvuJsonObject {
 
 /** Synchronous, size-bounded library parsing; not a wall-clock interruption
  * boundary. A future hostile-code runner must supply its own hard deadline. */
-export function parseMvuYamlData(text:string):MvuYamlDataResult {
+export function parseMvuYamlData(text:string,mode:MvuYamlMode='strict'):MvuYamlDataResult {
   try {
     if(typeof text!=='string')refuse('YAML_INPUT_TYPE')
     if(Buffer.byteLength(text,'utf8')>MVU_YAML_BOUNDS.inputBytes)refuse('YAML_INPUT_BYTE_LIMIT')
@@ -195,7 +196,31 @@ export function parseMvuYamlData(text:string):MvuYamlDataResult {
     const documents=[...composer.compose(syntax(text),true,text.length)]
     if(documents.length!==1)refuse('YAML_MULTIPLE_DOCUMENTS')
     const document=documents[0]!
-    if(document.errors.length||document.warnings.length)refuse('YAML_SYNTAX_INVALID')
+    if(mode==='legacy-mvu-book'&&!document.warnings.length&&document.errors.length){
+      // A bare `key:{}` or `key:[]` is recovered upstream as a null key with
+      // the collection in its spelling. Separate the key and collection only
+      // at the parser's missing-separator span, then use the strict parser.
+      const positions=new Set<number>()
+      for(const error of document.errors){
+        if(error.code!=='MISSING_CHAR'&&error.code!=='MULTILINE_IMPLICIT_KEY')
+          refuse('YAML_SYNTAX_INVALID')
+        const broken=text.slice(...error.pos)
+        let found=false
+        for(const match of broken.matchAll(/^[^:\r\n\[\]{}'"#]+:(?:\{\}|\[\])(?=[ \t]*\r?$)/gm)){
+          positions.add(error.pos[0]+match.index+match[0].length-2);found=true
+        }
+        if(!found)refuse('YAML_SYNTAX_INVALID')
+      }
+      const parts:string[]=[]
+      let start=0
+      for(const position of [...positions].sort((a,b)=>a-b)){parts.push(text.slice(start,position),' ');start=position}
+      parts.push(text.slice(start))
+      return parseMvuYamlData(parts.join(''))
+    }
+    // Pinned MVU consumes the composed document for an inline InitVar block.
+    // Reuse the recovered key while keeping the bounded JSON projection.
+    if(document.warnings.length||document.errors.some(error=>
+      mode!=='legacy-mvu-opening'||error.code!=='MULTILINE_IMPLICIT_KEY'))refuse('YAML_SYNTAX_INVALID')
     if(document.directives.yaml.version!=='1.2')refuse('YAML_VERSION_UNSUPPORTED')
     return {kind:'parsed',data:jsonData(document.contents),parserPolicy:'yaml-1.2-json-data-v1'}
   } catch(error) {

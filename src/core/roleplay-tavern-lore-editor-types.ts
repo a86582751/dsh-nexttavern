@@ -1,12 +1,12 @@
 import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
-import type {createRoleplayTavernLoreEditsV1} from './roleplay-tavern-lore-edits.js'
-import type {TavernLoreEditReceiptV1,TavernLoreEditRefusalV1,TavernLoreEditRequestV1,
-  TavernLoreMutationRequestV2,TavernLoreMutationReceiptV2,TavernLoreEditEditorEntryV1}
-  from './roleplay-tavern-lore-edits-types.js'
-import type {TavernLoreSemanticEntryV1} from './tavern-lore-plan-types.mjs'
+import type {createRoleplayAuthorWorldbookEditorV1} from './roleplay-author-worldbook-editor.js'
+import type {TavernLoreSemanticEntryV1,TavernLoreCurrentNativeMemberReferenceV1} from './tavern-lore-plan-types.mjs'
+import type {AuthorWorldbookRefV1,AuthorWorldbookReceiptV1} from './roleplay-author-worldbook-types.js'
+import type {TavernLoreMemberIdentityV1} from './roleplay-tavern-lore-membership.js'
+import type {TavernLoreCurrentNativeFieldsV1} from './tavern-lore-plan-types.mjs'
 
-/** Browser data excludes raw Source/archive and content references. Current
- * member identity is inert writer DATA, including an introduced event anchor. */
+/** Catalog refs and member identities describe the editor's frozen read cut.
+ * Introduced members retain their actual event anchor. */
 export interface TavernLoreEditorFieldSourceV1 {
   readonly field:string
   readonly pointer:string
@@ -24,28 +24,50 @@ export interface TavernLoreEditorEntryV1 {
   readonly contentText:string
   readonly fieldSources:readonly TavernLoreEditorFieldSourceV1[]
   readonly diagnosticCodes:readonly string[]
-  readonly currentNativeMember?:TavernLoreEditEditorEntryV1['currentNativeMember']
+  readonly currentNativeMember?:TavernLoreCurrentNativeMemberReferenceV1
 }
-export type TavernLoreEditorFieldsMutationV2=Omit<TavernLoreMutationRequestV2,'mutation'>&{
-  readonly mutation:Extract<TavernLoreMutationRequestV2['mutation'],{kind:'fields'}>}
-export type TavernLoreEditorRequestV1=TavernLoreEditRequestV1|TavernLoreEditorFieldsMutationV2
-export type TavernLoreEditorReceiptV1=TavernLoreEditReceiptV1|TavernLoreMutationReceiptV2
+export interface TavernLoreEditorRequestV1 {
+  readonly schemaVersion:3
+  readonly encoding:'author-worldbook-editor-request-v3'
+  readonly sessionId:string
+  readonly expectedSourceSha256:string
+  readonly bookId:string
+  readonly expectedContent:AuthorWorldbookRefV1
+  readonly expectedMetadata:AuthorWorldbookRefV1
+  readonly operationId:string
+  readonly mutation:{readonly kind:'fields';readonly target:TavernLoreMemberIdentityV1;
+    readonly fields:TavernLoreCurrentNativeFieldsV1}
+}
+export interface TavernLoreEditorReceiptV1 {
+  readonly requestSha256:string
+  readonly publication:AuthorWorldbookReceiptV1
+}
 export interface TavernLoreEditorDataV1 {
   readonly authority:'consumer-data-only'
   readonly sessionId:string
   readonly sourceSha256:string
   readonly dataSha256:string
   readonly revision:number
+  readonly bookId:string|null
+  readonly contentRef:AuthorWorldbookRefV1|null
+  readonly metadataRef:AuthorWorldbookRefV1|null
   readonly entries:readonly TavernLoreEditorEntryV1[]
 }
-export type TavernLoreEditorCodeV1=TavernLoreEditRefusalV1['diagnostics'][number]['code']
-  |'LORE_EDITOR_SESSION_UNAVAILABLE'|'LORE_EDITOR_SCOPE_CHANGED'|'LORE_EDITOR_BODY_INVALID'
-  |'LORE_EDITOR_BODY_LIMIT'|'LORE_EDITOR_WRITE_UNKNOWN'|'LORE_EDITOR_READ_UNAVAILABLE'
+export type TavernLoreEditorCodeV1=string
+export interface TavernLoreEditorRefusalV1 {
+  readonly schemaVersion:1
+  readonly kind:'refused'
+  readonly authority:'none'
+  readonly receipt?:TavernLoreEditorReceiptV1
+  readonly outcome?:'no-write'|'unknown'
+  readonly diagnostics:readonly {readonly code:string;
+    readonly recovery?:{operationId:string}}[]
+}
 export interface TavernLoreEditorFailureDetailsV1 {
   readonly phase:'before-store'|'after-store'
   /** no-write describes only this API attempt, not an earlier unknown attempt. */
   readonly outcome:'no-write'|'refused'|'unknown'|'edited-unconfirmed'
-  readonly refusal?:TavernLoreEditRefusalV1
+  readonly refusal?:TavernLoreEditorRefusalV1
   readonly receipt?:TavernLoreEditorReceiptV1
 }
 export type TavernLoreEditorReplyV1={readonly schemaVersion:1;readonly ok:true;
@@ -63,5 +85,5 @@ export interface TavernLoreEditorRouteDependenciesV1 {
     connection:{fetch:{register(route:ConnectionFetchRoute):unknown}}}
   readonly resolveSessionScope:(sessionId:string)=>TavernLoreEditorSessionScopeV1|null|undefined
     |PromiseLike<TavernLoreEditorSessionScopeV1|null|undefined>
-  readonly store:Pick<ReturnType<typeof createRoleplayTavernLoreEditsV1>,'observe'|'edit'|'mutate'>
+  readonly store:Pick<ReturnType<typeof createRoleplayAuthorWorldbookEditorV1>,'observe'|'edit'>
 }

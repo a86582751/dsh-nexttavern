@@ -1,7 +1,18 @@
 // Generated from runtime/alpha3/src/core/roleplay-core.ts; edit the TypeScript source.
+import { createRoleplayTextOnlyContinuationV1, registerRoleplayTextOnlyContinuation } from './roleplay-text-only-continuation.js';
+import { projectTextOnlyContinuationSourceV1 } from './roleplay-text-only-source.js';
 import { readProjectedStory, projectStoryEvent } from './roleplay-message-view.js';
 import { createRoleplayStoryTextReader } from './roleplay-story-text.js';
-import { readTavernSelectedMessageFactsV1 } from './roleplay-tavern-chat-clock.js';
+import { readTavernSelectedMessageFactsV1, readTavernCanonicalChatChangesV1, readTavernCanonicalChatAtCutV1 } from './roleplay-tavern-chat-clock.js';
+import { createAuthorNativeLifecyclePublisher } from './author-native-lifecycle.js';
+import { AUTHOR_NATIVE_EVENTS_V1 } from './author-native-origin.js';
+import { buildSchemaScopeReadFrame, schemaScopeSource } from './roleplay-mvu-schema-scope-facts.js';
+import { createAuthorNativeMessageVariables } from './author-native-message-variables.js';
+import { createRoleplayAuthorMvuTrialsV1 } from './roleplay-author-mvu-trial.js';
+import { projectRoleplayMvuMacroSnapshotV1 } from './roleplay-mvu-macros.js';
+import { hasTavernPromptMacroSyntaxV1 } from './tavern-prompt-transform-execution.mjs';
+import { applyTavernPromptTransformsV1 } from './tavern-prompt-transform.mjs';
+import { projectCapturedNamedTavernWorldbookV1 } from './tavern-source-render-catalog.mjs';
 import { createOpeningVariantActivation, createOpeningVariantContinuationReader, createOpeningVariantDataReader, openingVariantForkOperationId } from './roleplay-opening-variant-activation.js';
 import { verifyProgrammaticCardCopySpanV1 } from './roleplay-program-copy-span.js';
 import { applyAuthorChatOverlayV3 } from './roleplay-author-chat-state-types.js';
@@ -22,6 +33,7 @@ import { registerSideChat, pageSideMaterial } from './roleplay-side-chat.js';
 import { mvuPlayerEditExpectedV1 } from './roleplay-mvu-player-expected.js';
 import { publishSideChatBridge } from './roleplay-side-chat-bridge.js';
 import { createCommunityPresets } from './community-presets.js';
+import { normalizeCommunityRegexes, communityTavernRegexDto, communityRegexesFromTavernDto, communityTavernRegexRawV1 } from './community-preset-import.js';
 import { createCommunityPresetVariables } from './community-preset-variables.js';
 import { createCommunityPresetSettlement } from './community-preset-settlement.js';
 import { communityRegexMacros, communityRegexRules } from './community-regex.js';
@@ -29,15 +41,16 @@ import { createRoleplayUserSourceOperationV1, createRoleplaySourceMessageProcess
 import { executeAuthorNativeCommands } from './roleplay-author-commands.js';
 import { createRoleplayRubyCommandsV1 } from './roleplay-ruby-commands.js';
 import { registerCommunityPresetRoutes } from './community-preset-routes.js';
-import { captureRoleplayTavernPromptSourceDataV1 } from './roleplay-tavern-prompt-source.js';
+import { captureRoleplayTavernPromptSourceDataV1, projectCapturedTavernCharacterDataV1 } from './roleplay-tavern-prompt-source.js';
 import { promptProgramSourceOrdinaryNamespaceV3 } from './roleplay-prompt-program-source.js';
 import { createRoleplayTavernEjsPrograms } from './roleplay-tavern-ejs-programs.js';
 import { captureCommittedTavernInjectionRegistryV1 } from './roleplay-tavern-injections.js';
+import { createRoleplayAuthorGenerationEffectsV1 } from './roleplay-author-generation-effects.js';
 import { captureRoleplayTavernMaterialHistoryV1 } from './roleplay-tavern-material-history.js';
 import { captureNativeTavernInjectionDefinitionV1, captureRoleplayTavernInjectionDefinitionsV1 } from './roleplay-tavern-injection-definitions.js';
 import { produceCommunityPresetCardMaterialV1, produceCommunityNativeCardMaterialV1 } from './community-preset-card-material.js';
 import { produceAuthorContributionDataV1 } from './roleplay-author-contributions.js';
-import { captureRoleplayTavernScopedRegexV1 } from './roleplay-tavern-prompt-macros.js';
+import { captureRoleplayTavernScopedRegexV1, produceRoleplayTavernMacroSnapshotV1 } from './roleplay-tavern-prompt-macros.js';
 import { selectedMainRoute } from './tavern-model-policy.js';
 import { decodeTavernCard } from './tavern-card.js';
 import { readTavernCardMacroFields } from './nexttavern-card.js';
@@ -63,7 +76,7 @@ export { createStableRoleplayFence, readRoleplayActivity, retireRoleplayContexts
 //     branchLineage(session)         -> 分支血缘（父链 + seedLength）
 import { resolve } from 'node:path';
 import { registerRoleplayImports, importActiveKey, activeOpeningSource } from './roleplay-import.js';
-import { importOriginalSourceKind } from './roleplay-import-record.js';
+import { importOriginalSourceKind, textImportFormat } from './roleplay-import-record.js';
 import { readNativeCardOpeningExportV1 } from './roleplay-card-export-opening.js';
 import { provenImportPreludeAssistants } from './tavern-task-retirement.js';
 import { internalTaskSeqs } from './tavern-tasks.js';
@@ -83,10 +96,13 @@ import { createCardAttachmentSources } from './roleplay-card-attachment.js';
 import { createChatCardSources } from './roleplay-chat-card-source.js';
 import { createChatCardNativeContext } from './roleplay-chat-card-context.js';
 import { createRoleplayOpeningSelection, openingIntentKey } from './roleplay-opening-selection.js';
+import { schemaOpeningNativeAnchor } from './roleplay-mvu-schema-opening-types.js';
+import { openingVariantId } from './roleplay-opening-variants.js';
 import { createRoleplayMvuOpening } from './roleplay-mvu-opening.js';
 import { createRoleplayMvuSchemaMaintenance } from './roleplay-mvu-schema-maintenance.js';
 import { createRoleplayMvuState } from './roleplay-mvu-state.js';
-import { acceptedMvuDisplayUpdate, formatMvuDisplayUpdates } from './roleplay-mvu-display-facts.js';
+import { acceptedMvuDisplayUpdate, formatMvuDisplayUpdates, indexMvuDisplayUpdates, matchMvuDisplayUpdate } from './roleplay-mvu-display-facts.js';
+import { createReaderMvuDisplayScope, projectReaderNarrativeDisplay } from './roleplay-reader-narrative-display.js';
 import { createRoleplayMvuPlayer } from './roleplay-mvu-player.js';
 import { registerMvuPlayerRoutes } from './roleplay-mvu-player-routes.js';
 import { createRoleplayAuthorBrowser } from './roleplay-author-browser.js';
@@ -94,9 +110,11 @@ import { createRoleplayReaderDisplay, capturePlainReaderDocumentFacts } from './
 import { createReaderNativeOriginService } from './roleplay-reader-native-origin.js';
 import { READER_NATIVE_PARENT_SHELL_HTML } from './reader-native-parent-realm.js';
 import { createRoleplayAuthorWorldbookCoreV1 } from './roleplay-author-worldbook-core.js';
+import { createRoleplayAuthorWorldbookEditorV1, parseAuthorWorldbookEditorRequestV1 } from './roleplay-author-worldbook-editor.js';
 import { createCanonicalAuthorChatStateV1 } from './roleplay-author-chat-state.js';
 import { createRoleplayAuthorChatNativeRoots } from './roleplay-author-chat-native-roots.js';
 import { createRoleplayAuthorBrowserKeyCoreV3 } from './roleplay-author-browser-key-core-v3.js';
+import { createRoleplayAuthorScriptButtonsCoreV1, captureAuthorNativeScriptButtons } from './roleplay-author-script-buttons-core.js';
 import { captureAuthorMessageViewV1 } from './roleplay-author-message-capture.js';
 import { createRoleplayAuthorBrowserDialogCoreV1 } from './roleplay-author-browser-dialog-core.js';
 import { createRoleplayAuthorDialogContentV1 } from './roleplay-author-dialog-content.js';
@@ -115,6 +133,14 @@ import { createRoleplayInputStateOwner } from './roleplay-input-state.js';
 import { onUserInfoChanged, readNativePersonas, captureNativePersonasV1, mutateNativePersona, retryNativePersona } from './roleplay-userinfo.js';
 import { createRoleplayTavernLoreSourceV1 } from './roleplay-tavern-lore-source.js';
 import { createRoleplayTavernLoreEditsV1 } from './roleplay-tavern-lore-edits.js';
+import { ensureAuthorProfileIdentityV1, readAuthorProfileIdentityV1 } from './roleplay-author-profile.js';
+import { createRoleplayAuthorPersistentScopesV1 } from './roleplay-author-persistent-scopes.js';
+import { createRoleplayAuthorWorldbookCatalogV1 } from './roleplay-author-worldbook-catalog.js';
+import { createRoleplayAuthorWorldbookBindingsV1 } from './roleplay-author-worldbook-bindings.js';
+import { createRoleplayAuthorContextV1 } from './roleplay-author-source-context.js';
+import { sameAuthorWorldbookRefV1 } from './roleplay-author-worldbook-journal.js';
+import { createRoleplayAuthorCharacterLibraryV1 } from './roleplay-author-character-library.js';
+import { createRoleplayAuthorScopeOwnerV1, authorOrdinarySourceNamespaceV1 } from './roleplay-author-scope-owner.js';
 import { captureRoleplayTavernLoreExportDataV1 } from './roleplay-tavern-lore-export.js';
 import { readJournalData as readTavernLoreEditJournalV1 } from './roleplay-tavern-lore-edits-journal.js';
 import { createRoleplayTavernSourceInheritanceV1 } from './roleplay-tavern-source-inheritance.js';
@@ -131,12 +157,12 @@ import { createRoleplayProgramAbsenceBranchControlsV1 } from './roleplay-program
 import { createRoleplayProgramAbsenceMutableControlsV1 } from './roleplay-program-absence-mutable-controls.js';
 import { createRoleplayProgramInheritedAbsenceReaderV1, programInheritedAbsenceDomainSha256V1 } from './roleplay-program-inherited-absence.js';
 import { tavernSourceProgramAbsenceOpeningKeyV1, tavernSourcePreparedKeyV1 } from './roleplay-tavern-source-inheritance-data.js';
-import { createProgramOpeningAtCutReaderV1 } from './roleplay-program-opening-history.js';
 import { programOpeningDomainKeyV1, programOpeningInputKeyV1, programOpeningSeedKeyV1, programOpeningRefV1, programOpeningRecordDataV1 } from './roleplay-program-opening-records.js';
 import { captureRoleplayTavernLegacyReadDataV1, classifyRoleplayTavernLegacyWriteTargetV1, classifyRoleplayTavernLegacyWriteTargetsV1 } from './roleplay-tavern-legacy-reading.js';
 import { registerTavernLoreEditorRoutesV1 } from './roleplay-tavern-lore-editor-routes.js';
+import { registerWorldbookLibraryRoutesV1 } from './roleplay-worldbook-library.js';
 import { createRoleplayImportInputTransition } from './roleplay-input-import.js';
-import { nativeInputCanonical, nativeInputSha256, readNativeRequestMeasurementV1 } from 'dsh-nexttavern-native-agent-loop';
+import { nativeInputCanonical, nativeInputSha256, readNativeRequestMeasurementV1, inspectProgrammaticCommit } from 'dsh-nexttavern-native-agent-loop';
 import { readInputCompletion } from './roleplay-input-completion.js';
 import { registerOpeningRoutes } from './roleplay-opening-routes.js';
 import { createRoleplayService } from './roleplay-service.js';
@@ -153,7 +179,6 @@ import { registerSessionTools, registerSessionCommands } from './roleplay-sessio
 import { simpleTool, registerTaskTools, createTaskSubmissionBindings } from './roleplay-task-tools.js';
 import { createRoleplayState, captureRoleplaySourceRecordVersionsV1, jsonResponse } from './roleplay-state.js';
 import { createRoleplayMvuSchemaTaskEdits } from './roleplay-mvu-schema-task-edit.js';
-import { parseMvuSchemaStoryCandidateV2 } from './roleplay-mvu-schema-story-types.js';
 import { registerRoleplayDiagnosis } from './roleplay-diagnosis.js';
 import { registerCardAuthoring, registerDraftCheck } from './roleplay-authoring.js';
 import { registerAdaptationTools } from './card-adaptation-tools.js';
@@ -461,6 +486,8 @@ export async function apply(ctx, config = {}) {
         userinfo: inputState.table('userinfo', domain.table('userinfo')),
         decision: inputState.table('decision', domain.table('decision')),
     };
+    const authorProfile = await ensureAuthorProfileIdentityV1(T.branch);
+    const authorPersistentScopes = createRoleplayAuthorPersistentScopesV1({ table: T.branch, profile: authorProfile });
     const authorChatNative = createRoleplayAuthorChatNativeRoots({
         eventType: ctx.nexttavernAuthorChatRootMarkers.eventType,
         session: id => ctx.sessions.get(id), cut: session => sessionHistoryCut(session),
@@ -468,7 +495,98 @@ export async function apply(ctx, config = {}) {
         flush: session => ctx.sessions.flush(session), useProof: inputState.useClosedDataProof
     });
     ctx.on('session/event', authorChatNative.accept, { global: true });
-    const authorChatState = createCanonicalAuthorChatStateV1({ table: T.branch, roots: authorChatNative.roots });
+    const sourceLifecycleStates = new WeakMap();
+    function sourceLifecycleCapture(session, through) {
+        const prior = sourceLifecycleStates.get(session), cut = sessionHistoryCut(session, through), captured = readTavernCanonicalChatChangesV1(session.id, cut, ctx.sessions.messageProjections, prior);
+        const state = prior && !captured.cold ? prior : { owner: captured.owner, nativeCut: cut.length,
+            pending: new Map() };
+        state.owner = captured.owner;
+        state.nativeCut = cut.length;
+        sourceLifecycleStates.set(session, state);
+        return { state, captured };
+    }
+    const authorLifecycle = createAuthorNativeLifecyclePublisher({ beforeSubscribe: id => {
+            const session = ctx.sessions.get(id);
+            if (session && !sourceLifecycleStates.has(session))
+                sourceLifecycleCapture(session);
+        }, afterUnsubscribe: id => {
+            const session = ctx.sessions.get(id);
+            if (session)
+                sourceLifecycleStates.delete(session);
+        } });
+    function publishSourceLifecycle(session, cause, events) {
+        if (!events.length)
+            return;
+        // The real Native event is the cursor. No new durable receipt is created.
+        authorLifecycle.publish(session.id, { token: JSON.stringify([session.id, cause.seq, cause.type, events.map(event => event.type)]), events });
+    }
+    function sourceLifecycleEvents(change, position) {
+        const index = change.item ? position : change.previousIndex;
+        if (index === undefined)
+            return [];
+        if (change.item && change.previous)
+            return [
+                { type: AUTHOR_NATIVE_EVENTS_V1.MESSAGE_EDITED, args: [index] },
+                { type: AUTHOR_NATIVE_EVENTS_V1.MESSAGE_UPDATED, args: [index] },
+            ];
+        const type = !change.item ? AUTHOR_NATIVE_EVENTS_V1.MESSAGE_DELETED : change.item.row.role === 'user'
+            ? AUTHOR_NATIVE_EVENTS_V1.MESSAGE_SENT : AUTHOR_NATIVE_EVENTS_V1.MESSAGE_RECEIVED;
+        return [{ type, args: [index] }];
+    }
+    function acceptSourceLifecycle(session, cause) {
+        if (sourceReadOwnerClosed || !sourceLifecycleStates.has(session)
+            || ctx.sessions.get(session.id) !== session || !isRoleplaySession(session))
+            return;
+        const { state, captured } = sourceLifecycleCapture(session, Number(cause.seq) + 1), events = [];
+        if (captured.cold)
+            return { state, captured };
+        for (const change of captured.changes) {
+            const pending = state.pending.get(change.seq), actual = pending
+                ? { ...change, previous: pending.change.previous, previousIndex: pending.change.previousIndex } : change;
+            // A provisional assistant can leave selection before its actual closure.
+            if (!actual.item && !actual.previous) {
+                state.pending.delete(change.seq);
+                continue;
+            }
+            if (actual.item?.row.role === 'assistant' || actual.previous && cause.type === 'roleplay/message-edit') {
+                state.pending.set(change.seq, { change: actual, cause });
+                continue;
+            }
+            state.pending.delete(change.seq);
+            events.push(...sourceLifecycleEvents(actual, captured.position(change.seq)));
+        }
+        publishSourceLifecycle(session, cause, events);
+        return { state, captured };
+    }
+    function releaseSourceLifecycle(session, cause, eligible, read) {
+        if (sourceReadOwnerClosed || !sourceLifecycleStates.has(session)
+            || ctx.sessions.get(session.id) !== session || !isRoleplaySession(session))
+            return;
+        // Native publishes append observers synchronously. The real completion
+        // callback follows its flush, so all pending deltas already have their cause.
+        const { state, captured } = read ?? sourceLifecycleCapture(session);
+        const events = [];
+        for (const [seq, pending] of state.pending) {
+            if (!eligible(pending))
+                continue;
+            state.pending.delete(seq);
+            events.push(...sourceLifecycleEvents(pending.change, captured.position(seq)));
+        }
+        publishSourceLifecycle(session, cause, events);
+    }
+    ctx.on('session/disposed', session => sourceLifecycleStates.delete(session), { global: true });
+    ctx.effect(() => () => authorLifecycle.dispose(), 'roleplay: Native author source lifecycle');
+    let schemaStory;
+    const emptyNumericalScopeBases = { ref: null, reset: null, keys: new Map() }, authorChatState = createCanonicalAuthorChatStateV1({ table: T.branch, roots: authorChatNative.roots, scopeBases: {
+            capture: namespace => schemaStory?.captureOrdinaryScopeBases(namespace) ?? emptyNumericalScopeBases,
+            resolve: (namespace, ref) => {
+                if (!ref)
+                    return emptyNumericalScopeBases;
+                if (!schemaStory)
+                    throw Error('AUTHOR_CHAT_SCOPE_UNAVAILABLE');
+                return schemaStory.resolveOrdinaryScopeBases(namespace, ref);
+            }
+        } });
     function captureOrdinaryChatNamespace(sid) {
         // Source owns the live import permission. The immutable namespace is DATA
         // supplied separately from State's mutable root and its exact read cut.
@@ -490,6 +608,7 @@ export async function apply(ctx, config = {}) {
     }
     let programOpening;
     let openingVariantCoordinator;
+    const pendingOpeningSource = (sid) => programOpening?.capturePendingSource(sid) ?? openingVariantCoordinator?.capturePendingSource(sid);
     const readOpeningVariantData = createOpeningVariantDataReader(key => T.branch.get(key), (sid, key) => schemaDerived?.readInheritedOpeningVariantFact(sid, key)), openingVariantArchives = new Map();
     const releaseOpeningVariantArchives = inputState.observeSessionRelease(sid => openingVariantArchives.delete(sid));
     ctx.effect(() => () => { releaseOpeningVariantArchives(); openingVariantArchives.clear(); }, 'roleplay: opening archive lifetime');
@@ -856,12 +975,237 @@ export async function apply(ctx, config = {}) {
         readOpeningContext: openingContextBinding,
         readSourceInheritance: id => tavernSourceInheritance.readCommittedSourceInheritance(id)
     });
+    let authorCharacterLibrary;
+    const authorProfileCurrent = () => !sourceReadOwnerClosed
+        && readAuthorProfileIdentityV1(T.branch)?.profileId === authorProfile.profileId;
+    const authorWorldbookCatalog = createRoleplayAuthorWorldbookCatalogV1({ table: T.branch, profile: authorProfile,
+        readSelectedData: inputState.readSelectedData,
+        beforePersistentWrite: address => authorCharacterLibrary?.dirtyWorldbooks(address),
+        completionWriter: {
+            owns: owner => owner.kind === 'catalog' && owner.profileId === authorProfile.profileId,
+            isCurrent: () => !sourceReadOwnerClosed && readAuthorProfileIdentityV1(T.branch)?.profileId === authorProfile.profileId
+        } });
+    const authorWorldbookBindings = createRoleplayAuthorWorldbookBindingsV1({ table: T.branch, profile: authorProfile,
+        beforePersistentWrite: address => authorCharacterLibrary?.dirtyWorldbooks(address),
+        captureBook: authorWorldbookCatalog.captureBook });
+    const authorContext = createRoleplayAuthorContextV1({ table: T.branch, profile: authorProfile,
+        characterDirectoryChanging: () => authorCharacterLibrary?.dirtyDirectory(),
+        catalog: authorWorldbookCatalog, bindings: authorWorldbookBindings, scopes: authorPersistentScopes, current: tavernSource.current,
+        *registeredSources() {
+            for (const [key, value] of T.branch.entries()) {
+                if (!key.startsWith('author-source-context-v1-'))
+                    continue;
+                const registration = value, locator = registration.locator;
+                if (registration.profileId !== authorProfile.profileId || locator.ownerSessionId !== locator.sourceRecordSessionId)
+                    continue;
+                const pointer = T.branch.get(importActiveKey(locator.ownerSessionId));
+                if (pointer?.importId === locator.importId && pointer.transactionId === locator.transactionId
+                    && (pointer.sourceRecordSessionId ?? locator.ownerSessionId) === locator.sourceRecordSessionId)
+                    yield registration;
+            }
+        },
+        readCharacterSource(locator) {
+            const captured = tavernSource.capture(locator.ownerSessionId);
+            if (captured.kind !== 'captured-data')
+                return undefined;
+            const source = captured.source, active = source.original.activePointer;
+            if (source.sourceRecordSessionId !== locator.sourceRecordSessionId || active.importId !== locator.importId
+                || active.transactionId !== locator.transactionId || source.original.primary.bookPointer !== locator.bookPointer)
+                return undefined;
+            const data = captured.contributionInput.rawDecoded.data;
+            return { name: String(data.name), ...typeof data.avatar === 'string' ? { avatar: data.avatar } : {} };
+        },
+        namespace: source => promptProgramSourceOrdinaryNamespaceV3(source, T.branch.get(importRecordKey(source.sourceRecordSessionId, source.original.activePointer.importId))),
+        captureImportSeed: captured => tavernLoreEdits.captureAdoptionSeed(captured) });
     const tavernLoreEdits = createRoleplayTavernLoreEditsV1({ branch: T.branch, source: tavernSource,
+        authorMetadataChanging: source => authorCharacterLibrary?.dirtySource(source.sessionId),
+        authorMetadataPublished: event => authorContext.registerMetadataExtension(event, () => !sourceReadOwnerClosed && readAuthorProfileIdentityV1(T.branch)?.profileId === authorProfile.profileId),
         withSourceLock: (id, work) => withImportLock(id, 'tavern-lore-edit', work) });
-    const authorWorldbooks = createRoleplayAuthorWorldbookCoreV1({ source: tavernSource, edits: tavernLoreEdits,
+    function captureNamedCharacterSource(locator) {
+        const read = tavernSource.captureCurrent(locator.ownerSessionId), captured = read.captured;
+        if (captured.kind !== 'captured-data' || !authorProfileCurrent())
+            return undefined;
+        const source = captured.source, active = source.original.activePointer;
+        if (source.sourceRecordSessionId !== locator.sourceRecordSessionId || active.importId !== locator.importId
+            || active.transactionId !== locator.transactionId || source.original.primary.bookPointer !== locator.bookPointer)
+            return undefined;
+        const current = () => {
+            if (!authorProfileCurrent())
+                return false;
+            try {
+                read.assertCurrent();
+                return true;
+            }
+            catch {
+                return false;
+            }
+        };
+        return { source, captured, current };
+    }
+    authorCharacterLibrary = createRoleplayAuthorCharacterLibraryV1({ profileId: authorProfile.profileId,
+        profileCurrent: authorProfileCurrent,
+        readyDirectory: () => authorContext.readyCharacters(authorProfileCurrent), characters: authorContext.characters,
+        captureEntry: descriptor => {
+            const read = captureNamedCharacterSource(descriptor.locator);
+            if (!read)
+                return undefined;
+            const registration = authorContext.readRegisteredOrigin(descriptor.locator)?.registration;
+            if (!registration || !authorContext.hasCharacterRegistration(registration))
+                return undefined;
+            const observation = tavernLoreEdits.observeAuthorMetadataData(read.captured);
+            if (observation.kind !== 'captured-data')
+                throw Error(observation.diagnostics[0]?.code ?? 'AUTHOR_METADATA_UNAVAILABLE');
+            const { identity, identitySha256, revision, head, headRef, extensions } = observation.data;
+            return { registration, current: read.current, regex: { sourceSha256: read.source.sourceSha256,
+                    identity, identitySha256, revision, head, headRef,
+                    rules: normalizeCommunityRegexes(extensions?.regex_scripts).map(communityTavernRegexDto) } };
+        }, captureBindings: authorWorldbookBindings.captureBindings, captureCatalog: authorWorldbookCatalog.captureCatalog });
+    const authorWorldbooks = createRoleplayAuthorWorldbookCoreV1({ source: tavernSource, context: authorContext, catalog: authorWorldbookCatalog,
+        captureNamedSource: captureNamedCharacterSource,
+        bindings: authorWorldbookBindings,
         captureRead: (id, compute) => inputState.captureSource(id, 'author-worldbook', compute),
         withSourceLock: (id, work) => withImportLock(id, 'author-worldbook-read', work) });
+    const ejsNamedWorldInfo = input => {
+        // The existing worldbook read scope captures each requested body once.
+        // Creation and later callbacks share that scope while each invocation
+        // supplies its actual macro/Source phase and cancellation signal.
+        let basis;
+        let directory;
+        let characters;
+        return capture => async (request, signal) => {
+            signal.throwIfAborted();
+            input.assertCurrent();
+            if (request.kind === 'current-character') {
+                if (!input.currentCharacter)
+                    throw Error('TEMPLATE_CURRENT_CHARACTER_CAPTURE_REQUIRED');
+                return { schemaVersion: 1, kind: 'character-data', value: input.currentCharacter.read() };
+            }
+            if (request.kind === 'character-directory' || request.kind === 'character-data') {
+                if (!directory) {
+                    await authorContext.readyCharacters(authorProfileCurrent);
+                    signal.throwIfAborted();
+                    input.assertCurrent();
+                    directory = authorContext.characters();
+                    characters = new Map(directory.map(row => [row.characterId, row]));
+                }
+                if (request.kind === 'character-directory')
+                    return { schemaVersion: 1, kind: 'character-directory',
+                        currentCharacterId: authorContext.captureBindings(input.source).registration.characterId,
+                        entries: directory.map(row => ({ characterId: row.characterId, name: row.name })) };
+                const descriptor = characters.get(request.characterId);
+                if (!descriptor)
+                    throw Error('TEMPLATE_CHARACTER_SOURCE_UNAVAILABLE');
+                return withImportLock(descriptor.locator.ownerSessionId, 'ejs-character-read', async () => {
+                    signal.throwIfAborted();
+                    input.assertCurrent();
+                    const read = captureNamedCharacterSource(descriptor.locator);
+                    if (!read)
+                        throw Error('TEMPLATE_CHARACTER_SOURCE_UNAVAILABLE');
+                    const sid = descriptor.locator.ownerSessionId, captured = captureRoleplayTavernPromptSourceDataV1({ source: tavernSource, edits: tavernLoreEdits, books: authorContext }, sid, narrativePresets.policy(sid).effective.mode !== 'system');
+                    if (captured.kind !== 'captured-data')
+                        throw Error('TEMPLATE_CHARACTER_SOURCE_UNAVAILABLE');
+                    const policy = communityPresets.policy(sid), mapping = policy.preset ? produceCommunityPresetCardMaterialV1({
+                        captured, persona: communityAccountPersona(), mappingScope: { sessionId: sid, conversationId: policy.conversationId },
+                        override: policy.effective.features.nativeCardMapping
+                    }) : undefined, projected = projectCapturedTavernCharacterDataV1(captured, mapping);
+                    if (!read.current())
+                        throw Error('TEMPLATE_CHARACTER_SOURCE_CHANGED');
+                    return { schemaVersion: 1, kind: 'character-data', value: projected.kind === 'available' ? {
+                            sourcePointer: '/data', sourceSnapshotSha256: projected.identity.sourceSnapshotSha256, data: projected.character
+                        }
+                            : { unavailable: projected.kind === 'unavailable' ? projected.code : 'COMMUNITY_CARD_MAPPING_REQUIRED' } };
+                });
+            }
+            const read = await (basis ??= authorWorldbooks.capture(input.sessionId));
+            const assertCurrent = () => { input.assertCurrent(); read.assertCurrent(); };
+            let book;
+            try {
+                book = await authorWorldbooks.read(input.sessionId, request.name, read.data, () => { assertCurrent(); return true; }, signal);
+            }
+            catch (error) {
+                if (!(error instanceof Error) || error.message !== 'AUTHOR_WORLDBOOK_NOT_FOUND')
+                    throw error;
+                const { profileId, head, revision } = read.data.catalog;
+                return { schemaVersion: 1, kind: 'not-found', catalog: { profileId, head, revision } };
+            }
+            signal.throwIfAborted();
+            assertCurrent();
+            const authorsNoteDepth = capture.snapshot.worldInfo?.authorsNoteDepth;
+            if (authorsNoteDepth === undefined)
+                throw Error('TEMPLATE_WORLD_INFO_CAPTURE_REQUIRED');
+            const value = await projectCapturedNamedTavernWorldbookV1({ source: input.source, book,
+                authorsNoteDepth, macros: capture.macros,
+                async transform(entries, macros) {
+                    const result = await applyTavernPromptTransformsV1({ schemaVersion: 1,
+                        encoding: 'owned-tavern-prompt-transform-v1', authority: 'consumer-data-only',
+                        sourceSnapshotSha256: input.source.sourceSha256, regexDisabled: false, entries, macros, rules: input.rules,
+                        ...input.scriptOrder ? { scriptOrder: input.scriptOrder } : {} }, { signal, assertCurrent });
+                    if (result.kind !== 'transformed')
+                        throw Error(result.diagnostics[0]?.code ?? 'TEMPLATE_NAMED_WORLD_INFO_UNAVAILABLE');
+                    return result.output;
+                } });
+            signal.throwIfAborted();
+            assertCurrent();
+            return { schemaVersion: 1, kind: 'found', value };
+        };
+    };
+    function characterLibraryTarget(target) {
+        const stored = authorContext.readRegisteredOrigin(target.locator);
+        if (!authorProfileCurrent() || target.profileId !== authorProfile.profileId
+            || !stored || stored.registration.sha256 !== target.sha256)
+            throw Error('AUTHOR_CHARACTER_LIBRARY_TARGET_CHANGED');
+        return stored;
+    }
+    async function mutateCharacterLibrary(sid, operation, callerCurrent, signal) {
+        signal.throwIfAborted();
+        const { target } = operation.request, stored = characterLibraryTarget(target);
+        if (!authorContext.hasCharacterRegistration(stored.registration))
+            throw Error('AUTHOR_CHARACTER_LIBRARY_TARGET_CHANGED');
+        if (operation.kind === 'named-character-worldbook-bind') {
+            const read = await authorWorldbooks.captureNamedBindingsByOwner(sid, target.locator.ownerSessionId, callerCurrent, signal);
+            if (read.registration.sha256 !== stored.registration.sha256
+                || !sameAuthorWorldbookRefV1(read.binding.head, operation.request.expectedHead))
+                throw Error('AUTHOR_CHARACTER_LIBRARY_READ_CHANGED');
+            return (await authorWorldbooks.manageNamedBindings(sid, { token: read.token,
+                operationId: operation.request.operationId, selection: operation.request.selection }, callerCurrent, signal)).result;
+        }
+        const read = captureNamedCharacterSource(target.locator);
+        if (!read)
+            throw Error('AUTHOR_CHARACTER_LIBRARY_TARGET_CHANGED');
+        const request = operation.request, rules = communityRegexesFromTavernDto(request.rules).map(communityTavernRegexRawV1), result = await tavernLoreEdits.mutateAuthorMetadata({ schemaVersion: 1,
+            encoding: 'tavern-author-metadata-mutation-request-v1', sessionId: target.locator.ownerSessionId,
+            expectedSourceSha256: request.expectedSourceSha256, expectedRevision: request.expectedRevision,
+            operationId: request.operationId, mutation: { kind: 'character-regexes-replace', rules } }, () => !signal.aborted && callerCurrent() && read.current()
+            && authorContext.hasCharacterRegistration(stored.registration));
+        return result.kind === 'edited-data' ? { schemaVersion: 1, kind: 'edited-data', receipt: result.receipt } : result;
+    }
+    async function retryCharacterLibrary(_sid, operation, callerCurrent, signal) {
+        signal.throwIfAborted();
+        const { request } = operation, stored = characterLibraryTarget(request.target), current = () => !signal.aborted && authorProfileCurrent() && callerCurrent();
+        if (operation.kind === 'character-regex-replace') {
+            const result = await tavernLoreEdits.retryAuthorMetadata(request.target.locator.ownerSessionId, request.operationId, current, { identitySha256: operation.request.identitySha256 });
+            return result.kind === 'edited-data' ? { schemaVersion: 1, kind: 'edited-data', receipt: result.receipt } : result;
+        }
+        return authorWorldbooks.retryNamedBindings(_sid, request.operationId, { kind: 'named-character-bindings',
+            profileId: stored.registration.profileId, locator: stored.registration.locator, registration: stored.ref,
+            characterId: stored.registration.characterId, owner: stored.registration.characterBinding }, current, signal);
+    }
+    const authorWorldbookEditor = createRoleplayAuthorWorldbookEditorV1({ source: tavernSource, context: authorContext,
+        catalog: authorWorldbookCatalog,
+        captureRead: (id, compute) => inputState.captureSource(id, 'author-worldbook-editor', compute),
+        withSourceLock: (id, work) => withImportLock(id, 'author-worldbook-edit', work) });
     const tavernSourceInheritance = createRoleplayTavernSourceInheritanceV1({ tables: T, source: tavernSource,
+        captureAuthorContextFork: authorContext.freezeFork,
+        applyAuthorContextFork: (frozen, prepared, sourceCurrent) => {
+            const original = prepared.originalBinding;
+            return authorContext.installFork({ childSessionId: prepared.childSessionId,
+                sourceRecordSessionId: original.sourceRecordSessionId, importId: original.importId,
+                transactionId: original.transactionId, bookPointer: '/data/character_book', frozen,
+                childNamespace: { schemaVersion: 3, sessionId: prepared.childSessionId, importIncarnation: {
+                        sourceRecordSessionId: original.sourceRecordSessionId, importId: original.importId,
+                        transactionId: original.transactionId, activationSha256: original.activationSha256
+                    } } }, prepared.operationId, sourceCurrent);
+        },
         captureCharacterPrivateFork: async (parent, cut, publications) => {
             if (!characterPrivate?.enabled(parent) || cut.kind === 'reserved-fresh-branch')
                 return;
@@ -896,17 +1240,39 @@ export async function apply(ctx, config = {}) {
         withSourceLock: (id, work) => withImportLock(id, 'tavern-source-inheritance', work),
         readNativeSession: id => mvuAncestry.readNativeObservation(id), readOpeningContext: openingContextBinding,
         captureNonNumericalOpening, assertNonNumericalOpening, captureProgramAbsenceOpening, assertProgramAbsenceOpening,
-        captureAuthorChatForkBasesV3: (parent, child, operationId, nativeCut, source) => {
+        captureAuthorChatScopeForkV1: (parent, child, _operationId, nativeCut, source) => {
+            if (nativeCut.kind === 'reserved-fresh-branch')
+                return undefined;
+            const record = T.branch.get(importRecordKey(source.sourceRecordSessionId, source.original.activePointer.importId)), namespace = promptProgramSourceOrdinaryNamespaceV3(source, record);
+            return schemaStory?.captureOrdinaryScopeFork(parent, child, nativeCut.seedLength, namespace);
+        },
+        captureAuthorChatForkBasesV3: (parent, child, operationId, nativeCut, source, scopeForkBases, carryOpeningChat) => {
             if (nativeCut.kind === 'reserved-fresh-branch')
                 return undefined;
             const record = T.branch.get(importRecordKey(source.sourceRecordSessionId, source.original.activePointer.importId));
-            const namespace = promptProgramSourceOrdinaryNamespaceV3(source, record), parentSession = ctx.sessions.get(parent);
+            const namespace = promptProgramSourceOrdinaryNamespaceV3(source, record);
+            if (carryOpeningChat) {
+                // The author may set chat variables before selecting the original greeting.
+                // Its ordinary configuration is part of this opening's Source, even at zero Native cut.
+                const parentRoot = authorChatState.captureNamespaceRootV3(namespace);
+                if (!parentRoot.head && !parentRoot.base)
+                    return;
+                return [authorChatState.freezeForkBaseV3({ parentRoot, childNamespace: { ...namespace, sessionId: child },
+                        operationId, nativeCutSha256: recordSha256(nativeCut) })];
+            }
+            const parentSession = ctx.sessions.get(parent);
             if (!parentSession)
                 throw Error('AUTHOR_CHAT_NATIVE_CUT_UNAVAILABLE');
             const inheritedBases = source.inheritance
                 ? tavernSourceInheritance.readCommittedStaticSourceInheritance(parent).prepared.authorChatForkBasesV3 ?? [] : [], parentRoots = authorChatState.captureNamespaceRootsAtNativeCut({ namespaceOwner: namespace,
                 cut: { session: parentSession, length: nativeCut.seedLength }, inheritedBases }), nativeCutSha256 = recordSha256(nativeCut);
-            return parentRoots.map(parentRoot => authorChatState.freezeForkBaseV3({ parentRoot,
+            const capturedRoots = new Map(parentRoots.map(root => [JSON.stringify(root.namespace), root]));
+            for (const scope of scopeForkBases ?? []) {
+                const parentNamespace = { ...scope.namespace, sessionId: parent }, key = JSON.stringify(parentNamespace);
+                if (!capturedRoots.has(key))
+                    capturedRoots.set(key, authorChatState.captureNamespaceRootAtNativeCut(parentNamespace, { session: parentSession, length: nativeCut.seedLength }));
+            }
+            return [...capturedRoots.values()].map(parentRoot => authorChatState.freezeForkBaseV3({ parentRoot,
                 childNamespace: { ...parentRoot.namespace, sessionId: child }, operationId, nativeCutSha256 }));
         },
         applyAuthorChatForkBasesV3: async (bases, preparedRef, prepared, sourceCurrent) => {
@@ -995,7 +1361,7 @@ export async function apply(ctx, config = {}) {
     const { libraryFor, resourceName, archiveImported, migrateResources, originalCardResource } = createResourceBridge({ T });
     function captureNativeCardAdvancedSource(id) {
         return inputState.captureSource(id, 'native-card-conversion', () => {
-            const current = captureNextTavernAuthorDataV1({ tables: T, source: tavernSource, edits: tavernLoreEdits }, id);
+            const current = captureNextTavernAuthorDataV1({ tables: T, source: tavernSource, edits: tavernLoreEdits, books: authorContext }, id);
             return { snapshot: captureNativeCardConversionV1({ spec: 'nexttavern_card',
                     spec_version: '1.2', data: current.data, archive: {},
                     ...current.native && Object.hasOwn(current.native, 'classification')
@@ -1086,7 +1452,7 @@ export async function apply(ctx, config = {}) {
     const sourceMusic = createSourceMusicV1({ libraryFor,
         capture: (session, build) => inputState.captureSource(session.id, 'source-music', build).data,
         read: session => {
-            const current = captureNextTavernAuthorDataV1({ tables: T, source: tavernSource, edits: tavernLoreEdits }, session.id);
+            const current = captureNextTavernAuthorDataV1({ tables: T, source: tavernSource, edits: tavernLoreEdits, books: authorContext }, session.id);
             if (current.captured.kind === 'outside-declared-domain' && current.captured.code === 'ACTIVE_SOURCE_MISSING')
                 return null;
             if (!current.sourceHash || !current.original)
@@ -1097,7 +1463,7 @@ export async function apply(ctx, config = {}) {
     const sourceImages = createSourceImagesV1({ libraryFor,
         capture: (session, build) => inputState.captureSource(session.id, 'source-images', build).data,
         read: session => {
-            const current = captureNextTavernAuthorDataV1({ tables: T, source: tavernSource, edits: tavernLoreEdits }, session.id);
+            const current = captureNextTavernAuthorDataV1({ tables: T, source: tavernSource, edits: tavernLoreEdits, books: authorContext }, session.id);
             if (current.captured.kind === 'outside-declared-domain' && current.captured.code === 'ACTIVE_SOURCE_MISSING')
                 return null;
             if (!current.sourceHash || !current.original)
@@ -1107,7 +1473,7 @@ export async function apply(ctx, config = {}) {
     });
     const captureStoryText = createRoleplayStoryTextReader((id, selection) => mvuOpening.captureSettledStoryMessages(id, selection), message => readTavernSelectedMessageFactsV1(message).messageVersionSha256);
     const storyEntryReader = createRoleplayStoryEvidenceReader({ projections: () => ctx.sessions.messageProjections });
-    const { sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster, characterRoster, clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask, requestAuthorDialog, requestRubyAnalysis, requestCharacterBackground, readCompletedCharacterBackground, readCompletedRubyAnalysis, recoverCompletedRubyAnalysis, resumeMemoryWork, resumeStatusMaintenance, } = createRoleplayTaskHost({
+    const { sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster, characterRoster, clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask, prepareAuthorDialogRoute, requestAuthorDialog, readAuthorDialogOperation, recordAuthorGenerationEffects, requestRubyAnalysis, requestCharacterBackground, readCompletedCharacterBackground, readCompletedRubyAnalysis, recoverCompletedRubyAnalysis, resumeMemoryWork, resumeStatusMaintenance, } = createRoleplayTaskHost({
         storyEntryReader,
         observeRecords: inputState.observeDomainChanges,
         advancedCard: readNativeCardForRequest,
@@ -1224,6 +1590,50 @@ export async function apply(ctx, config = {}) {
             }
             return engine.storyEvidenceSnapshot(session);
         },
+        narrative: async (session, entries) => {
+            const sid = session.id;
+            let updates;
+            if (mvuOpening.hasSchemaOpening(sid)) {
+                updates = mvuOpening.readSchemaDisplayUpdates(sid);
+                if (!updates) {
+                    await ensureBranch(session);
+                    await mvuOpening.preflightSchema(sid);
+                    updates = mvuOpening.readSchemaDisplayUpdates(sid);
+                    if (!updates)
+                        throw Error('SCHEMA_STORY_UNPROVEN');
+                }
+            }
+            else if (mvuOpening.hasLegacyNumericalOpening(sid) || mvuDerived.required(sid)) {
+                await ensureBranch(session);
+                const observation = mvuState.readDisplayUpdates(sid);
+                if (observation.kind === 'blocked')
+                    throw Error(observation.code);
+                updates = observation.displayUpdates;
+            }
+            if (!updates?.length)
+                return entries;
+            const bySeq = indexMvuDisplayUpdates(updates);
+            const native = session, cut = sessionHistoryCut(native);
+            return entries.map(entry => {
+                const candidates = bySeq.get(entry.seq);
+                if (!candidates || (entry.role ?? entry.kind) !== 'assistant' || entry.text === undefined)
+                    return entry;
+                const event = cut.at(entry.seq);
+                if (event?.type !== 'assistant/message')
+                    return entry;
+                const message = native.deriveEventMessage(event) ?? event.data.message;
+                if (typeof message.id !== 'string')
+                    return entry;
+                const facts = readTavernSelectedMessageFactsV1(message);
+                const update = matchMvuDisplayUpdate(candidates, { seq: entry.seq, messageId: message.id,
+                    versionSha256: facts.messageVersionSha256, narrativeSha256: facts.textSha256 });
+                if (!update)
+                    return entry;
+                const scope = createReaderMvuDisplayScope(facts.text, update.protocol, entry.text);
+                const text = projectReaderNarrativeDisplay(entry.text, scope);
+                return text === entry.text ? entry : { ...entry, text };
+            });
+        },
         request: spec => nativeTask({
             ...spec,
             selection: decodeTaskSelection(spec.selection),
@@ -1246,9 +1656,7 @@ export async function apply(ctx, config = {}) {
         },
     });
     async function resumeNovelExports(session, agent, signal) {
-        const resumableJobs = novelExports
-            .list(session)
-            .filter(job => ['queued', 'running', 'waiting-main'].includes(job.status));
+        const resumableJobs = novelExports.list(session, true);
         for (const job of resumableJobs) {
             await novelExports.drive(session, job.id, agent, signal);
         }
@@ -1261,7 +1669,7 @@ export async function apply(ctx, config = {}) {
             || !isRoleplaySession(actual) || !storyBranchIsActive(actual))
             throw Error('CARD_EXPORT_START_SESSION_CHANGED');
         return inputState.captureSource(session.id, 'card-export', () => {
-            const lore = captureRoleplayTavernLoreExportDataV1({ source: tavernSource, edits: tavernLoreEdits }, session.id);
+            const lore = captureRoleplayTavernLoreExportDataV1({ source: tavernSource, edits: tavernLoreEdits, books: authorContext }, session.id);
             if (lore.kind === 'blocked')
                 throw Error(lore.code);
             // The structured Source/journal owner already hashes these current author
@@ -1278,6 +1686,7 @@ export async function apply(ctx, config = {}) {
         });
     }
     let readNativeOpeningForExport;
+    let textOnlyContinuation;
     function captureCardExportStartSource(session, mode, sourceCapture) {
         if (mode === 'original') {
             const assertCurrent = () => {
@@ -1286,7 +1695,7 @@ export async function apply(ctx, config = {}) {
             };
             assertCurrent();
             const document = captureNextTavernCardDocumentV1({ tables: T,
-                source: sourceCapture ? { capture: () => sourceCapture } : tavernSource, edits: tavernLoreEdits,
+                source: sourceCapture ? { capture: () => sourceCapture } : tavernSource, edits: tavernLoreEdits, books: authorContext,
                 readOpening: captured => readNativeOpeningForExport(session, captured), readTransport: record => {
                     const envelope = record.sourceEnvelope;
                     if (envelope.schemaVersion !== 2)
@@ -1384,8 +1793,6 @@ export async function apply(ctx, config = {}) {
         libraryFor,
         resourceName,
         tavernTasks,
-        taskAgents,
-        ctx
     });
     const chatAttachmentSources = createCardAttachmentSources({ T, libraryFor,
         fileUploads: ctx.fileUploads, attachments: ctx.attachments });
@@ -1570,6 +1977,19 @@ export async function apply(ctx, config = {}) {
                 throw Error('AUTHOR_MESSAGE_EDIT_TARGET_UNAVAILABLE');
             return readTavernSelectedMessageFactsV1(message).messageVersionSha256;
         },
+        prepareAuthorMessagePatch: (_session, _event, input) => {
+            const patch = input.patch;
+            if (!patch)
+                return;
+            assertAuthorMessageOrdinaryBasis(input);
+            const expected = input.ordinaryExpected, variant = expected?.root.namespace.target?.kind === 'message'
+                ? expected.root.namespace.target.identity.variant : { kind: 'native-canonical' };
+            // These roots come from the retained message group selected by the
+            // Browser/Reader owner, whose broader scope DTO also supports chat.
+            return { variant, ...patch.metadata ? { metadata: patch.metadata } : {}, ...patch.extra !== undefined ? { extra: patch.extra } : {},
+                ...patch.ordinary !== undefined ? { ordinary: { namespace: expected.root.namespace,
+                        previous: expected.scopeRef, fenceRoot: expected.root, variables: patch.ordinary } } : {} };
+        },
         authorTaskEditOptions: (session, event, operationId) => {
             const artifact = schemaStory?.taskArtifact(session.id, Number(event.seq));
             return { schemaVersion: 1, operationId, suffix: 'retain',
@@ -1603,6 +2023,9 @@ export async function apply(ctx, config = {}) {
         reconcileNumericalEdit: async (id, editSeq) => {
             await mvuOpening.reconcileSchemaStoryEdit(id, editSeq);
             await schemaTaskEdits.complete(id, editSeq, schemaStory?.taskEditResolved(id, editSeq) === true);
+            const session = ctx.sessions.get(id), edit = session && sessionHistoryCut(session).at(editSeq);
+            if (session && edit)
+                releaseSourceLifecycle(session, edit, pending => pending.cause.seq === editSeq && !!pending.change.previous);
         },
         confirmUnchangedNumericalEdit: id => mvuEdits.confirmNoEdit(id),
         flushEdits: async (session) => {
@@ -1628,15 +2051,7 @@ export async function apply(ctx, config = {}) {
         commitDerivedBasis: async (operation, child) => {
             if (operation.kind === 'opening-variant')
                 return;
-            if (schemaDerived?.required(child.id)) {
-                const actual = ctx.sessions.get(child.id);
-                if (!actual)
-                    throw Error('SCHEMA_DERIVED_SESSION_UNAVAILABLE');
-                await schemaDerived.commit(operation, actual);
-            }
-            else
-                await mvuDerived.commit(operation, child);
-            await rubyOwner?.inherit(operation.anchor.sourceSessionId, child.id, Number(child.inheritedEventCount ?? 0));
+            await commitForkInheritance(operation, child);
         },
         durableSeq,
         canonicalAssistantForTurn,
@@ -1702,11 +2117,24 @@ export async function apply(ctx, config = {}) {
             return { source, operationId: seed.operationId, messageId, seq, turn: native.receipt.turn,
                 renderedText: input.source.selected.renderedText, renderedSha256: input.source.selected.renderedSha256 };
         },
-        readOpeningVariantSettlement: (session, operationId) => {
+        readOpeningVariantSettlement: async (session, operationId) => {
             const activation = readCompletedActivatedOpening(session.id);
-            if (!activation || openingVariantForkOperationId(activation.seed.parentSessionId, activation.seed.operationId) !== operationId)
+            if (activation) {
+                if (openingVariantForkOperationId(activation.seed.parentSessionId, activation.seed.operationId) !== operationId)
+                    return null;
+                const native = activation.seed.event.native;
+                return { messageId: native.messageId, seq: native.assistantSeq, turn: native.turn };
+            }
+            const parent = session.header?.parentSession;
+            if (!parent || session.inheritedEventCount !== 0)
                 return null;
-            const native = activation.seed.event.native;
+            const verified = await mvuOpening.readSchemaInitialization(session.id);
+            if (verified.kind !== 'ready')
+                return null;
+            const { intent } = verified;
+            if (openingVariantForkOperationId(parent, intent.operationId) !== operationId)
+                return null;
+            const native = schemaOpeningNativeAnchor(verified.native);
             return { messageId: native.messageId, seq: native.assistantSeq, turn: native.turn };
         },
         provenanceSeq
@@ -1735,6 +2163,17 @@ export async function apply(ctx, config = {}) {
         normalizeStatusOption
     });
     const retrieval = createMemoryRetrieval({
+        worldbookProfileId: () => authorProfile.profileId,
+        worldbookSourceCurrent: (bookId, bookVersion) => {
+            if (!authorProfileCurrent())
+                return false;
+            try {
+                return authorWorldbookCatalog.captureBook(bookId).content.sha256 === bookVersion;
+            }
+            catch {
+                return false;
+            }
+        },
         captureStoryText,
         table: T.branch,
         record: call => telemetry.recordEmbedding(call),
@@ -1752,6 +2191,15 @@ export async function apply(ctx, config = {}) {
         backgroundWork, readStoryEvidenceAt: storyEntryReader.readStoryEvidenceAt, captureStoryText,
         ownsStoryMemoryCompletion: (id) => mvuOpening.hasSchemaOpening(id) });
     ctx.effect(() => () => retrieval.dispose(), 'roleplay: retrieval lifetime');
+    const worldbookVector = {
+        configuration: retrieval.worldbookConfiguration,
+        query: (sessionId, input) => {
+            const session = ctx.sessions.get(sessionId);
+            if (!session)
+                throw Error('SESSION_NOT_FOUND');
+            return retrieval.worldbook(session, input);
+        }
+    };
     ctx.on('session/created', session => retrieval.created(session), { global: true });
     ctx.on('session/event', async (session, event) => {
         if (['turn/end', 'user/message', 'compaction/end', 'roleplay/message-edit'].includes(event.type)) {
@@ -1763,14 +2211,65 @@ export async function apply(ctx, config = {}) {
     ctx.provide('roleplay', svc);
     // ── systemPrompt：{{user}}/{{user_gender}} 变量 + 角色卡 section ─────────────
     // 优先级：用户信息（设置页填写）> 玩家角色卡名 > 默认「用户」。
-    const narrativePresets = createNarrativePresets(T.branch, id => ctx.get('tavernConversations')?.rootOf(id) ?? id);
-    const communityPresets = createCommunityPresets(T.branch, id => ctx.get('tavernConversations')?.rootOf(id) ?? id);
+    const authorSettingsScope = (id) => {
+        const catalog = ctx.get('tavernConversations'), original = catalog?.settingsScopeOf(id) ?? id;
+        let scope = original;
+        while (catalog?.kindOf(scope) !== 'text-only-continuation') {
+            const parent = tavernSourceInheritance.readCommittedParentSessionId(scope);
+            if (!parent)
+                return original;
+            scope = catalog?.settingsScopeOf(parent) ?? parent;
+        }
+        return scope;
+    };
+    const narrativePresets = createNarrativePresets(T.branch, authorSettingsScope);
+    const authorExecutionEnabled = (id) => ctx.get('tavernConversations')?.kindOf(authorSettingsScope(id)) !== 'text-only-continuation';
+    const communityPresets = createCommunityPresets(T.branch, authorSettingsScope, {
+        executionEnabled: authorExecutionEnabled,
+        async evaluateProfileConfiguration(input) {
+            const runtime = await mvuOpening.templateEjsRuntime();
+            return runtime.evaluateProfileConfiguration(input);
+        },
+        prepare(result) {
+            const scope = result.scopeVariables;
+            if (!scope)
+                return undefined;
+            const address = { schemaVersion: 1, profileId: authorProfile.profileId, scope: 'preset', presetId: scope.presetId }, expectedRoot = authorPersistentScopes.captureRoot(address);
+            if (result.receipt.target?.kind !== 'in-use' && expectedRoot.head)
+                return undefined;
+            return { expectedRoot, values: scope.values,
+                operationId: 'author-preset-variables-' + result.receipt.operationId,
+                cause: { schemaVersion: 1, kind: 'author-preset-content', operationId: result.receipt.operationId,
+                    payloadSha256: result.receipt.payloadSha256 } };
+        },
+        async complete(update) {
+            const expected = update.expectedRoot.address;
+            await authorPersistentScopes.replace(update, {
+                owns: address => address.profileId === authorProfile.profileId && address.scope === 'preset'
+                    && expected.scope === 'preset' && address.presetId === expected.presetId,
+                isCurrent: () => !sourceReadOwnerClosed && readAuthorProfileIdentityV1(T.branch)?.profileId === authorProfile.profileId
+            });
+        }
+    });
+    const authorScopeOwner = createRoleplayAuthorScopeOwnerV1({ profile: authorProfile, scopes: authorPersistentScopes,
+        withPresetMutation: communityPresets.withAuthorRuntime,
+        resolveIdentity: sid => {
+            const source = captureOrdinaryChatNamespace(sid), incarnation = source.namespace.importIncarnation, registration = incarnation ? authorContext.readRegisteredOrigin({ ownerSessionId: sid,
+                sourceRecordSessionId: incarnation.sourceRecordSessionId, importId: incarnation.importId,
+                transactionId: incarnation.transactionId, bookPointer: '/data/character_book' }) : undefined, policy = communityPresets.policy(sid);
+            if (incarnation && !registration)
+                throw Error('AUTHOR_SOURCE_CONTEXT_NOT_READY');
+            return { ...registration ? { characterId: registration.registration.characterId } : {},
+                ...policy.preset ? { presetId: policy.preset.id } : {}, extensionIds: authorContext.registeredExtensions(),
+                current: () => source.current() && communityPresets.policy(sid) === policy };
+        } });
     const communityAccountPersona = () => {
         const data = readNativePersonas(), selected = data.profiles.find(profile => profile.avatar_id === data.selectedId);
         return selected?.description ? [{ key: `account-persona:${selected.avatar_id}`,
                 pointer: `/native/account/personas/${encodeURIComponent(selected.avatar_id)}/description`, text: selected.description }] : [];
     };
     const communityVariables = createCommunityPresetVariables(T.branch, { state: authorChatState,
+        profile: authorProfile, scopes: authorPersistentScopes,
         captureNamespace: captureOrdinaryChatNamespace,
         isNamespaceReady: namespace => ctx.sessions.get(namespace.sessionId) !== undefined,
         readyNamespace: async (namespace) => {
@@ -1779,6 +2278,18 @@ export async function apply(ctx, config = {}) {
                 throw Error('AUTHOR_CHAT_NATIVE_SESSION_UNAVAILABLE');
         },
         withSourceLock: (id, work) => withImportLock(id, 'community-variables', work) });
+    const authorGenerationEffects = createRoleplayAuthorGenerationEffectsV1({
+        variables: communityVariables, branch: T.branch, tasks: { recordAuthorGenerationEffects },
+        sessions: ctx.sessions,
+        sessionQuery: ctx.sessionQuery,
+        withSourceLock: (sid, work, signal) => withImportLock(sid, 'author-generation-effects', work, signal),
+        registry: { assertBaseCurrent(sid, snapshot) {
+                const base = snapshot
+                    ?.payload?.injections?.baseRegistrySha256;
+                if (base !== capturePromptRegistry(sid, new AbortController().signal).registrySha256)
+                    throw Error('INPUT_MATERIAL_INJECTION_BASE_CHANGED');
+            } },
+    });
     function communityAliases(sid) {
         return { user: userValues(sid).name, user_gender: userValues(sid).gender,
             char: String([...T.cards.entries()].filter(([key, card]) => key.startsWith(sid + '__') && card?.kind !== 'user')
@@ -1878,7 +2389,7 @@ export async function apply(ctx, config = {}) {
                 && job.source.sha256 === record.rawSha256) {
                 // Structured imports use the native opening chooser through every entry
                 // point. Their management receipt must not also retain an opening preview.
-                openingChoicePending = job.execution === 'deterministic';
+                openingChoicePending = job.execution === 'deterministic' || textImportFormat(record) !== undefined;
                 if (!openingChoicePending && job.clientRequestId) {
                     assertWorkspaceSession(session);
                     openingChoicePending = !!chatAttachmentSources.readChatProof(session, job.clientRequestId);
@@ -2211,7 +2722,7 @@ export async function apply(ctx, config = {}) {
     }
     function captureLegacySourceRead(original) {
         const { session, assertCurrent } = captureLegacySourceOwner(original, 'LEGACY_READ');
-        const captured = inputState.captureSource(session.id, 'legacy-author', () => captureRoleplayTavernLegacyReadDataV1({ tables: T, source: tavernSource, edits: tavernLoreEdits }, session.id));
+        const captured = inputState.captureSource(session.id, 'legacy-author', () => captureRoleplayTavernLegacyReadDataV1({ tables: T, source: tavernSource, edits: tavernLoreEdits, books: authorContext }, session.id));
         const read = captured.data;
         return read ? { ...read, assertCurrent: () => { assertCurrent(); captured.assertCurrent(); } } : null;
     }
@@ -2219,13 +2730,13 @@ export async function apply(ctx, config = {}) {
         // The caller already owns Source FIFO. Classification is a fresh readonly
         // capture of the original Session; it never starts another mutation queue.
         const { session, assertCurrent } = captureLegacySourceOwner(original, 'LEGACY_WRITE');
-        return classifyRoleplayTavernLegacyWriteTargetV1({ tables: T, source: tavernSource, edits: tavernLoreEdits }, session.id, id, assertCurrent);
+        return classifyRoleplayTavernLegacyWriteTargetV1({ tables: T, source: tavernSource, edits: tavernLoreEdits, books: authorContext }, session.id, id, assertCurrent);
     }
     function checkLegacyWorldbookWriteTargets(original, ids) {
         // Bulk authoring holds the same Source FIFO for preflight and all writes.
         // One captured DATA baseline classifies targets before that batch mutates it.
         const { session, assertCurrent } = captureLegacySourceOwner(original, 'LEGACY_WRITE');
-        return classifyRoleplayTavernLegacyWriteTargetsV1({ tables: T, source: tavernSource, edits: tavernLoreEdits }, session.id, ids, assertCurrent);
+        return classifyRoleplayTavernLegacyWriteTargetsV1({ tables: T, source: tavernSource, edits: tavernLoreEdits, books: authorContext }, session.id, ids, assertCurrent);
     }
     async function readLegacyWorldbook(...args) {
         return withImportLock(args[1], 'legacy-worldbook-read', async () => {
@@ -2290,8 +2801,9 @@ export async function apply(ctx, config = {}) {
     // ── 可审计的来源跨度式读卡导入 ────────────────────────────────────────────
     // PNG/JSON 由程序按版本化投影生成字段证明；MD 仍由模型判断栏目。
     // 真正写入的正文始终从归档 normalizedSource 的跨度物化。
-    const { importRecordKey, spanText, withImportLock, awaitImportBarrier, importSummary, assertImportRecordIntegrity, driveStructuredImport, } = registerRoleplayImports({
+    const { importRecordKey, spanText, withImportLock: withRawImportLock, awaitImportBarrier, importSummary, assertImportRecordIntegrity, driveStructuredImport, } = registerRoleplayImports({
         resolveCurrentCardImport,
+        afterSourceActivated: async (session) => { await ensureAuthorSourceContext(session.id); },
         readOriginalImportFile: (session, requestId) => chatAttachmentSources.readOriginalFile(session, requestId),
         inputTransition: createRoleplayImportInputTransition({
             owner: () => inputOwner,
@@ -2355,12 +2867,11 @@ export async function apply(ctx, config = {}) {
             if (!active) {
                 const pointer = T.branch.get(importActiveKey(session.id));
                 const record = typeof pointer?.importId === 'string' ? T.branch.get(keyOf(typeof pointer.sourceRecordSessionId === 'string' ? pointer.sourceRecordSessionId : session.id, `import-${pointer.importId}`)) : undefined;
-                return record?.sourceEnvelope ? { kind: 'blocked', code: 'CARD_EXPORT_OPENING_ACTIVE_SOURCE_INVALID' } : none;
+                return record && (record.sourceEnvelope || textImportFormat(record))
+                    ? { kind: 'blocked', code: 'CARD_EXPORT_OPENING_ACTIVE_SOURCE_INVALID' } : none;
             }
-            const original = T.branch.get(importRecordKey(active.sourceRecordSessionId, active.importId));
-            // MD keeps its established authoring/export workflow. A structured card
-            // uses its current Source owner, including frozen inherited records.
-            if (!original?.sourceEnvelope)
+            const originalKey = importRecordKey(active.sourceRecordSessionId, active.importId), original = T.branch.get(originalKey), classified = !original.sourceEnvelope && textImportFormat(original) && active.sourceRecordSessionId === session.id;
+            if (!original.sourceEnvelope && !classified)
                 return none;
             const ownIntent = T.branch.get(openingIntentKey(session.id, active.importId)), hasNativeWork = eventsOf(actual).some(event => {
                 const messageSource = event.data?.message?.source, marker = event.data?.['programmatic'];
@@ -2381,6 +2892,20 @@ export async function apply(ctx, config = {}) {
             if (ownIntent === undefined && !hasNativeWork)
                 return none;
             try {
+                const inheritedEventCount = Number(actual.inheritedEventCount ?? 0);
+                const readNativeOpening = (source, importRecordRef, inherited) => readNativeCardOpeningExportV1({ source, branch: T.branch, importRecordRef,
+                    observation: { id: session.id, header, inheritedEventCount,
+                        events: eventsOf(actual),
+                        surfaceNodes: [...(actual.surface?.nodes ?? [])], deriveEventMessage: event => {
+                            if (!actual.deriveEventMessage)
+                                throw Error('CARD_EXPORT_OPENING_PROJECTION_UNAVAILABLE');
+                            return actual.deriveEventMessage(event);
+                        } }, projections: ctx.sessions.messageProjections,
+                    deletedMessageIds: deletedBranchMessageIdsFor(actual), inherited });
+                if (classified) {
+                    const { source } = openingSelection.readCatalog(session.id, openingContext(session.id));
+                    return readNativeOpening(source, { key: originalKey, sha256: recordSha256(original) });
+                }
                 // Source and Native composition consume one synchronous lineage read.
                 // Its owner supplies the already closed transaction to Source capture.
                 const readOpening = (lineage) => {
@@ -2390,7 +2915,7 @@ export async function apply(ctx, config = {}) {
                     const sourceData = captured.source, originalSource = sourceData.original, source = { sessionId: session.id, importId: active.importId, sourceRecordSessionId: sourceData.sourceRecordSessionId,
                         rawSha256: originalSource.rawSha256, normalizedSha256: originalSource.normalizedSha256,
                         transactionId: originalSource.transactionId, coverageSha256: originalSource.coverageSha256,
-                        pointer: originalSource.activePointer }, inheritedEventCount = Number(actual.inheritedEventCount ?? 0);
+                        pointer: originalSource.activePointer };
                     let inherited;
                     if (sourceData.inheritance && inheritedEventCount > 0) {
                         if (!lineage)
@@ -2420,17 +2945,7 @@ export async function apply(ctx, config = {}) {
                             cut: { seedLength: cut.seedLength, prefixEncoding: cut.prefixEncoding, prefixSha256: cut.prefixSha256 },
                             inheritanceRefs: [...refs].map(([key, sha256]) => ({ key, sha256 })) };
                     }
-                    const events = eventsOf(actual), nodes = [...(actual.surface?.nodes ?? [])];
-                    return readNativeCardOpeningExportV1({ source, branch: T.branch,
-                        importRecordRef: { key: originalSource.importRecordRef.key, sha256: originalSource.importRecordRef.sha256 },
-                        observation: { id: session.id, header, inheritedEventCount,
-                            events: events,
-                            surfaceNodes: nodes, deriveEventMessage: event => {
-                                if (!actual.deriveEventMessage)
-                                    throw Error('CARD_EXPORT_OPENING_PROJECTION_UNAVAILABLE');
-                                return actual.deriveEventMessage(event);
-                            } }, projections: ctx.sessions.messageProjections,
-                        deletedMessageIds: deletedBranchMessageIdsFor(actual), ...inherited ? { inherited } : {} });
+                    return readNativeOpening(source, originalSource.importRecordRef, inherited);
                 };
                 if (T.branch.get(tavernSourcePreparedKeyV1(session.id)) === undefined)
                     return readOpening();
@@ -2448,6 +2963,44 @@ export async function apply(ctx, config = {}) {
         RULE_IMPORT_FIELDS,
         archiveImported
     });
+    async function ensureAuthorSourceContext(sid) {
+        const pointer = T.branch.get(importActiveKey(sid));
+        const registration = pointer?.importId && pointer.transactionId ? authorContext.readRegisteredOrigin({ ownerSessionId: sid,
+            sourceRecordSessionId: pointer.sourceRecordSessionId ?? sid, importId: pointer.importId,
+            transactionId: pointer.transactionId, bookPointer: '/data/character_book' }) : undefined;
+        if (registration && authorContext.hasCharacterRegistration(registration.registration))
+            return;
+        const captured = tavernSource.capture(sid);
+        if (captured.kind !== 'captured-data')
+            return;
+        await authorContext.ensureSource(captured, () => !sourceReadOwnerClosed && tavernSource.current(captured.source));
+    }
+    async function ensureSelectedPresetVariables(sid) {
+        return communityPresets.withAuthorRuntime(async () => {
+            const policy = communityPresets.policy(sid), preset = policy.preset;
+            if (!preset)
+                return;
+            const address = { schemaVersion: 1, profileId: authorProfile.profileId, scope: 'preset', presetId: preset.id };
+            if (authorPersistentScopes.captureRoot(address).head)
+                return;
+            // The immutable library source owns the first value. Later empty replaces
+            // keep a published head and must never resurrect that imported baseline.
+            await authorPersistentScopes.replace({ expectedRoot: { address, head: null },
+                operationId: 'author-preset-seed-' + preset.id,
+                cause: { schemaVersion: 1, kind: 'preset-import-variables', presetId: preset.id, sourceSha256: preset.source.sha256 },
+                values: policy.helperVariables.values }, { owns: target => target.profileId === address.profileId && target.scope === 'preset' && target.presetId === preset.id,
+                isCurrent: () => !sourceReadOwnerClosed && communityPresets.policy(sid) === policy });
+        });
+    }
+    function withImportLock(sid, owner, work, signal) {
+        return withRawImportLock(sid, owner, async () => {
+            signal?.throwIfAborted();
+            await ensureAuthorSourceContext(sid);
+            await ensureSelectedPresetVariables(sid);
+            signal?.throwIfAborted();
+            return work();
+        }, signal);
+    }
     structuredImportDriver = driveStructuredImport;
     const openingTable = { get: (key) => T.branch.get(key),
         put: async (key, value) => { await T.branch.put(key, value); } };
@@ -2474,31 +3027,20 @@ export async function apply(ctx, config = {}) {
         importActiveKey, importRecordKey, withSourceLock: (id, work) => withImportLock(id, 'mvu-derived', work),
         sourceInheritance: () => tavernSourceInheritance,
         readSourceDescriptor: id => describeRoleplayInputSourceV1(actualInputSourceCapture(id)),
-        readProgramGenesisAtCut: createProgramOpeningAtCutReaderV1({ branch: T.branch,
-            sourceInheritance: () => tavernSourceInheritance,
-            captureCompletedClosure: id => programOpening?.captureCompletedClosure(id),
-            projections: () => ctx.sessions.messageProjections, messageEdits: ctx.nexttavernMessageEdits,
-            observation: (id, count) => {
-                const retained = mvuAncestry.readNativeObservation(id);
-                if (sourceReadOwnerClosed || !retained || count < 0 || count > retained.snapshotEvents().length)
-                    return;
-                const events = retained.snapshotEvents().slice(0, count), prefixSha256 = recordSha256(events), surface = foldSurface(events, ctx.sessions.messageProjections), messageAt = (event) => deriveEventMessage(event, surface.projectedMessages), readView = { id, header: retained.header, inheritedEventCount: retained.inheritedEventCount,
-                    events, surface, deriveEventMessage: messageAt }, deletedMessageIds = deletedBranchMessageIdsFor(readView);
-                const assertCurrent = () => {
-                    const now = mvuAncestry.readNativeObservation(id);
-                    if (sourceReadOwnerClosed || !now || now.inheritedEventCount !== retained.inheritedEventCount
-                        || recordSha256(now.header) !== recordSha256(retained.header) || now.snapshotEvents().length < count
-                        || recordSha256(now.snapshotEvents().slice(0, count)) !== prefixSha256)
-                        throw Error('PROGRAM_HISTORY_NATIVE_CUT_CHANGED');
-                };
-                return { data: { id, header: retained.header, inheritedEventCount: retained.inheritedEventCount, seq: count,
-                        events, surfaceNodes: surface.nodes, deriveEventMessage: messageAt }, deletedMessageIds, assertCurrent };
-            } }),
         readGenesis: id => mvuDerived.required(id) ? mvuDerived.readGenesis(id) : readOwnNumericalGenesis(id), state: () => mvuState });
-    function readOwnNumericalGenesis(id) { return programOpening?.readGenesis(id) ?? mvuOpening.readGenesis(id); }
+    function readOwnNumericalGenesis(id) { return mvuOpening.readGenesis(id); }
     let authorBrowser;
     const mvuOpening = createRoleplayMvuOpening({ tables: T, inputState, session: id => ctx.sessions.get(id),
+        readProgramOpeningRoot: (id, selection) => programOpening?.readSchemaOpening(id, selection),
         prepareMvuHook: (request, signal) => authorBrowser?.prepareHook(request, signal) ?? Promise.resolve(undefined),
+        awaitBrowserSource: (sid, program, signal) => {
+            if (!authorBrowser)
+                throw Error('BROWSER_GENERATION_READER_REQUIRED');
+            const pending = pendingOpeningSource(sid), requestSignal = pending && 'signal' in pending ? pending.signal : undefined;
+            return authorBrowser.awaitReader(sid, program, requestSignal ? AbortSignal.any([signal, requestSignal]) : signal, !!pending);
+        },
+        readMvuHookInterests: sid => authorBrowser?.hookInterests(sid) ?? [],
+        includeCardStyle: sid => narrativePresets.policy(sid).effective.mode !== 'system',
         openingVariantModelSelection: sid => {
             const session = ctx.sessions.get(sid);
             if (!session)
@@ -2507,17 +3049,23 @@ export async function apply(ctx, config = {}) {
             return { provider: route.provider, model: route.model,
                 ...(typeof route.reasoningEffort === 'string' ? { reasoningEffort: route.reasoningEffort } : {}) };
         },
-        activateOpeningVariant: (handoff, authorizeParent) => {
+        activateOpeningVariant: (handoff, authorizeParent, signal, resumeSource) => {
             if (!openingVariantCoordinator)
                 throw Error('OPENING_VARIANT_ACTIVATION_UNAVAILABLE');
-            return openingVariantCoordinator.activate(handoff, authorizeParent);
+            return openingVariantCoordinator.activate(handoff, authorizeParent, signal, resumeSource);
         },
+        readPreparedOpeningVariant: operation => openingVariantCoordinator?.readPrepared(operation),
         projections: () => ctx.sessions.messageProjections,
         readAuthorCapture: id => {
             const captured = tavernSource.capture(id);
             if (captured.kind !== 'captured-data')
                 return undefined;
-            return tavernLoreEdits.captureAuthorData(captured);
+            return authorContext.captureAuthorData(captured);
+        },
+        readFrozenAuthorBook: input => {
+            if (input.profileId !== authorProfile.profileId)
+                throw Error('AUTHOR_WORLDBOOK_PROFILE_MISMATCH');
+            return authorContext.resolveFrozenBook(input);
         },
         inheritedNativeObservation, readInheritedPromptTemplateSource,
         readSourceInheritance: id => tavernSourceInheritance.readCommittedSourceInheritance(id),
@@ -2568,7 +3116,12 @@ export async function apply(ctx, config = {}) {
         },
         readNumericalAuthority: id => mvuState.readNumericalAuthority(id),
         readProgramOpeningObservation: (id, sourceSha256) => {
-            const candidate = programOpening?.read(id), found = candidate?.kind === 'ready' && candidate.context.planRecord
+            if (!authorExecutionEnabled(id)) {
+                const catalog = ctx.get('tavernConversations'), scope = authorSettingsScope(id), operationId = catalog?.operationOf(scope), ready = operationId ? textOnlyContinuation?.readyTarget({ operationId, childSessionId: scope }) : undefined;
+                return ready ? { kind: 'story', sourceSha256, absenceScopeRef: { kind: 'plain-absence', sha256: ready.revision } }
+                    : { kind: 'management', sourceSha256, reason: 'TEXT_ONLY_CONTINUATION_PENDING' };
+            }
+            const candidate = programOpening?.read(id), found = candidate?.kind === 'ready' && candidate.context.input.initialization === 'schema'
                 ? candidate : programOpening?.verified(id);
             if (!found || found.kind === 'outside-domain') {
                 try {
@@ -2588,11 +3141,8 @@ export async function apply(ctx, config = {}) {
                 return { kind: 'management', sourceSha256, reason: found.code };
             if (found.intent.status !== 'completed')
                 return { kind: 'management', sourceSha256, reason: found.intent.diagnosis ?? 'PROGRAM_OPENING_NOT_READY' };
-            if (found.context.planRecord) {
-                const authority = mvuState.readNumericalAuthority(id);
-                return authority.kind === 'ready' ? { kind: 'story', sourceSha256, headRef: { kind: 'numerical-head', sha256: authority.snapshot.headSha256 } }
-                    : { kind: 'management', sourceSha256, reason: authority.code };
-            }
+            if (found.context.input.initialization === 'schema')
+                return;
             return { kind: 'story', sourceSha256, absenceScopeRef: { kind: 'prompt-program-domain',
                     sha256: recordSha256(found.intent.domainReceipt) } };
         },
@@ -2607,6 +3157,11 @@ export async function apply(ctx, config = {}) {
         recoverSchemaRevisionPrefix: input => schemaDerived.recoverRevisionPrefix(input),
         readSchemaEditInvalidation: id => mvuEdits.readInvalidation(id),
         branchReady: id => ensureState(id).branchReady, importActiveKey, importRecordKey,
+        openingVariantParent: sid => {
+            const { prepared } = tavernSourceInheritance.readCommittedStaticSourceInheritance(sid), operation = T.branch.get(prepared.operationKey);
+            return prepared.nativeCut.kind === 'native-fork' && prepared.nativeCut.seedLength === 0 && operation?.kind === 'opening-variant'
+                && operation.reservedChildSessionId === sid ? prepared.parentSessionId : undefined;
+        },
         withSourceLock: (id, work) => withImportLock(id, 'mvu-initialization', work),
         recordVersionsFor: id => captureRoleplaySourceRecordVersionsV1(T, id),
         openingContext: openingContextBinding,
@@ -2742,9 +3297,7 @@ export async function apply(ctx, config = {}) {
             if (basis.kind === 'ready') {
                 const genesis = mvuDerived.required(id) ? mvuDerived.readGenesis(id) : readOwnNumericalGenesis(id);
                 const editFloorSeq = genesis && 'initEvent' in genesis ? genesis.initEvent.native.turnEndSeq + 1
-                    : genesis && 'programEvent' in genesis ? (genesis.programEvent.native.production === 'generated-opening'
-                        ? genesis.programEvent.native.receipt.turnEndRef.seq + 1 : genesis.programEvent.native.receipt.turnEndSeq + 1)
-                        : ctx.sessions.get(id)?.inheritedEventCount;
+                    : ctx.sessions.get(id)?.inheritedEventCount;
                 if (!Number.isSafeInteger(editFloorSeq) || Number(editFloorSeq) < 0)
                     return { kind: 'unknown' };
                 return { kind: 'verified', sourceSha256: basis.snapshot.sourceSha256, root: basis.snapshot.root, editFloorSeq: editFloorSeq };
@@ -2782,7 +3335,8 @@ export async function apply(ctx, config = {}) {
         }
     }
     const mvuEdits = createRoleplayMvuEditFacts({ table: T.branch, readSession: id => ctx.sessions.get(id), eventsOf,
-        currentEdits: (session, events) => ctx.nexttavernMessageEdits.current(session, events), readNumericalBasisFacts: editBasisFacts,
+        currentEdits: (session, events) => ctx.nexttavernMessageEdits.current(session, events)
+            .filter(edit => edit.data?.schemaVersion !== 3 || edit.data.bodyChanged !== false), readNumericalBasisFacts: editBasisFacts,
         readPendingVariantFacts: id => inputState.readPendingVariantFacts(id, () => {
             try {
                 const session = ctx.sessions.get(id);
@@ -2908,6 +3462,7 @@ export async function apply(ctx, config = {}) {
         return { ...basis, observedNativeSeq: currentNativeSeq, kind: 'schema-ready', values: structuredClone(snapshot.values),
             valuesSha256: snapshot.valuesSha256, sourceSha256: snapshot.sourceSha256, eventId: snapshot.currentHead.eventId,
             snapshot, displayUpdates: observation.displayUpdates,
+            ...observation.storyTextBlockCode ? { storyTextBlockCode: observation.storyTextBlockCode } : {},
             ...(observation.lastTaskResultCanonicalSeq !== undefined
                 ? { lastTaskResultCanonicalSeq: observation.lastTaskResultCanonicalSeq } : {}),
             ...observation.unavailableExternalAddons
@@ -2961,9 +3516,9 @@ export async function apply(ctx, config = {}) {
         if (event?.type === 'request/material') {
             const reference = { ownerSessionId: session.id, nativeSeq: Number(event.seq),
                 nativeEventSha256: nativeInputSha256(event), nativeRecordSha256: nativeInputSha256(event.data),
-                snapshotRef: event.data.snapshot, planRef: event.data.plan }, published = captureRoleplayTavernMaterialPublicationV1(read, reference);
+                snapshotRef: event.data.snapshot, planRef: event.data.plan }, published = captureRoleplayTavernMaterialPublicationV1(read, reference), { authorGroups, finalLore } = collectRoleplayTavernPublishedAuthorMaterialV1(published, read);
             authorMaterial = { sourceKey: `native-material:${reference.nativeEventSha256}`,
-                ...collectRoleplayTavernPublishedAuthorMaterialV1(published, read) };
+                authorGroups, finalLore };
         }
         const key = characterBodySourceKey(canonical);
         characterMaterials.accept(session.id, { seq: canonical.seq, key }, authorMaterial?.sourceKey);
@@ -3149,9 +3704,19 @@ export async function apply(ctx, config = {}) {
             }
         }
     }
-    const schemaStory = mvuOpening.createSchemaStory({
+    schemaStory = mvuOpening.createSchemaStory({
         authorChat: authorChatState,
         captureOrdinaryChatNamespace,
+        readOrdinaryScopeFork: (sid, subject = sid) => {
+            if (T.branch.get(tavernSourcePreparedKeyV1(sid)) === undefined)
+                return { bases: [] };
+            // An ancestor's immutable fork bases belong to the live child's verified
+            // lineage. Reading it as a subject would require its inactive Agent.
+            const transaction = sid === subject ? tavernSourceInheritance.readCommittedStaticSourceInheritance(sid)
+                : tavernSourceInheritance.readCommittedSourceLineage(subject).ancestors.find(row => row.prepared.childSessionId === sid);
+            return { bases: transaction?.prepared.authorChatScopeForkBasesV1 ?? [],
+                birth: transaction?.prepared.authorChatScopeBirthV1?.record };
+        },
         closingView: (lease, scope) => inputOwner?.readClosingView(lease, scope),
         verifyConsumedScope: scope => {
             const proof = inputOwner?.captureConsumedScopeProof(scope);
@@ -3202,8 +3767,7 @@ export async function apply(ctx, config = {}) {
             if (!await ctx.sessions.flush(session)) {
                 throw Error('SCHEMA_TASK_EDIT_FLUSH_UNKNOWN');
             }
-        },
-        parse: text => parseMvuSchemaStoryCandidateV2(text, 'analysis-alias-rfc6902-members-v1') });
+        } });
     schemaMaintenance = createRoleplayMvuSchemaMaintenance({ table: T.branch,
         eligible: id => schemaStory?.supportsMaintenance(id) === true,
         work: (session, turn) => {
@@ -3214,7 +3778,17 @@ export async function apply(ctx, config = {}) {
                 lookup.status !== 'none' && lookup.checkpoint.actualTurn === turn ? lookup.checkpoint : undefined;
             return checkpoint ? inputOwner?.readSchemaStoryWork(session.id, checkpoint) : undefined;
         },
-        base: work => schemaStory?.captureMaintenanceBase(work.sessionId, work.currency),
+        executionOwner: (session, turn, signal) => {
+            const agent = taskAgents.get(session.id);
+            if (!agent || ctx.get('agentLoop')?.getInputAdmissionAgent(agent) !== agent
+                || ctx.sessions.get(session.id) !== session)
+                return;
+            return inputBindings.get(agent)?.captureSchemaStoryExecutionOwner(turn, signal);
+        }, prepareCommands: (work, canonical) => {
+            if (!schemaStory)
+                throw Error('SCHEMA_RUNTIME_UNAVAILABLE');
+            return schemaStory.prepareMaintenanceCommands(work, canonical);
+        },
         material: (session, event, work) => {
             const read = materialReadScope(session.id), events = read.events(), turn = Number(event.data?.turn), step = Number(event.data?.step), material = events.findLast(row => row.type === 'request/material' && row.data.turn === turn && row.data.step === step
                 && row.seq < event.seq && row.seq >= work.checkpoint.startSeq);
@@ -3270,6 +3844,7 @@ export async function apply(ctx, config = {}) {
         return { sourceLineage: lineage, inheritedHistory, assertCurrent };
     }
     const rubyCapture = createRoleplayRubyCaptureV1({ source: tavernSource, edits: tavernLoreEdits, inputState,
+        books: authorContext, worldbooks: authorWorldbooks,
         session: id => ctx.sessions.get(id),
         projections: () => ctx.sessions.messageProjections,
         includeCardStyle: id => narrativePresets.policy(id).effective.mode !== 'system',
@@ -3288,10 +3863,39 @@ export async function apply(ctx, config = {}) {
         withSourceLock: (id, work, signal) => withImportLock(id, 'ruby-command-source', work, signal) });
     const ejsPrograms = createRoleplayTavernEjsPrograms({ loadRuntime: (engine, signal) => mvuOpening.templateEjsRuntime(engine, signal) });
     ctx.effect(() => () => ejsPrograms.dispose(), 'roleplay: retained EJS programs lifetime');
+    const executeAuthorFilter = async (input, signal, sourceData) => {
+        if (!authorBrowser)
+            throw Error('INPUT_MATERIAL_NATIVE_FILTER_UNAVAILABLE');
+        const { reference, ...request } = input, binding = reference.binding, session = ctx.sessions.get(binding.sessionId);
+        if (!session)
+            throw Error('AUTHOR_NATIVE_COMMAND_SESSION_UNAVAILABLE');
+        const captured = await authorBrowser.handle({ action: 'capture', binding }, signal);
+        if (!captured.ok || captured.kind !== 'snapshot')
+            throw Error(captured.ok ? 'AUTHOR_NATIVE_FILTER_SNAPSHOT_UNAVAILABLE' : captured.code);
+        const snapshot = captured.snapshot, from = Number(session.seq), output = await authorBrowser.invokeFilter(binding, { ...request, realmId: reference.realmId,
+            resource: reference.resource, filterCallbackId: reference.filterCallbackId,
+            snapshot, readScope: `native-filter:${request.operationId}` }, signal, sourceData);
+        let changed = false;
+        // Only events appended while this actual callback held the channel can
+        // require a material successor. Existing history remains owner DATA.
+        for (let seq = from; seq < Number(session.seq); seq++) {
+            const event = session.eventAt(seq);
+            if (event.type === 'roleplay/author-injection-declaration' || event.type === 'roleplay/author-injection-cleanup'
+                || event.type === 'roleplay/author-chat-root')
+                changed = true;
+        }
+        return { accepted: output.accepted, changed, actualReadBasis: { generation: snapshot.generation, readRevision: snapshot.readRevision,
+                basis: snapshot.basis, scopeFrameSha256: snapshot.scopeFrame.frameSha256,
+                ...output.libraryReads.length ? { libraryReads: output.libraryReads } : {} } };
+    };
     const tavernMaterial = createRoleplayTavernPromptMaterialV1({ branch: T.branch, inputState, settlement: communitySettlement,
+        worldbookVector,
+        books: authorContext, forkBookId: authorContext.forkBookId,
+        captureSharedScopes: authorScopeOwner.capture,
         captureStoryText,
         personas: captureNativePersonasV1,
-        ejs: { programs: ejsPrograms, state: authorChatState, load: signal => mvuOpening.templateEjsRuntime(undefined, signal) },
+        ejs: { programs: ejsPrograms, state: authorChatState, namedWorldInfo: ejsNamedWorldInfo,
+            load: signal => mvuOpening.templateEjsRuntime(undefined, signal) },
         community: { presets: communityPresets, variables: communityVariables, persona: communityAccountPersona,
             modelName: id => selectedMainRoute(ctx.sessions.get(id), taskAgents.get(id), ctx.agentDefaultModel.currentSelection()).model,
             aliases: communityAliases },
@@ -3300,9 +3904,11 @@ export async function apply(ctx, config = {}) {
         tables: T, source: tavernSource, edits: tavernLoreEdits,
         withSourceLock: (id, work, signal) => withImportLock(id, 'tavern-prompt-material', work, signal),
         includeCardStyle: id => narrativePresets.policy(id).effective.mode !== 'system',
+        executionEnabled: authorExecutionEnabled,
         authorPolicy: id => {
             const actual = narrativePresets.policy(id);
-            return { conversationId: actual.conversationId, effective: actual.effective, preset: actual.preset, summary: actual.summary };
+            return { conversationId: actual.conversationId, effective: actual.effective, preset: actual.preset, summary: actual.summary,
+                ...!authorExecutionEnabled(id) ? { execution: 'literal' } : {} };
         },
         projections: () => ctx.sessions.messageProjections,
         inheritedTiming: (scope, source, current, lineage) => captureInheritedTiming(scope.session.id, source, current, lineage),
@@ -3332,31 +3938,13 @@ export async function apply(ctx, config = {}) {
                 throw Error('BROWSER_GENERATION_READER_UNAVAILABLE');
             return authorBrowser.invokeGeneration(sid, program, capture, facts, signal, sourceData);
         },
-        executeAuthorFilter: async (input, signal, sourceData) => {
-            if (!authorBrowser)
-                throw Error('INPUT_MATERIAL_NATIVE_FILTER_UNAVAILABLE');
-            const { reference, ...request } = input, binding = reference.binding, session = ctx.sessions.get(binding.sessionId);
-            if (!session)
-                throw Error('AUTHOR_NATIVE_COMMAND_SESSION_UNAVAILABLE');
-            const captured = await authorBrowser.handle({ action: 'capture', binding }, signal);
-            if (!captured.ok || captured.kind !== 'snapshot')
-                throw Error(captured.ok ? 'AUTHOR_NATIVE_FILTER_SNAPSHOT_UNAVAILABLE' : captured.code);
-            const snapshot = captured.snapshot, from = Number(session.seq), accepted = await authorBrowser.invokeFilter(binding, { ...request, realmId: reference.realmId,
-                resource: reference.resource, filterCallbackId: reference.filterCallbackId,
-                snapshot, readScope: `native-filter:${request.operationId}` }, signal, sourceData);
-            let changed = false;
-            // Read only the actual delta which completed while this callback held
-            // the channel. No second registry hash or whole-history notification scan.
-            for (let seq = from; seq < Number(session.seq); seq++) {
-                const event = session.eventAt(seq);
-                if (event.type === 'roleplay/author-injection-declaration' || event.type === 'roleplay/author-injection-cleanup'
-                    || event.type === 'roleplay/author-chat-root')
-                    changed = true;
-            }
-            return { accepted, changed, actualReadBasis: { generation: snapshot.generation, readRevision: snapshot.readRevision,
-                    basis: snapshot.basis, scopeFrameSha256: snapshot.scopeFrame.frameSha256 } };
-        },
+        executeAuthorFilter,
         retireNativeFilters: retireNativeFilterReferences,
+        initializeOpening: (native, scope) => {
+            if (!programOpening)
+                throw Error('PROGRAM_OPENING_OWNER_UNAVAILABLE');
+            return programOpening.initializeOpening(native, scope);
+        },
         openingPreparation: (native, scope, source) => {
             if (!programOpening)
                 throw Error('PROGRAM_OPENING_OWNER_UNAVAILABLE');
@@ -3378,8 +3966,8 @@ export async function apply(ctx, config = {}) {
             const kept = new Set(retainRoleplayWindowContinuity(scope.session, selected.messages.map(row => row.message), Number.MAX_SAFE_INTEGER));
             return selected.messages.filter(row => kept.has(row.message));
         } });
-    programOpening = createRoleplayProgramOpeningCoreV1({ tables: T,
-        sourceReaders: { tables: T, source: tavernSource, edits: tavernLoreEdits, inputState,
+    programOpening = createRoleplayProgramOpeningCoreV1({ tables: T, generatedOpening: mvuOpening.generatedOpening,
+        sourceReaders: { tables: T, source: tavernSource, edits: tavernLoreEdits, books: authorContext, inputState,
             readImportRecord: (sid, id) => T.branch.get(importRecordKey(sid, id)),
             session: id => ctx.sessions.get(id), readOpeningContext: openingContextBinding,
             sourceInheritance: tavernSourceInheritance },
@@ -3397,9 +3985,9 @@ export async function apply(ctx, config = {}) {
         }, isActualAgent: agent => ctx.get('agentLoop')?.getProgrammaticOpeningAgent(agent) === agent
             && ctx.sessions.get(agent.session.id) === agent.session,
         includeCardStyle: id => narrativePresets.policy(id).effective.mode !== 'system',
-        ownsCombinedOpening: id => {
-            const author = mvuOpening.readAuthorSource(id, 0);
-            return author.kind === 'author-source' && author.source.scripts.some(script => script.enabled);
+        ownsCombinedOpening: (id, index) => {
+            const author = mvuOpening.readAuthorSource(id, index);
+            return author.kind === 'author-source';
         },
         readNumericalSourceSha256: mvuOpening.readSourceSha256, importActiveKey,
         readPreparationFacts: (session, audit) => inputState.readProgramOpeningPreparationFacts(session, audit),
@@ -3408,10 +3996,6 @@ export async function apply(ctx, config = {}) {
         projections: () => ctx.sessions.messageProjections, messageEdits: ctx.nexttavernMessageEdits,
         deletedMessageIds: deletedBranchMessageIdsFor,
         phaseSnapshot: (session, turn) => ensureState(session.id).snapshots.get(turn),
-        readPhaseBControlData: session => {
-            const actual = programAbsenceBranchControls.capture(session);
-            return { rows: actual.rows.filter(row => row.kind === 'phase-b'), assertCurrent: actual.assertCurrent };
-        },
         lookupCopy: async (context) => {
             const found = await ctx.sessionController.resolveAgent(context.seed.sessionId), agent = found?.agent, owned = ctx.get('agentLoop')?.getInputAdmissionAgent(agent), sdk = owned;
             if (!agent || owned !== agent || typeof sdk?.lookupProgrammaticAssistantCommit !== 'function')
@@ -3454,7 +4038,7 @@ export async function apply(ctx, config = {}) {
     }
     function readProgramAbsenceScopes(id) {
         const found = programOpening?.verified(id);
-        if (found?.kind !== 'ready' || found.intent.status !== 'completed' || found.context.planRecord || !found.context.absenceDomain)
+        if (found?.kind !== 'ready' || found.intent.status !== 'completed' || !found.context.absenceDomain)
             return;
         const session = ctx.sessions.get(id);
         if (!session || sourceReadOwnerClosed)
@@ -3523,6 +4107,10 @@ export async function apply(ctx, config = {}) {
             const session = ctx.sessions.get(work.sessionId);
             if (!session)
                 return;
+            const ended = sessionHistoryCut(session).at(receipt.turnEndSeq);
+            if (ended)
+                releaseSourceLifecycle(session, ended, ({ change }) => !change.previous && change.item?.row.role === 'assistant'
+                    && change.item.row.turn === receipt.checkpoint.actualTurn);
             if (mvuOpening.hasSchemaOpening(work.sessionId)) {
                 // Native has received the numerical settled ACK here. This method only
                 // schedules the existing notes worker; it never awaits a summary model.
@@ -3550,6 +4138,8 @@ export async function apply(ctx, config = {}) {
         material: tavernMaterial,
         observe: (session) => inputState.captureObservation(session.id, () => mvuOpening.readInputObservation(session.id)).data,
         preflightObservation: async (session, signal) => {
+            await authorGenerationEffects.settle(session.id, signal);
+            await communityPresets.settleAuthorPending();
             await ensureBranch(session);
             // Ruby publishes its owner/task rows before schema captures branch
             // membership. Publishing afterwards would revoke the captured schema
@@ -3587,6 +4177,7 @@ export async function apply(ctx, config = {}) {
         inputBindings.delete(agent);
     }, { global: true });
     ctx.on('session/disposed', session => {
+        tavernMaterial.releaseSession(session.id);
         for (const [agent, dispose] of canonicalPointBindings)
             if (agent.session === session) {
                 dispose();
@@ -3648,6 +4239,12 @@ export async function apply(ctx, config = {}) {
                 return typeof id === 'string' && mvuOpening.hasSchemaOpening(id) ? mvuOpening.submitSchemaPlayer(input) : mvuPlayer.submit(input);
             } }, observe: observeNumericalState });
     const authorDialogContent = createRoleplayAuthorDialogContentV1({ inputState, branch: T.branch,
+        worldbookVector, namedWorldInfo: ejsNamedWorldInfo, prepareAuthorDialogRoute,
+        presets: communityPresets, variables: communityVariables, authorChat: authorChatState, ejsPrograms,
+        persona: communityAccountPersona,
+        executeNativeFilter: executeAuthorFilter,
+        retireNativeFilters: retireNativeFilterReferences,
+        books: authorContext, forkBookId: authorContext.forkBookId,
         captureStoryText,
         captureContentExecution: (id, plan) => {
             const captured = rubyOwner?.snapshot(id);
@@ -3656,8 +4253,10 @@ export async function apply(ctx, config = {}) {
         },
         source: tavernSource, edits: tavernLoreEdits, session: id => ctx.sessions.get(id),
         projections: () => ctx.sessions.messageProjections, schemaScopes: mvuOpening.captureSchemaPromptScopes,
+        plainScopes: readNonnumericalPromptScopes,
         captureOrdinaryChat: namespace => authorChatState.captureNamespaceV3(namespace),
         preflight: async (sid, signal) => {
+            await authorGenerationEffects.settle(sid, signal);
             await mvuOpening.preflightSchema(sid, signal);
             await rubyOwner?.restoreHeads(sid, signal);
         },
@@ -3668,35 +4267,143 @@ export async function apply(ctx, config = {}) {
         const captured = captureOrdinaryChatNamespace(sid);
         return { namespace: captured.namespace, current: () => current() && captured.current() };
     };
+    async function admitAuthorGenerationImages(request, signal) {
+        const admit = async (value) => {
+            if (value === undefined)
+                return undefined;
+            const uploads = Array.isArray(value) ? value : [value];
+            const content = uploads.map(upload => {
+                if (!upload || typeof upload !== 'object' || upload.type !== 'image-upload')
+                    throw Error('AUTHOR_GENERATION_IMAGE_INGRESS_REQUIRED');
+                return { type: 'image', data: upload.data, mediaType: upload.mediaType,
+                    ...upload.name === undefined ? {} : { name: upload.name } };
+            });
+            signal.throwIfAborted();
+            const admitted = await ctx.attachments.admitPromptContent(content);
+            signal.throwIfAborted();
+            return Array.isArray(value) ? admitted : admitted[0];
+        };
+        const rows = async (value) => Array.isArray(value) ? Promise.all(value.map(async (row) => row && typeof row === 'object' && row.image !== undefined ? { ...row, image: await admit(row.image) } : row)) : value;
+        const options = request.options, overrides = options.overrides, history = overrides && typeof overrides === 'object' && !Array.isArray(overrides) ? overrides.chat_history : undefined;
+        return { ...request, options: { ...options,
+                ...options.image === undefined ? {} : { image: await admit(options.image) },
+                ...options.ordered_prompts === undefined ? {} : { ordered_prompts: await rows(options.ordered_prompts) },
+                ...history && typeof history === 'object' && !Array.isArray(history) && history.prompts !== undefined
+                    ? { overrides: { ...overrides, chat_history: { ...history, prompts: await rows(history.prompts) } } } : {},
+            } };
+    }
+    function resolveGenerationLibraryReads(sid, reads) {
+        return reads.flatMap(read => {
+            const binding = read.attachment;
+            if (!binding || binding.sessionId !== sid)
+                throw Error('AUTHOR_NATIVE_LIBRARY_REALM_UNAVAILABLE');
+            const resolved = authorBrowser?.resolveLibraryReads(binding, [read]) ?? readerDisplay.resolveLibraryReads(binding, [read]);
+            if (!resolved)
+                throw Error('AUTHOR_NATIVE_LIBRARY_REALM_UNAVAILABLE');
+            return resolved;
+        });
+    }
     const authorDialogCore = createRoleplayAuthorBrowserDialogCoreV1({
-        capturePrompt: authorDialogContent.capturePrompt,
-        requestTask: async (sid, prompt, current, signal) => {
+        capturePrompt: async (sid, target, request, operationId, current, signal) => authorDialogContent.capturePrompt(sid, target, await admitAuthorGenerationImages(request, signal), operationId, current, signal),
+        restorePrompt: authorDialogContent.restorePrompt,
+        resolveLibraryReads: resolveGenerationLibraryReads,
+        readOperation: (sid, binding, operationId) => {
+            const session = ctx.sessions.get(sid);
+            return session ? readAuthorDialogOperation(session, binding, operationId) : undefined;
+        },
+        requestTask: async (sid, prompt, current, signal, hooks) => {
             const session = ctx.sessions.get(sid);
             if (!session)
                 throw Error('AUTHOR_DIALOG_SESSION_INACTIVE');
-            return requestAuthorDialog({ session, prompt, current, signal });
+            const { onAccepted, ...nativeHooks } = hooks;
+            return requestAuthorDialog({ session, prompt, current, signal, ...nativeHooks,
+                onCheckpoint: checkpoint => authorGenerationEffects.accept(prompt, checkpoint, async () => { await hooks.onCheckpoint?.(checkpoint); }, current, signal, onAccepted),
+                onTerminal: authorGenerationEffects.terminal });
         }, captureCurrent: (sid, _program, current) => captureBrowserChatSource(sid, current)
     });
-    async function captureOwnedBrowserFacts(sid) {
-        if (!mvuOpening.hasSchemaOpening(sid))
+    function captureAuthorFormatter(sid, data, shared, author, avatarPaths) {
+        if (author.kind !== 'author-data')
             return undefined;
-        const facts = await mvuOpening.captureSchemaBrowserFacts(sid);
+        const basis = data.basis, purpose = `author-formatter:${basis.materialSha256}:${basis.numericalSnapshotSha256}`
+            + `:${basis.nativeCut}:${basis.nativePrefixSha256}`;
+        return inputState.captureSource(sid, 'author-formatter', () => {
+            const captured = author.captured, source = captured.source, policy = communityPresets.policy(sid);
+            function binding(scope, ownerId, version, values, valuesSha256) {
+                return { scope, ownerId, versionSha256: recordSha256(version), values, valuesSha256: valuesSha256 ?? recordSha256(values) };
+            }
+            function sharedBinding(scope) {
+                const value = shared[scope];
+                return value ? binding(scope === 'character' ? 'card' : scope, recordSha256(value.root.address), value.root, value.values, value.valuesSha256) : null;
+            }
+            const chatBase = data.scopeFrame.scopes.chat, chatValues = applyAuthorChatOverlayV3(chatBase.kind === 'available' ? chatBase.variables : {}, data.ordinaryChat), chat = binding('chat', sid, { frame: data.scopeFrame.frameSha256, ordinary: data.ordinaryChat.root }, chatValues), global = sharedBinding('global'), character = sharedBinding('character'), preset = sharedBinding('preset'), selectedMessage = createAuthorNativeMessageVariables(data).resolve({ type: 'message' }), message = selectedMessage.message ? binding('message', selectedMessage.message.messageId, { message: selectedMessage.message.messageVersionSha256, ordinary: selectedMessage.capture?.root ?? null }, selectedMessage.values) : null, scopes = [chat, ...[global, character, preset].filter((value) => value !== null)], session = ctx.sessions.get(sid), agent = session && ctx.agents?.list().find(row => row.session === session), route = agent ? selectedMainRoute(agent.session, agent, ctx.agentDefaultModel.currentSelection()) : undefined, macros = produceRoleplayTavernMacroSnapshotV1({ source, cardData: captured.cardData,
+                includeCardStyle: author.includeCardStyle, inputText: null, scopes, outlets: [], declaredOutlets: [],
+                variableScopes: { chat, global, character, preset, message }, avatarPaths, currentCardFields: author.authorFields.currentCardFields,
+                clockEpochMs: Date.now(), randomSeed: randomUUID(),
+                ...route ? { preparedRoute: { model: route.model, configSha256: recordSha256(route) } } : {} }).snapshot, rules = communityRegexRules(policy, captureRoleplayTavernScopedRegexV1(captured.cardData, source.sourceSha256, true));
+            return { macros, rules, regexDisabled: false };
+        }, undefined, purpose).data;
+    }
+    function captureCharacterRegexData(author) {
+        if (author.kind !== 'author-data')
+            return undefined;
+        const captured = author.captured, registration = authorContext.readRegistration(captured.source)?.registration;
+        return { name: String(captured.cardData.name), rules: author.authorFields.cardRegexes,
+            ...registration ? { metadata: { registration, identitySha256: captured.edits.identitySha256,
+                    sourceSha256: captured.source.sourceSha256, revision: captured.edits.revision } } : {} };
+    }
+    async function capturePreOpeningBrowserFacts(sid, index) {
+        const source = await mvuOpening.prepareBrowserSource(sid, index), session = ctx.sessions.get(sid), agent = ctx.agents?.list().find(row => row.session === session);
+        if (!source || !session || !agent)
+            return undefined;
+        const nativeOwner = ctx.get('agentLoop')?.getInputAdmissionAgent(agent);
+        if (nativeOwner !== agent)
+            return undefined;
+        const stopSha256 = recordSha256(nativeOwner.lookupInputStop()), namespace = captureOrdinaryChatNamespace(sid), author = source.author, context = author.material.openingContext, card = author.material.card, characterData = card.data, character = { sourceId: author.snapshot.source.importId, name: String(characterData.name),
+            ...typeof characterData.avatar === 'string' ? { avatar: characterData.avatar } : {} };
+        const ownerCurrent = () => !sourceReadOwnerClosed && ctx.sessions.get(sid) === session
+            && ctx.get('agentLoop')?.getInputAdmissionAgent(agent) === nativeOwner
+            && recordSha256(nativeOwner.lookupInputStop()) === stopSha256;
+        // Hook journal markers do not change the pre-opening numerical read.
+        // Its Source frame stays at this cut while ordinary successors refresh
+        // only the namespace owned by the ordinary writer.
+        const cut = sessionHistoryCut(session), numerical = { kind: 'blocked',
+            code: 'SCHEMA_OPENING_UNINITIALIZED', canEdit: false }, basis = { sessionId: sid, sourceSnapshotSha256: author.snapshot.snapshotSha256, materialSha256: author.materialSha256,
+            numericalSnapshotSha256: recordSha256(numerical), nativeCut: cut.length, nativePrefixSha256: cut.prefixSha256(cut.length) }, scopeFrame = buildSchemaScopeReadFrame(schemaScopeSource(author.snapshot), recordSha256(basis), author.scripts, { kind: 'unavailable', code: 'SCOPE_SOURCE_UNAVAILABLE' }, []);
+        const capture = () => {
+            const ordinary = inputState.captureClosedHistoricalFacts(sid, `author-pre-opening-chat:${recordSha256(namespace.namespace)}`, () => authorChatState.captureNamespaceV3(namespace.namespace)), current = () => ownerCurrent() && source.current() && namespace.current() && ordinary.current();
+            return { program: source.program, resources: source.resources, sourceCurrent: () => ownerCurrent() && source.current(), current,
+                data: { schemaVersion: 1, encoding: 'author-native-helper-snapshot-v1', basis, scopeFrame, messages: [], numerical,
+                    ordinaryChat: ordinary.data, ordinaryMessages: [], ordinaryPublicationSeq: null,
+                    persona: { name: context.user, ...context.user_gender === undefined ? {} : { gender: context.user_gender }, avatar: null }, character,
+                    context: { chatId: sid, name1: context.user, name2: character.name, characterId: 0, characters: [character], eventTypes: AUTHOR_NATIVE_EVENTS_V1 } },
+                captureOrdinarySuccessor: () => ownerCurrent() && source.current() && namespace.current() ? capture() : undefined };
+        };
+        const facts = capture();
+        if (!facts.current())
+            throw Error('SCHEMA_BROWSER_FACTS_CHANGED');
+        return facts;
+    }
+    async function captureOwnedBrowserFacts(sid, openingIndex) {
+        await authorGenerationEffects.settle(sid, new AbortController().signal);
+        await communityPresets.settleAuthorPending();
+        await authorCharacterLibrary.ready();
+        const characterLibrary = authorCharacterLibrary.capture();
+        const pending = pendingOpeningSource(sid), selection = pending ?? mvuOpening.browserOpeningSelection(sid), facts = mvuOpening.hasSchemaOpening(sid) && !selection?.pending ? await mvuOpening.captureSchemaBrowserFacts(sid)
+            : await capturePreOpeningBrowserFacts(sid, pending?.index ?? openingIndex ?? selection?.index ?? 0);
         if (!facts)
             return facts;
         const book = await authorWorldbooks.capture(sid);
         if (!facts.current() || book && !book.current())
             throw Error('SCHEMA_BROWSER_FACTS_CHANGED');
-        let worldbook;
-        if (book) {
-            const { members: _, ...data } = book.data;
-            worldbook = data;
-        }
+        const worldbook = book?.data;
         const author = tavernMaterial.captureAuthorSource(sid), account = author.data.personas, personas = account?.data, readonlyPreset = communityPresets.readonlyPreset(sid), avatarPaths = { user: account?.selectedAvatarDataUrl ?? null,
             character: author.data.kind === 'author-data' ? author.data.captured.avatarPath : null };
+        const scriptButtons = author.data.kind === 'author-data' ? captureAuthorNativeScriptButtons(facts.program, {
+            source: author.data.captured.source, revision: author.data.captured.edits.revision,
+            extensions: author.data.captured.cardData.extensions
+        }) : undefined;
         const selected = personas?.profiles.find(profile => profile.avatar_id === personas.selectedId);
-        const tavernRegexes = { global: communityPresets.readonlyGlobalRegexes(sid),
-            ...author.data.kind === 'author-data' ? { character: { name: String(author.data.captured.cardData.name),
-                    rules: author.data.authorFields.cardRegexes } } : {} };
+        const character = captureCharacterRegexData(author.data), tavernRegexes = { global: communityPresets.readonlyGlobalRegexes(sid), ...character ? { character } : {} };
         // Userinfo's process event dirties the same captured InputState frame.
         // The Native catalog is not mirrored into a Session table or rechecked by
         // every consumer; only this owner supplies its effective DTO projection.
@@ -3712,14 +4419,16 @@ export async function apply(ctx, config = {}) {
                         originalOrdinal: script.originalOrdinal, variables: resources.read({ ...request, operation: { kind: 'self-script-data' } }) }]];
         })) : {};
         const enrich = (captured) => {
+            const shared = inputState.captureSource(sid, 'author-shared-scope-data', () => authorScopeOwner.capture(sid));
             const namespace = captured.data.ordinaryChat.root.namespace, scripts = inputState.captureClosedHistoricalFacts(sid, `author-ordinary-script-set:${facts.program.programSha256}:${recordSha256(namespace)}`, () => Object.fromEntries(Object.entries(sourceScripts).map(([realmId, script]) => {
                 const ordinary = authorChatState.captureNamespaceV3({ ...namespace,
                     target: { kind: 'script', identity: { scriptIdentity: script.identity } } });
                 return [realmId, { ...script, ordinary, variables: applyAuthorChatOverlayV3(script.variables, ordinary) }];
             })));
-            return { ...captured,
+            const formatter = captureAuthorFormatter(sid, captured.data, shared.data, author.data, avatarPaths);
+            return { ...captured, characterLibrary,
                 ...book ? { worldbook: book.data } : {},
-                data: { ...captured.data, readonlyPreset, avatarPaths, tavernRegexes,
+                data: { ...captured.data, sharedScopes: shared.data, readonlyPreset, avatarPaths, tavernRegexes, ...formatter ? { formatter } : {}, ...scriptButtons ? { scriptButtons } : {},
                     ordinaryPublicationSeq: authorChatNative.latestPublicationSeq(ctx.sessions.get(sid)),
                     context: { ...captured.data.context, realmScripts: scripts.data }, ...worldbook ? { worldbook } : {}, ...personas ? { personas,
                         persona: { ...captured.data.persona, avatar: selected?.avatar_id ?? null } } : {} },
@@ -3727,16 +4436,19 @@ export async function apply(ctx, config = {}) {
                         const next = captured.captureOrdinarySuccessor();
                         return next ? enrich(next) : undefined;
                     } } : {},
-                current: () => captured.current() && scripts.current() && author.current() && (!book || book.current())
-                    && communityPresets.readonlyPreset(sid) === readonlyPreset };
+                current: () => captured.current() && scripts.current() && shared.current() && author.current() && (!book || book.current())
+                    && communityPresets.readonlyPreset(sid) === readonlyPreset && authorCharacterLibrary.current(characterLibrary) };
         };
         return enrich(facts);
     }
     const authorKeyCore = createRoleplayAuthorBrowserKeyCoreV3({ state: authorChatState,
+        sharedScopes: authorScopeOwner,
         // The service retains the original Source proof independently of its
         // State2 DATA cut. Reuse that proof across the canonical writer's FIFO.
         captureCurrent: captureBrowserChatSource,
         withSourceLock: (sid, work, signal) => withImportLock(sid, 'author-chat-state', work, signal) });
+    const authorScriptButtons = createRoleplayAuthorScriptButtonsCoreV1({ source: tavernSource, edits: tavernLoreEdits,
+        withSourceLock: (sid, work, signal) => withImportLock(sid, 'author-script-buttons', work, signal) });
     function captureAuthorDataPublication(sid, begin) {
         if (!begin)
             return undefined;
@@ -3850,6 +4562,47 @@ export async function apply(ctx, config = {}) {
         return captureCommittedTavernInjectionRegistryV1({ sessionId: sid, history, signal,
             retireEjs: ejsPrograms.retire, retireNativeFilters: retireNativeFilterReferences });
     }
+    const authorMvuTrials = createRoleplayAuthorMvuTrialsV1({ prepare: async (sid, snapshot, message, signal) => {
+            const session = ctx.sessions.get(sid);
+            if (!session)
+                throw Error('AUTHOR_NATIVE_MVU_TRIAL_REVOKED');
+            const source = inputState.captureSourceLease(sid, () => {
+                const captured = mvuOpening.readAuthorSource(sid, 0);
+                if (captured.kind !== 'author-source')
+                    throw Error(captured.kind === 'unsupported'
+                        ? captured.diagnostics[0]?.code ?? 'SCHEMA_TRIAL_SOURCE_UNAVAILABLE' : 'SCHEMA_TRIAL_SOURCE_UNAVAILABLE');
+                return captured.source;
+            });
+            try {
+                const prepared = await mvuOpening.prepareTrialSource(source.data, signal);
+                signal.throwIfAborted();
+                if (!source.current() || ctx.sessions.get(sid) !== session)
+                    throw Error('AUTHOR_NATIVE_MVU_TRIAL_REVOKED');
+                const macros = hasTavernPromptMacroSyntaxV1(message) ? snapshot.formatter?.macros : undefined;
+                if (hasTavernPromptMacroSyntaxV1(message) && !macros)
+                    throw Error('SCHEMA_MACRO_CONTEXT_UNAVAILABLE');
+                return { ...prepared, ...macros ? { macros: projectRoleplayMvuMacroSnapshotV1(message, macros) } : {},
+                    current: () => !sourceReadOwnerClosed && ctx.sessions.get(sid) === session && source.current(),
+                    onInvalidated: source.onInvalidated, release: source.dispose };
+            }
+            catch (error) {
+                source.dispose();
+                throw error;
+            }
+        } });
+    ctx.on('session/disposed', session => authorMvuTrials.releaseSession(session.id), { global: true });
+    ctx.effect(() => () => authorMvuTrials.dispose(), 'roleplay: author MVU trial lifetime');
+    function assertAuthorMessageOrdinaryBasis(input) {
+        const expected = input.ordinaryExpected;
+        if (input.patch?.ordinary !== undefined && !expected)
+            throw Error('AUTHOR_NATIVE_MESSAGE_TARGET_UNAVAILABLE');
+        if (!expected)
+            return;
+        const root = authorChatState.captureNamespaceRootV3(expected.root.namespace), ref = schemaStory?.captureOrdinaryScopeBases(expected.root.namespace).ref ?? null, sameRef = (left, right) => left === right || !!left && !!right
+            && left.key === right.key && left.sha256 === right.sha256;
+        if (!sameRef(root.head, expected.root.head) || !sameRef(root.base, expected.root.base) || !sameRef(ref, expected.scopeRef))
+            throw Error('AUTHOR_CHAT_REVISION_CHANGED');
+    }
     async function editAuthorMessageBody(sid, input, current, signal) {
         const session = ctx.sessions.get(sid);
         if (!session)
@@ -3858,34 +4611,40 @@ export async function apply(ctx, config = {}) {
             signal.throwIfAborted();
             if (ctx.sessions.get(sid) !== session || !current())
                 throw Error('AUTHOR_MESSAGE_EDIT_SOURCE_CHANGED');
+            if (input.patch && !ctx.nexttavernMessageEdits.lookupOperation(session, sessionHistoryCut(session), input.operationId))
+                assertAuthorMessageOrdinaryBasis(input);
         });
     }
-    authorBrowser = createRoleplayAuthorBrowser({ ctx, resolveSession: async (id) => {
+    function captureAuthorBrowserOwner(sid, sourceOnly = false) {
+        const session = ctx.sessions.get(sid), catalog = ctx.get('tavernConversations');
+        const agent = ctx.agents?.list().find(row => row.session === session);
+        const actual = agent && ctx.get('agentLoop')?.getInputAdmissionAgent(agent);
+        const selected = catalog?.selectionOf(sid), pending = sourceOnly ? pendingOpeningSource(sid) : undefined;
+        if (!session || !agent || actual !== agent || !storyBranchIsActive(session)
+            || selected && selected.activeSessionId !== sid && !pending
+            || pending && 'sourceSessionId' in pending && selected?.activeSessionId !== pending.sourceSessionId)
+            return undefined;
+        const nativeOwner = actual;
+        const cwd = session.header?.cwd, selection = selected
+            ? `${selected.root}:${selected.activeSessionId}:${selected.revision}` : sid;
+        const stopSha256 = recordSha256(nativeOwner.lookupInputStop());
+        return () => {
+            const now = ctx.get('tavernConversations'), choice = now?.selectionOf(sid);
+            return !sourceReadOwnerClosed && (!pending || pending.current())
+                && ctx.sessions.get(sid) === session && session.header?.cwd === cwd
+                && ctx.agents?.list().includes(agent) === true && ctx.get('agentLoop')?.getInputAdmissionAgent(agent) === actual
+                && storyBranchIsActive(session) && now === catalog
+                && (choice ? `${choice.root}:${choice.activeSessionId}:${choice.revision}` : sid) === selection
+                && recordSha256(nativeOwner.lookupInputStop()) === stopSha256;
+        };
+    }
+    authorBrowser = createRoleplayAuthorBrowser({ ctx, lifecycle: authorLifecycle, resolveSession: async (id) => {
             const session = await resolveRoleplaySession(id);
             if (session)
                 await ensureBranch(session);
             return session;
-        }, captureOwner: sid => {
-            const session = ctx.sessions.get(sid), catalog = ctx.get('tavernConversations');
-            const agent = ctx.agents?.list().find(row => row.session === session);
-            const actual = agent && ctx.get('agentLoop')?.getInputAdmissionAgent(agent);
-            const selected = catalog?.selectionOf(sid);
-            if (!session || !agent || actual !== agent || !storyBranchIsActive(session)
-                || selected && selected.activeSessionId !== sid)
-                return undefined;
-            const nativeOwner = actual;
-            const cwd = session.header?.cwd, selection = selected
-                ? `${selected.root}:${selected.activeSessionId}:${selected.revision}` : sid;
-            const stopSha256 = recordSha256(nativeOwner.lookupInputStop());
-            return () => {
-                const now = ctx.get('tavernConversations'), choice = now?.selectionOf(sid);
-                return !sourceReadOwnerClosed && ctx.sessions.get(sid) === session && session.header?.cwd === cwd
-                    && ctx.agents?.list().includes(agent) === true && ctx.get('agentLoop')?.getInputAdmissionAgent(agent) === actual
-                    && storyBranchIsActive(session) && now === catalog
-                    && (choice ? `${choice.root}:${choice.activeSessionId}:${choice.revision}` : sid) === selection
-                    && recordSha256(nativeOwner.lookupInputStop()) === stopSha256;
-            };
-        }, captureFacts: captureOwnedBrowserFacts,
+        }, captureOwner: sid => captureAuthorBrowserOwner(sid), captureSourceOwner: sid => captureAuthorBrowserOwner(sid, true),
+        captureFacts: captureOwnedBrowserFacts, captureAuthorScene, mutateCharacterLibrary, retryCharacterLibrary,
         acquireParentOrigins: async (groups) => Object.fromEntries(await Promise.all(groups.map(async (group) => [group, (await readerNativeOrigin.acquire()).url]))),
         cleanupPrompts: record => {
             const session = ctx.sessions.get(record.sessionId);
@@ -3905,7 +4664,7 @@ export async function apply(ctx, config = {}) {
                 sessionId: input.sessionId, operationId: input.request.operationId, programSha256: input.program.programSha256,
                 definition: { logicalOwnerId: definition.logicalOwnerId, definitionSha256: definition.definitionSha256 },
                 realmId: input.realm.realmId, groupId: input.realm.groupId, resource: input.request.resource,
-                mutation: input.request.mutation }, registry = capturePromptRegistry(input.sessionId, input.signal), prior = registry.declaration(declaration.operationId);
+                mutation: input.request.mutation, ...input.libraryReads.length ? { libraryReads: input.libraryReads } : {} }, registry = capturePromptRegistry(input.sessionId, input.signal), prior = registry.declaration(declaration.operationId);
             if (prior) {
                 if (recordSha256(prior) !== recordSha256(declaration))
                     throw Error('AUTHOR_INJECTION_OPERATION_CONFLICT');
@@ -3919,7 +4678,7 @@ export async function apply(ctx, config = {}) {
             capturePromptRegistry(input.sessionId, input.signal);
             return {};
         }, input.signal),
-        editMessageBody: editAuthorMessageBody,
+        editMessageBody: editAuthorMessageBody, mvuTrial: authorMvuTrials.handle, releaseMvuTrials: authorMvuTrials.releaseOwner,
         confirmMessageBody: (sid, operationId) => {
             const session = ctx.sessions.get(sid);
             if (!session)
@@ -3927,10 +4686,37 @@ export async function apply(ctx, config = {}) {
             return confirmAuthorMessageEdit(session, operationId);
         },
         mutateAuthorNamespace: authorKeyCore.mutateNamespace,
-        confirmAuthorNamespace: (_sid, operation) => authorChatState.confirmOrdinaryBatchV3(operation),
+        confirmAuthorNamespace: authorKeyCore.confirmNamespace,
         retryAuthorNamespace: authorKeyCore.retryNamespace,
+        capturePresetLibrary: communityPresets.authorCatalog,
+        mutatePreset: async (sid, program, realm, operation, current, signal, begin) => {
+            if (operation.origin.profileId !== authorProfile.profileId || operation.origin.sessionId !== sid)
+                throw Error('PRESET_OPERATION_ORIGIN_INVALID');
+            await communityPresets.settleAuthorPending();
+            const prior = communityPresets.recoverAuthorOperation(operation);
+            if (prior)
+                return prior;
+            const origin = { profileId: authorProfile.profileId, sessionId: sid, realmId: realm.realmId, groupId: realm.groupId,
+                sourceRecordSessionId: program.source.sourceRecordSessionId, importId: program.source.importId };
+            if (recordSha256(operation.origin) !== recordSha256(origin))
+                throw Error('PRESET_OPERATION_ORIGIN_INVALID');
+            return withImportLock(sid, 'author-preset', async () => {
+                const assertCurrent = () => {
+                    signal.throwIfAborted();
+                    if (!current())
+                        throw Error('AUTHOR_PRESET_SOURCE_CHANGED');
+                };
+                assertCurrent();
+                const published = captureAuthorDataPublication(sid, begin), result = await communityPresets.manage(sid, operation, assertCurrent);
+                published?.(result.receipt);
+                return result;
+            }, signal);
+        },
+        mutateScriptButtons: (sid, program, realm, request, current, signal, begin) => authorScriptButtons.mutate(sid, program, realm, request, current, signal, () => captureAuthorDataPublication(sid, begin)),
         mutateWorldbook: (sid, _program, request, basis, current, signal, begin) => authorWorldbooks.mutate(sid, request, basis, current, signal, () => captureAuthorDataPublication(sid, begin)),
+        manageWorldbook: (sid, _program, request, basis, current, signal, begin) => authorWorldbooks.manage(sid, request, basis, current, signal, () => captureAuthorDataPublication(sid, begin)),
         retryWorldbook: authorWorldbooks.retry,
+        readWorldbook: authorWorldbooks.readHelper,
         mutatePersona: (sid, program, realm, request, current, signal, begin) => {
             signal.throwIfAborted();
             const published = captureAuthorDataPublication(sid, begin);
@@ -3948,29 +4734,49 @@ export async function apply(ctx, config = {}) {
         },
         submit: (input, current) => mvuOpening.submitSchemaPlayer(input, current), confirm: mvuOpening.confirmSchemaPlayer,
         mutateOpeningVariants: (capture, request, signal) => mvuOpening.mutateOpeningVariants(capture, request, signal),
-        generateRaw: authorDialogCore.generateRaw,
+        authorGeneration: authorDialogCore,
         commands: authorCommands,
         releaseOwner: authorDialogCore.releaseOwner });
+    ctx.on('session/event', (session, event) => {
+        const read = acceptSourceLifecycle(session, event);
+        if (read && event.type === 'turn/end' && event.data?.reason?.kind !== 'completed') {
+            for (const [seq, pending] of read.state.pending)
+                if (!pending.change.previous
+                    && pending.change.item?.row.turn === Number(event.data?.turn))
+                    read.state.pending.delete(seq);
+        }
+        // Numerical and character workflows publish after their settled ACK above.
+        if (read && event.type === 'turn/end' && event.data?.reason?.kind === 'completed'
+            && !mvuOpening.hasSchemaOpening(session.id) && !characterPrivate?.enabled(session.id))
+            releaseSourceLifecycle(session, event, ({ change }) => !change.previous && change.item?.row.role === 'assistant'
+                && change.item.row.turn === Number(event.data?.turn), read);
+    }, { global: true });
     ctx.on('session/disposed', session => authorBrowser?.invalidateSession(session.id), { global: true });
     ctx.effect(() => () => { authorBrowser?.dispose(); authorDialogCore.dispose(); authorKeyCore.dispose(); }, 'roleplay: owned browser lifetime');
-    registerTavernLoreEditorRoutesV1({ ctx, store: tavernLoreEdits, resolveSessionScope: async (id) => {
-            const session = await resolveRoleplaySession(id);
-            if (!session || !storyBranchIsActive(session))
-                return null;
-            assertWorkspaceSession(session);
-            await ensureBranch(session);
-            const cwd = session.header.cwd;
-            const catalog = ctx.get('tavernConversations'), root = catalog?.rootOf(id), selection = root ? catalog?.selectionOf(id).revision : undefined;
-            const assertCurrent = () => {
-                const now = ctx.get('tavernConversations');
-                if (ctx.sessions.get(id) !== session || !isRoleplaySession(session) || !storyBranchIsActive(session)
-                    || session.header?.cwd !== cwd || now !== catalog || now?.rootOf(id) !== root
-                    || (root ? now?.selectionOf(id).revision : undefined) !== selection)
-                    throw Error('LORE_EDITOR_SCOPE_CHANGED');
-            };
-            assertCurrent();
-            return { sessionId: id, assertCurrent };
-        } });
+    const resolveWorldbookManagementScope = async (id) => {
+        const session = await resolveRoleplaySession(id);
+        if (!session || !storyBranchIsActive(session))
+            return null;
+        assertWorkspaceSession(session);
+        await ensureBranch(session);
+        const cwd = session.header.cwd;
+        const catalog = ctx.get('tavernConversations'), root = catalog?.rootOf(id), selection = root ? catalog?.selectionOf(id).revision : undefined;
+        const assertCurrent = () => {
+            const now = ctx.get('tavernConversations');
+            if (sourceReadOwnerClosed || ctx.sessions.get(id) !== session || !isRoleplaySession(session) || !storyBranchIsActive(session)
+                || session.header?.cwd !== cwd || now !== catalog || now?.rootOf(id) !== root
+                || (root ? now?.selectionOf(id).revision : undefined) !== selection)
+                throw Error('LORE_EDITOR_SCOPE_CHANGED');
+        };
+        assertCurrent();
+        return { sessionId: id, assertCurrent };
+    };
+    registerTavernLoreEditorRoutesV1({ ctx, store: authorWorldbookEditor,
+        resolveSessionScope: resolveWorldbookManagementScope });
+    registerWorldbookLibraryRoutesV1({ ctx, source: tavernSource, context: authorContext,
+        catalog: authorWorldbookCatalog, bindings: authorWorldbookBindings,
+        resolveSessionScope: resolveWorldbookManagementScope,
+        withSourceLock: (id, work) => withImportLock(id, 'worldbook-library', work) });
     registerOpeningRoutes({ ctx, resolveRoleplaySession: async (id) => {
             const session = await resolveRoleplaySession(id);
             // Opening basis needs a ready branch, but general branch resolution must
@@ -3980,6 +4786,7 @@ export async function apply(ctx, config = {}) {
             return session;
         }, selection: openingSelection,
         program: programOpening,
+        requiresAuthorBrowser: async (sid, index) => (await mvuOpening.prepareBrowserSource(sid, index)) !== undefined,
         openingContext,
         legacyOpeningAlreadyRequested: (sessionId, importId) => {
             const pointer = T.branch.get(importActiveKey(sessionId));
@@ -4151,18 +4958,67 @@ export async function apply(ctx, config = {}) {
     };
     const readerNativeOrigin = createReaderNativeOriginService({ shellHtml: READER_NATIVE_PARENT_SHELL_HTML,
         remoteOriginTemplate: cfg.readerNativeOriginTemplate || undefined });
+    const authorScenes = new Map();
+    async function captureAuthorScene(sid) {
+        const author = tavernMaterial.captureAuthorSource(sid);
+        if (author.data.kind !== 'author-data')
+            return undefined;
+        const captured = author.data.captured;
+        // Source already owns the counter-independent identity and published edit
+        // head. Ordinary DATA updates reuse the DOM without reviving an old Source.
+        const identity = JSON.stringify([sid, captured.currentIdentitySha256, captured.edits.head.headSha256]);
+        let retained = authorScenes.get(sid);
+        if (retained?.identity !== identity) {
+            retained = { identity, scene: readerNativeOrigin.acquire().then(({ url }) => ({ identity,
+                    permissionGroup: 'author-source', parentOrigin: url })) };
+            authorScenes.set(sid, retained);
+        }
+        return retained.scene;
+    }
+    ctx.on('session/disposed', session => authorScenes.delete(session.id), { global: true });
+    ctx.effect(() => () => authorScenes.clear(), 'roleplay: author DOM scenes');
     const readerBeautyOrigins = new Map();
     ctx.effect(() => () => readerNativeOrigin.dispose(), 'roleplay: isolated native Reader origin');
-    const readerDisplay = createRoleplayReaderDisplay({ inputState, source: tavernSource,
+    const readerDisplay = createRoleplayReaderDisplay({ inputState, source: tavernSource, lifecycle: authorLifecycle, captureAuthorScene,
+        namedWorldInfo: ejsNamedWorldInfo,
+        configuredMainRoute: sid => {
+            const route = selectedMainRoute(ctx.sessions.get(sid), taskAgents.get(sid), ctx.agentDefaultModel.currentSelection());
+            return { model: route.model, configSha256: recordSha256(route) };
+        },
+        generation: async (sid, program, document, request, current, signal) => {
+            const realm = { realmId: 'reader:' + document.documentPlanSha256, groupId: document.writes,
+                effects: document.writes === 'source-regex' ? 'source' : 'readonly' };
+            if (request.action === 'start') {
+                const { action: _action, ...input } = request;
+                return { kind: 'generation-started', ...authorDialogCore.start(sid, program, realm, { ...input, realmId: realm.realmId }, current, signal) };
+            }
+            if (request.action === 'next')
+                return { kind: 'generation-update',
+                    update: await authorDialogCore.next(sid, program, realm, request.operationId, request.cursor, current, signal) };
+            if (request.action === 'stop')
+                return { kind: 'generation-stopped',
+                    stopped: await authorDialogCore.cancel(sid, program, realm, request.operationId, current, signal) };
+            authorDialogCore.completeFilter(sid, program, realm, request.operationId, request, current, signal);
+            return { kind: 'generation-filter-acknowledged' };
+        }, releaseGeneration: authorDialogCore.releaseOwner,
+        beforeCapture: async (sid, signal) => {
+            await authorGenerationEffects.settle(sid, signal);
+            await communityPresets.settleAuthorPending();
+            await authorCharacterLibrary.ready();
+        },
+        readWorldbook: authorWorldbooks.readHelper,
+        captureSharedScopes: authorScopeOwner.capture,
         selectedMessageFacts: readTavernSelectedMessageFactsV1,
-        captureStoryText,
+        captureStoryText: createRoleplayStoryTextReader(id => mvuOpening.captureReaderStoryMessages(id), message => readTavernSelectedMessageFactsV1(message).messageVersionSha256),
         nativeParentOrigins: async (groups) => Object.fromEntries(await Promise.all(groups.map(async (group) => [group, (await readerNativeOrigin.acquire()).url]))),
         authorSource: tavernMaterial.captureAuthorSource,
-        community: { policy: communityPresets.policy, variables: communityDisplayVariables },
+        community: { policy: communityPresets.policy, variables: communityVariables.captureDisplay },
         session: id => ctx.sessions.get(id), messageEdits: ctx.nexttavernMessageEdits,
         includeCardStyle: id => narrativePresets.policy(id).effective.mode !== 'system',
         scopes: id => readerDisplayScopes(id).data.scopes,
         documentFacts: async (id, read) => {
+            await authorCharacterLibrary.ready();
+            const characterLibrary = authorCharacterLibrary.capture(), presetLibrary = communityPresets.authorCatalog(id);
             let facts;
             if (mvuOpening.hasSchemaOpening(id))
                 facts = await mvuOpening.captureReaderDocumentFacts(id);
@@ -4191,22 +5047,20 @@ export async function apply(ctx, config = {}) {
             const book = await authorWorldbooks.capture(id);
             if (!facts.current() || book && !book.current())
                 throw Error('READER_WORLDBOOK_SCOPE_CHANGED');
-            let worldbook;
-            if (book) {
-                const { members: _, ...data } = book.data;
-                worldbook = data;
-            }
+            const worldbook = book?.data;
             const readonlyPreset = communityPresets.readonlyPreset(id), captured = facts, author = tavernMaterial.captureAuthorSource(id), account = author.data.personas, selected = account?.data.profiles.find(row => row.avatar_id === account.data.selectedId), avatarPaths = { user: account?.selectedAvatarDataUrl ?? null,
                 character: author.data.kind === 'author-data' ? author.data.captured.avatarPath : null };
-            const tavernRegexes = { global: communityPresets.readonlyGlobalRegexes(id),
-                ...author.data.kind === 'author-data' ? { character: { name: String(author.data.captured.cardData.name),
-                        rules: author.data.authorFields.cardRegexes } } : {} };
-            return { ...facts, presetCatalog: communityPresets.ejsPreset(id), data: { ...facts.data, readonlyPreset, avatarPaths, tavernRegexes,
+            const character = captureCharacterRegexData(author.data), tavernRegexes = { global: communityPresets.readonlyGlobalRegexes(id), ...character ? { character } : {} };
+            const shared = inputState.captureSource(id, 'author-shared-scope-data', () => authorScopeOwner.capture(id));
+            const formatter = captureAuthorFormatter(id, facts.data, shared.data, author.data, avatarPaths);
+            return { ...facts, presetLibrary, characterLibrary, presetCatalog: communityPresets.ejsPreset(id), data: { ...facts.data, sharedScopes: shared.data, readonlyPreset, avatarPaths, tavernRegexes,
+                    ...formatter ? { formatter } : {},
                     ordinaryPublicationSeq: authorChatNative.latestPublicationSeq(ctx.sessions.get(id)),
                     ...worldbook ? { worldbook } : {}, ...account ? { personas: account.data,
                         persona: { ...facts.data.persona, avatar: selected?.avatar_id ?? null } } : {} },
-                current: () => captured.current() && author.current() && (!book || book.current())
-                    && communityPresets.readonlyPreset(id) === readonlyPreset };
+                current: () => captured.current() && shared.current() && author.current() && (!book || book.current())
+                    && communityPresets.readonlyPreset(id) === readonlyPreset && communityPresets.authorCatalog(id) === presetLibrary
+                    && authorCharacterLibrary.current(characterLibrary) };
         },
         templateRuntime: (signal, engine) => mvuOpening.templateEjsRuntime(engine, signal),
         captureRegexInputs: (sid, source, signal) => {
@@ -4220,7 +5074,7 @@ export async function apply(ctx, config = {}) {
                     throw Error('READER_REGEX_SOURCE_CHANGED');
             }), accepted = captureCommittedTavernInjectionRegistryV1({ sessionId: sid, history,
                 signal: new AbortController().signal, retireEjs: ejsPrograms.retire,
-                retireNativeFilters: retireNativeFilterReferences }), latest = history.publications.at(-1)?.snapshot;
+                retireNativeFilters: retireNativeFilterReferences }), latest = history.publications.at(-1)?.material;
             // Reader has no Main generation. Its provisional operations use the last
             // accepted material coordinates; an empty accepted history starts at 0.
             return { history, definitions: definitions.definitions, turn: latest?.turn ?? 0, step: latest?.step ?? 0,
@@ -4233,7 +5087,7 @@ export async function apply(ctx, config = {}) {
         mutateOpeningVariants: (capture, request, signal) => mvuOpening.mutateOpeningVariants(capture, request, signal),
         confirmOpeningVariants: (sid, operationId) => Promise.resolve(mvuOpening.confirmOpeningVariants(sid, operationId)),
         replaceNumerical: (operation, current) => mvuOpening.submitSchemaPlayer(operation, current), commands: authorCommands,
-        editMessageBody: editAuthorMessageBody,
+        editMessageBody: editAuthorMessageBody, mvuTrial: authorMvuTrials.handle, releaseMvuTrials: authorMvuTrials.releaseOwner,
         mutateNamespace: authorKeyCore.mutateCapturedNamespace,
         retryNamespace: authorKeyCore.retryCapturedNamespace });
     const releaseReaderBindings = inputState.observeSessionRelease(id => {
@@ -4241,7 +5095,32 @@ export async function apply(ctx, config = {}) {
         readerBeautyOrigins.delete(id);
     });
     ctx.effect(() => () => { releaseReaderBindings(); readerDisplay.dispose(); }, 'roleplay: Reader document binding lifetime');
+    const materialFailureReads = new WeakMap();
+    function readExtensionFailures(session) {
+        const author = tavernMaterial.captureAuthorSource(session.id).data, sourceRevision = author.kind === 'author-data' ? author.captured.currentIdentitySha256 : undefined;
+        let ejs = tavernMaterial.extensionFailures(session.id);
+        if (ejs === undefined) {
+            const cut = sessionHistoryCut(session), previous = materialFailureReads.get(session);
+            const selected = previous ?? { through: 0, failures: [] };
+            // Native's append-only owner supplies the cursor. Polling consumes only
+            // new material events, and the diagnostic view grants no write rights.
+            for (const event of cut.range(selected.through))
+                if (event.type === 'request/material') {
+                    const row = T.branch.get(event.data.snapshot.key);
+                    selected.failures = row?.payload?.extensionFailures ?? [];
+                }
+            selected.through = cut.length;
+            materialFailureReads.set(session, selected);
+            ejs = selected.failures;
+        }
+        // The Source owner memoizes this identity against its Domain change feed.
+        // A current read can retire an old diagnostic without re-evaluating EJS or
+        // rehashing historical material on each activity poll.
+        return [...(rubyOwner?.extensionFailures(session.id) ?? []),
+            ...ejs.filter(failure => failure.sourceRevision === sourceRevision)];
+    }
     const { collectBranchRecords, recordVersionsFor, readRoleplayState } = createRoleplayState({
+        extensionFailures: readExtensionFailures,
         ctx,
         T,
         readInputDiagnostic: (id, refs) => inputOwner?.readDiagnostic(id, refs),
@@ -4263,7 +5142,28 @@ export async function apply(ctx, config = {}) {
         importRecordKey,
         preparationRecordKey,
         tavernTasks,
-        memoryForContext,
+        contextProjection: (session, numerical, includeReaderDisplay) => {
+            const id = session.id, schemaStory = mvuOpening.hasSchemaOpening(id);
+            if (schemaStory && (numerical?.kind !== 'schema-ready' || numerical.storyTextBlockCode)) {
+                const numericalCode = numerical && 'code' in numerical ? numerical.code : null, storyTextCode = numerical?.kind === 'schema-ready' ? numerical.storyTextBlockCode : null;
+                return { memory: null, directorNotes: null, schemaStory, displayContext: includeReaderDisplay
+                        ? recordSha256({ kind: numerical?.kind ?? null, numericalCode, storyTextCode }) : null };
+            }
+            // Reuse notes from the scoped projection's owner. The table fallback
+            // continues through the notes service's branch filter.
+            const compaction = ctx.get('compaction'), memory = memoryForContext(session), directorNotes = typeof compaction?.memoryProjection === 'function' && memory && Object.hasOwn(memory, 'directorNotes')
+                ? memory.directorNotes ?? null : compaction?.directorNotes?.(session) ?? null;
+            let displayContext = null;
+            if (includeReaderDisplay) {
+                const policy = communityPresets.policy(id);
+                displayContext = recordSha256({ scopes: readerDisplayScopes(id).data.scopes?.versionSha256 ?? null,
+                    cardStyle: narrativePresets.policy(id).effective.mode !== 'system', community: policy.fingerprint,
+                    variables: policy.preset ? communityDisplayVariables(id, policy.preset.id) : null,
+                    readerRegex: capturePromptRegistry(id, new AbortController().signal).readerRegexBasisSha256,
+                    ordinaryPublicationSeq: authorChatNative.latestPublicationSeq(ctx.sessions.get(id)) });
+            }
+            return { memory, directorNotes, displayContext, schemaStory };
+        },
         cloneContextWindow,
         contextWindowFor,
         selectedStatusRecord,
@@ -4281,14 +5181,16 @@ export async function apply(ctx, config = {}) {
         },
         taskArtifact: (id, seq) => schemaStory?.taskArtifact(id, seq),
         readerDisplay: async (session, messages, signal) => {
+            let schemaReadAvailable = true;
             try {
                 await mvuOpening.preflightSchema(session.id, signal);
             }
             catch {
-                // Unavailable numerical scopes must not block pure Source display.
                 signal.throwIfAborted();
+                // Pure Source display remains available without retrying a failed schema read.
+                schemaReadAvailable = false;
             }
-            return readerDisplay.capture(session.id, messages, signal);
+            return readerDisplay.capture(session.id, messages, signal, schemaReadAvailable);
         },
         readerRenderHtml: async (request, signal) => {
             const session = await resolveRoleplaySession(request.binding.sessionId);
@@ -4300,79 +5202,104 @@ export async function apply(ctx, config = {}) {
         },
         readerReleasePhase: binding => readerDisplay.releasePhase(binding),
         readerDocument: async (input, signal) => {
-            const numericalRecovery = input.action === 'confirm-reader-numerical' || input.action === 'retry-reader-numerical', bodyMutation = input.action === 'mutate-reader-message-body' || input.action === 'retry-reader-message-body', namespaceMutation = input.action === 'mutate-reader-namespace' || input.action === 'retry-reader-namespace';
-            const sid = input.action === 'confirm-opening-variants' || input.action === 'retry-opening-variants'
-                || input.action === 'confirm-reader-message-body' || input.action === 'confirm-reader-namespace'
-                ? input.sessionId : numericalRecovery ? input.operation.sessionId : input.binding?.sessionId;
-            if (typeof sid !== 'string')
-                return { ok: false, code: 'READER_DOCUMENT_REQUEST_INVALID' };
-            const session = await resolveRoleplaySession(sid);
-            if (!session)
-                return { ok: false, code: 'READER_DOCUMENT_SESSION_UNAVAILABLE' };
-            if (input.action === 'release-reader-binding') {
-                readerDisplay.releaseBinding(input.binding);
-                return { ok: true, kind: 'reader-binding-released' };
-            }
-            if (!numericalRecovery && !bodyMutation && !namespaceMutation && input.action !== 'confirm-reader-namespace'
-                && input.action !== 'save-reader-numerical' && input.action !== 'execute-reader-commands'
-                && input.action !== 'mutate-opening-variants' && typeof input.operationId !== 'string')
-                return { ok: false, code: 'OPENING_VARIANT_REQUEST_INVALID' };
-            await awaitImportBarrier(session.id);
-            await ensureBranch(session);
-            if (input.action === 'confirm-reader-namespace') {
-                const operation = input.operation, cause = operation.cause;
-                if (operation.namespace.sessionId !== session.id || cause?.encoding !== 'reader-native-namespace-cause-v1'
-                    || cause.principal !== 'reader-regex-document')
-                    return { ok: false, code: 'AUTHOR_CHAT_BINDING_CHANGED' };
-                return { ok: true, kind: 'reader-namespace-confirmed', receipt: await authorChatState.confirmOrdinaryBatchV3(operation) };
-            }
-            if (input.action === 'mutate-reader-namespace')
-                return { ok: true, kind: 'reader-namespace-mutated',
-                    ...await readerDisplay.mutateNamespace(input.binding, input.documentPlanSha256, input.request, signal) };
-            if (input.action === 'retry-reader-namespace')
-                return { ok: true, kind: 'reader-namespace-mutated',
-                    ...await readerDisplay.mutateNamespace(input.binding, input.documentPlanSha256, input.operation, signal, true) };
-            if (input.action === 'confirm-reader-message-body')
-                return { ok: true, kind: 'reader-message-body-confirmed',
-                    result: confirmAuthorMessageEdit(session, input.operationId, 'reader-regex-document') };
-            if (bodyMutation) {
-                if (input.action === 'retry-reader-message-body') {
-                    const prior = confirmAuthorMessageEdit(session, input.request.operationId, 'reader-regex-document');
-                    if (prior.kind === 'committed')
-                        return { ok: true, kind: 'reader-message-body-mutated', result: prior };
-                    if (!input.origin)
-                        return { ok: false, code: 'AUTHOR_MESSAGE_EDIT_REQUEST_INVALID' };
+            async function withSession(sid, run, prepare = true) {
+                if (typeof sid !== 'string')
+                    return { ok: false, code: 'READER_DOCUMENT_REQUEST_INVALID' };
+                const session = await resolveRoleplaySession(sid);
+                if (!session)
+                    return { ok: false, code: 'READER_DOCUMENT_SESSION_UNAVAILABLE' };
+                if (prepare) {
+                    await awaitImportBarrier(session.id);
+                    await ensureBranch(session);
                 }
-                return { ok: true, kind: 'reader-message-body-mutated', ...await readerDisplay.mutateMessageBody(input.binding, input.documentPlanSha256, input.request, signal, input.action === 'retry-reader-message-body' ? input.origin : undefined) };
+                return run(session);
             }
-            if (input.action === 'execute-reader-commands')
-                return { ok: true, kind: 'reader-commands-executed',
-                    ...await readerDisplay.executeCommands(input.binding, input.documentPlanSha256, input.request, signal) };
-            if (input.action === 'confirm-reader-numerical')
-                return { ok: true, kind: 'reader-numerical-saved',
-                    result: await mvuOpening.confirmSchemaPlayer(input.operation) };
-            if (input.action === 'retry-reader-numerical')
-                return { ok: true, kind: 'reader-numerical-saved',
-                    result: await mvuOpening.submitSchemaPlayer(input.operation) };
-            if (input.action === 'save-reader-numerical')
-                return { ok: true, kind: 'reader-numerical-saved',
-                    ...await readerDisplay.replaceNumerical(input.binding, input.documentPlanSha256, input.readRevision, input.operation, signal) };
-            if (input.action === 'confirm-opening-variants')
-                return { ok: true, kind: 'opening-variants-confirmed',
-                    result: await readerDisplay.confirmOperation(session.id, input.operationId, signal) };
-            if (input.action === 'retry-opening-variants')
-                return { ok: true, kind: 'opening-variants-confirmed',
-                    result: await mvuOpening.retryOpeningVariants(session.id, input.operationId, signal) };
-            return { ok: true, kind: 'opening-variants-mutated',
-                ...await readerDisplay.mutateBinding(input.binding, input.documentPlanSha256, input.request, signal) };
-        },
-        readerDisplayContextVersion: id => {
-            const policy = communityPresets.policy(id);
-            return recordSha256({ scopes: readerDisplayScopes(id).data.scopes?.versionSha256 ?? null,
-                cardStyle: narrativePresets.policy(id).effective.mode !== 'system', community: policy.fingerprint,
-                variables: policy.preset ? communityDisplayVariables(id, policy.preset.id) : null,
-                readerRegex: capturePromptRegistry(id, new AbortController().signal).readerRegexBasisSha256,
-                ordinaryPublicationSeq: authorChatNative.latestPublicationSeq(ctx.sessions.get(id)) });
+            if (!input || typeof input !== 'object')
+                return { ok: false, code: 'READER_DOCUMENT_REQUEST_INVALID' };
+            // Select the actual handler before accessing its session or binding. The
+            // default must never fall through to an opening mutation.
+            switch (input.action) {
+                case 'release-reader-binding':
+                    return withSession(input.binding?.sessionId, async () => {
+                        readerDisplay.closeBinding(input.binding);
+                        return { ok: true, kind: 'reader-binding-released' };
+                    }, false);
+                case 'wait-source-events':
+                    return withSession(input.binding?.sessionId, () => readerDisplay.waitSourceEvents(input.binding, input.sourceCursor, signal), false);
+                case 'reader-mvu-trial':
+                    return withSession(input.binding?.sessionId, async () => ({ ok: true, kind: 'reader-mvu-trial',
+                        result: await readerDisplay.mvuTrial(input.binding, input.documentPlanSha256, input.request, signal) }));
+                case 'reader-generation':
+                    return withSession(input.binding?.sessionId, async () => ({ ok: true, kind: 'reader-generation',
+                        result: await readerDisplay.generation(input.binding, input.documentPlanSha256, input.request, signal) }));
+                case 'read-reader-worldbook':
+                    return withSession(input.binding?.sessionId, async () => ({ ok: true, kind: 'reader-worldbook-read',
+                        book: await readerDisplay.readWorldbook(input.binding, input.documentPlanSha256, input.request, signal) }));
+                case 'confirm-reader-namespace':
+                    return withSession(input.sessionId, async (session) => {
+                        const operation = input.operation, cause = operation.cause;
+                        if (authorOrdinarySourceNamespaceV1(operation).sessionId !== session.id
+                            || cause?.encoding !== 'reader-native-namespace-cause-v1' || cause.principal !== 'reader-regex-document')
+                            return { ok: false, code: 'AUTHOR_CHAT_BINDING_CHANGED' };
+                        return { ok: true, kind: 'reader-namespace-confirmed', receipt: await authorKeyCore.confirmNamespace(session.id, operation) };
+                    });
+                case 'mutate-reader-namespace':
+                    return withSession(input.binding?.sessionId, async () => ({ ok: true, kind: 'reader-namespace-mutated',
+                        ...await readerDisplay.mutateNamespace(input.binding, input.documentPlanSha256, input.request, signal) }));
+                case 'retry-reader-namespace':
+                    return withSession(input.binding?.sessionId, async () => ({ ok: true, kind: 'reader-namespace-mutated',
+                        ...await readerDisplay.mutateNamespace(input.binding, input.documentPlanSha256, input.operation, signal, true) }));
+                case 'confirm-reader-message-body':
+                    return withSession(input.sessionId, async (session) => {
+                        if (typeof input.operationId !== 'string')
+                            return { ok: false, code: 'OPENING_VARIANT_REQUEST_INVALID' };
+                        return { ok: true, kind: 'reader-message-body-confirmed',
+                            result: confirmAuthorMessageEdit(session, input.operationId, 'reader-regex-document') };
+                    });
+                case 'mutate-reader-message-body':
+                case 'retry-reader-message-body':
+                    return withSession(input.binding?.sessionId, async (session) => {
+                        if (input.action === 'retry-reader-message-body') {
+                            const prior = confirmAuthorMessageEdit(session, input.request.operationId, 'reader-regex-document');
+                            if (prior.kind === 'committed')
+                                return { ok: true, kind: 'reader-message-body-mutated', result: prior };
+                            if (!input.origin)
+                                return { ok: false, code: 'AUTHOR_MESSAGE_EDIT_REQUEST_INVALID' };
+                        }
+                        return { ok: true, kind: 'reader-message-body-mutated', ...await readerDisplay.mutateMessageBody(input.binding, input.documentPlanSha256, input.request, signal, input.action === 'retry-reader-message-body' ? input.origin : undefined) };
+                    });
+                case 'execute-reader-commands':
+                    return withSession(input.binding?.sessionId, async () => ({ ok: true, kind: 'reader-commands-executed',
+                        ...await readerDisplay.executeCommands(input.binding, input.documentPlanSha256, input.request, signal) }));
+                case 'confirm-reader-numerical':
+                    return withSession(input.operation?.sessionId, async () => ({ ok: true, kind: 'reader-numerical-saved',
+                        result: await mvuOpening.confirmSchemaPlayer(input.operation) }));
+                case 'retry-reader-numerical':
+                    return withSession(input.operation?.sessionId, async () => ({ ok: true, kind: 'reader-numerical-saved',
+                        result: await mvuOpening.submitSchemaPlayer(input.operation) }));
+                case 'save-reader-numerical':
+                    return withSession(input.binding?.sessionId, async () => ({ ok: true, kind: 'reader-numerical-saved',
+                        ...await readerDisplay.replaceNumerical(input.binding, input.documentPlanSha256, input.readRevision, input.operation, signal) }));
+                case 'confirm-opening-variants':
+                    return withSession(input.sessionId, async (session) => {
+                        if (typeof input.operationId !== 'string')
+                            return { ok: false, code: 'OPENING_VARIANT_REQUEST_INVALID' };
+                        return { ok: true, kind: 'opening-variants-confirmed',
+                            result: await readerDisplay.confirmOperation(session.id, input.operationId, signal) };
+                    });
+                case 'retry-opening-variants':
+                    return withSession(input.sessionId, async (session) => {
+                        if (typeof input.operationId !== 'string')
+                            return { ok: false, code: 'OPENING_VARIANT_REQUEST_INVALID' };
+                        return { ok: true, kind: 'opening-variants-confirmed',
+                            result: await mvuOpening.retryOpeningVariants(session.id, input.operationId, signal, input.resumeSource === true) };
+                    });
+                case 'mutate-opening-variants':
+                    return withSession(input.binding?.sessionId, async () => ({ ok: true, kind: 'opening-variants-mutated',
+                        ...await readerDisplay.mutateBinding(input.binding, input.documentPlanSha256, input.request, signal) }));
+                default:
+                    return { ok: false, code: 'READER_DOCUMENT_REQUEST_INVALID' };
+            }
         },
         communityPresets: communityPresets.summary,
         chatImportProjection: (session, record) => {
@@ -4651,7 +5578,7 @@ export async function apply(ctx, config = {}) {
     });
     registerCommunityPresetRoutes({ ctx, resolveRoleplaySession, communityPresets,
         cardMappingInput: id => withImportLock(id, 'community-card-mapping', async () => {
-            const policy = communityPresets.policy(id), mapping = policy.effective.features.nativeCardMapping, captured = captureRoleplayTavernPromptSourceDataV1({ source: tavernSource, edits: tavernLoreEdits }, id, narrativePresets.policy(id).effective.mode !== 'system');
+            const policy = communityPresets.policy(id), mapping = policy.effective.features.nativeCardMapping, captured = captureRoleplayTavernPromptSourceDataV1({ source: tavernSource, edits: tavernLoreEdits, books: authorContext }, id, narrativePresets.policy(id).effective.mode !== 'system');
             const mappingScope = { sessionId: id, conversationId: policy.conversationId };
             return { revision: policy.revision, effective: policy.effective, mapping: mapping ?? null, presetActive: !!policy.preset,
                 material: captured.kind === 'captured-data' ? produceCommunityPresetCardMaterialV1({ captured, override: mapping, persona: communityAccountPersona(), mappingScope }) :
@@ -4681,7 +5608,7 @@ export async function apply(ctx, config = {}) {
                 role: event.type === 'user/message' ? 'user' : 'assistant',
                 text: textOf(event.data?.message?.content ?? event.data?.content), depth: story.length - index - 1,
                 isEdit: event.type === 'roleplay/message-edit' }));
-            const input = policy.preset ? communityVariables.capture(policy.preset.id, id, 'display', 'display') : null;
+            const input = communityVariables.capture(policy.preset?.id ?? '', id, 'display', 'display');
             const names = source.kind === 'captured-data' ? source.source.current.openingContext.context : null;
             const fields = source.kind === 'captured-data' ? readTavernCardMacroFields(source.contributionInput.rawDecoded.data, source.source.original.decodedFormat) : {}, inputText = messages.findLast(message => message.role === 'user')?.text ?? '';
             return { messages, aliases: { ...Object.fromEntries(Object.entries(fields).filter((entry) => typeof entry[1] === 'string')),
@@ -4693,7 +5620,7 @@ export async function apply(ctx, config = {}) {
     registerAvatarRoute({
         ctx,
         T,
-        readCardData: session => inputState.captureSource(session.id, 'card-avatar', () => captureNextTavernAuthorDataV1({ tables: T, source: tavernSource, edits: tavernLoreEdits }, session.id).data).data,
+        readCardData: session => inputState.captureSource(session.id, 'card-avatar', () => captureNextTavernAuthorDataV1({ tables: T, source: tavernSource, edits: tavernLoreEdits, books: authorContext }, session.id).data).data,
         resolveRoleplaySession,
         ensureBranch,
         awaitImportBarrier,
@@ -4715,7 +5642,7 @@ export async function apply(ctx, config = {}) {
     // this per-Agent preset.
     // 原生跨 Session 分支：prepare 只解析/冻结目标；register 在 Client
     // 创建 fork（首轮为 fresh roleplay Session）后、发送 prompt 前原子登记。
-    function readCompletedActivatedOpening(sid) {
+    function readCompletedActivatedOpening(sid, purpose = 'activation-owner') {
         let archive = openingVariantArchives.get(sid);
         if (!archive) {
             archive = createOpeningVariantContinuationReader(key => readOpeningVariantData(sid, key));
@@ -4728,16 +5655,23 @@ export async function apply(ctx, config = {}) {
         if (sourceReadOwnerClosed || !session || !isRoleplaySession(session))
             throw Error('OPENING_VARIANT_CHILD_UNAVAILABLE');
         tavernSourceInheritance.assertSourceInheritanceReady(sid);
-        const actual = openingSelection.readCatalog(sid, openingContext(sid)).source, source = found.packet.source, native = found.seed.event.native, message = sessionHistoryCut(session).at(native.assistantSeq), end = sessionHistoryCut(session).at(native.turnEndSeq);
+        const actual = openingSelection.readCatalog(sid, openingContext(sid)).source, source = found.packet.source, native = found.seed.event.native, history = sessionHistoryCut(session), message = history.at(native.assistantSeq), end = history.at(native.turnEndSeq);
         if (actual.importId !== source.importId || actual.normalizedSha256 !== source.normalizedSha256
             || actual.transactionId !== source.transactionId
             || (actual.sourceRecordSessionId ?? sid) !== (source.sourceRecordSessionId ?? source.sessionId)
             || message?.type !== 'assistant/message' || recordSha256(message) !== native.messageVersion.eventSha256
             || message.data?.message?.id !== native.messageId || end?.type !== 'turn/end'
-            || end.data?.reason?.kind !== 'completed' || Number(end.data?.turn) !== native.turn
-            || recordSha256(projectStoryEvent(session, message).data?.message) !== recordSha256(message.data.message))
+            || end.data?.reason?.kind !== 'completed' || Number(end.data?.turn) !== native.turn)
             throw Error('OPENING_VARIANT_ACTIVATION_UNPROVEN');
-        return found;
+        const originalMessageSha256 = recordSha256(message.data.message);
+        // Branch activation/recovery owns the original exact body. A text-only
+        // copy borrows this confirmed Native receipt and lets the shared canonical
+        // owner select any later accepted message edit without restoring a writer.
+        if (purpose === 'activation-owner'
+            && recordSha256(projectStoryEvent(session, message).data.message)
+                !== originalMessageSha256)
+            throw Error('OPENING_VARIANT_ACTIVATION_UNPROVEN');
+        return { ...found, originalMessageSha256 };
     }
     openingVariantCoordinator = createOpeningVariantActivation({ branch: T.branch, withLock: withForkMutationLock,
         forkBeforeFirst: (request, beforePublish) => {
@@ -4774,6 +5708,23 @@ export async function apply(ctx, config = {}) {
                     throw Error('OPENING_VARIANT_MODEL_FLUSH_UNKNOWN');
             }
         },
+        requiresBrowserSource: async (sid, index) => (await mvuOpening.prepareBrowserSource(sid, index)) !== undefined,
+        initializeOriginal: async (packet, child) => {
+            const context = openingContext(child.id), catalog = openingSelection.readCatalog(child.id, context), source = catalog.source, candidate = catalog.candidates.find(row => row.index === packet.candidateIndex);
+            if (source.importId !== packet.source.importId || source.normalizedSha256 !== packet.source.normalizedSha256
+                || source.transactionId !== packet.source.transactionId || candidate?.renderedText !== packet.renderedText)
+                throw Error('OPENING_VARIANT_SOURCE_UNPROVEN');
+            const selected = await openingSelection.select(child.id, candidate.index, packet.operationId, context);
+            const intent = 'intent' in selected ? selected.intent : selected;
+            if (intent.schemaVersion !== 5 || intent.status !== 'completed' || !intent.nativeReceipt)
+                throw Error('OPENING_VARIANT_NATIVE_PENDING');
+            const native = intent.nativeReceipt, opening = child.snapshotEvents()[native.assistantSeq];
+            if (opening?.type !== 'assistant/message' || recordSha256(opening) !== native.messageVersion.eventSha256)
+                throw Error('OPENING_VARIANT_NATIVE_UNPROVEN');
+            const key = openingIntentKey(child.id, source.importId), message = { ownerSessionId: child.id,
+                nativeSeq: native.assistantSeq, messageId: native.messageId, messageVersionSha256: recordSha256(opening.data.message) }, swipe = { swipeId: candidate.index, variantId: openingVariantId(source, message, candidate.index, intent.renderedSha256) };
+            return { nativeTurn: native.turn, intentRef: { key, sha256: recordSha256(intent) }, swipe };
+        },
         readNativeReceipt: (packet, child, turn) => {
             const observation = inheritedNativeObservation(child.id);
             if (!observation)
@@ -4805,6 +5756,270 @@ export async function apply(ctx, config = {}) {
             await T.branch.put(forkOperationKey(operation.operationId), { ...operation,
                 state: 'ready', consumed: true, childSessionId: child.id, groupId: registration.groupId, ordinal: registration.ordinal, registration });
         } });
+    async function commitForkInheritance(operation, child) {
+        if (schemaDerived?.required(child.id)) {
+            const actual = ctx.sessions.get(child.id);
+            if (!actual)
+                throw Error('SCHEMA_DERIVED_SESSION_UNAVAILABLE');
+            await schemaDerived.commit(operation, actual);
+        }
+        else
+            await mvuDerived.commit(operation, child);
+        await rubyOwner?.inherit(operation.anchor.sourceSessionId, child.id, Number(child.inheritedEventCount ?? 0));
+    }
+    async function prepareForkInheritance(operation, reservation) {
+        const parent = reservation.sourceSessionId;
+        if (!mvuOpening.hasSchemaOpening(parent)) {
+            const prepared = await tavernSourceInheritance.prepareSourceInheritance(operation, reservation);
+            await mvuDerived.prepare(operation, reservation);
+            return prepared;
+        }
+        const derived = schemaDerived;
+        if (!derived)
+            throw Error('SCHEMA_DERIVED_RUNTIME_UNAVAILABLE');
+        const captured = await derived.capture(operation, reservation);
+        const prepared = await tavernSourceInheritance.prepareSourceInheritance(operation, reservation);
+        await derived.prepare(operation, reservation, captured);
+        return prepared;
+    }
+    ctx.effect(() => ctx.sessionController.registerOrdinaryForkPreparation(async (reservation) => {
+        const found = await ctx.sessionController.resolveAgent(reservation.sourceSessionId);
+        if (found?.error)
+            throw found.error;
+        const source = found?.agent?.session;
+        if (!source)
+            throw Error('NATIVE_FORK_SOURCE_UNAVAILABLE');
+        await ensureSessionHistory(source);
+        if (!isRoleplaySession(source))
+            return;
+        assertWorkspaceSession(source);
+        const current = () => {
+            if (sourceReadOwnerClosed || ctx.sessions.get(source.id) !== source)
+                throw Error('NATIVE_FORK_SOURCE_CHANGED');
+        };
+        current();
+        const operationId = randomUUID(), operation = { operationId,
+            anchor: { kind: 'native-fork', sourceSessionId: source.id, expectedSeedLength: reservation.seedLength } };
+        // The existing reservation row binds Source and numerical preparation to
+        // Native's exact child/cut. Conversation ownership stays with the child.
+        await T.branch.put(forkOperationKey(operationId), { schemaVersion: 1,
+            encoding: 'native-ordinary-fork-reservation-v1', kind: 'native-fork', ...operation,
+            reservedChildSessionId: reservation.childSessionId, state: 'reserved', createdAt: Date.now(),
+            presentation: { schemaVersion: 1, kind: 'conversation', sourceSessionId: source.id, seedLength: reservation.seedLength } });
+        current();
+        const prepared = await prepareForkInheritance(operation, reservation);
+        current();
+        if (prepared.kind === 'prepared-data')
+            tavernSourceInheritance.assertPreparedParentCurrent(reservation.childSessionId);
+        return async () => {
+            const child = ctx.sessions.get(reservation.childSessionId);
+            if (sourceReadOwnerClosed || !child)
+                throw Error('NATIVE_FORK_CHILD_UNAVAILABLE');
+            await ensureBranch(child);
+            await commitForkInheritance(operation, child);
+        };
+    }), 'roleplay: ordinary Native fork preparation');
+    async function captureTextOnlyContinuation(sid) {
+        const session = await resolveRoleplaySession(sid);
+        if (!session)
+            throw Error('TEXT_ONLY_SOURCE_SESSION_UNAVAILABLE');
+        assertWorkspaceSession(session);
+        assertStoryBranchActive(session);
+        await ensureBranch(session);
+        const source = inputState.captureSource(sid, 'text-only-source', () => captureNextTavernAuthorDataV1({ tables: T, source: tavernSource, edits: tavernLoreEdits, books: authorContext }, sid).data), cut = sessionHistoryCut(session), input = inputOwner, history = [], acceptedUsers = new Map(), accepted = [], acceptedTurns = new Map(), confirmedHistoryMessages = new Set(), historyVersions = [], canonicalReferences = [];
+        let start;
+        for (let seq = 0; seq < cut.length; seq++) {
+            const event = cut.at(seq);
+            if (event.type === 'assistant/message') {
+                const message = event.data.message, source = message.source;
+                if (source.kind === 'programmatic' && source.producer === 'dsh-nexttavern' && source.origin === 'text-only-continuation') {
+                    const inspected = inspectProgrammaticCommit(cut.materialize(), { operationId: source.operationId,
+                        messageId: message.id, text: textOf(message.content), source });
+                    if (inspected.kind === 'complete')
+                        confirmedHistoryMessages.add(message.id);
+                }
+            }
+            if (event.type === 'turn/start') {
+                start = event;
+                continue;
+            }
+            if (event.type !== 'turn/end' || event.data?.reason?.kind !== 'completed' || !start
+                || start.data?.turn !== event.data?.turn)
+                continue;
+            const refs = start.data?.nativeInputLink?.refs, workOwner = mvuAncestry.ownerForSeq(session, start.seq), diagnostic = input.readDiagnostic(workOwner, refs);
+            // Native completion alone does not publish a numerical Story. Its input
+            // owner must also confirm the original completed-work settlement.
+            if (!diagnostic || diagnostic.sourceKind !== 'story')
+                continue;
+            const completion = diagnostic.completedWorkRequired
+                ? readInputCompletion(T.branch, workOwner, diagnostic.preparationId) : undefined;
+            if (diagnostic.completedWorkRequired
+                && (completion?.status !== 'settled' || !input.verifyConsumedScope(completion.scope)))
+                continue;
+            const turn = Number(event.data.turn), canonical = readCanonicalAt(session, turn, event.seq + 1);
+            if (!canonical)
+                continue;
+            const settlement = completion?.settlement, published = settlement?.event ? T.status.get(settlement.event.key) : undefined;
+            const row = { turn, startSeq: start.seq, endSeq: event.seq, storyTextCut: published?.frontier?.nativeCut ?? event.seq + 1, canonical,
+                ...completion ? { completion: { preparationId: diagnostic.preparationId, recordSha256: completion.recordSha256 } } : {} };
+            accepted.push(row);
+            acceptedTurns.set(turn, row);
+            for (const ref of refs ?? [])
+                acceptedUsers.set(ref.messageId, { turn, ref });
+        }
+        const latest = accepted.at(-1), through = latest ? latest.endSeq + 1 : cut.length, standardOpening = readNativeOpeningForExport(session), activation = standardOpening.kind === 'ready' ? undefined : readCompletedActivatedOpening(sid, 'copy-data'), opening = activation ? { kind: 'ready', text: activation.packet.renderedText, source: {
+                schemaVersion: 1, encoding: 'text-only-activation-opening-source-v1', messageId: activation.seed.event.native.messageId,
+                originalMessageSha256: activation.originalMessageSha256, activationRef: activation.ref,
+                packetRef: activation.seed.packetRef, native: activation.seed.event.native, source: activation.packet.source,
+                standardOpening: standardOpening.kind === 'blocked' ? { kind: 'blocked', code: standardOpening.code } : { kind: standardOpening.kind }
+            } }
+            : standardOpening;
+        // Numerical publication can append its completion markers after turn/end.
+        // Borrow that actual frontier without including the following failed turn.
+        const storyText = latest ? captureStoryText(sid, { nativeCut: latest.storyTextCut, historical: true }) : undefined, selectedHistory = readTavernCanonicalChatAtCutV1(sid, cut, cut.length, ctx.sessions.messageProjections);
+        for (const entry of selectedHistory.range()) {
+            const row = entry.row, messageId = typeof row.messageId === 'string' ? row.messageId : undefined, user = row.role === 'user' ? acceptedUsers.get(messageId ?? '') : undefined, publication = row.role === 'assistant' ? acceptedTurns.get(row.turn ?? -1) : undefined, isHistory = row.role === 'assistant' && confirmedHistoryMessages.has(messageId ?? ''), isOpening = row.role === 'assistant' && opening.kind === 'ready' && row.messageId === opening.source.messageId;
+            if (row.role === 'user' ? !user : !publication && !isOpening && !isHistory)
+                continue;
+            const versionSha256 = entry.messageFacts.messageVersionSha256, publishedVersionSha256 = publication?.canonical.versionSha256
+                ?? (isOpening && opening.kind === 'ready' ? opening.source.originalMessageSha256 : undefined), event = row.role === 'assistant' ? cut.at(row.seq) : undefined, turn = user?.turn ?? row.turn ?? 0;
+            // Both versions are recordSha256 of the same Native projected message.
+            // An accepted edit/page choice owns its current literal text. An older
+            // numerical publication must not fall back over that newer version.
+            const text = event?.type === 'assistant/message' && versionSha256 === publishedVersionSha256
+                ? storyText?.text(row.seq, event.data.message, row.text, versionSha256) ?? row.text : row.text;
+            history.push({ seq: row.seq, turn, role: row.role, text });
+            const reference = { seq: row.seq, turn, role: row.role, messageId: row.messageId, versionSha256,
+                ...user ? { inputRef: user.ref } : {} };
+            historyVersions.push(reference);
+            if (row.role === 'assistant')
+                canonicalReferences.push({ ...reference, publishedVersionSha256,
+                    ...publication?.completion ? { completion: publication.completion } : {} });
+        }
+        let published, materialReference;
+        if (latest) {
+            const canonicalEvent = cut.at(latest.canonical.seq), step = canonicalEvent?.type === 'assistant/message' ? canonicalEvent.data.step : undefined;
+            let material;
+            for (const event of cut.range(latest.startSeq, latest.canonical.seq)) {
+                if (event.type === 'request/material' && event.data.turn === latest.turn && event.data.step === step)
+                    material = event;
+            }
+            if (material) {
+                // Inherited turns retain their original Work and publication records.
+                // The child still owns the current canonical edits copied above.
+                const ownerSessionId = mvuAncestry.ownerForSeq(session, material.seq), read = materialReadScope(ownerSessionId, through);
+                materialReference = { ownerSessionId, nativeSeq: material.seq, nativeEventSha256: nativeInputSha256(material),
+                    nativeRecordSha256: nativeInputSha256(material.data), snapshotRef: material.data.snapshot, planRef: material.data.plan };
+                published = collectRoleplayTavernPublishedAuthorMaterialV1(captureRoleplayTavernMaterialPublicationV1(read, materialReference), read);
+            }
+        }
+        let draftText = '', attachmentCount = 0;
+        const recovery = input.readRecoveryDiagnostic(sid);
+        if (recovery?.sourceKind === 'story' && (recovery.stop || ['stopped', 'unknown'].includes(recovery.status))) {
+            const draft = [];
+            for (const ref of recovery.refs) {
+                const insertion = cut.at(ref.insertSeq), inserted = insertion?.type === 'agent/inbox/spliced' ? insertion.data.inserted : undefined, message = inserted?.find(row => row.id === ref.messageId && row.source?.kind === 'user');
+                if (!message)
+                    continue;
+                const text = textOf(message.content);
+                if (text)
+                    draft.push(text);
+                attachmentCount += (message.content ?? []).filter(block => block.type === 'image').length;
+            }
+            draftText = draft.join('\n\n');
+        }
+        const route = selectedMainRoute(session, taskAgents.get(sid), ctx.agentDefaultModel.currentSelection()), model = { provider: route.provider, model: route.model,
+            ...typeof route.reasoningEffort === 'string' ? { reasoningEffort: route.reasoningEffort } : {} }, provenance = { sourceSessionId: sid, cwd: session.header?.cwd, nativeCut: cut.length,
+            confirmedStoryTurn: latest?.turn ?? null, confirmedThroughSeq: latest?.endSeq ?? null,
+            historyView: { nativeCut: cut.length, policy: 'current-canonical-with-settled-input-qualification-v1', messages: historyVersions },
+            canonical: canonicalReferences,
+            ...materialReference ? { material: materialReference } : {},
+            ...opening.kind === 'ready' ? { opening: opening.source } : {}, historyFromSeq: history.at(0)?.seq ?? null,
+            historyThroughSeq: history.at(-1)?.seq ?? null }, projected = projectTextOnlyContinuationSourceV1({ current: source.data, published, history, provenance,
+            ...!authorExecutionEnabled(sid) ? { literalText: true } : {} }), preview = { retainedCards: projected.retainedCards, retainedWorldbook: projected.retainedWorldbook,
+            historyMessages: history.length, confirmedTurn: published ? latest.turn : null,
+            historyFromSeq: history.at(0)?.seq ?? null, historyThroughSeq: history.at(-1)?.seq ?? null,
+            omittedCount: projected.omittedCount, draftText, attachmentCount }, body = { sourceSessionId: sid, document: projected.document, history, preview, model, provenance }, snapshot = { ...body, revision: recordSha256(body) };
+        return { snapshot, assertCurrent() {
+                source.assertCurrent();
+                if (sourceReadOwnerClosed || ctx.sessions.get(sid) !== session || sessionHistoryCut(session).length !== cut.length)
+                    throw Error('TEXT_ONLY_SOURCE_CHANGED');
+                assertStoryBranchActive(session);
+            } };
+    }
+    textOnlyContinuation = createRoleplayTextOnlyContinuationV1({ table: T.branch,
+        withLock: (operationId, work) => withForkMutationLock('text-only:' + operationId, work),
+        capture: captureTextOnlyContinuation,
+        async reserveCatalog(operation) {
+            const catalog = ctx.get('tavernConversations');
+            if (!catalog)
+                throw Error('TEXT_ONLY_CONVERSATIONS_UNAVAILABLE');
+            await catalog.ready;
+            await catalog.reserve({ sourceSessionId: operation.sourceSessionId, childSessionId: operation.childSessionId,
+                operationId: operation.operationId, kind: 'text-only-continuation', sourceHash: operation.snapshot.revision });
+        },
+        async ensureNativeRoot(operation) {
+            const sid = operation.childSessionId;
+            if (!ctx.sessions.get(sid)) {
+                const found = await ctx.sessionController.resolveAgent(sid);
+                if (!found?.agent)
+                    await ctx.sessionController.create({ sessionId: sid, agentPreset: 'roleplay',
+                        ...typeof operation.snapshot.provenance.cwd === 'string' ? { cwd: operation.snapshot.provenance.cwd } : {} });
+            }
+            const child = await resolveRoleplaySession(sid);
+            if (!child || child.header?.parentSession || Number(child.inheritedEventCount ?? 0) !== 0)
+                throw Error('TEXT_ONLY_NATIVE_ROOT_UNAVAILABLE');
+            await ensureBranch(child);
+            if (operation.snapshot.model)
+                await ctx.sessionController.selectModelForSession({ sessionId: sid, ...operation.snapshot.model });
+            if (!await ctx.sessions.flush(child))
+                throw Error('TEXT_ONLY_NATIVE_ROOT_FLUSH_UNKNOWN');
+            const community = communityPresets.policy(sid);
+            if (community.local?.presetId !== null)
+                await communityPresets.mutate(sid, { action: 'select', scope: 'conversation',
+                    expectedRevision: community.revision, selection: { presetId: null, applySampling: false, prompts: {}, contents: {},
+                        features: {}, regexes: {}, regexOrder: null } });
+            const narrative = narrativePresets.policy(sid);
+            if (narrative.local?.presetId !== 'system-blank' || narrative.local.mode !== 'system')
+                await narrativePresets.mutate(sid, { action: 'select', scope: 'conversation', expectedRevision: narrative.revision,
+                    selection: { presetId: 'system-blank', mode: 'system' } });
+            const ruby = rubyOwner.status(sid);
+            if (ruby.enabled)
+                await rubyOwner.setEnabled(sid, false, ruby.revision);
+        },
+        async importDocument(operation) {
+            const child = await resolveRoleplaySession(operation.childSessionId);
+            if (!child)
+                throw Error('TEXT_ONLY_NATIVE_ROOT_UNAVAILABLE');
+            assertWorkspaceSession(child);
+            const library = libraryFor(child), document = operation.snapshot.document, resource = await library.archive({ name: resourceName(document.data.name, '.json'), type: 'application/json',
+                bytes: Buffer.from(JSON.stringify(document, null, 2) + '\n', 'utf8'),
+                source: { sessionId: child.id, kind: 'native-card-authoring' } }), found = await ctx.sessionController.resolveAgent(child.id), job = await beginCardWorkflow(child, 'card-import', library.metadata(resource.id).path, found?.agent, undefined, 'text-only:' + operation.operationId, 'original', { schemaVersion: 1, kind: 'native-authoring' });
+            if (['failed', 'cancelled', 'stale'].includes(job.status))
+                await controlCardWorkflow(child, job.id, 'retry');
+            await resumeCardWorkflows(child, found?.agent);
+            const completed = T.branch.get(cardWorkflowKey(job.id));
+            if (completed.status !== 'completed')
+                throw Error(String(completed.error ?? 'TEXT_ONLY_IMPORT_PENDING'));
+        },
+        async writeHistory(operation) {
+            if (operation.snapshot.history.length === 0)
+                return;
+            const found = await ctx.sessionController.resolveAgent(operation.childSessionId), agent = found?.agent && ctx.get('agentLoop')?.getProgrammaticOpeningAgent(found.agent);
+            if (!agent)
+                throw Error('TEXT_ONLY_NATIVE_HISTORY_UNAVAILABLE');
+            const operationId = 'text-only-history:' + operation.operationId, messageId = 'text-only-history-' + sha256(operation.operationId).slice(0, 48), text = operation.snapshot.history.map(row => `${row.role === 'user' ? '玩家' : '剧情'}\n${row.text}`).join('\n\n'), result = await agent.commitProgrammaticAssistant({ operationId, messageId, text,
+                source: { kind: 'programmatic', schemaVersion: 1, producer: 'dsh-nexttavern', origin: 'text-only-continuation', operationId } });
+            if (result.kind !== 'committed')
+                throw Error('TEXT_ONLY_NATIVE_HISTORY_PENDING');
+        },
+        async markCatalogReady(operation) {
+            const catalog = ctx.get('tavernConversations');
+            if (!catalog)
+                throw Error('TEXT_ONLY_CONVERSATIONS_UNAVAILABLE');
+            await catalog.markReady(operation.childSessionId);
+        } });
+    registerRoleplayTextOnlyContinuation({ ctx, owner: textOnlyContinuation });
     const branchRoutes = registerBranchRoutes({
         readInputRecoveryDiagnostic: id => inputOwner.readRecoveryDiagnostic(id),
         readMainModelSelection: session => {
@@ -4818,14 +6033,16 @@ export async function apply(ctx, config = {}) {
         },
         sourceInheritance: tavernSourceInheritance,
         generateProgramOpening: async (request) => {
-            const captured = await programOpening?.catalog(request.sessionId);
+            const captured = await programOpening?.catalog(request.sessionId, 0, 'generated-opening');
             if (!captured || captured.kind === 'not-applicable')
                 return;
             if (captured.kind === 'refused')
                 return { kind: 'unknown', reason: captured.diagnostics[0]?.code ?? 'PROGRAM_OPENING_SOURCE_REFUSED' };
             const catalog = captured.catalog;
-            const parent = programOpening?.verified(request.operation.anchor.sourceSessionId), originalSha = parent?.kind === 'ready' ? parent.context.input.source.selected.renderedSha256
-                : request.operation.anchor.openingSource?.renderedSha256, selected = catalog.candidates.find(row => sha256(row.renderedText) === originalSha);
+            const parentId = request.operation.anchor.sourceSessionId, parent = programOpening?.verified(parentId), schemaParent = parent?.kind !== 'ready' && mvuOpening.hasSchemaOpening(parentId)
+                ? await mvuOpening.readSchemaInitialization(parentId) : undefined, originalSha = parent?.kind === 'ready' ? parent.context.input.source.selected.renderedSha256
+                : schemaParent?.kind === 'ready' ? schemaParent.intent.renderedSha256
+                    : request.operation.anchor.openingSource?.renderedSha256, selected = catalog.candidates.find(row => sha256(row.renderedText) === originalSha);
             if (!selected)
                 return { kind: 'unknown', reason: 'PROGRAM_OPENING_ORIGINAL_SELECTION_UNPROVEN' };
             const result = await programOpening.run({ sessionId: request.sessionId, index: selected.index,
@@ -4840,21 +6057,7 @@ export async function apply(ctx, config = {}) {
         resolveRoleplaySession,
         cloneBranchRecord,
         releaseWorldlineInheritance: childSessionId => schemaDerived?.releaseReservation(childSessionId),
-        prepareWorldlineInheritance: async (operation, reservation) => {
-            const parent = reservation.sourceSessionId, child = reservation.childSessionId;
-            if (!mvuOpening.hasSchemaOpening(parent)) {
-                const prepared = await tavernSourceInheritance.prepareSourceInheritance(operation, reservation);
-                await mvuDerived.prepare(operation, reservation);
-                return prepared;
-            }
-            const derived = schemaDerived;
-            if (!derived)
-                throw Error('SCHEMA_DERIVED_RUNTIME_UNAVAILABLE');
-            const captured = await derived.capture(operation, reservation);
-            const prepared = await tavernSourceInheritance.prepareSourceInheritance(operation, reservation);
-            await derived.prepare(operation, reservation, captured);
-            return prepared;
-        },
+        prepareWorldlineInheritance: prepareForkInheritance,
         numericalForkBlockCode: id => mvuOpening.hasSchemaOpening(id)
             ? mvuOpening.schemaPlayerMutationBlockCode(ctx.sessions.get(id)) : undefined,
         assertStoryBranchActive,
@@ -5006,10 +6209,10 @@ export async function apply(ctx, config = {}) {
             throw Error('当前世界线没有这条资料');
         return { ok: true, branchId: story.id, area, id, ...pageSideMaterial(value, args) };
     });
-    const sideWorldbookTool = simpleTool('tavern_side_worldbook', '读取和定点修改当前主世界线的原生结构化世界书。list 返回条目索引；read 返回正文、语义字段及 branchId/sourceSha256/revision/entrySha256。patch 必须原样携带 expected_* 四项，只提交明确修改的 fields；正文用唯一 find/replace 的 changes，保留未读部分。fields 名称和值沿用 read 返回的 semantic（如 enabled/constant/primaryKeys/position/role/depth/order）。程序复用现有世界书来源、版本、条目身份和追加日志写入合同。冲突或未知写入结果不要盲重试。', { type: 'object', properties: { action: { type: 'string', enum: ['list', 'read', 'patch'] }, entry_id: { type: 'string' },
+    const sideWorldbookTool = simpleTool('tavern_side_worldbook', '读取和定点修改当前主世界线的原生结构化世界书。list 返回条目索引；read 返回正文、语义字段及 branchId/sourceSha256/bookId/contentRef/metadataRef。patch 必须原样携带这些实际身份与版本到对应 expected_* 字段，只提交明确修改的 fields；正文用唯一 find/replace 的 changes，保留未读部分。fields 名称和值沿用 read 返回的 semantic（如 enabled/constant/primaryKeys/position/role/depth/order）。世界书目录负责人通过同一内容日志发布。冲突或未知写入结果不要盲重试。', { type: 'object', properties: { action: { type: 'string', enum: ['list', 'read', 'patch'] }, entry_id: { type: 'string' },
             cursor: { type: 'integer', minimum: 0 }, offset: { type: 'integer', minimum: 0 }, max_chars: { type: 'integer', minimum: 256, maximum: 8000 },
-            expected_branch_id: { type: 'string' }, expected_source_sha256: { type: 'string' }, expected_revision: { type: 'integer', minimum: 0 },
-            expected_entry_sha256: { type: 'string' }, fields: { type: 'object' }, changes: { type: 'array', minItems: 1, maxItems: 20,
+            expected_branch_id: { type: 'string' }, expected_source_sha256: { type: 'string' }, expected_book_id: { type: 'string' },
+            expected_content: { type: 'object' }, expected_metadata: { type: 'object' }, fields: { type: 'object' }, changes: { type: 'array', minItems: 1, maxItems: 20,
                 items: { type: 'object', properties: { find: { type: 'string', minLength: 1 }, replace: { type: 'string' } }, required: ['find', 'replace'], additionalProperties: false } } },
         required: ['action'], additionalProperties: false }, async (args, exec) => {
         const sideId = exec.agent?.session?.id, owner = sideId && sideChat.ownerOf(sideId);
@@ -5018,14 +6221,14 @@ export async function apply(ctx, config = {}) {
         const story = await sideScopedSessionOf(exec);
         exec.signal?.throwIfAborted();
         const sourceScope = captureLegacySourceOwner(story, 'LEGACY_WRITE');
-        const captured = tavernSource.capture(story.id);
-        if (captured.kind !== 'captured-data')
-            return { ok: false, refusal: captured };
-        const observed = tavernLoreEdits.observeSourcePage(captured, args.action === 'list'
+        const observed = await authorWorldbookEditor.observe(story.id, args.action === 'list'
             ? { kind: 'page', cursor: Number(args.cursor ?? 0), limit: 24 } : { kind: 'entry', entryId: String(args.entry_id ?? '') });
+        exec.signal?.throwIfAborted();
+        sourceScope.assertCurrent();
         if (observed.kind === 'refused')
             return { ok: false, refusal: observed };
-        const editor = observed.editor, base = { branchId: story.id, sourceSha256: editor.sourceSha256, revision: editor.revision };
+        const editor = observed.editor, base = { branchId: story.id, sourceSha256: editor.sourceSha256, revision: editor.revision,
+            bookId: editor.bookId, contentRef: editor.contentRef, metadataRef: editor.metadataRef };
         if (args.action === 'list') {
             const rows = editor.entries;
             return { ok: true, ...base, total: observed.page.total, nextCursor: observed.page.nextCursor,
@@ -5036,7 +6239,7 @@ export async function apply(ctx, config = {}) {
         if (!entry)
             throw Error('世界书条目不存在，请先 list');
         if (args.action === 'read') {
-            const { content: _content, ...semantic } = entry.semantic, offset = Number(args.offset ?? 0), max = Number(args.max_chars ?? 4000);
+            const semantic = entry.semantic, offset = Number(args.offset ?? 0), max = Number(args.max_chars ?? 4000);
             return { ok: true, ...base, entryId: entry.entryId, entrySha256: entry.rawEntrySha256, semantic,
                 text: entry.contentText.slice(offset, offset + max), totalChars: entry.contentText.length,
                 nextOffset: offset + max < entry.contentText.length ? offset + max : null,
@@ -5044,8 +6247,8 @@ export async function apply(ctx, config = {}) {
         }
         if (args.action !== 'patch')
             throw Error('未知世界书操作');
-        if (args.expected_branch_id !== story.id || args.expected_entry_sha256 !== entry.rawEntrySha256)
-            throw Error('世界线或世界书条目身份已变化，请重新读取');
+        if (args.expected_branch_id !== story.id)
+            throw Error('世界线已变化，请重新读取');
         const fields = { ...args.fields };
         if ('content' in fields)
             throw Error('正文请使用 changes 定点修改，不能以分页片段覆盖全文');
@@ -5060,11 +6263,13 @@ export async function apply(ctx, config = {}) {
             fields.content = text;
         }
         const operationId = randomUUID();
-        const result = await tavernLoreEdits.mutate({ schemaVersion: 2, encoding: 'tavern-lore-mutation-request-v2',
-            sessionId: story.id, expectedSourceSha256: args.expected_source_sha256, expectedRevision: args.expected_revision,
+        const request = parseAuthorWorldbookEditorRequestV1({ schemaVersion: 3, encoding: 'author-worldbook-editor-request-v3',
+            sessionId: story.id, expectedSourceSha256: args.expected_source_sha256, bookId: args.expected_book_id,
+            expectedContent: args.expected_content, expectedMetadata: args.expected_metadata,
             operationId, mutation: { kind: 'fields', target: entry.currentNativeMember?.identity ?? {
                     kind: 'original', rawEntryPointer: entry.rawEntryPointer, rawEntrySha256: entry.rawEntrySha256
-                }, fields } }, () => {
+                }, fields } });
+        const result = await authorWorldbookEditor.edit(request, () => {
             sourceScope.assertCurrent();
             return !exec.signal?.aborted && !!sideChat.ownerOf(sideId)
                 && sideChat.ownerOf(sideId)?.permissionPreset !== 'read-only';

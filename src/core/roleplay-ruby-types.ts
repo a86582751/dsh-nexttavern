@@ -51,6 +51,11 @@ export interface RubyTaskV1 {
 export interface RubyGenerationOptionsV1 {
   readonly temperature?:number
   readonly maxTokens?:number
+  readonly topP?:number
+  readonly topK?:number
+  readonly presencePenalty?:number
+  readonly frequencyPenalty?:number
+  readonly reasoningEffort?:'low'|'medium'|'high'
 }
 export interface RubyConfigurationV1 {
   readonly schemaVersion:1

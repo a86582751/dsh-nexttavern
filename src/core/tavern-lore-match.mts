@@ -16,15 +16,18 @@ const asciiWord=(char:string|undefined):boolean=>!!char&&((char>='a'&&char<='z')
 
 export class TavernLoreBoundedMatcherV1 {
   private readonly valid=new Set<string>()
-  private calls=0
   private workerDispatches=0
-  private work=0
   private readonly cache=new Map<string,Map<string,boolean>>()
 
   constructor(private readonly assertCurrent:()=>void=()=>{}) {}
 
+  beginScan():void {
+    // Match results retain the complete haystack. Only the current scan loop
+    // can reuse them; validated regexes and dispatch budgets span evaluation.
+    this.cache.clear()
+  }
+
   async matches(text:string,keys:readonly string[],caseSensitive:boolean,wholeWords:boolean):Promise<boolean[]> {
-    if(text.length>32768)refuse('LORE_SCAN_TEXT_LIMIT')
     const result:boolean[]=[]
     for(const raw of keys) {
       this.assertCurrent()
@@ -35,9 +38,6 @@ export class TavernLoreBoundedMatcherV1 {
       const cacheKey=JSON.stringify([key,caseSensitive,wholeWords])
       const cached=textCache.get(cacheKey)
       if(cached!==undefined){result.push(cached);continue}
-      if(++this.calls>4096)refuse('LORE_MATCH_CALL_LIMIT')
-      this.work+=text.length+key.length
-      if(this.work>8_000_000)refuse('LORE_MATCH_WORK_LIMIT')
       let matched=false
       if(key&&key.startsWith('/')&&key.lastIndexOf('/')>0) {
         const rawFlags=key.slice(key.lastIndexOf('/')+1)

@@ -1,4 +1,5 @@
 import {COMMUNITY_READER_WINDOW_MESSAGES} from '../core/community-preset-types.js'
+import type {RoleplayExtensionFailureV1} from '../core/roleplay-extension-types.js'
 
 export interface ReaderCommunityTask {
   seq:number
@@ -10,9 +11,13 @@ interface DisplayReply {
   fingerprint:string
   results:{seq:number;messageId:string;sourceText:string;text:string;depth:number}[]
 }
-export function createReaderCommunityCache(jsonFetch:<T>(url:string,init?:RequestInit)=>Promise<T>) {
+export function createReaderCommunityCache(jsonFetch:<T>(url:string,init?:RequestInit)=>Promise<T>,
+  reportExtensionFailure?:(failure:RoleplayExtensionFailureV1)=>unknown) {
   const entries=new Map<string,{sourceText:string;text:string}>()
   let selected='',failed=false
+  let failureReason:string|undefined
+  let releaseDiagnostic:(()=>void)|undefined
+  let diagnosticScope=''
   let lastTasks:readonly ReaderCommunityTask[]=[],revision=0
   const key=(task:ReaderCommunityTask)=>JSON.stringify([task.seq,task.messageId,task.depth])
   const cached=(task:ReaderCommunityTask)=>{
@@ -20,7 +25,7 @@ export function createReaderCommunityCache(jsonFetch:<T>(url:string,init?:Reques
     return entry?.sourceText===task.text?entry.text:undefined
   }
   function selectScope(scope:string) {
-    if(selected!==scope){entries.clear();selected=scope;failed=false;lastTasks=[]}
+    if(selected!==scope){entries.clear();selected=scope;failed=false;failureReason=undefined;lastTasks=[]}
   }
   function versionFor(tasks:readonly ReaderCommunityTask[]) {
     if(tasks.length!==lastTasks.length||tasks.some((task,index)=>{
@@ -30,6 +35,7 @@ export function createReaderCommunityCache(jsonFetch:<T>(url:string,init?:Reques
     return revision
   }
   function run(scope:string,sessionId:string,tasks:readonly ReaderCommunityTask[],changed:()=>void) {
+    if(diagnosticScope!==scope){releaseDiagnostic?.();releaseDiagnostic=undefined;diagnosticScope=scope}
     selectScope(scope)
     const pending=tasks.filter(task=>cached(task)===undefined)
     if(!pending.length)return
@@ -49,11 +55,22 @@ export function createReaderCommunityCache(jsonFetch:<T>(url:string,init?:Reques
         if(oldest===undefined)break
         entries.delete(oldest)
       }
-      failed=false;changed()
-    }).catch(()=>{if(!controller.signal.aborted&&selected===scope){failed=true;changed()}})
+      releaseDiagnostic?.();releaseDiagnostic=undefined
+      failed=false;failureReason=undefined;changed()
+    }).catch(error=>{if(!controller.signal.aborted&&selected===scope){
+      failed=true;failureReason=error instanceof Error?error.message:String(error)
+      const code=error&&typeof error==='object'?error.code:undefined
+      if(typeof code==='string'&&/^(TEMPLATE_|PROMPT_TRANSFORM_|READER_|COMMUNITY_)/.test(code)) {
+        releaseDiagnostic?.()
+        const release=reportExtensionFailure?.({schemaVersion:1,sessionId,id:'community:'+code,extension:'reader',code,
+          phase:'community-display',sourceRevision:scope,impact:'partial',reason:failureReason})
+        releaseDiagnostic=typeof release==='function'?()=>{release()}:undefined
+      }
+      changed()}})
     return ()=>controller.abort('Reader scope changed')
   }
-  return {selectScope,versionFor,run,textFor:(task:ReaderCommunityTask)=>cached(task)??task.text,failed:()=>failed}
+  return {selectScope,versionFor,run,textFor:(task:ReaderCommunityTask)=>cached(task)??task.text,failed:()=>failed,
+    failureReason:()=>failureReason,dispose(){releaseDiagnostic?.();releaseDiagnostic=undefined}}
 }
 
 /** Known option scripts become inert markup on the server. This DOM step

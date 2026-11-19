@@ -15,6 +15,11 @@ export interface ForkReservation {
  */
 export type BeforeForkPublish = (reservation: ForkReservation) => void | Promise<void>
 
+/** Private Domain preparation may finish numerical inheritance against the
+ * actual created Session, before the fork response or workspace handoff. */
+export type OrdinaryForkPreparation = (reservation:ForkReservation)
+  =>void|(()=>void|Promise<void>)|Promise<void|(()=>void|Promise<void>)>
+
 /** Host-owned empty-prefix fork reservation retained across creation retries. */
 export interface ForkBeforeFirstReservation extends ForkReservation {
   readonly seedLength: 0

@@ -27,6 +27,15 @@
       "path": "assets/lodash-4.18.1.js",
       "sha256": "a8d7e6291ad80256f976ace90824a71018d2f706992c9107b20bdced97bee27b",
       "licensePath": "assets/LICENSE.lodash-4.18.1"
+    },
+    {
+      "kind": "mvu-196",
+      "packageName": "nexttavern-mvu-196-core",
+      "version": "0.196.0-d03b7dc8",
+      "globalName": "NextTavernMvu196",
+      "path": "assets/mvu-196.js",
+      "sha256": "317e0b8cf78a8c9d17294ccee57e5df2390070600e5ea537bba0e0374409db38",
+      "licensePath": "assets/LICENSE.mvu-196"
     }
   ],
   "dependencies": {

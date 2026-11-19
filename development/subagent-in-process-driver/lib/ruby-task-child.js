@@ -3,7 +3,7 @@
  * Core supplies live task ownership; this module owns only child composition. */
 import { createHash } from 'node:crypto';
 import { brandString } from '@deepseek-ai/dsh-brand';
-import { freezeMessage } from 'dsh-nexttavern-native-llm';
+import { freezeMessage, ReasoningEffortId } from 'dsh-nexttavern-native-llm';
 import { nativeInputSha256 } from 'dsh-nexttavern-native-agent-loop';
 const prefixName = 'deployment:persona-prefix';
 const textSha256 = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
@@ -122,10 +122,15 @@ export function composeOwnedRubyTaskActivationV1(ctx, child, activation, owner) 
             remove();
     };
     try {
-        if (activation.temperature !== undefined)
-            cleanup.push(ctx.on('agent/request', async (_input, next) => ({
-                ...await next(), temperature: activation.temperature,
-            })));
+        cleanup.push(ctx.on('agent/request', async (_input, next) => ({
+            ...await next(),
+            ...(activation.temperature === undefined ? {} : { temperature: activation.temperature }),
+            ...(activation.topP === undefined ? {} : { topP: activation.topP }),
+            ...(activation.topK === undefined ? {} : { topK: activation.topK }),
+            ...(activation.presencePenalty === undefined ? {} : { presencePenalty: activation.presencePenalty }),
+            ...(activation.frequencyPenalty === undefined ? {} : { frequencyPenalty: activation.frequencyPenalty }),
+            ...(activation.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(activation.reasoningEffort) }),
+        })));
         // Workspace instructions belong to the inherited Main preset. Remove its
         // post-step contribution before Native selects this task's frozen input;
         // keep the actual admitted user object and the rest of the decision.
@@ -139,11 +144,14 @@ export function composeOwnedRubyTaskActivationV1(ctx, child, activation, owner) 
             cleanup.push(ctx.systemPrompt.section({ name: prefixName,
                 order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
                 text: leadingSystem.text, interpolate: false, complete: true }));
-        else
-            cleanup.push(ctx.on('system-prompt/assemble', async (_assembly, _context, next) => ({
-                ...await next(), sections: [],
-            })));
-        cleanup.push(ctx.systemPrompt.suppressRuntimeContext());
+        cleanup.push(ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
+            const assembly = await next();
+            // The working-directory service still enforces its host contract. Its
+            // required model context is outside this task's exact ordered input.
+            return { ...assembly, contexts: [], sections: leadingSystem
+                    ? assembly.sections.filter(section => section.name === prefixName)
+                    : [] };
+        }, { prepend: true }));
         cleanup.push(child.registerInputAdmission(hook));
         ctx.effect(() => dispose);
         return { userMessage };

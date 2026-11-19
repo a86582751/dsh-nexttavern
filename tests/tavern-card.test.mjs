@@ -464,7 +464,18 @@ assert.ok(projection.assignments.some(x => x.target === 'archive-only'))
 assert.equal(decodeTavernCard(Buffer.from(JSON.stringify({ name: 'V1', first_mes: 'hello' })), '.json').format, 'json-v1')
 assert.equal(decodeTavernCard(Buffer.from(JSON.stringify({ ...card, spec: 'chara_card_v3', spec_version: '3.0' })), '.json').format, 'json-v3')
 assert.throws(() => decodeTavernCard(Buffer.from('{'), '.json'), /JSON/)
-assert.throws(() => decodeTavernCard(Buffer.from('{"__proto__":{"evil":1},"name":"x"}'), '.json'), /字段|key/)
+{
+  const data=JSON.parse('{"name":"合法 DATA","__proto__":{"label":"ordinary"},"extensions":{"constructor":{"prototype":{"hp":8}},"prototype":["data"],"__proto__":{"label":"retained"}}}'),
+    decoded=decodeTavernCard(Buffer.from(JSON.stringify(data)),'.json')
+  assert.deepEqual(decoded.data,data)
+  assert.equal(Object.getPrototypeOf(decoded.data),Object.prototype)
+  assert.equal(Object.hasOwn(decoded.data,'__proto__'),true)
+  assert.deepEqual(JSON.parse(JSON.stringify(decoded.document)),data)
+  for(const item of compileTavernExtensionInventory(decoded).entries) {
+    assert.equal(item.capability,'unknown')
+    assert.equal(item.status,'archive-only')
+  }
+}
 assert.throws(() => decodeTavernCard(Buffer.from(JSON.stringify({spec:'chara_card_v8',data:{name:'x'}})), '.json'), /版本|version/)
 assert.throws(() => decodeTavernCard(Buffer.from([0xff]), '.json'), /UTF-8/)
 assert.throws(() => decodeTavernCard(Buffer.alloc(20_000_001), '.json'), /大小|字节|limit/)

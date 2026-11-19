@@ -13,7 +13,8 @@ import type {NativeInputAdmissionAgentV2,NativeInputStopNoticeV1} from 'dsh-next
 import type {mvuPlayerMarkers} from 'dsh-nexttavern-session-format/mvu-player-marker'
 import type {createRoleplayMvuState,MvuStatePermissionPhase,MvuNumericalSnapshot} from './roleplay-mvu-state.js'
 import type {MvuPlayerStateIntent,MvuPlayerStatePublisherSettlement} from './roleplay-mvu-player-records.js'
-import type {MvuStateObservation,MvuPlayerEditResponse,MvuPlayerEditRequest} from './roleplay-mvu-player-types.js'
+import type {MvuStateObservation,MvuPlayerEditResponse,MvuPlayerEditRequest,MvuPlayerValuesEditRequest}
+  from './roleplay-mvu-player-types.js'
 
 interface Table extends MvuPlayerFactTable {put(key:string,value:object):Promise<unknown>}
 export interface MvuPlayerDeps {
@@ -178,8 +179,12 @@ export function createRoleplayMvuPlayer(deps:MvuPlayerDeps) {
     return base
   }
   async function submit(input:unknown,callerCurrent?:()=>boolean):Promise<MvuPlayerEditResponse> {
-    let request:MvuPlayerEditRequest
-    try {request=readMvuPlayerRequest(input)} catch(error) {const code=codeOf(error);return {ok:false,code,error:code}}
+    let request:MvuPlayerValuesEditRequest
+    try {
+      const parsed=readMvuPlayerRequest(input)
+      if(parsed.action!=='replace-values')throw Error('MVU_PLAYER_ENVELOPE_OWNER_UNAVAILABLE')
+      request=parsed
+    } catch(error) {const code=codeOf(error);return {ok:false,code,error:code}}
     if(request.target)return {ok:false,code:'MVU_PLAYER_MESSAGE_TARGET_UNPROVEN',error:'MVU_PLAYER_MESSAGE_TARGET_UNPROVEN'}
     const writeBlock=deps.writeBlockCode?.(request.sessionId)
     if(writeBlock)return response(request,'unknown',false,writeBlock)

@@ -1,10 +1,18 @@
-/** Preset globals own one record. Ordinary chat values belong solely to the
- * canonical State namespace, including accepted regeneration contributions. */
+/** Native acceptance coordinates chat, shared scopes and message contributions.
+ * Shared values and operation receipts belong to the persistent scope owner. */
+import {randomUUID} from 'node:crypto'
 import {recordSha256} from './roleplay-data.js'
 import {withTavernLock} from './tavern-task-support.js'
 import {authorChatEventKeyV3,authorChatContributionIdV3} from './roleplay-author-chat-state.js'
+import {authorPersistentScopeContributionIdV1,authorPersistentScopeEventKeyV1,authorPersistentScopeHeadKeyV1}
+  from './roleplay-author-persistent-scopes.js'
+import type {RoleplayAuthorPersistentScopesV1} from './roleplay-author-persistent-scopes.js'
+import {AUTHOR_PROFILE_IDENTITY_KEY,readAuthorProfileIdentityV1} from './roleplay-author-profile.js'
+import type {AuthorProfileIdentityV1} from './roleplay-author-profile.js'
+import type {AuthorPersistentScopeAddressV1,AuthorPersistentScopeCaptureV1,
+  AuthorPersistentScopeContributionV1} from './roleplay-author-scope-types.js'
 import {readAcceptedPreparationPlanRecord} from './community-preset-settlement.js'
-import type {AcceptedPreparationRecord} from './community-preset-settlement.js'
+import type {AcceptedPreparationRecord,PreparationAcceptanceV1} from './community-preset-settlement.js'
 import type {TavernOrdinaryPreparationPlanV1} from './roleplay-tavern-ordinary-stage.js'
 import type {CanonicalAuthorChatStateV1} from './roleplay-author-chat-state.js'
 import type {AuthorChatNamespaceV3,AuthorChatNamespaceRootV3,AuthorChatRefV1,
@@ -14,23 +22,18 @@ import type {CommunityPresetTable,CommunityVariableConfiguration} from './commun
 import type {CommunityJson} from './community-preset-types.js'
 import type {CommunityMacroWrite} from './community-preset-macros.js'
 
-interface ConversationGlobals {
-  globalBaselines:Record<string,Record<string,CommunityJson>>
-  accepted:Record<string,{digest:string}>
+export interface SharedScopePreparationCaptureV1 {
+  readonly schemaVersion:1
+  readonly address:AuthorPersistentScopeAddressV1
+  /** Original first accepted input, recovered by its immutable Native plan. */
+  readonly baseline:AuthorPersistentScopeCaptureV1
+  readonly contributionId:string
+  readonly attemptId:string
+  readonly replacesAttemptId:string|null
+  readonly globalContributionPresent:boolean
 }
-interface GlobalRecord {
-  schemaVersion:1
-  revision:number
-  global:Record<string,CommunityJson>
-  globalBase:Record<string,CommunityJson>
-  publications:{source:string;writes:readonly CommunityMacroWrite[]}[]
-  configurationApplied:string[]
-  conversations:Record<string,ConversationGlobals>
-  /** A confirmed Source replacement can retire an unpublished intent. */
-  outcomes:Record<string,string>
-}
-interface PresetVariables extends GlobalRecord {
-  pending?:{intent:AcceptedAuthorChatContributionV3;next:GlobalRecord}
+export interface SharedScopePreparationPlanV1 extends SharedScopePreparationCaptureV1 {
+  readonly writes:readonly AcceptedAuthorChatWriteV3[]
 }
 export interface CommunityVariableAttempt {
   schemaVersion:1
@@ -41,12 +44,16 @@ export interface CommunityVariableAttempt {
   chat:Record<string,CommunityJson>
   global:Record<string,CommunityJson>
   chatRoot:AuthorChatNamespaceRootV3
+  scopeRef?:AuthorChatRefV1|null
   contributionId:string
   replacesAttemptId:string|null
   globalRevision:number
   globalContributionPresent:boolean
+  sharedScope:SharedScopePreparationCaptureV1
 }
 interface Dependencies {
+  readonly profile:AuthorProfileIdentityV1
+  readonly scopes:RoleplayAuthorPersistentScopesV1
   readonly state:Pick<CanonicalAuthorChatStateV1,'captureNamespaceWithoutContribution'|'readAcceptedContribution'
     |'lookupAcceptedContribution'|'confirmAcceptedContribution'|'replaceAcceptedContribution'>
   captureNamespace(sessionId:string):{readonly namespace:AuthorChatNamespaceV3;current():boolean}
@@ -55,6 +62,17 @@ interface Dependencies {
   withSourceLock<T>(sessionId:string,work:()=>Promise<T>):Promise<T>
 }
 type ChatReceipt=AcceptedAuthorChatCommitV3|Extract<AcceptedAuthorChatReceiptV3,{kind:'applied'}>
+interface ConfirmedReceipt {readonly event:AuthorChatRefV1;readonly publication:AuthorChatRefV1}
+interface AcceptedPreparationOutcome {
+  readonly schemaVersion:1
+  readonly encoding:'accepted-preparation-outcome-v1'
+  readonly acceptedMaterialRef:AuthorChatRefV1
+  readonly contributionId:string
+  readonly attemptId:string
+  readonly outcome:'retired'
+  readonly reason:'source-replaced'
+  readonly confirmed:readonly ConfirmedReceipt[]
+}
 interface CommitResult {
   readonly committed:boolean
   readonly revision:number
@@ -62,260 +80,236 @@ interface CommitResult {
   readonly chatReceipt?:ChatReceipt
 }
 const clone=<T>(value:T):T=>structuredClone(value)
-const empty=():GlobalRecord=>({schemaVersion:1,revision:0,global:{},globalBase:{},publications:[],
-  configurationApplied:[],conversations:{},outcomes:{}})
-const globalKey=(presetId:string)=>`community-global-v1__${presetId}`
-const operationId=(plan:TavernOrdinaryPreparationPlanV1)=>'ordinary-preparation-'+recordSha256({
-  contributionId:plan.contributionId,attemptId:plan.attemptId})
-function apply(target:Record<string,CommunityJson>,write:CommunityMacroWrite) {
-  if(write.operation==='delete')delete target[write.key]
-  else if(write.operation==='add')target[write.key]=(Number(target[write.key]??0)||0)+(Number(write.value)||0)
-  else if(write.operation==='append')target[write.key]=String(target[write.key]??'')+String(write.value??'')
-  else target[write.key]=clone(write.value)
-}
-const chatWrites=(writes:readonly CommunityMacroWrite[]):AcceptedAuthorChatWriteV3[]=>writes
-  .filter(write=>write.scope==='chat').map(write=>write.operation==='delete'
+const operationId=(plan:Pick<TavernOrdinaryPreparationPlanV1,'contributionId'|'attemptId'>)=>
+  'ordinary-preparation-'+recordSha256({contributionId:plan.contributionId,attemptId:plan.attemptId})
+const outcomeKey=(record:AcceptedPreparationRecord)=>'accepted-preparation-retired-'+recordSha256({
+  contributionId:record.ordinaryChat.contributionId,attemptId:record.ordinaryChat.attemptId})
+const variableWrites=(writes:readonly CommunityMacroWrite[],scope:'chat'|'global'):AcceptedAuthorChatWriteV3[]=>writes
+  .filter(write=>write.scope===scope).map(write=>write.operation==='delete'
     ?{key:write.key,operation:'delete'}:{key:write.key,operation:write.operation,value:write.value})
 
 export function createCommunityPresetVariables(table:CommunityPresetTable,deps:Dependencies) {
-  const publishing=new WeakMap<object,string>()
-  function raw(presetId:string):PresetVariables {
-    const record=table.get(globalKey(presetId)) as PresetVariables|undefined
-    if(record&&record.schemaVersion!==1)throw Error('社区变量版本不受支持')
-    return record??empty()
+  const publishing=new WeakMap<object,string>(),address:AuthorPersistentScopeAddressV1=Object.freeze({
+    schemaVersion:1,profileId:deps.profile.profileId,scope:'global'})
+  const profileCurrent=()=>readAuthorProfileIdentityV1(table)?.profileId===deps.profile.profileId
+  const owns=(target:AuthorPersistentScopeAddressV1)=>target.scope==='global'
+    &&target.profileId===address.profileId&&target.schemaVersion===1
+  function assertAcceptance(acceptance:PreparationAcceptanceV1) {
+    if(!acceptance.current())throw Error('ORDINARY_PREPARATION_ACCEPTANCE_CHANGED')
   }
-  function effective(record:PresetVariables):GlobalRecord {
-    return record.pending&&deps.state.lookupAcceptedContribution(record.pending.intent).kind==='applied'
-      ?record.pending.next:record
+  function captureSharedScopes(sessionId:string,inputId:string,attemptId:string):SharedScopePreparationCaptureV1 {
+    const {namespace}=deps.captureNamespace(sessionId),chatId=authorChatContributionIdV3(namespace,inputId),
+      contributionId=authorPersistentScopeContributionIdV1(address,chatId),
+      previous=deps.scopes.readContribution(address,contributionId),
+      chat=deps.state.readAcceptedContribution(namespace,chatId),first=previous?.firstSource??chat?.firstSource
+    let baseline:AuthorPersistentScopeCaptureV1
+    if(first?.kind==='native-material') {
+      const original=readAcceptedPreparationPlanRecord(table.get(first.ref.key),first.ref.sha256),
+        saved=original?.sharedScopes?.find(scope=>scope.contributionId===contributionId)
+      if(!saved)throw Error('SHARED_SCOPE_ACCEPTED_PLAN_UNAVAILABLE')
+      baseline=saved.baseline
+    }else baseline=deps.scopes.capture(address)
+    return {schemaVersion:1,address,baseline,contributionId,attemptId,
+      replacesAttemptId:previous?.attemptId??null,globalContributionPresent:previous?.hasWrites??false}
   }
-  function read(presetId:string):GlobalRecord {return effective(raw(presetId))}
-  async function publish(presetId:string,record:PresetVariables) {
-    const key=globalKey(presetId)
-    publishing.set(record,key)
-    try {
-      try {await table.put(key,record)}catch(error) {
-        // Only this exact durable row confirms a lost put ACK. A pending row
-        // must be confirmed before the canonical chat publication can begin.
-        if(recordSha256(table.get(key))!==recordSha256(record))throw error
-      }
-    }finally {publishing.delete(record)}
+  function capture(presetId:string,sessionId:string,inputId:string,attemptId:string,
+    capturedScope?:SharedScopePreparationCaptureV1):CommunityVariableAttempt {
+    const {namespace}=deps.captureNamespace(sessionId),id=authorChatContributionIdV3(namespace,inputId),
+      basis=deps.state.captureNamespaceWithoutContribution(namespace,id),
+      sharedScope=capturedScope??captureSharedScopes(sessionId,inputId,attemptId)
+    return {schemaVersion:1,presetId,sessionId,inputId,attemptId,chat:clone({...basis.values}),
+      global:clone({...sharedScope.baseline.values}),chatRoot:basis.root,
+      ...basis.scopeRef!==undefined?{scopeRef:basis.scopeRef}:{},contributionId:id,replacesAttemptId:basis.priorAttemptId,
+      globalRevision:sharedScope.baseline.revision,globalContributionPresent:sharedScope.globalContributionPresent,sharedScope}
   }
-  function intentFor(record:AcceptedPreparationRecord,hasGlobals:boolean,
+  function captureDisplay(sessionId:string) {
+    const {namespace}=deps.captureNamespace(sessionId),
+      chatCapture=deps.state.captureNamespaceWithoutContribution(namespace,authorChatContributionIdV3(namespace,'display')),
+      global=deps.scopes.capture(address)
+    return {chat:clone({...chatCapture.values}),global:clone({...global.values}),chatCapture}
+  }
+  function intentFor(record:AcceptedPreparationRecord,anchor=false,
     plan=record.ordinaryChat):AcceptedAuthorChatContributionV3|undefined {
-    if(!plan.writes.length&&!hasGlobals&&(plan.replacesAttemptId===null||plan.previousHadWrites===false))return
+    if(!plan.writes.length&&!anchor&&(plan.replacesAttemptId===null||plan.previousHadWrites===false))return
     return {namespace:plan.initialRoot.namespace,contributionId:plan.contributionId,
+      ...plan.expectedScopeRef!==undefined?{expectedScopeRef:plan.expectedScopeRef}:{},
       attemptId:plan.attemptId,replacesAttemptId:plan.replacesAttemptId,operationId:operationId(plan),
       writes:plan.writes,source:{kind:'native-material',ref:record.acceptedMaterialRef},
       cause:{kind:'ordinary-preparation',inputId:plan.inputId,attemptId:plan.attemptId}}
   }
-  async function withCurrentSource<T>(namespace:AuthorChatNamespaceV3,work:(current:()=>boolean)=>Promise<T>,retire:()=>Promise<T>) {
+  function scopeIntents(record:AcceptedPreparationRecord):AuthorPersistentScopeContributionV1[] {
+    return (record.sharedScopes??[]).filter(plan=>plan.writes.length||plan.globalContributionPresent).map(plan=>({
+      address:plan.address,operationId:operationId(plan),contributionId:plan.contributionId,
+      attemptId:plan.attemptId,replacesAttemptId:plan.replacesAttemptId,writes:plan.writes,
+      source:{kind:'native-material',ref:record.acceptedMaterialRef},
+      cause:{kind:'ordinary-preparation',inputId:record.ordinaryChat.inputId,attemptId:plan.attemptId}}))
+  }
+  function chatIntents(record:AcceptedPreparationRecord) {
+    const main=intentFor(record,!!record.sharedScopes?.length)
+    return [main,...(record.ordinaryChat.messageGroups??[]).map(plan=>intentFor(record,false,plan))]
+      .filter((intent):intent is AcceptedAuthorChatContributionV3=>intent!==undefined)
+  }
+  function retired(record:AcceptedPreparationRecord):AcceptedPreparationOutcome|undefined {
+    const value=table.get(outcomeKey(record)) as AcceptedPreparationOutcome|undefined
+    if(value===undefined)return
+    if(value.schemaVersion!==1||value.encoding!=='accepted-preparation-outcome-v1'
+      ||value.outcome!=='retired'||value.contributionId!==record.ordinaryChat.contributionId
+      ||value.attemptId!==record.ordinaryChat.attemptId
+      ||recordSha256(value.acceptedMaterialRef)!==recordSha256(record.acceptedMaterialRef))
+      throw Error('ORDINARY_PREPARATION_OUTCOME_CHANGED')
+    return value
+  }
+  function confirmed(record:AcceptedPreparationRecord):ConfirmedReceipt[] {
+    const receipts:ConfirmedReceipt[]=[]
+    for(const intent of chatIntents(record)) {
+      if(!deps.isNamespaceReady(intent.namespace))continue
+      const receipt=deps.state.lookupAcceptedContribution(intent)
+      if(receipt.kind==='applied')receipts.push({event:receipt.event,publication:receipt.publication})
+    }
+    for(const intent of scopeIntents(record)) {
+      const receipt=deps.scopes.lookup(intent)
+      if(receipt.kind==='applied')receipts.push({event:receipt.event,publication:receipt.publication})
+    }
+    return receipts
+  }
+  async function retire(record:AcceptedPreparationRecord,acceptance:PreparationAcceptanceV1):Promise<void> {
+    assertAcceptance(acceptance)
+    if(retired(record))return
+    const value:AcceptedPreparationOutcome={schemaVersion:1,encoding:'accepted-preparation-outcome-v1',
+      acceptedMaterialRef:record.acceptedMaterialRef,contributionId:record.ordinaryChat.contributionId,
+      attemptId:record.ordinaryChat.attemptId,outcome:'retired',reason:'source-replaced',confirmed:confirmed(record)},
+      key=outcomeKey(record)
+    assertAcceptance(acceptance)
+    publishing.set(value,key)
+    try {
+      try {await table.put(key,value)}catch(error) {
+        if(recordSha256(table.get(key))!==recordSha256(value))throw error
+      }
+      if(recordSha256(table.get(key))!==recordSha256(value))throw Error('ORDINARY_PREPARATION_OUTCOME_UNKNOWN')
+    }finally {publishing.delete(value)}
+  }
+  async function withCurrentSource<T>(record:AcceptedPreparationRecord,acceptance:PreparationAcceptanceV1,
+    work:(current:()=>boolean)=>Promise<T>):Promise<{value:T}|{retired:true}> {
+    const namespace=record.ordinaryChat.initialRoot.namespace
     return deps.withSourceLock(namespace.sessionId,async()=>{
+      assertAcceptance(acceptance)
       const source=deps.captureNamespace(namespace.sessionId)
       if(!source.current())throw Error('ORDINARY_PREPARATION_SOURCE_CHANGED')
       const {target:_target,...sourceNamespace}=namespace
-      if(recordSha256(source.namespace)!==recordSha256(sourceNamespace))return retire()
-      return work(source.current)
+      if(recordSha256(source.namespace)!==recordSha256(sourceNamespace)) {
+        await retire(record,acceptance);return {retired:true}
+      }
+      return {value:await work(()=>profileCurrent()&&acceptance.current()&&source.current())}
     })
   }
-  async function writeChat(intent:AcceptedAuthorChatContributionV3,retire:()=>Promise<CommitResult>)
-    :Promise<ChatReceipt|CommitResult> {
-    const published=deps.state.lookupAcceptedContribution(intent)
-    if(published.kind==='applied') {
-      await deps.state.confirmAcceptedContribution(intent)
-      return published
-    }
-    return withCurrentSource<ChatReceipt|CommitResult>(intent.namespace,
-      current=>deps.state.replaceAcceptedContribution(intent,{ownsNamespace:()=>true,isCurrent:current,
-        beforeWrite({key,value}){publishing.set(value,key);return()=>publishing.delete(value)}}),retire)
-  }
-  async function retire(presetId:string,record:PresetVariables,intent:AcceptedAuthorChatContributionV3)
-    :Promise<CommitResult> {
-    const {pending:_pending,...base}=record,receipt=deps.state.lookupAcceptedContribution(intent),
-      next={...base,revision:base.revision+1,outcomes:{...base.outcomes,[intent.operationId]:receipt.inputSha256}}
-    await publish(presetId,next)
-    return {committed:false,revision:next.revision,outcome:'retired'}
-  }
-  async function settlePending(presetId:string):Promise<CommitResult|undefined> {
-    const record=raw(presetId),pending=record.pending
-    if(!pending)return
-    await deps.readyNamespace(pending.intent.namespace)
-    const receipt=await writeChat(pending.intent,()=>retire(presetId,record,pending.intent))
-    if('outcome' in receipt)return receipt
-    await publish(presetId,pending.next)
-    return {committed:receipt.kind==='committed',revision:pending.next.revision,outcome:'applied',chatReceipt:receipt}
-  }
-  async function coordinate(presetId:string,record:GlobalRecord,intent:AcceptedAuthorChatContributionV3|undefined,
-    next:GlobalRecord|undefined):Promise<CommitResult> {
-    if(!intent) {
-      if(next)await publish(presetId,next)
-      return {committed:!!next,revision:next?.revision??record.revision,outcome:'applied'}
-    }
-    const known=deps.state.lookupAcceptedContribution(intent)
-    if(record.outcomes[intent.operationId]===known.inputSha256)
-      return {committed:false,revision:record.revision,outcome:'retired'}
-    if(known.kind==='applied') {
-      await deps.state.confirmAcceptedContribution(intent)
-      if(!next)return {committed:false,revision:record.revision,outcome:'applied',chatReceipt:known}
-      return withCurrentSource<CommitResult>(intent.namespace,async current=>{
-        if(!current())throw Error('ORDINARY_PREPARATION_SOURCE_CHANGED')
-        await publish(presetId,next)
-        return {committed:true,revision:next.revision,outcome:'applied',chatReceipt:known}
-      },()=>retire(presetId,record,intent))
-    }
-    if(next) {
-      await publish(presetId,{...record,pending:{intent,next}})
-      return (await settlePending(presetId))!
-    }
-    const receipt=await writeChat(intent,()=>retire(presetId,record,intent))
-    return 'outcome' in receipt?receipt:{committed:receipt.kind==='committed',revision:record.revision,
-      outcome:'applied',chatReceipt:receipt}
-  }
-  function capture(presetId:string,sessionId:string,inputId:string,attemptId:string):CommunityVariableAttempt {
-    const {namespace}=deps.captureNamespace(sessionId),id=authorChatContributionIdV3(namespace,inputId),record=read(presetId),
-      basis=deps.state.captureNamespaceWithoutContribution(namespace,id),
-      conversation=record.conversations[sessionId],saved=conversation?.globalBaselines[id]
-    let global=saved??record.global
-    if(!saved&&basis.priorAttemptId!==null) {
-      const accepted=deps.state.readAcceptedContribution(namespace,id)
-      if(accepted?.firstSource.kind==='native-material') {
-        const ref=accepted.firstSource.ref,original=readAcceptedPreparationPlanRecord(table.get(ref.key),ref.sha256)
-        if(!original)throw Error('COMMUNITY_ACCEPTED_PLAN_UNAVAILABLE')
-        if(original.community?.attempt.presetId===presetId)global=original.community.attempt.global
-      }
-    }
-    return {schemaVersion:1,presetId,sessionId,inputId,attemptId,chat:clone({...basis.values}),global:clone(global),
-      chatRoot:basis.root,contributionId:id,replacesAttemptId:basis.priorAttemptId,globalRevision:record.revision,
-      globalContributionPresent:record.publications.some(row=>row.source===id&&row.writes.length>0)}
-  }
-  async function commitChatPreparation(preparation:AcceptedPreparationRecord):Promise<CommitResult> {
-    const {ordinaryChat:plan,community,acceptedMaterialRef}=preparation,
-      globalWrites=community?.writes.filter(write=>write.scope==='global')??[],
-      hasGlobals=community!==undefined&&(globalWrites.length>0||community.attempt.globalContributionPresent),
-      intent=intentFor(preparation,hasGlobals)
-    if(!community) {
-      if(!intent)return {committed:false,revision:0,outcome:'applied'}
+  async function commitPreparation(record:AcceptedPreparationRecord,acceptance:PreparationAcceptanceV1):Promise<CommitResult> {
+    assertAcceptance(acceptance)
+    if(retired(record))return {committed:false,revision:0,outcome:'retired'}
+    let committed=false,chatReceipt:ChatReceipt|undefined
+    const main=intentFor(record,!!record.sharedScopes?.length)
+    async function writeChat(intent:AcceptedAuthorChatContributionV3) {
       await deps.readyNamespace(intent.namespace)
-      const receipt=await writeChat(intent,async()=>({committed:false,revision:0,outcome:'retired'}))
-      return 'outcome' in receipt?receipt:{committed:receipt.kind==='committed',revision:0,outcome:'applied',chatReceipt:receipt}
-    }
-    const {attempt}=community
-    return withTavernLock(table,globalKey(attempt.presetId),async()=>{
-      await settlePending(attempt.presetId)
-      if(intent)await deps.readyNamespace(intent.namespace)
-      const record=read(attempt.presetId),digest=recordSha256(acceptedMaterialRef),
-        source=plan.contributionId,sessionId=plan.initialRoot.namespace.sessionId,
-        receiptId=intent?.operationId??operationId(plan),conversation=record.conversations[sessionId],
-        already=conversation?.accepted[receiptId]?.digest===digest,
-        changesGlobal=hasGlobals
-      let next:GlobalRecord|undefined
-      if(changesGlobal&&!already) {
-        next=clone(record)
-        const chat=next.conversations[sessionId]??={globalBaselines:{},accepted:{}}
-        if(!Object.hasOwn(chat.globalBaselines,source))chat.globalBaselines[source]=clone(attempt.global)
-        const previous=next.publications.find(row=>row.source===source)
-        next.publications=next.publications.filter(row=>row.source!==source)
-        next.publications.push({source,writes:clone(globalWrites)})
-        if(previous?.writes.length) {
-          next.global=clone(next.globalBase)
-          for(const publication of next.publications)for(const write of publication.writes)apply(next.global,write)
-        }else for(const write of globalWrites)apply(next.global,write)
-        chat.accepted[receiptId]={digest};next.revision++
+      assertAcceptance(acceptance)
+      const known=deps.state.lookupAcceptedContribution(intent)
+      if(known.kind==='applied') {
+        await deps.state.confirmAcceptedContribution(intent)
+        return {value:known}
       }
-      return coordinate(attempt.presetId,record,intent,next)
-    })
-  }
-  async function commitPreparation(preparation:AcceptedPreparationRecord):Promise<CommitResult> {
-    let result=await commitChatPreparation(preparation)
-    if(result.outcome==='retired')return result
-    // Every group retains its own State intent/receipt. A failed later write
-    // leaves the existing preparation pending; retry confirms earlier groups
-    // without rerunning author code or claiming cross-namespace atomicity.
-    for(const plan of preparation.ordinaryChat.messageGroups??[]) {
-      const intent=intentFor(preparation,false,plan)
+      return withCurrentSource(record,acceptance,current=>deps.state.replaceAcceptedContribution(intent,{
+        ownsNamespace:target=>recordSha256(target)===recordSha256(intent.namespace),isCurrent:current,
+        beforeWrite({key,value}){
+          const release=acceptance.beforeWrite?.({key,value})
+          publishing.set(value,key)
+          return()=>{publishing.delete(value);release?.()}
+        }}))
+    }
+    if(main) {
+      const result=await writeChat(main)
+      if('retired' in result)return {committed,revision:0,outcome:'retired'}
+      chatReceipt=result.value;committed=result.value.kind==='committed'
+    }
+    for(const intent of scopeIntents(record)) {
+      if(deps.scopes.lookup(intent).kind==='applied')continue
+      const result=await withCurrentSource(record,acceptance,current=>deps.scopes.replaceContribution(intent,{
+        owns,isCurrent:current,beforeWrite:acceptance.beforeWrite}))
+      if('retired' in result)return {committed,revision:0,outcome:'retired',chatReceipt}
+      committed||=result.value.kind==='committed'
+    }
+    for(const plan of record.ordinaryChat.messageGroups??[]) {
+      const intent=intentFor(record,false,plan)
       if(!intent)continue
-      await deps.readyNamespace(intent.namespace)
-      const receipt=await writeChat(intent,async()=>({...result,outcome:'retired' as const}))
-      if('outcome' in receipt)return receipt
-      result={...result,committed:result.committed||receipt.kind==='committed'}
+      const result=await writeChat(intent)
+      if('retired' in result)return {committed,revision:0,outcome:'retired',chatReceipt}
+      committed||=result.value.kind==='committed'
     }
-    return result
+    assertAcceptance(acceptance)
+    return {committed,revision:deps.scopes.capture(address).revision,outcome:'applied',chatReceipt}
   }
-  async function setGlobal(presetId:string,key:string,value:CommunityJson) {
-    return withTavernLock(table,globalKey(presetId),async()=>{
-      await settlePending(presetId)
-      const record=clone(read(presetId));record.globalBase[key]=clone(value);record.global[key]=clone(value)
-      for(const publication of record.publications)publication.writes=publication.writes.filter(write=>write.key!==key)
-      record.revision++;await publish(presetId,record);return record.revision
+  async function setGlobal(_presetId:string,key:string,value:CommunityJson) {
+    return withTavernLock(table,'community-profile-global-ordinary',async()=>{
+      const capture=deps.scopes.capture(address)
+      await deps.scopes.replace({expectedRoot:capture.root,operationId:'community-global-'+randomUUID(),
+        values:{...capture.values,[key]:clone(value)},cause:{kind:'community-global',key}},
+      {owns,isCurrent:profileCurrent})
+      return deps.scopes.capture(address).revision
     })
   }
   async function configure(presetId:string,sessionId:string,configurations:readonly CommunityVariableConfiguration[]) {
-    return withTavernLock(table,globalKey(presetId),async()=>{
-      if(!configurations.length)await settlePending(presetId)
-      for(const configuration of configurations) {
-        await settlePending(presetId)
-        const {namespace}=deps.captureNamespace(sessionId),record=read(presetId),id='community-config-'+configuration.id,
-          globalPending=!record.configurationApplied.includes(configuration.id),
-          chatPending=!deps.state.readAcceptedContribution(namespace,id),
-          selected=configuration.writes.filter(write=>write.scope==='global'?globalPending:chatPending)
-            .map(write=>write.operation==='delete'?write:{...write,operation:'set' as const}),
-          local=chatWrites(selected),globalWrites=selected.filter(write=>write.scope==='global')
-        if(!local.length&&!globalWrites.length)continue
-        const intent:AcceptedAuthorChatContributionV3|undefined=local.length?{
-          namespace,contributionId:id,attemptId:configuration.id,replacesAttemptId:null,
-          operationId:'community-config-'+recordSha256({namespace,id}),writes:local,
-          source:{kind:'preset-configuration',configurationId:configuration.id,presetId,
-            conversationId:configuration.conversationId},cause:{kind:'community-configuration',presetId,
-            configurationId:configuration.id}}:undefined
-        let next:GlobalRecord|undefined
-        if(globalWrites.length) {
-          next=clone(record)
-          for(const write of globalWrites) {
-            apply(next.globalBase,write);apply(next.global,write)
-            for(const publication of next.publications)publication.writes=publication.writes.filter(prior=>prior.key!==write.key)
+    for(const configuration of configurations) {
+      await deps.withSourceLock(sessionId,async()=>{
+        const source=deps.captureNamespace(sessionId),namespace=source.namespace,
+          id='community-config-'+recordSha256({presetId,id:configuration.id}),
+          selected=configuration.writes.map(write=>write.operation==='delete'?write:{...write,operation:'set' as const}),
+          local=variableWrites(selected,'chat'),global=variableWrites(selected,'global'),
+          configurationSource={kind:'preset-configuration' as const,configurationId:configuration.id,presetId,
+            conversationId:configuration.conversationId},cause={kind:'community-configuration',presetId,configurationId:configuration.id},
+          current=()=>profileCurrent()&&source.current()
+        if(local.length) {
+          await deps.readyNamespace(namespace)
+          const operationId='community-config-'+recordSha256({namespace,id}),
+            stored=table.get(authorChatEventKeyV3(namespace,operationId)) as AcceptedAuthorChatContributionV3|undefined
+          // Forked configuration contributions are already durable at the inherited
+          // cut. An own event still needs its original scope fence and flush ACK.
+          if(stored||!deps.state.readAcceptedContribution(namespace,id)) {
+            const scopeRef=stored?stored.expectedScopeRef:deps.state.captureNamespaceWithoutContribution(namespace,id).scopeRef,
+              intent:AcceptedAuthorChatContributionV3={namespace,contributionId:id,attemptId:configuration.id,
+              replacesAttemptId:null,operationId,
+              writes:local,source:configurationSource,cause,...scopeRef!==undefined?{expectedScopeRef:scopeRef}:{}}
+            if(deps.state.lookupAcceptedContribution(intent).kind==='applied')await deps.state.confirmAcceptedContribution(intent)
+            else await deps.state.replaceAcceptedContribution(intent,{ownsNamespace:target=>recordSha256(target)===recordSha256(namespace),
+              isCurrent:current,beforeWrite({key,value}){publishing.set(value,key);return()=>publishing.delete(value)}})
           }
-          next.configurationApplied.push(configuration.id);next.revision++
         }
-        await coordinate(presetId,record,intent,next)
-      }
-    })
+        if(global.length) {
+          const intent:AuthorPersistentScopeContributionV1={address,contributionId:id,attemptId:configuration.id,
+            replacesAttemptId:null,operationId:id,writes:global,source:configurationSource,cause}
+          if(deps.scopes.lookup(intent).kind!=='applied')await deps.scopes.replaceContribution(intent,{owns,isCurrent:current})
+        }
+      })
+    }
   }
-  function receiptFacts(preparation:AcceptedPreparationRecord) {
-    const {ordinaryChat:plan,community,acceptedMaterialRef}=preparation,
-      hasGlobals=community!==undefined&&(community.writes.some(write=>write.scope==='global')||community.attempt.globalContributionPresent),
-      intent=intentFor(preparation,hasGlobals),record=community?raw(community.attempt.presetId):undefined,keys:string[]=[]
-    if(intent)keys.push(authorChatEventKeyV3(intent.namespace,intent.operationId))
-    if(hasGlobals)keys.push(globalKey(community!.attempt.presetId))
-    // A durable intent still needs the async coordinator. Its Native session
-    // may not be loaded yet, so scheduling cannot use a synchronous receipt.
-    if(record?.pending) {
-      if(!hasGlobals)keys.push(globalKey(community!.attempt.presetId))
-      return {accepted:false,keys}
-    }
+  function receiptFacts(record:AcceptedPreparationRecord) {
+    const keys=[outcomeKey(record),AUTHOR_PROFILE_IDENTITY_KEY]
+    if(retired(record))return {accepted:true,keys}
     let accepted=true
-    if(intent) {
-      if(!deps.isNamespaceReady(intent.namespace))return {accepted:false,keys}
+    for(const intent of chatIntents(record)) {
+      keys.push(authorChatEventKeyV3(intent.namespace,intent.operationId))
+      if(!deps.isNamespaceReady(intent.namespace)){accepted=false;continue}
       const receipt=deps.state.lookupAcceptedContribution(intent)
-      if(record?.outcomes[intent.operationId]===receipt.inputSha256)
-        return {accepted:true,keys:[...keys,globalKey(community!.attempt.presetId)]}
-      accepted=receipt.kind==='applied'
       if(receipt.kind==='applied')keys.push(receipt.publication.key)
+      else accepted=false
     }
-    if(hasGlobals) {
-      accepted&&=record!.conversations[plan.initialRoot.namespace.sessionId]?.accepted[intent?.operationId??operationId(plan)]?.digest
-        ===recordSha256(acceptedMaterialRef)
-    }
-    for(const group of plan.messageGroups??[]) {
-      const message=intentFor(preparation,false,group)
-      if(!message)continue
-      keys.push(authorChatEventKeyV3(message.namespace,message.operationId))
-      if(!deps.isNamespaceReady(message.namespace)){accepted=false;continue}
-      const receipt=deps.state.lookupAcceptedContribution(message)
-      accepted&&=receipt.kind==='applied'
+    for(const intent of scopeIntents(record)) {
+      keys.push(authorPersistentScopeEventKeyV1(intent.address,intent.operationId),authorPersistentScopeHeadKeyV1(intent.address))
+      const receipt=deps.scopes.lookup(intent)
       if(receipt.kind==='applied')keys.push(receipt.publication.key)
+      else accepted=false
     }
     return {accepted,keys}
   }
-  return {capture,commitPreparation,setGlobal,configure,receiptFacts,
-    isPublishing:(key:string,value:unknown)=>value!==null&&typeof value==='object'&&publishing.get(value)===key,
-    readGlobal:(presetId:string)=>{const record=read(presetId);return {revision:record.revision,values:clone(record.global)}}}
+  return {capture,captureDisplay,captureSharedScopes,commitPreparation,setGlobal,configure,receiptFacts,
+    isPublishing:(key:string,value:unknown)=>!!value&&typeof value==='object'
+      &&(publishing.get(value)===key||deps.scopes.isPublishing(key,value)),
+    readGlobal:(_presetId?:string)=>{const capture=deps.scopes.capture(address)
+      return {revision:capture.revision,values:clone({...capture.values})}}}
 }

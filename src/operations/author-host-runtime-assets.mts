@@ -7,23 +7,7 @@ import {createHash} from 'node:crypto'
 import {createRuntimeAssetSourceScopeV1,type HistoricalRuntimeAssetRebuildV1}
   from './runtime-asset-source-scope.mjs'
 
-const supportedPackageNames=['dsh-nexttavern-author-host-runtime-v5','dsh-nexttavern-author-host-runtime-v5-policy',
-  'dsh-nexttavern-author-host-runtime-v5-policy-init-chat-v1',
-  'dsh-nexttavern-author-host-runtime-v5-named-worldbooks-persona-v1',
-  'dsh-nexttavern-author-host-runtime-v5-native-personas-v1',
-  'dsh-nexttavern-author-host-runtime-v5-native-personas-save-next-v1',
-  'dsh-nexttavern-author-host-runtime-v5-native-personas-save-joins-v1',
-  'dsh-nexttavern-author-host-runtime-v5-native-personas-save-facts-v1',
-  'dsh-nexttavern-author-host-runtime-v5-native-personas-save-step-facts-v1',
-  'dsh-nexttavern-author-host-runtime-v5-native-personas-save-continuous-v1',
-  'dsh-nexttavern-author-host-runtime-v5-native-personas-save-codec-v1',
-  'dsh-nexttavern-author-host-runtime-v5-native-personas-save-material-owner-v1',
-  'dsh-nexttavern-author-host-runtime-v5-source-html-v1',
-  'dsh-nexttavern-author-host-runtime-v5-source-html-checked-journal-v1',
-  'dsh-nexttavern-author-host-runtime-v5-server-candidates-v1',
-  'dsh-nexttavern-author-host-runtime-v5-server-candidates-v2',
-  'dsh-nexttavern-author-host-runtime-v5-author-dialog-v1',
-  'dsh-nexttavern-author-host-runtime-v5-update-batch-v1']
+const supportedPackageName='dsh-nexttavern-author-host-runtime-v5-update-batch-v1'
 const providerOutput='dist/index.mjs',sourceInputOutput='assets/source-inputs.json'
 interface Artifact {id:string;source:string;canonicalSource?:string}
 interface Resource {artifact:string;path:string}
@@ -92,10 +76,8 @@ export async function buildAuthorHostRuntimeAssetsV5(options:{repo:string;plan:A
   const metadataBytes=fs.readFileSync(inside(repo,packageArtifact.source))
   const metadata=JSON.parse(metadataBytes.toString('utf8')) as {name:string;version:string;main:string;
     exports:Record<string,string>;dependencies?:Record<string,string>;bundleDependencies?:readonly string[]}
-  const packageName=metadata.name,packageVersion=metadata.version,
-    expectedVersion=['dsh-nexttavern-author-host-runtime-v5-author-dialog-v1',
-      'dsh-nexttavern-author-host-runtime-v5-update-batch-v1'].includes(packageName)?'0.6.0':'0.5.2'
-  if(!supportedPackageNames.includes(packageName)||packageVersion!==expectedVersion||metadata.main!=='./'+providerOutput
+  const packageName=metadata.name,packageVersion=metadata.version
+  if(packageName!==supportedPackageName||packageVersion!=='0.6.0'||metadata.main!=='./'+providerOutput
     ||metadata.exports['.']!=='./'+providerOutput||metadata.exports['./package.json']!=='./package.json'
     ||Object.keys(metadata.dependencies??{}).length!==0||(metadata.bundleDependencies??[]).length!==0) {
     throw Error('AUTHOR_HOST_ASSET_PACKAGE_INVALID')

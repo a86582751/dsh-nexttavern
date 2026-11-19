@@ -16,7 +16,7 @@ export interface SummaryOptions<S extends SummarySession> {
   previousSummary?: string
   sourceText: string
   lockedText?: string
-  maxTokens: number
+  maxTokens?: number
   timeoutMs: number
   signal?: AbortSignal
   taskStage?: string
@@ -30,7 +30,7 @@ export interface NativeSummaryTask<S extends SummarySession> {
   user: string
   kind: 'memory'
   format: 'json' | 'text'
-  maxTokens: number
+  maxTokens?: number
   timeoutMs: number
   signal?: AbortSignal
   validate: (value: unknown) => unknown

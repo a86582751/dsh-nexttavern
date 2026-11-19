@@ -14,7 +14,7 @@ function canonical(value:unknown):string {
 }
 export const nativeStoryResponseSha256V1=(value:unknown):string=>createHash('sha256').update(canonical(value),'utf8').digest('hex')
 export const nativeStoryVisibleTextV1=(blocks:readonly ContentBlock[])=>blocks.flatMap(block=>block.type==='text'?[block.text]:[]).join('')
-const transportName=(name:unknown):name is string=>typeof name==='string'&&(name==='game_content'||/^emit_complete_response_[a-f0-9]{24}$/.test(name))
+const transportName=(name:unknown):name is string=>typeof name==='string'&&name.trim().length>0
 function object(value:unknown,fields:readonly string[]):Record<string,unknown> {
   if(value===null||typeof value!=='object'||Array.isArray(value))return fail()
   const row=value as Record<string,unknown>

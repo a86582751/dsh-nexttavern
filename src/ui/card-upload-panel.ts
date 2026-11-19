@@ -1,12 +1,14 @@
 import type * as ReactAPI from 'react';
 import {CardUploadRequestError, createCardUploadRequestJournal} from './card-upload-request.js';
 import type {CardUploadRequestIndex, CardUploadRequestStorage} from './card-upload-request.js';
+import type {PrepareOpeningSource} from './reader-submission-handoff.js';
 
 export interface CardUploadPanelProps {
     sessionId: string;
     onImported?(): void;
 }
 export interface CardUploadPanelDependencies {
+    prepareSource?:PrepareOpeningSource;
     React: typeof ReactAPI;
     jsonFetch<T>(url: string, init?: RequestInit): Promise<T>;
     toast(text: string): void;

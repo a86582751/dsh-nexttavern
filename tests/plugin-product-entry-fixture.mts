@@ -99,6 +99,7 @@ async function prepareFixture(root: string, options: FixtureOptions) {
     ['nexttavern-profile-plan', new URL('../lib/operations/nexttavern-profile-plan.mjs', import.meta.url)],
     ['nexttavern-lifecycle', new URL('../lib/operations/nexttavern-lifecycle.mjs', import.meta.url)],
     ['bundled-package-bootstrap', new URL('../lib/operations/bundled-package-bootstrap.mjs', import.meta.url)],
+    ['released-component-types', new URL('../lib/operations/released-component-types.mjs', import.meta.url)],
     ['nexttavern-package-preparation', new URL('../lib/operations/nexttavern-package-preparation.mjs', import.meta.url)],
     ['nexttavern-market', new URL('../lib/operations/nexttavern-market.mjs', import.meta.url)],
     ['protected-packages', new URL('../lib/operations/protected-packages.mjs', import.meta.url)],
@@ -150,8 +151,7 @@ async function prepareFixture(root: string, options: FixtureOptions) {
         ctx.productProbe.attempt(${self}, read());
         if (${self} === 'owned' && (ctx.productProbe.fail || read() === 'reject')) throw Error('owned provider failed');
         ctx.effect(() => ctx.productProbe.acquire(${self}, {...config, value: read()}));
-        // A volatile setting is read when consumed, not captured during apply.
-        ctx.provide(config.service, {owner:${self}, get value() { return read(); }});
+        ctx.provide(config.service, {owner:${self}, get value(){return read()}});
       }` : `export default function(ctx,config) {
       ctx.productProbe.attempt(${self}, config.value);
       if (${self} === 'owned' && (ctx.productProbe.fail || config.value === 'reject')) throw Error('owned provider failed');
@@ -224,10 +224,6 @@ async function prepareFixture(root: string, options: FixtureOptions) {
     startedBundles: ['fixture-base','dsh-nexttavern'], overlays: [], telemetryDisabledEnv: undefined}
   const ctx = new Context()
   ctx.baseUrl = pathToFileURL(dir+path.sep).href
-  // Keep boot's global update observer in the fixture's real waterfall chain.
-  ctx.on('internal/update', (_config: unknown, _noSave: boolean, next: () => unknown) => {
-    Promise.resolve(next()).catch(error => ctx.logger.error(error))
-  }, {global: true, prepend: true})
   ctx.provide('profileContext', context)
   ctx.provide('productProbe', {fail: options.fail, ownedReady: ownedReady.promise,
     attempt(owner: string, value: unknown) {attempts.push({owner, value})},

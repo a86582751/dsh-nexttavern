@@ -50,7 +50,8 @@ type RegisteredForkOperation = LegacyForkOperation & {
   kind: string
   anchor: { sourceSessionId: string; [field: string]: unknown }
 }
-const kinds = new Set(['regenerate','player-edit','player-edit-send','edit','delete-user','prepare-clean-branch','opening-variant'])
+const kinds = new Set(['regenerate','player-edit','player-edit-send','edit','delete-user','prepare-clean-branch','opening-variant',
+  'text-only-continuation'])
 const copy = <T>(value: T): T => structuredClone(value)
 const id = (value: unknown): string => {
   if(typeof value!=='string'||!/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/.test(value)||['__proto__','constructor','prototype'].includes(value))throw new Error('会话或操作标识无效')
@@ -58,8 +59,9 @@ const id = (value: unknown): string => {
 }
 const hash = (value: object) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 
-/** Presentation ownership only. Execution, memory and authoritative seq stay
- * on their existing native Session. Writes commit before any snapshot changes. */
+/** Conversation membership and settings scope share the saved parent chain.
+ * Native Session owns execution, memory and authoritative seq. Writes commit
+ * before any snapshot changes. */
 export function createConversationCatalog({read,write}: {
   read: () => unknown
   write: (snapshot: ConversationSnapshot) => unknown | Promise<unknown>
@@ -70,6 +72,17 @@ export function createConversationCatalog({read,write}: {
   for(const book of Object.values(state.conversations))if(book?.selectionRevision!==undefined&&(!Number.isSafeInteger(book.selectionRevision)||book.selectionRevision<0))throw Error('世界线选择版本损坏，未覆盖原记录')
   let chain: Promise<unknown> = Promise.resolve()
   const rootOf = (sessionId: string, snapshot = state) => snapshot.worldlines[id(sessionId)]?.conversationId ?? sessionId
+  const settingsScopeOf = (sessionId: string) => {
+    const conversationId = rootOf(sessionId)
+    let member = state.worldlines[sessionId]
+    // A continuation starts an isolated settings scope inside its conversation.
+    // Later worldlines retain that scope through the catalog's durable lineage.
+    while (member) {
+      if (member.kind === 'text-only-continuation') return member.sessionId
+      member = state.worldlines[member.sourceSessionId]
+    }
+    return conversationId
+  }
   const mutate = (work: (next: ConversationSnapshot) => boolean | void | Promise<boolean | void>,callerCurrent?:()=>void) => {
     const job=chain.catch(()=>{}).then(async()=>{
       const next=copy(state),changed=await work(next)
@@ -94,7 +107,12 @@ export function createConversationCatalog({read,write}: {
     return true
   }
   return {
-    snapshot:()=>copy(state),rootOf,
+    snapshot:()=>copy(state),rootOf,settingsScopeOf,
+    kindOf:(sessionId:string)=>state.worldlines[id(sessionId)]?.kind,
+    operationOf:(sessionId:string)=>state.worldlines[id(sessionId)]?.operationId,
+    findChildOperation:(sourceSessionId:string,kind:string,matches:(operationId:string)=>boolean)=>
+      Object.values(state.worldlines).find(member=>member?.sourceSessionId===sourceSessionId
+        &&member.kind===kind&&member.status!=='failed'&&matches(member.operationId))?.operationId,
     selectionOf:(sessionId:string)=>{
       const root=rootOf(sessionId),book=state.conversations[root]
       return {root,activeSessionId:book?.activeSessionId??root,revision:book?.selectionRevision??0}

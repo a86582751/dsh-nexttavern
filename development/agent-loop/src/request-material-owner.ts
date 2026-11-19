@@ -546,19 +546,23 @@ function storyPolicy(value:unknown):NativeStoryRequestPolicyV1 {
   if(row['schemaVersion']!==1)return fail()
   let sampling:NativeStoryRequestPolicyV1['sampling']
   if(row['sampling']!==undefined) {
-    const raw=row['sampling'],keys=['temperature','maxTokens','stop'].filter(field=>raw!==null&&typeof raw==='object'
+    const raw=row['sampling'],keys=['temperature','maxTokens','stop','topP','topK','frequencyPenalty','presencePenalty',
+      'toolChoice','responseFormat'].filter(field=>raw!==null&&typeof raw==='object'
       &&!utilTypes.isProxy(raw)&&Object.hasOwn(raw,field))
     const data=object(raw,keys),temperature=data['temperature'],maxTokens=data['maxTokens']
     if(temperature!==undefined&&(typeof temperature!=='number'||!Number.isFinite(temperature)))return fail()
     if(maxTokens!==undefined&&(typeof maxTokens!=='number'||!Number.isSafeInteger(maxTokens)||maxTokens<1))return fail()
-    sampling={...temperature===undefined?{}:{temperature:temperature as number},...maxTokens===undefined?{}:{maxTokens:maxTokens as number},
+    sampling={...data,...temperature===undefined?{}:{temperature:temperature as number},...maxTokens===undefined?{}:{maxTokens:maxTokens as number},
       ...data['stop']===undefined?{}:{stop:array(data['stop'],128).map(value=>text(value,65_536))}}
   }
   let response:NativeStoryRequestPolicyV1['response']
   if(row['response']!==undefined) {
-    const data=object(row['response'],['transport']),transport=data['transport']
-    if(typeof transport!=='string'||transport!=='game_content'&&!/^emit_complete_response_[a-f0-9]{24}$/.test(transport))return fail()
-    response={transport}
+    const raw=row['response'],fields=['transport',...raw!==null&&typeof raw==='object'
+      &&!utilTypes.isProxy(raw)&&Object.hasOwn(raw,'selection')?['selection']:[]],data=object(raw,fields),
+      transport=data['transport'],selection=data['selection']
+    if(typeof transport!=='string'||!transport.trim()
+      ||selection!==undefined&&selection!=='transport'&&selection!=='longest')return fail()
+    response={transport,...selection===undefined?{}:{selection}}
   }
   return {schemaVersion:1,...sampling?{sampling}:{},...response?{response}:{}}
 }

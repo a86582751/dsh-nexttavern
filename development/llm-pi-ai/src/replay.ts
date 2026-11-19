@@ -10,7 +10,7 @@
 
 import { LlmError } from 'dsh-nexttavern-native-llm'
 import type { AssistantMessage as HarnessAssistantMessage, ContentBlock, ModelMessageSource, ReplayEnvelope, RequestMaterialMessageV1,
-  RequestMessageTextProjectionV2, RequestMessage } from 'dsh-nexttavern-native-llm'
+  RequestMessageTextProjectionV2, RequestMessage, RequestOnlyMessageV1 } from 'dsh-nexttavern-native-llm'
 import type { Api, AssistantMessage, Usage as PiUsage } from 'dsh-nexttavern-pi-ai'
 
 /** Per-block half of the pi-ai replay envelope, one entry per content block. */
@@ -91,6 +91,12 @@ export function toPiReplayState(message: AssistantMessage, requestedModel = mess
   }
   return {
     response,
+    details:{...message.responseId===undefined?{}:{responseId:message.responseId},
+      blocks:message.content.map(block=>block.type==='text'?{type:'text' as const,
+        ...block.textSignature===undefined?{}:{signature:block.textSignature}}:block.type==='thinking'
+        ?{type:'reasoning' as const,...block.thinkingSignature===undefined?{}:{signature:block.thinkingSignature},
+          ...block.redacted===undefined?{}:{redacted:block.redacted}}
+        :{type:'tool-call' as const,...block.thoughtSignature===undefined?{}:{signature:block.thoughtSignature}})},
     blocks: message.content.map((block): PiAiReplayBlock => {
       switch (block.type) {
         case 'text': return {
@@ -189,7 +195,7 @@ export function assertPiRequestProjectionV1(message:RequestMessage):void {
       if(!signed)continue
       const old=original.content[index],current=message.content[index]
       if(marker.originalMessages.length!==1||message.role!=='assistant'
-        ||message.source.kind!=='model'||JSON.stringify(old)!==JSON.stringify(current)) {
+        ||message.source?.kind!=='model'||JSON.stringify(old)!==JSON.stringify(current)) {
         throw new LlmError('Cannot rewrite provider-signed blocks; use a separate text contribution',
           'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
       }
@@ -198,7 +204,7 @@ export function assertPiRequestProjectionV1(message:RequestMessage):void {
 }
 
 /** Convert provider-neutral blocks without trusting them as same-model replay. */
-function foreignAssistant(message: HarnessAssistantMessage|RequestMessageTextProjectionV2): AssistantMessage {
+function foreignAssistant(message: HarnessAssistantMessage|RequestMessageTextProjectionV2|Extract<RequestOnlyMessageV1,{role:'assistant'}>): AssistantMessage {
   const source = message.source
   const content: AssistantMessage['content'] = []
   for (const block of message.content) {
@@ -224,10 +230,10 @@ function foreignAssistant(message: HarnessAssistantMessage|RequestMessageTextPro
     // Deliberately never equals a catalog API: model output without replay
     // state and programmatic prose are both provider-neutral history.
     api: 'dsh-foreign',
-    provider: source.kind === 'model' ? source.provider : source.kind==='request-material-projection'
+    provider: source?.kind === 'model' ? source.provider : source?.kind==='request-material-projection'
       ?'dsh-request-material':'programmatic',
-    model: source.kind === 'model' ? source.model : source.kind==='request-material-projection'
-      ?'dsh-request-material-projection-v2':source.origin,
+    model: source?.kind === 'model' ? source.model : source?.kind==='request-material-projection'
+      ?'dsh-request-material-projection-v2':source?.origin??'author-generation',
     usage: emptyPiUsage(),
     stopReason: content.some(piece => piece.type === 'toolCall') ? 'toolUse' : 'stop',
     timestamp: 0,
@@ -308,18 +314,18 @@ export function toPiRequestMaterialAssistant(message:Extract<RequestMaterialMess
     usage:emptyPiUsage(),stopReason:'stop',timestamp:0}
 }
 
-function isRequestMaterialAssistant(message:HarnessAssistantMessage|Extract<RequestMaterialMessageV1,{role:'assistant'}>|RequestMessageTextProjectionV2):
+function isRequestMaterialAssistant(message:HarnessAssistantMessage|Extract<RequestMaterialMessageV1,{role:'assistant'}>|RequestMessageTextProjectionV2|Extract<RequestOnlyMessageV1,{role:'assistant'}>):
   message is Extract<RequestMaterialMessageV1,{role:'assistant'}> {
-  return message.source.kind==='request-material'
+  return message.source?.kind==='request-material'
 }
 
-function isProjectedAssistant(message:HarnessAssistantMessage|RequestMessageTextProjectionV2):message is RequestMessageTextProjectionV2 {
-  return message.source.kind==='request-material-projection'
+function isProjectedAssistant(message:HarnessAssistantMessage|RequestMessageTextProjectionV2|Extract<RequestOnlyMessageV1,{role:'assistant'}>):message is RequestMessageTextProjectionV2 {
+  return message.source?.kind==='request-material-projection'
 }
-export function toPiAssistant(message: HarnessAssistantMessage|Extract<RequestMaterialMessageV1,{role:'assistant'}>|RequestMessageTextProjectionV2,
+export function toPiAssistant(message: HarnessAssistantMessage|Extract<RequestMaterialMessageV1,{role:'assistant'}>|RequestMessageTextProjectionV2|Extract<RequestOnlyMessageV1,{role:'assistant'}>,
   onDegrade?: (reason: string) => void): AssistantMessage {
   if(isRequestMaterialAssistant(message))return toPiRequestMaterialAssistant(message)
-  if(isProjectedAssistant(message))return foreignAssistant(message)
+  if(isProjectedAssistant(message)||message.source===undefined)return foreignAssistant(message)
   const source = message.source
   if (source.kind !== 'model' || source.replayState === undefined) return foreignAssistant(message)
   try {

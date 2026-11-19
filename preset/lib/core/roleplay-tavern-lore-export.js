@@ -3,6 +3,8 @@
  * bindings once; this projection never executes macros/EJS or mutates rows. */
 import { recordSha256 } from './roleplay-data.js';
 import { stableJson } from './card-export-projection.js';
+import { resolveTavernLoreContentTextV1 } from './tavern-lore-compiler.mjs';
+import { ST_LORE_ENTRY_DEFAULTS_V1 } from './tavern-lore-fixed-profile.mjs';
 export function captureRoleplayTavernLoreExportDataV1(deps, sessionId) {
     const captured = deps.source.capture(sessionId);
     if (captured.kind === 'outside-declared-domain') {
@@ -14,22 +16,32 @@ export function captureRoleplayTavernLoreExportDataV1(deps, sessionId) {
     }
     if (captured.kind === 'refused')
         return { kind: 'blocked', code: captured.diagnostics[0]?.code ?? 'SOURCE_READ_FAILED' };
-    const { observed, legacy } = deps.edits.observeSourceDataWithLegacyData(captured);
+    const bookCapture = deps.books?.captureCompilation(captured.source), journalPacket = bookCapture ? deps.edits.observeJournalDataWithLegacyData(captured) : undefined, editorPacket = bookCapture ? undefined : deps.edits.observeSourceDataWithLegacyData(captured), { observed, legacy } = journalPacket ?? editorPacket;
     if (observed.kind === 'refused')
         return { kind: 'blocked', code: observed.diagnostics[0]?.code ?? 'STORAGE_READ_FAILED' };
     // A successful observation and its legacy bindings are one supplier result.
-    const bindings = legacy, source = captured.source, { data, editor } = observed;
+    const bindings = legacy, source = captured.source, { data } = observed, editor = editorPacket?.observed.kind === 'captured-data' ? editorPacket.observed.editor : undefined, compilation = bookCapture?.compilation, bookSources = new Map(compilation?.plan.boundBooks?.map(book => [book.plan.bookId, book.plan.source]) ?? []), entries = compilation ? compilation.plan.entries.map(entry => ({ entryId: entry.entryId,
+        rawEntryPointer: entry.sourcePointer, rawEntrySha256: entry.rawEntrySha256, disposition: entry.disposition,
+        semantic: { ...ST_LORE_ENTRY_DEFAULTS_V1, displayIndex: entry.ordinal, ...entry.semanticOverrides },
+        contentText: resolveTavernLoreContentTextV1(compilation.plan, entry.sourcePointer + '/content').text,
+        fieldSources: entry.fieldSources, diagnosticCodes: entry.diagnosticIndexes.map(index => compilation.diagnostics[index].code),
+        currentNativeMember: entry.currentNativeMember, book: bookSources.get(entry.bookId) }))
+        : editor.entries.map(entry => ({ ...entry, book: undefined }));
     const provenance = { schemaVersion: 1, encoding: 'tavern-lore-current-export-source-v1', sessionId,
         sourceRecordSessionId: source.sourceRecordSessionId, importId: source.original.activePointer.importId,
         rawSha256: source.original.rawSha256, normalizedSha256: source.original.normalizedSha256,
         sourceSha256: source.sourceSha256, importRecordRef: source.original.importRecordRef,
-        activePointerRef: source.original.activePointerRef, revision: editor.revision, dataSha256: data.dataSha256,
+        activePointerRef: source.original.activePointerRef,
+        ...(compilation ? { journalRevision: data.revision } : { revision: editor.revision }), dataSha256: data.dataSha256,
         headRef: data.headRef, journalSha256: data.journalSha256, journalRefs: data.journalRefs,
         ...(data.inheritance ? { inheritance: data.inheritance } : {}),
         ...(source.legacyInheritance ? { legacyInheritance: source.legacyInheritance } : {}),
-        ...(source.inheritance ? { sourceInheritance: source.inheritance } : {}) };
-    const materials = editor.entries.flatMap(entry => {
+        ...(source.inheritance ? { sourceInheritance: source.inheritance } : {}),
+        ...(compilation ? { bookCollection: { source: compilation.plan.source,
+                sourceReferenceSha256: compilation.plan.sourceReferenceSha256, planSha256: compilation.plan.planSha256 } } : {}) };
+    const materials = entries.flatMap(entry => {
         const entrySource = { ...provenance, rawEntryPointer: entry.rawEntryPointer, rawEntrySha256: entry.rawEntrySha256,
+            ...(entry.book ? { book: entry.book } : {}),
             ...(entry.currentNativeMember ? { currentNativeMember: entry.currentNativeMember } : {}) }, { content: _contentReference, ...fields } = entry.semantic;
         return [{ label: `当前结构化世界书正文: ${entry.entryId}`, text: entry.contentText, source: entrySource },
             { label: `当前结构化世界书字段与来源: ${entry.entryId}`,
@@ -58,7 +70,7 @@ export function captureRoleplayTavernLoreExportDataV1(deps, sessionId) {
             source: provenance
         });
     const skipWorldbookKeys = bindings.linkedRowKeys, currentLoreSha256 = recordSha256({ sourceSha256: source.sourceSha256, dataSha256: data.dataSha256,
-        editor, skipWorldbookKeys, skipRulesCore });
+        ...(compilation ? { compilationPlanSha256: compilation.plan.planSha256 } : { editor }), skipWorldbookKeys, skipRulesCore });
     return { kind: 'ready', sessionId, sourceSha256: source.sourceSha256, currentLoreSha256,
         materials, skipWorldbookKeys, skipRulesCore };
 }

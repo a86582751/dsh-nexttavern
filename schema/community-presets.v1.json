@@ -28,6 +28,8 @@
     "regexes": {"type": "array", "items": {"$ref": "#/$defs/regex"}},
     "regexSource": {"enum": ["native", "spreset", "legacy", "none"]},
     "parameters": {"$ref": "#/$defs/data"},
+    "extensions": {"$ref": "#/$defs/data"},
+    "contentRevision": {"type": "integer", "minimum": 0},
     "profile": {"$ref": "#/$defs/profile"}
   },
   "$defs": {
@@ -103,9 +105,10 @@
       "type": "object", "additionalProperties": false,
       "required": ["id", "version", "groups", "configuration", "transport", "actions"],
       "properties": {
-        "id": {"enum": ["standard", "dream", "kemini", "reborn", "izumi"]}, "version": {"const": 1},
+        "id": {"type": "string", "minLength": 1, "pattern": "\\S"}, "version": {"const": 1},
         "groups": {"type": "array", "items": {"$ref": "#/$defs/group"}},
         "configuration": {"$ref": "#/$defs/data"}, "transport": {"$ref": "#/$defs/data"},
+        "controlAnswers": {"$ref": "#/$defs/data"},
         "actions": {
           "type": "array", "items": {
             "type": "object", "additionalProperties": false, "required": ["id", "status", "reason"],

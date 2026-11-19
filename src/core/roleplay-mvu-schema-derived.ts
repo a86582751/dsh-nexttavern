@@ -2,6 +2,7 @@
  * Cold reads verify immutable facts and Native ancestry; they never complete a
  * partial reservation or recreate the parent's input/maintenance permissions. */
 import {recordSha256} from './roleplay-data.js'
+import {schemaOpeningNativeAnchor} from './roleplay-mvu-schema-opening-types.js'
 import {createRoleplayMvuLineage} from './roleplay-mvu-lineage.js'
 import {createRoleplayMvuFrozenLineage} from './roleplay-mvu-frozen-lineage.js'
 import type {MvuFrozenLineageDeps,MvuDerivedSourceProofUnion} from './roleplay-mvu-frozen-lineage.js'
@@ -17,7 +18,7 @@ import type {Session,SessionEvent} from 'dsh-nexttavern-native-session'
 import type {MvuLineageDeps,MvuDerivedSourceProof} from './roleplay-mvu-lineage.js'
 import type {MvuSchemaDerivedPrepared,MvuSchemaDerivedBasis,MvuSchemaDerivedGenesis,
   MvuSchemaFrozenPrefixV1,MvuSchemaHistoryBasisRef} from './roleplay-mvu-schema-derived-types.js'
-import type {ForkOperation} from './roleplay-worldline-types.js'
+import type {ForkPreparationOperation} from './roleplay-worldline-types.js'
 import type {ForkReservation} from './roleplay-branch-routes-types.js'
 import type {SchemaJournalReady,SchemaJournalRef} from './roleplay-mvu-schema-journal.js'
 import {isAuthorHostJournalReadyV5} from './roleplay-mvu-schema-journal.js'
@@ -88,7 +89,7 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
     return events.slice(0,cut)
   }
   function operationCurrent(prepared:MvuSchemaDerivedPrepared,stage:'preparing'|'reserved'='reserved'):boolean {
-    const operation=deps.branch.get(`fork-op-${prepared.operationId}`) as ForkOperation & {
+    const operation=deps.branch.get(`fork-op-${prepared.operationId}`) as ForkPreparationOperation & {
       reservedChildSessionId?:string;childSessionId?:string;state?:string;abortedAt?:number}|undefined
     if(!operation||operation.operationId!==prepared.operationId||operation.state==='failed'
       ||operation.state==='aborted'||operation.abortedAt
@@ -325,7 +326,7 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
       // publication. Its selected frozen generation owns that readable floor;
       // ordinary fork/copy captures retain their exact requested cut.
       if(revision&&selected.seed.kind==='opening') {
-        const publicationCut=selected.seed.event.native.turnEndSeq+1
+        const publicationCut=schemaOpeningNativeAnchor(selected.seed.event.native).turnEndSeq+1
         if(publicationCut>events.length)events=prefix(parent,publicationCut)
       }
       const initial=selected.seed.kind==='derived'?readAncestorGenesis(selected.sessionId,events,new Set(),parent.id):undefined
@@ -347,7 +348,7 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
     }
     return deps.history.captureForkPrefix(subjectSessionId,nativeCut)
   }
-  async function capture(operation:ForkOperation,reservation:ForkReservation):Promise<MvuSchemaForkCapture|undefined> {
+  async function capture(operation:ForkPreparationOperation,reservation:ForkReservation):Promise<MvuSchemaForkCapture|undefined> {
     if(disposed)fail('SCHEMA_DERIVED_OWNER_DISPOSED')
     if(operation.anchor.openingOnly||reservation.seedLength===0)return
     if(deps.branch.get(mvuSchemaDerivedPreparedKey(reservation.childSessionId))!==undefined)return
@@ -390,7 +391,7 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
     if(!ready)fail('SCHEMA_DERIVED_HISTORY_UNPROVEN')
     return {prefix:capturedPrefix,ready}
   }
-  async function prepare(operation:ForkOperation,reservation:ForkReservation,
+  async function prepare(operation:ForkPreparationOperation,reservation:ForkReservation,
     capture:MvuSchemaForkCapture|undefined):Promise<void> {
     if(disposed)fail('SCHEMA_DERIVED_OWNER_DISPOSED')
     if(operation.anchor.openingOnly||reservation.seedLength===0)return
@@ -464,7 +465,7 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
       reservations.set(reservation.childSessionId,{prepared,ready})
     })
   }
-  async function commit(operation:ForkOperation,child:DerivedSession):Promise<void> {
+  async function commit(operation:ForkPreparationOperation,child:DerivedSession):Promise<void> {
     const raw=deps.branch.get(mvuSchemaDerivedPreparedKey(child.id))
     if(raw===undefined)return
     await deps.withSourceLock(child.id,async()=>{

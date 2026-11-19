@@ -10,9 +10,12 @@ import {currentPromptVariableInputV2} from './roleplay-tavern-prompt-variables-d
 import {prepareRoleplayTavernRenderCatalogV1} from './roleplay-tavern-prompt-render.js'
 import {createRoleplayTavernTokenCountV1} from './roleplay-tavern-token-count.js'
 import {prepareOwnedTavernLoreWithOwnerV1} from './tavern-lore-evaluator.mjs'
-import {applyTavernLoreOrdinaryPreparationV1,createTavernLoreSourceEligibilityV1} from './tavern-lore-derived.mjs'
+import {applyTavernLoreOrdinaryPreparationV1,createTavernLoreSourceEligibilityV1,tavernLoreEvaluationSemanticV1}
+  from './tavern-lore-derived.mjs'
 import type {TavernLoreEvaluationCompositionV1} from './tavern-lore-derived.mjs'
-import {validateTavernLoreSnapshotV1} from './tavern-lore-snapshot.mjs'
+import {sealTavernLoreSnapshotV1} from './tavern-lore-snapshot.mjs'
+import {tavernLoreUsesGroupScoringV1} from './tavern-lore-scan.mjs'
+import {prepareRoleplayWorldbookVectorsV1} from './roleplay-worldbook-vector.js'
 import type {captureRoleplayTavernPromptSourceDataV1} from './roleplay-tavern-prompt-source.js'
 import type {captureRoleplayTavernPromptScopesV1} from './roleplay-tavern-prompt-scopes.js'
 import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
@@ -26,10 +29,10 @@ import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 /** Native has no ST global settings store. Archived character-book settings
  * remain importer metadata; absent session overrides use this content policy. */
 export const TAVERN_NATIVE_PROMPT_SETTINGS_V1:Readonly<TavernLoreFrozenSettingsV1>=Object.freeze({
-  policy:'owned-st-single-book-scan-feedback-v1',provenance:'explicit-native-fallback-v1',
+  policy:'owned-st-bound-books-scan-feedback-v1',provenance:'explicit-native-fallback-v1',
   caseSensitive:false,matchWholeWords:false,scanDepth:2,useGroupScoring:false,recursiveScanning:true,
   minimumActivations:0,minimumActivationDepthMax:0,maxRecursionSteps:32,includeNames:true,
-  characterStrategy:'single-character-book-v1',budgetTokens:2048,
+  characterStrategy:'ordered-bound-worldbooks-v1',budgetTokens:2048,
   contentTransformPolicy:'no-world-info-output-regex-v1',macroPolicy:'frozen-key-alias-receipt-v2',
   seedPolicy:'sha256-counter-domain-separated-v1',budgetPolicy:'frozen-cumulative-token-ledger-st-gte-v1'})
 
@@ -72,6 +75,8 @@ interface Dependencies {
   readonly currentCardFields?:Readonly<Record<'description'|'personality'|'scenario'|'persona',string>>
   readonly renderInput:RenderInput
   readonly execution?:TavernContentExecutionV1
+  readonly worldbookVector?:Omit<Parameters<typeof prepareRoleplayWorldbookVectorsV1>[0],
+    'catalog'|'signal'|'current'|'eligible'|'project'>
   macrosFor(scopes:readonly TavernTemplateScopeBindingV1[],
     outlets?:readonly {name:string;text:string;versionSha256:string}[]):TavernPromptMacroSnapshotV1
   /** Main supplies its registry scan consumer. Readonly dialogue omits it;
@@ -93,6 +98,7 @@ export async function prepareRoleplayTavernContentV1(deps:Dependencies) {
   const initialCatalog=captureRoleplayTavernInitialCatalogV1({source,plan:compilation.plan,
     assertCurrent:assertSignal,signal})
   const variableProducer:import('./roleplay-tavern-prompt-variables-types.js').TavernPromptVariableProducerV1={signal,assertCurrent,
+    getInitialValues:renderInput.ejs.getInitialValues,bindInitial:renderInput.ejs.bindInitial,
     async renderInitial(request:import('./roleplay-tavern-prompt-variables-types.js').TavernPromptInitialRenderRequestV1) {
       assertCurrent()
       const bindings=[...request.readonlyScopes,request.initialSoFar]
@@ -137,6 +143,10 @@ export async function prepareRoleplayTavernContentV1(deps:Dependencies) {
     composition=ordinaryPreparation
       ?applyTavernLoreOrdinaryPreparationV1(render.evaluationComposition,ordinaryPreparation):render.evaluationComposition
   assertCurrent()
+  const vectorSelection=deps.worldbookVector?await prepareRoleplayWorldbookVectorsV1({
+    ...deps.worldbookVector,catalog:render.sourceCatalog,signal,current:assertCurrent,
+    eligible:sourceEligibility,project:rows=>render.transformInjectionContent(rows,deps.macrosFor(bindings))}):undefined
+  assertCurrent()
   const tokenCount=createRoleplayTavernTokenCountV1(assertSignal,signal),card=captured.cardData,
     text=(value:unknown)=>typeof value==='string'?value:'',
     aliases=readTavernCardMacroFields(card,source.original.decodedFormat),macros=renderInput.macros,
@@ -147,21 +157,30 @@ export async function prepareRoleplayTavernContentV1(deps:Dependencies) {
       scenario:deps.currentCardFields?.scenario??text(aliases.scenario),creatorNotes:text(card.creator_notes)}
   const emptyCounts={schemaVersion:1 as const,encoding:'owned-frozen-token-count-ledger-v1' as const,
     identity:tokenCount.identity,implementationSha256:tokenCount.implementationSha256,method:tokenCount.method,counts:[]}
+  const entries=composition.entries.map(entry=>({semantic:tavernLoreEvaluationSemanticV1(entry)}))
+    .filter(row=>row.semantic.enabled)
+  const needsHistory=!deps.renderInput.literalText||entries.some(({semantic})=>!semantic.constant
+    ||tavernLoreUsesGroupScoringV1(semantic,entries,settings.useGroupScoring))
+  // Literal execution keeps semantics fixed. A live template can activate a
+  // disabled keyword entry later, so it retains the captured scan history.
+  const visibleMessages=needsHistory?deps.visibleMessages:[],
+    scanMessageCount=deps.scanMessageCount??(needsHistory?undefined:deps.visibleMessages.length)
   const body:Omit<TavernLoreFrozenSnapshotV1,'snapshotSha256'>={schemaVersion:1,
     encoding:'owned-st-lore-frozen-snapshot-v1',authority:'consumer-data-only',sessionId:source.sessionId,
     branchId:source.sessionId,revision:timed.revision,turnId:basis.turnId,attemptId:basis.attemptId,
     sourceSnapshotSha256:source.sourceSha256,stateSnapshotSha256:scopeData.stateSnapshotSha256,
     sourceReferenceSha256:compilation.plan.sourceReferenceSha256,packageSha256:basis.packageSha256,
-    compilerPlanSha256:compilation.plan.planSha256,visibleMessages:deps.visibleMessages,
-    ...deps.scanMessageCount!==undefined?{scanHistory:{schemaVersion:1 as const,
-      encoding:'owned-lore-scan-history-range-v1' as const,messageCount:deps.scanMessageCount}}:{},
-    messagesSha256:recordSha256(deps.visibleMessages),settings,settingsSha256:recordSha256(settings),
+    compilerPlanSha256:compilation.plan.planSha256,visibleMessages,
+    ...vectorSelection?{vectorSelection}:{},
+    ...scanMessageCount!==undefined?{scanHistory:{schemaVersion:1 as const,
+      encoding:'owned-lore-scan-history-range-v1' as const,messageCount:scanMessageCount}}:{},
+    messagesSha256:recordSha256(visibleMessages),settings,settingsSha256:recordSha256(settings),
     seed:basis.randomSeed,seedSha256:sha256(basis.randomSeed),globalScanData,globalScanDataSha256:recordSha256(globalScanData),
     timed,timedSha256:recordSha256(timed),tokenizer:emptyCounts,tokenizerSha256:recordSha256(emptyCounts),
     renderedTexts:[],renderedTextsSha256:recordSha256([]),
     ...initialCatalog.standaloneExclusionEntryIds.length?{standaloneExclusions:{schemaVersion:1 as const,
       encoding:'owned-lore-standalone-exclusions-v1' as const,entryIds:initialCatalog.standaloneExclusionEntryIds}}:{}}
-  const snapshot=validateTavernLoreSnapshotV1({...body,snapshotSha256:recordSha256(body)}),
+  const snapshot=sealTavernLoreSnapshotV1(body),
     producer=deps.loreProducer?.(render,bindings)??render.loreProducer,
     evaluated=await (deps.execution?.evaluate??prepareOwnedTavernLoreWithOwnerV1)({schemaVersion:1,
       encoding:'owned-st-lore-evaluator-input-v1',compilation,snapshot,

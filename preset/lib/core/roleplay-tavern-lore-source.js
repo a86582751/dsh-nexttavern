@@ -7,7 +7,7 @@ import { recordSha256, sha256 } from './roleplay-data.js';
 import { roleplaySourceMetadataValue } from './roleplay-input-state.js';
 import { cloneRoleplayTavernLoreDataV1, cloneRoleplayTavernLoreImportRecordV1, TavernLoreDataFailureV1, TAVERN_LORE_DATA_BOUNDS_V1 } from './roleplay-tavern-lore-data.js';
 import { CARD_LIMITS } from './tavern-card.js';
-import { assertImportRecordIntegrity, assertAssignmentBudget, assertReferenceBudget, assertReviewProof, importCoverage, normalizeSourceSpans, spanText, validateAssignmentIdentities } from './roleplay-import-record.js';
+import { assertImportRecordIntegrity, assertAssignmentBudget, assertReferenceBudget, assertReviewProof, importCoverage, normalizeSourceSpans, spanText, textImportFormat, validateAssignmentIdentities } from './roleplay-import-record.js';
 // Reuse the decoder's accepted cover without putting its bytes in Source DATA
 // or re-reading the PNG. The weak key follows this exact live capture only.
 const capturedCovers = new WeakMap();
@@ -118,7 +118,7 @@ function versionMap(value, pointer) {
     for (const [key, version] of Object.entries(value)) {
         if (!ID.test(key) || !isHash(version))
             fail('MEMBERSHIP_INVALID', pointer);
-        result[key] = version;
+        Object.defineProperty(result, key, { value: version, enumerable: true, writable: true, configurable: true });
     }
     return result;
 }
@@ -177,7 +177,7 @@ function captured(deps, sessionId) {
         || record.status !== 'active' || record.normalizedSha256 !== pointer.normalizedSha256
         || record.activation?.transactionId !== pointer.transactionId)
         fail('IMPORT_RECORD_INVALID', '/activeImport');
-    if (record.schemaVersion === 3)
+    if (textImportFormat(record))
         outside('LEGACY_SOURCE_OUTSIDE_DOMAIN', '/activeImport/normalizer');
     const normalizer = record.schemaVersion === 4 && record.normalizer === 'tavern-fields-v1' ? 'tavern-fields-v1'
         : record.schemaVersion === 5 && record.normalizer === 'tavern-fields-v2' ? 'tavern-fields-v2'

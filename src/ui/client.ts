@@ -5,6 +5,7 @@ import type * as ReactAPI from 'react'
 import type { SessionList, SessionSummary } from './conversation-projection.js'
 import type { PanelDraft } from './panel-state.js'
 import {createSideChat, type SideChatSessions, type SideChatRenderScope, type SideChatMenu} from './side-chat.js'
+import {createExtensionFailureDialog} from './extension-failure-dialog.js'
 
 type Root = { render(node: ReactAPI.ReactNode): void; unmount(): void }
 type CreateRoot = (element: HTMLElement) => Root
@@ -29,6 +30,7 @@ interface SessionService extends Omit<ActionDependencies['sessionsService'], 'li
           agentPreset?: unknown
         };
         agentPreset?: unknown
+        running?: boolean
       }>
     };
     subscribe(listener: () => void): () => void
@@ -108,6 +110,7 @@ import { createToastController, confirmWithDialog } from './message-actions.js'
 export { createToastController, confirmWithDialog } from './message-actions.js'
 import { createMessageActionComponents } from './message-actions.js'
 import { createRoleplayActions } from './session-actions.js'
+import {createPendingOpeningSourceHost,type StartPendingOpeningSource} from './pending-opening-source-host.js'
 import { createReaderSubmissionHandoff } from './reader-submission-handoff.js'
 import { createRoleplayStateStore } from './state-store.js'
 import { updatePanelDraft } from './panel-state.js'
@@ -184,16 +187,19 @@ export function apply(ctx: ClientContext) {
   // selected a standard/minimal conversation. Unknown rows are treated as
   // non-roleplay until the native projection says otherwise; this prevents a
   // 404 storm during list refresh and keeps standard sessions untouched.
-  const sessionPresetOf = (sessionId: string | null | undefined) => {
-    if (!sessionId) return null
+  const sessionListRow = (sessionId: string | null | undefined) => {
+    if (!sessionId) return undefined
     try {
-      const row = sessionsService?.list?.getSnapshot?.()?.byId?.[sessionId]
-      const preset = row?.projectionValues?.agentPreset ?? row?.agentPreset
-      return typeof preset === 'string' && preset.trim() ? preset.trim() : null
+      return sessionsService?.list?.getSnapshot?.()?.byId?.[sessionId]
     } catch {
-      return null
+      return undefined
     }
   }
+  const presetFromRow = (row: ReturnType<typeof sessionListRow>) => {
+    const preset = row?.projectionValues?.agentPreset ?? row?.agentPreset
+    return typeof preset === 'string' && preset.trim() ? preset.trim() : null
+  }
+  const sessionPresetOf = (sessionId: string | null | undefined) => presetFromRow(sessionListRow(sessionId))
   const isRoleplaySession = (sessionId: string | null | undefined) => sessionPresetOf(sessionId) === 'roleplay'
 
   const style = document.createElement('style')
@@ -244,6 +250,23 @@ export function apply(ctx: ClientContext) {
         sessionsService,
         isRoleplaySession
       })
+  let openRepairSideChat: (sessionId: string, draft: string) => void = () => {}
+  const extensionFailureDialog = createExtensionFailureDialog({
+    React, document, currentSessionId: resolveActiveSessionId,
+    repair: (sessionId, draft) => openRepairSideChat(sessionId, draft),
+    openContinuation: async result => {
+      const childSessionId = result.childSessionId
+      if (!childSessionId) return
+      await sessionsService.refresh()
+      await loadConversations()
+      invalidateState(result.sourceSessionId)
+      invalidateState(childSessionId)
+      if (resolveActiveSessionId() !== result.sourceSessionId) return
+      await openNativeBranch({sessionId: childSessionId, draftText: result.draftText})
+      if (result.attachmentCount > 0) toast(`请重新添加 ${result.attachmentCount} 个附件后自行发送草稿`)
+    },
+  })
+  const {reportExtensionFailure,replaceActivityFailures} = extensionFailureDialog
   const {
     useTavernActivity,
     ActivityBanner,
@@ -254,7 +277,13 @@ export function apply(ctx: ClientContext) {
         React,
         isRoleplaySession,
         peekState,
-        prepareCleanWorldline:sessionId=>prepareCleanWorldline(sessionId)
+        replaceActivityFailures,
+        prepareCleanWorldline:(sessionId,recoveryKey)=>prepareCleanWorldline(sessionId,recoveryKey),
+        readCleanWorldline:sessionId=>readCleanWorldline(sessionId),
+        openPreparedWorldline:async(childSessionId,sourceSessionId)=>{
+          if(resolveActiveSessionId()!==sourceSessionId)throw Error('请回到原世界线后重试。')
+          await openSessionPreservingView(childSessionId,sourceSessionId)
+        }
       })
   if (slots !== undefined) slots.inject(
     'conversation.chat.roleplay-progress',
@@ -262,8 +291,36 @@ export function apply(ctx: ClientContext) {
       { name: 'conversation.chat.roleplay-progress', id: 'roleplay-progress', order: 10, inject: sessionId => ({ sessionId }) },
       DeferredPlayerInput))
 
+  const pendingOpeningHosts=new Map<string,{host:ReturnType<typeof createPendingOpeningSourceHost>;leases:number}>()
+  ctx.effect(()=>()=>{
+    for(const {host} of pendingOpeningHosts.values())host.dispose()
+    pendingOpeningHosts.clear()
+  },'roleplay-ui: pending opening Source hosts')
+  const startPendingOpeningSource:StartPendingOpeningSource=input=>{
+    const key=JSON.stringify([input.operationId,input.childSessionId])
+    let owned=pendingOpeningHosts.get(key)
+    if(!owned) {
+      const host=createPendingOpeningSourceHost(input,{document,
+        reportExtensionFailure,
+        current:()=>resolveActiveSessionId()===input.sourceSessionId,
+        subscribeCurrent:listener=>mainSelection.subscribe(listener),
+        nativeLibraries:READER_NATIVE_DOCUMENT_LIBRARIES,
+        commandUi:{input:(text,defaultValue)=>window.prompt(text,defaultValue)??'',echo:text=>toast(text)},
+        failed:code=>toast(`开场作者脚本失败（${input.operationId}）：${code}`)})
+      owned={host,leases:0};pendingOpeningHosts.set(key,owned);host.start()
+    }
+    const lease=owned
+    lease.leases++
+    let released=false
+    return {signal:lease.host.signal,dispose(){
+      if(released)return
+      released=true
+      if(--lease.leases===0){lease.host.dispose();if(pendingOpeningHosts.get(key)===lease)pendingOpeningHosts.delete(key)}
+    }}
+  }
   const { saveState, runMaintenance, replaceMessage, forkAndPrompt, regenerateProgrammaticOpening,
-    forkWithoutUserTurn, openNativeBranch, retryBranchMutation, prepareCleanWorldline } = createRoleplayActions(
+    forkWithoutUserTurn, openNativeBranch, retryBranchMutation, prepareCleanWorldline, readCleanWorldline,
+    openSessionPreservingView } = createRoleplayActions(
     {
       sessionsService,
       workspacesService,
@@ -276,6 +333,7 @@ export function apply(ctx: ClientContext) {
       acceptConversations,
       loadConversations,
       readerHandoff,
+      startPendingOpeningSource,
       toast
     })
 
@@ -366,16 +424,46 @@ export function apply(ctx: ClientContext) {
       if (!response.ok || data?.ok === false) {
         const error = Object.assign(new Error(data?.error ?? `请求失败 ${response.status}`), {
           status: response.status, code: data?.code, details: data?.details,
+          outcome: data?.outcome, operationId: data?.operationId, receipt: data?.receipt,
         });
         throw error
       }
       return data
+    }
+    const prepareSource=async(sessionId:string,index:number)=>{
+      const reply=await jsonFetch<{requiresAuthorBrowser:boolean}>(
+        `/api/roleplay/openings?sessionId=${encodeURIComponent(sessionId)}&authorIndex=${index}`)
+      if(!reply.requiresAuthorBrowser)return
+      if(readerHandoff.hasReader(sessionId))return readerHandoff.prepareSource(sessionId,index)
+      const operationId=crypto.randomUUID(),key=JSON.stringify([operationId,sessionId])
+      const host=createPendingOpeningSourceHost({sourceSessionId:sessionId,childSessionId:sessionId,operationId},{
+        reportExtensionFailure,
+        document,current:()=>resolveActiveSessionId()===sessionId,
+        subscribeCurrent:listener=>mainSelection.subscribe(listener),
+        nativeLibraries:READER_NATIVE_DOCUMENT_LIBRARIES,
+        commandUi:{input:(text,defaultValue)=>window.prompt(text,defaultValue)??'',echo:text=>toast(text)},
+      })
+      pendingOpeningHosts.set(key,{host,leases:1})
+      const close=()=>{host.dispose();pendingOpeningHosts.delete(key)}
+      try {
+        const prepared=await host.prepareOpening(index,readerHandoff)
+        // Keep this Source realm available throughout the select POST's hooks.
+        return {...prepared,close(){prepared.close();close()}}
+      }catch(error){close();throw error}
     }
     const sessionImages = createSessionImages(jsonFetch)
     const sideChat = createSideChat({
       React, Menu: require('@deepseek-ai/dsh-client-ui-primitives').Menu, sessions: sessionsService, jsonFetch,
       confirm: message => confirmWithDialog(document, message, {title: '重置侧聊', confirmLabel: '重置', cancelLabel: '保留侧聊'}),
     })
+    openRepairSideChat = (sessionId, draft) => {
+      if (resolveActiveSessionId() === sessionId) sideChat.openWithDraft(sessionId, draft)
+    }
+    function ExtensionFailureHost() {
+      const sessionId = useMainSessionId()
+      return sessionId && isRoleplaySession(sessionId)
+        ? React.createElement(extensionFailureDialog.Host, {key: sessionId, sessionId}) : null
+    }
     function SideChatHost(props: {
       SessionProvider: SideChatRenderScope['SessionProvider'];
       renderSlot(name: string, owner: {binding: Parameters<SideChatRenderScope['renderSession']>[0]; controls: ReactAPI.ReactNode}): ReactAPI.ReactNode
@@ -389,6 +477,9 @@ export function apply(ctx: ClientContext) {
         }}) : null
     }
     if (slots !== undefined) {
+      slots.inject('shell.overlay', () => slots.register({
+        name: 'shell.overlay', id: 'roleplay-extension-failure-overlay', order: 36,
+      }, ExtensionFailureHost))
       slots.inject('shell.overlay', () => slots.register({
         name: 'shell.overlay', id: 'roleplay-side-chat-overlay', order: 35,
         children: {'roleplay.side-chat.session': {kind: 'single', scope: 'session'}},
@@ -418,7 +509,8 @@ export function apply(ctx: ClientContext) {
           jsonFetch,
           toast
         })
-    const { MemoryPanel: MemoryRetrievalMemoryPanel, EmbeddingPanel, RebuildPrompt } = createMemoryRetrievalPanel({ React, jsonFetch, toast })
+    const { MemoryPanel: MemoryRetrievalMemoryPanel, EmbeddingPanel,
+      WorldbookPanel: WorldbookRetrievalPanel, RebuildPrompt } = createMemoryRetrievalPanel({ React, jsonFetch, toast })
     const CardAdaptationPanel = createCardAdaptationPanel({ React, jsonFetch, toast, confirmWithDialog })
 
     const panelTabs: [string, string, ReactAPI.ComponentType<{ scope?: { sessionId: string }; visible?: boolean }>][] = [
@@ -441,6 +533,7 @@ export function apply(ctx: ClientContext) {
           React,
           sessionDrafts,
           jsonFetch,
+          prepareSource,
           toast,
           confirmWithDialog,
           uploadFile,
@@ -557,6 +650,7 @@ export function apply(ctx: ClientContext) {
         ['card-import', '角色卡导入'],
         ['models', '模型'],
         ['embedding', 'Embedding 模型设置'],
+        ['worldbook-retrieval', '世界书语义检索'],
         ['ruby-analysis', 'Ruby额外分析'],
         ['usage', '使用统计'],
         ['export', '导出'],
@@ -607,6 +701,8 @@ export function apply(ctx: ClientContext) {
             return React.createElement(ModelPanel, { key: `${sessionId}:models`, sessionId })
           case 'embedding':
             return React.createElement(EmbeddingPanel, { key: `${sessionId}:embedding`, sessionId })
+          case 'worldbook-retrieval':
+            return React.createElement(WorldbookRetrievalPanel, { key: `${sessionId}:worldbook-retrieval`, sessionId })
           case 'ruby-analysis':
             return React.createElement(RubyAnalysisPanel, { key: `${sessionId}:ruby-analysis`, sessionId })
           case 'resources':
@@ -692,7 +788,7 @@ export function apply(ctx: ClientContext) {
         :detail.action==='configure-adaptation-model'?'card-adaptation'
           :detail.action==='configure-ruby-analysis'?'ruby-analysis':null;
       if(!requestedTab)return;
-      if (managerState.open) {
+      if (managerState.open && managerState.sessionId === detail.sessionId) {
         managerState.requestedTab = requestedTab;
         managerState.requestedFocusNonce = (managerState.requestedFocusNonce ?? 0) + 1;
         renderManager();
@@ -909,7 +1005,8 @@ export function apply(ctx: ClientContext) {
         readImmersive,
         runMaintenance,
         toast,
-        jsonFetch
+        jsonFetch,
+        prepareSource
       })
     ctx.effect(() => () => decisionSeat.dispose(), 'roleplay-ui: composer decision seat')
 
@@ -920,10 +1017,12 @@ export function apply(ctx: ClientContext) {
     const ReaderView = createReaderView(
       {
         React,
+        reportExtensionFailure,
         frontendSettings,
         nativeLibraries:READER_NATIVE_DOCUMENT_LIBRARIES,
         images: sessionImages,
         readerHandoff,
+        startPendingOpeningSource,
         navigate: sessionId => openNativeBranch({sessionId}),
         resolveActiveSessionId,
         isRoleplaySession,
@@ -1008,13 +1107,26 @@ export function apply(ctx: ClientContext) {
     // A released main view clears its overlays, even if a sidebar retains B.
     let lastSessionId: string | null = null
     let lastSessionPreset: string | null = null
+    let lastSessionRunning: boolean | undefined
     const onMainSelection = () => {
       const sid = resolveActiveSessionId()
-      const preset = sessionPresetOf(sid)
+      const row = sessionListRow(sid)
+      const preset = presetFromRow(row)
+      const running = row?.running
+      const sameSession = sid === lastSessionId
+      const settled = lastSessionRunning && running === false
+      lastSessionRunning = running ?? (sameSession ? lastSessionRunning : undefined)
+      // Native turn settlement includes management tools such as import,
+      // which do not necessarily enter Tavern's story activity stages.
+      // The preset can arrive after settlement while the overlay stays mounted.
+      if (sid && sameSession && preset === 'roleplay' && (settled || lastSessionPreset !== preset)) {
+        invalidateState(sid)
+      }
       if (sid === lastSessionId && preset === lastSessionPreset) return
       if (sid !== lastSessionId) {
         sessionBgm.setSession(sid)
         sessionImages.setSession(sid)
+        frontendSettings.setSession(sid)
         lastSessionId = sid
         if (sid) syncImmersive(sid)
         else document.body.classList.remove('rp-immersive')

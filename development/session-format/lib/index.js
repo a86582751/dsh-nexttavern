@@ -5,6 +5,8 @@ import { mvuPlayerMarkers } from './mvu-player-marker.js';
 import { mvuSchemaMarkers } from './mvu-schema-marker.js';
 import { authorInjectionCleanupMarkers, authorInjectionDeclarationMarkers } from './author-injection-cleanup.js';
 import { authorChatRootMarkers } from './author-chat-marker.js';
+import { authorGenerationEffectsMarkers } from './author-generation-effects.js';
+export * from './author-generation-effects.js';
 export { AUTHOR_CHAT_ROOT_EVENT, appendAuthorChatRootMarker, assertAuthorChatRootMarker, authorChatRootMarkers } from './author-chat-marker.js';
 export { AUTHOR_INJECTION_CLEANUP_EVENT, appendAuthorInjectionCleanup, assertAuthorInjectionCleanup, authorInjectionCleanupMarkers } from './author-injection-cleanup.js';
 export { AUTHOR_INJECTION_DECLARATION_EVENT, appendAuthorInjectionDeclaration, assertAuthorInjectionDeclaration, authorInjectionDeclarationMarkers } from './author-injection-cleanup.js';
@@ -25,6 +27,7 @@ export function apply(ctx) {
     ctx.provide('nexttavernAuthorInjectionCleanupMarkers', authorInjectionCleanupMarkers);
     ctx.provide('nexttavernAuthorInjectionDeclarationMarkers', authorInjectionDeclarationMarkers);
     ctx.provide('nexttavernAuthorChatRootMarkers', authorChatRootMarkers);
+    ctx.provide('nexttavernAuthorGenerationEffectsMarkers', authorGenerationEffectsMarkers);
 }
 /** Fold one complete original-seq prefix without borrowing a live Session surface. */
 export function projectMessageEditPrefix(events) {
@@ -42,8 +45,11 @@ export function projectMessageEditPrefix(events) {
     };
 }
 /** Append a required edit synchronously; callers own branch locks and derived-state invalidation. */
-export function appendMessageEdit(session, targetSeq, identity, text, sourceMaterial, operation) {
+export function appendMessageEdit(session, targetSeq, identity, text, sourceMaterial, operation, patch, bodyChanged = true) {
     const metadata = operation ? { operation } : {};
+    if (patch)
+        return session.append(MESSAGE_EDIT_EVENT, { schemaVersion: 3, targetSeq, ...identity, text, patch, bodyChanged,
+            ...sourceMaterial ? { sourceMaterial } : {}, ...metadata });
     if (sourceMaterial) {
         return session.append(MESSAGE_EDIT_EVENT, { schemaVersion: 2, targetSeq, ...identity, text, sourceMaterial, ...metadata });
     }

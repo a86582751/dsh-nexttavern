@@ -3,7 +3,7 @@ import type {NativeRequestMaterialTransformV1,NativeMessageProjectionV1} from 'd
 import type {CommunityPresets,CommunityPresetPolicy} from './community-presets.js'
 import type {createCommunityPresetVariables} from './community-preset-variables.js'
 import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
-import type {TavernPromptRegexRuleV1} from './tavern-prompt-transform-types.mjs'
+import type {TavernPromptRegexRuleV1,TavernPromptHelperVariableScopesV1} from './tavern-prompt-transform-types.mjs'
 import {createCommunityPresetExecution} from './community-preset-execution.js'
 import type {CommunityExecutionInput,CommunityExecutionFinish} from './community-preset-execution.js'
 import {applyCommunityRegex,communityRegexEntry,communityRegexMacros,communityRegexRules} from './community-regex.js'
@@ -12,6 +12,8 @@ import type {CommunityCardSourceInputV1} from './community-preset-card-material.
 import {createRoleplaySourceMessageProcessorV1,roleplaySourceMessageRulesV1} from './roleplay-source-message.js'
 import type {NativeStoryMaterialHooks,NativeStoryMaterialHooksV1} from 'dsh-nexttavern-native-agent-loop'
 import type {TavernOrdinaryPreparationStage} from './roleplay-tavern-ordinary-stage.js'
+import type {TavernSharedScopePreparationStageV1} from './roleplay-tavern-shared-scope-stage.js'
+import type {CommunityVariableAttempt} from './community-preset-variables.js'
 import type {RoleplayStoryTextCapture} from './roleplay-story-text.js'
 
 export interface CommunityMaterialDependencies {
@@ -26,6 +28,9 @@ type Preparation=Omit<CommunityExecutionInput,'policy'|'variableAttempt'|'modelN
   inputId:string
   attemptId:string
   ordinary:TavernOrdinaryPreparationStage
+  shared?:TavernSharedScopePreparationStageV1
+  variableAttempt?:CommunityVariableAttempt
+  helperVariableScopes?:Pick<TavernPromptHelperVariableScopesV1,'character'|'preset'>
   scopedRules:readonly TavernPromptRegexRuleV1[]
   policy?:CommunityPresetPolicy
   /** Core projects canonical prose before the executor wraps history groups. */
@@ -39,12 +44,10 @@ type Preparation=Omit<CommunityExecutionInput,'policy'|'variableAttempt'|'modelN
  * profile executor subsequently owns Advice and history wrapping. */
 export async function prepareCommunityPresetMaterial(deps:CommunityMaterialDependencies,input:Preparation,signal:AbortSignal) {
   const policy=input.policy??deps.presets.policy(input.session.id)
-  const variableAttempt=policy.preset?deps.variables.capture(policy.preset.id,input.session.id,input.inputId,input.attemptId):null
+  const helperVariableScopes=input.helperVariableScopes??{preset:policy.helperVariables}
+  const variableAttempt=policy.preset?(input.variableAttempt
+    ??deps.variables.capture(policy.preset.id,input.session.id,input.inputId,input.attemptId)):null
   const promptHistoryTextEdits:NonNullable<NativeMessageProjectionV1['textEdits']>[number][]=[]
-  const executor=policy.preset&&variableAttempt?createCommunityPresetExecution({...input,policy,variableAttempt,
-    modelName:deps.modelName(input.session.id),promptHistoryTextEdits}):null
-  const prefix=executor?.prefix()
-  const chat=prefix?.chat??variableAttempt?.chat??{},global=prefix?.global??variableAttempt?.global??{}
   const historyText=(row:Preparation['historyRows'][number]|undefined)=>{
     if(!row)return ''
     const original=row.message.content.filter(block=>block.type==='text').map(block=>block.text).join('\n')
@@ -52,6 +55,10 @@ export async function prepareCommunityPresetMaterial(deps:CommunityMaterialDepen
   }
   const aliases={...input.aliases,model:deps.modelName(input.session.id),input:input.inputText,lastUserMessage:input.inputText,
     lastMessage:historyText(input.historyRows.at(-1)),lastCharMessage:historyText(input.historyRows.findLast(row=>row.role==='assistant'))}
+  const executor=policy.preset&&variableAttempt?createCommunityPresetExecution({...input,aliases,policy,variableAttempt,
+    promptHistoryTextEdits}):null
+  const prefix=executor?.prefix()
+  const chat=prefix?.chat??variableAttempt?.chat??{},global=input.shared?.values??prefix?.global??variableAttempt?.global??{}
   const entries=input.historyRows.flatMap((row,index)=>{
     const settled=row.eventSeq===null?undefined:input.storyText?.blocks(row.eventSeq,row.message,row.messageSha256)
     return row.message.content.flatMap((block,blockIndex)=>block.type==='text'
@@ -60,29 +67,31 @@ export async function prepareCommunityPresetMaterial(deps:CommunityMaterialDepen
         {channel:'prompt',placement:row.role==='user'?1:2,depth:input.historyRows.length-index-1})}]:[])
   })
   const output=await applyCommunityRegex(policy,entries.map(row=>row.entry),
-    {...communityRegexMacros(aliases,chat,global,policy.fingerprint,{preset:policy.helperVariables}),
+    {...communityRegexMacros(aliases,chat,global,policy.fingerprint,helperVariableScopes),
       ...input.deferredMacroFamilies?{deferredMacroFamilies:input.deferredMacroFamilies}:{}},input.scopedRules,signal)
-  let stageValues=input.ordinary.values,
+  let stageValues=input.ordinary.values,sharedValues=input.shared?.values,
     scopeCache=new WeakMap<TavernTemplateScopeBindingV1,TavernTemplateScopeBindingV1>()
   function scopes(base:readonly TavernTemplateScopeBindingV1[]):readonly TavernTemplateScopeBindingV1[] {
-    if(stageValues!==input.ordinary.values) {
-      stageValues=input.ordinary.values;scopeCache=new WeakMap()
+    if(stageValues!==input.ordinary.values||sharedValues!==input.shared?.values) {
+      stageValues=input.ordinary.values;sharedValues=input.shared?.values;scopeCache=new WeakMap()
     }
-    const values={chat:stageValues,global:executor?.bindings.global??{}}
+    const values={chat:stageValues,global:sharedValues??executor?.bindings.global??{}}
     const merged=base.map(binding=>{
       if(binding.scope!=='chat'&&binding.scope!=='global')return binding
+      if(binding.scope==='global'&&input.shared)return input.shared.binding()
       const prior=scopeCache.get(binding)
       if(prior)return prior
       if(binding.scope==='global'&&!executor)return binding
-      const combined=binding.scope==='chat'?{
-        ...Object.hasOwn(binding.values,'stat_data')?{stat_data:binding.values.stat_data}:{},...values.chat}
-        :{...binding.values,...values.global}
-      const result={...binding,values:combined,valuesSha256:recordSha256(combined),
-        versionSha256:recordSha256({version:binding.versionSha256,preset:policy.fingerprint,values:combined})}
+      const projected=binding.scope==='chat'?input.ordinary.chatBinding(binding):undefined,
+        combined=projected?.values??{...binding.values,...values.global}
+      const result={...binding,values:combined,valuesSha256:projected?.valuesSha256??recordSha256(combined),
+        versionSha256:recordSha256({version:projected?.versionSha256??binding.versionSha256,
+          preset:policy.fingerprint,...projected?{}:{values:combined}})}
       scopeCache.set(binding,result);scopeCache.set(result,result)
       return result
     })
-    for(const scope of ['chat','global'] as const)if((scope==='chat'||executor)&&!merged.some(binding=>binding.scope===scope)) {
+    for(const scope of ['chat','global'] as const)if((scope==='chat'||executor||input.shared)&&!merged.some(binding=>binding.scope===scope)) {
+      if(scope==='global'&&input.shared){merged.push(input.shared.binding());continue}
       const hash=recordSha256(values[scope])
       merged.push({scope,ownerId:scope==='chat'?input.session.id:`community:${policy.preset!.id}:${scope}`,
         values:values[scope],valuesSha256:hash,versionSha256:hash})
@@ -96,7 +105,7 @@ export async function prepareCommunityPresetMaterial(deps:CommunityMaterialDepen
   const sourceMessage=sourceRules.length?createRoleplaySourceMessageProcessorV1({schemaVersion:1,
     encoding:'nexttavern-source-message-capture-v1',authority:'consumer-data-only',
     sourceSnapshotSha256:policy.fingerprint,placement:2,isEdit:false,depth:null,pipeline:'regex-only',
-    rules:sourceRules,macros:communityRegexMacros(aliases,chat,global,policy.fingerprint,{preset:policy.helperVariables}),
+    rules:sourceRules,macros:communityRegexMacros(aliases,chat,global,policy.fingerprint,helperVariableScopes),
     scriptOrder:policy.regexOrder}):undefined
   return {scopes,renderPlainAuthor:(value:string)=>executor?.renderPlainAuthor(value)??value,
     rules,regexOrder:policy.regexOrder,

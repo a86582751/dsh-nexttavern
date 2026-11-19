@@ -80,7 +80,9 @@ export interface SessionSnapshot {
   readonly openState: OpenState
   readonly openError: RemoteFailure | null
   readonly hasMore: boolean
+  readonly historyWasPartial: boolean
   readonly loadingOlder: boolean
+  readonly historyLoadStatus: 'idle' | 'loading' | 'pendingConsumption' | 'error'
   readonly promptError: PromptError | null
   readonly blank: boolean
   readonly lastAgentError: string | null

@@ -9,7 +9,6 @@ import type {MvuSchemaRuntimeAssetRecipe} from './mvu-schema-runtime-assets.mjs'
 import type {TavernTemplateEjsRuntimeAssetRecipeV1} from './tavern-template-ejs-runtime-assets.mjs'
 import type {AuthorHostRuntimeAssetRecipeV5} from './author-host-runtime-assets.mjs'
 import type {HistoricalRuntimeAssetRebuildV1} from './runtime-asset-source-scope.mjs'
-import type {SubagentTypertRecipeV1} from './subagent-typert-assets.mjs'
 import type {ReaderNativeLibraryAssetRecipeV1} from './reader-native-library-assets.mjs'
 interface Recipe {
   id: string; kind: string; artifact: string; entry: string; inputs: string[]
@@ -27,7 +26,6 @@ export interface CompilePlan {
     templateEjsRuntime?:TavernTemplateEjsRuntimeAssetRecipeV1;
     authorHostRuntime?:AuthorHostRuntimeAssetRecipeV5;
     historicalRuntimeRebuilds?:readonly HistoricalRuntimeAssetRebuildV1[];
-    subagentTypert?:SubagentTypertRecipeV1;
     readerNativeLibraries?:ReaderNativeLibraryAssetRecipeV1;
     packages?:readonly {packageArtifact:string;resources?:readonly {artifact:string;path:string}[];immutableGeneration?:string}[]}
   typeScript: {
@@ -355,9 +353,9 @@ export function checkTypeScriptOwnership(repo = root, plan?: CompilePlan) {
     const output=outputFor(build)
     if(output.endsWith('.d.ts'))declarations.set(output,build.entry)
   }
-  // Every mapped lib/ root remains fully owned, including Android host/lib.
-  // Same-stem tool outputs outside lib/ retain only their explicit mapping.
-  const outputRoots = [...new Set(registered.filter(build=>outputFor(build).split('/').includes('lib'))
+  // A mapped compatibility entry keeps its established top-level path. The
+  // surrounding directory still contains unmigrated tools, outside lib ownership.
+  const outputRoots = [...new Set(registered.filter(build=>!build.compatibilityEntry && outputFor(build).split('/').includes('lib'))
     .map(build => treeRoot(outputFor(build), 'lib')))]
   const directories = [...sourceRoots, ...outputRoots]
   const allBuildOutputs = new Set(source.builds.map(outputFor))
@@ -506,14 +504,6 @@ export async function checkAuthorRuntimeBuild(repo:string,plan:CompilePlan,write
   return {packages,files:packages.flatMap(pkg=>pkg.files.map(file=>({...file,packageName:pkg.name})))}
 }
 
-export async function checkSubagentTypertBuild(repo:string,plan:CompilePlan,write=false,
-  typescriptAlreadyChecked=false) {
-  if(!plan.product?.subagentTypert)return undefined
-  const builder=plan.artifacts.find(artifact=>artifact.id==='subagent-typert-assets-generated')!
-  const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./subagent-typert-assets.mjs')
-  return producer.buildSubagentTypertAssetsV1({repo,plan,write,typescriptAlreadyChecked})
-}
-
 /** Native author globals follow the same manifest-owned asset pass as the
  * independent runtime components, after their TypeScript producer is emitted. */
 export async function checkReaderNativeLibraryBuild(repo:string,plan:CompilePlan,write=false) {
@@ -544,11 +534,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const result=checkTypeScript(root,entry==='--write',compilation)
     const assets=await checkMvuSchemaRuntimeBuild(root,compilation.plan,entry==='--write')
     const authorAssets=await checkAuthorRuntimeBuild(root,compilation.plan,entry==='--write')
-    const subagentTypert=await checkSubagentTypertBuild(root,compilation.plan,entry==='--write',true)
     const readerNativeLibraries=await checkReaderNativeLibraryBuild(root,compilation.plan,entry==='--write')
     console.log(JSON.stringify({...result,...(assets?{schemaAssets:assets.files}: {}),
       ...(authorAssets?{authorAssets:authorAssets.files}:{}),
-      ...(subagentTypert?{subagentTypert:[...subagentTypert.outputs.keys()]}:{}),
       ...(readerNativeLibraries?{readerNativeLibraries:readerNativeLibraries.files}:{})}))
   }
   else {

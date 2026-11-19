@@ -67,10 +67,12 @@ export function readMvuPlayerRequest(input) {
     const request = cloneMvuPlayerData(input);
     if (!request || typeof request !== 'object' || Array.isArray(request))
         fail('MVU_PLAYER_DATA_INVALID');
-    exact(request, ['schemaVersion', 'sessionId', 'operationId', 'action', 'expected', 'values',
+    exact(request, ['schemaVersion', 'sessionId', 'operationId', 'action', 'expected',
+        request.action === 'replace-envelope' ? 'envelope' : 'values',
         ...Object.hasOwn(request, 'target') ? ['target'] : []]);
     const e = request.expected;
-    if (request.schemaVersion !== 1 || request.action !== 'replace-values' || !id(request.sessionId) || !id(request.operationId)
+    if (request.schemaVersion !== 1 || !['replace-values', 'replace-envelope'].includes(request.action)
+        || !id(request.sessionId) || !id(request.operationId)
         || !e || typeof e !== 'object' || Array.isArray(e))
         fail('MVU_PLAYER_DATA_INVALID');
     exact(e, ['sourceSha256', 'root', 'revision', 'headSha256', 'valuesSha256', 'stateSnapshotSha256', 'observedNativeSeq']);
@@ -88,12 +90,27 @@ export function readMvuPlayerRequest(input) {
             fail('MVU_PLAYER_DATA_INVALID');
     }
     try {
-        request.values = cloneMvuPlayerReplacement({ values: request.values, valuesSha256: recordSha256(request.values) }).values;
+        if (request.action === 'replace-values') {
+            request.values = cloneMvuPlayerReplacement({ values: request.values, valuesSha256: recordSha256(request.values) }).values;
+        }
+        else {
+            const envelope = cloneMvuPlayerReplacement({ values: request.envelope,
+                valuesSha256: recordSha256(request.envelope) }).values;
+            if (!envelope.stat_data || typeof envelope.stat_data !== 'object' || Array.isArray(envelope.stat_data)) {
+                fail('MVU_PLAYER_DATA_INVALID');
+            }
+            request.envelope = envelope;
+        }
     }
     catch (error) {
         fail(String(error).includes('LIMIT') ? 'MVU_PLAYER_DATA_LIMIT' : 'MVU_PLAYER_DATA_INVALID');
     }
     return request;
+}
+/** The request decoder owns the envelope's stat_data shape. Marker summaries
+ * continue naming numerical values while the request checksum binds all DATA. */
+export function mvuPlayerRequestValues(request) {
+    return request.action === 'replace-envelope' ? request.envelope.stat_data : request.values;
 }
 export function readMvuPlayerOperation(input) {
     const op = cloneMvuPlayerData(input);
@@ -101,7 +118,8 @@ export function readMvuPlayerOperation(input) {
     const request = readMvuPlayerRequest(op.request), base = op.base, e = request.expected;
     const { operationSha256, ...body } = op;
     if (op.schemaVersion !== 1 || op.encoding !== 'native-mvu-player-operation-v1' || !id(op.sessionId) || !id(op.operationId)
-        || request.sessionId !== op.sessionId || request.operationId !== op.operationId || !same(request, op.request)
+        || request.action !== 'replace-values' || request.sessionId !== op.sessionId
+        || request.operationId !== op.operationId || !same(request, op.request)
         || op.requestSha256 !== recordSha256(request) || operationSha256 !== recordSha256(body)
         || base?.schemaVersion !== 1 || base.encoding !== 'native-mvu-state-snapshot-v1' || base.sessionId !== op.sessionId
         || base.sourceSha256 !== e.sourceSha256 || !same(base.root, e.root) || base.revision !== e.revision

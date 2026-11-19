@@ -13,7 +13,7 @@ function canonical(value) {
 }
 export const nativeStoryResponseSha256V1 = (value) => createHash('sha256').update(canonical(value), 'utf8').digest('hex');
 export const nativeStoryVisibleTextV1 = (blocks) => blocks.flatMap(block => block.type === 'text' ? [block.text] : []).join('');
-const transportName = (name) => typeof name === 'string' && (name === 'game_content' || /^emit_complete_response_[a-f0-9]{24}$/.test(name));
+const transportName = (name) => typeof name === 'string' && name.trim().length > 0;
 function object(value, fields) {
     if (value === null || typeof value !== 'object' || Array.isArray(value))
         return fail();

@@ -4,6 +4,7 @@ export interface AuthorNativeVariableOptionsV1 {
   readonly type?:string
   readonly message_id?:number|'latest'
   readonly script_id?:string
+  readonly extension_id?:string
 }
 interface VariableCapture {
   readonly variables:MvuJsonObject

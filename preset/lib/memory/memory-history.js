@@ -329,7 +329,7 @@ export function createSelectedCanonicalChatCursor(options) {
         return event.data?.interrupted !== true && canonical.get(Number(event.data?.turn)) === seq ? item : undefined;
     }
     function setRow(seq, item) {
-        const index = indices.get(seq);
+        const index = indices.get(seq), previous = index === undefined ? undefined : chatAt(root, index);
         if (index !== undefined) {
             if (chatAt(root, index) === item)
                 return;
@@ -363,7 +363,7 @@ export function createSelectedCanonicalChatCursor(options) {
         }
         else
             return;
-        changes.push({ seq, item });
+        changes.push({ seq, item, previous, previousIndex: index });
     }
     function refreshTurn(turn, dirty) {
         if (turn === null) {
@@ -412,13 +412,15 @@ export function createSelectedCanonicalChatCursor(options) {
         if (prefix === old.length && prefix === target.length)
             return;
         const next = new Map(target.map(item => [item.row.seq, item]));
-        for (const item of old)
+        for (const [index, item] of old.entries())
             if (!next.has(item.row.seq))
-                changes.push({ seq: item.row.seq, item: undefined });
+                changes.push({ seq: item.row.seq, item: undefined,
+                    previous: item, previousIndex: index });
         const previous = new Map(old.map(item => [item.row.seq, item]));
         for (const item of target)
             if (previous.get(item.row.seq) !== item)
-                changes.push({ seq: item.row.seq, item });
+                changes.push({ seq: item.row.seq, item,
+                    previous: previous.get(item.row.seq), previousIndex: indices.get(item.row.seq) });
         root = chatSplice(root, prefix, old.length - prefix - suffix, target.slice(prefix, target.length - suffix));
         indices.clear();
         for (const [index, item] of target.entries())
@@ -626,10 +628,10 @@ export function createSelectedCanonicalChatCursor(options) {
                 throw Error('CANONICAL_CHAT_CUT_INVALID');
             const latest = new Map();
             for (let index = versions[from]; index < versions[through]; index++) {
-                const change = changes[index];
-                latest.set(change.seq, change.item);
+                const change = changes[index], first = latest.get(change.seq);
+                latest.set(change.seq, first ? { ...change, previous: first.previous, previousIndex: first.previousIndex } : change);
             }
-            return [...latest].map(([seq, item]) => ({ seq, item }));
+            return [...latest.values()];
         },
         /** Current selected DATA after atCut; retained cut views keep their own root. */
         currentPosition(seq) { return indices.get(seq); },

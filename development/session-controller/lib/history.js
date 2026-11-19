@@ -99,9 +99,6 @@ export class SessionHistoryController {
         const env_1 = { stack: [], error: void 0, hasError: false };
         try {
             validatePageRequest(request);
-            const throughSeq = request.throughSeq === -1
-                ? -1
-                : SessionSeq(request.throughSeq);
             const beforeSeq = request.beforeSeq === undefined
                 ? undefined
                 : SessionLogOffset(request.beforeSeq);
@@ -109,6 +106,8 @@ export class SessionHistoryController {
             signal.throwIfAborted();
             const sourceLog = source.events;
             const sourceCursor = sourceLog.at(-1)?.seq ?? -1;
+            const throughSeq = request.throughSeq === undefined ? sourceCursor
+                : request.throughSeq === -1 ? -1 : SessionSeq(request.throughSeq);
             if (throughSeq > sourceCursor) {
                 throw new RemoteError('gateway/bad-request', `session page through seq ${String(throughSeq)} is past cursor ${String(sourceCursor)}`, {});
             }
@@ -219,7 +218,7 @@ export class SessionHistoryController {
                         : projectionBlock(source.projections),
                     ...assistantStream === undefined ? {} : { assistantStream },
                 };
-                if (address.kind === 'session' && source.source === 'prepared') {
+                if (request.activate === true && address.kind === 'session' && source.source === 'prepared') {
                     const promotion = source.retain();
                     try {
                         this.promote(promotion);
@@ -317,9 +316,9 @@ function projectionBlock(snapshot) {
     };
 }
 function validatePageRequest(request) {
-    if (!Number.isSafeInteger(request.throughSeq)
-        || request.throughSeq < -1
-        || Object.is(request.throughSeq, -0)) {
+    const { throughSeq } = request;
+    if (throughSeq !== undefined && (!Number.isSafeInteger(throughSeq)
+        || throughSeq < -1 || Object.is(throughSeq, -0))) {
         throw new RemoteError('gateway/bad-request', 'throughSeq must be an integer greater than or equal to -1', {});
     }
     if (request.beforeSeq !== undefined

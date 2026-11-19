@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import {pathToFileURL} from 'node:url'
-import {createStableRoleplayFence} from '../lib/core/roleplay-core.js'
+import {createStableRoleplayFence} from '../lib/core/roleplay-context.js'
 const fence=createStableRoleplayFence()
 const authorVariables='{{user}} {{user_gender}} {{char}} {{威胁度}} {{unknown_slot}} {{}} {{{nested}}}'
 const safeVariables=fence(authorVariables,'rules')
@@ -8,6 +8,9 @@ assert.deepEqual([...safeVariables.matchAll(/\{\{([^{}]*)\}\}/g)].map(m=>m[1]),[
   'author placeholders must not enter the native prompt variable parser')
 assert.ok(safeVariables.includes('⟦威胁度⟧'))
 assert.equal(fence(authorVariables,'rules'),safeVariables,'escaped author sections remain cache stable')
+const literalFence=createStableRoleplayFence({interpolate:false}),literalVariables=literalFence(authorVariables,'card')
+assert.ok(literalVariables.includes(authorVariables),'noninterpolated material preserves published literal tokens')
+assert.equal(literalFence(authorVariables,'card'),literalVariables)
 if(process.argv[2]) {
   const {renderPrompt}=await import(pathToFileURL(process.argv[2]).href)
   const assembly=text=>({sections:[{name:'roleplay:rules',text}],variables:{user:'Player',user_gender:'unknown',char:'Character'}})

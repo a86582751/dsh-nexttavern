@@ -6,8 +6,7 @@ import { reduceMvuUpdateOperations } from './roleplay-mvu-update.js';
 import { reduceMvuUpdateOperationsV2 } from './roleplay-mvu-update-v2.js';
 import { mvuInitializationEventKey, mvuInitializationHeadKey } from './roleplay-mvu-initialization.js';
 import { cloneMvuPlayerReplacement, mvuPlayerEventFor, mvuPlayerHeadFor, mvuPlayerSettlementFor, MvuPlayerDataRefusal } from './roleplay-mvu-player-records.js';
-import { formatLocalMvuPromptFactsV1, formatLocalMvuPromptFactsV2, MvuPromptFactsRefusal } from './roleplay-mvu-prompt-numerical-facts.js';
-import { validateProgramMvuGenesisFactsV1, ProgramGenesisDataFailureV1 } from './roleplay-program-genesis-data.js';
+import { formatLocalMvuPromptFactsV1, MvuPromptFactsRefusal } from './roleplay-mvu-prompt-numerical-facts.js';
 import { acceptedMvuDisplayUpdate, formatMvuDisplayUpdates } from './roleplay-mvu-display-facts.js';
 export const mvuStateCurrentHeadKey = (sid) => `${sid}__mvu-state-current-head`;
 export const mvuStateEventKey = (sid, sha256) => `${sid}__mvu-state-event-${sha256}`;
@@ -91,13 +90,6 @@ function keys(value, expected) {
 }
 function rootValid(root) {
     if ('encoding' in root) {
-        if (root.encoding === 'native-program-mvu-state-root-v1') {
-            keys(root, ['schemaVersion', 'encoding', 'programEventId', 'programEventSha256', 'programHeadSha256', 'planSha256']);
-            if (root.schemaVersion !== 1
-                || ![root.programEventId, root.programEventSha256, root.programHeadSha256, root.planSha256].every(hash))
-                fail('ROOT_INVALID');
-            return;
-        }
         keys(root, ['schemaVersion', 'encoding', 'derivedEventId', 'derivedEventSha256', 'derivedHeadSha256', 'basisSha256']);
         if (root.schemaVersion !== 1 || root.encoding !== 'native-mvu-derived-state-root-v1'
             || ![root.derivedEventId, root.derivedEventSha256, root.derivedHeadSha256, root.basisSha256].every(hash))
@@ -129,16 +121,6 @@ function headValid(head, sid, root) {
             || head.eventId !== root.derivedEventId || head.eventSha256 !== root.derivedEventSha256
             || head.basisSha256 !== root.basisSha256 || !hash(head.valuesSha256)
             || recordSha256(head) !== root.derivedHeadSha256)
-            fail('HEAD_INVALID');
-    }
-    else if (head.encoding === 'native-program-mvu-genesis-head-v1') {
-        if (!('encoding' in root) || root.encoding !== 'native-program-mvu-state-root-v1')
-            fail('HEAD_INVALID');
-        keys(head, ['schemaVersion', 'encoding', 'sessionId', 'eventId', 'revision', 'eventSha256', 'planSha256', 'valuesSha256']);
-        if (head.schemaVersion !== 1 || head.revision !== 1 || head.sessionId !== sid
-            || head.eventId !== root.programEventId || head.eventSha256 !== root.programEventSha256
-            || head.planSha256 !== root.planSha256 || !hash(head.valuesSha256)
-            || recordSha256(head) !== root.programHeadSha256)
             fail('HEAD_INVALID');
     }
     else {
@@ -307,28 +289,6 @@ export function createRoleplayMvuState(deps) {
         if (!supplied)
             fail('GENESIS_UNPROVEN');
         const g = cloneJson(supplied);
-        if ('programEvent' in g) {
-            keys(g, ['sessionId', 'sourceSha256', 'programEvent', 'programHead']);
-            // The writer's validated final values already include the one generated
-            // opening-body settlement. Never reapply that body as a story terminal,
-            // and never reinterpret a copied raw opening as an update proposal.
-            const actual = validateProgramMvuGenesisFactsV1(g.programEvent, g.programHead);
-            if (actual.sessionId !== sid || !hash(g.sourceSha256) || !same(actual, g))
-                fail('GENESIS_INVALID');
-            const persistedEvent = deps.table.get(mvuInitializationEventKey(sid, actual.programEvent.eventId)), persistedHead = deps.table.get(mvuInitializationHeadKey(sid));
-            if (persistedEvent === undefined || persistedHead === undefined
-                || !same(cloneJson(persistedEvent), actual.programEvent) || !same(cloneJson(persistedHead), actual.programHead)) {
-                fail('PROGRAM_GENESIS_RECORD_MISSING_OR_CHANGED');
-            }
-            const event = actual.programEvent, head = actual.programHead, root = { schemaVersion: 1, encoding: 'native-program-mvu-state-root-v1',
-                programEventId: event.eventId, programEventSha256: event.eventSha256,
-                programHeadSha256: recordSha256(head), planSha256: event.plan.planSha256 };
-            rootValid(root);
-            headValid(head, sid, root);
-            if (head.valuesSha256 !== event.valuesSha256 || event.valuesSha256 !== recordSha256(event.finalValues))
-                fail('GENESIS_INVALID');
-            return { genesis: actual, state: snapshot(head, event.finalValues, sid, actual.sourceSha256, root) };
-        }
         if ('derivedEvent' in g) {
             keys(g, ['sessionId', 'sourceSha256', 'derivedEvent', 'derivedHead']);
             const event = g.derivedEvent, head = g.derivedHead;
@@ -538,14 +498,12 @@ export function createRoleplayMvuState(deps) {
         return { state, settlements, settlementSnapshots, genesis: capturedGenesis.genesis, genesisSnapshot: initial, states, rows };
     }
     const codeOf = (error) => error instanceof StateRefusal || error instanceof MvuPlayerDataRefusal
-        || error instanceof MvuPromptFactsRefusal || error instanceof ProgramGenesisDataFailureV1
+        || error instanceof MvuPromptFactsRefusal
         ? error.code : 'READ_OR_PERMISSION_UNKNOWN';
     /** A single existing inspect owns all numerical verification/replay. The
      * formatter only associates its already-verified settlements with snapshots.
      * No-update rows matter even when the latest head is unchanged. */
     function formatPromptFacts(actual) {
-        if ('programEvent' in actual.genesis)
-            return formatLocalMvuPromptFactsV2({ ...actual, genesis: actual.genesis });
         return formatLocalMvuPromptFactsV1({ ...actual, genesis: actual.genesis });
     }
     function capturePromptNumericalFacts(sid) {
@@ -570,15 +528,7 @@ export function createRoleplayMvuState(deps) {
             return { kind: 'blocked', code: codeOf(error) };
         }
     }
-    function readNumericalObservation(sid) {
-        let actual, state;
-        try {
-            actual = inspect(sid);
-            state = cloneJson(actual.state);
-        }
-        catch (error) {
-            return { kind: 'blocked', code: codeOf(error) };
-        }
+    function displayUpdates(sid, actual) {
         // inspect has already checked all Native/canonical intent, event, reducer,
         // head and settlement facts. Do not reconcile each message a second time.
         const updates = [];
@@ -598,7 +548,24 @@ export function createRoleplayMvuState(deps) {
             }
         }
         catch { /* Optional display data must not change numerical readiness. */ }
-        return { kind: 'ready', snapshot: state, displayUpdates: formatMvuDisplayUpdates(updates) };
+        return formatMvuDisplayUpdates(updates);
+    }
+    function readDisplayUpdates(sid) {
+        try {
+            return { kind: 'ready', displayUpdates: displayUpdates(sid, inspect(sid)) };
+        }
+        catch (error) {
+            return { kind: 'blocked', code: codeOf(error) };
+        }
+    }
+    function readNumericalObservation(sid) {
+        try {
+            const actual = inspect(sid);
+            return { kind: 'ready', snapshot: cloneJson(actual.state), displayUpdates: displayUpdates(sid, actual) };
+        }
+        catch (error) {
+            return { kind: 'blocked', code: codeOf(error) };
+        }
     }
     function settlementFacts(intent, { state, settlements }) {
         if (!same(state.root, intent.base.root))
@@ -891,6 +858,6 @@ export function createRoleplayMvuState(deps) {
             return { kind: wrote ? 'unknown' : 'blocked', code: codeOf(error) };
         }
     }
-    return { readNumericalAuthority, readNumericalObservation, readGenesisAuthority, capturePromptNumericalFacts, publish, reconcileFacts,
+    return { readNumericalAuthority, readNumericalObservation, readDisplayUpdates, readGenesisAuthority, capturePromptNumericalFacts, publish, reconcileFacts,
         verifyConsumedSettlement, verifyConsumedSettlementFacts, publishManual, reconcileManualFacts, verifyConsumedManualSettlementFacts };
 }

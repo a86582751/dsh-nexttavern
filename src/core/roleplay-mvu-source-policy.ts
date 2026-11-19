@@ -1,11 +1,11 @@
-/** Exact program policies. v1 fields/hash are historical data and stay frozen;
- * YAML is a separate capability, never a fallback after a rejected JSON parse. */
+/** Exact current program policies. Bound books share the original ordered
+ * initialization calculation. YAML remains an explicit payload capability. */
 import {recordSha256} from './roleplay-data.js'
 
 const policyContent=Object.freeze({
   schemaVersion:1 as const,id:'native-json-initialization-v1' as const,version:1 as const,
   classifierId:'native-json-source-classifier-v1' as const,classifierVersion:1 as const,
-  scope:'import-and-session-settings' as const,bindings:'embedded-primary-only' as const,
+  scope:'import-and-session-settings' as const,bindings:'ordered-deduplicated-captured-books' as const,
   grammar:'strict-json-object-simple-wrappers-v1' as const,originalLoaderSettlement:'not-proven' as const,
   staticAlgorithm:Object.freeze({dialect:'A' as const,
     sha256:'3759d0c8b9f82c67a606afae11de9a90e3ee4e63298ef622b89ac9127eb77047',
@@ -16,7 +16,7 @@ export const NATIVE_MVU_SOURCE_POLICY=Object.freeze({...policyContent,sha256:rec
 const yamlPolicyContent=Object.freeze({
   schemaVersion:2 as const,id:'native-json-yaml-initialization-v2' as const,version:2 as const,
   classifierId:'native-json-yaml-source-classifier-v2' as const,classifierVersion:2 as const,
-  scope:'import-and-session-settings' as const,bindings:'embedded-primary-only' as const,
+  scope:'import-and-session-settings' as const,bindings:'ordered-deduplicated-captured-books' as const,
   grammar:'yaml-1.2-json-data-v1' as const,originalLoaderSettlement:'not-proven' as const,
   staticAlgorithm:policyContent.staticAlgorithm,
   bounds:Object.freeze({bytes:1048576,nodes:32000,depth:32,membershipRows:4096,arrayLength:4096,

@@ -81,6 +81,7 @@ function wireKey(key:string):string {
   try {return new RegExp(match[1]!.replace('\\/','/'),match[2]).toString()}
   catch {return key}
 }
+export {wireKey as namedWorldbookKeyToWireV1}
 
 /** Ordering fallback is supplied from the actual collection by its owner.
  * It is independent of both an entry's UID and its insertion order. */
@@ -129,6 +130,10 @@ export function nativeNamedWorldbookEntryToWireV1(raw:NativeNamedWorldbookEntryD
     outletName:(extensions.outlet_name??'') as string,triggers:copy((extensions.triggers??[]) as string[]),
     characterFilter:{isExclude:false,names:[],tags:[]},
     ...(isObject(raw.extra)?{extra:copy(raw.extra)}:{})}
+  if(entry.position.type===undefined||entry.position.role===undefined||entry.strategy.keys_secondary.logic===undefined
+    ||typeof entry.position.order!=='number'||typeof entry.content!=='string') {
+    throw Error('NAMED_WORLDBOOK_REQUIRED_OUTPUT_INVALID')
+  }
   const controls=extensions[controlsKey]
   if(controls!==undefined) {
     if(!isObject(controls)||controls.schemaVersion!==1||controls.encoding!==controlsEncoding) {
@@ -150,7 +155,7 @@ export function nativeNamedWorldbookEntryToWireV1(raw:NativeNamedWorldbookEntryD
  * The owner has already resolved collisions and the final display ordinal. */
 export function worldbookWireToNativeEntryV1(input:WorldbookEntryInputV1,
   identity:NamedWorldbookEntryIdentityV1,unknownBase:MvuJsonObject={}):NativeNamedWorldbookEntryDataV1 {
-  const raw=copy(unknownBase),extensions=copy(extensionsOf(unknownBase))
+  const raw=copy(unknownBase),extensions=extensionsOf(raw)
   const position=positions.indexOf(input.position?.type??'at_depth')
   // Existing native ids are metadata of the retained incarnation. A Helper
   // numeric projection never rewrites a textual id in its Native export.
@@ -185,14 +190,29 @@ export function worldbookWireToNativeEntryV1(input:WorldbookEntryInputV1,
     case_sensitive:input.caseSensitive??null,match_whole_words:input.matchWholeWords??null,
     use_group_scoring:input.useGroupScoring??null,automation_id:input.automationId??'',
     ignore_budget:input.ignoreBudget??false,outlet_name:input.outletName??'',triggers:copy(input.triggers??[])})
-  const originalControls=extensions[controlsKey]
+  extensions[controlsKey]=worldbookEntryControls(input,extensions[controlsKey])
+  raw.extensions=extensions
+  return raw as NativeNamedWorldbookEntryDataV1
+}
+function worldbookEntryControls(input:WorldbookEntryInputV1,originalControls:MvuJsonValue|undefined):MvuJsonObject {
   const controls:MvuJsonObject={...(isObject(originalControls)?originalControls:{}),schemaVersion:1,
     encoding:controlsEncoding,addMemo:input.addMemo??true,
     characterFilter:{isExclude:input.characterFilter?.isExclude??false,
       names:copy(input.characterFilter?.names??[]),tags:copy(input.characterFilter?.tags??[])}}
   delete controls.extra
   if(input.extra)controls.extra=copy(input.extra)
-  extensions[controlsKey]=controls
-  raw.extensions=extensions
-  return raw as NativeNamedWorldbookEntryDataV1
+  return controls
+}
+/** File controls join the same explicit Native override used by Helper edits.
+ * The separately normalized Native fields retain their imported semantics. */
+export function applyStandaloneWorldInfoControlsV1(source:MvuJsonObject,native:NativeNamedWorldbookEntryDataV1)
+  :NativeNamedWorldbookEntryDataV1 {
+  if(!Object.hasOwn(source,'addMemo')&&!Object.hasOwn(source,'characterFilter'))return native
+  const extensions=extensionsOf(native)
+  const previous=extensions[controlsKey] as unknown as NextTavernWorldbookEntryControlsV1|undefined
+  extensions[controlsKey]=worldbookEntryControls({addMemo:source.addMemo===undefined?previous?.addMemo??!!native.comment:source.addMemo===true,
+    characterFilter:isObject(source.characterFilter)?source.characterFilter as unknown as NamedWorldbookCharacterFilterV1:previous?.characterFilter,
+    ...isObject(source.extra)?{extra:source.extra}:previous?.extra?{extra:previous.extra}:{}},extensions[controlsKey])
+  native.extensions=extensions
+  return native
 }

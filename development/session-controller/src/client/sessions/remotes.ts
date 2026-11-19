@@ -10,7 +10,7 @@ import type { CommandSubmitAttachment } from '@deepseek-ai/dsh-commands/types'
 import type { SessionId } from 'dsh-nexttavern-native-session/types'
 import type {
   SubagentInterruptReceipt, SubagentPromptReceipt, SubagentPromptRequest,
-} from 'dsh-nexttavern-native-subagent/client'
+} from '@deepseek-ai/dsh-subagent/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionRemote } from '../transport.js'
 
@@ -30,11 +30,7 @@ export interface SessionSubagentsRemote {
     request: SubagentPromptRequest,
     signal?: AbortSignal,
   ): Promise<RemoteResult<SubagentPromptReceipt>>
-  interruptByParent(
-    childSessionId: SessionId,
-    parentSessionId: SessionId,
-    mode: 'continuable',
-  ): Promise<RemoteResult<SubagentInterruptReceipt>>
+  interruptByUser(childSessionId: SessionId): Promise<RemoteResult<SubagentInterruptReceipt>>
 }
 
 /** Generated Remote namespaces consumed by the Client Session object layer. */

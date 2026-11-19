@@ -3,24 +3,28 @@
  * A long-poll transports the challenge; it never grants Native permission. */
 import { randomUUID } from 'node:crypto';
 import { recordSha256 } from './roleplay-data.js';
+import { AUTHOR_NATIVE_MVU_HOOK_EVENTS } from './author-native-mvu-hook-types.js';
 const sameBinding = (left, right) => left.browserSessionId === right.browserSessionId && left.generation === right.generation
     && left.sessionId === right.sessionId && left.programSha256 === right.programSha256;
 function fail(code) { throw Error(code); }
 export function createRoleplayAuthorBrowserGeneration(options) {
     let closed = false, waiter, pending;
-    let latestRegistrations = [];
+    let latestRegistrations = [], latestRegistrationRevision;
     let filterCall;
     const retired = [];
     const readerArrivals = new Set();
     let hook;
     let producedPrompts = false;
     const current = () => !closed && options.current();
+    const sourceCurrent = () => !closed && (options.sourceCurrent?.() ?? options.current());
     const assertCurrent = () => { if (!current())
         fail('BROWSER_ATTACHMENT_REVOKED'); };
-    const assertBinding = (binding) => {
+    const assertSourceCurrent = () => { if (!sourceCurrent())
+        fail('BROWSER_ATTACHMENT_REVOKED'); };
+    const assertBinding = (binding, assertOwner = assertCurrent) => {
         if (!sameBinding(binding, options.binding))
             fail('BROWSER_ATTACHMENT_REVOKED');
-        assertCurrent();
+        assertOwner();
     };
     const realms = new Map(options.program.realms.map(realm => [realm.realmId, realm]));
     const admittedOrigin = (row) => {
@@ -36,13 +40,23 @@ export function createRoleplayAuthorBrowserGeneration(options) {
         // The guest registry already applied eventMakeFirst to this exact list.
         return Object.freeze(accepted);
     }
-    function wait(binding, input, signal) {
-        assertBinding(binding);
+    function acceptRegistrations(input, revision) {
+        if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 0))
+            fail('BROWSER_GENERATION_REGISTRATION_INVALID');
+        // A poll and an explicit registry update can cross at the transport boundary.
+        if (latestRegistrationRevision !== undefined && (revision === undefined || revision <= latestRegistrationRevision))
+            return;
+        latestRegistrations = registrations(input);
+        latestRegistrationRevision = revision;
+        if (waiter)
+            waiter.registrations = latestRegistrations;
+    }
+    function wait(binding, input, signal, sourceCursor, registrationRevision) {
+        assertBinding(binding, assertSourceCurrent);
         signal.throwIfAborted();
         if (waiter || pending || hook?.started || filterCall)
             fail('BROWSER_GENERATION_BUSY');
-        const callbacks = registrations(input);
-        latestRegistrations = callbacks;
+        acceptRegistrations(input, registrationRevision);
         return new Promise((resolve, reject) => {
             const abort = () => {
                 if (waiter !== value)
@@ -51,15 +65,29 @@ export function createRoleplayAuthorBrowserGeneration(options) {
                 value.cleanup();
                 reject(Error('BROWSER_GENERATION_READER_DISCONNECTED'));
             };
-            const value = { registrations: callbacks, resolve, reject,
-                cleanup: () => signal.removeEventListener('abort', abort) };
+            let unsubscribe;
+            const value = { registrations: latestRegistrations, resolve, reject,
+                cleanup: () => { signal.removeEventListener('abort', abort); unsubscribe?.(); } };
             waiter = value;
+            signal.addEventListener('abort', abort, { once: true });
             if (retired.length) {
                 waiter = undefined;
                 value.cleanup();
                 value.resolve(retired.shift());
             }
-            signal.addEventListener('abort', abort, { once: true });
+            const deliver = () => {
+                const packet = options.lifecycle?.peek();
+                if (waiter !== value || !packet)
+                    return;
+                waiter = undefined;
+                value.cleanup();
+                value.resolve({ encoding: 'author-native-lifecycle-invocation-v1', packet });
+            };
+            options.lifecycle?.peek(sourceCursor);
+            if (waiter === value) {
+                unsubscribe = options.lifecycle?.onReady(deliver);
+                deliver();
+            }
             for (const arrival of readerArrivals)
                 arrival.resolve();
             readerArrivals.clear();
@@ -115,7 +143,12 @@ export function createRoleplayAuthorBrowserGeneration(options) {
             value.reject(Error('AUTHOR_NATIVE_INJECTION_FILTER_INVALID_RESULT'));
             return;
         }
-        value.resolve(result.accepted);
+        try {
+            value.resolve({ accepted: result.accepted, libraryReads: options.resolveLibraryReads?.(result.libraryReads ?? []) ?? [] });
+        }
+        catch (error) {
+            value.reject(error instanceof Error ? error : Error('AUTHOR_NATIVE_LIBRARY_READ_UNAVAILABLE'));
+        }
     }
     function retireFilterCallbacks(message) {
         if (waiter && !pending && !hook && !filterCall) {
@@ -158,19 +191,9 @@ export function createRoleplayAuthorBrowserGeneration(options) {
         reader.resolve(invocation);
         return result;
     }
-    const hookEvents = {
-        'command-parsed': 'mag_command_parsed', 'update-ended': 'mag_variable_update_ended',
-        'before-message-update': 'mag_before_message_update',
-    };
-    async function prepareHook(request, signal) {
-        assertCurrent();
+    async function awaitReader(signal) {
+        assertSourceCurrent();
         signal.throwIfAborted();
-        const event = hookEvents[request.stage];
-        if (!latestRegistrations.some(row => row.event === event))
-            return undefined;
-        // The previous completion and the next long-poll cross HTTP separately.
-        // A known listener must wait for that same live Reader, not silently lose
-        // the next MVU stage merely because its poll has not arrived yet.
         while (!waiter) {
             await new Promise((resolve, reject) => {
                 const abort = () => { readerArrivals.delete(arrival); reject(Error('BROWSER_GENERATION_CANCELLED')); };
@@ -179,12 +202,25 @@ export function createRoleplayAuthorBrowserGeneration(options) {
                 readerArrivals.add(arrival);
                 signal.addEventListener('abort', abort, { once: true });
             });
-            assertCurrent();
+            assertSourceCurrent();
             signal.throwIfAborted();
         }
+        return waiter;
+    }
+    async function prepareHook(request, signal) {
+        // Native's closing owner supplies this stage's current graph. Its earlier
+        // snapshot may have expired while the same Source realm remains live.
+        assertSourceCurrent();
+        signal.throwIfAborted();
+        const event = AUTHOR_NATIVE_MVU_HOOK_EVENTS[request.stage];
+        if (!latestRegistrations.some(row => row.event === event))
+            return undefined;
+        // The previous completion and the next long-poll cross HTTP separately.
+        // A known listener waits for the same Reader's next admitted poll.
+        const reader = await awaitReader(signal);
         if (pending || hook || filterCall)
             fail('BROWSER_GENERATION_BUSY');
-        const reader = waiter, callbacks = reader.registrations.filter(row => row.event === event);
+        const callbacks = reader.registrations.filter(row => row.event === event);
         if (!callbacks.length)
             return undefined;
         const invocation = { schemaVersion: 1, encoding: 'author-native-mvu-hook-invocation-v1',
@@ -205,7 +241,7 @@ export function createRoleplayAuthorBrowserGeneration(options) {
                 binding: options.binding, registrations: callbacks.map(row => ({ realmId: row.realmId,
                     groupId: realms.get(row.realmId).groupId, callbackId: row.callbackId, resource: row.resource })) },
             execute: () => {
-                assertCurrent();
+                assertSourceCurrent();
                 signal.throwIfAborted();
                 if (hook !== value || waiter !== reader || value.started)
                     fail('BROWSER_GENERATION_INVOCATION_REVOKED');
@@ -224,7 +260,7 @@ export function createRoleplayAuthorBrowserGeneration(options) {
             } };
     }
     function completeHook(result) {
-        assertBinding(result.binding);
+        assertBinding(result.binding, assertSourceCurrent);
         const value = hook;
         if (!value?.started || value.invocation.invocationId !== result.invocationId)
             fail('BROWSER_GENERATION_INVOCATION_REVOKED');
@@ -244,6 +280,14 @@ export function createRoleplayAuthorBrowserGeneration(options) {
             if (index === undefined || index <= previous)
                 return refuse('AUTHOR_NATIVE_MVU_HOOK_OUTPUT_CHANGED');
             previous = index;
+        }
+        if (result.registrations) {
+            try {
+                acceptRegistrations(result.registrations, result.registrationRevision);
+            }
+            catch (error) {
+                return refuse(error instanceof Error ? error.message : 'BROWSER_GENERATION_REGISTRATION_INVALID');
+            }
         }
         value.resolve?.(result.result);
     }
@@ -280,8 +324,9 @@ export function createRoleplayAuthorBrowserGeneration(options) {
         // A real callback may remove a later listener during the captured pass.
         // The returned IDs therefore form an ordered subsequence, not a fabricated
         // claim that every callback in the challenge necessarily ran.
-        let effects;
+        let effects, libraryReads;
         try {
+            libraryReads = options.resolveLibraryReads?.(raw.libraryReads ?? []) ?? [];
             effects = raw.effects.map(effect => {
                 const callback = executed.get(effect.callbackId);
                 if (!callback)
@@ -319,7 +364,7 @@ export function createRoleplayAuthorBrowserGeneration(options) {
         const body = { schemaVersion: 1, encoding: 'author-native-generation-output-v1',
             authority: 'consumer-data-only', invocationId: invocation.invocationId, programSha256: options.program.programSha256,
             captureSha256: invocation.capture.captureSha256, effects: Object.freeze(effects.map(effect => Object.freeze(effect))),
-            callbacksExecuted: raw.callbackIds.length };
+            callbacksExecuted: raw.callbackIds.length, ...libraryReads.length ? { libraryReads } : {} };
         const output = Object.freeze({ ...body, outputSha256: recordSha256(body) });
         producedPrompts ||= output.effects.some(effect => effect.kind === 'inject' && effect.prompts.length > 0);
         pending = undefined;
@@ -327,6 +372,7 @@ export function createRoleplayAuthorBrowserGeneration(options) {
         value.resolve(output);
     }
     function dispose() {
+        options.lifecycle?.dispose();
         if (closed)
             return;
         closed = true;
@@ -378,7 +424,17 @@ export function createRoleplayAuthorBrowserGeneration(options) {
             stage.reject?.(Error('BROWSER_GENERATION_RESOURCE_RETIRED'));
         }
     }
-    return { wait, invoke, complete, invokeFilter, completeFilter, retireFilterCallbacks, prepareHook, completeHook, dispose, retireResource,
+    return { wait, updateRegistrations(binding, input, revision) {
+            assertBinding(binding, assertSourceCurrent);
+            if (revision === undefined)
+                fail('BROWSER_GENERATION_REGISTRATION_INVALID');
+            acceptRegistrations(input, revision);
+        }, awaitReader, invoke, complete, invokeFilter, completeFilter, retireFilterCallbacks,
+        prepareHook, completeHook, dispose, retireResource,
+        hookInterests: () => sourceCurrent() ?
+            Object.keys(AUTHOR_NATIVE_MVU_HOOK_EVENTS)
+                .filter((stage) => stage !== 'initialized' && stage !== 'before-message-update'
+                && latestRegistrations.some(row => row.event === AUTHOR_NATIVE_MVU_HOOK_EVENTS[stage])) : [],
         sourceDataFor: (realmId) => {
             const filter = filterCall;
             if (filter?.sourceData && filter.invocation.realmId === realmId && current())

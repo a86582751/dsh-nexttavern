@@ -47,7 +47,10 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
   } = deps
 
   const forkGroupKey = (groupId: unknown) => `fork-group-${safeId(groupId)}`
-  const forkOperationKey = (operationId: unknown) => `fork-op-${safeId(operationId)}`
+  const forkOperationKey=(operationId:unknown)=>{
+    const id=typeof operationId==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(operationId)?operationId:safeId(operationId)
+    return `fork-op-${id}`
+  }
   const forkAnchorKey = (sessionId: string, messageId: unknown) => keyOf(sessionId, `fork-anchor-${sha256(messageId).slice(0, 24)}`)
   const forkPendingKey = (sessionId: string, groupId: unknown) => keyOf(sessionId, `fork-pending-${safeId(groupId)}`)
   const forkAnchorLockKey = (anchor: Pick<ForkAnchor, 'sourceSessionId' | 'sourceAssistantMessageId'>) => {
@@ -920,14 +923,14 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     })
   }
 
-  function pendingOpeningCompletion(session: ReadBranchSession,
+  async function pendingOpeningCompletion(session: ReadBranchSession,
     pending: Pick<BranchRecord, 'ordinal' | 'operationId'>, group: ForkGroup | null) {
     if (!group?.anchor?.openingOnly) return null
     const member = group.members.find(item => item.sessionId === session.id
       && Number(item.ordinal) === Number(pending.ordinal) && item.operationId === pending.operationId)
     if (!member?.operationId || member.deleted || member.failed) return null
     if(member.kind==='opening-variant') {
-      const completed=deps.readOpeningVariantSettlement?.(session,member.operationId)
+      const completed=await deps.readOpeningVariantSettlement?.(session,member.operationId)
       return completed?{...completed,programOpening:true}:null
     }
     const messageId = `opening-regenerate-${member.operationId}`
@@ -956,7 +959,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       const openingGroup = hydrateForkGroup(T.branch.get(forkGroupKey(pending.groupId)))
       if (openingGroup?.anchor?.openingOnly) {
         const pendingIdentity = {groupId: pending.groupId, ordinal: pending.ordinal, operationId: pending.operationId}
-        const completion = pendingOpeningCompletion(session, pendingIdentity, openingGroup)
+        const completion = await pendingOpeningCompletion(session, pendingIdentity, openingGroup)
         if (completion) {
           try { await flushEdits(session as BranchSession) } catch { continue }
           await withForkMutationLock(forkGroupLockKey(pendingIdentity.groupId), async () => {
@@ -967,7 +970,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
             if (!livePending || livePending.groupId !== pendingIdentity.groupId
               || livePending.ordinal !== pendingIdentity.ordinal || livePending.operationId !== pendingIdentity.operationId) return
             const group = hydrateForkGroup(T.branch.get(forkGroupKey(livePending.groupId)))
-            const current = pendingOpeningCompletion(session, livePending, group)
+            const current = await pendingOpeningCompletion(session, livePending, group)
             const live = group?.members.find(item => item.sessionId === session.id
               && Number(item.ordinal) === Number(livePending.ordinal) && item.operationId === livePending.operationId)
             if (!group || !live || !current || current.messageId !== completion.messageId

@@ -85,6 +85,4 @@ export interface CardWorkflowDependencies {
     pending(session: CardWorkflowSession): Pick<StoredTask, 'id' | 'generation' | 'source'>[]
     submit(options: {session: CardWorkflowSession; id: string; generation: string; value: {finished: boolean}}): Promise<unknown>
   }
-  taskAgents: Map<string, CardWorkflowAgent>
-  ctx: {sessionController: {resolveAgent?(id: string): Promise<{agent?: CardWorkflowAgent} | null | undefined>}}
 }

@@ -15,6 +15,7 @@ import type {
   UserMessage,
 } from 'dsh-nexttavern-native-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import type { TypertResource } from '@deepseek-ai/dsh-typert-protocol'
 import type {NativeRequestMaterialRecord} from './request-material-types.js'
 
 /** Identifies one session in the store (and its persistence artifacts). */
@@ -718,6 +719,10 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }[T]
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface TypertResourceMap {
+    session: TypertResource<SessionId>
+  }
+
   interface RemoteErrorDetailsMap {
     /** The named Session does not exist; produced by every layer that resolves a SessionId. */
     'session/not-found': { readonly sessionId: SessionId }

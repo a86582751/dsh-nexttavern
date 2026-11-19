@@ -86,6 +86,7 @@ type CoreConversationCatalog = ReturnType<typeof import('./tavern-conversations.
   & {ready?: PromiseLike<unknown>}
 
 export type CoreContext = {
+  attachments:Pick<import('@deepseek-ai/dsh-attachment').AttachmentStore,'admitPromptContent'>
   nexttavernMessageEdits: WorldlineMessageEdits
   nexttavernMvuPlayerMarkers:typeof import('dsh-nexttavern-session-format/mvu-player-marker').mvuPlayerMarkers
   nexttavernMvuSchemaMarkers:typeof import('dsh-nexttavern-session-format/mvu-schema-marker').mvuSchemaMarkers
@@ -97,6 +98,8 @@ export type CoreContext = {
     readonly messageProjections:readonly import('dsh-nexttavern-native-session').SessionMessageProjection[]}
   agents?: {list(): readonly CoreAgent[]}
   sessionController: {
+    registerOrdinaryForkPreparation(prepare:(reservation:import('./roleplay-branch-routes-types.js').ForkReservation)
+      =>Promise<void|(()=>Promise<void>)>):()=>void
     forkBeforeFirstPrepared?(request:{sessionId:string;resume?:import('./roleplay-opening-variant-activation.js').OpeningVariantForkReservation},
       beforePublish:(reservation:import('./roleplay-opening-variant-activation.js').OpeningVariantForkReservation)=>Promise<void>)
       :PromiseLike<{sessionId:string}>

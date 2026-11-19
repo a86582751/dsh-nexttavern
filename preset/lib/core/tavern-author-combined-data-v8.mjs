@@ -76,7 +76,7 @@ export function validateCombinedAuthorProgramV8(input) {
         if (programSha256 !== authorNativeProgramSha256V1(body))
             fail();
     }
-    const needsOwned = native?.scripts.some(script => script.enabled) && layout.numericalProfile === 'native-mvu-state-v1';
+    const needsOwned = !server && layout.numericalProfile === 'native-mvu-state-v1';
     if (owned && !needsOwned || needsOwned && !executable)
         fail();
     const plan = program.executionPlan;

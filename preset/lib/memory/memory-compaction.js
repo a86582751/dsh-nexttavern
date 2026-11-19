@@ -5,7 +5,7 @@ import { surfaceSeqsOf, contentOfEvent, importManagementInputs, isStoryEvent, is
 import { validateDetailedSummary } from './memory-summary.js';
 import { projectStoryEvent } from '../core/roleplay-message-view.js';
 import { sessionEvents } from '../core/session-history.js';
-import { captureMemoryStoryText, memoryStorySourceKeys } from './memory-story-text.js';
+import { captureMemoryStoryText, cleanStoryText, memoryStorySourceKeys } from './memory-story-text.js';
 function errorText(error) {
     if (error instanceof Error)
         return error.stack || error.message;
@@ -248,8 +248,9 @@ export function createMemoryCompactor(options) {
             const event = original ? projectStoryEvent(session, original) : undefined;
             if (!isStoryEvent(event))
                 return '';
-            const role = event.type === 'user/message' ? '用户' : '叙事者';
-            return `\n[${role} · seq:${seq}]\n${storyText.text(seq, textOf(contentOfEvent(event)))}`;
+            const user = event.type === 'user/message';
+            const text = storyText.text(seq, textOf(contentOfEvent(event)));
+            return `\n[${user ? '用户' : '叙事者'} · seq:${seq}]\n${user ? text : cleanStoryText(text).text}`;
         }).filter(Boolean).join('\n');
     }
     function assertSelectedSurfaceStable(session, range) {

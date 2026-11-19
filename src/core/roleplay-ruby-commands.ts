@@ -70,13 +70,14 @@ export function createRoleplayRubyCommandsV1(deps:RoleplayRubyCommandsDependenci
       signal.throwIfAborted();controls.assertCurrent();capture.assertCurrent()
       const wanted=command.key.trim(),book=command.book.trim()||'chat',channel=book.toLowerCase(),
         chat=channel==='chat',character=channel==='char'||book===capture.primaryName,
-        entries=chat?deps.ruby.readEntries(sid,capture):character?capture.records:[],
+        named=chat||character?undefined:await capture.readBook(book),
+        entries=chat?deps.ruby.readEntries(sid,capture):character?capture.records:named?.records??[],
         selected=selectEntries(entries,wanted,command.all)
       if(!selected.length)return {kind:'executed',pipe:command.json?'[]':wanted?`entry not found: ${wanted}`:'no worldbook entries'}
       const content=command.raw?selected.map(row=>row.entry.resolvedContent)
         :await capture.resolveEntryContent(selected.map(row=>row.entry))
       signal.throwIfAborted();controls.assertCurrent();capture.assertCurrent()
-      const records=selected.map(({entry,keys},index)=>({uid:entry.uid,book:chat?'chat':capture.primaryName??'char',
+      const records=selected.map(({entry,keys},index)=>({uid:entry.uid,book:chat?'chat':named?.name??capture.primaryName??'char',
         keys,comment:entry.comment,content:content[index]!,disabled:entry.disabled,constant:entry.constant}))
       return {kind:'executed',pipe:command.json?JSON.stringify(command.all?records:records[0])
         :records.map(record=>record.content.trim()).filter(Boolean).join('\n\n---\n\n')||'(empty content)'}

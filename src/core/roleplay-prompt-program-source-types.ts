@@ -100,6 +100,8 @@ export interface PromptProgramAuthorGroupV1 extends Omit<PromptProgramAuthorGrou
   readonly effective:PromptProgramTextV1
 }
 export interface PromptProgramBookEntryV1 {
+  readonly catalogBook?:Pick<import('./tavern-lore-plan-types.mjs').TavernLoreCatalogBookSourceReferenceV1,
+    'profileId'|'bookId'|'contentRef'|'metadataRef'>
   readonly entryId:string
   readonly ordinal:number
   readonly sourceKey:string
@@ -122,16 +124,6 @@ export interface PromptProgramBookEntryV1 {
   readonly fieldSources:TavernLoreEntryPlanV1['fieldSources']
   readonly fieldSourcesSha256:string
   readonly originalProjectionAssignments:readonly PromptProgramAssignmentOriginV1[]
-}
-export interface PromptProgramExcludedLeafV1 {
-  readonly domain:'original-document'|'current-row'|'current-overlay'|'current-membership'
-  readonly row:TavernLoreSourceRowDataV1['ref']|null
-  readonly pointer:string
-  readonly kind:'property-key'|'string'|'non-string'
-  readonly valueSha256:string
-  readonly utf16Length:number|null
-  readonly ejsDelimiterPresent:boolean
-  readonly disposition:'not-authorized-by-program-source-inventory'
 }
 /** Exact Source resource location, retained as inert DATA. Transform and Reader
  * own rule validation and execution; this does not authorize prompt or MVU code. */
@@ -159,10 +151,10 @@ export interface PromptProgramImportTupleV1 {
   readonly originalActivation:NonNullable<ImportRecord['activation']>
   readonly sourceInheritance:TavernLoreSourceDataV1['inheritance']|null
 }
-export interface PromptProgramSourceInventoryV1 {
-  readonly schemaVersion:1
-  readonly encoding:'native-author-prompt-program-source-inventory-v1'
-    |'native-nexttavern-author-prompt-program-source-inventory-v1'
+export interface PromptProgramSourceInventoryV2 {
+  readonly schemaVersion:2
+  readonly encoding:'native-author-prompt-program-source-inventory-v2'
+    |'native-nexttavern-author-prompt-program-source-inventory-v2'
   readonly authority:'consumer-data-only'
   readonly policySha256:string
   readonly sessionId:string
@@ -175,14 +167,14 @@ export interface PromptProgramSourceInventoryV1 {
   readonly regexResources:readonly PromptProgramRegexResourceV1[]
   readonly bookEntries:readonly PromptProgramBookEntryV1[]
   readonly book:{readonly pointer:string;readonly rawBookSha256:string;readonly bookDisposition:string;
+    readonly consumerSource?:import('./tavern-lore-plan-types.mjs').TavernLoreImportSourceReferenceV1;
     readonly compilationSha256:string;readonly planSha256:string;readonly semanticPlanBindingSha256:string;
-    readonly currentNativeOverlaySha256:string|null;readonly currentNativeMembershipSha256?:string}
+    readonly currentNativeOverlaySha256:string|null;readonly currentNativeMembershipSha256?:string;
+    readonly boundBooks?:readonly import('./tavern-lore-plan-types.mjs').TavernLoreCatalogBookSourceReferenceV1[]}
   readonly currentRows:readonly TavernLoreSourceRowDataV1['ref'][]
   readonly editing:{readonly dataSha256:string;readonly revision:number;readonly headRef:TavernLoreEditsDataV1['headRef'];
     readonly journalRefs:TavernLoreEditsDataV1['journalRefs'];readonly effectiveOverlaySha256:string;
     readonly effectiveMembershipSha256?:string}
-  readonly unauthorized:readonly PromptProgramExcludedLeafV1[]
-  readonly unauthorizedSha256:string
   readonly authorityLimits:{readonly numericalInitialization:'not-authorized';readonly schemaScripts:'not-authorized';
     readonly nativeInput:'not-authorized';readonly protectedExecution:'not-authorized';
     readonly tokenizer:'delimiter-partition-only-not-AST-effect-or-success-proof'}
@@ -198,7 +190,7 @@ export interface PromptProgramSourceNotApplicableV1 {
   readonly sourceCode:'ACTIVE_SOURCE_MISSING'|'LEGACY_SOURCE_OUTSIDE_DOMAIN'|'STRUCTURED_VERSION_OUTSIDE_DOMAIN'
 }
 export type PromptProgramSourceCaptureV1={readonly kind:'captured-program-source';
-  readonly data:PromptProgramSourceInventoryV1;readonly assertCurrent:()=>void;
+  readonly data:PromptProgramSourceInventoryV2;readonly assertCurrent:()=>void;
   /** Live owner/reader identity only; does not prove DATA currency or grant Source/Native authority. */
   readonly assertOwnerFactsCurrent?:()=>void}
   |{readonly kind:'refused';readonly authority:'none';readonly diagnostics:readonly PromptProgramSourceDiagnosticV1[]}

@@ -23,6 +23,7 @@ export interface ContextEvent extends TaskEvent {
     content?: readonly TaskBlock[]
     message?: ContextMessage
     step?: number
+    reason?: {kind?:string;error?:{code?:string;message?:string}}
     interrupted?: boolean
     callId?: unknown
     agentPreset?: string
@@ -165,12 +166,15 @@ export function surfaceEvents(session: ContextSession) {
 // process. Bound memoization without changing rendered bytes on eviction.
 export const promptSafeAuthorText = (text: unknown) => String(text).replace(/\{\{(?:user|user_gender|char)\}\}|\{\{|\}\}/g,
   token => token==='{{'?'⟦':token==='}}'?'⟧':token)
-export function createStableRoleplayFence() {
+export function createStableRoleplayFence(options:{interpolate?:boolean}={}) {
   const entries=new Map<string, string>();let size=0
   return (body: string,kind: string)=>{
     const key=sha256(`${kind}\0${body}`),cached=entries.get(key)
     if(cached){entries.delete(key);entries.set(key,cached);return cached}
-    const fenced=fenceCardContent(promptSafeAuthorText(body),kind,{stable:true})
+    // Literal Native replacements already disable interpolation. Preserve
+    // their published tokens instead of escaping them a second time.
+    const text=options.interpolate===false?body:promptSafeAuthorText(body),
+      fenced=fenceCardContent(text,kind,{stable:true})
     entries.set(key,fenced);size+=fenced.length
     while(entries.size>64||size>8_000_000){const oldest=entries.keys().next().value!;size-=entries.get(oldest)!.length;entries.delete(oldest)}
     return fenced
@@ -228,8 +232,12 @@ export function readRoleplayActivity(session: ContextSession,preparation: Contex
   const storyStep=running&&!end&&stage==='story'&&phase?.data?.source?.stage==='story'&&typeof stepNumber==='number'&&Number.isSafeInteger(stepNumber)?stepNumber:null
   const proofBody=proof ? events[proof.data!.source!.storySeq as number] : undefined
   const provenSeq=proofBody?.type==='assistant/message'&&proofBody.data?.turn===turn&&visibleNodes.has(proofBody.seq)?proofBody.seq:null
+  const error=end?.data?.reason?.kind==='error'?end.data.reason.error:undefined
+  const providerRoleRejection=error?.code==='REQUEST_MATERIAL_ROLE_POSITION_REJECTED'
+    ?{code:error.code,reason:error.message?.slice(0,400)}:undefined
   return {schemaVersion:1,sessionId:session.id,turn,turnStartSeq:start?.seq??null,running,stage,
     ending:end?.data?.reason?.kind??null,startedAt:start?.time??null,
+    providerRoleRejection,
     phaseSeq:phase?.seq??null,storyStep,
     elapsedMs:start?Math.max(0,(running?now:end?.time??now)-Number(start.time)):0,observedAt:now,pendingPlayer,
     storySeq:provenSeq??(end?canonicalAssistantForTurn(session,turn)?.seq??null:null),

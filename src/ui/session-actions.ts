@@ -1,5 +1,6 @@
 import type {ConversationCatalog} from './conversation-projection.js'
 import type {ReaderSubmissionHandoff} from './reader-submission-handoff.js'
+import type {PendingOpeningSourceInput} from './pending-opening-source-host.js'
 
 export type SchemaTaskEditMode = 'retain' | 'replace' | 'clear'
 export interface SchemaTaskEditIntent {
@@ -16,6 +17,7 @@ interface BranchRequest<A extends string> extends Record<string, unknown> {actio
 interface BranchResult extends SaveReply {
   conversations?: ConversationCatalog
   operationId?: string
+  expectedRevision?: string
   status?: string
   operationState?: string
   childSessionId?: string
@@ -61,6 +63,7 @@ interface ActionDependencies {
   acceptConversations(value: ConversationCatalog): void
   loadConversations(): Promise<unknown>
   readerHandoff?: Pick<ReaderSubmissionHandoff,'capture'>
+  startPendingOpeningSource?(input:PendingOpeningSourceInput):{dispose():void}
   toast(text: string): void
   fetch?: typeof globalThis.fetch
   storage?: Pick<Storage, 'getItem' | 'setItem' | 'key' | 'length'> & Partial<Pick<Storage, 'removeItem'>>
@@ -79,6 +82,7 @@ export function createRoleplayActions({sessionsService,
     acceptConversations,
     loadConversations,
     readerHandoff,
+    startPendingOpeningSource,
     toast,
     fetch=globalThis.fetch,
     storage,
@@ -220,8 +224,18 @@ export function createRoleplayActions({sessionsService,
   // Keep an unresolved write's identity across button retries. A lost response
   // must never be interpreted as permission to reserve another child.
   const cleanPreparations=new Map<string,{operationId:string;revision:string}>()
-  const prepareCleanWorldline = (sessionId:string) => withSession(sessionId,async()=>{
-    let inspection=cleanPreparations.get(sessionId)
+  const rememberCleanPreparation = (recoveryKey:string,status:BranchResult) => {
+    if(status.status==='prepared'&&status.operationId&&status.expectedRevision)
+      cleanPreparations.set(recoveryKey,{operationId:status.operationId,revision:status.expectedRevision})
+  }
+  const readCleanWorldline = async (sessionId:string) => {
+    const status=await branchRequest({action:'current-clean-branch-status',sessionId})
+    if(status.status==='ready'&&status.childSessionId)return {childSessionId:status.childSessionId}
+    if(status.status==='prepared')return {error:status.error??'干净世界线尚未就绪，原输入仍保留。'}
+    return null
+  }
+  const prepareCleanWorldline = (sessionId:string,recoveryKey=sessionId) => withSession(sessionId,async()=>{
+    let inspection=cleanPreparations.get(recoveryKey)
     if(!inspection) {
       try{
         const observed=await branchRequest({action:'inspect-clean-branch',sessionId})
@@ -232,7 +246,7 @@ export function createRoleplayActions({sessionsService,
           throw new Error('当前世界线尚无已完成回合。请保留输入，切换兼容渠道后新建对话并重新载入角色卡。')
         throw error
       }
-      cleanPreparations.set(sessionId,inspection)
+      cleanPreparations.set(recoveryKey,inspection)
     }
     // The server owns diagnosis, source capture and child reservation. Retrying
     // a lost response keeps this operation identity; it never replays the input.
@@ -241,33 +255,44 @@ export function createRoleplayActions({sessionsService,
       prepared=await retryBranchMutation({action:'prepare-clean-branch',sessionId,
         operationId:inspection.operationId,expectedRevision:inspection.revision})
     }catch(error) {
-      if(Number.isFinite(errorDetails(error).status)&&Number(errorDetails(error).status)<500) {
-        cleanPreparations.delete(sessionId)
-        throw error
+      if(errorDetails(error).message==='CLEAN_BRANCH_INPUT_CHANGED') {
+        cleanPreparations.delete(recoveryKey)
+        throw new Error('失败回合已变化。请从当前恢复卡重新准备。')
       }
       // The read can recover a ready child even when every write response was
-      // lost. Otherwise retain the identity for the player's next explicit retry.
+      // lost. A business failure can also leave a reserved child to resume.
       try {prepared=await branchRequest({action:'clean-branch-status',sessionId,operationId:inspection.operationId})}
-      catch(statusError) {prepared=(errorDetails(statusError).payload as BranchResult|null)??{}}
+      catch(statusError) {
+        prepared=(errorDetails(statusError).payload as BranchResult|null)??{}
+        if(prepared.error==='CLEAN_BRANCH_OPERATION_UNAVAILABLE') {
+          const current=await branchRequest({action:'current-clean-branch-status',sessionId}).catch(()=>null)
+          if(current?.status==='ready'||current?.status==='prepared')prepared=current
+          else if(current&&Number(errorDetails(error).status)<500) {
+            cleanPreparations.delete(recoveryKey)
+            throw error
+          }
+        }
+      }
       if(prepared.status==='failed') {
-        cleanPreparations.delete(sessionId)
-        throw new Error(prepared.error??'干净世界线准备已失败。请保留输入并核对世界线列表后重新准备。')
+        cleanPreparations.delete(recoveryKey)
+        throw new Error(prepared.error??'干净世界线准备已失败。原输入仍保留，可以重新准备。')
       }
       if(prepared.status!=='ready') {
-        const unknown:ActionError=new Error('准备结果尚未确认。请先核对世界线列表，再点击重试同一操作；原输入仍保留：'+String(errorDetails(error).message??error))
+        rememberCleanPreparation(recoveryKey,prepared)
+        const unknown:ActionError=new Error('准备结果尚未确认。可点击重试同一操作，原输入仍保留：'+String(errorDetails(error).message??error))
         unknown.operationStateUnknown=true
         throw unknown
       }
     }
     if(prepared.status!=='ready'||!prepared.childSessionId)
-      throw new Error(prepared.error??'干净世界线尚未就绪，请保留输入并稍后核对世界线列表')
-    cleanPreparations.delete(sessionId)
+      throw new Error(prepared.error??'干净世界线尚未就绪。原输入仍保留，请稍后重试。')
+    cleanPreparations.delete(recoveryKey)
     let refreshWarning:string|undefined
     try{
       await sessionsService.refresh()
       await loadConversations()
     }catch{
-      refreshWarning='干净世界线已准备，但列表刷新失败。请刷新世界线列表或页面后切换，无需再次准备。'
+      refreshWarning='干净世界线已准备，世界线列表刷新失败。仍可直接切换。'
     }
     invalidateState(sessionId)
     invalidateState(prepared.childSessionId)
@@ -684,9 +709,12 @@ export function createRoleplayActions({sessionsService,
       const childId = observed.childSessionId
       if (!childId) throw new Error('开场操作缺少会话标识；已停止提交，请核对操作状态')
       if (observed.status === 'pending') {
-        const settled = await waitForBranchOperation(operationId,
-          15 * 60 * 1000,{openingRetryChildId:childId})
-        assertOpeningChild(settled,childId)
+        const sourceHost=startPendingOpeningSource?.({sourceSessionId,childSessionId:childId,operationId})
+        try {
+          const settled = await waitForBranchOperation(operationId,
+            15 * 60 * 1000,{openingRetryChildId:childId})
+          assertOpeningChild(settled,childId)
+        } finally {sourceHost?.dispose()}
       }
       invalidateState(sourceSessionId)
       invalidateState(childId)
@@ -712,33 +740,36 @@ export function createRoleplayActions({sessionsService,
 
     // Once the server may have admitted generation, a lost response is not
     // permission to submit another model request or delete the reserved child.
-    let generated: BranchReply<string> | null = null
+    const sourceHost=startPendingOpeningSource?.({sourceSessionId,childSessionId:childId,operationId})
     try {
-      generated = await branchRequest({
-        action:'generate-opening', operationId, childSessionId:childId,
-      })
-    } catch (error) {
-      if (Number.isFinite(errorDetails(error).status) && Number(errorDetails(error).status) < 500) {
+      let generated: BranchReply<string> | null = null
+      try {
+        generated = await branchRequest({
+          action:'generate-opening', operationId, childSessionId:childId,
+        })
+      } catch (error) {
+        if (Number.isFinite(errorDetails(error).status) && Number(errorDetails(error).status) < 500) {
+          await openSessionPreservingView(sourceSessionId,childId)
+          throw error
+        }
+      }
+      if (generated) assertOpeningChild(generated,childId)
+      try {
+        if (generated?.status !== 'completed') {
+          const settled = await waitForBranchOperation(operationId,
+            15 * 60 * 1000,{openingRetryChildId:childId})
+          assertOpeningChild(settled,childId)
+        }
+        invalidateState(sourceSessionId)
+        invalidateState(childId)
+        await openSessionPreservingView(childId,sourceSessionId)
+        clearIndex()
+        return childId
+      } catch (error) {
         await openSessionPreservingView(sourceSessionId,childId)
         throw error
       }
-    }
-    if (generated) assertOpeningChild(generated,childId)
-    try {
-      if (generated?.status !== 'completed') {
-        const settled = await waitForBranchOperation(operationId,
-          15 * 60 * 1000,{openingRetryChildId:childId})
-        assertOpeningChild(settled,childId)
-      }
-      invalidateState(sourceSessionId)
-      invalidateState(childId)
-      await openSessionPreservingView(childId,sourceSessionId)
-      clearIndex()
-      return childId
-    } catch (error) {
-      await openSessionPreservingView(sourceSessionId,childId)
-      throw error
-    }
+    } finally {sourceHost?.dispose()}
   })
 
   const forkWithoutUserTurn = async ({ sourceSessionId, messageId }: {sourceSessionId: string; messageId?: string}) => {
@@ -761,8 +792,16 @@ export function createRoleplayActions({sessionsService,
     return childId
   }
 
-  const openNativeBranch = async (member: {sessionId?: string} | null | undefined) => {
+  const openNativeBranch = async (member: {sessionId?: string;draftText?:string} | null | undefined) => {
     if (!member?.sessionId) return
+    if(member.draftText) {
+      try {
+        const key=`dsh.conversation.${member.sessionId}`,saved=JSON.parse(localStorage.getItem(key)??'{}')
+        if(!saved.draft)localStorage.setItem(key,JSON.stringify({...saved,draft:member.draftText}))
+      } catch {
+        toast('草稿暂时未能填入。可返回原世界线的故障记录再次恢复。')
+      }
+    }
     await openSessionPreservingView(member.sessionId)
   }
 
@@ -773,6 +812,7 @@ export function createRoleplayActions({sessionsService,
       registerBranchOperation,
       retryBranchMutation,
       prepareCleanWorldline,
+      readCleanWorldline,
       repairActiveConversationDraft,
       openSessionPreservingView,
       createFirstTurnBranch,

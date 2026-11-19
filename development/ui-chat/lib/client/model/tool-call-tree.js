@@ -1,4 +1,5 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/model/tool-call-tree.ts; edit the TypeScript source.
+import { PartialArguments } from '@deepseek-ai/dsh-util-values';
 /** Fixed wire-safety ceiling for every recursive Tool call consumer. */
 export const MAX_TOOL_CALL_TREE_DEPTH = 256;
 function sameReferences(left, right) {
@@ -37,6 +38,7 @@ export class ToolCallTree {
                 parentCallId: data.parentCallId,
                 name: data.name,
                 argsRaw: JSON.stringify(data.arguments),
+                args: PartialArguments.fromObject(data.arguments),
                 turn: 0,
                 step: 0,
                 time: event.time,
@@ -63,6 +65,8 @@ export class ToolCallTree {
             time: event.time,
             callId: data.subCallId,
             parentCallId: data.parentCallId,
+            name: data.name,
+            args: started !== undefined && !('kind' in started) ? started.args : PartialArguments.fromObject(data.arguments),
             call: { name: data.name, argsRaw: JSON.stringify(data.arguments) },
             callTime: started?.time ?? null,
             content: data.content,

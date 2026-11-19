@@ -1,28 +1,16 @@
 import {jsonResponse} from './roleplay-state.js'
-import {requestData,mutationRequestData,TAVERN_LORE_EDITS_BOUNDS_V1} from './roleplay-tavern-lore-edits-data.js'
-import type {TavernLoreEditEditorDataV1,TavernLoreEditRefusalV1,TavernLoreEditResultV1,
-  TavernLoreEditObservationV1,TavernLoreMutationResultV2} from './roleplay-tavern-lore-edits-types.js'
-import type {TavernLoreEditorDataV1,TavernLoreEditorReplyV1,TavernLoreEditorRouteDependenciesV1,
+import {parseAuthorWorldbookEditorRequestV1} from './roleplay-author-worldbook-editor.js'
+import type {TavernLoreEditorRefusalV1,TavernLoreEditorReplyV1,TavernLoreEditorRouteDependenciesV1,
   TavernLoreEditorFailureDetailsV1,TavernLoreEditorSessionScopeV1,TavernLoreEditorCodeV1,TavernLoreEditorRequestV1}
   from './roleplay-tavern-lore-editor-types.js'
 
 const SID=/^[a-zA-Z0-9_-]{1,128}$/
 const preWriteCodes=new Set(['REQUEST_INVALID','REQUEST_DATA_INVALID','SOURCE_UNAVAILABLE','SOURCE_CHANGED',
   'SOURCE_IDENTITY_INVALID','DATA_BUDGET','REVISION_MISMATCH','ENTRY_LINK_INVALID','FIELDS_INVALID'])
-function editorView(editor:TavernLoreEditEditorDataV1):TavernLoreEditorDataV1 {
-  return {authority:'consumer-data-only',sessionId:editor.sessionId,sourceSha256:editor.sourceSha256,
-    dataSha256:editor.dataSha256,revision:editor.revision,entries:editor.entries.map(entry=>{
-      const {content:_sourceContentReference,...semantic}=entry.semantic
-      return {entryId:entry.entryId,rawEntryPointer:entry.rawEntryPointer,rawEntrySha256:entry.rawEntrySha256,
-        disposition:entry.disposition,semantic,contentText:entry.contentText,diagnosticCodes:entry.diagnosticCodes,
-        ...(entry.currentNativeMember?{currentNativeMember:entry.currentNativeMember}:{}),
-        fieldSources:entry.fieldSources.map(row=>({field:row.field,pointer:row.pointer,valueSha256:row.valueSha256,
-          disposition:row.disposition,...(row.currentNativeOrigin?{originKind:row.currentNativeOrigin.kind,
-            originSha256:row.currentNativeOrigin.refSha256}:{})}))}
-    })}
-}
-function refusalDetails(refusal:TavernLoreEditRefusalV1):TavernLoreEditorFailureDetailsV1 {
-  const unknown=refusal.diagnostics.some(d=>d.recovery||d.pending||d.code==='WRITE_UNKNOWN')
+function refusalDetails(refusal:TavernLoreEditorRefusalV1):TavernLoreEditorFailureDetailsV1 {
+  if(refusal.receipt)return {phase:'after-store',outcome:'edited-unconfirmed',receipt:refusal.receipt,refusal}
+  if(refusal.outcome)return {phase:'after-store',outcome:refusal.outcome,refusal}
+  const unknown=refusal.diagnostics.some(d=>d.recovery||d.code.endsWith('WRITE_UNKNOWN'))
   const noWrite=!unknown&&refusal.diagnostics.length>0&&refusal.diagnostics.every(d=>preWriteCodes.has(d.code))
   return {phase:'after-store',outcome:unknown?'unknown':noWrite?'no-write':'refused',refusal}
 }
@@ -31,7 +19,7 @@ function status(code:TavernLoreEditorCodeV1):number {
   if(code==='LORE_EDITOR_BODY_LIMIT'||code==='DATA_BUDGET')return 413
   if(code==='LORE_EDITOR_SESSION_UNAVAILABLE')return 404
   if(code==='WRITE_UNKNOWN'||code==='LORE_EDITOR_WRITE_UNKNOWN'||code==='LORE_EDITOR_READ_UNAVAILABLE'
-    ||code==='STORAGE_READ_FAILED'||code==='PENDING_INTENT'||code==='SOURCE_UNAVAILABLE')return 503
+    ||code==='STORAGE_READ_FAILED'||code==='AUTHOR_WORLDBOOK_WRITE_UNKNOWN'||code==='SOURCE_UNAVAILABLE')return 503
   return 409
 }
 function failed(code:TavernLoreEditorCodeV1,details:TavernLoreEditorFailureDetailsV1,
@@ -54,21 +42,16 @@ export function registerTavernLoreEditorRoutesV1(deps:TavernLoreEditorRouteDepen
     path:'/api/roleplay/tavern-lore-editor',methods:['GET','POST'],fetch:async request=>{
       let calledStore=false
       let attemptedWrite=false
-      let result:TavernLoreEditResultV1|TavernLoreMutationResultV2|TavernLoreEditObservationV1|undefined
+      let result:Awaited<ReturnType<typeof deps.store.observe>>|Awaited<ReturnType<typeof deps.store.edit>>|undefined
       try {
         const url=new URL(request.url)
         let body:TavernLoreEditorRequestV1|undefined
         if(request.method==='POST') {
           const text=await request.text()
-          if(Buffer.byteLength(text,'utf8')>TAVERN_LORE_EDITS_BOUNDS_V1.requestBytes)
+          if(Buffer.byteLength(text,'utf8')>1_048_576)
             return failed('LORE_EDITOR_BODY_LIMIT',{phase:'before-store',outcome:'no-write'},'世界书修改过大')
           try {
-            const raw:unknown=JSON.parse(text)
-            if(raw&&typeof raw==='object'&&'schemaVersion' in raw&&raw.schemaVersion===2) {
-              const mutation=mutationRequestData(raw)
-              if(mutation.mutation.kind!=='fields')throw Error('editor-fields-required')
-              body={...mutation,mutation:mutation.mutation}
-            }else body=requestData(raw)
+            body=parseAuthorWorldbookEditorRequestV1(JSON.parse(text))
           }
           catch {return failed('LORE_EDITOR_BODY_INVALID',{phase:'before-store',outcome:'no-write'},'世界书请求格式无效')}
         }
@@ -83,11 +66,9 @@ export function registerTavernLoreEditorRoutesV1(deps:TavernLoreEditorRouteDepen
           {phase:'before-store',outcome:'no-write'},'会话选择已变化，请重新加载')}
         calledStore=true
         attemptedWrite=body!==undefined
-        if(!body)result=deps.store.observe(scope.sessionId)
-        else if('mutation' in body)result=await deps.store.mutate(body,()=>{
+        result=!body?await deps.store.observe(scope.sessionId):await deps.store.edit(body,()=>{
           try {check();return true} catch {return false}
         })
-        else result=await deps.store.edit(body)
         // This assertion never retries or adds a write. An already durable edit
         // is an unconfirmed outcome after scope loss; preserve its exact fact.
         try {check()} catch {
@@ -98,7 +79,7 @@ export function registerTavernLoreEditorRoutesV1(deps:TavernLoreEditorRouteDepen
           return failed('LORE_EDITOR_SCOPE_CHANGED',details,'会话选择已变化；本次结果需重新确认')
         }
         if(result.kind==='refused')return failed(result.diagnostics[0]?.code??'STORAGE_READ_FAILED',refusalDetails(result))
-        const editor=editorView(result.editor)
+        const editor=result.editor
         if(editor.sessionId!==scope.sessionId)throw Error('editor-scope-mismatch')
         return jsonResponse(200,{schemaVersion:1,ok:true,editor,
           ...(result.kind==='edited-data'?{receipt:result.receipt}:{})} satisfies TavernLoreEditorReplyV1)

@@ -1,3 +1,4 @@
+import type {AuthorNativeLifecyclePacketV1} from './author-native-lifecycle.js'
 /** Current Reader Source DATA, live capture and mutation bridge contracts. */
 import type {AuthorNativeDiagnosticV1,AuthorNativeBindingV1,AuthorNativeSnapshotDataV1} from './author-native-helper-types.js'
 import type {TavernPromptDisplayPartV1} from './tavern-prompt-transform-types.mjs'
@@ -12,7 +13,8 @@ import type {MvuScopedMessageV1} from './tavern-mvu-scope-read-types.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {AuthorNativeCommandRequestV1,AuthorNativeCommandResultV1} from './roleplay-author-commands.js'
 import type {AuthorMessageBodyRequestV1,AuthorMessageEditResultV1} from './roleplay-author-message-edit-types.js'
-import type {ReaderMessageEditOriginV1} from 'dsh-nexttavern-session-format'
+import type {ReaderMessageEditOriginV1,ReaderRegexProducerV1} from 'dsh-nexttavern-session-format'
+import type {AuthorWorldbookHelperCaptureV1} from './roleplay-author-worldbook-types.js'
 
 export type ReaderMessageVariableTargetV1=Pick<MvuScopedMessageV1,
   'ownerSessionId'|'nativeSeq'|'messageId'|'messageVersionSha256'|'selectedVariant'>
@@ -42,7 +44,7 @@ export interface ReaderRegexDocumentInputV1 {
   readonly source:ReaderRegexDocumentSourceV1
   readonly documents:readonly {
     readonly regex:{readonly ordinal:number;readonly id:string;readonly pointer:string;
-      readonly descriptorSha256:string;readonly replacement:string}
+      readonly descriptorSha256:string;readonly replacement:string;readonly producer?:ReaderRegexProducerV1}
     readonly message:ReaderRegexDocumentMessageV1
     readonly replacementSpan:{readonly start:number;readonly end:number}
     /** Actual display replacement callback retained these Source literals and
@@ -56,6 +58,7 @@ export interface ReaderRegexDocumentOriginV1 {
   readonly source:ReaderRegexDocumentSourceV1
   readonly regex:{readonly ordinal:number;readonly id:string;readonly pointer:string;
     readonly descriptorSha256:string;readonly replacementSha256:string;
+    readonly producer?:ReaderRegexProducerV1;
     readonly htmlSpan:{readonly start:number;readonly end:number}}
   readonly message:ReaderRegexDocumentMessageV1
   readonly replacementSpan:{readonly start:number;readonly end:number}
@@ -113,6 +116,8 @@ export interface ReaderRegexDocumentSnapshotV1 extends AuthorNativeSnapshotDataV
   readonly readerVariables?:readonly ReaderMessageVariablesV1[]
 }
 export interface ReaderRegexDocumentReadFactsV1 {
+  readonly presetLibrary?:import('./community-preset-types.js').CommunityAuthorPresetCatalogV1
+  readonly characterLibrary?:import('./roleplay-author-character-library.js').AuthorCharacterLibraryPacketV1
   /** Only the EJS executor consumes this Source catalog, not the browser DTO. */
   readonly presetCatalog?:TavernEjsPresetCatalogV1
   readonly kind:'reader-regex-document-facts'
@@ -125,9 +130,7 @@ export interface ReaderRegexDocumentReadFactsV1 {
 export interface ReaderRegexDocumentBindingV1 extends AuthorNativeBindingV1 {
   readonly principal:'reader-regex-document'
 }
-export type ReaderOpeningVariantResultV1={readonly kind:'committed';readonly operationId:string;
-  readonly replayed:boolean;readonly changed:boolean;readonly navigation?:{readonly sessionId:string}}
-  |{readonly kind:'refused'|'unknown';readonly operationId:string;readonly code:string}
+export type ReaderOpeningVariantResultV1=import('./roleplay-opening-variants.js').OpeningVariantMutationResult
 /** Passed privately from the Reader owner to the canonical mutation owner. */
 export interface ReaderOpeningVariantCaptureV1 extends AuthorOpeningVariantCaptureV1 {
   readonly binding:ReaderRegexDocumentBindingV1
@@ -151,24 +154,37 @@ export interface ReaderCommandReplyV1 {
   readonly snapshot?:ReaderRegexDocumentSnapshotV1
 }
 export interface ReaderMessageBodyReplyV1 {readonly result:AuthorMessageEditResultV1}
+export interface ReaderWorldbookReadRequestV1 {
+  readonly name:string
+  readonly expectedDataSha256:string
+  readonly readRevision:number
+}
 export interface ReaderOrdinaryNamespaceRequestV1 {
   readonly operationId:string
   readonly readRevision:number
   readonly nextVariables:Readonly<import('./tavern-mvu-initvar.js').MvuJsonObject>
   readonly selector?:{readonly type:'message';readonly message_id?:number|'latest'}
+    |import('./roleplay-author-scope-owner.js').AuthorSharedScopeSelectorV1
 }
 export interface ReaderOrdinaryNamespaceReplyV1 {
-  readonly reply:import('./roleplay-author-chat-state-types.js').OrdinaryAuthorChatBatchCommitV3
+  readonly reply:import('./roleplay-author-browser-types.js').AuthorNativeNamespaceReplyV1
   readonly snapshot?:ReaderRegexDocumentSnapshotV1
 }
 export type ReaderRegexDocumentRequestV1=
+  |{readonly action:'reader-mvu-trial';readonly binding:ReaderRegexDocumentBindingV1;
+    readonly documentPlanSha256:string;readonly request:import('./roleplay-author-mvu-trial.js').AuthorMvuTrialRequestV1}
+  |{readonly action:'reader-generation';readonly binding:ReaderRegexDocumentBindingV1;
+    readonly documentPlanSha256:string;readonly request:ReaderAuthorGenerationRequestV1}
+  |{readonly action:'read-reader-worldbook';readonly binding:ReaderRegexDocumentBindingV1;
+    readonly documentPlanSha256:string;readonly request:ReaderWorldbookReadRequestV1}
+  |{readonly action:'wait-source-events';readonly binding:ReaderRegexDocumentBindingV1;readonly sourceCursor?:string}
   |{readonly action:'mutate-reader-namespace';readonly binding:ReaderRegexDocumentBindingV1;
     readonly documentPlanSha256:string;readonly request:ReaderOrdinaryNamespaceRequestV1}
   |{readonly action:'confirm-reader-namespace';readonly sessionId:string;
-    readonly operation:import('./roleplay-author-chat-state-types.js').OrdinaryAuthorChatBatchUpdateV3}
+    readonly operation:import('./roleplay-author-scope-owner.js').AuthorOrdinaryNamespaceOperationV1}
   |{readonly action:'retry-reader-namespace';readonly binding:ReaderRegexDocumentBindingV1;
     readonly documentPlanSha256:string;
-    readonly operation:import('./roleplay-author-chat-state-types.js').OrdinaryAuthorChatBatchUpdateV3}
+    readonly operation:import('./roleplay-author-scope-owner.js').AuthorOrdinaryNamespaceOperationV1}
   |{readonly action:'mutate-reader-message-body';readonly binding:ReaderRegexDocumentBindingV1;
     readonly documentPlanSha256:string;readonly request:AuthorMessageBodyRequestV1}
   |{readonly action:'confirm-reader-message-body';readonly sessionId:string;readonly operationId:string}
@@ -180,15 +196,19 @@ export type ReaderRegexDocumentRequestV1=
     readonly documentPlanSha256:string;readonly request:OpeningVariantMutationRequestV1}
   |{readonly action:'release-reader-binding';readonly binding:ReaderRegexDocumentBindingV1}
   |{readonly action:'confirm-opening-variants';readonly sessionId:string;readonly operationId:string}
-  |{readonly action:'retry-opening-variants';readonly sessionId:string;readonly operationId:string}
+  |{readonly action:'retry-opening-variants';readonly sessionId:string;readonly operationId:string;readonly resumeSource?:true}
   |{readonly action:'save-reader-numerical';readonly binding:ReaderRegexDocumentBindingV1;
     readonly documentPlanSha256:string;readonly readRevision:number;readonly operation:MvuPlayerEditRequest}
   |{readonly action:'confirm-reader-numerical';readonly operation:MvuPlayerEditRequest}
   |{readonly action:'retry-reader-numerical';readonly operation:MvuPlayerEditRequest}
 export type ReaderRegexDocumentReplyV1=
+  |{readonly ok:true;readonly kind:'reader-mvu-trial';readonly result:import('./roleplay-author-mvu-trial.js').AuthorMvuTrialReplyV1}
+  |{readonly ok:true;readonly kind:'reader-generation';readonly result:ReaderAuthorGenerationReplyV1}
+  |{readonly ok:true;readonly kind:'reader-worldbook-read';readonly book:AuthorWorldbookHelperCaptureV1}
+  |{readonly ok:true;readonly kind:'source-events';readonly packet:AuthorNativeLifecyclePacketV1}
   |({readonly ok:true;readonly kind:'reader-namespace-mutated'}&ReaderOrdinaryNamespaceReplyV1)
   |{readonly ok:true;readonly kind:'reader-namespace-confirmed';
-    readonly receipt:import('./roleplay-author-chat-state-types.js').OrdinaryAuthorChatBatchReceiptV3}
+    readonly receipt:import('./roleplay-author-browser-types.js').AuthorNativeNamespaceReceiptV1}
   |({readonly ok:true;readonly kind:'reader-message-body-mutated'}&ReaderMessageBodyReplyV1)
   |({readonly ok:true;readonly kind:'reader-message-body-confirmed'}&ReaderMessageBodyReplyV1)
   |({readonly ok:true;readonly kind:'reader-commands-executed'}&ReaderCommandReplyV1)
@@ -198,6 +218,13 @@ export type ReaderRegexDocumentReplyV1=
   |({readonly ok:true;readonly kind:'reader-numerical-saved'}&ReaderNumericalReplyV1)
   |{readonly ok:false;readonly code:string}
 export interface ReaderRegexDocumentHostV1 {
+  mvuTrial?(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
+    request:import('./roleplay-author-mvu-trial.js').AuthorMvuTrialRequestV1,signal:AbortSignal)
+    :Promise<import('./roleplay-author-mvu-trial.js').AuthorMvuTrialReplyV1>
+  generation?(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
+    request:ReaderAuthorGenerationRequestV1,signal:AbortSignal):Promise<ReaderAuthorGenerationReplyV1>
+  readWorldbook?(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
+    request:ReaderWorldbookReadRequestV1,signal:AbortSignal):Promise<AuthorWorldbookHelperCaptureV1>
   mutateNamespace?(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
     request:ReaderOrdinaryNamespaceRequestV1,signal:AbortSignal):Promise<ReaderOrdinaryNamespaceReplyV1>
   mutateMessageBody?(binding:ReaderRegexDocumentBindingV1,documentPlanSha256:string,
@@ -210,6 +237,18 @@ export interface ReaderRegexDocumentHostV1 {
     readRevision:number,operation:MvuPlayerEditRequest,signal:AbortSignal):Promise<ReaderNumericalReplyV1>
   closeBinding(binding:ReaderRegexDocumentBindingV1):Promise<void>
 }
+export type ReaderAuthorGenerationRequestV1=
+  |({readonly action:'start'}&Omit<import('./roleplay-author-browser-types.js').AuthorNativeGenerateRawRequestV1,'realmId'>)
+  |{readonly action:'next';readonly operationId:string;readonly cursor:number}
+  |{readonly action:'stop';readonly operationId:string}
+  |{readonly action:'filter-result';readonly operationId:string;readonly invocationId:string;
+    readonly accepted:boolean;readonly error?:string;
+    readonly libraryReads?:readonly import('./author-native-helper-types.js').AuthorNativeRealmLibraryReadV1[]}
+export type ReaderAuthorGenerationReplyV1=
+  |{readonly kind:'generation-started';readonly operationId:string;readonly generationId:string}
+  |{readonly kind:'generation-update';readonly update:import('./roleplay-author-browser-types.js').AuthorNativeGenerationUpdateV1}
+  |{readonly kind:'generation-stopped';readonly stopped:boolean}
+  |{readonly kind:'generation-filter-acknowledged'}
 export type ReaderRegexDocumentRenderFragmentV1={readonly kind:'text';readonly html:string}
   |{readonly kind:'static-document';readonly html:string}
   |{readonly kind:'reader-document';readonly documentPlanSha256:string}
@@ -219,6 +258,6 @@ export interface ReaderRegexDocumentRenderV1 {
   readonly renderRevision:number
   readonly css:string
   readonly parts:readonly ({readonly key:string;readonly kind:'user';readonly text:string}
-    |{readonly key:string;readonly kind:'narrator';readonly html:string;
+    |{readonly key:string;readonly kind:'user'|'narrator';readonly html:string;
       readonly fragments?:readonly ReaderRegexDocumentRenderFragmentV1[]})[]
 }

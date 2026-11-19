@@ -17,9 +17,6 @@ function messageActionError(error: unknown): string {
     const editErrors: Record<string, string> = {
         SCHEMA_TASK_EDIT_ARTIFACT_CHANGED: '状态更新已在其他窗口改变，请关闭后重新打开编辑。',
         SCHEMA_TASK_EDIT_TARGET_REQUIRED: '这条回复已有附属状态更新，请重新打开编辑后选择保存方式。',
-        SCHEMA_TASK_EDIT_REPLACE_REQUIRED: '正文包含更新块，请选择“用正文中的更新块替换原操作”。',
-        SCHEMA_TASK_EDIT_UPDATE_REQUIRED: '要替换原操作，请在正文中写入合法的状态更新块。',
-        SCHEMA_TASK_EDIT_MALFORMED_UPDATE: '状态更新块格式有误，请修正后保存。',
         SCHEMA_TASK_EDIT_PENDING: '前一次编辑尚未完成，请稍后重试。',
         SCHEMA_TASK_EDIT_BASIS_CHANGED: '会话在保存期间发生变化，请核对草稿后重新保存。',
         SCHEMA_TASK_EDIT_NOT_APPLIED: '此世界线未完成上次保存，草稿已保留，请重新保存。',

@@ -90,18 +90,21 @@ export function projectStoryEvent(session, event) {
     const message = session.deriveEventMessage(event);
     if (!message || typeof message !== 'object' || !('content' in message) || !Array.isArray(message.content))
         return event;
+    const authorMetadata = 'authorMetadata' in message ? message.authorMetadata : undefined;
     if (event.type === 'user/message') {
-        if (event.data?.content === message.content)
+        if (event.data?.content === message.content && event.data?.authorMetadata === authorMetadata)
             return event;
-        return Object.freeze({ ...event, data: Object.freeze({ ...event.data, content: message.content }) });
+        return Object.freeze({ ...event, data: Object.freeze({ ...event.data, content: message.content,
+                ...authorMetadata ? { authorMetadata } : {} }) });
     }
     const original = event.data?.message;
     if (!original || typeof original !== 'object')
         return event;
-    if ('content' in original && original.content === message.content)
+    if ('content' in original && original.content === message.content
+        && ('authorMetadata' in original ? original.authorMetadata : undefined) === authorMetadata)
         return event;
     return Object.freeze({ ...event, data: Object.freeze({ ...event.data,
-            message: Object.freeze({ ...original, content: message.content }),
+            message: Object.freeze({ ...original, content: message.content, ...authorMetadata ? { authorMetadata } : {} }),
         }) });
 }
 /** A legacy immutable fixture has no projector; native projected reads need its generation. */

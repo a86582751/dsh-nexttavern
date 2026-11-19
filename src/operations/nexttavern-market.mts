@@ -62,6 +62,8 @@ export interface MarketFacts {
   manager: () => MarketManager | undefined
   /** This product's own durable references; the market's pnpm run is what relinks them. */
   references: Pick<PackagePreparationScheduler, 'settle' | 'state'>
+  /** Complete the profile graph when there is no upstream market install to relink it. */
+  relink?: () => Promise<'current' | 'linked' | 'lock-busy'>
   resolvePeerManifest?: PeerManifestResolver
   logger?: PreparationLogger
   now?: () => Date
@@ -130,8 +132,8 @@ async function round(facts: MarketFacts,
   }
   const installed = installedMarketVersion(facts.home, facts.profile)
   if (installed !== null) {
-    // Whoever installed this market owns its version. Reusing it is the whole
-    // contract here: no update, no reinstall, no version this product prefers.
+    // Preserve the installed market and complete the product's own package graph.
+    if (await facts.relink?.() === 'lock-busy') return {state: 'lock-busy'}
     facts.logger?.info(`NextTavern keeps the ${MARKET_PACKAGE} already installed at ${installed}`)
     return {state: 'current'}
   }

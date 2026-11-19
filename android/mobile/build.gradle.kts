@@ -5,12 +5,14 @@ android {
     compileSdk = 36
     buildToolsVersion = "36.0.0"
     defaultConfig {
+        // Keep versionCode monotonic across public ARM64 builds; the earlier
+        // internal mobile preview used 1. Never reuse a published code.
         applicationId = "app.nexttavern.android"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.0.1-mobile-dev"
-        resValue("string", "app_name", "NextTavern Mobile 开发版")
+        versionCode = 2
+        versionName = "0.3.0-rc.1"
+        resValue("string", "app_name", "NextTavern Mobile 预览版")
     }
     flavorDimensions += "runtime"
     productFlavors {

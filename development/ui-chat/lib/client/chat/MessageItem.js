@@ -1,7 +1,7 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/chat/MessageItem.tsx; edit the TypeScript source.
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { Fragment, memo, useEffect, useMemo, useState } from 'react';
-import { fileExtension, FileTypeIcon, fileSizeText, JsonBlock, projectUserText, StateDot } from '@deepseek-ai/dsh-client-ui-primitives';
+import { fileExtension, FileTypeIcon, fileSizeText, JsonBlock, StateDot } from '@deepseek-ai/dsh-client-ui-primitives';
 import { CompactionItem } from "./CompactionItem.js";
 import { ContextInjectionRow } from "./ContextInjectionRow.js";
 import { MessageIconActions } from "./MessageIconActions.js";
@@ -87,7 +87,7 @@ function TurnMaxTokensItem({ t }) {
     return (_jsxs("div", { className: css.turnErrorRow, role: "status", children: [_jsx(StateDot, { state: "warning", className: css.turnErrorDot }), _jsxs("div", { className: css.turnErrorCopy, children: [_jsx("span", { className: css.maxTokensTitle, children: t('message.maxTokens') }), _jsx("span", { className: css.turnErrorMessage, children: t('message.maxTokens.hint') })] })] }));
 }
 /** Right-aligned bubble shared by user and steering rows. */
-function UserStyleBubble({ content, renderMessageImages, actions, pending = false, echo = false, referenceLabels = [], skillNames = [], previewAttachments, references, t, }) {
+function UserStyleBubble({ content, renderMessageImages, actions, pending = false, echo = false, referenceLabels = [], skillNames = [], previewAttachments, renderFactorySlot, interactive = false, t, }) {
     const { text, attachments: contentAttachments, rest } = contentParts(content);
     const attachments = previewAttachments ?? contentAttachments;
     const compactImages = attachments.length > 1;
@@ -100,7 +100,8 @@ function UserStyleBubble({ content, renderMessageImages, actions, pending = fals
                                     compact: compactImages,
                                 }) }, `image:${index}`))
                             : (_jsxs("span", { className: css.fileCard, title: attachment.file.name, children: [_jsx(FileTypeIcon, { path: attachment.file.name, className: css.fileIcon }), _jsxs("span", { className: css.fileContent, children: [_jsx("span", { className: css.fileName, children: attachment.file.name }), _jsx("span", { className: css.fileMeta, children: [fileExtension(attachment.file.name).toUpperCase().slice(0, 8), fileSizeText(attachment.file.bytes)]
-                                                    .filter(Boolean).join(' ') })] })] }, `file:${index}`))) })), showBubble && _jsxs("div", { className: css.bubble, children: [projectUserText(text, referenceLabels, skillNames, 'skill', references), rest.map((block, i) => _jsx(JsonBlock, { label: t('message.extraBlock'), payload: block, truncatedLabel: truncated }, i))] }), referenceLabels.length > 0 && (_jsx("div", { className: css.referenceSummary, children: t('message.referenceSummary', { labels: referenceLabels.join(t('message.referenceSeparator')) }) }))] }), actions?.(text)] }));
+                                                    .filter(Boolean).join(' ') })] })] }, `file:${index}`))) })), showBubble && _jsxs("div", { className: css.bubble, children: [renderFactorySlot('conversation.user.text', { text,
+                                facts: { sessionLabels: referenceLabels, skillNames }, interactive }), rest.map((block, i) => _jsx(JsonBlock, { label: t('message.extraBlock'), payload: block, truncatedLabel: truncated }, i))] }), referenceLabels.length > 0 && (_jsx("div", { className: css.referenceSummary, children: t('message.referenceSummary', { labels: referenceLabels.join(t('message.referenceSeparator')) }) }))] }), actions?.(text)] }));
 }
 /**
  * Render one Host-authoritative pending steering item with the same visual
@@ -108,8 +109,8 @@ function UserStyleBubble({ content, renderMessageImages, actions, pending = fals
  * @param props - Pending message content and conversation translator.
  * @returns the pending steering bubble.
  */
-export function PendingSteeringBubble({ content, renderMessageImages, t }) {
-    return (_jsx(UserStyleBubble, { content: content, renderMessageImages: renderMessageImages, pending: true, t: t, actions: text => (_jsx(MessageIconActions, { text: text, clock: "start", className: css.actions, t: t })) }));
+export function PendingSteeringBubble({ content, renderMessageImages, renderFactorySlot, t }) {
+    return (_jsx(UserStyleBubble, { content: content, renderMessageImages: renderMessageImages, renderFactorySlot: renderFactorySlot, pending: true, t: t, actions: text => (_jsx(MessageIconActions, { text: text, clock: "start", className: css.actions, t: t })) }));
 }
 /**
  * Render one local transcript or steering submission echo with the same
@@ -119,7 +120,7 @@ export function PendingSteeringBubble({ content, renderMessageImages, t }) {
  * @param props - the session snapshot's pending submission and render seats.
  * @returns the echoed user bubble.
  */
-export function PendingSubmissionBubble({ submission, renderMessageImages, t }) {
+export function PendingSubmissionBubble({ submission, renderMessageImages, renderFactorySlot, t }) {
     const content = useMemo(() => (submission.text === '' ? [] : [{ type: 'text', text: submission.text }]), [submission.text]);
     const previewAttachments = useMemo(() => submission.attachments.map(attachment => attachment.type === 'image'
         ? {
@@ -134,7 +135,7 @@ export function PendingSubmissionBubble({ submission, renderMessageImages, t }) 
             },
         }
         : { type: 'file', file: attachment.value }), [submission.attachments]);
-    return (_jsx(UserStyleBubble, { content: content, previewAttachments: previewAttachments, renderMessageImages: renderMessageImages, pending: submission.placement === 'steering', echo: true, t: t, actions: text => (_jsx(MessageIconActions, { text: text, time: submission.time, clock: "start", className: css.actions, t: t })) }));
+    return (_jsx(UserStyleBubble, { content: content, previewAttachments: previewAttachments, renderMessageImages: renderMessageImages, renderFactorySlot: renderFactorySlot, pending: submission.placement === 'steering', echo: true, t: t, actions: text => (_jsx(MessageIconActions, { text: text, time: submission.time, clock: "start", className: css.actions, t: t })) }));
 }
 /** User and admitted-steering keyed Chat renderer. */
 export const UserMessageNodeView = memo(function UserMessageNodeView(props) {
@@ -145,9 +146,9 @@ export const UserMessageNodeView = memo(function UserMessageNodeView(props) {
 export const SteeringMessageNodeView = memo(function SteeringMessageNodeView(props) {
     return _jsx(UserMessageBubble, { ...props });
 });
-function UserMessageBubble({ node, renderMessageImages, openFile, openSkill, extraActions, t }) {
+function UserMessageBubble({ node, renderMessageImages, renderFactorySlot, extraActions, t }) {
     const data = node.data;
-    return (_jsx(UserStyleBubble, { content: data.content, references: { openFile, openSkill }, renderMessageImages: renderMessageImages, ...data.referenceLabels === undefined ? {} : { referenceLabels: data.referenceLabels }, ...data.skillNames === undefined ? {} : { skillNames: data.skillNames }, t: t, actions: text => (_jsx(MessageIconActions, { text: text, time: data.time, clock: "start", className: css.actions, extraActions: extraActions?.(text), t: t })) }));
+    return (_jsx(UserStyleBubble, { content: data.content, interactive: true, renderMessageImages: renderMessageImages, renderFactorySlot: renderFactorySlot, ...data.referenceLabels === undefined ? {} : { referenceLabels: data.referenceLabels }, ...data.skillNames === undefined ? {} : { skillNames: data.skillNames }, t: t, actions: text => (_jsx(MessageIconActions, { text: text, time: data.time, clock: "start", className: css.actions, extraActions: extraActions?.(text), t: t })) }));
 }
 /** Injected-context keyed Chat renderer. */
 export const ContextMessageNodeView = memo(function ContextMessageNodeView({ node, t }) {

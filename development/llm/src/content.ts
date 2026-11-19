@@ -210,7 +210,7 @@ export function projectFilesToText(
   return messages.map((message) => {
     if(isRequestMaterialText(message))return message
     const content = replaceFilesWithHandles(message.content, resolvePath)
-    return content === message.content ? message : { ...message, content }
+    return content === message.content ? message : { ...message, content } as RequestMessage
   })
 }
 
@@ -276,7 +276,7 @@ export function projectOffloadedImages(
   return messages.map((message) => {
     if(isRequestMaterialText(message))return message
     const content = replaceOffloadedImages(message.content, placeholder)
-    return content === message.content ? message : { ...message, content }
+    return content === message.content ? message : { ...message, content } as RequestMessage
   })
 }
 
@@ -370,7 +370,7 @@ export function projectImagesForTextModel(messages: readonly RequestMessage[]): 
   return messages.map((message) => {
     if(isRequestMaterialText(message))return message
     const content = replaceImagesForTextModel(message.content)
-    return content === message.content ? message : { ...message, content }
+    return content === message.content ? message : { ...message, content } as RequestMessage
   })
 }
 

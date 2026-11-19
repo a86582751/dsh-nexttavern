@@ -1,5 +1,5 @@
-/** Trusted readonly initial/cache producer. The supplier owns all actual reads,
- * currentness, cancellation and protected rendering; these outputs grant none. */
+/** Captured initial/cache producer. The supplier owns actual reads and the
+ * request-local scratch handoff. These outputs grant no persistent writer. */
 import {recordSha256} from './roleplay-data.js'
 import {isCurrentPromptVariableInputV2} from './roleplay-tavern-prompt-variables-data.js'
 import type {TavernPromptVariableInputV2,TavernPromptVariableResultV2,TavernPromptVariablePacketV2}
@@ -148,7 +148,10 @@ async function prepareVariables(raw:unknown,producer:TavernPromptVariableProduce
           renderedBytes+=Buffer.byteLength(output.renderedText,'utf8')
           if(renderedBytes>TAVERN_PROMPT_VARIABLE_BOUNDS_V1.renderedTotalBytes)promptFail('PROMPT_INITIAL_RENDER_TOTAL_LIMIT')
           const parsed=parsePromptInitialDataV1(output.renderedText)
-          values=mergePromptInitialDataV1(values,parsed.data)
+          // The source template's scratch writes precede its returned JSON.
+          // Merge that JSON onto the actual post-render stage, then hand the
+          // new seed to the next template without replaying earlier writes.
+          values=mergePromptInitialDataV1(producer.getInitialValues?.(prior)??values,parsed.data)
           const entryRead=promptRead('catalog',entry.rawEntryPointer,recordSha256(entry),entry.provenance)
           const renderRead=promptRead('render',request.requestSha256,output.renderedTextSha256,output.renderRef)
           initialReads.push(entryRead,...output.reads,renderRead)
@@ -158,6 +161,8 @@ async function prepareVariables(raw:unknown,producer:TavernPromptVariableProduce
             renderedText:output.renderedText,renderedTextSha256:output.renderedTextSha256,parsedData:parsed.data,
             dataSha256:recordSha256(parsed.data),mergedValuesSha256:recordSha256(values),requestSha256:request.requestSha256,
             reads:output.reads,renderRef:output.renderRef})
+          producer.bindInitial?.(promptBinding('initial',initialOwner,values,{sourceSha256:input.source.sourceSha256,
+            catalogSha256:catalog.catalogSha256,phase:'reset-or-prior-catalog-merges',merges}))
           if(initialReads.length>TAVERN_PROMPT_VARIABLE_BOUNDS_V1.readDependencies)promptFail('PROMPT_VARIABLE_READ_LIMIT')
           checkpoint()
         }

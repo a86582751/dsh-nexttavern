@@ -6,7 +6,7 @@ export const TEMPLATE_LIMITS_V1 = Object.freeze({ sourceChars: 16384, outputChar
     workerInputBytes: 8_388_608, workerInputNodes: 131_072, workerInputDepth: 48,
     outputBytes: 262_144, dataArrayElements: 4096,
     vmMemoryBytes: 16 * 1024 * 1024, vmStackBytes: 512 * 1024, vmDeadlineMs: 250, parentDeadlineMs: 1500,
-    readDependencies: 128, activationProposals: 64, helperCalls: 4096, randomCalls: 4096, scopes: 7, loreBindings: 4096,
+    readDependencies: 128, activationProposals: 64, helperCalls: 4096, randomCalls: 4096, loreBindings: 4096,
     variablePathBytes: 4096, variablePathDepth: 48, helperArgumentBytes: 65_536,
     promiseJobs: 4096, templateEvaluations: 128,
     cumulativeSourceBytes: 262_144, cumulativeCompiledBytes: 262_144, cumulativeOutputBytes: 262_144,
@@ -61,7 +61,8 @@ export function validateTemplateSnapshotV1(input) {
     const value = cloneTemplateEnvelopeV1(input, { bytes: 'snapshotBytes', nodes: 'snapshotNodes', depth: 'snapshotDepth' });
     templateExact(value, ['schemaVersion', 'encoding', 'authority', 'sessionId', 'branchId', 'revision', 'turnId', 'attemptId',
         'packageSha256', 'sourceSnapshotSha256', 'stateSnapshotSha256', 'defaultVariableScope', 'scopes', 'scopesSha256',
-        'lore', 'loreSha256', 'clockEpochMs', 'randomSeed', 'randomSeedSha256', 'snapshotSha256']);
+        'lore', 'loreSha256', 'clockEpochMs', 'randomSeed', 'randomSeedSha256', 'snapshotSha256',
+        ...templateObject(value) && Object.hasOwn(value, 'worldInfo') ? ['worldInfo'] : []]);
     if (value.schemaVersion !== 1 || value.encoding !== 'owned-template-frozen-snapshot-v1'
         || value.authority !== 'consumer-data-only' || !integer(value.revision))
         templateFail('TEMPLATE_SNAPSHOT_INVALID');
@@ -72,8 +73,7 @@ export function validateTemplateSnapshotV1(input) {
         'randomSeedSha256', 'snapshotSha256'])
         if (!templateHash(value[key]))
             templateFail('TEMPLATE_SNAPSHOT_HASH');
-    if (!scopes.includes(value.defaultVariableScope) || !Array.isArray(value.scopes)
-        || value.scopes.length > TEMPLATE_LIMITS_V1.scopes)
+    if (!scopes.includes(value.defaultVariableScope) || !Array.isArray(value.scopes))
         templateFail('TEMPLATE_SCOPE_INVALID');
     const known = new Set();
     for (const row of value.scopes) {
@@ -92,9 +92,10 @@ export function validateTemplateSnapshotV1(input) {
     for (const row of value.lore) {
         const hasLookup = templateObject(row) && Object.hasOwn(row, 'lookup');
         const hasDiagnostic = templateObject(row) && Object.hasOwn(row, 'readDiagnostic');
+        const hasWorldInfo = templateObject(row) && Object.hasOwn(row, 'worldInfo');
         templateExact(row, ['key', 'bookId', 'entryId', 'sourcePointer', 'sourceSnapshotSha256', 'content', 'contentSha256', 'activationAllowed',
-            ...hasLookup ? ['lookup'] : [], ...hasDiagnostic ? ['readDiagnostic'] : []]);
-        if (!templateId(row.key) || row.key.startsWith('missing-query-') || keys.has(row.key) || !templateHash(row.bookId) || !templateHash(row.entryId)
+            ...hasLookup ? ['lookup'] : [], ...hasDiagnostic ? ['readDiagnostic'] : [], ...hasWorldInfo ? ['worldInfo'] : []]);
+        if (!templateId(row.key) || row.key.startsWith('missing-query-') || keys.has(row.key) || !templateId(row.bookId) || !templateHash(row.entryId)
             || entries.has(row.entryId) || !pointer(row.sourcePointer) || row.sourceSnapshotSha256 !== value.sourceSnapshotSha256
             || typeof row.content !== 'string' || !templateHash(row.contentSha256) || schemaTextSha256(row.content) !== row.contentSha256
             || typeof row.activationAllowed !== 'boolean')
@@ -114,6 +115,36 @@ export function validateTemplateSnapshotV1(input) {
                 || !templateHash(row.readDiagnostic.projectionSha256))
                 templateFail('TEMPLATE_LORE_DIAGNOSTIC_INVALID');
         }
+        if (hasWorldInfo) {
+            const entry = row.worldInfo;
+            if (!templateObject(entry) || !integer(entry.uid) || typeof entry.world !== 'string' || typeof entry.comment !== 'string'
+                || typeof entry.content !== 'string' || !Array.isArray(entry.decorators) || !Array.isArray(entry.key)
+                || !Array.isArray(entry.keysecondary) || typeof entry.order !== 'number' || typeof entry.position !== 'number'
+                || typeof entry.depth !== 'number' || typeof entry.disable !== 'boolean' || typeof entry.constant !== 'boolean'
+                || typeof entry.vectorized !== 'boolean')
+                templateFail('TEMPLATE_WORLD_INFO_INVALID');
+        }
+    }
+    if (Object.hasOwn(value, 'worldInfo')) {
+        const catalog = value.worldInfo;
+        templateExact(catalog, ['schemaVersion', 'encoding', 'books', 'bindings', 'defaultBookId', 'authorsNoteDepth']);
+        if (catalog.schemaVersion !== 1 || catalog.encoding !== 'source-world-info-catalog-v1' || !Array.isArray(catalog.books)
+            || catalog.defaultBookId !== null && !templateId(catalog.defaultBookId) || !integer(catalog.authorsNoteDepth))
+            templateFail('TEMPLATE_WORLD_INFO_CATALOG_INVALID');
+        for (const book of catalog.books) {
+            templateExact(book, ['bookId', 'world']);
+            if (!templateId(book.bookId) || typeof book.world !== 'string')
+                templateFail('TEMPLATE_WORLD_INFO_CATALOG_INVALID');
+        }
+        const bindings = catalog.bindings;
+        templateExact(bindings, ['character', 'global', 'persona', 'characterExtra', 'chat']);
+        for (const key of ['character', 'global', 'characterExtra'])
+            if (!Array.isArray(bindings[key])
+                || !bindings[key].every(templateId))
+                templateFail('TEMPLATE_WORLD_INFO_CATALOG_INVALID');
+        for (const key of ['persona', 'chat'])
+            if (bindings[key] !== null && !templateId(bindings[key]))
+                templateFail('TEMPLATE_WORLD_INFO_CATALOG_INVALID');
     }
     if (typeof value.clockEpochMs !== 'number' || !Number.isSafeInteger(value.clockEpochMs) || Math.abs(value.clockEpochMs) > 8640000000000000
         || !templateId(value.randomSeed) || schemaTextSha256(value.randomSeed) !== value.randomSeedSha256) {
@@ -253,19 +284,24 @@ export function templateReadV1(snapshot, kind, key, scope, purpose) {
         return { kind, purpose, scope: row.scope, ownerId: row.ownerId, key, present: result.present, versionSha256: row.versionSha256,
             valueSha256: result.present ? recordSha256(result.value) : null, entryId: null, sourcePointer: null };
     }
-    if (key === null)
-        templateFail('TEMPLATE_LORE_INVALID');
+    if (key === null) {
+        if (purpose !== 'metadata-read')
+            templateFail('TEMPLATE_LORE_INVALID');
+        return { kind, purpose, scope: null, ownerId: null, key, present: true, versionSha256: snapshot.sourceSnapshotSha256,
+            valueSha256: snapshot.sourceSnapshotSha256, entryId: null, sourcePointer: null };
+    }
     const row = templateLoreBindingV1(snapshot, key);
     return { kind, purpose, scope: null, ownerId: null, key, present: !!row, versionSha256: snapshot.sourceSnapshotSha256,
-        valueSha256: row?.contentSha256 ?? null, entryId: row?.entryId ?? null, sourcePointer: row?.sourcePointer ?? null };
+        valueSha256: row ? (purpose === 'metadata-read' ? snapshot.sourceSnapshotSha256 : row.contentSha256) : null,
+        entryId: row?.entryId ?? null, sourcePointer: row?.sourcePointer ?? null };
 }
-export function templateActivationV1(snapshot, key) {
+export function templateActivationV1(snapshot, key, mode) {
     const row = templateLoreBindingV1(snapshot, key);
-    if (!row || !row.activationAllowed)
+    if (!row || (mode ? !row.worldInfo : !row.activationAllowed))
         return null;
     return { schemaVersion: 1, kind: 'activate-lore-entry', entryId: row.entryId, bookId: row.bookId, sourcePointer: row.sourcePointer,
         contentSha256: row.contentSha256, sourceSnapshotSha256: row.sourceSnapshotSha256, baseSnapshotSha256: snapshot.snapshotSha256,
-        branchId: snapshot.branchId, turnId: snapshot.turnId, attemptId: snapshot.attemptId };
+        branchId: snapshot.branchId, turnId: snapshot.turnId, attemptId: snapshot.attemptId, ...mode ? { mode } : {} };
 }
 export function validateTemplateInjectionEffectsV1(input) {
     if (!Array.isArray(input) || !input.length || input.length > TEMPLATE_LIMITS_V1.injectionEffects) {

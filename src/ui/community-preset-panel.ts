@@ -1,7 +1,7 @@
 import type * as ReactAPI from 'react'
 import type {CommunityPresetPolicy,CommunitySelection} from '../core/community-presets.js'
 import type {CommunityJson,CommunityPresetPrompt,CommunityPresetV1} from '../core/community-preset-types.js'
-import {communityBetweenOptions} from '../core/community-preset-types.js'
+import {communityBetweenOptions,communityPresetControlStateV1,communityPresetParameterValueV1} from '../core/community-preset-types.js'
 export {communityBetweenOptions} from '../core/community-preset-types.js'
 
 export interface CommunityPanelDependencies {
@@ -55,6 +55,12 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
     const current=policy&&(scope==='global'?policy.global:policy.effective)
     const working=busy||!!readingFile
     const api=`/api/roleplay/community-presets?sessionId=${encodeURIComponent(sessionId)}`
+    const loadPreset=async(id:string,signal?:AbortSignal)=>{
+      const ticket=++presetSequence.current
+      if(!id){setPreset(null);return}
+      const value=await jsonFetch<{preset:CommunityPresetV1}>(`${api}&presetId=${encodeURIComponent(id)}`,{signal})
+      if(ticket===presetSequence.current)setPreset(value.preset)
+    }
     const load=async(initial=false)=>{
       const ticket=++sequence.current;abort.current?.abort();const controller=new AbortController();abort.current=controller
       setBusy(true);setError('')
@@ -63,7 +69,7 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
         if(ticket!==sequence.current)return
         setPolicy(value);setPreview(null)
         if(initial)setSelected((scope==='global'?value.global:value.effective).presetId??'')
-        if(value.preset?.id===selected)setPreset(value.preset)
+        if(!initial)await loadPreset(selected,controller.signal)
       }catch(e){if(ticket===sequence.current)setError(message(e))}
       finally{if(ticket===sequence.current)setBusy(false)}
     }
@@ -74,15 +80,13 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
     },[sessionId,scope])
     React.useEffect(()=>{onLocked?.(working||!!draft);return()=>onLocked?.(false)},[working,draft,onLocked])
     React.useEffect(()=>{
-      const ticket=++presetSequence.current,controller=new AbortController()
-      if(!selected){setPreset(null);return()=>controller.abort()}
-      if(policy?.preset?.id===selected){setPreset(policy.preset);return()=>controller.abort()}
+      const controller=new AbortController()
       setPreset(null)
-      void jsonFetch<{preset:CommunityPresetV1}>(`${api}&presetId=${encodeURIComponent(selected)}`,{signal:controller.signal})
-        .then(value=>{if(ticket===presetSequence.current)setPreset(value.preset)})
-        .catch(e=>{if(ticket===presetSequence.current&&!controller.signal.aborted)setError(message(e))})
-      return()=>controller.abort()
-    },[selected,sessionId,scope,policy?.revision])
+      void loadPreset(selected,controller.signal).catch(e=>{
+        if(!controller.signal.aborted)setError(message(e))
+      })
+      return()=>{presetSequence.current++;controller.abort()}
+    },[selected,sessionId,scope])
     const mutate=async(body:Record<string,unknown>,clearDraft=false)=>{
       if(!policy||busy)return null
       const ticket=++sequence.current;setBusy(true);setError('')
@@ -96,7 +100,8 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
         if(body.action==='delete'){setSelected('');setPreset(null)}
         if(body.action==='select')setImportStatus('社区预设已应用，将用于后续生成。')
         if(body.action==='inherit')setImportStatus('已沿用全局社区预设。')
-        if(value.preset?.id===selected)setPreset(value.preset)
+        if(body.action==='update'||body.action==='profile')await loadPreset(selected)
+        if(ticket!==sequence.current)return null
         toast(mutationNotices[String(body.action)]??'社区预设设置已保存');return value
       }catch(e){
         if(ticket===sequence.current)setError(body.fileName?`「${String(body.fileName)}」导入失败：${message(e)}`:message(e))
@@ -114,18 +119,24 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
     const valueFor=(key:string,fallback='')=>values[key]??fallback
     const setValue=(key:string,value:string)=>setValues(before=>({...before,[key]:value}))
     const configure=(patch:Record<string,unknown>)=>void mutate({action:'configure',patch})
-    const features=object(current?.features[preset?.profile.id??''])
+    const scopedPreset=scope==='global'?policy?.globalPreset:policy?.preset
+    const workingPreset=current?.presetId===selected&&scopedPreset?.id===selected?scopedPreset
+      :current?.presetId===selected&&current.current?.id===selected?current.current:preset
+    const controlAnswers=workingPreset?communityPresetControlStateV1(workingPreset):{}
+    const promptEnabled=(prompt:CommunityPresetPrompt)=>current?.prompts[prompt.identifier]
+      ??workingPreset?.prompts.find(row=>row.identifier===prompt.identifier)?.enabled??prompt.enabled
+    const features=object(current?.features[workingPreset?.profile.id??''])
     const feature=(path:string[])=>{
-      let saved:CommunityJson|undefined=features,base:CommunityJson|undefined=object(preset?.profile.configuration[preset?.profile.id??''])
+      let saved:CommunityJson|undefined=features,base:CommunityJson|undefined=object(workingPreset?.profile.configuration[workingPreset?.profile.id??''])
       for(const key of path){saved=object(saved)[key];base=object(base)[key]}
       return saved??base
     }
     const setFeature=(path:string[],value:CommunityJson)=>{
-      if(!preset||!current)return
+      if(!workingPreset||!current)return
       const next=structuredClone(features);let cursor=next
       for(const key of path.slice(0,-1)){const child={...object(cursor[key])};cursor[key]=child;cursor=child}
       cursor[path.at(-1)!]=value
-      configure({features:{...current.features,[preset.profile.id]:next}})
+      configure({features:{...current.features,[workingPreset.profile.id]:next}})
     }
     const importFile=async(file:File|undefined,plans=false)=>{
       if(!file)return
@@ -174,14 +185,14 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
     }
     const promptRows=showPrompts?orderedPrompts().filter(prompt=>(showHidden||!prompt.hidden)
       &&(!query||`${prompt.name} ${prompt.identifier} ${prompt.content}`.toLowerCase().includes(query.toLowerCase()))):[]
-    const profileGroups=showFeatures?preset?.profile.groups.map(group=>h('fieldset',{key:group.id,disabled:working||!!draft},
+    const profileGroups=showFeatures?workingPreset?.profile.groups.map(group=>h('fieldset',{key:group.id,disabled:working||!!draft},
       h('legend',null,group.label||group.id,group.mode==='single'?'（单选）':'（多选）'),group.options.map(option=>{
         const key=`${group.id}/${option.id}`,type=option.type
         if(type==='between'){
-          const entries=communityBetweenOptions(preset,option)
+          const entries=communityBetweenOptions(workingPreset,option)
           return h('div',{key},entries.length?entries.map(prompt=>h('label',{key:prompt.identifier,className:'dsh-rp-row'},
             h('input',{type:group.mode==='single'?'radio':'checkbox',name:`community-${group.id}`,
-              'aria-label':`${group.label}：${prompt.name}`,checked:current?.prompts[prompt.identifier]??prompt.enabled,
+              'aria-label':`${group.label}：${prompt.name}`,checked:promptEnabled(prompt),
               onChange:(event:ReactAPI.ChangeEvent<HTMLInputElement>)=>control(group.id,option.id,event.target.checked,prompt.identifier)}),prompt.name))
             :h('p',{className:'dsh-rp-muted'},'未找到该分组边界，请在条目列表中查看。'))
         }
@@ -189,26 +200,28 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
           input(option.label,valueFor(key),value=>setValue(key,value)),
           button(`保存${option.label}`,()=>control(group.id,option.id,true,valueFor(key))))
         if(type==='parameters'){
-          const variables=list(option.raw.variables).map(object)
+          const variables=list(option.raw.variables).map(object),parameterValue=(variable:Data)=>
+            valueFor(`${key}/${variable.name}`,String(communityPresetParameterValueV1(workingPreset,option,variable)??''))
           return h('details',{key},h('summary',null,option.label),variables.map(variable=>{
             const name=String(variable.name??''),label=String(variable.displayName??name),field=`${key}/${name}`
             return h('label',{key:name},label,h('textarea',{className:'dsh-rp-input','aria-label':`${option.label}：${label}`,
-              value:valueFor(field),onChange:(event:ReactAPI.ChangeEvent<HTMLTextAreaElement>)=>setValue(field,event.target.value)}))
+              value:parameterValue(variable),
+              onChange:(event:ReactAPI.ChangeEvent<HTMLTextAreaElement>)=>setValue(field,event.target.value)}))
           }),button(`保存${option.label}参数`,()=>control(group.id,option.id,true,
-            Object.fromEntries(variables.map(variable=>[String(variable.name),valueFor(`${key}/${variable.name}`)])))))
+            Object.fromEntries(variables.map(variable=>[String(variable.name),parameterValue(variable)])))))
         }
         if(type!=='toggle')return h('p',{key,className:'dsh-rp-muted'},`${option.label}：宿主外部设置，暂不自动执行`)
-        const targets=preset.prompts.filter(prompt=>option.enable.includes(prompt.identifier)||option.enable.includes(prompt.name))
-        const enabled=targets.length>0&&targets.every(prompt=>current?.prompts[prompt.identifier]??prompt.enabled)
         return h('label',{key,className:'dsh-rp-row'},h('input',{type:group.mode==='single'?'radio':'checkbox',
-          name:`community-${group.id}`,'aria-label':`${group.label}：${option.label}`,checked:option.id==='none'
-            ?!preset.prompts.some(prompt=>group.disableGroup.includes(prompt.identifier)&&(current?.prompts[prompt.identifier]??prompt.enabled)):enabled,
+          name:`community-${group.id}`,'aria-label':`${group.label}：${option.label}`,checked:controlAnswers[option.id]===true,
           onChange:(event:ReactAPI.ChangeEvent<HTMLInputElement>)=>control(group.id,option.id,event.target.checked)}),option.label)
       }))):undefined
     const canConfigure=preset?.id===current?.presetId
     const canManagePlans=canConfigure&&policy?.preset?.id===selected
     const pack=canManagePlans?policy?.planPack:null
     const transport=object(features.transport)
+    const nativeTransport={...workingPreset?.profile.transport,
+      ...object({...object(workingPreset?.profile.configuration[workingPreset?.profile.id??'']),...features}.transport)}
+    const nativeMode=String(workingPreset?.profile.transport.kind??'standard')
     const unmapped=Object.keys(preset?.parameters??{}).filter(key=>!['temperature','openai_max_tokens'].includes(key))
     const panel=(part:'selection'|'features'|'prompts')=>({
       role:idPrefix?'tabpanel':undefined,id:idPrefix?`${idPrefix}-panel-${part}`:undefined,
@@ -224,8 +237,8 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
       error&&h('div',{role:'alert',className:'dsh-rp-error'},error,draft?'；本地草稿保留，可刷新版本后重试。':''),
       !policy&&h('p',{role:'status'},busy?'正在读取社区预设…':'暂无社区预设数据'),
       h('div',panel('selection'),showSelection&&h(React.Fragment,null,
-      h('label',{className:'dsh-rp-preset-upload'},h('strong',null,'导入社区预设 JSON'),
-        h('span',{className:'dsh-rp-muted'},'选择 .json 文件；导入后会保存在共享预设库。'),
+      h('label',{className:'dsh-rp-management-upload'},h('strong',null,'导入社区预设 JSON'),
+        h('span',{className:'dsh-rp-muted'},'导入后保存在共享预设库。'),
         h('input',{type:'file',accept:'.json,application/json','aria-label':'导入社区预设JSON',
           disabled:working||!!draft||!policy,onChange:(event:ReactAPI.ChangeEvent<HTMLInputElement>)=>{
             const file=event.target.files?.[0];event.target.value='';void importFile(file)
@@ -252,18 +265,15 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
             view==='all'&&button('编辑预设库条目',edit,!!draft),
             button('删除社区预设',()=>void mutate({action:'delete',presetId:selected}),!!draft)))))),
       h('div',panel('features'),showFeatures&&preset&&h('div',null,
-          h('label',null,'原生适配',h('select',{'aria-label':'原生适配',className:'dsh-rp-input',
-            value:preset.profile.id,disabled:working||!!draft,
-            onChange:(event:ReactAPI.ChangeEvent<HTMLSelectElement>)=>void mutate({action:'profile',presetId:selected,profile:event.target.value})},
-          ['standard','dream','kemini','reborn','izumi'].map(id=>h('option',{key:id,value:id},id)))),
+          h('p',{className:'dsh-rp-muted'},`作者身份 ${workingPreset!.profile.id} · Native 模式 ${nativeMode}`),
           !canConfigure&&h('p',{className:'dsh-rp-muted'},'当前仅查看该库条目。应用到所选范围后，可修改分组与生成设置。'),
           h('fieldset',{disabled:working||!!draft||!canConfigure},h('legend',null,'生成设置'),
             checkbox('应用预设采样参数',current?.applySampling??false,checked=>configure({applySampling:checked})),
             h('p',{className:'dsh-rp-muted'},'可映射：temperature（温度）、openai_max_tokens（最大输出长度）。stop 等其余字段暂不映射。'),
             unmapped.length>0&&h('details',null,h('summary',null,`保留但暂不映射的字段（${unmapped.length}）`),h('p',null,unmapped.join('、'))),
-            ['kemini','reborn'].includes(preset.profile.id)&&checkbox('合成函数传输',transport.enabled as boolean??preset.profile.transport.enabled===true,
+            (nativeMode==='kemini'||nativeMode==='reborn')&&checkbox('合成函数传输',transport.enabled as boolean??nativeTransport.enabled===true,
               enabled=>setFeature(['transport','enabled'],enabled)),
-            preset.profile.id==='izumi'&&h('div',null,
+            nativeMode==='izumi'&&h('div',null,
               checkbox('advice转移',feature(['advice','enabled'])!==false,enabled=>setFeature(['advice','enabled'],enabled)),
               h('label',null,'advice放置位置',h('select',{'aria-label':'advice放置位置',className:'dsh-rp-input',
                 value:String(feature(['advice','position'])??'tail'),
@@ -285,19 +295,20 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
                 Math.max(1,Math.min(9999,Number(valueFor('sanitizer-threshold',String(feature(['sanitizer','threshold'])??10)))||10)))),
               checkbox('超过范围后仅处理输入',feature(['sanitizer','inputOnlyAfterX'])!==false,enabled=>setFeature(['sanitizer','inputOnlyAfterX'],enabled)),
               checkbox('回复还原关键词',feature(['sanitizer','reverseEnabled'])!==false,enabled=>setFeature(['sanitizer','reverseEnabled'],enabled))),
-            preset.profile.id==='reborn'&&h('div',null,
+            nativeMode==='reborn'&&h('div',null,
               checkbox('流式头行清洗',feature(['outputPreprocessing','enabled'])!==false,enabled=>setFeature(['outputPreprocessing','enabled'],enabled)),
               checkbox('独立消息后处理',feature(['postscript','enabled'])!==false,enabled=>setFeature(['postscript','enabled'],enabled))),
-            preset.profile.id==='dream'&&h('div',null,
+            nativeMode==='dream'&&h('div',null,
               checkbox('梦鲸消息整理',feature(['messageProcessing','enabled'])!==false,enabled=>setFeature(['messageProcessing','enabled'],enabled)),
               h('label',null,'历史压缩方式',h('select',{'aria-label':'历史压缩方式',value:String(feature(['messageProcessing','chat_history','type'])??'squash_into_one'),
                 onChange:(event:ReactAPI.ChangeEvent<HTMLSelectElement>)=>setFeature(['messageProcessing','chat_history','type'],event.target.value)},
                 h('option',{value:'squash_into_one'},'合并全部历史'),h('option',{value:'squash_nearby'},'合并相邻同角色'))))),
           !!profileGroups?.length&&h('fieldset',{disabled:working||!!draft||!canConfigure},h('legend',null,'预设原生控制'),profileGroups),
-          preset.profile.actions.length>0&&h('ul',null,preset.profile.actions.map(action=>h('li',{key:action.id},`${action.id}：后续接入（${action.reason}）`))),
-          preset.profile.id==='izumi'&&h('fieldset',{disabled:working||!!draft||!canManagePlans},h('legend',null,'Izumi分层方案'),
+          workingPreset!.profile.actions.length>0&&h('ul',null,workingPreset!.profile.actions.map(action=>h('li',{key:action.id},`${action.id}：后续接入（${action.reason}）`))),
+          nativeMode==='izumi'&&h('fieldset',{disabled:working||!!draft||!canManagePlans},h('legend',null,'Izumi分层方案'),
             !canManagePlans&&h('p',{className:'dsh-rp-muted'},'当前对话采用的预设与所选预设不同，分层方案暂不可编辑。'),
-            h('label',null,'导入Izumi方案包',h('input',{type:'file',accept:'.json,application/json','aria-label':'导入Izumi方案包',
+            h('label',null,'导入Izumi方案包',h('input',{type:'file',
+              accept:'.json,application/json','aria-label':'导入Izumi方案包',
               onChange:(event:ReactAPI.ChangeEvent<HTMLInputElement>)=>{const file=event.target.files?.[0];event.target.value='';void importFile(file,true)}})),
             h('p',{className:'dsh-rp-muted'},'导入仅保存方案与active记录；预览后显式应用。'),
             pack?.plans.map(plan=>checkbox(`${plan.name}（${plan.layer}${plan.section?'/'+plan.section:''}）`,chosenPlans.includes(plan.id),
@@ -328,7 +339,7 @@ export function createCommunityPresetPanel({React,jsonFetch,toast}:CommunityPane
             button('取消预设库编辑',()=>setDraft(null))),
           h('div',{className:'dsh-rp-preset-prompts'},promptRows.map(prompt=>h('details',{key:prompt.identifier},
             h('summary',null,prompt.name,prompt.marker?' [标记]':'',prompt.unused?' [未使用]':'',prompt.hidden?' [隐藏]':'',prompt.readOnly?' [只读]':''),
-            checkbox(`启用条目：${prompt.name}`,current?.prompts[prompt.identifier]??prompt.enabled,
+            checkbox(`启用条目：${prompt.name}`,promptEnabled(prompt),
               enabled=>togglePrompt(prompt,enabled),!!draft||!canConfigure||prompt.configurationOnly),
             prompt.configurationOnly&&h('p',{className:'dsh-rp-muted'},'插件配置条目，不作为提示词发送。'),
             draft&&h('div',null,input(`名称：${prompt.identifier}`,prompt.name,name=>changePrompt(prompt.identifier,{name}),'text',prompt.readOnly||prompt.configurationOnly),

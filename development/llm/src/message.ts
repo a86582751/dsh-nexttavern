@@ -148,6 +148,10 @@ export type MessageSource = MessageSourceMap[keyof MessageSourceMap]
 
 /** Shared immutable fields of every conversation message. */
 interface MessageBase {
+  /** Accepted author display/history DATA. Role and execution authority stay Native. */
+  readonly authorMetadata?:{readonly name?:string;readonly is_hidden?:boolean;
+    readonly extra?:Readonly<Record<string,unknown>>;
+    readonly variantExtras?:Readonly<Record<string,Readonly<Record<string,unknown>>>>}
   readonly sourceMaterial?:MessageSourceMaterialV1
   /** Stable identity preserved across every representation boundary. */
   readonly id: MessageId

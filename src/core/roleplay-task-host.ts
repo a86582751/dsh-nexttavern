@@ -4,9 +4,9 @@ import { createCharacterCluster } from './character-cluster.js'
 import { createModelPolicy, createTavernTasks, selectedMainRoute, isInlinePending, taskPhaseMessage, taskHash }
   from './tavern-tasks.js'
 import type { ModelRoute } from './tavern-model-policy.js'
-import type {StoredTask} from './tavern-task-types.js'
+import type {StoredTask,TaskJob,TaskSelection} from './tavern-task-types.js'
 import type { HostSession, HostAgent, HostSource, NativeTaskInput, TaskHostDependencies,
-  AuthorDialogRequestV1,RubyAnalysisRequestV1,CharacterBackgroundRequestV1,
+  AuthorDialogRequestV1,AuthorDialogOperationV1,RubyAnalysisRequestV1,CharacterBackgroundRequestV1,
   CharacterBackgroundResultV1,CharacterBackgroundTaskReferenceV1 } from './roleplay-task-host-types.js'
 import type {RubyAnalysisResultV1} from './roleplay-ruby-task-types.js'
 import type {TavernLoreDerivedCompletionRefV1} from './tavern-lore-derived.mjs'
@@ -116,7 +116,7 @@ export function createRoleplayTaskHost({
         const owner=authorDialogOwners.get(job.id),declared=source.authorDialog
         return !!owner&&owner.session===session&&taskAgents.get(session.id)===owner.agent
           &&declared?.operationId===owner.prompt.operationId
-          &&declared.promptPlanSha256===owner.prompt.promptSha256
+          &&(job.input?.authorDialog as AuthorDialogPromptV1|undefined)?.promptSha256===owner.prompt.promptSha256
           &&recordSha256(declared.binding)===recordSha256(owner.prompt.binding)&&owner.current()
       }
       if(job.kind==='ruby-analysis') {
@@ -155,6 +155,24 @@ export function createRoleplayTaskHost({
         && taskDependenciesCurrent(T,session.id,source.dependencies)
   }
   const tavernTasks = createTavernTasks<HostSession, HostAgent>({table:T.branch,policy:modelPolicy,subagents:ctx.subagents,
+    async inspectAuthorGeneration(job){
+      if(typeof job.childSessionId!=='string'||!job.authorExecution)return undefined
+      const {inspectNativeAuthorGenerationV1,inspectNativeAuthorGenerationTerminalV1}=await import('dsh-nexttavern-native-agent-loop'),
+        prompt=job.input.authorDialog as AuthorDialogPromptV1,execution=job.authorExecution
+      const identity={kind:'author-generation' as const,taskId:job.id,generation:job.generation,
+        operationId:prompt.operationId,generationId:prompt.generationId,rootSessionId:job.sessionId,
+        childSessionId:execution.childSessionId,messageId:execution.messageId,planSha256:prompt.promptSha256}
+      if(ctx.sessionQuery){
+        using observation=await ctx.sessionQuery.observeSession(job.childSessionId,{projectionMode:'none'})
+        return {completion:job.authorNativeResult??inspectNativeAuthorGenerationV1(identity,observation.events,ctx.sessions.messageProjections??[]),
+          terminal:job.authorNativeTerminal??inspectNativeAuthorGenerationTerminalV1(identity,observation.events)}
+      }
+      const session=ctx.sessions.get(job.childSessionId)
+      if(!session)return undefined
+      const events=eventsOf(session) as unknown as readonly import('dsh-nexttavern-native-session').SessionEvent[]
+      return {completion:job.authorNativeResult??inspectNativeAuthorGenerationV1(identity,events,ctx.sessions.messageProjections??[]),
+        terminal:job.authorNativeTerminal??inspectNativeAuthorGenerationTerminalV1(identity,events)}
+    },
     observeRecords,
     isCurrent:(session,job) => taskSourceCurrent(session,job),
     isHistoricalResultCurrent:(session,job) => taskSourceCurrent(session,job,true),
@@ -254,7 +272,7 @@ export function createRoleplayTaskHost({
         input:{taskStage:'ruby-analysis',rubyTask:prompt},background:true,format:'text',tools:[],signal,
         timeoutMs:input.timeoutMs,maxTokens:prompt.generation?.maxTokens??input.maxTokens,
         rubyTask:{promptPlanSha256:prompt.promptPlanSha256,orderedMessages:prompt.orderedMessages,
-          ...(prompt.generation?.temperature===undefined?{}:{temperature:prompt.generation.temperature}),
+          ...prompt.generation,
           ...(prompt.mainInputMessageIndex===undefined?{}:{mainInputMessageIndex:prompt.mainInputMessageIndex}),
           createOwner:input.createOwner},
         validate:value=>{
@@ -273,6 +291,26 @@ export function createRoleplayTaskHost({
       throw error
     }finally{if(rubyOwners.get(id)===owner)rubyOwners.delete(id)}
   }
+  async function prepareAuthorDialogRoute(input:{sessionId:string;binding:AuthorDialogChatAddress;
+    operationId:string;current():boolean;signal:AbortSignal}):Promise<TaskSelection> {
+    const {sessionId,binding,operationId,signal}=input,session=ctx.sessions.get(sessionId)
+    signal.throwIfAborted()
+    if(disposed||!session||binding.namespace.sessionId!==sessionId||!input.current())throw Error('AUTHOR_DIALOG_OWNER_CHANGED')
+    let agent=taskAgents.get(sessionId)
+    if(!agent)agent=(await ctx.sessionController.resolveAgent?.(sessionId))?.agent
+    signal.throwIfAborted()
+    if(!agent||disposed||ctx.sessions.get(sessionId)!==session||!input.current())throw Error('AUTHOR_DIALOG_OWNER_CHANGED')
+    taskAgents.set(sessionId,agent)
+    const source:HostSource={authorDialog:{binding,operationId}},
+      id=taskHash({sessionId,kind:'author-dialog',source,input:{operationId}}),
+      existing=T.branch.get('tavern_job__'+id) as TaskJob|undefined
+    if(existing)return structuredClone({execution:existing.execution,main:existing.main,actualRoute:existing.actualRoute,
+      ...existing.policyRevision===undefined?{}:{policyRevision:existing.policyRevision}})
+    const selection=await modelPolicy.resolve(session,'author-dialog',agent)
+    signal.throwIfAborted()
+    if(disposed||ctx.sessions.get(sessionId)!==session||!input.current())throw Error('AUTHOR_DIALOG_OWNER_CHANGED')
+    return {...selection,execution:'spawn'}
+  }
   async function requestAuthorDialog(input:AuthorDialogRequestV1):Promise<AuthorDialogResultV1> {
     const {session,prompt,signal}=input
     signal?.throwIfAborted()
@@ -283,29 +321,49 @@ export function createRoleplayTaskHost({
     signal?.throwIfAborted()
     if(!main||disposed||ctx.sessions.get(session.id)!==session||!input.current())throw Error('AUTHOR_DIALOG_OWNER_CHANGED')
     taskAgents.set(session.id,main)
-    const source:HostSource={authorDialog:{binding:prompt.binding,operationId:prompt.operationId,
-      promptPlanSha256:prompt.promptSha256}},requestKey={operationId:prompt.operationId,promptPlanSha256:prompt.promptSha256},
+    const source:HostSource={authorDialog:{binding:prompt.binding,operationId:prompt.operationId}},
+      requestKey={operationId:prompt.operationId},
       id=taskHash({sessionId:session.id,kind:'author-dialog',source,input:requestKey}),
       owner={session,agent:main,prompt,current:input.current}
+    const existing=T.branch.get('tavern_job__'+id) as StoredTask|undefined
+    if(existing&&(existing.input?.authorDialog as AuthorDialogPromptV1|undefined)?.promptSha256!==prompt.promptSha256)
+      throw Error('AUTHOR_DIALOG_OPERATION_CHANGED')
     authorDialogOwners.set(id,owner)
     let completed:StoredTask|undefined
     try {
-      const text=await tavernTasks.request({session,agent:main,kind:'author-dialog',source,
+      const native=await tavernTasks.request({session,agent:main,kind:'author-dialog',source,
         input:{taskStage:'author-dialog-submit',authorDialog:prompt},authorDialog:prompt,requestKey,
+        selection:prompt.selection,
         background:true,format:'text',tools:[],signal,timeoutMs:input.timeoutMs,maxTokens:input.maxTokens,
+        authorOwner:{current:input.current,checkpoint:checkpoint=>input.onCheckpoint?.(checkpoint)??Promise.resolve(),
+          terminal:(terminal,terminalSignal)=>input.onTerminal?.(terminal,terminalSignal)??Promise.resolve(),stream:input.onStream},
+        onAdmission:job=>input.onAdmission?.({taskId:job.id,generation:job.generation,
+          cancel:async()=>{await tavernTasks.cancel(session,job.id)}}),
         validate:value=>{
-          if(typeof value!=='string'||!value.trim())throw Error('AUTHOR_DIALOG_RESULT_EMPTY')
+          if(!value||typeof value!=='object'||!('message' in value)||!('finishReason' in value))throw Error('AUTHOR_DIALOG_NATIVE_RESULT_REQUIRED')
           return value
         },onResult:job=>{completed=job},
       })
       signal?.throwIfAborted()
-      if(typeof text!=='string'||!completed?.generation||typeof completed.resultHash!=='string')
+      if(!native||!completed?.generation||typeof completed.resultHash!=='string')
         throw Error('AUTHOR_DIALOG_COMPLETED_TASK_MISSING')
       const result=readCompletedAuthorDialog(session,prompt.binding,{taskId:completed.id,
         generation:completed.generation,resultSha256:completed.resultHash})
       if(!result)throw Error('AUTHOR_DIALOG_COMPLETED_TASK_MISSING')
       return result
     }finally{if(authorDialogOwners.get(id)===owner)authorDialogOwners.delete(id)}
+  }
+  function readAuthorDialogOperation(session:HostSession,binding:AuthorDialogChatAddress,
+    operationId:string):AuthorDialogOperationV1|undefined {
+    if(disposed||ctx.sessions.get(session.id)!==session||binding.namespace.sessionId!==session.id)return undefined
+    const source:HostSource={authorDialog:{binding,operationId}},requestKey={operationId},
+      id=taskHash({sessionId:session.id,kind:'author-dialog',source,input:requestKey}),
+      job=T.branch.get('tavern_job__'+id) as StoredTask|undefined
+    if(!job)return undefined
+    const prompt=job.input?.authorDialog as AuthorDialogPromptV1,
+      result=job.status==='completed'?readCompletedAuthorDialog(session,binding,{
+        taskId:id,generation:job.generation!,resultSha256:String(job.resultHash)}):undefined
+    return {taskId:id,status:job.status,prompt,...result?{result}:{},error:job.error}
   }
   function completedRubyResult(job:StoredTask|undefined):RubyAnalysisResultV1|undefined {
     const completion=job?.rubyTaskCompletion
@@ -342,15 +400,20 @@ export function createRoleplayTaskHost({
       frozenPrompt=job?.input?.authorDialog as AuthorDialogPromptV1|undefined
     if(job?.sessionId!==session.id||job.id!==reference.taskId||job.kind!=='author-dialog'
       ||job.status!=='completed'||job.generation!==reference.generation||job.resultHash!==reference.resultSha256
-      ||typeof job.result!=='string'||!completion||completion.schemaVersion!==1
+      ||!job.authorNativeResult||!completion||completion.schemaVersion!==1
       ||completion.encoding!=='native-author-dialog-completion-v1'||completion.taskId!==job.id
       ||completion.generation!==job.generation||completion.childSessionId!==job.childSessionId
-      ||completion.resultSha256!==job.resultHash||completion.promptPlanSha256!==source?.promptPlanSha256
+      ||completion.resultSha256!==job.resultHash
       ||!source||recordSha256(source.binding)!==recordSha256(binding)
       ||!frozenPrompt||frozenPrompt.promptSha256!==completion.promptPlanSha256)return undefined
+    const replay=job.authorNativeResult.message.source.kind==='model'
+      ?job.authorNativeResult.message.source.replayState as import('dsh-nexttavern-native-llm').ReplayEnvelope|undefined:undefined
     return {schemaVersion:1,encoding:'native-author-dialog-result-v1',authority:'consumer-data-only',
       binding,root:frozenPrompt.root,operationId:source.operationId,
-      promptSha256:source.promptPlanSha256,task:reference,text:job.result}
+      promptSha256:frozenPrompt.promptSha256,task:reference,
+      text:job.authorNativeResult.message.content.filter(block=>block.type==='text').map(block=>block.text).join(''),
+      message:job.authorNativeResult.message,finishReason:job.authorNativeResult.finishReason,native:job.authorNativeResult,
+      ...replay?.details?{details:replay.details}:{}}
   }
   function resolveCurrentCardImport(session:ImportSession,exec:ImportExec):OwnedCardImportWorkflow|undefined {
     const actual=exec.agent as HostAgent|undefined
@@ -522,6 +585,8 @@ export function createRoleplayTaskHost({
   }
   return {sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster, characterRoster,
     clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask,
-    requestAuthorDialog,readCompletedAuthorDialog,requestRubyAnalysis,readCompletedRubyAnalysis,recoverCompletedRubyAnalysis,
+    prepareAuthorDialogRoute,requestAuthorDialog,readAuthorDialogOperation,readCompletedAuthorDialog,
+    recordAuthorGenerationEffects:tavernTasks.recordAuthorGenerationEffects,
+    requestRubyAnalysis,readCompletedRubyAnalysis,recoverCompletedRubyAnalysis,
     requestCharacterBackground,readCompletedCharacterBackground,resumeMemoryWork,resumeStatusMaintenance}
 }

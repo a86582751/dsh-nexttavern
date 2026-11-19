@@ -2,6 +2,10 @@
 /** Fixed WI scan-buffer state. Capture supplies message strings; this class
  * owns only deterministic depth skew and rendered activation feedback. */
 import { refuse } from './tavern-lore-match.mjs';
+export function tavernLoreUsesGroupScoringV1(semantic, peers, useGroupScoring) {
+    return !!semantic.group && (useGroupScoring || peers.some(peer => peer.semantic.useGroupScoring === true
+        && peer.semantic.group.split(/,\s*/).some(group => group && semantic.group.split(/,\s*/).includes(group))));
+}
 export class TavernLoreScanBufferV1 {
     snapshot;
     skew = 0;
@@ -67,8 +71,6 @@ export class TavernLoreScanBufferV1 {
         if (state !== 'minimum-activations')
             parts.push(...this.recursive);
         const text = '\u0001' + parts.join('\n\u0001');
-        if (text.length > 32768)
-            refuse('LORE_SCAN_TEXT_LIMIT');
         this.texts.set(identity, text);
         return text;
     }

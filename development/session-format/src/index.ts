@@ -4,11 +4,14 @@ import type {Session, SessionEvent, SessionSeq} from 'dsh-nexttavern-native-sess
 import {foldSurface} from 'dsh-nexttavern-native-session/surface'
 import {MESSAGE_EDIT_EVENT, assertMessageEdit, editMessageText, messageEditProjection,
   type MessageEdit,type MessageEditOperationV1} from './projection.js'
-export type {MessageEditOperationV1,ReaderMessageEditOriginV1} from './projection.js'
+export type {MessageEditOperationV1,ReaderMessageEditOriginV1,ReaderRegexProducerV1,MessageEditPatchV3,
+  MessageEditOrdinaryReplacementV3} from './projection.js'
 import {mvuPlayerMarkers} from './mvu-player-marker.js'
 import {mvuSchemaMarkers} from './mvu-schema-marker.js'
 import {authorInjectionCleanupMarkers,authorInjectionDeclarationMarkers} from './author-injection-cleanup.js'
 import {authorChatRootMarkers} from './author-chat-marker.js'
+import {authorGenerationEffectsMarkers} from './author-generation-effects.js'
+export * from './author-generation-effects.js'
 export {AUTHOR_CHAT_ROOT_EVENT,appendAuthorChatRootMarker,assertAuthorChatRootMarker,
   authorChatRootMarkers} from './author-chat-marker.js'
 export type {AuthorChatRootMarkerV1} from './author-chat-marker.js'
@@ -44,6 +47,7 @@ declare module '@deepseek-ai/cordis' {
     nexttavernAuthorInjectionCleanupMarkers: typeof authorInjectionCleanupMarkers
     nexttavernAuthorInjectionDeclarationMarkers:typeof authorInjectionDeclarationMarkers
     nexttavernAuthorChatRootMarkers:typeof authorChatRootMarkers
+    nexttavernAuthorGenerationEffectsMarkers:typeof authorGenerationEffectsMarkers
   }
 }
 
@@ -65,6 +69,7 @@ export function apply(ctx: Context): void {
   ctx.provide('nexttavernAuthorInjectionCleanupMarkers', authorInjectionCleanupMarkers)
   ctx.provide('nexttavernAuthorInjectionDeclarationMarkers',authorInjectionDeclarationMarkers)
   ctx.provide('nexttavernAuthorChatRootMarkers',authorChatRootMarkers)
+  ctx.provide('nexttavernAuthorGenerationEffectsMarkers',authorGenerationEffectsMarkers)
 }
 
 /** Fold one complete original-seq prefix without borrowing a live Session surface. */
@@ -91,8 +96,12 @@ export function appendMessageEdit(
   text: string,
   sourceMaterial?:MessageSourceMaterialV1,
   operation?:MessageEditOperationV1,
+  patch?:import('./projection.js').MessageEditPatchV3,
+  bodyChanged=true,
 ): SessionEvent<'roleplay/message-edit'> {
   const metadata=operation?{operation}:{}
+  if(patch)return session.append(MESSAGE_EDIT_EVENT,{schemaVersion:3,targetSeq,...identity,text,patch,bodyChanged,
+    ...sourceMaterial?{sourceMaterial}:{},...metadata})
   if(sourceMaterial) {
     return session.append(MESSAGE_EDIT_EVENT,{schemaVersion:2,targetSeq,...identity,text,sourceMaterial,...metadata})
   }

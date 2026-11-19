@@ -250,7 +250,7 @@ function jsonData(root) {
 }
 /** Synchronous, size-bounded library parsing; not a wall-clock interruption
  * boundary. A future hostile-code runner must supply its own hard deadline. */
-export function parseMvuYamlData(text) {
+export function parseMvuYamlData(text, mode = 'strict') {
     try {
         if (typeof text !== 'string')
             refuse('YAML_INPUT_TYPE');
@@ -264,7 +264,35 @@ export function parseMvuYamlData(text) {
         if (documents.length !== 1)
             refuse('YAML_MULTIPLE_DOCUMENTS');
         const document = documents[0];
-        if (document.errors.length || document.warnings.length)
+        if (mode === 'legacy-mvu-book' && !document.warnings.length && document.errors.length) {
+            // A bare `key:{}` or `key:[]` is recovered upstream as a null key with
+            // the collection in its spelling. Separate the key and collection only
+            // at the parser's missing-separator span, then use the strict parser.
+            const positions = new Set();
+            for (const error of document.errors) {
+                if (error.code !== 'MISSING_CHAR' && error.code !== 'MULTILINE_IMPLICIT_KEY')
+                    refuse('YAML_SYNTAX_INVALID');
+                const broken = text.slice(...error.pos);
+                let found = false;
+                for (const match of broken.matchAll(/^[^:\r\n\[\]{}'"#]+:(?:\{\}|\[\])(?=[ \t]*\r?$)/gm)) {
+                    positions.add(error.pos[0] + match.index + match[0].length - 2);
+                    found = true;
+                }
+                if (!found)
+                    refuse('YAML_SYNTAX_INVALID');
+            }
+            const parts = [];
+            let start = 0;
+            for (const position of [...positions].sort((a, b) => a - b)) {
+                parts.push(text.slice(start, position), ' ');
+                start = position;
+            }
+            parts.push(text.slice(start));
+            return parseMvuYamlData(parts.join(''));
+        }
+        // Pinned MVU consumes the composed document for an inline InitVar block.
+        // Reuse the recovered key while keeping the bounded JSON projection.
+        if (document.warnings.length || document.errors.some(error => mode !== 'legacy-mvu-opening' || error.code !== 'MULTILINE_IMPLICIT_KEY'))
             refuse('YAML_SYNTAX_INVALID');
         if (document.directives.yaml.version !== '1.2')
             refuse('YAML_VERSION_UNSUPPORTED');

@@ -12,7 +12,7 @@ import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 /** One row's effective ordinary DATA. stat_data remains the MVU owner's fact;
  * a message tombstone cannot erase an earlier row in getAllVariables. */
 export function authorOrdinaryMessageVariablesV1(variables:MvuScopeVariablesV1,
-  capture?:AuthorOrdinaryMessageCaptureV1):MvuJsonObject {
+  capture?:Pick<AuthorOrdinaryMessageCaptureV1,'values'|'deletedKeys'|'replaceOrdinary'>):MvuJsonObject {
   const base=variables.kind==='available'?variables.variables:{},
     values=capture?applyAuthorChatOverlayV3(base,capture):base,
     {stat_data:_ordinaryStat,...effective}=values
@@ -88,10 +88,15 @@ export function produceAuthorPromptCaptureV1(input:{
       variables=scoped.variables
     }else throw Error('PROMPT_PROGRAM_MESSAGE_SCOPE_UNAVAILABLE')
     const ordinary=ordinaryFor({messageId:ref.id,ownerSessionId,nativeSeq:ref.seq})
+    const metadata=(content as typeof content&{authorMetadata?:import('dsh-nexttavern-native-llm/types').Message['authorMetadata']}).authorMetadata,
+      openingVariants=ref.id===opening.messageId?opening.ordinaryVariants:undefined,
+      extra=(openingVariants?metadata?.variantExtras?.[openingVariants.activeVariantId]:metadata?.extra) as MvuJsonObject|undefined,
+      variants=index===0&&ref.messageSha256===opening.originalMessageVersionSha256?opening.copiedCandidates:null
     return {index,messageId:ref.id,ownerSessionId,nativeSeq:ref.seq,...ordinary?{ordinary}:{},
       messageVersionSha256:ref.messageSha256,role:ref.role,message:content.text,variables,
-      variants:index===0&&ref.messageSha256===opening.originalMessageVersionSha256
-        ?opening.copiedCandidates:null}
+      name:metadata?.name??'',is_hidden:metadata?.is_hidden??false,extra:extra??{},
+      variants:variants?{...variants,swipes_info:openingVariants?.variant_ids.map(id=>({
+        extra:metadata?.variantExtras?.[id] as MvuJsonObject|undefined??{}}))}:null}
   })
   const body={schemaVersion:1 as const,encoding:'native-author-prompt-capture-v1' as const,
     authority:'consumer-data-only' as const,sessionId:history.data.sessionId,

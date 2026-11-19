@@ -276,7 +276,7 @@ try {
   }
   const browserContext = {...context, audience: 'maintenance',
     mapping: {...context.mapping, artifacts: browserArtifacts, builds: [...browserBuilds,
-      {id: 'typert', kind: 'subagent-typert', artifact: 'typert', entry: 'not-a-browser.ts',
+      {id: 'typert', kind: 'typescript-module', artifact: 'typert', entry: 'not-a-browser.ts',
         builder: 'not-a-browser-builder.mjs', inputs: []}]},
     artifactPaths: new Map(browserArtifacts.map(item => [item.id, item.source])),
   };

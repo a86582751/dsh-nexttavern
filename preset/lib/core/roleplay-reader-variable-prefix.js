@@ -1,10 +1,8 @@
 // Generated from runtime/alpha3/src/core/roleplay-reader-variable-prefix.ts; edit the TypeScript source.
+import { applyAuthorChatOverlayV3 } from './roleplay-author-chat-state-types.js';
 export function readerVariableBase(scopes, ordinary) {
     const values = (scope) => scope.kind === 'available' ? scope.variables : {};
-    const result = { ...values(scopes.global), ...values(scopes.character), ...values(scopes.chat), ...ordinary.values };
-    for (const key of ordinary.deletedKeys ?? [])
-        delete result[key];
-    return result;
+    return applyAuthorChatOverlayV3(values(scopes.chat), ordinary);
 }
 export function createReaderVariablePrefix() {
     const rows = new Map(), keys = new Map();

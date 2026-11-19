@@ -1,7 +1,7 @@
 /** Field ownership before rendering. Captured Source owns import/current-row
  * validity; this producer only partitions current author material for ST slots. */
 import {recordSha256,sha256} from './roleplay-data.js'
-import {projectStructuredImport,sourceDescriptor} from './roleplay-import-record.js'
+import {projectStructuredImport,sourceDescriptor,spanText} from './roleplay-import-record.js'
 import {renderCards,renderCoreContributionV1} from './roleplay-author-contributions.js'
 import type {AuthorContributionPartV1,AuthorContributionRowV1} from './roleplay-author-contributions.js'
 import type {AuthorRecord} from './roleplay-author-context-types.js'
@@ -27,6 +27,28 @@ export interface CommunityCardMappingRequiredGroupV1 {
   readonly reason:'shared-field-edited'|'current-provenance-changed'|'native-field-unmapped'|'mapping-stale'|'mapping-range-invalid'
 }
 type Captured=Extract<ReturnType<typeof captureRoleplayTavernPromptSourceDataV1>,{kind:'captured-data'}>
+
+/** Restore physical ST bytes only while the actual imported author row is unchanged. */
+export function projectCapturedStRuleTextV1(record:ImportRecord,data:Readonly<Record<string,unknown>>,
+  row:AuthorRecord|undefined,rule:'style'|'narrative'|'reply'):string {
+  const fields={style:['mes_example','rule-style'],narrative:['system_prompt','rule-narrative'],
+    reply:['post_history_instructions','rule-reply']} as const
+  const [field,target]=fields[rule],text=String(row?.[rule]??''),
+    edited=(row?.editedFrom as {ruleFields?:readonly string[]}|undefined)?.ruleFields??[],
+    spans=record.assignments.filter(assignment=>assignment.target===target)
+      .flatMap(assignment=>assignment.sourceSpans).sort((left,right)=>left.startLine-right.startLine)
+  return !edited.includes(rule)&&row?.[rule]===spanText(record,spans)?String(data[field]??''):text
+}
+
+/** This reads the author's scene template, independently of the displayed opening choice. */
+export function projectCapturedStOpeningTextV1(record:ImportRecord,data:Readonly<Record<string,unknown>>,
+  scene:AuthorRecord|undefined):string {
+  const text=String(scene?.text??'')
+  if(scene?.importId!==record.importId)return text
+  const spans=record.assignments.filter(assignment=>assignment.target==='opening')
+    .flatMap(assignment=>assignment.sourceSpans).sort((left,right)=>left.startLine-right.startLine)
+  return text===spanText(record,spans)?String(data.first_mes??''):text
+}
 interface MappingScope {readonly sessionId:string;readonly conversationId:string}
 export interface CommunityPresetCardMaterialInputV1 {
   readonly captured:Pick<Captured,'record'|'decoded'|'source'|'residual'|'contributions'>

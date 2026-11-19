@@ -3,7 +3,8 @@ import type { ReactNode } from 'react'
 import type {PropsRenderSlots} from '@deepseek-ai/dsh-client-ui-slots'
 import type { PendingSubmission } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { MessageImageSource } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import { fileExtension, FileTypeIcon, fileSizeText, JsonBlock, projectUserText, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
+import type {} from '@deepseek-ai/dsh-client-ui-skill/client'
+import { fileExtension, FileTypeIcon, fileSizeText, JsonBlock, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps } from '../contract/slots.ts'
 import type { ModelRetryNode, TurnErrorNode, UserMessageNode } from '../contract/snapshot.ts'
 import { CompactionItem } from './CompactionItem.tsx'
@@ -160,7 +161,7 @@ function TurnMaxTokensItem({ t }: {
 /** Right-aligned bubble shared by user and steering rows. */
 function UserStyleBubble({
   content, renderMessageImages, actions, pending = false, echo = false, referenceLabels = [], skillNames = [],
-  previewAttachments, references, t,
+  previewAttachments, renderFactorySlot, interactive = false, t,
 }: {
   content: readonly unknown[]
   renderMessageImages: ChatNodeOwnerProps['renderMessageImages']
@@ -176,7 +177,8 @@ function UserStyleBubble({
   skillNames?: readonly string[]
   /** Local submission-echo attachments replacing the content-derived attachment sequence. */
   previewAttachments?: readonly PresentedAttachment[]
-  references?: Pick<ChatNodeOwnerProps, 'openFile' | 'openSkill'>
+  renderFactorySlot: ChatNodeOwnerProps['renderFactorySlot']
+  interactive?: boolean
   t: ChatViewSlotProps['t']
 }): ReactNode {
   const { text, attachments: contentAttachments, rest } = contentParts(content)
@@ -218,7 +220,8 @@ function UserStyleBubble({
           </div>
         )}
         {showBubble && <div className={css.bubble}>
-          {projectUserText(text, referenceLabels, skillNames, 'skill', references)}
+          {renderFactorySlot('conversation.user.text', { text,
+            facts: { sessionLabels: referenceLabels, skillNames }, interactive })}
           {rest.map((block, i) => <JsonBlock key={i} label={t('message.extraBlock')} payload={block} truncatedLabel={truncated} />)}
         </div>}
         {referenceLabels.length > 0 && (
@@ -238,15 +241,17 @@ function UserStyleBubble({
  * @param props - Pending message content and conversation translator.
  * @returns the pending steering bubble.
  */
-export function PendingSteeringBubble({ content, renderMessageImages, t }: {
+export function PendingSteeringBubble({ content, renderMessageImages, renderFactorySlot, t }: {
   content: readonly unknown[]
   renderMessageImages: ChatNodeOwnerProps['renderMessageImages']
+  renderFactorySlot: ChatNodeOwnerProps['renderFactorySlot']
   t: ChatViewSlotProps['t']
 }): ReactNode {
   return (
     <UserStyleBubble
       content={content}
       renderMessageImages={renderMessageImages}
+      renderFactorySlot={renderFactorySlot}
       pending
       t={t}
       actions={text => (
@@ -269,9 +274,10 @@ export function PendingSteeringBubble({ content, renderMessageImages, t }: {
  * @param props - the session snapshot's pending submission and render seats.
  * @returns the echoed user bubble.
  */
-export function PendingSubmissionBubble({ submission, renderMessageImages, t }: {
+export function PendingSubmissionBubble({ submission, renderMessageImages, renderFactorySlot, t }: {
   submission: PendingSubmission
   renderMessageImages: ChatNodeOwnerProps['renderMessageImages']
+  renderFactorySlot: ChatNodeOwnerProps['renderFactorySlot']
   t: ChatViewSlotProps['t']
 }): ReactNode {
   const content = useMemo(
@@ -299,6 +305,7 @@ export function PendingSubmissionBubble({ submission, renderMessageImages, t }: 
       content={content}
       previewAttachments={previewAttachments}
       renderMessageImages={renderMessageImages}
+      renderFactorySlot={renderFactorySlot}
       pending={submission.placement === 'steering'}
       echo
       t={t}
@@ -328,14 +335,15 @@ export const SteeringMessageNodeView = memo(function SteeringMessageNodeView(pro
   return <UserMessageBubble {...props} />
 })
 
-function UserMessageBubble({node, renderMessageImages, openFile, openSkill, extraActions, t}:
+function UserMessageBubble({node, renderMessageImages, renderFactorySlot, extraActions, t}:
   ChatNodeViewProps<'user' | 'steering'> & {extraActions?: (text: string) => ReactNode}) {
   const data = node.data
   return (
     <UserStyleBubble
       content={data.content}
-      references={{ openFile, openSkill }}
+      interactive
       renderMessageImages={renderMessageImages}
+      renderFactorySlot={renderFactorySlot}
       {...data.referenceLabels === undefined ? {} : { referenceLabels: data.referenceLabels }}
       {...data.skillNames === undefined ? {} : { skillNames: data.skillNames }}
       t={t}

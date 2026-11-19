@@ -1,13 +1,20 @@
 /** Canonical ordinary chat namespace owner. Core retains Source's FIFO. */
 import {recordSha256} from './roleplay-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
+import {projectAuthorVariableWritesV1,applyAuthorVariableProjectionV1,
+  replaceAuthorVariableEffectV1 as replaceEffect,applyAuthorVariableWritesV1 as applyWrites,
+  freezeAuthorVariableDataV1 as freeze}
+  from './roleplay-author-variable-effects.js'
+import type {AuthorVariableEffectV1 as Effect,AuthorVariableKeyStateV1 as KeyState,
+  AuthorVariableKeyChangeV1 as KeyChange,AuthorVariableKeyResultV1 as KeyResult,
+  AuthorVariableContributionV1} from './roleplay-author-variable-effects.js'
 import type {AuthorChatRefV1,AuthorChatTableV1,AuthorChatNamespaceV3,AuthorChatNamespaceRootV3,AuthorChatCaptureV3,
   OrdinaryAuthorChatUpdateV3,OrdinaryAuthorChatOwnerV3,AuthorChatCommitV3,
   OrdinaryAuthorChatReceiptV3,AuthorChatForkBaseV3,AuthorChatForkOwnerV3,
   OrdinaryAuthorChatBatchUpdateV3,OrdinaryAuthorChatBatchOwnerV3,
   OrdinaryAuthorChatBatchCommitV3,OrdinaryAuthorChatBatchReceiptV3,
   AcceptedAuthorChatContributionV3,AcceptedAuthorChatWriteV3,AcceptedAuthorChatCommitV3,
-  AcceptedAuthorChatReceiptV3,AuthorChatRevisionV1,AuthorChatNativeRootsV3,AuthorChatNativeCutV3}
+  AcceptedAuthorChatReceiptV3,AuthorChatRevisionV1,AuthorChatNativeRootsV3,AuthorChatNativeCutV3,AuthorChatScopeBasesV1}
   from './roleplay-author-chat-state-types.js'
 
 interface OrdinaryKeyEvent extends OrdinaryAuthorChatUpdateV3 {
@@ -33,12 +40,6 @@ interface OrdinaryBatchEvent extends OrdinaryAuthorChatBatchUpdateV3 {
   readonly sha256:string
 }
 type KeyEvent=OrdinaryKeyEvent|ContributionEvent|OrdinaryBatchEvent
-interface KeyResult {
-  readonly key:string
-  readonly revision:AuthorChatRevisionV1
-  readonly exists:boolean
-  readonly value:AuthorChatCaptureV3['value']
-}
 interface Publication {
   readonly schemaVersion:3
   readonly encoding:'native-author-chat-publication-v3'
@@ -57,26 +58,7 @@ interface ForkRecord {
   readonly sha256:string
 }
 type Stored=KeyEvent|Publication|ForkRecord
-interface Effect {
-  readonly position:number
-  readonly contributionId:string|null
-  readonly writes:readonly AcceptedAuthorChatWriteV3[]
-  readonly result:{readonly exists:boolean;readonly value:AuthorChatCaptureV3['value']}
-}
-interface KeyState {effects:Effect[];current:KeyResult}
-interface KeyChange {
-  readonly start:number
-  readonly remove:number
-  readonly insert:Effect|null
-  readonly updates:readonly {index:number;effect:Effect}[]
-  current:KeyResult
-}
-interface Contribution {
-  position:number
-  attemptId:string
-  keys:readonly string[]
-  firstSource:AcceptedAuthorChatContributionV3['source']
-}
+type Contribution=AuthorVariableContributionV1<AcceptedAuthorChatContributionV3['source']>
 interface OperationReceipt {ref:AuthorChatRefV1;publication:Publication}
 interface Index {
   root:AuthorChatNamespaceRootV3
@@ -87,8 +69,6 @@ interface Index {
 }
 const isContribution=(event:KeyEvent):event is ContributionEvent=>'kind' in event&&event.kind==='accepted-contribution'
 const isBatch=(event:KeyEvent):event is OrdinaryBatchEvent=>'kind' in event&&event.kind==='ordinary-batch'
-const appendText=(value:AuthorChatCaptureV3['value']):string=>value===null?'':
-  typeof value==='object'?JSON.stringify(value):String(value)
 interface OwnedRowFactV3 {
   readonly table:'branch'
   readonly key:string
@@ -102,17 +82,9 @@ interface PublicationClosureV3 {
   readonly previous:PublicationClosureV3|null
 }
 function fail(code:string):never {throw Error(code)}
-const frozen=new WeakSet<object>()
-function freeze<T>(value:T):T {
-  if(value&&typeof value==='object') {
-    if(frozen.has(value))return value
-    for(const child of Object.values(value))freeze(child)
-    Object.freeze(value)
-    frozen.add(value)
-  }
-  return value
-}
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
+const sameRef=(left:AuthorChatRefV1|null,right:AuthorChatRefV1|null)=>left===right
+  ||!!left&&!!right&&left.key===right.key&&left.sha256===right.sha256
 const address=(namespace:AuthorChatNamespaceV3)=>recordSha256(namespace)
 const forkBaseKey=(namespace:AuthorChatNamespaceV3,namespaceSha256:string)=>
   `${namespace.sessionId}__author-chat-fork-base-v3_${namespaceSha256}`
@@ -121,13 +93,26 @@ export const authorChatEventKeyV3=(namespace:AuthorChatNamespaceV3,operationId:s
 export const authorChatContributionIdV3=(namespace:AuthorChatNamespaceV3,inputId:string)=>
   recordSha256({namespace,inputId})
 
-export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorChatTableV1;readonly roots:AuthorChatNativeRootsV3}) {
+export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorChatTableV1;readonly roots:AuthorChatNativeRootsV3;
+  readonly scopeBases?:{capture(namespace:AuthorChatNamespaceV3):AuthorChatScopeBasesV1;
+    resolve(namespace:AuthorChatNamespaceV3,ref:AuthorChatRefV1|null):AuthorChatScopeBasesV1}}) {
   const {table,roots}=options
+  const emptyBases:AuthorChatScopeBasesV1={ref:null,reset:null,keys:new Map()}
+  const captureBases=(namespace:AuthorChatNamespaceV3)=>options.scopeBases?.capture(namespace)??emptyBases
+  function resolveBases(namespace:AuthorChatNamespaceV3,ref:AuthorChatRefV1|null):AuthorChatScopeBasesV1 {
+    if(!ref)return emptyBases
+    if(!options.scopeBases)fail('AUTHOR_CHAT_SCOPE_UNAVAILABLE')
+    return options.scopeBases.resolve(namespace,ref)
+  }
+  function assertScope(update:{namespace:AuthorChatNamespaceV3;expectedScopeRef?:AuthorChatRefV1|null}) {
+    if(!sameRef(captureBases(update.namespace).ref,update.expectedScopeRef??null))fail('AUTHOR_CHAT_SCOPE_CHANGED')
+  }
   const parsed=new WeakMap<object,Stored>()
   // Each namespace has one mutable current index. Historical roots build their
   // own lazy index, so later parent commits cannot mutate a frozen child view.
   const liveIndexes=new Map<string,Index>()
   const historicalIndexes=new Map<string,Index>()
+  const fencePositions=new WeakMap<AuthorChatNamespaceRootV3,number>()
   const publicationClosures=new Map<string,PublicationClosureV3>()
   const certifiedRoots=new Set<string>()
   const rowFacts=new WeakMap<Stored,OwnedRowFactV3>()
@@ -214,72 +199,14 @@ export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorC
     return Object.freeze([...candidates.values()].map(namespace=>captureForkNamespaceRootAtCut(namespace,cut))
       .filter(root=>root.head!==null||root.base!==null))
   }
-  function applyWrites(before:Effect['result'],writes:readonly AcceptedAuthorChatWriteV3[]):Effect['result'] {
-    let {exists,value}=before
-    for(const write of writes) {
-      if(write.operation==='delete') {exists=false;value=null;continue}
-      if(write.operation==='set')value=write.value
-      else if(write.operation==='append')value=appendText(value)+appendText(write.value)
-      else value=(Number(value)||0)+(Number(write.value)||0)
-      exists=true
-    }
-    return {exists,value}
-  }
-  function replaceEffect(state:KeyState|undefined,position:number,contributionId:string|null,
-    writes:readonly AcceptedAuthorChatWriteV3[]) {
-    const effects=state?.effects??[]
-    let start=effects.length
-    // New ordinary writes append immediately. A replacement visits only the
-    // suffix after its fixed position, including keys introduced by a regen.
-    while(start>0&&effects[start-1]!.position>=position)start--
-    const remove=effects[start]?.contributionId===contributionId&&effects[start]?.position===position?1:0
-    let value=start?effects[start-1]!.result:{exists:false,value:null}
-    const insert=writes.length?{position,contributionId,writes,result:applyWrites(value,writes)}:null,
-      updates:{index:number;effect:Effect}[]=[]
-    if(insert)value=insert.result
-    let result=start+remove<effects.length?effects.at(-1)!.result:value
-    for(let i=start+remove;i<effects.length;i++) {
-      const effect=effects[i]!
-      // An unchanged absolute write owns the remaining value. Earlier changes
-      // cannot flow through it, including a Browser updater's computed set.
-      if(effect.writes.some(write=>write.operation==='set'||write.operation==='delete'))break
-      value=applyWrites(value,effect.writes)
-      updates.push({index:i,effect:{...effect,result:value}})
-      if(i===effects.length-1)result=value
-    }
-    return {start,remove,insert,updates,result}
-  }
   function project(event:KeyEvent,eventRef:AuthorChatRefV1,current:Index) {
-    const prior=isContribution(event)?current.contributions.get(event.contributionId):undefined,
-      position=prior?.position??current.nextPosition,
-      writes=isContribution(event)||isBatch(event)?event.writes:[{key:event.key,operation:'set' as const,value:event.value}],
-      grouped=new Map<string,AcceptedAuthorChatWriteV3[]>()
-    for(const write of writes) {
-      const group=grouped.get(write.key)??[]
-      group.push(write);grouped.set(write.key,group)
-    }
-    const affected=new Set([...(prior?.keys??[]),...grouped.keys()]),keys=new Map<string,KeyChange>()
-    for(const key of affected) {
-      const before=current.keys.get(key),change=replaceEffect(before,position,
-        isContribution(event)?event.contributionId:null,grouped.get(key)??[]),
-        revision={revision:(before?.current.revision.revision??0)+1,head:eventRef}
-      keys.set(key,{...change,current:{key,revision,...change.result}})
-    }
-    return {keys,contribution:isContribution(event)?{id:event.contributionId,
-      value:{position,attemptId:event.attemptId,keys:[...grouped.keys()],firstSource:prior?.firstSource??event.source}}:null,
-      nextPosition:prior?current.nextPosition:current.nextPosition+1}
+    return projectAuthorVariableWritesV1(current,{
+      writes:isContribution(event)||isBatch(event)?event.writes:[{key:event.key,operation:'set',value:event.value}],
+      ...isContribution(event)?{contribution:{id:event.contributionId,attemptId:event.attemptId,source:event.source}}:{},
+    },eventRef)
   }
   function applyProjection(current:Index,change:ReturnType<typeof project>,receipt:OperationReceipt,eventRef:AuthorChatRefV1) {
-    for(const [key,value] of change.keys) {
-      const state=current.keys.get(key)??{effects:[],current:value.current},shift=(value.insert?1:0)-value.remove
-      if(value.insert&&value.start===state.effects.length)state.effects.push(value.insert)
-      else state.effects.splice(value.start,value.remove,...(value.insert?[value.insert]:[]))
-      for(const update of value.updates)state.effects[update.index+shift]=update.effect
-      state.current=value.current
-      current.keys.set(key,state)
-    }
-    if(change.contribution)current.contributions.set(change.contribution.id,change.contribution.value)
-    current.nextPosition=change.nextPosition
+    applyAuthorVariableProjectionV1(current,change)
     if(!current.operations.has(eventRef.key))current.operations.set(eventRef.key,receipt)
   }
   function index(root:AuthorChatNamespaceRootV3,historical=false):Index {
@@ -314,49 +241,124 @@ export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorC
         event=referenced<KeyEvent>(node.event,'native-author-chat-key-event-v3')
       if(!same(event.namespace,root.namespace))fail('AUTHOR_CHAT_HISTORY_MISSING')
       const change=project(event,node.event,result)
-      for(const value of node.results)change.keys.get(value.key)!.current=value
+      // Persisted results describe the event's numerical scope basis. Raw
+      // indexing retains writes and revisions; readers derive their own basis.
+      for(const value of node.results) {
+        const key=change.keys.get(value.key)!
+        key.current={...key.current,revision:value.revision}
+      }
       applyProjection(result,change,receipt,node.event)
     }
     result.root=root
     cache.set(id,result)
     return result
   }
-  function keyAt(root:AuthorChatNamespaceRootV3,key:string,historical:boolean):AuthorChatCaptureV3 {
-    const value=index(root,historical).keys.get(key)?.current
-    if(value) {
-      return freeze({schemaVersion:3,authority:'consumer-data-only',namespace:root.namespace,key,root,
-        revision:value.revision,exists:value.exists,value:value.value})
+  function fencePosition(root:AuthorChatNamespaceRootV3):number {
+    let position=fencePositions.get(root)
+    if(position===undefined) {
+      position=index(root,true).nextPosition
+      fencePositions.set(root,position)
     }
-    return freeze({schemaVersion:3,authority:'consumer-data-only',namespace:root.namespace,key,root,
-      revision:{revision:0,head:null},exists:false,value:null})
+    return position
   }
-  const captureKeyAtRootV3=(root:AuthorChatNamespaceRootV3,key:string)=>keyAt(root,key,true)
+  function effectiveKey(state:KeyState|undefined,key:string,bases:AuthorChatScopeBasesV1,change?:KeyChange) {
+    if(!bases.reset&&!bases.keys.has(key)) {
+      const length=(state?.effects.length??0)+(change?(change.insert?1:0)-change.remove:0)
+      return {active:length>0,result:change?.current??state?.current??{exists:false,value:null}}
+    }
+    const reset=bases.reset,keyBase=bases.keys.get(key),
+      resetFence=reset?fencePosition(reset.fenceRoot):0,
+      keyFence=keyBase?fencePosition(keyBase.fenceRoot):0
+    // Full resets clear the key index. A retained key base is therefore a
+    // later publication, even when both publications share the same fence.
+    const useKey=!!keyBase,
+      fence=useKey?keyFence:resetFence,ref=useKey?keyBase!.ref:reset?.ref??null,
+      seed=useKey?{exists:keyBase!.exists,value:keyBase!.value}
+        :{exists:!!reset&&Object.hasOwn(reset.variables,key),value:reset?.variables[key]??null}
+    const effects=state?.effects??[],shift=change?(change.insert?1:0)-change.remove:0,
+      length=effects.length+shift,updates=new Map(change?.updates.map(update=>[update.index,update.effect]))
+    const at=(i:number):Effect=>{
+      if(change&&i>=change.start) {
+        if(change.insert&&i===change.start)return change.insert
+        const original=i-shift
+        return updates.get(original)??effects[original]!
+      }
+      return effects[i]!
+    }
+    if(!length||at(length-1).position<fence)return {active:true,result:seed}
+    let cache=state?.effective
+    if(!cache||!sameRef(cache.ref,ref)||cache.fence!==fence) {
+      cache={ref,fence,results:new WeakMap()}
+      if(state)state.effective=cache
+    }
+    let cursor=length-1,value:Effect['result']=seed
+    // Reuse the unaffected prefix for this exact field basis. Replacements
+    // preserve fixed positions, including newly introduced pre-fence keys.
+    while(cursor>=0&&at(cursor).position>=fence) {
+      const effect=at(cursor),prior=cache.results.get(effect)
+      if(prior) {value=prior;break}
+      if(effect.writes.some(write=>write.operation==='set'||write.operation==='delete')) {cursor--;break}
+      cursor--
+    }
+    for(let i=cursor+1;i<length;i++) {
+      const effect=at(i)
+      value=applyWrites(value,effect.writes);cache.results.set(effect,value)
+    }
+    return {active:true,result:value}
+  }
+  function publicationResults(event:KeyEvent,current:Index,change:ReturnType<typeof project>) {
+    const bases=resolveBases(event.namespace,event.expectedScopeRef??null)
+    return [...change.keys].map(([key,value])=>({...value.current,
+      ...effectiveKey(current.keys.get(key),key,bases,value).result}))
+  }
+  function keyAt(root:AuthorChatNamespaceRootV3,key:string,historical:boolean,
+    bases=captureBases(root.namespace)):AuthorChatCaptureV3 {
+    const state=index(root,historical).keys.get(key),value=state?.current
+    return freeze({schemaVersion:3,authority:'consumer-data-only',namespace:root.namespace,key,root,scopeRef:bases.ref,
+      revision:value?.revision??{revision:0,head:null},...effectiveKey(state,key,bases).result})
+  }
+  const captureKeyAtRootV3=(root:AuthorChatNamespaceRootV3,key:string,scopeRef:AuthorChatRefV1|null=null)=>
+    keyAt(root,key,true,resolveBases(root.namespace,scopeRef))
   const captureKeyV3=(namespace:AuthorChatNamespaceV3,key:string)=>keyAt(captureNamespaceRootV3(namespace),key,false)
-  function overlayAt(current:Index,changes?:ReadonlyMap<string,{current:KeyResult;active:boolean}>):{
-    values:Record<string,AuthorChatCaptureV3['value']>;deletedKeys?:readonly string[]
+  function overlayAt(current:Index,bases:AuthorChatScopeBasesV1,changes?:ReadonlyMap<string,KeyChange>):{
+    values:Record<string,AuthorChatCaptureV3['value']>;deletedKeys?:readonly string[];replaceOrdinary?:true
   } {
     const values:Record<string,AuthorChatCaptureV3['value']>=Object.create(null)
     const deletedKeys:string[]=[]
-    for(const [key,state] of current.keys) {
-      const change=changes?.get(key),value=(change??state).current
+    const keys=new Set([...current.keys.keys(),...bases.keys.keys(),...Object.keys(bases.reset?.variables??{})])
+    for(const key of keys) {
+      // Numerical consumers supply stat_data from their own current target.
+      // Ordinary replacement controls only the surrounding context fields.
+      if(key==='stat_data')continue
+      const state=current.keys.get(key)
+      const {active,result:value}=effectiveKey(state,key,bases,changes?.get(key))
+      if(!active)continue
       if(value.exists)values[key]=value.value
-      else if(change?change.active:state.effects.length>0)deletedKeys.push(key)
+      else deletedKeys.push(key)
     }
-    return {values,...deletedKeys.length?{deletedKeys}:{}}
+    return {values,...deletedKeys.length?{deletedKeys}:{},...bases.reset?{replaceOrdinary:true}:{}}
   }
   function captureNamespaceV3(namespace:AuthorChatNamespaceV3) {
-    const root=captureNamespaceRootV3(namespace),current=index(root)
+    return namespaceAt(captureNamespaceRootV3(namespace),captureBases(namespace),false)
+  }
+  function namespaceAt(root:AuthorChatNamespaceRootV3,bases:AuthorChatScopeBasesV1,historical:boolean) {
+    const current=index(root,historical)
     // An accepted empty or deleted message container still exists. A frozen
     // fork of an untouched namespace does not create one merely by having base.
-    return freeze({schemaVersion:3 as const,authority:'consumer-data-only' as const,root,
-      exists:current.nextPosition>0,...overlayAt(current)})
+    return freeze({schemaVersion:3 as const,authority:'consumer-data-only' as const,root,scopeRef:bases.ref,
+      exists:current.nextPosition>0||bases.reset!==null||bases.keys.size>0,...overlayAt(current,bases)})
   }
+  const captureNamespaceAtRootV3=(root:AuthorChatNamespaceRootV3,scopeRef:AuthorChatRefV1|null=null)=>
+    namespaceAt(root,resolveBases(root.namespace,scopeRef),true)
   async function commitOrdinaryV3(input:OrdinaryAuthorChatUpdateV3,
     owner:OrdinaryAuthorChatOwnerV3):Promise<AuthorChatCommitV3> {
     const update=freeze(cloneRoleplayTavernLoreDataV1(input))
     if(!owner.ownsNamespace(update.namespace,update.cause))fail('AUTHOR_CHAT_NAMESPACE_UNAVAILABLE')
-    const current=async()=>{if(!await owner.isCurrent(update.namespace))fail('AUTHOR_CHAT_OWNER_CHANGED')}
-    await current()
+    const current=async(checkScope=true)=>{
+      if(!await owner.isCurrent(update.namespace))fail('AUTHOR_CHAT_OWNER_CHANGED')
+      if(checkScope)assertScope(update)
+    }
+    await current(false)
     const inputSha256=recordSha256(update),key=authorChatEventKeyV3(update.namespace,update.operationId)
     let event=read<OrdinaryKeyEvent>(key,'native-author-chat-key-event-v3')
     const replayed=event!==undefined
@@ -368,6 +370,7 @@ export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorC
       return {kind:'replayed',event:eventRef,committedRevision:{revision:event.revision,head:eventRef},
         capture:keyAt(root,update.key,false)}
     }
+    assertScope(update)
     const before=keyAt(root,update.key,false)
     if(!same(before.revision,update.expected))fail('AUTHOR_CHAT_REVISION_CHANGED')
     if(!event) {
@@ -385,7 +388,7 @@ export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorC
     const eventRef={key,sha256:event.sha256},currentIndex=index(root),change=project(event,eventRef,currentIndex)
     const body={schemaVersion:3 as const,encoding:'native-author-chat-publication-v3' as const,
       namespace:update.namespace,event:eventRef,previous:root.head,base:root.base,
-      results:[...change.keys.values()].map(value=>value.current)}
+      results:publicationResults(event,currentIndex,change)}
     const node=freeze({...body,sha256:recordSha256(body)})
     const nodeKey=`${update.namespace.sessionId}__author-chat-publication-v3_${node.sha256}`
     if(!read<Publication>(nodeKey,'native-author-chat-publication-v3'))await put(nodeKey,node,owner.beforeWrite)
@@ -425,13 +428,12 @@ export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorC
   }
   function captureNamespaceWithoutContribution(namespace:AuthorChatNamespaceV3,contributionId:string) {
     const root=captureNamespaceRootV3(namespace),current=index(root),prior=current.contributions.get(contributionId),
-      changes=new Map<string,{current:KeyResult;active:boolean}>()
+      bases=captureBases(namespace),changes=new Map<string,KeyChange>()
     if(prior)for(const key of prior.keys) {
       const state=current.keys.get(key)!,change=replaceEffect(state,prior.position,contributionId,[])
-      changes.set(key,{current:{...state.current,...change.result},
-        active:state.effects.length-change.remove+(change.insert?1:0)>0})
+      changes.set(key,{...change,current:{...state.current,...change.result}})
     }
-    return freeze({root,exists:current.nextPosition>0,...overlayAt(current,changes),priorAttemptId:prior?.attemptId??null,
+    return freeze({root,scopeRef:bases.ref,exists:current.nextPosition>0,...overlayAt(current,bases,changes),priorAttemptId:prior?.attemptId??null,
       priorHasWrites:(prior?.keys.length??0)>0})
   }
   function acceptedReceipt(receipt:OperationReceipt,event:AuthorChatRefV1) {
@@ -456,8 +458,11 @@ export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorC
     owner:OrdinaryAuthorChatBatchOwnerV3):Promise<OrdinaryAuthorChatBatchCommitV3> {
     const update=freeze(cloneRoleplayTavernLoreDataV1(input))
     if(!owner.ownsNamespace(update.namespace,update.cause))fail('AUTHOR_CHAT_NAMESPACE_UNAVAILABLE')
-    const current=async()=>{if(!await owner.isCurrent(update.namespace))fail('AUTHOR_CHAT_OWNER_CHANGED')}
-    await current()
+    const current=async(checkScope=true)=>{
+      if(!await owner.isCurrent(update.namespace))fail('AUTHOR_CHAT_OWNER_CHANGED')
+      if(checkScope)assertScope(update)
+    }
+    await current(false)
     const key=authorChatEventKeyV3(update.namespace,update.operationId)
     let event=read<OrdinaryBatchEvent>(key,'native-author-chat-key-event-v3')
     const replayed=event!==undefined
@@ -467,6 +472,7 @@ export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorC
       await roots.flush(update.namespace)
       return {kind:'replayed',...acceptedReceipt(prior,{key,sha256:event!.sha256})}
     }
+    assertScope(update)
     const assertRoot=()=>{
       if(!same(captureNamespaceRootV3(update.namespace),update.expectedRoot))fail('AUTHOR_CHAT_REVISION_CHANGED')
     }
@@ -493,7 +499,7 @@ export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorC
     const eventRef={key,sha256:event.sha256},change=project(event,eventRef,currentIndex),
       body={schemaVersion:3 as const,encoding:'native-author-chat-publication-v3' as const,
         namespace:update.namespace,event:eventRef,previous:root.head,base:root.base,
-        results:[...change.keys.values()].map(value=>value.current)},
+        results:publicationResults(event,currentIndex,change)},
       node=freeze({...body,sha256:recordSha256(body)}),
       ref={key:`${update.namespace.sessionId}__author-chat-publication-v3_${node.sha256}`,sha256:node.sha256}
     if(!read<Publication>(ref.key,'native-author-chat-publication-v3'))await put(ref.key,node,owner.beforeWrite)
@@ -528,8 +534,11 @@ export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorC
     owner:OrdinaryAuthorChatOwnerV3):Promise<AcceptedAuthorChatCommitV3> {
     const update=freeze(cloneRoleplayTavernLoreDataV1(input))
     if(!owner.ownsNamespace(update.namespace,update.cause))fail('AUTHOR_CHAT_NAMESPACE_UNAVAILABLE')
-    const current=async()=>{if(!await owner.isCurrent(update.namespace))fail('AUTHOR_CHAT_OWNER_CHANGED')}
-    await current()
+    const current=async(checkScope=true)=>{
+      if(!await owner.isCurrent(update.namespace))fail('AUTHOR_CHAT_OWNER_CHANGED')
+      if(checkScope)assertScope(update)
+    }
+    await current(false)
     const inputSha256=recordSha256(update),key=authorChatEventKeyV3(update.namespace,update.operationId)
     let event=read<ContributionEvent>(key,'native-author-chat-key-event-v3')
     const replayed=event!==undefined
@@ -540,6 +549,7 @@ export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorC
       await roots.flush(update.namespace)
       return {kind:'replayed',...acceptedReceipt(priorReceipt,{key,sha256:event!.sha256})}
     }
+    assertScope(update)
     const assertAttempt=()=>{
       if((currentIndex.contributions.get(update.contributionId)?.attemptId??null)!==update.replacesAttemptId)
         fail('AUTHOR_CHAT_CONTRIBUTION_CHANGED')
@@ -560,7 +570,7 @@ export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorC
     const eventRef={key,sha256:event.sha256},change=project(event,eventRef,currentIndex),
       body={schemaVersion:3 as const,encoding:'native-author-chat-publication-v3' as const,
         namespace:update.namespace,event:eventRef,previous:root.head,base:root.base,
-        results:[...change.keys.values()].map(value=>value.current)},
+        results:publicationResults(event,currentIndex,change)},
       node=freeze({...body,sha256:recordSha256(body)}),
       ref={key:`${update.namespace.sessionId}__author-chat-publication-v3_${node.sha256}`,sha256:node.sha256}
     if(!read<Publication>(ref.key,'native-author-chat-publication-v3'))await put(ref.key,node,owner.beforeWrite)
@@ -699,7 +709,7 @@ export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorC
       const body={schemaVersion:3 as const,encoding:'native-author-chat-publication-v3' as const,
         namespace:request.namespace,event:{key,sha256},previous:root.head,base:root.base},
         change=project(event,{key,sha256},index(root,true)),
-        currentBody={...body,results:[...change.keys.values()].map(value=>value.current)}
+        currentBody={...body,results:publicationResults(event,index(root,true),change)}
       const publicationSha256=recordSha256(currentBody),
         ref={key:`${request.namespace.sessionId}__author-chat-publication-v3_${publicationSha256}`,sha256:publicationSha256}
       if(read<Publication>(ref.key,'native-author-chat-publication-v3'))visitRoot({...root,head:ref})
@@ -740,7 +750,7 @@ export function createCanonicalAuthorChatStateV1(options:{readonly table:AuthorC
     return root
   }
   return {captureNamespaceRootV3,captureNamespaceRootAtNativeCut,captureNamespaceRootsAtNativeCut,
-    captureKeyV3,captureNamespaceV3,captureKeyAtRootV3,
+    captureKeyV3,captureNamespaceV3,captureKeyAtRootV3,captureNamespaceAtRootV3,
     commitOrdinaryBatchV3,lookupOrdinaryBatchV3,confirmOrdinaryBatchV3,
     commitOrdinaryV3,lookupOrdinaryV3,confirmOrdinary,replaceAcceptedContribution,lookupAcceptedContribution,confirmAcceptedContribution,
     captureNamespaceWithoutContribution,readAcceptedContribution,readOwnedRowFactsV3,

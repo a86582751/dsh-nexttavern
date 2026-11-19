@@ -6,23 +6,30 @@ function processBatch(data) {
         const result = executeTavernPromptTransformsV1(data);
         // Transport packing follows canonical receipt/hash construction. The three
         // originals remain owned by the bounded caller's admitted batch input.
-        const message = data.projectionTransport === 'input-backed' && result.kind === 'transformed'
+        return data.projectionTransport === 'input-backed' && result.kind === 'transformed'
             ? { kind: 'transformed', output: { ...result.output, entries: result.output.entries.map(({ rawText: _rawText, storyText: _storyText, inputText: _inputText, ...projection }) => projection) },
                 ...(result.displayProvenance ? { displayProvenance: result.displayProvenance } : {}) }
             : result;
-        parentPort?.postMessage(message);
     }
     catch {
         const diagnostic = { schemaVersion: 1,
             code: 'PROMPT_TRANSFORM_WORKER', entryKey: null, ruleId: null, macro: null, limit: null };
-        parentPort?.postMessage({ kind: 'refused', diagnostics: [diagnostic] });
+        return { kind: 'refused', diagnostics: [diagnostic] };
     }
 }
-if (workerData !== undefined)
-    processBatch(workerData);
-else {
-    // Ready workers reuse trusted imports; each executor invocation owns its
-    // compiled rules, macro state and display-provenance journal independently.
-    parentPort?.on('message', processBatch);
-    parentPort?.postMessage({ kind: 'ready' });
+// The Host may import this module while loading its published worker entries.
+if (parentPort) {
+    const startup = workerData;
+    if (startup && 'completionPort' in startup) {
+        const { completionPort } = startup;
+        // Ready workers reuse trusted imports. Each batch owns its compiled rules,
+        // macro state and display provenance.
+        parentPort.on('message', (data) => {
+            const result = processBatch(data);
+            completionPort.postMessage({ completedAt: performance.now(), result });
+        });
+        parentPort.postMessage({ kind: 'ready' });
+    }
+    else
+        parentPort.postMessage(processBatch(startup));
 }

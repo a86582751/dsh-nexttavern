@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
-import {createStatusSurface} from '../lib/ui/status-surface.js'
-import {createRoleplayStateStore} from '../lib/ui/state-store.js'
+import {after} from 'node:test'
+import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
+
+after(installSchemaTestDependencies())
+const {createStatusSurface}=await import('../lib/ui/status-surface.js')
+const {createRoleplayStateStore}=await import('../lib/ui/state-store.js')
 
 // Run the actual overlay hooks and seat against a minimal browser surface.
 const windowEvents=new EventTarget(),documentEvents=new EventTarget(),storage=new Map()
@@ -47,6 +51,7 @@ async function fixture(initial={}){
 }
 const originalWorker=globalThis.Worker,requests=[]
 globalThis.Worker=class {
+  constructor(){queueMicrotask(()=>this.onmessage?.({data:{ready:true}}))}
   postMessage(task){requests.push({worker:this,task,reply:outputs=>this.onmessage?.({data:{ok:true,value:{outputs}}}),
     fail:()=>this.onmessage?.({data:{ok:false}})})}
   terminate(){this.stopped=true}

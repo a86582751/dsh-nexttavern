@@ -5,6 +5,7 @@ import {keyOf,recordSha256} from './roleplay-data.js'
 import {captureRoleplayTavernPromptSourceV1,captureRoleplayTavernPromptSourceDataV1}
   from './roleplay-tavern-prompt-source.js'
 import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
+import {createTavernSourceEntryResolverV1} from './tavern-source-render-catalog.mjs'
 import type {AuthorRecord,AuthorTables} from './roleplay-author-context-types.js'
 import type {LegacyWorldbookWriteTargetV1} from './roleplay-tavern-legacy-write-target-types.js'
 
@@ -115,7 +116,8 @@ function projectPassiveLegacyRead(captured:CapturedReadData,tables:AuthorTables,
   // Imported author instructions only enter the admitted Native story material.
   // Background tasks use their frozen story and their own declared task inputs.
   const passiveTables:AuthorTables={cards:table([]),rules:table([]),worldbook:table(rows)}
-  const {source,currentIdentitySha256,edits,compilation}=captured
+  const {source,currentIdentitySha256,edits,compilation}=captured,
+    resolveEntry=createTavernSourceEntryResolverV1(source,compilation.plan)
   // Audit snapshots retain complete Native counters. Dependency currency uses
   // the Source owner's admitted identity and the published edit/overlay inputs,
   // so a normal completion cannot retire its own background task.
@@ -131,9 +133,7 @@ function projectPassiveLegacyRead(captured:CapturedReadData,tables:AuthorTables,
     const semantic={...ST_LORE_ENTRY_DEFAULTS_V1,...entry.semanticOverrides}
     // Membership entries address the published current directory. Its compiler
     // already owns the row; that address cannot be looked up in the raw archive.
-    const raw=entry.currentNativeMember
-      ?compilation.plan.currentNativeMembership!.members[entry.ordinal]!.rawEntry
-      :source.original.primary.entries.find(row=>row.ref.entryPointer===entry.sourcePointer)?.value
+    const raw=resolveEntry(entry).raw
     if(!raw)fail('LEGACY_READ_SOURCE_ENTRY_UNPROVEN')
     return passiveLegacyEntrySummary({id:entry.entryId,name:String(raw.name??raw.comment??entry.entryId),
       keywords:semantic.primaryKeys,enabled:semantic.enabled,alwaysOn:semantic.constant,

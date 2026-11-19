@@ -12,10 +12,13 @@ import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import type {TavernSourceMaterialPublicationV1} from './roleplay-tavern-source-inheritance-types.js'
 import type {CommunityExecutionRecord} from './community-preset-execution.js'
 import type {TavernNativeFinalLoreTextV1} from './roleplay-tavern-layout.js'
+import type {TavernPublishedAuthorProseV1} from './roleplay-tavern-prompt-types.js'
 import {roleplayOpeningMaterialKeysV1} from './roleplay-opening-material.js'
 import type {RoleplayOpeningMaterialRecordV1,RoleplayOpeningMaterialDataRefV1} from './roleplay-opening-material.js'
 import {programOpeningInputKeyV1,validateProgramOpeningSeedV1,
   validateProgramOpeningInputV1} from './roleplay-program-opening-records.js'
+import {assertAuthorGenerationEffects} from 'dsh-nexttavern-session-format'
+import type {AuthorGenerationEffectsAcceptedV1,AuthorGenerationEffectsSettledV1} from 'dsh-nexttavern-session-format'
 
 export interface TavernMaterialHistoryDependenciesV1 {
   readonly sessionId:string
@@ -41,7 +44,26 @@ export interface TavernBoundPlayerCoreMaterialRowV1 extends Readonly<Record<stri
 }
 /** Opening records preserve their own Native identity/seed/input contract.
  * No old player currency, branch preparation or admission is synthesized. */
+export interface TavernBoundAuthorCoreMaterialRowV1 extends Readonly<Record<string,unknown>> {
+  readonly schemaVersion:1
+  readonly encoding:'core-author-generation-material-record-v1'
+  readonly authority:'consumer-data-only'
+  readonly sessionId:string
+  readonly branchId:string
+  readonly operationId:string
+  readonly kind:'snapshot'|'plan'
+  readonly payload:Readonly<Record<string,unknown>>
+}
 export type TavernBoundCoreMaterialRowV1=TavernBoundPlayerCoreMaterialRowV1|RoleplayOpeningMaterialRecordV1
+  |TavernBoundAuthorCoreMaterialRowV1
+type AcceptedEffectsEvent=SessionEvent<'roleplay/author-generation-effects'>&{readonly data:AuthorGenerationEffectsAcceptedV1}
+type SettledEffectsEvent=SessionEvent<'roleplay/author-generation-effects'>&{readonly data:AuthorGenerationEffectsSettledV1}
+interface MaterialOrigin {
+  readonly event:NativeRequestMaterialEventV1|SettledEffectsEvent
+  readonly material:{readonly snapshot:{readonly key:string;readonly sha256:string};
+    readonly plan:{readonly key:string;readonly sha256:string};readonly turn:number;readonly step:number}
+  readonly auxiliary?:{readonly accepted:AcceptedEffectsEvent}
+}
 function fail(code:string):never {throw Error(code)}
 const object=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value)
 function freeze<T>(value:T):T {
@@ -249,10 +271,13 @@ function verifyOpeningRows(deps:TavernMaterialHistoryDependenciesV1,
   openingPublicationPrefix(deps,snapshot,events,event,budget)
 }
 function readPublication(deps:TavernMaterialHistoryDependenciesV1,
-  event:NativeRequestMaterialEventV1,ownerSessionId:string,references:Map<string,string>,budget:MaterialReadBudgetV1,
+  origin:MaterialOrigin,ownerSessionId:string,references:Map<string,string>,budget:MaterialReadBudgetV1,
   events:MaterialEvents) {
-  const opening=event.data.snapshot.key.startsWith(`${ownerSessionId}__program-opening-material-`),
-    prefix=opening?`${ownerSessionId}__program-opening-material-`:`${ownerSessionId}__tavern-prompt-v1-`
+  const {event,material,auxiliary}=origin,
+    opening=material.snapshot.key.startsWith(`${ownerSessionId}__program-opening-material-`),
+    author=material.snapshot.key.startsWith(`${ownerSessionId}__author-generation-`),
+    prefix=opening?`${ownerSessionId}__program-opening-material-`
+      :author?`${ownerSessionId}__author-generation-`:`${ownerSessionId}__tavern-prompt-v1-`
   const read=(ref:{key:string;sha256:string},kind:'snapshot'|'plan')=>{
     if(!ref.key.startsWith(prefix))fail('INPUT_MATERIAL_HISTORY_CORE_OWNER_UNPROVEN')
     const raw=deps.table.get(ref.key)
@@ -261,7 +286,7 @@ function readPublication(deps:TavernMaterialHistoryDependenciesV1,
     // budgets belong to its producer, not to the repeated explanatory layout.
     const priorRow=budget.rows.get(ref.key),row=priorRow??raw
     if(!object(row)||row.schemaVersion!==1||row.authority!=='consumer-data-only'||row.sessionId!==ownerSessionId
-      ||row.kind!==kind||row.turn!==event.data.turn||row.step!==event.data.step
+      ||row.kind!==kind||!author&&(row.turn!==material.turn||row.step!==material.step)
       ||!object(row.payload))
       fail('INPUT_MATERIAL_HISTORY_CORE_SCHEMA_INVALID')
     if(opening) {
@@ -270,6 +295,15 @@ function readPublication(deps:TavernMaterialHistoryDependenciesV1,
       if(row.encoding!=='core-program-opening-material-record-v1'||!positive(row.turn)||!positive(row.step)
         ||!object(row.identity)||!object(row.nativeOwner)||!object(row.seedRef)||!object(row.inputRef))
         fail('INPUT_MATERIAL_HISTORY_OPENING_SCHEMA_INVALID')
+    }else if(author) {
+      // Auxiliary material is frozen before its actual no-user child exists.
+      // Native V3 binds the root owner and operation at request acceptance.
+      const identity=auxiliary?.accepted.data.identity??(event.type==='request/material'&&event.data.schemaVersion===3
+        ?event.data.owner:undefined)
+      if(row.encoding!=='core-author-generation-material-record-v1'||row.branchId!==ownerSessionId
+        ||identity?.kind!=='author-generation'||identity.rootSessionId!==ownerSessionId
+        ||row.operationId!==identity.operationId)
+        fail('INPUT_MATERIAL_HISTORY_CORE_OWNER_UNPROVEN')
     }else if(row.encoding!=='core-input-material-record-v1'||row.branchId!==ownerSessionId
       ||!object(row.currency)||row.currency.schemaVersion!==2)fail('INPUT_MATERIAL_HISTORY_CORE_SCHEMA_INVALID')
     rememberReference(references,ref)
@@ -277,43 +311,68 @@ function readPublication(deps:TavernMaterialHistoryDependenciesV1,
     if(!priorRow)budget.rows.set(ref.key,result)
     return result
   }
-  const snapshot=read(event.data.snapshot,'snapshot'),plan=read(event.data.plan,'plan')
-  if(opening)verifyOpeningRows(deps,event,snapshot as RoleplayOpeningMaterialRecordV1,
-    plan as RoleplayOpeningMaterialRecordV1,materialEventArray(events),budget)
-  else for(const field of ['currency','preparation','originalInputRefs']) {
+  const snapshot=read(material.snapshot,'snapshot'),plan=read(material.plan,'plan')
+  if(opening){
+    if(event.type!=='request/material')fail('INPUT_MATERIAL_HISTORY_CORE_OWNER_UNPROVEN')
+    verifyOpeningRows(deps,event,snapshot as RoleplayOpeningMaterialRecordV1,
+      plan as RoleplayOpeningMaterialRecordV1,materialEventArray(events),budget)
+  }
+  else for(const field of author?['operationId']:['currency','preparation','originalInputRefs']) {
     if(recordSha256(snapshot[field])!==recordSha256(plan[field]))fail('INPUT_MATERIAL_HISTORY_CORE_BINDING_CHANGED')
   }
-  return {event,snapshot,plan}
+  return {...origin,snapshot,plan}
 }
-const coreOwner=(key:string)=>/^([a-zA-Z0-9_-]{1,128})__(?:tavern-prompt-v1-|program-opening-material-)/.exec(key)?.[1]
+const coreOwner=(key:string)=>/^([a-zA-Z0-9_-]{1,128})__(?:tavern-prompt-v1-|program-opening-material-|author-generation-)/.exec(key)?.[1]
 const ownsCoreKey=(key:string,sid:string)=>key.startsWith(`${sid}__tavern-prompt-v1-`)
   ||key.startsWith(`${sid}__program-opening-material-`)
+  ||key.startsWith(`${sid}__author-generation-`)
 interface MaterialEventIndex {
   length:number
-  materials:SessionEvent<'request/material'>[]
   openings:SessionEvent<'opening/invocation'>[]
+  publications:MaterialOrigin[]
+  accepted:Map<number,{readonly event:AcceptedEffectsEvent;readonly sha256:string}>
 }
 const materialEventIndexes=new WeakMap<object,MaterialEventIndex>()
 function materialEvents(deps:Pick<TavernMaterialHistoryDependenciesV1,'nativeCut'>,events:MaterialEvents) {
   const cut=deps.nativeCut
-  if(!cut||cut.source!=='native')return {
-    materials:materialEventArray(events).filter((event):event is SessionEvent<'request/material'>=>event.type==='request/material'),
-    openings:materialEventArray(events).filter((event):event is SessionEvent<'opening/invocation'>=>event.type==='opening/invocation')}
-  let index=materialEventIndexes.get(cut.owner)
-  if(!index){index={length:0,materials:[],openings:[]};materialEventIndexes.set(cut.owner,index)}
-  if(index.length<cut.length) {
-    cut.forEachRange(index.length,cut.length,event=>{
-      if(event.type==='request/material')index!.materials.push(event)
-      else if(event.type==='opening/invocation')index!.openings.push(event)
-    })
-    index.length=cut.length
+  const native=cut?.source==='native'
+  let index=native?materialEventIndexes.get(cut.owner):undefined
+  if(!index){index={length:0,openings:[],publications:[],accepted:new Map()}
+    if(native)materialEventIndexes.set(cut.owner,index)}
+  const append=(event:SessionEvent)=>{
+    if(event.type==='request/material'){
+      index!.publications.push({event,material:event.data})
+    }else if(event.type==='opening/invocation')index!.openings.push(event)
+    else if(event.type==='roleplay/author-generation-effects'){
+      assertAuthorGenerationEffects(event.data)
+      if(event.data.kind==='accepted')index!.accepted.set(Number(event.seq),{
+        event:event as AcceptedEffectsEvent,sha256:nativeInputSha256(event)})
+      else if(event.data.kind==='settled'){
+        const accepted=index!.accepted.get(event.data.acceptedRef.seq)
+        if(!accepted||accepted.event.seq>=event.seq||accepted.sha256!==event.data.acceptedRef.sha256
+          ||accepted.event.data.rootSessionId!==event.data.rootSessionId)
+          fail('INPUT_MATERIAL_HISTORY_AUXILIARY_ACCEPTANCE_CHANGED')
+        if(accepted.event.data.effects==='readonly')return
+        const data=accepted.event.data
+        index!.publications.push({event:event as SettledEffectsEvent,
+          material:{snapshot:data.snapshotRef,plan:data.planRef,turn:data.checkpoint.turn,step:data.checkpoint.step},
+          auxiliary:{accepted:accepted.event}})
+      }
+    }
   }
-  function prefix<E extends {readonly seq:number}>(rows:readonly E[]):readonly E[] {
+  if(native){
+    if(index.length<cut.length){cut.forEachRange(index.length,cut.length,append);index.length=cut.length}
+  }else {
+    for(const event of materialEventArray(events))append(event)
+    index.length=events.length
+  }
+  function prefix<E>(rows:readonly E[],seq:(row:E)=>number):readonly E[] {
     let start=0,end=rows.length
-    while(start<end){const middle=(start+end)>>>1;if(rows[middle]!.seq<events.length)start=middle+1;else end=middle}
+    while(start<end){const middle=(start+end)>>>1;if(seq(rows[middle]!)<events.length)start=middle+1;else end=middle}
     return start===rows.length?rows:rows.slice(0,start)
   }
-  return {materials:prefix(index.materials),openings:prefix(index.openings)}
+  return {openings:prefix(index.openings,row=>row.seq),
+    publications:prefix(index.publications,row=>row.event.seq)}
 }
 interface PublicationFacts {
   readonly publication:ReturnType<typeof readPublication>
@@ -321,16 +380,17 @@ interface PublicationFacts {
   readonly rows:readonly {readonly key:string;readonly value:TavernBoundCoreMaterialRowV1}[]
   readonly inputs:readonly {readonly key:string;readonly value:unknown;readonly sha256:string;readonly bytes:number}[]
 }
-function capturePublication(deps:TavernMaterialHistoryDependenciesV1,event:NativeRequestMaterialEventV1,owner:string,
+function capturePublication(deps:TavernMaterialHistoryDependenciesV1,origin:MaterialOrigin,owner:string,
   references:Map<string,string>,budget:MaterialReadBudgetV1,events:MaterialEvents,
   projections:readonly SessionMessageProjection[],reads:RoleplayInputStateRead<PublicationFacts>[]) {
-  if(!deps.inputState)return readPublication(deps,event,owner,references,budget,events)
+  const {event}=origin
+  if(!deps.inputState)return readPublication(deps,origin,owner,references,budget,events)
   const read=deps.inputState.captureClosedHistoricalFacts(deps.sessionId,
     `tavern-material-publication:${tavernMaterialProjectionIdentityV1(projections)}:${owner}:${event.seq}`,()=>{
-      verifyMaterials(deps,events,projections,[event])
+      if(event.type==='request/material')verifyMaterials(deps,events,projections,[event])
       // Publication facts retain only their used inputs, while pure decoding
       // stays shared across the same complete catalog as before segmentation.
-      const local=budgetV1(budget),refs=new Map<string,string>(),publication=readPublication(deps,event,owner,refs,local,events)
+      const local=budgetV1(budget),refs=new Map<string,string>(),publication=readPublication(deps,origin,owner,refs,local,events)
       return Object.freeze({publication:Object.freeze(publication),references:Object.freeze([...refs]),
         rows:Object.freeze([...local.rows].map(([key,row])=>Object.freeze({key,value:row}))),
         inputs:Object.freeze([...local.inputs].map(([key,input])=>Object.freeze({key,...input})))})
@@ -361,13 +421,13 @@ export function captureRoleplayTavernMaterialPublicationV1(deps:TavernMaterialHi
   const nativeCut=deps.nativeCut??(deps.session?deps.inputState?.nativeHistory?.cut?.<SessionEvent>(deps.session):undefined)
   if(nativeCut)deps={...deps,nativeCut}
   const events=deps.events(),event=events[ref.nativeSeq]
-  if(ref.ownerSessionId!==deps.sessionId||event?.type!=='request/material'
-    ||nativeInputSha256(event)!==ref.nativeEventSha256||nativeInputSha256(event.data)!==ref.nativeRecordSha256
-    ||!sameNative(event.data.snapshot,ref.snapshotRef)||!sameNative(event.data.plan,ref.planRef)) {
+  if(ref.ownerSessionId!==deps.sessionId)fail('INPUT_MATERIAL_HISTORY_CORE_REF_CONFLICT')
+  const origin=publicationFromReference(ref,event,events)
+  if(!origin) {
     fail('INPUT_MATERIAL_HISTORY_CORE_REF_CONFLICT')
   }
   const reads:RoleplayInputStateRead<PublicationFacts>[]=[],references=new Map<string,string>()
-  const publication=capturePublication(deps,event,ref.ownerSessionId,references,budgetV1(),events,[...deps.projections()],reads)
+  const publication=capturePublication(deps,origin,ref.ownerSessionId,references,budgetV1(),events,[...deps.projections()],reads)
   deps.assertOwnerCurrent()
   return publication
 }
@@ -385,7 +445,7 @@ export function collectRoleplayTavernPublishedAuthorMaterialV1(
   const transform=publication.plan.payload.nativeTransform as Pick<NativeRequestMaterialTransformV1,
     'sections'|'insertions'|'anchoredInsertions'>|undefined,
     prompt=publication.plan.payload.promptPlan as {finalLore?:readonly TavernNativeFinalLoreTextV1[];
-      community?:CommunityExecutionRecord}|undefined,
+      community?:CommunityExecutionRecord;cardProse?:TavernPublishedAuthorProseV1}|undefined,
     audit=publication.snapshot.payload.injectionAudit as {consumers?:readonly {
       consumer:'scan'|'chat';results:readonly {registrationSha256:string;accepted:boolean}[]
     }[]}|undefined
@@ -407,7 +467,7 @@ export function collectRoleplayTavernPublishedAuthorMaterialV1(
   for(const row of [...transform.insertions,...(transform.anchoredInsertions??[])]) {
     if(authoredRefs.has(row.contributionRef))authorGroups.push({id:row.contributionRef,text:row.renderedText})
   }
-  return {authorGroups,finalLore:prompt.finalLore}
+  return {authorGroups,cardProse:prompt.cardProse,finalLore:prompt.finalLore}
 }
 
 /** Native-only text projections belong to the common publication history, but
@@ -481,7 +541,7 @@ interface NativeMaterialCatalog {
   readonly messages:Map<string,number>
   readonly publishedOperations:Set<string>
   readonly publishedMessages:Set<string>
-  materials:number
+  publicationsRead:number
   openings:number
   nativeLength:number
   read?:RoleplayInputStateRead<unknown>
@@ -506,22 +566,22 @@ function captureNativeMaterialHistory(deps:TavernMaterialHistoryDependenciesV1,c
     catalog={owner:Object.freeze({}),purpose:`tavern-material-catalog:${++nextMaterialCatalog}`,
       publications:[],references:new Map(),referenceRows:[],referenceDigest:createHash('sha256').update('['),
       budget:budgetV1(),operations:new Map(),messages:new Map(),
-      publishedOperations:new Set(),publishedMessages:new Set(),materials:0,openings:0,nativeLength:0}
+      publishedOperations:new Set(),publishedMessages:new Set(),publicationsRead:0,openings:0,nativeLength:0}
     catalogs.set(key,catalog)
   }
   const actual=catalog,index=materialEvents(deps,cut),previous=actual.read,
-    changed=!previous||index.materials.length!==actual.materials||index.openings.length!==actual.openings
+    changed=!previous||index.publications.length!==actual.publicationsRead||index.openings.length!==actual.openings
   if(changed)try{
     actual.read=inputState.captureClosedHistoricalFacts(deps.sessionId,
-      `${actual.purpose}:${index.materials.length}:${index.openings.length}`,()=>{
+      `${actual.purpose}:${index.publications.length}:${index.openings.length}`,()=>{
         // This dependency retains the exact previously consumed Domain rows.
         // Native appends add only their new publication facts to the closure.
         previous?.assertCurrent()
         let hasOpeningPublication=actual.publishedOperations.size>0
-        for(let position=actual.materials;!hasOpeningPublication&&position<index.materials.length;position++){
-          const event=index.materials[position]!,owner=coreOwner(event.data.snapshot.key)
+        for(let position=actual.publicationsRead;!hasOpeningPublication&&position<index.publications.length;position++){
+          const origin=index.publications[position]!,owner=coreOwner(origin.material.snapshot.key)
           hasOpeningPublication=!!owner&&(completePrefix||owner===deps.sessionId)
-            &&event.data.snapshot.key.startsWith(`${owner}__program-opening-material-`)
+            &&origin.material.snapshot.key.startsWith(`${owner}__program-opening-material-`)
         }
         // Unreferenced opening events did not belong to the old catalog's
         // grammar. Interpret them only once an actual opening publication uses it.
@@ -534,17 +594,17 @@ function captureNativeMaterialHistory(deps:TavernMaterialHistoryDependenciesV1,c
             ||messageCount!==1&&actual.publishedMessages.has(messageId))
             fail('INPUT_MATERIAL_HISTORY_OPENING_INVOCATION_AMBIGUOUS')
         }
-        for(let position=actual.materials;position<index.materials.length;position++){
-          const event=index.materials[position]! as NativeRequestMaterialEventV1,
-            owner=completePrefix?coreOwner(event.data.snapshot.key):deps.sessionId,
-            planOwner=completePrefix?coreOwner(event.data.plan.key):deps.sessionId,
-            ownsSnapshot=completePrefix?!!owner:ownsCoreKey(event.data.snapshot.key,deps.sessionId),
-            ownsPlan=completePrefix?!!planOwner:ownsCoreKey(event.data.plan.key,deps.sessionId)
+        for(let position=actual.publicationsRead;position<index.publications.length;position++){
+          const origin=index.publications[position]!,
+            owner=completePrefix?coreOwner(origin.material.snapshot.key):deps.sessionId,
+            planOwner=completePrefix?coreOwner(origin.material.plan.key):deps.sessionId,
+            ownsSnapshot=completePrefix?!!owner:ownsCoreKey(origin.material.snapshot.key,deps.sessionId),
+            ownsPlan=completePrefix?!!planOwner:ownsCoreKey(origin.material.plan.key,deps.sessionId)
           if(ownsSnapshot!==ownsPlan||owner!==planOwner)fail('INPUT_MATERIAL_HISTORY_CORE_OWNER_UNPROVEN')
           if(!ownsPlan)continue
           if(actual.publications.length>=4096)fail('INPUT_MATERIAL_HISTORY_LIMIT')
           const references=new Map<string,string>(),reads:RoleplayInputStateRead<PublicationFacts>[]=[],
-            publication=capturePublication(deps,event,owner!,references,actual.budget,cut,projections,reads)
+            publication=capturePublication(deps,origin,owner!,references,actual.budget,cut,projections,reads)
           for(const [refKey,sha256] of references){
             if(!actual.references.has(refKey)){
               const ref={key:refKey,sha256}
@@ -565,7 +625,7 @@ function captureNativeMaterialHistory(deps:TavernMaterialHistoryDependenciesV1,c
         }
         return null
       })
-    actual.materials=index.materials.length;actual.openings=index.openings.length
+    actual.publicationsRead=index.publications.length;actual.openings=index.openings.length
   }catch(error){catalogs.delete(key);throw error}
   actual.nativeLength=cut.length
   const read=actual.read!,length=actual.publications.length,referenceCount=actual.referenceRows.length,
@@ -600,22 +660,22 @@ function captureMaterialHistory(deps:TavernMaterialHistoryDependenciesV1,complet
   const events=deps.events(),prefixLength=events.length,
     prefixSha256=tavernMaterialNativePrefixSha256V1(deps,events),
     projections=[...deps.projections()],references=new Map<string,string>(),budget=budgetV1(),
-    publications:{event:NativeRequestMaterialEventV1;snapshot:TavernBoundCoreMaterialRowV1;plan:TavernBoundCoreMaterialRowV1}[]=[],
-    selected:{event:NativeRequestMaterialEventV1;owner:string}[]=[],reads:RoleplayInputStateRead<PublicationFacts>[]=[]
-  for(const raw of materialEvents(deps,events).materials) {
-    const event=raw as NativeRequestMaterialEventV1,
-      owner=completePrefix?coreOwner(event.data.snapshot.key):deps.sessionId,
-      planOwner=completePrefix?coreOwner(event.data.plan.key):deps.sessionId,
-      ownsSnapshot=completePrefix?!!owner:ownsCoreKey(event.data.snapshot.key,deps.sessionId),
-      ownsPlan=completePrefix?!!planOwner:ownsCoreKey(event.data.plan.key,deps.sessionId)
+    publications:MaterialPublication[]=[],
+    selected:{origin:MaterialOrigin;owner:string}[]=[],reads:RoleplayInputStateRead<PublicationFacts>[]=[]
+  for(const origin of materialEvents(deps,events).publications) {
+    const owner=completePrefix?coreOwner(origin.material.snapshot.key):deps.sessionId,
+      planOwner=completePrefix?coreOwner(origin.material.plan.key):deps.sessionId,
+      ownsSnapshot=completePrefix?!!owner:ownsCoreKey(origin.material.snapshot.key,deps.sessionId),
+      ownsPlan=completePrefix?!!planOwner:ownsCoreKey(origin.material.plan.key,deps.sessionId)
     if(ownsSnapshot!==ownsPlan)fail('INPUT_MATERIAL_HISTORY_CORE_OWNER_UNPROVEN')
     if(!ownsPlan)continue
     if(owner!==planOwner)fail('INPUT_MATERIAL_HISTORY_CORE_OWNER_UNPROVEN')
     if(selected.length>=4096)fail('INPUT_MATERIAL_HISTORY_LIMIT')
-    selected.push({event,owner:owner!})
+    selected.push({origin,owner:owner!})
   }
-  if(!deps.inputState)verifyMaterials(deps,events,projections,selected.map(({event})=>event))
-  for(const {event,owner} of selected)publications.push(capturePublication(deps,event,owner,references,budget,events,projections,reads))
+  if(!deps.inputState)verifyMaterials(deps,events,projections,selected.flatMap(({origin})=>
+    origin.event.type==='request/material'?[origin.event]:[]))
+  for(const {origin,owner} of selected)publications.push(capturePublication(deps,origin,owner,references,budget,events,projections,reads))
   assertOpeningCatalog(deps,publications,events)
   const assertCurrent=()=>{
     deps.assertOwnerCurrent()
@@ -654,10 +714,36 @@ export function tavernMaterialPublicationRefsV1(history:ReturnType<typeof captur
   :readonly TavernSourceMaterialPublicationV1[] {
   return freeze(history.publications.map(tavernMaterialPublicationRefV1))
 }
-export function tavernMaterialPublicationRefV1({event,snapshot}:ReturnType<typeof readPublication>)
+export function tavernMaterialPublicationRefV1({event,material,snapshot,auxiliary}:ReturnType<typeof readPublication>)
   :TavernSourceMaterialPublicationV1 {
-  return {ownerSessionId:snapshot.sessionId,nativeSeq:Number(event.seq),nativeEventSha256:nativeInputSha256(event),
-    snapshotRef:event.data.snapshot,planRef:event.data.plan,nativeRecordSha256:nativeInputSha256(event.data)}
+  const ref={ownerSessionId:snapshot.sessionId,nativeSeq:Number(event.seq),nativeEventSha256:nativeInputSha256(event),
+    snapshotRef:material.snapshot,planRef:material.plan,nativeRecordSha256:nativeInputSha256(event.data)}
+  return auxiliary&&event.type==='roleplay/author-generation-effects'
+    ?{...ref,kind:'author-generation-effects',acceptedRef:event.data.acceptedRef}:ref
+}
+function publicationFromReference(ref:TavernSourceMaterialPublicationV1,event:SessionEvent|undefined,
+  events:readonly SessionEvent[]):MaterialOrigin|undefined {
+  if(!event||nativeInputSha256(event)!==ref.nativeEventSha256
+    ||nativeInputSha256(event.data)!==ref.nativeRecordSha256)return
+  let origin:MaterialOrigin
+  if(ref.kind==='author-generation-effects'){
+    if(event.type!=='roleplay/author-generation-effects')return
+    assertAuthorGenerationEffects(event.data)
+    if(event.data.kind!=='settled'||!sameNative(event.data.acceptedRef,ref.acceptedRef))return
+    const accepted=events[ref.acceptedRef.seq]
+    if(!accepted||accepted.seq>=event.seq||accepted.type!=='roleplay/author-generation-effects'
+      ||nativeInputSha256(accepted)!==ref.acceptedRef.sha256)return
+    assertAuthorGenerationEffects(accepted.data)
+    if(accepted.data.kind!=='accepted'||accepted.data.effects!=='source'
+      ||accepted.data.rootSessionId!==event.data.rootSessionId||accepted.data.rootSessionId!==ref.ownerSessionId)return
+    const data=accepted.data
+    origin={event:event as SettledEffectsEvent,material:{snapshot:data.snapshotRef,plan:data.planRef,
+      turn:data.checkpoint.turn,step:data.checkpoint.step},auxiliary:{accepted:accepted as AcceptedEffectsEvent}}
+  }else {
+    if(event.type!=='request/material')return
+    origin={event,material:event.data}
+  }
+  return sameNative(origin.material.snapshot,ref.snapshotRef)&&sameNative(origin.material.plan,ref.planRef)?origin:undefined
 }
 type InheritedMaterialDependencies=TavernMaterialHistoryDependenciesV1&{
   readonly inheritedEventCount:number;readonly publications:readonly TavernSourceMaterialPublicationV1[]}
@@ -668,7 +754,7 @@ function captureInheritedMaterialHistory(deps:InheritedMaterialDependencies) {
   const actualEvents=deps.events(),cut=deps.inheritedEventCount,projections=[...deps.projections()],
     references=new Map<string,string>(),budget=budgetV1(),
     publications:ReturnType<typeof readPublication>[]=[],seen=new Set<number>(),
-    selected:{event:NativeRequestMaterialEventV1;owner:string}[]=[],reads:RoleplayInputStateRead<PublicationFacts>[]=[]
+    selected:{origin:MaterialOrigin;owner:string}[]=[],reads:RoleplayInputStateRead<PublicationFacts>[]=[]
   if(!Number.isSafeInteger(cut)||cut<0||cut>actualEvents.length||deps.publications.length>4096)
     fail('INPUT_MATERIAL_HISTORY_INHERITED_CUT_INVALID')
   const events=actualEvents.slice(0,cut),prefixSha256=tavernMaterialNativePrefixSha256V1(deps,actualEvents,cut)
@@ -680,19 +766,17 @@ function captureInheritedMaterialHistory(deps:InheritedMaterialDependencies) {
       ||ref.ownerSessionId===deps.sessionId)fail('INPUT_MATERIAL_HISTORY_INHERITED_REF_INVALID')
     seen.add(ref.nativeSeq)
     previousNativeSeq=ref.nativeSeq
-    const event=events[ref.nativeSeq]
-    if(event?.type!=='request/material'||nativeInputSha256(event)!==ref.nativeEventSha256
-      ||nativeInputSha256(event.data)!==ref.nativeRecordSha256
-      ||recordSha256(event.data.snapshot)!==recordSha256(ref.snapshotRef)
-      ||recordSha256(event.data.plan)!==recordSha256(ref.planRef))fail('INPUT_MATERIAL_HISTORY_INHERITED_REF_CHANGED')
-    selected.push({event,owner:ref.ownerSessionId})
+    const origin=publicationFromReference(ref,events[ref.nativeSeq],events)
+    if(!origin)fail('INPUT_MATERIAL_HISTORY_INHERITED_REF_CHANGED')
+    selected.push({origin,owner:ref.ownerSessionId})
   }
-  if(!deps.inputState)verifyMaterials(deps,events,projections,selected.map(({event})=>event))
-  for(const {event,owner} of selected)publications.push(capturePublication(deps,event,owner,references,budget,events,projections,reads))
+  if(!deps.inputState)verifyMaterials(deps,events,projections,selected.flatMap(({origin})=>
+    origin.event.type==='request/material'?[origin.event]:[]))
+  for(const {origin,owner} of selected)publications.push(capturePublication(deps,origin,owner,references,budget,events,projections,reads))
   assertOpeningCatalog(deps,publications,events)
-  for(const event of materialEvents(deps,events).materials) {
-    const sourceOwner=coreOwner(event.data.snapshot.key),planOwner=coreOwner(event.data.plan.key)
-    if(!!sourceOwner!==!!planOwner||sourceOwner!==planOwner||sourceOwner&&!seen.has(Number(event.seq)))
+  for(const origin of materialEvents(deps,events).publications) {
+    const sourceOwner=coreOwner(origin.material.snapshot.key),planOwner=coreOwner(origin.material.plan.key)
+    if(!!sourceOwner!==!!planOwner||sourceOwner!==planOwner||sourceOwner&&!seen.has(Number(origin.event.seq)))
       fail('INPUT_MATERIAL_HISTORY_INHERITED_CATALOG_INCOMPLETE')
   }
   const assertCurrent=()=>{
@@ -724,7 +808,8 @@ function immutableInheritedCatalog(refs:readonly TavernSourceMaterialPublication
   // Caller-owned mutable descriptors retain the ordinary validating path.
   // Only the complete immutable ref DATA can address a retained closed fact.
   if(!Object.isFrozen(refs)||refs.some(ref=>!Object.isFrozen(ref)
-    ||!Object.isFrozen(ref.snapshotRef)||!Object.isFrozen(ref.planRef)))return false
+    ||!Object.isFrozen(ref.snapshotRef)||!Object.isFrozen(ref.planRef)
+    ||ref.kind==='author-generation-effects'&&!Object.isFrozen(ref.acceptedRef)))return false
   immutableInheritedCatalogs.add(refs);return true
 }
 export function captureRoleplayTavernInheritedMaterialHistoryV1(deps:InheritedMaterialDependencies) {

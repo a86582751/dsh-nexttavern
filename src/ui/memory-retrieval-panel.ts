@@ -44,7 +44,23 @@ type EmbeddingMetadata = {
     task: 'document';
     pooling: string;
 };
+type WorldbookSettings = {
+    enabled: boolean;
+    enabledForAll: boolean;
+    topK: number;
+    threshold: number;
+    queryMessages: number;
+};
 export type MemoryRetrievalReply = {
+    worldbook?: WorldbookSettings & {
+        revision: number;
+        providerId: string | null;
+        status: 'disabled' | 'ready' | 'pending' | 'unavailable';
+        reason?: string;
+        progress?: Partial<Record<'vectors' | 'sources' | 'covered' | 'pending' | 'running' | 'failed' | 'unknown', number>> & {
+            lastError?: string | null;
+        };
+    };
     ok?: boolean;
     revision: number;
     mode: Mode;
@@ -144,9 +160,12 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
     }, value);
     function RetrievalPanel({ sessionId, view }: {
         sessionId: string;
-        view: 'memory' | 'embedding';
+        view: 'memory' | 'embedding' | 'worldbook';
     }) {
         const [data, setData] = React.useState<MemoryRetrievalReply | null>(null);
+        const [worldbookDraft, setWorldbookDraft] = React.useState<WorldbookSettings | null>(null);
+        const [worldbookConfirmation, setWorldbookConfirmation] = React.useState<'retry' | 'clear' | null>(null);
+        const [worldbookFeedback, setWorldbookFeedback] = React.useState('');
         const [draft, setDraft] = React.useState<Draft>({});
         const [dirty, setDirty] = React.useState(false), [busy, setBusy] = React.useState<string | null>(null);
         const [error, setError] = React.useState<string | null>(null), [modeScope, setModeScope] = React.useState<Scope>('session');
@@ -208,6 +227,9 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
         }, [sessionId, jsonFetch]);
         React.useEffect(() => {
             setData(null);
+            setWorldbookDraft(null);
+            setWorldbookConfirmation(null);
+            setWorldbookFeedback('');
             setDraft({});
             setDirty(false);
             setBusy(null);
@@ -231,6 +253,7 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
         }, [sessionId]);
         React.useEffect(() => {
             setIndexConfirmation(null);
+            setWorldbookConfirmation(null);
         }, [sessionId, data?.revision, data?.activeProviderId, draft.id, progressSession]);
         React.useEffect(() => {
             if (!staleConfirmation)
@@ -328,6 +351,7 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
             busyRef.current = true;
             setBusy(name);
             setError(null);
+            setWorldbookFeedback('');
             try {
                 const next = await jsonFetch<MemoryRetrievalReply>('/api/roleplay/memory-retrieval', {
                     method: 'POST',
@@ -343,6 +367,10 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
                 if (next.ok === false)
                     throw Error(next.error ?? '操作失败');
                 setData(next);
+                if (name === 'worldbook-settings')
+                    setWorldbookDraft(null);
+                if (name === 'worldbook-settings' || name === 'worldbook-index')
+                    setWorldbookFeedback(name === 'worldbook-settings' ? '世界书检索设置已保存' : '世界书索引操作已完成');
                 if (name === 'index-chunk-size') {
                     chunkDirtyRef.current = false;
                     setChunkDirty(false);
@@ -379,7 +407,7 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
             catch (e) {
                 if (request === requestRef.current && sessionRef.current === sessionId) {
                     setError(String(e));
-                    toast(`记忆检索操作失败：${String(e)}`);
+                    toast(`${view === 'worldbook' ? '世界书检索' : '记忆检索'}操作失败：${String(e)}`);
                 }
             }
             finally {
@@ -396,6 +424,66 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
             disabled: !data || busy !== null || disabled
         }, label);
         const activeProvider = data?.activeProviderId ? data.providers.find(provider => provider.id === data.activeProviderId) : undefined;
+        const worldbook = data?.worldbook;
+        const worldbookSettings = worldbookDraft ?? worldbook;
+        const worldbookValid = worldbookSettings && Number.isSafeInteger(worldbookSettings.topK) && worldbookSettings.topK > 0
+            && Number.isSafeInteger(worldbookSettings.queryMessages) && worldbookSettings.queryMessages > 0
+            && Number.isFinite(worldbookSettings.threshold) && worldbookSettings.threshold >= -1 && worldbookSettings.threshold <= 1;
+        const worldbookProvider = data?.providers.find(provider => provider.id === worldbook?.providerId);
+        const changeWorldbook = (patch: Partial<WorldbookSettings>) => {
+            if (!worldbookSettings)
+                return;
+            const { enabled, enabledForAll, topK, threshold, queryMessages } = worldbookSettings;
+            setWorldbookDraft({ enabled, enabledForAll, topK, threshold, queryMessages, ...patch });
+            setWorldbookFeedback('');
+        };
+        const worldbookCard = h('div', { className: 'dsh-rp-retrieval-card' },
+            h('h5', null, '世界书语义检索'),
+            worldbookSettings ? h(React.Fragment, null,
+                field('启用世界书语义检索', h('input', {
+                    type: 'checkbox', checked: worldbookSettings.enabled, disabled: busy !== null,
+                    onChange: (e: ReactAPI.ChangeEvent<HTMLInputElement>) => changeWorldbook({ enabled: e.target.checked })
+                })),
+                field('检索条目范围', h('select', {
+                    value: worldbookSettings.enabledForAll ? 'all' : 'vectorized', disabled: busy !== null,
+                    onChange: (e: ReactAPI.ChangeEvent<HTMLSelectElement>) => changeWorldbook({ enabledForAll: e.target.value === 'all' })
+                }, h('option', { value: 'vectorized' }, '仅标记 vectorized 的条目'),
+                h('option', { value: 'all' }, '全部已启用条目'))),
+                h('div', { className: 'dsh-rp-retrieval-grid' },
+                    field('全局召回条数 topK', h('input', {
+                        type: 'number', min: 1, step: 1, value: worldbookSettings.topK, disabled: busy !== null,
+                        onChange: (e: ReactAPI.ChangeEvent<HTMLInputElement>) => changeWorldbook({ topK: Number(e.target.value) })
+                    })),
+                    field('相似度阈值', h('input', {
+                        type: 'number', min: -1, max: 1, step: 0.05, value: worldbookSettings.threshold, disabled: busy !== null,
+                        onChange: (e: ReactAPI.ChangeEvent<HTMLInputElement>) => changeWorldbook({ threshold: Number(e.target.value) })
+                    })),
+                    field('最近消息查询条数', h('input', {
+                        type: 'number', min: 1, step: 1, value: worldbookSettings.queryMessages, disabled: busy !== null,
+                        onChange: (e: ReactAPI.ChangeEvent<HTMLInputElement>) => changeWorldbook({ queryMessages: Number(e.target.value) })
+                    }))),
+                button('保存世界书检索设置', () => void action('worldbook-settings', { worldbook: worldbookDraft }), !worldbookDraft || !worldbookValid, true)
+            ) : note('正在读取世界书检索设置…'),
+            note(worldbookProvider
+                ? `共用 Embedding 模型 ${worldbookProvider.name} · ${worldbookProvider.model ?? '未设置模型'} · ${worldbookProvider.ready ? '就绪' : '未就绪'}`
+                : '尚未选择 Embedding 模型，请在 Embedding 模型设置中配置并启用。'),
+            note('启用后在生成使用世界书时增量建立索引。'),
+            h('div', { role: 'status', 'aria-live': 'polite' },
+                busy ? '正在处理世界书检索操作…' : worldbookFeedback,
+                worldbook ? note(`世界书检索状态 ${worldbook.status}${worldbook.reason ? ` · ${worldbook.reason}` : ''}`) : null,
+                worldbook?.progress ? note(`世界书向量 ${worldbook.progress.vectors ?? 0} · 来源 ${worldbook.progress.sources ?? 0} · 已覆盖 ${worldbook.progress.covered ?? 0} · 待处理 ${worldbook.progress.pending ?? 0} · 运行中 ${worldbook.progress.running ?? 0} · 失败 ${worldbook.progress.failed ?? 0} · 结果未知 ${worldbook.progress.unknown ?? 0}`) : null,
+                worldbook?.progress?.lastError ? note(worldbook.progress.lastError) : null),
+            h('div', { className: 'dsh-rp-row' },
+                button('重试世界书索引', () => setWorldbookConfirmation('retry'), !worldbookProvider?.ready),
+                button('清理世界书索引', () => setWorldbookConfirmation('clear')),
+                button('刷新世界书索引状态', () => void action('worldbook-index', { indexAction: 'status' }))),
+            worldbookConfirmation ? h('div', { className: 'dsh-rp-item' },
+                note(worldbookConfirmation === 'clear' ? '确认清理当前 profile 的世界书向量索引？' : '确认重试当前 profile 的世界书索引？在线模型可能产生 API 费用。'),
+                h('div', { className: 'dsh-rp-row' },
+                    button('确认', () => {
+                        void action('worldbook-index', { indexAction: worldbookConfirmation });
+                        setWorldbookConfirmation(null);
+                    }), button('取消', () => setWorldbookConfirmation(null)))) : null);
         const clearStaleConfirmation = () => {
             setStaleConfirmation(null);
         };
@@ -878,10 +966,10 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
         }));
         return h('section', {
             className: 'dsh-rp-retrieval',
-            'aria-label': view === 'memory' ? '记忆语义检索' : 'Embedding 模型设置',
+            'aria-label': view === 'worldbook' ? '世界书语义检索' : view === 'memory' ? '记忆语义检索' : 'Embedding 模型设置',
             'data-dsh-rp-adaptation-model-settings': view === 'embedding' ? true : undefined,
             tabIndex: view === 'embedding' ? -1 : undefined
-        }, ...(view === 'memory' ? [modeCard] : [providerCard, progressCard, catalogCard]), error ? h('div', {
+        }, ...(view === 'worldbook' ? [worldbookCard] : view === 'memory' ? [modeCard] : [providerCard, progressCard, catalogCard]), error ? h('div', {
             className: 'dsh-rp-error', role: 'alert'
         }, error) : null);
     }
@@ -902,6 +990,9 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
         }, h(RetrievalPanel, {
             sessionId, view: 'embedding'
         }));
+    }
+    function WorldbookPanel({ sessionId }: { sessionId: string }) {
+        return h('div', { className: 'dsh-rp-panel' }, h(RetrievalPanel, { sessionId, view: 'worldbook' }));
     }
     function RebuildPrompt({ sessionId }: {
         sessionId: string;
@@ -1107,6 +1198,6 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
         }, configure ? '前往配置' : '确认并重建')));
     }
     return {
-        MemoryPanel, EmbeddingPanel, RebuildPrompt
+        MemoryPanel, EmbeddingPanel, WorldbookPanel, RebuildPrompt
     };
 }

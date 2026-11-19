@@ -204,8 +204,9 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
   };
   const commitInputActivation = async (session: ImportSession, record: ImportRecord, pointer: ImportPointer,
     transaction?: ImportRecord['transaction']) => {
-    if (!deps.inputTransition) return null;
     try {
+      await deps.afterSourceActivated?.(session,record,pointer);
+      if (!deps.inputTransition) return null;
       const result = await deps.inputTransition.commitActivation(session,record,pointer,transaction);
       return result.kind === 'acknowledged' ? null : {ok:false,activationCommitted:true,inputPermissionUnknown:true,
         code:result.code,error:'角色卡设定已保存，但本轮输入权限确认未完成；请重新发送后续操作。'};
@@ -1420,10 +1421,6 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               if (record.status !== 'staging')
                 return {
                   ok: false, error: `import 当前状态为 ${String(record.status)}，不能激活`
-                };
-              if (![3, 4, 5, 6].includes(record.schemaVersion))
-                return {
-                  ok: false, error: '旧版 staging 记录缺少全文审阅证明；请重新执行 rp_card_import_begin'
                 };
               try {
                 assertAssignmentBudget(record.assignments ?? []);

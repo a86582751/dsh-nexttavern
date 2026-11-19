@@ -44,10 +44,11 @@ export function createSessionRequestCandidateEvents(baseLogLength, inputs) {
 export function createSessionRequestPreview(baseLogLength, candidate, surface, toolHistory) {
     if (baseLogLength + candidate.length === 0)
         throw Error('SESSION_REQUEST_PREVIEW_BOUNDARY_EMPTY');
-    if (surface.messages.length > SESSION_REQUEST_PREVIEW_BOUNDS.messages)
+    const messageNodes = surface.messageNodes.filter(row => row.message.authorMetadata?.is_hidden !== true);
+    if (messageNodes.length > SESSION_REQUEST_PREVIEW_BOUNDS.messages)
         throw Error('SESSION_REQUEST_PREVIEW_MESSAGE_BUDGET');
     return Object.freeze({ baseLogLength, boundarySeq: SessionSeq(baseLogLength + candidate.length - 1), events: candidate,
-        ...surface, toolHistory });
+        ...surface, messages: Object.freeze(messageNodes.map(row => row.message)), messageNodes: Object.freeze(messageNodes), toolHistory });
 }
 /** Standalone raw-array callers have no Session-owned accepted fold. Keep
  * this cold reconstruction as the oracle, without granting commit authority. */

@@ -244,7 +244,8 @@ export function createRoleplayMvuScopeStoreV2(deps) {
             source = nextSource;
             return reference;
         }
-        return { initialize, resume, advance, dispose() { closed = true; source = undefined; baseRef = undefined; tailRef = undefined; } };
+        return { initialize, resume, advance, view: resolver.view,
+            dispose() { closed = true; source = undefined; baseRef = undefined; tailRef = undefined; } };
     }
     return { readObject, writeObject, reader, bindings, captureScopeObjects, publisher,
         releaseSession(sessionId) { for (const own of bindingsOwners)

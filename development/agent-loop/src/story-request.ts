@@ -1,6 +1,6 @@
 /** Story-only provider policy and response transport. Only a live material
  * owner may attach this to its actual request; stored records grant no hooks. */
-import type {ContentBlock,LlmCallConfig,ToolSchema,StreamChunk,NativeStoryResponseOperationV1} from 'dsh-nexttavern-native-llm'
+import type {ContentBlock,LlmCallConfig,ToolSchema,StreamChunk,NativeStoryResponseOperationV1,RequestLocalSamplingV1} from 'dsh-nexttavern-native-llm'
 import type {NativeRequestMaterialRecordV1} from 'dsh-nexttavern-native-session'
 import type {NativeStoryResponseMaterial,NativeStoryResponseFinalizationV1} from '../../llm/src/types.ts'
 import {applyNativeStoryResponseOperationsV1,planNativeStoryResponseMaterialV1,nativeStoryResponseSha256V1,
@@ -8,8 +8,8 @@ import {applyNativeStoryResponseOperationsV1,planNativeStoryResponseMaterialV1,n
 
 export interface NativeStoryRequestPolicyV1 {
   readonly schemaVersion:1
-  readonly sampling?:{readonly temperature?:number;readonly maxTokens?:number;readonly stop?:readonly string[]}
-  readonly response?:{readonly transport:string}
+  readonly sampling?:RequestLocalSamplingV1
+  readonly response?:{readonly transport:string;readonly selection?:'transport'|'longest'}
 }
 export interface NativeStoryTextTransformV1 {push(text:string):string;finish():string}
 export interface NativeStoryMaterialHooksV1 {
@@ -35,18 +35,17 @@ export interface NativeStoryRequestBindingV1 {
   readonly requestMaterialRef?:{readonly seq:number;readonly sha256:string}
 }
 export function nativeStorySamplingConfigV1(config:LlmCallConfig,policy:NativeStoryRequestPolicyV1):LlmCallConfig {
-  const sampling=policy.sampling
-  return {...config,...sampling?.temperature===undefined?{}:{temperature:sampling.temperature},
-    ...sampling?.maxTokens===undefined?{}:{maxTokens:sampling.maxTokens},
-    ...sampling?.stop===undefined?{}:{stop:[...sampling.stop]}}
+  const {stop,...sampling}=policy.sampling??{}
+  return {...config,...sampling,...stop===undefined?{}:{stop:[...stop]}}
 }
 export function nativeStorySamplingBaseV1(config:LlmCallConfig):NonNullable<NativeRequestMaterialRecordV1['delta']['requestLocalSampling']> {
-  return {schemaVersion:1,base:{...config.temperature===undefined?{}:{temperature:config.temperature},
-    ...config.maxTokens===undefined?{}:{maxTokens:config.maxTokens},...config.stop===undefined?{}:{stop:[...config.stop]}}}
+  const {provider,model,reasoningEffort,...sampling}=config
+  return {schemaVersion:1,base:{...sampling,...config.stop===undefined?{}:{stop:[...config.stop]}}}
 }
 export function restoreNativeStorySamplingV1(config:LlmCallConfig,
   sampling:NonNullable<NativeRequestMaterialRecordV1['delta']['requestLocalSampling']>):LlmCallConfig {
-  const {temperature:_temperature,maxTokens:_maxTokens,stop:_stop,...route}=config
+  const {temperature:_temperature,maxTokens:_maxTokens,stop:_stop,topP:_topP,topK:_topK,
+    frequencyPenalty:_frequency,presencePenalty:_presence,toolChoice:_toolChoice,responseFormat:_responseFormat,...route}=config
   const {stop,...base}=sampling.base
   return {...route,...base,...stop?{stop:[...stop]}:{}}
 }
@@ -73,9 +72,9 @@ export function materializeNativeStoryResponseV1(blocks:readonly ContentBlock[],
 }
 
 function prepareNativeStoryResponse(blocks:readonly ContentBlock[],binding:NativeStoryRequestBindingV1) {
-  const transport=binding.policy.response?.transport
+  const response=binding.policy.response,transport=response?.transport
   const plan:NativeStoryResponseOperationV1[]=[]
-  if(transport)plan.push({kind:'extract-transport',name:transport,selection:transport==='game_content'?'transport':'longest'})
+  if(transport)plan.push({kind:'extract-transport',name:transport,selection:response!.selection??'longest'})
   let extracted=applyNativeStoryResponseOperationsV1(blocks,plan)
   if(!extracted.some(block=>block.type==='text'&&block.text.trim())
     &&!extracted.some(block=>block.type==='tool-call')&&binding.hooks.recoverText) {
@@ -179,7 +178,7 @@ function transportStreamProjection(binding:NativeStoryRequestBindingV1):(chunk:S
     }
     if(chunk.type==='finish'&&chunk.reason.kind!=='error'&&chunk.reason.kind!=='aborted'&&bodyIndex!==undefined) {
       const selected=applyNativeStoryResponseOperationsV1(raw,[{kind:'extract-transport',name:response.transport,
-        selection:response.transport==='game_content'?'transport':'longest'}])
+        selection:response.selection??'longest'}])
       const body=nativeStoryVisibleTextV1(selected),transform=binding.hooks.createTextTransform?.()
       const text=transform?transform.push(body)+transform.finish():body
       return [{type:'block-start',index:bodyIndex,blockType:'text'},{type:'text-delta',index:bodyIndex,text},

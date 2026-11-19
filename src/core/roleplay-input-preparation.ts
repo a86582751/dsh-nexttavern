@@ -124,6 +124,8 @@ export interface RoleplayInputStep {
   readonly kind: InputSourceObservation['kind'] | 'maintenance'
 }
 export type RoleplayInputSourceDataReceiptV1=NativePersonaReceiptV1|TavernLoreEditReceiptV1|TavernLoreMutationReceiptV2
+  |import('./roleplay-author-worldbook-types.js').AuthorWorldbookReceiptV1
+  |import('./community-preset-types.js').CommunityAuthorPresetReceiptV1
 export interface RoleplayInputSourceDataOriginV1 {
   readonly invocationId:string
   readonly programSha256:string
@@ -172,6 +174,14 @@ export interface RoleplaySchemaStoryWorkV1 {
   readonly refs:readonly NativeInputRef[]
   readonly checkpoint:NativeDurableInputWorkReceiptV1
 }
+/** Captured only from the live binder's actual Native turn. The work member
+ * describes its inputs; current() retains the private execution permission. */
+export interface RoleplaySchemaStoryExecutionOwnerV1 {
+  readonly session:NativeSession
+  readonly work:RoleplaySchemaStoryWorkV1
+  readonly signal:AbortSignal
+  current():boolean
+}
 export interface RoleplayNewInputWorkV1 {
   readonly sessionId:string
   readonly preparationId:string
@@ -205,6 +215,7 @@ export interface RoleplayInputBinding {
   checkAttempt(currency: InputPreparationCurrency): {kind: 'allow'} | {kind: 'blocked'; code: string}
   persistedCurrency(): InputPreparationCurrency | undefined
   currentStep(): RoleplayInputStep | undefined
+  captureSchemaStoryExecutionOwner(turn:number,signal:AbortSignal):RoleplaySchemaStoryExecutionOwnerV1|undefined
   withCurrentMaterial?<T>(step:RoleplayInputStep,
     read:(material:import('./roleplay-tavern-prompt-types.js').TavernRenderedAuthorMaterialV1)=>T):T|undefined
   releaseMaterialStep?(turn:number,step:number):void
@@ -1623,6 +1634,30 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         return currencyOf(hot)
       },
       currentStep() {return currentStep && !stepCurrency(currentStep) ? currentStep : undefined},
+      captureSchemaStoryExecutionOwner(turn,signal) {
+        const work=hot,entry=currentStep&&steps.get(currentStep)
+        if(!work||!entry||entry.work!==work||entry.signal!==signal
+          ||entry.generation!==work.attemptGeneration||work.attempt?.turn!==turn
+          ||!work.attempt.prepared||!work.checkpoint||work.checkpoint.actualTurn!==turn
+          ||work.source.kind!=='story'||work.source.headRef?.kind!=='schema-head'||work.transition)return undefined
+        const currency=currencyOf(work),checkpoint=clone(work.checkpoint)
+        const current=()=>{
+          const latest=currentStep&&steps.get(currentStep)
+          // Inline maintenance replaces the step token while retaining this
+          // Work, attempt and Native turn signal. A later turn cannot borrow it.
+          return !signal.aborted&&agent.status==='running'&&agent.session===actualSession
+            &&sessionOwners.get(sid)===agent&&owners.get(agent)===binding
+            &&latest?.work===work&&latest.signal===signal&&latest.generation===currency.attemptGeneration
+            &&work.status==='active'&&work.attempt?.prepared===true&&work.attempt.turn===turn&&!work.transition
+            &&!baseFactsCurrency(work)&&equal(currencyOf(work),currency)&&equal(work.checkpoint,checkpoint)
+        }
+        // Mint against the published Source once. During schema dispatch its
+        // owner checks Source/frame and published head directly, while this
+        // callback retains Native Work authority across its own pending rows.
+        if(!current()||baseCurrency(work)||!checkpointAssociation(checkpoint))return undefined
+        return Object.freeze({session:actualSession,signal,current,work:Object.freeze({sessionId:sid,
+          workKey:key(work),currency:clone(currency),refs:clone(work.refs),checkpoint:clone(checkpoint)})})
+      },
       withCurrentMaterial(step,read) {return materialOwner?.withCurrent(step,read)},
       releaseMaterialStep(turn,step) {materialOwner?.releaseStep(turn,step)},
       readClaimedMaintenanceInput() {return claimedMaintenance},
@@ -1882,7 +1917,9 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       if(!refs)return null
       const work=table.get(workKey(sessionId,refs)) as Work|undefined
       if(!work)return null
-      return {status:work.status,sourceKind:work.source.kind,
+      return {status:work.status,sourceKind:work.source.kind,preparationId:work.preparationId,
+        completedWorkRequired:work.terminalRequired===true,
+        attemptGeneration:work.attemptGeneration,sourceSha256:work.source.sourceSha256,
         stop:work.stop?{status:work.stop.status,code:work.stop.code??null}:null}
     },
     readSchemaStoryWork(sessionId:string,checkpoint:NativeDurableInputWorkReceiptV1):RoleplaySchemaStoryWorkV1|undefined {

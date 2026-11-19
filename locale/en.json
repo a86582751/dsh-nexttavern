@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "NextTavern",
-    "description": "A long-form roleplay plugin for DeepSeek Harness with character cards, worldlines, long-term memory, hybrid retrieval and SillyTavern compatibility."
+    "description": "Long-form roleplay for DeepSeek Harness with card import and authoring, custom card interfaces, worldbooks, worldlines, long-term memory and manuscript export. Restart Harness to activate it after a first install into a running app."
   }
 }

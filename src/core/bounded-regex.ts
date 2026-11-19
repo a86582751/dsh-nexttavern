@@ -1,6 +1,6 @@
-import { Worker } from 'node:worker_threads'
+import { MessageChannel, receiveMessageOnPort, Worker, type MessagePort } from 'node:worker_threads'
 import type {TavernPromptTransformResultV1,TavernPromptTransformWorkerInputV1,
-  TavernPromptTransformWorkerResultV1} from './tavern-prompt-transform-types.mjs'
+  TavernPromptTransformWorkerResultV1,TavernPromptTransformWorkerCompletionV1} from './tavern-prompt-transform-types.mjs'
 import {TAVERN_PROMPT_TRANSFORM_LIMITS_V1} from './tavern-prompt-transform-types.mjs'
 
 export interface RegexPattern {
@@ -62,6 +62,16 @@ export interface STRegexRule {
   readonly replacement: string
 }
 
+/** Raw ECMAScript regex operations. Callers supply sources and flags directly,
+ * without ST's slash parser, capture macros or replacement rewriting. */
+export type NativeRegexBatchV1 =
+  | {readonly kind:'capture-first';readonly inputs:readonly string[];
+    readonly patterns:readonly {readonly pattern:string;readonly flags:string}[]}
+  | {readonly kind:'replace-sequence';readonly input:string;readonly rules:readonly STRegexRule[]}
+export type NativeRegexBatchResultV1 =
+  | {readonly ok:true;readonly texts:readonly string[]}
+  | {readonly ok:false;readonly reason:STRegexFailureReason}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
 
@@ -75,20 +85,30 @@ const isRegexPattern = (value: unknown): value is RegexPattern =>
 // enforced by the parent, including parsing/compilation, and destroys the worker.
 let active = 0
 let replacementActive = 0
-const promptTransformIdle:Worker[]=[]
-function forgetIdlePromptTransform(worker:Worker):void {
-  const index=promptTransformIdle.indexOf(worker)
-  if(index>=0)promptTransformIdle.splice(index,1)
-}
-function createPromptTransformWorker():Worker {
-  const worker=new Worker(new URL('./tavern-prompt-transform-worker.mjs',import.meta.url),{
-    resourceLimits:{maxOldGenerationSizeMb:64,stackSizeMb:2},
-  })
-  // Node terminates a worker after its error. This listener only retires idle
-  // references and consumes that error; an active invocation owns termination.
-  worker.once('error',()=>forgetIdlePromptTransform(worker))
-  worker.once('exit',()=>forgetIdlePromptTransform(worker))
-  return worker
+type PromptTransformWorker={readonly worker:Worker;readonly completions:MessagePort}
+const promptTransformIdle:PromptTransformWorker[]=[]
+function createPromptTransformWorker():PromptTransformWorker {
+  const {port1:completions,port2:completionPort}=new MessageChannel()
+  try {
+    const worker=new Worker(new URL('./tavern-prompt-transform-worker.mjs',import.meta.url),{
+      resourceLimits:{maxOldGenerationSizeMb:64,stackSizeMb:2},
+      workerData:{completionPort},transferList:[completionPort],
+    })
+    const entry={worker,completions}
+    // Idle workers have no active caller to handle their error. Exit retires
+    // the worker and its reply channel, including after an active cancellation.
+    worker.once('error',()=>{})
+    worker.once('exit',()=>{
+      const index=promptTransformIdle.indexOf(entry)
+      if(index>=0)promptTransformIdle.splice(index,1)
+      completions.close()
+    })
+    return entry
+  }catch(error) {
+    completions.close()
+    completionPort.close()
+    throw error
+  }
 }
 const workerCode = `const {parentPort,workerData}=require('node:worker_threads');
 const result=workerData.patterns.map(p=>{try{return new RegExp(p.pattern,p.flags).test(workerData.text)}catch{return false}});
@@ -132,6 +152,72 @@ for(;;){const match=regex.exec(input);if(!match)break;
 }
 if(!add(input.slice(cursor))){fail('limit','outputChars',length);return}
 parentPort.postMessage({ok:true,text:parts.join(''),matches});})();`
+
+const nativeBatchWorkerCode = `(function(){const {parentPort,workerData}=require('node:worker_threads');
+const {batch,outputChars}=workerData;
+const compiled=new Map();
+let invalid=false;
+function regex(rule,index){
+  if(compiled.has(index))return compiled.get(index);
+  try{const value=new RegExp(rule.pattern,rule.flags);compiled.set(index,value);return value}
+  catch(error){invalid=true;throw error}
+}
+try{
+  let texts;
+  if(batch.kind==='capture-first'){
+    texts=batch.inputs.map(text=>{
+      for(let index=0;index<batch.patterns.length;index++){
+        const pattern=regex(batch.patterns[index],index);pattern.lastIndex=0;
+        const match=pattern.exec(text);
+        if(match)return match[1].trim();
+      }
+      return text;
+    });
+  }else{
+    let text=batch.input;
+    for(let index=0;index<batch.rules.length;index++){
+      const rule=batch.rules[index];
+      text=text.replace(regex(rule,index),rule.replacement);
+    }
+    if(text.length>outputChars){parentPort.postMessage({ok:false,reason:'limit'});return}
+    texts=[text];
+  }
+  parentPort.postMessage({ok:true,texts});
+}catch{parentPort.postMessage({ok:false,reason:invalid?'invalid-rule':'worker'})}})();`
+
+/** One window or ordered substitution runs in one bounded worker. Native string
+ * replacement preserves every ECMAScript capture and replacement token. */
+export async function boundedNativeRegexBatchV1(batch:NativeRegexBatchV1):Promise<NativeRegexBatchResultV1> {
+  const rules=batch.kind==='capture-first'?batch.patterns:batch.rules,
+    texts=batch.kind==='capture-first'?batch.inputs:[batch.input],
+    inputChars=texts.reduce((sum,text)=>sum+text.length,0)+rules.reduce((sum,rule)=>sum+rule.pattern.length,0)
+      +(batch.kind==='replace-sequence'?batch.rules.reduce((sum,rule)=>sum+rule.replacement.length,0):0)
+  if(inputChars>TAVERN_PROMPT_TRANSFORM_LIMITS_V1.inputChars
+    ||rules.some(rule=>rule.pattern.length>ST_REGEX_LIMITS.patternChars))return {ok:false,reason:'limit'}
+  if(replacementActive>=ST_REGEX_LIMITS.concurrentWorkers)return {ok:false,reason:'busy'}
+  replacementActive++
+  let worker:Worker|undefined
+  try {
+    return await new Promise<NativeRegexBatchResultV1>(resolve=>{
+      let settled=false
+      const done=(value:NativeRegexBatchResultV1)=>{
+        if(settled)return
+        settled=true;clearTimeout(timer);resolve(value)
+      }
+      const timer=setTimeout(()=>done({ok:false,reason:'timeout'}),ST_REGEX_LIMITS.deadlineMs)
+      try {
+        worker=new Worker(nativeBatchWorkerCode,{eval:true,
+          workerData:{batch,outputChars:ST_REGEX_LIMITS.outputChars},
+          resourceLimits:{maxOldGenerationSizeMb:32,stackSizeMb:2}})
+        worker.once('message',done)
+        worker.once('error',()=>done({ok:false,reason:'worker'}))
+        worker.once('exit',()=>done({ok:false,reason:'worker'}))
+      }catch{done({ok:false,reason:'worker'})}
+    })
+  }finally{
+    try{if(worker)await worker.terminate()}finally{replacementActive--}
+  }
+}
 
 const stFailure = (reason: STRegexFailureReason, limit: STRegexLimit | null = null,
   observed: number | null = null): STRegexResult => ({ ok: false, reason, limit, observed,
@@ -261,8 +347,8 @@ export async function boundedRegexNameMatrix(patterns:readonly RegexPattern[],na
 }
 
 /** One ready worker processes the complete catalog with batch-local state.
- * Active batches share the existing replacement slots. Trusted module startup
- * precedes dispatch; the unchanged deadline covers clone, regex and receipts.
+ * Active batches share the existing replacement slots. The deadline starts
+ * before dispatch and covers input cloning, regex and receipt construction.
  * Cancellation settles once and awaits destruction, so it publishes no output. */
 export async function boundedSTPromptTransformBatchV1(
   data:TavernPromptTransformWorkerInputV1,signal?:AbortSignal,
@@ -274,21 +360,23 @@ export async function boundedSTPromptTransformBatchV1(
   if(replacementActive>=TAVERN_PROMPT_TRANSFORM_LIMITS_V1.concurrentWorkers)
     return failure('PROMPT_TRANSFORM_BUSY')
   replacementActive++
-  let worker:Worker|undefined
+  let poolEntry:PromptTransformWorker|undefined
   let timer:ReturnType<typeof setTimeout>|undefined
   let abort:(()=>void)|undefined
   let reusable=false
   try {
     const result=await new Promise<TavernPromptTransformResultV1>(resolve=>{
       let settled=false
+      let deadlineAt=0
       const done=(value:TavernPromptTransformWorkerResultV1,completed=false):void=>{
         if(settled)return
         settled=true
         reusable=completed
         if(timer)clearTimeout(timer)
-        worker?.off('message',message)
-        worker?.off('error',error)
-        worker?.off('exit',exit)
+        poolEntry?.worker.off('message',dispatch)
+        poolEntry?.worker.off('error',error)
+        poolEntry?.worker.off('exit',exit)
+        poolEntry?.completions.off('message',complete)
         // The Worker preserves admitted entry order and seals the complete
         // projections before sending. Reuse this invocation's original strings.
         const result:TavernPromptTransformResultV1=value.kind==='transformed'
@@ -299,18 +387,23 @@ export async function boundedSTPromptTransformBatchV1(
           :value
         resolve(result)
       }
+      const complete=({completedAt,result}:TavernPromptTransformWorkerCompletionV1):void=>{
+        if(completedAt<=deadlineAt)done(result,true)
+        else done(failure('PROMPT_TRANSFORM_TIMEOUT'))
+      }
       const dispatch=():void=>{
         if(settled)return
-        // Start before postMessage: structured cloning and dispatch are part of
-        // the batch budget, while importing this trusted module is not regex work.
-        timer=setTimeout(()=>done(failure('PROMPT_TRANSFORM_TIMEOUT')),
-          TAVERN_PROMPT_TRANSFORM_LIMITS_V1.deadlineMs)
-        try {worker!.postMessage({...data,projectionTransport:'input-backed'})}
+        const {deadlineMs}=TAVERN_PROMPT_TRANSFORM_LIMITS_V1
+        deadlineAt=performance.now()+deadlineMs
+        timer=setTimeout(()=>{
+          // A busy host can run its timer before the already-queued Worker
+          // callback. Read the completion directly and honor the Worker clock.
+          const queued=receiveMessageOnPort(poolEntry!.completions)
+          if(queued)complete(queued.message as TavernPromptTransformWorkerCompletionV1)
+          else done(failure('PROMPT_TRANSFORM_TIMEOUT'))
+        },deadlineMs)
+        try {poolEntry!.worker.postMessage({...data,projectionTransport:'input-backed'})}
         catch {done(failure('PROMPT_TRANSFORM_WORKER'))}
-      }
-      const message=(value:TavernPromptTransformWorkerResultV1|{kind:'ready'}):void=>{
-        if(value.kind==='ready')dispatch()
-        else done(value,true)
       }
       const error=():void=>done(failure('PROMPT_TRANSFORM_WORKER'))
       const exit=():void=>done(failure('PROMPT_TRANSFORM_WORKER'))
@@ -320,25 +413,27 @@ export async function boundedSTPromptTransformBatchV1(
       // synchronous aborts cannot dispatch work and then publish late output.
       if(signal?.aborted){abort();return}
       try {
-        worker=promptTransformIdle.pop()
-        const ready=worker!==undefined
-        worker??=createPromptTransformWorker()
+        const idle=promptTransformIdle.pop()
+        poolEntry=idle??createPromptTransformWorker()
+        const {worker,completions}=poolEntry
         worker.ref()
-        worker.on('message',message)
         worker.once('error',error)
         worker.once('exit',exit)
-        if(ready)dispatch()
+        completions.on('message',complete)
+        if(idle)dispatch()
+        else worker.once('message',dispatch)
       } catch {done(failure('PROMPT_TRANSFORM_WORKER'))}
     })
-    if(worker&&reusable&&!signal?.aborted) {
-      promptTransformIdle.push(worker)
-      worker.unref()
-      worker=undefined
+    if(poolEntry&&reusable&&!signal?.aborted) {
+      promptTransformIdle.push(poolEntry)
+      poolEntry.completions.unref()
+      poolEntry.worker.unref()
+      poolEntry=undefined
     }
     return signal?.aborted?failure('PROMPT_TRANSFORM_CANCELLED','cancelled'):result
   } finally {
     if(timer)clearTimeout(timer)
     if(abort)signal?.removeEventListener('abort',abort)
-    try {if(worker)await worker.terminate()} finally {replacementActive--}
+    try {if(poolEntry)await poolEntry.worker.terminate()} finally {replacementActive--}
   }
 }

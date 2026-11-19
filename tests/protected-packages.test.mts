@@ -370,7 +370,7 @@ test('a failed write restores metadata through the existing journal', () => {
   assert.deepEqual(fs.readFileSync(layer), beforeLayer)
 })
 
-for (const crashAfter of [1, 3, 4]) test(`discover and recover a dead installer after write ${crashAfter}`, () => {
+for (const crashAfter of [1, 3, 4, 'staging']) test(`discover and recover a dead installer at ${crashAfter}`, () => {
   const f = fixture('crash-' + crashAfter)
   const original = source(f.root)
   const first = prepareProtectedPackages({...f, packages: [original]})
@@ -384,8 +384,18 @@ for (const crashAfter of [1, 3, 4]) test(`discover and recover a dead installer 
     `import {planProtectedPackages} from ${JSON.stringify(pathToFileURL(compiled).href)};`,
     `import {applyTransaction} from ${JSON.stringify(new URL('../lib/operations/public-transaction.mjs', import.meta.url).href)};`,
     `const plan = planProtectedPackages(${JSON.stringify({...f, packages: [input]})});`,
+    ...(crashAfter === 'staging' ? [
+      'import fs from "node:fs";',
+      'const write = fs.writeFileSync;',
+      'fs.writeFileSync = function (file, ...args) {',
+      '  if (String(file).includes(".nexttavern-write-")) {',
+      '    fs.closeSync(fs.openSync(file, "wx")); process.exit(86);',
+      '  }',
+      '  return write.call(this, file, ...args);',
+      '};',
+    ] : []),
     `applyTransaction({root:plan.home, backup:${JSON.stringify(childBackup)}, files:plan.changes,`,
-    `purpose:'prepare-protected-package-references', assertUnchanged:plan.assertUnchanged, crashAfter:${crashAfter}});`,
+    `purpose:'prepare-protected-package-references', assertUnchanged:plan.assertUnchanged, crashAfter:${crashAfter === 'staging' ? 'Infinity' : crashAfter}});`,
   ].join('\n'))
   const result = spawnSync(process.execPath, [child], {encoding: 'utf8', timeout: 10000})
   assert.equal(result.status, 86, String(result.error ?? result.stderr))

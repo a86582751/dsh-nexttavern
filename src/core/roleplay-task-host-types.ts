@@ -1,11 +1,11 @@
 import type { ContextEvent, ContextSession,ContextStoryEntryReader } from './roleplay-context.js'
 import type { createCharacterCluster } from './character-cluster.js'
-import type { TaskAgent, TaskOptions, TaskSpec,TaskSelection,StoredTask } from './tavern-task-types.js'
+import type { TaskAgent, TaskOptions, TaskSpec,TaskSelection,StoredTask,TaskStatus } from './tavern-task-types.js'
 import type { StatusRecord } from './roleplay-status-types.js'
 import type { AuthorTables, AuthorDependency } from './roleplay-author-context-types.js'
 import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
 import type {AuthorDialogChatAddress} from './roleplay-author-dialog.js'
-import type {AuthorDialogPromptV1} from './roleplay-author-dialog.js'
+import type {AuthorDialogPromptV1,AuthorDialogResultV1} from './roleplay-author-dialog.js'
 import type {RubyAnalysisPromptV1} from './roleplay-ruby-task-types.js'
 import type {OwnedRubyTaskOwnerV1} from 'dsh-nexttavern-native-subagent'
 import type {TaskJob} from './tavern-task-types.js'
@@ -37,7 +37,7 @@ export interface HostTables {branch: HostTable; cards: HostTable}
 export interface HostSource {
   characterBackground?:{sourceKey:string}
   schemaMaintenance?:{basisSha256:string}
-  authorDialog?:{binding:AuthorDialogChatAddress;operationId:string;promptPlanSha256:string}
+  authorDialog?:{binding:AuthorDialogChatAddress;operationId:string}
   rubyAnalysis?:{sourceIdentitySha256:string;promptPlanSha256:string}
   inputPreparation?: InputPreparationCurrency
   preparationId?: string
@@ -92,11 +92,26 @@ export interface AuthorDialogRequestV1 {
   session:HostSession
   agent?:HostAgent
   prompt:AuthorDialogPromptV1
+  onAdmission?(handle:{readonly taskId:string;readonly generation:string;cancel():Promise<void>}):void|Promise<void>
+  onCheckpoint?(input:AuthorDialogCheckpointV1):Promise<void|import('dsh-nexttavern-session-format').AuthorGenerationEffectsReceiptV1>
+  onTerminal?(input:import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationTerminalV1,signal:AbortSignal)
+    :Promise<void|import('dsh-nexttavern-session-format').AuthorGenerationEffectsRefV1>
+  onStream?(input:import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationStreamV1):void
   signal?:AbortSignal
   /** Root's actual pending Browser/Core operation lifetime. Never deserialized. */
   current():boolean
   timeoutMs?:number
   maxTokens?:number
+}
+export type AuthorDialogCheckpointV1=import('dsh-nexttavern-native-agent-loop').NativeAuthorGenerationCheckpointV1&{
+  recordEffects?(receipt:import('dsh-nexttavern-session-format').AuthorGenerationEffectsProgressV1):Promise<void>
+}
+export interface AuthorDialogOperationV1 {
+  readonly taskId:string
+  readonly status:TaskStatus
+  readonly prompt:AuthorDialogPromptV1
+  readonly result?:AuthorDialogResultV1
+  readonly error?:string|null
 }
 export interface RubyAnalysisRequestV1 {
   session:HostSession
@@ -152,7 +167,10 @@ export interface TaskHostDependencies {
     logger?:{warn?(message:string):unknown}
     llm?: {resolveModelInfo?(provider: string, model: string): PromiseLike<{provider: string; id: string}>}
     agentDefaultModel: {currentSelection(): unknown}
-    sessions: {get(id: string): HostSession | null | undefined}
+    sessions: {get(id:string):HostSession|null|undefined;
+      readonly messageProjections?:readonly import('dsh-nexttavern-native-session/surface').SessionMessageProjection[]}
+    sessionQuery?:{observeSession(id:string,options:{projectionMode:'none';signal?:AbortSignal}):Promise<Disposable&{
+      readonly events:readonly import('dsh-nexttavern-native-session').SessionEvent[]}>}
     sessionController: {resolveAgent?(id: string): PromiseLike<{agent?: HostAgent} | null | undefined>}
     subagents: NonNullable<TaskOptions<HostSession, HostAgent>['subagents']> & Parameters<typeof createCharacterCluster<HostSession, HostAgent>>[0]['subagents']
     get(name: 'compaction'): TaskHostCompaction | null | undefined

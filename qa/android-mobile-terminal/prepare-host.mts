@@ -28,7 +28,9 @@ if(process.argv[2]==='--idle-probe') {
 }
 
 const repo=fs.realpathSync(process.argv[2]!), work=path.resolve(process.argv[3]!)
-const harness=path.join(work,'harness'), product=path.join(work,'product-x64')
+const abi=process.argv[4]??'x64'
+if(abi!=='x64'&&abi!=='arm64')throw new Error('Use ABI x64 or arm64')
+const harness=path.join(work,'harness'), product=path.join(work,'product-'+abi)
 const inputs=path.join(work,'inputs')
 fs.mkdirSync(inputs,{recursive:true})
 const read=(file:string)=>JSON.parse(fs.readFileSync(file,'utf8'))
@@ -62,12 +64,12 @@ async function materialize(anchor:string,name:string) {
 
 // Exact compatible inputs omitted by a Linux npm install; no broad optional
 // package installation and no scripts or lockfile/version changes.
-await materialize(path.join(repo,'build-tools'),'@koromix/koffi-android-x64')
-await materialize(path.join(repo,'build-tools'),'@firecrawl/anydoc-linux-x64-musl')
+await materialize(path.join(repo,'build-tools'),'@koromix/koffi-android-'+abi)
+await materialize(path.join(repo,'build-tools'),'@firecrawl/anydoc-linux-'+abi+'-musl')
 const piArchive=await lockedArchive(path.join(repo,'build-tools'),'@earendil-works/pi-ai')
 const {prepareProduct}=await import(pathToFileURL(path.join(repo,'android/tools/prepare-product.mjs')).href)
-prepareProduct({repo,output:product,abi:'x64',archives:{'pi-ai':piArchive}})
-mark('PUBLIC_X64_PRODUCT_PREPARED')
+prepareProduct({repo,output:product,abi,archives:{'pi-ai':piArchive}})
+mark('PUBLIC_'+abi.toUpperCase()+'_PRODUCT_PREPARED')
 
 fs.mkdirSync(harness)
 for(const file of ['package.json','package-lock.json'])fs.copyFileSync(path.join(repo,'harness',file),path.join(harness,file))
@@ -80,7 +82,7 @@ for(const [key,relative]of Object.entries({XDG_CACHE_HOME:'.cache',XDG_DATA_HOME
 fs.mkdirSync(process.env.PNPM_HOME,{recursive:true})
 process.env.PATH=path.join(harness,'node_modules/.bin')+':'+process.env.PNPM_HOME+':'+process.env.PATH
 run('npm',['ci','--prefix',harness,'--no-audit','--no-fund'])
-for(const name of ['@koromix/koffi-android-x64','@img/sharp-wasm32','@emnapi/runtime'])await materialize(harness,name)
+for(const name of ['@koromix/koffi-android-'+abi,'@img/sharp-wasm32','@emnapi/runtime'])await materialize(harness,name)
 const dsh=path.join(harness,'node_modules/.bin/dsh')
 run(dsh,['plugin','--profile','web','add',product],harness)
 const hostAnchor=path.join(harness,'node_modules/@deepseek-ai/dsh/package.json')
@@ -117,10 +119,10 @@ run(process.execPath,[cli,'audit','--request',requestFile,'--audit-out',audit])
 mark('STOPPED_HOST_EXACT_FORK_AUDIT_COMPLETE')
 run(process.execPath,[cli,'activate','--request',requestFile,'--audit',audit])
 mark('STOPPED_HOST_EXACT_FORK_ACTIVATION_COMPLETE')
-const ca=path.join(repo,'android/artifacts/runtime-inputs-x64/extracted/ca-certificates/data/data/com.termux/files/usr/etc/tls/cert.pem')
+const ca=path.join(repo,'android/artifacts/runtime-inputs'+(abi==='x64'?'-x64':'')+'/extracted/ca-certificates/data/data/com.termux/files/usr/etc/tls/cert.pem')
 const {packHost}=await import(pathToFileURL(path.join(repo,'android/tools/pack-host.mjs')).href)
 const output=path.join(work,'packed-host')
-await packHost({harnessRoot:harness,productRoot:product,out:output,abi:'x64',caBundle:ca})
+await packHost({harnessRoot:harness,productRoot:product,out:output,abi,caBundle:ca})
 const assets=path.join(repo,'android/mobile/src/main/assets')
 fs.mkdirSync(assets,{recursive:true})
 // Serialize asset publication with packaging. Missing version blocks Gradle if

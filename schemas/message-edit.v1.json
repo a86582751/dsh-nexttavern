@@ -1,15 +1,177 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "dsh-roleplay/message-edit/v1",
-  "title": "Required roleplay/message-edit event payload",
+  "title": "Required roleplay/message-edit event payload, accepted versions 1–3",
   "type": "object",
   "required": ["schemaVersion", "targetSeq", "messageId", "role", "text"],
   "properties": {
-    "schemaVersion": {"const": 1},
-    "targetSeq": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
-    "messageId": {"type": "string", "minLength": 1},
+    "schemaVersion": {"enum": [1, 2, 3]},
+    "targetSeq": {"$ref": "#/$defs/position"},
+    "messageId": {"$ref": "#/$defs/name"},
     "role": {"enum": ["user", "assistant"]},
-    "text": {"type": "string", "maxLength": 1000000}
+    "text": {"type": "string", "maxLength": 1000000},
+    "operation": {"$ref": "#/$defs/operation"},
+    "sourceMaterial": {"$ref": "#/$defs/sourceMaterial"},
+    "bodyChanged": {"type": "boolean"},
+    "patch": {"$ref": "#/$defs/patch"}
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {"properties": {"schemaVersion": {"const": 1}}},
+      "then": {"not": {"anyOf": [
+        {"required": ["sourceMaterial"]}, {"required": ["bodyChanged"]}, {"required": ["patch"]}
+      ]}}
+    },
+    {
+      "if": {"properties": {"schemaVersion": {"const": 2}}},
+      "then": {"required": ["sourceMaterial"], "not": {"anyOf": [
+        {"required": ["bodyChanged"]}, {"required": ["patch"]}
+      ]}}
+    },
+    {
+      "if": {"properties": {"schemaVersion": {"const": 3}}},
+      "then": {"required": ["bodyChanged", "patch"]}
+    }
+  ],
+  "$defs": {
+    "position": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "name": {"type": "string", "minLength": 1},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "jsonValue": {
+      "anyOf": [
+        {"type": ["null", "boolean", "number", "string"]},
+        {"type": "array", "items": {"$ref": "#/$defs/jsonValue"}},
+        {"$ref": "#/$defs/jsonObject"}
+      ]
+    },
+    "jsonObject": {"type": "object", "additionalProperties": {"$ref": "#/$defs/jsonValue"}},
+    "reference": {
+      "type": "object", "required": ["key", "sha256"],
+      "properties": {"key": {"$ref": "#/$defs/name"}, "sha256": {"$ref": "#/$defs/sha256"}},
+      "additionalProperties": false
+    },
+    "nullableReference": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/reference"}]},
+    "variant": {
+      "oneOf": [
+        {
+          "type": "object", "required": ["kind"],
+          "properties": {"kind": {"const": "native-canonical"}}, "additionalProperties": false
+        },
+        {
+          "type": "object", "required": ["kind", "id"],
+          "properties": {"kind": {"const": "opening-variant"}, "id": {"$ref": "#/$defs/name"}},
+          "additionalProperties": false
+        }
+      ]
+    },
+    "messageTarget": {
+      "type": "object", "required": ["kind", "identity"],
+      "properties": {
+        "kind": {"const": "message"},
+        "identity": {
+          "type": "object", "required": ["ownerSessionId", "nativeSeq", "messageId", "variant"],
+          "properties": {
+            "ownerSessionId": {"$ref": "#/$defs/name"}, "nativeSeq": {"$ref": "#/$defs/position"},
+            "messageId": {"$ref": "#/$defs/name"}, "variant": {"$ref": "#/$defs/variant"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "importIncarnation": {
+      "type": "object", "required": ["sourceRecordSessionId", "importId", "transactionId", "activationSha256"],
+      "properties": {
+        "sourceRecordSessionId": {"$ref": "#/$defs/name"}, "importId": {"$ref": "#/$defs/name"},
+        "transactionId": {"$ref": "#/$defs/name"}, "activationSha256": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "namespace": {
+      "type": "object", "required": ["schemaVersion", "sessionId", "importIncarnation", "target"],
+      "properties": {
+        "schemaVersion": {"const": 3}, "sessionId": {"$ref": "#/$defs/name"},
+        "importIncarnation": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/importIncarnation"}]},
+        "target": {"$ref": "#/$defs/messageTarget"}
+      },
+      "additionalProperties": false
+    },
+    "fenceRoot": {
+      "type": "object", "required": ["namespace", "head", "base"],
+      "properties": {
+        "namespace": {"$ref": "#/$defs/namespace"},
+        "head": {"$ref": "#/$defs/nullableReference"}, "base": {"$ref": "#/$defs/nullableReference"}
+      },
+      "additionalProperties": false
+    },
+    "ordinaryReplacement": {
+      "description": "Complete ordinary-only DATA at the accepted message/variant address. The Native owner joins its identity to targetSeq and messageId and validates the actual previous base and fence.",
+      "type": "object", "required": ["namespace", "previous", "fenceRoot", "variables"],
+      "properties": {
+        "namespace": {"$ref": "#/$defs/namespace"}, "previous": {"$ref": "#/$defs/nullableReference"},
+        "fenceRoot": {"$ref": "#/$defs/fenceRoot"},
+        "variables": {"allOf": [{"$ref": "#/$defs/jsonObject"}, {"propertyNames": {"not": {"const": "stat_data"}}}]}
+      },
+      "additionalProperties": false
+    },
+    "patch": {
+      "type": "object",
+      "properties": {
+        "variant": {"$ref": "#/$defs/variant"},
+        "metadata": {
+          "type": "object", "properties": {"name": {"type": "string"}, "is_hidden": {"type": "boolean"}},
+          "additionalProperties": false
+        },
+        "extra": {"$ref": "#/$defs/jsonObject"}, "ordinary": {"$ref": "#/$defs/ordinaryReplacement"}
+      },
+      "additionalProperties": false
+    },
+    "helperOrigin": {
+      "type": "object", "required": ["sourceRecordSessionId", "importId", "rawSha256", "realmId", "groupId"],
+      "properties": {
+        "sourceRecordSessionId": {"$ref": "#/$defs/name"}, "importId": {"$ref": "#/$defs/name"},
+        "rawSha256": {"$ref": "#/$defs/sha256"}, "realmId": {"$ref": "#/$defs/name"}, "groupId": {"$ref": "#/$defs/name"}
+      },
+      "additionalProperties": false
+    },
+    "readerOrigin": {
+      "type": "object", "required": ["principal", "sourceRecordSessionId", "importId", "rawSha256", "descriptorSha256", "htmlSha256", "htmlSpan", "carrier"],
+      "properties": {
+        "principal": {"const": "reader-regex-document"}, "sourceRecordSessionId": {"$ref": "#/$defs/name"},
+        "importId": {"$ref": "#/$defs/name"}, "rawSha256": {"$ref": "#/$defs/sha256"},
+        "descriptorSha256": {"$ref": "#/$defs/sha256"}, "htmlSha256": {"$ref": "#/$defs/sha256"},
+        "htmlSpan": {
+          "type": "object", "required": ["start", "end"],
+          "properties": {"start": {"$ref": "#/$defs/position"}, "end": {"$ref": "#/$defs/position"}},
+          "additionalProperties": false
+        },
+        "carrier": {
+          "type": "object", "required": ["seq", "messageId"],
+          "properties": {"seq": {"$ref": "#/$defs/position"}, "messageId": {"$ref": "#/$defs/name"}},
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "operation": {
+      "type": "object", "required": ["schemaVersion", "encoding", "operationId", "requestSha256", "expectedMessageVersionSha256", "origin"],
+      "properties": {
+        "schemaVersion": {"const": 1}, "encoding": {"const": "native-author-message-edit-operation-v1"},
+        "operationId": {"$ref": "#/$defs/name"}, "requestSha256": {"$ref": "#/$defs/sha256"},
+        "expectedMessageVersionSha256": {"$ref": "#/$defs/sha256"},
+        "origin": {"oneOf": [{"$ref": "#/$defs/helperOrigin"}, {"$ref": "#/$defs/readerOrigin"}]}
+      },
+      "additionalProperties": false
+    },
+    "sourceMaterial": {
+      "type": "object", "required": ["schemaVersion", "encoding", "rawSource", "effectiveContentSha256", "producerReceipt"],
+      "properties": {
+        "schemaVersion": {"const": 1}, "encoding": {"const": "native-message-source-material-v1"},
+        "rawSource": {"type": "array", "items": {"type": "object"}},
+        "effectiveContentSha256": {"$ref": "#/$defs/sha256"}, "producerReceipt": {"type": "object"}
+      },
+      "additionalProperties": false
+    }
+  }
 }

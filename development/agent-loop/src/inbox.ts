@@ -6,7 +6,6 @@
 
 import type { MessageId } from 'dsh-nexttavern-native-llm'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
-import type SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import {SessionLogOffset} from 'dsh-nexttavern-native-session'
 import type { Session, SessionEvent, SessionEventMap, UserMessage } from 'dsh-nexttavern-native-session'
 import type {
@@ -109,7 +108,7 @@ export class ReactLoopInbox implements InboxContract {
   private historyOwner?: ReturnType<typeof createNativeInboxHistoryOwner>
   private historyOffset = 0
   constructor(
-    private readonly projections: SessionProjectionRegistry,
+    private readonly readState: () => InboxState,
     private readonly session: Session,
     private readonly dispatch: AgentEventDispatch,
     observeAppends?: (observe: (event: SessionEvent) => void) => void,
@@ -395,13 +394,7 @@ export class ReactLoopInbox implements InboxContract {
 
   /** Read the current durable projection state. */
   private current(): InboxState {
-    const state = this.projections.stateOf(this.session, 'inbox')
-    if (state === undefined) {
-      throw new Error(
-        `agent "${this.session.id}" cannot read inbox state: its projection registration is not active`,
-      )
-    }
-    return state
+    return this.readState()
   }
 
   /** Commit one normalized mutation and publish its live events. */

@@ -1,7 +1,7 @@
 import type {SessionEvent} from 'dsh-nexttavern-native-session'
 import type {DomainChanged} from '@deepseek-ai/dsh-storage-domain'
 import type {CommunityMacroWrite} from './community-preset-macros.js'
-import type {CommunityVariableAttempt} from './community-preset-variables.js'
+import type {CommunityVariableAttempt,SharedScopePreparationPlanV1} from './community-preset-variables.js'
 import type {CommunityPresetTable} from './community-presets.js'
 import type {AuthorChatRefV1,AuthorChatNamespaceV3,AcceptedAuthorChatWriteV3} from './roleplay-author-chat-state-types.js'
 import type {TavernOrdinaryPreparationPlanV1} from './roleplay-tavern-ordinary-stage.js'
@@ -17,6 +17,12 @@ export interface CommunityAttemptRecord {
 export interface PreparationPlanRecord {
   readonly ordinaryChat:TavernOrdinaryPreparationPlanV1
   readonly community?:CommunityAttemptRecord
+  readonly sharedScopes?:readonly SharedScopePreparationPlanV1[]
+}
+export interface PreparationAcceptanceV1 {
+  current():boolean
+  /** The live material capture recognizes only its own actual Domain puts. */
+  beforeWrite?(row:{readonly key:string;readonly value:object}):()=>void
 }
 export interface AcceptedPreparationRecord extends PreparationPlanRecord {
   readonly acceptedMaterialRef:AuthorChatRefV1
@@ -32,6 +38,7 @@ export interface OrdinaryPriorCaptureInput {
 }
 export interface OrdinaryPriorCapture {
   readonly writes:readonly AcceptedAuthorChatWriteV3[]
+  readonly sharedScopes?:readonly SharedScopePreparationPlanV1[]
   readonly messageGroups:NonNullable<TavernOrdinaryPreparationPlanV1['messageGroups']>
   readonly messageBinding:'none'|'required'|'unknown'
   current():boolean
@@ -127,7 +134,8 @@ export function readAcceptedPreparationPlanRecord(stored:unknown,expected:string
     ordinaryChat=plan?.ordinaryChat
   if(ordinaryChat?.schemaVersion!==1||ordinaryChat.encoding!=='native-ordinary-preparation-plan-v1')return
   if(digest()!==expected)throw Error('ORDINARY_ACCEPTED_PLAN_CHANGED')
-  const record={ordinaryChat,...plan?.community?{community:plan.community}:{}}
+  const record={ordinaryChat,...plan?.community?{community:plan.community}:{},
+    ...plan?.sharedScopes?{sharedScopes:plan.sharedScopes}:{}}
   acceptedPlanRecords.set(stored as object,{sha256:expected,record})
   return record
 }
@@ -359,11 +367,11 @@ export function acceptedPreparationAttempts(events:readonly SessionEvent[],table
 /** One Native acceptance owner publishes ordinary preparation writes with or
  * without a selected preset, including the preset's coordinated globals. */
 export function createCommunityPresetSettlement(table:CommunityPresetTable,variables:{
-  commitPreparation(record:AcceptedPreparationRecord):Promise<unknown>
+  commitPreparation(record:AcceptedPreparationRecord,acceptance:PreparationAcceptanceV1):Promise<unknown>
   receiptFacts(record:AcceptedPreparationRecord):ReceiptFacts
   isPublishing?(key:string,value:unknown):boolean
 },options:{observeRecords?(listener:(change:DomainChanged)=>void):()=>void}={}) {
-  const owners=new WeakMap<object,AcceptedPreparationHistory>(),settled=new Map<string,number>()
+  const owners=new WeakMap<object,AcceptedPreparationHistory>()
   const planReaders=new Map<string,Set<WeakRef<AcceptedPreparationHistory>>>(),variableReaders=new Map<string,Set<WeakRef<AcceptedPreparationHistory>>>()
   function watch(index:Map<string,Set<WeakRef<AcceptedPreparationHistory>>>,key:string,ref:WeakRef<AcceptedPreparationHistory>) {
     let readers=index.get(key)
@@ -403,20 +411,32 @@ export function createCommunityPresetSettlement(table:CommunityPresetTable,varia
     return withTavernLock(table,`community-settlement:${session.id}`,async()=>{
       let history=native(session)
       if(!history) {
-        const events=session.snapshotEvents(),last=Number(events.at(-1)?.seq??0)
-        if(settled.get(session.id)===last)return
-        for(const record of acceptedPreparationAttempts(events,table))
-          await variables.commitPreparation(record)
-        settled.set(session.id,last);return
+        const events=session.snapshotEvents()
+        for(const record of acceptedPreparationAttempts(events,table)) {
+          const current=()=>acceptedPreparationAttempts(session.snapshotEvents(),table).some(candidate=>
+            preparationId(candidate)===preparationId(record)
+            &&candidate.acceptedMaterialRef.key===record.acceptedMaterialRef.key
+            &&candidate.acceptedMaterialRef.sha256===record.acceptedMaterialRef.sha256)
+          await variables.commitPreparation(record,{current})
+          if(!current())throw Error('ORDINARY_PREPARATION_ACCEPTANCE_CHANGED')
+        }
+        return
       }
       for(;;) {
         const group=history.nextPending()
         if(!group)return
         const notice=group.notice,record=group.record
-        await variables.commitPreparation(record)
+        const acceptedHistory=history
+        const acceptance={current() {
+          const current=native(session)
+          return current===acceptedHistory&&current.groups.get(group.id)===group
+            &&group.notice===notice&&group.record===record
+        }}
+        await variables.commitPreparation(record,acceptance)
         // Notifications update DATA, but only this actual returned commit ACK
         // can settle the attempt. A lost ACK leaves it pending for readback.
         const current=native(session)!
+        if(!acceptance.current())throw Error('ORDINARY_PREPARATION_ACCEPTANCE_CHANGED')
         history.acknowledge(group,notice)
         history=current
       }
@@ -436,7 +456,7 @@ export function createCommunityPresetSettlement(table:CommunityPresetTable,varia
     if(plan&&(plan.inputId!==input.inputId||plan.contributionId!==input.contributionId||plan.attemptId!==input.attemptId
       ||recordSha256(plan.initialRoot.namespace)!==recordSha256(input.namespace)))throw Error('ORDINARY_PRIOR_SOURCE_CHANGED')
     const messageBinding=history.messageBinding(input,plan)
-    return {writes:plan?.writes??[],messageGroups:plan?.messageGroups??[],messageBinding,current() {
+    return {writes:plan?.writes??[],sharedScopes:record?.sharedScopes,messageGroups:plan?.messageGroups??[],messageBinding,current() {
       if(native(session)!==history)return false
       const current=history.selectPrior(input.turn,input.step)
       if(messageBinding==='none'&&history.messageBinding(input,current?.record?.ordinaryChat)!=='none')return false
@@ -447,6 +467,6 @@ export function createCommunityPresetSettlement(table:CommunityPresetTable,varia
     }}
   }
   return {reconcile,attemptIds,capturePrior,
-    dispose(){stop?.();planReaders.clear();variableReaders.clear();settled.clear()},
+    dispose(){stop?.();planReaders.clear();variableReaders.clear()},
   }
 }

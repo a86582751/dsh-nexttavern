@@ -1,90 +1,176 @@
-/** Named primary-book DATA and deterministic mutation planning. The actual
- * Core lifecycle and lore journal remain the only read/write authorities. */
+/** Catalog and bound-book DATA captured by the actual Core read owner. */
 import {recordSha256} from './roleplay-data.js'
-import {composeRoleplayTavernCurrentOverlayV1} from './roleplay-tavern-current-overlay.js'
-import {originalTavernLoreMembershipFromSourceV1,applyTavernLoreMemberFieldsV1}
-  from './roleplay-tavern-lore-membership.js'
-import {nativeNamedWorldbookEntryToWireV1,worldbookWireToNativeEntryV1}
-  from './tavern-named-worldbook-data.js'
-import type {NativeNamedWorldbookEntryDataV1,WorldbookEntryWireV1,WorldbookEntryInputV1}
-  from './tavern-named-worldbook-data.js'
-import type {TavernLoreMemberV1,TavernLoreResolvedReplacementMemberV1} from './roleplay-tavern-lore-membership.js'
-import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
-import type {TavernLoreEditsDataV1,TavernLoreMutationRequestV2} from './roleplay-tavern-lore-edits-types.js'
-import type {TavernLoreCurrentNativeOverlayV1} from './tavern-lore-plan-types.mjs'
+import {freezeAuthorWorldbookDataV1} from './roleplay-author-worldbook-journal.js'
+import type {RoleplayAuthorContextV1,AuthorCharacterDirectoryEntryV1,AuthorSourceContextRegistrationV1}
+  from './roleplay-author-source-context.js'
+import type {AuthorWorldbookCatalogCaptureV1,AuthorWorldbookCaptureV1,AuthorWorldbookBindingCaptureV1,
+  AuthorWorldbookRefV1,AuthorWorldbookReceiptV1,AuthorWorldbookWriteAddressV1,AuthorWorldbookImportLocatorV1,
+  AuthorWorldbookBindingOwnerV1,AuthorWorldbookBindingSelectionV1,AuthorWorldbookHelperCaptureV1,
+  AuthorWorldbookReadResultV1}
+  from './roleplay-author-worldbook-types.js'
+import type {WorldbookEntryInputV1,WorldbookEntryWireV1} from './tavern-named-worldbook-data.js'
+import {nativeNamedWorldbookEntryToWireV1} from './tavern-named-worldbook-data.js'
+import type {NativeNamedWorldbookEntryDataV1} from './tavern-named-worldbook-data.js'
+import type {TavernLoreMembershipDataV1,TavernLoreMemberV1} from './roleplay-tavern-lore-membership.js'
 
-export interface AuthorNamedWorldbookDataV1 {
-  readonly schemaVersion:1
-  readonly encoding:'author-named-primary-worldbook-data-v1'
+type HelperMember=Pick<TavernLoreMemberV1,'uid'|'rawEntry'>
+const wireEntries=new WeakMap<HelperMember,WorldbookEntryWireV1>()
+const helperCaptures=new WeakMap<AuthorWorldbookCaptureV1,AuthorWorldbookHelperCaptureV1>()
+export function authorWorldbookHelperEntryV1(member:HelperMember,prepared?:WorldbookEntryWireV1):WorldbookEntryWireV1 {
+  let entry=wireEntries.get(member)
+  if(!entry){
+    entry=prepared??nativeNamedWorldbookEntryToWireV1(member.rawEntry as NativeNamedWorldbookEntryDataV1,{uid:member.uid})
+    wireEntries.set(member,entry)
+  }
+  return entry
+}
+export function authorWorldbookHelperEntriesV1(membership:TavernLoreMembershipDataV1,
+  preparedEntries?:ReadonlyMap<number,WorldbookEntryWireV1>):readonly WorldbookEntryWireV1[] {
+  return [...membership.members].sort((a,b)=>a.displayIndex-b.displayIndex)
+    .map(member=>authorWorldbookHelperEntryV1(member,preparedEntries?.get(member.uid)))
+}
+export function authorWorldbookHelperCaptureV1(book:AuthorWorldbookCaptureV1,
+  preparedEntries?:readonly WorldbookEntryWireV1[]):AuthorWorldbookHelperCaptureV1 {
+  let helper=helperCaptures.get(book)
+  if(!helper){
+    if(preparedEntries) {
+      // The publisher supplies prepared DTOs only for this exact captured membership.
+      const members=[...book.membership.members].sort((a,b)=>a.displayIndex-b.displayIndex)
+      members.forEach((member,index)=>wireEntries.set(member,preparedEntries[index]!))
+    }
+    helper=freezeAuthorWorldbookDataV1({...book,entries:preparedEntries??authorWorldbookHelperEntriesV1(book.membership)})
+    helperCaptures.set(book,helper)
+  }
+  return helper
+}
+
+export interface AuthorNamedWorldbookDataV3 {
+  readonly schemaVersion:3
+  readonly encoding:'author-worldbook-catalog-data-v3'
   readonly authority:'consumer-data-only'
   readonly sessionId:string
   readonly sourceSha256:string
-  readonly loreDataSha256:string
-  readonly revision:number
+  readonly profileId:string
+  readonly catalog:AuthorWorldbookCatalogCaptureV1
+  /** Preparation contains only actual bound books. Other catalog books are
+   * captured once on an explicit asynchronous SDK read in that read scope. */
+  readonly books:readonly AuthorWorldbookCaptureV1[]
+  readonly bindings:readonly AuthorWorldbookBindingCaptureV1[]
+  readonly primaryBookId:string|null
   readonly primaryName:string|null
+  readonly characterNames:{readonly primary:string|null;readonly additional:readonly string[]}
+  readonly globalNames:readonly string[]
+  readonly chatName:string|null
   readonly names:readonly string[]
-  /** Helper order is displayIndex order; the immutable archive keeps its keys. */
-  readonly members:readonly TavernLoreMemberV1[]
-  readonly entries:readonly WorldbookEntryWireV1[]
   readonly dataSha256:string
 }
-/** V2 carries the actual journal namespace as DATA for durable retry addressing. */
-export interface AuthorNamedWorldbookDataV2 extends Omit<AuthorNamedWorldbookDataV1,'schemaVersion'|'encoding'> {
-  readonly schemaVersion:2
-  readonly encoding:'author-named-primary-worldbook-data-v2'
-  readonly identitySha256:string
+export type AuthorNamedWorldbookData=AuthorNamedWorldbookDataV3
+export interface AuthorWorldbookReadTargetV1 {
+  readonly bookId:string
+  readonly contentRef:AuthorWorldbookRefV1
+  readonly metadataRef:AuthorWorldbookRefV1
 }
-export type AuthorNamedWorldbookData=AuthorNamedWorldbookDataV1|AuthorNamedWorldbookDataV2
+declare const namedBindingToken:unique symbol
+/** Private process reference. A JSON reconstruction cannot admit a mutation. */
+export interface AuthorNamedCharacterWorldbookBindingTokenV1 {readonly [namedBindingToken]:true}
+export interface AuthorNamedCharacterWorldbookBindingLocatorV1 {
+  readonly kind:'named-character-bindings'
+  readonly profileId:string
+  readonly locator:AuthorWorldbookImportLocatorV1
+  readonly registration:AuthorWorldbookRefV1
+  readonly characterId:string
+  readonly owner:Extract<AuthorWorldbookBindingOwnerV1,{kind:'character'}>
+}
+export interface AuthorNamedCharacterWorldbookBindingReadV1 {
+  readonly descriptor:AuthorCharacterDirectoryEntryV1
+  readonly registration:AuthorSourceContextRegistrationV1
+  readonly binding:AuthorWorldbookBindingCaptureV1
+  readonly catalog:AuthorWorldbookCatalogCaptureV1
+  readonly names:{readonly primary:string|null;readonly additional:readonly string[]}
+  readonly target:AuthorNamedCharacterWorldbookBindingLocatorV1
+  readonly token:AuthorNamedCharacterWorldbookBindingTokenV1
+  current():boolean
+}
+export interface AuthorNamedCharacterWorldbookBindingRequestV1 {
+  readonly token:AuthorNamedCharacterWorldbookBindingTokenV1
+  readonly operationId:string
+  readonly selection:Extract<AuthorWorldbookBindingSelectionV1,{kind:'character'}>
+}
+export type AuthorWorldbookRetryLocatorV1=AuthorWorldbookWriteAddressV1|AuthorNamedCharacterWorldbookBindingLocatorV1
+export type AuthorWorldbookResultV1=
+  |{readonly kind:'committed';readonly receipt:AuthorWorldbookReceiptV1}
+  |{readonly kind:'refused';readonly diagnostics:readonly {readonly code:string;
+    readonly recovery?:AuthorWorldbookRetryLocatorV1}[]}
+export type AuthorWorldbookPublicationObserverV1=()=>((receipt:AuthorWorldbookReceiptV1)=>void)|undefined
 export type AuthorWorldbookMutationV1=
   |{kind:'create-entries';entries:readonly WorldbookEntryInputV1[]}
   |{kind:'delete-entries';uids:readonly number[]}
   |{kind:'replace-entries';entries:readonly (WorldbookEntryInputV1&{uid:number})[]}
   |{kind:'replace-worldbook';entries:readonly WorldbookEntryInputV1[]}
-export interface AuthorWorldbookMutationPlanV1 {
-  readonly request:TavernLoreMutationRequestV2
-  readonly createdUids:readonly number[]
-  readonly deletedEntries:readonly WorldbookEntryWireV1[]
-}
-
-/** The supplied journal and legacy differences came from the same Source
- * read. No model, global library or new Source identity is synthesized. */
-function captureNamedWorldbookBody(source:TavernLoreSourceDataV1,data:TavernLoreEditsDataV1,
-  legacy:TavernLoreCurrentNativeOverlayV1) {
-  let membership=data.currentNativeMembership
-  if(!membership) {
-    membership=originalTavernLoreMembershipFromSourceV1(source)
-    for(const entry of composeRoleplayTavernCurrentOverlayV1(legacy,data.overlay).entries) {
-      membership=applyTavernLoreMemberFieldsV1(membership,{kind:'original',rawEntryPointer:entry.rawEntryPointer,
-        rawEntrySha256:entry.rawEntrySha256},entry.fields)
-    }
+export type AuthorWorldbookManagementV1=
+  |{readonly kind:'create-book';readonly name:string;readonly entries:readonly WorldbookEntryInputV1[]}
+  |{readonly kind:'delete-book';readonly name:string;readonly target:AuthorWorldbookReadTargetV1}
+  |{readonly kind:'bind-books';
+    readonly target:Pick<AuthorWorldbookBindingCaptureV1,'owner'|'head'>;
+    readonly selection:AuthorWorldbookBindingCaptureV1['selection']}
+const catalogNames=new WeakMap<AuthorWorldbookCatalogCaptureV1,{
+  readonly index:ReadonlyMap<string,string>;readonly names:readonly string[]}>()
+function namesForCatalog(catalog:AuthorWorldbookCatalogCaptureV1) {
+  let named=catalogNames.get(catalog)
+  if(!named) {
+    named={index:new Map(catalog.books.map(book=>[book.address.bookId,book.name])),
+      names:catalog.books.map(book=>book.name)}
+    catalogNames.set(catalog,named)
   }
-  const name=source.original.primary.value?.name,
-    primaryName=typeof name==='string'&&name.length?name:null,
-    members=[...membership.members].sort((left,right)=>left.displayIndex-right.displayIndex)
-  const entries=members.map(member=>nativeNamedWorldbookEntryToWireV1(
-    member.rawEntry as NativeNamedWorldbookEntryDataV1,{uid:member.uid}))
-  return {authority:'consumer-data-only' as const,sessionId:source.sessionId,sourceSha256:source.sourceSha256,
-    loreDataSha256:data.dataSha256,revision:data.revision,primaryName,names:primaryName===null?[]:[primaryName],members,entries}
+  return named
+}
+export function authorNamedCharacterWorldbookNamesV1(binding:AuthorWorldbookBindingCaptureV1,
+  catalog:AuthorWorldbookCatalogCaptureV1):AuthorNamedCharacterWorldbookBindingReadV1['names'] {
+  const selection=binding.selection
+  if(selection.kind!=='character')throw Error('AUTHOR_WORLDBOOK_BINDING_KIND_MISMATCH')
+  const {index}=namesForCatalog(catalog)
+  return freezeAuthorWorldbookDataV1({primary:selection.primary===null?null:index.get(selection.primary)??null,
+    additional:selection.additional.flatMap(bookId=>{
+      const name=index.get(bookId)
+      return name===undefined?[]:[name]
+    })})
 }
 
-export function captureAuthorNamedWorldbookDataV1(source:TavernLoreSourceDataV1,data:TavernLoreEditsDataV1,
-  legacy:TavernLoreCurrentNativeOverlayV1):AuthorNamedWorldbookDataV1 {
-  const body={schemaVersion:1 as const,encoding:'author-named-primary-worldbook-data-v1' as const,
-    ...captureNamedWorldbookBody(source,data,legacy)}
-  return {...body,dataSha256:recordSha256(body)}
+export function captureAuthorNamedWorldbookDataV3(sessionId:string,sourceSha256:string,
+  context:ReturnType<RoleplayAuthorContextV1['capture']>,catalog:AuthorWorldbookCatalogCaptureV1)
+  :AuthorNamedWorldbookDataV3 {
+  const named=namesForCatalog(catalog)
+  const {index,names}=named,character=context.bindings.find(binding=>binding.owner.kind==='character')?.selection,
+    global=context.bindings.find(binding=>binding.owner.kind==='profile')?.selection,
+    chat=context.bindings.find(binding=>binding.owner.kind==='chat')?.selection
+  if(character?.kind!=='character')throw Error('AUTHOR_SOURCE_CONTEXT_BINDING_INVALID')
+  const primaryBookId=context.primary?.address.bookId??null,primaryName=primaryBookId===null?null:index.get(primaryBookId)??null,
+    characterNames={primary:primaryName,additional:character.additional.flatMap(bookId=>{
+      const name=index.get(bookId)
+      return name===undefined?[]:[name]
+    })},
+    globalNames=global?.kind==='profile'?global.enabled.flatMap(bookId=>{
+      const name=index.get(bookId)
+      return name===undefined?[]:[name]
+    }):[],chatName=chat?.kind==='chat'&&chat.bookId!==null?index.get(chat.bookId)??null:null,
+    refs=context.books.map(book=>({bookId:book.address.bookId,content:book.content,metadata:book.metadata})),
+    bindingRefs=context.bindings.map(binding=>({owner:binding.owner,head:binding.head}))
+  const dataSha256=recordSha256({sessionId,sourceSha256,profileId:catalog.profileId,
+    catalog:catalog.head,bindings:bindingRefs,books:refs,primaryBookId})
+  return freezeAuthorWorldbookDataV1({schemaVersion:3,encoding:'author-worldbook-catalog-data-v3',
+    authority:'consumer-data-only',sessionId,sourceSha256,profileId:catalog.profileId,catalog,
+    books:context.books,bindings:context.bindings,primaryBookId,primaryName,characterNames,globalNames,chatName,names,dataSha256})
 }
-export function captureAuthorNamedWorldbookDataV2(source:TavernLoreSourceDataV1,data:TavernLoreEditsDataV1,
-  legacy:TavernLoreCurrentNativeOverlayV1):AuthorNamedWorldbookDataV2 {
-  const body={schemaVersion:2 as const,encoding:'author-named-primary-worldbook-data-v2' as const,
-    identitySha256:data.identitySha256,...captureNamedWorldbookBody(source,data,legacy)}
-  return {...body,dataSha256:recordSha256(body)}
+
+export function authorWorldbookReadTargetV1(book:AuthorWorldbookCaptureV1):AuthorWorldbookReadTargetV1 {
+  return {bookId:book.address.bookId,contentRef:book.content,metadataRef:book.metadata}
 }
 
 /** The fixed Helper resolves collisions over the whole result, with quadratic
  * probing modulo one million. A default candidate here derives from the real
  * operation, so a lost reply never reallocates IDs when that operation retries.
  * Evidence: JS-Slash-Runner 519599bc... src/function/worldbook.ts 306–331. */
-function allocateUid(desired:number|undefined,used:Set<number>,operationId:string,ordinal:number):number {
+export function allocateAuthorWorldbookUidV1(desired:number|undefined,used:Set<number>,operationId:string,ordinal:number):number {
   let candidate=desired??Number.parseInt(recordSha256({operationId,ordinal}).slice(0,12),16)%1_000_000
   let probe=1
   while(used.has(candidate)) {candidate=(candidate+probe*probe)%1_000_000;probe++}
@@ -92,56 +178,14 @@ function allocateUid(desired:number|undefined,used:Set<number>,operationId:strin
   return candidate
 }
 
-/** Predicates and updater callbacks run in the guest over its actual DTO
- * snapshot. Core receives resolved UID targets or entry DATA only. */
-export function planAuthorWorldbookMutationV1(basis:AuthorNamedWorldbookData,name:string,operationId:string,
-  mutation:AuthorWorldbookMutationV1):AuthorWorldbookMutationPlanV1 {
-  if(name!==basis.primaryName)throw Error('AUTHOR_WORLDBOOK_NOT_FOUND')
-  const current=new Map(basis.members.map(member=>[member.uid,member])),createdUids:number[]=[],
-    deletedEntries:WorldbookEntryWireV1[]=[]
-  let journalMutation:TavernLoreMutationRequestV2['mutation']
-  if(mutation.kind==='delete-entries') {
-    const removed=new Set(mutation.uids)
-    basis.entries.forEach(entry=>{if(removed.has(entry.uid))deletedEntries.push(entry)})
-    journalMutation={kind:'remove',targets:basis.members.filter(member=>removed.has(member.uid)).map(member=>member.identity)}
-  }else if(mutation.kind==='create-entries') {
-    const used=new Set(current.keys())
-    // A sparse existing display order stays intact. New Helper entries append
-    // after its actual last item rather than entering a gap left by deletion.
-    const firstDisplayIndex=basis.members.reduce((maximum,member)=>Math.max(maximum,member.displayIndex),-1)+1
-    const entries=mutation.entries.map((entry,ordinal)=>{
-      const uid=allocateUid(entry.uid,used,operationId,ordinal),displayIndex=firstDisplayIndex+ordinal
-      createdUids.push(uid)
-      return {uid,displayIndex,rawEntry:worldbookWireToNativeEntryV1(entry,{uid,displayIndex})}
-    })
-    journalMutation={kind:'append',entries}
-  }else if(mutation.kind==='replace-entries') {
-    const replacements=new Map(mutation.entries.map(entry=>[entry.uid,entry]))
-    for(const uid of replacements.keys())if(!current.has(uid))throw Error('AUTHOR_WORLDBOOK_ENTRY_NOT_FOUND')
-    const entries=basis.members.map((member,displayIndex)=>{
-      const entry=replacements.get(member.uid)
-      return {...member,displayIndex,rawEntry:entry
-        ?worldbookWireToNativeEntryV1(entry,{uid:member.uid,displayIndex},member.rawEntry):member.rawEntry}
-    })
-    journalMutation={kind:'replace',entries}
-  }else {
-    const used=new Set<number>()
-    const entries:TavernLoreResolvedReplacementMemberV1[]=mutation.entries.map((entry,displayIndex)=>{
-      const uid=allocateUid(entry.uid,used,operationId,displayIndex),previous=current.get(uid)
-      if(!previous)createdUids.push(uid)
-      return {uid,displayIndex,...previous?{identity:previous.identity}:{},
-        rawEntry:worldbookWireToNativeEntryV1(entry,{uid,displayIndex},previous?.rawEntry)}
-    })
-    journalMutation={kind:'replace',entries}
+export function authorWorldbookMutationReplyV1(result:AuthorWorldbookReadResultV1&{
+  readonly createdEntries:readonly WorldbookEntryWireV1[];readonly deletedEntries:readonly WorldbookEntryWireV1[]}) {
+  if(result.readError)return {readError:result.readError}
+  try {
+    const entries=authorWorldbookHelperCaptureV1(result.book).entries
+    return {worldbook:entries,new_entries:result.createdEntries,
+      deleted_entries:result.deletedEntries,target:authorWorldbookReadTargetV1(result.book)}
+  }catch(error) {
+    return {readError:{code:error instanceof Error?error.message:'AUTHOR_WORLDBOOK_READ_UNKNOWN'}}
   }
-  const request:TavernLoreMutationRequestV2={schemaVersion:2,encoding:'tavern-lore-mutation-request-v2',
-    sessionId:basis.sessionId,expectedSourceSha256:basis.sourceSha256,expectedRevision:basis.revision,operationId,
-    mutation:journalMutation}
-  return {request,createdUids,deletedEntries}
-}
-
-export function authorWorldbookMutationReplyV1(plan:AuthorWorldbookMutationPlanV1,actual:AuthorNamedWorldbookData) {
-  const created=new Set(plan.createdUids)
-  return {worldbook:actual.entries,new_entries:actual.entries.filter(entry=>created.has(entry.uid)),
-    deleted_entries:plan.deletedEntries}
 }

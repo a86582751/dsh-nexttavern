@@ -23,7 +23,7 @@ export function createRoleplayMvuSchemaTaskEdits(deps:{status:Table;branch:Table
   sourceSha256(sid:string):string;events(session:SessionCut):readonly EditEvent[];
   currentEditSeq(session:SessionCut,targetSeq:number):number|undefined;
   begin(sid:string):void;flush(session:SessionCut):Promise<void>;
-  parse(text:string):{kind:string};}) {
+}) {
   const activeRef=(sid:string)=>deps.branch.get(schemaTaskEditActiveKey(sid)) as {key:string;sha256:string}|undefined
   function intentAt(ref:{key:string;sha256:string}) {
     const intent=validateSchemaTaskEditIntent(deps.status.get(ref.key) as SchemaTaskEditIntent)
@@ -114,15 +114,11 @@ export function createRoleplayMvuSchemaTaskEdits(deps:{status:Table;branch:Table
         basis:{nativeCut:facts.nativeCut,sourceSha256:facts.sourceSha256,headSha256:facts.headSha256}}
       return validateSchemaTaskEditIntent({...body,intentSha256:recordSha256(body)})
     }
-    const parsed=target.role==='assistant'?deps.parse(target.text):undefined
-    if(parsed?.kind==='rejected')throw Error('SCHEMA_TASK_EDIT_MALFORMED_UPDATE')
     const own=facts.artifacts.find(row=>row.canonicalSeq===target.seq)
     if(own&&!options.target)throw Error('SCHEMA_TASK_EDIT_TARGET_REQUIRED')
     if(options.target&&(!own||own.sourceEventRef.sha256!==options.target.expectedArtifactSha256))
       throw Error('SCHEMA_TASK_EDIT_ARTIFACT_CHANGED')
     const mode=options.target?.mode??'retain'
-    if(own&&mode!=='replace'&&parsed?.kind!=='no-update')throw Error('SCHEMA_TASK_EDIT_REPLACE_REQUIRED')
-    if(own&&mode==='replace'&&parsed?.kind!=='parsed')throw Error('SCHEMA_TASK_EDIT_UPDATE_REQUIRED')
     const body={schemaVersion:1 as const,encoding:'native-mvu-schema-task-edit-intent-v1' as const,
       sessionId:session.id,operationId:options.operationId,requestSha256,target,options,
       artifacts:facts.artifacts.map(artifact=>({canonicalSeq:artifact.canonicalSeq,artifact,

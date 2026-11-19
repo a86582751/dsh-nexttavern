@@ -4,16 +4,22 @@
 import {recordSha256,sha256} from './roleplay-data.js'
 import {readInputCompletion,inputCompletionKey} from './roleplay-input-completion.js'
 import {ROLEPLAY_INPUT_NAMESPACE} from './roleplay-input-preparation.js'
+import {mvuSchemaStoryStartKey,validateMvuSchemaStoryStart} from './roleplay-mvu-schema-story-start.js'
+import type {MvuSchemaStoryStartV1} from './roleplay-mvu-schema-story-start.js'
+import {nativeInputSha256,inspectNativeOpeningGenerationObservationV1} from 'dsh-nexttavern-native-agent-loop'
 import {inputSnapshotReferenceCurrent} from './roleplay-preparation.js'
 import {verifyInheritedCompletedFact} from './roleplay-mvu-prefix-facts.js'
 import {validateMvuSchemaStoryEvent,validateMvuSchemaStoryPlan,validateMvuSchemaStorySettlement,
   validateMvuSchemaStoryHead,mvuSchemaStoryEventKey,mvuSchemaStorySettlementKey} from './roleplay-mvu-schema-story-types.js'
-import {freezeMvuSchemaOpeningData,verifyMvuSchemaOpeningFacts} from './roleplay-mvu-schema-opening-types.js'
+import {freezeMvuSchemaOpeningData,verifyMvuSchemaOpeningFacts,validateSchemaOpeningRootFacts}
+  from './roleplay-mvu-schema-opening-types.js'
 import type {InputCompletionRecord} from './roleplay-input-completion.js'
 import type {InputPreparationCurrency,InputPreparationSnapshotRef} from './roleplay-input-preparation.js'
 import type {MvuInheritedPrefixEvent,MvuInheritedCompletedFactDeps} from './roleplay-mvu-prefix-facts.js'
 import type {MvuSchemaStoryPlan,MvuSchemaStoryEventV2,MvuSchemaStorySettlementV2} from './roleplay-mvu-schema-story-types.js'
-import type {OpeningIntentV5,MvuSchemaOpeningEventV2,MvuSchemaOpeningHeadV2} from './roleplay-mvu-schema-opening-types.js'
+import type {OpeningIntentV5,SchemaOpeningRootFacts} from './roleplay-mvu-schema-opening-types.js'
+import type {SessionEvent} from 'dsh-nexttavern-native-session'
+import type {SessionMessageProjection} from 'dsh-nexttavern-native-session/surface'
 import type {StoryEvent,WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {NativeInputRef,NativePreparationReceiptV1,NativeDurableInputWorkReceiptV1}
   from 'dsh-nexttavern-native-agent-loop'
@@ -149,8 +155,8 @@ function validateRefs(value:unknown,sid:string):asserts value is readonly Native
     ids.add(ref.messageId)
   }
 }
-type StoryPlanReadMode='inherited'|'unpublished-tail'
-function workFacts(input:unknown,sid:string,terminal:InputCompletionRecord,
+type StoryPlanReadMode='inherited'|'unpublished-tail'|'start'
+function workFacts(input:unknown,sid:string,terminal:InputCompletionRecord|undefined,
   mode:StoryPlanReadMode):MvuSchemaUnpublishedStoryRecordedWork {
   exact(input,['schemaVersion','namespace','sessionId','branchId','preparationId','receiptGeneration','refs',
     'credentialSha256','preparation','status','source','attemptGeneration','attempt','checkpoint','terminalRequired'],
@@ -164,7 +170,7 @@ function workFacts(input:unknown,sid:string,terminal:InputCompletionRecord,
     // Only the unpublished reader accepts this exact post-completion failure.
     // A stop notice, tombstone or unrelated code cannot stand in for its
     // separately proven completed Native receipt and matching terminal row.
-    if(mode!=='unpublished-tail'||input.status!=='unknown'||terminal.status!=='unknown')fail()
+    if(mode!=='unpublished-tail'||input.status!=='unknown'||terminal?.status!=='unknown')fail()
     exact(input.stop,['status','code'])
     if(input.stop.status!=='unknown'||typeof input.stop.code!=='string'
       ||!/^[A-Z][A-Z0-9_]{0,63}$/.test(input.stop.code)||input.stop.code!==terminal.code)fail()
@@ -186,6 +192,45 @@ function workFacts(input:unknown,sid:string,terminal:InputCompletionRecord,
     ||input.attempt.legacyPreparationId!==undefined&&!id(input.attempt.legacyPreparationId)
     ||typeof input.attempt.snapshot.key!=='string'||!hash(input.attempt.snapshot.sha256))fail()
   return input as unknown as MvuSchemaUnpublishedStoryRecordedWork
+}
+
+/** This running prefix establishes an accepted computation's provenance. It
+ * returns the previous published basis and grants no continuation permission. */
+export function readMvuSchemaStoryStartFacts(startInput:MvuSchemaStoryStartV1,
+  request:{ownerSessionId:string;ownerInheritedEventCount:number;events:readonly MvuInheritedPrefixEvent[]},
+  deps:Pick<MvuSchemaInheritedStoryDeps,'branch'|'readProjectedCanonical'>) {
+  const start=validateMvuSchemaStoryStart(startInput),sid=request.ownerSessionId,{events}=request,
+    captured=start.work,currency=captured.currency,checkpoint=captured.checkpoint,
+    key=mvuSchemaStoryStartKey(sid,currency.preparationId,start.canonical.seq),raw=deps.branch.get(key)
+  if(!same(raw,start)||captured.sessionId!==sid||start.initialCut.nativeCut>events.length)fail()
+  const work=workFacts(read(deps.branch,captured.workKey),sid,undefined,'start'),
+    expectedCurrency:InputPreparationCurrency={schemaVersion:2,preparationId:work.preparationId,
+      credentialSha256:work.credentialSha256,receiptGeneration:work.receiptGeneration,
+      attemptGeneration:work.attemptGeneration,source:work.source,snapshot:work.attempt.snapshot}
+  if(!same(expectedCurrency,currency)||!same(work.checkpoint,checkpoint)||!same(work.refs,captured.refs)
+    ||!same(work.preparation,checkpoint.preparation)||work.attempt.turn!==checkpoint.actualTurn
+    ||work.source.kind!=='story'||work.source.headRef?.sha256!==start.base.stateSnapshotSha256)fail()
+  const beginning=events[checkpoint.startSeq],step=events[checkpoint.firstStepStartSeq],
+    beginningData=beginning?.data,stepData=step?.data
+  if(!object(beginningData)||!object(stepData))fail()
+  const link=beginningData.nativeInputLink as {mode?:string;preparation?:unknown;refs?:unknown;workSha256?:string}|undefined
+  if(checkpoint.startSeq<request.ownerInheritedEventCount||beginning?.type!=='turn/start'
+    ||beginningData.turn!==checkpoint.actualTurn||step?.type!=='step/start'
+    ||stepData.turn!==checkpoint.actualTurn||stepData.step!==1
+    ||checkpoint.startSeq>=checkpoint.firstStepStartSeq||checkpoint.firstStepStartSeq>=start.canonical.seq
+    ||link?.mode!=='claim'||!same(link.preparation,checkpoint.preparation)||!same(link.refs,checkpoint.refs)
+    ||link.workSha256!==checkpoint.workSha256
+    ||checkpoint.workSha256!==nativeInputSha256({schemaVersion:1,encoding:'native-input-work-v1',
+      sessionId:sid,preparation:checkpoint.preparation,refs:checkpoint.refs}))fail()
+  for(let seq=checkpoint.startSeq+1;seq<checkpoint.firstStepStartSeq;seq++)
+    if(events[seq]?.type==='step/start'||events[seq]?.type==='turn/end')fail()
+  const snapshot=read(deps.branch,currency.snapshot!.key) as Record<string,unknown>
+  if(!inputSnapshotReferenceCurrent({get:key=>key===currency.snapshot!.key?snapshot:undefined},sid,currency)
+    ||snapshot.branchId!==sid||snapshot.turnId!==checkpoint.actualTurn||!same(snapshot.numericalState,start.base))fail()
+  const canonical=deps.readProjectedCanonical(events.slice(0,start.initialCut.nativeCut),checkpoint.actualTurn)
+  if(!same(canonical,{seq:start.canonical.seq,messageId:start.canonical.messageId,
+    versionSha256:start.canonical.versionSha256,narrative:start.canonical.narrative}))fail()
+  return {start,work,snapshot}
 }
 
 /** A terminal may retain its settlement when the final owner ACK is lost.
@@ -292,6 +337,16 @@ function readStoryPlanFacts(request:MvuSchemaInheritedStoryPlanRequest,
     if(!inputSnapshotReferenceCurrent({get:key=>key===snapshotKey?snapshot:undefined},sid,currency))fail()
     if(snapshot.branchId!==sid||snapshot.turnId!==checkpoint.actualTurn
       ||!same(snapshot.numericalState,plan.base))fail()
+    if(plan.schemaVersion===13&&plan.executionStart) {
+      const start=validateMvuSchemaStoryStart(read(deps.branch,plan.executionStart.key) as MvuSchemaStoryStartV1),
+        {schemaVersion:_startVersion,encoding:_startEncoding,work:startedWork,startSha256,...started}=start,
+        {schemaVersion:_version,encoding:_encoding,scope:_scope,candidate:_candidate,planSha256:_planSha256,
+          executionStart,maintenance,...execution}=plan
+      if(startSha256!==executionStart.sha256
+        ||executionStart.key!==mvuSchemaStoryStartKey(sid,currency.preparationId,plan.canonical.seq)
+        ||!same(started,execution)||!same(startedWork.currency,currency)||!same(startedWork.checkpoint,checkpoint)
+        ||!same(maintenance?.basis.prepared.start,executionStart))fail()
+    }
     const phaseKey=inputKeys.phaseB,phaseB=read(deps.branch,phaseKey)
     if(!object(phaseB)||phaseB.state!=='completed'||phaseB.sessionId!==sid||phaseB.turnId!==checkpoint.actualTurn
       ||phaseB.assistantSeq!==plan.canonical.seq)fail()
@@ -350,26 +405,32 @@ export function readMvuSchemaInheritedStoryFacts(request:MvuSchemaInheritedStory
   } catch {return fail()}
 }
 
-export interface MvuSchemaInheritedOpeningRequest {
-  intent:OpeningIntentV5
-  event:MvuSchemaOpeningEventV2
-  head:MvuSchemaOpeningHeadV2
+export interface MvuSchemaInheritedOpeningRequest extends SchemaOpeningRootFacts {
   events:readonly MvuInheritedPrefixEvent[]
 }
 /** Original program opening in this exact frozen prefix. Original Source and
  * author execution are verified separately; projected edits cannot stand in
  * for its one immutable Native append receipt. */
 export function verifyMvuSchemaInheritedOpeningFacts(request:MvuSchemaInheritedOpeningRequest,
-  deps:{projectPrefix:WorldlineMessageEdits['projectPrefix']}):boolean {
+  deps:{projectPrefix:WorldlineMessageEdits['projectPrefix'];projections?:readonly SessionMessageProjection[]}):boolean {
   try {
-    exact(request,['intent','event','head','events'])
-    const intent=freezeMvuSchemaOpeningData(request.intent),event=freezeMvuSchemaOpeningData(request.event)
-    const head=freezeMvuSchemaOpeningData(request.head),events=request.events
-    if(!verifyMvuSchemaOpeningFacts(intent,event,head))return false
+    exact(request,['intent','preparation','plan','native','event','head','events'])
+    const {events,...rootInput}=request,root=validateSchemaOpeningRootFacts(rootInput),{intent,event,head}=root
     inspect(events)
     if(!Array.isArray(events)||events.length>100000
       ||events.some((row,index)=>!object(row)||row.seq!==index||typeof row.type!=='string'))return false
-    const receipt=event.native,identity=event.plan.identity
+    if(event.native.kind==='generated') {
+      const native=event.native,birth=request.preparation.birth
+      if(birth.kind!=='generated'||!deps.projections)return false
+      const checked=inspectNativeOpeningGenerationObservationV1({id:intent.sessionId,
+        inheritedEventCount:birth.basis.branch.inheritedEventCount,events:events as readonly SessionEvent[]},
+      birth.owner.identity,deps.projections),domain=(intent as unknown as {domainReceipt?:unknown}).domainReceipt
+      return checked.kind==='complete'&&!!checked.receiptEvent&&!!checked.closingAck
+        &&same(checked.receipt,native.receipt)&&checked.closingAck.data.ownerReceiptSha256===recordSha256(domain)
+        &&!deps.projectPrefix(events as readonly StoryEvent[]).projectedMessageAt(native.canonical.seq)
+    }
+    if(!verifyMvuSchemaOpeningFacts(intent as OpeningIntentV5,event,head))return false
+    const receipt=event.native.receipt,identity=event.plan.identity
     if(receipt.flushed!==true||receipt.sessionId!==identity.sessionId||receipt.turnEndSeq>=events.length)return false
     const start=events[receipt.turnStartSeq],body=events[receipt.assistantSeq],end=events[receipt.turnEndSeq]
     if(!start||!body||!end||!object(start.data)||!object(body.data)||!object(end.data))return false

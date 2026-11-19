@@ -289,7 +289,10 @@ function consume(event:SessionEvent|undefined,index:number,state:HistoryState,
   }else if(event.type===MVU_SCHEMA_DISPATCH_EVENT||event.type===MVU_SCHEMA_COMPLETION_EVENT
     ||event.type===MVU_SCHEMA_REVISION_EVENT) {
     assertMvuSchemaMarkerEvent(event)
-    if(state.openTurn!==undefined)throw Error('MVU_SCHEMA_NATIVE_BOUNDARY_UNKNOWN')
+    // Work-owned execution can finish a phase before turn/end. These markers
+    // record its journal, while Core owns execution/publication permission.
+    // A revision still selects a completed historical cut outside that turn.
+    if(state.openTurn!==undefined&&event.type===MVU_SCHEMA_REVISION_EVENT)throw Error('MVU_SCHEMA_NATIVE_BOUNDARY_UNKNOWN')
     accept(event.data,event.seq,state.epochs,eventAt,true,indexes,undo)
   }
 }
@@ -339,7 +342,8 @@ function appendBoundary(session: Session, data: MvuSchemaMarker) {
   const events = session.snapshotEvents()
   if ((events.at(-1)?.seq ?? -1) !== data.observedNativeSeq) throw Error('MVU_SCHEMA_STALE_NATIVE')
   const state = history(events)
-  if (state.openTurn !== undefined) throw Error('MVU_SCHEMA_NATIVE_BOUNDARY_UNKNOWN')
+  if(state.openTurn!==undefined&&data.encoding==='native-mvu-schema-revision-marker-v1')
+    throw Error('MVU_SCHEMA_NATIVE_BOUNDARY_UNKNOWN')
   // Append admission has no new event object yet. Only the pair/revision DATA
   // is needed for the check; the following actual append supplies that object.
   accept(data, data.observedNativeSeq + 1, state.epochs,seq=>events[seq],false)
@@ -476,7 +480,7 @@ export function createMvuSchemaHistoryReader(deps:MvuSchemaHistoryReaderDependen
     }
     if(cut.length-1!==data.observedNativeSeq)throw Error('MVU_SCHEMA_STALE_NATIVE')
     const state=read(session,cut,cut.length)
-    if(state.openTurn!==undefined)throw Error('MVU_SCHEMA_NATIVE_BOUNDARY_UNKNOWN')
+    if(state.openTurn!==undefined&&eventType===MVU_SCHEMA_REVISION_EVENT)throw Error('MVU_SCHEMA_NATIVE_BOUNDARY_UNKNOWN')
     // Admission only checks; the cursor must not contain an operation that
     // Native failed to append. Loaded histories retain the complete path.
     const cursor=cursors.get(session)!

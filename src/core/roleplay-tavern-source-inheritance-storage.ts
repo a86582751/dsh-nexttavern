@@ -8,6 +8,9 @@ import {inheritanceDataV1,inheritanceFailV1,inheritanceSameV1,inheritanceObjectV
   from './roleplay-tavern-source-inheritance-data.js'
 import {validateFrozenPromptScopeRecordV1,validateFrozenNonNumericalOpeningV1,tavernSourceFrozenPromptScopeKeyV1}
   from './roleplay-tavern-source-inheritance-data.js'
+import {validateAuthorChatScopeBirthRecordV1,tavernSourceOrdinaryScopeBirthKeyV1}
+  from './roleplay-tavern-source-inheritance-data.js'
+import type {AuthorChatScopeBirthEntryV1,TavernSourcePreparedV1} from './roleplay-tavern-source-inheritance-types.js'
 import {validateTavernSourceProgramAbsenceOpeningRecordV1,validateFrozenProgramAbsenceOpeningV1,
   assertFrozenProgramAbsenceOpeningCutV1,tavernSourceProgramAbsenceOpeningKeyV1,validatePreparedInheritanceV1}
   from './roleplay-tavern-source-inheritance-data.js'
@@ -282,6 +285,7 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
       case tavernSourceMaterialBaselineKeyV1(owner):value=validateTavernSourceMaterialBaselineV1(raw);break
       case tavernSourceMigrationKeyV1(owner):value=validateTavernSourceLegacyMigrationRecordV1(raw);break
       case tavernSourceFrozenPromptScopeKeyV1(owner):value=validateFrozenPromptScopeRecordV1(raw);break
+      case tavernSourceOrdinaryScopeBirthKeyV1(owner):value=validateAuthorChatScopeBirthRecordV1(raw);break
       case tavernSourceProgramAbsenceOpeningKeyV1(owner):
         value=validateTavernSourceProgramAbsenceOpeningRecordV1(raw);break
       default:
@@ -420,7 +424,15 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
       inheritanceFailV1('SOURCE_INHERITANCE_BUDGET')
     const result=inheritanceDataV1(raw),seen=new Set<string>()
     for(const pub of result) {
-      inheritanceExactV1(pub,['ownerSessionId','nativeSeq','nativeEventSha256','snapshotRef','planRef','nativeRecordSha256'])
+      const auxiliary=pub.kind==='author-generation-effects'
+      inheritanceExactV1(pub,['ownerSessionId','nativeSeq','nativeEventSha256','snapshotRef','planRef','nativeRecordSha256',
+        ...auxiliary?['kind','acceptedRef']:[]])
+      if(auxiliary){
+        inheritanceExactV1(pub.acceptedRef,['seq','sha256'])
+        if(typeof pub.acceptedRef.seq!=='number'||typeof pub.nativeSeq!=='number'
+          ||!Number.isSafeInteger(pub.acceptedRef.seq)||pub.acceptedRef.seq<0||pub.acceptedRef.seq>=pub.nativeSeq
+          ||!inheritanceHashV1(pub.acceptedRef.sha256))inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID')
+      }
       validateInheritanceRefV1(pub.snapshotRef);validateInheritanceRefV1(pub.planRef)
       if(!inheritanceIdV1(pub.ownerSessionId)||typeof pub.nativeSeq!=='number'||!Number.isSafeInteger(pub.nativeSeq)||pub.nativeSeq<0
         ||!inheritanceHashV1(pub.nativeEventSha256)||!inheritanceHashV1(pub.nativeRecordSha256)
@@ -448,6 +460,16 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
       return {table:row.table,parentKey:row.key,childKey,prior,next,
         policy:settings?'parent-settings-then-explicit-child-fields':'exact-static-copy'} as TavernSourceStaticWriteV1
     })
+  }
+  async function freezeOrdinaryScopeBirth(parent:string,child:string,operationId:string,cut:TavernSourceNativeCutV1,
+    entries:readonly AuthorChatScopeBirthEntryV1[]):Promise<TavernSourcePreparedV1['authorChatScopeBirthV1']> {
+    if(!entries.some(entry=>entry.scopeRef!==null))return undefined
+    const record=validateAuthorChatScopeBirthRecordV1(sealInheritanceDataV1({schemaVersion:1,
+      encoding:'native-mvu-ordinary-scope-birth-v1',authority:'consumer-data-only',childSessionId:child,
+      parentSessionId:parent,operationId,nativeCut:cut,entries},'recordSha256')),
+      recordRef=inheritanceRefV1(tavernSourceOrdinaryScopeBirthKeyV1(child),record)
+    await putExact('branch',recordRef.key,record)
+    return {record,recordRef}
   }
   async function freezeNonNumericalOpening(parent:string,child:string,cut:TavernSourceNativeCutV1,
     input:TavernSourceFrozenNonNumericalOpeningCaptureV1|undefined):Promise<TavernSourceFrozenNonNumericalOpeningV1|undefined> {
@@ -497,5 +519,5 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
   }
   return {readRow,inventory,readKey,readRef,putExact,native,numerical,
     original,assertOriginal,publications,writesFor,
-    freezeNonNumericalOpening,freezeProgramAbsenceOpening}
+    freezeOrdinaryScopeBirth,freezeNonNumericalOpening,freezeProgramAbsenceOpening}
 }

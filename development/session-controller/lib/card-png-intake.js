@@ -129,27 +129,30 @@ export function classifyCardPng(data) {
     return 'card-png';
 }
 /** Keep one submitted attachment at one position, including mixed image/file messages. */
-export function prepareCardPngIntake(content) {
+export async function prepareCardPngIntake(content, store) {
     const originals = new Map();
     let hasImage = false;
-    content.forEach((part, index) => {
+    for (const [index, part] of content.entries()) {
         if (part.type !== 'image')
-            return;
-        if (part.mediaType !== 'image/png') {
+            continue;
+        const metadata = 'attachment' in part ? part.attachment : part;
+        if (metadata.mediaType !== 'image/png') {
             hasImage = true;
-            return;
+            continue;
         }
-        const data = canonicalBase64(part.data, LIMITS.bytes);
+        const data = 'attachment' in part
+            ? Buffer.from((await store.readImage(part.attachment)).data)
+            : canonicalBase64(part.data, LIMITS.bytes);
         if (classifyCardPng(data) === 'ordinary-image') {
             hasImage = true;
-            return;
+            continue;
         }
         // Display names are sanitized by the public file store. The extension is
         // required by the importer, never inferred from a provider filesystem path.
-        const name = part.name?.toLowerCase().endsWith('.png') ? part.name : '角色卡.png';
+        const name = metadata.name?.toLowerCase().endsWith('.png') ? metadata.name : '角色卡.png';
         originals.set(index, { data, name, sha256: createHash('sha256').update(data).digest('hex') });
-    });
-    return { hasImage, async admit(store) {
+    }
+    return { hasImage, async admit() {
             for (const original of originals.values())
                 await store.validateImage({ ...original, mediaType: 'image/png' });
             const next = [...content];

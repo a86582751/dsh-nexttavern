@@ -6,6 +6,7 @@ import {createHash} from 'node:crypto'
 import type {Hash} from 'node:crypto'
 import type {SessionMessageProjection} from 'dsh-nexttavern-native-session'
 import {recordSha256,stableJson} from './roleplay-data.js'
+import {tavernLoreConsumerSourceV1} from './tavern-lore-compiler.mjs'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {captureRoleplayTavernMaterialHistoryV1,captureRoleplayTavernInheritedMaterialHistoryV1}
   from './roleplay-tavern-material-history.js'
@@ -35,10 +36,13 @@ interface EpochV2 {
 interface EntryAddressV1 {
   sourcePointer:string;sourceKey:string;rawEntrySha256:string;
   upstreamUid:TavernLoreEntryPlanV1['upstreamUid'];addressSha256:string
+  bookId?:string
+  memberIdentity?:NonNullable<TavernLoreEntryPlanV1['currentNativeMember']>['identity']
 }
 interface OriginV1 {
   ownerSessionId:string;nativeSeq:number;planRef:{key:string;sha256:string};actionIndex:number;
   sourceEntryId:string;address:EntryAddressV1;
+  sourceAddress?:EntryAddressV1
   clockPolicy:'legacy-selected-window-v1'|'native-canonical-story-chat-clock-v1';
   fullClock:{nativeCut:number;prefixSha256:string;chatIndex:number;membershipSha256:string;clockSha256:string|null}
 }
@@ -96,6 +100,7 @@ interface Dependencies {
   readonly inputState?:Pick<ReturnType<typeof createRoleplayInputStateOwner>,
     'captureClosedHistoricalFacts'|'observeSessionRelease'>
   readonly table?:{get(key:string):unknown}
+  readonly forkBookId?:(prepared:Transaction['prepared'],parentBookId:string)=>string
 }
 interface FoldCheckpointRead {
   readonly identity:string
@@ -153,7 +158,8 @@ function epochOf(source:TavernLoreSourceDataV1):EpochV2 {
 function publicationEpoch(read:Read):EpochV2 {
   const raw=read.publication.snapshot.payload.source
   if(!object(raw))fail('INPUT_MATERIAL_TIMED_SOURCE_EPOCH_UNPROVEN')
-  const source=raw as unknown as TavernLoreSourceDataV1,epoch=epochOf(source),plan=read.compilation.plan.source
+  const source=raw as unknown as TavernLoreSourceDataV1,epoch=epochOf(source),
+    plan=tavernLoreConsumerSourceV1(read.compilation.plan.source)
   if(source.sessionId!==read.plan.sessionId||plan.ownerSessionId!==read.plan.sessionId
     ||plan.sourceRecordSessionId!==epoch.sourceRecordSessionId||plan.importId!==epoch.importId
     ||plan.rawSourceSha256!==epoch.rawSha256||plan.importRecordSha256!==epoch.importRecordSha256
@@ -164,10 +170,13 @@ function publicationEpoch(read:Read):EpochV2 {
 const intervalKey=(row:Interval)=>`${row.entryId}:${row.kind}`
 function address(entry:TavernLoreEntryPlanV1):EntryAddressV1 {
   const body={sourcePointer:entry.sourcePointer,sourceKey:entry.sourceKey,
-    rawEntrySha256:entry.rawEntrySha256,upstreamUid:entry.upstreamUid}
+    rawEntrySha256:entry.rawEntrySha256,upstreamUid:entry.upstreamUid,
+    ...entry.bookId&&entry.currentNativeMember?{bookId:entry.bookId,memberIdentity:entry.currentNativeMember.identity}:{}}
   return {...body,addressSha256:recordSha256(body)}
 }
 function entryId(owner:string,epoch:EpochV2,entry:EntryAddressV1):string {
+  if(entry.bookId&&entry.memberIdentity)return recordSha256({schemaVersion:1,
+    encoding:'author-worldbook-member-address-v1',bookId:entry.bookId,identity:entry.memberIdentity})
   const bookId=recordSha256({schemaVersion:1,encoding:'st-lore-book-source-address-v1',ownerSessionId:owner,
     sourceRecordSessionId:epoch.sourceRecordSessionId,importId:epoch.importId,bookPointer:epoch.bookPointer})
   return recordSha256({schemaVersion:1,encoding:'st-lore-entry-source-address-v1',bookId,
@@ -236,17 +245,18 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
       // These are real Domain reads in this historical slot. The publication
       // object is immutable DATA; it cannot subscribe a new owner on its own.
       for(const publication of publications){
-        deps.table!.get(publication.event.data.snapshot.key)
-        deps.table!.get(publication.event.data.plan.key)
+        deps.table!.get(publication.material.snapshot.key)
+        deps.table!.get(publication.material.plan.key)
       }
       return compute()
     },prepare)
   }
   const historical=<T>(purpose:string,publications:readonly Publication[],compute:()=>T,prepare?:()=>void):T=>
     historicalRead(purpose,publications,compute,prepare).data
-  if(deps.compilation.plan.source.ownerSessionId!==deps.sessionId
-    ||deps.compilation.plan.source.sourceRecordSessionId!==epoch.sourceRecordSessionId
-    ||deps.compilation.plan.source.importRecordSha256!==epoch.importRecordSha256
+  const consumerSource=tavernLoreConsumerSourceV1(deps.compilation.plan.source)
+  if(consumerSource.ownerSessionId!==deps.sessionId
+    ||consumerSource.sourceRecordSessionId!==epoch.sourceRecordSessionId
+    ||consumerSource.importRecordSha256!==epoch.importRecordSha256
     ||deps.clock.data.sessionId!==deps.sessionId)fail()
   if(deps.source.inheritance) {
     const lineage=deps.sourceLineage
@@ -290,7 +300,8 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
           if(parent)historical(parent.purpose,[],()=>parent.read.data)
           if(publication.event.seq<=(catalog!.rows[index-1]?.publication.event.seq??-1)
             ||!allowed.has(publication.snapshot.sessionId))fail()
-          const parsed=isTavernHistoryTextOnlyMaterialV1(publication)?undefined
+          const parsed=isTavernHistoryTextOnlyMaterialV1(publication)
+            ||publication.snapshot.encoding==='core-author-generation-material-record-v1'?undefined
             :readTavernTimedPublicationV1(publication,publication.snapshot.sessionId)
           return {publication,timed:parsed?{publication,read:parsed,epochSha256:recordSha256(publicationEpoch(parsed))}:undefined}
         }),row=read.data
@@ -303,7 +314,7 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
       for(const [owner,context]of catalog.core) {
         let audit=context.cuts.at(-1)!
         if(publication.snapshot.sessionId===owner||publication.event.seq<context.inheritedCut) {
-          for(const ref of [publication.event.data.snapshot,publication.event.data.plan]) {
+          for(const ref of [publication.material.snapshot,publication.material.plan]) {
             const prior=context.seen.get(ref.key)
             if(prior&&prior!==ref.sha256)fail('INPUT_MATERIAL_TIMED_CORE_REF_CONFLICT')
             if(!prior){context.seen.set(ref.key,ref.sha256);audit=appendAudit(audit,{key:ref.key,sha256:ref.sha256})}
@@ -356,20 +367,33 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
       ownerSessionId:state.ownerSessionId,oldStateSha256,conversions,resultStateSha256:stateDigest(result)},'transitionSha256')
     return result
   }
-  function mapParent(parent:State,owner:string) {
+  function mapParent(parent:State,owner:string,transaction:Transaction) {
     const intervals=new Map<string,Interval>(),origins=new Map<string,OriginV1>(),mappings:unknown[]=[],
       seenSource=new Set<string>(),seenTarget=new Set<string>()
     for(const interval of parent.intervals.values()) {
       const origin=parent.origins.get(intervalKey(interval)),known=origin&&knownEntries.get(origin.address.addressSha256)
-      if(!origin||!known||!same(known,origin.address)||origin.address.rawEntrySha256!==interval.rawEntrySha256
+      if(!origin||origin.address.rawEntrySha256!==interval.rawEntrySha256
         ||entryId(parent.ownerSessionId,epoch,origin.address)!==interval.entryId)fail('INPUT_MATERIAL_TIMED_ENTRY_MAPPING_UNPROVEN')
-      const targetId=entryId(owner,epoch,origin.address),after={...interval,entryId:targetId},key=intervalKey(after)
+      let targetAddress=origin.address
+      if(origin.address.bookId) {
+        const bookId=deps.forkBookId?.(transaction.prepared,origin.address.bookId)??origin.address.bookId
+        if(bookId!==origin.address.bookId) {
+          const {addressSha256:_hash,...body}=origin.address,
+            changed={...body,bookId,sourcePointer:body.sourcePointer.replace(
+              `/books/${origin.address.bookId}/`,`/books/${bookId}/`)}
+          targetAddress={...changed,addressSha256:recordSha256(changed)}
+        }
+      }else if(!known)continue
+      else if(!same(known,origin.address))fail('INPUT_MATERIAL_TIMED_ENTRY_MAPPING_UNPROVEN')
+      const targetId=entryId(owner,epoch,targetAddress),after={...interval,entryId:targetId},key=intervalKey(after)
       if(intervals.has(key))fail()
-      intervals.set(key,after);origins.set(key,origin)
+      intervals.set(key,after);origins.set(key,targetAddress===origin.address?origin:{...origin,
+        sourceAddress:origin.sourceAddress??origin.address,address:targetAddress})
       if(!seenSource.has(interval.entryId)) {
         if(seenTarget.has(targetId))fail()
         seenSource.add(interval.entryId);seenTarget.add(targetId)
-        mappings.push({sourceEntryId:interval.entryId,targetEntryId:targetId,address:origin.address})
+        mappings.push({sourceEntryId:interval.entryId,targetEntryId:targetId,address:origin.address,
+          ...targetAddress!==origin.address?{targetAddress}:{}})
       }
     }
     return {intervals,origins,mappings}
@@ -413,7 +437,7 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
         else if(transaction.prepared.nativeCut.kind==='reserved-fresh-branch')
           baseline=emptyBaseline(owner,'actual-fresh-cut-zero',0,transaction)
         else {
-          const parent=migrate(fold(transaction.prepared.parentSessionId,inheritedCut)),mapped=mapParent(parent,owner)
+          const parent=migrate(fold(transaction.prepared.parentSessionId,inheritedCut)),mapped=mapParent(parent,owner,transaction)
           intervals=mapped.intervals;origins=mapped.origins
           baseline=seal({schemaVersion:1,encoding:'native-material-lore-timed-baseline-v1',kind:'frozen-inherited',
             ownerSessionId:owner,sourceEpochSha256:epochSha256,
@@ -430,9 +454,10 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
       // One mutable replay cursor belongs to this fold only. Checkpoints keep
       // one immutable publication link, rather than a copy of every prefix.
       function advance(previous:StateCheckpoint,index:number):StateCheckpoint {
-        const publication=publicationAt(index),read=own[index]!.read,evidence=publication.snapshot.payload.timed,
+        const publication=publicationAt(index),event=publication.event,read=own[index]!.read,evidence=publication.snapshot.payload.timed,
           membership=publicationMembership(previous.audit),seen=membership.plans.get(read.planKey),
           prior=membership.attempts.get(read.attemptKey)
+        if(event.type!=='request/material')fail('INPUT_MATERIAL_TIMED_TAVERN_RECORD_UNAVAILABLE')
         // The same index also serves retained old cuts. Entries accepted after
         // this real count are not members of this checkpoint's history.
         if(seen!==undefined&&seen<previous.audit.count)return previous
@@ -449,7 +474,7 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
             ||!same(evidence.policy,evidence.schemaVersion===3?timedPolicyV3:timedPolicyV2))fail('INPUT_MATERIAL_TIMED_EVIDENCE_SCHEMA_INVALID')
           state=migrate(state)
           const {timedReadSha256,...body}=evidence,
-            clock=verifyTavernCanonicalChatClock(evidence.clock,owner,publication.event,
+            clock=verifyTavernCanonicalChatClock(evidence.clock,owner,event,
               evidence.schemaVersion===3&&prefixFacts.nativeCut?.nativeInputPrefixSha256(Number(evidence.clock.nativeCut))
                 ?[]:events(),deps.projections,prefixFacts),core=coreRefsAt(owner,clock.nativeCut),
             audits=evidence.schemaVersion===3
@@ -475,13 +500,13 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
             const entry=read.compilation.plan.entries.find(row=>row.entryId===action.entryId)
             if(!entry)fail()
             state.origins.set(key,{ownerSessionId:owner,nativeSeq:Number(publication.event.seq),
-              planRef:publication.event.data.plan,actionIndex,sourceEntryId:action.entryId,address:address(entry),
+              planRef:publication.material.plan,actionIndex,sourceEntryId:action.entryId,address:address(entry),
               clockPolicy:state.mode==='legacy'?'legacy-selected-window-v1':'native-canonical-story-chat-clock-v1',fullClock})
           }else state.origins.delete(key)
         }
         state.revision++
         const published=frozen({seq:Number(publication.event.seq),materialSha256:nativeInputSha256(publication.event),
-          snapshot:publication.event.data.snapshot,plan:publication.event.data.plan,attemptId:read.plan.attemptId,revision:state.revision})
+          snapshot:publication.material.snapshot,plan:publication.material.plan,attemptId:read.plan.attemptId,revision:state.revision})
         const hash=appendDigest(state.audit,published),tail:PublicationLink=Object.freeze({
           previous:state.audit.tail,row:published,planKey:read.planKey,attemptKey:read.attemptKey})
         membership.plans.set(read.planKey,state.audit.count)

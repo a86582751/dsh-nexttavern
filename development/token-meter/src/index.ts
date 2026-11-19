@@ -111,15 +111,18 @@ export class TokenMeter extends Service {
     super(ctx, 'tokenMeter')
     validateConfigKeys(config)
 
-    ctx.sessionProjections.register(tokenUsageProjectionDefinition)
-    ctx.sessionProjections.register(contextPressureProjectionDefinition)
-    ctx.sessionProjections.register(contextBreakdownProjectionDefinition)
-
     // Readers catch up independently, while eager observation bounds ordinary
     // read latency without creating state for sessions no consumer has read.
     ctx.on('session/event', (session) => {
       if (this.states.has(session)) this._sync(session)
     })
+  }
+
+  async [Service.init](): Promise<void> {
+    const projections = this.ctx.sessionProjections
+    await projections.register(tokenUsageProjectionDefinition)
+    await projections.register(contextPressureProjectionDefinition)
+    await projections.register(contextBreakdownProjectionDefinition)
   }
 
   /**

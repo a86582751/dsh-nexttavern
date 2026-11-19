@@ -46,9 +46,9 @@ function fieldName(pointer:string):string {
 
 /** One session owns the import/selection/report lifecycle; the library keeps its resource-browser state. */
 export function createCardImportPanel(deps:CardUploadPanelDependencies) {
-  const {React,jsonFetch,toast} = deps
+  const {React,jsonFetch,toast,prepareSource} = deps
   const Upload = createCardUploadPanel(deps)
-  const Opening = createOpeningPanel({React,jsonFetch,toast})
+  const Opening = createOpeningPanel({React,jsonFetch,toast,prepareSource})
   const Conversion=createNativeCardConversionPanel({React,jsonFetch,toast})
   return function CardImportPanel({sessionId}:{sessionId:string}) {
     const [refresh,setRefresh] = React.useState(0)

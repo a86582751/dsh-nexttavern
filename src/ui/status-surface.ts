@@ -12,6 +12,7 @@ import { statusFactsHtml, decodeStatusTemplate } from './status-rendering.js';
 import {createMvuStatePanel} from './mvu-state-panel.js';
 import {createToolWindow} from './tool-window.js';
 import type {MvuStateObservation} from '../core/roleplay-mvu-player-types.js';
+import type {PrepareOpeningSource} from './reader-submission-handoff.js';
 interface Position {left: number;top: number;}
 interface Size {w: number;h: number;}
 interface WindowPrefs extends Record<string, unknown> {pos?: Position | null;badgePos?: Position | null;size?: Size;}
@@ -23,6 +24,7 @@ export interface StatusSurfaceState extends StateReply {
     statusSpec?: {regexRules?: {match: string;replace?: string;}[];};
 }
 interface SurfaceDependencies {
+    prepareSource?:PrepareOpeningSource;
     React: typeof ReactAPI;
     createRoot(element: HTMLElement): SurfaceRoot;
     resolveActiveSessionId(): string | null;
@@ -57,10 +59,11 @@ React,
      runMaintenance,
      toast,
      jsonFetch,
+     prepareSource,
      onStateAccepted
 }: SurfaceDependencies) {
     const { DecisionCard, decisionSeat } = createDecisionSeat({ React, createRoot, resolveActiveSessionId, toast });
-    const ChatOpeningCard = createChatOpeningCard({React,toast,invalidateState,
+    const ChatOpeningCard = createChatOpeningCard({React,toast,invalidateState,prepareSource,
       jsonFetch:jsonFetch ?? (async () => {throw new Error('开场选择服务暂不可用')})})
     const {MvuStatePanel} = createMvuStatePanel({React,invalidateState})
     const ToolWindow = createToolWindow(React)

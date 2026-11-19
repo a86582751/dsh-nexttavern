@@ -2,8 +2,8 @@
  * shapes. Existing Source/DATA capture remains the sole template boundary. */
 import {recordSha256,sha256} from './roleplay-data.js'
 import {captureReaderSourceDocumentV1} from './reader-source-document-data.mjs'
-import {readerRegexDocumentHtmlSpan} from './reader-source-document-data.mjs'
-import type {ReaderSourceDocument} from './reader-source-document-data.mjs'
+import {captureReaderSourceTemplateV1} from './reader-source-document-data.mjs'
+import type {ReaderSourceDocument,ReaderSourceTemplateV1} from './reader-source-document-data.mjs'
 import type {ReaderDocumentInputV1,ReaderRegexDocumentSourceV1,ReaderRegexDocumentOriginV1,
   ReaderRegexDocumentFailureV1} from './reader-regex-document-types.mjs'
 import type {ReaderNativeDocumentPlanV1,ReaderNativeDocumentCompilationV1,ReaderNativeDocumentProgramV1,
@@ -31,8 +31,8 @@ function materializeSourceStrings(source:ReaderSourceDocument,html:string):strin
 }
 
 function sealDocument(origin:ReaderNativeDocumentPlanV1['origin'],html:string,
-  writes:ReaderNativeDocumentPlanV1['writes']):ReaderNativeDocumentPlanV1 {
-  const body={schemaVersion:1 as const,encoding:'reader-native-document-plan-v1' as const,origin,html,writes}
+  writes:ReaderNativeDocumentPlanV1['writes'],attributeData:ReaderNativeDocumentPlanV1['attributeData']=[]):ReaderNativeDocumentPlanV1 {
+  const body={schemaVersion:1 as const,encoding:'reader-native-document-plan-v1' as const,origin,html,writes,attributeData}
   return {...body,documentPlanSha256:recordSha256(body)}
 }
 
@@ -46,21 +46,32 @@ export function compileReaderNativeDocumentsV1(input:ReaderDocumentInputV1):Read
     return {documents,documentInputIndices,documentFailures,worldbookProducers:input.producers}
   }
   const failedDocuments:ReaderRegexDocumentFailureV1[]=[]
+  const sourceByReplacement=new Map<string,{
+    replacementSha256:string;htmlSpan:{start:number;end:number};htmlSha256:string;
+    htmlUtf8Bytes:number;htmlUtf16Length:number
+    source:ReaderSourceTemplateV1
+  }>()
   for(const [index,document] of input.documents.entries()){
     const {regex,message}=document
     try{
-      const htmlSpan=readerRegexDocumentHtmlSpan(regex.replacement)
-      if(!htmlSpan)throw Error('READER_REGEX_DOCUMENT_SOURCE_SPAN_UNAVAILABLE')
-      const originalHtml=regex.replacement.slice(htmlSpan.start,htmlSpan.end),replacementSha256=sha256(regex.replacement)
+      let original=sourceByReplacement.get(regex.replacement)
+      if(!original) {
+        const source=captureReaderSourceTemplateV1(regex.replacement),htmlSpan=source.htmlSpan
+        if(!htmlSpan)throw Error('READER_REGEX_DOCUMENT_SOURCE_SPAN_UNAVAILABLE')
+        const originalHtml=regex.replacement.slice(htmlSpan.start,htmlSpan.end),replacementSha256=sha256(regex.replacement)
+        original={replacementSha256,htmlSpan,source,
+          htmlSha256:htmlSpan.start===0&&htmlSpan.end===regex.replacement.length?replacementSha256:sha256(originalHtml),
+          htmlUtf8Bytes:Buffer.byteLength(originalHtml,'utf8'),htmlUtf16Length:originalHtml.length}
+        sourceByReplacement.set(regex.replacement,original)
+      }
       const origin:ReaderRegexDocumentOriginV1={schemaVersion:1,encoding:'reader-regex-document-origin-v1',source:input.source,
         regex:{ordinal:regex.ordinal,id:regex.id,pointer:regex.pointer,descriptorSha256:regex.descriptorSha256,
-          replacementSha256,htmlSpan},message,replacementSpan:document.replacementSpan,
-        htmlSha256:htmlSpan.start===0&&htmlSpan.end===regex.replacement.length?replacementSha256:sha256(originalHtml),
-        htmlUtf8Bytes:Buffer.byteLength(originalHtml,'utf8'),htmlUtf16Length:originalHtml.length}
-      const source=captureReaderSourceDocumentV1(document.parts),displaySpan=readerRegexDocumentHtmlSpan(source.html)
-      if(!displaySpan)throw Error('READER_REGEX_DOCUMENT_SOURCE_SPAN_UNAVAILABLE')
+          ...regex.producer?{producer:regex.producer}:{},
+          replacementSha256:original.replacementSha256,htmlSpan:original.htmlSpan},message,replacementSpan:document.replacementSpan,
+        htmlSha256:original.htmlSha256,htmlUtf8Bytes:original.htmlUtf8Bytes,htmlUtf16Length:original.htmlUtf16Length}
+      const source=captureReaderSourceDocumentV1(document.parts,original.source),displaySpan=source.displaySpan
       const html=materializeSourceStrings(source,source.html.slice(displaySpan.start,displaySpan.end))
-      documents.push(sealDocument(origin,html,'source-regex'));documentInputIndices.push(index)
+      documents.push(sealDocument(origin,html,'source-regex',source.attributeData));documentInputIndices.push(index)
     }catch(error){
       const {ordinal,id,pointer,descriptorSha256}=regex
       const code=error instanceof Error&&/^(?:READER_REGEX_DOCUMENT|HTML)_[A-Z0-9_]+$/.test(error.message)
@@ -75,7 +86,7 @@ export function compileReaderNativeDocumentsV1(input:ReaderDocumentInputV1):Read
 }
 
 const profile:ReaderNativeDocumentProfileV1=Object.freeze({id:'reader-native-browser',version:1,
-  browser:'supplied',modelRequests:'none',writes:'owned-source-regex',readSemantics:'live',
+  browser:'supplied',modelRequests:'owned-author-generation',writes:'owned-source-regex',readSemantics:'live',
   writeBasis:'explicit-message-read',receipt:'guest-observed-not-callback-ended'})
 
 /** Plans already seal their actual HTML. Program identity refers to those

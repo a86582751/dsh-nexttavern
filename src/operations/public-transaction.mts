@@ -12,6 +12,7 @@ interface TransactionJournal {
   state: 'prepared' | 'installed' | 'recovery-required' | 'rolled-back'
   root: string
   purpose?: string
+  stagingId?: string
   files: JournalMember[]
 }
 interface TransactionOptions {
@@ -91,18 +92,29 @@ export function readTransactionTarget<T>(root: string, purpose: string, readTarg
   const release = locked(root, root, false, purpose, 'preparing');
   try {return readTarget();} finally {release();}
 }
+function stagingPath(target: string, action: 'write' | 'restore', id: string) {
+  return `${target}.nexttavern-${action}-${id}`;
+}
+
 function restore(root: string, backup: string, journal: TransactionJournal) {
   for (const item of journal.files) {
     const current = hashAt(contained(root, item.path));
     if (current !== item.before && current !== item.after) throw Error('Rollback conflict: ' + item.path);
     if (item.backup && hashAt(contained(backup, item.backup)) !== item.before) throw Error('Backup digest mismatch: ' + item.path);
   }
+  // The journal owns only its per-transaction staging names. Clear a write
+  // that died after opening its temporary file but before replacing a target.
+  const stagingId = journal.stagingId ?? crypto.randomUUID();
   for (const item of journal.files.toReversed()) {
     const target = contained(root, item.path);
+    const temporary = stagingPath(target, 'restore', stagingId);
+    if (journal.stagingId) {
+      fs.rmSync(stagingPath(target, 'write', stagingId), {force: true});
+      fs.rmSync(temporary, {force: true});
+    }
     if (hashAt(target) === item.before) continue;
     if (item.backup) {
-      const temporary = target + '.nexttavern-restore';
-      fs.copyFileSync(contained(backup, item.backup), temporary);
+      fs.copyFileSync(contained(backup, item.backup), temporary, fs.constants.COPYFILE_EXCL);
       fs.chmodSync(temporary, item.mode);
       if (process.platform !== 'win32' && item.uid !== null) fs.chownSync(temporary, item.uid, item.gid!);
       fs.renameSync(temporary, target);
@@ -112,18 +124,6 @@ function restore(root: string, backup: string, journal: TransactionJournal) {
   journal.state = 'rolled-back';
   save(path.join(backup, 'transaction.json'), journal);
 }
-/**
- * How many installed members may pass between journal checkpoints.
- *
- * The journal is the recovery map, so it must exist in full before the first
- * write. Rewriting it after every member instead costs one full serialization
- * and file replacement per member, which a product-sized write set turns into
- * minutes of work. Recovery never depends on the `applied` flag: it compares
- * each target's current digest against the recorded before and after states, so
- * a checkpoint that lags the writes is recovered exactly the same way.
- */
-const JOURNAL_CHECKPOINT_EVERY = 256
-
 export function applyTransaction({root, backup, files, purpose, assertUnchanged,
   failAfter = Infinity, crashAfter = Infinity}: TransactionOptions) {
   root = fs.realpathSync(root);
@@ -135,7 +135,8 @@ export function applyTransaction({root, backup, files, purpose, assertUnchanged,
     seen.add(file.path);
   }
   const release = locked(root, backup, false, purpose, 'preparing');
-  const journal: TransactionJournal = {schemaVersion: 1, state: 'prepared', root, purpose, files: []};
+  const stagingId = crypto.randomUUID();
+  const journal: TransactionJournal = {schemaVersion: 1, state: 'prepared', root, purpose, stagingId, files: []};
   try {
     fs.mkdirSync(backup, {recursive: true, mode: 0o700});
     assertUnchanged?.();
@@ -153,16 +154,17 @@ export function applyTransaction({root, backup, files, purpose, assertUnchanged,
       }
       journal.files.push({path: file.path, before: file.before, after: file.bytes === null ? null : digest(file.bytes), backup: name, mode: stat ? stat.mode & 0o777 : 0o644, uid: stat?.uid ?? null, gid: stat?.gid ?? null, applied: false});
     }
+    // Recovery uses the full digest map written before the first mutation.
+    // Only the final receipt needs the applied flags for schema v1 readers.
     save(path.join(backup, 'transaction.json'), journal);
     release.beginWrites();
-    let checkpointed = 0;
     for (const [index, file] of files.entries()) {
       const target = targets[index]!, item = journal.files[index]!;
       fs.mkdirSync(path.dirname(target), {recursive: true});
       if (file.bytes === null) {
         if (fs.existsSync(target)) fs.unlinkSync(target);
       } else {
-        const temporary = target + '.nexttavern-write';
+        const temporary = stagingPath(target, 'write', stagingId);
         fs.writeFileSync(temporary, file.bytes, {flag: 'wx'});
         fs.chmodSync(temporary, item.mode);
         if (process.platform !== 'win32' && item.uid !== null) fs.chownSync(temporary, item.uid, item.gid!);
@@ -172,12 +174,6 @@ export function applyTransaction({root, backup, files, purpose, assertUnchanged,
       // rollback checks future disk state; rereading our own write proves no new fact.
       if (index + 1 >= crashAfter) process.exit(86);
       item.applied = true;
-      // Checkpoint on a bounded cadence and always on the last member, so the
-      // recorded progress never trails the writes by more than one interval.
-      if (index + 1 - checkpointed >= JOURNAL_CHECKPOINT_EVERY) {
-        save(path.join(backup, 'transaction.json'), journal);
-        checkpointed = index + 1;
-      }
       if (index + 1 >= failAfter) throw Error('Injected transaction failure');
     }
     journal.state = 'installed';
@@ -216,6 +212,7 @@ export function rollbackTransaction(backup: string) {
   backup = fs.realpathSync(backup);
   const journal = JSON.parse(read(path.join(backup, 'transaction.json')).toString('utf8')) as TransactionJournal;
   if (journal.schemaVersion !== 1 || !['prepared','installed','recovery-required'].includes(journal.state) || !path.isAbsolute(journal.root ?? '') || !Array.isArray(journal.files)) throw Error('Invalid transaction journal');
+  if (journal.stagingId !== undefined && !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(journal.stagingId)) throw Error('Invalid staging identity');
   const root = fs.realpathSync(journal.root), seen = new Set();
   for (const item of journal.files) {
     contained(root, item.path);

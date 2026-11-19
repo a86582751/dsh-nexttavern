@@ -43,19 +43,18 @@
   ],
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.4",
-    "@deepseek-ai/dsh-llm": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-attachment": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-brand": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-invariants": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-timeout": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-typert-protocol": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-util-crypto": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-util-values": "0.1.7-rc.2",
-    "@deepseek-ai/schemastery": "3.18.4"
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-llm": ">=0.2.2-rc.5",
+    "@deepseek-ai/dsh-attachment": ">=0.2.2-rc.5",
+    "@deepseek-ai/dsh-brand": ">=0.2.2-rc.5",
+    "@deepseek-ai/dsh-timeout": ">=0.2.2-rc.5",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.2.2-rc.5",
+    "@deepseek-ai/dsh-util-crypto": ">=0.2.2-rc.5",
+    "@deepseek-ai/dsh-util-values": ">=0.2.2-rc.5",
+    "@deepseek-ai/schemastery": "^3.19.0"
   },
   "private": true,
   "dependencies": {
-    "zod": "4.6.5"
+    "zod": "4.6.6"
   }
 }

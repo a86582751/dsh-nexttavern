@@ -4,9 +4,9 @@
  * is derived from the session log.
  * @module dsh-agent-loop/agent
  */
-import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent';
+import { AgentModel, agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent';
 import { NativeRequestBudget, retainNativeRequestMeasurement } from './request-budget.js';
-import { LlmError, IMAGE_OFFLOAD_REQUIRED_CODE, createAssistantMessage, createDeveloperMessage, errorChain, freezeMessage, markAgentLoopRequest, } from 'dsh-nexttavern-native-llm';
+import { LlmError, REQUEST_MATERIAL_ROLE_POSITION_REJECTED, IMAGE_OFFLOAD_REQUIRED_CODE, createAssistantMessage, createDeveloperMessage, errorChain, freezeMessage, markAgentLoopRequest, } from 'dsh-nexttavern-native-llm';
 import { assertNever, deepFreeze } from '@deepseek-ai/dsh-util-values';
 import { brandString } from '@deepseek-ai/dsh-brand';
 import { inspectProgrammaticCommit, programmaticTurnIdentity } from './programmatic-commit.js';
@@ -108,6 +108,8 @@ export class ReactLoopAgent {
     id;
     options;
     session;
+    model;
+    authorGeneration;
     requestBudget = new NativeRequestBudget();
     pendingMaterialCandidate;
     requestObservation;
@@ -164,21 +166,22 @@ export class ReactLoopAgent {
     get inputCompletionBlocked() {
         return this.inputCompletion !== undefined && this.inputCompletion.result.status !== 'settled';
     }
-    constructor(loopCtx, id, options, session) {
+    constructor(loopCtx, id, options, session, projections) {
         this.loopCtx = loopCtx;
         this.id = id;
         this.options = options;
         this.session = session;
+        this.model = new AgentModel(projections.modelSelection, session, options);
         this.requestSurfaceGeneration = session.surface.contentGeneration;
         this.dispatch = agentEvents(loopCtx, this);
         this.scope = createScope(loopCtx, this);
         this.ctx = this.scope.ctx;
-        this.inbox = new ReactLoopInbox(this.ctx.sessionProjections, session, this.dispatch, observe => {
+        this.inbox = new ReactLoopInbox(projections.inbox, session, this.dispatch, observe => {
             this.ctx.on('session/event', (actual, event) => { if (actual === session)
                 observe(event); }, { global: true });
         });
         /* v8 ignore next -- the loop registers its own turnBoundary unit, so the key is always present */
-        const lastTurn = this.loopCtx.sessionProjections.stateOf(session, 'turnBoundary')?.lastTurn ?? 0;
+        const lastTurn = this.loopCtx.agents.turnBoundaryOf(session).lastTurn;
         this.phase = { kind: 'idle', lastTurn };
         this.runtimeContext = new RuntimeContextProjection(this.ctx, session);
         this.systemPrompt = new SystemPromptProjection(session);
@@ -967,7 +970,7 @@ export class ReactLoopAgent {
             if (this.uncertainProgrammaticOperations.has(input.operationId)) {
                 return { kind: 'unknown', reason: 'earlier append stopped before its message boundary' };
             }
-            if (this.loopCtx.sessionProjections.stateOf(this.session, 'turnBoundary')?.openTurnStartSeq != null) {
+            if (this.loopCtx.agents.turnBoundaryOf(this.session).openTurnStartSeq != null) {
                 return { kind: 'unknown', reason: 'session already has an open turn', code: 'PROGRAMMATIC_OPEN_TURN' };
             }
             // Assistant-only transcripts are readable, but a later system prompt
@@ -1040,7 +1043,7 @@ export class ReactLoopAgent {
             if (inspection.kind === 'absent' && this.uncertainProgrammaticOperations.has(input.operationId)) {
                 return { status: 'unknown' };
             }
-            if (this.loopCtx.sessionProjections.stateOf(this.session, 'turnBoundary')?.openTurnStartSeq != null) {
+            if (this.loopCtx.agents.turnBoundaryOf(this.session).openTurnStartSeq != null) {
                 return { status: 'unknown', code: 'PROGRAMMATIC_OPEN_TURN' };
             }
             try {
@@ -1065,10 +1068,34 @@ export class ReactLoopAgent {
     }
     /** Author content is an already frozen prompt slot, including empty and long text. */
     async generateAuthorDialogAssistant(input) {
-        if (typeof input?.dynamicSystem !== 'string')
-            throw new Error('invalid author dialogue dynamic system');
-        return this.generateNoUserAssistant({ operationId: input.operationId, messageId: input.messageId,
-            instruction: input.dynamicSystem });
+        if (this.authorGeneration)
+            throw Error('AUTHOR_GENERATION_BUSY');
+        if (input.plan.identity.childSessionId !== this.session.id || !input.owner.current())
+            throw Error('AUTHOR_GENERATION_REVOKED');
+        const work = { plan: deepFreeze(input.plan), owner: input.owner };
+        this.authorGeneration = work;
+        try {
+            const result = await this.generateNoUserAssistant({ operationId: work.plan.identity.operationId,
+                messageId: work.plan.identity.messageId, instruction: '' });
+            const events = this.session.snapshotEvents(), assistant = events.findLast(event => event.type === 'assistant/message'
+                && event.data.message.id === work.plan.identity.messageId), end = assistant?.type === 'assistant/message'
+                ? events.findLast(event => event.type === 'turn/end' && event.data.turn === assistant.data.turn) : undefined;
+            if (!work.checkpoint || assistant?.type !== 'assistant/message' || end?.type !== 'turn/end'
+                || !['completed', 'max-tokens'].includes(end.data.reason.kind))
+                return result;
+            if (!await this.ctx.sessions.flush(this.session))
+                return { kind: 'unknown', reason: 'author completion flush is not durable' };
+            const finish = assistant.data.stream?.findLast(record => record.type === 'chunk' && record.chunk.type === 'finish'), completion = { identity: work.plan.identity, materialRef: work.checkpoint.materialRef,
+                assistantRef: { seq: assistant.seq, sha256: nativeInputSha256(assistant) }, turnEndRef: { seq: end.seq, sha256: nativeInputSha256(end) },
+                message: assistant.data.message, finishReason: finish?.type === 'chunk' && finish.chunk.type === 'finish'
+                    ? finish.chunk.reason : { kind: 'stop' } };
+            await work.owner.closing(completion, new AbortController().signal);
+            return { kind: 'committed', turn: assistant.data.turn, messageId: assistant.data.message.id };
+        }
+        finally {
+            if (this.authorGeneration === work)
+                this.authorGeneration = undefined;
+        }
     }
     async generateNoUserAssistant(input) {
         const valid = (value) => typeof value === 'string' && value.length > 0
@@ -1460,12 +1487,11 @@ export class ReactLoopAgent {
                 owned.onEnter();
                 owned.entered = true;
             }
-            const assembly = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, this.phase.abort.signal));
-            this.phase.abort.signal.throwIfAborted();
+            const assembled = await this.assembleStep(this.phase.abort.signal);
             // Registered tools still belong to the child preset. Their Native result
             // messages remain in history, while preset pre-step/inbox additions have
             // no input authority over this one-shot private conversation.
-            return { kind: 'enter', messages: position.step === 1 ? [owned.message] : [], assembly };
+            return { kind: 'enter', messages: position.step === 1 ? [owned.message] : [], ...assembled };
         }
         const activeOpening = this.phase.programmatic?.opening;
         // A readable old assistant-only transcript cannot acquire a later system
@@ -1570,53 +1596,87 @@ export class ReactLoopAgent {
                 throw Error('OPENING_PLAYER_CONTINUATION_REFUSED');
             claimed = this.inbox.claim(target, position.turn);
         }
-        const assembled = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal));
-        const opening = this.phase.programmatic?.opening;
-        const generation = position.step === 1 ? this.phase.programmatic : undefined;
-        const assembly = generation ? { ...assembled, tools: [],
-            // Owned openings carry the invocation in request/material, outside the
-            // persisted player history and separate from the provider's system slot.
-            sections: opening ? assembled.sections : [...assembled.sections,
-                { name: 'programmatic:opening-regenerate', text: generation.instruction, interpolate: false }] } : assembled;
-        signal.throwIfAborted();
-        const sections = renderContextSections(assembly);
-        const context = this.runtimeContext.project(joinContextSections(sections), sections);
-        const phase = this.phase;
-        const inputStep = admission ? { admission, ...position, completedWithoutRequest: false } : undefined;
-        if (inputStep)
-            phase.inputStep = inputStep;
-        let decision;
+        const { assembly: assembled, selection, toolSet } = await this.assembleStep(signal);
         try {
-            decision = await this.dispatch.waterfall('agent/pre-step', { messages: claimed, ...position, signal }, () => Promise.resolve({
-                kind: 'enter',
-                messages: context === undefined ? claimed : [...claimed, context],
-            }));
+            const opening = this.phase.programmatic?.opening;
+            const generation = position.step === 1 ? this.phase.programmatic : undefined;
+            const assembly = generation ? { ...assembled, tools: [],
+                // Owned openings carry the invocation in request/material, outside the
+                // persisted player history and separate from the provider's system slot.
+                sections: opening ? assembled.sections : [...assembled.sections,
+                    { name: 'programmatic:opening-regenerate', text: generation.instruction, interpolate: false }] } : assembled;
+            signal.throwIfAborted();
+            const sections = renderContextSections(assembly);
+            const context = this.runtimeContext.project(joinContextSections(sections), sections);
+            const phase = this.phase;
+            const inputStep = admission ? { admission, ...position, completedWithoutRequest: false } : undefined;
+            if (inputStep)
+                phase.inputStep = inputStep;
+            let decision;
+            try {
+                decision = await this.dispatch.waterfall('agent/pre-step', { messages: claimed, ...position, signal, modelSelection: selection }, () => Promise.resolve({
+                    kind: 'enter',
+                    messages: context === undefined ? claimed : [...claimed, context],
+                }));
+            }
+            finally {
+                delete phase.inputStep;
+            }
+            signal.throwIfAborted();
+            if (inputStep?.completedWithoutRequest) {
+                this.checkInput(inputStep.admission, []);
+                return { kind: 'enter', messages: [], assembly, selection, toolSet, admission: inputStep.admission, completedWithoutRequest: true };
+            }
+            if (decision.kind === 'reject') {
+                toolSet.dispose();
+                return decision;
+            }
+            if (!generation && !opening)
+                return { ...decision, assembly, selection, toolSet, ...admission ? { admission } : {}, completedWithoutRequest: false };
+            if (decision.messages.some(message => message.source.kind === 'user')) {
+                throw new Error('programmatic generation cannot admit a player message');
+            }
+            if (opening && decision.messages.some(message => message.content.some(block => block.type !== 'text')))
+                throw Error('OPENING_NON_TEXT_CONTEXT_UNSUPPORTED');
+            const systemSections = decision.systemSections ?? [];
+            const contextSections = decision.messages.map(message => message.content
+                .filter(block => block.type === 'text').map(block => block.text).join('')).filter(Boolean);
+            const effectiveAssembly = { ...assembly, sections: [...assembly.sections,
+                    ...[...systemSections, ...contextSections].map((content, index) => ({
+                        name: `programmatic:context:${index}`, text: content, interpolate: false,
+                    }))] };
+            return { ...decision, messages: [], assembly: effectiveAssembly, selection, toolSet, completedWithoutRequest: false };
         }
-        finally {
-            delete phase.inputStep;
+        catch (error) {
+            toolSet.dispose();
+            throw error;
         }
-        signal.throwIfAborted();
-        if (inputStep?.completedWithoutRequest) {
-            this.checkInput(inputStep.admission, []);
-            return { kind: 'enter', messages: [], assembly, admission: inputStep.admission, completedWithoutRequest: true };
+    }
+    async assembleStep(signal) {
+        const selection = this.model.current();
+        if (!selection)
+            throw new Error(`agent "${this.id}" has no provider/model selection`);
+        const admitted = await this.loopCtx.tools.resolve({ agent: this, modelSelection: selection, signal });
+        try {
+            const initial = admitted.view(this);
+            const selected = this.ctx.waterfall('nexttavern/project-step-tools', this, initial, () => initial);
+            const toolSet = selected === initial ? admitted : {
+                dispose: () => admitted.dispose(),
+                view: scope => {
+                    const current = admitted.view(scope);
+                    return new Map([...selected].filter(([name]) => current.has(name)));
+                },
+            };
+            const assembly = await this.loopCtx.systemPrompt.assemble({
+                ...assembleContextFor(this, signal), modelSelection: selection, toolSet,
+            });
+            signal.throwIfAborted();
+            return { assembly, selection, toolSet };
         }
-        if (decision.kind === 'reject')
-            return decision;
-        if (!generation && !opening)
-            return { ...decision, assembly, ...admission ? { admission } : {}, completedWithoutRequest: false };
-        if (decision.messages.some(message => message.source.kind === 'user')) {
-            throw new Error('programmatic generation cannot admit a player message');
+        catch (error) {
+            admitted.dispose();
+            throw error;
         }
-        if (opening && decision.messages.some(message => message.content.some(block => block.type !== 'text')))
-            throw Error('OPENING_NON_TEXT_CONTEXT_UNSUPPORTED');
-        const systemSections = decision.systemSections ?? [];
-        const contextSections = decision.messages.map(message => message.content
-            .filter(block => block.type === 'text').map(block => block.text).join('')).filter(Boolean);
-        const effectiveAssembly = { ...assembly, sections: [...assembly.sections,
-                ...[...systemSections, ...contextSections].map((content, index) => ({
-                    name: `programmatic:context:${index}`, text: content, interpolate: false,
-                }))] };
-        return { ...decision, messages: [], assembly: effectiveAssembly, completedWithoutRequest: false };
     }
     /** Whether the assembled tool schemas differ from the logged request header's. */
     toolsChanged(tools) {
@@ -2274,6 +2334,7 @@ export class ReactLoopAgent {
         let target = 'next-turn';
         let currentAdmission = initialAdmission;
         let capturedEnd;
+        let activeToolSet;
         try {
             while (true) {
                 signal.throwIfAborted();
@@ -2283,6 +2344,7 @@ export class ReactLoopAgent {
                     turnEnds = { kind: 'blocked' };
                     return false;
                 }
+                activeToolSet = decision.toolSet;
                 currentAdmission = decision.admission;
                 if (decision.completedWithoutRequest) {
                     turnEnds = { kind: 'completed' };
@@ -2299,7 +2361,7 @@ export class ReactLoopAgent {
                 signal.throwIfAborted();
                 // Empty/no-request exits above spend no material work or records. The
                 // existing Core step and final decision are retained; hooks do not rerun.
-                const prepared = await this.prepareRequest(turn, step, signal);
+                const prepared = await this.prepareRequest(turn, step, signal, decision.selection);
                 if (!phase.programmatic || phase.programmatic.opening)
                     await this.#prepareRequestMaterial(decision, { turn, step }, signal, prepared);
                 signal.throwIfAborted();
@@ -2332,6 +2394,8 @@ export class ReactLoopAgent {
                         turnEnds = stepEnd;
                 }
                 finally {
+                    activeToolSet.dispose();
+                    activeToolSet = undefined;
                     this.#retireSelection();
                     this.session.append('step/end', { turn, step });
                 }
@@ -2364,9 +2428,15 @@ export class ReactLoopAgent {
                     ? error.failure
                     : { message: errorChain(error), code: 'UNKNOWN' },
             };
+            // A request that reached the server can be a normal admission rather
+            // than completion-gated work. Its owner still needs a recovery anchor.
+            if (turnEnds.error.code === REQUEST_MATERIAL_ROLE_POSITION_REJECTED && currentAdmission) {
+                this.blockInput(currentAdmission.registration, turnEnds.error.code, 'final', currentAdmission.proposal, currentAdmission.claim);
+            }
             this.throwError(error);
         }
         finally {
+            activeToolSet?.dispose();
             this.#retireSelection();
             if (phase.programmatic?.opening && turnEnds?.kind !== 'completed')
                 this.openingDomainCompletion = {
@@ -2389,6 +2459,13 @@ export class ReactLoopAgent {
             try {
                 // oxlint-disable-next-line typescript/no-non-null-assertion -- every exit assigns a turn ending
                 capturedEnd = this.session.append('turn/end', { turn, reason: turnEnds });
+                const author = this.authorGeneration;
+                if (author?.checkpoint) {
+                    if (!await this.ctx.sessions.flush(this.session))
+                        throw Error('AUTHOR_GENERATION_TERMINAL_FLUSH_UNKNOWN');
+                    await author.owner.terminal({ identity: author.plan.identity, turn,
+                        turnEndRef: { seq: Number(capturedEnd.seq), sha256: nativeInputSha256(capturedEnd) }, reason: capturedEnd.data.reason }, new AbortController().signal);
+                }
             }
             catch (error) {
                 if (requiresCompletion && !currentAdmission?.receipt)
@@ -2473,7 +2550,7 @@ export class ReactLoopAgent {
                 // Reuse sealed text while assigning its final physical Native cut.
                 this.replanMaterialCandidate(decision, { turn, step, signal }, false);
             }
-            const { config, preparedCall } = firstAttempt ? initialPrepared : await this.prepareRequest(turn, step, signal);
+            const { config, preparedCall } = firstAttempt ? initialPrepared : await this.prepareRequest(turn, step, signal, decision.selection);
             // Adapter preparation can await arbitrary work. Recheck before every
             // system/user/header commit and provider stream, including retries.
             const admission = decision.admission;
@@ -2482,7 +2559,7 @@ export class ReactLoopAgent {
             const startsRequestSeries = firstAttempt && decision.startsRequestSeries === true;
             const candidate = firstAttempt && this.pendingMaterialCandidate?.decision === decision ? this.pendingMaterialCandidate.planned : undefined;
             this.pendingMaterialCandidate = undefined;
-            let request = candidate ? (candidate.kind === 'material' ? this.commitMaterialRequest(decision, candidate)
+            let request = this.authorGeneration ? await this.buildAuthorGenerationRequest(decision, { config, preparedCall, turn, step, firstAttempt, signal }) : candidate ? (candidate.kind === 'material' ? this.commitMaterialRequest(decision, candidate)
                 : this.commitRequest(candidate)) : this.materialRequestOwner(decision)
                 ? this.buildMaterialRequest(decision, { config, preparedCall, turn, step, firstAttempt, signal }) : undefined;
             if (request === undefined) {
@@ -2532,8 +2609,20 @@ export class ReactLoopAgent {
                 started = true;
                 for await (const chunk of stream) {
                     signal.throwIfAborted();
-                    if (observation.firstOutputMs === null && ['text-delta', 'reasoning-delta', 'tool-call-delta'].includes(chunk.type))
+                    const author = this.authorGeneration;
+                    if (author) {
+                        if (!author.owner.current())
+                            throw Error('AUTHOR_GENERATION_REVOKED');
+                        if (chunk.type === 'text-delta' || chunk.type === 'reasoning-delta')
+                            author.owner.stream?.({ identity: author.plan.identity,
+                                kind: chunk.type === 'text-delta' ? 'text' : 'reasoning', delta: chunk.text });
+                    }
+                    if (observation.firstOutputMs === null
+                        && (chunk.type === 'text-delta' || chunk.type === 'reasoning-delta' || chunk.type === 'tool-call-delta')) {
                         observation.firstOutputMs = performance.now() - observation.started;
+                        // A Story transport can buffer all output until finish for display.
+                        this.dispatch.emit('nexttavern/request-first-output', { attemptId: live.attemptId });
+                    }
                     live.push(chunk);
                 }
                 signal.throwIfAborted();
@@ -2599,6 +2688,8 @@ export class ReactLoopAgent {
                     catch (settlementError) {
                         throw new AggregateError([failure, settlementError], 'Assistant provider failed and its durable settlement was rejected', { cause: failure });
                     }
+                    if (this.authorGeneration)
+                        throw failure;
                     const action = await this.dispatch.waterfall('agent/request-error', {
                         turn,
                         step,
@@ -2647,10 +2738,12 @@ export class ReactLoopAgent {
                 }, { surfaceOp: 'append' }).seq);
                 if (finish.kind === 'max-tokens')
                     return { kind: 'max-tokens' };
+                if (this.authorGeneration)
+                    return { kind: 'completed' };
                 const toolCalls = message.content.filter(block => block.type === 'tool-call');
                 if (toolCalls.length === 0)
                     return { kind: 'completed' };
-                const { concluded } = await executeToolCalls(this.loopCtx, turn, step, toolCalls, signal, context => { if (!this.isolatedInput)
+                const { concluded } = await executeToolCalls(this.loopCtx, this, turn, step, toolCalls, signal, decision.toolSet, context => { if (!this.isolatedInput)
                     this.inbox.splice('next-step', this.inbox.nextStep.length, 0, [context]); });
                 return concluded ? { kind: 'completed' } : null;
             }
@@ -2662,7 +2755,7 @@ export class ReactLoopAgent {
         }
     }
     /** Resolve request config and bind its adapter before admitting model-visible input. */
-    async prepareRequest(turn, step, signal) {
+    async prepareRequest(turn, step, signal, selection) {
         const { session } = this;
         // A loop instance starts from its declared route, restoring only an explicit
         // effort owned by that exact model. Later steps re-resolve marked defaults.
@@ -2673,23 +2766,10 @@ export class ReactLoopAgent {
         const baseSampling = lastMaterial?.type === 'request/material' ? lastMaterial.data.delta.requestLocalSampling : undefined;
         const persistedProposal = persistedHeader ? requestProposal(persistedHeader) : undefined;
         const baseProposal = persistedProposal && baseSampling ? restoreNativeStorySamplingV1(persistedProposal, baseSampling) : persistedProposal;
-        const persistedConfig = persistedHeader?.config;
-        const route = { provider: this.options.provider ?? '', model: this.options.model ?? '' };
-        const persistedReasoningEffort = persistedConfig?.provider === route.provider
-            && persistedConfig.model === route.model
-            && persistedHeader?.adapterDefaults?.reasoningEffort !== true
-            ? persistedConfig.reasoningEffort
-            : undefined;
-        const reasoningEffort = this.options.reasoningEffort ?? persistedReasoningEffort;
+        const { provider: _provider, model: _model, reasoningEffort: _effort, ...previousControls } = baseProposal ?? {};
         const maxTokens = this.options.maxTokens;
-        const seedConfig = deepFreeze(structuredClone(this.requestHeaderLogged
-            // oxlint-disable-next-line typescript/no-non-null-assertion -- the instance logged the header it now folds
-            ? baseProposal
-            : {
-                ...route,
-                ...reasoningEffort === undefined ? {} : { reasoningEffort },
-                ...maxTokens === undefined ? {} : { maxTokens },
-            }));
+        const controls = this.requestHeaderLogged ? previousControls : maxTokens === undefined ? {} : { maxTokens };
+        const seedConfig = deepFreeze(structuredClone({ ...controls, ...selection }));
         const proposedConfig = await this.dispatch.waterfall('agent/request', { turn, step, signal }, () => Promise.resolve(seedConfig));
         signal.throwIfAborted();
         if (!proposedConfig.provider || !proposedConfig.model) {
@@ -2698,7 +2778,9 @@ export class ReactLoopAgent {
         let config;
         let preparedCall;
         try {
-            preparedCall = await this.loopCtx.llm.prepareCall(proposedConfig, signal);
+            const { tools: authorTools, stop: authorStop, ...authorCall } = this.authorGeneration?.plan.call ?? {};
+            preparedCall = await this.loopCtx.llm.prepareCall(this.authorGeneration ? { ...proposedConfig, ...authorCall,
+                ...authorStop ? { stop: [...authorStop] } : {} } : proposedConfig, signal);
             config = preparedCall.config;
         }
         catch (error) {
@@ -2860,21 +2942,8 @@ export class ReactLoopAgent {
             this.abortMaterialRequestOwner(requestOwner, 'STORY_MATERIAL_OWNER_REQUIRED');
         const { config, turn, step, firstAttempt, signal } = input;
         let preparedCall = input.preparedCall;
-        // A route's system replacement bit is not additive system-at-depth support.
-        // Missing exact-route capability refuses each required insertion before writes.
-        const capability = preparedCall?.requestMaterialText;
-        for (const insertion of [...plan.insertions, ...(plan.anchoredInsertions ?? [])]) {
-            const support = insertion.requestedRole === 'system' ? capability?.systemAtDepth : capability?.[insertion.requestedRole];
-            if (capability?.schemaVersion !== 1 || support !== 'role-and-position') {
-                this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
-            }
-        }
-        for (const group of plan.messageProjection?.groups ?? []) {
-            const support = group.role === 'system' ? capability?.systemAtDepth : capability?.[group.role];
-            if (capability?.schemaVersion !== 1 || support !== 'role-and-position') {
-                this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
-            }
-        }
+        // The provider serializer owns message representation. Catalog capability
+        // hints do not decide whether the selected server will accept this request.
         let assembly;
         try {
             assembly = applyNativeOwnedSectionsV1(finalAssembly, plan, owner.sectionNames);
@@ -3025,6 +3094,40 @@ export class ReactLoopAgent {
         throw new LlmError(`${category}超过当前模型的可用输入容量（估算 ${measurement.estimate.inputTokens}，可用 ${measurement.capacity.availableInput}）。当前玩家输入和有效设定已保留；请改用上下文更大的模型，或主动调整设定后恢复。`, 'CONTEXT_LENGTH_EXCEEDED');
     }
     /** Preview and price the ordinary path before admitting system/player data. */
+    async buildAuthorGenerationRequest(decision, input) {
+        const work = this.authorGeneration, { plan, owner } = work;
+        if (!owner.current() || work.checkpoint)
+            throw Error('AUTHOR_GENERATION_REVOKED_OR_ALREADY_DISPATCHED');
+        const base = this.buildRequest({ ...decision, assembly: { ...decision.assembly, tools: [...plan.call.tools ?? []] } }, input, true), messages = deepFreeze(structuredClone([...plan.orderedMessages])), request = markAgentLoopRequest(Object.freeze({ ...base, messages, tools: deepFreeze([...plan.call.tools ?? []]) })), projected = input.preparedCall?.projectRequest(request), meter = this.loopCtx.get('tokenMeter'), measurement = projected && meter?.measureRequest ? this.requestBudget.measure(projected, meter) : undefined;
+        if (measurement) {
+            this.assertRequestCapacity(measurement);
+            retainNativeRequestMeasurement(request, measurement);
+        }
+        const selected = this.#captureSelection(undefined, []), header = this.session.requestHeaderBoundary();
+        if (!header)
+            throw Error('AUTHOR_GENERATION_HEADER_MISSING');
+        const baseMessages = selected.messages.map(row => row.message), record = { schemaVersion: 3,
+            encoding: 'native-request-material-v3', turn: input.turn, step: input.step,
+            owner: plan.identity, orderedMessages: messages, header: { seq: Number(header.seq), sha256: nativeInputSha256(header.header) },
+            snapshot: plan.material.snapshot, plan: plan.material.plan,
+            base: { boundarySeq: Number(this.session.seq) - 1, contentGeneration: selected.contentGeneration, surfaceNodes: selected.surfaceNodes,
+                messages: selected.messages.map(row => ({ seq: row.eventSeq, id: row.id, role: row.role, messageSha256: row.messageSha256 })),
+                sha256: nativeInputSha256(baseMessages) }, delta: { insertions: [], protectedPrefixLength: 0 }, placements: [],
+            outputSha256: nativeInputSha256(messages) }, event = this.session.append('request/material', record);
+        if (!await this.ctx.sessions.flush(this.session))
+            throw Error('AUTHOR_GENERATION_MATERIAL_FLUSH_UNKNOWN');
+        const current = () => this.authorGeneration === work && owner.current() && !input.signal.aborted
+            && this.session.eventAt(event.seq) === event && this.session.requestHeaderBoundary()?.seq === header.seq, checkpoint = { identity: plan.identity, headerRef: { seq: Number(header.seq), sha256: nativeInputSha256(this.session.eventAt(header.seq)) },
+            materialRef: { seq: Number(event.seq), sha256: nativeInputSha256(event) }, turn: input.turn, step: input.step, signal: input.signal, current };
+        work.checkpoint = checkpoint;
+        await owner.checkpoint(checkpoint);
+        if (!current())
+            throw Error('AUTHOR_GENERATION_REVOKED');
+        bindNativeRequestMaterial(request, { session: this.session, event, preparedSelection: true,
+            assertOwnerCurrent: () => { if (!current())
+                throw Error('AUTHOR_GENERATION_REVOKED'); } });
+        return request;
+    }
     buildRequest(decision, input, startsRequestSeries) {
         return this.commitRequest(this.planRequest(decision, input, startsRequestSeries));
     }
@@ -3051,7 +3154,7 @@ export class ReactLoopAgent {
         Object.freeze(boundaryMessages);
         const request = markAgentLoopRequest(Object.freeze({ ...envelope.header.config, messages: boundaryMessages,
             toolHistory: preview.toolHistory, ...envelope.header.tools ? { tools: envelope.header.tools } : {}, sessionId: this.session.id, signal }));
-        const projected = preparedCall?.projectRequest(request);
+        const projected = this.authorGeneration ? undefined : preparedCall?.projectRequest(request);
         const meter = this.loopCtx.get('tokenMeter');
         const measurement = projected && meter?.measureRequest ? this.requestBudget.measure(projected, meter) : undefined;
         if (measurement)

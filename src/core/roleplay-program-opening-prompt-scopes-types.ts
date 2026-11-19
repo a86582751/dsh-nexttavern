@@ -3,7 +3,7 @@
 import type {NativeOpeningOwnerIdentityV1} from 'dsh-nexttavern-native-agent-loop'
 import type {ProgramOpeningIntentSeedV1,ProgramOpeningInputPacketV1,ProgramOpeningAbsentDomainV1}
   from './roleplay-program-opening-records.js'
-import type {ProgramGenesisDataRefV1} from './roleplay-program-genesis-types.js'
+import type {ProgramOpeningDataRefV1} from './roleplay-program-opening-records.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {TavernSourceInheritanceDescriptorV1,TavernSourceNativeCutV1}
   from './roleplay-tavern-source-inheritance-types.js'
@@ -28,17 +28,18 @@ export interface TavernPendingOpeningPromptScopeDataV1 {
   readonly basisSha256:string
   readonly seed:ProgramOpeningIntentSeedV1
   readonly input:ProgramOpeningInputPacketV1
-  readonly seedRef:ProgramGenesisDataRefV1
-  readonly inputRef:ProgramGenesisDataRefV1
+  readonly seedRef:ProgramOpeningDataRefV1
+  readonly inputRef:ProgramOpeningDataRefV1
   readonly nativeOwner:NativeOpeningOwnerIdentityV1
   /** Actual first prepare selection; later lineage belongs to material owner. */
   readonly selectedBaseSha256:string
   /** Body binding, distinct from inputRef's hash of the complete stored row. */
   readonly inputBindingSha256:string
   readonly initialization:
-    |{readonly kind:'absent';readonly markerCount:0;readonly inventorySha256:string;readonly initialized:false}
-    |{readonly kind:'pending-raw-init-data';readonly planSha256:string;readonly initialValues:MvuJsonObject;
-      readonly initialValuesSha256:string;readonly initialized:false}
+    /** This adapter selected no numerical initialization or authority. */
+    |{readonly kind:'absent';readonly markerCount:0;readonly basisSha256:string;readonly initialized:false}
+    |{readonly kind:'schema-initialized';readonly preparationSha256:string;readonly executionSha256:string;
+      readonly values:MvuJsonObject;readonly context:MvuJsonObject;readonly initialized:true}
   readonly scopeDataSha256:string
 }
 export interface TavernActualPendingOpeningPromptScopesV1 {
@@ -58,7 +59,7 @@ export interface TavernProgramAbsencePromptScopeDataV1 {
   readonly seed:ProgramOpeningIntentSeedV1
   readonly input:ProgramOpeningInputPacketV1
   readonly absenceDomain:ProgramOpeningAbsentDomainV1
-  readonly domainRef:ProgramGenesisDataRefV1
+  readonly domainRef:ProgramOpeningDataRefV1
   readonly factsSha256:string
 }
 export interface TavernActualProgramAbsencePromptScopesV1 {
@@ -84,11 +85,11 @@ export interface TavernProgramInheritedAbsencePromptScopeDataV1 {
   readonly originalOpening:{
     readonly ownerSessionId:string
     readonly closureSha256:string
-    readonly archiveRef:ProgramGenesisDataRefV1
-    readonly seedRef:ProgramGenesisDataRefV1
-    readonly inputRef:ProgramGenesisDataRefV1
-    readonly intentRef:ProgramGenesisDataRefV1
-    readonly domainRef:ProgramGenesisDataRefV1
+    readonly archiveRef:ProgramOpeningDataRefV1
+    readonly seedRef:ProgramOpeningDataRefV1
+    readonly inputRef:ProgramOpeningDataRefV1
+    readonly intentRef:ProgramOpeningDataRefV1
+    readonly domainRef:ProgramOpeningDataRefV1
   }
   readonly actualChildCut:{
     readonly sessionId:string

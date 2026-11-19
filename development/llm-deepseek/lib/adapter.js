@@ -52,7 +52,7 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
     var e = new Error(message);
     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
 });
-import { assertAgentLoopRequestCurrent, attributionHeaders, LlmAdapter, LlmError } from 'dsh-nexttavern-native-llm';
+import { assertAgentLoopRequestCurrent, attributionHeaders, isRequestMaterialRoleRejection, LlmAdapter, LlmError, REQUEST_MATERIAL_ROLE_POSITION_REJECTED } from 'dsh-nexttavern-native-llm';
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout';
 import { modelInfo } from './model-info.js';
 import { DeepSeekFileStore } from '@deepseek-ai/dsh-llm-deepseek';
@@ -209,7 +209,9 @@ export class DeepSeekAdapter extends LlmAdapter {
                         continue;
                     const failure = providerError(raw, response.status, response.headers);
                     const message = files.errorMessage(response.status, failure.message, detail);
-                    throw new LlmError(message, failure.code, { ...failure.failure, cause: new Error(text) });
+                    const rejectedPlacement = isRequestMaterialRoleRejection(response.status, detail || message)
+                        && history.some(item => item.source?.kind === 'request-material');
+                    throw new LlmError(message, rejectedPlacement ? REQUEST_MATERIAL_ROLE_POSITION_REJECTED : failure.code, { ...failure.failure, cause: new Error(text) });
                 }
                 await extensions.accept();
                 if (response.body === null)

@@ -2,7 +2,13 @@
 
 [返回首页](README.md) · [正式版本更新日志](CHANGELOG.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
-最后整理：**2026-11-15**。**0.3 正在开发，正式发行版本仍为 0.2.9-rc.4，发布日期待定。** 本页介绍开发线的新能力与进展。
+最后整理于 **2026-11-19**。**0.3 正在开发，正式发行版本仍为 0.2.9-rc.4，发布日期待定。** 本页介绍开发线的新能力与进展。
+
+0.3 候选声明 Harness `>=0.2.2-rc.5`。在 rc.5 上，Web 和官方 Windows 桌面版的单条命令安装均已通过，插件商店的首次安装及重启也已验证。运行中的宿主首次从市场安装后，重启即可启用。已经发布的 0.2.9-rc.4 仍按[正式版安装指南](README.md#安装)使用。
+
+测试者拿到 0.3 候选归档后，可在 Web 环境运行 `dsh plugin --profile web add "file:<候选归档路径>"`。官方 Windows 桌面版用应用随附的 `resources/runtime/cli/bin/dsh.cmd plugin --profile desktop add "file:<候选归档路径>"`。命令使用已核对的本地候选文件，关闭宿主后安装，再启动并检查插件和会话。
+
+0.3 随附的 AnyDoc 解析引擎及原生绑定保留 Firecrawl AnyDoc 0.2.4 的原始 MIT 许可证。随附 Pi AI SDK 基于 0.85.1，适配器与 SDK 的具体来源和修改记录见[第三方声明](NOTICE.md)。
 
 ## 让人物、页面和玩法一起进入故事
 
@@ -12,7 +18,7 @@
 
 11 月 14 日进一步对齐 Native 1.2 单正文、两张参考卡和作者文档，并补齐 Ruby 分析、资料保存与导出流程。相关结果按受影响范围分批核对；完整创作、真实社区卡动态玩法和新进程恢复仍待验证，详见下方记录。
 
-11 月 15 日继续补齐 Ruby 与 Reader 的日常操作和消息写回路径。对应 Source、受控 Core 检查和开发构建已有限定结果，真实卡、自然创作与冷恢复仍待验证。
+11 月 18 日完成可玩版的原卡抽测。五张追加样本均走通开场与第一轮剧情，验证了各自适用的状态、作者界面和续玩路径。两张原卡用真实模型续写后重新启动，原稿导出保留剧情正文并去除已结算的数值协议。
 
 ## 这一轮带来了什么
 
@@ -22,7 +28,7 @@
 - **创作资料更容易整理、修改和带走。** Native 卡提供清晰的作者栏目、完整参考卡及原件／当前设定导出；原创写卡与长篇改编共用定稿入口。
 - **Ruby 分析可以主动读取、运行和切换方案。** 作者按钮能读取已发布材料、手动运行启用的任务，或保存分析方案选择；开局分析与普通任务按顺序衔接。
 
-此前整合的开发源码已公开。Ruby 的作者刷新、方案选择与分析衔接已有实现与限定检查，后续仍要验证真实卡的连续游玩、编辑与重开，以及 Native 自然创作、文档导入和导出往返。此前 34 张卡提供了导入和 161 项开场目录的基础记录，后续会继续以实际玩法展示进展。
+实卡阶段已按可玩版范围收口。此前 34 张卡的导入和 161 项开场目录提供基础覆盖。更少见的作者扩展和高级交互仍按各自能力维护。当前开发继续核对原生卡转换、创作、编辑和导出流程。
 
 ## 重点功能
 
@@ -47,7 +53,7 @@ Native 卡使用 `nexttavern_card` JSON 文档。它用栏目声明内容和用�
 | 开场 `opening` | 保存当前开场与多个开场的原文目录，为同一组人物设计不同起点 |
 | 作者扩展与归档 | 携带受支持的脚本、分析配置和来源资料，方便追溯原稿与继续开发 |
 
-**Native 作者源码统一为 1.2，整合与验证继续进行。** 新合同只保存一份作者正文：普通剧情直接使用人物与规则栏目，需要语义分类的社区资料另外保存人物、真实原文位置和关联，高级人物视图按这些位置只读生成。明确分栏的作者稿、自然写卡和完成研究后的小说改编不因此多付一次分类请求。完整示例与两张参考卡按同一合同更新；原创定稿、社区分类和导入导出的新格式验证尚待完成，不能据源码对齐宣称已经发行。复杂动态规则的人物归属仍需按实际消费者检验。
+**Native 作者源码统一为 1.2，整合与验证继续进行。** 新合同只保存一份作者正文：普通剧情直接使用人物与规则栏目，需要语义分类的社区资料另外保存人物、真实原文位置和关联，高级人物视图按这些位置只读生成。明确分栏的作者稿、自然写卡和完成研究后的小说改编不因此多付一次分类请求。完整示例与两张参考卡按同一合同更新。一个隔离场景已走通原创、人物编辑、当前卡导出与重新导入，短篇小说精读也已生成原生卡。一个 DOCX 样本已复验分类导入、原文开场、真实续写、状态更新和 Native 1.2 往返。长篇创作和复杂动态规则的人物归属仍需按实际流程验证。
 
 这些栏目也让创作更像搭积木。已有的《龙女皇》参考卡展示如何保留 Markdown 原稿并整理成 Native 栏目；《雾港第十三声钟》展示值班简报、互斥闲谈、持续／冷却告示、世界书与累计日志的组合写法。作者可以从完整示例出发，按栏目替换自己的设定，逐步加入脚本和动态玩法。
 
@@ -74,6 +80,36 @@ Native 卡使用 `nexttavern_card` JSON 文档。它用栏目声明内容和用�
 这些能力已接入开发线，接下来会在连续故事中检验人物行为、记忆修订和场外活动的实际体验。启用角色记忆后，新剧情会增加共享感知整理；场外活动按实际参与人数调用模型，相关开关、模型和用量可在面板管理。
 
 ## 按日期记录
+
+### 11 月 18 日可玩开发版验收
+
+五张追加原卡沿各自的作者开场进入剧情，分别检查了适用的数值、状态栏、终端等交互。对两张真实模型续写的样本，重启宿主后的首次原稿导出保留了已核对的正文。导出过程由程序处理，未增加模型请求。Native 1.2 已走通创作、当前编辑、导出与回导。DOCX 使用作者原文开场，该正文后续编辑后也已在新会话回导验证。debug CLI 对齐当前世界线原稿、卡片导入导出和隔离侧聊诊断。
+
+**English**
+
+Five additional original cards reached a first Story from their authored openings. Checks covered each card's applicable features, including numerical state, status displays and author terminals. Two cards played with a live model also passed original-manuscript export as their first operation after a host restart. The exported prose matched the verified text, and exports made no additional model requests. The playable development build also passed a Native 1.2 authoring, current-edit, export and reimport workflow. A DOCX opening kept its authored text, and a later edit survived export and reimport into a fresh session. The debug CLI follows the same manuscript, card and isolated side-chat workflows.
+
+### 11 月 16 日原作者页面、连续剧情与恢复
+
+原作者 HTML 围栏在显示时会正确移除，正文与状态面板可以同时保留。补齐了完整当前人物资料的按需读取，并修正普通数据刷新中预留事件丢失、拒绝输入后下一轮数值结算失败，以及状态恢复时重复读取未完成剧情的问题。
+
+一个实卡路径已验证建角、连续剧情、页面重生成，以及新进程中的数值和记忆恢复。历史剧情正文与四个作者状态面板已在更新后的页面显示，场景按钮能打开当前回合的内容。失败世界线保留原记录，通过正常分支继续游玩。更多作品、完整玩法与 Native 创作和导出往返继续验证。
+
+**English**
+
+Reader preserves story prose alongside author status panels and handles HTML fences in authored pages. Current character data is read on demand. Fixes cover reserved hooks across ordinary data refreshes, numerical settlement after a refused input, and state recovery while a Story remains unsettled. One real-card workflow has scoped results for character setup, continued Stories, UI regeneration, and new-process numerical and memory recovery. Saved prose and four author panels render together, including the current scene control. Failed worldlines retain their history. Broader card coverage, complete gameplay and Native authoring/export round trips remain under validation.
+
+### 11 月 16 日补齐世界书管理与预设工作值
+
+世界书管理增加独立 JSON 导入及 profile、角色和聊天绑定。Helper 与 Reader 使用各自需要的世界书资料，提交后的读取故障保留原操作凭据，重复 UID 原始条目的整书替换保留各自来源身份。预设控件从当前所选范围读取工作值，全局与对话覆盖分别保存；声明式 profile 模块、参数与响应设置接入实际请求消费者。
+
+本批修复了数值提交后的权限误撤销、EJS 在 pending 消息上的变量缓存，以及世界书提交后继续读取旧过滤器快照的问题。Source 回归与受控 Core 消费者已有分项通过结果，当前候选安装、真实卡玩法、自然创作与新进程恢复继续验证。0.3 尚未发布。
+
+**English**
+
+The Worldbook manager adds standalone JSON import with profile, character and chat bindings. Helper and Reader consume their corresponding Worldbook data. Postcommit read failures retain the original operation receipt, and full replacements preserve the source identities of original entries sharing a UID. Preset controls use the selected scope's working values, with global and conversation overrides saved independently. Declared profile modules, parameters and response settings reach the actual request consumers.
+
+This batch also fixes a permission revocation after numerical commits, EJS variable-cache reconstruction around pending messages, and stale filter reads after Worldbook commits. Scoped Source regressions and controlled Core consumers have passing results. Current-candidate installation, real-card play, natural authoring and new-process recovery remain under validation. Version 0.3 remains unreleased.
 
 ### 11 月 15 日：补齐 Ruby 请求设置与 Reader 消息操作
 
@@ -255,8 +291,8 @@ Ruby 辅助分析走通了人工重试、启停、刷新及不同进程恢复的
 ## 接下来会继续展示什么
 
 1. **作者按钮与分析面板的联动。** 继续验证 RUBY 读取、执行、方案选择和页面刷新在真实卡中的体验，保留失败原因与实际任务结果。
-2. **更多真实作品的持续游玩。** 更新测试版本，依次验证首批十张及第二批随机十张，连同编辑、分支、保存和重开一起体验。
-3. **从原稿到可分享角色卡。** 完成自然 Native 写卡、小说改编及 Markdown／DOCX 完整导入的实测，再核对修改后卡片与新剧情的导出。
+2. **更多真实作品的持续游玩。** 在已通过的五张追加样本之外，继续积累连续剧情、编辑、分支及恢复的证据。
+3. **长文本创作。** 继续验证更长篇的选择、改编与整理导出，以及高级社区能力。
 
 ## 专题阅读
 

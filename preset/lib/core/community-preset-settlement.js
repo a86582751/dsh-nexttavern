@@ -79,7 +79,8 @@ export function readAcceptedPreparationPlanRecord(stored, expected, digest = () 
         return;
     if (digest() !== expected)
         throw Error('ORDINARY_ACCEPTED_PLAN_CHANGED');
-    const record = { ordinaryChat, ...plan?.community ? { community: plan.community } : {} };
+    const record = { ordinaryChat, ...plan?.community ? { community: plan.community } : {},
+        ...plan?.sharedScopes ? { sharedScopes: plan.sharedScopes } : {} };
     acceptedPlanRecords.set(stored, { sha256: expected, record });
     return record;
 }
@@ -389,7 +390,7 @@ export function acceptedPreparationAttempts(events, table) {
 /** One Native acceptance owner publishes ordinary preparation writes with or
  * without a selected preset, including the preset's coordinated globals. */
 export function createCommunityPresetSettlement(table, variables, options = {}) {
-    const owners = new WeakMap(), settled = new Map();
+    const owners = new WeakMap();
     const planReaders = new Map(), variableReaders = new Map();
     function watch(index, key, ref) {
         let readers = index.get(key);
@@ -446,12 +447,15 @@ export function createCommunityPresetSettlement(table, variables, options = {}) 
         return withTavernLock(table, `community-settlement:${session.id}`, async () => {
             let history = native(session);
             if (!history) {
-                const events = session.snapshotEvents(), last = Number(events.at(-1)?.seq ?? 0);
-                if (settled.get(session.id) === last)
-                    return;
-                for (const record of acceptedPreparationAttempts(events, table))
-                    await variables.commitPreparation(record);
-                settled.set(session.id, last);
+                const events = session.snapshotEvents();
+                for (const record of acceptedPreparationAttempts(events, table)) {
+                    const current = () => acceptedPreparationAttempts(session.snapshotEvents(), table).some(candidate => preparationId(candidate) === preparationId(record)
+                        && candidate.acceptedMaterialRef.key === record.acceptedMaterialRef.key
+                        && candidate.acceptedMaterialRef.sha256 === record.acceptedMaterialRef.sha256);
+                    await variables.commitPreparation(record, { current });
+                    if (!current())
+                        throw Error('ORDINARY_PREPARATION_ACCEPTANCE_CHANGED');
+                }
                 return;
             }
             for (;;) {
@@ -459,10 +463,18 @@ export function createCommunityPresetSettlement(table, variables, options = {}) 
                 if (!group)
                     return;
                 const notice = group.notice, record = group.record;
-                await variables.commitPreparation(record);
+                const acceptedHistory = history;
+                const acceptance = { current() {
+                        const current = native(session);
+                        return current === acceptedHistory && current.groups.get(group.id) === group
+                            && group.notice === notice && group.record === record;
+                    } };
+                await variables.commitPreparation(record, acceptance);
                 // Notifications update DATA, but only this actual returned commit ACK
                 // can settle the attempt. A lost ACK leaves it pending for readback.
                 const current = native(session);
+                if (!acceptance.current())
+                    throw Error('ORDINARY_PREPARATION_ACCEPTANCE_CHANGED');
                 history.acknowledge(group, notice);
                 history = current;
             }
@@ -486,7 +498,7 @@ export function createCommunityPresetSettlement(table, variables, options = {}) 
             || recordSha256(plan.initialRoot.namespace) !== recordSha256(input.namespace)))
             throw Error('ORDINARY_PRIOR_SOURCE_CHANGED');
         const messageBinding = history.messageBinding(input, plan);
-        return { writes: plan?.writes ?? [], messageGroups: plan?.messageGroups ?? [], messageBinding, current() {
+        return { writes: plan?.writes ?? [], sharedScopes: record?.sharedScopes, messageGroups: plan?.messageGroups ?? [], messageBinding, current() {
                 if (native(session) !== history)
                     return false;
                 const current = history.selectPrior(input.turn, input.step);
@@ -500,6 +512,6 @@ export function createCommunityPresetSettlement(table, variables, options = {}) 
             } };
     }
     return { reconcile, attemptIds, capturePrior,
-        dispose() { stop?.(); planReaders.clear(); variableReaders.clear(); settled.clear(); },
+        dispose() { stop?.(); planReaders.clear(); variableReaders.clear(); },
     };
 }

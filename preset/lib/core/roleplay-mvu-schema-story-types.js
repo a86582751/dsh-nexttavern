@@ -5,8 +5,8 @@ import { recordSha256, sha256 } from './roleplay-data.js';
 import { cloneSchemaValues } from './tavern-mvu-schema-data.js';
 import { freezeImmutableSchemaDescriptorDataV4, createImmutableDescriptorValidator } from './roleplay-mvu-schema-descriptor-data.js';
 import { validateMvuSchemaOpeningHead } from './roleplay-mvu-schema-opening-types.js';
-import { parseMvuUpdateV2, parseMvuUpdateRegionV2, parseMvuUpdateAnalysisAliasRegionV2, reduceMvuUpdateOperationsV2, mvuCommandInfos, mvuOperationsFromCommandInfos } from './roleplay-mvu-update-v2.js';
-import { mvuSchemaMaintenanceTaskCandidate, validateMvuSchemaMaintenanceCandidateSourceV1 } from './roleplay-mvu-schema-maintenance-types.js';
+import { assertMvu196CommandsV1 } from './tavern-mvu-update-protocol-v1.js';
+import { validateMvuSchemaMaintenanceCandidateSourceV1 } from './roleplay-mvu-schema-maintenance-types.js';
 import { validateSchemaTaskArtifactV1 } from './roleplay-mvu-schema-task-edit-types.js';
 import { validateSchemaEvaluationInputV4, validateSchemaGuestOutputV4 } from './tavern-mvu-schema-runner-v4.js';
 import { validateMvuScopeReadFrameV1 } from './tavern-mvu-scope-read.js';
@@ -15,11 +15,10 @@ import { schemaScopeReadFactsEqual } from './roleplay-mvu-schema-scope-facts.js'
 import { validateSchemaSourceCut, validateSchemaAnchor, validateSchemaJournalRecord } from './roleplay-mvu-schema-journal.js';
 import { validateSchemaStorySourceFrame } from './roleplay-mvu-schema-source.js';
 import { schemaExecutionServerTailSha256, schemaExecutionHostFrontierSha256 } from './roleplay-mvu-schema-replay.js';
-export const MVU_SCHEMA_STORY_PHASES = Object.freeze(['command-parsed', 'commands-parsed', 'update-ended']);
-export const isMvuSchemaGenesisHead = (head) => head.encoding === 'mvu-schema-opening-head-v2'
+export const isMvuSchemaGenesisHead = (head) => head.encoding === 'mvu-schema-opening-head-v3'
     || head.encoding === 'native-mvu-schema-derived-head-v1' || head.encoding === 'native-opening-variant-activation-head-v1';
 export function schemaStoryMaintenanceSource(plan) {
-    return plan.schemaVersion === 10 || plan.schemaVersion === 12 ? plan.maintenance : undefined;
+    return plan.schemaVersion === 13 ? plan.maintenance : undefined;
 }
 export const MVU_SCHEMA_STORY_BOUNDS = Object.freeze({ bytes: 16777216, depth: 66, nodes: 131072, narrativeBytes: 1048576 });
 export function freezeMvuSchemaStoryData(input) {
@@ -36,18 +35,6 @@ export const mvuSchemaStoryRevisionEventKey = (sid, id) => `${sid}__mvu-state-sc
 export const mvuSchemaStoryRevisionCompletionKey = (sid, descriptorSha) => `${sid}__mvu-state-schema-revision-completion-${descriptorSha}`;
 export const schemaStoryCode = (value) => typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,95}$/.test(value)
     ? value : 'SCHEMA_STORY_UNKNOWN';
-export function parseMvuSchemaStoryCandidateV2(narrative, parserPolicy) {
-    if (parserPolicy === 'analysis-alias-v1' || parserPolicy === 'analysis-alias-rfc6902-members-v1')
-        return parseMvuUpdateAnalysisAliasRegionV2(narrative, parserPolicy === 'analysis-alias-rfc6902-members-v1' ? { jsonPatchMembers: 'rfc6902' } : undefined).candidate;
-    return parseMvuUpdateV2(narrative);
-}
-export function parseMvuSchemaStoryCandidateData(narrative, parserPolicy) {
-    const parsed = parserPolicy ? parseMvuUpdateAnalysisAliasRegionV2(narrative, parserPolicy === 'analysis-alias-rfc6902-members-v1' ? { jsonPatchMembers: 'rfc6902' } : undefined) : parseMvuUpdateRegionV2(narrative);
-    return { candidate: parsed.candidate, ...parsed.syntax ? { commandSyntax: parsed.syntax } : {} };
-}
-export function mvuSchemaStoryCommandInfos(plan) {
-    return mvuCommandInfos(plan.canonical.narrative, plan.commandSyntax, plan.candidate.kind === 'parsed' ? plan.candidate.operations : []);
-}
 /** Browser DATA uses the upstream envelope. Native alone owns stat_data's
  * numerical writer; the remaining keys retain the existing metadata context. */
 export function mvuSchemaStoryVariables(values, context) {
@@ -60,9 +47,7 @@ export function mvuSchemaStoryVariableParts(variables) {
     return { values: cloneSchemaValues(stat_data), context };
 }
 export function mvuSchemaStoryExecutionPhases(event) {
-    if (!event.browser?.reconcile)
-        return event.phases;
-    return [...event.phases, event.browser.reconcile].sort((a, b) => a.association.dispatchMarker.seq - b.association.dispatchMarker.seq);
+    return event.phases;
 }
 const same = (a, b) => recordSha256(a) === recordSha256(b);
 const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -114,7 +99,7 @@ function frontier(value) {
 }
 export function validateMvuSchemaStoryHead(input) {
     const head = freezeMvuSchemaStoryData(input);
-    if (head.encoding === 'mvu-schema-opening-head-v2')
+    if (head.encoding === 'mvu-schema-opening-head-v3')
         return validateMvuSchemaOpeningHead(head);
     if (head.encoding === 'native-opening-variant-activation-head-v1') {
         exact(head, ['schemaVersion', 'encoding', 'sessionId', 'sourceSha256', 'revision', 'eventId', 'eventSha256',
@@ -138,7 +123,6 @@ export function validateMvuSchemaStoryHead(input) {
     if (!(head.schemaVersion === 2 && (head.encoding === 'native-mvu-schema-story-head-v2'
         || head.encoding === 'native-mvu-schema-story-revision-head-v2')
         || head.schemaVersion === 1 && (head.encoding === 'native-mvu-schema-player-head-v1'
-            || head.encoding === 'native-mvu-schema-story-revision-head-v1'
             || head.encoding === 'native-mvu-schema-player-revision-head-v1'
             || head.encoding === 'native-mvu-opening-variant-head-v1')) || !id(head.sessionId, 64)
         || !integer(head.revision, 2) || ![head.sourceSha256, head.eventId, head.eventSha256, head.planSha256, head.valuesSha256].every(hash))
@@ -163,7 +147,7 @@ function validateNumericalSnapshotUncached(input) {
         || recordSha256(cloneSchemaValues(value.values)) !== value.valuesSha256)
         fail();
     cloneSchemaValues(value.context);
-    if (head.encoding === 'mvu-schema-opening-head-v2') {
+    if (head.encoding === 'mvu-schema-opening-head-v3') {
         if (value.root.derived || head.eventId !== value.root.openingEventId || head.eventSha256 !== value.root.openingEventSha256
             || recordSha256(head) !== value.root.openingHeadSha256 || head.planSha256 !== value.root.openingPlanSha256)
             fail();
@@ -185,62 +169,95 @@ function validateNumericalSnapshotUncached(input) {
     return value;
 }
 export function deriveMvuSchemaStorySelectors(scope, canonical, realmEpoch) {
-    const supplied = freezeMvuSchemaStoryData({ scope, canonical, realmEpoch });
-    scope = supplied.scope;
-    canonical = supplied.canonical;
-    realmEpoch = supplied.realmEpoch;
     const anchor = { kind: 'story', preparationId: scope.currency.preparationId,
         attemptGeneration: scope.currency.attemptGeneration, receiptGeneration: scope.currency.receiptGeneration,
         turn: scope.receipt.checkpoint.actualTurn, canonicalSeq: canonical.seq, messageId: canonical.messageId,
         messageVersionSha256: canonical.versionSha256 };
     validateSchemaAnchor(anchor);
     const digest = recordSha256({ scope, canonical, realmEpoch });
-    return freezeMvuSchemaStoryData(MVU_SCHEMA_STORY_PHASES.map((phase, index) => ({
-        sessionId: scope.receipt.checkpoint.sessionId, batchId: `story-${digest}-${index + 1}`, anchor
-    })));
-}
-export function deriveMvuSchemaStoryRevisionSelectors(scope, canonical, realmEpoch, descriptor) {
-    return deriveMvuSchemaStorySelectors(scope, canonical, realmEpoch).map((selector, index) => ({ ...selector, batchId: `revision-${descriptor.sha256}-${index + 1}` }));
+    return freezeMvuSchemaStoryData([{ sessionId: scope.receipt.checkpoint.sessionId, batchId: `story-${digest}-1`, anchor }]);
 }
 export function deriveMvuSchemaStoryRevisionSelectorsV2(scope, canonical, realmEpoch, descriptor, index, sessionId) {
-    const supplied = freezeMvuSchemaStoryData({ scope, canonical, realmEpoch, descriptor, index, sessionId });
-    const anchor = { kind: 'story', preparationId: supplied.scope.currency.preparationId,
-        attemptGeneration: supplied.scope.currency.attemptGeneration, receiptGeneration: supplied.scope.currency.receiptGeneration,
-        turn: supplied.scope.receipt.checkpoint.actualTurn, canonicalSeq: supplied.canonical.seq, messageId: supplied.canonical.messageId,
-        messageVersionSha256: supplied.canonical.versionSha256 };
+    const anchor = { kind: 'story', preparationId: scope.currency.preparationId,
+        attemptGeneration: scope.currency.attemptGeneration, receiptGeneration: scope.currency.receiptGeneration,
+        turn: scope.receipt.checkpoint.actualTurn, canonicalSeq: canonical.seq, messageId: canonical.messageId,
+        messageVersionSha256: canonical.versionSha256 };
     validateSchemaAnchor(anchor);
-    return freezeMvuSchemaStoryData(MVU_SCHEMA_STORY_PHASES.map((_phase, phaseIndex) => ({
-        sessionId: supplied.sessionId, batchId: `revision2-${supplied.descriptor.sha256}-${supplied.index + 1}-${phaseIndex + 1}`, anchor
-    })));
+    return freezeMvuSchemaStoryData([{ sessionId, batchId: `revision2-${descriptor.sha256}-${index + 1}-1`, anchor }]);
 }
-export function validateMvuSchemaStoryPlan(input) {
-    const value = freezeMvuSchemaStoryData(input);
-    if (value.schemaVersion === 8 || value.schemaVersion === 11)
-        return validateStoryRevisionPlanV2(value);
-    exact(value, ['schemaVersion', 'encoding', 'scope', 'canonical', 'base', 'candidate', 'currentFrame', 'realmEpoch',
-        'programSha256', 'initialCut', 'clockEpochMs', 'randomSeed', 'selectors', 'planSha256',
-        'executorVersion', ...(value.schemaVersion === 12 ? ['scopeReadRef'] : ['scopeReadFrame']),
-        ...(value.schemaVersion >= 6 ? ['epoch', 'serverProgramSha256'] : []),
-        ...(value.schemaVersion === 10 ? ['maintenance'] : []),
-        ...(value.schemaVersion === 7 ? ['revision'] : [])], [
-        'errorPolicy', 'commandSyntax', ...(value.schemaVersion === 12 ? ['maintenance'] : []),
-        ...(value.schemaVersion === 6 || value.schemaVersion === 7 || value.schemaVersion === 10 || value.schemaVersion === 12 ? ['parserPolicy'] : [])
-    ]);
-    if ('errorPolicy' in value && value.errorPolicy !== 'registered-command-policy-v1'
-        && value.errorPolicy !== 'update-batch-atomic-v1')
+export function mvuSchemaStoryExecutionId(plan) {
+    return 'startSha256' in plan ? plan.startSha256 : plan.schemaVersion === 13 && plan.executionStart
+        ? plan.executionStart.sha256 : plan.planSha256;
+}
+export function mvuSchemaStorySelector(plan, stepOrdinal) {
+    if (!integer(stepOrdinal))
         fail();
-    if ('parserPolicy' in value && value.parserPolicy !== 'analysis-alias-v1'
-        && value.parserPolicy !== 'analysis-alias-rfc6902-members-v1')
+    const first = plan.selectors[0];
+    return { ...first, batchId: first.batchId.replace(/-1$/, `-${stepOrdinal + 1}`) };
+}
+export function mvuSchemaStoryUpdateInput(plan, index, phases, browser, interests, acceptedHook, macros) {
+    const updateId = mvuSchemaStoryExecutionId(plan);
+    if (index === 0)
+        return { schemaVersion: 1, encoding: 'native-mvu-196-update-start-v1', updateId,
+            message: plan.canonical.narrative, interests, ...macros ? { macros } : {},
+            ...'startSha256' in plan || plan.schemaVersion === 13 && plan.executionStart
+                || plan.schemaVersion === 14 && plan.taskEdit !== undefined ? { maintenance: true } : {} };
+    const previous = phases[index - 1]?.output;
+    if (previous?.kind !== 'accepted' || !('update' in previous) || !previous.update || previous.update.kind === 'complete')
+        fail();
+    if (previous.update.kind === 'native-commands-ready') {
+        let commands;
+        if (plan.schemaVersion === 14) {
+            if (!plan.taskEdit)
+                fail();
+            if (plan.taskEdit.mode === 'replace')
+                commands = previous.update.commands;
+            else {
+                if (plan.taskCommands === undefined)
+                    fail();
+                commands = plan.taskCommands;
+            }
+        }
+        else {
+            if (plan.schemaVersion !== 13 || !plan.maintenance || !plan.executionStart)
+                fail();
+            const canonical = previous.update.commands, proposal = plan.maintenance.result.variableCandidate;
+            commands = canonical.length ? canonical : proposal?.kind === 'commands' ? proposal.commands : [];
+        }
+        return { schemaVersion: 1, encoding: 'native-mvu-196-native-resume-v1', updateId,
+            yieldOrdinal: previous.update.yieldOrdinal, commands, interests };
+    }
+    const yielded = previous.update, lastHook = acceptedHook ?? browser?.hooks.at(-1), hook = lastHook?.request.yieldOrdinal === yielded.yieldOrdinal ? lastHook : undefined;
+    if (hook && (!('graph' in hook.result.output) || !hook.result.output.graph))
+        fail();
+    return { schemaVersion: 1, encoding: 'native-mvu-196-update-resume-v1', updateId,
+        yieldOrdinal: yielded.yieldOrdinal, graph: hook && 'graph' in hook.result.output ? hook.result.output.graph : yielded.graph,
+        ...hook?.result.contextWrites ? { contextWrites: hook.result.contextWrites } : {}, interests };
+}
+export function makeMvu196StoryRevisionPlan(input) {
+    return validateMvuSchemaStoryPlan(sealMvuSchemaStoryFact({ ...input, schemaVersion: 14,
+        encoding: 'native-mvu-196-story-revision-plan-v1', candidate: { schemaVersion: 1, kind: 'mvu-196' },
+        selectors: deriveMvuSchemaStoryRevisionSelectorsV2(input.scope, input.canonical, input.realmEpoch, input.revision.descriptor, input.revision.index, input.execution.sessionId),
+        randomSeed: recordSha256({ scope: input.scope, canonical: input.canonical, revision: input.revision.descriptor, index: input.revision.index }) }, 'planSha256'));
+}
+const validateStoryPlanDescriptor = createImmutableDescriptorValidator(validateStoryPlanUncached);
+export function validateMvuSchemaStoryPlan(input) {
+    return validateStoryPlanDescriptor(input);
+}
+function validateStoryPlanUncached(input) {
+    const value = freezeMvuSchemaStoryData(input);
+    if (value.schemaVersion === 14)
+        return validateStoryRevisionPlan(value);
+    exact(value, ['schemaVersion', 'encoding', 'scope', 'canonical', 'base', 'candidate', 'currentFrame', 'realmEpoch',
+        'programSha256', 'initialCut', 'clockEpochMs', 'randomSeed', 'selectors', 'planSha256', 'executorVersion',
+        'scopeReadRef', 'epoch', 'serverProgramSha256'], ['errorPolicy', 'maintenance', 'executionStart']);
+    if (value.errorPolicy !== undefined && value.errorPolicy !== 'registered-command-policy-v1'
+        && value.errorPolicy !== 'update-batch-atomic-v1')
         fail();
     fact(value, 'planSha256');
     validateMvuSchemaNumericalSnapshot(value.base);
     validateSchemaStorySourceFrame(value.currentFrame);
-    const scope = value.scope, currency = scope.currency, receipt = scope.receipt, canonical = value.canonical, frame = value.currentFrame;
-    const maintenance = schemaStoryMaintenanceSource(value);
-    const canonicalData = parseMvuSchemaStoryCandidateData(canonical.narrative, 'parserPolicy' in value ? value.parserPolicy : undefined);
-    const maintenanceCanonicalCandidate = maintenance ? canonicalData.candidate : undefined;
-    if (value.commandSyntax !== undefined && !same(value.commandSyntax, canonicalData.commandSyntax))
-        fail();
+    const { scope, canonical, currentFrame: frame } = value, { currency, receipt } = scope;
     exact(scope, ['currency', 'receipt', 'stopGeneration']);
     exact(currency, ['schemaVersion', 'preparationId', 'credentialSha256', 'receiptGeneration', 'attemptGeneration', 'source', 'snapshot']);
     exact(currency.snapshot, ['key', 'sha256']);
@@ -249,72 +266,48 @@ export function validateMvuSchemaStoryPlan(input) {
     exact(currency.source, ['kind', 'sourceSha256', 'headRef']);
     exact(currency.source.headRef, ['kind', 'sha256']);
     exact(canonical, ['seq', 'messageId', 'versionSha256', 'narrative', 'narrativeSha256']);
-    exact(frame, ['schemaVersion', 'encoding', 'sessionId', 'material', 'materialSha256', 'snapshot', 'snapshotSha256']);
-    const sourceSha = currency.source.sourceSha256;
-    if (!(value.schemaVersion === 5 && value.encoding === 'native-mvu-schema-story-plan-v5' && value.executorVersion === 4
-        || value.schemaVersion === 6 && value.encoding === 'native-mvu-schema-story-plan-v6' && value.executorVersion === 4
-        || value.schemaVersion === 10 && value.encoding === 'native-mvu-schema-story-plan-v10' && value.executorVersion === 4
-        || value.schemaVersion === 12 && value.encoding === 'native-mvu-schema-story-plan-v12-scope-ref-v2' && value.executorVersion === 4
-        || value.schemaVersion === 7 && value.encoding === 'native-mvu-schema-story-revision-plan-v1' && value.executorVersion === 4)
-        || currency.schemaVersion !== 2
-        || currency.source.kind !== 'story' || currency.source.headRef.kind !== 'schema-head'
+    if (value.schemaVersion !== 13 || value.encoding !== 'native-mvu-196-story-plan-v1' || value.executorVersion !== 4
+        || currency.schemaVersion !== 2 || currency.source.headRef.kind !== 'schema-head'
         || currency.source.headRef.sha256 !== value.base.stateSnapshotSha256
         || !id(currency.preparationId) || !hash(currency.credentialSha256)
         || !integer(currency.receiptGeneration, 1) || !integer(currency.attemptGeneration, 1) || !integer(scope.stopGeneration)
-        || !id(currency.snapshot.key, 512) || !hash(currency.snapshot.sha256) || !hash(sourceSha)
+        || !id(currency.snapshot.key, 512) || !hash(currency.snapshot.sha256)
         || receipt.schemaVersion !== 1 || receipt.flushed !== true || receipt.checkpoint.sessionId !== value.base.sessionId
         || receipt.checkpoint.preparation.credentialSha256 !== currency.credentialSha256
         || !integer(receipt.checkpoint.actualTurn, 1) || !integer(receipt.turnEndSeq) || !hash(receipt.turnEndSha256)
         || !integer(canonical.seq) || !id(canonical.messageId) || !hash(canonical.versionSha256)
         || canonical.seq >= receipt.turnEndSeq || typeof canonical.narrative !== 'string'
-        || Buffer.byteLength(canonical.narrative, 'utf8') > 1048576 || sha256(canonical.narrative) !== canonical.narrativeSha256
-        || sourceSha !== value.base.sourceSha256 || value.realmEpoch !== value.base.root.realmEpoch
+        || Buffer.byteLength(canonical.narrative, 'utf8') > MVU_SCHEMA_STORY_BOUNDS.narrativeBytes
+        || sha256(canonical.narrative) !== canonical.narrativeSha256
+        || currency.source.sourceSha256 !== value.base.sourceSha256 || value.realmEpoch !== value.base.root.realmEpoch
         || value.programSha256 !== value.base.root.programSha256 || !integer(value.clockEpochMs)
-        || value.randomSeed !== recordSha256(value.schemaVersion === 7
-            ? { scope, canonical, revision: value.revision.descriptor } : { scope, canonical }) || frame.schemaVersion !== 1
-        || frame.encoding !== 'native-mvu-schema-story-source-frame-v1' || frame.sessionId !== value.base.sessionId
-        || frame.snapshotSha256 !== frame.snapshot.snapshotSha256)
+        || frame.sessionId !== value.base.sessionId || !same(value.candidate, { schemaVersion: 1, kind: 'mvu-196' }))
         fail();
-    const { snapshotSha256, ...snapshotBody } = frame.snapshot;
-    if (snapshotSha256 !== recordSha256(snapshotBody))
-        fail();
+    const first = value.selectors[0], ordinary = deriveMvuSchemaStorySelectors(scope, canonical, value.realmEpoch);
     validateSchemaSourceCut(value.initialCut);
+    // Running cuts retain Native's Stop sequence. Completion currency carries
+    // its owner's independent revocation generation, including refused inputs.
     if (value.initialCut.sessionId !== value.base.sessionId || value.initialCut.ownerSessionId !== value.base.sessionId
-        || value.initialCut.nativeCut < receipt.turnEndSeq + 1 || value.initialCut.nativeCut < value.base.schemaFrontier.nativeCut
-        || value.initialCut.stopGeneration !== scope.stopGeneration
+        || value.initialCut.nativeCut <= canonical.seq || value.initialCut.nativeCut < value.base.schemaFrontier.nativeCut
         || value.initialCut.sourceSnapshotSha256 !== frame.snapshotSha256 || value.initialCut.materialSha256 !== frame.materialSha256
-        || !same(value.selectors, value.schemaVersion === 7
-            ? deriveMvuSchemaStoryRevisionSelectors(scope, canonical, value.realmEpoch, value.revision.descriptor)
-            : deriveMvuSchemaStorySelectors(scope, canonical, value.realmEpoch))
-        || !same(value.initialCut.anchor, value.selectors[0].anchor)
-        || !same(value.candidate, maintenance?.kind === 'task-result'
-            ? mvuSchemaMaintenanceTaskCandidate(maintenance.result) : maintenance
-            ? maintenanceCanonicalCandidate : canonicalData.candidate))
+        || value.selectors.length !== 1 || !first || first.sessionId !== value.base.sessionId
+        || !same(value.initialCut.anchor, ordinary[0].anchor) || !same(first.anchor, value.initialCut.anchor))
         fail();
-    if (maintenance)
-        validateMvuSchemaMaintenanceCandidateSourceV1(maintenance, { scope, canonical, base: value.base, canonicalCandidate: maintenanceCanonicalCandidate });
-    if (value.schemaVersion === 6 || value.schemaVersion === 7 || value.schemaVersion === 10 || value.schemaVersion === 12) {
-        exact(value.epoch, ['key', 'sha256']);
-        if (!id(value.epoch.key, 512) || !hash(value.epoch.sha256) || !hash(value.serverProgramSha256))
+    if (value.executionStart) {
+        revisionReference(value.executionStart);
+        if (!hash(value.randomSeed) || !id(first.batchId, 256))
             fail();
     }
-    if (value.schemaVersion === 7) {
-        exact(value.revision, ['descriptor', 'publicationRevision']);
-        exact(value.revision.descriptor, ['key', 'sha256']);
-        if (!id(value.revision.descriptor.key, 512) || !hash(value.revision.descriptor.sha256)
-            || !integer(value.revision.publicationRevision, value.base.revision + 1))
-            fail();
-    }
-    if (value.schemaVersion !== 12) {
-        const read = validateMvuScopeReadFrameV1(value.scopeReadFrame), source = frame.snapshot.source;
-        if (read.source.sessionId !== value.base.sessionId || read.source.sourceRecordSessionId !== source.sourceRecordSessionId
-            || read.source.importId !== source.importId || read.source.rawSha256 !== source.rawSha256
-            || read.source.sourceSnapshotSha256 !== frame.snapshotSha256
-            || read.sourceNativeCutSha256 !== recordSha256(value.initialCut))
-            fail();
-    }
-    if (value.schemaVersion === 12 && validateMvuScopeReadRefV2(value.scopeReadRef).sourceNativeCutSha256 !== recordSha256(value.initialCut))
+    else if (value.initialCut.nativeCut < receipt.turnEndSeq + 1 || !same(value.selectors, ordinary)
+        || value.randomSeed !== recordSha256({ scope, canonical }))
         fail();
+    revisionReference(value.epoch);
+    if (!hash(value.serverProgramSha256))
+        fail();
+    if (validateMvuScopeReadRefV2(value.scopeReadRef).sourceNativeCutSha256 !== recordSha256(value.initialCut))
+        fail();
+    if (value.maintenance)
+        validateMvuSchemaMaintenanceCandidateSourceV1(value.maintenance, { scope, canonical, base: value.base });
     return value;
 }
 /** Validated reference DATA may advance its Native cut without changing the
@@ -324,23 +317,17 @@ export function schemaScopeReadRefFactsEqualV2(left, right) {
         && left.baseRef.sha256 === right.baseRef.sha256 && left.tailRef.ownerSessionId === right.tailRef.ownerSessionId
         && left.tailRef.key === right.tailRef.key && left.tailRef.sha256 === right.tailRef.sha256;
 }
-function validateStoryRevisionPlanV2(value) {
+function validateStoryRevisionPlan(value) {
     exact(value, ['schemaVersion', 'encoding', 'scope', 'canonical', 'base', 'candidate', 'currentFrame', 'realmEpoch',
         'programSha256', 'initialCut', 'clockEpochMs', 'randomSeed', 'selectors', 'planSha256', 'executorVersion',
-        'scopeReadFrame', 'epoch', 'serverProgramSha256', 'revision', 'execution', 'logicalNativeCut',
-        ...(value.schemaVersion === 11 ? ['taskEdit'] : [])], ['errorPolicy', 'parserPolicy', 'commandSyntax']);
-    if ('errorPolicy' in value && value.errorPolicy !== 'registered-command-policy-v1'
+        'scopeReadFrame', 'epoch', 'serverProgramSha256', 'revision', 'execution', 'logicalNativeCut'], ['errorPolicy', 'ordinaryScopes', 'taskEdit', 'taskCommands']);
+    if (value.errorPolicy !== undefined && value.errorPolicy !== 'registered-command-policy-v1'
         && value.errorPolicy !== 'update-batch-atomic-v1')
-        fail();
-    if ('parserPolicy' in value && value.parserPolicy !== 'analysis-alias-v1'
-        && value.parserPolicy !== 'analysis-alias-rfc6902-members-v1')
         fail();
     fact(value, 'planSha256');
     validateMvuSchemaNumericalSnapshot(value.base);
     validateSchemaStorySourceFrame(value.currentFrame);
-    const { scope, canonical, currentFrame: frame, execution, revision } = value, currency = scope.currency, receipt = scope.receipt;
-    if (value.commandSyntax !== undefined && !same(value.commandSyntax, parseMvuSchemaStoryCandidateData(canonical.narrative, value.parserPolicy).commandSyntax))
-        fail();
+    const { scope, canonical, currentFrame: frame, execution, revision } = value, { currency, receipt } = scope;
     exact(scope, ['currency', 'receipt', 'stopGeneration']);
     exact(currency, ['schemaVersion', 'preparationId', 'credentialSha256', 'receiptGeneration', 'attemptGeneration', 'source', 'snapshot']);
     exact(currency.snapshot, ['key', 'sha256']);
@@ -354,8 +341,7 @@ function validateStoryRevisionPlanV2(value) {
     revisionReference(revision.descriptor);
     revisionReference(value.epoch);
     root(execution.root);
-    if (!(value.schemaVersion === 8 && value.encoding === 'native-mvu-schema-story-revision-plan-v2'
-        || value.schemaVersion === 11 && value.encoding === 'native-mvu-schema-story-revision-plan-v3') || value.executorVersion !== 4
+    if (value.schemaVersion !== 14 || value.encoding !== 'native-mvu-196-story-revision-plan-v1' || value.executorVersion !== 4
         || currency.schemaVersion !== 2 || currency.source.headRef.kind !== 'schema-head' || !hash(currency.source.headRef.sha256)
         || !id(currency.preparationId) || !hash(currency.credentialSha256) || !hash(currency.source.sourceSha256)
         || !integer(currency.receiptGeneration, 1) || !integer(currency.attemptGeneration, 1) || !integer(scope.stopGeneration)
@@ -373,32 +359,31 @@ function validateStoryRevisionPlanV2(value) {
         || !integer(revision.index) || !integer(revision.publicationRevision, 2) || !integer(value.logicalNativeCut)
         || !integer(value.clockEpochMs) || !hash(value.serverProgramSha256)
         || value.randomSeed !== recordSha256({ scope, canonical, revision: revision.descriptor, index: revision.index })
-        || frame.sessionId !== execution.sessionId)
+        || frame.sessionId !== execution.sessionId || !same(value.candidate, { schemaVersion: 1, kind: 'mvu-196' }))
         fail();
     validateSchemaSourceCut(value.initialCut);
     if (value.initialCut.sessionId !== execution.sessionId || value.initialCut.ownerSessionId !== execution.sessionId
         || value.initialCut.nativeCut < receipt.turnEndSeq + 1 || value.initialCut.nativeCut < value.base.schemaFrontier.nativeCut
         || value.initialCut.sourceSnapshotSha256 !== frame.snapshotSha256 || value.initialCut.materialSha256 !== frame.materialSha256
-        || !same(value.selectors, deriveMvuSchemaStoryRevisionSelectorsV2(scope, canonical, value.realmEpoch, revision.descriptor, revision.index, execution.sessionId))
-        || !same(value.initialCut.anchor, value.selectors[0].anchor))
+        || !same(value.selectors, deriveMvuSchemaStoryRevisionSelectorsV2(scope, canonical, value.realmEpoch, revision.descriptor, revision.index, execution.sessionId)) || !same(value.initialCut.anchor, value.selectors[0].anchor))
         fail();
-    if (value.schemaVersion === 11) {
+    if (value.taskEdit) {
         const selected = value.taskEdit;
         exact(selected, ['canonicalSeq', 'originEventRef', 'sourceEventRef', 'effectiveKind', 'mode', 'intent', 'binding']);
         revisionReference(selected.intent);
         revisionReference(selected.binding);
         validateSchemaTaskArtifactV1(selected);
-        if (selected.canonicalSeq !== canonical.seq)
-            fail();
-        const parsed = parseMvuSchemaStoryCandidateV2(canonical.narrative, value.parserPolicy);
-        const expected = selected.mode === 'retain' ? value.candidate : selected.mode === 'clear'
-            ? parseMvuSchemaStoryCandidateV2('', value.parserPolicy) : parsed;
-        if (!['retain', 'replace', 'clear'].includes(selected.mode) || !same(value.candidate, expected)
-            || selected.mode === 'replace' && parsed.kind !== 'parsed')
+        if (selected.canonicalSeq !== canonical.seq || !['retain', 'replace', 'clear'].includes(selected.mode)
+            || (selected.mode !== 'replace') !== Object.hasOwn(value, 'taskCommands'))
             fail();
     }
-    else if (!same(value.candidate, parseMvuSchemaStoryCandidateV2(canonical.narrative, value.parserPolicy)))
+    else if (Object.hasOwn(value, 'taskCommands'))
         fail();
+    if (Object.hasOwn(value, 'taskCommands')) {
+        assertMvu196CommandsV1(value.taskCommands);
+        if (value.taskEdit.mode === 'clear' && value.taskCommands.length)
+            fail();
+    }
     const read = validateMvuScopeReadFrameV1(value.scopeReadFrame), source = frame.snapshot.source;
     if (read.source.sessionId !== execution.sessionId || read.source.sourceRecordSessionId !== source.sourceRecordSessionId
         || read.source.importId !== source.importId || read.source.rawSha256 !== source.rawSha256
@@ -407,128 +392,36 @@ function validateStoryRevisionPlanV2(value) {
         fail();
     return value;
 }
-/** Replay consumes normalized values without reapplying the accepted base. */
-export function mvuSchemaStoryPhaseInput(plan, index, phases, bridge, scopeReadFrame, scopeReadRef, browser) {
-    if (plan.schemaVersion !== 12 && scopeReadRef !== undefined)
+/** Each input continues the one actual updater suspended by the preceding output. */
+export function mvuSchemaStoryPhaseInput(plan, index, phases, scopeReadFrame, scopeReadRef, browser, interests = [], acceptedHook, macros) {
+    const referenced = plan.schemaVersion !== 14, reference = referenced ? validateMvuScopeReadRefV2(scopeReadRef ?? plan.scopeReadRef) : undefined, read = plan.schemaVersion === 14 ? validateMvuScopeReadFrameV1(scopeReadFrame ?? plan.scopeReadFrame) : undefined;
+    if (phases.length < index || referenced && (scopeReadFrame || !schemaScopeReadRefFactsEqualV2(reference, plan.scopeReadRef))
+        || plan.schemaVersion === 14 && (scopeReadRef || !schemaScopeReadFactsEqual(read, plan.scopeReadFrame)))
         fail();
-    if (!integer(index) || index >= MVU_SCHEMA_STORY_PHASES.length || phases.length < index)
-        fail();
-    let read, reference;
-    if (plan.schemaVersion === 12) {
-        if (scopeReadFrame !== undefined)
-            fail();
-        reference = validateMvuScopeReadRefV2(scopeReadRef ?? plan.scopeReadRef);
-        if (!schemaScopeReadRefFactsEqualV2(reference, plan.scopeReadRef))
-            fail();
-    }
-    else {
-        read = validateMvuScopeReadFrameV1(scopeReadFrame ?? plan.scopeReadFrame);
-        if (!schemaScopeReadFactsEqual(read, plan.scopeReadFrame))
-            fail();
-    }
-    let values = plan.base.values, commands = [], context = plan.base.context;
-    if (index === 0) {
-        commands = plan.candidate.kind === 'parsed' ? plan.candidate.operations : [];
-        const commandHook = browser?.hooks.find(hook => hook.request.stage === 'command-parsed');
-        if (commandHook) {
-            if (commandHook.result.stage !== 'command-parsed' || commandHook.request.stage !== 'command-parsed')
-                fail();
-            const parts = mvuSchemaStoryVariableParts(commandHook.result.output.variables);
-            values = parts.values;
-            context = parts.context;
-            if (!same(commandHook.result.output.commands, commandHook.request.payload.commands))
-                commands = mvuOperationsFromCommandInfos(commandHook.result.output.commands);
-        }
-    }
-    else {
-        const previous = phases[index - 1];
-        if ((previous.input.encoding === 'native-mvu-author-schema-phase-input-v4-scope-ref-v2') !== (plan.schemaVersion === 12))
-            fail();
-        const accepted = validateSchemaGuestOutputV4(previous.output, validateSchemaEvaluationInputV4(previous.input));
-        if (accepted.kind !== 'accepted')
-            fail();
-        context = accepted.context;
-        commands = accepted.commands;
-        if (index === 1) {
-            if (!bridge || bridge.result.kind !== 'prepared')
-                fail();
-            values = bridge.result.values;
-        }
-        else {
-            values = accepted.values;
-            const ended = browser?.hooks.find(hook => hook.request.stage === 'update-ended');
-            if (ended) {
-                if (ended.result.stage !== 'update-ended')
-                    fail();
-                const parts = mvuSchemaStoryVariableParts(ended.result.output.variables);
-                values = parts.values;
-                context = parts.context;
-                if (browser?.reconcile) {
-                    if (browser.reconcile.output.kind !== 'accepted')
-                        fail();
-                    values = browser.reconcile.output.values;
-                    context = browser.reconcile.output.context;
-                }
-            }
-        }
-    }
-    return freezeMvuSchemaStoryData(validateSchemaEvaluationInputV4({ schemaVersion: 4,
-        ...(plan.schemaVersion === 12 ? { encoding: 'native-mvu-author-schema-phase-input-v4-scope-ref-v2', scopeReadRef: reference } :
-            { encoding: 'native-mvu-author-schema-phase-input-v4', scopeReadFrame: read }),
-        commandsEncoding: 'native-mvu-update-operations-v2', errorPolicy: plan.errorPolicy ?? 'atomic-refusal',
-        phase: MVU_SCHEMA_STORY_PHASES[index], base: plan.base.values,
-        values, commands, context, clockEpochMs: plan.clockEpochMs, randomSeed: plan.randomSeed }));
-}
-export function mvuSchemaStoryReducerBridge(first) {
-    if (first.phase !== 'command-parsed' || first.output.kind !== 'accepted')
-        fail();
-    const input = validateSchemaEvaluationInputV4(first.input);
-    if (input.phase !== 'command-parsed')
-        fail();
-    const output = validateSchemaGuestOutputV4(first.output, input);
-    if (output.kind !== 'accepted')
-        fail();
-    // Native journal already binds this exact output to its execution plan.
-    // The bridge consumes the accepted values without applying commands again.
-    return sealMvuSchemaStoryFact({ schemaVersion: 2, encoding: 'native-mvu-schema-story-reducer-bridge-v2',
-        phaseOutputSha256: recordSha256(first.output), result: reduceMvuUpdateOperationsV2(output.values, []) }, 'bridgeSha256');
+    const previous = phases[index - 1]?.output, accepted = previous?.kind === 'accepted' ? previous : undefined;
+    return validateSchemaEvaluationInputV4({ schemaVersion: 4, ...reference
+            ? { encoding: 'native-mvu-author-schema-phase-input-v4-scope-ref-v2', scopeReadRef: reference }
+            : { encoding: 'native-mvu-author-schema-phase-input-v4', scopeReadFrame: read },
+        errorPolicy: plan.errorPolicy ?? 'atomic-refusal', phase: 'update-core',
+        base: plan.base.values, values: accepted?.values ?? plan.base.values, context: accepted?.context ?? plan.base.context,
+        clockEpochMs: plan.clockEpochMs, randomSeed: plan.randomSeed,
+        update: mvuSchemaStoryUpdateInput(plan, index, phases, browser, interests, acceptedHook, macros) });
 }
 function association(value, plan, index) {
-    const selector = index === 3 ? mvuSchemaStoryReconcileSelector(plan) : plan.selectors[index];
-    if (plan.schemaVersion === 6 || plan.schemaVersion === 7 || plan.schemaVersion === 8 || plan.schemaVersion === 10 || plan.schemaVersion === 11 || plan.schemaVersion === 12) {
-        if (value.schemaVersion !== 5)
-            fail();
-        exact(value, ['schemaVersion', 'encoding', 'sessionId', 'realmEpoch', 'batchId', 'anchor', 'sourceNativeCutSha256',
-            'combinedProgramSha256', 'serverProgramSha256', 'epoch', 'dispatch', 'completion', 'dispatchMarker', 'completionMarker',
-            'serverTailSha256', 'hostFrontierSha256', 'outputSha256']);
-        if (value.encoding !== 'native-author-host-association-v5' || value.sessionId !== selector.sessionId
-            || value.realmEpoch !== plan.realmEpoch || value.combinedProgramSha256 !== plan.programSha256
-            || value.serverProgramSha256 !== plan.serverProgramSha256 || !same(value.epoch, plan.epoch)
-            || value.batchId !== selector.batchId || !same(value.anchor, selector.anchor)
-            || ![value.sourceNativeCutSha256, value.serverTailSha256, value.hostFrontierSha256, value.outputSha256].every(hash))
-            fail();
-        for (const ref of [value.epoch, value.dispatch, value.completion]) {
-            exact(ref, ['key', 'sha256']);
-            if (!id(ref.key, 512) || !hash(ref.sha256))
-                fail();
-        }
-    }
-    else {
-        if (value.schemaVersion !== 1)
-            fail();
-        exact(value, ['schemaVersion', 'encoding', 'sessionId', 'realmEpoch', 'batchId', 'anchor', 'sourceNativeCutSha256',
-            'programSha256', 'dispatch', 'completion', 'dispatchMarker', 'completionMarker', 'tailSha256', 'frontierSha256', 'outputSha256']);
-        if (value.encoding !== 'native-mvu-schema-execution-association-v1'
-            || value.sessionId !== selector.sessionId || value.realmEpoch !== plan.realmEpoch || value.programSha256 !== plan.programSha256
-            || value.batchId !== selector.batchId || !same(value.anchor, selector.anchor)
-            || ![value.sourceNativeCutSha256, value.tailSha256, value.frontierSha256, value.outputSha256].every(hash))
-            fail();
-        for (const ref of [value.dispatch, value.completion]) {
-            exact(ref, ['key', 'sha256']);
-            if (!id(ref.key, 512) || !hash(ref.sha256))
-                fail();
-        }
-    }
+    const selector = mvuSchemaStorySelector(plan, index);
+    if (value.schemaVersion !== 5)
+        fail();
+    exact(value, ['schemaVersion', 'encoding', 'sessionId', 'realmEpoch', 'batchId', 'anchor', 'sourceNativeCutSha256',
+        'combinedProgramSha256', 'serverProgramSha256', 'epoch', 'dispatch', 'completion', 'dispatchMarker', 'completionMarker',
+        'serverTailSha256', 'hostFrontierSha256', 'outputSha256']);
+    if (value.encoding !== 'native-author-host-association-v5' || value.sessionId !== selector.sessionId
+        || value.realmEpoch !== plan.realmEpoch || value.combinedProgramSha256 !== plan.programSha256
+        || value.serverProgramSha256 !== plan.serverProgramSha256 || !same(value.epoch, plan.epoch)
+        || value.batchId !== selector.batchId || !same(value.anchor, selector.anchor)
+        || ![value.sourceNativeCutSha256, value.serverTailSha256, value.hostFrontierSha256, value.outputSha256].every(hash))
+        fail();
+    for (const ref of [value.epoch, value.dispatch, value.completion])
+        revisionReference(ref);
     for (const marker of [value.dispatchMarker, value.completionMarker]) {
         exact(marker, ['seq', 'sha256']);
         if (!integer(marker.seq) || !hash(marker.sha256))
@@ -536,18 +429,6 @@ function association(value, plan, index) {
     }
     if (value.completionMarker.seq !== value.dispatchMarker.seq + 1)
         fail();
-}
-export function mvuSchemaStoryReconcileSelector(plan) {
-    return { ...plan.selectors[2], batchId: `story-${recordSha256({ scope: plan.scope, canonical: plan.canonical,
-            realmEpoch: plan.realmEpoch })}-hook-reconcile` };
-}
-export function mvuSchemaStoryReconcileInput(plan, previous, hook) {
-    if (hook.result.stage !== 'update-ended')
-        fail();
-    const { values, context } = mvuSchemaStoryVariableParts(hook.result.output.variables);
-    return validateSchemaEvaluationInputV4({ ...previous.input,
-        ...plan.schemaVersion === 12 ? { scopeReadRef: plan.scopeReadRef } : { scopeReadFrame: plan.scopeReadFrame },
-        phase: 'hook-reconcile', values, context, commands: [] });
 }
 function browserFinal(plan, phases, browser) {
     const last = mvuSchemaStoryExecutionPhases({ phases, browser }).at(-1), before = browser?.hooks.find(hook => hook.result.stage === 'before-message-update');
@@ -559,114 +440,142 @@ function browserFinal(plan, phases, browser) {
             tailSha256: schemaExecutionServerTailSha256(last.association),
             frontierSha256: schemaExecutionHostFrontierSha256(last.association) } };
 }
-function validateBrowserExecution(plan, phases, browser) {
-    exact(browser, ['schemaVersion', 'hooks', 'finalizedMessage'], ['reconcile']);
-    if (browser.schemaVersion !== 1 || !Array.isArray(browser.hooks) || !browser.hooks.length || browser.hooks.length > 3
-        || typeof browser.finalizedMessage !== 'string' || Buffer.byteLength(browser.finalizedMessage, 'utf8') > 1048576)
-        fail();
-    const names = ['command-parsed', 'update-ended', 'before-message-update'], seen = new Set();
-    let lastStage = -1;
-    for (const hook of browser.hooks) {
-        exact(hook, ['schemaVersion', 'request', 'result', 'journal', 'frontier']);
-        const { request, result, journal } = hook, stage = names.indexOf(request.stage);
-        if (hook.schemaVersion !== 1 || stage <= lastStage || seen.has(request.stage) || request.stage !== result.stage
-            || request.sessionId !== plan.base.sessionId || request.planSha256 !== plan.planSha256
-            || !same(request.target, { kind: 'message', ownerSessionId: plan.base.sessionId, nativeSeq: plan.canonical.seq,
-                messageId: plan.canonical.messageId, messageVersionSha256: plan.canonical.versionSha256 }))
+function validateMvu196StoryExecution(plan, phases, browser) {
+    if (browser) {
+        exact(browser, ['schemaVersion', 'hooks', 'finalizedMessage']);
+        if (browser.schemaVersion !== 1 || !Array.isArray(browser.hooks) || !browser.hooks.length)
             fail();
-        lastStage = stage;
-        seen.add(request.stage);
+    }
+    let cut = plan.initialCut.nativeCut, hookIndex = 0, yieldOrdinal = 0, resumeHook;
+    const consumeHook = (hook) => {
+        exact(hook, ['schemaVersion', 'request', 'result', 'journal', 'frontier']);
+        const { request, result, journal } = hook;
+        if (hook.schemaVersion !== 1 || request.sessionId !== (plan.schemaVersion === 14 ? plan.execution.sessionId : plan.base.sessionId) || request.planSha256 !== mvuSchemaStoryExecutionId(plan)
+            || request.stage !== result.stage || !same(request.target, { kind: 'message', ownerSessionId: plan.base.sessionId,
+            nativeSeq: plan.canonical.seq, messageId: plan.canonical.messageId, messageVersionSha256: plan.canonical.versionSha256 }))
+            fail();
         validateSchemaJournalRecord(journal.dispatch);
         validateSchemaJournalRecord(journal.completion);
         if (!same(request, journal.dispatch.request) || !same(result, journal.completion.result)
             || journal.dispatchRef.sha256 !== journal.dispatch.recordSha256 || journal.completionRef.sha256 !== journal.completion.recordSha256
             || !same(journal.completion.dispatch, journal.dispatchRef) || !same(journal.completion.dispatchMarker, journal.dispatchMarker)
-            || journal.completionMarker.seq <= journal.dispatchMarker.seq || journal.dispatch.realmEpoch !== plan.realmEpoch
+            || journal.dispatchMarker.seq < cut || journal.completionMarker.seq <= journal.dispatchMarker.seq
+            || journal.dispatch.sourceNativeCut.nativeCut !== journal.dispatchMarker.seq || journal.dispatch.realmEpoch !== plan.realmEpoch
             || journal.dispatch.sourceNativeCut.sourceSnapshotSha256 !== plan.currentFrame.snapshotSha256
             || journal.dispatch.sourceNativeCut.materialSha256 !== plan.currentFrame.materialSha256
             || !same(journal.dispatch.sourceNativeCut.anchor, plan.selectors[0].anchor))
             fail();
         frontier(hook.frontier);
-        if (hook.frontier.nativeCut !== journal.completionMarker.seq + 1
-            || request.stage === 'command-parsed' && !same(request.payload, { variables: mvuSchemaStoryVariables(plan.base.values, plan.base.context),
-                commands: mvuSchemaStoryCommandInfos(plan), message_content: plan.canonical.narrative }))
+        if (hook.frontier.nativeCut !== journal.completionMarker.seq + 1)
             fail();
-        if (request.stage === 'update-ended') {
-            const output = phases[1]?.output;
-            if (output?.kind !== 'accepted' || !same(request.payload, { variables: mvuSchemaStoryVariables(output.values, output.context),
-                variables_before_update: mvuSchemaStoryVariables(plan.base.values, plan.base.context) }))
+        cut = journal.completionMarker.seq + 1;
+        hookIndex++;
+    };
+    for (const [index, phase] of phases.entries()) {
+        exact(phase, ['phase', 'input', 'association', 'output']);
+        const input = validateSchemaEvaluationInputV4(phase.input);
+        if (!input.update)
+            fail();
+        if (plan.schemaVersion === 13) {
+            if (input.encoding !== 'native-mvu-author-schema-phase-input-v4-scope-ref-v2'
+                || !schemaScopeReadRefFactsEqualV2(input.scopeReadRef, plan.scopeReadRef)
+                || input.scopeReadRef.sourceNativeCutSha256 !== phase.association.sourceNativeCutSha256)
                 fail();
         }
-        if (request.stage === 'before-message-update') {
-            const output = phases[2]?.output;
-            if (output?.kind !== 'accepted' || !same(request.payload, { context: { variables: mvuSchemaStoryVariables(output.values, output.context),
+        else if (input.encoding !== 'native-mvu-author-schema-phase-input-v4'
+            || !schemaScopeReadFactsEqual(input.scopeReadFrame, plan.scopeReadFrame)
+            || input.scopeReadFrame.sourceNativeCutSha256 !== phase.association.sourceNativeCutSha256)
+            fail();
+        const output = validateSchemaGuestOutputV4(phase.output, input);
+        association(phase.association, plan, index);
+        if (phase.phase !== 'update-core' || phase.association.dispatchMarker.seq < cut
+            || phase.association.outputSha256 !== recordSha256(output)
+            || !same(input, mvuSchemaStoryPhaseInput(plan, index, phases, input.scopeReadFrame, input.scopeReadRef, undefined, input.update.interests, resumeHook, input.update.encoding === 'native-mvu-196-update-start-v1' ? input.update.macros : undefined)))
+            fail();
+        if (index === 0 && (phase.association.dispatchMarker.seq !== plan.initialCut.nativeCut
+            || phase.association.sourceNativeCutSha256 !== recordSha256(plan.initialCut)))
+            fail();
+        cut = phase.association.completionMarker.seq + 1;
+        if (output.kind === 'refused') {
+            if (index !== phases.length - 1)
+                fail();
+            break;
+        }
+        if (!output.update || output.update.updateId !== mvuSchemaStoryExecutionId(plan))
+            fail();
+        if (output.update.kind === 'complete') {
+            if (index !== phases.length - 1)
+                fail();
+            break;
+        }
+        if (index === phases.length - 1 || output.update.yieldOrdinal !== yieldOrdinal++)
+            fail();
+        resumeHook = undefined;
+        if (output.update.kind === 'native-commands-ready')
+            continue;
+        const hook = browser?.hooks[hookIndex];
+        if (hook?.request.yieldOrdinal === output.update.yieldOrdinal) {
+            const { readVariables: _readVariables, ...payload } = hook.request.payload;
+            if (hook.request.stage !== output.update.stage || !same(payload, { graph: output.update.graph })
+                || !('graph' in hook.result.output) || !hook.result.output.graph)
+                fail();
+            consumeHook(hook);
+            resumeHook = hook;
+        }
+    }
+    const before = browser?.hooks[hookIndex], last = phases.at(-1).output;
+    if (before) {
+        const { readVariables: _readVariables, ...payload } = before.request.payload;
+        if (last.kind !== 'accepted' || !('update' in last) || last.update?.kind !== 'complete'
+            || before.request.stage !== 'before-message-update' || before.request.yieldOrdinal !== undefined
+            || !same(payload, { context: { variables: mvuSchemaStoryVariables(last.values, last.context),
                     message_content: plan.canonical.narrative } }))
-                fail();
-        }
-        mvuSchemaStoryVariableParts(result.stage === 'before-message-update' ? result.output.context.variables : result.output.variables);
+            fail();
+        consumeHook(before);
     }
-    const ended = browser.hooks.find(hook => hook.result.stage === 'update-ended'), before = browser.hooks.at(-1);
-    const endedChanged = ended?.result.stage === 'update-ended' && phases[1]?.output.kind === 'accepted'
-        && !same(mvuSchemaStoryVariableParts(ended.result.output.variables).values, phases[1].output.values);
-    if (!!browser.reconcile !== !!endedChanged)
+    if (hookIndex !== (browser?.hooks.length ?? 0))
         fail();
-    if (browser.reconcile) {
-        const step = browser.reconcile;
-        association(step.association, plan, 3);
-        const expected = mvuSchemaStoryReconcileInput(plan, phases[1], ended);
-        const captured = step.input.encoding === 'native-mvu-author-schema-phase-input-v4-scope-ref-v2'
-            ? { ...expected, scopeReadRef: step.input.scopeReadRef } : { ...expected, scopeReadFrame: step.input.scopeReadFrame };
-        if (step.phase !== 'hook-reconcile' || !same(step.input, captured))
-            fail();
-        validateSchemaGuestOutputV4(step.output, validateSchemaEvaluationInputV4(step.input));
-        if (step.output.kind === 'refused' && phases.length !== 2)
-            fail();
-    }
-    if (browser.finalizedMessage !== (before.result.stage === 'before-message-update'
+    if (browser && browser.finalizedMessage !== (before?.result.stage === 'before-message-update'
         ? before.result.output.context.message_content : plan.canonical.narrative))
         fail();
-    const command = browser.hooks.find(hook => hook.request.stage === 'command-parsed'), ending = browser.hooks.find(hook => hook.request.stage === 'update-ended'), beforeMessage = browser.hooks.find(hook => hook.request.stage === 'before-message-update');
-    const markers = [command?.journal, phases[0]?.association, phases[1]?.association, ending?.journal,
-        browser.reconcile?.association, phases[2]?.association, beforeMessage?.journal].filter(item => item !== undefined);
-    let cut = plan.initialCut.nativeCut;
-    for (const item of markers) {
-        if (item.dispatchMarker.seq !== cut || item.completionMarker.seq <= cut)
-            fail();
-        cut = item.completionMarker.seq + 1;
+}
+export function mvuSchemaStoryContextWrites(phases, browser) {
+    const keys = new Set(['stat_data']);
+    const writes = [...phases.map(phase => phase.output.kind === 'accepted' ? phase.output.contextWrites : undefined),
+        ...browser?.hooks.map(hook => hook.result.contextWrites) ?? []];
+    for (const write of writes) {
+        if (write?.kind === 'replace')
+            return { schemaVersion: 1, kind: 'replace' };
+        for (const key of write?.keys ?? [])
+            keys.add(key);
     }
+    return { schemaVersion: 1, kind: 'keys', keys: [...keys] };
 }
-export function mvuSchemaStoryEvent(plan, phases, reducer, browser) {
-    return storyEvent(plan, phases, reducer, false, browser);
+export function mvuSchemaStoryEvent(plan, phases, browser, ordinaryScopes) {
+    return storyEvent(plan, phases, browser, ordinaryScopes);
 }
-export function mvuSchemaStoryRevisionEvent(plan, phases, reducer) {
-    return storyEvent(plan, phases, reducer, true);
+export function mvuSchemaStoryRevisionEvent(plan, phases, browser, ordinaryScopes) {
+    const writes = mvuSchemaStoryContextWrites(phases, browser), basis = plan.ordinaryScopes, publication = ordinaryScopes ?? (basis ? { schemaVersion: 1, scopes: basis.scopes.map(scope => ({ ...scope,
+            kind: writes.kind, ...writes.kind === 'keys' ? { keys: writes.keys } : {} })) } : undefined);
+    return storyEvent(plan, phases, browser, publication);
 }
-function storyEvent(plan, phases, reducer, revision, browser) {
+function storyEvent(plan, phases, browser, ordinaryScopes) {
     if (!phases.length)
         fail();
-    const last = phases.at(-1), guestRefused = last.output.kind === 'refused' || browser?.reconcile?.output.kind === 'refused', refused = guestRefused || reducer?.result.kind === 'rejected';
-    if (!refused && phases.length !== 3)
+    const last = phases.at(-1), refused = last.output.kind === 'refused';
+    if (!refused && (last.output.kind !== 'accepted' || !('update' in last.output) || last.output.update?.kind !== 'complete'))
         fail();
-    const final = browserFinal(plan, phases, browser);
-    const values = refused ? plan.base.values : final.values;
-    const context = refused ? plan.base.context : final.context;
-    const valuesSha256 = recordSha256(values), outcome = refused ? 'refused' : valuesSha256 === plan.base.valuesSha256 ? 'no-update' : 'accepted';
-    const revisionV2 = revision && (plan.schemaVersion === 8 || plan.schemaVersion === 11), execution = revisionV2 ? plan.execution : plan.base;
-    return sealMvuSchemaStoryFact({ schemaVersion: revisionV2 ? 2 : revision ? 1 : 2,
-        encoding: revisionV2 ? 'native-mvu-schema-story-revision-event-v2'
-            : revision ? 'native-mvu-schema-story-revision-event-v1' : 'native-mvu-schema-story-event-v2',
+    const final = browserFinal(plan, phases, browser), values = refused ? plan.base.values : final.values, context = refused ? plan.base.context : final.context, valuesSha256 = recordSha256(values), revision = plan.schemaVersion === 14, ordinaryWrite = ordinaryScopes?.scopes.some(scope => scope.kind === 'replace' || scope.keys?.some(key => key !== 'stat_data')), outcome = refused ? 'refused' : valuesSha256 === plan.base.valuesSha256 && same(context, plan.base.context) && !ordinaryWrite ? 'no-update' : 'accepted', execution = revision ? plan.execution : plan.base;
+    return sealMvuSchemaStoryFact({ schemaVersion: 2,
+        encoding: revision ? 'native-mvu-schema-story-revision-event-v2' : 'native-mvu-schema-story-event-v2',
         sessionId: execution.sessionId, sourceSha256: execution.sourceSha256,
-        eventId: recordSha256({ encoding: revisionV2 ? 'native-mvu-schema-story-revision-event-identity-v2'
-                : revision ? 'native-mvu-schema-story-revision-event-identity-v1' :
-                    'native-mvu-schema-story-event-identity-v2', planSha256: plan.planSha256 }),
-        plan, phases, reducer, ...browser ? { browser } : {}, outcome, refusal: refused ? (guestRefused ? 'guest' : 'reducer') : null,
-        values, valuesSha256, context, frontier: final.frontier }, 'eventSha256');
+        eventId: recordSha256({ encoding: revision ? 'native-mvu-schema-story-revision-event-identity-v2' :
+                'native-mvu-schema-story-event-identity-v2', planSha256: plan.planSha256 }), plan, phases,
+        ...browser ? { browser } : {}, ...!refused && ordinaryScopes ? { ordinaryScopes } : {},
+        outcome, refusal: refused ? 'guest' : null, values, valuesSha256, context, frontier: final.frontier }, 'eventSha256');
 }
 const validateStoryEventDescriptor = createImmutableDescriptorValidator(validateStoryEventUncached);
 export function validateMvuSchemaStoryEvent(input) {
-    // Settlement rechecks the exact successful immutable event from eventRows.
-    // Only pure DATA parsing is reused; current Native/Source/history checks
-    // remain with the consumer and settlement still checks its event argument.
     return validateStoryEventDescriptor(input);
 }
 export function validateMvuSchemaStoryRevisionEvent(input) {
@@ -674,98 +583,32 @@ export function validateMvuSchemaStoryRevisionEvent(input) {
 }
 function validateStoryEventUncached(input) {
     const event = freezeMvuSchemaStoryData(input), plan = validateMvuSchemaStoryPlan(event.plan);
-    exact(event, ['schemaVersion', 'encoding', 'sessionId', 'sourceSha256', 'eventId', 'plan', 'phases', 'reducer',
-        'outcome', 'refusal', 'values', 'valuesSha256', 'context', 'frontier', 'eventSha256'], ['browser']);
+    exact(event, ['schemaVersion', 'encoding', 'sessionId', 'sourceSha256', 'eventId', 'plan', 'phases',
+        'outcome', 'refusal', 'values', 'valuesSha256', 'context', 'frontier', 'eventSha256'], ['browser', 'ordinaryScopes']);
     fact(event, 'eventSha256');
-    if (!Array.isArray(event.phases) || !event.phases.length || event.phases.length > 3 || plan.candidate.kind === 'rejected')
+    if (!Array.isArray(event.phases) || !event.phases.length)
         fail();
-    if (event.browser)
-        validateBrowserExecution(plan, event.phases, event.browser);
-    let nextSeq = plan.initialCut.nativeCut;
-    for (const [index, phase] of event.phases.entries()) {
-        exact(phase, ['phase', 'input', 'association', 'output']);
-        let read;
-        let reference;
-        if (plan.schemaVersion === 12) {
-            const input = validateSchemaEvaluationInputV4(phase.input);
-            if (input.encoding !== 'native-mvu-author-schema-phase-input-v4-scope-ref-v2')
-                fail();
-            validateSchemaGuestOutputV4(phase.output, input);
-            reference = input.scopeReadRef;
-            if (!schemaScopeReadRefFactsEqualV2(reference, plan.scopeReadRef)
-                || reference.sourceNativeCutSha256 !== phase.association.sourceNativeCutSha256)
-                fail();
-        }
-        else {
-            const input = validateSchemaEvaluationInputV4(phase.input);
-            if (input.encoding !== 'native-mvu-author-schema-phase-input-v4')
-                fail();
-            validateSchemaGuestOutputV4(phase.output, input);
-            read = input.scopeReadFrame;
-            if (!schemaScopeReadFactsEqual(read, plan.scopeReadFrame)
-                || read.sourceNativeCutSha256 !== phase.association.sourceNativeCutSha256)
-                fail();
-        }
-        association(phase.association, plan, index);
-        if (phase.phase !== MVU_SCHEMA_STORY_PHASES[index]
-            || !event.browser && (plan.schemaVersion !== 7 && plan.schemaVersion !== 8 && plan.schemaVersion !== 11 || index > 0) && phase.association.dispatchMarker.seq !== nextSeq
-            || phase.association.outputSha256 !== recordSha256(phase.output)
-            || !same(phase.input, mvuSchemaStoryPhaseInput(plan, index, event.phases, event.reducer, read, reference, event.browser))
-            || phase.output.kind === 'refused' && index !== event.phases.length - 1)
-            fail();
-        if (index === 0 && !event.browser?.hooks.some(hook => hook.request.stage === 'command-parsed')
-            && plan.schemaVersion !== 7 && plan.schemaVersion !== 8 && plan.schemaVersion !== 11
-            && phase.association.sourceNativeCutSha256 !== recordSha256(plan.initialCut))
-            fail();
-        nextSeq = phase.association.completionMarker.seq + 1;
-    }
-    const first = event.phases[0];
-    if (first.output.kind === 'accepted') {
-        if (!same(event.reducer, mvuSchemaStoryReducerBridge(first)))
-            fail();
-        if (event.reducer.result.kind === 'rejected' && event.phases.length !== 1)
-            fail();
-    }
-    else if (event.reducer !== null || event.phases.length !== 1)
+    validateMvu196StoryExecution(plan, event.phases, event.browser);
+    const revision = plan.schemaVersion === 14, last = event.phases.at(-1), refused = last.output.kind === 'refused';
+    if (!refused && (last.output.kind !== 'accepted' || !('update' in last.output) || last.output.update?.kind !== 'complete'))
         fail();
-    const revisionV1 = event.encoding === 'native-mvu-schema-story-revision-event-v1', revisionV2 = event.encoding === 'native-mvu-schema-story-revision-event-v2', revision = revisionV1 || revisionV2;
-    if (revisionV1 && plan.schemaVersion !== 7 || revisionV2 && plan.schemaVersion !== 8 && plan.schemaVersion !== 11
-        || !revision && (plan.schemaVersion === 7 || plan.schemaVersion === 8 || plan.schemaVersion === 11))
-        fail();
-    const last = event.phases.at(-1), guestRefused = last.output.kind === 'refused' || event.browser?.reconcile?.output.kind === 'refused', refused = guestRefused || event.reducer?.result.kind === 'rejected';
-    if (!refused && event.phases.length !== 3)
-        fail();
-    const final = browserFinal(plan, event.phases, event.browser);
-    const values = refused ? plan.base.values : final.values, context = refused ? plan.base.context : final.context, valuesSha256 = recordSha256(values);
-    // The persisted seal and nested facts are already checked. Correlate only
-    // the event's derived fields instead of rebuilding and sealing the full graph.
+    const final = browserFinal(plan, event.phases, event.browser), values = refused ? plan.base.values : final.values, context = refused ? plan.base.context : final.context, valuesSha256 = recordSha256(values), execution = revision ? plan.execution : plan.base, ordinaryWrite = event.ordinaryScopes?.scopes.some(scope => scope.kind === 'replace' || scope.keys?.some(key => key !== 'stat_data'));
     exact(event.frontier, ['nativeCut', 'tailSha256', 'frontierSha256']);
-    const execution = plan.schemaVersion === 8 || plan.schemaVersion === 11 ? plan.execution : plan.base;
-    if (event.schemaVersion !== (revisionV1 ? 1 : 2)
-        || event.encoding !== (revisionV2 ? 'native-mvu-schema-story-revision-event-v2'
-            : revisionV1 ? 'native-mvu-schema-story-revision-event-v1' : 'native-mvu-schema-story-event-v2')
+    if (event.schemaVersion !== 2 || event.encoding !== (revision ? 'native-mvu-schema-story-revision-event-v2' : 'native-mvu-schema-story-event-v2')
         || event.sessionId !== execution.sessionId || event.sourceSha256 !== execution.sourceSha256
-        || event.eventId !== recordSha256({ encoding: revisionV2 ? 'native-mvu-schema-story-revision-event-identity-v2'
-                : revisionV1 ? 'native-mvu-schema-story-revision-event-identity-v1' :
-                    'native-mvu-schema-story-event-identity-v2', planSha256: plan.planSha256 })
+        || event.eventId !== recordSha256({ encoding: revision ? 'native-mvu-schema-story-revision-event-identity-v2' :
+                'native-mvu-schema-story-event-identity-v2', planSha256: plan.planSha256 })
         || event.valuesSha256 !== valuesSha256 || recordSha256(event.values) !== valuesSha256 || !same(event.context, context)
-        || event.outcome !== (refused ? 'refused' : valuesSha256 === plan.base.valuesSha256 ? 'no-update' : 'accepted')
-        || event.refusal !== (refused ? (guestRefused ? 'guest' : 'reducer') : null)
-        || !same(event.frontier, final.frontier))
+        || event.outcome !== (refused ? 'refused' : valuesSha256 === plan.base.valuesSha256 && same(context, plan.base.context) && !ordinaryWrite ? 'no-update' : 'accepted')
+        || event.refusal !== (refused ? 'guest' : null) || !same(event.frontier, final.frontier))
         fail();
     return event;
 }
 export function mvuSchemaStoryRevisionHead(event) {
     if (event.outcome === 'refused')
         fail();
-    if (event.schemaVersion === 2) {
-        return freezeMvuSchemaStoryData({ schemaVersion: 2, encoding: 'native-mvu-schema-story-revision-head-v2',
-            sessionId: event.sessionId, sourceSha256: event.sourceSha256, root: event.plan.execution.root,
-            revision: event.plan.revision.publicationRevision, eventId: event.eventId, eventSha256: event.eventSha256,
-            planSha256: event.plan.planSha256, valuesSha256: event.valuesSha256 });
-    }
-    return freezeMvuSchemaStoryData({ schemaVersion: 1, encoding: 'native-mvu-schema-story-revision-head-v1',
-        sessionId: event.sessionId, sourceSha256: event.sourceSha256, root: event.plan.base.root,
+    return freezeMvuSchemaStoryData({ schemaVersion: 2, encoding: 'native-mvu-schema-story-revision-head-v2',
+        sessionId: event.sessionId, sourceSha256: event.sourceSha256, root: event.plan.execution.root,
         revision: event.plan.revision.publicationRevision, eventId: event.eventId, eventSha256: event.eventSha256,
         planSha256: event.plan.planSha256, valuesSha256: event.valuesSha256 });
 }
@@ -803,7 +646,7 @@ function validateRevisionDescriptorV2(value) {
     if ((value.schemaVersion === 2 ? value.encoding !== 'native-mvu-schema-story-revision-descriptor-v2'
         : value.schemaVersion === 3 ? value.encoding !== 'native-mvu-schema-story-revision-descriptor-v3'
             : value.schemaVersion === 4 ? value.encoding !== 'native-mvu-schema-story-revision-descriptor-v4'
-                : value.encoding !== 'native-mvu-schema-story-revision-descriptor-v5')
+                : value.schemaVersion !== 5 || value.encoding !== 'native-mvu-schema-story-revision-descriptor-v5')
         || !id(value.sessionId, 64) || !Array.isArray(value.edits) || !Array.isArray(value.originals)
         || !integer(value.basis.nativeCut) || !integer(value.completionSeq) || !integer(value.publicationRevision, 2)
         || ![value.basis.prefixSha256, value.basis.stateSnapshotSha256, value.sourceSha256].every(hash))
@@ -880,24 +723,7 @@ function validateRevisionDescriptorV2(value) {
 }
 const validateRevisionDescriptor = createImmutableDescriptorValidator((input) => {
     const value = freezeMvuSchemaStoryData(input);
-    if (value.schemaVersion === 2 || value.schemaVersion === 3 || value.schemaVersion === 4 || value.schemaVersion === 5)
-        return validateRevisionDescriptorV2(value);
-    exact(value, ['schemaVersion', 'encoding', 'sessionId', 'edit', 'original', 'previous', 'baseStateSnapshotSha256',
-        'completionSeq', 'publicationRevision', 'sourceSha256', 'descriptorSha256']);
-    exact(value.edit, ['seq', 'sha256', 'targetSeq', 'messageId', 'messageVersionSha256', 'narrativeSha256']);
-    exact(value.original, ['key', 'sha256']);
-    if (value.previous)
-        exact(value.previous, ['key', 'sha256']);
-    fact(value, 'descriptorSha256');
-    if (value.schemaVersion !== 1 || value.encoding !== 'native-mvu-schema-story-revision-descriptor-v1'
-        || !id(value.sessionId, 64) || !integer(value.edit.seq) || !integer(value.edit.targetSeq)
-        || value.edit.targetSeq >= value.edit.seq || !id(value.edit.messageId) || !integer(value.completionSeq)
-        || !integer(value.publicationRevision, 2) || !id(value.original.key, 512)
-        || value.previous !== null && (!id(value.previous.key, 512) || !hash(value.previous.sha256))
-        || ![value.edit.sha256, value.edit.messageVersionSha256, value.edit.narrativeSha256, value.original.sha256,
-            value.baseStateSnapshotSha256, value.sourceSha256].every(hash))
-        fail();
-    return value;
+    return validateRevisionDescriptorV2(value);
 });
 export function validateMvuSchemaStoryRevisionDescriptor(input) {
     return validateRevisionDescriptor(input);

@@ -44,14 +44,20 @@ function toStopReason(reason) {
 function prePublicationAbort() {
     return new Error('subagent request was aborted before child publication');
 }
-/** Append one one-shot descriptor inside the child's initial turn before its first request. */
-function attachDescriptorAppend(childCtx, descriptor) {
+/** Persist host identity and private input provenance before the first model request. */
+function attachDescriptorAppend(childCtx, request) {
     let appended = false;
     childCtx.on('agent/pre-step', async ({ agent }, next) => {
         const decision = await next();
         if (!appended && decision.kind === 'enter') {
             appended = true;
-            agent.session.append('subagent/descriptor', descriptor);
+            agent.session.append('subagent/descriptor', request.descriptor);
+            if (request.activation !== undefined) {
+                agent.session.append('roleplay/author-dialog-activation', request.activation);
+            }
+            if (request.rubyActivation !== undefined) {
+                agent.session.append('roleplay/ruby-task-activation', request.rubyActivation);
+            }
         }
         return decision;
     });
@@ -73,7 +79,7 @@ export async function startInProcessRun(request, options) {
         throw prePublicationAbort();
     const parent = request.parent;
     const childDepth = resolveChildDepth(parent, request.maxDepth);
-    const childId = brandString(randomUUID());
+    const childId = brandString(request.activation?.identity.childSessionId ?? randomUUID());
     const seed = options.seed;
     if (request.activation !== undefined && seed !== undefined)
         throw Error('owned author dialogue cannot inherit history');
@@ -107,25 +113,24 @@ export async function startInProcessRun(request, options) {
             structured = attachStructuredRuntime(childCtx, request.outputSchema);
         }
         if (request.isolatedSystem === undefined)
-            attachDescriptorAppend(childCtx, request.descriptor);
+            attachDescriptorAppend(childCtx, request);
     };
-    const handle = await parent.ctx.agents.create({
+    const handle = await parent.ctx.agents.withInitiator(parent, () => parent.ctx.agents.create({
         sessionId: childId,
-        parentAgent: parent,
         meta: childSessionMeta(parent, childDepth, seed !== undefined),
         ...seed !== undefined ? { seed } : {},
         ...seed === undefined ? {} : { inheritedEventCount: activationBoundary },
         agentOptions: resolveChildAgentOptions(parent, request.agentOptions, childDepth),
         signal: request.signal,
         setup,
-    });
-    return drivePublishedRun(handle, request.signal, request.prompt, childId, activationBoundary, structured, request.activation, rubyChild, request.isolatedSystem === undefined ? undefined : request.descriptor);
+    }));
+    return drivePublishedRun(handle, request.signal, request.prompt, childId, activationBoundary, structured, request.activation, rubyChild, request.isolatedSystem === undefined ? undefined : request.descriptor, request.authorOwner);
 }
 /**
  * Wrap a published child in the single run lifecycle that owns signal handoff,
  * one turn, result settlement, and quiescent disposal.
  */
-function drivePublishedRun(handle, signal, prompt, childId, boundary, structured, activation, rubyChild, isolatedDescriptor) {
+function drivePublishedRun(handle, signal, prompt, childId, boundary, structured, activation, rubyChild, isolatedDescriptor, authorOwner) {
     const child = handle.agent;
     const flags = { cancelled: false };
     const onAbort = () => {
@@ -146,7 +151,7 @@ function drivePublishedRun(handle, signal, prompt, childId, boundary, structured
                     await child.whenIdle();
                 }
                 else if (activation !== undefined) {
-                    await driveOwnedAuthorDialogActivationV1(child, activation);
+                    await driveOwnedAuthorDialogActivationV1(child, activation, authorOwner);
                 }
                 else if (isolatedDescriptor !== undefined) {
                     const isolated = nativeIsolatedInputCapability(child);

@@ -81,15 +81,26 @@ class SingleJsonUnit {
             throw error;
         });
     }
-    async deleteRecord(table, key) {
+    deleteRecord(table, key) {
+        return this.deleteRecords(table, [key]);
+    }
+    async deleteRecords(table, keys) {
         this.assertOpen();
         const records = this.records(table);
-        if (!records.has(key))
+        const removed = new Map();
+        for (const key of new Set(keys)) {
+            if (!records.has(key))
+                continue;
+            removed.set(key, records.get(key));
+            records.delete(key);
+        }
+        if (removed.size === 0)
             return;
-        const previous = records.get(key);
-        records.delete(key);
+        // One atomic publish applies the whole batch; a failed publish restores
+        // every removed entry so memory and the medium stay together.
         await this.publish().catch((error) => {
-            records.set(key, previous);
+            for (const [key, value] of removed)
+                records.set(key, value);
             throw error;
         });
     }

@@ -80,7 +80,7 @@ export const inboxProjectionDefinition = {
  * @param dispatch - agent-scoped notifications for Inbox lifecycle events.
  */
 export class ReactLoopInbox {
-    projections;
+    readState;
     session;
     dispatch;
     proposals = new WeakSet();
@@ -88,8 +88,8 @@ export class ReactLoopInbox {
     claims = new WeakSet();
     historyOwner;
     historyOffset = 0;
-    constructor(projections, session, dispatch, observeAppends) {
-        this.projections = projections;
+    constructor(readState, session, dispatch, observeAppends) {
+        this.readState = readState;
         this.session = session;
         this.dispatch = dispatch;
         observeAppends?.(event => {
@@ -363,11 +363,7 @@ export class ReactLoopInbox {
     }
     /** Read the current durable projection state. */
     current() {
-        const state = this.projections.stateOf(this.session, 'inbox');
-        if (state === undefined) {
-            throw new Error(`agent "${this.session.id}" cannot read inbox state: its projection registration is not active`);
-        }
-        return state;
+        return this.readState();
     }
     /** Commit one normalized mutation and publish its live events. */
     mutate(target, start, deleteCount, inserted, discardRemoved, recordSeq, recordInserted, publishedInput) {

@@ -2,6 +2,7 @@ import { renderReaderNarrative, renderReaderNarrativeAsync, projectReaderNarrati
     sanitizeReaderNarrativeHtml } from './reader-rendering.js';
 import type { ReaderMvuDisplayScope } from './reader-rendering.js';
 import type { MvuAcceptedDisplayUpdate } from '../core/roleplay-mvu-display-facts.js';
+import { createReaderMvuDisplayScope,projectPendingReaderUpdates } from '../core/roleplay-reader-narrative-display.js';
 import type { ReaderDisplayMessageRef, ReaderDisplayResponse,ReaderDisplayExecution,
     ReaderRenderHtmlRequestV1,ReaderRenderHtmlReplyV1,ReaderRenderPhaseBindingV1 } from '../core/roleplay-reader-display.js';
 import { runReaderRegex } from './reader-regex.js';
@@ -9,8 +10,10 @@ import type { ReaderRule, SourceTask, FallbackTask, SourceResult, FallbackResult
 import {prepareStaticAuthorDocument, type AuthorFrameFragment} from './author-runtime.js';
 import type {ReaderRegexDocumentRenderFragmentV1}
     from '../core/reader-regex-document-types.mjs';
+import type {RoleplayExtensionFailureV1} from '../core/roleplay-extension-types.js';
 
 interface BeautyRendering {
+    reportExtensionFailure?(failure:RoleplayExtensionFailureV1):unknown;
     renderAsync?: typeof renderReaderNarrativeAsync;
     renderSync?: typeof renderReaderNarrative;
 }
@@ -32,10 +35,11 @@ export type ReaderBeautyTask = string | {
     readonly seq?: number;
     readonly messageId?: string;
     readonly displayUpdate?: MvuAcceptedDisplayUpdate;
+    readonly schemaOwned?:boolean;
 };
 const rawText = (task: ReaderBeautyTask) => typeof task === 'string' ? task : task.text;
 const taskKey = (task: ReaderBeautyTask) => typeof task === 'string' ? JSON.stringify([task])
-    : JSON.stringify([task.text,task.canonicalText??null, task.seq, task.messageId, task.displayUpdate ?? null]);
+    : JSON.stringify([task.text,task.canonicalText??null, task.seq, task.messageId, task.displayUpdate ?? null,task.schemaOwned??false]);
 const displayRef = (task: ReaderBeautyTask): ReaderDisplayMessageRef | undefined =>
     typeof task !== 'string' && Number.isSafeInteger(task.seq) && Number(task.seq) >= 0 && task.messageId
         ? {seq: task.seq!, messageId: task.messageId} : undefined;
@@ -49,40 +53,43 @@ async function acceptedDisplayScope(task: ReaderBeautyTask): Promise<ReaderMvuDi
         || !canonical || !Number.isSafeInteger(canonical.seq) || canonical.seq < 0
         || canonical.seq !== task.seq || !canonical.messageId || canonical.messageId !== task.messageId
         || !/^[a-f0-9]{64}$/.test(canonical.versionSha256) || !/^[a-f0-9]{64}$/.test(canonical.narrativeSha256)
-        || !['native-jsonpatch-v1', 'native-mvu-update-v2'].includes(update.protocol)) return;
+        || !['native-jsonpatch-v1', 'native-mvu-update-v2', 'mvu-196-d03'].includes(update.protocol)) return;
     const canonicalText=task.canonicalText??task.text;
-    const start = canonicalText.indexOf('<UpdateVariable>'), close = canonicalText.indexOf('</UpdateVariable>');
-    if (start < 0 || close < start || !globalThis.crypto?.subtle) return;
+    if (!globalThis.crypto?.subtle) return;
     // A state response can lag a Native edit. Bind the displayed body before
     // minting a range; absence/failure keeps the complete original visible.
     const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalText));
     const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
     if (hash !== canonical.narrativeSha256) return;
-    const acceptedText=canonicalText.slice(start,close+'</UpdateVariable>'.length),displayStart=task.text.indexOf(acceptedText);
-    if(displayStart<0)return;
-    return {role: 'assistant', protocol: update.protocol,
-        acceptedRange: {start:displayStart, end:displayStart+acceptedText.length}};
+    return createReaderMvuDisplayScope(canonicalText, update.protocol, task.text);
 }
 
 /** Committed-text rendering owns its scope, cancellation fence and bounded cache together. */
 export function createReaderBeautyCache({
 renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
+reportExtensionFailure,
 }: BeautyRendering = {}) {
     const cache = new Map<string, {html: string;text: string;css?: string;error?: string;compilerError?:string;
         fragments?: readonly AuthorFrameFragment[];
         readerFragments?: readonly ReaderRegexDocumentRenderFragmentV1[];}>();
-    const fallbackHtml = new Map<string, string>();
+    type Fallback = {schemaOwned:boolean;text:string;html?:string;};
+    const fallbackRows = new Map<string,Fallback>();
+    let streamFallback: {raw:string;value:Fallback;}|undefined;
     let execution: ReaderDisplayExecution | undefined;
     let executionWindowKey: string | undefined;
     let currentScope = '';
     let cancelActive: (() => void) | undefined;
     let forceRead=false;
+    let diagnosticScope='';
+    const diagnosticReleases=new Map<string,()=>void>();
+    const clearDiagnostics=()=>{for(const release of diagnosticReleases.values())release();diagnosticReleases.clear();};
 
     function selectScope(scope: string) {
         if (currentScope !== scope) {
             cancelActive?.();
             cache.clear();
-            fallbackHtml.clear();
+            fallbackRows.clear();
+            streamFallback=undefined;
             execution = undefined;
             executionWindowKey = undefined;
             currentScope = scope;
@@ -90,9 +97,28 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
         }
     }
 
+    function fallbackFor(task:ReaderBeautyTask):Fallback {
+        if(typeof task==='string')return {schemaOwned:false,text:task};
+        const {text,schemaOwned=false}=task,committed=displayRef(task)!==undefined;
+        const previous=committed?fallbackRows.get(text):streamFallback?.raw===text?streamFallback.value:undefined;
+        const value=previous?.schemaOwned===schemaOwned?previous:{schemaOwned,
+            text:schemaOwned?projectPendingReaderUpdates(text):text};
+        if(committed) {
+            fallbackRows.delete(text);
+            fallbackRows.set(text,value);
+            while(fallbackRows.size>500)fallbackRows.delete(fallbackRows.keys().next().value!);
+        } else {
+            // The active stream replaces its prefix. Reuse its projection within
+            // one render without retaining every prefix in the history cache.
+            streamFallback={raw:text,value};
+        }
+        return value;
+    }
+
     function run(scope: string, tasks: readonly ReaderBeautyTask[], rules: ReaderRule[], changed: () => void,
         display?: ReaderDisplayRead) {
         cancelActive?.();
+        if(diagnosticScope!==scope){clearDiagnostics();diagnosticScope=scope;}
         const pending = tasks.filter(task => !cache.has(taskKey(task)));
         // A compiled Reader program owns this complete visible window. Paging
         // must not mix old document plans with a program for only new rows.
@@ -123,11 +149,18 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
             if (stale()) return;
             let response: ReaderDisplayResponse | undefined, displayError: unknown;
             let phase:ReaderRenderPhaseBindingV1|undefined;
-            const completedHtml=new Map<string,{whole?:string;fragments:string[]}>();
+            const completedHtml=new Map<string,{whole?:string;slots:string[]}>();
             try {
             if (display && messages.length) {
                 try { response = await display.read(display.sessionId, messages, controller.signal); }
-                catch (error) { displayError = error; }
+                catch (error) {
+                    // The Worldbook snapshot can advance while this read opens its documents.
+                    // Re-capture it once under the same Reader window and cancellation fence.
+                    if (!stale() && error instanceof Error && error.message==='READER_WORLDBOOK_SCOPE_CHANGED') {
+                        try { response = await display.read(display.sessionId, messages, controller.signal); }
+                        catch (retryError) { displayError = retryError; }
+                    } else displayError = error;
+                }
             }
             phase=response?.phase;
             if (stale()) return;
@@ -151,13 +184,16 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
                 const result=await display.renderHtml({binding:phase,rows},controller.signal);
                 if(stale())return;
                 for(const [index,row] of response.rows.entries()){
-                    const slots=result.narrative.filter(slot=>slot.row===index),fragments:string[]=[];
+                    const slots=result.narrative.filter(slot=>slot.row===index),narrativeHtml:string[]=[];
                     let whole:string|undefined;
                     for(const slot of slots){
                         const html=sanitizeReaderNarrativeHtml(slot.html);
-                        if(slot.fragmentIndex===null)whole=html;else fragments.push(html);
+                        if(slot.fragmentIndex===null)whole=html;
+                        // Worldbook AFTER documents can add final fragments to a whole-row response.
+                        // Keep its completed HTML in text-slot order for that final layout.
+                        narrativeHtml.push(html);
                     }
-                    completedHtml.set(row.seq+':'+row.messageId,{whole,fragments});
+                    completedHtml.set(row.seq+':'+row.messageId,{whole,slots:narrativeHtml});
                 }
                 response=result.display;
             }catch(error){displayError=error;response=undefined;}
@@ -176,9 +212,28 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
             }));
             const acceptedExecution = projections.size === messages.length ? response?.execution : undefined;
             const compilerError=response?.compilerDiagnostics?.map(row=>row.code).join(', ');
+            if(response&&display){
+                clearDiagnostics();
+                const sourceRevision=response.execution?.program.programSha256??response.contextRevision;
+                const report=(phase:string,diagnostics:NonNullable<ReaderDisplayResponse['documentDiagnostics']>,messageId?:string)=>{
+                    for(const diagnostic of diagnostics){
+                        const detail=diagnostic as typeof diagnostic&{helper?:string;reason?:string};
+                        const id=[phase,messageId??'',diagnostic.scriptIdentity??diagnostic.pointer??diagnostic.ordinal??'',diagnostic.code].join(':');
+                        if(diagnosticReleases.has(id))continue;
+                        const release=reportExtensionFailure?.({schemaVersion:1,sessionId:display.sessionId,id,
+                            extension:diagnostic.code.includes('EJS')?'ejs':'reader',code:diagnostic.code,phase,sourceRevision,impact:'partial',
+                            sourcePointer:diagnostic.pointer,scriptIdentity:diagnostic.scriptIdentity,line:diagnostic.line,
+                            column:diagnostic.column,helper:detail.helper,messageId,reason:detail.reason??diagnostic.code});
+                        if(typeof release==='function')diagnosticReleases.set(id,()=>{release();});
+                    }
+                };
+                report('compile',response.compilerDiagnostics??[]);
+                report('document',response.documentDiagnostics??[]);
+                for(const row of response.rows)report('render',row.renderDiagnostics??[],row.messageId);
+            }
             for (const task of tasks) {
                 if (stale()) break;
-                const key = taskKey(task), raw = rawText(task);
+                const key = taskKey(task);
                 const ref = displayRef(task);
                 const projection = projections.get(key);
                 const cached = cache.get(key);
@@ -192,8 +247,8 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
                     try { displayScope = await acceptedDisplayScope(task); } catch { }
                 }
                 if (stale()) break;
-                const source = projection ? projection.displayText : raw;
-                const text = projection ? source : projectReaderNarrativeDisplay(raw, displayScope);
+                const text=projection?projection.displayText:displayScope
+                    ?projectReaderNarrativeDisplay(rawText(task),displayScope):fallbackFor(task).text;
                 // A successful read after paging can replace a cached fallback.
                 // Reuse rendered output only while its display input is unchanged.
                 const previousDisplay = cached?.text === text ? cached : undefined;
@@ -203,7 +258,7 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
                     // Executable documents already have their own admitted plans.
                     // Their residual text alone belongs to narrative rendering.
                     value = { text, html: projection?.fragments && acceptedExecution ? ''
-                        : completed?.whole??previousDisplay?.html ?? await renderAsync(source, rules, runBeautyRegex, displayScope),
+                        : completed?.whole??previousDisplay?.html ?? await renderAsync(text, rules, runBeautyRegex),
                         css };
                     if (projection?.fragments) {
                         const fragments: AuthorFrameFragment[] = [];
@@ -242,7 +297,7 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
                             } else {
                                 const raw = fragment.kind === 'text' ? fragment.text : fragment.parts.map(part => part.text).join('');
                                 const html = fragment.kind==='text'&&completed
-                                    ?completed.fragments[narrativeIndex++]??''
+                                    ?completed.slots[narrativeIndex++]??''
                                     :previous?.kind === 'text' ? previous.html:await renderAsync(raw, rules, runBeautyRegex);
                                 fragments.push({kind: 'text', html});readerFragments.push({kind: 'text', html});
                                 narrativeHtml.push(html);
@@ -254,7 +309,7 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
                     }
                 } catch (error) {
                     value = {
-                        text, html: renderSync(source, [], displayScope),
+                        text, html: renderSync(text, []),
                         css,
 
                         error: String(error && typeof error === 'object' && 'message' in error ? error.message : error),
@@ -294,20 +349,11 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
         // The same eligibility used by run owns this asynchronous Source read.
         // Its first render cannot display raw Native text before that read settles.
         if (displayEnabled && displayRef(task)) return pendingDisplayHtml;
-        const text = rawText(task);
-        // Raw HTML is keyed by its complete text, independently of Source/regex
-        // completion. A fallback must never suppress the pending display task.
-        // String tasks are the growing stream; retaining each prefix would evict history.
-        if (typeof task === 'string') return renderSync(text, []);
-        let html = fallbackHtml.get(text);
-        if (html === undefined) html = renderSync(text, []);
-        else fallbackHtml.delete(text);
-        fallbackHtml.set(text, html);
-        while (fallbackHtml.size > 500) fallbackHtml.delete(fallbackHtml.keys().next().value!);
-        return html;
+        const fallback=fallbackFor(task);
+        return fallback.html??=renderSync(fallback.text,[]);
     };
     const textFor = (task: ReaderBeautyTask, displayEnabled = false) => cache.get(taskKey(task))?.text
-        ?? (displayEnabled && displayRef(task) ? pendingDisplayText : rawText(task));
+        ?? (displayEnabled && displayRef(task) ? pendingDisplayText : fallbackFor(task).text);
     const errors = (tasks: readonly ReaderBeautyTask[]) => Array.from(new Set(tasks
         .map(task=>cache.get(taskKey(task))?.error).filter((code):code is string=>!!code))).join(', ');
     const failed = (tasks: readonly ReaderBeautyTask[]) => !!errors(tasks);
@@ -334,6 +380,7 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
         return executionWindowKey === JSON.stringify(messages) ? execution : undefined;
     }
     return { selectScope, run, htmlFor, textFor, cssFor, failed, errors, compilerError,fragmentsFor, hasDocuments, readerFragmentsFor,
+        dispose(){cancelActive?.();clearDiagnostics();},
         retryCompilation(){forceRead=true;},
         execution: executionFor };
 }

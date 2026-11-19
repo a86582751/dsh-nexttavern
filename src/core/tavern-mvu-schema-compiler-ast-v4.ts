@@ -1,38 +1,22 @@
-/** New v4 canonical schema AST gates. Source is inspected/transpiled only.
- * Registration intent is not execution evidence: the guest still must really
+/** Canonical v4 schema ownership and import compilation. Source is inspected/transpiled only.
+ * Registration dependency is not execution evidence: the guest still must really
  * register/validate every enabled schema path, with no loader fallback. */
 import ts from 'dsh-nexttavern-typescript-runtime'
 import type * as TypeScript from 'typescript'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import {C_SCHEMA_IMPORT_POLICY_V4} from './tavern-mvu-schema-program-v4.js'
 import type {MvuSchemaDiagnostic} from './tavern-mvu-schema-types.js'
-import type {MvuSchemaCompilationInputV4, RawAuthorScriptV4,RegisteredCommandPolicyBindingV1,
-  InitializationWriteBindingV1}
+import type {MvuSchemaCompilationInputV4, RawAuthorScriptV4,RegisteredCommandPolicyBindingV1}
   from './tavern-mvu-author-execution-types-v4.mjs'
 
 export class SchemaAstRefusalV4 extends Error {
   constructor(readonly diagnostic: MvuSchemaDiagnostic) {super(diagnostic.code)}
 }
-const hostNames = new Set(['window', 'parent', 'top', 'self', 'globalThis', 'global', 'document', 'frames', 'opener',
-  'process', 'require', 'module', 'exports', 'eval', 'Function', 'AsyncFunction', 'GeneratorFunction',
-  'fetch', 'XMLHttpRequest', 'WebSocket', 'Worker', 'SharedWorker', 'importScripts', 'navigator', 'location',
-  'localStorage', 'sessionStorage', 'indexedDB', 'TavernHelper', 'SillyTavern', 'setTimeout', 'setInterval',
-  'requestAnimationFrame', 'queueMicrotask'])
-const escapeProperties = new Set(['__proto__', 'constructor', 'prototype'])
 const ownedStagedogBridge = 'nexttavern:stagedog-schema-bridge'
 function fail(code: string, script: RawAuthorScriptV4, file: TypeScript.SourceFile, node?: TypeScript.Node): never {
   const position = node ? file.getLineAndCharacterOfPosition(node.getStart(file)) : undefined
   throw new SchemaAstRefusalV4({code, pointer: script.pointer, scriptIdentity: script.identity,
     ...(position ? {line: position.line + 1, column: position.character + 1} : {})})
-}
-function isNameOnly(node: TypeScript.Identifier): boolean {
-  const parent = node.parent
-  return ts.isPropertyAccessExpression(parent) && parent.name === node
-    || (ts.isPropertyAssignment(parent) || ts.isMethodDeclaration(parent) || ts.isPropertyDeclaration(parent))
-      && parent.name === node
-    || ts.isBindingElement(parent) && parent.propertyName === node
-    || ts.isImportSpecifier(parent) && parent.propertyName === node
-    || ts.isExportSpecifier(parent) && parent.propertyName === node
 }
 function symbol(checker: TypeScript.TypeChecker, node: TypeScript.Node): TypeScript.Symbol | undefined {
   return checker.getSymbolAtLocation(node)
@@ -46,11 +30,16 @@ interface DynamicSchemaImportV4 {
 export interface BoundSchemaAstFactsV4 {
   readonly nodes: readonly {readonly node: TypeScript.Node; readonly depth: number}[]
   readonly dynamicImports: ReadonlyMap<TypeScript.CallExpression, DynamicSchemaImportV4>
-  readonly readyCallbacks: ReadonlySet<TypeScript.CallExpression>
   readonly registrationIntent: boolean
 }
+function expressionOperand(node: TypeScript.Node): TypeScript.Expression | undefined {
+  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)
+    || ts.isNonNullExpression(node) || ts.isSatisfiesExpression(node)) return node.expression
+  return undefined
+}
 function unwrapped(expression: TypeScript.Expression): TypeScript.Expression {
-  while (ts.isParenthesizedExpression(expression)) expression = expression.expression
+  let operand = expressionOperand(expression)
+  while (operand) {expression = operand; operand = expressionOperand(expression)}
   return expression
 }
 /** The private worker derives this once; partition and full gates consume the
@@ -59,7 +48,6 @@ function unwrapped(expression: TypeScript.Expression): TypeScript.Expression {
 export function analyzeBoundSchemaAstV4(script: RawAuthorScriptV4, file: TypeScript.SourceFile,
   checker: TypeScript.TypeChecker): BoundSchemaAstFactsV4 {
   const bridgeSpecifiers = new Set(script.imports.filter(item => item.kind === 'schema-bridge').map(item => item.specifier))
-  const receivers = new Set<TypeScript.Symbol>(), functions = new Set<TypeScript.Symbol>()
   const nodes: {node: TypeScript.Node; depth: number}[] = []
   const pending = [{node: file as TypeScript.Node, depth: 0}]
   while (pending.length) {
@@ -70,7 +58,6 @@ export function analyzeBoundSchemaAstV4(script: RawAuthorScriptV4, file: TypeScr
   const references = new Map<TypeScript.Symbol, TypeScript.Identifier[]>()
   const arrays = new Map<TypeScript.Symbol, {name: TypeScript.Identifier; specifiers: readonly string[];
     declaration: TypeScript.VariableDeclaration}>()
-  const callbackValues = new Map<TypeScript.Symbol, TypeScript.Expression | TypeScript.FunctionDeclaration>()
   for (const {node} of nodes) {
     if (ts.isIdentifier(node)) {
       // A shorthand has a property symbol and a distinct lexical value symbol.
@@ -82,15 +69,10 @@ export function analyzeBoundSchemaAstV4(script: RawAuthorScriptV4, file: TypeScr
         else references.set(value, [node])
       }
     }
-    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
-      const value = symbol(checker, node.name)
-      if (value) callbackValues.set(value, node)
-    }
     if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || !node.initializer
       || !ts.isVariableDeclarationList(node.parent) || !(node.parent.flags & ts.NodeFlags.Const)) continue
     const value = symbol(checker, node.name)
     if (!value) continue
-    callbackValues.set(value, node.initializer)
     if (ts.isArrayLiteralExpression(node.initializer) && node.initializer.elements.length
       && node.initializer.elements.every(ts.isStringLiteralLike)) {
       arrays.set(value, {name: node.name, declaration: node,
@@ -133,86 +115,68 @@ export function analyzeBoundSchemaAstV4(script: RawAuthorScriptV4, file: TypeScr
     // authored fallback is unknown/unproved. The full gate must refuse it.
     return dynamicImports.get(expression)?.specifiers.some(item => bridgeSpecifiers.has(item)) ?? false
   }
+  let registrationImport=false
   for (const {node} of nodes) {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
       && bridgeSpecifiers.has(node.moduleSpecifier.text) && !node.importClause?.isTypeOnly) {
       const bindings = node.importClause?.namedBindings
-      if (bindings && ts.isNamespaceImport(bindings)) {
-        const value = symbol(checker, bindings.name);if (value) receivers.add(value)
-      } else if (bindings && ts.isNamedImports(bindings)) for (const entry of bindings.elements) {
-        if (!entry.isTypeOnly && (entry.propertyName ?? entry.name).text === 'registerMvuSchema') {
-          const value = symbol(checker, entry.name);if (value) functions.add(value)
-        }
-      }
+      registrationImport ||= !!bindings && (ts.isNamespaceImport(bindings)
+        || ts.isNamedImports(bindings) && bindings.elements.some(entry=>
+          !entry.isTypeOnly && (entry.propertyName??entry.name).text==='registerMvuSchema'))
     }
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && importedNamespace(node.initializer)) {
-      const value = symbol(checker, node.name);if (value) receivers.add(value)
-    }
-    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
-      && importedNamespace(node.right)) {
-      const target = unwrapped(node.left)
-      if (ts.isIdentifier(target)) {
-        const value = symbol(checker, target);if (value) receivers.add(value)
-      } else if (ts.isObjectLiteralExpression(target)) for (const property of target.properties) {
-        if (ts.isShorthandPropertyAssignment(property) && property.name.text === 'registerMvuSchema'
-          && !property.objectAssignmentInitializer) {
-          const value = checker.getShorthandAssignmentValueSymbol(property)
-          if (value) functions.add(value)
-        } else if (ts.isPropertyAssignment(property) && ts.isIdentifier(property.initializer)
-          && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
-          && property.name.text === 'registerMvuSchema') {
-          const value = symbol(checker, property.initializer);if (value) functions.add(value)
-        }
-      }
-    }
+    if(ts.isCallExpression(node)&&importedNamespace(node))registrationImport=true
+    if(registrationImport)break
   }
-  const registrationReference = (expression: TypeScript.Expression): boolean => {
-    expression = unwrapped(expression)
-    if (ts.isIdentifier(expression)) {
-      const value = symbol(checker, expression)
-      return !!value && functions.has(value) || !value && expression.text === 'registerMvuSchema'
+  // Match the guest scope binder: JS expando writes synthesize Identifier
+  // declarations, while actual lexical declarations shadow the global API.
+  const declared=(value:TypeScript.Symbol|undefined)=>value?.declarations
+    ?.some(declaration=>!ts.isIdentifier(declaration))
+  const runtimeValue=(node:TypeScript.Node)=>{
+    let expression=node
+    while(expressionOperand(expression.parent)===expression)expression=expression.parent
+    if(ts.isTypeOfExpression(expression.parent))return false
+    for(let parent:TypeScript.Node|undefined=node.parent;parent;parent=parent.parent){
+      if(ts.isTypeNode(parent))return false
+      if(ts.isExpression(parent)||ts.isStatement(parent))break
     }
-    if (!ts.isPropertyAccessExpression(expression) || expression.name.text !== 'registerMvuSchema') return false
-    const object = expression.expression
-    return ts.isIdentifier(object) && (object.text === 'globalThis' && !symbol(checker, object)
-      || !!symbol(checker, object) && receivers.has(symbol(checker, object)!))
+    return true
   }
-  // Keep existing static/literal namespace and registration alias rules.
-  for (let pass = 0; pass < MVU_SCHEMA_BOUNDS.scripts; pass++) {
-    const before = functions.size
-    for (const {node} of nodes) {
-      if (!ts.isVariableDeclaration(node) || !node.initializer) continue
-      if (ts.isIdentifier(node.name) && registrationReference(node.initializer)) {
-        const value = symbol(checker, node.name);if (value) functions.add(value)
-      } else if (ts.isObjectBindingPattern(node.name) && (importedNamespace(node.initializer)
-        || ts.isIdentifier(node.initializer) && receivers.has(symbol(checker, node.initializer)!))) {
-        for (const entry of node.name.elements) if (!entry.dotDotDotToken && ts.isIdentifier(entry.name)
-          && (entry.propertyName?.getText(file) ?? entry.name.text) === 'registerMvuSchema') {
-          const value = symbol(checker, entry.name);if (value) functions.add(value)
-        }
-      }
+  const globalNamespace=(expression:TypeScript.Expression|undefined):boolean=>{
+    const target=expression&&unwrapped(expression)
+    return !!target&&ts.isIdentifier(target)&&target.text==='globalThis'&&!declared(symbol(checker,target))
+  }
+  const registrationValue=(node:TypeScript.Node):boolean=>{
+    if(ts.isVariableDeclaration(node)&&ts.isObjectBindingPattern(node.name)&&globalNamespace(node.initializer)) {
+      return node.name.elements.some(element=>{
+        if(element.dotDotDotToken)return false
+        const property=element.propertyName??element.name,
+          name=ts.isComputedPropertyName(property)?unwrapped(property.expression):property
+        return (ts.isIdentifier(name)||ts.isStringLiteralLike(name))&&name.text==='registerMvuSchema'
+      })
     }
-    if (functions.size === before) break
-  }
-  const callbackValue = (expression: TypeScript.Expression): boolean => {
-    const seen = new Set<TypeScript.Symbol>()
-    let value: TypeScript.Expression | TypeScript.FunctionDeclaration = unwrapped(expression)
-    while (ts.isIdentifier(value)) {
-      const binding = symbol(checker, value)
-      if (!binding || seen.has(binding)) return false
-      seen.add(binding)
-      const target = callbackValues.get(binding)
-      if (!target) return false
-      value = ts.isFunctionDeclaration(target) ? target : unwrapped(target)
+    if(ts.isIdentifier(node)&&node.text==='registerMvuSchema'){
+      const parent=node.parent
+      if(ts.isPropertyAccessExpression(parent)&&parent.name===node
+        ||(ts.isPropertyAssignment(parent)||ts.isMethodDeclaration(parent)||ts.isPropertyDeclaration(parent)
+          ||ts.isGetAccessorDeclaration(parent)||ts.isSetAccessorDeclaration(parent))&&parent.name===node
+        ||ts.isBindingElement(parent)&&parent.propertyName===node
+        ||ts.isImportSpecifier(parent)||ts.isExportSpecifier(parent)
+        ||ts.isLabeledStatement(parent)&&parent.label===node
+        ||(ts.isBreakStatement(parent)||ts.isContinueStatement(parent))&&parent.label===node)return false
+      const value=ts.isShorthandPropertyAssignment(parent)
+        ?checker.getShorthandAssignmentValueSymbol(parent):symbol(checker,node)
+      return !declared(value)&&runtimeValue(node)
     }
-    return ts.isArrowFunction(value) || ts.isFunctionExpression(value) || ts.isFunctionDeclaration(value)
+    const object=ts.isPropertyAccessExpression(node)&&node.name.text==='registerMvuSchema'?node.expression
+      :ts.isElementAccessExpression(node)&&ts.isStringLiteralLike(node.argumentExpression)
+        &&node.argumentExpression.text==='registerMvuSchema'?node.expression:undefined
+    return globalNamespace(object)&&runtimeValue(node)
   }
-  const readyCallbacks = new Set<TypeScript.CallExpression>()
-  for (const {node} of nodes) if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)
-    && node.expression.text === '$' && !symbol(checker, node.expression)
-    && node.arguments.length === 1 && node.arguments[0] && callbackValue(node.arguments[0])) readyCallbacks.add(node)
-  return {nodes, dynamicImports, readyCallbacks,
-    registrationIntent: nodes.some(({node}) => ts.isCallExpression(node) && registrationReference(node.expression))}
+  // Importing or obtaining the registration capability declares its owner.
+  // Calls, aliases and callback factories then execute normally in that owner;
+  // the runtime alone establishes whether registration actually happened.
+  return {nodes, dynamicImports,
+    registrationIntent:registrationImport||nodes.some(({node})=>registrationValue(node))}
 }
 /** Compatibility entry point; the private worker shares the richer facts
  * directly instead of calling this wrapper before full compilation. */
@@ -225,8 +189,7 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
   input: Pick<MvuSchemaCompilationInputV4,'bridge'|'libraries'>,
   file: TypeScript.SourceFile, checker: TypeScript.TypeChecker,ordinal:number,
   facts?: BoundSchemaAstFactsV4): {
-    kind: 'schema'; javascript: string;commandPolicyBindings:readonly RegisteredCommandPolicyBindingV1[];
-    initializationWriteBindings:readonly InitializationWriteBindingV1[]}
+    kind: 'schema'; javascript: string;commandPolicyBindings:readonly RegisteredCommandPolicyBindingV1[]}
     | {kind: 'not-schema'} {
   if (ts.version !== '5.9.3' || input.bridge.version !== 4 || file.text !== script.source) {
     fail('MVU_SCHEMA_V4_AST_IDENTITY', script, file)
@@ -237,26 +200,6 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
     const libraries = new Map(input.libraries.map(item => [item.kind, item.bundleSha256]))
     const redirects = new Map<TypeScript.Node, TypeScript.Expression>()
     const commandPolicyBindings:RegisteredCommandPolicyBindingV1[]=[]
-    const initializationWriteBindings:InitializationWriteBindingV1[]=[]
-    const literalName=(name:TypeScript.PropertyName)=>ts.isIdentifier(name)||ts.isStringLiteral(name)?name.text:undefined
-    const initializationWrite=(call:TypeScript.CallExpression)=>{
-      const payload=call.arguments[0],option=call.arguments[1]
-      const field=payload&&ts.isObjectLiteralExpression(payload)&&payload.properties.length===1
-        ?payload.properties[0]:undefined
-      const type=option&&ts.isObjectLiteralExpression(option)&&option.properties.length===1
-        ?option.properties[0]:undefined
-      if(call.arguments.length!==2||call.typeArguments?.length||call.questionDotToken
-        ||!field||!(ts.isPropertyAssignment(field)||ts.isShorthandPropertyAssignment(field))
-        ||literalName(field.name)!=='stat_data'
-        ||ts.isShorthandPropertyAssignment(field)&&field.objectAssignmentInitializer
-        ||!type||!ts.isPropertyAssignment(type)||literalName(type.name)!=='type'
-        ||!ts.isStringLiteral(type.initializer)||type.initializer.text!=='chat') {
-        fail('MVU_SCHEMA_INITIALIZATION_WRITE_UNSUPPORTED',script,file,call)
-      }
-      initializationWriteBindings.push({scriptOrdinal:ordinal,scriptIdentity:script.identity,
-        sourceSha256:script.sourceSha256,sourceSpan:{start:call.getStart(file),end:call.end},
-        capability:'insert-or-assign-chat-stat-data-v1'})
-    }
     const policyBinding=(specifier:string,node:TypeScript.Node,
       fields:Pick<RegisteredCommandPolicyBindingV1,'importKind'|'importedName'|'localName'>)=>{
       commandPolicyBindings.push({scriptOrdinal:ordinal,scriptIdentity:script.identity,
@@ -323,32 +266,6 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
         }
       }
       if (ts.isImportTypeNode(node)) fail('MVU_SCHEMA_IMPORT_TYPE_UNSUPPORTED', script, file, node)
-      if(ts.isIdentifier(node)&&node.text==='insertOrAssignVariables'&&!isNameOnly(node)
-        &&!checker.getSymbolAtLocation(node)) {
-        const parent=node.parent
-        if(ts.isCallExpression(parent)&&parent.expression===node)initializationWrite(parent)
-        else if(!ts.isTypeOfExpression(parent)||parent.expression!==node) {
-          fail('MVU_SCHEMA_INITIALIZATION_WRITE_UNSUPPORTED',script,file,node)
-        }
-      }
-      if(ts.isPropertyAccessExpression(node)&&node.name.text==='insertOrAssignVariables'
-        &&ts.isIdentifier(node.expression)&&node.expression.text==='globalThis'
-        &&!checker.getSymbolAtLocation(node.expression)) {
-        fail('MVU_SCHEMA_INITIALIZATION_WRITE_UNSUPPORTED',script,file,node)
-      }
-      if (ts.isMetaProperty(node) || node.kind === ts.SyntaxKind.WithStatement) fail('MVU_SCHEMA_HOST_ACCESS', script, file, node)
-      const ownGlobal = ts.isIdentifier(node) && node.text === 'globalThis'
-      if (ts.isIdentifier(node) && !isNameOnly(node) && hostNames.has(node.text) && !ownGlobal
-        && !checker.getSymbolAtLocation(node)) fail('MVU_SCHEMA_HOST_ACCESS', script, file, node)
-      if (ts.isPropertyAccessExpression(node) && escapeProperties.has(node.name.text)
-        || ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)
-          && escapeProperties.has(node.argumentExpression.text)) fail('MVU_SCHEMA_DYNAMIC_CODE_ACCESS', script, file, node)
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === '$'
-        && !checker.getSymbolAtLocation(node.expression)) {
-        if (!analysis.readyCallbacks.has(node)) {
-          fail('MVU_SCHEMA_READY_CALLBACK_REQUIRED', script, file, node)
-        }
-      }
     }
     if (!analysis.registrationIntent) return {kind: 'not-schema'}
     const transformer: TypeScript.TransformerFactory<TypeScript.SourceFile> = context => {
@@ -369,8 +286,7 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
       fail('MVU_SCHEMA_TYPESCRIPT_TRANSPILE', script, file)
     }
     commandPolicyBindings.sort((left,right)=>left.sourceSpan.start-right.sourceSpan.start)
-    initializationWriteBindings.sort((left,right)=>left.sourceSpan.start-right.sourceSpan.start)
-    return {kind: 'schema', javascript: result.outputText,commandPolicyBindings,initializationWriteBindings}
+    return {kind: 'schema', javascript: result.outputText,commandPolicyBindings}
   } catch (error) {
     if (error instanceof RangeError) fail('MVU_SCHEMA_SYNTAX_DEPTH_LIMIT', script, file)
     throw error

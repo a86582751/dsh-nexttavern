@@ -33,8 +33,8 @@ export function createCommunityRegexPanel({React,jsonFetch,toast}:CommunityPanel
     const accept=(value:RegexPolicy)=>{
       setPolicy(value)
       const library=value.regexLibrary??value.regexes
-      if(!selected||!library.some(item=>item.id===selected))setSelected(library[0]?.id??'')
-      if(!presetId)setPresetId(value.effective.presetId??value.presets[0]?.id??'')
+      setSelected(previous=>library.some(item=>item.id===previous)?previous:library[0]?.id??'')
+      setPresetId(previous=>previous||value.effective.presetId||value.presets[0]?.id||'')
     }
     const load=async()=>{
       const ticket=++sequence.current;abort.current?.abort();const controller=new AbortController();abort.current=controller
@@ -61,9 +61,7 @@ export function createCommunityRegexPanel({React,jsonFetch,toast}:CommunityPanel
     }
     const library=policy?.regexLibrary??policy?.regexes??[]
     const entry=library.find(item=>item.id===selected)
-    const globalProfile=policy?.presets.find(preset=>preset.id===policy.global.presetId)?.profile
-    const displayedOrder=scope==='global'?(policy?.global.regexOrder??(globalProfile&&['kemini','reborn','izumi'].includes(globalProfile)
-      ?['preset','global','scoped']:['global','preset','scoped']) as CommunityRegexOrigin[]):policy?.regexOrder??[]
+    const displayedOrder=(scope==='global'?policy?.globalRegexOrder:policy?.regexOrder)??[]
     const edit=(entry:CommunityRegexLibraryEntry)=>setDraft({id:entry.id,name:entry.name,rules:structuredClone(entry.rules),
       bindingScope:entry.binding.scope,presetId:entry.binding.scope==='preset'?entry.binding.id??'':presetId})
     const changeRule=(index:number,patch:Partial<CommunityRegexRule>)=>setDraft(before=>before?{

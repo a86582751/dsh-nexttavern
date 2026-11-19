@@ -1,41 +1,82 @@
 // Generated from runtime/alpha3/src/core/roleplay-author-worldbook-data.ts; edit the TypeScript source.
-/** Named primary-book DATA and deterministic mutation planning. The actual
- * Core lifecycle and lore journal remain the only read/write authorities. */
+/** Catalog and bound-book DATA captured by the actual Core read owner. */
 import { recordSha256 } from './roleplay-data.js';
-import { composeRoleplayTavernCurrentOverlayV1 } from './roleplay-tavern-current-overlay.js';
-import { originalTavernLoreMembershipFromSourceV1, applyTavernLoreMemberFieldsV1 } from './roleplay-tavern-lore-membership.js';
-import { nativeNamedWorldbookEntryToWireV1, worldbookWireToNativeEntryV1 } from './tavern-named-worldbook-data.js';
-/** The supplied journal and legacy differences came from the same Source
- * read. No model, global library or new Source identity is synthesized. */
-function captureNamedWorldbookBody(source, data, legacy) {
-    let membership = data.currentNativeMembership;
-    if (!membership) {
-        membership = originalTavernLoreMembershipFromSourceV1(source);
-        for (const entry of composeRoleplayTavernCurrentOverlayV1(legacy, data.overlay).entries) {
-            membership = applyTavernLoreMemberFieldsV1(membership, { kind: 'original', rawEntryPointer: entry.rawEntryPointer,
-                rawEntrySha256: entry.rawEntrySha256 }, entry.fields);
-        }
+import { freezeAuthorWorldbookDataV1 } from './roleplay-author-worldbook-journal.js';
+import { nativeNamedWorldbookEntryToWireV1 } from './tavern-named-worldbook-data.js';
+const wireEntries = new WeakMap();
+const helperCaptures = new WeakMap();
+export function authorWorldbookHelperEntryV1(member, prepared) {
+    let entry = wireEntries.get(member);
+    if (!entry) {
+        entry = prepared ?? nativeNamedWorldbookEntryToWireV1(member.rawEntry, { uid: member.uid });
+        wireEntries.set(member, entry);
     }
-    const name = source.original.primary.value?.name, primaryName = typeof name === 'string' && name.length ? name : null, members = [...membership.members].sort((left, right) => left.displayIndex - right.displayIndex);
-    const entries = members.map(member => nativeNamedWorldbookEntryToWireV1(member.rawEntry, { uid: member.uid }));
-    return { authority: 'consumer-data-only', sessionId: source.sessionId, sourceSha256: source.sourceSha256,
-        loreDataSha256: data.dataSha256, revision: data.revision, primaryName, names: primaryName === null ? [] : [primaryName], members, entries };
+    return entry;
 }
-export function captureAuthorNamedWorldbookDataV1(source, data, legacy) {
-    const body = { schemaVersion: 1, encoding: 'author-named-primary-worldbook-data-v1',
-        ...captureNamedWorldbookBody(source, data, legacy) };
-    return { ...body, dataSha256: recordSha256(body) };
+export function authorWorldbookHelperEntriesV1(membership, preparedEntries) {
+    return [...membership.members].sort((a, b) => a.displayIndex - b.displayIndex)
+        .map(member => authorWorldbookHelperEntryV1(member, preparedEntries?.get(member.uid)));
 }
-export function captureAuthorNamedWorldbookDataV2(source, data, legacy) {
-    const body = { schemaVersion: 2, encoding: 'author-named-primary-worldbook-data-v2',
-        identitySha256: data.identitySha256, ...captureNamedWorldbookBody(source, data, legacy) };
-    return { ...body, dataSha256: recordSha256(body) };
+export function authorWorldbookHelperCaptureV1(book, preparedEntries) {
+    let helper = helperCaptures.get(book);
+    if (!helper) {
+        if (preparedEntries) {
+            // The publisher supplies prepared DTOs only for this exact captured membership.
+            const members = [...book.membership.members].sort((a, b) => a.displayIndex - b.displayIndex);
+            members.forEach((member, index) => wireEntries.set(member, preparedEntries[index]));
+        }
+        helper = freezeAuthorWorldbookDataV1({ ...book, entries: preparedEntries ?? authorWorldbookHelperEntriesV1(book.membership) });
+        helperCaptures.set(book, helper);
+    }
+    return helper;
+}
+const catalogNames = new WeakMap();
+function namesForCatalog(catalog) {
+    let named = catalogNames.get(catalog);
+    if (!named) {
+        named = { index: new Map(catalog.books.map(book => [book.address.bookId, book.name])),
+            names: catalog.books.map(book => book.name) };
+        catalogNames.set(catalog, named);
+    }
+    return named;
+}
+export function authorNamedCharacterWorldbookNamesV1(binding, catalog) {
+    const selection = binding.selection;
+    if (selection.kind !== 'character')
+        throw Error('AUTHOR_WORLDBOOK_BINDING_KIND_MISMATCH');
+    const { index } = namesForCatalog(catalog);
+    return freezeAuthorWorldbookDataV1({ primary: selection.primary === null ? null : index.get(selection.primary) ?? null,
+        additional: selection.additional.flatMap(bookId => {
+            const name = index.get(bookId);
+            return name === undefined ? [] : [name];
+        }) });
+}
+export function captureAuthorNamedWorldbookDataV3(sessionId, sourceSha256, context, catalog) {
+    const named = namesForCatalog(catalog);
+    const { index, names } = named, character = context.bindings.find(binding => binding.owner.kind === 'character')?.selection, global = context.bindings.find(binding => binding.owner.kind === 'profile')?.selection, chat = context.bindings.find(binding => binding.owner.kind === 'chat')?.selection;
+    if (character?.kind !== 'character')
+        throw Error('AUTHOR_SOURCE_CONTEXT_BINDING_INVALID');
+    const primaryBookId = context.primary?.address.bookId ?? null, primaryName = primaryBookId === null ? null : index.get(primaryBookId) ?? null, characterNames = { primary: primaryName, additional: character.additional.flatMap(bookId => {
+            const name = index.get(bookId);
+            return name === undefined ? [] : [name];
+        }) }, globalNames = global?.kind === 'profile' ? global.enabled.flatMap(bookId => {
+        const name = index.get(bookId);
+        return name === undefined ? [] : [name];
+    }) : [], chatName = chat?.kind === 'chat' && chat.bookId !== null ? index.get(chat.bookId) ?? null : null, refs = context.books.map(book => ({ bookId: book.address.bookId, content: book.content, metadata: book.metadata })), bindingRefs = context.bindings.map(binding => ({ owner: binding.owner, head: binding.head }));
+    const dataSha256 = recordSha256({ sessionId, sourceSha256, profileId: catalog.profileId,
+        catalog: catalog.head, bindings: bindingRefs, books: refs, primaryBookId });
+    return freezeAuthorWorldbookDataV1({ schemaVersion: 3, encoding: 'author-worldbook-catalog-data-v3',
+        authority: 'consumer-data-only', sessionId, sourceSha256, profileId: catalog.profileId, catalog,
+        books: context.books, bindings: context.bindings, primaryBookId, primaryName, characterNames, globalNames, chatName, names, dataSha256 });
+}
+export function authorWorldbookReadTargetV1(book) {
+    return { bookId: book.address.bookId, contentRef: book.content, metadataRef: book.metadata };
 }
 /** The fixed Helper resolves collisions over the whole result, with quadratic
  * probing modulo one million. A default candidate here derives from the real
  * operation, so a lost reply never reallocates IDs when that operation retries.
  * Evidence: JS-Slash-Runner 519599bc... src/function/worldbook.ts 306–331. */
-function allocateUid(desired, used, operationId, ordinal) {
+export function allocateAuthorWorldbookUidV1(desired, used, operationId, ordinal) {
     let candidate = desired ?? Number.parseInt(recordSha256({ operationId, ordinal }).slice(0, 12), 16) % 1_000_000;
     let probe = 1;
     while (used.has(candidate)) {
@@ -45,61 +86,15 @@ function allocateUid(desired, used, operationId, ordinal) {
     used.add(candidate);
     return candidate;
 }
-/** Predicates and updater callbacks run in the guest over its actual DTO
- * snapshot. Core receives resolved UID targets or entry DATA only. */
-export function planAuthorWorldbookMutationV1(basis, name, operationId, mutation) {
-    if (name !== basis.primaryName)
-        throw Error('AUTHOR_WORLDBOOK_NOT_FOUND');
-    const current = new Map(basis.members.map(member => [member.uid, member])), createdUids = [], deletedEntries = [];
-    let journalMutation;
-    if (mutation.kind === 'delete-entries') {
-        const removed = new Set(mutation.uids);
-        basis.entries.forEach(entry => { if (removed.has(entry.uid))
-            deletedEntries.push(entry); });
-        journalMutation = { kind: 'remove', targets: basis.members.filter(member => removed.has(member.uid)).map(member => member.identity) };
+export function authorWorldbookMutationReplyV1(result) {
+    if (result.readError)
+        return { readError: result.readError };
+    try {
+        const entries = authorWorldbookHelperCaptureV1(result.book).entries;
+        return { worldbook: entries, new_entries: result.createdEntries,
+            deleted_entries: result.deletedEntries, target: authorWorldbookReadTargetV1(result.book) };
     }
-    else if (mutation.kind === 'create-entries') {
-        const used = new Set(current.keys());
-        // A sparse existing display order stays intact. New Helper entries append
-        // after its actual last item rather than entering a gap left by deletion.
-        const firstDisplayIndex = basis.members.reduce((maximum, member) => Math.max(maximum, member.displayIndex), -1) + 1;
-        const entries = mutation.entries.map((entry, ordinal) => {
-            const uid = allocateUid(entry.uid, used, operationId, ordinal), displayIndex = firstDisplayIndex + ordinal;
-            createdUids.push(uid);
-            return { uid, displayIndex, rawEntry: worldbookWireToNativeEntryV1(entry, { uid, displayIndex }) };
-        });
-        journalMutation = { kind: 'append', entries };
+    catch (error) {
+        return { readError: { code: error instanceof Error ? error.message : 'AUTHOR_WORLDBOOK_READ_UNKNOWN' } };
     }
-    else if (mutation.kind === 'replace-entries') {
-        const replacements = new Map(mutation.entries.map(entry => [entry.uid, entry]));
-        for (const uid of replacements.keys())
-            if (!current.has(uid))
-                throw Error('AUTHOR_WORLDBOOK_ENTRY_NOT_FOUND');
-        const entries = basis.members.map((member, displayIndex) => {
-            const entry = replacements.get(member.uid);
-            return { ...member, displayIndex, rawEntry: entry
-                    ? worldbookWireToNativeEntryV1(entry, { uid: member.uid, displayIndex }, member.rawEntry) : member.rawEntry };
-        });
-        journalMutation = { kind: 'replace', entries };
-    }
-    else {
-        const used = new Set();
-        const entries = mutation.entries.map((entry, displayIndex) => {
-            const uid = allocateUid(entry.uid, used, operationId, displayIndex), previous = current.get(uid);
-            if (!previous)
-                createdUids.push(uid);
-            return { uid, displayIndex, ...previous ? { identity: previous.identity } : {},
-                rawEntry: worldbookWireToNativeEntryV1(entry, { uid, displayIndex }, previous?.rawEntry) };
-        });
-        journalMutation = { kind: 'replace', entries };
-    }
-    const request = { schemaVersion: 2, encoding: 'tavern-lore-mutation-request-v2',
-        sessionId: basis.sessionId, expectedSourceSha256: basis.sourceSha256, expectedRevision: basis.revision, operationId,
-        mutation: journalMutation };
-    return { request, createdUids, deletedEntries };
-}
-export function authorWorldbookMutationReplyV1(plan, actual) {
-    const created = new Set(plan.createdUids);
-    return { worldbook: actual.entries, new_entries: actual.entries.filter(entry => created.has(entry.uid)),
-        deleted_entries: plan.deletedEntries };
 }

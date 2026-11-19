@@ -1,6 +1,6 @@
 /** Primitive display data from an already completed verified history fold.
  * This formatter owns no Native permission, numerical authority or parser. */
-export type MvuDisplayProtocol = 'native-jsonpatch-v1' | 'native-mvu-update-v2'
+export type MvuDisplayProtocol = 'native-jsonpatch-v1' | 'native-mvu-update-v2' | 'mvu-196-d03'
 export interface MvuAcceptedDisplayUpdate {
   readonly schemaVersion: 1
   readonly encoding: 'native-mvu-accepted-display-update-v1'
@@ -21,11 +21,33 @@ export function acceptedMvuDisplayUpdate(ownerSessionId: string,
   if (!identifier(ownerSessionId) || !identifier(canonical.messageId)
     || !Number.isSafeInteger(canonical.seq) || canonical.seq < 0
     || !hash(canonical.versionSha256) || !hash(canonical.narrativeSha256)
-    || !['native-jsonpatch-v1', 'native-mvu-update-v2'].includes(protocol)) return undefined
+    || !['native-jsonpatch-v1', 'native-mvu-update-v2', 'mvu-196-d03'].includes(protocol)) return undefined
   return Object.freeze({schemaVersion: 1 as const, encoding: 'native-mvu-accepted-display-update-v1' as const,
     ownerSessionId, canonical: Object.freeze({seq: canonical.seq, messageId: canonical.messageId,
       versionSha256: canonical.versionSha256, narrativeSha256: canonical.narrativeSha256}), protocol})
 }
+export function indexMvuDisplayUpdates(updates: readonly MvuAcceptedDisplayUpdate[]) {
+  const bySeq = new Map<number, MvuAcceptedDisplayUpdate[]>()
+  for (const update of updates) {
+    const seq = update.canonical.seq
+    const related = bySeq.get(seq)
+    if (related) related.push(update)
+    else bySeq.set(seq, [update])
+  }
+  return bySeq
+}
+export function matchMvuDisplayUpdate(updates: readonly MvuAcceptedDisplayUpdate[],
+  target: MvuAcceptedDisplayUpdate['canonical']): MvuAcceptedDisplayUpdate | undefined {
+  let match: MvuAcceptedDisplayUpdate | undefined
+  for (const update of updates) {
+    const item = update.canonical
+    if (item.seq !== target.seq || item.messageId !== target.messageId) continue
+    if (match || item.versionSha256 !== target.versionSha256 || item.narrativeSha256 !== target.narrativeSha256) return
+    match = update
+  }
+  return match
+}
+
 /** Ambiguous identities omit hints; display formatting can never make the
  * original authority/fork/recovery contract fail or select a guessed version. */
 export function formatMvuDisplayUpdates(inputs: readonly MvuAcceptedDisplayUpdate[]): readonly MvuAcceptedDisplayUpdate[] {

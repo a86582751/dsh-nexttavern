@@ -45,19 +45,24 @@ function literalSubstitute(text:string,replacements:readonly [string,string][],i
   return result
 }
 export function createCommunitySanitizer(profile:CommunityPresetProfile,overrides:Data={}) {
-  const izumi=object(profile.configuration.izumi),config={...object(izumi.sanitizer),...object(overrides.sanitizer)}
-  const enabled=profile.id==='izumi'&&config.enabled!==false
+  const configured=object(profile.configuration[profile.id])
+  const config={...object(configured.sanitizer),...object(overrides.sanitizer)}
+  const enabled=profile.transport.kind==='izumi'&&config.enabled!==false
   const replacements=Object.entries(object(config.replacements)).filter((entry):entry is [string,string]=>typeof entry[1]==='string')
     .sort((a,b)=>b[0].length-a[0].length)
-  const reverse=replacements.map(([from,to])=>[to,from] as [string,string]).sort((a,b)=>b[0].length-a[0].length)
+  // Deletion has no output token to restore. An empty reverse key cannot
+  // identify a deleted occurrence and would never advance the stream cursor.
+  const reverse=replacements.filter(([,to])=>to.length>0)
+    .map(([from,to])=>[to,from] as [string,string]).sort((a,b)=>b[0].length-a[0].length)
   const zero=typeof config.zeroWidthChar==='string'?config.zeroWidthChar:'\u200b'
   const words=(Array.isArray(config.words)?config.words:[]).filter((word):word is string=>typeof word==='string'&&!!word
     &&!replacements.some(([key])=>key===word)).sort((a,b)=>b.length-a.length)
   const maximum=Math.max(1,...reverse.map(([key])=>key.length))
   const restore=(text:string)=>literalSubstitute(text,reverse).split(zero).join('')
-  const forward=(text:string)=>mapOutsideProtected(text,plain=>{
-    // The source character name is exempt; a matching syllable elsewhere is not.
-    const pieces=plain.split('小此').map(part=>literalSubstitute(part,replacements)).join('小此')
+  const exemptNames=(Array.isArray(config.exemptNames)?config.exemptNames:[])
+    .filter((name):name is string=>typeof name==='string'&&name.length>0).sort((a,b)=>b.length-a.length)
+  const transformPlain=(plain:string)=>{
+    const pieces=literalSubstitute(plain,replacements)
     let output='',offset=0
     const search=pieces.toLowerCase()
     while(offset<pieces.length) {
@@ -66,6 +71,15 @@ export function createCommunitySanitizer(profile:CommunityPresetProfile,override
       else output+=pieces[offset++]
     }
     return output
+  }
+  const forward=(text:string)=>mapOutsideProtected(text,plain=>{
+    let output='',start=0,index=0
+    while(index<plain.length) {
+      const name=exemptNames.find(name=>plain.startsWith(name,index))
+      if(name){output+=transformPlain(plain.slice(start,index))+name;index+=name.length;start=index}
+      else index++
+    }
+    return output+transformPlain(plain.slice(start))
   })
   return {enabled,config,forward:(text:string)=>enabled?forward(text):text,
     reverse:(text:string)=>enabled&&config.reverseEnabled!==false?restore(text):text,
@@ -94,9 +108,9 @@ export function createCommunitySanitizer(profile:CommunityPresetProfile,override
 
 /** Reborn only strips metadata at the beginning. Once ordinary prose starts,
  * identical labels inside the story remain visible. */
-export function createCommunityHeaderCleaner():CommunityTextTransform {
+export function createCommunityHeaderCleaner(headerLabels:readonly string[]=['finishReason:','finishMessage:']):CommunityTextTransform {
   let pending='',started=false
-  const labels=['finishreason:','finishmessage:']
+  const labels=headerLabels.map(label=>label.toLowerCase()).filter(label=>label.length>0)
   const consume=(final:boolean)=>{
     if(started){const output=pending;pending='';return output}
     while(pending) {
@@ -119,13 +133,14 @@ export function createCommunityHeaderCleaner():CommunityTextTransform {
 }
 export function communityResponseHooks(profile:CommunityPresetProfile,features:Data={}) {
   const sanitizer=createCommunitySanitizer(profile,features)
-  const reborn=object(profile.configuration.reborn)
-  const preprocessing={...object(reborn.outputPreprocessing),...object(features.outputPreprocessing)}
-  const clean=profile.id==='reborn'&&preprocessing.enabled===true&&features.outputPreprocessing!==false
-  const dreamConfig={...object(profile.configuration.dream),...features}
-  const dream=profile.id==='dream'&&dreamConfig.emptyPlotRecovery!==false
+  const configured=object(profile.configuration[profile.id]),configuration={...configured,...features}
+  const preprocessing={...object(configured.outputPreprocessing),...object(features.outputPreprocessing)}
+  const clean=profile.transport.kind==='reborn'&&preprocessing.enabled===true&&features.outputPreprocessing!==false
+  const dream=profile.transport.kind==='dream'&&configuration.emptyPlotRecovery!==false
+  const headerLabels=Array.isArray(preprocessing.headerLabels)?preprocessing.headerLabels
+    .filter((label):label is string=>typeof label==='string'):undefined
   const factory=():CommunityTextTransform=>{
-    const head=clean?createCommunityHeaderCleaner():{push:(text:string)=>text,finish:()=>''}
+    const head=clean?createCommunityHeaderCleaner(headerLabels):{push:(text:string)=>text,finish:()=>''}
     const restore=sanitizer.createReverseStream()
     return {push:text=>restore.push(head.push(text)),finish:()=>restore.push(head.finish())+restore.finish()}
   }
@@ -133,7 +148,7 @@ export function communityResponseHooks(profile:CommunityPresetProfile,features:D
     const transform=factory();return transform.push(text)+transform.finish()
   },recoverText(blocks:readonly {type:string;text?:string}[]):string|undefined {
     if(!dream)return undefined
-    const extraction=object(dreamConfig.reasoningExtraction)
+    const extraction=object(configuration.reasoningExtraction)
     if(extraction.start_regex!==undefined&&extraction.start_regex!=='^<dream_plot>')return undefined
     if(extraction.end_regex!==undefined&&extraction.end_regex!=='')return undefined
     const reasoning=blocks.filter(block=>block.type==='reasoning').map(block=>block.text??'').join('')

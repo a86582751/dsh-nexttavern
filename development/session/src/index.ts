@@ -33,7 +33,7 @@ export {validateNativeStoryResponseMaterial,reconstructNativeStoryResponseMateri
 
 export { buildForkSeed } from './fork.js'
 export * from './types.js'
-export type {NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecord,
+export type {NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecordV3,NativeRequestMaterialRecord,
   NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2,NativeMaterialDataRefV1,NativeMaterialMessageRefV1,
   NativeMaterialInsertionV1,NativeMaterialPlacementV1,NativeLoreRoleV1,NativeMessageProjectionV1,
   NativeMaterialFinalTextProjectionV1,NativeMaterialTextOutputV1} from './request-material-types.js'
@@ -736,7 +736,7 @@ export class Session {
     for(const seq of surfaceNodes){const event=this.log[seq]
       if(!event)throw Error('SESSION_REQUEST_PREVIEW_SURFACE')
       const message=this.deriveEventMessage(event)
-      if(message)messageNodes.push({seq,message})}
+      if(message&&message.authorMetadata?.is_hidden!==true)messageNodes.push({seq,message})}
     if(messageNodes.length>4096)throw Error('SESSION_REQUEST_PREVIEW_MESSAGE_BUDGET')
     // Session derivation already owns deeply frozen Message objects. Freeze
     // only this boundary's new containers instead of walking history again.

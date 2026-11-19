@@ -36,6 +36,8 @@ export function mapUsage(usage) {
 // If pi-ai ever forwards the original Error (or a fetch/dispatcher hook that lets
 // us capture the cause ourselves), classify on `code`/`cause` instead of text.
 function classifyPiAiError(message) {
+    if (message.startsWith('UNSUPPORTED_OPTION:'))
+        return 'UNSUPPORTED_OPTION';
     if (/\b(?:401|403)\b/.test(message))
         return 'AUTH';
     if (isQuotaExceededError(message))

@@ -32,6 +32,8 @@ interface Dependencies<S extends Session, A> {
     entriesPrefix?(prefix:string|readonly string[]):Iterable<[string,unknown]>;
     put(key: string, value: NovelExportJob): unknown | Promise<unknown> }
   history(session: S): readonly Readonly<StoryEntry>[]
+  narrative?(session: S, entries: readonly Readonly<StoryEntry>[]):
+    readonly Readonly<StoryEntry>[] | Promise<readonly Readonly<StoryEntry>[]>
   request<T>(spec: RequestSpec<T, S, A>): Promise<T>
   archive(session: S, job: NovelExportJob, markdown: string): Promise<{ id: string; path: string }>
 }
@@ -77,7 +79,7 @@ function chunksOf(units: NovelUnit[]): SourceChunk[] {
   return chunks
 }
 
-export function createNovelExports<S extends Session = Session, A = unknown>({ table, history, request, archive }: Dependencies<S, A>) {
+export function createNovelExports<S extends Session = Session, A = unknown>({ table, history, narrative, request, archive }: Dependencies<S, A>) {
   const active = new Map<string, { generation: string; promise: Promise<NovelExportJob> }>()
   const historyIndices = new WeakMap<readonly Readonly<StoryEntry>[], Map<number, string | undefined>>()
   const get = (session: S, id: string): NovelExportJob => {
@@ -85,9 +87,20 @@ export function createNovelExports<S extends Session = Session, A = unknown>({ t
     if (!record(value) || value.sessionId !== session.id) fail('小说任务不属于当前会话')
     return clone(decodeJob(value))
   }
-  const list = (session: S): NovelExportJob[] => [...(table.entriesPrefix?.('tavern_novel__')??table.entries())]
-    .filter(([k, value]) => k.startsWith('tavern_novel__') && record(value) && value.sessionId === session.id)
-    .map(([, value]) => clone(decodeJob(value)))
+  const activeJob = (status: unknown) => status === 'queued' || status === 'running' || status === 'waiting-main'
+  function* jobRows(session: S, activeOnly: boolean) {
+    for (const [name, value] of table.entriesPrefix?.('tavern_novel__') ?? table.entries()) {
+      if (name.startsWith('tavern_novel__') && record(value) && value.sessionId === session.id
+        && (!activeOnly || activeJob(value.status))) yield value
+    }
+  }
+  const list = (session: S, activeOnly = false): NovelExportJob[] =>
+    Array.from(jobRows(session, activeOnly), value => clone(decodeJob(value)))
+  const findActive = (session: S, mode: NovelExportMode, sourceHash: string): NovelExportJob | undefined => {
+    for (const value of jobRows(session, true)) {
+      if ((value.mode ?? 'organized') === mode && value.sourceHash === sourceHash) return clone(decodeJob(value))
+    }
+  }
   const current = (session: S, job: NovelExportJob): boolean => {
     const snapshot = history(session)
     let live = historyIndices.get(snapshot)
@@ -103,10 +116,17 @@ export function createNovelExports<S extends Session = Session, A = unknown>({ t
     const entries = clone([...history(session)])
     if (!entries.some(entry => (entry.role ?? entry.kind) === 'assistant')) fail('当前分支没有可导出的完整剧情')
     const source = { entries, cutoff: entries.at(-1)?.seq ?? -1 }
-    const units = mode === 'organized' ? novelUnits(entries) : []
     const sourceHash = taskHash(source)
-    const existing = list(session).find(job => ['queued', 'running', 'waiting-main'].includes(job.status) && (job.mode ?? 'organized') === mode && job.sourceHash === sourceHash)
+    const existing = findActive(session, mode, sourceHash)
     if (existing) return existing
+    // Task source checks address exact selected history. Prose units use the
+    // accepted projection after resolving an existing job for that source.
+    const prose = mode === 'organized' && narrative ? await narrative(session, entries) : entries
+    if (mode === 'organized' && narrative) {
+      const concurrent = findActive(session, mode, sourceHash)
+      if (concurrent) return concurrent
+    }
+    const units = mode === 'organized' ? novelUnits(prose) : []
     const id = randomUUID(), job: NovelExportJob = {
       schemaVersion: 1, id, kind: 'novel-export', sessionId: session.id, branchId: session.id, source, sourceHash, mode,
       ...(mode === 'organized' ? { selection: clone(selection!), actualRoute: selection!.actualRoute } : {}),
@@ -138,7 +158,8 @@ export function createNovelExports<S extends Session = Session, A = unknown>({ t
         if (job.mode === 'original') {
           // The selected history already owns ordering and text extraction. Preserve
           // each frozen string, including whitespace, and only add a fixed separator.
-          const markdown = `# ${job.plan!.title}\n\n` + job.source.entries.map(entry => entry.text ?? '').join('\n\n')
+          const prose = await narrative?.(session, job.source.entries) ?? job.source.entries
+          const markdown = `# ${job.plan!.title}\n\n` + prose.map(entry => entry.text ?? '').join('\n\n')
           const resource = await archive(session, job, markdown)
           await save(check(), { status: 'completed', progress: { done: job.source.entries.length, total: job.source.entries.length }, resourceId: resource.id, file: resource.path, resultHash: taskHash(markdown), completedAt: Date.now(), error: null })
           return get(session, id)

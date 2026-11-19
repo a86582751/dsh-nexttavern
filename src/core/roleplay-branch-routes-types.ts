@@ -26,6 +26,7 @@ export interface CleanBranchPreparation {
   kind:'prepare-clean-branch'
   operationId:string
   sourceSessionId:string
+  expectedRevision:string
   childSessionId:string|null
   status:'prepared'|'ready'|'failed'
   requiresPlayerInput:true

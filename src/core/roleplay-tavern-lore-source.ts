@@ -11,7 +11,7 @@ import {CARD_LIMITS} from './tavern-card.js'
 import type {DecodedTavernCard} from './tavern-card.js'
 import {assertImportRecordIntegrity, assertAssignmentBudget, assertReferenceBudget,
   assertReviewProof, importCoverage, normalizeSourceSpans, spanText,
-  validateAssignmentIdentities} from './roleplay-import-record.js'
+  textImportFormat, validateAssignmentIdentities} from './roleplay-import-record.js'
 import type {ImportPointer, ImportRecord} from './roleplay-import-types.js'
 import type {MvuSourceTable} from './roleplay-mvu-source.js'
 import type {LegacyCurrentRowDataV1, LegacyRowRefDataV1} from './roleplay-tavern-lore-contributions.js'
@@ -116,7 +116,7 @@ function versionMap(value:unknown,pointer:string):Record<string,string> {
   const result:Record<string,string>={}
   for(const [key,version] of Object.entries(value)) {
     if(!ID.test(key)||!isHash(version))fail('MEMBERSHIP_INVALID',pointer)
-    result[key]=version
+    Object.defineProperty(result,key,{value:version,enumerable:true,writable:true,configurable:true})
   }
   return result
 }
@@ -170,7 +170,7 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
   if(!isObject(record)||record.sessionId!==sourceRecordSessionId||record.importId!==pointer.importId
     ||record.status!=='active'||record.normalizedSha256!==pointer.normalizedSha256
     ||record.activation?.transactionId!==pointer.transactionId)fail('IMPORT_RECORD_INVALID','/activeImport')
-  if(record.schemaVersion===3)outside('LEGACY_SOURCE_OUTSIDE_DOMAIN','/activeImport/normalizer')
+  if(textImportFormat(record))outside('LEGACY_SOURCE_OUTSIDE_DOMAIN','/activeImport/normalizer')
   const normalizer: 'tavern-fields-v1'|'tavern-fields-v2'|'nexttavern-fields-v1'|undefined=
     record.schemaVersion===4&&record.normalizer==='tavern-fields-v1' ? 'tavern-fields-v1'
       : record.schemaVersion===5&&record.normalizer==='tavern-fields-v2' ? 'tavern-fields-v2'

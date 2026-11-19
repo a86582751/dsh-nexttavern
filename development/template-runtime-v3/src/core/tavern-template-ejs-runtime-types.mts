@@ -1,8 +1,11 @@
 import type {TavernEjsHostCapture,TavernEjsPhaseCapture,TavernEjsResource,TavernEjsHost,
-  TavernEjsHostResult} from './tavern-template-ejs-host-types.mjs'
+  TavernEjsHostResult,TavernEjsCapturedReadOwnerV1,TavernEjsCapturedReadRecordV1,
+  TavernEjsCapturedReadRequestV1,TavernEjsCapturedReadResultV1} from './tavern-template-ejs-host-types.mjs'
+import type {MessagePort} from 'node:worker_threads'
 import type {TavernEjsReplayEngine,TavernEjsReplayRecord,TavernEjsReplayDelta} from './tavern-template-ejs-replay.mjs'
 import {recordSha256} from './roleplay-data.js'
 import {TEMPLATE_LIMITS_V1} from './tavern-template-data.mjs'
+import type {CommunityProfileModuleInputV1,CommunityProfileEvaluatorV1} from './community-preset-profiles.js'
 
 export type TavernEjsConsumer='reader-render-v1'|'reader-regex-phase-v1'
 /** Source catalogue capacity, actor transport capacity and final HTML capacity
@@ -49,8 +52,9 @@ export interface TavernEjsRuntimeInvocation {
 /** Each program retains its own realm on a shared Worker actor. */
 export interface TavernEjsRuntimeProgram {
   readonly creation:TavernEjsHostResult
+  readonly creationReads?:readonly TavernEjsCapturedReadRecordV1[]
   invoke(operationId:string,action:TavernEjsRuntimeAction,capture?:TavernEjsPhaseCapture,
-    signal?:AbortSignal):Promise<TavernEjsRuntimeInvocation>
+    signal?:AbortSignal,readCaptured?:TavernEjsCapturedReadOwnerV1):Promise<TavernEjsRuntimeInvocation>
   checkpoint(signal?:AbortSignal):Promise<TavernEjsReplayRecord>
   dispose():Promise<void>
 }
@@ -58,7 +62,8 @@ export interface TavernEjsRuntime {
   readonly identity:TavernEjsRuntimeIdentity
   current():TavernEjsRuntimeInventory
   checkCurrentSync(check:()=>void):void
-  prepare(input:TavernEjsRuntimeInput,signal?:AbortSignal):Promise<TavernEjsRuntimeProgram>
+  evaluateProfileConfiguration(input:CommunityProfileModuleInputV1,signal?:AbortSignal):ReturnType<CommunityProfileEvaluatorV1>
+  prepare(input:TavernEjsRuntimeInput,signal?:AbortSignal,readCaptured?:TavernEjsCapturedReadOwnerV1):Promise<TavernEjsRuntimeProgram>
   restore(record:TavernEjsReplayRecord,signal?:AbortSignal):Promise<TavernEjsRuntimeProgram>
   dispose():Promise<void>
 }
@@ -67,11 +72,17 @@ export type EjsWorkerProgramStart=
   {readonly kind:'prepare';readonly input:TavernEjsRuntimeInput}|
   {readonly kind:'restore';readonly record:TavernEjsReplayRecord}
 export type EjsWorkerProgramCommand=EjsWorkerProgramStart|
+  {readonly kind:'profile-configuration';readonly input:CommunityProfileModuleInputV1}|
   {readonly kind:'checkpoint'}|{readonly kind:'dispose'}|{readonly kind:'invoke';readonly operationId:string;
     readonly action:TavernEjsRuntimeAction;readonly capture?:TavernEjsPhaseCapture}
-export type EjsWorkerCommand={readonly id:number;readonly programId:number}&EjsWorkerProgramCommand
+export interface EjsWorkerReadRequest {readonly ordinal:number;readonly request:TavernEjsCapturedReadRequestV1}
+export type EjsWorkerReadReply={readonly ordinal:number}&(
+  {readonly kind:'result';readonly result:TavernEjsCapturedReadResultV1}|{readonly kind:'failed';readonly code:string})
+export type EjsWorkerCommand={readonly id:number;readonly programId:number;
+  readonly readPort:MessagePort;readonly readControl:SharedArrayBuffer}&EjsWorkerProgramCommand
 export type EjsWorkerReply={readonly id:0;readonly kind:'ready'}|({readonly id:number;readonly programId:number}&(
-  {readonly kind:'created';readonly creation:TavernEjsHostResult}|
+  {readonly kind:'created';readonly creation:TavernEjsHostResult;readonly creationReads?:readonly TavernEjsCapturedReadRecordV1[]}|
   {readonly kind:'invoked';readonly output:TavernEjsRuntimeInvocation}|
   {readonly kind:'checkpoint';readonly record:TavernEjsReplayRecord}|
+  {readonly kind:'profile-configuration';readonly output:Awaited<ReturnType<CommunityProfileEvaluatorV1>>}|
   {readonly kind:'disposed'}|{readonly kind:'failed';readonly code:string}))

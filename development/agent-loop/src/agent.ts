@@ -11,16 +11,20 @@ import type {
   AgentOptions,
   AgentStatus,
   CancelOptions,
+  InboxState,
   InboxTarget,
+  ModelSelection,
+  ModelSelectionProjectionState,
   PreStepDecision,
   RequestErrorAction,
 } from '@deepseek-ai/dsh-agent'
-import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
+import { AgentModel, agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
 import type { AssistantMessage, GenerateOptions, LlmCallConfig, Message, PreparedLlmCall, ProjectedLlmRequest } from 'dsh-nexttavern-native-llm'
 import {NativeRequestBudget,retainNativeRequestMeasurement} from './request-budget.js'
 import type {NativeRequestMeasurementV1,NativeRequestMeter} from './request-budget.js'
 import {
   LlmError,
+  REQUEST_MATERIAL_ROLE_POSITION_REJECTED,
   IMAGE_OFFLOAD_REQUIRED_CODE,
   createAssistantMessage,
   createDeveloperMessage,
@@ -32,7 +36,7 @@ import { assertNever, deepFreeze } from '@deepseek-ai/dsh-util-values'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import {inspectProgrammaticCommit, programmaticTurnIdentity} from './programmatic-commit.js'
 import type {ProgrammaticCommitInput, ProgrammaticAssistantRejectionCode} from './programmatic-commit.js'
-import type { Scope } from '@deepseek-ai/dsh-scope'
+import type { Scope, Scoped } from '@deepseek-ai/dsh-scope'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import type { EpochHeader, RequestContext, Session, SessionEvent, SessionId, SessionSeq, TurnEndReason, UserMessage,
   NativeOpeningIdentityV1,NativeOpeningEventRefV1,NativeGeneratedOpeningReceiptV1 } from 'dsh-nexttavern-native-session'
@@ -60,6 +64,7 @@ import { RuntimeContextProjection } from './runtime-context.js'
 import { AssistantStreamAttempt } from './assistant-stream.js'
 import { SystemPromptProjection,renderAttributedSystemPrompt } from './runtime-context.js'
 import { executeToolCalls } from './tool-calls.js'
+import type { ResolvedToolSet, ToolDefinition } from '@deepseek-ai/dsh-tools'
 import {nativeRequestMaterialDecisionV1,nativeRequestMaterialOwnerRegistrationV1,
   nativeRequestMaterialOwnerCheckV1,nativeRequestMaterialPrepareDecisionV1,applyNativeOwnedSectionsV1,
   captureNativeMaterialAssemblyV1,nativeMaterialTextDraftV1,
@@ -82,6 +87,8 @@ import {nativeStoryTransportToolsV1,nativeStorySamplingConfigV1,materializeNativ
   createNativeStoryStreamProjectionV1,nativeStorySamplingBaseV1,restoreNativeStorySamplingV1} from './story-request.js'
 import type {NativeStoryRequestBindingV1} from './story-request.js'
 import type {SessionRequestAppendInput,SessionRequestBoundary} from 'dsh-nexttavern-native-session'
+import type {NativeAuthorGenerationPlanV1,NativeAuthorGenerationOwnerV1,NativeAuthorGenerationCompletionV1}
+  from './author-generation.js'
 
 type Phase =
   | { kind: 'idle'; lastTurn: number }
@@ -138,6 +145,16 @@ export interface NativeProgrammaticOpeningAgentV1 {
     readonly invocationRef?:NativeOpeningEventRefV1;readonly generatedReceiptRef?:NativeOpeningEventRefV1}
 }
 
+type StepToolDefinitions = ReadonlyMap<string, ToolDefinition>
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    'nexttavern/project-step-tools'(agent: Agent, definitions: StepToolDefinitions,
+      next: () => StepToolDefinitions): StepToolDefinitions
+    'nexttavern/request-first-output'(this: Scoped<Agent>, payload: {agent: Agent; attemptId: string}): void
+  }
+}
+
 type PreparedStep =
   | { kind: 'reject' }
   | {
@@ -145,6 +162,8 @@ type PreparedStep =
     messages: UserMessage[]
     startsRequestSeries?: true
     assembly: PromptAssembly
+    selection: Readonly<ModelSelection>
+    toolSet: ResolvedToolSet
     admission?: InputAdmission
     completedWithoutRequest?: boolean
   }
@@ -288,6 +307,9 @@ function abortedCancelCause(signal: AbortSignal): AgentCancelCause | undefined {
 
 /** Drives one session through turn and step boundaries. */
 export class ReactLoopAgent implements Agent {
+  readonly model: AgentModel
+  private authorGeneration?:{plan:NativeAuthorGenerationPlanV1;owner:NativeAuthorGenerationOwnerV1;
+    checkpoint?:{materialRef:{seq:number;sha256:string};headerRef:{seq:number;sha256:string};turn:number;step:number}}
   private readonly requestBudget=new NativeRequestBudget()
   private pendingMaterialCandidate?:{decision:EnterStep;planned:PlannedMaterialRequest|PlannedPlainRequest;
     prepared:PreparedRequest;finalAssembly:PromptAssembly}
@@ -355,16 +377,18 @@ export class ReactLoopAgent implements Agent {
     public readonly id: SessionId,
     public readonly options: AgentOptions,
     public readonly session: Session,
+    projections: {modelSelection: () => ModelSelectionProjectionState; inbox: () => InboxState},
   ) {
+    this.model = new AgentModel(projections.modelSelection, session, options)
     this.requestSurfaceGeneration = session.surface.contentGeneration
     this.dispatch = agentEvents(loopCtx, this)
     this.scope = createScope(loopCtx, this)
     this.ctx = this.scope.ctx
-    this.inbox = new ReactLoopInbox(this.ctx.sessionProjections, session, this.dispatch, observe => {
+    this.inbox = new ReactLoopInbox(projections.inbox, session, this.dispatch, observe => {
       this.ctx.on('session/event', (actual, event) => {if (actual === session) observe(event)}, {global: true})
     })
     /* v8 ignore next -- the loop registers its own turnBoundary unit, so the key is always present */
-    const lastTurn = this.loopCtx.sessionProjections.stateOf(session, 'turnBoundary')?.lastTurn ?? 0
+    const lastTurn = this.loopCtx.agents.turnBoundaryOf(session).lastTurn
     this.phase = { kind: 'idle', lastTurn }
     this.runtimeContext = new RuntimeContextProjection(this.ctx, session)
     this.systemPrompt = new SystemPromptProjection(session)
@@ -1039,7 +1063,7 @@ export class ReactLoopAgent implements Agent {
       if (this.uncertainProgrammaticOperations.has(input.operationId)) {
         return { kind: 'unknown', reason: 'earlier append stopped before its message boundary' }
       }
-      if (this.loopCtx.sessionProjections.stateOf(this.session, 'turnBoundary')?.openTurnStartSeq != null) {
+      if (this.loopCtx.agents.turnBoundaryOf(this.session).openTurnStartSeq != null) {
         return { kind: 'unknown', reason: 'session already has an open turn', code: 'PROGRAMMATIC_OPEN_TURN' }
       }
 
@@ -1110,7 +1134,7 @@ export class ReactLoopAgent implements Agent {
       if (inspection.kind === 'absent' && this.uncertainProgrammaticOperations.has(input.operationId)) {
         return {status:'unknown'}
       }
-      if (this.loopCtx.sessionProjections.stateOf(this.session, 'turnBoundary')?.openTurnStartSeq != null) {
+      if (this.loopCtx.agents.turnBoundaryOf(this.session).openTurnStartSeq != null) {
         return {status:'unknown',code:'PROGRAMMATIC_OPEN_TURN'}
       }
       try {
@@ -1131,11 +1155,29 @@ export class ReactLoopAgent implements Agent {
   }
 
   /** Author content is an already frozen prompt slot, including empty and long text. */
-  async generateAuthorDialogAssistant(input: {operationId:string;messageId:string;dynamicSystem:string})
+  async generateAuthorDialogAssistant(input:{plan:NativeAuthorGenerationPlanV1;owner:NativeAuthorGenerationOwnerV1})
     : Promise<ProgrammaticAssistantGenerationResult> {
-    if (typeof input?.dynamicSystem !== 'string') throw new Error('invalid author dialogue dynamic system')
-    return this.generateNoUserAssistant({operationId:input.operationId,messageId:input.messageId,
-      instruction:input.dynamicSystem})
+    if(this.authorGeneration)throw Error('AUTHOR_GENERATION_BUSY')
+    if(input.plan.identity.childSessionId!==this.session.id||!input.owner.current())throw Error('AUTHOR_GENERATION_REVOKED')
+    const work={plan:deepFreeze(input.plan),owner:input.owner} as NonNullable<ReactLoopAgent['authorGeneration']>
+    this.authorGeneration=work
+    try{
+      const result=await this.generateNoUserAssistant({operationId:work.plan.identity.operationId,
+        messageId:work.plan.identity.messageId,instruction:''})
+      const events=this.session.snapshotEvents(),assistant=events.findLast(event=>event.type==='assistant/message'
+        &&event.data.message.id===work.plan.identity.messageId),end=assistant?.type==='assistant/message'
+        ?events.findLast(event=>event.type==='turn/end'&&event.data.turn===assistant.data.turn):undefined
+      if(!work.checkpoint||assistant?.type!=='assistant/message'||end?.type!=='turn/end'
+        ||!['completed','max-tokens'].includes(end.data.reason.kind))return result
+      if(!await this.ctx.sessions.flush(this.session))return {kind:'unknown',reason:'author completion flush is not durable'}
+      const finish=assistant.data.stream?.findLast(record=>record.type==='chunk'&&record.chunk.type==='finish'),
+        completion:NativeAuthorGenerationCompletionV1={identity:work.plan.identity,materialRef:work.checkpoint.materialRef,
+          assistantRef:{seq:assistant.seq,sha256:nativeInputSha256(assistant)},turnEndRef:{seq:end.seq,sha256:nativeInputSha256(end)},
+          message:assistant.data.message,finishReason:finish?.type==='chunk'&&finish.chunk.type==='finish'
+            ?finish.chunk.reason:{kind:'stop'}}
+      await work.owner.closing(completion,new AbortController().signal)
+      return {kind:'committed',turn:assistant.data.turn,messageId:assistant.data.message.id}
+    }finally{if(this.authorGeneration===work)this.authorGeneration=undefined}
   }
 
   private async generateNoUserAssistant(input: ProgrammaticAssistantGeneration): Promise<ProgrammaticAssistantGenerationResult> {
@@ -1485,12 +1527,11 @@ export class ReactLoopAgent implements Agent {
     if(this.isolatedInput) {
       const owned=this.isolatedInput
       if(!owned.entered){owned.onEnter();owned.entered=true}
-      const assembly=await this.loopCtx.systemPrompt.assemble(assembleContextFor(this,this.phase.abort.signal))
-      this.phase.abort.signal.throwIfAborted()
+      const assembled=await this.assembleStep(this.phase.abort.signal)
       // Registered tools still belong to the child preset. Their Native result
       // messages remain in history, while preset pre-step/inbox additions have
       // no input authority over this one-shot private conversation.
-      return {kind:'enter',messages:position.step===1?[owned.message]:[],assembly}
+      return {kind:'enter',messages:position.step===1?[owned.message]:[],...assembled}
     }
     const activeOpening=this.phase.programmatic?.opening
     // A readable old assistant-only transcript cannot acquire a later system
@@ -1573,52 +1614,85 @@ export class ReactLoopAgent implements Agent {
         throw Error('OPENING_PLAYER_CONTINUATION_REFUSED')
       claimed=this.inbox.claim(target,position.turn)
     }
-    const assembled = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal))
-    const opening=this.phase.programmatic?.opening
-    const generation = position.step === 1 ? this.phase.programmatic : undefined
-    const assembly = generation ? {...assembled, tools: [],
-      // Owned openings carry the invocation in request/material, outside the
-      // persisted player history and separate from the provider's system slot.
-      sections: opening ? assembled.sections : [...assembled.sections,
-        {name: 'programmatic:opening-regenerate', text: generation.instruction, interpolate: false}]} : assembled
-    signal.throwIfAborted()
-    const sections = renderContextSections(assembly)
-    const context = this.runtimeContext.project(joinContextSections(sections), sections)
-    const phase = this.phase
-    const inputStep = admission ? {admission, ...position, completedWithoutRequest: false} : undefined
-    if (inputStep) phase.inputStep = inputStep
-    let decision: PreStepDecision
+    const {assembly: assembled, selection, toolSet} = await this.assembleStep(signal)
     try {
-      decision = await this.dispatch.waterfall(
-        'agent/pre-step', { messages: claimed, ...position, signal },
-        (): Promise<PreStepDecision> => Promise.resolve<PreStepDecision>({
-          kind: 'enter',
-          messages: context === undefined ? claimed : [...claimed, context],
-        }),
-      )
-    } finally {
-      delete phase.inputStep
+      const opening=this.phase.programmatic?.opening
+      const generation = position.step === 1 ? this.phase.programmatic : undefined
+      const assembly = generation ? {...assembled, tools: [],
+        // Owned openings carry the invocation in request/material, outside the
+        // persisted player history and separate from the provider's system slot.
+        sections: opening ? assembled.sections : [...assembled.sections,
+          {name: 'programmatic:opening-regenerate', text: generation.instruction, interpolate: false}]} : assembled
+      signal.throwIfAborted()
+      const sections = renderContextSections(assembly)
+      const context = this.runtimeContext.project(joinContextSections(sections), sections)
+      const phase = this.phase
+      const inputStep = admission ? {admission, ...position, completedWithoutRequest: false} : undefined
+      if (inputStep) phase.inputStep = inputStep
+      let decision: PreStepDecision
+      try {
+        decision = await this.dispatch.waterfall(
+          'agent/pre-step', { messages: claimed, ...position, signal, modelSelection: selection },
+          (): Promise<PreStepDecision> => Promise.resolve<PreStepDecision>({
+            kind: 'enter',
+            messages: context === undefined ? claimed : [...claimed, context],
+          }),
+        )
+      } finally {
+        delete phase.inputStep
+      }
+      signal.throwIfAborted()
+      if (inputStep?.completedWithoutRequest) {
+        this.checkInput(inputStep.admission, [])
+        return {kind: 'enter', messages: [], assembly, selection, toolSet, admission: inputStep.admission, completedWithoutRequest: true}
+      }
+      if (decision.kind === 'reject') {
+        toolSet.dispose()
+        return decision
+      }
+      if (!generation&&!opening) return {...decision,assembly,selection,toolSet,...admission?{admission}:{}, completedWithoutRequest: false}
+      if (decision.messages.some(message => message.source.kind === 'user')) {
+        throw new Error('programmatic generation cannot admit a player message')
+      }
+      if(opening&&decision.messages.some(message=>message.content.some(block=>block.type!=='text')))
+        throw Error('OPENING_NON_TEXT_CONTEXT_UNSUPPORTED')
+      const systemSections = (decision as PreStepDecision & {systemSections?: readonly string[]}).systemSections ?? []
+      const contextSections = decision.messages.map(message => message.content
+        .filter(block => block.type === 'text').map(block => block.text).join('')).filter(Boolean)
+      const effectiveAssembly = {...assembly, sections: [...assembly.sections,
+        ...[...systemSections, ...contextSections].map((content, index) => ({
+          name: `programmatic:context:${index}`, text: content, interpolate: false,
+        }))]}
+      return {...decision, messages: [], assembly: effectiveAssembly, selection, toolSet, completedWithoutRequest: false}
+    } catch (error) {
+      toolSet.dispose()
+      throw error
     }
-    signal.throwIfAborted()
-    if (inputStep?.completedWithoutRequest) {
-      this.checkInput(inputStep.admission, [])
-      return {kind: 'enter', messages: [], assembly, admission: inputStep.admission, completedWithoutRequest: true}
+  }
+
+  private async assembleStep(signal: AbortSignal) {
+    const selection = this.model.current()
+    if (!selection) throw new Error(`agent "${this.id}" has no provider/model selection`)
+    const admitted = await this.loopCtx.tools.resolve({agent: this, modelSelection: selection, signal})
+    try {
+      const initial = admitted.view(this)
+      const selected = this.ctx.waterfall('nexttavern/project-step-tools', this, initial, () => initial)
+      const toolSet: ResolvedToolSet = selected === initial ? admitted : {
+        dispose: () => admitted.dispose(),
+        view: scope => {
+          const current = admitted.view(scope)
+          return new Map([...selected].filter(([name]) => current.has(name)))
+        },
+      }
+      const assembly = await this.loopCtx.systemPrompt.assemble({
+        ...assembleContextFor(this, signal), modelSelection: selection, toolSet,
+      })
+      signal.throwIfAborted()
+      return {assembly, selection, toolSet}
+    } catch (error) {
+      admitted.dispose()
+      throw error
     }
-    if (decision.kind === 'reject') return decision
-    if (!generation&&!opening) return {...decision,assembly,...admission?{admission}:{}, completedWithoutRequest: false}
-    if (decision.messages.some(message => message.source.kind === 'user')) {
-      throw new Error('programmatic generation cannot admit a player message')
-    }
-    if(opening&&decision.messages.some(message=>message.content.some(block=>block.type!=='text')))
-      throw Error('OPENING_NON_TEXT_CONTEXT_UNSUPPORTED')
-    const systemSections = (decision as PreStepDecision & {systemSections?: readonly string[]}).systemSections ?? []
-    const contextSections = decision.messages.map(message => message.content
-      .filter(block => block.type === 'text').map(block => block.text).join('')).filter(Boolean)
-    const effectiveAssembly = {...assembly, sections: [...assembly.sections,
-      ...[...systemSections, ...contextSections].map((content, index) => ({
-        name: `programmatic:context:${index}`, text: content, interpolate: false,
-      }))]}
-    return {...decision, messages: [], assembly: effectiveAssembly, completedWithoutRequest: false}
   }
 
   /** Whether the assembled tool schemas differ from the logged request header's. */
@@ -2227,6 +2301,7 @@ export class ReactLoopAgent implements Agent {
     let target: InboxTarget = 'next-turn'
     let currentAdmission = initialAdmission
     let capturedEnd: SessionEvent | undefined
+    let activeToolSet: ResolvedToolSet | undefined
     try {
       while (true) {
         signal.throwIfAborted()
@@ -2236,6 +2311,7 @@ export class ReactLoopAgent implements Agent {
           turnEnds = { kind: 'blocked' }
           return false
         }
+        activeToolSet = decision.toolSet
         currentAdmission = decision.admission
         if (decision.completedWithoutRequest) {
           turnEnds = {kind: 'completed'}
@@ -2251,7 +2327,7 @@ export class ReactLoopAgent implements Agent {
         signal.throwIfAborted()
         // Empty/no-request exits above spend no material work or records. The
         // existing Core step and final decision are retained; hooks do not rerun.
-        const prepared=await this.prepareRequest(turn,step,signal)
+        const prepared=await this.prepareRequest(turn,step,signal,decision.selection)
         if(!phase.programmatic||phase.programmatic.opening)await this.#prepareRequestMaterial(decision,{turn,step},signal,prepared)
         signal.throwIfAborted()
         const hotCandidate=this.pendingMaterialCandidate
@@ -2279,6 +2355,8 @@ export class ReactLoopAgent implements Agent {
           // downgrade the turn outcome.
           if (turnEnds === null || turnEnds.kind !== 'max-tokens') turnEnds = stepEnd
         } finally {
+          activeToolSet.dispose()
+          activeToolSet = undefined
           this.#retireSelection()
           this.session.append('step/end', { turn, step })
         }
@@ -2308,8 +2386,15 @@ export class ReactLoopAgent implements Agent {
           ? error.failure
           : { message: errorChain(error), code: 'UNKNOWN' },
       }
+      // A request that reached the server can be a normal admission rather
+      // than completion-gated work. Its owner still needs a recovery anchor.
+      if (turnEnds.error.code === REQUEST_MATERIAL_ROLE_POSITION_REJECTED && currentAdmission) {
+        this.blockInput(currentAdmission.registration, turnEnds.error.code, 'final',
+          currentAdmission.proposal, currentAdmission.claim)
+      }
       this.throwError(error)
     } finally {
+      activeToolSet?.dispose()
       this.#retireSelection()
       if(phase.programmatic?.opening&&turnEnds?.kind!=='completed')this.openingDomainCompletion={
         status:'blocked',code:'OPENING_GENERATION_TURN_NOT_COMPLETED',
@@ -2329,6 +2414,13 @@ export class ReactLoopAgent implements Agent {
       try {
         // oxlint-disable-next-line typescript/no-non-null-assertion -- every exit assigns a turn ending
         capturedEnd = this.session.append('turn/end', { turn, reason: turnEnds! })
+        const author=this.authorGeneration
+        if(author?.checkpoint) {
+          if(!await this.ctx.sessions.flush(this.session))throw Error('AUTHOR_GENERATION_TERMINAL_FLUSH_UNKNOWN')
+          await author.owner.terminal({identity:author.plan.identity,turn,
+            turnEndRef:{seq:Number(capturedEnd.seq),sha256:nativeInputSha256(capturedEnd)},reason:capturedEnd.data.reason},
+            new AbortController().signal)
+        }
       } catch (error: unknown) {
         if (requiresCompletion && !currentAdmission?.receipt) this.programmaticTurnPoisoned = true
         if (this.inputCompletionBlocked && this.inputCompletion) this.inputCompletion.result = Object.freeze({
@@ -2405,7 +2497,7 @@ export class ReactLoopAgent implements Agent {
         // Reuse sealed text while assigning its final physical Native cut.
         this.replanMaterialCandidate(decision,{turn,step,signal},false)
       }
-      const { config, preparedCall } = firstAttempt?initialPrepared:await this.prepareRequest(turn, step, signal)
+      const { config, preparedCall } = firstAttempt?initialPrepared:await this.prepareRequest(turn, step, signal, decision.selection)
       // Adapter preparation can await arbitrary work. Recheck before every
       // system/user/header commit and provider stream, including retries.
       const admission = decision.admission
@@ -2413,7 +2505,7 @@ export class ReactLoopAgent implements Agent {
       const startsRequestSeries = firstAttempt && decision.startsRequestSeries === true
       const candidate=firstAttempt&&this.pendingMaterialCandidate?.decision===decision?this.pendingMaterialCandidate.planned:undefined
       this.pendingMaterialCandidate=undefined
-      let request=candidate?(candidate.kind==='material'?this.commitMaterialRequest(decision,candidate)
+      let request=this.authorGeneration?await this.buildAuthorGenerationRequest(decision,{config,preparedCall,turn,step,firstAttempt,signal}):candidate?(candidate.kind==='material'?this.commitMaterialRequest(decision,candidate)
         :this.commitRequest(candidate)):this.materialRequestOwner(decision)
         ?this.buildMaterialRequest(decision,{config,preparedCall,turn,step,firstAttempt,signal}):undefined
       if(request===undefined){
@@ -2461,8 +2553,18 @@ export class ReactLoopAgent implements Agent {
         started = true
         for await (const chunk of stream) {
           signal.throwIfAborted()
-          if(observation.firstOutputMs===null&&['text-delta','reasoning-delta','tool-call-delta'].includes(chunk.type))
+          const author=this.authorGeneration
+          if(author){
+            if(!author.owner.current())throw Error('AUTHOR_GENERATION_REVOKED')
+            if(chunk.type==='text-delta'||chunk.type==='reasoning-delta')author.owner.stream?.({identity:author.plan.identity,
+              kind:chunk.type==='text-delta'?'text':'reasoning',delta:chunk.text})
+          }
+          if(observation.firstOutputMs===null
+            &&(chunk.type==='text-delta'||chunk.type==='reasoning-delta'||chunk.type==='tool-call-delta')){
             observation.firstOutputMs=performance.now()-observation.started
+            // A Story transport can buffer all output until finish for display.
+            this.dispatch.emit('nexttavern/request-first-output',{attemptId:live.attemptId})
+          }
           live.push(chunk)
         }
         signal.throwIfAborted()
@@ -2533,6 +2635,7 @@ export class ReactLoopAgent implements Agent {
             throw new AggregateError([failure,settlementError],
               'Assistant provider failed and its durable settlement was rejected',{cause:failure})
           }
+          if(this.authorGeneration)throw failure
           const action = await this.dispatch.waterfall(
             'agent/request-error', {
               turn,
@@ -2587,11 +2690,12 @@ export class ReactLoopAgent implements Agent {
           }, { surfaceOp: 'append' }).seq,
         )
         if (finish.kind === 'max-tokens') return { kind: 'max-tokens' }
+        if(this.authorGeneration)return {kind:'completed'}
 
         const toolCalls = message.content.filter(block => block.type === 'tool-call')
         if (toolCalls.length === 0) return { kind: 'completed' }
         const { concluded } = await executeToolCalls(
-          this.loopCtx, turn, step, toolCalls, signal,
+          this.loopCtx, this, turn, step, toolCalls, signal, decision.toolSet,
           context => {if(!this.isolatedInput)this.inbox.splice('next-step', this.inbox.nextStep.length, 0, [context])},
         )
         return concluded ? { kind: 'completed' } : null
@@ -2607,6 +2711,7 @@ export class ReactLoopAgent implements Agent {
     turn: number,
     step: number,
     signal: AbortSignal,
+    selection: Readonly<ModelSelection>,
   ): Promise<{ config: LlmCallConfig; preparedCall?: PreparedLlmCall }> {
     const { session } = this
 
@@ -2619,25 +2724,10 @@ export class ReactLoopAgent implements Agent {
     const baseSampling=lastMaterial?.type==='request/material'?lastMaterial.data.delta.requestLocalSampling:undefined
     const persistedProposal=persistedHeader?requestProposal(persistedHeader):undefined
     const baseProposal=persistedProposal&&baseSampling?restoreNativeStorySamplingV1(persistedProposal,baseSampling):persistedProposal
-    const persistedConfig = persistedHeader?.config
-    const route = { provider: this.options.provider ?? '', model: this.options.model ?? '' }
-    const persistedReasoningEffort = persistedConfig?.provider === route.provider
-      && persistedConfig.model === route.model
-      && persistedHeader?.adapterDefaults?.reasoningEffort !== true
-      ? persistedConfig.reasoningEffort
-      : undefined
-    const reasoningEffort = this.options.reasoningEffort ?? persistedReasoningEffort
+    const {provider: _provider, model: _model, reasoningEffort: _effort, ...previousControls} = baseProposal ?? {}
     const maxTokens = this.options.maxTokens
-    const seedConfig = deepFreeze(structuredClone(
-      this.requestHeaderLogged
-        // oxlint-disable-next-line typescript/no-non-null-assertion -- the instance logged the header it now folds
-        ? baseProposal!
-        : {
-          ...route,
-          ...reasoningEffort === undefined ? {} : { reasoningEffort },
-          ...maxTokens === undefined ? {} : { maxTokens },
-        },
-    ))
+    const controls = this.requestHeaderLogged ? previousControls : maxTokens === undefined ? {} : {maxTokens}
+    const seedConfig = deepFreeze(structuredClone({...controls, ...selection}))
     const proposedConfig = await this.dispatch.waterfall(
       'agent/request', { turn, step, signal },
       () => Promise.resolve(seedConfig),
@@ -2649,7 +2739,9 @@ export class ReactLoopAgent implements Agent {
     let config: LlmCallConfig
     let preparedCall: PreparedLlmCall | undefined
     try {
-      preparedCall = await this.loopCtx.llm.prepareCall(proposedConfig, signal)
+      const {tools:authorTools,stop:authorStop,...authorCall}=this.authorGeneration?.plan.call??{}
+      preparedCall = await this.loopCtx.llm.prepareCall(this.authorGeneration?{...proposedConfig,...authorCall,
+        ...authorStop?{stop:[...authorStop]}:{}}:proposedConfig, signal)
       config = preparedCall.config
     } catch (error: unknown) {
       // Middleware may serve an unregistered route; terminal dispatch still requires an adapter.
@@ -2811,21 +2903,8 @@ export class ReactLoopAgent implements Agent {
     if(plan.story&&!owner.story)this.abortMaterialRequestOwner(requestOwner,'STORY_MATERIAL_OWNER_REQUIRED')
     const {config,turn,step,firstAttempt,signal}=input
     let preparedCall=input.preparedCall
-    // A route's system replacement bit is not additive system-at-depth support.
-    // Missing exact-route capability refuses each required insertion before writes.
-    const capability=preparedCall?.requestMaterialText
-    for(const insertion of [...plan.insertions,...(plan.anchoredInsertions??[])]){
-      const support=insertion.requestedRole==='system'?capability?.systemAtDepth:capability?.[insertion.requestedRole]
-      if(capability?.schemaVersion!==1||support!=='role-and-position'){
-        this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
-      }
-    }
-    for(const group of plan.messageProjection?.groups??[]) {
-      const support=group.role==='system'?capability?.systemAtDepth:capability?.[group.role]
-      if(capability?.schemaVersion!==1||support!=='role-and-position') {
-        this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
-      }
-    }
+    // The provider serializer owns message representation. Catalog capability
+    // hints do not decide whether the selected server will accept this request.
     let assembly:PromptAssembly
     try {assembly=applyNativeOwnedSectionsV1(finalAssembly,plan,owner.sectionNames)}
     catch {this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_SECTION_SUPPRESSED_OR_CHANGED')}
@@ -2956,6 +3035,39 @@ export class ReactLoopAgent implements Agent {
   }
 
   /** Preview and price the ordinary path before admitting system/player data. */
+  private async buildAuthorGenerationRequest(decision:EnterStep,input:PreparedRequest&{
+    turn:number;step:number;firstAttempt:boolean;signal:AbortSignal}):Promise<GenerateOptions> {
+    const work=this.authorGeneration!,{plan,owner}=work
+    if(!owner.current()||work.checkpoint)throw Error('AUTHOR_GENERATION_REVOKED_OR_ALREADY_DISPATCHED')
+    const base=this.buildRequest({...decision,assembly:{...decision.assembly,tools:[...plan.call.tools??[]]}},input,true),
+      messages=deepFreeze(structuredClone([...plan.orderedMessages])),
+      request=markAgentLoopRequest(Object.freeze({...base,messages,tools:deepFreeze([...plan.call.tools??[]])})),
+      projected=input.preparedCall?.projectRequest(request),meter=this.loopCtx.get('tokenMeter') as NativeRequestMeter|undefined,
+      measurement=projected&&meter?.measureRequest?this.requestBudget.measure(projected,meter):undefined
+    if(measurement){this.assertRequestCapacity(measurement);retainNativeRequestMeasurement(request,measurement)}
+    const selected=this.#captureSelection(undefined,[]),header=this.session.requestHeaderBoundary()
+    if(!header)throw Error('AUTHOR_GENERATION_HEADER_MISSING')
+    const baseMessages=selected.messages.map(row=>row.message),record={schemaVersion:3 as const,
+      encoding:'native-request-material-v3' as const,turn:input.turn,step:input.step,
+      owner:plan.identity,orderedMessages:messages,header:{seq:Number(header.seq),sha256:nativeInputSha256(header.header)},
+      snapshot:plan.material.snapshot,plan:plan.material.plan,
+      base:{boundarySeq:Number(this.session.seq)-1,contentGeneration:selected.contentGeneration,surfaceNodes:selected.surfaceNodes,
+        messages:selected.messages.map(row=>({seq:row.eventSeq!,id:row.id,role:row.role,messageSha256:row.messageSha256})),
+        sha256:nativeInputSha256(baseMessages)},delta:{insertions:[],protectedPrefixLength:0},placements:[],
+      outputSha256:nativeInputSha256(messages)},event=this.session.append('request/material',record)
+    if(!await this.ctx.sessions.flush(this.session))throw Error('AUTHOR_GENERATION_MATERIAL_FLUSH_UNKNOWN')
+    const current=()=>this.authorGeneration===work&&owner.current()&&!input.signal.aborted
+      &&this.session.eventAt(event.seq)===event&&this.session.requestHeaderBoundary()?.seq===header.seq,
+      checkpoint={identity:plan.identity,headerRef:{seq:Number(header.seq),sha256:nativeInputSha256(this.session.eventAt(header.seq))},
+        materialRef:{seq:Number(event.seq),sha256:nativeInputSha256(event)},turn:input.turn,step:input.step,signal:input.signal,current}
+    work.checkpoint=checkpoint
+    await owner.checkpoint(checkpoint)
+    if(!current())throw Error('AUTHOR_GENERATION_REVOKED')
+    bindNativeRequestMaterial(request,{session:this.session,event,preparedSelection:true,
+      assertOwnerCurrent:()=>{if(!current())throw Error('AUTHOR_GENERATION_REVOKED')}})
+    return request
+  }
+
   private buildRequest(decision:EnterStep,input:PreparedRequest&{
     turn:number;step:number;firstAttempt:boolean;signal:AbortSignal},startsRequestSeries:boolean):GenerateOptions {
     return this.commitRequest(this.planRequest(decision,input,startsRequestSeries))
@@ -2984,7 +3096,7 @@ export class ReactLoopAgent implements Agent {
     Object.freeze(boundaryMessages)
     const request=markAgentLoopRequest(Object.freeze({...envelope.header.config,messages:boundaryMessages,
       toolHistory:preview.toolHistory,...envelope.header.tools?{tools:envelope.header.tools}:{},sessionId:this.session.id,signal}))
-    const projected=preparedCall?.projectRequest(request)
+    const projected=this.authorGeneration?undefined:preparedCall?.projectRequest(request)
     const meter=this.loopCtx.get('tokenMeter') as NativeRequestMeter|undefined
     const measurement=projected&&meter?.measureRequest?this.requestBudget.measure(projected,meter):undefined
     if(measurement)retainNativeRequestMeasurement(request,measurement)

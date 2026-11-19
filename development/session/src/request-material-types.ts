@@ -1,6 +1,7 @@
 /** Built-in durable request/material vocabulary. Browser-safe validation runs
  * after Session's JSON snapshot. Hash/fold verification is Native-owned; these
  * data references grant neither a current input owner nor replay permission. */
+import type {RequestMessage,RequestLocalSamplingV1} from 'dsh-nexttavern-native-llm'
 export type NativeLoreRoleV1='system'|'user'|'assistant'
 export interface NativeMaterialDataRefV1 {readonly key:string;readonly sha256:string}
 export interface NativeMaterialMessageRefV1 {
@@ -31,7 +32,7 @@ export interface NativeMessageProjectionV1 {
 }
 export interface NativeRequestLocalSamplingV1 {
   readonly schemaVersion:1
-  readonly base:{readonly temperature?:number;readonly maxTokens?:number;readonly stop?:readonly string[]}
+  readonly base:RequestLocalSamplingV1
 }
 /** Last request-text substitutions at Native's resolved transport coordinates.
  * The structure and original sources remain in this same material record. */
@@ -77,7 +78,15 @@ export interface NativeRequestMaterialRecordV2 extends Omit<NativeRequestMateria
     readonly messageTextProjections:readonly NativeMaterialMessageTextProjectionV2[]
   }
 }
-export type NativeRequestMaterialRecord=NativeRequestMaterialRecordV1|NativeRequestMaterialRecordV2
+export interface NativeRequestMaterialRecordV3 extends Omit<NativeRequestMaterialRecordV1,'schemaVersion'|'encoding'> {
+  readonly schemaVersion:3
+  readonly encoding:'native-request-material-v3'
+  readonly orderedMessages:readonly RequestMessage[]
+  readonly owner:{readonly kind:'author-generation';readonly taskId:string;readonly generation:string;
+    readonly operationId:string;readonly generationId:string;readonly rootSessionId:string;
+    readonly childSessionId:string;readonly messageId:string;readonly planSha256:string}
+}
+export type NativeRequestMaterialRecord=NativeRequestMaterialRecordV1|NativeRequestMaterialRecordV2|NativeRequestMaterialRecordV3
 function fail(subject:string):never {throw Error(`${subject} has invalid required request material`)}
 const record=(value:unknown,fields:readonly string[],subject:string):Record<string,unknown>=>{
   if(value===null||typeof value!=='object'||Array.isArray(value)
@@ -97,12 +106,24 @@ function dataRef(value:unknown,subject:string):void {
 /** Unknown schema/encoding is a required semantic read failure. It must not
  * be treated as an ignorable event or as an unchanged base request. */
 export function validateNativeRequestMaterialDataV1(value:unknown,subject:string):void {
-  const row=record(value,['schemaVersion','encoding','turn','step','header','snapshot','plan','base','delta','placements','outputSha256'],subject)
-  const version=row['schemaVersion']
+  const version=(value as {schemaVersion?:unknown}|null)?.schemaVersion
+  const row=record(value,['schemaVersion','encoding','turn','step','header','snapshot','plan','base','delta','placements','outputSha256',
+    ...version===3?['owner','orderedMessages']:[]],subject)
   if(!(version===1&&row['encoding']==='native-request-material-v1'
-    ||version===2&&row['encoding']==='native-request-material-v2')||!integer(row['turn'])||row['turn']<1
+    ||version===2&&row['encoding']==='native-request-material-v2'
+    ||version===3&&row['encoding']==='native-request-material-v3')||!integer(row['turn'])||row['turn']<1
     ||!integer(row['step'])||row['step']<1||!sha(row['outputSha256']))fail(subject)
   dataRef(row['snapshot'],subject);dataRef(row['plan'],subject)
+  if(version===3){
+    const owner=record(row['owner'],['kind','taskId','generation','operationId','generationId','rootSessionId',
+      'childSessionId','messageId','planSha256'],subject)
+    if(owner['kind']!=='author-generation'||!sha(owner['planSha256'])
+      ||['taskId','generation','operationId','generationId','rootSessionId','childSessionId','messageId'].some(key=>!identity(owner[key])))fail(subject)
+    for(const message of list(row['orderedMessages'],4096,subject)){
+      if(!message||typeof message!=='object'||!['system','user','assistant'].includes(String((message as {role?:unknown}).role))
+        ||!Array.isArray((message as {content?:unknown}).content))fail(subject)
+    }
+  }
   const header=record(row['header'],['seq','sha256'],subject)
   const base=record(row['base'],['boundarySeq','contentGeneration','surfaceNodes','messages','sha256'],subject)
   if(!integer(base['boundarySeq'],65535)||!integer(base['contentGeneration'])||!sha(base['sha256'])
@@ -130,7 +151,8 @@ export function validateNativeRequestMaterialDataV1(value:unknown,subject:string
     const local=record(delta['requestLocalSampling'],['schemaVersion','base'],subject)
     if(local['schemaVersion']!==1)fail(subject)
     const raw=local['base'] as Record<string,unknown>
-    const base=record(raw,['temperature','maxTokens','stop'].filter(key=>Object.hasOwn(raw,key)),subject)
+    const base=record(raw,['temperature','maxTokens','stop','topP','topK','frequencyPenalty','presencePenalty',
+      'toolChoice','responseFormat'].filter(key=>Object.hasOwn(raw,key)),subject)
     if(base['temperature']!==undefined&&(typeof base['temperature']!=='number'||!Number.isFinite(base['temperature'])))fail(subject)
     if(base['maxTokens']!==undefined&&(!integer(base['maxTokens'])||base['maxTokens']<1))fail(subject)
     if(base['stop']!==undefined&&list(base['stop'],128,subject).some(value=>typeof value!=='string'))fail(subject)

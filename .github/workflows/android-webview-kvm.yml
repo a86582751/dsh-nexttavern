@@ -1,6 +1,6 @@
 # Authorized public Android source and runner-owned QA on android/mobile-terminal.
-# Built payloads, signing material and private profile data are never published.
-# Only the two approved synthetic UI PNGs may be retained, for one day.
+# No signing material, raw logs or private profile data are retained; ARM64 candidate is unsigned.
+# The approved synthetic UI PNGs and unsigned package are retained for one day.
 # The tiny transport control remains available separately as --transport.
 name: Android mobile KVM preview
 on:
@@ -68,3 +68,36 @@ jobs:
         if: always()
         shell: bash
         run: rm -rf -- "$RUNNER_TEMP/nexttavern-ui-images"
+
+  arm64-package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Read this Android branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - name: Pinned public build Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.22.1'
+          check-latest: false
+      - name: Build and statically check unsigned Android ARM64 APK
+        shell: bash
+        env:
+          MOBILE_QA_WORK: ${{ runner.temp }}/nexttavern-arm64
+          MOBILE_QA_ARM64_UNSIGNED: ${{ runner.temp }}/nexttavern-arm64-unsigned.apk
+        run: |
+          sdkmanager --install 'platforms;android-36' 'build-tools;36.0.0'
+          MOBILE_QA_SDK="$ANDROID_HOME" bash qa/android-mobile-terminal/run-mobile.sh prepare-arm64
+          cd "$RUNNER_TEMP"
+          sha256sum nexttavern-arm64-unsigned.apk > nexttavern-arm64-unsigned.sha256
+      - name: Retain only the unsigned public-input candidate and checksum
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nexttavern-arm64-unsigned
+          path: |
+            ${{ runner.temp }}/nexttavern-arm64-unsigned.apk
+            ${{ runner.temp }}/nexttavern-arm64-unsigned.sha256
+          compression-level: 0
+          retention-days: 1

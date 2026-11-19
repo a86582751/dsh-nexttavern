@@ -6,7 +6,8 @@ import {spanText} from './roleplay-import-record.js'
 import {captureRoleplayTavernPromptSourceV1,captureRoleplayTavernPromptSourceDataV1}
   from './roleplay-tavern-prompt-source.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
-import {validateTavernLoreCompilationV1,resolveTavernLoreContentTextV1} from './tavern-lore-compiler.mjs'
+import {validateTavernLoreCompilationV1,resolveTavernLoreContentTextV1,tavernLoreConsumerSourceV1}
+  from './tavern-lore-compiler.mjs'
 import {mapPromptProgramAuthorOriginsV1} from './roleplay-prompt-template-only-origins.js'
 import {PROMPT_TEMPLATE_ONLY_FIELDS_V1,PromptTemplateOnlyRefusalV1,partitionPromptTemplateOnlyTextV1}
   from './roleplay-prompt-template-only-data.js'
@@ -14,38 +15,46 @@ import type {ImportRecord} from './roleplay-import-types.js'
 import type {AuthorChatNamespaceV3} from './roleplay-author-chat-state-types.js'
 import type {TavernLoreSourceDataV1,TavernLoreSourceRowDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {PromptProgramSourceCodeV1,PromptProgramSourceDepsV1,PromptProgramTextV1,
-  PromptProgramBookEntryV1,PromptProgramExcludedLeafV1,PromptProgramImportTupleV1,
-  PromptProgramSourceInventoryV1,PromptProgramSourceCaptureV1,PromptProgramSourceNotApplicableV1}
+  PromptProgramBookEntryV1,PromptProgramImportTupleV1,
+  PromptProgramSourceInventoryV2,PromptProgramSourceCaptureV1,PromptProgramSourceNotApplicableV1}
   from './roleplay-prompt-program-source-types.js'
 export type * from './roleplay-prompt-program-source-types.js'
 
-export const PROMPT_PROGRAM_SOURCE_POLICY_V1=Object.freeze({schemaVersion:1,
-  encoding:'native-author-prompt-program-source-policy-v1',authority:'consumer-data-only',
+export const PROMPT_PROGRAM_SOURCE_POLICY_V2=Object.freeze({schemaVersion:2,
+  encoding:'native-author-prompt-program-source-policy-v2',authority:'consumer-data-only',
   fields:PROMPT_TEMPLATE_ONLY_FIELDS_V1,book:'actual-recomputed-entry-content-only-with-original-address-and-current-origins',
   projection:'whole-maintained-normalizer-assignment-and-current-group; no-substring-permission-or-edited-field-guess',
   tokenization:'existing-full-UTF16-delimiter-partition-only; not-AST-effect-syntax-success-or-execution-proof',
   initialization:'not-authorized; InitVar-and-schema-scripts-require-their-own-actual-owner',
   current:'actual-source-edit-compiler-and-import-readers; named-Source-current-identity-excludes-only-three-native-meta-counters',
   sourceTextBudget:'existing-tokenizer-per-text-limit; unsupported-text-keeps-complete-inert-inventory',
-  proofBytes:16_777_216,leafInventory:32_768,groups:4096,entries:4096})
-export const PROMPT_PROGRAM_SOURCE_POLICY_SHA256=recordSha256(PROMPT_PROGRAM_SOURCE_POLICY_V1)
-export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_V1=Object.freeze({...PROMPT_PROGRAM_SOURCE_POLICY_V1,
-  encoding:'native-nexttavern-author-prompt-program-source-policy-v1',
+  proofBytes:16_777_216,groups:4096,entries:4096})
+export const PROMPT_PROGRAM_SOURCE_POLICY_SHA256=recordSha256(PROMPT_PROGRAM_SOURCE_POLICY_V2)
+export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_V2=Object.freeze({...PROMPT_PROGRAM_SOURCE_POLICY_V2,
+  encoding:'native-nexttavern-author-prompt-program-source-policy-v2',
   fields:'actual-canonical-author-text-pointers-and-noncontributing-sillytavern-macro-fields',
   projection:'exact-portable-author-body-and-current-owned-row; normalized-assignment-receipt-separate',
   book:'actual-recomputed-entry-content-with-archive-only-ordinal-receipts; no-canonical-row-duplication'})
-export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256=recordSha256(NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_V1)
+export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256=recordSha256(NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_V2)
 /** Current journal members retain archive provenance only for original
  * incarnations. An introduced member starts at its actual published event. */
-export const PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1=Object.freeze({...PROMPT_PROGRAM_SOURCE_POLICY_V1,
-  encoding:'native-author-prompt-program-source-membership-policy-v1',
+export const PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V2=Object.freeze({...PROMPT_PROGRAM_SOURCE_POLICY_V2,
+  encoding:'native-author-prompt-program-source-membership-policy-v2',
   book:'actual-current-journal-membership-order; immutable-original-or-introduced-event-incarnation; current-content-only'})
-export const PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256=recordSha256(PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1)
-export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1=Object.freeze({...NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_V1,
-  encoding:'native-nexttavern-author-prompt-program-source-membership-policy-v1',
-  book:PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1.book})
+export const PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256=recordSha256(PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V2)
+export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V2=Object.freeze({...NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_V2,
+  encoding:'native-nexttavern-author-prompt-program-source-membership-policy-v2',
+  book:PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V2.book})
 export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256=
-  recordSha256(NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1)
+  recordSha256(NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V2)
+export const PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_V2=Object.freeze({...PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V2,
+  encoding:'native-author-prompt-program-source-bound-books-policy-v2',
+  book:'actual-ordered-bound-catalog-books; member-incarnation-and-frozen-content-refs'})
+export const PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_SHA256=recordSha256(PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_V2)
+export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_SHA256=recordSha256({
+  ...NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V2,
+  encoding:'native-nexttavern-author-prompt-program-source-bound-books-policy-v2',
+  book:PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_V2.book})
 class ProgramSourceFailure extends Error {
   constructor(readonly code:PromptProgramSourceCodeV1,readonly pointer:string) {super(code)}
 }
@@ -60,13 +69,15 @@ function object(value:unknown):value is Record<string,unknown> {
   return value!==null&&typeof value==='object'&&!Array.isArray(value)
 }
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
-const escape=(key:string)=>key.replace(/~/g,'~0').replace(/\//g,'~1')
 const hash=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
+// Exact immutable constructor/parser outputs share only their DATA validity.
+// Source ownership and current write permission remain with their live owners.
+const parsedProgramSourceInventories=new WeakSet<PromptProgramSourceInventoryV2>()
 const nativeAuthorFieldPattern=new RegExp('^(?:(?:cards|worldbook)/\\d+/content'
   +'|rules/(?:core|plot|narrative|reply|style)|status/text'
   +'|compatibility/sillytavernMacroFields/(?:description|personality|scenario|mes_example|system_prompt|post_history_instructions))$')
 function clone<T>(input:T):T {
-  try {return cloneRoleplayTavernLoreDataV1(input,PROMPT_PROGRAM_SOURCE_POLICY_V1.proofBytes)}
+  try {return cloneRoleplayTavernLoreDataV1(input,PROMPT_PROGRAM_SOURCE_POLICY_V2.proofBytes)}
   catch {return fail('PROGRAM_SOURCE_BUDGET','/inventory')}
 }
 function freeze<T>(value:T):T {
@@ -88,85 +99,63 @@ function textInventory(text:string,pointer:string):PromptProgramTextV1 {
       tokenizerDiagnostic:{code:error.code,pointer:error.pointer}}
   }
 }
-function deniedLeaves(value:unknown,input:{domain:PromptProgramExcludedLeafV1['domain'];
-  row:TavernLoreSourceRowDataV1['ref']|null;pointer:string;authorized:ReadonlySet<string>},
-  rows:PromptProgramExcludedLeafV1[]):void {
-  const add=(child:unknown,pointer:string,kind:PromptProgramExcludedLeafV1['kind'])=>{
-    if(rows.length>=PROMPT_PROGRAM_SOURCE_POLICY_V1.leafInventory)fail('PROGRAM_SOURCE_BUDGET',pointer)
-    rows.push({domain:input.domain,row:input.row,pointer,kind,valueSha256:recordSha256(child),
-      utf16Length:typeof child==='string'?child.length:null,
-      ejsDelimiterPresent:typeof child==='string'&&(child.includes('<%')||child.includes('%>')),
-      disposition:'not-authorized-by-program-source-inventory'})
-  }
-  const walk=(child:unknown,pointer:string):void=>{
-    if(typeof child==='string') {
-      if(!input.authorized.has(pointer))add(child,pointer,'string')
-      return
-    }
-    if(child===null||typeof child!=='object'){add(child,pointer,'non-string');return}
-    const children=Object.entries(child)
-    if(!children.length){add(child,pointer,'non-string');return}
-    for(const [key,nested] of children) {
-      const next=pointer+'/'+escape(key)
-      if(!Array.isArray(child))add(key,next,'property-key')
-      walk(nested,next)
-    }
-  }
-  walk(value,input.pointer)
-}
 /** Audit plan hashes retain the actual sourceSnapshotSha256. This separately
  * named binding substitutes only the actual Source current identity; it never
  * claims that the transformed value is a canonical compiler plan or proof. */
 function semanticPlanBinding(compilation:ReturnType<typeof validateTavernLoreCompilationV1>,sourceIdentitySha256:string) {
+  if(compilation.plan.source.encoding==='author-worldbook-collection-source-reference-v1') {
+    const source=compilation.plan.source
+    return recordSha256({encoding:'author-program-bound-books-semantic-binding-v1',
+      consumerSource:{...source.consumerSource,sourceSnapshotSha256:sourceIdentitySha256},bindings:source.bindings,
+      books:compilation.plan.boundBooks!.map(book=>book.plan.planSha256)})
+  }
   const {planSha256:_,sourceReferenceSha256:__,...plan}=compilation.plan
   const source={...plan.source,sourceSnapshotSha256:sourceIdentitySha256}
   return recordSha256({encoding:'author-program-semantic-compiler-binding-v1',
     plan:{...plan,source,sourceReferenceSha256:recordSha256(source)},diagnostics:compilation.diagnostics})
 }
-function bindingBody(data:Omit<PromptProgramSourceInventoryV1,'bindingSha256'|'inventorySha256'>) {
-  const {audit:_,book,editing,currentRows,unauthorized,unauthorizedSha256:_____,...body}=data
+function bindingBody(data:Omit<PromptProgramSourceInventoryV2,'bindingSha256'|'inventorySha256'>) {
+  const {audit:_,book,editing,currentRows,...body}=data
   const {compilationSha256:__,planSha256:___,...boundBook}=book
   const {dataSha256:____,...boundEditing}=editing
-  const metaKey=`${data.sessionId}__meta`,counters=new Set(['/lastTurn','/lastSeq','/surfaceTokens'])
+  const metaKey=`${data.sessionId}__meta`
   // Every serialized row ref is still the actual audited row hash. Only this
   // named semantic binding replaces the meta row's changing hash with the
   // Source owner's independently recomputed current identity. Unknown meta
   // values and keys remain bound; only its three registered counters leave.
-  const boundUnauthorized=unauthorized.filter(leaf=>!(leaf.domain==='current-row'
-    &&leaf.row?.table==='branch'&&leaf.row.key===metaKey&&counters.has(leaf.pointer))).map(leaf=>
-    leaf.domain==='current-row'&&leaf.row?.table==='branch'&&leaf.row.key===metaKey
-      ?{...leaf,row:{table:leaf.row.table,key:leaf.row.key,exists:leaf.row.exists,
-        currentIdentitySha256:data.sourceCurrentIdentitySha256}}:leaf)
   return {...body,book:boundBook,editing:boundEditing,
-    currentRows:currentRows.filter(row=>!(row.table==='branch'&&row.key===metaKey)),
-    unauthorized:boundUnauthorized,unauthorizedSha256:recordSha256(boundUnauthorized)}
+    currentRows:currentRows.filter(row=>!(row.table==='branch'&&row.key===metaKey))}
 }
 function validateText(text:PromptProgramTextV1,pointer:string):void {
   if(!object(text)||typeof text.text!=='string'||!same(text,textInventory(text.text,pointer))) {
     fail('PROGRAM_INVENTORY_INVALID',pointer)
   }
 }
-function validateInventory(input:unknown):PromptProgramSourceInventoryV1 {
+function validateInventory(input:unknown):PromptProgramSourceInventoryV2 {
   const value=clone(input)
   const native=object(value)&&object(value.importTuple)&&value.importTuple.format==='json-nexttavern-v1'
   const membership=object(value)&&object(value.book)&&Object.hasOwn(value.book,'currentNativeMembershipSha256')
-  const policySha256=membership?native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256
+  const boundBooks=object(value)&&object(value.book)&&Object.hasOwn(value.book,'boundBooks')
+  const policySha256=boundBooks?native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_SHA256
+    :PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_SHA256
+    :membership?native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256
     :PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256
     :native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256:PROMPT_PROGRAM_SOURCE_POLICY_SHA256
   const keys=['schemaVersion','encoding','authority','policySha256','sessionId','includeCardStyle','importTuple',
     'sourceCurrentIdentitySha256','authorFields','authorGroups','assignments','regexResources','bookEntries','book','currentRows',
-    'editing','unauthorized','unauthorizedSha256','authorityLimits','bindingSha256','audit','inventorySha256']
+    'editing','authorityLimits','bindingSha256','audit','inventorySha256']
   if(!object(value)||Object.keys(value).length!==keys.length||Object.keys(value).some(key=>!keys.includes(key))
-    ||value.schemaVersion!==1||value.encoding!==(native?'native-nexttavern-author-prompt-program-source-inventory-v1'
-      :'native-author-prompt-program-source-inventory-v1')
+    ||value.schemaVersion!==2||value.encoding!==(native?'native-nexttavern-author-prompt-program-source-inventory-v2'
+      :'native-author-prompt-program-source-inventory-v2')
     ||value.authority!=='consumer-data-only'||value.policySha256!==policySha256
     ||typeof value.sessionId!=='string'||typeof value.includeCardStyle!=='boolean'
     ||!Array.isArray(value.authorFields)||(!native&&value.authorFields.length!==6)||!Array.isArray(value.authorGroups)
-    ||!Array.isArray(value.bookEntries)||value.authorGroups.length>PROMPT_PROGRAM_SOURCE_POLICY_V1.groups
-    ||value.bookEntries.length>PROMPT_PROGRAM_SOURCE_POLICY_V1.entries||!hash(value.inventorySha256)
-    ||!hash(value.bindingSha256)||!Array.isArray(value.regexResources)||value.regexResources.length>1||!Array.isArray(value.unauthorized)
-    ||value.unauthorizedSha256!==recordSha256(value.unauthorized))fail('PROGRAM_INVENTORY_INVALID','/inventory')
-  const data=value as unknown as PromptProgramSourceInventoryV1
+    ||!Array.isArray(value.bookEntries)||value.authorGroups.length>PROMPT_PROGRAM_SOURCE_POLICY_V2.groups
+    ||value.bookEntries.length>PROMPT_PROGRAM_SOURCE_POLICY_V2.entries||!hash(value.inventorySha256)
+    ||!hash(value.bindingSha256)||!Array.isArray(value.regexResources)||value.regexResources.length>1) {
+    fail('PROGRAM_INVENTORY_INVALID','/inventory')
+  }
+  const data=value as unknown as PromptProgramSourceInventoryV2
   const {inventorySha256, bindingSha256,...body}=data
   if(inventorySha256!==recordSha256({bindingSha256,...body})||bindingSha256!==recordSha256(bindingBody(body))) {
     fail('PROGRAM_INVENTORY_INVALID','/inventory/hash')
@@ -242,15 +231,19 @@ function validateInventory(input:unknown):PromptProgramSourceInventoryV1 {
       fail('PROGRAM_INVENTORY_INVALID','/bookEntries/eligibility')
     }
   }
-  for(const leaf of data.unauthorized)if(leaf.disposition!=='not-authorized-by-program-source-inventory') {
-    fail('PROGRAM_INVENTORY_INVALID','/unauthorized')
-  }
   return freeze(data)
 }
 /** Stored data consistency only. Actual ownership/currency still comes from
  * installed private readers; a self-signed inventory hash grants no authority. */
-export function validatePromptProgramSourceInventoryV1(input:unknown):PromptProgramSourceInventoryV1 {
-  try {return validateInventory(input)}
+export function validatePromptProgramSourceInventoryV2(input:unknown):PromptProgramSourceInventoryV2 {
+  try {
+    if(object(input)&&parsedProgramSourceInventories.has(input as unknown as PromptProgramSourceInventoryV2)) {
+      return input as unknown as PromptProgramSourceInventoryV2
+    }
+    const parsed=validateInventory(input)
+    parsedProgramSourceInventories.add(parsed)
+    return parsed
+  }
   catch(error) {
     if(error instanceof ProgramSourceFailure)throw error
     return fail('PROGRAM_INVENTORY_INVALID','/inventory')
@@ -285,11 +278,11 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
   let closed=false
   type LiveCapture={readonly source:TavernLoreSourceDataV1;readonly wholeSha256:string;
     readonly inventorySha256:string;assertCurrent():void;assertOwnerFactsCurrent():void}
-  let captures=new WeakMap<PromptProgramSourceInventoryV1,LiveCapture>()
+  let captures=new WeakMap<PromptProgramSourceInventoryV2,LiveCapture>()
   function read(sessionId:string,includeCardStyle:boolean,assertOwnerCurrent:()=>void,
-    saveCapture?:(data:PromptProgramSourceInventoryV1,live:LiveCapture)=>void,
-    saveData?:(data:PromptProgramSourceInventoryV1,source:TavernLoreSourceDataV1,
-      record:ImportRecord,decoded:DecodedTavernCard)=>void):PromptProgramSourceInventoryV1 {
+    saveCapture?:(data:PromptProgramSourceInventoryV2,live:LiveCapture)=>void,
+    saveData?:(data:PromptProgramSourceInventoryV2,source:TavernLoreSourceDataV1,
+      record:ImportRecord,decoded:DecodedTavernCard)=>void):PromptProgramSourceInventoryV2 {
     if(closed)fail('PROGRAM_SOURCE_CHANGED','/owner/disposed')
     const tables=deps.tables,sourceOwner=deps.source,editOwner=deps.edits,importReader=deps.readImportRecord,
       tableOwners=[tables.cards,tables.worldbook,tables.rules,tables.status],
@@ -310,7 +303,7 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
     assertOwnerCurrent()
     if(saveData&&!deps.edits.observeJournalDataWithLegacyData)fail('PROGRAM_SOURCE_UNAVAILABLE','/owner/data-reader')
     const captured=saveData?captureRoleplayTavernPromptSourceDataV1({source:deps.source,
-      edits:{observeJournalDataWithLegacyData:deps.edits.observeJournalDataWithLegacyData!}},sessionId,includeCardStyle)
+      edits:{observeJournalDataWithLegacyData:deps.edits.observeJournalDataWithLegacyData!},books:deps.books},sessionId,includeCardStyle)
       :captureRoleplayTavernPromptSourceV1(deps,sessionId,includeCardStyle,assertOwnerCurrent)
     if(captured.kind==='outside-declared-domain') {
       if(captured.reason==='ACTIVE_SOURCE_MISSING'||captured.reason==='LEGACY_SOURCE_OUTSIDE_DOMAIN'
@@ -324,9 +317,10 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
     const mapping=mapPromptProgramAuthorOriginsV1({decoded,record,source})
     const compilation=captured.compilation,plan=compilation.plan
     const membership=plan.currentNativeMembership
-    if(plan.source.sourceSnapshotSha256!==source.sourceSha256||plan.rawBookSha256!==source.original.primary.bookSha256
+    if(tavernLoreConsumerSourceV1(plan.source).sourceSnapshotSha256!==source.sourceSha256
+      ||!plan.boundBooks&&(plan.rawBookSha256!==source.original.primary.bookSha256
       ||!same(plan.rawBook,source.original.primary.value)
-      ||plan.entries.length!==(membership?.members.length??source.original.primary.entries.length)) {
+      ||plan.entries.length!==(membership?.members.length??source.original.primary.entries.length))) {
       fail('PROGRAM_COMPILATION_UNPROVEN','/compilation')
     }
     const sourceIdentitySha256=captured.currentIdentitySha256
@@ -347,9 +341,10 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
       if(linkedBookRows.has(overlay.rawEntry.entryPointer))fail('PROGRAM_COMPILATION_UNPROVEN','/current/entry-duplicate')
       linkedBookRows.set(overlay.rawEntry.entryPointer,overlay.row)
     }
+    const catalogBooks=new Map(plan.boundBooks?.map(book=>[book.plan.bookId,book.plan.source])??[])
     const bookEntries:PromptProgramBookEntryV1[]=plan.entries.map(entry=>{
       const identity=entry.currentNativeMember?.identity
-      const originalAddress=identity?identity.kind==='original'?identity.rawEntryPointer:null:entry.sourcePointer
+      const originalAddress=plan.boundBooks?null:identity?identity.kind==='original'?identity.rawEntryPointer:null:entry.sourcePointer
       const original=originalAddress===null?undefined:rawEntries.get(originalAddress)
       if(originalAddress!==null&&(!original||original.ref.entrySha256!==entry.rawEntrySha256
         ||!membership&&(original.ref.entryOrdinal!==entry.ordinal||typeof original.value.content!=='string'))) {
@@ -368,7 +363,10 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
           original:textInventory(spanText(record,assignment.assignment.sourceSpans),at),
           effective:textInventory(linked.value.content,at),assignment,provenance:'actual-compiler-linked-current-row'}
       }
+      const catalog=catalogBooks.get(entry.bookId!)
       return {entryId:entry.entryId,ordinal:entry.ordinal,sourceKey:entry.sourceKey,originalAddress,
+        ...catalog?.encoding==='author-worldbook-source-reference-v1'?{catalogBook:{profileId:catalog.profileId,
+          bookId:catalog.bookId,contentRef:catalog.contentRef,metadataRef:catalog.metadataRef}}:{},
         rawEntrySha256:entry.rawEntrySha256,contentPointer:pointer,disposition:entry.disposition,
         promptEligibility:entry.disposition==='disabled'?'disabled-never-execute'
           :entry.disposition==='retained-ineligible'||plan.bookDisposition!=='eligible-semantic-data'
@@ -382,67 +380,44 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
         fieldSources:entry.fieldSources,fieldSourcesSha256:recordSha256(entry.fieldSources),
         originalProjectionAssignments:originalAssignments}
     })
-    const rawAuthorized=new Set(authorFields.filter(field=>field.raw!==null).map(field=>field.originalPointer))
-    for(const entry of bookEntries)if(entry.originalAddress!==null)rawAuthorized.add(entry.originalAddress+'/content')
-    const unauthorized:PromptProgramExcludedLeafV1[]=[]
-    deniedLeaves(decoded.document,{domain:'original-document',row:null,pointer:'',authorized:rawAuthorized},unauthorized)
-    const authorizedRows=new Map<string,{ref:TavernLoreSourceRowDataV1['ref'];fields:Set<string>}>()
-    const allowCurrentField=(ref:TavernLoreSourceRowDataV1['ref'],field:string)=>{
-      const key=ref.table+':'+ref.key,existing=authorizedRows.get(key)
-      if(existing&&!same(existing.ref,ref))fail('PROGRAM_CURRENT_ORIGIN_UNAVAILABLE','/current/row-ref')
-      if(existing)existing.fields.add(field)
-      else authorizedRows.set(key,{ref,fields:new Set([field])})
-    }
-    for(const group of mapping.groups)allowCurrentField(group.row,group.fieldPointer)
-    for(const entry of bookEntries)if(entry.currentProjection)allowCurrentField(entry.currentProjection.row,'/content')
-    for(const row of source.current.rows) {
-      const selected=authorizedRows.get(row.ref.table+':'+row.ref.key)
-      if(selected&&!same(selected.ref,row.ref))fail('PROGRAM_CURRENT_ORIGIN_UNAVAILABLE','/current/row-ref')
-      const authorized=selected?.fields??new Set<string>()
-      // Entry content in legacy rows is represented independently by the actual
-      // compiler's current-native origin. Other row strings stay unauthorized.
-      deniedLeaves(row.value,{domain:'current-row',row:row.ref,pointer:'',authorized},unauthorized)
-    }
-    const overlay=plan.currentNativeOverlay
-    if(overlay) {
-      const authorized=new Set(overlay.entries.flatMap((entry,index)=>!membership&&Object.hasOwn(entry.fields,'content')
-        ?[`/entries/${index}/fields/content`]:[]))
-      deniedLeaves(overlay,{domain:'current-overlay',row:null,pointer:'',authorized},unauthorized)
-    }
-    if(membership) {
-      const authorized=new Set(membership.members.map((_,index)=>`/members/${index}/rawEntry/content`))
-      deniedLeaves(membership,{domain:'current-membership',row:null,pointer:'',authorized},unauthorized)
-    }
     const importTuple=promptProgramSourceImportTupleV1(source,record)
     const native=decoded.format==='json-nexttavern-v1'
-    const body={schemaVersion:1 as const,encoding:'native-author-prompt-program-source-inventory-v1' as const,
-      authority:'consumer-data-only' as const,policySha256:membership
+    const body={schemaVersion:2 as const,encoding:'native-author-prompt-program-source-inventory-v2' as const,
+      authority:'consumer-data-only' as const,policySha256:plan.boundBooks
+        ?native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_SHA256:PROMPT_PROGRAM_SOURCE_BOUND_BOOKS_POLICY_SHA256
+        :membership
         ?native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256:PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256
         :native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256:PROMPT_PROGRAM_SOURCE_POLICY_SHA256,sessionId,includeCardStyle,
       importTuple,sourceCurrentIdentitySha256:sourceIdentitySha256,authorFields,authorGroups,
       assignments:mapping.assignmentInventory,
-      // ST's maintained normalizer leaves this catalog in the original DATA;
-      // it produces no beauty assignment/current-row projection. Its complete
-      // leaves remain in unauthorized below, and the Source identity pins them.
+      // The Source identity retains complete original resources. Their actual
+      // transform/Reader owners decide execution; Program inventories only text.
       regexResources:object(decoded.data.extensions)&&Object.hasOwn(decoded.data.extensions,'regex_scripts')
         ?[{owner:'scoped-transform-and-reader' as const,originalPointer:'/data/extensions/regex_scripts' as const}]:[],bookEntries,
       book:{pointer:plan.source.bookPointer,rawBookSha256:plan.rawBookSha256,bookDisposition:plan.bookDisposition,
+        ...plan.source.encoding==='author-worldbook-collection-source-reference-v1'
+          ?{consumerSource:plan.source.consumerSource}:{},
         compilationSha256:recordSha256(compilation),planSha256:plan.planSha256,
         semanticPlanBindingSha256:semanticPlanBinding(compilation,sourceIdentitySha256),
         currentNativeOverlaySha256:plan.currentNativeOverlaySha256??null,
-        ...(membership?{currentNativeMembershipSha256:plan.currentNativeMembershipSha256!}:{})},
+        ...(membership?{currentNativeMembershipSha256:plan.currentNativeMembershipSha256!}:{}),
+        ...(plan.boundBooks?{boundBooks:plan.boundBooks.map(book=>book.plan.source as
+          import('./tavern-lore-plan-types.mjs').TavernLoreCatalogBookSourceReferenceV1)}:{})},
       currentRows:source.current.rows.map(row=>row.ref),editing:{dataSha256:captured.edits.dataSha256,
         revision:captured.edits.revision,headRef:captured.edits.headRef,journalRefs:captured.edits.journalRefs,
         effectiveOverlaySha256:recordSha256(plan.currentNativeOverlay??null),
-        ...(membership?{effectiveMembershipSha256:plan.currentNativeMembershipSha256!}:{})},unauthorized,
-      unauthorizedSha256:recordSha256(unauthorized),authorityLimits:{numericalInitialization:'not-authorized' as const,
+        ...(membership?{effectiveMembershipSha256:plan.currentNativeMembershipSha256!}:{})},
+      authorityLimits:{numericalInitialization:'not-authorized' as const,
         schemaScripts:'not-authorized' as const,nativeInput:'not-authorized' as const,protectedExecution:'not-authorized' as const,
         tokenizer:'delimiter-partition-only-not-AST-effect-or-success-proof' as const},
       audit:{wholeSourceSha256:source.sourceSha256,currentRowsSha256:recordSha256(source.current.rows.map(row=>row.ref))}}
-    const domainBody={...body,encoding:native?'native-nexttavern-author-prompt-program-source-inventory-v1' as const:body.encoding}
+    const domainBody={...body,encoding:native?'native-nexttavern-author-prompt-program-source-inventory-v2' as const:body.encoding}
     const bound={...domainBody,bindingSha256:recordSha256(bindingBody(domainBody))}
     assertOwnerCurrent()
-    const data=validatePromptProgramSourceInventoryV1({...bound,inventorySha256:recordSha256(bound)})
+    // These fields came from the Source/compiler owners above. Re-parsing this
+    // constructed record adds no authority; JSON/cold inputs use the parser.
+    const data:PromptProgramSourceInventoryV2=freeze({...bound,inventorySha256:recordSha256(bound)})
+    parsedProgramSourceInventories.add(data)
     if(saveData) {
       // InputState owns the complete synchronous read footprint. This API
       // returns DATA only; it cannot create an after-await currency callback.
@@ -491,7 +466,7 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
   }
   function current(input:unknown,assertOwnerCurrent:()=>void):boolean {
     try {
-      const saved=validatePromptProgramSourceInventoryV1(input)
+      const saved=validatePromptProgramSourceInventoryV2(input)
       return read(saved.sessionId,saved.includeCardStyle,assertOwnerCurrent).bindingSha256===saved.bindingSha256
     }catch{return false}
   }
@@ -505,7 +480,7 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
     return {...captured,source:live.source}
   }
   function captureDataWithCurrentSource(sessionId:string,includeCardStyle:boolean,assertOwnerCurrent:()=>void) {
-    let result:{kind:'captured-program-source';data:PromptProgramSourceInventoryV1;source:TavernLoreSourceDataV1;
+    let result:{kind:'captured-program-source';data:PromptProgramSourceInventoryV2;source:TavernLoreSourceDataV1;
       record:ImportRecord;decoded:DecodedTavernCard}|undefined
     try {
       read(sessionId,includeCardStyle,assertOwnerCurrent,undefined,(data,source,record,decoded)=>{
@@ -520,13 +495,13 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
   function currentCaptured(input:unknown,assertActualOwnerCurrent:()=>void):boolean {
     try {
       assertActualOwnerCurrent()
-      const live=input&&typeof input==='object'?captures.get(input as PromptProgramSourceInventoryV1):undefined
+      const live=input&&typeof input==='object'?captures.get(input as PromptProgramSourceInventoryV2):undefined
       if(!live)return current(input,assertActualOwnerCurrent)
       // Exact producer-created deep-frozen identity proves which complete
       // initial validation this closure belongs to. Clones cannot hit this map.
       // Rehashing this immutable large output would add no live input evidence.
       if(closed||!Object.isFrozen(input)
-        ||(input as PromptProgramSourceInventoryV1).inventorySha256!==live.inventorySha256) {
+        ||(input as PromptProgramSourceInventoryV2).inventorySha256!==live.inventorySha256) {
         fail('PROGRAM_SOURCE_CHANGED','/capture')
       }
       live.assertCurrent();assertActualOwnerCurrent();return true

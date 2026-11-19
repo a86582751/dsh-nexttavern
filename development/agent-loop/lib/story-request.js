@@ -1,17 +1,15 @@
 // Generated from runtime/alpha3/compat/agent-loop/src/story-request.ts; edit the TypeScript source.
 import { applyNativeStoryResponseOperationsV1, planNativeStoryResponseMaterialV1, nativeStoryResponseSha256V1, nativeStoryVisibleTextV1 } from 'dsh-nexttavern-native-session';
 export function nativeStorySamplingConfigV1(config, policy) {
-    const sampling = policy.sampling;
-    return { ...config, ...sampling?.temperature === undefined ? {} : { temperature: sampling.temperature },
-        ...sampling?.maxTokens === undefined ? {} : { maxTokens: sampling.maxTokens },
-        ...sampling?.stop === undefined ? {} : { stop: [...sampling.stop] } };
+    const { stop, ...sampling } = policy.sampling ?? {};
+    return { ...config, ...sampling, ...stop === undefined ? {} : { stop: [...stop] } };
 }
 export function nativeStorySamplingBaseV1(config) {
-    return { schemaVersion: 1, base: { ...config.temperature === undefined ? {} : { temperature: config.temperature },
-            ...config.maxTokens === undefined ? {} : { maxTokens: config.maxTokens }, ...config.stop === undefined ? {} : { stop: [...config.stop] } } };
+    const { provider, model, reasoningEffort, ...sampling } = config;
+    return { schemaVersion: 1, base: { ...sampling, ...config.stop === undefined ? {} : { stop: [...config.stop] } } };
 }
 export function restoreNativeStorySamplingV1(config, sampling) {
-    const { temperature: _temperature, maxTokens: _maxTokens, stop: _stop, ...route } = config;
+    const { temperature: _temperature, maxTokens: _maxTokens, stop: _stop, topP: _topP, topK: _topK, frequencyPenalty: _frequency, presencePenalty: _presence, toolChoice: _toolChoice, responseFormat: _responseFormat, ...route } = config;
     const { stop, ...base } = sampling.base;
     return { ...route, ...base, ...stop ? { stop: [...stop] } : {} };
 }
@@ -40,10 +38,10 @@ export function materializeNativeStoryResponseV1(blocks, binding) {
     return planNativeStoryResponseMaterialV1(blocks, plan);
 }
 function prepareNativeStoryResponse(blocks, binding) {
-    const transport = binding.policy.response?.transport;
+    const response = binding.policy.response, transport = response?.transport;
     const plan = [];
     if (transport)
-        plan.push({ kind: 'extract-transport', name: transport, selection: transport === 'game_content' ? 'transport' : 'longest' });
+        plan.push({ kind: 'extract-transport', name: transport, selection: response.selection ?? 'longest' });
     let extracted = applyNativeStoryResponseOperationsV1(blocks, plan);
     if (!extracted.some(block => block.type === 'text' && block.text.trim())
         && !extracted.some(block => block.type === 'tool-call') && binding.hooks.recoverText) {
@@ -155,7 +153,7 @@ function transportStreamProjection(binding) {
         }
         if (chunk.type === 'finish' && chunk.reason.kind !== 'error' && chunk.reason.kind !== 'aborted' && bodyIndex !== undefined) {
             const selected = applyNativeStoryResponseOperationsV1(raw, [{ kind: 'extract-transport', name: response.transport,
-                    selection: response.transport === 'game_content' ? 'transport' : 'longest' }]);
+                    selection: response.selection ?? 'longest' }]);
             const body = nativeStoryVisibleTextV1(selected), transform = binding.hooks.createTextTransform?.();
             const text = transform ? transform.push(body) + transform.finish() : body;
             return [{ type: 'block-start', index: bodyIndex, blockType: 'text' }, { type: 'text-delta', index: bodyIndex, text },

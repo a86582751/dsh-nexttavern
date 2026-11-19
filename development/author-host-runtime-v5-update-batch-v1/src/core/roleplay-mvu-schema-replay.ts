@@ -43,6 +43,9 @@ export interface SchemaOwnedScope {
   requestedStep:SchemaTraceRequestedStep
   sourceNativeCut:SourceNativeCutFacts
   inheritedCut:SchemaJournalFrozenCut|null
+  /** The actual captured producer may retain its own run across phases.
+   * Source/Native checks still authorize every continuation and publication. */
+  readonly liveRun?:true
   /** Process-only association retained non-enumerably by the actual producer. */
   readonly inheritedReady?:SchemaJournalReady
   /** The actual producer reads its own Session/Domain and joins checked
@@ -237,9 +240,9 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
   const invalidatedOwners=new WeakSet<object>()
   const evidence=new WeakMap<object,{scope:SchemaOwnedScope;association:SchemaExecutionAssociation;
     output:SchemaGuestOutput;generation:number;ownerGeneration:number}>()
-  const manualRuns=new Map<object,{run:MvuSchemaManualRunV4;incarnation:object;realmEpoch:string;
+  const liveRuns=new Map<object,{run:MvuSchemaManualRunV4;incarnation:object;realmEpoch:string;
     programSha256:string;material:object;confirmedTailSha256:string}>()
-  const manualClosures=new WeakMap<object,Promise<void>>()
+  const liveClosures=new WeakMap<object,Promise<void>>()
   // These entries prove a frozen historical cut only. No publication owner
   // is stored. Each waiter confirms its own producer read after shared guest
   // work; legacy DTO producers retain their second capture.
@@ -250,15 +253,15 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
   let disposed=false,generation=0
   const ownerGeneration=(owner:object)=>ownerGenerations.get(owner)??0
   function closeOwner(owner:object):Promise<void> {
-    const prior=manualClosures.get(owner)
+    const prior=liveClosures.get(owner)
     if(prior)return prior
-    const live=manualRuns.get(owner)
+    const live=liveRuns.get(owner)
     if(!live)return Promise.resolve()
     // Remove the executable resource before awaiting cleanup. Evidence keeps
     // its separate durable joins and can still authorize final publication.
-    manualRuns.delete(owner)
+    liveRuns.delete(owner)
     const closing=live.run.close()
-    manualClosures.set(owner,closing)
+    liveClosures.set(owner,closing)
     return closing
   }
   async function compileAuthor(input:SchemaOwnedScope['authorInput'],signal:AbortSignal) {
@@ -375,6 +378,8 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
       if(original.kind==='ready')checkExecutor(original.epoch)
       const currentRunner=executionRunner(original.kind==='ready'?original.executionBaseline:undefined),
         ownedNext=currentRunner.bindOwnedNext?.(input=>ownedPrefixes.get(input))
+      const useLiveRun=selector.anchor.kind==='manual'||captured.liveRun===true
+      if(captured.liveRun===true&&!currentRunner.openManualRun)fail('SCHEMA_LIVE_RUN_UNAVAILABLE')
       if(original.kind==='ready'&&(original.ownedPrefixV4?.().hasEvent(selector.batchId)
         ??journalSteps(original).some(step=>step.dispatch.batchId===selector.batchId))) {
         fail('SCHEMA_BATCH_ALREADY_EXECUTED')
@@ -437,9 +442,10 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
         fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
       }
       if(!same(execution.runner,deps.runner.identity))fail('SCHEMA_IMPLEMENTATION_CHANGED')
-      // evaluateTrace below replays and compares every historical output before
-      // evaluating the new step. A separate prefix-only replay repeats that work.
-      const ownedPrefix=ownedNext&&selector.anchor.kind!=='manual'&&original.kind==='ready'
+      // Both cold evaluators verify the historical outputs before the new step.
+      // A private run's cold open consumes the actual prefix; only the bound
+      // next evaluator can resolve its own checked-history placeholder.
+      const ownedPrefix=ownedNext&&!useLiveRun&&original.kind==='ready'
         ?original.ownedPrefixV4?.():undefined
       const prefix=ownedPrefix?[]:original.kind==='ready'
         ?[...original.executionBaseline?.materialize()??[],...journalSteps(original).map(item=>item.step)]:[]
@@ -490,8 +496,8 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
       check('dispatch-flushed')
       if(!dispatchFlushed)fail('SCHEMA_DISPATCH_FLUSH_UNKNOWN')
       let evaluated:SchemaTraceRunResult|MvuSchemaNextRunResultV4
-      if(selector.anchor.kind==='manual'&&currentRunner.openManualRun) {
-        const live=manualRuns.get(scope.owner)
+      if(useLiveRun&&currentRunner.openManualRun) {
+        const live=liveRuns.get(scope.owner)
         if(live) {
           if(trace.schemaVersion!==4||scope.requestedStep.frame.input.schemaVersion!==4
             ||live.incarnation!==scope.incarnation||live.realmEpoch!==scope.realmEpoch
@@ -505,7 +511,7 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
         } else {
           const opened=await currentRunner.openManualRun(program,trace,scope.signal)
           if(opened.kind==='opened-manual-run') {
-            manualRuns.set(scope.owner,{run:opened.run,incarnation:scope.incarnation,
+            liveRuns.set(scope.owner,{run:opened.run,incarnation:scope.incarnation,
               realmEpoch:scope.realmEpoch,programSha256:program.programSha256,
               material:scope.requestedStep.frame.material,confirmedTailSha256:dispatch.previousTailSha256})
             evaluated={kind:'evaluated-next',record:opened.record}
@@ -556,7 +562,7 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
         if(ready.kind!=='ready'||schemaJournalServerTailSha256(ready)!==step.stepSha256) {
           fail(ready.kind==='blocked'?ready.code:'SCHEMA_REALM_HISTORY_UNPROVEN')
         }
-        const live=manualRuns.get(scope!.owner)
+        const live=liveRuns.get(scope!.owner)
         if(live)live.confirmedTailSha256=step.stepSha256
         // The actual committed Journal owns immutable output. Publication and
         // returned DATA share that fact rather than exposing the runner's copy.
@@ -726,7 +732,7 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
       if(disposed)return
       disposed=true;generation++
       for(const job of active.values())job.abort.abort()
-      for(const owner of manualRuns.keys())void closeOwner(owner).catch(()=>undefined)
+      for(const owner of liveRuns.keys())void closeOwner(owner).catch(()=>undefined)
       for(const flight of historicalFlights.values())flight.abort.abort()
       historicalFlights.clear();historicalCache.clear();historicalCacheBytes=0
       journal.dispose()

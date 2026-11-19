@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {createRequire} from 'node:module'
-import {createHash} from 'node:crypto'
+import {createHash,randomUUID} from 'node:crypto'
 import {pathToFileURL} from 'node:url'
 import {materializeBundledLibraries,type BundledLibraryAssemblyContext} from './bundled-library-assembly.mjs'
 import {EJS_RUNTIME_PACKAGE,EJS_RUNTIME_VERSION} from '../core/tavern-template-ejs-runtime-types.mjs'
@@ -127,8 +127,17 @@ export async function buildTavernTemplateEjsRuntimeAssetsV1(options:{repo:string
   const root=path.resolve(options.packageRoot)
   for(const [output,bytes] of outputs) {
     const file=inside(root,output)
-    if(options.write){fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,bytes)}
-    else if(!fs.existsSync(file)||!fs.readFileSync(file).equals(bytes))throw Error('TEMPLATE_EJS_ASSET_GENERATED_STALE: '+output)
+    if(fs.existsSync(file)&&fs.readFileSync(file).equals(bytes))continue
+    if(!options.write)throw Error('TEMPLATE_EJS_ASSET_GENERATED_STALE: '+output)
+    fs.mkdirSync(path.dirname(file),{recursive:true})
+    const temporary=file+'.'+randomUUID()+'.tmp'
+    // Publish the completed asset without truncating a file open on Windows.
+    try {
+      fs.writeFileSync(temporary,bytes)
+      fs.renameSync(temporary,file)
+    } finally {
+      fs.rmSync(temporary,{force:true})
+    }
   }
   return {name:EJS_RUNTIME_PACKAGE,version:EJS_RUNTIME_VERSION,graphs,
     files:[...outputs].map(([output,bytes])=>({path:output,sha256:sha(bytes)}))}

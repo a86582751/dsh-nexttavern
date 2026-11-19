@@ -5,9 +5,10 @@ import {authorChatContributionIdV3} from './roleplay-author-chat-state.js'
 import type {CanonicalAuthorChatStateV1} from './roleplay-author-chat-state.js'
 import type {AuthorOrdinaryMessageCaptureV1} from './tavern-author-prompt-types.mjs'
 import type {MvuJsonValue} from './tavern-mvu-initvar.js'
-import type {AcceptedAuthorChatWriteV3,AuthorChatNamespaceRootV3,AuthorMessageTargetV3}
+import type {AcceptedAuthorChatWriteV3,AuthorChatNamespaceRootV3,AuthorMessageTargetV3,AuthorChatRefV1}
   from './roleplay-author-chat-state-types.js'
 import type {TavernPromptMacroSnapshotV1,TavernPromptBindingV1} from './tavern-prompt-transform-types.mjs'
+import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
 
 export interface TavernOrdinaryPreparationPlanV1 {
   readonly schemaVersion:1
@@ -17,6 +18,7 @@ export interface TavernOrdinaryPreparationPlanV1 {
   readonly attemptId:string
   readonly replacesAttemptId:string|null
   readonly initialRoot:AuthorChatNamespaceRootV3
+  readonly expectedScopeRef?:AuthorChatRefV1|null
   readonly writes:readonly AcceptedAuthorChatWriteV3[]
   readonly previousHadWrites?:boolean
   readonly messageGroups?:readonly Omit<TavernOrdinaryPreparationPlanV1,'messageGroups'>[]
@@ -33,6 +35,7 @@ interface MessageBinding {
 }
 export interface TavernOrdinaryPreparationStage {
   readonly initialRoot:AuthorChatNamespaceRootV3
+  readonly expectedScopeRef?:AuthorChatRefV1|null
   readonly values:Readonly<Record<string,MvuJsonValue>>
   readonly deletedKeys:readonly string[]|undefined
   readonly hasWrites:boolean
@@ -41,6 +44,7 @@ export interface TavernOrdinaryPreparationStage {
   bindMessages(input:MessageBinding):void
   captureMessages():readonly AuthorOrdinaryMessageCaptureV1[]
   applyEffects(effects:readonly StagedOrdinaryEffect[]):void
+  chatBinding(base?:TavernTemplateScopeBindingV1):TavernTemplateScopeBindingV1
   macros(base:TavernPromptMacroSnapshotV1):TavernPromptMacroSnapshotV1
   plan():TavernOrdinaryPreparationPlanV1
 }
@@ -51,11 +55,13 @@ export function createRoleplayTavernOrdinaryStage(input:Identity&{
   readonly deletedKeys?:readonly string[]
   readonly priorWrites?:readonly AcceptedAuthorChatWriteV3[]
   readonly previousHadWrites?:boolean
+  readonly assertMutationAllowed?:()=>void
 }):TavernOrdinaryPreparationStage {
-  const {values:initial,deletedKeys=[],priorWrites=[],previousHadWrites,...identity}=input,writes:AcceptedAuthorChatWriteV3[]=[],
+  const {values:initial,deletedKeys=[],priorWrites=[],previousHadWrites,assertMutationAllowed,...identity}=input,writes:AcceptedAuthorChatWriteV3[]=[],
     deleted=new Set(deletedKeys)
   let values=initial,sealed=true,version=recordSha256(identity),bindings:readonly TavernPromptBindingV1[]|undefined
   let snapshots=new WeakMap<TavernPromptMacroSnapshotV1,TavernPromptMacroSnapshotV1>()
+  let chatBindings=new WeakMap<TavernTemplateScopeBindingV1,TavernTemplateScopeBindingV1>()
   let messageSources:readonly AuthorOrdinaryMessageCaptureV1[]=[]
   const messageStages=new Map<string,{source:AuthorOrdinaryMessageCaptureV1;stage:TavernOrdinaryPreparationStage}>(),
     messageCaptures=new Map<string,AuthorOrdinaryMessageCaptureV1>()
@@ -66,6 +72,7 @@ export function createRoleplayTavernOrdinaryStage(input:Identity&{
   let createMessageStage:((target:MessageTarget)=>TavernOrdinaryPreparationStage)|undefined
   function apply(changes:readonly AcceptedAuthorChatWriteV3[]) {
     if(!changes.length)return
+    assertMutationAllowed?.()
     const next=sealed?{...values}:values as Record<string,MvuJsonValue>
     for(const write of changes) {
       if(write.key==='stat_data')throw Error('AUTHOR_CHAT_NUMERICAL_KEY_RESERVED')
@@ -81,11 +88,27 @@ export function createRoleplayTavernOrdinaryStage(input:Identity&{
     }
     values=next;sealed=false;writes.push(...changes)
     version=recordSha256({previous:version,changes})
-    bindings=undefined;snapshots=new WeakMap()
+    bindings=undefined;snapshots=new WeakMap();chatBindings=new WeakMap()
+  }
+  function chatBinding(base?:TavernTemplateScopeBindingV1):TavernTemplateScopeBindingV1 {
+    const previous=base&&chatBindings.get(base)
+    if(previous)return previous
+    // Accepted MVU context remains owned by the captured base. This stage
+    // overlays ordinary changes and explicit deletions without republishing
+    // that context as an ordinary write or dropping initialized metadata.
+    const combined={...base?.values,...values}
+    for(const key of deleted)delete combined[key]
+    const result={scope:'chat' as const,ownerId:identity.initialRoot.namespace.sessionId,
+      versionSha256:recordSha256({base:base?.versionSha256??null,ordinary:version}),
+      values:combined,valuesSha256:recordSha256(combined)}
+    if(base)chatBindings.set(base,result)
+    chatBindings.set(result,result)
+    return result
   }
   apply(priorWrites)
   return {
     initialRoot:identity.initialRoot,
+    ...identity.expectedScopeRef!==undefined?{expectedScopeRef:identity.expectedScopeRef}:{},
     get values(){sealed=true;return Object.freeze(values)},
     get deletedKeys(){return deleted.size?Object.freeze([...deleted]):undefined},
     read:(key:string)=>values[key],
@@ -103,10 +126,13 @@ export function createRoleplayTavernOrdinaryStage(input:Identity&{
         const namespace=source.root.namespace,contributionId=authorChatContributionIdV3(namespace,identity.inputId),
           previous=input.state.readAcceptedContribution(namespace,contributionId),
           basis=previous?input.state.captureNamespaceWithoutContribution(namespace,contributionId)
-            :{root:source.root,values:source.values,deletedKeys:source.deletedKeys,priorAttemptId:null},
+            :{root:source.root,scopeRef:source.scopeRef,values:source.values,deletedKeys:source.deletedKeys,priorAttemptId:null},
+          prior=priorByTarget.get(key),expectedScopeRef=prior?prior.expectedScopeRef:basis.scopeRef,
           child=createRoleplayTavernOrdinaryStage({inputId:identity.inputId,contributionId,attemptId:identity.attemptId,
+            assertMutationAllowed,
             replacesAttemptId:basis.priorAttemptId,initialRoot:basis.root,values:basis.values,deletedKeys:basis.deletedKeys,
-            previousHadWrites:previous?.hasWrites??false,priorWrites:priorByTarget.get(key)?.writes})
+            ...expectedScopeRef!==undefined?{expectedScopeRef}:{},
+            previousHadWrites:previous?.hasWrites??false,priorWrites:prior?.writes})
         messageStages.set(key,{source,stage:child})
         return child
       }
@@ -130,7 +156,8 @@ export function createRoleplayTavernOrdinaryStage(input:Identity&{
         // The child owns the current deletion set, including its absence
         // after setting a deleted key. Worker captures carry JSON DATA.
         const {deletedKeys:_previousDeleted,...basis}=source,deletedKeys=child.deletedKeys
-        return {...basis,values:child.values,...deletedKeys?{deletedKeys}:{},exists:source.exists||child.hasWrites}
+        return {...basis,values:child.values,...child.expectedScopeRef!==undefined?{scopeRef:child.expectedScopeRef}:{},
+          ...deletedKeys?{deletedKeys}:{},exists:source.exists||child.hasWrites}
       })
     },
     applyEffects(effects) {
@@ -143,6 +170,7 @@ export function createRoleplayTavernOrdinaryStage(input:Identity&{
         }else apply([change])
       }
     },
+    chatBinding,
     macros(base:TavernPromptMacroSnapshotV1):TavernPromptMacroSnapshotV1 {
       let snapshot=snapshots.get(base)
       if(snapshot)return snapshot
@@ -152,13 +180,9 @@ export function createRoleplayTavernOrdinaryStage(input:Identity&{
           ownerId:identity.initialRoot.namespace.sessionId,key,present:true,versionSha256:version,
           valueSha256:recordSha256(value),entryId:null,sourcePointer:null}} satisfies TavernPromptBindingV1
       })
-      const numerical=base.variableScopes?.chat?.values.stat_data
-      const chatValues={...numerical!==undefined?{stat_data:numerical}:{},...values}
       snapshot=Object.freeze({...base,localVariables:[
-        ...base.localVariables.filter(binding=>binding.key==='stat_data'),...bindings],
-        variableScopes:{...base.variableScopes,chat:{scope:'chat' as const,
-          ownerId:identity.initialRoot.namespace.sessionId,versionSha256:version,
-          values:chatValues,valuesSha256:recordSha256(chatValues)}}})
+        ...base.localVariables.filter(binding=>!Object.hasOwn(values,binding.key)&&!deleted.has(binding.key)),...bindings],
+        variableScopes:{...base.variableScopes,chat:chatBinding(base.variableScopes?.chat??undefined)}})
       snapshots.set(base,snapshot)
       return snapshot
     },

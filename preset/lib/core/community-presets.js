@@ -2,10 +2,11 @@
 import { randomUUID } from 'node:crypto';
 import { withTavernLock } from './tavern-task-support.js';
 import { recordSha256 } from './roleplay-data.js';
-import { parseCommunityPreset, normalizeCommunityRegexes, communityTavernRegexDto } from './community-preset-import.js';
+import { parseCommunityPreset, normalizeCommunityRegexes, communityTavernRegexDto, communityRegexesFromTavernDto, communityPresetDataV1, communityDefaultPresetDataV1, communityPresetFromDataV1, communityPresetExtensionsV1, communityPresetHelperVariablesV1, exportCommunityPresetV1 } from './community-preset-import.js';
 import { parseCommunityIzumiPlanPack, applyCommunityIzumiPlans, annotateCommunityIzumiPrompts } from './community-preset-plans.js';
-import { applyCommunityPresetControl, resolveCommunityPresetControls } from './community-preset-controls.js';
-import { extractCommunityPresetProfile } from './community-preset-profiles.js';
+import { applyCommunityPresetControl, resolveCommunityPresetControls, communityPresetControlAnswers } from './community-preset-controls.js';
+import { extractCommunityPresetProfile, resolveCommunityProfileConfiguration } from './community-preset-profiles.js';
+import { CommunityAuthorPresetRefusalV1 } from './community-preset-types.js';
 export const COMMUNITY_PRESETS_KEY = 'community-presets-v1';
 const emptySelection = () => ({ presetId: null, applySampling: false, prompts: {}, contents: {}, features: {}, regexes: {}, regexOrder: null });
 const copy = (value) => structuredClone(value);
@@ -37,94 +38,142 @@ function selection(value, state) {
     return { presetId, applySampling: raw.applySampling === true, prompts: booleans(raw.prompts), contents: copy(contents),
         features: jsonObject(raw.features ?? {}), regexes: booleans(raw.regexes), regexOrder: order };
 }
-function exportPreset(preset) {
-    const raw = copy(preset.source.raw);
-    raw.prompts = preset.prompts.map(prompt => ({ ...prompt.raw, identifier: prompt.identifier, name: prompt.name,
-        content: prompt.content, role: prompt.role, enabled: prompt.enabled, marker: !!prompt.marker,
-        injection_position: prompt.injectionPosition, injection_depth: prompt.injectionDepth, injection_order: prompt.injectionOrder }));
-    const orders = Array.isArray(raw.prompt_order) ? raw.prompt_order : [];
-    const selected = orders.find(row => row.character_id === preset.characterId);
-    if (selected)
-        selected.order = copy(preset.promptOrder);
-    else
-        orders.push({ character_id: preset.characterId ?? 100001, order: copy(preset.promptOrder) });
-    raw.prompt_order = orders;
-    const extensions = raw.extensions && typeof raw.extensions === 'object' && !Array.isArray(raw.extensions) ? raw.extensions : {};
-    extensions.regex_scripts = preset.regexes.map(({ raw: source, ...rule }) => ({ ...source, ...rule }));
-    const native = extensions.nexttavern && typeof extensions.nexttavern === 'object' && !Array.isArray(extensions.nexttavern)
-        ? extensions.nexttavern : {};
-    // Persisted v1 profiles already contain a resolved native contract. Export
-    // makes that choice explicit so re-import never needs source recognition.
-    const extra = preset.profile.configuration.extraParameters;
-    const enabled = extra && typeof extra === 'object' && !Array.isArray(extra) ? extra.enabled : undefined;
-    extensions.nexttavern = { ...native, profile: preset.profile.id,
-        ...typeof enabled === 'boolean' ? { extraParameters: enabled } : {} };
-    raw.extensions = extensions;
-    return raw;
+const exportPreset = exportCommunityPresetV1;
+function applySelectionContent(preset, current) {
+    for (const prompt of preset.prompts) {
+        if (Object.hasOwn(current.prompts, prompt.identifier))
+            prompt.enabled = current.prompts[prompt.identifier];
+        if (Object.hasOwn(current.contents, prompt.identifier))
+            prompt.content = current.contents[prompt.identifier];
+    }
+    for (const row of preset.promptOrder)
+        if (Object.hasOwn(current.prompts, row.identifier))
+            row.enabled = current.prompts[row.identifier];
+    for (const rule of preset.regexes)
+        if (Object.hasOwn(current.regexes, rule.id))
+            rule.disabled = !current.regexes[rule.id];
+}
+function freezeData(value) {
+    if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+        for (const child of Object.values(value))
+            freezeData(child);
+        Object.freeze(value);
+    }
+    return value;
 }
 /** One owner supplies both preset and independent regex state. Library edits
  * are shared; selection overrides belong to the selected conversation scope. */
-export function createCommunityPresets(table, rootOf) {
-    let policySource;
+export function createCommunityPresets(table, rootOf, runtime) {
+    let policyRevision;
     const policies = new Map();
-    function read() {
+    const catalogEntries = new Map();
+    const catalogs = new Map();
+    function stored() {
         const raw = table.get(COMMUNITY_PRESETS_KEY);
         if (raw == null)
             return { schemaVersion: 1, revision: 0, presets: [], global: emptySelection(), conversations: {}, planPacks: {}, regexes: [], configurationWrites: [] };
         const state = raw;
         if (state.schemaVersion !== 1)
             throw Error('社区预设存储版本不受支持，未覆盖原记录');
-        return copy(state);
+        return state;
+    }
+    function read() {
+        const { authorOperations: _receipts, authorPending: _pending, ...semantic } = stored();
+        return copy(semantic);
+    }
+    async function finishPending() {
+        const pending = stored().authorPending;
+        if (!pending)
+            return;
+        if (!runtime)
+            throw Error('COMMUNITY_AUTHOR_OPERATION_PENDING');
+        await runtime.complete(pending.update);
+        const { authorPending: _pending, ...settled } = stored();
+        try {
+            await table.put(COMMUNITY_PRESETS_KEY, settled);
+        }
+        catch (error) {
+            if (stored().authorPending)
+                throw error;
+        }
+    }
+    const settleAuthorPending = () => withTavernLock(table, COMMUNITY_PRESETS_KEY, finishPending);
+    function withAuthorRuntime(work) {
+        return withTavernLock(table, COMMUNITY_PRESETS_KEY, async () => {
+            await finishPending();
+            return work();
+        });
+    }
+    function effectivePreset(state, current) {
+        const saved = state.presets.find(preset => preset.id === current.presetId), base = current.current ?? saved;
+        if (!base)
+            return null;
+        const preset = copy(base);
+        if (saved)
+            preset.name = saved.name;
+        applySelectionContent(preset, current);
+        return preset;
+    }
+    function publishWorking(current, preset) {
+        if (preset)
+            current.current = preset;
+        else
+            delete current.current;
+        current.prompts = {};
+        current.contents = {};
+        current.regexes = {};
+    }
+    function writeState() {
+        const raw = stored(), state = { ...raw, presets: [...raw.presets], global: copy(raw.global), conversations: copy(raw.conversations),
+            planPacks: { ...raw.planPacks }, regexes: copy(raw.regexes), configurationWrites: [...raw.configurationWrites] };
+        // Older selected rows gain their detached copy before a named edit can
+        // change its source library. This runs only under the existing writer FIFO.
+        for (const current of [state.global, ...Object.values(state.conversations)]) {
+            if (!current.current && current.presetId !== null)
+                publishWorking(current, effectivePreset(state, current));
+        }
+        return state;
     }
     function buildPolicy(sessionId) {
         const state = read(), conversationId = rootOf(sessionId), local = state.conversations[conversationId] ?? null;
-        const effective = local ?? state.global, stored = state.presets.find(p => p.id === effective.presetId) ?? null;
-        const preset = stored ? copy(stored) : null;
-        if (preset) {
-            for (const prompt of preset.prompts)
-                if (Object.hasOwn(effective.prompts, prompt.identifier))
-                    prompt.enabled = effective.prompts[prompt.identifier];
-            for (const prompt of preset.prompts)
-                if (Object.hasOwn(effective.contents, prompt.identifier))
-                    prompt.content = effective.contents[prompt.identifier];
-            for (const item of preset.promptOrder)
-                if (Object.hasOwn(effective.prompts, item.identifier))
-                    item.enabled = effective.prompts[item.identifier];
-            for (const rule of preset.regexes)
-                if (Object.hasOwn(effective.regexes, rule.id))
-                    rule.disabled = !effective.regexes[rule.id];
-        }
-        const libraries = state.regexes.filter(item => item.binding.scope === 'global'
+        const executionEnabled = runtime?.executionEnabled?.(sessionId) !== false, effective = executionEnabled ? local ?? state.global : emptySelection(), stored = state.presets.find(p => p.id === effective.presetId) ?? null;
+        const preset = effectivePreset(state, effective), globalPreset = !executionEnabled ? null : local ? effectivePreset(state, state.global) : preset;
+        // A text-only worldline keeps the real shared library readable. Its
+        // execution policy also excludes future global additions, so disabling a
+        // list of today's regex IDs cannot silently re-enable advanced behavior.
+        const libraries = executionEnabled ? state.regexes.filter(item => item.binding.scope === 'global'
             || item.binding.scope === 'conversation' && item.binding.id === conversationId
-            || item.binding.scope === 'preset' && item.binding.id === effective.presetId);
-        const regexOrder = effective.regexOrder ?? (preset && ['kemini', 'reborn', 'izumi'].includes(preset.profile.id)
-            ? ['preset', 'global', 'scoped'] : ['global', 'preset', 'scoped']);
-        const fingerprint = recordSha256({ preset, selection: effective, regexes: libraries, regexOrder });
+            || item.binding.scope === 'preset' && item.binding.id === effective.presetId) : [];
+        const defaultRegexOrder = (value) => value && ['kemini', 'reborn', 'izumi'].includes(String(value.profile.transport.kind))
+            ? ['preset', 'global', 'scoped'] : ['global', 'preset', 'scoped'];
+        const regexOrder = effective.regexOrder ?? defaultRegexOrder(preset), globalRegexOrder = state.global.regexOrder ?? defaultRegexOrder(globalPreset);
+        const { current: _working, ...controls } = effective, fingerprint = recordSha256({ preset, selection: controls, regexes: libraries, regexOrder });
         let helperVariables = null;
         if (preset) {
             // These are the selected preset's own TavernHelper settings, not the
             // separate Community global-variable journal. Missing/invalid tables use
             // the upstream PresetSettings default; no selected preset stays absent.
-            const extensions = preset.source.raw.extensions;
-            const settings = extensions && typeof extensions === 'object' && !Array.isArray(extensions) ? extensions.tavern_helper : undefined;
-            const raw = settings && typeof settings === 'object' && !Array.isArray(settings) ? settings.variables : undefined;
-            const values = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+            const values = communityPresetHelperVariablesV1(preset), valuesSha256 = recordSha256(values);
             helperVariables = { scope: 'preset', ownerId: `community:${preset.id}:tavern-helper`,
-                versionSha256: preset.source.sha256, values, valuesSha256: recordSha256(values) };
+                versionSha256: recordSha256({ presetId: preset.id, revision: preset.contentRevision ?? preset.source.sha256 }), values, valuesSha256 };
         }
-        return { revision: state.revision, conversationId, global: state.global, local, effective, preset,
+        return { revision: state.revision, conversationId, executionEnabled, global: state.global, local, effective, preset, globalPreset,
             helperVariables,
             presets: state.presets.map(p => ({ id: p.id, name: p.name, profile: p.profile.id, prompts: p.prompts.length, regexes: p.regexes.length })),
-            planPack: stored ? state.planPacks[stored.id] ?? null : null, regexes: libraries, regexLibrary: state.regexes, regexOrder, fingerprint };
+            planPack: stored ? state.planPacks[stored.id] ?? null : null, regexes: libraries, regexLibrary: state.regexes,
+            regexOrder, globalRegexOrder, fingerprint };
     }
     function policy(sessionId) {
-        const source = table.get(COMMUNITY_PRESETS_KEY), root = rootOf(sessionId);
-        if (source !== policySource) {
+        const source = stored(), root = rootOf(sessionId);
+        if (source.authorPending)
+            throw Error('COMMUNITY_AUTHOR_OPERATION_PENDING');
+        if (source.revision !== policyRevision) {
             policies.clear();
-            policySource = source;
+            catalogs.clear();
+            policyRevision = source.revision;
         }
         let value = policies.get(root);
-        if (!value) {
+        if (!value || value.executionEnabled !== (runtime?.executionEnabled?.(sessionId) !== false)) {
             value = buildPolicy(sessionId);
             policies.set(root, value);
         }
@@ -165,18 +214,7 @@ export function createCommunityPresets(table, rootOf) {
         if (!preset)
             result = { kind: 'none', fingerprint: current.fingerprint };
         else {
-            const prompt = (row) => ({ id: row.identifier, name: row.name,
-                enabled: row.enabled, role: row.role,
-                ...!['main', 'nsfw', 'jailbreak', 'enhanceDefinitions'].includes(row.identifier) ? { position: row.injectionPosition === 1
-                        ? { type: 'in_chat', depth: row.injectionDepth, order: row.injectionOrder } : { type: 'relative' } } : {},
-                ...!row.marker ? { content: row.content } : {},
-                ...row.raw.extra && typeof row.raw.extra === 'object' ? { extra: copy(row.raw.extra) } : {} });
-            const byId = new Map(preset.prompts.map(row => [row.identifier, row])), ordered = preset.promptOrder.length ? preset.promptOrder.map(row => byId.get(row.identifier)).filter(Boolean)
-                : preset.prompts.filter(row => !row.unused), raw = preset.source.raw.extensions, extensions = raw && typeof raw === 'object' && !Array.isArray(raw) ? copy(raw) : {};
-            extensions.regex_scripts = preset.regexes.map(communityTavernRegexDto);
-            const helper = extensions.tavern_helper;
-            extensions.tavern_helper = { ...helper && typeof helper === 'object' && !Array.isArray(helper) ? helper : {},
-                variables: copy(current.helperVariables.values) };
+            const data = communityPresetDataV1(preset);
             // Only these two imported fields are actually passed to Native sampling.
             // Other imported parameters do not establish current provider settings.
             const settings = {};
@@ -187,16 +225,10 @@ export function createCommunityPresets(table, rootOf) {
                     settings.max_completion_tokens = preset.parameters.openai_max_tokens;
             }
             result = { kind: 'available', loadedName: preset.name, fingerprint: current.fingerprint, settingsComplete: false,
-                preset: { settings, prompts: ordered.map(prompt), prompts_unused: preset.prompts.filter(row => row.unused).map(prompt), extensions } };
+                preset: { settings, prompts: data.prompts,
+                    prompts_unused: data.prompts_unused, extensions: data.extensions } };
         }
-        function freeze(value) {
-            if (value && typeof value === 'object' && !Object.isFrozen(value)) {
-                for (const child of Object.values(value))
-                    freeze(child);
-                Object.freeze(value);
-            }
-        }
-        freeze(result);
+        freezeData(result);
         readonlyPresets.set(current, result);
         return result;
     }
@@ -206,15 +238,33 @@ export function createCommunityPresets(table, rootOf) {
         const root = rootOf(sessionId);
         return state.conversations[root] ?? (state.conversations[root] = copy(state.global));
     }
+    function deleteSavedPreset(state, id) {
+        state.presets = state.presets.filter(preset => preset.id !== id);
+        catalogEntries.delete(id);
+        const fallback = state.presets[0] ?? null;
+        for (const current of [state.global, ...Object.values(state.conversations)])
+            if (current.presetId === id) {
+                current.presetId = fallback?.id ?? null;
+                current.features = {};
+                current.regexOrder = null;
+                publishWorking(current, fallback ? copy(fallback) : null);
+            }
+        delete state.planPacks[id];
+        state.regexes = state.regexes.filter(library => library.binding.scope !== 'preset' || library.binding.id !== id);
+        state.configurationWrites = state.configurationWrites.filter(row => row.presetId !== id);
+    }
+    function prunePlans(state, preset) {
+        const previous = state.planPacks[preset.id];
+        if (!previous)
+            return;
+        const ids = new Set(preset.prompts.map(prompt => prompt.identifier)), names = new Set(preset.prompts.map(prompt => prompt.name)), pack = copy(previous);
+        for (const plan of pack.plans)
+            plan.entries = plan.entries.filter(entry => entry.id ? ids.has(entry.id) : names.has(entry.name ?? ''));
+        state.planPacks[preset.id] = pack;
+    }
     function preparedPlans(state, sessionId, scope, preset, ids) {
         const current = scope === 'global' ? state.global : state.conversations[rootOf(sessionId)] ?? state.global;
-        const effective = copy(preset);
-        for (const prompt of effective.prompts)
-            if (Object.hasOwn(current.prompts, prompt.identifier))
-                prompt.enabled = current.prompts[prompt.identifier];
-        for (const row of effective.promptOrder)
-            if (Object.hasOwn(current.prompts, row.identifier))
-                row.enabled = current.prompts[row.identifier];
+        const effective = current.presetId === preset.id ? effectivePreset(state, current) : copy(preset);
         const pack = state.planPacks[preset.id];
         if (!pack)
             throw Error('请先导入方案包');
@@ -225,34 +275,48 @@ export function createCommunityPresets(table, rootOf) {
     async function mutate(sessionId, value, callerCurrent) {
         const body = object(value);
         return withTavernLock(table, COMMUNITY_PRESETS_KEY, async () => {
-            const state = read();
+            await finishPending();
+            callerCurrent?.();
+            const state = writeState();
             if (body.expectedRevision !== state.revision)
                 throw Error('社区预设已更新，请刷新后重试');
             const scope = body.scope === 'global' ? 'global' : 'conversation';
             let result = {};
             const found = () => {
-                const preset = state.presets.find(item => item.id === body.presetId);
-                if (!preset)
+                const index = state.presets.findIndex(item => item.id === body.presetId);
+                if (index < 0)
                     throw Error('社区预设不存在');
+                const preset = copy(state.presets[index]);
+                state.presets[index] = preset;
                 return preset;
             };
             switch (body.action) {
                 case 'profile': {
                     const preset = found(), id = text(body.profile);
-                    if (!['standard', 'dream', 'kemini', 'reborn', 'izumi'].includes(id))
+                    if (!id.trim())
                         throw Error('原生适配类型无效');
                     const raw = exportPreset(preset), extensions = raw.extensions;
-                    extensions.nexttavern = { ...extensions.nexttavern, profile: id };
-                    preset.profile = extractCommunityPresetProfile(raw, preset.prompts);
+                    const native = extensions.nexttavern;
+                    if (id !== preset.profile.id)
+                        delete native.profileConfiguration;
+                    extensions.nexttavern = { ...native, profile: id,
+                        ...body.profileConfiguration !== undefined ? { profileConfiguration: body.profileConfiguration } : {} };
+                    const { regex_scripts: _embedded, ...currentExtensions } = extensions;
+                    preset.extensions = currentExtensions;
+                    preset.profile = extractCommunityPresetProfile(raw);
+                    await resolveCommunityProfileConfiguration(preset, runtime?.evaluateProfileConfiguration);
                     if (preset.profile.id !== id)
                         throw Error('该适配缺少已启用的声明配置');
-                    if (id === 'izumi')
+                    if (preset.profile.transport.kind === 'izumi')
                         annotateCommunityIzumiPrompts(preset.prompts, preset.promptOrder);
+                    preset.contentRevision = state.revision + 1;
                     break;
                 }
                 case 'import': {
                     const rawText = text(body.rawText), input = body.data ?? JSON.parse(rawText);
                     const preset = parseCommunityPreset(input, { id: `community-${randomUUID()}`, name: text(body.name) || text(body.fileName).replace(/\.json$/i, '') || '社区预设', fileName: text(body.fileName), rawText });
+                    await resolveCommunityProfileConfiguration(preset, runtime?.evaluateProfileConfiguration);
+                    preset.contentRevision = state.revision + 1;
                     state.presets.push(preset);
                     result = { importedId: preset.id };
                     break;
@@ -261,6 +325,7 @@ export function createCommunityPresets(table, rootOf) {
                     const source = found(), preset = copy(source);
                     preset.id = `community-${randomUUID()}`;
                     preset.name = text(body.name) || `${source.name} 副本`;
+                    preset.contentRevision = state.revision + 1;
                     state.presets.push(preset);
                     if (state.planPacks[source.id])
                         state.planPacks[preset.id] = copy(state.planPacks[source.id]);
@@ -304,19 +369,17 @@ export function createCommunityPresets(table, rootOf) {
                         for (const prompt of preset.prompts)
                             prompt.unused = !ids.includes(prompt.identifier);
                     }
+                    preset.contentRevision = state.revision + 1;
                     break;
                 }
                 case 'delete': {
                     const preset = found();
-                    if (state.global.presetId === preset.id || Object.values(state.conversations).some(s => s.presetId === preset.id))
-                        throw Error('预设仍被使用，请先停用或切换');
-                    state.presets = state.presets.filter(p => p.id !== preset.id);
-                    delete state.planPacks[preset.id];
-                    state.regexes = state.regexes.filter(r => r.binding.scope !== 'preset' || r.binding.id !== preset.id);
+                    deleteSavedPreset(state, preset.id);
                     break;
                 }
                 case 'select': {
                     const next = selection(body.selection, state);
+                    publishWorking(next, effectivePreset(state, next));
                     if (scope === 'global')
                         state.global = next;
                     else
@@ -325,7 +388,13 @@ export function createCommunityPresets(table, rootOf) {
                 }
                 case 'configure': {
                     const current = scopeSelection(state, sessionId, scope);
-                    Object.assign(current, selection({ ...current, ...object(body.patch) }, state));
+                    const next = selection({ ...current, ...object(body.patch) }, state), same = next.presetId === current.presetId;
+                    next.current = same ? effectivePreset(state, current) ?? undefined : undefined;
+                    const effective = effectivePreset(state, next);
+                    publishWorking(next, effective);
+                    Object.assign(current, next);
+                    if (!effective)
+                        delete current.current;
                     break;
                 }
                 case 'inherit':
@@ -357,21 +426,22 @@ export function createCommunityPresets(table, rootOf) {
                     const current = scopeSelection(state, sessionId, scope);
                     const { applied } = preparedPlans(state, sessionId, scope, preset, body.planIds);
                     current.presetId = preset.id;
-                    current.prompts = Object.fromEntries(applied.preset.prompts.map(p => [p.identifier, p.enabled]));
-                    current.regexes = Object.fromEntries(applied.preset.regexes.map(r => [r.id, !r.disabled]));
+                    applied.preset.contentRevision = state.revision + 1;
+                    publishWorking(current, applied.preset);
                     result = { applied: applied.applied, unresolved: applied.unresolved };
                     break;
                 }
                 case 'save-plan': {
                     const preset = found(), current = scopeSelection(state, sessionId, scope);
+                    const active = current.presetId === preset.id ? effectivePreset(state, current) : preset;
                     const layer = text(body.layer) || 'function', section = text(body.section);
                     if (!['structure', 'function', 'style'].includes(layer))
                         throw Error('方案层无效');
-                    const entries = preset.prompts.filter(p => p.layer === layer && (!section || p.section === section)).map(prompt => ({
-                        id: prompt.identifier, name: prompt.name, sameNameIndex: preset.prompts.filter(p => p.name === prompt.name).indexOf(prompt),
-                        enabled: current.prompts[prompt.identifier] ?? prompt.enabled, raw: {}
+                    const entries = active.prompts.filter(p => p.layer === layer && (!section || p.section === section)).map(prompt => ({
+                        id: prompt.identifier, name: prompt.name, sameNameIndex: active.prompts.filter(p => p.name === prompt.name).indexOf(prompt),
+                        enabled: prompt.enabled, raw: {}
                     }));
-                    const pack = state.planPacks[preset.id] ?? parseCommunityIzumiPlanPack({ schema: 'izumi-layer-plan-pack', version: 2, plans: [], active: {}, quickSlots: [] });
+                    const pack = copy(state.planPacks[preset.id] ?? parseCommunityIzumiPlanPack({ schema: 'izumi-layer-plan-pack', version: 2, plans: [], active: {}, quickSlots: [] }));
                     const id = randomUUID();
                     pack.plans.push({ id, name: text(body.name) || '新方案', layer: layer, section,
                         strict: body.strict !== false, entries, raw: {} });
@@ -380,36 +450,21 @@ export function createCommunityPresets(table, rootOf) {
                     break;
                 }
                 case 'control': {
-                    const preset = found(), current = scopeSelection(state, sessionId, scope);
-                    const effective = copy(preset);
-                    for (const prompt of effective.prompts) {
-                        prompt.enabled = current.prompts[prompt.identifier] ?? prompt.enabled;
-                        prompt.content = current.contents[prompt.identifier] ?? prompt.content;
-                    }
+                    const preset = state.presets.find(item => item.id === body.presetId);
+                    if (!preset)
+                        throw Error('社区预设不存在');
+                    const current = scopeSelection(state, sessionId, scope);
+                    const effective = current.presetId === preset.id ? effectivePreset(state, current) : copy(preset);
                     await resolveCommunityPresetControls(effective);
-                    const applied = applyCommunityPresetControl(effective, { groupId: text(body.groupId), optionId: text(body.optionId),
-                        enabled: body.enabled === true, value: body.value, answers: body.answers });
+                    const request = { groupId: text(body.groupId), optionId: text(body.optionId), enabled: body.enabled === true,
+                        value: body.value, answers: body.answers };
+                    const answers = communityPresetControlAnswers(effective, request), predicates = await resolveCommunityProfileConfiguration(effective, runtime?.evaluateProfileConfiguration, answers);
+                    const previousPromptCount = effective.prompts.length, applied = applyCommunityPresetControl(effective, request, predicates, answers);
+                    if (applied.preset.prompts.length !== previousPromptCount)
+                        await resolveCommunityPresetControls(applied.preset);
                     current.presetId = preset.id;
-                    current.prompts = Object.fromEntries(applied.preset.prompts.map(prompt => [prompt.identifier, prompt.enabled]));
-                    current.regexes = Object.fromEntries(applied.preset.regexes.map(rule => [rule.id, !rule.disabled]));
-                    // Generated configurable prompts have one library identity, while
-                    // their parameter values stay with the chosen scope.
-                    for (const changed of applied.preset.prompts) {
-                        const stored = preset.prompts.find(prompt => prompt.identifier === changed.identifier);
-                        const before = effective.prompts.find(prompt => prompt.identifier === changed.identifier);
-                        if (stored) {
-                            if (changed.content !== before?.content)
-                                current.contents[changed.identifier] = changed.content;
-                        }
-                        else {
-                            preset.prompts.push({ ...changed, content: '', enabled: false });
-                            const appliedIndex = applied.preset.promptOrder.findIndex(row => row.identifier === changed.identifier);
-                            const nextId = applied.preset.promptOrder.slice(appliedIndex + 1).find(row => preset.promptOrder.some(old => old.identifier === row.identifier))?.identifier;
-                            const at = nextId ? preset.promptOrder.findIndex(row => row.identifier === nextId) : preset.promptOrder.length;
-                            preset.promptOrder.splice(at, 0, { identifier: changed.identifier, enabled: false });
-                            current.contents[changed.identifier] = changed.content;
-                        }
-                    }
+                    applied.preset.contentRevision = state.revision + 1;
+                    publishWorking(current, applied.preset);
                     if (applied.writes.length)
                         state.configurationWrites.push({ id: randomUUID(), presetId: preset.id,
                             conversationId: scope === 'global' ? null : rootOf(sessionId), writes: applied.writes });
@@ -419,12 +474,14 @@ export function createCommunityPresets(table, rootOf) {
                 default: throw Error('未知社区预设操作');
             }
             callerCurrent?.();
-            if (['import', 'copy', 'select', 'update', 'profile', 'control'].includes(String(body.action))) {
+            if (['import', 'copy', 'select', 'update', 'profile'].includes(String(body.action))) {
                 const selected = body.action === 'select' ? scopeSelection(state, sessionId, scope).presetId : undefined;
-                const target = state.presets.find(preset => preset.id === (selected ?? result.importedId ?? body.presetId));
+                const target = body.action === 'select' ? scopeSelection(state, sessionId, scope).current
+                    : state.presets.find(preset => preset.id === (selected ?? result.importedId ?? body.presetId));
                 if (target)
                     await resolveCommunityPresetControls(target, body.action === 'import');
             }
+            callerCurrent?.();
             state.revision++;
             await table.put(COMMUNITY_PRESETS_KEY, state);
             return { ...policy(sessionId), ...result };
@@ -433,7 +490,9 @@ export function createCommunityPresets(table, rootOf) {
     async function mutateRegex(sessionId, value, callerCurrent) {
         const body = object(value);
         return withTavernLock(table, COMMUNITY_PRESETS_KEY, async () => {
-            const state = read();
+            await finishPending();
+            callerCurrent?.();
+            const state = writeState();
             if (body.expectedRevision !== state.revision)
                 throw Error('正则库已更新，请刷新后重试');
             if (body.action === 'import') {
@@ -475,24 +534,278 @@ export function createCommunityPresets(table, rootOf) {
     async function ensureControls(sessionId, presetId) {
         const pending = (state) => {
             const id = presetId ?? (state?.conversations[rootOf(sessionId)] ?? state?.global)?.presetId;
-            const preset = state?.presets.find(preset => preset.id === id);
+            const selected = state?.conversations[rootOf(sessionId)] ?? state?.global, preset = presetId ? state?.presets.find(preset => preset.id === id) : selected?.current ?? state?.presets.find(preset => preset.id === id);
             return preset?.profile.groups.some(group => group.options.some(option => option.match
                 && typeof option.raw.resolvedRangeBasis !== 'string')) ? preset : undefined;
         };
         // Ordinary reads consume the published range. Only a legacy record without
         // that publication enters the existing writer lock and gets migrated once.
-        if (!pending(table.get(COMMUNITY_PRESETS_KEY)))
+        const raw = stored();
+        if (!raw.authorPending && !pending(raw))
             return;
         await withTavernLock(table, COMMUNITY_PRESETS_KEY, async () => {
-            const state = read(), preset = pending(state);
+            await finishPending();
+            const state = writeState(), preset = pending(state);
             if (!preset)
                 return;
-            await resolveCommunityPresetControls(preset);
+            if (presetId)
+                state.presets[state.presets.findIndex(row => row.id === presetId)] = copy(preset);
+            const target = presetId ? state.presets.find(row => row.id === presetId) : preset;
+            await resolveCommunityPresetControls(target);
             state.revision++;
             await table.put(COMMUNITY_PRESETS_KEY, state);
         });
     }
-    return { read, policy, readonlyPreset, ejsPreset, readonlyGlobalRegexes, mutate, mutateRegex, ensureControls, configurations(sessionId, presetId) {
+    function authorCatalog(sessionId) {
+        const state = stored(), conversationId = rootOf(sessionId), previous = catalogs.get(conversationId);
+        if (state.authorPending)
+            throw Error('COMMUNITY_AUTHOR_OPERATION_PENDING');
+        if (previous?.revision === state.revision)
+            return previous;
+        const current = policy(sessionId), loaded = state.presets.find(preset => preset.id === current.effective.presetId), presets = state.presets.map(preset => {
+            const saved = catalogEntries.get(preset.id), revision = preset.contentRevision ?? 0;
+            if (saved?.revision === revision && saved.name === preset.name)
+                return saved;
+            const entry = freezeData({ presetId: preset.id, name: preset.name, revision, data: communityPresetDataV1(preset) });
+            catalogEntries.set(preset.id, entry);
+            return entry;
+        }), data = freezeData({ schemaVersion: 1, encoding: 'community-author-preset-catalog-v1',
+            revision: state.revision, conversationId, names: ['in_use', ...presets.map(preset => preset.name)],
+            loaded: loaded ? { presetId: loaded.id, name: loaded.name } : null,
+            current: { presetId: current.preset?.id ?? null, data: current.preset ? communityPresetDataV1(current.preset) : communityDefaultPresetDataV1() },
+            presets, globalRegexes: readonlyGlobalRegexes(sessionId) });
+        catalogs.set(conversationId, data);
+        return data;
+    }
+    function authorTarget(sessionId, name) {
+        if (name === 'in_use')
+            return { kind: 'in-use', conversationId: rootOf(sessionId) };
+        const saved = stored().presets.find(preset => preset.name === name);
+        return saved ? { kind: 'saved', presetId: saved.id } : null;
+    }
+    const operationPayload = (operation) => recordSha256({ schemaVersion: operation.schemaVersion,
+        origin: operation.origin, expectedRevision: operation.expectedRevision, command: operation.command });
+    function operationResult(operation, receipt, normalized) {
+        const command = operation.command, full = command.kind === 'replace' || command.kind === 'create-or-replace'
+            || command.kind === 'create' && receipt.result.kind === 'boolean' && receipt.result.value;
+        let data;
+        if (full) {
+            const supplied = 'data' in command ? command.data : undefined;
+            data = normalized ?? communityPresetFromDataV1(supplied ?? communityDefaultPresetDataV1(), { id: receipt.target && 'presetId' in receipt.target ? receipt.target.presetId : '', name: 'in_use' }, path => {
+                const id = receipt.assignedIds[path];
+                if (id === undefined)
+                    throw Error('PRESET_RECEIPT_ASSIGNED_ID_MISSING');
+                return id;
+            }).data;
+        }
+        const helper = data?.extensions.tavern_helper, variables = helper && typeof helper === 'object' && !Array.isArray(helper) ? helper.variables : undefined, desired = variables && typeof variables === 'object' && !Array.isArray(variables) ? variables : {}, runtimeTarget = receipt.target?.kind === 'in-use' ? receipt.target : undefined;
+        return { receipt: copy(receipt), target: copy(receipt.target),
+            ...receipt.result.kind === 'boolean' ? { value: receipt.result.value } : {}, ...data ? { data } : {},
+            ...data && runtimeTarget ? { scopeVariables: { presetId: runtimeTarget.presetId, values: copy(desired) } } : {} };
+    }
+    function recoverAuthorOperation(operation) {
+        const state = stored(), receipt = state.authorOperations?.[operation.operationId];
+        if (!receipt)
+            return;
+        if (receipt.payloadSha256 !== operationPayload(operation))
+            throw Error('PRESET_OPERATION_CONFLICT');
+        if (state.authorPending?.operationId === operation.operationId)
+            throw Error('COMMUNITY_AUTHOR_OPERATION_PENDING');
+        return operationResult(operation, receipt);
+    }
+    async function manage(sessionId, operation, callerCurrent) {
+        const payloadSha256 = operationPayload(operation);
+        return withTavernLock(table, COMMUNITY_PRESETS_KEY, async () => {
+            let mayHaveBeenAccepted = false;
+            try {
+                const existing = stored().authorOperations?.[operation.operationId];
+                if (existing) {
+                    mayHaveBeenAccepted = true;
+                    if (existing.payloadSha256 !== payloadSha256)
+                        throw Error('PRESET_OPERATION_CONFLICT');
+                    await finishPending();
+                    return operationResult(operation, existing);
+                }
+                await finishPending();
+                callerCurrent();
+                const state = writeState(), command = operation.command, assignedIds = {};
+                if (operation.expectedRevision !== state.revision)
+                    throw Error('PRESET_REVISION_CONFLICT');
+                if (operation.schemaVersion !== 1 || operation.origin.sessionId !== sessionId)
+                    throw Error('PRESET_OPERATION_ORIGIN_INVALID');
+                const assign = (path) => assignedIds[path] ?? (assignedIds[path] = randomUUID()), selected = () => scopeSelection(state, sessionId, 'conversation'), resolve = (target) => {
+                    if (target.kind === 'saved') {
+                        const preset = state.presets.find(row => row.id === target.presetId);
+                        if (!preset)
+                            throw Error('PRESET_NOT_FOUND');
+                        return preset;
+                    }
+                    if (target.conversationId !== rootOf(sessionId))
+                        throw Error('PRESET_TARGET_UNAVAILABLE');
+                    return effectivePreset(state, selected());
+                };
+                let target = null, result = { kind: 'void' }, normalized, changed = true;
+                const replace = async (address, data) => {
+                    const previous = resolve(address), id = previous?.id ?? `community-${assign('working-preset')}`, next = communityPresetFromDataV1(data, { id, name: previous?.name ?? 'in_use' }, assign, previous?.source);
+                    await resolveCommunityProfileConfiguration(next.preset, runtime?.evaluateProfileConfiguration);
+                    await resolveCommunityPresetControls(next.preset);
+                    next.preset.contentRevision = state.revision + 1;
+                    normalized = communityPresetDataV1(next.preset);
+                    if (address.kind === 'saved') {
+                        state.presets[state.presets.findIndex(row => row.id === id)] = next.preset;
+                        prunePlans(state, next.preset);
+                        target = address;
+                    }
+                    else {
+                        const current = selected();
+                        current.applySampling = true;
+                        current.features = {};
+                        current.regexOrder = null;
+                        publishWorking(current, next.preset);
+                        target = { ...address, presetId: id };
+                    }
+                };
+                if (command.kind === 'create' || command.kind === 'create-or-replace') {
+                    const saved = state.presets.find(preset => preset.name === command.name), inUse = command.name === 'in_use';
+                    if (command.kind === 'create' && (saved || inUse)) {
+                        result = { kind: 'boolean', value: false };
+                        changed = false;
+                        target = saved ? { kind: 'saved', presetId: saved.id } : null;
+                    }
+                    else if (saved || inUse) {
+                        await replace(inUse ? { kind: 'in-use', conversationId: rootOf(sessionId) } : { kind: 'saved', presetId: saved.id }, command.data ?? communityDefaultPresetDataV1());
+                        result = { kind: 'boolean', value: false };
+                    }
+                    else {
+                        if (!command.name)
+                            throw Error('PRESET_NAME_REQUIRED');
+                        const id = `community-${assign('saved-preset')}`, next = communityPresetFromDataV1(command.data ?? communityDefaultPresetDataV1(), { id, name: command.name }, assign);
+                        await resolveCommunityProfileConfiguration(next.preset, runtime?.evaluateProfileConfiguration);
+                        await resolveCommunityPresetControls(next.preset);
+                        next.preset.contentRevision = state.revision + 1;
+                        state.presets.push(next.preset);
+                        normalized = communityPresetDataV1(next.preset);
+                        target = { kind: 'saved', presetId: id };
+                        result = { kind: 'boolean', value: true };
+                    }
+                }
+                else if (command.kind === 'replace')
+                    await replace(command.target, command.data);
+                else if (command.kind === 'replace-preset-regexes') {
+                    const previous = resolve(command.target);
+                    if (!previous) {
+                        const initial = communityDefaultPresetDataV1();
+                        initial.extensions.regex_scripts = copy(command.rules);
+                        await replace(command.target, initial);
+                    }
+                    else {
+                        const next = copy(previous);
+                        next.regexes = communityRegexesFromTavernDto(command.rules);
+                        next.regexSource = 'native';
+                        next.extensions = copy(communityPresetExtensionsV1(previous));
+                        delete next.extensions.regex_scripts;
+                        await resolveCommunityPresetControls(next);
+                        next.contentRevision = state.revision + 1;
+                        if (command.target.kind === 'saved') {
+                            state.presets[state.presets.findIndex(row => row.id === next.id)] = next;
+                            target = command.target;
+                        }
+                        else {
+                            publishWorking(selected(), next);
+                            target = { ...command.target, presetId: next.id };
+                        }
+                    }
+                }
+                else if (command.kind === 'replace-global-regexes') {
+                    const first = state.regexes.find(library => library.binding.scope === 'global'), rules = communityRegexesFromTavernDto(command.rules);
+                    target = { kind: 'global-regexes' };
+                    if (!first && !rules.length)
+                        changed = false;
+                    else {
+                        const replacement = { id: first?.id ?? `regex-${assign('global-regex-library')}`, name: first?.name ?? 'Global regexes', rules,
+                            binding: { scope: 'global', id: null } };
+                        let inserted = false;
+                        state.regexes = state.regexes.flatMap(library => {
+                            if (library.binding.scope !== 'global')
+                                return [library];
+                            if (inserted)
+                                return [];
+                            inserted = true;
+                            return [replacement];
+                        });
+                        if (!inserted)
+                            state.regexes.push(replacement);
+                    }
+                }
+                else if (command.kind === 'delete' || command.kind === 'load' || command.kind === 'rename') {
+                    const saved = command.name === 'in_use' || command.presetId === null ? undefined : state.presets.find(preset => preset.id === command.presetId);
+                    result = { kind: 'boolean', value: !!saved };
+                    changed = !!saved;
+                    if (saved) {
+                        target = { kind: 'saved', presetId: saved.id };
+                        if (command.kind === 'delete')
+                            deleteSavedPreset(state, saved.id);
+                        else if (command.kind === 'load') {
+                            const current = selected();
+                            current.presetId = saved.id;
+                            current.applySampling = true;
+                            current.features = {};
+                            current.regexOrder = null;
+                            publishWorking(current, copy(saved));
+                        }
+                        else if (!command.newName || command.newName === 'in_use' || state.presets.some(row => row.id !== saved.id && row.name === command.newName)) {
+                            result = { kind: 'boolean', value: false };
+                            changed = false;
+                        }
+                        else if (saved.name === command.newName)
+                            changed = false;
+                        else
+                            state.presets[state.presets.indexOf(saved)] = { ...saved, name: command.newName, contentRevision: state.revision + 1 };
+                    }
+                }
+                else
+                    throw Error('PRESET_COMMAND_INVALID');
+                callerCurrent();
+                if (changed)
+                    state.revision++;
+                const receipt = { schemaVersion: 1, operationId: operation.operationId, payloadSha256,
+                    origin: copy(operation.origin), target, result, assignedIds, revision: state.revision };
+                state.authorOperations = { ...state.authorOperations, [operation.operationId]: receipt };
+                let accepted = operationResult(operation, receipt, normalized);
+                if (result.kind === 'boolean' && result.value && (command.kind === 'load' || command.kind === 'delete')) {
+                    const selection = state.conversations[rootOf(sessionId)] ?? state.global, current = effectivePreset(state, selection);
+                    if (current)
+                        accepted = { ...accepted,
+                            scopeVariables: { presetId: current.id, values: copy(communityPresetHelperVariablesV1(current)) } };
+                }
+                const update = accepted.scopeVariables ? runtime?.prepare(accepted) : undefined;
+                if (update)
+                    state.authorPending = { schemaVersion: 1, operationId: operation.operationId, update: copy(update) };
+                // Storage may accept this operation even when its acknowledgement fails.
+                mayHaveBeenAccepted = true;
+                try {
+                    await table.put(COMMUNITY_PRESETS_KEY, state);
+                }
+                catch (error) {
+                    const actual = stored().authorOperations?.[operation.operationId];
+                    if (!actual || actual.payloadSha256 !== payloadSha256)
+                        throw error;
+                    await finishPending();
+                    return operationResult(operation, actual, normalized);
+                }
+                await finishPending();
+                return operationResult(operation, receipt, normalized);
+            }
+            catch (error) {
+                if (mayHaveBeenAccepted)
+                    throw error;
+                throw new CommunityAuthorPresetRefusalV1(operation.operationId, error instanceof Error ? error.message : String(error));
+            }
+        });
+    }
+    return { read, policy, readonlyPreset, ejsPreset, readonlyGlobalRegexes, mutate, mutateRegex, ensureControls,
+        authorCatalog, authorTarget, manage, recoverAuthorOperation, settleAuthorPending, withAuthorRuntime,
+        configurations(sessionId, presetId) {
             const conversationId = rootOf(sessionId);
             return read().configurationWrites.filter(row => row.presetId === presetId).map(row => ({ ...row,
                 writes: row.writes.filter(write => write.scope === 'global' || row.conversationId === null || row.conversationId === conversationId) }));

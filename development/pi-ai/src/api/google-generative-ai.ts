@@ -39,6 +39,10 @@ import {
 import { buildBaseOptions } from "./simple-options.js";
 
 export interface GoogleOptions extends StreamOptions {
+	topP?: number;
+	topK?: number;
+	frequencyPenalty?: number;
+	presencePenalty?: number;
 	toolChoice?: "auto" | "none" | "any";
 	thinking?: {
 		enabled: boolean;
@@ -46,6 +50,9 @@ export interface GoogleOptions extends StreamOptions {
 		level?: GoogleApiThinkingLevel;
 	};
 }
+
+export type GoogleSimpleOptions = SimpleStreamOptions & Pick<GoogleOptions,
+	"topP" | "topK" | "frequencyPenalty" | "presencePenalty">;
 
 // Counter for generating unique tool call IDs
 let toolCallCounter = 0;
@@ -77,14 +84,11 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
 		};
 
 		try {
-			if (options?.fetch && options.fetch !== globalThis.fetch) {
-				throw new Error("Custom fetch is not supported by the Google Generative AI adapter");
-			}
 			const apiKey = options?.apiKey;
 			if (!apiKey) {
 				throw new Error(`No API key for provider: ${model.provider}`);
 			}
-			const client = createClient(model, apiKey, options?.headers);
+			const client = createClient(model, apiKey, options?.headers, options?.fetch);
 			let params = buildParams(model, context, options);
 			const nextParams = await options?.onPayload?.(params, model);
 			if (nextParams !== undefined) {
@@ -296,10 +300,10 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
 	return stream;
 };
 
-export const streamSimple: StreamFunction<"google-generative-ai", SimpleStreamOptions> = (
+export const streamSimple: StreamFunction<"google-generative-ai", GoogleSimpleOptions> = (
 	model: Model<"google-generative-ai">,
 	context: Context,
-	options?: SimpleStreamOptions,
+	options?: GoogleSimpleOptions,
 ): AssistantMessageEventStream => {
 	const apiKey = options?.apiKey;
 	if (!apiKey) {
@@ -308,6 +312,10 @@ export const streamSimple: StreamFunction<"google-generative-ai", SimpleStreamOp
 
 	const base = {
 		...buildBaseOptions(model, context, options, apiKey),
+		topP: options?.topP,
+		topK: options?.topK,
+		frequencyPenalty: options?.frequencyPenalty,
+		presencePenalty: options?.presencePenalty,
 		toolChoice: options?.toolChoice,
 	} satisfies GoogleOptions;
 	if (!options?.reasoning) {
@@ -341,6 +349,7 @@ function createClient(
 	model: Model<"google-generative-ai">,
 	apiKey?: string,
 	optionsHeaders?: ProviderHeaders,
+	customFetch?: typeof fetch,
 ): GoogleGenAI {
 	const httpOptions: { baseUrl?: string; apiVersion?: string; headers?: Record<string, string> } = {};
 	if (model.baseUrl) {
@@ -352,10 +361,20 @@ function createClient(
 		httpOptions.headers = headers;
 	}
 
-	return new GoogleGenAI({
+	const client = new GoogleGenAI({
 		apiKey,
 		httpOptions: Object.keys(httpOptions).length > 0 ? httpOptions : undefined,
 	});
+	if (customFetch) {
+		// Pinned GenAI 1.52.0 exposes no Models fetch option. Its instance apiCall
+		// is a single fetch here, since this owner does not enable SDK retries.
+		// Leave SDK request conversion, signals and response parsing in place.
+		const transport = client as unknown as {
+			apiClient: { apiCall(url: string, init: RequestInit): Promise<Response> };
+		};
+		transport.apiClient.apiCall = async (url, init) => customFetch(url, init);
+	}
+	return client;
 }
 
 function buildParams(
@@ -372,6 +391,10 @@ function buildParams(
 	if (options.maxTokens !== undefined) {
 		generationConfig.maxOutputTokens = options.maxTokens;
 	}
+	if (options.topP !== undefined) generationConfig.topP = options.topP;
+	if (options.topK !== undefined) generationConfig.topK = options.topK;
+	if (options.frequencyPenalty !== undefined) generationConfig.frequencyPenalty = options.frequencyPenalty;
+	if (options.presencePenalty !== undefined) generationConfig.presencePenalty = options.presencePenalty;
 
 	const supportsStrictMode = supportsGoogleStrictToolSampling(model.id);
 	const functionCallingMode = context.tools?.length

@@ -3,11 +3,9 @@
 import {nativeInputSha256} from 'dsh-nexttavern-native-agent-loop'
 import {recordSha256} from './roleplay-data.js'
 import {captureRoleplayTavernMaterialHistoryV1,isTavernHistoryTextOnlyMaterialV1} from './roleplay-tavern-material-history.js'
-import {validateTavernLoreSnapshotV1} from './tavern-lore-snapshot.mjs'
-import {validateTavernLoreCompilationV1} from './tavern-lore-compiler.mjs'
-import {TavernLoreTimedStateV1} from './tavern-lore-timed.mjs'
+import {validateTavernLoreCompilationV1,tavernLoreConsumerSourceV1} from './tavern-lore-compiler.mjs'
 import {composeTavernLoreEvaluationV1,validateTavernLoreDerivedSnapshotV1,
-  tavernLoreEvaluationSemanticV1,applyTavernLoreOrdinaryPreparationV1,createTavernLoreSourceEligibilityV1}
+  applyTavernLoreOrdinaryPreparationV1}
   from './tavern-lore-derived.mjs'
 import {validateTavernLoreOrdinaryPreparationV1} from './tavern-lore-ordinary-preparation.mjs'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
@@ -36,10 +34,12 @@ function freeze<T>(value:T):T {
   if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value)}
   return value
 }
-const identity=(source:TavernLoreEvaluatorInputV1['compilation']['plan']['source'])=>
-  ({sessionId:source.ownerSessionId,sourceRecordSessionId:source.sourceRecordSessionId,importId:source.importId,
+const identity=(reference:TavernLoreEvaluatorInputV1['compilation']['plan']['source'])=>{
+  const source=tavernLoreConsumerSourceV1(reference)
+  return {sessionId:source.ownerSessionId,sourceRecordSessionId:source.sourceRecordSessionId,importId:source.importId,
     rawSha256:source.rawSourceSha256,documentSha256:source.documentSha256,
-    bookPointer:source.bookPointer,bookSha256:source.bookValueSha256})
+    bookPointer:source.bookPointer,bookSha256:source.bookValueSha256}
+}
 
 export type TavernTimedPublicationV1=ReturnType<typeof captureRoleplayTavernMaterialHistoryV1>['publications'][number]
 /** Shared historical verification preserves the original owner/address and
@@ -47,14 +47,17 @@ export type TavernTimedPublicationV1=ReturnType<typeof captureRoleplayTavernMate
 export function readTavernTimedPublicationV1(publication:TavernTimedPublicationV1,ownerSessionId:string) {
   const {event,snapshot:snapshotRow,plan:planRow}=publication,
     snapshotPayload=snapshotRow.payload,planPayload=planRow.payload
+  if(event.type!=='request/material')fail('INPUT_MATERIAL_TIMED_TAVERN_RECORD_UNAVAILABLE')
   if(!object(planPayload.promptPlan)||!object(snapshotPayload.tavernEvaluationInput))
     fail('INPUT_MATERIAL_TIMED_TAVERN_RECORD_UNAVAILABLE')
   const input=snapshotPayload.tavernEvaluationInput as unknown as TavernLoreEvaluatorInputV1,
     tavernPlan=planPayload.promptPlan.tavernEvaluationPlan as TavernLoreEvaluationPlanV1|undefined
   if(!object(tavernPlan)||tavernPlan.schemaVersion!==1||tavernPlan.encoding!=='owned-st-lore-evaluation-plan-v1'
     ||tavernPlan.authority!=='consumer-data-only')fail('INPUT_MATERIAL_TIMED_TAVERN_RECORD_UNAVAILABLE')
+  // Material capture has bound this exact Core row to the Native event.
+  // Reuse its snapshot, including full history, while checking plan bindings.
   const plan=tavernPlan as unknown as TavernLoreEvaluationPlanV1,
-    compilation=validateTavernLoreCompilationV1(input.compilation),snapshot=validateTavernLoreSnapshotV1(input.snapshot),
+    compilation=validateTavernLoreCompilationV1(input.compilation),snapshot=input.snapshot,
     base=composeTavernLoreEvaluationV1(compilation.plan,input.derivedSnapshot
       ?validateTavernLoreDerivedSnapshotV1(input.derivedSnapshot):undefined),
     ordinary=input.ordinaryPreparation?validateTavernLoreOrdinaryPreparationV1(input.ordinaryPreparation,compilation.plan):undefined,
@@ -69,39 +72,22 @@ export function readTavernTimedPublicationV1(publication:TavernTimedPublicationV
     ||!same(plan.composition??null,composition.ref??null))
     fail('INPUT_MATERIAL_TIMED_PLAN_BINDING_INVALID')
   return {publication,input,compilation,composition,snapshot,plan,sourceIdentity:identity(compilation.plan.source),
-    planKey:`${event.data.plan.key}:${event.data.plan.sha256}`,
-    attemptKey:`${ownerSessionId}:${plan.attemptId}:${event.data.step}`}
+    planKey:`${publication.material.plan.key}:${publication.material.plan.sha256}`,
+    attemptKey:`${ownerSessionId}:${plan.attemptId}:${publication.material.step}`}
 }
 export function replayTavernTimedPublicationV1(read:ReturnType<typeof readTavernTimedPublicationV1>,
   revision:number,intervals:readonly Interval[]) {
-  const {compilation,composition,snapshot,plan}=read,timed=snapshot.timed,proposal=plan.timedProposal,
+  const {snapshot,plan}=read,timed=snapshot.timed,proposal=plan.timedProposal,
     sid=plan.sessionId
   if(timed.branchId!==sid||timed.revision!==revision||!same(timed.intervals,intervals)
     ||proposal.schemaVersion!==1||proposal.encoding!=='owned-st-timed-proposals-v1'||proposal.branchId!==sid
     ||proposal.baseRevision!==revision||proposal.baseSha256!==snapshot.timedSha256||proposal.chatIndex!==timed.chatIndex
     ||!Array.isArray(proposal.actions)||proposal.actions.length>8192)
     fail('INPUT_MATERIAL_TIMED_BASE_CHANGED')
-  if(!Array.isArray(plan.activatedEntryIds)||plan.activatedEntryIds.length>4096
-    ||new Set(plan.activatedEntryIds).size!==plan.activatedEntryIds.length)fail('INPUT_MATERIAL_TIMED_ACTION_INVALID')
-  // Replay the publication's captured entries, including outputs that have
-  // since been disabled or replaced. Current heads cannot rewrite old timing.
-  const sourceEligibility=createTavernLoreSourceEligibilityV1(compilation),
-    exclusions=new Set(snapshot.standaloneExclusions?.entryIds??[])
-  const entries=new Map(composition.entries.map(entry=>{
-    const semantic=tavernLoreEvaluationSemanticV1(entry)
-    return [entry.entryId,{entry,semantic:exclusions.has(entry.entryId)?{...semantic,enabled:false}:semantic,
-      eligible:sourceEligibility(entry)}] as const
-  }))
-  for(const id of plan.activatedEntryIds) {
-    const entry=entries.get(id)
-    if(!entry?.eligible||!entry.semantic.enabled)fail('INPUT_MATERIAL_TIMED_ACTION_INVALID')
-  }
-  const replay=new TavernLoreTimedStateV1(timed,entries)
-  replay.activated(plan.activatedEntryIds)
-  if(!same(replay.actions,proposal.actions)
-    ||proposal.disposition!==(replay.actions.length?'proposed-consumer-data-only':'empty-no-timed-effects'))
-    fail('INPUT_MATERIAL_TIMED_ACTION_INVALID')
-  return replay.actions as readonly TavernLoreTimedActionV1[]
+  // The Native-bound producer plan owns the selected entries and final timed
+  // actions. Cold recovery applies their before/after chain through the same
+  // interval owner, without reevaluating old activation or feedback programs.
+  return proposal.actions
 }
 export function applyTavernTimedActionV1(intervals:Map<string,Interval>,action:TavernLoreTimedActionV1):void {
   const key=`${action.entryId}:${action.effect}`,before=intervals.get(key)??null
@@ -126,7 +112,8 @@ export function captureRoleplayTavernTimedHistoryV1(deps:Dependencies,chatIndex:
     documentSha256:deps.source.original.documentSha256,bookPointer:deps.source.original.primary.bookPointer,
     bookSha256:deps.source.original.primary.bookSha256}
   for(const publication of history.publications) {
-    if(isTavernHistoryTextOnlyMaterialV1(publication))continue
+    if(isTavernHistoryTextOnlyMaterialV1(publication)
+      ||publication.snapshot.encoding==='core-author-generation-material-record-v1')continue
     const read=readTavernTimedPublicationV1(publication,deps.sessionId),{event}=publication
     if(!same(read.sourceIdentity,actualIdentity))continue
     if(seenPlans.has(read.planKey))continue
@@ -137,8 +124,8 @@ export function captureRoleplayTavernTimedHistoryV1(deps:Dependencies,chatIndex:
     for(const action of replayTavernTimedPublicationV1(read,revision,[...intervals.values()]))
       applyTavernTimedActionV1(intervals,action)
     revision++
-    publications.push({seq:event.seq,materialSha256:nativeInputSha256(event),snapshot:event.data.snapshot,
-      plan:event.data.plan,attemptId:read.plan.attemptId,revision})
+    publications.push({seq:event.seq,materialSha256:nativeInputSha256(event),snapshot:publication.material.snapshot,
+      plan:publication.material.plan,attemptId:read.plan.attemptId,revision})
   }
   const timed:TavernLoreBranchTimedInputV1=freeze({schemaVersion:1,encoding:'owned-st-branch-timed-input-v1',
     branchId:deps.sessionId,revision,chatIndex,intervals:[...intervals.values()]})
