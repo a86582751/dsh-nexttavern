@@ -64,15 +64,16 @@ function readerNativeParentBootstrap(createControls:typeof createAuthorDomContro
           const payload=message.data
           const fresh=(payload.libraries??[]).filter((javascript:string)=>!libraries.has(javascript))
           for(const javascript of fresh)libraries.add(javascript)
-          const helper=data.kind==='helper'
-          const mounted=mount({...payload,libraries:fresh,sdkGlobals:[],helper},bridge,data.channel,
-            frame=>domControls.watchFrame(data.id,frame))
+          const helper=data.kind==='helper',background=data.kind==='background'
+          const mounted=mount({...payload,libraries:fresh,sdkGlobals:[],helper,background},bridge,data.channel,
+            background?undefined:frame=>domControls.watchFrame(data.id,frame))
           // The shared context follows the session's Helper. Reader children
           // retain their own message-scoped APIs.
           if(helper)helperFrames.set(data.id,mounted.frame)
           mounted.node.dataset.authorSceneChild=data.id
-          mounted.node.style.visibility='hidden'
-          if(data.kind==='reader')mounted.node.style.zIndex='1'
+          if(!background)mounted.node.style.visibility='hidden'
+          if(background)mounted.node.style.zIndex='-1'
+          else if(data.kind==='reader')mounted.node.style.zIndex='1'
           children.set(data.id,{...mounted,port:bridge})
           control.postMessage({op:'scene-attached',id:data.id})
         }
@@ -106,7 +107,7 @@ function readerNativeParentBootstrap(createControls:typeof createAuthorDomContro
         if(!data.box)return
         const {top,left,width,height}=data.box
         child.node.style.position='absolute';child.node.style.top=top+'px';child.node.style.left=left+'px'
-        child.node.style.width=child.frame.dataset.authorSceneBackground?'100%':width+'px'
+        child.node.style.width=child.node.dataset.authorSceneBackground?'100%':width+'px'
         if(!child.node.dataset.authorSceneChild)child.frame.style.height=height+'px'
       }else if(data.op==='scene-size'){
         const child=children.get(data.childId)
@@ -146,6 +147,12 @@ function readerNativeParentBootstrap(createControls:typeof createAuthorDomContro
       Object.defineProperty(realm,name,{configurable:true,get:()=>(frame.contentWindow as any)?.[name]})
     frame.addEventListener('load',()=>frame.contentWindow!.postMessage({op:'connect',channel:childChannel},location.origin,[port]),{once:true})
     frame.srcdoc=data.html
+    if(data.background){
+      const background=document.createElement('div');background.dataset.authorSceneBackground='true'
+      background.style.cssText='position:absolute;top:0;left:0;width:100%'
+      frame.style.display='none';background.append(frame);document.body.append(background)
+      return {node:background,frame}
+    }
     if(data.helper){frame.hidden=true;frame.style.display='none';document.body.appendChild(frame);return {node:frame,frame}}
     content.appendChild(frame);message.appendChild(content);document.body.appendChild(message)
     return {node:message,frame}

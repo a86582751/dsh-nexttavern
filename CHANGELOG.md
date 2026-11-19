@@ -6,6 +6,8 @@
 
 ## 2026-11-19
 
+- 聊天附件导入后随会话完成刷新开场选择。开场里的 `{{user}}` 使用已选玩家名称，兼容旧桌面 profile 的用户信息。世界书标题的首尾空白可以正常随卡导入和选择开场。默认 Reader 允许作者脚本绑定开场里的表单挂载点，正则匹配位置可以作为作者文档的字符串数据。
+- Opening choices refresh when a chat-attachment import turn finishes. The `{{user}}` macro uses the selected player name, including profiles saved by older desktop builds. Worldbook titles with surrounding whitespace no longer block opening selection. The default Reader lets author scripts mount forms in an opening and accepts regex match offsets as document string data.
 - 酒馆发送后立即显示准备进度。追更时跟随正文，向上回看时保留阅读位置。后台导演笔记默认超时五分钟，输出遵循模型限制；笔记、压缩与检索排除数值更新和状态栏占位符。剧情语义查询每条正文取最佳分块，空索引直接使用关键词。
 - Tavern shows feedback immediately after sending, follows new prose at the tail, and keeps the reading position when you scroll back. Director notes default to a five-minute timeout and use the selected model’s output limit. Notes, compaction, and retrieval omit numerical updates and status placeholders. Semantic story search ranks each message by its best chunk and falls back to keyword search when the index has no candidates.
 - 如果剧情准备时酒馆的作者脚本视图尚未打开，对话页会保留输入并提供「打开酒馆」操作。等作者界面就绪后，玩家可以手动发送保留的文字。

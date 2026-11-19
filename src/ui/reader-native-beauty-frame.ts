@@ -5,41 +5,46 @@ import type {AuthorDomScene,AuthorDomSceneChild} from './author-dom-scene.js'
 
 /** The published Native beauty API is a function body receiving root/fill.
  * It is separate from TavernHelper module descriptors and has no Core port. */
-export function readerNativeBeautyBootstrap(channel:string):void {
+export function readerNativeBeautyBootstrap(channel:string,sharedDom=false):void {
   let port:MessagePort|undefined,revision=0,active=true,scheduled=false,started=false
   let cleanup:(()=>void)|undefined
-  const root=document.createElement('div'),sheet=document.createElement('style')
-  root.className='rp-reader';const viewport=document.createElement('div');viewport.className='rp-reader-view'
-  viewport.append(root);document.head.append(sheet);document.body.append(viewport)
+  // The default Reader body belongs to the author scene. Helper scripts can
+  // find and bind its real nodes using the same parent-document API as upstream.
+  const readerDocument=sharedDom?parent.document:document
+  const readerWindow=readerDocument.defaultView!
+  const host=sharedDom?frameElement!.parentElement!:readerDocument.body
+  const root=readerDocument.createElement('div'),sheet=readerDocument.createElement('style')
+  root.className='rp-reader';const viewport=readerDocument.createElement('div');viewport.className='rp-reader-view'
+  viewport.append(root);host.append(sheet,viewport)
   const rows=new Map<string,{node:HTMLElement;actions:HTMLElement;content:string}>()
   const documents=new Map<string,HTMLElement>(),staticViews:{dispose():void}[]=[]
   let actionHeights:Readonly<Record<string,number>>={},documentHeights:Readonly<Record<string,number>>={}
   const send=(value:object)=>{if(active)port?.postMessage(value)}
   const measure=()=>{
     scheduled=false;if(!active)return
-    const origin=root.getBoundingClientRect(),body=document.body.getBoundingClientRect()
+    const origin=root.getBoundingClientRect(),body=host.getBoundingClientRect()
     const box=(node:HTMLElement)=>{const rect=node.getBoundingClientRect()
       return {top:rect.top-body.top,left:rect.left-body.left,width:rect.width}}
     const present=(node:HTMLElement)=>{
       if(!root.isConnected||!root.contains(node))return false
-      const style=getComputedStyle(node)
+      const style=readerWindow.getComputedStyle(node)
       return style.display!=='none'&&style.visibility==='visible'&&node.getClientRects().length>0
     }
     const rowBoxes=Object.fromEntries([...rows].filter(([,row])=>present(row.actions)).map(([key,row])=>[key,box(row.actions)]))
     const documentBoxes=Object.fromEntries([...documents].filter(([,node])=>present(node)).map(([key,node])=>[key,box(node)]))
-    const height=Math.ceil(Math.max(origin.bottom-body.top,...Array.from(document.body.children,
+    const height=Math.ceil(Math.max(origin.bottom-body.top,...Array.from(host.children,
       node=>node.getBoundingClientRect().bottom-body.top),0))
     send({op:'layout',value:{revision,height,rows:rowBoxes,documents:documentBoxes}})
   }
-  const schedule=()=>{if(!active||scheduled)return;scheduled=true;requestAnimationFrame(measure)}
+  const schedule=()=>{if(!active||scheduled)return;scheduled=true;readerWindow.requestAnimationFrame(measure)}
   const fill=(value:unknown)=>send({op:'fill',text:String(value??'')})
   const fillClick=(event:Event)=>{
     const target=event.target as Element|null,button=target?.closest<HTMLElement>('[data-community-option],.f')
     if(button){event.preventDefault();fill(button.dataset.communityOption??button.innerText??button.textContent??'')}
   }
   root.addEventListener('click',fillClick)
-  const resize=new ResizeObserver(schedule);resize.observe(root)
-  const mutation=new MutationObserver(schedule)
+  const resize=new readerWindow.ResizeObserver(schedule);resize.observe(root)
+  const mutation=new readerWindow.MutationObserver(schedule)
   mutation.observe(root,{childList:true,subtree:true,attributes:true,characterData:true})
   const resizeSlots=()=>{
     for(const [key,row] of rows)row.actions.style.height=(actionHeights[key]??0)+'px'
@@ -47,7 +52,7 @@ export function readerNativeBeautyBootstrap(channel:string):void {
     schedule()
   }
   function staticDocument(html:string):HTMLIFrameElement {
-    const frame=document.createElement('iframe');frame.sandbox.add('allow-same-origin')
+    const frame=readerDocument.createElement('iframe');frame.sandbox.add('allow-same-origin')
     frame.style.cssText='width:100%;height:1px;border:0;display:block'
     let observer:ResizeObserver|undefined
     const loaded=()=>{
@@ -56,7 +61,7 @@ export function readerNativeBeautyBootstrap(channel:string):void {
       }
       doc.addEventListener('click',event=>{fillClick(event);if((event.target as Element)?.closest('a'))event.preventDefault()})
       doc.addEventListener('submit',event=>event.preventDefault())
-      observer=new ResizeObserver(extent);observer.observe(doc.body);extent()
+      observer=new readerWindow.ResizeObserver(extent);observer.observe(doc.body);extent()
     }
     frame.addEventListener('load',loaded,{once:true})
     frame.srcdoc='<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
@@ -66,9 +71,11 @@ export function readerNativeBeautyBootstrap(channel:string):void {
     return frame
   }
   const render=(value:ReaderRegexDocumentRenderV1)=>{
-    revision=value.renderRevision;sheet.textContent=value.css
-      +'\nhtml,body{margin:0;overflow:hidden}.rp-reader-view{width:100%;min-height:0;overflow:visible;display:block}'
+    revision=value.renderRevision
+    const css=value.css+(sharedDom?'':'\nhtml,body{margin:0;overflow:hidden}')
+      +'.rp-reader-view{width:100%;min-height:0;overflow:visible;display:block}'
       +'.rp-reader{width:100%;max-width:none}'
+    if(sheet.textContent!==css)sheet.textContent=css
     const next=new Set(value.parts.map(part=>part.key))
     for(const [key,row] of rows)if(!next.has(key)){resize.unobserve(row.node);row.node.remove();rows.delete(key)}
     documents.clear()
@@ -77,14 +84,14 @@ export function readerNativeBeautyBootstrap(channel:string):void {
       const content=JSON.stringify(part),previous=rows.get(part.key)
       let row=previous
       if(!row||row.content!==content){
-        const node=document.createElement('section'),actions=document.createElement('div')
+        const node=readerDocument.createElement('section'),actions=readerDocument.createElement('div')
         node.className='rp-reader-message';node.dataset.readerKey=part.key;node.dataset.kind=part.kind==='user'?'user':'assistant'
         actions.className='rp-reader-action-space';actions.setAttribute('aria-hidden','true')
-        const body=document.createElement('text' in part?'p':'div')
+        const body=readerDocument.createElement('text' in part?'p':'div')
         body.className=part.kind==='user'?'rp-user-line':'rp-reader-narrative'
         if('text' in part)body.textContent='◈ 你：'+part.text
         else if(part.fragments)for(const fragment of part.fragments){
-          const slot=document.createElement('div')
+          const slot=readerDocument.createElement('div')
           if(fragment.kind==='reader-document'){slot.dataset.readerNativeDocument=fragment.documentPlanSha256}
           else if(fragment.kind==='static-document')slot.append(staticDocument(fragment.html))
           else if(fragment.kind==='failed-document'||fragment.kind==='pending-document')slot.textContent='作者文档不可用：'+fragment.code
@@ -105,7 +112,7 @@ export function readerNativeBeautyBootstrap(channel:string):void {
   }
   const finish=()=>{if(!active)return;active=false;resize.disconnect();mutation.disconnect()
     for(const view of staticViews)view.dispose()
-    try{cleanup?.()}finally{cleanup=undefined;port?.close()}}
+    try{cleanup?.()}finally{cleanup=undefined;viewport.remove();sheet.remove();port?.close()}}
   const connect=(event:MessageEvent)=>{
     if(port||event.data?.op!=='connect'||event.data.channel!==channel||!event.ports[0])return
     port=event.ports[0];removeEventListener('message',connect)
@@ -127,9 +134,9 @@ export function readerNativeBeautyBootstrap(channel:string):void {
   addEventListener('message',connect);addEventListener('pagehide',finish,{once:true});addEventListener('unload',finish,{once:true})
 }
 
-const html=(channel:string)=>'<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="'
+const html=(channel:string,sharedDom:boolean)=>'<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="'
   +READER_NATIVE_RESOURCE_CSP+'"><meta name="referrer" content="no-referrer"><body><script>('
-  +readerNativeBeautyBootstrap.toString()+')('+JSON.stringify(channel)+')</script></body>'
+  +readerNativeBeautyBootstrap.toString()+')('+JSON.stringify(channel)+','+sharedDom+')</script></body>'
 
 export function createReaderNativeBeautyFrame(container:HTMLElement,execution:ReaderNativeBeautyExecutionV1|undefined,options:{
   current():boolean;fill(text:string):void;layout(value:ReaderNativeBeautyLayoutV1):void;failed(code:string):void
@@ -154,7 +161,8 @@ export function createReaderNativeBeautyFrame(container:HTMLElement,execution:Re
     ownPort.onmessage=event=>{
       if(!current())return
       const data=event.data
-      if(data.op==='parent-ready')ownPort.postMessage({op:'mount',html:html(channel),libraries:[],sdkGlobals:[],messageIndex:0})
+      if(data.op==='parent-ready')ownPort.postMessage({op:'mount',html:html(channel,!!options.scene&&!execution),
+        libraries:[],sdkGlobals:[],messageIndex:0})
       else if(data.op==='ready'){ready=true;publish()}
       else if(data.op==='layout'){
         if(data.value.revision!==latest?.renderRevision)return
@@ -166,7 +174,7 @@ export function createReaderNativeBeautyFrame(container:HTMLElement,execution:Re
     };ownPort.start()
     if(options.scene){
       sceneChild=options.scene.mount({id:'reader-background',kind:'background',channel,port:ports.port2,
-        url:execution?.parentOrigin??options.scene.parentOrigin})
+        ...(execution?{url:execution.parentOrigin}:{})})
       sceneChild.box({top:0,left:0,width:options.scene.frame.getBoundingClientRect().width,height:1})
       return
     }

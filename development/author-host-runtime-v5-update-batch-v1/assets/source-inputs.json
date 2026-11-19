@@ -60,7 +60,7 @@
       {
         "artifact": "roleplay-userinfo-typescript",
         "path": "src/core/roleplay-userinfo.ts",
-        "sha256": "24ff37d3af9fb078249d0c5f1a4d64a6bcfb3f52711460d70f6d788909caaa10"
+        "sha256": "268401779087c2c4ef304289286cdd781ffaa93cfb6ee8b9e406acd0243cbb33"
       },
       {
         "artifact": "tavern-author-combined-compiler-v8-typescript",

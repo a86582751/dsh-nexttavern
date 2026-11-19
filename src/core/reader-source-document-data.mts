@@ -133,7 +133,7 @@ function macroStringExpression(node:import('typescript').StringLiteral|import('t
   const parent=node.parent
   if('name' in parent&&parent.name===node||'moduleSpecifier' in parent&&parent.moduleSpecifier===node
     ||ts.isTaggedTemplateExpression(parent)||ts.isExternalModuleReference(parent)||ts.isImportAttribute(parent))return false
-  if(ts.isStringLiteral(node)&&ts.isExpressionStatement(parent)) {
+  if(ts.isExpressionStatement(parent)) {
     const block=parent.parent
     if(ts.isSourceFile(block)||ts.isBlock(block)||ts.isModuleBlock(block)) {
       for(const statement of block.statements) {
@@ -284,8 +284,11 @@ export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplay
     const hasData=script.mode!=='data'&&script.javascript.includes(prefix),
       basePartIndex=baseProgramData?.bodyStarts.has(script.bodySpan.start)?baseProgramData.partIndex:undefined
     if(!hasData&&basePartIndex===undefined)continue
-    if(hasData)for(const match of script.javascript.matchAll(pattern))if(parts[Number(match[1])]!.kind!=='macro')
-      throw Error('READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED')
+    if(hasData)for(const match of script.javascript.matchAll(pattern)){
+      // The upstream numbered replacement token can carry a match offset.
+      const part=parts[Number(match[1])]!
+      if(part.kind==='capture'&&/\D/.test(part.text))throw Error('READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED')
+    }
     const file=ts.createSourceFile('reader-macro-slots.js',script.javascript,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS)
     const slots:{start:number;end:number;value:string}[]=[]
     const visit=(node:import('typescript').Node):void=>{
@@ -304,8 +307,8 @@ export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplay
         const expression=macroStringExpression(node)
         const value=node.text.replace(pattern,(_marker:string,indexText:string)=>{
           const index=Number(indexText),part=parts[index]!
-          if(part.kind!=='macro')throw Error('READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED')
-          if(!expression)throw Error('READER_REGEX_DOCUMENT_MACRO_CONTEXT_UNSUPPORTED')
+          if(!expression)throw Error(part.kind==='macro'?'READER_REGEX_DOCUMENT_MACRO_CONTEXT_UNSUPPORTED'
+            :'READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED')
           occurrences[index]=occurrences[index]!+1;return part.text
         })
         slots.push({start:node.getStart(file),end:node.end,value})

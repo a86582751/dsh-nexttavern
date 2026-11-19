@@ -21,7 +21,8 @@ interface OwnedField {row:TavernLoreSourceRowDataV1;field:string;value:string;pi
 
 function assignmentsMatch(actual:ImportAssignment,expected:ImportAssignment,portable=false):boolean {
   if(!same(actual.sourceSpans,expected.sourceSpans)||actual.target!==expected.target
-    ||actual.id!==expected.id||actual.name!==expected.name||actual.kind!==expected.kind
+    ||actual.id!==expected.id||actual.kind!==expected.kind
+    ||(actual.name!==expected.name&&actual.name!==expected.name?.trim())
     ||actual.merge_group!==expected.merge_group||actual.secondary===true||actual.reuse_reason!==undefined
     ||(actual.locked===true)!==(expected.locked===true)
     ||(portable?(actual.always_on===true)!==(expected.always_on===true):actual.always_on===true)
@@ -142,7 +143,6 @@ function portableAssignmentShape(expected:ImportAssignment):ImportAssignment {
   const number=(value:unknown,minimum:number,maximum:number)=>
     Math.min(maximum,Math.max(minimum,Number(value??0)))
   return {...expected,
-    ...(expected.name===undefined?{}:{name:expected.name.trim()}),
     ...(expected.target==='card'?{kind:expected.kind==='user'?'user':'npc',
       ...(expected.kind==='user'?{id:'user'}:{})}:{}),
     priority:number(expected.priority,-1_000_000,1_000_000),
