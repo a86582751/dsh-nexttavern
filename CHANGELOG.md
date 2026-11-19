@@ -6,6 +6,8 @@
 
 ## 2026-11-19
 
+- 酒馆发送后立即显示准备进度。追更时跟随正文，向上回看时保留阅读位置。后台导演笔记默认超时五分钟，输出遵循模型限制；笔记、压缩与检索排除数值更新和状态栏占位符。剧情语义查询每条正文取最佳分块，空索引直接使用关键词。
+- Tavern shows feedback immediately after sending, follows new prose at the tail, and keeps the reading position when you scroll back. Director notes default to a five-minute timeout and use the selected model’s output limit. Notes, compaction, and retrieval omit numerical updates and status placeholders. Semantic story search ranks each message by its best chunk and falls back to keyword search when the index has no candidates.
 - 如果剧情准备时酒馆的作者脚本视图尚未打开，对话页会保留输入并提供「打开酒馆」操作。等作者界面就绪后，玩家可以手动发送保留的文字。
 - When story preparation needs the Tavern reader for author scripts, Chat keeps the input and offers Open Tavern. Players can resend the retained text after the author interface loads.
 - 修复开发版通过 Google Vertex AI 发送对话和剧情时报自定义传输错误。请求由 Vertex SDK 发出，主动取消和流空闲超时继续生效。
