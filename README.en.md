@@ -30,6 +30,16 @@ When moving from 0.2.x, keep the original environment, export the cards or manus
 
 ## One-click install
 
+### Official Windows Desktop app (recommended)
+
+1. Install and open DeepSeek Harness. This link is pinned to the verified **0.2.2-rc.5** host build. [Download the official Windows x64 installer](https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-0.2.2-rc.5-win-x64.exe)
+2. Open **Settings → Plugins**, open the dropdown next to **Add plugin**, and select **Install third-party plugin**.
+3. Enter `dsh-nexttavern@0.3.0-rc.1`, select **Install**, then enable the plugin. Quit the app and reopen it.
+
+The desktop installer accepts npm package specs, Git URLs, and local sources. Use the pinned npm spec above for this release. See [Manual installation](#manual-install) for a local archive or the bundled CLI.
+
+### Web CLI
+
 **Web with a compatible Harness.** Stop the host, then install this version and restart:
 
 ```powershell
@@ -40,12 +50,6 @@ dsh web --host 127.0.0.1
 For a first Web install, use Node.js **24.9+** and install the host with `npm install -g @deepseek-ai/dsh@0.2.2-rc.5`.
 
 If your npm registry has not picked up this version yet, download `dsh-nexttavern.tgz` from the [GitHub release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) and follow the [local archive steps](#manual-install).
-
-**Official Windows Desktop.** Install `dsh-nexttavern` through the host’s plugin settings. Restart after a first installation into a running app. For the bundled CLI, close the app first and run this command from its installation directory:
-
-```powershell
-.\resources\runtime\cli\bin\dsh.cmd plugin --profile desktop add dsh-nexttavern@0.3.0-rc.1
-```
 
 Use a fresh directory when migrating from 0.2.x. For a fixed port or local archive, see [manual install](#manual-install).
 
@@ -100,6 +104,8 @@ After import, select an authored opening and open the Tavern tab for the card’
 
 Import an original SillyTavern or TauriTavern PNG or JSON. NextTavern saves the uploaded file and brings the characters, embedded lore, opening choices, and supported author extensions into the session. Once selected, the author’s text becomes the first Story with the matching initial values and identity macros. The import report shows which extensions were recognized. [Community card guide](COMMUNITY-CARDS.md)
 
+![Uploading an original community PNG card and reviewing its import in Chat](screenshots/v03-card-import.webp)
+
 ### Author interfaces and interaction
 
 Use author-built forms, status panels, or terminals beside the story in Tavern. Reader executes author HTML, CSS, and JavaScript in an isolated browser environment. Supported Helper APIs connect buttons to story input, variables, characters, or Worldbooks. Pictures and audio depend on the author’s resource links. Frontend Settings can reopen recognized floating interfaces. [Author pages and script support](COMMUNITY-CARDS.md)
@@ -122,15 +128,21 @@ Cards can declare startup tasks, turn positions, keywords, prompts, and output t
 
 Import a standalone SillyTavern Worldbook or edit structured entries from an imported card. Bind books to a profile, character, or chat. Authors can make entries constant, trigger them by keyword, chain related entries, and set ordering, insertion position, or budget. Supported EJS templates can read variables and Worldbooks when preparing dynamic text for the current turn. [Worldbooks and triggers](COMMUNITY-CARDS.md) · [Native card and EJS guide](NATIVE-CARD-FORMAT.md)
 
+![Editing a structured community Worldbook entry in Tavern Management](screenshots/v03-worldbook.webp)
+
 ### Community presets and regex
 
 Import a community JSON preset and arrange prompt text, order, feature groups, macros, history, and regex rules. Apply it globally or to a particular conversation. Sampling settings have a separate switch. Native writing styles retain system, blended, and card modes. Request regex changes material sent to the model. Display regex changes what the reader sees while keeping the source history available. [Community preset and regex guide](COMMUNITY-PRESETS.md)
+
+![The community preset panel with import and conversation scope controls](screenshots/v03-presets.webp)
 
 ### Native authoring, worldlines, and side chat
 
 **Native 1.2** keeps characters, openings, Worldbooks, rules, and author settings in one document. Create a card in conversation or adapt source material, then export the edited card for a fresh session. The original upload remains separately available. [Interactive authoring](#interactive-authoring) · [Complete reference cards](preset/reference/README.md)
 
 **Side chat** can consult current characters, Worldbooks, story, and state. Discuss the next scene or explicitly save a change to the setting, then resume the main story. Branches retain their own story state and memory. Export a manuscript from the selected worldline. [Worldlines](#worldlines-and-branching) · [Manuscript and card export](#from-character-card-to-a-novel-you-can-take-away)
+
+![Side chat open alongside the main story](screenshots/v03-side-chat.webp)
 
 ### Long-form tools
 
@@ -323,7 +335,11 @@ In "tavern management" you adjust characters, world background, story direction,
 
 Prose is readable while it is generated; post-turn status and note maintenance have their own progress. Player actions typed meanwhile enter the native queue.
 
-![Immersive reading](screenshots/immersive.png)
+Authors can format prose with display regex and styles. A card’s own status template can show affinity, trust, or the scene time beside the story. [Presets and regex](COMMUNITY-PRESETS.md) · [State and analysis](NATIVE-STATE.md)
+
+![Story prose rendered in the author's style](screenshots/v03-prose.webp)
+
+![Author-rendered status panel showing scene details and relationship progress](screenshots/v03-author-status.webp)
 
 ## From character card to a novel you can take away
 
@@ -384,6 +400,16 @@ Source: [complete public source archive](https://github.com/a86582751/dsh-nextta
 Verification: [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/SHA256SUMS) and [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/provenance.json). The npm package is `dsh-nexttavern`; install it with `dsh plugin --profile web add dsh-nexttavern`.
 
 ## Manual install
+
+### Bundled Desktop CLI
+
+Quit the desktop app, run the following command from its installation directory, and reopen it. For a local archive, download the main package from the release, check it against `SHA256SUMS`, and replace the package spec with `file:` followed by the archive path.
+
+```powershell
+.\resources\runtime\cli\bin\dsh.cmd plugin --profile desktop add dsh-nexttavern@0.3.0-rc.1
+```
+
+### Standalone Web setup
 
 For a separate home/workspace and fixed port, use Node.js 24.9+ and npm. These are PowerShell examples; continue only after each command succeeds.
 

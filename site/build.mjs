@@ -905,11 +905,13 @@ function landingPage() {
     const formatTagline = (line) => line.replace('，', '，\n');
     const tabs = site.quickInstall.tabs.map((tab, index) => '<button type="button" role="tab" id="tab-' + tab.id + '" aria-selected="' + (index === 0) +
         '" tabindex="' + (index === 0 ? '0' : '-1') + '" aria-controls="install-' + tab.id + '">' +
-        icon(tab.id === 'windows' ? 'windows' : tab.id === 'linux' ? 'linux' : 'terminal') +
+        icon(tab.id === 'desktop' || tab.id === 'windows' ? 'windows' : tab.id === 'linux' ? 'linux' : 'terminal') +
         escapeHtml(tab.label) + '</button>').join('\n');
     const panels = site.quickInstall.tabs.map((tab, index) => [
         '<div class="install-body" id="install-' + tab.id + '" role="tabpanel" aria-labelledby="tab-' + tab.id +
             '"' + (index === 0 ? '' : ' hidden') + '>',
+        tab.download ? '<p><a class="button primary" href="' + escapeHtml(tab.download.href) + '">' +
+            escapeHtml(tab.download.label) + ' <span>↗</span></a></p>' : '',
         '<p>' + escapeHtml(tab.note) + '</p>',
         '<div class="code-block"><div class="code-head"><span>' + escapeHtml(tab.label) + '</span>' +
             '<button class="copy-button" type="button" data-copy>复制</button></div>' +
@@ -1016,8 +1018,7 @@ function landingPage() {
         '<p>NextTavern 把原生 Agent Loop 带进长篇角色扮演。<br>让世界有来处，让选择有去向，让人物有自己的声音。</p></div>',
         chapters, '</section>',
         '<section class="journal-section install-section" id="install"><div class="install-intro">',
-        '<p class="eyebrow">BEGIN YOUR NEXT CHAPTER</p><h2>旅程的第一步，<br>从这里开始。</h2>',
-        '<p>选一个安装方式，准备好模型 API，再带上你喜欢的角色卡。</p>',
+        '<h2>' + escapeHtml(site.quickInstall.title) + '</h2>',
         '<a class="text-link" href="quickstart.html">第一次来？跟着快速开始 <span>↗</span></a>',
         '<div class="installation-note"><b>当前发行 v' + escapeHtml(site.releaseVersion) + '</b><p>' +
             escapeHtml(site.quickInstall.lead) + '</p></div></div>',

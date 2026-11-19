@@ -79,19 +79,30 @@ export const site = {
         ]
     },
     quickInstall: {
-        title: '一条命令开始',
-        lead: '需要 DeepSeek Harness 0.2.2-rc.5 或更新版本，支持 Web 和官方 Windows Desktop。从 0.2.x 迁移时，先导出卡片或小说，再使用新的 home 和工作区。',
+        title: '安装 NextTavern',
+        lead: '推荐使用官方 Windows 桌面版。最低宿主为 DeepSeek Harness 0.2.2-rc.5。从 0.2.x 迁移时，先导出卡片或小说，再使用新的 home 和工作区。',
         tabs: [
             {
+                id: 'desktop',
+                label: '官方桌面版（推荐）',
+                note: '在「设置 → 插件」打开「添加插件」的下拉菜单，选择「安装第三方插件」。填入以下 npm 包名，安装并启用后重启桌面应用。',
+                download: {
+                    label: '下载官方桌面版 0.2.2-rc.5（Windows x64）',
+                    href: 'https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-0.2.2-rc.5-win-x64.exe'
+                },
+                primary: { label: '桌面安装步骤', href: 'quickstart.html#官方-windows-桌面版推荐' },
+                code: 'dsh-nexttavern@0.3.0-rc.1'
+            },
+            {
                 id: 'manual',
-                label: '官方插件安装',
-                note: 'Web CLI 需要 Node.js 24.9+。已有兼容宿主可直接运行第二行。官方 Windows Desktop 可在插件设置中安装，首次安装后重启。',
+                label: 'Web CLI',
+                note: 'Web CLI 需要 Node.js 24.9+。已有兼容宿主可直接运行第二行。',
                 primary: { label: '目录与恢复步骤', href: 'manual-install.html' },
                 code: 'npm install -g @deepseek-ai/dsh@0.2.2-rc.5\ndsh plugin --profile web add dsh-nexttavern@0.3.0-rc.1\ndsh web --host 127.0.0.1'
             },
             {
                 id: 'windows',
-                label: 'Windows',
+                label: 'Windows 便携版',
                 note: '便携安装器准备独立 Web 环境。选择 x64 或 ARM64 版本，迁移时使用新目录。',
                 primary: { label: 'Windows 安装指南', href: 'install-windows.html' },
                 code: 'NextTavern-Setup.exe'

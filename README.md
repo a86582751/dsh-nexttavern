@@ -30,6 +30,16 @@
 
 ## 一键安装
 
+### 官方 Windows 桌面版（推荐）
+
+1. 安装并打开 DeepSeek Harness。这里提供已验证的 **0.2.2-rc.5** 固定版本，方便在宿主更新后仍能下载这一版。[下载官方 Windows x64 安装程序](https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-0.2.2-rc.5-win-x64.exe)
+2. 打开「设置 → 插件」，点击「添加插件」旁的下拉箭头，选择「安装第三方插件」。
+3. 在安装框填入 `dsh-nexttavern@0.3.0-rc.1`，点击「安装」。安装完成后选择「立即启用」，再完整退出并重新打开桌面应用。
+
+桌面安装框接受 npm 包名、Git 地址和本地安装源。体验本版请用上面的 npm 包名和版本。需要从本地归档安装或使用随附的 `dsh.cmd` 时，见[手动安装](#安装)。
+
+### Web 命令行
+
 **Web 已安装兼容 Harness。** 停止对应宿主后，安装本版并重新启动：
 
 ```powershell
@@ -40,12 +50,6 @@ dsh web --host 127.0.0.1
 首次使用 Web，请先准备 Node.js **24.9+** 与宿主 `npm install -g @deepseek-ai/dsh@0.2.2-rc.5`。
 
 如果 npm 源尚未同步，可从 [GitHub 发行页](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) 下载 `dsh-nexttavern.tgz`，按[本地归档安装](#安装)操作。
-
-**官方 Windows Desktop。** 使用宿主的插件设置安装 `dsh-nexttavern`。运行中首次安装后重启。也可以先关闭应用，在安装目录用随附 CLI 执行：
-
-```powershell
-.\resources\runtime\cli\bin\dsh.cmd plugin --profile desktop add dsh-nexttavern@0.3.0-rc.1
-```
 
 从 0.2.x 迁移时选择新目录。需要固定端口或本地归档，可按[手动安装](#安装)操作。
 
@@ -111,6 +115,8 @@ dsh web --host 127.0.0.1
 
 上传 SillyTavern／TauriTavern 的原始 PNG 或 JSON 后，酒馆保留原文件，也把人物设定、内嵌世界书、默认和备选开场、受支持的作者扩展带入当前会话。选择开场时，作者原文直接成为首条剧情，所选开场的初值与身份宏一并应用。社区卡没有接齐的扩展，可在导入报告查看。 [社区卡兼容指南](COMMUNITY-CARDS.md)
 
+![在对话里上传原始 PNG 社区卡，并查看导入结果](screenshots/v03-card-import.webp)
+
 ### 作者前端与交互
 
 切到「酒馆」，可同时阅读正文和使用作者写的建角表单、状态栏或终端。0.3 在浏览器隔离环境执行作者 HTML、CSS 与 JavaScript，受支持的 Helper 接口可以把按钮操作接到剧情输入、变量、人物或世界书。卡内配图和音频依赖作者的资源链接。已识别的独立页面也能在「前端设置 → 作者悬浮窗」重新打开。 [作者前端与脚本范围](COMMUNITY-CARDS.md#5-模板脚本正则与页面分别做什么)
@@ -133,15 +139,21 @@ dsh web --host 127.0.0.1
 
 「世界书」可导入独立 SillyTavern JSON，也可编辑随角色卡导入的结构化条目。一本书可绑定到全局、角色或当前聊天。作者可以让资料常驻、按关键词触发、递归关联，并设置顺序、注入位置与预算。受支持的 EJS 模板可以在准备剧情时按条件读取变量和世界书，生成这一轮才需要的文本。 [世界书触发与注入](COMMUNITY-CARDS.md#4-世界书怎样进入本轮剧情) · [EJS 作者模板](NATIVE-CARD-FORMAT.md#8-ejs-作者模板动态文本与世界书联动)
 
+![酒馆管理中的社区结构化世界书及条目编辑设置](screenshots/v03-worldbook.webp)
+
 ### 社区预设与正则
 
 「预设」可导入社区 JSON，管理条目内容、顺序、功能组、宏变量、送入请求的历史和正则。预设可全局应用，也可为指定对话选择，采样参数独立开启。创作文风仍可选系统、混合或角色卡文风。请求正则改变发给模型的材料，显示正则改变读到的样式，历史原文继续用于追溯。 [社区预设与正则指南](COMMUNITY-PRESETS.md)
+
+![社区预设页的导入、应用范围和配置入口](screenshots/v03-presets.webp)
 
 ### 原生创作、世界线与侧边聊天
 
 **Native 1.2** 将人物、开场、世界书、规则和作者配置写在同一份作者文档里。可从对话创作、导入资料或长文本改编，保存后导出当前卡到新会话；最初上传的原件也可单独取回。[交互式创作](#交互式创作) · [两张完整作者参考卡](preset/reference/README.md)
 
 **侧边聊天**能参考当前人物、世界书、有效剧情与数值。可以讨论下一幕，也可以明确要求保存设定修改，再回到主剧情续写。重生成或分支时，状态和记忆随各自的世界线。可把选定世界线的正文导出为小说稿。 [世界线与分支](#世界线与分支) · [小说与卡片导出](#从角色卡到可带走的小说)
+
+![侧边聊天打开时仍能阅读主剧情](screenshots/v03-side-chat.webp)
 
 ### 长篇工具
 
@@ -363,7 +375,11 @@ flowchart TD
 
 正文生成时就能读；局后状态与笔记维护有独立进度。继续输入的玩家行动进入原生队列。
 
-![沉浸式阅读体验](screenshots/immersive.png)
+作者可以用卡内的显示正则和样式为正文排版。状态栏沿用作者自己的模板，可把好感度、信赖度或场景时间显示在剧情旁。[预设与正则](COMMUNITY-PRESETS.md) · [原生状态与分析](NATIVE-STATE.md)
+
+![作者正文渲染示例](screenshots/v03-prose.webp)
+
+![作者状态栏渲染示例，含场景与关系进度](screenshots/v03-author-status.webp)
 
 <details>
 <summary>查看管理界面、自定义规则与世界书</summary>
@@ -460,6 +476,16 @@ flowchart TD
 - [完整公开源码归档](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/dsh-nexttavern-0.3.0-rc.1-source.tgz) · [版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.3.0-rc.1) · [npm 固定版本](https://www.npmjs.com/package/dsh-nexttavern/v/0.3.0-rc.1)
 
 ## 安装
+
+### 桌面版随附命令行
+
+退出桌面应用，在其安装目录执行以下命令，再重新打开应用。使用本地归档时，从发行页下载主包并核对 `SHA256SUMS`，将包名换为 `file:` 加归档路径。
+
+```powershell
+.\resources\runtime\cli\bin\dsh.cmd plugin --profile desktop add dsh-nexttavern@0.3.0-rc.1
+```
+
+### Web 独立环境
 
 此处适合指定独立 home、工作区与固定端口的玩家。需要 Node.js 24.9+ 和 npm；以下为 PowerShell 示例，每条命令成功后再继续。
 

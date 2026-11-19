@@ -6,12 +6,14 @@
 
 ### 社区卡开场与作者界面
 
+![在对话中上传原始 PNG 社区卡并查看导入结果](screenshots/v03-card-import.webp)
 ![导入社区卡后选择作者开场](screenshots/v03-openings.webp)
 ![酒馆内运行的作者互动界面与多媒体](screenshots/v03-author-interface.webp)
 
 ### 正文美化、MVU 状态栏与 Ruby
 
 ![作者正则美化后的剧情正文](screenshots/v03-prose.webp)
+![作者状态栏渲染示例，含场景与关系进度](screenshots/v03-author-status.webp)
 ![剧情正文下方的 MVU 状态栏](screenshots/v03-mvu.webp)
 ![酒馆管理中的 Ruby 分析设置](screenshots/v03-ruby.webp)
 
