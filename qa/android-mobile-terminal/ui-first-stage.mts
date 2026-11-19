@@ -620,9 +620,26 @@ async function configureFixtureProvider():Promise<void> {
   await replace(['API 密钥','API key','API 密钥 输入 API 密钥','API key Enter your API key'],'local-test-only',['API 密钥','API key']);
   await press(['添加模型','Add model']);
   await replace([...fixtureModelNames,'模型 ID 1 模型 ID','Model ID 1 Model ID'],fixtureId);
-  await press(['模型选项 1','Model options 1']);
-  await replace(['上下文窗口 1','Context window 1','Context window 1 Uses the provider default','上下文窗口 1 使用提供商默认值'],'65536',['上下文窗口','Context window']);
-  await replace(['最大输出 token 数 1','Max output tokens 1','Max output tokens 1 Uses the provider default','最大输出 token 数 1 使用提供商默认值'],'2048',['最大输出 token 数','Max output tokens']);
+  const contextLabel=['上下文窗口','Context window'], outputLabel=['最大输出 token 数','Max output tokens'];
+  // The pinned rc.5 custom ModelListEditor uses numeric 1M / 128K
+  // placeholders (not the separate DeepSeek catalog's localized placeholders).
+  // Chromium's accessibility hint may join the aria-label and placeholder.
+  const capacityHints=(labels:string[],placeholder:string)=>labels.flatMap(label=>[
+    label+' 1',label+' 1 '+placeholder,
+  ]);
+  const contextHints=capacityHints(contextLabel,'1M'),outputHints=capacityHints(outputLabel,'128K');
+  await readySnapshot();
+  const modelOptions=['模型选项 1','Model options 1'];
+  const options=current.filter(node=>node.package===pkg&&named(node,modelOptions)
+    &&button(node)&&node.enabled!=='false'&&inWebView(node));
+  requireUi(options.length===1,'CUSTOM_MODEL_OPTIONS_NOT_UNIQUE');
+  // Confirm the newly mounted fields, not tap coordinates or AX click success.
+  // This panel may extend below the fold; replace still requires the actual
+  // unique edit target and verifies the text readback before submitting.
+  showControl(options[0]);controlAction(options[0],'click-control');
+  await until(()=>has(contextLabel)&&has(outputLabel),20,'CUSTOM_MODEL_CAPACITY_PANEL_NOT_EXPOSED');
+  await replace(contextHints,'65536',contextLabel);
+  await replace(outputHints,'2048',outputLabel);
   await press(['创建提供商','Create provider']);
   await until(()=>has(['编辑 '+fixtureId,'Edit '+fixtureId])&&!has(['创建提供商','Create provider']),60,'FIXTURE_PROVIDER_SAVE_NOT_OBSERVED');
   emit('passed',{scope:'custom-provider-form-saved',syntheticProvider:true,liveModel:false});
@@ -1388,11 +1405,16 @@ async function requireMemorySeedConversation():Promise<void> {
 async function runIndependentMemory():Promise<void> {
   await configureFixtureProvider();await prepareRoleplaySessionAndCardPage(false);
   stage='memory-synthetic-source-chat';
+  const fixtureBaseline=maxFixtureRequest(fixtureEvents);
   await sendOnePacedPrompt(memorySeedPrompt);
   await until(()=>{
     requireUi(!current.some(node=>node.package===pkg&&node.text?.startsWith('This turn failed')),'MEMORY_SEED_TURN_FAILED');
-    return leafTexts(fixtureReply).length===1&&visibleNamed(['停止生成','Stop generating']).length===0;
-  },180,'MEMORY_SEED_REPLY_NOT_OBSERVED');
+    return leafTexts(fixtureReply).length===1&&visibleNamed(['停止生成','Stop generating']).length===0
+      &&[...fixtureCounterSnapshot(fixtureEvents).values()].some(row=>row.request>fixtureBaseline
+        &&row.streamRequested&&row.completed&&!row.aborted&&row.contentDeltas>0);
+  },180,'MEMORY_SEED_UI_REPLY_OR_FIXTURE_COMPLETION_NOT_OBSERVED');
+  emit('passed',{scope:'x86-synthetic-first-turn',fixtureResponseCompleted:true,replyRendered:true,
+    cardImport:'not-run',restartRecovery:'not-run',liveModel:false,arm64Qualified:false});
   // Reply completion can autofocus the composer after the send-time IME read.
   // Reveal actual completed messages before asking for any geometry evidence.
   await requireMemorySeedConversation();captureApprovedScreenshot('synthetic-chat');
