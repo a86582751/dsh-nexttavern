@@ -21,6 +21,7 @@ export interface BackgroundJob extends Record<string, unknown> {
 export interface PendingPlayer extends Record<string, unknown> {
   messageId?: unknown
   text?: string
+  attachmentCount?: number
 }
 
 export interface ActivityState extends Record<string, unknown> {
@@ -222,8 +223,9 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
     if(activity?.readerRequired&&!activity.running) {
       return React.createElement('div',{className:'rp-activity rp-protocol-failure',role:'status'},
         React.createElement('strong',null,'请在酒馆继续剧情'),
-        React.createElement('p',null,'这张卡需要酒馆的作者脚本才能准备剧情。输入已保留，模型请求尚未发送。'),
-        React.createElement('p',null,openReader?'打开酒馆后，可粘贴保留的文字并手动发送。':'作者界面就绪后，可粘贴保留的文字并手动发送。'),
+        React.createElement('p',null,'这张卡需要酒馆的作者脚本才能准备剧情。这次准备尚未发出剧情请求。'),
+        pending?.text?React.createElement('p',null,'可以先复制保留的文字。打开酒馆并等作者界面就绪后，粘贴并手动发送。'):null,
+        pending?.attachmentCount?React.createElement('p',null,'请在酒馆重新添加附件后手动发送。'):null,
         React.createElement('div',{className:'rp-protocol-failure-actions'},
           openReader?React.createElement('button',{type:'button',className:'dsh-rp-btn',onClick:openReader},'打开酒馆'):null,
           copyButton),
