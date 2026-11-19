@@ -155395,7 +155395,8 @@
         "ui-compat-client": {
           "rewriteRelativeImportExtensions": true,
           "ambientDeclarations": [
-            "development/ui-chat/src/css-modules.d.ts"
+            "development/ui-chat/src/css-modules.d.ts",
+            "development/ui-chat/src/client/index.ts"
           ],
           "paths": {
             "dsh-nexttavern-token-meter/client": [
