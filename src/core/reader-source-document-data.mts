@@ -1,5 +1,5 @@
 /** Source/DATA slots only. No CSS analysis, JS capability gate or page compiler. */
-import {Parser,defaultTreeAdapter as base} from 'parse5'
+import {Parser,defaultTreeAdapter as base,parseFragment,serialize} from 'parse5'
 import type {DefaultTreeAdapterMap,DefaultTreeAdapterTypes,TreeAdapter} from 'parse5'
 import ts from 'dsh-nexttavern-typescript-runtime'
 import {sha256} from './roleplay-data.js'
@@ -83,7 +83,7 @@ function parseSourceData(html:string,captureFences=false) {
     }
     return parent===parser.document&&node.sourceCodeLocation!=null
   }).map(node=>({start:node.sourceCodeLocation!.startOffset,end:node.sourceCodeLocation!.endOffset})):[]
-  return {document:parser.document,scripts,elements,texts:ordinaryTexts.map(node=>node.value),hasSourceMarkup,fenceText,
+  return {document:parser.document,scripts,elements,texts:ordinaryTexts,hasSourceMarkup,fenceText,
     markupOffsets:captureFences?elements.flatMap(node=>node.sourceCodeLocation?[node.sourceCodeLocation.startOffset]:[]):[]}
 }
 type TextSpan={start:number;end:number}
@@ -145,6 +145,23 @@ function macroStringExpression(node:import('typescript').StringLiteral|import('t
   return true
 }
 const escape=(text:string)=>text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
+const proseContainers=new Set(['article','aside','blockquote','body','div','main','section'])
+const proseElements=new Set(['p','br','b','em','i','s','small','strong','sub','sup','u'])
+
+// Paragraph formatting is display DATA. Only attribute-free paragraphs and
+// inline text formatting can supply elements to a prose slot.
+function capturedProse(text:string):string|undefined {
+  if(!/<p[\t\n\f\r ]*>/i.test(text))return
+  const fragment=parseFragment(text),pending=[...fragment.childNodes]
+  if(!pending.some(node=>base.isElementNode(node)&&node.tagName==='p'))return
+  while(pending.length){
+    const node=pending.pop()!
+    if(base.isTextNode(node))continue
+    if(!base.isElementNode(node)||node.namespaceURI!==htmlNamespace||node.attrs.length||!proseElements.has(node.tagName))return
+    for(const child of node.childNodes)pending.push(child)
+  }
+  return serialize(fragment)
+}
 const escapeAttributeData=(text:string)=>text.replace(/[&"'`=<>\s]/g,
   character=>'&#'+character.codePointAt(0)+';')
 function scriptDependencyAttribute(element:Element,attribute:Attribute):boolean {
@@ -217,9 +234,12 @@ export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplay
   let baseData:{element:Element;partIndex:number}[]|undefined,
     baseProgramData:{partIndex:number;bodyStarts:Set<number>}|undefined
   const occurrences=parts.map(()=>0),textParts=new Set<number>(),attributeParts=new Set<number>(),
-    emptyUnquotedParts=new Set<number>()
-  for(const text of parsed.texts)for(const match of text.matchAll(pattern)) {
+    emptyUnquotedParts=new Set<number>(),proseParts=new Set<number>()
+  for(const node of parsed.texts)for(const match of node.value.matchAll(pattern)) {
     const index=Number(match[1]);occurrences[index]=occurrences[index]!+1;textParts.add(index)
+    const parent=node.parentNode
+    if(parts[index]!.kind==='capture'&&node.value.trim()===match[0]&&parent&&base.isElementNode(parent)
+      &&parent.namespaceURI===htmlNamespace&&proseContainers.has(parent.tagName))proseParts.add(index)
   }
   for(const element of parsed.elements)for(const attribute of element.attrs) {
     if(!attribute.value.includes(prefix))continue
@@ -322,7 +342,7 @@ export function captureReaderSourceDocumentV1(parts:readonly TavernPromptDisplay
       :'READER_REGEX_DOCUMENT_CAPTURE_CONTEXT_UNSUPPORTED')
   const finalParts=parts.map((part,index)=>{
     if(part.kind==='literal')return part.text
-    if(textParts.has(index))return escape(part.text)
+    if(textParts.has(index))return (proseParts.has(index)?capturedProse(part.text):undefined)??escape(part.text)
     if(emptyUnquotedParts.has(index))return '""'
     if(attributeParts.has(index))return escapeAttributeData(part.text)
     return markers[index]!

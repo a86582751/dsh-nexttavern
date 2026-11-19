@@ -455,6 +455,8 @@ export function readerNativeDocumentHtml(plan:ReaderNativeDocumentPlanV1,snapsho
   characterLibrary?:AuthorCharacterLibraryPacketV1):string {
   return '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" '
     +'content="'+READER_NATIVE_RESOURCE_CSP+'"><meta name="referrer" content="no-referrer">'
+    // Default document flow keeps child margins inside the measured body.
+    +'<style>body{display:flow-root}</style>'
     +script('('+readerNativeBootstrap.toString()+')('+json(snapshot)+','+json(channel)+','+json(plan.origin.message)
     +','+json(layoutConfig)+',('+createReaderDocumentLayoutRealm.toString()+'),'+json(readScope)
       +',('+createAuthorNativeMvuApi.toString()+'),('+createAuthorNativeEventOwner.toString()+'),('

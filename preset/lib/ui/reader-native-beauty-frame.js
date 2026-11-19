@@ -61,7 +61,6 @@ export function readerNativeBeautyBootstrap(channel, sharedDom = false) {
             row.actions.style.height = (actionHeights[key] ?? 0) + 'px';
         for (const [key, node] of documents)
             node.style.height = (documentHeights[key] ?? 1) + 'px';
-        schedule();
     };
     function staticDocument(html) {
         const frame = readerDocument.createElement('iframe');
@@ -83,14 +82,15 @@ export function readerNativeBeautyBootstrap(channel, sharedDom = false) {
         frame.addEventListener('load', loaded, { once: true });
         frame.srcdoc = '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
             + 'script-src \'none\'; style-src \'unsafe-inline\' https:; img-src data: blob: https:; font-src data: https:">'
-            + '<style>body{margin:0}</style>' + html;
+            + '<style>body{margin:0;display:flow-root}</style>' + html;
         staticViews.push({ dispose() { observer?.disconnect(); frame.removeEventListener('load', loaded); } });
         return frame;
     }
     const render = (value) => {
         revision = value.renderRevision;
         const css = value.css + (sharedDom ? '' : '\nhtml,body{margin:0;overflow:hidden}')
-            + '.rp-reader-view{width:100%;min-height:0;overflow:visible;display:block}'
+            // Keep trailing paragraph margins inside the box we report.
+            + '.rp-reader-view{width:100%;min-height:0;overflow:visible;display:flow-root}'
             + '.rp-reader{width:100%;max-width:none}';
         if (sheet.textContent !== css)
             sheet.textContent = css;
@@ -192,13 +192,19 @@ export function readerNativeBeautyBootstrap(channel, sharedDom = false) {
                     catch (error) {
                         send({ op: 'source-error', code: error instanceof Error ? error.message : String(error) });
                     }
-                    schedule();
+                    // A clipped Reader can receive its render before Chromium schedules
+                    // animation frames inside the author scene.
+                    mutation.takeRecords();
+                    measure();
                 }
+                else
+                    schedule();
             }
             else if (data.op === 'slots') {
                 actionHeights = data.actionHeights;
                 documentHeights = data.documentHeights;
                 resizeSlots();
+                schedule();
             }
         };
         port.start();

@@ -49,7 +49,6 @@ export function readerNativeBeautyBootstrap(channel:string,sharedDom=false):void
   const resizeSlots=()=>{
     for(const [key,row] of rows)row.actions.style.height=(actionHeights[key]??0)+'px'
     for(const [key,node] of documents)node.style.height=(documentHeights[key]??1)+'px'
-    schedule()
   }
   function staticDocument(html:string):HTMLIFrameElement {
     const frame=readerDocument.createElement('iframe');frame.sandbox.add('allow-same-origin')
@@ -66,14 +65,15 @@ export function readerNativeBeautyBootstrap(channel:string,sharedDom=false):void
     frame.addEventListener('load',loaded,{once:true})
     frame.srcdoc='<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
       +'script-src \'none\'; style-src \'unsafe-inline\' https:; img-src data: blob: https:; font-src data: https:">'
-      +'<style>body{margin:0}</style>'+html
+      +'<style>body{margin:0;display:flow-root}</style>'+html
     staticViews.push({dispose(){observer?.disconnect();frame.removeEventListener('load',loaded)}})
     return frame
   }
   const render=(value:ReaderRegexDocumentRenderV1)=>{
     revision=value.renderRevision
     const css=value.css+(sharedDom?'':'\nhtml,body{margin:0;overflow:hidden}')
-      +'.rp-reader-view{width:100%;min-height:0;overflow:visible;display:block}'
+      // Keep trailing paragraph margins inside the box we report.
+      +'.rp-reader-view{width:100%;min-height:0;overflow:visible;display:flow-root}'
       +'.rp-reader{width:100%;max-width:none}'
     if(sheet.textContent!==css)sheet.textContent=css
     const next=new Set(value.parts.map(part=>part.key))
@@ -124,10 +124,13 @@ export function readerNativeBeautyBootstrap(channel:string,sharedDom=false):void
           try{const result=data.source?new Function('root','fill',data.source.javascript).call(window,root,fill):undefined
             if(typeof result==='function')cleanup=result
           }catch(error){send({op:'source-error',code:error instanceof Error?error.message:String(error)})}
-          schedule()
-        }
+          // A clipped Reader can receive its render before Chromium schedules
+          // animation frames inside the author scene.
+          mutation.takeRecords()
+          measure()
+        }else schedule()
       }else if(data.op==='slots'){
-        actionHeights=data.actionHeights;documentHeights=data.documentHeights;resizeSlots()
+        actionHeights=data.actionHeights;documentHeights=data.documentHeights;resizeSlots();schedule()
       }
     };port.start();send({op:'ready'})
   }

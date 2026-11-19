@@ -126,7 +126,9 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
   function publishFailureLayout(force=false):void {
     if(!hasVisibleOwner())return
     const layout=lastBeautyLayout
-    const viewportHeight=authorViewportActive?documentLayout.get().viewportHeight:0
+    // A fullscreen author page expects the app viewport. Its iframe sits in
+    // the shorter Reader scroller, which can reveal the rest of that page.
+    const viewportHeight=authorViewportActive?Math.max(view.innerHeight,documentLayout.get().viewportHeight):0
     if(!layout||layout.revision!==renderRevision){
       if(sourceScene){
         const sceneHeight=Math.max(1,layout?.height??0,viewportHeight)
@@ -147,9 +149,11 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
     const total=Math.max(1,sceneHeight+height)
     outer.style.height=total+'px';options.layout({height:total,renderRevision,rows:layout.rows})
   }
-  const releaseDocumentLayout=documentLayout.subscribe(()=>{
+  const updateAuthorViewport=()=>{
     if(authorViewportActive)publishFailureLayout(true)
-  })
+  }
+  const releaseDocumentLayout=documentLayout.subscribe(updateAuthorViewport)
+  view.addEventListener('resize',updateAuthorViewport)
   function sameFragmentShape(before:readonly ReaderRegexDocumentRenderFragmentV1[],
     after:readonly ReaderRegexDocumentRenderFragmentV1[]):boolean {
     return before.length===after.length&&before.every((fragment,index)=>{
@@ -314,7 +318,7 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
     if(!root||!style||!document){pending=value;return}
     renderRevision=value.renderRevision
     const css=value.css+'\nhtml,body{margin:0;overflow:hidden}'+
-      '.rp-reader-view{min-height:0;overflow:visible;display:block}'
+      '.rp-reader-view{min-height:0;overflow:visible;display:flow-root}'
     if(style.textContent!==css)style.textContent=css
     const next=new Set(value.parts.map(part=>part.key))
     for(const [key,row] of rows)if(!next.has(key)) {
@@ -479,6 +483,7 @@ export function createAuthorReaderSurface(outer:HTMLIFrameElement,options:Option
   },dispose() {
     if(!active)return
     active=false;outer.removeEventListener('load',loaded);releaseDocumentLayout()
+    view.removeEventListener('resize',updateAuthorViewport)
     releaseBeautyFailure?.();releaseBeautyFailure=undefined
     if(sourceScene)options.sceneChanged?.(false)
     beauty?.dispose();beautyHost?.remove();beauty=undefined;beautyExecution=undefined;sourceScene?.dispose();sourceScene=undefined

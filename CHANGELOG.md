@@ -6,6 +6,8 @@
 
 ## 2026-11-19
 
+- 酒馆正文只用外层滚动，独立作者页面仍可自行滚动。修复部分正则正文显示 HTML 段落标签和画面外启动时阅读布局超时。响应式全屏作者页面在短窗口里保留可滚到的操作空间。
+- The Tavern scrolls prose in the main reading area while independent author pages can retain their own scrolling. Fixed escaped prose paragraphs and a layout startup timeout when the Reader is offscreen. Responsive full-screen author pages keep their controls reachable in short windows.
 - 随视口伸缩的全屏作者前端在短开场可用完整阅读区，关闭后恢复正文布局。引用酒馆顶层窗口的兼容作者模块可在隔离场景中启动。世界书初始变量的空集合可以恢复缺失的分隔空格。桌面侧停靠状态栏的折叠按钮避开系统标题栏。
 - Responsive full-viewport author interfaces can use the available reading area during short openings. Closing them restores the story layout. Legacy Helper modules can mount in the isolated author scene. Worldbook initializers recover missing separators before empty YAML collections. The docked status panel clears the desktop title bar.
 - 聊天附件导入后随会话完成刷新开场选择。开场里的 `{{user}}` 使用已选玩家名称，兼容旧桌面 profile 的用户信息。世界书标题的首尾空白可以正常随卡导入和选择开场。默认 Reader 允许作者脚本绑定开场里的表单挂载点，正则匹配位置可以作为作者文档的字符串数据。导出角色卡时保留在分支里编辑过的继承开场。
