@@ -21051,6 +21051,10 @@
       "repository": "a86582751/dsh-nexttavern",
       "packageName": "dsh-nexttavern",
       "candidateVersion": "0.3.0-rc.1",
+      "portableHarness": {
+        "packageArtifact": "public-harness-package",
+        "lockArtifact": "public-harness-lock"
+      },
       "linuxInstaller": {
         "schemaVersion": 1,
         "version": "0.2.5",
