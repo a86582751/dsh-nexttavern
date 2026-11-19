@@ -73,7 +73,7 @@
     "All SDK imports use the single owned 0.85.1 package with four terminal fixes",
     "Settings candidates publish only after directory and route acceptance; rejected updates preserve accepted request snapshots",
     "Upstream cancellation, consumer finalization, idle watchdog, provider baseURL and headers remain at the adapter boundary",
-    "NextTavern transports ordered request-only messages and preserves provider controls and response metadata",
+    "NextTavern preserves request-only system placement through the provider payload hooks and reports explicit remote role and position rejections",
     "Host peers accept Harness >=0.2.2-rc.5 while the adapter source retains its 0.1.7-rc.2 ancestry"
   ],
   "publicSource": "https://github.com/a86582751/dsh-nexttavern/tree/main/development/llm-pi-ai",

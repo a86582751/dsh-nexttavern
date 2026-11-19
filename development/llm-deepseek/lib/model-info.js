@@ -62,7 +62,7 @@ export function modelInfo(connection, provider, model) {
             schemaVersion: 1,
             user: 'role-and-position',
             assistant: 'unsupported',
-            systemAtDepth: 'unsupported',
+            systemAtDepth: 'role-and-position',
         },
         ...connection.defaults.thinking === 'disabled'
             ? {

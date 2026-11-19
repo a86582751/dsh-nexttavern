@@ -2896,21 +2896,8 @@ export class ReactLoopAgent implements Agent {
     if(plan.story&&!owner.story)this.abortMaterialRequestOwner(requestOwner,'STORY_MATERIAL_OWNER_REQUIRED')
     const {config,turn,step,firstAttempt,signal}=input
     let preparedCall=input.preparedCall
-    // A route's system replacement bit is not additive system-at-depth support.
-    // Missing exact-route capability refuses each required insertion before writes.
-    const capability=preparedCall?.requestMaterialText
-    for(const insertion of [...plan.insertions,...(plan.anchoredInsertions??[])]){
-      const support=insertion.requestedRole==='system'?capability?.systemAtDepth:capability?.[insertion.requestedRole]
-      if(capability?.schemaVersion!==1||support!=='role-and-position'){
-        this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
-      }
-    }
-    for(const group of plan.messageProjection?.groups??[]) {
-      const support=group.role==='system'?capability?.systemAtDepth:capability?.[group.role]
-      if(capability?.schemaVersion!==1||support!=='role-and-position') {
-        this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
-      }
-    }
+    // The provider serializer owns message representation. Catalog capability
+    // hints do not decide whether the selected server will accept this request.
     let assembly:PromptAssembly
     try {assembly=applyNativeOwnedSectionsV1(finalAssembly,plan,owner.sectionNames)}
     catch {this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_SECTION_SUPPRESSED_OR_CHANGED')}

@@ -1,6 +1,7 @@
 /** Direct Messages transport with one cancellable lifecycle per model request. */
 
-import { assertAgentLoopRequestCurrent, attributionHeaders, LlmAdapter, LlmError } from 'dsh-nexttavern-native-llm'
+import { assertAgentLoopRequestCurrent, attributionHeaders, isRequestMaterialRoleRejection, LlmAdapter, LlmError,
+  REQUEST_MATERIAL_ROLE_POSITION_REJECTED } from 'dsh-nexttavern-native-llm'
 import type { GenerateOptions, ImageAttachmentAccessResolver, PreparedAdapterCall, StreamChunk } from 'dsh-nexttavern-native-llm'
 import type { DeepSeekLlmApiJson } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
@@ -143,7 +144,10 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
           if (await files.retry(detail)) continue
           const failure = providerError(raw, response.status, response.headers)
           const message = files.errorMessage(response.status, failure.message, detail)
-          throw new LlmError(message, failure.code, { ...failure.failure, cause: new Error(text) })
+          const rejectedPlacement=isRequestMaterialRoleRejection(response.status,detail||message)
+            &&history.some(item=>item.source?.kind==='request-material')
+          throw new LlmError(message,rejectedPlacement?REQUEST_MATERIAL_ROLE_POSITION_REJECTED:failure.code,
+            { ...failure.failure, cause: new Error(text) })
         }
         await extensions.accept()
         if (response.body === null) throw new LlmError('DeepSeek Messages returned no response body', 'EMPTY_RESPONSE')

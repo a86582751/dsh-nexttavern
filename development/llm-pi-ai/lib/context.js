@@ -6,6 +6,7 @@
  */
 import { brandString } from '@deepseek-ai/dsh-brand';
 import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload } from 'dsh-nexttavern-native-llm';
+import { randomUUID } from 'node:crypto';
 import { toPiAssistant, assertPiRequestProjectionV1 } from './replay.js';
 import { requestImageDimensions } from '@deepseek-ai/dsh-attachment';
 import { DEFAULT_REQUEST_IMAGE_MAX_BYTES, DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET } from './config.js';
@@ -117,17 +118,17 @@ function splitSystemPrompt(options) {
     if (options.system !== undefined)
         return { systemPrompt: options.system, messages: options.messages };
     const [first, ...rest] = options.messages;
-    if (first?.role !== 'system')
+    if (first?.role !== 'system' || first.source?.kind === 'request-material')
         return { systemPrompt: undefined, messages: options.messages };
     const text = flattenText(first);
     return { systemPrompt: text.length > 0 ? text : undefined, messages: rest };
 }
-/** Assemble the request-level pi-ai context envelope shared by both conversion paths. */
-function piContext(systemPrompt, options, messages) {
+function piContext(systemPrompt, options, messages, requestSystemMessages) {
     const tools = toolsOf(options);
     return {
         ...systemPrompt !== undefined ? { systemPrompt } : {},
         messages,
+        ...requestSystemMessages?.size ? { requestSystemMessages } : {},
         ...tools !== undefined && tools.length > 0 ? { tools } : {},
     };
 }
@@ -140,14 +141,22 @@ function appendAssistant(message, messages, toolNames, onReplayDegrade) {
     messages.push(assistant);
 }
 /** Append the system and assistant roles both context builders treat identically; true when consumed. */
-function appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade) {
+function appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade, requestSystemMessages) {
     if (message.role === 'system') {
+        const text = flattenText(message);
         if (message.source?.kind === 'request-material') {
-            throw new LlmError('pi-ai cannot retain system role at a request-only depth', 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
+            if (!requestSystemMessages)
+                throw new LlmError('pi-ai cannot retain system role at a request-only depth', 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
+            // The existing serializer owns replay and tool handling. The transport
+            // hook replaces this opaque text before any model request may leave.
+            const marker = `__nexttavern_system_${randomUUID()}__`;
+            requestSystemMessages.set(marker, text);
+            messages.push({ role: 'user', content: marker, timestamp: 0 });
+            return true;
         }
         // pi-ai has a single systemPrompt slot; a system message that did not
         // supply it folds into a user message to preserve order.
-        messages.push({ role: 'user', content: flattenText(message), timestamp: 0 });
+        messages.push({ role: 'user', content: text, timestamp: 0 });
         return true;
     }
     if (message.role === 'assistant') {
@@ -156,16 +165,17 @@ function appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade) 
     }
     return false;
 }
-function textOnlyContext(options, onReplayDegrade) {
+function textOnlyContext(options, onReplayDegrade, systemAtDepth = false) {
     assertSupportedHistory(options.messages);
     const split = splitSystemPrompt(options);
     const toolNames = new Map();
     const messages = [];
+    const requestSystemMessages = systemAtDepth ? new Map() : undefined;
     for (const message of split.messages) {
         if (contentHasImage(message.content)) {
             throw new LlmError('pi-ai image conversion requires the durable attachment service', 'UNSUPPORTED_CONTENT');
         }
-        if (appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade))
+        if (appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade, requestSystemMessages))
             continue;
         if (message.role === 'tool') {
             messages.push(toolResultOf(message, toolNames, flattenText(message)));
@@ -173,18 +183,18 @@ function textOnlyContext(options, onReplayDegrade) {
         }
         messages.push({ role: 'user', content: flattenText(message), timestamp: 0 });
     }
-    return piContext(split.systemPrompt, options, messages);
+    return piContext(split.systemPrompt, options, messages, requestSystemMessages);
 }
 /** Deterministic request target for one source under the route budgets. */
 function requestImageTarget(ref, budget) {
     return { ...requestImageDimensions(ref.width, ref.height, budget.maxPixels), maxBytes: budget.maxBytes };
 }
-export function toPiContext(options, images, onReplayDegrade) {
+export function toPiContext(options, images, onReplayDegrade, systemAtDepth = false) {
     return images === undefined
-        ? textOnlyContext(options, onReplayDegrade)
-        : toPiContextWithImages(options, images, onReplayDegrade);
+        ? textOnlyContext(options, onReplayDegrade, systemAtDepth)
+        : toPiContextWithImages(options, images, onReplayDegrade, systemAtDepth);
 }
-async function toPiContextWithImages(options, images, onReplayDegrade) {
+async function toPiContextWithImages(options, images, onReplayDegrade, systemAtDepth = false) {
     assertSupportedHistory(options.messages);
     const split = splitSystemPrompt(options);
     const prepared = await prepareImageHistory(split.messages, options.signal, images);
@@ -192,8 +202,9 @@ async function toPiContextWithImages(options, images, onReplayDegrade) {
     const { resolveImageAccess } = images;
     const toolNames = new Map();
     const messages = [];
+    const requestSystemMessages = systemAtDepth ? new Map() : undefined;
     for (const message of exactMessages) {
-        if (appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade))
+        if (appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade, requestSystemMessages))
             continue;
         if (message.role === 'tool') {
             messages.push(toolResultOf(message, toolNames, userContent(message.content, requestImages, resolveImageAccess)));
@@ -202,7 +213,60 @@ async function toPiContextWithImages(options, images, onReplayDegrade) {
         const content = userContent(message.content, requestImages, resolveImageAccess);
         messages.push({ role: 'user', content, timestamp: 0 });
     }
-    return piContext(split.systemPrompt, options, messages);
+    return piContext(split.systemPrompt, options, messages, requestSystemMessages);
+}
+/** Restore exact system messages in the protocol's finished request body. */
+export function positionRequestSystemMessages(payload, markers) {
+    if (payload && typeof payload === 'object' && 'context' in payload && payload.context && typeof payload.context === 'object')
+        return { ...payload, context: positionRequestSystemMessages(payload.context, markers) };
+    if (payload && typeof payload === 'object')
+        for (const [field, collection] of Object.entries(payload)) {
+            if (!Array.isArray(collection))
+                continue;
+            const seen = new Set();
+            const replace = (value) => {
+                if (typeof value !== 'string' || !markers.has(value))
+                    return undefined;
+                if (seen.has(value))
+                    throw new LlmError('The provider serializer duplicated a request message', 'REQUEST_MATERIAL_SERIALIZATION_UNAVAILABLE');
+                seen.add(value);
+                return markers.get(value);
+            };
+            const output = collection.flatMap((item) => {
+                if (!item || typeof item !== 'object')
+                    return [item];
+                const message = item;
+                if (message.role !== 'user')
+                    return [message];
+                const key = 'parts' in message ? 'parts' : 'content';
+                const content = message[key];
+                if (typeof content === 'string') {
+                    const text = replace(content);
+                    return [text === undefined ? message : { ...message, role: 'system', [key]: text }];
+                }
+                if (!Array.isArray(content))
+                    return [message];
+                const ordered = [];
+                let start = 0;
+                for (const [index, part] of content.entries()) {
+                    const text = replace(part?.text);
+                    if (text === undefined)
+                        continue;
+                    if (index > start)
+                        ordered.push({ ...message, [key]: content.slice(start, index) });
+                    ordered.push({ ...message, role: 'system', [key]: [{ ...part, text }] });
+                    start = index + 1;
+                }
+                if (start === 0)
+                    return [message];
+                if (start < content.length)
+                    ordered.push({ ...message, [key]: content.slice(start) });
+                return ordered;
+            });
+            if (seen.size === markers.size)
+                return { ...payload, [field]: output };
+        }
+    throw new LlmError('The provider serializer did not retain the history location of a system message', 'REQUEST_MATERIAL_SERIALIZATION_UNAVAILABLE');
 }
 /** Shared controlled image preparation. Each serializer keeps its own ordered
  * role grammar; this helper owns request versions, byte budgets and offloads. */

@@ -42,6 +42,18 @@ export const EMPTY_RESPONSE_CODE = 'EMPTY_RESPONSE'
  */
 export const INVALID_CREDENTIAL_CODE = 'INVALID_CREDENTIAL'
 
+export const REQUEST_MATERIAL_ROLE_POSITION_REJECTED = 'REQUEST_MATERIAL_ROLE_POSITION_REJECTED'
+
+/** Classify actual remote argument errors that explicitly describe message roles or ordering. */
+export function isRequestMaterialRoleRejection(status:number|undefined,detail:string):boolean {
+  if(status!==400&&status!==422)return false
+  return /\bsystem (?:messages?|roles?)\b[^\r\n]{0,55}\b(?:first|initial|start|beginning|not (?:supported|allowed|permitted)|unsupported)\b/i.test(detail)
+    || /\b(?:unsupported|unexpected|invalid|not (?:support|allow|accept))\b[^\r\n]{0,48}\b(?:role\b[^\r\n]{0,24}\bsystem\b|system (?:messages?|roles?))\b/i.test(detail)
+    || /\b(?:role|roles)\b[^\r\n]{0,48}\b(?:must alternate|must be one of|must be either|not (?:supported|allowed|permitted))\b/i.test(detail)
+    || /\bmessages(?:\[\d+\]|\.\d+)\.role\b/i.test(detail)
+      && /\b(?:unsupported|invalid|not (?:supported|allowed|permitted))\b/i.test(detail)
+}
+
 /** Structured codes and plain phrases that explicitly name a context bound being exceeded. */
 const STRUCTURED_CONTEXT_OVERFLOW = new RegExp(
   String.raw`(?:^|[^a-z0-9])context[\s_-](?:length|window)[\s_-]`

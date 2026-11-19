@@ -43,6 +43,8 @@ import {
   LlmAdapter,
   LlmError,
   assertAgentLoopRequestCurrent,
+  isRequestMaterialRoleRejection,
+  REQUEST_MATERIAL_ROLE_POSITION_REJECTED,
   ReasoningEffortId,
 } from 'dsh-nexttavern-native-llm'
 import type {
@@ -59,7 +61,7 @@ import type {
 import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.js'
-import { toPiContext,toOrderedCompletionsInputV1,toOrderedCompletionsInputV2 } from './context.js'
+import { positionRequestSystemMessages,toPiContext,toOrderedCompletionsInputV1,toOrderedCompletionsInputV2 } from './context.js'
 import type {PiImageRequestContext} from './context.js'
 import type {OrderedCompletionsInputV1,OrderedCompletionsTraceReceiptV1,
   OrderedCompletionsInputV2,OrderedCompletionsTraceReceiptV2} from 'dsh-nexttavern-pi-ai/api/openai-ordered-input'
@@ -107,14 +109,16 @@ function supportsOrderedMaterial(profile:ResolvedPiAiProviderProfile,model:Model
 
 /** Material must preserve text and cannot cause the SDK to synthesize missing
  * tool results by interrupting an open assistant/tool transaction. */
-function assertMaterialPlacement(options:GenerateOptions,supported:boolean,ordered=false):boolean {
+function assertMaterialPlacement(options:GenerateOptions):{hasMaterial:boolean;hasSystem:boolean} {
   const pending=new Set<string>()
   let hasMaterial=false
+  let hasSystem=false
   for(const message of options.messages){
     if(message.source?.kind==='request-material'){
       hasMaterial=true
+      if(message.role==='system')hasSystem=true
       const block=message.content[0]
-      if(!supported||message.role==='system'&&!ordered||pending.size!==0||message.content.length!==1
+      if(pending.size!==0||message.content.length!==1
         ||block?.type!=='text'||!block.text.trim()||!block.text.isWellFormed()){
         throw new LlmError('pi-ai cannot preserve this request-only text placement',
           'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
@@ -127,7 +131,7 @@ function assertMaterialPlacement(options:GenerateOptions,supported:boolean,order
     }else if(message.role==='tool')pending.delete(String(message.toolCallId))
     else if(message.role==='user')pending.clear()
   }
-  return hasMaterial
+  return {hasMaterial,hasSystem}
 }
 
 /** One resolution's frozen view: the profiles and the collection built from them. */
@@ -386,7 +390,7 @@ export class PiAiAdapter extends LlmAdapter {
       requestMaterialText:{schemaVersion:1,
         user:materialText?'role-and-position':'unsupported',
         assistant:materialText?'role-and-position':'unsupported',
-        systemAtDepth:ordered?'role-and-position':'unsupported'},
+        systemAtDepth:ordered||profile.requestMaterialSerialization===undefined?'role-and-position':'unsupported'},
       ...configuredMaxTokens === undefined ? {} : { defaultMaxTokens: configuredMaxTokens },
       ...reasoningInfo(resolvedModel, defaultLevel),
     }
@@ -435,7 +439,7 @@ export class PiAiAdapter extends LlmAdapter {
       throw new LlmError('ordered chat material is unsupported by this captured route',
         'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
     }
-    const hasMaterial=assertMaterialPlacement(options,supported,ordered)
+    const {hasMaterial,hasSystem}=assertMaterialPlacement(options)
     // Even an empty insertion delta has a live material owner and residual
     // section changes. Every supported route keeps that guard through fetch.
     const guardedTransport=hasMaterial||supported
@@ -480,22 +484,37 @@ export class PiAiAdapter extends LlmAdapter {
             maxBytes: profile.requestImageMaxBytes,
           },
         }
-      const context=ordered?undefined:imageContext===undefined?toPiContext(options,undefined,onReplayDegrade)
-        :await toPiContext({...options,signal:watchdog.signal},imageContext,onReplayDegrade)
+      const context=ordered?undefined:imageContext===undefined?toPiContext(options,undefined,onReplayDegrade,hasSystem)
+        :await toPiContext({...options,signal:watchdog.signal},imageContext,onReplayDegrade,hasSystem)
       const orderedInput=!ordered?undefined:profile.requestMaterialSerialization==='ordered-chat-v2'
         ?await toOrderedCompletionsInputV2({...options,signal:watchdog.signal},imageContext,onReplayDegrade)
         :await toOrderedCompletionsInputV1({...options,signal:watchdog.signal},imageContext,onReplayDegrade)
       if(guardedTransport)assertCurrent()
+      const markers=context?.requestSystemMessages
+      let payloadReady=markers===undefined
+      let responseStatus:number|undefined
       // SDK auth, lazy API loading and payload hooks may await afterwards.
       // Each HTTP delegation checks the same owner immediately before fetch.
-      const guardedTransportFetch:typeof globalThis.fetch=(input,init)=>{
+      const guardedTransportFetch:typeof globalThis.fetch=async(input,init)=>{
         if(guardedTransport)assertCurrent()
         watchdog.signal.throwIfAborted()
-        return transportFetch(input,init)
+        if(!payloadReady)throw new LlmError('The provider has no history payload projection',
+          'REQUEST_MATERIAL_SERIALIZATION_UNAVAILABLE')
+        const response=await transportFetch(input,init)
+        responseStatus=response.status
+        return response
       }
       const streamOptions:OpenAICompletionsSimpleOptions={
         ...profileOptions(profile, reasoning, apiKey),
         fetch:guardedTransportFetch,
+        ...hasMaterial?{onResponse:(response:{status?:number})=>{responseStatus=response.status}}:{},
+        ...ordered||!hasMaterial?{}:{onPayload:(payload:unknown)=>{
+          assertCurrent()
+          if(!markers)return undefined
+          const result=positionRequestSystemMessages(payload,markers)
+          payloadReady=true
+          return result
+        }},
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.topP===undefined?{}:{topP:options.topP},
@@ -519,7 +538,8 @@ export class PiAiAdapter extends LlmAdapter {
         // Models forwards these options unchanged. Its upstream simple type
         // only names auto/none; the owned protocol entries handle the wider
         // typed choice without bypassing Models' real credential resolution.
-        ?snapshot.models.streamSimple(model,context as NonNullable<typeof context>,providerOptions as SimpleStreamOptions)
+        ?snapshot.models.streamSimple(model,markers===undefined?context as NonNullable<typeof context>:
+          {messages:context!.messages,systemPrompt:context!.systemPrompt,tools:context!.tools},providerOptions as SimpleStreamOptions)
         :await this.orderedStream(model,orderedInput,streamOptions,apiKey,assertCurrent)
       const iterator = toStreamChunks(events, model.contextWindow, options.signal, model.id)[Symbol.asyncIterator]()
       let exhausted = false
@@ -532,7 +552,11 @@ export class PiAiAdapter extends LlmAdapter {
             exhausted = true
             return
           }
-          yield result.value
+          const chunk=result.value
+          if(hasMaterial&&chunk.type==='finish'&&chunk.reason.kind==='error'
+            &&isRequestMaterialRoleRejection(responseStatus,chunk.reason.failure.message)){
+            yield {...chunk,reason:{...chunk.reason,failure:{...chunk.reason.failure,code:REQUEST_MATERIAL_ROLE_POSITION_REJECTED}}}
+          }else yield chunk
         }
       } finally {
         if (!exhausted) {
