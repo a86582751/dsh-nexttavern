@@ -121,7 +121,7 @@ function assertFamily(table:'branch'|'status',suffix:string,family:ProgramAbsenc
             :family==='ordinary-chat'?/^author-chat-(?:root-v3|key-event-v3|publication-v3|fork-base-v3)-/.test(suffix)
             :family==='branch-control'?
               /^(?:(?:phaseb|task-steering|maintenance-timing)-[1-9][0-9]*|task-preparation|context-window)$/.test(suffix)
-                ||/^edit-applied-(?:assistant|user)-(?:0|[1-9][0-9]*)$/.test(suffix)
+                ||/^edit-applied-(?:assistant|user)-(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*))?$/.test(suffix)
               :false
   if(!matches)fail('PROGRAM_ABSENCE_OWNER_ROW_ADDRESS_INVALID')
 }
