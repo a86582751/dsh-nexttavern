@@ -275,6 +275,7 @@ export function apply(ctx: ClientContext) {
         peekState,
         replaceActivityFailures,
         prepareCleanWorldline:sessionId=>prepareCleanWorldline(sessionId),
+        readCleanWorldline:sessionId=>readCleanWorldline(sessionId),
         openPreparedWorldline:async(childSessionId,sourceSessionId)=>{
           if(resolveActiveSessionId()!==sourceSessionId)throw Error('请回到原世界线后重试。')
           await openSessionPreservingView(childSessionId,sourceSessionId)
@@ -314,7 +315,8 @@ export function apply(ctx: ClientContext) {
     }}
   }
   const { saveState, runMaintenance, replaceMessage, forkAndPrompt, regenerateProgrammaticOpening,
-    forkWithoutUserTurn, openNativeBranch, retryBranchMutation, prepareCleanWorldline, openSessionPreservingView } = createRoleplayActions(
+    forkWithoutUserTurn, openNativeBranch, retryBranchMutation, prepareCleanWorldline, readCleanWorldline,
+    openSessionPreservingView } = createRoleplayActions(
     {
       sessionsService,
       workspacesService,

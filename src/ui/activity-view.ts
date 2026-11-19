@@ -139,8 +139,9 @@ export interface ActivityComponentDependencies {
   React: typeof ReactAPI
   isRoleplaySession: (sessionId: string) => boolean
   peekState: (sessionId: string) => ActivitySnapshot | null | undefined
-    prepareCleanWorldline?(sessionId:string):Promise<{childSessionId:string;refreshWarning?:string}>
-    openPreparedWorldline?(childSessionId:string,sourceSessionId:string):Promise<void>
+  prepareCleanWorldline?(sessionId:string):Promise<{childSessionId:string;refreshWarning?:string}>
+  readCleanWorldline?(sessionId:string):Promise<{childSessionId?:string;error?:string}|null>
+  openPreparedWorldline?(childSessionId:string,sourceSessionId:string):Promise<void>
   replaceActivityFailures?(sessionId:string,failures:readonly RoleplayExtensionFailureV1[]):void
 }
 
@@ -152,7 +153,7 @@ export interface ActivityComponents {
   DeferredPlayerInput: (props: DeferredPlayerProps) => ReactAPI.ReactNode
 }
 
-export function createActivityComponents({ React, isRoleplaySession, peekState, prepareCleanWorldline, openPreparedWorldline,
+export function createActivityComponents({ React, isRoleplaySession, peekState, prepareCleanWorldline, readCleanWorldline, openPreparedWorldline,
   replaceActivityFailures }: ActivityComponentDependencies): ActivityComponents {
   const useTavernActivity = (sessionId: string | null | undefined, seed: ActivityState | null = null): ActivityState | null => {
     const [activity, setActivity] = React.useState<ActivityState | null>(null)
@@ -197,12 +198,24 @@ export function createActivityComponents({ React, isRoleplaySession, peekState, 
     const pending=isRecord(activity?.pendingPlayer)?activity.pendingPlayer as PendingPlayer:null
     React.useEffect(()=>setCopyResult(''),[activity?.sessionId,pending?.text])
     const failure=activity?.protocolFailure
-    if(activity&&!activity.running&&failure?.requestDispatched&&failure.recovery==='clean-worldline') {
+    const recoverySession=activity&&typeof activity.sessionId==='string'&&!activity.running
+      &&failure?.requestDispatched&&failure.recovery==='clean-worldline'
+      ?activity.sessionId:null
+    const key=`${recoverySession}:${pending?.messageId??''}`
+    React.useEffect(()=>{
+      if(!recoverySession||!readCleanWorldline)return
+      let cancelled=false
+      void readCleanWorldline(recoverySession).then(result=>{
+        if(!cancelled&&result)setPreparation(value=>value?.key===key?value:
+          {key,status:result.childSessionId?'ready':'unknown',...result})
+      }).catch(()=>{})
+      return ()=>{cancelled=true}
+    },[recoverySession,key])
+    if(recoverySession&&failure) {
       const configure=(action:string)=>window.dispatchEvent(new CustomEvent('dsh-roleplay-needs-config',{
-        detail:{sessionId:activity.sessionId,action},
+        detail:{sessionId:recoverySession,action},
       }))
-      const sessionId=String(activity.sessionId)
-      const key=`${sessionId}:${pending?.messageId??''}`,current=preparation?.key===key?preparation:null
+      const sessionId=recoverySession,current=preparation?.key===key?preparation:null
       const prepared=Boolean(current?.childSessionId)
       const open=async()=>{
         if(!openPreparedWorldline||!current?.childSessionId||current.status!=='ready')return

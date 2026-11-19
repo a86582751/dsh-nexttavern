@@ -110,6 +110,9 @@ export function createConversationCatalog({read,write}: {
     snapshot:()=>copy(state),rootOf,settingsScopeOf,
     kindOf:(sessionId:string)=>state.worldlines[id(sessionId)]?.kind,
     operationOf:(sessionId:string)=>state.worldlines[id(sessionId)]?.operationId,
+    findChildOperation:(sourceSessionId:string,kind:string,matches:(operationId:string)=>boolean)=>
+      Object.values(state.worldlines).find(member=>member?.sourceSessionId===sourceSessionId
+        &&member.kind===kind&&member.status!=='failed'&&matches(member.operationId))?.operationId,
     selectionOf:(sessionId:string)=>{
       const root=rootOf(sessionId),book=state.conversations[root]
       return {root,activeSessionId:book?.activeSessionId??root,revision:book?.selectionRevision??0}

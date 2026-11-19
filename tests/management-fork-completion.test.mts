@@ -441,7 +441,10 @@ await test('clean branch owner retains frozen preparation across lost acknowledg
     let route:any
     const api=registerBranchRoutes({T:{branch},cloneBranchRecord:structuredClone,
       forkOperationKey:(id:string)=>'fork-op-'+id,withForkMutationLock:async(_key:string,work:()=>unknown)=>work(),
-      resolveRoleplaySession:async(id:string)=>sessions.get(id)??null,assertStoryBranchActive:()=>{},
+      resolveRoleplaySession:async(id:string)=>{
+        if(id===childId&&fail==='late-child'){fail='';return null}
+        return sessions.get(id)??null
+      },assertStoryBranchActive:()=>{},
       readInputRecoveryDiagnostic:()=>structuredClone(diagnostic),readMainModelSelection:(session:{id:string})=>models.get(session.id),
       captureCleanBranchSource:()=>{const revision=controls.sourceRevision;return {revision,assertCurrent(){
         if(revision!==controls.sourceRevision)throw Error('SOURCE_CHANGED')
@@ -505,6 +508,30 @@ await test('clean branch owner retains frozen preparation across lost acknowledg
     assert.equal((f.records.get('fork-op-'+request.operationId)).groupId,undefined)
     assert.equal((await f.api.prepareCleanBranch(request,f.guard)).childSessionId,f.childId)
     assert.equal(f.calls.native,1,'a lost final response cannot allocate a second child')
+  }
+  {
+    const f=fixture('late-child')
+    const first=await f.api.inspectCleanBranch(f.parentId),second=await f.api.inspectCleanBranch(f.parentId)
+    const post=(body:Record<string,unknown>)=>f.route.fetch(new Request('https://fixture.test/api/roleplay/branch',{
+      method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:f.parentId,...body}),
+    }))
+    const prepare=(inspection:typeof first)=>post({action:'prepare-clean-branch',
+      operationId:inspection.operationId,expectedRevision:inspection.revision})
+    const wouldFail=await prepare(first)
+    assert.equal(wouldFail.status,409)
+    assert.equal((await wouldFail.json()).error,'CLEAN_BRANCH_CHILD_UNAVAILABLE')
+    const pending=await (await post({action:'current-clean-branch-status'})).json()
+    assert.equal(pending.status,'prepared')
+    assert.equal(pending.operationId,first.operationId)
+    assert.equal(pending.expectedRevision,first.revision)
+    const ready=await (await prepare(second)).json()
+    assert.equal(ready.status,'ready');assert.equal(ready.childSessionId,f.childId)
+    assert.equal(f.calls.native,1,'overlapping buttons must resume the one reserved child after a business failure')
+    assert.equal(f.catalog.selectionOf(f.parentId).activeSessionId,f.parentId)
+    const restored=await (await post({action:'current-clean-branch-status'})).json()
+    assert.equal(restored.childSessionId,f.childId);assert.equal(restored.status,'ready')
+    f.diagnostic.attemptGeneration++
+    assert.equal((await (await post({action:'current-clean-branch-status'})).json()).status,null)
   }
   {
     const f=fixture()

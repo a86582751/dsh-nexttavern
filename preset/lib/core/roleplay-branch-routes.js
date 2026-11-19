@@ -150,24 +150,45 @@ export function registerBranchRoutes(deps) {
             selectionRevision: observed.selectionRevision, diagnostic: observed.diagnostic,
             completedBoundary: observed.completedBoundary, model: observed.model };
     }
+    function existingCleanOperation(sessionId, diagnostic) {
+        const catalog = ctx.get('tavernConversations');
+        let existing;
+        catalog?.findChildOperation(sessionId, 'prepare-clean-branch', operationId => {
+            const operation = readOperation(forkOperationKey(operationId));
+            const failure = operation?.clean?.diagnostic;
+            if (failure?.preparationId !== diagnostic.preparationId || failure?.attemptGeneration !== diagnostic.attemptGeneration
+                || operation?.state === 'failed' || operation?.state === 'aborted')
+                return false;
+            existing = operation;
+            return true;
+        });
+        return existing;
+    }
     async function cleanBranchStatus(sessionId, operationId, options) {
         const operation = readOperation(forkOperationKey(operationId)), catalog = ctx.get('tavernConversations');
         if (!operation || operation.kind !== 'prepare-clean-branch' || !operation.clean || !catalog
             || catalog.rootOf(sessionId) !== catalog.rootOf(operation.anchor.sourceSessionId))
             throw Error('CLEAN_BRANCH_OPERATION_UNAVAILABLE');
-        return { ok: operation.state !== 'failed' && operation.state !== 'aborted', kind: 'prepare-clean-branch', operationId,
-            sourceSessionId: operation.anchor.sourceSessionId,
+        return { ok: operation.state !== 'failed' && operation.state !== 'aborted', kind: 'prepare-clean-branch', operationId: operation.operationId,
+            sourceSessionId: operation.anchor.sourceSessionId, expectedRevision: operation.clean.expectedRevision,
             childSessionId: operation.childSessionId ?? operation.reservedChildSessionId ?? null,
             status: operation.state === 'ready' ? 'ready' : ['failed', 'aborted'].includes(operation.state ?? '') ? 'failed' : 'prepared',
             requiresPlayerInput: true, error: operation.failureReason ?? null,
             ...options?.includeConversations === false ? {} : { conversations: catalog.snapshot() } };
     }
+    async function currentCleanBranchStatus(sessionId) {
+        await ctx.get('tavernConversations')?.ready;
+        const diagnostic = deps.readInputRecoveryDiagnostic?.(sessionId);
+        const operation = diagnostic && existingCleanOperation(sessionId, diagnostic);
+        return operation ? cleanBranchStatus(sessionId, operation.operationId, { includeConversations: false }) :
+            { ok: true, status: null };
+    }
     async function prepareCleanBranch(request, callerCurrent, options) {
         if (!/^[a-zA-Z0-9_-]{1,128}$/.test(request.operationId) || !request.expectedRevision)
             throw Error('CLEAN_BRANCH_OPERATION_ID_REQUIRED');
-        return withForkMutationLock(`operation:${request.operationId}`, async () => {
+        return withForkMutationLock(`clean-branch:${request.sessionId}`, async () => {
             callerCurrent();
-            const key = forkOperationKey(request.operationId);
+            let key = forkOperationKey(request.operationId);
             let operation = readOperation(key), observed;
             if (operation) {
                 if (operation.kind !== 'prepare-clean-branch' || operation.anchor.sourceSessionId !== request.sessionId
@@ -180,7 +201,21 @@ export function registerBranchRoutes(deps) {
                 observed = await captureCleanInspection(request.sessionId);
                 if (observed.revision !== request.expectedRevision)
                     throw Error('CLEAN_BRANCH_DIAGNOSIS_CHANGED');
+                const existing = existingCleanOperation(request.sessionId, observed.diagnostic);
+                if (existing) {
+                    operation = existing;
+                    key = forkOperationKey(existing.operationId);
+                    observed = undefined;
+                }
             }
+            const status = (operationId) => options?.includeConversations === false
+                ? cleanBranchStatus(request.sessionId, operationId, options) : cleanBranchStatus(request.sessionId, operationId);
+            if (operation?.state === 'ready')
+                return status(operation.operationId);
+            const selectModel = ctx.sessionController.selectModelForSession?.bind(ctx.sessionController);
+            const readMainModel = deps.readMainModelSelection;
+            if (!selectModel || !readMainModel)
+                throw Error('CLEAN_BRANCH_MODEL_OWNER_UNAVAILABLE');
             if (!operation) {
                 const facts = observed;
                 operation = { schemaVersion: 2, operationId: request.operationId, kind: 'prepare-clean-branch', promptText: '',
@@ -196,12 +231,8 @@ export function registerBranchRoutes(deps) {
             try {
                 // Clean preparation only consumes the child identity. The chosen
                 // public view is assembled once after bootstrap/model publication.
-                const created = await createWorldline(request.operationId, callerCurrent, observed?.assertBeforeReserve, false);
+                const created = await createWorldline(operation.operationId, callerCurrent, observed?.assertBeforeReserve, false);
                 operation = readOperation(key);
-                if (operation.state === 'ready')
-                    return options?.includeConversations === false
-                        ? cleanBranchStatus(request.sessionId, request.operationId, options)
-                        : cleanBranchStatus(request.sessionId, request.operationId);
                 const child = await resolveRoleplaySession(created.childSessionId);
                 if (!child)
                     throw Error('CLEAN_BRANCH_CHILD_UNAVAILABLE');
@@ -212,12 +243,10 @@ export function registerBranchRoutes(deps) {
                         clean: { ...current.clean, bootstrapComplete: true } }));
                 }
                 if (!operation.clean.modelCopied) {
-                    if (!ctx.sessionController.selectModelForSession || !deps.readMainModelSelection)
-                        throw Error('CLEAN_BRANCH_MODEL_OWNER_UNAVAILABLE');
                     callerCurrent();
                     const model = operation.clean.model;
-                    if (recordSha256(deps.readMainModelSelection(child)) !== recordSha256(model))
-                        await ctx.sessionController.selectModelForSession({ sessionId: child.id, ...model });
+                    if (recordSha256(readMainModel(child)) !== recordSha256(model))
+                        await selectModel({ sessionId: child.id, ...model });
                     if (!await ctx.sessions.flush(child))
                         throw Error('CLEAN_BRANCH_MODEL_FLUSH_FAILED');
                     operation = await updateOperation(key, current => ({ ...current, state: 'preparing-clean',
@@ -227,8 +256,7 @@ export function registerBranchRoutes(deps) {
                 callerCurrent();
                 await updateOperation(key, current => ({ ...current, state: 'ready', consumed: true, childSessionId: child.id,
                     failure: null, failureReason: null, readyAt: Date.now() }));
-                return options?.includeConversations === false ? cleanBranchStatus(request.sessionId, request.operationId, options)
-                    : cleanBranchStatus(request.sessionId, request.operationId);
+                return status(operation.operationId);
             }
             catch (error) {
                 const current = readOperation(key);
@@ -348,6 +376,8 @@ export function registerBranchRoutes(deps) {
                 const action = String(body?.action ?? '');
                 if (action === 'inspect-clean-branch')
                     return jsonResponse(200, await inspectCleanBranch(String(body.sessionId ?? '')));
+                if (action === 'current-clean-branch-status')
+                    return jsonResponse(200, await currentCleanBranchStatus(String(body.sessionId ?? '')));
                 if (action === 'prepare-clean-branch')
                     return jsonResponse(200, await prepareCleanBranch({
                         sessionId: String(body.sessionId ?? ''), operationId: String(body.operationId ?? ''),

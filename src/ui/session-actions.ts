@@ -17,6 +17,7 @@ interface BranchRequest<A extends string> extends Record<string, unknown> {actio
 interface BranchResult extends SaveReply {
   conversations?: ConversationCatalog
   operationId?: string
+  expectedRevision?: string
   status?: string
   operationState?: string
   childSessionId?: string
@@ -223,6 +224,19 @@ export function createRoleplayActions({sessionsService,
   // Keep an unresolved write's identity across button retries. A lost response
   // must never be interpreted as permission to reserve another child.
   const cleanPreparations=new Map<string,{operationId:string;revision:string}>()
+  const rememberCleanPreparation = (sessionId:string,status:BranchResult) => {
+    if(status.status==='prepared'&&status.operationId&&status.expectedRevision)
+      cleanPreparations.set(sessionId,{operationId:status.operationId,revision:status.expectedRevision})
+  }
+  const readCleanWorldline = async (sessionId:string) => {
+    const status=await branchRequest({action:'current-clean-branch-status',sessionId})
+    if(status.status==='ready'&&status.childSessionId)return {childSessionId:status.childSessionId}
+    if(status.status==='prepared'){
+      rememberCleanPreparation(sessionId,status)
+      return {error:status.error??'干净世界线尚未就绪，原输入仍保留。'}
+    }
+    return null
+  }
   const prepareCleanWorldline = (sessionId:string) => withSession(sessionId,async()=>{
     let inspection=cleanPreparations.get(sessionId)
     if(!inspection) {
@@ -244,19 +258,26 @@ export function createRoleplayActions({sessionsService,
       prepared=await retryBranchMutation({action:'prepare-clean-branch',sessionId,
         operationId:inspection.operationId,expectedRevision:inspection.revision})
     }catch(error) {
-      if(Number.isFinite(errorDetails(error).status)&&Number(errorDetails(error).status)<500) {
-        cleanPreparations.delete(sessionId)
-        throw error
-      }
       // The read can recover a ready child even when every write response was
-      // lost. Otherwise retain the identity for the player's next explicit retry.
+      // lost. A business failure can also leave a reserved child to resume.
       try {prepared=await branchRequest({action:'clean-branch-status',sessionId,operationId:inspection.operationId})}
-      catch(statusError) {prepared=(errorDetails(statusError).payload as BranchResult|null)??{}}
+      catch(statusError) {
+        prepared=(errorDetails(statusError).payload as BranchResult|null)??{}
+        if(prepared.error==='CLEAN_BRANCH_OPERATION_UNAVAILABLE') {
+          const current=await branchRequest({action:'current-clean-branch-status',sessionId}).catch(()=>null)
+          if(current?.status==='ready'||current?.status==='prepared')prepared=current
+          else if(current&&Number(errorDetails(error).status)<500) {
+            cleanPreparations.delete(sessionId)
+            throw error
+          }
+        }
+      }
       if(prepared.status==='failed') {
         cleanPreparations.delete(sessionId)
         throw new Error(prepared.error??'干净世界线准备已失败。原输入仍保留，可以重新准备。')
       }
       if(prepared.status!=='ready') {
+        rememberCleanPreparation(sessionId,prepared)
         const unknown:ActionError=new Error('准备结果尚未确认。可点击重试同一操作，原输入仍保留：'+String(errorDetails(error).message??error))
         unknown.operationStateUnknown=true
         throw unknown
@@ -790,6 +811,7 @@ export function createRoleplayActions({sessionsService,
       registerBranchOperation,
       retryBranchMutation,
       prepareCleanWorldline,
+      readCleanWorldline,
       repairActiveConversationDraft,
       openSessionPreservingView,
       createFirstTurnBranch,

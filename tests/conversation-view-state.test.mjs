@@ -93,20 +93,27 @@ const registration={operationId:'operation',childSessionId:'child',requestId:'re
   let createActivityComponents
   try {({createActivityComponents}=await import('../lib/ui/activity-view.js'))}
   finally {closeDependencies()}
+  let preparedOnServer=false
   const h=actionHarness(body=>{
+    if(body.action==='current-clean-branch-status')return preparedOnServer
+      ?{ok:true,status:'ready',childSessionId:'clean-child'}:{ok:true,status:null}
     if(body.action==='inspect-clean-branch')return {ok:true,operationId:'clean-operation',revision:'observed'}
-    if(body.action==='prepare-clean-branch')return {ok:true,status:'ready',childSessionId:'clean-child'}
+    if(body.action==='prepare-clean-branch'){
+      preparedOnServer=true
+      return {ok:true,status:'ready',childSessionId:'clean-child'}
+    }
     assert.equal(body.action,'select-worldline')
     assert.equal(body.sessionId,'clean-child')
     return {ok:true}
   })
-  const state=[]
+  const state=[],effects=[]
   let hook=0
-  const React={createElement:(type,props,...children)=>({type,props,children}),useEffect:()=>{},
+  const React={createElement:(type,props,...children)=>({type,props,children}),useEffect:effect=>effects.push(effect),
     useState:value=>{const index=hook++;if(!(index in state))state[index]=value
       return [state[index],next=>{state[index]=typeof next==='function'?next(state[index]):next}]}}
   const {ActivityBanner}=createActivityComponents({React,isRoleplaySession:()=>true,peekState:()=>null,
     prepareCleanWorldline:h.controller.prepareCleanWorldline,
+    readCleanWorldline:h.controller.readCleanWorldline,
     openPreparedWorldline:h.controller.openSessionPreservingView})
   const render=()=>{
     hook=0
@@ -120,9 +127,30 @@ const registration={operationId:'operation',childSessionId:'child',requestId:'re
   await button('准备干净世界线').props.onClick()
   assert.ok(!h.events.some(event=>event[0]==='open'))
   assert.ok(button('切换到新世界线'),'recovery presents a direct navigation button when the child is ready')
+  state.length=0
+  effects.length=0
+  assert.equal(button('切换到新世界线'),undefined)
+  for(const effect of effects)effect()
+  await new Promise(resolve=>setImmediate(resolve))
+  assert.ok(button('切换到新世界线'),'a remounted card reads the same child from the server')
+  assert.equal(h.calls.filter(body=>body.action==='prepare-clean-branch').length,1)
   await button('切换到新世界线').props.onClick()
   assert.deepEqual(h.events.filter(event=>event[0]==='open'),[['open','clean-child']])
   assert.ok(!h.events.some(event=>event[0]==='prompt'||event[0]==='begin'),'opening never resends a pending input')
+}
+{
+  let attempts=0
+  const h=actionHarness(body=>{
+    if(body.action==='inspect-clean-branch')return {ok:true,operationId:'held',revision:'known'}
+    if(body.action==='clean-branch-status')return {ok:true,status:'prepared',childSessionId:'held-child'}
+    assert.equal(body.action,'prepare-clean-branch')
+    assert.equal(body.operationId,'held')
+    return ++attempts===1?{http:409,ok:false,error:'CLEAN_BRANCH_CHILD_UNAVAILABLE'}:
+      {ok:true,status:'ready',childSessionId:'held-child'}
+  })
+  await assert.rejects(h.controller.prepareCleanWorldline('source'),error=>error.operationStateUnknown===true)
+  assert.deepEqual(await h.controller.prepareCleanWorldline('source'),{childSessionId:'held-child'})
+  assert.equal(h.calls.filter(body=>body.action==='inspect-clean-branch').length,1)
 }
 {
   let preparations=0
