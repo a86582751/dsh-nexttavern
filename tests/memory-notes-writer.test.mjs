@@ -49,8 +49,12 @@ try {
     const result = await h.writer.refreshDirectorNotes(h.session, undefined, signal, 'command-fixture', legacy.refresh)
     assert.deepEqual(result, legacy.result)
     assert.deepEqual(normalize(h.writes), legacy.writes, 'old schema, checkpoint text, source hashes, cadence and decorated evidence')
-    const requests = h.requests.map(({session,signal,...request}) => ({ ...request, sessionId: session.id, signalForwarded: Boolean(signal) }))
-    assert.deepEqual(requests, legacy.requests, 'batch prompt inputs match the old writer')
+    const requests = h.requests.map(({session,signal,maxTokens,...request}) => {
+      assert.equal(maxTokens, undefined, 'background notes keep the timeout and use the model output limit')
+      return { ...request, sessionId: session.id, signalForwarded: Boolean(signal) }
+    })
+    const expectedRequests = legacy.requests.map(({maxTokens,...request}) => request)
+    assert.deepEqual(requests, expectedRequests, 'batch prose, source and timeout match the old writer')
     assert.equal(h.writer.pending(h.session.id), undefined)
     assert.equal(h.writer.busy.has(h.session.id), false)
     assert.equal((await h.writer.refreshDirectorNotes(h.session)).reason, 'up-to-date')
