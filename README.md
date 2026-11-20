@@ -67,9 +67,11 @@ dsh web --host 127.0.0.1
 
 无需 root、Termux、Ubuntu 或常开的电脑。应用内置 Harness 运行时，故事数据保存在手机上；生成故事仍需在应用里配置自己的在线模型服务和 API Key。
 
-ARM64 包已完成构建、签名和静态校验。x86_64 模拟器使用模拟服务验证了启动、自定义模型配置、流式聊天、嵌入建索引及重启后的语义检索；**尚无 ARM64 真机或真实模型验收**。建议预留约 2 GB 空间。若手机装过不同签名的内部测试包，不能直接覆盖；请先从旧版导出角色卡和作品或备份数据，再决定是否卸载。Android 后台限制仍可能中断运行。
+ARM64 包已完成构建、签名和静态校验，并已在 **红米 K90 Pro Max（Android 16）** 上安装通过。x86_64 模拟器使用模拟服务验证了启动、自定义模型配置、流式聊天、嵌入建索引及重启后的语义检索；真实模型服务尚未验收。建议预留约 2 GB 空间。若手机装过不同签名的内部测试包，不能直接覆盖；请先从旧版导出角色卡和作品或备份数据，再决定是否卸载。Android 后台限制仍可能中断运行。
 
 Android 源码在 [`android/mobile-terminal` 分支](https://github.com/a86582751/dsh-nexttavern/tree/android/mobile-terminal)独立维护。[Android 开发说明](https://github.com/a86582751/dsh-nexttavern/blob/android/mobile-terminal/DEVELOPMENT-ANDROID.md)
+
+![NextTavern 在红米 K90 Pro Max（Android 16）上的实机聊天界面](screenshots/v03-android-redmi-k90-pro-max.jpg)
 
 ### 安装与模型费用
 

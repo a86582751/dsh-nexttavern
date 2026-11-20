@@ -61,6 +61,16 @@ Use the [x64 installer](https://github.com/a86582751/dsh-nexttavern/releases/dow
 
 The [Linux setup script](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-Setup.sh) includes glibc recipes for x86_64 and aarch64 and prepares a portable runtime in a separate directory. [Linux guide](INSTALL-LINUX.md)
 
+### Android
+
+The first Android preview is for **ARM64 phones running Android 11 or newer** (`arm64-v8a`). [Download APK](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-0.3.0-rc.1-android-arm64.apk) · [SHA-256 checksum](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.3.0-rc.1/NextTavern-0.3.0-rc.1-android-arm64.apk.sha256) · [Source for this APK](https://github.com/a86582751/dsh-nexttavern/tree/f23fe34609ca88eb7fbe15c0e1656cf0c8355f45).
+
+The signed APK installed successfully on a **Redmi K90 Pro Max (Android 16)**. An x86_64 emulator using simulated services verified startup, custom model setup, streaming chat, embedding indexing, and semantic recall after restart. Live model providers have not been validated. Allow about 2 GB of free space. This build cannot update a differently signed test build in place; export or back up your data before uninstalling the old app. Android background limits may interrupt the app.
+
+Android is maintained on the independent [`android/mobile-terminal` branch](https://github.com/a86582751/dsh-nexttavern/tree/android/mobile-terminal).
+
+![NextTavern chat open on a Redmi K90 Pro Max running Android 16](screenshots/v03-android-redmi-k90-pro-max.jpg)
+
 ### Installation and model costs
 
 Installation and verification use no model calls. Story generation and enabled background tasks use the models you select. [Remote access guide](PUBLIC-ACCESS.md)
