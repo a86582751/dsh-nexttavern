@@ -69,7 +69,7 @@ The signed APK installed successfully on a **Redmi K90 Pro Max (Android 16)**. A
 
 Android is maintained on the independent [`android/mobile-terminal` branch](https://github.com/a86582751/dsh-nexttavern/tree/android/mobile-terminal).
 
-<img src="screenshots/v03-android-redmi-k90-pro-max.jpg" alt="NextTavern story running on a Redmi K90 Pro Max with Android 16" width="280">
+<img src="https://raw.githubusercontent.com/a86582751/dsh-nexttavern/07d2c53549ce0be4d9c1ba0867120eb7fa630dc4/screenshots/v03-android-redmi-k90-pro-max.jpg" alt="NextTavern story running on a Redmi K90 Pro Max with Android 16" width="280">
 
 ### Installation and model costs
 
