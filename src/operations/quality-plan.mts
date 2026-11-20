@@ -37,9 +37,10 @@ export function makePlan(context: CheckContext, request: CheckRequest): CheckPla
       add('types', 'strict full project configuration; no files are written or packaged')
     } else if (command === 'syntax') {if (result.files.length) add('syntax', 'syntax only; not a type or behavior proof')}
     else for (const file of result.files) {
+      if (file.startsWith('screenshots/')) {add('docs', file); continue}
       const artifact = context.mapping.artifacts.find(item => item.source === file || item.aliases?.includes(file))
       // Retired paths have no current owner. Git supplies deletion evidence;
-      // explicit paths and all surviving changes still require registration.
+      // other surviving non-doc paths still require registration.
       if (!artifact && changes?.deletedFiles.has(file)) continue
       if (/\.(?:md|txt)$/.test(file)) {add('docs', file); continue}
       const direct = artifact && context.registry.tasks.filter(task => task.artifact === artifact.id)
