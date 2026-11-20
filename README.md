@@ -71,7 +71,7 @@ ARM64 包已完成构建、签名和静态校验，并已在 **红米 K90 Pro Ma
 
 Android 源码在 [`android/mobile-terminal` 分支](https://github.com/a86582751/dsh-nexttavern/tree/android/mobile-terminal)独立维护。[Android 开发说明](https://github.com/a86582751/dsh-nexttavern/blob/android/mobile-terminal/DEVELOPMENT-ANDROID.md)
 
-![NextTavern 在红米 K90 Pro Max（Android 16）上的实机剧情界面](screenshots/v03-android-redmi-k90-pro-max.jpg)
+<img src="screenshots/v03-android-redmi-k90-pro-max.jpg" alt="NextTavern 在红米 K90 Pro Max（Android 16）上的实机剧情界面" width="280">
 
 ### 安装与模型费用
 
