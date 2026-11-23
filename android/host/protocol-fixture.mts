@@ -4,6 +4,10 @@ import {pathToFileURL} from 'node:url'
 
 export const PROTOCOL_FIXTURE_ID='nexttavern-local-openai-v1'
 export const PACED_STREAM_MARKER='NEXTTAVERN_QA_PACED_STREAM'
+export const WORKSPACE_TOOLS_PROMPT='NEXTTAVERN_QA_STANDARD_WORKSPACE_TOOLS'
+export const WORKSPACE_TOOLS_REPLY='NEXTTAVERN_QA_STANDARD_WORKSPACE_OK'
+const fixtureWorkspaceFile='nexttavern-qa-snake.html'
+const fixtureWorkspaceText='NEXTTAVERN_QA_WORKSPACE_FILE_MARKER'
 export const FIXTURE_MAINTENANCE_ACK='【本地协议测试】维护结果已提交。'
 export const FIXTURE_REPLY='【本地协议测试，不是真实模型】酒馆的灯亮着。欢迎回来，我们的对话已经继续。'
 export const EMBEDDING_FIXTURE_ID='nexttavern-local-embedding-v1'
@@ -34,14 +38,55 @@ class FixtureRejected extends Error {
   readonly record:FixtureRejection
   constructor(record:FixtureRejection){super('Unsupported or malformed local fixture maintenance request');this.record=record}
 }
-/** Deliberately not a general model: only this fixture's plain-card status story.
- * Consume current offered identities; never retain prompt data or manufacture jobs. */
-function fixturePlan(body:ChatBody,requestNumber:number):{mode:'story'|'maintenance'|'maintenance-complete'|'background-memory';content?:string;calls?:{id:string;type:'function';function:{name:string;arguments:string}}[]} {
+type FixtureMode='story'|'maintenance'|'maintenance-complete'|'background-memory'
+  |'workspace-write'|'workspace-search'|'workspace-complete'
+type FixturePlan={mode:FixtureMode;content?:string;calls?:{id:string;type:'function';function:{name:string;arguments:string}}[]}
+
+/** Deterministic tool handshake for a fresh Standard conversation only.
+ * The final token is impossible without receipts from actual file creation
+ * and text search. This is not proof of AI authorship or playable Snake. */
+function workspacePlan(body:ChatBody, requestNumber:number, reject:(reason:RejectionReason)=>never):FixturePlan {
+  if(!['write','edit','workspace_command'].every(name=>body.tools?.some(tool=>tool.type==='function'&&tool.function?.name===name))
+    ||body.tools?.some(tool=>['bash','grep','glob','rp_task_submit'].includes(tool.function?.name??'')))return reject('unsupported-tool-surface')
+  const messages=body.messages!,latest=messages.at(-1)
+  const emitTool=(mode:FixtureMode,name:string,args:Record<string,unknown>):FixturePlan=>({
+    mode,calls:[{type:'function',id:'call_local_workspace_'+requestNumber,
+      function:{name,arguments:JSON.stringify(args)}}],
+  })
+  if(latest?.role==='user')return emitTool('workspace-write','write',{
+    file_path:fixtureWorkspaceFile,content:'<!doctype html><title>Local workspace fixture</title>\n<p>'+fixtureWorkspaceText+'</p>\n',
+  })
+  const assistant=messages.findLast(message=>message.role==='assistant'&&message.tool_calls?.length)
+  const call=assistant?.tool_calls?.[0]
+  if(latest?.role!=='tool'||assistant?.tool_calls?.length!==1||!call?.id||call.id!==latest.tool_call_id)
+    return reject('incomplete-tool-receipt')
+  const receipt=messageText(latest)
+  if(call.function?.name==='write') {
+    // Only a newly created runner-owned fixture qualifies, never a preexisting
+    // file or a tool error. Do not emit the resolved device path.
+    if(!/<path>[^<]*nexttavern-qa-snake\.html<\/path>\s*<type>file<\/type>\s*<content>\s*Created file\s*<\/content>/.test(receipt))
+      return reject('incomplete-tool-receipt')
+    return emitTool('workspace-search','workspace_command',{operation:'search',query:fixtureWorkspaceText})
+  }
+  if(call.function?.name==='workspace_command') {
+    try {
+      const value=JSON.parse(receipt)
+      if(value.entries.some((entry:any)=>entry.path===fixtureWorkspaceFile&&entry.kind==='file'&&entry.lines?.includes(2)))
+        return {mode:'workspace-complete',content:WORKSPACE_TOOLS_REPLY}
+    } catch {}
+  }
+  return reject('incomplete-tool-receipt')
+}
+
+/** Deliberately not a general model: only explicit synthetic flows. */
+function fixturePlan(body:ChatBody,requestNumber:number):FixturePlan {
   const messages=body.messages!,latest=messages.at(-1),text=messageText(latest)
   const rejection:FixtureRejection={schemaVersion:1,fixture:PROTOCOL_FIXTURE_ID,reason:'malformed-envelope',
     offeredTools:(['rp_task_submit','rp_task_read','run_code'] as const).filter(name=>body.tools?.some(tool=>tool.function?.name===name)),
     taskKinds:[],taskStages:[]}
   const fixtureFailure=(reason:RejectionReason='malformed-envelope'):never=>{throw new FixtureRejected({...rejection,reason})}
+  if(messageText(messages.findLast(message=>message.role==='user')).trim()===WORKSPACE_TOOLS_PROMPT)
+    return workspacePlan(body,requestNumber,fixtureFailure)
   if(latest?.role==='tool') {
     const assistant=messages.findLast(message=>message.role==='assistant'&&!!message.tool_calls?.length)
     const calls=assistant?.tool_calls??[]
@@ -160,7 +205,7 @@ export interface FixtureRequestCounter {
   fixture:typeof PROTOCOL_FIXTURE_ID
   request:number
   streamRequested:boolean
-  mode:'story'|'maintenance'|'maintenance-complete'|'background-memory'
+  mode:FixtureMode
   toolcallCount:number
   paced:boolean
   contentDeltas:number
@@ -274,7 +319,7 @@ export function createProtocolFixture(options:FixtureOptions={}) {
       response.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-cache'})
       const emit=(choices:unknown[],extra={})=>response.write('data: '+JSON.stringify({id,model,created,object:'chat.completion.chunk',choices,...extra})+'\n\n')
       emit([{index:0,delta:{role:'assistant'},finish_reason:null}])
-      if(plan.mode==='maintenance') {
+      if(plan.mode==='maintenance'||plan.calls) {
         if(plan.calls)emit([{index:0,delta:{tool_calls:plan.calls.map((call,index)=>({index,...call}))},finish_reason:null}])
         emit([{index:0,delta:{},finish_reason:plan.calls?'tool_calls':'stop'}])
         emit([],{usage});response.end('data: [DONE]\n\n');return

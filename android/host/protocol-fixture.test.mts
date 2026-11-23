@@ -4,7 +4,7 @@ import {once} from 'node:events'
 import {setTimeout as delay} from 'node:timers/promises'
 import {createProtocolFixture,FIXTURE_REPLY,FIXTURE_MAINTENANCE_ACK,PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID,
   EMBEDDING_FIXTURE_ID,EMBEDDING_FIXTURE_MODEL,EMBEDDING_FIXTURE_DIMENSIONS,
-  EMBEDDING_STORY_SENTENCE,EMBEDDING_DISTRACTOR_SENTENCE,EMBEDDING_QUERY} from './protocol-fixture.mts'
+  EMBEDDING_STORY_SENTENCE,EMBEDDING_DISTRACTOR_SENTENCE,EMBEDDING_QUERY,WORKSPACE_TOOLS_PROMPT,WORKSPACE_TOOLS_REPLY} from './protocol-fixture.mts'
 
 test('local fixture offers models and real streamed/nonstreamed OpenAI protocol without retaining prompt contents',async()=>{
   const {server,requests}=createProtocolFixture()
@@ -283,4 +283,44 @@ test('scheduled synthetic memory keeps actual source seqs, previous notes and lo
     }
     assert.doesNotMatch(JSON.stringify(requests),/private|想离开|灯亮/)
   } finally {server.closeAllConnections();server.close();await once(server,'close')}
+})
+
+test('workspace marker requires a fresh write and an exact text-search receipt before acknowledging',async()=>{
+  const {server,requests}=createProtocolFixture()
+  server.listen(0,'127.0.0.1');await once(server,'listening')
+  const address=server.address();assert.ok(address&&typeof address!=='string')
+  const messages:{role:string;content?:string;tool_calls?:unknown[];tool_call_id?:string}[]=[
+    {role:'user',content:WORKSPACE_TOOLS_PROMPT},
+  ]
+  const tools=['write','edit','workspace_command'].map(name=>({type:'function',function:{name}}))
+  const send=(stream=false,extra=tools)=>fetch('http://127.0.0.1:'+address.port+'/v1/chat/completions',
+    {method:'POST',body:JSON.stringify({model:'nexttavern-fixture',messages,tools:extra,stream})})
+  try {
+    assert.equal((await send(false,tools.slice(0,2))).status,422)
+    assert.equal((await send(false,[...tools,{type:'function',function:{name:'bash'}}])).status,422)
+    const first=await send(true);assert.equal(first.status,200)
+    const events=(await first.text()).split('\n').filter(line=>line.startsWith('data: {')).map(line=>JSON.parse(line.slice(6)))
+    const write=events.flatMap(item=>item.choices.flatMap((choice:any)=>choice.delta?.tool_calls??[]))[0]
+    assert.equal(write.function.name,'write')
+    const args=JSON.parse(write.function.arguments)
+    assert.equal(args.file_path,'nexttavern-qa-snake.html');assert.match(args.content,/NEXTTAVERN_QA_WORKSPACE_FILE_MARKER/)
+    messages.push({role:'assistant',tool_calls:[write]},
+      {role:'tool',tool_call_id:write.id,content:'<path>/synthetic/private/nexttavern-qa-snake.html</path>\n<type>file</type>\n<content>\nUpdated file\n</content>'})
+    assert.equal((await send()).status,422)
+    messages.at(-1)!.content=messages.at(-1)!.content!.replace('Updated file','Created file')
+    const second=await send();assert.equal(second.status,200)
+    const search=(await second.json()).choices[0].message.tool_calls[0]
+    assert.equal(search.function.name,'workspace_command')
+    assert.deepEqual(JSON.parse(search.function.arguments),{operation:'search',query:'NEXTTAVERN_QA_WORKSPACE_FILE_MARKER'})
+    messages.push({role:'assistant',tool_calls:[search]},
+      {role:'tool',tool_call_id:search.id,content:'{"entries":[{"path":"nexttavern-qa-snake.html","kind":"file","lines":[1]}]}'})
+    assert.equal((await send()).status,422)
+    messages.at(-1)!.content=messages.at(-1)!.content!.replace('[1]','[2]')
+    const final=await send();assert.equal(final.status,200)
+    assert.equal((await final.json()).choices[0].message.content,WORKSPACE_TOOLS_REPLY)
+    assert.deepEqual(requests.map(row=>[row.mode,row.toolcallCount]),[
+      ['workspace-write',1],['workspace-search',1],['workspace-complete',0],
+    ])
+    assert.doesNotMatch(JSON.stringify(requests),/synthetic\/private|QA_STANDARD_WORKSPACE/)
+  } finally {server.close();await once(server,'close')}
 })

@@ -3,6 +3,9 @@ import assert from 'node:assert/strict'
 import test, { mock } from 'node:test'
 import { PassThrough } from 'node:stream'
 import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, writeFile, symlink, link, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { createRequire, registerHooks } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
@@ -14,7 +17,7 @@ const appBoot = pathToFileURL(require.resolve('@deepseek-ai/dsh-app-boot')).href
 const hooks = registerHooks({ resolve(specifier, context, nextResolve) {
   return nextResolve(specifier === '@deepseek-ai/dsh-app-boot' ? appBoot : specifier, context)
 } })
-const { apply, PROTOCOL } = await import('./android-host.mts')
+const { apply, PROTOCOL, runWorkspaceCommand } = await import('./android-host.mts')
 hooks.deregister()
 
 const tick = () => new Promise<void>(resolve => setImmediate(resolve))
@@ -59,6 +62,8 @@ async function fixture(run: (f: {
     } },
   } as unknown as Context
   const ctx: AndroidHostContext = {
+    tools: { register(definition) { assert.equal(definition.name, 'workspace_command') } },
+    workingDirectory: { async ensure() { return process.cwd() } },
     root,
     webServer: { port: 41327 },
     connection: { authenticatedUrl(baseUrl) { authCalls++; return `${baseUrl}/?token=private-test-token` } },
@@ -186,3 +191,50 @@ test('product-owned work settles before any root storage-provider teardown', asy
   await tick()
   assert.equal(f.records[0]!.event, 'STOPPED')
 }))
+
+test('workspace commands read bounded scope without shell, links or private paths', {
+  skip: process.platform !== 'linux' && process.platform !== 'android' && 'fd anchors require Linux/Android',
+}, async () => {
+  const area = await mkdtemp(path.join(tmpdir(), 'nexttavern-command-'))
+  const root = path.join(area, 'workspace'), selected = path.join(root, 'selected')
+  const work = (args: Parameters<typeof runWorkspaceCommand>[2], cwd = selected, signal = new AbortController().signal) =>
+    runWorkspaceCommand(root, cwd, args, signal)
+  try {
+    await mkdir(selected, {recursive: true})
+    await mkdir(path.join(selected, 'nested'))
+    await mkdir(path.join(root, 'sibling'))
+    await writeFile(path.join(root, 'sibling', 'other.txt'), 'needle')
+    await writeFile(path.join(area, 'hidden-outside.txt'), 'outside needle')
+    await writeFile(path.join(selected, 'file.txt'), 'line 1\nneedle\nneedle suffix\n')
+    await writeFile(path.join(selected, 'nested', 'document.txt'), 'real needle')
+    await writeFile(path.join(selected, '.settings'), 'hidden needle')
+    await writeFile(path.join(selected, 'binary.dat'), 'needle\0')
+    await symlink(path.join(root, 'sibling'), path.join(selected, 'symlink-dir'))
+    await symlink(path.join(area, 'hidden-outside.txt'), path.join(selected, 'symlink-file'))
+    await link(path.join(area, 'hidden-outside.txt'), path.join(selected, 'hardlink.txt'))
+    assert.deepEqual(await work({operation: 'pwd'}), {directory: 'selected', entries: [], truncated: false})
+    const names = (result: Awaited<ReturnType<typeof work>>) => result.entries.map(entry => entry.path).sort()
+    assert.deepEqual(names(await work({operation:'list'})), ['binary.dat','file.txt','hardlink.txt','nested'])
+    assert.deepEqual(names(await work({operation:'find',query:'document'})), ['nested/document.txt'])
+    const found = await work({operation:'search',query:'needle'})
+    assert.deepEqual(found.entries.sort((a,b)=>a.path.localeCompare(b.path)), [
+      {path:'file.txt',kind:'file',lines:[2,3]}, {path:'nested/document.txt',kind:'file',lines:[1]},
+    ])
+    assert.equal(found.truncated, false)
+    assert.deepEqual(names(await work({operation:'list',path:'nested'})), ['document.txt'])
+    for (const unsafe of ['../sibling','/etc','nested/..','.settings','symlink-dir']) {
+      await assert.rejects(work({operation:'list',path:unsafe}), /relative path|unavailable/)
+    }
+    await assert.rejects(work({operation:'list'},area), /relative path/)
+    await assert.rejects(work({operation:'list'},path.join(selected,'symlink-dir')), /unavailable/)
+    await assert.rejects(work({operation:'search',query:''}), /non-empty/)
+    await assert.rejects(work({operation:'echo' as 'pwd'}), /Unsupported/)
+    const cancelled = new AbortController()
+    cancelled.abort(new Error('caller cancelled'))
+    await assert.rejects(work({operation:'list'}, selected, cancelled.signal), /caller cancelled/)
+    for (let i = 0; i < 105; i++) await writeFile(path.join(selected, 'bounded-' + i), '')
+    const capped = await work({operation:'list'})
+    assert.equal(capped.entries.length, 100)
+    assert.equal(capped.truncated, true)
+  } finally { await rm(area, {recursive: true, force: true}) }
+})

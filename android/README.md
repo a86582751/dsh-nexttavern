@@ -24,7 +24,9 @@ does not establish arm64 runtime compatibility or full G0.
 
 The Android branch follows the public RC1 tag and packages the pinned
 Harness `0.2.2-rc.5`. Its ARM64 application ID remains
-`app.nexttavern.android` (Android 11+, API 30); RC1 uses version code 2.
+`app.nexttavern.android` (Android 11+, API 30). The original RC1 APK used
+version code 2; this Android-only update keeps the RC1 version name and raises
+the version code to 3 for same-signer upgrades.
 The separately named x86 diagnostic app and temporary CI key are not
 distribution inputs. An existing build signed with another key cannot be
 updated in place by Android; back up game data before considering removal.
@@ -35,6 +37,22 @@ workflow exercises a separately packaged diagnostic build; its evidence
 cannot qualify ARM64, full G0, or behavior against live providers. Check
 the GitHub Release and its Android-specific validation notes for the
 actual downloadable files and current qualification.
+
+### Android workspace commands
+
+Android provides the read-only `workspace_command` tool in the selected
+workspace: `pwd`, `list`, literal filename `find`, and literal UTF‑8 text
+`search` (paths and line numbers). It does not start a shell or run arbitrary
+programs. Paths must remain in the selected workspace; hidden entries and
+symbolic links are not searched. Results are bounded and indicate truncation.
+If the Android directory-file-descriptor boundary is unavailable, the tool
+fails closed rather than falling back to a shell or path traversal.
+
+Standard mode retains the Harness's regular file read, write and edit tools
+under its existing permission and approval policy. Use those tools to create
+workspace artifacts, such as a self-contained HTML program; use the model
+settings panel for provider configuration. Bash and the desktop ripgrep tools
+are disabled on Android, not replaced with unrestricted processes.
 
 ## November 14 integration maintenance
 

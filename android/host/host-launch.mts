@@ -264,6 +264,12 @@ await writeFile(overlay, [
   '- id: workspace-controller',
   '  config:',
   '    documentsDirectory: ' + JSON.stringify(workspace),
+  // Android does not have the pinned Host's Bash sandbox or desktop rg binary.
+  // Keep its existing file tools and permission policy, not a passthrough shell.
+  '- id: tool-bash',
+  '  disabled: true',
+  '- id: tool-fs-search',
+  '  disabled: true',
   '- insert:',
   '    - id: nexttavern-mobile-host',
   '      name: ' + JSON.stringify(pathToFileURL(path.join(code, 'android-host.mjs')).href),

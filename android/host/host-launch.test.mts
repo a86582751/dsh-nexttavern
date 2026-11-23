@@ -52,6 +52,9 @@ if (import.meta.main) await runCli()
       const pkg=JSON.parse(await readFile(path.join(home,'profiles/web/package.json'),'utf8'))
       assert.equal(pkg.dependencies['dsh-nexttavern'],'file:'+path.join(code,'node_modules/dsh-nexttavern'))
       const overlay=await readFile(path.join(home,'android-host.patch.yml'),'utf8')
+      assert.match(overlay, /- id: tool-bash\n  disabled: true\n/)
+      assert.match(overlay, /- id: tool-fs-search\n  disabled: true\n/)
+      assert.doesNotMatch(overlay, /- id: tool-fs\n/, 'native file tools retain their original policy')
       assert.ok(overlay.includes('- id: workspace-controller\n  config:\n    documentsDirectory: '+JSON.stringify(workspace)+'\n'),
         'first, repeated and upgraded launches use the native-managed cwd for the official first-use Workspace policy')
     }
