@@ -289,8 +289,10 @@ test('workspace marker requires a fresh write and an exact text-search receipt b
   const {server,requests}=createProtocolFixture()
   server.listen(0,'127.0.0.1');await once(server,'listening')
   const address=server.address();assert.ok(address&&typeof address!=='string')
-  const messages:{role:string;content?:string;tool_calls?:unknown[];tool_call_id?:string}[]=[
-    {role:'user',content:WORKSPACE_TOOLS_PROMPT},
+  const messages:{role:string;content?:unknown;tool_calls?:unknown[];tool_call_id?:string}[]=[
+    {role:'user',content:[{type:'text',text:'<system-reminder>Workspace description</system-reminder>\n'},
+      {type:'text',text:WORKSPACE_TOOLS_PROMPT+'\n<system-reminder>Agent instructions</system-reminder>'}]},
+    {role:'user',content:'<system-reminder>Non-leading system message</system-reminder>'},
   ]
   const tools=['write','edit','workspace_command'].map(name=>({type:'function',function:{name}}))
   const send=(stream=false,extra=tools)=>fetch('http://127.0.0.1:'+address.port+'/v1/chat/completions',
@@ -307,7 +309,7 @@ test('workspace marker requires a fresh write and an exact text-search receipt b
     messages.push({role:'assistant',tool_calls:[write]},
       {role:'tool',tool_call_id:write.id,content:'<path>/synthetic/private/nexttavern-qa-snake.html</path>\n<type>file</type>\n<content>\nUpdated file\n</content>'})
     assert.equal((await send()).status,422)
-    messages.at(-1)!.content=messages.at(-1)!.content!.replace('Updated file','Created file')
+    messages.at(-1)!.content=String(messages.at(-1)!.content).replace('Updated file','Created file')
     const second=await send();assert.equal(second.status,200)
     const search=(await second.json()).choices[0].message.tool_calls[0]
     assert.equal(search.function.name,'workspace_command')
@@ -315,7 +317,7 @@ test('workspace marker requires a fresh write and an exact text-search receipt b
     messages.push({role:'assistant',tool_calls:[search]},
       {role:'tool',tool_call_id:search.id,content:'{"entries":[{"path":"nexttavern-qa-snake.html","kind":"file","lines":[1]}]}'})
     assert.equal((await send()).status,422)
-    messages.at(-1)!.content=messages.at(-1)!.content!.replace('[1]','[2]')
+    messages.at(-1)!.content=String(messages.at(-1)!.content).replace('[1]','[2]')
     const final=await send();assert.equal(final.status,200)
     assert.equal((await final.json()).choices[0].message.content,WORKSPACE_TOOLS_REPLY)
     assert.deepEqual(requests.map(row=>[row.mode,row.toolcallCount]),[

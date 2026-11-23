@@ -85,7 +85,11 @@ function fixturePlan(body:ChatBody,requestNumber:number):FixturePlan {
     offeredTools:(['rp_task_submit','rp_task_read','run_code'] as const).filter(name=>body.tools?.some(tool=>tool.function?.name===name)),
     taskKinds:[],taskStages:[]}
   const fixtureFailure=(reason:RejectionReason='malformed-envelope'):never=>{throw new FixtureRejected({...rejection,reason})}
-  if(messageText(messages.findLast(message=>message.role==='user')).trim()===WORKSPACE_TOOLS_PROMPT)
+  // Harness may append a system-reminder to the user text or encode it as an
+  // additional user-role message. Match the reserved synthetic token, not the
+  // full serialized message; payloads, tool receipts and final UI are still checked.
+  const workspaceToken=new RegExp('(?:^|[^A-Za-z0-9_])'+WORKSPACE_TOOLS_PROMPT+'(?=$|[^A-Za-z0-9_])')
+  if(messages.some(message=>message.role==='user'&&workspaceToken.test(messageText(message))))
     return workspacePlan(body,requestNumber,fixtureFailure)
   if(latest?.role==='tool') {
     const assistant=messages.findLast(message=>message.role==='assistant'&&!!message.tool_calls?.length)
