@@ -328,9 +328,9 @@ const desktopToolPresets = {
     'presets/ptc.patch.yml': '838665e063dc8bcab4caf24e41ec848373c434df4262feb981306944e1cec7fd',
 };
 export function androidWebAppPreset(relative, version, bytes) {
-    const expected = desktopToolPresets[relative];
-    if (!expected)
+    if (!Object.hasOwn(desktopToolPresets, relative))
         return bytes;
+    const expected = desktopToolPresets[relative];
     if (version !== '0.2.2-rc.5' || createHash('sha256').update(bytes).digest('hex') !== expected)
         throw new Error('Android scoped tool adaptation must be reviewed for ' + relative);
     let text = bytes.toString('utf8');
@@ -365,7 +365,7 @@ export async function prepareHostTree(options, directory) {
         else {
             const selected = row.source === planned.product ? productFiles : row.opaque ? await opaqueFiles(row.source) : bySource.get(row.source);
             const webApp = !row.opaque && row.metadata.name === '@deepseek-ai/dsh-web-app';
-            if (webApp && Object.keys(desktopToolPresets).some(file => !selected.includes(file)))
+            if (webApp && Object.keys(desktopToolPresets).some(file => !selected.some(raw => slash(raw).replace(/^\.\//, '') === file)))
                 throw new Error('Pinned Web App is missing Android reviewed agent presets');
             let ptyPrebuilds = 0;
             for (const raw of selected) {
