@@ -26,16 +26,17 @@ requireUi(adb && /^emulator-\d+$/.test(serial ?? '') && /^app\.nexttavern\.andro
 requireUi(Object.keys(args).every(key=>['--adb','--serial','--package','--phase','--work-dir','--fixture-events',
   '--upgrade-apk','--upgrade-from-version-code','--verify-standard-tools'].includes(key)),'UNKNOWN_ARGUMENT');
 // Independent fresh UI scenarios share setup, not each other's pass/fail gates.
-const memoryOnly=args['--phase']==='memory';
-if(!memoryOnly&&args['--phase']!=='create') {emit('blocked',{code:'UNKNOWN_UI_PHASE',noDeviceActions:true});process.exit(2)}
+const memoryOnly=args['--phase']==='memory', standardOnly=args['--phase']==='standard';
+if(!memoryOnly&&!standardOnly&&args['--phase']!=='create') {emit('blocked',{code:'UNKNOWN_UI_PHASE',noDeviceActions:true});process.exit(2)}
 requireUi(fixtureEvents && args['--work-dir'],'FIXTURE_EVENTS_AND_WORK_DIRECTORY_REQUIRED');
 const upgradeApk=args['--upgrade-apk'], upgradeFrom=args['--upgrade-from-version-code'];
 requireUi((upgradeApk===undefined&&upgradeFrom===undefined)
   ||(memoryOnly&&pkg==='app.nexttavern.android.x86diagnostic'&&upgradeApk?.startsWith('/')
     &&/^[1-9][0-9]{0,8}$/.test(upgradeFrom??'')), 'X86_MEMORY_UPGRADE_FIXTURE_ARGUMENTS_REQUIRED');
 const verifyStandardTools=args['--verify-standard-tools']==='true';
-requireUi(args['--verify-standard-tools']===undefined
-  ||(verifyStandardTools&&memoryOnly&&pkg==='app.nexttavern.android.x86diagnostic'),
+requireUi((!standardOnly||pkg==='app.nexttavern.android.x86diagnostic')
+  &&(args['--verify-standard-tools']===undefined
+    ||(verifyStandardTools&&memoryOnly&&pkg==='app.nexttavern.android.x86diagnostic')),
   'STANDARD_TOOL_FIXTURE_ARGUMENTS_REQUIRED');
 let adbFailureNumber=0;
 function command(...commandArgs:string[]):string {return timedCommand(90000,...commandArgs)}
@@ -1508,7 +1509,8 @@ async function pickStandardFixtureModel():Promise<void> {
     &&[node.text,node['content-desc']].some(name=>/^请选择模型$|^选择模型，当前 |^Select model(?:$|, current )/.test(name??'')));
   const triggers=()=>{const nodes=modelTrigger();requireUi(nodes.length<=1,'STANDARD_MODEL_TRIGGER_AMBIGUOUS');return nodes};
   const hasFixture=()=>triggers().some(node=>[node.text,node['content-desc']].some(
-    label=>label==='选择模型，当前 '+fixtureId||label==='Select model, current '+fixtureId));
+    label=>label===`选择模型，当前 ${fixtureId}`||label?.startsWith(`选择模型，当前 ${fixtureId}，`)
+      ||label===`Select model, current ${fixtureId}`||label?.startsWith(`Select model, current ${fixtureId}, `)));
   await until(()=>triggers().length===1,45,'STANDARD_MODEL_TRIGGER_MISSING');
   if(hasFixture())return;
   tapNode(triggers()[0]);
@@ -1525,22 +1527,24 @@ async function pickStandardFixtureModel():Promise<void> {
   await until(hasFixture,60,'STANDARD_FIXTURE_MODEL_NOT_SELECTED');
 }
 
-/** Run once, after the memory and install gates. The fixture's final reply
+/** Run alone or after the memory and install gates. The fixture's final reply
  * requires actual tool result receipts, not merely advertised tool schemas. */
 async function runStandardToolsFixture():Promise<void> {
   stage='standard-tools-new-session';
-  const roleplay=['角色扮演模式','roleplay'],standard=['标准模式','Standard mode'];
+  const roleplay=['NextTavern','角色扮演模式'],standard=['标准模式','Standard mode'];
   const chip=(names:string[])=>visibleNamed(names,node=>button(node)&&inWebView(node));
   await showSidebar();await readySnapshot();tapNode(newSessionTarget());await hideSidebar();
   await until(()=>visibleNamed(['选择工作区','Choose workspace']).length===1,60,'STANDARD_NEW_WORKSPACE_CHIP_MISSING');
   await press(['选择工作区','Choose workspace']);
   await until(()=>visibleNamed(['默认工作区','Default workspace']).length===1,45,'STANDARD_WORKSPACE_NOT_LISTED');
   await press(['默认工作区','Default workspace']);
+  stage='standard-tools-preset-choice';
   await until(()=>chip(roleplay).length===1||chip(standard).length===1,60,'STANDARD_AGENT_PRESET_CHIP_MISSING');
   if(chip(standard).length!==1) {
     tapNode(chip(roleplay)[0]);
     // The rc.5 preset is an exact name plus localized description inside a menuitem.
-    const option=()=>menuRowsMatching(name=>standard.some(prefix=>name===prefix||name.startsWith(prefix+' ')));
+    const option=()=>menuRowsMatching(name=>standard.some(prefix=>name===prefix
+      ||(name.startsWith(prefix)&&/^\s/u.test(name.slice(prefix.length)))));
     await until(()=>{const rows=option();requireUi(rows.length<=1,'STANDARD_AGENT_PRESET_AMBIGUOUS');return rows.length===1},
       45,'STANDARD_AGENT_PRESET_NOT_LISTED');
     tapNode(option()[0]);
@@ -1659,7 +1663,11 @@ try {
   emit('passed',{scope:'models-add-provider-visible',scrolled:modelsScrolled});
   stage='host-models-page';
   labels();
-  if(memoryOnly) {
+  if(standardOnly) {
+    await configureFixtureProvider();
+    await closeWebDialog();
+    await runStandardToolsFixture();
+  } else if(memoryOnly) {
     await runIndependentMemory();
     emit('passed',{scope:'independent-online-memory-ui',memoryQualified:true,liveModel:false,
       productPlayable:false,fullG0:false,arm64Qualified:false});

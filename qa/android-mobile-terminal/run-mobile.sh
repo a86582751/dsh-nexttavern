@@ -180,7 +180,7 @@ phase=ORDINARY_APP_INSTALL
 # is still attempted and can never turn a failed product/UI attempt green.
 ui_rc=0
 ui_phase="${NEXTTAVERN_UI_PHASE:-create}"
-[[ "$ui_phase" == create || "$ui_phase" == memory ]] || { echo 'UNKNOWN_UI_PHASE'; exit 2; }
+[[ "$ui_phase" == create || "$ui_phase" == memory || "$ui_phase" == standard ]] || { echo 'UNKNOWN_UI_PHASE'; exit 2; }
 first_apk="$apk"
 upgrade_args=()
 if [[ -n "$upgrade_from_code" ]]; then
@@ -232,8 +232,8 @@ else
   printf 'MOBILE_INSTALL_FAILED_NOT_PASSED\n'
 fi
 if ((ui_rc==0)); then printf 'ORDINARY_NONDEBUG_APP_UI_PHASE=%s PASSED_NOT_ARM64_OR_G0\n' "$ui_phase"; fi
-if [[ "$ui_phase" == memory ]]; then
-  printf 'INDEPENDENT_MEMORY_UI_EXIT=%s NATIVE_PROBE=REUSED_PRIOR_UNCHANGED_INPUTS FULL_G0_ACCEPTED=false\n' "$ui_rc"
+if [[ "$ui_phase" == memory || "$ui_phase" == standard ]]; then
+  printf 'INDEPENDENT_%s_UI_EXIT=%s NATIVE_PROBE=REUSED_PRIOR_UNCHANGED_INPUTS FULL_G0_ACCEPTED=false\n' "${ui_phase^^}" "$ui_rc"
   exit "$ui_rc"
 fi
 phase=SEPARATE_ORDINARY_APP_KVM_PROBE
