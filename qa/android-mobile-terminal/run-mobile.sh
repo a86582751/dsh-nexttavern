@@ -28,6 +28,9 @@ trap cleanup EXIT
 export npm_config_cache="$work/npm-cache" GRADLE_USER_HOME="$work/gradle"
 export ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk" ANDROID_NDK_HOME="$sdk/ndk/28.2.13676358"
 apk="$work/mobile-x64-release.apk"
+upgrade_from_apk="$work/mobile-x64-upgrade-fixture.apk"
+upgrade_from_code="${NEXTTAVERN_UPGRADE_FROM_VERSION_CODE:-}"
+[[ -z "$upgrade_from_code" || "$upgrade_from_code" =~ ^[1-9][0-9]{0,8}$ ]]
 probe_apk="$work/probe-x64-kvm.apk"
 hierarchy_apk="$work/hierarchy.apk"
 if [[ "${1:-}" == prepare || "${1:-}" == prepare-arm64 ]]; then
@@ -72,7 +75,8 @@ NODE
   # Reuse this job's locked dependencies and JDK before preparing the sole Host.
   # The public projected registry predates these fixtures; this Android workflow
   # owns their explicit execution, without borrowing or changing Tavern checks.
-  node --test android/host/host-launch.test.mts android/tools/pack-host.test.mts >> "$work/build.log" 2>&1
+  node --test android/host/android-host.test.mts android/host/host-launch.test.mts \
+    android/host/protocol-fixture.test.mts android/tools/pack-host.test.mts >> "$work/build.log" 2>&1
   bash android/mobile/tools/test-core.sh >> "$work/build.log" 2>&1
   printf 'ANDROID_PUBLICATION_RECOVERY_AND_SERVICE_REGRESSIONS_PASSED\n'
   phase=TARGET_RUNTIME_AND_ADDONS
@@ -87,6 +91,17 @@ NODE
   cat > "$work/runner-build.gradle" <<'GRADLE'
 gradle.beforeProject { project ->
     project.layout.buildDirectory.set(new File(System.getenv('MOBILE_QA_WORK'), 'mobile/gradle-build/' + project.name))
+    def predecessorCode = System.getenv('NEXTTAVERN_QA_PREDECESSOR_CODE')
+    if (project.path == ':mobile' && predecessorCode) {
+        def predecessorAssets = System.getenv('NEXTTAVERN_QA_PREDECESSOR_ASSETS')
+        project.pluginManager.withPlugin('com.android.application') {
+            project.extensions.getByName('androidComponents').finalizeDsl { android ->
+                android.defaultConfig.versionCode = Integer.parseInt(predecessorCode)
+                android.sourceSets.getByName('main').assets.setSrcDirs([predecessorAssets,
+                    project.file('../app/src/main/assets/runtime-notices')])
+            }
+        }
+    }
 }
 GRADLE
   if [[ "$abi" == arm64 ]]; then
@@ -107,6 +122,39 @@ GRADLE
     --out "$apk" "$work/gradle-build/mobile/outputs/apk/x86Diagnostic/release/mobile-x86Diagnostic-release-unsigned.apk" >> "$work/build.log" 2>&1
   "$tools/apksigner" verify "$apk" >> "$work/build.log" 2>&1
   printf 'NONDEBUG_X64_PREVIEW_APK_BUILT_NOT_ARM64_QUALIFICATION\n'
+  if [[ -n "$upgrade_from_code" ]]; then
+    phase=X64_UPGRADE_FIXTURE_BUILD
+    # Same revision and extracted Host contents, but a distinct code-slot hash
+    # forces Host republishing/relinking after replacement. Not the RC1 APK.
+    predecessor_assets="$work/predecessor-assets"
+    mkdir -p "$predecessor_assets"
+    cp --reflink=auto -- "android/mobile/src/main/assets/host.zip" "$predecessor_assets/host.zip"
+    python3 - "$predecessor_assets/host.zip" <<'PY'
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1], 'a') as z:
+    z.comment = b'NextTavern x86 QA predecessor archive identity'
+PY
+    predecessor_host_sha="$(sha256sum "$predecessor_assets/host.zip")"
+    printf '%s\n' "${predecessor_host_sha%% *}" > "$predecessor_assets/host-version.txt"
+    (cd android && NEXTTAVERN_QA_PREDECESSOR_CODE="$upgrade_from_code" \
+      NEXTTAVERN_QA_PREDECESSOR_ASSETS="$predecessor_assets" ./gradlew --no-daemon \
+      --init-script "$work/runner-build.gradle" :mobile:assembleX86DiagnosticRelease) >> "$work/build.log" 2>&1
+    "$tools/apksigner" sign --ks "$work/preview.p12" --ks-pass pass:android --key-pass pass:android \
+      --out "$upgrade_from_apk" "$work/gradle-build/mobile/outputs/apk/x86Diagnostic/release/mobile-x86Diagnostic-release-unsigned.apk" >> "$work/build.log" 2>&1
+    "$tools/apksigner" verify "$upgrade_from_apk" >> "$work/build.log" 2>&1
+    base_badging="$("$tools/aapt2" dump badging "$upgrade_from_apk")"
+    next_badging="$("$tools/aapt2" dump badging "$apk")"
+    base_header="${base_badging%%$'\n'*}"; next_header="${next_badging%%$'\n'*}"
+    prefix="package: name='app.nexttavern.android.x86diagnostic' versionCode='"
+    [[ "$base_header" == "$prefix$upgrade_from_code'"* && "$next_header" == "$prefix"* ]]
+    next_code="${next_header#"$prefix"}"; next_code="${next_code%%\'*}"
+    [[ "$next_code" =~ ^[1-9][0-9]{0,8}$ && "$next_code" -gt "$upgrade_from_code" ]]
+    base_version="$(unzip -p "$upgrade_from_apk" assets/host-version.txt)"
+    next_version="$(unzip -p "$apk" assets/host-version.txt)"
+    [[ "$base_version" == "${predecessor_host_sha%% *}" && "$next_version" =~ ^[a-f0-9]{64}$ && "$base_version" != "$next_version" ]]
+    printf 'X64_SAME_SOURCE_UPGRADE_FIXTURE_BUILT FROM=%s TO=%s DISTINCT_HOST_SLOT=true\n' "$upgrade_from_code" "$next_code"
+  fi
   phase=SEPARATE_NONDEBUG_X64_KVM_PROBE_BUILD
   # Reuse the already prepared JNI/locked CA and preview key. This is a new
   # runner-local APK, not a frozen probe replacement or the legacy TCG variant.
@@ -133,7 +181,18 @@ phase=ORDINARY_APP_INSTALL
 ui_rc=0
 ui_phase="${NEXTTAVERN_UI_PHASE:-create}"
 [[ "$ui_phase" == create || "$ui_phase" == memory ]] || { echo 'UNKNOWN_UI_PHASE'; exit 2; }
-if "$adb" -s "$serial" install --no-incremental "$apk" > "$work/install.log" 2>&1; then
+first_apk="$apk"
+upgrade_args=()
+if [[ -n "$upgrade_from_code" ]]; then
+  [[ "$ui_phase" == memory && -f "$upgrade_from_apk" ]]
+  first_apk="$upgrade_from_apk"
+  upgrade_args=(--upgrade-apk "$apk" --upgrade-from-version-code "$upgrade_from_code")
+fi
+if [[ "${NEXTTAVERN_STANDARD_TOOL_QA:-}" == 1 ]]; then
+  [[ "$ui_phase" == memory ]]
+  upgrade_args+=(--verify-standard-tools true)
+fi
+if "$adb" -s "$serial" install --no-incremental "$first_apk" > "$work/install.log" 2>&1; then
   phase=LOCAL_PROTOCOL_FIXTURE
   node "$repo/android/host/protocol-fixture.mts" 18765 > "$work/protocol-fixture.log" 2>&1 &
   fixture_pid=$!
@@ -155,7 +214,8 @@ if "$adb" -s "$serial" install --no-incremental "$apk" > "$work/install.log" 2>&
     printf 'EMULATOR_HOST_ALIAS_AND_MEMORY_LOOPBACK_FIXTURE_HTTP_200_NOT_APP_UID_EVIDENCE\n'
     phase=REAL_MAIN_ACTIVITY_SYNTHETIC_FLOW
     node "$repo/qa/android-mobile-terminal/ui-first-stage.mts" --adb "$adb" --serial "$serial" \
-      --package app.nexttavern.android.x86diagnostic --phase "$ui_phase" --work-dir "$work/ui" --fixture-events "$work/protocol-fixture.log" || ui_rc=$?
+      --package app.nexttavern.android.x86diagnostic --phase "$ui_phase" --work-dir "$work/ui" --fixture-events "$work/protocol-fixture.log" \
+      "${upgrade_args[@]}" || ui_rc=$?
   else
     ui_rc=1
     printf 'MOBILE_FIXTURE_READY_ALIAS_OR_MEMORY_LOOPBACK_FAILED_NOT_PASSED\n'

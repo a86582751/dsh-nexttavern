@@ -5,7 +5,8 @@ import {mkdirSync,writeFileSync,readFileSync,chmodSync,rmSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 import {safeErrorTail,adbFailureKind} from './safe-diagnostics.mts';
-import {PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID,EMBEDDING_FIXTURE_ID,EMBEDDING_FIXTURE_MODEL,EMBEDDING_FIXTURE_DIMENSIONS,EMBEDDING_QUERY} from '../../android/host/protocol-fixture.mts';
+import {PACED_STREAM_MARKER,PROTOCOL_FIXTURE_ID,EMBEDDING_FIXTURE_ID,EMBEDDING_FIXTURE_MODEL,EMBEDDING_FIXTURE_DIMENSIONS,
+  EMBEDDING_QUERY,WORKSPACE_TOOLS_PROMPT,WORKSPACE_TOOLS_REPLY} from '../../android/host/protocol-fixture.mts';
 
 type Node = Record<string,string>;
 const args:Record<string,string>={};
@@ -22,11 +23,20 @@ const emit=(status:string,extra:Record<string,unknown>={})=>console.log(JSON.str
 }));
 function requireUi(value:unknown,code:string):asserts value {if(!value)throw new UiFailure(code)}
 requireUi(adb && /^emulator-\d+$/.test(serial ?? '') && /^app\.nexttavern\.android(?:\.x86diagnostic)?(?:\.debug)?$/.test(pkg ?? ''),'EMULATOR_APP_ARGUMENTS_REQUIRED');
-requireUi(Object.keys(args).every(key=>['--adb','--serial','--package','--phase','--work-dir','--fixture-events'].includes(key)),'UNKNOWN_ARGUMENT');
+requireUi(Object.keys(args).every(key=>['--adb','--serial','--package','--phase','--work-dir','--fixture-events',
+  '--upgrade-apk','--upgrade-from-version-code','--verify-standard-tools'].includes(key)),'UNKNOWN_ARGUMENT');
 // Independent fresh UI scenarios share setup, not each other's pass/fail gates.
 const memoryOnly=args['--phase']==='memory';
 if(!memoryOnly&&args['--phase']!=='create') {emit('blocked',{code:'UNKNOWN_UI_PHASE',noDeviceActions:true});process.exit(2)}
 requireUi(fixtureEvents && args['--work-dir'],'FIXTURE_EVENTS_AND_WORK_DIRECTORY_REQUIRED');
+const upgradeApk=args['--upgrade-apk'], upgradeFrom=args['--upgrade-from-version-code'];
+requireUi((upgradeApk===undefined&&upgradeFrom===undefined)
+  ||(memoryOnly&&pkg==='app.nexttavern.android.x86diagnostic'&&upgradeApk?.startsWith('/')
+    &&/^[1-9][0-9]{0,8}$/.test(upgradeFrom??'')), 'X86_MEMORY_UPGRADE_FIXTURE_ARGUMENTS_REQUIRED');
+const verifyStandardTools=args['--verify-standard-tools']==='true';
+requireUi(args['--verify-standard-tools']===undefined
+  ||(verifyStandardTools&&memoryOnly&&pkg==='app.nexttavern.android.x86diagnostic'),
+  'STANDARD_TOOL_FIXTURE_ARGUMENTS_REQUIRED');
 let adbFailureNumber=0;
 function command(...commandArgs:string[]):string {return timedCommand(90000,...commandArgs)}
 function timedCommand(timeout:number,...commandArgs:string[]):string {
@@ -1367,13 +1377,39 @@ async function observeSemanticModeControl(moment:'after-mode-click'|'after-resta
     checked:flag('checked'),selected:flag('selected'),enabled:flag('enabled'),
     busyOrDataPending:node.enabled==='false',selectionQualified:false});
 }
+function installedVersionCode():number {
+  const prefix='package:'+pkg+' versionCode:';
+  const rows=command('shell','pm','list','packages','--show-versioncode',pkg)
+    .split(/\r?\n/).filter(line=>line.startsWith(prefix));
+  const code=rows.length===1?rows[0].slice(prefix.length).trim():'';
+  requireUi(/^[1-9][0-9]{0,8}$/.test(code),'UPGRADE_PACKAGE_MANAGER_VERSION_NOT_OBSERVED');
+  return Number(code);
+}
+async function installUpgradeFixture():Promise<{from:number;to:number}|undefined> {
+  if(!upgradeApk)return;
+  stage='x86-same-source-package-upgrade';
+  const from=installedVersionCode();
+  requireUi(from===Number(upgradeFrom),'UPGRADE_PREDECESSOR_VERSION_MISMATCH');
+  const result=command('install','--no-incremental','-r',upgradeApk);
+  requireUi(/^Success\r?$/m.test(result),'UPGRADE_INSTALL_SUCCESS_NOT_OBSERVED');
+  const to=installedVersionCode();
+  requireUi(to>from,'UPGRADE_INSTALLED_VERSION_DID_NOT_INCREASE');
+  emit('observed',{interaction:'android-package-manager-replacement',from,to});
+  command('shell','am','start','-W','-n',pkg+'/app.nexttavern.android.mobile.MainActivity');
+  snapshotIdentity=deviceIdentity();
+  current=[];
+  await until(()=>has(ready)||visibleNamed(['启动'],node=>button(node)&&!inWebView(node)).length===1,
+    180,'UPGRADED_ACTIVITY_NOT_READY');
+  return {from,to};
+}
 /** Run ONLY once and AFTER existing card/chat/paced gates, in a fresh task profile.
  * This is the FIRST memory search in that scripted profile, deliberately after
  * restart: no pre-restart identical command outcome can satisfy a fresh result. */
 async function onlineMemoryRestartAndRecall(eventsFile:string,expectedSource=fixtureOpening):Promise<void> {
   const before=await configureAndIndexOnlineMemory(eventsFile),oldPid=ownedNodePid();
   stage='online-memory-ordinary-stop-start';await ordinaryNativeStop();
-  await press(['启动'],node=>button(node)&&!inWebView(node));
+  const upgrade=await installUpgradeFixture();
+  if(!upgrade||!has(ready))await press(['启动'],node=>button(node)&&!inWebView(node));
   await until(()=>has(['本地服务运行中']),180,'MEMORY_RESTART_READY_NOT_OBSERVED');
   requireUi(ownedNodePid()!==oldPid,'MEMORY_RESTART_DID_NOT_REPLACE_NODE');
   ensureMemoryFixtureLoopback();
@@ -1417,6 +1453,9 @@ async function onlineMemoryRestartAndRecall(eventsFile:string,expectedSource=fix
     expectedSource:true,rank:hit.rank,score:hit.score,keywordFallback:false,
     freshEmbeddingHttpCompletions:completedMemoryAfter(eventsFile,embeddingBaseline).length,
     semanticQuality:false,separateChunkRanking:false,localModel:false,liveProvider:false});
+  if(upgrade)emit('passed',{scope:'same-source-x86-package-upgrade-with-data-retention',
+    ...upgrade,persistedConversation:true,persistedIndex:true,freshSemanticRecall:true,
+    actualRc1Predecessor:false,releaseSigner:false,arm64Qualified:false});
 }
 
 
@@ -1448,6 +1487,90 @@ async function runIndependentMemory():Promise<void> {
   await rememberSyntheticConversation();
   emit('passed',{scope:'independent-memory-real-ui-synthetic-source',SAFRun:false,pacedRun:false,liveModel:false});
   await onlineMemoryRestartAndRecall(fixtureEvents,memorySeedPrompt);
+}
+
+/** Match a semantic menu row even if Chromium exposes the label separately
+ * from the clickable action. Never pick an unlabelled row by position. */
+function menuRowsMatching(test:(name:string)=>boolean):Node[] {
+  const rows=new Set<Node>();
+  for(const node of current) {
+    if(node.package!==pkg||!inWebView(node)||![node.text,node['content-desc'],node.hint].some(name=>name&&test(name)))continue;
+    const row=[node,...ancestors(node)].find(item=>item.package===pkg&&inWebView(item)
+      &&item.enabled!=='false'&&(button(item)||menuOption(item)));
+    if(row&&visibleBounds(row))rows.add(row);
+  }
+  return [...rows];
+}
+async function pickStandardFixtureModel():Promise<void> {
+  stage='standard-tools-fixture-model';
+  const modelTrigger=()=>current.filter(node=>node.package===pkg&&inWebView(node)&&button(node)
+    &&node.enabled!=='false'&&visibleBounds(node)
+    &&[node.text,node['content-desc']].some(name=>/^请选择模型$|^选择模型，当前 |^Select model(?:$|, current )/.test(name??'')));
+  const triggers=()=>{const nodes=modelTrigger();requireUi(nodes.length<=1,'STANDARD_MODEL_TRIGGER_AMBIGUOUS');return nodes};
+  const hasFixture=()=>triggers().some(node=>[node.text,node['content-desc']].some(
+    label=>label==='选择模型，当前 '+fixtureId||label==='Select model, current '+fixtureId));
+  await until(()=>triggers().length===1,45,'STANDARD_MODEL_TRIGGER_MISSING');
+  if(hasFixture())return;
+  tapNode(triggers()[0]);
+  const fixtureRows=()=>menuRowsMatching(name=>name===fixtureId);
+  const searchLabels=['搜索模型…','Search models…'];
+  const drillRows=()=>menuRowsMatching(name=>/^(?:模型|Model)(?:\s|$)/.test(name));
+  await until(()=>fixtureRows().length>0||has(searchLabels)||drillRows().length===1,60,'STANDARD_MODEL_PICKER_MISSING');
+  if(fixtureRows().length===0&&!has(searchLabels))tapNode(drillRows()[0]);
+  await until(()=>fixtureRows().length>0||has(searchLabels),60,'STANDARD_MODEL_OPTIONS_MISSING');
+  if(fixtureRows().length===0)await replace(searchLabels,fixtureId);
+  await until(()=>{const rows=fixtureRows();requireUi(rows.length<=1,'STANDARD_FIXTURE_MODEL_AMBIGUOUS');return rows.length===1},
+    60,'STANDARD_FIXTURE_MODEL_NOT_LISTED');
+  tapNode(fixtureRows()[0]);
+  await until(hasFixture,60,'STANDARD_FIXTURE_MODEL_NOT_SELECTED');
+}
+
+/** Run once, after the memory and install gates. The fixture's final reply
+ * requires actual tool result receipts, not merely advertised tool schemas. */
+async function runStandardToolsFixture():Promise<void> {
+  stage='standard-tools-new-session';
+  const roleplay=['角色扮演模式','roleplay'],standard=['标准模式','Standard mode'];
+  const chip=(names:string[])=>visibleNamed(names,node=>button(node)&&inWebView(node));
+  await showSidebar();await readySnapshot();tapNode(newSessionTarget());await hideSidebar();
+  await until(()=>visibleNamed(['选择工作区','Choose workspace']).length===1,60,'STANDARD_NEW_WORKSPACE_CHIP_MISSING');
+  await press(['选择工作区','Choose workspace']);
+  await until(()=>visibleNamed(['默认工作区','Default workspace']).length===1,45,'STANDARD_WORKSPACE_NOT_LISTED');
+  await press(['默认工作区','Default workspace']);
+  await until(()=>chip(roleplay).length===1||chip(standard).length===1,60,'STANDARD_AGENT_PRESET_CHIP_MISSING');
+  if(chip(standard).length!==1) {
+    tapNode(chip(roleplay)[0]);
+    // The rc.5 preset is an exact name plus localized description inside a menuitem.
+    const option=()=>menuRowsMatching(name=>standard.some(prefix=>name===prefix||name.startsWith(prefix+' ')));
+    await until(()=>{const rows=option();requireUi(rows.length<=1,'STANDARD_AGENT_PRESET_AMBIGUOUS');return rows.length===1},
+      45,'STANDARD_AGENT_PRESET_NOT_LISTED');
+    tapNode(option()[0]);
+    await until(()=>chip(standard).length===1,45,'STANDARD_AGENT_PRESET_NOT_SELECTED');
+  }
+  await pickStandardFixtureModel();
+  stage='standard-tools-fixture-dispatch';
+  const prompt=WORKSPACE_TOOLS_PROMPT,reply=WORKSPACE_TOOLS_REPLY;
+  requireUi(leafTexts(prompt).length===0&&leafTexts(reply).length===0,'STANDARD_TOOL_FIXTURE_NOT_FRESH');
+  const baseline=maxFixtureRequest(fixtureEvents);
+  await sendOnePacedPrompt(prompt);
+  const workspaceModes=['workspace-write','workspace-search','workspace-complete'];
+  const expectedCalls=[1,1,0];
+  await until(()=>{
+    requireUi(!current.some(node=>node.package===pkg&&node.text?.startsWith('This turn failed')),
+      'STANDARD_TOOL_FIXTURE_TURN_FAILED');
+    if(leafTexts(reply).length!==1||visibleNamed(['停止生成','Stop generating']).length!==0)return false;
+    const text=readFileSync(fixtureEvents,'utf8');
+    const records=text.slice(0,text.lastIndexOf('\n')+1).split('\n').flatMap(line=>{
+      if(!line.startsWith('{'))return [];
+      const row=JSON.parse(line);
+      return row.kind==='local-protocol-fixture-request'&&row.fixture===PROTOCOL_FIXTURE_ID
+        &&row.event==='completed'&&Number.isSafeInteger(row.request)
+        &&row.request>baseline&&workspaceModes.includes(row.mode)?[row]:[];
+    }).sort((a,b)=>a.request-b.request);
+    return records.length===workspaceModes.length&&records.every((row,index)=>row.mode===workspaceModes[index]
+      &&row.completed===true&&row.aborted===false&&row.toolcallCount===expectedCalls[index]);
+  },165,'STANDARD_TOOL_DISPATCH_RECEIPTS_OR_UI_REPLY_NOT_OBSERVED');
+  emit('passed',{scope:'standard-workspace-tool-dispatch-synthetic-x86',standardPreset:true,
+    writeResultVerified:true,workspaceSearchResultVerified:true,replyRendered:true,liveModel:false,arm64Qualified:false});
 }
 
 try {
@@ -1540,6 +1663,7 @@ try {
     await runIndependentMemory();
     emit('passed',{scope:'independent-online-memory-ui',memoryQualified:true,liveModel:false,
       productPlayable:false,fullG0:false,arm64Qualified:false});
+    if(verifyStandardTools)await runStandardToolsFixture();
   } else {
     await runContiguousCreate(args['--work-dir']);
     let recoveryFailure:UiFailure|undefined;
