@@ -10,7 +10,7 @@ android {
         applicationId = "app.nexttavern.android"
         minSdk = 30
         targetSdk = 36
-        versionCode = 2
+        versionCode = 3
         versionName = "0.3.0-rc.1"
         resValue("string", "app_name", "NextTavern Mobile 预览版")
     }
@@ -41,6 +41,31 @@ android {
     androidResources { noCompress += "zip" }
     sourceSets.getByName("main").jniLibs.srcDir("../app/src/main/jniLibs")
     sourceSets.getByName("main").assets.srcDir("../app/src/main/assets/runtime-notices")
+}
+
+// Reuse the site's launcher artwork so the two surfaces cannot drift.
+abstract class GenerateLauncherIcon : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val brandMark: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val icon = outputDirectory.file("mipmap-nodpi/ic_launcher.webp").get().asFile
+        icon.parentFile.mkdirs()
+        brandMark.get().asFile.copyTo(icon, overwrite = true)
+    }
+}
+
+androidComponents.onVariants { variant ->
+    val launcherIcon = tasks.register<GenerateLauncherIcon>("generate${variant.name.replaceFirstChar { it.uppercaseChar() }}LauncherIcon") {
+        brandMark.set(rootProject.layout.projectDirectory.file("../site/art/brand-mark.webp"))
+        outputDirectory.set(layout.buildDirectory.dir("generated/launcher-icon/${variant.name}"))
+    }
+    variant.sources.res?.addGeneratedSourceDirectory(launcherIcon, GenerateLauncherIcon::outputDirectory)
 }
 
 val verifyMobileAssets by tasks.registering {
